@@ -20,25 +20,27 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  *
  * Behavioral: real middleware, real `PERMISSION_REGISTRY_MAP`, and a real
  * `CapabilitySet` doing every check. Only the DB-backed capability fetch and the
- * plan lookup are stubbed. The file-service calls are the observed side effect:
- * the gate must land ahead of them.
+ * plan lookup are stubbed. The download resolutions are the observed side
+ * effect: the gate must land ahead of them.
+ *
+ * Since PR 5c the file branch is the free function `getFolderFileDownloadRef`
+ * rather than `createFileService(...).getDownloadRefForVersion(...)`, so "no
+ * file was read" is asserted on the function, not on a constructor.
  */
 
 const {
   getCapabilities,
   planGate,
-  getFileDownloadRef,
+  getFolderFileDownloadRef,
   getAssetDownloadRef,
-  createFileService,
   createMediaAssetService,
   dbSelect,
   dbWhere,
 } = vi.hoisted(() => ({
   getCapabilities: vi.fn(),
   planGate: vi.fn(),
-  getFileDownloadRef: vi.fn(),
+  getFolderFileDownloadRef: vi.fn(),
   getAssetDownloadRef: vi.fn(),
-  createFileService: vi.fn(),
   createMediaAssetService: vi.fn(),
   dbSelect: vi.fn(),
   dbWhere: vi.fn(),
@@ -65,9 +67,33 @@ vi.mock('@auxx/lib/permissions', async () => {
 })
 
 vi.mock('@auxx/lib/files', () => ({
-  createFileService,
   createFilesystemService: vi.fn(),
   createMediaAssetService,
+}))
+
+// `fileRouter` imports seventeen `folder-files/` functions from this subpath and
+// `~/server/lib/files-ctx` imports `createS3StoragePort` from it. Vitest
+// validates NAMED bindings at link time, so every one has to be present here
+// even though this suite only drives the download accessor.
+vi.mock('@auxx/lib/files/server', () => ({
+  getFolderFileDownloadRef,
+  createS3StoragePort: vi.fn(() => ({})),
+  copyFolderFile: vi.fn(),
+  createFileVersion: vi.fn(),
+  deleteFileVersion: vi.fn(),
+  deleteFolderFile: vi.fn(),
+  findFolderFilesByExtension: vi.fn(),
+  findFolderFilesByMimeType: vi.fn(),
+  getFolderFileCurrentVersion: vi.fn(),
+  getFolderFileVersions: vi.fn(),
+  getFolderFileWithRelations: vi.fn(),
+  listFolderFiles: vi.fn(),
+  moveFolderFile: vi.fn(),
+  renameFolderFile: vi.fn(),
+  restoreFileVersion: vi.fn(),
+  restoreFolderFile: vi.fn(),
+  searchFolderFiles: vi.fn(),
+  updateFolderFile: vi.fn(),
 }))
 
 vi.mock('@auxx/database', async () =>
@@ -130,6 +156,7 @@ vi.mock('~/server/bootstrap', () => ({ ensureWebAppInitialized: vi.fn() }))
 vi.mock('@auxx/logger', async () => (await import('~/test/logger-mock')).mockAuxxLogger())
 
 // Deep path on purpose — the barrel hangs (see above).
+const { ok } = await import('neverthrow')
 const { CapabilitySet } = await import('@auxx/lib/permissions/capabilities/capability-set')
 const { ResourcePermission } = await import('@auxx/database/enums')
 const { ForbiddenError } = await import('@auxx/lib/errors')
@@ -194,11 +221,9 @@ const downloadRef = {
 beforeEach(() => {
   getCapabilities.mockReset()
   planGate.mockReset().mockResolvedValue(undefined)
-  getFileDownloadRef.mockReset().mockResolvedValue(downloadRef)
+  // The function returns a neverthrow `Result`; the router unwraps it.
+  getFolderFileDownloadRef.mockReset().mockResolvedValue(ok(downloadRef))
   getAssetDownloadRef.mockReset().mockResolvedValue({ ...downloadRef, filename: 'logo.png' })
-  createFileService.mockReset().mockReturnValue({
-    getDownloadRefForVersion: getFileDownloadRef,
-  })
   createMediaAssetService.mockReset().mockReturnValue({
     getDownloadRefForVersion: getAssetDownloadRef,
   })
@@ -216,9 +241,9 @@ beforeEach(() => {
   })
 })
 
-/** Neither backing service may be constructed for a denied caller. */
+/** Neither download path may run for a denied caller. */
 function expectNoFileReads() {
-  expect(createFileService).not.toHaveBeenCalled()
+  expect(getFolderFileDownloadRef).not.toHaveBeenCalled()
   expect(createMediaAssetService).not.toHaveBeenCalled()
 }
 
@@ -260,11 +285,14 @@ describe('file.getAttachmentPreviewRef — the live-download-ref hole', () => {
     const caller = callerFor(capabilitiesAt(Level.Read))
     const result = await caller.getAttachmentPreviewRef({ type: 'file', id: FILE_ID })
     expect(result).toEqual(downloadRef)
-    expect(createFileService).toHaveBeenCalledWith(ORG_ID, USER_ID)
-    expect(getFileDownloadRef).toHaveBeenCalledWith(FILE_ID, {
-      version: 'current',
-      disposition: 'inline',
-    })
+    // `toFilesCtx(ctx)` is the ONLY place a `FilesCtx` is built — the scope the
+    // function sees is the session's organization, never anything from `input`.
+    expect(getFolderFileDownloadRef).toHaveBeenCalledWith(
+      expect.objectContaining({ organizationId: ORG_ID }),
+      expect.anything(),
+      FILE_ID,
+      { version: 'current', disposition: 'inline' }
+    )
   })
 
   it('returns the ref for a member holding `files: Read` (asset branch)', async () => {
@@ -280,7 +308,7 @@ describe('file.getAttachmentPreviewRef — the live-download-ref hole', () => {
       version: 'current',
       disposition: 'attachment',
     })
-    expect(createFileService).not.toHaveBeenCalled()
+    expect(getFolderFileDownloadRef).not.toHaveBeenCalled()
   })
 
   it('UNAUTHORIZEDs a caller with no session, before capabilities', async () => {

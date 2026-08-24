@@ -1,15 +1,31 @@
 // apps/web/src/server/api/routers/file.ts
 
 import { schema } from '@auxx/database'
+import { createFilesystemService, createMediaAssetService } from '@auxx/lib/files'
 import {
-  createFileService,
-  createFilesystemService,
-  createMediaAssetService,
-} from '@auxx/lib/files'
+  copyFolderFile,
+  createFileVersion,
+  deleteFileVersion,
+  deleteFolderFile,
+  findFolderFilesByExtension,
+  findFolderFilesByMimeType,
+  getFolderFileCurrentVersion,
+  getFolderFileDownloadRef,
+  getFolderFileVersions,
+  getFolderFileWithRelations,
+  listFolderFiles,
+  moveFolderFile,
+  renameFolderFile,
+  restoreFileVersion,
+  restoreFolderFile,
+  searchFolderFiles,
+  updateFolderFile,
+} from '@auxx/lib/files/server'
 import { FeatureKey, FeaturePermissionService, PermissionKey } from '@auxx/lib/permissions'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
+import type { Result } from 'neverthrow'
 import { z } from 'zod'
 import {
   capabilityProcedure,
@@ -18,17 +34,33 @@ import {
   protectedProcedure,
 } from '~/server/api/trpc'
 import { assertDatasetDocumentAssetAccess } from '~/server/lib/dataset-document-asset-access'
+import { toFilesCtx, toFilesDownloadDeps, toFilesWriteDeps } from '~/server/lib/files-ctx'
+
+/**
+ * Unwrap a `files/` `Result` into this router's throw-based flow.
+ *
+ * Every `folder-files/` function returns `Promise<Result<T, AuxxError>>`, and
+ * the error is always an `AuxxError` subclass, so rethrowing it hands
+ * `auxxErrorMiddleware` the right status: a missing file is 404, an empty name
+ * 400, "cannot delete the current version" 409. Before PR 5c every one of those
+ * was a bare `Error` that the per-procedure `catch` below flattened into
+ * `BAD_REQUEST`.
+ */
+function unwrap<V>(result: Result<V, Error>): V {
+  if (result.isErr()) throw result.error
+  return result.value
+}
 
 const logger = createScopedLogger('api/file')
 
 // Input schemas
 const listFilesSchema = z.object({
   folderId: z.string().nullable().optional(),
-  // No `search` here: `FileService.listInFolder` has no text filter, so a
-  // `search` field would be silently dropped (it was, until 2026-07-31). Use
-  // the `search` procedure below, which runs the relevance-scored query.
+  // No `search` here: `listFolderFiles` has no text filter, so a `search` field
+  // would be silently dropped (it was, until 2026-07-31). Use the `search`
+  // procedure below, which runs the relevance-scored query.
   fileTypes: z.array(z.string()).optional(),
-  // Opaque cursor over `FileService.list`'s offset pagination — the service is
+  // Opaque cursor over `listFolderFiles`'s offset pagination — the read is
   // offset-based, so the cursor is the stringified next offset.
   cursor: z.string().optional(),
   limit: z.number().min(1).max(100).default(50),
@@ -78,14 +110,14 @@ const findByMimeTypeSchema = z.object({
 const createVersionSchema = z.object({
   fileId: z.string(),
   // The version to snapshot content from. Omitted → the file's current version.
-  // `FileVersion.versionNumber` is assigned by the service (last + 1); it is not
-  // client-supplied, and the table carries no comment/author columns.
+  // `FileVersion.versionNumber` is assigned by `createFileVersion` (last + 1);
+  // it is not client-supplied, and the table carries no comment/author columns.
   storageLocationId: z.string().optional(),
 })
 
 // `FileVersion` is addressed by its integer `versionNumber` within a file, not
-// by row id — `FileService.getVersion/restoreVersion/deleteVersion` all take
-// `(fileId, versionNumber)`.
+// by row id — `getFolderFileVersionByNumber` / `restoreFileVersion` /
+// `deleteFileVersion` all take `(fileId, versionNumber)`.
 const versionRefSchema = z.object({
   fileId: z.string(),
   versionNumber: z.number().int().positive(),
@@ -155,20 +187,19 @@ export const fileRouter = createTRPCRouter({
   list: permissionProcedure(PermissionKey.filesView)
     .input(listFilesSchema)
     .query(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-
-      const fileService = createFileService(organizationId, userId)
-
       try {
         const offset = input.cursor ? Number.parseInt(input.cursor, 10) || 0 : 0
-        const result = await fileService.listInFolder(input.folderId || null, {
-          limit: input.limit,
-          offset,
-          sortBy: input.sortBy,
-          sortOrder: input.sortOrder,
-          fileTypes: input.fileTypes,
-          includeArchived: input.includeArchived,
-        })
+        const result = unwrap(
+          await listFolderFiles(toFilesCtx(ctx), {
+            folderId: input.folderId || null,
+            limit: input.limit,
+            offset,
+            sortBy: input.sortBy,
+            sortOrder: input.sortOrder,
+            fileTypes: input.fileTypes,
+            includeArchived: input.includeArchived,
+          })
+        )
 
         const nextCursor = result.hasMore ? String(offset + result.items.length) : null
 
@@ -193,14 +224,11 @@ export const fileRouter = createTRPCRouter({
   getById: permissionProcedure(PermissionKey.filesView)
     .input(fileIdSchema)
     .query(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-
-      const fileService = createFileService(organizationId, userId)
-
       try {
-        // `getWithRelations`, not `getById` — the latter has never existed on
-        // `FileService`, so this procedure threw `TypeError` for every caller.
-        const file = await fileService.getWithRelations(input.fileId)
+        // `getFolderFileWithRelations`, not a `getById` — the latter has never
+        // existed, so this procedure threw `TypeError` for every caller until
+        // 2026-07-31.
+        const file = unwrap(await getFolderFileWithRelations(toFilesCtx(ctx), input.fileId))
 
         if (!file) {
           throw new TRPCError({
@@ -229,20 +257,18 @@ export const fileRouter = createTRPCRouter({
   search: permissionProcedure(PermissionKey.filesView)
     .input(searchFilesSchema)
     .query(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-
-      const fileService = createFileService(organizationId, userId)
-
       try {
-        // `SearchOptions` has no `folderId` — the service scores across the whole
-        // org — so the folder filter is applied to the results here rather than
-        // being passed in and silently ignored.
+        // `searchFolderFiles` has no `folderId` filter — it scores across the
+        // whole org — so the folder filter is applied to the results here rather
+        // than being passed in and silently ignored.
         const offset = input.cursor ? Number.parseInt(input.cursor, 10) || 0 : 0
-        const matches = await fileService.search(input.query, {
-          fileTypes: input.fileTypes,
-          offset,
-          limit: input.limit,
-        })
+        const matches = unwrap(
+          await searchFolderFiles(toFilesCtx(ctx), input.query, {
+            fileTypes: input.fileTypes,
+            offset,
+            limit: input.limit,
+          })
+        )
         const items =
           input.folderId === undefined
             ? matches
@@ -271,22 +297,23 @@ export const fileRouter = createTRPCRouter({
   getDownloadInfo: permissionProcedure(PermissionKey.filesView)
     .input(fileIdSchema)
     .query(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-
-      const fileService = createFileService(organizationId, userId)
-
       try {
-        const downloadInfo = await fileService.getDownloadInfo(input.fileId)
-
-        if (!downloadInfo) {
-          throw new TRPCError({
-            code: 'NOT_FOUND',
-            message: 'File not found or not downloadable',
-          })
-        }
+        // `FileDownloadInfo` is a projection of the one download accessor, not a
+        // second one: `getFolderFileDownloadRef` already carries the filename,
+        // MIME type and size off the row it loaded, so this costs no extra query.
+        const ref = unwrap(
+          await getFolderFileDownloadRef(toFilesCtx(ctx), toFilesDownloadDeps(ctx), input.fileId)
+        )
 
         logger.info('Download info retrieved', { fileId: input.fileId })
-        return downloadInfo
+        return {
+          kind: ref.type === 'url' ? ('url' as const) : ('stream' as const),
+          url: ref.type === 'url' ? ref.url : undefined,
+          filename: ref.filename,
+          mimeType: ref.mimeType,
+          size: ref.size,
+          expiresAt: ref.type === 'url' ? ref.expiresAt : undefined,
+        }
       } catch (error) {
         logger.error('Failed to get download info', { error, input })
 
@@ -305,12 +332,8 @@ export const fileRouter = createTRPCRouter({
   getVersions: permissionProcedure(PermissionKey.filesView)
     .input(fileIdSchema)
     .query(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-
-      const fileService = createFileService(organizationId, userId)
-
       try {
-        const versions = await fileService.getVersions(input.fileId)
+        const versions = unwrap(await getFolderFileVersions(toFilesCtx(ctx), input.fileId))
 
         logger.info('File versions retrieved', {
           fileId: input.fileId,
@@ -331,14 +354,12 @@ export const fileRouter = createTRPCRouter({
   findByExtension: permissionProcedure(PermissionKey.filesView)
     .input(findByExtensionSchema)
     .query(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-
-      const fileService = createFileService(organizationId, userId)
-
       try {
-        const files = await fileService.findByExtension(input.extensions, {
-          limit: input.limit,
-        })
+        const files = unwrap(
+          await findFolderFilesByExtension(toFilesCtx(ctx), input.extensions, {
+            limit: input.limit,
+          })
+        )
 
         logger.info('Files found by extension', {
           extensions: input.extensions,
@@ -359,14 +380,15 @@ export const fileRouter = createTRPCRouter({
   findByMimeType: permissionProcedure(PermissionKey.filesView)
     .input(findByMimeTypeSchema)
     .query(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-
-      const fileService = createFileService(organizationId, userId)
-
       try {
-        const files = await fileService.findByMimeType(input.mimeTypes, {
-          limit: input.limit,
-        })
+        // Returned `[]` for every caller until PR 5c: the legacy
+        // `findByMimeType` interpolated the whole array into one `LIKE` pattern
+        // (`%image/png,application/pdf%`). See `folder-files/file-queries.ts`.
+        const files = unwrap(
+          await findFolderFilesByMimeType(toFilesCtx(ctx), input.mimeTypes, {
+            limit: input.limit,
+          })
+        )
 
         logger.info('Files found by MIME type', {
           mimeTypes: input.mimeTypes,
@@ -463,11 +485,12 @@ export const fileRouter = createTRPCRouter({
 
       try {
         if (input.type === 'file') {
-          const fileService = createFileService(organizationId, userId)
-          const result = await fileService.getDownloadRefForVersion(input.id, {
-            version: input.version,
-            disposition: input.disposition,
-          })
+          const result = unwrap(
+            await getFolderFileDownloadRef(toFilesCtx(ctx), toFilesDownloadDeps(ctx), input.id, {
+              version: input.version,
+              disposition: input.disposition,
+            })
+          )
 
           logger.info('File preview reference retrieved', {
             fileId: input.id,
@@ -598,12 +621,10 @@ export const fileRouter = createTRPCRouter({
   delete: permissionProcedure(PermissionKey.filesManage)
     .input(fileIdSchema)
     .mutation(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-
-      const fileService = createFileService(organizationId, userId)
-
       try {
-        await fileService.delete(input.fileId)
+        // Idempotent: deleting an id that names nothing succeeds, which is what
+        // the legacy `delete` did and what a double-clicked button relies on.
+        unwrap(await deleteFolderFile(toFilesCtx(ctx), toFilesWriteDeps(), input.fileId))
 
         logger.info('File deleted successfully', { fileId: input.fileId })
         return { success: true }
@@ -620,12 +641,10 @@ export const fileRouter = createTRPCRouter({
   restore: permissionProcedure(PermissionKey.filesManage)
     .input(fileIdSchema)
     .mutation(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-
-      const fileService = createFileService(organizationId, userId)
-
       try {
-        const file = await fileService.restore(input.fileId)
+        const file = unwrap(
+          await restoreFolderFile(toFilesCtx(ctx), toFilesWriteDeps(), input.fileId)
+        )
 
         logger.info('File restored successfully', { fileId: input.fileId })
         return file
@@ -642,14 +661,14 @@ export const fileRouter = createTRPCRouter({
   archive: permissionProcedure(PermissionKey.filesManage)
     .input(fileIdSchema)
     .mutation(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-
-      const fileService = createFileService(organizationId, userId)
-
       try {
-        // `FileService` has no `archive` method (this threw `TypeError` for every
-        // caller); archiving is the `isArchived` flag on the row.
-        const file = await fileService.update(input.fileId, { isArchived: true })
+        // There has never been an `archive` operation; archiving is the
+        // `isArchived` flag on the row.
+        const file = unwrap(
+          await updateFolderFile(toFilesCtx(ctx), toFilesWriteDeps(), input.fileId, {
+            isArchived: true,
+          })
+        )
 
         logger.info('File archived successfully', { fileId: input.fileId })
         return file
@@ -666,12 +685,15 @@ export const fileRouter = createTRPCRouter({
   move: permissionProcedure(PermissionKey.filesManage)
     .input(moveFileSchema)
     .mutation(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-
-      const fileService = createFileService(organizationId, userId)
-
       try {
-        const file = await fileService.move(input.fileId, input.targetFolderId)
+        const file = unwrap(
+          await moveFolderFile(
+            toFilesCtx(ctx),
+            toFilesWriteDeps(),
+            input.fileId,
+            input.targetFolderId
+          )
+        )
 
         logger.info('File moved successfully', {
           fileId: input.fileId,
@@ -692,12 +714,10 @@ export const fileRouter = createTRPCRouter({
   rename: permissionProcedure(PermissionKey.filesManage)
     .input(renameFileSchema)
     .mutation(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-
-      const fileService = createFileService(organizationId, userId)
-
       try {
-        const file = await fileService.rename(input.fileId, input.newName)
+        const file = unwrap(
+          await renameFolderFile(toFilesCtx(ctx), toFilesWriteDeps(), input.fileId, input.newName)
+        )
 
         logger.info('File renamed successfully', {
           fileId: input.fileId,
@@ -718,15 +738,21 @@ export const fileRouter = createTRPCRouter({
   copy: permissionProcedure(PermissionKey.filesManage)
     .input(copyFileSchema)
     .mutation(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-
-      const fileService = createFileService(organizationId, userId)
-
       try {
-        const newFile = await fileService.copy(
-          input.sourceFileId,
-          input.targetFolderId,
-          input.newName
+        // The row and its whole version history are copied in ONE transaction,
+        // opened here. The legacy `copy` inserted the file and then looped
+        // `createVersion`, each in its own savepoint, so a failure halfway left
+        // a half-copied file that nothing could tell from a real one.
+        const filesCtx = toFilesCtx(ctx)
+        const newFile = await ctx.db.transaction(async (tx) =>
+          unwrap(
+            await copyFolderFile(tx, { ...filesCtx, db: tx }, toFilesWriteDeps(), {
+              sourceFileId: input.sourceFileId,
+              targetFolderId: input.targetFolderId,
+              newName: input.newName,
+              createdById: ctx.session.userId,
+            })
+          )
         )
 
         logger.info('File copied successfully', {
@@ -749,21 +775,27 @@ export const fileRouter = createTRPCRouter({
   createVersion: permissionProcedure(PermissionKey.filesManage)
     .input(createVersionSchema)
     .mutation(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-
-      const fileService = createFileService(organizationId, userId)
-
       try {
+        const filesCtx = toFilesCtx(ctx)
         const storageLocationId =
           input.storageLocationId ??
-          (await fileService.getCurrentVersion(input.fileId))?.storageLocationId
+          unwrap(await getFolderFileCurrentVersion(filesCtx, input.fileId))?.storageLocationId
         if (!storageLocationId) {
           throw new TRPCError({
             code: 'BAD_REQUEST',
             message: 'File has no stored content to version',
           })
         }
-        const version = await fileService.createVersion(input.fileId, storageLocationId)
+        // Two statements — insert the row, move `currentVersionId` — so the
+        // transaction is opened here rather than guessed at inside lib.
+        const version = await ctx.db.transaction(async (tx) =>
+          unwrap(
+            await createFileVersion(tx, filesCtx, {
+              fileId: input.fileId,
+              storageLocationId,
+            })
+          )
+        )
 
         logger.info('File version created successfully', {
           fileId: input.fileId,
@@ -784,12 +816,15 @@ export const fileRouter = createTRPCRouter({
   restoreVersion: permissionProcedure(PermissionKey.filesManage)
     .input(versionRefSchema)
     .mutation(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-
-      const fileService = createFileService(organizationId, userId)
-
       try {
-        const file = await fileService.restoreVersion(input.fileId, input.versionNumber)
+        const file = unwrap(
+          await restoreFileVersion(
+            toFilesCtx(ctx),
+            toFilesWriteDeps(),
+            input.fileId,
+            input.versionNumber
+          )
+        )
 
         logger.info('File version restored successfully', {
           fileId: input.fileId,
@@ -810,15 +845,11 @@ export const fileRouter = createTRPCRouter({
   deleteVersion: permissionProcedure(PermissionKey.filesManage)
     .input(versionRefSchema)
     .mutation(async ({ ctx, input }) => {
-      const { organizationId, userId } = ctx.session
-
-      const fileService = createFileService(organizationId, userId)
-
       try {
-        // Was `deleteVersion(input.versionId)` — one argument, so the version id
-        // landed in the `entityId` slot and `versionNumber` was `undefined`;
-        // every call threw "file not found".
-        await fileService.deleteVersion(input.fileId, input.versionNumber)
+        // A `FileVersion` is addressed by `(fileId, versionNumber)`, never by row
+        // id — this used to pass a version id into the `fileId` slot, and every
+        // call threw "file not found".
+        unwrap(await deleteFileVersion(toFilesCtx(ctx), input.fileId, input.versionNumber))
 
         logger.info('File version deleted successfully', {
           fileId: input.fileId,
