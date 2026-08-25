@@ -76,6 +76,7 @@ export async function analyzeRow(
   const mode: ImportStrategyMode = ctx.mode ?? 'create-or-update'
   const identifierKeys = ctx.identifierFieldKeys ?? []
   const identifierRawByKey = new Map<string, string>()
+  const substitutedIdentifierKeys = new Set<string>()
 
   // Process each mapped column
   for (const mapping of ctx.mappings) {
@@ -91,6 +92,9 @@ export async function analyzeRow(
     // Check if this column carries (part of) the identifier
     if (identifierKeys.includes(mapping.targetFieldKey)) {
       identifierRawByKey.set(mapping.targetFieldKey, rawValue.trim())
+      if (isSubstitutingResolution(mapping.resolutionType)) {
+        substitutedIdentifierKeys.add(mapping.targetFieldKey)
+      }
     }
 
     // Look up resolution for this value
@@ -148,7 +152,12 @@ export async function analyzeRow(
   const consultIdentifier = mode !== 'create' && identifierKeys.length > 0
 
   if (consultIdentifier) {
-    const valueSets = collectIdentifierValues(identifierKeys, identifierRawByKey, resolvedData)
+    const valueSets = collectIdentifierValues(
+      identifierKeys,
+      identifierRawByKey,
+      resolvedData,
+      substitutedIdentifierKeys
+    )
     const complete = identifierKeys.every((key) => (valueSets.get(key)?.length ?? 0) > 0)
 
     // In-file duplicates are a row error on the LATER row, regardless of
@@ -243,13 +252,40 @@ export async function analyzeRow(
 }
 
 /**
+ * Resolution types that REPLACE the cell with a different token rather than
+ * merely normalizing it.
+ *
+ * For every other type the raw cell and the resolved value are the same string
+ * modulo normalization, and the lookup re-normalizes anyway (`normalizeForLookup`
+ * mirrors the write path), so the raw cell matches. A relation column is the
+ * exception: the cell says `Acme Corp` and the resolver turns it into a record
+ * id. Matching on the raw cell there compares a company NAME against a
+ * `relatedEntityId` column and can never hit — silently, as a `create`.
+ *
+ * `select:*` transforms the same way (label → optionId) but is not eligible to
+ * be an identifier at all (`ELIGIBLE_IDENTIFIER_TYPES`), so it cannot arrive
+ * here; listing it would imply a path that does not exist.
+ */
+function isSubstitutingResolution(resolutionType: string | null | undefined): boolean {
+  return typeof resolutionType === 'string' && resolutionType.startsWith('relation:')
+}
+
+/**
  * Identifier values to match, per identifier field: a split resolution yields
- * an array (match-ANY); a scalar identifier keeps the raw trimmed cell.
+ * an array (match-ANY); a scalar identifier keeps the raw trimmed cell, EXCEPT
+ * where the resolver substituted a different token for it.
+ *
+ * @param identifierKeys - Ordered match-key field keys
+ * @param rawByKey - Trimmed raw cell per identifier key
+ * @param resolvedData - The row's resolved values, keyed by target field key
+ * @param substitutedKeys - Keys whose resolver replaced the cell (relations),
+ *   for which the raw cell is not a candidate value at all
  */
 function collectIdentifierValues(
   identifierKeys: string[],
   rawByKey: Map<string, string>,
-  resolvedData: Record<string, unknown>
+  resolvedData: Record<string, unknown>,
+  substitutedKeys: ReadonlySet<string>
 ): IdentifierValueSets {
   const sets: IdentifierValueSets = new Map()
   for (const key of identifierKeys) {
@@ -259,6 +295,14 @@ function collectIdentifierValues(
         key,
         resolved.filter((v): v is string => typeof v === 'string' && v.length > 0)
       )
+    } else if (substitutedKeys.has(key)) {
+      // No raw fallback, deliberately. A relation that resolved to null is a
+      // deliberate absence (`onNoMatch: 'blank'`, or a `relation:create` whose
+      // record is not minted until execution), and putting the cell text back
+      // would hand the lookup a value that cannot match while making the tuple
+      // look COMPLETE — which is worse than an incomplete tuple, because a
+      // complete-looking tuple suppresses nothing and just answers `none`.
+      sets.set(key, typeof resolved === 'string' && resolved.length > 0 ? [resolved] : [])
     } else {
       const raw = rawByKey.get(key)
       sets.set(key, raw ? [raw] : [])

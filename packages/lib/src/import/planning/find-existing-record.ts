@@ -3,6 +3,7 @@
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
 import { and, eq, isNull, sql } from 'drizzle-orm'
 import type { PgTableWithColumns } from 'drizzle-orm/pg-core'
 import type { Resource, ResourceField } from '../../resources'
@@ -12,8 +13,12 @@ import {
   lookupEntitiesByFieldValue,
 } from '../../resources/lookup/lookup-entities-by-field-value'
 import { getFieldOutputKey } from '../../resources/registry/field-types'
-import { parseRecordId } from '../../resources/resource-id'
-import type { BaseType } from '../../workflow-engine/core/types'
+import { isRecordId, parseRecordId, toRecordId } from '../../resources/resource-id'
+// Value import (the enum, not just its type) — `toLookupValue` compares against
+// `BaseType.RELATION`. Taken from `resources/types`, which is where the rest of
+// `import/` reaches for it (`fields/identifier-eligibility.ts`), rather than
+// reaching into `workflow-engine/core` directly.
+import { BaseType } from '../../resources/types'
 import { RELATION_MATCH_TEXT_TYPES } from '../resolution/relation-match-types'
 
 const logger = createScopedLogger('find-existing-record')
@@ -260,6 +265,50 @@ export function stripRecordIdPrefix(value: string): string {
 }
 
 /**
+ * Shape one identifier value the way the lookup core insists on receiving it.
+ *
+ * Only RELATION legs need this, and they need it absolutely.
+ * `createTypedValueInput` accepts a relationship value ONLY as a prefixed
+ * `defId:instanceId` RecordId (`isRecordId` is a bare `includes(':')` check); a
+ * plain instance id is refused, `buildLookupCondition` returns null, and AND-mode
+ * answers with an EMPTY result. That is a silent "no match" on a pair that
+ * exists, so the row is classified `create` and the importer writes the very
+ * duplicate a `(part, supplier)` natural key exists to prevent.
+ *
+ * The importer always arrives with the bare form: `resolve-relation-lookups`
+ * resolves a supplier cell through `queryRecordsByField`, which projects
+ * `id: FieldValue.entityId` — an instance id with no prefix.
+ *
+ * The prefix is not decoration even though `typedColumnMatch` currently discards
+ * it (it compares `relatedEntityId` alone). Deriving the real target definition
+ * keeps the value honest if that comparison ever widens to include
+ * `relatedEntityDefinitionId`, and costs one field read.
+ *
+ * @param field - The identifier leg's merged registry field
+ * @param value - The resolved cell value for this leg
+ * @returns The value in the form the lookup core can coerce
+ * @throws When a RELATION leg's target definition cannot be resolved — a
+ *   structural failure, never a "no match", for the same reason the lookup
+ *   core's errors are rethrown below.
+ */
+function toLookupValue(field: ResourceField, value: string): string {
+  if (field.type !== BaseType.RELATION) return value
+  if (isRecordId(value)) return value
+
+  const targetEntityDefinitionId = field.relationship
+    ? getRelatedEntityDefinitionId(field.relationship as RelationshipConfig)
+    : null
+
+  if (!targetEntityDefinitionId) {
+    throw new Error(
+      `Identifier field "${getFieldOutputKey(field)}" is a relation with no resolvable target entity definition, so it cannot be matched`
+    )
+  }
+
+  return toRecordId(targetEntityDefinitionId, value)
+}
+
+/**
  * Find a record in a custom entity by identifier field value(s).
  *
  * Routes through the shared lookup core so the comparison mirrors write-path
@@ -336,7 +385,7 @@ async function findInCustomEntity(
     // Without a resolvable field id there is no candidate; for a composite key
     // that means the tuple cannot match at all.
     if (!field.id) return { kind: 'none' }
-    candidates.push({ fieldId: field.id, value })
+    candidates.push({ fieldId: field.id, value: toLookupValue(field, value) })
   }
   if (candidates.length === 0) return { kind: 'none' }
 
