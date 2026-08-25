@@ -20,6 +20,7 @@ import { and, asc, eq, inArray, isNull, or, sql } from 'drizzle-orm'
 import { getCachedEntityDefId, getCachedGroups, getOrgCache, onCacheEvent } from '../cache'
 import { createEntityInstance } from '../entity-instances'
 import { NotFoundError } from '../errors'
+import { sweepEntityFieldValues } from '../field-values/sweep-entity-references'
 import { hasGroupPermission, requireGroupPermission } from './permissions'
 
 // ============================================================================
@@ -158,14 +159,35 @@ export async function updateGroup(
 
 /**
  * Delete a group
+ *
+ * A group is an `EntityInstance`, but this path deletes the row directly rather
+ * than through `deleteEntityInstance`, so it carried the same leak: `FieldValue`
+ * has no foreign key on `entityId` or `relatedEntityId`, and neither half was
+ * ever removed. The sweep and the row delete share one transaction, both
+ * org-scoped.
  */
 export async function deleteGroup(ctx: GroupContext, groupId: string): Promise<void> {
-  const { db } = ctx
+  const { db, organizationId } = ctx
 
   await requireGroupPermission(ctx, groupId, ResourcePermission.admin)
 
-  // Cascade deletes handle members and permissions
-  await db.delete(schema.EntityInstance).where(eq(schema.EntityInstance.id, groupId))
+  await db.transaction(async (tx) => {
+    await sweepEntityFieldValues(tx, {
+      organizationId,
+      entityIds: [groupId],
+      entityType: 'entity_group',
+    })
+
+    // Cascade deletes handle members and permissions
+    await tx
+      .delete(schema.EntityInstance)
+      .where(
+        and(
+          eq(schema.EntityInstance.id, groupId),
+          eq(schema.EntityInstance.organizationId, organizationId)
+        )
+      )
+  })
 
   // Group grants stop resolving for every former member — fan out user keys.
   await onCacheEvent('group.deleted', { orgId: ctx.organizationId, broadcastUserKeys: true })

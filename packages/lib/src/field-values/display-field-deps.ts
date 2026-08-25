@@ -70,6 +70,10 @@ function buildDepsMap(resources: readonly Resource[]): DisplayFieldDepsMap {
 
 /**
  * Check if a display field is a RELATIONSHIP type and add a dependency entry.
+ *
+ * `display` and `fields` are optional-chained: the dep map is now built on the
+ * record DELETE path too, and a cached resource entry missing either one must
+ * contribute no dependency rather than fail the delete around it.
  */
 function checkDisplayField(
   resource: Resource,
@@ -77,14 +81,14 @@ function checkDisplayField(
   column: 'displayName' | 'secondaryDisplayValue',
   map: DisplayFieldDepsMap
 ): void {
-  const displayFieldConfig = resource.display[displayFieldKey]
+  const displayFieldConfig = resource.display?.[displayFieldKey]
   if (!displayFieldConfig) return
 
   // Check if the display field type is RELATIONSHIP
   if (displayFieldConfig.type !== 'RELATIONSHIP') return
 
   // Find the full field definition to get the relationship target
-  const field = resource.fields.find((f) => f.id === displayFieldConfig.id)
+  const field = resource.fields?.find((f) => f.id === displayFieldConfig.id)
   if (!field) return
 
   // Get the target entity type from the relationship config
@@ -112,9 +116,14 @@ function checkDisplayField(
  *
  * When an entity's displayName changes (e.g., a part's title), find all entities
  * that reference it via a RELATIONSHIP display field and update their display columns.
+ *
+ * Takes only the two fields it reads rather than the whole {@link FieldValueContext}
+ * so the delete path (`field-values/sweep-entity-references.ts`) can reuse it with
+ * `null` as the new value — a hard-deleted record leaves the same stale projection
+ * behind as a rename, and nothing else clears it.
  */
 export async function cascadeDependentDisplayNames(
-  ctx: FieldValueContext,
+  ctx: Pick<FieldValueContext, 'db' | 'organizationId'>,
   sourceInstanceId: string,
   newDisplayValue: string | null,
   deps: DisplayFieldDep[]

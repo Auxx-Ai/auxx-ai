@@ -4,6 +4,7 @@ import { ArticleKind } from '@auxx/database/enums'
 import { generateKeyBetween } from '@auxx/utils'
 import { TRPCError } from '@trpc/server'
 import { and, asc, eq, isNull, ne } from 'drizzle-orm'
+import { sweepEntityFieldValues } from '../../field-values/sweep-entity-references'
 import { resolveDb } from '../internal/context'
 import { createNotFoundError, handleError } from '../internal/errors'
 import { resolvePlacement } from '../internal/placement'
@@ -100,6 +101,16 @@ export async function deleteArticle(
         .update(schema.Article)
         .set({ draftRevisionId: null })
         .where(eq(schema.Article.id, id))
+
+      // An article's tags (and any other relation to it) live in `FieldValue`
+      // on both ends, and neither `entityId` nor `relatedEntityId` has a
+      // foreign key — deleting the Article row alone left both halves dangling.
+      await sweepEntityFieldValues(tx, {
+        organizationId: ctx.organizationId,
+        entityIds: [id],
+        entityType: 'article',
+      })
+
       await tx.delete(schema.Article).where(eq(schema.Article.id, id))
     })
     void enqueueKBSync({
