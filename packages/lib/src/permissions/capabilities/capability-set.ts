@@ -3,6 +3,7 @@
 import type { ResourcePermission, Rung } from '@auxx/database/enums'
 import type { OrganizationRole, SeatType } from '@auxx/database/types'
 import { ForbiddenError } from '../../errors'
+import { getImportAuthorityDefId } from '../../resources/registry/field-utils'
 import type { CapabilityView } from './capability-view'
 import {
   type ClientCapabilities,
@@ -288,7 +289,13 @@ export class CapabilitySet implements CapabilityView {
     if (this.isMailInfraDef(entityDefId)) {
       return this.canWriteEntity(entityDefId) && this.keys.has(PermissionKey.recordsImport)
     }
-    return canImportRecord(this.resolved(), this.defIdToDefinitionId(entityDefId))
+    // A hidden satellite reached through a named importer is governed by its HOST
+    // def: `vendor_part` has no records page and so no grant anyone would think to
+    // give, and asserting on it directly would refuse every member who can plainly
+    // import parts. Derived from the registry declaration, so there is one source
+    // of truth; for every other def this is the identity and nothing changes.
+    const authorityDefId = getImportAuthorityDefId(entityDefId)
+    return canImportRecord(this.resolved(), this.defIdToDefinitionId(authorityDefId))
   }
 
   /** {@link canImportEntity} as a throwing guard (403). */

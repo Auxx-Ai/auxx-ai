@@ -336,6 +336,14 @@ export interface RowSelectionFeatures {
 /**
  * Main dynamic table props
  */
+/** An extra Import entry this resource hosts for a hidden satellite def. */
+export interface NamedImporterEntry {
+  /** Menu label, e.g. `'Import supplier prices'`. */
+  label: string
+  /** The def a job started from this entry targets, e.g. `'vendor_part'`. */
+  target: string
+}
+
 export interface DynamicTableProps<TData = any> {
   // Core
   /** Table data */
@@ -414,6 +422,12 @@ export interface DynamicTableProps<TData = any> {
   onImport?: (file: File) => Promise<void>
   /** Import page URL (navigates to import page) */
   importHref?: string
+  /**
+   * Extra Import entries this resource hosts for HIDDEN satellite defs — e.g. parts
+   * offering "Import supplier prices" for `vendor_part`, which has no records page
+   * of its own to be imported from. Each links to `importHref?target=<def>`.
+   */
+  namedImporters?: NamedImporterEntry[]
   /** Refresh handler (enables refresh button when provided) */
   onRefresh?: () => void
   /** Export handler */

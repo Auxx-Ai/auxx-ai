@@ -227,13 +227,17 @@ export type {
 export { resolveEntityDefTypeId } from './entity-def-resolver'
 // Re-export entity instance system fields
 export { ENTITY_INSTANCE_FIELDS, getEntityInstanceFields } from './entity-instance-fields'
+export type { NamedImporter } from './field-utils'
 // Re-export field utility functions
 export {
   fieldMatchesRef,
+  findNamedImporter,
   getDefaultIdentifierField,
   getDisplayFields,
   getFieldOperators,
   getIdentifierFields,
+  getImportAuthorityDefId,
+  getNamedImporters,
   getNaturalKeyFields,
   isComputedField,
   isSystemField,

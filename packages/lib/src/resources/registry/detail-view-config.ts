@@ -89,7 +89,7 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
       // quantity/status and only then lists stock movements, so the stock_movement
       // gate belongs on its Adjust Stock action, not on the whole tab.
       { value: 'inventory', label: 'Inventory', icon: 'package' },
-      { value: 'subparts', label: 'Subparts', icon: 'layers', recordResource: 'subpart' },
+      { value: 'subparts', label: 'Components', icon: 'layers', recordResource: 'subpart' },
       { value: 'vendors', label: 'Vendors', icon: 'store', recordResource: 'vendor_part' },
       { value: 'timeline', label: 'Timeline', icon: 'clock' },
       { value: 'tasks', label: 'Tasks', icon: 'list-todo' },

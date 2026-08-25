@@ -1,5 +1,6 @@
 // packages/lib/src/resources/registry/field-utils.ts
 
+import { getRelatedEntityDefinitionId, type RelationshipConfig } from '@auxx/types/custom-field'
 import { parseAppFieldRef, type ResourceFieldId, toResourceFieldId } from '@auxx/types/field'
 import { OPERATOR_DEFINITIONS, type Operator } from '../../conditions/operator-definitions'
 import {
@@ -307,6 +308,131 @@ export function getNaturalKeyFields(resource: { fields: ResourceField[] }): Reso
 
   const contiguous = legs.every((field, index) => field.naturalKeyPosition === index + 1)
   return contiguous ? legs : []
+}
+
+/**
+ * One extra entry in a resource's Import menu, resolved from a relation field's
+ * {@link ResourceField.namedImporter} declaration.
+ */
+export interface NamedImporter {
+  /** Menu label, e.g. `'Import supplier prices'`. */
+  label: string
+  /** The def a job started from this entry targets, e.g. `'vendor_part'`. */
+  entityDefinitionId: string
+  /** The declaring relation field's output key — stable id for the menu item. */
+  fieldKey: string
+}
+
+/**
+ * The NAMED IMPORTERS a resource offers for its hidden satellites.
+ *
+ * A hidden def has no records page, so it has nowhere to put the usual Import
+ * button. `part` hosts them instead: `part.vendorParts` declares *"Import supplier
+ * prices"* and `part.subparts` declares *"Import BOM"*, both targeting defs that
+ * stay invisible.
+ *
+ * The target is READ from the declaring field's relationship rather than restated
+ * in the declaration, so it cannot drift from the relation it belongs to. A field
+ * whose relationship does not resolve to a def is **dropped** rather than offered:
+ * a menu entry that starts a job against `null` is worse than a missing one.
+ *
+ * @param resource - Any resource carrying merged registry fields
+ * @returns The declared importers in field order, or `[]` for the vast majority
+ *   of resources, which declare none
+ */
+export function getNamedImporters(resource: { fields: ResourceField[] }): NamedImporter[] {
+  const importers: NamedImporter[] = []
+
+  for (const field of resource.fields) {
+    if (!field.namedImporter || !field.relationship) continue
+    const entityDefinitionId = getRelatedEntityDefinitionId(
+      field.relationship as RelationshipConfig
+    )
+    if (!entityDefinitionId) continue
+    importers.push({
+      label: field.namedImporter.label,
+      entityDefinitionId,
+      fieldKey: getFieldOutputKey(field),
+    })
+  }
+
+  return importers
+}
+
+/**
+ * The def whose import authority governs `entityDefinitionId`.
+ *
+ * Normally itself. But a **hidden satellite reached through a named importer**
+ * inherits its host's: `vendor_part` has no records page, no sidebar entry, and
+ * therefore no grant of its own that anyone would think to give — so gating its
+ * import on a `vendor_part` grant would refuse every member who can plainly import
+ * parts, and gating it on nothing would be a side door into a def a member may
+ * have been restricted out of.
+ *
+ * DERIVED, never declared twice. Declaring `namedImporter` on `part.vendorParts`
+ * already says "parts hosts the supplier-price importer"; that IS the statement
+ * that its authority follows `part`, so a second `importAuthority` declaration
+ * could only ever drift from it. The lookup is over the static registry, so it is
+ * the same answer in every org.
+ *
+ * ⚠️ This governs the DEF, not the door. Every one of the ~22 import procedures
+ * re-asserts on the job's own `entityDefinitionId`, long after the menu item that
+ * started it is out of scope — so the inheritance has to live here, at the assert,
+ * not at the entry point.
+ *
+ * @param entityDefinitionId - The def a job targets
+ * @returns The def to assert import permission against
+ */
+export function getImportAuthorityDefId(entityDefinitionId: string): string {
+  for (const declaration of declaredNamedImporters()) {
+    if (declaration.entityDefinitionId === entityDefinitionId) return declaration.hostDefId
+  }
+  return entityDefinitionId
+}
+
+/**
+ * The named importer `hostDefId` declares for `targetDefId`, or null.
+ *
+ * This is the VALIDATOR behind `?target=` on an import route. A target that no
+ * host declares is not merely unlabelled, it is refused — otherwise the query
+ * param is a way to start a job against any def at all, and a hidden def is not
+ * an access-controlled one.
+ *
+ * @param hostDefId - The resource whose page the importer was opened from
+ * @param targetDefId - The def named in the link
+ * @returns The declaration, or null when the host declares no such importer
+ */
+export function findNamedImporter(hostDefId: string, targetDefId: string): NamedImporter | null {
+  for (const declaration of declaredNamedImporters()) {
+    if (declaration.hostDefId === hostDefId && declaration.entityDefinitionId === targetDefId) {
+      const { hostDefId: _host, ...importer } = declaration
+      return importer
+    }
+  }
+  return null
+}
+
+/**
+ * Every `namedImporter` declared anywhere in the static registry, with the
+ * resource that declares it. One scan, so {@link getImportAuthorityDefId} and
+ * {@link findNamedImporter} can never disagree about what is declared.
+ */
+function* declaredNamedImporters(): Generator<NamedImporter & { hostDefId: string }> {
+  for (const [hostDefId, fields] of Object.entries(RESOURCE_FIELD_REGISTRY)) {
+    for (const field of Object.values(fields ?? {}) as ResourceField[]) {
+      if (!field.namedImporter || !field.relationship) continue
+      const entityDefinitionId = getRelatedEntityDefinitionId(
+        field.relationship as RelationshipConfig
+      )
+      if (!entityDefinitionId) continue
+      yield {
+        hostDefId,
+        entityDefinitionId,
+        label: field.namedImporter.label,
+        fieldKey: getFieldOutputKey(field),
+      }
+    }
+  }
 }
 
 // ─────────────────────────────────────────────────────────────

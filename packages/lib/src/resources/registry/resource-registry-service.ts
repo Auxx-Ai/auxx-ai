@@ -961,6 +961,11 @@ export class ResourceRegistryService {
           // per-org boolean could ever express it, and `CustomField.isUnique` is
           // the wrong shape anyway — a tuple is not a per-field flag.
           naturalKeyPosition: staticField.naturalKeyPosition,
+          // A NAMED IMPORTER is registry-only for the same reason: whether users
+          // import supplier price lists is a product fact, and no `CustomField`
+          // column carries one. It rides the relation field so the target def is
+          // read off `relationship.inverseResourceFieldId` rather than restated.
+          namedImporter: staticField.namedImporter,
           // Merge relationship config — DB object exists but inverseResourceFieldId may be null
           // when the seeder linker couldn't resolve it. Fall back to static definition.
           relationship: baseRelationship

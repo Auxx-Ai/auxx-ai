@@ -90,8 +90,11 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
   {
     entityType: 'vendor_part',
     apiSlug: 'vendor-parts',
-    singular: 'Vendor Part',
-    plural: 'Vendor Parts',
+    // Named for what it holds, not for the join it is: this def is hidden, and
+    // its NAME was the last place the join entity leaked (migration 106).
+    // `entityType` and `apiSlug` are keys — they never move.
+    singular: 'Supplier Price',
+    plural: 'Supplier Pricing',
     icon: 'package',
     color: 'orange',
     isVisible: false, // Internal entity, managed from part drawer
@@ -99,8 +102,8 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
   {
     entityType: 'subpart',
     apiSlug: 'subparts',
-    singular: 'Subpart',
-    plural: 'Subparts',
+    singular: 'Component',
+    plural: 'Components',
     icon: 'layers',
     color: 'orange',
     isVisible: false, // Internal entity, managed from part drawer's subparts tab
