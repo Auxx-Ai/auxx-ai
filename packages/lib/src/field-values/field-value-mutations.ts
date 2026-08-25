@@ -3232,6 +3232,26 @@ export async function setBulkValues(
     if (f) ctx.fieldCache.set(fieldId, { ...f, entityDefinition })
   }
 
+  // Intra-batch uniqueness gate (query-reduction plan §2e). The fan-out below
+  // runs the per-record writes CONCURRENTLY, so their per-pair unique checks
+  // all pass before any conflicting row lands. On this uniform path every
+  // record receives the SAME value, so a non-null assignment of a unique
+  // field across more than one record can never be valid — at most one
+  // record may hold the value. Reject deterministically up front instead of
+  // letting an arbitrary writer win the race. Clears (null / empty list)
+  // stay valid at any batch size.
+  if (recordIds.length > 1) {
+    for (const v of validValues) {
+      if (v.value === null || (Array.isArray(v.value) && v.value.length === 0)) continue
+      const f = fieldMap.get(v.fieldId)
+      if (f?.isUnique) {
+        throw new BadRequestError(
+          `Field "${f.name ?? v.fieldId}" is unique; a bulk write cannot assign the same value to ${recordIds.length} records`
+        )
+      }
+    }
+  }
+
   // Identify relationship fields and prepare for bulk sync
   const relationshipFields: Array<{
     fieldId: string
