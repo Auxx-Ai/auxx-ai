@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.1.218](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.217...auxx-v0.1.218) (2026-08-25)
+
+
+### Features
+
+* **field-values:** reconcile set-writes in place, retire the delete+insert replace ([#1891](https://github.com/Auxx-Ai/auxx-ai/issues/1891)) ([f390b93](https://github.com/Auxx-Ai/auxx-ai/commit/f390b9328ffba4b9e5ea23eeb761ee219bfd2c6b))
+* **import:** named importers for supplier prices and BOM ([#1889](https://github.com/Auxx-Ai/auxx-ai/issues/1889)) ([bc7f8f4](https://github.com/Auxx-Ai/auxx-ai/commit/bc7f8f4e6dfa170882cd4ea0aede6c83a2d377e3))
+
+
+### Bug Fixes
+
+* **field-values:** name edits wrote the composite, leaving first/last stale ([#1895](https://github.com/Auxx-Ai/auxx-ai/issues/1895)) ([5c1910b](https://github.com/Auxx-Ai/auxx-ai/commit/5c1910bd233541a536e388f4db82d082bcb64719))
+* **import:** auto-map mis-mapped the key columns and repairs never restored the natural key ([#1894](https://github.com/Auxx-Ai/auxx-ai/issues/1894)) ([b8ab234](https://github.com/Auxx-Ai/auxx-ai/commit/b8ab2347f12af208ac8212072e57bc385d57b878))
+* **import:** named importer links opened the host's importer, not the satellite's ([#1892](https://github.com/Auxx-Ai/auxx-ai/issues/1892)) ([43aa862](https://github.com/Auxx-Ai/auxx-ai/commit/43aa862a56bf5328580bdad68e0b25f98cf19a30))
+* **import:** relation imports created records with no links and reported success ([#1893](https://github.com/Auxx-Ai/auxx-ai/issues/1893)) ([59ee68a](https://github.com/Auxx-Ai/auxx-ai/commit/59ee68a85baf28deb66d1d1df84a7f3cd462dde4))
+
 ## [0.1.217](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.216...auxx-v0.1.217) (2026-08-25)
 
 
