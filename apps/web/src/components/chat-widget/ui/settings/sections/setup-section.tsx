@@ -172,12 +172,9 @@ export function SetupSection({ widget, channelId }: SetupSectionProps) {
         </div>
 
         {/* Platforms axis — the frameworks above are "paste this snippet"; Shopify installs
-            the widget through the Auxx app instead, so it gets its own control rather than
-            a snippet. */}
-        <div className='mt-6'>
-          <p className='mb-2 text-xs font-medium text-muted-foreground'>Or install on a platform</p>
-          <ShopifyCard channelId={channelId} />
-        </div>
+            the widget through the Auxx app instead, so it gets its own control rather than a
+            snippet. Renders nothing when storefront chat is off, heading included. */}
+        <ShopifyCard channelId={channelId} />
 
         <div className='mt-4 flex items-center gap-4'>
           <a
