@@ -20,6 +20,7 @@ export {
   type SeatDayEventStatus,
   type SeatDayReport,
   ShopifyBillingProvider,
+  type ShopifyPlanAction,
 } from './providers/shopify'
 export { StripeBillingProvider } from './providers/stripe'
 export type {

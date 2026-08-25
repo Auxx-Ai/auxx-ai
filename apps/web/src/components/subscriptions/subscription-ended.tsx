@@ -3,7 +3,6 @@
 
 import { Button } from '@auxx/ui/components/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@auxx/ui/components/card'
-import { toastError } from '@auxx/ui/components/toast'
 import { Clock } from 'lucide-react'
 import Link from 'next/link'
 import { api } from '~/trpc/react'
@@ -29,36 +28,38 @@ export function SubscriptionEnded({
 }: SubscriptionEndedProps) {
   const { data: subscription } = api.billing.getCurrentSubscription.useQuery()
   const billingProvider = subscription?.billingProvider
-  const billingCycle = subscription?.billingCycle
   const subPlan = subscription?.plan
   const resolvedPlanName = (typeof subPlan === 'string' ? subPlan : subPlan?.name) ?? planName
-  const normalizedPlanName = resolvedPlanName?.trim() ? resolvedPlanName.trim() : 'Pro'
-  const displayPlanName = normalizedPlanName.charAt(0).toUpperCase() + normalizedPlanName.slice(1)
-
-  const title = isTrialEnded
-    ? `Your ${displayPlanName} trial has ended`
-    : `${displayPlanName} subscription has ended`
-
-  const description = 'Upgrade to maintain access to your organization and premium features'
-
-  const upgradeSubscription = api.billing.upgradeSubscription.useMutation({
-    onSuccess: (result) => {
-      if (result.url) window.location.assign(result.url)
-    },
-    onError: (error) => {
-      toastError({ title: 'Error starting upgrade', description: error.message })
-    },
-  })
+  const normalizedPlanName = resolvedPlanName?.trim() ? resolvedPlanName.trim() : null
+  const displayPlanName = normalizedPlanName
+    ? normalizedPlanName.charAt(0).toUpperCase() + normalizedPlanName.slice(1)
+    : null
 
   const isShopify = billingProvider === 'shopify'
 
+  // Only Shopify orgs get a CTA that leaves the app, and where it leads depends on
+  // whether the shop still has the app installed — the hosted pricing page 404s once it
+  // doesn't. Probes the Admin API, so it stays scoped to this screen.
+  const { data: planAction, isPending: planActionPending } =
+    api.billing.getShopifyPlanAction.useQuery(undefined, { enabled: isShopify })
+  const isUninstalled = planAction?.kind === 'uninstalled'
+
+  const title = isTrialEnded
+    ? displayPlanName
+      ? `Your ${displayPlanName} trial has ended`
+      : 'Your trial has ended'
+    : isUninstalled
+      ? 'Auxx was uninstalled'
+      : displayPlanName
+        ? `${displayPlanName} subscription has ended`
+        : 'Your subscription has ended'
+
+  const description = isUninstalled
+    ? `Auxx was removed from ${planAction.shopDomain}. Reinstall it from your Shopify admin — Settings → Apps → Uninstalled apps — to pick a plan again.`
+    : 'Upgrade to maintain access to your organization and premium features'
+
   const handleApproveInShopify = () => {
-    upgradeSubscription.mutate({
-      planName: normalizedPlanName,
-      billingCycle: billingCycle ?? 'MONTHLY',
-      successUrl: `${window.location.origin}/billing/subscription/activated`,
-      cancelUrl: window.location.href,
-    })
+    if (planAction?.kind === 'plans') window.location.assign(planAction.url)
   }
 
   return (
@@ -76,17 +77,25 @@ export function SubscriptionEnded({
           </CardHeader>
           <CardContent className='space-y-3'>
             {isShopify ? (
-              <Button
-                className='w-full'
-                onClick={handleApproveInShopify}
-                loading={upgradeSubscription.isPending}
-                loadingText='Redirecting to Shopify...'>
-                Approve in Shopify
-              </Button>
+              // Only offer the CTA when we know it leads somewhere. Shopify's pricing page
+              // 404s for an uninstalled app, and reinstalling happens in the Shopify admin,
+              // which has no deep link — so `uninstalled` (and a failed probe, e.g. a member
+              // without billing access) renders nothing and the description says where to go.
+              planActionPending || planAction?.kind === 'plans' ? (
+                <Button
+                  className='w-full'
+                  onClick={handleApproveInShopify}
+                  loading={planActionPending}
+                  loadingText='Checking your Shopify store...'>
+                  Approve in Shopify
+                </Button>
+              ) : null
             ) : (
               <>
                 <Button asChild className='w-full'>
-                  <Link href='/subscription/convert/addons'>Continue with {displayPlanName}</Link>
+                  <Link href='/subscription/convert/addons'>
+                    Continue with {displayPlanName ?? 'your plan'}
+                  </Link>
                 </Button>
                 <Button asChild variant='translucent' className='w-full'>
                   <Link href='/subscription/convert/explore'>Explore plans</Link>

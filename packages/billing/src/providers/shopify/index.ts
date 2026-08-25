@@ -14,7 +14,12 @@ export {
 } from './app-events-client'
 export { createShopifyAdminClient } from './client'
 export { ensureBillingWebhooks } from './ensure-webhooks'
-export { extractStoreHandle, ShopifyBillingProvider } from './provider'
+export { isAppInstalled } from './install-state'
+export {
+  extractStoreHandle,
+  ShopifyBillingProvider,
+  type ShopifyPlanAction,
+} from './provider'
 export { reportOrgSeatDay, type SeatDayReport } from './seat-usage'
 export type { LocalStatus } from './status-mapping'
 export { mapActiveSubscriptionToStatus } from './status-mapping'
