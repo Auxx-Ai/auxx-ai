@@ -304,6 +304,36 @@ describe('AI marker transitions', () => {
 // Corrupt / grown keys: the full-rewrite fallback is the compactor
 // ═══════════════════════════════════════════════════════════════════════════════
 
+describe('connector ownership', () => {
+  it('a manual set-write clears managedByConnectorId on the surviving row', async () => {
+    await setLabels(f, ['alpha'])
+    const [row] = await storedRows(f)
+
+    const [connector] = await db()
+      .insert(schema.DataConnector)
+      .values({ organizationId: f.orgId, type: 'generic-rest', name: 'Test Connector' })
+      .returning()
+    await db()
+      .update(schema.FieldValue)
+      .set({ managedByConnectorId: connector!.id })
+      .where(eq(schema.FieldValue.id, row!.id))
+
+    // Identical visible value through the guarded path: ownership must still
+    // clear — the old DELETE+INSERT cleared it by omission, and a row left
+    // marked lets the connector overwrite the user's edit on next sync.
+    await setValueWithBuiltIn(f.ctx, {
+      recordId: recordIdOf(f),
+      fieldId: f.labelsFieldId,
+      value: ['alpha'],
+    })
+
+    const [after] = await storedRows(f)
+    expect(after!.id).toBe(row!.id)
+    expect(after!.managedByConnectorId).toBeNull()
+    expect(after!.valueText).toBe('alpha')
+  })
+})
+
 describe('sortKey fallback', () => {
   it('a corrupt stored sortKey triggers the full rewrite and re-mints canonical keys', async () => {
     await setLabels(f, ['alpha', 'beta'])

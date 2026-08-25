@@ -101,9 +101,18 @@ export interface SetValueWithBuiltInInput {
    * back to the individual load. Serves ONLY the D-6 short-circuit and the
    * hooks' oldValue derivation — the reconcile re-reads inside its own
    * transaction regardless (delete-insert-replace §5B RULE). Ignored for AI
-   * stage-2 commits, which bypass the guard entirely.
+   * stage-2 commits, which bypass the guard entirely. The orchestrator
+   * DELETES a pair's entry after writing it, so a second write to the same
+   * field in one op re-reads fresh rows instead of skipping on a stale
+   * snapshot — hence a mutable Map, not a ReadonlyMap.
    */
-  preloadedSetRows?: ReadonlyMap<string, FieldValueRow[]>
+  preloadedSetRows?: Map<string, FieldValueRow[]>
+  /**
+   * When `true`, the clear branch's watermark stamp (`deleteValue`) and the
+   * reconcile's deletion-only stamp are suppressed — the bulk aggregator owns
+   * the stamp. See {@link SetValuesForEntityInput.skipInstanceStamp}.
+   */
+  skipInstanceStamp?: boolean
 }
 
 /**
@@ -127,10 +136,12 @@ export interface SetValuesForEntityInput {
   /**
    * Pre-batched guard rows handed down by `setBulkValues` (one SELECT for the
    * whole bulk op). When absent, `setValuesForEntity` batch-loads its own
-   * record's pairs in one SELECT. See
+   * record's pairs in one SELECT. Entries are consumed destructively: each
+   * pair's key is deleted after its write so duplicate entries for one field
+   * fall back to a fresh read. See
    * {@link SetValueWithBuiltInInput.preloadedSetRows}.
    */
-  preloadedSetRows?: ReadonlyMap<string, FieldValueRow[]>
+  preloadedSetRows?: Map<string, FieldValueRow[]>
   /**
    * When `true`, the per-record D-7 watermark stamp is suppressed — the
    * caller owns the stamp and must cover every changed record itself.
@@ -295,6 +306,8 @@ export interface SetValueWithTypeInput {
   aiGeneration?: AiValueMetadata
   /** See {@link SetValueWithBuiltInInput.skipSearchTextRefresh}. */
   skipSearchTextRefresh?: boolean
+  /** See {@link SetValueWithBuiltInInput.skipInstanceStamp}. */
+  skipInstanceStamp?: boolean
 }
 
 /** Input for adding a value to a multi-value field */
@@ -354,6 +367,8 @@ export interface BatchGetValuesInput {
 export interface DeleteValueInput {
   recordId: RecordId
   fieldId: string
+  /** See {@link SetValueWithBuiltInInput.skipInstanceStamp}. */
+  skipInstanceStamp?: boolean
 }
 
 // =============================================================================

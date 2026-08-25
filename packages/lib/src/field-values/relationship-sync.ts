@@ -502,8 +502,12 @@ async function batchAddToInverse(
         }
 
         // Re-point in place: id and sortKey survive; `$onUpdate` stamps
-        // `updatedAt`.
-        await tx
+        // `updatedAt`. The rowcount is checked: this path holds no advisory
+        // lock, so under READ COMMITTED a concurrent writer can delete the
+        // row between the in-tx read above and this statement — a 0-row
+        // UPDATE must fall back to inserting the intended row (the old
+        // clear-all+INSERT recreated it regardless).
+        const repointed = await tx
           .update(schema.FieldValue)
           .set({
             relatedEntityId: sourceId,
@@ -515,6 +519,18 @@ async function batchAddToInverse(
               eq(schema.FieldValue.organizationId, ctx.organizationId)
             )
           )
+          .returning({ id: schema.FieldValue.id })
+        if (repointed.length === 0) {
+          inserts.push({
+            organizationId: ctx.organizationId,
+            entityId: targetId,
+            entityDefinitionId: targetEntityDefinitionId,
+            fieldId: inverseFieldId,
+            relatedEntityId: sourceId,
+            relatedEntityDefinitionId: sourceEntityDefinitionId,
+            sortKey: generateKeyBetween(null, null),
+          })
+        }
       }
 
       if (deleteIds.length > 0) {

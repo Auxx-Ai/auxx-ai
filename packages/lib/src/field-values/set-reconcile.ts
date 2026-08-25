@@ -39,6 +39,7 @@ export interface StoredSetRow {
   id: string
   sortKey: string
   aiStatus?: string | null
+  managedByConnectorId?: string | null
   valueText: string | null
   valueNumber: number | null
   valueBoolean: boolean | null
@@ -79,6 +80,15 @@ export function existingRowMatchesInsert(
   existing: StoredSetRow,
   insert: FieldValueInsertRow
 ): boolean {
+  // Connector ownership is part of the row's identity for the diff: a stored
+  // marker the incoming write does not re-assert is a REAL change — the old
+  // DELETE+INSERT cleared ownership on every set-write, and keeping the row
+  // marked would let the connector overwrite the user's manual edit on its
+  // next sync (and hide the edit from scalar drift detection).
+  if ((existing.managedByConnectorId ?? null) !== (insert.managedByConnectorId ?? null)) {
+    return false
+  }
+
   // Text-like columns: null-safe strict equality, no normalization.
   if ((existing.valueText ?? null) !== (insert.valueText ?? null)) return false
   if ((existing.optionId ?? null) !== (insert.optionId ?? null)) return false
@@ -136,9 +146,10 @@ export function existingRowMatchesInsert(
 
 /**
  * The value columns an in-place UPDATE rewrites — everything
- * `buildFieldValueRow` decides, plus the AI marker pair. Explicit
- * `aiStatus: null` on a manual write is what clears a stale marker in place
- * (§4: the old DELETE+INSERT cleared it by omission on the fresh insert).
+ * `buildFieldValueRow` decides, plus the AI marker pair and connector
+ * ownership. Explicit `aiStatus: null` / `managedByConnectorId: null` on a
+ * manual write is what clears a stale marker in place (§4: the old
+ * DELETE+INSERT cleared both by omission on the fresh insert).
  * Identity and ordering columns (id, entityId, fieldId, organizationId,
  * entityDefinitionId, sortKey, createdAt) are deliberately NOT touched.
  */
@@ -153,8 +164,10 @@ export function updateColumnsFor(target: FieldValueInsertRow): {
   relatedEntityDefinitionId: string | null
   actorId: string | null
   aiStatus: string | null
+  managedByConnectorId: string | null
 } {
   return {
+    managedByConnectorId: target.managedByConnectorId ?? null,
     valueText: target.valueText ?? null,
     valueNumber: target.valueNumber ?? null,
     valueBoolean: target.valueBoolean ?? null,

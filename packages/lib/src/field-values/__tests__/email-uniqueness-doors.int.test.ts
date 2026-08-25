@@ -426,6 +426,19 @@ describe('multi-value EMAIL uniqueness — service-layer doors', () => {
       expect(await emailsOf(f, bob.id)).toEqual(['solo@example.com'])
     })
 
+    it('treats the same record listed twice as ONE record — no false rejection', async () => {
+      // One logical record may legitimately hold the unique value; the gate
+      // counts DISTINCT instances, not array entries (API/SDK callers do not
+      // dedupe their recordIds).
+      const bob = await seedContact(f, 'Bob')
+      const res = await setBulkValues(f.ctx, {
+        recordIds: [recordIdOf(f, bob.id), recordIdOf(f, bob.id)],
+        values: [{ fieldId: f.emailFieldId, value: ['dupe@example.com'] }],
+      })
+      expect(res.count).toBe(2)
+      expect(await emailsOf(f, bob.id)).toEqual(['dupe@example.com'])
+    })
+
     it('allows bulk-clearing a unique field across many records', async () => {
       const bob = await seedContact(f, 'Bob', ['bob@example.com'])
       const cara = await seedContact(f, 'Cara', ['cara@example.com'])

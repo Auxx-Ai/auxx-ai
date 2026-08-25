@@ -261,6 +261,43 @@ describe('batched watermark stamps in bulk ops (query-reduction Phase 2)', () =>
     expect(await instanceUpdatedAt(a.id)).toBe(before)
   })
 
+  it('a bulk clear stamps ONLY via the batched op-level UPDATE (no per-record N+1)', async () => {
+    const org = await createTestOrganization()
+    const def = await seedDef(org.id)
+    const city = await seedField(org.id, def.id, 'City', 'a1')
+    const ctx = createFieldValueContext(org.id, undefined, db())
+
+    const a = await seedInstance(org.id, def.id, 'Ada')
+    const b = await seedInstance(org.id, def.id, 'Bob')
+    for (const inst of [a, b]) {
+      await setValuesForEntity(ctx, {
+        recordId: recordIdFor(def.id, inst.id),
+        values: [{ fieldId: city.id, value: 'Porto' }],
+      })
+    }
+
+    const aBefore = await instanceUpdatedAt(a.id)
+    const bBefore = await instanceUpdatedAt(b.id)
+    vi.mocked(stampEntityInstancesUpdatedAt).mockClear()
+    vi.mocked(stampEntityInstanceUpdatedAt).mockClear()
+    await sleep(10)
+
+    // Clears route through deleteValue / the reconcile's deletion-only
+    // branch, which stamp unconditionally on the direct paths —
+    // `skipInstanceStamp` must reach them too, or a bulk clear issues N
+    // per-record stamps PLUS the batched one.
+    await setBulkValues(ctx, {
+      recordIds: [a, b].map((i) => recordIdFor(def.id, i.id)),
+      values: [{ fieldId: city.id, value: null }],
+    })
+
+    expect(singleStampCalls()).toHaveLength(0)
+    expect(batchedStampCalls()).toHaveLength(1)
+    expect([...batchedStampCalls()[0]![1]].sort()).toEqual([a.id, b.id].sort())
+    expect(await instanceUpdatedAt(a.id)).toBeGreaterThan(aBefore)
+    expect(await instanceUpdatedAt(b.id)).toBeGreaterThan(bBefore)
+  })
+
   it('removeValuesBulk stamps every entity that lost rows in one batched call', async () => {
     const org = await createTestOrganization()
     const def = await seedDef(org.id)

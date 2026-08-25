@@ -919,6 +919,21 @@ export async function preBatchValidateRelationships(
     | { recordId: RecordId }
   > = []
 
+  /**
+   * Resolve the target entityInstanceId a relationship entry validates —
+   * the key `batchValidateRelationships` answers under. `null` = unparseable
+   * (validate anyway; the validator owns rejection).
+   */
+  const targetIdOf = (v: (typeof relationships)[number]): string | null => {
+    try {
+      if (typeof v === 'string') return parseRecordId(v).entityInstanceId
+      if ('recordId' in v) return parseRecordId(v.recordId).entityInstanceId
+      return v.relatedEntityId
+    } catch {
+      return null
+    }
+  }
+
   /** Helper to extract relationship value(s) from input */
   const extractRelationship = (v: unknown) => {
     if (!v) return
@@ -951,12 +966,21 @@ export async function preBatchValidateRelationships(
     }
   }
 
+  // Skip ids the cache already answers — an enclosing orchestrator
+  // (setValuesForEntity/setBulkValues) primed them, and re-validating is a
+  // pure duplicate SELECT. Unresolvable entries (`null` target) stay in:
+  // the validator owns their rejection.
+  const unvalidated = relationships.filter((v) => {
+    const targetId = targetIdOf(v)
+    return targetId === null || !ctx.batchRelationshipValidationCache.has(targetId)
+  })
+
   // Batch validate if we have relationships. MERGE into the existing cache
   // rather than replacing it: `setValueWithBuiltIn` primes its own write's
   // ids through here, and a replace would clobber the entries an enclosing
-  // orchestrator (setValuesForEntity/setBulkValues) already paid for.
-  if (relationships.length > 0) {
-    const validated = await ctx.validator.batchValidateRelationships(relationships, {
+  // orchestrator already paid for.
+  if (unvalidated.length > 0) {
+    const validated = await ctx.validator.batchValidateRelationships(unvalidated, {
       db: ctx.db,
       organizationId: ctx.organizationId,
     })

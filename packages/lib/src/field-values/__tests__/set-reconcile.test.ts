@@ -153,6 +153,25 @@ describe('planSetReconcile', () => {
     expect(markPlan.keep).toHaveLength(0)
   })
 
+  it('a stored connector-ownership marker the write does not re-assert is an update, and the update clears it', () => {
+    // The old DELETE+INSERT cleared `managedByConnectorId` on every manual
+    // set-write; keeping the row marked would let the connector overwrite
+    // the user's edit on its next sync.
+    const owned = [stored('r1', 'a0', { valueText: 'x', managedByConnectorId: 'conn-1' })]
+    const plan = diffOf(planSetReconcile(owned, [target('a0', { valueText: 'x' })]))
+    expect(plan.keep).toHaveLength(0)
+    expect(plan.update).toHaveLength(1)
+    expect(plan.update[0]!.target.managedByConnectorId ?? null).toBeNull()
+
+    // Identical marker on both sides stays a keep — connector re-syncs of
+    // its own unchanged rows must not churn.
+    const resync = diffOf(
+      planSetReconcile(owned, [target('a0', { valueText: 'x', managedByConnectorId: 'conn-1' })])
+    )
+    expect(resync.keep).toHaveLength(1)
+    expect(resync.update).toHaveLength(0)
+  })
+
   it('an invalid stored key falls back to rewrite', () => {
     const rows = [stored('r1', '', { valueText: 'x' })]
     expect(planSetReconcile(rows, [target('a0', { valueText: 'x' })])).toEqual({

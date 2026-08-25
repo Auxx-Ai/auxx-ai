@@ -646,11 +646,16 @@ async function reconcileSetRowsInTx(
     entityId: string
     fieldId: string
     insertRows: FieldValueInsertRow[]
-    writeStamp: Date
   }
 ): Promise<{ rows: ExistingSetRow[]; deletionOnly: boolean }> {
-  const { organizationId, entityId, fieldId, insertRows, writeStamp } = args
+  const { organizationId, entityId, fieldId, insertRows } = args
   await acquireFieldValueLock(tx, entityId, fieldId)
+
+  // Captured AFTER the lock wait: a stamp taken before it would let the
+  // lock-losing writer commit the FINAL value with an updatedAt older than
+  // the value it replaced — max(fv.updatedAt) must never decrease, or the
+  // dedup scan treats the final value as already-seen.
+  const writeStamp = new Date()
 
   // §5B RULE: the diff input is read HERE, inside the lock. A guard's
   // earlier load (setValueWithBuiltIn step 3.55) serves only the D-6
@@ -855,14 +860,12 @@ export async function setValueWithType(
   // only the differences are written — an unchanged position keeps its row
   // id, sortKey and updatedAt. Display recompute, inverse sync, hooks and
   // realtime are derived work and stay after COMMIT.
-  const writeStamp = new Date()
   const outcome = await ctx.db.transaction(async (tx) =>
     reconcileSetRowsInTx(tx, {
       organizationId: ctx.organizationId,
       entityId: entityInstanceId,
       fieldId,
       insertRows,
-      writeStamp,
     })
   )
 
@@ -870,8 +873,10 @@ export async function setValueWithType(
   // row, so nothing bumps `max(fv.updatedAt)` — stamp the instance so the
   // dedup watermark sees the write (§4 Timestamps). Double-stamping with
   // setValuesForEntity's D-7 stamp is harmless; a clear of an already-empty
-  // field plans no deletions and does not stamp.
-  if (outcome.deletionOnly) {
+  // field plans no deletions and does not stamp. `skipInstanceStamp` hands
+  // the stamp to the bulk aggregator (clears report `changed: true`, so the
+  // batched op-level stamp covers them).
+  if (outcome.deletionOnly && !params.skipInstanceStamp) {
     await stampEntityInstanceUpdatedAt(ctx, entityInstanceId)
   }
 
@@ -1189,8 +1194,10 @@ export async function deleteValue(ctx: FieldValueContext, params: DeleteValueInp
   // Dedup watermark stamp on real deletion only. The clear branch of
   // `setValueWithBuiltIn` also stamps via `setValuesForEntity` — the
   // double-stamp is harmless (delete-insert-replace plan §4 Timestamps),
-  // cheaper than detecting the caller.
-  if (deleted.length > 0) {
+  // cheaper than detecting the caller. `skipInstanceStamp` hands the stamp
+  // to the bulk aggregator's one batched UPDATE (clears report
+  // `changed: true`, so the aggregator covers them).
+  if (deleted.length > 0 && !params.skipInstanceStamp) {
     await stampEntityInstanceUpdatedAt(ctx, entityInstanceId)
   }
 }
@@ -2628,6 +2635,7 @@ export async function setValueWithBuiltIn(
     skipInverseSync = false,
     collectRealtime,
     skipSearchTextRefresh,
+    skipInstanceStamp,
   } = params
 
   // Plan 04 §6.2. An explicit `publishEvents: false` is the C3 escape hatch —
@@ -2887,7 +2895,7 @@ export async function setValueWithBuiltIn(
         changed: false,
       }
     }
-    await deleteValue(ctx, { recordId, fieldId })
+    await deleteValue(ctx, { recordId, fieldId, skipInstanceStamp })
     await maybeUpdateDisplayValue(ctx, recordId, field, null, { skipSearchTextRefresh })
     if (publishEvents || txScope) {
       // Routed through buildPublishEntry like the set branch below — this
@@ -2957,6 +2965,7 @@ export async function setValueWithBuiltIn(
     skipInverseSync,
     aiGeneration: params.aiGeneration,
     skipSearchTextRefresh,
+    skipInstanceStamp,
   })
 
   // Sync capture (plan 07 §4): the step-3.55 guard already decided this is a
@@ -3200,6 +3209,15 @@ export async function setValuesForEntity(
       )) ??
       undefined
 
+    // Deterministic advisory-lock acquisition order: under an ambient
+    // transaction (merge-service, billing) each per-field lock is a nested
+    // savepoint and survives to the OUTER commit, so two concurrent callers
+    // acquiring the same record's field locks in different orders would
+    // deadlock. Sorting by fieldId gives every caller one order. Results,
+    // realtime frames and events may reorder relative to the input — every
+    // consumer keys by fieldId, none by position.
+    customs.sort((a, b) => (a.fieldId < b.fieldId ? -1 : a.fieldId > b.fieldId ? 1 : 0))
+
     // Now set each value (will use cached field definitions and relationship validations)
     for (const v of customs) {
       try {
@@ -3220,6 +3238,7 @@ export async function setValuesForEntity(
           // The record-level flush below owns the searchText recompute — one
           // per record instead of one per indexed field.
           skipSearchTextRefresh: true,
+          skipInstanceStamp,
         })
 
         results.push({ fieldId: v.fieldId, ...result })
@@ -3234,6 +3253,13 @@ export async function setValuesForEntity(
           values: [],
           changed: false,
         })
+      } finally {
+        // The pre-read snapshot for this pair is stale the moment the pair
+        // was written (or attempted): a SECOND entry resolving to the same
+        // fieldId in this op (systemAttribute alias + UUID) must re-read
+        // fresh rows, not skip as a false D-6/B-14 no-op against pre-op
+        // state.
+        setRows?.delete(setRowsKey(entityInstanceId, v.fieldId))
       }
     }
   }
@@ -3283,9 +3309,13 @@ export async function setValuesForEntity(
  * fields never resolve from the fieldCache and never contribute. Mirrors the
  * per-field conditions inside `maybeUpdateDisplayValue`; NAME-source parts
  * are TEXT and therefore covered by the indexed-type check.
+ *
+ * A `failed` field also counts: its rows may have COMMITTED before the
+ * post-commit derived work (inverse sync, display cascade) threw, and a
+ * redundant refresh is harmless (full rebuild) where a stale corpus is not.
  */
 function fieldFeedsSearchText(ctx: FieldValueContext, result: SetValuesResult): boolean {
-  if (!result.changed) return false
+  if (!result.changed && result.state !== 'failed') return false
   const field = ctx.fieldCache.get(result.fieldId)
   if (!field) return false
   if (isSearchTextIndexedFieldType(field.type)) return true
@@ -3381,13 +3411,17 @@ export async function setBulkValues(
   // record may hold the value. Reject deterministically up front instead of
   // letting an arbitrary writer win the race. Clears (null / empty list)
   // stay valid at any batch size.
-  if (recordIds.length > 1) {
+  // Gate on DISTINCT records: the same record listed twice is one logical
+  // record and may legitimately hold the unique value (the per-write check
+  // excludes the record itself).
+  const distinctInstanceCount = new Set(entityInstanceIds).size
+  if (distinctInstanceCount > 1) {
     for (const v of validValues) {
       if (v.value === null || (Array.isArray(v.value) && v.value.length === 0)) continue
       const f = fieldMap.get(v.fieldId)
       if (f?.isUnique) {
         throw new BadRequestError(
-          `Field "${f.name ?? v.fieldId}" is unique; a bulk write cannot assign the same value to ${recordIds.length} records`
+          `Field "${f.name ?? v.fieldId}" is unique; a bulk write cannot assign the same value to ${distinctInstanceCount} records`
         )
       }
     }
@@ -3512,7 +3546,29 @@ export async function setBulkValues(
   }
   await stampEntityInstancesUpdatedAt(ctx, changedStampIds)
 
-  // Bulk sync inverse relationships (aggregated across all entities)
+  // One batched searchText recompute for every record with a corpus-feeding
+  // change (query-reduction plan §3A) — the per-record flushes were
+  // suppressed above. Runs BEFORE the inverse-sync loop: the rows are
+  // committed at this point, and a throwing sync must not leave every
+  // record's corpus stale. Failed fields count too (their rows may have
+  // committed before derived work threw); fully rejected records are
+  // skipped.
+  const searchTextIds: string[] = []
+  for (let i = 0; i < results.length; i++) {
+    const result = results[i]
+    if (result?.status !== 'fulfilled') continue
+    if (result.value.some((r) => fieldFeedsSearchText(ctx, r))) {
+      searchTextIds.push(entityInstanceIds[i]!)
+    }
+  }
+  if (searchTextIds.length > 0) {
+    await updateSearchTextForInstances(ctx.db, ctx.organizationId, searchTextIds)
+  }
+
+  // Bulk sync inverse relationships (aggregated across all entities). Each
+  // field's sync is isolated: one throwing sync must not skip sibling
+  // fields' syncs or the aggregation work below — the fan-out already
+  // committed the forward rows it mirrors.
   for (const rf of relationshipFields) {
     const oldIdsForField = oldRelatedIdsMap.get(rf.fieldId)
     if (!oldIdsForField) continue
@@ -3527,28 +3583,15 @@ export async function setBulkValues(
       newRelatedIds, // Same new value for all entities in bulk operation
     }))
 
-    // Execute bulk sync (minimal queries)
-    await syncInverseRelationshipsBulk(
-      { db: ctx.db, organizationId: ctx.organizationId },
-      { updates, inverseInfo: rf.inverseInfo }
-    )
-  }
-
-  // One batched searchText recompute for every record with a corpus-feeding
-  // change (query-reduction plan §3A) — the per-record flushes were
-  // suppressed above. Rejected records are skipped: the recompute is derived
-  // and idempotent, so a partially-written record is simply refreshed on its
-  // next write.
-  const searchTextIds: string[] = []
-  for (let i = 0; i < results.length; i++) {
-    const result = results[i]
-    if (result?.status !== 'fulfilled') continue
-    if (result.value.some((r) => fieldFeedsSearchText(ctx, r))) {
-      searchTextIds.push(entityInstanceIds[i]!)
+    try {
+      // Execute bulk sync (minimal queries)
+      await syncInverseRelationshipsBulk(
+        { db: ctx.db, organizationId: ctx.organizationId },
+        { updates, inverseInfo: rf.inverseInfo }
+      )
+    } catch (error) {
+      console.error(`Bulk inverse sync failed for field ${rf.fieldId}:`, error)
     }
-  }
-  if (searchTextIds.length > 0) {
-    await updateSearchTextForInstances(ctx.db, ctx.organizationId, searchTextIds)
   }
 
   // Fire batched field triggers for all affected fields across all records
@@ -4140,14 +4183,12 @@ async function setMultiValue(
   // keep their row id, sortKey and updatedAt. This arm has no aiGeneration
   // path, so a stored AI marker on a surviving row is cleared by the
   // in-place UPDATE (target rows carry no `aiStatus`).
-  const writeStamp = new Date()
   const outcome = await ctx.db.transaction(async (tx) =>
     reconcileSetRowsInTx(tx, {
       organizationId: ctx.organizationId,
       entityId: entityInstanceId,
       fieldId,
       insertRows,
-      writeStamp,
     })
   )
 

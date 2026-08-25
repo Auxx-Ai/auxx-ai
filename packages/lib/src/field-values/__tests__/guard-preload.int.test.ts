@@ -327,11 +327,14 @@ describe('batched guard pre-read (query-reduction Phase 1)', () => {
 
   it('hooks get an oldValue deep-equal to getValue, without a getValue call', async () => {
     const registry = await import('../../field-hooks/registry')
-    const captured: unknown[] = []
+    // Keyed by fieldId, not arrival order: the write loop runs in sorted
+    // fieldId order (deterministic advisory-lock acquisition), so hook
+    // firing order does not track input order.
+    const captured = new Map<string, unknown>()
     vi.mocked(registry.hasEntityFieldChangeHooks).mockReturnValue(true)
     vi.mocked(registry.getEntityFieldChangeHooks).mockReturnValue([
-      async (event: { oldValue: unknown }) => {
-        captured.push(event.oldValue)
+      async (event: { field: { id: string }; oldValue: unknown }) => {
+        captured.set(event.field.id, event.oldValue)
       },
     ] as never)
     try {
@@ -351,7 +354,7 @@ describe('batched guard pre-read (query-reduction Phase 1)', () => {
           { fieldId: tags.id, value: ['vip', 'beta'] },
         ],
       })
-      captured.length = 0
+      captured.clear()
 
       // Snapshot what getValue answers for both fields, then write changes.
       const expectedCity = await getValue(ctx, { recordId, fieldId: city.id })
@@ -368,10 +371,10 @@ describe('batched guard pre-read (query-reduction Phase 1)', () => {
 
       // Scalar shaping (TEXT → single TypedFieldValue) and array shaping
       // (multi TEXT → TypedFieldValue[]), both derived from guard rows.
-      expect(captured).toHaveLength(2)
-      expect(captured[0]).toEqual(expectedCity)
-      expect(Array.isArray(captured[1])).toBe(true)
-      expect(captured[1]).toEqual(expectedTags)
+      expect(captured.size).toBe(2)
+      expect(captured.get(city.id)).toEqual(expectedCity)
+      expect(Array.isArray(captured.get(tags.id))).toBe(true)
+      expect(captured.get(tags.id)).toEqual(expectedTags)
       // The derivation replaced the oldValue re-read entirely.
       expect(getValueCalls()).toBe(callsBeforeWrite)
     } finally {
@@ -403,6 +406,81 @@ describe('batched guard pre-read (query-reduction Phase 1)', () => {
     expect(fallbackSpy).not.toHaveBeenCalled()
     const rows = await storedRows(f.orgId, inst.id, rel.id)
     expect(rows.map((r) => r.relatedEntityId).sort()).toEqual([t1.id, t2.id].sort())
+  })
+
+  it('two entries resolving to the same field in one op: the second write is NOT a stale-preload no-op', async () => {
+    const f = await seed()
+    // Field addressable two ways: by UUID and by systemAttribute alias —
+    // `resolveFieldIds` maps the alias to the same UUID, and the values
+    // array legitimately carries both (unified-handler supports the mix).
+    const [aliased] = await db()
+      .insert(schema.CustomField)
+      .values({
+        organizationId: f.orgId,
+        entityDefinitionId: f.defId,
+        modelType: 'contact',
+        name: 'Nickname',
+        type: 'TEXT',
+        systemAttribute: 'test_nickname',
+        sortOrder: 'a9',
+        isCustom: true,
+        updatedAt: new Date(),
+      })
+      .returning()
+    const inst = await seedInstance(f.orgId, f.defId, 'Ada')
+    const recordId = recordIdFor(f.defId, inst.id)
+
+    await setValuesForEntity(f.ctx, {
+      recordId,
+      values: [{ fieldId: aliased!.id, value: 'x' }],
+    })
+
+    // Stored 'x'; write [alias→'y', uuid→'x']. The second entry must re-read
+    // fresh rows (the pair's preload entry is consumed after the first
+    // write) — a stale snapshot would compare 'x' == 'x', skip the write,
+    // and leave 'y' persisted instead of last-write-wins 'x'.
+    await setValuesForEntity(f.ctx, {
+      recordId,
+      values: [
+        { fieldId: 'test_nickname', value: 'y' },
+        { fieldId: aliased!.id, value: 'x' },
+      ],
+    })
+    const rows = await storedRows(f.orgId, inst.id, aliased!.id)
+    expect(rows.map((r) => r.valueText)).toEqual(['x'])
+
+    // Mirror for clears: on an empty field, [set 'z', clear] must end empty —
+    // a stale "covered, no rows" entry would turn the clear into a B-14 no-op.
+    const empty = await seedInstance(f.orgId, f.defId, 'Bob')
+    await setValuesForEntity(f.ctx, {
+      recordId: recordIdFor(f.defId, empty.id),
+      values: [
+        { fieldId: 'test_nickname', value: 'z' },
+        { fieldId: aliased!.id, value: null },
+      ],
+    })
+    expect(await storedRows(f.orgId, empty.id, aliased!.id)).toHaveLength(0)
+  })
+
+  it('an orchestrated RELATIONSHIP write batch-validates exactly once', async () => {
+    const f = await seed()
+    const rel = await seedField(f.orgId, f.defId, 'Related', 'a3', 'RELATIONSHIP')
+    const inst = await seedInstance(f.orgId, f.defId, 'Ada')
+    const target = await seedInstance(f.orgId, f.defId, 'Bob')
+
+    // The orchestrator primes the whole write up front; the per-field
+    // priming inside setValueWithBuiltIn must SKIP ids the cache already
+    // answers instead of re-running the validator's SELECT.
+    const validate = vi.spyOn(f.ctx.validator, 'batchValidateRelationships')
+
+    await setValuesForEntity(f.ctx, {
+      recordId: recordIdFor(f.defId, inst.id),
+      values: [{ fieldId: rel.id, value: [{ recordId: recordIdFor(f.defId, target.id) }] }],
+    })
+
+    expect(validate).toHaveBeenCalledTimes(1)
+    const rows = await storedRows(f.orgId, inst.id, rel.id)
+    expect(rows.map((r) => r.relatedEntityId)).toEqual([target.id])
   })
 
   it('RELATIONSHIP rows shape identically through getValue and the derivation', async () => {

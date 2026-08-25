@@ -327,7 +327,12 @@ describe('EntityInstance.updatedAt stamping (D-7)', () => {
       ],
     })
 
-    expect(results.map((r) => r.changed)).toEqual([false, true])
+    // Keyed by fieldId, not position: the write loop executes in sorted
+    // fieldId order (deterministic advisory-lock acquisition), so results
+    // may not match input order.
+    const changedByField = new Map(results.map((r) => [r.fieldId, r.changed]))
+    expect(changedByField.get(f.nameFieldId)).toBe(false)
+    expect(changedByField.get(f.noteFieldId)).toBe(true)
     // The guarded field's row is untouched even though its sibling wrote.
     const nameAfter = (await valueRows(f, f.nameFieldId))[0]!
     expect(nameAfter.id).toBe(nameRow.id)
