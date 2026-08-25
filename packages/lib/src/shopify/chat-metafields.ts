@@ -8,6 +8,16 @@ import { createShopifyAdminClient } from './admin-client'
 
 const logger = createScopedLogger('shopify/chat-metafields')
 
+/**
+ * Outcome of a metafield write. Every failure path is REPORTED, never swallowed.
+ *
+ * This used to return `void` and log-and-continue on all four failure branches, so
+ * `bindChatChannelToShopifyInstall` returned `{ ok: true }` even when Shopify had received
+ * nothing — the admin claimed "connected" while the storefront rendered nothing, with the
+ * only evidence in a log line nobody was reading.
+ */
+export type MetafieldWriteResult = { ok: true } | { ok: false; reason: string }
+
 export const AUXX_CHAT_METAFIELD_NAMESPACE = '$app:chat'
 export const AUXX_CHAT_METAFIELD_KEY_CHANNEL = 'channel_id'
 export const AUXX_CHAT_METAFIELD_KEY_AUDIENCE = 'audience'
@@ -43,9 +53,11 @@ export interface WriteAuxxChatMetafieldsInput {
  * data UI, can't be read/written by other apps, and auto-delete on app
  * uninstall — no definition registration required.
  */
-export async function writeAuxxChatMetafields(input: WriteAuxxChatMetafieldsInput): Promise<void> {
+export async function writeAuxxChatMetafields(
+  input: WriteAuxxChatMetafieldsInput
+): Promise<MetafieldWriteResult> {
   const { shopDomain, accessToken, channelId, audience } = input
-  if (channelId === undefined && audience === undefined) return
+  if (channelId === undefined && audience === undefined) return { ok: true }
 
   const client = createShopifyAdminClient({ shopDomain, accessToken })
 
@@ -54,12 +66,16 @@ export async function writeAuxxChatMetafields(input: WriteAuxxChatMetafieldsInpu
     const response = await client.request(SHOP_GID_QUERY)
     shopGid = response.data?.shop?.id
   } catch (error) {
-    logger.error('Failed to fetch shop GID for metafield write', { shopDomain, error })
-    return
+    const message = error instanceof Error ? error.message : String(error)
+    logger.error('Failed to fetch shop GID for metafield write', { shopDomain, error: message })
+    // An expired or revoked Admin token surfaces here first, as a 401 on the cheapest
+    // possible query — so this branch is the one to look for in prod when a bind "succeeds"
+    // but the storefront never changes.
+    return { ok: false, reason: `shop_gid_request_failed: ${message}` }
   }
   if (!shopGid) {
     logger.error('No shop GID returned from Shopify', { shopDomain })
-    return
+    return { ok: false, reason: 'shop_gid_missing' }
   }
 
   const metafields: Array<{
@@ -95,9 +111,21 @@ export async function writeAuxxChatMetafields(input: WriteAuxxChatMetafieldsInpu
     const errors = response.data?.metafieldsSet?.userErrors ?? []
     if (errors.length > 0) {
       logger.error('Shopify metafieldsSet userErrors', { shopDomain, errors })
+      return { ok: false, reason: `user_errors: ${JSON.stringify(errors)}` }
     }
+    // Success is logged at info with the exact namespace/key/value pairs, because the
+    // storefront reading them back is a different system on a different machine — when the
+    // widget doesn't appear, the first question is always "was anything actually written".
+    logger.info('Wrote Auxx chat metafields', {
+      shopDomain,
+      namespace: AUXX_CHAT_METAFIELD_NAMESPACE,
+      written: metafields.map((m) => ({ key: m.key, value: m.value })),
+    })
+    return { ok: true }
   } catch (error) {
-    logger.error('Failed to write Shopify chat metafields', { shopDomain, error })
+    const message = error instanceof Error ? error.message : String(error)
+    logger.error('Failed to write Shopify chat metafields', { shopDomain, error: message })
+    return { ok: false, reason: `metafields_set_failed: ${message}` }
   }
 }
 
@@ -162,12 +190,19 @@ export async function fanOutAuxxChatAudienceToShopify(params: {
         continue
       }
       const accessToken = revealed.value.secrets.accessToken
-      const shopDomain = revealed.value.record.metadata.shopDomain as string | undefined
+      const shopDomain = resolveShopDomain(revealed.value.record.metadata)
       if (!accessToken || !shopDomain) {
         logger.warn('Shopify credential missing accessToken or shopDomain', { channelId })
         continue
       }
-      await writeAuxxChatMetafields({ shopDomain, accessToken, audience })
+      const written = await writeAuxxChatMetafields({ shopDomain, accessToken, audience })
+      if (!written.ok) {
+        logger.warn('Audience fan-out did not reach Shopify', {
+          channelId,
+          shopDomain,
+          reason: written.reason,
+        })
+      }
     } catch (error) {
       logger.error('Failed to fan out audience metafield to Shopify install', {
         channelId,
@@ -191,6 +226,28 @@ export async function fanOutAuxxChatAudienceToShopify(params: {
  * Pass `channelId = null` to unbind (the embed's Liquid renders nothing
  * when the metafield is blank).
  */
+/**
+ * Resolve a Shopify credential's shop domain, tolerating both shapes the codebase writes.
+ *
+ * `metadata.shopDomain` (full `x.myshopify.com`) is set only by the **App Store** install
+ * path — `shopify.claimShopifyInstall`. A store connected from inside Auxx goes through the
+ * generic `/api/apps/[slug]/oauth2/callback`, which writes the shop as a *subdomain* under
+ * `metadata.connectionVariables.shop` and no `shopDomain` at all. Reading only the former
+ * meant chat binding failed with `credential_missing_shop_or_token` for every in-app
+ * connection — the majority of them.
+ *
+ * Same normalisation the Shopify app's own `getShopDomain` performs.
+ */
+function resolveShopDomain(metadata: Record<string, unknown>): string | undefined {
+  const direct = metadata.shopDomain
+  if (typeof direct === 'string' && direct) return direct
+
+  const vars = metadata.connectionVariables as Record<string, unknown> | undefined
+  const shop = vars?.shop
+  if (typeof shop !== 'string' || !shop) return undefined
+  return shop.includes('.') ? shop : `${shop}.myshopify.com`
+}
+
 export async function bindChatChannelToShopifyInstall(params: {
   organizationId: string
   appInstallationId: string
@@ -236,8 +293,16 @@ export async function bindChatChannelToShopifyInstall(params: {
     return { ok: false, reason: 'decryption_failed' }
   }
   const accessToken = revealed.value.secrets.accessToken
-  const shopDomain = revealed.value.record.metadata.shopDomain as string | undefined
+  const shopDomain = resolveShopDomain(revealed.value.record.metadata)
   if (!accessToken || !shopDomain) {
+    logger.error('Shopify credential unusable for chat binding', {
+      organizationId,
+      appInstallationId,
+      credentialId: credential.id,
+      hasAccessToken: Boolean(accessToken),
+      resolvedShopDomain: shopDomain ?? null,
+      metadataKeys: Object.keys(revealed.value.record.metadata ?? {}),
+    })
     return { ok: false, reason: 'credential_missing_shop_or_token' }
   }
 
@@ -251,12 +316,24 @@ export async function bindChatChannelToShopifyInstall(params: {
     audience = (widget?.chatAudience ?? 'visitors') as 'visitors' | 'both' | 'users'
   }
 
-  await writeAuxxChatMetafields({
+  logger.info('Binding chat channel to Shopify install', {
+    organizationId,
+    appInstallationId,
+    shopDomain,
+    channelId,
+    audience,
+    action: channelId ? 'bind' : 'unbind',
+  })
+
+  const written = await writeAuxxChatMetafields({
     shopDomain,
     accessToken,
     channelId,
     audience,
   })
+  if (!written.ok) {
+    return { ok: false, reason: written.reason }
+  }
 
   return { ok: true }
 }

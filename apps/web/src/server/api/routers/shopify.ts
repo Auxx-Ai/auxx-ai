@@ -6,20 +6,31 @@ import {
 } from '@auxx/billing'
 import { listCredentials, setDefaultCredential } from '@auxx/credentials/store'
 import { database as db, schema } from '@auxx/database'
-import { installApp, saveAppConnection } from '@auxx/lib/apps'
+import { getAppWithInstallationStatus, installApp, saveAppConnection } from '@auxx/lib/apps'
 import { getOrgCache, isOrgMember, onCacheEvent, resolveAppSlug } from '@auxx/lib/cache'
 import { ConflictError } from '@auxx/lib/errors'
 import { OrganizationService } from '@auxx/lib/organizations'
+import { PermissionKey } from '@auxx/lib/permissions'
+import { bindChatChannelToShopifyInstall } from '@auxx/lib/shopify'
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
+import { getAppSettings, saveAppSettings } from '@auxx/services/app-settings'
 import { TRPCError } from '@trpc/server'
 import { and, eq, ne, sql } from 'drizzle-orm'
 import { cookies } from 'next/headers'
 import { z } from 'zod'
 import { setUserDefaultOrganization } from '~/server/auth/set-default-organization'
-import { createTRPCRouter, protectedProcedure } from '../trpc'
+import { createTRPCRouter, permissionProcedure, protectedProcedure } from '../trpc'
 
 const CLAIM_COOKIE_NAME = 'shopify_claim_token'
+
+/**
+ * Block handle of the theme app embed, i.e. the filename of
+ * `extensions/auxx-chat/blocks/embed.liquid` in the auxxai-apps repo. Second half of the
+ * theme editor's `activateAppId=<client_id>/<block handle>` pair — rename that file and this
+ * must change with it.
+ */
+const APP_EMBED_BLOCK_HANDLE = 'embed'
 
 const logger = createScopedLogger('shopify-router')
 
@@ -386,6 +397,200 @@ export const shopifyRouter = createTRPCRouter({
       const provider = getProvider('shopify') as ShopifyBillingProvider
       const redirectUrl = await provider.getPlanSelectionUrl(organizationId)
       return { redirectUrl, shop: claim.shop }
+    }),
+
+  /**
+   * Everything the chat-widget Setup tab's Shopify card needs, in one call — phase 5 of
+   * `plans/chat/shopify`.
+   *
+   * The generic app procedures can serve this (`apps.getBySlug` + `apps.getSettings` +
+   * `apps.listConnections`), but awkwardly: `getSettings` demands an `installationType` the
+   * caller has to discover first, and `listConnections` takes no input and returns every
+   * connection in the org. One purpose-built read keeps the card simple and is the
+   * "ergonomic surface" phase 5 was specified to be.
+   */
+  getChatBinding: protectedProcedure.query(async ({ ctx }) => {
+    const { organizationId } = ctx.session
+
+    const appResult = await getAppWithInstallationStatus({
+      appSlug: 'shopify',
+      organizationId,
+      db: ctx.db,
+    })
+    if (!appResult.ok) {
+      return {
+        installed: false,
+        boundChannelId: null,
+        shops: [] as { domain: string; themeEditorUrl: string | null }[],
+      }
+    }
+    const { app, installation } = appResult.value
+    if (!installation.isInstalled || !installation.id) {
+      return {
+        installed: false,
+        boundChannelId: null,
+        shops: [] as { domain: string; themeEditorUrl: string | null }[],
+      }
+    }
+
+    const settingsResult = await getAppSettings({ appInstallationId: installation.id })
+    const raw = settingsResult.isOk()
+      ? (settingsResult.value as Record<string, unknown>).chatChannelId
+      : undefined
+    const boundChannelId = typeof raw === 'string' && raw ? raw : null
+
+    // Shop domains for display. Both metadata shapes are in the wild — see
+    // `resolveShopDomain` in `@auxx/lib/shopify` for why.
+    const credsResult = await listCredentials({
+      organizationId,
+      kind: 'app',
+      appId: app.id,
+      userId: null,
+    })
+    const domains = credsResult.isOk()
+      ? credsResult.value
+          .map((cred) => {
+            const meta = cred.metadata as Record<string, unknown>
+            if (typeof meta.shopDomain === 'string' && meta.shopDomain) return meta.shopDomain
+            const vars = meta.connectionVariables as Record<string, unknown> | undefined
+            const shop = vars?.shop
+            if (typeof shop !== 'string' || !shop) return null
+            return shop.includes('.') ? shop : `${shop}.myshopify.com`
+          })
+          .filter((s): s is string => Boolean(s))
+      : []
+
+    // Binding a channel is only half the merchant's job — the "Auxx Chat" app embed also has
+    // to be switched on in their theme, which is buried under Online Store → Themes →
+    // Customize → App embeds. `activateAppId` opens the theme editor with it already toggled
+    // on, so the remaining step is one click and a Save.
+    //
+    // The id is the **app's client_id**, not the theme extension's uid — verified against a
+    // live theme editor, which puts `?appEmbed=<client_id>/embed` in the URL when the block is
+    // selected. `embed` is the block handle, i.e. `blocks/embed.liquid`. Built server-side
+    // because the client_id differs between the prod and dev Partner apps and must match
+    // whichever one is deployed.
+    const clientId = process.env.SHOPIFY_API_KEY
+    const shops = domains.map((domain) => ({
+      domain,
+      themeEditorUrl: clientId
+        ? `https://${domain}/admin/themes/current/editor?context=apps&activateAppId=${clientId}/${APP_EMBED_BLOCK_HANDLE}`
+        : null,
+    }))
+
+    return { installed: true, boundChannelId, shops }
+  }),
+
+  /**
+   * Bind (or unbind) the chat channel that powers the storefront widget on this org's
+   * Shopify store — phase 5 of `plans/chat/shopify`.
+   *
+   * Two writes, deliberately in this order and NOT in one transaction:
+   *  1. The `chatChannelId` app setting — the durable record, and the thing the audience
+   *     fan-out (`fanOutAuxxChatAudienceToShopify`) later keys off.
+   *  2. The shop metafields on Shopify — what the theme extension's Liquid actually reads.
+   *
+   * A Shopify API failure must not lose the merchant's choice, so step 2 is best-effort and
+   * its outcome is RETURNED rather than thrown: `metafieldWritten: false` means the setting
+   * is saved but the storefront does not know about it yet, and the caller is expected to
+   * offer a retry. Swallowing that silently would leave the admin claiming "bound" while the
+   * storefront renders nothing — the exact divergence that made this area hard to debug.
+   *
+   * Lives here rather than in `apps.saveSettings` because that procedure is the generic,
+   * app-agnostic settings writer with no post-save hook; one app's side effects do not belong
+   * in every app's write path. Mirrors `channel.ts`'s audience fan-out, which is the same
+   * shape for the same reason.
+   */
+  bindChatChannel: permissionProcedure(PermissionKey.integrationsManage)
+    .input(z.object({ channelId: z.string().nullable() }))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      const { channelId } = input
+
+      const appResult = await getAppWithInstallationStatus({
+        appSlug: 'shopify',
+        organizationId,
+        db: ctx.db,
+      })
+      if (!appResult.ok) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Shopify app not found' })
+      }
+      const installation = appResult.value.installation
+      if (!installation.isInstalled || !installation.id) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Shopify app is not installed' })
+      }
+
+      // Guard the channel actually belongs to this org — the id comes off a client picker.
+      if (channelId) {
+        const owned = await ctx.db.query.Integration.findFirst({
+          where: and(
+            eq(schema.Integration.id, channelId),
+            eq(schema.Integration.organizationId, organizationId),
+            eq(schema.Integration.provider, 'chat')
+          ),
+          columns: { id: true },
+        })
+        if (!owned) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Chat channel not found' })
+        }
+      }
+
+      const saveResult = await saveAppSettings({
+        appInstallationId: installation.id,
+        appDeploymentId: installation.currentDeploymentId ?? undefined,
+        settings: { chatChannelId: channelId ?? '' },
+      })
+      if (saveResult.isErr()) {
+        logger.error('Failed to save chatChannelId setting', {
+          organizationId,
+          channelId,
+          error: saveResult.error.message,
+        })
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: saveResult.error.message,
+        })
+      }
+
+      let metafieldWritten = false
+      let reason: string | undefined
+      try {
+        const bound = await bindChatChannelToShopifyInstall({
+          organizationId,
+          appInstallationId: installation.id,
+          channelId,
+        })
+        metafieldWritten = bound.ok
+        if (!bound.ok) reason = bound.reason
+      } catch (error) {
+        reason = error instanceof Error ? error.message : String(error)
+        logger.error('bindChatChannelToShopifyInstall threw', {
+          organizationId,
+          channelId,
+          error: reason,
+        })
+      }
+
+      // One line per outcome, same shape, so a prod query on
+      // `scope='shopify-router' AND match_all('chat channel')` shows every bind attempt and
+      // whether Shopify actually received it — see `docs/log-history.md`.
+      if (metafieldWritten) {
+        logger.info('Chat channel bound to Shopify', {
+          organizationId,
+          appInstallationId: installation.id,
+          channelId,
+          action: channelId ? 'bind' : 'unbind',
+        })
+      } else {
+        logger.warn('Chat channel setting saved but shop metafields were not written', {
+          organizationId,
+          appInstallationId: installation.id,
+          channelId,
+          reason,
+        })
+      }
+
+      return { success: true, metafieldWritten, reason }
     }),
 })
 
