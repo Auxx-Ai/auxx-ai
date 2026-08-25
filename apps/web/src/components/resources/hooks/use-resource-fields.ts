@@ -1,6 +1,6 @@
 // apps/web/src/components/resources/hooks/use-resource-fields.ts
 
-import type { ResourceField } from '@auxx/lib/resources/client'
+import type { Resource, ResourceField } from '@auxx/lib/resources/client'
 import {
   type FieldId,
   parseResourceFieldId,
@@ -12,6 +12,59 @@ import { useResourceStore } from '../store/resource-store'
 
 /** Stable empty array to prevent unnecessary re-renders */
 const EMPTY_FIELDS: ResourceField[] = []
+
+/**
+ * Compose the EFFECTIVE field list for a resource.
+ *
+ * The hydration snapshot (`resource.fields`) decides which fields exist and in
+ * what order; `fieldMap` — the maintained merge of server + pending optimistic
+ * state — supplies each field's current content; the optimistic new/deleted
+ * sets add and remove fields that haven't round-tripped yet.
+ *
+ * This is the single composition point shared by {@link useResourceFields} and
+ * `useResource`. `resourceMap` itself is a hydration snapshot that no field
+ * action ever updates, so any read that must see post-mutation field state
+ * (labels, select options, required, …) has to go through this — reading
+ * `resource.fields` raw is how inline tag creation once sent a stale
+ * full-replace that cascade-deleted other tags' values.
+ */
+export function composeEffectiveFields(
+  resource: Resource,
+  fieldMap: Record<ResourceFieldId, ResourceField>,
+  optimisticDeletedFields: ReadonlySet<ResourceFieldId>,
+  optimisticNewFields: Record<ResourceFieldId, ResourceField>
+): ResourceField[] {
+  const effectiveFields: ResourceField[] = []
+
+  for (const field of resource.fields) {
+    // Mirror setResources' keying exactly: snapshot fields are not guaranteed
+    // to carry `resourceFieldId`, and the fallback key uses `resource.id`.
+    const key = field.resourceFieldId || toResourceFieldId(resource.id, field.id)
+    if (optimisticDeletedFields.has(key)) continue
+
+    const effectiveField = fieldMap[key]
+    if (effectiveField) {
+      effectiveFields.push(effectiveField)
+    }
+  }
+
+  // Add optimistic new fields for this resource. Match on both resource.id and
+  // resource.entityDefinitionId (they should be equal, but handle edge cases).
+  const resourceId = resource.id
+  const resourceEntityDefId = resource.entityDefinitionId
+  for (const [key, field] of Object.entries(optimisticNewFields) as Array<
+    [ResourceFieldId, ResourceField]
+  >) {
+    const { entityDefinitionId: fieldEntityDefId } = parseResourceFieldId(key)
+    const matchesResource =
+      fieldEntityDefId === resourceId || fieldEntityDefId === resourceEntityDefId
+    if (matchesResource && !optimisticDeletedFields.has(key)) {
+      effectiveFields.push(field)
+    }
+  }
+
+  return effectiveFields
+}
 
 interface UseResourceFieldsResult {
   /** All fields for this resource */
@@ -52,36 +105,7 @@ export function useResourceFields(
   // Compute effective fields with useMemo for stable reference
   const fields = useMemo(() => {
     if (!resource || !entityDefinitionIdOrApiSlug) return EMPTY_FIELDS
-
-    const effectiveFields: ResourceField[] = []
-
-    // Add fields from resource with optimistic overlay from fieldMap
-    for (const field of resource.fields) {
-      const key = field.resourceFieldId || toResourceFieldId(resource.id, field.id)
-      if (optimisticDeletedFields.has(key)) continue
-
-      const effectiveField = fieldMap[key]
-      if (effectiveField) {
-        effectiveFields.push(effectiveField)
-      }
-    }
-
-    // Add optimistic new fields for this resource
-    // Use both resource.id and resource.entityDefinitionId for matching (they should be equal but handle edge cases)
-    const resourceId = resource.id
-    const resourceEntityDefId = resource.entityDefinitionId
-    for (const [key, field] of Object.entries(optimisticNewFields) as Array<
-      [ResourceFieldId, ResourceField]
-    >) {
-      const { entityDefinitionId: fieldEntityDefId } = parseResourceFieldId(key)
-      const matchesResource =
-        fieldEntityDefId === resourceId || fieldEntityDefId === resourceEntityDefId
-      if (matchesResource && !optimisticDeletedFields.has(key)) {
-        effectiveFields.push(field)
-      }
-    }
-
-    return effectiveFields
+    return composeEffectiveFields(resource, fieldMap, optimisticDeletedFields, optimisticNewFields)
   }, [
     resource,
     fieldMap,

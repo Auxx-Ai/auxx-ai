@@ -10,8 +10,8 @@ import {
   type ActorOptions,
   getRelatedEntityDefinitionId,
   type RelationshipConfig,
-  type SelectOption,
 } from '@auxx/types/custom-field'
+import type { ResourceFieldId } from '@auxx/types/field'
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ActorPicker } from '~/components/pickers/actor-picker/actor-picker'
 import { ParticipantPicker } from '~/components/pickers/participant-picker'
@@ -33,7 +33,7 @@ import { useOrgCurrency } from '~/hooks/use-org-currency'
 import { useAccess } from '~/providers/capabilities-provider'
 import { MultiValueFieldInput } from './multi-value-input-field'
 import { NameFieldInput, type NameValue } from './name-field-input'
-import { getSelectConfig, SelectFieldInput } from './select-input-field'
+import { getSelectConfig, SelectFieldInput, StoreSelectFieldInput } from './select-input-field'
 
 /**
  * Wrapper for inline inputs that focuses the input when `open` becomes true.
@@ -88,8 +88,15 @@ export interface FieldInputAdapterProps {
   placeholder?: string
   /** Disabled state */
   disabled?: boolean
-  /** Callback when options change (for TAGS management) */
-  onOptionsChange?: (options: SelectOption[]) => void
+  /**
+   * Identity of the store-backed field being edited. On select types this is
+   * what enables inline option creation/management: the select branch renders
+   * the store-connected variant, which persists option edits itself the way
+   * the RELATIONSHIP branch below owns its inline record-create — no callback
+   * threaded from the form. Omitted (a workflow synthetic, a filter operand),
+   * the select renders read-only options from `fieldOptions`.
+   */
+  resourceFieldId?: ResourceFieldId
   /** Override multi-select behavior (for operators like "in"/"not in") */
   allowMultiple?: boolean
   /**
@@ -142,7 +149,7 @@ export function FieldInputAdapter({
   onChange,
   placeholder = 'Enter value...',
   disabled = false,
-  onOptionsChange,
+  resourceFieldId,
   allowMultiple,
   canAdd,
   useValueAsLabel,
@@ -351,21 +358,27 @@ export function FieldInputAdapter({
 
       const selectedValues = Array.isArray(value) ? value : value ? [value] : []
 
-      return (
-        <SelectFieldInput
-          options={options}
-          value={selectedValues}
-          onChange={onChange}
-          onOptionsChange={onOptionsChange}
-          config={config}
-          placeholder={placeholder}
-          disabled={disabled}
-          triggerProps={triggerProps}
-          open={open}
-          onOpenChange={onOpenChange}
-          shouldPreventDismiss={shouldPreventDismiss}
-          useValueAsLabel={useValueAsLabel}
-        />
+      const selectProps = {
+        options,
+        value: selectedValues,
+        onChange,
+        config,
+        placeholder,
+        disabled,
+        triggerProps,
+        open,
+        onOpenChange,
+        shouldPreventDismiss,
+        useValueAsLabel,
+      }
+
+      // With a field identity, the store-connected variant owns option
+      // freshness and persistence itself (see `StoreSelectFieldInput`); without
+      // one there is nothing to persist to, so options are read-only.
+      return resourceFieldId ? (
+        <StoreSelectFieldInput {...selectProps} resourceFieldId={resourceFieldId} />
+      ) : (
+        <SelectFieldInput {...selectProps} />
       )
     }
 

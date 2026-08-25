@@ -168,6 +168,7 @@ export function FieldInputRow({
         placeholder={placeholder ?? `Enter ${field.label.toLowerCase()}...`}
         disabled={disabled}
         triggerProps={{ className: 'ps-0 pe-1 w-full' }}
+        resourceFieldId={field.resourceFieldId}
       />
     </FieldPanelRow>
   )
