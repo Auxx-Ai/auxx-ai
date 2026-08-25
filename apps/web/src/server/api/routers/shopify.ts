@@ -4,6 +4,7 @@ import {
   type ShopifyBillingProvider,
   stripeClient,
 } from '@auxx/billing'
+import { configService } from '@auxx/credentials'
 import { listCredentials, setDefaultCredential } from '@auxx/credentials/store'
 import { database as db, schema } from '@auxx/database'
 import { getAppWithInstallationStatus, installApp, saveAppConnection } from '@auxx/lib/apps'
@@ -412,6 +413,21 @@ export const shopifyRouter = createTRPCRouter({
   getChatBinding: protectedProcedure.query(async ({ ctx }) => {
     const { organizationId } = ctx.session
 
+    // Storefront chat only exists if the `auxx-chat` theme app extension is deployed on the
+    // Shopify app. It is currently pulled while the App Store submission is in flight (chat
+    // was flagged in earlier review rounds), so binding a channel would write a metafield
+    // that nothing on the storefront reads — the merchant would get a success toast and no
+    // widget, which is worse than not offering it. Restoring the extension and flipping this
+    // to `true` is the whole of turning it back on; no code change.
+    if (!configService.get<boolean>('SHOPIFY_STOREFRONT_CHAT_ENABLED')) {
+      return {
+        enabled: false,
+        installed: false,
+        boundChannelId: null,
+        shops: [] as { domain: string; themeEditorUrl: string | null }[],
+      }
+    }
+
     const appResult = await getAppWithInstallationStatus({
       appSlug: 'shopify',
       organizationId,
@@ -419,6 +435,7 @@ export const shopifyRouter = createTRPCRouter({
     })
     if (!appResult.ok) {
       return {
+        enabled: true,
         installed: false,
         boundChannelId: null,
         shops: [] as { domain: string; themeEditorUrl: string | null }[],
@@ -427,6 +444,7 @@ export const shopifyRouter = createTRPCRouter({
     const { app, installation } = appResult.value
     if (!installation.isInstalled || !installation.id) {
       return {
+        enabled: true,
         installed: false,
         boundChannelId: null,
         shops: [] as { domain: string; themeEditorUrl: string | null }[],
@@ -478,7 +496,7 @@ export const shopifyRouter = createTRPCRouter({
         : null,
     }))
 
-    return { installed: true, boundChannelId, shops }
+    return { enabled: true, installed: true, boundChannelId, shops }
   }),
 
   /**
@@ -506,6 +524,16 @@ export const shopifyRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
       const { channelId } = input
+
+      // Hiding the card is not the guard — this is. Binding while the theme extension is
+      // pulled writes a metafield nothing reads, so the merchant gets a success state and no
+      // widget.
+      if (!configService.get<boolean>('SHOPIFY_STOREFRONT_CHAT_ENABLED')) {
+        throw new TRPCError({
+          code: 'PRECONDITION_FAILED',
+          message: 'Storefront chat is not available on Shopify yet.',
+        })
+      }
 
       const appResult = await getAppWithInstallationStatus({
         appSlug: 'shopify',

@@ -800,6 +800,18 @@ export const CONFIG_VARIABLES = {
     isSensitive: true,
     isEnvOnly: false,
   },
+  SHOPIFY_STOREFRONT_CHAT_ENABLED: {
+    key: 'SHOPIFY_STOREFRONT_CHAT_ENABLED',
+    description:
+      'Whether the `auxx-chat` theme app extension is deployed on the Shopify app. Gates the ' +
+      'Shopify card in the chat-widget Setup tab — with the extension pulled there is nothing ' +
+      'on the storefront to render a bound channel, so the card must not offer the bind.',
+    type: ConfigVariableType.BOOLEAN,
+    group: ConfigVariableGroup.SHOPIFY,
+    defaultValue: false,
+    isSensitive: false,
+    isEnvOnly: false,
+  },
 
   // ── BILLING ──────────────────────────────────────────────
   STRIPE_SECRET_KEY: {

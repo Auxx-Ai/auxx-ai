@@ -50,7 +50,11 @@ export function ShopifyCard({ channelId }: ShopifyCardProps) {
     },
   })
 
-  if (isLoading || !data) return null
+  // `enabled: false` means the theme app extension isn't deployed, so there is nothing on a
+  // storefront that could render a bound channel. Render nothing at all rather than an
+  // explanation — a merchant who never had this cannot miss it, and a "coming soon" card is
+  // just noise on the one tab people go to when they want to install.
+  if (isLoading || !data || !data.enabled) return null
 
   // Not installed, or installed with no store connected — point at the right next step
   // rather than showing a bind control that cannot work.
@@ -149,7 +153,12 @@ export function ShopifyCard({ channelId }: ShopifyCardProps) {
  * are the only bespoke cards in the chat-widget settings and they sit one tab apart.
  */
 function Card({ children }: { children: React.ReactNode }) {
-  return <div className='relative rounded-2xl border border-border bg-muted/30 p-4'>{children}</div>
+  return (
+    <div className='mt-6'>
+      <p className='mb-2 text-xs font-medium text-muted-foreground'>Or install on a platform</p>
+      <div className='relative rounded-2xl border border-border bg-muted/30 p-4'>{children}</div>
+    </div>
+  )
 }
 
 function Header() {
