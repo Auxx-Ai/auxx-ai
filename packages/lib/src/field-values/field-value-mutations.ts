@@ -109,6 +109,7 @@ import {
   updateSearchText,
   updateSearchTextForInstances,
 } from './search-text'
+import { existingRowMatchesInsert, planSetReconcile, updateColumnsFor } from './set-reconcile'
 import { toFieldType } from './stored-field-type'
 import {
   type BulkSnapshotWrite,
@@ -580,6 +581,31 @@ export async function setValue(
  * @param params - The SetValueWithTypeInput object
  * @returns Array of TypedFieldValue objects after the operation.
  */
+/**
+ * Shared ON CONFLICT (entityId, fieldId, sortKey) DO UPDATE clause for the
+ * set path's inserts — last-write-wins on every value column, matching the
+ * replace semantics. `excluded."aiStatus"` is null for a manual write, so a
+ * conflicting manual write still clears a prior AI marker.
+ */
+function replaceConflictUpdate() {
+  return {
+    target: [schema.FieldValue.entityId, schema.FieldValue.fieldId, schema.FieldValue.sortKey],
+    set: {
+      valueText: sql`excluded."valueText"`,
+      valueNumber: sql`excluded."valueNumber"`,
+      valueBoolean: sql`excluded."valueBoolean"`,
+      valueDate: sql`excluded."valueDate"`,
+      valueJson: sql`excluded."valueJson"`,
+      optionId: sql`excluded."optionId"`,
+      relatedEntityId: sql`excluded."relatedEntityId"`,
+      relatedEntityDefinitionId: sql`excluded."relatedEntityDefinitionId"`,
+      actorId: sql`excluded."actorId"`,
+      aiStatus: sql`excluded."aiStatus"`,
+      updatedAt: new Date(),
+    },
+  }
+}
+
 export async function setValueWithType(
   ctx: FieldValueContext,
   params: SetValueWithTypeInput
@@ -676,19 +702,25 @@ export async function setValueWithType(
     return params.aiGeneration ? applyAiMarker(baseRow, params.aiGeneration) : baseRow
   })
 
-  // Atomic replace (plans/field-values/delete-insert-replace.md Phase 0).
-  // The transaction closes the window where a crash between DELETE and
-  // INSERT lost the field's values; the advisory lock serializes against
-  // concurrent set-writers AND the targeted add/remove paths, which already
-  // take the same lock. Only the two row writes live inside — display
-  // recompute, inverse sync, hooks and realtime are derived work and stay
-  // after COMMIT. onConflictDoUpdate remains as belt-and-braces while other
-  // writers are still being migrated to the lock (Phase 3 re-examines it).
-  const inserted = await ctx.db.transaction(async (tx) => {
+  // Atomic reconcile (plans/field-values/delete-insert-replace.md Phase 0 +
+  // Phase 1). The transaction + advisory lock serialize concurrent writers
+  // for the pair (the targeted add/remove paths take the same lock); inside
+  // it, the stored rows are diffed positionally against the target list and
+  // only the differences are written — an unchanged position keeps its row
+  // id, sortKey and updatedAt. Display recompute, inverse sync, hooks and
+  // realtime are derived work and stay after COMMIT.
+  const writeStamp = new Date()
+  const outcome = await ctx.db.transaction(async (tx) => {
     await acquireFieldValueLock(tx, entityInstanceId, fieldId)
 
-    await tx
-      .delete(schema.FieldValue)
+    // §5B RULE: the diff input is read HERE, inside the lock. The guard's
+    // earlier load (setValueWithBuiltIn step 3.55) serves only the D-6
+    // short-circuit — a diff against that outside-the-lock snapshot would
+    // UPDATE rows a concurrent writer just deleted and leave that writer's
+    // inserted rows alive inside this writer's list.
+    const stored = (await tx
+      .select()
+      .from(schema.FieldValue)
       .where(
         and(
           eq(schema.FieldValue.entityId, entityInstanceId),
@@ -696,30 +728,101 @@ export async function setValueWithType(
           eq(schema.FieldValue.organizationId, ctx.organizationId)
         )
       )
+      .orderBy(asc(schema.FieldValue.sortKey))) as unknown as ExistingSetRow[]
 
-    if (insertRows.length === 0) return []
+    const plan = planSetReconcile(stored, insertRows)
 
-    return await tx
-      .insert(schema.FieldValue)
-      .values(insertRows)
-      .onConflictDoUpdate({
-        target: [schema.FieldValue.entityId, schema.FieldValue.fieldId, schema.FieldValue.sortKey],
-        set: {
-          valueText: sql`excluded."valueText"`,
-          valueNumber: sql`excluded."valueNumber"`,
-          valueBoolean: sql`excluded."valueBoolean"`,
-          valueDate: sql`excluded."valueDate"`,
-          valueJson: sql`excluded."valueJson"`,
-          optionId: sql`excluded."optionId"`,
-          relatedEntityId: sql`excluded."relatedEntityId"`,
-          relatedEntityDefinitionId: sql`excluded."relatedEntityDefinitionId"`,
-          actorId: sql`excluded."actorId"`,
-          aiStatus: sql`excluded."aiStatus"`,
-          updatedAt: new Date(),
-        },
-      })
-      .returning()
+    if (plan.kind === 'rewrite') {
+      // Stored sortKeys are corrupt, disordered, or grown past the sanity
+      // length: full replace with fresh canonical keys. This fallback is
+      // also the key compactor (§5B) — no background rebalance job exists.
+      await tx
+        .delete(schema.FieldValue)
+        .where(
+          and(
+            eq(schema.FieldValue.entityId, entityInstanceId),
+            eq(schema.FieldValue.fieldId, fieldId),
+            eq(schema.FieldValue.organizationId, ctx.organizationId)
+          )
+        )
+
+      if (insertRows.length === 0) {
+        return { rows: [] as ExistingSetRow[], deletionOnly: stored.length > 0 }
+      }
+
+      const rows = (await tx
+        .insert(schema.FieldValue)
+        .values(insertRows)
+        .onConflictDoUpdate(replaceConflictUpdate())
+        .returning()) as unknown as ExistingSetRow[]
+      return { rows, deletionOnly: false }
+    }
+
+    for (const u of plan.update) {
+      // `updatedAt` is set explicitly (not left to `$onUpdate`) so the
+      // in-memory assembly below carries the exact stored stamp.
+      await tx
+        .update(schema.FieldValue)
+        .set({ ...updateColumnsFor(u.target), updatedAt: writeStamp })
+        .where(
+          and(
+            eq(schema.FieldValue.id, u.row.id),
+            eq(schema.FieldValue.organizationId, ctx.organizationId)
+          )
+        )
+    }
+
+    if (plan.deleteIds.length > 0) {
+      await tx
+        .delete(schema.FieldValue)
+        .where(
+          and(
+            inArray(schema.FieldValue.id, plan.deleteIds),
+            eq(schema.FieldValue.organizationId, ctx.organizationId)
+          )
+        )
+    }
+
+    let tailRows: ExistingSetRow[] = []
+    if (plan.insertTail.length > 0) {
+      // onConflictDoUpdate stays as belt-and-braces on the tail while other
+      // writers migrate to the lock (Phase 3 re-examines it).
+      tailRows = (await tx
+        .insert(schema.FieldValue)
+        .values(plan.insertTail)
+        .onConflictDoUpdate(replaceConflictUpdate())
+        .returning()) as unknown as ExistingSetRow[]
+    }
+
+    // Assemble the final row set in position (== sortKey) order from
+    // kept/updated/inserted rows — no post-write re-SELECT (§7).
+    const surviving: ExistingSetRow[] = []
+    for (const k of plan.keep) surviving[k.position] = k.row
+    for (const u of plan.update) {
+      surviving[u.position] = {
+        ...u.row,
+        ...updateColumnsFor(u.target),
+        updatedAt: writeStamp,
+      } as unknown as ExistingSetRow
+    }
+
+    return {
+      rows: [...surviving, ...tailRows],
+      deletionOnly:
+        plan.update.length === 0 && plan.insertTail.length === 0 && plan.deleteIds.length > 0,
+    }
   })
+
+  // A deletion-only diff (shrink or clear) touches no surviving FieldValue
+  // row, so nothing bumps `max(fv.updatedAt)` — stamp the instance so the
+  // dedup watermark sees the write (§4 Timestamps). Double-stamping with
+  // setValuesForEntity's D-7 stamp is harmless; a clear of an already-empty
+  // field plans no deletions and does not stamp.
+  if (outcome.deletionOnly) {
+    await stampEntityInstanceUpdatedAt(ctx, entityInstanceId)
+  }
+
+  const inserted = outcome.rows
 
   // Clear (null or empty list): rows are gone, derived state follows.
   if (values.length === 0) {
@@ -2408,71 +2511,6 @@ async function loadExistingRowsForSet(
     })
     return null
   }
-}
-
-/**
- * TOTAL, conservative payload equality between one stored row and the row the
- * write would insert (`buildFieldValueRow` output). Every value column is
- * compared; any uncertainty (unparseable date, non-finite number, JSON that
- * fails to serialize) answers "changed", so the worst a wrong answer can cost
- * is the old DELETE+INSERT behavior.
- */
-function existingRowMatchesInsert(
-  existing: ExistingSetRow,
-  insert: typeof schema.FieldValue.$inferInsert
-): boolean {
-  // Text-like columns: null-safe strict equality, no normalization.
-  if ((existing.valueText ?? null) !== (insert.valueText ?? null)) return false
-  if ((existing.optionId ?? null) !== (insert.optionId ?? null)) return false
-  if ((existing.relatedEntityId ?? null) !== (insert.relatedEntityId ?? null)) return false
-  if ((existing.relatedEntityDefinitionId ?? null) !== (insert.relatedEntityDefinitionId ?? null)) {
-    return false
-  }
-  if ((existing.actorId ?? null) !== (insert.actorId ?? null)) return false
-  if ((existing.valueBoolean ?? null) !== (insert.valueBoolean ?? null)) return false
-
-  // Numbers: compare numerically; anything non-finite is "changed".
-  const existingNum = existing.valueNumber ?? null
-  const insertNum = insert.valueNumber ?? null
-  if ((existingNum === null) !== (insertNum === null)) return false
-  if (existingNum !== null && insertNum !== null) {
-    const a = Number(existingNum)
-    const b = Number(insertNum)
-    if (!Number.isFinite(a) || !Number.isFinite(b) || a !== b) return false
-  }
-
-  // Dates: `valueDate` is a `mode: 'string'` timestamp, so the stored pg text
-  // form and a fresh `toISOString()` differ textually for the same instant —
-  // compare by parsed instant, and treat unparseable as "changed".
-  const existingDate = existing.valueDate ?? null
-  const insertDate = insert.valueDate ?? null
-  if ((existingDate === null) !== (insertDate === null)) return false
-  if (existingDate !== null && insertDate !== null) {
-    const a = Date.parse(existingDate)
-    const b = Date.parse(insertDate)
-    if (Number.isNaN(a) || Number.isNaN(b) || a !== b) return false
-  }
-
-  // JSON: jsonb does not preserve object key order, so compare both envelope
-  // halves via `stableStringify` (the repo's canonical jsonb comparison).
-  // `meta` must match too — the DELETE+INSERT this guard replaces would drop
-  // stored metadata the incoming write doesn't re-assert, so an envelope
-  // carrying extra meta is a REAL change, not a no-op.
-  const existingJson = existing.valueJson ?? null
-  const insertJson = (insert.valueJson as unknown) ?? null
-  if ((existingJson === null) !== (insertJson === null)) return false
-  if (existingJson !== null && insertJson !== null) {
-    try {
-      const a = readEnvelope(existingJson)
-      const b = readEnvelope(insertJson)
-      if (stableStringify(a.v ?? null) !== stableStringify(b.v ?? null)) return false
-      if (stableStringify(a.meta ?? null) !== stableStringify(b.meta ?? null)) return false
-    } catch {
-      return false
-    }
-  }
-
-  return true
 }
 
 /**

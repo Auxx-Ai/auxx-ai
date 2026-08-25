@@ -152,7 +152,8 @@ describe('setValueWithType — CURRENCY integrality guard', () => {
       fieldType: 'CURRENCY',
       value: { type: 'number', value: 2149 },
     })
-    expect(calls.delete).toBe(1)
+    // No stored rows — the reconcile plans a pure tail insert, no delete.
+    expect(calls.delete).toBe(0)
     expect(result).toHaveLength(1)
   })
 

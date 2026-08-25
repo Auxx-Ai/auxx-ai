@@ -246,7 +246,7 @@ describe('idempotency guard (D-6)', () => {
     expect(rows[0]!.createdAt.getTime()).toBe(original.createdAt.getTime())
   })
 
-  it('a real change DOES rewrite the row', async () => {
+  it('a real change updates the SAME row in place — id and createdAt survive, updatedAt moves', async () => {
     await setName(f, 'Robert')
     const original = (await valueRows(f, f.nameFieldId))[0]!
 
@@ -256,10 +256,13 @@ describe('idempotency guard (D-6)', () => {
     const rows = await valueRows(f, f.nameFieldId)
     expect(rows).toHaveLength(1)
     expect(rows[0]!.valueText).toBe('Bob')
-    // Either a new row id or a moved updatedAt — the write really landed.
-    const rewritten =
-      rows[0]!.id !== original.id || rows[0]!.updatedAt.getTime() !== original.updatedAt.getTime()
-    expect(rewritten).toBe(true)
+    // The reconcile (delete-insert-replace.md Phase 1) inverted the old
+    // delete+insert pin: a changed write now keeps the row's identity. The
+    // moved updatedAt is what proves the write landed; the stable id is what
+    // persisted references (attachments, thread-merge snapshots) rely on.
+    expect(rows[0]!.id).toBe(original.id)
+    expect(rows[0]!.createdAt.getTime()).toBe(original.createdAt.getTime())
+    expect(rows[0]!.updatedAt.getTime()).toBeGreaterThan(original.updatedAt.getTime())
   })
 
   it('clearing an already-absent value is a no-op (B-14 delete-of-absent)', async () => {

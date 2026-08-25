@@ -204,7 +204,7 @@ const setTags = (ctx: FieldValueContext, f: Fixture, vals: string[]) =>
  * method — deterministically simulating a crash at that point INSIDE the
  * transaction. Everything up to the failure executes real SQL on the real tx.
  */
-function failingCtx(f: Fixture, failOn: 'insert'): FieldValueContext {
+function failingCtx(f: Fixture, failOn: 'insert' | 'update'): FieldValueContext {
   const real = db()
   const failingDb = new Proxy(real, {
     get(target, prop, receiver) {
@@ -241,15 +241,29 @@ beforeEach(async () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 describe('atomic replace', () => {
-  it('a failure after the DELETE leaves the stored values intact', async () => {
+  it('a crash on the tail INSERT rolls the whole write back', async () => {
     await setTags(f.ctx, f, ['red', 'green'])
     expect(await valueTexts(f)).toEqual(['red', 'green'])
 
-    await expect(setTags(failingCtx(f, 'insert'), f, ['blue', 'yellow'])).rejects.toThrow(
+    // A GROWN list forces a tail insert (the reconcile turns a same-count
+    // change into in-place UPDATEs); the crash lands after the position
+    // updates already ran on the real tx — rollback must undo those too.
+    await expect(setTags(failingCtx(f, 'insert'), f, ['blue', 'yellow', 'purple'])).rejects.toThrow(
       'simulated crash'
     )
 
-    // Pre-Phase-0 this read returned [] — the DELETE had already committed.
+    // Pre-Phase-0 the destroy window left [] (or, post-reconcile, a torn
+    // half-updated list); the transaction leaves the stored list intact.
+    expect(await valueTexts(f)).toEqual(['red', 'green'])
+  })
+
+  it('a crash on an in-place UPDATE rolls the whole write back', async () => {
+    await setTags(f.ctx, f, ['red', 'green'])
+
+    await expect(setTags(failingCtx(f, 'update'), f, ['blue', 'yellow'])).rejects.toThrow(
+      'simulated crash'
+    )
+
     expect(await valueTexts(f)).toEqual(['red', 'green'])
   })
 
