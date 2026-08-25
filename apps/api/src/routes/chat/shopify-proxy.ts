@@ -50,13 +50,23 @@ shopifyProxyRoute.get('/jwt', async (c) => {
   const channelId = params.get('channel_id')
   const customerId = params.get('logged_in_customer_id')
 
-  if (!shop || !channelId) {
-    return c.json({ error: 'missing_params' }, 400)
-  }
-
   // No logged-in customer = visitor path. Tell boot.js to boot anonymous.
+  // Checked BEFORE the param guard: a visitor needs no channel binding to boot
+  // anonymously, and gating the 204 behind `channel_id` would make this branch
+  // unreachable for any caller that omits it.
   if (!customerId) {
     return c.body(null, 204)
+  }
+
+  if (!shop || !channelId) {
+    // Was silent. This is the storefront's contract with us, and `boot.js` omitting
+    // `channel_id` is exactly what made identified chat fail everywhere — if it ever
+    // regresses, this line is how we find out without a merchant reporting it.
+    log.warn('App Proxy JWT request missing params', {
+      shop,
+      hasChannelId: Boolean(channelId),
+    })
+    return c.json({ error: 'missing_params' }, 400)
   }
 
   // Resolve org from the channel (single indexed read).
@@ -148,6 +158,16 @@ shopifyProxyRoute.get('/jwt', async (c) => {
     signingSecret,
     { expiresIn }
   )
+
+  // The success line. A storefront that renders no widget is either not reaching this route
+  // at all (nothing logged → the embed block or the metafield is the problem) or reaching it
+  // and failing above (a warn/error line names which check). Never logs the JWT itself.
+  log.info('Minted Shopify storefront chat JWT', {
+    shop,
+    channelId,
+    organizationId: orgId,
+    expiresIn,
+  })
 
   c.header('Cache-Control', 'no-store')
   return c.json({ userJwt, expiresIn })

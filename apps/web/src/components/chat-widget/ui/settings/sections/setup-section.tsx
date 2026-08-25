@@ -19,6 +19,7 @@ import {
   type SetupFramework,
   type SetupSnippet,
 } from './setup-snippets'
+import { ShopifyCard } from './shopify-card'
 
 interface SetupSectionProps {
   widget: ChatWidgetWithIntegration
@@ -168,6 +169,14 @@ export function SetupSection({ widget, channelId }: SetupSectionProps) {
             )
           })}
           <p className='text-sm text-muted-foreground'>{activeSnippet.note}</p>
+        </div>
+
+        {/* Platforms axis — the frameworks above are "paste this snippet"; Shopify installs
+            the widget through the Auxx app instead, so it gets its own control rather than
+            a snippet. */}
+        <div className='mt-6'>
+          <p className='mb-2 text-xs font-medium text-muted-foreground'>Or install on a platform</p>
+          <ShopifyCard channelId={channelId} />
         </div>
 
         <div className='mt-4 flex items-center gap-4'>
