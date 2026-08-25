@@ -79,9 +79,47 @@ export class OrganizationCacheService {
     return `${ORG_CACHE_KEY_CONFIG[keyName].prefix}:${scopeId}:lock`
   }
 
+  /**
+   * Redis key for the invalidation generation counter.
+   *
+   * Deleting `data`/`hash` does not stop a `recompute()` that is ALREADY running
+   * from writing its pre-invalidation snapshot back afterwards — and `writeBack`
+   * sets a full `ttlSeconds` expiry, so a lost race pins stale data for a day.
+   * Every invalidation bumps this counter; a recompute reads it before calling
+   * the provider and refuses to persist a value computed against an older
+   * generation. See `recompute()` and `invalidateAndRecompute()`.
+   */
+  private genKey(keyName: OrgCacheKeyName, scopeId: string): string {
+    return `${ORG_CACHE_KEY_CONFIG[keyName].prefix}:${scopeId}:gen`
+  }
+
   /** Local cache key */
   private localKey(keyName: OrgCacheKeyName, scopeId: string): string {
     return `${ORG_CACHE_KEY_CONFIG[keyName].prefix}:${scopeId}`
+  }
+
+  /** Current invalidation generation, or null when Redis is unavailable/unset. */
+  private async readGeneration(keyName: OrgCacheKeyName, scopeId: string): Promise<string | null> {
+    const redis = await this.getRedis()
+    if (!redis) return null
+    try {
+      return await redis.get(this.genKey(keyName, scopeId))
+    } catch {
+      return null
+    }
+  }
+
+  /** Bump the generation so any in-flight recompute discards its result. */
+  private async bumpGeneration(keyName: OrgCacheKeyName, scopeId: string): Promise<void> {
+    const redis = await this.getRedis()
+    if (!redis) return
+    try {
+      const key = this.genKey(keyName, scopeId)
+      await redis.incr(key)
+      await redis.expire(key, ORG_CACHE_KEY_CONFIG[keyName].ttlSeconds)
+    } catch {
+      // Best effort — a missed bump only costs us the old (unfenced) behaviour.
+    }
   }
 
   /**
@@ -225,10 +263,16 @@ export class OrganizationCacheService {
   /**
    * Compute value from provider and write back to cache.
    * Uses distributed lock to prevent thundering herd.
+   *
+   * `skipLock` is set by {@link invalidateAndRecompute}: the lock's waiter branch
+   * ADOPTS whatever the current holder writes, and that holder may have read the
+   * row before the caller's transaction committed. An invalidation must always
+   * read the DB itself, never inherit an in-flight snapshot.
    */
   private async recompute<K extends OrgCacheKeyName>(
     orgId: string,
-    keyName: K
+    keyName: K,
+    skipLock = false
   ): Promise<OrgCacheDataMap[K]> {
     const provider = this.providers.get(keyName)
     if (!provider) {
@@ -238,7 +282,7 @@ export class OrganizationCacheService {
     const redis = await this.getRedis()
 
     // Try to acquire distributed lock
-    if (redis) {
+    if (redis && !skipLock) {
       const lock = this.lockKey(keyName, orgId)
       try {
         const acquired = await redis.set(lock, '1', 'EX', LOCK_TTL_SECONDS, 'NX')
@@ -263,13 +307,27 @@ export class OrganizationCacheService {
       }
     }
 
+    // Read the generation BEFORE touching the DB. If an invalidation lands while
+    // `compute()` is in flight, this snapshot is already stale by the time it
+    // resolves and must not be written back — `writeBack` would give it a fresh
+    // full-length TTL and silently undo the invalidation.
+    const generation = await this.readGeneration(keyName, orgId)
+
     try {
       const value = await provider.compute(orgId, this.db)
-      await this.writeBack(orgId, keyName, value)
+      const current = await this.readGeneration(keyName, orgId)
+      if (current === generation) {
+        await this.writeBack(orgId, keyName, value)
+      } else {
+        logger.warn(`Discarding stale recompute for ${keyName}:${orgId}`, {
+          computedAtGeneration: generation,
+          currentGeneration: current,
+        })
+      }
       return value
     } finally {
       // Release lock
-      if (redis) {
+      if (redis && !skipLock) {
         try {
           await redis.del(this.lockKey(keyName, orgId))
         } catch {
@@ -329,6 +387,11 @@ export class OrganizationCacheService {
       keys.map(async (keyName) => {
         const lk = this.localKey(keyName, orgId)
 
+        // Bump the generation FIRST. Any recompute already in flight — including
+        // one that read the row before the caller's transaction committed — is
+        // now fenced out and will discard its result instead of resurrecting it.
+        await this.bumpGeneration(keyName, orgId)
+
         // Clear local cache
         this.localCache.delete(lk)
 
@@ -342,10 +405,12 @@ export class OrganizationCacheService {
           }
         }
 
-        // Recompute if provider is registered
+        // Recompute if provider is registered. `skipLock` because the waiter
+        // branch would adopt an in-flight (pre-commit) snapshot instead of
+        // reading the DB — the exact failure this invalidation exists to undo.
         if (this.providers.has(keyName)) {
           try {
-            await this.recompute(orgId, keyName)
+            await this.recompute(orgId, keyName, true)
           } catch (error) {
             logger.warn(`Recompute failed for ${keyName}:${orgId}`, {
               error: error instanceof Error ? error.message : String(error),
@@ -398,6 +463,9 @@ export class OrganizationCacheService {
     const redis = await this.getRedis()
 
     for (const keyName of keysToFlush) {
+      // Fence in-flight recomputes (see `genKey`) before dropping the entry,
+      // or one can write its pre-flush snapshot straight back afterwards.
+      await this.bumpGeneration(keyName, orgId)
       this.localCache.delete(this.localKey(keyName, orgId))
 
       if (redis) {

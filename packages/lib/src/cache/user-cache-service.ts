@@ -75,6 +75,43 @@ export class UserCacheService {
   }
 
   /**
+   * Redis key for the invalidation generation counter.
+   *
+   * Deleting `data`/`hash` does not stop a `recompute()` that is ALREADY running
+   * from writing its pre-invalidation snapshot back afterwards — and `writeBack`
+   * gives it a fresh full-length TTL, so a lost race pins stale data for a day.
+   * Every delete bumps this counter; a recompute reads it before calling the
+   * provider and refuses to persist a value computed against an older generation.
+   */
+  private genKey(keyName: UserCacheKeyName, scopeId: string): string {
+    return `${USER_CACHE_KEY_CONFIG[keyName].prefix}:${scopeId}:gen`
+  }
+
+  /** Current invalidation generation, or null when Redis is unavailable/unset. */
+  private async readGeneration(keyName: UserCacheKeyName, scopeId: string): Promise<string | null> {
+    const redis = await this.getRedis()
+    if (!redis) return null
+    try {
+      return await redis.get(this.genKey(keyName, scopeId))
+    } catch {
+      return null
+    }
+  }
+
+  /** Bump the generation so any in-flight recompute discards its result. */
+  private async bumpGeneration(keyName: UserCacheKeyName, scopeId: string): Promise<void> {
+    const redis = await this.getRedis()
+    if (!redis) return
+    try {
+      const key = this.genKey(keyName, scopeId)
+      await redis.incr(key)
+      await redis.expire(key, USER_CACHE_KEY_CONFIG[keyName].ttlSeconds)
+    } catch {
+      // Best effort — a missed bump only costs us the old (unfenced) behaviour.
+    }
+  }
+
+  /**
    * Multi-key fetch for a single user.
    * @param orgId Required for org-scoped keys (userSettings, userMailViews)
    */
@@ -160,9 +197,24 @@ export class UserCacheService {
     // here would call providers like userProfile with `userId:orgId`, which has
     // no matching User row and silently poisons the cache with null.
     const sid = this.scopeId(userId, keyName, orgId)
+
+    // Read the generation BEFORE touching the DB. If an invalidation lands while
+    // `compute()` is in flight, this snapshot is already stale by the time it
+    // resolves and must not be written back — `writeBack` would give it a fresh
+    // full-length TTL and silently undo the invalidation.
+    const generation = await this.readGeneration(keyName, sid)
+
     const value = await provider.compute(sid, this.db)
 
-    await this.writeBack(sid, keyName, value)
+    const current = await this.readGeneration(keyName, sid)
+    if (current === generation) {
+      await this.writeBack(sid, keyName, value)
+    } else {
+      logger.warn(`Discarding stale recompute for ${keyName}:${sid}`, {
+        computedAtGeneration: generation,
+        currentGeneration: current,
+      })
+    }
 
     return value
   }
@@ -274,6 +326,9 @@ export class UserCacheService {
     await Promise.all(
       keys.map(async (keyName) => {
         const sid = this.scopeId(userId, keyName, orgId)
+        // Fence in-flight recomputes (see `genKey`) BEFORE dropping the entry,
+        // or one can write its pre-invalidation snapshot straight back after.
+        await this.bumpGeneration(keyName, sid)
         this.localCache.delete(this.localKey(keyName, sid))
 
         if (redis) {
@@ -297,6 +352,7 @@ export class UserCacheService {
       // For non-org-scoped keys, flush directly
       if (!ORG_SCOPED_USER_KEYS.has(keyName)) {
         const sid = userId
+        await this.bumpGeneration(keyName, sid)
         this.localCache.delete(this.localKey(keyName, sid))
         if (redis) {
           try {

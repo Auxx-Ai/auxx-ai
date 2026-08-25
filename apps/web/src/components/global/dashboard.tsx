@@ -35,6 +35,21 @@ import {
   useDehydratedUser,
 } from '~/providers/dehydrated-state-provider'
 
+/**
+ * Per-tab timestamp of the last bounce this gate made to `/onboarding`.
+ * `sessionStorage`, not state: the redirect is a full page load, so nothing in
+ * React survives it.
+ */
+const ONBOARDING_BOUNCE_KEY = 'auxx:onboarding-bounce-at'
+
+/**
+ * A return inside this window means `/onboarding` sent the user straight back —
+ * i.e. the two pages disagree and this is a loop, not a normal visit. A loop
+ * turns the round trip around in about a second; someone who abandons onboarding
+ * and later navigates to `/app` by hand is far outside it and still gets gated.
+ */
+const ONBOARDING_BOUNCE_WINDOW_MS = 15_000
+
 type Props = {
   user?: any
   children: React.ReactNode
@@ -82,16 +97,54 @@ export const Dashboard = ({
   // Redirect to onboarding if either gate is open. `/onboarding` is the single
   // place that decides WHICH step is missing.
   // Uses full navigation since onboarding is in a separate route group.
-  React.useEffect(() => {
-    if (needsOnboarding) {
-      window.location.href = '/onboarding'
-    }
-  }, [needsOnboarding])
+  //
+  // AT MOST ONCE per tab, and that bound is the point. This gate reads the CACHED
+  // dehydrated state; `/onboarding` reads the row. Whenever those two disagree
+  // they redirect at each other forever, and neither one ever consults the
+  // other's source, so nothing in the cycle can break it. It has happened with a
+  // different stale writer each time (#317 session cookie cache, the demo route's
+  // direct Drizzle writes, #1381 `userProfile`, and a lost invalidation race in
+  // the org cache) — so the bounce is bounded here rather than waiting to fix the
+  // next writer. Coming back still needing onboarding means the cache is lying;
+  // `/onboarding` only sends anyone here when the row says they are done, so
+  // rendering the app is the correct read. Onboarding is a UX gate, never an
+  // authorization one — `(protected)/layout.tsx` is what enforces access.
+  const [onboardingBounceSpent, setOnboardingBounceSpent] = useState(false)
 
-  // Show nothing while redirecting to onboarding
-  if (needsOnboarding) {
-    return null
-  }
+  React.useEffect(() => {
+    if (!needsOnboarding) {
+      try {
+        sessionStorage.removeItem(ONBOARDING_BOUNCE_KEY)
+      } catch {
+        // Private mode / storage disabled — the in-memory guard still holds.
+      }
+      return
+    }
+
+    let bouncedAt = 0
+    try {
+      bouncedAt = Number(sessionStorage.getItem(ONBOARDING_BOUNCE_KEY) ?? 0)
+    } catch {
+      // Unreadable storage — fall through and bounce.
+    }
+
+    if (bouncedAt && Date.now() - bouncedAt < ONBOARDING_BOUNCE_WINDOW_MS) {
+      console.warn(
+        '[Onboarding] Bounced straight back from /onboarding still needing onboarding — ' +
+          'the cached state disagrees with the database. Rendering the app instead of ' +
+          'redirecting again.'
+      )
+      setOnboardingBounceSpent(true)
+      return
+    }
+
+    try {
+      sessionStorage.setItem(ONBOARDING_BOUNCE_KEY, String(Date.now()))
+    } catch {
+      // Ignore — worst case we bounce once more on the next hard load.
+    }
+    window.location.href = '/onboarding'
+  }, [needsOnboarding])
 
   // Use unified mutation hook for optimistic updates
   const { updateBulk } = useThreadMutation()
@@ -136,6 +189,14 @@ export const Dashboard = ({
     },
     [updateBulk, handleFavoriteDragEnd]
   )
+
+  // Render nothing while the redirect above is in flight. This sits BELOW every
+  // hook on purpose: it used to short-circuit before `useThreadMutation`,
+  // `useFavoriteDragEnd` and `handleDragEnd`, so the hook count changed the
+  // moment the gate flipped and React threw "rendered fewer hooks than expected".
+  if (needsOnboarding && !onboardingBounceSpent) {
+    return null
+  }
 
   return (
     <SidebarProvider resizable defaultOpen={defaultSidebarOpen} defaultWidth={defaultSidebarWidth}>
