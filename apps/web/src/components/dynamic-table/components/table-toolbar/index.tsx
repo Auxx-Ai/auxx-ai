@@ -95,6 +95,7 @@ export function TableToolbar<TData = any>({
     enableImport = false,
     onImport,
     importHref,
+    namedImporters,
     onRefresh,
     customFilter,
   } = useTableConfig()
@@ -273,9 +274,21 @@ export function TableToolbar<TData = any>({
               <DropdownMenuItem asChild>
                 <Link href={importHref}>
                   <Upload />
-                  Import data
+                  {namedImporters?.length ? 'Import records' : 'Import data'}
                 </Link>
               </DropdownMenuItem>
+              {/* NAMED IMPORTERS — doors to defs that are deliberately hidden and
+                  therefore have no records page of their own to be imported from
+                  (`part.vendorParts` → supplier prices). Declared on the relation
+                  field; absent for every resource that declares none. */}
+              {namedImporters?.map((importer) => (
+                <DropdownMenuItem key={importer.target} asChild>
+                  <Link href={`${importHref}?target=${encodeURIComponent(importer.target)}`}>
+                    <Upload />
+                    {importer.label}
+                  </Link>
+                </DropdownMenuItem>
+              ))}
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 disabled={!entityDefinitionId || createExport.isPending}

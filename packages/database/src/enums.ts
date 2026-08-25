@@ -314,8 +314,8 @@ export const ModelTypeMeta: Record<
     hasDetailPage: true,
   },
   vendor_part: {
-    label: 'Vendor Part',
-    plural: 'Vendor Parts',
+    label: 'Supplier Price',
+    plural: 'Supplier Pricing',
     icon: 'package',
     color: 'orange',
     apiSlug: 'vendor-parts',
@@ -323,8 +323,8 @@ export const ModelTypeMeta: Record<
     hasDetailPage: false,
   },
   subpart: {
-    label: 'Subpart',
-    plural: 'Subparts',
+    label: 'Component',
+    plural: 'Components',
     icon: 'layers',
     color: 'orange',
     apiSlug: 'subparts',

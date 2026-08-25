@@ -37,6 +37,21 @@ interface ImportPageProps {
   basePath: string
   /** Base path for import routes (e.g., '/app/contacts/import') */
   importBasePath: string
+  /**
+   * Breadcrumb leaf, when this is a NAMED IMPORTER rather than the resource's own
+   * import — e.g. `'Import supplier prices'`. Defaults to `'Import'`.
+   */
+  importTitle?: string
+  /**
+   * The named importer's target def, when one is in play.
+   *
+   * 🛑 Must be carried on every in-wizard URL. `entityDefinitionId` is resolved
+   * from this query param on the server, so dropping it on a step navigation
+   * silently reverts the wizard to the host def while the JOB stays on the
+   * target — the header, the field list and the step counts would all then
+   * describe a different entity than the one being imported.
+   */
+  importTarget?: string
   /** Job ID from URL ('new' or actual job ID) */
   jobId: string
 }
@@ -51,11 +66,15 @@ export function ImportPage({
   resourceLabel,
   basePath,
   importBasePath,
+  importTitle,
+  importTarget,
   jobId,
 }: ImportPageProps) {
   const router = useRouter()
   const isNewImport = jobId === 'new'
   const actualJobId = isNewImport ? null : jobId
+  /** `&target=…` for in-wizard links, empty when this is the host's own import. */
+  const targetQuery = importTarget ? `&target=${encodeURIComponent(importTarget)}` : ''
 
   // Step state from URL query param
   const [currentStep, setCurrentStep] = useQueryState('step', stepParser)
@@ -98,7 +117,7 @@ export function ImportPage({
   const navigateToStep = (step: ImportStep, newJobId?: string) => {
     if (newJobId && newJobId !== jobId) {
       // Job ID changed (after upload), navigate to new URL
-      router.push(`${importBasePath}/${newJobId}?step=${step}`)
+      router.push(`${importBasePath}/${newJobId}?step=${step}${targetQuery}`)
     } else {
       // Same job, just update step query param
       setCurrentStep(step)
@@ -120,7 +139,7 @@ export function ImportPage({
       if (confirmed) {
         try {
           await deleteJob.mutateAsync({ jobId })
-          router.push(`${importBasePath}/new?step=upload`)
+          router.push(`${importBasePath}/new?step=upload${targetQuery}`)
         } catch (error) {
           toastError({
             title: 'Failed to delete import',
@@ -139,7 +158,7 @@ export function ImportPage({
 
   /** Called when upload completes - navigate to map-columns with new job ID */
   const handleUploadComplete = (newJobId: string) => {
-    router.push(`${importBasePath}/${newJobId}?step=map-columns`)
+    router.push(`${importBasePath}/${newJobId}?step=map-columns${targetQuery}`)
   }
 
   /** Called when import completes - navigate back to resource list */
@@ -184,7 +203,7 @@ export function ImportPage({
         }>
         <MainPageBreadcrumb>
           <MainPageBreadcrumbItem title={resourceLabel} href={basePath} />
-          <MainPageBreadcrumbItem title='Import' />
+          <MainPageBreadcrumbItem title={importTitle ?? 'Import'} />
         </MainPageBreadcrumb>
       </MainPageHeader>
       <MainPageContent>

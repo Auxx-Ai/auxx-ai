@@ -459,7 +459,10 @@ export const PART_FIELDS: Record<string, ResourceField> = {
   vendorParts: {
     id: toFieldId('vendorParts'),
     key: 'vendorParts',
-    label: 'Vendor Parts',
+    // Relabelled from 'Vendor Parts': the join entity's NAME is the thing being
+    // kept off-stage, and a field label is where it leaked (02-design §6.2). The
+    // drawer already said "Suppliers" rather than "Vendor Parts".
+    label: 'Supplier Pricing',
     type: BaseType.RELATION,
     fieldType: FieldType.RELATIONSHIP,
     isSystem: true,
@@ -477,14 +480,17 @@ export const PART_FIELDS: Record<string, ResourceField> = {
       relationshipType: 'has_many',
       isInverse: true,
     },
-    description: 'Vendor parts linked to this part',
+    // `vendor_part` is hidden, so it has no records page to host an Import button.
+    // This is that button. Target def comes from `inverseResourceFieldId` above.
+    namedImporter: { label: 'Import supplier prices' },
+    description: 'Supplier prices linked to this part',
   },
 
   // Reverse relationship: subparts (one-to-many from subpart.parentPart)
   subparts: {
     id: toFieldId('subparts'),
     key: 'subparts',
-    label: 'Subparts',
+    label: 'Components',
     type: BaseType.RELATION,
     fieldType: FieldType.RELATIONSHIP,
     isSystem: true,
@@ -502,6 +508,7 @@ export const PART_FIELDS: Record<string, ResourceField> = {
       relationshipType: 'has_many',
       isInverse: true,
     },
+    namedImporter: { label: 'Import BOM' },
     description: 'Child parts used in this assembly',
   },
 
@@ -509,7 +516,7 @@ export const PART_FIELDS: Record<string, ResourceField> = {
   usedInAssemblies: {
     id: toFieldId('usedInAssemblies'),
     key: 'usedInAssemblies',
-    label: 'Used In Assemblies',
+    label: 'Used In',
     type: BaseType.RELATION,
     fieldType: FieldType.RELATIONSHIP,
     isSystem: true,
@@ -527,6 +534,10 @@ export const PART_FIELDS: Record<string, ResourceField> = {
       relationshipType: 'has_many',
       isInverse: true,
     },
+    // 🛑 No `namedImporter`, deliberately (02-design §6.4, O3). This is the same
+    // BOM edge as `subparts` read backwards. Offering both would let one file
+    // assert one edge in two senses, and the `(parentPart, childPart)` key
+    // collapses those to whichever row landed last — a silently wrong quantity.
     description: 'Assemblies that use this part as a component',
   },
 

@@ -2,7 +2,8 @@
 'use client'
 
 import { createContext, useContext } from 'react'
-import type { BulkAction, DragDropConfig } from '../types'
+
+import type { BulkAction, DragDropConfig, NamedImporterEntry } from '../types'
 
 // ============================================================================
 // TYPES
@@ -42,6 +43,7 @@ export interface TableConfigContextValue<TData = any> {
 
   /** Import page URL */
   importHref?: string
+  namedImporters?: NamedImporterEntry[]
 
   /** Show footer */
   showFooter: boolean

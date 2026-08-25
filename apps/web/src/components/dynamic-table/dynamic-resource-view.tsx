@@ -30,6 +30,7 @@ import type {
 import { CustomFieldCell } from './components/custom-field-cell'
 import { DroppedFiltersNotice } from './components/dropped-filters-notice'
 import { DynamicTableFooter } from './components/dynamic-table-footer'
+
 import { getIconForFieldType } from './custom-field-column-factory'
 import { DynamicView } from './dynamic-view'
 import { useDefaultTablePersistence } from './hooks/use-default-table-persistence'
@@ -40,7 +41,12 @@ import {
   useTableFilters,
   useTableSorting,
 } from './stores/store-selectors'
-import type { BulkAction, CellSelectionConfig, ExtendedColumnDef } from './types'
+import type {
+  BulkAction,
+  CellSelectionConfig,
+  ExtendedColumnDef,
+  NamedImporterEntry,
+} from './types'
 
 /** Page size for the infinite query. Matches the prior records-view page size. */
 const PAGE_SIZE = 100
@@ -121,6 +127,8 @@ export interface DynamicResourceViewProps<TRow extends RecordMeta = RecordMeta> 
   onSelectedKanbanCardIdsChange?: Dispatch<SetStateAction<Set<string>>>
   /** Optional import page URL surfaced in the toolbar. */
   importHref?: string
+  /** Extra Import entries for hidden satellite defs (see `NamedImporterEntry`). */
+  namedImporters?: NamedImporterEntry[]
   /**
    * Label for the list context this view publishes (see
    * {@link useRecordListContextPublisher}). Embedded tables that are not "the
@@ -158,6 +166,7 @@ export function DynamicResourceView<TRow extends RecordMeta = RecordMeta>({
   selectedKanbanCardIds,
   onSelectedKanbanCardIdsChange,
   importHref,
+  namedImporters,
   listContextLabel,
   publishListContext = true,
 }: DynamicResourceViewProps<TRow>) {
@@ -388,6 +397,7 @@ export function DynamicResourceView<TRow extends RecordMeta = RecordMeta>({
         onRowSelectionChange={onRowSelectionChange}
         showRowNumbers={false}
         importHref={importHref}
+        namedImporters={namedImporters}
         onScrollToBottom={handleScrollToBottom}
         emptyState={emptyState}
         cellSelection={cellSelection}

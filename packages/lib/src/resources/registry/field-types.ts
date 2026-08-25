@@ -221,6 +221,41 @@ export interface ResourceField {
    */
   naturalKeyPosition?: number
 
+  /**
+   * Declares a NAMED IMPORTER for this relation's target — an extra entry in the
+   * host resource's Import menu that starts a job against the entity on the far
+   * side of this field.
+   *
+   * `part.vendorParts` declares *"Import supplier prices"*, so a supplier price
+   * list can be imported even though `vendor_part` is hidden and therefore has no
+   * records page of its own to host the usual button. Hidden has always meant *no
+   * sidebar entry, no records page* — never *not importable* — and this is the
+   * door that says so out loud.
+   *
+   * Declared on the RELATION FIELD rather than on the resource, for two reasons.
+   * The field already knows the target: it is `relationship.inverseResourceFieldId`,
+   * so nothing has to restate a def id that could drift. And table-level config is
+   * dead for exactly the resources that need this — `RESOURCE_TABLE_REGISTRY`
+   * excludes every `ENTITY_DEFINITION_TYPES` member (`field-registry.ts`), `part`
+   * included, which is the same trap that put {@link ResourceField.naturalKeyPosition}
+   * on the field.
+   *
+   * Registry-only, promoted through `mergeSystemAndCustomFields`' allow-list with
+   * no DB fallback: whether a file of supplier prices is a thing users import is a
+   * product fact, not per-org state.
+   *
+   * ⚠️ Declaring one is what EXPOSES the importer. `part.usedInAssemblies` is
+   * deliberately silent — it is the same BOM edge as `subparts` read backwards, and
+   * offering both lets one file assert an edge twice in opposite senses, which the
+   * `(parentPart, childPart)` key then collapses to whichever row landed last.
+   *
+   * @optional
+   */
+  namedImporter?: {
+    /** Menu label, e.g. `'Import supplier prices'`. Imperative, not a noun. */
+    label: string
+  }
+
   // ─────────────────────────────────────────────────────────────
   // CONVENIENCE PROPERTIES (for unified consumption, avoid transforms)
   // ─────────────────────────────────────────────────────────────

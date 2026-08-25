@@ -65,7 +65,7 @@ export const SUBPART_FIELDS: Record<string, ResourceField> = {
     relationshipConfig: {
       relatedEntityType: 'part',
       relationshipType: 'belongs_to',
-      inverseName: 'Subparts',
+      inverseName: 'Components',
       inverseSystemAttribute: 'part_subparts',
     },
     description: 'The assembly/parent that contains the child part',
@@ -99,7 +99,7 @@ export const SUBPART_FIELDS: Record<string, ResourceField> = {
     relationshipConfig: {
       relatedEntityType: 'part',
       relationshipType: 'belongs_to',
-      inverseName: 'Used In Assemblies',
+      inverseName: 'Used In',
       inverseSystemAttribute: 'part_used_in_assemblies',
     },
     description: 'The component being used in the assembly',

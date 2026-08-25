@@ -111,6 +111,7 @@ export type {
 export {
   ENTITY_DEFINITION_TYPES,
   fieldMatchesRef,
+  findNamedImporter,
   getAllFields,
   getCreatableFields,
   getField,

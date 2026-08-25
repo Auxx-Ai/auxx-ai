@@ -7,7 +7,11 @@ import { converters } from '@auxx/lib/field-values/client'
 import { canEditRecordAtRung, FeatureKey } from '@auxx/lib/permissions/client'
 import type { RecordId, ResourceField } from '@auxx/lib/resources/client'
 import type { ActorId } from '@auxx/types/actor'
-import { type AiOptions, getRelatedEntityDefinitionId } from '@auxx/types/custom-field'
+import {
+  type AiOptions,
+  getRelatedEntityDefinitionId,
+  type RelationshipConfig,
+} from '@auxx/types/custom-field'
 import { keyToFieldRef, toFieldId, toResourceFieldId } from '@auxx/types/field'
 import type { TypedFieldValue } from '@auxx/types/field-value'
 import { Button } from '@auxx/ui/components/button'
@@ -116,6 +120,23 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
   const { resource, isLoading } = useResource(slug)
   const entityDefinitionId = resource?.id
   const createHotkey = getCreateHotkey(resource?.apiSlug)
+
+  // NAMED IMPORTERS — extra Import entries this resource hosts for its hidden
+  // satellites. `part` declares "Import supplier prices" on `part.vendorParts`,
+  // because `vendor_part` is invisible and so has no records page of its own to
+  // put an Import button on. The target def is read off the declaring relation,
+  // never restated. Empty for every resource that declares none, which is all
+  // but one today.
+  const namedImporters = useMemo(
+    () =>
+      (resource?.fields ?? []).flatMap((field) => {
+        if (!field.namedImporter || !field.relationship) return []
+        const target = getRelatedEntityDefinitionId(field.relationship as RelationshipConfig)
+        if (!target) return []
+        return [{ label: field.namedImporter.label, target }]
+      }),
+    [resource?.fields]
+  )
 
   // Per-def write gate (Layer 2 × Layer 3) — the single `edit`-floor predicate
   // that governs every record write on this def (create/update/delete/archive/
@@ -932,6 +953,7 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
       selectedKanbanCardIds={selectedKanbanCardIds}
       onSelectedKanbanCardIdsChange={setSelectedKanbanCardIds}
       importHref={`${resolvedBasePath}/import`}
+      namedImporters={namedImporters}
     />
   )
 
@@ -988,6 +1010,24 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
               }}
             />
           )}
+          {/* The palette is the second door to import. It has to offer the same
+              set as the toolbar, or the two disagree about what can be imported. */}
+          {canEdit &&
+            namedImporters.map((importer) => (
+              <CommandAction
+                key={importer.target}
+                label={importer.label}
+                icon='database'
+                keywords='import upload csv'
+                priority={1}
+                perform={() => {
+                  useCommandPaletteStore.getState().close()
+                  router.push(
+                    `${resolvedBasePath}/import?target=${encodeURIComponent(importer.target)}`
+                  )
+                }}
+              />
+            ))}
           {hasSelection && (
             <>
               <CommandAction

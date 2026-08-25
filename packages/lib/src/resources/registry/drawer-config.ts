@@ -58,7 +58,7 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
   part: {
     entityType: 'part',
     additionalTabs: [
-      { value: 'subparts', label: 'Subparts', icon: 'layers', recordResource: 'subpart' },
+      { value: 'subparts', label: 'Components', icon: 'layers', recordResource: 'subpart' },
       { value: 'vendors', label: 'Suppliers', icon: 'truck', recordResource: 'vendor_part' },
     ],
     tabCards: {

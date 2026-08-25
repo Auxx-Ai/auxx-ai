@@ -67,7 +67,7 @@ export const VENDOR_PART_FIELDS: Record<string, ResourceField> = {
     relationshipConfig: {
       relatedEntityType: 'part',
       relationshipType: 'belongs_to',
-      inverseName: 'Vendor Parts',
+      inverseName: 'Supplier Pricing',
       inverseSystemAttribute: 'part_vendor_parts',
     },
     description: 'The part this vendor part belongs to',
