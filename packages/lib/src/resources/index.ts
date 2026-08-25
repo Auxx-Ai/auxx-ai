@@ -84,6 +84,9 @@ export {
   systemConditionBuilder,
   type ValidationResult,
 } from './query-builder'
+// Positive existence check for relation targets (NOT the inverse of hydration)
+export type { FindMissingRecordTargetsParams } from './record-existence'
+export { findMissingRecordTargets, MAX_EXISTENCE_BATCH } from './record-existence'
 // Type exports
 export type {
   CustomResource,

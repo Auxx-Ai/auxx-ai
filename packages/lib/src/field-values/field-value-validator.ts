@@ -1,5 +1,6 @@
 // packages/lib/src/field-values/field-value-validator.ts
 
+import type { Database, Transaction } from '@auxx/database'
 import {
   isRecordId,
   parseRecordId,
@@ -184,6 +185,33 @@ export const fieldValueSchemas = {
 }
 
 /**
+ * The verdict for a relationship target with no `EntityInstance` row.
+ *
+ * 🔀 **Soft on purpose, and NOT safe to flip on its own (D-R4).** Two things
+ * have to be true before this can hard-fail:
+ *
+ * 1. **`relatedEntityId` addresses four backing tables, not one.** `Thread`,
+ *    `Article` and `DispatchWorker` targets are legitimate and have no
+ *    `EntityInstance` row, so a check that joins only `EntityInstance` reads
+ *    ~1,256 healthy references in the dev database as missing. Hard-failing here
+ *    would refuse every write that touches a thread or article link — `tag_threads`
+ *    alone carries 1,427 live pairs. A hard rule needs per-target-table
+ *    resolution first; `findMissingRecordTargets` in `resources/record-existence.ts`
+ *    is that resolution, and it answers by REFUSING TO JUDGE anything it cannot
+ *    resolve to `EntityInstance`.
+ * 2. **Write-ahead callers must be surveyed.** Importer, connector and sync sinks
+ *    legitimately write a reference before its target lands; whether any of them
+ *    do so today was not established.
+ *
+ * Until both are settled, a missing target is allowed through and the reference
+ * is cleaned up by the read path (the picker's prune) and the backfill instead.
+ */
+const RELATED_ENTITY_NOT_FOUND = {
+  success: true,
+  message: 'Related entity not found (soft validation)',
+} as const
+
+/**
  * Field value validator with Zod schemas and access control checks.
  */
 export class FieldValueValidator {
@@ -250,6 +278,18 @@ export class FieldValueValidator {
    * Returns a map of entityInstanceId → validation result
    *
    * Accepts both new format (RecordId) and legacy format ({ relatedEntityId, relatedEntityDefinitionId })
+   *
+   * 🛑 **This check did not run for the lifetime of the codebase.** It was
+   * written as `ctx.db.entityInstance.findMany({ where: { id: { in: … } } })` —
+   * Prisma syntax on a Drizzle database — behind a `if (!ctx.db?.entityInstance)`
+   * guard that marked every id valid and returned. The accessor is always
+   * `undefined`, so the guard always fired and the query below it was dead code.
+   * `db` was typed `any`, which is why the typechecker never said so. It is typed
+   * {@link Database} now for exactly that reason.
+   *
+   * Turning it on changes ONE verdict: a target that resolves to a row in a
+   * DIFFERENT organization is now rejected, as the code always intended. The
+   * not-found branch stays soft — see {@link RELATED_ENTITY_NOT_FOUND}.
    */
   async batchValidateRelationships(
     relationships: Array<
@@ -258,7 +298,7 @@ export class FieldValueValidator {
       | { recordId: RecordId }
     >,
     ctx: {
-      db: any // Database instance
+      db: Database | Transaction
       organizationId: string // User's organization
     }
   ): Promise<Map<string, { success: boolean; message?: string }>> {
@@ -280,35 +320,21 @@ export class FieldValueValidator {
         entityInstanceIds.push(rel.relatedEntityId)
       }
     }
-
-    // Check if DB is available
-    if (!ctx.db?.entityInstance) {
-      for (const id of entityInstanceIds) {
-        result.set(id, { success: true })
-      }
-      return result
-    }
+    if (entityInstanceIds.length === 0) return result
 
     try {
-      // Single DB query for all entities
-      const entities = await ctx.db.entityInstance.findMany({
-        where: { id: { in: entityInstanceIds } },
-        select: { id: true, organizationId: true },
+      const rows = await ctx.db.query.EntityInstance.findMany({
+        where: (instances, { inArray }) => inArray(instances.id, entityInstanceIds),
+        columns: { id: true, organizationId: true },
       })
 
-      const entitiesByid = new Map<string, { id: string; organizationId: string }>(
-        entities.map((e: { id: string; organizationId: string }) => [e.id, e])
-      )
+      const byId = new Map(rows.map((row) => [row.id, row]))
 
-      // Check each entity instance
       for (const entityId of entityInstanceIds) {
-        const entity = entitiesByid.get(entityId)
+        const entity = byId.get(entityId)
 
         if (!entity) {
-          result.set(entityId, {
-            success: true, // Soft validation: allow even if not found
-            message: 'Related entity not found (soft validation)',
-          })
+          result.set(entityId, RELATED_ENTITY_NOT_FOUND)
           continue
         }
 
@@ -345,7 +371,7 @@ export class FieldValueValidator {
   async validateRelationship(
     value: unknown,
     ctx: {
-      db: any // Database instance
+      db: Database | Transaction
       organizationId: string // User's organization
     }
   ) {
@@ -358,28 +384,15 @@ export class FieldValueValidator {
     const { recordId } = structureResult.data
     const { entityInstanceId } = parseRecordId(recordId)
 
-    // Then validate access - check that related entity exists AND belongs to same org
-    // NOTE: This is a soft validation - if it fails, we still allow the relationship but log a warning
+    // Then validate access - check that related entity exists AND belongs to same org.
+    // The not-found branch is soft on purpose — see RELATED_ENTITY_NOT_FOUND.
     try {
-      if (!ctx.db?.entityInstance) {
-        console.warn(
-          '[FieldValueValidator] Database context not available for relationship validation, skipping access check'
-        )
-        return {
-          success: true as const,
-          data: { recordId },
-        }
-      }
-
-      const relatedEntity = await ctx.db.entityInstance.findUnique({
-        where: { id: entityInstanceId },
-        select: { id: true, organizationId: true },
+      const relatedEntity = await ctx.db.query.EntityInstance.findFirst({
+        where: (instances, { eq }) => eq(instances.id, entityInstanceId),
+        columns: { id: true, organizationId: true },
       })
 
       if (!relatedEntity) {
-        console.warn(
-          `[FieldValueValidator] Related entity not found: ${entityInstanceId}, allowing relationship`
-        )
         return {
           success: true as const,
           data: { recordId },
