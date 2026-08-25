@@ -311,6 +311,21 @@ export interface AutoMapUpdateInput {
    * matches nothing.
    */
   preferredIdentifierFieldKeys?: string[]
+  /**
+   * The resource's declared NATURAL KEY, in leg order — the composite identity of
+   * a join-shaped entity (`(part, supplier)` on `vendor_part`).
+   *
+   * This is the one composite key that is NOT a guess, which is why it may be
+   * defaulted where {@link preferredIdentifierFieldKeys} deliberately picks only
+   * one: the registry states that these fields together identify the record.
+   *
+   * **All or nothing.** It is applied only when EVERY leg was mapped. A partial
+   * tuple can never match anything (`analyzeRow` requires every component), so
+   * flagging half of one produces an import that reports `unmatched` for every
+   * row behind a wizard that says update — strictly worse than flagging nothing
+   * and staying create-only.
+   */
+  naturalKeyFieldKeys?: string[]
 }
 
 /**
@@ -323,10 +338,11 @@ export interface AutoMapUpdateInput {
  * dropped first: a flag left behind on a column that now feeds a different field
  * is exactly the stale-key failure `saveMappingProperty` guards against.
  *
- * Then the flag is **defaulted ON** for the best mapped tier-1 identifier.
- * That is not polish, the entire defect class this code exists to fix comes
- * from the flag being absent, and shipping it unset reproduces the bug with
- * extra clicks.
+ * Then the flag is **defaulted ON**: for every leg of the resource's declared
+ * natural key when all of them were mapped, otherwise for the best mapped
+ * tier-1 identifier. That is not polish, the entire defect class this code
+ * exists to fix comes from the flag being absent, and shipping it unset
+ * reproduces the bug with extra clicks.
  *
  * The per-column writes, the identity recompute and the `allowPlanGeneration`
  * reset are ONE transaction under the mapping's row lock. Auto-map retargets
@@ -346,8 +362,21 @@ export async function batchUpdateMappingsFromAutoMap(
   const mappedKeys = new Set(
     input.mappings.map((m) => m.matchedFieldKey).filter((key): key is string => !!key)
   )
-  const identifierKey =
-    input.preferredIdentifierFieldKeys?.find((key) => mappedKeys.has(key)) ?? null
+
+  // A fully mapped natural key wins outright: it is the resource's DECLARED
+  // identity, not a heuristic pick. Partially mapped, it is dropped entirely
+  // rather than degraded to its mapped legs — a widened key silently updates the
+  // wrong record, which is the failure mode this whole path exists to remove.
+  const naturalKey = input.naturalKeyFieldKeys ?? []
+  const naturalKeyMapped = naturalKey.length > 0 && naturalKey.every((key) => mappedKeys.has(key))
+
+  const identifierKeys = naturalKeyMapped
+    ? new Set(naturalKey)
+    : new Set(
+        [input.preferredIdentifierFieldKeys?.find((key) => mappedKeys.has(key))].filter(
+          (key): key is string => !!key
+        )
+      )
 
   await db.transaction(async (tx) => {
     await lockMapping(tx, input.mappingId)
@@ -383,7 +412,7 @@ export async function batchUpdateMappingsFromAutoMap(
         options: mapping.options,
         relationConfig: mapping.relationConfig,
         identityRole:
-          mapping.matchedFieldKey && mapping.matchedFieldKey === identifierKey
+          mapping.matchedFieldKey && identifierKeys.has(mapping.matchedFieldKey)
             ? { kind: 'match' }
             : undefined,
       })

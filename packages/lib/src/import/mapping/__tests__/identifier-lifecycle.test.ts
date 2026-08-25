@@ -74,11 +74,30 @@ class FakeDb {
   writesOutsideTransaction = 0
   /** Table the next `update()` should be made to fail on, or null. */
   failUpdatesOn: unknown = null
+  /**
+   * Column indexes the successive `ImportMappingProperty` updates target, in
+   * call order. Opt-in and null by default, so every test written against the
+   * single-{@link focusColumn} model is untouched.
+   *
+   * `batchUpdateMappingsFromAutoMap` writes one statement per mapped column, and
+   * `focusColumn` alone routes all of them onto ONE row — which is fine while
+   * exactly one column can carry the identity flag, and wrong the moment a
+   * COMPOSITE key puts the flag on two. Without this, a natural-key test passes
+   * or fails on which write happened to land last.
+   */
+  batchColumnOrder: number[] | null = null
+  private batchCursor = 0
 
   constructor(properties: FakeProperty[], mapping: FakeMapping, isTransactionHandle = false) {
     this.properties = properties
     this.mapping = mapping
     this.isTransactionHandle = isTransactionHandle
+  }
+
+  /** The column the next property write lands on: the batch order, else the focus. */
+  private nextPropertyColumn(): number {
+    if (this.batchColumnOrder === null) return this.focusColumn
+    return this.batchColumnOrder[this.batchCursor++] ?? this.focusColumn
   }
 
   private rowsFor(table: unknown, limited: boolean): unknown[] {
@@ -120,7 +139,12 @@ class FakeDb {
             }
             if (table === schema.ImportMapping) Object.assign(self.mapping, values)
             if (table === schema.ImportMappingProperty) {
-              const target = self.properties.find((p) => p.sourceColumnIndex === self.focusColumn)
+              // Resolved ONCE per write, deliberately. `nextPropertyColumn` advances
+              // a cursor, and `Array.find` runs its predicate once per element — so
+              // calling it inline would consume several slots per statement and
+              // scatter the writes across the wrong rows.
+              const col = self.nextPropertyColumn()
+              const target = self.properties.find((p) => p.sourceColumnIndex === col)
               if (target) Object.assign(target, values)
             }
             return Promise.resolve()
@@ -144,6 +168,7 @@ class FakeDb {
     const tx = new FakeDb(this.properties, this.mapping, true)
     tx.focusColumn = this.focusColumn
     tx.failUpdatesOn = this.failUpdatesOn
+    tx.batchColumnOrder = this.batchColumnOrder
     try {
       return await fn(tx.asDatabase())
     } catch (error) {
@@ -587,5 +612,132 @@ describe('atomicity, every mapping write is one transaction', () => {
     })
 
     expect(db.writesOutsideTransaction).toBe(0)
+  })
+
+  // ── declared natural key ──────────────────────────────────────────────
+  //
+  // The one composite key that may be DEFAULTED, because the registry states it
+  // rather than the mapper guessing it. `vendor_part` has no lone identifier at
+  // all, so without this a supplier price list can only ever duplicate.
+
+  const vendorPartMappings = [
+    {
+      columnIndex: 0,
+      matchedFieldKey: 'vendor_part_part',
+      customFieldId: null,
+      resolutionType: 'relation:match',
+    },
+    {
+      columnIndex: 1,
+      matchedFieldKey: 'vendor_part_contact',
+      customFieldId: null,
+      resolutionType: 'relation:match',
+    },
+    {
+      columnIndex: 2,
+      matchedFieldKey: 'vendor_part_unit_price',
+      customFieldId: null,
+      resolutionType: 'currency:major',
+    },
+  ]
+
+  it('flags EVERY leg when the whole natural key was mapped', async () => {
+    const db = new FakeDb([column(0), column(1), column(2)], {
+      identifierFieldKeys: [],
+      defaultStrategy: 'create',
+    })
+    db.batchColumnOrder = [0, 1, 2]
+
+    await batchUpdateMappingsFromAutoMap(db.asDatabase(), {
+      mappingId: MAPPING_ID,
+      mappings: vendorPartMappings,
+      preferredIdentifierFieldKeys: ['id'],
+      naturalKeyFieldKeys: ['vendor_part_part', 'vendor_part_contact'],
+    })
+
+    expect(new Set(db.mapping.identifierFieldKeys)).toEqual(
+      new Set(['vendor_part_part', 'vendor_part_contact'])
+    )
+    expect(db.mapping.defaultStrategy).toBe('create-or-update')
+  })
+
+  // Half a tuple ANDs too little. `analyzeRow` requires every component, so a
+  // partial key reports `unmatched` for every row behind a wizard claiming
+  // update — strictly worse than staying create-only.
+  it('flags NOTHING from a partially mapped natural key', async () => {
+    const db = new FakeDb([column(0), column(1)], {
+      identifierFieldKeys: [],
+      defaultStrategy: 'create',
+    })
+    db.batchColumnOrder = [0, 1]
+
+    await batchUpdateMappingsFromAutoMap(db.asDatabase(), {
+      mappingId: MAPPING_ID,
+      mappings: [vendorPartMappings[0]!, vendorPartMappings[2]!],
+      naturalKeyFieldKeys: ['vendor_part_part', 'vendor_part_contact'],
+    })
+
+    expect(db.mapping.identifierFieldKeys).toEqual([])
+    expect(db.mapping.defaultStrategy).toBe('create')
+  })
+
+  // The natural key outranks the single-column pick rather than joining it: a
+  // declared tuple plus a heuristic third leg is a key nobody declared.
+  it('does not mix the natural key with the preferred single identifier', async () => {
+    const db = new FakeDb([column(0), column(1), column(2)], {
+      identifierFieldKeys: [],
+      defaultStrategy: 'create',
+    })
+    db.batchColumnOrder = [0, 1, 2]
+
+    await batchUpdateMappingsFromAutoMap(db.asDatabase(), {
+      mappingId: MAPPING_ID,
+      mappings: [
+        ...vendorPartMappings.slice(0, 2),
+        {
+          columnIndex: 2,
+          matchedFieldKey: 'vendor_part_vendor_sku',
+          customFieldId: null,
+          resolutionType: 'text:value',
+        },
+      ],
+      preferredIdentifierFieldKeys: ['vendor_part_vendor_sku'],
+      naturalKeyFieldKeys: ['vendor_part_part', 'vendor_part_contact'],
+    })
+
+    expect(new Set(db.mapping.identifierFieldKeys)).toEqual(
+      new Set(['vendor_part_part', 'vendor_part_contact'])
+    )
+  })
+
+  // Every other resource is unaffected: no declaration, no behaviour change.
+  it('falls back to the single preferred identifier when no natural key is declared', async () => {
+    const db = new FakeDb([column(0), column(1)], {
+      identifierFieldKeys: [],
+      defaultStrategy: 'create',
+    })
+    db.batchColumnOrder = [0, 1]
+
+    await batchUpdateMappingsFromAutoMap(db.asDatabase(), {
+      mappingId: MAPPING_ID,
+      mappings: [
+        {
+          columnIndex: 0,
+          matchedFieldKey: 'part_sku',
+          customFieldId: null,
+          resolutionType: 'text:value',
+        },
+        {
+          columnIndex: 1,
+          matchedFieldKey: 'part_title',
+          customFieldId: null,
+          resolutionType: 'text:value',
+        },
+      ],
+      preferredIdentifierFieldKeys: ['part_sku', 'id'],
+      naturalKeyFieldKeys: [],
+    })
+
+    expect(db.mapping.identifierFieldKeys).toEqual(['part_sku'])
   })
 })

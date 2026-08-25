@@ -234,6 +234,7 @@ export {
   getDisplayFields,
   getFieldOperators,
   getIdentifierFields,
+  getNaturalKeyFields,
   isComputedField,
   isSystemField,
   isValidOperatorForField,

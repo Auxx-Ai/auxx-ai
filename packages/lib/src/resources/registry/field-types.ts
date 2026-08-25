@@ -195,6 +195,32 @@ export interface ResourceField {
    */
   isIdentifier?: boolean
 
+  /**
+   * This field's 1-based position in the resource's NATURAL KEY — the tuple of
+   * fields that together identify a record when no single field can.
+   *
+   * `vendor_part` is the motivating case: its identity is `(part, supplier)`,
+   * two relations, neither unique on its own and neither ever a sensible lone
+   * match key. Without the declaration a supplier price list can only ever be
+   * re-imported as duplicates, because the picker offers nothing above "Record
+   * ID" and no CSV carries cuids.
+   *
+   * Declared on the FIELD, and promoted through `mergeSystemAndCustomFields`'
+   * allow-list exactly as {@link ResourceField.isIdentifier} is. Whether
+   * `(part, supplier)` identifies a supplier price line is a product fact, so it
+   * belongs to the registry — deriving it from a per-org DB column is the drift
+   * mistake that left `part_sku.isUnique = false` in half the fleet for four
+   * months.
+   *
+   * The position is what makes the key ORDERED and therefore stable: the
+   * importer ANDs the legs in declaration order, and the preview names them in
+   * that order. Positions must be contiguous from 1 within one resource; a test
+   * pins that.
+   *
+   * @optional
+   */
+  naturalKeyPosition?: number
+
   // ─────────────────────────────────────────────────────────────
   // CONVENIENCE PROPERTIES (for unified consumption, avoid transforms)
   // ─────────────────────────────────────────────────────────────
