@@ -192,7 +192,14 @@ export interface OverrideValue {
   id?: string // For relationships - the resolved entity ID
 }
 
-/** Field configuration for value editing */
+/**
+ * Field configuration for value editing.
+ *
+ * Deliberately does NOT carry the column's `relationConfig`: the review step
+ * edits a relation column through a plain text box, so the copy that used to
+ * ride here had no consumer on either side and only invited one to be written
+ * against a snapshot instead of a live lookup.
+ */
 export interface ColumnFieldConfig {
   key: string
   type: string // BaseType: 'text', 'number', 'enum', 'relationship', etc.
@@ -202,8 +209,4 @@ export interface ColumnFieldConfig {
   /** `ImportMapping.entityDefinitionId` — the resource this column targets */
   entityDefinitionId?: string
   options?: SelectOption[]
-  relationConfig?: {
-    relatedEntityDefinitionId: string
-    relationshipType: 'belongs_to' | 'has_one' | 'has_many' | 'many_to_many'
-  }
 }

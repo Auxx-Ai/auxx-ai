@@ -67,6 +67,18 @@ export {
   isImportStrategyMode,
   toImportStrategyMode,
 } from './mapping/strategy-mode'
+// Review-step value display. `deriveEffectiveStatus` is evaluated twice — once
+// by the server read and once optimistically by the row that just wrote an
+// override — and `resolveOptionLabel` renders the same option keys on both
+// sides. Both are pure, and both must be ONE function or the chip and the
+// group headline drift apart while each looks authoritative.
+export {
+  deriveEffectiveStatus,
+  type EffectiveStatus,
+  effectiveOptionKeys,
+  type ResolutionStatus,
+} from './resolution/effective-status'
+export { isOptionResolutionType, resolveOptionLabel } from './resolution/option-labels'
 // Relation match-field type gate (03 §5.4). A TECHNICAL limit, the set of
 // types `queryCustomEntity` can actually query, NOT the identifier eligibility
 // gate, which is policy. The picker filters its match-field list with this so it

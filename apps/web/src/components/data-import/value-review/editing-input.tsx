@@ -3,6 +3,7 @@
 'use client'
 
 import { FieldType } from '@auxx/database/enums'
+import { isOptionResolutionType } from '@auxx/lib/import/client'
 import { getFieldOutputKey } from '@auxx/lib/resources/client'
 import { Input } from '@auxx/ui/components/input'
 import { useEffect, useMemo, useState } from 'react'
@@ -50,8 +51,7 @@ export function EditingInput({
   const isSkipped = isOverridden && overrideValues?.[0]?.type === 'skip'
 
   const resolutionType = fieldConfig?.resolutionType ?? 'text:value'
-  const isOptionColumn =
-    resolutionType.startsWith('select:') || resolutionType.startsWith('multiselect:')
+  const isOptionColumn = isOptionResolutionType(resolutionType)
 
   // The field's REAL type (SINGLE_SELECT vs MULTI_SELECT vs TAGS — they differ
   // on multi/canAdd). Resolved from the resource store by output key; the

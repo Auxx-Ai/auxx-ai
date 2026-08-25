@@ -3,21 +3,20 @@
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { and, count, desc, eq } from 'drizzle-orm'
-import {
-  buildOptionIndex,
-  type FieldOptionItem,
-  resolveOptionId,
-} from '../../resources/registry/option-helpers'
+import { buildOptionIndex, type FieldOptionItem } from '../../resources/registry/option-helpers'
 import { parseResolutionConfig } from '../mapping/resolution-config'
 import type { ColumnFieldConfig, OverrideValue, ResolvedValue } from '../types'
 import type { RelationCreateRequest } from '../types/resolution'
+import {
+  deriveEffectiveStatus,
+  type EffectiveStatus,
+  effectiveOptionKeys,
+  type ResolutionStatus,
+} from './effective-status'
+import { isOptionResolutionType, resolveOptionLabel } from './option-labels'
 import { resolveColumnOptions } from './resolve-column-options'
 
-/** Resolution status types */
-export type ResolutionStatus = 'pending' | 'valid' | 'error' | 'warning' | 'create'
-
-/** Effective status includes 'skip' for user-skipped values */
-export type EffectiveStatus = ResolutionStatus | 'skip'
+export type { EffectiveStatus, ResolutionStatus } from './effective-status'
 
 /** Unique value with resolution status */
 export interface UniqueValueWithResolution {
@@ -28,11 +27,15 @@ export interface UniqueValueWithResolution {
   effectiveStatus: EffectiveStatus // Derived from override, used for display
   resolvedValue: string | null
   /**
-   * The display label(s) behind `resolvedValue` for `select:`/`multiselect:`
-   * columns, resolved against the LIVE option list (multi values joined with
-   * `, `). Null for non-option columns and when no part of the value matches an
-   * option — a pending option create resolves to null on purpose, its
-   * `resolvedValue` is the label to be minted, not a key.
+   * The display label(s) this value will actually IMPORT as, for
+   * `select:`/`multiselect:` columns, resolved against the LIVE option list
+   * (multi values joined with `, `).
+   *
+   * Effective, not raw: a user override wins over the resolver's answer, so a
+   * value re-pointed at another option searches and reads as that option
+   * immediately. Null for non-option columns, for a skipped value, and when no
+   * part of the value matches an option — a pending option create resolves to
+   * null on purpose, its `resolvedValue` is the label to be minted, not a key.
    */
   resolvedLabel: string | null
   resolvedValues: ResolvedValue[]
@@ -125,33 +128,7 @@ function buildFieldConfig(
     customFieldId: mappingProp.customFieldId,
     entityDefinitionId,
     options: resolutionConfig?.options,
-    relationConfig: resolutionConfig?.relationConfig,
   }
-}
-
-/** Whether a column resolves against a select-ish option list. */
-function isOptionColumn(resolutionType: string): boolean {
-  return resolutionType.startsWith('select:') || resolutionType.startsWith('multiselect:')
-}
-
-/**
- * Resolve an option column's stored key(s) to display label(s).
- *
- * `resolvedValue` is comma-joined for multiselect columns (option keys are
- * nanoids and never contain commas). Null when nothing matches: a pending
- * option create's `resolvedValue` is the label to be minted, not a key, and
- * lands here as null by design.
- */
-function resolveLabel(
-  resolvedValue: string | null,
-  optionIndex: Map<string, FieldOptionItem> | null
-): string | null {
-  if (!optionIndex || !resolvedValue) return null
-  const parts = resolvedValue.split(',').filter(Boolean)
-  if (parts.length === 0) return null
-  const resolved = parts.map((part) => resolveOptionId(part, optionIndex))
-  if (resolved.every((r) => r.status === 'unknown')) return null
-  return resolved.map((r) => (r.status === 'known' ? r.label : r.raw)).join(', ')
 }
 
 /**
@@ -171,26 +148,6 @@ function parseUserOverride(userOverride: unknown): {
   }
 
   return { isOverridden: false, values: null }
-}
-
-/**
- * Derive effective status from original status and override.
- * - If not overridden, use original status
- * - If overridden with skip, return 'skip'
- * - If overridden with value, return 'valid'
- */
-function deriveEffectiveStatus(
-  originalStatus: ResolutionStatus,
-  isOverridden: boolean,
-  overrideValues: OverrideValue[] | null
-): EffectiveStatus {
-  if (!isOverridden || !overrideValues?.length) {
-    return originalStatus
-  }
-  if (overrideValues[0]?.type === 'skip') {
-    return 'skip'
-  }
-  return 'valid'
 }
 
 /** Parameters for {@link getUniqueValuesWithResolution} */
@@ -273,7 +230,7 @@ export async function getUniqueValuesWithResolution(
   // `resolve-values-job`: the live list WINS, the stored snapshot only stands
   // in for a field that has since vanished.
   let optionIndex: Map<string, FieldOptionItem> | null = null
-  if (fieldConfig && isOptionColumn(fieldConfig.resolutionType)) {
+  if (fieldConfig && isOptionResolutionType(fieldConfig.resolutionType)) {
     const liveOptions = await resolveColumnOptions({
       organizationId,
       entityDefinitionId,
@@ -345,7 +302,10 @@ export async function getUniqueValuesWithResolution(
         originalStatus,
         effectiveStatus: deriveEffectiveStatus(originalStatus, isOverridden, overrideValues),
         resolvedValue,
-        resolvedLabel: resolveLabel(resolvedValue, optionIndex),
+        resolvedLabel: resolveOptionLabel(
+          effectiveOptionKeys(resolvedValue, isOverridden, overrideValues),
+          optionIndex
+        ),
         resolvedValues: resolution?.resolvedValues ?? [],
         errorMessage: resolution?.errorMessage ?? null,
         isOverridden,

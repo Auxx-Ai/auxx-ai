@@ -2,12 +2,14 @@
 
 'use client'
 
+import { getValidResolutionTypes, isOptionResolutionType } from '@auxx/lib/import/client'
 import { Button } from '@auxx/ui/components/button'
 import { Combobox } from '@auxx/ui/components/combobox'
 import { InputSearch } from '@auxx/ui/components/input-search'
 import { RadioGroup } from '@auxx/ui/components/radio-group'
 import { RadioGroupItemCard } from '@auxx/ui/components/radio-group-item'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
+import { toastError } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
 import type { LucideIcon } from 'lucide-react'
 import { AlertCircle, AlertTriangle, CheckCircle2, Clock, Plus, RefreshCw } from 'lucide-react'
@@ -76,7 +78,18 @@ export function StepReviewValues({ jobId, onComplete }: StepReviewValuesProps) {
   const fieldConfig = columnData?.fieldConfig ?? null
 
   const resolveValues = api.dataImport.resolveColumnValues.useMutation()
+  const saveColumnMapping = api.dataImport.saveColumnMapping.useMutation()
   const utils = api.useUtils()
+
+  // The mapped field behind the selected column. Read for one question only:
+  // may this column be switched to MINTING the options its file names? The
+  // answer is `canCreateOptions` on the field (`canGrowFieldOptions` ∧
+  // `fieldAllowsNewOptions`), surfaced through `getValidResolutionTypes` so the
+  // rule is not re-derived here — see `custom-fields/ownership.ts`.
+  const { data: importableFields } = api.dataImport.getImportableFields.useQuery(
+    { entityDefinitionId: job?.importMapping?.entityDefinitionId ?? '', includeIdentifiers: true },
+    { enabled: !!job?.importMapping?.entityDefinitionId }
+  )
 
   // Track if we've already triggered auto-resolution for this session
   const hasTriggeredResolution = useRef(false)
@@ -137,6 +150,65 @@ export function StepReviewValues({ jobId, onComplete }: StepReviewValuesProps) {
     resolveValues.mutate({ jobId })
   }
 
+  /**
+   * Whether "create these as new options" is a real offer for this column.
+   *
+   * Three conditions, all necessary: the column resolves against a taxonomy at
+   * all, it is not ALREADY minting, and the field admits new options. The last
+   * one is asked through `getValidResolutionTypes`, the same function the
+   * mapping-step picker offers from, so the review step cannot offer a type the
+   * mapping step withholds — the materializer refuses it a second time anyway,
+   * and a button that silently does nothing is worse than no button.
+   */
+  const canCreateMissingOptions = useMemo(() => {
+    if (!fieldConfig || !isOptionResolutionType(fieldConfig.resolutionType)) return false
+    if (fieldConfig.resolutionType === 'select:create') return false
+    const field = importableFields?.find((f) => f.key === fieldConfig.key)
+    return !!field && getValidResolutionTypes(field).includes('select:create')
+  }, [fieldConfig, importableFields])
+
+  /**
+   * Flip this column to `select:create` and re-resolve, without leaving the step.
+   *
+   * The remedy for "14 unmatched categories" is a resolution TYPE change, not
+   * fourteen hand-typed corrections — but the type picker lives on the previous
+   * wizard step, so nothing in the Errors group pointed at it. This writes
+   * through `saveColumnMapping`, the same mutation that picker uses: it drops
+   * the column's cached resolutions (`invalidateColumnResolutions`) and clears
+   * `allowPlanGeneration`, which is what makes the re-run actually re-resolve
+   * instead of replaying the cached "No matching option" for every value.
+   */
+  const handleCreateMissingOptions = async () => {
+    if (!canCreateMissingOptions || !fieldConfig || selectedColumn === null) return
+
+    try {
+      await saveColumnMapping.mutateAsync({
+        jobId,
+        columnIndex: Number(selectedColumn),
+        targetFieldKey: fieldConfig.key,
+        customFieldId: fieldConfig.customFieldId ?? null,
+        resolutionType: 'select:create',
+        // The LIVE list this read already overlaid, not the mapping row's
+        // client-asserted snapshot.
+        options: fieldConfig.options,
+      })
+      // Re-resolution is NOT fired here. The write clears `allowPlanGeneration`,
+      // and the auto-resolve effect above is what claims the run — the one
+      // trigger, on the one flag. Queueing a second `resolveValuesJob` from here
+      // would race that effect for the same job.
+      await Promise.all([
+        utils.dataImport.getMappedColumns.invalidate({ jobId }),
+        utils.dataImport.getUniqueValues.invalidate(),
+        utils.dataImport.getJob.invalidate({ jobId }),
+      ])
+    } catch (error) {
+      toastError({
+        title: 'Could not switch this column to creating options',
+        description: error instanceof Error ? error.message : 'Unknown error',
+      })
+    }
+  }
+
   const toggleStatus = (status: string) => {
     setExpandedStatuses((prev) => {
       const newSet = new Set(prev)
@@ -158,9 +230,21 @@ export function StepReviewValues({ jobId, onComplete }: StepReviewValuesProps) {
   const filteredValues = useMemo(() => {
     let values = uniqueValues ?? []
 
-    // Apply search filter
+    // Apply search filter.
+    //
+    // Matches the RESOLVED side too, not just the raw cell: an option column
+    // renders labels, so searching "Steel" against a column showing "Steel"
+    // finding nothing (because the cell said "steel " and the row stores a
+    // nanoid key) reads as a broken search. `resolvedLabel` is the effective
+    // label — the override wins — so a value re-pointed at another option is
+    // found under its new name immediately.
     if (searchQuery) {
-      values = values.filter((v) => v.rawValue.toLowerCase().includes(searchQuery.toLowerCase()))
+      const needle = searchQuery.toLowerCase()
+      values = values.filter((v) =>
+        [v.rawValue, v.resolvedLabel, v.resolvedValue].some((haystack) =>
+          haystack?.toLowerCase().includes(needle)
+        )
+      )
     }
 
     // Apply override filter
@@ -232,8 +316,6 @@ export function StepReviewValues({ jobId, onComplete }: StepReviewValuesProps) {
       setExpandedStatuses(new Set([nonEmptyGroups[0]!.status]))
     }
   }, [nonEmptyGroups])
-
-  const selectedColumnData = mappedColumns?.find((c) => c.columnIndex.toString() === selectedColumn)
 
   // Handle resolution completion from ResolutionProgress polling
   const handleResolutionComplete = () => {
@@ -348,6 +430,19 @@ export function StepReviewValues({ jobId, onComplete }: StepReviewValuesProps) {
                   count={group.values.length}
                   isExpanded={isExpanded}
                   onToggle={() => toggleStatus(group.status)}
+                  action={
+                    group.status === 'error' && canCreateMissingOptions ? (
+                      <Button
+                        variant='outline'
+                        size='sm'
+                        loading={saveColumnMapping.isPending}
+                        loadingText='Switching...'
+                        onClick={handleCreateMissingOptions}>
+                        <Plus />
+                        Create these as new options
+                      </Button>
+                    ) : undefined
+                  }
                 />
                 {isExpanded && (
                   <div className={cn('p-4 bg-background')}>

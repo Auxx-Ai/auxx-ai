@@ -2,18 +2,20 @@
 
 'use client'
 
+import {
+  deriveEffectiveStatus,
+  effectiveOptionKeys,
+  isOptionResolutionType,
+  resolveOptionLabel,
+} from '@auxx/lib/import/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
+import { toastError } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
 import { AlertTriangle, ArrowRight, Ban, Check, RotateCcw } from 'lucide-react'
 import { Tooltip } from '~/components/global/tooltip'
 import { api } from '~/trpc/react'
-import type {
-  ColumnFieldConfig,
-  EffectiveStatus,
-  OverrideValue,
-  UniqueValueSummary,
-} from '../types'
+import type { ColumnFieldConfig, OverrideValue, UniqueValueSummary } from '../types'
 import { EditingInput } from './editing-input'
 import { ValueCreateBadge } from './relation-create-badge'
 
@@ -22,24 +24,6 @@ interface ValueRowProps {
   jobId: string
   columnIndex: number
   fieldConfig: ColumnFieldConfig | null
-}
-
-/**
- * Derive new effective status from override.
- */
-function deriveEffectiveStatus(
-  originalStatus: UniqueValueSummary['originalStatus'],
-  isOverridden: boolean,
-  overrideValues: OverrideValue[] | null
-): EffectiveStatus {
-  const first = overrideValues?.[0]
-  if (!isOverridden || !first) {
-    return originalStatus
-  }
-  if (first.type === 'skip') {
-    return 'skip'
-  }
-  return 'valid'
 }
 
 /**
@@ -63,12 +47,25 @@ export function ValueRow({ value, jobId, columnIndex, fieldConfig }: ValueRowPro
 
   /** Save override or clear it with optimistic update */
   const handleSave = async (isOverridden: boolean, overrideValues: OverrideValue[] | null) => {
-    // Calculate new effective status for optimistic update
+    // Calculate new effective status for optimistic update. Same function the
+    // server read calls — see `deriveEffectiveStatus` in `@auxx/lib/import`.
     const newEffectiveStatus = deriveEffectiveStatus(
       value.originalStatus,
       isOverridden,
       overrideValues
     )
+
+    // `resolvedLabel` is the EFFECTIVE label — the override wins over the
+    // resolver's answer — and it is what value search matches on. Recomputed
+    // here from the same inputs the server uses (a revert falls back to
+    // `resolvedValue`, which the patch never touches), or the searched label
+    // would lag a refetch behind the chip the picker already shows.
+    const newResolvedLabel = isOptionResolutionType(fieldConfig?.resolutionType)
+      ? resolveOptionLabel(
+          effectiveOptionKeys(value.resolvedValue, isOverridden, overrideValues),
+          fieldConfig?.options ?? null
+        )
+      : value.resolvedLabel
 
     // Optimistically update the cache BEFORE the mutation. `overrideValues` is
     // what the row DISPLAYS (the picker's chips / the text draft resync from
@@ -84,6 +81,7 @@ export function ValueRow({ value, jobId, columnIndex, fieldConfig }: ValueRowPro
                 isOverridden,
                 overrideValues,
                 effectiveStatus: newEffectiveStatus,
+                resolvedLabel: newResolvedLabel,
               }
             : v
         ),
@@ -99,9 +97,19 @@ export function ValueRow({ value, jobId, columnIndex, fieldConfig }: ValueRowPro
         overrideValues,
       })
     } catch (error) {
-      // Rollback on error - refetch to get correct state
+      // Rollback: refetch the server's own view of this column.
+      //
+      // Every caller here is a fire-and-forget event handler, so rethrowing
+      // produced an unhandled rejection and the reviewer saw the optimistic
+      // value quietly revert with no explanation. The server rejects a typed
+      // override the resolver cannot read (a bare `12.34` in a money column,
+      // see `updateValueResolution`), and its message is the only thing that
+      // says why.
       utils.dataImport.getUniqueValues.invalidate({ jobId, columnIndex })
-      throw error
+      toastError({
+        title: 'Could not save this value',
+        description: error instanceof Error ? error.message : 'Unknown error',
+      })
     }
   }
 

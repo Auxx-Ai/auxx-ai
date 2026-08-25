@@ -2,7 +2,7 @@
 
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
-import { and, asc, eq, sql } from 'drizzle-orm'
+import { and, asc, eq, inArray, sql } from 'drizzle-orm'
 
 /**
  * Input for getting mapped columns with stats.
@@ -14,6 +14,9 @@ export interface GetMappedColumnsInput {
 
 /**
  * Mapped column with resolution statistics.
+ *
+ * Both counts are DISTINCT VALUES, not rows — the review step groups distinct
+ * values, so "14 errors" means fourteen categories, not fourteen cells.
  */
 export interface MappedColumnWithStats {
   columnIndex: number
@@ -101,6 +104,40 @@ export async function getMappedColumnsWithStats(
     jobProperties.map((p) => [p.importMappingPropertyId, p.errorCount ?? 0])
   )
 
+  // Warnings are NOT counted on `ImportJobProperty` — only `errorCount` is
+  // stored there — and the review step groups values on `warning`, so a
+  // hardcoded 0 made that group's headline permanently disagree with the group
+  // it summarised. Counted straight off the resolutions instead; the
+  // `(importJobPropertyId, status)` index makes it a cheap grouped count, and
+  // nothing has to be kept in sync with a second writer.
+  const warningByPropertyId = new Map<string, number>()
+  if (jobProperties.length > 0) {
+    const warningCounts = await db
+      .select({
+        importJobPropertyId: schema.ImportValueResolution.importJobPropertyId,
+        warningCount: sql<number>`count(*)`.as('warning_count'),
+      })
+      .from(schema.ImportValueResolution)
+      .where(
+        and(
+          inArray(
+            schema.ImportValueResolution.importJobPropertyId,
+            jobProperties.map((p) => p.id)
+          ),
+          eq(schema.ImportValueResolution.status, 'warning')
+        )
+      )
+      .groupBy(schema.ImportValueResolution.importJobPropertyId)
+
+    const jobPropertyIdByMappingPropertyId = new Map(
+      jobProperties.map((p) => [p.id, p.importMappingPropertyId])
+    )
+    for (const row of warningCounts) {
+      const mappingPropertyId = jobPropertyIdByMappingPropertyId.get(row.importJobPropertyId)
+      if (mappingPropertyId) warningByPropertyId.set(mappingPropertyId, Number(row.warningCount))
+    }
+  }
+
   // Build result
   return mappedProperties.map((prop) => {
     const mappable = mappableByIndex.get(prop.sourceColumnIndex)
@@ -110,7 +147,7 @@ export async function getMappedColumnsWithStats(
       targetFieldKey: prop.targetFieldKey,
       uniqueCount: countByColumn.get(prop.sourceColumnIndex) ?? 0,
       errorCount: errorByPropertyId.get(prop.id) ?? 0,
-      warningCount: 0, // TODO: track warnings separately if needed
+      warningCount: warningByPropertyId.get(prop.id) ?? 0,
     }
   })
 }

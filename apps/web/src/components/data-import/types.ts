@@ -1,11 +1,13 @@
 // apps/web/src/components/data-import/types.ts
 
 import type {
+  EffectiveStatus,
   IdentityRole,
   ImportMergeStrategy,
   RelationCreateRequest,
   RelationLinkMode,
   RelationOnNoMatch,
+  ResolutionStatus,
   StrategyType,
 } from '@auxx/lib/import/client'
 import type { SelectOption } from '@auxx/types/custom-field'
@@ -93,11 +95,13 @@ export interface OverrideValue {
   id?: string
 }
 
-/** Resolution status from auto-resolution */
-export type ResolutionStatus = 'pending' | 'valid' | 'error' | 'warning' | 'create'
-
-/** Effective status after user override (includes 'skip') */
-export type EffectiveStatus = ResolutionStatus | 'skip'
+/**
+ * Resolution status, and the effective status after a user override.
+ *
+ * Re-exported from lib rather than restated: `deriveEffectiveStatus` runs on
+ * both sides of the wire, so the two must be the same union.
+ */
+export type { EffectiveStatus, ResolutionStatus }
 
 /** Unique value summary from server */
 export interface UniqueValueSummary {
@@ -125,7 +129,12 @@ export interface UniqueValueSummary {
   relationCreate?: RelationCreateRequest
 }
 
-/** Field configuration for value editing */
+/**
+ * Field configuration for value editing.
+ *
+ * No `relationConfig`: the review step edits a relation column through a plain
+ * text box, so the copy that used to ride here had no consumer.
+ */
 export interface ColumnFieldConfig {
   key: string
   type: string
@@ -135,10 +144,6 @@ export interface ColumnFieldConfig {
   /** `ImportMapping.entityDefinitionId` — the resource this column targets */
   entityDefinitionId?: string
   options?: SelectOption[]
-  relationConfig?: {
-    relatedEntityDefinitionId: string
-    relationshipType: 'belongs_to' | 'has_one' | 'has_many' | 'many_to_many'
-  }
 }
 
 // Re-export ImportableField from the lib package's CLIENT barrel, the server

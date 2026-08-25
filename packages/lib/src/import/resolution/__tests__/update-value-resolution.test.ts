@@ -2,7 +2,7 @@
 
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { buildRecordData } from '../../execution/build-record-data'
 import { hashValue } from '../../hashing/hash-value'
 import type { ImportMappingProperty } from '../../types/mapping'
@@ -31,8 +31,15 @@ interface CapturedWrite {
   conflictSet: Record<string, unknown> | null
 }
 
+// The money column's exponent is resolved at WRITE time through the org
+// (`field → org → USD`), which needs the org cache and the settings table.
+// Stubbed here so the assertion is about the SCALING, not about the lookup.
+vi.mock('../resolve-currency-code', () => ({
+  resolveColumnCurrencyCodes: async () => new Map([['price', 'USD']]),
+}))
+
 class FakeDb {
-  mappingProp: { id: string; resolutionType: string }
+  mappingProp: { id: string; resolutionType: string; targetFieldKey: string | null }
   jobProp = { id: 'jobprop_0' }
   existingResolution: Record<string, unknown> | undefined
   captured: CapturedWrite = { values: null, conflictSet: null }
@@ -49,8 +56,8 @@ class FakeDb {
     },
   }
 
-  constructor(resolutionType: string) {
-    this.mappingProp = { id: 'prop_0', resolutionType }
+  constructor(resolutionType: string, targetFieldKey: string | null = 'tags') {
+    this.mappingProp = { id: 'prop_0', resolutionType, targetFieldKey }
   }
 
   insert(table: unknown) {
@@ -89,6 +96,8 @@ function override(
     hash: hashValue('Red, Green, Blue'),
     isOverridden: true,
     overrideValues,
+    organizationId: 'org_1',
+    entityDefinitionId: 'def_1',
   })
 }
 
@@ -226,5 +235,55 @@ describe('updateValueResolution multi-value overrides', () => {
       resolutions
     )
     expect(standardFields.status).toBe('opt_red')
+  })
+})
+
+/**
+ * A FREE-TEXT override is raw user input, exactly like a CSV cell, and must go
+ * back through the resolver before it is stored. Only the option and relation
+ * editors emit an already-resolved token; every other column is a text box.
+ */
+describe('updateValueResolution free-text overrides', () => {
+  it('scales a typed money value into integer MINOR units', async () => {
+    const db = new FakeDb('currency:major', 'price')
+
+    await override(db, [{ type: 'value', value: '12.34' }])
+
+    // Stored verbatim, `12.34` reached `field-value-helpers` unscaled and the
+    // ROW failed at execution, long after review called the value fixed.
+    expect(db.captured.values?.resolvedValues).toEqual([{ type: 'value', value: 1234 }])
+  })
+
+  it('parses a typed number instead of storing the string', async () => {
+    const db = new FakeDb('number:integer', 'quantity')
+
+    await override(db, [{ type: 'value', value: '42' }])
+
+    expect(db.captured.values?.resolvedValues).toEqual([{ type: 'value', value: 42 }])
+  })
+
+  it('refuses a typed value the resolver cannot read', async () => {
+    const db = new FakeDb('number:integer', 'quantity')
+
+    await expect(override(db, [{ type: 'value', value: 'twelve' }])).rejects.toThrow()
+    // Nothing is written: a stored error would render as a green "Fixed" tick,
+    // because `deriveEffectiveStatus` reports every non-skip override as valid.
+    expect(db.captured.values).toBeNull()
+  })
+
+  it('leaves an option override alone — the picker emits keys, not text', async () => {
+    const db = new FakeDb('select:value', 'status')
+
+    await override(db, [{ type: 'value', value: 'opt_red' }])
+
+    expect(db.captured.values?.resolvedValues).toEqual([{ type: 'value', value: 'opt_red' }])
+  })
+
+  it('leaves a relation override alone — it carries the target record id', async () => {
+    const db = new FakeDb('relation:match', 'supplier')
+
+    await override(db, [{ type: 'value', value: 'Acme', id: 'rec_acme' }])
+
+    expect(db.captured.values?.resolvedValues).toEqual([{ type: 'value', value: 'rec_acme' }])
   })
 })

@@ -6,6 +6,7 @@ import { Badge } from '@auxx/ui/components/badge'
 import { cn } from '@auxx/ui/lib/utils'
 import type { LucideIcon } from 'lucide-react'
 import { ChevronRight } from 'lucide-react'
+import type { ReactNode } from 'react'
 
 interface ValueStatusGroupProps {
   status: string
@@ -15,6 +16,14 @@ interface ValueStatusGroupProps {
   count: number
   isExpanded: boolean
   onToggle: () => void
+  /**
+   * A remedy for the whole group, rendered on the right of the header.
+   *
+   * The header is the only place a WHOLE-group fix belongs: a per-row editor
+   * invites retyping fourteen values one at a time, which is exactly what the
+   * unmatched-options case must not read as the intended cure.
+   */
+  action?: ReactNode
 }
 
 /**
@@ -28,6 +37,7 @@ export function ValueStatusGroup({
   count,
   isExpanded,
   onToggle,
+  action,
 }: ValueStatusGroupProps) {
   return (
     <div
@@ -49,6 +59,8 @@ export function ValueStatusGroup({
           {count} value{count !== 1 ? 's' : ''}
         </Badge>
       </div>
+      {/* The action must not toggle the group it sits on. */}
+      {action && <div onClick={(e) => e.stopPropagation()}>{action}</div>}
     </div>
   )
 }
