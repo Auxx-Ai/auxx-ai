@@ -1,7 +1,7 @@
 // apps/web/src/components/pickers/multi-select-picker.tsx
 'use client'
 
-import { getColorSwatch } from '@auxx/lib/custom-fields/client'
+import { buildOptionIndex, getColorSwatch, optionKey } from '@auxx/lib/custom-fields/client'
 import type { SelectOption, SelectOptionColor } from '@auxx/types/custom-field'
 import type { ResourceFieldId } from '@auxx/types/field'
 import { Button } from '@auxx/ui/components/button'
@@ -226,6 +226,31 @@ export function MultiSelectPicker({
     setLocalSelected(newSelected)
   }, [value])
 
+  // Both option keyspaces (`id` and `value`) indexed onto their option rows —
+  // the same tolerance TagsView's `resolveOptionIds` applies on the trigger.
+  const optionIndex = useMemo(() => buildOptionIndex(localOptions), [localOptions])
+
+  /**
+   * Map one incoming selected value onto its option's canonical key (`optionKey`,
+   * i.e. `id ?? value`). A stored selection can arrive in EITHER keyspace — rows
+   * written before an option gained an explicit `id` still hold its `value` — so
+   * membership is checked on canonical keys, never on raw stored strings. Values
+   * matching no option pass through unchanged (unknowns are preserved, not dropped).
+   */
+  const canonicalizeSelected = useCallback(
+    (v: string) => {
+      const opt = optionIndex.get(v)
+      return (opt ? optionKey(opt) : undefined) ?? v
+    },
+    [optionIndex]
+  )
+
+  /** The current selection, folded onto canonical keys for membership checks. */
+  const selectedKeys = useMemo(
+    () => new Set(localSelected.map(canonicalizeSelected)),
+    [localSelected, canonicalizeSelected]
+  )
+
   // UI state
   const [searchValue, setSearchValue] = useState('')
   const [isManageMode, setIsManageMode] = useState(false)
@@ -320,23 +345,31 @@ export function MultiSelectPicker({
   )
 
   /**
-   * Handle option selection
+   * Handle option selection.
+   *
+   * Selection identity is the canonical `optionKey` (`id ?? value`) — what
+   * `FieldValue` stores for the option. Membership folds the incoming selection
+   * onto canonical keys first, so a legacy value stored under `value` still reads
+   * as selected; toggling it off removes every entry that resolves to this option,
+   * and toggling on writes only the canonical key. For options with no `id` this
+   * is exactly `value`, so those consumers see zero behavior change.
    */
   const handleSelect = useCallback(
-    (optValue: string) => {
+    (opt: SelectOption) => {
+      const key = optionKey(opt) ?? opt.value
       if (multi) {
         // Toggle in array
-        const newSelected = localSelected.includes(optValue)
-          ? localSelected.filter((v) => v !== optValue)
-          : [...localSelected, optValue]
+        const newSelected = selectedKeys.has(key)
+          ? localSelected.filter((v) => canonicalizeSelected(v) !== key)
+          : [...localSelected, key]
         updateSelected(newSelected)
       } else {
         // Single select - replace and notify
-        updateSelected([optValue])
-        onSelectSingle?.(optValue)
+        updateSelected([key])
+        onSelectSingle?.(key)
       }
     },
-    [multi, localSelected, updateSelected, onSelectSingle]
+    [multi, localSelected, selectedKeys, canonicalizeSelected, updateSelected, onSelectSingle]
   )
 
   /**
@@ -417,15 +450,20 @@ export function MultiSelectPicker({
       const newOptions = localOptions.filter((opt) => opt.value !== optValue)
       updateOptions(newOptions)
 
-      // Also remove from selection if selected. The server cascade covers every other
+      // Also remove from selection if selected — under EITHER keyspace, mirroring the
+      // server cascade's `buildOptionIndex` diff. The cascade covers every other
       // record; this keeps the open record's UI correct before the refetch lands.
-      if (localSelected.includes(optValue)) {
-        updateSelected(localSelected.filter((v) => v !== optValue))
+      // (`canonicalizeSelected` closes over the pre-delete index, so the deleted
+      // option's keys still resolve here.)
+      const deletedKey = (option ? optionKey(option) : undefined) ?? optValue
+      if (localSelected.some((v) => canonicalizeSelected(v) === deletedKey)) {
+        updateSelected(localSelected.filter((v) => canonicalizeSelected(v) !== deletedKey))
       }
     },
     [
       localOptions,
       localSelected,
+      canonicalizeSelected,
       updateOptions,
       updateSelected,
       resourceFieldId,
@@ -524,6 +562,9 @@ export function MultiSelectPicker({
   // item markup — only the surrounding `CommandGroup`(s) differ.
   const renderOption = (opt: SelectOption) => {
     const usage = isManageMode ? sumOptionUsage(usageCounts, opt) : undefined
+    // Canonical-key membership — a value stored under EITHER of the option's
+    // keyspaces reads as checked here, matching the trigger's TagsView.
+    const isSelected = selectedKeys.has(optionKey(opt) ?? opt.value)
     return (
       <CommandItem
         key={opt.value}
@@ -536,7 +577,7 @@ export function MultiSelectPicker({
               startEdit(opt.value)
             }
           } else {
-            handleSelect(opt.value)
+            handleSelect(opt)
           }
         }}
         disabled={disabled}
@@ -614,12 +655,9 @@ export function MultiSelectPicker({
                   Click to edit
                 </span>
               ) : multi ? (
-                <Checkbox
-                  checked={localSelected.includes(opt.value)}
-                  className='pointer-events-none'
-                />
+                <Checkbox checked={isSelected} className='pointer-events-none' />
               ) : (
-                localSelected.includes(opt.value) && (
+                isSelected && (
                   <div className='rounded-full size-4 bg-info flex items-center justify-center border border-blue-800'>
                     <Check className='size-2.5! text-white' strokeWidth={4} />
                   </div>

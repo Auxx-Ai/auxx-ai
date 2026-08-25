@@ -4,13 +4,13 @@ import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { generateId } from '@auxx/utils/generateId'
 import { and, eq } from 'drizzle-orm'
-import { onCacheEvent } from '../cache/invalidate'
 import {
   type FieldOptionItem,
   optionKey,
   optionMatchKey,
 } from '../resources/registry/option-helpers'
 import type { FieldOptions } from './field-options'
+import { notifyCustomFieldChanged } from './notify'
 
 /**
  * Index existing options by folded LABEL, first writer winning on a collision.
@@ -126,7 +126,10 @@ export async function mintOrMatchOptions(
 
   const result = await db.transaction(async (tx) => {
     const [row] = await tx
-      .select({ options: schema.CustomField.options })
+      .select({
+        options: schema.CustomField.options,
+        entityDefinitionId: schema.CustomField.entityDefinitionId,
+      })
       .from(schema.CustomField)
       .where(
         and(
@@ -181,14 +184,31 @@ export async function mintOrMatchOptions(
         )
     }
 
-    return { ids, minted: appended.length, mintedLabels }
+    return {
+      ids,
+      minted: appended.length,
+      mintedLabels,
+      entityDefinitionId: row?.entityDefinitionId ?? null,
+    }
   })
 
   if (result.minted > 0) {
-    // Without this, the next worker in the batch reads a stale option list from
-    // the org cache and re-mints what this one just created.
-    await onCacheEvent('custom-field.updated', { orgId: organizationId })
+    if (result.entityDefinitionId) {
+      // The chokepoint does both halves: the cache bust (without which the next
+      // worker in the batch reads a stale option list and re-mints what this
+      // one just created) AND the `resource:updated` broadcast (without which
+      // every open client keeps the pre-mint vocabulary and renders the new
+      // optionIds as muted unknown chips until an unrelated refetch). One call
+      // per grown field per batch — this function is invoked once with every
+      // label.
+      await notifyCustomFieldChanged(organizationId, result.entityDefinitionId, 'updated')
+    } else {
+      // A def-less row can't be broadcast, but the cache bust must never be
+      // skipped or the next worker re-mints.
+      const { onCacheEvent } = await import('../cache/invalidate')
+      await onCacheEvent('custom-field.updated', { orgId: organizationId })
+    }
   }
 
-  return result
+  return { ids: result.ids, minted: result.minted, mintedLabels: result.mintedLabels }
 }

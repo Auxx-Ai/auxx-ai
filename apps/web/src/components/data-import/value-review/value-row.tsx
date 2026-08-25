@@ -15,7 +15,7 @@ import type {
   UniqueValueSummary,
 } from '../types'
 import { EditingInput } from './editing-input'
-import { RelationCreateBadge } from './relation-create-badge'
+import { ValueCreateBadge } from './relation-create-badge'
 
 interface ValueRowProps {
   value: UniqueValueSummary
@@ -70,7 +70,9 @@ export function ValueRow({ value, jobId, columnIndex, fieldConfig }: ValueRowPro
       overrideValues
     )
 
-    // Optimistically update the cache BEFORE the mutation
+    // Optimistically update the cache BEFORE the mutation. `overrideValues` is
+    // what the row DISPLAYS (the picker's chips / the text draft resync from
+    // it), so patching it here updates the shown value, not just the status.
     utils.dataImport.getUniqueValues.setData({ jobId, columnIndex }, (oldData) => {
       if (!oldData) return oldData
       return {
@@ -164,20 +166,31 @@ export function ValueRow({ value, jobId, columnIndex, fieldConfig }: ValueRowPro
               fieldConfig={fieldConfig}
               rawValue={value.rawValue}
               resolvedValue={value.resolvedValue}
+              originalStatus={value.originalStatus}
               isOverridden={value.isOverridden}
               overrideValues={value.overrideValues}
-              hasCustomOverride={hasCustomOverride}
               onSave={handleInputSave}
             />
           )}
         </div>
 
-        {/* Pending relation create, the render the `'create'` status never had */}
+        {/* Pending create — a relation record, or (no `relationCreate` marker)
+            a select option whose to-be-minted label is `resolvedValue`. An
+            override means the user picked an existing target: no badge. */}
         {value.relationCreate && !isSkipped && !hasCustomOverride && (
           <div className='shrink-0 me-2'>
-            <RelationCreateBadge request={value.relationCreate} />
+            <ValueCreateBadge create={{ kind: 'relation', request: value.relationCreate }} />
           </div>
         )}
+        {!value.relationCreate &&
+          value.originalStatus === 'create' &&
+          value.resolvedValue &&
+          !isSkipped &&
+          !hasCustomOverride && (
+            <div className='shrink-0 me-2'>
+              <ValueCreateBadge create={{ kind: 'option', label: value.resolvedValue }} />
+            </div>
+          )}
 
         {/* Action buttons */}
         {/* <div className="flex items-center opacity-0 group-hover:opacity-100 pe-1 transition-opacity overflow-hidden [[data-first]_&]:rounded-tr-2xl [[data-last]_&]:rounded-br-2xl"> */}

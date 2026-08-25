@@ -104,6 +104,12 @@ export interface UniqueValueSummary {
   hash: string
   rawValue: string
   resolvedValue: string | null
+  /**
+   * Display label(s) behind `resolvedValue` for option columns, resolved
+   * server-side against the LIVE option list. Null for non-option columns and
+   * for pending option creates (their `resolvedValue` is a label, not a key).
+   */
+  resolvedLabel: string | null
   resolvedValues: Array<{ type: string; value?: unknown }>
   count: number
   originalStatus: ResolutionStatus // From auto-resolution, used for grouping
@@ -124,6 +130,10 @@ export interface ColumnFieldConfig {
   key: string
   type: string
   resolutionType: string
+  /** `ImportMappingProperty.customFieldId` — null for system fields */
+  customFieldId?: string | null
+  /** `ImportMapping.entityDefinitionId` — the resource this column targets */
+  entityDefinitionId?: string
   options?: SelectOption[]
   relationConfig?: {
     relatedEntityDefinitionId: string

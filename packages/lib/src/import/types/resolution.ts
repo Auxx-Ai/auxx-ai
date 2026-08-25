@@ -197,6 +197,10 @@ export interface ColumnFieldConfig {
   key: string
   type: string // BaseType: 'text', 'number', 'enum', 'relationship', etc.
   resolutionType: string // e.g., 'select:value', 'relation:match'
+  /** `ImportMappingProperty.customFieldId` — null for system fields */
+  customFieldId?: string | null
+  /** `ImportMapping.entityDefinitionId` — the resource this column targets */
+  entityDefinitionId?: string
   options?: SelectOption[]
   relationConfig?: {
     relatedEntityDefinitionId: string

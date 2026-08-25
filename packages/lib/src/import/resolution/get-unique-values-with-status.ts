@@ -3,8 +3,15 @@
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { and, count, desc, eq } from 'drizzle-orm'
+import {
+  buildOptionIndex,
+  type FieldOptionItem,
+  resolveOptionId,
+} from '../../resources/registry/option-helpers'
+import { parseResolutionConfig } from '../mapping/resolution-config'
 import type { ColumnFieldConfig, OverrideValue, ResolvedValue } from '../types'
 import type { RelationCreateRequest } from '../types/resolution'
+import { resolveColumnOptions } from './resolve-column-options'
 
 /** Resolution status types */
 export type ResolutionStatus = 'pending' | 'valid' | 'error' | 'warning' | 'create'
@@ -20,6 +27,14 @@ export interface UniqueValueWithResolution {
   originalStatus: ResolutionStatus // From DB, used for grouping
   effectiveStatus: EffectiveStatus // Derived from override, used for display
   resolvedValue: string | null
+  /**
+   * The display label(s) behind `resolvedValue` for `select:`/`multiselect:`
+   * columns, resolved against the LIVE option list (multi values joined with
+   * `, `). Null for non-option columns and when no part of the value matches an
+   * option — a pending option create resolves to null on purpose, its
+   * `resolvedValue` is the label to be minted, not a key.
+   */
+  resolvedLabel: string | null
   resolvedValues: ResolvedValue[]
   errorMessage: string | null
   isOverridden: boolean
@@ -68,20 +83,25 @@ function extractRelationCreate(resolvedValues: ResolvedValue[]): RelationCreateR
 /**
  * Build field config from mapping property.
  */
-function buildFieldConfig(mappingProp: {
-  targetFieldKey: string | null
-  resolutionType: string
-  resolutionConfig: unknown
-}): ColumnFieldConfig | null {
+function buildFieldConfig(
+  mappingProp: {
+    targetFieldKey: string | null
+    customFieldId: string | null
+    resolutionType: string
+    resolutionConfig: unknown
+  },
+  entityDefinitionId: string
+): ColumnFieldConfig | null {
   if (!mappingProp.targetFieldKey) return null
 
-  const resolutionConfig = mappingProp.resolutionConfig as {
-    options?: Array<{ value: string; label: string }>
-    relationConfig?: {
-      relatedEntityDefinitionId: string
-      relationshipType: 'belongs_to' | 'has_one' | 'has_many' | 'many_to_many'
-    }
-  } | null
+  // `resolutionConfig` is a JSON STRING column (`text()`), like every other
+  // consumer parses it (resolve-values-job, save-mapping-property,
+  // execute-plan-job). Casting the string made `options`/`relationConfig`
+  // permanently undefined, which left the review step's option picker dead
+  // code and every resolved select value rendering as its raw option key.
+  const resolutionConfig = parseResolutionConfig(
+    mappingProp.resolutionConfig as string | null | undefined
+  )
 
   // Derive base type from resolution type
   const resolutionType = mappingProp.resolutionType
@@ -102,9 +122,36 @@ function buildFieldConfig(mappingProp: {
     key: mappingProp.targetFieldKey,
     type,
     resolutionType,
+    customFieldId: mappingProp.customFieldId,
+    entityDefinitionId,
     options: resolutionConfig?.options,
     relationConfig: resolutionConfig?.relationConfig,
   }
+}
+
+/** Whether a column resolves against a select-ish option list. */
+function isOptionColumn(resolutionType: string): boolean {
+  return resolutionType.startsWith('select:') || resolutionType.startsWith('multiselect:')
+}
+
+/**
+ * Resolve an option column's stored key(s) to display label(s).
+ *
+ * `resolvedValue` is comma-joined for multiselect columns (option keys are
+ * nanoids and never contain commas). Null when nothing matches: a pending
+ * option create's `resolvedValue` is the label to be minted, not a key, and
+ * lands here as null by design.
+ */
+function resolveLabel(
+  resolvedValue: string | null,
+  optionIndex: Map<string, FieldOptionItem> | null
+): string | null {
+  if (!optionIndex || !resolvedValue) return null
+  const parts = resolvedValue.split(',').filter(Boolean)
+  if (parts.length === 0) return null
+  const resolved = parts.map((part) => resolveOptionId(part, optionIndex))
+  if (resolved.every((r) => r.status === 'unknown')) return null
+  return resolved.map((r) => (r.status === 'known' ? r.label : r.raw)).join(', ')
 }
 
 /**
@@ -146,21 +193,34 @@ function deriveEffectiveStatus(
   return 'valid'
 }
 
+/** Parameters for {@link getUniqueValuesWithResolution} */
+export interface GetUniqueValuesParams {
+  jobId: string
+  mappingId: string
+  columnIndex: number
+  /** `ImportMapping.organizationId` — scope for the live option lookup */
+  organizationId: string
+  /** `ImportMapping.entityDefinitionId` — the resource the column targets */
+  entityDefinitionId: string
+}
+
 /**
  * Get unique values for a column with their resolution status.
  *
+ * For select-ish columns the returned `fieldConfig.options` is the LIVE option
+ * list (the stored snapshot is client-asserted and never refreshed — same rule
+ * as `resolve-values-job`), and each value carries a `resolvedLabel` resolved
+ * against that list.
+ *
  * @param db - Database instance
- * @param jobId - Import job ID
- * @param mappingId - Import mapping ID
- * @param columnIndex - Column index
+ * @param params - Job, mapping, column, and org/def scope
  * @returns Unique values with resolution info and field config
  */
 export async function getUniqueValuesWithResolution(
   db: Database,
-  jobId: string,
-  mappingId: string,
-  columnIndex: number
+  params: GetUniqueValuesParams
 ): Promise<UniqueValuesWithFieldConfig> {
+  const { jobId, mappingId, columnIndex, organizationId, entityDefinitionId } = params
   // Get unique values with counts using SQL GROUP BY
   const uniqueValues = await db
     .select({
@@ -197,6 +257,7 @@ export async function getUniqueValuesWithResolution(
         originalStatus: 'pending' as ResolutionStatus,
         effectiveStatus: 'pending' as EffectiveStatus,
         resolvedValue: null,
+        resolvedLabel: null,
         resolvedValues: [],
         errorMessage: null,
         isOverridden: false,
@@ -206,7 +267,22 @@ export async function getUniqueValuesWithResolution(
   }
 
   // Build field config from mapping property
-  const fieldConfig = buildFieldConfig(mappingProp)
+  const fieldConfig = buildFieldConfig(mappingProp, entityDefinitionId)
+
+  // Overlay the LIVE option list for select-ish columns, same rule as
+  // `resolve-values-job`: the live list WINS, the stored snapshot only stands
+  // in for a field that has since vanished.
+  let optionIndex: Map<string, FieldOptionItem> | null = null
+  if (fieldConfig && isOptionColumn(fieldConfig.resolutionType)) {
+    const liveOptions = await resolveColumnOptions({
+      organizationId,
+      entityDefinitionId,
+      targetFieldKeys: [fieldConfig.key],
+    })
+    const live = liveOptions.get(fieldConfig.key)
+    if (live) fieldConfig.options = live
+    optionIndex = buildOptionIndex(fieldConfig.options ?? [])
+  }
 
   // Get job property
   const jobProp = await db.query.ImportJobProperty.findFirst({
@@ -260,6 +336,7 @@ export async function getUniqueValuesWithResolution(
       const originalStatus = (resolution?.status ?? 'pending') as ResolutionStatus
       const isOverridden = resolution?.isOverridden ?? false
       const overrideValues = resolution?.overrideValues ?? null
+      const resolvedValue = resolution?.resolvedValue ?? null
 
       return {
         hash: uv.valueHash,
@@ -267,7 +344,8 @@ export async function getUniqueValuesWithResolution(
         count: Number(uv.count),
         originalStatus,
         effectiveStatus: deriveEffectiveStatus(originalStatus, isOverridden, overrideValues),
-        resolvedValue: resolution?.resolvedValue ?? null,
+        resolvedValue,
+        resolvedLabel: resolveLabel(resolvedValue, optionIndex),
         resolvedValues: resolution?.resolvedValues ?? [],
         errorMessage: resolution?.errorMessage ?? null,
         isOverridden,

@@ -471,12 +471,13 @@ export const dataImportRouter = createTRPCRouter({
       // Verify job access and import authority for its target def
       const job = await requireImportJob(ctx.db, ctx.capabilities, organizationId, input.jobId)
 
-      return getUniqueValuesWithResolution(
-        ctx.db,
-        input.jobId,
-        job.importMappingId,
-        input.columnIndex
-      )
+      return getUniqueValuesWithResolution(ctx.db, {
+        jobId: input.jobId,
+        mappingId: job.importMappingId,
+        columnIndex: input.columnIndex,
+        organizationId,
+        entityDefinitionId: job.importMapping.entityDefinitionId,
+      })
     }),
 
   /**
