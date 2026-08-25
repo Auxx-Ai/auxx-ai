@@ -2,13 +2,12 @@
 
 import type { Database } from '@auxx/database'
 import { getCachedResource } from '../../cache'
-import { getFieldOutputKey } from '../../resources/registry/field-types'
-import { getNaturalKeyFields } from '../../resources/registry/field-utils'
 import type { Resource } from '../../resources/registry/types'
 import { type ColumnHeaderWithSamples, orchestrateAutoMap } from '../fields/auto-map-orchestrator'
 import { getImportableFields } from '../fields/get-importable-fields'
 import { buildRelationColumnPolicy } from '../resolution/relation-policy'
 import { getMappablePropertiesWithSamples } from './get-mappable-properties'
+import { getNaturalKeyFieldKeys } from './natural-key'
 import { batchUpdateMappingsFromAutoMap, type RelationConfig } from './save-mapping-property'
 
 /** Auto-map strategy type */
@@ -161,7 +160,7 @@ export async function runAutoMap(
   //
   // Read off the resource, never off an entity type: `vendor_part` is the first
   // declarer, not a special case, and any resource that declares one gets this.
-  const naturalKeyFieldKeys = getNaturalKeyFields(resource).map(getFieldOutputKey)
+  const naturalKeyFieldKeys = getNaturalKeyFieldKeys(resource)
 
   await batchUpdateMappingsFromAutoMap(db, {
     mappingId: importMappingId,

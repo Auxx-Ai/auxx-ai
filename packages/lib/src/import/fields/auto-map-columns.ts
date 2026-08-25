@@ -41,18 +41,39 @@ function splitIntoWords(str: string): string[] {
  * - lowercase
  * - remove underscores, dashes, spaces
  * - remove common prefixes/suffixes
+ *
+ * 🛑 The affix strips must never consume the WHOLE string. `'id'` is itself a
+ * suffix, so the naive form normalized the Record ID field's key to `''` — and
+ * an empty string is a substring of everything, so the containment rule in
+ * {@link wordSimilarity} scored every unmatched header 0.7 against Record ID.
+ * That is above the match threshold and above most genuine partial matches, so
+ * any column the matcher could not place landed on the record's identity and,
+ * Record ID being a tier-1 identifier, silently became the import's match key.
+ * Stripping is a hint, so it yields to the unstripped form rather than to
+ * nothing.
  */
 function normalizeForComparison(str: string): string {
-  return str
+  const base = str
     .toLowerCase()
     .replace(/[_\-\s]/g, '')
     .replace(/^(col|column|field)/, '')
-    .replace(/(id|field|col|column)$/, '')
+  const stripped = base.replace(/(id|field|col|column)$/, '')
+  return stripped || base
 }
 
 /**
  * Calculate word-based similarity between two strings.
  * Handles camelCase, snake_case, and compound names.
+ *
+ * The score is SYMMETRIC: it asks both "how much of the header did the field
+ * explain" and "how much of the field did the header explain". Only the first
+ * half used to count, which made a one-word header score a perfect 1.0 against
+ * every field whose name merely contained that word. Field KEYS carry the
+ * entity prefix (`vendor_part_vendor_sku`, `vendor_part_part`, …), so on a join
+ * entity the header `Part` tied at 1.0 with all of them at once and the winner
+ * fell out of field ORDER — scalars are emitted before relations, so `Part`
+ * landed on Vendor SKU and the required Part relation was left unmapped behind
+ * a wizard reporting every column mapped.
  */
 function wordSimilarity(a: string, b: string): number {
   const wordsA = splitIntoWords(a)
@@ -68,21 +89,26 @@ function wordSimilarity(a: string, b: string): number {
   // Count matching words
   let matchingWords = 0
   let totalWeight = 0
+  /** Which words of B some word of A accounted for. */
+  const explainedB = new Set<number>()
 
   for (const wordA of wordsA) {
     // First word is often more important (e.g., "first" in "firstName")
     const weight = wordA === wordsA[0] ? 2 : 1
     totalWeight += weight
 
-    for (const wordB of wordsB) {
+    for (let i = 0; i < wordsB.length; i++) {
+      const wordB = wordsB[i]!
       if (wordA === wordB) {
         matchingWords += weight
+        explainedB.add(i)
         break
       }
       // Partial match for similar words
       if (wordA.length > 2 && wordB.length > 2) {
         if (wordA.startsWith(wordB) || wordB.startsWith(wordA)) {
           matchingWords += weight * 0.8
+          explainedB.add(i)
           break
         }
       }
@@ -90,11 +116,18 @@ function wordSimilarity(a: string, b: string): number {
   }
 
   // Also check if normalized strings are contained
-  if (normA.includes(normB) || normB.includes(normA)) {
-    return Math.max(0.7, matchingWords / totalWeight)
-  }
+  const contained = normA.includes(normB) || normB.includes(normA)
+  const headerScore = contained
+    ? Math.max(0.7, matchingWords / totalWeight)
+    : matchingWords / totalWeight
 
-  return matchingWords / totalWeight
+  // Damped rather than multiplied outright: a field name is routinely longer
+  // than the header that means it (`Qty` for "Min Order Qty"), so leaving words
+  // unexplained is a demotion, not a disqualification. Half-weight keeps those
+  // above the caller's 0.5 threshold while still ranking the field the header
+  // actually names above one that merely shares a word with it.
+  const fieldCoverage = explainedB.size / wordsB.length
+  return headerScore * (0.5 + 0.5 * fieldCoverage)
 }
 
 /**

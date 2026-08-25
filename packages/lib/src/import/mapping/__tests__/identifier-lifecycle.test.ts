@@ -741,3 +741,162 @@ describe('atomicity, every mapping write is one transaction', () => {
     expect(db.mapping.identifierFieldKeys).toEqual(['part_sku'])
   })
 })
+
+/**
+ * The half auto-map cannot cover.
+ *
+ * `batchUpdateMappingsFromAutoMap` defaults the declared natural key on, and for
+ * a long time only it did — so a mapping the user REPAIRED came out with no
+ * match key at all. That is not an edge case: a mis-mapped key column is the
+ * reason anyone opens the mapping step to repair it, and `vendor_part` has no
+ * lone identifier to fall back to. The supplier-price importer shipped whole
+ * with `identifierFieldKeys: []` and `defaultStrategy: 'create'` this way, which
+ * is a monthly price list appending its rows instead of updating them.
+ *
+ * `batchColumnOrder` is load-bearing here for the reason its own docblock gives:
+ * completing the key writes the flag onto SEVERAL columns in one call, and the
+ * single-`focusColumn` model would land all of them on one row.
+ */
+describe('natural key defaults on after a hand REPAIR', () => {
+  /** `(part, supplier)` — the legs `vendor-part-fields.ts` declares. */
+  const VENDOR_PART_KEY = ['vendor_part_part', 'vendor_part_contact']
+
+  /** Two unmapped columns and a mapping with no identity, as after a bad auto-map. */
+  function freshDb() {
+    return new FakeDb(
+      [
+        column(0, { sourceColumnName: 'Part' }),
+        column(1, { sourceColumnName: 'Supplier' }),
+        column(2, { sourceColumnName: 'Vendor SKU' }),
+      ],
+      { identifierFieldKeys: [], defaultStrategy: 'create' }
+    )
+  }
+
+  it('fires when the LAST leg is mapped, and flips the mode to create-or-update', async () => {
+    const db = freshDb()
+
+    // First leg: the tuple is still incomplete, so nothing is flagged yet.
+    db.batchColumnOrder = [0]
+    await save(db, mapTo(0, 'vendor_part_part', { naturalKeyFieldKeys: VENDOR_PART_KEY }))
+    expect(db.mapping.identifierFieldKeys).toEqual([])
+    expect(db.mapping.defaultStrategy).toBe('create')
+
+    // Second leg completes it: the column write, then one write per leg.
+    db.batchColumnOrder = [1, 0, 1]
+    await save(db, mapTo(1, 'vendor_part_contact', { naturalKeyFieldKeys: VENDOR_PART_KEY }))
+
+    expect(db.mapping.identifierFieldKeys).toEqual(VENDOR_PART_KEY)
+    expect(db.mapping.defaultStrategy).toBe('create-or-update')
+  })
+
+  it('leaves a PARTIAL key alone — half a tuple matches nothing', async () => {
+    const db = freshDb()
+
+    db.batchColumnOrder = [0]
+    await save(db, mapTo(0, 'vendor_part_part', { naturalKeyFieldKeys: VENDOR_PART_KEY }))
+
+    expect(db.mapping.identifierFieldKeys).toEqual([])
+    expect(db.mapping.defaultStrategy).toBe('create')
+  })
+
+  it('never overrides an identity the mapping already has', async () => {
+    const db = freshDb()
+
+    // The user's own pick, on a field that is not a leg.
+    db.batchColumnOrder = [2]
+    await save(
+      db,
+      mapTo(2, 'vendor_part_vendor_sku', {
+        identityRole: { kind: 'match' },
+        naturalKeyFieldKeys: VENDOR_PART_KEY,
+      })
+    )
+    db.batchColumnOrder = [0]
+    await save(db, mapTo(0, 'vendor_part_part', { naturalKeyFieldKeys: VENDOR_PART_KEY }))
+    db.batchColumnOrder = [1]
+    await save(db, mapTo(1, 'vendor_part_contact', { naturalKeyFieldKeys: VENDOR_PART_KEY }))
+
+    expect(db.mapping.identifierFieldKeys).toEqual(['vendor_part_vendor_sku'])
+  })
+
+  it('does not undo an explicit clear of the last flag', async () => {
+    const db = freshDb()
+
+    db.batchColumnOrder = [0]
+    await save(db, mapTo(0, 'vendor_part_part', { naturalKeyFieldKeys: VENDOR_PART_KEY }))
+    db.batchColumnOrder = [1, 0, 1]
+    await save(db, mapTo(1, 'vendor_part_contact', { naturalKeyFieldKeys: VENDOR_PART_KEY }))
+    expect(db.mapping.identifierFieldKeys).toEqual(VENDOR_PART_KEY)
+
+    // Clearing the legs one at a time must end at create-only and STAY there —
+    // the default may not re-stamp the tuple the user just took off.
+    db.batchColumnOrder = [0]
+    await save(
+      db,
+      mapTo(0, 'vendor_part_part', { identityRole: null, naturalKeyFieldKeys: VENDOR_PART_KEY })
+    )
+    db.batchColumnOrder = [1]
+    await save(
+      db,
+      mapTo(1, 'vendor_part_contact', { identityRole: null, naturalKeyFieldKeys: VENDOR_PART_KEY })
+    )
+
+    expect(db.mapping.identifierFieldKeys).toEqual([])
+    expect(db.mapping.defaultStrategy).toBe('create')
+  })
+
+  it('is not resurrected by a save on an unrelated column', async () => {
+    const db = freshDb()
+
+    db.batchColumnOrder = [0]
+    await save(db, mapTo(0, 'vendor_part_part', { naturalKeyFieldKeys: VENDOR_PART_KEY }))
+    db.batchColumnOrder = [1]
+    await save(
+      db,
+      mapTo(1, 'vendor_part_contact', { identityRole: null, naturalKeyFieldKeys: VENDOR_PART_KEY })
+    )
+    expect(db.mapping.identifierFieldKeys).toEqual([])
+
+    // Both legs are mapped and the key is off. Editing a THIRD column is not a
+    // statement about identity, so it may not turn the key back on.
+    db.batchColumnOrder = [2]
+    await save(db, mapTo(2, 'vendor_part_vendor_sku', { naturalKeyFieldKeys: VENDOR_PART_KEY }))
+
+    expect(db.mapping.identifierFieldKeys).toEqual([])
+  })
+
+  it('completes a HALF tuple left behind by unmapping and re-mapping one leg', async () => {
+    const db = freshDb()
+
+    db.batchColumnOrder = [0]
+    await save(db, mapTo(0, 'vendor_part_part', { naturalKeyFieldKeys: VENDOR_PART_KEY }))
+    db.batchColumnOrder = [1, 0, 1]
+    await save(db, mapTo(1, 'vendor_part_contact', { naturalKeyFieldKeys: VENDOR_PART_KEY }))
+    expect(db.mapping.identifierFieldKeys).toEqual(VENDOR_PART_KEY)
+
+    // Unmapping a leg drops its flag and leaves the OTHER leg flagged alone —
+    // a key that can never match, since `analyzeRow` needs every component.
+    db.batchColumnOrder = [0]
+    await save(db, mapTo(0, null, { naturalKeyFieldKeys: VENDOR_PART_KEY }))
+    expect(db.mapping.identifierFieldKeys).toEqual(['vendor_part_contact'])
+
+    // Re-mapping it must restore the whole tuple, not sit next to the orphan.
+    db.batchColumnOrder = [0, 0, 1]
+    await save(db, mapTo(0, 'vendor_part_part', { naturalKeyFieldKeys: VENDOR_PART_KEY }))
+
+    expect(db.mapping.identifierFieldKeys).toEqual(VENDOR_PART_KEY)
+  })
+
+  it('is inert for a resource that declares no natural key', async () => {
+    const db = freshDb()
+
+    db.batchColumnOrder = [0]
+    await save(db, mapTo(0, 'contact_email'))
+    db.batchColumnOrder = [1]
+    await save(db, mapTo(1, 'contact_name'))
+
+    expect(db.mapping.identifierFieldKeys).toEqual([])
+    expect(db.mapping.defaultStrategy).toBe('create')
+  })
+})
