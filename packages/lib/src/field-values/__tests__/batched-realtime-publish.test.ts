@@ -188,6 +188,10 @@ function makeFakeDb() {
       ]),
     update: () => chain,
     set: () => chain,
+    // The set path wraps its replace in a transaction + advisory lock; run
+    // both on the same fake.
+    transaction: async (fn: (tx: any) => Promise<any>) => fn(chain),
+    execute: () => Promise.resolve([]),
   })
   return chain
 }

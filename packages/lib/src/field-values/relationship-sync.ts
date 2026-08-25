@@ -431,29 +431,35 @@ async function batchAddToInverse(
         )
     }
 
-    // DELETE: Clear all existing inverse values for these targets
-    await ctx.db
-      .delete(schema.FieldValue)
-      .where(
-        and(
-          inArray(schema.FieldValue.entityId, allTargetIds),
-          eq(schema.FieldValue.fieldId, inverseFieldId),
-          eq(schema.FieldValue.organizationId, ctx.organizationId)
+    // Atomic replace (plans/field-values/delete-insert-replace.md Phase 0):
+    // a crash between the clear and the re-insert must not lose the targets'
+    // inverse values. Cross-entity bulk pair, so no per-(entity, field)
+    // advisory lock — the transaction alone closes the destroy window.
+    await ctx.db.transaction(async (tx) => {
+      // DELETE: Clear all existing inverse values for these targets
+      await tx
+        .delete(schema.FieldValue)
+        .where(
+          and(
+            inArray(schema.FieldValue.entityId, allTargetIds),
+            eq(schema.FieldValue.fieldId, inverseFieldId),
+            eq(schema.FieldValue.organizationId, ctx.organizationId)
+          )
         )
-      )
 
-    // batch INSERT: Insert all new values
-    await ctx.db.insert(schema.FieldValue).values(
-      [...finalValue.entries()].map(([targetId, sourceId]) => ({
-        organizationId: ctx.organizationId,
-        entityId: targetId,
-        entityDefinitionId: targetEntityDefinitionId,
-        fieldId: inverseFieldId,
-        relatedEntityId: sourceId,
-        relatedEntityDefinitionId: sourceEntityDefinitionId,
-        sortKey: generateKeyBetween(null, null),
-      }))
-    )
+      // batch INSERT: Insert all new values
+      await tx.insert(schema.FieldValue).values(
+        [...finalValue.entries()].map(([targetId, sourceId]) => ({
+          organizationId: ctx.organizationId,
+          entityId: targetId,
+          entityDefinitionId: targetEntityDefinitionId,
+          fieldId: inverseFieldId,
+          relatedEntityId: sourceId,
+          relatedEntityDefinitionId: sourceEntityDefinitionId,
+          sortKey: generateKeyBetween(null, null),
+        }))
+      )
+    })
   } else {
     // ─────────────────────────────────────────────────────────────
     // MULTI-VALUE: Check existing, get sortKeys, insert missing

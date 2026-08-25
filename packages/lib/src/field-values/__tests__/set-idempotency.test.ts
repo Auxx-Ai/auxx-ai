@@ -175,6 +175,10 @@ function makeFakeDb(existingRows: any[] = []) {
     orderBy: () => Promise.resolve(existingRows),
     update: () => chain,
     set: () => chain,
+    // The set path wraps its replace in a transaction + advisory lock; run
+    // both on the same fake so delete/insert counting still works.
+    transaction: async (fn: (tx: any) => Promise<any>) => fn(chain),
+    execute: () => Promise.resolve([]),
   })
   return { db: chain, state }
 }

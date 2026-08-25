@@ -164,6 +164,10 @@ function makeFakeDb(rowsByField: Record<string, any[]> = {}) {
       state.updates.push({ table: currentUpdateTable, set: payload })
       return chain
     },
+    // The set path wraps its replace in a transaction + advisory lock; run
+    // both on the same fake so the counters and update capture still observe.
+    transaction: async (fn: (tx: any) => Promise<any>) => fn(chain),
+    execute: () => Promise.resolve([]),
   })
   return { db: chain, state }
 }

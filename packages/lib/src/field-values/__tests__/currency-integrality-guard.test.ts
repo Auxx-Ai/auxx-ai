@@ -54,6 +54,10 @@ function makeFakeDb() {
     orderBy: () => Promise.resolve([]),
     update: () => chain,
     set: () => chain,
+    // The set path wraps its replace in a transaction + advisory lock; run
+    // both on the same fake so the delete counter still observes the write.
+    transaction: async (fn: (tx: any) => Promise<any>) => fn(chain),
+    execute: () => Promise.resolve([]),
   })
   return { db: chain, calls }
 }

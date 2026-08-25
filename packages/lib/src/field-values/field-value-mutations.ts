@@ -74,7 +74,6 @@ import { getModelType, isRecordId, parseRecordId, toRecordId } from '../resource
 import { applyAiMarker } from './ai-commit'
 import { shortCircuitAiGenerate } from './ai-enqueue'
 import { batchGetExistingFieldValues } from './batch-existing-values'
-import { deleteFieldValues } from './delete-values'
 import {
   assertCurrencyIntegerMinorUnits,
   type CachedField,
@@ -95,7 +94,7 @@ import {
 import { getValue } from './field-value-queries'
 import { formatToTypedInput } from './formatter'
 import { getExistingFieldValue } from './get-existing-value'
-import { batchInsertFieldValues, insertFieldValue } from './insert-value'
+import { insertFieldValue } from './insert-value'
 import { MAX_MULTI_VALUES } from './primary-value'
 import {
   type BulkRelationshipUpdate,
@@ -650,53 +649,15 @@ export async function setValueWithType(
     )
   }
 
-  // Delete existing values for this entityInstanceId + fieldId
-  await ctx.db
-    .delete(schema.FieldValue)
-    .where(
-      and(
-        eq(schema.FieldValue.entityId, entityInstanceId),
-        eq(schema.FieldValue.fieldId, fieldId),
-        eq(schema.FieldValue.organizationId, ctx.organizationId)
-      )
-    )
-
-  // If value is null, we're done (deletion)
-  if (value === null) {
-    await maybeUpdateDisplayValue(ctx, recordId, field, null)
-
-    // Sync inverse if we had old relationships
-    if (inverseInfo && oldRelatedIds.length > 0) {
-      await syncInverseRelationships(
-        { db: ctx.db, organizationId: ctx.organizationId },
-        { entityId: entityInstanceId, oldRelatedIds, newRelatedIds: [], inverseInfo }
-      )
-    }
-
-    return []
-  }
-
-  // Handle array of values (multi-value fields)
-  const values = Array.isArray(value) ? value : [value]
-  if (values.length === 0) {
-    await maybeUpdateDisplayValue(ctx, recordId, field, null)
-
-    // Sync inverse if we had old relationships
-    if (inverseInfo && oldRelatedIds.length > 0) {
-      await syncInverseRelationships(
-        { db: ctx.db, organizationId: ctx.organizationId },
-        { entityId: entityInstanceId, oldRelatedIds, newRelatedIds: [], inverseInfo }
-      )
-    }
-
-    return []
-  }
-
-  // Generate sort keys for each value. When `aiGeneration` is present on
-  // the input (stage-2 AI commit), merge the `aiStatus='result'` + metadata
-  // marker onto each insert row. Absent = manual write → marker stays null,
-  // naturally clearing any prior AI marker via this DELETE+INSERT cycle.
-  const sortKeys = nKeysAfter(null, values.length)
+  // Normalize to the value list; an empty list is a clear. Insert rows are
+  // built BEFORE the transaction (buildFieldValueRow re-asserts CURRENCY
+  // integrality) so a rejected row never reaches the destructive path. When
+  // `aiGeneration` is present (stage-2 AI commit), merge the
+  // `aiStatus='result'` + metadata marker onto each row. Absent = manual
+  // write → marker stays null, naturally clearing any prior AI marker via
+  // the replace.
+  const values = value === null ? [] : Array.isArray(value) ? value : [value]
+  const sortKeys = values.length > 0 ? nKeysAfter(null, values.length) : []
   const insertRows = values.map((v, index) => {
     const baseRow = buildFieldValueRow({
       organizationId: ctx.organizationId,
@@ -710,35 +671,65 @@ export async function setValueWithType(
     return params.aiGeneration ? applyAiMarker(baseRow, params.aiGeneration) : baseRow
   })
 
-  // Insert all values. The DELETE+INSERT above is NOT transactional, so two
-  // concurrent writers for the same (entity, field) — e.g. duplicate webhook
-  // events syncing one record through the data-connector sink — can interleave:
-  // both DELETE, then both INSERT the same sortKey, and the second trips the
-  // (entityId, fieldId, sortKey) unique index. onConflictDoUpdate makes the
-  // losing writer merge (last-write-wins) instead of throwing, which matches the
-  // replace semantics the DELETE+INSERT already intends. `excluded.aiStatus` is
-  // null for a manual write (the row omits it), so a conflicting manual write
-  // still clears a prior AI marker — same as the DELETE+INSERT cycle would.
-  const inserted = await ctx.db
-    .insert(schema.FieldValue)
-    .values(insertRows)
-    .onConflictDoUpdate({
-      target: [schema.FieldValue.entityId, schema.FieldValue.fieldId, schema.FieldValue.sortKey],
-      set: {
-        valueText: sql`excluded."valueText"`,
-        valueNumber: sql`excluded."valueNumber"`,
-        valueBoolean: sql`excluded."valueBoolean"`,
-        valueDate: sql`excluded."valueDate"`,
-        valueJson: sql`excluded."valueJson"`,
-        optionId: sql`excluded."optionId"`,
-        relatedEntityId: sql`excluded."relatedEntityId"`,
-        relatedEntityDefinitionId: sql`excluded."relatedEntityDefinitionId"`,
-        actorId: sql`excluded."actorId"`,
-        aiStatus: sql`excluded."aiStatus"`,
-        updatedAt: new Date(),
-      },
-    })
-    .returning()
+  // Atomic replace (plans/field-values/delete-insert-replace.md Phase 0).
+  // The transaction closes the window where a crash between DELETE and
+  // INSERT lost the field's values; the advisory lock serializes against
+  // concurrent set-writers AND the targeted add/remove paths, which already
+  // take the same lock. Only the two row writes live inside — display
+  // recompute, inverse sync, hooks and realtime are derived work and stay
+  // after COMMIT. onConflictDoUpdate remains as belt-and-braces while other
+  // writers are still being migrated to the lock (Phase 3 re-examines it).
+  const inserted = await ctx.db.transaction(async (tx) => {
+    await acquireFieldValueLock(tx, entityInstanceId, fieldId)
+
+    await tx
+      .delete(schema.FieldValue)
+      .where(
+        and(
+          eq(schema.FieldValue.entityId, entityInstanceId),
+          eq(schema.FieldValue.fieldId, fieldId),
+          eq(schema.FieldValue.organizationId, ctx.organizationId)
+        )
+      )
+
+    if (insertRows.length === 0) return []
+
+    return await tx
+      .insert(schema.FieldValue)
+      .values(insertRows)
+      .onConflictDoUpdate({
+        target: [schema.FieldValue.entityId, schema.FieldValue.fieldId, schema.FieldValue.sortKey],
+        set: {
+          valueText: sql`excluded."valueText"`,
+          valueNumber: sql`excluded."valueNumber"`,
+          valueBoolean: sql`excluded."valueBoolean"`,
+          valueDate: sql`excluded."valueDate"`,
+          valueJson: sql`excluded."valueJson"`,
+          optionId: sql`excluded."optionId"`,
+          relatedEntityId: sql`excluded."relatedEntityId"`,
+          relatedEntityDefinitionId: sql`excluded."relatedEntityDefinitionId"`,
+          actorId: sql`excluded."actorId"`,
+          aiStatus: sql`excluded."aiStatus"`,
+          updatedAt: new Date(),
+        },
+      })
+      .returning()
+  })
+
+  // Clear (null or empty list): rows are gone, derived state follows.
+  if (values.length === 0) {
+    await maybeUpdateDisplayValue(ctx, recordId, field, null)
+
+    // Sync inverse if we had old relationships
+    if (inverseInfo && oldRelatedIds.length > 0) {
+      await syncInverseRelationships(
+        { db: ctx.db, organizationId: ctx.organizationId },
+        { entityId: entityInstanceId, oldRelatedIds, newRelatedIds: [], inverseInfo }
+      )
+    }
+
+    return []
+  }
 
   const result = inserted.map((row) => rowToTypedValue(row as unknown as FieldValueRow, fieldType))
 
@@ -3858,7 +3849,7 @@ async function setSingleValue(
 }
 
 /**
- * Set multi-value field using DELETE+INSERT strategy.
+ * Set multi-value field by replacing the row set atomically.
  */
 async function setMultiValue(
   ctx: FieldValueContext,
@@ -3867,43 +3858,43 @@ async function setMultiValue(
   fieldType: FieldType,
   value: TypedFieldValueInput | TypedFieldValueInput[]
 ): Promise<TypedFieldValue[]> {
-  const { entityInstanceId } = parseRecordId(recordId)
+  const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
   const values = Array.isArray(value) ? value : [value]
 
-  // DELETE all existing
-  const deleteResult = await deleteFieldValues({
+  const sortKeys = values.length > 0 ? nKeysAfter(null, values.length) : []
+  const insertRows = values.map((v, index) => ({
+    organizationId: ctx.organizationId,
     entityId: entityInstanceId,
+    entityDefinitionId,
     fieldId,
-    organizationId: ctx.organizationId,
-  })
-
-  if (deleteResult.isErr()) {
-    throw new Error(deleteResult.error.message)
-  }
-
-  if (values.length === 0) return []
-
-  // Build insert rows with sortKeys - pass recordId
-  const sortKeys = nKeysAfter(null, values.length)
-  const insertInputs = values.map((v, index) => ({
-    recordId,
-    fieldId,
-    organizationId: ctx.organizationId,
     sortKey: sortKeys[index]!,
     ...buildInsertData(fieldType, v),
   }))
 
-  const insertedResult = await batchInsertFieldValues(insertInputs)
+  // Atomic replace (plans/field-values/delete-insert-replace.md Phase 0):
+  // same lock + transaction shape as setValueWithType. Writes go through the
+  // transaction handle directly — the `deleteFieldValues` /
+  // `batchInsertFieldValues` helpers bind the pooled connection and cannot
+  // join this transaction.
+  const inserted = await ctx.db.transaction(async (tx) => {
+    await acquireFieldValueLock(tx, entityInstanceId, fieldId)
 
-  if (insertedResult.isErr()) {
-    throw new Error(insertedResult.error.message)
-  }
+    await tx
+      .delete(schema.FieldValue)
+      .where(
+        and(
+          eq(schema.FieldValue.entityId, entityInstanceId),
+          eq(schema.FieldValue.fieldId, fieldId),
+          eq(schema.FieldValue.organizationId, ctx.organizationId)
+        )
+      )
 
-  const result = insertedResult.value.map((row) =>
-    rowToTypedValue(row as unknown as FieldValueRow, fieldType)
-  )
+    if (insertRows.length === 0) return []
 
-  return result
+    return await tx.insert(schema.FieldValue).values(insertRows).returning()
+  })
+
+  return inserted.map((row) => rowToTypedValue(row as unknown as FieldValueRow, fieldType))
 }
 
 /**
