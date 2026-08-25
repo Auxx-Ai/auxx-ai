@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.1.216](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.215...auxx-v0.1.216) (2026-08-25)
+
+
+### Features
+
+* **chat:** bind a chat channel to a shopify store from the setup tab ([#1885](https://github.com/Auxx-Ai/auxx-ai/issues/1885)) ([c0409e8](https://github.com/Auxx-Ai/auxx-ai/commit/c0409e88cfff7b0fca88a203bf2e34c196fd42e2))
+* **import:** declare natural keys so price lists update instead of duplicating ([#1884](https://github.com/Auxx-Ai/auxx-ai/issues/1884)) ([97e3263](https://github.com/Auxx-Ai/auxx-ai/commit/97e326322841a7e7eb806ab4fee3f5bd12114401))
+
+
+### Bug Fixes
+
+* **proxy:** stop null-body statuses 500ing through the PostHog proxy ([#1881](https://github.com/Auxx-Ai/auxx-ai/issues/1881)) ([089b139](https://github.com/Auxx-Ai/auxx-ai/commit/089b13918db53fa2615bc412c6599c76622fe910))
+* **records:** delete both halves of a relation, not just one ([#1883](https://github.com/Auxx-Ai/auxx-ai/issues/1883)) ([e94a249](https://github.com/Auxx-Ai/auxx-ai/commit/e94a249fcc02521c3442194eac8017735b02a8f9))
+* **records:** stop re-saving references to deleted records ([#1882](https://github.com/Auxx-Ai/auxx-ai/issues/1882)) ([105957e](https://github.com/Auxx-Ai/auxx-ai/commit/105957e1387d11e3a65cd3daf0ea55392000f076))
+
 ## [0.1.215](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.214...auxx-v0.1.215) (2026-08-25)
 
 
