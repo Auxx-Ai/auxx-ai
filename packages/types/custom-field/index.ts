@@ -170,6 +170,40 @@ export const aiOptionsSchema = z.object({
 export type AiOptions = z.infer<typeof aiOptionsSchema>
 
 /**
+ * `CustomField.options.allowNewOptions` — may an **automated writer** (a CSV
+ * import, a paste, a bulk action) append new options to this field's taxonomy?
+ *
+ * The PREFERENCE half of that question; the authority half is
+ * `canGrowFieldOptions` in `@auxx/lib/custom-fields`, and both must be true.
+ * The single reader is `fieldAllowsNewOptions` in the same module — this schema
+ * exists so the value survives `fieldOptionsUnionSchema`, nothing more. Do not
+ * add a second reader.
+ *
+ * **Tri-state, and that is the whole point:**
+ * - `undefined` — inherit the type default: TAGS grow, SINGLE_SELECT /
+ *   MULTI_SELECT do not. A tag vocabulary is user-grown data by definition; a
+ *   select's option set is curated configuration.
+ * - `true` / `false` — the user decided, and their choice wins for either type.
+ * - `null` — patch-only, never stored: clears the stored decision back to
+ *   inheritance. `false` is a decision and absence is an inheritance, so a UI
+ *   with an Inherit / Yes / No control needs a way to say the first, and
+ *   re-sending `undefined` cannot say anything (the writer reads an absent key
+ *   as "this patch did not address the flag").
+ *
+ * Tri-state is what makes this need **no backfill**: no migration, no registry
+ * declaration, no seeder change, and nothing added to any existing field.
+ * `part.category` grows on day one because it is TAGS, not because a row was
+ * touched.
+ *
+ * 🛑 Unrelated to `aiOptionsSchema.allowNewOptions` above, which answers a
+ * different question — *may the MODEL invent labels*. They are deliberately
+ * independent: turning off AI autofill must not silently disable imports, and
+ * opening a field to imports must not hand an LLM a blank taxonomy. Same name,
+ * two owners, two levels of the envelope — do not "unify" them.
+ */
+export const allowNewOptionsSchema = z.boolean().nullable().optional()
+
+/**
  * Field types that accept an `options.ai` block.
  *
  * 🛑 Exactly one other place knows this list: `AI_TYPE_SPECS` in
@@ -305,6 +339,13 @@ export const displayOptionsSchema = z.object({
   // piggyback on displayOptions keeps the union member count flat; the
   // service layer validates eligibility at save time.
   ai: aiOptionsSchema.optional(),
+  // Taxonomy growth flag — see `allowNewOptionsSchema`. Rides piggyback here
+  // for the same reason `ai` does, and for one more: `displayOptionsSchema` is
+  // the LAST member of `fieldOptionsUnionSchema` and the only one a bare
+  // `{ allowNewOptions }` patch can match. z.object strips unknown keys, so
+  // without this line that patch parses to `{}` and the flag is silently
+  // dropped somewhere between the router and the writer.
+  allowNewOptions: allowNewOptionsSchema,
 })
 
 /** Display options type */
@@ -406,6 +447,11 @@ export const fieldOptionsUnionSchema = z.union([
   z.object({
     options: z.array(selectOptionSchema),
     ai: aiOptionsSchema.optional(),
+    // Declared here too, so the field editor can save the option list, the AI
+    // block and the taxonomy flag in ONE patch. The flag is orthogonal to `ai`
+    // by construction in `updateCustomField` — carrying it changes nothing
+    // about what the rest of the envelope does.
+    allowNewOptions: allowNewOptionsSchema,
   }),
   z.object({ file: fileOptionsSchema }),
   z.object({ calc: calcOptionsSchema }),

@@ -63,7 +63,12 @@ const PROMPT = {
   content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Categorise this record' }] }],
 }
 
-const STORED_AI = { enabled: true, prompt: PROMPT, triggerOn: 'manual', allowNewOptions: true }
+const STORED_AI = {
+  enabled: true,
+  prompt: PROMPT,
+  triggerOn: 'manual' as const,
+  allowNewOptions: true,
+}
 
 const OPTION_A = { value: 'opt_a', label: 'Enterprise' }
 const OPTION_B = { value: 'opt_b', label: 'SMB' }
@@ -189,6 +194,83 @@ describe('updateCustomField — options.ai preservation', () => {
       expect(written.ai).toBeUndefined()
       // Toggle-off also retires the per-value markers.
       expect(clearedAiStatus()).toBe(true)
+    })
+  })
+
+  // `options.allowNewOptions` is the envelope-level taxonomy flag — a sibling of
+  // `options` / `ai` / `file`, and the first key ever added beside the option
+  // array. Under the old `touchesAi = !Array.isArray(options)` test EVERY patch
+  // in this block would have read as an AI toggle-off.
+  describe('taxonomy flag (options.allowNewOptions)', () => {
+    it('preserves the stored ai block when only the flag is set', async () => {
+      setStoredField({ options: [OPTION_A], ai: STORED_AI })
+
+      const result = await updateCustomField({
+        ...BASE_INPUT,
+        options: { allowNewOptions: true },
+      })
+
+      expect(result.isOk()).toBe(true)
+      const written = fieldWrite()?.options as Record<string, unknown>
+      expect(written.ai).toEqual(STORED_AI)
+      expect(written.allowNewOptions).toBe(true)
+      // …and the taxonomy it is a flag about survives untouched.
+      expect(written.options).toEqual([OPTION_A])
+    })
+
+    it('does not clear the aiStatus marker on the field values', async () => {
+      setStoredField({ options: [OPTION_A], ai: STORED_AI })
+
+      await updateCustomField({ ...BASE_INPUT, options: { allowNewOptions: false } })
+
+      expect(clearedAiStatus()).toBe(false)
+    })
+
+    it('leaves ai.allowNewOptions alone — the two flags are independent', async () => {
+      // Same name, two owners: `ai.allowNewOptions` asks whether the MODEL may
+      // invent labels, the envelope one asks whether an IMPORT may. Closing the
+      // field to imports must not touch what the model is allowed to do.
+      setStoredField({ options: [OPTION_A], ai: STORED_AI })
+
+      await updateCustomField({ ...BASE_INPUT, options: { allowNewOptions: false } })
+
+      const written = fieldWrite()?.options as Record<string, unknown>
+      expect((written.ai as Record<string, unknown>).allowNewOptions).toBe(true)
+      expect(written.allowNewOptions).toBe(false)
+    })
+
+    it('carrying the flag does not change an envelope AI verdict', async () => {
+      // The orthogonality contract: `{ options, allowNewOptions }` must do to
+      // `ai` exactly what `{ options }` does — strip it — and NOT be rescued
+      // into a preserve just because it grew a key.
+      setStoredField({ options: [OPTION_A], ai: STORED_AI }, 'MULTI_SELECT')
+
+      const result = await updateCustomField({
+        ...BASE_INPUT,
+        options: { options: [OPTION_A], allowNewOptions: true },
+      })
+
+      expect(result.isOk()).toBe(true)
+      const written = fieldWrite()?.options as Record<string, unknown>
+      expect(written.ai).toBeUndefined()
+      expect(clearedAiStatus()).toBe(true)
+      expect(written.allowNewOptions).toBe(true)
+    })
+
+    it('saves option list, ai block and flag in one patch', async () => {
+      // What the field editor sends: one envelope, three concerns.
+      setStoredField({ options: [OPTION_A] }, 'MULTI_SELECT')
+
+      const result = await updateCustomField({
+        ...BASE_INPUT,
+        options: { options: [OPTION_A, OPTION_B], ai: STORED_AI, allowNewOptions: true },
+      })
+
+      expect(result.isOk()).toBe(true)
+      const written = fieldWrite()?.options as Record<string, unknown>
+      expect(written.options).toEqual([OPTION_A, OPTION_B])
+      expect(written.ai).toEqual(STORED_AI)
+      expect(written.allowNewOptions).toBe(true)
     })
   })
 })

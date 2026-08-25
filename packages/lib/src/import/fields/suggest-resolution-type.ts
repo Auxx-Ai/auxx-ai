@@ -88,12 +88,6 @@ export function suggestResolutionType(
     case 'tags':
       return 'array:split'
 
-    case 'multiselect':
-      return 'multiselect:split'
-
-    case 'select':
-      return 'select:value'
-
     case 'text':
     case 'string':
     default: {
@@ -138,14 +132,40 @@ export function relationMatchFieldFor(field: ImportableField): string | undefine
 }
 
 /**
- * Get available resolution types for a field type.
- * Returns types that make sense for the given field type.
+ * Get available resolution types for a field.
  *
- * @param fieldType - The field type
- * @returns Array of valid resolution types
+ * 🛑 Takes the FIELD, not a bare type string. The previous signature could not
+ * answer the select cases: `'select'` and `'multiselect'` are NOT `BaseType`
+ * values — `mapFieldTypeToBaseType` sends SINGLE_SELECT to `BaseType.ENUM` and
+ * MULTI_SELECT to `BaseType.ARRAY` — so those two cases matched no field that
+ * has ever existed, and `select:create` was offered to nothing at all. The
+ * option-bearing cases are decided by whether the field CARRIES options, the
+ * same test `suggestResolutionType` already uses, so the two agree.
+ *
+ * @param field - The importable field
+ * @returns Array of valid resolution types, most appropriate first
  */
-export function getValidResolutionTypes(fieldType: string): ResolutionType[] {
-  switch (fieldType) {
+export function getValidResolutionTypes(field: ImportableField): ResolutionType[] {
+  // Option-bearing fields are keyed on the options themselves, before the
+  // base-type switch: ENUM, ARRAY and TAGS all land here, and only the presence
+  // of an option list separates "pick from a taxonomy" from "split a string".
+  if (!field.isRelation && field.options && field.options.length > 0) {
+    // TAGS and MULTI_SELECT are multi by TYPE (`BaseType.TAGS` / `BaseType.ARRAY`);
+    // `field.multi` only reports `options.multi`, which covers scalar multi-value
+    // fields and is false for both of those.
+    const multi = field.multi || field.type === 'tags' || field.type === 'array'
+    const matching: ResolutionType[] = multi
+      ? ['multiselect:split', 'select:value']
+      : ['select:value']
+    // `select:create` is offered only where an automated writer may actually
+    // grow the taxonomy — see `canGrowFieldOptions` / `fieldAllowsNewOptions`.
+    // Offering it otherwise produces a column that resolves and then silently
+    // fails to create anything.
+    if (field.canCreateOptions) matching.push('select:create')
+    return [...matching, 'array:split', 'text:value']
+  }
+
+  switch (field.type) {
     case 'number':
     case 'integer':
       return ['number:integer', 'number:decimal', 'text:value']
@@ -182,14 +202,12 @@ export function getValidResolutionTypes(fieldType: string): ResolutionType[] {
     case 'domain':
       return ['domain:value', 'text:value']
 
-    case 'select':
-      return ['select:value', 'select:create', 'text:value']
-
-    case 'multiselect':
-      return ['multiselect:split', 'select:value', 'array:split', 'text:value']
-
+    // An option-bearing field never reaches here (see the early return). These
+    // are the genuinely free-form ones: a TAGS field an org has not populated
+    // yet, or a plain string array.
     case 'array':
     case 'tags':
+    case 'enum':
       return ['array:split', 'text:value']
 
     case 'relation':

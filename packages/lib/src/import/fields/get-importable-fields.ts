@@ -5,6 +5,7 @@ import {
   type RelationshipConfig,
   type SelectOption,
 } from '@auxx/types/custom-field'
+import { canGrowFieldOptions, fieldAllowsNewOptions } from '../../custom-fields/ownership'
 import { getFieldOutputKey } from '../../resources/registry/field-types'
 import type { Resource } from '../../resources/registry/types'
 import { getIdentifiableFields } from './get-identifiable-fields'
@@ -49,6 +50,15 @@ export interface ImportableField {
   identifierCompositeOnly?: boolean
   /** Inline caveat the picker renders next to a tier-2 field. */
   identifierNote?: string
+  /**
+   * True when an import may APPEND options to this field: `canGrowFieldOptions`
+   * (is it permitted) AND `fieldAllowsNewOptions` (was it left open).
+   *
+   * Carried as the settled boolean rather than the raw ownership markers and
+   * the stored flag on purpose — the picker must not re-derive the rule, or it
+   * drifts from the writer that enforces it.
+   */
+  canCreateOptions?: boolean
 }
 
 /** Options for getImportableFields */
@@ -123,6 +133,17 @@ export function getImportableFields(
         multi: field.options?.multi === true,
         group: (isCustomField ? 'custom' : 'system') as FieldGroup,
         options: field.options?.options,
+        canCreateOptions:
+          canGrowFieldOptions({
+            type: String(field.fieldType ?? ''),
+            systemAttribute: field.systemAttribute,
+            appInstallationId: field.appInstallationId,
+            dataConnectorId: field.dataConnectorId,
+          }) &&
+          fieldAllowsNewOptions({
+            type: String(field.fieldType ?? ''),
+            options: field.options as { allowNewOptions?: boolean } | undefined,
+          }),
         identifierTier: eligibility?.tier,
         identifierCompositeOnly: eligibility?.compositeOnly,
         identifierNote: eligibility?.note,
