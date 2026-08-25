@@ -326,3 +326,214 @@ describe('createFindExistingRecord, Record ID on an entity-backed resource', () 
     await expect(findById(id)).resolves.toEqual({ kind: 'none' })
   })
 })
+
+/**
+ * The composite key that `vendor_part` actually has: `(part, contact)`, TWO
+ * RELATION legs and not one scalar among them.
+ *
+ * This is the shape the declared natural key rests on, and it is the one the
+ * composite tests above never covered — they run on a system table where every
+ * leg is a plain column. A relation leg is stored in `FieldValue.relatedEntityId`
+ * and reaches the lookup core through `createTypedValueInput`, which accepts a
+ * relationship value ONLY as a prefixed `defId:instanceId` RecordId. A bare
+ * instance id parses to `entityInstanceId: ''`, the candidate is refused, and
+ * AND-mode returns an empty result — a silent "no match" that classifies the row
+ * `create` and writes the duplicate the natural key exists to prevent.
+ *
+ * Both accepted spellings are pinned, so the normalization can never quietly
+ * regress to accepting only one of them.
+ */
+describe('createFindExistingRecord, composite RELATION key on an entity-backed resource', () => {
+  let organizationId: string
+  let vendorPartDefId: string
+  let partDefId: string
+  let companyDefId: string
+  let partFieldId: string
+  let contactFieldId: string
+  let db: ReturnType<typeof getTestDb>
+
+  const seedDef = async (slug: string): Promise<string> => {
+    const id = generateId()
+    await db.insert(schema.EntityDefinition).values({
+      id,
+      organizationId,
+      apiSlug: slug,
+      singular: slug,
+      plural: `${slug}s`,
+      updatedAt: new Date(),
+    } as typeof schema.EntityDefinition.$inferInsert)
+    return id
+  }
+
+  const seedRelationField = async (name: string, targetDefId: string): Promise<string> => {
+    const id = generateId()
+    await db.insert(schema.CustomField).values({
+      id,
+      organizationId,
+      entityDefinitionId: vendorPartDefId,
+      name,
+      type: 'RELATIONSHIP',
+      modelType: 'vendor_part',
+      relatedEntityDefinitionId: targetDefId,
+      updatedAt: new Date(),
+    } as typeof schema.CustomField.$inferInsert)
+    return id
+  }
+
+  const seedInstance = async (defId: string): Promise<string> => {
+    const id = generateId()
+    await db.insert(schema.EntityInstance).values({
+      id,
+      organizationId,
+      entityDefinitionId: defId,
+      updatedAt: new Date(),
+    } as typeof schema.EntityInstance.$inferInsert)
+    return id
+  }
+
+  /** One vendor_part linked to `partId` and `companyId`. */
+  const seedVendorPart = async (partId: string, companyId: string): Promise<string> => {
+    const instanceId = await seedInstance(vendorPartDefId)
+    for (const [fieldId, relatedId, relatedDefId] of [
+      [partFieldId, partId, partDefId],
+      [contactFieldId, companyId, companyDefId],
+    ] as const) {
+      await db.insert(schema.FieldValue).values({
+        id: generateId(),
+        organizationId,
+        fieldId,
+        entityId: instanceId,
+        entityDefinitionId: vendorPartDefId,
+        relatedEntityId: relatedId,
+        relatedEntityDefinitionId: relatedDefId,
+        updatedAt: new Date(),
+      } as typeof schema.FieldValue.$inferInsert)
+    }
+    return instanceId
+  }
+
+  /**
+   * `relationship.inverseResourceFieldId` is `targetDefId:inverseFieldId`, and its
+   * FIRST half is the only way the identifier lane can learn what a relation leg
+   * points at. Omit it and `toLookupValue` throws rather than quietly no-matching.
+   */
+  const relationField = (id: string, key: string, targetDefId: string): ResourceField =>
+    ({
+      id,
+      key,
+      type: BaseType.RELATION,
+      relationship: {
+        inverseResourceFieldId: `${targetDefId}:${generateId()}`,
+        relationshipType: 'has_many',
+        isInverse: false,
+      },
+    }) as unknown as ResourceField
+
+  const findPair = (partValue: string, contactValue: string) =>
+    createFindExistingRecord({
+      db: db as never,
+      organizationId,
+      resource: {
+        id: 'vendor_part',
+        type: 'custom',
+        entityDefinitionId: vendorPartDefId,
+      } as unknown as Resource,
+      identifierFields: [
+        relationField(partFieldId, 'part', partDefId),
+        relationField(contactFieldId, 'contact', companyDefId),
+      ],
+    })({ part: partValue, contact: contactValue })
+
+  beforeEach(async () => {
+    db = getTestDb()
+    const org = await createTestOrganization()
+    organizationId = org.id
+    vendorPartDefId = await seedDef('vendor-part')
+    partDefId = await seedDef('part')
+    companyDefId = await seedDef('company')
+    partFieldId = await seedRelationField('Part', partDefId)
+    contactFieldId = await seedRelationField('Supplier', companyDefId)
+  })
+
+  // THE REGRESSION. `resolve-relation-lookups` resolves a supplier cell to a BARE
+  // instance id, and that is what the identifier tuple carries. Before the fix
+  // this returned `{ kind: 'none' }` for a pair that plainly exists.
+  it('matches a (part, supplier) pair given BARE instance ids', async () => {
+    const partId = await seedInstance(partDefId)
+    const companyId = await seedInstance(companyDefId)
+    const vendorPartId = await seedVendorPart(partId, companyId)
+
+    await expect(findPair(partId, companyId)).resolves.toEqual({
+      kind: 'one',
+      recordId: vendorPartId,
+    })
+  })
+
+  it('matches the same pair given PREFIXED record ids', async () => {
+    const partId = await seedInstance(partDefId)
+    const companyId = await seedInstance(companyDefId)
+    const vendorPartId = await seedVendorPart(partId, companyId)
+
+    await expect(
+      findPair(`${partDefId}:${partId}`, `${companyDefId}:${companyId}`)
+    ).resolves.toEqual({ kind: 'one', recordId: vendorPartId })
+  })
+
+  // The property that makes it a composite key rather than a widened one. A
+  // supplier's whole price list shares one `contact` leg, so matching on that
+  // alone would update an arbitrary line of it.
+  it('does NOT match a vendor_part that satisfies only one leg', async () => {
+    const partId = await seedInstance(partDefId)
+    const otherPartId = await seedInstance(partDefId)
+    const companyId = await seedInstance(companyDefId)
+    const otherCompanyId = await seedInstance(companyDefId)
+    await seedVendorPart(partId, companyId)
+
+    await expect(findPair(partId, otherCompanyId)).resolves.toEqual({ kind: 'none' })
+    await expect(findPair(otherPartId, companyId)).resolves.toEqual({ kind: 'none' })
+  })
+
+  // Two price-list lines for the same part from the same supplier is the state a
+  // natural key is supposed to make impossible; if it already exists, the import
+  // must say so rather than pick one.
+  it('reports ambiguity when two rows share the pair', async () => {
+    const partId = await seedInstance(partDefId)
+    const companyId = await seedInstance(companyDefId)
+    await seedVendorPart(partId, companyId)
+    await seedVendorPart(partId, companyId)
+
+    await expect(findPair(partId, companyId)).resolves.toEqual({ kind: 'ambiguous', count: 2 })
+  })
+
+  it('never partially matches when a leg is blank', async () => {
+    const partId = await seedInstance(partDefId)
+    const companyId = await seedInstance(companyDefId)
+    await seedVendorPart(partId, companyId)
+
+    await expect(findPair(partId, '')).resolves.toEqual({ kind: 'none' })
+  })
+
+  // A relation leg whose target cannot be resolved is a STRUCTURAL failure, and
+  // `analyzeRow` turns a throw into a row error. Answering `none` would classify
+  // the row `create` and write the duplicate silently — the same fail-open the
+  // lookup-core rethrow above exists to prevent.
+  it('throws rather than answering "no match" when a leg has no resolvable target', async () => {
+    const partId = await seedInstance(partDefId)
+    const companyId = await seedInstance(companyDefId)
+    await seedVendorPart(partId, companyId)
+
+    const brokenLeg = { id: partFieldId, key: 'part', type: BaseType.RELATION } as ResourceField
+    const find = createFindExistingRecord({
+      db: db as never,
+      organizationId,
+      resource: {
+        id: 'vendor_part',
+        type: 'custom',
+        entityDefinitionId: vendorPartDefId,
+      } as unknown as Resource,
+      identifierFields: [brokenLeg],
+    })
+
+    await expect(find({ part: partId })).rejects.toThrow(/no resolvable target/)
+  })
+})

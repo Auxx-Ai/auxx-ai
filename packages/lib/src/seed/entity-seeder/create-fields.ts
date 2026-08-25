@@ -35,9 +35,14 @@ import { buildFieldOptions, mapCapabilities, shouldCreateField } from './utils'
 const logger = createScopedLogger('entity-seeder:create-fields')
 
 /**
- * Field registry mapping entity types to their field definitions
+ * Field registry mapping entity types to their field definitions.
+ *
+ * Exported for `seeded-unique-drift.int.test.ts`, which asserts that a freshly seeded
+ * org's `CustomField` capability columns match what these registries declare. Restating
+ * the map in the test is how the two would come to disagree about which entity types are
+ * even seeded.
  */
-const FIELD_REGISTRY: Record<string, Record<string, ResourceField>> = {
+export const FIELD_REGISTRY: Record<string, Record<string, ResourceField>> = {
   contact: CONTACT_FIELDS,
   ticket: TICKET_FIELDS,
   part: PART_FIELDS,

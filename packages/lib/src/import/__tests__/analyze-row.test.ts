@@ -440,3 +440,142 @@ describe('analyzeRow, update mode never creates', () => {
     expect(result.strategy).toBe('unmatched')
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * A relation identifier leg must be matched on its RESOLVED record id, never on
+ * the raw cell.
+ *
+ * `(part, supplier)` on `vendor_part` is two relation legs, so this is the whole
+ * natural key, not an edge of it. The raw cell says `Acme Corp`; the resolver
+ * turns it into a record id; the stored value is a `relatedEntityId`. Passing
+ * the cell text compares a company NAME against an id column, which can never
+ * match — and the miss is silent, classifying the row `create` and writing the
+ * duplicate the key exists to prevent.
+ */
+describe('analyzeRow, relation identifier legs use the resolved id', () => {
+  const relationMappings = [
+    mapping({
+      id: 'p-part',
+      sourceColumnIndex: 0,
+      sourceColumnName: 'Part',
+      targetFieldKey: 'part',
+      resolutionType: 'relation:match',
+    }),
+    mapping({
+      id: 'p-supplier',
+      sourceColumnIndex: 1,
+      sourceColumnName: 'Supplier',
+      targetFieldKey: 'supplier',
+      resolutionType: 'relation:match',
+    }),
+  ]
+
+  const resolutionsFor = (
+    partCell: string,
+    partId: string | null,
+    supplierCell: string,
+    supplierId: string | null
+  ) =>
+    new Map([
+      [hashValue(partCell), resolution(partCell, { type: 'value', value: partId })],
+      [hashValue(supplierCell), resolution(supplierCell, { type: 'value', value: supplierId })],
+    ])
+
+  it('passes resolved record ids, not the raw cells', async () => {
+    const seen: Array<Record<string, string>> = []
+    const result = await analyzeRow(
+      0,
+      { 0: 'M400L', 1: 'Acme Corp' },
+      {
+        mappings: relationMappings,
+        resolutions: resolutionsFor('M400L', 'part-1', 'Acme Corp', 'company-1'),
+        identifierFieldKeys: ['part', 'supplier'],
+        findExistingRecord: async (v) => {
+          seen.push(v)
+          return { kind: 'one', recordId: 'vp-1' }
+        },
+      }
+    )
+
+    expect(seen).toEqual([{ part: 'part-1', supplier: 'company-1' }])
+    expect(result.strategy).toBe('update')
+    expect(result.existingRecordId).toBe('vp-1')
+  })
+
+  // `onNoMatch: 'blank'` and `relation:create` both resolve to null. The leg is
+  // genuinely absent, so the tuple is incomplete and no lookup is issued — the
+  // raw cell must NOT be substituted back in to make it look complete.
+  it('treats a leg that resolved to null as absent, not as the raw cell', async () => {
+    const findExistingRecord = vi.fn(
+      (_values: Record<string, string>): FindExistingRecordResult => ({
+        kind: 'one',
+        recordId: 'vp-1',
+      })
+    )
+    const result = await analyzeRow(
+      0,
+      { 0: 'M400L', 1: 'Unknown Supplier' },
+      {
+        mappings: relationMappings,
+        resolutions: resolutionsFor('M400L', 'part-1', 'Unknown Supplier', null),
+        identifierFieldKeys: ['part', 'supplier'],
+        findExistingRecord: async (v) => findExistingRecord(v),
+      }
+    )
+
+    expect(findExistingRecord).not.toHaveBeenCalled()
+    expect(result.strategy).toBe('create')
+  })
+
+  // The in-file duplicate guard has to key on the resolved ids too, or two
+  // spellings of one supplier read as two different suppliers.
+  it('keys the in-file duplicate guard on the resolved ids', async () => {
+    const shared = {
+      mappings: relationMappings,
+      resolutions: new Map([
+        ...resolutionsFor('M400L', 'part-1', 'Acme Corp', 'company-1'),
+        ...resolutionsFor('M400L', 'part-1', 'ACME CORP.', 'company-1'),
+      ]),
+      identifierFieldKeys: ['part', 'supplier'],
+      findExistingRecord: async (): Promise<FindExistingRecordResult> => ({ kind: 'none' }),
+      seenIdentifiers: new Map<string, number>(),
+    }
+
+    const first = await analyzeRow(0, { 0: 'M400L', 1: 'Acme Corp' }, shared)
+    const second = await analyzeRow(1, { 0: 'M400L', 1: 'ACME CORP.' }, shared)
+
+    expect(first.errors).toEqual([])
+    expect(second.errors.join(' ')).toContain('repeats row 1')
+  })
+
+  // A scalar leg keeps reading the raw cell. Pinned so the relation branch can
+  // never quietly capture the path `part_sku` has always taken.
+  it('leaves a non-relation leg on the raw cell', async () => {
+    const seen: Array<Record<string, string>> = []
+    await analyzeRow(
+      0,
+      { 0: '  M400L  ' },
+      {
+        mappings: [
+          mapping({
+            id: 'p-sku',
+            sourceColumnIndex: 0,
+            sourceColumnName: 'SKU',
+            targetFieldKey: 'part_sku',
+            resolutionType: 'text:value',
+          }),
+        ],
+        resolutions: new Map(),
+        identifierFieldKeys: ['part_sku'],
+        findExistingRecord: async (v) => {
+          seen.push(v)
+          return { kind: 'none' }
+        },
+      }
+    )
+
+    expect(seen).toEqual([{ part_sku: 'M400L' }])
+  })
+})
