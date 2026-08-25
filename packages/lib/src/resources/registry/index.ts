@@ -232,6 +232,7 @@ export type { NamedImporter } from './field-utils'
 export {
   fieldMatchesRef,
   findNamedImporter,
+  findNamedImporterByTarget,
   getDefaultIdentifierField,
   getDisplayFields,
   getFieldOperators,
