@@ -15,6 +15,7 @@ import type { ResolutionConfig } from '../types/resolution'
 import { syncMappingIdentity } from './derive-identifier-keys'
 import { invalidateColumnResolutions } from './invalidate-column-resolutions'
 import {
+  isMatchRole,
   parseResolutionConfig,
   sanitizeIdentityRole,
   serializeResolutionConfig,
@@ -61,6 +62,20 @@ export interface SaveMappingInput {
    * policy about a specific TARGET FIELD, not about the source column.
    */
   mergeStrategy?: ImportMergeStrategy | null
+  /**
+   * The resource's declared NATURAL KEY, in leg order, when it declares one.
+   *
+   * Same set auto-map receives, and it is here for the case auto-map cannot
+   * cover: a mapping the user REPAIRS by hand. Auto-map defaults the key on,
+   * but only auto-map did, so every correction after it left the key off — and
+   * a mis-mapped key column is exactly what sends the user to repair it. The
+   * supplier-price importer shipped whole with `identifierFieldKeys: []` and
+   * `defaultStrategy: 'create'` for that reason, which is a monthly price list
+   * appending its 340 rows instead of updating them.
+   *
+   * See {@link applyNaturalKeyDefault} for when it is allowed to fire.
+   */
+  naturalKeyFieldKeys?: string[]
 }
 
 /** Minimal column shape for duplicate-target validation */
@@ -136,6 +151,83 @@ async function lockMapping(tx: Transaction, mappingId: string): Promise<void> {
     .from(schema.ImportMapping)
     .where(eq(schema.ImportMapping.id, mappingId))
     .for('update')
+}
+
+/**
+ * Default the declared NATURAL KEY back on after a per-column save.
+ *
+ * Auto-map already does this for the mapping it produces
+ * ({@link batchUpdateMappingsFromAutoMap}); this is the same rule for the
+ * mapping a user assembles or CORRECTS by hand, which auto-map never sees
+ * again. Without it the two paths disagree: `vendor_part` has no lone
+ * identifier at all, so a mapping repaired column by column ends up with no
+ * match key and silently reverts to create-only.
+ *
+ * Three conditions, all narrow on purpose — a match key that reappears on its
+ * own is worse than one that never showed up:
+ *
+ * 1. **The saved column is itself a leg.** An edit to an unrelated column must
+ *    never resurrect a key, so only a write that could have COMPLETED the
+ *    tuple is allowed to stamp it.
+ * 2. **No identity outside the tuple.** A flag on any other field is the user's
+ *    own answer and is never overridden. A flag on a leg is not — a HALF tuple
+ *    is not an answer, it is the state that matches nothing, and unmapping one
+ *    leg and re-mapping it is how a user lands in it. That case is completed
+ *    rather than blocked.
+ * 3. **Every leg is mapped.** All or nothing, for the reason
+ *    {@link AutoMapUpdateInput.naturalKeyFieldKeys} gives: a partial tuple
+ *    matches nothing, so half a key is strictly worse than none.
+ *
+ * The caller additionally skips this on an explicit `identityRole: null`, so
+ * clearing the last flag stays a way to force create-only rather than a write
+ * this function immediately undoes.
+ */
+async function applyNaturalKeyDefault(
+  tx: Transaction,
+  mappingId: string,
+  naturalKeyFieldKeys: string[]
+): Promise<void> {
+  if (naturalKeyFieldKeys.length === 0) return
+
+  const columns = await tx
+    .select({
+      id: schema.ImportMappingProperty.id,
+      targetType: schema.ImportMappingProperty.targetType,
+      targetFieldKey: schema.ImportMappingProperty.targetFieldKey,
+      resolutionConfig: schema.ImportMappingProperty.resolutionConfig,
+    })
+    .from(schema.ImportMappingProperty)
+    .where(eq(schema.ImportMappingProperty.importMappingId, mappingId))
+
+  const mapped = columns.filter((c) => c.targetFieldKey && c.targetType !== 'skip')
+
+  const flagged = mapped
+    .filter((c) => isMatchRole(parseResolutionConfig(c.resolutionConfig).identityRole))
+    .map((c) => c.targetFieldKey)
+
+  // Condition 2 — an identity of the user's own is never overridden.
+  if (flagged.some((key) => !naturalKeyFieldKeys.includes(key!))) return
+  // …and a tuple that is already whole needs no help.
+  if (naturalKeyFieldKeys.every((key) => flagged.includes(key))) return
+
+  // Condition 3 — every leg mapped, or nothing happens.
+  const legs = naturalKeyFieldKeys.map((key) => mapped.find((c) => c.targetFieldKey === key))
+  if (legs.some((leg) => !leg)) return
+
+  const now = new Date()
+  for (const leg of legs) {
+    const config = parseResolutionConfig(leg!.resolutionConfig)
+    await tx
+      .update(schema.ImportMappingProperty)
+      .set({
+        resolutionConfig: serializeResolutionConfig({
+          ...config,
+          identityRole: { kind: 'match' },
+        }),
+        updatedAt: now,
+      })
+      .where(eq(schema.ImportMappingProperty.id, leg!.id))
+  }
 }
 
 /**
@@ -258,6 +350,17 @@ export async function saveMappingProperty(db: Database, input: SaveMappingInput)
           eq(schema.ImportMappingProperty.sourceColumnIndex, input.columnIndex)
         )
       )
+
+    // Before the recompute, not after: this stamps the per-COLUMN flags that
+    // `syncMappingIdentity` then derives the per-JOB key from. An explicit
+    // clear in this same call is the user saying "no match key", so it is
+    // never the write that triggers the default.
+    if (input.identityRole !== null && input.targetFieldKey) {
+      const naturalKey = input.naturalKeyFieldKeys ?? []
+      if (naturalKey.includes(input.targetFieldKey)) {
+        await applyNaturalKeyDefault(tx, input.mappingId, naturalKey)
+      }
+    }
 
     // The match key is per-JOB while the flag above is per-COLUMN. Recomputing it
     // in the same call as the column write is the only thing keeping them honest.

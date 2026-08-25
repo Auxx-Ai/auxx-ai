@@ -16,6 +16,7 @@ export {
   type MappedColumnWithStats,
 } from './get-mapped-columns'
 export { invalidateColumnResolutions } from './invalidate-column-resolutions'
+export { getNaturalKeyFieldKeys } from './natural-key'
 export {
   isMatchRole,
   parseResolutionConfig,

@@ -119,6 +119,7 @@ export {
   getColumnSamples,
   getMappablePropertiesWithSamples,
   getMappedColumnsWithStats,
+  getNaturalKeyFieldKeys,
   IMPORT_STRATEGY_MODES,
   invalidateColumnResolutions,
   isImportStrategyMode,

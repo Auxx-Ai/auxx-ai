@@ -11,6 +11,7 @@ import {
   getJobWithMapping,
   getMappablePropertiesWithSamples,
   getMappedColumnsWithStats,
+  getNaturalKeyFieldKeys,
   getPlanErrors,
   getPlanPreviewRows,
   getPlanWarnings,
@@ -350,6 +351,15 @@ export const dataImportRouter = createTRPCRouter({
       // Get job and mapping, gated on import authority for its target def
       const job = await requireImportJob(ctx.db, ctx.capabilities, organizationId, input.jobId)
 
+      // A hand-built or hand-REPAIRED mapping gets the resource's declared
+      // natural key defaulted on, exactly like the one auto-map produces —
+      // otherwise correcting a mis-mapped key column leaves the job with no
+      // match key at all and it silently reverts to create-only.
+      const resource = await findCachedResource(
+        organizationId,
+        job.importMapping.entityDefinitionId
+      )
+
       await saveMappingProperty(ctx.db, {
         mappingId: job.importMappingId,
         columnIndex: input.columnIndex,
@@ -361,6 +371,7 @@ export const dataImportRouter = createTRPCRouter({
         options: input.options,
         identityRole: input.identityRole,
         mergeStrategy: input.mergeStrategy,
+        naturalKeyFieldKeys: resource ? getNaturalKeyFieldKeys(resource) : undefined,
       })
 
       // No mapping row is read back here. The identity toggles and the mode
