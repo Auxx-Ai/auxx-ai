@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.215](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.214...auxx-v0.1.215) (2026-08-25)
+
+
+### Bug Fixes
+
+* **import:** create options inline from review values ([#1875](https://github.com/Auxx-Ai/auxx-ai/issues/1875)) ([9068b3f](https://github.com/Auxx-Ai/auxx-ai/commit/9068b3f700b0c8d87cfb323c615331b91a7c2571))
+* **import:** match composite identifiers whose legs are relations ([#1876](https://github.com/Auxx-Ai/auxx-ai/issues/1876)) ([3672203](https://github.com/Auxx-Ai/auxx-ai/commit/36722032c602f3c77956259cd68999a8756e0bdf))
+
 ## [0.1.214](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.213...auxx-v0.1.214) (2026-08-25)
 
 
