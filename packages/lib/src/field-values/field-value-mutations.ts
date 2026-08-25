@@ -116,7 +116,12 @@ import {
   updateSearchText,
   updateSearchTextForInstances,
 } from './search-text'
-import { existingRowMatchesInsert, planSetReconcile, updateColumnsFor } from './set-reconcile'
+import {
+  existingRowMatchesInsert,
+  type FieldValueInsertRow,
+  planSetReconcile,
+  updateColumnsFor,
+} from './set-reconcile'
 import { toFieldType } from './stored-field-type'
 import {
   type BulkSnapshotWrite,
@@ -613,6 +618,137 @@ function replaceConflictUpdate() {
   }
 }
 
+/** Query surface the set-reconcile needs from a transaction handle. Typed as
+ * a Pick because a `PgTransaction` is not assignable to the pooled `Database`
+ * (same trick as `acquireFieldValueLock`). */
+type SetWriteTx = Pick<
+  FieldValueContext['db'],
+  'select' | 'insert' | 'update' | 'delete' | 'execute'
+>
+
+/**
+ * Shared transaction body for every set-shaped replace (`setValueWithType`,
+ * `setMultiValue`): advisory lock, §5B in-lock read, positional reconcile,
+ * full-rewrite fallback on unusable sortKeys. The caller builds the target
+ * rows and opens the transaction; this owns every FieldValue statement
+ * inside it. Returns the final row set in position order — assembled in
+ * memory, no post-write re-SELECT — plus `deletionOnly`, which the caller
+ * turns into a dedup-watermark stamp (a diff that only deletes bumps no
+ * surviving `FieldValue.updatedAt`).
+ */
+async function reconcileSetRowsInTx(
+  tx: SetWriteTx,
+  args: {
+    organizationId: string
+    entityId: string
+    fieldId: string
+    insertRows: FieldValueInsertRow[]
+    writeStamp: Date
+  }
+): Promise<{ rows: ExistingSetRow[]; deletionOnly: boolean }> {
+  const { organizationId, entityId, fieldId, insertRows, writeStamp } = args
+  await acquireFieldValueLock(tx, entityId, fieldId)
+
+  // §5B RULE: the diff input is read HERE, inside the lock. A guard's
+  // earlier load (setValueWithBuiltIn step 3.55) serves only the D-6
+  // short-circuit — a diff against that outside-the-lock snapshot would
+  // UPDATE rows a concurrent writer just deleted and leave that writer's
+  // inserted rows alive inside this writer's list.
+  const stored = (await tx
+    .select()
+    .from(schema.FieldValue)
+    .where(
+      and(
+        eq(schema.FieldValue.entityId, entityId),
+        eq(schema.FieldValue.fieldId, fieldId),
+        eq(schema.FieldValue.organizationId, organizationId)
+      )
+    )
+    .orderBy(asc(schema.FieldValue.sortKey))) as unknown as ExistingSetRow[]
+
+  const plan = planSetReconcile(stored, insertRows)
+
+  if (plan.kind === 'rewrite') {
+    // Stored sortKeys are corrupt, disordered, or grown past the sanity
+    // length: full replace with fresh canonical keys. This fallback is
+    // also the key compactor (§5B) — no background rebalance job exists.
+    await tx
+      .delete(schema.FieldValue)
+      .where(
+        and(
+          eq(schema.FieldValue.entityId, entityId),
+          eq(schema.FieldValue.fieldId, fieldId),
+          eq(schema.FieldValue.organizationId, organizationId)
+        )
+      )
+
+    if (insertRows.length === 0) {
+      return { rows: [] as ExistingSetRow[], deletionOnly: stored.length > 0 }
+    }
+
+    const rows = (await tx
+      .insert(schema.FieldValue)
+      .values(insertRows)
+      .onConflictDoUpdate(replaceConflictUpdate())
+      .returning()) as unknown as ExistingSetRow[]
+    return { rows, deletionOnly: false }
+  }
+
+  for (const u of plan.update) {
+    // `updatedAt` is set explicitly (not left to `$onUpdate`) so the
+    // in-memory assembly below carries the exact stored stamp.
+    await tx
+      .update(schema.FieldValue)
+      .set({ ...updateColumnsFor(u.target), updatedAt: writeStamp })
+      .where(
+        and(
+          eq(schema.FieldValue.id, u.row.id),
+          eq(schema.FieldValue.organizationId, organizationId)
+        )
+      )
+  }
+
+  if (plan.deleteIds.length > 0) {
+    await tx
+      .delete(schema.FieldValue)
+      .where(
+        and(
+          inArray(schema.FieldValue.id, plan.deleteIds),
+          eq(schema.FieldValue.organizationId, organizationId)
+        )
+      )
+  }
+
+  let tailRows: ExistingSetRow[] = []
+  if (plan.insertTail.length > 0) {
+    // onConflictDoUpdate stays as belt-and-braces on the tail while other
+    // writers migrate to the lock (Phase 3 re-examines it).
+    tailRows = (await tx
+      .insert(schema.FieldValue)
+      .values(plan.insertTail)
+      .onConflictDoUpdate(replaceConflictUpdate())
+      .returning()) as unknown as ExistingSetRow[]
+  }
+
+  // Assemble the final row set in position (== sortKey) order from
+  // kept/updated/inserted rows — no post-write re-SELECT (§7).
+  const surviving: ExistingSetRow[] = []
+  for (const k of plan.keep) surviving[k.position] = k.row
+  for (const u of plan.update) {
+    surviving[u.position] = {
+      ...u.row,
+      ...updateColumnsFor(u.target),
+      updatedAt: writeStamp,
+    } as unknown as ExistingSetRow
+  }
+
+  return {
+    rows: [...surviving, ...tailRows],
+    deletionOnly:
+      plan.update.length === 0 && plan.insertTail.length === 0 && plan.deleteIds.length > 0,
+  }
+}
+
 export async function setValueWithType(
   ctx: FieldValueContext,
   params: SetValueWithTypeInput
@@ -717,108 +853,15 @@ export async function setValueWithType(
   // id, sortKey and updatedAt. Display recompute, inverse sync, hooks and
   // realtime are derived work and stay after COMMIT.
   const writeStamp = new Date()
-  const outcome = await ctx.db.transaction(async (tx) => {
-    await acquireFieldValueLock(tx, entityInstanceId, fieldId)
-
-    // §5B RULE: the diff input is read HERE, inside the lock. The guard's
-    // earlier load (setValueWithBuiltIn step 3.55) serves only the D-6
-    // short-circuit — a diff against that outside-the-lock snapshot would
-    // UPDATE rows a concurrent writer just deleted and leave that writer's
-    // inserted rows alive inside this writer's list.
-    const stored = (await tx
-      .select()
-      .from(schema.FieldValue)
-      .where(
-        and(
-          eq(schema.FieldValue.entityId, entityInstanceId),
-          eq(schema.FieldValue.fieldId, fieldId),
-          eq(schema.FieldValue.organizationId, ctx.organizationId)
-        )
-      )
-      .orderBy(asc(schema.FieldValue.sortKey))) as unknown as ExistingSetRow[]
-
-    const plan = planSetReconcile(stored, insertRows)
-
-    if (plan.kind === 'rewrite') {
-      // Stored sortKeys are corrupt, disordered, or grown past the sanity
-      // length: full replace with fresh canonical keys. This fallback is
-      // also the key compactor (§5B) — no background rebalance job exists.
-      await tx
-        .delete(schema.FieldValue)
-        .where(
-          and(
-            eq(schema.FieldValue.entityId, entityInstanceId),
-            eq(schema.FieldValue.fieldId, fieldId),
-            eq(schema.FieldValue.organizationId, ctx.organizationId)
-          )
-        )
-
-      if (insertRows.length === 0) {
-        return { rows: [] as ExistingSetRow[], deletionOnly: stored.length > 0 }
-      }
-
-      const rows = (await tx
-        .insert(schema.FieldValue)
-        .values(insertRows)
-        .onConflictDoUpdate(replaceConflictUpdate())
-        .returning()) as unknown as ExistingSetRow[]
-      return { rows, deletionOnly: false }
-    }
-
-    for (const u of plan.update) {
-      // `updatedAt` is set explicitly (not left to `$onUpdate`) so the
-      // in-memory assembly below carries the exact stored stamp.
-      await tx
-        .update(schema.FieldValue)
-        .set({ ...updateColumnsFor(u.target), updatedAt: writeStamp })
-        .where(
-          and(
-            eq(schema.FieldValue.id, u.row.id),
-            eq(schema.FieldValue.organizationId, ctx.organizationId)
-          )
-        )
-    }
-
-    if (plan.deleteIds.length > 0) {
-      await tx
-        .delete(schema.FieldValue)
-        .where(
-          and(
-            inArray(schema.FieldValue.id, plan.deleteIds),
-            eq(schema.FieldValue.organizationId, ctx.organizationId)
-          )
-        )
-    }
-
-    let tailRows: ExistingSetRow[] = []
-    if (plan.insertTail.length > 0) {
-      // onConflictDoUpdate stays as belt-and-braces on the tail while other
-      // writers migrate to the lock (Phase 3 re-examines it).
-      tailRows = (await tx
-        .insert(schema.FieldValue)
-        .values(plan.insertTail)
-        .onConflictDoUpdate(replaceConflictUpdate())
-        .returning()) as unknown as ExistingSetRow[]
-    }
-
-    // Assemble the final row set in position (== sortKey) order from
-    // kept/updated/inserted rows — no post-write re-SELECT (§7).
-    const surviving: ExistingSetRow[] = []
-    for (const k of plan.keep) surviving[k.position] = k.row
-    for (const u of plan.update) {
-      surviving[u.position] = {
-        ...u.row,
-        ...updateColumnsFor(u.target),
-        updatedAt: writeStamp,
-      } as unknown as ExistingSetRow
-    }
-
-    return {
-      rows: [...surviving, ...tailRows],
-      deletionOnly:
-        plan.update.length === 0 && plan.insertTail.length === 0 && plan.deleteIds.length > 0,
-    }
-  })
+  const outcome = await ctx.db.transaction(async (tx) =>
+    reconcileSetRowsInTx(tx, {
+      organizationId: ctx.organizationId,
+      entityId: entityInstanceId,
+      fieldId,
+      insertRows,
+      writeStamp,
+    })
+  )
 
   // A deletion-only diff (shrink or clear) touches no surviving FieldValue
   // row, so nothing bumps `max(fv.updatedAt)` — stamp the instance so the
@@ -4047,7 +4090,7 @@ async function setSingleValue(
 }
 
 /**
- * Set multi-value field by replacing the row set atomically.
+ * Set multi-value field by reconciling the stored row set in place.
  */
 async function setMultiValue(
   ctx: FieldValueContext,
@@ -4069,30 +4112,30 @@ async function setMultiValue(
     ...buildInsertData(fieldType, v),
   }))
 
-  // Atomic replace (plans/field-values/delete-insert-replace.md Phase 0):
-  // same lock + transaction shape as setValueWithType. Writes go through the
-  // transaction handle directly — the `deleteFieldValues` /
-  // `batchInsertFieldValues` helpers bind the pooled connection and cannot
-  // join this transaction.
-  const inserted = await ctx.db.transaction(async (tx) => {
-    await acquireFieldValueLock(tx, entityInstanceId, fieldId)
+  // Atomic reconcile — same lock + transaction + positional diff as
+  // `setValueWithType` (delete-insert-replace Phase 2): unchanged positions
+  // keep their row id, sortKey and updatedAt. This arm has no aiGeneration
+  // path, so a stored AI marker on a surviving row is cleared by the
+  // in-place UPDATE (target rows carry no `aiStatus`).
+  const writeStamp = new Date()
+  const outcome = await ctx.db.transaction(async (tx) =>
+    reconcileSetRowsInTx(tx, {
+      organizationId: ctx.organizationId,
+      entityId: entityInstanceId,
+      fieldId,
+      insertRows,
+      writeStamp,
+    })
+  )
 
-    await tx
-      .delete(schema.FieldValue)
-      .where(
-        and(
-          eq(schema.FieldValue.entityId, entityInstanceId),
-          eq(schema.FieldValue.fieldId, fieldId),
-          eq(schema.FieldValue.organizationId, ctx.organizationId)
-        )
-      )
+  // Deletion-only diff: no surviving FieldValue row bumped its updatedAt, so
+  // stamp the instance for the dedup watermark (§4 Timestamps) — same rule
+  // as setValueWithType.
+  if (outcome.deletionOnly) {
+    await stampEntityInstanceUpdatedAt(ctx, entityInstanceId)
+  }
 
-    if (insertRows.length === 0) return []
-
-    return await tx.insert(schema.FieldValue).values(insertRows).returning()
-  })
-
-  return inserted.map((row) => rowToTypedValue(row as unknown as FieldValueRow, fieldType))
+  return outcome.rows.map((row) => rowToTypedValue(row as unknown as FieldValueRow, fieldType))
 }
 
 /**
