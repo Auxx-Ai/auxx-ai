@@ -3,6 +3,7 @@
 import { type Database, database, schema, type Transaction } from '@auxx/database'
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
 import type { FieldType } from '@auxx/database/types'
+import { createScopedLogger } from '@auxx/logger'
 import {
   getValueType,
   isMultiValueFieldType,
@@ -49,6 +50,7 @@ import { isRecordId, parseRecordId, toRecordId } from '../resources/resource-id'
 import { cascadeDependentDisplayNames, getDisplayFieldDeps } from './display-field-deps'
 import { FieldValueValidator, fieldValueSchemas } from './field-value-validator'
 import { formatToDisplayValue } from './formatter'
+import { type NameParts, readNameParts } from './name-parts'
 import { getOrgCurrencyCode, withOrgCurrency } from './org-currency'
 import { MAX_MULTI_VALUES, primaryValue } from './primary-value'
 import type { InverseFieldInfo } from './relationship-sync'
@@ -58,6 +60,8 @@ import type { CachedField, FieldReference, FieldValueRow } from './types'
 
 // Re-export for convenience
 export type { InverseFieldInfo, CachedField }
+
+const logger = createScopedLogger('field-value-helpers')
 
 // =============================================================================
 // CONTEXT INTERFACE
@@ -449,10 +453,40 @@ export function rowToTypedValue(row: FieldValueRow, fieldType: FieldType): Typed
       // CALC is the only `computed` field type and it is never persisted, so a
       // FieldValue row can't carry one — and `TypedFieldValue` has no arm for it.
       // Reaching here means a caller invented a row for a computed field.
-      throw new Error(
-        `[rowToTypedValue] Field type ${fieldType} is computed and has no stored value.`
-      )
+      //
+      // This USED to throw (plans/field-values/name-field-writes.md §7): a
+      // poison pill that turns ONE invented row into a hard failure of every
+      // read of that field, for every caller. Warn instead. Every read seam
+      // drops such a row before it gets here — {@link isComputedStoredFieldType}
+      // guards `rowsToTypedValues` and the two per-row conversions in
+      // `field-value-queries` — so the callers that still reach this arm are
+      // the mutation seams, which map rows they just wrote and have no way to
+      // express a skip. `valueText` is the column `getValueColumn` maps an
+      // unmapped type to, so it is the only place an invented row's payload
+      // could be.
+      warnInventedComputedRow(row, fieldType)
+      return { ...base, type: 'text', value: row.valueText ?? '' }
   }
+}
+
+/**
+ * Whether a FieldValue row can legitimately exist for this field type at all.
+ *
+ * `computed` types (CALC today) are derived at read time and own no storage, so
+ * a stored row for one was invented by a caller that bypassed the converters.
+ * Read paths SKIP such rows rather than throw — see the `computed` arm of
+ * {@link rowToTypedValue} and `plans/field-values/name-field-writes.md` §7.
+ */
+export function isComputedStoredFieldType(fieldType: FieldType): boolean {
+  return getValueType(fieldType) === 'computed'
+}
+
+function warnInventedComputedRow(row: FieldValueRow, fieldType: FieldType): void {
+  logger.warn('Stored FieldValue row on a computed field type; skipping it', {
+    fieldId: row.fieldId,
+    entityId: row.entityId,
+    fieldType,
+  })
 }
 
 /**
@@ -464,6 +498,14 @@ export function rowsToTypedValues(
   fieldType: FieldType,
   isMultiValue: boolean
 ): TypedFieldValue | TypedFieldValue[] | null {
+  // §7 — a computed field type has no stored value, so an invented row reads as
+  // "unset" rather than as an error. This is THE shaping seam `getValue` /
+  // `shapeStoredRowsAsValue` go through, so the skip covers them both.
+  if (isComputedStoredFieldType(fieldType)) {
+    if (rows[0]) warnInventedComputedRow(rows[0], fieldType)
+    return isMultiValue ? [] : null
+  }
+
   const typedValues = rows.map((row) => rowToTypedValue(row, fieldType))
 
   // Return single value for single-value fields, array for multi-value
@@ -1046,9 +1088,89 @@ export async function batchGetRelatedDisplayNames(
 }
 
 /**
+ * THE applicability gate for the NAME-composed `displayName`: the entity's
+ * primary display field is a NAME field linked to two distinct part fields.
+ *
+ * Shared by both routes into that recompute — the per-part-write route
+ * ({@link resolveNameFieldDisplayValue}) and the composite route
+ * ({@link recomposeNameDisplayFromParts}). Keeping one gate is the point: two
+ * copies of these conditions drifting apart is the exact failure mode
+ * `plans/field-values/name-field-writes.md` exists to close.
+ *
+ * Returns `null` when the record's display simply isn't NAME-composed — a
+ * NAME field that is not the primary display field lands here and every
+ * caller no-ops, which is the behavior that predates decomposition.
+ */
+async function resolvePrimaryNameDisplayField(
+  ctx: FieldValueContext,
+  entityDef: { primaryDisplayFieldId: string | null }
+): Promise<{ field: CachedField; parts: NameParts } | null> {
+  if (!entityDef.primaryDisplayFieldId) return null
+
+  const primaryField = await getField(ctx, entityDef.primaryDisplayFieldId)
+  const parts = readNameParts(primaryField)
+  if (!parts) return null
+
+  return { field: primaryField, parts }
+}
+
+/** The one definition of how two name parts read as a `displayName`. */
+function composeNameDisplayValue(firstName: string, lastName: string): string | null {
+  return [firstName, lastName].filter(Boolean).join(' ').trim() || null
+}
+
+/**
+ * Persist a NAME-composed `displayName` and everything derived from it —
+ * the denormalized column, the searchText corpus, the dependent-entity
+ * cascade and the realtime column frame, in that order.
+ *
+ * Extracted so the per-part-write route and the composite route cannot drift:
+ * a decomposed NAME write reaches this exactly once, a direct part write
+ * exactly once.
+ */
+async function writeComposedDisplayName(
+  ctx: FieldValueContext,
+  entityDef: { id: string },
+  entityInstanceId: string,
+  displayName: string | null,
+  skipSearchTextRefresh: boolean
+): Promise<void> {
+  // D-7: a display-source field changed, so this is record content — stamp
+  // `updatedAt` in the same statement as the denormalized column.
+  await ctx.db
+    .update(schema.EntityInstance)
+    .set({ displayName, updatedAt: new Date() })
+    .where(
+      and(
+        eq(schema.EntityInstance.id, entityInstanceId),
+        eq(schema.EntityInstance.organizationId, ctx.organizationId)
+      )
+    )
+
+  if (!skipSearchTextRefresh) {
+    await updateSearchText(ctx.db, entityInstanceId, ctx.organizationId)
+  }
+
+  // Cascade to dependent entities
+  const resource = await getCachedResource(ctx.organizationId, entityDef.id)
+  const entityType = resource?.entityType ?? entityDef.id
+  const deps = await getDisplayFieldDeps(ctx.organizationId, entityType)
+  if (deps.length > 0) {
+    await cascadeDependentDisplayNames(ctx, entityInstanceId, displayName, deps)
+  }
+
+  await publishRecordColumnUpdate(ctx, entityDef.id, entityInstanceId, { displayName })
+}
+
+/**
  * Check if a field is a source field for a NAME-type primary display field.
  * If so, compose "firstName lastName" from the current value and the other source field.
  * Returns the composed display string, null to clear, or undefined if not applicable.
+ *
+ * Costs ONE sibling SELECT, because a part write only ever knows its own half.
+ * A decomposed NAME write knows both halves already and must take
+ * {@link recomposeNameDisplayFromParts} instead — see
+ * `plans/field-values/name-field-writes.md` §4a.
  */
 async function resolveNameFieldDisplayValue(
   ctx: FieldValueContext,
@@ -1057,18 +1179,11 @@ async function resolveNameFieldDisplayValue(
   field: CachedField,
   value: TypedFieldValueInput | TypedFieldValueInput[] | null
 ): Promise<string | null | undefined> {
-  if (!entityDef.primaryDisplayFieldId) return undefined
+  const primary = await resolvePrimaryNameDisplayField(ctx, entityDef)
+  if (!primary) return undefined
 
-  const primaryField = await getField(ctx, entityDef.primaryDisplayFieldId)
-  if (primaryField.type !== 'NAME') return undefined
-
-  const nameOpts = (primaryField.options as Record<string, any>)?.name as
-    | { firstNameFieldId?: string; lastNameFieldId?: string }
-    | undefined
-  if (!nameOpts?.firstNameFieldId || !nameOpts?.lastNameFieldId) return undefined
-
-  const isFirstName = nameOpts.firstNameFieldId === field.id
-  const isLastName = nameOpts.lastNameFieldId === field.id
+  const isFirstName = primary.parts.firstNameFieldId === field.id
+  const isLastName = primary.parts.lastNameFieldId === field.id
   if (!isFirstName && !isLastName) return undefined
 
   // Extract the text value being set
@@ -1077,7 +1192,7 @@ async function resolveNameFieldDisplayValue(
 
   // Fetch the other source field's current value
   const { entityInstanceId } = parseRecordId(recordId)
-  const otherFieldId = isFirstName ? nameOpts.lastNameFieldId : nameOpts.firstNameFieldId
+  const otherFieldId = isFirstName ? primary.parts.lastNameFieldId : primary.parts.firstNameFieldId
   const [otherRow] = await ctx.db
     .select({ valueText: schema.FieldValue.valueText })
     .from(schema.FieldValue)
@@ -1094,7 +1209,55 @@ async function resolveNameFieldDisplayValue(
   const firstName = isFirstName ? currentText : otherText
   const lastName = isLastName ? currentText : otherText
 
-  return [firstName, lastName].filter(Boolean).join(' ').trim() || null
+  return composeNameDisplayValue(firstName, lastName)
+}
+
+/**
+ * Recompute `displayName` for a decomposed NAME write, from the two part
+ * strings the caller already holds — ZERO sibling SELECTs and ONE column
+ * write, where letting the two part writes each recompute would cost two of
+ * each (and the second SELECT would re-read what the first write just
+ * committed).
+ *
+ * The caller MUST have suppressed the per-part recompute
+ * (`skipNameCompose`) and MUST gate this on "either part actually changed":
+ * renaming `Anita Smith` to `Bob Smith` leaves `last_name` byte-identical, so
+ * the second part write is a D-6 no-op — hanging the recompute off the last
+ * write instead would silently strand `displayName`. See
+ * `plans/field-values/name-field-writes.md` §4a.
+ *
+ * A no-op (and no query at all) when the record's display is not composed
+ * from this very NAME field — a non-primary NAME field included, exactly as
+ * a part write behaves today.
+ *
+ * @returns `true` when the `displayName` column was written. That statement
+ * carries `updatedAt` (the display write doubles as a content stamp, as it
+ * always has), so a caller owning the D-7 stamp can skip its own UPDATE.
+ */
+export async function recomposeNameDisplayFromParts(
+  ctx: FieldValueContext,
+  recordId: RecordId,
+  nameField: CachedField,
+  parts: { firstName: string; lastName: string },
+  opts?: { skipSearchTextRefresh?: boolean }
+): Promise<boolean> {
+  const entityDef = nameField.entityDefinition
+  if (!entityDef) return false
+
+  const primary = await resolvePrimaryNameDisplayField(ctx, entityDef)
+  // Same gate as the part-write route, plus: the field being written must BE
+  // the display field. A secondary NAME field composes nothing.
+  if (!primary || primary.field.id !== nameField.id) return false
+
+  const { entityInstanceId } = parseRecordId(recordId)
+  await writeComposedDisplayName(
+    ctx,
+    entityDef,
+    entityInstanceId,
+    composeNameDisplayValue(parts.firstName, parts.lastName),
+    opts?.skipSearchTextRefresh === true
+  )
+  return true
 }
 
 /**
@@ -1196,9 +1359,19 @@ export async function maybeUpdateDisplayValue(
      * last field write (query-reduction plan §3A).
      */
     skipSearchTextRefresh?: boolean
+    /**
+     * Suppresses ONLY the NAME-composed `displayName` recompute this write
+     * would trigger as a *part* of a NAME display field. Set by a decomposed
+     * NAME write, which owns the recompute for both parts at once and runs it
+     * through {@link recomposeNameDisplayFromParts} with no sibling SELECT
+     * (`plans/field-values/name-field-writes.md` §4a). A field that is itself
+     * a display field still writes its own column as always.
+     */
+    skipNameCompose?: boolean
   }
 ): Promise<void> {
   const skipSearchTextRefresh = opts?.skipSearchTextRefresh === true
+  const skipNameCompose = opts?.skipNameCompose === true
   const { entityInstanceId } = parseRecordId(recordId)
   const entityDef = field.entityDefinition
   if (!entityDef) return
@@ -1215,35 +1388,20 @@ export async function maybeUpdateDisplayValue(
     column = 'avatarUrl'
   }
 
-  // If no direct match, check if this field is a source for a NAME-type display field
-  if (!column && entityDef.primaryDisplayFieldId) {
+  // If no direct match, check if this field is a source for a NAME-type display
+  // field. `skipNameCompose` hands that recompute UP to a decomposed NAME
+  // write, which holds both part strings and does it once with no sibling
+  // SELECT (see `recomposeNameDisplayFromParts`).
+  if (!column && !skipNameCompose && entityDef.primaryDisplayFieldId) {
     const result = await resolveNameFieldDisplayValue(ctx, recordId, entityDef, field, value)
     if (result !== undefined) {
-      // D-7: a display-source field changed, so this is record content — stamp
-      // `updatedAt` in the same statement as the denormalized column.
-      await ctx.db
-        .update(schema.EntityInstance)
-        .set({ displayName: result, updatedAt: new Date() })
-        .where(
-          and(
-            eq(schema.EntityInstance.id, entityInstanceId),
-            eq(schema.EntityInstance.organizationId, ctx.organizationId)
-          )
-        )
-      if (!skipSearchTextRefresh) {
-        await updateSearchText(ctx.db, entityInstanceId, ctx.organizationId)
-      }
-
-      // Cascade to dependent entities
-      const resource = await getCachedResource(ctx.organizationId, entityDef.id)
-      const entityType = resource?.entityType ?? entityDef.id
-      const deps = await getDisplayFieldDeps(ctx.organizationId, entityType)
-      if (deps.length > 0) {
-        await cascadeDependentDisplayNames(ctx, entityInstanceId, result, deps)
-      }
-      await publishRecordColumnUpdate(ctx, entityDef.id, entityInstanceId, {
-        displayName: result,
-      })
+      await writeComposedDisplayName(
+        ctx,
+        entityDef,
+        entityInstanceId,
+        result,
+        skipSearchTextRefresh
+      )
       return
     }
   }

@@ -93,6 +93,7 @@ import {
   type InverseFieldInfo,
   maybeUpdateDisplayValue,
   preBatchValidateRelationships,
+  recomposeNameDisplayFromParts,
   resolveFieldIds,
   rowToTypedValue,
   stampEntityInstancesUpdatedAt,
@@ -103,6 +104,7 @@ import { getValue, getValueFromStoredRows } from './field-value-queries'
 import { formatToTypedInput } from './formatter'
 import { getExistingFieldValue } from './get-existing-value'
 import { insertFieldValue } from './insert-value'
+import { coerceNameInput, type NameParts, readNameParts } from './name-parts'
 import { MAX_MULTI_VALUES } from './primary-value'
 import {
   type BulkRelationshipUpdate,
@@ -761,7 +763,14 @@ export async function setValueWithType(
   ctx: FieldValueContext,
   params: SetValueWithTypeInput
 ): Promise<TypedFieldValue[]> {
-  const { recordId, fieldId, fieldType, skipInverseSync = false, skipSearchTextRefresh } = params
+  const {
+    recordId,
+    fieldId,
+    fieldType,
+    skipInverseSync = false,
+    skipSearchTextRefresh,
+    skipNameCompose,
+  } = params
   let value = params.value
 
   // Parse RecordId to get both parts for DB queries
@@ -884,7 +893,10 @@ export async function setValueWithType(
 
   // Clear (null or empty list): rows are gone, derived state follows.
   if (values.length === 0) {
-    await maybeUpdateDisplayValue(ctx, recordId, field, null, { skipSearchTextRefresh })
+    await maybeUpdateDisplayValue(ctx, recordId, field, null, {
+      skipSearchTextRefresh,
+      skipNameCompose,
+    })
 
     // Sync inverse if we had old relationships
     if (inverseInfo && oldRelatedIds.length > 0) {
@@ -900,7 +912,10 @@ export async function setValueWithType(
   const result = inserted.map((row) => rowToTypedValue(row as unknown as FieldValueRow, fieldType))
 
   // Update display value if this is a display field
-  await maybeUpdateDisplayValue(ctx, recordId, field, value, { skipSearchTextRefresh })
+  await maybeUpdateDisplayValue(ctx, recordId, field, value, {
+    skipSearchTextRefresh,
+    skipNameCompose,
+  })
 
   // Sync inverse relationships
   if (inverseInfo) {
@@ -2636,6 +2651,7 @@ export async function setValueWithBuiltIn(
     collectRealtime,
     skipSearchTextRefresh,
     skipInstanceStamp,
+    skipNameCompose,
   } = params
 
   // Plan 04 §6.2. An explicit `publishEvents: false` is the C3 escape hatch —
@@ -2711,6 +2727,164 @@ export async function setValueWithBuiltIn(
 
   // Get field definition (cached)
   const field = await getField(ctx, fieldId)
+
+  // 2.5. NAME decomposition (plans/field-values/name-field-writes.md §4).
+  // A NAME field is a COMPOSITE over two TEXT part fields and owns no storage
+  // of its own. Every set-shaped write from every door (tRPC set/setBulk, the
+  // API set-values route + SDK, importer, workflows, Kopilot, AI commits,
+  // record create/update) funnels through this function, so this is THE place
+  // the composite is fanned out — the client's split copies become an
+  // optimization, not a correctness requirement.
+  const nameParts = readNameParts(field)
+  if (field.type === 'NAME' && !nameParts) {
+    // §4: an unlinked (or half-linked) NAME field has no parts to decompose
+    // into. Never throw on a shape the org's fields don't support — warn and
+    // fall through to the pre-decomposition behavior (the json converter
+    // stores the composite on the NAME field's own row).
+    logger.warn('NAME field has no linked part fields; storing the composite raw', {
+      fieldId,
+      recordId,
+    })
+  }
+  if (nameParts) {
+    // §4d: reuse the converter's coercion rather than narrowing to
+    // `{firstName, lastName}` — SDK / API / importer callers send a bare full
+    // name string today ('Anita Bicknell' → Anita / Bicknell), and an
+    // already-typed `json` value also has to keep working. `null` (an explicit
+    // clear, or blank input) clears BOTH parts.
+    const coerced = coerceNameInput(value)
+
+    // §4a: two DIRECT `setValueWithBuiltIn` calls — never `setValuesForEntity`,
+    // which is this function's CALLER on every bulk / create / import path.
+    // Re-entering it would re-run `resolveFieldIds`, re-acquire the per-field
+    // advisory locks in a nested savepoint, redo the D-7 `EntityInstance`
+    // stamp and the searchText recompute (see the single flush below, which
+    // this frame owns), and publish its own realtime frame instead of
+    // appending to `collectRealtime`. The parts are TEXT, so `readNameParts`
+    // answers `null` for them and the recursion terminates in exactly one
+    // level by construction.
+    const partWrites = [
+      { fieldId: nameParts.firstNameFieldId, value: coerced?.firstName ?? null },
+      { fieldId: nameParts.lastNameFieldId, value: coerced?.lastName ?? null },
+    ]
+    // Same deterministic order `setValuesForEntity` imposes before its
+    // per-field loop: under an ambient transaction each per-field advisory
+    // lock is a nested savepoint that survives to the OUTER commit, so two
+    // callers taking the same record's part locks in opposite orders would
+    // deadlock. Sorting by fieldId gives every caller one order.
+    partWrites.sort((a, b) => (a.fieldId < b.fieldId ? -1 : a.fieldId > b.fieldId ? 1 : 0))
+
+    let partChanged = false
+    for (const part of partWrites) {
+      const partResult = await setValueWithBuiltIn(ctx, {
+        recordId,
+        fieldId: part.fieldId,
+        value: part.value,
+        // The RAW requested flag, not the derived `publishEvents`: the part
+        // frames re-derive `requestedPublish` / `bufferedScope` from the same
+        // ctx, and handing down a derived `false` would also suppress the
+        // buffering a write session is relying on (the C3 escape hatch is
+        // absolute by design).
+        publishEvents: params.publishEvents,
+        skipInverseSync,
+        collectRealtime,
+        preloadedSetRows: params.preloadedSetRows,
+        // Post-write ownership moves UP to THIS frame, the same way
+        // `setValuesForEntity` takes it from its per-field loop: two part
+        // writes would otherwise stamp `EntityInstance.updatedAt` twice and —
+        // far worse — run the full `updateSearchText` rebuild twice for one
+        // name edit, on the most common door in the app. Forced `true` here
+        // unconditionally; the single flush below re-checks the flags THIS
+        // frame received, so a nested NAME write under a bulk/create/import
+        // caller that already owns both still does nothing.
+        skipSearchTextRefresh: true,
+        skipInstanceStamp: true,
+        // Same hand-up for the NAME-composed `displayName`: left alone, EACH
+        // part write would SELECT its sibling's `valueText` to recompose —
+        // two SELECTs and two column writes, the second SELECT re-reading
+        // what the first write just committed. This frame already holds both
+        // strings, so it recomposes once below with no read at all.
+        skipNameCompose: true,
+        // An AI stage-2 commit on a NAME field lands on the parts, so the
+        // marker rides along with the value instead of being dropped.
+        aiGeneration: params.aiGeneration,
+      })
+      partChanged = partChanged || partResult.changed === true
+    }
+
+    // ONE `displayName` recompute for the composite write, from the two
+    // strings this frame already holds — zero sibling SELECTs, one column
+    // write. Gated on `partChanged`, NOT on "the last part changed": renaming
+    // `Anita Smith` to `Bob Smith` leaves `last_name` byte-identical, so the
+    // second part write is a D-6 no-op and hanging the recompute off it would
+    // strand `displayName` on the old name forever. Both parts no-op means the
+    // composed display cannot have changed, so nothing is skipped by gating
+    // here. A no-op when this NAME field is not the record's primary display
+    // field — the same answer a part write gives today.
+    // Runs BEFORE the searchText flush below: the corpus embeds `displayName`,
+    // so the recompute has to have landed first.
+    let displayWritten = false
+    if (partChanged) {
+      displayWritten = await recomposeNameDisplayFromParts(
+        ctx,
+        recordId,
+        field,
+        coerced ?? { firstName: '', lastName: '' },
+        {
+          // The flush below (or the caller's) owns this; the recompute must
+          // not sneak in a third rebuild.
+          skipSearchTextRefresh: true,
+        }
+      )
+    }
+
+    // D-7: ONE `EntityInstance.updatedAt` stamp for the composite write, iff
+    // EITHER part performed a real change — matching `setValuesForEntity`'s
+    // `results.some((r) => r.changed)`. A pure no-op (both parts idempotent,
+    // or a clear against two absent parts) must not re-dirty the dedup
+    // watermark. When this frame did NOT own the stamp, ownership stays with
+    // the outer caller exactly as before.
+    // Skipped when the recompute above already wrote `displayName`: that
+    // statement carries `updatedAt` in the same UPDATE (the display write has
+    // always doubled as a content stamp), so a separate one would be a second
+    // UPDATE on the same row for the same reason.
+    if (!skipInstanceStamp && partChanged && !displayWritten) {
+      await stampEntityInstanceUpdatedAt(ctx, entityInstanceId)
+    }
+
+    // One searchText recompute for the composite write, on the same
+    // either-part-changed condition. The parts are TEXT — an indexed type —
+    // so this is the single flush that replaces the two the part writes would
+    // otherwise each have run (query-reduction plan §3A's pattern, applied one
+    // level down). `skipSearchTextRefresh` hands ownership up to
+    // `setValuesForEntity` / `setBulkValues`, which flush per record / per op.
+    if (!skipSearchTextRefresh && partChanged) {
+      await updateSearchText(ctx.db, entityInstanceId, ctx.organizationId)
+    }
+
+    // §4c: the NAME key is CLIENT-COMPUTED — `computed-field-registry.ts`
+    // derives it from the two part keys — so returning the parts'
+    // `TypedFieldValue`s here would put stored values on a computed key and
+    // shadow the derived display. Return NO values under the NAME fieldId and
+    // let the part writes' own realtime entries drive the cells; `changed`
+    // still reports honestly so the D-7 stamp one frame up fires iff a part
+    // actually moved.
+    // Exactly ONE searchText recompute happens per decomposed write, from
+    // whichever frame owns the flush — deliberate, not accidental. Called
+    // directly (`fieldValue.set`), that is the flush above. Called from
+    // `setValuesForEntity`, `skipSearchTextRefresh` is already `true` here, so
+    // the flush above is skipped and the record-level one covers it: that
+    // function re-labels this result with the NAME fieldId, and
+    // `fieldFeedsSearchText` resolves the NAME field — which IS in
+    // `isSearchTextIndexedFieldType` — so `changed` alone carries it. Both
+    // routes land on one rebuild, which is what we want: the parts changed.
+    return {
+      state: 'complete',
+      performedAt: new Date().toISOString(),
+      values: [],
+      changed: partChanged,
+    }
+  }
 
   // Client store keys are always cuid-form (`<defId>:<inst>:<defId>:<fieldId>`),
   // but server-side callers (money totals hooks, lifecycle paths) pass alias-form
@@ -2896,7 +3070,10 @@ export async function setValueWithBuiltIn(
       }
     }
     await deleteValue(ctx, { recordId, fieldId, skipInstanceStamp })
-    await maybeUpdateDisplayValue(ctx, recordId, field, null, { skipSearchTextRefresh })
+    await maybeUpdateDisplayValue(ctx, recordId, field, null, {
+      skipSearchTextRefresh,
+      skipNameCompose,
+    })
     if (publishEvents || txScope) {
       // Routed through buildPublishEntry like the set branch below — this
       // publishes `[]` (not `null`) for array-return fields, matching
@@ -2966,6 +3143,7 @@ export async function setValueWithBuiltIn(
     aiGeneration: params.aiGeneration,
     skipSearchTextRefresh,
     skipInstanceStamp,
+    skipNameCompose,
   })
 
   // Sync capture (plan 07 §4): the step-3.55 guard already decided this is a
@@ -3209,14 +3387,39 @@ export async function setValuesForEntity(
       )) ??
       undefined
 
+    // NAME decomposition bookkeeping (plans/field-values/name-field-writes.md
+    // §4b). A NAME entry never writes its own key — `setValueWithBuiltIn` fans
+    // it out to the two part fields — so this op needs the part ids twice
+    // over: for the collision order below, and for the stale-snapshot
+    // invalidation in the loop's `finally`. An unlinked NAME field resolves to
+    // `null` here and behaves exactly like any other field.
+    const namePartsByFieldId = new Map<string, NameParts>()
+    for (const v of customs) {
+      const f = ctx.fieldCache.get(v.fieldId) ?? fieldMap.get(v.fieldId)
+      const parts = f ? readNameParts(f) : null
+      if (parts) namePartsByFieldId.set(v.fieldId, parts)
+    }
+
     // Deterministic advisory-lock acquisition order: under an ambient
     // transaction (merge-service, billing) each per-field lock is a nested
     // savepoint and survives to the OUTER commit, so two concurrent callers
     // acquiring the same record's field locks in different orders would
-    // deadlock. Sorting by fieldId gives every caller one order. Results,
-    // realtime frames and events may reorder relative to the input — every
-    // consumer keys by fieldId, none by position.
-    customs.sort((a, b) => (a.fieldId < b.fieldId ? -1 : a.fieldId > b.fieldId ? 1 : 0))
+    // deadlock. The sort key is two-level — `(isNameField ? 0 : 1, fieldId)` —
+    // and total, so it still gives every caller one order. Results, realtime
+    // frames and events may reorder relative to the input — every consumer
+    // keys by fieldId, none by position.
+    //
+    // §4b collision rule: NAME entries sort FIRST so that an op carrying both
+    // a composite and one of its own parts (an importer mapping `full_name`
+    // alongside `first_name`, a bulk dialog offering both) resolves
+    // last-writer-wins in favour of the EXPLICIT part write, rather than by
+    // alphabetical accident of the two cuids.
+    customs.sort((a, b) => {
+      const an = namePartsByFieldId.has(a.fieldId) ? 0 : 1
+      const bn = namePartsByFieldId.has(b.fieldId) ? 0 : 1
+      if (an !== bn) return an - bn
+      return a.fieldId < b.fieldId ? -1 : a.fieldId > b.fieldId ? 1 : 0
+    })
 
     // Now set each value (will use cached field definitions and relationship validations)
     for (const v of customs) {
@@ -3259,6 +3462,15 @@ export async function setValuesForEntity(
         // fieldId in this op (systemAttribute alias + UUID) must re-read
         // fresh rows, not skip as a false D-6/B-14 no-op against pre-op
         // state.
+        // §4b: a NAME entry's writes land on the PART keys, so those are the
+        // snapshots that just went stale — invalidating only the NAME key
+        // would leave a following part write reading pre-op rows. Clearing
+        // the NAME key too is harmless (nothing ever writes it).
+        const parts = namePartsByFieldId.get(v.fieldId)
+        if (parts) {
+          setRows?.delete(setRowsKey(entityInstanceId, parts.firstNameFieldId))
+          setRows?.delete(setRowsKey(entityInstanceId, parts.lastNameFieldId))
+        }
         setRows?.delete(setRowsKey(entityInstanceId, v.fieldId))
       }
     }

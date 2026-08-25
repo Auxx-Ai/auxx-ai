@@ -14,7 +14,7 @@ import {
 import type { RecordId } from '@auxx/types/resource'
 import { and, asc, eq, inArray, isNotNull, or, type SQL, sql } from 'drizzle-orm'
 import { findCachedResource } from '../cache'
-import type { FieldOptions, NameFieldOptions } from '../custom-fields/field-options'
+import type { FieldOptions } from '../custom-fields/field-options'
 import { rungsAtOrAbove } from '../permissions/capabilities/record-visibility-scope'
 import type { AiStatus } from '../realtime/events'
 import {
@@ -30,12 +30,14 @@ import {
   type FieldValueContext,
   getField,
   getFieldInfoFromRegistry,
+  isComputedStoredFieldType,
   normalizeFieldReference,
   rowsToTypedValues,
   rowToTypedValue,
   validateFieldReferences,
 } from './field-value-helpers'
 import { resolveMailHostGate, resolveMailLensGate } from './mail-lens-gate'
+import { type NameParts, readNameParts } from './name-parts'
 import {
   batchFetchSystemRelationships,
   isVirtualField,
@@ -91,6 +93,21 @@ export async function getValue(
   // Use cached field if provided (avoids redundant CustomField join)
   const field = cachedField ?? (await getField(ctx, params.fieldId))
 
+  // NAME reads COMPOSE from the part fields (plan §4, "server READ semantics").
+  // A NAME field owns no storage — §4 decomposes every write into its two TEXT
+  // parts — so its own row is not the value and is never read here. Stray
+  // pre-decomposition rows are deliberately NOT migrated (§6/§8), which makes
+  // this the code that has to render them invisible. An UNLINKED NAME field has
+  // no parts to compose from, so `readNameParts` answers `null` and the stored
+  // row keeps today's behavior rather than throwing.
+  const nameParts = readNameParts(field)
+  if (nameParts) {
+    const composed = await composeNameValuesForRecord(ctx, entityInstanceId, [
+      { fieldId: params.fieldId, parts: nameParts },
+    ])
+    return composed.get(params.fieldId) ?? null
+  }
+
   const rows = await ctx.db
     .select()
     .from(schema.FieldValue)
@@ -130,6 +147,14 @@ export function shapeStoredRowsAsValue(
  * saves the re-SELECT while preserving BOTH getValue behaviors the raw rows
  * lack: the mail-host gate (a withheld host or field answers `null`, never
  * the stored rows) and the scalar/array result shaping.
+ *
+ * It deliberately does NOT compose NAME from its parts the way `getValue` does
+ * (plan §4): this is the set path's idempotency-guard derivation, and a LINKED
+ * NAME field never reaches it — `setValueWithBuiltIn` decomposes into the two
+ * part writes long before the guard runs. An unlinked NAME field still stores
+ * its composite raw, and reading that row back is exactly what the guard wants.
+ * Composing here would also re-introduce the SELECT this function exists to
+ * avoid.
  */
 export async function getValueFromStoredRows(
   ctx: FieldValueContext,
@@ -173,6 +198,36 @@ export async function getValues(
   const mailGate = await resolveMailHostGate(ctx, params.recordId)
   if (mailGate?.hidden) return new Map()
 
+  // NAME composition (plan §4) is resolved BEFORE the query, not after it. The
+  // part ids come from the org `resources` cache — no roundtrip — and knowing
+  // them up front is what lets the ONE join below fetch the part rows too.
+  // Composing afterwards cost a SECOND select, and when `fieldIds` was omitted
+  // that select re-read rows the join had already put in memory.
+  //
+  // A linked NAME field's own row is a stray pre-decomposition write (§6/§8:
+  // left in place, never migrated). It is dropped below and replaced by the
+  // composed value — the stored composite is not the field's value.
+  const nameFields = await resolveLinkedNameFields(ctx, params.recordId, params.fieldIds)
+  const linkedNameFieldIds = new Set(nameFields.map((n) => n.fieldId))
+
+  // Part ids pulled in ONLY to compose a NAME. They must never reach the
+  // result: a caller that asked for `full_name` did not ask for `first_name`.
+  // A part the caller DID name is deliberately absent from this set, so it is
+  // fetched once by the widened `IN` and emitted through the normal loop.
+  const composeOnlyFieldIds = new Set<string>()
+  let fetchFieldIds = params.fieldIds
+  if (params.fieldIds && nameFields.length > 0) {
+    const requested = new Set(params.fieldIds)
+    for (const { parts } of nameFields) {
+      for (const partId of [parts.firstNameFieldId, parts.lastNameFieldId]) {
+        if (!requested.has(partId)) composeOnlyFieldIds.add(partId)
+      }
+    }
+    fetchFieldIds = [...requested, ...composeOnlyFieldIds]
+  }
+  // `fieldIds` omitted already fetches every row on the record, so the part
+  // rows are in the result set for free and nothing needs widening.
+
   const query = ctx.db
     .select()
     .from(schema.FieldValue)
@@ -181,7 +236,7 @@ export async function getValues(
       and(
         eq(schema.FieldValue.entityId, entityInstanceId),
         eq(schema.FieldValue.organizationId, ctx.organizationId),
-        params.fieldIds ? inArray(schema.FieldValue.fieldId, params.fieldIds) : undefined
+        fetchFieldIds ? inArray(schema.FieldValue.fieldId, fetchFieldIds) : undefined
       )
     )
     .orderBy(asc(schema.FieldValue.sortKey))
@@ -199,8 +254,12 @@ export async function getValues(
 
   // Convert and store results
   for (const [fieldId, fieldRows] of groupedByField) {
+    // Fetched for composition only — never part of the answer. Tested BEFORE
+    // the lens, because this is a fact about the REQUEST, not about the viewer.
+    if (composeOnlyFieldIds.has(fieldId)) continue
     // FIELD visibility: drop values above the viewer's lens on this thread.
     if (mailGate && !mailGate.admitsField(fieldId)) continue
+    if (linkedNameFieldIds.has(fieldId)) continue
     const fieldType = fieldRows[0]!.CustomField.type as FieldType
     const fieldOptions = fieldRows[0]!.CustomField.options as FieldOptions | undefined
     const fieldValueRows = fieldRows.map((r) => r.FieldValue as unknown as FieldValueRow)
@@ -214,7 +273,169 @@ export async function getValues(
     }
   }
 
+  // ZERO extra queries: composed from the rows the join above already returned.
+  // Composition reads the part rows RAW — a part withheld from this viewer is
+  // not a part the caller asked for, so the lens decision that governs is the
+  // NAME field's own, applied here.
+  const composed = composeNameValues(
+    entityInstanceId,
+    nameFields,
+    readPartText(rows.map((r) => r.FieldValue as unknown as FieldValueRow))
+  )
+  for (const [fieldId, value] of composed) {
+    if (mailGate && !mailGate.admitsField(fieldId)) continue
+    result.set(fieldId, value)
+  }
+
   return result
+}
+
+// =============================================================================
+// NAME COMPOSITION (plans/field-values/name-field-writes.md §4)
+// =============================================================================
+
+/** A NAME field paired with the two part-field ids it composes over. */
+type LinkedNameField = { fieldId: string; parts: NameParts }
+
+/**
+ * The linked NAME fields on a record's definition, narrowed to `fieldIds` when
+ * the caller named some.
+ *
+ * Reads the org `resources` cache — no DB roundtrip, and the only place a NAME
+ * field with no stored row of its own can be discovered from a bare recordId.
+ * A definition that is not in the cache (mail infra, an unregistered def) has
+ * no NAME fields as far as this path is concerned.
+ */
+async function resolveLinkedNameFields(
+  ctx: FieldValueContext,
+  recordId: RecordId,
+  fieldIds?: string[]
+): Promise<LinkedNameField[]> {
+  const { entityDefinitionId } = parseRecordId(recordId)
+  const resource = await findCachedResource(ctx.organizationId, entityDefinitionId)
+  if (!resource) return []
+
+  const requested = fieldIds ? new Set<string>(fieldIds) : null
+  const linked: LinkedNameField[] = []
+  for (const field of resource.fields) {
+    if (requested && !requested.has(field.id)) continue
+    const parts = readNameParts({ type: field.fieldType, options: field.options })
+    if (parts) linked.push({ fieldId: field.id, parts })
+  }
+  return linked
+}
+
+/**
+ * The text each part field holds on one record, keyed by field id.
+ *
+ * Parts are TEXT — that is what being linkable as a part means — so the value
+ * is `valueText`, and with rows arriving in `sortKey` order the lowest wins. A
+ * part carrying more than one row is a misconfigured field, not a list to join.
+ *
+ * Takes rows the caller ALREADY has. Rows for other fields are harmless: the
+ * composition step only ever looks up the two ids it is linked to.
+ */
+function readPartText(
+  rows: Array<{ fieldId: string; valueText: string | null }>
+): Map<string, string> {
+  const partText = new Map<string, string>()
+  for (const row of rows) {
+    if (!partText.has(row.fieldId)) partText.set(row.fieldId, row.valueText ?? '')
+  }
+  return partText
+}
+
+/**
+ * Compose the `{firstName, lastName}` value of every given NAME field on ONE
+ * record. PURE — it issues no query, because on every batched path the part
+ * rows are already in hand.
+ *
+ * A NAME field owns no storage (plan §4): writes decompose into the parts, so
+ * reads compose back out of them and the NAME field's own row — where a stray
+ * pre-decomposition one still exists (§6/§8: not migrated, not deleted) — is
+ * never read.
+ *
+ * A NAME field whose parts are BOTH blank/absent is left out of the map: that
+ * is `getValue`'s "no value" answer (`null`) and `getValues`' (key absent), so
+ * an unset name reads exactly as any other unset field does.
+ */
+function composeNameValues(
+  entityInstanceId: string,
+  nameFields: LinkedNameField[],
+  partText: ReadonlyMap<string, string>
+): Map<string, TypedFieldValue> {
+  const composed = new Map<string, TypedFieldValue>()
+  for (const { fieldId, parts } of nameFields) {
+    const firstName = partText.get(parts.firstNameFieldId) ?? ''
+    const lastName = partText.get(parts.lastNameFieldId) ?? ''
+    if (!firstName && !lastName) continue
+    composed.set(fieldId, composedNameValue(entityInstanceId, fieldId, firstName, lastName))
+  }
+  return composed
+}
+
+/**
+ * {@link composeNameValues} for the ONE caller that has no rows in hand:
+ * `getValue`, which is asked for a single field id.
+ *
+ * Net zero on queries — it selects the part rows INSTEAD of the NAME field's
+ * own row, not in addition to it, so the single-field read still costs exactly
+ * one SELECT.
+ */
+async function composeNameValuesForRecord(
+  ctx: FieldValueContext,
+  entityInstanceId: string,
+  nameFields: LinkedNameField[]
+): Promise<Map<string, TypedFieldValue>> {
+  if (nameFields.length === 0) return new Map()
+
+  const partFieldIds = [
+    ...new Set(nameFields.flatMap((n) => [n.parts.firstNameFieldId, n.parts.lastNameFieldId])),
+  ]
+
+  const rows = await ctx.db
+    .select({
+      fieldId: schema.FieldValue.fieldId,
+      valueText: schema.FieldValue.valueText,
+    })
+    .from(schema.FieldValue)
+    .where(
+      and(
+        eq(schema.FieldValue.entityId, entityInstanceId),
+        eq(schema.FieldValue.organizationId, ctx.organizationId),
+        inArray(schema.FieldValue.fieldId, partFieldIds)
+      )
+    )
+    .orderBy(asc(schema.FieldValue.sortKey))
+
+  return composeNameValues(entityInstanceId, nameFields, readPartText(rows))
+}
+
+/**
+ * The synthetic `json` TypedFieldValue a composed NAME reads as.
+ *
+ * Shaped exactly like `nameConverter.toTypedInput`'s output
+ * (`{ type: 'json', value: { firstName, lastName } }`), so an SDK / API reader
+ * sees no change now that the stored composite is no longer returned. NAME is
+ * composed rather than stored, so the row identity and timestamps every other
+ * TypedFieldValue carries have nothing behind them and are empty.
+ */
+function composedNameValue(
+  entityInstanceId: string,
+  fieldId: string,
+  firstName: string,
+  lastName: string
+): TypedFieldValue {
+  return {
+    id: '',
+    entityId: entityInstanceId,
+    fieldId,
+    sortKey: '',
+    createdAt: '',
+    updatedAt: '',
+    type: 'json',
+    value: { firstName, lastName },
+  }
 }
 
 /**
@@ -723,6 +944,9 @@ async function fetchFieldValueResults(
     const fieldType = fieldTypeMap.get(fieldId)
 
     if (!recordId || !fieldRef || !fieldType) continue
+    // §7 — a stored row on a computed field type was invented by a caller that
+    // bypassed the converters. Skip it; a read must never fail on one.
+    if (isComputedStoredFieldType(fieldType)) continue
 
     const fieldOptions = fieldOptionsMap.get(fieldId)
     const isMulti = isArrayReturnFieldType(fieldType, fieldOptions)
@@ -1144,6 +1368,11 @@ async function batchFetchFieldValues(
   fieldType: FieldType,
   fieldOptions?: FieldOptions
 ): Promise<Map<RecordId, TypedFieldValue | TypedFieldValue[]>> {
+  // §7 — a computed field type owns no storage, so any row found under one was
+  // invented by a caller that bypassed the converters. Answer "nothing stored"
+  // rather than let a read fail on it.
+  if (isComputedStoredFieldType(fieldType)) return new Map()
+
   const entityInstanceIds = recordIds.map((rid) => parseRecordId(rid).entityInstanceId)
 
   // No AI-metadata read on this path — valueJson only matters for json-typed fields.
@@ -1291,66 +1520,83 @@ async function resolveNameFieldValues(
   recordIds: RecordId[],
   nameFieldId: string
 ): Promise<Map<RecordId, TypedFieldValue | TypedFieldValue[]>> {
-  // Look up the NAME field to get source field IDs
+  // Look up the NAME field to get source field IDs. `readNameParts` is the one
+  // linkage predicate the write side decomposes on (plan §4), so composing here
+  // on anything else would let the two directions disagree about which fields
+  // count as linked.
   const nameField = await getField(ctx, nameFieldId)
-  const nameOptions = (nameField.options as Record<string, any>)?.name as
-    | NameFieldOptions
-    | undefined
+  const nameParts = readNameParts(nameField)
+  if (!nameParts) return new Map()
 
-  if (!nameOptions?.firstNameFieldId || !nameOptions?.lastNameFieldId) {
-    return new Map()
-  }
+  // ONE query for BOTH parts. This used to be two `batchFetchFieldValues` calls
+  // in a `Promise.all` — concurrent, but still two round trips for two ids on
+  // the same table, same org, same record set. `batchFetchFieldValues` is
+  // single-field by contract and has other callers, so the pair is collapsed
+  // here rather than by widening its signature.
+  const partTextByRecord = await batchFetchNamePartText(ctx, recordIds, nameParts)
 
-  // Fetch both source fields in parallel
-  const [firstNameValues, lastNameValues] = await Promise.all([
-    batchFetchFieldValues(
-      ctx,
-      recordIds,
-      nameOptions.firstNameFieldId,
-      FieldTypeEnum.TEXT as FieldType
-    ),
-    batchFetchFieldValues(
-      ctx,
-      recordIds,
-      nameOptions.lastNameFieldId,
-      FieldTypeEnum.TEXT as FieldType
-    ),
-  ])
-
-  // Compose NAME values from source fields
   const result = new Map<RecordId, TypedFieldValue | TypedFieldValue[]>()
-
   for (const recordId of recordIds) {
-    const firstNameTyped = firstNameValues.get(recordId)
-    const lastNameTyped = lastNameValues.get(recordId)
-
-    // Both sources were fetched as TEXT above, so anything else is a misconfigured
-    // NAME field rather than a value to coerce.
-    const firstName =
-      firstNameTyped && !Array.isArray(firstNameTyped) && firstNameTyped.type === 'text'
-        ? firstNameTyped.value
-        : ''
-    const lastName =
-      lastNameTyped && !Array.isArray(lastNameTyped) && lastNameTyped.type === 'text'
-        ? lastNameTyped.value
-        : ''
-
-    if (firstName || lastName) {
-      // NAME is composed, not stored — there is no FieldValue row behind it, so the
-      // row identity/timestamps every other TypedFieldValue carries are synthesised
-      // from the NAME field itself.
-      result.set(recordId, {
-        id: '',
-        entityId: parseRecordId(recordId).entityInstanceId,
-        fieldId: nameFieldId,
-        sortKey: '',
-        createdAt: '',
-        updatedAt: '',
-        type: 'json',
-        value: { firstName, lastName },
-      })
-    }
+    const composed = composeNameValues(
+      parseRecordId(recordId).entityInstanceId,
+      [{ fieldId: nameFieldId, parts: nameParts }],
+      partTextByRecord.get(recordId) ?? EMPTY_PART_TEXT
+    ).get(nameFieldId)
+    if (composed) result.set(recordId, composed)
   }
 
   return result
+}
+
+/** Shared empty map for records with no part rows at all — never mutated. */
+const EMPTY_PART_TEXT: ReadonlyMap<string, string> = new Map()
+
+/**
+ * The two part fields' text for MANY records at once, keyed by RecordId and
+ * then by part field id — {@link readPartText}'s batch shape.
+ *
+ * Reads `valueText` directly instead of going through the typed-value machinery:
+ * parts are TEXT, so the typed round trip only ever produced `{type:'text'}`
+ * values this function would immediately unwrap again.
+ */
+async function batchFetchNamePartText(
+  ctx: FieldValueContext,
+  recordIds: RecordId[],
+  parts: NameParts
+): Promise<Map<RecordId, Map<string, string>>> {
+  const instanceToRecordId = new Map<string, RecordId>()
+  for (const rid of recordIds) {
+    instanceToRecordId.set(parseRecordId(rid).entityInstanceId, rid)
+  }
+
+  const rows = await ctx.db
+    .select({
+      entityId: schema.FieldValue.entityId,
+      fieldId: schema.FieldValue.fieldId,
+      valueText: schema.FieldValue.valueText,
+    })
+    .from(schema.FieldValue)
+    .where(
+      and(
+        eq(schema.FieldValue.organizationId, ctx.organizationId),
+        inArray(schema.FieldValue.entityId, [...instanceToRecordId.keys()]),
+        inArray(schema.FieldValue.fieldId, [parts.firstNameFieldId, parts.lastNameFieldId])
+      )
+    )
+    .orderBy(asc(schema.FieldValue.sortKey))
+
+  const byRecord = new Map<RecordId, Map<string, string>>()
+  for (const row of rows) {
+    const recordId = instanceToRecordId.get(row.entityId)
+    if (!recordId) continue
+    let partText = byRecord.get(recordId)
+    if (!partText) {
+      partText = new Map<string, string>()
+      byRecord.set(recordId, partText)
+    }
+    // Lowest sortKey wins — rows arrive ordered.
+    if (!partText.has(row.fieldId)) partText.set(row.fieldId, row.valueText ?? '')
+  }
+
+  return byRecord
 }

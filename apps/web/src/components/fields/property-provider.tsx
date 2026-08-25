@@ -3,7 +3,7 @@
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
 import type { FieldType } from '@auxx/database/types'
 import { formatToRawValue, readCurrency } from '@auxx/lib/field-values/client'
-import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
+import type { RecordId } from '@auxx/lib/resources/client'
 import { toActorId } from '@auxx/types/actor'
 import {
   createContext,
@@ -18,8 +18,6 @@ import {
 import { useFieldValue } from '~/components/resources/hooks/use-field-values'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import type { StoredFieldValue } from '~/components/resources/store/field-value-store'
-import { useRecordStore } from '~/components/resources/store/record-store'
-import { useResourceStore } from '~/components/resources/store/resource-store'
 
 /**
  * property-provider.tsx
@@ -308,7 +306,6 @@ export function PropertyProvider({
   const {
     saveFieldValue: storeSave,
     saveFieldValueAsync: storeSaveAsync,
-    saveMultipleAsync: storeSaveMultiple,
     isPending: isSaving,
   } = useSaveFieldValue({
     getFieldMetadata,
@@ -355,53 +352,6 @@ export function PropertyProvider({
         return
       }
 
-      // Handle NAME field writes - split to source fields
-      if (field.fieldType === FieldTypeEnum.NAME && field.options?.name) {
-        const { firstNameFieldId, lastNameFieldId } = field.options.name
-        const nameValue = newValue as { firstName: string; lastName: string }
-
-        // Update local state SYNCHRONOUSLY
-        setCurrentValue(newValue)
-        setIsDirty(false)
-        setServerValue(newValue)
-
-        // Write BOTH source fields in a single batch mutation. Two separate
-        // single-field writes race on the server-side displayName recompute:
-        // each NAME source write recomputes the composed displayName by reading
-        // its sibling from the DB, so concurrent first/last writes can read a
-        // stale sibling and persist an outdated displayName. Batching writes
-        // them sequentially in one request, so the final recompute always sees
-        // the freshly-written sibling. The computed NAME value updates itself.
-        void storeSaveMultiple(recordId, [
-          {
-            fieldId: firstNameFieldId,
-            value: nameValue.firstName ?? '',
-            fieldType: FieldTypeEnum.TEXT,
-          },
-          {
-            fieldId: lastNameFieldId,
-            value: nameValue.lastName ?? '',
-            fieldType: FieldTypeEnum.TEXT,
-          },
-        ])
-
-        // Optimistically mirror the server-side displayName recompute into the
-        // record store so surfaces reading `record.displayName` (e.g. the drawer
-        // header) update instantly. The editing tab is excluded from the
-        // `record:updated` realtime echo, so without this it would stay stale
-        // until a refetch. Only when this NAME field actually drives the
-        // entity's primary displayName — mirrors the backend gate.
-        const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
-        const resource = useResourceStore.getState().getResourceById(entityDefinitionId)
-        if (resource?.display.primaryDisplayField?.id === field.id) {
-          const composed = `${nameValue.firstName ?? ''} ${nameValue.lastName ?? ''}`.trim()
-          useRecordStore
-            .getState()
-            .updateRecord(entityDefinitionId, entityInstanceId, { displayName: composed })
-        }
-        return
-      }
-
       // 1. Update local state SYNCHRONOUSLY (instant UI update)
       setCurrentValue(newValue)
       setIsDirty(false)
@@ -413,16 +363,7 @@ export function PropertyProvider({
       // Store handles the optimistic update, so also update local serverValue
       setServerValue(newValue)
     },
-    [
-      recordId,
-      serverValue,
-      storeSave,
-      storeSaveMultiple,
-      field.id,
-      field.fieldType,
-      field.options,
-      orderSensitive,
-    ]
+    [recordId, serverValue, storeSave, field.id, field.fieldType, field.options, orderSensitive]
   )
 
   /**

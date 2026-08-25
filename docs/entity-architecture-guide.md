@@ -146,11 +146,11 @@ app fields dedup on `(appInstallationId, connectionId, appFieldKey, modelType, e
 - `entityId` — the record id (EntityInstance / contact / ticket / …)
 - `entityDefinitionId` — the entity type (UUID or system string)
 - **Typed value columns** (exactly one used per row):
-  - `valueText` — TEXT, RICH_TEXT, NAME, EMAIL, URL, PHONE_INTL, ADDRESS
+  - `valueText` — TEXT, RICH_TEXT, EMAIL, URL, PHONE_INTL, ADDRESS
   - `valueNumber` — NUMBER, CURRENCY (amount)
   - `valueBoolean` — CHECKBOX
   - `valueDate` — DATE, DATETIME, TIME
-  - `valueJson` — FILE, ADDRESS_STRUCT, CURRENCY (`{amount, code}`), CALC, JSON, AI metadata
+  - `valueJson` — FILE, ADDRESS_STRUCT, CURRENCY (`{amount, code}`), JSON, AI metadata
   - `optionId` — SINGLE_SELECT / MULTI_SELECT / TAGS (refs `CustomField.options[].id`)
   - `relatedEntityId` + `relatedEntityDefinitionId` — RELATIONSHIP
   - `actorId` (FK → User) — ACTOR
@@ -391,7 +391,7 @@ column in parentheses:
 | --- | --- | --- |
 | `TEXT` | valueText | |
 | `RICH_TEXT` | valueText | HTML |
-| `NAME` | valueText | |
+| `NAME` | **none** | composite over two TEXT parts — stores nothing of its own (see below) |
 | `EMAIL` | valueText | normalized lowercase |
 | `URL` | valueText | |
 | `PHONE_INTL` | valueText | E.164 normalized |
@@ -409,13 +409,53 @@ column in parentheses:
 | `FILE` | valueJson | `{url, name, size, mimeType}` |
 | `RELATIONSHIP` | relatedEntityId + relatedEntityDefinitionId | |
 | `ACTOR` | actorId | FK → User |
-| `CALC` | valueNumber / valueJson | computed; read-only |
+| `CALC` | **none** | computed at read time; its converter refuses to store |
 | `JSON` | valueJson | arbitrary |
 
 (`PHONE` exists in the pgEnum for legacy rows but is not in the active `FieldType` union; use `PHONE_INTL`.)
 
 Converters: one per type in `field-values/converters/`. Each handles input coercion and row→typed-value
 conversion.
+
+### The two field types that store nothing
+
+`NAME` and `CALC` are derived: neither owns a `FieldValue` row, and a row found under one was written by a
+caller that went around this layer. They are derived by DIFFERENT mechanisms, which matters — only `CALC`
+carries the `computed` value type (`getValueType`), while `NAME` is nominally `json`. The read paths treat
+them separately.
+
+**`NAME` — a composite over two TEXT parts.** A NAME field (e.g. contact `full_name`) links to a first-name
+and a last-name field through `options.name.firstNameFieldId` / `.lastNameFieldId`. The invariant, both
+directions, is:
+
+- **Writes DECOMPOSE.** `setValueWithBuiltIn` — the chokepoint every set-shaped write from every door funnels
+  through (tRPC `set`/`setBulk`, the API set-values route + SDK, importer, workflows, Kopilot, AI commits,
+  record create/update) — fans a NAME write out into two writes against the part fields and never writes the
+  NAME field itself. Every input shape the NAME converter has ever accepted still works, including a bare
+  full-name string (`"Anita Bicknell"` → `Anita` / `Bicknell`); a `null` clears both parts.
+- **Reads COMPOSE.** `getValue` / `getValues` / `batchGetValues` build the value back out of the two part
+  rows and return it in the converter's own shape (`{ type: 'json', value: { firstName, lastName } }`), so
+  an SDK/API reader sees no difference. The NAME field's own row is never read. Both parts blank ⇒ the
+  field's normal "no value" result.
+- **An UNLINKED NAME field** (`options.name` missing or half-configured) has no parts to work with, so both
+  directions fall back to the pre-decomposition behavior — the composite is stored on, and read from, the
+  NAME field's own row. This warns; it never throws.
+
+The linkage predicate is `field-values/name-parts.ts` (`readNameParts`), and both directions read it — a
+second copy of "is this NAME field linked?" would let write and read disagree about the same field.
+
+Stray NAME rows from before decomposition landed were deliberately left in place rather than migrated, so
+compose-on-read is what makes them invisible. One place still reads them: the `searchText` NAME arm
+(`field-values/search-text.ts`) indexes `valueJson` off the NAME field's own row, so a stale stray row keeps
+feeding outdated name text into search until something deletes it.
+
+**`CALC`** is simpler: its converter's `toTypedInput` returns `null` ("do not store"), so a raw CALC write
+degrades into a clear-of-absent and no row is ever created. Reads resolve it through `resolveCalcForRecord`.
+A stored row under a computed type is skipped with a warning on every read path — it used to throw, which
+turned one invented row into a permanent hard failure of every read of that field.
+
+Background and the decision record: `plans/field-values/name-field-writes.md` §4 (write decomposition and
+read semantics), §6/§8 (why the stray rows stay), §7 (the computed-type read).
 
 ---
 
