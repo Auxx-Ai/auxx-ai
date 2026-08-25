@@ -9,20 +9,18 @@ import { Plus } from 'lucide-react'
 import { Tooltip } from '~/components/global/tooltip'
 import { useResource } from '~/components/resources'
 
-interface RelationCreateBadgeProps {
-  request: RelationCreateRequest
+/** What the badge announces will be minted when the import runs. */
+export type ValueCreateDescriptor =
+  | { kind: 'relation'; request: RelationCreateRequest }
+  /** A select/tags option; `label` is the trimmed cell text to be minted. */
+  | { kind: 'option'; label: string }
+
+interface ValueCreateBadgeProps {
+  create: ValueCreateDescriptor
 }
 
-/**
- * "Will be created", the render for the `'create'` resolution status.
- *
- * The status has been declared and produced for a long time with nothing
- * rendering it, so a pending relation create looked like an unresolved value.
- * Nothing is minted until execution: this is a statement of intent, and it stays
- * overridable per value (link it to an existing record, or skip it) right up
- * until the import runs.
- */
-export function RelationCreateBadge({ request }: RelationCreateBadgeProps) {
+/** Relation arm split out so `useResource` is only mounted when needed. */
+function RelationCreateContent({ request }: { request: RelationCreateRequest }) {
   const { resource } = useResource(request.entityDefinitionId)
   const label = resource?.label ?? 'record'
 
@@ -41,6 +39,31 @@ export function RelationCreateBadge({ request }: RelationCreateBadgeProps) {
             <Plus />
           )}
           New {label}
+        </Badge>
+      </span>
+    </Tooltip>
+  )
+}
+
+/**
+ * "Will be created", the render for the `'create'` resolution status — for both
+ * pending relation creates and pending select-option creates.
+ *
+ * Nothing is minted until execution: this is a statement of intent, and it stays
+ * overridable per value (pick an existing option/record, or skip it) right up
+ * until the import runs.
+ */
+export function ValueCreateBadge({ create }: ValueCreateBadgeProps) {
+  if (create.kind === 'relation') {
+    return <RelationCreateContent request={create.request} />
+  }
+
+  return (
+    <Tooltip content={`A new option "${create.label}" will be created when the import runs.`}>
+      <span className='inline-flex'>
+        <Badge variant='blue' size='sm' className='shrink-0'>
+          <Plus />
+          New option
         </Badge>
       </span>
     </Tooltip>

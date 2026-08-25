@@ -89,10 +89,15 @@ export function SelectInputField() {
   // Local selected state for debouncing (multi-select only)
   const [localSelected, setLocalSelected] = useState<string[]>(() => {
     const options = field?.options?.options || []
-    const optionValues = new Set(options.map((opt: SelectOption) => opt.value))
+    // A stored value can live in EITHER keyspace (`id` or `value` — see
+    // `buildOptionIndex`). Filtering on `value` alone dropped id-keyed selections
+    // here, so the picker never saw them and the next debounced commit erased them.
+    const optionKeys = new Set(
+      options.flatMap((opt: SelectOption) => [opt.id, opt.value]).filter(Boolean) as string[]
+    )
     // Normalize value to array (SINGLE_SELECT stores string, MULTI_SELECT/TAGS store string[])
     const valueArray = Array.isArray(value) ? value : value ? [value] : []
-    return valueArray.filter((v: string) => optionValues.has(v))
+    return valueArray.filter((v: string) => optionKeys.has(v))
   })
 
   // Ref to track current local value (for onBeforeClose handler)
@@ -124,11 +129,6 @@ export function SelectInputField() {
     if (!config.multi) return // Only needed for multi-select
 
     onBeforeClose.current = () => {
-      console.log(
-        'SelectInputField: onBeforeClose - flushing debounced save',
-        saveTimeoutRef.current,
-        localSelectedRef.current
-      )
       // Flush pending debounced save immediately
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current)

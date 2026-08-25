@@ -2,7 +2,7 @@
 
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import { findCachedResource } from '../../cache'
 import { mintOrMatchOptions } from '../../custom-fields/mint-options'
 import { canGrowFieldOptions, fieldAllowsNewOptions } from '../../custom-fields/ownership'
@@ -171,7 +171,15 @@ export async function loadPendingSelectCreates(
     .where(
       and(
         eq(schema.ImportJobProperty.importJobId, jobId),
-        eq(schema.ImportValueResolution.status, 'create')
+        eq(schema.ImportValueResolution.status, 'create'),
+        // A user override is a decided value, never a label to mint. Without
+        // this, overriding a will-create value to an existing option leaves
+        // `status: 'create'` behind (updateValueResolution never touches
+        // status) and this loader mints a new option literally named the
+        // chosen option's key — and an overridden RELATION create, whose
+        // `relationCreate` marker the override erased, gets claimed by the
+        // select materializer and rejected into a row error.
+        isNull(schema.ImportValueResolution.userOverride)
       )
     )
 

@@ -2,7 +2,7 @@
 
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import type { RelationCreateRequest, ResolvedValue } from '../types/resolution'
 import { relationCreateKey } from './relation-create-key'
 
@@ -68,7 +68,12 @@ async function loadPendingCreates(db: Database, jobId: string): Promise<PendingC
     .where(
       and(
         eq(schema.ImportJobProperty.importJobId, jobId),
-        eq(schema.ImportValueResolution.status, 'create')
+        eq(schema.ImportValueResolution.status, 'create'),
+        // An overridden row is the user's decided value — never materialize a
+        // create for it. Mirrors `loadPendingSelectCreates`; today the erased
+        // `relationCreate` marker already skips these, but that is incidental
+        // to how the override rewrites `resolvedValues`, not a contract.
+        isNull(schema.ImportValueResolution.userOverride)
       )
     )
 

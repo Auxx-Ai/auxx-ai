@@ -2,41 +2,95 @@
 
 'use client'
 
-import { Button } from '@auxx/ui/components/button'
+import { FieldType } from '@auxx/database/enums'
+import { getFieldOutputKey } from '@auxx/lib/resources/client'
 import { Input } from '@auxx/ui/components/input'
-import { useMemo, useState } from 'react'
-import { ComboPicker, type Option } from '~/components/pickers/combo-picker'
-import type { ColumnFieldConfig, OverrideValue } from '../types'
+import { useEffect, useMemo, useState } from 'react'
+import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
+import { useResourceFields } from '~/components/resources'
+import type { ColumnFieldConfig, OverrideValue, ResolutionStatus } from '../types'
 
 export interface EditingInputProps {
   fieldConfig: ColumnFieldConfig | null
   rawValue: string
   resolvedValue: string | null
+  originalStatus: ResolutionStatus
   isOverridden: boolean
   overrideValues: OverrideValue[] | null
-  hasCustomOverride: boolean
   onSave: (overrideValues: OverrideValue[] | null) => void
+}
+
+/** Compare two option-key sets order-insensitively. */
+function sameKeys(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false
+  const sortedA = [...a].sort()
+  const sortedB = [...b].sort()
+  return sortedA.every((key, i) => key === sortedB[i])
 }
 
 /**
  * Component for editing value overrides.
- * Renders different input types based on field configuration.
- * Saves on blur for text inputs, on selection for enum pickers.
+ *
+ * Option columns (`select:*` / `multiselect:*`) render the real select picker
+ * via `FieldInputAdapter`, showing labels (`TagsView` chips inside the trigger)
+ * instead of raw option keys. Everything else renders a text input that saves
+ * on blur.
  */
 export function EditingInput({
   fieldConfig,
   rawValue,
   resolvedValue,
+  originalStatus,
   isOverridden,
   overrideValues,
-  hasCustomOverride,
   onSave,
 }: EditingInputProps) {
-  // Check if currently skipped
+  // Check if currently skipped (skipped rows don't render this component, but
+  // the derivations below must not read a skip marker as a value)
   const isSkipped = isOverridden && overrideValues?.[0]?.type === 'skip'
 
-  // Initialize value from existing override or resolved value or raw value
-  // If skipped, use resolved/raw value (not the skip value)
+  const resolutionType = fieldConfig?.resolutionType ?? 'text:value'
+  const isOptionColumn =
+    resolutionType.startsWith('select:') || resolutionType.startsWith('multiselect:')
+
+  // The field's REAL type (SINGLE_SELECT vs MULTI_SELECT vs TAGS — they differ
+  // on multi/canAdd). Resolved from the resource store by output key; the
+  // resolution-type prefix is only a fallback for a cold store or a vanished
+  // field. `useFieldByKey` is deliberately not used — its custom-field arm
+  // expects the CustomField UUID, not the output key.
+  const { fields } = useResourceFields(
+    isOptionColumn ? (fieldConfig?.entityDefinitionId ?? null) : null
+  )
+  const storeField = useMemo(() => {
+    if (!isOptionColumn || !fieldConfig) return undefined
+    return fields.find((f) => getFieldOutputKey(f) === fieldConfig.key)
+  }, [fields, fieldConfig, isOptionColumn])
+  const optionFieldType =
+    storeField?.fieldType ??
+    (resolutionType.startsWith('multiselect:') ? FieldType.MULTI_SELECT : FieldType.SINGLE_SELECT)
+
+  // The resolver's answer as option key(s). Multiselect values arrive
+  // comma-joined (option keys never contain commas); a pending option CREATE
+  // resolves to the label to be minted, not a key, so it contributes none.
+  const autoKeys = useMemo(() => {
+    if (!isOptionColumn || originalStatus === 'create' || !resolvedValue) return []
+    return resolvedValue.split(',').filter(Boolean)
+  }, [isOptionColumn, originalStatus, resolvedValue])
+
+  /** Current selection: the override when present, else the resolver's answer. */
+  const selectedKeys = useMemo(() => {
+    if (isOverridden && !isSkipped && overrideValues) {
+      return overrideValues
+        .filter((ov) => ov.type !== 'skip')
+        .map((ov) => ov.value)
+        .filter(Boolean)
+    }
+    return autoKeys
+  }, [isOverridden, isSkipped, overrideValues, autoKeys])
+
+  // ── Text editor state ──────────────────────────────────────────────
+  // Never seeded with `resolvedValue` for option columns: those render the
+  // picker below and a 21-char option key must never appear in a textbox.
   const initialValue = useMemo(() => {
     if (isSkipped) {
       return resolvedValue ?? rawValue
@@ -48,52 +102,13 @@ export function EditingInput({
   }, [isOverridden, isSkipped, overrideValues, resolvedValue, rawValue])
 
   const [editValue, setEditValue] = useState(initialValue)
-  const [pickerOpen, setPickerOpen] = useState(false)
-  const [selectedOptions, setSelectedOptions] = useState<Option[]>(() => {
-    // Initialize selected options for enum fields
-    const fieldOptions = fieldConfig?.options
-    if (fieldConfig?.type === 'enum' && fieldOptions?.length) {
-      // If skipped, use resolved value (not skip value)
-      if (isSkipped) {
-        const matchedOption = fieldOptions.find((opt) => opt.value === resolvedValue)
-        if (matchedOption) {
-          return [{ value: matchedOption.value, label: matchedOption.label }]
-        }
-        return []
-      }
-      // If overridden with values, use those
-      if (isOverridden && overrideValues) {
-        return overrideValues
-          .filter((ov) => ov.type !== 'skip')
-          .map((ov) => {
-            const option = fieldOptions?.find((opt) => opt.value === ov.value)
-            return option ? { value: option.value, label: option.label } : null
-          })
-          .filter((x): x is Option => x !== null)
-      }
-      // Try to match resolved value to option
-      const matchedOption = fieldOptions.find((opt) => opt.value === resolvedValue)
-      if (matchedOption) {
-        return [{ value: matchedOption.value, label: matchedOption.label }]
-      }
-    }
-    return []
-  })
 
-  // Determine editor type based on field config
-  const resolutionType = fieldConfig?.resolutionType ?? 'text:value'
-  const isEnumType =
-    resolutionType.startsWith('select:') || resolutionType.startsWith('multiselect:')
-  const isMultiSelect = resolutionType.startsWith('multiselect:')
-
-  // Build options for enum picker
-  const enumOptions: Option[] = useMemo(() => {
-    if (!fieldConfig?.options?.length) return []
-    return fieldConfig.options.map((opt) => ({
-      value: opt.value,
-      label: opt.label,
-    }))
-  }, [fieldConfig?.options])
+  // Rows are recycled by `hash` in the virtual list and props move under
+  // Revert / re-resolve without a remount — resync the draft when the
+  // incoming value changes.
+  useEffect(() => {
+    setEditValue(initialValue)
+  }, [initialValue])
 
   /** The original (non-overridden) value */
   const originalValue = resolvedValue ?? rawValue
@@ -113,54 +128,42 @@ export function EditingInput({
     onSave([{ type: 'value', value: editValue }])
   }
 
-  /** Handle enum selection - save immediately on single select */
-  const handleEnumChange = (val: Option | Option[] | null) => {
-    if (isMultiSelect) {
-      setSelectedOptions(val as Option[])
-    } else {
-      const newOptions = val ? [val as Option] : []
-      setSelectedOptions(newOptions)
-      // Save immediately for single select
-      if (newOptions.length > 0) {
-        const values: OverrideValue[] = newOptions.map((opt) => ({
-          type: 'value' as const,
-          value: opt.value,
-        }))
-        onSave(values)
-      }
-      setPickerOpen(false)
+  /**
+   * Option selection change — saves immediately with the FULL key array
+   * (single select writes one key, multi writes all). Clearing the selection
+   * or re-picking exactly the resolver's answer reverts to it.
+   */
+  const handleOptionChange = (next: unknown) => {
+    const keys = Array.isArray(next)
+      ? (next as string[]).filter(Boolean)
+      : typeof next === 'string' && next
+        ? [next]
+        : []
+
+    if (keys.length === 0 || sameKeys(keys, autoKeys)) {
+      if (isOverridden) onSave(null)
+      return
     }
+    onSave(keys.map((value) => ({ type: 'value' as const, value })))
   }
 
-  /** Handle enum picker close for multiselect - save on close */
-  const handleEnumClose = () => {
-    setPickerOpen(false)
-    if (isMultiSelect && selectedOptions.length > 0) {
-      const values: OverrideValue[] = selectedOptions.map((opt) => ({
-        type: 'value' as const,
-        value: opt.value,
-      }))
-      onSave(values)
-    }
-  }
-
-  // Render enum picker
-  if (isEnumType && enumOptions.length > 0) {
+  // Option columns always render the picker — even with an empty live list —
+  // so a raw option key never leaks into a text input.
+  if (isOptionColumn && fieldConfig) {
     return (
-      <ComboPicker
-        options={enumOptions}
-        selected={isMultiSelect ? selectedOptions : (selectedOptions[0] ?? null)}
-        multi={isMultiSelect}
-        open={pickerOpen}
-        onOpen={() => setPickerOpen(true)}
-        onClose={handleEnumClose}
-        onChange={handleEnumChange}>
-        <Button variant='outline' size='sm' className='h-7 min-w-[120px] justify-start'>
-          {selectedOptions.length > 0
-            ? selectedOptions.map((o) => o.label).join(', ')
-            : 'Select value...'}
-        </Button>
-      </ComboPicker>
+      <div className='min-w-0 flex-1' title={rawValue}>
+        <FieldInputAdapter
+          fieldType={optionFieldType}
+          fieldOptions={{ options: fieldConfig.options ?? [] }}
+          value={selectedKeys}
+          onChange={handleOptionChange}
+          placeholder='Select value...'
+          // Overrides must reference existing option keys; minting happens via
+          // the import's own select-create path, so the picker never creates.
+          canAdd={false}
+          triggerProps={{ className: 'h-7' }}
+        />
+      </div>
     )
   }
 

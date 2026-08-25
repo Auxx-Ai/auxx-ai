@@ -119,11 +119,21 @@ export async function updateValueResolution(
   // never reaches the persisted jsonb — the whole-cell skip above already emptied
   // the list, and a `skip` mixed in behind a non-skip first entry is dropped here
   // rather than written out as an unknown `type`.
+  const overrides = input.overrideValues.filter(
+    (ov): ov is OverrideValue & { type: 'value' | 'create' } => ov.type !== 'skip'
+  )
+
+  // A multi-valued column MUST persist the resolver's native shape: ONE entry
+  // whose `value` is the array of option keys (see `resolveMultiselectSplit`).
+  // Every executor reads `resolvedValues[0]` only — N separate entries would
+  // import exactly the first option and silently drop the rest.
+  const isMultiValued = mappingProp.resolutionType.startsWith('multiselect:')
+
   const resolvedValues: ResolvedValue[] = isSkip
     ? [] // Empty for skip
-    : input.overrideValues.flatMap((ov) =>
-        ov.type === 'skip' ? [] : [{ type: ov.type, value: ov.id ?? ov.value }]
-      )
+    : isMultiValued
+      ? [{ type: 'value', value: overrides.map((ov) => ov.id ?? ov.value) }]
+      : overrides.map((ov) => ({ type: ov.type, value: ov.id ?? ov.value }))
 
   // Store original values for revert (only if not already overridden)
   const existingOverride = existingResolution?.userOverride as UserOverrideData | null

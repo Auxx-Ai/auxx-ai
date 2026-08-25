@@ -67,7 +67,7 @@ export type {
 export { chunkRows, type RowChunk } from './utils/chunk-rows'
 // Utils
 export { type ParseCSVError, parseCSV } from './utils/parse-csv'
-export { RelationCreateBadge } from './value-review/relation-create-badge'
+export { ValueCreateBadge } from './value-review/relation-create-badge'
 export { ValueRow } from './value-review/value-row'
 // Value review
 export { ValueStatusGroup } from './value-review/value-status-group'
