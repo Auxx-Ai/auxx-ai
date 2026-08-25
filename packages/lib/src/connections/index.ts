@@ -12,6 +12,7 @@ export {
   type ConnectionDefinitionForRefresh,
   type CredentialLockProvider,
   type CredentialOwner,
+  effectiveConnectionVariables,
   ensureFreshCredentialToken,
   gateConnectionVariables,
   loadDefinitionForCredential,
@@ -22,6 +23,7 @@ export {
   resolveOAuth2Client,
   resolveOAuth2RefreshConfig,
   resolveOwnClientRequirement,
+  splitConnectionVariablesBySecrecy,
 } from '@auxx/credentials/connections'
 export {
   type AuthApply,

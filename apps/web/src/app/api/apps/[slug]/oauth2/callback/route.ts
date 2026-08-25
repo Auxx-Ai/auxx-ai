@@ -4,7 +4,11 @@ import { WEBAPP_URL } from '@auxx/config/urls'
 import { database as db } from '@auxx/database'
 import { saveAppConnection } from '@auxx/lib/apps'
 import { resolveAppSlug } from '@auxx/lib/cache'
-import { appOAuthCallbackUrl, resolveOAuth2Client } from '@auxx/lib/connections'
+import {
+  appOAuthCallbackUrl,
+  resolveOAuth2Client,
+  splitConnectionVariablesBySecrecy,
+} from '@auxx/lib/connections'
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
 import { interpolateConnectionFields } from '@auxx/services/app-connections'
@@ -320,17 +324,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       }
     }
 
-    // Split stored variables by the definition's secret flag: secret-flagged values are
-    // encrypted under `secrets.fields`; only plain ones persist in plaintext metadata.
-    const secretVariableKeys = new Set(
-      (connDef.connectionVariables ?? []).filter((v) => v.secret).map((v) => v.key)
+    // Split stored variables by secrecy: secret values are encrypted under `secrets.fields`;
+    // only plain ones persist in plaintext metadata. Secrecy is a property of the KEY, not of
+    // whether this def declared it — `clientSecret` is flagged only on the injected BYO
+    // descriptors, and plaintext metadata is shipped to the browser by `apps.listConnections`.
+    // See plans/connections/byo-oauth-client-runtime-gap.md §3 F2.
+    const { secretFields, plainVariables } = splitConnectionVariablesBySecrecy(
+      connDef,
+      connectionVariables
     )
-    const secretFields: Record<string, string> = {}
-    const plainVariables: Record<string, string> = {}
-    for (const [key, value] of Object.entries(connectionVariables)) {
-      if (secretVariableKeys.has(key)) secretFields[key] = value
-      else plainVariables[key] = value
-    }
 
     // Save connection to Credential
     const result = await saveAppConnection(

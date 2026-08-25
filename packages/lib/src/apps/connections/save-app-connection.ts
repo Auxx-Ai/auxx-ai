@@ -1,5 +1,6 @@
 // packages/lib/src/apps/connections/save-app-connection.ts
 
+import { BYO_CLIENT_KEYS } from '@auxx/credentials/connections'
 import {
   insertCredential,
   listCredentials,
@@ -132,6 +133,22 @@ function pickSecrets(data: {
  *   }
  * )
  */
+/**
+ * Connection variables an app's own event handlers are allowed to see.
+ *
+ * A bring-your-own OAuth client id/secret is platform-level auth config, not a connector
+ * input — no `connection-identify` or `connection-added` handler has any use for it, and for
+ * a marketplace app those handlers are third-party code. Strip them before they cross that
+ * boundary. See plans/connections/byo-oauth-client-runtime-gap.md §3 F3.
+ */
+function appVisibleFields(fields: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const [key, value] of Object.entries(fields)) {
+    if (!BYO_CLIENT_KEYS.has(key)) out[key] = value
+  }
+  return out
+}
+
 export async function saveAppConnection(
   appId: string,
   appInstallationId: string,
@@ -237,9 +254,11 @@ export async function saveAppConnection(
       : 'secret'
     // Token is already in hand — no persistence yet, so no `id` is sent to identify.
     const identifyValue = connectionData.accessToken || connectionData.secret || ''
-    const identifyFields = mergeConnectionVariables(metadata, {
-      fields: connectionData.secretFields,
-    })
+    const identifyFields = appVisibleFields(
+      mergeConnectionVariables(metadata, {
+        fields: connectionData.secretFields,
+      })
+    )
 
     const identifyResult = await triggerAppEvent({
       appInstallationId,
@@ -384,7 +403,9 @@ export async function saveAppConnection(
   const connectionValue = connectionData.accessToken || connectionData.secret || ''
   // Merged connection variables (plain + secret-flagged) — apps validate credentials
   // in their connection-added handler (e.g. mint a token, return `{ label }`).
-  const fields = mergeConnectionVariables(metadata, { fields: connectionData.secretFields })
+  const fields = appVisibleFields(
+    mergeConnectionVariables(metadata, { fields: connectionData.secretFields })
+  )
 
   const eventResult = await triggerAppEvent({
     appInstallationId,
