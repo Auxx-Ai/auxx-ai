@@ -10,7 +10,7 @@ import type {
 } from '../types/resolution'
 import { batchCacheResolutions } from './cache/batch-cache-resolutions'
 import { getCachedResolutions } from './cache/get-cached-resolutions'
-import type { ResolutionStatus } from './get-unique-values-with-status'
+import type { ResolutionStatus } from './effective-status'
 import { resolveValue } from './resolve-value'
 
 /**

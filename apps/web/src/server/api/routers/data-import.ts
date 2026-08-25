@@ -39,7 +39,7 @@ import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
 import { TRPCError } from '@trpc/server'
 import { desc, eq } from 'drizzle-orm'
 import { z } from 'zod'
-import { capabilityProcedure, createTRPCRouter } from '../trpc'
+import { capabilityProcedure, createTRPCRouter, isAuxxError } from '../trpc'
 
 /**
  * The import flow's authorization unit is the TARGET DEFINITION, not the
@@ -535,10 +535,16 @@ export const dataImportRouter = createTRPCRouter({
           hash: input.hash,
           isOverridden: input.isOverridden,
           overrideValues: input.overrideValues,
+          organizationId,
+          entityDefinitionId: job.importMapping.entityDefinitionId,
         })
 
         return { success: true }
       } catch (error) {
+        // A typed override that the resolver rejects is a 422 the reviewer has
+        // to see, not a 500. Flattening it here is what the `isAuxxError` guard
+        // exists to prevent — `auxxErrorMiddleware` maps the status itself.
+        if (isAuxxError(error)) throw error
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
           message: error instanceof Error ? error.message : 'Failed to update resolution',

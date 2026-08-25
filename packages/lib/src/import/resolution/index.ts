@@ -5,6 +5,15 @@ export { type CacheResolutionInput, cacheResolution } from './cache/cache-resolu
 export { getAllJobResolutions } from './cache/get-all-job-resolutions'
 // Re-export cache functions
 export { getCachedResolutions } from './cache/get-cached-resolutions'
+// Resolution status utilities. The status derivation and the option-label
+// rendering are PURE and shared with the review UI through
+// `@auxx/lib/import/client` — a second copy of either drifts from this one.
+export {
+  deriveEffectiveStatus,
+  type EffectiveStatus,
+  effectiveOptionKeys,
+  type ResolutionStatus,
+} from './effective-status'
 // Pending lookup query
 export { getPendingRelationLookups } from './get-pending-relation-lookups'
 // Relation auto-create (03 §3.2)
@@ -28,11 +37,8 @@ export {
   type SelectCreateGroup,
   type SelectCreateGrouping,
 } from './get-select-create-counts'
-// Resolution status utilities
 export {
-  type EffectiveStatus,
   getUniqueValuesWithResolution,
-  type ResolutionStatus,
   type UniqueValuesWithFieldConfig,
   type UniqueValueWithResolution,
 } from './get-unique-values-with-status'
@@ -52,6 +58,7 @@ export {
   materializeSelectCreates,
   type SelectCreateFailure,
 } from './materialize-select-creates'
+export { isOptionResolutionType, resolveOptionLabel } from './option-labels'
 export { type ProcessColumnValuesOptions, processColumnValues } from './process-column-values'
 export { relationCreateKey } from './relation-create-key'
 // Relation match-field type gate (03 §5.4), technical limit, NOT the identifier gate

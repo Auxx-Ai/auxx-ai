@@ -132,7 +132,7 @@ export function relationMatchFieldFor(field: ImportableField): string | undefine
 }
 
 /**
- * Get available resolution types for a field.
+ * Get available resolution types for a field, SUGGESTION FIRST.
  *
  * 🛑 Takes the FIELD, not a bare type string. The previous signature could not
  * answer the select cases: `'select'` and `'multiselect'` are NOT `BaseType`
@@ -142,10 +142,32 @@ export function relationMatchFieldFor(field: ImportableField): string | undefine
  * option-bearing cases are decided by whether the field CARRIES options, the
  * same test `suggestResolutionType` already uses, so the two agree.
  *
+ * 🛑 The suggestion is hoisted to the front rather than restated per case,
+ * because "the column's suggested type is not in its own alternatives list" is
+ * a defect this function has shipped twice: once for an options-bearing TAGS
+ * column (fixed by the branch below), and once for every MULTI email / phone /
+ * url field, whose suggestion is the `:split` variant that no case listed. The
+ * picker reads entry 0 as "suggested" and compares the stored type against it
+ * to decide whether the column is customised, so a list whose head disagrees
+ * with {@link suggestResolutionType} labels a default column as customised and
+ * badges the wrong row. One rule, applied once, instead of N cases kept in sync.
+ *
  * @param field - The importable field
- * @returns Array of valid resolution types, most appropriate first
+ * @returns Array of valid resolution types, the suggested one first
  */
 export function getValidResolutionTypes(field: ImportableField): ResolutionType[] {
+  const suggested = suggestResolutionType(field)
+  const rest = validResolutionTypesFor(field).filter((type) => type !== suggested)
+  return [suggested, ...rest]
+}
+
+/**
+ * The types that are VALID for a field, before the suggestion is hoisted.
+ *
+ * @param field - The importable field
+ * @returns Array of valid resolution types
+ */
+function validResolutionTypesFor(field: ImportableField): ResolutionType[] {
   // Option-bearing fields are keyed on the options themselves, before the
   // base-type switch: ENUM, ARRAY and TAGS all land here, and only the presence
   // of an option list separates "pick from a taxonomy" from "split a string".
