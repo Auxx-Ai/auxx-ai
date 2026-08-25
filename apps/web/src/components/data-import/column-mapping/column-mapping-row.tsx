@@ -2,7 +2,7 @@
 
 'use client'
 
-import type { ImportableField, ImportStrategyMode } from '@auxx/lib/import/client'
+import type { ImportableField, ImportStrategyMode, ResolutionType } from '@auxx/lib/import/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { EntityIcon } from '@auxx/ui/components/icons'
@@ -20,6 +20,7 @@ import {
 } from './column-policy-popover'
 import { FieldPicker } from './field-picker'
 import { canFlagAsIdentifier, IdentifierToggle, UniquenessSignal } from './identifier-toggle'
+import { hasResolutionChoice, ResolutionTypePopover } from './resolution-type-popover'
 
 /**
  * A relation mapped with no match field is UNRESOLVABLE.
@@ -55,14 +56,17 @@ interface ColumnMappingRowProps {
   onChange: (fieldKey: string | null, matchField?: string) => void
   onToggleIdentifier: (next: boolean) => void
   onPolicyChange: (patch: ColumnPolicyPatch) => void
+  /** How this column's cells are read. Offered only where more than one type is valid. */
+  onResolutionTypeChange: (next: ResolutionType) => void
 }
 
 /**
  * Single row in the column mapping list.
  * Three columns: CSV Column (0.4) | Arrow (0.2) | Maps To (0.4)
  *
- * The "Maps To" cell is a button group: field combobox, then identity, then
- * policy, then clear. Identity and policy live HERE rather than in the
+ * The "Maps To" cell is a button group in reading order: field combobox (what
+ * the column means), then resolution type (how its cells are read), then
+ * identity, then policy, then clear. All of them live HERE rather than in the
  * picker, the picker closes on selection and resets its drill-down state, so a
  * control inside it costs a reopen and a two-level re-navigation per change.
  */
@@ -78,6 +82,7 @@ export function ColumnMappingRow({
   onChange,
   onToggleIdentifier,
   onPolicyChange,
+  onResolutionTypeChange,
 }: ColumnMappingRowProps) {
   const [open, setOpen] = useState(false)
 
@@ -93,6 +98,7 @@ export function ColumnMappingRow({
   const isFlagged = mapping.identityRole?.kind === 'match'
   const showIdentifierToggle = canFlagAsIdentifier(selectedField)
   const showPolicy = hasColumnPolicy(selectedField, mode)
+  const showResolutionType = hasResolutionChoice(selectedField)
 
   // Build display label including match field for relationships
   const getDisplayContent = () => {
@@ -208,6 +214,16 @@ export function ColumnMappingRow({
               />
             </Popover>
           </div>
+
+          {/* how the cells are READ, offered only where the field has a choice */}
+          {selectedField && showResolutionType && (
+            <ResolutionTypePopover
+              field={selectedField}
+              value={mapping.resolutionType}
+              disabled={isSaving}
+              onChange={onResolutionTypeChange}
+            />
+          )}
 
           {/* identity, offered whenever the mapped field carries a tier */}
           {selectedField && showIdentifierToggle && (

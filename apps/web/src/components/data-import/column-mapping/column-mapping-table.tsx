@@ -2,7 +2,7 @@
 
 'use client'
 
-import type { ImportStrategyMode } from '@auxx/lib/import/client'
+import type { ImportStrategyMode, ResolutionType } from '@auxx/lib/import/client'
 import type { ColumnMappingUI, ImportableField } from '../types'
 import { ColumnMappingRow } from './column-mapping-row'
 import type { ColumnPolicyPatch } from './column-policy-popover'
@@ -24,6 +24,7 @@ interface ColumnMappingTableProps {
   ) => void
   onToggleIdentifier: (columnIndex: number, next: boolean) => void
   onPolicyChange: (columnIndex: number, patch: ColumnPolicyPatch) => void
+  onResolutionTypeChange: (columnIndex: number, next: ResolutionType) => void
 }
 
 /**
@@ -40,6 +41,7 @@ export function ColumnMappingTable({
   onChange,
   onToggleIdentifier,
   onPolicyChange,
+  onResolutionTypeChange,
 }: ColumnMappingTableProps) {
   /**
    * How many OTHER columns carry the identity flag. A composite-only (RELATION)
@@ -79,6 +81,9 @@ export function ColumnMappingTable({
             }
             onToggleIdentifier={(next) => onToggleIdentifier(mapping.sourceColumnIndex, next)}
             onPolicyChange={(patch) => onPolicyChange(mapping.sourceColumnIndex, patch)}
+            onResolutionTypeChange={(next) =>
+              onResolutionTypeChange(mapping.sourceColumnIndex, next)
+            }
           />
         ))}
       </div>

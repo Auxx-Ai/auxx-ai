@@ -17,6 +17,7 @@ import {
   getPlanWithEstimates,
   getRelationCreateCounts,
   getResolutionProgress,
+  getSelectCreateCounts,
   getUniqueValuesWithResolution,
   IMPORT_MERGE_STRATEGIES,
   IMPORT_STRATEGY_MODES,
@@ -610,6 +611,28 @@ export const dataImportRouter = createTRPCRouter({
       await requireImportJob(ctx.db, ctx.capabilities, organizationId, input.jobId)
 
       return getRelationCreateCounts(ctx.db, input.jobId)
+    }),
+
+  /**
+   * Which OPTIONS a `select:create` column will append to its field, by name.
+   *
+   * The counterpart to {@link getRelationCreateCounts}, and the safety story
+   * for the resolution-type picker: creation is opt-in by CHOOSING
+   * `select:create` on the column, so the only thing standing between a typo in
+   * row 47 and a permanent option on the field is seeing the list before Import
+   * is pressed. Nothing is written until execution — the underlying read folds
+   * labels onto existing options through the same `mintOrMatchOptions` dry run
+   * the real write uses, so the preview cannot promise options the run will not
+   * create.
+   */
+  getSelectCreateCounts: capabilityProcedure
+    .input(z.object({ jobId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+
+      await requireImportJob(ctx.db, ctx.capabilities, organizationId, input.jobId)
+
+      return getSelectCreateCounts(ctx.db, input.jobId)
     }),
 
   /**
