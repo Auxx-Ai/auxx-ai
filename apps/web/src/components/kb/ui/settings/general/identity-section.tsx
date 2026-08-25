@@ -17,9 +17,9 @@ import {
 
 /** Mirrors the publish dialog's three-way access choice. Display only. */
 const ACCESS_LABEL = {
-  public: 'Public — anyone can read it',
-  unlisted: 'Unlisted — direct link only',
-  internal: 'Internal — sign-in required',
+  public: 'Public (anyone can read it)',
+  unlisted: 'Unlisted (direct link only)',
+  internal: 'Internal (sign-in required)',
 } as const
 
 interface IdentitySectionProps {
