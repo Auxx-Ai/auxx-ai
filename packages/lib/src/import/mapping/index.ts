@@ -15,6 +15,7 @@ export {
   getMappedColumnsWithStats,
   type MappedColumnWithStats,
 } from './get-mapped-columns'
+export { invalidateColumnResolutions } from './invalidate-column-resolutions'
 export {
   isMatchRole,
   parseResolutionConfig,

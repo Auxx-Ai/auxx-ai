@@ -36,6 +36,7 @@ export { ErrorSummary } from './plan-preview/error-summary'
 // Plan preview
 export { ImportPlanSummary } from './plan-preview/import-plan-summary'
 export { RelationCreateSummary } from './plan-preview/relation-create-summary'
+export { SelectCreateSummary } from './plan-preview/select-create-summary'
 export { ExecutionProgress } from './progress/execution-progress'
 export { ResolutionProgress } from './progress/resolution-progress'
 // Progress

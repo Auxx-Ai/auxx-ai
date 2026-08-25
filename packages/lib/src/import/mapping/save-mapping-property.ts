@@ -13,6 +13,7 @@ import {
 import type { RelationConfig } from '../resolution/relation-policy'
 import type { ResolutionConfig } from '../types/resolution'
 import { syncMappingIdentity } from './derive-identifier-keys'
+import { invalidateColumnResolutions } from './invalidate-column-resolutions'
 import {
   parseResolutionConfig,
   sanitizeIdentityRole,
@@ -170,9 +171,11 @@ export async function saveMappingProperty(db: Database, input: SaveMappingInput)
     // happen to resend them.
     const columns = await tx
       .select({
+        id: schema.ImportMappingProperty.id,
         sourceColumnIndex: schema.ImportMappingProperty.sourceColumnIndex,
         sourceColumnName: schema.ImportMappingProperty.sourceColumnName,
         targetFieldKey: schema.ImportMappingProperty.targetFieldKey,
+        resolutionType: schema.ImportMappingProperty.resolutionType,
         resolutionConfig: schema.ImportMappingProperty.resolutionConfig,
       })
       .from(schema.ImportMappingProperty)
@@ -188,6 +191,9 @@ export async function saveMappingProperty(db: Database, input: SaveMappingInput)
     const stored = parseResolutionConfig(current?.resolutionConfig)
     const retargeted = (current?.targetFieldKey ?? null) !== input.targetFieldKey
     const unmapped = !input.targetFieldKey
+    // How the column's cells are READ changed — `currency:major` → `number:integer`,
+    // `select:value` → `select:create`. See {@link invalidateColumnResolutions}.
+    const reinterpreted = (current?.resolutionType ?? null) !== input.resolutionType
 
     // `options` / `relationConfig` / `matchField` describe the TARGET FIELD and
     // are always resent by the caller, so they keep the pre-existing
@@ -262,6 +268,13 @@ export async function saveMappingProperty(db: Database, input: SaveMappingInput)
       .update(schema.ImportJob)
       .set({ allowPlanGeneration: false, updatedAt: new Date() })
       .where(eq(schema.ImportJob.importMappingId, input.mappingId))
+
+    // …and re-resolution only re-resolves what is not already cached. A column
+    // pointed at a new field, or read as a different type, has to lose its rows
+    // or the re-run is a no-op behind a control that looks like it worked.
+    if (retargeted || reinterpreted) {
+      await invalidateColumnResolutions(tx, [current?.id])
+    }
   })
 }
 
@@ -339,6 +352,30 @@ export async function batchUpdateMappingsFromAutoMap(
   await db.transaction(async (tx) => {
     await lockMapping(tx, input.mappingId)
 
+    // Auto-map RETARGETS wholesale, so it is the widest producer of stale
+    // resolutions there is. Read the pre-change state once and invalidate only
+    // the columns it actually moved.
+    const before = await tx
+      .select({
+        id: schema.ImportMappingProperty.id,
+        sourceColumnIndex: schema.ImportMappingProperty.sourceColumnIndex,
+        targetFieldKey: schema.ImportMappingProperty.targetFieldKey,
+        resolutionType: schema.ImportMappingProperty.resolutionType,
+      })
+      .from(schema.ImportMappingProperty)
+      .where(eq(schema.ImportMappingProperty.importMappingId, input.mappingId))
+
+    const changedPropertyIds = input.mappings
+      .filter((mapping) => {
+        const current = before.find((c) => c.sourceColumnIndex === mapping.columnIndex)
+        if (!current) return false
+        return (
+          (current.targetFieldKey ?? null) !== mapping.matchedFieldKey ||
+          (current.resolutionType ?? null) !== mapping.resolutionType
+        )
+      })
+      .map((mapping) => before.find((c) => c.sourceColumnIndex === mapping.columnIndex)?.id)
+
     for (const mapping of input.mappings) {
       // Built from scratch: auto-map re-decides every column's target, so nothing
       // stored against the previous target survives.
@@ -376,5 +413,7 @@ export async function batchUpdateMappingsFromAutoMap(
       .update(schema.ImportJob)
       .set({ allowPlanGeneration: false, updatedAt: now })
       .where(eq(schema.ImportJob.importMappingId, input.mappingId))
+
+    await invalidateColumnResolutions(tx, changedPropertyIds)
   })
 }

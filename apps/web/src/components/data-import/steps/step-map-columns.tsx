@@ -4,8 +4,10 @@
 
 import {
   buildRelationColumnPolicy,
+  getValidResolutionTypes,
   type ImportableField,
   type ImportStrategyMode,
+  type ResolutionType,
   suggestResolutionType,
 } from '@auxx/lib/import/client'
 import { Button } from '@auxx/ui/components/button'
@@ -175,13 +177,17 @@ export function StepMapColumns({ jobId, onComplete, onMappingChange }: StepMapCo
    */
   const buildPayload = useCallback(
     (
-      mapping: Pick<ColumnMappingUI, 'matchField' | 'onNoMatch' | 'linkMode'>,
+      mapping: Pick<ColumnMappingUI, 'matchField' | 'onNoMatch' | 'linkMode'> & {
+        /** The column's stored resolution type, or undefined on a retarget. */
+        resolutionType?: string | null
+      },
       field: ImportableField | undefined,
       overrides: {
         targetFieldKey?: string | null
         matchField?: string
         onNoMatch?: 'create' | 'blank' | 'fail'
         linkMode?: 'add' | 'set'
+        resolutionType?: ResolutionType
       } = {}
     ): ColumnSavePayload => {
       const targetFieldKey =
@@ -225,10 +231,23 @@ export function StepMapColumns({ jobId, onComplete, onMappingChange }: StepMapCo
         }
       }
 
+      // A scalar column's type is a CHOICE, so the stored one is carried across
+      // every unrelated re-save. Recomputing `suggestResolutionType` here
+      // unconditionally is what would silently revert a user's `select:create`
+      // or `number:integer` the next time they touched the identity toggle.
+      // It is re-validated against the target rather than trusted: after a
+      // retarget the old type usually is not offered on the new field.
+      const chosenType = overrides.resolutionType ?? mapping.resolutionType ?? undefined
+      const validTypes = getValidResolutionTypes(field)
+      const resolutionType =
+        chosenType && validTypes.includes(chosenType as ResolutionType)
+          ? chosenType
+          : suggestResolutionType(field)
+
       return {
         targetFieldKey,
         customFieldId: field.id ?? null,
-        resolutionType: suggestResolutionType(field),
+        resolutionType,
         options: field.options,
       }
     },
@@ -253,7 +272,7 @@ export function StepMapColumns({ jobId, onComplete, onMappingChange }: StepMapCo
     // are statements about a field this column no longer feeds. Build from the
     // NEW target only, never from what the column used to carry.
     const payload = buildPayload(
-      { matchField: null, onNoMatch: null, linkMode: null },
+      { matchField: null, onNoMatch: null, linkMode: null, resolutionType: null },
       targetField,
       {
         targetFieldKey: fieldKey,
@@ -406,6 +425,47 @@ export function StepMapColumns({ jobId, onComplete, onMappingChange }: StepMapCo
     }
   }
 
+  /**
+   * Change how a column's cells are READ.
+   *
+   * 🛑 The write is not the whole job. `processColumnValues` looks every
+   * distinct value up in `ImportValueResolution` before resolving anything, so
+   * a re-run after a type change would hit the cache for every value and leave
+   * the old `error: No matching option` in place. `saveMappingProperty` drops
+   * those rows when the type moves (`invalidateColumnResolutions`) and clears
+   * `allowPlanGeneration`, which is what makes the review step re-queue
+   * `resolveValuesJob` and actually re-resolve the column.
+   */
+  const handleResolutionTypeChange = async (columnIndex: number, next: ResolutionType) => {
+    const mapping = mappings.find((m) => m.sourceColumnIndex === columnIndex)
+    if (!mapping?.targetFieldKey) return
+    const field = fields?.find((f) => f.key === mapping.targetFieldKey)
+
+    setMappings((prev) =>
+      prev.map((m) => (m.sourceColumnIndex === columnIndex ? { ...m, resolutionType: next } : m))
+    )
+
+    markSaving(columnIndex, true)
+    try {
+      await saveColumnMapping.mutateAsync({
+        jobId,
+        columnIndex,
+        ...buildPayload(mapping, field, {
+          targetFieldKey: mapping.targetFieldKey,
+          resolutionType: next,
+        }),
+      })
+    } catch (error) {
+      toastError({
+        title: 'Could not change how this column is read',
+        description: error instanceof Error ? error.message : 'Unknown error',
+      })
+    } finally {
+      markSaving(columnIndex, false)
+      await refreshMappingState()
+    }
+  }
+
   const handleModeChange = async (nextMode: ImportStrategyMode) => {
     try {
       await setImportStrategy.mutateAsync({ jobId, mode: nextMode })
@@ -540,6 +600,7 @@ export function StepMapColumns({ jobId, onComplete, onMappingChange }: StepMapCo
             onChange={handleMappingChange}
             onToggleIdentifier={handleToggleIdentifier}
             onPolicyChange={handlePolicyChange}
+            onResolutionTypeChange={handleResolutionTypeChange}
           />
         </div>
 

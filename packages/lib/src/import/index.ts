@@ -120,6 +120,7 @@ export {
   getMappablePropertiesWithSamples,
   getMappedColumnsWithStats,
   IMPORT_STRATEGY_MODES,
+  invalidateColumnResolutions,
   isImportStrategyMode,
   isMatchRole,
   type MappablePropertyWithSamples,
