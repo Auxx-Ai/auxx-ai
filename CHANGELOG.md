@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.217](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.216...auxx-v0.1.217) (2026-08-25)
+
+
+### Bug Fixes
+
+* **billing:** make the seat stepper read-only on shopify ([#1888](https://github.com/Auxx-Ai/auxx-ai/issues/1888)) ([d3430d4](https://github.com/Auxx-Ai/auxx-ai/commit/d3430d4a4a4df92331f0e5af49d75f468d9caa94))
+* **chat:** gate the shopify storefront card behind SHOPIFY_STOREFRONT_CHAT_ENABLED ([#1886](https://github.com/Auxx-Ai/auxx-ai/issues/1886)) ([730cde6](https://github.com/Auxx-Ai/auxx-ai/commit/730cde64578726340deb59a1bf87cc4a19ce1b19))
+
 ## [0.1.216](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.215...auxx-v0.1.216) (2026-08-25)
 
 
