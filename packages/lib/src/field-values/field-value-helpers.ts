@@ -1142,8 +1142,18 @@ export async function maybeUpdateDisplayValue(
   ctx: FieldValueContext,
   recordId: RecordId,
   field: CachedField,
-  value: TypedFieldValueInput | TypedFieldValueInput[] | null
+  value: TypedFieldValueInput | TypedFieldValueInput[] | null,
+  opts?: {
+    /**
+     * Suppresses the `searchText` recomputes only — the display COLUMN
+     * writes (order-sensitive, one UPDATE each) always run. A caller that
+     * suppresses owns the refresh and must flush one recompute after its
+     * last field write (query-reduction plan §3A).
+     */
+    skipSearchTextRefresh?: boolean
+  }
 ): Promise<void> {
+  const skipSearchTextRefresh = opts?.skipSearchTextRefresh === true
   const { entityInstanceId } = parseRecordId(recordId)
   const entityDef = field.entityDefinition
   if (!entityDef) return
@@ -1175,7 +1185,9 @@ export async function maybeUpdateDisplayValue(
             eq(schema.EntityInstance.organizationId, ctx.organizationId)
           )
         )
-      await updateSearchText(ctx.db, entityInstanceId, ctx.organizationId)
+      if (!skipSearchTextRefresh) {
+        await updateSearchText(ctx.db, entityInstanceId, ctx.organizationId)
+      }
 
       // Cascade to dependent entities
       const resource = await getCachedResource(ctx.organizationId, entityDef.id)
@@ -1195,7 +1207,7 @@ export async function maybeUpdateDisplayValue(
     // Not a display field — but its value may still be part of the search
     // corpus (`search-text.ts`). Refreshing here is what lets a query name a
     // company, a city or a status the record was never *titled* with.
-    if (isSearchTextIndexedFieldType(field.type)) {
+    if (!skipSearchTextRefresh && isSearchTextIndexedFieldType(field.type)) {
       await updateSearchText(ctx.db, entityInstanceId, ctx.organizationId)
     }
     return
@@ -1309,7 +1321,9 @@ export async function maybeUpdateDisplayValue(
 
   // Update searchText when primary or secondary display field changes
   if (column === 'displayName' || column === 'secondaryDisplayValue') {
-    await updateSearchText(ctx.db, entityInstanceId, ctx.organizationId)
+    if (!skipSearchTextRefresh) {
+      await updateSearchText(ctx.db, entityInstanceId, ctx.organizationId)
+    }
 
     // Cascade to dependent entities (e.g., when a part's title changes, update subpart displayNames)
     const resource = await getCachedResource(ctx.organizationId, entityDef.id)

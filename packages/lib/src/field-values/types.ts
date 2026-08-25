@@ -85,6 +85,14 @@ export interface SetValueWithBuiltInInput {
    * consulted in that case.
    */
   collectRealtime?: FieldValueUpdateEntry[]
+  /**
+   * When `true`, the per-field `searchText` recompute inside
+   * `maybeUpdateDisplayValue` is suppressed — the caller owns the refresh and
+   * flushes ONE recompute after its last field write (query-reduction plan
+   * §3A). Display COLUMN writes are unaffected. Callers that set this MUST
+   * refresh themselves; the default keeps today's per-field behavior.
+   */
+  skipSearchTextRefresh?: boolean
 }
 
 /**
@@ -98,6 +106,13 @@ export interface SetValuesForEntityInput {
   publishEvents?: boolean
   /** Skip inverse relationship sync (used by bulk operations that handle sync separately) */
   skipInverseSync?: boolean
+  /**
+   * When `true`, even the record-level `searchText` flush is suppressed —
+   * used by `setBulkValues`, which recomputes all changed records in one
+   * batched statement after its fan-out. See
+   * {@link SetValueWithBuiltInInput.skipSearchTextRefresh}.
+   */
+  skipSearchTextRefresh?: boolean
 }
 
 /**
@@ -253,6 +268,8 @@ export interface SetValueWithTypeInput {
    * `aiStatus=null`, implicitly clearing any prior AI marker.
    */
   aiGeneration?: AiValueMetadata
+  /** See {@link SetValueWithBuiltInInput.skipSearchTextRefresh}. */
+  skipSearchTextRefresh?: boolean
 }
 
 /** Input for adding a value to a multi-value field */

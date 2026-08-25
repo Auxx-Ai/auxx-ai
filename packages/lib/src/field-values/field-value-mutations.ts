@@ -104,6 +104,11 @@ import {
   syncInverseRelationshipsBulk,
 } from './relationship-sync'
 import { type ValidationContext, validateSelfReferentialChange } from './relationship-validators'
+import {
+  isSearchTextIndexedFieldType,
+  updateSearchText,
+  updateSearchTextForInstances,
+} from './search-text'
 import { toFieldType } from './stored-field-type'
 import {
   type BulkSnapshotWrite,
@@ -579,7 +584,7 @@ export async function setValueWithType(
   ctx: FieldValueContext,
   params: SetValueWithTypeInput
 ): Promise<TypedFieldValue[]> {
-  const { recordId, fieldId, fieldType, skipInverseSync = false } = params
+  const { recordId, fieldId, fieldType, skipInverseSync = false, skipSearchTextRefresh } = params
   let value = params.value
 
   // Parse RecordId to get both parts for DB queries
@@ -718,7 +723,7 @@ export async function setValueWithType(
 
   // Clear (null or empty list): rows are gone, derived state follows.
   if (values.length === 0) {
-    await maybeUpdateDisplayValue(ctx, recordId, field, null)
+    await maybeUpdateDisplayValue(ctx, recordId, field, null, { skipSearchTextRefresh })
 
     // Sync inverse if we had old relationships
     if (inverseInfo && oldRelatedIds.length > 0) {
@@ -734,7 +739,7 @@ export async function setValueWithType(
   const result = inserted.map((row) => rowToTypedValue(row as unknown as FieldValueRow, fieldType))
 
   // Update display value if this is a display field
-  await maybeUpdateDisplayValue(ctx, recordId, field, value)
+  await maybeUpdateDisplayValue(ctx, recordId, field, value, { skipSearchTextRefresh })
 
   // Sync inverse relationships
   if (inverseInfo) {
@@ -2522,7 +2527,14 @@ export async function setValueWithBuiltIn(
     })
   }
 
-  const { recordId, fieldId: rawFieldId, value, skipInverseSync = false, collectRealtime } = params
+  const {
+    recordId,
+    fieldId: rawFieldId,
+    value,
+    skipInverseSync = false,
+    collectRealtime,
+    skipSearchTextRefresh,
+  } = params
 
   // Plan 04 §6.2. An explicit `publishEvents: false` is the C3 escape hatch —
   // "an aggregator one frame up announces this" — and stays absolute: it
@@ -2755,7 +2767,7 @@ export async function setValueWithBuiltIn(
       }
     }
     await deleteValue(ctx, { recordId, fieldId })
-    await maybeUpdateDisplayValue(ctx, recordId, field, null)
+    await maybeUpdateDisplayValue(ctx, recordId, field, null, { skipSearchTextRefresh })
     if (publishEvents || txScope) {
       // Routed through buildPublishEntry like the set branch below — this
       // publishes `[]` (not `null`) for array-return fields, matching
@@ -2823,6 +2835,7 @@ export async function setValueWithBuiltIn(
     value: typedValue,
     skipInverseSync,
     aiGeneration: params.aiGeneration,
+    skipSearchTextRefresh,
   })
 
   // Sync capture (plan 07 §4): the step-3.55 guard already decided this is a
@@ -2936,6 +2949,7 @@ export async function setValuesForEntity(
     // boolean at every call.
     publishEvents = !isDeclaredSilent(ctx.session),
     skipInverseSync = false,
+    skipSearchTextRefresh = false,
   } = params
 
   // Parse RecordId to get both parts and derive modelType
@@ -3064,6 +3078,9 @@ export async function setValuesForEntity(
             publishEvents && getAmbientTxWriteScope(ctx.session) === undefined
               ? collected
               : undefined,
+          // The record-level flush below owns the searchText recompute — one
+          // per record instead of one per indexed field.
+          skipSearchTextRefresh: true,
         })
 
         results.push({ fieldId: v.fieldId, ...result })
@@ -3103,7 +3120,38 @@ export async function setValuesForEntity(
     await stampEntityInstanceUpdatedAt(ctx, entityInstanceId)
   }
 
+  // One searchText recompute per record write (query-reduction plan §3A):
+  // the per-field refreshes were suppressed above, so flush exactly once when
+  // at least one changed field feeds the search corpus. Runs after every
+  // per-field write (and its display-column UPDATEs) has committed, matching
+  // the derived-work-after-commit rule. An all-no-op write flushes nothing.
+  // `skipSearchTextRefresh` hands ownership up to `setBulkValues`, which
+  // recomputes all changed records in one batched statement.
+  if (!skipSearchTextRefresh && results.some((r) => fieldFeedsSearchText(ctx, r))) {
+    await updateSearchText(ctx.db, entityInstanceId, ctx.organizationId)
+  }
+
   return results
+}
+
+/**
+ * True when a per-field write result requires a searchText recompute: the
+ * field performed a real change AND either its type is part of the search
+ * corpus or it drives the `displayName`/`secondaryDisplayValue` column
+ * (which the corpus embeds regardless of the source field's type). Built-in
+ * fields never resolve from the fieldCache and never contribute. Mirrors the
+ * per-field conditions inside `maybeUpdateDisplayValue`; NAME-source parts
+ * are TEXT and therefore covered by the indexed-type check.
+ */
+function fieldFeedsSearchText(ctx: FieldValueContext, result: SetValuesResult): boolean {
+  if (!result.changed) return false
+  const field = ctx.fieldCache.get(result.fieldId)
+  if (!field) return false
+  if (isSearchTextIndexedFieldType(field.type)) return true
+  const entityDef = field.entityDefinition
+  return (
+    entityDef?.primaryDisplayFieldId === field.id || entityDef?.secondaryDisplayFieldId === field.id
+  )
 }
 
 /**
@@ -3261,6 +3309,7 @@ export async function setBulkValues(
         recordId,
         values: validValues,
         skipInverseSync: true, // Bulk sync handled separately below
+        skipSearchTextRefresh: true, // One batched recompute below, not one per record
       })
     )
   )
@@ -3285,6 +3334,23 @@ export async function setBulkValues(
       { db: ctx.db, organizationId: ctx.organizationId },
       { updates, inverseInfo: rf.inverseInfo }
     )
+  }
+
+  // One batched searchText recompute for every record with a corpus-feeding
+  // change (query-reduction plan §3A) — the per-record flushes were
+  // suppressed above. Rejected records are skipped: the recompute is derived
+  // and idempotent, so a partially-written record is simply refreshed on its
+  // next write.
+  const searchTextIds: string[] = []
+  for (let i = 0; i < results.length; i++) {
+    const result = results[i]
+    if (result?.status !== 'fulfilled') continue
+    if (result.value.some((r) => fieldFeedsSearchText(ctx, r))) {
+      searchTextIds.push(entityInstanceIds[i]!)
+    }
+  }
+  if (searchTextIds.length > 0) {
+    await updateSearchTextForInstances(ctx.db, ctx.organizationId, searchTextIds)
   }
 
   // Fire batched field triggers for all affected fields across all records
