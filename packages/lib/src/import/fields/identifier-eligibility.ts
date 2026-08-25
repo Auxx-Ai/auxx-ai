@@ -66,7 +66,7 @@ export const TIER_2_IDENTIFIER_NOTE = 'Not enforced unique'
 
 /** True when the field is derived from other fields and cannot be set directly. */
 function isComputed(field: ResourceField): boolean {
-  return field.capabilities.computed === true || (field.sourceFields?.length ?? 0) > 0
+  return field.capabilities?.computed === true || (field.sourceFields?.length ?? 0) > 0
 }
 
 /**
@@ -86,11 +86,14 @@ function isComputed(field: ResourceField): boolean {
 export function getIdentifierEligibility(field: ResourceField): IdentifierEligibility | null {
   // Hidden fields are invisible in every other user-facing surface; never offer
   // one here either.
-  if (field.capabilities.hidden) return null
+  // Optional-chained throughout: a partially-built field (a hand-made resource, a
+  // projection that dropped capabilities) must be judged INELIGIBLE, never throw —
+  // this is called from relation policy, which runs on resources it did not build.
+  if (field.capabilities?.hidden) return null
 
   // The lookup filters on the field, so it has to be filterable. This is the one
   // pre-existing rule the tiering keeps unchanged.
-  if (!field.capabilities.filterable) return null
+  if (!field.capabilities?.filterable) return null
 
   // A computed field has no stored value of its own to match against.
   if (isComputed(field)) return null
@@ -105,7 +108,7 @@ export function getIdentifierEligibility(field: ResourceField): IdentifierEligib
 
   const outputKey = getFieldOutputKey(field)
   const isRecommended =
-    field.capabilities.unique === true ||
+    field.capabilities?.unique === true ||
     field.isUnique === true ||
     field.isIdentifier === true ||
     // A declared natural-key leg is RECOMMENDED even though it carries no

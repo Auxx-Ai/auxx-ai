@@ -15,6 +15,7 @@ import {
 } from './effective-status'
 import { isOptionResolutionType, resolveOptionLabel } from './option-labels'
 import { resolveColumnOptions } from './resolve-column-options'
+import { isPendingRelationLookup } from './resolvers/relation'
 
 export type { EffectiveStatus, ResolutionStatus } from './effective-status'
 
@@ -73,6 +74,14 @@ function extractResolvedValue(resolvedValues: unknown): string | null {
   const create = (first as ResolvedValue).relationCreate
   if (create) return create.value
   if ('value' in first) {
+    // A matched RELATION is not resolved yet at this point. `relation:*` resolvers
+    // write a PENDING LOOKUP envelope describing how to find the record — the batch
+    // resolver turns it into a real id later, at plan time — so `value` here is an
+    // object, and `String(...)` on it rendered a literal "[object Object]" in every
+    // relation row of the review step. Show the cell it will be matched on, which
+    // is what the user typed and the only part of the envelope that means anything
+    // to them.
+    if (isPendingRelationLookup(first.value)) return first.value.searchValue
     return typeof first.value === 'string' ? first.value : String(first.value ?? '')
   }
   return null

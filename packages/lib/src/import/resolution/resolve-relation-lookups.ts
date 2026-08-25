@@ -3,6 +3,7 @@
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { toRecordId } from '@auxx/types/resource'
 import { and, eq, inArray, isNull, type SQL, sql } from 'drizzle-orm'
 import { getCachedResource } from '../../cache'
 import { normalizeForLookup } from '../../field-values/normalize-for-lookup'
@@ -21,7 +22,7 @@ import {
   RELATION_MATCH_NUMERIC_TYPES,
   RELATION_MATCH_TEXT_TYPES,
 } from './relation-match-types'
-import { canCreateOnNoMatch, resolveDisplayFieldKey } from './relation-policy'
+import { canCreateOnNoMatch, resolveDefaultMatchFieldKey } from './relation-policy'
 import { updateResolutionsByHash } from './write-resolution-rows'
 
 const logger = createScopedLogger('resolve-relation-lookups')
@@ -187,7 +188,7 @@ async function resolveLookupsForTable(
   // KEY through the resource's own fields, `primaryDisplayField.name` is the
   // human LABEL (`Company Name`, `Title`), and trusting it made every
   // auto-mapped relation column report "No match found" for every value.
-  const defaultMatchField = resolveDisplayFieldKey(resource)
+  const defaultMatchField = resolveDefaultMatchFieldKey(resource)
 
   // Group lookups by match field (most will use the same field)
   const byMatchField = new Map<string, PendingRelationLookup[]>()
@@ -227,6 +228,10 @@ async function resolveLookupsForTable(
       }
     }
 
+    // The def every matched id belongs to — needed to build a RecordId, and the
+    // same value for every row in this group.
+    const targetEntityDefinitionId = resource.entityDefinitionId
+
     // Whether auto-create is even legal for this (resource, matchField)
     // pair is asked ONCE per group, not per value: it is a property of the
     // column, and the authority read behind it is a cache hit either way.
@@ -256,7 +261,14 @@ async function resolveLookupsForTable(
         results.push({
           hash: lookup.hash,
           jobPropertyId: lookup.jobPropertyId,
-          recordId: [...matched][0]!,
+          // 🛑 A full `defId:instanceId` RecordId, NOT the bare `EntityInstance.id`
+          // the lookup returns. The write path's `relationship` arm accepts a string
+          // only when `isRecordId(v)` — literally `v.includes(':')` — and otherwise
+          // falls through every arm and returns null, so a bare id was SILENTLY
+          // dropped: the import reported "8 created" and wrote 8 subparts with a
+          // quantity, a note, and no parent and no child. A bare instance id cannot
+          // say which def it belongs to, so it was never a complete answer.
+          recordId: toRecordId(targetEntityDefinitionId, [...matched][0]!),
           outcome: 'matched',
         })
         continue
@@ -385,6 +397,9 @@ async function querySystemResource(
   matchField: string,
   searchValues: string[]
 ): Promise<Array<{ id: string; [key: string]: unknown }>> {
+  // An empty IN list is invalid SQL, and there is nothing to look up anyway.
+  if (searchValues.length === 0) return []
+
   // Use raw SQL query for flexibility with dynamic table/column names
   // This avoids TypeScript issues with dynamic schema access
   const tableName = resource.dbName
@@ -407,7 +422,7 @@ async function querySystemResource(
   const results = await db.execute<{ id: string; [key: string]: unknown }>(
     sql`SELECT * FROM "${sql.raw(tableName)}"
         WHERE "organizationId" = ${organizationId}
-        AND LOWER("${sql.raw(matchField)}") = ANY(${searchValues})
+        AND ${inArray(sql`LOWER("${sql.raw(matchField)}")`, searchValues)}
         LIMIT ${searchValues.length * 2}`
   )
 
@@ -452,6 +467,14 @@ async function queryCustomEntity(
     return []
   }
 
+  // 🛑 `ANY(${array})` was the shape here, and Drizzle interpolates a JS array as a
+  // PARAMETER LIST — `ANY(($1, $2, $3))` — which is a row constructor, not an
+  // array, and Postgres rejects the statement outright. The whole import failed at
+  // plan time with a raw "Failed query" and no preview, while every unit test
+  // passed: they all use a fake db, so malformed SQL is never executed. `inArray`
+  // emits `IN ($1, $2, …)`, which is what was meant.
+  if (searchValues.length === 0) return []
+
   // Build type-appropriate query condition using FieldValue typed columns
   let matchCondition: SQL<unknown>
   let valueColumn: string
@@ -459,7 +482,7 @@ async function queryCustomEntity(
   if (TEXT_FIELD_TYPES.includes(field.type)) {
     // Text types: case-insensitive match on valueText
     valueColumn = 'valueText'
-    matchCondition = sql`LOWER(${schema.FieldValue.valueText}) = ANY(${searchValues})`
+    matchCondition = inArray(sql`LOWER(${schema.FieldValue.valueText})`, searchValues)
   } else if (NUMERIC_FIELD_TYPES.includes(field.type)) {
     // Numeric types: match on valueNumber
     valueColumn = 'valueNumber'
@@ -469,11 +492,11 @@ async function queryCustomEntity(
   } else if (ENUM_FIELD_TYPES.includes(field.type)) {
     // Enum/select types: match on optionId
     valueColumn = 'optionId'
-    matchCondition = sql`LOWER(${schema.FieldValue.optionId}) = ANY(${searchValues})`
+    matchCondition = inArray(sql`LOWER(${schema.FieldValue.optionId})`, searchValues)
   } else if (ARRAY_FIELD_TYPES.includes(field.type)) {
     // Array/tags types: match on optionId (stored as multiple rows)
     valueColumn = 'optionId'
-    matchCondition = sql`LOWER(${schema.FieldValue.optionId}) = ANY(${searchValues})`
+    matchCondition = inArray(sql`LOWER(${schema.FieldValue.optionId})`, searchValues)
   } else {
     // Unsupported field types (ADDRESS, OBJECT, etc.)
     logger.warn('Unsupported field type for relation matching', {

@@ -1,6 +1,8 @@
 // packages/lib/src/import/resolution/__tests__/relation-policy.test.ts
 
 import { describe, expect, it } from 'vitest'
+import { RESOURCE_FIELD_REGISTRY } from '../../../resources/registry/field-registry'
+import type { ResourceField } from '../../../resources/registry/field-types'
 import type { Resource } from '../../../resources/registry/types'
 import { BaseType } from '../../../resources/types'
 import {
@@ -13,6 +15,7 @@ import {
   explainCreateUnavailable,
   matchesDisplayField,
   relationFieldWriteMode,
+  resolveDefaultMatchFieldKey,
   resolveDisplayFieldKey,
 } from '../relation-policy'
 
@@ -183,5 +186,76 @@ describe('buildRelationColumnPolicy, the auto-map path', () => {
       linkMode: 'add',
       resolutionType: 'relation:match',
     })
+  })
+})
+
+/**
+ * The DEFAULT match field — a real business key if the target has one, else the
+ * display field.
+ *
+ * Display alone was wrong for `part`: no BOM and no price list carries part
+ * TITLES, they carry SKUs, so every row of a parts-relation file resolved to
+ * nothing until the user changed the dropdown by hand — while the picker sat
+ * there labelling SKU "recommended".
+ */
+describe('resolveDefaultMatchFieldKey', () => {
+  const fieldsOf = (id: string) =>
+    Object.values(RESOURCE_FIELD_REGISTRY[id] ?? {}) as ResourceField[]
+
+  it('defaults a part relation to SKU, not Title', () => {
+    const part = {
+      id: 'part',
+      fields: fieldsOf('part'),
+      display: { primaryDisplayField: { id: 'title' } },
+    } as unknown as Resource
+    expect(resolveDefaultMatchFieldKey(part)).toBe('sku')
+    // …and the display field is still `title`, so this is a real divergence and
+    // not the two happening to agree.
+    expect(resolveDisplayFieldKey(part)).toBe('title')
+  })
+
+  // 🛑 The case that makes "just use the identifier" wrong. `company`'s ONLY
+  // tier-1 identifier is `id`. Defaulting to it would match every supplier cell
+  // against a CUID no CSV carries — every row failing — and `matchField === 'id'`
+  // is additionally a hard stop in `canCreateOnNoMatch`, so supplier auto-create
+  // would go dark too. It must fall through to the display field.
+  it('falls back to the display field when the only identifier is `id`', () => {
+    const company = {
+      id: 'company',
+      fields: fieldsOf('company'),
+      display: { primaryDisplayField: { id: 'companyName' } },
+    } as unknown as Resource
+    expect(resolveDefaultMatchFieldKey(company)).toBe('companyName')
+    expect(resolveDefaultMatchFieldKey(company)).toBe(resolveDisplayFieldKey(company))
+  })
+
+  // `id` is never chosen AS the business key. It can still be the answer when a
+  // resource has no display field either — that is the pre-existing last-resort
+  // fallback, unchanged here — so the invariant is stated against resources that
+  // do have one.
+  it('never picks `id` as the business key when a display field exists', () => {
+    for (const id of Object.keys(RESOURCE_FIELD_REGISTRY)) {
+      const fields = fieldsOf(id)
+      const display = fields.find((f) => f.key !== 'id' && f.type === BaseType.STRING)
+      if (!display) continue
+      const resource = {
+        id,
+        fields,
+        display: { primaryDisplayField: { id: display.key } },
+      } as unknown as Resource
+      expect(resolveDefaultMatchFieldKey(resource), `${id} defaulted to id`).not.toBe('id')
+    }
+  })
+
+  // A partially-built resource must be judged, not throw: this runs on resources
+  // the policy layer did not construct.
+  it('tolerates fields with no capabilities rather than throwing', () => {
+    const bare = {
+      id: 'x',
+      fields: [{ id: 'name', key: 'name', label: 'Name', type: BaseType.STRING }],
+      display: { primaryDisplayField: { id: 'name' } },
+    } as unknown as Resource
+    expect(() => resolveDefaultMatchFieldKey(bare)).not.toThrow()
+    expect(resolveDefaultMatchFieldKey(bare)).toBe('name')
   })
 })
