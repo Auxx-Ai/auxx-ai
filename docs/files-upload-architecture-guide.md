@@ -206,14 +206,35 @@ organization". `packages/lib` performs zero access checks (`docs/lib-module-guid
 org-admin gate for uploading an avatar onto someone else's user. `WORKFLOW_RUN` and `CUSTOM_FIELD`
 declare **no** `validateEntity` at all (§12).
 
-### 3.2 The client has a second, disagreeing copy of this table
+### 3.2 The client's copy is projected from the same source (#1866)
 
-`ENTITY_CONFIGS` in the same file (`files/types/entities.ts:225`) is a browser-side pre-flight
-table, read by `file-slice.ts:75` and `orchestration-slice.ts:423` to reject files before upload.
-It duplicates `maxFileSize` and `allowedMimeTypes` and **has drifted from the handlers**:
-`WORKFLOW_RUN` is 15 MB client-side vs 50 MB server-side; `USER_PROFILE` allows `image/*`
-client-side (which admits SVG) vs four explicit types server-side; `ARTICLE` allows `video/*` and
-`audio/*` client-side, which the handler refuses. §12.
+`UPLOAD_POLICIES` in `files/types/entities.ts` is the one server-free record of the five
+declarative fields — `entityType`, `maxFileSize`, `allowedMimeTypes`, `maxTtlSec`,
+`multipartThresholdBytes` — one entry per `EntityType`. The eleven handlers **spread** their entry
+(`...UPLOAD_POLICIES.ARTICLE`) rather than restating limits, and `ENTITY_CONFIGS` — the
+browser-side pre-flight table — projects the same values alongside a hand-maintained
+`ENTITY_PRESENTATION` record (labels, progress stages, per-surface UI switches, none of which has a
+server counterpart).
+
+The pre-flight table is read by **`orchestration-slice.ts`'s `validateAndAddFiles`**
+(`getEntityConfig` ~line 501, `validateFile` ~574) to reject files before upload. It is *not* read
+by `file-slice.ts:75` — that line reads progress-bar stage labels only, which earlier revisions of
+this guide and of `plans/attachments/10-rollout-checklist.md` both got wrong.
+
+Until #1866 the two tables were maintained separately and had drifted: `WORKFLOW_RUN` 15 MB
+client-side vs 50 MB server; `USER_PROFILE` `image/*` (which admits SVG) vs four explicit types;
+`ARTICLE` admitting `video/*` and `audio/*` the handler refuses. Users were refused files the
+server would have accepted. An 11-case test in `handlers/__tests__/handlers.test.ts` now asserts
+`ENTITY_CONFIGS[t].validation` equals each handler's `maxFileSize`/`allowedMimeTypes`, so the two
+cannot silently diverge again.
+
+`ValidationConfig` no longer carries an extension allow-list. It had **no server counterpart** —
+`enforceUploadPolicy` checks size and MIME only — so it could only ever refuse a file the server
+would accept. `validateFile` in `apps/web/.../utils/upload-helpers.ts` is now a two-rule mirror of
+`enforceUploadPolicy` with the same wildcard semantics.
+
+Front-end code imports these from **`@auxx/lib/files/client`**, not `files/types` (#1866). See §12
+for what still is not enforced about that boundary.
 
 ---
 
@@ -293,6 +314,20 @@ Known gap, flagged in the code: the part presign takes no `ttlSec`, so part URLs
 `authorizeUploadSession` → Zod-parse → `completeUpload` → on `err`, `failUploadSession` then
 `uploadErrorResponse`. A malformed body is an **early return**, not a throw: nothing was attempted,
 so it must not mark the session failed and force the client to re-upload the bytes.
+
+### 4.4b `POST /api/files/upload/{sessionId}/abort` (#1866)
+
+The fourth route, and the shortest. Authenticated through the same
+`authorizeUploadSession` door as `parts` and `complete` — the session nanoid is not a credential
+(§11.4), so holding one must not let a caller destroy someone else's in-flight upload.
+
+It calls `abortMultipartUpload`, then deletes the Redis session: the session's presigned URLs are
+useless once the upload is abandoned, and leaving it alive lets a retry resume against an `uploadId`
+S3 has already released.
+
+It answers **200 on any authorized call, including when the abort itself failed.** The client
+cancelled; surfacing a storage error it cannot act on would turn a successful cancel into a visible
+failure. The `outcome` field carries what actually happened, for logs and tests.
 
 ### 4.5 `completeUpload` — `packages/lib/src/files/upload/complete.ts:132`
 
@@ -549,6 +584,19 @@ awaiting. That was one of three swallowed failures the extraction surfaced:
 3. **`abort()` did nothing between multipart parts** — the flag was set inside `currentAbort`, so an
    abort arriving while a part was being presigned (no XHR live) was silently dropped and the
    remaining parts uploaded anyway. `direct-upload.ts:172`.
+
+A fourth method landed in #1866: **`abortSession(sessionId)`**, because stopping the browser from
+sending is only half of a cancel. Aborting an `XMLHttpRequest` cannot touch the multipart upload S3
+has already opened, and S3 holds and bills for every part already delivered — indefinitely, absent
+an abort or a lifecycle rule. `cancelUpload` now calls it for each in-flight file, `keepalive: true`
+so the request survives the tab or popover closing, and gated on `serverIdKind === 'session'` so a
+**completed** upload is never abandoned after its rows are written (`serverFileId` is overwritten
+with a real record id on completion — §11.3). It is best-effort by contract: a rejected promise must
+never fail the cancel that called it, so the store fires it un-awaited with a swallowing `catch`.
+
+The contract's return is deliberately not a bare boolean — `abortMultipartUpload` reports
+`'aborted' | 'skipped' | 'failed'`, where `'skipped'` is the single-part case. An abandoned PUT
+never becomes an object, so a single-part cancel must not call storage at all.
 
 ### 7.2 The transfer itself
 
@@ -858,6 +906,35 @@ export its whole `index.ts` from `server.ts` in the same PR.**
 **Phase 8 — the uploader, 2026-08-24 (#1858).** `UploadTransport` extracted; three swallowed
 failures fixed (§7.1).
 
+**Cancelling a multipart upload leaked every part that had landed — 2026-08-24 (#1866).** Found by
+hand, not by a test: `AbortMultipartUpload` existed **nowhere in the codebase**. `StoragePort`
+declared `startMultipart` and `completeMultipart` and nothing else, so a cancel aborted the
+browser's request and left S3 holding — and billing for — every part already delivered, forever. A
+184 MB cancel during the phase-10 browser test left exactly that in `auxx-dev-private`, and nothing
+in the system could ever have removed it.
+
+Why it survived 33 PRs is worth recording: `startMultipart` returned `expiresAt` under the comment
+`// 7 days (S3 default)`. **There is no such default.** That value is the presigned part-URL
+lifetime; the upload itself has no expiry. One wrong comment made a missing feature look like a
+handled one. It now says what the value is.
+
+Fixed on both halves — `abortMultipart` through the port and adapter, `POST
+/api/files/upload/{sessionId}/abort` behind `authorizeUploadSession`, `abortSession` on the
+transport called from `cancelUpload` (§7.1), **and** `abortIncompleteMultipartUploadDays: 7` on both
+buckets, which is the half that survives a browser that never runs any JS. See §12 for what remains
+unverified.
+
+Two lessons about reading S3 state came out of the same investigation, both instances of rules this
+guide already states in other forms:
+
+- **Check which bucket before believing a clean read.** A `list-multipart-uploads` against
+  `auxxai-files` came back empty and proved nothing — `FILE` is `visibility: 'PRIVATE'`, so its
+  objects live in `auxx-dev-private`. §5.1's never-invent-a-bucket rule applies to reads too.
+- **The shell's AWS identity is not the app's.** A plain shell here resolves a different IAM user,
+  in a different account, from `.env`'s `AWS_PROFILE=auxxai-dev`. An `AccessDenied` may be your
+  credentials rather than a missing permission — and a success may be AdministratorAccess rather
+  than the runtime role.
+
 ---
 
 ## 12. What is still open
@@ -894,10 +971,38 @@ sweep that has not happened yet.
 - **`WORKFLOW_RUN` and `CUSTOM_FIELD` declare no `validateEntity`.** Combined with `*/*` and 50 MB,
   a workflow-run upload can be aimed at any `entityId`. The old `WorkflowRunProcessor` had the same
   hole (an entirely commented-out body); the conversion preserved it rather than inventing a rule.
-- **The client's `ENTITY_CONFIGS` pre-flight table disagrees with the handlers** (§3.2).
+- ~~**The client's `ENTITY_CONFIGS` pre-flight table disagrees with the handlers**~~ — **CLOSED
+  (#1866).** Both tables now project `UPLOAD_POLICIES`, and an 11-case test asserts they agree (§3.2).
 - **`UploadPolicy.allowedExtensions` is recorded and never enforced.** `enforceUploadPolicy` has no
   extension rule, so the narrowing `CUSTOM_FIELD`'s `refineConfig` writes has never been read.
   Typed rather than deleted so the intent stays visible; enforcing it is a decision.
+
+**Multipart, after #1866**
+
+- **Production IAM is unverified.** The runtime role needs `s3:AbortMultipartUpload`. It was proved
+  end-to-end against `auxx-dev-private` (create a probe multipart upload → abort → bucket returns to
+  zero incomplete uploads), but dev resolves credentials through `AWS_PROFILE=auxxai-dev`, which is
+  **SSO AdministratorAccess in a different AWS account** from the IAM user a plain shell here picks
+  up. That proves nothing about production. If the permission is missing, `abortMultipartUpload`
+  returns `'failed'` — silently and by design, because a failed abort must never fail the user's
+  cancel — and every cancelled multipart leaks until the 7-day lifecycle rule reclaims it. Cost, not
+  data loss, but check it.
+- **The lifecycle rule is the half that actually survives.** `abortIncompleteMultipartUploadDays: 7`
+  on both buckets is not belt-and-braces: a browser that is closed, crashes, or loses the network
+  mid-upload never runs `cancelUpload`, so no application code can be relied on to abort. The
+  `POST .../abort` route reclaims bytes in seconds for the common case; the rule catches everything
+  else.
+- **`DeleteTempFiles` was deleted, not repaired, and that is still an open decision.** It filtered on
+  prefix `temp/` while every key begins with the org id (`{orgId}/file/temp/...`), and S3 matches
+  lifecycle prefixes from the **start** of the key — verified against `auxx-dev-private`, zero
+  objects matched. The rule had never done anything. Repairing the prefix would *newly* begin
+  deleting real objects on a 7-day timer, which is a behaviour change, so #1866 removed it and left
+  the decision open.
+- **`sessions/route.ts` can persist `bucket: ''`.** It writes
+  `bucket: configService.get('S3_PRIVATE_BUCKET') || ''`, so an unset config puts an empty-string
+  bucket in the Redis session. #1866 guarded the **read** side in the workflow-share route (it 500s
+  rather than let an empty bucket reach a HEAD or a compensating DELETE), but the write side is
+  unchanged. Same class as the `user-avatar-service.ts` item above, and as §5.1.
 
 **Jobs that do not do what they look like they do**
 
@@ -941,20 +1046,29 @@ sweep that has not happened yet.
   inside the journal the "nothing but database statements between `BEGIN` and `COMMIT`" assertion
   reads. They were previously invisible to it — the assertion held, but not over the two calls that
   had actually broken the rule in production.
-- **The public workflow-share completion route does no compensation at all.**
-  `apps/web/src/app/api/workflows/shared/[shareToken]/files/[sessionId]/complete/route.ts` writes a
-  `StorageLocation`, then a `MediaAsset` in its own transaction, and each failure branch returns a
-  500 having neither deleted the object nor enqueued a cleanup — so every failure there leaks the
-  uploaded bytes. `upload/compensate.ts` is now a standalone
-  `compensateUploadObject(deps, ref)` precisely so the fix is a `catch` that calls it rather than a
-  second copy of the policy. Needs `compensateUploadObject` exported from `files/server.ts`.
+- ~~**The public workflow-share completion route does no compensation at all.**~~ — **CLOSED
+  (#1866).** `compensateUploadObject` is wired into the two branches that leave a guaranteed orphan.
+  Three of the route's five relevant `catch` blocks deliberately do **not** compensate: auth and
+  lookup failures happen before any object is addressed, and a failed `headByKey` is the one case
+  where the object's existence is unconfirmed — deleting there would destroy bytes a retry can still
+  commit, and the Redis session is left intact for exactly that. `completeUpload` makes the same
+  choice on its own failed HEAD. Earlier revisions of this section and of the rollout checklist both
+  said "each failure branch", which would have produced the wrong fix if followed literally.
+  - The same PR fixed an unrecorded bug alongside it: the route wrote `StorageLocation` **on the
+    pool, outside** the transaction that wrote the `MediaAsset`, so an asset failure left a committed
+    row pointing at bytes the route was about to delete. `createStorageLocation` already took
+    `opts.tx` and this route was its only external caller, so it is now one transaction. Passing an
+    explicit non-empty `bucket` makes `resolveS3BucketForLocation` short-circuit, so no credential
+    fetch happens inside the open transaction.
 - **`upload/validators.ts` (201 lines) has zero consumers** outside the `files/index.ts` barrel, and
   its `getMimeTypeFromExtension` duplicates `@auxx/utils/file`.
-- **`files/types` is a second, undeclared client entry point.** `CLAUDE.md` says client code imports
-  from `@auxx/lib/<module>/client`; `files/client.ts` exports only file-type constants, while the
-  whole front end imports `@auxx/lib/files/types`, which ships runtime values (`ENTITY_CONFIGS`,
-  `getEntityConfig`) into the browser bundle. It happens to be server-dependency-free; nothing
-  enforces that.
+- **`files/types` is server-dependency-free by habit, not by enforcement.** The front end no longer
+  imports it (#1866): `files/client.ts` now exports `EntityType`, `ServerIdKind`, `ENTITY_TYPES`,
+  `ENTITY_CONFIGS`, `getEntityConfig` and `UPLOAD_POLICIES`, and 15 front-end files were repointed —
+  the sole remaining importer of `files/types` is the server route `upload/sessions/route.ts`, which
+  is correct. What is **not** fixed is the guarantee: every module under `files/types/` is pure
+  today, and nothing stops the next server import from landing there and silently re-tainting a path
+  the browser used to reach. A `knip`-style or lint guardrail is still absent.
 - ~~**`files/cleanup/` still exists**~~ — **CLOSED (7c), by deletion.** Zero runtime callers; the
   only reference was one lib test, which now exercises `enqueueOrphanedStorageObjectCleanup`
   directly.
@@ -986,6 +1100,7 @@ sweep that has not happened yet.
 apps/web/src/app/api/files/upload/sessions/route.ts               session create + the two gates
 apps/web/src/app/api/files/upload/[sessionId]/parts/route.ts      per-part presign
 apps/web/src/app/api/files/upload/[sessionId]/complete/route.ts   completion
+apps/web/src/app/api/files/upload/[sessionId]/abort/route.ts      cancel: release the multipart upload
 apps/web/src/app/api/files/upload/[sessionId]/authorize-upload-session.ts
 apps/web/src/app/api/files/download/[fileId]/route.ts             buffered download
 apps/web/src/app/api/attachments/[attachmentId]/{content,download,thumbnail}/route.ts
@@ -1006,6 +1121,8 @@ prepare.ts        prepareUpload — handler lookup, config, session, presign
 complete.ts       completeUpload — verify / one transaction / after commit
 persist.ts        persistUpload — the one switch on handler.persist
 post-commit.ts    runUploadPostCommit — afterCommit, thumbnails, preview URL
+compensate.ts     compensateUploadObject — delete the orphan, else enqueue cleanup
+abort.ts          abortMultipartUpload — release an upload that will never complete
 config.ts         buildUploadConfig (pure) + validateCompletedUpload
 handlers/         types.ts (the UploadHandler record) + index.ts + 11 entity handlers
 session.ts        Redis session functions over an injected client, CAS patches
