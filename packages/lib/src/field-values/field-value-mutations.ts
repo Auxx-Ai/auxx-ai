@@ -95,6 +95,7 @@ import {
   preBatchValidateRelationships,
   resolveFieldIds,
   rowToTypedValue,
+  stampEntityInstancesUpdatedAt,
   stampEntityInstanceUpdatedAt,
   validateAndConvertValue,
 } from './field-value-helpers'
@@ -1623,11 +1624,9 @@ export async function removeRelationValuesBulk(
 
   const changedEntitySet = new Set(deleted.map((r) => r.entityId))
 
-  // Dedup watermark stamp, per entity that actually lost rows (see
-  // removeValue).
-  for (const entityId of changedEntitySet) {
-    await stampEntityInstanceUpdatedAt(ctx, entityId)
-  }
+  // Dedup watermark stamp for every entity that actually lost rows, in one
+  // batched UPDATE (see removeValue for the per-write rule).
+  await stampEntityInstancesUpdatedAt(ctx, [...changedEntitySet])
 
   // Inverse sync, bulk
   if (!params.skipInverseSync) {
@@ -2475,12 +2474,9 @@ export async function removeValuesBulk(
       entityId: schema.FieldValue.entityId,
     })) as Array<{ id: string; entityId: string }>
 
-  // Dedup watermark stamp, per entity that actually lost rows (see
-  // removeValue). One statement each; bulk stamp batching is a
-  // query-reduction Phase 2 item.
-  for (const entityId of new Set(deleted.map((r) => r.entityId))) {
-    await stampEntityInstanceUpdatedAt(ctx, entityId)
-  }
+  // Dedup watermark stamp for every entity that actually lost rows, in one
+  // batched UPDATE (see removeValue for the per-write rule).
+  await stampEntityInstancesUpdatedAt(ctx, [...new Set(deleted.map((r) => r.entityId))])
 
   // Tier-1 sync capture (plan 07 §4): per record that actually lost rows.
   // Tier-1 ONLY — same rationale as `addValuesBulk` above.
@@ -3064,6 +3060,7 @@ export async function setValuesForEntity(
     publishEvents = !isDeclaredSilent(ctx.session),
     skipInverseSync = false,
     skipSearchTextRefresh = false,
+    skipInstanceStamp = false,
     preloadedSetRows,
   } = params
 
@@ -3247,7 +3244,9 @@ export async function setValuesForEntity(
   // re-assertions (D-6 guard), delete-of-absent (B-14), pre-hook drops, and
   // failed fields all report `changed: false` and never stamp — a pure no-op
   // write must not re-dirty the dedup watermark.
-  if (results.some((r) => r.changed)) {
+  // `skipInstanceStamp` hands ownership up to `setBulkValues`, which stamps
+  // every changed record of the op in one batched UPDATE.
+  if (!skipInstanceStamp && results.some((r) => r.changed)) {
     await stampEntityInstanceUpdatedAt(ctx, entityInstanceId)
   }
 
@@ -3484,10 +3483,23 @@ export async function setBulkValues(
         values: validValues,
         skipInverseSync: true, // Bulk sync handled separately below
         skipSearchTextRefresh: true, // One batched recompute below, not one per record
+        skipInstanceStamp: true, // One batched D-7 stamp below, not one per record
         preloadedSetRows: bulkSetRows ?? undefined, // Op-wide guard pre-read (§3B)
       })
     )
   )
+
+  // One batched D-7 watermark stamp for every record with a real change
+  // (query-reduction plan §3C) — the per-record stamps were suppressed
+  // above. No-op and rejected records are excluded: a pure no-op must not
+  // re-dirty the dedup watermark.
+  const changedStampIds: string[] = []
+  for (let i = 0; i < results.length; i++) {
+    const result = results[i]
+    if (result?.status !== 'fulfilled') continue
+    if (result.value.some((r) => r.changed)) changedStampIds.push(entityInstanceIds[i]!)
+  }
+  await stampEntityInstancesUpdatedAt(ctx, changedStampIds)
 
   // Bulk sync inverse relationships (aggregated across all entities)
   for (const rf of relationshipFields) {

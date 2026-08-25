@@ -131,6 +131,13 @@ export interface SetValuesForEntityInput {
    * {@link SetValueWithBuiltInInput.preloadedSetRows}.
    */
   preloadedSetRows?: ReadonlyMap<string, FieldValueRow[]>
+  /**
+   * When `true`, the per-record D-7 watermark stamp is suppressed — the
+   * caller owns the stamp and must cover every changed record itself.
+   * Used by `setBulkValues`, which stamps all changed records in one
+   * batched UPDATE after its fan-out (query-reduction plan §3C).
+   */
+  skipInstanceStamp?: boolean
 }
 
 /**

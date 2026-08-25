@@ -1119,13 +1119,27 @@ export async function stampEntityInstanceUpdatedAt(
   ctx: Pick<FieldValueContext, 'db' | 'organizationId'>,
   entityInstanceId: string
 ): Promise<void> {
+  await stampEntityInstancesUpdatedAt(ctx, [entityInstanceId])
+}
+
+/**
+ * Batched form of {@link stampEntityInstanceUpdatedAt}: one UPDATE covering
+ * every changed record of a bulk write (query-reduction plan §3C) instead of
+ * one statement per record. Same best-effort contract — a failed stamp must
+ * never break the calling write path.
+ */
+export async function stampEntityInstancesUpdatedAt(
+  ctx: Pick<FieldValueContext, 'db' | 'organizationId'>,
+  entityInstanceIds: readonly string[]
+): Promise<void> {
+  if (entityInstanceIds.length === 0) return
   try {
     await ctx.db
       .update(schema.EntityInstance)
       .set({ updatedAt: new Date() })
       .where(
         and(
-          eq(schema.EntityInstance.id, entityInstanceId),
+          inArray(schema.EntityInstance.id, entityInstanceIds as string[]),
           eq(schema.EntityInstance.organizationId, ctx.organizationId)
         )
       )
