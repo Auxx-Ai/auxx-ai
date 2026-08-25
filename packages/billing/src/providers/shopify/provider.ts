@@ -20,10 +20,20 @@ import type {
   RestoreSubscriptionInput,
 } from '../types'
 import { type ActiveSubscription, getActiveSubscription } from './active-subscription'
+import { isAppInstalled } from './install-state'
 import { mapActiveSubscriptionToStatus } from './status-mapping'
 import { cancelSubscriptionByShop, resolveOrgIdByShopDomain } from './webhook'
 
 const logger = createScopedLogger('billing/shopify/provider')
+
+/**
+ * What a merchant with no live subscription can still do from inside Auxx. `plans` links
+ * to Shopify's hosted picker; `uninstalled` means there is nothing to link to, because
+ * the picker only exists for a shop that currently has the app installed.
+ */
+export type ShopifyPlanAction =
+  | { kind: 'plans'; url: string }
+  | { kind: 'uninstalled'; shopDomain: string }
 
 /**
  * Shopify App Pricing adapter. Plans live in the Partner Dashboard; Shopify hosts the
@@ -79,6 +89,22 @@ export class ShopifyBillingProvider implements BillingProvider {
   async getPlanSelectionUrl(organizationId: string): Promise<string> {
     const shopDomain = await this.loadShopDomain(organizationId)
     return this.buildPricingPageUrl(shopDomain)
+  }
+
+  /**
+   * What to offer a merchant whose subscription is no longer live. `getPlanSelectionUrl`
+   * alone is not safe here: `charges/<app>/pricing_plans` 404s once the shop uninstalls
+   * the app, and App Store requirement 2.1.1 counts a web error reached from our UI
+   * against us. Probes the install first and reports `uninstalled` instead of handing
+   * back a dead link — the merchant reinstalls from their Shopify admin, which we can't
+   * deep-link (Shopify rewrites `?tab=uninstalled` back to the installed tab).
+   */
+  async getPlanAction(organizationId: string): Promise<ShopifyPlanAction> {
+    const shopDomain = await this.loadShopDomain(organizationId)
+    const installed = await isAppInstalled({ shopDomain, organizationId })
+    return installed
+      ? { kind: 'plans', url: this.buildPricingPageUrl(shopDomain) }
+      : { kind: 'uninstalled', shopDomain }
   }
 
   async cancelSubscription(_input: CancelSubscriptionInput): Promise<void> {

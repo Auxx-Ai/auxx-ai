@@ -167,19 +167,19 @@ export const billingRouter = createTRPCRouter({
   }),
 
   /**
-   * Returns the URL of Shopify's hosted pricing page for the current org. Used by the
-   * Settings → Plans "Manage plan in Shopify Admin" CTA on Shopify-billed orgs — the
-   * merchant picks/changes the plan on Shopify's page, approves, and returns to
-   * /billing/subscription/activated.
+   * What a Shopify-billed org can still do about its plan: `plans` carries the URL of
+   * Shopify's hosted picker (the merchant changes plan there, approves, and returns to
+   * /billing/subscription/activated), `uninstalled` means the app is gone from the shop
+   * and there is no page to send them to. Probes the Admin API, so call it from surfaces
+   * that render a CTA — not on every page load.
    */
-  getShopifyPricingUrl: billingReadProcedure.query(async ({ ctx }) => {
+  getShopifyPlanAction: billingReadProcedure.query(async ({ ctx }) => {
     const organizationId = getUserOrganizationId(ctx.session)
     if (!organizationId) {
       throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Organization ID not found' })
     }
     const provider = getProvider('shopify') as ShopifyBillingProvider
-    const url = await provider.getPlanSelectionUrl(organizationId)
-    return { url }
+    return provider.getPlanAction(organizationId)
   }),
 
   /**
