@@ -23,12 +23,13 @@ import { createTestOrganization, getTestDb } from '@auxx/test-utils'
 import type { RecordId } from '@auxx/types/resource'
 import { and, asc, eq } from 'drizzle-orm'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { UniqueValueConflictError } from '../../errors'
+import { BadRequestError, UniqueValueConflictError } from '../../errors'
 import { createFieldValueContext, type FieldValueContext } from '../field-value-helpers'
 import {
   addValue,
   addValues,
   addValuesBulk,
+  setBulkValues,
   setValue,
   setValueWithBuiltIn,
 } from '../field-value-mutations'
@@ -388,6 +389,67 @@ describe('multi-value EMAIL uniqueness — service-layer doors', () => {
         })
       ).rejects.toThrow(UniqueValueConflictError)
       expect(await emailsOf(f, bob.id)).toEqual(['bob@example.com'])
+    })
+  })
+
+  // Intra-batch race gate (query-reduction plan §2e): the uniform bulk
+  // fan-out runs its per-record writes concurrently, so the per-pair unique
+  // checks all pass before any conflicting row lands. The gate rejects the
+  // inherently-invalid shape up front. NOT covered here (out of scope):
+  // cross-process races between two separate ops on different connections —
+  // there is no DB unique index on the value columns, and adding one is a
+  // schema decision for a human.
+  describe('setBulkValues (uniform bulk set door)', () => {
+    it('rejects assigning a unique value to more than one record', async () => {
+      const bob = await seedContact(f, 'Bob', ['bob@example.com'])
+      const cara = await seedContact(f, 'Cara', ['cara@example.com'])
+
+      await expect(
+        setBulkValues(f.ctx, {
+          recordIds: [recordIdOf(f, bob.id), recordIdOf(f, cara.id)],
+          values: [{ fieldId: f.emailFieldId, value: ['shared@example.com'] }],
+        })
+      ).rejects.toThrow(BadRequestError)
+
+      // Rejected before the fan-out: no rows written, prior values intact.
+      expect(await emailsOf(f, bob.id)).toEqual(['bob@example.com'])
+      expect(await emailsOf(f, cara.id)).toEqual(['cara@example.com'])
+    })
+
+    it('allows a unique value on a single-record bulk', async () => {
+      const bob = await seedContact(f, 'Bob')
+      const res = await setBulkValues(f.ctx, {
+        recordIds: [recordIdOf(f, bob.id)],
+        values: [{ fieldId: f.emailFieldId, value: ['solo@example.com'] }],
+      })
+      expect(res.count).toBe(1)
+      expect(await emailsOf(f, bob.id)).toEqual(['solo@example.com'])
+    })
+
+    it('treats the same record listed twice as ONE record — no false rejection', async () => {
+      // One logical record may legitimately hold the unique value; the gate
+      // counts DISTINCT instances, not array entries (API/SDK callers do not
+      // dedupe their recordIds).
+      const bob = await seedContact(f, 'Bob')
+      const res = await setBulkValues(f.ctx, {
+        recordIds: [recordIdOf(f, bob.id), recordIdOf(f, bob.id)],
+        values: [{ fieldId: f.emailFieldId, value: ['dupe@example.com'] }],
+      })
+      expect(res.count).toBe(2)
+      expect(await emailsOf(f, bob.id)).toEqual(['dupe@example.com'])
+    })
+
+    it('allows bulk-clearing a unique field across many records', async () => {
+      const bob = await seedContact(f, 'Bob', ['bob@example.com'])
+      const cara = await seedContact(f, 'Cara', ['cara@example.com'])
+
+      const res = await setBulkValues(f.ctx, {
+        recordIds: [recordIdOf(f, bob.id), recordIdOf(f, cara.id)],
+        values: [{ fieldId: f.emailFieldId, value: null }],
+      })
+      expect(res.count).toBe(2)
+      expect(await emailsOf(f, bob.id)).toEqual([])
+      expect(await emailsOf(f, cara.id)).toEqual([])
     })
   })
 })

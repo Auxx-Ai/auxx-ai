@@ -2,11 +2,14 @@
 //
 // D-6 idempotency guard on the forward `set` path + B-14 delete-of-absent
 // (plans/events/03-write-context-and-batch-lane-plan.md Phase 2;
-// docs/skip-events-history.md §8 D3): an identical `set` must not
-// DELETE+INSERT, must not fire the post-hook chain, must not publish
-// realtime, and must not collect native field triggers — while any real
-// change (including an AI stage-2 commit re-asserting the same value)
-// keeps the old behavior exactly.
+// docs/skip-events-history.md §8 D3): an identical `set` must not write at
+// all, must not fire the post-hook chain, must not publish realtime, and
+// must not collect native field triggers — while any real change (including
+// an AI stage-2 commit re-asserting the same value) writes. Since
+// plans/field-values/delete-insert-replace.md Phase 1 the changed path is a
+// positional reconcile — in-place UPDATEs on surviving rows, tail
+// INSERT/DELETE only on count changes — so the shape pins here assert
+// updates, not DELETE+INSERT.
 
 import type { FieldId } from '@auxx/types/field'
 import { toRecordId } from '@auxx/types/resource'
@@ -143,7 +146,13 @@ function existingRow(
 function makeFakeDb(existingRows: any[] = []) {
   let idSeq = 0
   let pendingValues: any[] = []
-  const state = { deleteCalls: 0, insertCalls: 0, insertedRows: [] as any[] }
+  const state = {
+    deleteCalls: 0,
+    insertCalls: 0,
+    updateCalls: 0,
+    insertedRows: [] as any[],
+    updatedPayloads: [] as any[],
+  }
   const chain: any = {}
   Object.assign(chain, {
     delete: () => {
@@ -173,8 +182,18 @@ function makeFakeDb(existingRows: any[] = []) {
     select: () => chain,
     from: () => chain,
     orderBy: () => Promise.resolve(existingRows),
-    update: () => chain,
-    set: () => chain,
+    update: () => {
+      state.updateCalls++
+      return chain
+    },
+    set: (payload: any) => {
+      state.updatedPayloads.push(payload)
+      return chain
+    },
+    // The set path wraps its replace in a transaction + advisory lock; run
+    // both on the same fake so delete/insert counting still works.
+    transaction: async (fn: (tx: any) => Promise<any>) => fn(chain),
+    execute: () => Promise.resolve([]),
   })
   return { db: chain, state }
 }
@@ -229,7 +248,7 @@ describe('set idempotency guard (D-6)', () => {
     expect(mockedCollectTriggers).not.toHaveBeenCalled()
   })
 
-  it('changed scalar set: normal path — DELETE+INSERT runs and the post-hook fires', async () => {
+  it('changed scalar set: one in-place UPDATE runs and the post-hook fires', async () => {
     const rows = [existingRow('fv-existing-1', 'field-text', 'a0', { valueText: 'hello' })]
     const { db, state } = makeFakeDb(rows)
     const ctx = makeCtx(db, [FIELD_TEXT])
@@ -242,9 +261,13 @@ describe('set idempotency guard (D-6)', () => {
 
     expect(result.state).toBe('complete')
     expect((result.values[0] as any).value).toBe('world')
-
-    expect(state.deleteCalls).toBe(1)
-    expect(state.insertCalls).toBe(1)
+    // The reconcile updates the surviving row in place — same row id, no
+    // DELETE+INSERT (delete-insert-replace.md §5B).
+    expect(result.values[0]!.id).toBe('fv-existing-1')
+    expect(state.deleteCalls).toBe(0)
+    expect(state.insertCalls).toBe(0)
+    expect(state.updateCalls).toBe(1)
+    expect(state.updatedPayloads[0]).toMatchObject({ valueText: 'world', aiStatus: null })
     expect(hookSpy).toHaveBeenCalledTimes(1)
     const event = hookSpy.mock.calls[0]![0] as any
     expect(event.newValue).toMatchObject({ type: 'text', value: 'world' })
@@ -287,9 +310,11 @@ describe('set idempotency guard (D-6)', () => {
       value: ['opt-b', 'opt-a'],
     })
 
-    expect(state.deleteCalls).toBe(1)
-    expect(state.insertCalls).toBe(1)
-    expect(state.insertedRows.map((r) => r.optionId)).toEqual(['opt-b', 'opt-a'])
+    // Positional matching: both rows survive with payloads swapped in place.
+    expect(state.deleteCalls).toBe(0)
+    expect(state.insertCalls).toBe(0)
+    expect(state.updateCalls).toBe(2)
+    expect(state.updatedPayloads.map((r) => r.optionId)).toEqual(['opt-b', 'opt-a'])
     expect(hookSpy).toHaveBeenCalledTimes(1)
   })
 
@@ -304,8 +329,11 @@ describe('set idempotency guard (D-6)', () => {
       value: ['opt-a', 'opt-b'],
     })
 
-    expect(state.deleteCalls).toBe(1)
+    // The identical first position is kept untouched; only the tail inserts.
+    expect(state.deleteCalls).toBe(0)
+    expect(state.updateCalls).toBe(0)
     expect(state.insertCalls).toBe(1)
+    expect(state.insertedRows.map((r) => r.optionId)).toEqual(['opt-b'])
   })
 
   it('JSON value identical modulo object key order: no-op', async () => {
@@ -347,8 +375,9 @@ describe('set idempotency guard (D-6)', () => {
       value: { a: 1, b: 3 },
     })
 
-    expect(state.deleteCalls).toBe(1)
-    expect(state.insertCalls).toBe(1)
+    expect(state.deleteCalls).toBe(0)
+    expect(state.insertCalls).toBe(0)
+    expect(state.updateCalls).toBe(1)
   })
 
   it('identical set WITH aiGeneration metadata: guard bypassed, write proceeds', async () => {
@@ -364,10 +393,13 @@ describe('set idempotency guard (D-6)', () => {
     })
 
     expect(result.state).toBe('complete')
-    expect(state.deleteCalls).toBe(1)
-    expect(state.insertCalls).toBe(1)
-    // The committed row carries the AI marker.
-    expect(state.insertedRows[0]).toMatchObject({ aiStatus: 'result' })
+    // Identical payload, marker differs — the reconcile applies the marker to
+    // the SURVIVING row in place instead of re-minting it.
+    expect(state.deleteCalls).toBe(0)
+    expect(state.insertCalls).toBe(0)
+    expect(state.updateCalls).toBe(1)
+    expect(state.updatedPayloads[0]).toMatchObject({ aiStatus: 'result' })
+    expect(result.values[0]!.id).toBe('fv-existing-1')
   })
 
   it('identical value but the stored row carries an AI marker: writes (manual set must clear it)', async () => {
@@ -387,8 +419,11 @@ describe('set idempotency guard (D-6)', () => {
       value: 'hello',
     })
 
-    expect(state.deleteCalls).toBe(1)
-    expect(state.insertCalls).toBe(1)
+    // The marker clears IN PLACE: explicit aiStatus null on the update.
+    expect(state.deleteCalls).toBe(0)
+    expect(state.insertCalls).toBe(0)
+    expect(state.updateCalls).toBe(1)
+    expect(state.updatedPayloads[0]).toMatchObject({ aiStatus: null })
   })
 })
 

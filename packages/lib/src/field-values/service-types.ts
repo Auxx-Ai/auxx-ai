@@ -97,8 +97,9 @@ export interface InsertFieldValueInput {
   actorId?: string | null
   /**
    * AI generation marker. NULL (or absent) = not AI-generated. Manual writes
-   * that omit this naturally produce `aiStatus=null` rows, clearing any
-   * previous AI marker via the DELETE+INSERT in `setValueWithType`.
+   * that omit this produce `aiStatus=null` target rows, and
+   * `setValueWithType`'s reconcile writes that null onto surviving rows —
+   * clearing any previous AI marker in place.
    */
   aiStatus?: string | null
 }
@@ -118,13 +119,6 @@ export interface UpdateFieldValueInput {
   actorId?: string | null
   /** See InsertFieldValueInput.aiStatus */
   aiStatus?: string | null
-}
-
-/** Input for deleting field values */
-export interface DeleteFieldValuesInput {
-  entityId: string
-  fieldId: string
-  organizationId: string
 }
 
 /** Input for updating entity display name */

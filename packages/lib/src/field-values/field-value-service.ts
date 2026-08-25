@@ -43,7 +43,8 @@ import type {
  *
  * Key features:
  * - Caches CustomField lookups within service instance
- * - Uses UPDATE for single-value fields instead of DELETE+INSERT
+ * - Set-shaped writes reconcile the stored row set in place (unchanged rows
+ *   keep their id, sortKey and updatedAt)
  * - Automatically updates EntityInstance.displayName when primary display field changes
  */
 /** Optional extras for `FieldValueService` construction. */

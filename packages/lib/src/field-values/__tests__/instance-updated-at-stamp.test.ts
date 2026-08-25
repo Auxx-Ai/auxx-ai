@@ -164,6 +164,10 @@ function makeFakeDb(rowsByField: Record<string, any[]> = {}) {
       state.updates.push({ table: currentUpdateTable, set: payload })
       return chain
     },
+    // The set path wraps its replace in a transaction + advisory lock; run
+    // both on the same fake so the counters and update capture still observe.
+    transaction: async (fn: (tx: any) => Promise<any>) => fn(chain),
+    execute: () => Promise.resolve([]),
   })
   return { db: chain, state }
 }
@@ -212,8 +216,12 @@ describe('setValuesForEntity D-7 updatedAt stamp', () => {
 
     expect(results).toHaveLength(1)
     expect(results[0]!.changed).toBe(true)
-    expect(state.deleteCalls).toBe(1)
-    expect(state.insertCalls).toBe(1)
+    // Reconcile: the changed scalar lands as one in-place FieldValue UPDATE.
+    expect(state.deleteCalls).toBe(0)
+    expect(state.insertCalls).toBe(0)
+    expect(state.updates.some((u) => u.table === schema.FieldValue && 'valueText' in u.set)).toBe(
+      true
+    )
 
     const stamps = stampWrites(state)
     expect(stamps).toHaveLength(1)

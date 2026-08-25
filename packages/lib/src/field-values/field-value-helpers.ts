@@ -635,10 +635,11 @@ export async function validateAndConvertValue(
     const isMulti = isMultiValueFieldType(fieldType, fieldOptions)
 
     // Cardinality guard: reject arrays of length > 1 on single-value fields.
-    // Without this check, `setValueWithType` would DELETE+INSERT one row per
-    // element and the entity would silently end up with multiple FieldValue
-    // rows under a (entityId, fieldId) that the read path expects to be
-    // scalar — hydrated as an array, surprising every downstream consumer.
+    // Without this check, `setValueWithType`'s reconcile would write one row
+    // per element and the entity would silently end up with multiple
+    // FieldValue rows under a (entityId, fieldId) that the read path expects
+    // to be scalar — hydrated as an array, surprising every downstream
+    // consumer.
     if (!isMulti && value.length > 1) {
       throw new BadRequestError(
         `Field ${field.id} (${fieldType}) is single-value; received ${value.length} values`
@@ -918,6 +919,21 @@ export async function preBatchValidateRelationships(
     | { recordId: RecordId }
   > = []
 
+  /**
+   * Resolve the target entityInstanceId a relationship entry validates —
+   * the key `batchValidateRelationships` answers under. `null` = unparseable
+   * (validate anyway; the validator owns rejection).
+   */
+  const targetIdOf = (v: (typeof relationships)[number]): string | null => {
+    try {
+      if (typeof v === 'string') return parseRecordId(v).entityInstanceId
+      if ('recordId' in v) return parseRecordId(v.recordId).entityInstanceId
+      return v.relatedEntityId
+    } catch {
+      return null
+    }
+  }
+
   /** Helper to extract relationship value(s) from input */
   const extractRelationship = (v: unknown) => {
     if (!v) return
@@ -950,12 +966,27 @@ export async function preBatchValidateRelationships(
     }
   }
 
-  // Batch validate if we have relationships
-  if (relationships.length > 0) {
-    ctx.batchRelationshipValidationCache = await ctx.validator.batchValidateRelationships(
-      relationships,
-      { db: ctx.db, organizationId: ctx.organizationId }
-    )
+  // Skip ids the cache already answers — an enclosing orchestrator
+  // (setValuesForEntity/setBulkValues) primed them, and re-validating is a
+  // pure duplicate SELECT. Unresolvable entries (`null` target) stay in:
+  // the validator owns their rejection.
+  const unvalidated = relationships.filter((v) => {
+    const targetId = targetIdOf(v)
+    return targetId === null || !ctx.batchRelationshipValidationCache.has(targetId)
+  })
+
+  // Batch validate if we have relationships. MERGE into the existing cache
+  // rather than replacing it: `setValueWithBuiltIn` primes its own write's
+  // ids through here, and a replace would clobber the entries an enclosing
+  // orchestrator already paid for.
+  if (unvalidated.length > 0) {
+    const validated = await ctx.validator.batchValidateRelationships(unvalidated, {
+      db: ctx.db,
+      organizationId: ctx.organizationId,
+    })
+    for (const [entityId, result] of validated) {
+      ctx.batchRelationshipValidationCache.set(entityId, result)
+    }
   }
 }
 
@@ -1119,13 +1150,27 @@ export async function stampEntityInstanceUpdatedAt(
   ctx: Pick<FieldValueContext, 'db' | 'organizationId'>,
   entityInstanceId: string
 ): Promise<void> {
+  await stampEntityInstancesUpdatedAt(ctx, [entityInstanceId])
+}
+
+/**
+ * Batched form of {@link stampEntityInstanceUpdatedAt}: one UPDATE covering
+ * every changed record of a bulk write (query-reduction plan §3C) instead of
+ * one statement per record. Same best-effort contract — a failed stamp must
+ * never break the calling write path.
+ */
+export async function stampEntityInstancesUpdatedAt(
+  ctx: Pick<FieldValueContext, 'db' | 'organizationId'>,
+  entityInstanceIds: readonly string[]
+): Promise<void> {
+  if (entityInstanceIds.length === 0) return
   try {
     await ctx.db
       .update(schema.EntityInstance)
       .set({ updatedAt: new Date() })
       .where(
         and(
-          eq(schema.EntityInstance.id, entityInstanceId),
+          inArray(schema.EntityInstance.id, entityInstanceIds as string[]),
           eq(schema.EntityInstance.organizationId, ctx.organizationId)
         )
       )
@@ -1142,8 +1187,18 @@ export async function maybeUpdateDisplayValue(
   ctx: FieldValueContext,
   recordId: RecordId,
   field: CachedField,
-  value: TypedFieldValueInput | TypedFieldValueInput[] | null
+  value: TypedFieldValueInput | TypedFieldValueInput[] | null,
+  opts?: {
+    /**
+     * Suppresses the `searchText` recomputes only — the display COLUMN
+     * writes (order-sensitive, one UPDATE each) always run. A caller that
+     * suppresses owns the refresh and must flush one recompute after its
+     * last field write (query-reduction plan §3A).
+     */
+    skipSearchTextRefresh?: boolean
+  }
 ): Promise<void> {
+  const skipSearchTextRefresh = opts?.skipSearchTextRefresh === true
   const { entityInstanceId } = parseRecordId(recordId)
   const entityDef = field.entityDefinition
   if (!entityDef) return
@@ -1175,7 +1230,9 @@ export async function maybeUpdateDisplayValue(
             eq(schema.EntityInstance.organizationId, ctx.organizationId)
           )
         )
-      await updateSearchText(ctx.db, entityInstanceId, ctx.organizationId)
+      if (!skipSearchTextRefresh) {
+        await updateSearchText(ctx.db, entityInstanceId, ctx.organizationId)
+      }
 
       // Cascade to dependent entities
       const resource = await getCachedResource(ctx.organizationId, entityDef.id)
@@ -1195,7 +1252,7 @@ export async function maybeUpdateDisplayValue(
     // Not a display field — but its value may still be part of the search
     // corpus (`search-text.ts`). Refreshing here is what lets a query name a
     // company, a city or a status the record was never *titled* with.
-    if (isSearchTextIndexedFieldType(field.type)) {
+    if (!skipSearchTextRefresh && isSearchTextIndexedFieldType(field.type)) {
       await updateSearchText(ctx.db, entityInstanceId, ctx.organizationId)
     }
     return
@@ -1309,7 +1366,9 @@ export async function maybeUpdateDisplayValue(
 
   // Update searchText when primary or secondary display field changes
   if (column === 'displayName' || column === 'secondaryDisplayValue') {
-    await updateSearchText(ctx.db, entityInstanceId, ctx.organizationId)
+    if (!skipSearchTextRefresh) {
+      await updateSearchText(ctx.db, entityInstanceId, ctx.organizationId)
+    }
 
     // Cascade to dependent entities (e.g., when a part's title changes, update subpart displayNames)
     const resource = await getCachedResource(ctx.organizationId, entityDef.id)

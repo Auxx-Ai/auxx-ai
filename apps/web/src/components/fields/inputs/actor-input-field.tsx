@@ -104,7 +104,7 @@ export function ActorInputField() {
 
       if (hasChanged) {
         if (isMultiple) {
-          // Multi-select: always pass array (even empty) for DELETE+INSERT strategy
+          // Multi-select: always pass array (even empty) for the row-set replace
           commitValue(current.length === 0 ? null : current)
         } else {
           // Single-select: unwrap to single value

@@ -112,8 +112,10 @@ function scheduleBlobRevoke(blobUrl: string, delayMs = 10_000): void {
  * and the browse-dialog selection handler. Chooses the right backend call:
  *
  * - `allowMultiple: false` → `fieldValue.set` with a single-element array.
- *   Backend routes FILE through `setMultiValue`, which does DELETE+INSERT
- *   in a single transaction. Atomic replace, no orphan FieldValue rows.
+ *   Backend routes FILE through `setMultiValue`, which reconciles the row
+ *   set in a single locked transaction — an unchanged position keeps its
+ *   row id, so ids the tile UI holds stay valid across replaces. A reorder
+ *   still rewrites payloads across surviving positions.
  * - `allowMultiple: true`  → `fieldValue.add` per file (append semantics).
  *
  * Updates the local `useFieldValueStore` with the resulting TypedFieldValues
@@ -636,7 +638,7 @@ export function useFieldFileUpload({
   // Slot calculation.
   // - Multi-file: strict slot math based on maxFiles.
   // - Single-file: one conceptual slot, but it always "opens" because uploading
-  //   replaces the existing value (atomic DELETE+INSERT via fieldValue.set).
+  //   replaces the existing value (atomic in-place reconcile via fieldValue.set).
   const maxFiles = fileOptions.allowMultiple
     ? (fileOptions.maxFiles ?? Number.POSITIVE_INFINITY)
     : 1

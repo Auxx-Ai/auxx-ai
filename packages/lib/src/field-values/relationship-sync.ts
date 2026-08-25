@@ -3,7 +3,7 @@
 import { type Database, schema, type Transaction } from '@auxx/database'
 import type { RelationshipType } from '@auxx/types/custom-field'
 import { generateKeyBetween, nextKeyAfter } from '@auxx/utils/fractional-indexing'
-import { and, eq, inArray, sql } from 'drizzle-orm'
+import { and, asc, eq, inArray, sql } from 'drizzle-orm'
 
 // ============================================================================
 // TYPES
@@ -431,29 +431,123 @@ async function batchAddToInverse(
         )
     }
 
-    // DELETE: Clear all existing inverse values for these targets
-    await ctx.db
-      .delete(schema.FieldValue)
-      .where(
-        and(
-          inArray(schema.FieldValue.entityId, allTargetIds),
-          eq(schema.FieldValue.fieldId, inverseFieldId),
-          eq(schema.FieldValue.organizationId, ctx.organizationId)
+    // Value-space reconcile (delete-insert-replace Phase 2): instead of
+    // clearing every target's inverse row and re-minting it, read the stored
+    // rows inside the transaction and touch only what differs — a target
+    // already pointing at its new owner keeps its row byte-identical. The
+    // transaction still closes the Phase-0 destroy window; cross-entity bulk
+    // pair, so no per-(entity, field) advisory lock.
+    await ctx.db.transaction(async (tx) => {
+      const stored = await tx
+        .select({
+          id: schema.FieldValue.id,
+          entityId: schema.FieldValue.entityId,
+          relatedEntityId: schema.FieldValue.relatedEntityId,
+          relatedEntityDefinitionId: schema.FieldValue.relatedEntityDefinitionId,
+          sortKey: schema.FieldValue.sortKey,
+        })
+        .from(schema.FieldValue)
+        .where(
+          and(
+            inArray(schema.FieldValue.entityId, allTargetIds),
+            eq(schema.FieldValue.fieldId, inverseFieldId),
+            eq(schema.FieldValue.organizationId, ctx.organizationId)
+          )
         )
-      )
+        .orderBy(asc(schema.FieldValue.entityId), asc(schema.FieldValue.sortKey))
 
-    // batch INSERT: Insert all new values
-    await ctx.db.insert(schema.FieldValue).values(
-      [...finalValue.entries()].map(([targetId, sourceId]) => ({
-        organizationId: ctx.organizationId,
-        entityId: targetId,
-        entityDefinitionId: targetEntityDefinitionId,
-        fieldId: inverseFieldId,
-        relatedEntityId: sourceId,
-        relatedEntityDefinitionId: sourceEntityDefinitionId,
-        sortKey: generateKeyBetween(null, null),
-      }))
-    )
+      const rowsByTarget = new Map<string, typeof stored>()
+      for (const row of stored) {
+        const list = rowsByTarget.get(row.entityId) ?? []
+        list.push(row)
+        rowsByTarget.set(row.entityId, list)
+      }
+
+      const deleteIds: string[] = []
+      const inserts: Array<typeof schema.FieldValue.$inferInsert> = []
+
+      for (const targetId of allTargetIds) {
+        const rows = rowsByTarget.get(targetId) ?? []
+        const [first, ...extras] = rows
+        // Single-value inverse: at most one row may survive per target — the
+        // old clear-all removed strays, the reconcile deletes them by id.
+        for (const extra of extras) deleteIds.push(extra.id)
+
+        const sourceId = finalValue.get(targetId)
+        if (sourceId === undefined) {
+          // Target had additions with an empty source set: the replace
+          // semantics cleared its inverse — preserve that.
+          if (first) deleteIds.push(first.id)
+          continue
+        }
+
+        if (!first) {
+          inserts.push({
+            organizationId: ctx.organizationId,
+            entityId: targetId,
+            entityDefinitionId: targetEntityDefinitionId,
+            fieldId: inverseFieldId,
+            relatedEntityId: sourceId,
+            relatedEntityDefinitionId: sourceEntityDefinitionId,
+            sortKey: generateKeyBetween(null, null),
+          })
+          continue
+        }
+
+        if (
+          first.relatedEntityId === sourceId &&
+          first.relatedEntityDefinitionId === sourceEntityDefinitionId
+        ) {
+          continue // Already points at the new owner — row stays byte-identical.
+        }
+
+        // Re-point in place: id and sortKey survive; `$onUpdate` stamps
+        // `updatedAt`. The rowcount is checked: this path holds no advisory
+        // lock, so under READ COMMITTED a concurrent writer can delete the
+        // row between the in-tx read above and this statement — a 0-row
+        // UPDATE must fall back to inserting the intended row (the old
+        // clear-all+INSERT recreated it regardless).
+        const repointed = await tx
+          .update(schema.FieldValue)
+          .set({
+            relatedEntityId: sourceId,
+            relatedEntityDefinitionId: sourceEntityDefinitionId,
+          })
+          .where(
+            and(
+              eq(schema.FieldValue.id, first.id),
+              eq(schema.FieldValue.organizationId, ctx.organizationId)
+            )
+          )
+          .returning({ id: schema.FieldValue.id })
+        if (repointed.length === 0) {
+          inserts.push({
+            organizationId: ctx.organizationId,
+            entityId: targetId,
+            entityDefinitionId: targetEntityDefinitionId,
+            fieldId: inverseFieldId,
+            relatedEntityId: sourceId,
+            relatedEntityDefinitionId: sourceEntityDefinitionId,
+            sortKey: generateKeyBetween(null, null),
+          })
+        }
+      }
+
+      if (deleteIds.length > 0) {
+        await tx
+          .delete(schema.FieldValue)
+          .where(
+            and(
+              inArray(schema.FieldValue.id, deleteIds),
+              eq(schema.FieldValue.organizationId, ctx.organizationId)
+            )
+          )
+      }
+
+      if (inserts.length > 0) {
+        await tx.insert(schema.FieldValue).values(inserts)
+      }
+    })
   } else {
     // ─────────────────────────────────────────────────────────────
     // MULTI-VALUE: Check existing, get sortKeys, insert missing

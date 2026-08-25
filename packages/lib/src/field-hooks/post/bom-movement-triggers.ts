@@ -538,22 +538,27 @@ async function batchRecalculateQoH(
     }
   }
 
-  // 1 bulk DELETE: remove existing QoH + status values for all target parts
+  // 1 bulk DELETE + 1 bulk INSERT, atomically
+  // (plans/field-values/delete-insert-replace.md Phase 0): a crash between
+  // the statements must not wipe stock levels for the whole batch.
+  // Cross-entity bulk replace, so no per-(entity, field) advisory lock —
+  // the transaction alone closes the destroy window.
   const fieldIds = [qohField.id, ...(statusField ? [statusField.id] : [])]
-  await database
-    .delete(schema.FieldValue)
-    .where(
-      and(
-        inArray(schema.FieldValue.entityId, unique),
-        inArray(schema.FieldValue.fieldId, fieldIds),
-        eq(schema.FieldValue.organizationId, organizationId)
+  await database.transaction(async (tx) => {
+    await tx
+      .delete(schema.FieldValue)
+      .where(
+        and(
+          inArray(schema.FieldValue.entityId, unique),
+          inArray(schema.FieldValue.fieldId, fieldIds),
+          eq(schema.FieldValue.organizationId, organizationId)
+        )
       )
-    )
 
-  // 1 bulk INSERT: write all new values
-  if (insertRows.length > 0) {
-    await database.insert(schema.FieldValue).values(insertRows)
-  }
+    if (insertRows.length > 0) {
+      await tx.insert(schema.FieldValue).values(insertRows)
+    }
+  })
 
   // 4. One batched realtime publish
   if (realtimeEntries.length > 0) {

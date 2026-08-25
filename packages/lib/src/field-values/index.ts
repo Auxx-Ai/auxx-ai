@@ -34,7 +34,6 @@ export {
   selectConverter,
   textConverter,
 } from './converters'
-export { deleteFieldValueById, deleteFieldValues } from './delete-values'
 export {
   cascadeDependentDisplayNames,
   type DisplayFieldDep,
@@ -206,7 +205,6 @@ export {
 } from './search-text'
 // Low-level FieldValue row service types (moved from @auxx/services)
 export type {
-  DeleteFieldValuesInput,
   EntityNotFoundError,
   ExistingFieldValueRow,
   FieldNotFoundError,

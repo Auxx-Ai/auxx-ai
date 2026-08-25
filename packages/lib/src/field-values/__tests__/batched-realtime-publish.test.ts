@@ -168,26 +168,33 @@ function makeFakeDb() {
       ),
     select: () => chain,
     from: () => chain,
-    // One pre-existing stored row (payload matches nothing this suite
-    // writes): keeps every `set` here a REAL change and every clear a REAL
-    // delete under the D-6/B-14 set-idempotency guard — with zero rows a
-    // clear is now a silent no-op and publishes no frame at all
-    // (set-idempotency.test.ts covers those no-op paths).
+    // One pre-existing stored row PER FIELD this suite writes (payloads match
+    // nothing it sets): keeps every `set` here a REAL change and every clear
+    // a REAL delete under the D-6/B-14 set-idempotency guard — with zero rows
+    // a clear is a silent no-op and publishes no frame at all
+    // (set-idempotency.test.ts covers those no-op paths). Per-field identity
+    // matters since the batched guard pre-read groups rows by their actual
+    // (entityId, fieldId) — a lone mismatched row would make every real pair
+    // read as "covered, empty".
     orderBy: () =>
-      Promise.resolve([
-        {
-          id: 'fv-seed',
+      Promise.resolve(
+        ['field-text', 'field-num', 'field-tags', 'field-a'].map((fieldId, i) => ({
+          id: `fv-seed-${i}`,
           entityId: 'inst-1',
-          fieldId: 'seed',
+          fieldId,
           organizationId: 'org-1',
           valueText: '__seed__',
           sortKey: 'a0',
           createdAt: '2026-01-01T00:00:00.000Z',
           updatedAt: '2026-01-01T00:00:00.000Z',
-        },
-      ]),
+        }))
+      ),
     update: () => chain,
     set: () => chain,
+    // The set path wraps its replace in a transaction + advisory lock; run
+    // both on the same fake.
+    transaction: async (fn: (tx: any) => Promise<any>) => fn(chain),
+    execute: () => Promise.resolve([]),
   })
   return chain
 }

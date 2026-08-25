@@ -85,6 +85,34 @@ export interface SetValueWithBuiltInInput {
    * consulted in that case.
    */
   collectRealtime?: FieldValueUpdateEntry[]
+  /**
+   * When `true`, the per-field `searchText` recompute inside
+   * `maybeUpdateDisplayValue` is suppressed — the caller owns the refresh and
+   * flushes ONE recompute after its last field write (query-reduction plan
+   * §3A). Display COLUMN writes are unaffected. Callers that set this MUST
+   * refresh themselves; the default keeps today's per-field behavior.
+   */
+  skipSearchTextRefresh?: boolean
+  /**
+   * Batched idempotency-guard pre-read (query-reduction plan §3B), keyed
+   * `entityId:fieldId` (see `setRowsKey`), each entry the pair's stored rows
+   * in sortKey order (`[]` = covered, no rows). When this write's pair has an
+   * entry, the guard uses it instead of its own SELECT; a missing key falls
+   * back to the individual load. Serves ONLY the D-6 short-circuit and the
+   * hooks' oldValue derivation — the reconcile re-reads inside its own
+   * transaction regardless (delete-insert-replace §5B RULE). Ignored for AI
+   * stage-2 commits, which bypass the guard entirely. The orchestrator
+   * DELETES a pair's entry after writing it, so a second write to the same
+   * field in one op re-reads fresh rows instead of skipping on a stale
+   * snapshot — hence a mutable Map, not a ReadonlyMap.
+   */
+  preloadedSetRows?: Map<string, FieldValueRow[]>
+  /**
+   * When `true`, the clear branch's watermark stamp (`deleteValue`) and the
+   * reconcile's deletion-only stamp are suppressed — the bulk aggregator owns
+   * the stamp. See {@link SetValuesForEntityInput.skipInstanceStamp}.
+   */
+  skipInstanceStamp?: boolean
 }
 
 /**
@@ -98,6 +126,29 @@ export interface SetValuesForEntityInput {
   publishEvents?: boolean
   /** Skip inverse relationship sync (used by bulk operations that handle sync separately) */
   skipInverseSync?: boolean
+  /**
+   * When `true`, even the record-level `searchText` flush is suppressed —
+   * used by `setBulkValues`, which recomputes all changed records in one
+   * batched statement after its fan-out. See
+   * {@link SetValueWithBuiltInInput.skipSearchTextRefresh}.
+   */
+  skipSearchTextRefresh?: boolean
+  /**
+   * Pre-batched guard rows handed down by `setBulkValues` (one SELECT for the
+   * whole bulk op). When absent, `setValuesForEntity` batch-loads its own
+   * record's pairs in one SELECT. Entries are consumed destructively: each
+   * pair's key is deleted after its write so duplicate entries for one field
+   * fall back to a fresh read. See
+   * {@link SetValueWithBuiltInInput.preloadedSetRows}.
+   */
+  preloadedSetRows?: Map<string, FieldValueRow[]>
+  /**
+   * When `true`, the per-record D-7 watermark stamp is suppressed — the
+   * caller owns the stamp and must cover every changed record itself.
+   * Used by `setBulkValues`, which stamps all changed records in one
+   * batched UPDATE after its fan-out (query-reduction plan §3C).
+   */
+  skipInstanceStamp?: boolean
 }
 
 /**
@@ -248,11 +299,15 @@ export interface SetValueWithTypeInput {
   skipInverseSync?: boolean
   /**
    * AI metadata for stage-2 commits. When present, buildFieldValueRow
-   * merges `aiStatus='result'` + `valueJson=meta` into each insert row.
-   * Absent for manual edits — the DELETE+INSERT then produces rows with
-   * `aiStatus=null`, implicitly clearing any prior AI marker.
+   * merges `aiStatus='result'` + `valueJson=meta` into each target row.
+   * Absent for manual edits — the reconcile then writes `aiStatus=null`
+   * onto surviving rows, clearing any prior AI marker in place.
    */
   aiGeneration?: AiValueMetadata
+  /** See {@link SetValueWithBuiltInInput.skipSearchTextRefresh}. */
+  skipSearchTextRefresh?: boolean
+  /** See {@link SetValueWithBuiltInInput.skipInstanceStamp}. */
+  skipInstanceStamp?: boolean
 }
 
 /** Input for adding a value to a multi-value field */
@@ -312,6 +367,8 @@ export interface BatchGetValuesInput {
 export interface DeleteValueInput {
   recordId: RecordId
   fieldId: string
+  /** See {@link SetValueWithBuiltInInput.skipInstanceStamp}. */
+  skipInstanceStamp?: boolean
 }
 
 // =============================================================================
