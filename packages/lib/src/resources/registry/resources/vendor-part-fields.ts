@@ -46,6 +46,11 @@ export const VENDOR_PART_FIELDS: Record<string, ResourceField> = {
     showInPanel: false, // vendor parts are viewed in the context of their part (drawer tab)
     showInTable: true, // keep the part column in the (internal) vendor-part list
     nullable: false,
+    // Leg 1 of the natural key `(part, supplier)`. A vendor part has no unique
+    // field of its own — `vendorSku` is the SUPPLIER's part number, unique within
+    // that supplier and never org-wide — so this pair is the only identity it has,
+    // and the only way a monthly price list can update rather than duplicate.
+    naturalKeyPosition: 1,
     capabilities: {
       filterable: true,
       sortable: false,
@@ -80,6 +85,8 @@ export const VENDOR_PART_FIELDS: Record<string, ResourceField> = {
     systemAttribute: 'vendor_part_contact',
     systemSortOrder: 'a2',
     nullable: false,
+    // Leg 2 of the natural key `(part, supplier)`. See the `part` leg above.
+    naturalKeyPosition: 2,
     capabilities: {
       filterable: true,
       sortable: false,

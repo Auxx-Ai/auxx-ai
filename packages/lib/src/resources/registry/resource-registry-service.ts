@@ -954,6 +954,13 @@ export class ResourceRegistryService {
           // `getCachedCustomFields`), so promoting here cannot make an existing
           // write start throwing on data that already has duplicates.
           isIdentifier: staticField.isIdentifier ?? dbField.isIdentifier,
+          // The NATURAL KEY is registry-only, by the same argument one rung up, and
+          // with no DB fallback because there is no column that could carry one.
+          // `(part, supplier)` identifies a supplier price line; `(parentPart,
+          // childPart)` identifies a BOM line. Neither leg is unique, so no
+          // per-org boolean could ever express it, and `CustomField.isUnique` is
+          // the wrong shape anyway — a tuple is not a per-field flag.
+          naturalKeyPosition: staticField.naturalKeyPosition,
           // Merge relationship config — DB object exists but inverseResourceFieldId may be null
           // when the seeder linker couldn't resolve it. Fall back to static definition.
           relationship: baseRelationship

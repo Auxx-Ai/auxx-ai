@@ -279,6 +279,36 @@ export function getDefaultIdentifierField(resource: {
   })
 }
 
+/**
+ * The resource's declared NATURAL KEY, in declaration order — the tuple of
+ * fields that together identify a record when no single field can.
+ *
+ * Empty for every resource that does not declare one, which is most of them: a
+ * natural key is for join-shaped entities whose identity is the pair they link.
+ * `vendor_part` is `(part, supplier)` and `subpart` is `(parentPart, childPart)`.
+ *
+ * Ordering is the declared `naturalKeyPosition`, never field order, so the key
+ * is stable against someone reordering the registry file. A resource whose
+ * positions are not contiguous from 1 has a broken declaration — the importer
+ * would AND a partial tuple and silently match too much — so this returns
+ * EMPTY rather than a partial key, and a registry test pins the invariant so it
+ * is caught at build time rather than as a mis-import.
+ *
+ * @param resource - Any resource carrying merged registry fields
+ * @returns The ordered key legs, or `[]` when none is declared or the
+ *   declaration is incomplete
+ */
+export function getNaturalKeyFields(resource: { fields: ResourceField[] }): ResourceField[] {
+  const legs = resource.fields
+    .filter((field) => typeof field.naturalKeyPosition === 'number')
+    .sort((a, b) => a.naturalKeyPosition! - b.naturalKeyPosition!)
+
+  if (legs.length === 0) return []
+
+  const contiguous = legs.every((field, index) => field.naturalKeyPosition === index + 1)
+  return contiguous ? legs : []
+}
+
 // ─────────────────────────────────────────────────────────────
 // SYSTEM FIELD HELPERS
 // ─────────────────────────────────────────────────────────────

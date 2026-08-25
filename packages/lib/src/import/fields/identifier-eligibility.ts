@@ -108,6 +108,14 @@ export function getIdentifierEligibility(field: ResourceField): IdentifierEligib
     field.capabilities.unique === true ||
     field.isUnique === true ||
     field.isIdentifier === true ||
+    // A declared natural-key leg is RECOMMENDED even though it carries no
+    // uniqueness of its own — that is the entire point of declaring one. The
+    // tuple is enforced by nothing and identifies the record anyway, so leaving
+    // `(part, supplier)` at tier 2 behind "Not enforced unique" would bury the
+    // only identity `vendor_part` has under a caveat that reads like a warning.
+    // It stays `compositeOnly` (it is a RELATION), so it can still never be
+    // flagged as a lone key.
+    field.naturalKeyPosition !== undefined ||
     INTRINSIC_IDENTIFIER_KEYS.has(outputKey)
 
   return isRecommended

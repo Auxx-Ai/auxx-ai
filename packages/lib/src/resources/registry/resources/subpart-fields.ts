@@ -45,6 +45,10 @@ export const SUBPART_FIELDS: Record<string, ResourceField> = {
     systemAttribute: 'subpart_parent_part',
     systemSortOrder: 'a1',
     nullable: false,
+    // Leg 1 of the natural key `(parentPart, childPart)`. A BOM line IS the pair
+    // — one assembly contains one component once, with a quantity — so re-importing
+    // a bill of materials must update the quantity, never append a second line.
+    naturalKeyPosition: 1,
     capabilities: {
       filterable: true,
       sortable: false,
@@ -77,6 +81,8 @@ export const SUBPART_FIELDS: Record<string, ResourceField> = {
     systemAttribute: 'subpart_child_part',
     systemSortOrder: 'a2',
     nullable: false,
+    // Leg 2 of the natural key `(parentPart, childPart)`. See the parent leg above.
+    naturalKeyPosition: 2,
     capabilities: {
       filterable: true,
       sortable: false,

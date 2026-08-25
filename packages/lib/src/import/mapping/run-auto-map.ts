@@ -2,6 +2,8 @@
 
 import type { Database } from '@auxx/database'
 import { getCachedResource } from '../../cache'
+import { getFieldOutputKey } from '../../resources/registry/field-types'
+import { getNaturalKeyFields } from '../../resources/registry/field-utils'
 import type { Resource } from '../../resources/registry/types'
 import { type ColumnHeaderWithSamples, orchestrateAutoMap } from '../fields/auto-map-orchestrator'
 import { getImportableFields } from '../fields/get-importable-fields'
@@ -151,10 +153,21 @@ export async function runAutoMap(
     .filter((f) => f.identifierTier === 1 && !f.identifierCompositeOnly)
     .map((f) => f.key)
 
+  // A declared NATURAL KEY outranks the single-column pick, when every one of
+  // its legs was mapped. `vendor_part` has no lone identifier at all — a
+  // supplier price list keyed on `(part, supplier)` is the only way it can
+  // update rather than duplicate — and a key the user has to assemble by hand,
+  // two toggles deep in a picker, is a key nobody sets.
+  //
+  // Read off the resource, never off an entity type: `vendor_part` is the first
+  // declarer, not a special case, and any resource that declares one gets this.
+  const naturalKeyFieldKeys = getNaturalKeyFields(resource).map(getFieldOutputKey)
+
   await batchUpdateMappingsFromAutoMap(db, {
     mappingId: importMappingId,
     mappings: mappingsWithFieldData,
     preferredIdentifierFieldKeys,
+    naturalKeyFieldKeys,
   })
 
   // 7. Return result for API response
