@@ -4,12 +4,13 @@
 import { FieldType } from '@auxx/database/enums'
 import { parseRecordId } from '@auxx/lib/resources/client'
 import type { SelectOption } from '@auxx/types/custom-field'
-import { toResourceFieldId } from '@auxx/types/field'
+import { parseResourceFieldId, type ResourceFieldId, toResourceFieldId } from '@auxx/types/field'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useCustomFieldMutations } from '~/components/custom-fields/hooks/use-custom-field-mutations'
 import { MultiSelectPicker } from '~/components/pickers/multi-select-picker'
+import { useField } from '~/components/resources/hooks/use-field'
 import { PickerTrigger, type PickerTriggerOptions } from '~/components/ui/picker-trigger'
 import { TagsView } from '~/components/ui/tags-view'
 import { useFieldNavigationOptional } from '../field-navigation-context'
@@ -56,7 +57,7 @@ export function getSelectConfig(fieldType: string): SelectConfig {
         multi: true,
         canManage: true,
         canAdd: true,
-        placeholder: 'Search tags...',
+        placeholder: 'Search or create...',
         manageLabel: 'Manage tags',
         closeOnSelect: false,
       }
@@ -377,5 +378,61 @@ export function SelectFieldInput({
         />
       </PopoverContent>
     </Popover>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────
+// StoreSelectFieldInput - store-connected variant (used by FieldInputAdapter)
+// ─────────────────────────────────────────────────────────────────
+
+/** Props for {@link StoreSelectFieldInput} */
+interface StoreSelectFieldInputProps extends Omit<SelectFieldInputProps, 'onOptionsChange'> {
+  /** Identity of the store-backed field whose taxonomy this input may grow. */
+  resourceFieldId: ResourceFieldId
+}
+
+/**
+ * `SelectFieldInput` wired to the resource store: it sources the option list
+ * from the effective `fieldMap` and persists option edits (a typed tag, a
+ * manage-dialog change) itself.
+ *
+ * Mirrors the RELATIONSHIP branch's inline-create pattern in
+ * `FieldInputAdapter`: the input owns its inline definition-write and hands the
+ * result back through selection, so no form above needs to know that option
+ * creation exists — and no caller can reintroduce the forgot-to-wire hole that
+ * originally shipped a create button writing nowhere.
+ *
+ * The gate mirrors that pattern too: creation/management is offered iff the
+ * field RESOLVES IN THE STORE. The persisted payload is the full option list,
+ * so its base must be the maintained merge — never whatever copy a caller
+ * happened to pass. A field the store doesn't know (a placeholder shim, a
+ * workflow synthetic) falls back to the passed `options` read-only, losing the
+ * affordance instead of arming a write that would replace the real list with a
+ * fragment and cascade-delete the values of every option it dropped.
+ */
+export function StoreSelectFieldInput({
+  resourceFieldId,
+  options,
+  ...rest
+}: StoreSelectFieldInputProps) {
+  const storeField = useField(resourceFieldId)
+  const { entityDefinitionId } = parseResourceFieldId(resourceFieldId)
+  const { update: updateField } = useCustomFieldMutations({ entityDefinitionId })
+
+  const handleOptionsChange = useCallback(
+    (newOptions: SelectOption[]) => {
+      updateField.mutate({ resourceFieldId, options: newOptions })
+    },
+    [updateField, resourceFieldId]
+  )
+
+  const effectiveOptions = (storeField?.options?.options as SelectOption[] | undefined) ?? options
+
+  return (
+    <SelectFieldInput
+      {...rest}
+      options={effectiveOptions}
+      onOptionsChange={storeField ? handleOptionsChange : undefined}
+    />
   )
 }

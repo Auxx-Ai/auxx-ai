@@ -60,8 +60,12 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
   const vendorPartDefId = useResourceProperty('vendor_part', 'id')
   const companyDefId = useResourceProperty('company', 'id')
 
-  // Live field def for the Category TAGS input (sources existing option pool)
-  const categoryField = useSystemField('category')
+  // Live field def for the Category TAGS input (sources existing option pool).
+  // Def-scoped on purpose: bare `category` is owned by BOTH `part` and
+  // `product`, and the bare tie-break resolves to whichever def id sorts first
+  // — which is how this dialog once showed (and would have written!) the
+  // products taxonomy's option ids into part records.
+  const categoryField = useSystemField('category', partDefId)
 
   // Load initial values for edit mode
   const { values: systemValues } = useSystemValues(recordId, PART_SYSTEM_ATTRIBUTES, {
@@ -284,6 +288,7 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
             <FieldInputAdapter
               fieldType={FieldType.TAGS}
               fieldOptions={categoryField?.options}
+              resourceFieldId={categoryField?.resourceFieldId}
               triggerProps={{ className: 'ps-0 pe-1 w-full' }}
               value={values.category}
               onChange={(val) => handleChange('category', val)}

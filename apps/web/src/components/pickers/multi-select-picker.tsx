@@ -189,6 +189,24 @@ export function MultiSelectPicker({
     return () => onCaptureChange?.(false)
   }, [onCaptureChange])
 
+  /**
+   * A created option is only offered when it can still be RESOLVED afterwards,
+   * which is true in exactly two modes:
+   *
+   * - `useValueAsLabel` — the option is label-keyed, so `value === label` and the
+   *   trigger renders it with no lookup and no persistence (the connector source
+   *   panel's custom values work this way).
+   * - `onOptionsChange` — someone upstream persists it and feeds it back through
+   *   `options`.
+   *
+   * With NEITHER, `createOption` mints `value: generateId()` into local state that
+   * nothing saves and nothing can label: the trigger falls back to rendering the
+   * raw cuid, and reopening the popover resets `localOptions` from `options` and
+   * loses it. That combination shipped on the record-create dialog and read as
+   * "creating a tag is broken" — it was a create button wired to nothing.
+   */
+  const canCreateOption = canAdd && (useValueAsLabel || Boolean(onOptionsChange))
+
   // Local options state (for optimistic UI when editing)
   const [localOptions, setLocalOptions] = useState<SelectOption[]>(options)
 
@@ -325,7 +343,7 @@ export function MultiSelectPicker({
    * Create a new option with the current search value
    */
   const createOption = useCallback(() => {
-    if (!canAdd) return
+    if (!canCreateOption) return
     const newLabel = searchValue.trim()
     if (!newLabel) return
 
@@ -356,7 +374,7 @@ export function MultiSelectPicker({
 
     setSearchValue('')
   }, [
-    canAdd,
+    canCreateOption,
     searchValue,
     localOptions,
     localSelected,
@@ -687,7 +705,7 @@ export function MultiSelectPicker({
           ) : (
             <>
               {/* Create option */}
-              {canAdd && searchValue.trim() && !searchMatchesExisting && (
+              {canCreateOption && searchValue.trim() && !searchMatchesExisting && (
                 <>
                   <CommandGroup>
                     <CommandItem
