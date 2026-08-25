@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.219](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.218...auxx-v0.1.219) (2026-08-25)
+
+
+### Bug Fixes
+
+* **billing:** the uninstalled paywall linked to a shopify page that 404s ([#1896](https://github.com/Auxx-Ai/auxx-ai/issues/1896)) ([0411a78](https://github.com/Auxx-Ai/auxx-ai/commit/0411a78d22e2cfdcc1d7dc4fedd4394ca4dcb01e))
+
 ## [0.1.218](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.217...auxx-v0.1.218) (2026-08-25)
 
 
