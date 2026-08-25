@@ -93,6 +93,17 @@ export interface SetValueWithBuiltInInput {
    * refresh themselves; the default keeps today's per-field behavior.
    */
   skipSearchTextRefresh?: boolean
+  /**
+   * Batched idempotency-guard pre-read (query-reduction plan §3B), keyed
+   * `entityId:fieldId` (see `setRowsKey`), each entry the pair's stored rows
+   * in sortKey order (`[]` = covered, no rows). When this write's pair has an
+   * entry, the guard uses it instead of its own SELECT; a missing key falls
+   * back to the individual load. Serves ONLY the D-6 short-circuit and the
+   * hooks' oldValue derivation — the reconcile re-reads inside its own
+   * transaction regardless (delete-insert-replace §5B RULE). Ignored for AI
+   * stage-2 commits, which bypass the guard entirely.
+   */
+  preloadedSetRows?: ReadonlyMap<string, FieldValueRow[]>
 }
 
 /**
@@ -113,6 +124,13 @@ export interface SetValuesForEntityInput {
    * {@link SetValueWithBuiltInInput.skipSearchTextRefresh}.
    */
   skipSearchTextRefresh?: boolean
+  /**
+   * Pre-batched guard rows handed down by `setBulkValues` (one SELECT for the
+   * whole bulk op). When absent, `setValuesForEntity` batch-loads its own
+   * record's pairs in one SELECT. See
+   * {@link SetValueWithBuiltInInput.preloadedSetRows}.
+   */
+  preloadedSetRows?: ReadonlyMap<string, FieldValueRow[]>
 }
 
 /**

@@ -103,15 +103,44 @@ export async function getValue(
     )
     .orderBy(asc(schema.FieldValue.sortKey))
 
-  if (rows.length === 0) {
-    return null
-  }
+  return shapeStoredRowsAsValue(field, rows as unknown as FieldValueRow[])
+}
 
+/**
+ * `getValue`'s exact result shaping over already-loaded stored rows: `null`
+ * for no rows, a scalar for single-value fields, an array for array-return
+ * fields. THE single shaping seam — `getValue` and the derived-oldValue path
+ * both go through it, so they cannot drift.
+ */
+export function shapeStoredRowsAsValue(
+  field: CachedField,
+  rows: FieldValueRow[]
+): TypedFieldValue | TypedFieldValue[] | null {
+  if (rows.length === 0) return null
   return rowsToTypedValues(
-    rows as unknown as FieldValueRow[],
+    rows,
     toFieldType(field.type),
     isArrayReturnFieldType(field.type, field.options as FieldOptions | undefined)
   )
+}
+
+/**
+ * What `getValue(ctx, { recordId, fieldId })` would return, derived from
+ * rows the caller already holds (the set path's idempotency-guard load) —
+ * saves the re-SELECT while preserving BOTH getValue behaviors the raw rows
+ * lack: the mail-host gate (a withheld host or field answers `null`, never
+ * the stored rows) and the scalar/array result shaping.
+ */
+export async function getValueFromStoredRows(
+  ctx: FieldValueContext,
+  recordId: RecordId,
+  fieldId: string,
+  field: CachedField,
+  rows: FieldValueRow[]
+): Promise<TypedFieldValue | TypedFieldValue[] | null> {
+  const mailGate = await resolveMailHostGate(ctx, recordId)
+  if (mailGate && (mailGate.hidden || !mailGate.admitsField(fieldId))) return null
+  return shapeStoredRowsAsValue(field, rows)
 }
 
 /**

@@ -73,7 +73,14 @@ import { getAmbientWriteSession } from '../resources/crud/write-session-als'
 import { getModelType, isRecordId, parseRecordId, toRecordId } from '../resources/resource-id'
 import { applyAiMarker } from './ai-commit'
 import { shortCircuitAiGenerate } from './ai-enqueue'
-import { batchGetExistingFieldValues } from './batch-existing-values'
+import {
+  batchGetExistingFieldValues,
+  batchLoadExistingSetRows,
+  type ExistingSetRow,
+  loadExistingRowsForSet,
+  setRowsKey,
+  typedExistingValuesFromSetRows,
+} from './batch-existing-values'
 import {
   assertCurrencyIntegerMinorUnits,
   type CachedField,
@@ -91,7 +98,7 @@ import {
   stampEntityInstanceUpdatedAt,
   validateAndConvertValue,
 } from './field-value-helpers'
-import { getValue } from './field-value-queries'
+import { getValue, getValueFromStoredRows } from './field-value-queries'
 import { formatToTypedInput } from './formatter'
 import { getExistingFieldValue } from './get-existing-value'
 import { insertFieldValue } from './insert-value'
@@ -2474,44 +2481,9 @@ export async function removeValuesBulk(
 // SET-PATH IDEMPOTENCY GUARD (docs/skip-events-history.md §8 D3; plan 03 D-6/B-14)
 // =============================================================================
 
-/** Existing row plus the AI marker column `FieldValueRow` doesn't declare. */
-type ExistingSetRow = FieldValueRow & { aiStatus?: string | null }
-
-/**
- * Load the existing FieldValue rows for one (record, field), ordered by
- * sortKey — the same shape/order `getValue` reads, but raw rows and with NO
- * mail-lens gate (the guard must see what is actually stored, never a
- * viewer-shaped answer). Returns `null` when the load fails for any reason:
- * a false "unchanged" would silently drop a real write, so "couldn't look"
- * always means "assume changed" and the normal write path runs.
- */
-async function loadExistingRowsForSet(
-  ctx: FieldValueContext,
-  entityInstanceId: string,
-  fieldId: string
-): Promise<ExistingSetRow[] | null> {
-  try {
-    const rows = await ctx.db
-      .select()
-      .from(schema.FieldValue)
-      .where(
-        and(
-          eq(schema.FieldValue.entityId, entityInstanceId),
-          eq(schema.FieldValue.fieldId, fieldId),
-          eq(schema.FieldValue.organizationId, ctx.organizationId)
-        )
-      )
-      .orderBy(asc(schema.FieldValue.sortKey))
-    return rows as unknown as ExistingSetRow[]
-  } catch (error) {
-    logger.warn('Set idempotency guard: existing-row load failed; writing normally', {
-      fieldId,
-      entityId: entityInstanceId,
-      error: error instanceof Error ? error.message : String(error),
-    })
-    return null
-  }
-}
+// `ExistingSetRow` and the guard's row loaders live in
+// `batch-existing-values.ts` — the individual load and the batched pre-read
+// share one module so their shapes cannot drift.
 
 /**
  * D-6 idempotency guard core: decide whether a forward `set` write is a pure
@@ -2728,16 +2700,25 @@ export async function setValueWithBuiltIn(
   const typedValue = hookOutcome.value
 
   // 3.55. Idempotency guard (docs/skip-events-history.md §8 D3): load the
-  // stored rows once, BEFORE the destructive DELETE+INSERT. Used by both the
+  // stored rows once, BEFORE the destructive write. Used by both the
   // null/clear branch below (B-14: delete-of-absent is a no-op) and the
   // forward set branch (D-6: identical write → no write, no hooks, no
   // events). AI stage-2 commits (`aiGeneration`) bypass the guard entirely —
   // re-asserting an identical value must still write so the rows gain
   // `aiStatus='result'` + metadata. `null` = guard disabled for this write
   // (bypass, or the load failed) — the normal path runs unconditionally.
+  // An orchestrator's batched pre-read (query-reduction §3B) replaces the
+  // per-pair SELECT when it covered this pair; either way these rows serve
+  // only the short-circuit and the oldValue derivation below — the
+  // reconcile re-reads inside its own transaction (§5B RULE).
+  const preloadedRows = params.aiGeneration
+    ? undefined
+    : (params.preloadedSetRows?.get(setRowsKey(entityInstanceId, fieldId)) as
+        | ExistingSetRow[]
+        | undefined)
   const guardRows = params.aiGeneration
     ? null
-    : await loadExistingRowsForSet(ctx, entityInstanceId, fieldId)
+    : (preloadedRows ?? (await loadExistingRowsForSet(ctx, entityInstanceId, fieldId)))
 
   // Tier-2 sync capture gating (plan 07 §4 PR 2), resolved once per write. The
   // `o`-source is the guard's OWN row load — the pre-write state was already paid
@@ -2787,9 +2768,18 @@ export async function setValueWithBuiltIn(
     ctx.userId !== undefined &&
     (hasEntityFieldChangeHooks(entitySlug) || hasFieldTypeChangeHooks(field.type as FieldType))
   // A buffered write needs `o` too, and needs it NOW: post-commit the pre-write
-  // value is gone (plan 04 §6.3).
+  // value is gone (plan 04 §6.3). The guard already holds the stored rows, so
+  // derive `o` from them instead of re-reading (query-reduction §2c) —
+  // `getValueFromStoredRows` reapplies BOTH getValue behaviors the raw rows
+  // lack (mail-host gate, scalar/array shaping), so hook payloads are
+  // byte-identical to a fresh `getValue`. Guard-less writes (AI stage-2, or a
+  // failed guard load) keep the direct read.
   const oldValue: TypedFieldValue | TypedFieldValue[] | null =
-    willFirePostHook || txScope ? await getValue(ctx, { recordId, fieldId }) : null
+    willFirePostHook || txScope
+      ? guardRows !== null
+        ? await getValueFromStoredRows(ctx, recordId, fieldId, field, guardRows)
+        : await getValue(ctx, { recordId, fieldId })
+      : null
 
   // Closure so set + clear branches fire the post-hook chain identically.
   // Resolves snapshots once per write so handlers (timeline writer especially)
@@ -3031,6 +3021,7 @@ export async function setValuesForEntity(
     publishEvents = !isDeclaredSilent(ctx.session),
     skipInverseSync = false,
     skipSearchTextRefresh = false,
+    preloadedSetRows,
   } = params
 
   // Parse RecordId to get both parts and derive modelType
@@ -3143,6 +3134,21 @@ export async function setValuesForEntity(
       fieldTypes
     )
 
+    // Batched guard pre-read (query-reduction §3B): every pair this record
+    // write touches in ONE SELECT, instead of one per field inside
+    // `setValueWithBuiltIn`. A bulk caller hands its op-wide batch down via
+    // `preloadedSetRows`; a failed load (`null`) falls back to the per-field
+    // behavior — same "couldn't look = assume changed" contract as the
+    // individual loader.
+    const setRows =
+      preloadedSetRows ??
+      (await batchLoadExistingSetRows(
+        { db: ctx.db, organizationId: ctx.organizationId },
+        [entityInstanceId],
+        customs.map((c) => c.fieldId)
+      )) ??
+      undefined
+
     // Now set each value (will use cached field definitions and relationship validations)
     for (const v of customs) {
       try {
@@ -3152,6 +3158,7 @@ export async function setValuesForEntity(
           value: v.value,
           publishEvents,
           skipInverseSync,
+          preloadedSetRows: setRows,
           // A buffered session captures per field inside `setValueWithBuiltIn`;
           // handing it a collector as well would batch-publish the same frames
           // mid-transaction.
@@ -3382,13 +3389,36 @@ export async function setBulkValues(
     customFieldIds.length > 0 &&
     (hasEntityFieldChangeHooks(entitySlug) || anyFieldTypeHasHooks)
 
+  // One raw batch pre-read for the WHOLE bulk op (query-reduction §3B). It
+  // feeds every pair's D-6 guard via `preloadedSetRows` below AND — converted
+  // once — the typed old-values map the field-change dispatch needs; these
+  // same rows used to be fetched twice (N×M per-pair guard SELECTs plus the
+  // typed batch). A failed batch (`null`) degrades the guards to their
+  // per-pair loads and the typed map to its own throwing fetch, preserving
+  // both paths' failure semantics.
+  const bulkSetRows =
+    customFieldIds.length > 0
+      ? await batchLoadExistingSetRows(
+          { db: ctx.db, organizationId: ctx.organizationId },
+          entityInstanceIds,
+          customFieldIds
+        )
+      : null
+
   const oldValuesMap = willDispatchFieldChange
-    ? await batchGetExistingFieldValues(
-        { db: ctx.db, organizationId: ctx.organizationId },
-        entityInstanceIds,
-        customFieldIds,
-        ctx.fieldCache
-      )
+    ? bulkSetRows
+      ? typedExistingValuesFromSetRows(
+          bulkSetRows,
+          entityInstanceIds,
+          customFieldIds,
+          ctx.fieldCache
+        )
+      : await batchGetExistingFieldValues(
+          { db: ctx.db, organizationId: ctx.organizationId },
+          entityInstanceIds,
+          customFieldIds,
+          ctx.fieldCache
+        )
     : null
 
   // Set values for all entities in parallel.
@@ -3411,6 +3441,7 @@ export async function setBulkValues(
         values: validValues,
         skipInverseSync: true, // Bulk sync handled separately below
         skipSearchTextRefresh: true, // One batched recompute below, not one per record
+        preloadedSetRows: bulkSetRows ?? undefined, // Op-wide guard pre-read (§3B)
       })
     )
   )
