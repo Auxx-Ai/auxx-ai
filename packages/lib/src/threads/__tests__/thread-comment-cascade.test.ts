@@ -67,8 +67,17 @@ function databaseWithDeletedThreads(
         operations.push('comment')
         return { where: vi.fn().mockResolvedValue(undefined) }
       }
+      // Deletes 3 and 4 are the relation sweep — `FieldValue` rows pointing AT
+      // the deleted threads, then the threads' own values. Both `RETURNING`.
+      if (deleteCount === 3 || deleteCount === 4) {
+        operations.push(deleteCount === 3 ? 'fieldvalue-inbound' : 'fieldvalue-outbound')
+        return {
+          where: vi.fn(() => ({ returning: vi.fn().mockResolvedValue([]) })),
+        }
+      }
       throw new Error('Unexpected delete table')
     }),
+    execute: vi.fn().mockResolvedValue(undefined),
   }
   const transaction = vi.fn(async (callback: (transaction: typeof tx) => Promise<unknown>) =>
     callback(tx)
@@ -121,7 +130,7 @@ describe('thread permanent-delete comment cascade', () => {
       count: 1,
     })
     expect(transaction).toHaveBeenCalledOnce()
-    expect(operations).toEqual(['thread', 'comment'])
+    expect(operations).toEqual(['thread', 'comment', 'fieldvalue-inbound', 'fieldvalue-outbound'])
     expect(inArrayBatches[0]).toEqual(['thread_1', 'thread_missing'])
     expect(inArrayBatches[1]).toEqual(['thread_1'])
     expect(publishThreadDeleted).toHaveBeenCalledOnce()

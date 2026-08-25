@@ -220,6 +220,11 @@ export type {
   UpdateDisplayNameInput,
   UpdateFieldValueInput,
 } from './service-types'
+export {
+  type SweepEntityFieldValuesParams,
+  type SweepEntityFieldValuesResult,
+  sweepEntityFieldValues,
+} from './sweep-entity-references'
 // Typed column match (shared between write-path dedup and read-path lookup)
 export { type TypedColumnMatch, typedColumnMatch } from './typed-column-match'
 // Service types

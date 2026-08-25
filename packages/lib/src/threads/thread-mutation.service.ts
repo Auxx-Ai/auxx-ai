@@ -10,6 +10,7 @@ import { BadRequestError } from '../errors'
 import { publisher } from '../events/publisher'
 import { FieldValueService } from '../field-values'
 import { batchGetThreadTagIds } from '../field-values/relationship-queries'
+import { sweepEntityFieldValues } from '../field-values/sweep-entity-references'
 import { toInboxRecordId } from '../inbox-record-ids'
 import { buildDefIdToSlug } from '../permissions/capabilities/resolve-capability-inputs'
 import type { MailViewer } from '../permissions/visibility/context'
@@ -1418,6 +1419,16 @@ export class ThreadMutationService {
             )
           )
 
+        // A thread's tags are `FieldValue` rows on BOTH ends — `thread_tags`
+        // (entityId = threadId) and `tag_threads` (relatedEntityId = threadId) —
+        // and neither column has a foreign key. Deleting the Thread row alone
+        // left both halves behind.
+        await sweepEntityFieldValues(tx, {
+          organizationId: this.organizationId,
+          entityIds: [deletedThreads[0]!.id],
+          entityType: 'thread',
+        })
+
         return deletedThreads
       })
 
@@ -1488,6 +1499,13 @@ export class ThreadMutationService {
               eq(schema.Comment.organizationId, this.organizationId)
             )
           )
+
+          // Both halves of every thread↔tag relation — see `deletePermanently`.
+          await sweepEntityFieldValues(tx, {
+            organizationId: this.organizationId,
+            entityIds: deletedThreads.map((thread) => thread.id),
+            entityType: 'thread',
+          })
         }
 
         return deletedThreads
