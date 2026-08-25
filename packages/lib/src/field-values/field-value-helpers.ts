@@ -585,6 +585,32 @@ export function validateRowReferences(row: FieldValueRow, fieldType: FieldType):
 // =============================================================================
 
 /**
+ * A fractional value in a minor-units field is ALWAYS wrong — cents, yen and
+ * thousandths of a dinar are integers for every ISO currency. This is
+ * decidable, unlike dollars-vs-cents on a whole number, and it is the single
+ * check that would have caught the connector passthrough bug at the first sync
+ * instead of months later.
+ *
+ * The ONE definition of the rule. Called from the coercion path (the CURRENCY
+ * case in {@link validateAndConvertValue}'s validator), from
+ * `buildFieldValueRow` (the last stop before a number becomes a `valueNumber`
+ * row, covering every typed writer), and early in `setValueWithType` (so the
+ * rejection lands before its destructive DELETE).
+ *
+ * 🛑 Never converts units. Given `600` it cannot know whether that is $6.00 or
+ * $600 — the undecidable guess that produced 100×-wrong stored data. A caller
+ * holding decimal major units scales (or rounds) in its own projection.
+ */
+export function assertCurrencyIntegerMinorUnits(num: number): void {
+  if (!Number.isInteger(num)) {
+    throw new BadRequestError(
+      `CURRENCY values are integer minor units (cents for USD), but received ${num}. ` +
+        'A caller holding decimal major units must scale or round before writing.'
+    )
+  }
+}
+
+/**
  * Validate and convert raw value to TypedFieldValueInput using FieldValueValidator.
  * Each field type has dedicated Zod schema validation.
  * Throws descriptive error if validation fails.
@@ -737,17 +763,7 @@ export async function validateSingleValue(
       if (!result.success) throwValidationError(result)
       const num = result.data ?? 0
 
-      // A fractional value in a minor-units field is ALWAYS wrong — cents, yen
-      // and thousandths of a dinar are integers for every ISO currency. This is
-      // decidable, unlike dollars-vs-cents on a whole number, and it is the
-      // single check that would have caught the connector passthrough bug at
-      // the first sync instead of months later.
-      if (!Number.isInteger(num)) {
-        throw new BadRequestError(
-          `CURRENCY values are integer minor units (cents for USD), but received ${num}. ` +
-            'A provider reporting decimal major units must scale in its own projection.'
-        )
-      }
+      assertCurrencyIntegerMinorUnits(num)
 
       return { type: 'number', value: num }
     }

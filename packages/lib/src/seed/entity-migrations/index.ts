@@ -67,6 +67,7 @@ import { migration100PartCostProvenance } from './migrations/100-part-cost-prove
 import { migration101ProductFamily } from './migrations/101-product-family'
 import { migration102CatalogRelabel } from './migrations/102-catalog-relabel'
 import { migration103GlPosting } from './migrations/103-gl-posting'
+import { migration104VendorSkuOptional } from './migrations/104-vendor-sku-optional'
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
@@ -179,6 +180,7 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   migration101ProductFamily,
   migration102CatalogRelabel,
   migration103GlPosting,
+  migration104VendorSkuOptional,
 ]
 
 /**

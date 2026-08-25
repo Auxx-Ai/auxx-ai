@@ -665,9 +665,15 @@ function diffPart(
 
   for (const [field, next, stored] of numeric) {
     if (!field) continue
+    // Landed and roll-up costs are exact and can carry a sub-minor-unit
+    // fraction (4133 at 7.5% → 4442.975), but the stored FieldValue is integer
+    // minor units. This seam is where the exact value becomes a stored one, so
+    // round here — and compare the ROUNDED value, or an unchanged fractional
+    // cost re-writes on every recalculation.
+    const rounded = next == null ? null : Math.round(next)
     const prev = stored.get(partId) ?? null
-    if (next === prev) continue
-    writes.push({ field, value: next == null ? null : { type: 'number', value: next } })
+    if (rounded === prev) continue
+    writes.push({ field, value: rounded == null ? null : { type: 'number', value: rounded } })
   }
 
   if (fields.costSource) {

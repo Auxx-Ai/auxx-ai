@@ -24,6 +24,7 @@
 // entity-sink) so the sink's mocked unit tests never load that graph.
 
 import { schema } from '@auxx/database'
+import type { FieldType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import type { TypedFieldValueInput } from '@auxx/types'
 import { and, asc, eq, isNull } from 'drizzle-orm'
@@ -171,6 +172,7 @@ export async function planRowLevelWrites(
       entityId: instanceId,
       entityDefinitionId,
       fieldId: w.fieldUuid,
+      fieldType: w.field.type as FieldType,
       value: typed,
       sortKey: 'a0', // placeholder — never inserted; only the value columns are read
     })

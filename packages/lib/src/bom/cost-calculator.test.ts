@@ -508,6 +508,68 @@ describe('calculateAllCosts — the unpriced-components signal', () => {
   })
 })
 
+describe('persistCosts — fractional costs round at the write seam', () => {
+  /** A tariff-rate FieldValue row for an existing vendor_part instance. */
+  function tariffRow(instanceId: string, rate: number) {
+    return {
+      instanceId,
+      fieldId: FIELD.vendor_part_tariff_rate!.id,
+      valueNumber: rate,
+      valueBoolean: null,
+      relatedEntityId: null,
+    }
+  }
+
+  it('stores a tariff-bearing landed cost as an integer', async () => {
+    // $19.99 at 7.5%: landed = 1999 + 149.925 = 2148.925. CURRENCY FieldValues
+    // are integer minor units, so the persisted number must be 2149 — the
+    // unrounded value used to be written verbatim and stored a fraction.
+    queue(
+      [...vendorPartRows('vp_motor', MOTOR, 1999), tariffRow('vp_motor', 7.5)],
+      [],
+      storedRows([])
+    )
+
+    await recalculateAffectedParts(ORG, [MOTOR])
+
+    expect(writesFor(FIELD.part_cost!.id)).toEqual([
+      { recordId: `part_def:${MOTOR}`, value: { type: 'number', value: 2149 } },
+    ])
+    expect(writesFor(FIELD.part_purchase_cost!.id)).toEqual([
+      { recordId: `part_def:${MOTOR}`, value: { type: 'number', value: 2149 } },
+    ])
+  })
+
+  it('stores a fractional-quantity roll-up as an integer', async () => {
+    // 0.5 m of $3.33 wire: rollup = 166.5 → 167.
+    queue(
+      vendorPartRows('vp_motor', MOTOR, 333),
+      subpartRows('sp_1', ASSEMBLY, MOTOR, 0.5),
+      storedRows([])
+    )
+
+    await recalculateAffectedParts(ORG, [ASSEMBLY])
+
+    expect(writesFor(FIELD.part_cost!.id)).toEqual([
+      { recordId: `part_def:${ASSEMBLY}`, value: { type: 'number', value: 167 } },
+    ])
+  })
+
+  it('compares the ROUNDED value against storage, so a confirming recalc writes nothing', async () => {
+    // Stored 2149 already equals round(2148.925). Comparing the unrounded
+    // value would classify this as a change and rewrite it on every recalc.
+    queue(
+      [...vendorPartRows('vp_motor', MOTOR, 1999), tariffRow('vp_motor', 7.5)],
+      [],
+      storedRows([{ partId: MOTOR, cost: 2149, purchaseCost: 2149, source: 'vendor' }])
+    )
+
+    await recalculateAffectedParts(ORG, [MOTOR])
+
+    expect(h.setValueWithType).not.toHaveBeenCalled()
+  })
+})
+
 describe('loadOrgPricingData — the offer id the tiebreak depends on', () => {
   it("carries each vendor part's OWN instance id, not just the part it prices", async () => {
     // `selectWinningVendor` breaks an exact tie on `id`. If the loader stopped

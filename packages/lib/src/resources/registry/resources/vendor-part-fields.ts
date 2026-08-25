@@ -111,13 +111,14 @@ export const VENDOR_PART_FIELDS: Record<string, ResourceField> = {
     isSystem: true,
     systemAttribute: 'vendor_part_vendor_sku',
     systemSortOrder: 'a3',
-    nullable: false,
+    // Optional: under the (part, supplier) natural key the vendor's own SKU is
+    // metadata, not identity, and real price lists routinely omit the column.
+    nullable: true,
     capabilities: {
       filterable: true,
       sortable: true,
       creatable: true,
       updatable: true,
-      required: true,
       configurable: false,
     },
     placeholder: 'Enter vendor SKU',
