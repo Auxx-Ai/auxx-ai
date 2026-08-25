@@ -1,10 +1,60 @@
 // apps/web/src/app/(protected)/onboarding/page.tsx
 
 import { database, schema } from '@auxx/database'
+import { getOrgCache, getUserCache, onCacheEvent } from '@auxx/lib/cache'
 import { eq } from 'drizzle-orm'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { getSession } from '~/auth/session'
+
+/**
+ * Reconcile the cached onboarding flags against the row before bouncing back to
+ * `/app`.
+ *
+ * `/app` gates on the CACHED dehydrated state (`components/global/dashboard.tsx`);
+ * this page reads the row. Reaching the `/app` redirect below means the row says
+ * onboarding is finished — so the only thing that could have sent the user here
+ * is a cache that disagrees. Neither page ever consults the other's source, so
+ * that disagreement is an unbounded redirect loop, not a one-time glitch.
+ *
+ * This loop has now recurred four times, with a different stale writer each time:
+ * the better-auth session cookie cache (#317), the demo route's direct Drizzle
+ * writes, `userProfile` after better-auth's hookless `updateUser` (#1381), and an
+ * invalidation that lost a race against an in-flight recompute in the org cache.
+ * Fixing writers one at a time has not ended it, so this is the catch-all: the
+ * one place that holds DB truth repairs whatever lied, instead of trusting that
+ * every future writer will remember to.
+ *
+ * Best-effort and never throws — a failure here must not block onboarding, and
+ * the bounce guard in `dashboard.tsx` still stops the loop either way.
+ */
+async function reconcileStaleOnboardingCache(
+  userId: string,
+  organizationId: string
+): Promise<void> {
+  try {
+    const [{ orgProfile }, { userProfile }] = await Promise.all([
+      getOrgCache().getOrRecompute(organizationId, ['orgProfile']),
+      getUserCache().getOrRecompute(userId, ['userProfile']),
+    ])
+
+    const orgStale = orgProfile?.completedOnboarding === false
+    const userStale = userProfile?.completedOnboarding === false
+    if (!orgStale && !userStale) return
+
+    console.warn('[Onboarding] Cached onboarding flags disagree with the database, busting:', {
+      userId,
+      organizationId,
+      cachedOrgCompletedOnboarding: orgProfile?.completedOnboarding,
+      cachedUserCompletedOnboarding: userProfile?.completedOnboarding,
+    })
+
+    if (orgStale) await onCacheEvent('org.updated', { orgId: organizationId })
+    if (userStale) await onCacheEvent('user.updated', { orgId: organizationId, userId })
+  } catch (error) {
+    console.error('[Onboarding] Failed to reconcile cached onboarding flags:', error)
+  }
+}
 
 /**
  * Onboarding entry point that determines where to redirect the user based on:
@@ -77,6 +127,12 @@ export default async function OnboardingPage() {
     if (claimToken) {
       console.log('[Onboarding] Org onboarding complete, claim cookie set, redirecting to claim')
       redirect('/shopify/claim')
+    }
+    // Repair the cache that sent them here before bouncing back — see
+    // `reconcileStaleOnboardingCache`. Must run BEFORE `redirect()`, which throws.
+    // `organizationId` is non-null here: `org` is only fetched when it is set.
+    if (organizationId) {
+      await reconcileStaleOnboardingCache(session.user.id, organizationId)
     }
     console.log('[Onboarding] Org onboarding complete, redirecting to /app')
     redirect('/app')
