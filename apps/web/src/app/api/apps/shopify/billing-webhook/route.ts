@@ -60,6 +60,11 @@ export async function POST(req: NextRequest) {
         })
       }
     }
+    logger.info('Shopify billing webhook processed', {
+      topic,
+      shopDomain,
+      organizationId: result.organizationId ?? null,
+    })
     return new NextResponse('ok', { status: 200 })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
