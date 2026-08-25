@@ -520,8 +520,14 @@ function PlanChangeSummaryContent({
             )}
           </div>
 
-          {/* Seats Card */}
-          <div className='group flex items-center justify-between rounded-2xl border py-2 px-3 hover:bg-muted transition-colors duration-200'>
+          {/* Seats Card. Read-only on Shopify: App Pricing has no quantity line, so
+              `createSubscription` ignores `seats` and the hosted pricing page has nothing
+              to pre-set — an editable stepper would move the cost preview and then do
+              nothing on approval. Seats are metered daily instead (seat-usage drip). */}
+          <div
+            className={`group flex items-center justify-between rounded-2xl border py-2 px-3 transition-colors duration-200 ${
+              isShopify ? '' : 'hover:bg-muted'
+            }`}>
             <div className='flex flex-row items-center gap-2'>
               <div className='size-8 border bg-muted rounded-lg flex items-center justify-center group-hover:bg-secondary transition-colors shrink-0'>
                 <Users className='size-4' />
@@ -529,21 +535,27 @@ function PlanChangeSummaryContent({
               <div className='flex flex-col'>
                 <span className='text-sm font-medium'>Seats</span>
                 <span className='text-xs text-muted-foreground'>
-                  Purchase additional seats to add more users
+                  {isShopify
+                    ? 'Billed automatically as you add or remove team members'
+                    : 'Purchase additional seats to add more users'}
                 </span>
               </div>
             </div>
-            <NumberInput
-              value={seats}
-              onValueChange={(v) => setSeats(Math.max(selectedPlan.minSeats ?? 1, v ?? 1))}
-              min={selectedPlan.minSeats}
-              max={selectedPlan.maxSeats}
-              step={1}>
-              <InputGroup className='w-32'>
-                <NumberInputField id='seats' />
-                <NumberInputArrows />
-              </InputGroup>
-            </NumberInput>
+            {isShopify ? (
+              <span className='text-sm font-medium tabular-nums pr-2'>{seats}</span>
+            ) : (
+              <NumberInput
+                value={seats}
+                onValueChange={(v) => setSeats(Math.max(selectedPlan.minSeats ?? 1, v ?? 1))}
+                min={selectedPlan.minSeats}
+                max={selectedPlan.maxSeats}
+                step={1}>
+                <InputGroup className='w-32'>
+                  <NumberInputField id='seats' />
+                  <NumberInputArrows />
+                </InputGroup>
+              </NumberInput>
+            )}
           </div>
 
           {/* Billing Information — hidden for providers that don't manage card-on-file. */}
