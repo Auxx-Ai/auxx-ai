@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.220](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.219...auxx-v0.1.220) (2026-08-25)
+
+
+### Bug Fixes
+
+* **connections:** bring-your-own oauth client was collected but never used ([#1898](https://github.com/Auxx-Ai/auxx-ai/issues/1898)) ([fd46f4c](https://github.com/Auxx-Ai/auxx-ai/commit/fd46f4c0b0ce9eb87d346de9a7128eac8cf18f2c))
+
 ## [0.1.219](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.218...auxx-v0.1.219) (2026-08-25)
 
 
