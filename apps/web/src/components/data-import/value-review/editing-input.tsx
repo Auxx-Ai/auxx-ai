@@ -130,8 +130,12 @@ export function EditingInput({
 
   /**
    * Option selection change — saves immediately with the FULL key array
-   * (single select writes one key, multi writes all). Clearing the selection
-   * or re-picking exactly the resolver's answer reverts to it.
+   * (single select writes one key, multi writes all). Re-picking exactly the
+   * resolver's answer reverts to it; clearing the selection (the trigger's ×,
+   * or unchecking the last option) skips the value — "import nothing for this
+   * cell", the same override the row's skip button writes. The old empty-case
+   * only acted when already overridden, so clearing a resolver-matched value
+   * silently did nothing.
    */
   const handleOptionChange = (next: unknown) => {
     const keys = Array.isArray(next)
@@ -140,7 +144,13 @@ export function EditingInput({
         ? [next]
         : []
 
-    if (keys.length === 0 || sameKeys(keys, autoKeys)) {
+    if (keys.length === 0) {
+      // Nothing was selected and nothing is cleared — a no-op, not a skip.
+      if (autoKeys.length === 0 && !isOverridden) return
+      onSave([{ type: 'skip', value: '' }])
+      return
+    }
+    if (sameKeys(keys, autoKeys)) {
       if (isOverridden) onSave(null)
       return
     }
@@ -159,9 +169,14 @@ export function EditingInput({
           onChange={handleOptionChange}
           placeholder='Select value...'
           // Overrides must reference existing option keys; minting happens via
-          // the import's own select-create path, so the picker never creates.
+          // the import's own select-create path, so the picker never creates —
+          // and never manages (renaming/deleting an option here would edit the
+          // org-wide taxonomy from an import screen).
           canAdd={false}
-          triggerProps={{ className: 'h-7' }}
+          canManage={false}
+          // No trigger ×: skipping a value has its own row control; deselecting
+          // everything in the picker still skips.
+          triggerProps={{ className: 'h-7', showClear: false }}
         />
       </div>
     )

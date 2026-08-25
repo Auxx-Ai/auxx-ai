@@ -106,6 +106,14 @@ export interface FieldInputAdapterProps {
    */
   canAdd?: boolean
   /**
+   * Override `canManage` on select fields — hides the picker's manage mode
+   * (rename/recolor/delete options). Contexts that only PICK among options
+   * (e.g. the import value-review editor) set `false`: deleting an option
+   * there would cascade-delete its stored values org-wide. Defaults to the
+   * field type's `getSelectConfig`.
+   */
+  canManage?: boolean
+  /**
    * When a created select value should be the typed text rather than a UUID
    * (free-text identifier fields). Forwarded to `SelectFieldInput`.
    */
@@ -152,6 +160,7 @@ export function FieldInputAdapter({
   resourceFieldId,
   allowMultiple,
   canAdd,
+  canManage,
   useValueAsLabel,
   triggerProps,
   open,
@@ -354,6 +363,7 @@ export function FieldInputAdapter({
         ...baseConfig,
         ...(allowMultiple !== undefined ? { multi: allowMultiple } : {}),
         ...(canAdd !== undefined ? { canAdd } : {}),
+        ...(canManage !== undefined ? { canManage } : {}),
       }
 
       const selectedValues = Array.isArray(value) ? value : value ? [value] : []
