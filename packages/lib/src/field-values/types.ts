@@ -113,6 +113,16 @@ export interface SetValueWithBuiltInInput {
    * the stamp. See {@link SetValuesForEntityInput.skipInstanceStamp}.
    */
   skipInstanceStamp?: boolean
+  /**
+   * When `true`, the NAME-composed `displayName` recompute this write would
+   * trigger as a PART of a NAME display field is suppressed. Set only by a
+   * decomposed NAME write on its two part writes: that frame holds both part
+   * strings and recomputes once through `recomposeNameDisplayFromParts` with
+   * no sibling SELECT, where two part writes would each pay one SELECT and
+   * one column write — and the second SELECT would re-read what the first
+   * just committed (`plans/field-values/name-field-writes.md` §4a).
+   */
+  skipNameCompose?: boolean
 }
 
 /**
@@ -308,6 +318,8 @@ export interface SetValueWithTypeInput {
   skipSearchTextRefresh?: boolean
   /** See {@link SetValueWithBuiltInInput.skipInstanceStamp}. */
   skipInstanceStamp?: boolean
+  /** See {@link SetValueWithBuiltInInput.skipNameCompose}. */
+  skipNameCompose?: boolean
 }
 
 /** Input for adding a value to a multi-value field */

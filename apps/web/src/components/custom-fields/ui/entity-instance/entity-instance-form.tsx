@@ -588,35 +588,6 @@ export function EntityInstanceForm({
     createExtension?.onReset?.()
   }, [editableFields, presetValues, setInitial, createExtension])
 
-  /**
-   * Expand NAME field values into their source fields (firstName, lastName).
-   * Returns a new values object with NAME fields replaced by their source TEXT fields.
-   */
-  const expandNameFields = useCallback(
-    (vals: Record<string, unknown>): Record<string, unknown> => {
-      const expanded: Record<string, unknown> = {}
-
-      for (const [fieldId, value] of Object.entries(vals)) {
-        const field = editableFields.find((f) => f.id === fieldId)
-        if (field?.fieldType === 'NAME' && field.options?.name) {
-          // Split NAME into source fields
-          const { firstNameFieldId, lastNameFieldId } = field.options.name
-          const nameVal = value as { firstName?: string; lastName?: string } | null
-          if (nameVal) {
-            if (nameVal.firstName !== undefined) expanded[firstNameFieldId] = nameVal.firstName
-            if (nameVal.lastName !== undefined) expanded[lastNameFieldId] = nameVal.lastName
-          }
-          // Don't include the NAME field itself
-        } else {
-          expanded[fieldId] = value
-        }
-      }
-
-      return expanded
-    },
-    [editableFields]
-  )
-
   const handleSubmit = async () => {
     if (!validate()) return
 
@@ -628,11 +599,9 @@ export function EntityInstanceForm({
         instanceId = editingInstanceId
         const instanceRecordId = toRecordId(entityDefinitionId, instanceId)
 
-        // Expand NAME fields into source fields before saving
-        const expandedValues = expandNameFields(values)
-
-        // Save all field values
-        const valuesToSave = Object.entries(expandedValues)
+        // NAME composites are split into their two part fields inside the save
+        // funnel (`useSaveFieldValue`), so every commit path gets it.
+        const valuesToSave = Object.entries(values)
           .filter(([_, value]) => value !== undefined && value !== null && value !== '')
           .map(([fieldId, value]) => {
             const field = editableFields.find((f) => f.id === fieldId)
@@ -644,10 +613,15 @@ export function EntityInstanceForm({
           if (!success) return
         }
       } else {
-        // Create mode: single create call with values
-        // Expand NAME fields and build values object from form state
+        // Create mode: single create call with values. `record.create` does
+        // NOT go through the save funnel (`useSaveFieldValue`), so the NAME
+        // composite is left intact here and decomposed server-side, at the
+        // `setValueWithBuiltIn` chokepoint in
+        // `packages/lib/src/field-values/field-value-mutations.ts` — reached
+        // from create/update via `resources/crud/unified-handler.ts` ->
+        // `setValuesForEntity`.
         const formValues = Object.fromEntries(
-          Object.entries(expandNameFields(values)).filter(
+          Object.entries(values).filter(
             ([_, value]) => value !== undefined && value !== null && value !== ''
           )
         )

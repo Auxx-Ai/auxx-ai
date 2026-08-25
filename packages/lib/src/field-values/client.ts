@@ -17,10 +17,8 @@ export {
 } from '@auxx/utils/calc-expression'
 // Converters (for direct access if needed)
 export { converters, type FileValue } from './converters'
-
 // Currency value narrowing — shared by every render/edit surface
 export { normalizeCurrencyCode, readCurrency, resolveCurrencyCode } from './converters/currency'
-
 // Re-export relationship type guards from converter (centralized location)
 export {
   isRelationshipFieldValue,
@@ -49,6 +47,13 @@ export {
   type SelectFieldOptions,
   type TextFieldOptions,
 } from './formatter'
+// NAME composite linkage — the ONE predicate both directions decompose on.
+// The client funnel splits a NAME write into its two part writes and the
+// server chokepoint (`setValueWithBuiltIn`) does the same for every other
+// door; if the two sides disagreed about which fields count as "linked", a
+// misconfigured composite would split on one side and store raw on the other.
+// See plans/field-values/name-field-writes.md §4.
+export { coerceNameInput, type NameParts, readNameParts } from './name-parts'
 // Multi-value scalar helpers (first-is-primary convention)
 export { MAX_MULTI_VALUES, primaryValue } from './primary-value'
 // Relationship utilities

@@ -1,12 +1,16 @@
 // apps/web/src/components/resources/hooks/use-save-field-value.ts
 
+import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
 import type { FieldType } from '@auxx/database/types'
 import {
+  coerceNameInput,
   type FieldOptions,
   formatToTypedInput,
   isArrayReturnFieldType,
+  type NameParts,
+  readNameParts,
 } from '@auxx/lib/field-values/client'
-import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
+import { parseRecordId, type RecordId, type ResourceField } from '@auxx/lib/resources/client'
 import {
   getInverseFieldId,
   getRelatedEntityDefinitionId,
@@ -22,6 +26,7 @@ import {
   type StoredFieldValue,
   useFieldValueStore,
 } from '~/components/resources/store/field-value-store'
+import { useRecordStore } from '~/components/resources/store/record-store'
 import { useResourceStore } from '~/components/resources/store/resource-store'
 import { getNormalizedRecordId } from '~/components/resources/utils/normalize-record-id'
 import { resolveSystemAttributeForRecord } from '~/components/resources/utils/resolve-system-attribute'
@@ -276,6 +281,158 @@ function handleMutationError(
   })
 }
 
+// ─── NAME composites ─────────────────────────────────────────────────────────
+
+/** One field write, in the shape every funnel function accepts it. */
+interface FieldWrite {
+  fieldId: string
+  value: unknown
+  fieldType?: FieldType
+}
+
+/**
+ * Read the part-field ids off a registry field, through the SHARED linkage
+ * predicate the server decomposes with (`readNameParts`).
+ *
+ * One predicate, one answer: an unlinked composite — not a NAME field, a
+ * missing part id, or both parts pointing at the SAME field — has no parts to
+ * write through, and client and server must agree on that or the client splits
+ * a write the server would have stored raw. The adapter is only the shape:
+ * a registry field carries `FieldType` on `fieldType` (`type` is the workflow
+ * BaseType), while the shared predicate is structural over `{ type, options }`.
+ */
+function readFieldNameParts(field: ResourceField | undefined): NameParts | null {
+  if (!field) return null
+  return readNameParts({ type: field.fieldType, options: field.options })
+}
+
+/**
+ * Resolve a bare fieldId to its field definition through the resource store.
+ *
+ * The funnel receives whatever spelling the caller had — a canonical field id,
+ * a static key, or a systemAttribute (`full_name`) — so resolution goes through
+ * `getFieldByRef`, which applies the store's alias resolution. Deliberately NOT
+ * read off a caller-supplied `field` prop: several of those are typed `any`
+ * (`PropertyProvider`'s among them), and a reshaped or sparser object fails a
+ * NAME guard silently.
+ */
+function resolveStoreField(recordId: RecordId, fieldId: string): ResourceField | undefined {
+  const { entityDefinitionId } = parseRecordId(recordId)
+  return useResourceStore
+    .getState()
+    .getFieldByRef(toResourceFieldId(entityDefinitionId, fieldId as FieldId))
+}
+
+/**
+ * The NAME parts every one of `recordIds` agrees on for `fieldId`, or null.
+ *
+ * One payload serves every record in a bulk set, and a bulk set may span entity
+ * definitions where the same spelling resolves to a different field. A split is
+ * therefore only safe when every record resolves the SAME composite; any
+ * disagreement leaves the write untouched for the server to decompose.
+ */
+function resolveNameParts(recordIds: RecordId[], fieldId: string): NameParts | null {
+  let parts: NameParts | null = null
+  for (const recordId of recordIds) {
+    const next = readFieldNameParts(resolveStoreField(recordId, fieldId))
+    if (!next) return null
+    if (
+      parts &&
+      (parts.firstNameFieldId !== next.firstNameFieldId ||
+        parts.lastNameFieldId !== next.lastNameFieldId)
+    ) {
+      return null
+    }
+    parts = next
+  }
+  return parts
+}
+
+/**
+ * Coerce any accepted NAME input into its two part strings.
+ *
+ * `coerceNameInput` is the shared coercion the server decomposes with, so every
+ * shape a NAME write has ever accepted keeps working identically on both sides:
+ * an object, an already-typed `json` value, and a bare full-name string
+ * (`'Anita Bicknell'`, what a grid paste delivers). Its `null` — blank input,
+ * i.e. a clear — is widened here to two empty strings, because the funnel's
+ * callers want a write against each part rather than an absent entry.
+ */
+function coerceNameValue(value: unknown): { firstName: string; lastName: string } {
+  return coerceNameInput(value) ?? { firstName: '', lastName: '' }
+}
+
+/**
+ * Optimistically mirror the server-side `displayName` recompute into the record
+ * store, so surfaces reading `record.displayName` (the drawer header) update
+ * instantly. The editing tab is excluded from the `record:updated` realtime
+ * echo, so without this it stays stale until a refetch. Only when this NAME
+ * field actually drives the entity's primary displayName — mirrors the backend
+ * gate.
+ */
+function mirrorNameDisplayName(
+  recordId: RecordId,
+  field: ResourceField,
+  name: { firstName: string; lastName: string }
+): void {
+  const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
+  const resource = useResourceStore.getState().getResourceById(entityDefinitionId)
+  if (resource?.display.primaryDisplayField?.id !== field.id) return
+  useRecordStore.getState().updateRecord(entityDefinitionId, entityInstanceId, {
+    displayName: `${name.firstName} ${name.lastName}`.trim(),
+  })
+}
+
+/**
+ * Rewrite NAME composite writes into writes against their two TEXT part fields.
+ *
+ * A NAME field is a COMPOSITE over `options.name.firstNameFieldId` /
+ * `.lastNameFieldId` and stores nothing of its own — the value the UI shows is
+ * derived from the parts, so a write that lands on the NAME field itself leaves
+ * the parts stale and is undone by the next refetch.
+ *
+ * The split lives HERE, below every commit path, rather than in the editors:
+ * `PropertyProvider` used to carry a copy in `commitValue` only, so committing
+ * a name with Enter (`commitValueAndClose`) wrote the composite raw for as long
+ * as the linking existed, and grid paste never split at all. Below the funnel
+ * that divergence is not expressible.
+ *
+ * Both parts must travel in ONE request. Two separate single-field writes race
+ * on the server-side `displayName` recompute: each part write recomposes by
+ * reading its SIBLING from the DB, so concurrent first/last writes can read a
+ * stale sibling and persist an outdated `displayName`. Callers holding a single
+ * NAME write therefore hand it to the batched door.
+ *
+ * Idempotent: a list that resolves no NAME field is returned unchanged, so an
+ * already-split write passes straight through.
+ */
+function expandNameWrites(recordIds: RecordId[], writes: FieldWrite[]): FieldWrite[] {
+  let expanded: FieldWrite[] | null = null
+
+  for (let index = 0; index < writes.length; index++) {
+    const write = writes[index]
+    if (!write) continue
+    const parts = resolveNameParts(recordIds, write.fieldId)
+    if (!parts) {
+      expanded?.push(write)
+      continue
+    }
+    if (!expanded) expanded = writes.slice(0, index)
+
+    const name = coerceNameValue(write.value)
+    expanded.push(
+      { fieldId: parts.firstNameFieldId, value: name.firstName, fieldType: FieldTypeEnum.TEXT },
+      { fieldId: parts.lastNameFieldId, value: name.lastName, fieldType: FieldTypeEnum.TEXT }
+    )
+    for (const recordId of recordIds) {
+      const field = resolveStoreField(recordId, write.fieldId)
+      if (field) mirrorNameDisplayName(recordId, field, name)
+    }
+  }
+
+  return expanded ?? writes
+}
+
 /**
  * Hook for saving field values with optimistic updates to the shared store.
  * Updates store immediately, then syncs to DB in background.
@@ -303,6 +460,175 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
   const { mutate: bulkMutate, mutateAsync: bulkMutateAsync } = bulkMutation
 
   /**
+   * Save multiple field values to a single resource (async version).
+   * @param recordId - Full RecordId
+   * @param fieldValues - Array of { fieldId, value, fieldType }
+   */
+  const saveMultipleAsync = useCallback(
+    async (
+      recordId: RecordId,
+      fieldValues: Array<{ fieldId: string; value: unknown; fieldType: FieldType }>,
+      saveOpts?: SaveOptions
+    ): Promise<boolean> => {
+      const normalizedRecordId = getNormalizedRecordId(recordId)
+      const store = useFieldValueStore.getState()
+      const ai = saveOpts?.ai === true
+      const requestedAt = ai ? new Date().toISOString() : undefined
+
+      // NAME composites are written through their two TEXT part fields — the
+      // optimistic keys and the payload below are the part fields', never the
+      // composite's. See {@link expandNameWrites}.
+      const writes = expandNameWrites([normalizedRecordId], fieldValues)
+
+      // Build keys, capture versions, and apply optimistic updates
+      const keyVersions: Array<{ key: FieldValueKey; version: number }> = []
+      for (const { fieldId, value, fieldType } of writes) {
+        const key = buildFieldValueKey(
+          normalizedRecordId,
+          resolveFieldRef(fieldId, normalizedRecordId)
+        )
+        const version = store.incrementMutationVersion(key)
+        keyVersions.push({ key, version })
+        if (ai) {
+          store.setAiStateOptimistic(key, 'generating', { requestedAt })
+          store.setValueOptimistic(key, null)
+        } else {
+          const typedValue = fieldType ? formatToTypedInput(value, fieldType) : value
+          store.setValueOptimistic(key, typedValue)
+        }
+      }
+
+      // Build API payload (keep original fieldIds — server resolves systemAttributes)
+      const apiValues = writes.map(({ fieldId, value }) => ({ fieldId, value }))
+
+      try {
+        await bulkMutateAsync({
+          recordIds: [normalizedRecordId],
+          values: apiValues,
+          ...(ai ? { ai: true } : {}),
+        })
+
+        const currentStore = useFieldValueStore.getState()
+        for (const { key, version } of keyVersions) {
+          if (version >= currentStore.getMutationVersion(key)) {
+            if (ai) {
+              currentStore.confirmOptimistic(key)
+              currentStore.confirmAiStateOptimistic(key)
+            } else {
+              currentStore.confirmOptimistic(key)
+            }
+          }
+        }
+        onSuccess?.()
+        return true
+      } catch (error: unknown) {
+        const currentStore = useFieldValueStore.getState()
+        for (const { key, version } of keyVersions) {
+          if (version >= currentStore.getMutationVersion(key)) {
+            if (ai) {
+              // Keep the optimistic null value — see handleMutationError.
+              currentStore.rollbackAiState(key)
+              currentStore.confirmOptimistic(key)
+            } else {
+              currentStore.rollbackOptimistic(key)
+            }
+          }
+        }
+        const errorMessage = error instanceof Error ? error.message : 'Could not save field values'
+        toastError({ title: 'Error saving fields', description: errorMessage })
+        return false
+      }
+    },
+    [bulkMutateAsync, onSuccess]
+  )
+
+  /**
+   * Save multiple field values to multiple resources in one API call.
+   * @param recordIds - Array of RecordIds to update
+   * @param fieldValues - Array of { fieldId, value, fieldType }
+   */
+  const saveBulkMultipleFields = useCallback(
+    (
+      recordIds: RecordId[],
+      fieldValues: Array<{ fieldId: string; value: unknown; fieldType?: FieldType }>,
+      saveOpts?: SaveOptions
+    ): void => {
+      const normalizedRecordIds = recordIds.map(getNormalizedRecordId)
+      const store = useFieldValueStore.getState()
+      const ai = saveOpts?.ai === true
+      const requestedAt = ai ? new Date().toISOString() : undefined
+
+      // NAME composites are written through their two TEXT part fields — the
+      // optimistic keys and the payload below are the part fields', never the
+      // composite's. See {@link expandNameWrites}.
+      const writes = expandNameWrites(normalizedRecordIds, fieldValues)
+
+      // Build all keys, capture versions, and apply optimistic updates
+      const keyVersions: Array<{ key: FieldValueKey; version: number }> = []
+
+      for (const recordId of normalizedRecordIds) {
+        for (const { fieldId, value, fieldType } of writes) {
+          const key = buildFieldValueKey(recordId, resolveFieldRef(fieldId, recordId))
+          const version = store.incrementMutationVersion(key)
+          keyVersions.push({ key, version })
+          if (ai) {
+            store.setAiStateOptimistic(key, 'generating', { requestedAt })
+            store.setValueOptimistic(key, null)
+          } else {
+            const typedValue = fieldType ? formatToTypedInput(value, fieldType) : value
+            store.setValueOptimistic(key, typedValue)
+          }
+        }
+      }
+
+      // Build API payload (keep original fieldIds — server resolves systemAttributes)
+      const apiValues = writes.map(({ fieldId, value }) => ({ fieldId, value }))
+
+      bulkMutate(
+        {
+          recordIds: normalizedRecordIds,
+          values: apiValues,
+          ...(ai ? { ai: true } : {}),
+        },
+        {
+          onSuccess: () => {
+            const currentStore = useFieldValueStore.getState()
+            for (const { key, version } of keyVersions) {
+              if (version >= currentStore.getMutationVersion(key)) {
+                if (ai) {
+                  currentStore.confirmOptimistic(key)
+                  currentStore.confirmAiStateOptimistic(key)
+                } else {
+                  currentStore.confirmOptimistic(key)
+                }
+              }
+            }
+            onSuccess?.()
+          },
+          onError: (error) => {
+            const currentStore = useFieldValueStore.getState()
+            for (const { key, version } of keyVersions) {
+              if (version >= currentStore.getMutationVersion(key)) {
+                if (ai) {
+                  // Keep the optimistic null value — see handleMutationError.
+                  currentStore.rollbackAiState(key)
+                  currentStore.confirmOptimistic(key)
+                } else {
+                  currentStore.rollbackOptimistic(key)
+                }
+              }
+            }
+            toastError({
+              title: 'Error saving fields',
+              description: error.message || 'Could not save field values',
+            })
+          },
+        }
+      )
+    },
+    [bulkMutate, onSuccess]
+  )
+  /**
    * Save a field value with optimistic update.
    * @param recordId - Full RecordId (entityDefinitionId:entityInstanceId)
    * @param fieldId - The custom field ID
@@ -318,6 +644,14 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
       saveOpts?: SaveOptions
     ): void => {
       const normalizedRecordId = getNormalizedRecordId(recordId)
+
+      // A NAME composite fans out into two part-field writes that must travel
+      // in ONE request — hand it to the batched door, which splits it.
+      if (resolveNameParts([normalizedRecordId], fieldId)) {
+        saveBulkMultipleFields([normalizedRecordId], [{ fieldId, value, fieldType }], saveOpts)
+        return
+      }
+
       const ai = saveOpts?.ai === true
       const prep = prepareOptimisticUpdate(
         normalizedRecordId,
@@ -371,7 +705,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
         }
       )
     },
-    [setMutate, onSuccess, getFieldMetadata, syncInverseCache]
+    [setMutate, onSuccess, getFieldMetadata, syncInverseCache, saveBulkMultipleFields]
   )
 
   /**
@@ -391,6 +725,18 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
       saveOpts?: SaveOptions
     ): Promise<{ success: boolean; id?: string } | undefined> => {
       const normalizedRecordId = getNormalizedRecordId(recordId)
+
+      // A NAME composite fans out into two part-field writes that must travel
+      // in ONE request — hand it to the batched door, which splits it.
+      if (resolveNameParts([normalizedRecordId], fieldId)) {
+        const success = await saveMultipleAsync(
+          normalizedRecordId,
+          [{ fieldId, value, fieldType }],
+          saveOpts
+        )
+        return { success }
+      }
+
       const ai = saveOpts?.ai === true
       const prep = prepareOptimisticUpdate(
         normalizedRecordId,
@@ -459,85 +805,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
         return { success: false }
       }
     },
-    [setMutateAsync, onSuccess, getFieldMetadata, syncInverseCache]
-  )
-
-  /**
-   * Save multiple field values to a single resource (async version).
-   * @param recordId - Full RecordId
-   * @param fieldValues - Array of { fieldId, value, fieldType }
-   */
-  const saveMultipleAsync = useCallback(
-    async (
-      recordId: RecordId,
-      fieldValues: Array<{ fieldId: string; value: unknown; fieldType: FieldType }>,
-      saveOpts?: SaveOptions
-    ): Promise<boolean> => {
-      const normalizedRecordId = getNormalizedRecordId(recordId)
-      const store = useFieldValueStore.getState()
-      const ai = saveOpts?.ai === true
-      const requestedAt = ai ? new Date().toISOString() : undefined
-
-      // Build keys, capture versions, and apply optimistic updates
-      const keyVersions: Array<{ key: FieldValueKey; version: number }> = []
-      for (const { fieldId, value, fieldType } of fieldValues) {
-        const key = buildFieldValueKey(
-          normalizedRecordId,
-          resolveFieldRef(fieldId, normalizedRecordId)
-        )
-        const version = store.incrementMutationVersion(key)
-        keyVersions.push({ key, version })
-        if (ai) {
-          store.setAiStateOptimistic(key, 'generating', { requestedAt })
-          store.setValueOptimistic(key, null)
-        } else {
-          const typedValue = fieldType ? formatToTypedInput(value, fieldType) : value
-          store.setValueOptimistic(key, typedValue)
-        }
-      }
-
-      // Build API payload (keep original fieldIds — server resolves systemAttributes)
-      const apiValues = fieldValues.map(({ fieldId, value }) => ({ fieldId, value }))
-
-      try {
-        await bulkMutateAsync({
-          recordIds: [normalizedRecordId],
-          values: apiValues,
-          ...(ai ? { ai: true } : {}),
-        })
-
-        const currentStore = useFieldValueStore.getState()
-        for (const { key, version } of keyVersions) {
-          if (version >= currentStore.getMutationVersion(key)) {
-            if (ai) {
-              currentStore.confirmOptimistic(key)
-              currentStore.confirmAiStateOptimistic(key)
-            } else {
-              currentStore.confirmOptimistic(key)
-            }
-          }
-        }
-        onSuccess?.()
-        return true
-      } catch (error: unknown) {
-        const currentStore = useFieldValueStore.getState()
-        for (const { key, version } of keyVersions) {
-          if (version >= currentStore.getMutationVersion(key)) {
-            if (ai) {
-              // Keep the optimistic null value — see handleMutationError.
-              currentStore.rollbackAiState(key)
-              currentStore.confirmOptimistic(key)
-            } else {
-              currentStore.rollbackOptimistic(key)
-            }
-          }
-        }
-        const errorMessage = error instanceof Error ? error.message : 'Could not save field values'
-        toastError({ title: 'Error saving fields', description: errorMessage })
-        return false
-      }
-    },
-    [bulkMutateAsync, onSuccess]
+    [setMutateAsync, onSuccess, getFieldMetadata, syncInverseCache, saveMultipleAsync]
   )
 
   /**
@@ -556,6 +824,14 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
       saveOpts?: SaveOptions
     ): void => {
       const normalizedRecordIds = recordIds.map(getNormalizedRecordId)
+
+      // A NAME composite fans out into two part-field writes that must travel
+      // in ONE request — hand it to the batched door, which splits it.
+      if (resolveNameParts(normalizedRecordIds, fieldId)) {
+        saveBulkMultipleFields(normalizedRecordIds, [{ fieldId, value, fieldType }], saveOpts)
+        return
+      }
+
       const store = useFieldValueStore.getState()
       const ai = saveOpts?.ai === true
 
@@ -621,89 +897,7 @@ export function useSaveFieldValue(options: UseSaveFieldValueOptions = {}) {
         }
       )
     },
-    [bulkMutate, onSuccess]
-  )
-
-  /**
-   * Save multiple field values to multiple resources in one API call.
-   * @param recordIds - Array of RecordIds to update
-   * @param fieldValues - Array of { fieldId, value, fieldType }
-   */
-  const saveBulkMultipleFields = useCallback(
-    (
-      recordIds: RecordId[],
-      fieldValues: Array<{ fieldId: string; value: unknown; fieldType?: FieldType }>,
-      saveOpts?: SaveOptions
-    ): void => {
-      const normalizedRecordIds = recordIds.map(getNormalizedRecordId)
-      const store = useFieldValueStore.getState()
-      const ai = saveOpts?.ai === true
-      const requestedAt = ai ? new Date().toISOString() : undefined
-
-      // Build all keys, capture versions, and apply optimistic updates
-      const keyVersions: Array<{ key: FieldValueKey; version: number }> = []
-
-      for (const recordId of normalizedRecordIds) {
-        for (const { fieldId, value, fieldType } of fieldValues) {
-          const key = buildFieldValueKey(recordId, resolveFieldRef(fieldId, recordId))
-          const version = store.incrementMutationVersion(key)
-          keyVersions.push({ key, version })
-          if (ai) {
-            store.setAiStateOptimistic(key, 'generating', { requestedAt })
-            store.setValueOptimistic(key, null)
-          } else {
-            const typedValue = fieldType ? formatToTypedInput(value, fieldType) : value
-            store.setValueOptimistic(key, typedValue)
-          }
-        }
-      }
-
-      // Build API payload (keep original fieldIds — server resolves systemAttributes)
-      const apiValues = fieldValues.map(({ fieldId, value }) => ({ fieldId, value }))
-
-      bulkMutate(
-        {
-          recordIds: normalizedRecordIds,
-          values: apiValues,
-          ...(ai ? { ai: true } : {}),
-        },
-        {
-          onSuccess: () => {
-            const currentStore = useFieldValueStore.getState()
-            for (const { key, version } of keyVersions) {
-              if (version >= currentStore.getMutationVersion(key)) {
-                if (ai) {
-                  currentStore.confirmOptimistic(key)
-                  currentStore.confirmAiStateOptimistic(key)
-                } else {
-                  currentStore.confirmOptimistic(key)
-                }
-              }
-            }
-            onSuccess?.()
-          },
-          onError: (error) => {
-            const currentStore = useFieldValueStore.getState()
-            for (const { key, version } of keyVersions) {
-              if (version >= currentStore.getMutationVersion(key)) {
-                if (ai) {
-                  // Keep the optimistic null value — see handleMutationError.
-                  currentStore.rollbackAiState(key)
-                  currentStore.confirmOptimistic(key)
-                } else {
-                  currentStore.rollbackOptimistic(key)
-                }
-              }
-            }
-            toastError({
-              title: 'Error saving fields',
-              description: error.message || 'Could not save field values',
-            })
-          },
-        }
-      )
-    },
-    [bulkMutate, onSuccess]
+    [bulkMutate, onSuccess, saveBulkMultipleFields]
   )
 
   return {
