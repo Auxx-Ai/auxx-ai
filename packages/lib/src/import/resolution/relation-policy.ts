@@ -1,5 +1,7 @@
 // packages/lib/src/import/resolution/relation-policy.ts
 
+import { getFieldOutputKey } from '../../resources/registry/field-types'
+import { getDefaultIdentifierField } from '../../resources/registry/field-utils'
 import type { Resource } from '../../resources/registry/types'
 import type {
   RelationLinkMode,
@@ -47,15 +49,44 @@ export function resolveDisplayFieldKey(resource: Resource): string {
 }
 
 /**
+ * The match field a relation column DEFAULTS to when the user has chosen none.
+ *
+ * A real business key if the target has one, else the display field.
+ *
+ * Display was the whole answer, and for `company` it still is — a supplier list
+ * names suppliers. But for `part` it is simply wrong: no BOM and no price list on
+ * earth carries part TITLES, they carry SKUs, so every row of a parts-relation
+ * file failed to resolve until the user changed the dropdown by hand. The picker
+ * was already labelling SKU "recommended" while the default ignored it — the
+ * wizard contradicting itself.
+ *
+ * 🛑 `id` is deliberately NOT accepted as the business key, even though it is a
+ * tier-1 identifier and often the only one. No CSV carries CUIDs, so defaulting a
+ * column to `id` guarantees every row fails; and `matchField === 'id'` is a hard
+ * stop in {@link canCreateOnNoMatch}, so it would also silently disable relation
+ * auto-create. `company`'s only tier-1 identifier IS `id`, which is exactly the
+ * case that must keep falling through to the display field.
+ *
+ * @param resource - The relation TARGET resource
+ * @returns The default match field key
+ */
+export function resolveDefaultMatchFieldKey(resource: Resource): string {
+  const identifier = getDefaultIdentifierField(resource)
+  const key = identifier ? getFieldOutputKey(identifier) : null
+  if (key && key !== 'id' && identifier?.key !== 'id') return identifier?.key ?? key
+  return resolveDisplayFieldKey(resource)
+}
+
+/**
  * The match field a relation column will actually use: the explicitly chosen
- * one, or the target's display field key when the column carries none (the
+ * one, or {@link resolveDefaultMatchFieldKey} when the column carries none (the
  * auto-map path).
  *
  * @param resource - The relation TARGET resource
  * @param matchField - The column's persisted `matchField`, if any
  */
 export function resolveMatchFieldKey(resource: Resource, matchField?: string | null): string {
-  return matchField || resolveDisplayFieldKey(resource)
+  return matchField || resolveDefaultMatchFieldKey(resource)
 }
 
 /**

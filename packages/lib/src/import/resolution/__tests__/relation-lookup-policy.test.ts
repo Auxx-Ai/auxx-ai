@@ -91,7 +91,12 @@ describe('Defect E, an auto-mapped relation column resolves', () => {
     // Before the fix the resolver looked for a field keyed `Company Name`,
     // found none, and returned [], "No match found" for every value, and a
     // failed row wherever the relation is required.
-    expect(results[0]!.recordId).toBe('rec-1')
+    // 🛑 A full `defId:instanceId` RecordId, not the bare `rec-1` this asserted
+    // until 2026-08-26. The write path's `relationship` arm takes a string only
+    // when it contains a ':' and silently drops anything else, so a bare id here
+    // meant an import created join records with NO links and still reported
+    // success. Do not "simplify" this back.
+    expect(results[0]!.recordId).toBe('def-company:rec-1')
     expect(results[0]!.error).toBeUndefined()
     expect(results[0]!.outcome).toBe('matched')
   })
@@ -251,7 +256,7 @@ describe('§1.2 relation matching stays case-INSENSITIVE, in both directions', (
       [lookup('m400l', { matchField: 'name' })],
       allow
     )
-    expect(results[0]!.recordId).toBe('rec-1')
+    expect(results[0]!.recordId).toBe('def-company:rec-1')
   })
 
   it('an uppercase cell links to a stored lowercase value', async () => {
@@ -266,7 +271,7 @@ describe('§1.2 relation matching stays case-INSENSITIVE, in both directions', (
     )
     // Contract D-F moves the IDENTIFIER path to case-insensitive to agree with
     // this one; the relation direction is pinned here so it can never drift.
-    expect(results[0]!.recordId).toBe('rec-1')
+    expect(results[0]!.recordId).toBe('def-company:rec-1')
   })
 })
 

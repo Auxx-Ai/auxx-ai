@@ -77,7 +77,7 @@ describe('resolveRelationLookups', () => {
     ])
     const results = await resolveRelationLookups(db, 'org-1', [lookup('ACME.com', 'website')])
     expect(results).toHaveLength(1)
-    expect(results[0]!.recordId).toBe('rec-1')
+    expect(results[0]!.recordId).toBe('def-company:rec-1')
     expect(results[0]!.error).toBeUndefined()
   })
 
@@ -96,7 +96,7 @@ describe('resolveRelationLookups', () => {
       { entityId: 'rec-1', valueText: 'solo@x.com', valueNumber: null, optionId: null },
     ])
     const results = await resolveRelationLookups(db, 'org-1', [lookup('Solo@X.com', 'email')])
-    expect(results[0]!.recordId).toBe('rec-1')
+    expect(results[0]!.recordId).toBe('def-company:rec-1')
   })
 
   it('reports no-match for unmatched values', async () => {
