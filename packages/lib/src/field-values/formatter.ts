@@ -15,7 +15,7 @@ import { deepEqual } from '@auxx/utils/objects'
  * Options for field type checking.
  * - `actor`: ACTOR fields with `multiple: true` count as multi-value.
  * - `multi`: scalar types (TEXT/EMAIL/URL/PHONE/…) with `multi: true`
- *   are treated as multi-value — array on read, DELETE+INSERT on write.
+ *   are treated as multi-value — array on read, row-set reconcile on write.
  */
 export interface FieldTypeOptions {
   actor?: ActorFieldOptions
@@ -194,7 +194,8 @@ export function formatToDisplayValue(
  * Check if field type stores multiple values.
  * MULTI_SELECT, TAGS, FILE, and RELATIONSHIP can have multiple values.
  * ACTOR can also have multiple values when options.actor.multiple is true.
- * Used for WRITE operations to determine DELETE+INSERT vs UPSERT strategy.
+ * Used for WRITE operations to pick the multi-row reconcile vs the
+ * single-row upsert strategy.
  */
 export function isMultiValueFieldType(fieldType: FieldType, options?: FieldTypeOptions): boolean {
   return isMultiValueType(fieldType, options)

@@ -107,8 +107,9 @@ export async function writeAiError(
  *   - Row absent → insert with `aiStatus='generating'` + metadata, typed value columns null
  *
  * Multi-value fields (MULTI_SELECT) with existing rows get the marker on
- * one representative row; the worker then replaces the full row set via
- * the normal DELETE+INSERT when it commits.
+ * one representative row; the worker's stage-2 commit then reconciles the
+ * row set in place — surviving positions keep their row ids and gain the
+ * `aiStatus='result'` marker via UPDATE.
  */
 export async function upsertGeneratingMarker(
   ctx: FieldValueContext,

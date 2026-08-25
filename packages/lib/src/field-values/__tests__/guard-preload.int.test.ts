@@ -380,6 +380,31 @@ describe('batched guard pre-read (query-reduction Phase 1)', () => {
     }
   })
 
+  it('multi-value relationship single write batch-validates once, no per-element fallback', async () => {
+    // query-reduction Phase 3: setValueWithBuiltIn primes the batch
+    // relationship validator for its own ids, so the per-element fallback
+    // SELECT inside validateAndConvertValue never fires.
+    const f = await seed()
+    const rel = await seedField(f.orgId, f.defId, 'Related', 'a4', 'RELATIONSHIP')
+    const inst = await seedInstance(f.orgId, f.defId, 'Ada')
+    const t1 = await seedInstance(f.orgId, f.defId, 'Bob')
+    const t2 = await seedInstance(f.orgId, f.defId, 'Cid')
+
+    const batchSpy = vi.spyOn(f.ctx.validator, 'batchValidateRelationships')
+    const fallbackSpy = vi.spyOn(f.ctx.validator, 'validateRelationship')
+
+    await setValueWithBuiltIn(f.ctx, {
+      recordId: recordIdFor(f.defId, inst.id),
+      fieldId: rel.id,
+      value: [{ recordId: recordIdFor(f.defId, t1.id) }, { recordId: recordIdFor(f.defId, t2.id) }],
+    })
+
+    expect(batchSpy).toHaveBeenCalledTimes(1)
+    expect(fallbackSpy).not.toHaveBeenCalled()
+    const rows = await storedRows(f.orgId, inst.id, rel.id)
+    expect(rows.map((r) => r.relatedEntityId).sort()).toEqual([t1.id, t2.id].sort())
+  })
+
   it('RELATIONSHIP rows shape identically through getValue and the derivation', async () => {
     const f = await seed()
     const rel = await seedField(f.orgId, f.defId, 'Related', 'a3', 'RELATIONSHIP')

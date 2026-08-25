@@ -635,10 +635,11 @@ export async function validateAndConvertValue(
     const isMulti = isMultiValueFieldType(fieldType, fieldOptions)
 
     // Cardinality guard: reject arrays of length > 1 on single-value fields.
-    // Without this check, `setValueWithType` would DELETE+INSERT one row per
-    // element and the entity would silently end up with multiple FieldValue
-    // rows under a (entityId, fieldId) that the read path expects to be
-    // scalar — hydrated as an array, surprising every downstream consumer.
+    // Without this check, `setValueWithType`'s reconcile would write one row
+    // per element and the entity would silently end up with multiple
+    // FieldValue rows under a (entityId, fieldId) that the read path expects
+    // to be scalar — hydrated as an array, surprising every downstream
+    // consumer.
     if (!isMulti && value.length > 1) {
       throw new BadRequestError(
         `Field ${field.id} (${fieldType}) is single-value; received ${value.length} values`
@@ -950,12 +951,18 @@ export async function preBatchValidateRelationships(
     }
   }
 
-  // Batch validate if we have relationships
+  // Batch validate if we have relationships. MERGE into the existing cache
+  // rather than replacing it: `setValueWithBuiltIn` primes its own write's
+  // ids through here, and a replace would clobber the entries an enclosing
+  // orchestrator (setValuesForEntity/setBulkValues) already paid for.
   if (relationships.length > 0) {
-    ctx.batchRelationshipValidationCache = await ctx.validator.batchValidateRelationships(
-      relationships,
-      { db: ctx.db, organizationId: ctx.organizationId }
-    )
+    const validated = await ctx.validator.batchValidateRelationships(relationships, {
+      db: ctx.db,
+      organizationId: ctx.organizationId,
+    })
+    for (const [entityId, result] of validated) {
+      ctx.batchRelationshipValidationCache.set(entityId, result)
+    }
   }
 }
 

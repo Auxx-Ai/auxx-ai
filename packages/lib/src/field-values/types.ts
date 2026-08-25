@@ -288,9 +288,9 @@ export interface SetValueWithTypeInput {
   skipInverseSync?: boolean
   /**
    * AI metadata for stage-2 commits. When present, buildFieldValueRow
-   * merges `aiStatus='result'` + `valueJson=meta` into each insert row.
-   * Absent for manual edits — the DELETE+INSERT then produces rows with
-   * `aiStatus=null`, implicitly clearing any prior AI marker.
+   * merges `aiStatus='result'` + `valueJson=meta` into each target row.
+   * Absent for manual edits — the reconcile then writes `aiStatus=null`
+   * onto surviving rows, clearing any prior AI marker in place.
    */
   aiGeneration?: AiValueMetadata
   /** See {@link SetValueWithBuiltInInput.skipSearchTextRefresh}. */

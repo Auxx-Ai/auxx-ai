@@ -571,7 +571,7 @@ export async function setValue(
   let result: TypedFieldValue[]
 
   if (isMultiValueFieldType(fieldType, fieldOptions)) {
-    // Multi-value: DELETE all + INSERT all
+    // Multi-value: positional row-set reconcile (shared with setValueWithType)
     result = await setMultiValue(ctx, recordId, fieldId, fieldType, typedInput)
   } else {
     // Single-value: UPSERT (UPDATE or INSERT)
@@ -596,9 +596,11 @@ export async function setValue(
  */
 /**
  * Shared ON CONFLICT (entityId, fieldId, sortKey) DO UPDATE clause for the
- * set path's inserts — last-write-wins on every value column, matching the
- * replace semantics. `excluded."aiStatus"` is null for a manual write, so a
- * conflicting manual write still clears a prior AI marker.
+ * set path's inserts. DEFENSIVE ONLY (Phase 3 decision): every set writer now
+ * serializes on the per-(entity, field) advisory lock, which is the real
+ * protection — this clause exists solely so a future writer that skips the
+ * lock degrades to last-write-wins instead of tripping the unique index. Do
+ * not rely on its merge semantics.
  */
 function replaceConflictUpdate() {
   return {
@@ -722,8 +724,8 @@ async function reconcileSetRowsInTx(
 
   let tailRows: ExistingSetRow[] = []
   if (plan.insertTail.length > 0) {
-    // onConflictDoUpdate stays as belt-and-braces on the tail while other
-    // writers migrate to the lock (Phase 3 re-examines it).
+    // onConflictDoUpdate is defensive only — see replaceConflictUpdate's
+    // docblock (Phase 3 decision: kept, never relied on).
     tailRows = (await tx
       .insert(schema.FieldValue)
       .values(plan.insertTail)
@@ -2564,9 +2566,9 @@ async function findUnchangedSetResult(
 
     for (let i = 0; i < values.length; i++) {
       const row = existingRows[i]!
-      // A manual set clears any persisted AI marker via its DELETE+INSERT
-      // cycle, so an existing marker makes even an identical value a REAL
-      // write (the marker must go away).
+      // A manual set clears any persisted AI marker (the reconcile writes
+      // `aiStatus: null` onto the surviving row), so an existing marker makes
+      // even an identical value a REAL write (the marker must go away).
       if (row.aiStatus != null) return null
       const insert = buildFieldValueRow({
         organizationId: ctx.organizationId,
@@ -2718,6 +2720,15 @@ export async function setValueWithBuiltIn(
   const entitySlug = resource?.apiSlug ?? ''
   const entityType = resource?.entityType ?? null
 
+  // Prime the batch relationship validator for this write's ids
+  // (query-reduction Phase 3): a multi-value RELATIONSHIP write otherwise
+  // pays one fallback SELECT per element inside validateAndConvertValue.
+  // One id is a wash; N ids collapse to one SELECT. The cache MERGE in
+  // preBatchValidateRelationships keeps an enclosing orchestrator's entries.
+  if (field.type === 'RELATIONSHIP' && value !== null && value !== undefined) {
+    await preBatchValidateRelationships(ctx, [value], ['RELATIONSHIP'])
+  }
+
   // 3. Validate and convert raw value to typed input using FieldValueValidator
   const coercedValue = await validateAndConvertValue(ctx, value, toFieldType(field.type), field)
 
@@ -2775,7 +2786,7 @@ export async function setValueWithBuiltIn(
       : null)
 
   // D-6: a confirmed re-assertion returns the stored rows untouched — no
-  // DELETE+INSERT, no oldValue pre-fetch, no display recompute, no
+  // write transaction, no oldValue derivation, no display recompute, no
   // post-hooks, no field triggers, no realtime entry. Any uncertainty in
   // the comparison answers `null` and the normal write path below runs
   // unchanged.
