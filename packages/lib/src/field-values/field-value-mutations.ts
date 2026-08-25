@@ -889,7 +889,7 @@ export async function removeValue(ctx: FieldValueContext, valueId: string): Prom
       )
     )
 
-  await ctx.db
+  const deletedRows = await ctx.db
     .delete(schema.FieldValue)
     .where(
       and(
@@ -897,6 +897,16 @@ export async function removeValue(ctx: FieldValueContext, valueId: string): Prom
         eq(schema.FieldValue.organizationId, ctx.organizationId)
       )
     )
+    .returning({ id: schema.FieldValue.id })
+
+  // Dedup watermark: a targeted remove deletes rows without touching any
+  // FieldValue.updatedAt, so without this stamp the record's
+  // GREATEST(ei.updatedAt, max(fv.updatedAt)) watermark never moves — and
+  // max(fv.updatedAt) can even DECREASE. A remove that matched nothing must
+  // not stamp (no-ops don't dirty the watermark).
+  if (deletedRows.length > 0 && row) {
+    await stampEntityInstanceUpdatedAt(ctx, row.entityId)
+  }
 
   // Update display value after removal (e.g., clear avatarUrl when avatar file is removed)
   if (row) {
@@ -1009,7 +1019,7 @@ export async function setPrimaryValue(
 export async function deleteValue(ctx: FieldValueContext, params: DeleteValueInput): Promise<void> {
   const { entityInstanceId } = parseRecordId(params.recordId)
 
-  await ctx.db
+  const deleted = await ctx.db
     .delete(schema.FieldValue)
     .where(
       and(
@@ -1018,6 +1028,15 @@ export async function deleteValue(ctx: FieldValueContext, params: DeleteValueInp
         eq(schema.FieldValue.organizationId, ctx.organizationId)
       )
     )
+    .returning({ id: schema.FieldValue.id })
+
+  // Dedup watermark stamp on real deletion only. The clear branch of
+  // `setValueWithBuiltIn` also stamps via `setValuesForEntity` — the
+  // double-stamp is harmless (delete-insert-replace plan §4 Timestamps),
+  // cheaper than detecting the caller.
+  if (deleted.length > 0) {
+    await stampEntityInstanceUpdatedAt(ctx, entityInstanceId)
+  }
 }
 
 // =============================================================================
@@ -1144,7 +1163,7 @@ export async function removeRelationValues(
   )
 
   // Delete matching relation values
-  await ctx.db
+  const deletedRelations = await ctx.db
     .delete(schema.FieldValue)
     .where(
       and(
@@ -1154,6 +1173,12 @@ export async function removeRelationValues(
         eq(schema.FieldValue.organizationId, ctx.organizationId)
       )
     )
+    .returning({ id: schema.FieldValue.id })
+
+  // Dedup watermark stamp on real deletion only (see removeValue).
+  if (deletedRelations.length > 0) {
+    await stampEntityInstanceUpdatedAt(ctx, entityInstanceId)
+  }
 
   // Sync inverse relationships (removals only)
   const field = await getField(ctx, fieldId)
@@ -1444,6 +1469,12 @@ export async function removeRelationValuesBulk(
   }
 
   const changedEntitySet = new Set(deleted.map((r) => r.entityId))
+
+  // Dedup watermark stamp, per entity that actually lost rows (see
+  // removeValue).
+  for (const entityId of changedEntitySet) {
+    await stampEntityInstanceUpdatedAt(ctx, entityId)
+  }
 
   // Inverse sync, bulk
   if (!params.skipInverseSync) {
@@ -1925,6 +1956,11 @@ export async function removeValues(
     )
     .returning()) as unknown as FieldValueRow[]
 
+  // Dedup watermark stamp on real deletion only (see removeValue).
+  if (deleted.length > 0) {
+    await stampEntityInstanceUpdatedAt(ctx, entityInstanceId)
+  }
+
   // Publish the remaining array — empty is a valid "cleared" signal.
   const remaining = await getValue(ctx, { recordId, fieldId })
   const publishValue = remaining === null ? [] : Array.isArray(remaining) ? remaining : [remaining]
@@ -2285,6 +2321,13 @@ export async function removeValuesBulk(
       id: schema.FieldValue.id,
       entityId: schema.FieldValue.entityId,
     })) as Array<{ id: string; entityId: string }>
+
+  // Dedup watermark stamp, per entity that actually lost rows (see
+  // removeValue). One statement each; bulk stamp batching is a
+  // query-reduction Phase 2 item.
+  for (const entityId of new Set(deleted.map((r) => r.entityId))) {
+    await stampEntityInstanceUpdatedAt(ctx, entityId)
+  }
 
   // Tier-1 sync capture (plan 07 §4): per record that actually lost rows.
   // Tier-1 ONLY — same rationale as `addValuesBulk` above.
