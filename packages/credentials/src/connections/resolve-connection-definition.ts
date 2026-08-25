@@ -176,6 +176,54 @@ export function gateConnectionVariables(
 }
 
 /**
+ * The variables a connect attempt may actually supply: the definition's stored
+ * `connectionVariables` **union** whatever the own-client gate injects.
+ *
+ * The BYO client descriptors are never persisted on a definition — `gateConnectionVariables`
+ * adds them at read time for the connect UI. A server route that builds its allowlist (or
+ * its secret-flag set) from the raw stored column therefore cannot see `clientId` /
+ * `clientSecret` at all, silently drops them off the query string, and falls back to the
+ * platform client. Routing every such read through this helper keeps the UI projection and
+ * the server allowlist the same function by construction.
+ *
+ * See `plans/connections/byo-oauth-client-runtime-gap.md` §2.
+ */
+export function effectiveConnectionVariables(
+  def: { connectionType: string; connectionVariables?: ConnectionVariable[] | null },
+  gate: { requiresOwnClient: boolean; ownClientOptional: boolean }
+): ConnectionVariable[] {
+  return gateConnectionVariables(def.connectionType, def.connectionVariables ?? [], gate)
+}
+
+/** Variable keys that must always be encrypted, whether or not the def declares them. */
+const ALWAYS_SECRET_KEYS = new Set(BYO_CLIENT_VARS.filter((v) => v.secret).map((v) => v.key))
+
+/**
+ * Split a supplied variable map into encrypt-me and plaintext-ok halves.
+ *
+ * Secrecy is a property of the **key**, not of whether this particular definition happened
+ * to declare it. `clientSecret` carries `secret: true` only on the injected
+ * {@link BYO_CLIENT_VARS} descriptors, so a callback deriving its secret set from the stored
+ * column alone would persist a bring-your-own client secret in plaintext metadata — which is
+ * also shipped to the browser by `apps.listConnections`.
+ */
+export function splitConnectionVariablesBySecrecy(
+  def: { connectionVariables?: ConnectionVariable[] | null },
+  variables: Record<string, string>
+): { secretFields: Record<string, string>; plainVariables: Record<string, string> } {
+  const declaredSecret = new Set(
+    (def.connectionVariables ?? []).filter((v) => v.secret).map((v) => v.key)
+  )
+  const secretFields: Record<string, string> = {}
+  const plainVariables: Record<string, string> = {}
+  for (const [key, value] of Object.entries(variables)) {
+    if (declaredSecret.has(key) || ALWAYS_SECRET_KEYS.has(key)) secretFields[key] = value
+    else plainVariables[key] = value
+  }
+  return { secretFields, plainVariables }
+}
+
+/**
  * Resolve which OAuth client id/secret a connection uses (§3.2). Precedence:
  * **per-credential `clientId`/`clientSecret` vars win when present, else the def's
  * platform client** (decrypted + interpolated by `interpolateConnectionFields`). This is

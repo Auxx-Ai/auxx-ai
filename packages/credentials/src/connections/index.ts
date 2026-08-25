@@ -28,10 +28,12 @@ export {
   BYO_CLIENT_VARS,
   type ConnectionDefinitionForRefresh,
   type CredentialOwner,
+  effectiveConnectionVariables,
   gateConnectionVariables,
   loadDefinitionForCredential,
   resolveOAuth2Client,
   resolveOAuth2RefreshConfig,
   resolveOwnClientRequirement,
+  splitConnectionVariablesBySecrecy,
 } from './resolve-connection-definition'
 export type { DecryptedConnectionData } from './types'

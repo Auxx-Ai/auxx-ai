@@ -32,6 +32,7 @@ const {
   resolveAppSlug,
   resolveAppConnection,
   resolveOAuth2Client,
+  resolveOwnClientGateForOrg,
   resolveOwnClientRequirement,
 } = vi.hoisted(() => ({
   getCapabilities: vi.fn(),
@@ -43,9 +44,21 @@ const {
   resolveAppConnection: vi.fn(),
   resolveOAuth2Client: vi.fn(() => ({ clientId: 'client_abc' })),
   resolveOwnClientRequirement: vi.fn(() => ({ requiresOwnClient: false, reason: null })),
+  // Added 2026-08-25: the route swapped to the org-aware gate in #1795 and this file was
+  // never updated, so every case here 500'd on an undefined import from that PR onward.
+  resolveOwnClientGateForOrg: vi.fn(async () => ({
+    requiresOwnClient: false,
+    ownClientOptional: false,
+    reason: null,
+  })),
 }))
 
-vi.mock('@auxx/config/urls', () => ({ WEBAPP_URL: 'http://localhost:3000' }))
+// Partial for the same reason as the connections barrel below — a full replacement drops
+// every other URL export the (now real) connections module reaches for.
+vi.mock('@auxx/config/urls', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@auxx/config/urls')>()),
+  WEBAPP_URL: 'http://localhost:3000',
+}))
 
 vi.mock('@auxx/database', async () =>
   (await import('~/test/database-mock')).mockAuxxDatabase({
@@ -60,7 +73,18 @@ vi.mock('@auxx/database', async () =>
 
 vi.mock('@auxx/lib/apps', () => ({ resolveAppConnectionForRuntime: resolveAppConnection }))
 vi.mock('@auxx/lib/cache', () => ({ resolveAppSlug }))
-vi.mock('@auxx/lib/connections', () => ({ resolveOAuth2Client, resolveOwnClientRequirement }))
+/**
+ * Partial, not a full replacement: the route pulls six things off this barrel and only the
+ * two org-aware ones need stubbing. Enumerating the rest is how this file went red — #1795
+ * added `resolveOwnClientGateForOrg` to the route and the mock never grew it, so every case
+ * below 500'd on an undefined import from 2026-08-21 until 2026-08-25.
+ */
+vi.mock('@auxx/lib/connections', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@auxx/lib/connections')>()),
+  resolveOAuth2Client,
+  resolveOwnClientGateForOrg,
+  resolveOwnClientRequirement,
+}))
 
 /**
  * The `@auxx/lib/permissions` barrel hangs under vitest, so it can't be partially mocked — but
@@ -80,8 +104,14 @@ vi.mock('@auxx/lib/permissions', async () => {
   }
 })
 
-vi.mock('@auxx/redis', () => ({ getRedisClient: async () => redis }))
-vi.mock('@auxx/services/app-connections', () => ({ interpolateConnectionFields: interpolate }))
+vi.mock('@auxx/redis', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@auxx/redis')>()),
+  getRedisClient: async () => redis,
+}))
+vi.mock('@auxx/services/app-connections', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@auxx/services/app-connections')>()),
+  interpolateConnectionFields: interpolate,
+}))
 vi.mock('@auxx/logger', async () => (await import('~/test/logger-mock')).mockAuxxLogger())
 vi.mock('next/headers', () => ({ headers: async () => new Headers() }))
 vi.mock('~/auth/server', () => ({ auth: { api: { getSession } } }))

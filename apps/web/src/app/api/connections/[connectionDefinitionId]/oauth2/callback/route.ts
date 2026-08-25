@@ -7,6 +7,7 @@ import {
   resolveOAuth2Client,
   runPostConnectHook,
   saveConnection,
+  splitConnectionVariablesBySecrecy,
 } from '@auxx/lib/connections'
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
@@ -254,17 +255,14 @@ export async function GET(
       }
     }
 
-    // Split stored variables by the definition's secret flag: secret-flagged values are encrypted
-    // under `secrets.fields`; plain ones persist in plaintext metadata.
-    const secretVariableKeys = new Set(
-      (connDef.connectionVariables ?? []).filter((v) => v.secret).map((v) => v.key)
+    // Split stored variables by secrecy: secret values are encrypted under `secrets.fields`;
+    // plain ones persist in plaintext metadata. Secrecy is a property of the KEY, not of
+    // whether this def declared it — `clientSecret` is flagged only on the injected BYO
+    // descriptors. See plans/connections/byo-oauth-client-runtime-gap.md §3 F2.
+    const { secretFields, plainVariables } = splitConnectionVariablesBySecrecy(
+      connDef,
+      connectionVariables
     )
-    const secretFields: Record<string, string> = {}
-    const plainVariables: Record<string, string> = {}
-    for (const [key, value] of Object.entries(connectionVariables)) {
-      if (secretVariableKeys.has(key)) secretFields[key] = value
-      else plainVariables[key] = value
-    }
 
     const result = await saveConnection({
       connectionDefinitionId: connDef.id,

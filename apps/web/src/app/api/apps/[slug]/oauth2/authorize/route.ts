@@ -7,6 +7,8 @@ import { resolveAppConnectionForRuntime } from '@auxx/lib/apps'
 import { resolveAppSlug } from '@auxx/lib/cache'
 import {
   appOAuthCallbackUrl,
+  BYO_CLIENT_KEYS,
+  effectiveConnectionVariables,
   resolveOAuth2Client,
   resolveOwnClientGateForOrg,
   stripUnentitledOwnClientVars,
@@ -196,9 +198,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // gating. A verified platform client offers BYO only to orgs holding `byoOAuthClient`.
     const ownClient = await resolveOwnClientGateForOrg(organizationId, connDef)
 
-    // Extract connection variables from query params (allowlisted by definitions)
+    // Extract connection variables from query params (allowlisted by definitions).
+    // The allowlist is the GATED list, not the raw stored column: the BYO client
+    // descriptors are injected at read time and never persisted, so iterating the stored
+    // column alone drops `var_clientId`/`var_clientSecret` and silently falls back to the
+    // platform client. See plans/connections/byo-oauth-client-runtime-gap.md §2.
     const rawVariables: Record<string, string> = {}
-    const connectionVarDefs = connDef.connectionVariables ?? []
+    const connectionVarDefs = effectiveConnectionVariables(connDef, ownClient)
     for (const varDef of connectionVarDefs) {
       const value = searchParams.get(`var_${varDef.key}`) ?? storedVariables[varDef.key]
       if (!value && varDef.required !== false) {
@@ -208,6 +214,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         )
       }
       if (value) rawVariables[varDef.key] = value
+    }
+
+    // A revoked entitlement must not repoint a LIVE BYO connection at the platform client.
+    // When the gate closes, `effectiveConnectionVariables` stops listing the client vars, so
+    // the loop above cannot even reach their stored values — carry them forward explicitly.
+    // `stripUnentitledOwnClientVars` below then keeps them precisely because they are stored
+    // (it only drops caller-supplied ones), which is the promise its doc comment makes.
+    for (const key of BYO_CLIENT_KEYS) {
+      if (!rawVariables[key] && storedVariables[key]) rawVariables[key] = storedVariables[key]
     }
 
     // The connect dialog hides the BYO fields when the gate offers no BYO path, but this
@@ -227,6 +242,23 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json(
         {
           error: 'This connection requires your own OAuth client id and secret',
+          reason: ownClient.reason,
+        },
+        { status: 400 }
+      )
+    }
+
+    // Half a BYO pair is never valid: the authorize would carry the caller's client id while
+    // the token exchange signed with the platform secret, and the provider answers with an
+    // opaque `invalid_client` the user cannot act on. The connect dialog already enforces
+    // all-or-nothing (`applyOwnClientDisclosure`); this is the same rule server-side, for the
+    // optional gates the guard above does not cover.
+    if (!!connectionVariables.clientId !== !!connectionVariables.clientSecret) {
+      return NextResponse.json(
+        {
+          error: connectionVariables.clientId
+            ? 'Your own OAuth client secret is required when a client id is supplied'
+            : 'Your own OAuth client id is required when a client secret is supplied',
           reason: ownClient.reason,
         },
         { status: 400 }
