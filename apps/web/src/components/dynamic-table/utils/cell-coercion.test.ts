@@ -98,3 +98,79 @@ describe('coerceForPaste — select across columns', () => {
     expect(result).toEqual({ ok: false, reason: 'no-matching-option' })
   })
 })
+
+/**
+ * Paste checked only the def PREFIX of a pasted RecordId, never that the target
+ * still existed — so copying a dangling cell cloned the broken reference into
+ * another row. `isMissingRecord` is the verdict from `record.checkMissingTargets`,
+ * which resolves the target's own backing table; it is never "the client could
+ * not resolve it", because a record this member cannot see is alive.
+ */
+describe('coerceForPaste — dangling relationship targets', () => {
+  const DEAD = 'work_order:dead_instance_id'
+  const LIVE = 'work_order:live_instance_id'
+
+  function relationshipField(): ResourceField {
+    return {
+      id: toFieldId('rel'),
+      key: 'rel',
+      label: 'Work Order',
+      type: 'string',
+      fieldType: 'RELATIONSHIP',
+      options: {
+        relationship: { relationshipType: 'has_many', relatedEntityDefinitionId: 'work_order' },
+      },
+      capabilities: { updatable: true },
+    } as unknown as ResourceField
+  }
+
+  const isMissingRecord = (recordId: string) => recordId === DEAD
+
+  it('refuses a lossless RecordId whose target is confirmed deleted', () => {
+    const result = coerceForPaste(
+      { display: 'Dead WO', fieldType: 'RELATIONSHIP', recordId: DEAD },
+      relationshipField(),
+      { columnId: 'rel', isMissingRecord }
+    )
+    expect(result).toEqual({ ok: false, reason: 'no-matching-record' })
+  })
+
+  it('still accepts a live RecordId', () => {
+    const result = coerceForPaste(
+      { display: 'Live WO', fieldType: 'RELATIONSHIP', recordId: LIVE },
+      relationshipField(),
+      { columnId: 'rel', isMissingRecord }
+    )
+    expect(result).toEqual({ ok: true, value: LIVE })
+  })
+
+  it('drops only the dead legs of a has_many RecordId round-trip', () => {
+    const result = coerceForPaste(
+      { display: `${LIVE}, ${DEAD}`, fieldType: 'RELATIONSHIP' },
+      relationshipField(),
+      { columnId: 'rel', isMissingRecord }
+    )
+    expect(result).toEqual({ ok: true, value: [LIVE] })
+  })
+
+  it('skips the cell when every leg of the round-trip is dead', () => {
+    const result = coerceForPaste(
+      { display: DEAD, fieldType: 'RELATIONSHIP' },
+      relationshipField(),
+      { columnId: 'rel', isMissingRecord }
+    )
+    expect(result).toEqual({ ok: false, reason: 'no-matching-record' })
+  })
+
+  it('is unchanged when no verdict is supplied — the check fails OPEN', () => {
+    // No callback (or a failed/timed-out existence call) must never block a
+    // paste: the reference is already broken, and refusing a valid paste is the
+    // worse failure.
+    const result = coerceForPaste(
+      { display: 'Dead WO', fieldType: 'RELATIONSHIP', recordId: DEAD },
+      relationshipField(),
+      { columnId: 'rel' }
+    )
+    expect(result).toEqual({ ok: true, value: DEAD })
+  })
+})

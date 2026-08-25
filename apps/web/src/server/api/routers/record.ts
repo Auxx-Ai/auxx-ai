@@ -12,6 +12,7 @@ import {
 } from '@auxx/lib/permissions'
 import {
   type CreateEntityResult,
+  findMissingRecordTargets,
   type LookupCandidate,
   RESOURCE_TABLE_REGISTRY,
   UnifiedCrudHandler,
@@ -662,6 +663,32 @@ export const recordRouter = createTRPCRouter({
           message: `Failed to fetch records by IDs: ${message}`,
         })
       }
+    }),
+
+  /**
+   * Which of these RecordIds point at a target that no longer exists?
+   *
+   * 🛑 **Not the inverse of {@link getByIds}.** That procedure answers "can THIS
+   * viewer read it" — it drops mail-lens ids for everyone, drops whole defs the
+   * viewer's record scope excludes, and narrows per row in SQL. A caller that
+   * treated a hydration miss as deletion would let a restricted viewer strip
+   * references they merely could not see, for everyone. `findMissingRecordTargets`
+   * answers from the target's own backing table and refuses to judge anything it
+   * cannot resolve to `EntityInstance`.
+   *
+   * Deliberately NOT scoped by record visibility: the answer is existence, not
+   * content, and the caller already holds the id (it is stored on a record they
+   * are editing). Returning `[]` on any failure keeps the caller's fallback the
+   * safe one — keep the reference.
+   */
+  checkMissingTargets: capabilityProcedure
+    .input(z.object({ items: z.array(recordIdSchema).max(100) }))
+    .query(async ({ ctx, input }) => {
+      const result = await findMissingRecordTargets(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        recordIds: input.items as RecordId[],
+      })
+      return { missing: result.isOk() ? result.value : [] }
     }),
 
   /**

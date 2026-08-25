@@ -31,6 +31,19 @@ export interface CoerceOptions {
   resolveRelationshipByDisplay?: (columnId: string, query: string) => string | null
   /** Resolve an actor target by display name. Returns an ActorId or null. */
   resolveActorByDisplay?: (columnId: string, query: string) => string | null
+  /**
+   * Is this RecordId's target **confirmed hard-deleted**? Pasting a dangling
+   * reference clones it into another row, so the RecordId branches below refuse
+   * one that answers `true`.
+   *
+   * 🛑 **Must be a positive existence verdict, not "the client could not resolve
+   * it".** A record the pasting member cannot see is alive, and dropping it here
+   * would silently discard a valid paste. Callers get this from
+   * `record.checkMissingTargets`, which answers from the target's own backing
+   * table and refuses to judge anything it cannot resolve to `EntityInstance`.
+   * Omitting the callback keeps today's behavior (def-prefix check only).
+   */
+  isMissingRecord?: (recordId: RecordId) => boolean
 }
 
 export type CoerceResult = { ok: true; value: unknown } | { ok: false; reason: CoerceReason }
@@ -225,6 +238,11 @@ export function coerceForPaste(
             return { ok: false, reason: 'wrong-entity-type' }
           }
         }
+        // The def prefix alone never proved the target still exists — copying a
+        // dangling cell cloned the broken reference into another row.
+        if (opts.isMissingRecord?.(source.recordId as RecordId)) {
+          return { ok: false, reason: 'no-matching-record' }
+        }
         return { ok: true, value: source.recordId }
       }
 
@@ -243,7 +261,9 @@ export function coerceForPaste(
           )
           if (!allMatch) return { ok: false, reason: 'wrong-entity-type' }
         }
-        return { ok: true, value: hasMany ? candidates : candidates[0] }
+        const live = candidates.filter((c) => !opts.isMissingRecord?.(c as RecordId))
+        if (live.length === 0) return { ok: false, reason: 'no-matching-record' }
+        return { ok: true, value: hasMany ? live : live[0] }
       }
 
       // Display-name lookup (phase 2d callback).

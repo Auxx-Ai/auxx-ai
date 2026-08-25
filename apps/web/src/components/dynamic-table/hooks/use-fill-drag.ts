@@ -3,9 +3,11 @@
 
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback, useRef } from 'react'
+import { api } from '~/trpc/react'
 import { useSelectionStore } from '../stores/selection-store'
 import type { CellRange, CellSelectionConfig, CopyCellPayload, RangeEndpoint } from '../types'
 import { type CoerceReason, coerceForPaste, reasonToLabel } from '../utils/cell-coercion'
+import { collectPastedRecordIds, resolveMissingRecordIds } from '../utils/missing-record-targets'
 import { rangeBounds } from '../utils/range'
 import type { CellIndexer } from './use-cell-indexer'
 import { usePointerDrag } from './use-pointer-drag'
@@ -72,6 +74,8 @@ export function useFillDrag({
   configRef.current = config
 
   const localRef = useRef<LocalDragState | null>(null)
+
+  const checkMissingTargets = api.useUtils().record.checkMissingTargets
 
   const { begin } = usePointerDrag({ enabled, scrollContainerRef })
 
@@ -182,6 +186,14 @@ export function useFillDrag({
         sourcePayloads.push(rowArr)
       }
 
+      // Same guard as paste: a filled RecordId was only checked for its def
+      // prefix, so dragging a dangling cell propagated the broken reference.
+      // Fails open — an unresolvable check never blocks the fill.
+      const missingRecordIds = await resolveMissingRecordIds(
+        checkMissingTargets,
+        collectPastedRecordIds(sourcePayloads.flat())
+      )
+
       const updates: Array<{ rowId: string; columnId: string; value: unknown }> = []
       const aiCells: Array<{ rowId: string; columnId: string }> = []
       const reasons = new Map<CoerceReason, number>()
@@ -223,6 +235,7 @@ export function useFillDrag({
             columnId: targetColId,
             resolveRelationshipByDisplay: cfg.resolveRelationshipByDisplay,
             resolveActorByDisplay: cfg.resolveActorByDisplay,
+            isMissingRecord: (recordId) => missingRecordIds.has(recordId),
           })
           if (result.ok) {
             updates.push({ rowId: targetRowId, columnId: targetColId, value: result.value })
@@ -296,7 +309,7 @@ export function useFillDrag({
         })
       }
     },
-    [tableId]
+    [tableId, checkMissingTargets]
   )
 
   const beginFillDrag = useCallback(

@@ -3,9 +3,11 @@
 
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback, useEffect, useRef } from 'react'
+import { api } from '~/trpc/react'
 import { useSelectionStore } from '../stores/selection-store'
 import type { CellAddress, CellSelectionConfig, CopyCellPayload, RangeEndpoint } from '../types'
 import { type CoerceReason, coerceForPaste, reasonToLabel } from '../utils/cell-coercion'
+import { collectPastedRecordIds, resolveMissingRecordIds } from '../utils/missing-record-targets'
 import { rangeBounds } from '../utils/range'
 import type { CellIndexer } from './use-cell-indexer'
 
@@ -123,6 +125,8 @@ export function useCellClipboard({
   config,
   indexer,
 }: UseCellClipboardOptions) {
+  const checkMissingTargets = api.useUtils().record.checkMissingTargets
+
   const handleCopy = useCallback(async () => {
     if (!config) return
     const range = useSelectionStore.getState().getRange(tableId)
@@ -245,6 +249,14 @@ export function useCellClipboard({
       const rows = parseClipboardRows(sidecarJson, plainText)
       if (rows.length === 0) return
 
+      // A pasted RecordId was only ever checked for the right def prefix, so
+      // copying a dangling cell cloned the broken reference. Resolve the
+      // confirmed-deleted subset once for the whole paste; fails open.
+      const missingRecordIds = await resolveMissingRecordIds(
+        checkMissingTargets,
+        collectPastedRecordIds(rows.flat())
+      )
+
       const { rowIds, columnIds } = indexer
       const updates: Array<{ rowId: string; columnId: string; value: unknown }> = []
       const reasons = new Map<CoerceReason | 'out-of-bounds' | 'no-field', number>()
@@ -309,6 +321,7 @@ export function useCellClipboard({
             columnId: targetColId,
             resolveRelationshipByDisplay: config.resolveRelationshipByDisplay,
             resolveActorByDisplay: config.resolveActorByDisplay,
+            isMissingRecord: (recordId) => missingRecordIds.has(recordId),
           })
           if (result.ok) {
             updates.push({ rowId: targetRowId, columnId: targetColId, value: result.value })
@@ -371,7 +384,7 @@ export function useCellClipboard({
         })
       }
     },
-    [config, tableId, indexer]
+    [config, tableId, indexer, checkMissingTargets]
   )
 
   // Mount a hidden textarea inside the scroll container. The native `paste`

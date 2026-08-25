@@ -20,6 +20,7 @@ import { useRelationship, useResourceStore } from '~/components/resources'
 import { useDebouncedValue } from '~/hooks/use-debounced-value'
 import { api } from '~/trpc/react'
 import { RecordItem } from './record-item'
+import { usePruneDeletedSelections } from './use-prune-deleted-selections'
 
 /**
  * Props for the RecordPickerContent component
@@ -208,6 +209,17 @@ export function RecordPickerContent({
 
   // Hydrate items that will appear in the Selected section (snapshot + pinned)
   const { items: hydratedItems, isLoading: isHydrating } = useRelationship(selectedSectionIds)
+
+  // Drop references to hard-deleted records from the selection, so closing the
+  // picker stops re-committing ids the user can neither see nor deselect.
+  // Hydration only NOMINATES (`null`, never `undefined`); the server decides.
+  usePruneDeletedSelections({
+    recordIds: selectedSectionIds,
+    hydratedItems,
+    value,
+    onChange,
+    enabled: !disabled,
+  })
 
   // Build map of hydrated items for quick lookup
   const hydratedMap = useMemo(() => {
