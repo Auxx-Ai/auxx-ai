@@ -3,7 +3,12 @@
 import { describe, expect, it } from 'vitest'
 import { RESOURCE_FIELD_REGISTRY } from './field-registry'
 import type { ResourceField } from './field-types'
-import { findNamedImporter, getImportAuthorityDefId, getNamedImporters } from './field-utils'
+import {
+  findNamedImporter,
+  findNamedImporterByTarget,
+  getImportAuthorityDefId,
+  getNamedImporters,
+} from './field-utils'
 
 /**
  * NAMED IMPORTERS — the doors to defs that are deliberately hidden.
@@ -63,25 +68,61 @@ describe('registry named-importer declarations', () => {
 })
 
 describe('named-importer target validation', () => {
-  it('accepts a target the host actually declares', () => {
-    expect(findNamedImporter('part', 'vendor_part')?.label).toBe('Import supplier prices')
-    expect(findNamedImporter('part', 'subpart')?.label).toBe('Import BOM')
+  it('accepts the declaring field key the menu actually links with', () => {
+    expect(findNamedImporter('part', 'part_vendor_parts')?.label).toBe('Import supplier prices')
+    expect(findNamedImporter('part', 'part_vendor_parts')?.entityDefinitionId).toBe('vendor_part')
+    expect(findNamedImporter('part', 'part_subparts')?.label).toBe('Import BOM')
+    expect(findNamedImporter('part', 'part_subparts')?.entityDefinitionId).toBe('subpart')
   })
 
-  // 🛑 The whole point of validating `?target=`: without this the query param is a
-  // way to start an import job against any def at all, from a page that never
-  // offered it. A hidden def is not an access-controlled one.
-  it('refuses a target the host does not declare', () => {
+  // 🛑 REGRESSION, shipped broken in #1889 and caught only by clicking the menu.
+  //
+  // The link used to carry the TARGET DEF ID. In the static registry that reads
+  // `vendor_part`; in the org-merged resource the client builds the menu from, the
+  // DB row's `inverseResourceFieldId` carries the org's EntityDefinition CUID. So
+  // the browser emitted `?target=lmzi8ndslfl31zn13qs61igk`, this lookup compared it
+  // against `'vendor_part'`, matched nothing, and the route fell back to `part` —
+  // every named importer opened the HOST's importer instead of the satellite's.
+  // Silent: the item rendered, the click worked, the wrong wizard opened.
+  //
+  // ⚠️ A def id is not a stable wire value. A field key is.
+  it('refuses a raw def id — the keyspace bug that shipped in #1889', () => {
+    expect(findNamedImporter('part', 'vendor_part')).toBeNull()
+    expect(findNamedImporter('part', 'subpart')).toBeNull()
+    // …and an org's CUID for the same def, which is what actually reached the URL.
+    expect(findNamedImporter('part', 'lmzi8ndslfl31zn13qs61igk')).toBeNull()
+  })
+
+  // The whole point of validating `?target=`: without it the query param is a way
+  // to start an import job against any def at all, from a page that never offered
+  // it. A hidden def is not an access-controlled one.
+  it('refuses a key the host does not declare', () => {
     expect(findNamedImporter('part', 'contact')).toBeNull()
-    expect(findNamedImporter('part', 'invoice')).toBeNull()
+    expect(findNamedImporter('part', 'part_sku')).toBeNull()
     expect(findNamedImporter('part', 'part')).toBeNull()
-    expect(findNamedImporter('contact', 'vendor_part')).toBeNull()
+    expect(findNamedImporter('contact', 'part_vendor_parts')).toBeNull()
+  })
+
+  // Every declared importer must be reachable by the key the menu builds from the
+  // ORG-MERGED field, which is `systemAttribute ?? key` — the same expression
+  // `getFieldOutputKey` uses, and the one records-view emits.
+  it('is reachable by the key the client menu emits, for every declaration', () => {
+    for (const resource of resources) {
+      for (const field of resource.fields) {
+        if (!field.namedImporter) continue
+        const clientKey = field.systemAttribute ?? field.key
+        expect(
+          findNamedImporter(resource.id, clientKey),
+          `${resource.id}.${field.key} unreachable via '${clientKey}'`
+        ).not.toBeNull()
+      }
+    }
   })
 
   it('refuses the reverse BOM direction, which is declared nowhere', () => {
-    expect(findNamedImporter('part', 'subpart')).not.toBeNull()
-    const usedInTarget = part.fields.find((f) => f.key === 'usedInAssemblies')
-    expect(usedInTarget?.namedImporter).toBeUndefined()
+    expect(findNamedImporter('part', 'part_used_in_assemblies')).toBeNull()
+    const usedIn = part.fields.find((f) => f.key === 'usedInAssemblies')
+    expect(usedIn?.namedImporter).toBeUndefined()
   })
 })
 
@@ -110,5 +151,71 @@ describe('import authority inheritance', () => {
         expect(getImportAuthorityDefId(importer.entityDefinitionId)).toBe(resource.id)
       }
     }
+  })
+})
+
+/**
+ * The tolerant edge. One canonical wire format (the field key), but a def id or
+ * CUID that shows up in `?target=` is RESOLVED rather than refused — the route
+ * normalizes the CUID through the org cache first, then asks this.
+ */
+describe('findNamedImporterByTarget — normalizing a def id', () => {
+  it('resolves a def id to its single declared importer', () => {
+    expect(findNamedImporterByTarget('part', 'vendor_part')).toMatchObject({
+      label: 'Import supplier prices',
+      fieldKey: 'part_vendor_parts',
+    })
+    expect(findNamedImporterByTarget('part', 'subpart')).toMatchObject({
+      label: 'Import BOM',
+      fieldKey: 'part_subparts',
+    })
+  })
+
+  // It hands back the FIELD KEY, which is what makes canonicalizing possible: the
+  // route rewrites the URL to this and everything downstream speaks one language.
+  it('hands back the canonical field key to rewrite the URL with', () => {
+    const resolved = findNamedImporterByTarget('part', 'vendor_part')
+    expect(resolved).not.toBeNull()
+    expect(resolved).not.toBe('ambiguous')
+    if (resolved && resolved !== 'ambiguous') {
+      expect(findNamedImporter('part', resolved.fieldKey)).toMatchObject({ label: resolved.label })
+    }
+  })
+
+  it('refuses a def this host declares no importer for', () => {
+    expect(findNamedImporterByTarget('part', 'contact')).toBeNull()
+    expect(findNamedImporterByTarget('part', 'part')).toBeNull()
+    expect(findNamedImporterByTarget('contact', 'vendor_part')).toBeNull()
+  })
+
+  // 🛑 The reason the field key is canonical and this is only the fallback.
+  // `part.subparts` and `part.usedInAssemblies` BOTH target `subpart`; today only
+  // the first declares an importer, so `'subpart'` still resolves. The moment a
+  // second declaration lands on one target, a def id stops being an identifier and
+  // this must refuse rather than silently pick the first.
+  it("answers 'ambiguous' when two importers share one target def", () => {
+    const twoDoorsOneDef = {
+      fields: [
+        {
+          key: 'down',
+          systemAttribute: 'x_down',
+          namedImporter: { label: 'Import components' },
+          relationship: { inverseResourceFieldId: 'subpart:parentPart', isInverse: true },
+        },
+        {
+          key: 'up',
+          systemAttribute: 'x_up',
+          namedImporter: { label: 'Import used-in' },
+          relationship: { inverseResourceFieldId: 'subpart:childPart', isInverse: true },
+        },
+      ] as unknown as ResourceField[],
+    }
+    // Both legs resolve to the same target def, so getNamedImporters lists two…
+    expect(getNamedImporters(twoDoorsOneDef).map((i) => i.entityDefinitionId)).toEqual([
+      'subpart',
+      'subpart',
+    ])
+    // …and the field key still distinguishes them, which the def id cannot.
+    expect(new Set(getNamedImporters(twoDoorsOneDef).map((i) => i.fieldKey)).size).toBe(2)
   })
 })

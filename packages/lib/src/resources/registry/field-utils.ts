@@ -319,7 +319,13 @@ export interface NamedImporter {
   label: string
   /** The def a job started from this entry targets, e.g. `'vendor_part'`. */
   entityDefinitionId: string
-  /** The declaring relation field's output key — stable id for the menu item. */
+  /**
+   * The declaring relation field's output key (`part_vendor_parts`).
+   *
+   * This is the WIRE IDENTIFIER for the importer — what `?target=` carries and what
+   * {@link findNamedImporter} matches on. Unlike a def id it means the same thing in
+   * the static registry and in an org-merged resource; see that function.
+   */
   fieldKey: string
 }
 
@@ -391,25 +397,68 @@ export function getImportAuthorityDefId(entityDefinitionId: string): string {
 }
 
 /**
- * The named importer `hostDefId` declares for `targetDefId`, or null.
+ * The named importer `hostDefId` declares under `fieldKey`, or null.
  *
- * This is the VALIDATOR behind `?target=` on an import route. A target that no
- * host declares is not merely unlabelled, it is refused — otherwise the query
- * param is a way to start a job against any def at all, and a hidden def is not
- * an access-controlled one.
+ * This is the VALIDATOR behind `?target=` on an import route. A key that no host
+ * declares is not merely unlabelled, it is refused — otherwise the query param is
+ * a way to start a job against any def at all, and a hidden def is not an
+ * access-controlled one.
+ *
+ * 🛑 Keyed by the DECLARING FIELD, never by the target def id, because a def id is
+ * two different strings depending on who is holding it. In the static registry a
+ * relation's `inverseResourceFieldId` reads `vendor_part:part`; in the org-merged
+ * resource the client renders from, the DB row's copy of that ref carries the org's
+ * EntityDefinition **CUID** instead. So a menu built client-side emitted
+ * `?target=lmzi8ndslfl31zn13qs61igk`, this function compared it against
+ * `'vendor_part'`, found nothing, and every named importer silently fell back to
+ * the host's own importer — the menu item worked, it just opened the wrong wizard.
+ * A field key (`part_vendor_parts`) is the same string in both keyspaces.
  *
  * @param hostDefId - The resource whose page the importer was opened from
- * @param targetDefId - The def named in the link
+ * @param fieldKey - The declaring relation field's output key, from the link
  * @returns The declaration, or null when the host declares no such importer
  */
-export function findNamedImporter(hostDefId: string, targetDefId: string): NamedImporter | null {
+export function findNamedImporter(hostDefId: string, fieldKey: string): NamedImporter | null {
   for (const declaration of declaredNamedImporters()) {
-    if (declaration.hostDefId === hostDefId && declaration.entityDefinitionId === targetDefId) {
+    if (declaration.hostDefId === hostDefId && declaration.fieldKey === fieldKey) {
       const { hostDefId: _host, ...importer } = declaration
       return importer
     }
   }
   return null
+}
+
+/**
+ * The named importer `hostDefId` declares FOR a target def, or null.
+ *
+ * The tolerant twin of {@link findNamedImporter}, for normalizing a `?target=`
+ * that arrived as a def id instead of the canonical field key — a hand-edited
+ * URL, an old bookmark, or a caller that had the org's EntityDefinition CUID in
+ * hand and reached for it. Resolve the CUID to an `entityType` first (the org
+ * cache does that), then ask this.
+ *
+ * ⚠️ Returns `'ambiguous'` when the host declares MORE THAN ONE importer onto the
+ * same target def, because then a def id genuinely cannot say which door was
+ * meant. That is not hypothetical: `part.subparts` and `part.usedInAssemblies`
+ * both target `subpart` — today only the first declares an importer, and this
+ * guard is what keeps the second from silently resolving to the first if that
+ * ever changes. A def id names the DESTINATION; the field key names the DOOR.
+ *
+ * @param hostDefId - The resource whose page the importer was opened from
+ * @param entityDefinitionId - The target def, already normalized to `entityType`
+ * @returns The single declaration, `'ambiguous'`, or null when none matches
+ */
+export function findNamedImporterByTarget(
+  hostDefId: string,
+  entityDefinitionId: string
+): NamedImporter | 'ambiguous' | null {
+  const matches = [...declaredNamedImporters()].filter(
+    (d) => d.hostDefId === hostDefId && d.entityDefinitionId === entityDefinitionId
+  )
+  if (matches.length === 0) return null
+  if (matches.length > 1) return 'ambiguous'
+  const { hostDefId: _host, ...importer } = matches[0]!
+  return importer
 }
 
 /**

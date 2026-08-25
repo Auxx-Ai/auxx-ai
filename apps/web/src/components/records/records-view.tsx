@@ -7,11 +7,7 @@ import { converters } from '@auxx/lib/field-values/client'
 import { canEditRecordAtRung, FeatureKey } from '@auxx/lib/permissions/client'
 import type { RecordId, ResourceField } from '@auxx/lib/resources/client'
 import type { ActorId } from '@auxx/types/actor'
-import {
-  type AiOptions,
-  getRelatedEntityDefinitionId,
-  type RelationshipConfig,
-} from '@auxx/types/custom-field'
+import { type AiOptions, getRelatedEntityDefinitionId } from '@auxx/types/custom-field'
 import { keyToFieldRef, toFieldId, toResourceFieldId } from '@auxx/types/field'
 import type { TypedFieldValue } from '@auxx/types/field-value'
 import { Button } from '@auxx/ui/components/button'
@@ -124,17 +120,23 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
   // NAMED IMPORTERS — extra Import entries this resource hosts for its hidden
   // satellites. `part` declares "Import supplier prices" on `part.vendorParts`,
   // because `vendor_part` is invisible and so has no records page of its own to
-  // put an Import button on. The target def is read off the declaring relation,
-  // never restated. Empty for every resource that declares none, which is all
-  // but one today.
+  // put an Import button on. Empty for every resource that declares none, which is
+  // all but one today.
+  //
+  // 🛑 The link carries the DECLARING FIELD's key, never the target def id. This
+  // resource is org-MERGED, so its relations' `inverseResourceFieldId` holds the
+  // org's EntityDefinition CUID, while the server validates against the static
+  // registry, where the same relation reads `vendor_part:part`. Sending the def id
+  // meant the server matched nothing and silently fell back to the host's own
+  // importer: the menu item opened the WRONG wizard. A field key is the same string
+  // on both sides.
   const namedImporters = useMemo(
     () =>
-      (resource?.fields ?? []).flatMap((field) => {
-        if (!field.namedImporter || !field.relationship) return []
-        const target = getRelatedEntityDefinitionId(field.relationship as RelationshipConfig)
-        if (!target) return []
-        return [{ label: field.namedImporter.label, target }]
-      }),
+      (resource?.fields ?? []).flatMap((field) =>
+        field.namedImporter
+          ? [{ label: field.namedImporter.label, target: field.systemAttribute ?? field.key }]
+          : []
+      ),
     [resource?.fields]
   )
 
