@@ -11,7 +11,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm'
 import { getOrgCache, requireCachedEntityDefId } from '../../cache'
 import { createFieldValueContext } from '../../field-values/field-value-helpers'
 import { buildFieldValueRow, setValueWithType } from '../../field-values/field-value-mutations'
-import { toFieldType } from '../../field-values/stored-field-type'
+import { type StoredFieldType, toFieldType } from '../../field-values/stored-field-type'
 import {
   type FieldValueUpdateEntry,
   getRealtimeService,
@@ -130,42 +130,45 @@ export const explodeBomMovement: EntityTriggerHandler = async (event) => {
     const instanceId = insertedInstances[i]!.id
 
     // Define typed values for this child movement
-    const typedValues: Array<{ fieldId: string; value: TypedFieldValueInput }> = [
+    const typedValues: Array<{
+      field: { id: string; type: StoredFieldType }
+      value: TypedFieldValueInput
+    }> = [
       {
-        fieldId: fields.stock_movement_part!.id,
+        field: fields.stock_movement_part!,
         value: {
           type: 'relationship',
           recordId: toRecordId(partDefId, target.partInstanceId) as RecordId,
         },
       },
       {
-        fieldId: fields.stock_movement_quantity!.id,
+        field: fields.stock_movement_quantity!,
         value: { type: 'number', value: target.quantity },
       },
       {
-        fieldId: fields.stock_movement_type!.id,
+        field: fields.stock_movement_type!,
         value: { type: 'option', optionId: type as string },
       },
       {
-        fieldId: fields.stock_movement_adjust_subparts!.id,
+        field: fields.stock_movement_adjust_subparts!,
         value: { type: 'boolean', value: false },
       },
       {
-        fieldId: fields.stock_movement_parent_movement!.id,
+        field: fields.stock_movement_parent_movement!,
         value: { type: 'relationship', recordId: parentMovementRecordId as RecordId },
       },
     ]
 
     if (fields.stock_movement_reason && reason) {
       typedValues.push({
-        fieldId: fields.stock_movement_reason.id,
+        field: fields.stock_movement_reason,
         value: { type: 'text', value: reason },
       })
     }
 
     if (fields.stock_movement_reference && reference) {
       typedValues.push({
-        fieldId: fields.stock_movement_reference.id,
+        field: fields.stock_movement_reference,
         value: { type: 'text', value: reference },
       })
     }
@@ -173,13 +176,14 @@ export const explodeBomMovement: EntityTriggerHandler = async (event) => {
     // Convert each typed value to a FieldValue insert row.
     // These are single-value fields (one row per (entityId, fieldId)),
     // so the sortKey is purely positional — always the canonical first key.
-    for (const { fieldId, value } of typedValues) {
+    for (const { field, value } of typedValues) {
       fieldValueRows.push(
         buildFieldValueRow({
           organizationId,
           entityId: instanceId,
           entityDefinitionId: stockMovementDefId,
-          fieldId,
+          fieldId: field.id,
+          fieldType: toFieldType(field.type),
           value,
           sortKey: nextKeyAfter(null),
         })
@@ -500,6 +504,7 @@ async function batchRecalculateQoH(
         entityId: partId,
         entityDefinitionId: partDefId,
         fieldId: qohField.id,
+        fieldType: toFieldType(qohField.type),
         value: { type: 'number', value: qoh },
         sortKey: nextKeyAfter(null),
       })
@@ -513,6 +518,7 @@ async function batchRecalculateQoH(
           entityId: partId,
           entityDefinitionId: partDefId,
           fieldId: statusField.id,
+          fieldType: toFieldType(statusField.type),
           value: { type: 'option', optionId: status },
           sortKey: nextKeyAfter(null),
         })

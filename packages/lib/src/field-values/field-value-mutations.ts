@@ -76,6 +76,7 @@ import { shortCircuitAiGenerate } from './ai-enqueue'
 import { batchGetExistingFieldValues } from './batch-existing-values'
 import { deleteFieldValues } from './delete-values'
 import {
+  assertCurrencyIntegerMinorUnits,
   type CachedField,
   canonicalizeRelationshipRecordId,
   canonicalizeRelationshipValue,
@@ -621,6 +622,17 @@ export async function setValueWithType(
     }
   }
 
+  // Ordering guard only — the rule itself lives in
+  // `assertCurrencyIntegerMinorUnits` and is enforced for every writer by
+  // `buildFieldValueRow`. But that fires while building INSERT rows, which in
+  // this function is after the destructive delete; asserting up front means a
+  // rejected fractional write leaves the record's existing values intact.
+  if (fieldType === 'CURRENCY') {
+    for (const v of Array.isArray(value) ? value : [value]) {
+      if (v?.type === 'number') assertCurrencyIntegerMinorUnits(v.value)
+    }
+  }
+
   // Uniqueness gate — THE gate for every set-shaped write (panel writes via
   // setValueWithBuiltIn, setValuesForEntity/setBulkValues/applyBulk fan-outs,
   // and direct service calls). Array values are checked per element,
@@ -691,6 +703,7 @@ export async function setValueWithType(
       entityId: entityInstanceId,
       entityDefinitionId,
       fieldId,
+      fieldType,
       value: v,
       sortKey: sortKeys[index]!,
     })
@@ -831,6 +844,7 @@ export async function addValue(
     entityId: addInstId,
     entityDefinitionId: addDefId,
     fieldId,
+    fieldType,
     value,
     sortKey,
   })
@@ -1759,6 +1773,7 @@ export async function addValues(
         entityId: entityInstanceId,
         entityDefinitionId,
         fieldId,
+        fieldType,
         value: v,
         sortKey,
       })
@@ -2113,6 +2128,7 @@ export async function addValuesBulk(
             entityId,
             entityDefinitionId,
             fieldId,
+            fieldType,
             value: typedInputs[i]!,
             sortKey,
           })
@@ -2469,6 +2485,7 @@ async function findUnchangedSetResult(
         entityId: args.entityInstanceId,
         entityDefinitionId: args.entityDefinitionId,
         fieldId: args.fieldId,
+        fieldType: args.fieldType,
         value: values[i]!,
         // Payload-only comparison target; the row's own key keeps
         // `buildFieldValueRow` honest without comparing sortKeys themselves.
@@ -3809,7 +3826,7 @@ async function setSingleValue(
 
   if (existing) {
     // UPDATE existing row
-    const updateData = buildUpdateData(singleValue)
+    const updateData = buildUpdateData(fieldType, singleValue)
     const updatedResult = await updateFieldValue({
       id: existing.id,
       organizationId: ctx.organizationId,
@@ -3894,7 +3911,7 @@ async function setMultiValue(
  * Converts recordId back to two DB columns for relationship type.
  */
 function buildInsertData(
-  _fieldType: FieldType,
+  fieldType: FieldType,
   value: TypedFieldValueInput
 ): {
   valueText?: string | null
@@ -3913,6 +3930,7 @@ function buildInsertData(
     case 'number':
       // CURRENCY stores its amount in valueNumber exactly like NUMBER — the
       // denomination is the field's, so nothing rides the envelope.
+      if (fieldType === 'CURRENCY') assertCurrencyIntegerMinorUnits(value.value)
       return { valueNumber: value.value }
     case 'boolean':
       return { valueBoolean: value.value }
@@ -3956,7 +3974,10 @@ function buildInsertData(
  * Build update data from typed value input (for service layer).
  * Converts recordId back to two DB columns for relationship type.
  */
-function buildUpdateData(value: TypedFieldValueInput): {
+function buildUpdateData(
+  fieldType: FieldType,
+  value: TypedFieldValueInput
+): {
   valueText?: string | null
   valueNumber?: number | null
   valueBoolean?: boolean | null
@@ -3967,13 +3988,14 @@ function buildUpdateData(value: TypedFieldValueInput): {
   relatedEntityDefinitionId?: string | null
   actorId?: string | null
 } {
-  // Same structure as insert data (fieldType not needed for structure)
+  // Same structure as insert data
   switch (value.type) {
     case 'text':
       return { valueText: value.value }
     case 'number':
       // CURRENCY stores its amount in valueNumber exactly like NUMBER — the
       // denomination is the field's, so nothing rides the envelope.
+      if (fieldType === 'CURRENCY') assertCurrencyIntegerMinorUnits(value.value)
       return { valueNumber: value.value }
     case 'boolean':
       return { valueBoolean: value.value }
@@ -4011,16 +4033,25 @@ function buildUpdateData(value: TypedFieldValueInput): {
 /**
  * Build a FieldValue insert row from typed input (for direct DB insert).
  * Exported for use in batch inserts (e.g., BOM explosion trigger).
+ *
+ * `fieldType` exists for one reason: this is the last stop before a number
+ * becomes a `valueNumber` row, so it is where the CURRENCY integer-minor-units
+ * invariant is enforced for EVERY writer — including the ones that never pass
+ * through `setValueWithType` (addValue, the bulk fan-outs, the connector sink,
+ * the BOM explosion trigger). A `{type: 'number'}` input alone cannot carry
+ * the distinction, because a fractional NUMBER is legal.
  */
 export function buildFieldValueRow(params: {
   organizationId: string
   entityId: string
   entityDefinitionId: string
   fieldId: string
+  fieldType: FieldType
   value: TypedFieldValueInput
   sortKey: string
 }): typeof schema.FieldValue.$inferInsert {
-  const { organizationId, entityId, entityDefinitionId, fieldId, value, sortKey } = params
+  const { organizationId, entityId, entityDefinitionId, fieldId, fieldType, value, sortKey } =
+    params
 
   const base = {
     organizationId,
@@ -4043,6 +4074,7 @@ export function buildFieldValueRow(params: {
     case 'text':
       return { ...base, valueText: value.value }
     case 'number':
+      if (fieldType === 'CURRENCY') assertCurrencyIntegerMinorUnits(value.value)
       return { ...base, valueNumber: value.value }
     case 'boolean':
       return { ...base, valueBoolean: value.value }
