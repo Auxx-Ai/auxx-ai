@@ -6,6 +6,9 @@ import { headers } from 'next/headers'
 import { z } from 'zod'
 import { auth } from '~/auth/server'
 
+/** Statuses the Fetch spec forbids a body on — see the guard in `POST`. */
+const NULL_BODY_STATUSES = new Set([101, 204, 205, 304])
+
 const bodySchema = z.object({
   appId: z.string().min(1),
   installationId: z.string().min(1),
@@ -111,5 +114,16 @@ export async function POST(request: Request) {
   }
 
   const result = await response.json()
+
+  // `Response.json` always attaches a body, and the Response constructor rejects
+  // a body on a null-body status (101/204/205/304) — it throws rather than
+  // returning, so a 204 upstream would surface as a 500 here. Today the
+  // content-type guard above catches a bare 204, but that is incidental: it only
+  // holds while upstream omits `application/json`. Forward the status with no
+  // body instead.
+  if (NULL_BODY_STATUSES.has(response.status)) {
+    return new Response(null, { status: response.status })
+  }
+
   return Response.json(result, { status: response.status })
 }
