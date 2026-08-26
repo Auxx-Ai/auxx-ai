@@ -5,7 +5,7 @@
 // each into a ConnectionDefinition row keyed by providerKey.
 
 import { FieldType } from '@auxx/database/enums'
-import { BEARER_AUTH as BEARER } from '../auth-apply'
+import { BEARER_AUTH as BEARER, SHOPIFY_ADMIN_AUTH } from '../auth-apply'
 import type { PlatformProviderDef } from './types'
 
 /** Per-credential OAuth client variables for bring-your-own-client providers (§9.1). */
@@ -278,7 +278,7 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
         required: true,
       },
     ],
-    authApply: BEARER,
+    authApply: SHOPIFY_ADMIN_AUTH,
     baseUrlTemplate: 'https://{shop}.myshopify.com/admin/api/2024-10',
     uiMetadata: { icon: 'brand:shopify', category: 'ecommerce', brandColor: '#5d8a66' },
   },
