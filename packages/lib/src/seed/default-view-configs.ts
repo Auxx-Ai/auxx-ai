@@ -875,6 +875,46 @@ export const DEFAULT_VIEW_CONFIGS = {
   ],
 
   // Invoices are a ledger, not a pipeline (01-ui #9) — table default, no kanban.
+  order: [
+    {
+      name: 'All Orders',
+      description: 'Table view of all orders, newest first',
+      isDefault: true,
+      config: {
+        viewType: 'table' as const,
+        // Minimum default columns (plans/products/08-order-build.md §5.9). `channel`
+        // is human-set (D18) so it is blank on most rows until someone fills it —
+        // a column of blanks by default is worse than one behind the picker.
+        // `currency`, `paymentGateways`, `tags` and `shippingAddress` likewise
+        // stay available but off.
+        columnVisibility: {
+          field_order_number: true,
+          field_order_contact: true,
+          field_order_financial_status: true,
+          field_order_fulfillment_status: true,
+          field_order_total: true,
+          field_order_placed_at: true,
+        },
+        columnOrder: [
+          'field_order_number',
+          'field_order_contact',
+          'field_order_financial_status',
+          'field_order_fulfillment_status',
+          'field_order_total',
+          'field_order_placed_at',
+        ],
+        columnPinning: { left: ['_checkbox', 'field_order_number'] },
+        // Placed-at, not created-at: an order's date is when it was placed, which
+        // for a synced order is not when the row appeared in auxx.
+        sorting: [{ id: 'field_order_placed_at', desc: true }],
+        filters: [],
+        columnSizing: {},
+        columnLabels: {},
+        columnFormatting: {},
+      } satisfies ViewConfig,
+    },
+  ],
+
   invoice: [
     {
       name: 'All Invoices',

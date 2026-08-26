@@ -16,7 +16,6 @@ import inventoryLocationTemplate from './templates/inventory-location.json'
 import invoiceTemplate from './templates/invoice.json'
 import leadTemplate from './templates/lead.json'
 import loyaltyMemberTemplate from './templates/loyalty-member.json'
-import orderTemplate from './templates/order.json'
 import productTemplate from './templates/product.json'
 import projectTemplate from './templates/project.json'
 import qualityInspectionTemplate from './templates/quality-inspection.json'
@@ -39,7 +38,9 @@ const templateMap = new Map<string, EntityTemplate>()
 
 const allTemplates: EntityTemplate[] = [
   // Existing
-  orderTemplate,
+  // NOTE: `order.json` was retired with the native `order` system entity
+  // (plans/products/08-order-build.md §3.5). Templates that referenced it now
+  // resolve `@system:order` against the org's own def in installer pass 1.
   productTemplate,
   vendorTemplate,
   returnRequestTemplate,

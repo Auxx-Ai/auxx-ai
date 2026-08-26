@@ -11,7 +11,7 @@
     "color": "amber"
   },
   "primaryDisplayField": "claimNumber",
-  "companions": ["product", "order"],
+  "companions": ["product"],
   "fields": [
     {
       "templateFieldId": "claimNumber",
@@ -45,7 +45,7 @@
       "name": "Original Order",
       "type": "RELATIONSHIP",
       "relationship": {
-        "relatedResourceId": "@template:order",
+        "relatedResourceId": "@system:order",
         "relationshipType": "belongs_to",
         "inverseName": "Warranty Claims"
       }

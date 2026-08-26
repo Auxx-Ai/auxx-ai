@@ -11,7 +11,7 @@
     "color": "red"
   },
   "primaryDisplayField": "subject",
-  "companions": ["order"],
+  "companions": [],
   "fields": [
     { "templateFieldId": "subject", "name": "Subject", "type": "TEXT", "required": true },
     { "templateFieldId": "description", "name": "Description", "type": "RICH_TEXT" },
@@ -90,7 +90,7 @@
       "name": "Order",
       "type": "RELATIONSHIP",
       "relationship": {
-        "relatedResourceId": "@template:order",
+        "relatedResourceId": "@system:order",
         "relationshipType": "belongs_to",
         "inverseName": "Complaints"
       }

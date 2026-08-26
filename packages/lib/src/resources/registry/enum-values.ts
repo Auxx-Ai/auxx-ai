@@ -452,6 +452,69 @@ export const GlPostingStatus = {
   ] satisfies FieldOptionItem[],
 } as const
 
+/**
+ * Order Financial Status Enum
+ * Where an order sits on the money side (plans/products/08-order-build.md §2).
+ * Deliberately mirrors the Shopify vocabulary so a future retargeting of the
+ * order stream maps one-to-one rather than through a translation table.
+ */
+export const OrderFinancialStatus = {
+  PENDING: 'pending',
+  AUTHORIZED: 'authorized',
+  PAID: 'paid',
+  PARTIALLY_REFUNDED: 'partially_refunded',
+  REFUNDED: 'refunded',
+  VOIDED: 'voided',
+
+  values: [
+    { value: 'pending', label: 'Pending', color: 'gray' },
+    { value: 'authorized', label: 'Authorized', color: 'blue' },
+    { value: 'paid', label: 'Paid', color: 'green' },
+    { value: 'partially_refunded', label: 'Partially refunded', color: 'amber' },
+    { value: 'refunded', label: 'Refunded', color: 'orange' },
+    { value: 'voided', label: 'Voided', color: 'red' },
+  ] satisfies FieldOptionItem[],
+} as const
+
+/**
+ * Order Fulfillment Status Enum
+ * Where an order sits on the shipping side (plans/products/08-order-build.md §2).
+ */
+export const OrderFulfillmentStatus = {
+  UNFULFILLED: 'unfulfilled',
+  PARTIAL: 'partial',
+  FULFILLED: 'fulfilled',
+  RESTOCKED: 'restocked',
+
+  values: [
+    { value: 'unfulfilled', label: 'Unfulfilled', color: 'gray' },
+    { value: 'partial', label: 'Partially fulfilled', color: 'amber' },
+    { value: 'fulfilled', label: 'Fulfilled', color: 'green' },
+    { value: 'restocked', label: 'Restocked', color: 'purple' },
+  ] satisfies FieldOptionItem[],
+} as const
+
+/**
+ * Order Channel Enum
+ * Which route the sale came in through (plans/products/08-order-build.md §4, D18).
+ *
+ * **Human-set, never derived.** An earlier design derived it at ingest from
+ * `financialStatus` + `paymentGateways` + tags; that cannot handle the only
+ * rows that need it — a manual sale has no payment gateways and no Shopify
+ * tags, and `manual` exists in this list precisely for it.
+ */
+export const OrderChannel = {
+  DTC: 'dtc',
+  DEALER: 'dealer',
+  MANUAL: 'manual',
+
+  values: [
+    { value: 'dtc', label: 'Direct to consumer', color: 'blue' },
+    { value: 'dealer', label: 'Dealer', color: 'purple' },
+    { value: 'manual', label: 'Manual', color: 'gray' },
+  ] satisfies FieldOptionItem[],
+} as const
+
 export const VectorDbTypeEnum = {
   POSTGRESQL: 'POSTGRESQL',
   CHROMA: 'CHROMA',

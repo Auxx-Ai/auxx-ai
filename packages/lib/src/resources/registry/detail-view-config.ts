@@ -151,6 +151,35 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
     ],
   },
 
+  order: {
+    entityType: 'order',
+    // The quotes recipe (plans/products/08-order-build.md §5.7/§5.8, D17). Sections
+    // rather than content-swapping tabs, so the line-items table and the timeline
+    // read as one page — an order is reviewed top-to-bottom, not tabbed through.
+    layout: 'sections',
+    mainTabs: [
+      {
+        value: 'line-items',
+        label: 'Line items',
+        icon: 'receipt-text',
+        fullBleed: false,
+        permissionKey: 'dispatch.board.view',
+      },
+      { value: 'timeline', label: 'Timeline', icon: 'clock' },
+      { value: 'tasks', label: 'Tasks', icon: 'list-todo' },
+    ],
+    sidebarTabs: DEFAULT_SIDEBAR_TABS,
+    defaultTab: 'line-items',
+    defaultSidebarTab: 'overview',
+    // No `origin` card (an order has no converted-from source) and no payments —
+    // an order carries no payment ledger (§5.4). `work_order` is the D4 manual
+    // link that stands in for the deferred order→work_order conversion.
+    sidebarCards: [
+      { value: 'customer', label: 'Customer' },
+      { value: 'jobs', label: 'Jobs', recordResource: 'work_order' },
+    ],
+  },
+
   work_order: {
     entityType: 'work_order',
     // Sections mode (dispatch M2 build spec §F.1/§F.2, 04-ui.md §6): the job view

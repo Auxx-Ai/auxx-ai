@@ -191,6 +191,7 @@ export const SYSTEM_ATTRIBUTES = [
   'contact_service_requests',
   'contact_quotes',
   'contact_invoices', // inverse of invoice_contact
+  'contact_orders', // inverse of order_contact
   'contact_balance_due',
   'contact_uninvoiced_amount',
   'contact_billing_revision',
@@ -214,6 +215,7 @@ export const SYSTEM_ATTRIBUTES = [
   'company_meetings',
   'company_work_orders',
   'company_products', // inverse of product_vendor
+  'company_orders', // inverse of order_company
   'company_enriched_at',
   'company_enrichment_status',
 
@@ -260,6 +262,7 @@ export const SYSTEM_ATTRIBUTES = [
   'work_order_next_invoice_date',
   'work_order_billing_revision',
   'work_order_quote', // owning — belongs_to quote (converted-from)
+  'work_order_order', // owning — belongs_to order; inverse is order_work_orders
   'work_order_line_items', // inverse of line_item_work_order
   'work_order_invoices', // inverse of invoice_work_order
   'work_order_tags', // free-form TAGS — route planner regions (plans/dispatch/09-route-planner.md)
@@ -415,6 +418,30 @@ export const SYSTEM_ATTRIBUTES = [
   'payment_note',
   'payment_invoice',
   'payment_transaction_id',
+
+  // ─── Order fields ───────────────────────────────────────────────
+  // The third TOTALLED money document beside quote and invoice
+  // (plans/products/08-order-build.md §2). An order records what was SOLD, as
+  // distinct from `work_order`, which records what was done. `tags` reuses the
+  // shared open-tag `category` attribute, not a new one.
+  'order_number',
+  'order_contact',
+  'order_company',
+  'order_placed_at',
+  'order_financial_status',
+  'order_fulfillment_status',
+  'order_channel', // human-set, never derived (08 §4, D18)
+  'order_payment_gateways',
+  'order_currency',
+  'order_shipping_address',
+  'order_subtotal',
+  'order_discount_type',
+  'order_discount_value',
+  'order_tax_rate',
+  'order_tax_total',
+  'order_total',
+  'order_line_items', // inverse of line_item_order
+  'order_work_orders', // inverse of work_order_order
 
   // ─── Inbox fields ───────────────────────────────────────────────
   'inbox_name',

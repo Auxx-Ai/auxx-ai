@@ -64,7 +64,7 @@ describe('org-aware template resolution', () => {
     const ids = summaries.map((s) => s.id)
     expect(ids).toContain('app:shopify:orders')
     // Static gallery templates still present.
-    expect(ids).toContain('order')
+    expect(ids).toContain('shipment')
   })
 
   it('resolves an app template id from the installed-app catalog', async () => {
@@ -79,14 +79,14 @@ describe('org-aware template resolution', () => {
   })
 
   it('resolves a static template id WITHOUT reading installed apps', async () => {
-    const result = await resolveOrgTemplatesByIds('org_1', ['order'])
-    expect(result.map((t) => t.id)).toEqual(['order'])
+    const result = await resolveOrgTemplatesByIds('org_1', ['shipment'])
+    expect(result.map((t) => t.id)).toEqual(['shipment'])
     expect(getCachedInstalledApps).not.toHaveBeenCalled()
   })
 
   it('resolves a mixed static + app install set in request order', async () => {
     getCachedInstalledApps.mockResolvedValue([INSTALLED_APP])
-    const result = await resolveOrgTemplatesByIds('org_1', ['order', 'app:shopify:orders'])
-    expect(result.map((t) => t.id)).toEqual(['order', 'app:shopify:orders'])
+    const result = await resolveOrgTemplatesByIds('org_1', ['shipment', 'app:shopify:orders'])
+    expect(result.map((t) => t.id)).toEqual(['shipment', 'app:shopify:orders'])
   })
 })

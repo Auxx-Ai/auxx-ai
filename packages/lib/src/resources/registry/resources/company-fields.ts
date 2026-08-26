@@ -615,5 +615,31 @@ export const COMPANY_FIELDS: Record<string, ResourceField> = {
     description: 'Work orders for this company',
   },
 
+  // Reverse relationship: orders (from order.company)
+  orders: {
+    id: toFieldId('orders'),
+    key: 'orders',
+    label: 'Orders',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'company_orders',
+    showInPanel: false,
+    systemSortOrder: 'aG',
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'order:company' as ResourceFieldId,
+      relationshipType: 'has_many',
+      isInverse: true,
+    },
+    description: 'Orders placed by this company',
+  },
+
   createdBy: CREATED_BY_FIELD,
 }

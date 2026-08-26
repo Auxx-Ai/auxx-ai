@@ -11,7 +11,7 @@
     "color": "blue"
   },
   "primaryDisplayField": "trackingNumber",
-  "companions": ["order"],
+  "companions": [],
   "fields": [
     {
       "templateFieldId": "trackingNumber",
@@ -84,7 +84,7 @@
       "name": "Order",
       "type": "RELATIONSHIP",
       "relationship": {
-        "relatedResourceId": "@template:order",
+        "relatedResourceId": "@system:order",
         "relationshipType": "belongs_to",
         "inverseName": "Shipments"
       }

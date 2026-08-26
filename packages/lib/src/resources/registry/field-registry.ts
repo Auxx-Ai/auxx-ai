@@ -17,6 +17,7 @@ import { KB_FIELDS } from './resources/kb-fields'
 import { LINE_ITEM_FIELDS } from './resources/line-item-fields'
 import { MEETING_FIELDS } from './resources/meeting-fields'
 import { MESSAGE_FIELDS } from './resources/message-fields'
+import { ORDER_FIELDS } from './resources/order-fields'
 import { PART_FIELDS } from './resources/part-fields'
 import { PARTICIPANT_FIELDS } from './resources/participant-fields'
 import { PAYMENT_FIELDS } from './resources/payment-fields'
@@ -132,6 +133,7 @@ export const RESOURCE_FIELD_REGISTRY: ResourceFieldRegistry = {
   payment: PAYMENT_FIELDS,
   product: PRODUCT_FIELDS,
   gl_posting: GL_POSTING_FIELDS,
+  order: ORDER_FIELDS,
 }
 
 /**

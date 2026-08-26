@@ -11,7 +11,7 @@
     "color": "red"
   },
   "primaryDisplayField": "returnId",
-  "companions": ["order", "product", "exchange-request"],
+  "companions": ["product", "exchange-request"],
   "fields": [
     {
       "templateFieldId": "returnId",
@@ -35,7 +35,7 @@
       "name": "Original Order",
       "type": "RELATIONSHIP",
       "relationship": {
-        "relatedResourceId": "@template:order",
+        "relatedResourceId": "@system:order",
         "relationshipType": "belongs_to",
         "inverseName": "Returns"
       }
