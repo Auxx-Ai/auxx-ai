@@ -486,15 +486,19 @@ function mapEventToTimeline(event: AuxxEvent): CreateTimelineEventInput[] {
     case 'entity:deleted': {
       const data = event.data as EntityInstanceDeletedEvent['data']
 
-      // Use ARCHIVED for soft delete, DELETED for hard delete
+      // A HARD delete writes nothing. Both `recordId` and `relatedRecordId` below are the
+      // record that just stopped existing, and every read path is scoped to one live record
+      // (`getTimelineEvents` by `entityId`, `getRelatedTimelineEvents` by `relatedEntityId`;
+      // `actorFilter` narrows within an already-scoped record, it does not select across
+      // them). So a DELETED row is unreachable the moment it is written — one orphan per
+      // delete, which is also what `deleteEntityInstance` now sweeps for the same record.
+      // An ARCHIVE keeps its row: the instance survives, so its timeline is still readable.
       const isHardDelete = data.eventData?.hardDelete === true
-      const eventType = isHardDelete
-        ? EntityInstanceEventType.DELETED
-        : EntityInstanceEventType.ARCHIVED
+      if (isHardDelete) return []
 
       return [
         {
-          eventType,
+          eventType: EntityInstanceEventType.ARCHIVED,
           recordId: data.recordId,
           relatedRecordId: data.recordId,
           actorType: TimelineActorType.USER,

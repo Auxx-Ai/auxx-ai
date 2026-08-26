@@ -2437,6 +2437,13 @@
       "when": 1787767682652,
       "tag": "0347_add_oauth2_optional_scopes",
       "breakpoints": true
+    },
+    {
+      "idx": 348,
+      "version": "7",
+      "when": 1787786172962,
+      "tag": "0348_timeline_event_entity_id_index",
+      "breakpoints": true
     }
   ]
 }

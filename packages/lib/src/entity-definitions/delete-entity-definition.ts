@@ -307,6 +307,35 @@ export async function deleteEntityDefinitionDeep(params: {
         )
       )
 
+    // 5b. Every instance's timeline. `TimelineEvent.entityId` is a bare `text()`
+    //    column with no FK, so the instance cascade in step 6 does not reach it —
+    //    deleting one definition used to strand the whole history of every record
+    //    it held. One such teardown left 95,085 rows behind in dev, 41% of the table.
+    //    Must run BEFORE step 6, while the instance ids are still readable.
+    //
+    //    ⚠️ Matched on `entityId` ALONE, never on `entityType`: that column carries
+    //    two keyspaces for the same record (`EntityDefinition.id` from
+    //    `createTimelineEvent`, the type slug from money's own writers), so the def
+    //    id matches only some of a record's rows. Same rule as
+    //    `entity-instances/delete-entity-instance.ts`.
+    await tx.delete(schema.TimelineEvent).where(
+      and(
+        eq(schema.TimelineEvent.organizationId, organizationId),
+        inArray(
+          schema.TimelineEvent.entityId,
+          tx
+            .select({ id: schema.EntityInstance.id })
+            .from(schema.EntityInstance)
+            .where(
+              and(
+                eq(schema.EntityInstance.entityDefinitionId, id),
+                eq(schema.EntityInstance.organizationId, organizationId)
+              )
+            )
+        )
+      )
+    )
+
     // 6. Delete the entity definition. Cascades its own fields, values,
     //    instances, thread links, connector items, AND the mappings targeting it
     //    (which cascade their descendant mappings via parentMappingId).

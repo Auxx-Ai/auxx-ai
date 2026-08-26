@@ -48,6 +48,7 @@ import { publishFieldChangeEvent } from './post/publish-field-change-event'
 import { touchActivityOnFieldChange } from './post/touch-activity-on-field-change'
 import { guardInboxOwnerField } from './pre/inbox-owner-guard'
 import { guardInvoiceDelete } from './pre/invoice-delete-guard'
+import { cascadeOrderLinesOnDelete } from './pre/order-delete-guard'
 import { guardQuoteConvertedDelete } from './pre/quote-delete-guard'
 import { guardQuoteDraftReturnWithPaidDeposit } from './pre/quote-deposit-guard'
 import { rejectDeleteIfTagInUse } from './pre/tag-in-use-guard'
@@ -296,6 +297,8 @@ export function registerAllHooks(): void {
   registerEntityPreDeleteHooks('line-items', [guardAllocatedLineDelete])
   registerEntityPreDeleteHooks('work-orders', [guardWorkOrderDelete])
   registerEntityPreDeleteHooks('quotes', [guardQuoteConvertedDelete])
+  // Orders own their lines outright (08 §5.4) — no guard, just the cascade.
+  registerEntityPreDeleteHooks('orders', [cascadeOrderLinesOnDelete])
 
   // Billing projections after deletes (plan 24 §4.6) — deletes fire no field-change hooks, so
   // these are the explicit post-cleanup projector calls for every delete path (generic

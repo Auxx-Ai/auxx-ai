@@ -1,0 +1,1 @@
+CREATE INDEX "TimelineEvent_entity_id_idx" ON "TimelineEvent" USING btree ("organizationId","entityId");

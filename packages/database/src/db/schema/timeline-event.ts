@@ -62,6 +62,18 @@ export const TimelineEvent = pgTable(
       table.startedAt.desc().nullsFirst()
     ),
 
+    // Delete path: a record's WHOLE timeline, in both `entityType` keyspaces
+    // (`entity-instances/delete-entity-instance.ts` sweeps on the instance id alone,
+    // because `createTimelineEvent` stamps `EntityDefinition.id` while money's writers
+    // stamp the type slug). The entity index above leads with `entityType`, so it cannot
+    // serve a lookup that deliberately omits it — without this, the sweep scans the org's
+    // entire index range (2,543 buffers for 24 rows on dev), once per deleted record.
+    index('TimelineEvent_entity_id_idx').using(
+      'btree',
+      table.organizationId.asc().nullsLast(),
+      table.entityId.asc().nullsLast()
+    ),
+
     // Actor lookup: Get all actions by a user
     index('TimelineEvent_actor_idx').using(
       'btree',
