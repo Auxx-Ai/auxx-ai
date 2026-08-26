@@ -17,6 +17,20 @@ export const BEARER_AUTH: AuthApply = {
 }
 
 /**
+ * Shopify's Admin API does NOT use a bearer token — it reads the access token from its own
+ * `X-Shopify-Access-Token` header, and rejects `Authorization: Bearer <token>` with a 401 that
+ * looks like a bad credential rather than a bad header.
+ *
+ * Only the HTTP node and the generic-REST connector consult `authApply`; the Shopify app builds
+ * its own requests, which is why every Shopify definition carried the wrong bearer spec unnoticed.
+ */
+export const SHOPIFY_ADMIN_AUTH: AuthApply = {
+  in: 'header',
+  name: 'X-Shopify-Access-Token',
+  format: '{value}',
+}
+
+/**
  * The default auth application for a connection type when none is declared on
  * its definition. An `oauth2-code` access token — and a server-minted
  * `client-credentials` token — is always a bearer token, so app authors needn't
