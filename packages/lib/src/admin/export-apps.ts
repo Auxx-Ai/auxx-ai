@@ -86,6 +86,7 @@ export async function exportByDeveloperAccount(db: Database, developerAccountId:
           oauth2ClientId: decryptValue(cd.oauth2ClientId),
           // oauth2ClientSecret intentionally excluded
           oauth2Scopes: cd.oauth2Scopes,
+          oauth2OptionalScopes: cd.oauth2OptionalScopes,
           oauth2TokenRequestAuthMethod: cd.oauth2TokenRequestAuthMethod,
           oauth2RefreshTokenIntervalSeconds: cd.oauth2RefreshTokenIntervalSeconds,
           oauth2Features: cd.oauth2Features,

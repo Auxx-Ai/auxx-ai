@@ -55,6 +55,13 @@ export type PlatformProviderDef = {
   oauth2AccessTokenUrl?: string
   oauth2RefreshUrl?: string
   oauth2Scopes?: string[]
+  /**
+   * Additive scopes a connect attempt MAY request on top of `oauth2Scopes`. The
+   * required list is a floor (always requested); these are never requested unless a
+   * connect attempt names them, and the two lists are disjoint. See
+   * `plans/connections/optional-oauth-scopes.md`.
+   */
+  oauth2OptionalScopes?: string[]
   oauth2TokenRequestAuthMethod?: 'request-body' | 'basic-auth'
   oauth2Features?: OAuth2Features
   /** Platform env var holding the OAuth client id (encrypted into the row at seed time). */

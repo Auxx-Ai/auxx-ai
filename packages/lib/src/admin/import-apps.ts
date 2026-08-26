@@ -58,6 +58,8 @@ export interface ExportData {
       oauth2AccessTokenUrl: string | null
       oauth2ClientId: string | null
       oauth2Scopes: string[] | null
+      // Optional: exports produced before the exporter emitted this field omit it.
+      oauth2OptionalScopes?: string[] | null
       oauth2TokenRequestAuthMethod: string | null
       oauth2RefreshTokenIntervalSeconds: number | null
       oauth2Features: Record<string, unknown> | null
@@ -311,6 +313,10 @@ export async function importApps(
           oauth2AccessTokenUrl: cd.oauth2AccessTokenUrl,
           oauth2ClientId: cd.oauth2ClientId ? encryptValue(cd.oauth2ClientId) : cd.oauth2ClientId,
           oauth2Scopes: cd.oauth2Scopes,
+          // `?? []` matches how the other optional per-connection fields are handled
+          // here: an export predating the field must land as an empty additive list,
+          // never NULL. `oauth2Scopes` needs no coalesce — it is always present.
+          oauth2OptionalScopes: cd.oauth2OptionalScopes ?? [],
           oauth2TokenRequestAuthMethod: cd.oauth2TokenRequestAuthMethod,
           oauth2RefreshTokenIntervalSeconds: cd.oauth2RefreshTokenIntervalSeconds,
           oauth2Features: cd.oauth2Features,

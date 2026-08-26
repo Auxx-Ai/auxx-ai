@@ -7,10 +7,12 @@ import { supportsPersonalChannelConnection } from '@auxx/lib/channels'
 import {
   BYO_CLIENT_KEYS,
   effectiveConnectionVariables,
+  parseScopeAddParam,
   providerOAuthCallbackUrl,
   resolveConnectionForRuntime,
   resolveOAuth2Client,
   resolveOwnClientGateForOrg,
+  resolveRequestedScopes,
   stripUnentitledOwnClientVars,
 } from '@auxx/lib/connections'
 import { createScopedLogger } from '@auxx/logger'
@@ -57,11 +59,9 @@ export async function GET(
 
   // Additive scopes for incremental grants (e.g. the calendar-readonly grant layered onto an
   // existing Gmail connection). Merged with the definition's scopes for this authorize only.
-  const scopeAdd = searchParams
-    .getAll('scope_add')
-    .flatMap((s) => s.split(','))
-    .map((s) => s.trim())
-    .filter(Boolean)
+  // Parsed here, ALLOWLISTED below against the definition's `oauth2OptionalScopes` — this param
+  // used to be unioned in raw, so any caller could shape the consent screen.
+  const scopeAdd = parseScopeAddParam(searchParams.getAll('scope_add'))
 
   // Opaque post-connect context (`pc_*`) handed to the provider's post-connect hook via `extra`.
   const postConnect: Record<string, string> = {}
@@ -219,6 +219,11 @@ export async function GET(
     const resolved = interpolateConnectionFields(connDef, connectionVariables)
     const { clientId } = resolveOAuth2Client(connDef, connectionVariables)
 
+    // Floor (`oauth2Scopes`) unioned with the picks the definition actually declares optional.
+    // Tightens what was previously an unvalidated raw union of `scope_add`; undeclared scopes are
+    // dropped silently so a stale bookmark degrades to the floor instead of failing the connect.
+    const scopes = resolveRequestedScopes(connDef, scopeAdd)
+
     // Store state in Redis (10-minute TTL)
     const redis = await getRedisClient()
     await redis.setex(
@@ -237,12 +242,14 @@ export async function GET(
         ...(validReturnTo && { returnTo: validReturnTo }),
         ...(Object.keys(connectionVariables).length > 0 && { connectionVariables }),
         ...(Object.keys(postConnect).length > 0 && { postConnect }),
+        // What this authorize actually asked for. The callback falls back to it when the
+        // provider omits `scope` (RFC 6749 §5.1) — with optional scopes the definition's own
+        // list is no longer the requested set.
+        requestedScopes: scopes,
         mode,
         originOfOpener,
       })
     )
-
-    const scopes = [...new Set([...(connDef.oauth2Scopes || []), ...scopeAdd])]
 
     // Pinned to the definition's providerKey, never `defParam`: the lookup above accepts
     // an id OR a providerKey, so echoing the raw param would make the redirect URI depend

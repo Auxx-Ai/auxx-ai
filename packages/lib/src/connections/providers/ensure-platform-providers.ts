@@ -53,6 +53,7 @@ function toRowValues(def: PlatformProviderDef): Record<string, unknown> {
     oauth2AccessTokenUrl: def.oauth2AccessTokenUrl ?? null,
     oauth2RefreshUrl: def.oauth2RefreshUrl ?? null,
     oauth2Scopes: def.oauth2Scopes ?? [],
+    oauth2OptionalScopes: def.oauth2OptionalScopes ?? [],
     oauth2TokenRequestAuthMethod: def.oauth2TokenRequestAuthMethod ?? 'request-body',
     oauth2Features: def.oauth2Features ?? {},
     platformClientApproved,

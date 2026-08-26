@@ -131,6 +131,19 @@ const methodFields = {
         .map((s) => s.trim())
         .filter((s) => s.length > 0)
     }),
+  // Additive companion to `oauth2Scopes`: never requested unless a connect attempt names it.
+  // `oauth2Scopes` is the floor; the two lists must stay disjoint (see `assertScopesDisjoint`).
+  oauth2OptionalScopes: z
+    .array(z.string())
+    .optional()
+    .transform((scopes) => {
+      if (!scopes) return scopes
+      // Normalize: split entries that contain commas or whitespace into individual scopes
+      return scopes
+        .flatMap((s) => s.split(/[\s,]+/))
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0)
+    }),
   oauth2TokenRequestAuthMethod: z.enum(['request-body', 'basic-auth']).optional(),
   oauth2RefreshTokenIntervalSeconds: z.number().optional(),
   oauth2Features: z
@@ -182,8 +195,28 @@ function resolveClientSecret(submitted: string | undefined, stored: string | nul
   return submitted ? encryptValue(submitted) : (submitted ?? null)
 }
 
+/**
+ * Reject a scope declared as both required and optional. `oauth2Scopes` is the floor
+ * (always requested) and `oauth2OptionalScopes` is additive (requested only when a connect
+ * attempt names it) — a scope in both has no meaning, and silently deduping would leave every
+ * downstream reader (authorize routes, exporter, picker) to invent its own overlap rule.
+ */
+function assertScopesDisjoint(required: string[] | undefined, optional: string[] | undefined) {
+  if (!required?.length || !optional?.length) return
+  const requiredSet = new Set(required)
+  const overlap = [...new Set(optional.filter((scope) => requiredSet.has(scope)))]
+  if (overlap.length > 0) {
+    throw new TRPCError({
+      code: 'BAD_REQUEST',
+      message: `Optional scopes must not repeat a required scope: ${overlap.join(', ')}`,
+    })
+  }
+}
+
 /** Map validated method fields → the column values shared by insert + update. */
 function toColumnValues(input: MethodFieldsInput, oauth2ClientSecret: string | null) {
+  assertScopesDisjoint(input.oauth2Scopes, input.oauth2OptionalScopes)
+
   return {
     global: input.global,
     connectionType: input.connectionType,
@@ -198,6 +231,7 @@ function toColumnValues(input: MethodFieldsInput, oauth2ClientSecret: string | n
     oauth2ClientSecret,
     platformClientApproved: input.platformClientApproved ?? true,
     oauth2Scopes: input.oauth2Scopes || [],
+    oauth2OptionalScopes: input.oauth2OptionalScopes || [],
     oauth2TokenRequestAuthMethod: input.oauth2TokenRequestAuthMethod || 'request-body',
     oauth2RefreshTokenIntervalSeconds: input.oauth2RefreshTokenIntervalSeconds,
     oauth2Features: input.oauth2Features ?? {},

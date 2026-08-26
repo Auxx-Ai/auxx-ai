@@ -9,8 +9,10 @@ import {
   appOAuthCallbackUrl,
   BYO_CLIENT_KEYS,
   effectiveConnectionVariables,
+  parseScopeAddParam,
   resolveOAuth2Client,
   resolveOwnClientGateForOrg,
+  resolveRequestedScopes,
   stripUnentitledOwnClientVars,
 } from '@auxx/lib/connections'
 import { AuxxError } from '@auxx/lib/errors'
@@ -58,6 +60,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const searchParams = request.nextUrl.searchParams
   const installationId = searchParams.get('installation')
   const connectionType = searchParams.get('type') // 'user' or 'organization'
+  // Additive scopes the connect attempt picked. Allowlisted against the definition's
+  // `oauth2OptionalScopes` below — the client picker is a hint, never the authority.
+  const scopeAdd = parseScopeAddParam(searchParams.getAll('scope_add'))
   const connectionDefinitionId = searchParams.get('connectionDefinitionId') // picked method (multi-method)
   const connectionId = searchParams.get('connectionId') // reconnect mode
   const returnTo = searchParams.get('returnTo')
@@ -271,6 +276,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // app's platform client. Same resolver the provider authorize route + token refresh use.
     const { clientId: resolvedClientId } = resolveOAuth2Client(connDef, connectionVariables)
 
+    // Floor (`oauth2Scopes`) unioned with the picks the definition actually declares optional.
+    // Undeclared scopes are dropped silently, so a stale bookmark degrades to the floor rather
+    // than failing the connect. See plans/connections/optional-oauth-scopes.md §1.
+    const scopes = resolveRequestedScopes(connDef, scopeAdd)
+
     // Store state in Redis with metadata (expires in 10 minutes)
     const redis = await getRedisClient()
     await redis.setex(
@@ -288,12 +298,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         ...(codeVerifier && { codeVerifier }),
         ...(validReturnTo && { returnTo: validReturnTo }),
         ...(Object.keys(connectionVariables).length > 0 && { connectionVariables }),
+        // What this authorize actually asked for. The callback falls back to it when the
+        // provider omits `scope` (RFC 6749 §5.1) — with optional scopes the definition's own
+        // list is no longer the requested set.
+        requestedScopes: scopes,
         mode,
         originOfOpener,
       })
     )
 
-    const scopes = connDef.oauth2Scopes || []
     const googleParams = getGoogleOfflineParams(resolved.authorizeUrl)
 
     // Build OAuth authorization URL

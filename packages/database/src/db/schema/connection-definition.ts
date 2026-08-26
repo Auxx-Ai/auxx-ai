@@ -188,6 +188,13 @@ export const ConnectionDefinition = pgTable(
     // (some providers — e.g. UPS — expose a separate /refresh endpoint that rejects the token URL).
     oauth2RefreshUrl: text(),
     oauth2Scopes: jsonb().$type<string[]>().default([]),
+    // Scopes a connection MAY additionally request at connect time, on top of oauth2Scopes.
+    // `oauth2Scopes` is a FLOOR (always requested, never removable); this list is ADDITIVE
+    // (never requested unless the connect attempt names it). The two lists are DISJOINT — a
+    // scope in both has no meaning, and the apps/build form rejects it, so no reader ever
+    // needs an overlap rule. Requested set = oauth2Scopes ∪ (oauth2OptionalScopes ∩ picked).
+    // See plans/connections/optional-oauth-scopes.md §1.
+    oauth2OptionalScopes: jsonb().$type<string[]>().default([]),
     oauth2ClientId: text(), // v2 secret-box ciphertext (see @auxx/credentials/crypto decryptValue policy)
     oauth2ClientSecret: text(), // v2 secret-box ciphertext (see @auxx/credentials/crypto decryptValue policy)
     oauth2TokenRequestAuthMethod: text().default('request-body'), // request-body, basic-auth
