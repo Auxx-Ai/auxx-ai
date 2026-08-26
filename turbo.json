@@ -4,10 +4,26 @@
   "globalDependencies": ["**/.env.*local"],
   "tasks": {
     "build": {
-      "env": ["*"],
+      // `["*"]` alone made this task UNCACHEABLE IN CI. The wildcard puts every
+      // environment variable in the hash, and GitHub Actions gives GITHUB_RUN_ID
+      // / GITHUB_SHA / RUNNER_* a new value on every single run — so the key
+      // never repeated and `build` was a guaranteed cache miss on every CI job.
+      //
+      // The exclusions below are the fix. The wildcard is deliberately KEPT:
+      // 136 first-party env vars are read from source but absent from
+      // `globalEnv`, so narrowing this to an explicit list would under-declare
+      // the hash and serve a STALE build — a much worse failure than a slow one.
+      "env": ["*", "!GITHUB_*", "!RUNNER_*", "!ACTIONS_*", "!INPUT_*"],
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
       "dependsOn": ["^build"],
       "outputs": [".next/**", "!.next/cache/**", "!.next/dev/**", "dist/**"]
+    },
+    // Cacheable, and keyed on upstream typecheck results so that editing
+    // `packages/utils` correctly invalidates `packages/lib`'s cached pass.
+    // Packages without a `typecheck` script are simply skipped by turbo.
+    "typecheck": {
+      "dependsOn": ["^typecheck"],
+      "outputs": []
     },
     "build:platform-runtime": {
       "dependsOn": ["^build"],
@@ -34,7 +50,12 @@
     "db:seed": { "cache": false },
     "seed": { "cache": false },
     "clean": { "cache": false },
-    "test": { "env": ["*"], "dependsOn": ["^test"] }
+    // `dependsOn: ["^test"]` used to be here. It made
+    // `turbo run test --filter=@auxx/workflow-nodes` run @auxx/database#test
+    // first — and since that suite currently fails, the command exited 1
+    // without ever running the package that was asked for. One package's tests
+    // are not an input to another's, so there is nothing to depend on.
+    "test": { "env": ["*", "!GITHUB_*", "!RUNNER_*", "!ACTIONS_*", "!INPUT_*"] }
   },
   "globalEnv": [
     "ANTHROPIC_API_KEY",

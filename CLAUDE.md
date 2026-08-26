@@ -520,28 +520,73 @@ npx dotenv -- npx tsx path/to/script.ts
 
 ### Type Checking (`tsc`)
 
-Every package/app has a scoped `typecheck` script (`tsc --noEmit` run from that
-package's own directory against its own `tsconfig.json`, via `composite: true`
-project references). Run it **per package**, never as a bare `tsc`/`tsc -b`
-from the repo root — there is no root `tsconfig.json`, and a whole-monorepo
-invocation walks every package's sources in one process.
+**Typechecking is cheap — run it freely, but ONLY via the package script.**
 
 ```bash
-# Scope to one package (fast, low memory — most packages finish in seconds)
-pnpm --filter @auxx/utils typecheck
+pnpm --filter @auxx/lib typecheck      # ~4s   (3,846 files)
+pnpm --filter @auxx/web typecheck      # ~10s  (~3.5k files)
 pnpm --filter @auxx/database typecheck
 
-# apps/web and packages/lib are large enough to hit V8's default ~4GB
-# old-space heap limit even when scoped to just that package. Bump it:
-cd apps/web && NODE_OPTIONS="--max-old-space-size=8192" pnpm exec tsc --noEmit
-cd packages/lib && NODE_OPTIONS="--max-old-space-size=8192" pnpm exec tsc --noEmit
+# Cached + parallel across packages, keyed on upstream results.
+# Repeat runs are ~0.5s; editing an upstream package correctly re-runs dependents.
+pnpm exec turbo run typecheck --filter=@auxx/lib
 ```
 
-The OOM was never about total errors or physical memory — it's Node/V8's
-default heap ceiling, hit while checking apps/web's ~3.5k files (or lib's
-~2.6k) in a single process. Scoping to a package keeps most invocations well
-under the limit; for web/lib, raising `--max-old-space-size` is enough (~6GB
-peak observed for web).
+**Never run a bare `pnpm exec tsc` / `npx tsc`.** This repo has **two**
+TypeScript packages installed — `typescript` and `typescript7`
+(`npm:typescript@7.0.2`, the native Go compiler) — and `pnpm exec tsc` resolves
+to a *different one per package*:
+
+| from | `pnpm exec tsc` gives |
+| --- | --- |
+| `packages/lib` | 7.0.2 (native, fast) |
+| `apps/web` | **5.9.2** (legacy JS) |
+
+So `cd apps/web && pnpm exec tsc --noEmit` runs the old compiler, spends ~50s
+climbing to V8's 4GB heap ceiling and dies with an allocation failure — while
+`pnpm --filter @auxx/web typecheck` (which calls `typescript7` explicitly)
+finishes in ~10s. That OOM is the *only* reason `NODE_OPTIONS=--max-old-space-size`
+ever appeared in this file; with the package script it is unnecessary.
+
+Two more traps:
+
+- **`tsc` exits non-zero for reasons other than type errors** (a bad invocation
+  prints `--help` and exits 1). Never judge a run by a `grep`ped line count, and
+  never pipe it — in a pipeline `$?` is grep's status, so a crash reads as a
+  pass. Check the exit code, then read the `error TS` lines.
+- **16 packages/apps have no `typecheck` script at all**, including
+  `@auxx/worker`, `@auxx/services`, `@auxx/seed`, `@auxx/types` and `@auxx/sdk`,
+  so a green `turbo run typecheck` is not whole-repo coverage.
+
+`packages/lib` and `apps/web` carry pre-existing errors, so "clean" is not the
+bar — `scripts/ci/typecheck-ratchet.js` enforces "adds none" against
+`scripts/ci/typecheck-baseline.json`. Use `node scripts/ci/typecheck-ratchet.js
+--package lib` when you want the same answer CI will give.
+
+### Testing
+
+The suite's cost is almost entirely **per-file boot**, not the tests. In
+`packages/lib` the 960 test files sum to ~66s of actual execution, but a full
+run takes **~150s**: each isolated file re-imports the whole module graph
+(`vitest.alias.ts` points every `@auxx/*` at source), so summed import time is
+~1900s against ~66s of tests — a 29:1 ratio.
+
+**So: scope test runs to the module you touched while iterating, and run the
+full package suite once before opening the PR.**
+
+```bash
+cd packages/lib
+pnpm exec vitest run src/field-values     # ~13s, 339 tests
+pnpm exec vitest run                      # ~150s — pre-PR only
+```
+
+- `vitest related <files>` does **not** help here. Widely-imported modules
+  (e.g. `field-values/client.ts`) reach half the package, so it selects 530 of
+  960 files and saves nothing. Pass a directory instead.
+- `--pool=threads` buys ~11%. Not worth changing.
+- `--no-isolate` would cut the full run to ~77s, but ~232 files currently fail
+  under it from state leaking between files in a shared worker. See
+  `plans/test-speed/` (untracked).
 
 ### Rules
 

@@ -2,7 +2,7 @@
 
 import { readFileSync } from 'node:fs'
 import path from 'path'
-import { loadEnv, type Plugin } from 'vite'
+import type { Plugin } from 'vite'
 import tsconfigPaths from 'vite-tsconfig-paths'
 import { defineConfig } from 'vitest/config'
 import { auxxSourceAlias } from '../../vitest.alias'
@@ -24,10 +24,16 @@ function markdownAsText(): Plugin {
   }
 }
 
-export default defineConfig(({ mode }) => {
-  const monorepoRoot = path.resolve(__dirname, '../..')
-  const env = { ...loadEnv(mode, monorepoRoot, ''), ...loadEnv(mode, process.cwd(), '') }
-
+// `define: { 'process.env': env }` used to live here. It inlined a 180-key,
+// ~10KB object literal at EVERY `process.env` occurrence in every transformed
+// module — and it was redundant, because `src/test/setup.ts` already does the
+// same `loadEnv` + `Object.assign(process.env, env)` at runtime, before any
+// test module is imported. Removing it took the full suite from 252s to 148s
+// (summed import 3226s -> 1905s) and turned the suite green: two tests that
+// had been failing on main now pass. Likely because the inlined literal is
+// frozen at config-load time, so a runtime mutation of process.env was
+// invisible to the code under test — but that mechanism was not confirmed.
+export default defineConfig(() => {
   return {
     plugins: [markdownAsText(), tsconfigPaths()],
 
@@ -90,10 +96,6 @@ export default defineConfig(({ mode }) => {
         ...auxxSourceAlias,
         '~/': path.resolve(__dirname, './src/'),
       },
-    },
-
-    define: {
-      'process.env': env,
     },
   }
 })
