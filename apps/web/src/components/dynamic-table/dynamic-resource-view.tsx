@@ -34,6 +34,7 @@ import { DynamicTableFooter } from './components/dynamic-table-footer'
 import { getIconForFieldType } from './custom-field-column-factory'
 import { DynamicView } from './dynamic-view'
 import { useDefaultTablePersistence } from './hooks/use-default-table-persistence'
+import { useSelectionStore } from './stores/selection-store'
 import {
   useActiveView,
   useActiveViewId,
@@ -63,6 +64,11 @@ const PAGE_SIZE = 100
 export interface DynamicResourceViewHandle {
   refresh: () => void
   getValue: (recordId: RecordId, fieldRef: FieldReference) => StoredFieldValue | undefined
+  /**
+   * Drop rows from the table's selection. For rows that no longer exist —
+   * deleted or archived — so the bulk action bar stops counting them.
+   */
+  deselect: (rowIds: string[]) => void
 }
 
 export interface DynamicResourceViewProps<TRow extends RecordMeta = RecordMeta> {
@@ -276,13 +282,18 @@ export function DynamicResourceView<TRow extends RecordMeta = RecordMeta>({
     enabled: !!entityDefinitionId && columnIds.length > 0 && isConfigReady,
   })
 
+  const deselect = useCallback(
+    (rowIds: string[]) => useSelectionStore.getState().deselectRows(tableId, rowIds),
+    [tableId]
+  )
+
   useEffect(() => {
     if (!viewRef) return
-    viewRef.current = { refresh, getValue }
+    viewRef.current = { refresh, getValue, deselect }
     return () => {
       if (viewRef.current?.refresh === refresh) viewRef.current = null
     }
-  }, [viewRef, refresh, getValue])
+  }, [viewRef, refresh, getValue, deselect])
 
   const createEntityFieldColumn = useCallback(
     (field: ResourceField & { id: string }): ExtendedColumnDef<TRow> => {

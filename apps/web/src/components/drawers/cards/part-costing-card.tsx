@@ -145,7 +145,7 @@ export function PartCostingCard({ recordId }: DrawerTabProps) {
             {!isLoadingSubparts && (
               <span className='text-xs text-muted-foreground'>
                 {hasSubparts
-                  ? 'The bill of materials has unpriced components — the Subparts tab lists them.'
+                  ? 'The bill of materials has unpriced components, the Subparts tab lists them.'
                   : 'No supplier price and no bill of materials.'}
               </span>
             )}

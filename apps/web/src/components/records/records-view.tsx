@@ -267,6 +267,14 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
     viewRef.current?.refresh()
   }, [])
 
+  // Deleted/archived rows are gone — drop them from the table's selection so the
+  // bulk action bar stops counting them. Note this is the dynamic-table selection
+  // store, which `handleOperationsClearSelection` above does NOT touch: that one
+  // clears the frozen selection this view pins dialog scope to.
+  const handleRowsRemoved = useCallback((rowIds: string[]) => {
+    viewRef.current?.deselect(rowIds)
+  }, [])
+
   const {
     handleDrawerDelete,
     handleBulkDelete,
@@ -279,6 +287,7 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
     resourcePlural: resource?.plural,
     onDrawerClose: handleOperationsDrawerClose,
     onClearSelection: handleOperationsClearSelection,
+    onRowsRemoved: handleRowsRemoved,
     onRefetch: refresh,
   })
 
