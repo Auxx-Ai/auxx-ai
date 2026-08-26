@@ -75,8 +75,20 @@ COPY --from=pruner /app/out/full/ .
 # Build all upstream dependencies (tsdown packages produce dist/*.mjs)
 RUN BUILDING_CONTAINER=true pnpm turbo build --filter="@auxx/web^..."
 
-# Build the web app (Next.js standalone output)
+# Build the web app (Next.js standalone output).
+#
+# Next 16.3 enables Turbopack's persistent build cache by default and writes it
+# to .next/cache. Without the mount below that directory is created and thrown
+# away inside this RUN, so every image build compiles cold. `sharing=locked`
+# because two concurrent builds writing one Turbopack cache is not safe.
+#
+# Caveat, same as plans/docker/web-image-build-speed.md: BuildKit cache mounts
+# do not survive on hosted GitHub runners, which start with an empty mount, so
+# this pays off for local builds and on a persistent-disk builder (e.g. Depot).
+# The runner stage never copies .next/cache, so an empty mount changes nothing
+# about the resulting image.
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
+  --mount=type=cache,id=next-web,sharing=locked,target=/app/apps/web/.next/cache \
   BUILDING_CONTAINER=true \
   SKIP_ENV_VALIDATION=1 \
   pnpm --filter=web run build:prod

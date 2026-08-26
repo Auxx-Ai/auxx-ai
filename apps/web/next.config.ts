@@ -36,15 +36,30 @@ const nextConfig = {
     '@auxx/workflow-nodes',
   ],
   experimental: {
-    // Keep Turbopack's incremental dev state across server restarts.
-    turbopackFileSystemCacheForDev: true,
-    // Persists Turbopack's incremental state in .next/cache across production
-    // builds. Only pays off where .next/cache survives between builds (local
-    // builds today; CI needs a persistent-disk builder, e.g. Depot — see
-    // plans/docker/web-image-build-speed.md). Hosted CI runners start empty,
-    // so there it just writes an unused cache.
-    turbopackFileSystemCacheForBuild: true,
+    // `turbopackFileSystemCacheForDev` and `turbopackFileSystemCacheForBuild`
+    // used to be set here. Both default to `true` as of Next 16.3, along with
+    // `turbopackMemoryEviction: 'auto'` (which needs the dev cache and is what
+    // caps dev-server memory growth), so listing them was dead config.
+    //
+    // A fresh git worktree starts with no Turbopack cache and compiles cold.
+    // This seeds it from the main checkout's cache — worth having because most
+    // agent work in this repo happens in throwaway worktrees. Best-effort;
+    // never fails a build.
+    turbopackSeedCacheFromWorktree: true,
+    // Cancel a Server Components HMR refresh's render + validation work once a
+    // newer refresh supersedes it, so saving twice in a row stops paying for
+    // the first save. Off by default upstream.
+    serverComponentsHmrCancellation: true,
+    // Run Node.js evaluation for PostCSS (Tailwind v4, on every CSS change)
+    // in worker threads instead of a pool of child processes talking over
+    // sockets. Upstream says this should use less memory and CPU, and may
+    // become the default in a later release.
+    turbopackPluginRuntimeStrategy: 'workerThreads',
   },
+  // `next dev` otherwise generates AGENTS.md + CLAUDE.md in this app dir on
+  // every boot, pointing agents at node_modules/next/dist/docs/. We keep agent
+  // instructions in the repo-root CLAUDE.md instead.
+  agentRules: false,
   poweredByHeader: false,
   reactStrictMode: true,
   // Override default externalization - exclude Prisma packages from externalization
