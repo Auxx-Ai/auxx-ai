@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.221](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.220...auxx-v0.1.221) (2026-08-26)
+
+
+### Features
+
+* **connections:** derive app capabilities from granted oauth scopes ([#1900](https://github.com/Auxx-Ai/auxx-ai/issues/1900)) ([274ad6f](https://github.com/Auxx-Ai/auxx-ai/commit/274ad6ff64442e031264e37a63adb7ffac99b10b))
+
 ## [0.1.220](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.219...auxx-v0.1.220) (2026-08-25)
 
 
