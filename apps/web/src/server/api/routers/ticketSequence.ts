@@ -7,7 +7,7 @@ import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 
 const scopeSchema = z
-  .enum(['ticket', 'work_order', 'service_request', 'quote', 'invoice'])
+  .enum(['ticket', 'work_order', 'service_request', 'quote', 'invoice', 'order'])
   .default('ticket')
 
 export const ticketSequenceRouter = createTRPCRouter({

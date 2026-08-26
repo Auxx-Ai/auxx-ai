@@ -214,6 +214,20 @@ export const DRAWER_TAB_CARD_COMPONENTS: Record<
     })),
 
   // ─────────────────────────────────────────────────────────────────
+  // ORDER OVERVIEW CARDS (plans/products/08-order-build.md §5.8) — unlike the
+  // invoice, `order` also has a detail page (§5.7, D17); `order:lines` renders
+  // the same component the page's Line-items section does, in `section` variant.
+  // ─────────────────────────────────────────────────────────────────
+  'order:lines': () =>
+    import('../money/ui/order/order-line-items-tab').then((m) => ({
+      default: m.OrderLinesOverviewCard,
+    })),
+  'order:customer': () =>
+    import('./cards/order-customer-card').then((m) => ({ default: m.OrderCustomerCard })),
+  'order:work-orders': () =>
+    import('./cards/order-work-orders-card').then((m) => ({ default: m.OrderWorkOrdersCard })),
+
+  // ─────────────────────────────────────────────────────────────────
   // WORK ORDER (job view) SIDEBAR CARDS — dispatch M2 build spec §F.2, shared
   // with the job view's DetailView sidebar (DetailViewSidebar reads from this
   // same registry, see detail-view-sidebar.tsx).

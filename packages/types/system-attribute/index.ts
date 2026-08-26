@@ -180,6 +180,7 @@ export const SYSTEM_ATTRIBUTES = [
   'part_stock_status',
   'part_reorder_point',
   'part_reorder_qty',
+  'part_line_items', // inverse of line_item_part
   'part_stock_movements',
 
   // ─── Contact inverse fields ────────────────────────────────────
@@ -330,6 +331,8 @@ export const SYSTEM_ATTRIBUTES = [
   'line_item_quote',
   'line_item_work_order',
   'line_item_invoice',
+  'line_item_order',
+  'line_item_part', // stamped from the line's catalog item, not hand-set (08 §6.2)
   'line_item_photos', // scouting/line-level photos (plan 37b §1)
 
   // ─── Catalog Item fields ────────────────────────────────────────
@@ -437,6 +440,7 @@ export const SYSTEM_ATTRIBUTES = [
   'order_subtotal',
   'order_discount_type',
   'order_discount_value',
+  'order_tax_name',
   'order_tax_rate',
   'order_tax_total',
   'order_total',

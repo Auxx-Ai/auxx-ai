@@ -5,7 +5,13 @@ import { and, eq, sql } from 'drizzle-orm'
 import { NotFoundError } from '../errors'
 
 /** Which record kind a `RecordSequence` row counts. */
-export type SequenceScope = 'ticket' | 'work_order' | 'service_request' | 'quote' | 'invoice'
+export type SequenceScope =
+  | 'ticket'
+  | 'work_order'
+  | 'service_request'
+  | 'quote'
+  | 'invoice'
+  | 'order'
 
 const SCOPE_DEFAULTS: Record<SequenceScope, { prefix: string }> = {
   ticket: { prefix: 'TKT' },
@@ -13,6 +19,7 @@ const SCOPE_DEFAULTS: Record<SequenceScope, { prefix: string }> = {
   service_request: { prefix: 'REQ' },
   quote: { prefix: 'QUO' },
   invoice: { prefix: 'INV' },
+  order: { prefix: 'ORD' },
 }
 
 /** Format a record number from a sequence record */

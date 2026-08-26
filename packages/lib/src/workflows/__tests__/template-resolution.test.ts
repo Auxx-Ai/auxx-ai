@@ -12,18 +12,34 @@ import {
   resolveEntityRefsInGraph,
 } from '../template-resolution'
 
-const ORDER_DEF_ID = 'ent_orders_cuid'
+const DEAL_DEF_ID = 'ent_deals_cuid'
+const DEAL_NAME_FIELD_ID = 'fld_deal_name_cuid'
+const ORDER_DEF_ID = 'ent_order_cuid'
 const ORDER_NUMBER_FIELD_ID = 'fld_order_number_cuid'
 const CONTACT_EMAIL_FIELD_ID = 'fld_primary_email_cuid'
 
-/** `order` is a real built-in entity template (apiSlug `orders`). */
+/**
+ * Two resolution branches, deliberately both represented.
+ *
+ * `deal` is a real built-in entity template (apiSlug `deals`) and carries the
+ * **custom** branch: `getEntityTemplateById` → `entity.apiSlug` builds the ref
+ * key, and the ref resolves to the entity-definition **CUID**.
+ *
+ * `contact` and `order` are **system** entities. `template-resolution.ts:393`
+ * resolves those to the bare entityType string, never a CUID — so a system
+ * entity cannot stand in for the custom branch. `order` used to be a custom
+ * template here (`templates/order.json`, apiSlug `orders`); that template was
+ * retired when the native order shipped
+ * (plans/products/08-order-build.md §3.5), so it moved to `__system:order`
+ * and `deal` took over the CUID coverage.
+ */
 const REQUIRED_ENTITIES: RequiredEntity[] = [
   {
-    entityTemplateId: 'order',
-    name: 'Order',
-    apiSlug: 'orders',
-    fieldMapping: { orderNumber: 'orderNumber' },
-    requiredFields: ['orderNumber'],
+    entityTemplateId: 'deal',
+    name: 'Deal',
+    apiSlug: 'deals',
+    fieldMapping: { dealName: 'dealName' },
+    requiredFields: ['dealName'],
     required: true,
   },
   {
@@ -34,16 +50,26 @@ const REQUIRED_ENTITIES: RequiredEntity[] = [
     requiredFields: ['primary_email'],
     required: true,
   },
+  {
+    entityTemplateId: '__system:order',
+    name: 'Order',
+    apiSlug: 'order',
+    fieldMapping: { order_number: 'order_number' },
+    requiredFields: ['order_number'],
+    required: true,
+  },
 ]
 
 const ENTITY_ID_MAP: Record<string, string> = {
-  order: ORDER_DEF_ID,
+  deal: DEAL_DEF_ID,
   '__system:contact': 'ent_contact_cuid',
+  '__system:order': ORDER_DEF_ID,
 }
 
 const FIELD_ID_MAP: Record<string, Record<string, string>> = {
-  order: { orderNumber: ORDER_NUMBER_FIELD_ID },
+  deal: { dealName: DEAL_NAME_FIELD_ID },
   '__system:contact': { primary_email: CONTACT_EMAIL_FIELD_ID },
+  '__system:order': { order_number: ORDER_NUMBER_FIELD_ID },
 }
 
 function resolve(graph: WorkflowGraph) {
@@ -55,16 +81,16 @@ function node(id: string, data: Record<string, any>): WorkflowGraph['nodes'][num
   return { id, type: 'standard', position: { x: 0, y: 0 }, data: { id, ...data } }
 }
 
-/** A find node on the `orders` entity, used as the referenced node in variable paths. */
-function findOrderNode(id = 'find-order') {
-  return node(id, { type: 'find', resourceType: '@entity:orders', findMode: 'findOne' })
+/** A find node on the `deals` entity, used as the referenced node in variable paths. */
+function findDealNode(id = 'find-deal') {
+  return node(id, { type: 'find', resourceType: '@entity:deals', findMode: 'findOne' })
 }
 
 describe('resolveEntityRefsInGraph — config pass (existing behaviour)', () => {
   it('rewrites resourceType for custom and system entities', () => {
     const graph: WorkflowGraph = {
       nodes: [
-        node('crud-1', { type: 'crud', resourceType: '@entity:orders', mode: 'create' }),
+        node('crud-1', { type: 'crud', resourceType: '@entity:deals', mode: 'create' }),
         node('crud-2', { type: 'crud', resourceType: '@entity:contact', mode: 'create' }),
       ],
       edges: [],
@@ -72,9 +98,67 @@ describe('resolveEntityRefsInGraph — config pass (existing behaviour)', () => 
 
     const { unresolvedNodes } = resolve(graph)
 
-    expect(graph.nodes[0]?.data.resourceType).toBe(ORDER_DEF_ID)
+    expect(graph.nodes[0]?.data.resourceType).toBe(DEAL_DEF_ID)
     expect(graph.nodes[1]?.data.resourceType).toBe('contact')
     expect(unresolvedNodes).toEqual([])
+  })
+
+  // The binding `order-issue-triage.template.json` uses since the native order
+  // shipped. It is NOT the custom-entity path above: `template-resolution.ts:393`
+  // sends a `__system:` templateId to the bare entityType string, so an order node
+  // resolves to `'order'` and never to `ORDER_DEF_ID`. Pinned because the template
+  // previously bound to a retired entity template at apiSlug `orders`, which
+  // silently resolved to nothing and left `@entity:orders` in the installed graph.
+  it('sends a system order to its entityType, not to an entity-definition CUID', () => {
+    const graph: WorkflowGraph = {
+      nodes: [
+        node('find-order-009', {
+          type: 'find',
+          resourceType: '@entity:order',
+          findMode: 'findOne',
+          conditionGroups: [
+            {
+              id: 'g1',
+              conditions: [
+                { id: 'c1', fieldId: '@field:order_number', operator: 'is', value: 'x' },
+              ],
+            },
+          ],
+        }),
+      ],
+      edges: [],
+    }
+
+    const { unresolvedNodes } = resolve(graph)
+
+    expect(graph.nodes[0]?.data.resourceType).toBe('order')
+    expect(graph.nodes[0]?.data.resourceType).not.toBe(ORDER_DEF_ID)
+    expect(graph.nodes[0]?.data.conditionGroups[0].conditions[0].fieldId).toBe(
+      `${ORDER_DEF_ID}:${ORDER_NUMBER_FIELD_ID}`
+    )
+    expect(unresolvedNodes).toEqual([])
+  })
+
+  it('rewrites a system order @field: dictionary key to the field id', () => {
+    const graph: WorkflowGraph = {
+      nodes: [
+        node('create-order-011', {
+          type: 'crud',
+          resourceType: '@entity:order',
+          mode: 'create',
+          data: { '@field:order_number': 'x', '@field:order_contact': '{{find-contact.contact}}' },
+        }),
+      ],
+      edges: [],
+    }
+
+    resolve(graph)
+
+    const data = graph.nodes[0]?.data.data
+    // order_number is in the fixture's fieldMapping; order_contact is not, so it
+    // stays verbatim — an unmapped @field: is left alone rather than dropped.
+    expect(data[ORDER_NUMBER_FIELD_ID]).toBe('x')
+    expect(data['@field:order_contact']).toBe('{{find-contact.contact}}')
   })
 
   it('rewrites @field: dictionary keys and leaves values alone', () => {
@@ -82,12 +166,12 @@ describe('resolveEntityRefsInGraph — config pass (existing behaviour)', () => 
       nodes: [
         node('crud-1', {
           type: 'crud',
-          resourceType: '@entity:orders',
+          resourceType: '@entity:deals',
           mode: 'create',
-          data: { '@field:orderNumber': '{{extractor-1.extracted_data.orderNumber}}' },
-          fieldModes: { '@field:orderNumber': false },
-          fieldUpdateModes: { '@field:orderNumber': 'replace' },
-          fieldUpdateModeVars: { '@field:orderNumber': '{{env.MODE}}' },
+          data: { '@field:dealName': '{{extractor-1.extracted_data.orderNumber}}' },
+          fieldModes: { '@field:dealName': false },
+          fieldUpdateModes: { '@field:dealName': 'replace' },
+          fieldUpdateModeVars: { '@field:dealName': '{{env.MODE}}' },
         }),
       ],
       edges: [],
@@ -97,11 +181,11 @@ describe('resolveEntityRefsInGraph — config pass (existing behaviour)', () => 
     const data = graph.nodes[0]?.data as Record<string, any>
 
     expect(data.data).toEqual({
-      [ORDER_NUMBER_FIELD_ID]: '{{extractor-1.extracted_data.orderNumber}}',
+      [DEAL_NAME_FIELD_ID]: '{{extractor-1.extracted_data.orderNumber}}',
     })
-    expect(data.fieldModes).toEqual({ [ORDER_NUMBER_FIELD_ID]: false })
-    expect(data.fieldUpdateModes).toEqual({ [ORDER_NUMBER_FIELD_ID]: 'replace' })
-    expect(data.fieldUpdateModeVars).toEqual({ [ORDER_NUMBER_FIELD_ID]: '{{env.MODE}}' })
+    expect(data.fieldModes).toEqual({ [DEAL_NAME_FIELD_ID]: false })
+    expect(data.fieldUpdateModes).toEqual({ [DEAL_NAME_FIELD_ID]: 'replace' })
+    expect(data.fieldUpdateModeVars).toEqual({ [DEAL_NAME_FIELD_ID]: '{{env.MODE}}' })
   })
 
   it('rewrites find conditionGroups fieldId to the compound entityDefId:fieldId form', () => {
@@ -109,12 +193,12 @@ describe('resolveEntityRefsInGraph — config pass (existing behaviour)', () => 
       nodes: [
         node('find-1', {
           type: 'find',
-          resourceType: '@entity:orders',
+          resourceType: '@entity:deals',
           findMode: 'findOne',
           conditionGroups: [
             {
               id: 'g1',
-              conditions: [{ id: 'c1', fieldId: '@field:orderNumber', operator: 'is', value: 'x' }],
+              conditions: [{ id: 'c1', fieldId: '@field:dealName', operator: 'is', value: 'x' }],
             },
           ],
         }),
@@ -125,13 +209,13 @@ describe('resolveEntityRefsInGraph — config pass (existing behaviour)', () => 
     resolve(graph)
 
     expect(graph.nodes[0]?.data.conditionGroups[0].conditions[0].fieldId).toBe(
-      `${ORDER_DEF_ID}:${ORDER_NUMBER_FIELD_ID}`
+      `${DEAL_DEF_ID}:${DEAL_NAME_FIELD_ID}`
     )
   })
 
   it('blanks resourceType and reports the node when the entity is not installed', () => {
     const graph: WorkflowGraph = {
-      nodes: [node('crud-1', { type: 'crud', resourceType: '@entity:orders', mode: 'create' })],
+      nodes: [node('crud-1', { type: 'crud', resourceType: '@entity:deals', mode: 'create' })],
       edges: [],
     }
 
@@ -146,12 +230,12 @@ describe('resolveEntityRefsInGraph — @entity: inside {{…}}', () => {
   it('resolves the CUID a findOne on a custom entity keys its output by', () => {
     const graph: WorkflowGraph = {
       nodes: [
-        findOrderNode(),
+        findDealNode(),
         node('crud-1', {
           type: 'crud',
-          resourceType: '@entity:orders',
+          resourceType: '@entity:deals',
           mode: 'update',
-          resourceId: '{{find-order.@entity:orders}}',
+          resourceId: '{{find-deal.@entity:deals}}',
         }),
       ],
       edges: [],
@@ -159,7 +243,7 @@ describe('resolveEntityRefsInGraph — @entity: inside {{…}}', () => {
 
     const { unresolvedNodes } = resolve(graph)
 
-    expect(graph.nodes[1]?.data.resourceId).toBe(`{{find-order.${ORDER_DEF_ID}}}`)
+    expect(graph.nodes[1]?.data.resourceId).toBe(`{{find-deal.${DEAL_DEF_ID}}}`)
     expect(unresolvedNodes).toEqual([])
   })
 
@@ -262,20 +346,20 @@ describe('resolveEntityRefsInGraph — @entity: inside {{…}}', () => {
     ],
   ])('resolves inside %s', (_label, _type, build) => {
     const graph: WorkflowGraph = {
-      nodes: [findOrderNode(), node('target', build('{{find-order.@entity:orders}}'))],
+      nodes: [findDealNode(), node('target', build('{{find-deal.@entity:deals}}'))],
       edges: [],
     }
 
     resolve(graph)
 
-    expect(JSON.stringify(graph.nodes[1]?.data)).toContain(`{{find-order.${ORDER_DEF_ID}}}`)
-    expect(JSON.stringify(graph.nodes[1]?.data)).not.toContain('@entity:orders')
+    expect(JSON.stringify(graph.nodes[1]?.data)).toContain(`{{find-deal.${DEAL_DEF_ID}}}`)
+    expect(JSON.stringify(graph.nodes[1]?.data)).not.toContain('@entity:deals')
   })
 
   it('resolves a bare Tiptap variable-node id inside an ai prompt', () => {
     const graph: WorkflowGraph = {
       nodes: [
-        findOrderNode(),
+        findDealNode(),
         node('ai-1', {
           type: 'ai',
           prompt_template: [
@@ -290,7 +374,7 @@ describe('resolveEntityRefsInGraph — @entity: inside {{…}}', () => {
                       { type: 'text', text: 'Order record: ' },
                       {
                         type: 'variable-node',
-                        attrs: { variableId: 'find-order.@entity:orders.@field:orderNumber' },
+                        attrs: { variableId: 'find-deal.@entity:deals.@field:dealName' },
                       },
                     ],
                   },
@@ -306,14 +390,14 @@ describe('resolveEntityRefsInGraph — @entity: inside {{…}}', () => {
     const { unresolvedNodes } = resolve(graph)
     const chip = graph.nodes[1]?.data.prompt_template[0].json.content[0].content[1]
 
-    expect(chip.attrs.variableId).toBe(`find-order.${ORDER_DEF_ID}.${ORDER_NUMBER_FIELD_ID}`)
+    expect(chip.attrs.variableId).toBe(`find-deal.${DEAL_DEF_ID}.${DEAL_NAME_FIELD_ID}`)
     expect(unresolvedNodes).toEqual([])
   })
 
   it('resolves several placeholders in one string', () => {
     const graph: WorkflowGraph = {
       nodes: [
-        findOrderNode(),
+        findDealNode(),
         node('find-contact', {
           type: 'find',
           resourceType: '@entity:contact',
@@ -321,7 +405,7 @@ describe('resolveEntityRefsInGraph — @entity: inside {{…}}', () => {
         }),
         node('answer-1', {
           type: 'answer',
-          text: 'Order {{find-order.@entity:orders}} for {{find-contact.@entity:contact}}',
+          text: 'Deal {{find-deal.@entity:deals}} for {{find-contact.@entity:contact}}',
         }),
       ],
       edges: [],
@@ -330,7 +414,7 @@ describe('resolveEntityRefsInGraph — @entity: inside {{…}}', () => {
     resolve(graph)
 
     expect(graph.nodes[2]?.data.text).toBe(
-      `Order {{find-order.${ORDER_DEF_ID}}} for {{find-contact.contact}}`
+      `Deal {{find-deal.${DEAL_DEF_ID}}} for {{find-contact.contact}}`
     )
   })
 })
@@ -339,10 +423,10 @@ describe('resolveEntityRefsInGraph — @field: inside {{…}}', () => {
   it('resolves against the preceding @entity: token in the same path', () => {
     const graph: WorkflowGraph = {
       nodes: [
-        findOrderNode(),
+        findDealNode(),
         node('answer-1', {
           type: 'answer',
-          text: '{{find-order.@entity:orders.@field:orderNumber}}',
+          text: '{{find-deal.@entity:deals.@field:dealName}}',
         }),
       ],
       edges: [],
@@ -350,18 +434,16 @@ describe('resolveEntityRefsInGraph — @field: inside {{…}}', () => {
 
     resolve(graph)
 
-    expect(graph.nodes[1]?.data.text).toBe(
-      `{{find-order.${ORDER_DEF_ID}.${ORDER_NUMBER_FIELD_ID}}}`
-    )
+    expect(graph.nodes[1]?.data.text).toBe(`{{find-deal.${DEAL_DEF_ID}.${DEAL_NAME_FIELD_ID}}}`)
   })
 
   it('falls back to the entity of the node the path starts at (findMany plural form)', () => {
     const graph: WorkflowGraph = {
       nodes: [
-        node('find-order', { type: 'find', resourceType: '@entity:orders', findMode: 'findMany' }),
+        node('find-deal', { type: 'find', resourceType: '@entity:deals', findMode: 'findMany' }),
         node('answer-1', {
           type: 'answer',
-          text: '{{find-order.orders[0].@field:orderNumber}}',
+          text: '{{find-deal.deals[0].@field:dealName}}',
         }),
       ],
       edges: [],
@@ -369,7 +451,7 @@ describe('resolveEntityRefsInGraph — @field: inside {{…}}', () => {
 
     const { unresolvedNodes } = resolve(graph)
 
-    expect(graph.nodes[1]?.data.text).toBe(`{{find-order.orders[0].${ORDER_NUMBER_FIELD_ID}}}`)
+    expect(graph.nodes[1]?.data.text).toBe(`{{find-deal.deals[0].${DEAL_NAME_FIELD_ID}}}`)
     expect(unresolvedNodes).toEqual([])
   })
 
@@ -377,14 +459,14 @@ describe('resolveEntityRefsInGraph — @field: inside {{…}}', () => {
     const graph: WorkflowGraph = {
       nodes: [
         node('extractor-1', { type: 'information-extractor', text: 'x' }),
-        node('answer-1', { type: 'answer', text: '{{extractor-1.@field:orderNumber}}' }),
+        node('answer-1', { type: 'answer', text: '{{extractor-1.@field:dealName}}' }),
       ],
       edges: [],
     }
 
     const { unresolvedNodes } = resolve(graph)
 
-    expect(graph.nodes[1]?.data.text).toBe('{{extractor-1.@field:orderNumber}}')
+    expect(graph.nodes[1]?.data.text).toBe('{{extractor-1.@field:dealName}}')
     expect(unresolvedNodes).toEqual(['answer-1'])
   })
 })
@@ -393,12 +475,12 @@ describe('resolveEntityRefsInGraph — unresolvable refs', () => {
   it('leaves an unknown entity slug verbatim and reports the node', () => {
     const graph: WorkflowGraph = {
       nodes: [
-        findOrderNode(),
+        findDealNode(),
         node('crud-1', {
           type: 'crud',
           resourceType: '@entity:contact',
           mode: 'update',
-          resourceId: '{{find-order.@entity:widgets}}',
+          resourceId: '{{find-deal.@entity:widgets}}',
         }),
       ],
       edges: [],
@@ -406,22 +488,22 @@ describe('resolveEntityRefsInGraph — unresolvable refs', () => {
 
     const { unresolvedNodes } = resolve(graph)
 
-    expect(graph.nodes[1]?.data.resourceId).toBe('{{find-order.@entity:widgets}}')
+    expect(graph.nodes[1]?.data.resourceId).toBe('{{find-deal.@entity:widgets}}')
     expect(unresolvedNodes).toEqual(['crud-1'])
   })
 
   it('leaves an unknown field ref verbatim and reports the node', () => {
     const graph: WorkflowGraph = {
       nodes: [
-        findOrderNode(),
-        node('answer-1', { type: 'answer', text: '{{find-order.@entity:orders.@field:nope}}' }),
+        findDealNode(),
+        node('answer-1', { type: 'answer', text: '{{find-deal.@entity:deals.@field:nope}}' }),
       ],
       edges: [],
     }
 
     const { unresolvedNodes } = resolve(graph)
 
-    expect(graph.nodes[1]?.data.text).toBe(`{{find-order.${ORDER_DEF_ID}.@field:nope}}`)
+    expect(graph.nodes[1]?.data.text).toBe(`{{find-deal.${DEAL_DEF_ID}.@field:nope}}`)
     expect(unresolvedNodes).toEqual(['answer-1'])
   })
 
@@ -462,9 +544,9 @@ describe('resolveEntityRefsInGraph — leaves ordinary text alone', () => {
   })
 
   it('does not touch a placeholder written outside a variable reference', () => {
-    const prose = 'Use the @entity:orders placeholder and the @field:orderNumber ref in CRUD nodes.'
+    const prose = 'Use the @entity:deals placeholder and the @field:dealName ref in CRUD nodes.'
     const graph: WorkflowGraph = {
-      nodes: [findOrderNode(), node('answer-1', { type: 'answer', text: prose })],
+      nodes: [findDealNode(), node('answer-1', { type: 'answer', text: prose })],
       edges: [],
     }
 
@@ -475,9 +557,9 @@ describe('resolveEntityRefsInGraph — leaves ordinary text alone', () => {
   })
 
   it('does not touch $comment authoring prose', () => {
-    const comment = 'TECHNIQUE 3: {{find-order.@entity:orders}} resolves to the entity id'
+    const comment = 'TECHNIQUE 3: {{find-deal.@entity:deals}} resolves to the entity id'
     const graph: WorkflowGraph = {
-      nodes: [findOrderNode(), node('answer-1', { type: 'answer', $comment: comment, text: 'hi' })],
+      nodes: [findDealNode(), node('answer-1', { type: 'answer', $comment: comment, text: 'hi' })],
       edges: [],
     }
 
@@ -489,12 +571,12 @@ describe('resolveEntityRefsInGraph — leaves ordinary text alone', () => {
   it('is idempotent — a second pass finds nothing left to rewrite', () => {
     const graph: WorkflowGraph = {
       nodes: [
-        findOrderNode(),
+        findDealNode(),
         node('crud-1', {
           type: 'crud',
-          resourceType: '@entity:orders',
+          resourceType: '@entity:deals',
           mode: 'update',
-          resourceId: '{{find-order.@entity:orders}}',
+          resourceId: '{{find-deal.@entity:deals}}',
         }),
       ],
       edges: [],
@@ -513,55 +595,55 @@ describe('resolveEntityRefsInGraph — composes with node-id remapping', () => {
     const template: WorkflowGraph = {
       nodes: [
         {
-          id: 'find-order-009',
+          id: 'find-deal-009',
           type: 'standard',
           position: { x: 0, y: 0 },
           data: {
-            id: 'find-order-009',
+            id: 'find-deal-009',
             type: 'find',
-            resourceType: '@entity:orders',
+            resourceType: '@entity:deals',
             findMode: 'findOne',
           },
         },
         {
-          id: 'update-order-012',
+          id: 'update-deal-012',
           type: 'standard',
           position: { x: 100, y: 0 },
           data: {
-            id: 'update-order-012',
+            id: 'update-deal-012',
             type: 'crud',
-            resourceType: '@entity:orders',
+            resourceType: '@entity:deals',
             mode: 'update',
-            resourceId: '{{find-order-009.@entity:orders}}',
+            resourceId: '{{find-deal-009.@entity:deals}}',
             data: {
-              '@field:orderNumber': '{{find-order-009.@entity:orders.@field:orderNumber}}',
+              '@field:dealName': '{{find-deal-009.@entity:deals.@field:dealName}}',
             },
             prompt: [
               {
                 type: 'variable-node',
-                attrs: { variableId: 'find-order-009.@entity:orders.@field:orderNumber' },
+                attrs: { variableId: 'find-deal-009.@entity:deals.@field:dealName' },
               },
             ],
           },
         },
       ],
-      edges: [{ id: 'e1', source: 'find-order-009', target: 'update-order-012' }],
+      edges: [{ id: 'e1', source: 'find-deal-009', target: 'update-deal-012' }],
     }
 
     const transformer = new TemplateGraphTransformer()
     const { graph, idMapping } = transformer.cloneGraph(template)
-    const newFindId = idMapping.get('find-order-009')!
+    const newFindId = idMapping.get('find-deal-009')!
 
     const { unresolvedNodes } = resolve(graph)
     const crud = graph.nodes[1]?.data as Record<string, any>
 
-    expect(newFindId).not.toBe('find-order-009')
-    expect(crud.resourceId).toBe(`{{${newFindId}.${ORDER_DEF_ID}}}`)
-    expect(crud.data[ORDER_NUMBER_FIELD_ID]).toBe(
-      `{{${newFindId}.${ORDER_DEF_ID}.${ORDER_NUMBER_FIELD_ID}}}`
+    expect(newFindId).not.toBe('find-deal-009')
+    expect(crud.resourceId).toBe(`{{${newFindId}.${DEAL_DEF_ID}}}`)
+    expect(crud.data[DEAL_NAME_FIELD_ID]).toBe(
+      `{{${newFindId}.${DEAL_DEF_ID}.${DEAL_NAME_FIELD_ID}}}`
     )
     expect(crud.prompt[0].attrs.variableId).toBe(
-      `${newFindId}.${ORDER_DEF_ID}.${ORDER_NUMBER_FIELD_ID}`
+      `${newFindId}.${DEAL_DEF_ID}.${DEAL_NAME_FIELD_ID}`
     )
     expect(unresolvedNodes).toEqual([])
   })
@@ -573,8 +655,8 @@ describe('extractRequiredEntities', () => {
       nodes: [
         node('crud-1', {
           type: 'crud',
-          resourceType: '@entity:orders',
-          data: { '@field:orderNumber': 'x' },
+          resourceType: '@entity:deals',
+          data: { '@field:dealName': 'x' },
         }),
       ],
       edges: [],
@@ -583,14 +665,14 @@ describe('extractRequiredEntities', () => {
     const extracted = extractRequiredEntities(graph)
 
     expect(extracted).toHaveLength(1)
-    expect(extracted[0]?.requiredFields).toEqual(['orderNumber'])
+    expect(extracted[0]?.requiredFields).toEqual(['dealName'])
   })
 
   it('also collects refs that only appear inside variable references', () => {
     const graph: WorkflowGraph = {
       nodes: [
-        node('find-order', { type: 'find', resourceType: '@entity:orders', findMode: 'findMany' }),
-        node('answer-1', { type: 'answer', text: '{{find-order.orders[0].@field:trackingUrl}}' }),
+        node('find-deal', { type: 'find', resourceType: '@entity:deals', findMode: 'findMany' }),
+        node('answer-1', { type: 'answer', text: '{{find-deal.deals[0].@field:stage}}' }),
       ],
       edges: [],
     }
@@ -598,7 +680,7 @@ describe('extractRequiredEntities', () => {
     const extracted = extractRequiredEntities(graph)
 
     expect(extracted).toHaveLength(1)
-    expect(extracted[0]?.apiSlug).toBe('orders')
-    expect(extracted[0]?.requiredFields).toEqual(['trackingUrl'])
+    expect(extracted[0]?.apiSlug).toBe('deals')
+    expect(extracted[0]?.requiredFields).toEqual(['stage'])
   })
 })

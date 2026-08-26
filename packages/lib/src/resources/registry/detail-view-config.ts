@@ -176,7 +176,11 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
     // link that stands in for the deferred order→work_order conversion.
     sidebarCards: [
       { value: 'customer', label: 'Customer' },
-      { value: 'jobs', label: 'Jobs', recordResource: 'work_order' },
+      // `work-orders`, not the quote's `jobs`: DetailViewSidebar and the drawer read
+      // the SAME `DRAWER_TAB_CARD_COMPONENTS` registry, so this value is the card key
+      // and must match `order:work-orders` there and in the order's drawer block.
+      // "Jobs" is dispatch vocabulary; an order links work orders (08 §5.8).
+      { value: 'work-orders', label: 'Work orders', recordResource: 'work_order' },
     ],
   },
 

@@ -211,6 +211,33 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
       ],
     },
   },
+
+  // The third totalled money document (plans/products/08-order-build.md §5.8).
+  // Unlike invoice this is NOT a drawer-only entity — `order` has
+  // `hasDetailPage: true` (§5.7, D17), so these Overview cards and the detail
+  // page's own sections are independent lists rendering the same components.
+  //
+  // Two cards, not §5.8's three: there is no separate `totals` card because the
+  // LineBuilder's own `TotalsFooter` already renders subtotal/discount/tax/total
+  // at the foot of the lines card — exactly as it does for quote and invoice,
+  // neither of which carries a totals card either. A third card would be a
+  // second, competing rendering of the same three mirrored fields.
+  order: {
+    entityType: 'order',
+    additionalTabs: [],
+    tabCards: {
+      overview: [
+        {
+          value: 'lines',
+          label: 'Line items',
+          fullBleed: true,
+          permissionKey: 'dispatch.board.view',
+        },
+        { value: 'customer', label: 'Customer' },
+        { value: 'work-orders', label: 'Work orders', recordResource: 'work_order' },
+      ],
+    },
+  },
 }
 
 /**

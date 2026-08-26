@@ -233,7 +233,8 @@ export const moneyRouter = createTRPCRouter({
         .object({
           /** @deprecated legacy shape — pass `recordId` instead (quote or invoice). */
           quoteRecordId: recordIdSchema.optional(),
-          /** Quote or invoice RecordId (money MI1 build spec §I.2) — `documentType` is derived
+          /** Quote, invoice or order RecordId (money MI1 build spec §I.2, widened to
+           * `order` by plans/products/08-order-build.md §5.6) — `documentType` is derived
            * from the def component, no separate flag needed. */
           recordId: recordIdSchema.optional(),
         })
@@ -244,7 +245,14 @@ export const moneyRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const targetRecordId = (input.recordId ?? input.quoteRecordId)!
       const { entityDefinitionId, entityInstanceId } = parseRecordId(targetRecordId)
-      const documentType = entityDefinitionId === 'invoice' ? 'invoice' : 'quote'
+      // Membership test, not a two-way ternary: the old
+      // `=== 'invoice' ? 'invoice' : 'quote'` shape would have silently
+      // recomputed an ORDER as a quote, writing quote_* totals onto it
+      // (plans/products/08-order-build.md §5.6, the billingPrefix trap).
+      const documentType =
+        entityDefinitionId === 'invoice' || entityDefinitionId === 'order'
+          ? entityDefinitionId
+          : 'quote'
       return recomputeTotals({
         organizationId: ctx.session.organizationId,
         userId: ctx.session.user.id,

@@ -97,6 +97,17 @@ const defaultRecordSequences = [
     separator: '-',
     useSuffix: false,
   },
+  {
+    scope: 'order',
+    prefix: 'ORD',
+    currentNumber: 0,
+    paddingLength: 4,
+    usePrefix: true,
+    useDateInPrefix: false,
+    dateFormat: 'YYMM',
+    separator: '-',
+    useSuffix: false,
+  },
 ]
 // Default email templates for the organization
 const defaultEmailTemplates = [

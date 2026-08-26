@@ -400,6 +400,35 @@ export const ORDER_FIELDS: Record<string, ResourceField> = {
     },
   },
 
+  // The tax-preset snapshot's NAME, beside `taxRate`'s number. 08 §2's field
+  // table omitted it, but the shared `LineBuilder` writes `${prefix}_tax_name`
+  // and `${prefix}_tax_rate` together when a preset is picked
+  // (`line-builder.tsx` updateTax) and `TotalsFooter` matches the stored pair
+  // back to a preset to decide which option is selected — with only the rate,
+  // an order can never show a named tax and always reads as "Custom".
+  // `quote_tax_name` / `invoice_tax_name` are the precedent.
+  taxName: {
+    id: toFieldId('taxName'),
+    key: 'taxName',
+    label: 'Tax Name',
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemAttribute: 'order_tax_name',
+    systemSortOrder: 'aE1',
+    showInPanel: false, // shown in the line-items overview card
+    showInTable: false,
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    description: "Snapshot of the picked tax rate's name (documents.taxRates)",
+  },
+
   taxRate: {
     id: toFieldId('taxRate'),
     key: 'taxRate',

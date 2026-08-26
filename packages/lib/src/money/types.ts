@@ -76,8 +76,8 @@ export interface ReorderLinesInput extends MoneyMutationInput {
  * compiling unchanged — it's treated as `documentType: 'quote'`.
  */
 export interface RecomputeTotalsInput extends MoneyMutationInput {
-  documentType?: 'quote' | 'invoice'
-  /** EntityInstance id of the quote or invoice (not the RecordId). */
+  documentType?: 'quote' | 'invoice' | 'order'
+  /** EntityInstance id of the quote, invoice or order (not the RecordId). */
   documentInstanceId?: string
   /** @deprecated legacy shape — pass `documentInstanceId` + `documentType: 'quote'` instead. */
   quoteInstanceId?: string

@@ -109,7 +109,13 @@ export function DocumentSectionActions({
   children,
 }: {
   badge?: ReactNode
-  children: ReactNode
+  /**
+   * Optional: an `order` has a status badge but NO actions cluster — its two
+   * status fields are plain human-set values with no sanctioned transition
+   * behind them, unlike quote's Send/Approve and invoice's Send/Void
+   * (plans/products/08-order-build.md §5.8).
+   */
+  children?: ReactNode
 }) {
   return (
     <>

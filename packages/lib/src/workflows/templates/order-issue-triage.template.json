@@ -53,32 +53,25 @@
       "apiSlug": "ticket",
       "fieldMapping": {
         "ticket_status": "ticket_status",
-        "ticket_priority": "ticket_priority"
+        "ticket_priority": "ticket_priority",
+        "ticket_description": "ticket_description"
       },
       "requiredFields": ["ticket_status"],
       "required": true
     },
     {
-      "$comment": "TECHNIQUE 3: Custom entity from built-in template — requires installation if not present. All fields mapped 1:1 to templateFieldIds from order.json.",
-      "entityTemplateId": "order",
+      "$comment": "TECHNIQUE 3: System entity (order) — like contact, ticket and company above, `order` is a system entity definition, so it always exists and needs no installation. This WAS a custom entity from `templates/order.json`; that template was retired when the native order shipped (plans/products/08-order-build.md §3.5), so the binding moved to `__system:order` and the field keys became systemAttribute values from ORDER_FIELDS. The native order is a money document, not the CRM template — it has no priority, trackingUrl, itemsOrdered, requiresFollowUp or internalNotes, and it splits `status` into a financial and a fulfillment half.",
+      "entityTemplateId": "__system:order",
       "name": "Order",
-      "apiSlug": "orders",
-      "icon": "shopping-cart",
-      "color": "green",
+      "apiSlug": "order",
       "fieldMapping": {
-        "orderNumber": "orderNumber",
-        "orderTotal": "orderTotal",
-        "status": "status",
-        "priority": "priority",
-        "orderDate": "orderDate",
-        "shippingAddress": "shippingAddress",
-        "trackingUrl": "trackingUrl",
-        "itemsOrdered": "itemsOrdered",
-        "requiresFollowUp": "requiresFollowUp",
-        "internalNotes": "internalNotes",
-        "assignedTo": "assignedTo"
+        "order_number": "order_number",
+        "order_contact": "order_contact",
+        "order_placed_at": "order_placed_at",
+        "order_financial_status": "order_financial_status",
+        "order_fulfillment_status": "order_fulfillment_status"
       },
-      "requiredFields": ["orderNumber", "status"],
+      "requiredFields": ["order_number"],
       "companionTemplateIds": ["return-request", "shipment"],
       "required": true
     },
@@ -458,7 +451,7 @@
         "height": 100
       },
       {
-        "$comment": "── FIND NODE (custom entity: order) ── TECHNIQUE 3: @entity:orders resolves to entity definition ID via entityDefSlugs cache (apiSlug 'orders'). @field:orderNumber resolves via entity template's templateFieldId. findOne publishes its result under the entity-definition CUID (`<node>.<entityDefId>`), which a template addresses as `{{find-order-009.@entity:orders}}` — @entity: placeholders are rewritten inside {{…}} strings too, so the CUID never has to be known at authoring time.",
+        "$comment": "── FIND NODE (system entity: order) ── TECHNIQUE 3: @entity:order resolves to the entity definition ID straight from the org's entityDefs cache, keyed by entityType — no installation and no apiSlug lookup, unlike the custom-template path @entity:deals takes below. @field:order_number resolves by systemAttribute. findOne publishes its result under the entity-definition CUID (`<node>.<entityDefId>`), which a template addresses as `{{find-order-009.@entity:order}}` — @entity: placeholders are rewritten inside {{…}} strings too, so the CUID never has to be known at authoring time.",
         "id": "find-order-009",
         "type": "standard",
         "position": {
@@ -470,7 +463,7 @@
           "type": "find",
           "title": "Find Existing Order",
           "desc": "Search for an existing order record by order number",
-          "resourceType": "@entity:orders",
+          "resourceType": "@entity:order",
           "findMode": "findOne",
           "conditions": [],
           "conditionGroups": [
@@ -486,7 +479,7 @@
               "conditions": [
                 {
                   "id": "cond-order-number",
-                  "fieldId": "@field:orderNumber",
+                  "fieldId": "@field:order_number",
                   "operator": "is",
                   "value": "{{extractor-002.extracted_data.orderNumber}}",
                   "isConstant": false
@@ -549,7 +542,7 @@
         "height": 100
       },
       {
-        "$comment": "── CRUD CREATE (custom entity: order) ── TECHNIQUE 3 continued: Create order record from Shopify data. @entity:orders → entity definition ID. @field: refs → custom field IDs via templateFieldId matching after template installation.",
+        "$comment": "── CRUD CREATE (system entity: order) ── TECHNIQUE 3 continued: create a native order from the Shopify lookup. @field: refs resolve by systemAttribute. Only four fields are written, and the omissions are deliberate: `order_number` and `order_total` are BOTH `creatable: false` — the number is issued by the order_number system hook off the ORD RecordSequence, and the totals are owned by the totals engine, so a value written here would be discarded. `order_contact` is the one REQUIRED field (nullable: false); it takes the contact the parallel branch just resolved. The retired CRM template's priority / trackingUrl / itemsOrdered / requiresFollowUp / internalNotes have no native equivalent — the follow-up half of that now lives on the ticket in update-ticket-014. `order_shipping_address` is ADDRESS_STRUCT and the Shopify block's address shape does not match it, so it is left unset rather than seeded with a placeholder.",
         "id": "create-order-011",
         "type": "standard",
         "position": {
@@ -561,67 +554,19 @@
           "type": "crud",
           "title": "Create Order Record",
           "desc": "Create a new order record from Shopify data",
-          "resourceType": "@entity:orders",
+          "resourceType": "@entity:order",
           "mode": "create",
           "data": {
-            "@field:orderNumber": "{{shopify-order-003.order.name}}",
-            "@field:orderTotal": "{{shopify-order-003.order.totalPrice}}",
-            "@field:status": "Processing",
-            "@field:priority": "Normal",
-            "@field:orderDate": "{{shopify-order-003.order.createdAt}}",
-            "@field:shippingAddress": "",
-            "@field:trackingUrl": "{{shopify-order-003.order.orderStatusUrl}}",
-            "@field:itemsOrdered": "",
-            "@field:requiresFollowUp": true,
-            "@field:internalNotes": "Auto-created from customer support message"
+            "@field:order_contact": "{{find-contact-005.@entity:contact}}",
+            "@field:order_placed_at": "{{shopify-order-003.order.createdAt}}",
+            "@field:order_financial_status": "pending",
+            "@field:order_fulfillment_status": "unfulfilled"
           },
           "fieldModes": {
-            "@field:orderNumber": false,
-            "@field:orderTotal": false,
-            "@field:status": true,
-            "@field:priority": true,
-            "@field:orderDate": false,
-            "@field:shippingAddress": true,
-            "@field:trackingUrl": false,
-            "@field:itemsOrdered": true,
-            "@field:requiresFollowUp": true,
-            "@field:internalNotes": true
-          },
-          "error_strategy": "fail",
-          "default_values": [],
-          "errors": [],
-          "isValid": true,
-          "disabled": false
-        },
-        "width": 244,
-        "height": 100
-      },
-      {
-        "$comment": "── CRUD UPDATE (custom entity: order) ── TECHNIQUE 3 with update mode: Update existing order's follow-up flag and notes.",
-        "id": "update-order-012",
-        "type": "standard",
-        "position": {
-          "x": 1750,
-          "y": 150
-        },
-        "data": {
-          "id": "update-order-012",
-          "type": "crud",
-          "title": "Flag Order for Follow-Up",
-          "desc": "Update existing order with follow-up flag and priority",
-          "resourceType": "@entity:orders",
-          "mode": "update",
-          "resourceId": "{{find-order-009.@entity:orders}}",
-          "data": {
-            "@field:requiresFollowUp": true,
-            "@field:priority": "{{extractor-002.extracted_data.urgency}}",
-            "@field:internalNotes": "Customer reported issue: {{extractor-002.extracted_data.issueDescription}}"
-          },
-          "fieldModes": {
-            "resourceId": false,
-            "@field:requiresFollowUp": true,
-            "@field:priority": false,
-            "@field:internalNotes": false
+            "@field:order_contact": false,
+            "@field:order_placed_at": false,
+            "@field:order_financial_status": true,
+            "@field:order_fulfillment_status": true
           },
           "error_strategy": "fail",
           "default_values": [],
@@ -731,19 +676,21 @@
         "data": {
           "id": "update-ticket-014",
           "type": "crud",
-          "title": "Update Ticket Priority",
-          "desc": "Update the ticket with urgency and open status",
+          "title": "Update Ticket",
+          "desc": "Set urgency, reopen, and record the reported issue on the ticket",
           "resourceType": "@entity:ticket",
           "mode": "update",
           "resourceId": "{{trigger-001.ticket}}",
           "data": {
             "@field:ticket_priority": "{{extractor-002.extracted_data.urgency}}",
-            "@field:ticket_status": "open"
+            "@field:ticket_status": "open",
+            "@field:ticket_description": "Customer reported issue: {{extractor-002.extracted_data.issueDescription}}"
           },
           "fieldModes": {
             "resourceId": false,
             "@field:ticket_priority": false,
-            "@field:ticket_status": true
+            "@field:ticket_status": true,
+            "@field:ticket_description": false
           },
           "error_strategy": "fail",
           "default_values": [],
@@ -1217,10 +1164,10 @@
         "targetHandle": "target"
       },
       {
-        "$comment": "Order Exists? YES → Update Order",
+        "$comment": "Order Exists? YES → Update Ticket. The found arm used to pass through a 'Flag Order for Follow-Up' CRUD node; the native order has no requiresFollowUp / priority / internalNotes to flag (an order records a sale, it does not track a support conversation), so the arm now converges directly on update-ticket-014, which carries exactly those semantics natively.",
         "id": "edge-010",
         "source": "check-order-010",
-        "target": "update-order-012",
+        "target": "update-ticket-014",
         "sourceHandle": "case-order-found",
         "targetHandle": "target"
       },
@@ -1253,14 +1200,6 @@
         "id": "edge-014",
         "source": "create-order-011",
         "target": "create-company-015",
-        "sourceHandle": "source",
-        "targetHandle": "target"
-      },
-      {
-        "$comment": "Update Order → Update Ticket",
-        "id": "edge-015",
-        "source": "update-order-012",
-        "target": "update-ticket-014",
         "sourceHandle": "source",
         "targetHandle": "target"
       },
