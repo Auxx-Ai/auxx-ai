@@ -224,6 +224,39 @@ export function splitConnectionVariablesBySecrecy(
 }
 
 /**
+ * The scopes a connection was actually granted, as stored on `Credential.metadata.scope`.
+ *
+ * RFC 6749 §5.1 makes `scope` OPTIONAL in the token response — "REQUIRED if the scope of the
+ * access token issued is different from the scope requested by the client, otherwise OPTIONAL".
+ * So an omitted `scope` does not mean "no scopes": it means the grant matched the request.
+ * Defaulting to the requested list is the spec's own reading, not a workaround.
+ *
+ * Populating this at every write site is what lets an app derive its own capabilities from the
+ * connection rather than from a build-time constant — see
+ * `plans/connections/scope-derived-capabilities.md` §3.1.
+ *
+ * @param tokenScope `scope` from the provider's token-exchange response, if any.
+ * @param requestedScopes the definition's `oauth2Scopes` — what the authorize URL asked for.
+ * @param previousScope the value already stored, preserved when there is nothing better.
+ */
+export function resolveGrantedScopes(
+  tokenScope: string | undefined | null,
+  requestedScopes: string[] | null | undefined,
+  previousScope?: string | null
+): string | undefined {
+  const fromToken = tokenScope?.trim()
+  if (fromToken) return fromToken
+
+  const fromRequest = (requestedScopes ?? []).join(' ').trim()
+  if (fromRequest) return fromRequest
+
+  // Nothing to write. Never overwrite a good stored value with an empty one: the OAuth-mint
+  // path in `saveAppConnection` replaces `metadata` wholesale, so returning '' here would
+  // destroy the only record of what this connection can do.
+  return previousScope?.trim() || undefined
+}
+
+/**
  * Resolve which OAuth client id/secret a connection uses (§3.2). Precedence:
  * **per-credential `clientId`/`clientSecret` vars win when present, else the def's
  * platform client** (decrypted + interpolated by `interpolateConnectionFields`). This is

@@ -20,6 +20,7 @@ export {
   mintClientCredentialToken,
   type RefreshTokensResult,
   refreshCredentialTokens,
+  resolveGrantedScopes,
   resolveOAuth2Client,
   resolveOAuth2RefreshConfig,
   resolveOwnClientRequirement,

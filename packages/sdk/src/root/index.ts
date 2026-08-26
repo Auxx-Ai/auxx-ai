@@ -18,6 +18,11 @@ export type {
   WorkflowInput,
   WorkflowOutput,
 } from '../server/workflow/index.js'
+// Scope→capability helpers — `import { resolveCapabilities } from '@auxx/sdk'`.
+// Deliberately on the ROOT surface, not `/server`: `/server` is externalized to the injected
+// `AUXX_SERVER_SDK` global and would need a hand-mirrored copy in the lambda runtime, whereas
+// the root SDK is injected from the real module. See shared/scopes.ts.
+export { parseScopeString, resolveCapabilities } from '../shared/scopes.js'
 export type { App, AppSettings, Permission } from './app.js'
 export type {
   ConnectorConnection,

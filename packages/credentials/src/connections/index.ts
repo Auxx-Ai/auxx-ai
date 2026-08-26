@@ -31,6 +31,7 @@ export {
   effectiveConnectionVariables,
   gateConnectionVariables,
   loadDefinitionForCredential,
+  resolveGrantedScopes,
   resolveOAuth2Client,
   resolveOAuth2RefreshConfig,
   resolveOwnClientRequirement,

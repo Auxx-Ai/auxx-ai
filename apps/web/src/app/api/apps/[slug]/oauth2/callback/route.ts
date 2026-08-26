@@ -6,6 +6,7 @@ import { saveAppConnection } from '@auxx/lib/apps'
 import { resolveAppSlug } from '@auxx/lib/cache'
 import {
   appOAuthCallbackUrl,
+  resolveGrantedScopes,
   resolveOAuth2Client,
   splitConnectionVariablesBySecrecy,
 } from '@auxx/lib/connections'
@@ -350,7 +351,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           ? new Date(Date.now() + tokens.expires_in * 1000).toISOString()
           : undefined,
         metadata: {
-          scope: tokens.scope,
+          // RFC 6749 §5.1: an omitted `scope` means the grant matched the request, so fall
+          // back to the definition's list rather than storing nothing. Apps derive their own
+          // capabilities from this — plans/connections/scope-derived-capabilities.md §3.1.
+          scope: resolveGrantedScopes(tokens.scope, connDef.oauth2Scopes),
           tokenType: tokens.token_type,
           ...callbackMetadata,
           ...(Object.keys(plainVariables).length > 0 && {

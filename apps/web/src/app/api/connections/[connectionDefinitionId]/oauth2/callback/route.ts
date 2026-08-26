@@ -4,6 +4,7 @@ import { WEBAPP_URL } from '@auxx/config/urls'
 import { database as db } from '@auxx/database'
 import {
   providerOAuthCallbackUrl,
+  resolveGrantedScopes,
   resolveOAuth2Client,
   runPostConnectHook,
   saveConnection,
@@ -281,7 +282,9 @@ export async function GET(
           ? new Date(Date.now() + tokens.expires_in * 1000).toISOString()
           : undefined,
         metadata: {
-          scope: tokens.scope,
+          // RFC 6749 §5.1: an omitted `scope` means the grant matched the request. See
+          // plans/connections/scope-derived-capabilities.md §3.1.
+          scope: resolveGrantedScopes(tokens.scope, connDef.oauth2Scopes),
           tokenType: tokens.token_type,
           ...callbackMetadata,
           ...(Object.keys(plainVariables).length > 0 && { connectionVariables: plainVariables }),
