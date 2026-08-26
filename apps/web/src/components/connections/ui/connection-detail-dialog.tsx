@@ -22,6 +22,7 @@ import {
   type DetailMethod,
   methodIsBareSecret,
   methodOffersOwnClient,
+  shouldOfferOptionalScopes,
 } from './connection-detail-page'
 import { validateConnectionVariables } from './connection-variable-validation'
 
@@ -59,7 +60,15 @@ interface ConnectionDetailDialogProps {
    */
   onReconnect?: () => void
   reconnectLabel?: string
-  onSubmit: (payload: { values?: Record<string, string>; secret?: string; name?: string }) => void
+  /** Controlled: the optional scopes currently ticked. */
+  selectedOptionalScopes?: string[]
+  onOptionalScopesChange?: (next: string[]) => void
+  onSubmit: (payload: {
+    values?: Record<string, string>
+    secret?: string
+    name?: string
+    optionalScopes?: string[]
+  }) => void
 }
 
 /**
@@ -84,6 +93,8 @@ export function ConnectionDetailDialog({
   initialName,
   onReconnect,
   reconnectLabel = 'Reconnect',
+  selectedOptionalScopes,
+  onOptionalScopesChange,
   onSubmit,
 }: ConnectionDetailDialogProps) {
   const [token, setToken] = useState('')
@@ -91,6 +102,11 @@ export function ConnectionDetailDialog({
   // BYO disclosure (§3.1, ownClientOptional): platform login is primary; the client fields
   // only render — and only become required — once the user opens the advanced section.
   const [byoOpen, setByoOpen] = useState(false)
+  // Optional additive scopes (§4.2). Controlled when the caller passes both props (the connect
+  // flow seeds them from an existing grant on reconnect); otherwise the dialog owns the picks
+  // so it still works standalone. Never default-on — see `OptionalScopePicker`.
+  const [ownOptionalScopes, setOwnOptionalScopes] = useState<string[]>([])
+  const optionalScopes = selectedOptionalScopes ?? ownOptionalScopes
 
   // Stable across renders so the seed effect only fires on open / method change, not every render
   // (a bare method's `?? []` would otherwise re-seed and wipe input on each render). Kept as the
@@ -136,6 +152,9 @@ export function ConnectionDetailDialog({
     setToken(loaded?.tokenSet ? HIDDEN_VALUE : '')
     setName(initialName ?? method.label)
     setByoOpen(!!loaded?.values?.clientId)
+    // Uncontrolled picks only — a controlled caller owns (and seeds) its own array, and
+    // depending on it here would reseed on every render for an inline `[]` literal.
+    setOwnOptionalScopes([])
   }, [open, needsLoad, loaded, initialName, method.label])
 
   const bareSecret = methodIsBareSecret(method)
@@ -144,6 +163,11 @@ export function ConnectionDetailDialog({
   // A bare-OAuth method has neither a token row nor variables — its edit dialog is name-only.
   // Uses the disclosure-shaped set: a closed optional-BYO method is one-click platform login.
   const hasFields = bareSecret || effectiveVariables.length > 0
+
+  function handleOptionalScopesChange(next: string[]) {
+    setOwnOptionalScopes(next)
+    onOptionalScopesChange?.(next)
+  }
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -156,8 +180,15 @@ export function ConnectionDetailDialog({
     })
     setErrors(next)
     if (Object.keys(next).length > 0) return
-    const payload: { values?: Record<string, string>; secret?: string; name?: string } = {}
+    const payload: {
+      values?: Record<string, string>
+      secret?: string
+      name?: string
+      optionalScopes?: string[]
+    } = {}
     if (showName) payload.name = name.trim()
+    // Only report picks the user could actually see and change.
+    if (shouldOfferOptionalScopes(method, byoOpen)) payload.optionalScopes = optionalScopes
     // Only the currently-visible fields ride along; a bare API-key method submits the token.
     if (hasFields) {
       if (bareSecret) payload.secret = token
@@ -198,6 +229,8 @@ export function ConnectionDetailDialog({
             onMethodChange={() => {}}
             byoOpen={byoOpen}
             onByoOpenChange={offersOwnClient ? setByoOpen : undefined}
+            selectedOptionalScopes={optionalScopes}
+            onOptionalScopesChange={handleOptionalScopesChange}
             values={values}
             onValueChange={setValue}
             token={token}

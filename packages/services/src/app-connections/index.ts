@@ -22,7 +22,7 @@ export {
   getConnectionDefinitionById,
   listAppConnectionDefinitions,
 } from './list-app-connection-definitions'
-export { listAppConnections } from './list-app-connections'
+export { listAppConnections, parseGrantedScopes } from './list-app-connections'
 export { renameAppConnection } from './rename-app-connection'
 export type { AppConnection, ConnectionDefinitionSummary } from './types'
 // Export utility functions

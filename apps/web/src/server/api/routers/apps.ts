@@ -155,6 +155,14 @@ export const appsRouter = createTRPCRouter({
                   m.connectionVariables,
                   gate
                 ),
+                // Scope floor + additive optional list. This literal is a hard
+                // re-projection, so omitting them here drops them between the cache and the
+                // client exactly as it once dropped the BYO gate fields
+                // (plans/connections/optional-oauth-scopes.md row 19). Ungated on purpose:
+                // the BYO condition on the picker is presentation, resolved in the
+                // component, and `resolveRequestedScopes` re-intersects server-side anyway.
+                oauth2Scopes: m.oauth2Scopes,
+                oauth2OptionalScopes: m.oauth2OptionalScopes,
                 requiresOwnClient: gate.requiresOwnClient,
                 ownClientOptional: gate.ownClientOptional,
                 ownClientReason: gate.reason,

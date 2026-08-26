@@ -23,7 +23,7 @@ export function OwnClientCallbackNotice({ callbackUrl }: OwnClientCallbackNotice
   if (!callbackUrl) return null
 
   return (
-    <div className='flex flex-col gap-1 rounded-md border border-border bg-muted/40 p-2'>
+    <div className='flex flex-col gap-1 rounded-2xl border border-border bg-muted/40 p-2'>
       <p className='text-xs text-muted-foreground'>
         Add this redirect URI to your OAuth app before connecting:
       </p>

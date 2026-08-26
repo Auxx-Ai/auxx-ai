@@ -105,6 +105,11 @@ export const installedAppsProvider: CacheProvider<CachedInstalledApp[]> = {
               connectionType: true,
               oauth2Features: true,
               connectionVariables: true,
+              // Scope floor + the additive optional list (disjoint). The picker renders
+              // checkboxes from the optional list and the copyable full-scope string from
+              // both. See plans/connections/optional-oauth-scopes.md §4.2.
+              oauth2Scopes: true,
+              oauth2OptionalScopes: true,
               // Own-client gate (§3.1): a pending-verification platform client lets the app
               // offer platform-login OR bring-your-own client.
               oauth2ClientId: true,
@@ -231,6 +236,8 @@ export const installedAppsProvider: CacheProvider<CachedInstalledApp[]> = {
           connectionType: def.connectionType,
           global: def.global ?? false,
           connectionVariables: def.connectionVariables ?? [],
+          oauth2Scopes: def.oauth2Scopes ?? [],
+          oauth2OptionalScopes: def.oauth2OptionalScopes ?? [],
           oauth2ClientId: def.oauth2ClientId,
           oauth2ClientSecret: def.oauth2ClientSecret,
           platformClientApproved: def.platformClientApproved,
