@@ -91,6 +91,14 @@ interface SelectionStore {
     allRowIds?: string[]
   ) => void
   resetRowSelection: (tableId: string) => void
+  /**
+   * Drop specific ids from the selection, leaving the rest intact.
+   *
+   * For rows that are GONE — deleted, archived — not for rows that merely
+   * scrolled or filtered out of view. Deselecting on any row-set change would
+   * wipe the selection every time server-side search re-runs.
+   */
+  deselectRows: (tableId: string, rowIds: string[]) => void
   getRowSelection: (tableId: string) => RowSelectionState
   setLastClickedRowId: (tableId: string, rowId: string | null) => void
   setLastSelectedIndex: (tableId: string, index: number | null) => void
@@ -217,6 +225,23 @@ export const useSelectionStore = create<SelectionStore>()(
           t.rowSelection = EMPTY_ROW_SELECTION
           t.lastClickedRowId = null
           t.lastSelectedIndex = null
+        })
+      )
+    },
+
+    deselectRows: (tableId, rowIds) => {
+      if (rowIds.length === 0) return
+      set((state) =>
+        produce(state, (draft) => {
+          const t = draft.tables[tableId]
+          if (!t) return
+          for (const id of rowIds) {
+            delete t.rowSelection[id]
+          }
+          if (t.lastClickedRowId && rowIds.includes(t.lastClickedRowId)) {
+            t.lastClickedRowId = null
+            t.lastSelectedIndex = null
+          }
         })
       )
     },

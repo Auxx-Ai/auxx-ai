@@ -160,13 +160,13 @@ function DynamicViewInner<TData extends object>({
   // Check if calendar view is valid (needs a configured date axis)
   const isCalendarView = viewType === 'calendar' && !!calendarConfig?.dateFieldId
 
-  // Table-selected rows (for table view)
-  const tableState = table.getState()
-  // biome-ignore lint/correctness/useExhaustiveDependencies: tableState properties trigger recalculation when filters/selection change
-  const tableSelectedRows = useMemo(
-    () => table.getFilteredSelectedRowModel().rows,
-    [table, tableState.columnFilters, tableState.globalFilter, tableState.rowSelection]
-  )
+  // Table-selected rows (for table view).
+  // Deliberately NOT wrapped in useMemo: table-core already memoizes this on
+  // [rowSelection, getFilteredRowModel()], so the call is cached — and unlike a
+  // hand-rolled dep list it invalidates when rows are added or removed. A useMemo
+  // here previously omitted the row data, so deleting the selected rows left a
+  // stale array behind and the bulk action bar kept reporting the old count.
+  const tableSelectedRows = table.getFilteredSelectedRowModel().rows
 
   // Kanban-selected data
   const kanbanSelectedData = useMemo(() => {

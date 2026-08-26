@@ -24,6 +24,13 @@ interface UseEntityInstanceOperationsOptions {
   onDrawerClose?: () => void
   /** Callback when row selection should be cleared */
   onClearSelection?: () => void
+  /**
+   * Callback with the ids of rows that are GONE after a bulk mutation — deleted
+   * or archived. Callers use it to drop those ids from the table's selection so
+   * the bulk action bar stops counting rows that no longer exist. Rows that
+   * failed to delete are omitted, so they stay selected for a retry.
+   */
+  onRowsRemoved?: (rowIds: string[]) => void
   /** Callback to refresh data after mutations */
   onRefetch?: () => void
 }
@@ -46,6 +53,7 @@ export function useEntityInstanceOperations(options: UseEntityInstanceOperations
     resourcePlural,
     onDrawerClose,
     onClearSelection,
+    onRowsRemoved,
     onRefetch,
   } = options
 
@@ -189,11 +197,18 @@ export function useEntityInstanceOperations(options: UseEntityInstanceOperations
         const failedIds = new Set(
           result.errors.map((e) => parseRecordId(e.recordId).entityInstanceId)
         )
+        const removedIds: string[] = []
         for (const row of rows) {
-          if (!failedIds.has(row.id) && entityDefinitionId) {
-            useRecordStore.getState().removeRecord(entityDefinitionId, row.id)
+          if (!failedIds.has(row.id)) {
+            removedIds.push(row.id)
+            if (entityDefinitionId) {
+              useRecordStore.getState().removeRecord(entityDefinitionId, row.id)
+            }
           }
         }
+        // Drop the deleted ids from the table selection. Rows that failed keep
+        // their selection so the user can retry them.
+        onRowsRemoved?.(removedIds)
         onRefetch?.()
 
         if (result.errors.length > 0) {
@@ -211,6 +226,7 @@ export function useEntityInstanceOperations(options: UseEntityInstanceOperations
       bulkDeleteMutateAsync,
       buildRecordId,
       entityDefinitionId,
+      onRowsRemoved,
       onRefetch,
     ]
   )
@@ -230,9 +246,19 @@ export function useEntityInstanceOperations(options: UseEntityInstanceOperations
         await bulkArchiveMutateAsync({
           recordIds: rows.map((r) => buildRecordId(r.id)),
         })
+        // bulkArchive is all-or-nothing ({ count }, no per-row errors), so on
+        // success every row passed in is gone from the default view.
+        onRowsRemoved?.(rows.map((r) => r.id))
       }
     },
-    [confirmArchive, resourceLabel, resourcePlural, bulkArchiveMutateAsync, buildRecordId]
+    [
+      confirmArchive,
+      resourceLabel,
+      resourcePlural,
+      bulkArchiveMutateAsync,
+      buildRecordId,
+      onRowsRemoved,
+    ]
   )
 
   /** Handle delete from drawer with confirmation */
