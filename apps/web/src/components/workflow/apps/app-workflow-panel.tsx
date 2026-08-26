@@ -2,6 +2,8 @@
 
 'use client'
 
+import { stableStringify } from '@auxx/utils/json'
+import { deepEqual } from '@auxx/utils/objects'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAppsContext } from '~/components/apps/providers/apps-context'
 import { suppressConnectionDialog } from '~/components/apps/runtime/connection-dialog-suppression'
@@ -74,6 +76,8 @@ export const AppWorkflowPanel = memo<AppWorkflowPanelProps>(
     // Initialize with actual node data from props instead of empty object
     const { inputs: nodeData, setInputs } = useNodeCrud(nodeId, propData || {})
     const nodeDataRef = useRef(nodeData)
+    /** Last payload actually sent to the iframe, so an unchanged one is not re-sent. */
+    const lastSentPanelDataRef = useRef<string | null>(null)
     const [panelComponent, setPanelComponent] = useState<any>(null)
     const [error, setError] = useState<string | null>(null)
     const [isLoading, setIsLoading] = useState(true)
@@ -267,38 +271,54 @@ export const AppWorkflowPanel = memo<AppWorkflowPanelProps>(
 
           if (!isMounted) return
 
+          // An iframe re-render re-sends the block's data whether or not any of
+          // it moved, so this echoes back values we already hold. Writing them
+          // anyway mints a new `node.data` identity, which pushes data back
+          // INTO the iframe and starts the cycle again — plan 29 §2 link H1.
           unsubscribeData = messageClient.listenForRequest(
             'workflow-node-data-update',
             (data: any) => {
-              if (data.nodeId === nodeId) {
-                setInputs({
-                  ...nodeDataRef.current,
-                  ...data.data,
-                })
-              }
+              if (data.nodeId !== nodeId) return
+              const merged = { ...nodeDataRef.current, ...data.data }
+              if (deepEqual(merged, nodeDataRef.current)) return
+              setInputs(merged)
             }
           )
 
-          // Listen for dynamic output updates from SDK-side computeOutputs
+          // Listen for dynamic output updates from SDK-side computeOutputs.
+          // `evaluateComputeOutputs` re-runs on every panel render and emits
+          // unconditionally, so identical outputs arrive ~1/s forever; the
+          // signature comparison below already existed but only gated the
+          // `inferredSchema` clear, not the write itself.
           unsubscribeOutputs = messageClient.listenForRequest(
             'workflow-block-outputs-updated',
             (data: any) => {
-              if (data.nodeId === nodeId) {
-                const prevSig = computeOutputSignature(nodeDataRef.current._computedOutputs || {})
-                const newSig = computeOutputSignature(data.outputs || {})
+              if (data.nodeId !== nodeId) return
 
-                const updates: any = {
-                  ...nodeDataRef.current,
-                  _computedOutputs: data.outputs,
-                }
+              const prevSig = computeOutputSignature(nodeDataRef.current._computedOutputs || {})
+              const newSig = computeOutputSignature(data.outputs || {})
 
-                // Clear stale inferred schema if computed output shape changed
-                if (prevSig !== newSig && nodeDataRef.current.inferredSchema) {
-                  updates.inferredSchema = undefined
-                }
-
-                setInputs(updates)
+              // Same shape AND same values: nothing to record. The signature
+              // alone is not enough — it captures field types and nesting, not
+              // the values, so two different output sets can share one.
+              if (
+                prevSig === newSig &&
+                deepEqual(data.outputs, nodeDataRef.current._computedOutputs)
+              ) {
+                return
               }
+
+              const updates: any = {
+                ...nodeDataRef.current,
+                _computedOutputs: data.outputs,
+              }
+
+              // Clear stale inferred schema if computed output shape changed
+              if (prevSig !== newSig && nodeDataRef.current.inferredSchema) {
+                updates.inferredSchema = undefined
+              }
+
+              setInputs(updates)
             }
           )
         } catch (error) {
@@ -344,11 +364,21 @@ export const AppWorkflowPanel = memo<AppWorkflowPanelProps>(
       setInputs({ ...nodeDataRef.current, _hiddenFields: hidden })
     }, [panelComponent, setInputs])
 
-    // Send data updates to iframe when React Flow data changes
+    // Send data updates to iframe when React Flow data changes.
+    //
+    // Guarded on the SERIALIZED payload, not on `nodeData`'s identity: the
+    // iframe's own `setData` merges whatever arrives into new state and
+    // re-renders, which re-runs its `computeOutputs` and emits back to us. A
+    // re-push of bytes it already holds is therefore not free — it is the
+    // return leg of plan 29 §2's cycle (link H3 → S3).
     // biome-ignore lint/correctness/useExhaustiveDependencies: panelComponent is intentionally excluded - only send when nodeData changes
     useEffect(() => {
       if (!panelComponent) return // Wait for initial render
       if (!messageClient) return
+
+      const payload = stableStringify(nodeDataRef.current)
+      if (payload === lastSentPanelDataRef.current) return
+      lastSentPanelDataRef.current = payload
 
       void messageClient.sendRequest(`update-panel-data-${nodeId}`, nodeDataRef.current)
     }, [nodeData, nodeId, messageClient])

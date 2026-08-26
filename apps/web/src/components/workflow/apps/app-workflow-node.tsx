@@ -3,6 +3,7 @@
 'use client'
 
 import { PermissionKey } from '@auxx/lib/permissions/client'
+import { stableStringify } from '@auxx/utils/json'
 import { useUpdateNodeInternals } from '@xyflow/react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAppsContext } from '~/components/apps/providers/apps-context'
@@ -62,6 +63,8 @@ export const AppWorkflowNode = memo<AppWorkflowNodeProps>((props) => {
   const [nodeComponent, setNodeComponent] = useState<any>(null)
   const [error, setError] = useState<string | null>(null)
   const dataRef = useRef(data)
+  /** Last payload actually sent to the iframe, so an unchanged one is not re-sent. */
+  const lastSentNodeDataRef = useRef<string | null>(null)
   const updateNodeInternals = useUpdateNodeInternals()
 
   // Keep ref in sync with latest data
@@ -215,6 +218,13 @@ export const AppWorkflowNode = memo<AppWorkflowNodeProps>((props) => {
   useEffect(() => {
     if (!nodeComponent) return // Wait for initial render
     if (!messageClient) return
+
+    // Guarded on the serialized payload, not on `data`'s identity: the node
+    // iframe `setData`s whatever arrives and re-renders, so re-sending bytes it
+    // already holds buys a render per tick and nothing else (plan 29 §2).
+    const payload = stableStringify(dataRef.current)
+    if (payload === lastSentNodeDataRef.current) return
+    lastSentNodeDataRef.current = payload
 
     // Send updated data to node iframe
     void messageClient.sendRequest(`update-node-data-${id}`, dataRef.current)

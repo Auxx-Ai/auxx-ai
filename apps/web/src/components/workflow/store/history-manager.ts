@@ -1,5 +1,6 @@
 // apps/web/src/components/workflow/store/history-manager.ts
 
+import { stableStringify } from '@auxx/utils/json'
 import { v4 as uuidv4 } from 'uuid'
 import { storeEventBus } from './event-bus'
 import type { HistoryDescription, HistoryEntry } from './types'
@@ -117,6 +118,26 @@ export class HistoryManager {
 
     const willCoalesce =
       !!coalesceKey && top?.coalesceKey === coalesceKey && now - top.timestamp < this.coalesceWindow
+
+    // An entry identical to the one on top of the stack is never worth
+    // recording: undoing onto it is a no-op, and it costs one of the
+    // `maxHistorySize` slots that a real edit needs.
+    //
+    // This is belt-and-braces behind the callers, who should not be recording
+    // no-op edits in the first place — but the failure mode when one does is
+    // severe and silent. `coalesceWindow` is 500 ms, tuned for keystroke
+    // bursts, so a repeating writer even slightly SLOWER than that misses the
+    // merge entirely: it pushes a fresh entry every time, clears the redo stack
+    // on each push, and once 50 entries overflow it evicts the user's real
+    // edits off the front. An app panel's iframe echo did exactly that at
+    // ~1 Hz — see `plans/kopilot/workflow/29-app-panel-write-loop.md` §3.1.
+    //
+    // Do NOT "fix" that class of bug by widening `coalesceWindow`: that would
+    // start merging genuinely separate user edits into one undo step, which is
+    // the failure moving history off a time debounce was meant to end.
+    if (top && !willCoalesce && stableStringify(entry.data) === stableStringify(top.data)) {
+      return
+    }
 
     // The state this entry is recorded on top of. When merging, the entry being
     // overwritten is NOT that state — the one below it is.
