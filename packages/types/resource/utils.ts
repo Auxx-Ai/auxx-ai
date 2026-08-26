@@ -157,6 +157,7 @@ export const ENTITY_DEFINITION_TYPES = [
   'payment',
   'product',
   'gl_posting',
+  'order',
 ] as const
 
 /** Type for system entity types stored in EntityDefinition */

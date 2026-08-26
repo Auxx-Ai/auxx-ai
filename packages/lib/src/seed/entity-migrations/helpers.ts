@@ -110,8 +110,14 @@ export async function loadExistingState(
 
 // ─── Ensure EntityDefinitions ────────────────────────────────────────
 
-/** First slug not in `takenSlugs`: `base`, then `base-2`, `base-3`, … */
-function resolveFreeSlug(base: string, takenSlugs: Set<string>): string {
+/**
+ * First slug not in `takenSlugs`: `base`, then `base-2`, `base-3`, …
+ *
+ * Exported for migration 107, which has to rename an incumbent def aside onto a
+ * free `custom-orders*` slug before `ensureEntityDefinitions` reads free slugs
+ * for the system def.
+ */
+export function resolveFreeSlug(base: string, takenSlugs: Set<string>): string {
   if (!takenSlugs.has(base)) return base
   let n = 2
   while (takenSlugs.has(`${base}-${n}`)) n++

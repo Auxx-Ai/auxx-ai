@@ -672,6 +672,32 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
     description: 'Invoices for this contact',
   },
 
+  // Reverse relationship: orders (from order.contact)
+  orders: {
+    id: toFieldId('orders'),
+    key: 'orders',
+    label: 'Orders',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'contact_orders',
+    showInPanel: false,
+    systemSortOrder: 'aH',
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'order:contact' as ResourceFieldId,
+      relationshipType: 'has_many',
+      isInverse: true,
+    },
+    description: 'Orders placed by this contact',
+  },
+
   balanceDue: {
     id: toFieldId('balanceDue'),
     key: 'balanceDue',

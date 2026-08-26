@@ -534,6 +534,39 @@ export const WORK_ORDER_FIELDS: Record<string, ResourceField> = {
     description: 'Quote this job was converted from',
   },
 
+  order: {
+    id: toFieldId('order'),
+    key: 'order',
+    label: 'Order',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'work_order_order',
+    systemSortOrder: 'aV',
+    nullable: true,
+    showInPanel: false, // linked by hand from the order side, not a job field row
+    showInDialogs: false,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'order:workOrders' as ResourceFieldId,
+      relationshipType: 'belongs_to',
+      isInverse: false,
+    },
+    relationshipConfig: {
+      relatedEntityType: 'order',
+      relationshipType: 'belongs_to',
+      inverseName: 'Work Orders',
+      inverseSystemAttribute: 'order_work_orders',
+    },
+    description: 'Order this job was raised off — linked by hand (D4 defers the conversion flow)',
+  },
+
   // Reverse relationship: lineItems (from line_item.workOrder)
   lineItems: {
     id: toFieldId('lineItems'),

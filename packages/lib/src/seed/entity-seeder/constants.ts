@@ -236,6 +236,15 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     // it stays out of the sidebar; Gap G's close console is the read surface.
     isVisible: false,
   },
+  {
+    entityType: 'order',
+    apiSlug: 'orders',
+    singular: 'Order',
+    plural: 'Orders',
+    icon: 'shopping-bag',
+    color: 'amber',
+    isVisible: true,
+  },
 ]
 
 /**
@@ -344,6 +353,10 @@ export const DISPLAY_FIELD_CONFIG: Record<string, DisplayFieldConfig> = {
   gl_posting: {
     primaryDisplayField: 'docNumber',
     secondaryDisplayField: 'periodKey',
+  },
+  order: {
+    primaryDisplayField: 'number',
+    secondaryDisplayField: undefined,
   },
 }
 

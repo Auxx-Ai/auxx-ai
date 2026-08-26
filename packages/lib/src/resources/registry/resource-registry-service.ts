@@ -918,6 +918,11 @@ export class ResourceRegistryService {
           dynamicOptionsKey: staticField.dynamicOptionsKey,
           operatorOverrides: staticField.operatorOverrides,
           showInPanel: staticField.showInPanel,
+          // `showInTable` was missing here, so every system field's table-visibility
+          // flag was silently dropped in the static/DB merge and the table fell back
+          // to `showInPanel !== false` for all of them. 27 registry fields across 10
+          // resources set it; none of them took effect.
+          showInTable: staticField.showInTable,
           showInDialogs: staticField.showInDialogs,
           placeholder: staticField.placeholder,
           nullable: staticField.nullable,

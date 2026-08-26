@@ -203,6 +203,20 @@ export const FIELD_VIEW_CONFIGS: FieldViewSeedConfig[] = [
     name: 'Default Create Dialog',
     includeFields: ['invoice_contact', 'invoice_work_order', 'invoice_due_date'],
   },
+  {
+    // Create is an allowlist: who it is for, which company, and when it was
+    // placed. Financial/fulfillment status carry registry defaults (pending /
+    // unfulfilled), totals belong to the line builder, and the Shopify-shaped
+    // fields (currency, payment gateways, shipping address) are for synced
+    // orders, not a hand-entered one. Channel is human-set but deliberately out
+    // of create — it defaults to `manual`, which is right for every order made
+    // here. Edit seeds nothing, so it falls back to the registry and can reach
+    // everything (same as quote / invoice / work_order).
+    entityType: 'order',
+    contextType: 'dialog_create',
+    name: 'Default Create Dialog',
+    includeFields: ['order_contact', 'order_company', 'order_placed_at'],
+  },
 ]
 
 /**

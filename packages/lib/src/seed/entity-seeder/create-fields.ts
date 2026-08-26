@@ -14,6 +14,7 @@ import { INBOX_FIELDS } from '../../resources/registry/resources/inbox-fields'
 import { INVOICE_FIELDS } from '../../resources/registry/resources/invoice-fields'
 import { LINE_ITEM_FIELDS } from '../../resources/registry/resources/line-item-fields'
 import { MEETING_FIELDS } from '../../resources/registry/resources/meeting-fields'
+import { ORDER_FIELDS } from '../../resources/registry/resources/order-fields'
 import { PART_FIELDS } from '../../resources/registry/resources/part-fields'
 import { PAYMENT_FIELDS } from '../../resources/registry/resources/payment-fields'
 import { PERSONAL_INBOX_FIELDS } from '../../resources/registry/resources/personal-inbox-fields'
@@ -67,6 +68,7 @@ export const FIELD_REGISTRY: Record<string, Record<string, ResourceField>> = {
   payment: PAYMENT_FIELDS,
   product: PRODUCT_FIELDS,
   gl_posting: GL_POSTING_FIELDS,
+  order: ORDER_FIELDS,
 }
 
 /**

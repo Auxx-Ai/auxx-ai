@@ -142,6 +142,7 @@ export const ModelTypeValues = [
   'payment',
   'product',
   'gl_posting',
+  'order',
 ] as const
 
 /**
@@ -185,6 +186,7 @@ export const ModelTypes = {
   PAYMENT: 'payment',
   PRODUCT: 'product',
   GL_POSTING: 'gl_posting',
+  ORDER: 'order',
 } as const
 
 /**
@@ -479,6 +481,17 @@ export const ModelTypeMeta: Record<
     apiSlug: 'gl-postings',
     dbTable: 'EntityInstance',
     hasDetailPage: false,
+  },
+  order: {
+    label: 'Order',
+    plural: 'Orders',
+    icon: 'shopping-bag',
+    color: 'amber',
+    apiSlug: 'orders',
+    dbTable: 'EntityInstance',
+    // The `quote` shape, not the invoice's drawer-only one
+    // (plans/products/08-order-build.md §5.7, D17).
+    hasDetailPage: true,
   },
 }
 
