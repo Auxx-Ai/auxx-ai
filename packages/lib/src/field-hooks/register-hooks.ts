@@ -32,6 +32,7 @@ import {
 import {
   recomputeOnInvoiceBillingChange,
   recomputeOnLineChange,
+  recomputeOnOrderBillingChange,
   recomputeOnQuoteBillingChange,
 } from '../money/totals-hooks'
 import { derivePhoneGeoOnChange, warmPhoneGeo } from '../phone-geo'
@@ -150,6 +151,7 @@ export function registerAllHooks(): void {
   // 'invoices'.
   registerEntityFieldChangeHooks('line-items', [recomputeOnLineChange, syncBillingOnLineChange])
   registerEntityFieldChangeHooks('quotes', [recomputeOnQuoteBillingChange])
+  registerEntityFieldChangeHooks('orders', [recomputeOnOrderBillingChange])
   //
   // Client-notifications plan §4.3: enroll the seeded `invoice_reminders` sequence on the
   // draft→sent transition (`enrollInvoiceReminderOnSent` checks the PREVIOUS value so a

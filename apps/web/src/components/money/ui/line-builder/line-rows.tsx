@@ -75,6 +75,8 @@ import { LinePhotoPopover } from './line-photo-popover'
 import {
   BASE_LINE_SYSTEM_ATTRIBUTES,
   DEFAULT_LINE_VALUES,
+  DOCUMENT_KNOBS,
+  type DocumentType,
   type LinePatch,
   type LineValues,
   lineValuesFromSystemValues,
@@ -158,13 +160,15 @@ export function freshDraft(draftId: string): DraftLine {
   }
 }
 
-/** The document-relationship field a new line_item is stamped with, by document type. */
-export function relKeyForDocumentType(documentType: 'quote' | 'work_order' | 'invoice'): string {
-  return documentType === 'quote'
-    ? 'line_item_quote'
-    : documentType === 'invoice'
-      ? 'line_item_invoice'
-      : 'line_item_work_order'
+/**
+ * The document-relationship field a new line_item is stamped with, by document
+ * type. A lookup rather than a ternary chain: a missing arm here stamps the line
+ * onto the WRONG document instead of failing, and the fourth type
+ * (`order`, plans/products/08-order-build.md §5.6) is exactly the kind of
+ * addition a chain absorbs silently.
+ */
+export function relKeyForDocumentType(documentType: DocumentType): string {
+  return DOCUMENT_KNOBS[documentType].relKey
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1121,7 +1125,7 @@ export function LineRow({
   photosField: ResourceField | null
   readOnly: boolean
   currencyCode: string
-  documentType: 'quote' | 'work_order' | 'invoice'
+  documentType: DocumentType
   catalogItems: CatalogItem[]
   catalogGroups: CatalogGroup[]
   catalogItemMap: Map<string, CatalogItem>
@@ -1259,7 +1263,7 @@ export function DraftLineRow({
   autoFocus: boolean
   categoryOptions: CategoryOption[]
   currencyCode: string
-  documentType: 'quote' | 'work_order' | 'invoice'
+  documentType: DocumentType
   catalogItems: CatalogItem[]
   catalogGroups: CatalogGroup[]
   catalogItemMap: Map<string, CatalogItem>

@@ -37,6 +37,7 @@ import {
 } from '~/components/resources/store/field-value-store'
 import { useResourceStore } from '~/components/resources/store/resource-store'
 import type { DraftLine } from './line-rows'
+import { DOCUMENT_KNOBS, type DocumentType } from './line-values'
 import { formatCurrency } from './shared'
 
 /** Org tax rate preset (`documents.taxRates` setting, §G.1). */
@@ -148,7 +149,7 @@ export function TotalsFooter({
   onUpdateDiscount,
   onUpdateTax,
 }: {
-  documentType: 'quote' | 'work_order' | 'invoice'
+  documentType: DocumentType
   readOnly: boolean
   currencyCode: string
   lineRecordIds: RecordId[]
@@ -162,10 +163,13 @@ export function TotalsFooter({
 }) {
   const isQuote = documentType === 'quote'
   const isInvoice = documentType === 'invoice'
-  // Both quote and invoice mirror the same billing shape (discount/tax) onto their own
-  // systemAttribute prefix (money MI1 build spec §J.2) — work_order (M2 job view) has none.
-  const hasBilling = isQuote || isInvoice
-  const prefix = isInvoice ? 'invoice' : 'quote'
+  // All THREE totalled documents mirror the same billing shape (discount/tax) onto their
+  // own systemAttribute prefix (money MI1 build spec §J.2, widened to `order` by
+  // plans/products/08-order-build.md §5.6) — work_order (M2 job view) has none.
+  // Keyed lookups, not `isInvoice ? 'invoice' : 'quote'`: that shape reads an order's
+  // totals off `quote_*` and shows the wrong numbers.
+  const hasBilling = DOCUMENT_KNOBS[documentType].hasBilling
+  const prefix = DOCUMENT_KNOBS[documentType].billingPrefix
   const lines = useLinesForTotals(lineRecordIds, draftLines)
   const [discountDraft, setDiscountDraft] = useState<string | null>(null)
 

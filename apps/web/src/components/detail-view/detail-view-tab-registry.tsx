@@ -61,6 +61,15 @@ export const DETAIL_VIEW_TAB_COMPONENTS: Record<
     })),
 
   // ─────────────────────────────────────────────────────────────────
+  // ORDER TABS — plans/products/08-order-build.md §5.7 (D17: the order gets a
+  // full detail page, the quote shape, not the invoice's drawer-only one).
+  // ─────────────────────────────────────────────────────────────────
+  'order:line-items': () =>
+    import('../money/ui/order/order-line-items-tab').then((m) => ({
+      default: m.OrderLineItemsTab,
+    })),
+
+  // ─────────────────────────────────────────────────────────────────
   // WORK ORDER (job view) TABS — dispatch M2 build spec §F.2
   // ─────────────────────────────────────────────────────────────────
   'work_order:schedule': () =>

@@ -567,6 +567,36 @@ export const PART_FIELDS: Record<string, ResourceField> = {
     description: 'Catalog (product/service) entries backed by this part',
   },
 
+  // Reverse relationship: lineItems (one-to-many from line_item.part). The
+  // counterpart of the STAMPED `line_item_part`
+  // (plans/products/08-order-build.md §6.2) — this is what makes revenue by
+  // part a single join instead of the three-hop
+  // line -> catalog_item -> part -> product chain.
+  lineItems: {
+    id: toFieldId('lineItems'),
+    key: 'lineItems',
+    label: 'Line Items',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'part_line_items',
+    systemSortOrder: 'a9b',
+    showInPanel: false,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'line_item:part' as ResourceFieldId,
+      relationshipType: 'has_many',
+      isInverse: true,
+    },
+    description: 'Sold lines stamped with this part',
+  },
+
   // Optional place in a product family (plans/products/01-product-family.md §5).
   // The only family edge: connectors and humans write the same relation.
   product: {

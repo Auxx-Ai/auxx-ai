@@ -177,6 +177,7 @@ export { computeDocumentTotals, computeLineTotal, roundCents } from './totals'
 export {
   recomputeOnInvoiceBillingChange,
   recomputeOnLineChange,
+  recomputeOnOrderBillingChange,
   recomputeOnQuoteBillingChange,
   recomputeTotals,
 } from './totals-hooks'

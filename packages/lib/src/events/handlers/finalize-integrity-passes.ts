@@ -273,9 +273,9 @@ async function totalsPass(
     const lineWork: Array<{ lineInstanceId: string; rewriteLineTotal: boolean }> = []
     const parents = new Map<
       string,
-      { documentType: 'quote' | 'invoice'; documentInstanceId: string }
+      { documentType: 'quote' | 'invoice' | 'order'; documentInstanceId: string }
     >()
-    const addParent = (documentType: 'quote' | 'invoice', documentInstanceId: string) =>
+    const addParent = (documentType: 'quote' | 'invoice' | 'order', documentInstanceId: string) =>
       parents.set(`${documentType}:${documentInstanceId}`, { documentType, documentInstanceId })
 
     for (const [rid, touched] of Object.entries(manifest.touched)) {
@@ -304,6 +304,9 @@ async function totalsPass(
           if (hasTrigger(totalsHooks.INVOICE_TRIGGER_ATTRS)) {
             addParent('invoice', entityInstanceId)
           }
+          break
+        case 'order':
+          if (hasTrigger(totalsHooks.ORDER_TRIGGER_ATTRS)) addParent('order', entityInstanceId)
           break
       }
     }

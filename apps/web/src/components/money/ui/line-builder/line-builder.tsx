@@ -120,6 +120,9 @@ import {
 } from './line-rows'
 import {
   BASE_LINE_SYSTEM_ATTRIBUTES,
+  DOCUMENT_BILLING_ATTRS,
+  DOCUMENT_KNOBS,
+  type DocumentType,
   diffLineValues,
   type LinePatch,
   type LineValues,
@@ -136,7 +139,7 @@ import { useLineNav } from './use-line-nav'
 
 export interface LineBuilderProps {
   documentRecordId: string
-  documentType: 'quote' | 'work_order' | 'invoice'
+  documentType: DocumentType
   readOnly?: boolean
   /**
    * Scope the builder to a single visit's occurrence extras (work_order only, money 01-ui #13):
@@ -155,23 +158,6 @@ const INITIAL_DRAFT_COUNT = 3
 const LINE_SORT = [{ id: 'sortOrder', desc: false }]
 /** Every fixed line-builder field is visible to the shared syncer. */
 const LINE_FIELD_VISIBILITY = {}
-
-// Document billing mirrors read once for group set-if-unset checks and `TotalsFooter`.
-// Invoice mode also carries its read-only paid/balance ledger mirrors.
-const QUOTE_BILLING_ATTRS = [
-  'quote_discount_type',
-  'quote_discount_value',
-  'quote_tax_name',
-  'quote_tax_rate',
-]
-const INVOICE_BILLING_ATTRS = [
-  'invoice_discount_type',
-  'invoice_discount_value',
-  'invoice_tax_name',
-  'invoice_tax_rate',
-  'invoice_amount_paid',
-  'invoice_balance',
-]
 
 /** Org tax rate preset (`documents.taxRates` setting, money MQ1 build spec §G.1). */
 interface TaxRatePreset {
@@ -235,12 +221,15 @@ export function LineBuilder({
 
   // work_order (M2 job view) has no billing fields (money MI1 build spec §J.2 precedent,
   // mirrored from TotalsFooter) — group discount/tax set-if-unset skips entirely there.
-  const hasBilling = documentType === 'quote' || documentType === 'invoice'
-  const billingPrefix = documentType === 'invoice' ? 'invoice' : 'quote'
+  // Everything else reads off DOCUMENT_KNOBS; see the warning on that table.
+  const { hasBilling, billingPrefix } = DOCUMENT_KNOBS[documentType]
   const { values: billingValues } = useSystemValues(
     docRecordId,
-    documentType === 'invoice' ? INVOICE_BILLING_ATTRS : QUOTE_BILLING_ATTRS,
-    { autoFetch: hasBilling, enabled: hasBilling }
+    DOCUMENT_BILLING_ATTRS[documentType],
+    {
+      autoFetch: hasBilling,
+      enabled: hasBilling,
+    }
   )
   const taxRates = useMemo(
     () =>
@@ -328,7 +317,9 @@ export function LineBuilder({
     const conditions: ConditionGroup['conditions'] = [
       {
         id: 'line-builder-document',
-        fieldId: documentType === 'quote' ? 'line_item:quote' : 'line_item:workOrder',
+        // The order arm is the plainest of the four: no work-order exclusion
+        // (that invariant is about an invoice's own lines) and no visit split.
+        fieldId: DOCUMENT_KNOBS[documentType].relFieldId,
         operator: 'is',
         value: documentRecordId,
       },
@@ -593,7 +584,12 @@ export function LineBuilder({
         deleteMutateAsync({ recordId: toRecordId(entityDefinitionId, lineId) })
           .then(() => {
             // Deletes don't fire field-change hooks — recompute explicitly (§F.2).
-            if (documentType === 'quote') recomputeMutate({ quoteRecordId: docRecordId })
+            // Every totalled document needs this; work_order stores no totals.
+            // `recordId` (not the legacy `quoteRecordId`) so the router derives
+            // the document type from the def component.
+            if (DOCUMENT_KNOBS[documentType].hasBilling) {
+              recomputeMutate({ recordId: docRecordId })
+            }
           })
           .catch(restoreOnError)
       }

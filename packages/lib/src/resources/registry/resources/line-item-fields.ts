@@ -469,6 +469,73 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
     description: 'Parent invoice relation for invoice-owned snapshot lines only',
   },
 
+  // The fourth document slot (plans/products/08-order-build.md §2). Sort keys
+  // `b10`/`b11` sit between `invoice` (`b1`) and `photos` (`b1a`) so the four
+  // document relations stay adjacent in the panel.
+  order: {
+    id: toFieldId('order'),
+    key: 'order',
+    label: 'Order',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'line_item_order',
+    systemSortOrder: 'b10',
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'order:lineItems' as ResourceFieldId,
+      relationshipType: 'belongs_to',
+      isInverse: false,
+    },
+    relationshipConfig: {
+      relatedEntityType: 'order',
+      relationshipType: 'belongs_to',
+      inverseName: 'Line Items',
+      inverseSystemAttribute: 'order_line_items',
+    },
+    description: 'Order this line belongs to',
+  },
+
+  part: {
+    id: toFieldId('part'),
+    key: 'part',
+    label: 'Part',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'line_item_part',
+    systemSortOrder: 'b11',
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'part:lineItems' as ResourceFieldId,
+      relationshipType: 'belongs_to',
+      isInverse: false,
+    },
+    relationshipConfig: {
+      relatedEntityType: 'part',
+      relationshipType: 'belongs_to',
+      inverseName: 'Line Items',
+      inverseSystemAttribute: 'part_line_items',
+    },
+    description:
+      'Part this line sells — STAMPED at write from the line\u2019s catalog item, not hand-set (08 \u00a76.2). ' +
+      'Provenance and grouping only, never a pricing input: `catalogItem` wins for pricing.',
+  },
+
   photos: {
     id: toFieldId('photos'),
     key: 'photos',

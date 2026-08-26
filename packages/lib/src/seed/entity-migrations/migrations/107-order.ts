@@ -7,7 +7,9 @@ import type { FieldOptions } from '../../../custom-fields'
 import type { ResourceField } from '../../../resources/registry/field-types'
 import { COMPANY_FIELDS } from '../../../resources/registry/resources/company-fields'
 import { CONTACT_FIELDS } from '../../../resources/registry/resources/contact-fields'
+import { LINE_ITEM_FIELDS } from '../../../resources/registry/resources/line-item-fields'
 import { ORDER_FIELDS } from '../../../resources/registry/resources/order-fields'
+import { PART_FIELDS } from '../../../resources/registry/resources/part-fields'
 import { WORK_ORDER_FIELDS } from '../../../resources/registry/resources/work-order-fields'
 import { SystemUserService } from '../../../users/system-user-service'
 import { DEFAULT_VIEW_CONFIGS } from '../../default-view-configs'
@@ -154,10 +156,17 @@ async function renameIncumbentOrdersAside(
  *   order.workOrders    has_many   → work_order  (`order_work_orders`,  isInverse)
  *   work_order.order    belongs_to → order       (`work_order_order`,   nullable)
  *
- * `order.lineItems` (`order_line_items`) is created here but stays UNLINKED:
- * its counterpart `line_item.order` lands with the money phase (08 §7 phase 2).
- * `linkNewRelationships` only writes `inverseResourceFieldId` when it is null,
- * so the later migration links both directions without re-work.
+ *   line_item.order    belongs_to → order   (`line_item_order`)
+ *   order.lineItems     has_many   → line_item (`order_line_items`, isInverse)
+ *   line_item.part      belongs_to → part    (`line_item_part`)
+ *   part.lineItems      has_many   → line_item (`part_line_items`, isInverse)
+ *
+ * The last four landed with the money phase (08 §7 phase 2) and were folded back
+ * in here rather than given their own migration id: 107 has only ever run on one
+ * local dev database, so there is no environment holding a half-applied order.
+ * The "a change needs a NEW id" rule in 08 §7.1 applies once a migration has
+ * reached a deployed org — until then `run-migration-107.ts` re-applies it
+ * idempotently, which is what the local ledger's `applied` row requires.
  *
  * Step 0 renames an incumbent template-installed `orders` def aside — see
  * {@link renameIncumbentOrdersAside}. It runs BEFORE `loadExistingState`, and
@@ -201,7 +210,7 @@ export const migration107Order: EntityMigration = {
 
     // Pull the edge targets into the id map so linkNewRelationships can resolve
     // both directions of each pair.
-    for (const type of ['contact', 'company', 'work_order'] as const) {
+    for (const type of ['contact', 'company', 'work_order', 'line_item', 'part'] as const) {
       const def = existing.entityDefs.get(type)
       if (def) entityDefIds.set(type, def.id)
     }
@@ -271,6 +280,49 @@ export const migration107Order: EntityMigration = {
           'work_order',
           workOrderDefId,
           { order: WORK_ORDER_FIELDS.order! },
+          existing,
+          state
+        )
+      )
+    }
+
+    // The `line_item_order` / `line_item_part` owning halves and the
+    // `part_line_items` inverse. `order.lineItems` (`order_line_items`) is
+    // created by the ORDER_FIELDS pass above, and `linkNewRelationships` only
+    // writes `inverseResourceFieldId` when it is currently null — so both
+    // directions of both pairs resolve in the single pass below.
+    //
+    // `line_item_part` is STAMPED, not hand-set (08 §6.2): the
+    // resolve-from-catalog-item hook and the backfill over existing lines are
+    // phase 4, so the field is empty until then.
+    const lineItemDefId = entityDefIds.get('line_item')
+    const partDefId = entityDefIds.get('part')
+    if (lineItemDefId) {
+      // `part` is only offered when the org has a `part` def — creating it
+      // without one would leave a permanently dangling relationship field.
+      const lineItemFields: Record<string, ResourceField> = { order: LINE_ITEM_FIELDS.order! }
+      if (partDefId) lineItemFields.part = LINE_ITEM_FIELDS.part!
+      merge(
+        await ensureCustomFields(
+          db,
+          organizationId,
+          'line_item',
+          lineItemDefId,
+          lineItemFields,
+          existing,
+          state
+        )
+      )
+    }
+
+    if (partDefId && lineItemDefId) {
+      merge(
+        await ensureCustomFields(
+          db,
+          organizationId,
+          'part',
+          partDefId,
+          { lineItems: PART_FIELDS.lineItems! },
           existing,
           state
         )

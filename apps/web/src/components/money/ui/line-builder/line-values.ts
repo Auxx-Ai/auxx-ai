@@ -5,6 +5,81 @@ import type { FieldType as FieldTypeValue } from '@auxx/database/types'
 import type { LineItemUnit } from '@auxx/lib/money/client'
 import type { RecordId } from '@auxx/lib/resources/client'
 
+/**
+ * The documents that own line items. Three of them are **totalled**
+ * (`quote`, `invoice`, `order`); `work_order` owns lines but stores no totals
+ * at all, which is why `hasBilling` is a knob rather than a `!== 'work_order'`
+ * check. Declared here — the leaf of the line-builder module graph — so the
+ * builder, the rows and the totals footer share one definition instead of
+ * three hand-copied unions that can drift apart.
+ * See plans/products/08-order-build.md §5.4/§5.6.
+ */
+export type DocumentType = 'quote' | 'work_order' | 'invoice' | 'order'
+
+/**
+ * Per-document knobs, keyed on {@link DocumentType}
+ * (plans/products/08-order-build.md §5.6).
+ *
+ * ⚠️ These are LOOKUPS, not ternaries, and that is the whole point. `billingPrefix`
+ * used to be `documentType === 'invoice' ? 'invoice' : 'quote'` — a two-way
+ * expression that silently mapped `work_order`, and would have mapped `order`, to
+ * the QUOTE prefix. An order reading and writing `quote_tax_rate` is exactly what
+ * that shape produces, so a fourth document type must never be added to a
+ * boolean-shaped expression. `totals-hooks.ts` uses the same shape server-side.
+ *
+ * Defined here, in the leaf of the line-builder module graph, because the builder,
+ * the rows and the totals footer all need them — three hand-copied copies is how
+ * the read prefix and the write prefix drift apart.
+ *
+ * `work_order` (M2 job view) stores no totals at all: its `billingPrefix` is never
+ * read because every use is gated on `hasBilling`.
+ */
+export const DOCUMENT_KNOBS = {
+  quote: {
+    hasBilling: true,
+    billingPrefix: 'quote',
+    relKey: 'line_item_quote',
+    relFieldId: 'line_item:quote',
+  },
+  invoice: {
+    hasBilling: true,
+    billingPrefix: 'invoice',
+    relKey: 'line_item_invoice',
+    relFieldId: 'line_item:invoice',
+  },
+  order: {
+    hasBilling: true,
+    billingPrefix: 'order',
+    relKey: 'line_item_order',
+    relFieldId: 'line_item:order',
+  },
+  work_order: {
+    hasBilling: false,
+    billingPrefix: 'quote',
+    relKey: 'line_item_work_order',
+    relFieldId: 'line_item:workOrder',
+  },
+} as const satisfies Record<
+  DocumentType,
+  { hasBilling: boolean; billingPrefix: string; relKey: string; relFieldId: string }
+>
+
+/** The document billing mirrors read for group set-if-unset checks and `TotalsFooter`. */
+export const DOCUMENT_BILLING_ATTRS: Record<DocumentType, string[]> = {
+  quote: ['quote_discount_type', 'quote_discount_value', 'quote_tax_name', 'quote_tax_rate'],
+  invoice: [
+    'invoice_discount_type',
+    'invoice_discount_value',
+    'invoice_tax_name',
+    'invoice_tax_rate',
+    // Invoice-only: the ledger-sync mirrors (§E.4) — read-only here.
+    'invoice_amount_paid',
+    'invoice_balance',
+  ],
+  order: ['order_discount_type', 'order_discount_value', 'order_tax_name', 'order_tax_rate'],
+  work_order: [],
+}
+
 /** Persisted and draft values edited by one line-builder row. */
 export interface LineValues {
   name: string

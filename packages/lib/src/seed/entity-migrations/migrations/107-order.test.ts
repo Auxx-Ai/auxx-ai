@@ -19,6 +19,11 @@ import { FieldType, ModelTypeMeta, ModelTypeValues } from '@auxx/database/enums'
 import { isSystemAttribute } from '@auxx/types/system-attribute'
 import { describe, expect, it } from 'vitest'
 import {
+  LINE_TOTAL_TRIGGER_ATTRS,
+  LINE_TRIGGER_ATTRS,
+  ORDER_TRIGGER_ATTRS,
+} from '../../../money/totals-hooks'
+import {
   OrderChannel,
   OrderFinancialStatus,
   OrderFulfillmentStatus,
@@ -26,8 +31,11 @@ import {
 import { RESOURCE_FIELD_REGISTRY } from '../../../resources/registry/field-registry'
 import { COMPANY_FIELDS } from '../../../resources/registry/resources/company-fields'
 import { CONTACT_FIELDS } from '../../../resources/registry/resources/contact-fields'
+import { INVOICE_FIELDS } from '../../../resources/registry/resources/invoice-fields'
+import { LINE_ITEM_FIELDS } from '../../../resources/registry/resources/line-item-fields'
 import { ORDER_FIELDS } from '../../../resources/registry/resources/order-fields'
 import { PART_FIELDS } from '../../../resources/registry/resources/part-fields'
+import { QUOTE_FIELDS } from '../../../resources/registry/resources/quote-fields'
 import { WORK_ORDER_FIELDS } from '../../../resources/registry/resources/work-order-fields'
 import { ALL_ENTITY_MIGRATIONS } from '../../entity-migrations'
 import { DISPLAY_FIELD_CONFIG, SYSTEM_ENTITIES } from '../../entity-seeder/constants'
@@ -75,6 +83,7 @@ describe('order entity registration wiring', () => {
       'shippingAddress',
       'subtotal',
       'tags',
+      'taxName', // added by migration 109 — the LineBuilder writes it with taxRate
       'taxRate',
       'taxTotal',
       'total',
@@ -278,17 +287,146 @@ describe('relationship pairs', () => {
     expect(WORK_ORDER_FIELDS.order?.systemAttribute).toBe('work_order_order')
     expect(WORK_ORDER_FIELDS.order?.nullable).toBe(true)
   })
+})
 
-  // The counterpart `line_item.order` lands with the money phase (08 §7 phase 2).
-  // Declaring the reference now is deliberate: `linkNewRelationships` only writes
-  // `inverseResourceFieldId` when it is null, so that migration links both
-  // directions without re-work here.
-  it('order.lineItems names the phase-2 counterpart it will link against', () => {
-    expect(ORDER_FIELDS.lineItems?.relationship).toMatchObject({
-      inverseResourceFieldId: 'line_item:order',
+describe('the two new line_item slots', () => {
+  it('every new systemAttribute is in the SystemAttribute union', () => {
+    for (const attr of ['line_item_order', 'line_item_part', 'part_line_items']) {
+      expect(isSystemAttribute(attr), `'${attr}' missing from @auxx/types/system-attribute`).toBe(
+        true
+      )
+    }
+  })
+
+  it('line_item.order ↔ order.lineItems point at each other', () => {
+    expect(LINE_ITEM_FIELDS.order?.systemAttribute).toBe('line_item_order')
+    expect(LINE_ITEM_FIELDS.order?.fieldType).toBe(FieldType.RELATIONSHIP)
+    expect(LINE_ITEM_FIELDS.order?.relationship).toMatchObject({
+      inverseResourceFieldId: 'order:lineItems',
+      relationshipType: 'belongs_to',
+      isInverse: false,
+    })
+    // This is the half 107 left dangling — it only links once the line above exists.
+    expect(ORDER_FIELDS.lineItems?.relationship?.inverseResourceFieldId).toBe('line_item:order')
+  })
+
+  it('line_item.part ↔ part.lineItems point at each other', () => {
+    expect(LINE_ITEM_FIELDS.part?.systemAttribute).toBe('line_item_part')
+    expect(LINE_ITEM_FIELDS.part?.relationship).toMatchObject({
+      inverseResourceFieldId: 'part:lineItems',
+      relationshipType: 'belongs_to',
+      isInverse: false,
+    })
+    expect(PART_FIELDS.lineItems?.systemAttribute).toBe('part_line_items')
+    expect(PART_FIELDS.lineItems?.relationship).toMatchObject({
+      inverseResourceFieldId: 'line_item:part',
       relationshipType: 'has_many',
       isInverse: true,
     })
-    expect(ORDER_FIELDS.lineItems?.systemAttribute).toBe('order_line_items')
+  })
+
+  // `linkNewRelationships` splits the reference on ':' and looks the prefix up in
+  // the entityDefIds map, so the prefix must be an entityType, not an apiSlug.
+  it('names its counterparts by entityType, not apiSlug', () => {
+    const refs = [
+      LINE_ITEM_FIELDS.order!.relationship!.inverseResourceFieldId,
+      LINE_ITEM_FIELDS.part!.relationship!.inverseResourceFieldId,
+      PART_FIELDS.lineItems!.relationship!.inverseResourceFieldId,
+      ORDER_FIELDS.lineItems!.relationship!.inverseResourceFieldId,
+    ] as string[]
+    expect(refs.map((r) => r.split(':')[0])).toEqual(['order', 'part', 'line_item', 'line_item'])
+  })
+
+  it('the four document slots carry distinct, ordered sort keys', () => {
+    const keys = (['quote', 'workOrder', 'invoice', 'order'] as const).map(
+      (k) => LINE_ITEM_FIELDS[k]!.systemSortOrder!
+    )
+    expect(new Set(keys).size).toBe(4)
+    expect([...keys].sort()).toEqual(keys)
+  })
+})
+
+describe('totals trigger vocabulary', () => {
+  it('ORDER_TRIGGER_ATTRS is the order’s own billing fields', () => {
+    expect([...ORDER_TRIGGER_ATTRS].sort()).toEqual([
+      'order_discount_type',
+      'order_discount_value',
+      'order_tax_rate',
+    ])
+  })
+
+  it('attaching a line to an order recomputes that order', () => {
+    expect(LINE_TRIGGER_ATTRS.has('line_item_order')).toBe(true)
+  })
+
+  // 08 §2 said to add BOTH new rels here. `line_item_part` is deliberately left
+  // out: §6.2 is explicit that part is provenance and grouping, never a pricing
+  // input, so it cannot move a total. Including it would make phase 4’s stamp
+  // hook trigger a full document recompute on every line it touches, for a
+  // number that cannot have changed.
+  it('stamping a part does NOT recompute — part is not a pricing input', () => {
+    expect(LINE_TRIGGER_ATTRS.has('line_item_part')).toBe(false)
+  })
+
+  it('no trigger attr is one the engine itself writes — that would recurse', () => {
+    for (const written of [
+      'line_item_line_total',
+      'order_subtotal',
+      'order_tax_total',
+      'order_total',
+    ]) {
+      expect(LINE_TRIGGER_ATTRS.has(written as never)).toBe(false)
+      expect(ORDER_TRIGGER_ATTRS.has(written as never)).toBe(false)
+    }
+    // qty/unitPrice are the only two that also rewrite the line's own total.
+    expect([...LINE_TOTAL_TRIGGER_ATTRS].sort()).toEqual(['line_item_qty', 'line_item_unit_price'])
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// order.taxName — folded into 108 rather than given its own id. The "a change
+// needs a NEW migration id" rule in 08 §7.1 is about migration 107, which is
+// MERGED and already `applied` across 28 orgs: editing it would silently skip
+// every environment that already ran it. 108 is unmerged and has never reached
+// a deployed environment, so it is still free to change — `run-migration-108.ts`
+// re-applies it on dev, idempotently.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('order.taxName', () => {
+  it('is a TEXT field on the SystemAttribute union', () => {
+    expect(ORDER_FIELDS.taxName?.systemAttribute).toBe('order_tax_name')
+    expect(ORDER_FIELDS.taxName?.fieldType).toBe(FieldType.TEXT)
+    expect(isSystemAttribute('order_tax_name')).toBe(true)
+  })
+
+  it('is writable — the line builder sets it when a tax preset is picked', () => {
+    expect(ORDER_FIELDS.taxName?.capabilities?.creatable).toBe(true)
+    expect(ORDER_FIELDS.taxName?.capabilities?.updatable).toBe(true)
+  })
+
+  // The real invariant: the shared `LineBuilder.updateTax` writes
+  // `${prefix}_tax_name` AND `${prefix}_tax_rate` together, and `TotalsFooter`
+  // matches the stored pair back against `documents.taxRates` to decide which
+  // preset is selected. A document with the rate and no name always reads back
+  // as "Custom" and silently drops half of every write.
+  it('every totalled document carries BOTH halves of the tax snapshot', () => {
+    const documents = [
+      { name: 'quote', fields: QUOTE_FIELDS, prefix: 'quote' },
+      { name: 'invoice', fields: INVOICE_FIELDS, prefix: 'invoice' },
+      { name: 'order', fields: ORDER_FIELDS, prefix: 'order' },
+    ]
+    for (const { name, fields, prefix } of documents) {
+      const attrs = Object.values(fields).map((f) => f.systemAttribute)
+      expect(attrs, `${name} is missing ${prefix}_tax_name`).toContain(`${prefix}_tax_name`)
+      expect(attrs, `${name} is missing ${prefix}_tax_rate`).toContain(`${prefix}_tax_rate`)
+    }
+  })
+
+  it('sorts next to taxRate rather than at the end of the panel', () => {
+    const taxName = ORDER_FIELDS.taxName?.systemSortOrder ?? ''
+    const taxRate = ORDER_FIELDS.taxRate?.systemSortOrder ?? ''
+    const discountValue = ORDER_FIELDS.discountValue?.systemSortOrder ?? ''
+    expect(discountValue < taxName).toBe(true)
+    expect(taxName < taxRate).toBe(true)
   })
 })
