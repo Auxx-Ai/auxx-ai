@@ -102,6 +102,18 @@ export interface ConnectFlowArgs {
    */
   personal?: boolean
   /**
+   * Optional OAuth scopes this attempt wants ON TOP of the definition's required list, riding the
+   * authorize URL as repeated `scope_add` params. The definition's `oauth2Scopes` is a floor;
+   * `oauth2OptionalScopes` is additive, and the authorize route intersects whatever arrives here
+   * with that declared list — this is a hint, never the authority
+   * (`plans/connections/optional-oauth-scopes.md` §1, §5).
+   *
+   * A seam only: nothing in the UI populates it yet. `calendar-sync-toggle.tsx:55-59` documents
+   * wanting exactly this and hand-rolls a bespoke popup because it did not exist; it is left
+   * untouched, and can adopt this when someone gets to it.
+   */
+  scopeAdd?: string[]
+  /**
    * Custom authoritative verify for the OAuth popup (see `useOAuthPopup`), replacing the default
    * connection-list snapshot verify. Required when the credential isn't visible in
    * `connections.list` / `apps.listConnections` — e.g. channel credentials, which only the
@@ -270,6 +282,11 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
       // which the authorize route folds into the OAuth state and the callback hands to the hook.
       for (const [key, value] of Object.entries(a.postConnect ?? {})) {
         if (value) params.set(`pc_${key}`, value)
+      }
+      // Additive scope picks — one repeated `scope_add` per scope. The authorize route
+      // allowlists them against the definition's `oauth2OptionalScopes`.
+      for (const scope of a.scopeAdd ?? []) {
+        if (scope) params.append('scope_add', scope)
       }
 
       let baseUrl: string

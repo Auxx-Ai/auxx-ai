@@ -115,6 +115,9 @@ const connectionFormSchema = z
     oauth2ClientId: z.string().optional().or(z.literal('')),
     oauth2ClientSecret: z.string().optional().or(z.literal('')),
     oauth2Scopes: z.string().optional().or(z.literal('')), // Comma-separated, optional
+    // Additive scopes an organization may request on top of the required list. Comma-separated,
+    // optional, and disjoint from `oauth2Scopes` (enforced by the refine below).
+    oauth2OptionalScopes: z.string().optional().or(z.literal('')),
     oauth2TokenRequestAuthMethod: z.enum(['request-body', 'basic-auth']).optional(),
     oauth2RefreshSchedule: z.enum(['none', 'hourly', 'daily', 'weekly']).optional(),
     oauth2Pkce: z.boolean().optional(),
@@ -202,6 +205,22 @@ const connectionFormSchema = z
       path: ['connectionType'],
     }
   )
+  .superRefine((data, ctx) => {
+    // The two lists are disjoint by design: `oauth2Scopes` is the floor (always requested) and
+    // `oauth2OptionalScopes` is additive (requested only when a connect attempt names it), so a
+    // scope in both has no meaning. Compare normalized so 'read_orders, ' equals 'read_orders'.
+    const required = new Set(parseScopesString(data.oauth2Scopes || ''))
+    const overlap = [
+      ...new Set(parseScopesString(data.oauth2OptionalScopes || '').filter((s) => required.has(s))),
+    ]
+    if (overlap.length > 0) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `Optional scopes must not repeat a required scope: ${overlap.join(', ')}`,
+        path: ['oauth2OptionalScopes'],
+      })
+    }
+  })
 
 type ConnectionFormData = z.infer<typeof connectionFormSchema>
 
@@ -369,6 +388,7 @@ function MethodEditor({
       oauth2ClientId: '',
       oauth2ClientSecret: '',
       oauth2Scopes: '',
+      oauth2OptionalScopes: '',
       oauth2TokenRequestAuthMethod: 'request-body',
       oauth2RefreshSchedule: 'none',
       oauth2Pkce: false,
@@ -446,6 +466,7 @@ function MethodEditor({
         oauth2ClientId: connection.oauth2ClientId || '',
         oauth2ClientSecret: connection.oauth2ClientSecret || '',
         oauth2Scopes: formatScopesArray(connection.oauth2Scopes as string[]),
+        oauth2OptionalScopes: formatScopesArray(connection.oauth2OptionalScopes as string[]),
         oauth2TokenRequestAuthMethod:
           (connection.oauth2TokenRequestAuthMethod as 'request-body' | 'basic-auth') ||
           'request-body',
@@ -558,6 +579,7 @@ function MethodEditor({
 
   const onSubmit = async (data: ConnectionFormData) => {
     const scopesArray = parseScopesString(data.oauth2Scopes || '')
+    const optionalScopesArray = parseScopesString(data.oauth2OptionalScopes || '')
     const refreshSeconds = convertScheduleToSeconds(data.oauth2RefreshSchedule)
     const mintsTokenType =
       data.connectionType === 'oauth2-code' || data.connectionType === 'client-credentials'
@@ -588,6 +610,7 @@ function MethodEditor({
             ? HIDDEN_VALUE
             : data.oauth2ClientSecret,
         oauth2Scopes: scopesArray,
+        oauth2OptionalScopes: optionalScopesArray,
         oauth2TokenRequestAuthMethod: data.oauth2TokenRequestAuthMethod,
         oauth2RefreshTokenIntervalSeconds: refreshSeconds,
       }),
@@ -952,6 +975,26 @@ function MethodEditor({
                     </FieldDescription>
                     {errors.oauth2Scopes && (
                       <p className='text-sm text-red-600 mt-1'>{errors.oauth2Scopes.message}</p>
+                    )}
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor='app-organization-optional-scopes'>
+                      Optional scopes
+                    </FieldLabel>
+                    <Input
+                      id='app-organization-optional-scopes'
+                      placeholder='read_all_orders'
+                      {...register('oauth2OptionalScopes')}
+                    />
+                    <FieldDescription>
+                      Comma-separated scopes an organization may additionally request when
+                      connecting. They are not requested by default, and must not repeat a required
+                      scope.
+                    </FieldDescription>
+                    {errors.oauth2OptionalScopes && (
+                      <p className='text-sm text-red-600 mt-1'>
+                        {errors.oauth2OptionalScopes.message}
+                      </p>
                     )}
                   </Field>
                   <Field>

@@ -2430,6 +2430,13 @@
       "when": 1787357420864,
       "tag": "0346_held_dispatches",
       "breakpoints": true
+    },
+    {
+      "idx": 347,
+      "version": "7",
+      "when": 1787767682652,
+      "tag": "0347_add_oauth2_optional_scopes",
+      "breakpoints": true
     }
   ]
 }

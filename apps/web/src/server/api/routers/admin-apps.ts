@@ -28,7 +28,8 @@ import { invalidateBuildCacheForDeveloperAccount } from '~/server/lib/invalidate
 // `key` mattered most: the importer falls back to `'default'`, and it matches
 // the upsert on `(appId, key, major)`, so a multi-method app collapsed all of
 // its connection definitions onto one row.
-const connectionDefinitionSchema = z.object({
+// Exported so `admin-apps-schema.test.ts` can assert the mirror directly.
+export const connectionDefinitionSchema = z.object({
   // `.default(null)` rather than required, so an export produced before the
   // exporter emitted `key` still validates.
   key: z.string().nullable().default(null),
@@ -41,6 +42,10 @@ const connectionDefinitionSchema = z.object({
   oauth2AccessTokenUrl: z.string().nullable(),
   oauth2ClientId: z.string().nullable(),
   oauth2Scopes: z.array(z.string()).nullable(),
+  // `.nullish()` rather than required, so an export produced before the exporter
+  // emitted `oauth2OptionalScopes` still validates. The importer coalesces the
+  // absent value to `[]`.
+  oauth2OptionalScopes: z.array(z.string()).nullish(),
   oauth2TokenRequestAuthMethod: z.string().nullable(),
   oauth2RefreshTokenIntervalSeconds: z.number().nullable(),
   oauth2Features: z.record(z.string(), z.unknown()).nullable(),

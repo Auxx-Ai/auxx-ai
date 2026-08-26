@@ -31,10 +31,12 @@ export {
   effectiveConnectionVariables,
   gateConnectionVariables,
   loadDefinitionForCredential,
+  parseScopeAddParam,
   resolveGrantedScopes,
   resolveOAuth2Client,
   resolveOAuth2RefreshConfig,
   resolveOwnClientRequirement,
+  resolveRequestedScopes,
   splitConnectionVariablesBySecrecy,
 } from './resolve-connection-definition'
 export type { DecryptedConnectionData } from './types'

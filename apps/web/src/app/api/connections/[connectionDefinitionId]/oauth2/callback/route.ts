@@ -282,9 +282,14 @@ export async function GET(
           ? new Date(Date.now() + tokens.expires_in * 1000).toISOString()
           : undefined,
         metadata: {
-          // RFC 6749 §5.1: an omitted `scope` means the grant matched the request. See
-          // plans/connections/scope-derived-capabilities.md §3.1.
-          scope: resolveGrantedScopes(tokens.scope, connDef.oauth2Scopes),
+          // RFC 6749 §5.1: an omitted `scope` means the grant matched the request, so fall back
+          // to what was REQUESTED — the union the authorize stashed (floor + picked optional
+          // scopes), NOT the definition's floor, which would under-record an optional grant.
+          // See plans/connections/scope-derived-capabilities.md §3.1.
+          scope: resolveGrantedScopes(
+            tokens.scope,
+            metadata.requestedScopes ?? connDef.oauth2Scopes
+          ),
           tokenType: tokens.token_type,
           ...callbackMetadata,
           ...(Object.keys(plainVariables).length > 0 && { connectionVariables: plainVariables }),

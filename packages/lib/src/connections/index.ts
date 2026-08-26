@@ -18,12 +18,14 @@ export {
   loadDefinitionForCredential,
   makeClientCredentialsRequest,
   mintClientCredentialToken,
+  parseScopeAddParam,
   type RefreshTokensResult,
   refreshCredentialTokens,
   resolveGrantedScopes,
   resolveOAuth2Client,
   resolveOAuth2RefreshConfig,
   resolveOwnClientRequirement,
+  resolveRequestedScopes,
   splitConnectionVariablesBySecrecy,
 } from '@auxx/credentials/connections'
 export {

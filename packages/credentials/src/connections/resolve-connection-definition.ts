@@ -323,3 +323,59 @@ export function resolveOAuth2RefreshConfig(
     scopes: def.oauth2Scopes ?? [],
   }
 }
+
+/**
+ * Parse a `scope_add` query parameter into a scope list.
+ *
+ * Accepts BOTH shapes a caller may produce: repeated params
+ * (`?scope_add=a&scope_add=b`) and a single delimited value (`?scope_add=a,b c`). Splitting
+ * on commas AND whitespace matches how `oauth2Scopes` itself is authored in apps/build, so a
+ * hand-built URL behaves the same as one emitted by the connect flow.
+ *
+ * Parsing is deliberately separate from authorization: this only normalises the input.
+ * {@link resolveRequestedScopes} decides which of the parsed values are allowed.
+ *
+ * @param values the raw `searchParams.getAll('scope_add')` result.
+ */
+export function parseScopeAddParam(values: string[] | null | undefined): string[] {
+  return (values ?? [])
+    .flatMap((value) => value.split(/[,\s]+/))
+    .map((scope) => scope.trim())
+    .filter(Boolean)
+}
+
+/**
+ * The scopes an authorize request should actually ask the provider for.
+ *
+ * The model is **floor plus additive** (`plans/connections/optional-oauth-scopes.md` §1):
+ * `oauth2Scopes` is a floor — always requested, never removable — and `oauth2OptionalScopes`
+ * is additive — never requested unless a connect attempt names it. The two lists are disjoint,
+ * so there is no overlap rule for any reader to get wrong.
+ *
+ * ```
+ * requested = oauth2Scopes ∪ (oauth2OptionalScopes ∩ picked)
+ * ```
+ *
+ * **The intersection happens server-side, always.** `scope_add` is a URL parameter anyone can
+ * craft; the connect dialog's picker is a hint, never the authority. An unvalidated list would
+ * let any org member shape the consent screen with scopes the definition never declared.
+ *
+ * Undeclared scopes are dropped **silently** rather than rejected: a stale bookmark or a
+ * definition that has since retired an optional scope must degrade to the floor, not 500 in the
+ * middle of a connect.
+ *
+ * @param def the connection definition's two scope columns.
+ * @param requestedOptional the parsed `scope_add` values (see {@link parseScopeAddParam}).
+ * @returns the floor in its declared order, followed by the allowed picks, deduped.
+ */
+export function resolveRequestedScopes(
+  def: {
+    oauth2Scopes: string[] | null | undefined
+    oauth2OptionalScopes: string[] | null | undefined
+  },
+  requestedOptional: string[]
+): string[] {
+  const declaredOptional = new Set(def.oauth2OptionalScopes ?? [])
+  const allowedPicks = requestedOptional.filter((scope) => declaredOptional.has(scope))
+  return [...new Set([...(def.oauth2Scopes ?? []), ...allowedPicks])]
+}

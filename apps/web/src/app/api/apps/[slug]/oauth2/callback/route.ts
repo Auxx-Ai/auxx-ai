@@ -352,9 +352,16 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           : undefined,
         metadata: {
           // RFC 6749 §5.1: an omitted `scope` means the grant matched the request, so fall
-          // back to the definition's list rather than storing nothing. Apps derive their own
-          // capabilities from this — plans/connections/scope-derived-capabilities.md §3.1.
-          scope: resolveGrantedScopes(tokens.scope, connDef.oauth2Scopes),
+          // back to what was REQUESTED rather than storing nothing. That is the union the
+          // authorize stashed (floor + picked optional scopes), NOT the definition's floor —
+          // falling back to `oauth2Scopes` would under-record an optional grant and the app
+          // would then hide operations it actually has.
+          // Apps derive their own capabilities from this —
+          // plans/connections/scope-derived-capabilities.md §3.1.
+          scope: resolveGrantedScopes(
+            tokens.scope,
+            metadata.requestedScopes ?? connDef.oauth2Scopes
+          ),
           tokenType: tokens.token_type,
           ...callbackMetadata,
           ...(Object.keys(plainVariables).length > 0 && {
