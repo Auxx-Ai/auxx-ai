@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.222](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.221...auxx-v0.1.222) (2026-08-26)
+
+
+### Bug Fixes
+
+* **security:** refuse heif/avif at every raw sharp decode, bump next and sharp ([#1904](https://github.com/Auxx-Ai/auxx-ai/issues/1904)) ([811f1fd](https://github.com/Auxx-Ai/auxx-ai/commit/811f1fd42d13f22af5c938e661a032b5689e27b1))
+* **workflow:** stop the app panel's 1 hz write loop ([#1902](https://github.com/Auxx-Ai/auxx-ai/issues/1902)) ([53dd6d8](https://github.com/Auxx-Ai/auxx-ai/commit/53dd6d84414ce338803cfb73d8bd7acd115af3c0))
+
 ## [0.1.221](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.220...auxx-v0.1.221) (2026-08-26)
 
 
