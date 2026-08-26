@@ -27,6 +27,18 @@ FROM base AS builder
 
 ARG PROJECT
 ARG PROJECT_PATH
+ARG GIT_SHA
+ARG APP_VERSION
+ARG BUILD_TIME
+# Baked into the Next build; docker-entrypoint.sh swaps the placeholder for the
+# real domain at container start. Without it, @auxx/config/urls falls through to
+# localhost and the prerendered root redirect points at http://localhost:3001.
+ARG DOMAIN=__RUNTIME_DOMAIN__
+
+ENV GIT_SHA=$GIT_SHA
+ENV APP_VERSION=$APP_VERSION
+ENV BUILD_TIME=$BUILD_TIME
+ENV DOMAIN=$DOMAIN
 
 WORKDIR /app
 
@@ -62,11 +74,19 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store CI=true pnpm prune --prod --no
 FROM slim AS runner
 
 ARG PROJECT_PATH
+ARG DOMAIN
+ARG GIT_SHA
+ARG APP_VERSION
+ARG BUILD_TIME
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3002
 ENV HOSTNAME=0.0.0.0
+ENV DOMAIN=$DOMAIN
+ENV GIT_SHA=$GIT_SHA
+ENV APP_VERSION=$APP_VERSION
+ENV BUILD_TIME=$BUILD_TIME
 
 WORKDIR /app
 
@@ -89,10 +109,15 @@ COPY --from=builder --chown=nextjs:nodejs /resvg/@resvg ./node_modules/@resvg
 COPY --from=builder --chown=nextjs:nodejs /app/packages ./packages
 COPY --from=builder --chown=nextjs:nodejs /app/${PROJECT_PATH}/node_modules ./${PROJECT_PATH}/node_modules
 
+# Runtime URL substitution — see docker-entrypoint.sh Block 1.
+COPY --chown=nextjs:nodejs docker-entrypoint.sh ./docker-entrypoint.sh
+RUN chmod +x ./docker-entrypoint.sh
+
 USER nextjs
 
 WORKDIR /app/${PROJECT_PATH}
 
 EXPOSE 3002
 
+ENTRYPOINT ["../../docker-entrypoint.sh"]
 CMD ["node", "server.js"]

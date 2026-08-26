@@ -5,12 +5,34 @@ packages/*/node_modules
 apps/*/dist
 apps/*/build
 apps/*/.next
+# Env files. `*.env` alone only matches the REPO ROOT — Docker ignore patterns
+# are matched per path, so `apps/<app>/.env` was still copied into the build
+# context. Next loads `.env` during `next build`, so a local `docker build`
+# baked developer values (e.g. HOMEPAGE_URL=http://localhost:3001) and secrets
+# into the image. CI is unaffected (these files are gitignored), but any
+# locally-built image was contaminated.
 *.env
+**/*.env
+**/.env
+**/.env.*
 .DS_Store
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .turbo
+apps/*/.turbo
+packages/*/.turbo
+packages/*/dist
 
 # sst
 .sst
+
+# Local-only working dirs (all gitignored, so none exist in a CI checkout).
+# Locally they were packed into every build context for nothing. Measured on
+# this tree, the entries added above plus these take the context from 2.20 GB
+# to 863 MB — `.pnpm-store` alone is ~1.1 GB of it.
+.pnpm-store
+plans
+.logs
+.playwright-mcp
+.tmp

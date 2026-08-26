@@ -5,7 +5,7 @@
 # independently gated by its own preconditions, so the same script no-ops
 # safely in containers that don't need it.
 #
-# Block 1 — Next.js runtime URL substitution (web, homepage, docs, build):
+# Block 1 — Next.js runtime URL substitution (web, homepage, docs, build, kb):
 #   At build time DOMAIN=__RUNTIME_DOMAIN__ is baked into Next.js bundles.
 #   url.ts produces these patterns:
 #     https://app.__RUNTIME_DOMAIN__    (WEBAPP_URL)
@@ -44,13 +44,24 @@ replace_in_next() {
   pattern_lower=$(echo "${pattern}" | tr '[:upper:]' '[:lower:]')
 
   echo "[entrypoint] Replacing '${label}' → ${replacement}"
-  find "${NEXT_DIR}" \( -name '*.js' -o -name '*.rsc' -o -name '*.html' -o -name '*.body' \) -type f -exec sed -i \
-    -e "s|${pattern}|${replacement}|g" \
-    -e "s|${pattern_lower}|${replacement}|g" \
-    {} + 2>/dev/null || true
+  # Select files by CONTENT, not by extension. This used to be a
+  # `find -name '*.js' -o -name '*.rsc' -o -name '*.html' -o -name '*.body'`
+  # allowlist, which silently missed `.meta` — the sidecar Next writes next to
+  # each prerendered route holding that response's status and headers. The kb
+  # root route is a prerendered 307, so its `Location` lives ONLY in
+  # `.next/server/app/index.meta` and kept pointing at
+  # `https://__RUNTIME_DOMAIN__` in every built image while the entrypoint
+  # reported "Replacement complete." Any allowlist re-breaks the moment Next
+  # adds a file type, so match on the placeholder itself.
+  # `-I` skips binaries; xargs `-r` stops sed reading stdin when nothing matches.
+  grep -rlIZ -e "${pattern}" -e "${pattern_lower}" "${NEXT_DIR}" 2>/dev/null \
+    | xargs -0 -r sed -i \
+        -e "s|${pattern}|${replacement}|g" \
+        -e "s|${pattern_lower}|${replacement}|g" \
+    2>/dev/null || true
 }
 
-# Block 1 only applies to Next.js images (web/homepage/docs/build). Non-Next
+# Block 1 only applies to Next.js images (web/homepage/docs/build/kb). Non-Next
 # images (api, worker) have no .next dir — skip the URL replacements but FALL
 # THROUGH to Block 2 (geo) and the privilege drop below. (This previously
 # `exec`-ed here, which silently skipped the geo download in the api image.)

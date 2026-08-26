@@ -14,6 +14,10 @@ const nextConfig: NextConfig = {
     '@auxx/ui',
     '@auxx/utils',
   ],
+  // `next dev` otherwise generates AGENTS.md + CLAUDE.md in this app dir on
+  // every boot, pointing agents at node_modules/next/dist/docs/. We keep agent
+  // instructions in the repo-root CLAUDE.md instead.
+  agentRules: false,
   poweredByHeader: false,
   reactStrictMode: true,
   typescript: {

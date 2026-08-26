@@ -10,6 +10,10 @@ const nextConfig = {
   output: 'standalone',
   outputFileTracingRoot: path.join(__dirname, '../../'),
   transpilePackages: ['@auxx/config', '@auxx/ui'],
+  // `next dev` otherwise generates AGENTS.md + CLAUDE.md in this app dir on
+  // every boot, pointing agents at node_modules/next/dist/docs/. We keep agent
+  // instructions in the repo-root CLAUDE.md instead.
+  agentRules: false,
   poweredByHeader: false,
   images: {
     // Avoid requiring sharp in the server Lambda; rely on client-side <img> or our optimizer function
