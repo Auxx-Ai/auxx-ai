@@ -32,6 +32,26 @@ export interface DeleteEntityInstanceParams {
  * Everything now runs in one transaction: previously the two statements were
  * sequential and unwrapped, so a failure between them left a record with no
  * values.
+ *
+ * The record's own `TimelineEvent` rows go with it, for the same reason and by
+ * the same rule — keyed off the mechanism (a record is going away), not off a
+ * registration list. `TimelineEvent.entityId` is a bare `text()` column with no
+ * FK, `deleteEntityDefinitionDeep` does not touch the table either, and nothing
+ * had ever called the `deleteTimelineEvents` service written for exactly this:
+ * 83% of the dev table (189,797 of 229,078 rows) points at an `entityId` that
+ * no longer resolves.
+ *
+ * ⚠️ Matched on `entityId` ALONE, never on `entityType`. That column carries two
+ * keyspaces for the same record — `createTimelineEvent` stamps
+ * `EntityDefinition.id` from the canonical `recordId`, while money's own writers
+ * build theirs from the type slug (`toRecordId('order', …)`), and the two
+ * strings never compare equal. One order in dev holds 12 rows under its def id
+ * and 12 under `'order'`. This is the same hazard `tx-write-flush.ts` documents,
+ * with the same resolution: the entity instance id is unique on its own.
+ *
+ * Rows where this record is only the RELATED end (`relatedEntityId`) are left
+ * alone deliberately: they are another, still-living record's history — "this
+ * contact once had an order" survives the order.
  */
 export async function deleteEntityInstance(params: DeleteEntityInstanceParams) {
   const { id, organizationId } = params
@@ -62,6 +82,15 @@ export async function deleteEntityInstance(params: DeleteEntityInstanceParams) {
         entityIds: [id],
         entityType: target?.entityType ?? null,
       })
+
+      await tx
+        .delete(schema.TimelineEvent)
+        .where(
+          and(
+            eq(schema.TimelineEvent.entityId, id),
+            eq(schema.TimelineEvent.organizationId, organizationId)
+          )
+        )
 
       await tx
         .delete(schema.EntityInstance)
