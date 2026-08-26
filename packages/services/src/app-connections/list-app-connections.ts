@@ -17,6 +17,20 @@ import type { AppConnection } from './types'
 const CONNECTION_CIRCUIT_OPEN_THRESHOLD = 5
 
 /**
+ * Split a stored granted-scope string into individual scopes.
+ *
+ * RFC 6749 §3.3 specifies space-delimited, but several providers (Shopify among them) use
+ * commas, so both are accepted rather than assumed — the same rule as `parseScopeString`
+ * in `@auxx/sdk`, reimplemented here because `@auxx/sdk` is not a dependency of this
+ * package and the granted scope is not an app-runtime concern.
+ *
+ * Always returns an array, never null/undefined, so the client never branches on absence.
+ */
+export function parseGrantedScopes(raw: unknown): string[] {
+  return typeof raw === 'string' ? raw.split(/[\s,]+/).filter(Boolean) : []
+}
+
+/**
  * List active connections for an organization
  *
  * Retrieves all app connections for an organization, with optional filtering by user.
@@ -135,6 +149,11 @@ export async function listAppConnections(organizationId: string, userId?: string
       connectionVariables: (cred.metadata?.connectionVariables ?? undefined) as
         | Record<string, string>
         | undefined,
+      // What the provider actually GRANTED (stamped by `resolveGrantedScopes` at every
+      // callback). Reconnect re-requests this ∩ the definition's optional list so a full
+      // re-auth cannot silently downgrade a connection that holds an optional scope —
+      // plans/connections/optional-oauth-scopes.md §4.4/§4.6.
+      grantedScopes: parseGrantedScopes(cred.metadata?.scope),
     }
   })
 

@@ -508,6 +508,19 @@ export interface CachedInstalledApp {
      * grant, since `plan.changed` does not invalidate `installedApps`.
      */
     connectionVariables: ConnectionVariable[]
+    /**
+     * The scope FLOOR — always requested, never removable. The optional-scope picker joins
+     * it with the picked optional scopes to show the full scope string a BYO user must
+     * mirror in their own OAuth app.
+     */
+    oauth2Scopes: string[]
+    /**
+     * ADDITIVE scopes a connect attempt may request on top of the floor, disjoint from it.
+     * Rendered as the picker's checkboxes. Presentation only — the authorize route
+     * re-intersects `scope_add` against this same list server-side. See
+     * plans/connections/optional-oauth-scopes.md §4.
+     */
+    oauth2OptionalScopes: string[]
     /** Own-client gate INPUTS (§3.1). The gate itself is resolved per-org at read time. */
     oauth2ClientId: string | null
     oauth2ClientSecret: string | null
@@ -867,7 +880,12 @@ export const ORG_CACHE_KEY_CONFIG: Record<
   // `oauth2ClientId`/`platformClientApproved`, so the read-time gate would read it as
   // "no platform client" and demand BYO credentials for EVERY installed app until the TTL
   // expired. The bump is what makes this deploy safe.
-  installedApps: { prefix: 'org:installed-apps:v7', ttlSeconds: 900 },
+  // v8: `methods[]` gained `oauth2Scopes` + `oauth2OptionalScopes`. A v7 blob carries
+  // neither, so the optional-scope picker would read every installed app as declaring no
+  // optional scopes — it would render nothing at all, and the copyable full-scope line
+  // would come out empty — for the full 900 s TTL. Silent and indistinguishable from
+  // "this app has none", which is exactly the failure the picker exists to prevent.
+  installedApps: { prefix: 'org:installed-apps:v8', ttlSeconds: 900 },
   mcpServers: { prefix: 'org:mcpServers', ttlSeconds: ONE_DAY },
   // Read per CRUD event by trigger dispatch; changes only on admin edits →
   // 5 s local window (dispatch enqueues jobs, so peer staleness is benign).

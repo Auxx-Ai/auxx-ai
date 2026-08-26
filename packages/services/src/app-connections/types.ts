@@ -110,4 +110,10 @@ export interface AppConnection {
   /** True when this is the primary org connection record actions resolve to (§4a). */
   isDefault?: boolean
   connectionVariables?: Record<string, string>
+  /**
+   * The scopes the provider actually granted, parsed from `Credential.metadata.scope`.
+   * Always an array — `[]` when nothing is stored — so the client never branches on absence.
+   * Reconnect seeds `scope_add` from this so a re-auth cannot downgrade the grant (§4.4).
+   */
+  grantedScopes: string[]
 }

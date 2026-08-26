@@ -19,6 +19,18 @@ export interface ConnectionMethod {
   /** true = organization-wide, false = user-specific. A property of the method. */
   global: boolean
   connectionVariables: ConnectionVariable[]
+  /**
+   * The scope FLOOR — always requested, never removable. Carried so the picker can render
+   * the full resulting scope string a BYO user must mirror in their own OAuth app
+   * (`plans/connections/optional-oauth-scopes.md` §4.2).
+   */
+  oauth2Scopes: string[]
+  /**
+   * ADDITIVE scopes a connect attempt may request on top of the floor, disjoint from it.
+   * Never requested unless named via `scope_add`; the server re-intersects against this
+   * same list at authorize, so the picker is a hint, never the authority.
+   */
+  oauth2OptionalScopes: string[]
 }
 
 const METHOD_COLUMNS = {
@@ -29,6 +41,8 @@ const METHOD_COLUMNS = {
   connectionType: true,
   global: true,
   connectionVariables: true,
+  oauth2Scopes: true,
+  oauth2OptionalScopes: true,
 } as const
 
 function toMethod(row: {
@@ -39,6 +53,8 @@ function toMethod(row: {
   connectionType: string
   global: boolean | null
   connectionVariables: ConnectionVariable[] | null
+  oauth2Scopes: string[] | null
+  oauth2OptionalScopes: string[] | null
 }): ConnectionMethod {
   return {
     id: row.id,
@@ -48,6 +64,8 @@ function toMethod(row: {
     connectionType: row.connectionType,
     global: row.global ?? false,
     connectionVariables: row.connectionVariables ?? [],
+    oauth2Scopes: row.oauth2Scopes ?? [],
+    oauth2OptionalScopes: row.oauth2OptionalScopes ?? [],
   }
 }
 

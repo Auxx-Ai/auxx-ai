@@ -98,6 +98,14 @@ function AppConnections({ app, returnTo, scope, onConnectionCreated }: Props) {
       ownClientOptional: m.ownClientOptional,
       ownClientReason: m.ownClientReason,
       oauthCallbackUrl: m.oauthCallbackUrl,
+      // Scope floor + additive optional list. This map is a hand-maintained duplicate of
+      // `appTarget()` (connection-targets.ts) — this surface builds its target inline rather
+      // than calling the helper, so every field has to be added in BOTH places. Dropping
+      // these here renders an empty optional-scope picker on the app detail tab while the
+      // connections gallery shows it correctly, which is the same divergence the comment in
+      // `appTarget` records for the BYO gate fields.
+      oauth2Scopes: m.oauth2Scopes,
+      oauth2OptionalScopes: m.oauth2OptionalScopes,
     })),
   }
   const personalMethods = methods.filter((m) => !m.global)

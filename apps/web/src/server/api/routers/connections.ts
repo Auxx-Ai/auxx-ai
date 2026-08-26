@@ -24,6 +24,7 @@ import { getAllProviders, getProviderByKey } from '@auxx/lib/connections/provide
 import { isAdminOrOwner } from '@auxx/lib/members'
 import { getChannelProviderIcon } from '@auxx/lib/providers'
 import { CredentialTestingService, isCredentialInUse } from '@auxx/lib/workflow-engine'
+import { parseGrantedScopes } from '@auxx/services/app-connections'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
 import { createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
@@ -159,6 +160,12 @@ export const connectionsRouter = createTRPCRouter({
           // a workspace-scoped key (Quo) legitimately backs one channel per phone number, and
           // the delete guard's message counts all of them.
           channelCount: boundChannels?.length ?? 0,
+          // What the provider actually GRANTED, parsed off `metadata.scope`. Always an array
+          // (`[]` when nothing is stored) so the client never branches on absence. Reconnect
+          // seeds `scope_add` from this ∩ the definition's optional list, which is what stops
+          // a full re-auth from silently downgrading the grant — §4.4/§4.6 of
+          // plans/connections/optional-oauth-scopes.md.
+          grantedScopes: parseGrantedScopes(record.metadata?.scope),
         }
       })
     }),
@@ -182,8 +189,17 @@ export const connectionsRouter = createTRPCRouter({
         oauth2ClientId: true,
         oauth2ClientSecret: true,
         platformClientApproved: true,
+        // Scope floor + additive optional list, read from the ROW rather than the code-native
+        // catalog: the authorize route resolves the definition by id and
+        // `resolveRequestedScopes` intersects `scope_add` against THIS row, so a picker built
+        // off the catalog could offer a scope the row does not declare and have it dropped
+        // silently. The row is a faithful mirror of the def (`ensurePlatformProviders` upserts
+        // both columns), but it is the one the server enforces.
+        oauth2Scopes: true,
+        oauth2OptionalScopes: true,
       },
     })
+    const defByKey = new Map(defRows.map((d) => [d.providerKey as string, d]))
     // Org-aware: `byoOAuthClient` can offer BYO on top of a verified platform client.
     // Resolved per row but the feature read behind it is one cached org lookup, not N.
     const gateByKey = new Map(
@@ -210,6 +226,7 @@ export const connectionsRouter = createTRPCRouter({
           ? (gateByKey.get(p.providerKey) ?? NO_OWN_CLIENT_GATE)
           : NO_OWN_CLIENT_GATE
       const { requiresOwnClient, ownClientOptional } = gate
+      const defRow = defByKey.get(p.providerKey)
       return {
         providerKey: p.providerKey,
         label: p.label,
@@ -232,6 +249,10 @@ export const connectionsRouter = createTRPCRouter({
         ),
         icon: p.uiMetadata?.icon ?? null,
         category: p.uiMetadata?.category ?? null,
+        /** Scope floor — always requested. Joined with the picks for the copyable line. */
+        oauth2Scopes: defRow?.oauth2Scopes ?? [],
+        /** Additive scopes this provider MAY be asked for. Empty = no picker. */
+        oauth2OptionalScopes: defRow?.oauth2OptionalScopes ?? [],
         // OAuth-only: whether this connection must bring its own client id/secret, whether
         // BYO is offered as an optional alternative, and why. `false`/`null` for non-OAuth
         // providers (no DB gate) and secret defs.

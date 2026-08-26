@@ -7,6 +7,10 @@ import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { type ReactNode, useCallback, useMemo, useState } from 'react'
 import { ConnectionDetailDialog } from '~/components/connections/ui/connection-detail-dialog'
 import type { DetailMethod } from '~/components/connections/ui/connection-detail-page'
+import {
+  optionalScopesHeld,
+  shouldOpenConnectDialog,
+} from '~/components/connections/ui/connection-targets'
 import { useOAuthPopup } from '~/hooks/use-oauth-popup'
 import { api, type RouterOutputs } from '~/trpc/react'
 
@@ -48,6 +52,16 @@ export interface ConnectFlowDefinition {
   ownClientReason?: 'no-platform-client' | 'pending-approval' | 'byo-entitled' | null
   /** Server-built OAuth redirect URI, surfaced for bring-your-own-client users. */
   oauthCallbackUrl?: string | null
+  /**
+   * The definition's scope floor — always requested, never removable. Only read for display
+   * (the dialog's copyable full-scope line); the authorize route reads the row.
+   */
+  oauth2Scopes?: string[] | null
+  /**
+   * Scopes this definition MAY additionally request. Non-empty is what turns the connect
+   * dialog's optional-scope picker on (`plans/connections/optional-oauth-scopes.md` §4.1).
+   */
+  oauth2OptionalScopes?: string[] | null
 }
 
 export interface ConnectTarget {
@@ -108,9 +122,14 @@ export interface ConnectFlowArgs {
    * with that declared list — this is a hint, never the authority
    * (`plans/connections/optional-oauth-scopes.md` §1, §5).
    *
-   * A seam only: nothing in the UI populates it yet. `calendar-sync-toggle.tsx:55-59` documents
-   * wanting exactly this and hand-rolls a bespoke popup because it did not exist; it is left
-   * untouched, and can adopt this when someone gets to it.
+   * Three producers: the connect dialog's picker (via `saveOrOauth`), the Edit dialog's picker
+   * (`connections-section.tsx`, which passes it to `start` outright), and — when nobody set it
+   * — `start`'s own reconnect seed (§4.4). An explicit value ALWAYS wins over the seed, empty
+   * array included: unticking a scope you hold is a deliberate downgrade, not an omission.
+   *
+   * `calendar-sync-toggle.tsx:55-59` documents wanting exactly this and hand-rolls a bespoke
+   * popup because it did not exist; it is left untouched, and can adopt this when someone gets
+   * to it.
    */
   scopeAdd?: string[]
   /**
@@ -216,6 +235,11 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
   // One dialog for every field-entry case (bare secret, multi-field secret, OAuth-with-vars) —
   // `ConnectionDetailDialog` renders the token row or the variable rows from the resolved method.
   const [formOpen, setFormOpen] = useState(false)
+  // The optional scopes ticked in the dialog's picker (§4.2). Deliberately NOT part of the
+  // dialog's `values`: those are persisted as connection variables/secrets, and a picked scope is
+  // a property of one authorize request, never of the stored connection (§5, "never persist what
+  // was picked"). It rides the authorize URL as `scope_add` and nothing else.
+  const [pickedScopes, setPickedScopes] = useState<string[]>([])
   // Pending for the silent refresh-token exchange that precedes the popup on reconnect.
   const [refreshPending, setRefreshPending] = useState(false)
   const [lastConnectedCredId, setLastConnectedCredId] = useState<string | null>(null)
@@ -405,6 +429,7 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
         return
       }
       setArgs(next)
+      setPickedScopes(next.scopeAdd ?? [])
       // `client-credentials` has no browser step — the org enters its id/secret in the same
       // field form as a secret connection; the runtime mints the bearer lazily on first use.
       if (def.connectionType === 'secret' || def.connectionType === 'client-credentials') {
@@ -414,13 +439,29 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
         return
       }
       if (def.connectionType === 'oauth2-code') {
-        const vars = def.connectionVariables ?? []
         // Reconnect reuses the stored variables (e.g. the Shopify shop) server-side,
         // so only prompt for them on a fresh connect — and try a silent token refresh
         // before falling back to the full OAuth flow.
         if (next.connectionId) {
-          void attemptRefreshThenOAuth(next)
-        } else if (vars.length > 0) {
+          // §4.4 — a reconnect must not silently downgrade the grant. It never opens a dialog,
+          // so without a seed a full re-auth of a connection holding an optional scope comes
+          // back with the floor alone and nothing says so. Re-request exactly what the
+          // connection already holds. An explicit `scopeAdd` (the Edit dialog's picker) wins:
+          // it was itself seeded from the grant, and the user's edits to it are deliberate.
+          const seeded =
+            next.scopeAdd !== undefined
+              ? next
+              : {
+                  ...next,
+                  scopeAdd: optionalScopesHeld(grantedScopesFor(utils, next.connectionId), def),
+                }
+          setArgs(seeded)
+          setPickedScopes(seeded.scopeAdd ?? [])
+          // The silent refresh keeps the existing token and never re-authorizes, so the seed is
+          // inert on that leg — it only matters on the fallback to `kickOauth`, which
+          // `attemptRefreshThenOAuth` reaches with this same object.
+          void attemptRefreshThenOAuth(seeded)
+        } else if (shouldOpenConnectDialog(def)) {
           setFormOpen(true)
         } else {
           kickOauth(next)
@@ -433,7 +474,7 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
       }
       setError(new Error('This connection cannot be connected'))
     },
-    [kickOauth, attemptRefreshThenOAuth, kickHostedProvision]
+    [kickOauth, attemptRefreshThenOAuth, kickHostedProvision, utils]
   )
 
   const activeDef = useMemo(() => {
@@ -499,7 +540,10 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
   // dialog open until the save resolves, then `onSecretSaved` closes it); an OAuth def closes the
   // form and hands off to the popup. Mirrors `connectWith`, which the catalog uses to skip the dialog.
   const saveOrOauth = useCallback(
-    (a: ConnectFlowArgs, payload: { values?: Record<string, string>; secret?: string }) => {
+    (
+      a: ConnectFlowArgs,
+      payload: { values?: Record<string, string>; secret?: string; optionalScopes?: string[] }
+    ) => {
       const def = pickDef(a)
       if (def?.connectionType === 'secret' || def?.connectionType === 'client-credentials') {
         saveSecretForOwner(a, payload)
@@ -507,10 +551,13 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
       }
       if (def?.connectionType === 'oauth2-code') {
         setFormOpen(false)
-        kickOauth(a, payload.values ?? {})
+        // The picks ride as `scope_add` on the authorize URL, NEVER as `values` — those are
+        // persisted as connection variables/secrets. The dialog only reports `optionalScopes`
+        // when the picker was actually visible, so fall back to the state it has been driving.
+        kickOauth({ ...a, scopeAdd: payload.optionalScopes ?? pickedScopes }, payload.values ?? {})
       }
     },
-    [kickOauth, saveSecretForOwner]
+    [kickOauth, saveSecretForOwner, pickedScopes]
   )
 
   // The single resolved method backing the dialog — built from the already-resolved activeDef.
@@ -527,6 +574,8 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
       ownClientOptional: activeDef.ownClientOptional,
       ownClientReason: activeDef.ownClientReason,
       oauthCallbackUrl: activeDef.oauthCallbackUrl,
+      oauth2Scopes: activeDef.oauth2Scopes,
+      oauth2OptionalScopes: activeDef.oauth2OptionalScopes,
     }
   }, [args, activeDef])
 
@@ -537,6 +586,7 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
     setRefreshPending(false)
     setFormOpen(false)
     setArgs(null)
+    setPickedScopes([])
   }, [cancelPopup])
 
   const Dialogs =
@@ -557,6 +607,8 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
         // overrides `args.name`/title in `saveSecretForOwner` via the spread `payload.name`.
         showName={showName && !args.connectionId}
         initialName={args.name}
+        selectedOptionalScopes={pickedScopes}
+        onOptionalScopesChange={setPickedScopes}
         onSubmit={(payload) => saveOrOauth(args, payload)}
       />
     ) : null
@@ -575,6 +627,24 @@ export function useConnectFlow(options: UseConnectFlowOptions = {}): UseConnectF
 
 type AppConnectionRow = RouterOutputs['apps']['listConnections'][number]
 type PlatformConnectionRow = RouterOutputs['connections']['list'][number]
+
+/**
+ * The scopes a connection was actually granted (`Credential.metadata.scope`), read off whichever
+ * connection list the caller already has warm — `apps.listConnections` for app owners,
+ * `connections.list` for everything else. Both are projected by the server (§4.6).
+ *
+ * Deliberately a **cache read, not a query**: `start` is synchronous and every surface that can
+ * reconnect a row is by definition already rendering that row from one of these two lists. Both
+ * are consulted rather than just the owner's, because the connections settings page reconnects
+ * app-owned rows out of `connections.list`. A cold cache degrades to `[]` — the connection then
+ * re-requests its floor, which is exactly today's behaviour, never worse.
+ */
+function grantedScopesFor(utils: ReturnType<typeof api.useUtils>, connectionId: string): string[] {
+  const appRow = utils.apps.listConnections.getData()?.find((r) => r.id === connectionId)
+  if (appRow) return appRow.grantedScopes ?? []
+  const platformRow = utils.connections.list.getData()?.find((r) => r.id === connectionId)
+  return platformRow?.grantedScopes ?? []
+}
 
 /**
  * Authoritative success backstop for {@link useOAuthPopup}, baselined against the current

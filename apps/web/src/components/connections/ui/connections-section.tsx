@@ -19,7 +19,7 @@ import { ConnectionCard, type ConnectionRow } from './connection-card'
 import { ConnectionDetailDialog } from './connection-detail-dialog'
 import type { DetailMethod } from './connection-detail-page'
 import { ConnectionStackCard } from './connection-stack-card'
-import { appTarget, platformTarget } from './connection-targets'
+import { appTarget, optionalScopesHeld, platformTarget } from './connection-targets'
 import { CredentialTemplateDialog } from './credential-template-dialog'
 import { type ConnectionGroup, groupConnections } from './group-connections'
 import { McpReconnectController } from './mcp-reconnect-controller'
@@ -49,6 +49,10 @@ export function ConnectionsSection() {
 
   const [addOpen, setAddOpen] = useState(false)
   const [editRow, setEditRow] = useState<ConnectionRow | null>(null)
+  // The optional scopes ticked in the edit dialog's picker (§4.5). Seeded from what the row
+  // already holds when the dialog opens, so its Reconnect re-requests the existing grant rather
+  // than dropping to the floor — and unticking one is how a user chooses to give it up.
+  const [editScopes, setEditScopes] = useState<string[]>([])
   // The MCP server being (re)connected from a row's Reconnect — drives the connect controller. The
   // `attempt` nonce keys the controller so re-clicking Reconnect (even on the same server after a
   // cancel) always remounts it and re-fires the connect.
@@ -99,9 +103,30 @@ export function ConnectionsSection() {
     return inst?.app.title ?? row.type
   }
 
+  /**
+   * The definition backing a row — an app's connection method, or the platform provider. Carries
+   * the OAuth scope vocabulary (floor + optional) and the BYO gate the edit dialog's picker reads.
+   * Undefined for MCP rows and definition-less secrets, which have no scopes to offer.
+   */
+  const scopeSourceForRow = (row: ConnectionRow) => {
+    if (row.kind === 'app') {
+      const inst = appInstallations.find((i) => i.app.id === row.appId)
+      // Match the row's own method; single-method apps carry no `connectionDefinitionId` on
+      // older rows, so fall back to the sole method rather than showing nothing.
+      return (
+        inst?.methods?.find((m) => m.id === row.connectionDefinitionId) ??
+        (inst?.methods?.length === 1 ? inst.methods[0] : undefined)
+      )
+    }
+    if (row.kind === 'mcp') return undefined
+    return providerByKey.get(row.type)
+  }
+
   // Reconnect re-authorizes (oauth) or re-enters (secret) the existing credential —
   // the flow opens the right surface based on the definition's connectionType.
-  const handleReconnect = (row: ConnectionRow) => {
+  // `scopeAdd` carries the edit dialog's picks straight through to the authorize URL; when it is
+  // omitted (the card's own Reconnect) the flow seeds it from the existing grant itself (§4.4).
+  const handleReconnect = (row: ConnectionRow, scopeAdd?: string[]) => {
     if (row.kind === 'app') {
       const inst = appInstallations.find((i) => i.app.id === row.appId)
       if (!inst) {
@@ -111,7 +136,12 @@ export function ConnectionsSection() {
         })
         return
       }
-      flow.start({ target: appTarget(inst), scope: row.scope, connectionId: row.id })
+      flow.start({
+        target: appTarget(inst),
+        scope: row.scope,
+        connectionId: row.id,
+        ...(scopeAdd && { scopeAdd }),
+      })
       return
     }
     // MCP rows reconnect through the MCP-native flow (its own OAuth route + connect mutation),
@@ -136,7 +166,12 @@ export function ConnectionsSection() {
       })
       return
     }
-    flow.start({ target: platformTarget(provider), scope: row.scope, connectionId: row.id })
+    flow.start({
+      target: platformTarget(provider),
+      scope: row.scope,
+      connectionId: row.id,
+      ...(scopeAdd && { scopeAdd }),
+    })
   }
 
   // Plain connection secrets with no platform definition edit a single API key inline in the edit
@@ -154,9 +189,14 @@ export function ConnectionsSection() {
     ? isPlainSecret(editRow) || editProvider?.connectionType === 'secret'
     : false
 
+  // The definition backing the row being edited — supplies the OAuth scope vocabulary and the
+  // BYO gate the optional-scope picker hangs off (§4.1).
+  const editSource = editRow ? scopeSourceForRow(editRow) : undefined
+
   // Synthetic method backing the unified edit dialog. Plain secrets expose a bare API-key row;
   // provider secrets expose the provider's fields (apiKey, base URL, …), seeded masked from
-  // `getForEdit`; OAuth/app rows are fieldless (name-only). Cheap to recompute, so no memo.
+  // `getForEdit`; OAuth/app rows are fieldless (name-only) apart from the optional-scope picker.
+  // Cheap to recompute, so no memo.
   const editMethod: DetailMethod | null = editRow
     ? {
         id: editRow.connectionDefinitionId ?? editRow.id,
@@ -166,8 +206,28 @@ export function ConnectionsSection() {
         global: editRow.scope !== 'user',
         connectionVariables:
           editProvider?.connectionType === 'secret' ? (editProvider.connectionVariables ?? []) : [],
+        // The BYO gate rides along because `shouldOfferOptionalScopes` reads it — the picker
+        // lives inside the "use your own OAuth client" disclosure. It adds no credential fields
+        // here: `connectionVariables` above stays empty for OAuth rows, so the dialog keeps its
+        // name-only Save and the disclosure only reveals the callback notice and the picker.
+        ...(editInlineSecret
+          ? {}
+          : {
+              requiresOwnClient: editSource?.requiresOwnClient,
+              ownClientOptional: editSource?.ownClientOptional,
+              ownClientReason: editSource?.ownClientReason,
+              oauthCallbackUrl: editSource?.oauthCallbackUrl,
+              oauth2Scopes: editSource?.oauth2Scopes,
+              oauth2OptionalScopes: editSource?.oauth2OptionalScopes,
+            }),
       }
     : null
+
+  /** Open the edit dialog for a row, seeding the picker with the optional scopes it already holds. */
+  const openEdit = (row: ConnectionRow) => {
+    setEditRow(row)
+    setEditScopes(optionalScopesHeld(row.grantedScopes, scopeSourceForRow(row) ?? {}))
+  }
 
   const onEditSaved = () => {
     setEditRow(null)
@@ -261,7 +321,7 @@ export function ConnectionsSection() {
       iconId={resolveIcon(row)}
       subtitle={resolveSubtitle(row)}
       actionLabel='Edit'
-      onAction={() => setEditRow(row)}
+      onAction={() => openEdit(row)}
       onDelete={() => void handleDelete(row)}
     />
   )
@@ -450,13 +510,19 @@ export function ConnectionsSection() {
               ? 'Rename this connection or update its credentials.'
               : 'Rename this connection, or use Reconnect to re-authorize or update its credentials.'
           }
+          selectedOptionalScopes={editScopes}
+          onOptionalScopesChange={setEditScopes}
+          // The post-connect upgrade path (§4.5): tick the extra scope, then Reconnect. The picks
+          // ride through as `scope_add`; Save stays a rename, since a granted scope only changes
+          // by re-authorizing.
           onReconnect={
             editInlineSecret
               ? undefined
               : () => {
                   const row = editRow
+                  const scopeAdd = editScopes
                   setEditRow(null)
-                  handleReconnect(row)
+                  handleReconnect(row, scopeAdd)
                 }
           }
           onSubmit={handleEditSubmit}

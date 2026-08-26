@@ -3,12 +3,16 @@
 
 import type { ConnectionVariable } from '@auxx/database'
 import { Button } from '@auxx/ui/components/button'
+import { CopyButton } from '@auxx/ui/components/button-copy'
+import { Checkbox } from '@auxx/ui/components/checkbox'
 import { Field, FieldError, FieldLabel } from '@auxx/ui/components/field'
 import { Input } from '@auxx/ui/components/input'
+import { Label } from '@auxx/ui/components/label'
 import { RadioGroup } from '@auxx/ui/components/radio-group'
 import { RadioGroupItemCard } from '@auxx/ui/components/radio-group-item'
 import { cn } from '@auxx/ui/lib/utils'
 import { ChevronDown, ChevronRight, KeyRound, Plug } from 'lucide-react'
+import { useId } from 'react'
 import { ConnectionVariableFields } from '~/components/connections/ui/connection-variable-fields'
 import { FieldPanel } from '~/components/global/forms/field-panel'
 import { OwnClientCallbackNotice } from './own-client-callback-notice'
@@ -32,6 +36,10 @@ export interface DetailMethod {
   ownClientReason?: 'no-platform-client' | 'pending-approval' | 'byo-entitled' | null
   /** Server-built OAuth redirect URI, shown so a BYO user can register it. */
   oauthCallbackUrl?: string | null
+  /** The definition's always-requested scopes (the floor). Used to show the full resulting set. */
+  oauth2Scopes?: string[] | null
+  /** Scopes this connection MAY additionally request. Renders the optional-scope picker. */
+  oauth2OptionalScopes?: string[] | null
 }
 
 /** Copy for the mandatory BYO-client banner (§3.1) — shown only when `requiresOwnClient`. */
@@ -75,6 +83,9 @@ interface ConnectionDetailPageProps {
    */
   byoOpen?: boolean
   onByoOpenChange?: (open: boolean) => void
+  /** Controlled: the optional scopes currently ticked. */
+  selectedOptionalScopes?: string[]
+  onOptionalScopesChange?: (next: string[]) => void
   /** Override the root padding/layout (e.g. the dialog drops the gallery's `px-4 py-5`). */
   className?: string
 }
@@ -126,6 +137,110 @@ export function methodIsBareSecret(method: DetailMethod): boolean {
 }
 
 /**
+ * Should the optional-scope picker be offered for this method
+ * (plans/connections/optional-oauth-scopes.md §4.1)?
+ *
+ * It is BYO-only: a merchant on the platform OAuth client never sees it, because the platform
+ * client generally cannot be granted the extra scope anyway. The gate is **presentation, not
+ * enforcement** — the server re-validates `scope_add` against the definition's optional list
+ * regardless of which client is used.
+ */
+export function shouldOfferOptionalScopes(method: DetailMethod, byoOpen: boolean): boolean {
+  return (
+    method.connectionType === 'oauth2-code' &&
+    (method.oauth2OptionalScopes?.length ?? 0) > 0 &&
+    (!!method.requiresOwnClient || (methodOffersOwnClient(method) && byoOpen))
+  )
+}
+
+/**
+ * Display separator for the full requested-scope line. The definition's real
+ * `oauth2Features.scopeSeparator` is not projected to the client; a comma is correct for
+ * Shopify and for every definition that carries optional scopes today. If a provider that
+ * separates on space ever declares optional scopes, plumb the separator through instead.
+ */
+const SCOPE_DISPLAY_SEPARATOR = ', '
+
+/** Floor + ticked optional scopes, deduped, floor first — what the authorize will request. */
+function buildRequestedScopeLine(method: DetailMethod, selected: string[]): string {
+  const floor = method.oauth2Scopes ?? []
+  const picked = new Set(selected)
+  const extra = (method.oauth2OptionalScopes ?? []).filter(
+    (scope) => picked.has(scope) && !floor.includes(scope)
+  )
+  return [...new Set([...floor, ...extra])].join(SCOPE_DISPLAY_SEPARATOR)
+}
+
+interface OptionalScopePickerProps {
+  method: DetailMethod
+  byoOpen: boolean
+  selected: string[]
+  onChange?: (next: string[]) => void
+  disabled?: boolean
+}
+
+/**
+ * The additive-scope picker (§4.2): unchecked-by-default boxes for the method's optional
+ * scopes, plus the full resulting scope string a BYO user must copy into their own OAuth
+ * app's configuration. Default-off is load-bearing — a silently pre-ticked scope the
+ * provider will not grant makes the authorize fail outright. Self-gates on
+ * {@link shouldOfferOptionalScopes}, so both BYO render sites can call it unconditionally.
+ */
+function OptionalScopePicker({
+  method,
+  byoOpen,
+  selected,
+  onChange,
+  disabled,
+}: OptionalScopePickerProps) {
+  const idPrefix = useId()
+  if (!shouldOfferOptionalScopes(method, byoOpen)) return null
+
+  const optional = method.oauth2OptionalScopes ?? []
+  const picked = new Set(selected)
+  const requested = buildRequestedScopeLine(method, selected)
+
+  return (
+    <div className='flex flex-col gap-2 rounded-2xl border border-border bg-muted/40 p-2'>
+      <p className='text-xs text-muted-foreground'>
+        Extra permissions this connection can request. The provider decides whether to grant them.
+      </p>
+      <div className='flex flex-col gap-1.5'>
+        {optional.map((scope) => (
+          <div key={scope} className='flex items-center gap-2'>
+            <Checkbox
+              id={`${idPrefix}-${scope}`}
+              checked={picked.has(scope)}
+              disabled={disabled}
+              onCheckedChange={(checked) => {
+                const next = new Set(picked)
+                if (checked === true) next.add(scope)
+                else next.delete(scope)
+                onChange?.(optional.filter((s) => next.has(s)))
+              }}
+            />
+            <Label htmlFor={`${idPrefix}-${scope}`} className='font-mono text-xs font-normal'>
+              {scope}
+            </Label>
+          </div>
+        ))}
+      </div>
+      {requested && (
+        <>
+          <p className='text-xs text-muted-foreground'>
+            Set your OAuth app's scopes to match this list before connecting:
+          </p>
+          <div className='flex items-center gap-1'>
+            <code className='min-w-0 flex-1 truncate font-mono text-xs'>{requested}</code>
+            <CopyButton text={requested} />
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+/**
  * The connect form shown on the gallery's detail page. Owns both the method chooser (when an
  * item exposes more than one way to connect — e.g. Stripe: API key OR OAuth2) and the input
  * fields for the chosen method (an API key and/or structured connection variables). A bare
@@ -146,6 +261,8 @@ export function ConnectionDetailPage({
   tokenSaved,
   byoOpen,
   onByoOpenChange,
+  selectedOptionalScopes = [],
+  onOptionalScopesChange,
   className,
   showName,
   name = '',
@@ -203,6 +320,17 @@ export function ConnectionDetailPage({
           <OwnClientCallbackNotice callbackUrl={chosen.oauthCallbackUrl} />
         </div>
       )}
+      {/* Mandatory BYO renders its client fields inline with no disclosure, so the picker sits
+          on its own here; the optional-BYO path renders it inside the disclosure below. */}
+      {chosen?.requiresOwnClient && (
+        <OptionalScopePicker
+          method={chosen}
+          byoOpen={!!byoOpen}
+          selected={selectedOptionalScopes}
+          onChange={onOptionalScopesChange}
+          disabled={disabled}
+        />
+      )}
       {chosen && methodOffersOwnClient(chosen) && (
         <div className='flex flex-col gap-2'>
           <div className='rounded-md border px-3 py-2 text-xs text-muted-foreground'>
@@ -223,6 +351,13 @@ export function ConnectionDetailPage({
             </Button>
           )}
           {byoOpen && <OwnClientCallbackNotice callbackUrl={chosen.oauthCallbackUrl} />}
+          <OptionalScopePicker
+            method={chosen}
+            byoOpen={!!byoOpen}
+            selected={selectedOptionalScopes}
+            onChange={onOptionalScopesChange}
+            disabled={disabled}
+          />
         </div>
       )}
       {chosen && methodNeedsFields(chosen) && (
