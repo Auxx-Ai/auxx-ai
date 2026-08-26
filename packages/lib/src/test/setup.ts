@@ -100,6 +100,24 @@ vi.mock('openai', () => ({
   })),
 }))
 
+// `pusher` is imported by exactly one module (`realtime/providers/pusher.ts`)
+// and NO test mocks it, so any test that reached `RealtimeService.publish`
+// without mocking the realtime layer above it was opening a real connection to
+// whatever `PUSHER_*` pointed at. That is a live network call from a unit test:
+// slow, order-dependent, and it fails outright (`Invalid socket id`) the moment
+// a fixture uses a synthetic socket id. Stub it here so the suite is hermetic —
+// a test that wants to assert on publishing still mocks `../realtime` itself.
+// NOTE: `class`, not `vi.fn(() => ({...}))`. Production code calls
+// `new Pusher(...)`, and a `vi.fn` whose implementation is an arrow function is
+// not constructible — it fails with "is not a constructor" at the `new` site
+// rather than anywhere near here.
+vi.mock('pusher', () => ({
+  default: class {
+    trigger = vi.fn().mockResolvedValue(undefined)
+    authorizeChannel = vi.fn(() => ({ auth: 'test:signature' }))
+  },
+}))
+
 // Global test setup
 beforeAll(() => {
   // Add any global setup here
