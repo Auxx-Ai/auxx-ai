@@ -89,6 +89,22 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
     additionalTabs: [
       { value: 'parts', label: 'Variants', icon: 'package', recordResource: 'part' },
     ],
+    // Overview blocks (plans/products/09-variant-ui.md §7). Both render nothing
+    // when they have nothing — an empty family, or no linked vendor — which
+    // hides their whole section.
+    tabCards: {
+      overview: [
+        // Variant count, stock, price range and how many variants carry a sell
+        // price. Reads `part`, so it is gated on that definition.
+        { value: 'summary', label: 'Family', icon: 'package', recordResource: 'part' },
+        // `product.vendor` → `company` click-through (D9 — a supplier is
+        // already a company, never a free-text brand string). No
+        // `recordResource`: this is the product's OWN relationship value, not a
+        // list of another definition's records, and the server already redacts
+        // an unreadable target — the same call `ticket:customer` makes.
+        { value: 'vendor', label: 'Vendor', icon: 'store' },
+      ],
+    },
   },
 
   service_request: {

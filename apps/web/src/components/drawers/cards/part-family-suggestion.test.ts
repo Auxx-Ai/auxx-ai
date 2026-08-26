@@ -6,7 +6,11 @@
 // a suggestion the human confirms, never a derivation.
 
 import { describe, expect, it } from 'vitest'
-import { isPartKindUnset, shouldSuggestFinishedGood } from './part-family-suggestion'
+import {
+  isPartKindUnset,
+  shouldSuggestFamily,
+  shouldSuggestFinishedGood,
+} from './part-family-suggestion'
 
 /** The all-conditions-met baseline each test perturbs one axis of. */
 const ELIGIBLE = {
@@ -67,5 +71,55 @@ describe('isPartKindUnset', () => {
   it('treats any concrete value as set, scalar or array-wrapped', () => {
     expect(isPartKindUnset('component')).toBe(false)
     expect(isPartKindUnset(['finished_good'])).toBe(false)
+  })
+})
+
+describe('shouldSuggestFamily', () => {
+  it('suggests a family for an explicit finished good with no product', () => {
+    expect(shouldSuggestFamily({ hasProduct: false, partKind: 'finished_good' })).toBe(true)
+  })
+
+  it('handles the array-shaped SINGLE_SELECT read the same way', () => {
+    expect(shouldSuggestFamily({ hasProduct: false, partKind: ['finished_good'] })).toBe(true)
+  })
+
+  it('never suggests when the part already has a family', () => {
+    expect(shouldSuggestFamily({ hasProduct: true, partKind: 'finished_good' })).toBe(false)
+  })
+
+  it('never suggests for other explicit kinds', () => {
+    expect(shouldSuggestFamily({ hasProduct: false, partKind: 'component' })).toBe(false)
+    expect(shouldSuggestFamily({ hasProduct: false, partKind: 'subassembly' })).toBe(false)
+  })
+
+  it('never suggests on an UNSET kind — finished_good is required explicitly, never inferred', () => {
+    // Every shape `isPartKindUnset` treats as unset must also be silent here.
+    for (const partKind of [undefined, null, '', [], ['']]) {
+      expect(isPartKindUnset(partKind)).toBe(true)
+      expect(shouldSuggestFamily({ hasProduct: false, partKind })).toBe(false)
+    }
+  })
+
+  it('is mutually exclusive with the finished-good suggestion', () => {
+    // The two gate on opposite sides of the same fact: one refuses to speak
+    // OVER a human choice of part_kind, the other refuses to speak WITHOUT one.
+    const cases: Array<{ hasProduct: boolean; partKind: unknown }> = [
+      { hasProduct: false, partKind: undefined },
+      { hasProduct: false, partKind: 'finished_good' },
+      { hasProduct: false, partKind: 'component' },
+      { hasProduct: true, partKind: undefined },
+      { hasProduct: true, partKind: 'finished_good' },
+      { hasProduct: true, partKind: 'component' },
+    ]
+    for (const input of cases) {
+      const both =
+        shouldSuggestFamily(input) &&
+        shouldSuggestFinishedGood({
+          ...input,
+          subpartCheckLoaded: true,
+          isSubpartOfAssembly: false,
+        })
+      expect(both).toBe(false)
+    }
   })
 })

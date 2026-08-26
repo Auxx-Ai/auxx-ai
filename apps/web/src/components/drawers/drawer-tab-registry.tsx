@@ -132,6 +132,20 @@ export const DRAWER_TAB_CARD_COMPONENTS: Record<
     import('./cards/part-family-card').then((m) => ({ default: m.PartFamilyCard })),
 
   // ─────────────────────────────────────────────────────────────────
+  // PRODUCT OVERVIEW CARDS (shared with the product detail-view sidebar —
+  // DetailViewSidebar reads from this same registry)
+  // ─────────────────────────────────────────────────────────────────
+  // Family shape: variant count, stock, price range, how many are priced.
+  // Renders nothing for a family with no variants, hiding its whole section.
+  'product:summary': () =>
+    import('./cards/product-summary-card').then((m) => ({ default: m.ProductSummaryCard })),
+  // The company behind the family (`product.vendor` → `company`, D9). Null on
+  // most synced products — Shopify's brand string lands in an app field, and a
+  // human links this relation — so the section is usually hidden.
+  'product:vendor': () =>
+    import('./cards/product-vendor-card').then((m) => ({ default: m.ProductVendorCard })),
+
+  // ─────────────────────────────────────────────────────────────────
   // QUOTE OVERVIEW CARDS (shared with the quote detail-view sidebar —
   // DetailViewSidebar reads from this same registry, see detail-view-sidebar.tsx)
   // ─────────────────────────────────────────────────────────────────

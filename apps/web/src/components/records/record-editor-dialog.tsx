@@ -1,10 +1,11 @@
 // apps/web/src/components/records/record-editor-dialog.tsx
 'use client'
 
-import type { RecordId } from '@auxx/lib/resources/client'
+import { getInstanceId, isRecordId, type RecordId } from '@auxx/lib/resources/client'
 import { EntityInstanceDialog } from '~/components/custom-fields/ui/entity-instance-dialog'
 import { WorkOrderEditorDialog } from '~/components/dispatch/ui/work-order-editor'
 import { PartFormDialog } from '~/components/manufacturing/parts/part-form-dialog'
+import { useSystemField } from '~/components/resources/hooks/use-field'
 import { useResource } from '~/components/resources/hooks/use-resource'
 
 /**
@@ -20,7 +21,12 @@ export interface RecordEditorDialogProps {
   recordId?: RecordId
   /** Called after a successful save. */
   onSaved?: (instanceId?: string) => void
-  /** Preset field values for CREATE mode. Custom editors may ignore this. */
+  /**
+   * Preset field values for CREATE mode, **keyed by field id** — the shape
+   * `EntityInstanceForm` applies (`initValues[fieldId] = value`, keys compared
+   * against `editableFields[].id`), not by systemAttribute. Custom editors
+   * translate the keys they understand and ignore the rest.
+   */
   presetValues?: Record<string, unknown>
 }
 
@@ -40,13 +46,56 @@ function WorkOrderEditorAdapter(props: RecordEditorDialogProps) {
   return <WorkOrderEditorDialog {...props} />
 }
 
-/** Adapts {@link PartFormDialog} (uses `onSuccess`, no def id / presets) to the shared shape. */
-function PartEditorAdapter({ open, onOpenChange, recordId, onSaved }: RecordEditorDialogProps) {
+/**
+ * Read one RELATIONSHIP preset out of the field-id-keyed preset map and unwrap
+ * it to a bare EntityInstance id.
+ *
+ * Pure so the translation is testable without a resource store: the only thing
+ * the component contributes is resolving `fieldId`. Handles both stored shapes
+ * — a RELATIONSHIP value arrives as `RecordId[]` on most read paths and as a
+ * scalar on others, and either half may be a bare instance id rather than a
+ * `RecordId`.
+ */
+export function presetInstanceId(
+  presetValues: Record<string, unknown> | undefined,
+  fieldId: string | undefined
+): string | undefined {
+  if (!presetValues || !fieldId) return undefined
+  const raw = presetValues[fieldId]
+  const first = Array.isArray(raw) ? raw[0] : raw
+  if (typeof first !== 'string' || first === '') return undefined
+  return isRecordId(first) ? getInstanceId(first) : first
+}
+
+/**
+ * Adapts {@link PartFormDialog} (which uses `onSuccess` and an explicit
+ * `productId`) to the shared shape.
+ *
+ * `presetValues` used to be dropped here, which made the generic contract lie:
+ * a caller passed presets, `RecordEditorDialog` accepted them, and for `part`
+ * alone they vanished with no error. The map is keyed by FIELD ID, so the
+ * part's `product` field id is resolved first and used to read it — forward
+ * resolution only, no inverse map. Only `part_product` is translated today;
+ * that is the one preset a caller has a reason to pass (creating a variant into
+ * a family), and an unknown key is ignored rather than crashing.
+ */
+function PartEditorAdapter({
+  open,
+  onOpenChange,
+  entityDefinitionId,
+  recordId,
+  onSaved,
+  presetValues,
+}: RecordEditorDialogProps) {
+  const productField = useSystemField('part_product', entityDefinitionId)
+  const productId = presetInstanceId(presetValues, productField?.id)
+
   return (
     <PartFormDialog
       open={open}
       onOpenChange={onOpenChange}
       recordId={recordId}
+      productId={productId}
       onSuccess={() => onSaved?.()}
     />
   )
