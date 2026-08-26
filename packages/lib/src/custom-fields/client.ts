@@ -21,7 +21,15 @@ export {
 export { getAiPrompt, isAiEligible, isAiField } from './ai'
 export { getCalcOptions, getEffectiveFieldType } from './calc'
 
-export type { CalcOptions, CurrencyFieldOptions, NameFieldOptions } from './field-options'
+export type {
+  CalcOptions,
+  CurrencyFieldOptions,
+  FieldOptionsPatch,
+  NameFieldOptions,
+} from './field-options'
+// The patch -> stored narrowing, so an optimistic field shape predicts what the
+// server will persist instead of re-implementing the `allowNewOptions` sentinel.
+export { toStoredFieldOptions } from './field-options'
 export {
   extractFieldIds,
   extractFieldIdsFromString,

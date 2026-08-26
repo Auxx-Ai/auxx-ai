@@ -4,6 +4,7 @@ import type { FieldType, FieldType as FieldTypeEnum } from '@auxx/database/types
 import {
   getEffectiveFieldType,
   PRIMARY_DISPLAY_ELIGIBLE_TYPES,
+  toStoredFieldOptions,
 } from '@auxx/lib/custom-fields/client'
 import type { FieldCapabilities, ResourceField } from '@auxx/lib/resources/client'
 import { mapFieldTypeToBaseType } from '@auxx/lib/workflow-engine/client'
@@ -130,9 +131,11 @@ export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMu
         isSystem: false,
         showInPanel: true,
         capabilities,
-        options: Array.isArray(variables.options)
-          ? { options: variables.options }
-          : (variables.options ?? undefined),
+        // Patch -> stored. `allowNewOptions: null` is a patch-only sentinel
+        // meaning "revert to the type default", and the server CLEARS the key
+        // for it rather than storing it — so the optimistic shape has to do the
+        // same or it predicts a field the server will never write.
+        options: toStoredFieldOptions(variables.options),
       }
 
       store.addOptimisticField(tempKey, optimisticField)
