@@ -1,6 +1,7 @@
 // apps/web/src/components/drawers/cards/part-family-card.tsx
 'use client'
 
+import { FieldType } from '@auxx/database/enums'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import {
   getInstanceId,
@@ -8,14 +9,17 @@ import {
   PartKind,
   ProductStatus,
   parseRecordId,
+  type RecordId,
 } from '@auxx/lib/resources/client'
-import type { ResourceFieldId } from '@auxx/types/field'
+import type { RelationshipConfig } from '@auxx/types/custom-field'
+import { type ResourceFieldId, toResourceFieldId } from '@auxx/types/field'
 import { Badge, type Variant } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { pluralize } from '@auxx/utils'
-import { Sparkles } from 'lucide-react'
+import { Package, Sparkles } from 'lucide-react'
 import Link from 'next/link'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
+import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import {
   toRecordId,
@@ -26,7 +30,11 @@ import {
 import { useSaveSystemValues } from '~/components/resources/hooks/use-save-system-values'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import type { DrawerTabProps } from '../drawer-tab-registry'
-import { isPartKindUnset, shouldSuggestFinishedGood } from './part-family-suggestion'
+import {
+  isPartKindUnset,
+  shouldSuggestFamily,
+  shouldSuggestFinishedGood,
+} from './part-family-suggestion'
 
 /** The part's own family-relevant fields. */
 const PART_FAMILY_ATTRIBUTES = ['part_product', 'part_kind'] as const
@@ -35,6 +43,22 @@ const PRODUCT_ATTRIBUTES = ['product_title', 'product_status'] as const
 
 /** `ProductStatus.values` keyed by option value, for badge label + color. */
 const PRODUCT_STATUS_BY_VALUE = Object.fromEntries(ProductStatus.values.map((v) => [v.value, v]))
+
+/**
+ * How many siblings render before the list collapses behind "Show all".
+ *
+ * A Shopify family can carry dozens of variants, and an overview card is not a
+ * list surface — the product's own Variants tab is. Five is enough to see what
+ * kind of family this is.
+ */
+const SIBLING_LIMIT = 5
+
+/** Synthetic relationship config for the ad-hoc product picker (not a real field). */
+const PRODUCT_RELATIONSHIP: RelationshipConfig = {
+  inverseResourceFieldId: toResourceFieldId('product', 'id'),
+  relationshipType: 'belongs_to',
+  isInverse: false,
+}
 
 /** Unwrap a RELATIONSHIP value into the related instance id. */
 function relatedInstanceId(raw: unknown): string | undefined {
@@ -52,12 +76,21 @@ function relatedInstanceId(raw: unknown): string | undefined {
  * section for them. When it has one: the product (click-through to its record),
  * its status, and the sibling variants with the current part marked.
  *
- * Also hosts the `finished_good` suggestion (§4): a part that has a product
- * and is nobody's subpart is almost certainly a finished good. One click
- * writes `part_kind = 'finished_good'` through the SAME write path the
- * Details panel's select uses (`useSaveSystemValues` → the field-value store
- * mutation) — a suggestion the user confirms, never an auto-write, and never
- * offered over an explicit human choice (`part_kind` set).
+ * The card hosts BOTH halves of the classification loop, and they are mutually
+ * exclusive by construction:
+ *
+ * - the `finished_good` suggestion (01 §4) — a part that has a product and is
+ *   nobody's subpart is almost certainly a finished good. Never offered over an
+ *   explicit human choice of `part_kind`.
+ * - the **family** suggestion (09 §6) — a part already classified
+ *   `finished_good` that sits in no family. Without it a part with no family
+ *   rendered nothing at all, so there was no route into a family from this side
+ *   either: the user had to know products existed and find the Product field in
+ *   the Details panel.
+ *
+ * Both write through the SAME path the Details panel's inputs use
+ * (`useSaveSystemValues` → the field-value store mutation) — a suggestion the
+ * user confirms, never an auto-write.
  *
  * Reads are the standard drawer paths: the relation via `useSystemValues`,
  * siblings via `useRecordList` filtered on `part:product` (the same filter the
@@ -75,6 +108,9 @@ export function PartFamilyCard({ recordId }: DrawerTabProps) {
   const productDefId = useResourceProperty('product', 'id')
   const partDefId = useResourceProperty('part', 'id')
   const subpartDefId = useResourceProperty('subpart', 'id')
+
+  const [showAllSiblings, setShowAllSiblings] = useState(false)
+  const [isPickingProduct, setIsPickingProduct] = useState(false)
 
   const productRecordId =
     productDefId && productId ? toRecordId(productDefId, productId) : undefined
@@ -146,11 +182,55 @@ export function PartFamilyCard({ recordId }: DrawerTabProps) {
     isSubpartOfAssembly: usedInRecords.length > 0,
   })
 
-  // No family → no card; TabCardSection hides the whole section.
-  if (!productId) return null
+  const suggestFamily = shouldSuggestFamily({ hasProduct: !!productId, partKind })
+
+  // No family. A finished good still gets the one row that offers it one —
+  // everything else renders nothing and TabCardSection hides the section.
+  if (!productId) {
+    if (!suggestFamily) return null
+    return (
+      <div className='flex flex-wrap items-center gap-2 rounded-md border border-blue-500/40 bg-blue-500/10 p-2.5'>
+        <Package className='size-4 shrink-0 text-blue-600' />
+        <p className='min-w-40 flex-1 text-xs text-muted-foreground'>
+          <span className='font-medium text-foreground'>Not in a product family.</span> Finished
+          goods usually belong to one.
+        </p>
+        {isPickingProduct ? (
+          <div className='w-48'>
+            <FieldInputAdapter
+              fieldType={FieldType.RELATIONSHIP}
+              value={[]}
+              onChange={(value) => {
+                const recordIds = value as RecordId[]
+                const first = recordIds[0]
+                if (!first) return
+                void save({ part_product: first })
+                setIsPickingProduct(false)
+              }}
+              triggerProps={{ className: 'ps-0 pe-1 w-full' }}
+              placeholder='Select a product...'
+              disabled={isPending}
+              fieldOptions={{ relationship: PRODUCT_RELATIONSHIP, showDefinitionIcon: true }}
+            />
+          </div>
+        ) : (
+          <Button
+            variant='outline'
+            size='xs'
+            loading={isPending}
+            loadingText='Saving...'
+            onClick={() => setIsPickingProduct(true)}>
+            Choose Product
+          </Button>
+        )}
+      </div>
+    )
+  }
 
   const statusMeta = productStatus ? PRODUCT_STATUS_BY_VALUE[productStatus] : undefined
   const variantIndex = siblings.findIndex((record) => record.id === partId)
+  const hiddenSiblingCount = Math.max(0, siblings.length - SIBLING_LIMIT)
+  const visibleSiblings = showAllSiblings ? siblings : siblings.slice(0, SIBLING_LIMIT)
 
   return (
     <div className='space-y-2'>
@@ -183,7 +263,7 @@ export function PartFamilyCard({ recordId }: DrawerTabProps) {
                     : `${siblings.length} ${pluralize(siblings.length, 'variant')}`}
                   {productTitle ? ` in ${productTitle}` : ''}
                 </span>
-                {siblings.map((sibling) =>
+                {visibleSiblings.map((sibling) =>
                   sibling.id === partId ? (
                     <span key={sibling.id} className='truncate font-medium'>
                       {sibling.displayName ?? 'Untitled'}
@@ -192,13 +272,20 @@ export function PartFamilyCard({ recordId }: DrawerTabProps) {
                       </span>
                     </span>
                   ) : (
-                    <Link
+                    <SiblingLink
                       key={sibling.id}
-                      href={`/app/parts?id=${sibling.id}`}
-                      className='truncate hover:underline'>
-                      {sibling.displayName ?? 'Untitled'}
-                    </Link>
+                      recordId={toRecordId(partDefId ?? 'part', sibling.id)}
+                      label={sibling.displayName ?? 'Untitled'}
+                    />
                   )
+                )}
+                {hiddenSiblingCount > 0 && !showAllSiblings && (
+                  <button
+                    type='button'
+                    className='self-start text-xs text-muted-foreground hover:text-foreground hover:underline'
+                    onClick={() => setShowAllSiblings(true)}>
+                    Show all {siblings.length}
+                  </button>
                 )}
               </>
             )}
@@ -224,5 +311,23 @@ export function PartFamilyCard({ recordId }: DrawerTabProps) {
         </div>
       )}
     </div>
+  )
+}
+
+/**
+ * One sibling variant's link.
+ *
+ * A component rather than an inline `<Link>` because `useRecordLink` is a hook
+ * and this renders in a loop. The href it builds resolves through
+ * `resourceHasDetailPage`; the hand-written `/app/parts?id=` it replaced was a
+ * path nothing would have flagged if part routing ever moved.
+ */
+function SiblingLink({ recordId, label }: { recordId: RecordId; label: string }) {
+  const href = useRecordLink(recordId)
+  if (!href) return <span className='truncate'>{label}</span>
+  return (
+    <Link href={href} className='truncate hover:underline'>
+      {label}
+    </Link>
   )
 }

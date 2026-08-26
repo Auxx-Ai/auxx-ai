@@ -51,3 +51,31 @@ export function shouldSuggestFinishedGood(input: SuggestFinishedGoodInput): bool
   if (!input.subpartCheckLoaded) return false
   return !input.isSubpartOfAssembly
 }
+
+interface SuggestFamilyInput {
+  /** Whether the part has a `product` relation. */
+  hasProduct: boolean
+  /** Raw `part_kind` value. */
+  partKind: unknown
+}
+
+/**
+ * The inverse suggestion (plans/products/09-variant-ui.md §6): a part the human
+ * has ALREADY classified as a finished good, sitting in no product family.
+ *
+ * The card renders nothing at all for a part with no family, which is right for
+ * a 2x4 stud and wrong for a finished good — a finished good is, by definition,
+ * the thing a family is a family of. Without this there is no route into a
+ * family from the part side either; the user has to know products exist and go
+ * find the Product field in the Details panel.
+ *
+ * Note the symmetry with {@link shouldSuggestFinishedGood}, which is why the two
+ * can never fire together: that one refuses to speak OVER a human choice of
+ * `part_kind`, this one refuses to speak WITHOUT one. `finished_good` is
+ * required explicitly and is never inferred — the same Gap C §3.2 rule.
+ */
+export function shouldSuggestFamily(input: SuggestFamilyInput): boolean {
+  if (input.hasProduct) return false
+  const first = Array.isArray(input.partKind) ? input.partKind[0] : input.partKind
+  return first === 'finished_good'
+}

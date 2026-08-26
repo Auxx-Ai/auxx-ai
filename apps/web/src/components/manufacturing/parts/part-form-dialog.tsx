@@ -2,7 +2,15 @@
 'use client'
 
 import { FieldType } from '@auxx/database/enums'
-import { parseRecordId, type RecordId, toRecordId } from '@auxx/lib/resources/client'
+import {
+  getInstanceId,
+  PartKind,
+  parseRecordId,
+  type RecordId,
+  toRecordId,
+} from '@auxx/lib/resources/client'
+import type { RelationshipConfig } from '@auxx/types/custom-field'
+import { toResourceFieldId } from '@auxx/types/field'
 import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
@@ -39,6 +47,16 @@ const PART_SYSTEM_ATTRIBUTES = [
   'hs_code',
 ] as const
 
+/**
+ * Synthetic relationship config for the ad-hoc Product picker (not backed by a
+ * real field on this form) — the `subpart-dialog` pattern.
+ */
+const PRODUCT_RELATIONSHIP: RelationshipConfig = {
+  inverseResourceFieldId: toResourceFieldId('product', 'id'),
+  relationshipType: 'belongs_to',
+  isInverse: false,
+}
+
 /** Props for PartFormDialog component */
 interface PartFormDialogProps {
   /** Whether the dialog is open */
@@ -49,14 +67,29 @@ interface PartFormDialogProps {
   recordId?: RecordId
   /** Callback on successful save */
   onSuccess?: () => void
+  /**
+   * Product family to create this part into — prefills and LOCKS the Product
+   * row (plans/products/09-variant-ui.md §3.1).
+   *
+   * CREATE mode only. In edit mode the Details panel owns `part.product`, and
+   * two writers for one relation is exactly what D15 rejected for price.
+   */
+  productId?: string
 }
 
 /** Dialog for creating/editing a part */
-export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: PartFormDialogProps) {
+export function PartFormDialog({
+  open,
+  onOpenChange,
+  recordId,
+  onSuccess,
+  productId: lockedProductId,
+}: PartFormDialogProps) {
   const isEditMode = !!recordId
 
   // Resolve entity definition IDs
   const partDefId = useResourceProperty('part', 'id')
+  const productDefId = useResourceProperty('product', 'id')
   const vendorPartDefId = useResourceProperty('vendor_part', 'id')
   const companyDefId = useResourceProperty('company', 'id')
 
@@ -80,6 +113,12 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
     sku: '',
     hsCode: '',
     category: [] as string[],
+    productId: '',
+    // Deliberately never defaulted, not even when created from a product —
+    // Gap C §3.2 requires `part_kind` human-confirmed and auditable, and the
+    // part drawer's Family card is the confirmation surface. A silent default
+    // would defeat the `isPartKindUnset` gate that suggestion is built on.
+    kind: '',
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [showSupplier, setShowSupplier] = useState(false)
@@ -98,6 +137,9 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
           hsCode: (systemValues.hs_code as string) ?? '',
           // TAGS reads back as an array of option ids
           category: Array.isArray(systemValues.category) ? (systemValues.category as string[]) : [],
+          // Edit mode ignores the prop: the Details panel owns this relation.
+          productId: '',
+          kind: '',
         })
       } else if (!isEditMode) {
         setValues({
@@ -106,6 +148,8 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
           sku: '',
           hsCode: '',
           category: [],
+          productId: lockedProductId ?? '',
+          kind: '',
         })
       }
       setErrors({})
@@ -113,7 +157,7 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
       setVendorPartValues(defaultVendorPartValues)
       setVendorPartErrors({})
     }
-  }, [open, isEditMode, systemValues])
+  }, [open, isEditMode, systemValues, lockedProductId])
 
   // Field change handler
   const handleChange = useCallback((field: string, value: any) => {
@@ -192,6 +236,11 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
             part_description: values.description || undefined,
             category: values.category.length ? values.category : undefined,
             hs_code: values.hsCode || undefined,
+            part_product:
+              values.productId && productDefId
+                ? toRecordId(productDefId, values.productId)
+                : undefined,
+            part_kind: values.kind || undefined,
           },
         })
 
@@ -296,6 +345,56 @@ export function PartFormDialog({ open, onOpenChange, recordId, onSuccess }: Part
               disabled={isPending}
             />
           </FieldPanelRow>
+
+          {/* Product family — locked when the dialog was opened from a product.
+              Create mode only: in edit mode the Details panel owns the relation. */}
+          {!isEditMode && (
+            <FieldPanelRow
+              title='Product'
+              description='Optional product family this part is a variant of'
+              type={BaseType.RELATION}
+              showIcon>
+              <FieldInputAdapter
+                fieldType={FieldType.RELATIONSHIP}
+                value={
+                  values.productId && productDefId
+                    ? [toRecordId(productDefId, values.productId)]
+                    : []
+                }
+                onChange={(value) => {
+                  const recordIds = value as RecordId[]
+                  const first = recordIds[0]
+                  handleChange('productId', first ? getInstanceId(first) : '')
+                }}
+                triggerProps={{ className: 'ps-0 pe-1 w-full' }}
+                placeholder='Select a product...'
+                disabled={isPending || !!lockedProductId}
+                fieldOptions={{
+                  relationship: PRODUCT_RELATIONSHIP,
+                  showDefinitionIcon: true,
+                }}
+              />
+            </FieldPanelRow>
+          )}
+
+          {/* Kind — the GL classification. No default, ever (see state above). */}
+          {!isEditMode && (
+            <FieldPanelRow
+              title='Kind'
+              description='Which inventory account this part belongs to'
+              type={BaseType.ENUM}
+              showIcon>
+              <FieldInputAdapter
+                fieldType={FieldType.SINGLE_SELECT}
+                fieldOptions={{ options: PartKind.values }}
+                triggerProps={{ className: 'ps-0 pe-1 w-full' }}
+                value={values.kind}
+                onChange={(val) => handleChange('kind', (Array.isArray(val) ? val[0] : val) ?? '')}
+                placeholder='Select a kind...'
+                disabled={isPending}
+              />
+            </FieldPanelRow>
+          )}
 
           {/* HS Code */}
           <FieldPanelRow
