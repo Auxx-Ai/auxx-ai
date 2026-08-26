@@ -1,10 +1,12 @@
 // packages/lib/src/documents/render.ts
 
+import { createScopedLogger } from '@auxx/logger'
 import type { DocumentProps } from '@react-pdf/renderer'
 import { renderToBuffer } from '@react-pdf/renderer'
 import type { ReactElement } from 'react'
 import { createElement } from 'react'
 import { getAssetContent } from '../files/assets/content'
+import { assertSharpSafeInput, UnsupportedImageError } from '../files/core/image-processing'
 import { defaultDatabase } from '../files/default-database'
 import { getFolderFileContent } from '../files/folder-files'
 import { createS3StoragePort } from '../files/storage/ports'
@@ -18,6 +20,8 @@ import { getDocumentType } from './registry'
  * cell ever needs at print resolution. */
 const PHOTO_MAX_DIMENSION = 1200
 
+const logger = createScopedLogger('documents:render')
+
 /** JPEG quality for embedded photos — react-pdf only embeds JPEG/PNG, so every source format
  * (including already-JPEG originals) is re-encoded here; 80 keeps file size down without
  * visible banding at thumbnail/gallery sizes. */
@@ -30,6 +34,12 @@ const PHOTO_JPEG_QUALITY = 80
  * rendered PDF buffer, never stored.
  */
 async function downscalePhotoForPdf(buffer: Buffer): Promise<Buffer> {
+  // Photo refs resolve to bytes an org member uploaded under policies as wide as
+  // `*​/*` (MESSAGE, CUSTOM_FIELD) or one that names HEIC/HEIF outright
+  // (VISIT_QC_ITEM), and the public `/quote/[token]/photo/[ref]` route reaches
+  // this decode unauthenticated. Sniff before sharp sees the buffer.
+  await assertSharpSafeInput(buffer)
+
   const sharp = (await import('sharp')).default
   return sharp(buffer, { limitInputPixels: THUMBNAIL_LIMITS.maxInputPixels, failOn: 'warning' })
     .rotate() // auto-orient by EXIF before resizing, same as the thumbnail pipeline
@@ -74,7 +84,18 @@ export async function resolvePhotoRef(organizationId: string, ref: string): Prom
     if (content.isErr()) return null
 
     return await downscalePhotoForPdf(content.value)
-  } catch {
+  } catch (error) {
+    // A format we refuse to decode drops the photo from the PDF rather than
+    // failing the render (same fail-soft contract as a deleted asset), but it is
+    // a visible gap to the customer receiving the document — log it so a HEIC
+    // capture that silently stops appearing is diagnosable.
+    if (error instanceof UnsupportedImageError) {
+      logger.warn('Skipped document photo with an undecodable format', {
+        ref,
+        organizationId,
+        reason: error.message,
+      })
+    }
     return null
   }
 }

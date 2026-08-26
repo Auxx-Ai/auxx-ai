@@ -49,6 +49,48 @@ export async function detectImageType(buffer: Buffer): Promise<string | undefine
   return isSvg(buffer) ? 'image/svg+xml' : undefined
 }
 
+/**
+ * Formats safe to hand straight to a raw `sharp()` pipeline.
+ *
+ * HEIF/AVIF are deliberately absent. sharp bundles libheif, and libheif
+ * <= 1.23.1 has a heap buffer overflow reachable from a crafted AVIF/HEIC
+ * container (GHSA-g89c-p67h-r497) — sharp 0.35.3 is the newest release and
+ * predates the fix, so there is no version to upgrade to. Refusing the bytes is
+ * the only mitigation available, and it is the same one Next.js shipped in
+ * 16.3.3 when it disabled AVIF optimization outright.
+ *
+ * SVG and ICO are absent too: sharp can't decode ICO at all, and rasterizing
+ * untrusted SVG needs the sanitize step. Callers that accept either must route
+ * through {@link normalizeImageSource} first, which turns both into PNG.
+ */
+const SHARP_SAFE_INPUT_TYPES: readonly string[] = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+  'image/tiff',
+  'image/bmp',
+]
+
+/**
+ * Sniff `buffer` and confirm it is a format we are willing to decode.
+ *
+ * Call this before every raw `sharp(untrustedBytes)` — the declared MIME type
+ * is not evidence, since upload policies as wide as `*​/*` let a caller declare
+ * anything. Throws {@link UnsupportedImageError} so callers can treat it as a
+ * soft skip.
+ */
+export async function assertSharpSafeInput(buffer: Buffer): Promise<string> {
+  const mime = await detectImageType(buffer)
+  if (!mime) {
+    throw new UnsupportedImageError('Unable to determine file type from content')
+  }
+  if (!SHARP_SAFE_INPUT_TYPES.includes(mime)) {
+    throw new UnsupportedImageError(`Refusing to decode image type: ${mime}`)
+  }
+  return mime
+}
+
 /** Result of {@link normalizeImageSource}. */
 export interface NormalizedImageSource {
   /** A sharp-readable raster buffer (PNG for ICO/SVG, original bytes otherwise). */

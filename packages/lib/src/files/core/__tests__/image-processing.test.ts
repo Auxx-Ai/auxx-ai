@@ -3,6 +3,7 @@
 import sharp from 'sharp'
 import { describe, expect, it } from 'vitest'
 import {
+  assertSharpSafeInput,
   detectImageType,
   isSvg,
   normalizeImageSource,
@@ -117,6 +118,43 @@ describe('normalizeImageSource', () => {
 
   it('throws UnsupportedImageError for undetectable content', async () => {
     await expect(normalizeImageSource(Buffer.from('not an image'))).rejects.toBeInstanceOf(
+      UnsupportedImageError
+    )
+  })
+})
+
+describe('assertSharpSafeInput', () => {
+  it('accepts the raster formats sharp decodes safely', async () => {
+    await expect(assertSharpSafeInput(await solidPng(8, 8))).resolves.toBe('image/png')
+    const jpeg = await sharp(await solidPng(8, 8))
+      .jpeg()
+      .toBuffer()
+    await expect(assertSharpSafeInput(jpeg)).resolves.toBe('image/jpeg')
+  })
+
+  /**
+   * The reason this guard exists: sharp bundles libheif, and every published
+   * sharp (0.35.3 ships 1.23.1) predates the libheif 1.23.2 fix for the
+   * heap overflow in GHSA-g89c-p67h-r497. If this test ever fails because AVIF
+   * became acceptable, the overflow is reachable again from any raw
+   * `sharp(untrustedBytes)` call.
+   */
+  it('refuses AVIF, which libheif cannot decode safely at any shipped version', async () => {
+    const avif = await sharp(await solidPng(32, 32))
+      .avif()
+      .toBuffer()
+    expect(await detectImageType(avif)).toBe('image/avif')
+    await expect(assertSharpSafeInput(avif)).rejects.toThrow(UnsupportedImageError)
+  })
+
+  it('refuses SVG and ICO, which need normalizeImageSource first', async () => {
+    await expect(assertSharpSafeInput(Buffer.from(SVG))).rejects.toThrow(UnsupportedImageError)
+    const ico = buildIco(await solidPng(16, 16), 16)
+    await expect(assertSharpSafeInput(ico)).rejects.toThrow(UnsupportedImageError)
+  })
+
+  it('refuses content it cannot identify', async () => {
+    await expect(assertSharpSafeInput(Buffer.from('not an image'))).rejects.toThrow(
       UnsupportedImageError
     )
   })
