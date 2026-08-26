@@ -245,6 +245,65 @@ export interface CalcOptions {
 export type CalcFieldOptions = Pick<FieldOptions, 'calc'>
 
 // ─────────────────────────────────────────────────────────────
+// PATCH → STORED
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * The `options` PATCH shape a create/update accepts over the wire — i.e. what
+ * `fieldOptionsUnionSchema` parses to.
+ *
+ * Wider than {@link FieldOptions} in one place that matters: `allowNewOptions`
+ * may be `null`. That is a **patch-only sentinel** meaning "clear the stored
+ * decision back to the type default" — never a stored value.
+ */
+export type FieldOptionsPatch =
+  | NonNullable<FieldOptions['options']>
+  | (Omit<FieldOptions, 'allowNewOptions'> & {
+      allowNewOptions?: boolean | null
+      /**
+       * The AI block rides the same envelope and is PERSISTED
+       * (`update-field.ts` assigns `fieldOptions.ai`), but {@link FieldOptions}
+       * does not declare it — a pre-existing gap, not one this type introduces.
+       * Modelled here as opaque because the narrowing only passes it through;
+       * declaring it properly on `FieldOptions` is a separate change.
+       */
+      ai?: unknown
+    })
+
+/**
+ * Narrow an options PATCH to the shape that is actually STORED.
+ *
+ * Two rules, both mirroring what `updateCustomField` does when it persists:
+ *
+ * 1. A bare array patch IS the option list — it becomes `{ options }`.
+ * 2. 🛑 `allowNewOptions: null` **clears the key** rather than storing `null`.
+ *    The stored flag is tri-state — absent inherits the type default (TAGS
+ *    grow, SELECT sets do not), `true`/`false` is the user's decision — and
+ *    absence has to stay representable or a field can never return to
+ *    inheritance. `null` is how a patch says "go back to inheriting"; storing
+ *    it would put a fourth state into a three-state field.
+ *
+ * Use this anywhere a patch is turned into a `FieldOptions` **without** going
+ * through `updateCustomField` — notably the web layer's optimistic field
+ * shapes, which must predict what the server will persist. Keeping the rule
+ * here rather than at each call site is deliberate: the tri-state has one
+ * writer (`updateCustomField`) and one reader (`fieldAllowsNewOptions`), and a
+ * third copy that drifts open is how a stored `null` reaches a `!== undefined`
+ * check that was written expecting a boolean.
+ *
+ * @param patch - The options payload from a create/update input
+ * @returns The options to store, or undefined when the patch carried none
+ */
+export function toStoredFieldOptions(
+  patch: FieldOptionsPatch | null | undefined
+): FieldOptions | undefined {
+  if (!patch) return undefined
+  if (Array.isArray(patch)) return { options: patch }
+  const { allowNewOptions, ...rest } = patch
+  return allowNewOptions == null ? rest : { ...rest, allowNewOptions }
+}
+
+// ─────────────────────────────────────────────────────────────
 // NARROWED FIELD OPTIONS (Pick from FieldOptions)
 // Use these in components/converters that work with specific field types
 // ─────────────────────────────────────────────────────────────
