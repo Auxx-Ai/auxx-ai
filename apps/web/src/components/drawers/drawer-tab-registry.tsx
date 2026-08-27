@@ -245,6 +245,28 @@ export const DRAWER_TAB_CARD_COMPONENTS: Record<
     import('../purchasing/vendor-bill/vendor-bill-match-card').then((m) => ({
       default: m.VendorBillMatchCard,
     })),
+  // `receiving` is the ONLY read-back of `purchase_order_line_quantity_received`,
+  // and `bills` the only surface for `purchase_order_bills` (`showInPanel: false`).
+  'purchase_order:receiving': () =>
+    import('../purchasing/purchase-order/purchase-order-receiving-card').then((m) => ({
+      default: m.PurchaseOrderReceivingCard,
+    })),
+  'purchase_order:bills': () =>
+    import('../purchasing/purchase-order/purchase-order-bills-card').then((m) => ({
+      default: m.PurchaseOrderBillsCard,
+    })),
+  // One component behind both vendor keys — a PO and a bill each link exactly one
+  // company and ask the same question of it.
+  'purchase_order:vendor': () =>
+    import('../purchasing/vendor-card').then((m) => ({ default: m.PurchaseOrderVendorCard })),
+  'vendor_bill:vendor': () =>
+    import('../purchasing/vendor-card').then((m) => ({ default: m.VendorBillVendorCard })),
+  // The bill's six P12 payment fields. NOT the AR-side `invoice:payments` shape:
+  // `vendor_payment` is inert under P13, so there are no payment records to list.
+  'vendor_bill:payment': () =>
+    import('../purchasing/vendor-bill/vendor-bill-payment-card').then((m) => ({
+      default: m.VendorBillPaymentCard,
+    })),
 
   // ─────────────────────────────────────────────────────────────────
   // WORK ORDER (job view) SIDEBAR CARDS — dispatch M2 build spec §F.2, shared

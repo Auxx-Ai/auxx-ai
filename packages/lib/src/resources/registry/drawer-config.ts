@@ -243,10 +243,16 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
     entityType: 'purchase_order',
     additionalTabs: [],
     tabCards: {
-      // `vendor` and `totals` are wanted and unbuilt - see the note on
-      // `purchase_order.sidebarCards` in detail-view-config.ts for why an
-      // unbacked card key is not declared here in advance.
-      overview: [{ value: 'lines', label: 'Lines', fullBleed: true }],
+      // No `totals` card, for the same reason `order` has none: the PO's five
+      // total fields are `showInPanel: false` BECAUSE the LineBuilder's own
+      // TotalsFooter renders them at the foot of the lines card. A totals card
+      // would be a second, competing rendering of the same five mirrors.
+      overview: [
+        { value: 'lines', label: 'Lines', fullBleed: true },
+        { value: 'vendor', label: 'Vendor' },
+        { value: 'receiving', label: 'Receiving' },
+        { value: 'bills', label: 'Bills', recordResource: 'vendor_bill' },
+      ],
     },
   },
 
@@ -257,10 +263,11 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
     // The exception queue is a filtered list view, not a page per bill.
     additionalTabs: [],
     tabCards: {
-      // `vendor` and `payment` are wanted and unbuilt, as above.
       overview: [
         { value: 'lines', label: 'Lines', fullBleed: true },
         { value: 'match', label: 'Match' },
+        { value: 'vendor', label: 'Vendor' },
+        { value: 'payment', label: 'Payment' },
       ],
     },
   },
