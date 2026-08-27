@@ -39,21 +39,33 @@ describe('which lines are offered', () => {
     expect(selectBillableLines([poLine()], [])).toHaveLength(1)
   })
 
-  it('skips a line nothing has arrived against', () => {
-    expect(selectBillableLines([poLine({ received: 0 })], [])).toEqual([])
+  // 🛑 The gate is `billed < ordered`, NOT `received > billed`. A vendor that will
+  // not ship until the invoice is paid — full prepayment on Chinese supply, a
+  // deposit, a freight-forwarder invoice — bills before anything arrives, and
+  // under the old rule that bill offered zero lines and said nothing about why.
+  it('offers a line nothing has arrived against yet — the bill can precede the goods', () => {
+    expect(selectBillableLines([poLine({ received: 0, billed: 0 })], [])).toHaveLength(1)
   })
 
-  it('skips a line already fully billed elsewhere', () => {
+  it('skips a line already fully billed elsewhere, received or not', () => {
     expect(selectBillableLines([poLine({ received: 10, billed: 10 })], [])).toEqual([])
+    expect(selectBillableLines([poLine({ received: 0, billed: 10 })], [])).toEqual([])
   })
 
-  it('still offers a partially billed line — a delivery can be split across bills', () => {
+  it('skips an over-billed line', () => {
+    expect(selectBillableLines([poLine({ received: 10, billed: 12 })], [])).toEqual([])
+  })
+
+  it('still offers a partially billed line — an order can be split across bills', () => {
     expect(selectBillableLines([poLine({ received: 10, billed: 4 })], [])).toHaveLength(1)
+    // Same split, nothing received: a deposit invoice then a balance invoice.
+    expect(selectBillableLines([poLine({ received: 0, billed: 4 })], [])).toHaveLength(1)
   })
 
-  // 🛑 The regression this guard exists for. A line created by this action starts
-  // at the default quantity with no price, so `quantity_billed` barely moves and
-  // the received > billed filter keeps offering the same line back. Without the
+  // 🛑 The regression this guard exists for, and the new gate does NOT weaken it —
+  // if anything it leans harder on it. A line created by this action starts at the
+  // default quantity of 1 with no price, so against an ordered 10 the `billed <
+  // ordered` filter keeps offering the same line straight back. Without the
   // membership check, pressing the button twice duplicates every line.
   it('never offers a line already on this bill, however little was typed into it', () => {
     const line = poLine({ received: 10, billed: 0 })

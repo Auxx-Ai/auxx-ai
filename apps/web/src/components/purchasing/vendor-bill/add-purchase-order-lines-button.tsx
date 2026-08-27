@@ -1,9 +1,13 @@
 // apps/web/src/components/purchasing/vendor-bill/add-purchase-order-lines-button.tsx
 'use client'
 
-// "Add lines from order" — the answer to entering a bill for an order that has
-// already been received and having to retype every line by hand
-// (plans/purchasing/02-handoff.md §4 item 3c).
+// "Add lines from order" — the answer to entering a bill against an order and
+// having to retype every line by hand (plans/purchasing/02-handoff.md §4 item 3c).
+//
+// Offered whether or not the goods have arrived: `selectBillableLines` gates on
+// what is still uninvoiced, not on what has been received. See that file for why
+// the receipt is the wrong gate — a vendor that will not ship until the invoice
+// is paid makes bill-before-receipt the normal case, not the edge one.
 //
 // What it removes is the STRUCTURE, not the transcription: the part, the
 // description, the GRNI account, and above all the `purchaseOrderLine` match key,
