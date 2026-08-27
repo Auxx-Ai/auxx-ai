@@ -472,7 +472,7 @@ export function CreateBillFromPurchaseOrderDialog({
               />
               <span>
                 <span className='text-foreground'>
-                  Add {billableLines.length} received line
+                  Add {billableLines.length} line
                   {billableLines.length === 1 ? '' : 's'} from the order
                 </span>
                 <span className='block text-muted-foreground text-xs'>

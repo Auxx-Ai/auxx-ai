@@ -48,9 +48,8 @@ export const GRNI_ACCOUNT_CODE = '2160'
  *
  * Two independent filters, and both are needed:
  *
- * 1. **Something arrived that nobody has billed yet** — `received > billed`. Both
- *    are live roll-ups (`purchase-order-line-rollups.ts`), so this is the per-line
- *    GRNI residual and it is the right economic notion of "billable".
+ * 1. **Still uninvoiced** — `billed < ordered`. What is left to bill on the ORDER,
+ *    which is a fact about the order and not about the warehouse.
  * 2. **Not already on THIS bill.** 🛑 Without it the action duplicates every line
  *    on a second press, and it would do so *reliably*: a line created here starts
  *    at the default quantity with no price, so `quantity_billed` barely moves and
@@ -60,6 +59,32 @@ export const GRNI_ACCOUNT_CODE = '2160'
  *
  * A line still legitimately split across two bills stays offerable on the second
  * one, because filter (2) is scoped to the bill being filled.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * 🛑 THIS GATE USED TO BE `received > billed`, AND THAT WAS WRONG
+ *
+ * The old rule read as the per-line GRNI residual — "something arrived that
+ * nobody has billed yet" — which is impeccable double-entry and the wrong
+ * question to ask a person entering an invoice.
+ *
+ * **Vendors invoice ahead of delivery as a matter of course, and some will not
+ * ship at all until the invoice is paid.** Full prepayment before dispatch is
+ * the norm on Chinese supply, where the goods then sit on a boat for thirty to
+ * forty-five days. Deposits, freight-forwarder invoices and drop-ships land the
+ * same way. Under `received > billed` every one of those bills offered ZERO
+ * lines, so the one document that unblocks the shipment was the one document
+ * this dialog would not help you enter.
+ *
+ * It also failed silently: both callers render nothing at all when the count is
+ * zero, so the surface was indistinguishable from "not built".
+ *
+ * ⚠️ The receipt has NOT stopped mattering — it moved to where it belongs. Billed
+ * against received is the three-way match's quantity arm (`purchasing/match.ts`),
+ * which compares the two on every line and is the thing that catches paying for
+ * goods that never arrive. Answering that question twice, once as a silent filter
+ * on what you may type and once as a check on what you typed, only ever hid the
+ * check.
+ * ─────────────────────────────────────────────────────────────────────────────
  */
 export function selectBillableLines(
   purchaseOrderLines: PurchaseOrderLineRow[],
@@ -68,7 +93,7 @@ export function selectBillableLines(
 ): PurchaseOrderLineRow[] {
   const taken = new Set(alreadyOnThisBill.filter((id): id is RecordId => !!id))
   return purchaseOrderLines.filter(
-    (line) => line.received > line.billed && !taken.has(line.lineRecordId)
+    (line) => line.billed < line.ordered && !taken.has(line.lineRecordId)
   )
 }
 
