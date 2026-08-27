@@ -15,9 +15,18 @@
 // Everything here is prefilled on the assumption the whole order arrived: each
 // row's quantity is what is OUTSTANDING and each price is what was agreed. The
 // common case is therefore Receive, with no typing at all.
+//
+// 🛑 The line set comes from `usePurchaseOrderLines` — the LIST lane — and here
+// that is a correctness requirement, not a freshness nicety. This dialog does not
+// merely display the lines: `buildReceivePoInput` turns them into the write. Read
+// off the PO's `purchase_order_lines` inverse (as this did), a line added earlier
+// in the same session is simply absent from the mirror — the fetch queue skips a
+// key already in the store, so not even reopening the dialog repairs it — and the
+// receipt is then built from a short line set. Nothing throws: the order reports
+// received and the missing line silently sits at `0 / n`. See the hook's own note
+// and B-9/D-11 in `plans/events/`.
 
 import { FieldType } from '@auxx/database/enums'
-import { extractRelationshipRecordIds } from '@auxx/lib/field-values/client'
 import type { RecordId } from '@auxx/types/resource'
 import { getInstanceId } from '@auxx/types/resource'
 import { Button } from '@auxx/ui/components/button'
@@ -42,7 +51,6 @@ import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapte
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { useRecord } from '~/components/resources'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
-import { useSystemValuesForRecords } from '~/components/resources/hooks/use-system-values-for-records'
 import { BaseType } from '~/components/workflow/types'
 import { useSettings } from '~/hooks/use-settings'
 import { api } from '~/trpc/react'
@@ -63,25 +71,18 @@ import {
   type ReceivablePoLine,
   receiptSubtotal,
 } from './receive-po-lines'
+import { usePurchaseOrderLines } from './use-purchase-order-lines'
 
+// The PO's OWN fields — written on the PO and published normally, so
+// `useSystemValues` is the right read for them. `purchase_order_lines` is not
+// here on purpose; see the note above.
 const PO_ATTRS = [
-  'purchase_order_lines',
   'purchase_order_shipping_total',
   'purchase_order_tax_total',
   'purchase_order_discount_value',
   'purchase_order_tax_recoverable',
   'purchase_order_allocation_basis',
   'purchase_order_currency',
-] as const
-
-const LINE_ATTRS = [
-  'purchase_order_line_part',
-  'purchase_order_line_description',
-  'purchase_order_line_quantity_ordered',
-  'purchase_order_line_quantity_received',
-  'purchase_order_line_expected_unit_price',
-  'purchase_order_line_vendor_part',
-  'purchase_order_line_weight',
 ] as const
 
 interface ReceivePurchaseOrderDialogProps {
@@ -102,12 +103,10 @@ export function ReceivePurchaseOrderDialog({
   const { values, isLoading: poLoading } = useSystemValues(purchaseOrderRecordId, [...PO_ATTRS], {
     autoFetch: true,
   })
-  const lineRecordIds = extractRelationshipRecordIds(values.purchase_order_lines)
-  const { valuesById, isLoading: linesLoading } = useSystemValuesForRecords(
-    lineRecordIds,
-    LINE_ATTRS,
-    { autoFetch: true, enabled: open && lineRecordIds.length > 0 }
-  )
+  // Same hook the Receiving card behind this dialog uses, so both resolve one
+  // line set from one fetch — the card and the receipt can never disagree about
+  // what is on the order.
+  const { lines: poLines, isLoading: linesLoading } = usePurchaseOrderLines(purchaseOrderRecordId)
 
   const currencyValue = unwrapValue(values.purchase_order_currency)
   const currencyCode =
@@ -122,29 +121,26 @@ export function ReceivePurchaseOrderDialog({
   // rather than as a UI-only field bolted onto the payload type.
   const { lines, partRecordIds } = useMemo(() => {
     const partRecordIds: Record<string, RecordId | undefined> = {}
-    const lines: ReceivablePoLine[] = lineRecordIds.map((lineRecordId) => {
-      const line = valuesById[lineRecordId] ?? ({} as Record<string, unknown>)
-      const partRecordId = extractRelationshipRecordIds(line.purchase_order_line_part)[0]
-      const vendorPartRecordId = extractRelationshipRecordIds(
-        line.purchase_order_line_vendor_part
-      )[0]
-      const description = unwrapValue(line.purchase_order_line_description)
-      const weight = numberValue(line.purchase_order_line_weight)
-      const purchaseOrderLineId = getInstanceId(lineRecordId)
-      partRecordIds[purchaseOrderLineId] = partRecordId
+    const lines: ReceivablePoLine[] = poLines.map((line) => {
+      const purchaseOrderLineId = getInstanceId(line.lineRecordId)
+      partRecordIds[purchaseOrderLineId] = line.partRecordId ?? undefined
       return {
         purchaseOrderLineId,
-        partId: partRecordId ? getInstanceId(partRecordId) : '',
-        description: typeof description === 'string' && description ? description : null,
-        quantityOrdered: numberValue(line.purchase_order_line_quantity_ordered),
-        quantityReceived: numberValue(line.purchase_order_line_quantity_received),
-        expectedUnitPrice: numberValue(line.purchase_order_line_expected_unit_price),
-        ...(vendorPartRecordId ? { vendorPartId: getInstanceId(vendorPartRecordId) } : {}),
-        ...(weight > 0 ? { weight } : {}),
+        partId: line.partRecordId ? getInstanceId(line.partRecordId) : '',
+        description: line.description,
+        quantityOrdered: line.ordered,
+        quantityReceived: line.received,
+        expectedUnitPrice: line.expectedUnitPrice,
+        // Spread-or-omit, not `undefined`: both are optional on the server
+        // payload and an explicit `undefined` is a different shape.
+        ...(line.vendorPartRecordId
+          ? { vendorPartId: getInstanceId(line.vendorPartRecordId) }
+          : {}),
+        ...(line.weight > 0 ? { weight: line.weight } : {}),
       }
     })
     return { lines, partRecordIds }
-  }, [lineRecordIds, valuesById])
+  }, [poLines])
 
   const basisValue = unwrapValue(values.purchase_order_allocation_basis)
   const header: ReceiptHeader = {
@@ -206,7 +202,7 @@ export function ReceivePurchaseOrderDialog({
     }
   }
 
-  const isLoading = poLoading || (lineRecordIds.length > 0 && linesLoading)
+  const isLoading = poLoading || linesLoading
   const receivingCount = payload?.lines.length ?? 0
 
   // The header amounts are the freight-allocation inputs (§4.3) — shown so the

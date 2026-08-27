@@ -11,14 +11,19 @@
 // over `stock_movement` (`purchasing-hooks.ts`), so it is already maintained; nothing
 // had ever read it back.
 //
+// 🛑 The line set comes from `usePurchaseOrderLines`, the shared read the picker
+// and the bill-lines action already use. It used to be a second, hand-rolled copy
+// of that read off the PO's `purchase_order_lines` inverse — which is the mirror
+// lane, and the mirror is never published (see the hook's own note, and B-9/D-11
+// in `plans/events/`). A line added from the Lines card in this same drawer
+// therefore never appeared here until the page was reloaded.
+//
 // The card's header action is the **Receive** dialog — the whole order in one pass,
 // everything prefilled as if it all arrived. That is deliberately the door here
 // rather than the part-first popover: a part-first receipt sets no
 // `purchaseOrderLineId`, so it moves quantity on hand without ever moving the
 // numbers this card renders.
 
-import { extractRelationshipRecordIds } from '@auxx/lib/field-values/client'
-import type { RecordId } from '@auxx/types/resource'
 import { Badge, type Variant } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { TreeRow } from '@auxx/ui/components/tree-row'
@@ -34,60 +39,16 @@ import { DrawerCardActions } from '~/components/drawers/drawer-card-actions'
 import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
 import { useOpenRecord } from '~/components/records/record-drill-panels'
 import { useRecord } from '~/components/resources'
-import { useSystemValues } from '~/components/resources/hooks/use-system-values'
-import { useSystemValuesForRecords } from '~/components/resources/hooks/use-system-values-for-records'
-import {
-  formatQuantity,
-  numberValue,
-  PurchasingSummaryStrip,
-  unwrapValue,
-} from '../purchasing-summary-strip'
+import { formatQuantity, PurchasingSummaryStrip } from '../purchasing-summary-strip'
 import { ReceivePurchaseOrderDialog } from './receive-purchase-order-dialog'
-
-const PO_ATTRS = ['purchase_order_lines'] as const
-
-const LINE_ATTRS = [
-  'purchase_order_line_part',
-  'purchase_order_line_description',
-  'purchase_order_line_quantity_ordered',
-  'purchase_order_line_quantity_received',
-] as const
+import { type PurchaseOrderLineRow, usePurchaseOrderLines } from './use-purchase-order-lines'
 
 /** How many lines render before the inline "Show more" row collapses the rest. */
 const LINE_PREVIEW_LIMIT = 6
 
-interface ReceivingLine {
-  lineRecordId: RecordId
-  partRecordId: RecordId | undefined
-  description: string | null
-  ordered: number
-  received: number
-}
-
 export function PurchaseOrderReceivingCard({ recordId }: DrawerTabProps) {
   const [dialogOpen, setDialogOpen] = useState(false)
-  const { values, isLoading: linesLoading } = useSystemValues(recordId, [...PO_ATTRS], {
-    autoFetch: true,
-  })
-  const lineRecordIds = extractRelationshipRecordIds(values.purchase_order_lines)
-
-  const { valuesById, isLoading: valuesLoading } = useSystemValuesForRecords(
-    lineRecordIds,
-    LINE_ATTRS,
-    { autoFetch: true, enabled: lineRecordIds.length > 0 }
-  )
-
-  const lines: ReceivingLine[] = lineRecordIds.map((lineRecordId) => {
-    const lineValues = valuesById[lineRecordId] ?? ({} as Record<string, unknown>)
-    const description = unwrapValue(lineValues.purchase_order_line_description)
-    return {
-      lineRecordId,
-      partRecordId: extractRelationshipRecordIds(lineValues.purchase_order_line_part)[0],
-      description: typeof description === 'string' && description ? description : null,
-      ordered: numberValue(lineValues.purchase_order_line_quantity_ordered),
-      received: numberValue(lineValues.purchase_order_line_quantity_received),
-    }
-  })
+  const { lines, isLoading: loading } = usePurchaseOrderLines(recordId)
 
   const ordered = lines.reduce((sum, line) => sum + line.ordered, 0)
   const received = lines.reduce((sum, line) => sum + line.received, 0)
@@ -98,9 +59,8 @@ export function PurchaseOrderReceivingCard({ recordId }: DrawerTabProps) {
     0
   )
 
-  const loading = linesLoading || (lineRecordIds.length > 0 && valuesLoading)
   if (loading) return <RowSkeleton />
-  if (lineRecordIds.length === 0) return <EmptyRow label='No lines yet' />
+  if (lines.length === 0) return <EmptyRow label='No lines yet' />
 
   return (
     <div className={`space-y-0.5 ${TREE_SECONDARY_NOTRUNCATE}`}>
@@ -140,7 +100,7 @@ export function PurchaseOrderReceivingCard({ recordId }: DrawerTabProps) {
   )
 }
 
-function ReceivingLineRow({ line }: { line: ReceivingLine }) {
+function ReceivingLineRow({ line }: { line: PurchaseOrderLineRow }) {
   const openRecord = useOpenRecord()
   const { record } = useRecord({ recordId: line.partRecordId!, enabled: !!line.partRecordId })
 
@@ -171,7 +131,7 @@ function ReceivingLineRow({ line }: { line: ReceivingLine }) {
  * a real condition on the floor (a vendor shipped more than was ordered) and the
  * three-way match will raise it, so hiding it here would contradict the match card.
  */
-function receivingProgress(line: ReceivingLine): { label: string; variant: Variant } {
+function receivingProgress(line: PurchaseOrderLineRow): { label: string; variant: Variant } {
   const qty = `${formatQuantity(line.received)} / ${formatQuantity(line.ordered)}`
   if (line.received > line.ordered) return { label: `${qty} over`, variant: 'amber' }
   if (line.ordered > 0 && line.received >= line.ordered) return { label: qty, variant: 'green' }
