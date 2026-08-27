@@ -70,6 +70,8 @@ export const selectOptionSchema = z.object({
   icon: z.string().optional(),
   /** URL or encoded visual ref (see `EntityInstance.avatarUrl`) — used by record/relation pickers; not persisted on field options */
   avatarUrl: z.string().optional(),
+  /** Muted second line beside the label (e.g. a record's SKU / email) — used by record/relation pickers; not persisted on field options */
+  secondary: z.string().optional(),
   /** Target time for items to remain in this status (kanban) */
   targetTimeInStatus: targetTimeInStatusSchema.optional(),
   /** Trigger celebration animation when cards move to this column (kanban) */

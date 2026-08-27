@@ -366,6 +366,9 @@ export function SubpartDialog({
                         relationship: CHILD_PART_RELATIONSHIP,
                         excludeIds: excludedForRow(row.key),
                         showDefinitionIcon: true,
+                        // Components are looked up by SKU, so show it — otherwise a hit on
+                        // a SKU query renders a name that looks unrelated to what was typed.
+                        showSecondary: true,
                       }}
                     />
                   </FieldPanelRow>
