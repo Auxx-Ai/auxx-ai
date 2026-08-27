@@ -96,7 +96,7 @@ function PartEditorAdapter({
       onOpenChange={onOpenChange}
       recordId={recordId}
       productId={productId}
-      onSuccess={() => onSaved?.()}
+      onSuccess={(instanceId) => onSaved?.(instanceId)}
     />
   )
 }

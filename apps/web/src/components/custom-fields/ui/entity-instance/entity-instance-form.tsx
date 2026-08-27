@@ -99,8 +99,12 @@ export interface EntityInstanceFormProps {
   entityDefinitionId: string
   /** RecordId for edit mode; omitted for create. */
   recordId?: RecordId
-  /** Callback after a successful save. */
-  onSaved?: (instanceId: string) => void
+  /**
+   * Callback after a successful save. Carries the saved record's instance id
+   * so the caller can OPEN what was just created — withheld while "create more"
+   * keeps the form open for another entry, which is deliberate batch entry.
+   */
+  onSaved?: (instanceId?: string) => void
   /** Preset field values for CREATE mode (`{ fieldId: value }`). */
   presetValues?: Record<string, unknown>
   /** Direct close — called after a successful save when not creating more. */
@@ -634,7 +638,12 @@ export function EntityInstanceForm({
         instanceId = result.instanceId
       }
 
-      onSaved?.(instanceId)
+      // The id is what lets a caller OPEN what was just created (drawer, peek
+      // frame, navigation). Withhold it while "create more" keeps the form open:
+      // that is deliberate batch entry, and a drawer popping behind every save
+      // fights the mode. Callers still get the callback, so refresh/invalidate
+      // work identically either way.
+      onSaved?.(createMore && !isEditing ? undefined : instanceId)
 
       // If createMore is enabled and we're in create mode, reset form instead of closing
       if (createMore && !isEditing) {

@@ -204,6 +204,18 @@ export const EntityInstance = pgTable(
         table.lastDuplicateScanAt
       )
       .where(sql`"archivedAt" IS NULL`),
+    // Default list order: newest first, per (org, entity definition).
+    //
+    // `queryEntityInstanceIdsPaged` orders an unsorted list by
+    // `createdAt DESC, id ASC` — the fallback every records view, drawer tab and
+    // related-record card uses until someone picks a column to sort by. Column
+    // order and direction match that ORDER BY exactly (mixed directions cannot
+    // be served by a backward scan of an ASC index), and the partial predicate
+    // matches the query's `archivedAt IS NULL`, so the common list page is a
+    // pure index scan with no sort node.
+    index('EntityInstance_org_def_createdAt_idx')
+      .on(table.organizationId, table.entityDefinitionId, table.createdAt.desc(), table.id.asc())
+      .where(sql`"archivedAt" IS NULL`),
     // Free-text search, third arm: `secondaryDisplayValue ILIKE '%q%'`.
     //
     // `gin_trgm_ops` serves `~~*` (ILIKE) as well as `%`, so this makes the

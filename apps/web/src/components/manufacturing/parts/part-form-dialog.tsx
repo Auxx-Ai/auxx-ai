@@ -66,7 +66,9 @@ interface PartFormDialogProps {
   /** RecordId for edit mode */
   recordId?: RecordId
   /** Callback on successful save */
-  onSuccess?: () => void
+  /** Called after a successful save. Carries the new instance id on CREATE
+   *  so the caller can open what was just made; absent on edit. */
+  onSuccess?: (instanceId?: string) => void
   /**
    * Product family to create this part into — prefills and LOCKS the Product
    * row (plans/products/09-variant-ui.md §3.1).
@@ -260,7 +262,7 @@ export function PartFormDialog({
           })
         }
 
-        onSuccess?.()
+        onSuccess?.(result.instance.id)
         onOpenChange(false)
       }
     } catch {

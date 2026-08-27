@@ -12,7 +12,7 @@ import {
   toFieldId,
   toResourceFieldId,
 } from '@auxx/types/field'
-import { and, asc, desc, eq, isNull, type SQL, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNull, type SQL, sql } from 'drizzle-orm'
 import {
   findCachedResource,
   getCachedEntityDefId,
@@ -696,9 +696,20 @@ export async function queryEntityInstanceIdsPaged(params: {
 
   // Deterministic tie-break: append id ASC so OFFSET paging is stable when the
   // user-chosen sort column has ties.
+  //
+  // The NO-SORT fallback is `createdAt DESC` — newest first — not `id ASC`.
+  // `EntityInstance.id` is a cuid2, which is deliberately non-sequential, so
+  // ordering by it put a freshly created record at a uniformly RANDOM position:
+  // in a 4k-row list at 100 rows a page, on the first page about 2.5% of the
+  // time. That is also the order a saved view falls back to whenever
+  // `buildOrderBySql` cannot resolve its sort column, which made a hidden or
+  // retired sort field look like the list had shuffled itself.
+  //
+  // This is a fallback, never an append: an explicit sort still wins outright,
+  // with `id ASC` alone as its tie-break.
   const finalOrderBy = orderByClauses
     ? [...orderByClauses, asc(schema.EntityInstance.id)]
-    : [asc(schema.EntityInstance.id)]
+    : [desc(schema.EntityInstance.createdAt), asc(schema.EntityInstance.id)]
 
   // limit + 1: the extra row is a probe, never returned — its presence IS `hasMore`.
   const idsQuery = db
@@ -774,6 +785,64 @@ export async function countEntityInstances(params: {
     // condition makes this number too HIGH and that must be sayable.
     ...reportDroppedConditions(dropped),
   }
+}
+
+/**
+ * Which of `recordIds` would appear in a list built from `filters` + `search`.
+ *
+ * The **third** consumer of {@link buildEntityInstanceQueryParts}, alongside
+ * {@link queryEntityInstanceIdsPaged} (the page) and {@link countEntityInstances}
+ * (the count) — same predicate, same `archivedAt` treatment, different
+ * projection. Sharing the builder is the whole point: an answer derived from a
+ * second implementation could disagree with the list the member is looking at,
+ * and a UI that says "this record is not in your list" while the row sits on
+ * screen is worse than saying nothing.
+ *
+ * ⚠️ Unlike {@link countEntityInstances}, this takes `visibilityWhere` and
+ * callers must pass it. Answering "matches" for a row the member cannot open
+ * would leak the row's existence through a UI affordance.
+ *
+ * Pass at most a handful of ids — this is a UI affordance, not a bulk API.
+ */
+export async function matchEntityInstanceIds(params: {
+  db: Database
+  entityDefinitionId: string
+  organizationId: string
+  filters: ConditionGroup[]
+  /** Free-text search, ANDed into the WHERE clause exactly as the page query does. */
+  search?: string
+  /** The ids to test. An empty array short-circuits without touching the db. */
+  recordIds: string[]
+  /** The §5.1 per-record visibility predicate — see {@link queryEntityInstanceIdsPaged}. */
+  visibilityWhere?: SQL
+}): Promise<{ matchedIds: string[] }> {
+  const { db, entityDefinitionId, organizationId, filters, recordIds } = params
+  if (recordIds.length === 0) return { matchedIds: [] }
+
+  const { whereClause } = await buildEntityInstanceQueryParts({
+    organizationId,
+    entityDefinitionId,
+    filters,
+    sorting: [],
+    search: params.search,
+  })
+
+  const rows = await db
+    .select({ id: schema.EntityInstance.id })
+    .from(schema.EntityInstance)
+    .where(
+      and(
+        eq(schema.EntityInstance.entityDefinitionId, entityDefinitionId),
+        eq(schema.EntityInstance.organizationId, organizationId),
+        isNull(schema.EntityInstance.archivedAt),
+        // `inArray`, never a raw `sql` ANY(array) — the latter matches nothing here.
+        inArray(schema.EntityInstance.id, recordIds),
+        whereClause,
+        params.visibilityWhere
+      )
+    )
+
+  return { matchedIds: rows.map((row) => row.id) }
 }
 
 /**

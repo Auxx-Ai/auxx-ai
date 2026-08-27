@@ -106,6 +106,13 @@ export function RecordSwitcherList({
           open={createOpen}
           onOpenChange={setCreateOpen}
           entityDefinitionId={entityDefinitionId}
+          // Creating from the breadcrumb switcher used to be a dead end — the
+          // dialog closed and the page still showed the record you started on.
+          // A detail page has no drawer, so "open it" is the same hop `handlePick`
+          // makes for a row, which keeps `?tab=` / `?list=` intact.
+          onSaved={(instanceId) => {
+            if (instanceId) context.goTo(instanceId)
+          }}
         />
       )}
     </>

@@ -67,6 +67,7 @@ import {
   type ListAllResult,
   type ListFilteredResult,
   listAll as listAllQuery,
+  matchEntityInstanceIds,
   queryEntityInstanceIdsPaged,
   querySystemResourceIdsPaged,
   resolveEntityIdFromCache,
@@ -972,6 +973,57 @@ export class UnifiedCrudHandler {
       limit,
       offset,
       includeTotal,
+      visibilityWhere: scope.where,
+    })
+  }
+
+  /**
+   * Which of `recordIds` a {@link listFiltered} call with the same `filters` /
+   * `search` would return — regardless of sort position or page.
+   *
+   * Exists because "is the record I just created actually in this list?" cannot
+   * be answered on the client: a record missing from the loaded pages is either
+   * filtered out or at sort position 4,000, and the seeded client copy predates
+   * every server-side default, hook and record rule. This asks the question with
+   * the same compiled predicate the list itself uses, so the two can never
+   * disagree.
+   *
+   * Mirrors `listFiltered`'s preamble deliberately — the mail-lens refusal, the
+   * scope resolution and the `valueSource` resolution are all correctness, not
+   * ceremony, and a second read path that skipped any of them would be a hole.
+   *
+   * System resources answer `{ matchedIds: [] }`: they run a different query
+   * lane (`querySystemResourceIdsPaged`) and no create surface needs this for
+   * them yet. Silence is the safe answer — the caller renders nothing.
+   */
+  async matchesFilters(params: {
+    entityDefinitionId: string
+    filters?: ConditionGroup[]
+    search?: string
+    recordIds: string[]
+  }): Promise<{ matchedIds: string[] }> {
+    const { entityDefinitionId, recordIds } = params
+    if (recordIds.length === 0) return { matchedIds: [] }
+
+    if (isMailLensTableId(entityDefinitionId)) throw new ForbiddenError(MAIL_LENS_REFUSAL)
+    if (isSystemResource(entityDefinitionId)) return { matchedIds: [] }
+
+    const scope = await this.recordScope(entityDefinitionId)
+    if (scope.arm === 'none') return { matchedIds: [] }
+
+    const filters = resolveConditionContext(params.filters ?? [], {
+      currentUserId: this.userId,
+    })
+
+    return matchEntityInstanceIds({
+      db: this.db,
+      entityDefinitionId: isEntityDefinitionType(entityDefinitionId)
+        ? (await this.resolveEntityDefinition(entityDefinitionId)).id
+        : entityDefinitionId,
+      organizationId: this.organizationId,
+      filters: filters as ConditionGroup[],
+      search: params.search,
+      recordIds,
       visibilityWhere: scope.where,
     })
   }
