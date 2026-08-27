@@ -136,6 +136,14 @@ export interface LineSchema {
   sortAttr: string
   /** Which text column leads the row. A PO line has no `name`, so it leads with description. */
   primaryTextKey: 'name' | 'description'
+  /**
+   * Header for the leading column. A lookup rather than a derivation: the sell-side
+   * cell leads with `name` and is headed "Description", so the label cannot be read
+   * off {@link primaryTextKey}, and a buy-side row's leading control is a PART
+   * picker — heading it "Description" names the wrong one of the two things stacked
+   * in that cell.
+   */
+  primaryColumnLabel: string
   totalsMode: TotalsMode
   /** systemAttribute prefix for the parent's own billing mirrors (`quote_discount_type`). */
   billingPrefix: string
@@ -245,6 +253,7 @@ export const LINE_SCHEMAS: Record<DocumentType, LineSchema> = {
     relFieldId: 'line_item:quote',
     sortAttr: 'line_item_sort_order',
     primaryTextKey: 'name',
+    primaryColumnLabel: 'Description',
     totalsMode: 'computed',
     billingPrefix: 'quote',
     billingAttrs: billingAttrsFor('quote'),
@@ -259,6 +268,7 @@ export const LINE_SCHEMAS: Record<DocumentType, LineSchema> = {
     relFieldId: 'line_item:invoice',
     sortAttr: 'line_item_sort_order',
     primaryTextKey: 'name',
+    primaryColumnLabel: 'Description',
     totalsMode: 'computed',
     billingPrefix: 'invoice',
     billingAttrs: [
@@ -283,6 +293,7 @@ export const LINE_SCHEMAS: Record<DocumentType, LineSchema> = {
     relFieldId: 'line_item:order',
     sortAttr: 'line_item_sort_order',
     primaryTextKey: 'name',
+    primaryColumnLabel: 'Description',
     totalsMode: 'computed',
     billingPrefix: 'order',
     billingAttrs: billingAttrsFor('order'),
@@ -297,6 +308,7 @@ export const LINE_SCHEMAS: Record<DocumentType, LineSchema> = {
     relFieldId: 'line_item:workOrder',
     sortAttr: 'line_item_sort_order',
     primaryTextKey: 'name',
+    primaryColumnLabel: 'Description',
     // The M2 job view stores no totals at all, so `billingPrefix` is never read —
     // every use is gated on `totalsMode`. It is still a real prefix rather than an
     // empty string so a missed gate fails loudly instead of building `_tax_rate`.
@@ -314,6 +326,7 @@ export const LINE_SCHEMAS: Record<DocumentType, LineSchema> = {
     relFieldId: 'purchase_order_line:purchaseOrder',
     sortAttr: 'purchase_order_line_sort_order',
     primaryTextKey: 'description',
+    primaryColumnLabel: 'Part',
     // The PO IS our document and its subtotal is ours to compute
     // (plans/purchasing/01-build-plan.md §4.1 — `subtotal`/`total` are
     // `creatable: false`) — but shipping and tax are stated amounts, not rates.
@@ -347,6 +360,7 @@ export const LINE_SCHEMAS: Record<DocumentType, LineSchema> = {
     relFieldId: 'vendor_bill_line:vendorBill',
     sortAttr: 'vendor_bill_line_sort_order',
     primaryTextKey: 'description',
+    primaryColumnLabel: 'Part',
     // 🛑 See TotalsMode. The bill is THEIRS; its totals are transcribed.
     totalsMode: 'stored',
     billingPrefix: 'vendor_bill',
@@ -460,6 +474,23 @@ export function diffLineValues(before: LineValues, after: LineValues): LinePatch
 }
 
 /**
+ * Collapse a RELATIONSHIP read to the single prefixed record id a line cell wants.
+ *
+ * 🛑 `useSystemValues` collapses SINGLE_SELECT and single-value ACTOR to a scalar
+ * but deliberately leaves the genuinely multi-value types — MULTI_SELECT, TAGS,
+ * FILE and **RELATIONSHIP** — as arrays. A line's `part` is single-valued, so
+ * reading it as a scalar hands a one-element ARRAY to everything downstream: the
+ * cell wraps it again (`value={[partRecordId]}`), `RecordBadge` receives an array
+ * where it expects an id, and the badge renders a permanent loading skeleton
+ * instead of the part's name. Nothing throws and nothing logs — the part is
+ * simply never visible on any purchasing line.
+ */
+function firstRecordId(raw: unknown): RecordId | null {
+  const value = Array.isArray(raw) ? raw[0] : raw
+  return typeof value === 'string' ? (value as RecordId) : null
+}
+
+/**
  * Normalize one passive `useSystemValues` result into the row's value shape.
  *
  * An attribute the schema maps to `null` falls back to its default rather than
@@ -476,6 +507,7 @@ export function lineValuesFromSystemValues(
     const attr = schema.attrs[key]
     return attr ? (values[attr] as T | undefined) : undefined
   }
+  const readRecordId = (key: keyof LineValues): RecordId | null => firstRecordId(read<unknown>(key))
   const { optional: supportsOptional } = schema.capabilities
   return {
     name: read<string | null>('name') ?? '',
@@ -488,6 +520,6 @@ export function lineValuesFromSystemValues(
     optional: supportsOptional && read<boolean>('optional') === true,
     optionalSelected: !supportsOptional || read<boolean>('optionalSelected') !== false,
     catalogItemRecordId: null,
-    partRecordId: read<RecordId | null>('partRecordId') ?? null,
+    partRecordId: readRecordId('partRecordId'),
   }
 }

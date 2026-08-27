@@ -89,11 +89,15 @@ const RECEIVING_FIELD_KEYS = [
 ] as const
 
 /**
- * The inverse halves this migration adds to defs it does not create. Each is a
- * `has_many` on an incumbent def whose owning `belongs_to` lives on one of the
- * eight new ones.
+ * Fields this migration adds to defs it does not create.
+ *
+ * Almost all are the inverse halves of edges owned by the eight new defs — a
+ * `has_many` on an incumbent whose owning `belongs_to` lives on a new one.
+ * `part.unit` is the exception: a plain SINGLE_SELECT, added here because the
+ * purchasing lines are the first surface that needs to render a unit and the
+ * part is where the stock UOM belongs (see its registry comment).
  */
-const INVERSE_FIELDS: Record<string, Record<string, ResourceField | undefined>> = {
+const INCUMBENT_FIELDS: Record<string, Record<string, ResourceField | undefined>> = {
   company: {
     purchaseOrders: COMPANY_FIELDS.purchaseOrders,
     vendorBills: COMPANY_FIELDS.vendorBills,
@@ -102,6 +106,8 @@ const INVERSE_FIELDS: Record<string, Record<string, ResourceField | undefined>> 
   part: {
     purchaseOrderLines: PART_FIELDS.purchaseOrderLines,
     vendorBillLines: PART_FIELDS.vendorBillLines,
+    // Not an inverse — the stock unit of measure every part quantity is in.
+    unit: PART_FIELDS.unit,
   },
   vendor_part: {
     stockMovements: VENDOR_PART_FIELDS.stockMovements,
@@ -162,6 +168,14 @@ const INVERSE_FIELDS: Record<string, Record<string, ResourceField | undefined>> 
  * `company` (purchaseOrders / vendorBills / vendorPayments), `part`
  * (purchaseOrderLines / vendorBillLines), `vendor_part` (stockMovements /
  * purchaseOrderLines) and `gl_posting` (lines).
+ *
+ * Plus one field that is not an inverse: `part.unit`, the stock unit of measure
+ * (SINGLE_SELECT, nullable, no backfill). Every quantity in the inventory chain
+ * — on-hand, movements, BOM, ordered/received — is already a bare number in one
+ * implied unit; this names it, and purchasing rows render it read-only beside the
+ * quantity. It is deliberately NOT on the line: a line ordered in `box` and
+ * received in `ea` would make the received-vs-ordered roll-up compare two
+ * different units, which is the number the three-way match rests on.
  *
  * `purchase_order` is `hasDetailPage: true` and `isVisible: true` — the `quote`
  * shape, because a PO is built, issued and received against. `vendor_bill` is
@@ -278,8 +292,8 @@ export const migration108Purchasing: EntityMigration = {
       )
     )
 
-    // ── The inverse halves on incumbent defs ───────────────────────────
-    for (const [entityType, fields] of Object.entries(INVERSE_FIELDS)) {
+    // ── The added fields on incumbent defs ─────────────────────────────
+    for (const [entityType, fields] of Object.entries(INCUMBENT_FIELDS)) {
       const defId = entityDefIds.get(entityType)
       if (!defId) continue
       const present: Record<string, ResourceField> = {}

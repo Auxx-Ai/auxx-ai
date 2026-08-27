@@ -883,11 +883,24 @@ function formatQtyDisplay(qty: number, unit: LineItemUnit | null): string {
 function QuantityCellView({
   quantity,
   unit,
+  unitEditable,
   readOnly,
   onCommit,
 }: {
   quantity: number
   unit: LineItemUnit | null
+  /**
+   * Whether the unit is this row's to change — `schema.capabilities.unit`.
+   *
+   * 🛑 On a purchasing line it is FALSE, and the unit shown comes from the PART
+   * (`part_unit`), not the line: `purchase_order_line` has no unit attribute, so
+   * a pick here would go through `linePatchToFieldValues`, which drops the key,
+   * and appear to work while changing nothing. It is on the part by design — a
+   * line ordered in `box` and received in `ea` would make the received-vs-ordered
+   * roll-up compare two different units. A PO does not get to choose the unit its
+   * part is stocked in, so the cell renders it without a dropdown.
+   */
+  unitEditable: boolean
   readOnly: boolean
   onCommit: (next: { quantity: number; unit: LineItemUnit | null }) => void
 }) {
@@ -913,7 +926,9 @@ function QuantityCellView({
       return
     }
     const nextQuantity = parsed.quantity ?? quantity
-    const nextUnit = parsed.unit
+    // Where the unit is not this row's to change, a typed `5 ea` still commits the
+    // 5 — the parsed unit is discarded rather than flashing the cell invalid.
+    const nextUnit = unitEditable ? parsed.unit : unit
     if (nextQuantity === quantity && nextUnit === unit) return
     onCommit({ quantity: nextQuantity, unit: nextUnit })
   }
@@ -943,26 +958,28 @@ function QuantityCellView({
           invalid && 'bg-destructive/10 ring-1 ring-destructive/60'
         )}
       />
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button
-            type='button'
-            tabIndex={-1}
-            onMouseDown={(e) => e.preventDefault()}
-            className='-translate-y-1/2 absolute top-1/2 right-0.5 rounded-sm p-0.5 text-muted-foreground opacity-0 outline-none hover:bg-primary-100 focus:opacity-100 group-hover/qty:opacity-100'>
-            <ChevronsUpDown className='size-3' />
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align='end' className='max-h-64 overflow-y-auto'>
-          <DropdownMenuItem onSelect={() => pickUnitOnly(null)}>No unit</DropdownMenuItem>
-          <DropdownMenuSeparator />
-          {LINE_ITEM_UNIT_OPTIONS.map((option) => (
-            <DropdownMenuItem key={option.value} onSelect={() => pickUnitOnly(option.value)}>
-              {option.label}
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
+      {unitEditable && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type='button'
+              tabIndex={-1}
+              onMouseDown={(e) => e.preventDefault()}
+              className='-translate-y-1/2 absolute top-1/2 right-0.5 rounded-sm p-0.5 text-muted-foreground opacity-0 outline-none hover:bg-primary-100 focus:opacity-100 group-hover/qty:opacity-100'>
+              <ChevronsUpDown className='size-3' />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align='end' className='max-h-64 overflow-y-auto'>
+            <DropdownMenuItem onSelect={() => pickUnitOnly(null)}>No unit</DropdownMenuItem>
+            <DropdownMenuSeparator />
+            {LINE_ITEM_UNIT_OPTIONS.map((option) => (
+              <DropdownMenuItem key={option.value} onSelect={() => pickUnitOnly(option.value)}>
+                {option.label}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
     </div>
   )
 }
@@ -1012,6 +1029,8 @@ function LineRowMenu({
   taxable,
   optional,
   showOptionalToggle,
+  showCategory = true,
+  showTaxable = true,
   hasDescription,
   hasCategory,
   hasPhotos,
@@ -1025,6 +1044,13 @@ function LineRowMenu({
   taxable: boolean
   optional: boolean
   showOptionalToggle: boolean
+  /**
+   * `schema.capabilities.category` / `.taxable`. A purchasing line has neither
+   * field, so the item would write through `linePatchToFieldValues`, which drops
+   * the key — the click would appear to work and change nothing.
+   */
+  showCategory?: boolean
+  showTaxable?: boolean
   hasDescription: boolean
   hasCategory: boolean
   hasPhotos: boolean
@@ -1061,11 +1087,13 @@ function LineRowMenu({
           {hasDescription ? 'Edit description' : 'Add description'}
           <MenuShortcut keys={['⇧', 'D']} />
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={onSetCategory}>
-          <Tags />
-          {hasCategory ? 'Change category' : 'Add category'}
-          <MenuShortcut keys={['⇧', 'L']} />
-        </DropdownMenuItem>
+        {showCategory && (
+          <DropdownMenuItem onSelect={onSetCategory}>
+            <Tags />
+            {hasCategory ? 'Change category' : 'Add category'}
+            <MenuShortcut keys={['⇧', 'L']} />
+          </DropdownMenuItem>
+        )}
         {onOpenPhotos && (
           <DropdownMenuItem onSelect={onOpenPhotos}>
             <Camera />
@@ -1080,11 +1108,13 @@ function LineRowMenu({
             <MenuShortcut keys={['⇧', 'O']} />
           </DropdownMenuItem>
         )}
-        <DropdownMenuItem onSelect={() => onToggleTaxable(!taxable)}>
-          {taxable ? <CircleX /> : <CircleCheck />}
-          {taxable ? 'Mark tax exempt' : 'Mark taxable'}
-          <MenuShortcut keys={['⇧', 'X']} />
-        </DropdownMenuItem>
+        {showTaxable && (
+          <DropdownMenuItem onSelect={() => onToggleTaxable(!taxable)}>
+            {taxable ? <CircleX /> : <CircleCheck />}
+            {taxable ? 'Mark tax exempt' : 'Mark taxable'}
+            <MenuShortcut keys={['⇧', 'X']} />
+          </DropdownMenuItem>
+        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem variant='destructive' onSelect={onDelete}>
           <Trash2 />
@@ -1105,8 +1135,8 @@ function LineRowMenu({
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * The leading cell for a purchasing line: a `part` relation picker over a free-text
- * description, in place of the sell-side name + catalog picker.
+ * The leading cell for a purchasing line: a `part` relation picker where the
+ * sell-side cell puts its free-text name + catalog picker.
  *
  * 🛑 This is not a styling variant of {@link LineNameCellView}. A purchasing line's
  * identity IS its part — `purchase_order_line.part` is `required: true` and leg 2
@@ -1115,6 +1145,15 @@ function LineRowMenu({
  * as the catalog pick does on the sell side; a description typed first accumulates
  * on the draft and is written with the part in one create. Committing on the
  * description instead would send a create the server must reject.
+ *
+ * ⚠️ Its ANATOMY, though, is deliberately the sell-side one, and the first cut got
+ * that wrong: it stacked a permanently-visible description input under the picker,
+ * which is precisely what {@link LineNameCellView} documents itself as avoiding —
+ * *"the line never grows a permanent second row"*. Purchasing rows rendered at
+ * double height beside every other document's, and the cell had no `⋯` menu at
+ * all, so a purchasing line could not be deleted from the grid and none of the
+ * row shortcuts reached it. Now: description is a standing button only once set,
+ * adding one lives in the `⋯` menu, and editing swaps the cell in place.
  *
  * The field definition is sourced live rather than stubbed so the picker gets a
  * real `RelationshipConfig` — and with it "create new part" — the same way the
@@ -1127,6 +1166,7 @@ function LinePartCellView({
   readOnly,
   onPickPart,
   onCommitDescription,
+  onDelete,
 }: {
   /** `purchase_order_line_part` / `vendor_bill_line_part`, from the schema. */
   partAttribute: string
@@ -1135,56 +1175,168 @@ function LinePartCellView({
   readOnly: boolean
   onPickPart: (recordId: RecordId | null) => void
   onCommitDescription: (value: string | null) => void
+  /** Delete this line (real record or draft). */
+  onDelete: () => void
 }) {
   const partField = useSystemField(partAttribute)
+  // `null` = not editing description; any string (incl. '') = in-progress text.
   const [descriptionDraft, setDescriptionDraft] = useState<string | null>(null)
-  const value = descriptionDraft ?? description ?? ''
 
-  const commitDescription = () => {
+  const confirmDescription = () => {
     if (descriptionDraft === null) return
-    const next = descriptionDraft.trim()
+    onCommitDescription(descriptionDraft.trim() || null)
     setDescriptionDraft(null)
-    if ((next || null) !== (description || null)) onCommitDescription(next || null)
   }
 
-  return (
-    <div className='flex min-w-0 flex-1 flex-col justify-center gap-0.5 py-0.5'>
-      {readOnly ? (
+  // Row-action shortcuts (use-line-hotkeys.ts) arrive as CustomEvents on the
+  // enclosing name cell — same contract as LineNameCellView. Only the two
+  // actions a purchasing line actually has are handled; the rest are no-ops
+  // rather than writes to fields the entity does not carry.
+  const rootRef = useRef<HTMLDivElement>(null)
+  const actionRef = useRef<(action: LineRowAction) => void>(() => {})
+  actionRef.current = (action) => {
+    if (action === 'description') {
+      if (descriptionDraft === null) setDescriptionDraft(description ?? '')
+      return
+    }
+    if (action === 'delete') onDelete()
+  }
+  useEffect(() => {
+    const cell = rootRef.current?.closest('[data-line-col]')
+    if (!cell) return
+    const onAction = (e: Event) => actionRef.current((e as CustomEvent<LineRowAction>).detail)
+    cell.addEventListener(LINE_ROW_ACTION_EVENT, onAction)
+    return () => cell.removeEventListener(LINE_ROW_ACTION_EVENT, onAction)
+  }, [])
+
+  // Description edit mode — replaces the cell with an autosize textarea in the
+  // same slot, exactly as the sell-side cell does.
+  if (descriptionDraft !== null) {
+    return (
+      <div ref={rootRef} className='flex min-w-0 flex-1 items-center gap-1 py-1'>
+        <AutosizeTextarea
+          value={descriptionDraft}
+          onChange={(e) => setDescriptionDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault()
+              confirmDescription()
+            }
+            if (e.key === 'Escape') setDescriptionDraft(null)
+          }}
+          autoFocus
+          minHeight={28}
+          maxHeight={160}
+          placeholder='What the supplier calls it'
+          className='min-w-0 flex-1 resize-none rounded-sm border-primary-200/60 bg-transparent px-2 py-1 text-muted-foreground text-xs'
+        />
+        <TreeRowButton persistent tooltipText='Save description' onClick={confirmDescription}>
+          <Check />
+        </TreeRowButton>
+        <TreeRowButton
+          persistent
+          variant='destructive'
+          tooltipText='Cancel'
+          onClick={() => setDescriptionDraft(null)}>
+          <X />
+        </TreeRowButton>
+      </div>
+    )
+  }
+
+  if (readOnly) {
+    return (
+      <div className='flex min-w-0 flex-1 items-center gap-1.5 py-1'>
         <span className='min-w-0 truncate px-1 text-sm'>
           {partField?.label ?? 'Part'}
           {partRecordId ? '' : ' —'}
         </span>
-      ) : (
-        <FieldInputAdapter
-          fieldType={partField?.fieldType ?? FieldType.RELATIONSHIP}
-          fieldOptions={partField?.options}
-          triggerProps={{ className: 'h-7 w-full border-none bg-transparent px-1 shadow-none' }}
-          value={partRecordId ? [partRecordId] : []}
-          onChange={(next) => {
-            const ids = next as RecordId[]
-            onPickPart(ids[0] ?? null)
-          }}
-          placeholder='Select part...'
-        />
+        {description && <TooltipExplanation text={description} />}
+      </div>
+    )
+  }
+
+  return (
+    <div ref={rootRef} className='flex min-w-0 flex-1 items-center gap-1.5 py-1'>
+      <FieldInputAdapter
+        fieldType={partField?.fieldType ?? FieldType.RELATIONSHIP}
+        fieldOptions={partField?.options}
+        // `PickerTrigger` takes no data attributes, so the grid's nav hook matches
+        // this trigger on `[role="combobox"]` instead — see use-line-nav.ts.
+        triggerProps={{
+          className: 'h-7 min-w-0 flex-1 border-none bg-transparent px-1 shadow-none',
+        }}
+        value={partRecordId ? [partRecordId] : []}
+        onChange={(next) => {
+          const ids = next as RecordId[]
+          onPickPart(ids[0] ?? null)
+        }}
+        placeholder='Select part...'
+      />
+
+      {/* Description button — a standing control, but only when the line HAS a
+          description; ADDING one lives in the `⋯` menu. Mirrors the sell side. */}
+      {description && (
+        <TreeRowButton
+          persistent
+          tabIndex={-1}
+          tooltipText={description}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => setDescriptionDraft(description)}>
+          <AlignLeft />
+        </TreeRowButton>
       )}
-      {readOnly ? (
-        description && (
-          <span className='min-w-0 truncate px-1 text-muted-foreground text-xs'>{description}</span>
-        )
-      ) : (
-        <input
-          data-cell-focusable
-          value={value}
-          onChange={(e) => setDescriptionDraft(e.target.value)}
-          onFocus={() => setDescriptionDraft(description ?? '')}
-          onBlur={commitDescription}
-          placeholder='What the supplier calls it'
-          className='h-6 min-w-0 rounded-sm border-none bg-transparent px-1 text-muted-foreground text-xs outline-none placeholder:text-muted-foreground/50'
-        />
-      )}
+
+      {/* Always the cell's LAST flex child, so its slot is stable across the
+          rest ↔ description-editor swap. Category / taxable / images / optional
+          are all off: a purchasing line carries none of those fields. */}
+      <LineRowMenu
+        taxable={false}
+        optional={false}
+        showOptionalToggle={false}
+        showCategory={false}
+        showTaxable={false}
+        hasDescription={!!description}
+        hasCategory={false}
+        hasPhotos={false}
+        onEditDescription={() => setDescriptionDraft(description ?? '')}
+        onSetCategory={() => {}}
+        onToggleTaxable={() => {}}
+        onToggleOptional={() => {}}
+        onDelete={onDelete}
+      />
     </div>
   )
 }
+
+/**
+ * The stock unit of measure to show beside a purchasing line's quantity, read
+ * from the line's PART rather than the line (`part_unit` — see `PART_FIELDS.unit`).
+ *
+ * Falls back to `each` when the part carries no unit. That is not a guess: every
+ * quantity in the inventory chain — `part_quantity_on_hand`, `stock_movement_quantity`,
+ * BOM quantities, ordered/received — is already a bare count of discrete units, so
+ * `each` is the semantics those numbers ALREADY have, simply made visible. The
+ * field ships `defaultValue: 'each'` and there is no backfill, so existing parts
+ * read through this fallback until someone sets one.
+ *
+ * `null` (no part picked yet) skips the fetch and still yields `each`, which is
+ * what keeps a draft row and the persisted row it becomes reading identically —
+ * the mismatch that `1 ea` vs `1` used to be.
+ */
+function usePartUnit(partRecordId: RecordId | null): LineItemUnit {
+  const { values } = useSystemValues(partRecordId ?? ('' as RecordId), PART_UNIT_ATTRS, {
+    autoFetch: !!partRecordId,
+    enabled: !!partRecordId,
+  })
+  // SINGLE_SELECT reads back as a single-element array in some paths and a scalar
+  // in others (`useSystemValues` collapses it) — tolerate both.
+  const raw = values.part_unit
+  const value = Array.isArray(raw) ? raw[0] : raw
+  return (typeof value === 'string' ? (value as LineItemUnit) : null) ?? 'each'
+}
+
+const PART_UNIT_ATTRS = ['part_unit'] as const
 
 /** One sortable line row — a grid row whose leading slot is the drag grip. */
 export function LineRow({
@@ -1227,6 +1379,7 @@ export function LineRow({
   const showOptional = schema.capabilities.optional
   const { values } = useSystemValues(recordId, lineAttributesFor(schema), { autoFetch: false })
   const line = lineValuesFromSystemValues(values, schema)
+  const partUnit = usePartUnit(schema.capabilities.partPicker ? line.partRecordId : null)
   // FILE is array-return (plan 37b §3) — the photos attribute reads back as an array
   // of `{ ref, caption?, internal? }` envelopes (or is absent/empty when there are
   // none). A document whose lines carry no photos field has no attribute to read.
@@ -1258,6 +1411,7 @@ export function LineRow({
               readOnly={readOnly}
               onPickPart={(partRecordId) => onUpdateLine(recordId, { partRecordId })}
               onCommitDescription={(description) => onUpdateLine(recordId, { description })}
+              onDelete={() => deleteLine(record.id)}
             />
           ) : (
             <LineNameCellView
@@ -1306,7 +1460,10 @@ export function LineRow({
         qty={
           <QuantityCellView
             quantity={line.qty}
-            unit={line.unit}
+            // A purchasing line's unit is the PART's; the schema's own `unit`
+            // attribute is `null` there, so `line.unit` is always null too.
+            unit={schema.capabilities.partPicker ? partUnit : line.unit}
+            unitEditable={schema.capabilities.unit}
             readOnly={readOnly}
             onCommit={(next) => {
               const patch: LinePatch = {}
@@ -1375,6 +1532,7 @@ export function DraftLineRow({
 }) {
   const schema = lineSchemaFor(documentType)
   const showOptional = schema.capabilities.optional
+  const partUnit = usePartUnit(schema.capabilities.partPicker ? draft.partRecordId : null)
 
   return (
     <LineGridRow
@@ -1396,6 +1554,7 @@ export function DraftLineRow({
             // creating while the part is still unset — every draft-state write
             // goes through `mutateDrafts`, never a direct mutation.
             onCommitDescription={(description) => void createDraft(draft.draftId, { description })}
+            onDelete={() => deleteDraft(draft.draftId)}
           />
         ) : (
           <LineNameCellView
@@ -1433,7 +1592,8 @@ export function DraftLineRow({
       qty={
         <QuantityCellView
           quantity={draft.qty}
-          unit={draft.unit}
+          unit={schema.capabilities.partPicker ? partUnit : draft.unit}
+          unitEditable={schema.capabilities.unit}
           readOnly={false}
           onCommit={(next) =>
             void createDraft(draft.draftId, { qty: next.quantity, unit: next.unit })

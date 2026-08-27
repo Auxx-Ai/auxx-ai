@@ -2,6 +2,7 @@
 
 import { FieldType } from '@auxx/database/enums'
 import { type ResourceFieldId, toFieldId } from '@auxx/types/field'
+import { LINE_ITEM_UNIT_OPTIONS } from '../../../money/units'
 import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
 import { CostSource, PartKind, StockStatus } from '../enum-values'
@@ -269,6 +270,49 @@ export const PART_FIELDS: Record<string, ResourceField> = {
     },
     placeholder: 'Enter HS code',
     description: 'Harmonized System code for customs',
+  },
+
+  /**
+   * The part's stock unit of measure — the unit EVERY quantity in the inventory
+   * chain is already denominated in, finally named.
+   *
+   * 🛑 It lives on the part, not on the line, and that is the whole design.
+   * `part_quantity_on_hand`, `stock_movement_quantity`, `subpart` BOM quantities,
+   * `purchase_order_line_quantity_ordered` and `_quantity_received` are all bare
+   * numbers that only reconcile because they share one implied unit. Putting a
+   * unit on the purchasing LINE instead (the `line_item` shape) would let a line
+   * be ordered in `box` and received in `ea`, and the received-vs-ordered roll-up
+   * — the thing the three-way match is built on — would silently compare two
+   * different units. A per-vendor pack size belongs on `vendor_part` with a real
+   * conversion factor, and is a separate feature.
+   *
+   * Purchasing rows render it read-only beside the quantity: a PO does not get to
+   * choose the unit its part is stocked in.
+   *
+   * Nullable with no backfill — an unset unit reads as unitless and displays a
+   * bare number, which is exactly today's behaviour for every existing part.
+   */
+  unit: {
+    id: toFieldId('unit'),
+    key: 'unit',
+    label: 'Unit',
+    type: BaseType.ENUM,
+    fieldType: FieldType.SINGLE_SELECT,
+    isSystem: true,
+    systemAttribute: 'part_unit',
+    systemSortOrder: 'a4',
+    nullable: true,
+    options: { options: [...LINE_ITEM_UNIT_OPTIONS] },
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    placeholder: 'Select unit',
+    defaultValue: 'each',
+    description: 'Stock unit of measure — every quantity recorded for this part is in this unit',
   },
 
   // Ships the FIELD only. `readPartKind` / `shouldExplodeOnSale` and the

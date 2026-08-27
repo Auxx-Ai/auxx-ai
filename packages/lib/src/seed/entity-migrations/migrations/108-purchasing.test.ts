@@ -117,12 +117,15 @@ const RECEIVING_KEYS = [
 ] as const
 
 /**
- * The inverse halves the migration hangs off defs it does not create. Declared
- * again here on purpose: the two lists have to agree, and this is what says so.
+ * The fields the migration hangs off defs it does not create. Declared again
+ * here on purpose: the two lists have to agree, and this is what says so.
+ *
+ * All are inverse halves except `part.unit` — the stock unit of measure, added
+ * here because the purchasing lines are the first surface that renders one.
  */
 const INVERSE_KEYS: Record<string, readonly string[]> = {
   company: ['purchaseOrders', 'vendorBills', 'vendorPayments'],
-  part: ['purchaseOrderLines', 'vendorBillLines'],
+  part: ['purchaseOrderLines', 'vendorBillLines', 'unit'],
   vendor_part: ['stockMovements', 'purchaseOrderLines'],
   gl_posting: ['lines'],
 }

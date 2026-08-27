@@ -526,6 +526,25 @@ export function LineBuilder({
     [hasBilling, saveMultipleAsync, docRecordId, billingPrefix]
   )
 
+  /**
+   * Write one of a `stated` document's own amount mirrors (`shipping_total`,
+   * `tax_total`, `discount_value`).
+   *
+   * 🛑 These are INPUTS, not derived figures — `purchase_order_shipping_total` is
+   * described in the registry as *"typed by hand from the freight invoice"* and is
+   * what `allocateLandedCost` spreads across the lines on receipt. All three are
+   * `creatable: true, updatable: true` and `showInPanel: false`, so this footer is
+   * the ONLY place in the app they can be entered. Rendering them read-only (which
+   * is what `stated` did at first) leaves landed cost permanently unreachable.
+   */
+  const updateStatedAmount = useCallback(
+    (attribute: string, cents: number | null) => {
+      if (schema.totalsMode !== 'stated') return
+      saveFieldValue(docRecordId, `${billingPrefix}_${attribute}`, cents, FieldType.CURRENCY)
+    },
+    [schema.totalsMode, saveFieldValue, docRecordId, billingPrefix]
+  )
+
   const updateTax = useCallback(
     (name: string | null, rate: number | null) => {
       if (!hasBilling) return
@@ -1101,7 +1120,7 @@ export function LineBuilder({
           className='sticky top-0 z-10 grid rounded-t-lg border-primary-200/50 border-b bg-primary-50 px-1 py-2 text-muted-foreground text-sm dark:border-[#1e2227] dark:bg-background'
           style={{ gridTemplateColumns: LINE_COLS }}>
           <div className='flex items-center gap-1 pl-2'>
-            Description
+            {schema.primaryColumnLabel}
             {!readOnly && (
               <SimpleTooltip content='Add line item' side='right'>
                 <Button
@@ -1203,6 +1222,7 @@ export function LineBuilder({
         taxRates={taxRates}
         onUpdateDiscount={updateDiscount}
         onUpdateTax={updateTax}
+        onUpdateStatedAmount={updateStatedAmount}
       />
     </div>
   )
