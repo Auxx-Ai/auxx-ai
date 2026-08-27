@@ -30,17 +30,34 @@ interface StockAdjustmentPopoverProps {
   partId: string
   /** Current quantity on hand (needed for "Set to" mode) */
   currentQoH: number
-  /** Whether this part has subparts (BOM) — enables "Adjust subparts" toggle */
-  hasSubparts?: boolean
   onSuccess?: () => void
   children: React.ReactNode
 }
 
-/** Popover for creating manual stock movements */
+/**
+ * Popover for creating manual stock movements — `type: 'adjust'` only.
+ *
+ * 🛑 There is deliberately no "Adjust subparts" control and no BOM cascade.
+ * The toggle that used to live here exploded the bill of materials WITHOUT
+ * negating, so "Add 10" of a finished good increased every component's stock
+ * as well — the assembly and the parts it consumed both went up, which is the
+ * opposite of what building one does
+ * (plans/products/11-costing-and-stock-improvements.md §5.3).
+ *
+ * An adjustment is a count correction and must never cascade: explosion belongs
+ * to a movement that knows its own direction.
+ *
+ * ⚠️ The `stock_movement_adjust_subparts` FIELD and the BOM explosion behind it
+ * are deliberately untouched — only this control is gone. The inventory bridge
+ * still sets the flag on `sale` movements
+ * (`data-connectors/inventory-bridge-pass.ts`), and that use is CORRECT: selling
+ * a finished good does consume its components, and a sale is negative, so the
+ * explosion negates. It was only ever the arbitrary direction of an `adjust`
+ * that made the cascade wrong. Do not remove the field.
+ */
 export function StockAdjustmentPopover({
   partId,
   currentQoH,
-  hasSubparts = false,
   onSuccess,
   children,
 }: StockAdjustmentPopoverProps) {
@@ -50,7 +67,6 @@ export function StockAdjustmentPopover({
   const [quantity, setQuantity] = useState<number | null>(null)
   const [reason, setReason] = useState('')
   const [reference, setReference] = useState('')
-  const [adjustSubparts, setAdjustSubparts] = useState(false)
 
   const stockMovementDefId = useResourceProperty('stock_movement', 'id')
   const partDefId = useResourceProperty('part', 'id')
@@ -63,7 +79,6 @@ export function StockAdjustmentPopover({
       setQuantity(null)
       setReason('')
       setReference('')
-      setAdjustSubparts(false)
     }
   }, [open])
 
@@ -92,7 +107,6 @@ export function StockAdjustmentPopover({
         stock_movement_part: toRecordId(partDefId, partId),
         stock_movement_type: 'adjust',
         stock_movement_quantity: finalQuantity,
-        ...(adjustSubparts && { stock_movement_adjust_subparts: true }),
         ...(reason && { stock_movement_reason: reason }),
         ...(reference && { stock_movement_reference: reference }),
       },
@@ -108,7 +122,6 @@ export function StockAdjustmentPopover({
     quantityMode,
     direction,
     currentQoH,
-    adjustSubparts,
     reason,
     reference,
     createRecord,
@@ -139,11 +152,9 @@ export function StockAdjustmentPopover({
               <FieldInputAdapter
                 fieldType={FieldType.SINGLE_SELECT}
                 value={quantityMode}
-                onChange={(val) => {
-                  const mode = ((val as string[])[0] as QuantityMode) ?? 'adjust_by'
-                  setQuantityMode(mode)
-                  if (mode === 'set_to') setAdjustSubparts(false)
-                }}
+                onChange={(val) =>
+                  setQuantityMode(((val as string[])[0] as QuantityMode) ?? 'adjust_by')
+                }
                 fieldOptions={quantityModeFieldOptions}
                 disabled={isPending}
               />
@@ -205,31 +216,7 @@ export function StockAdjustmentPopover({
                 disabled={isPending}
               />
             </FieldPanelRow>
-
-            {/* Adjust subparts toggle — only shown when part has subparts and in "Adjust by" mode */}
-            {hasSubparts && !isSetToMode && (
-              <FieldPanelRow
-                title='Adjust subparts'
-                type={BaseType.BOOLEAN}
-                showIcon
-                description='Cascade this adjustment to all leaf component parts based on the bill of materials'>
-                <FieldInputAdapter
-                  fieldType={FieldType.CHECKBOX}
-                  value={adjustSubparts}
-                  onChange={(val) => setAdjustSubparts((val as boolean) ?? false)}
-                  fieldOptions={{ variant: 'switch' }}
-                  disabled={isPending}
-                />
-              </FieldPanelRow>
-            )}
           </FieldPanel>
-
-          {/* Info hint when adjust subparts is enabled */}
-          {adjustSubparts && (
-            <p className='text-xs text-muted-foreground'>
-              Adjustment will be applied to all component parts based on the bill of materials.
-            </p>
-          )}
 
           {/* Actions */}
           <div className='flex justify-end gap-2'>
