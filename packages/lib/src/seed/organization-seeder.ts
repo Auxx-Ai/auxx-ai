@@ -40,7 +40,8 @@ const DEFAULT_SYSTEM_MODELS: Array<{
   { modelType: ModelType.SPEECH2TEXT, provider: 'openai', model: 'whisper-1' },
 ]
 
-// Default record sequence settings — one row per scope (ticket / work_order / service_request / quote / invoice)
+// Default record sequence settings — one row per scope
+// (ticket / work_order / service_request / quote / invoice / order / purchase_order / vendor_bill)
 const defaultRecordSequences = [
   {
     scope: 'ticket',
@@ -100,6 +101,28 @@ const defaultRecordSequences = [
   {
     scope: 'order',
     prefix: 'ORD',
+    currentNumber: 0,
+    paddingLength: 4,
+    usePrefix: true,
+    useDateInPrefix: false,
+    dateFormat: 'YYMM',
+    separator: '-',
+    useSuffix: false,
+  },
+  {
+    scope: 'purchase_order',
+    prefix: 'PO',
+    currentNumber: 0,
+    paddingLength: 4,
+    usePrefix: true,
+    useDateInPrefix: false,
+    dateFormat: 'YYMM',
+    separator: '-',
+    useSuffix: false,
+  },
+  {
+    scope: 'vendor_bill',
+    prefix: 'BILL',
     currentNumber: 0,
     paddingLength: 4,
     usePrefix: true,

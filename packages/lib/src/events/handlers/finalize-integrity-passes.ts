@@ -46,6 +46,7 @@ import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
 import type { EntityFieldChangeEvent } from '../../field-hooks/types'
 import type { CachedField } from '../../field-values/types'
+import type { TotalledDocumentType } from '../../money/totals-hooks'
 import type {
   ManifestFieldChange,
   SyncChangeManifest,
@@ -273,9 +274,9 @@ async function totalsPass(
     const lineWork: Array<{ lineInstanceId: string; rewriteLineTotal: boolean }> = []
     const parents = new Map<
       string,
-      { documentType: 'quote' | 'invoice' | 'order'; documentInstanceId: string }
+      { documentType: TotalledDocumentType; documentInstanceId: string }
     >()
-    const addParent = (documentType: 'quote' | 'invoice' | 'order', documentInstanceId: string) =>
+    const addParent = (documentType: TotalledDocumentType, documentInstanceId: string) =>
       parents.set(`${documentType}:${documentInstanceId}`, { documentType, documentInstanceId })
 
     for (const [rid, touched] of Object.entries(manifest.touched)) {

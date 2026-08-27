@@ -1,7 +1,7 @@
 // packages/lib/src/resources/registry/resources/gl-posting-fields.ts
 
 import { FieldType } from '@auxx/database/enums'
-import { toFieldId } from '@auxx/types/field'
+import { type ResourceFieldId, toFieldId } from '@auxx/types/field'
 import { BaseType } from '../../types'
 import { GlPostingStatus, GlPostingType } from '../enum-values'
 import type { ResourceField } from '../field-types'
@@ -254,5 +254,32 @@ export const GL_POSTING_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     description: 'Automatically updated when the GL posting is modified',
+  },
+
+  // Reverse relationship: lines (from gl_posting_line.glPosting)
+  lines: {
+    id: toFieldId('lines'),
+    key: 'lines',
+    label: 'Lines',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'gl_posting_lines',
+    showInPanel: false,
+    systemSortOrder: 'c0',
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'gl_posting_line:glPosting' as ResourceFieldId,
+      relationshipType: 'has_many',
+      isInverse: true,
+    },
+    description:
+      'The double-entry lines of this posting - account CODE plus a positive amount and a direction',
   },
 }

@@ -447,6 +447,149 @@ export const SYSTEM_ATTRIBUTES = [
   'order_line_items', // inverse of line_item_order
   'order_work_orders', // inverse of work_order_order
 
+  // ─── Receiving: cost, date and provenance on stock_movement ──────
+  // plans/purchasing/01-build-plan.md §2. Every one of these is
+  // `updatable: false` — the ledger is append-only by construction, which is
+  // the only reason a frozen cost can be trusted.
+  'stock_movement_unit_cost',
+  'stock_movement_extended_cost',
+  'stock_movement_cost_basis',
+  'stock_movement_gl_account', // an account CODE ('1310'), never a provider id (P2)
+  'stock_movement_occurred_at', // the ACCOUNTING date; createdAt is when it was typed
+  'stock_movement_vendor_part',
+  'stock_movement_vendor_unit_price', // raw invoice price, before landed adders
+  'stock_movement_purchase_order_line',
+  'stock_movement_reverses_movement', // NOT parentMovement — that means BOM explosion
+  'stock_movement_reversed_by_movements',
+  'vendor_part_stock_movements', // inverse of stock_movement_vendor_part
+
+  // ─── Purchase order ─────────────────────────────────────────────
+  // plans/purchasing/01-build-plan.md §4. The header's shipping/tax/discount
+  // totals plus allocationBasis + taxRecoverable are exactly
+  // `allocateLandedCost`'s argument list — which is why no separate
+  // `goods_receipt` header is needed.
+  'purchase_order_number',
+  'purchase_order_vendor',
+  'purchase_order_status',
+  'purchase_order_ordered_at',
+  'purchase_order_expected_at',
+  'purchase_order_terms',
+  'purchase_order_currency',
+  'purchase_order_reference',
+  'purchase_order_ship_to',
+  'purchase_order_subtotal',
+  'purchase_order_shipping_total',
+  'purchase_order_tax_total',
+  'purchase_order_discount_value',
+  'purchase_order_total',
+  'purchase_order_allocation_basis',
+  'purchase_order_tax_recoverable',
+  'purchase_order_notes',
+  'purchase_order_lines', // inverse of purchase_order_line_purchase_order
+  'purchase_order_bills', // inverse of vendor_bill_purchase_order
+  'company_purchase_orders', // inverse of purchase_order_vendor
+
+  // ─── Purchase order line ────────────────────────────────────────
+  // `quantity_received` and `quantity_billed` are COMPUTED re-sums over the
+  // rows that point here, never typed — same shape as part_quantity_on_hand,
+  // and for the same reason.
+  'purchase_order_line_purchase_order',
+  'purchase_order_line_part',
+  'purchase_order_line_vendor_part',
+  'purchase_order_line_description',
+  'purchase_order_line_quantity_ordered',
+  'purchase_order_line_quantity_received',
+  'purchase_order_line_quantity_billed',
+  'purchase_order_line_expected_unit_price',
+  'purchase_order_line_line_total',
+  'purchase_order_line_weight',
+  'purchase_order_line_sort_order',
+  'purchase_order_line_stock_movements',
+  'purchase_order_line_vendor_bill_lines',
+  'part_purchase_order_lines', // inverse of purchase_order_line_part
+  'vendor_part_purchase_order_lines', // inverse of purchase_order_line_vendor_part
+
+  // ─── Vendor bill ────────────────────────────────────────────────
+  // The third leg of three-way match. `number` is the VENDOR's invoice number
+  // (their document); `internal_number` is ours.
+  'vendor_bill_number',
+  'vendor_bill_internal_number',
+  'vendor_bill_vendor',
+  'vendor_bill_purchase_order',
+  'vendor_bill_status',
+  'vendor_bill_billed_at',
+  'vendor_bill_due_at',
+  'vendor_bill_currency',
+  'vendor_bill_subtotal',
+  'vendor_bill_shipping_total',
+  'vendor_bill_tax_total',
+  'vendor_bill_total',
+  'vendor_bill_match_variance',
+  'vendor_bill_match_notes',
+  'vendor_bill_document', // MediaAsset id, TEXT — the invoice_pdf_asset precedent
+  'vendor_bill_lines',
+  // Payment (P12): the same six fields in both modes. What differs is who
+  // writes them and whether relieving A/P is our job.
+  'vendor_bill_paid_at',
+  'vendor_bill_amount_paid',
+  'vendor_bill_balance',
+  'vendor_bill_payment_method',
+  'vendor_bill_payment_reference',
+  'vendor_bill_paid_source', // manual | provider | bank_import | rule — never dropped
+  'vendor_bill_payment_allocations',
+  'company_vendor_bills', // inverse of vendor_bill_vendor
+
+  // ─── Vendor bill line ───────────────────────────────────────────
+  'vendor_bill_line_vendor_bill',
+  'vendor_bill_line_purchase_order_line', // the match key
+  'vendor_bill_line_part',
+  'vendor_bill_line_description',
+  'vendor_bill_line_quantity_billed',
+  'vendor_bill_line_unit_price', // a BUY price
+  'vendor_bill_line_line_total',
+  'vendor_bill_line_gl_account',
+  'vendor_bill_line_sort_order',
+  'part_vendor_bill_lines', // inverse of vendor_bill_line_part
+
+  // ─── Vendor payment + allocation ────────────────────────────────
+  // P13/P15: seeded, hidden and INERT. Nothing writes these until the write
+  // path is built; a def with zero rows can be reshaped for free.
+  'vendor_payment_vendor',
+  'vendor_payment_amount',
+  'vendor_payment_paid_at',
+  'vendor_payment_method',
+  'vendor_payment_reference',
+  'vendor_payment_note',
+  'vendor_payment_status',
+  'vendor_payment_bank_transaction_id',
+  'vendor_payment_cleared_at',
+  'vendor_payment_reconciled_at',
+  'vendor_payment_unallocated', // amount - SUM(allocations); non-zero = a vendor credit
+  'vendor_payment_allocations',
+  'vendor_payment_allocation_payment',
+  'vendor_payment_allocation_vendor_bill',
+  'vendor_payment_allocation_amount',
+  'company_vendor_payments', // inverse of vendor_payment_vendor
+
+  // ─── GL account + posting line ──────────────────────────────────
+  // P1/P2: the ledger is ours and the accounting system is an EXPORTER. Lines
+  // are keyed on an account CODE; the provider's own id for an account is an
+  // app-owned identity field on `gl_account`, exactly as `qboJournalEntryId`
+  // already hangs off `gl_posting`.
+  'gl_account_code',
+  'gl_account_name',
+  'gl_account_type',
+  'gl_account_is_active',
+  'gl_posting_line_gl_posting',
+  'gl_posting_line_account_code',
+  'gl_posting_line_direction',
+  'gl_posting_line_amount', // always POSITIVE — direction carries the sign
+  'gl_posting_line_memo',
+  'gl_posting_line_source_type',
+  'gl_posting_line_source_id',
+  'gl_posting_line_sort_order',
+  'gl_posting_lines', // inverse of gl_posting_line_gl_posting
+
   // ─── Inbox fields ───────────────────────────────────────────────
   'inbox_name',
   'inbox_description',

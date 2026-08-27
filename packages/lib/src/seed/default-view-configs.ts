@@ -915,6 +915,106 @@ export const DEFAULT_VIEW_CONFIGS = {
     },
   ],
 
+  purchase_order: [
+    {
+      name: 'All Purchase Orders',
+      description: 'Table view of all purchase orders, newest first',
+      isDefault: true,
+      config: {
+        viewType: 'table' as const,
+        columnVisibility: {
+          field_purchase_order_number: true,
+          field_purchase_order_vendor: true,
+          field_purchase_order_status: true,
+          field_purchase_order_total: true,
+          field_purchase_order_ordered_at: true,
+          field_purchase_order_expected_at: true,
+        },
+        columnOrder: [
+          'field_purchase_order_number',
+          'field_purchase_order_vendor',
+          'field_purchase_order_status',
+          'field_purchase_order_total',
+          'field_purchase_order_ordered_at',
+          'field_purchase_order_expected_at',
+        ],
+        columnPinning: { left: ['_checkbox', 'field_purchase_order_number'] },
+        // Expected-at ascending is the expediting order - what is late is what
+        // matters. Ordered-at descending answers a different, rarer question.
+        sorting: [{ id: 'field_purchase_order_expected_at', desc: false }],
+        filters: [],
+        columnSizing: {},
+        columnLabels: {},
+        columnFormatting: {},
+      } satisfies ViewConfig,
+    },
+  ],
+
+  vendor_bill: [
+    {
+      name: 'All Bills',
+      description: 'Table view of all vendor bills, newest first',
+      isDefault: true,
+      config: {
+        viewType: 'table' as const,
+        columnVisibility: {
+          field_vendor_bill_number: true,
+          field_vendor_bill_vendor: true,
+          field_vendor_bill_status: true,
+          field_vendor_bill_total: true,
+          field_vendor_bill_billed_at: true,
+          field_vendor_bill_due_at: true,
+        },
+        columnOrder: [
+          'field_vendor_bill_number',
+          'field_vendor_bill_vendor',
+          'field_vendor_bill_status',
+          'field_vendor_bill_total',
+          'field_vendor_bill_billed_at',
+          'field_vendor_bill_due_at',
+        ],
+        columnPinning: { left: ['_checkbox', 'field_vendor_bill_number'] },
+        sorting: [{ id: 'field_vendor_bill_billed_at', desc: true }],
+        filters: [],
+        columnSizing: {},
+        columnLabels: {},
+        columnFormatting: {},
+      } satisfies ViewConfig,
+    },
+    {
+      // The three-way-match exception queue (plans/purchasing/01-build-plan.md
+      // §6.3). A saved view, not a bespoke screen: three numbers side by side per
+      // line is the entire UI. If this list is usually empty the tolerances are
+      // right; if it is never empty they are wrong, and that is a settings row.
+      name: 'Match Exceptions',
+      description: 'Bills whose three-way match failed - needs a human',
+      isDefault: false,
+      config: {
+        viewType: 'table' as const,
+        columnVisibility: {
+          field_vendor_bill_number: true,
+          field_vendor_bill_vendor: true,
+          field_vendor_bill_match_variance: true,
+          field_vendor_bill_match_notes: true,
+          field_vendor_bill_total: true,
+        },
+        columnOrder: [
+          'field_vendor_bill_number',
+          'field_vendor_bill_vendor',
+          'field_vendor_bill_match_variance',
+          'field_vendor_bill_match_notes',
+          'field_vendor_bill_total',
+        ],
+        columnPinning: { left: ['_checkbox', 'field_vendor_bill_number'] },
+        sorting: [{ id: 'field_vendor_bill_billed_at', desc: true }],
+        filters: [],
+        columnSizing: {},
+        columnLabels: {},
+        columnFormatting: {},
+      } satisfies ViewConfig,
+    },
+  ],
+
   invoice: [
     {
       name: 'All Invoices',

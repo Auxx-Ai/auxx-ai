@@ -158,6 +158,14 @@ export const ENTITY_DEFINITION_TYPES = [
   'product',
   'gl_posting',
   'order',
+  'purchase_order',
+  'purchase_order_line',
+  'vendor_bill',
+  'vendor_bill_line',
+  'vendor_payment',
+  'vendor_payment_allocation',
+  'gl_account',
+  'gl_posting_line',
 ] as const
 
 /** Type for system entity types stored in EntityDefinition */

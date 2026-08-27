@@ -64,7 +64,31 @@ describe('registerEntitySystemRules — declarations', () => {
       (d) => d.defSlug === 'stock-movements' && d.on === 'created'
     )!
     const handlers = smCreated.actions.map((a) => (a as { handler?: string }).handler)
-    expect(handlers).toEqual(['explodeBomMovement', 'recalculatePartQoH'])
+    // The PO-line roll-up rides the same door but is order-independent — it re-SUMs
+    // committed rows and neither reads nor writes what explode/qoh touch.
+    expect(handlers).toEqual([
+      'explodeBomMovement',
+      'recalculatePartQoH',
+      'recalculatePurchaseOrderLineReceived',
+    ])
+    expect(handlers.indexOf('explodeBomMovement')).toBeLessThan(
+      handlers.indexOf('recalculatePartQoH')
+    )
+  })
+
+  it('re-SUMs the PO line qty billed on both bill-line lifecycle doors', () => {
+    // `purchase_order_line_quantity_billed` is `creatable:false, updatable:false,
+    // computed:true` — these two declarations are its ONLY writers, and an absent
+    // `deleted` declaration would leave a removed bill line counted forever.
+    const billLineRules = getSystemRuleDeclarations().filter(
+      (d) => d.defSlug === 'vendor-bill-lines'
+    )
+    expect(billLineRules.map((d) => d.on).sort()).toEqual(['created', 'deleted'])
+    for (const rule of billLineRules) {
+      expect(rule.actions).toEqual([
+        { type: 'native', handler: 'recalculatePurchaseOrderLineBilled' },
+      ])
+    }
   })
 })
 

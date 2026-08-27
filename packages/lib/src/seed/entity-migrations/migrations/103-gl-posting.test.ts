@@ -42,12 +42,13 @@ describe('gl_posting entity registration wiring', () => {
     }
   })
 
-  it('carries exactly the §6.2 field set', () => {
+  it('carries exactly the §6.2 field set, plus its lines', () => {
     expect(Object.keys(GL_POSTING_FIELDS).sort()).toEqual([
       'createdAt',
       'docNumber',
       'failureReason',
       'id',
+      'lines',
       'periodKey',
       'postedAt',
       'postingType',
@@ -57,10 +58,25 @@ describe('gl_posting entity registration wiring', () => {
     ])
   })
 
-  it('carries no relationship fields — a posting summarises a window, not a record', () => {
+  // This assertion used to read "carries NO relationship fields — a posting
+  // summarises a window, not a record", and that was true while a posting stored
+  // only `totalDebit`. It stopped being true deliberately
+  // (plans/purchasing/README.md P2): the entry we push has to be reconstructable
+  // from our own data, so the double-entry lines are stored here, keyed on an
+  // account CODE rather than an accounting provider's account id. Without them
+  // the ledger is only as portable as the provider that holds it.
+  //
+  // The original intent survives, narrowed: a posting still links to no BUSINESS
+  // record. Its only edge is to its own lines.
+  it('links to no business record — its only relationship is its own lines', () => {
     for (const [key, field] of Object.entries(GL_POSTING_FIELDS)) {
+      if (key === 'lines') continue
       expect(field.relationship, `${key} should not be a relationship`).toBeUndefined()
     }
+    expect(GL_POSTING_FIELDS.lines?.relationship?.relationshipType).toBe('has_many')
+    expect(GL_POSTING_FIELDS.lines?.relationship?.inverseResourceFieldId).toBe(
+      'gl_posting_line:glPosting'
+    )
   })
 
   it('does not model the external QuickBooks id — that is an app-owned identity field', () => {

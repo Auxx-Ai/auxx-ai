@@ -17,6 +17,7 @@ import {
   computeLineTotal,
   type DiscountType,
   type DocumentBillingInputs,
+  type DocumentTotals,
   type LineForTotals,
 } from '@auxx/lib/money/client'
 import {
@@ -37,7 +38,7 @@ import {
 } from '~/components/resources/store/field-value-store'
 import { useResourceStore } from '~/components/resources/store/resource-store'
 import type { DraftLine } from './line-rows'
-import { DOCUMENT_KNOBS, type DocumentType } from './line-values'
+import { type DocumentType, type LineSchema, lineSchemaFor } from './line-values'
 import { formatCurrency } from './shared'
 
 /** Org tax rate preset (`documents.taxRates` setting, §G.1). */
@@ -58,22 +59,38 @@ export interface TaxRatePreset {
  * (`draftLines` — pure client state, no store fetch needed) so the optimistic footer counts
  * in-progress rows too. `LineBuilder` preloads these keys; the footer only subscribes.
  */
-function useLinesForTotals(lineRecordIds: RecordId[], draftLines: DraftLine[]): LineForTotals[] {
+function useLinesForTotals(
+  lineRecordIds: RecordId[],
+  draftLines: DraftLine[],
+  schema: LineSchema
+): LineForTotals[] {
   const systemAttributeMap = useResourceStore((s) => s.systemAttributeMap)
-  const qtyRef = systemAttributeMap.line_item_qty
-  const priceRef = systemAttributeMap.line_item_unit_price
-  const taxableRef = systemAttributeMap.line_item_taxable
-  const optionalRef = systemAttributeMap.line_item_optional
-  const optionalSelectedRef = systemAttributeMap.line_item_optional_selected
+  // An attribute the schema maps to `null` has no field to resolve, so its key is
+  // `undefined` and the reader below falls back to the default.
+  //
+  // 🛑 Only qty and price may hard-gate. This used to bail to `[]` unless ALL FIVE
+  // resolved, which on a document whose lines carry no `taxable`/`optional` fields
+  // (every purchasing line) would silently total the whole document to zero.
+  const ref = (key: keyof typeof schema.attrs) => {
+    const attr = schema.attrs[key]
+    return attr ? systemAttributeMap[attr] : undefined
+  }
+  const qtyRef = ref('qty')
+  const priceRef = ref('unitPriceCents')
+  const taxableRef = ref('taxable')
+  const optionalRef = ref('optional')
+  const optionalSelectedRef = ref('optionalSelected')
 
   const keys = useMemo(() => {
-    if (!qtyRef || !priceRef || !taxableRef || !optionalRef || !optionalSelectedRef) return []
+    if (!qtyRef || !priceRef) return []
     return lineRecordIds.map((recordId) => ({
       qty: buildFieldValueKey(recordId, qtyRef),
       price: buildFieldValueKey(recordId, priceRef),
-      taxable: buildFieldValueKey(recordId, taxableRef),
-      optional: buildFieldValueKey(recordId, optionalRef),
-      optionalSelected: buildFieldValueKey(recordId, optionalSelectedRef),
+      taxable: taxableRef ? buildFieldValueKey(recordId, taxableRef) : null,
+      optional: optionalRef ? buildFieldValueKey(recordId, optionalRef) : null,
+      optionalSelected: optionalSelectedRef
+        ? buildFieldValueKey(recordId, optionalSelectedRef)
+        : null,
     }))
   }, [lineRecordIds, qtyRef, priceRef, taxableRef, optionalRef, optionalSelectedRef])
   const keysKey = keys.map((k) => k.qty).join(',')
@@ -87,9 +104,9 @@ function useLinesForTotals(lineRecordIds: RecordId[], draftLines: DraftLine[]): 
           for (const k of keys) {
             result[k.qty] = state.values[k.qty]
             result[k.price] = state.values[k.price]
-            result[k.taxable] = state.values[k.taxable]
-            result[k.optional] = state.values[k.optional]
-            result[k.optionalSelected] = state.values[k.optionalSelected]
+            if (k.taxable) result[k.taxable] = state.values[k.taxable]
+            if (k.optional) result[k.optional] = state.values[k.optional]
+            if (k.optionalSelected) result[k.optionalSelected] = state.values[k.optionalSelected]
           }
           return result
         },
@@ -111,10 +128,18 @@ function useLinesForTotals(lineRecordIds: RecordId[], draftLines: DraftLine[]): 
         const qty = (scalar(storeValues[k.qty], FieldType.NUMBER) as number | null | undefined) ?? 1
         const unitPrice =
           (scalar(storeValues[k.price], FieldType.CURRENCY) as number | null | undefined) ?? null
-        const taxable = scalar(storeValues[k.taxable], FieldType.CHECKBOX) !== false
-        const optional = scalar(storeValues[k.optional], FieldType.CHECKBOX) === true
-        const optionalSelected =
-          scalar(storeValues[k.optionalSelected], FieldType.CHECKBOX) !== false
+        // Absent field -> the neutral default: taxable, not optional, selected.
+        // That is what makes `computeDocumentTotals` (which takes all four) correct
+        // for a document carrying none of them.
+        const taxable = k.taxable
+          ? scalar(storeValues[k.taxable], FieldType.CHECKBOX) !== false
+          : true
+        const optional = k.optional
+          ? scalar(storeValues[k.optional], FieldType.CHECKBOX) === true
+          : false
+        const optionalSelected = k.optionalSelected
+          ? scalar(storeValues[k.optionalSelected], FieldType.CHECKBOX) !== false
+          : true
         return { lineTotal: computeLineTotal(qty, unitPrice), taxable, optional, optionalSelected }
       }),
     [keys, storeValues]
@@ -161,16 +186,17 @@ export function TotalsFooter({
   onUpdateDiscount: (type: DiscountType | null, value: number | null) => void
   onUpdateTax: (name: string | null, rate: number | null) => void
 }) {
-  const isQuote = documentType === 'quote'
-  const isInvoice = documentType === 'invoice'
+  const schema = lineSchemaFor(documentType)
+  const { totalsMode, billingPrefix: prefix } = schema
+  /** Discount + tax are editable only where the document computes its own totals. */
+  const editableBilling = totalsMode === 'computed'
+  const showPaymentMirrors = schema.capabilities.paymentMirrors
   // All THREE totalled documents mirror the same billing shape (discount/tax) onto their
   // own systemAttribute prefix (money MI1 build spec §J.2, widened to `order` by
   // plans/products/08-order-build.md §5.6) — work_order (M2 job view) has none.
   // Keyed lookups, not `isInvoice ? 'invoice' : 'quote'`: that shape reads an order's
   // totals off `quote_*` and shows the wrong numbers.
-  const hasBilling = DOCUMENT_KNOBS[documentType].hasBilling
-  const prefix = DOCUMENT_KNOBS[documentType].billingPrefix
-  const lines = useLinesForTotals(lineRecordIds, draftLines)
+  const lines = useLinesForTotals(lineRecordIds, draftLines, schema)
   const [discountDraft, setDiscountDraft] = useState<string | null>(null)
 
   const discountType =
@@ -180,15 +206,50 @@ export function TotalsFooter({
   const taxName = (billingValues[`${prefix}_tax_name`] as string | null | undefined) ?? null
   const taxRate = (billingValues[`${prefix}_tax_rate`] as number | null | undefined) ?? null
   // Invoice-only: the ledger-sync mirrors (§E.4) — never written from here, read-only.
-  const amountPaid = isInvoice
+  const amountPaid = showPaymentMirrors
     ? ((billingValues.invoice_amount_paid as number | null | undefined) ?? 0)
     : null
-  const balance = isInvoice
+  const balance = showPaymentMirrors
     ? ((billingValues.invoice_balance as number | null | undefined) ?? null)
     : null
 
-  const billing: DocumentBillingInputs = hasBilling ? { discountType, discountValue, taxRate } : {}
-  const totals = computeDocumentTotals(lines, billing)
+  const billing: DocumentBillingInputs = editableBilling
+    ? { discountType, discountValue, taxRate }
+    : {}
+  const computed = computeDocumentTotals(lines, billing)
+  // 🛑 `stored` reads the mirrors and computes NOTHING. A vendor bill's totals are
+  // transcribed from the vendor's paper, and recomputing them from the lines would
+  // silently correct the vendor's own arithmetic — the exact discrepancy the
+  // three-way match exists to surface (plans/purchasing/01-build-plan.md §5.4b).
+  const stored = (key: string): number =>
+    (billingValues[`${prefix}_${key}`] as number | null | undefined) ?? 0
+  // Stated amounts, read for `stated` mode only. A PO's shipping and tax are keyed
+  // or produced by the freight allocation, never derived from a rate.
+  const statedDiscount = stored('discount_value')
+  const statedShipping = stored('shipping_total')
+  const statedTax = stored('tax_total')
+  let totals: DocumentTotals = computed
+  if (totalsMode === 'stored') {
+    totals = {
+      subtotal: stored('subtotal'),
+      // No discount row is rendered in `stored` mode, so this is never read;
+      // it exists to satisfy the shared shape rather than to mean anything.
+      discountAmount: 0,
+      taxTotal: stored('tax_total'),
+      total: stored('total'),
+    }
+  } else if (totalsMode === 'stated') {
+    // 🛑 Must match what the server persists: subtotal − discount + shipping + tax
+    // (plans/purchasing/01-build-plan.md §4.1). `computed.subtotal` is the line sum;
+    // `computed.total` is NOT usable here because it applies a rate this document
+    // does not have.
+    totals = {
+      subtotal: computed.subtotal,
+      discountAmount: statedDiscount,
+      taxTotal: statedTax,
+      total: computed.subtotal - statedDiscount + statedShipping + statedTax,
+    }
+  }
 
   const selectedTaxId =
     taxRate !== null
@@ -242,7 +303,7 @@ export function TotalsFooter({
             <span className='tabular-nums'>{formatCurrency(totals.subtotal, currencyCode)}</span>
           </div>
 
-          {hasBilling && (
+          {editableBilling && (
             <div className='flex items-center justify-between gap-2'>
               <div className='flex items-center gap-1'>
                 <span className='text-muted-foreground'>Discount</span>
@@ -297,7 +358,7 @@ export function TotalsFooter({
             </div>
           )}
 
-          {hasBilling && (
+          {editableBilling && (
             <div className='flex items-center justify-between gap-2'>
               <div className='flex min-w-0 items-center gap-1'>
                 <span className='text-muted-foreground'>Tax</span>
@@ -340,6 +401,30 @@ export function TotalsFooter({
             </div>
           )}
 
+          {/* `stated` (purchase order): amounts the document carries, not rates —
+              read-only here. Shipping and tax are the freight-allocation inputs
+              (plans/purchasing/01-build-plan.md §4.1), keyed on the PO header. */}
+          {totalsMode === 'stated' && (
+            <>
+              {statedDiscount > 0 && (
+                <div className='flex items-center justify-between'>
+                  <span className='text-muted-foreground'>Discount</span>
+                  <span className='tabular-nums'>
+                    -{formatCurrency(statedDiscount, currencyCode)}
+                  </span>
+                </div>
+              )}
+              <div className='flex items-center justify-between'>
+                <span className='text-muted-foreground'>Shipping</span>
+                <span className='tabular-nums'>{formatCurrency(statedShipping, currencyCode)}</span>
+              </div>
+              <div className='flex items-center justify-between'>
+                <span className='text-muted-foreground'>Tax</span>
+                <span className='tabular-nums'>{formatCurrency(statedTax, currencyCode)}</span>
+              </div>
+            </>
+          )}
+
           <div className='flex items-center justify-between border-primary-200/50 border-t pt-1 font-medium dark:border-[#1e2227]'>
             <span>Total</span>
             <span className='tabular-nums'>{formatCurrency(totals.total, currencyCode)}</span>
@@ -347,7 +432,7 @@ export function TotalsFooter({
 
           {/* Invoice-only: the ledger-sync mirrors (money MI1 build spec §J.2) — read-only,
               never written from the footer (recording/deleting a payment is the only writer). */}
-          {isInvoice && (
+          {showPaymentMirrors && (
             <>
               <div className='flex items-center justify-between'>
                 <span className='text-muted-foreground'>Amount paid</span>

@@ -10,7 +10,9 @@ import { CATALOG_ITEM_FIELDS } from './resources/catalog-item-fields'
 import { COMPANY_FIELDS } from './resources/company-fields'
 import { CONTACT_FIELDS } from './resources/contact-fields'
 import { DATASET_FIELDS } from './resources/dataset-fields'
+import { GL_ACCOUNT_FIELDS } from './resources/gl-account-fields'
 import { GL_POSTING_FIELDS } from './resources/gl-posting-fields'
+import { GL_POSTING_LINE_FIELDS } from './resources/gl-posting-line-fields'
 import { INBOX_FIELDS } from './resources/inbox-fields'
 import { INVOICE_FIELDS } from './resources/invoice-fields'
 import { KB_FIELDS } from './resources/kb-fields'
@@ -23,6 +25,8 @@ import { PARTICIPANT_FIELDS } from './resources/participant-fields'
 import { PAYMENT_FIELDS } from './resources/payment-fields'
 import { PERSONAL_INBOX_FIELDS } from './resources/personal-inbox-fields'
 import { PRODUCT_FIELDS } from './resources/product-fields'
+import { PURCHASE_ORDER_FIELDS } from './resources/purchase-order-fields'
+import { PURCHASE_ORDER_LINE_FIELDS } from './resources/purchase-order-line-fields'
 import { QUOTE_FIELDS } from './resources/quote-fields'
 import { SERVICE_REQUEST_FIELDS } from './resources/service-request-fields'
 import { SIGNATURE_FIELDS } from './resources/signature-fields'
@@ -31,7 +35,11 @@ import { SUBPART_FIELDS } from './resources/subpart-fields'
 import { THREAD_FIELDS } from './resources/thread-fields'
 import { TICKET_FIELDS } from './resources/ticket-fields'
 import { USER_FIELDS } from './resources/user-fields'
+import { VENDOR_BILL_FIELDS } from './resources/vendor-bill-fields'
+import { VENDOR_BILL_LINE_FIELDS } from './resources/vendor-bill-line-fields'
 import { VENDOR_PART_FIELDS } from './resources/vendor-part-fields'
+import { VENDOR_PAYMENT_ALLOCATION_FIELDS } from './resources/vendor-payment-allocation-fields'
+import { VENDOR_PAYMENT_FIELDS } from './resources/vendor-payment-fields'
 import { VISIT_FIELDS } from './resources/visit-fields'
 import { WORK_ORDER_FIELDS } from './resources/work-order-fields'
 
@@ -134,6 +142,14 @@ export const RESOURCE_FIELD_REGISTRY: ResourceFieldRegistry = {
   product: PRODUCT_FIELDS,
   gl_posting: GL_POSTING_FIELDS,
   order: ORDER_FIELDS,
+  purchase_order: PURCHASE_ORDER_FIELDS,
+  purchase_order_line: PURCHASE_ORDER_LINE_FIELDS,
+  vendor_bill: VENDOR_BILL_FIELDS,
+  vendor_bill_line: VENDOR_BILL_LINE_FIELDS,
+  vendor_payment: VENDOR_PAYMENT_FIELDS,
+  vendor_payment_allocation: VENDOR_PAYMENT_ALLOCATION_FIELDS,
+  gl_account: GL_ACCOUNT_FIELDS,
+  gl_posting_line: GL_POSTING_LINE_FIELDS,
 }
 
 /**

@@ -641,5 +641,83 @@ export const COMPANY_FIELDS: Record<string, ResourceField> = {
     description: 'Orders placed by this company',
   },
 
+  // Reverse relationship: purchaseOrders (from purchase_order.vendor)
+  purchaseOrders: {
+    id: toFieldId('purchaseOrders'),
+    key: 'purchaseOrders',
+    label: 'Purchase Orders',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'company_purchase_orders',
+    showInPanel: false,
+    systemSortOrder: 'c0',
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'purchase_order:vendor' as ResourceFieldId,
+      relationshipType: 'has_many',
+      isInverse: true,
+    },
+    description: 'Purchase orders raised on this supplier',
+  },
+
+  // Reverse relationship: vendorBills (from vendor_bill.vendor)
+  vendorBills: {
+    id: toFieldId('vendorBills'),
+    key: 'vendorBills',
+    label: 'Vendor Bills',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'company_vendor_bills',
+    showInPanel: false,
+    systemSortOrder: 'c1',
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'vendor_bill:vendor' as ResourceFieldId,
+      relationshipType: 'has_many',
+      isInverse: true,
+    },
+    description: 'Bills received from this supplier',
+  },
+
+  // Reverse relationship: vendorPayments (from vendor_payment.vendor)
+  vendorPayments: {
+    id: toFieldId('vendorPayments'),
+    key: 'vendorPayments',
+    label: 'Vendor Payments',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'company_vendor_payments',
+    showInPanel: false,
+    systemSortOrder: 'c2',
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'vendor_payment:vendor' as ResourceFieldId,
+      relationshipType: 'has_many',
+      isInverse: true,
+    },
+    description: 'Payments made to this supplier',
+  },
+
   createdBy: CREATED_BY_FIELD,
 }

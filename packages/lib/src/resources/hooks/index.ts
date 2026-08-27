@@ -6,6 +6,7 @@ export { INVOICE_HOOKS } from './invoice-hooks'
 export { LINE_ITEM_HOOKS } from './line-item-hooks'
 export { ORDER_HOOKS } from './order-hooks'
 export { PAYMENT_HOOKS } from './payment-hooks'
+export { PURCHASE_ORDER_HOOKS, VENDOR_BILL_HOOKS } from './purchasing-hooks'
 export { QUOTE_HOOKS } from './quote-hooks'
 export { SERVICE_REQUEST_HOOKS } from './service-request-hooks'
 export {

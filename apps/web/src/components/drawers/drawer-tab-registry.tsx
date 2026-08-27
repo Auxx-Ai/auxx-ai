@@ -228,6 +228,25 @@ export const DRAWER_TAB_CARD_COMPONENTS: Record<
     import('./cards/order-work-orders-card').then((m) => ({ default: m.OrderWorkOrdersCard })),
 
   // ─────────────────────────────────────────────────────────────────
+  // PURCHASING CARDS — plans/purchasing/01-build-plan.md §4.4 / §5.1.
+  // `vendor_bill:match` is the three-way-match verdict: billed, received and
+  // expected side by side per line. Per §6.3 that IS the entire exception UI -
+  // there is no bespoke screen behind it.
+  // ─────────────────────────────────────────────────────────────────
+  'purchase_order:lines': () =>
+    import('../purchasing/purchase-order/purchase-order-lines-card').then((m) => ({
+      default: m.PurchaseOrderLinesCard,
+    })),
+  'vendor_bill:lines': () =>
+    import('../purchasing/vendor-bill/vendor-bill-lines-card').then((m) => ({
+      default: m.VendorBillLinesCard,
+    })),
+  'vendor_bill:match': () =>
+    import('../purchasing/vendor-bill/vendor-bill-match-card').then((m) => ({
+      default: m.VendorBillMatchCard,
+    })),
+
+  // ─────────────────────────────────────────────────────────────────
   // WORK ORDER (job view) SIDEBAR CARDS — dispatch M2 build spec §F.2, shared
   // with the job view's DetailView sidebar (DetailViewSidebar reads from this
   // same registry, see detail-view-sidebar.tsx).

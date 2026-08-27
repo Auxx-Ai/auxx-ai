@@ -184,6 +184,35 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
     ],
   },
 
+  purchase_order: {
+    entityType: 'purchase_order',
+    // The order/quote recipe: a PO is BUILT - drafted, issued, received against -
+    // so it earns a page rather than the bill's drawer
+    // (plans/purchasing/01-build-plan.md §4.4).
+    layout: 'sections',
+    mainTabs: [
+      {
+        value: 'line-items',
+        label: 'Lines',
+        icon: 'receipt-text',
+        fullBleed: false,
+      },
+      { value: 'timeline', label: 'Timeline', icon: 'clock' },
+      { value: 'tasks', label: 'Tasks', icon: 'list-todo' },
+    ],
+    sidebarTabs: DEFAULT_SIDEBAR_TABS,
+    defaultTab: 'line-items',
+    defaultSidebarTab: 'overview',
+    // Deliberately empty for now. `vendor`, `receiving` (the computed
+    // quantityReceived roll-up) and `bills` are all wanted and none is built -
+    // and a card declared here with no component in
+    // `DRAWER_TAB_CARD_COMPONENTS` renders NOTHING at all, silently
+    // (`base-entity-drawer.tsx`: `if (!componentLoader) return null`). A
+    // phantom card is worse than an absent one, so they land with their
+    // components, not before.
+    sidebarCards: [],
+  },
+
   work_order: {
     entityType: 'work_order',
     // Sections mode (dispatch M2 build spec §F.1/§F.2, 04-ui.md §6): the job view

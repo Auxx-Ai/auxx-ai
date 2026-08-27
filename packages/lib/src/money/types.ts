@@ -67,6 +67,16 @@ export interface ReorderLinesInput extends MoneyMutationInput {
   documentRecordId?: RecordId
   /** EntityInstance ids of the line items, in their new order. */
   orderedLineInstanceIds: string[]
+  /**
+   * The line entity being reordered. Defaults to `line_item` — the four money
+   * documents. `purchase_order_line` / `vendor_bill_line` carry their own sort
+   * field, so the entity type and the attribute travel together or the write
+   * lands on a field id that does not resolve
+   * (plans/purchasing/03-line-builder-reuse.md).
+   */
+  lineEntityType?: string
+  /** The line entity's own sort attribute. Defaults to `line_item_sort_order`. */
+  sortAttribute?: string
 }
 
 /**
@@ -76,8 +86,8 @@ export interface ReorderLinesInput extends MoneyMutationInput {
  * compiling unchanged — it's treated as `documentType: 'quote'`.
  */
 export interface RecomputeTotalsInput extends MoneyMutationInput {
-  documentType?: 'quote' | 'invoice' | 'order'
-  /** EntityInstance id of the quote, invoice or order (not the RecordId). */
+  documentType?: 'quote' | 'invoice' | 'order' | 'purchase_order'
+  /** EntityInstance id of the quote, invoice, order or purchase order (not the RecordId). */
   documentInstanceId?: string
   /** @deprecated legacy shape — pass `documentInstanceId` + `documentType: 'quote'` instead. */
   quoteInstanceId?: string

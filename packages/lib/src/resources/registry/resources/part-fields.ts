@@ -631,5 +631,58 @@ export const PART_FIELDS: Record<string, ResourceField> = {
     description: 'The product family this part belongs to',
   },
 
+  // Reverse relationship: purchaseOrderLines (from purchase_order_line.part)
+  purchaseOrderLines: {
+    id: toFieldId('purchaseOrderLines'),
+    key: 'purchaseOrderLines',
+    label: 'Purchase Order Lines',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'part_purchase_order_lines',
+    showInPanel: false,
+    systemSortOrder: 'c0',
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'purchase_order_line:part' as ResourceFieldId,
+      relationshipType: 'has_many',
+      isInverse: true,
+    },
+    description:
+      'Purchase order lines ordering this part - the on-order quantity reads through here',
+  },
+
+  // Reverse relationship: vendorBillLines (from vendor_bill_line.part)
+  vendorBillLines: {
+    id: toFieldId('vendorBillLines'),
+    key: 'vendorBillLines',
+    label: 'Vendor Bill Lines',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'part_vendor_bill_lines',
+    showInPanel: false,
+    systemSortOrder: 'c1',
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'vendor_bill_line:part' as ResourceFieldId,
+      relationshipType: 'has_many',
+      isInverse: true,
+    },
+    description: 'Bill lines charging for this part - what we were actually invoiced, per part',
+  },
+
   createdBy: CREATED_BY_FIELD,
 }
