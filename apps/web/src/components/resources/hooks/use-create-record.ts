@@ -31,9 +31,15 @@ export interface CreatedRecordResult {
 
 export interface UseCreateRecordOptions {
   entityDefinitionId: string
-  /** record-store list to append the new id into (from `useRecordList().listKey`).
-   *  Omit for catalog/standalone surfaces (seeds row data only, no list membership). */
-  listKey?: string
+  /**
+   * Add each created row to a list's caches — pass `useRecordList().appendCreated`.
+   * Omit for catalog/standalone surfaces (seeds row data only, no list membership).
+   *
+   * ⚠️ It must be the hook's own `appendCreated`, not a bare store write: a list
+   * is served from EITHER the record store or the tRPC query pages, and writing
+   * only one makes the row revert on the next remount.
+   */
+  appendCreated?: (instanceId: string) => void
   /** Surface-specific extras the hook can't know about: navigation, relationship
    *  hydration, standalone-query (`['calendar-record-ids']`) invalidation, or the
    *  `record.listAll` catalog push. Fires once per created row, after it's seeded. */
@@ -57,7 +63,7 @@ export function useCreateRecord(opts: UseCreateRecordOptions): {
   createMany: (inputs: CreateRecordInput[]) => Promise<CreatedRecordResult[]>
   isPending: boolean
 } {
-  const { entityDefinitionId, listKey, onCreated } = opts
+  const { entityDefinitionId, appendCreated, onCreated } = opts
   const { seedCreatedRecord } = useSeedCreatedRecord()
   const createMutation = api.record.create.useMutation()
   const createManyMutation = api.record.createMany.useMutation()
@@ -96,10 +102,10 @@ export function useCreateRecord(opts: UseCreateRecordOptions): {
         seedCreatedRecord({
           entityDefinitionId,
           recordId: result.recordId,
-          listKey,
           instance: result.instance,
           values: toSeedValues(input.values),
         })
+        appendCreated?.(result.instance.id)
         const created: CreatedRecordResult = {
           recordId: result.recordId,
           instanceId: result.instance.id,
@@ -115,7 +121,7 @@ export function useCreateRecord(opts: UseCreateRecordOptions): {
         throw error
       }
     },
-    [entityDefinitionId, listKey, onCreated, seedCreatedRecord, toSeedValues, createMutation]
+    [entityDefinitionId, appendCreated, onCreated, seedCreatedRecord, toSeedValues, createMutation]
   )
 
   const createMany = useCallback(
@@ -131,10 +137,10 @@ export function useCreateRecord(opts: UseCreateRecordOptions): {
           seedCreatedRecord({
             entityDefinitionId,
             recordId: result.recordId,
-            listKey,
             instance: result.instance,
             values: toSeedValues(inputs[i]?.values ?? {}),
           })
+          appendCreated?.(result.instance.id)
           const created: CreatedRecordResult = {
             recordId: result.recordId,
             instanceId: result.instance.id,
@@ -151,7 +157,14 @@ export function useCreateRecord(opts: UseCreateRecordOptions): {
         throw error
       }
     },
-    [entityDefinitionId, listKey, onCreated, seedCreatedRecord, toSeedValues, createManyMutation]
+    [
+      entityDefinitionId,
+      appendCreated,
+      onCreated,
+      seedCreatedRecord,
+      toSeedValues,
+      createManyMutation,
+    ]
   )
 
   return {
