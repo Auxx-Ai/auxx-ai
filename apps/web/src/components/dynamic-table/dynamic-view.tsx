@@ -348,7 +348,7 @@ export function DynamicView<TData extends object = object>(props: DynamicTablePr
       .map((f) => ({
         id: f.id,
         name: f.name ?? f.label,
-        options: f.options as { options?: Array<{ id: string; label: string; color?: string }> },
+        options: f.options ?? {},
       }))
   }, [fields])
 
