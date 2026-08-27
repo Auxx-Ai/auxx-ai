@@ -61,14 +61,16 @@ const shopifyDef = {
   platformClientApproved: true,
 }
 
-vi.mock('@auxx/database', () => ({
-  database: {
-    query: {
-      AppInstallation: { findFirst: (...a: unknown[]) => findFirstInstallation(...a) },
-      ConnectionDefinition: { findFirst: (...a: unknown[]) => findFirstConnDef(...a) },
+vi.mock('@auxx/database', async () =>
+  (await import('~/test/database-mock')).mockAuxxDatabase({
+    database: {
+      query: {
+        AppInstallation: { findFirst: (...a: unknown[]) => findFirstInstallation(...a) },
+        ConnectionDefinition: { findFirst: (...a: unknown[]) => findFirstConnDef(...a) },
+      },
     },
-  },
-}))
+  })
+)
 vi.mock('@auxx/lib/cache', () => ({ resolveAppSlug }))
 vi.mock('@auxx/lib/apps', () => ({ resolveAppConnectionForRuntime }))
 vi.mock('@auxx/lib/permissions', () => ({

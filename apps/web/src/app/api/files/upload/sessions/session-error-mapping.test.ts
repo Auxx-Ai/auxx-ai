@@ -44,7 +44,7 @@ vi.mock('@auxx/logger', async () =>
 )
 vi.mock('next/headers', () => ({ headers: async () => new Headers() }))
 vi.mock('~/auth/server', () => ({ auth: { api: { getSession } } }))
-vi.mock('@auxx/database', () => ({ database: { transaction: vi.fn() }, schema: {} }))
+vi.mock('@auxx/database', async () => (await import('~/test/database-mock')).mockAuxxDatabase())
 
 // Faithful to `~/server/api/trpc`'s exported guard; the `name` + `statusCode`
 // branch there exists only for dual module copies, which the vitest source

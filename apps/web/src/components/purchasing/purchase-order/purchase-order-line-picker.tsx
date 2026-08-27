@@ -32,7 +32,6 @@
 // relationship, already on the read path the Receiving card uses, so scoping
 // here is a matter of reading the order the bill points at.
 
-import { extractRelationshipRecordIds } from '@auxx/lib/field-values/client'
 import type { SelectOption } from '@auxx/types/custom-field'
 import type { RecordId } from '@auxx/types/resource'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
@@ -40,20 +39,9 @@ import { formatCurrency } from '@auxx/utils/currency'
 import { useCallback, useMemo, useState } from 'react'
 import { MultiSelectPicker } from '~/components/pickers/multi-select-picker'
 import { useRecords } from '~/components/resources'
-import { useSystemValues } from '~/components/resources/hooks/use-system-values'
-import { useSystemValuesForRecords } from '~/components/resources/hooks/use-system-values-for-records'
 import { PickerTrigger } from '~/components/ui/picker-trigger'
-import { formatQuantity, numberValue, unwrapValue } from '../purchasing-summary-strip'
-
-const PO_ATTRS = ['purchase_order_lines'] as const
-
-const LINE_ATTRS = [
-  'purchase_order_line_part',
-  'purchase_order_line_description',
-  'purchase_order_line_quantity_ordered',
-  'purchase_order_line_quantity_received',
-  'purchase_order_line_expected_unit_price',
-] as const
+import { formatQuantity } from '../purchasing-summary-strip'
+import { usePurchaseOrderLines } from './use-purchase-order-lines'
 
 interface PickableLine {
   lineRecordId: RecordId
@@ -89,33 +77,20 @@ export function PurchaseOrderLinePicker({
 }: PurchaseOrderLinePickerProps) {
   const [open, setOpen] = useState(false)
 
-  const { values, isLoading: linesLoading } = useSystemValues(
-    purchaseOrderRecordId,
-    [...PO_ATTRS],
-    {
-      autoFetch: true,
-      enabled: !!purchaseOrderRecordId,
-    }
-  )
-  const lineRecordIds = extractRelationshipRecordIds(values.purchase_order_lines)
-
-  const { valuesById, isLoading: valuesLoading } = useSystemValuesForRecords(
-    lineRecordIds,
-    LINE_ATTRS,
-    { autoFetch: true, enabled: lineRecordIds.length > 0 }
-  )
+  // Shared with "Add lines from order" on the bill — the picker offering a line
+  // and the button creating one must read the same set, or a line billable by one
+  // rule and not the other reads as a bug.
+  const { lines: orderLines, isLoading: orderLinesLoading } =
+    usePurchaseOrderLines(purchaseOrderRecordId)
 
   // The part carries the line's label, so its metadata is fetched in one batch
   // rather than a `useRecord` per row — the rows are options here, not components.
   const partRecordIds = useMemo(
     () =>
-      lineRecordIds
-        .map(
-          (lineRecordId) =>
-            extractRelationshipRecordIds(valuesById[lineRecordId]?.purchase_order_line_part)[0]
-        )
+      orderLines
+        .map((line) => line.partRecordId)
         .filter((partRecordId): partRecordId is RecordId => !!partRecordId),
-    [lineRecordIds, valuesById]
+    [orderLines]
   )
   const { recordsByKey, isLoading: partsLoading } = useRecords({
     recordIds: partRecordIds,
@@ -124,25 +99,19 @@ export function PurchaseOrderLinePicker({
 
   const lines: PickableLine[] = useMemo(
     () =>
-      lineRecordIds.map((lineRecordId) => {
-        const lineValues = valuesById[lineRecordId] ?? ({} as Record<string, unknown>)
-        const partRecordId = extractRelationshipRecordIds(lineValues.purchase_order_line_part)[0]
-        const description = unwrapValue(lineValues.purchase_order_line_description)
+      orderLines.map((line) => ({
+        lineRecordId: line.lineRecordId,
         // Same precedence as the Receiving card: part, then the typed
         // description, then an admission that the line has no identity yet.
-        const label =
-          (partRecordId && recordsByKey.get(partRecordId)?.displayName) ||
-          (typeof description === 'string' && description ? description : '') ||
-          'Untitled line'
-        return {
-          lineRecordId,
-          label,
-          ordered: numberValue(lineValues.purchase_order_line_quantity_ordered),
-          received: numberValue(lineValues.purchase_order_line_quantity_received),
-          expectedUnitPrice: numberValue(lineValues.purchase_order_line_expected_unit_price),
-        }
-      }),
-    [lineRecordIds, valuesById, recordsByKey]
+        label:
+          (line.partRecordId && recordsByKey.get(line.partRecordId)?.displayName) ||
+          line.description ||
+          'Untitled line',
+        ordered: line.ordered,
+        received: line.received,
+        expectedUnitPrice: line.expectedUnitPrice,
+      })),
+    [orderLines, recordsByKey]
   )
 
   const options: SelectOption[] = useMemo(
@@ -150,7 +119,7 @@ export function PurchaseOrderLinePicker({
     [lines]
   )
 
-  const isLoading = linesLoading || valuesLoading || partsLoading
+  const isLoading = orderLinesLoading || partsLoading
   const selectedLine = lines.find((line) => line.lineRecordId === value)
   // A stored value that is not among this order's lines is the exact corruption
   // the unscoped picker used to produce, so it must not render as an empty
