@@ -33,7 +33,7 @@ const {
 vi.mock('@auxx/logger', async () => (await import('~/test/logger-mock')).mockAuxxLogger())
 vi.mock('next/headers', () => ({ headers: async () => new Headers() }))
 vi.mock('~/auth/server', () => ({ auth: { api: { getSession } } }))
-vi.mock('@auxx/database', () => ({ database: { transaction: vi.fn() }, schema: {} }))
+vi.mock('@auxx/database', async () => (await import('~/test/database-mock')).mockAuxxDatabase())
 // The `@auxx/lib/files/server` barrel drags in the AWS SDK and the processor
 // registry; none of it is reachable before the gate, which is the point.
 vi.mock('@auxx/lib/files/server', () => ({

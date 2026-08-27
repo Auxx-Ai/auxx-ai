@@ -30,6 +30,11 @@
 //     through. It lives in the row's `⋯` menu, and its picker is supplied from
 //     here — `renderMatchKeyEditor` — because `LineBuilder` must not import from
 //     `purchasing`, which already imports it.
+// The header action is **Add lines from order** — the bill's structure raised
+// from the order's received-but-unbilled lines, so the person holding the invoice
+// types the numbers instead of rebuilding the line list. It prefills no match
+// input; see `bill-lines-from-purchase-order.ts`.
+//
 //   - `part` is NULLABLE here, unlike a PO line's. That is why the builder's
 //     draft-materialization guard is gated on `capabilities.draftRequiresPart`
 //     and not on `partPicker`: a freight line with no part must still be able to
@@ -38,14 +43,39 @@
 // The "Lines" section title is rendered by the drawer's `TabCardSection` wrapper,
 // so this card must not draw one.
 
+import { extractRelationshipRecordIds } from '@auxx/lib/field-values/client'
 import type { RecordId } from '@auxx/lib/resources/client'
+import { DrawerCardActions } from '~/components/drawers/drawer-card-actions'
 import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
 import { LineBuilder } from '~/components/money/ui/line-builder/line-builder'
+import { useResourceProperty } from '~/components/resources'
+import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { PurchaseOrderLinePicker } from '../purchase-order/purchase-order-line-picker'
+import { AddPurchaseOrderLinesButton } from './add-purchase-order-lines-button'
+
+const BILL_ORDER_ATTRS = ['vendor_bill_purchase_order'] as const
 
 export function VendorBillLinesCard({ recordId }: DrawerTabProps) {
+  const lineDefId = useResourceProperty('vendor_bill_line', 'id')
+  // The bill's own order — the same attribute `LineSchema.matchScopeAttr` names,
+  // read here for the header action. Read twice rather than threaded through the
+  // builder: the action is a sibling of the builder, not a part of it, and the
+  // second read is a cache hit on the value the builder already fetched.
+  const { values } = useSystemValues(recordId as RecordId, [...BILL_ORDER_ATTRS], {
+    autoFetch: true,
+  })
+  const purchaseOrderRecordId =
+    extractRelationshipRecordIds(values.vendor_bill_purchase_order)[0] ?? null
+
   return (
     <div className='max-h-[60vh] overflow-auto ps-3 pe-3'>
+      <DrawerCardActions>
+        <AddPurchaseOrderLinesButton
+          billRecordId={recordId as RecordId}
+          purchaseOrderRecordId={purchaseOrderRecordId}
+          lineDefId={lineDefId}
+        />
+      </DrawerCardActions>
       <LineBuilder
         documentRecordId={recordId}
         documentType='vendor_bill'

@@ -48,6 +48,7 @@ import { FieldType } from '@auxx/database/enums'
 import { extractRelationshipRecordIds } from '@auxx/lib/field-values/client'
 import type { RecordId } from '@auxx/types/resource'
 import { Button } from '@auxx/ui/components/button'
+import { Checkbox } from '@auxx/ui/components/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -70,6 +71,11 @@ import { BaseType } from '~/components/workflow/types'
 import { useSettings } from '~/hooks/use-settings'
 import { api } from '~/trpc/react'
 import { numberValue, PurchasingSummaryStrip, unwrapValue } from '../purchasing-summary-strip'
+import {
+  billLinesFromPurchaseOrder,
+  selectBillableLines,
+} from '../vendor-bill/bill-lines-from-purchase-order'
+import { usePurchaseOrderLines } from './use-purchase-order-lines'
 
 const PO_ATTRS = [
   'purchase_order_vendor',
@@ -185,11 +191,17 @@ export function CreateBillFromPurchaseOrderDialog({
   const unbilledShipping = remainder('purchase_order_shipping_total', 'vendor_bill_shipping_total')
   const unbilledTax = remainder('purchase_order_tax_total', 'vendor_bill_tax_total')
 
+  // Default ON: the order was received, so the invoice in hand is almost always
+  // for those lines. Off is the escape hatch for an invoice that bills something
+  // the order does not carry at all.
+  const [addLines, setAddLines] = useState(true)
+
   useEffect(() => {
     if (!open) return
     setDraft(EMPTY_DRAFT)
     setErrors({})
     setTotalIsPrefilled(false)
+    setAddLines(true)
   }, [open])
 
   // The order's values arrive after the dialog opens, so the prefill cannot be
@@ -214,8 +226,30 @@ export function CreateBillFromPurchaseOrderDialog({
     })
   }, [open, unbilled, hasDiscount, unbilledSubtotal, unbilledShipping, unbilledTax])
 
+  // The order's received-but-unbilled lines, raised onto the new bill so the
+  // person holding the invoice types NUMBERS rather than rebuilding its line list
+  // (plans/purchasing/02-handoff.md §4 item 3c). Prefills no match input — see
+  // `bill-lines-from-purchase-order.ts`.
+  //
+  // A new bill has no lines yet, so nothing is already taken.
+  const { lines: orderLines } = usePurchaseOrderLines(purchaseOrderRecordId)
+  const billableLines = selectBillableLines(orderLines, [])
+  const lineDefId = useResourceProperty('vendor_bill_line', 'id')
+
   const createRecord = api.record.create.useMutation({
     onError: (error) => toastError({ title: 'Error adding bill', description: error.message }),
+  })
+  // 🛑 Its failure is deliberately NOT fatal to the bill. The bill is already
+  // committed by the time this runs, and a bill with no lines is exactly the state
+  // every bill was in before this existed — recoverable in one press from the
+  // Lines card's own "Add lines from order". Rolling the bill back to protect its
+  // lines would trade a recoverable state for a lost one.
+  const createManyRecords = api.record.createMany.useMutation({
+    onError: (error) =>
+      toastError({
+        title: 'Bill added, but its lines were not',
+        description: `${error.message} — add them from the bill's Lines card.`,
+      }),
   })
 
   const change = <K extends keyof BillDraft>(key: K, value: BillDraft[K]) => {
@@ -261,11 +295,21 @@ export function CreateBillFromPurchaseOrderDialog({
       },
     })
 
+    if (created?.recordId && addLines && lineDefId && billableLines.length > 0) {
+      await createManyRecords
+        .mutateAsync({
+          entityDefinitionId: lineDefId,
+          records: billLinesFromPurchaseOrder(billableLines, created.recordId as RecordId, 0),
+        })
+        // Handled by the mutation's own `onError`; the bill still opens.
+        .catch(() => undefined)
+    }
+
     onOpenChange(false)
     if (created?.recordId) onCreated?.(created.recordId)
   }
 
-  const isPending = createRecord.isPending
+  const isPending = createRecord.isPending || createManyRecords.isPending
 
   // What the Total row says about itself, in the three states it can be in. The
   // point of the third is that a difference from the order is NORMAL as often as
@@ -413,6 +457,31 @@ export function CreateBillFromPurchaseOrderDialog({
               />
             </FieldPanelRow>
           </FieldPanel>
+
+          {/* Structure, not transcription. The lines arrive carrying the part, the
+              description, the GRNI code and the match key — and NO quantity or
+              price, because those two are what `matchBill` weighs. See
+              `bill-lines-from-purchase-order.ts`. */}
+          {billableLines.length > 0 && (
+            <label className='mt-3 flex cursor-pointer items-start gap-2 px-1 text-sm'>
+              <Checkbox
+                checked={addLines}
+                onCheckedChange={(next) => setAddLines(next === true)}
+                disabled={isPending}
+                className='mt-0.5'
+              />
+              <span>
+                <span className='text-foreground'>
+                  Add {billableLines.length} received line
+                  {billableLines.length === 1 ? '' : 's'} from the order
+                </span>
+                <span className='block text-muted-foreground text-xs'>
+                  Part, description and account are filled in. Quantity and price stay empty for you
+                  to enter from the invoice.
+                </span>
+              </span>
+            </label>
+          )}
         </div>
 
         <DialogFooter>
