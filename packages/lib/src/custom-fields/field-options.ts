@@ -137,6 +137,13 @@ export interface FieldOptions {
    * Runtime-only UI flag passed by the caller — never persisted to CustomField.options.
    */
   showDefinitionIcon?: boolean
+  /**
+   * When true, RELATIONSHIP picker rows show the record's secondary display value
+   * (SKU, email, …) muted beside the label. Off by default: it is only worth the row
+   * width where that value is what people search by.
+   * Runtime-only UI flag passed by the caller — never persisted to CustomField.options.
+   */
+  showSecondary?: boolean
 
   // ─────────────────────────────────────────────────────────────
   // ACTOR (nested - uses ActorOptions from @auxx/types/custom-field)

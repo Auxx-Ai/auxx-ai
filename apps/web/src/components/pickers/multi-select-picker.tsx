@@ -8,11 +8,11 @@ import { Button } from '@auxx/ui/components/button'
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import {
   Command,
-  CommandEmpty,
   CommandGroup,
   CommandInput,
   CommandItem,
   CommandList,
+  CommandPlaceholder,
 } from '@auxx/ui/components/command'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { toastError } from '@auxx/ui/components/toast'
@@ -279,12 +279,19 @@ export function MultiSelectPicker({
     }
   }, [usageError])
 
+  // A caller that takes `onSearchChange` is running the search itself (server-side) and
+  // hands back only the rows that already matched. Re-filtering those locally would
+  // discard every hit the server matched on something other than the label — a record
+  // found by SKU or email never contains the query in its display name, so the list
+  // came back empty. Local filtering stays the only filter for static option lists.
+  const isServerFiltered = !!onSearchChange
+
   // Filter options by search value
   const filteredOptions = useMemo(() => {
-    if (!searchValue.trim()) return localOptions
+    if (isServerFiltered || !searchValue.trim()) return localOptions
     const search = searchValue.toLowerCase()
     return localOptions.filter((opt) => opt.label.toLowerCase().includes(search))
-  }, [localOptions, searchValue])
+  }, [localOptions, searchValue, isServerFiltered])
 
   // Partition filtered options into ordered, headed sections when `groupBy` is
   // set; `null` keeps the single ungrouped list. Group order follows `groups`,
@@ -586,8 +593,8 @@ export function MultiSelectPicker({
           isManageMode && 'py-0 pe-1',
           editingOptionId === opt.value && 'bg-primary-200'
         )}>
-        <div className='flex items-center justify-between w-full'>
-          <div className='flex items-center gap-2'>
+        <div className='flex items-center justify-between w-full gap-2 min-w-0'>
+          <div className='flex items-center gap-2 min-w-0'>
             {/* Selection indicator (checkbox/radio) or manage icon */}
 
             {/* Avatar + icon fallback (record pickers carry avatarUrl) */}
@@ -623,8 +630,14 @@ export function MultiSelectPicker({
               </>
             )}
 
-            {/* Option label */}
+            {/* Option label, plus the muted secondary line the search may have matched on
+                (a record's SKU or email) — without it a hit looks unrelated to the query. */}
             <span className='truncate'>{opt.label}</span>
+            {opt.secondary && (
+              <span className='truncate min-w-0 text-xs text-muted-foreground [flex-shrink:9999]'>
+                {opt.secondary}
+              </span>
+            )}
           </div>
           <div className='flex items-center gap-1 shrink-0'>
             {/* Per-row secondary action (e.g., favorite star) */}
@@ -760,9 +773,14 @@ export function MultiSelectPicker({
                 </>
               )}
 
-              {/* Options List */}
-              {filteredOptions.length === 0 && !searchValue.trim() && (
-                <CommandEmpty>No options yet. Type to create one.</CommandEmpty>
+              {/* Options List. CommandPlaceholder, not CommandEmpty: cmdk's Empty renders on
+                  its own registered-item count, which the pinned Create/Manage/Browse rows
+                  below keep above zero — so CommandEmpty stayed invisible and a search with
+                  no hits rendered a blank popover. */}
+              {filteredOptions.length === 0 && (
+                <CommandPlaceholder>
+                  {searchValue.trim() ? 'No results found' : 'No options yet. Type to create one.'}
+                </CommandPlaceholder>
               )}
               {filteredOptions.length > 0 &&
                 (groupedOptions ? (

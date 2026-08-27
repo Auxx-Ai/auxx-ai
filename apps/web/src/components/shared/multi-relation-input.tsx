@@ -7,10 +7,12 @@ import type { SelectOptionColor } from '@auxx/types/custom-field'
 import { Badge } from '@auxx/ui/components/badge'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
+import { keepPreviousData } from '@tanstack/react-query'
 import { useCallback, useMemo, useState } from 'react'
 import { MultiSelectPicker } from '~/components/pickers/multi-select-picker'
 import { useResource } from '~/components/resources/hooks/use-resource'
 import { PickerTrigger, type PickerTriggerOptions } from '~/components/ui/picker-trigger'
+import { useDebouncedValue } from '~/hooks/use-debounced-value'
 import { api } from '~/trpc/react'
 import { RecordBadge } from '../resources/ui'
 
@@ -55,6 +57,13 @@ export interface MultiRelationInputProps {
    */
   showDefinitionIcon?: boolean
 
+  /**
+   * When true, rows show the record's secondary display value (SKU, email, …) muted
+   * beside the label. Default: false — worth the row width only where that value is
+   * what people search by.
+   */
+  showSecondary?: boolean
+
   /** Callback when "Create new" is clicked (for complex creation flows via dialog) */
   onCreate?: () => void
 
@@ -91,6 +100,7 @@ export function MultiRelationInput({
   multi = true,
   excludeIds = [],
   showDefinitionIcon = false,
+  showSecondary = false,
   onCreate,
   createLabel,
   triggerProps,
@@ -103,6 +113,9 @@ export function MultiRelationInput({
 
   const [internalOpen, setInternalOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  // Search is server-side, so it is the query that gets debounced — feeding every
+  // keystroke straight to `record.search` fired one request per character.
+  const [debouncedSearch] = useDebouncedValue(searchQuery, 300)
 
   // Use controlled or uncontrolled state
   const open = controlledOpen ?? internalOpen
@@ -126,11 +139,12 @@ export function MultiRelationInput({
   const { data: searchResults, isLoading: isSearching } = api.record.search.useQuery(
     {
       entityDefinitionId: tableId!,
-      query: searchQuery,
+      query: debouncedSearch,
       limit: 20,
     },
     {
       enabled: open && !!tableId,
+      placeholderData: keepPreviousData,
     }
   )
 
@@ -143,12 +157,22 @@ export function MultiRelationInput({
         label: item.displayName,
         value: item.recordId,
         avatarUrl: item.avatarUrl,
+        // Opt-in: the field the search often matched on (SKU, email). Withholding it is
+        // what hides the line — the picker renders `secondary` on its presence alone.
+        ...(showSecondary ? { secondary: item.secondaryInfo ?? undefined } : {}),
         // Fall back to the EntityDefinition's icon/color when the record has no avatar
         ...(showDefinitionIcon
           ? { icon: resource?.icon, color: resource?.color as SelectOptionColor | undefined }
           : {}),
       }))
-  }, [searchResults, excludeIds, showDefinitionIcon, resource?.icon, resource?.color])
+  }, [
+    searchResults,
+    excludeIds,
+    showDefinitionIcon,
+    showSecondary,
+    resource?.icon,
+    resource?.color,
+  ])
 
   /**
    * Handle selection change from MultiSelectPicker

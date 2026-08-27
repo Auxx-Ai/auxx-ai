@@ -212,7 +212,11 @@ export function AsyncOptionPicker({
           value={normalizedValue}
           onChange={handleChange}
           isLoading={isLoading}
-          onSearchChange={setSearchQuery}
+          // Async mode only: handing the picker `onSearchChange` declares the search
+          // server-side, so it stops filtering locally. In static mode `staticOptions` is
+          // the whole list and the picker's own filter is the only one there is (the
+          // resolve effect bails on `isStatic`, so nothing consumes `searchQuery` there).
+          onSearchChange={isStatic ? undefined : setSearchQuery}
           canManage={false}
           canAdd={false}
           multi={multi}
