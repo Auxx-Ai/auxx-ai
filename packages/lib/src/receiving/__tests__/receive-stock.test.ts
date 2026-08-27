@@ -194,9 +194,9 @@ describe('receiveStock — step 2, the zero-cost guard', () => {
 })
 
 describe('receiveStock — step 2, resolving the price', () => {
-  it('lets a supplied unit cost win over the supplier row', async () => {
-    // The editable price input on the Receive form is the whole point: the
-    // vendor's actual invoice beats their standing terms.
+  it('uses a supplied unit cost as-is, applying no vendor terms on top', async () => {
+    // `unitCost` is the internal seam receivePurchaseOrder passes an
+    // already-resolved cost through. It is not a browser field.
     h.vendorTerms = { unitPrice: 4000, shippingCost: 500 }
     const result = await receiveStock(db, ORG, USER, {
       partId: 'part_1',
@@ -244,6 +244,86 @@ describe('receiveStock — step 2, resolving the price', () => {
   it('omits the vendor unit price entirely when it is not known', async () => {
     const values = await receiveAndRead({ partId: 'part_1', quantity: 1, unitCost: 4400 })
     expect(values).not.toHaveProperty('stock_movement_vendor_unit_price')
+  })
+})
+
+describe('receiveStock — door 1, the SENT price is the base', () => {
+  it('🛑 uses the sent vendorUnitPrice as the base, NOT the stored supplier price', async () => {
+    // This is the regression the whole change exists for. The packing slip says
+    // $50.00; the supplier row still says $40.00 from months ago. Valuing the
+    // receipt from the stored price freezes a cost nobody typed onto a movement
+    // whose every field is `updatable: false`, and nothing throws.
+    h.vendorTerms = { unitPrice: 4000, shippingCost: 500, tariffRate: 10, otherCost: 100 }
+    await receiveStock(db, ORG, USER, {
+      partId: 'part_1',
+      quantity: 1,
+      vendorPartId: 'vp_1',
+      vendorUnitPrice: 5000,
+    })
+    const values = writtenValues()
+    // 5000 base + 500 freight + 10% of 5000 + 100 other.
+    expect(values.stock_movement_unit_cost).toBe(6100)
+    // What the OLD behaviour produced, from the price the user replaced.
+    expect(values.stock_movement_unit_cost).not.toBe(5000)
+    expect(values.stock_movement_vendor_unit_price).toBe(5000)
+  })
+
+  it('takes the adders from the supplier row while ignoring its price', async () => {
+    // Same row, same adders, two different sent bases: the landed costs differ
+    // by exactly the difference in the base.
+    h.vendorTerms = { unitPrice: 9999, shippingCost: 500, tariffRate: 10, otherCost: 100 }
+    await receiveStock(db, ORG, USER, {
+      partId: 'part_1',
+      quantity: 1,
+      vendorPartId: 'vp_1',
+      vendorUnitPrice: 1000,
+    })
+    // 1000 + 500 + 100 + 100 — the tariff is 10% of the SENT base, not of 9999.
+    expect(writtenValues().stock_movement_unit_cost).toBe(1700)
+  })
+
+  it('lands at exactly the sent base when no supplier row is named', async () => {
+    // A part with no supplier row at all: the terms resolve empty and there is
+    // nothing to capitalise.
+    h.vendorTerms = null
+    const values = await receiveAndRead({
+      partId: 'part_1',
+      quantity: 3,
+      vendorUnitPrice: 4400,
+    })
+    expect(values.stock_movement_unit_cost).toBe(4400)
+    expect(values.stock_movement_vendor_unit_price).toBe(4400)
+    expect(values.stock_movement_extended_cost).toBe(13200)
+  })
+
+  it('still refuses a sent base of zero rather than writing a free receipt', async () => {
+    h.vendorTerms = { unitPrice: 4000, shippingCost: 0 }
+    const error = await expectErr(
+      receiveStock(db, ORG, USER, {
+        partId: 'part_1',
+        quantity: 1,
+        vendorPartId: 'vp_1',
+        vendorUnitPrice: 0,
+      })
+    )
+    expect(error).toBeInstanceOf(UnprocessableEntityError)
+    expect(error.message).toMatch(/zero cost/i)
+    expect(h.createSpy).not.toHaveBeenCalled()
+  })
+
+  it('does not read the supplier row when both the cost and the price are given', async () => {
+    const { readVendorPartCostInputs } = await import('../receipt-queries')
+    await receiveStock(db, ORG, USER, {
+      partId: 'part_1',
+      quantity: 1,
+      vendorPartId: 'vp_1',
+      vendorUnitPrice: 4123,
+      unitCost: 4500,
+    })
+    expect(vi.mocked(readVendorPartCostInputs)).not.toHaveBeenCalled()
+    const values = writtenValues()
+    expect(values.stock_movement_unit_cost).toBe(4500)
+    expect(values.stock_movement_vendor_unit_price).toBe(4123)
   })
 })
 

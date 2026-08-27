@@ -15,16 +15,18 @@
 
 import type { Database } from '@auxx/database'
 import type { Result } from 'neverthrow'
-import { getCachedEntityDefId, getOrgCache, requireCachedEntityDefId } from '../cache'
+import { getCachedEntityDefId, requireCachedEntityDefId } from '../cache'
 import { BadRequestError, NotFoundError, UnprocessableEntityError } from '../errors'
 import { UnifiedCrudHandler } from '../resources/crud/unified-handler'
 import { toRecordId } from '../resources/resource-id'
 import {
   computeExtendedCost,
   computeReceiptLandedCost,
+  type ReceiptCostInputs,
   resolveGlAccountForPartKind,
   roundMinorUnits,
 } from './client'
+import { assertCostFieldsMaterialized } from './cost-fields'
 import { guard } from './guard'
 import { readPartKind, readVendorPartCostInputs } from './receipt-queries'
 import type { MovementRecord, ReceiveStockInput } from './types'
@@ -37,9 +39,8 @@ import type { MovementRecord, ReceiveStockInput } from './types'
  * 1. `quantity > 0`, or `BadRequestError`. A negative receipt is a vendor return
  *    and has to carry the ORIGINAL receipt's cost, so it cannot be expressed
  *    here without silently valuing the return at today's price.
- * 2. Resolve the price. A supplied `unitCost` wins over the supplier row —
- *    the vendor's actual invoice beats their standing terms, which is why the
- *    Receive form's price input is editable at all.
+ * 2. Resolve the price. See {@link resolveReceiptPrice} — the base is the price
+ *    the caller sent, and the supplier row contributes only the landed adders.
  * 3. Round both money values ONCE, at the point of storage.
  * 4. Write one movement.
  *
@@ -107,25 +108,6 @@ function assertReceivableQuantity(quantity: number): void {
   }
 }
 
-/**
- * Fail early when entity migration 108 has not run for this org.
- *
- * Without `stock_movement_unit_cost` the write below would still succeed and
- * would produce exactly the thing step 2 forbids: a movement that looks like a
- * receipt and carries no cost. Refusing here means the org sees "receiving is not
- * set up" instead of silently accumulating unpostable rows.
- */
-async function assertCostFieldsMaterialized(organizationId: string): Promise<void> {
-  const fields = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['stock_movement_unit_cost', 'stock_movement_cost_basis'])
-  if (!fields.stock_movement_unit_cost || !fields.stock_movement_cost_basis) {
-    throw new UnprocessableEntityError(
-      'Receiving is not available until the stock movement cost fields are provisioned'
-    )
-  }
-}
-
 interface ResolvedPrice {
   /** Whole minor units, strictly positive. */
   unitCost: number
@@ -136,16 +118,40 @@ interface ResolvedPrice {
 /**
  * Step 2 and step 3 of the contract: settle on a landed unit cost, then round it.
  *
- * The supplied `unitCost` wins outright. Only when it is absent is the
- * `vendor_part` row read and the EXISTING `computeLandedCost` run against it —
- * existing, not a local copy, because a receipt valued by a second implementation
- * of the landed formula could disagree with the part cost the same supplier row
- * produces, and reconciling two numbers that are both "the landed cost" is
- * exactly the confusion this subsystem is meant to remove.
+ * The precedence, in order:
+ *
+ * 1. **A supplied `unitCost` is used as-is.** This is the internal seam between
+ *    the two lib entry points, not a browser field:
+ *    {@link import('./receive-purchase-order').receivePurchaseOrder} reads the
+ *    purchase order line's agreed price server-side and passes the resolved cost
+ *    down. No vendor terms are applied on top of it.
+ * 2. **A supplied `vendorUnitPrice` is the BASE**, and the `vendor_part` row —
+ *    when one is named — contributes ONLY the adders (freight, tariff, other).
+ * 3. **`vendorPartId` alone** prices the whole receipt from the supplier row:
+ *    its `unitPrice` is the base and its adders sit on top.
+ * 4. Otherwise there is no price at all, and the receipt is refused.
+ *
+ * 🛑 **Why the SENT price is the base and the STORED one is not.** The Receive
+ * form shows the supplier's terms and lets the person keying the receipt replace
+ * the price with what the packing slip in front of them actually says. Reading
+ * `vendor_part.unitPrice` as the base after that would value the stock from the
+ * number the user just *replaced* — and because every field on `stock_movement`
+ * is `updatable: false`, the wrong cost is frozen forever with nothing thrown.
+ * `apps/web/src/components/manufacturing/parts/receipt-input.ts` documents that
+ * hazard, and compensated for it client-side by sending a pre-computed
+ * `unitCost`. That compensation existed because of this function; taking the
+ * sent price as the base removes the reason for it, and lets the router stop
+ * accepting a cost from the browser at all.
+ *
+ * The landed arithmetic itself is always the EXISTING `computeLandedCost`, never
+ * a local copy: a receipt valued by a second implementation of the formula could
+ * disagree with the part cost the same supplier row produces, and reconciling two
+ * numbers that are both "the landed cost" is exactly the confusion this subsystem
+ * exists to remove.
  *
  * `vendorUnitPrice` is resolved independently of `unitCost` and is allowed to
  * stay `null`: it is provenance for the three-way match, not an input to the
- * valuation, so a hand-keyed landed cost with no known invoice price is a
+ * valuation, so a resolved landed cost with no known invoice price is a
  * perfectly coherent receipt.
  */
 async function resolveReceiptPrice(
@@ -154,19 +160,34 @@ async function resolveReceiptPrice(
   input: ReceiveStockInput
 ): Promise<ResolvedPrice> {
   const supplied = input.unitCost
-  let vendorUnitPrice = input.vendorUnitPrice ?? null
+  const sentBase = input.vendorUnitPrice
+  let vendorUnitPrice = sentBase != null && Number.isFinite(sentBase) ? sentBase : null
 
   let landed: number | null = supplied != null && Number.isFinite(supplied) ? supplied : null
 
-  if (landed == null || vendorUnitPrice == null) {
-    if (input.vendorPartId) {
-      const terms = await unwrap(readVendorPartCostInputs(db, organizationId, input.vendorPartId))
-      if (!terms) {
-        throw new NotFoundError(`Vendor part ${input.vendorPartId} not found`)
-      }
-      if (vendorUnitPrice == null) vendorUnitPrice = terms.unitPrice
-      if (landed == null) landed = computeReceiptLandedCost(terms)
+  // The supplier row is read when it can still contribute something: the adders
+  // for an unresolved cost, or the raw price when none was sent. When both are
+  // already known it is not read at all.
+  let terms: ReceiptCostInputs | null = null
+  if ((landed == null || vendorUnitPrice == null) && input.vendorPartId) {
+    terms = await unwrap(readVendorPartCostInputs(db, organizationId, input.vendorPartId))
+    if (!terms) {
+      throw new NotFoundError(`Vendor part ${input.vendorPartId} not found`)
     }
+    if (vendorUnitPrice == null) vendorUnitPrice = terms.unitPrice
+  }
+
+  if (landed == null) {
+    // `vendorUnitPrice` is the base here whether it was sent or read: when it was
+    // sent, `terms.unitPrice` is deliberately discarded and only the adders are
+    // taken. With no supplier row the adders resolve empty and the landed cost is
+    // the sent base unchanged.
+    landed = computeReceiptLandedCost({
+      unitPrice: vendorUnitPrice,
+      shippingCost: terms?.shippingCost,
+      tariffRate: terms?.tariffRate,
+      otherCost: terms?.otherCost,
+    })
   }
 
   if (landed == null || !Number.isFinite(landed)) {

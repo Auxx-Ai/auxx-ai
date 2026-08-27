@@ -1,5 +1,6 @@
 // packages/lib/src/receiving/index.ts
 
+export { adjustStock } from './adjust-stock'
 export {
   computeExtendedCost,
   computeReceiptLandedBreakdown,
@@ -21,7 +22,10 @@ export {
 } from './receipt-queries'
 export { receivePurchaseOrder } from './receive-purchase-order'
 export { receiveStock } from './receive-stock'
+export type { ReverseMovementInput } from './reverse-movement'
+export { reverseMovement } from './reverse-movement'
 export type {
+  AdjustStockInput,
   ListReceiptsFilters,
   MovementRecord,
   ReceiptRow,

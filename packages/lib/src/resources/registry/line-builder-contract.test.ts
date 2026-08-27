@@ -67,6 +67,8 @@ const LINE_BUILDER_CONTRACT: Record<
       'purchase_order_tax_total',
       'purchase_order_subtotal',
       'purchase_order_total',
+      // Scopes the vendor-part price prefill (`LineSchema.vendorAttr`).
+      'purchase_order_vendor',
     ],
     line: [
       'purchase_order_line_purchase_order',
@@ -74,6 +76,10 @@ const LINE_BUILDER_CONTRACT: Record<
       'purchase_order_line_description',
       'purchase_order_line_quantity_ordered',
       'purchase_order_line_expected_unit_price',
+      // Provenance for the price prefill, and the weight basis's only input
+      // (plans/purchasing/05-receiving-cost-and-corrections.md 5.2, 5.3).
+      'purchase_order_line_vendor_part',
+      'purchase_order_line_weight',
       'purchase_order_line_sort_order',
     ],
   },

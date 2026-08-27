@@ -1,8 +1,9 @@
 // packages/lib/src/receiving/__tests__/receive-purchase-order.test.ts
 // The multi-line receipt. `receiveStock` is mocked (it has its own suite and its
-// own database dependencies); the allocation is the REAL `allocateLandedCost`,
-// because the thing worth asserting here is that the allocated unit cost is what
-// actually reaches the movement.
+// own database dependencies) and the org cache and the one field-value read are
+// faked, so nothing here needs a database — what is asserted is the CONTRACT:
+// the price comes from the purchase order line and nowhere else, the whole set
+// is validated before the first movement, and nothing is allocated any more.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { BadRequestError, UnprocessableEntityError } from '../../errors'
@@ -10,6 +11,23 @@ import type { MovementRecord, ReceivePurchaseOrderLineInput } from '../types'
 
 const h = vi.hoisted(() => ({
   receiveSpy: vi.fn(),
+  /** One call per `db.select(...)`, so "one query for the whole set" is assertable. */
+  selectSpy: vi.fn(),
+  /** systemAttributes the org has materialised. */
+  materialised: new Set<string>(),
+  /** `purchase_order_line` instance id -> its stored expected unit price. */
+  prices: new Map<string, number | null>(),
+}))
+
+vi.mock('../../cache', () => ({
+  getOrgCache: () => ({
+    from: () => ({
+      bySystemAttributes: async (attrs: string[]) =>
+        Object.fromEntries(
+          attrs.map((a) => [a, h.materialised.has(a) ? { id: `fld_${a}` } : null])
+        ),
+    }),
+  }),
 }))
 
 vi.mock('../receive-stock', async () => {
@@ -38,7 +56,24 @@ import { receivePurchaseOrder } from '../receive-purchase-order'
 
 const ORG = 'org_1'
 const USER = 'user_1'
-const db = {} as never
+
+/**
+ * The one read this module makes: `select({...}).from(FieldValue).where(...)`,
+ * resolving to whatever `h.prices` holds.
+ */
+const db = {
+  select: (projection: unknown) => {
+    h.selectSpy(projection)
+    return {
+      from: () => ({
+        where: async () =>
+          [...h.prices.entries()].map(([entityId, valueNumber]) => ({ entityId, valueNumber })),
+      }),
+    }
+  },
+} as never
+
+const PRICE_ATTR = 'purchase_order_line_expected_unit_price'
 
 const line = (
   overrides: Partial<ReceivePurchaseOrderLineInput> = {}
@@ -46,12 +81,16 @@ const line = (
   partId: 'part_1',
   purchaseOrderLineId: 'pol_1',
   quantity: 1,
-  unitPrice: 1000,
   ...overrides,
 })
 
 beforeEach(() => {
   vi.clearAllMocks()
+  h.materialised = new Set([PRICE_ATTR])
+  h.prices = new Map([
+    ['pol_1', 1000],
+    ['pol_2', 500],
+  ])
 })
 
 async function expectErr(promise: ReturnType<typeof receivePurchaseOrder>) {
@@ -80,8 +119,8 @@ describe('receivePurchaseOrder — validation', () => {
   })
 
   it('refuses a line with no purchase order line', async () => {
-    // An allocated cost is only defensible if the line it was allocated across
-    // can be pointed at.
+    // Since the price moved server-side this link is not merely provenance: it
+    // is the only way this door can find out what the line cost.
     const error = await expectErr(
       receivePurchaseOrder(db, ORG, USER, { lines: [line({ purchaseOrderLineId: '' })] })
     )
@@ -91,13 +130,6 @@ describe('receivePurchaseOrder — validation', () => {
   it.each([0, -1, Number.NaN])('refuses a line quantity of %s', async (quantity) => {
     const error = await expectErr(
       receivePurchaseOrder(db, ORG, USER, { lines: [line({ quantity })] })
-    )
-    expect(error).toBeInstanceOf(BadRequestError)
-  })
-
-  it('refuses a line with a non-finite unit price', async () => {
-    const error = await expectErr(
-      receivePurchaseOrder(db, ORG, USER, { lines: [line({ unitPrice: Number.NaN })] })
     )
     expect(error).toBeInstanceOf(BadRequestError)
   })
@@ -113,6 +145,127 @@ describe('receivePurchaseOrder — validation', () => {
     expect(error).toBeInstanceOf(BadRequestError)
     expect(h.receiveSpy).not.toHaveBeenCalled()
   })
+
+  it('refuses to write before the purchase order price field is provisioned', async () => {
+    h.materialised.delete(PRICE_ATTR)
+    const error = await expectErr(receivePurchaseOrder(db, ORG, USER, { lines: [line()] }))
+    expect(error).toBeInstanceOf(UnprocessableEntityError)
+    expect(h.receiveSpy).not.toHaveBeenCalled()
+  })
+})
+
+describe('receivePurchaseOrder — the price comes from the purchase order line', () => {
+  it('values the movement at the stored expected unit price of its line', async () => {
+    h.prices = new Map([['pol_1', 1250]])
+    await receivePurchaseOrder(db, ORG, USER, { lines: [line({ quantity: 4 })] })
+    expect(receivedInput(0).unitCost).toBe(1250)
+    expect(receivedInput(0).vendorUnitPrice).toBe(1250)
+  })
+
+  it('🛑 ignores a price asserted by the client', async () => {
+    // The defect this change exists for: receipt 3 on PO-0001 is valued at
+    // $200.00 against an agreed $12.50, because somebody typed 200 into a box.
+    h.prices = new Map([['pol_1', 1250]])
+    await receivePurchaseOrder(db, ORG, USER, {
+      // A stale client still sending the old fields. The types no longer permit
+      // it; the runtime must not honour it either.
+      lines: [{ ...line(), unitPrice: 20_000, weight: 12 } as ReceivePurchaseOrderLineInput],
+    })
+    expect(receivedInput(0).unitCost).toBe(1250)
+    expect(receivedInput(0).vendorUnitPrice).toBe(1250)
+  })
+
+  it('prices each line from its OWN purchase order line', async () => {
+    h.prices = new Map([
+      ['pol_1', 1250],
+      ['pol_2', 99],
+    ])
+    await receivePurchaseOrder(db, ORG, USER, {
+      lines: [line(), line({ partId: 'part_2', purchaseOrderLineId: 'pol_2' })],
+    })
+    expect(receivedInput(0).unitCost).toBe(1250)
+    expect(receivedInput(1).unitCost).toBe(99)
+  })
+
+  it('reads every price in ONE query, not one per line', async () => {
+    h.prices = new Map([
+      ['pol_1', 100],
+      ['pol_2', 200],
+      ['pol_3', 300],
+    ])
+    await receivePurchaseOrder(db, ORG, USER, {
+      lines: [
+        line(),
+        line({ partId: 'part_2', purchaseOrderLineId: 'pol_2' }),
+        line({ partId: 'part_3', purchaseOrderLineId: 'pol_3' }),
+      ],
+    })
+    expect(h.selectSpy).toHaveBeenCalledTimes(1)
+    expect(h.receiveSpy).toHaveBeenCalledTimes(3)
+  })
+
+  it.each([
+    ['missing entirely', undefined],
+    ['stored as null', null],
+    ['stored as zero', 0],
+    ['stored negative', -500],
+  ])('refuses a line whose agreed price is %s, writing NO movements', async (_label, stored) => {
+    h.prices = new Map([['pol_1', 1000]])
+    if (stored !== undefined) h.prices.set('pol_2', stored as number | null)
+
+    const error = await expectErr(
+      receivePurchaseOrder(db, ORG, USER, {
+        lines: [line(), line({ partId: 'part_2', purchaseOrderLineId: 'pol_2' })],
+      })
+    )
+    expect(error).toBeInstanceOf(UnprocessableEntityError)
+    // The whole set is priced before the first movement, so the GOOD line is not
+    // written either — a half-received shipment is worse than a rejected one.
+    expect(h.receiveSpy).not.toHaveBeenCalled()
+  })
+
+  it('names the offending line in the refusal', async () => {
+    h.prices = new Map([['pol_1', 1000]])
+    const error = await expectErr(
+      receivePurchaseOrder(db, ORG, USER, {
+        lines: [line(), line({ partId: 'part_2', purchaseOrderLineId: 'pol_2' })],
+      })
+    )
+    expect(error.message).toContain('Line 2')
+    expect(error.message).toContain('pol_2')
+  })
+
+  it('does not fall back to the vendor part when the line has no price', async () => {
+    // vendor_part holds standing terms that may be months newer than the order.
+    // A missing agreed price is a data problem on the order, not a price to guess.
+    h.prices = new Map()
+    const error = await expectErr(
+      receivePurchaseOrder(db, ORG, USER, { lines: [line({ vendorPartId: 'vp_1' })] })
+    )
+    expect(error).toBeInstanceOf(UnprocessableEntityError)
+    expect(h.receiveSpy).not.toHaveBeenCalled()
+  })
+})
+
+describe('receivePurchaseOrder — nothing is allocated at receipt', () => {
+  it('capitalises nothing onto the unit cost: landed == agreed', async () => {
+    // The old behaviour spread the ORDER's shipping across every receipt, so the
+    // same $40.00 of freight was capitalised once per delivery. Freight is the
+    // bill's number now (section 4.2).
+    h.prices = new Map([['pol_1', 1000]])
+    await receivePurchaseOrder(db, ORG, USER, { lines: [line({ quantity: 10 })] })
+    expect(receivedInput(0).unitCost).toBe(1000)
+  })
+
+  it('values two receipts of the same line identically', async () => {
+    // The double-count in the plan (section 1.1) is exactly this asymmetry: four
+    // receipts of one line, three of them carrying the whole freight charge.
+    h.prices = new Map([['pol_1', 1250]])
+    await receivePurchaseOrder(db, ORG, USER, { lines: [line({ quantity: 99_997 })] })
+    await receivePurchaseOrder(db, ORG, USER, { lines: [line({ quantity: 1 })] })
+    expect(receivedInput(0).unitCost).toBe(1250)
+    expect(receivedInput(1).unitCost).toBe(1250)
+  })
 })
 
 describe('receivePurchaseOrder — one movement per line', () => {
@@ -120,20 +273,13 @@ describe('receivePurchaseOrder — one movement per line', () => {
     const result = await receivePurchaseOrder(db, ORG, USER, {
       lines: [
         line({ partId: 'part_1', purchaseOrderLineId: 'pol_1' }),
-        line({ partId: 'part_2', purchaseOrderLineId: 'pol_2', unitPrice: 500, quantity: 4 }),
+        line({ partId: 'part_2', purchaseOrderLineId: 'pol_2', quantity: 4 }),
       ],
     })
     expect(result.isOk()).toBe(true)
     expect(result._unsafeUnwrap()).toHaveLength(2)
     expect(receivedInput(0).purchaseOrderLineId).toBe('pol_1')
     expect(receivedInput(1).purchaseOrderLineId).toBe('pol_2')
-  })
-
-  it('freezes the agreed buy price as the vendor unit price', async () => {
-    // The allocated cost is what the stock is VALUED at; vendorUnitPrice is what
-    // the vendor charged, and the three-way match compares the bill against it.
-    await receivePurchaseOrder(db, ORG, USER, { lines: [line({ unitPrice: 999.6 })] })
-    expect(receivedInput(0).vendorUnitPrice).toBe(1000)
   })
 
   it('stamps one shared accounting date across every line', async () => {
@@ -162,94 +308,6 @@ describe('receivePurchaseOrder — one movement per line', () => {
   })
 })
 
-describe('receivePurchaseOrder — the allocated unit cost', () => {
-  it('capitalises freight into the unit cost, not just the header', async () => {
-    await receivePurchaseOrder(db, ORG, USER, {
-      lines: [line({ quantity: 10, unitPrice: 1000 })],
-      shipping: 5000,
-    })
-    // One line absorbs all of it: (10000 + 5000) / 10.
-    expect(receivedInput(0).unitCost).toBe(1500)
-  })
-
-  it('reproduces the worked example: a $1 line absorbing value-weighted freight', async () => {
-    // Costing plan section 4.2, purchase HZRA2W: $1,000 and $1 lines, one unit
-    // each, $10,000 shipping. The $1 line lands at 1 + 10000 x (1/1001).
-    await receivePurchaseOrder(db, ORG, USER, {
-      lines: [
-        line({ partId: 'part_big', purchaseOrderLineId: 'pol_big', unitPrice: 100000 }),
-        line({ partId: 'part_small', purchaseOrderLineId: 'pol_small', unitPrice: 100 }),
-      ],
-      shipping: 1000000,
-      basis: 'value',
-    })
-    expect(receivedInput(1).unitCost).toBe(1099)
-  })
-
-  it('defaults the basis to value', async () => {
-    const lines = [
-      line({ partId: 'a', purchaseOrderLineId: 'pol_a', unitPrice: 100000 }),
-      line({ partId: 'b', purchaseOrderLineId: 'pol_b', unitPrice: 100 }),
-    ]
-    await receivePurchaseOrder(db, ORG, USER, { lines, shipping: 1000000 })
-    const defaulted = receivedInput(1).unitCost
-    h.receiveSpy.mockClear()
-    await receivePurchaseOrder(db, ORG, USER, { lines, shipping: 1000000, basis: 'value' })
-    expect(receivedInput(1).unitCost).toBe(defaulted)
-  })
-
-  it('spreads by quantity when asked, so a cheap heavy line carries its share', async () => {
-    await receivePurchaseOrder(db, ORG, USER, {
-      lines: [
-        line({ partId: 'a', purchaseOrderLineId: 'pol_a', unitPrice: 100000, quantity: 1 }),
-        line({ partId: 'b', purchaseOrderLineId: 'pol_b', unitPrice: 100, quantity: 1 }),
-      ],
-      shipping: 1000000,
-      basis: 'quantity',
-    })
-    // Equal quantities, so an equal split: 500000 each.
-    expect(receivedInput(0).unitCost).toBe(600000)
-    expect(receivedInput(1).unitCost).toBe(500100)
-  })
-
-  it('capitalises tax by default and excludes it when it is recoverable', async () => {
-    await receivePurchaseOrder(db, ORG, USER, {
-      lines: [line({ quantity: 10, unitPrice: 1000 })],
-      tax: 1000,
-    })
-    expect(receivedInput(0).unitCost).toBe(1100)
-
-    h.receiveSpy.mockClear()
-    await receivePurchaseOrder(db, ORG, USER, {
-      lines: [line({ quantity: 10, unitPrice: 1000 })],
-      tax: 1000,
-      taxRecoverable: true,
-    })
-    // Reclaimable input tax is a receivable from the tax authority, not part of
-    // what the goods cost.
-    expect(receivedInput(0).unitCost).toBe(1000)
-  })
-
-  it('subtracts a header discount from what is capitalised', async () => {
-    await receivePurchaseOrder(db, ORG, USER, {
-      lines: [line({ quantity: 10, unitPrice: 1000 })],
-      shipping: 5000,
-      discount: 2000,
-    })
-    expect(receivedInput(0).unitCost).toBe(1300)
-  })
-
-  it('rounds the line total before allocating, so a fractional price cannot reach the math', async () => {
-    // allocateLandedCost rejects non-integer money amounts outright; a receipt
-    // keyed at 999.6 must still be allocatable.
-    const result = await receivePurchaseOrder(db, ORG, USER, {
-      lines: [line({ unitPrice: 999.6, quantity: 3 })],
-      shipping: 300,
-    })
-    expect(result.isOk()).toBe(true)
-  })
-})
-
 describe('receivePurchaseOrder — failure propagation', () => {
   it('surfaces a per-line failure with its own status, not as a generic 500', async () => {
     const { receiveStock } = await import('../receive-stock')
@@ -257,9 +315,7 @@ describe('receivePurchaseOrder — failure propagation', () => {
     vi.mocked(receiveStock).mockResolvedValueOnce(
       err(new UnprocessableEntityError('Refusing to write a receipt at zero cost.'))
     )
-    const error = await expectErr(
-      receivePurchaseOrder(db, ORG, USER, { lines: [line()], shipping: 0 })
-    )
+    const error = await expectErr(receivePurchaseOrder(db, ORG, USER, { lines: [line()] }))
     expect(error).toBeInstanceOf(UnprocessableEntityError)
   })
 

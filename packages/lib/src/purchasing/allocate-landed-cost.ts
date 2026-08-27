@@ -39,6 +39,42 @@ function assertLine(line: AllocationLine, index: number): void {
   }
 }
 
+/**
+ * Refuse a PARTIAL weight set under basis 'weight' (receiving plan section 5.3).
+ *
+ * The asymmetry with the all-zero fallback below is deliberate, and it is a
+ * difference in what the input MEANS rather than in how hard it is to divide:
+ *
+ * - All weights zero or absent carries NO information. An equal split is the
+ *   only defensible answer, it reconciles to the header exactly, and nobody
+ *   reading it can mistake it for a considered allocation — there was nothing
+ *   to consider.
+ * - Some weights present and some not carries MISLEADING information. It
+ *   divides cleanly, so nothing throws; it produces a lopsided vector that
+ *   looks deliberate, so nothing reads as wrong; and the unweighed lines land
+ *   at exactly zero freight while the weighed ones carry all of it. A landed
+ *   cost that is silently wrong and looks right is the failure this whole
+ *   module exists to avoid.
+ *
+ * So: a weight is not a per-line property that means something on its own, the
+ * way a line total does. It is a basis input that only means anything across
+ * the whole set, and half a set is not a partly-configured allocation — it is a
+ * broken one. The guard lives here rather than only in the line builder because
+ * the bill-side caller (plan section 4.2) needs the same protection.
+ *
+ * Zero is treated as absent: a zero-weight line among weighed lines has the
+ * identical silent-zero-share problem, and there is no way to tell "weighs
+ * nothing" from "not weighed yet" in the stored value.
+ */
+function assertWeightBasis(lines: AllocationLine[]): void {
+  const weighed = lines.filter((line) => (line.weight ?? 0) > 0).length
+  if (weighed === 0 || weighed === lines.length) return
+  const index = lines.findIndex((line) => (line.weight ?? 0) <= 0)
+  throw new BadRequestError(
+    `Line ${index} has no weight; allocating by weight requires a weight on every line or none`
+  )
+}
+
 function assertHeader(header: AllocationHeader): void {
   assertMinorUnits(header.shipping, 'Header shipping')
   assertMinorUnits(header.tax, 'Header tax')
@@ -88,8 +124,15 @@ export function capitalisableAmount(header: AllocationHeader): number {
  *   "spread it evenly" is the only defensible answer when the basis carries no
  *   information, and it still reconciles to the header exactly.
  *
+ * A PARTIAL weight set under basis 'weight' is the one shape that is refused
+ * instead of absorbed — see `assertWeightBasis` for why all-absent is honest
+ * and half-absent is not. Only 'weight' is affected: a zero line total under
+ * 'value' is a legitimate free item and a zero quantity is already rejected
+ * outright.
+ *
  * @throws BadRequestError on a non-integer money amount, a quantity that is not
- *   greater than zero, a negative weight, or an unknown basis.
+ *   greater than zero, a negative weight, a weight on only some lines under
+ *   basis 'weight', or an unknown basis.
  */
 export function allocateCapitalisedCost(
   lines: AllocationLine[],
@@ -100,6 +143,7 @@ export function allocateCapitalisedCost(
     throw new BadRequestError(`Unknown allocation basis: ${String(basis)}`)
   }
   lines.forEach(assertLine)
+  if (basis === 'weight') assertWeightBasis(lines)
   const capitalisable = capitalisableAmount(header)
   if (lines.length === 0) return []
 
@@ -151,7 +195,8 @@ export function allocateCapitalisedCost(
  * rounded — and the two adders sum to the $10,000 freight bill to the cent.
  *
  * @throws BadRequestError on a non-integer money amount, a quantity that is not
- *   greater than zero, a negative weight, or an unknown basis.
+ *   greater than zero, a negative weight, a weight on only some lines under
+ *   basis 'weight', or an unknown basis.
  */
 export function allocateLandedCost(
   lines: AllocationLine[],

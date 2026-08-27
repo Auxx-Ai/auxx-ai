@@ -161,6 +161,29 @@ export interface LineValues {
   purchaseOrderLineRecordId: RecordId | null
   /** Buy-side only: the account CODE this line posts to ('2160', '5090'). */
   glAccount: string | null
+  /**
+   * Purchase order only: the supplier's catalogue entry this line was priced
+   * from — PROVENANCE, never a live price read.
+   *
+   * 🛑 Stamped once, when the part is picked, alongside the price it prefilled
+   * (`resolvePartPrefill` in line-builder.tsx). `vendor_part_unit_price` is
+   * `updatable: true` and `bom-cost-triggers.ts` recalculates part costs whenever
+   * it moves, while {@link unitPriceCents} on a purchase order is the price the
+   * order FROZE — the price arm of the three-way match. Re-deriving the line's
+   * price through this link would make the agreed price stop being agreed. It
+   * says where the number came from; it never says what the number is.
+   * (plans/purchasing/05-receiving-cost-and-corrections.md §5.2.)
+   */
+  vendorPartRecordId: RecordId | null
+  /**
+   * Purchase order only: the line's total shipped weight — the `weight`
+   * allocation basis's only input.
+   *
+   * ⚠️ Document-level in the UI even though it is stored per line; see
+   * `LineSchema.attrs.weight` and `LineRowMenu` for why a per-row optional weight
+   * is a broken allocation rather than a partly-configured one.
+   */
+  weight: number | null
 }
 
 /**
@@ -211,6 +234,21 @@ export interface LineSchema {
    * a mistake, and the footer would have to learn to skip it.
    */
   matchScopeAttr: string | null
+  /**
+   * Parent attribute naming the SUPPLIER this document is placed with — the one
+   * input, besides the part, that the vendor-part price prefill needs
+   * (plans/purchasing/05-receiving-cost-and-corrections.md §5.2).
+   *
+   * `null` on every document that does not prefill. Read off the parent once per
+   * builder for the same reason {@link matchScopeAttr} is: the answer is the same
+   * for every row, and a per-row read would be one fetch per line to learn it.
+   *
+   * ⚠️ Set on `purchase_order` and NOT on `vendor_bill`, which also has a vendor.
+   * A bill transcribes prices the supplier already charged; prefilling one would
+   * overwrite the vendor's own paper with our catalogue, which is the exact
+   * disagreement the three-way match exists to surface.
+   */
+  vendorAttr: string | null
   /** systemAttribute prefix for the parent's own billing mirrors (`quote_discount_type`). */
   billingPrefix: string
   /** Parent attributes fetched once by the builder and read by the footer. */
@@ -236,6 +274,8 @@ const NO_LINE_ATTRS: LineAttrMap = {
   lineTotal: null,
   purchaseOrderLineRecordId: null,
   glAccount: null,
+  vendorPartRecordId: null,
+  weight: null,
 }
 
 /** Every sell-side line is a `line_item`, so the four money documents share one map. */
@@ -259,6 +299,10 @@ const LINE_ITEM_ATTRS: LineAttrMap = {
   lineTotal: null,
   purchaseOrderLineRecordId: null,
   glAccount: null,
+  // Both are purchasing vocabulary. A sell-side line has no supplier and no
+  // freight basis, so neither field exists on `line_item` to write to.
+  vendorPartRecordId: null,
+  weight: null,
 }
 
 const SELL_SIDE_CAPABILITIES: LineCapabilities = {
@@ -330,6 +374,7 @@ export const LINE_SCHEMAS: Record<DocumentType, LineSchema> = {
     lineEntityType: 'line_item',
     amountMode: 'derived',
     matchScopeAttr: null,
+    vendorAttr: null,
     relKey: 'line_item_quote',
     relFieldId: 'line_item:quote',
     sortAttr: 'line_item_sort_order',
@@ -347,6 +392,7 @@ export const LINE_SCHEMAS: Record<DocumentType, LineSchema> = {
     lineEntityType: 'line_item',
     amountMode: 'derived',
     matchScopeAttr: null,
+    vendorAttr: null,
     relKey: 'line_item_invoice',
     relFieldId: 'line_item:invoice',
     sortAttr: 'line_item_sort_order',
@@ -374,6 +420,7 @@ export const LINE_SCHEMAS: Record<DocumentType, LineSchema> = {
     lineEntityType: 'line_item',
     amountMode: 'derived',
     matchScopeAttr: null,
+    vendorAttr: null,
     relKey: 'line_item_order',
     relFieldId: 'line_item:order',
     sortAttr: 'line_item_sort_order',
@@ -391,6 +438,7 @@ export const LINE_SCHEMAS: Record<DocumentType, LineSchema> = {
     lineEntityType: 'line_item',
     amountMode: 'derived',
     matchScopeAttr: null,
+    vendorAttr: null,
     relKey: 'line_item_work_order',
     relFieldId: 'line_item:workOrder',
     sortAttr: 'line_item_sort_order',
@@ -411,6 +459,9 @@ export const LINE_SCHEMAS: Record<DocumentType, LineSchema> = {
     lineEntityType: 'purchase_order_line',
     amountMode: 'derived',
     matchScopeAttr: null,
+    // The supplier the order is placed with, and the second half of the
+    // `(part, supplier)` natural key the price prefill resolves on (§5.2).
+    vendorAttr: 'purchase_order_vendor',
     relKey: 'purchase_order_line_purchase_order',
     relFieldId: 'purchase_order_line:purchaseOrder',
     sortAttr: 'purchase_order_line_sort_order',
@@ -438,6 +489,13 @@ export const LINE_SCHEMAS: Record<DocumentType, LineSchema> = {
       qty: 'purchase_order_line_quantity_ordered',
       unitPriceCents: 'purchase_order_line_expected_unit_price',
       partRecordId: 'purchase_order_line_part',
+      // 🛑 Both fields were declared and had NO writer at all until
+      // plans/purchasing/05-receiving-cost-and-corrections.md §5.2/§5.3 — read by
+      // `use-purchase-order-lines.ts`, set by nothing. Mapping them here is what
+      // gives them one: `vendorPart` is stamped by the price prefill on part
+      // pick, `weight` by the row menu's weight control.
+      vendorPartRecordId: 'purchase_order_line_vendor_part',
+      weight: 'purchase_order_line_weight',
     },
     photosAttr: null,
     // `purchase_order_line.part` is `required: true` — a create without it is
@@ -455,6 +513,8 @@ export const LINE_SCHEMAS: Record<DocumentType, LineSchema> = {
     // (plans/purchasing/01-build-plan.md §5.4b).
     amountMode: 'stored',
     matchScopeAttr: 'vendor_bill_purchase_order',
+    // A bill's vendor is transcribed, never prefilled — see `vendorAttr`.
+    vendorAttr: null,
     relKey: 'vendor_bill_line_vendor_bill',
     relFieldId: 'vendor_bill_line:vendorBill',
     sortAttr: 'vendor_bill_line_sort_order',
@@ -601,6 +661,8 @@ export const DEFAULT_LINE_VALUES: LineValues = {
   lineTotal: null,
   purchaseOrderLineRecordId: null,
   glAccount: null,
+  vendorPartRecordId: null,
+  weight: null,
 }
 
 /** Semantic update emitted by a row; absent keys are not written. */
@@ -621,6 +683,8 @@ const LINE_FIELD_TYPES: Record<keyof LineValues, FieldTypeValue> = {
   lineTotal: FieldType.CURRENCY,
   purchaseOrderLineRecordId: FieldType.RELATIONSHIP,
   glAccount: FieldType.TEXT,
+  vendorPartRecordId: FieldType.RELATIONSHIP,
+  weight: FieldType.NUMBER,
 }
 
 const LINE_VALUE_KEYS = Object.keys(LINE_FIELD_TYPES) as Array<keyof LineValues>
@@ -670,6 +734,25 @@ export function diffLineValues(before: LineValues, after: LineValues): LinePatch
  * instead of the part's name. Nothing throws and nothing logs — the part is
  * simply never visible on any purchasing line.
  */
+/**
+ * Read a NUMBER system value as a number, keeping the empty/zero distinction.
+ *
+ * 🛑 Absence must not be encoded as zero. The `weight` allocation basis divides
+ * by the SUM of the set, so an unweighed line reported as `0` reads as a
+ * deliberate weighs-nothing — the "some lines weighed, some not" state
+ * `allocateCapitalisedCost` refuses. `null` means nobody has said yet, and it is
+ * what lets the cell render its blank rather than a confident `0`.
+ *
+ * Numeric strings are accepted because `useSystemValues` returns one on some
+ * paths and a bare number on others; a raw cast would put a string into the
+ * arithmetic.
+ */
+export function numberOrNull(raw: unknown): number | null {
+  const value = Array.isArray(raw) ? raw[0] : raw
+  const parsed = typeof value === 'string' ? Number(value) : value
+  return typeof parsed === 'number' && Number.isFinite(parsed) ? parsed : null
+}
+
 function firstRecordId(raw: unknown): RecordId | null {
   const value = Array.isArray(raw) ? raw[0] : raw
   return typeof value === 'string' ? (value as RecordId) : null
@@ -709,6 +792,12 @@ export function lineValuesFromSystemValues(
     lineTotal: read<number | null>('lineTotal') ?? null,
     purchaseOrderLineRecordId: readRecordId('purchaseOrderLineRecordId'),
     glAccount: read<string | null>('glAccount') ?? null,
+    vendorPartRecordId: readRecordId('vendorPartRecordId'),
+    // Coerced rather than cast: a NUMBER value reads back as a bare number on
+    // most paths and as a numeric STRING on others, and `0` is a legitimate
+    // weight — so `?? null` on a raw read would keep a string in a field the
+    // allocation sums.
+    weight: numberOrNull(read<unknown>('weight')),
   }
 }
 

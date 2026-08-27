@@ -14,11 +14,16 @@
 // invoice is the fact, and freezing the guess is how inventory value drifts away
 // from what was really paid.
 //
-// The landed cost is shown broken out beneath it — `$47.10 = $44.00 + $1.20
-// freight + $1.90 tariff (4.3%)` — because that total is what gets frozen onto the
-// movement forever, and a number nobody can check is a number nobody catches.
-// Client and server compute it with the SAME `computeReceiptLandedCost`, so the
-// figure on screen is the figure stored.
+// 🛑 That price is the ONLY money this form sends. The landed cost is resolved
+// server-side from the price it was handed plus the supplier row's adders, and
+// `purchasing.receiveStock` does not accept a cost from the browser at all.
+//
+// The landed figure is still shown broken out beneath the input — `$47.10 =
+// $44.00 + $1.20 freight + $1.90 tariff (4.3%)` — because that total is what gets
+// frozen onto the movement forever, and a number nobody can check is a number
+// nobody catches. It is a PREVIEW: client and server run the same
+// `computeReceiptLandedCost` over the same inputs, so the figure on screen is the
+// figure stored, but the server is the one that computes the stored one.
 
 import { FieldType } from '@auxx/database/enums'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'

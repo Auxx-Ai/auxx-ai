@@ -174,14 +174,6 @@ describe('allocateLandedCost - bases', () => {
     ])
   })
 
-  it('treats a missing weight as zero', () => {
-    const mixed: AllocationLine[] = [
-      { lineTotal: 100, quantity: 1, weight: 10 },
-      { lineTotal: 100, quantity: 1 },
-    ]
-    expect(allocateCapitalisedCost(mixed, header({ shipping: 500 }), 'weight')).toEqual([500, 0])
-  })
-
   it('ignores a negative line total when weighting by value', () => {
     const withCredit: AllocationLine[] = [
       { lineTotal: -100, quantity: 1 },
@@ -190,6 +182,119 @@ describe('allocateLandedCost - bases', () => {
     expect(allocateCapitalisedCost(withCredit, header({ shipping: 500 }), 'value')).toEqual([
       0, 500,
     ])
+  })
+})
+
+describe('allocateCapitalisedCost - a partial weight set is refused', () => {
+  // Receiving plan section 5.3: all-absent carries no information and an equal
+  // split is honest; half-absent carries misleading information, because the
+  // unweighed lines land at exactly zero freight while looking deliberate.
+
+  it('refuses a set where only some lines carry a weight, naming the line', () => {
+    const mixed: AllocationLine[] = [
+      { lineTotal: 100, quantity: 1, weight: 10 },
+      { lineTotal: 100, quantity: 1 },
+    ]
+    expect(() => allocateCapitalisedCost(mixed, header({ shipping: 500 }), 'weight')).toThrow(
+      BadRequestError
+    )
+    expect(() => allocateCapitalisedCost(mixed, header({ shipping: 500 }), 'weight')).toThrow(
+      /Line 1 has no weight/
+    )
+  })
+
+  it('names the first unweighed line when several are missing', () => {
+    const mixed: AllocationLine[] = [
+      { lineTotal: 100, quantity: 1, weight: 10 },
+      { lineTotal: 100, quantity: 1, weight: 20 },
+      { lineTotal: 100, quantity: 1 },
+      { lineTotal: 100, quantity: 1 },
+    ]
+    expect(() => allocateCapitalisedCost(mixed, header({ shipping: 500 }), 'weight')).toThrow(
+      /Line 2 has no weight/
+    )
+  })
+
+  it('refuses an explicit zero weight among positive ones - same silent zero share', () => {
+    const mixed: AllocationLine[] = [
+      { lineTotal: 100, quantity: 1, weight: 10 },
+      { lineTotal: 100, quantity: 1, weight: 0 },
+      { lineTotal: 100, quantity: 1, weight: 30 },
+    ]
+    expect(() => allocateCapitalisedCost(mixed, header({ shipping: 500 }), 'weight')).toThrow(
+      /Line 1 has no weight/
+    )
+  })
+
+  it('refuses through allocateLandedCost too, not just the adder vector', () => {
+    const mixed: AllocationLine[] = [
+      { lineTotal: 100, quantity: 1, weight: 10 },
+      { lineTotal: 100, quantity: 1 },
+    ]
+    expect(() => allocateLandedCost(mixed, header({ shipping: 500 }), 'weight')).toThrow(
+      BadRequestError
+    )
+  })
+
+  it('allocates as before when every line carries a positive weight', () => {
+    const weighed: AllocationLine[] = [
+      { lineTotal: 100, quantity: 1, weight: 10 },
+      { lineTotal: 100, quantity: 1, weight: 40 },
+    ]
+    const purchase = header({ shipping: 500 })
+    const adders = allocateCapitalisedCost(weighed, purchase, 'weight')
+
+    expect(adders).toEqual([100, 400])
+    expect(sum(adders)).toBe(capitalisableAmount(purchase))
+  })
+
+  it('still equal-splits when no line is weighed, whether absent or explicitly zero', () => {
+    // The "weighed === 0" branch: a mix of absent and zero is still a set that
+    // carries no information, so the documented fallback stands.
+    const unweighed: AllocationLine[] = [
+      { lineTotal: 100, quantity: 1, weight: 0 },
+      { lineTotal: 100, quantity: 1 },
+      { lineTotal: 100, quantity: 1, weight: 0 },
+    ]
+    const purchase = header({ shipping: 100 })
+    const adders = allocateCapitalisedCost(unweighed, purchase, 'weight')
+
+    expect(adders).toEqual([34, 33, 33])
+    expect(sum(adders)).toBe(capitalisableAmount(purchase))
+  })
+
+  it('leaves the value and quantity bases untouched by unweighed lines', () => {
+    // A zero line total under 'value' is a legitimate free item, and neither
+    // basis reads `weight` at all - the guard must not reach them.
+    const mixed: AllocationLine[] = [
+      { lineTotal: 100, quantity: 1, weight: 10 },
+      { lineTotal: 0, quantity: 3 },
+    ]
+    const purchase = header({ shipping: 400 })
+
+    expect(allocateCapitalisedCost(mixed, purchase, 'value')).toEqual([400, 0])
+    expect(allocateCapitalisedCost(mixed, purchase, 'quantity')).toEqual([100, 300])
+    for (const basis of ['value', 'quantity'] as const) {
+      expect(sum(allocateCapitalisedCost(mixed, purchase, basis))).toBe(
+        capitalisableAmount(purchase)
+      )
+    }
+  })
+
+  it('reconciles exactly for every fully weighed set across awkward counts and freight', () => {
+    for (let lineCount = 1; lineCount <= 9; lineCount++) {
+      for (const shipping of [1, 7, 99, 100, 1001, 123_457]) {
+        const lines: AllocationLine[] = Array.from({ length: lineCount }, (_, index) => ({
+          lineTotal: 1000 + index * 37,
+          quantity: 1 + index,
+          weight: 1 + index * 3,
+        }))
+        const purchase = header({ shipping, tax: 13, discount: 7 })
+        expect(sum(allocateCapitalisedCost(lines, purchase, 'weight'))).toBe(
+          capitalisableAmount(purchase)
+        )
+      }
+    }
   })
 })
 
@@ -227,7 +332,11 @@ describe('allocateLandedCost - degenerate inputs', () => {
       { lineTotal: 100, quantity: 1, weight: 0 },
       { lineTotal: 100, quantity: 1, weight: 0 },
     ]
-    expect(allocateCapitalisedCost(lines, header({ shipping: 1000 }), 'weight')).toEqual([500, 500])
+    const purchase = header({ shipping: 1000 })
+    const adders = allocateCapitalisedCost(lines, purchase, 'weight')
+
+    expect(adders).toEqual([500, 500])
+    expect(sum(adders)).toBe(capitalisableAmount(purchase))
   })
 
   it('allocates nothing when the header is empty', () => {

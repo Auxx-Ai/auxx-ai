@@ -17,7 +17,7 @@
 // prefix to the line vocabulary itself, so these assertions widened with it.
 
 import { describe, expect, it } from 'vitest'
-import { relKeyForDocumentType } from './line-rows'
+import { LINE_COLS, relKeyForDocumentType } from './line-rows'
 import {
   crossFillAmount,
   DEFAULT_LINE_VALUES,
@@ -542,5 +542,114 @@ describe('the GL account', () => {
   it('belongs to the vendor bill alone', () => {
     expect(ALL.filter((d) => lineSchemaFor(d).attrs.glAccount !== null)).toEqual(['vendor_bill'])
     expect(LINE_SCHEMAS.vendor_bill.attrs.glAccount).toBe('vendor_bill_line_gl_account')
+  })
+})
+
+// plans/purchasing/05-receiving-cost-and-corrections.md §5.2/§5.3. Both fields
+// were DECLARED in the registry and written by nothing at all — read by
+// `use-purchase-order-lines.ts`, set by no surface anywhere. Mapping them into
+// `attrs` is what gave them a writer, so these assertions pin the mapping.
+describe('the supplier link', () => {
+  it('belongs to the purchase order alone', () => {
+    expect(ALL.filter((d) => lineSchemaFor(d).attrs.vendorPartRecordId !== null)).toEqual([
+      'purchase_order',
+    ])
+    expect(LINE_SCHEMAS.purchase_order.attrs.vendorPartRecordId).toBe(
+      'purchase_order_line_vendor_part'
+    )
+  })
+
+  // 🛑 The link and the lookup that produces it are one feature. The prefill
+  // resolves `vendor_part` on the natural key `(part, supplier)`, so a document
+  // that can stamp the link but names no vendor attribute has no second leg to
+  // match on — and the only way to produce a link without one is the preferred-
+  // vendor fallback §5.2 forbids, which would put another supplier's price on
+  // this supplier's order.
+  it.each(
+    ALL
+  )('%s: the link never travels without the vendor it resolves against', (documentType) => {
+    const { attrs, vendorAttr } = lineSchemaFor(documentType)
+    expect(vendorAttr !== null).toBe(attrs.vendorPartRecordId !== null)
+  })
+
+  // Read off the PARENT document, not the line — a line-entity attribute here
+  // would resolve to nothing on the record the builder fetches, exactly as it
+  // would for the match key's scope.
+  it('reads the vendor off a parent attribute, not a line one', () => {
+    for (const documentType of ALL) {
+      const { vendorAttr, lineEntityType } = lineSchemaFor(documentType)
+      if (!vendorAttr) continue
+      expect(vendorAttr.startsWith(`${lineEntityType}_`)).toBe(false)
+      expect(vendorAttr.startsWith(`${documentType}_`)).toBe(true)
+    }
+    expect(LINE_SCHEMAS.purchase_order.vendorAttr).toBe('purchase_order_vendor')
+  })
+
+  // A vendor bill HAS a vendor, and must still never prefill: its prices are
+  // transcribed from the supplier's own paper, and overwriting one with our
+  // catalogue price erases the disagreement the three-way match exists to find.
+  it('the vendor bill never prefills, though it has a vendor', () => {
+    expect(LINE_SCHEMAS.vendor_bill.vendorAttr).toBeNull()
+    expect(LINE_SCHEMAS.vendor_bill.attrs.vendorPartRecordId).toBeNull()
+  })
+
+  it('every other document drops a stray supplier link rather than writing it', () => {
+    for (const documentType of ALL) {
+      const schema = lineSchemaFor(documentType)
+      if (schema.attrs.vendorPartRecordId !== null) continue
+      const updates = linePatchToFieldValues(
+        { vendorPartRecordId: 'vendor_part_def:vp_instance' as LineValues['vendorPartRecordId'] },
+        schema
+      )
+      expect(updates, `${documentType} wrote a supplier link`).toEqual([])
+    }
+  })
+
+  it('reads the link back as a single record id, never a one-element array', () => {
+    const values = lineValuesFromSystemValues(
+      { purchase_order_line_vendor_part: ['vp_def:vp_instance'] },
+      LINE_SCHEMAS.purchase_order
+    )
+    expect(values.vendorPartRecordId).toBe('vp_def:vp_instance')
+    expect(
+      lineValuesFromSystemValues({}, LINE_SCHEMAS.purchase_order).vendorPartRecordId
+    ).toBeNull()
+  })
+})
+
+describe('the line weight', () => {
+  it('belongs to the purchase order alone', () => {
+    expect(ALL.filter((d) => lineSchemaFor(d).attrs.weight !== null)).toEqual(['purchase_order'])
+    expect(LINE_SCHEMAS.purchase_order.attrs.weight).toBe('purchase_order_line_weight')
+  })
+
+  it('every other document drops a stray weight rather than writing it', () => {
+    for (const documentType of ALL) {
+      const schema = lineSchemaFor(documentType)
+      if (schema.attrs.weight !== null) continue
+      const updates = linePatchToFieldValues({ weight: 12 }, schema)
+      expect(updates, `${documentType} wrote a weight`).toEqual([])
+    }
+  })
+
+  // 🛑 The distinction the whole §5.3 guard rests on. `allocateLandedCost`
+  // divides by the SUM of the set, so an unweighed line reported as `0` is
+  // indistinguishable from a line genuinely weighing nothing — and a document
+  // where some lines are weighed and others read `0` allocates all of the freight
+  // onto the weighed ones, silently. Absence has to survive the read as `null`.
+  it('keeps absence and zero apart', () => {
+    const po = LINE_SCHEMAS.purchase_order
+    expect(lineValuesFromSystemValues({}, po).weight).toBeNull()
+    expect(lineValuesFromSystemValues({ purchase_order_line_weight: null }, po).weight).toBeNull()
+    expect(lineValuesFromSystemValues({ purchase_order_line_weight: 0 }, po).weight).toBe(0)
+    expect(lineValuesFromSystemValues({ purchase_order_line_weight: 2.5 }, po).weight).toBe(2.5)
+    // NUMBER values arrive as a numeric string on some read paths.
+    expect(lineValuesFromSystemValues({ purchase_order_line_weight: '2.5' }, po).weight).toBe(2.5)
+  })
+
+  // The reason the menu convention exists at all: an optional concept must never
+  // cost every document a column (04-vendor-bill-lines-and-the-amount-cell.md §2).
+  it('costs no grid column', () => {
+    expect(LINE_COLS).toBe('minmax(10rem, 1fr) 5.5rem 5.5rem 6.5rem')
   })
 })

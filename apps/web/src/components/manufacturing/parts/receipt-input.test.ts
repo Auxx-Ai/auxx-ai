@@ -67,26 +67,27 @@ describe('receiptBreakdown', () => {
 })
 
 describe('buildReceiptInput', () => {
-  it('always sends unitCost alongside vendorUnitPrice', () => {
-    // 🛑 The whole reason this module exists. `receiveStock` derives landed from
-    // the supplier row's OWN unitPrice when `unitCost` is absent, so sending only
-    // the edited base would freeze a cost computed from the replaced price —
-    // silently, with no error and a row that looks correct.
+  it('🛑 sends the BASE price and never a cost', () => {
+    // The whole reason this module exists. The landed figure is the server's to
+    // resolve — `purchasing.receiveStock` does not accept a `unitCost` at all —
+    // so what goes on the wire is the price off the packing slip, edits included.
     const input = buildReceiptInput(formState({ unitPrice: 5000 }))
     expect(input?.vendorUnitPrice).toBe(5000)
-    expect(input?.unitCost).toBe(5335)
+    expect(input).not.toHaveProperty('unitCost')
   })
 
-  it('sends the exact number the breakdown displayed', () => {
+  it('sends the base the breakdown was computed from, not the landed total', () => {
     const state = formState()
-    expect(buildReceiptInput(state)?.unitCost).toBe(receiptBreakdown(state)?.landed)
+    const breakdown = receiptBreakdown(state)
+    expect(buildReceiptInput(state)?.vendorUnitPrice).toBe(breakdown?.base)
+    expect(breakdown?.landed).not.toBe(breakdown?.base)
   })
 
   it('omits the supplier when the part has no row, and still prices the receipt', () => {
     const input = buildReceiptInput(formState({ vendorPartId: null, terms: null }))
     expect(input).not.toBeNull()
     expect(input).not.toHaveProperty('vendorPartId')
-    expect(input?.unitCost).toBe(4400)
+    expect(input?.vendorUnitPrice).toBe(4400)
   })
 
   it('refuses a non-positive quantity', () => {

@@ -13,8 +13,16 @@
 // one-off, a freight-only delivery — and it should stay small.
 //
 // Everything here is prefilled on the assumption the whole order arrived: each
-// row's quantity is what is OUTSTANDING and each price is what was agreed. The
-// common case is therefore Receive, with no typing at all.
+// row's quantity is what is OUTSTANDING. The common case is therefore Receive,
+// with no typing at all.
+//
+// 🛑 The only question this door asks is HOW MANY ARRIVED. It used to ask for a
+// unit price too, and to spread the order's shipping, tax and discount across
+// whatever was on this receipt — both wrong for the same reason: a purchase order
+// is an ORDER-level document and a receipt is a SHIPMENT-level event. The price
+// is already frozen on the line and the server reads it there; the freight is the
+// bill's to state, and allocating it here capitalised the same charge once per
+// delivery. See plans/purchasing/05-receiving-cost-and-corrections.md §3.2/§4.1.
 //
 // 🛑 The line set comes from `usePurchaseOrderLines` — the LIST lane — and here
 // that is a correctness requirement, not a freshness nicety. This dialog does not
@@ -44,46 +52,30 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@auxx/ui/components/table'
 import { toastError } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
-import { formatCurrency } from '@auxx/utils/currency'
 import { Package } from 'lucide-react'
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { useRecord } from '~/components/resources'
-import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { BaseType } from '~/components/workflow/types'
-import { useSettings } from '~/hooks/use-settings'
 import { api } from '~/trpc/react'
+import { formatQuantity } from '../purchasing-summary-strip'
 import {
-  formatQuantity,
-  numberValue,
-  PurchasingSummaryStrip,
-  type SummaryCell,
-  unwrapValue,
-} from '../purchasing-summary-strip'
-import {
-  allocatedUnitCosts,
   buildReceivePoInput,
   outstandingQuantity,
   prefillDraft,
   type ReceiptDraftLine,
-  type ReceiptHeader,
   type ReceivablePoLine,
-  receiptSubtotal,
 } from './receive-po-lines'
 import { usePurchaseOrderLines } from './use-purchase-order-lines'
 
-// The PO's OWN fields — written on the PO and published normally, so
-// `useSystemValues` is the right read for them. `purchase_order_lines` is not
-// here on purpose; see the note above.
-const PO_ATTRS = [
-  'purchase_order_shipping_total',
-  'purchase_order_tax_total',
-  'purchase_order_discount_value',
-  'purchase_order_tax_recoverable',
-  'purchase_order_allocation_basis',
-  'purchase_order_currency',
-] as const
+// 🛑 This dialog reads NO field off the purchase order header any more. It used
+// to read `shipping_total` / `tax_total` / `discount_value` /
+// `tax_recoverable` / `allocation_basis` to spread freight across the receipt,
+// and `currency` to render the money columns that spread produced. All of that
+// left with the allocation. Those fields are still declared on the PO and still
+// reachable through the generic field panel — nothing was retired, this surface
+// simply stopped being one of their readers.
 
 interface ReceivePurchaseOrderDialogProps {
   open: boolean
@@ -98,21 +90,10 @@ export function ReceivePurchaseOrderDialog({
   purchaseOrderRecordId,
   onReceived,
 }: ReceivePurchaseOrderDialogProps) {
-  const { getSetting } = useSettings({})
-
-  const { values, isLoading: poLoading } = useSystemValues(purchaseOrderRecordId, [...PO_ATTRS], {
-    autoFetch: true,
-  })
   // Same hook the Receiving card behind this dialog uses, so both resolve one
   // line set from one fetch — the card and the receipt can never disagree about
   // what is on the order.
-  const { lines: poLines, isLoading: linesLoading } = usePurchaseOrderLines(purchaseOrderRecordId)
-
-  const currencyValue = unwrapValue(values.purchase_order_currency)
-  const currencyCode =
-    (typeof currencyValue === 'string' && currencyValue) ||
-    (getSetting('organization.currency') as string | null) ||
-    'USD'
+  const { lines: poLines, isLoading } = usePurchaseOrderLines(purchaseOrderRecordId)
 
   // Two shapes out of one pass over the lines. `ReceivablePoLine[]` is the SERVER
   // payload's shape, so its `partId` is a bare instance id — which cannot address
@@ -130,29 +111,15 @@ export function ReceivePurchaseOrderDialog({
         description: line.description,
         quantityOrdered: line.ordered,
         quantityReceived: line.received,
-        expectedUnitPrice: line.expectedUnitPrice,
-        // Spread-or-omit, not `undefined`: both are optional on the server
-        // payload and an explicit `undefined` is a different shape.
+        // Spread-or-omit, not `undefined`: it is optional on the server payload
+        // and an explicit `undefined` is a different shape.
         ...(line.vendorPartRecordId
           ? { vendorPartId: getInstanceId(line.vendorPartRecordId) }
           : {}),
-        ...(line.weight > 0 ? { weight: line.weight } : {}),
       }
     })
     return { lines, partRecordIds }
   }, [poLines])
-
-  const basisValue = unwrapValue(values.purchase_order_allocation_basis)
-  const header: ReceiptHeader = {
-    shipping: numberValue(values.purchase_order_shipping_total),
-    tax: numberValue(values.purchase_order_tax_total),
-    discount: numberValue(values.purchase_order_discount_value),
-    taxRecoverable: unwrapValue(values.purchase_order_tax_recoverable) === true,
-    basis:
-      basisValue === 'quantity' || basisValue === 'weight'
-        ? basisValue
-        : ('value' as ReceiptHeader['basis']),
-  }
 
   const [draft, setDraft] = useState<Record<string, ReceiptDraftLine>>({})
   const [occurredAt, setOccurredAt] = useState(() => new Date().toISOString())
@@ -172,9 +139,7 @@ export function ReceivePurchaseOrderDialog({
     setReason('')
   }, [open, linesKey])
 
-  const unitCosts = allocatedUnitCosts(lines, draft, header)
-  const subtotal = receiptSubtotal(lines, draft)
-  const payload = buildReceivePoInput(lines, draft, header, { occurredAt, reference, reason })
+  const payload = buildReceivePoInput(lines, draft, { occurredAt, reference, reason })
 
   const receive = api.purchasing.receivePurchaseOrder.useMutation({
     onError: (error) => toastError({ title: 'Failed to receive', description: error.message }),
@@ -202,34 +167,11 @@ export function ReceivePurchaseOrderDialog({
     }
   }
 
-  const isLoading = poLoading || linesLoading
   const receivingCount = payload?.lines.length ?? 0
-
-  // The header amounts are the freight-allocation inputs (§4.3) — shown so the
-  // landed column above is explicable rather than mysterious.
-  const landedCells: SummaryCell[] = [
-    { label: 'Goods', value: formatCurrency(subtotal, { currencyCode }) },
-    ...(header.shipping > 0
-      ? [{ label: 'Freight', value: `+ ${formatCurrency(header.shipping, { currencyCode })}` }]
-      : []),
-    ...(header.tax > 0
-      ? [
-          {
-            label: header.taxRecoverable ? 'Tax (recoverable)' : 'Tax',
-            value: `+ ${formatCurrency(header.tax, { currencyCode })}`,
-          },
-        ]
-      : []),
-    ...(header.discount > 0
-      ? [{ label: 'Discount', value: `− ${formatCurrency(header.discount, { currencyCode })}` }]
-      : []),
-    { label: 'Spread by', value: header.basis, tone: 'muted' },
-  ]
-  const showLandedCells = header.shipping > 0 || header.tax > 0 || header.discount > 0
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent position='tc' size='xxl'>
+      <DialogContent position='tc' size='lg'>
         <DialogHeader>
           <DialogTitle>Receive purchase order</DialogTitle>
           <DialogDescription>
@@ -237,9 +179,9 @@ export function ReceivePurchaseOrderDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {/* One rhythm for the three body blocks — the table, the allocation strip
-            and the receipt form. `DialogHeader` carries its own `mb-4` and
-            `DialogFooter` its own `pt-4`, so only the middle needs spacing. */}
+        {/* One rhythm for the two body blocks — the table and the receipt form.
+            `DialogHeader` carries its own `mb-4` and `DialogFooter` its own
+            `pt-4`, so only the middle needs spacing. */}
         <div className='space-y-4'>
           {isLoading ? (
             <div className='space-y-2 rounded-md border p-3'>
@@ -260,14 +202,12 @@ export function ReceivePurchaseOrderDialog({
                   div, which would become the sticky header's scrollport and pin the
                   header to a box that never scrolls. Same shape as `audit-table.tsx`.
                   `table-fixed` is what lets the part cell actually truncate. */}
-              <table className='w-full min-w-[36rem] table-fixed caption-bottom text-sm'>
+              <table className='w-full min-w-[24rem] table-fixed caption-bottom text-sm'>
                 <TableHeader className='sticky top-0 z-10 bg-muted'>
                   <TableRow className='hover:bg-muted'>
                     <TableHead>Part</TableHead>
                     <TableHead className='w-[7.5rem] text-right'>Outstanding</TableHead>
                     <TableHead className='w-[7rem] text-right'>Receive</TableHead>
-                    <TableHead className='w-[9rem] text-right'>Unit price</TableHead>
-                    <TableHead className='w-[7rem] text-right'>Landed</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -277,8 +217,6 @@ export function ReceivePurchaseOrderDialog({
                       line={line}
                       partRecordId={partRecordIds[line.purchaseOrderLineId]}
                       draft={draft[line.purchaseOrderLineId]}
-                      landedUnitCost={unitCosts[line.purchaseOrderLineId]}
-                      currencyCode={currencyCode}
                       disabled={receive.isPending}
                       onChange={(next) =>
                         setDraft((current) => ({ ...current, [line.purchaseOrderLineId]: next }))
@@ -288,10 +226,6 @@ export function ReceivePurchaseOrderDialog({
                 </TableBody>
               </table>
             </div>
-          )}
-
-          {showLandedCells && (
-            <PurchasingSummaryStrip className='rounded-md border px-3 py-2' cells={landedCells} />
           )}
 
           <FieldPanel
@@ -380,22 +314,17 @@ function ReceiveLineRow({
   line,
   partRecordId,
   draft,
-  landedUnitCost,
-  currencyCode,
   disabled,
   onChange,
 }: {
   line: ReceivablePoLine
   partRecordId: RecordId | undefined
   draft: ReceiptDraftLine | undefined
-  landedUnitCost: number | undefined
-  currencyCode: string
   disabled: boolean
   onChange: (next: ReceiptDraftLine) => void
 }) {
   const { record } = useRecord({ recordId: partRecordId!, enabled: !!partRecordId })
   const quantity = draft?.quantity ?? 0
-  const unitPrice = draft?.unitPrice ?? line.expectedUnitPrice
   const outstanding = outstandingQuantity(line)
 
   // The part IS a buy-side line's identity (03-line-builder-reuse.md), so it leads;
@@ -415,29 +344,15 @@ function ReceiveLineRow({
         {formatQuantity(outstanding)}
         <span className='ml-1 text-xs'>of {formatQuantity(line.quantityOrdered)}</span>
       </TableCell>
-      <TableCell className='px-1 py-1'>
+      <TableCell className='py-1 pr-2 pl-1'>
         <EditableNumberCell>
           <FieldInputAdapter
             fieldType={FieldType.NUMBER}
             value={quantity}
-            onChange={(val) => onChange({ quantity: (val as number) ?? 0, unitPrice })}
+            onChange={(val) => onChange({ quantity: (val as number) ?? 0 })}
             disabled={disabled}
           />
         </EditableNumberCell>
-      </TableCell>
-      <TableCell className='px-1 py-1'>
-        <EditableNumberCell>
-          <FieldInputAdapter
-            fieldType={FieldType.CURRENCY}
-            fieldOptions={{ currencyCode, decimals: 2, useGrouping: true }}
-            value={unitPrice}
-            onChange={(val) => onChange({ quantity, unitPrice: (val as number) ?? 0 })}
-            disabled={disabled}
-          />
-        </EditableNumberCell>
-      </TableCell>
-      <TableCell className='py-1.5 pr-3 pl-2 text-right tabular-nums'>
-        {landedUnitCost != null ? formatCurrency(landedUnitCost, { currencyCode }) : '—'}
       </TableCell>
     </TableRow>
   )
