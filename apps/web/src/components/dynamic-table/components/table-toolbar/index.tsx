@@ -39,7 +39,7 @@ import { useTableConfig } from '../../context/table-config-context'
 import { useTableInstance } from '../../context/table-instance-context'
 import { useViewMetadata } from '../../context/view-metadata-context'
 import { useDynamicTableStore } from '../../stores/dynamic-table-store'
-import { useSetFilters } from '../../stores/store-actions'
+import { useSetFilters, useSetSorting } from '../../stores/store-actions'
 import {
   useActiveView,
   useActiveViewId,
@@ -53,6 +53,7 @@ import { ColumnManager } from './column-manager'
 import { KanbanViewSettings } from './kanban-view-settings'
 import { RecordsGuideDialog } from './records-guide-dialog'
 import { TableFilterBuilder } from './table-filter-builder'
+import { TableSortBuilder } from './table-sort-builder'
 import { ViewSelector } from './view-selector'
 
 interface TableToolbarProps {
@@ -90,6 +91,7 @@ export function TableToolbar<TData = any>({
     tableId,
     entityDefinitionId,
     enableFiltering = true,
+    enableSorting = true,
     enableSearch = true,
     renderSearch,
     enableImport = false,
@@ -108,10 +110,11 @@ export function TableToolbar<TData = any>({
   const currentView = useActiveView(tableId)
   const filters = useTableFilters(tableId)
   const setFilters = useSetFilters(tableId)
+  const setSorting = useSetSorting(tableId)
   const setActiveView = useDynamicTableStore((state) => state.setActiveView)
 
-  // Get filterable fields from resource system
-  const { filterableFields } = useResourceFields(entityDefinitionId ?? null)
+  // Get filterable + sortable fields from resource system
+  const { filterableFields, sortableFields } = useResourceFields(entityDefinitionId ?? null)
 
   // Determine view type
   const viewType: ViewType = (currentView?.config as ViewConfig)?.viewType ?? 'table'
@@ -133,7 +136,7 @@ export function TableToolbar<TData = any>({
   // Records help guide
   const [guideOpen, setGuideOpen] = useState(false)
 
-  // CSV export
+  // CSV export — `sorting` is also what the Sort control reads and writes.
   const activeViewId = useActiveViewId(tableId)
   const sorting = useTableSorting(tableId)
   const { viewColumns, allColumns } = useExportColumns(tableId, entityDefinitionId)
@@ -232,6 +235,25 @@ export function TableToolbar<TData = any>({
             filters={filters}
             onFiltersChange={setFilters}
             filterableFields={filterableFields}
+            resourceType={entityDefinitionId}
+          />
+        </div>
+      )}
+
+      {/* Sort Button — deliberately its own control rather than a section of the
+          filter popover: that one is a buffered draft that commits on close,
+          while sorting applies immediately (as the column header does).
+
+          Shown for kanban and calendar too. `DynamicResourceView` passes the
+          view's sorting to `useRecordList` whatever the view type, so a sort set
+          on the table keeps applying there — and those two render no column
+          headers at all, which would leave it invisible and unclearable. */}
+      {enableSorting && entityDefinitionId && (
+        <div className='group-data-[search-expanded]/toolbar:hidden'>
+          <TableSortBuilder
+            sorting={sorting}
+            onSortingChange={setSorting}
+            sortableFields={sortableFields}
             resourceType={entityDefinitionId}
           />
         </div>
