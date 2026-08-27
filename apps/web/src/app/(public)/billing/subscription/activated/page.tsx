@@ -1,4 +1,4 @@
-// apps/web/src/app/(protected)/billing/subscription/activated/page.tsx
+// apps/web/src/app/(public)/billing/subscription/activated/page.tsx
 
 import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
@@ -21,6 +21,17 @@ interface PageProps {
  * confirm + sync the live contract onto the PlanSubscription row (shared
  * `confirmAndSyncShopifySubscription`). If the contract hasn't propagated within the window,
  * the 15-minute worker poll backstops it.
+ *
+ * **Deliberately `(public)`, not `(protected)`.** The URL is unchanged — route groups aren't URL
+ * segments — but the auth gate is gone on purpose. `(protected)`'s layout bounces an
+ * unauthenticated visitor to `/login` and drops `?plan_handle=&shop=` with it, so an approval
+ * made without a live Auxx session never reconciled at all. Nothing here needs a session: the
+ * whole confirm is server-side and `?shop=` identifies the org on its own. Only the final
+ * destination cares, and that is handled below.
+ *
+ * It also needs `billing` in `proxy.ts`'s `KNOWN_ROUTE_PREFIXES` — without it the proxy reads
+ * `billing` as an org handle and 307s this to a 404 before routing ever happens. See
+ * `plans/billing/v3/06-approval-loops-back-to-plan-selection.md` §3a-2.
  */
 export default async function ShopifySubscriptionActivatedPage({ searchParams }: PageProps) {
   const { plan_handle: planHandle, shop, org } = await searchParams
@@ -28,7 +39,7 @@ export default async function ShopifySubscriptionActivatedPage({ searchParams }:
   const orgRow = await resolveOrgForLanding({ shop, org })
   if (!orgRow?.shopifyShopDomain) {
     logger.warn('Activated landing could not resolve a Shopify org', { shop, org })
-    redirect('/app/settings/plans?billing=pending')
+    redirect(await destination('/app/settings/plans?billing=pending'))
   }
 
   const confirmed = await confirmAndSyncShopifySubscription({
@@ -42,11 +53,21 @@ export default async function ShopifySubscriptionActivatedPage({ searchParams }:
       organizationId: orgRow.organizationId,
       planHandle: planHandle ?? null,
     })
-    redirect('/app')
+    redirect(await destination('/app'))
   }
 
   // Contract not propagated yet — worker poll will catch up within 15 minutes.
-  redirect('/app/settings/plans?billing=pending')
+  redirect(await destination('/app/settings/plans?billing=pending'))
+}
+
+/**
+ * Where to send the merchant once the sync has run. Signed-in: straight there. Signed-out: to
+ * login carrying the destination, rather than letting `(protected)` bounce them to a bare
+ * `/login` that forgets where they were going.
+ */
+async function destination(path: string): Promise<string> {
+  const session = await getSession()
+  return session?.user ? path : `/login?callbackUrl=${encodeURIComponent(path)}`
 }
 
 /** Resolves the Shopify-billed org for the landing redirect, preferring the `?shop=` param. */
