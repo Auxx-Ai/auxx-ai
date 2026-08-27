@@ -203,14 +203,18 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
     sidebarTabs: DEFAULT_SIDEBAR_TABS,
     defaultTab: 'line-items',
     defaultSidebarTab: 'overview',
-    // Deliberately empty for now. `vendor`, `receiving` (the computed
-    // quantityReceived roll-up) and `bills` are all wanted and none is built -
-    // and a card declared here with no component in
-    // `DRAWER_TAB_CARD_COMPONENTS` renders NOTHING at all, silently
-    // (`base-entity-drawer.tsx`: `if (!componentLoader) return null`). A
-    // phantom card is worse than an absent one, so they land with their
-    // components, not before.
-    sidebarCards: [],
+    // The sidebar and the drawer read the SAME `DRAWER_TAB_CARD_COMPONENTS`
+    // registry, so each value here is the card key and must match the
+    // `purchase_order:*` entries there and in the PO's drawer block.
+    //
+    // No `totals` card: the five total fields are `showInPanel: false` because
+    // the LineBuilder's TotalsFooter already renders them under the lines, so a
+    // totals card would compete with it — the same call `order` made.
+    sidebarCards: [
+      { value: 'vendor', label: 'Vendor' },
+      { value: 'receiving', label: 'Receiving' },
+      { value: 'bills', label: 'Bills', recordResource: 'vendor_bill' },
+    ],
   },
 
   work_order: {
