@@ -1,9 +1,16 @@
 // packages/lib/src/field-values/relationship-sync.ts
 
 import { type Database, schema, type Transaction } from '@auxx/database'
+import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
 import type { RelationshipType } from '@auxx/types/custom-field'
+import { buildFieldValueKey, type FieldId } from '@auxx/types/field'
+import type { TypedFieldValue } from '@auxx/types/field-value'
+import { type RecordId, toRecordId } from '@auxx/types/resource'
 import { generateKeyBetween, nextKeyAfter } from '@auxx/utils/fractional-indexing'
 import { and, asc, eq, inArray, sql } from 'drizzle-orm'
+import type { FieldValueUpdateEntry } from '../realtime/events'
+import { rowToTypedValue } from './field-value-helpers'
+import type { FieldValueRow } from './types'
 
 // ============================================================================
 // TYPES
@@ -60,6 +67,169 @@ export interface BulkRelationshipUpdate {
 export interface BulkSyncInput {
   updates: BulkRelationshipUpdate[]
   inverseInfo: InverseFieldInfo
+}
+
+// ============================================================================
+// ANNOUNCING THE INVERSE WRITE  (decision D-11 / defect B-9)
+// ============================================================================
+
+/**
+ * One record whose relationship array this module just rewrote, and which
+ * therefore owes the rest of the system an announcement.
+ *
+ * 🛑 **Why this exists at all.** A relationship is stored TWICE — once on the
+ * record you edited and once as a mirror on the record at the other end — and
+ * until this was added, only the first write was ever published. The mirror was
+ * rewritten in raw SQL right here and nobody was told, so:
+ *
+ *   - every screen holding the parent kept rendering the list it had at load
+ *     time (the client's fetch queue never re-requests a key it already holds,
+ *     so not even a remount repaired it — only a full page reload);
+ *   - record rules that subscribe to a relationship field never fired on the
+ *     inverse side at all. Not intermittently. Never.
+ *
+ * The diff was already being computed — it is the value `syncInverseRelationships`
+ * returns — and simply thrown away by every caller. See
+ * `plans/events/03-write-context-and-batch-lane-plan.md` §D-11 and the
+ * `inverseRelationshipVisibility` row of `resources/crud/door-matrix.ts`.
+ */
+interface InverseAnnouncement {
+  /** Definition of the records named in {@link entityIds}. */
+  entityDefinitionId: string
+  /** The field on those records whose array changed. */
+  fieldId: string
+  /** Instance ids whose `fieldId` array changed. */
+  entityIds: string[]
+  /** `belongs_to`/`has_one` publish a scalar (or `null`); the rest publish the array. */
+  single: boolean
+}
+
+function isSingleValued(relationshipType: RelationshipType): boolean {
+  return relationshipType === 'belongs_to' || relationshipType === 'has_one'
+}
+
+/**
+ * Re-read each affected record's relationship array and publish it.
+ *
+ * Three deliberate choices, each of which is a bug if reversed:
+ *
+ * 1. **No `excludeSocketId`.** Every ordinary publish suppresses the echo to the
+ *    tab that made the change, because that tab already knows. Here it does not:
+ *    the record being announced is the one at the OTHER end of the link, not the
+ *    one the user edited. To the acting tab this is news, and suppressing it
+ *    leaves exactly the bug this function exists to fix, for the person most
+ *    likely to be looking at it.
+ *
+ * 2. **Buffered when a write scope is open.** Announcing before `COMMIT` is
+ *    worse than silence: the subscriber re-reads on a different connection,
+ *    cannot see uncommitted rows, and caches the PRE-write value as fresh.
+ *    `recordTxWriteChange` holds the frame until `flushTxWriteScope` replays it
+ *    after the transaction lands. (Writing the `changes` bucket is not optional
+ *    bookkeeping — the flush iterates `scope.changes` to decide what to replay,
+ *    so an entry with no bucket would be buffered and never sent.)
+ *
+ * 3. **Best-effort.** A realtime hiccup must never fail the write that caused
+ *    it; the rows are already durable by the time we get here. Same contract as
+ *    every other publish in this package.
+ *
+ * Records whose list was emptied are published as an empty array rather than
+ * skipped — "this list is now empty" is the news, and omitting it leaves the
+ * last non-empty answer on screen.
+ *
+ * Realtime and the write scope are LAZY-imported for the reason `tx-write-flush`
+ * documents: this module sits under the field-value write path, and pulling
+ * `realtime` into its static graph re-orders module evaluation across a cycle
+ * that runs through `@auxx/lib/cache`.
+ */
+async function announceInverseChanges(
+  ctx: RelationshipSyncContext,
+  announcements: InverseAnnouncement[]
+): Promise<void> {
+  const wanted = announcements.filter((a) => a.entityIds.length > 0)
+  if (wanted.length === 0) return
+
+  try {
+    // The record id and the raw field id are carried alongside the frame rather
+    // than re-derived from `entry.key`: `buildFieldValueKey` normalizes a bare
+    // field id into a `ResourceFieldId`, so the key is
+    // `<def>:<instance>:<def>:<field>` and slicing it back apart yields the
+    // qualified ref, not the plain field id the manifest's `outputKey` wants.
+    const pending: Array<{
+      recordId: RecordId
+      fieldId: string
+      entry: FieldValueUpdateEntry
+    }> = []
+
+    for (const announcement of wanted) {
+      const { entityDefinitionId, fieldId, entityIds, single } = announcement
+
+      const rows = await ctx.db
+        .select()
+        .from(schema.FieldValue)
+        .where(
+          and(
+            inArray(schema.FieldValue.entityId, entityIds),
+            eq(schema.FieldValue.fieldId, fieldId),
+            eq(schema.FieldValue.organizationId, ctx.organizationId)
+          )
+        )
+        .orderBy(asc(schema.FieldValue.entityId), asc(schema.FieldValue.sortKey))
+
+      // Seed every affected id with an empty list FIRST, so a record whose
+      // links were all removed still gets a frame (see the note above).
+      const byEntity = new Map<string, TypedFieldValue[]>(entityIds.map((id) => [id, []]))
+      for (const row of rows) {
+        byEntity
+          .get(row.entityId)
+          ?.push(rowToTypedValue(row as unknown as FieldValueRow, FieldTypeEnum.RELATIONSHIP))
+      }
+
+      for (const [entityId, values] of byEntity) {
+        const recordId = toRecordId(entityDefinitionId, entityId)
+        pending.push({
+          recordId,
+          fieldId,
+          entry: {
+            key: buildFieldValueKey(recordId, fieldId as FieldId),
+            value: single ? (values[0] ?? null) : values,
+          },
+        })
+      }
+    }
+
+    if (pending.length === 0) return
+
+    const { getAmbientTxWriteScope, recordTxWriteChange } = await import(
+      '../resources/crud/tx-write-scope'
+    )
+    const scope = getAmbientTxWriteScope()
+
+    if (scope) {
+      for (const { recordId, fieldId, entry } of pending) {
+        recordTxWriteChange(scope, {
+          recordId,
+          // The raw field id, matching the owning side's `systemAttribute ?? fieldId`
+          // fallback. No `systemAttribute` is resolvable from here.
+          outputKey: fieldId,
+          // No `o`: the pre-write array is gone by the time the rows are
+          // rewritten, and `recordTxWriteChange` treats `o` as optional.
+          change: { n: entry.value ?? null },
+          entry,
+        })
+      }
+      return
+    }
+
+    const realtime = await import('../realtime')
+    await realtime.publishFieldValueUpdates(
+      realtime.getRealtimeService(),
+      ctx.organizationId,
+      pending.map((p) => p.entry)
+    )
+  } catch {
+    // Best-effort by contract (3). The write is already durable; a client that
+    // misses this frame is exactly as stale as it was before D-11, no worse.
+  }
 }
 
 // ============================================================================
@@ -178,8 +348,9 @@ export async function syncInverseRelationships(
   }
 
   // Add inverse relationships for entities that were linked (2-3 queries)
+  let cascadeOwnerIds: string[] = []
   if (addedIds.length > 0) {
-    await batchAddToInverse(ctx, {
+    cascadeOwnerIds = await batchAddToInverse(ctx, {
       inverseFieldId: inverseInfo.inverseFieldId,
       inverseRelationshipType: inverseInfo.inverseRelationshipType,
       sourceEntityDefinitionId: inverseInfo.sourceEntityDefinitionId,
@@ -188,6 +359,26 @@ export async function syncInverseRelationships(
       sourceFieldId: inverseInfo.sourceFieldId,
     })
   }
+
+  // D-11: the records whose arrays actually moved, announced. `removedIds` and
+  // `addedIds` are TARGET ids (the other end of the link) — the source's own
+  // field was published by the caller that wrote it.
+  await announceInverseChanges(ctx, [
+    {
+      entityDefinitionId: inverseInfo.targetEntityDefinitionId,
+      fieldId: inverseInfo.inverseFieldId,
+      entityIds: [...new Set([...removedIds, ...addedIds])],
+      single: isSingleValued(inverseInfo.inverseRelationshipType),
+    },
+    // Re-parenting: moving a target from owner A to owner B also shortens A's
+    // list, on the SOURCE side's own field. That write is just as silent.
+    {
+      entityDefinitionId: inverseInfo.sourceEntityDefinitionId,
+      fieldId: inverseInfo.sourceFieldId,
+      entityIds: cascadeOwnerIds,
+      single: false,
+    },
+  ])
 
   return {
     removedFrom: removedIds,
@@ -252,8 +443,9 @@ export async function syncInverseRelationshipsBulk(
   }
 
   // ═══ Execute batched additions ═══
+  let cascadeOwnerIds: string[] = []
   if (additions.size > 0) {
-    await batchAddToInverse(ctx, {
+    cascadeOwnerIds = await batchAddToInverse(ctx, {
       inverseFieldId,
       inverseRelationshipType,
       sourceEntityDefinitionId,
@@ -262,6 +454,23 @@ export async function syncInverseRelationshipsBulk(
       sourceFieldId: inverseInfo.sourceFieldId,
     })
   }
+
+  // D-11, same contract as the single-entity path. Both maps are keyed by the
+  // TARGET id, so their union is exactly the set of records whose array moved.
+  await announceInverseChanges(ctx, [
+    {
+      entityDefinitionId: inverseInfo.targetEntityDefinitionId,
+      fieldId: inverseFieldId,
+      entityIds: [...new Set([...removals.keys(), ...additions.keys()])],
+      single: isSingleValued(inverseRelationshipType),
+    },
+    {
+      entityDefinitionId: sourceEntityDefinitionId,
+      fieldId: inverseInfo.sourceFieldId,
+      entityIds: cascadeOwnerIds,
+      single: false,
+    },
+  ])
 }
 
 // ============================================================================
@@ -343,11 +552,15 @@ interface BatchAddParams {
  * - 1 query to check existing links (dedupe)
  * - 1 query to get max sortKeys
  * - 1 batch INSERT for all new values
+ *
+ * @returns the ids of PREVIOUS owners whose own list was shortened by a
+ * re-parent (single-value branch only; empty otherwise). They are a second set
+ * of silently-rewritten records and D-11 announces them too.
  */
 async function batchAddToInverse(
   ctx: RelationshipSyncContext,
   params: BatchAddParams
-): Promise<void> {
+): Promise<string[]> {
   const {
     inverseFieldId,
     inverseRelationshipType,
@@ -357,7 +570,7 @@ async function batchAddToInverse(
     sourceFieldId,
   } = params
 
-  if (additions.size === 0) return
+  if (additions.size === 0) return []
 
   const isSingleValue =
     inverseRelationshipType === 'belongs_to' || inverseRelationshipType === 'has_one'
@@ -370,8 +583,10 @@ async function batchAddToInverse(
     }
   }
 
-  if (pairs.length === 0) return
+  if (pairs.length === 0) return []
 
+  /** Previous owners a re-parent shortened; single-value branch only. */
+  let cascadeOwnerIds: string[] = []
   const allTargetIds = [...additions.keys()]
 
   if (isSingleValue) {
@@ -418,6 +633,9 @@ async function batchAddToInverse(
     }
 
     // ═══ CASCADE DELETE: Remove targets from old owners' has_many fields ═══
+    // Reported back to the caller so D-11 can announce these owners too — their
+    // list just got shorter and, until D-11, nothing said so.
+    cascadeOwnerIds = [...cascadeRemovals.keys()]
     for (const [oldOwnerId, targetIds] of cascadeRemovals) {
       await ctx.db
         .delete(schema.FieldValue)
@@ -575,7 +793,7 @@ async function batchAddToInverse(
       ({ targetId, sourceId }) => !existingLinks.has(`${targetId}:${sourceId}`)
     )
 
-    if (toInsert.length === 0) return
+    if (toInsert.length === 0) return cascadeOwnerIds
 
     const targetIdsNeedingInsert = [...new Set(toInsert.map((p) => p.targetId))]
 
@@ -621,4 +839,6 @@ async function batchAddToInverse(
     // 1 batch INSERT
     await ctx.db.insert(schema.FieldValue).values(insertValues)
   }
+
+  return cascadeOwnerIds
 }
