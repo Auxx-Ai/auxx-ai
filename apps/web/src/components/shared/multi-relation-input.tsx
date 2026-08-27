@@ -52,8 +52,10 @@ export interface MultiRelationInputProps {
   excludeIds?: RecordId[]
 
   /**
-   * When true, picker rows with no avatar fall back to the related EntityDefinition's
-   * icon/color (matching the selected chips). Default: false.
+   * Picker rows with no avatar fall back to the related EntityDefinition's icon/color,
+   * matching the selected chips (`RecordBadge`) and the record picker (`RecordItem`),
+   * both of which fall back unconditionally. Default: true — pass `false` only where a
+   * bare label list is deliberate.
    */
   showDefinitionIcon?: boolean
 
@@ -99,7 +101,7 @@ export function MultiRelationInput({
   maxDisplayItems = 3,
   multi = true,
   excludeIds = [],
-  showDefinitionIcon = false,
+  showDefinitionIcon = true,
   showSecondary = false,
   onCreate,
   createLabel,
@@ -132,7 +134,7 @@ export function MultiRelationInput({
     return Array.isArray(entityDefinitionId) ? entityDefinitionId[0] : entityDefinitionId
   }, [entityDefinitionId])
 
-  // EntityDefinition icon/color fallback for records without an avatar (opt-in)
+  // EntityDefinition icon/color fallback for records without an avatar (on by default)
   const { resource } = useResource(showDefinitionIcon ? tableId : null)
 
   // Search for items when popover is open
