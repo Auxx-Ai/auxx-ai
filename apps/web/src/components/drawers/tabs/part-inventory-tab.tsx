@@ -20,12 +20,15 @@ import {
   TableRow,
 } from '@auxx/ui/components/table'
 import { formatRelativeTime } from '@auxx/utils'
-import { Package } from 'lucide-react'
+import { formatCurrency } from '@auxx/utils/currency'
+import { Package, PackagePlus } from 'lucide-react'
 import { useMemo } from 'react'
+import { ReceiveStockPopover } from '~/components/manufacturing/parts/receive-stock-popover'
 import { StockAdjustmentPopover } from '~/components/manufacturing/parts/stock-adjustment-popover'
 import { toRecordId, useRecordList, useResourceProperty } from '~/components/resources'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { useFieldValueStore } from '~/components/resources/store/field-value-store'
+import { useSettings } from '~/hooks/use-settings'
 import { useAccess } from '~/providers/capabilities-provider'
 import type { DrawerTabProps } from '../drawer-tab-registry'
 
@@ -60,6 +63,11 @@ const MOVEMENT_ATTRIBUTES = [
   'stock_movement_quantity',
   'stock_movement_reason',
   'stock_movement_reference',
+  // plans/purchasing/01-build-plan.md §3.5. A receipt's whole point is the cost
+  // it froze, and `occurredAt` is the ACCOUNTING date — when the goods actually
+  // arrived, which is not when somebody got round to keying them.
+  'stock_movement_unit_cost',
+  'stock_movement_occurred_at',
 ] as const
 
 /** Inventory tab for the part detail view */
@@ -72,43 +80,16 @@ export function PartInventoryTab({ recordId }: DrawerTabProps) {
   // its `autoFetch` re-pulls the recalculated on-hand quantity.
   const invalidateResource = useFieldValueStore((s) => s.invalidateResource)
   const stockMovementDefId = useResourceProperty('stock_movement', 'id')
-  const subpartDefId = useResourceProperty('subpart', 'id')
   // The tab itself is NOT `recordResource`-gated — it leads with the part's own
   // on-hand quantity — so the stock_movement gate sits on the write action.
   const { canEditEntity } = useAccess()
   const canAdjustStock = !!stockMovementDefId && canEditEntity(stockMovementDefId)
+  const { getSetting } = useSettings({})
+  const currencyCode = (getSetting('organization.currency') as string | null) ?? 'USD'
 
   const qoh = (values.part_quantity_on_hand as number) ?? 0
   const stockStatus =
     (values.part_stock_status as string | undefined) ?? (qoh <= 0 ? 'out_of_stock' : 'in_stock')
-
-  // Check if part has subparts (for "Adjust subparts" toggle)
-  const subpartFilters: ConditionGroup[] = useMemo(
-    () => [
-      {
-        id: 'parent-filter',
-        logicalOperator: 'AND' as const,
-        conditions: [
-          {
-            id: 'parent-match',
-            fieldId: 'subpart:parentPart' as ResourceFieldId,
-            operator: 'is' as const,
-            value: partId,
-          },
-        ],
-      },
-    ],
-    [partId]
-  )
-
-  const { records: subpartRecords } = useRecordList({
-    entityDefinitionId: subpartDefId ?? '',
-    filters: subpartFilters,
-    limit: 1,
-    enabled: !!partId && !!subpartDefId,
-  })
-
-  const hasSubparts = subpartRecords.length > 0
 
   const filters: ConditionGroup[] = useMemo(
     () => [
@@ -179,16 +160,25 @@ export function PartInventoryTab({ recordId }: DrawerTabProps) {
         initialOpen
         actions={
           canAdjustStock ? (
-            <StockAdjustmentPopover
-              partId={partId}
-              currentQoH={qoh}
-              hasSubparts={hasSubparts}
-              onSuccess={handleAdjustSuccess}>
-              <Button variant='ghost' size='xs'>
-                <Package />
-                Adjust Stock
-              </Button>
-            </StockAdjustmentPopover>
+            <div className='flex items-center gap-1'>
+              {/* Receive leads: it is the movement that VALUES stock, and the one
+                  a purchase produces. Adjust is the correction beside it. */}
+              <ReceiveStockPopover partId={partId} onSuccess={handleAdjustSuccess}>
+                <Button variant='ghost' size='xs'>
+                  <PackagePlus />
+                  Receive
+                </Button>
+              </ReceiveStockPopover>
+              <StockAdjustmentPopover
+                partId={partId}
+                currentQoH={qoh}
+                onSuccess={handleAdjustSuccess}>
+                <Button variant='ghost' size='xs'>
+                  <Package />
+                  Adjust Stock
+                </Button>
+              </StockAdjustmentPopover>
+            </div>
           ) : undefined
         }>
         {records.length === 0 ? (
@@ -206,6 +196,7 @@ export function PartInventoryTab({ recordId }: DrawerTabProps) {
                 <TableRow>
                   <TableHead>Type</TableHead>
                   <TableHead className='text-right'>Qty</TableHead>
+                  <TableHead className='text-right'>Unit cost</TableHead>
                   <TableHead>Reason</TableHead>
                   <TableHead className='text-right'>Date</TableHead>
                 </TableRow>
@@ -216,6 +207,7 @@ export function PartInventoryTab({ recordId }: DrawerTabProps) {
                     key={record.id}
                     recordId={toRecordId(stockMovementDefId!, record.id)}
                     createdAt={record.createdAt}
+                    currencyCode={currencyCode}
                   />
                 ))}
               </TableBody>
@@ -229,13 +221,26 @@ export function PartInventoryTab({ recordId }: DrawerTabProps) {
 
 // ─── Row Component ──────────────────────────────────────────────────────
 
-function MovementRow({ recordId, createdAt }: { recordId: RecordId; createdAt?: string | Date }) {
+function MovementRow({
+  recordId,
+  createdAt,
+  currencyCode,
+}: {
+  recordId: RecordId
+  createdAt?: string | Date
+  currencyCode: string
+}) {
   const { values } = useSystemValues(recordId, MOVEMENT_ATTRIBUTES, { autoFetch: true })
 
   const type = values.stock_movement_type as string | undefined
   const quantity = values.stock_movement_quantity as number | undefined
   const reason = values.stock_movement_reason as string | undefined
   const reference = values.stock_movement_reference as string | undefined
+  const unitCost = values.stock_movement_unit_cost as number | null | undefined
+  const occurredAt = values.stock_movement_occurred_at as string | undefined
+  // COALESCE(occurredAt, createdAt) — an adjustment carries no accounting date, so
+  // it falls back to when it was written. A receipt has one and it is the truth.
+  const shownAt = occurredAt ?? createdAt
 
   const isPositive = quantity != null && quantity > 0
   const label = type ? (TYPE_LABEL_MAP[type] ?? type) : '—'
@@ -254,12 +259,17 @@ function MovementRow({ recordId, createdAt }: { recordId: RecordId; createdAt?: 
           {quantity != null ? `${isPositive ? '+' : ''}${quantity}` : '—'}
         </span>
       </TableCell>
+      <TableCell className='text-right'>
+        <span className='font-mono text-muted-foreground text-xs tabular-nums'>
+          {unitCost != null ? formatCurrency(unitCost, { currencyCode }) : '—'}
+        </span>
+      </TableCell>
       <TableCell>
         <span className='truncate text-sm text-muted-foreground'>{reason || reference || '—'}</span>
       </TableCell>
       <TableCell className='text-right'>
         <span className='text-xs text-muted-foreground'>
-          {createdAt ? formatRelativeTime(createdAt, true) : '—'}
+          {shownAt ? formatRelativeTime(shownAt, true) : '—'}
         </span>
       </TableCell>
     </TableRow>

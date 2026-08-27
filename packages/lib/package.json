@@ -1162,6 +1162,12 @@
       "import": "./dist/receiving/index.mjs",
       "default": "./src/receiving/index.ts"
     },
+    "./receiving/client": {
+      "types": "./src/receiving/client.ts",
+      "source": "./src/receiving/client.ts",
+      "import": "./dist/receiving/client.mjs",
+      "default": "./src/receiving/client.ts"
+    },
     "./record-rules": {
       "types": "./src/record-rules/index.ts",
       "source": "./src/record-rules/index.ts",

@@ -13,12 +13,15 @@ import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { cn } from '@auxx/ui/lib/utils'
 import { formatRelativeTime } from '@auxx/utils'
+import { formatCurrency } from '@auxx/utils/currency'
 import { ChevronRight } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useMemo, useState } from 'react'
+import { ReceiveStockPopover } from '~/components/manufacturing/parts/receive-stock-popover'
 import { StockAdjustmentPopover } from '~/components/manufacturing/parts/stock-adjustment-popover'
 import { toRecordId, useRecordList, useResourceProperty } from '~/components/resources'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
+import { useSettings } from '~/hooks/use-settings'
 import type { DrawerTabProps } from '../drawer-tab-registry'
 import { PartLinkedInventorySection } from './part-linked-inventory-card'
 
@@ -53,19 +56,35 @@ const MOVEMENT_ATTRIBUTES = [
   'stock_movement_quantity',
   'stock_movement_reason',
   'stock_movement_reference',
+  // plans/purchasing/01-build-plan.md §3.5 — the frozen cost, and the ACCOUNTING
+  // date, which is when the goods arrived rather than when they were keyed.
+  'stock_movement_unit_cost',
+  'stock_movement_occurred_at',
 ] as const
 
 // ─────────────────────────────────────────────────────────────────
 // Movement Row
 // ─────────────────────────────────────────────────────────────────
 
-function MovementRow({ recordId, createdAt }: { recordId: RecordId; createdAt?: string | Date }) {
+function MovementRow({
+  recordId,
+  createdAt,
+  currencyCode,
+}: {
+  recordId: RecordId
+  createdAt?: string | Date
+  currencyCode: string
+}) {
   const { values } = useSystemValues(recordId, MOVEMENT_ATTRIBUTES, { autoFetch: true })
 
   const type = values.stock_movement_type as string | undefined
   const quantity = values.stock_movement_quantity as number | undefined
   const reason = values.stock_movement_reason as string | undefined
   const reference = values.stock_movement_reference as string | undefined
+  const unitCost = values.stock_movement_unit_cost as number | null | undefined
+  const occurredAt = values.stock_movement_occurred_at as string | undefined
+  // COALESCE(occurredAt, createdAt): only a receipt carries an accounting date.
+  const shownAt = occurredAt ?? createdAt
 
   const isPositive = quantity != null && quantity > 0
   const label = type ? (TYPE_LABEL_MAP[type] ?? type) : '—'
@@ -80,12 +99,17 @@ function MovementRow({ recordId, createdAt }: { recordId: RecordId; createdAt?: 
         className={`font-mono text-xs font-medium tabular-nums ${isPositive ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
         {quantity != null ? `${isPositive ? '+' : ''}${quantity}` : '—'}
       </span>
+      {unitCost != null && (
+        <span className='shrink-0 font-mono text-muted-foreground text-xs tabular-nums'>
+          {formatCurrency(unitCost, { currencyCode })}
+        </span>
+      )}
       <span className='flex-1 truncate text-xs text-muted-foreground'>
         {reason || reference || ''}
       </span>
-      {createdAt && (
+      {shownAt && (
         <span className='shrink-0 text-xs text-muted-foreground'>
-          {formatRelativeTime(createdAt, true)}
+          {formatRelativeTime(shownAt, true)}
         </span>
       )}
     </div>
@@ -99,15 +123,15 @@ function MovementRow({ recordId, createdAt }: { recordId: RecordId; createdAt?: 
 function MovementsList({
   partId,
   currentQoH,
-  hasSubparts,
   onAdjustSuccess,
 }: {
   partId: string
   currentQoH: number
-  hasSubparts: boolean
   onAdjustSuccess: () => void
 }) {
   const stockMovementDefId = useResourceProperty('stock_movement', 'id')
+  const { getSetting } = useSettings({})
+  const currencyCode = (getSetting('organization.currency') as string | null) ?? 'USD'
 
   const filters: ConditionGroup[] = useMemo(
     () => [
@@ -146,15 +170,21 @@ function MovementsList({
     <div className='border-t border-border/50 pt-2 mt-1'>
       <div className='flex items-center justify-between mb-2'>
         <h4 className='text-xs font-semibold text-muted-foreground'>Stock Movements</h4>
-        <StockAdjustmentPopover
-          partId={partId}
-          currentQoH={currentQoH}
-          hasSubparts={hasSubparts}
-          onSuccess={handleAdjustSuccess}>
-          <Button variant='outline' size='xs'>
-            Adjust
-          </Button>
-        </StockAdjustmentPopover>
+        <div className='flex items-center gap-1'>
+          <ReceiveStockPopover partId={partId} onSuccess={handleAdjustSuccess}>
+            <Button variant='outline' size='xs'>
+              Receive
+            </Button>
+          </ReceiveStockPopover>
+          <StockAdjustmentPopover
+            partId={partId}
+            currentQoH={currentQoH}
+            onSuccess={handleAdjustSuccess}>
+            <Button variant='outline' size='xs'>
+              Adjust
+            </Button>
+          </StockAdjustmentPopover>
+        </div>
       </div>
 
       {isLoading || isLoadingRecords ? (
@@ -173,6 +203,7 @@ function MovementsList({
                 key={record.id}
                 recordId={toRecordId(stockMovementDefId!, record.id)}
                 createdAt={record.createdAt}
+                currencyCode={currencyCode}
               />
             ))}
           </div>
@@ -191,35 +222,6 @@ export function PartInventoryCard({ recordId, entityInstanceId }: DrawerTabProps
   const partId = entityInstanceId
   const { values, isLoading } = useSystemValues(recordId, [...PART_ATTRIBUTES], { autoFetch: true })
   const [isOpen, setIsOpen] = useState(false)
-  const subpartDefId = useResourceProperty('subpart', 'id')
-
-  // Check if part has subparts (for "Adjust subparts" toggle)
-  const subpartFilters: ConditionGroup[] = useMemo(
-    () => [
-      {
-        id: 'parent-filter',
-        logicalOperator: 'AND' as const,
-        conditions: [
-          {
-            id: 'parent-match',
-            fieldId: 'subpart:parentPart' as ResourceFieldId,
-            operator: 'is' as const,
-            value: partId,
-          },
-        ],
-      },
-    ],
-    [partId]
-  )
-
-  const { records: subpartRecords } = useRecordList({
-    entityDefinitionId: subpartDefId ?? '',
-    filters: subpartFilters,
-    limit: 1,
-    enabled: !!partId && !!subpartDefId,
-  })
-
-  const hasSubparts = subpartRecords.length > 0
 
   const qoh = (values.part_quantity_on_hand as number) ?? 0
   const stockStatus =
@@ -298,12 +300,7 @@ export function PartInventoryCard({ recordId, entityInstanceId }: DrawerTabProps
               }}
               exit={{ height: 0, opacity: 0, filter: 'blur(3px)', overflow: 'hidden' }}
               transition={{ type: 'spring', stiffness: 300, damping: 30 }}>
-              <MovementsList
-                partId={partId}
-                currentQoH={qoh}
-                hasSubparts={hasSubparts}
-                onAdjustSuccess={() => {}}
-              />
+              <MovementsList partId={partId} currentQoH={qoh} onAdjustSuccess={() => {}} />
             </motion.div>
           )}
         </AnimatePresence>
