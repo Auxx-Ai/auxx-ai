@@ -11,10 +11,11 @@ interface ShopifyAdminBillingBannerProps {
 }
 
 /**
- * Banner shown above Billing Details for Shopify-billed orgs. Clarifies that only
- * payment method + invoice history live in Shopify Admin — plan changes and
- * cancellation still work from this page. "Open Shopify Admin" deep-links to the app's
- * own page (Settings → Apps → Auxx). Mirrors the plan-change-card row design.
+ * Banner shown above Billing Details for Shopify-billed orgs. Shopify App Pricing owns the
+ * payment method, invoice history, plan changes and cancellation alike — the in-app plan grid
+ * and cancel dialog are both hidden for these orgs (see `ShopifyPlanCard`), so this says so
+ * rather than implying either works here. "Open Shopify Admin" deep-links to the app's own page
+ * (Settings → Apps → Auxx). Mirrors the plan-change-card row design.
  */
 export function ShopifyAdminBillingBanner({ shopDomain }: ShopifyAdminBillingBannerProps) {
   const { shopifyAppHandle } = useEnv()
@@ -30,8 +31,7 @@ export function ShopifyAdminBillingBanner({ shopDomain }: ShopifyAdminBillingBan
         <div className='flex flex-col'>
           <span className='text-sm'>Billing is managed in Shopify</span>
           <span className='text-xs text-muted-foreground'>
-            Your payment method and subscription are handled by Shopify Admin. Plan changes and
-            cancellation work from this page.
+            Your payment method, plan changes and cancellation are all handled by Shopify Admin.
           </span>
         </div>
       </div>

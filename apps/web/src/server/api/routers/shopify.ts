@@ -21,9 +21,17 @@ import { and, eq, ne, sql } from 'drizzle-orm'
 import { cookies } from 'next/headers'
 import { z } from 'zod'
 import { setUserDefaultOrganization } from '~/server/auth/set-default-organization'
+import { confirmAndSyncShopifySubscription } from '~/server/billing/confirm-shopify-subscription'
 import { createTRPCRouter, permissionProcedure, protectedProcedure } from '../trpc'
 
 const CLAIM_COOKIE_NAME = 'shopify_claim_token'
+
+/**
+ * Propagation-lag budget for the post-install contract read. One retry (~1.5s) — the merchant
+ * is mid-redirect, and a shop that genuinely has no subscription must not pay a long wait
+ * before reaching the plan picker.
+ */
+const POST_INSTALL_CONFIRM_ATTEMPTS = 2
 
 /**
  * Block handle of the theme app embed, i.e. the filename of
@@ -34,6 +42,48 @@ const CLAIM_COOKIE_NAME = 'shopify_claim_token'
 const APP_EMBED_BLOCK_HANDLE = 'embed'
 
 const logger = createScopedLogger('shopify-router')
+
+/**
+ * Last gate before we send a merchant to Shopify's hosted plan picker: check whether they
+ * already have a live contract, and open the workspace instead if they do.
+ *
+ * A merchant can land in `finalizeAppStoreInstall` moments *after* approving a charge — App
+ * Pricing's post-approval redirect goes to the app URL, which re-runs install → OAuth → claim.
+ * Offering "pick a plan" there is App Store rejection 2404984: *"the app looped back to the plan
+ * selection after already approving the plan"* (see
+ * `plans/billing/v3/06-approval-loops-back-to-plan-selection.md` §3).
+ *
+ * The claim page's own confirm cannot cover this. It runs *before* `saveAppConnection`, so it
+ * queries the Admin API with the access token Shopify rotated away during this very install's
+ * OAuth round-trip. Call this only after the fresh credential is stored **and** flipped to
+ * primary — `getActiveSubscription` reads the org's primary connection.
+ *
+ * @returns `'/app'` when a live contract was confirmed and mirrored onto the row, else `null`
+ *   (caller falls back to the plan picker).
+ */
+async function openWorkspaceIfAlreadySubscribed(input: {
+  organizationId: string
+  shopDomain: string
+  userId: string
+  currentDefaultOrganizationId?: string | null
+}): Promise<string | null> {
+  const confirmed = await confirmAndSyncShopifySubscription({
+    organizationId: input.organizationId,
+    shopDomain: input.shopDomain,
+    maxAttempts: POST_INSTALL_CONFIRM_ATTEMPTS,
+  })
+  if (!confirmed) return null
+
+  logger.info('Live Shopify contract found on install — skipping the plan picker', {
+    organizationId: input.organizationId,
+    shop: input.shopDomain,
+  })
+  // Activate the picked workspace so `/app` opens it rather than the user's current default.
+  if (input.currentDefaultOrganizationId !== input.organizationId) {
+    await setUserDefaultOrganization(db, input.userId, input.organizationId)
+  }
+  return '/app'
+}
 
 export const shopifyRouter = createTRPCRouter({
   /**
@@ -328,6 +378,16 @@ export const shopifyRouter = createTRPCRouter({
         // selection. Any live status (active/trialing/past_due/paused) just opens the workspace.
         await registerBillingWebhooks(organizationId, claim.shop)
         if (existing.status === 'incomplete') {
+          // `incomplete` means *we* never observed an approval — not that there isn't one.
+          // Re-read the contract with the token this install just stored before asking again.
+          const openWorkspace = await openWorkspaceIfAlreadySubscribed({
+            organizationId,
+            shopDomain: claim.shop,
+            userId,
+            currentDefaultOrganizationId: ctx.session.user.defaultOrganizationId,
+          })
+          if (openWorkspace) return { redirectUrl: openWorkspace, shop: claim.shop }
+
           const provider = getProvider('shopify') as ShopifyBillingProvider
           const redirectUrl = await provider.getPlanSelectionUrl(organizationId)
           return { redirectUrl, shop: claim.shop }
@@ -392,6 +452,17 @@ export const shopifyRouter = createTRPCRouter({
       // legacy install flow forbids toml-declared subscriptions, so registration happens
       // here, per shop, with the token just linked.
       await registerBillingWebhooks(organizationId, claim.shop)
+
+      // The row above was just stamped `incomplete`, but a reinstall or a re-approval after
+      // cancel can arrive here with a live contract already approved on Shopify's page — and an
+      // App Store install can carry one from the listing's plan picker. Check before asking.
+      const openWorkspace = await openWorkspaceIfAlreadySubscribed({
+        organizationId,
+        shopDomain: claim.shop,
+        userId,
+        currentDefaultOrganizationId: ctx.session.user.defaultOrganizationId,
+      })
+      if (openWorkspace) return { redirectUrl: openWorkspace, shop: claim.shop }
 
       // Hand back the Shopify hosted pricing-page URL. The merchant picks the plan +
       // interval there, approves, and is redirected to /billing/subscription/activated.

@@ -17,6 +17,7 @@ import { useDemo } from '~/hooks/use-demo'
 import { useUser } from '~/hooks/use-user'
 import { useRequireCapability } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
+import { ShopifyPlanCard } from './shopify-plan-card'
 
 const PlanChangeSummary = dynamic(
   () =>
@@ -44,6 +45,14 @@ export function PlanChangeCard() {
 
   const { data: subscription, isLoading: subscriptionLoading } =
     api.billing.getCurrentSubscription.useQuery()
+
+  // Shopify App Pricing owns plan selection, proration, trials and cancellation. Mirroring any
+  // of it in-app can only drift from Shopify (App Store rejection 1.2.2, three rounds running),
+  // so these orgs get a read-only row + a link out instead of the grid, the change-summary
+  // dialog, and the Stripe-only restore/scheduled-change alerts below — every one of which
+  // either lies to them or calls a provider method that throws OPERATION_NOT_SUPPORTED.
+  // See plans/billing/v3/06-approval-loops-back-to-plan-selection.md §6.
+  const isShopify = subscription?.billingProvider === 'shopify'
 
   const cancelScheduledChange = api.billing.cancelScheduledChange.useMutation({
     onSuccess: () => {
@@ -106,6 +115,8 @@ export function PlanChangeCard() {
               <Skeleton className='h-9 w-28' />
             </div>
           </div>
+        ) : isShopify && subscription ? (
+          <ShopifyPlanCard subscription={subscription} />
         ) : (
           <div className='group flex items-center justify-between rounded-2xl border py-2 px-3 hover:bg-muted transition-colors duration-200'>
             <div className='flex flex-row items-center gap-2'>
@@ -143,8 +154,10 @@ export function PlanChangeCard() {
           </div>
         )}
 
-        {/* Alerts - Priority: Cancellation > Scheduled Downgrade */}
-        {subscription?.cancelAtPeriodEnd && subscription.periodEnd ? (
+        {/* Alerts - Priority: Cancellation > Scheduled Downgrade. Stripe-only: both CTAs call
+            provider methods Shopify throws OPERATION_NOT_SUPPORTED for; ShopifyPlanCard renders
+            its own cancellation alert pointing at Shopify instead. */}
+        {isShopify ? null : subscription?.cancelAtPeriodEnd && subscription.periodEnd ? (
           // Cancellation Alert (highest priority)
           <Alert variant='destructive'>
             <AlertDescription className='flex items-center justify-between'>
@@ -189,7 +202,9 @@ export function PlanChangeCard() {
         ) : null}
       </SettingsSection>
 
-      {dialogOpen ? <PlanChangeSummary open={dialogOpen} onOpenChange={setDialogOpen} /> : null}
+      {dialogOpen && !isShopify ? (
+        <PlanChangeSummary open={dialogOpen} onOpenChange={setDialogOpen} />
+      ) : null}
     </>
   )
 }

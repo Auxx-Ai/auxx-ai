@@ -14,7 +14,13 @@ import { NextResponse } from 'next/server'
  */
 const KNOWN_ROUTE_PREFIXES = new Set([
   // (protected) routes
+  'access-denied',
   'app',
+  // Shopify App Pricing's post-approval Redirect URL is
+  // `/billing/subscription/activated`. Without this entry the segment reads as an org handle
+  // and 307s to `/subscription/activated`, which does not exist — every plan approval landed
+  // on a 404. See plans/billing/v3/06-approval-loops-back-to-plan-selection.md §3a-2.
+  'billing',
   'onboarding',
   'organizations',
   'preview',
