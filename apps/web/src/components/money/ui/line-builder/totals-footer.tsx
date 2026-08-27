@@ -173,6 +173,7 @@ export function TotalsFooter({
   taxRates,
   onUpdateDiscount,
   onUpdateTax,
+  onUpdateStatedAmount,
 }: {
   documentType: DocumentType
   readOnly: boolean
@@ -185,6 +186,13 @@ export function TotalsFooter({
   taxRates: TaxRatePreset[]
   onUpdateDiscount: (type: DiscountType | null, value: number | null) => void
   onUpdateTax: (name: string | null, rate: number | null) => void
+  /**
+   * `stated` only — writes one of the document's own amount mirrors by attribute
+   * suffix (`discount_value` / `shipping_total` / `tax_total`), in integer minor
+   * units. See `updateStatedAmount` in `line-builder.tsx` for why these must be
+   * writable at all.
+   */
+  onUpdateStatedAmount: (attribute: string, cents: number | null) => void
 }) {
   const schema = lineSchemaFor(documentType)
   const { totalsMode, billingPrefix: prefix } = schema
@@ -401,27 +409,35 @@ export function TotalsFooter({
             </div>
           )}
 
-          {/* `stated` (purchase order): amounts the document carries, not rates —
-              read-only here. Shipping and tax are the freight-allocation inputs
-              (plans/purchasing/01-build-plan.md §4.1), keyed on the PO header. */}
+          {/* `stated` (purchase order): amounts the document carries, not rates.
+              🛑 EDITABLE — shipping and tax are the freight-allocation INPUTS
+              (plans/purchasing/01-build-plan.md §4.1), typed by hand off the
+              freight invoice, and `showInPanel: false` makes this footer the only
+              place they can be entered at all. */}
           {totalsMode === 'stated' && (
             <>
-              {statedDiscount > 0 && (
-                <div className='flex items-center justify-between'>
-                  <span className='text-muted-foreground'>Discount</span>
-                  <span className='tabular-nums'>
-                    -{formatCurrency(statedDiscount, currencyCode)}
-                  </span>
-                </div>
-              )}
-              <div className='flex items-center justify-between'>
-                <span className='text-muted-foreground'>Shipping</span>
-                <span className='tabular-nums'>{formatCurrency(statedShipping, currencyCode)}</span>
-              </div>
-              <div className='flex items-center justify-between'>
-                <span className='text-muted-foreground'>Tax</span>
-                <span className='tabular-nums'>{formatCurrency(statedTax, currencyCode)}</span>
-              </div>
+              <StatedAmountRow
+                label='Discount'
+                cents={statedDiscount}
+                negative
+                readOnly={readOnly}
+                currencyCode={currencyCode}
+                onCommit={(next) => onUpdateStatedAmount('discount_value', next)}
+              />
+              <StatedAmountRow
+                label='Shipping'
+                cents={statedShipping}
+                readOnly={readOnly}
+                currencyCode={currencyCode}
+                onCommit={(next) => onUpdateStatedAmount('shipping_total', next)}
+              />
+              <StatedAmountRow
+                label='Tax'
+                cents={statedTax}
+                readOnly={readOnly}
+                currencyCode={currencyCode}
+                onCommit={(next) => onUpdateStatedAmount('tax_total', next)}
+              />
             </>
           )}
 
@@ -445,6 +461,87 @@ export function TotalsFooter({
             </>
           )}
         </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * One editable amount row in a `stated` footer — the document's own
+ * discount / shipping / tax mirror.
+ *
+ * Currency convention: the value is stored in integer minor units and the input
+ * shows and accepts DOLLARS, matching the `amount` discount input above and
+ * `PriceCellView` in the row grid. An unparseable entry restores the last
+ * committed display rather than writing NaN; an empty one clears the field to
+ * `null` (which the totals read back as 0).
+ */
+function StatedAmountRow({
+  label,
+  cents,
+  negative = false,
+  readOnly,
+  currencyCode,
+  onCommit,
+}: {
+  label: string
+  cents: number
+  /** Discount is subtracted, so it displays with a leading minus at rest. */
+  negative?: boolean
+  readOnly: boolean
+  currencyCode: string
+  onCommit: (cents: number | null) => void
+}) {
+  const [draft, setDraft] = useState<string | null>(null)
+  const display = cents === 0 ? '' : String(cents / 100)
+
+  const commit = () => {
+    if (draft === null) return
+    const trimmed = draft.trim()
+    setDraft(null)
+    if (!trimmed) {
+      if (cents !== 0) onCommit(null)
+      return
+    }
+    const parsed = Number(trimmed.replace(/[$,]/g, ''))
+    if (!Number.isFinite(parsed)) return
+    const next = Math.round(parsed * 100)
+    if (next === cents) return
+    onCommit(next)
+  }
+
+  const formatted = `${negative && cents > 0 ? '-' : ''}${formatCurrency(cents, currencyCode)}`
+
+  if (readOnly) {
+    return (
+      <div className='flex items-center justify-between'>
+        <span className='text-muted-foreground'>{label}</span>
+        <span className='tabular-nums'>{formatted}</span>
+      </div>
+    )
+  }
+
+  return (
+    <div className='flex items-center justify-between gap-2'>
+      <span className='text-muted-foreground'>{label}</span>
+      <div className='flex items-center gap-1'>
+        <input
+          value={draft ?? display}
+          onChange={(e) => setDraft(e.target.value)}
+          onFocus={() => setDraft(display)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') e.currentTarget.blur()
+            if (e.key === 'Escape') setDraft(null)
+          }}
+          inputMode='decimal'
+          placeholder='0'
+          aria-label={label}
+          className='w-14 rounded-sm border-none bg-transparent px-1 text-right text-sm tabular-nums outline-none hover:bg-primary-100/60 focus:bg-primary-100/80'
+        />
+        <span className='w-20 text-right text-muted-foreground text-xs tabular-nums'>
+          {cents === 0 ? '' : formatted}
+        </span>
       </div>
     </div>
   )

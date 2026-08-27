@@ -63,8 +63,13 @@ export function useLineNav({
       if (!target) return
       // `[data-cell-focusable]` covers the name cell's at-rest text button (which
       // swaps to an <input> on focus); qty/unit-cost cells match on `input`.
+      // `[role="combobox"]` is the buy-side leading cell's part picker — its
+      // trigger is a button rendered by `PickerTrigger`, which takes no data
+      // attributes, and it is the ONLY combobox inside the grid (the category and
+      // unit menus are `aria-haspopup="menu"` dropdowns, not comboboxes). Without
+      // it, arrow-nav into column 0 of a purchasing row finds nothing to focus.
       const focusable = target.querySelector(
-        'input, textarea, [data-cell-focusable]'
+        'input, textarea, [data-cell-focusable], [role="combobox"]'
       ) as HTMLElement | null
       if (focusable) {
         focusable.focus()

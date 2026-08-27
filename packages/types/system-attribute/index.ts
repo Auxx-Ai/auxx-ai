@@ -130,6 +130,10 @@ export const SYSTEM_ATTRIBUTES = [
   'part_sku',
   'category',
   'part_kind',
+  // The stock unit of measure every quantity recorded for the part is in
+  // (on-hand, movements, BOM, ordered/received). Deliberately on the part and
+  // not on a purchasing line — see `PART_FIELDS.unit`.
+  'part_unit',
   // Cost provenance. `part_cost` keeps its meaning (replacement cost — the
   // current landed cost from live vendor prices); the two below name the
   // numbers it chooses BETWEEN, and `part_cost_source` says which one won.

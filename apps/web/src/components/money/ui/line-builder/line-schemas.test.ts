@@ -244,6 +244,53 @@ describe('reading back a line whose entity lacks the sell-side fields', () => {
   })
 })
 
+describe('reading values back from the store', () => {
+  // 🛑 The defect this pins shipped: `useSystemValues` collapses SINGLE_SELECT to a
+  // scalar but leaves RELATIONSHIP as an ARRAY, and `lineValuesFromSystemValues`
+  // read `partRecordId` as if it were a scalar. The one-element array then flowed
+  // into `LinePartCellView`, which wraps it a second time, so `RecordBadge` got an
+  // array where it expects an id and rendered a permanent loading skeleton. Every
+  // purchase-order line showed a grey pill instead of its part, and nothing threw.
+  it('collapses the RELATIONSHIP array a part reads back as', () => {
+    const line = lineValuesFromSystemValues(
+      { purchase_order_line_part: ['part_def:part_instance'] },
+      LINE_SCHEMAS.purchase_order
+    )
+    expect(line.partRecordId).toBe('part_def:part_instance')
+  })
+
+  it('reads a bare relationship id unchanged, and an empty one as null', () => {
+    const scalar = lineValuesFromSystemValues(
+      { vendor_bill_line_part: 'part_def:part_instance' },
+      LINE_SCHEMAS.vendor_bill
+    )
+    expect(scalar.partRecordId).toBe('part_def:part_instance')
+    expect(
+      lineValuesFromSystemValues({ vendor_bill_line_part: [] }, LINE_SCHEMAS.vendor_bill)
+        .partRecordId
+    ).toBeNull()
+    expect(lineValuesFromSystemValues({}, LINE_SCHEMAS.vendor_bill).partRecordId).toBeNull()
+  })
+
+  // A document whose lines carry no unit field must not render the unit control —
+  // `linePatchToFieldValues` drops the key, so the pick would silently do nothing.
+  it('every document that shows a unit has a unit attribute to write it to', () => {
+    for (const documentType of ALL) {
+      const { capabilities, attrs } = lineSchemaFor(documentType)
+      expect(capabilities.unit).toBe(attrs.unit !== null)
+    }
+  })
+
+  // The leading cell of a buy-side row is a part picker; heading it "Description"
+  // names the wrong one of the two controls stacked in it.
+  it('labels the leading column for what it actually picks', () => {
+    for (const documentType of ALL) {
+      const { capabilities, primaryColumnLabel } = lineSchemaFor(documentType)
+      expect(primaryColumnLabel).toBe(capabilities.partPicker ? 'Part' : 'Description')
+    }
+  })
+})
+
 describe('capabilities match the vocabulary', () => {
   // The defect a flag/vocabulary mismatch produces is a rendered cell that writes
   // to a field the entity does not have.
