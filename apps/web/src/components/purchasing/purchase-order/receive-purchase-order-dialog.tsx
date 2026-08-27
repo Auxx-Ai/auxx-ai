@@ -30,20 +30,29 @@ import {
   DialogTitle,
 } from '@auxx/ui/components/dialog'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
+import { EmptySection } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
+import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@auxx/ui/components/table'
 import { toastError } from '@auxx/ui/components/toast'
+import { cn } from '@auxx/ui/lib/utils'
 import { formatCurrency } from '@auxx/utils/currency'
-import { useEffect, useMemo, useState } from 'react'
+import { Package } from 'lucide-react'
+import { type ReactNode, useEffect, useMemo, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { useRecord } from '~/components/resources'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { useSystemValuesForRecords } from '~/components/resources/hooks/use-system-values-for-records'
-import { useFieldValueStore } from '~/components/resources/store/field-value-store'
 import { BaseType } from '~/components/workflow/types'
 import { useSettings } from '~/hooks/use-settings'
 import { api } from '~/trpc/react'
-import { formatQuantity, numberValue, unwrapValue } from '../purchasing-summary-strip'
+import {
+  formatQuantity,
+  numberValue,
+  PurchasingSummaryStrip,
+  type SummaryCell,
+  unwrapValue,
+} from '../purchasing-summary-strip'
 import {
   allocatedUnitCosts,
   buildReceivePoInput,
@@ -89,7 +98,6 @@ export function ReceivePurchaseOrderDialog({
   onReceived,
 }: ReceivePurchaseOrderDialogProps) {
   const { getSetting } = useSettings({})
-  const invalidateResource = useFieldValueStore((state) => state.invalidateResource)
 
   const { values, isLoading: poLoading } = useSystemValues(purchaseOrderRecordId, [...PO_ATTRS], {
     autoFetch: true,
@@ -107,29 +115,36 @@ export function ReceivePurchaseOrderDialog({
     (getSetting('organization.currency') as string | null) ||
     'USD'
 
-  const lines: ReceivablePoLine[] = useMemo(
-    () =>
-      lineRecordIds.map((lineRecordId) => {
-        const line = valuesById[lineRecordId] ?? ({} as Record<string, unknown>)
-        const partRecordId = extractRelationshipRecordIds(line.purchase_order_line_part)[0]
-        const vendorPartRecordId = extractRelationshipRecordIds(
-          line.purchase_order_line_vendor_part
-        )[0]
-        const description = unwrapValue(line.purchase_order_line_description)
-        const weight = numberValue(line.purchase_order_line_weight)
-        return {
-          purchaseOrderLineId: getInstanceId(lineRecordId),
-          partId: partRecordId ? getInstanceId(partRecordId) : '',
-          description: typeof description === 'string' && description ? description : null,
-          quantityOrdered: numberValue(line.purchase_order_line_quantity_ordered),
-          quantityReceived: numberValue(line.purchase_order_line_quantity_received),
-          expectedUnitPrice: numberValue(line.purchase_order_line_expected_unit_price),
-          ...(vendorPartRecordId ? { vendorPartId: getInstanceId(vendorPartRecordId) } : {}),
-          ...(weight > 0 ? { weight } : {}),
-        }
-      }),
-    [lineRecordIds, valuesById]
-  )
+  // Two shapes out of one pass over the lines. `ReceivablePoLine[]` is the SERVER
+  // payload's shape, so its `partId` is a bare instance id — which cannot address
+  // a record and therefore cannot resolve a part NAME. The rows need that name, so
+  // the part's `RecordId` rides alongside in a map keyed on `purchaseOrderLineId`
+  // rather than as a UI-only field bolted onto the payload type.
+  const { lines, partRecordIds } = useMemo(() => {
+    const partRecordIds: Record<string, RecordId | undefined> = {}
+    const lines: ReceivablePoLine[] = lineRecordIds.map((lineRecordId) => {
+      const line = valuesById[lineRecordId] ?? ({} as Record<string, unknown>)
+      const partRecordId = extractRelationshipRecordIds(line.purchase_order_line_part)[0]
+      const vendorPartRecordId = extractRelationshipRecordIds(
+        line.purchase_order_line_vendor_part
+      )[0]
+      const description = unwrapValue(line.purchase_order_line_description)
+      const weight = numberValue(line.purchase_order_line_weight)
+      const purchaseOrderLineId = getInstanceId(lineRecordId)
+      partRecordIds[purchaseOrderLineId] = partRecordId
+      return {
+        purchaseOrderLineId,
+        partId: partRecordId ? getInstanceId(partRecordId) : '',
+        description: typeof description === 'string' && description ? description : null,
+        quantityOrdered: numberValue(line.purchase_order_line_quantity_ordered),
+        quantityReceived: numberValue(line.purchase_order_line_quantity_received),
+        expectedUnitPrice: numberValue(line.purchase_order_line_expected_unit_price),
+        ...(vendorPartRecordId ? { vendorPartId: getInstanceId(vendorPartRecordId) } : {}),
+        ...(weight > 0 ? { weight } : {}),
+      }
+    })
+    return { lines, partRecordIds }
+  }, [lineRecordIds, valuesById])
 
   const basisValue = unwrapValue(values.purchase_order_allocation_basis)
   const header: ReceiptHeader = {
@@ -173,11 +188,17 @@ export function ReceivePurchaseOrderDialog({
     if (!payload) return
     try {
       await receive.mutateAsync(payload)
-      // The roll-up is a post-commit re-SUM on another connection, so the line's
-      // cached `quantityReceived` is stale the instant this resolves. Drop it and
-      // let `autoFetch` re-pull rather than guessing the new value.
-      invalidateResource(purchaseOrderRecordId)
-      for (const lineRecordId of lineRecordIds) invalidateResource(lineRecordId)
+      // NO invalidation here, deliberately. The roll-up is a post-commit re-SUM
+      // that ends in `publishFieldValueUpdates`, and `useResourceSync` merges
+      // that into the field-value store with `setValues` — a non-destructive
+      // write of exactly the one field that changed.
+      //
+      // 🛑 Do NOT reintroduce `invalidateResource` here. It DELETES every cached
+      // field value for the record, so invalidating the PO dropped its
+      // `purchase_order_lines` relationship and invalidating each line dropped
+      // that line's part, description, quantity and price — which is what made
+      // the drawer's line builder visibly reset itself on every receipt. It also
+      // ran one store write per line, re-rendering every subscriber N times.
       onReceived?.()
       onOpenChange(false)
     } catch {
@@ -188,9 +209,31 @@ export function ReceivePurchaseOrderDialog({
   const isLoading = poLoading || (lineRecordIds.length > 0 && linesLoading)
   const receivingCount = payload?.lines.length ?? 0
 
+  // The header amounts are the freight-allocation inputs (§4.3) — shown so the
+  // landed column above is explicable rather than mysterious.
+  const landedCells: SummaryCell[] = [
+    { label: 'Goods', value: formatCurrency(subtotal, { currencyCode }) },
+    ...(header.shipping > 0
+      ? [{ label: 'Freight', value: `+ ${formatCurrency(header.shipping, { currencyCode })}` }]
+      : []),
+    ...(header.tax > 0
+      ? [
+          {
+            label: header.taxRecoverable ? 'Tax (recoverable)' : 'Tax',
+            value: `+ ${formatCurrency(header.tax, { currencyCode })}`,
+          },
+        ]
+      : []),
+    ...(header.discount > 0
+      ? [{ label: 'Discount', value: `− ${formatCurrency(header.discount, { currencyCode })}` }]
+      : []),
+    { label: 'Spread by', value: header.basis, tone: 'muted' },
+  ]
+  const showLandedCells = header.shipping > 0 || header.tax > 0 || header.discount > 0
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent position='tc' className='max-w-3xl'>
+      <DialogContent position='tc' size='xxl'>
         <DialogHeader>
           <DialogTitle>Receive purchase order</DialogTitle>
           <DialogDescription>
@@ -198,111 +241,102 @@ export function ReceivePurchaseOrderDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {isLoading ? (
-          <div className='space-y-2'>
-            <Skeleton className='h-8 w-full' />
-            <Skeleton className='h-8 w-full' />
-            <Skeleton className='h-8 w-full' />
-          </div>
-        ) : lines.length === 0 ? (
-          <p className='py-6 text-center text-muted-foreground text-sm'>
-            This purchase order has no lines.
-          </p>
-        ) : (
-          <div className='max-h-[45vh] overflow-auto rounded-md border'>
-            <table className='w-full text-sm'>
-              <thead className='sticky top-0 bg-primary-50 text-muted-foreground text-xs dark:bg-background'>
-                <tr>
-                  <th className='px-3 py-2 text-left font-normal'>Part</th>
-                  <th className='px-2 py-2 text-right font-normal'>Outstanding</th>
-                  <th className='w-24 px-2 py-2 text-right font-normal'>Receive</th>
-                  <th className='w-32 px-2 py-2 text-right font-normal'>Unit price</th>
-                  <th className='px-3 py-2 text-right font-normal'>Landed</th>
-                </tr>
-              </thead>
-              <tbody className='divide-y'>
-                {lines.map((line, index) => (
-                  <ReceiveLineRow
-                    key={line.purchaseOrderLineId}
-                    line={line}
-                    // Positional: `lines` is built by mapping `lineRecordIds`, so
-                    // the two stay index-aligned. `indexOf` would be O(n²) and
-                    // would silently pick the wrong row if two lines ever compared
-                    // equal.
-                    lineRecordId={lineRecordIds[index]}
-                    draft={draft[line.purchaseOrderLineId]}
-                    landedUnitCost={unitCosts[line.purchaseOrderLineId]}
-                    currencyCode={currencyCode}
-                    disabled={receive.isPending}
-                    onChange={(next) =>
-                      setDraft((current) => ({ ...current, [line.purchaseOrderLineId]: next }))
-                    }
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        {/* One rhythm for the three body blocks — the table, the allocation strip
+            and the receipt form. `DialogHeader` carries its own `mb-4` and
+            `DialogFooter` its own `pt-4`, so only the middle needs spacing. */}
+        <div className='space-y-4'>
+          {isLoading ? (
+            <div className='space-y-2 rounded-md border p-3'>
+              <Skeleton className='h-8 w-full' />
+              <Skeleton className='h-8 w-full' />
+              <Skeleton className='h-8 w-full' />
+            </div>
+          ) : lines.length === 0 ? (
+            <EmptySection
+              icon={<Package className='size-5' />}
+              title='Nothing to receive'
+              description='This purchase order has no lines.'
+            />
+          ) : (
+            <div className='max-h-[45vh] overflow-auto rounded-md border'>
+              {/* The design-system cells on a bare `<table>` rather than the `Table`
+                  wrapper: that wrapper adds its own unconstrained `overflow-auto`
+                  div, which would become the sticky header's scrollport and pin the
+                  header to a box that never scrolls. Same shape as `audit-table.tsx`.
+                  `table-fixed` is what lets the part cell actually truncate. */}
+              <table className='w-full min-w-[36rem] table-fixed caption-bottom text-sm'>
+                <TableHeader className='sticky top-0 z-10 bg-muted'>
+                  <TableRow className='hover:bg-muted'>
+                    <TableHead>Part</TableHead>
+                    <TableHead className='w-[7.5rem] text-right'>Outstanding</TableHead>
+                    <TableHead className='w-[7rem] text-right'>Receive</TableHead>
+                    <TableHead className='w-[9rem] text-right'>Unit price</TableHead>
+                    <TableHead className='w-[7rem] text-right'>Landed</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {lines.map((line) => (
+                    <ReceiveLineRow
+                      key={line.purchaseOrderLineId}
+                      line={line}
+                      partRecordId={partRecordIds[line.purchaseOrderLineId]}
+                      draft={draft[line.purchaseOrderLineId]}
+                      landedUnitCost={unitCosts[line.purchaseOrderLineId]}
+                      currencyCode={currencyCode}
+                      disabled={receive.isPending}
+                      onChange={(next) =>
+                        setDraft((current) => ({ ...current, [line.purchaseOrderLineId]: next }))
+                      }
+                    />
+                  ))}
+                </TableBody>
+              </table>
+            </div>
+          )}
 
-        {/* The header amounts are the freight-allocation inputs (§4.3) — shown so the
-            landed column above is explicable rather than mysterious. */}
-        {(header.shipping > 0 || header.tax > 0 || header.discount > 0) && (
-          <div className='flex flex-wrap items-center gap-x-4 gap-y-1 px-1 text-muted-foreground text-xs tabular-nums'>
-            <span>Goods {formatCurrency(subtotal, { currencyCode })}</span>
-            {header.shipping > 0 && (
-              <span>+ {formatCurrency(header.shipping, { currencyCode })} freight</span>
-            )}
-            {header.tax > 0 && (
-              <span>
-                + {formatCurrency(header.tax, { currencyCode })} tax
-                {header.taxRecoverable ? ' (recoverable)' : ''}
-              </span>
-            )}
-            {header.discount > 0 && (
-              <span>− {formatCurrency(header.discount, { currencyCode })} discount</span>
-            )}
-            <span>spread by {header.basis}</span>
-          </div>
-        )}
+          {showLandedCells && (
+            <PurchasingSummaryStrip className='rounded-md border px-3 py-2' cells={landedCells} />
+          )}
 
-        <FieldPanel
-          orientation='responsive'
-          breakpoint='md'
-          resizeId='receive-po-form'
-          defaultLabelWidth={110}
-          className='p-0'>
-          <FieldPanelRow
-            title='Received on'
-            type={BaseType.DATE}
-            showIcon
-            isRequired
-            description='The accounting date, which is not when it was keyed'>
-            <FieldInputAdapter
-              fieldType={FieldType.DATETIME}
-              value={occurredAt}
-              onChange={(val) => setOccurredAt(val as string)}
-              disabled={receive.isPending}
-            />
-          </FieldPanelRow>
-          <FieldPanelRow title='Reference' type={BaseType.STRING} showIcon>
-            <FieldInputAdapter
-              fieldType={FieldType.TEXT}
-              value={reference}
-              onChange={(val) => setReference((val as string) ?? '')}
-              placeholder='e.g. Packing slip 88213'
-              disabled={receive.isPending}
-            />
-          </FieldPanelRow>
-          <FieldPanelRow title='Reason' type={BaseType.STRING} showIcon>
-            <FieldInputAdapter
-              fieldType={FieldType.TEXT}
-              value={reason}
-              onChange={(val) => setReason((val as string) ?? '')}
-              placeholder='e.g. Partial delivery'
-              disabled={receive.isPending}
-            />
-          </FieldPanelRow>
-        </FieldPanel>
+          <FieldPanel
+            orientation='responsive'
+            breakpoint='md'
+            resizeId='receive-po-form'
+            defaultLabelWidth={110}
+            className='p-0'>
+            <FieldPanelRow
+              title='Received on'
+              type={BaseType.DATE}
+              showIcon
+              isRequired
+              description='The accounting date, which is not when it was keyed'>
+              <FieldInputAdapter
+                fieldType={FieldType.DATETIME}
+                value={occurredAt}
+                onChange={(val) => setOccurredAt(val as string)}
+                disabled={receive.isPending}
+              />
+            </FieldPanelRow>
+            <FieldPanelRow title='Reference' type={BaseType.STRING} showIcon>
+              <FieldInputAdapter
+                fieldType={FieldType.TEXT}
+                value={reference}
+                onChange={(val) => setReference((val as string) ?? '')}
+                placeholder='e.g. Packing slip 88213'
+                disabled={receive.isPending}
+              />
+            </FieldPanelRow>
+            <FieldPanelRow title='Reason' type={BaseType.STRING} showIcon>
+              <FieldInputAdapter
+                fieldType={FieldType.TEXT}
+                value={reason}
+                onChange={(val) => setReason((val as string) ?? '')}
+                placeholder='e.g. Partial delivery'
+                disabled={receive.isPending}
+              />
+            </FieldPanelRow>
+          </FieldPanel>
+        </div>
 
         <DialogFooter>
           <Button
@@ -332,9 +366,23 @@ export function ReceivePurchaseOrderDialog({
   )
 }
 
+/**
+ * The affordance that stops an editable cell reading as loose text: right-aligned
+ * tabular figures, plus a muted fill on hover/focus so the cell advertises that it
+ * can be typed into. `FieldInputAdapter` takes no `className`, so the alignment is
+ * pushed down onto its `<input>` from here.
+ */
+function EditableNumberCell({ children }: { children: ReactNode }) {
+  return (
+    <div className='rounded-md ring-1 ring-transparent transition-colors focus-within:bg-muted/60 focus-within:ring-ring/30 hover:bg-muted/60 [&_input]:tabular-nums [&_input]:text-right'>
+      {children}
+    </div>
+  )
+}
+
 function ReceiveLineRow({
   line,
-  lineRecordId,
+  partRecordId,
   draft,
   landedUnitCost,
   currencyCode,
@@ -342,47 +390,59 @@ function ReceiveLineRow({
   onChange,
 }: {
   line: ReceivablePoLine
-  lineRecordId: RecordId | undefined
+  partRecordId: RecordId | undefined
   draft: ReceiptDraftLine | undefined
   landedUnitCost: number | undefined
   currencyCode: string
   disabled: boolean
   onChange: (next: ReceiptDraftLine) => void
 }) {
-  const { record } = useRecord({ recordId: lineRecordId!, enabled: !!lineRecordId })
+  const { record } = useRecord({ recordId: partRecordId!, enabled: !!partRecordId })
   const quantity = draft?.quantity ?? 0
   const unitPrice = draft?.unitPrice ?? line.expectedUnitPrice
   const outstanding = outstandingQuantity(line)
 
+  // The part IS a buy-side line's identity (03-line-builder-reuse.md), so it leads;
+  // `description` is the fallback for a line whose part has not resolved yet. Same
+  // chain as `ReceivingLineRow` in `purchase-order-receiving-card.tsx` — the LINE's
+  // own `displayName` is its raw instance id and must never be shown.
+  const title = record?.displayName ?? line.description ?? 'Untitled line'
+
   return (
-    <tr className={quantity > 0 ? undefined : 'opacity-50'}>
-      <td className='px-3 py-1.5'>
-        <span className='truncate'>{record?.displayName ?? line.description ?? 'Line'}</span>
-      </td>
-      <td className='px-2 py-1.5 text-right text-muted-foreground tabular-nums'>
+    <TableRow className={cn(quantity > 0 ? undefined : 'opacity-50')}>
+      <TableCell className='py-1.5 pr-2 pl-3'>
+        <span className='block truncate' title={title}>
+          {title}
+        </span>
+      </TableCell>
+      <TableCell className='px-2 py-1.5 text-right text-muted-foreground tabular-nums'>
         {formatQuantity(outstanding)}
         <span className='ml-1 text-xs'>of {formatQuantity(line.quantityOrdered)}</span>
-      </td>
-      <td className='px-2 py-1.5'>
-        <FieldInputAdapter
-          fieldType={FieldType.NUMBER}
-          value={quantity}
-          onChange={(val) => onChange({ quantity: (val as number) ?? 0, unitPrice })}
-          disabled={disabled}
-        />
-      </td>
-      <td className='px-2 py-1.5'>
-        <FieldInputAdapter
-          fieldType={FieldType.CURRENCY}
-          fieldOptions={{ currencyCode, decimals: 2, useGrouping: true }}
-          value={unitPrice}
-          onChange={(val) => onChange({ quantity, unitPrice: (val as number) ?? 0 })}
-          disabled={disabled}
-        />
-      </td>
-      <td className='px-3 py-1.5 text-right tabular-nums'>
+      </TableCell>
+      <TableCell className='px-1 py-1'>
+        <EditableNumberCell>
+          <FieldInputAdapter
+            fieldType={FieldType.NUMBER}
+            value={quantity}
+            onChange={(val) => onChange({ quantity: (val as number) ?? 0, unitPrice })}
+            disabled={disabled}
+          />
+        </EditableNumberCell>
+      </TableCell>
+      <TableCell className='px-1 py-1'>
+        <EditableNumberCell>
+          <FieldInputAdapter
+            fieldType={FieldType.CURRENCY}
+            fieldOptions={{ currencyCode, decimals: 2, useGrouping: true }}
+            value={unitPrice}
+            onChange={(val) => onChange({ quantity, unitPrice: (val as number) ?? 0 })}
+            disabled={disabled}
+          />
+        </EditableNumberCell>
+      </TableCell>
+      <TableCell className='py-1.5 pr-3 pl-2 text-right tabular-nums'>
         {landedUnitCost != null ? formatCurrency(landedUnitCost, { currencyCode }) : '—'}
-      </td>
-    </tr>
+      </TableCell>
+    </TableRow>
   )
 }

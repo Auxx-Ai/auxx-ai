@@ -5,7 +5,6 @@ import type { Inbox } from '../inboxes/types'
 import type { CachedMailFilter } from '../mail-filters/types'
 import type { Overage } from '../permissions/overage-detection-service'
 import type { FeatureMapObject } from '../permissions/types'
-import type { CachedRecordRule } from '../record-rules/types'
 import type { ResourceField } from '../resources/registry/field-types'
 import type { Resource } from '../resources/registry/types'
 import type {
@@ -65,8 +64,10 @@ export interface OrgCacheAccessorMap {
   // Custom accessor (provider-defined)
   workflowApps: WorkflowAppsAccessor
 
-  // Record rules — plain array, dispatch filters in memory
-  recordRules: ArrayAccessor<CachedRecordRule>
+  // NOTE: `recordRules` has NO accessor on purpose. The cache key holds DB rules
+  // only; the code-declared system rules are unioned in at read time, so `.from()`
+  // would hand back a silently incomplete rule set. Read it through
+  // `getCachedRecordRules` — the one seam that performs the union.
 
   // Mail filters — plain array (enabled + disabled), the gate filters by inbox in memory
   mailFilters: ArrayAccessor<CachedMailFilter>
