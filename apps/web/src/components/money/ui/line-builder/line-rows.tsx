@@ -2167,6 +2167,7 @@ export function DraftLineRow({
   onRevealWeight,
   deleteDraft,
   createDraft,
+  applyPrefillPatch,
   onSelectGroup,
 }: {
   draft: DraftLine
@@ -2187,6 +2188,7 @@ export function DraftLineRow({
   onRevealWeight: () => void
   deleteDraft: (draftId: string) => void
   createDraft: (draftId: string, overrides?: LinePatch) => Promise<void>
+  applyPrefillPatch: (draftId: string, patch: LinePatch) => Promise<void>
   onSelectGroup: (draftId: string, group: CatalogGroup) => void
 }) {
   const schema = lineSchemaFor(documentType)
@@ -2222,17 +2224,18 @@ export function DraftLineRow({
             // (`capabilities.draftRequiresPart`), and any of these commits can
             // materialize the row. See LinePartCellView and `createDraft`.
             //
-            // The prefill follows as a second `createDraft` call rather than
-            // being awaited into the first: the row must appear the instant the
-            // part is picked, and `createDraft` already accumulates anything that
-            // lands while its own create is in flight, then diff-flushes it.
+            // The create fires immediately, so the row still appears the instant
+            // the part is picked. The PREFILL is then sequenced after it rather
+            // than racing it: `applyPrefillPatch` needs a settled target, and a
+            // patch that lands mid-create used to either flicker a placeholder
+            // row or be silently dropped. See `applyPrefillPatch` for both.
             onPickPart={(partRecordId) => {
-              void createDraft(draft.draftId, { partRecordId })
+              const created = createDraft(draft.draftId, { partRecordId })
               void applyPartPrefill({
                 partRecordId,
                 resolve: resolvePartPrefill,
                 currentPriceRef: priceRef,
-                apply: (patch) => void createDraft(draft.draftId, patch),
+                apply: (patch) => void created.then(() => applyPrefillPatch(draft.draftId, patch)),
               })
             }}
             // Also routed through `createDraft`, which accumulates rather than

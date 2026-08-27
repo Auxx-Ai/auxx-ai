@@ -310,6 +310,9 @@ export function LineBuilder({
   // a keyboard-driven or button-driven "add row" lands the caret ready to type.
   const [lastAddedDraftId, setLastAddedDraftId] = useState<string | null>(null)
   const draftsRef = useRef<DraftLine[]>([])
+  // draftId -> the record its create produced. Kept because a prefill that
+  // resolves on its own clock needs a target after the draft is gone.
+  const draftRecordIdsRef = useRef<Map<string, RecordId>>(new Map())
   /**
    * Single draft-state writer: applies the update to `draftsRef` synchronously
    * and mirrors the result into state, so two writers in one tick can never
@@ -840,6 +843,7 @@ export function LineBuilder({
         }
 
         creatingDraftIdsRef.current.delete(draftId)
+        draftRecordIdsRef.current.set(draftId, result.recordId)
         mutateDrafts((prev) => prev.filter((d) => d.draftId !== draftId))
       } catch (error) {
         creatingDraftIdsRef.current.delete(draftId)
@@ -861,6 +865,50 @@ export function LineBuilder({
       seedCreatedRecord,
       appendCreated,
     ]
+  )
+
+  /**
+   * Land a patch that resolved on its OWN clock — the supplier price prefill
+   * (plans/purchasing/05-receiving-cost-and-corrections.md section 5.2).
+   *
+   * 🛑 Deliberately NOT `createDraft`, which was the first implementation and
+   * carried two defects, both of which need this function to stay separate:
+   *
+   * 1. `createDraft` opens with `initialDraftIdsRef.current.clear()`. A second
+   *    call arriving just after the first create dropped its draft can land in
+   *    the frame where the "never render zero rows" effect has re-seeded a
+   *    placeholder. Clearing the set orphans that placeholder from the cleanup
+   *    that would have removed it, and the row visibly flickers in and out.
+   * 2. A prefill patch carries no `partRecordId`, so it fails the
+   *    `draftRequiresPart` guard and accumulates onto a draft that no longer
+   *    exists — a silent no-op. Whenever the lookup finished after the create,
+   *    the price was simply dropped, with nothing thrown and nothing logged.
+   *
+   * The caller sequences this AFTER the create rather than racing it, so the
+   * common path is the record write below. The draft branch is the retry case:
+   * `createDraft` toasts and leaves the draft in place when the create fails,
+   * and the patch should survive to be carried by the next attempt.
+   */
+  const applyPrefillPatch = useCallback(
+    async (draftId: string, patch: LinePatch) => {
+      const recordId = draftRecordIdsRef.current.get(draftId)
+      if (!recordId) {
+        mutateDrafts((prev) => prev.map((d) => (d.draftId === draftId ? { ...d, ...patch } : d)))
+        return
+      }
+      const changed = linePatchToFieldValues(patch, schema)
+      if (changed.length === 0) return
+      try {
+        await saveMultipleAsync(recordId, changed)
+      } catch (error) {
+        toastError({
+          title: 'Error applying the supplier price',
+          description:
+            error instanceof Error ? error.message : 'Could not apply the supplier price',
+        })
+      }
+    },
+    [mutateDrafts, saveMultipleAsync, schema]
   )
 
   /**
@@ -1321,6 +1369,7 @@ export function LineBuilder({
                       onRevealWeight={revealWeight}
                       deleteDraft={deleteDraft}
                       createDraft={createDraft}
+                      applyPrefillPatch={applyPrefillPatch}
                       onSelectGroup={handleGroupPickDraft}
                     />
                   )
