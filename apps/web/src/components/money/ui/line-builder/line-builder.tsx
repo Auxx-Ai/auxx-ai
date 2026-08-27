@@ -123,6 +123,9 @@ import {
 import {
   type DocumentType,
   diffLineValues,
+  documentLineFilters,
+  LINE_PAGE_SIZE,
+  LINE_SORT,
   type LinePatch,
   type LineValues,
   lineAttributesFor,
@@ -160,10 +163,7 @@ export interface LineBuilderProps {
   renderMatchKeyEditor?: MatchKeyEditorRenderer
 }
 
-const PAGE_SIZE = 100
 const INITIAL_DRAFT_COUNT = 3
-/** Stable sort ref — `useRecordList` keys its cache off this object. */
-const LINE_SORT = [{ id: 'sortOrder', desc: false }]
 /** Every fixed line-builder field is visible to the shared syncer. */
 const LINE_FIELD_VISIBILITY = {}
 
@@ -313,52 +313,15 @@ export function LineBuilder({
   // race two `record.create` calls for the same draft before React re-renders.
   const creatingDraftIdsRef = useRef<Set<string>>(new Set())
 
-  // Baseline filter: lines belonging to this document, via the belongs_to rel
-  // (`contact-tickets-tab.tsx` precedent — `operator: 'is'` + the RecordId;
-  // the server strips the def prefix). Invoice mode ALSO excludes work-order source
-  // lines stamped with `line_item_invoice` (the gather "invoiced by" pointer, money
-  // MI1 build spec §B.3/§J.2) — only the invoice's own copies (workOrder empty) show.
-  // work_order mode ALSO splits on `line_item_visitId` (plain-text bridge, dispatch lock):
-  // a `visitId` prop → only that visit's occurrence extras; no prop → only the job's
-  // per-cycle set (visitId empty), so extras never leak into the job Line-items tab.
-  const filters = useMemo<ConditionGroup[]>(() => {
-    const conditions: ConditionGroup['conditions'] = [
-      {
-        id: 'line-builder-document',
-        // The order and purchasing arms are the plainest: no work-order exclusion
-        // (that invariant is about an invoice's own lines) and no visit split.
-        fieldId: schema.relFieldId,
-        operator: 'is',
-        value: documentRecordId,
-      },
-    ]
-    if (schema.capabilities.excludeWorkOrderSourceLines) {
-      conditions.push({
-        id: 'line-builder-invoice-workorder',
-        fieldId: 'line_item:workOrder',
-        operator: 'empty',
-        value: null,
-      })
-    }
-    if (schema.capabilities.visitScoped) {
-      conditions.push(
-        visitId
-          ? {
-              id: 'line-builder-visit',
-              fieldId: 'line_item:visitId',
-              operator: 'is',
-              value: visitId,
-            }
-          : {
-              id: 'line-builder-visit',
-              fieldId: 'line_item:visitId',
-              operator: 'empty',
-              value: null,
-            }
-      )
-    }
-    return [{ id: 'line-builder-baseline', logicalOperator: 'AND', conditions }]
-  }, [schema, documentRecordId, visitId])
+  // The baseline filter is built by `documentLineFilters` in `line-values.ts`,
+  // NOT inline here: the condition ids are part of `createListKey`'s hash, so a
+  // second reader of these same rows must construct them identically or it lands
+  // on a private list cache that no optimistic append ever reaches. See that
+  // function's own note.
+  const filters = useMemo<ConditionGroup[]>(
+    () => documentLineFilters(schema, documentRecordId, visitId),
+    [schema, documentRecordId, visitId]
+  )
 
   const {
     records,
@@ -374,7 +337,7 @@ export function LineBuilder({
     entityDefinitionId: entityDefinitionId ?? '',
     filters,
     sorting: LINE_SORT,
-    limit: PAGE_SIZE,
+    limit: LINE_PAGE_SIZE,
     enabled: !!entityDefinitionId,
   })
 

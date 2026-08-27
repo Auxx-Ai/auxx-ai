@@ -2,6 +2,7 @@
 
 import { FieldType } from '@auxx/database/enums'
 import type { FieldType as FieldTypeValue } from '@auxx/database/types'
+import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import { computeLineTotal, type LineItemUnit, roundCents } from '@auxx/lib/money/client'
 import type { RecordId } from '@auxx/lib/resources/client'
 
@@ -484,6 +485,78 @@ export const LINE_SCHEMAS: Record<DocumentType, LineSchema> = {
 }
 
 /** The schema for one document type. */
+/**
+ * The baseline filter selecting one document's lines — the SINGLE construction
+ * site, used by both `LineBuilder` and any card that lists the same rows.
+ *
+ * Lines belonging to this document, via the belongs_to rel
+ * (`contact-tickets-tab.tsx` precedent — `operator: 'is'` + the RecordId; the
+ * server strips the def prefix). Invoice mode ALSO excludes work-order source
+ * lines stamped with `line_item_invoice` (the gather "invoiced by" pointer, money
+ * MI1 build spec §B.3/§J.2) — only the invoice's own copies (workOrder empty) show.
+ * work_order mode ALSO splits on `line_item_visitId` (plain-text bridge, dispatch
+ * lock): a `visitId` → only that visit's occurrence extras; none → only the job's
+ * per-cycle set (visitId empty), so extras never leak into the job Line-items tab.
+ *
+ * 🛑 It is a shared FUNCTION and not a per-caller literal for a reason that is
+ * invisible at the call site: `createListKey` hashes `JSON.stringify(filters)`,
+ * so the condition `id` STRINGS are part of the cache key. Two components asking
+ * for the same rows with different ids land on two different `lists[...]` entries
+ * — and `appendCreatedRecord(key, id)` patches only the ONE key that created the
+ * record, while the acting tab is excluded from its own `record:created` frame.
+ * The second list then never learns about the new row until a reload. Hand-rolling
+ * this literal per caller is exactly how that happens, so don't.
+ */
+export function documentLineFilters(
+  schema: LineSchema,
+  documentRecordId: string,
+  visitId?: string | null
+): ConditionGroup[] {
+  const conditions: ConditionGroup['conditions'] = [
+    {
+      id: 'line-builder-document',
+      // The order and purchasing arms are the plainest: no work-order exclusion
+      // (that invariant is about an invoice's own lines) and no visit split.
+      fieldId: schema.relFieldId,
+      operator: 'is',
+      value: documentRecordId,
+    },
+  ]
+  if (schema.capabilities.excludeWorkOrderSourceLines) {
+    conditions.push({
+      id: 'line-builder-invoice-workorder',
+      fieldId: 'line_item:workOrder',
+      operator: 'empty',
+      value: null,
+    })
+  }
+  if (schema.capabilities.visitScoped) {
+    conditions.push(
+      visitId
+        ? { id: 'line-builder-visit', fieldId: 'line_item:visitId', operator: 'is', value: visitId }
+        : {
+            id: 'line-builder-visit',
+            fieldId: 'line_item:visitId',
+            operator: 'empty',
+            value: null,
+          }
+    )
+  }
+  return [{ id: 'line-builder-baseline', logicalOperator: 'AND', conditions }]
+}
+
+/**
+ * Page size every caller of {@link documentLineFilters} must share.
+ *
+ * `limit` rides on `useRecordList`'s tRPC query input, so a second reader that
+ * pages differently gets a different React Query entry even when the store
+ * `listKey` matches — half-shared, which is worse than either.
+ */
+export const LINE_PAGE_SIZE = 100
+
+/** Stable sort ref shared by every line reader — see {@link LINE_PAGE_SIZE}. */
+export const LINE_SORT = [{ id: 'sortOrder', desc: false }]
+
 export function lineSchemaFor(documentType: DocumentType): LineSchema {
   return LINE_SCHEMAS[documentType]
 }
