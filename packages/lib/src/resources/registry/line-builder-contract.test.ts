@@ -79,14 +79,27 @@ const LINE_BUILDER_CONTRACT: Record<
   },
   vendor_bill: {
     lineEntityType: 'vendor_bill_line',
-    // Transcribed, never computed (01-build-plan.md §5.4b).
-    header: ['vendor_bill_subtotal', 'vendor_bill_tax_total', 'vendor_bill_total'],
+    // Transcribed, never computed (01-build-plan.md §5.4b). `shipping_total`
+    // joined the set when the `stored` footer learned to render it — the bill
+    // showed a subtotal and a total with nothing between them.
+    header: [
+      'vendor_bill_subtotal',
+      'vendor_bill_shipping_total',
+      'vendor_bill_tax_total',
+      'vendor_bill_total',
+      // Scopes the match-key picker (`LineSchema.matchScopeAttr`). Not a billing
+      // mirror, but it is read off the parent by the same builder.
+      'vendor_bill_purchase_order',
+    ],
     line: [
       'vendor_bill_line_vendor_bill',
       'vendor_bill_line_part',
       'vendor_bill_line_description',
       'vendor_bill_line_quantity_billed',
       'vendor_bill_line_unit_price',
+      'vendor_bill_line_line_total',
+      'vendor_bill_line_purchase_order_line',
+      'vendor_bill_line_gl_account',
       'vendor_bill_line_sort_order',
     ],
   },
@@ -132,13 +145,47 @@ describe('line builder contract', () => {
     expect(rated.sort()).toEqual(['invoice', 'order', 'quote'])
   })
 
-  // A purchasing line's identity is `(parent, part)`, so `part` must stay required
-  // — it is what stops a re-sent order doubling its lines, and it is why the
-  // builder cannot materialize a draft row until one is picked.
+  // A purchase order line's identity is `(parent, part)`, so `part` must stay
+  // required — it is what stops a re-sent order doubling its lines, and it is why
+  // the builder cannot materialize a draft row until one is picked.
   it('a purchase order line still requires its part', () => {
     const part = RESOURCE_FIELD_REGISTRY.purchase_order_line?.part
     expect(part?.systemAttribute).toBe('purchase_order_line_part')
     expect(part?.nullable).toBe(false)
     expect(part?.capabilities?.required).toBe(true)
+  })
+
+  // 🛑 The other half of that pairing, and the reason the builder's
+  // draft-materialization guard is `capabilities.draftRequiresPart` and NOT
+  // `capabilities.partPicker`. A bill line with no part is LEGAL — freight, a
+  // one-off, a line the vendor invented — so a guard shared with the purchase
+  // order would leave such a line typed and silently never created. Both
+  // documents render the same part picker; only one of them may block on it.
+  it('a vendor bill line does NOT require its part', () => {
+    const part = RESOURCE_FIELD_REGISTRY.vendor_bill_line?.part
+    expect(part?.systemAttribute).toBe('vendor_bill_line_part')
+    expect(part?.nullable).toBe(true)
+    expect(part?.capabilities?.required).toBeFalsy()
+  })
+
+  // 🛑 The amount cell is an INPUT only where the field is writable. Everywhere
+  // else the server totals hook is the sole writer (`creatable: false`), and a
+  // builder that typed into it would be racing the recompute — which is what
+  // `amountMode: 'derived'` exists to prevent.
+  it('only the vendor bill line has a writable amount', () => {
+    const writable = ['line_item', 'purchase_order_line', 'vendor_bill_line'].filter(
+      (entityType) => RESOURCE_FIELD_REGISTRY[entityType]?.lineTotal?.capabilities?.updatable
+    )
+    expect(writable).toEqual(['vendor_bill_line'])
+  })
+
+  // The match key is nullable by design: a bill with no purchase order behind it
+  // is legal and simply cannot be matched. A required match key would make such a
+  // bill unenterable.
+  it('the match key exists and is optional', () => {
+    const key = RESOURCE_FIELD_REGISTRY.vendor_bill_line?.purchaseOrderLine
+    expect(key?.systemAttribute).toBe('vendor_bill_line_purchase_order_line')
+    expect(key?.nullable).toBe(true)
+    expect(key?.relationshipConfig?.relatedEntityType).toBe('purchase_order_line')
   })
 })

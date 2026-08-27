@@ -58,11 +58,14 @@ import {
   CircleX,
   Ellipsis,
   GripVertical,
+  Landmark,
+  Link2,
   PackageSearch,
   Plus,
   Tag,
   Tags,
   Trash2,
+  TriangleAlert,
   X,
 } from 'lucide-react'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
@@ -76,8 +79,11 @@ import { catalogItemToLinePatch } from './catalog-group-resolver'
 import { CatalogPicker } from './catalog-picker'
 import { LinePhotoPopover } from './line-photo-popover'
 import {
+  type AmountMode,
+  crossFillAmount,
   DEFAULT_LINE_VALUES,
   type DocumentType,
+  hasAmountMismatch,
   type LinePatch,
   type LineValues,
   lineAttributesFor,
@@ -137,6 +143,25 @@ function badgeVariantForColor(color: string | undefined): Variant {
 }
 
 /**
+ * Renders the editor for a line's match key, supplied by the CONSUMER.
+ *
+ * 🛑 A render prop rather than an import, and that is deliberate: the only match
+ * key that exists is a bill line's `purchaseOrderLine`, and its picker
+ * (`purchasing/purchase-order/purchase-order-line-picker.tsx`) already imports
+ * `LineBuilder`. Reaching for it from here would close that loop — `money` would
+ * depend on `purchasing` while `purchasing` depends on `money`.
+ *
+ * `scopeRecordId` is resolved by the builder from `LineSchema.matchScopeAttr`, so
+ * the consumer never has to re-fetch the parent to scope its own picker.
+ */
+export type MatchKeyEditorRenderer = (props: {
+  value: RecordId | null
+  onChange: (next: RecordId | null) => void
+  scopeRecordId: RecordId | null
+  currencyCode: string
+}) => ReactNode
+
+/**
  * A phantom line row that exists only in local state until its first real
  * commit — no `EntityInstance` behind it yet. `unitPriceCents` mirrors the
  * CURRENCY storage convention (integer cents), matching `line_item_unit_price`.
@@ -191,6 +216,7 @@ function LineGridRow({
   qty,
   price,
   total,
+  totalNavigable = false,
   optional = false,
 }: {
   rowIndex: number
@@ -199,6 +225,14 @@ function LineGridRow({
   qty: ReactNode
   price: ReactNode
   total: ReactNode
+  /**
+   * Whether the amount cell joins the spreadsheet nav order as col 3 — true only
+   * where it is an input (`amountMode: 'stored'`). Tagging it unconditionally
+   * would give the other five documents a fourth cell with nothing focusable in
+   * it, and `focusCell` would land on a dead column. `colCount` in
+   * `line-builder.tsx` moves with this.
+   */
+  totalNavigable?: boolean
   /** Muted/indented treatment for a deselectable quote line (money plan 18 §3). */
   optional?: boolean
 }) {
@@ -227,7 +261,12 @@ function LineGridRow({
         <div data-line-row={rowIndex} data-line-col={2} className='flex items-center'>
           {price}
         </div>
-        <div className='flex items-center'>{total}</div>
+        <div
+          data-line-row={totalNavigable ? rowIndex : undefined}
+          data-line-col={totalNavigable ? 3 : undefined}
+          className='flex items-center'>
+          {total}
+        </div>
       </div>
     </div>
   )
@@ -812,16 +851,34 @@ function LineNameCellView({
  * didn't actually change. Handles the rate (`line_item_unit_price`) column only —
  * quantity moved to the smart {@link QuantityCellView} (money plan 13 §5).
  */
-function PriceCellView({
+function PriceCellView(props: {
+  value: number | null
+  readOnly: boolean
+  currencyCode: string
+  onCommit: (next: number | null) => void
+}) {
+  return <CurrencyCellInput {...props} />
+}
+
+/**
+ * The shared chromeless currency editor behind {@link PriceCellView} and the
+ * `stored` branch of {@link LineTotalCellView} — typed in dollars, stored as
+ * integer cents. Extracted rather than copied when the amount column became
+ * editable: two inputs over the same storage convention that round differently
+ * is how a rate and an amount stop agreeing.
+ */
+function CurrencyCellInput({
   value,
   readOnly,
   currencyCode,
   onCommit,
+  ariaLabel,
 }: {
   value: number | null
   readOnly: boolean
   currencyCode: string
   onCommit: (next: number | null) => void
+  ariaLabel?: string
 }) {
   const [draft, setDraft] = useState<string | null>(null)
 
@@ -845,6 +902,7 @@ function PriceCellView({
 
   return (
     <input
+      aria-label={ariaLabel}
       value={draft ?? display}
       onChange={(e) => setDraft(e.target.value)}
       onFocus={() => setDraft(value !== null && value !== undefined ? String(value / 100) : '')}
@@ -984,20 +1042,68 @@ function QuantityCellView({
   )
 }
 
-/** Read-only computed line total view — `computeLineTotal` over plain values. */
+/**
+ * The amount cell — read-only on five documents, an input on the sixth
+ * (plans/purchasing/04-vendor-bill-lines-and-the-amount-cell.md §3).
+ *
+ * `derived`: `computeLineTotal` over the row's qty and rate. The stored
+ * `…_line_total` behind it is `creatable: false` with the server totals hook as
+ * its only writer, so there is nothing here to type into.
+ *
+ * `stored`: the vendor bill. The amount is TRANSCRIBED, so it is an input, and
+ * `crossFillAmount` fills whichever of rate/amount was left blank.
+ *
+ * 🛑 When `qty × rate` disagrees with the typed amount the cell MARKS it and
+ * changes nothing. That disagreement is the vendor's own arithmetic — the exact
+ * discrepancy the three-way match exists to surface — so a cell that quietly
+ * reconciled the two would be deleting the finding.
+ */
 function LineTotalCellView({
+  amountMode,
   qty,
   unitPrice,
+  lineTotal,
+  mismatch,
+  readOnly,
   currencyCode,
+  onCommit,
 }: {
+  amountMode: AmountMode
   qty: number
   unitPrice: number | null
+  /** The transcribed amount — `stored` mode only; ignored when `derived`. */
+  lineTotal: number | null
+  mismatch: boolean
+  readOnly: boolean
   currencyCode: string
+  onCommit: (next: number | null) => void
 }) {
-  const lineTotal = computeLineTotal(qty, unitPrice)
+  if (amountMode === 'derived') {
+    return (
+      <div className='w-full px-2 text-right text-muted-foreground text-sm tabular-nums'>
+        {formatCurrency(computeLineTotal(qty, unitPrice), currencyCode)}
+      </div>
+    )
+  }
+
   return (
-    <div className='w-full px-2 text-right text-muted-foreground text-sm tabular-nums'>
-      {formatCurrency(lineTotal, currencyCode)}
+    <div className='flex h-full w-full items-center justify-end gap-1'>
+      {mismatch && (
+        <SimpleTooltip
+          content={`Quantity x rate is ${formatCurrency(
+            computeLineTotal(qty, unitPrice),
+            currencyCode
+          )}. Billed as shown — left exactly as the vendor wrote it.`}>
+          <TriangleAlert className='size-3.5 shrink-0 text-warning-600' />
+        </SimpleTooltip>
+      )}
+      <CurrencyCellInput
+        value={lineTotal}
+        readOnly={readOnly}
+        currencyCode={currencyCode}
+        onCommit={onCommit}
+        ariaLabel='Amount'
+      />
     </div>
   )
 }
@@ -1022,8 +1128,16 @@ function MenuShortcut({ keys }: { keys: string[] }) {
  * only (`tabIndex={-1}`, mirroring the qty unit-dropdown precedent). Holds
  * the line-level actions: description, category, images (real rows only —
  * a draft has no record to attach photos to), optional toggle (quotes only),
- * taxable toggle, delete — each item shows its row shortcut
- * (use-line-hotkeys.ts). The drag grip stays drag-only.
+ * taxable toggle, match key and GL account (buy-side lines that carry them),
+ * delete — each item shows its row shortcut (use-line-hotkeys.ts). The drag grip
+ * stays drag-only.
+ *
+ * ⚠️ This menu is where a line's OPTIONAL vocabulary lives, by convention: a
+ * concept the row does not always carry is revealed here, and only becomes a
+ * standing control in the cell once it is set. A bill line's match key and GL
+ * account are the two newest members of that set — neither earns a grid column,
+ * and adding one would have widened `LINE_COLS` for every document
+ * (plans/purchasing/04-vendor-bill-lines-and-the-amount-cell.md §2).
  */
 function LineRowMenu({
   taxable,
@@ -1031,14 +1145,20 @@ function LineRowMenu({
   showOptionalToggle,
   showCategory = true,
   showTaxable = true,
+  showMatchKey = false,
+  showGlAccount = false,
   hasDescription,
   hasCategory,
   hasPhotos,
+  hasMatchKey = false,
+  hasGlAccount = false,
   onEditDescription,
   onSetCategory,
   onOpenPhotos,
   onToggleTaxable,
   onToggleOptional,
+  onSetMatchKey,
+  onSetGlAccount,
   onDelete,
 }: {
   taxable: boolean
@@ -1051,15 +1171,23 @@ function LineRowMenu({
    */
   showCategory?: boolean
   showTaxable?: boolean
+  /** `schema.attrs.purchaseOrderLineRecordId !== null` — a bill line's match key. */
+  showMatchKey?: boolean
+  /** `schema.attrs.glAccount !== null`. */
+  showGlAccount?: boolean
   hasDescription: boolean
   hasCategory: boolean
   hasPhotos: boolean
+  hasMatchKey?: boolean
+  hasGlAccount?: boolean
   onEditDescription: () => void
   onSetCategory: () => void
   /** `undefined` hides the images item (draft rows, missing registry field). */
   onOpenPhotos?: () => void
   onToggleTaxable: (next: boolean) => void
   onToggleOptional: (next: boolean) => void
+  onSetMatchKey?: () => void
+  onSetGlAccount?: () => void
   onDelete: () => void
 }) {
   return (
@@ -1115,6 +1243,20 @@ function LineRowMenu({
             <MenuShortcut keys={['⇧', 'X']} />
           </DropdownMenuItem>
         )}
+        {showMatchKey && onSetMatchKey && (
+          <DropdownMenuItem onSelect={onSetMatchKey}>
+            <Link2 />
+            {hasMatchKey ? 'Change purchase order line' : 'Link purchase order line'}
+            <MenuShortcut keys={['⇧', 'K']} />
+          </DropdownMenuItem>
+        )}
+        {showGlAccount && onSetGlAccount && (
+          <DropdownMenuItem onSelect={onSetGlAccount}>
+            <Landmark />
+            {hasGlAccount ? 'Change GL account' : 'Set GL account'}
+            <MenuShortcut keys={['⇧', 'G']} />
+          </DropdownMenuItem>
+        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem variant='destructive' onSelect={onDelete}>
           <Trash2 />
@@ -1158,45 +1300,100 @@ function LineRowMenu({
  * The field definition is sourced live rather than stubbed so the picker gets a
  * real `RelationshipConfig` — and with it "create new part" — the same way the
  * PO line dialog did it.
+ *
+ * A VENDOR BILL line reaches the same cell with two extra concepts a purchase
+ * order line does not have — `purchaseOrderLine` (the three-way match key) and
+ * `glAccount`. Both follow the `⋯` convention rather than taking a column:
+ * revealed from the menu, edited in the cell's single swap slot, and rendered as
+ * a standing chip only once set
+ * (plans/purchasing/04-vendor-bill-lines-and-the-amount-cell.md §2).
  */
 function LinePartCellView({
   partAttribute,
   partRecordId,
   description,
+  matchKeyAttribute,
+  matchKeyRecordId,
+  matchScopeRecordId,
+  renderMatchKeyEditor,
+  currencyCode,
+  glAccountAttribute,
+  glAccount,
   readOnly,
   onPickPart,
   onCommitDescription,
+  onPickMatchKey,
+  onCommitGlAccount,
   onDelete,
 }: {
   /** `purchase_order_line_part` / `vendor_bill_line_part`, from the schema. */
   partAttribute: string
   partRecordId: RecordId | null
   description: string | null
+  /** `schema.attrs.purchaseOrderLineRecordId` — `null` on a line with no match key. */
+  matchKeyAttribute: string | null
+  matchKeyRecordId: RecordId | null
+  /** Resolved by the builder from `schema.matchScopeAttr`; scopes the picker. */
+  matchScopeRecordId: RecordId | null
+  renderMatchKeyEditor?: MatchKeyEditorRenderer
+  currencyCode: string
+  /** `schema.attrs.glAccount` — `null` on a line with no GL account. */
+  glAccountAttribute: string | null
+  glAccount: string | null
   readOnly: boolean
   onPickPart: (recordId: RecordId | null) => void
   onCommitDescription: (value: string | null) => void
+  onPickMatchKey: (recordId: RecordId | null) => void
+  onCommitGlAccount: (value: string | null) => void
   /** Delete this line (real record or draft). */
   onDelete: () => void
 }) {
   const partField = useSystemField(partAttribute)
-  // `null` = not editing description; any string (incl. '') = in-progress text.
-  const [descriptionDraft, setDescriptionDraft] = useState<string | null>(null)
+  /**
+   * The cell's single edit slot. One state rather than one per field, because the
+   * three editors all REPLACE the cell: two of them open at once would render two
+   * autofocused controls into the same slot.
+   *
+   * `null` = at rest. A `value` carries the in-progress text (incl. `''`); the
+   * match key has none — its picker writes through on select.
+   */
+  const [edit, setEdit] = useState<
+    { field: 'description' | 'glAccount'; value: string } | { field: 'matchKey' } | null
+  >(null)
 
-  const confirmDescription = () => {
-    if (descriptionDraft === null) return
-    onCommitDescription(descriptionDraft.trim() || null)
-    setDescriptionDraft(null)
+  // The match key is only editable where the consumer supplied an editor for it;
+  // see MatchKeyEditorRenderer for why this is a render prop and not an import.
+  const showMatchKey = !!matchKeyAttribute && !!renderMatchKeyEditor && !readOnly
+  const showGlAccount = !!glAccountAttribute && !readOnly
+
+  const confirmText = () => {
+    if (!edit || edit.field === 'matchKey') return
+    const trimmed = edit.value.trim() || null
+    setEdit(null)
+    if (edit.field === 'description') onCommitDescription(trimmed)
+    else onCommitGlAccount(trimmed)
   }
 
   // Row-action shortcuts (use-line-hotkeys.ts) arrive as CustomEvents on the
-  // enclosing name cell — same contract as LineNameCellView. Only the two
-  // actions a purchasing line actually has are handled; the rest are no-ops
-  // rather than writes to fields the entity does not carry.
+  // enclosing name cell — same contract as LineNameCellView. Only the actions a
+  // purchasing line actually has are handled; the rest are no-ops rather than
+  // writes to fields the entity does not carry.
   const rootRef = useRef<HTMLDivElement>(null)
   const actionRef = useRef<(action: LineRowAction) => void>(() => {})
   actionRef.current = (action) => {
     if (action === 'description') {
-      if (descriptionDraft === null) setDescriptionDraft(description ?? '')
+      // Already editing the description — don't reset the in-progress text.
+      if (edit?.field !== 'description') setEdit({ field: 'description', value: description ?? '' })
+      return
+    }
+    if (action === 'glAccount') {
+      if (showGlAccount && edit?.field !== 'glAccount') {
+        setEdit({ field: 'glAccount', value: glAccount ?? '' })
+      }
+      return
+    }
+    if (action === 'matchKey') {
+      if (showMatchKey) setEdit({ field: 'matchKey' })
       return
     }
     if (action === 'delete') onDelete()
@@ -1211,18 +1408,18 @@ function LinePartCellView({
 
   // Description edit mode — replaces the cell with an autosize textarea in the
   // same slot, exactly as the sell-side cell does.
-  if (descriptionDraft !== null) {
+  if (edit?.field === 'description') {
     return (
       <div ref={rootRef} className='flex min-w-0 flex-1 items-center gap-1 py-1'>
         <AutosizeTextarea
-          value={descriptionDraft}
-          onChange={(e) => setDescriptionDraft(e.target.value)}
+          value={edit.value}
+          onChange={(e) => setEdit({ field: 'description', value: e.target.value })}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault()
-              confirmDescription()
+              confirmText()
             }
-            if (e.key === 'Escape') setDescriptionDraft(null)
+            if (e.key === 'Escape') setEdit(null)
           }}
           autoFocus
           minHeight={28}
@@ -1230,15 +1427,71 @@ function LinePartCellView({
           placeholder='What the supplier calls it'
           className='min-w-0 flex-1 resize-none rounded-sm border-primary-200/60 bg-transparent px-2 py-1 text-muted-foreground text-xs'
         />
-        <TreeRowButton persistent tooltipText='Save description' onClick={confirmDescription}>
+        <TreeRowButton persistent tooltipText='Save description' onClick={confirmText}>
           <Check />
         </TreeRowButton>
         <TreeRowButton
           persistent
           variant='destructive'
           tooltipText='Cancel'
-          onClick={() => setDescriptionDraft(null)}>
+          onClick={() => setEdit(null)}>
           <X />
+        </TreeRowButton>
+      </div>
+    )
+  }
+
+  // GL account edit mode — an account CODE ('2160', '5090'), free text by
+  // registry (`vendor_bill_line.glAccount` is TEXT with a `2160` placeholder),
+  // so a plain input rather than the options menu the category badge uses.
+  if (edit?.field === 'glAccount') {
+    return (
+      <div ref={rootRef} className='flex min-w-0 flex-1 items-center gap-1 py-1'>
+        <input
+          aria-label='GL account'
+          value={edit.value}
+          onChange={(e) => setEdit({ field: 'glAccount', value: e.target.value })}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              confirmText()
+            }
+            if (e.key === 'Escape') setEdit(null)
+          }}
+          autoFocus
+          placeholder='2160'
+          className='h-7 min-w-0 flex-1 rounded-sm border border-primary-200/60 bg-transparent px-2 text-sm tabular-nums outline-none'
+        />
+        <TreeRowButton persistent tooltipText='Save GL account' onClick={confirmText}>
+          <Check />
+        </TreeRowButton>
+        <TreeRowButton
+          persistent
+          variant='destructive'
+          tooltipText='Cancel'
+          onClick={() => setEdit(null)}>
+          <X />
+        </TreeRowButton>
+      </div>
+    )
+  }
+
+  // Match-key edit mode — the consumer's picker fills the cell, and writes
+  // through on select rather than on a Save button, so there is nothing to
+  // cancel: the ✓ only closes the slot.
+  if (edit?.field === 'matchKey' && renderMatchKeyEditor) {
+    return (
+      <div ref={rootRef} className='flex min-w-0 flex-1 items-center gap-1 py-1'>
+        <div className='min-w-0 flex-1'>
+          {renderMatchKeyEditor({
+            value: matchKeyRecordId,
+            onChange: onPickMatchKey,
+            scopeRecordId: matchScopeRecordId,
+            currencyCode,
+          })}
+        </div>
+        <TreeRowButton persistent tooltipText='Done' onClick={() => setEdit(null)}>
+          <Check />
         </TreeRowButton>
       </div>
     )
@@ -1252,6 +1505,12 @@ function LinePartCellView({
           {partRecordId ? '' : ' —'}
         </span>
         {description && <TooltipExplanation text={description} />}
+        {matchKeyRecordId && (
+          <SimpleTooltip content='Matched to a purchase order line'>
+            <Link2 className='size-3.5 shrink-0 text-muted-foreground' />
+          </SimpleTooltip>
+        )}
+        {glAccount && <GlAccountChip code={glAccount} />}
       </div>
     )
   }
@@ -1282,30 +1541,84 @@ function LinePartCellView({
           tabIndex={-1}
           tooltipText={description}
           onMouseDown={(e) => e.preventDefault()}
-          onClick={() => setDescriptionDraft(description)}>
+          onClick={() => setEdit({ field: 'description', value: description })}>
           <AlignLeft />
         </TreeRowButton>
       )}
 
+      {/* Match-key chip — the same standing-control-once-set rule as the
+          description button. Its tooltip does NOT name the linked line, and that
+          is not an omission: `vendor_bill_line.part` is stamped FROM the PO line,
+          so the part already rendered two controls to the left is the very label
+          the picker would show. Resolving it again would be one extra fetch per
+          row to print what the row is already printing. */}
+      {showMatchKey && matchKeyRecordId && (
+        <TreeRowButton
+          persistent
+          tabIndex={-1}
+          tooltipText='Matched to a purchase order line — click to change'
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => setEdit({ field: 'matchKey' })}>
+          <Link2 />
+        </TreeRowButton>
+      )}
+
+      {showGlAccount && glAccount && (
+        <GlAccountChip
+          code={glAccount}
+          onClick={() => setEdit({ field: 'glAccount', value: glAccount })}
+        />
+      )}
+
       {/* Always the cell's LAST flex child, so its slot is stable across the
-          rest ↔ description-editor swap. Category / taxable / images / optional
-          are all off: a purchasing line carries none of those fields. */}
+          rest ↔ editor swaps. Category / taxable / images / optional are all off:
+          a purchasing line carries none of those fields. */}
       <LineRowMenu
         taxable={false}
         optional={false}
         showOptionalToggle={false}
         showCategory={false}
         showTaxable={false}
+        showMatchKey={showMatchKey}
+        showGlAccount={showGlAccount}
         hasDescription={!!description}
         hasCategory={false}
         hasPhotos={false}
-        onEditDescription={() => setDescriptionDraft(description ?? '')}
+        hasMatchKey={!!matchKeyRecordId}
+        hasGlAccount={!!glAccount}
+        onEditDescription={() => setEdit({ field: 'description', value: description ?? '' })}
         onSetCategory={() => {}}
         onToggleTaxable={() => {}}
         onToggleOptional={() => {}}
+        onSetMatchKey={showMatchKey ? () => setEdit({ field: 'matchKey' }) : undefined}
+        onSetGlAccount={
+          showGlAccount ? () => setEdit({ field: 'glAccount', value: glAccount ?? '' }) : undefined
+        }
         onDelete={onDelete}
       />
     </div>
+  )
+}
+
+/** The account code as a standing chip — set-only, like the category badge. */
+function GlAccountChip({ code, onClick }: { code: string; onClick?: () => void }) {
+  const content = (
+    <span className='shrink-0 rounded-sm bg-primary-100 px-1.5 py-0.5 text-[10px] text-muted-foreground leading-none tabular-nums dark:bg-primary-100/60'>
+      {code}
+    </span>
+  )
+  if (!onClick) return <SimpleTooltip content='GL account'>{content}</SimpleTooltip>
+  return (
+    <SimpleTooltip content='GL account — click to change'>
+      <button
+        type='button'
+        tabIndex={-1}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={onClick}
+        className='shrink-0 rounded-sm hover:brightness-95'>
+        {content}
+      </button>
+    </SimpleTooltip>
   )
 }
 
@@ -1352,6 +1665,8 @@ export function LineRow({
   catalogGroups,
   catalogItemMap,
   catalogLoading,
+  matchScopeRecordId,
+  renderMatchKeyEditor,
   onUpdateLine,
   deleteLine,
   onSelectGroup,
@@ -1370,6 +1685,9 @@ export function LineRow({
   catalogGroups: CatalogGroup[]
   catalogItemMap: Map<string, CatalogItem>
   catalogLoading: boolean
+  /** Resolved from `schema.matchScopeAttr` by the builder; scopes the match picker. */
+  matchScopeRecordId: RecordId | null
+  renderMatchKeyEditor?: MatchKeyEditorRenderer
   onUpdateLine: (recordId: RecordId, patch: LinePatch) => void
   deleteLine: (lineId: string) => void
   onSelectGroup: (recordId: RecordId, group: CatalogGroup) => void
@@ -1408,9 +1726,20 @@ export function LineRow({
               partAttribute={schema.attrs.partRecordId}
               partRecordId={line.partRecordId}
               description={line.description}
+              matchKeyAttribute={schema.attrs.purchaseOrderLineRecordId}
+              matchKeyRecordId={line.purchaseOrderLineRecordId}
+              matchScopeRecordId={matchScopeRecordId}
+              renderMatchKeyEditor={renderMatchKeyEditor}
+              currencyCode={currencyCode}
+              glAccountAttribute={schema.attrs.glAccount}
+              glAccount={line.glAccount}
               readOnly={readOnly}
               onPickPart={(partRecordId) => onUpdateLine(recordId, { partRecordId })}
               onCommitDescription={(description) => onUpdateLine(recordId, { description })}
+              onPickMatchKey={(purchaseOrderLineRecordId) =>
+                onUpdateLine(recordId, { purchaseOrderLineRecordId })
+              }
+              onCommitGlAccount={(glAccount) => onUpdateLine(recordId, { glAccount })}
               onDelete={() => deleteLine(record.id)}
             />
           ) : (
@@ -1478,14 +1807,28 @@ export function LineRow({
             value={line.unitPriceCents}
             readOnly={readOnly}
             currencyCode={currencyCode}
-            onCommit={(unitPriceCents) => onUpdateLine(recordId, { unitPriceCents })}
+            // 🛑 The rate and the amount are the ONE pair that cross-fills, and
+            // only on a `stored` document. `crossFillAmount` fills a blank
+            // sibling and never rewrites one that already has a value — see its
+            // own doc for why correcting the pair would delete the finding.
+            onCommit={(unitPriceCents) =>
+              onUpdateLine(recordId, crossFillAmount({ unitPriceCents }, line, schema))
+            }
           />
         }
+        totalNavigable={schema.amountMode === 'stored'}
         total={
           <LineTotalCellView
+            amountMode={schema.amountMode}
             qty={line.qty}
             unitPrice={line.unitPriceCents}
+            lineTotal={line.lineTotal}
+            mismatch={hasAmountMismatch(line, schema)}
+            readOnly={readOnly}
             currencyCode={currencyCode}
+            onCommit={(lineTotal) =>
+              onUpdateLine(recordId, crossFillAmount({ lineTotal }, line, schema))
+            }
           />
         }
       />
@@ -1511,6 +1854,8 @@ export function DraftLineRow({
   catalogGroups,
   catalogItemMap,
   catalogLoading,
+  matchScopeRecordId,
+  renderMatchKeyEditor,
   deleteDraft,
   createDraft,
   onSelectGroup,
@@ -1526,6 +1871,8 @@ export function DraftLineRow({
   catalogGroups: CatalogGroup[]
   catalogItemMap: Map<string, CatalogItem>
   catalogLoading: boolean
+  matchScopeRecordId: RecordId | null
+  renderMatchKeyEditor?: MatchKeyEditorRenderer
   deleteDraft: (draftId: string) => void
   createDraft: (draftId: string, overrides?: LinePatch) => Promise<void>
   onSelectGroup: (draftId: string, group: CatalogGroup) => void
@@ -1545,15 +1892,28 @@ export function DraftLineRow({
             partAttribute={schema.attrs.partRecordId}
             partRecordId={draft.partRecordId}
             description={draft.description}
+            matchKeyAttribute={schema.attrs.purchaseOrderLineRecordId}
+            matchKeyRecordId={draft.purchaseOrderLineRecordId}
+            matchScopeRecordId={matchScopeRecordId}
+            renderMatchKeyEditor={renderMatchKeyEditor}
+            currencyCode={currencyCode}
+            glAccountAttribute={schema.attrs.glAccount}
+            glAccount={draft.glAccount}
             readOnly={false}
-            // The part IS the line's identity, so picking one is what fires the
-            // draft's first `record.create` — carrying any description already
-            // typed. See LinePartCellView.
+            // On a PURCHASE ORDER the part IS the line's identity, so picking one
+            // is what fires the draft's first `record.create` — carrying any
+            // description already typed. On a bill it is not
+            // (`capabilities.draftRequiresPart`), and any of these commits can
+            // materialize the row. See LinePartCellView and `createDraft`.
             onPickPart={(partRecordId) => void createDraft(draft.draftId, { partRecordId })}
             // Also routed through `createDraft`, which accumulates rather than
-            // creating while the part is still unset — every draft-state write
-            // goes through `mutateDrafts`, never a direct mutation.
+            // creating while a required part is still unset — every draft-state
+            // write goes through `mutateDrafts`, never a direct mutation.
             onCommitDescription={(description) => void createDraft(draft.draftId, { description })}
+            onPickMatchKey={(purchaseOrderLineRecordId) =>
+              void createDraft(draft.draftId, { purchaseOrderLineRecordId })
+            }
+            onCommitGlAccount={(glAccount) => void createDraft(draft.draftId, { glAccount })}
             onDelete={() => deleteDraft(draft.draftId)}
           />
         ) : (
@@ -1605,14 +1965,27 @@ export function DraftLineRow({
           value={draft.unitPriceCents}
           readOnly={false}
           currencyCode={currencyCode}
-          onCommit={(next) => void createDraft(draft.draftId, { unitPriceCents: next })}
+          onCommit={(next) =>
+            void createDraft(
+              draft.draftId,
+              crossFillAmount({ unitPriceCents: next }, draft, schema)
+            )
+          }
         />
       }
+      totalNavigable={schema.amountMode === 'stored'}
       total={
         <LineTotalCellView
+          amountMode={schema.amountMode}
           qty={draft.qty}
           unitPrice={draft.unitPriceCents}
+          lineTotal={draft.lineTotal}
+          mismatch={hasAmountMismatch(draft, schema)}
+          readOnly={false}
           currencyCode={currencyCode}
+          onCommit={(lineTotal) =>
+            void createDraft(draft.draftId, crossFillAmount({ lineTotal }, draft, schema))
+          }
         />
       }
     />

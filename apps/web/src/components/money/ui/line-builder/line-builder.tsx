@@ -70,6 +70,7 @@
 
 import { FieldType } from '@auxx/database/enums'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
+import { extractRelationshipRecordIds } from '@auxx/lib/field-values/client'
 import { Button } from '@auxx/ui/components/button'
 import { EmptySection } from '@auxx/ui/components/section'
 import { toastError } from '@auxx/ui/components/toast'
@@ -116,6 +117,7 @@ import {
   freshDraft,
   LINE_COLS,
   LineRow,
+  type MatchKeyEditorRenderer,
   relKeyForDocumentType,
 } from './line-rows'
 import {
@@ -147,6 +149,15 @@ export interface LineBuilderProps {
   visitId?: string
   /** Extra classes merged onto the builder's scroll-container root. */
   className?: string
+  /**
+   * Editor for a line's match key, rendered in the row's `⋯` swap slot.
+   *
+   * Required in practice by any document whose schema maps
+   * `attrs.purchaseOrderLineRecordId` — without it the menu item does not appear
+   * and the key is uneditable from the grid. A render prop rather than an import
+   * so `money` never depends on `purchasing`; see {@link MatchKeyEditorRenderer}.
+   */
+  renderMatchKeyEditor?: MatchKeyEditorRenderer
 }
 
 const PAGE_SIZE = 100
@@ -179,6 +190,7 @@ export function LineBuilder({
   readOnly = false,
   visitId,
   className,
+  renderMatchKeyEditor,
 }: LineBuilderProps) {
   const docRecordId = documentRecordId as RecordId
   // Everything document-shaped is one lookup. See the warning on `LINE_SCHEMAS`.
@@ -230,6 +242,25 @@ export function LineBuilder({
     autoFetch: schema.billingAttrs.length > 0,
     enabled: schema.billingAttrs.length > 0,
   })
+  /**
+   * The parent record the row's match-key picker is scoped to — a bill's own
+   * purchase order (`schema.matchScopeAttr`).
+   *
+   * 🛑 Read here rather than in the cell so the picker is scoped ONCE per builder
+   * instead of once per row, and so the consumer's editor never has to re-fetch
+   * the parent it is already rendered inside. An unscoped match-key picker offers
+   * every purchase order line in the org on the field `matchBill` reads the agreed
+   * price and received quantity through — see `purchase-order-line-picker.tsx`.
+   */
+  const { values: matchScopeValues } = useSystemValues(
+    docRecordId,
+    schema.matchScopeAttr ? [schema.matchScopeAttr] : [],
+    { autoFetch: !!schema.matchScopeAttr, enabled: !!schema.matchScopeAttr }
+  )
+  const matchScopeRecordId = schema.matchScopeAttr
+    ? (extractRelationshipRecordIds(matchScopeValues[schema.matchScopeAttr])[0] ?? null)
+    : null
+
   const taxRates = useMemo(
     () =>
       ((getSetting('documents.taxRates') as TaxRatePreset[] | null) ?? []).filter(
@@ -659,6 +690,13 @@ export function LineBuilder({
       if (snapshot.unitPriceCents !== null) set('unitPriceCents', snapshot.unitPriceCents)
       if (snapshot.catalogItemRecordId) set('catalogItemRecordId', snapshot.catalogItemRecordId)
       if (snapshot.partRecordId) set('partRecordId', snapshot.partRecordId)
+      // Transcribed on a `stored` document, absent (and so dropped by `set`)
+      // everywhere else, where the server totals hook owns the amount.
+      if (snapshot.lineTotal !== null) set('lineTotal', snapshot.lineTotal)
+      if (snapshot.purchaseOrderLineRecordId) {
+        set('purchaseOrderLineRecordId', snapshot.purchaseOrderLineRecordId)
+      }
+      if (snapshot.glAccount) set('glAccount', snapshot.glAccount)
       return values
     },
     [schema, documentRecordId, visitId]
@@ -688,13 +726,19 @@ export function LineBuilder({
         accumulate()
         return
       }
-      // 🛑 A buy-side line's identity IS its part: `purchase_order_line.part` is
-      // `required: true` and leg 2 of the natural key `(purchaseOrder, part)`. So
-      // a qty, a price or a description typed before a part is picked must
+      // 🛑 Where the line's identity IS its part — `purchase_order_line.part` is
+      // `required: true` and leg 2 of the natural key `(purchaseOrder, part)` — a
+      // qty, a price or a description typed before a part is picked must
       // ACCUMULATE on the draft rather than fire a create the server has to
       // reject. Guarding here rather than in each cell is what keeps every cell —
       // including any added later — safe by default.
-      if (schema.capabilities.partPicker) {
+      //
+      // ⚠️ Gated on `draftRequiresPart`, NOT on `partPicker`, and the two are not
+      // the same question. `vendor_bill_line.part` is NULLABLE and stamped from
+      // the PO line: a bill line with no part is legal (freight, a one-off, a line
+      // the vendor invented). Sharing one flag meant such a line was typed and
+      // then silently never materialized — nothing threw and nothing logged.
+      if (schema.capabilities.draftRequiresPart) {
         const pending = draftsRef.current.find((d) => d.draftId === draftId)
         const partRecordId = overrides.partRecordId ?? pending?.partRecordId ?? null
         if (!partRecordId) {
@@ -1057,7 +1101,10 @@ export function LineBuilder({
   useLineNav({
     containerRef: rowsContainerRef,
     rowCount: displayRecords.length + visibleDrafts.length,
-    colCount: 3,
+    // 4 where the amount cell is an INPUT (`amountMode: 'stored'`) — otherwise
+    // nav would land on a column with nothing focusable in it. `LineGridRow`'s
+    // `totalNavigable` tags the cell to match.
+    colCount: schema.amountMode === 'stored' ? 4 : 3,
     onAddRow: addLine,
     readOnly,
   })
@@ -1066,7 +1113,7 @@ export function LineBuilder({
   // on the same container — resolved to whichever row holds focus.
   useLineHotkeys({
     containerRef: rowsContainerRef,
-    isQuote: schema.capabilities.optional,
+    schema,
     readOnly,
   })
 
@@ -1189,6 +1236,8 @@ export function LineBuilder({
                       catalogGroups={catalogGroups}
                       catalogItemMap={catalogItemMap}
                       catalogLoading={catalogLoading}
+                      matchScopeRecordId={matchScopeRecordId}
+                      renderMatchKeyEditor={renderMatchKeyEditor}
                       onUpdateLine={updateLine}
                       deleteLine={deleteLine}
                       onSelectGroup={handleGroupPick}
@@ -1206,6 +1255,8 @@ export function LineBuilder({
                       catalogGroups={catalogGroups}
                       catalogItemMap={catalogItemMap}
                       catalogLoading={catalogLoading}
+                      matchScopeRecordId={matchScopeRecordId}
+                      renderMatchKeyEditor={renderMatchKeyEditor}
                       deleteDraft={deleteDraft}
                       createDraft={createDraft}
                       onSelectGroup={handleGroupPickDraft}

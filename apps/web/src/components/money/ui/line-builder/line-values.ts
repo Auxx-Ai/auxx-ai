@@ -2,7 +2,7 @@
 
 import { FieldType } from '@auxx/database/enums'
 import type { FieldType as FieldTypeValue } from '@auxx/database/types'
-import type { LineItemUnit } from '@auxx/lib/money/client'
+import { computeLineTotal, type LineItemUnit, roundCents } from '@auxx/lib/money/client'
 import type { RecordId } from '@auxx/lib/resources/client'
 
 /**
@@ -45,6 +45,26 @@ export type DocumentType =
 export type TotalsMode = 'computed' | 'stated' | 'stored' | 'none'
 
 /**
+ * Where a LINE's amount lives — a different question from {@link TotalsMode},
+ * which is about the document FOOTER. A document can have one without the other.
+ *
+ * `derived` — `…_line_total` is `creatable: false` on that line entity and the
+ * server totals hook (`packages/lib/src/money/totals-hooks.ts`) is its only
+ * writer, so the cell renders `qty × unitPrice` and is read-only. Typing there
+ * could only back-solve the rate, and unit price is integer minor units: qty 3
+ * against a typed $100.00 gives 3333¢, which the hook then re-multiplies to
+ * $99.99 and pushes back over realtime. Drift is up to `qty × ½¢`. On a purchase
+ * order it is worse than cosmetic — `expected_unit_price` is the price arm of the
+ * three-way match, so back-solving it holds the vendor to a number nobody agreed.
+ * See plans/purchasing/04-vendor-bill-lines-and-the-amount-cell.md §3.
+ *
+ * `stored` — the amount is a writable transcribed field with no hook behind it.
+ * All three of qty / rate / amount are inputs, and {@link crossFillAmount} fills
+ * only a BLANK sibling: it never corrects one the user already entered.
+ */
+export type AmountMode = 'derived' | 'stored'
+
+/**
  * What a document's line rows can actually do.
  *
  * ⚠️ These replaced nine `documentType === '…'` equality branches. Each flag says
@@ -66,6 +86,22 @@ export interface LineCapabilities {
   photos: boolean
   /** `/`-on-empty-cell catalog picker and catalog-group explode. */
   catalogPicker: boolean
+  /**
+   * 🛑 Whether a draft row may only MATERIALIZE once its part is picked — split
+   * off {@link partPicker}, which it used to ride on, because the two buy-side
+   * documents disagree about it.
+   *
+   * `purchase_order_line.part` is `required: true` and leg 2 of the natural key
+   * `(purchaseOrder, part)`, so a create without it is rejected by the server and
+   * `createDraft` must accumulate instead. `vendor_bill_line.part` is NULLABLE and
+   * stamped from the PO line — a bill line with no part at all is legal (freight, a
+   * one-off, a line the vendor invented). Sharing one flag meant such a line was
+   * typed and then silently never materialized: nothing threw, nothing logged.
+   *
+   * The registry halves of this pairing are pinned in
+   * `packages/lib/src/resources/registry/line-builder-contract.test.ts`.
+   */
+  draftRequiresPart: boolean
   /**
    * Buy-side part picker in the row's leading cell, in place of the free-text
    * name. Mutually exclusive with {@link catalogPicker}: a sell-side line picks a
@@ -107,6 +143,23 @@ export interface LineValues {
    * materialize once this is set; see `capabilities.partPicker`.
    */
   partRecordId: RecordId | null
+  /**
+   * The line's extended amount, in integer minor units.
+   *
+   * 🛑 Mapped to an attribute ONLY where the field is writable — see
+   * {@link AmountMode}. On the five `derived` documents this is `null` and the
+   * cell computes `qty × unitPrice` instead, which is what keeps the builder from
+   * writing a field whose only writer is the server totals hook.
+   */
+  lineTotal: number | null
+  /**
+   * Buy-side only: the purchase order line this line is billed against — THE
+   * THREE-WAY MATCH KEY. Nullable, because a bill line with no PO line behind it
+   * is legal and simply cannot be matched.
+   */
+  purchaseOrderLineRecordId: RecordId | null
+  /** Buy-side only: the account CODE this line posts to ('2160', '5090'). */
+  glAccount: string | null
 }
 
 /**
@@ -145,6 +198,18 @@ export interface LineSchema {
    */
   primaryColumnLabel: string
   totalsMode: TotalsMode
+  /** Whether the line's amount is computed from qty x rate or transcribed. */
+  amountMode: AmountMode
+  /**
+   * Parent attribute scoping the row's match-key picker — the bill's own
+   * `purchase_order`, which is the only order whose lines may be offered. `null`
+   * on every document without a match key.
+   *
+   * ⚠️ Deliberately NOT folded into {@link billingAttrs}. That member is the
+   * parent's billing mirrors, read by the footer; a relation living in it reads as
+   * a mistake, and the footer would have to learn to skip it.
+   */
+  matchScopeAttr: string | null
   /** systemAttribute prefix for the parent's own billing mirrors (`quote_discount_type`). */
   billingPrefix: string
   /** Parent attributes fetched once by the builder and read by the footer. */
@@ -167,6 +232,9 @@ const NO_LINE_ATTRS: LineAttrMap = {
   optionalSelected: null,
   catalogItemRecordId: null,
   partRecordId: null,
+  lineTotal: null,
+  purchaseOrderLineRecordId: null,
+  glAccount: null,
 }
 
 /** Every sell-side line is a `line_item`, so the four money documents share one map. */
@@ -184,6 +252,12 @@ const LINE_ITEM_ATTRS: LineAttrMap = {
   // `line_item.part` exists (it is stamped from the catalog item, #1917) but the
   // builder never edits it directly — the catalog pick is the only writer.
   partRecordId: null,
+  // 🛑 `line_item_line_total` EXISTS and is deliberately unmapped: it is
+  // `creatable: false, updatable: false` with the totals engine as its only
+  // writer. Mapping it would let a patch name a field the server owns.
+  lineTotal: null,
+  purchaseOrderLineRecordId: null,
+  glAccount: null,
 }
 
 const SELL_SIDE_CAPABILITIES: LineCapabilities = {
@@ -194,6 +268,7 @@ const SELL_SIDE_CAPABILITIES: LineCapabilities = {
   photos: true,
   catalogPicker: true,
   partPicker: false,
+  draftRequiresPart: false,
   paymentMirrors: false,
   visitScoped: false,
   excludeWorkOrderSourceLines: false,
@@ -213,6 +288,9 @@ const BUY_SIDE_CAPABILITIES: LineCapabilities = {
   // turning it on without a picker opens an empty catalog over the row.
   catalogPicker: false,
   partPicker: true,
+  // Overridden to `true` by `purchase_order`, whose part is required. A bill's is
+  // not — see the member's own doc for why sharing one flag was a silent defect.
+  draftRequiresPart: false,
   paymentMirrors: false,
   visitScoped: false,
   excludeWorkOrderSourceLines: false,
@@ -249,6 +327,8 @@ export const LINE_SCHEMAS: Record<DocumentType, LineSchema> = {
   quote: {
     slug: 'line-items',
     lineEntityType: 'line_item',
+    amountMode: 'derived',
+    matchScopeAttr: null,
     relKey: 'line_item_quote',
     relFieldId: 'line_item:quote',
     sortAttr: 'line_item_sort_order',
@@ -264,6 +344,8 @@ export const LINE_SCHEMAS: Record<DocumentType, LineSchema> = {
   invoice: {
     slug: 'line-items',
     lineEntityType: 'line_item',
+    amountMode: 'derived',
+    matchScopeAttr: null,
     relKey: 'line_item_invoice',
     relFieldId: 'line_item:invoice',
     sortAttr: 'line_item_sort_order',
@@ -289,6 +371,8 @@ export const LINE_SCHEMAS: Record<DocumentType, LineSchema> = {
   order: {
     slug: 'line-items',
     lineEntityType: 'line_item',
+    amountMode: 'derived',
+    matchScopeAttr: null,
     relKey: 'line_item_order',
     relFieldId: 'line_item:order',
     sortAttr: 'line_item_sort_order',
@@ -304,6 +388,8 @@ export const LINE_SCHEMAS: Record<DocumentType, LineSchema> = {
   work_order: {
     slug: 'line-items',
     lineEntityType: 'line_item',
+    amountMode: 'derived',
+    matchScopeAttr: null,
     relKey: 'line_item_work_order',
     relFieldId: 'line_item:workOrder',
     sortAttr: 'line_item_sort_order',
@@ -322,6 +408,8 @@ export const LINE_SCHEMAS: Record<DocumentType, LineSchema> = {
   purchase_order: {
     slug: 'purchase-order-lines',
     lineEntityType: 'purchase_order_line',
+    amountMode: 'derived',
+    matchScopeAttr: null,
     relKey: 'purchase_order_line_purchase_order',
     relFieldId: 'purchase_order_line:purchaseOrder',
     sortAttr: 'purchase_order_line_sort_order',
@@ -351,11 +439,21 @@ export const LINE_SCHEMAS: Record<DocumentType, LineSchema> = {
       partRecordId: 'purchase_order_line_part',
     },
     photosAttr: null,
-    capabilities: BUY_SIDE_CAPABILITIES,
+    // `purchase_order_line.part` is `required: true` — a create without it is
+    // rejected, so a draft may not materialize until one is picked.
+    capabilities: { ...BUY_SIDE_CAPABILITIES, draftRequiresPart: true },
   },
   vendor_bill: {
     slug: 'vendor-bill-lines',
     lineEntityType: 'vendor_bill_line',
+    // 🛑 The one `stored` document. Its `line_total` is TRANSCRIBED from the
+    // vendor's paper and carries no hook, so all three of qty / rate / amount are
+    // inputs — and where `qty × rate` disagrees with the amount, the row SAYS so
+    // rather than reconciling it. That disagreement is the vendor's own
+    // arithmetic, which is exactly what the three-way match exists to surface
+    // (plans/purchasing/01-build-plan.md §5.4b).
+    amountMode: 'stored',
+    matchScopeAttr: 'vendor_bill_purchase_order',
     relKey: 'vendor_bill_line_vendor_bill',
     relFieldId: 'vendor_bill_line:vendorBill',
     sortAttr: 'vendor_bill_line_sort_order',
@@ -364,13 +462,21 @@ export const LINE_SCHEMAS: Record<DocumentType, LineSchema> = {
     // 🛑 See TotalsMode. The bill is THEIRS; its totals are transcribed.
     totalsMode: 'stored',
     billingPrefix: 'vendor_bill',
-    billingAttrs: ['vendor_bill_subtotal', 'vendor_bill_tax_total', 'vendor_bill_total'],
+    billingAttrs: [
+      'vendor_bill_subtotal',
+      'vendor_bill_shipping_total',
+      'vendor_bill_tax_total',
+      'vendor_bill_total',
+    ],
     attrs: {
       ...NO_LINE_ATTRS,
       description: 'vendor_bill_line_description',
       qty: 'vendor_bill_line_quantity_billed',
       unitPriceCents: 'vendor_bill_line_unit_price',
       partRecordId: 'vendor_bill_line_part',
+      lineTotal: 'vendor_bill_line_line_total',
+      purchaseOrderLineRecordId: 'vendor_bill_line_purchase_order_line',
+      glAccount: 'vendor_bill_line_gl_account',
     },
     photosAttr: null,
     capabilities: BUY_SIDE_CAPABILITIES,
@@ -419,6 +525,9 @@ export const DEFAULT_LINE_VALUES: LineValues = {
   optionalSelected: true,
   catalogItemRecordId: null,
   partRecordId: null,
+  lineTotal: null,
+  purchaseOrderLineRecordId: null,
+  glAccount: null,
 }
 
 /** Semantic update emitted by a row; absent keys are not written. */
@@ -436,6 +545,9 @@ const LINE_FIELD_TYPES: Record<keyof LineValues, FieldTypeValue> = {
   optionalSelected: FieldType.CHECKBOX,
   catalogItemRecordId: FieldType.RELATIONSHIP,
   partRecordId: FieldType.RELATIONSHIP,
+  lineTotal: FieldType.CURRENCY,
+  purchaseOrderLineRecordId: FieldType.RELATIONSHIP,
+  glAccount: FieldType.TEXT,
 }
 
 const LINE_VALUE_KEYS = Object.keys(LINE_FIELD_TYPES) as Array<keyof LineValues>
@@ -521,5 +633,60 @@ export function lineValuesFromSystemValues(
     optionalSelected: !supportsOptional || read<boolean>('optionalSelected') !== false,
     catalogItemRecordId: null,
     partRecordId: readRecordId('partRecordId'),
+    lineTotal: read<number | null>('lineTotal') ?? null,
+    purchaseOrderLineRecordId: readRecordId('purchaseOrderLineRecordId'),
+    glAccount: read<string | null>('glAccount') ?? null,
   }
+}
+
+/**
+ * Fill the sibling of whichever of rate / amount was just typed — the bidirectional
+ * amount cell (plans/purchasing/04-vendor-bill-lines-and-the-amount-cell.md §3.5).
+ *
+ * 🛑 ONE rule, and every arm below is that rule: **cross-fill only ever fills a
+ * BLANK sibling. It never overwrites a value already entered.** On a vendor bill
+ * all three of qty / rate / amount are transcribed from the vendor's document, and
+ * a pass that "corrected" one of them from the other two would erase the
+ * discrepancy the three-way match exists to find. Where they disagree the row
+ * renders a mismatch marker instead; see `LineTotalCellView`.
+ *
+ * A no-op on every `derived` document, where the amount is the server's to write.
+ *
+ * @param patch what the cell just committed
+ * @param line the row's values BEFORE the patch
+ * @returns `patch`, plus at most one filled-in sibling
+ */
+export function crossFillAmount(patch: LinePatch, line: LineValues, schema: LineSchema): LinePatch {
+  if (schema.amountMode !== 'stored') return patch
+  const qty = patch.qty ?? line.qty
+
+  if (Object.hasOwn(patch, 'lineTotal') && !Object.hasOwn(patch, 'unitPriceCents')) {
+    const lineTotal = patch.lineTotal ?? null
+    // `qty > 0` is a division guard, not a policy: a zero-quantity line has no
+    // per-unit price to derive and typing one anyway would divide by zero.
+    if (lineTotal !== null && line.unitPriceCents === null && qty > 0) {
+      return { ...patch, unitPriceCents: roundCents(lineTotal / qty) }
+    }
+    return patch
+  }
+
+  if (Object.hasOwn(patch, 'unitPriceCents') && !Object.hasOwn(patch, 'lineTotal')) {
+    const unitPriceCents = patch.unitPriceCents ?? null
+    if (unitPriceCents !== null && line.lineTotal === null) {
+      return { ...patch, lineTotal: computeLineTotal(qty, unitPriceCents) }
+    }
+  }
+  return patch
+}
+
+/**
+ * Whether a stored amount disagrees with `qty × rate` — rendered, never fixed.
+ *
+ * `false` unless all three are present: a line still being transcribed is not in
+ * disagreement with itself, it is simply incomplete.
+ */
+export function hasAmountMismatch(line: LineValues, schema: LineSchema): boolean {
+  if (schema.amountMode !== 'stored') return false
+  if (line.lineTotal === null || line.unitPriceCents === null) return false
+  return computeLineTotal(line.qty, line.unitPriceCents) !== line.lineTotal
 }

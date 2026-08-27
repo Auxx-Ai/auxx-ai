@@ -43,7 +43,7 @@ import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { useSystemValuesForRecords } from '~/components/resources/hooks/use-system-values-for-records'
 import { RecordBadge } from '~/components/resources/ui/record-badge'
-import { useVendorBillLines, type VendorBillLineValues } from './vendor-bill-lines-card'
+import { useVendorBillLines, type VendorBillLineValues } from './use-vendor-bill-lines'
 
 /** The bill-level verdict, written by the match hook. */
 const BILL_MATCH_ATTRIBUTES = [

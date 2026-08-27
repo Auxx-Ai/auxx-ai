@@ -1,6 +1,7 @@
 // apps/web/src/components/money/ui/line-builder/use-line-hotkeys.ts
 
 import { useHotkey } from '@tanstack/react-hotkeys'
+import type { LineSchema } from './line-values'
 
 /** Row-level action a shortcut triggers on the focused line row. */
 export type LineRowAction =
@@ -9,6 +10,8 @@ export type LineRowAction =
   | 'photos'
   | 'optional'
   | 'taxable'
+  | 'matchKey'
+  | 'glAccount'
   | 'delete'
 
 /**
@@ -22,8 +25,15 @@ export const LINE_ROW_ACTION_EVENT = 'line-row-action'
 type UseLineHotkeysOptions = {
   /** The rows container — the same element `useLineNav` listens on. */
   containerRef: React.RefObject<HTMLDivElement | null>
-  /** Optional-line shortcut is quote-only (money plan 18 §3). */
-  isQuote: boolean
+  /**
+   * The document's descriptor, which is what each shortcut is gated on.
+   *
+   * ⚠️ Was a bare `isQuote: boolean` — a leftover the capability refactor never
+   * reached, standing in for "supports optional lines". Two more shortcuts would
+   * have meant two more booleans threaded through, which is the shape
+   * `LINE_SCHEMAS` exists to retire.
+   */
+  schema: LineSchema
   readOnly: boolean
 }
 
@@ -40,7 +50,15 @@ type UseLineHotkeysOptions = {
  *   private-window shortcut; Chrome/Safari leave it free, acceptable)
  * - `Mod+Shift+O` — toggle optional (quotes only)
  * - `Mod+Shift+X` — toggle tax exempt
+ * - `Mod+Shift+K` — link/change the match key (buy-side lines with one)
+ * - `Mod+Shift+G` — set the GL account (buy-side lines with one)
  * - `Mod+Backspace` — delete the row
+ *
+ * ⚠️ The two additions collide with Firefox's web console (`⇧K`) and with
+ * find-previous while a find bar is open (`⇧G`) — the same order of collision
+ * `⇧P` already carries, and both are free in Chrome and Safari. `⇧M` was the
+ * obvious letter for "match" and is NOT usable: Chrome binds it to profile
+ * switching and Firefox to responsive-design mode.
  *
  * Registered once on the rows container (TanStack `target`), so they only
  * fire while focus is inside the grid — the catalog picker portals outside
@@ -48,7 +66,7 @@ type UseLineHotkeysOptions = {
  * focused element's `data-line-row` cell and delivered as a
  * {@link LINE_ROW_ACTION_EVENT} CustomEvent on that row's name cell.
  */
-export function useLineHotkeys({ containerRef, isQuote, readOnly }: UseLineHotkeysOptions) {
+export function useLineHotkeys({ containerRef, schema, readOnly }: UseLineHotkeysOptions) {
   const dispatchAction = (action: LineRowAction) => {
     const cell = document.activeElement?.closest('[data-line-row]')
     // Row + col tags sit on sibling cells of one grid row — the name cell
@@ -70,8 +88,19 @@ export function useLineHotkeys({ containerRef, isQuote, readOnly }: UseLineHotke
   useHotkey('Mod+Shift+P', () => dispatchAction('photos'), options)
   useHotkey('Mod+Shift+O', () => dispatchAction('optional'), {
     ...options,
-    enabled: !readOnly && isQuote,
+    enabled: !readOnly && schema.capabilities.optional,
   })
   useHotkey('Mod+Shift+X', () => dispatchAction('taxable'), options)
+  // Gated on the ATTRIBUTE rather than a capability flag: a document whose line
+  // entity has no match-key relation has nothing for the shortcut to open, and
+  // the attribute is the same thing the cell renders the item from.
+  useHotkey('Mod+Shift+K', () => dispatchAction('matchKey'), {
+    ...options,
+    enabled: !readOnly && schema.attrs.purchaseOrderLineRecordId !== null,
+  })
+  useHotkey('Mod+Shift+G', () => dispatchAction('glAccount'), {
+    ...options,
+    enabled: !readOnly && schema.attrs.glAccount !== null,
+  })
   useHotkey('Mod+Backspace', () => dispatchAction('delete'), options)
 }

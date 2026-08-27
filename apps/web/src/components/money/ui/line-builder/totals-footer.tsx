@@ -409,6 +409,32 @@ export function TotalsFooter({
             </div>
           )}
 
+          {/* `stored` (vendor bill): the transcribed additions, displayed and
+              never computed. Both rows were MISSING until the cutover — the
+              footer showed a bill's subtotal and total with nothing between them,
+              so a bill whose shipping and tax were entered simply did not add up
+              on screen. `vendor_bill_shipping_total` had to join `billingAttrs`
+              for this; the descriptor listed only subtotal/tax/total.
+              🛑 READ-ONLY, unlike the `stated` rows below. A PO's shipping and tax
+              are freight-allocation INPUTS typed off the carrier's invoice; a
+              bill's are transcribed with the rest of the vendor's arithmetic. */}
+          {totalsMode === 'stored' && (
+            <>
+              <div className='flex items-center justify-between'>
+                <span className='text-muted-foreground'>Shipping</span>
+                <span className='tabular-nums'>
+                  {formatCurrency(stored('shipping_total'), currencyCode)}
+                </span>
+              </div>
+              <div className='flex items-center justify-between'>
+                <span className='text-muted-foreground'>Tax</span>
+                <span className='tabular-nums'>
+                  {formatCurrency(totals.taxTotal, currencyCode)}
+                </span>
+              </div>
+            </>
+          )}
+
           {/* `stated` (purchase order): amounts the document carries, not rates.
               🛑 EDITABLE — shipping and tax are the freight-allocation INPUTS
               (plans/purchasing/01-build-plan.md §4.1), typed by hand off the

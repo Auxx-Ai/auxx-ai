@@ -19,7 +19,10 @@
 import { describe, expect, it } from 'vitest'
 import { relKeyForDocumentType } from './line-rows'
 import {
+  crossFillAmount,
+  DEFAULT_LINE_VALUES,
   type DocumentType,
+  hasAmountMismatch,
   LINE_SCHEMAS,
   type LineValues,
   lineAttributesFor,
@@ -76,6 +79,18 @@ describe('the billingPrefix trap', () => {
   it('the vendor bill is STORED, never computed', () => {
     expect(LINE_SCHEMAS.vendor_bill.totalsMode).toBe('stored')
     expect(TOTALLED).not.toContain('vendor_bill')
+  })
+
+  // The `stored` footer renders Subtotal / Shipping / Tax / Total. It showed a
+  // subtotal and a total with NOTHING between them until `shipping_total` joined
+  // the set — a bill whose shipping was entered did not add up on screen.
+  it('the vendor bill fetches every total its footer displays', () => {
+    expect(LINE_SCHEMAS.vendor_bill.billingAttrs).toEqual([
+      'vendor_bill_subtotal',
+      'vendor_bill_shipping_total',
+      'vendor_bill_tax_total',
+      'vendor_bill_total',
+    ])
   })
 
   // The PO's subtotal IS ours to compute, but the rest of the document carries
@@ -333,5 +348,199 @@ describe('capabilities match the vocabulary', () => {
     expect(ALL.filter((d) => lineSchemaFor(d).capabilities.excludeWorkOrderSourceLines)).toEqual([
       'invoice',
     ])
+  })
+})
+
+describe('the amount is an input only where the field is writable', () => {
+  // 🛑 `amountMode` and the `lineTotal` attribute are one decision in two places:
+  // a `stored` cell renders an input, and `linePatchToFieldValues` needs somewhere
+  // to write what is typed into it. `stored` with no attribute is a control that
+  // silently drops every keystroke; `derived` with one is a builder writing a
+  // field whose only writer is the server totals hook.
+  it.each(ALL)('%s: amountMode agrees with the attribute behind it', (documentType) => {
+    const { amountMode, attrs } = lineSchemaFor(documentType)
+    expect(amountMode === 'stored').toBe(attrs.lineTotal !== null)
+  })
+
+  it('only the vendor bill stores its own amount', () => {
+    expect(ALL.filter((d) => lineSchemaFor(d).amountMode === 'stored')).toEqual(['vendor_bill'])
+    expect(LINE_SCHEMAS.vendor_bill.attrs.lineTotal).toBe('vendor_bill_line_line_total')
+  })
+
+  // 🛑 `line_item_line_total` and `purchase_order_line_line_total` both EXIST and
+  // are both deliberately unmapped — they are `creatable: false` with the totals
+  // engine as their only writer. Mapping one would let a patch name a field the
+  // server owns; the registry halves are pinned in
+  // `packages/lib/src/resources/registry/line-builder-contract.test.ts`.
+  it('a derived document never writes its line total', () => {
+    for (const documentType of ALL) {
+      const schema = lineSchemaFor(documentType)
+      if (schema.amountMode === 'stored') continue
+      const updates = linePatchToFieldValues({ lineTotal: 9999 }, schema)
+      expect(updates, `${documentType} wrote a line total`).toEqual([])
+    }
+  })
+})
+
+describe('cross-filling the rate/amount pair', () => {
+  const bill = LINE_SCHEMAS.vendor_bill
+  const line = (over: Partial<LineValues>): LineValues => ({
+    ...DEFAULT_LINE_VALUES,
+    qty: 4,
+    unitPriceCents: null,
+    lineTotal: null,
+    ...over,
+  })
+
+  it('a typed amount fills a BLANK rate', () => {
+    expect(crossFillAmount({ lineTotal: 10000 }, line({}), bill)).toEqual({
+      lineTotal: 10000,
+      unitPriceCents: 2500,
+    })
+  })
+
+  it('a typed rate fills a BLANK amount', () => {
+    expect(crossFillAmount({ unitPriceCents: 2500 }, line({}), bill)).toEqual({
+      unitPriceCents: 2500,
+      lineTotal: 10000,
+    })
+  })
+
+  // 🛑 THE rule. Both figures are transcribed from the vendor's document, and a
+  // pass that "corrected" one from the other two would erase the discrepancy the
+  // three-way match exists to find (plans/purchasing/01-build-plan.md §5.4b).
+  it('never overwrites a sibling that already has a value', () => {
+    expect(crossFillAmount({ lineTotal: 9999 }, line({ unitPriceCents: 2500 }), bill)).toEqual({
+      lineTotal: 9999,
+    })
+    expect(crossFillAmount({ unitPriceCents: 2500 }, line({ lineTotal: 9999 }), bill)).toEqual({
+      unitPriceCents: 2500,
+    })
+  })
+
+  // Clearing is an edit, not a fill: it must not re-derive the value just removed.
+  it('clearing either half fills nothing', () => {
+    expect(crossFillAmount({ lineTotal: null }, line({}), bill)).toEqual({ lineTotal: null })
+    expect(crossFillAmount({ unitPriceCents: null }, line({}), bill)).toEqual({
+      unitPriceCents: null,
+    })
+  })
+
+  // A division guard, not a policy — a zero-quantity line has no per-unit price.
+  it('a zero quantity derives no rate', () => {
+    expect(crossFillAmount({ lineTotal: 10000 }, line({ qty: 0 }), bill)).toEqual({
+      lineTotal: 10000,
+    })
+  })
+
+  // The uneven division that makes back-solving unusable on a `derived` document
+  // is merely a rounded rate here, because the AMOUNT is what gets stored.
+  it('rounds the derived rate to whole cents and keeps the typed amount', () => {
+    expect(crossFillAmount({ lineTotal: 10000 }, line({ qty: 3 }), bill)).toEqual({
+      lineTotal: 10000,
+      unitPriceCents: 3333,
+    })
+  })
+
+  it('is a no-op on every derived document', () => {
+    for (const documentType of ALL) {
+      const schema = lineSchemaFor(documentType)
+      if (schema.amountMode === 'stored') continue
+      const patch = { unitPriceCents: 2500 }
+      expect(crossFillAmount(patch, line({}), schema), documentType).toBe(patch)
+    }
+  })
+})
+
+describe('the amount mismatch is reported, never reconciled', () => {
+  const bill = LINE_SCHEMAS.vendor_bill
+  const line = (over: Partial<LineValues>): LineValues => ({
+    ...DEFAULT_LINE_VALUES,
+    qty: 3,
+    ...over,
+  })
+
+  it("flags the vendor's own arithmetic error", () => {
+    expect(hasAmountMismatch(line({ unitPriceCents: 3333, lineTotal: 10000 }), bill)).toBe(true)
+  })
+
+  it('stays quiet when the three agree', () => {
+    expect(hasAmountMismatch(line({ unitPriceCents: 3333, lineTotal: 9999 }), bill)).toBe(false)
+  })
+
+  // A half-transcribed line is incomplete, not in disagreement with itself.
+  it('stays quiet while either half is still blank', () => {
+    expect(hasAmountMismatch(line({ unitPriceCents: 3333, lineTotal: null }), bill)).toBe(false)
+    expect(hasAmountMismatch(line({ unitPriceCents: null, lineTotal: 9999 }), bill)).toBe(false)
+  })
+
+  it('never fires on a derived document, whose amount is not stored at all', () => {
+    for (const documentType of ALL) {
+      const schema = lineSchemaFor(documentType)
+      if (schema.amountMode === 'stored') continue
+      expect(hasAmountMismatch(line({ unitPriceCents: 1, lineTotal: 999999 }), schema)).toBe(false)
+    }
+  })
+})
+
+describe('the two buy-side documents disagree about the part', () => {
+  // 🛑 The defect this split exists to prevent. Both documents render the same
+  // part picker, so the guard used to ride on `partPicker` — but only a PURCHASE
+  // ORDER line's part is `required: true` and leg 2 of its natural key. A bill
+  // line with no part is legal (freight, a one-off), and blocking its creation
+  // left the row typed and silently never created: nothing threw, nothing logged.
+  it('only the purchase order blocks a draft on its part', () => {
+    expect(ALL.filter((d) => lineSchemaFor(d).capabilities.draftRequiresPart)).toEqual([
+      'purchase_order',
+    ])
+    expect(LINE_SCHEMAS.vendor_bill.capabilities.partPicker).toBe(true)
+    expect(LINE_SCHEMAS.vendor_bill.capabilities.draftRequiresPart).toBe(false)
+  })
+
+  // A document that blocks on a part it has no attribute for can never create a
+  // line at all — every draft would accumulate forever.
+  it.each(ALL)('%s: blocking on a part requires having one', (documentType) => {
+    const { capabilities, attrs } = lineSchemaFor(documentType)
+    if (capabilities.draftRequiresPart) expect(attrs.partRecordId).not.toBeNull()
+  })
+})
+
+describe('the match key', () => {
+  it('belongs to the vendor bill alone, with the order that scopes it', () => {
+    expect(ALL.filter((d) => lineSchemaFor(d).attrs.purchaseOrderLineRecordId !== null)).toEqual([
+      'vendor_bill',
+    ])
+    expect(LINE_SCHEMAS.vendor_bill.attrs.purchaseOrderLineRecordId).toBe(
+      'vendor_bill_line_purchase_order_line'
+    )
+    expect(LINE_SCHEMAS.vendor_bill.matchScopeAttr).toBe('vendor_bill_purchase_order')
+  })
+
+  // 🛑 The scope and the key are one feature. A match key with no scope attribute
+  // hands the picker `null`, and an unscoped picker offers every purchase order
+  // line in the ORG on the field `matchBill` reads the agreed price and received
+  // quantity through — picking the wrong one mis-matches a bill onto another
+  // vendor's order, silently (`purchase-order-line-picker.tsx`).
+  it.each(ALL)('%s: a match key never travels without its scope', (documentType) => {
+    const { attrs, matchScopeAttr } = lineSchemaFor(documentType)
+    expect(matchScopeAttr !== null).toBe(attrs.purchaseOrderLineRecordId !== null)
+  })
+
+  // The scope is read off the PARENT document, not the line — a line-entity
+  // attribute here would resolve to nothing on the record the builder fetches.
+  it('scopes off a parent attribute, not a line one', () => {
+    for (const documentType of ALL) {
+      const { matchScopeAttr, lineEntityType } = lineSchemaFor(documentType)
+      if (!matchScopeAttr) continue
+      expect(matchScopeAttr.startsWith(`${lineEntityType}_`)).toBe(false)
+      expect(matchScopeAttr.startsWith(`${documentType}_`)).toBe(true)
+    }
+  })
+})
+
+describe('the GL account', () => {
+  it('belongs to the vendor bill alone', () => {
+    expect(ALL.filter((d) => lineSchemaFor(d).attrs.glAccount !== null)).toEqual(['vendor_bill'])
+    expect(LINE_SCHEMAS.vendor_bill.attrs.glAccount).toBe('vendor_bill_line_gl_account')
   })
 })
