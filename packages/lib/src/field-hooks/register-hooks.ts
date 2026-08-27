@@ -33,9 +33,16 @@ import {
   recomputeOnInvoiceBillingChange,
   recomputeOnLineChange,
   recomputeOnOrderBillingChange,
+  recomputeOnPurchaseOrderBillingChange,
+  recomputeOnPurchaseOrderLineChange,
   recomputeOnQuoteBillingChange,
 } from '../money/totals-hooks'
 import { derivePhoneGeoOnChange, warmPhoneGeo } from '../phone-geo'
+import {
+  rematchAfterBillLineDelete,
+  rematchOnBillChange,
+  rematchOnBillLineChange,
+} from '../purchasing/match-hook'
 import { handleRecordRulesOnFieldChange } from '../record-rules/hook-handler'
 import {
   enqueueQuickbooksInvoiceSyncOnSent,
@@ -164,6 +171,24 @@ export function registerAllHooks(): void {
   ])
   registerEntityFieldChangeHooks('quotes', [recomputeOnQuoteBillingChange])
   registerEntityFieldChangeHooks('orders', [recomputeOnOrderBillingChange])
+
+  // Buy-side totals engine (plans/purchasing/01-build-plan.md §4.1/§4.2). Same engine, a
+  // different line entity and a different header shape — both named in
+  // `DOCUMENT_TOTALS_SPECS` rather than branched on. `purchase_order_subtotal`,
+  // `purchase_order_total` and `purchase_order_line_line_total` are all `creatable: false`,
+  // so these two registrations are their ONLY writers.
+  // 🛑 `vendor-bills` is deliberately absent: a bill's totals are TRANSCRIBED from the
+  // supplier's document (01 §5.4b). Recomputing them would silently correct the vendor's
+  // arithmetic — the exact discrepancy the three-way match exists to surface.
+  registerEntityFieldChangeHooks('purchase-order-lines', [recomputeOnPurchaseOrderLineChange])
+  registerEntityFieldChangeHooks('purchase-orders', [recomputeOnPurchaseOrderBillingChange])
+
+  // The three-way match (plans/purchasing/01-build-plan.md §6.2). `vendor_bill_status`,
+  // `_match_variance` and `_match_notes` all declare the match hook as their only writer,
+  // so these registrations are what make the exception queue anything other than empty.
+  // The bill's own totals are NOT recomputed here — they are transcribed (01 §5.4b).
+  registerEntityFieldChangeHooks('vendor-bills', [rematchOnBillChange])
+  registerEntityFieldChangeHooks('vendor-bill-lines', [rematchOnBillLineChange])
   //
   // Client-notifications plan §4.3: enroll the seeded `invoice_reminders` sequence on the
   // draft→sent transition (`enrollInvoiceReminderOnSent` checks the PREVIOUS value so a
@@ -314,6 +339,9 @@ export function registerAllHooks(): void {
   // Billing projections after deletes (plan 24 §4.6) — deletes fire no field-change hooks, so
   // these are the explicit post-cleanup projector calls for every delete path (generic
   // `record.delete`, bulk delete, Kopilot/API), not just the money lifecycle commands.
+  // Deleting a bill line removes the reason the bill was an exception; without this the
+  // bill sits in the queue forever for a line that no longer exists.
+  registerEntityPostDeleteHooks('vendor-bill-lines', [rematchAfterBillLineDelete])
   registerEntityPostDeleteHooks('invoices', [syncBillingAfterInvoiceDelete])
   registerEntityPostDeleteHooks('line-items', [syncBillingAfterLineDelete])
   registerEntityPostDeleteHooks('work-orders', [syncContactAfterWorkOrderDelete])

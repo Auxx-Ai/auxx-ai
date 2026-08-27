@@ -9,7 +9,9 @@ import { CATALOG_GROUP_FIELDS } from '../../resources/registry/resources/catalog
 import { CATALOG_ITEM_FIELDS } from '../../resources/registry/resources/catalog-item-fields'
 import { COMPANY_FIELDS } from '../../resources/registry/resources/company-fields'
 import { CONTACT_FIELDS } from '../../resources/registry/resources/contact-fields'
+import { GL_ACCOUNT_FIELDS } from '../../resources/registry/resources/gl-account-fields'
 import { GL_POSTING_FIELDS } from '../../resources/registry/resources/gl-posting-fields'
+import { GL_POSTING_LINE_FIELDS } from '../../resources/registry/resources/gl-posting-line-fields'
 import { INBOX_FIELDS } from '../../resources/registry/resources/inbox-fields'
 import { INVOICE_FIELDS } from '../../resources/registry/resources/invoice-fields'
 import { LINE_ITEM_FIELDS } from '../../resources/registry/resources/line-item-fields'
@@ -19,6 +21,8 @@ import { PART_FIELDS } from '../../resources/registry/resources/part-fields'
 import { PAYMENT_FIELDS } from '../../resources/registry/resources/payment-fields'
 import { PERSONAL_INBOX_FIELDS } from '../../resources/registry/resources/personal-inbox-fields'
 import { PRODUCT_FIELDS } from '../../resources/registry/resources/product-fields'
+import { PURCHASE_ORDER_FIELDS } from '../../resources/registry/resources/purchase-order-fields'
+import { PURCHASE_ORDER_LINE_FIELDS } from '../../resources/registry/resources/purchase-order-line-fields'
 import { QUOTE_FIELDS } from '../../resources/registry/resources/quote-fields'
 import { SERVICE_REQUEST_FIELDS } from '../../resources/registry/resources/service-request-fields'
 import { SIGNATURE_FIELDS } from '../../resources/registry/resources/signature-fields'
@@ -27,7 +31,11 @@ import { SUBPART_FIELDS } from '../../resources/registry/resources/subpart-field
 import { TAG_FIELDS } from '../../resources/registry/resources/tag-fields'
 import { THREAD_FIELDS } from '../../resources/registry/resources/thread-fields'
 import { TICKET_FIELDS } from '../../resources/registry/resources/ticket-fields'
+import { VENDOR_BILL_FIELDS } from '../../resources/registry/resources/vendor-bill-fields'
+import { VENDOR_BILL_LINE_FIELDS } from '../../resources/registry/resources/vendor-bill-line-fields'
 import { VENDOR_PART_FIELDS } from '../../resources/registry/resources/vendor-part-fields'
+import { VENDOR_PAYMENT_ALLOCATION_FIELDS } from '../../resources/registry/resources/vendor-payment-allocation-fields'
+import { VENDOR_PAYMENT_FIELDS } from '../../resources/registry/resources/vendor-payment-fields'
 import { WORK_ORDER_FIELDS } from '../../resources/registry/resources/work-order-fields'
 import { ENTITY_INSTANCE_COLUMNS } from './constants'
 import type { EntityDefMap, FieldMap, FieldRecord } from './types'
@@ -69,6 +77,14 @@ export const FIELD_REGISTRY: Record<string, Record<string, ResourceField>> = {
   product: PRODUCT_FIELDS,
   gl_posting: GL_POSTING_FIELDS,
   order: ORDER_FIELDS,
+  purchase_order: PURCHASE_ORDER_FIELDS,
+  purchase_order_line: PURCHASE_ORDER_LINE_FIELDS,
+  vendor_bill: VENDOR_BILL_FIELDS,
+  vendor_bill_line: VENDOR_BILL_LINE_FIELDS,
+  vendor_payment: VENDOR_PAYMENT_FIELDS,
+  vendor_payment_allocation: VENDOR_PAYMENT_ALLOCATION_FIELDS,
+  gl_account: GL_ACCOUNT_FIELDS,
+  gl_posting_line: GL_POSTING_LINE_FIELDS,
 }
 
 /**

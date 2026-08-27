@@ -70,6 +70,16 @@ export const DETAIL_VIEW_TAB_COMPONENTS: Record<
     })),
 
   // ─────────────────────────────────────────────────────────────────
+  // PURCHASE ORDER TABS — plans/purchasing/01-build-plan.md §4.4. A PO is BUILT
+  // (drafted, issued, received against), so it earns a page; the vendor bill
+  // records something already settled and stays drawer-only.
+  // ─────────────────────────────────────────────────────────────────
+  'purchase_order:line-items': () =>
+    import('../purchasing/purchase-order/purchase-order-lines-tab').then((m) => ({
+      default: m.PurchaseOrderLinesTab,
+    })),
+
+  // ─────────────────────────────────────────────────────────────────
   // WORK ORDER (job view) TABS — dispatch M2 build spec §F.2
   // ─────────────────────────────────────────────────────────────────
   'work_order:schedule': () =>

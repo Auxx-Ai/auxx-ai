@@ -119,15 +119,13 @@ import {
   relKeyForDocumentType,
 } from './line-rows'
 import {
-  BASE_LINE_SYSTEM_ATTRIBUTES,
-  DOCUMENT_BILLING_ATTRS,
-  DOCUMENT_KNOBS,
   type DocumentType,
   diffLineValues,
   type LinePatch,
   type LineValues,
+  lineAttributesFor,
   linePatchToFieldValues,
-  QUOTE_LINE_SYSTEM_ATTRIBUTES,
+  lineSchemaFor,
 } from './line-values'
 import { TotalsFooter } from './totals-footer'
 import { useLineHotkeys } from './use-line-hotkeys'
@@ -151,7 +149,6 @@ export interface LineBuilderProps {
   className?: string
 }
 
-const LINE_ITEM_SLUG = 'line-items'
 const PAGE_SIZE = 100
 const INITIAL_DRAFT_COUNT = 3
 /** Stable sort ref — `useRecordList` keys its cache off this object. */
@@ -184,11 +181,13 @@ export function LineBuilder({
   className,
 }: LineBuilderProps) {
   const docRecordId = documentRecordId as RecordId
-  const { resource } = useResource(LINE_ITEM_SLUG)
+  // Everything document-shaped is one lookup. See the warning on `LINE_SCHEMAS`.
+  const schema = lineSchemaFor(documentType)
+  const { resource } = useResource(schema.slug)
   const entityDefinitionId = resource?.id
   // Category options come from the field definition (not a hardcoded list) so
   // org-added categories appear in the badge dropdown with their own colors.
-  const { fields: lineItemFields } = useResourceFields(LINE_ITEM_SLUG)
+  const { fields: lineItemFields } = useResourceFields(schema.slug)
   const categoryOptions = useMemo<CategoryOption[]>(() => {
     const field = lineItemFields.find((f) => f.key === 'category')
     return (field?.options?.options ?? []).map((o) => ({
@@ -221,16 +220,16 @@ export function LineBuilder({
 
   // work_order (M2 job view) has no billing fields (money MI1 build spec §J.2 precedent,
   // mirrored from TotalsFooter) — group discount/tax set-if-unset skips entirely there.
-  // Everything else reads off DOCUMENT_KNOBS; see the warning on that table.
-  const { hasBilling, billingPrefix } = DOCUMENT_KNOBS[documentType]
-  const { values: billingValues } = useSystemValues(
-    docRecordId,
-    DOCUMENT_BILLING_ATTRS[documentType],
-    {
-      autoFetch: hasBilling,
-      enabled: hasBilling,
-    }
-  )
+  // Everything else reads off the schema; see the warning on `LINE_SCHEMAS`.
+  const { billingPrefix } = schema
+  // `computed` is the only mode that WRITES a discount/tax mirror. `stored`
+  // (vendor bill) still fetches its billing attrs so the footer can display the
+  // transcribed totals, but nothing here may set them.
+  const hasBilling = schema.totalsMode === 'computed'
+  const { values: billingValues } = useSystemValues(docRecordId, schema.billingAttrs, {
+    autoFetch: schema.billingAttrs.length > 0,
+    enabled: schema.billingAttrs.length > 0,
+  })
   const taxRates = useMemo(
     () =>
       ((getSetting('documents.taxRates') as TaxRatePreset[] | null) ?? []).filter(
@@ -292,39 +291,25 @@ export function LineBuilder({
   // a `visitId` prop → only that visit's occurrence extras; no prop → only the job's
   // per-cycle set (visitId empty), so extras never leak into the job Line-items tab.
   const filters = useMemo<ConditionGroup[]>(() => {
-    if (documentType === 'invoice') {
-      return [
-        {
-          id: 'line-builder-baseline',
-          logicalOperator: 'AND',
-          conditions: [
-            {
-              id: 'line-builder-document',
-              fieldId: 'line_item:invoice',
-              operator: 'is',
-              value: documentRecordId,
-            },
-            {
-              id: 'line-builder-invoice-workorder',
-              fieldId: 'line_item:workOrder',
-              operator: 'empty',
-              value: null,
-            },
-          ],
-        },
-      ]
-    }
     const conditions: ConditionGroup['conditions'] = [
       {
         id: 'line-builder-document',
-        // The order arm is the plainest of the four: no work-order exclusion
+        // The order and purchasing arms are the plainest: no work-order exclusion
         // (that invariant is about an invoice's own lines) and no visit split.
-        fieldId: DOCUMENT_KNOBS[documentType].relFieldId,
+        fieldId: schema.relFieldId,
         operator: 'is',
         value: documentRecordId,
       },
     ]
-    if (documentType === 'work_order') {
+    if (schema.capabilities.excludeWorkOrderSourceLines) {
+      conditions.push({
+        id: 'line-builder-invoice-workorder',
+        fieldId: 'line_item:workOrder',
+        operator: 'empty',
+        value: null,
+      })
+    }
+    if (schema.capabilities.visitScoped) {
       conditions.push(
         visitId
           ? {
@@ -342,7 +327,7 @@ export function LineBuilder({
       )
     }
     return [{ id: 'line-builder-baseline', logicalOperator: 'AND', conditions }]
-  }, [documentType, documentRecordId, visitId])
+  }, [schema, documentRecordId, visitId])
 
   const {
     records,
@@ -478,12 +463,10 @@ export function LineBuilder({
   // record-id × line-field matrix once, while rows subscribe passively.
   const systemAttributeMap = useResourceStore((state) => state.systemAttributeMap)
   const lineFieldIds = useMemo(() => {
-    const attributes =
-      documentType === 'quote' ? QUOTE_LINE_SYSTEM_ATTRIBUTES : BASE_LINE_SYSTEM_ATTRIBUTES
-    return attributes
+    return lineAttributesFor(schema)
       .map((attribute) => systemAttributeMap[attribute])
       .filter((fieldId): fieldId is NonNullable<typeof fieldId> => !!fieldId)
-  }, [documentType, systemAttributeMap])
+  }, [schema, systemAttributeMap])
   useFieldValueSyncer({
     recordIds: lineRecordIds,
     columnVisibility: LINE_FIELD_VISIBILITY,
@@ -511,7 +494,7 @@ export function LineBuilder({
   /** Persist one semantic line patch through the single optimistic save owner. */
   const updateLine = useCallback(
     (recordId: RecordId, patch: LinePatch) => {
-      const updates = linePatchToFieldValues(patch)
+      const updates = linePatchToFieldValues(patch, schema)
       if (updates.length === 0) return
       if (updates.length === 1) {
         const update = updates[0]
@@ -574,7 +557,7 @@ export function LineBuilder({
           description: error instanceof Error ? error.message : 'Could not delete the line',
         })
       }
-      if (documentType === 'invoice') {
+      if (schema.capabilities.deleteMode === 'unstamp') {
         // Unstamps the gathered source line + recomputes totals server-side
         // (money MI1 build spec §G.3) — NOT the quote's record.delete + recompute pair.
         deleteInvoiceLineMutateAsync({
@@ -587,7 +570,7 @@ export function LineBuilder({
             // Every totalled document needs this; work_order stores no totals.
             // `recordId` (not the legacy `quoteRecordId`) so the router derives
             // the document type from the def component.
-            if (DOCUMENT_KNOBS[documentType].hasBilling) {
+            if (schema.totalsMode === 'computed') {
               recomputeMutate({ recordId: docRecordId })
             }
           })
@@ -628,27 +611,32 @@ export function LineBuilder({
   /** Build a draft's `record.create` values payload (shared by the single and bulk paths). */
   const draftCreateValues = useCallback(
     (snapshot: DraftLine, sortOrder: number): Record<string, unknown> => {
-      const relKey = relKeyForDocumentType(documentType)
       const values: Record<string, unknown> = {
-        line_item_qty: snapshot.qty,
-        line_item_unit: snapshot.unit,
-        line_item_taxable: snapshot.taxable,
-        line_item_optional: snapshot.optional,
-        line_item_optional_selected: snapshot.optionalSelected,
-        line_item_sort_order: sortOrder,
-        [relKey]: documentRecordId,
+        [schema.relKey]: documentRecordId,
+        [schema.sortAttr]: sortOrder,
       }
-      if (visitId) values.line_item_visit_id = visitId
-      if (snapshot.name) values.line_item_name = snapshot.name
-      if (snapshot.description) values.line_item_description = snapshot.description
-      if (snapshot.category) values.line_item_category = snapshot.category
-      if (snapshot.unitPriceCents !== null) values.line_item_unit_price = snapshot.unitPriceCents
-      if (snapshot.catalogItemRecordId) {
-        values.line_item_catalog_item = snapshot.catalogItemRecordId
+      // Keys the schema maps to `null` are dropped rather than sent — a
+      // purchasing line has no `taxable`/`optional` field, and a create carrying
+      // one names a field id that does not resolve on that entity.
+      const set = (key: keyof LineValues, value: unknown) => {
+        const attr = schema.attrs[key]
+        if (attr) values[attr] = value
       }
+      set('qty', snapshot.qty)
+      set('unit', snapshot.unit)
+      set('taxable', snapshot.taxable)
+      set('optional', snapshot.optional)
+      set('optionalSelected', snapshot.optionalSelected)
+      if (visitId && schema.capabilities.visitScoped) values.line_item_visit_id = visitId
+      if (snapshot.name) set('name', snapshot.name)
+      if (snapshot.description) set('description', snapshot.description)
+      if (snapshot.category) set('category', snapshot.category)
+      if (snapshot.unitPriceCents !== null) set('unitPriceCents', snapshot.unitPriceCents)
+      if (snapshot.catalogItemRecordId) set('catalogItemRecordId', snapshot.catalogItemRecordId)
+      if (snapshot.partRecordId) set('partRecordId', snapshot.partRecordId)
       return values
     },
-    [documentType, documentRecordId, visitId]
+    [schema, documentRecordId, visitId]
   )
 
   /**
@@ -667,11 +655,27 @@ export function LineBuilder({
       // the other default rows on screen after you fill one in — placeholder
       // replacement only ever runs before the user has touched anything.
       initialDraftIdsRef.current.clear()
-      if (creatingDraftIdsRef.current.has(draftId)) {
+      const accumulate = () =>
         mutateDrafts((prev) =>
           prev.map((d) => (d.draftId === draftId ? { ...d, ...overrides } : d))
         )
+      if (creatingDraftIdsRef.current.has(draftId)) {
+        accumulate()
         return
+      }
+      // 🛑 A buy-side line's identity IS its part: `purchase_order_line.part` is
+      // `required: true` and leg 2 of the natural key `(purchaseOrder, part)`. So
+      // a qty, a price or a description typed before a part is picked must
+      // ACCUMULATE on the draft rather than fire a create the server has to
+      // reject. Guarding here rather than in each cell is what keeps every cell —
+      // including any added later — safe by default.
+      if (schema.capabilities.partPicker) {
+        const pending = draftsRef.current.find((d) => d.draftId === draftId)
+        const partRecordId = overrides.partRecordId ?? pending?.partRecordId ?? null
+        if (!partRecordId) {
+          accumulate()
+          return
+        }
       }
 
       const draftIndex = draftsRef.current.findIndex((d) => d.draftId === draftId)
@@ -689,20 +693,23 @@ export function LineBuilder({
       const values = draftCreateValues(snapshot, displayIdsRef.current.length + draftIndex)
 
       try {
-        const result = await createMutateAsync({ entityDefinitionId: 'line_item', values })
+        const result = await createMutateAsync({
+          entityDefinitionId: schema.lineEntityType,
+          values,
+        })
 
         seedCreatedRecord({
           entityDefinitionId,
           recordId: result.recordId,
           listKey,
           instance: result.instance,
-          values: linePatchToFieldValues(snapshot),
+          values: linePatchToFieldValues(snapshot, schema),
         })
 
         // Diff whatever landed locally while the create was in flight, and
         // flush just the changed fields against the now-real record.
         const latest = draftsRef.current.find((d) => d.draftId === draftId) ?? snapshot
-        const changed = linePatchToFieldValues(diffLineValues(snapshot, latest))
+        const changed = linePatchToFieldValues(diffLineValues(snapshot, latest), schema)
         if (changed.length > 0) {
           await saveMultipleAsync(result.recordId, changed)
         }
@@ -774,7 +781,10 @@ export function LineBuilder({
       if (records.length === 0) return
 
       try {
-        const results = await createManyMutateAsync({ entityDefinitionId: 'line_item', records })
+        const results = await createManyMutateAsync({
+          entityDefinitionId: schema.lineEntityType,
+          records,
+        })
 
         const flushes: Promise<unknown>[] = []
         results.forEach((result, i) => {
@@ -786,10 +796,10 @@ export function LineBuilder({
             recordId: result.recordId,
             listKey,
             instance: result.instance,
-            values: linePatchToFieldValues(snapshot),
+            values: linePatchToFieldValues(snapshot, schema),
           })
           const latest = draftsRef.current.find((d) => d.draftId === draft.draftId) ?? snapshot
-          const changed = linePatchToFieldValues(diffLineValues(snapshot, latest))
+          const changed = linePatchToFieldValues(diffLineValues(snapshot, latest), schema)
           if (changed.length > 0) flushes.push(saveMultipleAsync(result.recordId, changed))
         })
 
@@ -816,6 +826,7 @@ export function LineBuilder({
             setOrderOverride(nextOrder)
             reorderMutate({
               documentRecordId: docRecordId,
+              lineEntityType: schema.lineEntityType,
               orderedLineRecordIds: nextOrder.map((id) => toRecordId(entityDefinitionId, id)),
             })
           }
@@ -1001,6 +1012,7 @@ export function LineBuilder({
       reorderMutate(
         {
           documentRecordId: docRecordId,
+          lineEntityType: schema.lineEntityType,
           orderedLineRecordIds: nextOrder.map((id) => toRecordId(entityDefinitionId, id)),
         },
         {
@@ -1029,7 +1041,7 @@ export function LineBuilder({
   // on the same container — resolved to whichever row holds focus.
   useLineHotkeys({
     containerRef: rowsContainerRef,
-    isQuote: documentType === 'quote',
+    isQuote: schema.capabilities.optional,
     readOnly,
   })
 

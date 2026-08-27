@@ -532,3 +532,172 @@ export const VectorDbTypeEnum = {
     { value: 'MILVUS', label: 'Milvus', color: 'indigo' },
   ] satisfies FieldOptionItem[],
 } as const
+
+/**
+ * Stock Movement Cost Basis
+ * How the cost frozen on a movement was arrived at
+ * (plans/purchasing/01-build-plan.md §2.1).
+ *
+ * A build values at `standard`; a **receipt is the first thing in the system
+ * that legitimately writes `actual`**, because it records what was really paid.
+ * Under D20 the difference between the two is the purchase price variance.
+ */
+export const StockMovementCostBasis = {
+  STANDARD: 'standard',
+  ACTUAL: 'actual',
+
+  values: [
+    { value: 'standard', label: 'Standard', color: 'blue' },
+    { value: 'actual', label: 'Actual', color: 'green' },
+  ] satisfies FieldOptionItem[],
+} as const
+
+/**
+ * Purchase Order Status
+ * plans/purchasing/01-build-plan.md §4.1.
+ *
+ * `partially_received` and `received` are driven by the computed
+ * `quantityReceived` roll-up, not set by hand.
+ */
+export const PurchaseOrderStatus = {
+  DRAFT: 'draft',
+  ISSUED: 'issued',
+  PARTIALLY_RECEIVED: 'partially_received',
+  RECEIVED: 'received',
+  CLOSED: 'closed',
+  CANCELED: 'canceled',
+
+  values: [
+    { value: 'draft', label: 'Draft', color: 'gray' },
+    { value: 'issued', label: 'Issued', color: 'blue' },
+    { value: 'partially_received', label: 'Partially received', color: 'amber' },
+    { value: 'received', label: 'Received', color: 'green' },
+    { value: 'closed', label: 'Closed', color: 'forest' },
+    { value: 'canceled', label: 'Canceled', color: 'red' },
+  ] satisfies FieldOptionItem[],
+} as const
+
+/**
+ * Landed Cost Allocation Basis
+ * How a purchase's shipping, tax and discount are spread across its lines
+ * (plans/products/11-costing-and-stock-improvements.md §4.2).
+ *
+ * Deliberately a **parameter**, not a constant: value-weighting makes a $1 part
+ * absorb $9.99 of a $10,000 freight bill while a $1,000 part absorbs $9,990.
+ * Defensible bookkeeping, but freight actually tracks mass, and a business
+ * shipping motors and decals knows it.
+ */
+export const LandedCostAllocationBasis = {
+  VALUE: 'value',
+  QUANTITY: 'quantity',
+  WEIGHT: 'weight',
+
+  values: [
+    { value: 'value', label: 'By line value', color: 'blue' },
+    { value: 'quantity', label: 'By quantity', color: 'purple' },
+    { value: 'weight', label: 'By weight', color: 'teal' },
+  ] satisfies FieldOptionItem[],
+} as const
+
+/**
+ * Vendor Bill Status
+ * plans/purchasing/01-build-plan.md §5.1.
+ *
+ * `matched` / `exception` are written by the three-way match, never by hand —
+ * that split is the control. A control a person has to run by comparing three
+ * documents is a control that stops being run.
+ */
+export const VendorBillStatus = {
+  DRAFT: 'draft',
+  MATCHED: 'matched',
+  EXCEPTION: 'exception',
+  POSTED: 'posted',
+  PAID: 'paid',
+  VOID: 'void',
+
+  values: [
+    { value: 'draft', label: 'Draft', color: 'gray' },
+    { value: 'matched', label: 'Matched', color: 'green' },
+    { value: 'exception', label: 'Exception', color: 'red' },
+    { value: 'posted', label: 'Posted', color: 'blue' },
+    { value: 'paid', label: 'Paid', color: 'forest' },
+    { value: 'void', label: 'Void', color: 'orange' },
+  ] satisfies FieldOptionItem[],
+} as const
+
+/**
+ * Vendor Bill Paid Source
+ * What evidence marked a bill paid (plans/purchasing/01-build-plan.md §5.3).
+ *
+ * 🛑 Not decoration. An auto-mark that cannot be told apart from a confirmed
+ * payment is how a genuinely unpaid bill goes quiet until the vendor calls.
+ * `rule` is a **presumption** and stays in an unconfirmed filter until a
+ * provider read or a bank line confirms it.
+ */
+export const VendorBillPaidSource = {
+  MANUAL: 'manual',
+  PROVIDER: 'provider',
+  BANK_IMPORT: 'bank_import',
+  RULE: 'rule',
+
+  values: [
+    { value: 'manual', label: 'Entered by hand', color: 'gray' },
+    { value: 'provider', label: 'From accounting system', color: 'blue' },
+    { value: 'bank_import', label: 'Matched to a bank line', color: 'green' },
+    { value: 'rule', label: 'Presumed by rule', color: 'amber' },
+  ] satisfies FieldOptionItem[],
+} as const
+
+/**
+ * Vendor Payment Status
+ * plans/purchasing/01-build-plan.md §5.4. Ships INERT — nothing writes it yet.
+ */
+export const VendorPaymentStatus = {
+  DRAFT: 'draft',
+  POSTED: 'posted',
+  VOID: 'void',
+
+  values: [
+    { value: 'draft', label: 'Draft', color: 'gray' },
+    { value: 'posted', label: 'Posted', color: 'green' },
+    { value: 'void', label: 'Void', color: 'orange' },
+  ] satisfies FieldOptionItem[],
+} as const
+
+/**
+ * GL Account Type
+ * The five statement classifications (plans/purchasing/01-build-plan.md §7.2).
+ */
+export const GlAccountType = {
+  ASSET: 'asset',
+  LIABILITY: 'liability',
+  EQUITY: 'equity',
+  REVENUE: 'revenue',
+  EXPENSE: 'expense',
+
+  values: [
+    { value: 'asset', label: 'Asset', color: 'blue' },
+    { value: 'liability', label: 'Liability', color: 'amber' },
+    { value: 'equity', label: 'Equity', color: 'purple' },
+    { value: 'revenue', label: 'Revenue', color: 'green' },
+    { value: 'expense', label: 'Expense', color: 'red' },
+  ] satisfies FieldOptionItem[],
+} as const
+
+/**
+ * GL Posting Line Direction
+ * plans/purchasing/01-build-plan.md §7.3.
+ *
+ * `amount` is always POSITIVE; this carries the sign. Storing a signed amount
+ * and a direction lets the two disagree, and a ledger that can contradict
+ * itself is not a ledger.
+ */
+export const GlPostingLineDirection = {
+  DEBIT: 'debit',
+  CREDIT: 'credit',
+
+  values: [
+    { value: 'debit', label: 'Debit', color: 'blue' },
+    { value: 'credit', label: 'Credit', color: 'purple' },
+  ] satisfies FieldOptionItem[],
+} as const

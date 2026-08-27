@@ -11,7 +11,7 @@ import type { EntityFieldChangeHandler } from '../field-hooks/types'
 import { FieldValueService } from '../field-values/field-value-service'
 import { UnifiedCrudHandler } from '../resources/crud'
 import { syncInvoicePaymentState } from './payments/ledger'
-import { computeDocumentTotals, computeLineTotal } from './totals'
+import { computeDocumentTotals, computeLineTotal, roundCents } from './totals'
 import type {
   DiscountType,
   DocumentBillingInputs,
@@ -75,8 +75,117 @@ export const ORDER_TRIGGER_ATTRS = new Set<SystemAttribute>([
   'order_tax_rate',
 ])
 
-/** The three **totalled** money documents. `work_order` owns lines but stores no totals. */
-type TotalledDocumentType = 'quote' | 'invoice' | 'order'
+/**
+ * Fields on `purchase-orders` whose write should trigger a recompute
+ * (plans/purchasing/01-build-plan.md §4.1).
+ *
+ * Note what is NOT here and what is: a PO has no `_discount_type` and no `_tax_rate`
+ * (a supplier discount arrives as a flat number and a supplier states their tax, they
+ * do not quote us a rate), but it DOES have `_shipping_total` and `_tax_total` as human
+ * inputs that land in the total. Deriving these names from `attrPrefix` the way the three
+ * sell-side sets are derived would produce three attributes that do not exist.
+ */
+export const PURCHASE_ORDER_TRIGGER_ATTRS = new Set<SystemAttribute>([
+  'purchase_order_discount_value',
+  'purchase_order_shipping_total',
+  'purchase_order_tax_total',
+])
+
+/** Fields on `purchase-order-lines` whose write should trigger a recompute (§4.2). */
+export const PURCHASE_ORDER_LINE_TRIGGER_ATTRS = new Set<SystemAttribute>([
+  'purchase_order_line_quantity_ordered',
+  'purchase_order_line_expected_unit_price',
+  'purchase_order_line_purchase_order',
+])
+
+/** Subset of the above that also requires rewriting `purchase_order_line_line_total`. */
+export const PURCHASE_ORDER_LINE_TOTAL_TRIGGER_ATTRS = new Set<SystemAttribute>([
+  'purchase_order_line_quantity_ordered',
+  'purchase_order_line_expected_unit_price',
+])
+
+/** The **totalled** documents. `work_order` owns lines but stores no totals; so does `vendor_bill`,
+ * whose totals are TRANSCRIBED from the supplier's document rather than computed (01 §5.4b) —
+ * recomputing them would silently correct the arithmetic error the three-way match exists to find. */
+export type TotalledDocumentType = 'quote' | 'invoice' | 'order' | 'purchase_order'
+
+/**
+ * The line entity a document's totals are summed from, and the attributes that make up
+ * one line's contribution. Parameterized rather than hardcoded to `line_item` because a
+ * `purchase_order_line` is deliberately NOT a `line_item` (01 §4.2): it has a buy price
+ * and none of the sell-side vocabulary.
+ *
+ * The three optional modifier attributes are the sell-side vocabulary. A buy-side line
+ * simply omits them, and every read below is already `undefined`-guarded, so nothing needs
+ * a document-type check to skip them.
+ */
+interface LineTotalsSpec {
+  /** The line's `entityType`, for `listFiltered` and `toRecordId`. */
+  lineEntityType: string
+  qtyAttr: SystemAttribute
+  unitPriceAttr: SystemAttribute
+  lineTotalAttr: SystemAttribute
+  taxableAttr?: SystemAttribute
+  optionalAttr?: SystemAttribute
+  optionalSelectedAttr?: SystemAttribute
+}
+
+/** Every sell-side document's lines are `line_item`s, so the four share one spec. */
+const LINE_ITEM_TOTALS_SPEC: LineTotalsSpec = {
+  lineEntityType: 'line_item',
+  qtyAttr: 'line_item_qty',
+  unitPriceAttr: 'line_item_unit_price',
+  lineTotalAttr: 'line_item_line_total',
+  taxableAttr: 'line_item_taxable',
+  optionalAttr: 'line_item_optional',
+  optionalSelectedAttr: 'line_item_optional_selected',
+}
+
+/** A purchasing line: quantity ordered, expected buy price. No taxable, no optional. */
+const PURCHASE_ORDER_LINE_TOTALS_SPEC: LineTotalsSpec = {
+  lineEntityType: 'purchase_order_line',
+  qtyAttr: 'purchase_order_line_quantity_ordered',
+  unitPriceAttr: 'purchase_order_line_expected_unit_price',
+  lineTotalAttr: 'purchase_order_line_line_total',
+}
+
+/**
+ * How a document's own header money fields fold into its total.
+ *
+ * ⚠️ These are LOOKUPS, not ternaries, for the reason spelled out at `LINE_SCHEMAS` in
+ * `line-builder/line-values.ts`: `billingPrefix` was once
+ * `documentType === 'invoice' ? 'invoice' : 'quote'`, which silently mapped every other
+ * document to the QUOTE prefix — a document reading and writing another document's
+ * `quote_tax_rate`. A new document type must never join a boolean-shaped expression.
+ */
+interface DocumentBillingSpec {
+  /** Header attr holding the discount shape, or `null` when the document has only one. */
+  discountTypeAttr: SystemAttribute | null
+  /** Used when `discountTypeAttr` is `null`. */
+  fixedDiscountType: DiscountType | null
+  discountValueAttr: SystemAttribute
+  /** Header attr holding the tax RATE percent, or `null` when the document states an amount. */
+  taxRateAttr: SystemAttribute | null
+  /**
+   * Header attrs whose STATED amounts are added on top of the computed total. Empty on the
+   * sell side, where freight and tax are either lines or derived from a rate.
+   */
+  statedAdditionAttrs: SystemAttribute[]
+  /** Whether the engine writes `<prefix>_tax_total`. False when it is a human input. */
+  writesTaxTotal: boolean
+}
+
+/** The sell-side billing shape: a typed discount plus a tax rate, both on the header. */
+function rateBilling(prefix: 'quote' | 'invoice' | 'order'): DocumentBillingSpec {
+  return {
+    discountTypeAttr: `${prefix}_discount_type` as SystemAttribute,
+    fixedDiscountType: null,
+    discountValueAttr: `${prefix}_discount_value` as SystemAttribute,
+    taxRateAttr: `${prefix}_tax_rate` as SystemAttribute,
+    statedAdditionAttrs: [],
+    writesTaxTotal: true,
+  }
+}
 
 /**
  * Per-document knobs for {@link recomputeDocumentTotals} (08 §5.4). Everything else —
@@ -86,6 +195,10 @@ type TotalledDocumentType = 'quote' | 'invoice' | 'order'
 interface DocumentTotalsSpec {
   /** systemAttribute + field-id prefix: `quote_discount_type`, `quote_subtotal`, … */
   attrPrefix: TotalledDocumentType
+  /** Which entity this document's lines are, and which attributes they carry. */
+  line: LineTotalsSpec
+  /** How the header's own money fields fold into the total. */
+  billing: DocumentBillingSpec
   /** The line's owning relation, as a resource field id. */
   lineRelFieldId: string
   /** Extra conditions ANDed onto the line query. */
@@ -114,12 +227,16 @@ interface DocumentTotalsSpec {
 const DOCUMENT_TOTALS_SPECS: Record<TotalledDocumentType, DocumentTotalsSpec> = {
   quote: {
     attrPrefix: 'quote',
+    line: LINE_ITEM_TOTALS_SPEC,
+    billing: rateBilling('quote'),
     lineRelFieldId: 'line_item:quote',
     extraLineConditions: [],
     publishEvents: true,
   },
   invoice: {
     attrPrefix: 'invoice',
+    line: LINE_ITEM_TOTALS_SPEC,
+    billing: rateBilling('invoice'),
     lineRelFieldId: 'line_item:invoice',
     // The §B.3 invariant: an invoice's own lines never carry a work order, so a WO
     // source line stamped with `line_item_invoice` must not contribute twice.
@@ -144,9 +261,30 @@ const DOCUMENT_TOTALS_SPECS: Record<TotalledDocumentType, DocumentTotalsSpec> = 
   },
   order: {
     attrPrefix: 'order',
+    line: LINE_ITEM_TOTALS_SPEC,
+    billing: rateBilling('order'),
     lineRelFieldId: 'line_item:order',
     // The plainest of the three: no work-order exclusion (that invariant is about an
     // invoice's own lines) and no payment ledger (08 §5.4).
+    extraLineConditions: [],
+    publishEvents: true,
+  },
+  purchase_order: {
+    attrPrefix: 'purchase_order',
+    line: PURCHASE_ORDER_LINE_TOTALS_SPEC,
+    // The buy-side shape (01 §4.1). A supplier discount is a flat amount — there is no
+    // `purchase_order_discount_type` field to read a shape from — and freight and tax
+    // arrive STATED on the header rather than derived from a rate, so both are added on
+    // top and `purchase_order_tax_total` stays a human input the engine must not overwrite.
+    billing: {
+      discountTypeAttr: null,
+      fixedDiscountType: 'amount',
+      discountValueAttr: 'purchase_order_discount_value',
+      taxRateAttr: null,
+      statedAdditionAttrs: ['purchase_order_shipping_total', 'purchase_order_tax_total'],
+      writesTaxTotal: false,
+    },
+    lineRelFieldId: 'purchase_order_line:purchaseOrder',
     extraLineConditions: [],
     publishEvents: true,
   },
@@ -199,47 +337,62 @@ async function recomputeDocumentTotals(params: {
   const handler = new UnifiedCrudHandler(organizationId, userId, db)
   const cache = getOrgCache()
 
-  const discountTypeAttr = `${spec.attrPrefix}_discount_type` as SystemAttribute
-  const discountValueAttr = `${spec.attrPrefix}_discount_value` as SystemAttribute
-  const taxRateAttr = `${spec.attrPrefix}_tax_rate` as SystemAttribute
+  const headerAttrs = [
+    spec.billing.discountTypeAttr,
+    spec.billing.discountValueAttr,
+    spec.billing.taxRateAttr,
+    ...spec.billing.statedAdditionAttrs,
+  ].filter((a): a is SystemAttribute => a !== null)
+
+  const lineAttrs = [
+    spec.line.lineTotalAttr,
+    spec.line.taxableAttr,
+    spec.line.optionalAttr,
+    spec.line.optionalSelectedAttr,
+  ].filter((a): a is SystemAttribute => a !== undefined)
 
   const cf = await cache
     .from(organizationId, 'customFields')
-    .bySystemAttributes<SystemAttribute>([
-      discountTypeAttr,
-      discountValueAttr,
-      taxRateAttr,
-      'line_item_line_total',
-      'line_item_taxable',
-      'line_item_optional',
-      'line_item_optional_selected',
-    ])
+    .bySystemAttributes<SystemAttribute>([...headerAttrs, ...lineAttrs])
 
-  const discountTypeField = cf[discountTypeAttr]
-  const discountValueField = cf[discountValueAttr]
-  const taxRateField = cf[taxRateAttr]
-
-  const billingFieldIds = [discountTypeField, discountValueField, taxRateField]
-    .filter(Boolean)
-    .map((f) => f!.id)
-  const billingValues = await handler.getFieldValues(documentRecordId, billingFieldIds)
-
-  const discountTypeTyped = discountTypeField
-    ? firstTyped(billingValues.get(discountTypeField.id))
+  const discountTypeField = spec.billing.discountTypeAttr
+    ? cf[spec.billing.discountTypeAttr]
     : undefined
-  const discountValueTyped = discountValueField
-    ? firstTyped(billingValues.get(discountValueField.id))
-    : undefined
-  const taxRateTyped = taxRateField ? firstTyped(billingValues.get(taxRateField.id)) : undefined
+  const discountValueField = cf[spec.billing.discountValueAttr]
+  const taxRateField = spec.billing.taxRateAttr ? cf[spec.billing.taxRateAttr] : undefined
 
-  const billing: DocumentBillingInputs = {
-    discountType: discountTypeTyped ? (extractValue(discountTypeTyped) as DiscountType) : null,
-    discountValue: discountValueTyped ? (extractValue(discountValueTyped) as number) : null,
-    taxRate: taxRateTyped ? (extractValue(taxRateTyped) as number) : null,
+  const headerFieldIds = headerAttrs.map((a) => cf[a]?.id).filter((id): id is string => !!id)
+  const headerValues = await handler.getFieldValues(documentRecordId, headerFieldIds)
+
+  const readNumber = (fieldId: string | undefined): number | null => {
+    if (!fieldId) return null
+    const typed = firstTyped(headerValues.get(fieldId))
+    return typed ? (extractValue(typed) as number) : null
   }
 
+  const discountTypeTyped = discountTypeField
+    ? firstTyped(headerValues.get(discountTypeField.id))
+    : undefined
+
+  const billing: DocumentBillingInputs = {
+    // A document with no `_discount_type` field carries a single fixed shape (a supplier
+    // discount is always a flat amount), never the quote's default by accident.
+    discountType: discountTypeTyped
+      ? (extractValue(discountTypeTyped) as DiscountType)
+      : spec.billing.fixedDiscountType,
+    discountValue: readNumber(discountValueField?.id),
+    taxRate: readNumber(taxRateField?.id),
+  }
+
+  // Stated header amounts (buy-side freight + tax). Empty on the sell side, so this sums
+  // to 0 and the three existing documents keep their arithmetic byte-for-byte.
+  const statedAdditions = spec.billing.statedAdditionAttrs.reduce(
+    (sum, attr) => sum + (readNumber(cf[attr]?.id) ?? 0),
+    0
+  )
+
   const { ids: lineInstanceIds } = await handler.listFiltered({
-    entityDefinitionId: 'line_item',
+    entityDefinitionId: spec.line.lineEntityType,
     filters: [
       {
         id: `${documentType}-lines`,
@@ -259,19 +412,25 @@ async function recomputeDocumentTotals(params: {
   })
 
   const lines: LineForTotals[] = []
-  if (cf.line_item_line_total && cf.line_item_taxable) {
-    const lineTotalFieldId = cf.line_item_line_total.id
-    const taxableFieldId = cf.line_item_taxable.id
-    const optionalFieldId = cf.line_item_optional?.id
-    const optionalSelectedFieldId = cf.line_item_optional_selected?.id
+  const lineTotalField = cf[spec.line.lineTotalAttr]
+  if (lineTotalField) {
+    const taxableFieldId = spec.line.taxableAttr ? cf[spec.line.taxableAttr]?.id : undefined
+    const optionalFieldId = spec.line.optionalAttr ? cf[spec.line.optionalAttr]?.id : undefined
+    const optionalSelectedFieldId = spec.line.optionalSelectedAttr
+      ? cf[spec.line.optionalSelectedAttr]?.id
+      : undefined
+    const fieldIds = [
+      lineTotalField.id,
+      taxableFieldId,
+      optionalFieldId,
+      optionalSelectedFieldId,
+    ].filter((id): id is string => !!id)
+
     for (const lineInstanceId of lineInstanceIds) {
-      const lineRecordId = toRecordId('line_item', lineInstanceId)
-      const fieldIds = [lineTotalFieldId, taxableFieldId, optionalFieldId, optionalSelectedFieldId]
-        .filter(Boolean)
-        .map((id) => id!)
+      const lineRecordId = toRecordId(spec.line.lineEntityType, lineInstanceId)
       const lineValues = await handler.getFieldValues(lineRecordId, fieldIds)
-      const lineTotalTyped = firstTyped(lineValues.get(lineTotalFieldId))
-      const taxableTyped = firstTyped(lineValues.get(taxableFieldId))
+      const lineTotalTyped = firstTyped(lineValues.get(lineTotalField.id))
+      const taxableTyped = taxableFieldId ? firstTyped(lineValues.get(taxableFieldId)) : undefined
       const optionalTyped = optionalFieldId
         ? firstTyped(lineValues.get(optionalFieldId))
         : undefined
@@ -280,6 +439,8 @@ async function recomputeDocumentTotals(params: {
         : undefined
       lines.push({
         lineTotal: lineTotalTyped ? (extractValue(lineTotalTyped) as number) : null,
+        // A line entity with no `taxable` field is wholly taxable as far as the math is
+        // concerned — with `taxRate` null (the buy side) that distinction never surfaces.
         taxable: taxableTyped ? (extractValue(taxableTyped) as boolean) : true,
         optional: optionalTyped ? (extractValue(optionalTyped) as boolean) : undefined,
         optionalSelected: optionalSelectedTyped
@@ -291,14 +452,21 @@ async function recomputeDocumentTotals(params: {
 
   const totals = computeDocumentTotals(lines, billing)
 
+  const values: Array<{ fieldId: string; value: number }> = [
+    { fieldId: `${spec.attrPrefix}_subtotal`, value: totals.subtotal },
+    { fieldId: `${spec.attrPrefix}_total`, value: roundCents(totals.total + statedAdditions) },
+  ]
+  // Only when the engine owns it. A PO's `tax_total` is typed off the supplier's
+  // acknowledgement and is an INPUT to the total, so writing a derived 0 over it would
+  // both destroy the entry and drop it from the total on the next recompute.
+  if (spec.billing.writesTaxTotal) {
+    values.push({ fieldId: `${spec.attrPrefix}_tax_total`, value: totals.taxTotal })
+  }
+
   const fieldValueService = new FieldValueService(organizationId, userId, db)
   await fieldValueService.setValuesForEntity({
     recordId: documentRecordId,
-    values: [
-      { fieldId: `${spec.attrPrefix}_subtotal`, value: totals.subtotal },
-      { fieldId: `${spec.attrPrefix}_tax_total`, value: totals.taxTotal },
-      { fieldId: `${spec.attrPrefix}_total`, value: totals.total },
-    ],
+    values,
     publishEvents: spec.publishEvents,
   })
 
@@ -316,29 +484,31 @@ export async function recomputeLineTotal(params: {
   organizationId: string
   userId: string
   lineInstanceId: string
+  /** Defaults to `line_item` — the finalize integrity passes call it that way. */
+  line?: LineTotalsSpec
 }): Promise<void> {
   const { organizationId, userId, lineInstanceId } = params
-  const lineRecordId = toRecordId('line_item', lineInstanceId)
+  const line = params.line ?? LINE_ITEM_TOTALS_SPEC
+  const lineRecordId = toRecordId(line.lineEntityType, lineInstanceId)
   const handler = new UnifiedCrudHandler(organizationId, userId)
 
   const cf = await getOrgCache()
     .from(organizationId, 'customFields')
-    .bySystemAttributes(['line_item_qty', 'line_item_unit_price'] as const)
-  if (!cf.line_item_qty || !cf.line_item_unit_price) return
+    .bySystemAttributes<SystemAttribute>([line.qtyAttr, line.unitPriceAttr])
+  const qtyField = cf[line.qtyAttr]
+  const unitPriceField = cf[line.unitPriceAttr]
+  if (!qtyField || !unitPriceField) return
 
-  const values = await handler.getFieldValues(lineRecordId, [
-    cf.line_item_qty.id,
-    cf.line_item_unit_price.id,
-  ])
-  const qtyTyped = firstTyped(values.get(cf.line_item_qty.id))
-  const unitPriceTyped = firstTyped(values.get(cf.line_item_unit_price.id))
+  const values = await handler.getFieldValues(lineRecordId, [qtyField.id, unitPriceField.id])
+  const qtyTyped = firstTyped(values.get(qtyField.id))
+  const unitPriceTyped = firstTyped(values.get(unitPriceField.id))
   const qty = qtyTyped ? (extractValue(qtyTyped) as number) : 0
   const unitPrice = unitPriceTyped ? (extractValue(unitPriceTyped) as number) : null
 
   const fieldValueService = new FieldValueService(organizationId, userId)
   await fieldValueService.setValuesForEntity({
     recordId: lineRecordId,
-    values: [{ fieldId: 'line_item_line_total', value: computeLineTotal(qty, unitPrice) }],
+    values: [{ fieldId: line.lineTotalAttr, value: computeLineTotal(qty, unitPrice) }],
     publishEvents: true,
   })
 }
@@ -497,5 +667,88 @@ export const recomputeOnOrderBillingChange: EntityFieldChangeHandler = async (ev
     userId: event.userId,
     documentType: 'order',
     documentInstanceId: orderInstanceId,
+  })
+}
+
+/**
+ * Recompute hook for `purchase-order-lines` (plans/purchasing/01-build-plan.md §4.2,
+ * registered under the `purchase-order-lines` apiSlug). Structurally the buy-side twin of
+ * {@link recomputeOnLineChange}: rewrite the line's own total when qty/price move, then
+ * recompute the parent PO's mirrors.
+ *
+ * The parent resolution is one read rather than {@link resolveLineParentDocument}'s ladder
+ * because a `purchase_order_line` has exactly one possible parent — it is not a `line_item`
+ * and can never hang off a quote, invoice, order or work order.
+ *
+ * No recursion: `purchase_order_line_line_total`, `purchase_order_subtotal` and
+ * `purchase_order_total` are in neither trigger set, so re-entry exits on the filter.
+ */
+export const recomputeOnPurchaseOrderLineChange: EntityFieldChangeHandler = async (event) => {
+  const attr = event.field.systemAttribute as SystemAttribute | undefined
+  if (!attr || !PURCHASE_ORDER_LINE_TRIGGER_ATTRS.has(attr)) return
+
+  const { organizationId, userId } = event
+  const { entityInstanceId: lineInstanceId } = parseRecordId(event.recordId)
+
+  if (PURCHASE_ORDER_LINE_TOTAL_TRIGGER_ATTRS.has(attr)) {
+    await recomputeLineTotal({
+      organizationId,
+      userId,
+      lineInstanceId,
+      line: PURCHASE_ORDER_LINE_TOTALS_SPEC,
+    })
+  }
+
+  const purchaseOrderInstanceId = await resolvePurchaseOrderForLine({
+    organizationId,
+    userId,
+    lineInstanceId,
+  })
+  if (purchaseOrderInstanceId) {
+    await recomputeTotals({
+      organizationId,
+      userId,
+      documentType: 'purchase_order',
+      documentInstanceId: purchaseOrderInstanceId,
+    })
+  }
+}
+
+/** Resolve the purchase order a PO line belongs to. Null when the line is orphaned. */
+async function resolvePurchaseOrderForLine(params: {
+  organizationId: string
+  userId: string
+  lineInstanceId: string
+}): Promise<string | null> {
+  const { organizationId, userId, lineInstanceId } = params
+  const cf = await getOrgCache()
+    .from(organizationId, 'customFields')
+    .bySystemAttributes(['purchase_order_line_purchase_order'] as const)
+  const relField = cf.purchase_order_line_purchase_order
+  if (!relField) return null
+
+  const handler = new UnifiedCrudHandler(organizationId, userId)
+  const lineRecordId = toRecordId(PURCHASE_ORDER_LINE_TOTALS_SPEC.lineEntityType, lineInstanceId)
+  const values = await handler.getFieldValues(lineRecordId, [relField.id])
+  const typed = firstTyped(values.get(relField.id))
+  if (typed?.type !== 'relationship' || !typed.recordId) return null
+  return parseRecordId(typed.recordId).entityInstanceId
+}
+
+/**
+ * Recompute hook for `purchase-orders` (§4.1, registered under the `purchase-orders`
+ * apiSlug). Fires when the order's own stated money fields change — the flat discount, the
+ * freight and the supplier's stated tax — and rewrites `subtotal` + `total`.
+ */
+export const recomputeOnPurchaseOrderBillingChange: EntityFieldChangeHandler = async (event) => {
+  const attr = event.field.systemAttribute as SystemAttribute | undefined
+  if (!attr || !PURCHASE_ORDER_TRIGGER_ATTRS.has(attr)) return
+
+  const { entityInstanceId: purchaseOrderInstanceId } = parseRecordId(event.recordId)
+  await recomputeTotals({
+    organizationId: event.organizationId,
+    userId: event.userId,
+    documentType: 'purchase_order',
+    documentInstanceId: purchaseOrderInstanceId,
   })
 }

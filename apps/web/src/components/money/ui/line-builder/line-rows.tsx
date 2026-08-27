@@ -24,6 +24,7 @@
 // editors; total is computed. The drag grip floats in the left gutter,
 // hover-revealed.
 
+import { FieldType } from '@auxx/database/enums'
 import {
   computeLineTotal,
   formatLineItemUnit,
@@ -65,22 +66,23 @@ import {
   X,
 } from 'lucide-react'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
+import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import type { CatalogGroup } from '~/components/money/hooks/use-catalog-groups'
 import type { CatalogItem } from '~/components/money/hooks/use-catalog-items'
 import { type RecordId, type RecordMeta, toRecordId } from '~/components/resources'
+import { useSystemField } from '~/components/resources/hooks/use-field'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { catalogItemToLinePatch } from './catalog-group-resolver'
 import { CatalogPicker } from './catalog-picker'
 import { LinePhotoPopover } from './line-photo-popover'
 import {
-  BASE_LINE_SYSTEM_ATTRIBUTES,
   DEFAULT_LINE_VALUES,
-  DOCUMENT_KNOBS,
   type DocumentType,
   type LinePatch,
   type LineValues,
+  lineAttributesFor,
+  lineSchemaFor,
   lineValuesFromSystemValues,
-  QUOTE_LINE_SYSTEM_ATTRIBUTES,
 } from './line-values'
 import { formatCurrency, titleCase } from './shared'
 import { LINE_ROW_ACTION_EVENT, type LineRowAction } from './use-line-hotkeys'
@@ -168,7 +170,7 @@ export function freshDraft(draftId: string): DraftLine {
  * addition a chain absorbs silently.
  */
 export function relKeyForDocumentType(documentType: DocumentType): string {
-  return DOCUMENT_KNOBS[documentType].relKey
+  return lineSchemaFor(documentType).relKey
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1098,6 +1100,92 @@ function LineRowMenu({
 // Rows
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Buy-side leading cell
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The leading cell for a purchasing line: a `part` relation picker over a free-text
+ * description, in place of the sell-side name + catalog picker.
+ *
+ * 🛑 This is not a styling variant of {@link LineNameCellView}. A purchasing line's
+ * identity IS its part — `purchase_order_line.part` is `required: true` and leg 2
+ * of the natural key `(purchaseOrder, part)`, which is what stops a re-sent order
+ * doubling its lines. So the part pick is what MATERIALIZES a draft row, exactly
+ * as the catalog pick does on the sell side; a description typed first accumulates
+ * on the draft and is written with the part in one create. Committing on the
+ * description instead would send a create the server must reject.
+ *
+ * The field definition is sourced live rather than stubbed so the picker gets a
+ * real `RelationshipConfig` — and with it "create new part" — the same way the
+ * PO line dialog did it.
+ */
+function LinePartCellView({
+  partAttribute,
+  partRecordId,
+  description,
+  readOnly,
+  onPickPart,
+  onCommitDescription,
+}: {
+  /** `purchase_order_line_part` / `vendor_bill_line_part`, from the schema. */
+  partAttribute: string
+  partRecordId: RecordId | null
+  description: string | null
+  readOnly: boolean
+  onPickPart: (recordId: RecordId | null) => void
+  onCommitDescription: (value: string | null) => void
+}) {
+  const partField = useSystemField(partAttribute)
+  const [descriptionDraft, setDescriptionDraft] = useState<string | null>(null)
+  const value = descriptionDraft ?? description ?? ''
+
+  const commitDescription = () => {
+    if (descriptionDraft === null) return
+    const next = descriptionDraft.trim()
+    setDescriptionDraft(null)
+    if ((next || null) !== (description || null)) onCommitDescription(next || null)
+  }
+
+  return (
+    <div className='flex min-w-0 flex-1 flex-col justify-center gap-0.5 py-0.5'>
+      {readOnly ? (
+        <span className='min-w-0 truncate px-1 text-sm'>
+          {partField?.label ?? 'Part'}
+          {partRecordId ? '' : ' —'}
+        </span>
+      ) : (
+        <FieldInputAdapter
+          fieldType={partField?.fieldType ?? FieldType.RELATIONSHIP}
+          fieldOptions={partField?.options}
+          triggerProps={{ className: 'h-7 w-full border-none bg-transparent px-1 shadow-none' }}
+          value={partRecordId ? [partRecordId] : []}
+          onChange={(next) => {
+            const ids = next as RecordId[]
+            onPickPart(ids[0] ?? null)
+          }}
+          placeholder='Select part...'
+        />
+      )}
+      {readOnly ? (
+        description && (
+          <span className='min-w-0 truncate px-1 text-muted-foreground text-xs'>{description}</span>
+        )
+      ) : (
+        <input
+          data-cell-focusable
+          value={value}
+          onChange={(e) => setDescriptionDraft(e.target.value)}
+          onFocus={() => setDescriptionDraft(description ?? '')}
+          onBlur={commitDescription}
+          placeholder='What the supplier calls it'
+          className='h-6 min-w-0 rounded-sm border-none bg-transparent px-1 text-muted-foreground text-xs outline-none placeholder:text-muted-foreground/50'
+        />
+      )}
+    </div>
+  )
+}
+
 /** One sortable line row — a grid row whose leading slot is the drag grip. */
 export function LineRow({
   record,
@@ -1135,13 +1223,15 @@ export function LineRow({
   onSelectGroup: (recordId: RecordId, group: CatalogGroup) => void
 }) {
   const recordId = toRecordId(entityDefinitionId, record.id)
-  const isQuote = documentType === 'quote'
-  const systemAttributes = isQuote ? QUOTE_LINE_SYSTEM_ATTRIBUTES : BASE_LINE_SYSTEM_ATTRIBUTES
-  const { values } = useSystemValues(recordId, systemAttributes, { autoFetch: false })
-  const line = lineValuesFromSystemValues(values, isQuote)
-  // FILE is array-return (plan 37b §3) — `line_item_photos` reads back as an array of
-  // `{ ref, caption?, internal? }` envelopes (or is absent/empty when there are none).
-  const photoCount = Array.isArray(values.line_item_photos) ? values.line_item_photos.length : 0
+  const schema = lineSchemaFor(documentType)
+  const showOptional = schema.capabilities.optional
+  const { values } = useSystemValues(recordId, lineAttributesFor(schema), { autoFetch: false })
+  const line = lineValuesFromSystemValues(values, schema)
+  // FILE is array-return (plan 37b §3) — the photos attribute reads back as an array
+  // of `{ ref, caption?, internal? }` envelopes (or is absent/empty when there are
+  // none). A document whose lines carry no photos field has no attribute to read.
+  const rawPhotos = schema.photosAttr ? values[schema.photosAttr] : undefined
+  const photoCount = Array.isArray(rawPhotos) ? rawPhotos.length : 0
   // Photo popover open state lives here (not in LinePhotoPopover) so the `⋯`
   // menu's "Add images" and the ⇧P shortcut can open it (plan 40).
   const [photosOpen, setPhotosOpen] = useState(false)
@@ -1160,47 +1250,58 @@ export function LineRow({
         optional={line.optional}
         grip={readOnly ? null : <GripSlot attributes={attributes} listeners={listeners} />}
         name={
-          <LineNameCellView
-            name={line.name}
-            description={line.description}
-            category={line.category}
-            categoryOptions={categoryOptions}
-            taxable={line.taxable}
-            readOnly={readOnly}
-            currencyCode={currencyCode}
-            catalogItems={catalogItems}
-            catalogGroups={catalogGroups}
-            catalogItemMap={catalogItemMap}
-            catalogLoading={catalogLoading}
-            showOptionalControls={isQuote}
-            optional={line.optional}
-            optionalSelected={line.optionalSelected}
-            onToggleOptional={(optional) => onUpdateLine(recordId, { optional })}
-            onToggleOptionalSelected={(optionalSelected) =>
-              onUpdateLine(recordId, { optionalSelected })
-            }
-            onToggleTaxable={(taxable) => onUpdateLine(recordId, { taxable })}
-            onPickCatalogItem={(item) => onUpdateLine(recordId, catalogItemToLinePatch(item))}
-            onSelectGroup={(group) => onSelectGroup(recordId, group)}
-            onFreeText={(name) => onUpdateLine(recordId, { name })}
-            onCommitDescription={(description) => onUpdateLine(recordId, { description })}
-            onCommitCategory={(category) => onUpdateLine(recordId, { category })}
-            onDelete={() => deleteLine(record.id)}
-            photoChip={
-              photosField ? (
-                <LinePhotoPopover
-                  recordId={recordId}
-                  field={photosField}
-                  photoCount={photoCount}
-                  readOnly={readOnly}
-                  open={photosOpen}
-                  onOpenChange={setPhotosOpen}
-                />
-              ) : undefined
-            }
-            hasPhotos={photoCount > 0}
-            onOpenPhotos={photosField && !readOnly ? () => setPhotosOpen(true) : undefined}
-          />
+          schema.capabilities.partPicker && schema.attrs.partRecordId ? (
+            <LinePartCellView
+              partAttribute={schema.attrs.partRecordId}
+              partRecordId={line.partRecordId}
+              description={line.description}
+              readOnly={readOnly}
+              onPickPart={(partRecordId) => onUpdateLine(recordId, { partRecordId })}
+              onCommitDescription={(description) => onUpdateLine(recordId, { description })}
+            />
+          ) : (
+            <LineNameCellView
+              name={line.name}
+              description={line.description}
+              category={line.category}
+              categoryOptions={categoryOptions}
+              taxable={line.taxable}
+              readOnly={readOnly}
+              currencyCode={currencyCode}
+              catalogItems={catalogItems}
+              catalogGroups={catalogGroups}
+              catalogItemMap={catalogItemMap}
+              catalogLoading={catalogLoading}
+              showOptionalControls={showOptional}
+              optional={line.optional}
+              optionalSelected={line.optionalSelected}
+              onToggleOptional={(optional) => onUpdateLine(recordId, { optional })}
+              onToggleOptionalSelected={(optionalSelected) =>
+                onUpdateLine(recordId, { optionalSelected })
+              }
+              onToggleTaxable={(taxable) => onUpdateLine(recordId, { taxable })}
+              onPickCatalogItem={(item) => onUpdateLine(recordId, catalogItemToLinePatch(item))}
+              onSelectGroup={(group) => onSelectGroup(recordId, group)}
+              onFreeText={(name) => onUpdateLine(recordId, { name })}
+              onCommitDescription={(description) => onUpdateLine(recordId, { description })}
+              onCommitCategory={(category) => onUpdateLine(recordId, { category })}
+              onDelete={() => deleteLine(record.id)}
+              photoChip={
+                photosField ? (
+                  <LinePhotoPopover
+                    recordId={recordId}
+                    field={photosField}
+                    photoCount={photoCount}
+                    readOnly={readOnly}
+                    open={photosOpen}
+                    onOpenChange={setPhotosOpen}
+                  />
+                ) : undefined
+              }
+              hasPhotos={photoCount > 0}
+              onOpenPhotos={photosField && !readOnly ? () => setPhotosOpen(true) : undefined}
+            />
+          )
         }
         qty={
           <QuantityCellView
@@ -1272,44 +1373,62 @@ export function DraftLineRow({
   createDraft: (draftId: string, overrides?: LinePatch) => Promise<void>
   onSelectGroup: (draftId: string, group: CatalogGroup) => void
 }) {
-  const isQuote = documentType === 'quote'
+  const schema = lineSchemaFor(documentType)
+  const showOptional = schema.capabilities.optional
 
   return (
     <LineGridRow
       rowIndex={rowIndex}
-      optional={isQuote && draft.optional}
+      optional={showOptional && draft.optional}
       grip={null}
       name={
-        <LineNameCellView
-          name={draft.name}
-          description={draft.description}
-          category={draft.category}
-          categoryOptions={categoryOptions}
-          taxable={draft.taxable}
-          readOnly={false}
-          currencyCode={currencyCode}
-          catalogItems={catalogItems}
-          catalogGroups={catalogGroups}
-          catalogItemMap={catalogItemMap}
-          catalogLoading={catalogLoading}
-          autoFocus={autoFocus}
-          showOptionalControls={isQuote}
-          optional={draft.optional}
-          optionalSelected={draft.optionalSelected}
-          onToggleOptional={(next) => void createDraft(draft.draftId, { optional: next })}
-          onToggleOptionalSelected={(next) =>
-            void createDraft(draft.draftId, { optionalSelected: next })
-          }
-          onToggleTaxable={(next) => void createDraft(draft.draftId, { taxable: next })}
-          onPickCatalogItem={(item) =>
-            void createDraft(draft.draftId, catalogItemToLinePatch(item))
-          }
-          onSelectGroup={(group) => onSelectGroup(draft.draftId, group)}
-          onFreeText={(text) => void createDraft(draft.draftId, { name: text })}
-          onCommitDescription={(value) => void createDraft(draft.draftId, { description: value })}
-          onCommitCategory={(value) => void createDraft(draft.draftId, { category: value })}
-          onDelete={() => deleteDraft(draft.draftId)}
-        />
+        schema.capabilities.partPicker && schema.attrs.partRecordId ? (
+          <LinePartCellView
+            partAttribute={schema.attrs.partRecordId}
+            partRecordId={draft.partRecordId}
+            description={draft.description}
+            readOnly={false}
+            // The part IS the line's identity, so picking one is what fires the
+            // draft's first `record.create` — carrying any description already
+            // typed. See LinePartCellView.
+            onPickPart={(partRecordId) => void createDraft(draft.draftId, { partRecordId })}
+            // Also routed through `createDraft`, which accumulates rather than
+            // creating while the part is still unset — every draft-state write
+            // goes through `mutateDrafts`, never a direct mutation.
+            onCommitDescription={(description) => void createDraft(draft.draftId, { description })}
+          />
+        ) : (
+          <LineNameCellView
+            name={draft.name}
+            description={draft.description}
+            category={draft.category}
+            categoryOptions={categoryOptions}
+            taxable={draft.taxable}
+            readOnly={false}
+            currencyCode={currencyCode}
+            catalogItems={catalogItems}
+            catalogGroups={catalogGroups}
+            catalogItemMap={catalogItemMap}
+            catalogLoading={catalogLoading}
+            autoFocus={autoFocus}
+            showOptionalControls={showOptional}
+            optional={draft.optional}
+            optionalSelected={draft.optionalSelected}
+            onToggleOptional={(next) => void createDraft(draft.draftId, { optional: next })}
+            onToggleOptionalSelected={(next) =>
+              void createDraft(draft.draftId, { optionalSelected: next })
+            }
+            onToggleTaxable={(next) => void createDraft(draft.draftId, { taxable: next })}
+            onPickCatalogItem={(item) =>
+              void createDraft(draft.draftId, catalogItemToLinePatch(item))
+            }
+            onSelectGroup={(group) => onSelectGroup(draft.draftId, group)}
+            onFreeText={(text) => void createDraft(draft.draftId, { name: text })}
+            onCommitDescription={(value) => void createDraft(draft.draftId, { description: value })}
+            onCommitCategory={(value) => void createDraft(draft.draftId, { category: value })}
+            onDelete={() => deleteDraft(draft.draftId)}
+          />
+        )
       }
       qty={
         <QuantityCellView

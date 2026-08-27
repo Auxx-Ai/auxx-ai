@@ -26,6 +26,8 @@ const ENTITY_COST_RECALC_SUBPART = 'entityCostRecalcSubpart'
 const EXPLODE_BOM_MOVEMENT = 'explodeBomMovement'
 const RECALC_PART_QOH = 'recalculatePartQoH'
 const ENRICH_COMPANY_ON_CREATE = 'enrichCompanyOnCreate'
+const RECALC_PO_LINE_RECEIVED = 'recalculatePurchaseOrderLineReceived'
+const RECALC_PO_LINE_BILLED = 'recalculatePurchaseOrderLineBilled'
 
 /**
  * Fan a batch native event out to a single-record `EntityTriggerHandler`, reconstructing the
@@ -105,6 +107,22 @@ export function registerEntitySystemRules(): void {
     await fanOutEntityHandler(event, 'stock-movements', recalculatePartQoH)
   })
 
+  // Purchase order line subledger roll-ups (plans/purchasing/01-build-plan.md §4.2) —
+  // per-record, each child resolves its own PO line. Both re-SUM whole and are the ONLY
+  // writers of the two `computed: true` fields; a child carrying no PO line is a no-op.
+  registerNativeRuleHandler(RECALC_PO_LINE_RECEIVED, async (event) => {
+    const { recalculatePurchaseOrderLineReceived } = await import(
+      './post/purchase-order-line-rollups'
+    )
+    await fanOutEntityHandler(event, 'stock-movements', recalculatePurchaseOrderLineReceived)
+  })
+  registerNativeRuleHandler(RECALC_PO_LINE_BILLED, async (event) => {
+    const { recalculatePurchaseOrderLineBilled } = await import(
+      './post/purchase-order-line-rollups'
+    )
+    await fanOutEntityHandler(event, 'vendor-bill-lines', recalculatePurchaseOrderLineBilled)
+  })
+
   // Company enrichment — created only, per-record (HTTP fetch).
   registerNativeRuleHandler(ENRICH_COMPANY_ON_CREATE, async (event) => {
     const { enrichCompanyOnCreate } = await import('./post/company-triggers')
@@ -149,21 +167,39 @@ const ENTITY_SYSTEM_RULES: SystemRuleDeclaration[] = [
   },
   {
     key: 'mfg-stock-movements-created',
-    name: 'Explode BOM movement and recalculate QoH on stock movement create',
+    name: 'Explode BOM movement, recalculate QoH and PO line qty received on stock movement create',
     defSlug: 'stock-movements',
     on: 'created',
     // ORDER MATTERS — explode child movements BEFORE recalculating the parent's QoH.
     actions: [
       { type: 'native', handler: EXPLODE_BOM_MOVEMENT },
       { type: 'native', handler: RECALC_PART_QOH },
+      { type: 'native', handler: RECALC_PO_LINE_RECEIVED },
     ],
   },
   {
     key: 'mfg-stock-movements-deleted',
-    name: 'Recalculate QoH on stock movement delete',
+    name: 'Recalculate QoH and PO line qty received on stock movement delete',
     defSlug: 'stock-movements',
     on: 'deleted',
-    actions: [{ type: 'native', handler: RECALC_PART_QOH }],
+    actions: [
+      { type: 'native', handler: RECALC_PART_QOH },
+      { type: 'native', handler: RECALC_PO_LINE_RECEIVED },
+    ],
+  },
+  {
+    key: 'purchasing-vendor-bill-lines-created',
+    name: 'Recalculate purchase order line qty billed on bill line create',
+    defSlug: 'vendor-bill-lines',
+    on: 'created',
+    actions: [{ type: 'native', handler: RECALC_PO_LINE_BILLED }],
+  },
+  {
+    key: 'purchasing-vendor-bill-lines-deleted',
+    name: 'Recalculate purchase order line qty billed on bill line delete',
+    defSlug: 'vendor-bill-lines',
+    on: 'deleted',
+    actions: [{ type: 'native', handler: RECALC_PO_LINE_BILLED }],
   },
   {
     key: 'mfg-companies-created',

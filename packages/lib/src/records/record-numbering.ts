@@ -12,6 +12,8 @@ export type SequenceScope =
   | 'quote'
   | 'invoice'
   | 'order'
+  | 'purchase_order'
+  | 'vendor_bill'
 
 const SCOPE_DEFAULTS: Record<SequenceScope, { prefix: string }> = {
   ticket: { prefix: 'TKT' },
@@ -20,6 +22,9 @@ const SCOPE_DEFAULTS: Record<SequenceScope, { prefix: string }> = {
   quote: { prefix: 'QUO' },
   invoice: { prefix: 'INV' },
   order: { prefix: 'ORD' },
+  purchase_order: { prefix: 'PO' },
+  // Ours, beside the vendor's own invoice number - two different documents.
+  vendor_bill: { prefix: 'BILL' },
 }
 
 /** Format a record number from a sequence record */

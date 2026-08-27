@@ -1126,6 +1126,12 @@
       "import": "./dist/providers/social/webhook-message.mjs",
       "default": "./src/providers/social/webhook-message.ts"
     },
+    "./purchasing": {
+      "types": "./src/purchasing/index.ts",
+      "source": "./src/purchasing/index.ts",
+      "import": "./dist/purchasing/index.mjs",
+      "default": "./src/purchasing/index.ts"
+    },
     "./quick-actions": {
       "types": "./src/quick-actions/index.ts",
       "source": "./src/quick-actions/index.ts",
@@ -1149,6 +1155,12 @@
       "source": "./src/realtime/client/index.ts",
       "import": "./dist/realtime/client/index.mjs",
       "default": "./src/realtime/client/index.ts"
+    },
+    "./receiving": {
+      "types": "./src/receiving/index.ts",
+      "source": "./src/receiving/index.ts",
+      "import": "./dist/receiving/index.mjs",
+      "default": "./src/receiving/index.ts"
     },
     "./record-rules": {
       "types": "./src/record-rules/index.ts",

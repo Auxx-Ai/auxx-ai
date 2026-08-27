@@ -214,6 +214,8 @@ export const moneyRouter = createTRPCRouter({
       z.object({
         documentRecordId: recordIdSchema.optional(),
         orderedLineRecordIds: z.array(recordIdSchema),
+        /** Defaults to `line_item`; the sort attribute is derived from it. */
+        lineEntityType: z.string().min(1).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -221,6 +223,7 @@ export const moneyRouter = createTRPCRouter({
         organizationId: ctx.session.organizationId,
         userId: ctx.session.user.id,
         documentRecordId: input.documentRecordId,
+        lineEntityType: input.lineEntityType,
         orderedLineInstanceIds: input.orderedLineRecordIds.map(
           (recordId) => parseRecordId(recordId).entityInstanceId
         ),

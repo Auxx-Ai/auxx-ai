@@ -245,6 +245,86 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     color: 'amber',
     isVisible: true,
   },
+  {
+    entityType: 'purchase_order',
+    apiSlug: 'purchase-orders',
+    singular: 'Purchase Order',
+    plural: 'Purchase Orders',
+    icon: 'shopping-cart',
+    color: 'teal',
+    isVisible: true,
+  },
+  {
+    entityType: 'purchase_order_line',
+    apiSlug: 'purchase-order-lines',
+    singular: 'Purchase Order Line',
+    plural: 'Purchase Order Lines',
+    icon: 'clipboard-list',
+    color: 'teal',
+    isVisible: false, // Internal entity, managed from the purchase order
+  },
+  {
+    entityType: 'vendor_bill',
+    apiSlug: 'vendor-bills',
+    singular: 'Vendor Bill',
+    plural: 'Vendor Bills',
+    icon: 'receipt',
+    color: 'red',
+    isVisible: true,
+  },
+  {
+    entityType: 'vendor_bill_line',
+    apiSlug: 'vendor-bill-lines',
+    singular: 'Vendor Bill Line',
+    plural: 'Vendor Bill Lines',
+    icon: 'file-text',
+    color: 'red',
+    isVisible: false, // Internal entity, managed from the bill
+  },
+  {
+    // Ships INERT (plans/purchasing/README.md P13): the def and its fields exist
+    // in every org, and NOTHING writes them until the write path is built. A def
+    // with zero rows can be reshaped for free; the first row ends that.
+    entityType: 'vendor_payment',
+    apiSlug: 'vendor-payments',
+    singular: 'Vendor Payment',
+    plural: 'Vendor Payments',
+    icon: 'banknote',
+    color: 'emerald',
+    isVisible: false,
+  },
+  {
+    // Inert, as above. The header/allocation split is what lets ONE bank line
+    // clear several bills (P15) - the shape a flat belongs_to cannot hold.
+    entityType: 'vendor_payment_allocation',
+    apiSlug: 'vendor-payment-allocations',
+    singular: 'Payment Allocation',
+    plural: 'Payment Allocations',
+    icon: 'calculator',
+    color: 'emerald',
+    isVisible: false,
+  },
+  {
+    // The chart of accounts, ours. The accounting provider's own id for each
+    // account is an app-owned identity field on this row, exactly as
+    // `qboJournalEntryId` already hangs off `gl_posting` (P1/P2).
+    entityType: 'gl_account',
+    apiSlug: 'gl-accounts',
+    singular: 'GL Account',
+    plural: 'GL Accounts',
+    icon: 'book-open',
+    color: 'indigo',
+    isVisible: false,
+  },
+  {
+    entityType: 'gl_posting_line',
+    apiSlug: 'gl-posting-lines',
+    singular: 'GL Posting Line',
+    plural: 'GL Posting Lines',
+    icon: 'file-text',
+    color: 'indigo',
+    isVisible: false, // Written only by the poster, like gl_posting itself
+  },
 ]
 
 /**
@@ -356,6 +436,38 @@ export const DISPLAY_FIELD_CONFIG: Record<string, DisplayFieldConfig> = {
   },
   order: {
     primaryDisplayField: 'number',
+    secondaryDisplayField: undefined,
+  },
+  purchase_order: {
+    primaryDisplayField: 'number',
+    secondaryDisplayField: 'vendor',
+  },
+  purchase_order_line: {
+    primaryDisplayField: 'description',
+    secondaryDisplayField: undefined,
+  },
+  vendor_bill: {
+    primaryDisplayField: 'number',
+    secondaryDisplayField: 'vendor',
+  },
+  vendor_bill_line: {
+    primaryDisplayField: 'description',
+    secondaryDisplayField: undefined,
+  },
+  vendor_payment: {
+    primaryDisplayField: 'reference',
+    secondaryDisplayField: 'vendor',
+  },
+  vendor_payment_allocation: {
+    primaryDisplayField: 'amount',
+    secondaryDisplayField: undefined,
+  },
+  gl_account: {
+    primaryDisplayField: 'code',
+    secondaryDisplayField: 'name',
+  },
+  gl_posting_line: {
+    primaryDisplayField: 'accountCode',
     secondaryDisplayField: undefined,
   },
 }

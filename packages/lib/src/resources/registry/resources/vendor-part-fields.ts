@@ -318,5 +318,58 @@ export const VENDOR_PART_FIELDS: Record<string, ResourceField> = {
     description: 'Automatically updated when vendor part is modified',
   },
 
+  // Reverse relationship: stockMovements (from stock_movement.vendorPart)
+  stockMovements: {
+    id: toFieldId('stockMovements'),
+    key: 'stockMovements',
+    label: 'Stock Movements',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'vendor_part_stock_movements',
+    showInPanel: false,
+    systemSortOrder: 'c0',
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'stock_movement:vendorPart' as ResourceFieldId,
+      relationshipType: 'has_many',
+      isInverse: true,
+    },
+    description:
+      'Receipts priced from this supplier row - the first route to what we have actually bought from a supplier',
+  },
+
+  // Reverse relationship: purchaseOrderLines (from purchase_order_line.vendorPart)
+  purchaseOrderLines: {
+    id: toFieldId('purchaseOrderLines'),
+    key: 'purchaseOrderLines',
+    label: 'Purchase Order Lines',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'vendor_part_purchase_order_lines',
+    showInPanel: false,
+    systemSortOrder: 'c1',
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'purchase_order_line:vendorPart' as ResourceFieldId,
+      relationshipType: 'has_many',
+      isInverse: true,
+    },
+    description: 'Ordered lines quoted from this supplier row',
+  },
+
   createdBy: CREATED_BY_FIELD,
 }

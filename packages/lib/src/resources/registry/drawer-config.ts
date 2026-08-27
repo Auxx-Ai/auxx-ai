@@ -238,6 +238,32 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
       ],
     },
   },
+
+  purchase_order: {
+    entityType: 'purchase_order',
+    additionalTabs: [],
+    tabCards: {
+      // `vendor` and `totals` are wanted and unbuilt - see the note on
+      // `purchase_order.sidebarCards` in detail-view-config.ts for why an
+      // unbacked card key is not declared here in advance.
+      overview: [{ value: 'lines', label: 'Lines', fullBleed: true }],
+    },
+  },
+
+  vendor_bill: {
+    entityType: 'vendor_bill',
+    // Drawer-only, no detail page: a bill RECORDS something already settled, so
+    // there is nothing to iterate on (plans/purchasing/01-build-plan.md §5.1).
+    // The exception queue is a filtered list view, not a page per bill.
+    additionalTabs: [],
+    tabCards: {
+      // `vendor` and `payment` are wanted and unbuilt, as above.
+      overview: [
+        { value: 'lines', label: 'Lines', fullBleed: true },
+        { value: 'match', label: 'Match' },
+      ],
+    },
+  },
 }
 
 /**

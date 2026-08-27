@@ -143,6 +143,14 @@ export const ModelTypeValues = [
   'product',
   'gl_posting',
   'order',
+  'purchase_order',
+  'purchase_order_line',
+  'vendor_bill',
+  'vendor_bill_line',
+  'vendor_payment',
+  'vendor_payment_allocation',
+  'gl_account',
+  'gl_posting_line',
 ] as const
 
 /**
@@ -187,6 +195,14 @@ export const ModelTypes = {
   PRODUCT: 'product',
   GL_POSTING: 'gl_posting',
   ORDER: 'order',
+  PURCHASE_ORDER: 'purchase_order',
+  PURCHASE_ORDER_LINE: 'purchase_order_line',
+  VENDOR_BILL: 'vendor_bill',
+  VENDOR_BILL_LINE: 'vendor_bill_line',
+  VENDOR_PAYMENT: 'vendor_payment',
+  VENDOR_PAYMENT_ALLOCATION: 'vendor_payment_allocation',
+  GL_ACCOUNT: 'gl_account',
+  GL_POSTING_LINE: 'gl_posting_line',
 } as const
 
 /**
@@ -492,6 +508,81 @@ export const ModelTypeMeta: Record<
     // The `quote` shape, not the invoice's drawer-only one
     // (plans/products/08-order-build.md §5.7, D17).
     hasDetailPage: true,
+  },
+  purchase_order: {
+    label: 'Purchase Order',
+    plural: 'Purchase Orders',
+    icon: 'shopping-cart',
+    color: 'teal',
+    apiSlug: 'purchase-orders',
+    dbTable: 'EntityInstance',
+    // Built, issued and received against — the `quote` shape
+    // (plans/purchasing/01-build-plan.md §4.4).
+    hasDetailPage: true,
+  },
+  purchase_order_line: {
+    label: 'Purchase Order Line',
+    plural: 'Purchase Order Lines',
+    icon: 'clipboard-list',
+    color: 'teal',
+    apiSlug: 'purchase-order-lines',
+    dbTable: 'EntityInstance',
+    hasDetailPage: false,
+  },
+  vendor_bill: {
+    label: 'Vendor Bill',
+    plural: 'Vendor Bills',
+    icon: 'receipt',
+    color: 'red',
+    apiSlug: 'vendor-bills',
+    dbTable: 'EntityInstance',
+    // Records something already settled — the invoice's drawer-only shape.
+    hasDetailPage: false,
+  },
+  vendor_bill_line: {
+    label: 'Vendor Bill Line',
+    plural: 'Vendor Bill Lines',
+    icon: 'file-text',
+    color: 'red',
+    apiSlug: 'vendor-bill-lines',
+    dbTable: 'EntityInstance',
+    hasDetailPage: false,
+  },
+  vendor_payment: {
+    label: 'Vendor Payment',
+    plural: 'Vendor Payments',
+    icon: 'banknote',
+    color: 'emerald',
+    apiSlug: 'vendor-payments',
+    dbTable: 'EntityInstance',
+    hasDetailPage: false,
+  },
+  vendor_payment_allocation: {
+    label: 'Payment Allocation',
+    plural: 'Payment Allocations',
+    icon: 'calculator',
+    color: 'emerald',
+    apiSlug: 'vendor-payment-allocations',
+    dbTable: 'EntityInstance',
+    hasDetailPage: false,
+  },
+  gl_account: {
+    label: 'GL Account',
+    plural: 'GL Accounts',
+    icon: 'book-open',
+    color: 'indigo',
+    apiSlug: 'gl-accounts',
+    dbTable: 'EntityInstance',
+    hasDetailPage: false,
+  },
+  gl_posting_line: {
+    label: 'GL Posting Line',
+    plural: 'GL Posting Lines',
+    icon: 'file-text',
+    color: 'indigo',
+    apiSlug: 'gl-posting-lines',
+    dbTable: 'EntityInstance',
+    hasDetailPage: false,
   },
 }
 

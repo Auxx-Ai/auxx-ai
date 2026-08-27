@@ -217,6 +217,36 @@ export const FIELD_VIEW_CONFIGS: FieldViewSeedConfig[] = [
     name: 'Default Create Dialog',
     includeFields: ['order_contact', 'order_company', 'order_placed_at'],
   },
+  {
+    // Create is an allowlist: the supplier, when it was ordered and when it is
+    // expected. Status defaults to `draft`, totals are computed from the lines,
+    // and the allocation knobs (basis, taxRecoverable) are set when freight is
+    // actually keyed at receipt - not when the order is raised.
+    entityType: 'purchase_order',
+    contextType: 'dialog_create',
+    name: 'Default Create Dialog',
+    includeFields: [
+      'purchase_order_vendor',
+      'purchase_order_ordered_at',
+      'purchase_order_expected_at',
+    ],
+  },
+  {
+    // The vendor's own invoice number and date are the two things a human has in
+    // front of them keying from paper. `purchaseOrder` is here because linking it
+    // at entry is what makes the match automatic; without it the bill is
+    // unmatchable and lands in the exception queue by construction.
+    entityType: 'vendor_bill',
+    contextType: 'dialog_create',
+    name: 'Default Create Dialog',
+    includeFields: [
+      'vendor_bill_vendor',
+      'vendor_bill_number',
+      'vendor_bill_billed_at',
+      'vendor_bill_due_at',
+      'vendor_bill_purchase_order',
+    ],
+  },
 ]
 
 /**
