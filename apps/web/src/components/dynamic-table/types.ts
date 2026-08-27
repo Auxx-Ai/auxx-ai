@@ -269,9 +269,18 @@ export interface KanbanRow {
   [key: string]: unknown
 }
 
-/** Normalized option for kanban columns (with id instead of value) */
+/**
+ * A kanban column derived from one select option.
+ *
+ * `value` is the option's stored value — the same string a record's
+ * `FieldValue` holds — and it is what identifies the column everywhere:
+ * `columnOrder`, `columnSettings`, `collapsedColumns`, the dnd ids, and
+ * `KanbanColumn`'s `columnId` prop (whose other inhabitant is the synthetic
+ * {@link NO_STATUS_COLUMN_ID}). Options carry no `id` — see
+ * `resource-registry-service`'s projection, which never emits one.
+ */
 export interface KanbanSelectOption {
-  id: string
+  value: string
   label: string
   color?: string
   /** Target time for items to remain in this status */
