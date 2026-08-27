@@ -118,9 +118,16 @@ export function PurchaseOrderBillsCard({ recordId }: DrawerTabProps) {
         onOpenChange={setAddOpen}
         purchaseOrderRecordId={recordId}
         onCreated={(billRecordId) => {
-          // The card lists the PO's `purchase_order_bills` inverse, so it is the
-          // ORDER whose values went stale, not the new bill.
-          invalidateResource(recordId)
+          // No invalidation. The card lists the PO's `purchase_order_bills`
+          // inverse, and since D-11 that mirror announces its own rewrite
+          // (`field-values/relationship-sync.ts`), so the new bill arrives as a
+          // `fieldValues:updated` frame and merges through `setValues` —
+          // non-destructively, and for every viewer rather than only this tab.
+          //
+          // 🛑 Do not reinstate `invalidateResource(recordId)`. It DELETES every
+          // cached field value on the order, which is what made the drawer's line
+          // builder visibly reset itself; it was only ever here because the
+          // inverse write was silent.
           openRecord?.(billRecordId)
         }}
       />

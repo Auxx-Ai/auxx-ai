@@ -356,10 +356,14 @@ const DOOR_CONFORMANCE: Record<DoorId, DoorConformance> = {
   },
   inverseRelationshipVisibility: {
     kind: 'deferred',
-    status: 'unverifiable',
+    status: 'verified-elsewhere',
     where:
-      'relationship-sync diff is raw-SQL silent today; D-11 routes it through the session ' +
-      'collector in Phase 4/5 — no seam to observe until then',
+      'field-values/relationship-sync.ts `announceInverseChanges` — D-11 REALTIME arm landed: ' +
+      'the diff is published on the inverse record (inline, or buffered via ' +
+      'getAmbientTxWriteScope and replayed after COMMIT) and covered by ' +
+      'field-values/__tests__/inverse-announcement.test.ts. ⚠️ The timeline and record-rule arms ' +
+      'of this row are still unimplemented — the entry is no longer `unverifiable` because a ' +
+      'seam now exists, not because the row is fully satisfied',
   },
   integrityHooks: {
     kind: 'deferred',
