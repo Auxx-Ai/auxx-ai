@@ -24,6 +24,7 @@
 
 import { FieldType } from '@auxx/database/enums'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
+import { extractRelationshipRecordIds } from '@auxx/lib/field-values/client'
 import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
 import type { ResourceFieldId } from '@auxx/types/field'
 import { Button } from '@auxx/ui/components/button'
@@ -69,6 +70,7 @@ import { RecordBadge } from '~/components/resources/ui/record-badge'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
+import { PurchaseOrderLinePicker } from '../purchase-order/purchase-order-line-picker'
 
 /** Header values the lines card needs: the currency and the transcribed totals. */
 const BILL_HEADER_ATTRIBUTES = [
@@ -459,14 +461,19 @@ function VendorBillLineDialog({
   const lineDefId = useResourceProperty('vendor_bill_line', 'id')
   const billDefId = useResourceProperty('vendor_bill', 'id')
 
-  // TODO(phase-3-router): this picker offers EVERY purchase order line in the
-  // org. Narrowing it to the lines of the bill's own purchase order needs a
-  // scoped read — `purchasing.listOpenPurchaseOrderLines({ purchaseOrderId })`
-  // or the equivalent relation-picker filter — neither of which exists yet.
-  // Picking the wrong line silently mis-matches the bill, so this is the first
-  // thing to tighten once a purchasing router lands.
-  const purchaseOrderLineField = useSystemField('vendor_bill_line_purchase_order_line')
   const partField = useSystemField('vendor_bill_line_part')
+
+  // The match key is picked from THIS bill's order and no other, through
+  // `PurchaseOrderLinePicker` rather than the generic relationship input — which
+  // offers every purchase order line in the org and can only label them by a
+  // `displayName` a line does not have. See that file's header.
+  const billRecordId = billDefId ? toRecordId(billDefId, billId) : null
+  const { values: billValues } = useSystemValues(billRecordId, ['vendor_bill_purchase_order'], {
+    autoFetch: true,
+    enabled: open && !!billRecordId,
+  })
+  const purchaseOrderRecordId =
+    extractRelationshipRecordIds(billValues.vendor_bill_purchase_order)[0] ?? null
 
   const { values: systemValues } = useSystemValues(lineRecordId, [...VENDOR_BILL_LINE_ATTRIBUTES], {
     autoFetch: true,
@@ -600,16 +607,11 @@ function VendorBillLineDialog({
           <FieldPanelRow
             title='Purchase order line'
             description='The match key. Leave empty for a bill with no purchase order.'>
-            <FieldInputAdapter
-              fieldType={purchaseOrderLineField?.fieldType ?? FieldType.RELATIONSHIP}
-              fieldOptions={purchaseOrderLineField?.options}
-              triggerProps={{ className: 'w-full ps-0 pe-1' }}
-              value={values.purchaseOrderLineRecordId ? [values.purchaseOrderLineRecordId] : []}
-              onChange={(next) => {
-                const ids = next as RecordId[]
-                handleChange('purchaseOrderLineRecordId', ids[0] ?? null)
-              }}
-              placeholder='Select purchase order line...'
+            <PurchaseOrderLinePicker
+              purchaseOrderRecordId={purchaseOrderRecordId}
+              value={values.purchaseOrderLineRecordId ?? null}
+              onChange={(next) => handleChange('purchaseOrderLineRecordId', next)}
+              currencyCode={currencyCode}
               disabled={isPending}
             />
           </FieldPanelRow>

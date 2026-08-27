@@ -20,15 +20,17 @@
 import { extractRelationshipRecordIds } from '@auxx/lib/field-values/client'
 import { getDefinitionId, type RecordId } from '@auxx/types/resource'
 import { Badge, type Variant } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
 import { TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { formatCurrency } from '@auxx/utils/currency'
-import { Banknote } from 'lucide-react'
+import { Banknote, Plus } from 'lucide-react'
 import { useState } from 'react'
 import {
   EmptyRow,
   RowSkeleton,
   TREE_SECONDARY_NOTRUNCATE,
 } from '~/components/drawers/cards/related-record-row'
+import { DrawerCardActions } from '~/components/drawers/drawer-card-actions'
 import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
 import { useOpenRecord } from '~/components/records/record-drill-panels'
 import { useRecord, useResource } from '~/components/resources'
@@ -40,6 +42,7 @@ import { RecordIcon } from '~/components/resources/ui/record-icon'
 import { useSettings } from '~/hooks/use-settings'
 import { numberValue, PurchasingSummaryStrip, unwrapValue } from '../purchasing-summary-strip'
 import { MarkBillPaidDialog } from '../vendor-bill/mark-bill-paid-dialog'
+import { CreateBillFromPurchaseOrderDialog } from './create-bill-from-purchase-order-dialog'
 
 const PO_ATTRS = [
   'purchase_order_bills',
@@ -64,6 +67,8 @@ interface PayTarget {
 export function PurchaseOrderBillsCard({ recordId }: DrawerTabProps) {
   const { getSetting } = useSettings({})
   const [payTarget, setPayTarget] = useState<PayTarget | null>(null)
+  const [addOpen, setAddOpen] = useState(false)
+  const openRecord = useOpenRecord()
   const invalidateResource = useFieldValueStore((state) => state.invalidateResource)
   const { values, isLoading } = useSystemValues(recordId, [...PO_ATTRS], { autoFetch: true })
 
@@ -102,6 +107,23 @@ export function PurchaseOrderBillsCard({ recordId }: DrawerTabProps) {
 
   return (
     <div className={`space-y-0.5 ${TREE_SECONDARY_NOTRUNCATE}`}>
+      <DrawerCardActions>
+        <Button variant='ghost' size='xs' onClick={() => setAddOpen(true)}>
+          <Plus />
+          Add bill
+        </Button>
+      </DrawerCardActions>
+      <CreateBillFromPurchaseOrderDialog
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        purchaseOrderRecordId={recordId}
+        onCreated={(billRecordId) => {
+          // The card lists the PO's `purchase_order_bills` inverse, so it is the
+          // ORDER whose values went stale, not the new bill.
+          invalidateResource(recordId)
+          openRecord?.(billRecordId)
+        }}
+      />
       <PurchasingSummaryStrip
         className='pb-2'
         cells={[
