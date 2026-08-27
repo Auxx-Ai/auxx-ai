@@ -44,6 +44,7 @@ import {
   reanchorInvoiceOnDueDateChange,
 } from '../sequences/field-change-hooks'
 import { invalidateInboxCacheOnFieldChange } from './post/inbox-cache-invalidation'
+import { stampPartOnCatalogItemChange } from './post/line-item-part-stamp'
 import { publishFieldChangeEvent } from './post/publish-field-change-event'
 import { touchActivityOnFieldChange } from './post/touch-activity-on-field-change'
 import { guardInboxOwnerField } from './pre/inbox-owner-guard'
@@ -150,7 +151,17 @@ export function registerAllHooks(): void {
   // the quote's or invoice's own billing fields (discount type/value, tax rate) change.
   // Keyed by apiSlug — line_item's is 'line-items', quote's is 'quotes', invoice's is
   // 'invoices'.
-  registerEntityFieldChangeHooks('line-items', [recomputeOnLineChange, syncBillingOnLineChange])
+  // ⚠️ `stampPartOnCatalogItemChange` is the SECOND door for the 08 §6.2 stamp. The system
+  // hook in `resources/hooks/line-item-hooks.ts` only fires for writes through
+  // `UnifiedCrudHandler` — how the LineBuilder ADDS a line. Every EDIT goes through
+  // `fieldValue.set` → `FieldValueService`, which never reads the system-hook registry, so
+  // re-pointing a line at another catalog item reaches only this handler. Verified against
+  // the running app: without it, a re-point left `line_item_part` NULL.
+  registerEntityFieldChangeHooks('line-items', [
+    recomputeOnLineChange,
+    syncBillingOnLineChange,
+    stampPartOnCatalogItemChange,
+  ])
   registerEntityFieldChangeHooks('quotes', [recomputeOnQuoteBillingChange])
   registerEntityFieldChangeHooks('orders', [recomputeOnOrderBillingChange])
   //

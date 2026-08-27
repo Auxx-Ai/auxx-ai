@@ -3,6 +3,7 @@
 import { COMMON_HOOKS } from './common-hooks'
 import { CONTACT_HOOKS } from './contact-hooks'
 import { INVOICE_HOOKS } from './invoice-hooks'
+import { LINE_ITEM_HOOKS } from './line-item-hooks'
 import { ORDER_HOOKS } from './order-hooks'
 import { PAYMENT_HOOKS } from './payment-hooks'
 import { QUOTE_HOOKS } from './quote-hooks'
@@ -29,6 +30,7 @@ const HOOKS_BY_ENTITY_TYPE: Record<string, SystemHookRegistry> = {
   invoice: INVOICE_HOOKS,
   payment: PAYMENT_HOOKS,
   order: ORDER_HOOKS,
+  line_item: LINE_ITEM_HOOKS,
 }
 
 /**

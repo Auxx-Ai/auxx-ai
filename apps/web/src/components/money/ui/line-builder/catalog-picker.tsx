@@ -23,6 +23,7 @@ import {
   CommandSeparator,
 } from '@auxx/ui/components/command'
 import { Popover, PopoverAnchor, PopoverContent } from '@auxx/ui/components/popover'
+import { SimpleTooltip } from '@auxx/ui/components/tooltip'
 import { cn } from '@auxx/ui/lib/utils'
 import { formatCurrency } from '@auxx/utils/currency'
 import { Boxes, Package, Plus, Settings2 } from 'lucide-react'
@@ -214,7 +215,16 @@ export function CatalogPicker({
                         title={item.name}
                         secondary={
                           item.partRecordId ? (
-                            <span className='text-muted-foreground text-xs'>Linked part</span>
+                            // Icon, not the words "Linked part": the row already carries a
+                            // name and a price, and the label competed with both for a fact
+                            // that only matters on hover. `line_item_part` is stamped from
+                            // this link at write time (08 §6.2), so it is provenance the
+                            // picker should surface quietly.
+                            <SimpleTooltip content='Linked to a part' side='top'>
+                              <span className='inline-flex text-muted-foreground'>
+                                <Package className='size-3.5' aria-label='Linked to a part' />
+                              </span>
+                            </SimpleTooltip>
                           ) : undefined
                         }
                         trailing={
