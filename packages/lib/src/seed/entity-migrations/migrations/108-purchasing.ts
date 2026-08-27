@@ -1,9 +1,12 @@
 // packages/lib/src/seed/entity-migrations/migrations/108-purchasing.ts
 
 import type { Database } from '@auxx/database'
+import { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { eq } from 'drizzle-orm'
 import { getOrgCache } from '../../../cache'
 import type { FieldOptions } from '../../../custom-fields'
+import { VendorBillStatus } from '../../../resources/registry/enum-values'
 import type { ResourceField } from '../../../resources/registry/field-types'
 import { COMPANY_FIELDS } from '../../../resources/registry/resources/company-fields'
 import { GL_ACCOUNT_FIELDS } from '../../../resources/registry/resources/gl-account-fields'
@@ -381,8 +384,31 @@ export const migration108Purchasing: EntityMigration = {
       )
     }
 
+    // ── Re-materialize `vendor_bill_status`'s options ──────────────────
+    //
+    // 🛑 `ensureCustomFields` SKIPS a field that already exists — it returns the
+    // incumbent row and never touches its `options`. So adding a value to
+    // `VendorBillStatus` reaches a fresh org (which seeds from the registry) and
+    // silently does nothing for every org that already ran this migration. The
+    // field would keep the six values it was created with while the code, the
+    // types and the UI all believed in seven.
+    //
+    // `partially_paid` is what forced this. The whole array is rewritten rather
+    // than the new value appended, so the option ORDER matches the registry
+    // everywhere — an appended value would sit last on migrated orgs and
+    // mid-list on fresh ones, which is the kind of difference nobody notices
+    // until two screenshots disagree. Safe because `status` is
+    // `configurable: false`: there are no user-added options to preserve.
+    const statusRefreshed = await refreshVendorBillStatusOptions(
+      db,
+      entityDefIds.get('vendor_bill')
+    )
+
     const alreadyUpToDate =
-      state.entityDefsCreated === 0 && state.fieldsCreated === 0 && state.relationshipsLinked === 0
+      state.entityDefsCreated === 0 &&
+      state.fieldsCreated === 0 &&
+      state.relationshipsLinked === 0 &&
+      !statusRefreshed
 
     // New definitions and fields are invisible to every read path until the
     // per-org caches that serve them are dropped. `runEntityMigrationsForOrg`
@@ -400,4 +426,72 @@ export const migration108Purchasing: EntityMigration = {
 
     return { ...state, alreadyUpToDate }
   },
+}
+
+/**
+ * Bring an existing `vendor_bill_status` field's SINGLE_SELECT options back in
+ * line with {@link VendorBillStatus}.
+ *
+ * Reads the row rather than trusting `loadExistingState`'s snapshot or the
+ * `allFieldMaps` entry: the snapshot is taken before this migration writes
+ * anything, and the map carries the INCUMBENT options for a field that already
+ * existed. Both would be correct here by accident; a fresh read is correct by
+ * construction.
+ *
+ * Idempotent by comparison — returns `false` when the stored values already
+ * match, so a second run reports `alreadyUpToDate` rather than dirtying the row
+ * and re-invalidating the org cache on every pass.
+ *
+ * @returns whether the row was actually rewritten.
+ */
+async function refreshVendorBillStatusOptions(
+  db: Database,
+  vendorBillDefId: string | undefined
+): Promise<boolean> {
+  if (!vendorBillDefId) return false
+
+  const statusField = VENDOR_BILL_FIELDS.status
+  if (!statusField?.systemAttribute) return false
+
+  // Scoped in SQL to the def, then picked by attribute in JS. One query either
+  // way — a `vendor_bill` carries ~28 fields — and it keeps the pick explicit
+  // rather than resting on `[0]` of a filtered result.
+  const rows = await db
+    .select({
+      id: schema.CustomField.id,
+      systemAttribute: schema.CustomField.systemAttribute,
+      options: schema.CustomField.options,
+    })
+    .from(schema.CustomField)
+    .where(eq(schema.CustomField.entityDefinitionId, vendorBillDefId))
+
+  const row = rows.find((candidate) => candidate.systemAttribute === statusField.systemAttribute)
+  if (!row) return false
+
+  const wanted = VendorBillStatus.values
+  const current = ((row.options as FieldOptions | null)?.options ?? []) as {
+    value?: string
+    label?: string
+    color?: string
+  }[]
+
+  const sameValues =
+    current.length === wanted.length &&
+    current.every((option, index) => option.value === wanted[index]?.value)
+  if (sameValues) return false
+
+  await db
+    .update(schema.CustomField)
+    .set({
+      options: { ...(row.options as FieldOptions), options: wanted },
+      updatedAt: new Date(),
+    })
+    .where(eq(schema.CustomField.id, row.id))
+
+  logger.info('Refreshed vendor_bill_status options', {
+    vendorBillDefId,
+    from: current.length,
+    to: wanted.length,
+  })
+  return true
 }

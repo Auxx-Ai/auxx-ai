@@ -92,10 +92,15 @@ export function MarkBillPaidDialog({
       // P12: `manual` is a HUMAN confirming the payment. Never `rule` — that value
       // is reserved for a presumption, and the two must stay distinguishable.
       vendor_bill_paid_source: 'manual',
-      // Only a fully settled bill becomes `paid`. A partial payment leaves the
-      // status where the match put it, because a bill that still owes money is
-      // not paid and a status that says otherwise is how it goes quiet.
-      ...(nextAmountPaid >= total && total > 0 ? { vendor_bill_status: 'paid' } : {}),
+      // A fully settled bill becomes `paid`; a partial one becomes
+      // `partially_paid`. Neither may be left reading `matched`: a bill with
+      // $400 of $1,000 settled would otherwise be indistinguishable from one
+      // nobody has paid a cent of, with the remaining balance visible only on
+      // this card. Same discipline as `paidSource` — never let a partial fact
+      // render as a complete one.
+      ...(total > 0
+        ? { vendor_bill_status: nextAmountPaid >= total ? 'paid' : 'partially_paid' }
+        : {}),
     })
     if (!ok) {
       toastError({

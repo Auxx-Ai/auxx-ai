@@ -11,22 +11,26 @@
 // over `stock_movement` (`purchasing-hooks.ts`), so it is already maintained; nothing
 // had ever read it back.
 //
-// 🛑 The received figures are only ever as good as the receipts behind them, and
-// nothing writes a receipt yet — plans/purchasing/02-handoff.md §4.1's
-// `ReceiveStockPopover` is unbuilt. Until it lands every line here reads 0 received.
-// That is honest (nothing HAS been received through the app) rather than broken.
+// The card's header action is the **Receive** dialog — the whole order in one pass,
+// everything prefilled as if it all arrived. That is deliberately the door here
+// rather than the part-first popover: a part-first receipt sets no
+// `purchaseOrderLineId`, so it moves quantity on hand without ever moving the
+// numbers this card renders.
 
 import { extractRelationshipRecordIds } from '@auxx/lib/field-values/client'
 import type { RecordId } from '@auxx/types/resource'
 import { Badge, type Variant } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
 import { TreeRow } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
-import { Package } from 'lucide-react'
+import { Package, PackagePlus } from 'lucide-react'
+import { useState } from 'react'
 import {
   EmptyRow,
   RowSkeleton,
   TREE_SECONDARY_NOTRUNCATE,
 } from '~/components/drawers/cards/related-record-row'
+import { DrawerCardActions } from '~/components/drawers/drawer-card-actions'
 import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
 import { useOpenRecord } from '~/components/records/record-drill-panels'
 import { useRecord } from '~/components/resources'
@@ -38,6 +42,7 @@ import {
   PurchasingSummaryStrip,
   unwrapValue,
 } from '../purchasing-summary-strip'
+import { ReceivePurchaseOrderDialog } from './receive-purchase-order-dialog'
 
 const PO_ATTRS = ['purchase_order_lines'] as const
 
@@ -60,6 +65,7 @@ interface ReceivingLine {
 }
 
 export function PurchaseOrderReceivingCard({ recordId }: DrawerTabProps) {
+  const [dialogOpen, setDialogOpen] = useState(false)
   const { values, isLoading: linesLoading } = useSystemValues(recordId, [...PO_ATTRS], {
     autoFetch: true,
   })
@@ -98,6 +104,19 @@ export function PurchaseOrderReceivingCard({ recordId }: DrawerTabProps) {
 
   return (
     <div className={`space-y-0.5 ${TREE_SECONDARY_NOTRUNCATE}`}>
+      {outstanding > 0 && (
+        <DrawerCardActions>
+          <Button variant='ghost' size='xs' onClick={() => setDialogOpen(true)}>
+            <PackagePlus />
+            Receive
+          </Button>
+        </DrawerCardActions>
+      )}
+      <ReceivePurchaseOrderDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        purchaseOrderRecordId={recordId}
+      />
       <PurchasingSummaryStrip
         className='pb-2'
         cells={[
