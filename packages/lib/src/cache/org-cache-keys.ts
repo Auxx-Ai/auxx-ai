@@ -898,7 +898,14 @@ export const ORG_CACHE_KEY_CONFIG: Record<
   workflowApps: { prefix: 'org:workflow-apps:v2', ttlSeconds: ONE_DAY, localTtlMs: 5_000 },
   // Read per interactive field write. Rules have side effects, so the peer
   // staleness window stays tight (1 s ≈ 10× fewer steady-state hash GETs).
-  recordRules: { prefix: 'org:record-rules', ttlSeconds: ONE_DAY, localTtlMs: 1_000 },
+  //
+  // v2: the cached blob used to be the DB rules UNIONED with the code-declared
+  // system rules; it is now DB rules ONLY (the union moved to read time — see
+  // `cache/org-system-rules.ts`). The bump is REQUIRED, not cosmetic: a v1 entry
+  // already contains the system rules, so new code reading it would append a
+  // second, freshly-resolved copy of each and every system rule would fire TWICE
+  // until the entry expired.
+  recordRules: { prefix: 'org:record-rules:v2', ttlSeconds: ONE_DAY, localTtlMs: 1_000 },
   // Read per INBOUND MESSAGE by the `message:received` gate, and it is the §4.1
   // step-3 early exit — the read that decides whether an org pays anything at
   // all for filters. Same reasoning as `recordRules`: filters have side effects

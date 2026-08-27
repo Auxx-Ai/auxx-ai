@@ -16,6 +16,7 @@ import type {
   DehydratedOrgProfile,
   OrgMemberInfo,
 } from './org-cache-keys'
+import { resolveOrgSystemRules } from './org-system-rules'
 import { getOrgCache } from './singletons'
 
 /**
@@ -111,9 +112,18 @@ export async function getAllCachedCustomFields(orgId: string): Promise<CustomFie
 
 /**
  * Get all record rules for an organization (enabled + disabled; dispatch filters).
+ *
+ * The DB rules come from the cache; the code-declared system rules are resolved
+ * FRESH on every call and unioned in here. This is the only seam that performs
+ * that union — `recordRules` has no cache accessor for exactly that reason. See
+ * `resolveOrgSystemRules` for why the union is never cached.
  */
 export async function getCachedRecordRules(orgId: string): Promise<CachedRecordRule[]> {
-  return getOrgCache().get(orgId, 'recordRules')
+  const [dbRules, systemRules] = await Promise.all([
+    getOrgCache().get(orgId, 'recordRules'),
+    resolveOrgSystemRules(orgId),
+  ])
+  return [...dbRules, ...systemRules]
 }
 
 /**

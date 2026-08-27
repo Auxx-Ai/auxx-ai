@@ -29,17 +29,19 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
   'org.updated': ['orgProfile'],
   'org.deleted': [], // flush all, handled specially
 
-  // System rules resolve field ids from the customFields projection — any customFields
-  // change can change which system rules resolve for an org, so recompute the union.
+  // `recordRules` caches DB rules ONLY — system rules resolve per read now, so a
+  // customFields change no longer changes what this key holds. `created`/`updated`
+  // are kept as harmless redundancy; `deleted` is REQUIRED (below).
   'custom-field.created': ['resources', 'customFields', 'recordRules'],
   'custom-field.updated': ['resources', 'customFields', 'recordRules'],
   // A field delete cascades its RecordRules away (FK) — bust the rules cache too.
   'custom-field.deleted': ['resources', 'customFields', 'recordRules'],
 
   // entityDefs/entityDefSlugs — invalidate slugs on create/delete/update (archive changes visibility).
-  // recordRules rides along: system rules resolve their target def BY SLUG through the
-  // entityDefSlugs projection, so a slug rename/create/delete changes which rules
-  // resolve — same reason custom-field.* busts it below.
+  // recordRules rides along: `deleted` is REQUIRED (a def delete cascades its RecordRules
+  // away by FK). `created`/`updated` are harmless redundancy — they mattered when the
+  // system-rule union was cached under this key and resolved defs BY SLUG; it is now
+  // resolved per read (`cache/org-system-rules.ts`), so a slug change needs no bust here.
   'entity-def.created': [
     'resources',
     'entityDefs',
