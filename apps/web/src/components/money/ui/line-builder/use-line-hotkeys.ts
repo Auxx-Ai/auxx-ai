@@ -60,6 +60,13 @@ type UseLineHotkeysOptions = {
  * obvious letter for "match" and is NOT usable: Chrome binds it to profile
  * switching and Firefox to responsive-design mode.
  *
+ * 🛑 A purchase order line's WEIGHT is the one row-menu action with no shortcut,
+ * and the omission is deliberate rather than an oversight: `Mod+Shift+W` closes
+ * the window in Chrome, Firefox AND Safari, and every other letter that reads as
+ * "weight" is already taken here. A binding that shuts the browser mid-order is
+ * worse than no binding, so the menu item stands alone
+ * (plans/purchasing/05-receiving-cost-and-corrections.md §5.3).
+ *
  * Registered once on the rows container (TanStack `target`), so they only
  * fire while focus is inside the grid — the catalog picker portals outside
  * it, so its keys are never hijacked. The acting row is resolved from the

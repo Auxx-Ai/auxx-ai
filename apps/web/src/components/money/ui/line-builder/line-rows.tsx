@@ -66,6 +66,7 @@ import {
   Tags,
   Trash2,
   TriangleAlert,
+  Weight,
   X,
 } from 'lucide-react'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
@@ -160,6 +161,51 @@ export type MatchKeyEditorRenderer = (props: {
   scopeRecordId: RecordId | null
   currencyCode: string
 }) => ReactNode
+
+/**
+ * What the `(part, supplier)` vendor-part lookup found
+ * (plans/purchasing/05-receiving-cost-and-corrections.md §5.2).
+ *
+ * Three distinct answers, and the caller must keep them apart:
+ *
+ * - `null` (the whole result) — the lookup could not run: this document does not
+ *   prefill, the order names no vendor, the request failed. **Write nothing.**
+ * - `vendorPartRecordId: null` — it ran and this supplier has no catalogue entry
+ *   for this part. The link is CLEARED, because whatever it pointed at belonged
+ *   to the part that was there before; no price is written.
+ * - both set — the supplier row, and the price to seed the cell with **if the
+ *   cell is still empty**.
+ *
+ * 🛑 The price half is a prefill and only a prefill. Nothing may re-derive a
+ * line's price through the link once it is set — see `LineValues.vendorPartRecordId`.
+ */
+export interface PartPrefill {
+  vendorPartRecordId: RecordId | null
+  /** Integer minor units, matching `expected_unit_price`. */
+  unitPriceCents: number | null
+}
+
+/**
+ * Look up the supplier's catalogue entry for a part — supplied by the CONSUMER.
+ *
+ * 🛑 A prop rather than a call to `api.purchasing.*` from here, for the same
+ * reason {@link MatchKeyEditorRenderer} is a render prop: this is the `money`
+ * module, and the only document that prefills is a PURCHASE ORDER. Reaching into
+ * the purchasing router from a document-agnostic builder makes every quote and
+ * invoice carry a purchasing dependency to use a feature they do not have.
+ *
+ * `vendorRecordId` is resolved by the builder from {@link LineSchema.vendorAttr},
+ * exactly as `scopeRecordId` is for the match key, so the consumer never re-fetches
+ * the parent it is already rendered inside — and so this is never called at all
+ * for an order with no vendor on it.
+ */
+export type PartPrefillLookup = (params: {
+  partRecordId: RecordId
+  vendorRecordId: RecordId
+}) => Promise<PartPrefill | null>
+
+/** {@link PartPrefillLookup} with the document's vendor already bound, as a row sees it. */
+export type PartPrefillResolver = (partRecordId: RecordId) => Promise<PartPrefill | null>
 
 /**
  * A phantom line row that exists only in local state until its first real
@@ -1138,6 +1184,26 @@ function MenuShortcut({ keys }: { keys: string[] }) {
  * account are the two newest members of that set — neither earns a grid column,
  * and adding one would have widened `LINE_COLS` for every document
  * (plans/purchasing/04-vendor-bill-lines-and-the-amount-cell.md §2).
+ *
+ * 🛑 **A purchase order line's WEIGHT joins that set with one deliberate
+ * deviation: setting it from one row's menu reveals the control on EVERY line of
+ * the document, not just that row.** The difference is arithmetic, not taste.
+ *
+ * A GL account is a property of one line and means something on its own — a line
+ * with one and a line without are both fully described. A weight is a **basis
+ * input that only means anything across the whole set**: `allocateLandedCost`
+ * spreads freight by each line's share of the total weight, so one line carrying
+ * a weight while its siblings do not is not "partly configured", it is a broken
+ * allocation — the weighed lines absorb all of the freight and the rest absorb
+ * none, silently, and it looks deliberate. A per-row toggle would make that the
+ * LIKELY state rather than the edge case, which is why the reveal is
+ * document-level (`weightRevealed`, resolved once in `LineBuilder`).
+ *
+ * ⚠️ Revealing is not filling: a shown-everywhere cell can still be left blank.
+ * `allocateCapitalisedCost` refuses a partial weight set outright, so a
+ * half-weighed document hard-fails at allocation; this menu's job is to make that
+ * state hard to reach, not to be the guard
+ * (plans/purchasing/05-receiving-cost-and-corrections.md §5.3).
  */
 function LineRowMenu({
   taxable,
@@ -1147,11 +1213,13 @@ function LineRowMenu({
   showTaxable = true,
   showMatchKey = false,
   showGlAccount = false,
+  showWeight = false,
   hasDescription,
   hasCategory,
   hasPhotos,
   hasMatchKey = false,
   hasGlAccount = false,
+  hasWeight = false,
   onEditDescription,
   onSetCategory,
   onOpenPhotos,
@@ -1159,6 +1227,7 @@ function LineRowMenu({
   onToggleOptional,
   onSetMatchKey,
   onSetGlAccount,
+  onSetWeight,
   onDelete,
 }: {
   taxable: boolean
@@ -1175,11 +1244,21 @@ function LineRowMenu({
   showMatchKey?: boolean
   /** `schema.attrs.glAccount !== null`. */
   showGlAccount?: boolean
+  /** `schema.attrs.weight !== null` — a purchase order line's allocation basis. */
+  showWeight?: boolean
   hasDescription: boolean
   hasCategory: boolean
   hasPhotos: boolean
   hasMatchKey?: boolean
   hasGlAccount?: boolean
+  /**
+   * Whether THIS row already carries a weight — the item's label only.
+   *
+   * ⚠️ Not what decides the standing control: that is `weightRevealed`, which is
+   * true for every line as soon as ANY line of the document has one. See the
+   * deviation note above.
+   */
+  hasWeight?: boolean
   onEditDescription: () => void
   onSetCategory: () => void
   /** `undefined` hides the images item (draft rows, missing registry field). */
@@ -1188,6 +1267,7 @@ function LineRowMenu({
   onToggleOptional: (next: boolean) => void
   onSetMatchKey?: () => void
   onSetGlAccount?: () => void
+  onSetWeight?: () => void
   onDelete: () => void
 }) {
   return (
@@ -1257,6 +1337,15 @@ function LineRowMenu({
             <MenuShortcut keys={['⇧', 'G']} />
           </DropdownMenuItem>
         )}
+        {/* No shortcut, and the omission is deliberate: `Mod+Shift+W` closes the
+            window in Chrome, Firefox AND Safari, so there is no letter left for
+            "weight" that is safe to take (see use-line-hotkeys.ts). */}
+        {showWeight && onSetWeight && (
+          <DropdownMenuItem onSelect={onSetWeight}>
+            <Weight />
+            {hasWeight ? 'Change weight' : 'Set weight'}
+          </DropdownMenuItem>
+        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem variant='destructive' onSelect={onDelete}>
           <Trash2 />
@@ -1319,11 +1408,16 @@ function LinePartCellView({
   currencyCode,
   glAccountAttribute,
   glAccount,
+  weightAttribute,
+  weight,
+  weightRevealed = false,
   readOnly,
   onPickPart,
   onCommitDescription,
   onPickMatchKey,
   onCommitGlAccount,
+  onCommitWeight,
+  onRevealWeight,
   onDelete,
 }: {
   /** `purchase_order_line_part` / `vendor_bill_line_part`, from the schema. */
@@ -1340,11 +1434,34 @@ function LinePartCellView({
   /** `schema.attrs.glAccount` — `null` on a line with no GL account. */
   glAccountAttribute: string | null
   glAccount: string | null
+  /** `schema.attrs.weight` — `null` on every document but the purchase order. */
+  weightAttribute: string | null
+  weight: number | null
+  /**
+   * Whether the weight cell is a STANDING control on this row.
+   *
+   * 🛑 Document-level, resolved once by `LineBuilder`: true as soon as any line of
+   * the document carries a weight, or as soon as anybody opens the weight editor
+   * from any row's menu. Deliberately not `weight !== null` — see the deviation
+   * note on {@link LineRowMenu} for why a per-row weight is a broken allocation.
+   */
+  weightRevealed?: boolean
   readOnly: boolean
   onPickPart: (recordId: RecordId | null) => void
   onCommitDescription: (value: string | null) => void
   onPickMatchKey: (recordId: RecordId | null) => void
   onCommitGlAccount: (value: string | null) => void
+  onCommitWeight: (value: number | null) => void
+  /**
+   * Tell the document that it allocates by weight — fired when this row's menu
+   * OPENS the weight editor, before anything is typed.
+   *
+   * 🛑 This is the deviation, made concrete. Choosing "Set weight" on one line is
+   * a statement about the whole document, so the cell appears on every sibling in
+   * the same frame — including the blank ones, which is the point: a person who
+   * weighs three lines of five can SEE the two they have not weighed.
+   */
+  onRevealWeight: () => void
   /** Delete this line (real record or draft). */
   onDelete: () => void
 }) {
@@ -1358,20 +1475,28 @@ function LinePartCellView({
    * match key has none — its picker writes through on select.
    */
   const [edit, setEdit] = useState<
-    { field: 'description' | 'glAccount'; value: string } | { field: 'matchKey' } | null
+    { field: 'description' | 'glAccount' | 'weight'; value: string } | { field: 'matchKey' } | null
   >(null)
 
   // The match key is only editable where the consumer supplied an editor for it;
   // see MatchKeyEditorRenderer for why this is a render prop and not an import.
   const showMatchKey = !!matchKeyAttribute && !!renderMatchKeyEditor && !readOnly
   const showGlAccount = !!glAccountAttribute && !readOnly
+  const showWeight = !!weightAttribute && !readOnly
 
   const confirmText = () => {
     if (!edit || edit.field === 'matchKey') return
-    const trimmed = edit.value.trim() || null
+    const trimmed = edit.value.trim()
     setEdit(null)
-    if (edit.field === 'description') onCommitDescription(trimmed)
-    else onCommitGlAccount(trimmed)
+    if (edit.field === 'description') return onCommitDescription(trimmed || null)
+    if (edit.field === 'glAccount') return onCommitGlAccount(trimmed || null)
+    // Weight: empty CLEARS (a person removing a weight has to be able to), but
+    // unparseable or negative text writes nothing at all rather than clearing.
+    // Silently turning a typo into "this line has no weight" is the shape that
+    // produces the partial weight set §5.3 exists to prevent.
+    if (trimmed === '') return onCommitWeight(null)
+    const parsed = Number(trimmed)
+    if (Number.isFinite(parsed) && parsed >= 0) onCommitWeight(parsed)
   }
 
   // Row-action shortcuts (use-line-hotkeys.ts) arrive as CustomEvents on the
@@ -1476,6 +1601,43 @@ function LinePartCellView({
     )
   }
 
+  // Weight edit mode — a plain numeric input, matching the GL account's shape.
+  // `inputMode='decimal'` rather than `type='number'`: the spinner and the
+  // scroll-to-change behaviour of a number input are both hazards on a value the
+  // freight allocation divides by.
+  if (edit?.field === 'weight') {
+    return (
+      <div ref={rootRef} className='flex min-w-0 flex-1 items-center gap-1 py-1'>
+        <input
+          aria-label='Line weight'
+          inputMode='decimal'
+          value={edit.value}
+          onChange={(e) => setEdit({ field: 'weight', value: e.target.value })}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              confirmText()
+            }
+            if (e.key === 'Escape') setEdit(null)
+          }}
+          autoFocus
+          placeholder='Weight'
+          className='h-7 min-w-0 flex-1 rounded-sm border border-primary-200/60 bg-transparent px-2 text-sm tabular-nums outline-none'
+        />
+        <TreeRowButton persistent tooltipText='Save weight' onClick={confirmText}>
+          <Check />
+        </TreeRowButton>
+        <TreeRowButton
+          persistent
+          variant='destructive'
+          tooltipText='Cancel'
+          onClick={() => setEdit(null)}>
+          <X />
+        </TreeRowButton>
+      </div>
+    )
+  }
+
   // Match-key edit mode — the consumer's picker fills the cell, and writes
   // through on select rather than on a Save button, so there is nothing to
   // cancel: the ✓ only closes the slot.
@@ -1511,6 +1673,7 @@ function LinePartCellView({
           </SimpleTooltip>
         )}
         {glAccount && <GlAccountChip code={glAccount} />}
+        {weight !== null && <WeightChip weight={weight} />}
       </div>
     )
   }
@@ -1570,6 +1733,18 @@ function LinePartCellView({
         />
       )}
 
+      {/* 🛑 Gated on `weightRevealed`, NOT on `weight !== null` — the one place
+          this row deviates from the standing-control-once-set rule the chips
+          above follow. Once the document has any weight at all, every line shows
+          the cell INCLUDING the blank ones, because a blank line in a weighed
+          document is the thing a person needs to see. See {@link LineRowMenu}. */}
+      {showWeight && weightRevealed && (
+        <WeightChip
+          weight={weight}
+          onClick={() => setEdit({ field: 'weight', value: weight === null ? '' : String(weight) })}
+        />
+      )}
+
       {/* Always the cell's LAST flex child, so its slot is stable across the
           rest ↔ editor swaps. Category / taxable / images / optional are all off:
           a purchasing line carries none of those fields. */}
@@ -1581,11 +1756,13 @@ function LinePartCellView({
         showTaxable={false}
         showMatchKey={showMatchKey}
         showGlAccount={showGlAccount}
+        showWeight={showWeight}
         hasDescription={!!description}
         hasCategory={false}
         hasPhotos={false}
         hasMatchKey={!!matchKeyRecordId}
         hasGlAccount={!!glAccount}
+        hasWeight={weight !== null}
         onEditDescription={() => setEdit({ field: 'description', value: description ?? '' })}
         onSetCategory={() => {}}
         onToggleTaxable={() => {}}
@@ -1594,9 +1771,54 @@ function LinePartCellView({
         onSetGlAccount={
           showGlAccount ? () => setEdit({ field: 'glAccount', value: glAccount ?? '' }) : undefined
         }
+        onSetWeight={
+          showWeight
+            ? () => {
+                onRevealWeight()
+                setEdit({ field: 'weight', value: weight === null ? '' : String(weight) })
+              }
+            : undefined
+        }
         onDelete={onDelete}
       />
     </div>
+  )
+}
+
+/**
+ * The line's weight as a standing chip.
+ *
+ * ⚠️ Unlike {@link GlAccountChip} it renders when the value is ABSENT too, as a
+ * dash. That is not an oversight: the chip is shown document-wide once the
+ * document allocates by weight, and an unweighed line inside such a document is
+ * precisely the state a person has to be able to spot — `allocateCapitalisedCost`
+ * refuses a partial set, so a blank here is a document that will not allocate.
+ */
+function WeightChip({ weight, onClick }: { weight: number | null; onClick?: () => void }) {
+  const label = weight === null ? '—' : String(weight)
+  const content = (
+    <span className='flex shrink-0 items-center gap-0.5 rounded-sm bg-primary-100 px-1.5 py-0.5 text-[10px] text-muted-foreground leading-none tabular-nums dark:bg-primary-100/60'>
+      <Weight className='size-2.5' />
+      {label}
+    </span>
+  )
+  if (!onClick) return <SimpleTooltip content='Line weight'>{content}</SimpleTooltip>
+  return (
+    <SimpleTooltip
+      content={
+        weight === null
+          ? 'No weight on this line — freight cannot be allocated by weight until every line has one'
+          : 'Line weight — click to change'
+      }>
+      <button
+        type='button'
+        tabIndex={-1}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={onClick}
+        className='shrink-0 rounded-sm hover:brightness-95'>
+        {content}
+      </button>
+    </SimpleTooltip>
   )
 }
 
@@ -1651,6 +1873,64 @@ function usePartUnit(partRecordId: RecordId | null): LineItemUnit {
 
 const PART_UNIT_ATTRS = ['part_unit'] as const
 
+/**
+ * A ref that always holds the value from the latest render.
+ *
+ * Exists for exactly one job: the vendor-part prefill is asynchronous, and the
+ * question it has to answer on completion — *is the price cell still empty?* —
+ * must be asked about the row as it is NOW, not as it was when the part was
+ * picked. A captured closure would answer with a value that is a round trip old.
+ */
+function useLatestRef<T>(value: T): { current: T } {
+  const ref = useRef(value)
+  ref.current = value
+  return ref
+}
+
+/**
+ * Apply the vendor-part prefill for a part that was just picked
+ * (plans/purchasing/05-receiving-cost-and-corrections.md §5.2).
+ *
+ * Two writes with two different rules, and keeping them apart is the whole
+ * function:
+ *
+ * - **The link is written whenever the lookup ran.** It is provenance — which
+ *   supplier row this line's part corresponds to on this order — and it is
+ *   written even when there is no row (as `null`), because a link left over from
+ *   the previously picked part names a `vendor_part` for a different part.
+ * - **The price is written only into an EMPTY cell.** A price a person typed is
+ *   never overwritten, and the check is made against {@link useLatestRef} at
+ *   completion rather than at pick time, so a price typed while the lookup was in
+ *   flight wins over the prefill.
+ *
+ * 🛑 It runs once, on the pick. Nothing re-reads the supplier's price afterwards:
+ * `vendor_part_unit_price` moves, and `expected_unit_price` is the price the
+ * order froze. See `LineValues.vendorPartRecordId`.
+ */
+async function applyPartPrefill({
+  partRecordId,
+  resolve,
+  currentPriceRef,
+  apply,
+}: {
+  partRecordId: RecordId | null
+  resolve: PartPrefillResolver | undefined
+  currentPriceRef: { current: number | null }
+  apply: (patch: LinePatch) => void
+}): Promise<void> {
+  if (!resolve || !partRecordId) return
+  const prefill = await resolve(partRecordId)
+  // `null` means the lookup could not run at all — no vendor on the order, a
+  // document that does not prefill, a failed request. Writing a cleared link on
+  // that would erase provenance nobody asked to erase.
+  if (!prefill) return
+  const patch: LinePatch = { vendorPartRecordId: prefill.vendorPartRecordId }
+  if (prefill.unitPriceCents !== null && currentPriceRef.current === null) {
+    patch.unitPriceCents = prefill.unitPriceCents
+  }
+  apply(patch)
+}
+
 /** One sortable line row — a grid row whose leading slot is the drag grip. */
 export function LineRow({
   record,
@@ -1667,6 +1947,9 @@ export function LineRow({
   catalogLoading,
   matchScopeRecordId,
   renderMatchKeyEditor,
+  weightRevealed = false,
+  resolvePartPrefill,
+  onRevealWeight,
   onUpdateLine,
   deleteLine,
   onSelectGroup,
@@ -1688,6 +1971,10 @@ export function LineRow({
   /** Resolved from `schema.matchScopeAttr` by the builder; scopes the match picker. */
   matchScopeRecordId: RecordId | null
   renderMatchKeyEditor?: MatchKeyEditorRenderer
+  /** Document-level: any line carries a weight, or somebody opened the editor. */
+  weightRevealed?: boolean
+  resolvePartPrefill?: PartPrefillResolver
+  onRevealWeight: () => void
   onUpdateLine: (recordId: RecordId, patch: LinePatch) => void
   deleteLine: (lineId: string) => void
   onSelectGroup: (recordId: RecordId, group: CatalogGroup) => void
@@ -1698,6 +1985,8 @@ export function LineRow({
   const { values } = useSystemValues(recordId, lineAttributesFor(schema), { autoFetch: false })
   const line = lineValuesFromSystemValues(values, schema)
   const partUnit = usePartUnit(schema.capabilities.partPicker ? line.partRecordId : null)
+  // Read at prefill-completion time, never at pick time — see `applyPartPrefill`.
+  const priceRef = useLatestRef(line.unitPriceCents)
   // FILE is array-return (plan 37b §3) — the photos attribute reads back as an array
   // of `{ ref, caption?, internal? }` envelopes (or is absent/empty when there are
   // none). A document whose lines carry no photos field has no attribute to read.
@@ -1733,13 +2022,30 @@ export function LineRow({
               currencyCode={currencyCode}
               glAccountAttribute={schema.attrs.glAccount}
               glAccount={line.glAccount}
+              weightAttribute={schema.attrs.weight}
+              weight={line.weight}
+              weightRevealed={weightRevealed}
               readOnly={readOnly}
-              onPickPart={(partRecordId) => onUpdateLine(recordId, { partRecordId })}
+              // The part write and the prefill are two separate patches on
+              // purpose: the pick must land in this frame (it is what the person
+              // just did, and on a draft it is what materializes the row), while
+              // the supplier lookup is a round trip that may resolve to nothing.
+              onPickPart={(partRecordId) => {
+                onUpdateLine(recordId, { partRecordId })
+                void applyPartPrefill({
+                  partRecordId,
+                  resolve: resolvePartPrefill,
+                  currentPriceRef: priceRef,
+                  apply: (patch) => onUpdateLine(recordId, patch),
+                })
+              }}
               onCommitDescription={(description) => onUpdateLine(recordId, { description })}
               onPickMatchKey={(purchaseOrderLineRecordId) =>
                 onUpdateLine(recordId, { purchaseOrderLineRecordId })
               }
               onCommitGlAccount={(glAccount) => onUpdateLine(recordId, { glAccount })}
+              onCommitWeight={(weight) => onUpdateLine(recordId, { weight })}
+              onRevealWeight={onRevealWeight}
               onDelete={() => deleteLine(record.id)}
             />
           ) : (
@@ -1856,8 +2162,12 @@ export function DraftLineRow({
   catalogLoading,
   matchScopeRecordId,
   renderMatchKeyEditor,
+  weightRevealed = false,
+  resolvePartPrefill,
+  onRevealWeight,
   deleteDraft,
   createDraft,
+  applyPrefillPatch,
   onSelectGroup,
 }: {
   draft: DraftLine
@@ -1873,13 +2183,18 @@ export function DraftLineRow({
   catalogLoading: boolean
   matchScopeRecordId: RecordId | null
   renderMatchKeyEditor?: MatchKeyEditorRenderer
+  weightRevealed?: boolean
+  resolvePartPrefill?: PartPrefillResolver
+  onRevealWeight: () => void
   deleteDraft: (draftId: string) => void
   createDraft: (draftId: string, overrides?: LinePatch) => Promise<void>
+  applyPrefillPatch: (draftId: string, patch: LinePatch) => Promise<void>
   onSelectGroup: (draftId: string, group: CatalogGroup) => void
 }) {
   const schema = lineSchemaFor(documentType)
   const showOptional = schema.capabilities.optional
   const partUnit = usePartUnit(schema.capabilities.partPicker ? draft.partRecordId : null)
+  const priceRef = useLatestRef(draft.unitPriceCents)
 
   return (
     <LineGridRow
@@ -1899,13 +2214,30 @@ export function DraftLineRow({
             currencyCode={currencyCode}
             glAccountAttribute={schema.attrs.glAccount}
             glAccount={draft.glAccount}
+            weightAttribute={schema.attrs.weight}
+            weight={draft.weight}
+            weightRevealed={weightRevealed}
             readOnly={false}
             // On a PURCHASE ORDER the part IS the line's identity, so picking one
             // is what fires the draft's first `record.create` — carrying any
             // description already typed. On a bill it is not
             // (`capabilities.draftRequiresPart`), and any of these commits can
             // materialize the row. See LinePartCellView and `createDraft`.
-            onPickPart={(partRecordId) => void createDraft(draft.draftId, { partRecordId })}
+            //
+            // The create fires immediately, so the row still appears the instant
+            // the part is picked. The PREFILL is then sequenced after it rather
+            // than racing it: `applyPrefillPatch` needs a settled target, and a
+            // patch that lands mid-create used to either flicker a placeholder
+            // row or be silently dropped. See `applyPrefillPatch` for both.
+            onPickPart={(partRecordId) => {
+              const created = createDraft(draft.draftId, { partRecordId })
+              void applyPartPrefill({
+                partRecordId,
+                resolve: resolvePartPrefill,
+                currentPriceRef: priceRef,
+                apply: (patch) => void created.then(() => applyPrefillPatch(draft.draftId, patch)),
+              })
+            }}
             // Also routed through `createDraft`, which accumulates rather than
             // creating while a required part is still unset — every draft-state
             // write goes through `mutateDrafts`, never a direct mutation.
@@ -1914,6 +2246,8 @@ export function DraftLineRow({
               void createDraft(draft.draftId, { purchaseOrderLineRecordId })
             }
             onCommitGlAccount={(glAccount) => void createDraft(draft.draftId, { glAccount })}
+            onCommitWeight={(weight) => void createDraft(draft.draftId, { weight })}
+            onRevealWeight={onRevealWeight}
             onDelete={() => deleteDraft(draft.draftId)}
           />
         ) : (

@@ -2,13 +2,20 @@
 
 import { getCachedEntityDefId } from '@auxx/lib/cache'
 import { NotFoundError } from '@auxx/lib/errors'
-import { allocateLandedCost, DEFAULT_MATCH_TOLERANCE, matchBill } from '@auxx/lib/purchasing'
 import {
+  allocateLandedCost,
+  DEFAULT_MATCH_TOLERANCE,
+  findVendorPartForLine,
+  matchBill,
+} from '@auxx/lib/purchasing'
+import {
+  adjustStock,
   getLastReceiptCost,
   getPartReceiptHistory,
   listReceipts,
   receivePurchaseOrder,
   receiveStock,
+  reverseMovement,
   roundMinorUnits,
 } from '@auxx/lib/receiving'
 import { z } from 'zod'
@@ -22,17 +29,28 @@ const receiptQuantity = z.number().finite().positive()
 
 const allocationBasis = z.enum(['value', 'quantity', 'weight'])
 
+/**
+ * One line of a purchase-order receipt: which line arrived, and how many.
+ *
+ * No price, deliberately. The agreed price is already frozen on the
+ * `purchase_order_line` and `receivePurchaseOrder` reads it there, so there is
+ * nothing for a line to state about what the goods cost.
+ */
 const purchaseOrderLine = z.object({
   partId: z.string().min(1),
   purchaseOrderLineId: z.string().min(1),
   quantity: receiptQuantity,
-  /** Agreed buy price per unit, BEFORE header freight/tax is spread onto it. */
-  unitPrice: minorUnits,
   vendorPartId: z.string().min(1).optional(),
-  /** Shipping weight for the whole line. Read only by the `weight` basis. */
-  weight: z.number().finite().nonnegative().optional(),
 })
 
+/**
+ * A purchase order's stated freight, tax and discount, plus how to spread them.
+ *
+ * These are ORDER-level amounts and they no longer reach the receiving path —
+ * see `receivePurchaseOrder` below. The only procedure that still takes them is
+ * `previewLandedCost`, which is pure arithmetic over a set of lines a caller
+ * hands it and writes nothing.
+ */
 const purchaseOrderHeader = {
   shipping: minorUnits.optional(),
   tax: minorUnits.optional(),
@@ -82,7 +100,7 @@ async function requireDefId(organizationId: string, entityType: string): Promise
  *
  * | procedure                          | gate                                  |
  * | ---------------------------------- | ------------------------------------- |
- * | `receiveStock`, `receivePurchaseOrder` | edit on `stock_movement`          |
+ * | `receiveStock`, `receivePurchaseOrder`, `adjustStock`, `reverseMovement` | edit on `stock_movement` |
  * | `listReceipts`, `partReceiptHistory`, `lastReceiptCost` | view on `stock_movement` |
  * | `previewLandedCost`                | edit on `stock_movement`              |
  * | `previewMatch`                     | edit on `vendor_bill`                 |
@@ -99,11 +117,21 @@ async function requireDefId(organizationId: string, entityType: string): Promise
  */
 export const purchasingRouter = createTRPCRouter({
   /**
-   * Receive one line: this many of this part arrived, at this price.
+   * Receive one line against a bare part: this many arrived, at this price.
    *
-   * `unitCost` supplied here WINS over anything derivable from the `vendor_part`
-   * row — the vendor's actual invoice beats the standing terms. Leave it out to
-   * let the supplier row price the receipt.
+   * The no-purchase-order door. There is no agreed price anywhere in the system
+   * for a receipt with no `purchase_order_line`, so `vendorUnitPrice` is the one
+   * number the browser is entitled to state — and it states the BASE price off
+   * the packing slip, not the cost. The server reads the `vendor_part` row for
+   * the freight, tariff and other adders and derives the landed cost itself.
+   *
+   * 🛑 **There is no `unitCost` on this input, and there must never be one.**
+   * The cost frozen onto a movement is a fact the server holds; a client that
+   * could assert it could value inventory at any number it liked, and because
+   * every field on `stock_movement` is `updatable: false` the wrong figure would
+   * be frozen forever with nothing thrown. Dropping it from this schema is what
+   * makes that a fact rather than a convention
+   * (plans/purchasing/05-receiving-cost-and-corrections.md section 4.1).
    */
   receiveStock: capabilityProcedure
     .input(
@@ -111,10 +139,14 @@ export const purchasingRouter = createTRPCRouter({
         partId: z.string().min(1),
         quantity: receiptQuantity,
         vendorPartId: z.string().min(1).optional(),
-        /** Raw supplier price per unit, frozen as provenance for the three-way match. */
+        /**
+         * The BASE supplier price per unit, before the landed adders.
+         *
+         * Frozen on the movement as provenance for the three-way match as well,
+         * which is why it is one field and not two: the number the vendor
+         * invoiced is the number the landed cost is built on.
+         */
         vendorUnitPrice: minorUnits.optional(),
-        /** Landed cost per unit. */
-        unitCost: minorUnits.optional(),
         /** The ACCOUNTING date, which is not `createdAt`. Defaults to now. */
         occurredAt: z.coerce.date().optional(),
         reference: z.string().max(255).optional(),
@@ -133,17 +165,28 @@ export const purchasingRouter = createTRPCRouter({
     }),
 
   /**
-   * Receive a multi-line purchase order, spreading the header freight/tax/discount
-   * across the lines and freezing the resulting landed cost on each movement.
+   * Receive a multi-line purchase order: which lines arrived, and how many of
+   * each.
    *
-   * Every line must name a `purchase_order_line`: a movement carrying a share of a
-   * freight bill with no link back to the shipment cannot be audited later.
+   * Every line must name a `purchase_order_line`, which is both the link the
+   * roll-up and the three-way match need and — since the price left the wire —
+   * the only way the server can find out what the line cost. `receivePurchaseOrder`
+   * reads `purchase_order_line_expected_unit_price` per line and freezes that as
+   * the movement's cost; a price on the wire would be ignored, so there is none.
+   *
+   * 🛑 **Nothing is allocated here.** The header freight, tax and discount used
+   * to be spread across whatever was on this receipt. They are ORDER-level
+   * amounts and a receipt is a SHIPMENT-level event, so allocating them at every
+   * delivery capitalised the same freight once per delivery — $120.00 into
+   * inventory against a $40.00 freight charge on PO-0001. The double-count
+   * disappears by construction now that nothing allocates here; landed cost moves
+   * to the bill, which is the document that actually states what the freight was
+   * (plans/purchasing/05-receiving-cost-and-corrections.md sections 3.2 and 4.2).
    */
   receivePurchaseOrder: capabilityProcedure
     .input(
       z.object({
         lines: z.array(purchaseOrderLine).min(1).max(200),
-        ...purchaseOrderHeader,
         occurredAt: z.coerce.date().optional(),
         reference: z.string().max(255).optional(),
         reason: z.string().max(2000).optional(),
@@ -155,6 +198,114 @@ export const purchasingRouter = createTRPCRouter({
       ctx.capabilities.assertEditEntity(movementDefId)
 
       const result = await receivePurchaseOrder(ctx.db, organizationId, userId, input)
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /**
+   * Correct a part's on-hand count by a signed delta.
+   *
+   * The THIRD movement door, and until now the only one that wrote a
+   * `stock_movement` through the generic `record.create` — which meant it
+   * bypassed the zero-cost guard entirely and could add stock valued at nothing
+   * (plans/purchasing/05-receiving-cost-and-corrections.md section 1.5).
+   *
+   * 🛑 **`unitCost` is required when `quantity` is positive and ignored when it
+   * is negative**, and unlike `receiveStock` the browser IS entitled to state it.
+   * There is no other authority: an adjustment has no supplier row, no purchase
+   * order and no packing slip, so the person keying the count is the only source
+   * for what the added units are worth. `adjustStock` still applies the real
+   * guard — a positive adjustment that does not round to a positive cost is
+   * refused there, and nothing is written.
+   */
+  adjustStock: capabilityProcedure
+    .input(
+      z.object({
+        partId: z.string().min(1),
+        /** The signed delta. Positive adds stock, negative removes it; zero is refused. */
+        quantity: z.number().finite(),
+        /** What one ADDED unit is worth, minor units. Required on a positive delta. */
+        unitCost: minorUnits.optional(),
+        /** The ACCOUNTING date, which is not `createdAt`. Defaults to now. */
+        occurredAt: z.coerce.date().optional(),
+        reason: z.string().max(2000).optional(),
+        reference: z.string().max(255).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
+      const movementDefId = await requireDefId(organizationId, 'stock_movement')
+      ctx.capabilities.assertEditEntity(movementDefId)
+
+      const result = await adjustStock(ctx.db, organizationId, userId, input)
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /**
+   * Undo a movement by writing its negation — the correction path that did not exist.
+   *
+   * Not an edit and not a delete. Every field on `stock_movement` is
+   * `updatable: false` on purpose, because a cost frozen onto a movement can only
+   * be trusted years later if nothing can rewrite it, so a correction is a second
+   * row that cancels the first (section 5.1).
+   *
+   * 🛑 **The reversal carries the ORIGINAL's frozen `unitCost`, never today's
+   * price.** Re-pricing a correction is the costing bug this whole subsystem
+   * exists to avoid. It also copies the original's `purchaseOrderLine`, which is
+   * what lets `quantity_received` roll back on its own — the roll-up re-SUMs every
+   * movement pointing at the line and has no opinion about sign.
+   *
+   * A movement carrying no cost cannot be reversed: the negation would be the
+   * zero-cost row `receiveStock` refuses to write in the first place.
+   */
+  reverseMovement: capabilityProcedure
+    .input(
+      z.object({
+        movementId: z.string().min(1),
+        /** Why it is being undone. Stamped on the reversing row, not the original. */
+        reason: z.string().max(2000).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
+      const movementDefId = await requireDefId(organizationId, 'stock_movement')
+      ctx.capabilities.assertEditEntity(movementDefId)
+
+      const result = await reverseMovement(ctx.db, organizationId, userId, input)
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /**
+   * The one `vendor_part` row for a `(part, supplier)` pair — the PO line price prefill.
+   *
+   * Unambiguous by construction: `vendor_part_part` and `vendor_part_contact` are legs
+   * 1 and 2 of an enforced natural key, so this resolves to at most one row and needs no
+   * ambiguity handling.
+   *
+   * 🛑 `null` means this supplier has no catalogue entry for this part. That is NOT an
+   * error and must NEVER fall back to the preferred vendor: `is_preferred` answers
+   * "replacement cost for the part regardless of supplier", and using it here would put
+   * a different supplier's price on this supplier's order.
+   *
+   * What comes back is a PREFILL. The price is frozen onto the line at order time and
+   * nothing re-reads it through the link afterwards — `vendor_part_unit_price` is
+   * mutable, `expected_unit_price` is the agreed number (section 5.2).
+   */
+  vendorPartForLine: capabilityProcedure
+    .input(
+      z.object({
+        partInstanceId: z.string().min(1),
+        vendorInstanceId: z.string().min(1),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      const vendorPartDefId = await requireDefId(organizationId, 'vendor_part')
+      ctx.capabilities.assertViewEntity(vendorPartDefId)
+
+      const result = await findVendorPartForLine(ctx.db, organizationId, input)
       if (result.isErr()) throw result.error
       return result.value
     }),

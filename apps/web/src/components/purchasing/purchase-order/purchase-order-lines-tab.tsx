@@ -23,13 +23,17 @@
 // accumulates on the draft instead of firing a create the server must reject.
 // That guard lives in `createDraft`, so it holds for any cell added later.
 
+import { parseRecordId } from '@auxx/lib/resources/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { cn } from '@auxx/ui/lib/utils'
+import { useCallback } from 'react'
 import type { DetailViewTabProps } from '~/components/detail-view'
 import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
 import { DocumentSectionActions } from '~/components/money/ui/document-actions-cluster'
 import { LineBuilder } from '~/components/money/ui/line-builder/line-builder'
+import type { PartPrefillLookup } from '~/components/money/ui/line-builder/line-rows'
 import { useSystemValues } from '~/components/resources/hooks'
+import { api } from '~/trpc/react'
 
 const PO_STATUS_ATTRS = ['purchase_order_status'] as const
 
@@ -62,6 +66,39 @@ export function PurchaseOrderLinesTab({ recordId, variant = 'tab' }: DetailViewT
   // treatment to avoid fighting the outer page.
   const isSection = variant === 'section'
 
+  const utils = api.useUtils()
+
+  // Picking a part prefills the agreed price from what THIS order's vendor charges
+  // (plans/purchasing/05-receiving-cost-and-corrections.md 5.2).
+  //
+  // Supplied as a prop rather than called from inside `LineBuilder` because that
+  // module is document-agnostic and only a purchase order prefills — see
+  // `PartPrefillLookup`.
+  //
+  // The two failure shapes are NOT the same and the builder treats them
+  // differently. A successful lookup that finds no row returns a CLEARED link:
+  // the line may still carry a `vendor_part` naming the PREVIOUSLY picked part's
+  // supplier row, and leaving that in place would attach provenance to a price
+  // it did not produce. A thrown lookup returns `null`, which changes nothing —
+  // a network failure is not evidence that no catalogue entry exists.
+  const resolvePartPrefill = useCallback<PartPrefillLookup>(
+    async ({ partRecordId, vendorRecordId }) => {
+      try {
+        const found = await utils.purchasing.vendorPartForLine.fetch({
+          partInstanceId: parseRecordId(partRecordId).entityInstanceId,
+          vendorInstanceId: parseRecordId(vendorRecordId).entityInstanceId,
+        })
+        return {
+          vendorPartRecordId: found?.vendorPartRecordId ?? null,
+          unitPriceCents: found?.unitPrice ?? null,
+        }
+      } catch {
+        return null
+      }
+    },
+    [utils]
+  )
+
   return (
     <div className={cn('flex flex-col', isSection ? '' : 'h-full min-h-0')}>
       {badge && (
@@ -75,7 +112,11 @@ export function PurchaseOrderLinesTab({ recordId, variant = 'tab' }: DetailViewT
       )}
 
       <div className={cn(isSection ? 'max-h-[60vh] overflow-auto ps-3 pe-3' : 'min-h-0 flex-1')}>
-        <LineBuilder documentRecordId={recordId} documentType='purchase_order' />
+        <LineBuilder
+          documentRecordId={recordId}
+          documentType='purchase_order'
+          resolvePartPrefill={resolvePartPrefill}
+        />
       </div>
     </div>
   )

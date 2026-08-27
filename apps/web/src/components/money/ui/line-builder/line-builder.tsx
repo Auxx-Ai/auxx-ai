@@ -106,6 +106,7 @@ import { useFieldValueSyncer } from '~/components/resources/hooks/use-field-valu
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import { useSeedCreatedRecord } from '~/components/resources/hooks/use-seed-created-record'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
+import { useSystemValuesForRecords } from '~/components/resources/hooks/use-system-values-for-records'
 import { useResourceStore } from '~/components/resources/store/resource-store'
 import { useSettings } from '~/hooks/use-settings'
 import { api } from '~/trpc/react'
@@ -118,6 +119,8 @@ import {
   LINE_COLS,
   LineRow,
   type MatchKeyEditorRenderer,
+  type PartPrefillLookup,
+  type PartPrefillResolver,
   relKeyForDocumentType,
 } from './line-rows'
 import {
@@ -131,6 +134,7 @@ import {
   lineAttributesFor,
   linePatchToFieldValues,
   lineSchemaFor,
+  numberOrNull,
 } from './line-values'
 import { TotalsFooter } from './totals-footer'
 import { useLineHotkeys } from './use-line-hotkeys'
@@ -161,6 +165,17 @@ export interface LineBuilderProps {
    * so `money` never depends on `purchasing`; see {@link MatchKeyEditorRenderer}.
    */
   renderMatchKeyEditor?: MatchKeyEditorRenderer
+  /**
+   * Look up the supplier's price for a part just picked on a line
+   * (plans/purchasing/05-receiving-cost-and-corrections.md §5.2).
+   *
+   * Only ever called on a document whose schema names a {@link LineSchema.vendorAttr}
+   * AND whose parent record actually carries a vendor — so a purchase order with
+   * no supplier yet simply never prefills, rather than the resolver having to
+   * decide that for itself. Absent → picking a part writes the part and nothing
+   * else, which is the behaviour every document had before this existed.
+   */
+  resolvePartPrefill?: PartPrefillLookup
 }
 
 const INITIAL_DRAFT_COUNT = 3
@@ -191,6 +206,7 @@ export function LineBuilder({
   visitId,
   className,
   renderMatchKeyEditor,
+  resolvePartPrefill,
 }: LineBuilderProps) {
   const docRecordId = documentRecordId as RecordId
   // Everything document-shaped is one lookup. See the warning on `LINE_SCHEMAS`.
@@ -261,6 +277,25 @@ export function LineBuilder({
     ? (extractRelationshipRecordIds(matchScopeValues[schema.matchScopeAttr])[0] ?? null)
     : null
 
+  /**
+   * The supplier this document is placed with (`schema.vendorAttr`), read once
+   * per builder for the same reason {@link matchScopeRecordId} is: the answer is
+   * identical for every row, and the price prefill needs it on every part pick.
+   *
+   * `null` on a purchase order with no vendor yet, which is a legitimate state —
+   * a person can start typing lines before deciding who to buy from. The prefill
+   * simply does not run, exactly as it does not for a part the supplier has no
+   * catalogue entry for.
+   */
+  const { values: vendorValues } = useSystemValues(
+    docRecordId,
+    schema.vendorAttr ? [schema.vendorAttr] : [],
+    { autoFetch: !!schema.vendorAttr, enabled: !!schema.vendorAttr }
+  )
+  const vendorRecordId = schema.vendorAttr
+    ? (extractRelationshipRecordIds(vendorValues[schema.vendorAttr])[0] ?? null)
+    : null
+
   const taxRates = useMemo(
     () =>
       ((getSetting('documents.taxRates') as TaxRatePreset[] | null) ?? []).filter(
@@ -275,6 +310,9 @@ export function LineBuilder({
   // a keyboard-driven or button-driven "add row" lands the caret ready to type.
   const [lastAddedDraftId, setLastAddedDraftId] = useState<string | null>(null)
   const draftsRef = useRef<DraftLine[]>([])
+  // draftId -> the record its create produced. Kept because a prefill that
+  // resolves on its own clock needs a target after the draft is gone.
+  const draftRecordIdsRef = useRef<Map<string, RecordId>>(new Map())
   /**
    * Single draft-state writer: applies the update to `draftsRef` synchronously
    * and mirrors the result into state, so two writers in one tick can never
@@ -469,6 +507,57 @@ export function LineBuilder({
     enabled: lineRecordIds.length > 0 && lineFieldIds.length > 0,
   })
 
+  /**
+   * The consumer's vendor-part lookup with this document's vendor bound in — or
+   * `undefined`, which is what every row reads as "picking a part writes the part
+   * and nothing else".
+   *
+   * Binding here rather than passing both halves down is what keeps the "no
+   * vendor ⇒ no prefill" rule in ONE place instead of in every row's pick handler.
+   */
+  const boundResolvePartPrefill = useMemo<PartPrefillResolver | undefined>(() => {
+    if (!resolvePartPrefill || !vendorRecordId) return undefined
+    return (partRecordId) => resolvePartPrefill({ partRecordId, vendorRecordId })
+  }, [resolvePartPrefill, vendorRecordId])
+
+  /**
+   * Whether the weight cell is showing on EVERY line of this document
+   * (plans/purchasing/05-receiving-cost-and-corrections.md §5.3).
+   *
+   * 🛑 The one line-level concept resolved at DOCUMENT level, and deliberately so.
+   * `allocateLandedCost` spreads freight by each line's share of the total weight,
+   * so a set where some lines are weighed and others are not is not partly
+   * configured — the weighed lines silently absorb all of the freight. A per-row
+   * reveal (which is how the match key and the GL account behave) would make that
+   * the likely state, so instead: one line's menu declares it, and the cell
+   * appears on all of them, blanks included.
+   *
+   * Two sources, either of which is enough. `weightDeclared` is this session's
+   * intent — somebody opened the editor from a row menu, and the siblings must
+   * show their blanks immediately, before anything is saved. The store read is the
+   * persisted answer, so a reopened order that already has weights comes back
+   * revealed. Drafts are checked too: an unsaved row is part of the same set.
+   */
+  const weightAttr = schema.attrs.weight
+  const weightAttrs = useMemo(() => (weightAttr ? [weightAttr] : []), [weightAttr])
+  // A passive subscription over the keys the syncer above already queued — this
+  // is one shallow read across N lines, not N reads (see the hook's own note),
+  // and it is the only way the builder can see an answer that lives across rows.
+  const { valuesById: lineWeightValues } = useSystemValuesForRecords(lineRecordIds, weightAttrs, {
+    autoFetch: false,
+    enabled: !!weightAttr && lineRecordIds.length > 0,
+  })
+  const [weightDeclared, setWeightDeclared] = useState(false)
+  const revealWeight = useCallback(() => setWeightDeclared(true), [])
+  const weightRevealed = useMemo(() => {
+    if (!weightAttr) return false
+    if (weightDeclared) return true
+    if (visibleDrafts.some((draft) => draft.weight !== null)) return true
+    return lineRecordIds.some(
+      (recordId) => numberOrNull(lineWeightValues[recordId]?.[weightAttr]) !== null
+    )
+  }, [weightAttr, weightDeclared, visibleDrafts, lineRecordIds, lineWeightValues])
+
   // Mutations (stable fns destructured — the wrapper objects churn per render).
   const reorderLines = api.money.reorderLines.useMutation()
   const recomputeTotals = api.money.recomputeTotals.useMutation()
@@ -660,6 +749,13 @@ export function LineBuilder({
         set('purchaseOrderLineRecordId', snapshot.purchaseOrderLineRecordId)
       }
       if (snapshot.glAccount) set('glAccount', snapshot.glAccount)
+      // Both are purchase-order-only and dropped by `set` everywhere else. The
+      // vendor part is provenance stamped by the price prefill; the weight is the
+      // freight allocation's basis input. Sent on the create rather than as a
+      // follow-up write so a row picked-and-prefilled before it materializes
+      // lands complete in one round trip.
+      if (snapshot.vendorPartRecordId) set('vendorPartRecordId', snapshot.vendorPartRecordId)
+      if (snapshot.weight !== null) set('weight', snapshot.weight)
       return values
     },
     [schema, documentRecordId, visitId]
@@ -747,6 +843,7 @@ export function LineBuilder({
         }
 
         creatingDraftIdsRef.current.delete(draftId)
+        draftRecordIdsRef.current.set(draftId, result.recordId)
         mutateDrafts((prev) => prev.filter((d) => d.draftId !== draftId))
       } catch (error) {
         creatingDraftIdsRef.current.delete(draftId)
@@ -768,6 +865,50 @@ export function LineBuilder({
       seedCreatedRecord,
       appendCreated,
     ]
+  )
+
+  /**
+   * Land a patch that resolved on its OWN clock — the supplier price prefill
+   * (plans/purchasing/05-receiving-cost-and-corrections.md section 5.2).
+   *
+   * 🛑 Deliberately NOT `createDraft`, which was the first implementation and
+   * carried two defects, both of which need this function to stay separate:
+   *
+   * 1. `createDraft` opens with `initialDraftIdsRef.current.clear()`. A second
+   *    call arriving just after the first create dropped its draft can land in
+   *    the frame where the "never render zero rows" effect has re-seeded a
+   *    placeholder. Clearing the set orphans that placeholder from the cleanup
+   *    that would have removed it, and the row visibly flickers in and out.
+   * 2. A prefill patch carries no `partRecordId`, so it fails the
+   *    `draftRequiresPart` guard and accumulates onto a draft that no longer
+   *    exists — a silent no-op. Whenever the lookup finished after the create,
+   *    the price was simply dropped, with nothing thrown and nothing logged.
+   *
+   * The caller sequences this AFTER the create rather than racing it, so the
+   * common path is the record write below. The draft branch is the retry case:
+   * `createDraft` toasts and leaves the draft in place when the create fails,
+   * and the patch should survive to be carried by the next attempt.
+   */
+  const applyPrefillPatch = useCallback(
+    async (draftId: string, patch: LinePatch) => {
+      const recordId = draftRecordIdsRef.current.get(draftId)
+      if (!recordId) {
+        mutateDrafts((prev) => prev.map((d) => (d.draftId === draftId ? { ...d, ...patch } : d)))
+        return
+      }
+      const changed = linePatchToFieldValues(patch, schema)
+      if (changed.length === 0) return
+      try {
+        await saveMultipleAsync(recordId, changed)
+      } catch (error) {
+        toastError({
+          title: 'Error applying the supplier price',
+          description:
+            error instanceof Error ? error.message : 'Could not apply the supplier price',
+        })
+      }
+    },
+    [mutateDrafts, saveMultipleAsync, schema]
   )
 
   /**
@@ -1201,6 +1342,9 @@ export function LineBuilder({
                       catalogLoading={catalogLoading}
                       matchScopeRecordId={matchScopeRecordId}
                       renderMatchKeyEditor={renderMatchKeyEditor}
+                      weightRevealed={weightRevealed}
+                      resolvePartPrefill={boundResolvePartPrefill}
+                      onRevealWeight={revealWeight}
                       onUpdateLine={updateLine}
                       deleteLine={deleteLine}
                       onSelectGroup={handleGroupPick}
@@ -1220,8 +1364,12 @@ export function LineBuilder({
                       catalogLoading={catalogLoading}
                       matchScopeRecordId={matchScopeRecordId}
                       renderMatchKeyEditor={renderMatchKeyEditor}
+                      weightRevealed={weightRevealed}
+                      resolvePartPrefill={boundResolvePartPrefill}
+                      onRevealWeight={revealWeight}
                       deleteDraft={deleteDraft}
                       createDraft={createDraft}
+                      applyPrefillPatch={applyPrefillPatch}
                       onSelectGroup={handleGroupPickDraft}
                     />
                   )

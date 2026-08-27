@@ -31,3 +31,5 @@ export type {
   MatchResult,
   MatchTolerance,
 } from './types'
+export type { VendorPartLookupParams, VendorPartPrefill } from './vendor-part-lookup'
+export { findVendorPartForLine } from './vendor-part-lookup'

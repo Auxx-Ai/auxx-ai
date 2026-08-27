@@ -19,17 +19,20 @@ import {
   TableHeader,
   TableRow,
 } from '@auxx/ui/components/table'
+import { toastError } from '@auxx/ui/components/toast'
 import { formatRelativeTime } from '@auxx/utils'
 import { formatCurrency } from '@auxx/utils/currency'
-import { Package, PackagePlus } from 'lucide-react'
+import { Package, PackagePlus, Undo2 } from 'lucide-react'
 import { useMemo } from 'react'
 import { ReceiveStockPopover } from '~/components/manufacturing/parts/receive-stock-popover'
 import { StockAdjustmentPopover } from '~/components/manufacturing/parts/stock-adjustment-popover'
 import { toRecordId, useRecordList, useResourceProperty } from '~/components/resources'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { useFieldValueStore } from '~/components/resources/store/field-value-store'
+import { useConfirm } from '~/hooks/use-confirm'
 import { useSettings } from '~/hooks/use-settings'
 import { useAccess } from '~/providers/capabilities-provider'
+import { api } from '~/trpc/react'
 import type { DrawerTabProps } from '../drawer-tab-registry'
 
 /** Map movement type values to badge color variants */
@@ -68,6 +71,11 @@ const MOVEMENT_ATTRIBUTES = [
   // arrived, which is not when somebody got round to keying them.
   'stock_movement_unit_cost',
   'stock_movement_occurred_at',
+  // The two halves of the reversal link (entity migration 108). A row that already
+  // has a reversal must not get a second one, and a row that IS a reversal is not
+  // itself reversible — the correction for a bad correction is a fresh movement.
+  'stock_movement_reverses_movement',
+  'stock_movement_reversed_by_movements',
 ] as const
 
 /** Inventory tab for the part detail view */
@@ -199,6 +207,7 @@ export function PartInventoryTab({ recordId }: DrawerTabProps) {
                   <TableHead className='text-right'>Unit cost</TableHead>
                   <TableHead>Reason</TableHead>
                   <TableHead className='text-right'>Date</TableHead>
+                  <TableHead className='w-10' />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -208,6 +217,8 @@ export function PartInventoryTab({ recordId }: DrawerTabProps) {
                     recordId={toRecordId(stockMovementDefId!, record.id)}
                     createdAt={record.createdAt}
                     currencyCode={currencyCode}
+                    canReverse={canAdjustStock}
+                    onReversed={handleAdjustSuccess}
                   />
                 ))}
               </TableBody>
@@ -225,11 +236,21 @@ function MovementRow({
   recordId,
   createdAt,
   currencyCode,
+  canReverse,
+  onReversed,
 }: {
   recordId: RecordId
   createdAt?: string | Date
   currencyCode: string
+  canReverse: boolean
+  onReversed: () => void
 }) {
+  const [confirm, ConfirmDialog] = useConfirm()
+  const reverseMovement = api.purchasing.reverseMovement.useMutation({
+    onError: (error) => {
+      toastError({ title: 'Could not reverse movement', description: error.message })
+    },
+  })
   const { values } = useSystemValues(recordId, MOVEMENT_ATTRIBUTES, { autoFetch: true })
 
   const type = values.stock_movement_type as string | undefined
@@ -241,6 +262,30 @@ function MovementRow({
   // COALESCE(occurredAt, createdAt) — an adjustment carries no accounting date, so
   // it falls back to when it was written. A receipt has one and it is the truth.
   const shownAt = occurredAt ?? createdAt
+
+  // A movement with no frozen cost cannot be reversed: the negation would be the
+  // zero-cost row `receiveStock` refuses to write in the first place. A row that
+  // already has a reversal, or that IS one, is equally out — the server enforces
+  // all three, this only keeps the menu honest.
+  const alreadyReversed =
+    ((values.stock_movement_reversed_by_movements as unknown[]) ?? []).length > 0
+  const isReversal = values.stock_movement_reverses_movement != null
+  const canReverseThis = canReverse && unitCost != null && !alreadyReversed && !isReversal
+
+  const handleReverse = async () => {
+    const confirmed = await confirm({
+      title: 'Reverse this movement?',
+      description:
+        'A cancelling movement is written at the original frozen cost. The original stays in the ledger.',
+      confirmText: 'Reverse',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
+    if (!confirmed) return
+    const { entityInstanceId } = parseRecordId(recordId)
+    await reverseMovement.mutateAsync({ movementId: entityInstanceId })
+    onReversed()
+  }
 
   const isPositive = quantity != null && quantity > 0
   const label = type ? (TYPE_LABEL_MAP[type] ?? type) : '—'
@@ -271,6 +316,19 @@ function MovementRow({
         <span className='text-xs text-muted-foreground'>
           {shownAt ? formatRelativeTime(shownAt, true) : '—'}
         </span>
+      </TableCell>
+      <TableCell className='text-right'>
+        <ConfirmDialog />
+        {canReverseThis ? (
+          <Button
+            variant='ghost'
+            size='xs'
+            loading={reverseMovement.isPending}
+            onClick={handleReverse}
+            aria-label='Reverse this movement'>
+            <Undo2 />
+          </Button>
+        ) : null}
       </TableCell>
     </TableRow>
   )

@@ -44,6 +44,7 @@ import {
   LINE_PAGE_SIZE,
   LINE_SORT,
   lineSchemaFor,
+  numberOrNull,
 } from '~/components/money/ui/line-builder/line-values'
 import { type RecordId, toRecordId, useRecordList, useResource } from '~/components/resources'
 import { useSystemValuesForRecords } from '~/components/resources/hooks/use-system-values-for-records'
@@ -62,6 +63,12 @@ const LINE_ATTRS = [
   // row rather than fetched separately so the dialog and the cards resolve one
   // line set — the dialog BUILDS A WRITE from these rows, so a second read that
   // could disagree is worse here than anywhere else.
+  //
+  // ✅ Both had NO WRITER at all until
+  // plans/purchasing/05-receiving-cost-and-corrections.md §5.2/§5.3: they were
+  // declared in the registry, read here, and set by no surface anywhere. The line
+  // builder writes them now — `vendorPart` from the price prefill on part pick,
+  // `weight` from the row menu's document-level weight control.
   'purchase_order_line_vendor_part',
   'purchase_order_line_weight',
 ] as const
@@ -79,10 +86,30 @@ export interface PurchaseOrderLineRow {
   billed: number
   /** Integer minor units — the agreed price, and the price arm of the match. */
   expectedUnitPrice: number
-  /** `null` unless the line was priced off a specific vendor part. */
+  /**
+   * The supplier catalogue entry this line's price was seeded from, or `null`.
+   *
+   * 🛑 PROVENANCE, not a price source. It is stamped once when the part is picked
+   * and the agreed price lives in {@link expectedUnitPrice} from then on —
+   * `vendor_part_unit_price` is `updatable: true`, so a caller that re-read the
+   * price through this link would stop reporting the price the order froze
+   * (plans/purchasing/05-receiving-cost-and-corrections.md §5.2).
+   */
   vendorPartRecordId: RecordId | null
-  /** Shipping weight for the whole line; read only by the `weight` basis. */
-  weight: number
+  /**
+   * Shipping weight for the whole line — the `weight` allocation basis's only
+   * input. `null` means nobody has recorded one.
+   *
+   * 🛑 `null`, never `0`, for an unrecorded weight. `numberValue` — which every
+   * other number on this row uses — folds absence into `0`, and that is right for
+   * a quantity or a price, where "none" and "zero" are the same fact. It is wrong
+   * here: `allocateLandedCost` spreads freight by each line's share of the total
+   * weight, so an unweighed line reported as `0` reads as a deliberate
+   * weighs-nothing. `allocateCapitalisedCost` rejects that shape either way (it
+   * treats zero as absent, for the same reason), but a caller that wants to WARN
+   * before it gets there needs the distinction this read preserves (§5.3).
+   */
+  weight: number | null
 }
 
 /**
@@ -156,7 +183,11 @@ export function usePurchaseOrderLines(purchaseOrderRecordId: RecordId | null): {
           expectedUnitPrice: numberValue(v.purchase_order_line_expected_unit_price),
           vendorPartRecordId:
             extractRelationshipRecordIds(v.purchase_order_line_vendor_part)[0] ?? null,
-          weight: numberValue(v.purchase_order_line_weight),
+          // 🛑 NOT `numberValue`, which folds absence into `0` — see the field's
+          // own note. Every other number on this row is a quantity or a price
+          // where "none" and "zero" mean the same thing; weight is the one where
+          // they do not.
+          weight: numberOrNull(v.purchase_order_line_weight),
         }
       }),
     [lineRecordIds, valuesById]
