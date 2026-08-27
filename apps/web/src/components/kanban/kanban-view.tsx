@@ -280,12 +280,14 @@ export function KanbanView<TData extends KanbanRow>({
     })
   }, [])
 
-  // Get options from the groupBy field - normalize value -> id
+  // Get the columns from the groupBy field's options
   const allColumns: KanbanSelectOption[] = useMemo(() => {
     const rawOptions: RawSelectOption[] = groupByField.options?.options ?? []
-    // Normalize: map 'value' to 'id' for consistent usage
+    // Narrow to the column shape. This drops `id`/`icon`/`avatarUrl`
+    // deliberately: `id` is never populated on a stored option, so nothing
+    // downstream should be able to reach for one.
     const normalizedOptions: KanbanSelectOption[] = rawOptions.map((o) => ({
-      id: o.value,
+      value: o.value,
       label: o.label,
       color: o.color,
       targetTimeInStatus: o.targetTimeInStatus,
@@ -298,10 +300,10 @@ export function KanbanView<TData extends KanbanRow>({
     // Use column order for ordering, but include ALL options
     // Options in columnOrder appear first (in that order), then any new options are appended
     const orderedColumns = config.columnOrder
-      .map((id) => normalizedOptions.find((o) => o.id === id))
+      .map((value) => normalizedOptions.find((o) => o.value === value))
       .filter(Boolean) as KanbanSelectOption[]
-    const orderedIds = new Set(config.columnOrder)
-    const unorderedColumns = normalizedOptions.filter((o) => !orderedIds.has(o.id))
+    const orderedValues = new Set(config.columnOrder)
+    const unorderedColumns = normalizedOptions.filter((o) => !orderedValues.has(o.value))
     return [...orderedColumns, ...unorderedColumns]
   }, [groupByField.options, config.columnOrder])
 
@@ -319,13 +321,13 @@ export function KanbanView<TData extends KanbanRow>({
   // Filter columns by visibility settings
   const columns = useMemo(() => {
     return allColumns.filter((col) => {
-      const settings = config.columnSettings?.[col.id]
+      const settings = config.columnSettings?.[col.value]
       return settings?.isVisible !== false
     })
   }, [allColumns, config.columnSettings])
 
   // Column IDs for sortable context
-  const columnIds = useMemo(() => [NO_STATUS_COLUMN_ID, ...columns.map((c) => c.id)], [columns])
+  const columnIds = useMemo(() => [NO_STATUS_COLUMN_ID, ...columns.map((c) => c.value)], [columns])
 
   // Group data by column
   const columnData = useMemo(() => {
@@ -334,7 +336,7 @@ export function KanbanView<TData extends KanbanRow>({
     // Initialize ALL columns (including hidden ones)
     // This ensures items keep their correct grouping even when column is hidden
     allColumns.forEach((col) => {
-      grouped[col.id] = []
+      grouped[col.value] = []
     })
 
     // Add "No Status" column for items without a value
@@ -375,7 +377,7 @@ export function KanbanView<TData extends KanbanRow>({
       const dragWidth = cardElement?.offsetWidth
 
       if (type === 'column') {
-        const column = columns.find((c) => c.id === active.id)
+        const column = columns.find((c) => c.value === active.id)
         if (column) {
           setActiveItem({ type: 'column', id: String(active.id), data: column })
         }
@@ -462,7 +464,7 @@ export function KanbanView<TData extends KanbanRow>({
         if (cardsToMove.length === 0) return
 
         // Show celebration once (not per card)
-        const targetColumn = columns.find((c) => c.id === targetColumnId)
+        const targetColumn = columns.find((c) => c.value === targetColumnId)
         if (targetColumn?.celebration) {
           showCelebrationConfetti()
         }
@@ -596,17 +598,17 @@ export function KanbanView<TData extends KanbanRow>({
               {/* Regular columns (sortable) - each subscribes to its own data via hooks */}
               {columns.map((column) => (
                 <KanbanColumn
-                  key={column.id}
-                  columnId={column.id}
+                  key={column.value}
+                  columnId={column.value}
                   resourceFieldId={resourceFieldId}
                   tableId={tableId}
-                  count={columnData[column.id]?.length ?? 0}
-                  isOver={overId === column.id}
-                  isSourceColumn={activeItem?.sourceColumnId === column.id}
+                  count={columnData[column.value]?.length ?? 0}
+                  isOver={overId === column.value}
+                  isSourceColumn={activeItem?.sourceColumnId === column.value}
                   isDraggingColumn={activeItem?.type === 'column'}
-                  onAddCard={onAddCard ? () => onAddCard(column.id) : undefined}
+                  onAddCard={onAddCard ? () => onAddCard(column.value) : undefined}
                   isSortable>
-                  {(columnData[column.id] ?? []).map((card) => (
+                  {(columnData[column.value] ?? []).map((card) => (
                     <KanbanCard
                       key={card.id}
                       id={card.id}
