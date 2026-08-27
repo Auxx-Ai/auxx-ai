@@ -882,6 +882,41 @@ export const recordRouter = createTRPCRouter({
     }),
 
   /**
+   * Of `recordIds`, which would `listFiltered` return for the same
+   * `filters` / `search`?
+   *
+   * Backs the records view's "the record you just created isn't shown here"
+   * notice. Deliberately NOT a field on `listFiltered`: threading a set of ids
+   * that changes on every create through that input would rewrite the infinite
+   * query's cache key each time and thrash a hot, heavily-cached path.
+   */
+  matchesFilters: capabilityProcedure
+    .input(
+      z.object({
+        entityDefinitionId: z.string(),
+        filters: z.array(conditionGroupSchema).optional(),
+        search: z.string().max(200).optional(),
+        /** Capped low on purpose — a UI affordance, not a bulk membership API. */
+        recordIds: z.array(z.string()).max(50),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const { organizationId, user } = ctx.session
+      await assertNotInstanceAccessDefForRead(organizationId, [input.entityDefinitionId])
+
+      const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
+        capabilities: ctx.capabilities,
+        requestPath: true,
+      })
+      return handler.matchesFilters({
+        entityDefinitionId: input.entityDefinitionId,
+        filters: input.filters,
+        search: input.search,
+        recordIds: input.recordIds,
+      })
+    }),
+
+  /**
    * List all records with field values (for small datasets like tags, inboxes)
    * Supports resolution of entityDefinitionId ('tag' → UUID) or apiSlug ('tags' → UUID)
    */

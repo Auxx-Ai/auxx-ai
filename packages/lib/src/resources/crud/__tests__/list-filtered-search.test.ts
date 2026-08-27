@@ -112,8 +112,17 @@ describe('queryEntityInstanceIdsPaged — free-text search', () => {
     await queryEntityInstanceIdsPaged({ ...base, db })
 
     expect(render(captured.wheres[0])).not.toContain('to_tsvector(')
-    // Ordering stays the bare deterministic tie-break.
-    expect(captured.orderBys[0]).toHaveLength(1)
+    // Ordering falls back to `createdAt DESC, id ASC` — newest first — NOT the
+    // bare `id ASC` it used to be: `id` is a cuid2, so that put a freshly
+    // created record at a random position in the list.
+    //
+    // The column refs render empty here (see the file header), so what is
+    // assertable is the shape and the DIRECTIONS — which is the half that
+    // carries the meaning: two clauses, descending then ascending.
+    const orderBy = captured.orderBys[0]!
+    expect(orderBy).toHaveLength(2)
+    expect(render(orderBy[0])).toContain('desc')
+    expect(render(orderBy[1])).toContain('asc')
   })
 
   it('ANDs the ranked predicate into the WHERE clause', async () => {
@@ -182,7 +191,11 @@ describe('queryEntityInstanceIdsPaged — free-text search', () => {
     await queryEntityInstanceIdsPaged({ ...base, db, search: '   ' })
 
     expect(render(captured.wheres[0])).not.toContain('to_tsvector(')
-    expect(captured.orderBys[0]).toHaveLength(1)
+    // Same no-sort fallback as the absent-search case above — blank search must
+    // not accidentally reach the relevance ordering either.
+    const orderBy = captured.orderBys[0]!
+    expect(orderBy).toHaveLength(2)
+    expect(render(orderBy[0])).toContain('desc')
   })
 })
 

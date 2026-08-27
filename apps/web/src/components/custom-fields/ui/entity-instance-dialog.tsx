@@ -23,8 +23,8 @@ export interface EntityInstanceDialogProps {
   entityDefinitionId: string
   /** RecordId for edit mode (format: "entityDefinitionId:entityInstanceId"), undefined for create */
   recordId?: RecordId
-  /** Callback after successful save */
-  onSaved?: (instanceId: string) => void
+  /** Callback after successful save. See {@link EntityInstanceFormProps.onSaved}. */
+  onSaved?: (instanceId?: string) => void
   /** Preset field values for CREATE mode. Format: { fieldId: value } */
   presetValues?: Record<string, unknown>
   /** Domain-neutral create-only extension supplied by a custom record editor. */

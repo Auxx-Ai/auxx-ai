@@ -318,18 +318,38 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
     setSelectedRowIds(selectedRows)
   }, [])
 
-  const handleDialogSaved = useCallback(() => {
-    setEditingInstance(null)
-    setCreatePresetValues(undefined)
-    refresh()
-    // The calendar view's id list is a standalone `useQuery` keyed
-    // `['calendar-record-ids', ...]` (not a tRPC `record.listFiltered` query),
-    // so it's outside the generic `record:created` realtime handler's
-    // `utils.record.listFiltered.invalidate` reach — invalidate it explicitly
-    // so a record created via the click-empty-day-to-create dialog shows up on
-    // the calendar without waiting out the query's 30s staleTime.
-    queryClient.invalidateQueries({ queryKey: ['calendar-record-ids'] })
-  }, [refresh, queryClient])
+  const handleDialogSaved = useCallback(
+    (instanceId?: string) => {
+      // CREATE only — an edit already has your attention on the row you edited.
+      // `editingInstance` is the create/update discriminator the dialog already
+      // uses, so nothing new has to be tracked. `instanceId` is absent when the
+      // form is staying open for another entry ("create more"), which is an
+      // explicit batch-entry mode and must not pop a drawer per save.
+      const wasCreate = !editingInstance
+      setEditingInstance(null)
+      setCreatePresetValues(undefined)
+      refresh()
+      // The calendar view's id list is a standalone `useQuery` keyed
+      // `['calendar-record-ids', ...]` (not a tRPC `record.listFiltered` query),
+      // so it's outside the generic `record:created` realtime handler's
+      // `utils.record.listFiltered.invalidate` reach — invalidate it explicitly
+      // so a record created via the click-empty-day-to-create dialog shows up on
+      // the calendar without waiting out the query's 30s staleTime.
+      queryClient.invalidateQueries({ queryKey: ['calendar-record-ids'] })
+
+      if (!wasCreate || !instanceId) return
+
+      // The row's DATA is already seeded (record + field-value stores), so the
+      // drawer paints from cache while `refresh()` re-queries list membership in
+      // the background — no waterfall, and no dependence on the record passing
+      // the current filter or landing on a loaded page.
+      setSelectedInstanceId(instanceId)
+      // Tell the view a record was created here, so it can say so if the list
+      // comes back without it. Membership is the server's answer, not ours.
+      viewRef.current?.noteCreated(instanceId)
+    },
+    [editingInstance, refresh, queryClient, setSelectedInstanceId]
+  )
 
   const handleDialogOpenChange = useCallback(
     (open: boolean) => {

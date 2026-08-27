@@ -9,6 +9,7 @@ import { Loader2, Plus, TicketIcon } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useInView } from 'react-intersection-observer'
 import { EmptyState } from '~/components/global/empty-state'
+import { useOpenRecord } from '~/components/records/record-drill-panels'
 import { RecordEditorDialog } from '~/components/records/record-editor-dialog'
 import { toRecordId, useRecordList, useResourceProperty } from '~/components/resources'
 import TicketRow from '~/components/tickets/ticket-row'
@@ -33,6 +34,10 @@ export function ContactTicketsTab({ entityInstanceId }: DrawerTabProps) {
   // `tickets: Read` member sees the list without a create affordance.
   const { canEditEntity } = useAccess()
   const canCreate = !!entityDefinitionId && canEditEntity(entityDefinitionId)
+  // This tab always renders inside a drawer's frame stack, so the house
+  // convention resolves to `push` and a freshly created ticket drills in place
+  // rather than leaving the member on a list to hunt through.
+  const openRecord = useOpenRecord()
 
   const filters: ConditionGroup[] = useMemo(
     () => [
@@ -75,9 +80,12 @@ export function ContactTicketsTab({ entityInstanceId }: DrawerTabProps) {
       onOpenChange={setIsCreateOpen}
       entityDefinitionId='ticket'
       presetValues={{ [TICKET_CONTACT_FIELD]: [toRecordId('contact', contactId)] }}
-      onSaved={() => {
+      onSaved={(instanceId) => {
         setIsCreateOpen(false)
         refresh()
+        if (instanceId && entityDefinitionId && openRecord) {
+          openRecord(toRecordId(entityDefinitionId, instanceId))
+        }
       }}
     />
   )

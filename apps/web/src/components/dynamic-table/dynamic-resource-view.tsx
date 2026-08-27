@@ -27,14 +27,17 @@ import type {
   FieldReference,
   StoredFieldValue,
 } from '~/components/resources/store/field-value-store'
+import { CreatedNotInViewNotice } from './components/created-not-in-view-notice'
 import { CustomFieldCell } from './components/custom-field-cell'
 import { DroppedFiltersNotice } from './components/dropped-filters-notice'
 import { DynamicTableFooter } from './components/dynamic-table-footer'
 
 import { getIconForFieldType } from './custom-field-column-factory'
 import { DynamicView } from './dynamic-view'
+import { useCreatedNotInView } from './hooks/use-created-not-in-view'
 import { useDefaultTablePersistence } from './hooks/use-default-table-persistence'
 import { useSelectionStore } from './stores/selection-store'
+import { useSetFilters } from './stores/store-actions'
 import {
   useActiveView,
   useActiveViewId,
@@ -69,6 +72,12 @@ export interface DynamicResourceViewHandle {
    * deleted or archived — so the bulk action bar stops counting them.
    */
   deselect: (rowIds: string[]) => void
+  /**
+   * Tell the view a record was just created into it, so it can say so if the
+   * list comes back without the row. Membership is answered by the server, not
+   * by this call — see {@link useCreatedNotInView}.
+   */
+  noteCreated: (instanceId: string) => void
 }
 
 export interface DynamicResourceViewProps<TRow extends RecordMeta = RecordMeta> {
@@ -234,6 +243,20 @@ export function DynamicResourceView<TRow extends RecordMeta = RecordMeta>({
     enabled: !!entityDefinitionId && isConfigReady,
   })
 
+  // "You created a record here and this view isn't showing it." Lives at this
+  // level, not inside `DynamicTableFooter`, because that footer is table-only —
+  // `dynamic-view.tsx` returns early for kanban and calendar before it renders —
+  // and every view type can hide a fresh record.
+  const createdNotInView = useCreatedNotInView({
+    entityDefinitionId,
+    filters: filtersForQuery,
+    search,
+    listIds,
+  })
+
+  const setFilters = useSetFilters(tableId)
+  const clearFilters = useCallback(() => setFilters([]), [setFilters])
+
   // Publish what this view is showing — the merged filters, the sorting and the
   // loaded ids — so a detail page opened from any row can offer prev/next and a
   // switcher over the same list. This is the only place that holds all three
@@ -289,11 +312,11 @@ export function DynamicResourceView<TRow extends RecordMeta = RecordMeta>({
 
   useEffect(() => {
     if (!viewRef) return
-    viewRef.current = { refresh, getValue, deselect }
+    viewRef.current = { refresh, getValue, deselect, noteCreated: createdNotInView.noteCreated }
     return () => {
       if (viewRef.current?.refresh === refresh) viewRef.current = null
     }
-  }, [viewRef, refresh, getValue, deselect])
+  }, [viewRef, refresh, getValue, deselect, createdNotInView.noteCreated])
 
   const createEntityFieldColumn = useCallback(
     (field: ResourceField & { id: string }): ExtendedColumnDef<TRow> => {
@@ -442,6 +465,14 @@ export function DynamicResourceView<TRow extends RecordMeta = RecordMeta>({
           </div>
         </DynamicTableFooter>
       </DynamicView>
+
+      {/* Outside DynamicView on purpose: its table/kanban/calendar branches each
+          return their own tree, and only the table one renders a footer. */}
+      <CreatedNotInViewNotice
+        count={createdNotInView.notShownCount}
+        onClearFilters={viewFilters.length > 0 ? clearFilters : undefined}
+        onDismiss={createdNotInView.dismiss}
+      />
     </div>
   )
 

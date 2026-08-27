@@ -1,0 +1,1 @@
+CREATE INDEX "EntityInstance_org_def_createdAt_idx" ON "EntityInstance" USING btree ("organizationId","entityDefinitionId","createdAt" DESC NULLS LAST,"id") WHERE "archivedAt" IS NULL;
