@@ -54,19 +54,22 @@ export interface SeedFieldValue {
  * `resolveFieldRef` + `formatToTypedInput` pairing `use-save-field-value.ts`
  * uses for the field-value store, so the freshly-seeded row renders
  * identically to one hydrated from a list refetch — zero extra network calls.
+ *
+ * ⚠️ This seeds the new row's DATA only — it does not add it to any list.
+ * List MEMBERSHIP is `useRecordList`'s `appendCreated`, which is the only place
+ * that can reach both caches a list is served from (the record store AND the
+ * tRPC query pages). Appending to just one of them makes the row revert on the
+ * next remount, which is exactly what this hook used to do with its `listKey`.
  */
 export function useSeedCreatedRecord() {
   const seedCreatedRecord = useCallback(
     (params: {
       entityDefinitionId: string
       recordId: RecordId
-      /** record-store list to append the new id into. Omit for catalog/standalone
-       *  surfaces whose lists live outside record-store (seeds row data only). */
-      listKey?: string
       instance: CreatedRecordInstance
       values: SeedFieldValue[]
     }) => {
-      const { entityDefinitionId, listKey, instance, values } = params
+      const { entityDefinitionId, instance, values } = params
       // Guard: canonicalize the prefix so seeded keys match subscriber keys.
       const recordId = getNormalizedRecordId(params.recordId)
 
@@ -86,11 +89,7 @@ export function useSeedCreatedRecord() {
             : instance.updatedAt,
       }
 
-      const recordStore = useRecordStore.getState()
-      recordStore.setRecords(entityDefinitionId, [meta])
-      // Catalog/standalone surfaces omit `listKey`; their lists live in the
-      // `record.listAll` tRPC cache, pushed separately by the caller.
-      if (listKey) recordStore.appendCreatedRecord(listKey, instance.id)
+      useRecordStore.getState().setRecords(entityDefinitionId, [meta])
 
       const resourceState = useResourceStore.getState()
       const entries = values.map(({ fieldId, value, fieldType, fieldOptions }) => {

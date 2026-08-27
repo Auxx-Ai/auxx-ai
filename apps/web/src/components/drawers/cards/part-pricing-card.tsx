@@ -65,7 +65,7 @@ const CATALOG_SETTINGS_HREF = '/app/dispatch/settings/products'
  * item fields via the batched `useSystemValuesForRecords`, `part_kind` via
  * `useSystemValues`. Writes: `useSaveSystemValues` on the ITEM's record for
  * active/price, `useCreateRecord` (the unified record-create, seeding this
- * card's own list via `listKey`) for the inline create.
+ * card's own list via `appendCreated`) for the inline create.
  *
  * Registered as the `part:pricing` overview card (`drawer-config.ts` +
  * `drawer-tab-registry.tsx`) — `TabCardSection` owns the "Pricing" section
@@ -100,7 +100,7 @@ export function PartPricingCard({ recordId }: DrawerTabProps) {
     records,
     isLoading: isLoadingList,
     isLoadingRecords,
-    listKey,
+    appendCreated,
   } = useRecordList({
     entityDefinitionId: catalogDefId ?? '',
     filters: itemFilters,
@@ -155,12 +155,13 @@ export function PartPricingCard({ recordId }: DrawerTabProps) {
 
   // Inline create for the finished-good offer state — the unified record
   // creation path (same `api.record.create` seam the catalog settings' phantom
-  // draft uses). `listKey` seeds the new item straight into this card's own
-  // list, so the derived toggle flips to checked with zero refetch.
+  // draft uses). `appendCreated` seeds the new item straight into this card's
+  // own list — both caches it is served from — so the derived toggle flips to
+  // checked with zero refetch, and stays checked across a remount.
   const { record: partRecord } = useRecord({ recordId })
   const { create, isPending: isCreating } = useCreateRecord({
     entityDefinitionId: catalogDefId ?? '',
-    listKey,
+    appendCreated,
   })
   const [armed, setArmed] = useState(false)
   const [draftPriceCents, setDraftPriceCents] = useState<number | null>(null)

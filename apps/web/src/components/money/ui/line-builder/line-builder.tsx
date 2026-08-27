@@ -337,7 +337,8 @@ export function LineBuilder({
     isFetchingNextPage,
     fetchNextPage,
     refresh,
-    listKey,
+    appendCreated,
+    removeFromList,
   } = useRecordList<RecordMeta>({
     entityDefinitionId: entityDefinitionId ?? '',
     filters,
@@ -559,12 +560,16 @@ export function LineBuilder({
   const deleteLine = useCallback(
     (lineId: string) => {
       if (!entityDefinitionId) return
-      // Optimistic: drop the record from the store (and every cached list —
+      // Optimistic: drop the record from BOTH caches this list is served from —
       // `lineRecordIds` shrinks, so the row AND the totals footer repaint in
-      // this frame), then fire the delete without awaiting. No `refresh()` on
-      // success — the store is already correct, and the refetch is what made
+      // this frame — then fire the delete without awaiting. No `refresh()` on
+      // success — the caches are already correct, and the refetch is what made
       // deletes feel slow.
-      useRecordStore.getState().removeRecord(entityDefinitionId, lineId)
+      //
+      // 🛑 `removeFromList`, not a bare `removeRecord`: the acting tab is
+      // excluded from its own `record:deleted` frame, so nothing else evicts the
+      // id from the tRPC pages and the row would come back on the next remount.
+      removeFromList(lineId)
       const restoreOnError = (error: unknown) => {
         // `removeRecord` marked the id not-found, which `requestRecord` would
         // skip — clear that marker first so the refetched list can resurrect
@@ -603,6 +608,7 @@ export function LineBuilder({
       deleteMutateAsync,
       deleteInvoiceLineMutateAsync,
       recomputeMutate,
+      removeFromList,
       refresh,
     ]
   )
@@ -720,10 +726,10 @@ export function LineBuilder({
         seedCreatedRecord({
           entityDefinitionId,
           recordId: result.recordId,
-          listKey,
           instance: result.instance,
           values: linePatchToFieldValues(snapshot, schema),
         })
+        appendCreated(result.instance.id)
 
         // Diff whatever landed locally while the create was in flight, and
         // flush just the changed fields against the now-real record.
@@ -753,7 +759,7 @@ export function LineBuilder({
       createMutateAsync,
       saveMultipleAsync,
       seedCreatedRecord,
-      listKey,
+      appendCreated,
     ]
   )
 
@@ -813,10 +819,10 @@ export function LineBuilder({
           seedCreatedRecord({
             entityDefinitionId,
             recordId: result.recordId,
-            listKey,
             instance: result.instance,
             values: linePatchToFieldValues(snapshot, schema),
           })
+          appendCreated(result.instance.id)
           const latest = draftsRef.current.find((d) => d.draftId === draft.draftId) ?? snapshot
           const changed = linePatchToFieldValues(diffLineValues(snapshot, latest), schema)
           if (changed.length > 0) flushes.push(saveMultipleAsync(result.recordId, changed))
@@ -872,7 +878,7 @@ export function LineBuilder({
       saveMultipleAsync,
       seedCreatedRecord,
       reorderMutate,
-      listKey,
+      appendCreated,
     ]
   )
 

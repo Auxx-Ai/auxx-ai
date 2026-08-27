@@ -72,6 +72,19 @@ interface UseRecordListResult<T = RecordMeta> {
   fetchNextPage: () => void
   /** Force refresh */
   refresh: () => void
+  /**
+   * Add a freshly-created record to this list's caches — BOTH the record store
+   * and the tRPC query pages. The acting tab is excluded from its own
+   * `record:created` realtime frame, so this is its only path; writing just one
+   * cache makes the row revert on the next remount.
+   */
+  appendCreated: (instanceId: string) => void
+  /**
+   * Optimistically drop a record from this list's caches. Does the full store
+   * eviction (`removeRecord`) as well — do not pair it with a separate
+   * `removeRecord` call.
+   */
+  removeFromList: (instanceId: string) => void
   /** Data came from cache */
   isCached: boolean
 }
@@ -139,6 +152,7 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
 
   const {
     data,
+    dataUpdatedAt,
     isLoading,
     isFetchingNextPage,
     hasNextPage,
@@ -158,9 +172,28 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
   // Get request action for batch fetching
   const requestRecord = useRecordStore((s) => s.requestRecord)
 
-  // ─── SYNC TO STORE + QUEUE RECORD FETCHES ────────────────────────
+  const utils = api.useUtils()
+
+  // ─── SYNC QUERY PAGES TO STORE ───────────────────────────────────
+  //
+  // 🛑 `data` is frequently React Query's CACHE, not a fresh response — this
+  // query is DISABLED whenever the store cache is warm (`shouldFetch` above), so
+  // an already-mounted observer keeps handing back the pages it fetched minutes
+  // ago. Two rules follow, and the list stops self-healing without either:
+  //
+  //   1. stamp `fetchedAt` with the query's real `dataUpdatedAt`, never
+  //      `Date.now()`. Stamping "now" re-arms the 5-minute TTL on a stale
+  //      snapshot, so `shouldFetch` never flips back to true and the only repair
+  //      left is a full page reload.
+  //   2. never overwrite a store list that already reflects this same server
+  //      snapshot. Equal timestamps are the NORMAL case (the store list was
+  //      written FROM these pages and has since taken optimistic appends /
+  //      removals), which is why the guard is `>=` and not `>`.
   useEffect(() => {
     if (!data?.pages?.length) return
+
+    const existing = useRecordStore.getState().lists[listKey]
+    if (existing && existing.fetchedAt >= dataUpdatedAt) return
 
     // Flatten all pages into IDs with deduplication (preserves order)
     const seenIds = new Set<string>()
@@ -186,22 +219,14 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
       ids: allIds,
       // `total` rides on the first page only — later pages omit the COUNT.
       total: data.pages[0]?.total ?? allIds.length,
-      fetchedAt: Date.now(),
+      fetchedAt: dataUpdatedAt,
       nextCursor,
       // Same story as `total`: every page carries the identical drop diagnostics
       // (they come from the same filter build), so the first page is the source.
       droppedConditions: data.pages[0]?.droppedConditions,
       droppedConditionCount: data.pages[0]?.droppedConditionCount,
     })
-
-    // Queue record fetches for IDs not in cache
-    const recordCache = useRecordStore.getState().records[entityDefinitionId]
-    for (const id of allIds) {
-      if (!recordCache?.has(id)) {
-        requestRecord(toRecordId(entityDefinitionId, id))
-      }
-    }
-  }, [data, listKey, setList, entityDefinitionId, requestRecord])
+  }, [data, dataUpdatedAt, listKey, setList])
 
   // ─── FETCH NEXT PAGE ────────────────────────────────────────────────
 
@@ -217,6 +242,75 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
     useRecordStore.getState().invalidateList(listKey)
     refetch()
   }, [listKey, refetch])
+
+  // ─── OPTIMISTIC MEMBERSHIP (BOTH CACHES) ───────────────────────────
+  //
+  // 🛑 `record.create` / `record.delete` deliberately exclude the originating
+  // socket from their realtime events (`unified-handler-mutations.ts`), so the
+  // acting tab never receives the `record:created` / `record:deleted` frame that
+  // makes every OTHER tab invalidate. Seeding is the actor's only instant path —
+  // and it has to reach BOTH caches, because either one can be the display
+  // source (see `recordIds` below). Writing only the store means the row is
+  // visible until the next remount and then silently reverts to the query's
+  // pre-write pages.
+  //
+  // This hook is the only place that holds both halves — the `listKey` (store)
+  // and the `queryInput` (React Query) — which is why the mutation lives here
+  // rather than in `useSeedCreatedRecord`, whose `listKey` is an opaque hash.
+
+  /** Add a freshly-created record to both caches for this list. */
+  const appendCreated = useCallback(
+    (instanceId: string) => {
+      useRecordStore.getState().appendCreatedRecord(listKey, instanceId)
+      utils.record.listFiltered.setInfiniteData(queryInput, (prev) => {
+        // 🛑 Never fabricate a page. `undefined` means "never fetched"; inventing
+        // one here reads as loaded data and would suppress the first real fetch
+        // forever — strictly worse than the bug this exists to fix.
+        if (!prev?.pages.length) return prev
+        if (prev.pages.some((page) => page.ids.includes(instanceId))) return prev
+        const lastIndex = prev.pages.length - 1
+        return {
+          ...prev,
+          pages: prev.pages.map((page, i) => ({
+            ...page,
+            ids: i === lastIndex ? [...page.ids, instanceId] : page.ids,
+            // `total` rides on the first page only — bumping it on every page
+            // would drift the count by the number of pages loaded. An absent
+            // total stays absent rather than being invented as 1.
+            total: i === 0 && page.total !== undefined ? page.total + 1 : page.total,
+          })),
+        }
+      })
+    },
+    [listKey, queryInput, utils]
+  )
+
+  /**
+   * Drop a record from both caches (optimistic delete).
+   *
+   * The store half is `removeRecord`, which does the full job — evicts the
+   * `RecordMeta`, marks the id not-found so `requestRecord` will not resurrect
+   * it, and splices it out of every cached list for this definition. Call sites
+   * should NOT also call `removeRecord` themselves.
+   */
+  const removeFromList = useCallback(
+    (instanceId: string) => {
+      useRecordStore.getState().removeRecord(entityDefinitionId, instanceId)
+      utils.record.listFiltered.setInfiniteData(queryInput, (prev) => {
+        if (!prev?.pages.length) return prev
+        if (!prev.pages.some((page) => page.ids.includes(instanceId))) return prev
+        return {
+          ...prev,
+          pages: prev.pages.map((page, i) => ({
+            ...page,
+            ids: page.ids.filter((id) => id !== instanceId),
+            total: i === 0 && page.total !== undefined ? Math.max(0, page.total - 1) : page.total,
+          })),
+        }
+      })
+    },
+    [entityDefinitionId, listKey, queryInput, utils]
+  )
 
   // ─── RETURN ────────────────────────────────────────────────────────
   // Return IDs and resolved items from record store
@@ -243,6 +337,22 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
   const droppedConditionCount =
     (cachedList ? cachedList.droppedConditionCount : data?.pages?.[0]?.droppedConditionCount) ??
     droppedConditions.length
+
+  // ─── QUEUE RECORD FETCHES ──────────────────────────────────────────
+  //
+  // Keyed on the DISPLAYED ids, not on `data`. The store cache is served instead
+  // of the query for 5 minutes, so queueing from the query response alone means a
+  // list served from cache queues nothing at all — a row whose `RecordMeta` was
+  // evicted (or was never fetched, e.g. an optimistically appended id) renders as
+  // a hole with no repair path short of a reload. `requestRecord` dedupes against
+  // records / pending / loading / notFound, so this is cheap and idempotent.
+  useEffect(() => {
+    if (!recordIds.length) return
+    const cache = useRecordStore.getState().records[entityDefinitionId]
+    for (const id of recordIds) {
+      if (!cache?.has(id)) requestRecord(toRecordId(entityDefinitionId, id))
+    }
+  }, [recordIds, entityDefinitionId, requestRecord])
 
   // ─── RESOLVE RECORDS FROM RECORD STORE ─────────────────────────────────
   // Subscribe to record cache for this entity definition
@@ -285,6 +395,8 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
     hasNextPage: hasNextPage ?? cachedList?.nextCursor !== null,
     fetchNextPage,
     refresh,
+    appendCreated,
+    removeFromList,
     isCached: !!cachedList,
   }
 }
