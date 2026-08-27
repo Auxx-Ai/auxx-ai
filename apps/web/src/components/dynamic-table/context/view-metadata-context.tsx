@@ -1,6 +1,7 @@
 // apps/web/src/components/dynamic-table/context/view-metadata-context.tsx
 'use client'
 
+import type { SelectOption } from '@auxx/types/custom-field'
 import { createContext, type Dispatch, type SetStateAction, useContext } from 'react'
 import type { CustomField } from '../types'
 
@@ -14,7 +15,7 @@ export interface ViewMetadataContextValue<TData = any> {
   selectFields: Array<{
     id: string
     name: string
-    options: { options?: Array<{ id: string; label: string; color?: string }> }
+    options: { options?: SelectOption[] }
   }>
 
   /** Custom fields (for kanban cards) */

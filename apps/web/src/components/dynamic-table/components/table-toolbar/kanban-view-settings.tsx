@@ -259,15 +259,17 @@ function VisibleColumnsStack() {
       <CommandSeparator />
       <CommandGroup>
         {stages.map((stage) => {
-          // Keyed by the option's `id` — that is what KanbanView/KanbanColumn
-          // read `columnSettings` with.
-          const isVisible = columnSettings[stage.id]?.isVisible !== false
+          // Keyed by the option's `value`. KanbanView normalizes options to
+          // `{ id: o.value }` (kanban-view.tsx), so `value` is what
+          // KanbanColumn reads `columnSettings` with. Stored options carry no
+          // `id` — the registry projection never emits one.
+          const isVisible = columnSettings[stage.value]?.isVisible !== false
           return (
             <CommandCheckboxItem
-              key={stage.id}
-              value={stage.id}
+              key={stage.value}
+              value={stage.value}
               checked={isVisible}
-              onCheckedChange={(checked) => handleToggleColumn(stage.id, checked)}
+              onCheckedChange={(checked) => handleToggleColumn(stage.value, checked)}
               variant='switch'>
               <div className='flex items-center gap-2'>
                 {stage.color && (

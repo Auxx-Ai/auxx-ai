@@ -2,6 +2,7 @@
 
 'use client'
 
+import type { SelectOption } from '@auxx/types/custom-field'
 import { Button } from '@auxx/ui/components/button'
 import { Combobox } from '@auxx/ui/components/combobox'
 import {
@@ -40,7 +41,7 @@ import type { TableView, ViewConfig } from '../../types'
 interface SelectField {
   id: string
   name: string
-  options?: { options?: Array<{ id: string; label: string; color?: string }> }
+  options?: { options?: SelectOption[] }
 }
 
 /** DATE/DATETIME field for the calendar view's date axis */
