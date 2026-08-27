@@ -604,17 +604,21 @@ export function MultiSelectPicker({
                 iconId={opt.icon || 'circle'}
                 color={opt.color ?? 'gray'}
                 size='sm'
+                inverse
               />
             ) : (
               <>
-                {/* Icon (if option has icon) */}
+                {/* Icon (if option has icon). `inverse` — solid tint, light glyph — is
+                    what `RecordItem` uses, so a record looks the same in this picker as
+                    in the record picker. A hex color drives the glyph directly and has
+                    no inverse pair, so it stays on the default treatment. */}
                 {opt.icon && (
                   <EntityIcon
                     iconId={opt.icon}
                     size='sm'
                     {...(opt.color?.startsWith('#')
                       ? { style: { color: opt.color } }
-                      : { color: opt.color ?? 'gray' })}
+                      : { color: opt.color ?? 'gray', inverse: true })}
                   />
                 )}
 

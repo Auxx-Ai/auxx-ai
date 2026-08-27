@@ -132,8 +132,9 @@ export interface FieldOptions {
    */
   excludeIds?: RecordId[]
   /**
-   * When true, RELATIONSHIP picker rows fall back to the related EntityDefinition's
-   * icon/color for records that have no avatar (selected chips already do this).
+   * RELATIONSHIP picker rows fall back to the related EntityDefinition's icon/color
+   * for records that have no avatar, like the selected chips do. On by default —
+   * set `false` only to opt a picker out.
    * Runtime-only UI flag passed by the caller — never persisted to CustomField.options.
    */
   showDefinitionIcon?: boolean
