@@ -238,7 +238,14 @@ function fieldRows(
       id: `field-${entityDefinitionId}-${f.systemAttribute}`,
       systemAttribute: f.systemAttribute!,
       entityDefinitionId,
-      options: linked ? { relationship: { inverseResourceFieldId: 'already:linked' } } : {},
+      options: {
+        ...(linked ? { relationship: { inverseResourceFieldId: 'already:linked' } } : {}),
+        // Carry the registry's SELECT options through. Without them every
+        // already-migrated select field looks stale to the option-refresh step,
+        // and the idempotency case reports a rewrite that a real database would
+        // not perform.
+        ...(f.options?.options ? { options: f.options.options } : {}),
+      },
     }))
 }
 
@@ -293,22 +300,32 @@ const ALL_DEF_REGISTRIES: Record<string, Record<string, ResourceField>> = {
 
 function migratedOrgDb(
   writes: string[],
-  opts: { linked?: boolean; omit?: readonly string[] } = {}
+  opts: { linked?: boolean; omit?: readonly string[]; staleVendorBillStatus?: boolean } = {}
 ) {
   const omit = new Set(opts.omit ?? [])
   const defs = Object.entries(ALL_DEF_REGISTRIES).filter(([entityType]) => !omit.has(entityType))
+  const customFields = defs.flatMap(([entityType, registry]) =>
+    fieldRows(`def-${entityType}`, registry, opts.linked ?? true)
+  )
+
+  // An org migrated BEFORE a value was added to the enum: the row still carries
+  // the option list it was created with.
+  if (opts.staleVendorBillStatus) {
+    const statusRow = customFields.find((row) => row.systemAttribute === 'vendor_bill_status')
+    if (!statusRow) throw new Error('fixture: vendor_bill_status row is missing')
+    statusRow.options = {
+      ...statusRow.options,
+      options: VendorBillStatus.values.filter((v) => v.value !== 'partially_paid'),
+    }
+  }
+
   return stubDb(
     new Map<unknown, unknown[]>([
       [
         schema.EntityDefinition,
         defs.map(([entityType]) => ({ id: `def-${entityType}`, entityType })),
       ],
-      [
-        schema.CustomField,
-        defs.flatMap(([entityType, registry]) =>
-          fieldRows(`def-${entityType}`, registry, opts.linked ?? true)
-        ),
-      ],
+      [schema.CustomField, customFields],
       // A view already exists for every context, so both view helpers no-op.
       [schema.TableView, [{ id: 'view-1' }]],
     ]),
@@ -659,16 +676,43 @@ describe('vendor_bill field shapes the plan is explicit about', () => {
     expect(VENDOR_BILL_FIELDS.internalNumber?.capabilities?.updatable).toBe(false)
   })
 
-  it('status is the six-value bill lifecycle, wired to the enum list', () => {
+  it('status is the seven-value bill lifecycle, wired to the enum list', () => {
     expect(VendorBillStatus.values.map((v) => v.value)).toEqual([
       'draft',
       'matched',
       'exception',
       'posted',
+      'partially_paid',
       'paid',
       'void',
     ])
     expect(VENDOR_BILL_FIELDS.status?.options).toEqual({ options: VendorBillStatus.values })
+  })
+
+  // 🛑 The reason `partially_paid` exists, stated as an assertion rather than a
+  // comment: a bill with some of its balance settled must not be able to render
+  // as one nobody has touched. Without this value, $400 of $1,000 reads
+  // `matched` — identical to $0 of $1,000 — and the only place the difference
+  // shows is the payment card.
+  it('distinguishes a partly settled bill from an untouched one', () => {
+    expect(VendorBillStatus.PARTIALLY_PAID).toBe('partially_paid')
+    const values = VendorBillStatus.values.map((v) => v.value)
+    expect(values.indexOf('partially_paid')).toBeLessThan(values.indexOf('paid'))
+  })
+
+  // `ensureCustomFields` SKIPS an existing field and never touches its options,
+  // so an org that already ran 108 keeps whatever option list the field was
+  // CREATED with. Adding a value to the enum is therefore only half the change —
+  // the migration has to re-materialize the row, or the code believes in seven
+  // values while the database holds six.
+  it('re-materializes an existing status field rather than only seeding new orgs', () => {
+    const here = fileURLToPath(new URL('.', import.meta.url))
+    const source = readFileSync(join(here, '108-purchasing.ts'), 'utf8')
+    expect(source).toContain('refreshVendorBillStatusOptions')
+    // And the refresh must count toward "did something", or a run that only
+    // rewrote options would report alreadyUpToDate and skip the cache flush that
+    // makes the new value visible to every read path.
+    expect(source).toContain('!statusRefreshed')
   })
 
   // §5.3, and it is the same discipline as the zero-cost receipt guard: never
@@ -1217,5 +1261,24 @@ describe('migration 108 idempotency', () => {
 
     expect(result.alreadyUpToDate).toBe(true)
     expect(writes.filter((w) => w.startsWith('insert'))).toEqual([])
+  })
+
+  // 🛑 The half of the option-refresh that actually matters. The test above
+  // proves it stays QUIET when the stored options already match; this proves it
+  // FIRES when they do not. Without this, adding a value to `VendorBillStatus`
+  // would reach a fresh org and silently skip every org that already ran 108 —
+  // `ensureCustomFields` returns an incumbent field untouched — leaving the code
+  // believing in seven values while the database holds six.
+  it('rewrites a stale vendor_bill_status option list, and says it did', async () => {
+    const writes: string[] = []
+    const db = migratedOrgDb(writes, { staleVendorBillStatus: true })
+
+    const result = await migration108Purchasing.up(db, 'org-4')
+
+    expect(writes).toContain('update CustomField')
+    // Not `alreadyUpToDate`: a run that only rewrote options must still report
+    // work, or it skips the org-cache flush that makes the new value visible to
+    // every read path.
+    expect(result.alreadyUpToDate).toBe(false)
   })
 })

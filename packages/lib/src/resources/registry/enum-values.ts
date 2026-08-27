@@ -612,6 +612,7 @@ export const VendorBillStatus = {
   MATCHED: 'matched',
   EXCEPTION: 'exception',
   POSTED: 'posted',
+  PARTIALLY_PAID: 'partially_paid',
   PAID: 'paid',
   VOID: 'void',
 
@@ -620,6 +621,13 @@ export const VendorBillStatus = {
     { value: 'matched', label: 'Matched', color: 'green' },
     { value: 'exception', label: 'Exception', color: 'red' },
     { value: 'posted', label: 'Posted', color: 'blue' },
+    // 🛑 `partially_paid` is not cosmetic. Without it a bill with $400 of $1,000
+    // settled reads `matched` — indistinguishable from one nobody has paid a cent
+    // of, with the remaining balance visible only on the payment card. Same
+    // discipline as `paidSource`: never let a partial fact render as a complete
+    // one. It sits before `paid` because that is the lifecycle order, and `amber`
+    // because it is a state that still needs something to happen.
+    { value: 'partially_paid', label: 'Partially Paid', color: 'amber' },
     { value: 'paid', label: 'Paid', color: 'forest' },
     { value: 'void', label: 'Void', color: 'orange' },
   ] satisfies FieldOptionItem[],
