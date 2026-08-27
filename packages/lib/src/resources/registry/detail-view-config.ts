@@ -55,6 +55,11 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
   company: {
     entityType: 'company',
     mainTabs: [
+      // Same supplied-parts list as the company drawer (drawer-config.ts) — a
+      // company is the supplier side of `vendor_part`, so the page must offer
+      // what the drawer already does. Gated on READ of vendor_part; most
+      // companies aren't suppliers, so Timeline stays the landing tab.
+      { value: 'parts', label: 'Parts', icon: 'package', recordResource: 'vendor_part' },
       { value: 'timeline', label: 'Timeline', icon: 'clock' },
       { value: 'tasks', label: 'Tasks', icon: 'list-todo' },
     ],

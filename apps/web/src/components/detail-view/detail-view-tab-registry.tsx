@@ -31,6 +31,12 @@ export const DETAIL_VIEW_TAB_COMPONENTS: Record<
     import('../drawers/tabs/contact-tickets-tab').then((m) => ({ default: m.ContactTicketsTab })),
 
   // ─────────────────────────────────────────────────────────────────
+  // COMPANY TABS
+  // ─────────────────────────────────────────────────────────────────
+  'company:parts': () =>
+    import('../drawers/tabs/company-parts-tab').then((m) => ({ default: m.CompanyPartsTab })),
+
+  // ─────────────────────────────────────────────────────────────────
   // TICKET TABS
   // ─────────────────────────────────────────────────────────────────
   'ticket:conversation': () =>
