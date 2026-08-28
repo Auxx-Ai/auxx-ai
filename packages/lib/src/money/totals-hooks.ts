@@ -1,13 +1,16 @@
 // packages/lib/src/money/totals-hooks.ts
 
 import type { Database } from '@auxx/database'
+import { database, schema } from '@auxx/database'
 import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
+import { and, eq, inArray } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
 import { BadRequestError } from '../errors'
 import type { EntityFieldChangeHandler } from '../field-hooks/types'
+import { extractFieldValueScalar } from '../field-values/field-value-scalar'
 import { FieldValueService } from '../field-values/field-value-service'
 import { UnifiedCrudHandler } from '../resources/crud'
 import { syncInvoicePaymentState } from './payments/ledger'
@@ -344,6 +347,22 @@ async function recomputeDocumentTotals(params: {
     ...spec.billing.statedAdditionAttrs,
   ].filter((a): a is SystemAttribute => a !== null)
 
+  /**
+   * The mirrors this engine writes. Read in the SAME `getFieldValues` call as the
+   * billing inputs — same query, more ids, no extra round trip — so the write can be
+   * skipped when nothing moved (`purchase-order-line-rollups.ts:288` does the same for
+   * its single roll-up value).
+   *
+   * `_tax_total` is listed only when the engine OWNS it: a PO's is a human input
+   * (`writesTaxTotal: false`), and reading it here to compare against a number we never
+   * write would refuse every no-op.
+   */
+  const mirrorAttrs: SystemAttribute[] = [
+    `${spec.attrPrefix}_subtotal` as SystemAttribute,
+    `${spec.attrPrefix}_total` as SystemAttribute,
+    ...(spec.billing.writesTaxTotal ? [`${spec.attrPrefix}_tax_total` as SystemAttribute] : []),
+  ]
+
   const lineAttrs = [
     spec.line.lineTotalAttr,
     spec.line.taxableAttr,
@@ -353,7 +372,7 @@ async function recomputeDocumentTotals(params: {
 
   const cf = await cache
     .from(organizationId, 'customFields')
-    .bySystemAttributes<SystemAttribute>([...headerAttrs, ...lineAttrs])
+    .bySystemAttributes<SystemAttribute>([...headerAttrs, ...mirrorAttrs, ...lineAttrs])
 
   const discountTypeField = spec.billing.discountTypeAttr
     ? cf[spec.billing.discountTypeAttr]
@@ -361,7 +380,9 @@ async function recomputeDocumentTotals(params: {
   const discountValueField = cf[spec.billing.discountValueAttr]
   const taxRateField = spec.billing.taxRateAttr ? cf[spec.billing.taxRateAttr] : undefined
 
-  const headerFieldIds = headerAttrs.map((a) => cf[a]?.id).filter((id): id is string => !!id)
+  const headerFieldIds = [...headerAttrs, ...mirrorAttrs]
+    .map((a) => cf[a]?.id)
+    .filter((id): id is string => !!id)
   const headerValues = await handler.getFieldValues(documentRecordId, headerFieldIds)
 
   const readNumber = (fieldId: string | undefined): number | null => {
@@ -411,44 +432,10 @@ async function recomputeDocumentTotals(params: {
     limit: 1000,
   })
 
-  const lines: LineForTotals[] = []
   const lineTotalField = cf[spec.line.lineTotalAttr]
-  if (lineTotalField) {
-    const taxableFieldId = spec.line.taxableAttr ? cf[spec.line.taxableAttr]?.id : undefined
-    const optionalFieldId = spec.line.optionalAttr ? cf[spec.line.optionalAttr]?.id : undefined
-    const optionalSelectedFieldId = spec.line.optionalSelectedAttr
-      ? cf[spec.line.optionalSelectedAttr]?.id
-      : undefined
-    const fieldIds = [
-      lineTotalField.id,
-      taxableFieldId,
-      optionalFieldId,
-      optionalSelectedFieldId,
-    ].filter((id): id is string => !!id)
-
-    for (const lineInstanceId of lineInstanceIds) {
-      const lineRecordId = toRecordId(spec.line.lineEntityType, lineInstanceId)
-      const lineValues = await handler.getFieldValues(lineRecordId, fieldIds)
-      const lineTotalTyped = firstTyped(lineValues.get(lineTotalField.id))
-      const taxableTyped = taxableFieldId ? firstTyped(lineValues.get(taxableFieldId)) : undefined
-      const optionalTyped = optionalFieldId
-        ? firstTyped(lineValues.get(optionalFieldId))
-        : undefined
-      const optionalSelectedTyped = optionalSelectedFieldId
-        ? firstTyped(lineValues.get(optionalSelectedFieldId))
-        : undefined
-      lines.push({
-        lineTotal: lineTotalTyped ? (extractValue(lineTotalTyped) as number) : null,
-        // A line entity with no `taxable` field is wholly taxable as far as the math is
-        // concerned — with `taxRate` null (the buy side) that distinction never surfaces.
-        taxable: taxableTyped ? (extractValue(taxableTyped) as boolean) : true,
-        optional: optionalTyped ? (extractValue(optionalTyped) as boolean) : undefined,
-        optionalSelected: optionalSelectedTyped
-          ? (extractValue(optionalSelectedTyped) as boolean)
-          : undefined,
-      })
-    }
-  }
+  const lines: LineForTotals[] = lineTotalField
+    ? await readLinesForTotals(db, organizationId, spec, cf, lineInstanceIds)
+    : []
 
   const totals = computeDocumentTotals(lines, billing)
 
@@ -463,14 +450,146 @@ async function recomputeDocumentTotals(params: {
     values.push({ fieldId: `${spec.attrPrefix}_tax_total`, value: totals.taxTotal })
   }
 
-  const fieldValueService = new FieldValueService(organizationId, userId, db)
-  await fieldValueService.setValuesForEntity({
-    recordId: documentRecordId,
-    values,
-    publishEvents: spec.publishEvents,
+  /**
+   * Skip a write that would store what is already stored.
+   *
+   * The hook fires once per changed FIELD, and several of its triggers move no total at
+   * all — `line_item_taxable` on a document with no tax rate, a rel write that re-links a
+   * line to the parent it already had, the second of two attributes set in one line write.
+   * Each of those previously re-entered the field-value layer, the realtime publisher and
+   * the sync manifest to store an identical number.
+   *
+   * Conservative by construction: unless EVERY value is already present and equal, the
+   * write happens. A mirror the org has not materialised has no field id, so `readNumber`
+   * returns null, nothing matches, and the write proceeds exactly as before.
+   *
+   * 🛑 `afterWrite` still runs. `syncInvoicePaymentState` reads more than these three
+   * numbers — a payment recorded elsewhere moves `balance` and can flip
+   * `paid` <-> `partially_paid` with the totals unchanged — and `money.recomputeTotals`
+   * is documented as the manual drift escape, so it must stay a real refresh.
+   */
+  const unchanged = values.every((v) => {
+    const current = readNumber(cf[v.fieldId as SystemAttribute]?.id)
+    return current !== null && current === v.value
   })
 
+  if (!unchanged) {
+    const fieldValueService = new FieldValueService(organizationId, userId, db)
+    await fieldValueService.setValuesForEntity({
+      recordId: documentRecordId,
+      values,
+      publishEvents: spec.publishEvents,
+    })
+  }
+
   await spec.afterWrite?.({ organizationId, userId, documentInstanceId, db })
+}
+
+/**
+ * Every line's contribution to its document, in ONE query per 200-id chunk.
+ *
+ * ⚠️ This replaced a serial `getFieldValues` per line — `await` inside a `for`
+ * over an id list capped at 1000 — which made a 20-line document cost ~20
+ * round trips per hook fire, and the hook fires once per changed FIELD. A
+ * 20-line bulk paste therefore issued 40 recomputes, each re-reading every
+ * line that existed so far. See `plans/events/08-derived-parent-reconciler-plan.md` §1.
+ *
+ * The read is deliberately raw + {@link extractFieldValueScalar} rather than
+ * `FieldValueService.batchGetValues`, for the same two reasons
+ * `purchase-order-line-rollups.ts` and `builds/auto-build-queries.ts` are
+ * written this way: the field ids in hand are CustomField ids, where
+ * `batchGetValues` validates `ResourceFieldId`s (`entity:key`) and would need a
+ * key translation this has no reason to risk; and enforcement is unchanged
+ * either way, because the handler this used to go through is constructed
+ * without a `CapabilityView` and the line ids were already scoped by the
+ * `listFiltered` above.
+ *
+ * One entry per id in `lineInstanceIds`, in that order, INCLUDING a line with no
+ * stored values at all — the previous loop pushed an entry per id unconditionally
+ * and `computeDocumentTotals` counts a null `lineTotal` as a zero contribution.
+ */
+async function readLinesForTotals(
+  db: Database | undefined,
+  organizationId: string,
+  spec: DocumentTotalsSpec,
+  cf: Partial<Record<SystemAttribute, { id: string } | null>>,
+  lineInstanceIds: string[]
+): Promise<LineForTotals[]> {
+  if (lineInstanceIds.length === 0) return []
+
+  const idFor = (attr: SystemAttribute | undefined): string | undefined =>
+    attr ? (cf[attr]?.id ?? undefined) : undefined
+
+  const lineTotalFieldId = idFor(spec.line.lineTotalAttr)
+  const taxableFieldId = idFor(spec.line.taxableAttr)
+  const optionalFieldId = idFor(spec.line.optionalAttr)
+  const optionalSelectedFieldId = idFor(spec.line.optionalSelectedAttr)
+
+  const fieldIds = [
+    lineTotalFieldId,
+    taxableFieldId,
+    optionalFieldId,
+    optionalSelectedFieldId,
+  ].filter((id): id is string => !!id)
+  if (fieldIds.length === 0) return lineInstanceIds.map(() => emptyLineForTotals())
+
+  const conn = db ?? database
+  // `fieldId -> value` per line. A line absent from the map stored nothing.
+  const byLine = new Map<string, Map<string, unknown>>()
+
+  // Bounded IN-list, same 200 as `record-rules/snapshot-fetcher.ts`. A document
+  // is capped at 1000 lines by the `listFiltered` above, so this is <= 5 queries
+  // for the largest document that can exist, against 1000 before.
+  const CHUNK = 200
+  for (let i = 0; i < lineInstanceIds.length; i += CHUNK) {
+    const chunk = lineInstanceIds.slice(i, i + CHUNK)
+    const rows = await conn
+      .select()
+      .from(schema.FieldValue)
+      .where(
+        and(
+          eq(schema.FieldValue.organizationId, organizationId),
+          inArray(schema.FieldValue.entityId, chunk),
+          inArray(schema.FieldValue.fieldId, fieldIds)
+        )
+      )
+
+    for (const row of rows) {
+      let values = byLine.get(row.entityId)
+      if (!values) {
+        values = new Map()
+        byLine.set(row.entityId, values)
+      }
+      values.set(row.fieldId, extractFieldValueScalar(row as unknown as Record<string, unknown>))
+    }
+  }
+
+  return lineInstanceIds.map((lineInstanceId) => {
+    const values = byLine.get(lineInstanceId)
+    if (!values) return emptyLineForTotals()
+
+    const read = (fieldId: string | undefined): unknown =>
+      fieldId && values.has(fieldId) ? values.get(fieldId) : undefined
+
+    const lineTotal = read(lineTotalFieldId)
+    const taxable = read(taxableFieldId)
+    const optional = read(optionalFieldId)
+    const optionalSelected = read(optionalSelectedFieldId)
+
+    return {
+      lineTotal: lineTotal == null ? null : (lineTotal as number),
+      // A line entity with no `taxable` field is wholly taxable as far as the math is
+      // concerned — with `taxRate` null (the buy side) that distinction never surfaces.
+      taxable: taxable == null ? true : (taxable as boolean),
+      optional: optional == null ? undefined : (optional as boolean),
+      optionalSelected: optionalSelected == null ? undefined : (optionalSelected as boolean),
+    }
+  })
+}
+
+/** A line the query returned nothing for — the previous loop's all-absent case. */
+function emptyLineForTotals(): LineForTotals {
+  return { lineTotal: null, taxable: true, optional: undefined, optionalSelected: undefined }
 }
 
 /**
