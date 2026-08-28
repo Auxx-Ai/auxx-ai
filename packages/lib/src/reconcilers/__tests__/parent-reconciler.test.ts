@@ -17,7 +17,7 @@ beforeEach(() => {
 
 describe('the self case — the marked record IS the parent', () => {
   it('passes marked ids straight through as parents', async () => {
-    const rebuild = vi.fn(async () => {})
+    const rebuild = vi.fn(async (_org: string, _user: string, _parent: unknown) => {})
     const r = defineParentReconciler<string>({ key: 'k', rebuild })
     r.register()
 
@@ -30,7 +30,7 @@ describe('the self case — the marked record IS the parent', () => {
   })
 
   it('coalesces repeated marks of one parent into a single rebuild', async () => {
-    const rebuild = vi.fn(async () => {})
+    const rebuild = vi.fn(async (_org: string, _user: string, _parent: unknown) => {})
     const r = defineParentReconciler<string>({ key: 'k', rebuild })
     r.register()
 
@@ -44,8 +44,8 @@ describe('the self case — the marked record IS the parent', () => {
 
 describe('the child case — the marked record is resolved to a parent', () => {
   it('calls resolve ONCE with the whole batch, not once per child', async () => {
-    const resolve = vi.fn(async () => ['doc-1'])
-    const rebuild = vi.fn(async () => {})
+    const resolve = vi.fn(async (_org: string, _ids: string[]) => ['doc-1'])
+    const rebuild = vi.fn(async (_org: string, _user: string, _parent: unknown) => {})
     const r = defineParentReconciler<string>({ key: 'k', resolve, rebuild })
     r.register()
 
@@ -60,7 +60,7 @@ describe('the child case — the marked record is resolved to a parent', () => {
   })
 
   it('rebuilds nothing when every child is orphaned', async () => {
-    const rebuild = vi.fn(async () => {})
+    const rebuild = vi.fn(async (_org: string, _user: string, _parent: unknown) => {})
     const r = defineParentReconciler<string>({
       key: 'k',
       resolve: async () => [],
@@ -76,7 +76,7 @@ describe('the child case — the marked record is resolved to a parent', () => {
   })
 
   it('collapses many children of one parent into a single rebuild', async () => {
-    const rebuild = vi.fn(async () => {})
+    const rebuild = vi.fn(async (_org: string, _user: string, _parent: unknown) => {})
     const r = defineParentReconciler<string>({
       key: 'k',
       resolve: async (_org, ids) => ids.map(() => 'doc-1'),
@@ -99,7 +99,7 @@ describe('dedupeKey', () => {
   }
 
   it('treats a composite parent as one parent only when BOTH halves match', async () => {
-    const rebuild = vi.fn(async () => {})
+    const rebuild = vi.fn(async (_org: string, _user: string, _parent: unknown) => {})
     const r = defineParentReconciler<Doc>({
       key: 'k',
       resolve: async () => [
@@ -122,7 +122,7 @@ describe('dedupeKey', () => {
   })
 
   it('falls back to the parent itself when no dedupeKey is given', async () => {
-    const rebuild = vi.fn(async () => {})
+    const rebuild = vi.fn(async (_org: string, _user: string, _parent: unknown) => {})
     const r = defineParentReconciler<string>({
       key: 'k',
       resolve: async () => ['a', 'b', 'a'],
@@ -140,7 +140,7 @@ describe('dedupeKey', () => {
 
 describe('the unscoped inline fallback', () => {
   it('does the work immediately when no write method opened a scope', async () => {
-    const rebuild = vi.fn(async () => {})
+    const rebuild = vi.fn(async (_org: string, _user: string, _parent: unknown) => {})
     const r = defineParentReconciler<string>({ key: 'k', rebuild })
     r.register()
 
@@ -153,7 +153,7 @@ describe('the unscoped inline fallback', () => {
   })
 
   it('resolves the parent inline too, for a child mark', async () => {
-    const rebuild = vi.fn(async () => {})
+    const rebuild = vi.fn(async (_org: string, _user: string, _parent: unknown) => {})
     const r = defineParentReconciler<string>({
       key: 'k',
       resolve: async () => ['doc-1'],
@@ -167,7 +167,7 @@ describe('the unscoped inline fallback', () => {
   })
 
   it('still works when register() was never called — the inline path skips the registry', async () => {
-    const rebuild = vi.fn(async () => {})
+    const rebuild = vi.fn(async (_org: string, _user: string, _parent: unknown) => {})
     const r = defineParentReconciler<string>({ key: 'k', rebuild })
 
     await r.mark(ORG, USER, 'p-1')
@@ -178,7 +178,7 @@ describe('the unscoped inline fallback', () => {
 
 describe('rebuildBatch', () => {
   it('receives the whole deduped batch once, for a consumer with per-batch setup', async () => {
-    const rebuildBatch = vi.fn(async () => {})
+    const rebuildBatch = vi.fn(async (_org: string, _user: string, _parents: unknown[]) => {})
     const r = defineParentReconciler<string>({
       key: 'k',
       resolve: async () => ['o-1', 'o-2', 'o-1'],
@@ -195,7 +195,7 @@ describe('rebuildBatch', () => {
   })
 
   it('is not called at all for an empty batch', async () => {
-    const rebuildBatch = vi.fn(async () => {})
+    const rebuildBatch = vi.fn(async (_org: string, _user: string, _parents: unknown[]) => {})
     const r = defineParentReconciler<string>({
       key: 'k',
       resolve: async () => [],
@@ -213,7 +213,7 @@ describe('rebuildBatch', () => {
 
 describe('register', () => {
   it('is idempotent — a repeated bootstrap does not install two drains', async () => {
-    const rebuild = vi.fn(async () => {})
+    const rebuild = vi.fn(async (_org: string, _user: string, _parent: unknown) => {})
     const r = defineParentReconciler<string>({ key: 'k', rebuild })
     r.register()
     r.register()
@@ -227,8 +227,8 @@ describe('register', () => {
   })
 })
 
-describe('failure isolation is per KEY, not per parent', () => {
-  it('a throwing parent DOES lose the parents after it, and never reaches the writer', async () => {
+describe('failure isolation is per PARENT', () => {
+  it('a throwing parent does not lose the parents after it', async () => {
     const rebuild = vi.fn(async (_org: string, _user: string, parent: string) => {
       if (parent === 'b') throw new Error('boom')
     })
@@ -239,23 +239,57 @@ describe('failure isolation is per KEY, not per parent', () => {
     })
     r.register()
 
-    // Pinning the SHIPPED behaviour, which is not what three of the four
-    // consumers' doc comments used to claim. `drainDirtyParents` catches per
-    // KEY, so a mid-batch throw abandons the remainder of that key's batch —
-    // `c` never rebuilds. It is still swallowed before it reaches the writer,
-    // because the write has already committed and a reconciler failure must
-    // never surface as a command failure.
+    // A drain batch is several UNRELATED user documents, so one failing must not
+    // decide the fate of the rest. This inverts what #1959 pinned: that test
+    // recorded the shipped behaviour (a mid-batch throw abandoned `c`), which
+    // contradicted the doc comments three consumers carried and the isolation
+    // `builds/drift-reconciler.ts` had actually implemented. Plan 08 §6.3.
     await expect(
       runWithDirtyParents(ORG, USER, async () => {
         await r.mark(ORG, USER, 'c-1')
       })
     ).resolves.toBeUndefined()
 
-    expect(rebuild.mock.calls.map((c) => c[2])).toEqual(['a', 'b'])
+    expect(rebuild.mock.calls.map((c) => c[2])).toEqual(['a', 'b', 'c'])
+  })
+
+  it('isolates every failure, not just the first', async () => {
+    const rebuild = vi.fn(async (_org: string, _user: string, parent: string) => {
+      if (parent !== 'c') throw new Error('boom')
+    })
+    const r = defineParentReconciler<string>({
+      key: 'k',
+      resolve: async () => ['a', 'b', 'c'],
+      rebuild,
+    })
+    r.register()
+
+    await runWithDirtyParents(ORG, USER, async () => {
+      await r.mark(ORG, USER, 'c-1')
+    })
+
+    expect(rebuild).toHaveBeenCalledTimes(3)
+  })
+
+  it('still never surfaces a failure to the writer — the write already committed', async () => {
+    const r = defineParentReconciler<string>({
+      key: 'k',
+      resolve: async () => ['a'],
+      rebuild: async () => {
+        throw new Error('boom')
+      },
+    })
+    r.register()
+
+    await expect(
+      runWithDirtyParents(ORG, USER, async () => {
+        await r.mark(ORG, USER, 'c-1')
+      })
+    ).resolves.toBeUndefined()
   })
 
   it('another key still drains after one key throws', async () => {
-    const good = vi.fn(async () => {})
+    const good = vi.fn(async (_org: string, _user: string, _parent: unknown) => {})
     const bad = defineParentReconciler<string>({
       key: 'bad',
       rebuild: async () => {

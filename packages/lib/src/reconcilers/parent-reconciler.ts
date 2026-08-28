@@ -25,9 +25,13 @@
  * three-projector switch each live in exactly one consumer and each stays there.
  */
 
+import { createScopedLogger } from '@auxx/logger'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
 import { getOrgCache } from '../cache'
 import { readFieldRelations } from '../field-values/read-field-scalars'
+
+const logger = createScopedLogger('reconcilers:parent-reconciler')
+
 import { markParentDirty, registerReconciler } from './dirty-parents'
 
 /**
@@ -137,13 +141,30 @@ function toParents<P>(
 }
 
 /**
- * Dedupe, then rebuild.
+ * Dedupe, then rebuild — **isolating each parent**.
  *
- * No per-parent `try`/`catch`, deliberately: this preserves the shipped behaviour
- * exactly. Isolation today is per-KEY, in `drainDirtyParents`, so one parent
- * throwing mid-batch loses the parents after it. Three of the four consumers
- * carry a doc comment claiming otherwise. Fixing that is a behaviour change and
- * is not this refactor's to make.
+ * A drain batch is several UNRELATED user documents, not one unit of work: two
+ * quotes edited in the same paste, ten bills touched by one import. One of them
+ * failing must not decide the fate of the rest, and before this it did — the only
+ * `catch` was per-KEY in `drainDirtyParents`, so a parent throwing mid-batch
+ * silently abandoned every parent after it in the same key.
+ *
+ * 🛑 That is not a behaviour this codebase chose. Three of the four consumers
+ * carried a doc comment asserting the opposite — *"One document failing must not
+ * lose the rest of the batch"* — and the code never did it; only
+ * `builds/drift-reconciler.ts` actually implemented it, inside its own loop. The
+ * comment was the intent and the code was the accident, so this makes the code
+ * match, and makes the four consumers consistent with each other. History and
+ * the argument: `plans/events/08-derived-parent-reconciler-plan.md` §6.3.
+ *
+ * The failure stays LOUD — one log line per failed parent, naming it — because
+ * the real risk of per-parent catching is a systematic failure arriving as a
+ * trickle rather than a bang. The drain-level `catch` above still exists and
+ * still reports; this one only stops a single bad parent taking its siblings.
+ *
+ * `rebuildBatch` is deliberately NOT wrapped: its one caller already isolates per
+ * order internally, and wrapping the call would re-add the per-key behaviour this
+ * is fixing.
  */
 async function rebuildAll<P>(
   spec: ParentReconcilerSpec<P>,
@@ -167,7 +188,16 @@ async function rebuildAll<P>(
     return
   }
   for (const parent of deduped) {
-    await spec.rebuild(organizationId, userId, parent)
+    try {
+      await spec.rebuild(organizationId, userId, parent)
+    } catch (error) {
+      logger.error('reconciler failed for one parent; continuing with the rest', {
+        key: spec.key,
+        organizationId,
+        parent: spec.dedupeKey ? spec.dedupeKey(parent) : String(parent),
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
   }
 }
 
