@@ -30,6 +30,7 @@ import {
   syncBillingOnWorkOrderChange,
   syncContactAfterWorkOrderDelete,
 } from '../money/billing-hooks'
+import { registerBillingReconcilers } from '../money/billing-reconciler'
 import {
   pauseMarkupOnPriceEdit,
   recomputePriceOnMarkupChange,
@@ -132,6 +133,10 @@ export function registerAllHooks(): void {
   // The three-way match's two drains. Same rule as above: the bill and bill-line
   // hooks only MARK, so without this nothing re-matches.
   registerMatchReconcilers()
+
+  // The billing projectors' four drains. Same rule again: the six billing hooks
+  // below only MARK, so without this nothing rebuilds a projection.
+  registerBillingReconcilers()
 
   // The order-demand drift stamp's two drains (plans/products/13 Model A+). The
   // hooks below only MARK, so without this an order's fingerprint goes stale —

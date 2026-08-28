@@ -15,11 +15,15 @@ import type {
 } from '../field-hooks'
 import { UnifiedCrudHandler } from '../resources/crud'
 import { assertBillingConfigurationCompatible } from './billing-config'
+// Only the (never-registered) `syncBillingOnContactChange` still calls a projector
+// directly; every live hook marks instead, and the drain imports them lazily.
+import { syncContactBillingProjection } from './billing-projection'
 import {
-  syncContactBillingProjection,
-  syncInvoiceBillingProjection,
-  syncWorkOrderBillingProjection,
-} from './billing-projection'
+  markOrSyncContact,
+  markOrSyncInvoice,
+  markOrSyncLine,
+  markOrSyncWorkOrder,
+} from './billing-reconciler'
 import { recomputeTotals } from './totals-hooks'
 import type { WorkOrderBillingBasis, WorkOrderInvoiceTiming } from './types'
 
@@ -339,20 +343,11 @@ export const syncBillingOnLineChange: EntityFieldChangeHandler = async (event) =
   const attribute = event.field.systemAttribute ?? ''
   if ((BILLING_PROJECTION_ATTRS as readonly string[]).includes(attribute)) return
   if (!LINE_ITEM_BILLING_TRIGGER_ATTRS.has(attribute)) return
-  const cache = getOrgCache()
-  const fields = await cache
-    .from(event.organizationId, 'customFields')
-    .bySystemAttributes(['line_item_work_order'] as const)
-  if (!fields.line_item_work_order) return
-  const handler = new UnifiedCrudHandler(event.organizationId, event.userId)
-  const values = await handler.getFieldValues(event.recordId, [fields.line_item_work_order.id])
-  const typed = firstTyped(values.get(fields.line_item_work_order.id))
-  if (typed?.type !== 'relationship' || !typed.recordId) return
-  await syncWorkOrderBillingProjection({
-    organizationId: event.organizationId,
-    userId: event.userId,
-    workOrderInstanceId: typed.recordId.split(':').at(-1)!,
-  })
+  // The work order is resolved in the DRAIN, not here: this used to be a
+  // `getFieldValues` on every one of the trigger attributes, asking the same
+  // question of the same line several times per write (plan 08 phase 2c).
+  const { entityInstanceId } = parseRecordId(event.recordId)
+  await markOrSyncLine(event.organizationId, event.userId, entityInstanceId)
 }
 
 /** Recompute work-order billing after relevant work-order fields change. */
@@ -360,11 +355,7 @@ export const syncBillingOnWorkOrderChange: EntityFieldChangeHandler = async (eve
   const attribute = event.field.systemAttribute ?? ''
   if ((BILLING_PROJECTION_ATTRS as readonly string[]).includes(attribute)) return
   if (!WORK_ORDER_BILLING_TRIGGER_ATTRS.has(attribute)) return
-  await syncWorkOrderBillingProjection({
-    organizationId: event.organizationId,
-    userId: event.userId,
-    workOrderInstanceId: event.recordId.split(':').at(-1)!,
-  })
+  await markOrSyncWorkOrder(event.organizationId, event.userId, event.recordId.split(':').at(-1)!)
 }
 
 /** Recompute invoice context and its linked work order after lifecycle/payment changes. */
@@ -372,11 +363,7 @@ export const syncBillingOnInvoiceChange: EntityFieldChangeHandler = async (event
   const attribute = event.field.systemAttribute ?? ''
   if ((BILLING_PROJECTION_ATTRS as readonly string[]).includes(attribute)) return
   if (!INVOICE_BILLING_TRIGGER_ATTRS.has(attribute)) return
-  await syncInvoiceBillingProjection({
-    organizationId: event.organizationId,
-    userId: event.userId,
-    invoiceInstanceId: event.recordId.split(':').at(-1)!,
-  })
+  await markOrSyncInvoice(event.organizationId, event.userId, event.recordId.split(':').at(-1)!)
 }
 
 /** Recompute a contact aggregate when its billing relationships change. */
@@ -408,11 +395,7 @@ function capturedRelationInstanceId(value: unknown): string | null {
 export const syncBillingAfterInvoiceDelete: EntityPostDeleteHandler = async (event) => {
   const workOrderInstanceId = capturedRelationInstanceId(event.values.invoice_work_order)
   if (!workOrderInstanceId) return
-  await syncWorkOrderBillingProjection({
-    organizationId: event.organizationId,
-    userId: event.userId,
-    workOrderInstanceId,
-  })
+  await markOrSyncWorkOrder(event.organizationId, event.userId, workOrderInstanceId)
 }
 
 /**
@@ -427,26 +410,22 @@ export const syncBillingAfterLineDelete: EntityPostDeleteHandler = async (event)
   if (workOrderInstanceId) {
     // Work orders have no document-totals record — the billing projector reads source lines
     // directly, so the projection sync alone restores contract/uninvoiced amounts.
-    await syncWorkOrderBillingProjection({
-      organizationId: event.organizationId,
-      userId: event.userId,
-      workOrderInstanceId,
-    })
+    await markOrSyncWorkOrder(event.organizationId, event.userId, workOrderInstanceId)
     return
   }
   const invoiceInstanceId = capturedRelationInstanceId(event.values.line_item_invoice)
   if (invoiceInstanceId) {
+    // 🛑 `recomputeTotals` stays INLINE and stays first. The invoice projector
+    // cascades to the work order, whose projection reads `invoice_total` — so the
+    // totals have to be on the row before the projection runs. Marking both would
+    // put that dependency at the mercy of key insertion order in the drain.
     await recomputeTotals({
       organizationId: event.organizationId,
       userId: event.userId,
       documentType: 'invoice',
       documentInstanceId: invoiceInstanceId,
     })
-    await syncInvoiceBillingProjection({
-      organizationId: event.organizationId,
-      userId: event.userId,
-      invoiceInstanceId,
-    })
+    await markOrSyncInvoice(event.organizationId, event.userId, invoiceInstanceId)
   }
 }
 
@@ -457,9 +436,5 @@ export const syncBillingAfterLineDelete: EntityPostDeleteHandler = async (event)
 export const syncContactAfterWorkOrderDelete: EntityPostDeleteHandler = async (event) => {
   const contactInstanceId = capturedRelationInstanceId(event.values.work_order_contact)
   if (!contactInstanceId) return
-  await syncContactBillingProjection({
-    organizationId: event.organizationId,
-    userId: event.userId,
-    contactInstanceId,
-  })
+  await markOrSyncContact(event.organizationId, event.userId, contactInstanceId)
 }
