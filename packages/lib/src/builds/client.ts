@@ -97,3 +97,116 @@ export function standardCostDrift(
   if (liveCost == null || standardCost == null) return null
   return liveCost - standardCost
 }
+
+// ─── The build event (phase 2) ─────────────────────────────────────────
+//
+// plans/products/build/01-build-plan.md section 3, README B2/B6/B7/B8.
+
+/** The four values `build_status` can hold. Mirrors `BuildStatus` in the registry. */
+export type BuildStatusValue = 'planned' | 'in_progress' | 'completed' | 'canceled'
+
+/** Human labels, so a caller never has to re-derive them from the enum. */
+export const BUILD_STATUS_LABELS: Readonly<Record<BuildStatusValue, string>> = Object.freeze({
+  planned: 'Planned',
+  in_progress: 'In Progress',
+  completed: 'Completed',
+  canceled: 'Canceled',
+})
+
+/**
+ * Read a stored `build_status` option value, or `null`.
+ *
+ * 🛑 **Unlike {@link resolvePartKind}, an absent status does NOT fall back.** A
+ * part with no `part_kind` is an unclassified part and reading it as a
+ * `component` is the conservative direction; a build with no status is a row
+ * whose lifecycle nobody can state, and defaulting it to `planned` would let
+ * `completeBuild` write an append-only ledger entry against it. `build_status`
+ * carries `defaultValue: 'planned'` and `createBuild` sets it explicitly, so
+ * `null` here is a data problem, and the write paths refuse it.
+ */
+export function resolveBuildStatus(raw: string | null | undefined): BuildStatusValue | null {
+  if (raw === 'planned' || raw === 'in_progress' || raw === 'completed' || raw === 'canceled') {
+    return raw
+  }
+  return null
+}
+
+/** `planned` is the only status a run can be started from. */
+export function canStartBuild(status: BuildStatusValue | null): boolean {
+  return status === 'planned'
+}
+
+/**
+ * The two statuses `completeBuild` accepts.
+ *
+ * 🛑 **B8 — one completion per build.** `completed` is deliberately absent: a
+ * run finished in tranches is a second build, not a second completion, because
+ * multi-completion needs per-tranche movement batches, a partial-consumption
+ * watermark and a variance per tranche. `canceled` is absent for the obvious
+ * reason.
+ */
+export function canCompleteBuild(status: BuildStatusValue | null): boolean {
+  return status === 'planned' || status === 'in_progress'
+}
+
+/** A run can be abandoned right up until it is completed. */
+export function canCancelBuild(status: BuildStatusValue | null): boolean {
+  return status === 'planned' || status === 'in_progress'
+}
+
+/**
+ * Only a completed build can be reversed.
+ *
+ * B6: a completed build is never edited or deleted — it is reversed by a second
+ * build carrying the ORIGINAL's frozen costs. A `planned` build has written
+ * nothing (B2), so there is nothing to reverse; cancelling it is the whole of
+ * the correction.
+ */
+export function canReverseBuild(status: BuildStatusValue | null): boolean {
+  return status === 'completed'
+}
+
+/**
+ * Units that entered the run: good units plus scrap.
+ *
+ * 🛑 **B7 — this, and not `quantityProduced`, is what consumes material.** A
+ * unit that was started and then lost still ate its components; pretending
+ * otherwise would leave the ledger holding material that is physically gone.
+ * Its cost falls out in `varianceAmount` (account 5090) rather than being
+ * absorbed into the survivors, because absorbing it would give the same variant
+ * a different unit cost on every run and destroy the point of a standard.
+ */
+export function unitsStarted(quantityProduced: number, quantityScrapped: number): number {
+  return quantityProduced + quantityScrapped
+}
+
+/** `qtyPer x unitsStarted` — the BOM quantity for one component of one run. */
+export function componentConsumption(qtyPerUnit: number, started: number): number {
+  return qtyPerUnit * started
+}
+
+/**
+ * `(material + labour + overhead) - producedValue`, in whole minor units.
+ *
+ * Positive means the run cost MORE than the standard says the output is worth,
+ * and the difference is a debit to **5090**. The three inputs are the absorbed
+ * amounts for the units STARTED; `producedValue` values only the units that
+ * survived. So with no scrap and a standard that agrees with the bill of
+ * materials the terms cancel exactly and the variance is zero, and with `s`
+ * units scrapped it comes out at `s x standardCost` — the scrapped units' whole
+ * standard cost, which is precisely what B7 says should land in 5090.
+ */
+export function buildVariance(parts: {
+  materialCost: number
+  laborCost: number
+  overheadCost: number
+  producedValue: number
+}): number {
+  return parts.materialCost + parts.laborCost + parts.overheadCost - parts.producedValue
+}
+
+/**
+ * The account a build's variance belongs to. Never posted here (README B9) —
+ * carried so the number and its destination stay in one place.
+ */
+export const BUILD_VARIANCE_ACCOUNT = '5090'
