@@ -73,6 +73,7 @@ import { migration107Order } from './migrations/107-order'
 import { migration108Purchasing } from './migrations/108-purchasing'
 import { migration109BuildAndStandardCost } from './migrations/109-build-and-standard-cost'
 import { migration110BuildVisible } from './migrations/110-build-visible'
+import { migration111OrderBuildDrift } from './migrations/111-order-build-drift'
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
@@ -193,6 +194,7 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   // MUST sort after 109 — it flips the def 109 creates. See the migration itself
   // for why the `SYSTEM_ENTITIES` edit alone reaches no existing org.
   migration110BuildVisible,
+  migration111OrderBuildDrift,
 ]
 
 /**

@@ -65,6 +65,7 @@ describe('order entity registration wiring', () => {
 
   it('carries exactly the 08 §2 field set, plus what later migrations added', () => {
     expect(Object.keys(ORDER_FIELDS).sort()).toEqual([
+      'buildRevision', // added by migration 111 — the drift fingerprint (products/13 A+)
       'builds', // added by migration 109 — inverse of build_order (build §1.2)
       'cancelledAt', // added by migration 109 — nullable, creatable, set never cleared
       'channel',

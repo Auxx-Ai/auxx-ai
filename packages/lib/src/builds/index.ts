@@ -84,6 +84,15 @@ export {
   unitsStarted,
 } from './client'
 export { completeBuild } from './complete-build'
+// Model A+ drift (plans/products/13). Read-only and stamp-only — nothing here
+// creates, amends or cancels a build.
+export { type BuildDrift, readBuildDrift } from './drift-queries'
+export {
+  markOrStampOrder,
+  markOrStampOrderLine,
+  registerOrderDriftReconcilers,
+} from './drift-reconciler'
+export { hasDrifted, type OrderDemand, orderDemandFingerprint } from './order-fingerprint'
 export { reverseBuild } from './reverse-build'
 export { rollStandardCost } from './standard-cost'
 export {

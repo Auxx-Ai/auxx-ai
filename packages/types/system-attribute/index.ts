@@ -643,6 +643,11 @@ export const SYSTEM_ATTRIBUTES = [
   'stock_movement_qty_per_unit', // as-built BOM snapshot; NULL on a consume row = off-BOM
   'order_cancelled_at', // set, never cleared — a Shopify order can arrive cancelled
   'order_builds', // inverse of build_order
+  // The drift pair (plans/products/13 Model A+). The order carries its CURRENT
+  // demand fingerprint; a build carries the one that was current when it was
+  // raised. Drift is the two differing — and neither field mutates a build.
+  'order_build_revision',
+  'build_order_revision',
 
   // ─── Inbox fields ───────────────────────────────────────────────
   'inbox_name',

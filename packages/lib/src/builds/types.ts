@@ -188,6 +188,12 @@ export interface BuildRecord {
   source: string | null
   /** Set on a REVERSING build: the build it undoes (B6). */
   reversalOfBuildId: string | null
+  /**
+   * The order's demand fingerprint when this build was raised
+   * (plans/products/13 Model A+). `null` on a hand-raised build and on every
+   * row written before the field existed — both mean *unknown*, never *drifted*.
+   */
+  orderRevision: string | null
   createdAt: Date
 }
 
