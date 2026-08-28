@@ -22,9 +22,8 @@
  * nothing.
  */
 
-import { database, schema } from '@auxx/database'
-import { and, eq, inArray } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
+import { readFieldRelations } from '../field-values/read-field-scalars'
 import { markParentDirty, registerReconciler } from '../reconcilers/dirty-parents'
 import type { TotalledDocumentType } from './totals-hooks'
 
@@ -146,7 +145,9 @@ async function resolveLineParents(
   if (cf.line_item_work_order) byField.set(cf.line_item_work_order.id, 'work_order')
   if (byField.size === 0) return []
 
-  const rels = await readRelations(organizationId, lineInstanceIds, [...byField.keys()])
+  const rels = await readFieldRelations(undefined, organizationId, lineInstanceIds, [
+    ...byField.keys(),
+  ])
 
   const parents: ParentDocument[] = []
   for (const lineInstanceId of lineInstanceIds) {
@@ -187,7 +188,7 @@ async function resolvePurchaseOrderLineParents(
   const relField = cf.purchase_order_line_purchase_order
   if (!relField) return []
 
-  const rels = await readRelations(organizationId, lineInstanceIds, [relField.id])
+  const rels = await readFieldRelations(undefined, organizationId, lineInstanceIds, [relField.id])
 
   const parents: ParentDocument[] = []
   for (const lineInstanceId of lineInstanceIds) {
@@ -197,50 +198,6 @@ async function resolvePurchaseOrderLineParents(
     }
   }
   return parents
-}
-
-/**
- * `lineInstanceId -> fieldId -> relatedEntityId`, one query per 200-id chunk —
- * the same bound `totals-hooks.ts`'s line read and `record-rules/snapshot-fetcher.ts`
- * use.
- */
-async function readRelations(
-  organizationId: string,
-  instanceIds: string[],
-  fieldIds: string[]
-): Promise<Map<string, Map<string, string>>> {
-  const out = new Map<string, Map<string, string>>()
-  if (instanceIds.length === 0 || fieldIds.length === 0) return out
-
-  const CHUNK = 200
-  for (let i = 0; i < instanceIds.length; i += CHUNK) {
-    const chunk = instanceIds.slice(i, i + CHUNK)
-    const rows = await database
-      .select({
-        entityId: schema.FieldValue.entityId,
-        fieldId: schema.FieldValue.fieldId,
-        relatedEntityId: schema.FieldValue.relatedEntityId,
-      })
-      .from(schema.FieldValue)
-      .where(
-        and(
-          eq(schema.FieldValue.organizationId, organizationId),
-          inArray(schema.FieldValue.entityId, chunk),
-          inArray(schema.FieldValue.fieldId, fieldIds)
-        )
-      )
-
-    for (const row of rows) {
-      if (!row.relatedEntityId) continue
-      let values = out.get(row.entityId)
-      if (!values) {
-        values = new Map()
-        out.set(row.entityId, values)
-      }
-      values.set(row.fieldId, row.relatedEntityId)
-    }
-  }
-  return out
 }
 
 /**

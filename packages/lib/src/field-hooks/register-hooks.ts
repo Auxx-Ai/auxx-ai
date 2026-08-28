@@ -44,6 +44,7 @@ import {
   rematchOnBillChange,
   rematchOnBillLineChange,
 } from '../purchasing/match-hook'
+import { registerMatchReconcilers } from '../purchasing/match-reconciler'
 import { handleRecordRulesOnFieldChange } from '../record-rules/hook-handler'
 import {
   enqueueQuickbooksInvoiceSyncOnSent,
@@ -121,6 +122,10 @@ export function registerAllHooks(): void {
   // only MARK; without this nothing recomputes a document, so these two must stay
   // in the same bootstrap.
   registerMoneyTotalsReconcilers()
+
+  // The three-way match's two drains. Same rule as above: the bill and bill-line
+  // hooks only MARK, so without this nothing re-matches.
+  registerMatchReconcilers()
 
   // Field-change post-hook — fires `<prefix>:field:updated` after every field
   // write. Registered globally so contacts, tickets, companies, and custom
