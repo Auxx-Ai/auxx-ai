@@ -52,6 +52,10 @@ import {
   rematchOnBillLineChange,
 } from '../purchasing/match-hook'
 import { registerMatchReconcilers } from '../purchasing/match-reconciler'
+import {
+  recalculateBalanceOnBillChange,
+  registerVendorBillBalanceReconcilers,
+} from '../purchasing/vendor-bill-balance'
 import { handleRecordRulesOnFieldChange } from '../record-rules/hook-handler'
 import {
   enqueueQuickbooksInvoiceSyncOnSent,
@@ -143,6 +147,12 @@ export function registerAllHooks(): void {
   // `purchase_order_line_quantity_billed` — which is the shape the create/delete
   // triggers alone left open.
   registerPurchaseOrderLineRollupReconcilers()
+
+  // The vendor bill balance's drain. Same rule again: the bill hook below only
+  // MARKS. `vendor_bill_balance` had NO writer at all before this pair — zero
+  // stored values in the whole installation — so an omission here restores the
+  // exact defect it closes.
+  registerVendorBillBalanceReconcilers()
 
   // The billing projectors' four drains. Same rule again: the six billing hooks
   // below only MARK, so without this nothing rebuilds a projection.
@@ -252,7 +262,19 @@ export function registerAllHooks(): void {
   // `_match_variance` and `_match_notes` all declare the match hook as their only writer,
   // so these registrations are what make the exception queue anything other than empty.
   // The bill's own totals are NOT recomputed here — they are transcribed (01 §5.4b).
-  registerEntityFieldChangeHooks('vendor-bills', [rematchOnBillChange])
+  // Two independent derivations off the bill's own writes: the match writes the
+  // bill's VERDICT, the balance writes what is still OWED on it.
+  // `recalculateBalanceOnBillChange` is the only writer `vendor_bill_balance`
+  // has ever had — the field shipped `creatable: false` "computed from total and
+  // amountPaid" with nothing computing it, so every bill in every org carried a
+  // NULL balance until this registration existed. It covers the CLEAR path as
+  // well as the set path (a null write fires the same post-hook chain), which is
+  // why there is no delete hook beside it; the bill's total is transcribed, not
+  // derived from lines, so no bill-line door can move it either.
+  registerEntityFieldChangeHooks('vendor-bills', [
+    rematchOnBillChange,
+    recalculateBalanceOnBillChange,
+  ])
   // Two independent derivations off the same writes: the match writes the BILL's
   // verdict, the roll-up writes the ORDER LINE's billed quantity. Both must be
   // here — a bill line is created at the default quantity `1` and the real
