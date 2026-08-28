@@ -76,6 +76,16 @@ function readNumber(
   return typed ? (extractValue(typed) as number) : null
 }
 
+function readString(
+  values: Map<string, TypedFieldValue | TypedFieldValue[]>,
+  fieldId: string | undefined
+): string | null {
+  if (!fieldId) return null
+  const typed = firstTyped(values.get(fieldId))
+  const value = typed ? extractValue(typed) : null
+  return typeof value === 'string' && value ? value : null
+}
+
 function readRelatedInstanceId(
   values: Map<string, TypedFieldValue | TypedFieldValue[]>,
   fieldId: string | undefined
@@ -88,6 +98,7 @@ function readRelatedInstanceId(
 
 const MATCH_ATTRS = [
   'vendor_bill_status',
+  'vendor_bill_currency',
   'vendor_bill_match_variance',
   'vendor_bill_match_notes',
   'vendor_bill_line_quantity_billed',
@@ -135,9 +146,18 @@ export async function rematchBill(params: {
     return
   }
 
-  const billValues = await handler.getFieldValues(billRecordId, [statusField.id])
+  // The bill's own currency, read for one reason: `describeMatchReasons` renders
+  // money in major units and needs the exponent (2 for USD, 0 for JPY). It is a
+  // field on the bill rather than the org default because that is what the
+  // amounts on this document are denominated in.
+  const currencyField = cf.vendor_bill_currency
+  const billValues = await handler.getFieldValues(
+    billRecordId,
+    [statusField.id, currencyField?.id].filter((id): id is string => !!id)
+  )
   const statusTyped = firstTyped(billValues.get(statusField.id))
   const currentStatus = statusTyped ? (extractValue(statusTyped) as string) : null
+  const currencyCode = readString(billValues, currencyField?.id) ?? 'USD'
   // A bill with no status yet is a freshly created draft.
   if (currentStatus !== null && !MATCHABLE_STATUSES.has(currentStatus)) return
 
@@ -225,7 +245,8 @@ export async function rematchBill(params: {
   const variance = matchVariance(matchLines)
 
   const noteParts: string[] = []
-  if (result.outcome === 'exception') noteParts.push(describeMatchReasons(result.reasons))
+  if (result.outcome === 'exception')
+    noteParts.push(describeMatchReasons(result.reasons, currencyCode))
   if (unmatchableLines > 0) {
     noteParts.push(
       `${unmatchableLines} line${unmatchableLines === 1 ? '' : 's'} not matched to a purchase order line`

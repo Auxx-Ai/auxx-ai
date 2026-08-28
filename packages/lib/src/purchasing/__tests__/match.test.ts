@@ -4,6 +4,8 @@ import { describe, expect, it } from 'vitest'
 import { BadRequestError } from '../../errors'
 import {
   DEFAULT_MATCH_TOLERANCE,
+  describeMatchReason,
+  describeMatchReasons,
   matchBill,
   matchBillLine,
   matchVariance,
@@ -351,5 +353,100 @@ describe('matchBillLine - invalid input', () => {
     expect(result.outcome).toBe('exception')
     if (result.outcome !== 'exception') throw new Error('unreachable')
     expect(result.reasons[0]?.lineIndex).toBe(2)
+  })
+})
+
+describe('describeMatchReason', () => {
+  it('renders money in major units, not the stored minor ones', () => {
+    // The whole point: `10000` on the exception queue is a number nobody reads
+    // as $100.00.
+    const [reason] = matchBillLine(
+      line({ unitPriceBilled: 0, unitPriceExpected: 10_000 }),
+      DEFAULT_MATCH_TOLERANCE,
+      0
+    )
+
+    expect(describeMatchReason(reason!)).toBe(
+      'Line 1: unit price 0.00 billed against an agreed 100.00 (off by -100.00)'
+    )
+  })
+
+  it('names the price leg, so a price failure cannot read as a quantity one', () => {
+    const [price] = matchBillLine(
+      line({ unitPriceBilled: 12_000, unitPriceExpected: 10_000 }),
+      DEFAULT_MATCH_TOLERANCE,
+      0
+    )
+    const [quantity] = matchBillLine(
+      line({ quantityBilled: 3, quantityReceived: 2 }),
+      DEFAULT_MATCH_TOLERANCE,
+      0
+    )
+
+    expect(describeMatchReason(price!)).toContain('unit price')
+    expect(describeMatchReason(quantity!)).not.toContain('unit price')
+  })
+
+  it('scales by the currency exponent rather than assuming cents', () => {
+    const [reason] = matchBillLine(
+      line({ unitPriceBilled: 1000, unitPriceExpected: 2000 }),
+      DEFAULT_MATCH_TOLERANCE,
+      0
+    )
+
+    // JPY has no minor unit — 1000 yen is 1000, not 10.00.
+    expect(describeMatchReason(reason!, 'JPY')).toBe(
+      'Line 1: unit price 1000 billed against an agreed 2000 (off by -1000)'
+    )
+  })
+
+  it('carries no currency symbol — the string is stored, the symbol is not', () => {
+    const [reason] = matchBillLine(
+      line({ unitPriceBilled: 0, unitPriceExpected: 10_000 }),
+      DEFAULT_MATCH_TOLERANCE,
+      0
+    )
+
+    expect(describeMatchReason(reason!, 'EUR')).not.toMatch(/[$€¥£]/)
+  })
+
+  it('keeps the quantity wording the exception queue already reads', () => {
+    const [over] = matchBillLine(
+      line({ quantityBilled: 10, quantityReceived: 4 }),
+      DEFAULT_MATCH_TOLERANCE,
+      0
+    )
+
+    expect(describeMatchReason(over!)).toBe('Line 1: billed 10 but only 4 received')
+  })
+
+  it('numbers lines from 1, because the human is holding the paper invoice', () => {
+    const result = matchBill([line(), line({ quantityBilled: 3, quantityReceived: 2 })])
+
+    if (result.outcome !== 'exception') throw new Error('unreachable')
+    expect(describeMatchReason(result.reasons[0]!)).toContain('Line 2:')
+  })
+})
+
+describe('describeMatchReasons', () => {
+  it('joins with the `; ` the Match card splits on', () => {
+    const result = matchBill([line({ quantityBilled: 3, quantityReceived: 2, unitPriceBilled: 0 })])
+
+    if (result.outcome !== 'exception') throw new Error('unreachable')
+    const notes = describeMatchReasons(result.reasons)
+
+    expect(notes.split('; ')).toHaveLength(2)
+    expect(notes.split('; ')).toEqual(result.reasons.map((r) => describeMatchReason(r)))
+  })
+
+  it('is the empty string for a clean bill, never a sentence claiming success', () => {
+    expect(describeMatchReasons([])).toBe('')
+  })
+
+  it('passes the currency through to every reason', () => {
+    const result = matchBill([line({ unitPriceBilled: 0, unitPriceExpected: 10_000 })])
+
+    if (result.outcome !== 'exception') throw new Error('unreachable')
+    expect(describeMatchReasons(result.reasons, 'JPY')).toContain('an agreed 10000')
   })
 })

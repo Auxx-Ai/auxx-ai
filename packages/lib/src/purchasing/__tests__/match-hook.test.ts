@@ -41,6 +41,7 @@ import {
 
 const FIELDS: Record<string, { id: string; type: string }> = {
   vendor_bill_status: { id: 'f-status', type: 'SINGLE_SELECT' },
+  vendor_bill_currency: { id: 'f-currency', type: 'STRING' },
   vendor_bill_match_variance: { id: 'f-variance', type: 'CURRENCY' },
   vendor_bill_match_notes: { id: 'f-notes', type: 'TEXT' },
   vendor_bill_line_quantity_billed: { id: 'f-bl-qty', type: 'NUMBER' },
@@ -134,6 +135,31 @@ describe('rematchBill', () => {
     // expected side, so over-billing cannot net itself out.
     expect(written('f-variance')).toBe(3000)
     expect(written('f-notes')).toContain('billed 10 but only 4 received')
+  })
+
+  it("renders the notes in the bill's own currency scale", async () => {
+    // The prose the queue reads is written once, here — so the exponent has to
+    // come off the bill rather than be assumed to be 2. 1000 yen is 1000.
+    recordValues['vendor_bill:bill-1'] = {
+      'f-status': { type: 'option', optionId: 'draft' },
+      'f-currency': { type: 'text', value: 'JPY' },
+    }
+    h.listFiltered.mockResolvedValue({ ids: ['bl-1'] })
+    line('bl-1', 'pol-1', 1, 0, 1, 1000)
+
+    await rematch()
+
+    expect(written('f-notes')).toContain('an agreed 1000 ')
+  })
+
+  it('falls back to a 2-decimal scale when the bill carries no currency', async () => {
+    billIsDraft()
+    h.listFiltered.mockResolvedValue({ ids: ['bl-1'] })
+    line('bl-1', 'pol-1', 1, 0, 1, 1000)
+
+    await rematch()
+
+    expect(written('f-notes')).toContain('an agreed 10.00 ')
   })
 
   it('never un-posts a settled bill', async () => {

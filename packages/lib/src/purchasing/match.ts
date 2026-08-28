@@ -1,5 +1,6 @@
 // packages/lib/src/purchasing/match.ts
 
+import { minorToMajorString } from '@auxx/utils/currency'
 import { BadRequestError } from '../errors'
 import { roundCents } from '../money/totals'
 import type { MatchLine, MatchReason, MatchResult, MatchTolerance } from './types'
@@ -187,19 +188,33 @@ export function matchBill(
  * 1-based here and 0-based in `MatchReason.lineIndex` — the queue is read by
  * someone holding the paper invoice, where the first line is line 1.
  *
- * Money is rendered in whole minor units rather than formatted, because this
- * string is stored on the record and a currency symbol baked in at write time
- * would be wrong the moment the org's currency changes.
+ * Money is rendered in MAJOR units and carries no currency symbol. The symbol is
+ * still deliberately absent — this string is stored on the record, and a symbol
+ * baked in at write time would be wrong the moment the bill's currency changes.
+ * The scale is not: `10000` on screen is a number nobody reads as $100.00, so
+ * the exponent comes from the bill's own `currencyCode` (2 for USD, 0 for JPY,
+ * 3 for KWD) via the same `minorToMajorString` every other read path uses. A
+ * bill's currency is a fact about that document and does not drift the way an
+ * org default does, so pinning the scale at write time is safe in a way that
+ * pinning the symbol is not.
+ *
+ * `price_variance` names the leg explicitly ("unit price"). It used to share the
+ * `billed X against Y` shape with `quantity_under_billed`, which made a price
+ * failure read as a quantity one on the very screen that exists to tell them
+ * apart.
  */
-export function describeMatchReason(reason: MatchReason): string {
+export function describeMatchReason(reason: MatchReason, currencyCode = 'USD'): string {
   const line = reason.lineIndex + 1
+  // `allowed` may be a fractional minor unit (2% of 12345), and `difference` is
+  // signed — round once here so the string never shows a fraction of a cent.
+  const money = (value: number) => minorToMajorString(Math.round(value), currencyCode)
   switch (reason.code) {
     case 'quantity_over_billed':
       return `Line ${line}: billed ${reason.quantityBilled} but only ${reason.quantityReceived} received`
     case 'quantity_under_billed':
       return `Line ${line}: billed ${reason.quantityBilled} against ${reason.quantityReceived} received`
     case 'price_variance':
-      return `Line ${line}: billed ${reason.unitPriceBilled} against an agreed ${reason.unitPriceExpected} (off by ${reason.difference})`
+      return `Line ${line}: unit price ${money(reason.unitPriceBilled)} billed against an agreed ${money(reason.unitPriceExpected)} (off by ${money(reason.difference)})`
   }
 }
 
@@ -207,7 +222,10 @@ export function describeMatchReason(reason: MatchReason): string {
  * Every reason on one line of prose, for `vendor_bill_match_notes`. Empty string
  * for a clean bill — the field is what the queue renders, and "no reasons" must
  * read as blank rather than as a sentence claiming success.
+ *
+ * `; ` is the separator the drawer's Match card splits on to render one reason
+ * per row, so it is a shape contract and not just punctuation.
  */
-export function describeMatchReasons(reasons: MatchReason[]): string {
-  return reasons.map(describeMatchReason).join('; ')
+export function describeMatchReasons(reasons: MatchReason[], currencyCode = 'USD'): string {
+  return reasons.map((reason) => describeMatchReason(reason, currencyCode)).join('; ')
 }
