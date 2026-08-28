@@ -11,8 +11,6 @@ import { CATALOG_ITEM_FIELDS } from '../../resources/registry/resources/catalog-
 import { COMPANY_FIELDS } from '../../resources/registry/resources/company-fields'
 import { CONTACT_FIELDS } from '../../resources/registry/resources/contact-fields'
 import { GL_ACCOUNT_FIELDS } from '../../resources/registry/resources/gl-account-fields'
-import { GL_POSTING_FIELDS } from '../../resources/registry/resources/gl-posting-fields'
-import { GL_POSTING_LINE_FIELDS } from '../../resources/registry/resources/gl-posting-line-fields'
 import { INBOX_FIELDS } from '../../resources/registry/resources/inbox-fields'
 import { INVOICE_FIELDS } from '../../resources/registry/resources/invoice-fields'
 import { LINE_ITEM_FIELDS } from '../../resources/registry/resources/line-item-fields'
@@ -76,7 +74,6 @@ export const FIELD_REGISTRY: Record<string, Record<string, ResourceField>> = {
   invoice: INVOICE_FIELDS,
   payment: PAYMENT_FIELDS,
   product: PRODUCT_FIELDS,
-  gl_posting: GL_POSTING_FIELDS,
   order: ORDER_FIELDS,
   purchase_order: PURCHASE_ORDER_FIELDS,
   purchase_order_line: PURCHASE_ORDER_LINE_FIELDS,
@@ -85,7 +82,6 @@ export const FIELD_REGISTRY: Record<string, Record<string, ResourceField>> = {
   vendor_payment: VENDOR_PAYMENT_FIELDS,
   vendor_payment_allocation: VENDOR_PAYMENT_ALLOCATION_FIELDS,
   gl_account: GL_ACCOUNT_FIELDS,
-  gl_posting_line: GL_POSTING_LINE_FIELDS,
   build: BUILD_FIELDS,
 }
 

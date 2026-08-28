@@ -2,8 +2,8 @@
 //
 // Re-runs entity-migration 108 (purchase-to-pay: receiving cost on
 // stock_movement, purchase_order + purchase_order_line, vendor_bill +
-// vendor_bill_line, the inert vendor_payment pair, gl_account +
-// gl_posting_line) across every org.
+// vendor_bill_line, the inert vendor_payment pair, and gl_account) across every
+// org.
 //
 // Migration 108 is idempotent, so this is safe to repeat; it exists because the
 // maintenance job records the migration as `applied` after the first run and

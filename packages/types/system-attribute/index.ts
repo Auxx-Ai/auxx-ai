@@ -371,13 +371,6 @@ export const SYSTEM_ATTRIBUTES = [
   // (plans/auxx-lift/gap-b-quickbooks-journal-entry.md §6.2). The external
   // QuickBooks id is NOT here — it is an app-owned identity field declared in
   // the QuickBooks app's fields.ts, so it goes away with the connection.
-  'gl_posting_doc_number',
-  'gl_posting_posting_type',
-  'gl_posting_period_key',
-  'gl_posting_status',
-  'gl_posting_total_debit',
-  'gl_posting_posted_at',
-  'gl_posting_failure_reason',
 
   // ─── Catalog Group fields ───────────────────────────────────────
   'catalog_group_name',
@@ -604,11 +597,16 @@ export const SYSTEM_ATTRIBUTES = [
   'vendor_payment_allocation_amount',
   'company_vendor_payments', // inverse of vendor_payment_vendor
 
-  // ─── GL account + posting line ──────────────────────────────────
-  // P1/P2: the ledger is ours and the accounting system is an EXPORTER. Lines
-  // are keyed on an account CODE; the provider's own id for an account is an
-  // app-owned identity field on `gl_account`, exactly as `qboJournalEntryId`
-  // already hangs off `gl_posting`.
+  // ─── GL account (the chart) ─────────────────────────────────────
+  // P1/P2: the ledger is ours and the accounting system is an EXPORTER. A
+  // posting line is keyed on an account CODE; the provider's own id for an
+  // account is an app-owned identity field hung off `gl_account`.
+  //
+  // 🛑 `gl_account` STAYS an EntityInstance while `gl_posting` /
+  // `gl_posting_line` did not (decision G6, entity migration 113): postings
+  // needed a composite unique index that `FieldValue` cannot express, whereas a
+  // chart of accounts is a record a person maintains and `RecordIdentity` is
+  // keyed on an instance and has no other addressing mode.
   'gl_account_code',
   'gl_account_name',
   'gl_account_type',
@@ -617,15 +615,6 @@ export const SYSTEM_ATTRIBUTES = [
   // renumbered chart never breaks posting.
   'gl_account_role',
   'gl_account_is_active',
-  'gl_posting_line_gl_posting',
-  'gl_posting_line_account_code',
-  'gl_posting_line_direction',
-  'gl_posting_line_amount', // always POSITIVE — direction carries the sign
-  'gl_posting_line_memo',
-  'gl_posting_line_source_type',
-  'gl_posting_line_source_id',
-  'gl_posting_line_sort_order',
-  'gl_posting_lines', // inverse of gl_posting_line_gl_posting
 
   // ─── Build / standard cost (plans/products/build/01-build-plan.md §1) ──
   // Entity migration 109. Every one of these reads NULL until the code that

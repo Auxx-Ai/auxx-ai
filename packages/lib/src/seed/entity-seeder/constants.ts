@@ -225,18 +225,6 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     isVisible: true,
   },
   {
-    entityType: 'gl_posting',
-    apiSlug: 'gl-postings',
-    singular: 'GL Posting',
-    plural: 'GL Postings',
-    icon: 'book-open',
-    color: 'gray',
-    // Written only by the QuickBooks poster, mirroring `payment`. Seeded for
-    // every org but meaningful only to one that posts to a general ledger, so
-    // it stays out of the sidebar; Gap G's close console is the read surface.
-    isVisible: false,
-  },
-  {
     entityType: 'order',
     apiSlug: 'orders',
     singular: 'Order',
@@ -306,8 +294,10 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
   },
   {
     // The chart of accounts, ours. The accounting provider's own id for each
-    // account is an app-owned identity field on this row, exactly as
-    // `qboJournalEntryId` already hangs off `gl_posting` (P1/P2).
+    // account is an app-owned identity field on this row (P1/P2) — which is
+    // exactly why `gl_account` stays an EntityInstance while `gl_posting` /
+    // `gl_posting_line` became tables (G6): `RecordIdentity` is keyed on an
+    // instance and has no other addressing mode.
     entityType: 'gl_account',
     apiSlug: 'gl-accounts',
     singular: 'GL Account',
@@ -315,15 +305,6 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     icon: 'book-open',
     color: 'indigo',
     isVisible: false,
-  },
-  {
-    entityType: 'gl_posting_line',
-    apiSlug: 'gl-posting-lines',
-    singular: 'GL Posting Line',
-    plural: 'GL Posting Lines',
-    icon: 'file-text',
-    color: 'indigo',
-    isVisible: false, // Written only by the poster, like gl_posting itself
   },
   {
     // Ships INERT with entity migration 109 (plans/products/build/README.md
@@ -453,10 +434,6 @@ export const DISPLAY_FIELD_CONFIG: Record<string, DisplayFieldConfig> = {
     secondaryDisplayField: 'vendor',
     avatarField: 'image',
   },
-  gl_posting: {
-    primaryDisplayField: 'docNumber',
-    secondaryDisplayField: 'periodKey',
-  },
   order: {
     primaryDisplayField: 'number',
     secondaryDisplayField: undefined,
@@ -488,10 +465,6 @@ export const DISPLAY_FIELD_CONFIG: Record<string, DisplayFieldConfig> = {
   gl_account: {
     primaryDisplayField: 'code',
     secondaryDisplayField: 'name',
-  },
-  gl_posting_line: {
-    primaryDisplayField: 'accountCode',
-    secondaryDisplayField: undefined,
   },
   build: {
     primaryDisplayField: 'number',
