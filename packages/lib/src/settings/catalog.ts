@@ -824,6 +824,54 @@ export const SETTINGS_CATALOG = {
     description:
       'When on, accrual summaries are posted to the QuickBooks general ledger as journal entries.',
   },
+
+  // ── Manufacturing absorption rates (plans/products/build/01-build-plan.md §1.4) ─────────
+  //
+  // Per-UNIT, not per-hour: the merchant supplies a percentage split of a
+  // payroll total, not timesheets, so there are no routings, work centres or
+  // labour tickets behind these two numbers.
+  //
+  // 🛑 Both SHIP EMPTY (`null`). The actual figures are still open (build
+  // README §5 Q3), and nothing reads them until `rollStandardCost` lands in
+  // phase 1 — at which point a NULL rate must read as "no absorption", never as
+  // zero-by-accident. Scoped GENERAL like the other org-wide operational
+  // numbers; there is no MANUFACTURING value in the `SettingScope` pg enum and
+  // adding one would need a Drizzle migration this phase deliberately does not
+  // carry.
+  //
+  // ⚠️ Conversion cost applies only to a `subassembly` or `finished_good`
+  // (README B11). Applying these rates to a purchased `component` capitalises
+  // labour that was never spent and overstates 1310 Raw Materials.
+  'manufacturing.assemblyLaborCostPerUnit': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'CURRENCY',
+    options: {
+      currencyCode: 'USD',
+      decimals: 2,
+      useGrouping: true,
+      currencyDisplay: 'symbol',
+    },
+    defaultValue: null,
+    description:
+      'Absorbed direct labour per assembled unit, integer minor units: ' +
+      '(annual payroll x assembly%) / expected annual units. Unset = no labour absorption.',
+  },
+  'manufacturing.overheadCostPerUnit': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'CURRENCY',
+    options: {
+      currencyCode: 'USD',
+      decimals: 2,
+      useGrouping: true,
+      currencyDisplay: 'symbol',
+    },
+    defaultValue: null,
+    description:
+      'Applied overhead per assembled unit, integer minor units: total annual factory ' +
+      'overhead / expected annual units. Unset = no overhead absorption.',
+  },
 } satisfies Record<string, SettingConfig>
 
 /**

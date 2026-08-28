@@ -773,3 +773,46 @@ export const GlPostingLineDirection = {
     { value: 'credit', label: 'Credit', color: 'purple' },
   ] satisfies FieldOptionItem[],
 } as const
+
+/**
+ * Build Status
+ * plans/products/build/01-build-plan.md §1.1.
+ *
+ * `planned` -> `in_progress` -> `completed` | `canceled`. A `planned` build
+ * writes NO stock movements (README B2) — that is the safety property the whole
+ * phasing rests on, and it is why `createBuild` can ship before
+ * `part_standard_cost` has a single writer. `completed` is terminal: a
+ * completed build is never edited or deleted, it is REVERSED by a second build
+ * carrying the original's frozen costs (B6).
+ */
+export const BuildStatus = {
+  PLANNED: 'planned',
+  IN_PROGRESS: 'in_progress',
+  COMPLETED: 'completed',
+  CANCELED: 'canceled',
+
+  values: [
+    { value: 'planned', label: 'Planned', color: 'gray' },
+    { value: 'in_progress', label: 'In Progress', color: 'blue' },
+    { value: 'completed', label: 'Completed', color: 'green' },
+    { value: 'canceled', label: 'Canceled', color: 'red' },
+  ] satisfies FieldOptionItem[],
+} as const
+
+/**
+ * Build Source
+ * plans/products/build/01-build-plan.md §1.1, plans/products/12 AB7.
+ *
+ * An auto-raised build must be distinguishable from one a person raised against
+ * the same order deliberately — without that, "cancel the builds this order
+ * caused" cannot tell the two apart and would revoke a human decision.
+ */
+export const BuildSource = {
+  MANUAL: 'manual',
+  ORDER: 'order',
+
+  values: [
+    { value: 'manual', label: 'Manual', color: 'gray' },
+    { value: 'order', label: 'Order', color: 'blue' },
+  ] satisfies FieldOptionItem[],
+} as const

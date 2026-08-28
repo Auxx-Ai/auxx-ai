@@ -606,6 +606,44 @@ export const SYSTEM_ATTRIBUTES = [
   'gl_posting_line_sort_order',
   'gl_posting_lines', // inverse of gl_posting_line_gl_posting
 
+  // ─── Build / standard cost (plans/products/build/01-build-plan.md §1) ──
+  // Entity migration 109. Every one of these reads NULL until the code that
+  // writes it lands — there is no backfill anywhere in that migration.
+  'build_number',
+  'build_part',
+  'build_status',
+  'build_quantity_planned',
+  'build_quantity_produced', // good units that entered finished goods
+  'build_quantity_scrapped', // started but lost (B7) — falls out in the variance
+  'build_started_at',
+  'build_completed_at', // THE accounting date
+  'build_material_cost',
+  'build_labor_cost',
+  'build_overhead_cost',
+  'build_produced_value', // quantityProduced x part_standard_cost
+  'build_variance_amount', // (mat+lab+ovh) - producedValue -> account 5090
+  'build_movements', // inverse of stock_movement_build
+  'build_reversal_of', // set on the REVERSING build (B6)
+  'build_reversed_by', // inverse of build_reversal_of
+  'build_posted_at', // denormalized convenience ONLY — never gate on it
+  'build_notes',
+  'build_order', // which order caused this build (plans/products/12 AB7)
+  'build_source', // manual | order — an auto-build must be distinguishable
+  // The frozen standard, deliberately separate from the live `part_cost`. The
+  // three components are split because the fulfillment COGS entry has to land
+  // across 5000 / 5010 / 5020, which it can only do if the finished good's
+  // standard remembers its composition.
+  'part_standard_material_cost',
+  'part_standard_labor_cost',
+  'part_standard_overhead_cost',
+  'part_standard_cost', // the sum — the value every movement stamps
+  'part_standard_cost_effective_at',
+  'part_builds', // inverse of build_part
+  'stock_movement_build', // nullable; `reference` stays as-is
+  'stock_movement_qty_per_unit', // as-built BOM snapshot; NULL on a consume row = off-BOM
+  'order_cancelled_at', // set, never cleared — a Shopify order can arrive cancelled
+  'order_builds', // inverse of build_order
+
   // ─── Inbox fields ───────────────────────────────────────────────
   'inbox_name',
   'inbox_description',

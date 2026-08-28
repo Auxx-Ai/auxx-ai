@@ -5,6 +5,7 @@ import type { FieldId } from '@auxx/types/field'
 import { ENTITY_DEFINITION_TYPES } from '@auxx/types/resource'
 import type { ResourceField, ResourceFieldRegistry, ResourceTableDefinition } from './field-types'
 import { ARTICLE_FIELDS } from './resources/article-fields'
+import { BUILD_FIELDS } from './resources/build-fields'
 import { CATALOG_GROUP_FIELDS } from './resources/catalog-group-fields'
 import { CATALOG_ITEM_FIELDS } from './resources/catalog-item-fields'
 import { COMPANY_FIELDS } from './resources/company-fields'
@@ -150,6 +151,7 @@ export const RESOURCE_FIELD_REGISTRY: ResourceFieldRegistry = {
   vendor_payment_allocation: VENDOR_PAYMENT_ALLOCATION_FIELDS,
   gl_account: GL_ACCOUNT_FIELDS,
   gl_posting_line: GL_POSTING_LINE_FIELDS,
+  build: BUILD_FIELDS,
 }
 
 /**

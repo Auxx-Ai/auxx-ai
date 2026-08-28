@@ -5,6 +5,7 @@ import { createScopedLogger } from '@auxx/logger'
 import type { FieldOptions } from '../../custom-fields'
 import type { ResourceField } from '../../resources/registry/field-types'
 import { ARTICLE_FIELDS } from '../../resources/registry/resources/article-fields'
+import { BUILD_FIELDS } from '../../resources/registry/resources/build-fields'
 import { CATALOG_GROUP_FIELDS } from '../../resources/registry/resources/catalog-group-fields'
 import { CATALOG_ITEM_FIELDS } from '../../resources/registry/resources/catalog-item-fields'
 import { COMPANY_FIELDS } from '../../resources/registry/resources/company-fields'
@@ -85,6 +86,7 @@ export const FIELD_REGISTRY: Record<string, Record<string, ResourceField>> = {
   vendor_payment_allocation: VENDOR_PAYMENT_ALLOCATION_FIELDS,
   gl_account: GL_ACCOUNT_FIELDS,
   gl_posting_line: GL_POSTING_LINE_FIELDS,
+  build: BUILD_FIELDS,
 }
 
 /**

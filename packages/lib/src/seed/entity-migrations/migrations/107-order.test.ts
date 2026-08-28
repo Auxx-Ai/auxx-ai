@@ -63,8 +63,10 @@ describe('order entity registration wiring', () => {
     }
   })
 
-  it('carries exactly the 08 §2 field set', () => {
+  it('carries exactly the 08 §2 field set, plus what later migrations added', () => {
     expect(Object.keys(ORDER_FIELDS).sort()).toEqual([
+      'builds', // added by migration 109 — inverse of build_order (build §1.2)
+      'cancelledAt', // added by migration 109 — nullable, creatable, set never cleared
       'channel',
       'company',
       'contact',
@@ -83,7 +85,7 @@ describe('order entity registration wiring', () => {
       'shippingAddress',
       'subtotal',
       'tags',
-      'taxName', // added by migration 109 — the LineBuilder writes it with taxRate
+      'taxName', // folded into 108 (see the note below) — the LineBuilder writes it with taxRate
       'taxRate',
       'taxTotal',
       'total',

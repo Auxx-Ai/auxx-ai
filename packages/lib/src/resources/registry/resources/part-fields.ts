@@ -728,5 +728,207 @@ export const PART_FIELDS: Record<string, ResourceField> = {
     description: 'Bill lines charging for this part - what we were actually invoiced, per part',
   },
 
+  // ─── Standard cost — the FROZEN half of the two costs a part carries ──
+  // plans/products/build/01-build-plan.md §1.2, §2.4. Entity migration 109.
+  //
+  // `part_cost` answers "what would this cost to build today" and is rewritten
+  // by `recalculateAffectedParts` on every vendor-price or BOM change, silently
+  // and constantly. These answer "what we have agreed to value it at": written
+  // ONLY by `rollStandardCost`, only when a person runs it, with a stamped
+  // effective date. `part_standard_cost` is what every stock movement stamps —
+  // if it were recalculated automatically it would just BE `part_cost`, and
+  // every frozen unitCost would drift with vendor prices, which is the defect
+  // this whole subsystem exists to avoid.
+  //
+  // The three components are split because it is load-bearing, not for tidiness:
+  // the fulfillment COGS entry has to land across 5000 Materials / 5010 Direct
+  // Labor / 5020 Applied Overhead, and it can only do that if the finished
+  // good's standard remembers its composition.
+  //
+  // ⚠️ All five are hidden from the Details panel and the dialogs (§1.6). Five
+  // read-only cost rows would swamp the panel; they surface on the part drawer's
+  // Costing card, which already renders exactly this shape. Nobody types them.
+  // Deliberately NOT `capabilities.hidden` — they stay findable in the field
+  // picker, filterable, and addable to a view by anyone who wants them.
+
+  standardMaterialCost: {
+    id: toFieldId('standardMaterialCost'),
+    key: 'standardMaterialCost',
+    label: 'Standard Material Cost',
+    type: BaseType.CURRENCY,
+    fieldType: FieldType.CURRENCY,
+    isSystem: true,
+    systemAttribute: 'part_standard_material_cost',
+    systemSortOrder: 'a5e',
+    nullable: true,
+    showInPanel: false,
+    showInDialogs: false,
+    options: {
+      currencyCode: 'USD',
+      decimals: 2,
+      useGrouping: true,
+      currencyDisplay: 'symbol',
+    },
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: false,
+      updatable: false,
+      computed: true,
+      configurable: false,
+    },
+    description:
+      'Frozen material roll-up, integer minor units. For a built part this is the sum of its ' +
+      "children's standardCost x quantity — NOT round(part_cost), which is a pure material " +
+      'chain and drops every subassembly conversion cost on the way up (README B11)',
+  },
+
+  standardLaborCost: {
+    id: toFieldId('standardLaborCost'),
+    key: 'standardLaborCost',
+    label: 'Standard Labor Cost',
+    type: BaseType.CURRENCY,
+    fieldType: FieldType.CURRENCY,
+    isSystem: true,
+    systemAttribute: 'part_standard_labor_cost',
+    systemSortOrder: 'a5f',
+    nullable: true,
+    showInPanel: false,
+    showInDialogs: false,
+    options: {
+      currencyCode: 'USD',
+      decimals: 2,
+      useGrouping: true,
+      currencyDisplay: 'symbol',
+    },
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: false,
+      updatable: false,
+      computed: true,
+      configurable: false,
+    },
+    description:
+      'Absorbed direct labour per unit, integer minor units. Applies ONLY to a subassembly or ' +
+      'finished_good — a purchased component gets 0, because we did not assemble it and ' +
+      'capitalising labour never spent would overstate 1310 Raw Materials (README B11)',
+  },
+
+  standardOverheadCost: {
+    id: toFieldId('standardOverheadCost'),
+    key: 'standardOverheadCost',
+    label: 'Standard Overhead Cost',
+    type: BaseType.CURRENCY,
+    fieldType: FieldType.CURRENCY,
+    isSystem: true,
+    systemAttribute: 'part_standard_overhead_cost',
+    systemSortOrder: 'a5g',
+    nullable: true,
+    showInPanel: false,
+    showInDialogs: false,
+    options: {
+      currencyCode: 'USD',
+      decimals: 2,
+      useGrouping: true,
+      currencyDisplay: 'symbol',
+    },
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: false,
+      updatable: false,
+      computed: true,
+      configurable: false,
+    },
+    description:
+      'Applied overhead per unit, integer minor units. Gated on partKind exactly as ' +
+      'standardLaborCost is',
+  },
+
+  standardCost: {
+    id: toFieldId('standardCost'),
+    key: 'standardCost',
+    label: 'Standard Cost',
+    type: BaseType.CURRENCY,
+    fieldType: FieldType.CURRENCY,
+    isSystem: true,
+    systemAttribute: 'part_standard_cost',
+    systemSortOrder: 'a5h',
+    nullable: true,
+    showInPanel: false,
+    showInDialogs: false,
+    options: {
+      currencyCode: 'USD',
+      decimals: 2,
+      useGrouping: true,
+      currencyDisplay: 'symbol',
+    },
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: false,
+      updatable: false,
+      computed: true,
+      configurable: false,
+    },
+    description:
+      'Material + labour + overhead, integer minor units — THE value every stock movement ' +
+      'stamps. Rounded before freezing: computeLandedCost can emit a fractional-cent tariff ' +
+      'term, and an unrounded standard makes every downstream balance check hold by luck',
+  },
+
+  standardCostEffectiveAt: {
+    id: toFieldId('standardCostEffectiveAt'),
+    key: 'standardCostEffectiveAt',
+    label: 'Standard Cost Effective',
+    type: BaseType.DATETIME,
+    fieldType: FieldType.DATETIME,
+    isSystem: true,
+    systemAttribute: 'part_standard_cost_effective_at',
+    systemSortOrder: 'a5i',
+    nullable: true,
+    showInPanel: false,
+    showInDialogs: false,
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: false,
+      updatable: false,
+      computed: true,
+      configurable: false,
+    },
+    description:
+      'When the current standard took effect. Stamped by rollStandardCost — the delta ' +
+      'between part_cost and part_standard_cost since this date is what tells you a roll is due',
+  },
+
+  // Reverse relationship: builds (from build.part)
+  builds: {
+    id: toFieldId('builds'),
+    key: 'builds',
+    label: 'Builds',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'part_builds',
+    systemSortOrder: 'c2',
+    showInPanel: false, // has_many inverse; a tab lists them
+    showInDialogs: false,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'build:part' as ResourceFieldId,
+      relationshipType: 'has_many',
+      isInverse: true,
+    },
+    description: 'Builds that produce this part',
+  },
+
   createdBy: CREATED_BY_FIELD,
 }
