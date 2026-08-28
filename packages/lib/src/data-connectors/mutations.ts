@@ -1375,30 +1375,6 @@ export async function deleteConnector(
   await loadConnectorRow(db, organizationId, id)
   await removeConnectorScheduler(id)
 
-  // v9 inventory bridge: drop the managed inventory rule(s) for this connector's target defs
-  // (the watermark rows cascade via FK on the connector-row delete below). Lazy import — the
-  // rule helper pulls the record-rules/cache barrels that would break this module's mocked
-  // unit tests at load. Best-effort.
-  try {
-    const targetDefs = await db
-      .selectDistinct({ defId: schema.DataConnectorMapping.entityDefinitionId })
-      .from(schema.DataConnectorMapping)
-      .innerJoin(
-        schema.DataConnectorStream,
-        eq(schema.DataConnectorStream.id, schema.DataConnectorMapping.dataConnectorStreamId)
-      )
-      .where(eq(schema.DataConnectorStream.dataConnectorId, id))
-    const defIds = targetDefs.map((r) => r.defId).filter((d): d is string => d != null)
-    if (defIds.length > 0) {
-      const { removeInventoryDeductionRule } = await import('./inventory-bridge-rule')
-      for (const sourceDefId of defIds) {
-        await removeInventoryDeductionRule(db, organizationId, { sourceDefId })
-      }
-    }
-  } catch {
-    // Rule cleanup is best-effort; an orphan managed rule is harmless (it no-ops without links).
-  }
-
   if (behavior !== 'keep') {
     // archive/delete applies to records THIS connector CREATED — owned mirror rows
     // AND contributing instances it minted — identified by the sticky

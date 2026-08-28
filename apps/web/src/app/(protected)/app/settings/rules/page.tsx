@@ -2,7 +2,6 @@
 'use client'
 
 import SettingsPage from '~/components/global/settings-page'
-import { InventorySourcesSection } from '~/components/inventory-bridge/ui/inventory-sources-section'
 import { MailFiltersSection } from '~/components/mail-filters/ui/mail-filters-section'
 import { NoAccess } from '~/components/permissions/ui/no-access'
 import { RecordRulesSection } from '~/components/record-rules/ui/record-rules-section'
@@ -62,9 +61,6 @@ export default function RulesPage() {
         <div className='flex flex-1 flex-col gap-8 p-3 sm:p-6'>
           <RecordRulesSection />
           <MailFiltersSection />
-          {/* Inventory sources were behind the old page guard; keep their
-              audience unchanged now that the guard is gone. */}
-          {hasAutomationKey && <InventorySourcesSection />}
         </div>
       )}
     </SettingsPage>

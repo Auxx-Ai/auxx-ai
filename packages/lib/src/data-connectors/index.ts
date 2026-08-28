@@ -78,52 +78,6 @@ export {
   syncConnectorScheduler,
   syncConnectorSweepScheduler,
 } from './data-connector-scheduler'
-// Inventory→part consumption bridge (v9) — managed rule, watermark store, and the pass
-export {
-  applyPendingInventoryDelta,
-  type LinkInventorySourceInput,
-  linkInventorySource,
-  listInventoryBridgeSources,
-  listPartInventoryLinks,
-  type PartInventoryLink,
-  unlinkInventorySource,
-  updateInventoryLinkMode,
-} from './inventory-bridge-linking'
-export {
-  type DeductVariantInput,
-  type DeductVariantOutcome,
-  deductVariantInventory,
-  type InventoryBridgePassResult,
-  runInventoryBridgePass,
-} from './inventory-bridge-pass'
-export {
-  INVENTORY_BRIDGE_EDGE_ATTR,
-  type ProvisionInventoryBridgeInput,
-  provisionInventoryBridge,
-} from './inventory-bridge-provisioning'
-export {
-  DEDUCT_INVENTORY_HANDLER,
-  ensureInventoryDeductionRule,
-  INVENTORY_MANAGED_MARKER,
-  INVENTORY_RULE_NAME,
-  type InventorySource,
-  listInventorySourceRules,
-  listInventorySources,
-  listSyncedDefIds,
-  removeInventoryDeductionRule,
-  resolveInventorySource,
-} from './inventory-bridge-rule'
-export { registerInventoryDeductionRule } from './inventory-bridge-rule-action'
-export {
-  advanceWatermarkCAS,
-  deleteInventoryBridgeLink,
-  getInventoryBridgeLink,
-  type InventoryBridgeMode,
-  listInventoryBridgeLinksForConnector,
-  listInventoryBridgeLinksForPart,
-  setInventoryBridgeLinkMode,
-  upsertInventoryBridgeLink,
-} from './inventory-bridge-store'
 export type { MappedWrite } from './map-record'
 // Mapping layer
 export { mapRecord } from './map-record'

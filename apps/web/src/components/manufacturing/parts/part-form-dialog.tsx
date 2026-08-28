@@ -2,13 +2,7 @@
 'use client'
 
 import { FieldType } from '@auxx/database/enums'
-import {
-  getInstanceId,
-  PartKind,
-  parseRecordId,
-  type RecordId,
-  toRecordId,
-} from '@auxx/lib/resources/client'
+import { getInstanceId, PartKind, type RecordId, toRecordId } from '@auxx/lib/resources/client'
 import type { RelationshipConfig } from '@auxx/types/custom-field'
 import { toResourceFieldId } from '@auxx/types/field'
 import { Button } from '@auxx/ui/components/button'
@@ -26,7 +20,6 @@ import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
-import { PartInventoryLinkRows } from '~/components/inventory-bridge/ui/part-inventory-link-rows'
 import { useResourceProperty } from '~/components/resources'
 import { useSystemField } from '~/components/resources/hooks/use-field'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
@@ -424,14 +417,6 @@ export function PartFormDialog({
               fieldOptions={{ multiline: true }}
             />
           </FieldPanelRow>
-
-          {/* Linked inventory sources — edit mode only (a link needs the part instance) */}
-          {isEditMode && recordId && (
-            <PartInventoryLinkRows
-              partId={parseRecordId(recordId).entityInstanceId}
-              disabled={isPending}
-            />
-          )}
         </FieldPanel>
 
         {/* Collapsible Supplier Section - Only shown in create mode */}

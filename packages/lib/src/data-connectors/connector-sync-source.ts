@@ -425,26 +425,6 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
         error: err instanceof Error ? err.message : String(err),
       })
     }
-
-    // v9 inventory→part bridge: post-sink (the sink writes on the silent sync lane, so no
-    // per-record hook fired) compare synced quantities to the watermark and deduct
-    // linked parts. Best-effort — a bridge failure must never fail the sync run.
-    // Lazy import: the pass pulls the cache/settings/crud barrels, which break the
-    // mocked sync-source unit tests at module load (it never runs there anyway).
-    try {
-      const { runInventoryBridgePass } = await import('./inventory-bridge-pass')
-      await runInventoryBridgePass(
-        this.deps.db,
-        this.deps.organizationId,
-        this.deps.connector.id,
-        allMappings.map((m) => m.entityDefinitionId)
-      )
-    } catch (err) {
-      logger.error('inventory bridge pass failed', {
-        connectorId: this.deps.connector.id,
-        error: err instanceof Error ? err.message : String(err),
-      })
-    }
   }
 
   /** Build a sink context with the given counters; reuses cache-warmed crud handlers. */

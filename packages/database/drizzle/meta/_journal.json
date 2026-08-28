@@ -2451,6 +2451,13 @@
       "when": 1787861648970,
       "tag": "0349_entity_instance_default_created_at_order",
       "breakpoints": true
+    },
+    {
+      "idx": 350,
+      "version": "7",
+      "when": 1787882835203,
+      "tag": "0350_drop_inventory_bridge_link",
+      "breakpoints": true
     }
   ]
 }

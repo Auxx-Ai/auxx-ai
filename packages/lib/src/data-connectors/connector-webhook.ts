@@ -174,23 +174,6 @@ export async function runWebhookSteeredRun(
       runId: run.id,
     })
 
-    // v9 inventory→part bridge: a steered run bypasses the slice-orchestrator finalize,
-    // so run the watermark pass here too. Best-effort — never fail the run on a bridge error.
-    // Lazy import — the pass pulls barrels that break this file's mocked unit test.
-    try {
-      const { runInventoryBridgePass } = await import('./inventory-bridge-pass')
-      await runInventoryBridgePass(
-        db,
-        organizationId,
-        connectorId,
-        streams.flatMap((s) => s.mappings.map((m) => m.entityDefinitionId))
-      )
-    } catch (bridgeErr) {
-      logger.error('inventory bridge pass failed (steered run)', {
-        connectorId,
-        error: bridgeErr instanceof Error ? bridgeErr.message : String(bridgeErr),
-      })
-    }
     logger.info('runWebhookSteeredRun applied', {
       connectorId,
       streamKey,
