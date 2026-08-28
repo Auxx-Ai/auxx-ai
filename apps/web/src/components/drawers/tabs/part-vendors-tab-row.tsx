@@ -112,7 +112,12 @@ export function VendorPartRow({
       <TableCell className='font-medium'>
         <div className='flex items-center gap-2'>
           {supplierRecordId ? (
-            <RecordBadge recordId={supplierRecordId} variant='link' link={{ tab: 'parts' }} />
+            <RecordBadge
+              recordId={supplierRecordId}
+              variant='link'
+              link={{ tab: 'parts' }}
+              openInStack
+            />
           ) : (
             <span className='text-muted-foreground'>—</span>
           )}

@@ -15,6 +15,7 @@ import { X } from 'lucide-react'
 import Link from 'next/link'
 
 // Hook imports
+import { useOpenRecordLinkClick } from '~/components/records/record-drill-panels'
 import { useRecord, useResource } from '~/components/resources'
 import { type GetRecordLinkOptions, useRecordLink } from '../utils/get-record-link'
 import { RecordHoverCard } from './record-hover-card'
@@ -84,6 +85,18 @@ interface RecordBadgeProps extends VariantProps<typeof recordBadgeVariants> {
   hoverCard?: boolean | RecordBadgeHoverCardConfig
   /** When set, renders a trailing X button that fires this handler on click. */
   onRemove?: () => void
+  /**
+   * Opt in to opening the record IN PLACE — a left-click pushes it onto the
+   * enclosing drawer's peek stack instead of navigating away.
+   *
+   * Off by default on purpose: most badges (timeline chips, table cells,
+   * field-panel values, Kopilot blocks) render inside a drawer too, and their
+   * navigation is deliberate. Only opt in where staying in the drawer is the
+   * point. Requires `link` — a badge with no href has nothing to intercept —
+   * and no-ops outside a `RecordStackProvider`, so the same component still
+   * navigates normally on a detail page.
+   */
+  openInStack?: boolean
 }
 
 /**
@@ -115,6 +128,10 @@ interface RecordBadgeProps extends VariantProps<typeof recordBadgeVariants> {
  * @example
  * // As a link with custom options
  * <RecordBadge recordId={recordId} variant="link" link={{ tab: 'activity', action: 'edit' }} />
+ *
+ * @example
+ * // Inside a drawer: open the record in place instead of navigating
+ * <RecordBadge recordId={recordId} variant="link" link openInStack />
  */
 export function RecordBadge({
   recordId,
@@ -125,6 +142,7 @@ export function RecordBadge({
   link,
   hoverCard = true,
   onRemove,
+  openInStack,
   ...props
 }: RecordBadgeProps) {
   // Fetch record data (displayName, avatarUrl)
@@ -143,6 +161,10 @@ export function RecordBadge({
   // Generate link if link prop is provided
   const linkOptions = typeof link === 'object' ? link : undefined
   const href = useRecordLink(link ? recordId : null, linkOptions)
+
+  // `undefined` unless the call site opted in AND a record stack is mounted, in
+  // which case a plain left-click pushes a peek frame instead of navigating.
+  const handleStackOpen = useOpenRecordLinkClick(recordId, openInStack)
 
   // Determine display name
   const displayName = isNotFound ? 'Unknown' : (record?.displayName ?? 'Unknown')
@@ -201,6 +223,7 @@ export function RecordBadge({
         aria-busy={isLoading}
         href={href}
         className={badgeClassName}
+        onClick={handleStackOpen}
         {...props}>
         {badgeContent}
       </Link>
