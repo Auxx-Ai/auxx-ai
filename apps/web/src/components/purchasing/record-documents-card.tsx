@@ -20,7 +20,7 @@ import type { ResourceField } from '@auxx/lib/resources/client'
 import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
 import { type FileRef, getFileRefDownloadUrl, parseFileRef } from '@auxx/types/file-ref'
 import { Button } from '@auxx/ui/components/button'
-import { TreeRow } from '@auxx/ui/components/tree-row'
+import { TreeRow, TreeRowEmpty } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { formatBytes } from '@auxx/utils/file'
 import { Download, Lock, Paperclip, Plus, Trash2 } from 'lucide-react'
@@ -71,7 +71,13 @@ function RecordDocumentsCard({
   recordId,
   primaryAttribute,
   attachmentsAttribute,
-}: DrawerTabProps & { primaryAttribute: string; attachmentsAttribute: string }) {
+  emptyDescription,
+}: DrawerTabProps & {
+  primaryAttribute: string
+  attachmentsAttribute: string
+  /** One line under the empty state saying what belongs here. */
+  emptyDescription: string
+}) {
   const { entityDefinitionId } = parseRecordId(recordId)
   const { fields, isLoading } = useResourceFields(entityDefinitionId)
 
@@ -152,7 +158,13 @@ function RecordDocumentsCard({
     !primaryReadOnly && primaryField && primary.displayFiles.length === 0 ? primary : attachments
   const addTargetField = addTarget === primary ? primaryField : attachmentsField
 
+  // Nothing to show AND nothing to add: an org whose definition carries neither
+  // field (short of migration 112) would otherwise grow a permanently empty
+  // section offering nothing. An empty state is only worth rendering where there
+  // is something a person can DO about it.
   if (rows.length === 0 && uploading.length === 0 && !addTargetField) return null
+
+  const isEmpty = rows.length === 0 && uploading.length === 0
 
   return (
     <>
@@ -164,22 +176,37 @@ function RecordDocumentsCard({
         </DrawerCardActions>
       )}
 
-      <TreeRowList
-        items={rows}
-        getKey={(row) => row.id}
-        loading={isLoading && rows.length === 0}
-        skeletonCount={2}
-        visibleLimit={6}
-        showMoreIcon={<Paperclip className='size-4 text-muted-foreground' />}
-        renderRow={(row) => (
-          <DocumentTreeRow
-            row={row}
-            canViewFiles={canViewFiles}
-            isOpen={openRefs.has(row.ref)}
-            onToggleOpen={() => toggleOpen(row.ref)}
-          />
-        )}
-      />
+      {isEmpty ? (
+        // `TreeRowEmpty` rather than a bare `EmptySection`: it is horizontal and
+        // carries the row indent, so a section that fills up later does not shift
+        // the layout under the cursor. `loading` covers the first paint, where
+        // "no documents" and "not asked yet" look identical and only one of them
+        // is true.
+        <TreeRowEmpty
+          icon={<Paperclip className='size-4' />}
+          {...(isLoading
+            ? { loading: true as const }
+            : { title: 'No documents', description: emptyDescription })}
+        />
+      ) : (
+        // No `loading` here: this branch only renders once there is something to
+        // show, and the empty branch above owns the first paint. Leaving it in
+        // would stack two skeletons on top of an in-flight upload's own rows.
+        <TreeRowList
+          items={rows}
+          getKey={(row) => row.id}
+          visibleLimit={6}
+          showMoreIcon={<Paperclip className='size-4 text-muted-foreground' />}
+          renderRow={(row) => (
+            <DocumentTreeRow
+              row={row}
+              canViewFiles={canViewFiles}
+              isOpen={openRefs.has(row.ref)}
+              onToggleOpen={() => toggleOpen(row.ref)}
+            />
+          )}
+        />
+      )}
 
       {uploading.map((file) => (
         <TreeRow
@@ -288,6 +315,7 @@ export function PurchaseOrderDocumentsCard(props: DrawerTabProps) {
       {...props}
       primaryAttribute='purchase_order_pdf_asset'
       attachmentsAttribute='purchase_order_attachments'
+      emptyDescription='The PDF appears here once this order is sent.'
     />
   )
 }
@@ -306,6 +334,7 @@ export function VendorBillDocumentsCard(props: DrawerTabProps) {
       {...props}
       primaryAttribute='vendor_bill_document'
       attachmentsAttribute='vendor_bill_attachments'
+      emptyDescription="Add the vendor's invoice and anything that came with it."
     />
   )
 }
