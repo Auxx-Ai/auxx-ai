@@ -47,6 +47,7 @@ import {
   stripeSubscriptionSyncJob,
   taskDeadlineScannerJob,
   thumbnailCleanupJob,
+  vendorBillAgingJob,
   webhookRenewalJob,
   webhookRenewalScannerJob,
 } from '@auxx/lib/jobs'
@@ -247,6 +248,14 @@ export const jobMappings = {
   // Money MI2 invoice-draft daily sweep (08-mi2-build.md §G): materializes `custom_schedule`
   // invoice-draft recurrence rules whose horizon has fallen behind.
   invoiceDraftsJob,
+
+  // Money P24 vendor-bill aging daily sweep. THE ONLY time-driven trigger in the
+  // three-way match: every other one is an edit or a receipt. Without it a prepaid
+  // bill whose goods never arrive stays `awaiting_receipt` forever instead of
+  // becoming the `exception` that catches a vendor who took the money and never
+  // shipped. Re-uses `rematchBill`, so it decides which bills to re-ask about and
+  // never what a bill's status is.
+  vendorBillAgingJob,
 
   // Dispatch worker-facing daily schedule digest sweep (plans/dispatch/19-client-notifications.md
   // §4.9, opt-in): hourly tick, per-org local-hour + Redis dedupe guard inside the job itself.

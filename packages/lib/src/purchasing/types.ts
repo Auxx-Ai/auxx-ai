@@ -68,6 +68,17 @@ export interface MatchLine {
   unitPriceBilled: number
   /** Unit price agreed on the purchase order, integer minor units. */
   unitPriceExpected: number
+  /**
+   * When the purchase order says these goods should arrive — the PO HEADER's
+   * `expectedAt`, so every line of one order shares it.
+   *
+   * This is what turns `awaiting_receipt` from a state that never resolves into
+   * one that ages (P24). Absent means the order carries no expected date, and a
+   * line that cannot be judged late is left `awaiting_receipt` indefinitely
+   * rather than being called an exception on a date nobody agreed — see
+   * `matchBillLine` for why that direction is the safe one.
+   */
+  expectedAt?: Date | null
 }
 
 /** How much drift the three-way match forgives before it raises an exception. */
@@ -82,6 +93,15 @@ export interface MatchTolerance {
    * partial receipt is expected in that mode and left to the completeness check.
    */
   quantityExact: boolean
+  /**
+   * How long after the purchase order's `expectedAt` a still-unreceived line
+   * stays `awaiting_receipt` before it becomes a real exception (P24).
+   *
+   * The expected date supplies the deadline; this supplies the patience. Zero
+   * means a vendor one day late is already in the queue, which is a decision
+   * about how the business wants to be told, not an accounting rule.
+   */
+  receiptGraceDays: number
 }
 
 /**
@@ -93,16 +113,30 @@ export interface MatchTolerance {
  */
 export type MatchReason =
   | {
-      code: 'quantity_over_billed'
+      code: 'quantity_under_billed'
       lineIndex: number
       quantityBilled: number
       quantityReceived: number
     }
   | {
-      code: 'quantity_under_billed'
+      /**
+       * Billed, not received, and past `expectedAt` + the grace period. The aged
+       * form of `awaiting_receipt` and a real exception (P24).
+       *
+       * This REPLACED `quantity_over_billed`, which is now gone: under P24 every
+       * `quantityBilled > quantityReceived` line is either awaiting or overdue,
+       * so nothing could emit it. The two also send a human to different places —
+       * an over-bill is a conversation about the invoice, an overdue receipt is a
+       * conversation about the shipment — and it was always the second one.
+       */
+      code: 'receipt_overdue'
       lineIndex: number
       quantityBilled: number
       quantityReceived: number
+      /** The order's expected arrival, which is what made this judgeable. */
+      expectedAt: Date
+      /** The grace period it outlived, in days. */
+      graceDays: number
     }
   | {
       code: 'price_variance'
@@ -116,10 +150,39 @@ export type MatchReason =
     }
 
 /**
+ * One line billed ahead of its receipt and not yet late — the prepaid case (P24).
+ *
+ * Deliberately NOT a {@link MatchReason}: an awaiting line is not a failure and
+ * must never reach the exception queue's reason list. It carries the same three
+ * numbers a reason would so the queue can still say *what* it is waiting on.
+ */
+export interface AwaitingLine {
+  lineIndex: number
+  quantityBilled: number
+  quantityReceived: number
+  /**
+   * The order's expected arrival, or `null` when the order carries none — which
+   * is exactly the case that stays awaiting forever. See `matchBillLine`.
+   */
+  expectedAt: Date | null
+}
+
+/**
  * The bill-level verdict. `matched` carries nothing because there is nothing to
  * show; an exception carries every reason and the signed money at stake, which
  * are the two things the queue and the eventual GL entry both need.
+ *
+ * `awaiting_receipt` is the third outcome and it is NOT a failure (P24): the
+ * vendor has billed for goods that have not landed yet and are not yet late.
+ * It carries a variance because a prepaid bill can still be mispriced — but the
+ * quantity leg of that number is suppressed, see `matchVariance`.
+ *
+ * Precedence at the bill level is: any real reason wins (`exception`), else any
+ * awaiting line (`awaiting_receipt`), else `matched`. A bill can therefore be an
+ * exception for a price problem while some of its lines are still awaiting
+ * goods — price is judgeable the moment the invoice arrives, quantity is not.
  */
 export type MatchResult =
   | { outcome: 'matched' }
+  | { outcome: 'awaiting_receipt'; awaiting: AwaitingLine[]; variance: number }
   | { outcome: 'exception'; reasons: MatchReason[]; variance: number }

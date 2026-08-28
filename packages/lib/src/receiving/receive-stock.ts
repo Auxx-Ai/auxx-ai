@@ -23,7 +23,7 @@ import {
   computeExtendedCost,
   computeReceiptLandedCost,
   type ReceiptCostInputs,
-  resolveGlAccountForPartKind,
+  resolveInventoryRoleForPartKind,
   roundMinorUnits,
 } from './client'
 import { assertCostFieldsMaterialized } from './cost-fields'
@@ -79,7 +79,7 @@ export async function receiveStock(
         input,
         unitCost: priced.unitCost,
         vendorUnitPrice: priced.vendorUnitPrice,
-        glAccount: resolveGlAccountForPartKind(partKind),
+        glAccount: resolveInventoryRoleForPartKind(partKind),
         occurredAt: input.occurredAt ?? new Date(),
       })
       return written

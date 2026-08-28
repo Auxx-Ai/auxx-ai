@@ -68,6 +68,9 @@ const FIELDS: Record<string, { id: string; type: string }> = {
   vendor_bill_line_vendor_bill: { id: 'f-bl-bill', type: 'RELATIONSHIP' },
   purchase_order_line_quantity_received: { id: 'f-pol-recv', type: 'NUMBER' },
   purchase_order_line_expected_unit_price: { id: 'f-pol-price', type: 'CURRENCY' },
+  // The aging leg (P24): PO line -> purchase order -> the header's expected date.
+  purchase_order_line_purchase_order: { id: 'f-pol-po', type: 'RELATIONSHIP' },
+  purchase_order_expected_at: { id: 'f-po-expected', type: 'DATETIME' },
 }
 
 /** Field values keyed by recordId, assembled per test. */
@@ -84,6 +87,9 @@ function rowsFromRecordValues() {
       if (v.type === 'number') row.valueNumber = v.value
       else if (v.type === 'boolean') row.valueBoolean = v.value
       else if (v.type === 'option') row.optionId = v.optionId
+      // `FieldValue.valueDate` is `timestamp(..., { mode: 'string' })`, so the real
+      // column hands back an ISO STRING and not a `Date`. The fixture matches it.
+      else if (v.type === 'date') row.valueDate = v.value
       else if (v.type === 'relationship') row.relatedEntityId = v.recordId?.split(':')[1]
       else row.valueText = v.value
       rows.push(row)
@@ -131,7 +137,13 @@ function line(
   billed: number,
   price: number,
   received: number,
-  expected: number
+  expected: number,
+  /**
+   * The purchase order HEADER's `expectedAt`, as the ISO string the column mode
+   * produces. Absent means the line hangs off no order at all, which is the
+   * shape every test predating P24 was written against.
+   */
+  expectedAt?: string
 ) {
   recordValues[`vendor_bill_line:${id}`] = {
     'f-bl-qty': { type: 'number', value: billed },
@@ -142,7 +154,39 @@ function line(
     'f-pol-recv': { type: 'number', value: received },
     'f-pol-price': { type: 'number', value: expected },
   }
+  if (expectedAt !== undefined) {
+    const orderId = `po-for-${poLineId}`
+    recordValues[`purchase_order_line:${poLineId}`]!['f-pol-po'] = {
+      type: 'relationship',
+      recordId: `purchase_order:${orderId}`,
+    }
+    recordValues[`purchase_order:${orderId}`] = {
+      'f-po-expected': { type: 'date', value: expectedAt },
+    }
+  }
 }
+
+/**
+ * A bill line raised from a purchase order but not yet transcribed: the
+ * `unitPrice` FieldValue row does not exist at all. This is what
+ * `billLineValuesFromPurchaseOrderLine` actually creates — it leaves the price
+ * blank on purpose, because prefilling a value the match COMPARES would make the
+ * match rubber-stamp itself.
+ */
+function untypedLine(
+  id: string,
+  poLineId: string,
+  billed: number,
+  received: number,
+  expected: number,
+  expectedAt?: string
+) {
+  line(id, poLineId, billed, 0, received, expected, expectedAt)
+  delete recordValues[`vendor_bill_line:${id}`]!['f-bl-price']
+}
+
+/** Comfortably outside any grace period the default tolerance allows. */
+const LONG_OVERDUE = '2020-01-01T00:00:00.000Z'
 
 const rematch = () =>
   rematchBill({ organizationId: 'org_1', userId: 'usr_1', vendorBillInstanceId: 'bill-1' })
@@ -160,18 +204,81 @@ describe('rematchBill', () => {
     expect(written('f-notes')).toBeNull()
   })
 
-  it('writes `exception` with the reason in words when the vendor over-bills', async () => {
+  it('writes `awaiting_receipt` — not an exception — when the goods have not landed', async () => {
+    // 🛑 P24. Prepayment is the normal state here: vendors often will not ship
+    // until the invoice is paid, so `billed > received` on a CORRECT bill must not
+    // fill the exception queue. The variance goes price-only too, or the queue's
+    // money column screams the bill's whole value and nothing is fixed.
     billIsDraft()
     h.listFiltered.mockResolvedValue({ ids: ['bl-1'] })
-    line('bl-1', 'pol-1', 10, 500, 4, 500)
+    line('bl-1', 'pol-1', 10, 500, 0, 500)
+
+    await rematch()
+
+    expect(written('f-status')).toBe('awaiting_receipt')
+    expect(written('f-variance')).toBe(0)
+    expect(written('f-notes')).toBe(
+      'Line 1: awaiting receipt of 10 of 10 billed (no expected date on the order)'
+    )
+  })
+
+  it('writes `exception` with the reason in words once the receipt is overdue', async () => {
+    billIsDraft()
+    h.listFiltered.mockResolvedValue({ ids: ['bl-1'] })
+    line('bl-1', 'pol-1', 10, 500, 4, 500, LONG_OVERDUE)
 
     await rematch()
 
     expect(written('f-status')).toBe('exception')
-    // 10 * 500 billed against 4 * 500 received — the variance uses RECEIVED on the
-    // expected side, so over-billing cannot net itself out.
+    // 10 * 500 billed against 4 * 500 received — an overdue line is no longer
+    // awaiting, so the variance is back to RECEIVED on the expected side and
+    // over-billing cannot net itself out.
     expect(written('f-variance')).toBe(3000)
     expect(written('f-notes')).toContain('billed 10 but only 4 received')
+    expect(written('f-notes')).toContain('past the expected 2020-01-01')
+  })
+
+  it('re-matches a bill sitting in `awaiting_receipt` once the goods arrive', async () => {
+    // Without `awaiting_receipt` in MATCHABLE_STATUSES this bill could never leave
+    // the state — the never-resolving bug P24 was designed around, recreated.
+    recordValues['vendor_bill:bill-1'] = {
+      'f-status': { type: 'option', optionId: 'awaiting_receipt' },
+    }
+    h.listFiltered.mockResolvedValue({ ids: ['bl-1'] })
+    line('bl-1', 'pol-1', 10, 500, 10, 500)
+
+    await rematch()
+
+    expect(written('f-status')).toBe('matched')
+  })
+
+  it('reads the expected date off the purchase order HEADER, not the line', async () => {
+    // One order date shared by every line of it — the hop the hook has to walk.
+    billIsDraft()
+    h.listFiltered.mockResolvedValue({ ids: ['bl-1', 'bl-2'] })
+    line('bl-1', 'pol-1', 5, 500, 0, 500, LONG_OVERDUE)
+    line('bl-2', 'pol-2', 5, 500, 0, 500, LONG_OVERDUE)
+
+    await rematch()
+
+    expect(written('f-status')).toBe('exception')
+    expect(written('f-notes')).toContain('Line 1:')
+    expect(written('f-notes')).toContain('Line 2:')
+  })
+
+  it('drops an awaiting bill back to draft when no line is matchable any more', async () => {
+    recordValues['vendor_bill:bill-1'] = {
+      'f-status': { type: 'option', optionId: 'awaiting_receipt' },
+    }
+    h.listFiltered.mockResolvedValue({ ids: ['bl-1'] })
+    recordValues['vendor_bill_line:bl-1'] = {
+      'f-bl-qty': { type: 'number', value: 1 },
+      'f-bl-price': { type: 'number', value: 900 },
+    }
+
+    await rematch()
+
+    expect(written('f-status')).toBe('draft')
   })
 
   it("renders the notes in the bill's own currency scale", async () => {
@@ -263,12 +370,91 @@ describe('rematchBill', () => {
     expect(written('f-notes')).toBe('1 line not matched to a purchase order line')
   })
 
+  it('treats a line with no unit price yet as unmatchable, not a $0 price variance', async () => {
+    billIsDraft()
+    h.listFiltered.mockResolvedValue({ ids: ['bl-1', 'bl-untyped'] })
+    line('bl-1', 'pol-1', 10, 500, 10, 500)
+    untypedLine('bl-untyped', 'pol-2', 1, 1, 10000)
+
+    await rematch()
+
+    // Read as $0 the untyped line would disagree with the order's $100.00 and drag
+    // the whole bill to `exception` on a price nobody has typed yet. But it must not
+    // read `matched` either — that status posts to the GL, and half this document
+    // has not been transcribed.
+    expect(written('f-status')).toBe('draft')
+    expect(written('f-variance')).toBeNull()
+    expect(written('f-notes')).toBe('1 line with no unit price entered yet')
+  })
+
+  it('never lets an untyped line hide a real exception on a line that IS typed', async () => {
+    billIsDraft()
+    h.listFiltered.mockResolvedValue({ ids: ['bl-1', 'bl-untyped'] })
+    // Typed, received, and billed at a price nobody agreed — a genuine finding.
+    // $20.00 against an agreed $5.00, comfortably outside `priceAbsolute` (500).
+    line('bl-1', 'pol-1', 10, 2000, 10, 500)
+    untypedLine('bl-untyped', 'pol-2', 1, 1, 10000)
+
+    await rematch()
+
+    expect(written('f-status')).toBe('exception')
+    expect(written('f-variance')).not.toBeNull()
+  })
+
+  it('does not demote a bill for an UNLINKED line — that one is deliberate', async () => {
+    // A freight line on a goods bill is outside the match by design and always was.
+    // Only an untyped line means "somebody has not finished typing".
+    billIsDraft()
+    h.listFiltered.mockResolvedValue({ ids: ['bl-1', 'bl-freight'] })
+    line('bl-1', 'pol-1', 10, 500, 10, 500)
+    recordValues['vendor_bill_line:bl-freight'] = {
+      'f-bl-qty': { type: 'number', value: 1 },
+      'f-bl-price': { type: 'number', value: 2500 },
+    }
+
+    await rematch()
+
+    expect(written('f-status')).toBe('matched')
+  })
+
+  it('leaves a freshly raised prepaid bill as a draft rather than an exception', async () => {
+    // The P24 case that mattered: raised from a purchase order, nothing received,
+    // no prices transcribed yet. Reading the blanks as $0 made this an `exception`
+    // from birth, so the population `awaiting_receipt` exists to serve could never
+    // reach it.
+    billIsDraft()
+    h.listFiltered.mockResolvedValue({ ids: ['bl-1', 'bl-2', 'bl-3'] })
+    untypedLine('bl-1', 'pol-1', 1, 0, 10000)
+    untypedLine('bl-2', 'pol-2', 1, 0, 10000)
+    untypedLine('bl-3', 'pol-3', 1, 0, 10000)
+
+    await rematch()
+
+    expect(written('f-status')).toBeUndefined() // already draft, nothing to rewrite
+    expect(written('f-variance')).toBeNull()
+    expect(written('f-notes')).toBeNull()
+  })
+
+  it('still matches a line the vendor legitimately billed at zero', async () => {
+    // Absence is not zero. `num` returns undefined only when the row is missing, so
+    // a real $0.00 line — a free replacement — is a value like any other.
+    billIsDraft()
+    h.listFiltered.mockResolvedValue({ ids: ['bl-1'] })
+    line('bl-1', 'pol-1', 1, 0, 1, 0)
+
+    await rematch()
+
+    expect(written('f-status')).toBe('matched')
+    expect(written('f-variance')).toBe(0)
+  })
+
   it('reads the received quantity from the PO LINE, not from the bill line', async () => {
     billIsDraft()
     h.listFiltered.mockResolvedValue({ ids: ['bl-1'] })
-    // Billed 5, received 2. Reading `received` off the BILL line would find the
-    // billed 5 there and call this matched.
-    line('bl-1', 'pol-1', 5, 100, 2, 100)
+    // Billed 5, received 2, and long overdue so the verdict is a real exception.
+    // Reading `received` off the BILL line would find the billed 5 there and call
+    // this matched.
+    line('bl-1', 'pol-1', 5, 100, 2, 100, LONG_OVERDUE)
 
     await rematch()
 

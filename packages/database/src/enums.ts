@@ -671,6 +671,42 @@ export const FileStatusValues = ['PENDING', 'CONFIRMED', 'ARCHIVED', 'DELETED', 
 
 export const FileVisibilityValues = ['PUBLIC', 'PRIVATE', 'INTERNAL'] as const
 
+// ============================================================================
+// GENERAL LEDGER ENUMS  (decision G6 — plans/money/design/gl-posting-tables.md)
+// Kept in step with `db/schema/gl-posting.ts` and with `POSTING_TYPES` in
+// `packages/lib/src/postings/types.ts`. Client-safe: the close console renders
+// these and must not import the Drizzle schema to do it.
+// ============================================================================
+
+/**
+ * What produced a posting. The first six are the L1 monthly/periodic entries;
+ * `receipt` and `vendor_bill` are the L3 per-event entries, carried from day one
+ * because widening a Postgres enum later is a migration.
+ */
+export const GlPostingTypeValues = [
+  'fulfillment',
+  'payout',
+  'build',
+  'month_end_deferral',
+  'month_end_reversal',
+  'month_end_inventory',
+  'receipt',
+  'vendor_bill',
+] as const
+export type GlPostingType = (typeof GlPostingTypeValues)[number]
+
+/**
+ * Lifecycle of one journal entry. `reversed` is terminal and belongs to the
+ * ORIGINAL of a reversal pair — the reversal itself is an ordinary `posted`
+ * entry (decision G4).
+ */
+export const GlPostingStatusValues = ['pending', 'posted', 'failed', 'reversed'] as const
+export type GlPostingStatus = (typeof GlPostingStatusValues)[number]
+
+/** Which side of the entry a line sits on. The ONLY carrier of sign (decision G2). */
+export const GlPostingDirectionValues = ['debit', 'credit'] as const
+export type GlPostingDirection = (typeof GlPostingDirectionValues)[number]
+
 export const INVENTORY_POLICYValues = ['CONTINUE', 'DENY'] as const
 
 export const IdentifierTypeValues = [

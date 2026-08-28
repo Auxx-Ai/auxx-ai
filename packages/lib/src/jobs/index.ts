@@ -253,6 +253,8 @@ export {
   sendTrialConversionEmailsJob,
   type TrialConversionStats,
 } from './maintenance/trial-conversion-job'
+// Money P24 vendor-bill aging daily sweep — `awaiting_receipt` -> `exception`
+export { vendorBillAgingJob } from './maintenance/vendor-bill-aging-job'
 export {
   type WebhookRenewalJobData,
   webhookRenewalJob,

@@ -459,7 +459,15 @@ export const SYSTEM_ATTRIBUTES = [
   'stock_movement_unit_cost',
   'stock_movement_extended_cost',
   'stock_movement_cost_basis',
-  'stock_movement_gl_account', // an account CODE ('1310'), never a provider id (P2)
+  // 🛑 An account ROLE ('inventory_raw_materials'), NOT a code and never a
+  // provider id. `P2` keeps provider ids out of the ledger; `G8` keeps ORG
+  // NUMBERING out of it too, because `G7` makes the chart an editable
+  // default. A movement is append-only and frozen at write time, so a code
+  // stamped here is silently reinterpreted the day the org renumbers — and
+  // the posting still balances, so nothing downstream can detect it.
+  // `resolveInventoryRoleForPartKind` is the only writer;
+  // `buildReceiptEntry` is the reader (`inventoryAccountRole`).
+  'stock_movement_gl_account',
   'stock_movement_occurred_at', // the ACCOUNTING date; createdAt is when it was typed
   'stock_movement_vendor_part',
   'stock_movement_vendor_unit_price', // raw invoice price, before landed adders
@@ -565,6 +573,13 @@ export const SYSTEM_ATTRIBUTES = [
   'vendor_bill_line_quantity_billed',
   'vendor_bill_line_unit_price', // a BUY price
   'vendor_bill_line_line_total',
+  // A CODE ('2160'), and deliberately NOT a role like
+  // `stock_movement_gl_account`. This is the bookkeeper's own coding of a
+  // bill line against THEIR chart, and most of a chart carries no auxx role
+  // at all (16 of the 28 seeded accounts have none) — so a role here would
+  // make the majority of an org's accounts uncodeable. It is typed by a
+  // human and stays `updatable: true`, which is the other half of the
+  // difference: nothing about it is frozen history.
   'vendor_bill_line_gl_account',
   'vendor_bill_line_sort_order',
   'part_vendor_bill_lines', // inverse of vendor_bill_line_part
@@ -597,6 +612,10 @@ export const SYSTEM_ATTRIBUTES = [
   'gl_account_code',
   'gl_account_name',
   'gl_account_type',
+  // G8: which auxx posting ROLE this account fulfils. Optional and unique per
+  // org — builders emit a role, the org maps its own account to it, so a
+  // renumbered chart never breaks posting.
+  'gl_account_role',
   'gl_account_is_active',
   'gl_posting_line_gl_posting',
   'gl_posting_line_account_code',

@@ -673,6 +673,7 @@ export const LandedCostAllocationBasis = {
  */
 export const VendorBillStatus = {
   DRAFT: 'draft',
+  AWAITING_RECEIPT: 'awaiting_receipt',
   MATCHED: 'matched',
   EXCEPTION: 'exception',
   POSTED: 'posted',
@@ -682,6 +683,16 @@ export const VendorBillStatus = {
 
   values: [
     { value: 'draft', label: 'Draft', color: 'gray' },
+    // 🛑 `awaiting_receipt` is the prepaid case, and it is not an exception (P24).
+    // Vendors here often will not ship until the invoice is paid, so `billed >
+    // received` is the NORMAL state of a CORRECT bill for weeks. Calling that an
+    // exception fills the queue with false positives, and a queue that is always
+    // red is one nobody reads — which is the exact failure the match exists to
+    // prevent, arriving from the other side. It ages off the purchase order's
+    // `expectedAt` and becomes a real `exception` once late, so a vendor who took
+    // the money and never shipped still surfaces. `amber` for the same reason
+    // `partially_paid` is amber: a state that still needs something to happen.
+    { value: 'awaiting_receipt', label: 'Awaiting Receipt', color: 'amber' },
     { value: 'matched', label: 'Matched', color: 'green' },
     { value: 'exception', label: 'Exception', color: 'red' },
     { value: 'posted', label: 'Posted', color: 'blue' },
@@ -753,6 +764,112 @@ export const GlAccountType = {
     { value: 'equity', label: 'Equity', color: 'purple' },
     { value: 'revenue', label: 'Revenue', color: 'green' },
     { value: 'expense', label: 'Expense', color: 'red' },
+  ] satisfies FieldOptionItem[],
+} as const
+
+/**
+ * GL Account Role — what auxx.ai USES an account for (decision `G8`).
+ *
+ * **Why a role exists at all.** `G7` makes the chart of accounts a seeded
+ * DEFAULT that the org edits, not a fixed list. Charts are not standardised —
+ * US GAAP mandates no numbering, QuickBooks' default varies by country and
+ * industry and is routinely edited, and France's PCG and Germany's SKR03/04
+ * mandate different ones outright. Once the chart is editable the account
+ * NUMBER cannot carry the meaning: a customer who renumbers GRNI from `2160`
+ * to `2155` would silently break every posting that hardcoded `'2160'`, and
+ * the entry would still balance, so nothing downstream could detect it.
+ *
+ * So a builder posts to a ROLE and the org points one of its own accounts at
+ * that role. This is decision `P2`'s argument one layer up: `P2` refuses to tie
+ * the ledger to one provider's account ids; `G8` refuses to tie it to one
+ * company's numbering. The resolution chain is
+ * `role -> the org's gl_account -> code -> the provider's own id`, and only the
+ * last hop belongs to a provider adapter.
+ *
+ * **This vocabulary is auxx's, and it is CLOSED.** An org may renumber, rename
+ * or replace the account behind a role; it may not invent a role, because a
+ * role only means anything if a builder emits it. Adding one is a code change
+ * plus an options migration (`ensureCustomFields` never rewrites an existing
+ * field's `options`, so a new value reaches new orgs only).
+ *
+ * **Scope, stated so the gap is visible rather than implied.** These twelve
+ * cover exactly the accounts the code posts to today — the receipt and vendor
+ * bill builders in `postings/build-entry.ts` — plus the L1 month-end inventory
+ * entry that is the January 1 deliverable (`plans/money/04-books.md` §2.1).
+ * The designed-but-unbuilt builders (fulfillment, payout, build, month-end
+ * deferral) will need roles for revenue, the clearing accounts, sales tax,
+ * deferred revenue, merchant fees, freight-out and receivables. Those are
+ * deliberately NOT declared here: their entries are design only, the account
+ * each leg lands on is still open, and a role nothing emits is a select value a
+ * bookkeeper can map wrongly with no way to find out.
+ *
+ * The seeded default chart (`postings/default-chart.ts`) ships with these roles
+ * pre-assigned, so a new org needs zero setup.
+ */
+export const GlAccountRole = {
+  /** 1000 Cash. Credited when a bill is paid in ledger mode (decision `P12`). */
+  CASH: 'cash',
+  /**
+   * 1310 Raw Materials. Debited at LANDED cost when a component or a
+   * subassembly is received — `partKind` maps BOTH to this role
+   * (plans/products/01-product-family.md §4).
+   */
+  INVENTORY_RAW_MATERIALS: 'inventory_raw_materials',
+  /**
+   * 1320 Work in Process. Never touched by a receipt — nothing in the
+   * `partKind` table maps to it and receiving does not produce work in
+   * progress. The L1 month-end inventory entry DOES move it to the balance the
+   * subledger computes, which is why the role exists.
+   */
+  INVENTORY_WIP: 'inventory_wip',
+  /** 1330 Finished Goods. The other inventory account a receipt can debit. */
+  INVENTORY_FINISHED_GOODS: 'inventory_finished_goods',
+  /** 2000 Accounts Payable. Credited for the vendor bill total. */
+  ACCOUNTS_PAYABLE: 'accounts_payable',
+  /**
+   * 2110 Payroll Clearing. Standard assembly labour absorbed into inventory
+   * comes OUT of this pool in the L1 month-end entry (04-books §2.1).
+   */
+  PAYROLL_CLEARING: 'payroll_clearing',
+  /** 2150 Freight Accrual. Holds the carrier's share until the carrier bills. */
+  FREIGHT_ACCRUAL: 'freight_accrual',
+  /**
+   * 2160 Goods Received Not Invoiced. Credited on receipt at the VENDOR unit
+   * price, debited again when the vendor's bill arrives.
+   */
+  GRNI: 'grni',
+  /**
+   * 2170 Duties Accrual. Holds the customs broker's share. Only ever appears
+   * when there is a non-zero tariff portion.
+   */
+  DUTIES_ACCRUAL: 'duties_accrual',
+  /**
+   * 5000 COGS — Materials. The balancing figure of the L1 month-end entry, and
+   * the account parts purchases must be coded to off the bank feed for that
+   * entry to have anything to reclassify (04-books §2.1).
+   */
+  COGS_MATERIALS: 'cogs_materials',
+  /** 5020 COGS — Applied Overhead. Overhead absorbed into inventory this period. */
+  APPLIED_OVERHEAD: 'applied_overhead',
+  /**
+   * 5090 Purchase Price Variance. Absorbs the difference between what was
+   * accrued on receipt and what the vendor actually billed.
+   */
+  PPV: 'ppv',
+
+  values: [
+    { value: 'cash', label: 'Cash', color: 'green' },
+    { value: 'inventory_raw_materials', label: 'Inventory — Raw Materials', color: 'blue' },
+    { value: 'inventory_wip', label: 'Inventory — Work in Process', color: 'blue' },
+    { value: 'inventory_finished_goods', label: 'Inventory — Finished Goods', color: 'blue' },
+    { value: 'accounts_payable', label: 'Accounts Payable', color: 'amber' },
+    { value: 'payroll_clearing', label: 'Payroll Clearing', color: 'amber' },
+    { value: 'freight_accrual', label: 'Freight Accrual', color: 'amber' },
+    { value: 'grni', label: 'Goods Received Not Invoiced', color: 'amber' },
+    { value: 'duties_accrual', label: 'Duties Accrual', color: 'amber' },
+    { value: 'cogs_materials', label: 'COGS — Materials', color: 'red' },
+    { value: 'applied_overhead', label: 'COGS — Applied Overhead', color: 'red' },
+    { value: 'ppv', label: 'Purchase Price Variance', color: 'orange' },
   ] satisfies FieldOptionItem[],
 } as const
 

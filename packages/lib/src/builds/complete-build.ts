@@ -54,7 +54,7 @@ import {
   getRealtimeService,
   publishFieldValueUpdates,
 } from '../realtime'
-import { resolveGlAccountForPartKind } from '../receiving/client'
+import { resolveInventoryRoleForPartKind } from '../receiving/client'
 import { UnifiedCrudHandler } from '../resources/crud/unified-handler'
 import {
   BuildStatus,
@@ -313,7 +313,9 @@ async function writeCompletion(
     stock_movement_build: buildRecordId,
     stock_movement_unit_cost: producedUnitCost,
     stock_movement_extended_cost: producedValue,
-    stock_movement_gl_account: resolveGlAccountForPartKind(producedKinds.get(build.partId) ?? null),
+    stock_movement_gl_account: resolveInventoryRoleForPartKind(
+      producedKinds.get(build.partId) ?? null
+    ),
     stock_movement_cost_basis: StockMovementCostBasis.STANDARD,
     stock_movement_occurred_at: completedAt.toISOString(),
   }

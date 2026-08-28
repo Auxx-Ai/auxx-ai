@@ -11,7 +11,13 @@ import type { EntityFieldChangeHandler, EntityPostDeleteHandler } from '../field
 import { FieldValueService } from '../field-values/field-value-service'
 import { readFieldRelations, readFieldScalars } from '../field-values/read-field-scalars'
 import { UnifiedCrudHandler } from '../resources/crud'
-import { DEFAULT_MATCH_TOLERANCE, describeMatchReasons, matchBill, matchVariance } from './match'
+import {
+  DEFAULT_MATCH_TOLERANCE,
+  describeAwaitingLines,
+  describeMatchReasons,
+  matchBill,
+  matchVariance,
+} from './match'
 import { markOrRematchBill, markOrRematchBillLine } from './match-reconciler'
 import type { MatchLine } from './types'
 
@@ -58,8 +64,17 @@ export const BILL_LINE_MATCH_TRIGGER_ATTRS = new Set<SystemAttribute>([
  * `posted`, `paid` and `void` are settled facts about a document that has already left
  * this system — a late edit to a line must never silently un-post a bill the GL has an
  * entry for. Those need a human reversal, not a hook.
+ *
+ * 🛑 `awaiting_receipt` MUST be in this set. It is the one status the match itself writes
+ * that is waiting on an event outside the bill — the goods landing — and the write that
+ * resolves it comes from the receipt side via `rematchBillsForPurchaseOrderLines`. Leave it
+ * out and a prepaid bill enters `awaiting_receipt` and can never leave, which is precisely
+ * the never-resolving state P24 was designed around.
  */
-const MATCHABLE_STATUSES = new Set(['draft', 'matched', 'exception'])
+export const MATCHABLE_STATUSES = new Set(['draft', 'awaiting_receipt', 'matched', 'exception'])
+
+/** Statuses the match wrote itself, and may therefore reset to `draft`. */
+const MATCH_WRITTEN_STATUSES = new Set(['awaiting_receipt', 'matched', 'exception'])
 
 /** Unwrap a `getFieldValues()` entry — single-value fields can still come back as arrays. */
 function firstTyped(
@@ -86,6 +101,24 @@ function num(values: Map<string, unknown> | undefined, fieldId: string | undefin
   return typeof value === 'number' ? value : null
 }
 
+/**
+ * A date out of {@link readFieldScalars}' scalar map.
+ *
+ * `FieldValue.valueDate` is a `timestamp(..., { mode: 'string' })` column, so the
+ * scalar arrives as an ISO string and NOT as a `Date` — the driver hands back
+ * exactly what the column mode says. An unparseable value degrades to `null`,
+ * which the match reads as "no expected date" and leaves the line awaiting
+ * rather than calling it late off a date it could not read.
+ */
+function date(values: Map<string, unknown> | undefined, fieldId: string | undefined): Date | null {
+  if (!values || !fieldId) return null
+  const value = values.get(fieldId)
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value
+  if (typeof value !== 'string' || !value) return null
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
 const MATCH_ATTRS = [
   'vendor_bill_status',
   'vendor_bill_currency',
@@ -96,6 +129,10 @@ const MATCH_ATTRS = [
   'vendor_bill_line_purchase_order_line',
   'purchase_order_line_quantity_received',
   'purchase_order_line_expected_unit_price',
+  // The aging leg (P24). `expectedAt` lives on the purchase order HEADER, not the
+  // line, so reaching it costs one relationship hop from the PO line.
+  'purchase_order_line_purchase_order',
+  'purchase_order_expected_at',
 ] as const
 
 /**
@@ -104,8 +141,8 @@ const MATCH_ATTRS = [
  * Only lines carrying a `purchase_order_line` participate: a bill with no PO is legal
  * (a freight invoice, a one-off — 01 §5.1) and there is nothing to hold such a line
  * against. When NO line is matchable the bill has no verdict at all, so the two computed
- * fields are cleared rather than left showing a stale one, and a bill previously called
- * `matched` or `exception` drops back to `draft`.
+ * fields are cleared rather than left showing a stale one, and a bill the match itself
+ * had called `matched`, `awaiting_receipt` or `exception` drops back to `draft`.
  *
  * Unmatchable lines on an otherwise matchable bill are counted into the notes but never
  * change the outcome — a freight line beside three goods lines is ordinary. What they are
@@ -182,13 +219,19 @@ export async function rematchBill(params: {
   ].filter((id): id is string => !!id)
 
   /**
-   * Two set-based reads, not two per line.
+   * Set-based reads, not reads per line.
    *
    * This loop used to issue a `getFieldValues` for the bill line AND another for
    * its purchase-order line, serially, per line — so a 10-line bill cost 20 round
    * trips per match, and the hook that calls it fires once per changed FIELD.
    * Entering that bill was ~30 matches, ~690 round trips. The same defect #1953
    * fixed in the totals engine, doubled.
+   *
+   * 🛑 The aging leg (P24) added a THIRD rung — PO line → purchase order →
+   * `expectedAt` — and it is walked the same way: one `readFieldRelations` over
+   * every PO line at once, then one `readFieldScalars` over every order at once.
+   * Five queries for a bill of any size. Reading the header per line would
+   * reintroduce #1953 exactly.
    */
   const poLineRelId = cf.vendor_bill_line_purchase_order_line?.id
   const [billLineValues, billLineRels] = await Promise.all([
@@ -201,30 +244,90 @@ export async function rematchBill(params: {
   const poLineIds = lineInstanceIds
     .map((id) => (poLineRelId ? billLineRels.get(id)?.get(poLineRelId) : undefined))
     .filter((id): id is string => !!id)
-  const poLineValues = await readFieldScalars(db, organizationId, poLineIds, poLineFieldIds)
+
+  const orderRelId = cf.purchase_order_line_purchase_order?.id
+  const [poLineValues, poLineOrderRels] = await Promise.all([
+    readFieldScalars(db, organizationId, poLineIds, poLineFieldIds),
+    orderRelId
+      ? readFieldRelations(db, organizationId, poLineIds, [orderRelId])
+      : Promise.resolve(new Map<string, Map<string, string>>()),
+  ])
+
+  const expectedAtFieldId = cf.purchase_order_expected_at?.id
+  const orderIds = poLineIds
+    .map((id) => (orderRelId ? poLineOrderRels.get(id)?.get(orderRelId) : undefined))
+    .filter((id): id is string => !!id)
+  const orderValues = expectedAtFieldId
+    ? await readFieldScalars(db, organizationId, orderIds, [expectedAtFieldId])
+    : new Map<string, Map<string, unknown>>()
 
   const matchLines: MatchLine[] = []
-  let unmatchableLines = 0
+  let unlinkedLines = 0
+  let untypedLines = 0
 
   for (const lineInstanceId of lineInstanceIds) {
     const purchaseOrderLineId = poLineRelId
       ? billLineRels.get(lineInstanceId)?.get(poLineRelId)
       : undefined
     if (!purchaseOrderLineId) {
-      unmatchableLines += 1
+      unlinkedLines += 1
       continue
     }
 
     const line = billLineValues.get(lineInstanceId)
     const poLine = poLineValues.get(purchaseOrderLineId)
+    const orderId = orderRelId
+      ? poLineOrderRels.get(purchaseOrderLineId)?.get(orderRelId)
+      : undefined
+
+    /**
+     * 🛑 An UNTYPED price is absence, not zero — and a line carrying one is not
+     * matchable at all.
+     *
+     * `billLineValuesFromPurchaseOrderLine` deliberately leaves `unitPrice` blank
+     * when a bill is raised from a purchase order, because it is a value the match
+     * COMPARES and prefilling it would make the match rubber-stamp itself. That is
+     * correct. But reading the blank as `0` then makes it a genuine disagreement
+     * with the order's expected price, so every freshly raised bill was an
+     * `exception` on price from birth — and could never reach `awaiting_receipt`,
+     * which is precisely the population P24 exists to serve.
+     *
+     * ⚠️ The tempting fix — skip the price arm when the price is absent — is
+     * WORSE. A bill whose goods have arrived and whose prices nobody has typed
+     * would then read `matched`, and `matched` is the one status that posts to the
+     * GL automatically. Silently posting an invoice no human has transcribed beats
+     * a false exception for damage.
+     *
+     * So an untyped line is treated exactly like a line with no purchase-order
+     * link: unmatchable. A bill with nothing matchable falls back to `draft` and
+     * its verdict is cleared, which is the honest answer — there is nothing to
+     * judge yet.
+     *
+     * Absent, NOT zero: `num` returns `null` only when there is no numeric value
+     * to read, so a vendor legitimately billing $0.00 (a free replacement) is a
+     * value like any other and still matches normally.
+     */
+    const unitPriceBilled = num(line, cf.vendor_bill_line_unit_price?.id)
+    if (unitPriceBilled === null) {
+      untypedLines += 1
+      continue
+    }
 
     matchLines.push({
       quantityBilled: num(line, cf.vendor_bill_line_quantity_billed?.id) ?? 0,
-      // Nothing received yet reads as 0, which over-bills every billed unit — correct:
-      // that IS "paying for what never arrived".
+      // Nothing received yet reads as 0 — and under P24 that is NOT an exception.
+      // Vendors here often will not ship until the invoice is paid, so billed >
+      // received is the normal state of a CORRECT bill for weeks. `matchBill`
+      // calls it `awaiting_receipt` and ages it off the order's `expectedAt`
+      // below; it becomes a real `receipt_overdue` exception only once late.
       quantityReceived: num(poLine, cf.purchase_order_line_quantity_received?.id) ?? 0,
-      unitPriceBilled: num(line, cf.vendor_bill_line_unit_price?.id) ?? 0,
+      unitPriceBilled,
       unitPriceExpected: num(poLine, cf.purchase_order_line_expected_unit_price?.id) ?? 0,
+      // The PO HEADER's expected date, shared by every line of one order. Null when
+      // the order carries none (the field is nullable and nothing prefills it), in
+      // which case the line stays awaiting indefinitely rather than becoming an
+      // exception on a date nobody agreed — see `isReceiptOverdue`.
+      expectedAt: orderId ? date(orderValues.get(orderId), expectedAtFieldId) : null,
     })
   }
 
@@ -237,7 +340,7 @@ export async function rematchBill(params: {
       values: [
         { fieldId: varianceField.id, value: null },
         { fieldId: notesField.id, value: null },
-        ...(currentStatus === 'matched' || currentStatus === 'exception'
+        ...(currentStatus && MATCH_WRITTEN_STATUSES.has(currentStatus)
           ? [{ fieldId: statusField.id, value: 'draft' }]
           : []),
       ],
@@ -245,21 +348,67 @@ export async function rematchBill(params: {
     return
   }
 
-  const result = matchBill(matchLines, DEFAULT_MATCH_TOLERANCE)
-  const variance = matchVariance(matchLines)
+  /**
+   * The one clock in the three-way match.
+   *
+   * `match.ts` is pure and takes `asOf` as a parameter precisely so the aging rule
+   * can be tested to exhaustion; this is the impure layer, so this is where "now"
+   * is read. Read ONCE and threaded into both calls, so the verdict and the
+   * variance can never disagree about which side of a grace-period boundary the
+   * bill sits on.
+   */
+  const asOf = new Date()
+  const result = matchBill(matchLines, asOf, DEFAULT_MATCH_TOLERANCE)
+  const variance = matchVariance(matchLines, asOf, DEFAULT_MATCH_TOLERANCE)
 
   const noteParts: string[] = []
   if (result.outcome === 'exception')
     noteParts.push(describeMatchReasons(result.reasons, currencyCode))
-  if (unmatchableLines > 0) {
+  if (result.outcome === 'awaiting_receipt') noteParts.push(describeAwaitingLines(result.awaiting))
+  // Two different reasons a line sits out, reported separately: "not linked to a
+  // purchase order" sends someone to fix the link, "no price entered" sends them to
+  // the invoice. One merged count would send them to the wrong place.
+  if (unlinkedLines > 0) {
     noteParts.push(
-      `${unmatchableLines} line${unmatchableLines === 1 ? '' : 's'} not matched to a purchase order line`
+      `${unlinkedLines} line${unlinkedLines === 1 ? '' : 's'} not matched to a purchase order line`
+    )
+  }
+  if (untypedLines > 0) {
+    noteParts.push(
+      `${untypedLines} line${untypedLines === 1 ? '' : 's'} with no unit price entered yet`
     )
   }
 
+  /**
+   * 🛑 An untyped line blocks `matched` — but never hides a real `exception`.
+   *
+   * `matched` is the ONE status that posts to the general ledger automatically, so
+   * it has to mean "the whole document was compared and it agrees". A bill with a
+   * line nobody has priced yet has not been compared — only part of it has. Left
+   * alone, such a bill renders a green badge with a quiet note beside it, and the
+   * poster reads the STATUS, not the note.
+   *
+   * `awaiting_receipt` is demoted for the same reason: it is a verdict, and the
+   * honest answer on a half-transcribed bill is that there is no verdict yet.
+   *
+   * An `exception` is NOT demoted. A price or receipt problem on a line that HAS
+   * been transcribed is a real finding, and burying it until somebody finishes
+   * typing the rest of the invoice is how a control stops being run.
+   *
+   * ⚠️ An UNLINKED line does not do this. A freight line on a goods bill is
+   * deliberately outside the match and always was — that is why the two are
+   * counted separately. Untyped is an omission; unlinked is a decision.
+   */
+  const notFullyTranscribed = untypedLines > 0 && result.outcome !== 'exception'
+
+  // The outcome IS the status value — `matched` / `awaiting_receipt` / `exception`
+  // are all three members of `VendorBillStatus`, so no mapping table is needed and
+  // a fourth outcome would fail to compile rather than silently become `exception`.
   const verdict = [
-    { fieldId: statusField.id, value: result.outcome === 'matched' ? 'matched' : 'exception' },
-    { fieldId: varianceField.id, value: variance },
+    { fieldId: statusField.id, value: notFullyTranscribed ? 'draft' : result.outcome },
+    // Null rather than the partial figure: a variance computed across only the
+    // lines that happen to be typed is not the bill's variance.
+    { fieldId: varianceField.id, value: notFullyTranscribed ? null : variance },
     { fieldId: notesField.id, value: noteParts.length > 0 ? noteParts.join('; ') : null },
   ]
 
@@ -288,7 +437,8 @@ export async function rematchBill(params: {
     vendorBillInstanceId,
     outcome: result.outcome,
     matchedLines: matchLines.length,
-    unmatchableLines,
+    unlinkedLines,
+    untypedLines,
     variance,
   })
 }

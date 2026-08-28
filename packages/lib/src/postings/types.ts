@@ -40,12 +40,27 @@ export type PostingDirection = 'debit' | 'credit'
  *
  * Two rules make this type worth having at all:
  *
- * 1. **`accountCode` is an account CODE - `'2160'` - never a provider account
- *    id.** This is decision P2 and the whole cash value of P1. A code is ours,
- *    it is stable, it means the same thing in every provider and in no provider,
- *    and it is what makes a posting replayable and auditable three years later
- *    without an API call. Code -> provider id resolution happens in exactly one
- *    place: `AccountingProvider.resolveAccount` inside an adapter.
+ * 1. **`accountRole` is an auxx ROLE - `'grni'` - never an account number and
+ *    never a provider account id.** Two indirections, stacked, answering
+ *    different questions.
+ *
+ *    Decision `P2` is the outer one: what a persisted ledger line STORES is an
+ *    account CODE, ours, so an entry stays replayable and auditable three years
+ *    later with no API call - code -> provider id happens in exactly one place,
+ *    `AccountingProvider.resolveAccount` inside an adapter.
+ *
+ *    Decision `G8` is the inner one, and it is why this field is a role rather
+ *    than that code. `G7` makes the chart of accounts a seeded DEFAULT the org
+ *    edits; once it is editable the number cannot carry the meaning, because a
+ *    customer who renumbers GRNI from `2160` to `2155` would silently break
+ *    every builder that hardcoded it - and the entry would still balance, so
+ *    nothing downstream could detect it. So a builder emits a role, the org's
+ *    own `gl_account` maps that role to a code, and the resolver in front of the
+ *    claim fails CLOSED on zero matches and on more than one.
+ *
+ *    `BuiltEntry` therefore carries roles; {@link ResolvedPostingLine} carries
+ *    the resolved code and the account name as it stood at the time. Both are
+ *    snapshots, for the same reason a movement's cost is frozen.
  * 2. **`amount` is always POSITIVE**, integer minor units (cents), and
  *    `direction` carries the sign. Storing a signed amount AND a direction lets
  *    the two disagree - `{ amount: -500, direction: 'debit' }` is representable
@@ -54,8 +69,12 @@ export type PostingDirection = 'debit' | 'credit'
  *    = 'debit'` is the balance check.
  */
 export interface GlPostingLineInput {
-  /** Account CODE, e.g. `'1310'`. Never a provider account id. See above. */
-  accountCode: string
+  /**
+   * auxx posting ROLE, e.g. `'grni'` - one of `ACCOUNT_ROLES` in
+   * `build-entry.ts`. Never an account number, never a provider account id.
+   * See above.
+   */
+  accountRole: string
   direction: PostingDirection
   /** Integer minor units. Always > 0 - `direction` carries the sign. */
   amount: number
@@ -95,6 +114,26 @@ export interface BuiltEntry {
 }
 
 /**
+ * One posting line after its role has been resolved against the org's own chart.
+ *
+ * This is the type that crosses the seam out of auxx: it is what a
+ * `gl_posting_line` row stores and what a provider adapter is handed. **A
+ * provider never sees a role** - by the time an entry reaches an adapter, every
+ * `accountRole` has become one org's `accountCode`, or the post failed with
+ * `account_unmapped` / `account_ambiguous` before the period was ever claimed.
+ *
+ * `accountName` is a SNAPSHOT of the account's name at posting time, not a live
+ * read. Renaming `2160` next year must not rewrite last year's ledger, exactly
+ * as a movement's frozen cost is not restated by a standard-cost change.
+ */
+export interface ResolvedPostingLine extends Omit<GlPostingLineInput, 'accountRole'> {
+  /** Account CODE, e.g. `'1310'`, from the org's own chart. Never a provider id. */
+  accountCode: string
+  /** The account's name as it stood when the entry was posted. A snapshot. */
+  accountName?: string
+}
+
+/**
  * One entry handed to a provider for export.
  *
  * `idempotencyKey` is required and must be deterministic - derived from the
@@ -102,6 +141,10 @@ export interface BuiltEntry {
  * retry carries a different one. `packages/lib/src/money/quickbooks/post-journal-entry.ts`
  * documents why this matters: a double-posted journal entry silently misstates
  * the financial statements and nobody notices until a close does not tie out.
+ *
+ * ⚠️ `lines` are POST-resolution ({@link ResolvedPostingLine}). An adapter is
+ * handed codes and resolves each one to its own account id; it never sees, and
+ * must never learn about, an auxx role.
  */
 export interface PostEntryInput {
   organizationId: string
@@ -112,7 +155,7 @@ export interface PostEntryInput {
   txnDate: string
   /** Deterministic natural key, also written to the provider's document number. */
   docNumber: string
-  lines: GlPostingLineInput[]
+  lines: ResolvedPostingLine[]
   /** Deterministic. The provider MUST be idempotent on this. */
   idempotencyKey: string
   memo?: string

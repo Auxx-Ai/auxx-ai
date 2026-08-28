@@ -17,8 +17,12 @@ export {
 } from './allocate-landed-cost'
 export {
   DEFAULT_MATCH_TOLERANCE,
+  describeAwaitingLine,
+  describeAwaitingLines,
   describeMatchReason,
   describeMatchReasons,
+  isAwaitingReceipt,
+  isReceiptOverdue,
   matchBill,
   matchBillLine,
   matchVariance,
@@ -37,6 +41,7 @@ export type {
   AllocationBasis,
   AllocationHeader,
   AllocationLine,
+  AwaitingLine,
   MatchLine,
   MatchReason,
   MatchResult,

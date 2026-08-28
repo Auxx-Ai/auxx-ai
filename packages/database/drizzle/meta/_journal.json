@@ -2458,6 +2458,20 @@
       "when": 1787882835203,
       "tag": "0350_drop_inventory_bridge_link",
       "breakpoints": true
+    },
+    {
+      "idx": 351,
+      "version": "7",
+      "when": 1787948139328,
+      "tag": "0351_gl_posting_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 352,
+      "version": "7",
+      "when": 1787949032475,
+      "tag": "0352_gl_posting_amounts_bigint",
+      "breakpoints": true
     }
   ]
 }

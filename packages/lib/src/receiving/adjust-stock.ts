@@ -33,7 +33,7 @@ import { BadRequestError, NotFoundError, UnprocessableEntityError } from '../err
 import { UnifiedCrudHandler } from '../resources/crud/unified-handler'
 import { StockMovementCostBasis, StockMovementType } from '../resources/registry/enum-values'
 import { toRecordId } from '../resources/resource-id'
-import { computeExtendedCost, resolveGlAccountForPartKind, roundMinorUnits } from './client'
+import { computeExtendedCost, resolveInventoryRoleForPartKind, roundMinorUnits } from './client'
 import { assertCostFieldsMaterialized } from './cost-fields'
 import { guard } from './guard'
 import { readPartKind } from './receipt-queries'
@@ -178,7 +178,7 @@ async function resolveAdjustmentCost(
   const kind = await readPartKind(db, organizationId, input.partId)
   if (kind.isErr()) throw kind.error
 
-  return { unitCost, glAccount: resolveGlAccountForPartKind(kind.value) }
+  return { unitCost, glAccount: resolveInventoryRoleForPartKind(kind.value) }
 }
 
 interface WriteAdjustMovementArgs {

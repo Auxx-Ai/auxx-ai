@@ -224,7 +224,9 @@ default values are a **guess** — nobody has looked at a real vendor invoice ye
 
 **Reasons** are discriminated on `code` and each carries the numbers it compared, so the queue
 renders billed / received / expected side by side without a string parse:
-`quantity_over_billed`, `quantity_under_billed`, `price_variance`.
+`receipt_overdue`, `quantity_under_billed`, `price_variance`. (`quantity_over_billed` was
+**deleted** by P24 — see §5.2. Every `billed > received` line is now either `awaiting_receipt`
+or, once late, `receipt_overdue`, so nothing could emit it.)
 
 ### 5.1 Two rules the match must not lose
 
@@ -244,14 +246,74 @@ string.
 > directly and none of them models two documents arriving out of order. A queue holding
 > exceptions that are no longer true teaches people to clear it without reading it.
 
-### 5.2 The open question the match cannot currently answer
+### 5.2 A bill for goods that have not arrived (P24)
 
-A bill for goods that **have not arrived yet**. Prepayment is normal here — vendors often will
-not ship until the invoice is paid — so `billed > received` is the correct state of a correct
-bill for weeks, and the match calls it `quantity_over_billed`. The recommended shape is an
-`awaiting_receipt` outcome that is *not* an exception, aged off `purchase_order_expected_at` so
-it becomes one once late. `matchVariance` needs its own answer in that mode: price-only,
-because quantity cannot be judged yet.
+Prepayment is normal here — vendors often will not ship until the invoice is paid — so
+`billed > received` is the correct state of a *correct* bill for weeks. It is therefore a third
+outcome, **`awaiting_receipt`**, and not an exception. `matchVariance` goes **price-only** for
+those lines (`billed − quantityBilled × unitPriceExpected`), because relabelling alone would
+leave the queue's money column screaming the bill's entire value; a `receipt_overdue` line is
+*not* awaiting and keeps the full `quantityReceived` formula.
+
+**What makes that safe is that it ages, and aging needs a clock.** The predicates
+(`isAwaitingReceipt`, `isReceiptOverdue`, `DEFAULT_MATCH_TOLERANCE.receiptGraceDays = 7`) are
+pure and take `asOf` as a parameter — nothing in `purchasing/match.ts` reads a clock, so the
+rule is testable to exhaustion. Every *trigger* for re-running the match, however, is
+event-driven: a bill write, a bill-line write, or a receipt landing. So the transition it
+computes had nothing to fire it, and a bill whose goods never arrive sat `awaiting_receipt`
+forever — the exact vendor-took-the-money-and-never-shipped case the outcome exists to catch.
+
+`purchasing/aging-sweep.ts` (`sweepAgingVendorBills`, the daily `vendorBillAgingJob` on the
+maintenance queue) is that clock, and it is **the only time-driven trigger in this subsystem**.
+Three properties are load-bearing:
+
+- It **selects**, it does not decide. It calls `rematchBill`, so the verdict and the write stay
+  in one place; a second path that set `vendor_bill_status` is exactly the divergence §5.1's
+  failure came from. It even asks `isReceiptOverdue` itself rather than re-deriving the grace
+  arithmetic.
+- It anchors on the `awaiting_receipt` **working set**, not on history — one global query joined
+  to `CustomField` and `EntityInstance` (archived bills excluded, or an archived prepaid bill is
+  re-matched nightly forever), then four batched reads per *affected* org down the
+  bill → line → PO line → order → `expectedAt` ladder. An org with no prepaid bills costs
+  nothing.
+- The write is **loud**. A bill crossing into `exception` is the one event the mechanism exists
+  to surface, so it must publish, fire rules and reach the sync manifest. `quietSession` here
+  would rebuild the invisibility being fixed.
+
+⚠️ **An order with no `expectedAt` never ages**, deliberately: nobody agreed a date to be late
+against, the field is nullable with nothing prefilling it, so the fallback would be the common
+case rather than the edge one. Such a bill is meant to surface through the completeness check
+(the GRNI residual), which is not built.
+
+---
+
+### 5.3 An untyped price is absence, not zero — and it blocks `matched`
+
+Found 2026-08-28 by opening the app; every one of the 226 unit tests passed while this was wrong.
+
+`billLineValuesFromPurchaseOrderLine` deliberately leaves `unitPrice` **blank** when a bill is
+raised from a purchase order, because it is a value the match COMPARES and prefilling it would make
+the match rubber-stamp itself. That is correct and must not change. But `match-hook.ts` read the
+blank as `?? 0`, which made it a genuine disagreement with the order's expected price — so **every
+freshly raised bill was an `exception` on price from birth** and could never reach
+`awaiting_receipt`, which is exactly the population `P24` exists to serve.
+
+Two rules now, and the second is the one that is easy to get wrong:
+
+1. **A line with no billed price is unmatchable**, exactly like a line with no purchase-order link.
+   `num()` returns `null` only when there is no numeric value, so a vendor legitimately billing
+   **$0.00** (a free replacement) is a value like any other and still matches.
+2. 🛑 **An untyped line blocks `matched` and `awaiting_receipt`, demoting the bill to `draft`** — but
+   never suppresses an `exception`. The tempting fix, "skip the price arm when the price is absent",
+   is worse than the bug: a bill whose goods arrived and whose prices nobody typed then reads
+   `matched`, and `matched` is the one status that posts to the GL automatically. Observed live —
+   `INV-PO8-001` rendered a green **Matched** badge at variance `$0.00` with *"1 line with no unit
+   price entered yet"* sitting beside it. A half-read document has no verdict.
+
+**Untyped is not unlinked.** A freight line on a goods bill is outside the match by design and does
+NOT demote the bill; an untyped line is an omission. They are counted separately (`untypedLines` vs
+`unlinkedLines`) and reported as separate notes, because one sends a human to fix a link and the
+other sends them to the invoice.
 
 ---
 
@@ -446,6 +508,35 @@ build's movements from exploding their own BOM. Update the reasoning, not the co
   provider account id. Provider ids live in `RecordIdentity`, hung off `gl_account` by the app
   that owns them. This is the whole cash value of "the provider is an exporter" (P2).
 
+#### The chart of accounts is seeded, and a posting names a ROLE (`G7` / `G8`)
+
+`postings/default-chart.ts` is a **default the org edits**, not a standard: 28 accounts, seeded
+into every org by entity migration 108 (`seed/gl-account-chart.ts`, idempotent on `code`). Twelve
+of them carry a `gl_account_role`; the other sixteen are ordinary bookkeeping auxx never posts to,
+and a role-less account is the normal case.
+
+🛑 **Because the chart is editable, no code may name a number.** A builder emits
+`ACCOUNT_ROLES.GRNI` and a resolver reads *this* org's chart to learn that GRNI is `2160` here and
+`2155` at the customer who renumbered it. The chain is `role -> the org's gl_account -> code ->
+the provider's id`, and only the last hop belongs to a provider adapter. The resolver must fail
+**closed** on zero or more than one match — never "take the first", which is the one behaviour
+that would put money in an arbitrary account. That is why the seed is a single sequential writer
+and why `gl_account_role` is `unique: true`.
+
+⚠️ **`stock_movement.glAccount` stores a ROLE, not a code**, despite its name and its
+`stock_movement_gl_account` system attribute (both predate `G8` and cannot be renamed without
+reshaping a materialised field in every org). It used to hold `'1310'` / `'1330'`. A movement is
+append-only and frozen at write time, so a number stamped on it is silently reinterpreted the day
+the org renumbers — and the posting it feeds still balances, so nothing downstream can detect it.
+`resolveInventoryRoleForPartKind` is the only thing that decides the value; `buildReceiptEntry`
+consumes it as `inventoryAccountRole`. Migration 108 remaps the legacy codes.
+
+**`vendor_bill_line.glAccount` is deliberately the opposite and stays a CODE.** It is a
+bookkeeper coding a line against their own chart — most of which carries no auxx role — and it is
+`updatable: true`, so nothing about it is frozen history. Same question, different answer.
+(`bill-lines-from-purchase-order.ts` still hardcodes `GRNI_ACCOUNT_CODE = '2160'` for its prefill;
+that one *is* a `G8` violation and should resolve the `grni` role instead.)
+
 ### 9.2 What is designed and not built
 
 `packages/lib/src/money/gl/` **does not exist**. The builder/poster seam, the fulfillment entry,
@@ -473,6 +564,71 @@ turning off the monthly assertion is **one** change, never two.
 
 > The A/P leg has a hard external ordering constraint: the provider's A/P account is not
 > addressable until one `Bill` object has existed in it.
+
+### 9.4 How money is represented — settled, do not re-open
+
+**Every monetary amount in the posting tables is an INTEGER NUMBER OF MINOR UNITS, stored in a
+`bigint` column, always positive, with direction carried in a separate field** (decision `G2`).
+`GlPosting.totalMinor` and `GlPostingLine.amountMinor` are both `bigint({ mode: 'number' })`.
+
+This gets re-litigated, so the reasoning is recorded here once.
+
+**Never floating point.** A general ledger's whole invariant is that debits equal credits
+*exactly*, and binary floats cannot represent decimal fractions. Verified against the dev database:
+
+```sql
+select (0.1 + 0.2) = 0.3        -- false
+select sum(0.1) over 100 rows   -- 9.99999999999998
+```
+
+One hundred dimes do not sum to ten dollars. In a ledger this forces a choice between an assertion
+that fails on correct entries and an epsilon tolerance — and an epsilon is where a real one-cent
+error hides forever. A double *is* exact for whole numbers below 2^53, so cents-in-a-double would
+compute correctly; it is still wrong because nothing enforces integrality. The column type says
+fractional, so a bug writing `1234.5678` is accepted in silence, and SQL `SUM()` over a float may
+reorder and disagree with itself between runs. `bigint` makes the wrong value unrepresentable
+rather than merely unlikely.
+
+⚠️ **`FieldValue.valueNumber` IS `doublePrecision`**, and that is where every purchase order,
+vendor bill and invoice amount currently lives. It is a shared generic column — it also carries
+quantities, weights, percentages and ratings, so it has to be fractional. It was never chosen for
+money. This is a real latent weakness in the product and the reason the posting tables are
+deliberately *not* modelled on it.
+
+**Not `numeric`, either** — though it is the textbook accounting type and the tempting answer.
+`numeric` is exact and would be correct in isolation, but the entire codebase already speaks minor
+units: `G2`, `money/totals.ts`, the `CURRENCY` `FieldType` convention, `matchVariance`, and the
+pure builders in `postings/build-entry.ts`, which are typed on `number`. Introducing decimal
+strings only in the GL creates a conversion boundary between the subledger and the ledger it
+feeds — and a conversion boundary is precisely where money bugs live. Consistency is the
+correctness argument here, not convenience. `numeric` would be right if sub-cent precision were
+ever needed; it is not.
+
+**Why `mode: 'number'` and not `mode: 'bigint'`.** Two reasons, the second more practical than the
+first.
+
+1. True `BigInt` pushes `BigInt` arithmetic through every pure builder and creates the same
+   conversion boundary the previous paragraph rejects.
+2. **`JSON.stringify` throws on a `BigInt`** — `TypeError: Do not know how to serialize a BigInt`.
+   tRPC here is configured with **superjson** (`server/api/trpc.ts:73`), which handles `BigInt`
+   fine, so that one boundary would have survived. The others would not: `@auxx/logger`'s
+   structured shipping to OpenObserve, BullMQ job payloads through Redis, and — most relevantly —
+   the JSON body the accounting provider is POSTed. The GL poster is the exact code that crosses
+   that last boundary.
+
+⚠️ **The one honest cost of `mode: 'number'`:** Drizzle's mapper is `Number(value)` — verified in
+`drizzle-orm/pg-core/columns/bigint.js:24`. Above 2^53 it **silently rounds** rather than throwing,
+which is a worse failure shape than an error. Postgres still stores the true value; only the JS
+read loses it. The threshold is roughly $90 trillion, about six orders of magnitude past anything
+this business will post, which is why the trade is worth taking — but it is a rounding cliff, not
+a guard rail, and it should be named rather than discovered.
+
+🛑 **The ceiling that made this a real bug:** the columns shipped as `int4` on 2026-08-28, ceiling
+**$21,474,836.47**. That is under a single real account balance in this business, and Postgres
+fails such a write with `22003` — so a month-end close would refuse to post rather than degrade.
+Caught and widened before either table held a row. Any *new* money column anywhere in this
+subsystem is `bigint` minor units for the same reason; the type is pinned by the structural tests
+in `packages/database/src/tests/gl-posting-schema.test.ts` so it cannot silently regress.
 
 ---
 
@@ -505,6 +661,26 @@ different connection and cannot see uncommitted rows.
 ## 11. Gotchas & Invariants
 
 These are the silent failures this subsystem has already paid for. Every one of them passed CI.
+
+**A migration that creates a field must flush the org cache BEFORE anything writes a record with
+it.** `UnifiedCrudHandler.warmCache` resolves an entity's fields from the org cache and **drops a
+value whose field it cannot resolve** rather than failing. Entity migration 108 created
+`gl_account_role` and then seeded the chart of accounts in the same pass, with its cache flush at
+the end of `up()`. Every create ran against a `customFields` snapshot taken before the field
+existed: **784 accounts across 28 orgs, every column written except the role**, nothing threw, and
+the migration logged `applied`. A chart with no roles makes the posting resolver fail closed on
+every entry. The flush now sits between the structure work and the record work,
+`seedDefaultChartOfAccounts` re-reads what it wrote and throws if a role did not land, and
+`108-purchasing.test.ts` pins the ordering by source position. Verify a migration by querying
+Postgres, never by reading its log line.
+
+**A migration that changes the MEANING of a stored derived value owns re-deriving it.** `P24` did
+not add an option to `vendor_bill_status`; it changed what the stored value means — billed-but-not-
+received is `awaiting_receipt` now, not `exception`. Nothing else moves an existing bill: the
+nightly aging sweep reads only bills *already* in `awaiting_receipt`, to age them forward. 108
+therefore re-runs `rematchBill` over every bill in a matchable status, which re-derives status,
+variance **and notes** together — the notes are the half that lies loudest, being prose generated
+by a reason code that no longer exists.
 
 **A child-to-parent roll-up needs a door for every way its child can change, and
 `created`/`deleted` is only complete when the child is append-only.**

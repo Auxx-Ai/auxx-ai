@@ -17,7 +17,7 @@
 // scope predicates that apply to every other movement list must apply here too.
 
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
-import { StockMovementType } from '@auxx/lib/resources/client'
+import { GlAccountRole, StockMovementType } from '@auxx/lib/resources/client'
 import type { ResourceFieldId } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
 import { Badge, type Variant } from '@auxx/ui/components/badge'
@@ -36,6 +36,17 @@ const TYPE_VARIANT: Record<string, Variant> = Object.fromEntries(
 
 const TYPE_LABEL: Record<string, string> = Object.fromEntries(
   StockMovementType.values.map((value) => [value.value, value.label])
+)
+
+/**
+ * `stock_movement_gl_account` holds an auxx posting ROLE, not an account number
+ * (decision `G8`) — the chart of accounts is an org-editable default, so a
+ * number frozen onto an append-only movement would be silently reinterpreted by
+ * a renumber. The field name predates the decision and cannot be changed
+ * without reshaping a materialised field in every org.
+ */
+const INVENTORY_ROLE_LABEL: Record<string, string> = Object.fromEntries(
+  GlAccountRole.values.map((value) => [value.value, value.label])
 )
 
 const MOVEMENT_ATTRIBUTES = [
@@ -133,7 +144,11 @@ function MovementRow({
   const quantity = numberOrNull(values.stock_movement_quantity)
   const unitCost = numberOrNull(values.stock_movement_unit_cost)
   const extendedCost = numberOrNull(values.stock_movement_extended_cost)
-  const glAccount = unwrap(values.stock_movement_gl_account) as string | undefined
+  // A ROLE, not an account number (decision `G8`) — the field name predates the
+  // decision. Rendered through its label, because `inventory_raw_materials` is
+  // a storage key and not something to show a person.
+  const inventoryRole = unwrap(values.stock_movement_gl_account) as string | undefined
+  const inventoryRoleLabel = INVENTORY_ROLE_LABEL[inventoryRole ?? ''] ?? inventoryRole
   const qtyPerUnit = numberOrNull(values.stock_movement_qty_per_unit)
 
   // 🛑 The off-BOM marker, read as the marker it is. NULL `qtyPerUnit` on a
@@ -162,7 +177,7 @@ function MovementRow({
         </div>
         <span className='text-muted-foreground text-xs tabular-nums'>
           {unitCost == null ? 'no cost' : `${formatCurrency(unitCost, { currencyCode })} each`}
-          {glAccount && ` · ${glAccount}`}
+          {inventoryRoleLabel && ` · ${inventoryRoleLabel}`}
         </span>
       </div>
 

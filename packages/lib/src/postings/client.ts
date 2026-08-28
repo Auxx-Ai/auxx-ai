@@ -9,8 +9,8 @@
 // a client-reference proxy there. See docs/lib-module-guide.md section 7.
 
 export {
-  ACCOUNT_CODES,
-  type AccountCode,
+  ACCOUNT_ROLES,
+  type AccountRole,
   type BuildEntryInput,
   buildEntry,
   buildReceiptEntry,
@@ -18,6 +18,10 @@ export {
   type ReceiptEntryInput,
   type VendorBillEntryInput,
 } from './build-entry'
+export {
+  DEFAULT_CHART_OF_ACCOUNTS,
+  type DefaultChartAccount,
+} from './default-chart'
 export {
   assertPeriodOpen,
   compareMonths,
@@ -38,4 +42,5 @@ export {
   type PostEntryStatus,
   type PostingDirection,
   type PostingType,
+  type ResolvedPostingLine,
 } from './types'

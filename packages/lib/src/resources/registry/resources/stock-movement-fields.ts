@@ -325,9 +325,44 @@ export const STOCK_MOVEMENT_FIELDS: Record<string, ResourceField> = {
     placeholder: 'Select cost basis',
   },
 
+  /**
+   * The inventory account this movement belongs to, stored as an auxx **ROLE**
+   * (`inventory_raw_materials` / `inventory_finished_goods`) — never an account
+   * code and never a provider id.
+   *
+   * 🛑 The field is named `glAccount` and its system attribute reads
+   * `stock_movement_gl_account`; both predate decision `G8` and neither can be
+   * renamed without reshaping a materialised field in every org. The VALUE is a
+   * role. Read it as one.
+   *
+   * **Why a role and not `'1310'`.** `P2` keeps the provider's account ids out
+   * of the ledger. `G8` is the same argument one level up: `G7` makes the chart
+   * of accounts a seeded default the org **edits**, so the account NUMBER
+   * cannot carry the meaning either. This row is append-only and its cost is
+   * frozen at write time (`updatable: false` on every field here) — a number
+   * stamped on it in 2026 is silently reinterpreted the day someone renumbers
+   * Raw Materials, and the resulting posting still balances, so nothing
+   * downstream can detect it. A role survives the renumber; the resolution
+   * chain `role -> the org's gl_account -> code -> provider id` re-derives the
+   * number at posting time.
+   *
+   * `resolveInventoryRoleForPartKind` (receiving/client.ts) is the only thing
+   * that decides this value; `receiveStock`, `adjustStock` and `completeBuild`
+   * stamp it, the two reversal paths copy it verbatim, and `buildReceiptEntry`
+   * consumes it as `inventoryAccountRole`.
+   *
+   * `inventory_wip` is never written here: nothing in the `partKind` table maps
+   * to it, and neither receiving nor a completed build produces work in process.
+   */
   glAccount: {
     id: toFieldId('glAccount'),
     key: 'glAccount',
+    // ⚠️ NOT relabelled to match the value. `mergeSystemAndCustomFields` takes
+    // `label` from `CustomField.name`, never from the registry, so a rename here
+    // would reach fresh orgs only and leave 28 existing ones reading the old
+    // one — the exact half-present split this file's comments exist to prevent.
+    // The field is `showInPanel: false` and rendered with its own label by the
+    // one card that shows it, so the label is not the load-bearing part.
     label: 'GL Account',
     type: BaseType.STRING,
     fieldType: FieldType.TEXT,
@@ -343,6 +378,8 @@ export const STOCK_MOVEMENT_FIELDS: Record<string, ResourceField> = {
       updatable: false,
       configurable: false,
     },
+    description:
+      'Which auxx posting role the inventory side of this movement belongs to. A ROLE, not an account number: the chart of accounts is editable, and a number frozen onto an append-only ledger row would be silently reinterpreted by a renumber.',
   },
 
   occurredAt: {
