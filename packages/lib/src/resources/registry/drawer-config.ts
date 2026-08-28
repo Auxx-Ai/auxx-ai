@@ -22,10 +22,11 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
     tabCards: {
       overview: [
         // First/last interaction rows (records/interaction-fields plan Phase 5).
-        { value: 'interactions', label: 'Interactions', position: 'after' },
+        { value: 'interactions', label: 'Interactions', icon: 'activity', position: 'after' },
         {
           value: 'billing',
           label: 'Billing',
+          icon: 'credit-card',
           position: 'after',
           permissionKey: 'dispatch.board.view',
         },
@@ -39,7 +40,9 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
       { value: 'parts', label: 'Parts', icon: 'package', recordResource: 'vendor_part' },
     ],
     tabCards: {
-      overview: [{ value: 'interactions', label: 'Interactions', position: 'after' }],
+      overview: [
+        { value: 'interactions', label: 'Interactions', icon: 'activity', position: 'after' },
+      ],
     },
   },
 
@@ -48,9 +51,9 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
     additionalTabs: [{ value: 'conversation', label: 'Conversation', icon: 'mail' }],
     tabCards: {
       overview: [
-        { value: 'metrics', label: 'Metrics', position: 'before', fullBleed: true },
-        { value: 'customer', label: 'Customer' },
-        { value: 'relationships', label: 'Related Tickets' },
+        { value: 'metrics', label: 'Metrics', icon: 'gauge', position: 'before', fullBleed: true },
+        { value: 'customer', label: 'Customer', icon: 'user' },
+        { value: 'relationships', label: 'Related Tickets', icon: 'ticket' },
       ],
     },
   },
@@ -63,21 +66,21 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
     ],
     tabCards: {
       overview: [
-        { value: 'inventory', label: 'Inventory' },
+        { value: 'inventory', label: 'Inventory', icon: 'package' },
         // Cost provenance: buy-vs-build comparison + the not-costed signal.
         // The card renders nothing for a part with a single cost candidate
         // (the common case), which hides the whole section.
-        { value: 'costing', label: 'Costing' },
+        { value: 'costing', label: 'Costing', icon: 'calculator' },
         // Sellable toggle / pricing row — "sellable" is derived from the
         // backing catalog_item, never stored (plans/products/01-product-family.md
         // §6.1). Renders nothing for a part with no catalog item — unless it's
         // a finished good, whose missing price surfaces prominently.
-        { value: 'pricing', label: 'Pricing' },
+        { value: 'pricing', label: 'Pricing', icon: 'tag' },
         // Product-family membership + the finished-good suggestion
         // (plans/products/01-product-family.md phase 3). Renders nothing for a
         // part with no `product` relation (most parts — raw materials), which
         // hides the whole section.
-        { value: 'family', label: 'Family' },
+        { value: 'family', label: 'Family', icon: 'boxes' },
       ],
     },
   },
@@ -170,15 +173,21 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
         {
           value: 'lines',
           label: 'Line items',
+          icon: 'receipt-text',
           fullBleed: true,
           permissionKey: 'dispatch.board.view',
         },
-        { value: 'customer', label: 'Customer' },
-        { value: 'origin', label: 'Origin' },
-        { value: 'jobs', label: 'Jobs', recordResource: 'work_order' },
+        { value: 'customer', label: 'Customer', icon: 'user' },
+        { value: 'origin', label: 'Origin', icon: 'link' },
+        { value: 'jobs', label: 'Jobs', icon: 'wrench', recordResource: 'work_order' },
         // Deposit visibility (deposit-accounting plan 16 §D.5) — the card itself renders
         // null when the quote has no deposit charge, so this stays in the list unconditionally.
-        { value: 'deposit', label: 'Deposit', permissionKey: 'dispatch.board.view' },
+        {
+          value: 'deposit',
+          label: 'Deposit',
+          icon: 'banknote',
+          permissionKey: 'dispatch.board.view',
+        },
       ],
     },
   },
@@ -230,11 +239,17 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
         {
           value: 'lines',
           label: 'Line items',
+          icon: 'receipt-text',
           fullBleed: true,
           permissionKey: 'dispatch.board.view',
         },
-        { value: 'customer', label: 'Customer' },
-        { value: 'work-orders', label: 'Work orders', recordResource: 'work_order' },
+        { value: 'customer', label: 'Customer', icon: 'user' },
+        {
+          value: 'work-orders',
+          label: 'Work orders',
+          icon: 'wrench',
+          recordResource: 'work_order',
+        },
       ],
     },
   },
@@ -248,13 +263,13 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
       // TotalsFooter renders them at the foot of the lines card. A totals card
       // would be a second, competing rendering of the same five mirrors.
       overview: [
-        { value: 'lines', label: 'Lines', fullBleed: true },
+        { value: 'lines', label: 'Lines', icon: 'receipt-text', fullBleed: true },
         // The generated PDF + the vendor's paperwork. Both fields are
         // `showInPanel: false`, so this card is their only surface (plan 08 P21).
         { value: 'documents', label: 'Documents', icon: 'paperclip' },
-        { value: 'vendor', label: 'Vendor' },
-        { value: 'receiving', label: 'Receiving' },
-        { value: 'bills', label: 'Bills', recordResource: 'vendor_bill' },
+        { value: 'vendor', label: 'Vendor', icon: 'store' },
+        { value: 'receiving', label: 'Receiving', icon: 'truck' },
+        { value: 'bills', label: 'Bills', icon: 'receipt', recordResource: 'vendor_bill' },
       ],
     },
   },
@@ -269,8 +284,13 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
     additionalTabs: [],
     tabCards: {
       overview: [
-        { value: 'run', label: 'Run' },
-        { value: 'ledger', label: 'Ledger', recordResource: 'stock_movement' },
+        { value: 'run', label: 'Run', icon: 'hammer' },
+        {
+          value: 'ledger',
+          label: 'Ledger',
+          icon: 'arrow-left-right',
+          recordResource: 'stock_movement',
+        },
       ],
     },
   },
@@ -283,13 +303,13 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
     additionalTabs: [],
     tabCards: {
       overview: [
-        { value: 'lines', label: 'Lines', fullBleed: true },
-        { value: 'match', label: 'Match' },
+        { value: 'lines', label: 'Lines', icon: 'receipt-text', fullBleed: true },
+        { value: 'match', label: 'Match', icon: 'scan-search' },
         // The vendor's own invoice, plus the packing slips and freight bills
         // that came with it (plan 08 P18/P21).
         { value: 'documents', label: 'Documents', icon: 'paperclip' },
-        { value: 'vendor', label: 'Vendor' },
-        { value: 'payment', label: 'Payment' },
+        { value: 'vendor', label: 'Vendor', icon: 'store' },
+        { value: 'payment', label: 'Payment', icon: 'credit-card' },
       ],
     },
   },

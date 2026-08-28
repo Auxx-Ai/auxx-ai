@@ -98,7 +98,7 @@ export const BUILD_FIELDS: Record<string, ResourceField> = {
       updatable: false,
       configurable: false,
     },
-    description: 'Auto-generated build number — RecordSequence scope `build`, prefix `B`',
+    description: 'Automatically generated build number',
   },
 
   part: {
@@ -160,7 +160,7 @@ export const BUILD_FIELDS: Record<string, ResourceField> = {
     },
     placeholder: 'Select status',
     defaultValue: 'planned',
-    description: 'Where the build sits — planned, in progress, completed or canceled',
+    description: 'The current stage of the build',
   },
 
   quantityPlanned: {
@@ -202,7 +202,7 @@ export const BUILD_FIELDS: Record<string, ResourceField> = {
       updatable: true,
       configurable: false,
     },
-    description: 'Good units that entered finished goods — the quantity of the produce movement',
+    description: 'The number of finished units produced',
   },
 
   quantityScrapped: {
@@ -223,9 +223,7 @@ export const BUILD_FIELDS: Record<string, ResourceField> = {
       updatable: true,
       configurable: false,
     },
-    description:
-      'Units started but lost (B7). They consume material and produce NO movement — their ' +
-      'cost falls out in varianceAmount rather than being absorbed into the survivors',
+    description: 'The number of units lost or discarded during production',
   },
 
   startedAt: {
@@ -267,9 +265,7 @@ export const BUILD_FIELDS: Record<string, ResourceField> = {
       updatable: true,
       configurable: false,
     },
-    description:
-      'THE accounting date — what every movement this build writes carries as its occurredAt, ' +
-      'and therefore which period the cost lands in',
+    description: 'When the build was completed',
   },
 
   materialCost: {
@@ -297,9 +293,7 @@ export const BUILD_FIELDS: Record<string, ResourceField> = {
       computed: true,
       configurable: false,
     },
-    description:
-      'Sum of the consumed rows extended standard cost, integer minor units — written by ' +
-      'completeBuild and never recomputed',
+    description: 'The total cost of materials consumed by this build',
   },
 
   laborCost: {
@@ -327,9 +321,7 @@ export const BUILD_FIELDS: Record<string, ResourceField> = {
       computed: true,
       configurable: false,
     },
-    description:
-      'Absorbed direct labour for this run, integer minor units — the org rate ' +
-      '`manufacturing.assemblyLaborCostPerUnit` applied to the units started',
+    description: 'The labor cost assigned to this build',
   },
 
   overheadCost: {
@@ -357,9 +349,7 @@ export const BUILD_FIELDS: Record<string, ResourceField> = {
       computed: true,
       configurable: false,
     },
-    description:
-      'Applied overhead for this run, integer minor units — the org rate ' +
-      '`manufacturing.overheadCostPerUnit` applied to the units started',
+    description: 'The overhead cost assigned to this build',
   },
 
   producedValue: {
@@ -387,9 +377,7 @@ export const BUILD_FIELDS: Record<string, ResourceField> = {
       computed: true,
       configurable: false,
     },
-    description:
-      'quantityProduced x the finished goods frozen part_standard_cost — what actually ' +
-      'entered inventory, integer minor units',
+    description: 'The inventory value of the finished units produced',
   },
 
   varianceAmount: {
@@ -419,10 +407,7 @@ export const BUILD_FIELDS: Record<string, ResourceField> = {
     },
     // Stays in the panel, unlike the part's five cost rows: the variance is the
     // number a person actually reads on a build.
-    description:
-      '(material + labor + overhead) - producedValue, integer minor units. Account 5090. ' +
-      'This is what scrap and yield loss show up as — it is meaningless the moment a ' +
-      'structural roll-up error is booked to it (README B11)',
+    description: 'The difference between production costs and the value of finished units',
   },
 
   order: {
@@ -456,9 +441,7 @@ export const BUILD_FIELDS: Record<string, ResourceField> = {
       inverseName: 'Builds',
       inverseSystemAttribute: 'order_builds',
     },
-    description:
-      'The order this build was raised for. Without it, "cancel the builds for this order" ' +
-      'has nothing to look up (plans/products/12 AB7)',
+    description: 'The order associated with this build, if applicable',
   },
 
   source: {
@@ -487,9 +470,7 @@ export const BUILD_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     defaultValue: 'manual',
-    description:
-      'Who raised this build. An auto-build must be distinguishable from one a person raised ' +
-      'against the same order deliberately (plans/products/12 AB7)',
+    description: 'How this build was created',
   },
 
   notes: {
@@ -510,7 +491,7 @@ export const BUILD_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     placeholder: 'Enter notes',
-    description: 'Free text about this run',
+    description: 'Additional notes about this build',
   },
 
   postedAt: {
@@ -536,9 +517,7 @@ export const BUILD_FIELDS: Record<string, ResourceField> = {
       updatable: true,
       configurable: false,
     },
-    description:
-      'Denormalized convenience only — never gate on it. The gl_posting rows are the truth ' +
-      'about whether this build has been posted',
+    description: 'When the build was posted to the general ledger',
   },
 
   // ─── Relationship inverses and the reversal pair ───────────────────
@@ -567,7 +546,7 @@ export const BUILD_FIELDS: Record<string, ResourceField> = {
       relationshipType: 'has_many',
       isInverse: true,
     },
-    description: 'The consume and produce rows this build wrote — the costed subledger entries',
+    description: 'Inventory movements created by this build',
   },
 
   reversalOf: {
@@ -602,9 +581,7 @@ export const BUILD_FIELDS: Record<string, ResourceField> = {
       inverseName: 'Reversed By',
       inverseSystemAttribute: 'build_reversed_by',
     },
-    description:
-      'Set on the REVERSING build, pointing at the one it undoes (B6). A completed build is ' +
-      'never edited or deleted — a period that has been posted must not change shape',
+    description: 'The original build that this build reverses',
   },
 
   reversedBy: {
@@ -684,9 +661,7 @@ export const BUILD_FIELDS: Record<string, ResourceField> = {
       updatable: false,
       configurable: false,
     },
-    description:
-      'Fingerprint of what the order asked production for at the moment this build was ' +
-      'raised. Differs from the order’s current fingerprint once the order has changed',
+    description: 'The order version used when this build was created or last updated',
   },
 
   createdAt: {

@@ -15,28 +15,12 @@ import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
 import { OverflowTabsList, type TabDefinition, Tabs, TabsContent } from '@auxx/ui/components/tabs'
 import { cn } from '@auxx/ui/lib/utils'
-import {
-  CalendarClock,
-  Clock,
-  CreditCard,
-  ExternalLink,
-  FileText,
-  HouseIcon,
-  Layers,
-  ListTodo,
-  Mail,
-  MessagesSquare,
-  Package,
-  Receipt,
-  ShoppingBag,
-  Ticket,
-  Truck,
-  Wrench,
-} from 'lucide-react'
+import { Clock, ExternalLink, HouseIcon, ListTodo, MessagesSquare } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useQueryState } from 'nuqs'
 import * as React from 'react'
 import { AppRecordActions } from '~/components/detail-view/components/app-record-actions'
+import { getIconComponent } from '~/components/detail-view/utils'
 import EntityFields from '~/components/fields/entity-fields'
 import DrawerComments from '~/components/global/comments/drawer-comments'
 import { useCommentAccess } from '~/components/global/comments/use-comment-access'
@@ -943,29 +927,4 @@ function LazyTabCard({
   }
 
   return <Component entityInstanceId={entityInstanceId} recordId={recordId} record={record} />
-}
-
-/**
- * Map icon name (string) to icon component
- */
-function getIconComponent(iconName: string) {
-  const icons: Record<string, any> = {
-    ticket: Ticket,
-    'shopping-bag': ShoppingBag,
-    mail: Mail,
-    package: Package,
-    house: HouseIcon,
-    clock: Clock,
-    messages: MessagesSquare,
-    layers: Layers,
-    truck: Truck,
-    'list-todo': ListTodo,
-    wrench: Wrench,
-    'file-text': FileText,
-    'calendar-clock': CalendarClock,
-    receipt: Receipt,
-    'credit-card': CreditCard,
-    // Add more as needed
-  }
-  return icons[iconName] ?? HouseIcon
 }

@@ -43,7 +43,6 @@ export const STOCK_MOVEMENT_FIELDS: Record<string, ResourceField> = {
       updatable: false,
       configurable: false,
     },
-    description: 'Unique stock movement identifier',
   },
 
   part: {
@@ -75,7 +74,6 @@ export const STOCK_MOVEMENT_FIELDS: Record<string, ResourceField> = {
       inverseName: 'Stock Movements',
       inverseSystemAttribute: 'part_stock_movements',
     },
-    description: 'The part this movement applies to',
   },
 
   type: {
@@ -97,7 +95,6 @@ export const STOCK_MOVEMENT_FIELDS: Record<string, ResourceField> = {
       required: true,
       configurable: false,
     },
-    description: 'Type of stock movement',
   },
 
   quantity: {
@@ -119,7 +116,6 @@ export const STOCK_MOVEMENT_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     placeholder: 'Enter quantity',
-    description: 'Quantity changed (positive or negative)',
   },
 
   reason: {
@@ -140,7 +136,6 @@ export const STOCK_MOVEMENT_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     placeholder: 'Enter reason',
-    description: 'Reason for the stock movement',
   },
 
   reference: {
@@ -161,7 +156,6 @@ export const STOCK_MOVEMENT_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     placeholder: 'Enter reference',
-    description: 'External reference (e.g., build batch ID)',
   },
 
   createdAt: {
@@ -182,7 +176,6 @@ export const STOCK_MOVEMENT_FIELDS: Record<string, ResourceField> = {
       updatable: false,
       configurable: false,
     },
-    description: 'When the stock movement was created',
   },
 
   adjustSubparts: {
@@ -203,7 +196,6 @@ export const STOCK_MOVEMENT_FIELDS: Record<string, ResourceField> = {
       updatable: false,
       configurable: false,
     },
-    description: 'Whether to cascade this adjustment to leaf subparts via BOM explosion',
   },
 
   parentMovement: {
@@ -230,7 +222,6 @@ export const STOCK_MOVEMENT_FIELDS: Record<string, ResourceField> = {
       inverseName: 'Child Movements',
       inverseSystemAttribute: 'stock_movement_child_movements',
     },
-    description: 'Parent movement that triggered this child movement via BOM explosion',
   },
 
   childMovements: {
@@ -257,7 +248,6 @@ export const STOCK_MOVEMENT_FIELDS: Record<string, ResourceField> = {
       inverseName: 'Parent Movement',
       inverseSystemAttribute: 'stock_movement_parent_movement',
     },
-    description: 'Child movements created by BOM explosion from this parent movement',
   },
 
   // ─── Receiving: cost, date and provenance ─────────────────────────
@@ -287,9 +277,6 @@ export const STOCK_MOVEMENT_FIELDS: Record<string, ResourceField> = {
       updatable: false,
       configurable: false,
     },
-    description:
-      'Cost per unit, FROZEN at write time, integer minor units. Never recomputed - a March ' +
-      'vendor-price change must not restate January.',
   },
 
   extendedCost: {
@@ -315,9 +302,6 @@ export const STOCK_MOVEMENT_FIELDS: Record<string, ResourceField> = {
       updatable: false,
       configurable: false,
     },
-    description:
-      'round(unitCost x quantity), SIGNED like quantity so SUM(extendedCost) GROUP BY glAccount ' +
-      'is the account balance without a per-row case expression',
   },
 
   costBasis: {
@@ -339,9 +323,6 @@ export const STOCK_MOVEMENT_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     placeholder: 'Select cost basis',
-    description:
-      'How this row was valued. A build values at `standard`; a receipt is the first thing in ' +
-      'the system that legitimately writes `actual`, and the difference between the two is PPV.',
   },
 
   glAccount: {
@@ -362,9 +343,6 @@ export const STOCK_MOVEMENT_FIELDS: Record<string, ResourceField> = {
       updatable: false,
       configurable: false,
     },
-    description:
-      'Account CODE (1310 / 1320 / 1330), resolved from the part kind at write time. A code, ' +
-      'never an accounting provider id - the provider is an exporter, not the system of record.',
   },
 
   occurredAt: {
@@ -385,10 +363,6 @@ export const STOCK_MOVEMENT_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     placeholder: 'Select date',
-    description:
-      'The ACCOUNTING date, on every movement type. `createdAt` records when the row was typed ' +
-      'and cannot be set - the pallet lands Thursday and the paperwork is keyed Monday, so ' +
-      'without this every period boundary falls on the wrong side.',
   },
 
   vendorPart: {
@@ -420,9 +394,6 @@ export const STOCK_MOVEMENT_FIELDS: Record<string, ResourceField> = {
       inverseName: 'Stock Movements',
       inverseSystemAttribute: 'vendor_part_stock_movements',
     },
-    description:
-      'Which supplier row priced this receipt. NULL on every non-receipt type. Incidentally the ' +
-      'first time the system can answer what we have actually bought from a supplier.',
   },
 
   vendorUnitPrice: {
@@ -448,10 +419,6 @@ export const STOCK_MOVEMENT_FIELDS: Record<string, ResourceField> = {
       updatable: false,
       configurable: false,
     },
-    description:
-      'The RAW invoice price per unit, before freight and tariff. Frozen. Kept beside unitCost ' +
-      'because the landed total alone cannot say whether the motor got more expensive or the ' +
-      'freight did - and it is what GRNI clears against, since the vendor bills only this part.',
   },
 
   purchaseOrderLine: {
@@ -483,9 +450,6 @@ export const STOCK_MOVEMENT_FIELDS: Record<string, ResourceField> = {
       inverseName: 'Stock Movements',
       inverseSystemAttribute: 'purchase_order_line_stock_movements',
     },
-    description:
-      'The ordered line this receipt satisfies - one half of three-way match. Declared with the ' +
-      'other receiving fields; `linkNewRelationships` links it once the counterpart def exists.',
   },
 
   reversesMovement: {
@@ -512,11 +476,6 @@ export const STOCK_MOVEMENT_FIELDS: Record<string, ResourceField> = {
       inverseName: 'Reversed By',
       inverseSystemAttribute: 'stock_movement_reversed_by_movements',
     },
-    description:
-      'The movement this row undoes - a vendor return or a keying correction, valued at the ' +
-      'ORIGINAL frozen cost. Deliberately NOT `parentMovement`: that means parent of a BOM ' +
-      'explosion and `explodeBomMovement` reads it, so overloading it would push reversal rows ' +
-      'into `childMovements` and corrupt the explosion bookkeeping.',
   },
 
   reversedByMovements: {
@@ -543,7 +502,6 @@ export const STOCK_MOVEMENT_FIELDS: Record<string, ResourceField> = {
       inverseName: 'Reverses Movement',
       inverseSystemAttribute: 'stock_movement_reverses_movement',
     },
-    description: 'Rows that undo this movement',
   },
 
   // ─── Build provenance and the as-built BOM snapshot ────────────────
@@ -582,9 +540,6 @@ export const STOCK_MOVEMENT_FIELDS: Record<string, ResourceField> = {
       inverseName: 'Stock Movements',
       inverseSystemAttribute: 'build_movements',
     },
-    description:
-      'The build that wrote this row. `reference` stays as-is - a free-text batch string is ' +
-      'not something a query can join on',
   },
 
   qtyPerUnit: {
@@ -608,10 +563,6 @@ export const STOCK_MOVEMENT_FIELDS: Record<string, ResourceField> = {
       updatable: false,
       configurable: false,
     },
-    description:
-      'The AS-BUILT BOM snapshot: on a build_consume row, the per-unit quantity in force at ' +
-      'build time. NULL on a consume row means the component was OFF-BOM - a floor ' +
-      'substitution, made visible instead of silent. NULL on every other movement type.',
   },
 
   createdBy: CREATED_BY_FIELD,

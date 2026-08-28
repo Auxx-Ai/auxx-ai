@@ -78,7 +78,6 @@ export function PurchaseOrderReceivingCard({ recordId }: DrawerTabProps) {
         purchaseOrderRecordId={recordId}
       />
       <PurchasingSummaryStrip
-        className='pb-2'
         cells={[
           { label: 'Ordered', value: formatQuantity(ordered) },
           { label: 'Received', value: formatQuantity(received) },

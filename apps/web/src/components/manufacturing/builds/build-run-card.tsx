@@ -244,7 +244,6 @@ export function BuildRunCard({ entityInstanceId }: DrawerTabProps) {
       )}
 
       <PurchasingSummaryStrip
-        className='pt-1'
         cells={[
           { label: 'Planned', value: formatQuantity(run.quantityPlanned) },
           {

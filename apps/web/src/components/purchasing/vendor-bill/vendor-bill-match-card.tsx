@@ -32,7 +32,13 @@
 // sits. The ruling is the badge and the reason list, and both come from the hook.
 //
 // The "Match" section title is rendered by the drawer's `TabCardSection` wrapper,
-// so this card must not draw one.
+// so this card must not draw one. The status badge is the one thing that DOES
+// belong up there beside the title — it is the card's verdict in two words, and
+// read before any of the numbers — so it is portaled into that same wrapper's
+// header actions slot via `DrawerCardActions` rather than drawn as the first row
+// of the body. Nothing renders it when the card is mounted outside a
+// `TabCardSection`: the portal target is absent and `DrawerCardActions` yields
+// null, which is the documented behaviour and not a badge worth duplicating.
 
 import type { RecordId } from '@auxx/lib/resources/client'
 import { Badge } from '@auxx/ui/components/badge'
@@ -50,6 +56,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import { formatCurrency } from '@auxx/utils/currency'
 import { History, ScanSearch, TriangleAlert } from 'lucide-react'
 import { useMemo } from 'react'
+import { DrawerCardActions } from '~/components/drawers/drawer-card-actions'
 import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { useSystemValuesForRecords } from '~/components/resources/hooks/use-system-values-for-records'
@@ -250,11 +257,11 @@ export function VendorBillMatchCard({ recordId }: DrawerTabProps) {
   return (
     <div className='flex flex-col gap-3 pe-3'>
       {statusBadge && (
-        <div>
+        <DrawerCardActions>
           <Badge variant={statusBadge.variant} size='sm'>
             {statusBadge.label}
           </Badge>
-        </div>
+        </DrawerCardActions>
       )}
 
       <PurchasingSummaryStrip

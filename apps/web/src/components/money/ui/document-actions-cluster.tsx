@@ -58,8 +58,22 @@ export function DocumentActionsCluster({
         {send &&
           (send.disabledReason ? (
             <Tooltip allowInteraction contentComponent={send.disabledReason}>
+              {/*
+                `rounded-r-none` is explicit here and NOT on the enabled branch below,
+                which looks inconsistent and is not. `ButtonGroup` squares its inner
+                corners with direct-child selectors (`[&>*:not(:last-child)]:rounded-r-none`),
+                and a disabled button cannot receive the hover that opens a tooltip — so
+                this branch needs the `<span>` wrapper, and that wrapper becomes the
+                group's direct child. The selectors then style the span, which has no
+                border or radius of its own, while the button inside keeps its full
+                `rounded-lg` and bulges out of the right-hand seam. The enabled branch
+                IS the direct child, so the group still reaches it.
+
+                `publish-cluster-shell.tsx` carries the same `rounded-none border-x-0`
+                on its own tooltip-wrapped disabled segment, for the same reason.
+              */}
               <span className='inline-flex'>
-                <Button size='xs' variant='outline' className='border-r-0' disabled>
+                <Button size='xs' variant='outline' className='rounded-r-none border-r-0' disabled>
                   {send.label}
                 </Button>
               </span>

@@ -46,7 +46,6 @@ export const PURCHASE_ORDER_LINE_FIELDS: Record<string, ResourceField> = {
       updatable: false,
       configurable: false,
     },
-    description: 'Unique purchase order line identifier',
   },
 
   purchaseOrder: {
@@ -85,7 +84,6 @@ export const PURCHASE_ORDER_LINE_FIELDS: Record<string, ResourceField> = {
       inverseName: 'Lines',
       inverseSystemAttribute: 'purchase_order_lines',
     },
-    description: 'The purchase order this line belongs to',
   },
 
   part: {
@@ -122,7 +120,6 @@ export const PURCHASE_ORDER_LINE_FIELDS: Record<string, ResourceField> = {
     },
     // The part is what receiving moves into stock, so it is required even when
     // the supplier's own catalogue entry is unknown.
-    description: 'The part being bought — required, and what a receipt moves into stock',
   },
 
   vendorPart: {
@@ -157,7 +154,6 @@ export const PURCHASE_ORDER_LINE_FIELDS: Record<string, ResourceField> = {
     // Optional: a one-off buy from a supplier with no maintained price list is
     // still a legitimate line, and forcing a `vendor_part` row for it would
     // pollute the pricing catalogue.
-    description: "The supplier's catalogue entry this line was priced from — optional",
   },
 
   description: {
@@ -181,7 +177,6 @@ export const PURCHASE_ORDER_LINE_FIELDS: Record<string, ResourceField> = {
     placeholder: 'Enter line description',
     // What the SUPPLIER calls it. Printing our own part name on their order is
     // how a picking error becomes a dispute.
-    description: 'How the line reads on the supplier-facing document',
   },
 
   quantityOrdered: {
@@ -204,7 +199,6 @@ export const PURCHASE_ORDER_LINE_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     placeholder: 'Enter quantity',
-    description: 'How many units were ordered',
   },
 
   quantityReceived: {
@@ -228,7 +222,6 @@ export const PURCHASE_ORDER_LINE_FIELDS: Record<string, ResourceField> = {
     // Same shape as `part_quantity_on_hand`, and for the same reason: the
     // subledger is the truth, and a hand-maintained copy of it diverges
     // silently. Re-summed whole, post-commit — never incremented in place.
-    description: 'Re-sum of the stock movements pointing at this line — computed, never typed',
   },
 
   quantityBilled: {
@@ -251,7 +244,6 @@ export const PURCHASE_ORDER_LINE_FIELDS: Record<string, ResourceField> = {
     },
     // The billed leg of the three-way match. Typing it would let the control be
     // satisfied by the person the control exists to check.
-    description: 'Re-sum of the vendor bill lines pointing at this line — computed, never typed',
   },
 
   expectedUnitPrice: {
@@ -280,7 +272,6 @@ export const PURCHASE_ORDER_LINE_FIELDS: Record<string, ResourceField> = {
     // Expected, not actual: the price agreed when the order went out, which the
     // three-way match holds the arriving invoice against. The received price
     // lives on the movement.
-    description: 'Agreed buy price per unit, integer minor units — the price arm of the match',
   },
 
   lineTotal: {
@@ -306,9 +297,6 @@ export const PURCHASE_ORDER_LINE_FIELDS: Record<string, ResourceField> = {
       updatable: false,
       configurable: false,
     },
-    description:
-      'quantityOrdered * expectedUnitPrice — written by the totals engine hook, and the ' +
-      'weight the `value` allocation basis spreads freight by',
   },
 
   weight: {
@@ -332,7 +320,6 @@ export const PURCHASE_ORDER_LINE_FIELDS: Record<string, ResourceField> = {
     placeholder: 'Enter line weight',
     // Only the `weight` allocation basis reads it, so leaving it empty costs
     // nothing until someone picks that basis.
-    description: 'Total shipped weight for this line — read only by the `weight` allocation basis',
   },
 
   sortOrder: {
@@ -354,7 +341,6 @@ export const PURCHASE_ORDER_LINE_FIELDS: Record<string, ResourceField> = {
       updatable: true,
       configurable: false,
     },
-    description: 'Position of this line on the printed order',
   },
 
   // Reverse relationship: stockMovements (from stock_movement.purchaseOrderLine).
@@ -383,7 +369,6 @@ export const PURCHASE_ORDER_LINE_FIELDS: Record<string, ResourceField> = {
       relationshipType: 'has_many',
       isInverse: true,
     },
-    description: 'Receipts booked against this line — what `quantityReceived` re-sums',
   },
 
   // Reverse relationship: vendorBillLines (from vendor_bill_line.purchaseOrderLine).
@@ -412,7 +397,6 @@ export const PURCHASE_ORDER_LINE_FIELDS: Record<string, ResourceField> = {
       relationshipType: 'has_many',
       isInverse: true,
     },
-    description: 'Bill lines matched to this line — what `quantityBilled` re-sums',
   },
 
   createdAt: {
@@ -433,7 +417,6 @@ export const PURCHASE_ORDER_LINE_FIELDS: Record<string, ResourceField> = {
       updatable: false,
       configurable: false,
     },
-    description: 'Automatically set when the purchase order line is created',
   },
 
   updatedAt: {
@@ -454,7 +437,6 @@ export const PURCHASE_ORDER_LINE_FIELDS: Record<string, ResourceField> = {
       updatable: false,
       configurable: false,
     },
-    description: 'Automatically updated when the purchase order line is modified',
   },
 
   createdBy: CREATED_BY_FIELD,

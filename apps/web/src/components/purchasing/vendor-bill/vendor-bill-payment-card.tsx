@@ -92,7 +92,6 @@ export function VendorBillPaymentCard({ recordId }: DrawerTabProps) {
       )}
 
       <PurchasingSummaryStrip
-        className='pb-2'
         cells={[
           { label: 'Bill total', value: formatCurrency(total, { currencyCode }) },
           { label: 'Paid', value: formatCurrency(amountPaid, { currencyCode }) },

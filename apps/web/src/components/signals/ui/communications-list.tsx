@@ -120,6 +120,7 @@ export function CommunicationsList({
         return (
           <TreeRow
             key={signal.id}
+            rowClassName='hover:bg-primary-100'
             icon={<Icon className='size-4' />}
             title={<span className='truncate text-sm'>{labelForSignal(signal)}</span>}
             secondary={<span className='truncate text-muted-foreground'>{signal.title}</span>}

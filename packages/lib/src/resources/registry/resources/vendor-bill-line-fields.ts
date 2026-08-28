@@ -42,7 +42,6 @@ export const VENDOR_BILL_LINE_FIELDS: Record<string, ResourceField> = {
       updatable: false,
       configurable: false,
     },
-    description: 'Unique vendor bill line identifier',
   },
 
   vendorBill: {
@@ -79,7 +78,6 @@ export const VENDOR_BILL_LINE_FIELDS: Record<string, ResourceField> = {
       inverseName: 'Lines',
       inverseSystemAttribute: 'vendor_bill_lines',
     },
-    description: 'The bill this line belongs to — required',
   },
 
   // THE MATCH KEY. Nullable, because a bill line with no PO line behind it is
@@ -114,9 +112,6 @@ export const VENDOR_BILL_LINE_FIELDS: Record<string, ResourceField> = {
       inverseName: 'Vendor Bill Lines',
       inverseSystemAttribute: 'purchase_order_line_vendor_bill_lines',
     },
-    description:
-      'The PO line this bill line is against — THE MATCH KEY. Null for a line with no purchase ' +
-      'order behind it, which is legal and simply cannot be matched.',
   },
 
   // Stamped from the PO line at write, not hand-set — provenance and grouping
@@ -145,9 +140,6 @@ export const VENDOR_BILL_LINE_FIELDS: Record<string, ResourceField> = {
       relationshipType: 'belongs_to',
       isInverse: false,
     },
-    description:
-      'Part this line is for — STAMPED from the PO line at write, not hand-set. Provenance and ' +
-      'spend-by-part grouping only, never a pricing or matching input.',
   },
 
   description: {
@@ -168,7 +160,6 @@ export const VENDOR_BILL_LINE_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     placeholder: 'Enter description',
-    description: 'What the vendor called it on their document — kept verbatim, not normalised',
   },
 
   quantityBilled: {
@@ -189,9 +180,6 @@ export const VENDOR_BILL_LINE_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     defaultValue: 1,
-    description:
-      'How many the vendor billed for — the quantity the match compares against what was ' +
-      'received, not a copy of it',
   },
 
   unitPrice: {
@@ -217,9 +205,6 @@ export const VENDOR_BILL_LINE_FIELDS: Record<string, ResourceField> = {
       updatable: true,
       configurable: false,
     },
-    description:
-      'What the vendor charged per unit, integer minor units — a BUY price, in contrast to ' +
-      '`line_item.unitPrice`, which is what we SELL for. The two never belong in the same column.',
   },
 
   lineTotal: {
@@ -245,10 +230,6 @@ export const VENDOR_BILL_LINE_FIELDS: Record<string, ResourceField> = {
       updatable: true,
       configurable: false,
     },
-    description:
-      'The extended amount the vendor billed, integer minor units — transcribed, NOT recomputed ' +
-      "from qty x price. Recomputing would quietly correct the vendor's own arithmetic, which is " +
-      'exactly the discrepancy the match exists to catch.',
   },
 
   // An account CODE — '2160', '5090' — never a provider account id (P2). The
@@ -273,9 +254,6 @@ export const VENDOR_BILL_LINE_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     placeholder: '2160',
-    description:
-      "The account CODE this line posts to — '2160' (GRNI) for a PO-matched line, an expense " +
-      'code otherwise. A code, never a provider account id.',
   },
 
   sortOrder: {
@@ -296,7 +274,6 @@ export const VENDOR_BILL_LINE_FIELDS: Record<string, ResourceField> = {
       updatable: true,
       configurable: false,
     },
-    description: "Keeps the lines in the order they appear on the vendor's document",
   },
 
   createdAt: {
@@ -317,7 +294,6 @@ export const VENDOR_BILL_LINE_FIELDS: Record<string, ResourceField> = {
       updatable: false,
       configurable: false,
     },
-    description: 'Automatically set when the bill line is created',
   },
 
   updatedAt: {
@@ -338,7 +314,6 @@ export const VENDOR_BILL_LINE_FIELDS: Record<string, ResourceField> = {
       updatable: false,
       configurable: false,
     },
-    description: 'Automatically updated when the bill line is modified',
   },
 
   createdBy: CREATED_BY_FIELD,
