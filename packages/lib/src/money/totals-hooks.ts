@@ -15,6 +15,12 @@ import { FieldValueService } from '../field-values/field-value-service'
 import { UnifiedCrudHandler } from '../resources/crud'
 import { syncInvoicePaymentState } from './payments/ledger'
 import { computeDocumentTotals, computeLineTotal, roundCents } from './totals'
+import {
+  MONEY_TOTALS_LINE_ITEM,
+  MONEY_TOTALS_PURCHASE_ORDER_LINE,
+  markOrRecomputeDocument,
+  markOrRecomputeLine,
+} from './totals-reconciler'
 import type {
   DiscountType,
   DocumentBillingInputs,
@@ -720,19 +726,17 @@ export const recomputeOnLineChange: EntityFieldChangeHandler = async (event) => 
   const { organizationId, userId } = event
   const { entityInstanceId: lineInstanceId } = parseRecordId(event.recordId)
 
+  // Stays INLINE, and must: the parent recompute reads `line_item_line_total`,
+  // so the line's own total has to be written before the drain runs.
   if (LINE_TOTAL_TRIGGER_ATTRS.has(attr)) {
     await recomputeLineTotal({ organizationId, userId, lineInstanceId })
   }
 
-  const parent = await resolveLineParentDocument({ organizationId, userId, lineInstanceId })
-  if (parent) {
-    await recomputeTotals({
-      organizationId,
-      userId,
-      documentType: parent.documentType,
-      documentInstanceId: parent.documentInstanceId,
-    })
-  }
+  // The parent is resolved in the DRAIN, not here (plan 08 phase 2). Walking the
+  // quote -> invoice -> order ladder per fire cost up to three round trips, and
+  // the hook fires once per changed field; the batched resolver walks it for the
+  // whole paste in one query.
+  await markOrRecomputeLine(organizationId, userId, MONEY_TOTALS_LINE_ITEM, lineInstanceId)
 }
 
 /**
@@ -745,12 +749,7 @@ export const recomputeOnQuoteBillingChange: EntityFieldChangeHandler = async (ev
   if (!attr || !QUOTE_TRIGGER_ATTRS.has(attr)) return
 
   const { entityInstanceId: quoteInstanceId } = parseRecordId(event.recordId)
-  await recomputeTotals({
-    organizationId: event.organizationId,
-    userId: event.userId,
-    documentType: 'quote',
-    documentInstanceId: quoteInstanceId,
-  })
+  await markOrRecomputeDocument(event.organizationId, event.userId, 'quote', quoteInstanceId)
 }
 
 /**
@@ -763,12 +762,7 @@ export const recomputeOnInvoiceBillingChange: EntityFieldChangeHandler = async (
   if (!attr || !INVOICE_TRIGGER_ATTRS.has(attr)) return
 
   const { entityInstanceId: invoiceInstanceId } = parseRecordId(event.recordId)
-  await recomputeTotals({
-    organizationId: event.organizationId,
-    userId: event.userId,
-    documentType: 'invoice',
-    documentInstanceId: invoiceInstanceId,
-  })
+  await markOrRecomputeDocument(event.organizationId, event.userId, 'invoice', invoiceInstanceId)
 }
 
 /**
@@ -781,12 +775,7 @@ export const recomputeOnOrderBillingChange: EntityFieldChangeHandler = async (ev
   if (!attr || !ORDER_TRIGGER_ATTRS.has(attr)) return
 
   const { entityInstanceId: orderInstanceId } = parseRecordId(event.recordId)
-  await recomputeTotals({
-    organizationId: event.organizationId,
-    userId: event.userId,
-    documentType: 'order',
-    documentInstanceId: orderInstanceId,
-  })
+  await markOrRecomputeDocument(event.organizationId, event.userId, 'order', orderInstanceId)
 }
 
 /**
@@ -818,40 +807,12 @@ export const recomputeOnPurchaseOrderLineChange: EntityFieldChangeHandler = asyn
     })
   }
 
-  const purchaseOrderInstanceId = await resolvePurchaseOrderForLine({
+  await markOrRecomputeLine(
     organizationId,
     userId,
-    lineInstanceId,
-  })
-  if (purchaseOrderInstanceId) {
-    await recomputeTotals({
-      organizationId,
-      userId,
-      documentType: 'purchase_order',
-      documentInstanceId: purchaseOrderInstanceId,
-    })
-  }
-}
-
-/** Resolve the purchase order a PO line belongs to. Null when the line is orphaned. */
-async function resolvePurchaseOrderForLine(params: {
-  organizationId: string
-  userId: string
-  lineInstanceId: string
-}): Promise<string | null> {
-  const { organizationId, userId, lineInstanceId } = params
-  const cf = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['purchase_order_line_purchase_order'] as const)
-  const relField = cf.purchase_order_line_purchase_order
-  if (!relField) return null
-
-  const handler = new UnifiedCrudHandler(organizationId, userId)
-  const lineRecordId = toRecordId(PURCHASE_ORDER_LINE_TOTALS_SPEC.lineEntityType, lineInstanceId)
-  const values = await handler.getFieldValues(lineRecordId, [relField.id])
-  const typed = firstTyped(values.get(relField.id))
-  if (typed?.type !== 'relationship' || !typed.recordId) return null
-  return parseRecordId(typed.recordId).entityInstanceId
+    MONEY_TOTALS_PURCHASE_ORDER_LINE,
+    lineInstanceId
+  )
 }
 
 /**
@@ -864,10 +825,10 @@ export const recomputeOnPurchaseOrderBillingChange: EntityFieldChangeHandler = a
   if (!attr || !PURCHASE_ORDER_TRIGGER_ATTRS.has(attr)) return
 
   const { entityInstanceId: purchaseOrderInstanceId } = parseRecordId(event.recordId)
-  await recomputeTotals({
-    organizationId: event.organizationId,
-    userId: event.userId,
-    documentType: 'purchase_order',
-    documentInstanceId: purchaseOrderInstanceId,
-  })
+  await markOrRecomputeDocument(
+    event.organizationId,
+    event.userId,
+    'purchase_order',
+    purchaseOrderInstanceId
+  )
 }

@@ -6,6 +6,7 @@ import type { RecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
 import { getCachedResourceFields } from '../cache'
 import type { CapabilityView } from '../permissions/capabilities/capability-view'
+import { runWithDirtyParents } from '../reconcilers/dirty-parents'
 import type { WriteSession } from '../resources/crud/write-origin'
 import {
   type CachedField,
@@ -83,6 +84,21 @@ export class FieldValueService {
   /** Internal context shared across mutations and queries */
   readonly ctx: FieldValueContext
 
+  /**
+   * Every public write on this service runs inside a dirty-parent scope, so a
+   * hook it fires can mark its parent and the reconciler drains ONCE when the
+   * write is done (plan 08 §5, `reconcilers/dirty-parents.ts`).
+   *
+   * This service is the SECOND door and it has to be wrapped too: an EDIT goes
+   * through `fieldValue.set` -> `FieldValueService` and never touches
+   * `UnifiedCrudHandler`, which is the same asymmetry `register-hooks.ts`
+   * records for `stampPartOnCatalogItemChange`. Nesting joins, so a write that
+   * came through the handler still produces one drain, not two.
+   */
+  private inReconcileScope<T>(fn: () => Promise<T>): Promise<T> {
+    return runWithDirtyParents(this.organizationId, this.userId ?? '', fn)
+  }
+
   constructor(
     private readonly organizationId: string,
     private readonly userId?: string,
@@ -116,7 +132,7 @@ export class FieldValueService {
    * @returns Array of TypedFieldValue objects after the operation.
    */
   setValue(params: SetValueInput): Promise<TypedFieldValue[]> {
-    return mutations.setValue(this.ctx, params)
+    return this.inReconcileScope(() => mutations.setValue(this.ctx, params))
   }
 
   /**
@@ -129,7 +145,7 @@ export class FieldValueService {
    * @returns Array of TypedFieldValue objects after the operation.
    */
   setValueWithType(params: SetValueWithTypeInput): Promise<TypedFieldValue[]> {
-    return mutations.setValueWithType(this.ctx, params)
+    return this.inReconcileScope(() => mutations.setValueWithType(this.ctx, params))
   }
 
   /**
@@ -158,7 +174,7 @@ export class FieldValueService {
    * @param params - Delete value input
    */
   deleteValue(params: DeleteValueInput): Promise<void> {
-    return mutations.deleteValue(this.ctx, params)
+    return this.inReconcileScope(() => mutations.deleteValue(this.ctx, params))
   }
 
   /**
@@ -264,7 +280,7 @@ export class FieldValueService {
    * @returns SetValueResult with state, performedAt, and values array
    */
   setValueWithBuiltIn(params: SetValueWithBuiltInInput): Promise<SetValueResult> {
-    return mutations.setValueWithBuiltIn(this.ctx, params)
+    return this.inReconcileScope(() => mutations.setValueWithBuiltIn(this.ctx, params))
   }
 
   /**
@@ -275,7 +291,7 @@ export class FieldValueService {
    * @returns Array of SetValuesResult (one per field)
    */
   setValuesForEntity(params: SetValuesForEntityInput): Promise<SetValuesResult[]> {
-    return mutations.setValuesForEntity(this.ctx, params)
+    return this.inReconcileScope(() => mutations.setValuesForEntity(this.ctx, params))
   }
 
   /**
@@ -286,7 +302,7 @@ export class FieldValueService {
    * @returns Object with count of successfully updated entities
    */
   setBulkValues(params: SetBulkValuesInput): Promise<{ count: number }> {
-    return mutations.setBulkValues(this.ctx, params)
+    return this.inReconcileScope(() => mutations.setBulkValues(this.ctx, params))
   }
 
   /**

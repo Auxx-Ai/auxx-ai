@@ -71,6 +71,21 @@ export async function flushTxWriteScope(scope: TxWriteScope): Promise<void> {
   } catch (error) {
     logFailure('flush', scope.attemptId, error)
   }
+  // AFTER the doors, and inside its own guard: a reconciler reads current truth,
+  // so it must not run before the realtime/timeline replay that tells the rest of
+  // the system the transaction landed — and its failure must not swallow theirs.
+  try {
+    if (scope.dirtyParents.size > 0) {
+      const { drainDeferredDirtyParents } = await import('../../reconcilers/dirty-parents')
+      await drainDeferredDirtyParents({
+        organizationId: scope.organizationId,
+        userId: scope.actorUserId,
+        dirty: scope.dirtyParents,
+      })
+    }
+  } catch (error) {
+    logFailure('dirty-parents', scope.attemptId, error)
+  }
 }
 
 async function replayTxWriteScope(scope: TxWriteScope): Promise<void> {

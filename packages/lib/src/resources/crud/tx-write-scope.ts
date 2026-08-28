@@ -87,6 +87,15 @@ export interface TxWriteScope {
    */
   readonly realtime: Record<RecordId, FieldValueUpdateEntry[]>
   readonly archived: TxWriteArchive[]
+  /**
+   * Parents a reconciler owes work on, handed over by
+   * `reconcilers/dirty-parents.ts` so the drain lands AFTER commit rather than
+   * against uncommitted state on another connection (plan 08 §8 Q1).
+   *
+   * `Map<reconcilerKey, Set<entityInstanceId>>` — plain strings, so it clones,
+   * so {@link assertTxWriteScopePure} still holds.
+   */
+  readonly dirtyParents: Map<string, Set<string>>
   truncated: boolean
 }
 
@@ -105,6 +114,7 @@ export function createTxWriteScope(organizationId: string, actorUserId: string):
     changes: {},
     realtime: {},
     archived: [],
+    dirtyParents: new Map(),
     truncated: false,
   }
 }
