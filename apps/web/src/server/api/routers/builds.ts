@@ -9,6 +9,7 @@ import {
   listBuilds,
   loadAbsorptionRates,
   previewStandardCostRoll,
+  readBuildDrift,
   reverseBuild,
   rollStandardCost,
   startBuild,
@@ -186,11 +187,24 @@ export const buildsRouter = createTRPCRouter({
     }),
 
   /**
-   * One build, fully priced.
+   * One build, fully priced, with its drift verdict.
    *
    * `null` for a build that does not exist, is archived, or belongs to another
    * org — the same three cases, deliberately indistinguishable, so this cannot
    * be used to probe for ids.
+   *
+   * `drifted` answers plans/products/13 Q4 — *"how is drift surfaced on a build
+   * that cannot be reconciled"*. It rides along rather than being its own
+   * procedure because `readBuildDrift` takes RECORDS, deliberately: *"every
+   * caller that wants drift is already listing builds, and re-reading them here
+   * would be the composed-read problem"*. A second procedure would re-read this
+   * very build to answer one boolean.
+   *
+   * ⚠️ Since Model B shipped, a `planned` order-raised build is converged
+   * automatically, so drift on one is transient — it means the last convergence
+   * could not finish. Persistent drift lives on the builds convergence may not
+   * touch: `in_progress`, `completed`, and `manual`. That is exactly the set Q4
+   * was asked about.
    */
   get: capabilityProcedure
     .input(z.object({ buildId: z.string().min(1) }))
@@ -200,7 +214,11 @@ export const buildsRouter = createTRPCRouter({
 
       const result = await getBuild(ctx.db, organizationId, input.buildId)
       if (result.isErr()) throw result.error
-      return result.value
+      const build = result.value
+      if (!build) return null
+
+      const drift = await readBuildDrift(ctx.db, organizationId, [build])
+      return { ...build, drifted: drift.get(build.buildId)?.drifted ?? false }
     }),
 
   /**

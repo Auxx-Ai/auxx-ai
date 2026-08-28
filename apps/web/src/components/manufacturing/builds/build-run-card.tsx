@@ -200,6 +200,11 @@ export function BuildRunCard({ entityInstanceId }: DrawerTabProps) {
             From order
           </Badge>
         )}
+        {run.drifted && (
+          <Badge variant='amber' size='xs'>
+            Order changed
+          </Badge>
+        )}
         {isReversal && (
           <Badge variant='amber' size='xs'>
             Reversal
@@ -211,6 +216,8 @@ export function BuildRunCard({ entityInstanceId }: DrawerTabProps) {
           </Badge>
         )}
       </div>
+
+      {run.source === 'order' && <OrderTrackingNotice status={status} drifted={run.drifted} />}
 
       {/* §1.6: the two reversal relations are `showInPanel: false` on purpose —
           "surfaced as a banner/badge on a reversed build, not as two relationship
@@ -286,6 +293,57 @@ export function BuildRunCard({ entityInstanceId }: DrawerTabProps) {
         />
       )}
     </div>
+  )
+}
+
+/**
+ * What an order-raised build's relationship to its order actually IS, said
+ * before somebody edits it (plans/products/13 Q3 and Q4).
+ *
+ * 🛑 **Q3 decided that the order wins**: a hand edit to a `planned`
+ * order-raised build is not durable — the next change to the order replaces it.
+ * That decision came with a condition attached, and this is it: *"it must be
+ * surfaced in the UI **before** the edit, not discovered after it… §0's whole
+ * objection was the word* silently *— do not reintroduce it on this side."*
+ * `build_quantity_planned` is `updatable: true`, so the edit is genuinely
+ * reachable from the Details panel; without this notice, somebody bumping a
+ * build 3 → 4 for scrap allowance loses it with no warning anywhere.
+ *
+ * **Q4 is the other half**: how drift is surfaced on a build convergence cannot
+ * repair. Since Model B shipped, a `planned` build is converged automatically —
+ * so drift on one means the last pass could not finish, and (by the
+ * fingerprint no-op guard) nothing retries until the demand moves again. On an
+ * `in_progress` or `completed` build the drift is permanent by design: §1.0(a)
+ * forbids silently amending a run whose material may already be cut, and B6/B8
+ * forbid editing a completed one at all.
+ *
+ * The escape hatch named here is the one that actually exists — a
+ * `source: 'manual'` build, which no automatic path may ever touch.
+ */
+function OrderTrackingNotice({ status, drifted }: { status: string | null; drifted: boolean }) {
+  const tracked = status === 'planned'
+  // A cancelled build asks for nothing and is not coming back; saying its order
+  // moved is noise about a run nobody is making.
+  if (status === 'canceled') return null
+  if (!drifted && !tracked) return null
+
+  if (!drifted) {
+    return (
+      <p className='rounded-md bg-muted/50 px-2 py-1.5 text-muted-foreground text-xs'>
+        This build tracks its order. Changes you make to it are replaced when the order changes —
+        raise a build manually if you need one that stays.
+      </p>
+    )
+  }
+
+  return (
+    <p className='rounded-md bg-amber-500/10 px-2 py-1.5 text-amber-700 text-xs dark:text-amber-500'>
+      {tracked
+        ? 'The order has changed since this build was raised, and this build has not caught up. It is brought back into line the next time the order changes.'
+        : `The order has changed since this build was raised. It is no longer updated automatically because it has ${
+            status === 'completed' ? 'been completed' : 'started'
+          }.`}
+    </p>
   )
 }
 
