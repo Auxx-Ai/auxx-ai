@@ -28,13 +28,11 @@ import { toastError } from '@auxx/ui/components/toast'
 import { pluralize } from '@auxx/utils'
 import { formatCurrency } from '@auxx/utils/currency'
 import { Link2, MoreHorizontal, Package, Plus, Unlink } from 'lucide-react'
-import Link from 'next/link'
 import { useCallback, useMemo, useState } from 'react'
 import { PartFormDialog } from '~/components/manufacturing/parts/part-form-dialog'
 import {
   type RecordMeta,
   toRecordId,
-  useRecordLink,
   useRecordList,
   useResource,
   useResourceProperty,
@@ -42,6 +40,7 @@ import {
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import { useSystemValuesForRecords } from '~/components/resources/hooks/use-system-values-for-records'
 import { RecordIcon } from '~/components/resources/ui/record-icon'
+import { RecordLink } from '~/components/resources/ui/record-link'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useAccess } from '~/providers/capabilities-provider'
 import type { DrawerTabProps } from '../drawer-tab-registry'
@@ -412,7 +411,6 @@ function ProductPartRow({
   canEdit,
   onDetach,
 }: ProductPartRowProps) {
-  const href = useRecordLink(recordId)
   const { cost, quantityOnHand, kind, priceCents, catalogItemCount, priceLoaded } = values
   const kindMeta = kind ? PART_KIND_BY_VALUE[kind] : undefined
   const title = record.displayName ?? 'Untitled'
@@ -423,13 +421,9 @@ function ProductPartRow({
         <div className='flex items-center gap-2'>
           <RecordIcon avatarUrl={record.avatarUrl} iconId={iconId} color={color} size='sm' />
           <div className='flex min-w-0 flex-col'>
-            {href ? (
-              <Link href={href} className='truncate hover:underline'>
-                {title}
-              </Link>
-            ) : (
-              <span className='truncate'>{title}</span>
-            )}
+            <RecordLink recordId={recordId} className='truncate' openInStack>
+              {title}
+            </RecordLink>
             {record.secondaryInfo && (
               <span className='truncate text-xs text-muted-foreground'>{record.secondaryInfo}</span>
             )}

@@ -329,3 +329,35 @@ export function useOpenRecord(): ((recordId: RecordId) => void) | null {
   const ctx = React.useContext(RecordStackContext)
   return ctx?.push ?? null
 }
+
+/**
+ * `onClick` for a record LINK (`RecordBadge`, `RecordLink`) that should push a
+ * peek frame instead of navigating — the opt-in half of `useOpenRecord`.
+ *
+ * Two gates, both required. `enabled` is the call site's explicit opt-in, so
+ * adopting this never changes a link the author did not convert; the
+ * `RecordStackProvider` check then keeps the same component honest on surfaces
+ * with no stack to push onto (the detail page's sidebar mounts several of the
+ * very same cards), where it degrades to the plain link it always was.
+ *
+ * Modifier and non-primary clicks always fall through to the browser, so the
+ * element stays a real `<a href>` and cmd-/middle-click still opens a tab.
+ */
+export function useOpenRecordLinkClick(
+  recordId: RecordId | null | undefined,
+  enabled: boolean | undefined
+): ((event: React.MouseEvent) => void) | undefined {
+  const openRecord = useOpenRecord()
+  const push = enabled ? openRecord : null
+
+  return React.useMemo(() => {
+    if (!push || !recordId) return undefined
+    return (event: React.MouseEvent) => {
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
+        return
+      }
+      event.preventDefault()
+      push(recordId)
+    }
+  }, [push, recordId])
+}

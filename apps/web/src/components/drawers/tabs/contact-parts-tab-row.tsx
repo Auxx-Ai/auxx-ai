@@ -59,7 +59,7 @@ export function ContactVendorPartRow({
       <TableCell className='font-medium'>
         <div className='flex items-center gap-2'>
           {partId ? (
-            <RecordBadge recordId={partId} variant='link' link={{ tab: 'vendors' }} />
+            <RecordBadge recordId={partId} variant='link' link={{ tab: 'vendors' }} openInStack />
           ) : (
             <span className='text-muted-foreground'>—</span>
           )}

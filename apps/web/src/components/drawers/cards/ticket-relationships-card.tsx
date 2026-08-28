@@ -55,7 +55,7 @@ export function TicketRelationshipsCard({ recordId }: DrawerTabProps) {
           </div>
           <div className='space-y-1'>
             {parentRecordIds.map((id) => (
-              <RecordBadge key={id} recordId={id} link />
+              <RecordBadge key={id} recordId={id} link openInStack />
             ))}
           </div>
         </div>
@@ -71,7 +71,7 @@ export function TicketRelationshipsCard({ recordId }: DrawerTabProps) {
           </div>
           <div className='space-y-1'>
             {childRecordIds.map((id) => (
-              <RecordBadge key={id} recordId={id} link />
+              <RecordBadge key={id} recordId={id} link openInStack />
             ))}
           </div>
         </div>

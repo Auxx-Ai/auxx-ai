@@ -43,7 +43,12 @@ export function ProductVendorCard({ recordId }: DrawerTabProps) {
     <FieldPanel resizeId='product-vendor' defaultLabelWidth={130}>
       <FieldPanelRow title='Vendor'>
         <div className='flex min-h-8 flex-wrap items-center gap-2 text-sm'>
-          <RecordBadge recordId={vendorRecordId} variant='link' link={{ tab: 'overview' }} />
+          <RecordBadge
+            recordId={vendorRecordId}
+            variant='link'
+            link={{ tab: 'overview' }}
+            openInStack
+          />
         </div>
       </FieldPanelRow>
     </FieldPanel>

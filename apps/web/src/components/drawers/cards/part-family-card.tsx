@@ -17,18 +17,13 @@ import { Badge, type Variant } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { pluralize } from '@auxx/utils'
 import { Package, Sparkles } from 'lucide-react'
-import Link from 'next/link'
 import { useMemo, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
-import {
-  toRecordId,
-  useRecordLink,
-  useRecordList,
-  useResourceProperty,
-} from '~/components/resources'
+import { toRecordId, useRecordList, useResourceProperty } from '~/components/resources'
 import { useSaveSystemValues } from '~/components/resources/hooks/use-save-system-values'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
+import { RecordLink } from '~/components/resources/ui/record-link'
 import type { DrawerTabProps } from '../drawer-tab-registry'
 import {
   isPartKindUnset,
@@ -120,7 +115,6 @@ export function PartFamilyCard({ recordId }: DrawerTabProps) {
   })
   const productTitle = productValues.product_title as string | undefined
   const productStatus = productValues.product_status as string | undefined
-  const productLink = useRecordLink(productRecordId)
 
   // Sibling variants: every part on the same family edge, this one included.
   const siblingFilters: ConditionGroup[] = useMemo(
@@ -237,13 +231,9 @@ export function PartFamilyCard({ recordId }: DrawerTabProps) {
       <FieldPanel resizeId='part-family' defaultLabelWidth={130}>
         <FieldPanelRow title='Product'>
           <div className='flex min-h-8 flex-wrap items-center gap-2 text-sm'>
-            {productLink ? (
-              <Link href={productLink} className='truncate font-medium hover:underline'>
-                {productTitle ?? 'Loading...'}
-              </Link>
-            ) : (
-              <span className='truncate font-medium'>{productTitle ?? 'Loading...'}</span>
-            )}
+            <RecordLink recordId={productRecordId} className='truncate font-medium' openInStack>
+              {productTitle ?? 'Loading...'}
+            </RecordLink>
             {statusMeta && (
               <Badge variant={(statusMeta.color ?? 'gray') as Variant} size='xs'>
                 {statusMeta.label}
@@ -272,11 +262,13 @@ export function PartFamilyCard({ recordId }: DrawerTabProps) {
                       </span>
                     </span>
                   ) : (
-                    <SiblingLink
+                    <RecordLink
                       key={sibling.id}
                       recordId={toRecordId(partDefId ?? 'part', sibling.id)}
-                      label={sibling.displayName ?? 'Untitled'}
-                    />
+                      className='truncate'
+                      openInStack>
+                      {sibling.displayName ?? 'Untitled'}
+                    </RecordLink>
                   )
                 )}
                 {hiddenSiblingCount > 0 && !showAllSiblings && (
@@ -311,23 +303,5 @@ export function PartFamilyCard({ recordId }: DrawerTabProps) {
         </div>
       )}
     </div>
-  )
-}
-
-/**
- * One sibling variant's link.
- *
- * A component rather than an inline `<Link>` because `useRecordLink` is a hook
- * and this renders in a loop. The href it builds resolves through
- * `resourceHasDetailPage`; the hand-written `/app/parts?id=` it replaced was a
- * path nothing would have flagged if part routing ever moved.
- */
-function SiblingLink({ recordId, label }: { recordId: RecordId; label: string }) {
-  const href = useRecordLink(recordId)
-  if (!href) return <span className='truncate'>{label}</span>
-  return (
-    <Link href={href} className='truncate hover:underline'>
-      {label}
-    </Link>
   )
 }

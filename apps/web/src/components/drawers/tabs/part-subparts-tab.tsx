@@ -26,13 +26,13 @@ import { toastError } from '@auxx/ui/components/toast'
 import { pluralize } from '@auxx/utils'
 import { formatCurrency } from '@auxx/utils/currency'
 import { CircleAlert, Edit, MoreHorizontal, Package, PlusCircle, Trash2 } from 'lucide-react'
-import Link from 'next/link'
 import { useCallback, useMemo, useState } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
 import { SubpartDialog } from '~/components/manufacturing/parts/subpart-dialog'
 import { toRecordId, useRecordList, useResourceProperty } from '~/components/resources'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { useSystemValuesForRecords } from '~/components/resources/hooks/use-system-values-for-records'
+import { RecordLink } from '~/components/resources/ui/record-link'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
@@ -471,9 +471,13 @@ function PartNameCell({ partId, linkTab }: { partId: string; linkTab: string }) 
 
   return (
     <div className='flex flex-col'>
-      <Link href={`/app/parts?id=${partId}&tab=${linkTab}`} className='truncate hover:underline'>
+      <RecordLink
+        recordId={partRecordId || undefined}
+        link={{ tab: linkTab }}
+        className='truncate'
+        openInStack>
         {title ?? 'Loading...'}
-      </Link>
+      </RecordLink>
       {sku && <span className='text-xs text-muted-foreground'>{sku}</span>}
     </div>
   )
