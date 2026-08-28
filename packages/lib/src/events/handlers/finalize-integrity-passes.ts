@@ -10,7 +10,7 @@
 // the finalize pass by its caller. The CALLER decides which lanes invoke it — per the door
 // matrix, integrity hooks are batched at finalize for sync-large AND seed runs (D-10),
 // while the small-lane / per-record story is the caller's decision; this module just runs
-// the three passes over whatever manifest it is handed. It reuses the hooks' own extracted
+// the four passes over whatever manifest it is handed. It reuses the hooks' own extracted
 // cores (`money/totals-hooks.ts`, `geocoding/address-normalize-hook.ts`,
 // `phone-geo/derive-geo-hook.ts`) — no math or merge policy is reimplemented here.
 //
@@ -70,7 +70,7 @@ export interface IntegrityPassesInput {
 }
 
 /**
- * Run the three data-integrity batch passes over a sync-change manifest:
+ * Run the four data-integrity batch passes over a sync-change manifest:
  *
  * 1. Totals — changed line-item records map (via the hook's own parent resolution) to
  *    DISTINCT parent quotes/invoices, each recomputed once; lines whose qty/unitPrice
@@ -80,6 +80,11 @@ export interface IntegrityPassesInput {
  *    hook's core under a bounded-concurrency pool.
  * 3. Phone geo — changed PHONE_INTL fields, blank city/region/country/timezone filled
  *    via the hook's core (in-memory lookup, sequential).
+ * 4. Order demand — changed order lines (and cancelled orders) map to DISTINCT orders,
+ *    whose demand fingerprint is re-stamped and whose builds are converged onto it.
+ *    This is events/08 R6(c), and it is the same class of bug as pass 1: the inline
+ *    seam cannot see a sync write, so without it a Shopify order edited from 3 to 5
+ *    keeps a build for 3 forever.
  *
  * NEVER throws: each pass — and each record inside a pass — is individually guarded and
  * logged, so one bad record or one failing pass cannot starve the others (mirrors
@@ -88,12 +93,20 @@ export interface IntegrityPassesInput {
 export async function runIntegrityPasses(db: Database, input: IntegrityPassesInput): Promise<void> {
   const { organizationId, manifest } = input
   try {
-    if (Object.keys(manifest.touched).length === 0) return
+    // An archived-only manifest still has work: pass 4 reads `archivedRecordIds`
+    // (a deleted line means its order asks production for less).
+    if (
+      Object.keys(manifest.touched).length === 0 &&
+      (manifest.archivedRecordIds?.length ?? 0) === 0
+    ) {
+      return
+    }
 
     const resolveDef = await buildDefFieldResolver(organizationId)
     await totalsPass(db, organizationId, manifest, resolveDef)
     await addressPass(db, organizationId, manifest, resolveDef)
     await phoneGeoPass(db, organizationId, manifest, resolveDef)
+    await orderDemandPass(organizationId, manifest, resolveDef)
   } catch (error) {
     logger.error('integrity passes failed', {
       organizationId,
@@ -498,6 +511,118 @@ async function phoneGeoPass(
     })
   } catch (error) {
     logger.error('integrity phone-geo pass failed', {
+      organizationId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
+}
+
+// =============================================================================
+// Pass 4: order demand → build convergence
+// =============================================================================
+
+/**
+ * Re-stamp the demand fingerprint of every order this run touched, and converge
+ * its builds onto it.
+ *
+ * **This is R6(c) of `plans/events/08-derived-parent-reconciler-plan.md` §6.6**, and
+ * it closes the same class of hole passes 1-3 close. `builds/drift-hooks.ts` marks an
+ * order dirty from two seams — the field-change post hook and the post-delete handler
+ * — and *neither can see a connector write*: the `sync` lane resolves to
+ * `publishEvents: false`, which is precisely what the post-hook chain is gated on
+ * (`field-value-mutations.ts`). So a Shopify order edited from 3 to 5 keeps a build
+ * for 3 forever, with nothing on any screen saying so — plans/products/13 §0's defect,
+ * arriving through the one door that plan never covered.
+ *
+ * ⚠️ **What saves the FIRST sync is a different lane, not this pass.** The connector's
+ * relationship pass writes `line_item_order` through an `automation`-origin handler,
+ * which is inline, so linking a line to its order does fire the hook. This pass is for
+ * every sync after that one (products/13 §1.6 traces both).
+ *
+ * 🛑 **One resolve, one reconcile — never per record.** The lines are mapped to their
+ * orders in ONE query and the whole deduped order set is handed over at once, because
+ * `reconcileOrdersFromSync` does its settings read, order load, field lookup and
+ * stored-fingerprint read once per BATCH. Marking each order separately would restore
+ * the N+1 that events/08 exists to remove.
+ *
+ * Cheap when nothing moved: the reconciler's fingerprint compare drops an order whose
+ * demand did not actually change before any write, so a large manifest that touched a
+ * hundred order headers costs two reads and no writes.
+ *
+ * 🛑 **Known residual — a REPARENTED line marks its new order only.** The inline seam
+ * marks both, because `EntityFieldChangeEvent` carries `oldValue`; here the old parent
+ * is only in the tier-2 delta, which is rule-gated (so often absent) and stores a raw
+ * value whose shape this pass would have to guess at. Guessing and silently getting it
+ * wrong is worse than a documented gap, so: a line moved between orders under sync
+ * leaves the OLD order holding a build for a part it no longer sells, until that order
+ * is touched again. Connector runs do not reparent line items (a Shopify line belongs
+ * to its order permanently); imports can. Recorded in events/08 §6.6.
+ */
+async function orderDemandPass(
+  organizationId: string,
+  manifest: SyncChangeManifest,
+  resolveDef: DefFieldResolver
+): Promise<void> {
+  try {
+    const { LINE_DEMAND_TRIGGER_ATTRS, ORDER_DEMAND_TRIGGER_ATTRS } = await import(
+      '../../builds/drift-hooks'
+    )
+
+    const lineInstanceIds = new Set<string>()
+    const orderInstanceIds = new Set<string>()
+
+    for (const [rid, touched] of Object.entries(manifest.touched)) {
+      const { entityDefinitionId: rawDefId, entityInstanceId } = parseRecordId(rid as RecordId)
+      const def = await resolveDef(rawDefId)
+      if (!def) continue
+      // Ids-only degradation: the keys were shed under the byte budget, so any
+      // demand attribute may have moved and the record enters its def's arm.
+      const idsOnly = touched === 1
+      const keys = idsOnly ? [] : touched
+      const hasTrigger = (set: ReadonlySet<SystemAttribute>) =>
+        idsOnly || keys.some((key) => set.has(key as SystemAttribute))
+      // Def entityType decides the arm, never the attribute alone — the same rule
+      // pass 1 follows, and what keeps a stray key on another def out of here.
+      switch (def.entityType) {
+        case 'line_item':
+          if (hasTrigger(LINE_DEMAND_TRIGGER_ATTRS)) lineInstanceIds.add(entityInstanceId)
+          break
+        case 'order':
+          if (hasTrigger(ORDER_DEMAND_TRIGGER_ATTRS)) orderInstanceIds.add(entityInstanceId)
+          break
+      }
+    }
+
+    // A line archived during the run asks production for less, and archival fires no
+    // field change at all — the inline twin of this is `stampOrderAfterLineDelete`.
+    // The relation is still readable: `readFieldRelations` selects `FieldValue` rows
+    // directly and never joins `EntityInstance`, so a soft-archived line still resolves
+    // its order.
+    for (const rid of manifest.archivedRecordIds ?? []) {
+      const { entityDefinitionId: rawDefId, entityInstanceId } = parseRecordId(rid)
+      const def = await resolveDef(rawDefId)
+      if (def?.entityType === 'line_item') lineInstanceIds.add(entityInstanceId)
+    }
+
+    if (lineInstanceIds.size > 0) {
+      const { resolveParentsByRelation } = await import('../../reconcilers/parent-reconciler')
+      const parents = await resolveParentsByRelation(organizationId, 'line_item_order', [
+        ...lineInstanceIds,
+      ])
+      for (const orderId of parents) orderInstanceIds.add(orderId)
+    }
+    if (orderInstanceIds.size === 0) return
+
+    const { reconcileOrdersFromSync } = await import('../../builds/drift-reconciler')
+    await reconcileOrdersFromSync(organizationId, [...orderInstanceIds])
+
+    logger.info('integrity order-demand pass done', {
+      organizationId,
+      lines: lineInstanceIds.size,
+      orders: orderInstanceIds.size,
+    })
+  } catch (error) {
+    logger.error('integrity order-demand pass failed', {
       organizationId,
       error: error instanceof Error ? error.message : String(error),
     })

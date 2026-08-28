@@ -19,6 +19,10 @@ const h = vi.hoisted(() => ({
   fillBlankGeoFields: vi.fn(async () => {}),
   lookupPhoneGeo: vi.fn(),
   getValue: vi.fn(),
+  resolveParentsByRelation: vi.fn(async (): Promise<string[]> => []),
+  // Typed parameters, not `vi.fn(async () => {})` — an untyped mock makes
+  // `mock.calls[0]` read as `[]` and forces a cast at every assertion (#1961).
+  reconcileOrdersFromSync: vi.fn(async (_organizationId: string, _orderIds: string[]) => {}),
 }))
 
 // Cache barrel — mocked whole, like sync-finalize.test.ts (the lazy import means the real
@@ -89,6 +93,21 @@ vi.mock('../../phone-geo/derive-geo-hook', () => ({
 }))
 vi.mock('../../phone-geo/lookup', () => ({ lookupPhoneGeo: h.lookupPhoneGeo }))
 
+// Pass 4 (order demand → build convergence, events/08 R6(c)). The trigger vocabularies are
+// literal copies for the same reason the totals ones are — they are plain data, and
+// `builds/drift-hooks.ts` owns them. `reconcileOrdersFromSync` is the observable seam; the
+// real one drags the org cache and the whole build write path.
+vi.mock('../../builds/drift-hooks', () => ({
+  LINE_DEMAND_TRIGGER_ATTRS: new Set(['line_item_part', 'line_item_qty', 'line_item_order']),
+  ORDER_DEMAND_TRIGGER_ATTRS: new Set(['order_cancelled_at']),
+}))
+vi.mock('../../builds/drift-reconciler', () => ({
+  reconcileOrdersFromSync: h.reconcileOrdersFromSync,
+}))
+vi.mock('../../reconcilers/parent-reconciler', () => ({
+  resolveParentsByRelation: h.resolveParentsByRelation,
+}))
+
 vi.mock('../../field-values/field-value-helpers', () => ({
   createFieldValueContext: vi.fn((organizationId: string, userId: string, db: unknown) => ({
     organizationId,
@@ -110,12 +129,16 @@ const RESOURCES = [
   { entityDefinitionId: 'def_quote', entityType: 'quote', apiSlug: 'quotes' },
   { entityDefinitionId: 'def_invoice', entityType: 'invoice', apiSlug: 'invoices' },
   { entityDefinitionId: 'def_ticket', entityType: 'ticket', apiSlug: 'tickets' },
+  { entityDefinitionId: 'def_order', entityType: 'order', apiSlug: 'orders' },
 ]
 
 const FIELDS_BY_DEF: Record<string, Array<Record<string, unknown>>> = {
   def_li: [
     { id: 'fld_qty', systemAttribute: 'line_item_qty', type: 'NUMBER' },
     { id: 'fld_inv_rel', systemAttribute: 'line_item_invoice', type: 'RELATIONSHIP' },
+    { id: 'fld_part', systemAttribute: 'line_item_part', type: 'RELATIONSHIP' },
+    { id: 'fld_ord_rel', systemAttribute: 'line_item_order', type: 'RELATIONSHIP' },
+    { id: 'fld_price', systemAttribute: 'line_item_unit_price', type: 'NUMBER' },
   ],
   def_contact: [
     // Custom field — no systemAttribute, so its manifest outputKey is the field id.
@@ -135,6 +158,10 @@ const FIELDS_BY_DEF: Record<string, Array<Record<string, unknown>>> = {
   def_quote: [{ id: 'fld_qtax', systemAttribute: 'quote_tax_rate', type: 'NUMBER' }],
   def_invoice: [],
   def_ticket: [{ id: 'fld_subj', systemAttribute: 'ticket_subject', type: 'TEXT' }],
+  def_order: [
+    { id: 'fld_cancelled', systemAttribute: 'order_cancelled_at', type: 'DATETIME' },
+    { id: 'fld_placed', systemAttribute: 'order_placed_at', type: 'DATETIME' },
+  ],
 }
 
 /** A fully rule-subscribed v2 manifest: touched keys derived from the delta buckets. */
@@ -165,6 +192,19 @@ function tier1Manifest(touched: Record<string, string[] | 1>) {
   } as unknown as SyncChangeManifest
 }
 
+/** A tier-1 manifest that also carries archived ids (pass 4 reads them). */
+function archivedManifest(touched: Record<string, string[] | 1>, archivedRecordIds: string[]) {
+  return {
+    version: 2,
+    detailTruncated: false,
+    membershipTruncated: false,
+    touched,
+    deltas: {},
+    createdRecordIds: [],
+    archivedRecordIds,
+  } as unknown as SyncChangeManifest
+}
+
 function run(m: SyncChangeManifest) {
   return runIntegrityPasses(DB, { organizationId: ORG, manifest: m })
 }
@@ -182,6 +222,7 @@ beforeEach(() => {
     async (_org: string, defId: string) => FIELDS_BY_DEF[defId] ?? []
   )
   h.resolveLineParentDocument.mockResolvedValue(null)
+  h.resolveParentsByRelation.mockResolvedValue([])
   h.lookupPhoneGeo.mockReturnValue(null)
   // Fresh stored values per field: an unstamped address struct and a multi phone.
   h.getValue.mockImplementation(async (_ctx: unknown, params: { fieldId: string }) => {
@@ -423,5 +464,112 @@ describe('failure isolation', () => {
     h.fillBlankGeoFields.mockRejectedValue(new Error('e'))
     h.lookupPhoneGeo.mockReturnValue({ city: 'LA' })
     await expect(run(mixedManifest())).resolves.toBeUndefined()
+  })
+})
+
+describe('order-demand pass (events/08 R6(c))', () => {
+  it('maps a changed line quantity to its order and reconciles once', async () => {
+    h.resolveParentsByRelation.mockResolvedValue(['ord_1'])
+
+    await run(tier1Manifest({ 'def_li:l1': ['line_item_qty'] }))
+
+    expect(h.resolveParentsByRelation).toHaveBeenCalledWith(ORG, 'line_item_order', ['l1'])
+    expect(h.reconcileOrdersFromSync).toHaveBeenCalledTimes(1)
+    expect(h.reconcileOrdersFromSync).toHaveBeenCalledWith(ORG, ['ord_1'])
+  })
+
+  it('hands the WHOLE order set over in one call — two lines of one order is one reconcile', async () => {
+    h.resolveParentsByRelation.mockResolvedValue(['ord_1', 'ord_1'])
+
+    await run(
+      tier1Manifest({
+        'def_li:l1': ['line_item_qty'],
+        'def_li:l2': ['line_item_part'],
+      })
+    )
+
+    // One resolve for both lines, and the duplicate order collapses.
+    expect(h.resolveParentsByRelation).toHaveBeenCalledTimes(1)
+    expect(h.resolveParentsByRelation).toHaveBeenCalledWith(ORG, 'line_item_order', ['l1', 'l2'])
+    expect(h.reconcileOrdersFromSync).toHaveBeenCalledTimes(1)
+    expect(h.reconcileOrdersFromSync).toHaveBeenCalledWith(ORG, ['ord_1'])
+  })
+
+  it('ignores a line change that moves money but not demand', async () => {
+    await run(tier1Manifest({ 'def_li:l1': ['line_item_unit_price'] }))
+
+    expect(h.resolveParentsByRelation).not.toHaveBeenCalled()
+    expect(h.reconcileOrdersFromSync).not.toHaveBeenCalled()
+  })
+
+  it('takes a cancelled order directly — no line resolution needed', async () => {
+    await run(tier1Manifest({ 'def_order:ord_9': ['order_cancelled_at'] }))
+
+    expect(h.resolveParentsByRelation).not.toHaveBeenCalled()
+    expect(h.reconcileOrdersFromSync).toHaveBeenCalledWith(ORG, ['ord_9'])
+  })
+
+  it('ignores an order header change that is not cancellation', async () => {
+    await run(tier1Manifest({ 'def_order:ord_9': ['order_placed_at'] }))
+
+    expect(h.reconcileOrdersFromSync).not.toHaveBeenCalled()
+  })
+
+  it('reconciles the order of an ARCHIVED line — a deleted line asks for less', async () => {
+    h.resolveParentsByRelation.mockResolvedValue(['ord_1'])
+
+    await run(archivedManifest({}, ['def_li:l7']))
+
+    expect(h.resolveParentsByRelation).toHaveBeenCalledWith(ORG, 'line_item_order', ['l7'])
+    expect(h.reconcileOrdersFromSync).toHaveBeenCalledWith(ORG, ['ord_1'])
+  })
+
+  it('treats an ids-only degraded line as "any demand attribute may have moved"', async () => {
+    h.resolveParentsByRelation.mockResolvedValue(['ord_1'])
+
+    await run(tier1Manifest({ 'def_li:l1': 1 }))
+
+    expect(h.reconcileOrdersFromSync).toHaveBeenCalledWith(ORG, ['ord_1'])
+  })
+
+  it('unions a line-derived order with a directly cancelled one', async () => {
+    h.resolveParentsByRelation.mockResolvedValue(['ord_1'])
+
+    await run(
+      tier1Manifest({
+        'def_li:l1': ['line_item_qty'],
+        'def_order:ord_2': ['order_cancelled_at'],
+      })
+    )
+
+    expect(h.reconcileOrdersFromSync).toHaveBeenCalledTimes(1)
+    const orderIds = h.reconcileOrdersFromSync.mock.calls[0]?.[1] ?? []
+    expect([...orderIds].sort()).toEqual(['ord_1', 'ord_2'])
+  })
+
+  it('does not reconcile when no line resolves to an order', async () => {
+    h.resolveParentsByRelation.mockResolvedValue([])
+
+    await run(tier1Manifest({ 'def_li:l1': ['line_item_qty'] }))
+
+    expect(h.reconcileOrdersFromSync).not.toHaveBeenCalled()
+  })
+
+  it('never rejects when the reconciler throws — the run must not fail', async () => {
+    h.resolveParentsByRelation.mockResolvedValue(['ord_1'])
+    h.reconcileOrdersFromSync.mockRejectedValueOnce(new Error('boom'))
+
+    await expect(run(tier1Manifest({ 'def_li:l1': ['line_item_qty'] }))).resolves.toBeUndefined()
+
+    // Reached and contained, not skipped: the throw came from inside the pass.
+    expect(h.reconcileOrdersFromSync).toHaveBeenCalledTimes(1)
+  })
+
+  it('never rejects when the parent resolve throws, and never reconciles on a bad resolve', async () => {
+    h.resolveParentsByRelation.mockRejectedValueOnce(new Error('resolve boom'))
+
+    await expect(run(tier1Manifest({ 'def_li:l1': ['line_item_qty'] }))).resolves.toBeUndefined()
+
+    expect(h.reconcileOrdersFromSync).not.toHaveBeenCalled()
   })
 })
