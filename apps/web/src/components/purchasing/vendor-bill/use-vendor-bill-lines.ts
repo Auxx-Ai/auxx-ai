@@ -111,10 +111,47 @@ export function useVendorBillLines(billRecordId: RecordId) {
     [records, lineDefId]
   )
 
-  const { valuesById } = useSystemValuesForRecords(rowRecordIds, VENDOR_BILL_LINE_ATTRIBUTES, {
-    autoFetch: true,
-    enabled: rowRecordIds.length > 0,
-  })
+  const { valuesById, loadedById } = useSystemValuesForRecords(
+    rowRecordIds,
+    VENDOR_BILL_LINE_ATTRIBUTES,
+    { autoFetch: true, enabled: rowRecordIds.length > 0 }
+  )
+
+  /**
+   * Whether `rows` is the bill's real line set, as opposed to a shape it passes
+   * through on the way there.
+   *
+   * 🛑 A caller whose correctness depends on a line being ABSENT must gate on
+   * this, never on `rows` and never on `isLoading` alone. An empty or valueless
+   * `rows` is reached three different ways after a drawer mounts, and only the
+   * last one means what it says:
+   *
+   *   1. `lineDefId` is undefined while the resource store hydrates. The list is
+   *      `enabled: false`, so it reports **`isLoading: false`** with no records —
+   *      an empty answer that was never asked. This is the window an `isLoading`
+   *      gate silently misses.
+   *   2. `isLoading` — the list query is in flight. No rows yet.
+   *   3. rows exist, values do not. They arrive from a SECOND batched fetch, so
+   *      every `purchaseOrderLineRecordId` reads `undefined`, which is
+   *      indistinguishable from a freight line carrying no match key.
+   *
+   * `selectBillableLines` subtracts the order lines this bill already claims,
+   * using exactly that field. Through all three windows it subtracts nothing, so
+   * "Add lines from order" offers the whole order back on a bill that already
+   * has it — observed as a live, clickable button on a cold open of a
+   * fully-linked bill. The pure guard is correct and its unit test passes; the
+   * component simply could not supply the argument yet.
+   *
+   * `loadedById` is the fetch layer's own answer to (3): a raw `undefined` means
+   * not fetched, a raw `null` means genuinely empty.
+   */
+  const ready =
+    !!billId &&
+    !!lineDefId &&
+    !isLoading &&
+    rowRecordIds.every((lineRecordId) =>
+      VENDOR_BILL_LINE_ATTRIBUTES.every((attr) => loadedById[lineRecordId]?.[attr])
+    )
 
   const rows = useMemo(
     () =>
@@ -127,5 +164,5 @@ export function useVendorBillLines(billRecordId: RecordId) {
     [rowRecordIds, valuesById]
   )
 
-  return { billId, lineDefId, rows, isLoading, refresh }
+  return { billId, lineDefId, rows, isLoading, ready, refresh }
 }

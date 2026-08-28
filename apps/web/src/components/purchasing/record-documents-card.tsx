@@ -34,6 +34,7 @@ import { FileSelectDialog } from '~/components/file-select/file-select-dialog'
 import { FileIcon } from '~/components/files/utils/file-icon'
 import { Tooltip } from '~/components/global/tooltip'
 import { useResourceFields } from '~/components/resources'
+import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { useAccess } from '~/providers/capabilities-provider'
 
 interface DocumentRow {
@@ -80,6 +81,29 @@ function RecordDocumentsCard({
 }) {
   const { entityDefinitionId } = parseRecordId(recordId)
   const { fields, isLoading } = useResourceFields(entityDefinitionId)
+
+  // 🛑 SOMEBODY has to fetch these two, and on this record it is nobody else.
+  //
+  // `useFieldFileUpload` only SUBSCRIBES — it reads `useFieldValueStore` at the
+  // canonical key and never issues a read of its own. Everywhere else that is
+  // correct, because a FILE field input is rendered inside a panel or a grid that
+  // has already fetched the row. This card is the exception: every field it
+  // renders is `showInPanel: false` — that is the whole reason the card exists —
+  // so the Details panel skips them and no other surface on the page asks for
+  // them either.
+  //
+  // The result was a card that rendered "No documents" forever on records that
+  // plainly had files. Observed on PO-0007 (a real 22,482-byte `PO-0007.pdf`) and
+  // on PO-0010 (21,721 bytes, sent, `issued`) — both showed the empty state, and
+  // the DB showed `purchase_order_pdf_asset` set on both. It reads as "the PDF
+  // was never generated", which is a different and much more alarming bug than
+  // the one it is.
+  //
+  // The fetch must go through the SAME canonical key the uploader subscribes with,
+  // which is what `useSystemValues` resolving a systemAttribute gives us — an
+  // ad-hoc read on a hand-built key populates a slot nothing is watching, exactly
+  // as `use-field-file-upload.ts`'s own note describes.
+  useSystemValues(recordId, [primaryAttribute, attachmentsAttribute], { autoFetch: true })
 
   const { primaryField, attachmentsField } = useMemo(() => {
     const byAttribute = new Map(
