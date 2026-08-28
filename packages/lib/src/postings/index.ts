@@ -10,6 +10,7 @@
 // Client code must import `@auxx/lib/postings/client`, never this barrel.
 
 export {
+  ACCOUNT_ROLE_LABELS,
   ACCOUNT_ROLES,
   type AccountRole,
   type BuildEntryInput,
@@ -17,12 +18,20 @@ export {
   buildReceiptEntry,
   buildVendorBillEntry,
   type ReceiptEntryInput,
+  ROLE_ACCOUNT_TYPES,
   type VendorBillEntryInput,
 } from './build-entry'
 export {
   DEFAULT_CHART_OF_ACCOUNTS,
   type DefaultChartAccount,
+  type GlAccountTypeValue,
 } from './default-chart'
+export {
+  buildDocNumber,
+  DOC_NUMBER_MAX_LENGTH,
+  DOC_NUMBER_PREFIX,
+  type DocNumberInput,
+} from './doc-number'
 export {
   assertPeriodOpen,
   compareMonths,
@@ -46,6 +55,7 @@ export {
   resolveAccountingProvider,
   setConnectedProviderResolver,
 } from './provider'
+export { type ResolvedAccount, resolveRoles } from './resolve-roles'
 export {
   type BuiltEntry,
   type GlPostingLineInput,

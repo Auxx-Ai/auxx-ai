@@ -36,14 +36,14 @@ import { toRecordId } from '../resources/resource-id'
 import { computeExtendedCost, resolveInventoryRoleForPartKind, roundMinorUnits } from './client'
 import { assertCostFieldsMaterialized } from './cost-fields'
 import { guard } from './guard'
-import { readPartKind } from './receipt-queries'
+import { readPartKind, readPartStandardCost } from './receipt-queries'
 import type { AdjustStockInput, MovementRecord } from './types'
 
-/** What a costed adjustment stamps beyond the bare count change. */
+/** What every adjustment stamps beyond the bare count change. */
 interface AdjustmentCost {
-  /** Whole minor units, strictly positive. */
+  /** The part's frozen `part_standard_cost`, rounded. Whole minor units, strictly positive. */
   unitCost: number
-  /** The inventory account CODE ('1310'), never a provider id. */
+  /** The inventory account ROLE ('inventory_raw_materials'), never a code and never a provider id. */
   glAccount: string
 }
 
@@ -53,32 +53,43 @@ interface AdjustmentCost {
  * The order of the steps is the contract, not an implementation detail:
  *
  * 1. `quantity` is a finite, non-zero number, or `BadRequestError`.
- * 2. If it is POSITIVE, resolve and round a strictly positive `unitCost`, or
- *    `UnprocessableEntityError`. Nothing is written when this fails.
- * 3. Write one movement, `type: 'adjust'`, with the cost fields stamped only on
- *    the positive branch.
+ * 2. Resolve the part's STANDARD cost — in both directions — or
+ *    `UnprocessableEntityError` naming the part. Nothing is written when this
+ *    fails.
+ * 3. Write one movement, `type: 'adjust'`, `cost_basis: standard`, with
+ *    `unit_cost`, `extended_cost` and `gl_account` stamped whichever way the
+ *    count went.
  *
- * 🛑 **Positive adjustments must carry a cost; negative ones must not.** The
- * asymmetry is deliberate and it is the whole design of this function:
+ * 🛑 **Both directions carry a cost, and it is the SERVER's number.** This is
+ * decision `G12` and it reverses two earlier behaviours that were both wrong:
  *
- * - A POSITIVE adjustment creates inventory value out of nothing. Something has
- *   to say what the new units are worth, and the only honest source is the
- *   person keying the count. Writing them at zero is the exact defect
- *   `receiveStock` refuses — a row that sums into the inventory balance as
- *   nothing and that nothing downstream can tell apart from a genuinely free
- *   sample.
- * - A NEGATIVE adjustment consumes value the ledger ALREADY carries. Answering
- *   "at what cost" properly requires a costing method — FIFO, moving average,
- *   specific identification — and this system does not have one yet: nothing
- *   values inventory from the ledger today, and there is no layer table to draw
- *   a consumption cost from. Inventing a method here would freeze a guess onto
- *   a row whose every field is `updatable: false`, and a wrong cost that looks
- *   considered is worse than a missing one that is visibly absent.
+ * - A **positive** adjustment used to demand a user-entered `unitCost` and
+ *   stamp `cost_basis: actual`. But an adjustment has no supplier row, no
+ *   purchase order and no packing slip — there is no ACTUAL to record. What the
+ *   found units are worth is what the system says a unit of that part is worth,
+ *   which is `part_standard_cost`. Asking a person to type it invited a
+ *   different answer every time and made the ledger's valuation depend on who
+ *   was counting.
+ * - A **negative** adjustment used to stamp NO cost at all — no `unit_cost`, no
+ *   `extended_cost`, no `gl_account`. That is the worse of the two: a shrinkage
+ *   carrying no cost is invisible to every period total that sums the ledger,
+ *   so the L1 month-end assertion absorbs it into the COGS plug. `G12` exists
+ *   to keep count variance separate from purchase price variance, and a
+ *   valueless row cannot be separated from anything.
  *
- * ⚠️ **This is a known gap, not a finished answer.** When a costing method
- * lands, the removal branch below is where it attaches, and the negative rows
- * written before then will carry no cost that can be back-filled. Until then a
- * removal is a count correction and explicitly not a valuation event.
+ * 🛑 **A part with no standard cost fails CLOSED, naming the part.** It must not
+ * fall back to `part_cost` — that is live replacement cost, rewritten on every
+ * vendor-price change, and it must never value a movement (architecture guide
+ * section 11, rule 2) — and it must not write zero, which is the exact defect
+ * `receiveStock` refuses. Roll standard cost for the part first.
+ *
+ * ⚠️ **This is a write-path change on an append-only ledger.** Every field on
+ * `stock_movement` is `updatable: false`, so movements written before this
+ * carry the old costing — a positive `adjust` at a hand-typed `actual` cost, a
+ * negative one at no cost at all — and they CANNOT be back-filled. That is the
+ * price of the append-only rule, and reversing them would change quantities
+ * that are correct. Read a period that spans the change knowing the earlier
+ * rows are shaped differently.
  */
 export async function adjustStock(
   db: Database,
@@ -96,8 +107,7 @@ export async function adjustStock(
         throw new NotFoundError('This organization has no stock_movement entity definition')
       }
 
-      const cost =
-        input.quantity > 0 ? await resolveAdjustmentCost(db, organizationId, input) : null
+      const cost = await resolveAdjustmentCost(db, organizationId, input.partId)
 
       return writeAdjustMovement(db, organizationId, userId, {
         movementDefId,
@@ -139,43 +149,49 @@ function assertAdjustableQuantity(quantity: number): void {
 }
 
 /**
- * Step 2: settle a strictly positive unit cost for an ADDITION, then round it.
+ * Step 2: read the part's frozen standard cost, or refuse naming the part.
  *
- * Only ever called on the positive branch — see the asymmetry note on
- * {@link adjustStock}. The cost-field pre-flight runs here rather than at the
- * top of the write for the same reason: a removal stamps no cost fields, so
- * requiring them to be materialised would block a correction that does not need
- * them.
+ * Rounding is applied BEFORE the positivity check so a sub-half-cent standard
+ * cost is rejected here rather than stored as a zero the ledger cannot explain —
+ * the same ordering `resolveReceiptPrice` uses, and for the same reason.
  *
- * Rounding is applied BEFORE the positivity check so a sub-half-cent value is
- * rejected here rather than stored as a zero the ledger cannot explain — the
- * same ordering `resolveReceiptPrice` uses, and for the same reason.
+ * Runs for a REMOVAL as well as an addition, which is why the cost-field
+ * pre-flight is unconditional now: `G12` values both directions, so an org whose
+ * movement cost fields are not materialised cannot adjust in either direction
+ * rather than being able to adjust in the one that recorded nothing.
  */
 async function resolveAdjustmentCost(
   db: Database,
   organizationId: string,
-  input: AdjustStockInput
+  partId: string
 ): Promise<AdjustmentCost> {
   await assertCostFieldsMaterialized(
     organizationId,
     'Adjusting stock is not available until the stock movement cost fields are provisioned'
   )
 
-  const supplied = input.unitCost
-  if (supplied == null || !Number.isFinite(supplied)) {
+  const standard = await readPartStandardCost(db, organizationId, partId)
+  if (standard.isErr()) throw standard.error
+
+  const { standardCost, displayName } = standard.value
+  const partLabel = displayName ? `"${displayName}"` : `part ${partId}`
+
+  if (standardCost == null || !Number.isFinite(standardCost)) {
     throw new UnprocessableEntityError(
-      'Cannot add stock without a unit cost. Enter what the added units are worth.'
+      `Cannot adjust ${partLabel}: it has no standard cost. An adjustment is valued at the part's standard cost, and there is nothing else it may honestly be valued at — the live part cost is a replacement price that changes with every vendor quote. Roll standard cost for this part first.`,
+      { partId }
     )
   }
 
-  const unitCost = roundMinorUnits(supplied)
+  const unitCost = roundMinorUnits(standardCost)
   if (unitCost <= 0) {
     throw new UnprocessableEntityError(
-      'Refusing to add stock at zero cost. Enter the price actually paid.'
+      `Cannot adjust ${partLabel}: its standard cost rounds to zero. A movement written at zero cost sums into the inventory balance as nothing and cannot be told apart from a genuinely free part. Roll standard cost for this part first.`,
+      { partId }
     )
   }
 
-  const kind = await readPartKind(db, organizationId, input.partId)
+  const kind = await readPartKind(db, organizationId, partId)
   if (kind.isErr()) throw kind.error
 
   return { unitCost, glAccount: resolveInventoryRoleForPartKind(kind.value) }
@@ -185,8 +201,8 @@ interface WriteAdjustMovementArgs {
   movementDefId: string
   partDefId: string
   input: AdjustStockInput
-  /** `null` on a removal — see the asymmetry note on {@link adjustStock}. */
-  cost: AdjustmentCost | null
+  /** Never null — `G12` values a removal exactly as it values an addition. */
+  cost: AdjustmentCost
   occurredAt: Date
 }
 
@@ -199,6 +215,10 @@ interface WriteAdjustMovementArgs {
  * post-commit triggers (QoH recalculation, timeline, realtime) fire at all. A
  * direct insert writes rows the rest of the system never hears about, which is
  * precisely how the popover this replaces got away with writing no cost.
+ *
+ * Every cost field is stamped unconditionally: `resolveAdjustmentCost` has
+ * already refused the write if the part has no standard cost, so there is no
+ * branch here in which one is missing.
  *
  * 🛑 **`adjustSubparts: false` is load-bearing, not a default.**
  * `explodeBomMovement` inherits the parent movement's type AND its sign, so an
@@ -217,7 +237,10 @@ async function writeAdjustMovement(
 ): Promise<MovementRecord> {
   const { movementDefId, partDefId, input, cost, occurredAt } = args
   const quantity = input.quantity
-  const extendedCost = cost ? computeExtendedCost(cost.unitCost, quantity) : null
+  // Signed like `quantity`, so a removal's extended cost is NEGATIVE and a
+  // period total that sums the ledger nets correctly without a sign convention
+  // living anywhere else.
+  const extendedCost = computeExtendedCost(cost.unitCost, quantity)
 
   const values: Record<string, unknown> = {
     stock_movement_part: toRecordId(partDefId, input.partId),
@@ -226,15 +249,13 @@ async function writeAdjustMovement(
     // See the JSDoc above. Never true on an adjustment.
     stock_movement_adjust_subparts: false,
     stock_movement_occurred_at: occurredAt.toISOString(),
-  }
-
-  if (cost) {
-    // `actual`, not `standard`: this cost is what the person keying the count
-    // says the units are worth, not what a standard-cost roll-up expects.
-    values.stock_movement_cost_basis = StockMovementCostBasis.ACTUAL
-    values.stock_movement_unit_cost = cost.unitCost
-    values.stock_movement_extended_cost = extendedCost
-    values.stock_movement_gl_account = cost.glAccount
+    // `standard`, not `actual`: this is the part's frozen `part_standard_cost`,
+    // read by the server. An adjustment has no supplier and no invoice, so there
+    // is no ACTUAL for it to record (`G12`).
+    stock_movement_cost_basis: StockMovementCostBasis.STANDARD,
+    stock_movement_unit_cost: cost.unitCost,
+    stock_movement_extended_cost: extendedCost,
+    stock_movement_gl_account: cost.glAccount,
   }
 
   if (input.reason) values.stock_movement_reason = input.reason
@@ -248,14 +269,14 @@ async function writeAdjustMovement(
     recordId: toRecordId(movementDefId, created.instance.id),
     partInstanceId: input.partId,
     quantity,
-    unitCost: cost?.unitCost ?? null,
+    unitCost: cost.unitCost,
     extendedCost,
     // An adjustment has no supplier and no purchase order: it is a count
     // correction, not a purchase. Nothing here is withheld — there is nothing
     // to state.
     vendorUnitPrice: null,
     vendorPartId: null,
-    glAccount: cost?.glAccount ?? null,
+    glAccount: cost.glAccount,
     occurredAt,
     purchaseOrderLineId: null,
   }

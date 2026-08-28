@@ -250,13 +250,14 @@ export const purchasingRouter = createTRPCRouter({
    * bypassed the zero-cost guard entirely and could add stock valued at nothing
    * (plans/purchasing/05-receiving-cost-and-corrections.md section 1.5).
    *
-   * 🛑 **`unitCost` is required when `quantity` is positive and ignored when it
-   * is negative**, and unlike `receiveStock` the browser IS entitled to state it.
-   * There is no other authority: an adjustment has no supplier row, no purchase
-   * order and no packing slip, so the person keying the count is the only source
-   * for what the added units are worth. `adjustStock` still applies the real
-   * guard — a positive adjustment that does not round to a positive cost is
-   * refused there, and nothing is written.
+   * 🛑 **The browser states NO cost.** It used to send a `unitCost` on a positive
+   * delta, on the argument that an adjustment has no supplier row and the person
+   * keying the count is the only authority. Decision `G12` rejects that: an
+   * adjustment is valued at the part's own frozen `part_standard_cost`, read by
+   * the server, in BOTH directions — a typed number made the ledger's valuation
+   * depend on who was counting, and a removal that carried no cost at all was
+   * invisible to every period total that sums the ledger. A part with no
+   * standard cost is refused by `adjustStock`, naming the part.
    */
   adjustStock: capabilityProcedure
     .input(
@@ -264,8 +265,6 @@ export const purchasingRouter = createTRPCRouter({
         partId: z.string().min(1),
         /** The signed delta. Positive adds stock, negative removes it; zero is refused. */
         quantity: z.number().finite(),
-        /** What one ADDED unit is worth, minor units. Required on a positive delta. */
-        unitCost: minorUnits.optional(),
         /** The ACCOUNTING date, which is not `createdAt`. Defaults to now. */
         occurredAt: z.coerce.date().optional(),
         reason: z.string().max(2000).optional(),

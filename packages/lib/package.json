@@ -1072,6 +1072,12 @@
       "import": "./dist/posthog/posthog-client.mjs",
       "default": "./src/posthog/posthog-client.ts"
     },
+    "./postings/client": {
+      "types": "./src/postings/client.ts",
+      "source": "./src/postings/client.ts",
+      "import": "./dist/postings/client.mjs",
+      "default": "./src/postings/client.ts"
+    },
     "./presence": {
       "types": "./src/presence/index.ts",
       "source": "./src/presence/index.ts",

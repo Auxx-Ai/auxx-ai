@@ -154,9 +154,9 @@ describe('GlPostingLine', () => {
   it('records the role the code was resolved from, without redefining the vocabulary', () => {
     const role = lineConfig.columns.find((c) => c.name === 'accountRole')
     expect(role?.getSQLType()).toBe('text')
-    // Nullable and plain text: decision G8's role set is `GlAccountRole` in
-    // packages/lib/src/resources/registry/enum-values.ts, and a pgEnum here
-    // would be a second copy of it.
+    // Nullable and plain text: decision G8's role set is `ACCOUNT_ROLES` in
+    // packages/lib/src/postings/build-entry.ts, and a pgEnum here would be a
+    // second copy of it. `GlRoleAssignment.role` makes the same call.
     expect(role?.notNull).toBe(false)
   })
 

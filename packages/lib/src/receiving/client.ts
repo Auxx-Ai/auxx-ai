@@ -23,8 +23,9 @@ import {
   type LandedCostBreakdown,
 } from '../bom/vendor-cost'
 // `postings/client.ts` is pure data and pure functions - no db, no logger - so
-// this stays a client-safe import. `ACCOUNT_ROLES` is the module's own copy of
-// the role vocabulary, pinned to `GlAccountRole` by an equality test.
+// this stays a client-safe import. `ACCOUNT_ROLES` is the ONLY copy of the role
+// vocabulary since decision `G19` retired the `GlAccountRole` registry enum
+// along with the `gl_account.role` field it existed to populate.
 import { ACCOUNT_ROLES, type AccountRole } from '../postings/client'
 
 /**

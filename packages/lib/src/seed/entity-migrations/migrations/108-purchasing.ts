@@ -488,7 +488,7 @@ export const migration108Purchasing: EntityMigration = {
     // field keeps the values it was created with while the code, the types and
     // the UI all believe in the new list.
     //
-    // Both directions of that have now bitten, three times:
+    // Both directions of that have now bitten:
     //
     //   `vendor_bill_status`   gained `partially_paid`, and later
     //                           `awaiting_receipt` — the PREPAID case, which is
@@ -499,15 +499,15 @@ export const migration108Purchasing: EntityMigration = {
     //   `purchase_order_status` LOST `partially_received` and `received`, which
     //                           moved to their own derived fields
     //                           (plans/purchasing/07-purchase-order-send-and-status.md §3.3)
-    //   `gl_account_role`       is new here, so `ensureCustomFields` writes its
-    //                           twelve options — but the vocabulary is CLOSED
-    //                           and grows as builders are written (the
-    //                           fulfillment, payout, build and month-end
-    //                           entries all still need roles), and every one of
-    //                           those additions is an insert into the middle of
-    //                           a grouped list. It joins the refresh now so the
-    //                           next one is a one-line enum edit rather than a
-    //                           migration nobody remembers to write.
+    //
+    // ✅ `gl_account_role` USED to be the third entry here, and it is the reason
+    // the trap is worth restating: a CLOSED vocabulary that grows as builders
+    // are written is exactly the shape `ensureCustomFields` cannot maintain.
+    // Decision `G19` removed the field entirely — roles now live in the
+    // `GlRoleAssignment` table, whose `role` column is plain `text` — so the
+    // vocabulary can grow with a one-line constant edit and no options
+    // migration at all. Entity migration 115 deletes the field from every org
+    // that already has it.
     //
     // The whole array is rewritten rather than diffed, so the option ORDER
     // matches the registry everywhere — an appended value would sit last on
@@ -521,13 +521,12 @@ export const migration108Purchasing: EntityMigration = {
     // orgs only, and the two values it drops never had a writer — so the orphan
     // set is a hand-set dev row or two, and `098-prune-orphaned-option-values`
     // is the pass that exists for orphans. A remap here would be permanent
-    // machinery earning its keep exactly once. Neither of the other two loses a
-    // value at all: `awaiting_receipt` and the twelve roles are pure additions.
+    // machinery earning its keep exactly once. `vendor_bill_status` loses no
+    // value at all: `awaiting_receipt` is a pure addition.
     let optionsRefreshed = false
     for (const [entityType, field] of [
       ['vendor_bill', VENDOR_BILL_FIELDS.status],
       ['purchase_order', PURCHASE_ORDER_FIELDS.status],
-      ['gl_account', GL_ACCOUNT_FIELDS.role],
     ] as const) {
       const refreshed = await refreshSelectOptions(db, entityDefIds.get(entityType), field)
       optionsRefreshed ||= refreshed
@@ -539,10 +538,18 @@ export const migration108Purchasing: EntityMigration = {
     // to sit at the end of `up()`, after the chart seed, and that cost a full
     // pass: `UnifiedCrudHandler.warmCache` resolves an entity's fields from the
     // org cache, so the chart seed below ran against a `customFields` snapshot
-    // taken BEFORE `gl_account_role` was created — and the handler DROPS a key
-    // it cannot resolve rather than failing. The result was 784 accounts in 28
-    // orgs with every field written except the one this migration had just
-    // added, no error anywhere, and a migration log line reading "applied".
+    // taken BEFORE this migration's own fields were created — and the handler
+    // DROPS a key it cannot resolve rather than failing. The result was 784
+    // accounts in 28 orgs with every field written except the `gl_account_role`
+    // this migration had just added, no error anywhere, and a migration log line
+    // reading "applied".
+    //
+    // ✅ That specific field is gone now (decision `G19` — roles live in the
+    // `GlRoleAssignment` table), so the exact 2026-08 incident cannot recur. The
+    // ORDERING rule is unchanged and still load-bearing: the chart seed below
+    // writes `gl_account_code` / `_name` / `_type` / `_is_active` through the
+    // same handler, and on a fresh org those four are created moments earlier in
+    // this very pass.
     //
     // So: definitions and fields first, then the flush, then anything that
     // writes a RECORD. Nothing that creates a field may run below this line.
@@ -563,10 +570,9 @@ export const migration108Purchasing: EntityMigration = {
 
     // ── The default chart of accounts ──────────────────────────────────
     //
-    // Seeded after the flush, for the reason above, and after the option
-    // refresh, because every role-carrying row writes `gl_account_role` and a
-    // `CustomField` that does not yet carry the twelve options rejects the
-    // value. Its own idempotency is on `code`.
+    // Seeded after the flush, for the reason above. Its own idempotency is on
+    // `code`, and its role assignments are `ON CONFLICT DO NOTHING` on
+    // `(organizationId, role)`, so both halves are safe to repeat.
     const chart = await seedDefaultChartOfAccounts(
       db,
       organizationId,
@@ -586,13 +592,18 @@ export const migration108Purchasing: EntityMigration = {
     )
 
     const alreadyUpToDate =
-      !structureChanged && chart.created === 0 && rolesRemapped === 0 && billsRematched === 0
+      !structureChanged &&
+      chart.created === 0 &&
+      chart.rolesAssigned === 0 &&
+      rolesRemapped === 0 &&
+      billsRematched === 0
 
     if (!alreadyUpToDate) {
       logger.info('Migration 108 applied', {
         organizationId,
         ...state,
         accountsSeeded: chart.created,
+        rolesAssigned: chart.rolesAssigned,
         movementRolesRemapped: rolesRemapped,
         billVerdictsChanged: billsRematched,
       })

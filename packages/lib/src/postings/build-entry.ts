@@ -11,6 +11,9 @@
 // runtime failure; a builder that cannot balance its own arithmetic is a bug.
 
 import { UnprocessableEntityError } from '../errors'
+// Type-only, so this file stays pure: `default-chart.ts` imports the statement
+// classifications from the registry at runtime, and nothing of that reaches here.
+import type { GlAccountTypeValue } from './default-chart'
 import type { BuiltEntry, GlPostingLineInput, PostingType } from './types'
 
 /**
@@ -61,25 +64,26 @@ import type { BuiltEntry, GlPostingLineInput, PostingType } from './types'
  * An org may renumber, rename or replace the account behind a role. It may not
  * invent a role, because a role only means something if a builder emits it.
  *
- * ⚠️ This is the module's own copy of the vocabulary, for the same reason
- * `POSTING_TYPES` in `types.ts` is: it is client-safe and keeps this file pure.
- * The storage contract is `GlAccountRole` in
- * `resources/registry/enum-values.ts` and the two are pinned to each other by
- * an exact-set-equality test in `__tests__/build-entry.test.ts`. Adding a role
- * is one atomic change to both, plus an options migration - `ensureCustomFields`
- * never rewrites an existing field's `options`, so a new value otherwise reaches
- * new orgs only.
+ * ✅ **This is the ONLY copy of the role vocabulary.** It used to have a twin -
+ * a `GlAccountRole` registry enum that existed purely to supply the options of
+ * a `gl_account.role` SINGLE_SELECT field. Decision `G19` replaced that field
+ * with the `GlRoleAssignment` table, whose `role` column is deliberately plain
+ * `text` rather than a `pgEnum` for exactly this reason, so the second copy went
+ * with it. Adding a role is now a one-line edit here plus a row in
+ * {@link ROLE_ACCOUNT_TYPES} and a label in {@link ACCOUNT_ROLE_LABELS} - both
+ * pinned to this constant by `__tests__/build-entry.test.ts`. There is no
+ * options migration, because there are no options.
  *
  * ## Scope
  *
- * These twelve cover what the code posts to today - the receipt and vendor bill
- * builders below - plus the L1 month-end inventory entry that is the January 1
- * deliverable (`plans/money/04-books.md` §2.1). The designed-but-unbuilt
+ * These thirteen cover what the code posts to today - the receipt and vendor
+ * bill builders below - plus the L1 month-end inventory entry that is the
+ * January 1 deliverable (`plans/money/04-books.md` §2.1). The designed-but-unbuilt
  * builders (fulfillment, payout, build, month-end deferral) will need roles for
  * revenue, the clearing accounts, sales tax, deferred revenue, merchant fees,
  * freight-out and receivables. Those are deliberately absent: their entries are
  * design only, which account each leg lands on is still open, and a role nothing
- * emits is a select value a bookkeeper can map wrongly with no way to find out.
+ * emits is a mapping a bookkeeper can make wrongly with no way to find out.
  */
 export const ACCOUNT_ROLES = {
   /** Cash (default `1000`). Credited when a bill is paid in ledger mode (decision P12). */
@@ -121,8 +125,14 @@ export const ACCOUNT_ROLES = {
    */
   PAYROLL_CLEARING: 'payroll_clearing',
   /**
-   * Freight accrual (default `2150`). Holds the carrier's share until the
-   * carrier bills.
+   * Inbound freight and brokerage accrual (default `2150`). Holds the carrier's
+   * share - and the customs BROKER's service charge - until each bills.
+   *
+   * ⚠️ The role name says `freight` and the account says freight & brokerage.
+   * That is deliberate (`G17`): a shipment-attributable broker charge IS landed
+   * cost and clears here, while renaming the role would be a vocabulary
+   * migration across the ledger for no behavioural gain. The ACCOUNT is what a
+   * bookkeeper reads; the role is what a builder emits.
    */
   FREIGHT_ACCRUAL: 'freight_accrual',
   /**
@@ -132,7 +142,14 @@ export const ACCOUNT_ROLES = {
    */
   GRNI: 'grni',
   /**
-   * Duties accrual (default `2170`). Holds the customs broker's share.
+   * Duties accrual (default `2170`). Tariffs and customs duties owed
+   * **separately to the U.S. government**.
+   *
+   * 🛑 NOT the customs broker's share. The broker sells a service on a
+   * shipment, so their charge is inbound freight's problem and clears through
+   * `FREIGHT_ACCRUAL`'s broadened account (`G17`). Three files used to say
+   * otherwise; they were wrong, and pointing a broker invoice at 2170 would
+   * overstate the duty liability and understate landed freight.
    *
    * Only ever appears when there is a non-zero tariff portion. Build plan phase
    * 0.1 asks whether `tariffRate` is ever non-zero at all; if the answer is no,
@@ -158,9 +175,81 @@ export const ACCOUNT_ROLES = {
    * billed high, credit when billed low.
    */
   PPV: 'ppv',
+  /**
+   * Inventory count variance (default `5095`). Where the value of a hand-keyed
+   * count correction lands - shrinkage, breakage, a recount that found three
+   * more than the system thought.
+   *
+   * 🛑 **Separate from `PPV` on purpose** (`G12`). Purchase price variance is
+   * "the vendor billed something other than what we accrued"; count variance is
+   * "the shelf disagrees with the ledger". They have different owners, different
+   * remedies and different trends, and one account holding both answers neither
+   * question. Placed at `5095` so it and `5090` read as siblings.
+   */
+  INVENTORY_COUNT_VARIANCE: 'inventory_count_variance',
 } as const
 
 export type AccountRole = (typeof ACCOUNT_ROLES)[keyof typeof ACCOUNT_ROLES]
+
+/**
+ * The statement classification each role's account MUST carry.
+ *
+ * DECLARED, never derived at runtime. `G19` requires that every close
+ * revalidates type compatibility, and the only way a revalidation can catch
+ * anything is if the expectation was written down independently of the chart it
+ * is checking. Deriving "grni is a liability" from the seeded default chart
+ * would make the check tautological: repoint the role at a revenue account and
+ * the derivation would happily follow it.
+ *
+ * `resolveRoles` fails CLOSED on a mismatch, naming the role, the account and
+ * both types. An org may legitimately move `grni` from `2160` to `2155`; it may
+ * not point it at an expense account, because the resulting entry would still
+ * balance and nothing downstream could detect it.
+ *
+ * Pinned to {@link ACCOUNT_ROLES} by an exact-key-equality test - a role with no
+ * declared type would otherwise pass validation unchecked.
+ */
+export const ROLE_ACCOUNT_TYPES: Record<AccountRole, GlAccountTypeValue> = {
+  cash: 'asset',
+  inventory_raw_materials: 'asset',
+  inventory_wip: 'asset',
+  inventory_finished_goods: 'asset',
+  accounts_payable: 'liability',
+  payroll_clearing: 'liability',
+  freight_accrual: 'liability',
+  grni: 'liability',
+  duties_accrual: 'liability',
+  cogs_materials: 'expense',
+  applied_overhead: 'expense',
+  ppv: 'expense',
+  inventory_count_variance: 'expense',
+}
+
+/**
+ * A human label per role, for the one place a role is ever shown to a person:
+ * the build ledger card, which renders a movement's frozen
+ * `stock_movement_gl_account`.
+ *
+ * Lives here rather than in the resource registry because the registry copy
+ * (`GlAccountRole`) is gone - it existed only to supply a SINGLE_SELECT's
+ * options, and `G19` replaced that field with `GlRoleAssignment`. Client-safe:
+ * this file has no db, no logger and no io.
+ */
+export const ACCOUNT_ROLE_LABELS: Record<AccountRole, string> = {
+  cash: 'Cash',
+  inventory_raw_materials: 'Inventory — Raw Materials',
+  inventory_wip: 'Inventory — Work in Process',
+  inventory_finished_goods: 'Inventory — Finished Goods',
+  accounts_payable: 'Accounts Payable',
+  payroll_clearing: 'Payroll Clearing',
+  freight_accrual: 'Inbound Freight & Brokerage Accrual',
+  grni: 'Goods Received Not Invoiced',
+  duties_accrual: 'Duties Accrual',
+  cogs_materials: 'COGS — Materials',
+  applied_overhead: 'COGS — Applied Overhead',
+  ppv: 'Purchase Price Variance',
+  inventory_count_variance: 'Inventory Count Variance',
+}
 
 export interface BuildEntryInput {
   postingType: PostingType

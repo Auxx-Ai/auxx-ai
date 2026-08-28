@@ -2472,6 +2472,13 @@
       "when": 1787949032475,
       "tag": "0352_gl_posting_amounts_bigint",
       "breakpoints": true
+    },
+    {
+      "idx": 353,
+      "version": "7",
+      "when": 1787958690601,
+      "tag": "0353_gl_role_assignment",
+      "breakpoints": true
     }
   ]
 }

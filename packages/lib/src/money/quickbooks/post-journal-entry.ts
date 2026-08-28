@@ -51,6 +51,7 @@
 import { createHash } from 'node:crypto'
 import { createScopedLogger } from '@auxx/logger'
 import { toRecordId } from '@auxx/types/resource'
+import { buildDocNumber as buildLedgerDocNumber } from '../../postings/doc-number'
 import { UnifiedCrudHandler } from '../../resources/crud'
 import { getOrganizationSetting } from '../../settings/settings-service'
 import { readQuickbooksIdField, writeQuickbooksIdField } from './identity-field'
@@ -61,12 +62,24 @@ const logger = createScopedLogger('quickbooks-post-journal-entry')
 const QBO_JOURNAL_ENTRY_ID_FIELD_KEY = 'qboJournalEntryId'
 const GL_POSTING_ENTITY_TYPE = 'gl_posting'
 
-/** QuickBooks caps `DocNumber` at 21 characters. Every prefix below fits. */
-const DOC_NUMBER_MAX_LENGTH = 21
-
 /** QuickBooks caps `requestid` at 50 characters. */
 const REQUEST_ID_MAX_LENGTH = 50
 
+/**
+ * The six posting types THIS adapter names.
+ *
+ * ⚠️ **This is a stale, narrower copy of `POSTING_TYPES`** — it is missing
+ * `receipt` and `vendor_bill`, the two L3 per-event types the purchasing work
+ * added. It dies in plans/money/tasks/10-the-poster.md, which rewrites this
+ * file's layer 1 onto `GlPosting`'s unique index and takes `PostingType`
+ * wholesale.
+ *
+ * 🛑 Do NOT "fix" it by adding the two missing values. Widening a duplicate
+ * makes it a better duplicate; the point is that there is one vocabulary, in
+ * `postings/types.ts`, and the file that owns the document number now imports
+ * from it. This union has no production caller (see the header) so its narrowness
+ * costs nothing until it is deleted.
+ */
 export type GlPostingTypeValue =
   | 'fulfillment'
   | 'payout'
@@ -74,20 +87,6 @@ export type GlPostingTypeValue =
   | 'month_end_deferral'
   | 'month_end_reversal'
   | 'month_end_inventory'
-
-/**
- * `DocNumber` prefixes. Short on purpose — `AUXX-` plus four plus a hyphen plus
- * an eight-digit period key is exactly 18 characters, inside the 21-char cap
- * with room for a build id suffix.
- */
-const DOC_NUMBER_PREFIX: Record<GlPostingTypeValue, string> = {
-  fulfillment: 'FUL',
-  payout: 'PAY',
-  build: 'BLD',
-  month_end_deferral: 'DEF',
-  month_end_reversal: 'REV',
-  month_end_inventory: 'INV',
-}
 
 export interface JournalLine {
   /** Integer MINOR units (cents). Always positive — direction is `postingType`. */
@@ -125,13 +124,18 @@ export interface PostJournalEntryResult {
  * Build the deterministic document number. Same posting identity always yields
  * the same string, which is what makes layer 2 work at all.
  *
- * `build` carries the build id rather than a period, because two builds can land
- * on one day and would otherwise collide onto one document number.
+ * A thin adapter over `postings/doc-number.ts`, which now owns the keyspace: a
+ * document number is written to `GlPosting.docNumber` whether or not a provider
+ * exists, so it is ledger vocabulary rather than a QuickBooks detail. The
+ * prefixes, the 21-character cap, the `-R<revision>` reversal suffix and the
+ * build/payout key rules all live there.
+ *
+ * ⚠️ `revision` is not threaded through here because this adapter has no
+ * production caller and no reversal path; task 10 replaces the call site with a
+ * `GlPosting` row that carries its own revision.
  */
 export function buildDocNumber(postingType: GlPostingTypeValue, periodKey: string): string {
-  const compact = periodKey.replace(/-/g, '')
-  const docNumber = `AUXX-${DOC_NUMBER_PREFIX[postingType]}-${compact}`
-  return docNumber.slice(0, DOC_NUMBER_MAX_LENGTH)
+  return buildLedgerDocNumber({ postingType, periodKey })
 }
 
 /**
