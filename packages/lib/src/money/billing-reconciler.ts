@@ -1,7 +1,7 @@
 // packages/lib/src/money/billing-reconciler.ts
 
 /**
- * The work-order billing projection as a dirty-parent reconciler
+ * The billing projections as dirty-parent reconcilers
  * (`plans/events/08-derived-parent-reconciler-plan.md` phase 2c) — the fourth and
  * last instance of the pattern, and the mildest.
  *
@@ -38,152 +38,102 @@
  * every drain reads current database truth, after all of the write's own values
  * have landed. Two keys naming the same document is wasteful, never wrong, and
  * the no-op guard already makes the second pass write nothing.
+ *
+ * 🛑 The one ordering dependency that is NOT absorbed by that argument lives in
+ * `billing-hooks.ts`, not here: `syncBillingAfterLineDelete`'s invoice arm keeps
+ * `recomputeTotals` inline and first, because the invoice projector cascades to
+ * the work order, whose projection reads `invoice_total`. Plan 08 §6.1.
  */
 
-import { getOrgCache } from '../cache'
-import { readFieldRelations } from '../field-values/read-field-scalars'
-import { markParentDirty, registerReconciler } from '../reconcilers/dirty-parents'
+import { defineParentReconciler, resolveParentsByRelation } from '../reconcilers/parent-reconciler'
 
 export const BILLING_LINE_ITEM = 'billing:line_item'
 export const BILLING_WORK_ORDER = 'billing:work_order'
 export const BILLING_INVOICE = 'billing:invoice'
 export const BILLING_CONTACT = 'billing:contact'
 
-let registered = false
-
-/** Register the four drains. Called from `registerAllHooks()`, idempotent. */
-export function registerBillingReconcilers(): void {
-  if (registered) return
-  registered = true
-
-  registerReconciler(BILLING_LINE_ITEM, async ({ organizationId, userId, parentInstanceIds }) => {
-    const workOrders = await resolveWorkOrdersForLines(organizationId, parentInstanceIds)
-    await syncEach(organizationId, userId, workOrders, 'work_order')
-  })
-
-  registerReconciler(BILLING_WORK_ORDER, async ({ organizationId, userId, parentInstanceIds }) => {
-    await syncEach(organizationId, userId, parentInstanceIds, 'work_order')
-  })
-
-  registerReconciler(BILLING_INVOICE, async ({ organizationId, userId, parentInstanceIds }) => {
-    await syncEach(organizationId, userId, parentInstanceIds, 'invoice')
-  })
-
-  registerReconciler(BILLING_CONTACT, async ({ organizationId, userId, parentInstanceIds }) => {
-    await syncEach(organizationId, userId, parentInstanceIds, 'contact')
-  })
-}
-
-/** Which projector a batch belongs to. */
-type Projector = 'work_order' | 'invoice' | 'contact'
-
 /**
- * Project each distinct record once, isolating failures.
- *
- * One record failing must not lose the rest — a drain batch is several unrelated
- * documents, not one unit of work, the same rule `rematchEach` applies. The three
- * projectors are lazy-imported so this module carries no runtime edge back to
- * `billing-hooks`, which imports it.
+ * The three projectors, lazy-imported so this module carries no runtime edge back
+ * to `billing-hooks`, which imports it.
  */
-async function syncEach(
+async function projectWorkOrder(
   organizationId: string,
   userId: string,
-  instanceIds: string[],
-  projector: Projector
+  workOrderInstanceId: string
 ): Promise<void> {
-  if (instanceIds.length === 0) return
-  const {
-    syncContactBillingProjection,
-    syncInvoiceBillingProjection,
-    syncWorkOrderBillingProjection,
-  } = await import('./billing-projection')
-
-  for (const instanceId of new Set(instanceIds)) {
-    if (projector === 'work_order') {
-      await syncWorkOrderBillingProjection({
-        organizationId,
-        userId,
-        workOrderInstanceId: instanceId,
-      })
-    } else if (projector === 'invoice') {
-      await syncInvoiceBillingProjection({ organizationId, userId, invoiceInstanceId: instanceId })
-    } else {
-      await syncContactBillingProjection({ organizationId, userId, contactInstanceId: instanceId })
-    }
-  }
+  const { syncWorkOrderBillingProjection } = await import('./billing-projection')
+  await syncWorkOrderBillingProjection({ organizationId, userId, workOrderInstanceId })
 }
 
-/**
- * The work order each source line hangs off, in ONE query.
- *
- * The per-line version was a `getFieldValues` per line, called once per changed
- * attribute — so a line whose quantity, price and description all moved in one
- * write cost three round trips to answer the same question three times.
- */
-async function resolveWorkOrdersForLines(
+async function projectInvoice(
   organizationId: string,
-  lineInstanceIds: string[]
-): Promise<string[]> {
-  const cf = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['line_item_work_order'] as const)
-  const relField = cf.line_item_work_order
-  if (!relField) return []
+  userId: string,
+  invoiceInstanceId: string
+): Promise<void> {
+  const { syncInvoiceBillingProjection } = await import('./billing-projection')
+  await syncInvoiceBillingProjection({ organizationId, userId, invoiceInstanceId })
+}
 
-  const rels = await readFieldRelations(undefined, organizationId, lineInstanceIds, [relField.id])
+async function projectContact(
+  organizationId: string,
+  userId: string,
+  contactInstanceId: string
+): Promise<void> {
+  const { syncContactBillingProjection } = await import('./billing-projection')
+  await syncContactBillingProjection({ organizationId, userId, contactInstanceId })
+}
 
-  const workOrders: string[] = []
-  for (const lineInstanceId of lineInstanceIds) {
-    const workOrder = rels.get(lineInstanceId)?.get(relField.id)
-    if (workOrder) workOrders.push(workOrder)
-  }
-  return workOrders
+const workOrderReconciler = defineParentReconciler<string>({
+  key: BILLING_WORK_ORDER,
+  rebuild: projectWorkOrder,
+})
+
+const lineReconciler = defineParentReconciler<string>({
+  key: BILLING_LINE_ITEM,
+  /**
+   * The work order each source line hangs off, in ONE query. The per-line version
+   * was a `getFieldValues` per line, called once per changed attribute — so a line
+   * whose quantity, price and description all moved in one write cost three round
+   * trips to answer the same question three times.
+   */
+  resolve: (organizationId, lineInstanceIds) =>
+    resolveParentsByRelation(organizationId, 'line_item_work_order', lineInstanceIds),
+  rebuild: projectWorkOrder,
+})
+
+const invoiceReconciler = defineParentReconciler<string>({
+  key: BILLING_INVOICE,
+  rebuild: projectInvoice,
+})
+
+const contactReconciler = defineParentReconciler<string>({
+  key: BILLING_CONTACT,
+  rebuild: projectContact,
+})
+
+/** Register the four drains. Called from `registerAllHooks()`, idempotent per key. */
+export function registerBillingReconcilers(): void {
+  workOrderReconciler.register()
+  lineReconciler.register()
+  invoiceReconciler.register()
+  contactReconciler.register()
 }
 
 /**
  * Mark a work order for projection, or project it now when nothing will drain.
  *
- * The inline fallback is load-bearing — see `markParentDirty`: a caller that
+ * The inline fallback is load-bearing — see `ParentReconciler.mark`: a caller that
  * reached the hook chain through an exported `field-value-mutations` function
- * rather than a public service method has no scope, and without this the
- * work order's contract and uninvoiced amounts would silently stop updating.
+ * rather than a public service method has no scope, and without this the work
+ * order's contract and uninvoiced amounts would silently stop updating.
  */
-export async function markOrSyncWorkOrder(
-  organizationId: string,
-  userId: string,
-  workOrderInstanceId: string
-): Promise<void> {
-  if (markParentDirty(BILLING_WORK_ORDER, workOrderInstanceId)) return
-  await syncEach(organizationId, userId, [workOrderInstanceId], 'work_order')
-}
+export const markOrSyncWorkOrder = workOrderReconciler.mark
 
 /** {@link markOrSyncWorkOrder}'s line-side twin — the parent is resolved in the drain. */
-export async function markOrSyncLine(
-  organizationId: string,
-  userId: string,
-  lineInstanceId: string
-): Promise<void> {
-  if (markParentDirty(BILLING_LINE_ITEM, lineInstanceId)) return
-  const workOrders = await resolveWorkOrdersForLines(organizationId, [lineInstanceId])
-  await syncEach(organizationId, userId, workOrders, 'work_order')
-}
+export const markOrSyncLine = lineReconciler.mark
 
 /** {@link markOrSyncWorkOrder} for the invoice projector. */
-export async function markOrSyncInvoice(
-  organizationId: string,
-  userId: string,
-  invoiceInstanceId: string
-): Promise<void> {
-  if (markParentDirty(BILLING_INVOICE, invoiceInstanceId)) return
-  await syncEach(organizationId, userId, [invoiceInstanceId], 'invoice')
-}
+export const markOrSyncInvoice = invoiceReconciler.mark
 
 /** {@link markOrSyncWorkOrder} for the customer aggregate. */
-export async function markOrSyncContact(
-  organizationId: string,
-  userId: string,
-  contactInstanceId: string
-): Promise<void> {
-  if (markParentDirty(BILLING_CONTACT, contactInstanceId)) return
-  await syncEach(organizationId, userId, [contactInstanceId], 'contact')
-}
+export const markOrSyncContact = contactReconciler.mark

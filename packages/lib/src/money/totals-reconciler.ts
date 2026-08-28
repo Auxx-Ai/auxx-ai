@@ -20,11 +20,16 @@
  * accepted rather than merged: it is rare (a header field and a line body in one
  * operation), and #1953's compare-before-write makes the second pass write
  * nothing.
+ *
+ * This is the one consumer whose parent is NOT a bare instance id — it is
+ * `(documentType, instanceId)` — which is why `dedupeKey` exists on the shared
+ * spec at all, and why the quote -> invoice-without-work-order -> order ladder
+ * below stayed here rather than moving into `resolveParentsByRelation`.
  */
 
 import { getOrgCache } from '../cache'
 import { readFieldRelations } from '../field-values/read-field-scalars'
-import { markParentDirty, registerReconciler } from '../reconcilers/dirty-parents'
+import { defineParentReconciler, resolveParentsByRelation } from '../reconcilers/parent-reconciler'
 import type { TotalledDocumentType } from './totals-hooks'
 
 /** Key per marked entity. See the table above. */
@@ -41,77 +46,70 @@ interface ParentDocument {
   documentInstanceId: string
 }
 
-let registered = false
+/** Two documents are the same document only when BOTH halves match. */
+const documentDedupeKey = (parent: ParentDocument): string =>
+  `${parent.documentType}:${parent.documentInstanceId}`
 
 /**
- * Register the six drains. Called from `registerAllHooks()`, idempotent under a
- * repeated bootstrap the same way `registerAutoBuildRules()` is.
- */
-export function registerMoneyTotalsReconcilers(): void {
-  if (registered) return
-  registered = true
-
-  registerReconciler(
-    MONEY_TOTALS_LINE_ITEM,
-    async ({ organizationId, userId, parentInstanceIds }) => {
-      const parents = await resolveLineParents(organizationId, parentInstanceIds)
-      await recomputeEach(organizationId, userId, parents)
-    }
-  )
-
-  registerReconciler(
-    MONEY_TOTALS_PURCHASE_ORDER_LINE,
-    async ({ organizationId, userId, parentInstanceIds }) => {
-      const parents = await resolvePurchaseOrderLineParents(organizationId, parentInstanceIds)
-      await recomputeEach(organizationId, userId, parents)
-    }
-  )
-
-  for (const documentType of DOCUMENT_TYPES) {
-    registerReconciler(
-      moneyTotalsDocumentKey(documentType),
-      async ({ organizationId, userId, parentInstanceIds }) => {
-        await recomputeEach(
-          organizationId,
-          userId,
-          parentInstanceIds.map((documentInstanceId) => ({ documentType, documentInstanceId }))
-        )
-      }
-    )
-  }
-}
-
-/**
- * Recompute each distinct document once, isolating failures.
+ * Recompute one document.
  *
- * One document failing must not lose the rest of the batch — the same rule the
- * drain applies across keys, applied again within one key, because here a batch
- * is several unrelated user documents rather than one unit of work.
+ * `recomputeTotals` is lazy-imported so this module carries no RUNTIME edge back
+ * to `totals-hooks` — which imports this one. The type import above is erased, so
+ * the cycle is type-only, the same dodge `builds/auto-build-rule.ts` uses for its
+ * orchestrators.
  */
-async function recomputeEach(
+async function recomputeOne(
   organizationId: string,
   userId: string,
-  parents: ParentDocument[]
+  parent: ParentDocument
 ): Promise<void> {
-  if (parents.length === 0) return
-  // Lazy, so this module carries no RUNTIME edge back to `totals-hooks` — which
-  // imports this one. The type import above is erased, so the cycle is
-  // type-only, and the same dodge `builds/auto-build-rule.ts` uses for its
-  // orchestrators keeps it that way.
   const { recomputeTotals } = await import('./totals-hooks')
+  await recomputeTotals({
+    organizationId,
+    userId,
+    documentType: parent.documentType,
+    documentInstanceId: parent.documentInstanceId,
+  })
+}
 
-  const seen = new Set<string>()
-  for (const parent of parents) {
-    const dedupeKey = `${parent.documentType}:${parent.documentInstanceId}`
-    if (seen.has(dedupeKey)) continue
-    seen.add(dedupeKey)
-    await recomputeTotals({
-      organizationId,
-      userId,
-      documentType: parent.documentType,
-      documentInstanceId: parent.documentInstanceId,
-    })
-  }
+const lineReconciler = defineParentReconciler<ParentDocument>({
+  key: MONEY_TOTALS_LINE_ITEM,
+  resolve: resolveLineParents,
+  dedupeKey: documentDedupeKey,
+  rebuild: recomputeOne,
+})
+
+const purchaseOrderLineReconciler = defineParentReconciler<ParentDocument>({
+  key: MONEY_TOTALS_PURCHASE_ORDER_LINE,
+  resolve: resolvePurchaseOrderLineParents,
+  dedupeKey: documentDedupeKey,
+  rebuild: recomputeOne,
+})
+
+/**
+ * One self-reconciler per document type. The marked record IS the parent here, so
+ * there is no `resolve` — the document type comes from the closure rather than
+ * from a lookup, which is what keeps the four keys distinguishable in the buffer.
+ */
+const documentReconcilers = new Map(
+  DOCUMENT_TYPES.map((documentType) => [
+    documentType,
+    defineParentReconciler<string>({
+      key: moneyTotalsDocumentKey(documentType),
+      rebuild: (organizationId, userId, documentInstanceId) =>
+        recomputeOne(organizationId, userId, { documentType, documentInstanceId }),
+    }),
+  ])
+)
+
+/**
+ * Register the six drains. Called from `registerAllHooks()`, idempotent per key
+ * the same way `registerAutoBuildRules()` is.
+ */
+export function registerMoneyTotalsReconcilers(): void {
+  lineReconciler.register()
+  purchaseOrderLineReconciler.register()
+  for (const reconciler of documentReconcilers.values()) reconciler.register()
 }
 
 /**
@@ -121,9 +119,11 @@ async function recomputeEach(
  * source line stamped with `line_item_invoice` must never recompute the
  * invoice), then order.
  *
- * Reading `relatedEntityId` directly is what makes the batch possible; the
- * per-line version issued up to three `getFieldValues` calls to walk the same
- * ladder, so 20 lines cost up to 60 round trips before this.
+ * 🛑 The one parent resolution that did NOT move to `resolveParentsByRelation`,
+ * because it is the only one that reads several relations and ranks them. Reading
+ * `relatedEntityId` directly is what makes the batch possible; the per-line
+ * version issued up to three `getFieldValues` calls to walk the same ladder, so
+ * 20 lines cost up to 60 round trips before this.
  */
 async function resolveLineParents(
   organizationId: string,
@@ -182,31 +182,24 @@ async function resolvePurchaseOrderLineParents(
   organizationId: string,
   lineInstanceIds: string[]
 ): Promise<ParentDocument[]> {
-  const cf = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['purchase_order_line_purchase_order'] as const)
-  const relField = cf.purchase_order_line_purchase_order
-  if (!relField) return []
-
-  const rels = await readFieldRelations(undefined, organizationId, lineInstanceIds, [relField.id])
-
-  const parents: ParentDocument[] = []
-  for (const lineInstanceId of lineInstanceIds) {
-    const purchaseOrder = rels.get(lineInstanceId)?.get(relField.id)
-    if (purchaseOrder) {
-      parents.push({ documentType: 'purchase_order', documentInstanceId: purchaseOrder })
-    }
-  }
-  return parents
+  const purchaseOrderIds = await resolveParentsByRelation(
+    organizationId,
+    'purchase_order_line_purchase_order',
+    lineInstanceIds
+  )
+  return purchaseOrderIds.map((documentInstanceId) => ({
+    documentType: 'purchase_order' as const,
+    documentInstanceId,
+  }))
 }
 
 /**
  * Mark a document for recompute, or recompute it now when nothing will drain.
  *
- * The inline fallback is load-bearing — see {@link markParentDirty}: a caller
- * that reached the hook chain through an exported `field-value-mutations`
- * function rather than a public service method has no scope, and without this
- * its totals would silently stop updating.
+ * The inline fallback is load-bearing — see `ParentReconciler.mark`: a caller that
+ * reached the hook chain through an exported `field-value-mutations` function
+ * rather than a public service method has no scope, and without this its totals
+ * would silently stop updating.
  */
 export async function markOrRecomputeDocument(
   organizationId: string,
@@ -214,8 +207,7 @@ export async function markOrRecomputeDocument(
   documentType: TotalledDocumentType,
   documentInstanceId: string
 ): Promise<void> {
-  if (markParentDirty(moneyTotalsDocumentKey(documentType), documentInstanceId)) return
-  await recomputeEach(organizationId, userId, [{ documentType, documentInstanceId }])
+  await documentReconcilers.get(documentType)?.mark(organizationId, userId, documentInstanceId)
 }
 
 /** {@link markOrRecomputeDocument}'s line-side twin. */
@@ -225,10 +217,6 @@ export async function markOrRecomputeLine(
   key: typeof MONEY_TOTALS_LINE_ITEM | typeof MONEY_TOTALS_PURCHASE_ORDER_LINE,
   lineInstanceId: string
 ): Promise<void> {
-  if (markParentDirty(key, lineInstanceId)) return
-  const parents =
-    key === MONEY_TOTALS_LINE_ITEM
-      ? await resolveLineParents(organizationId, [lineInstanceId])
-      : await resolvePurchaseOrderLineParents(organizationId, [lineInstanceId])
-  await recomputeEach(organizationId, userId, parents)
+  const reconciler = key === MONEY_TOTALS_LINE_ITEM ? lineReconciler : purchaseOrderLineReconciler
+  await reconciler.mark(organizationId, userId, lineInstanceId)
 }

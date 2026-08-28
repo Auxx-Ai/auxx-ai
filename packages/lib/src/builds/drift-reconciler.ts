@@ -17,35 +17,52 @@
  *
  * Two keys, for the same reason the other two reconcilers have several: the drain
  * has to know whether it was handed an order or one of its lines.
+ *
+ * ## Why this one uses `rebuildBatch`
+ *
+ * It is the only consumer with real per-BATCH setup — the settings read, the
+ * order load, the field lookup and the stored-fingerprint read are all done once
+ * for the whole batch and then walked. Routing it through the shared per-parent
+ * callback would reintroduce exactly the N+1 this plan exists to remove, so
+ * `parent-reconciler.ts` carries a batch escape hatch and this is its one caller.
  */
 
 import { createScopedLogger } from '@auxx/logger'
 import { toRecordId } from '@auxx/types/resource'
 import { getCachedEntityDefId, getOrgCache } from '../cache'
 import { FieldValueService } from '../field-values/field-value-service'
-import { readFieldRelations } from '../field-values/read-field-scalars'
-import { markParentDirty, registerReconciler } from '../reconcilers/dirty-parents'
+import { defineParentReconciler, resolveParentsByRelation } from '../reconcilers/parent-reconciler'
 
 const logger = createScopedLogger('builds:drift-reconciler')
 
 export const ORDER_DRIFT_ORDER = 'order-build-drift:order'
 export const ORDER_DRIFT_LINE = 'order-build-drift:line_item'
 
-let registered = false
+/**
+ * `order_build_revision` is declared `updatable: false`, so it has no interactive
+ * writer and the reconciler is not acting for any particular person. The empty
+ * actor matches what `system-record-rules.ts` passes for the same reason — the
+ * wrapped writers never read it.
+ */
+const SYSTEM_STAMP_USER = ''
 
-/** Register both drains. Called from `registerAllHooks()`, idempotent. */
+const orderReconciler = defineParentReconciler<string>({
+  key: ORDER_DRIFT_ORDER,
+  rebuildBatch: (organizationId, _userId, orderIds) => stampOrders(organizationId, orderIds),
+})
+
+const lineReconciler = defineParentReconciler<string>({
+  key: ORDER_DRIFT_LINE,
+  /** The order each line hangs off, in ONE query. */
+  resolve: (organizationId, lineInstanceIds) =>
+    resolveParentsByRelation(organizationId, 'line_item_order', lineInstanceIds),
+  rebuildBatch: (organizationId, _userId, orderIds) => stampOrders(organizationId, orderIds),
+})
+
+/** Register both drains. Called from `registerAllHooks()`, idempotent per key. */
 export function registerOrderDriftReconcilers(): void {
-  if (registered) return
-  registered = true
-
-  registerReconciler(ORDER_DRIFT_ORDER, async ({ organizationId, parentInstanceIds }) => {
-    await stampOrders(organizationId, parentInstanceIds)
-  })
-
-  registerReconciler(ORDER_DRIFT_LINE, async ({ organizationId, parentInstanceIds }) => {
-    const orderIds = await resolveOrdersForLines(organizationId, parentInstanceIds)
-    await stampOrders(organizationId, orderIds)
-  })
+  orderReconciler.register()
+  lineReconciler.register()
 }
 
 /**
@@ -71,7 +88,7 @@ export function registerOrderDriftReconcilers(): void {
  * `registerAllHooks()`.
  */
 async function stampOrders(organizationId: string, orderIds: string[]): Promise<void> {
-  const ids = [...new Set(orderIds)].filter(Boolean)
+  const ids = orderIds.filter(Boolean)
   if (ids.length === 0) return
 
   const [{ loadAutoBuildSettings }, { database }] = await Promise.all([
@@ -137,48 +154,15 @@ async function stampOrders(organizationId: string, orderIds: string[]): Promise<
 }
 
 /**
- * `order_build_revision` is declared `updatable: false`, so it has no interactive
- * writer and the reconciler is not acting for any particular person. The empty
- * actor matches what `system-record-rules.ts` passes for the same reason — the
- * wrapped writers never read it.
- */
-const SYSTEM_STAMP_USER = ''
-
-/**
- * The order each line hangs off, in ONE query — the pattern
- * `purchasing/match-reconciler.ts` established.
- */
-async function resolveOrdersForLines(
-  organizationId: string,
-  lineInstanceIds: string[]
-): Promise<string[]> {
-  const fields = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['line_item_order'] as const)
-  const relField = fields.line_item_order
-  if (!relField) return []
-
-  const rels = await readFieldRelations(undefined, organizationId, lineInstanceIds, [relField.id])
-
-  const orderIds: string[] = []
-  for (const lineInstanceId of lineInstanceIds) {
-    const orderId = rels.get(lineInstanceId)?.get(relField.id)
-    if (orderId) orderIds.push(orderId)
-  }
-  return orderIds
-}
-
-/**
  * Mark an order for re-stamping, or re-stamp it now when nothing will drain.
  *
- * The inline fallback is load-bearing — see `markParentDirty`: a caller that
+ * The inline fallback is load-bearing — see `ParentReconciler.mark`: a caller that
  * reached the hook chain through an exported `field-value-mutations` function
  * rather than a public service method has no scope, and without this the order's
  * fingerprint would silently go stale, which is a drift signal that lies.
  */
 export async function markOrStampOrder(organizationId: string, orderId: string): Promise<void> {
-  if (markParentDirty(ORDER_DRIFT_ORDER, orderId)) return
-  await stampOrders(organizationId, [orderId])
+  await orderReconciler.mark(organizationId, SYSTEM_STAMP_USER, orderId)
 }
 
 /** {@link markOrStampOrder}'s line-side twin. */
@@ -186,7 +170,5 @@ export async function markOrStampOrderLine(
   organizationId: string,
   lineInstanceId: string
 ): Promise<void> {
-  if (markParentDirty(ORDER_DRIFT_LINE, lineInstanceId)) return
-  const orderIds = await resolveOrdersForLines(organizationId, [lineInstanceId])
-  await stampOrders(organizationId, orderIds)
+  await lineReconciler.mark(organizationId, SYSTEM_STAMP_USER, lineInstanceId)
 }
