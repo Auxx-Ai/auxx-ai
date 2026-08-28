@@ -1,17 +1,15 @@
 // packages/lib/src/money/totals-hooks.ts
 
 import type { Database } from '@auxx/database'
-import { database, schema } from '@auxx/database'
 import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
-import { and, eq, inArray } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
 import { BadRequestError } from '../errors'
 import type { EntityFieldChangeHandler } from '../field-hooks/types'
-import { extractFieldValueScalar } from '../field-values/field-value-scalar'
 import { FieldValueService } from '../field-values/field-value-service'
+import { readFieldScalars } from '../field-values/read-field-scalars'
 import { UnifiedCrudHandler } from '../resources/crud'
 import { syncInvoicePaymentState } from './payments/ledger'
 import { computeDocumentTotals, computeLineTotal, roundCents } from './totals'
@@ -500,15 +498,9 @@ async function recomputeDocumentTotals(params: {
  * 20-line bulk paste therefore issued 40 recomputes, each re-reading every
  * line that existed so far. See `plans/events/08-derived-parent-reconciler-plan.md` §1.
  *
- * The read is deliberately raw + {@link extractFieldValueScalar} rather than
- * `FieldValueService.batchGetValues`, for the same two reasons
- * `purchase-order-line-rollups.ts` and `builds/auto-build-queries.ts` are
- * written this way: the field ids in hand are CustomField ids, where
- * `batchGetValues` validates `ResourceFieldId`s (`entity:key`) and would need a
- * key translation this has no reason to risk; and enforcement is unchanged
- * either way, because the handler this used to go through is constructed
- * without a `CapabilityView` and the line ids were already scoped by the
- * `listFiltered` above.
+ * The set-based read itself lives in {@link readFieldScalars} — why it is raw
+ * rather than `batchGetValues` or `fetchResourceSnapshots` is recorded there, and
+ * it now has three callers.
  *
  * One entry per id in `lineInstanceIds`, in that order, INCLUDING a line with no
  * stored values at all — the previous loop pushed an entry per id unconditionally
@@ -539,36 +531,7 @@ async function readLinesForTotals(
   ].filter((id): id is string => !!id)
   if (fieldIds.length === 0) return lineInstanceIds.map(() => emptyLineForTotals())
 
-  const conn = db ?? database
-  // `fieldId -> value` per line. A line absent from the map stored nothing.
-  const byLine = new Map<string, Map<string, unknown>>()
-
-  // Bounded IN-list, same 200 as `record-rules/snapshot-fetcher.ts`. A document
-  // is capped at 1000 lines by the `listFiltered` above, so this is <= 5 queries
-  // for the largest document that can exist, against 1000 before.
-  const CHUNK = 200
-  for (let i = 0; i < lineInstanceIds.length; i += CHUNK) {
-    const chunk = lineInstanceIds.slice(i, i + CHUNK)
-    const rows = await conn
-      .select()
-      .from(schema.FieldValue)
-      .where(
-        and(
-          eq(schema.FieldValue.organizationId, organizationId),
-          inArray(schema.FieldValue.entityId, chunk),
-          inArray(schema.FieldValue.fieldId, fieldIds)
-        )
-      )
-
-    for (const row of rows) {
-      let values = byLine.get(row.entityId)
-      if (!values) {
-        values = new Map()
-        byLine.set(row.entityId, values)
-      }
-      values.set(row.fieldId, extractFieldValueScalar(row as unknown as Record<string, unknown>))
-    }
-  }
+  const byLine = await readFieldScalars(db, organizationId, lineInstanceIds, fieldIds)
 
   return lineInstanceIds.map((lineInstanceId) => {
     const values = byLine.get(lineInstanceId)

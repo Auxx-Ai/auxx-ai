@@ -6,7 +6,7 @@
 // and the exception queue rendered stored values that were never stored. These tests pin
 // the wiring rather than the math.
 
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { EntityFieldChangeEvent, EntityPostDeleteEvent } from '../../field-hooks/types'
 
 const h = vi.hoisted(() => ({
@@ -30,7 +30,24 @@ vi.mock('../../field-values/field-value-service', () => ({
     setValuesForEntity = h.setValuesForEntity
   },
 }))
+/**
+ * The bill LINES and their PO lines are read set-based now, not with a
+ * `getFieldValues` per line — so that half of every fixture arrives as
+ * `FieldValue` rows. `recordValues` still feeds both: {@link rowsFromRecordValues}
+ * flattens it, and every consumer looks its record up by instance id, so handing
+ * each query the whole set is equivalent to filtering it.
+ */
+vi.mock('@auxx/database', async () => {
+  const schema = await import('../../../../database/src/db/schema/index')
+  return {
+    schema,
+    database: {
+      select: () => ({ from: () => ({ where: () => rowsFromRecordValues() }) }),
+    },
+  }
+})
 
+import { runWithDirtyParents } from '../../reconcilers/dirty-parents'
 import {
   BILL_LINE_MATCH_TRIGGER_ATTRS,
   BILL_MATCH_TRIGGER_ATTRS,
@@ -38,6 +55,7 @@ import {
   rematchBill,
   rematchOnBillLineChange,
 } from '../match-hook'
+import { registerMatchReconcilers } from '../match-reconciler'
 
 const FIELDS: Record<string, { id: string; type: string }> = {
   vendor_bill_status: { id: 'f-status', type: 'SINGLE_SELECT' },
@@ -54,6 +72,25 @@ const FIELDS: Record<string, { id: string; type: string }> = {
 
 /** Field values keyed by recordId, assembled per test. */
 let recordValues: Record<string, Record<string, unknown>> = {}
+
+/** `recordValues` as `FieldValue` rows, for the set-based reads. */
+function rowsFromRecordValues() {
+  const rows: Array<Record<string, unknown>> = []
+  for (const [recordId, values] of Object.entries(recordValues)) {
+    const entityId = recordId.split(':')[1]
+    for (const [fieldId, typed] of Object.entries(values)) {
+      const v = typed as { type: string; value?: unknown; optionId?: string; recordId?: string }
+      const row: Record<string, unknown> = { entityId, fieldId }
+      if (v.type === 'number') row.valueNumber = v.value
+      else if (v.type === 'boolean') row.valueBoolean = v.value
+      else if (v.type === 'option') row.optionId = v.optionId
+      else if (v.type === 'relationship') row.relatedEntityId = v.recordId?.split(':')[1]
+      else row.valueText = v.value
+      rows.push(row)
+    }
+  }
+  return rows
+}
 
 function written(fieldId: string): unknown {
   const call = h.setValuesForEntity.mock.calls.at(-1)?.[0] as
@@ -229,14 +266,54 @@ describe('rematchBill', () => {
   it('reads the received quantity from the PO LINE, not from the bill line', async () => {
     billIsDraft()
     h.listFiltered.mockResolvedValue({ ids: ['bl-1'] })
-    line('bl-1', 'pol-1', 5, 100, 5, 100)
+    // Billed 5, received 2. Reading `received` off the BILL line would find the
+    // billed 5 there and call this matched.
+    line('bl-1', 'pol-1', 5, 100, 2, 100)
 
     await rematch()
 
-    expect(h.getFieldValues).toHaveBeenCalledWith(
-      'purchase_order_line:pol-1',
-      expect.arrayContaining(['f-pol-recv', 'f-pol-price'])
-    )
+    expect(written('f-status')).toBe('exception')
+    expect(written('f-variance')).toBe(300)
+  })
+
+  it('reads the expected unit price from the PO LINE, not from the bill line', async () => {
+    billIsDraft()
+    h.listFiltered.mockResolvedValue({ ids: ['bl-1'] })
+    // Billed at 1500, the PO expected 100 — past both arms of
+    // `DEFAULT_MATCH_TOLERANCE` (2% and 500 minor units). Reading `expected` off
+    // the bill line would compare 1500 against itself and call this matched.
+    line('bl-1', 'pol-1', 5, 1500, 5, 100)
+
+    await rematch()
+
+    expect(written('f-status')).toBe('exception')
+    expect(written('f-variance')).toBe(7000)
+  })
+
+  it('skips the write when the bill already carries this verdict', async () => {
+    recordValues['vendor_bill:bill-1'] = {
+      'f-status': { type: 'option', optionId: 'matched' },
+      'f-variance': { type: 'number', value: 0 },
+    }
+    h.listFiltered.mockResolvedValue({ ids: ['bl-1'] })
+    line('bl-1', 'pol-1', 10, 500, 10, 500)
+
+    await rematch()
+
+    expect(h.setValuesForEntity).not.toHaveBeenCalled()
+  })
+
+  it('writes when the stored verdict differs by any one field', async () => {
+    recordValues['vendor_bill:bill-1'] = {
+      'f-status': { type: 'option', optionId: 'matched' },
+      'f-variance': { type: 'number', value: 1 },
+    }
+    h.listFiltered.mockResolvedValue({ ids: ['bl-1'] })
+    line('bl-1', 'pol-1', 10, 500, 10, 500)
+
+    await rematch()
+
+    expect(h.setValuesForEntity).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -314,5 +391,78 @@ describe('rematchAfterBillLineDelete', () => {
     } as unknown as EntityPostDeleteEvent)
 
     expect(h.setValuesForEntity).not.toHaveBeenCalled()
+  })
+})
+
+describe('coalescing (plan 08 phase 2)', () => {
+  beforeAll(() => {
+    registerMatchReconcilers()
+  })
+
+  /** A bill line that knows its parent, for the batched resolver. */
+  function lineOnBill(id: string, poLineId: string) {
+    line(id, poLineId, 10, 500, 10, 500)
+    Object.assign(recordValues[`vendor_bill_line:${id}`]!, {
+      'f-bl-bill': { type: 'relationship', recordId: 'vendor_bill:bill-1' },
+    })
+  }
+
+  const lineEvent = (id: string, systemAttribute: string) =>
+    ({
+      recordId: `vendor_bill_line:${id}`,
+      organizationId: 'org_1',
+      userId: 'usr_1',
+      field: { id: 'f', systemAttribute, type: 'NUMBER' },
+    }) as unknown as EntityFieldChangeEvent
+
+  /** One `listFiltered` per `rematchBill`, so this counts matches. */
+  const matches = () => h.listFiltered.mock.calls.length
+
+  it('collapses 30 line fires on one bill into ONE match', async () => {
+    billIsDraft()
+    const ids = Array.from({ length: 10 }, (_, i) => `bl-${i}`)
+    for (const [i, id] of ids.entries()) lineOnBill(id, `pol-${i}`)
+    h.listFiltered.mockResolvedValue({ ids })
+
+    await runWithDirtyParents('org_1', 'usr_1', async () => {
+      for (const id of ids) {
+        // The three attributes one line write moves.
+        await rematchOnBillLineChange(lineEvent(id, 'vendor_bill_line_quantity_billed'))
+        await rematchOnBillLineChange(lineEvent(id, 'vendor_bill_line_unit_price'))
+        await rematchOnBillLineChange(lineEvent(id, 'vendor_bill_line_purchase_order_line'))
+      }
+    })
+
+    expect(matches()).toBe(1)
+  })
+
+  it('matches inline when no write method opened a scope', async () => {
+    billIsDraft()
+    lineOnBill('bl-1', 'pol-1')
+    h.listFiltered.mockResolvedValue({ ids: ['bl-1'] })
+
+    await rematchOnBillLineChange(lineEvent('bl-1', 'vendor_bill_line_quantity_billed'))
+
+    expect(matches()).toBe(1)
+  })
+
+  it('matches nothing for an orphaned line', async () => {
+    billIsDraft()
+    line('bl-1', 'pol-1', 10, 500, 10, 500) // no `f-bl-bill`
+    h.listFiltered.mockResolvedValue({ ids: ['bl-1'] })
+
+    await runWithDirtyParents('org_1', 'usr_1', async () => {
+      await rematchOnBillLineChange(lineEvent('bl-1', 'vendor_bill_line_quantity_billed'))
+    })
+
+    expect(matches()).toBe(0)
+  })
+
+  it('ignores an attribute outside the trigger set', async () => {
+    await runWithDirtyParents('org_1', 'usr_1', async () => {
+      await rematchOnBillLineChange(lineEvent('bl-1', 'vendor_bill_line_description'))
+    })
+
+    expect(matches()).toBe(0)
   })
 })

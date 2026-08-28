@@ -9,8 +9,10 @@ import type { SystemAttribute } from '@auxx/types/system-attribute'
 import { getOrgCache } from '../cache'
 import type { EntityFieldChangeHandler, EntityPostDeleteHandler } from '../field-hooks/types'
 import { FieldValueService } from '../field-values/field-value-service'
+import { readFieldRelations, readFieldScalars } from '../field-values/read-field-scalars'
 import { UnifiedCrudHandler } from '../resources/crud'
 import { DEFAULT_MATCH_TOLERANCE, describeMatchReasons, matchBill, matchVariance } from './match'
+import { markOrRematchBill, markOrRematchBillLine } from './match-reconciler'
 import type { MatchLine } from './types'
 
 const logger = createScopedLogger('purchasing:match-hook')
@@ -67,15 +69,6 @@ function firstTyped(
   return Array.isArray(entry) ? entry[0] : entry
 }
 
-function readNumber(
-  values: Map<string, TypedFieldValue | TypedFieldValue[]>,
-  fieldId: string | undefined
-): number | null {
-  if (!fieldId) return null
-  const typed = firstTyped(values.get(fieldId))
-  return typed ? (extractValue(typed) as number) : null
-}
-
 function readString(
   values: Map<string, TypedFieldValue | TypedFieldValue[]>,
   fieldId: string | undefined
@@ -86,14 +79,11 @@ function readString(
   return typeof value === 'string' && value ? value : null
 }
 
-function readRelatedInstanceId(
-  values: Map<string, TypedFieldValue | TypedFieldValue[]>,
-  fieldId: string | undefined
-): string | null {
-  if (!fieldId) return null
-  const typed = firstTyped(values.get(fieldId))
-  if (typed?.type !== 'relationship' || !typed.recordId) return null
-  return parseRecordId(typed.recordId).entityInstanceId
+/** A number out of {@link readFieldScalars}' scalar map. */
+function num(values: Map<string, unknown> | undefined, fieldId: string | undefined): number | null {
+  if (!values || !fieldId) return null
+  const value = values.get(fieldId)
+  return typeof value === 'number' ? value : null
 }
 
 const MATCH_ATTRS = [
@@ -191,36 +181,50 @@ export async function rematchBill(params: {
     cf.purchase_order_line_expected_unit_price?.id,
   ].filter((id): id is string => !!id)
 
+  /**
+   * Two set-based reads, not two per line.
+   *
+   * This loop used to issue a `getFieldValues` for the bill line AND another for
+   * its purchase-order line, serially, per line — so a 10-line bill cost 20 round
+   * trips per match, and the hook that calls it fires once per changed FIELD.
+   * Entering that bill was ~30 matches, ~690 round trips. The same defect #1953
+   * fixed in the totals engine, doubled.
+   */
+  const poLineRelId = cf.vendor_bill_line_purchase_order_line?.id
+  const [billLineValues, billLineRels] = await Promise.all([
+    readFieldScalars(db, organizationId, lineInstanceIds, billLineFieldIds),
+    poLineRelId
+      ? readFieldRelations(db, organizationId, lineInstanceIds, [poLineRelId])
+      : Promise.resolve(new Map<string, Map<string, string>>()),
+  ])
+
+  const poLineIds = lineInstanceIds
+    .map((id) => (poLineRelId ? billLineRels.get(id)?.get(poLineRelId) : undefined))
+    .filter((id): id is string => !!id)
+  const poLineValues = await readFieldScalars(db, organizationId, poLineIds, poLineFieldIds)
+
   const matchLines: MatchLine[] = []
   let unmatchableLines = 0
 
   for (const lineInstanceId of lineInstanceIds) {
-    const lineValues = await handler.getFieldValues(
-      toRecordId('vendor_bill_line', lineInstanceId),
-      billLineFieldIds
-    )
-    const purchaseOrderLineId = readRelatedInstanceId(
-      lineValues,
-      cf.vendor_bill_line_purchase_order_line?.id
-    )
+    const purchaseOrderLineId = poLineRelId
+      ? billLineRels.get(lineInstanceId)?.get(poLineRelId)
+      : undefined
     if (!purchaseOrderLineId) {
       unmatchableLines += 1
       continue
     }
 
-    const poLineValues = await handler.getFieldValues(
-      toRecordId('purchase_order_line', purchaseOrderLineId),
-      poLineFieldIds
-    )
+    const line = billLineValues.get(lineInstanceId)
+    const poLine = poLineValues.get(purchaseOrderLineId)
 
     matchLines.push({
-      quantityBilled: readNumber(lineValues, cf.vendor_bill_line_quantity_billed?.id) ?? 0,
+      quantityBilled: num(line, cf.vendor_bill_line_quantity_billed?.id) ?? 0,
       // Nothing received yet reads as 0, which over-bills every billed unit — correct:
       // that IS "paying for what never arrived".
-      quantityReceived: readNumber(poLineValues, cf.purchase_order_line_quantity_received?.id) ?? 0,
-      unitPriceBilled: readNumber(lineValues, cf.vendor_bill_line_unit_price?.id) ?? 0,
-      unitPriceExpected:
-        readNumber(poLineValues, cf.purchase_order_line_expected_unit_price?.id) ?? 0,
+      quantityReceived: num(poLine, cf.purchase_order_line_quantity_received?.id) ?? 0,
+      unitPriceBilled: num(line, cf.vendor_bill_line_unit_price?.id) ?? 0,
+      unitPriceExpected: num(poLine, cf.purchase_order_line_expected_unit_price?.id) ?? 0,
     })
   }
 
@@ -253,14 +257,32 @@ export async function rematchBill(params: {
     )
   }
 
-  await fieldValueService.setValuesForEntity({
-    recordId: billRecordId,
-    values: [
-      { fieldId: statusField.id, value: result.outcome === 'matched' ? 'matched' : 'exception' },
-      { fieldId: varianceField.id, value: variance },
-      { fieldId: notesField.id, value: noteParts.length > 0 ? noteParts.join('; ') : null },
-    ],
-  })
+  const verdict = [
+    { fieldId: statusField.id, value: result.outcome === 'matched' ? 'matched' : 'exception' },
+    { fieldId: varianceField.id, value: variance },
+    { fieldId: notesField.id, value: noteParts.length > 0 ? noteParts.join('; ') : null },
+  ]
+
+  /**
+   * Skip a write that would store the verdict already on the bill.
+   *
+   * Most re-matches reach the same answer — the second of two attributes set in
+   * one line write, a quantity edited back to what it was — and each one
+   * previously re-entered the field-value layer, the realtime publisher and the
+   * sync manifest to store an identical status. Conservative the same way
+   * `totals-hooks.ts` is: unless EVERY value is already present and equal, the
+   * write happens.
+   */
+  const stored = await readFieldScalars(
+    db,
+    organizationId,
+    [vendorBillInstanceId],
+    [statusField.id, varianceField.id, notesField.id]
+  )
+  const current = stored.get(vendorBillInstanceId)
+  if (verdict.every((v) => (current?.get(v.fieldId) ?? null) === v.value)) return
+
+  await fieldValueService.setValuesForEntity({ recordId: billRecordId, values: verdict })
 
   logger.info('Vendor bill matched', {
     vendorBillInstanceId,
@@ -277,11 +299,7 @@ export const rematchOnBillChange: EntityFieldChangeHandler = async (event) => {
   if (!attr || !BILL_MATCH_TRIGGER_ATTRS.has(attr)) return
 
   const { entityInstanceId } = parseRecordId(event.recordId)
-  await rematchBill({
-    organizationId: event.organizationId,
-    userId: event.userId,
-    vendorBillInstanceId: entityInstanceId,
-  })
+  await markOrRematchBill(event.organizationId, event.userId, entityInstanceId)
 }
 
 /** Re-run the parent bill's match when one of its lines changes (§6.2). */
@@ -289,19 +307,11 @@ export const rematchOnBillLineChange: EntityFieldChangeHandler = async (event) =
   const attr = event.field.systemAttribute as SystemAttribute | undefined
   if (!attr || !BILL_LINE_MATCH_TRIGGER_ATTRS.has(attr)) return
 
+  // The bill is resolved in the DRAIN, not here: the per-line lookup cost a round
+  // trip on every one of the four trigger attributes, and the batched resolver
+  // does the whole bill in one query.
   const { entityInstanceId: lineInstanceId } = parseRecordId(event.recordId)
-  const vendorBillInstanceId = await resolveBillForLine(
-    event.organizationId,
-    event.userId,
-    lineInstanceId
-  )
-  if (!vendorBillInstanceId) return
-
-  await rematchBill({
-    organizationId: event.organizationId,
-    userId: event.userId,
-    vendorBillInstanceId,
-  })
+  await markOrRematchBillLine(event.organizationId, event.userId, lineInstanceId)
 }
 
 /**
@@ -316,28 +326,5 @@ export const rematchAfterBillLineDelete: EntityPostDeleteHandler = async (event)
     ? parseRecordId(raw as RecordId).entityInstanceId
     : raw
 
-  await rematchBill({
-    organizationId: event.organizationId,
-    userId: event.userId,
-    vendorBillInstanceId,
-  })
-}
-
-/** Resolve the bill a line belongs to. Null when the line is orphaned. */
-async function resolveBillForLine(
-  organizationId: string,
-  userId: string,
-  lineInstanceId: string
-): Promise<string | null> {
-  const cf = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['vendor_bill_line_vendor_bill'] as const)
-  const relField = cf.vendor_bill_line_vendor_bill
-  if (!relField) return null
-
-  const handler = new UnifiedCrudHandler(organizationId, userId)
-  const values = await handler.getFieldValues(toRecordId('vendor_bill_line', lineInstanceId), [
-    relField.id,
-  ])
-  return readRelatedInstanceId(values, relField.id)
+  await markOrRematchBill(event.organizationId, event.userId, vendorBillInstanceId)
 }
