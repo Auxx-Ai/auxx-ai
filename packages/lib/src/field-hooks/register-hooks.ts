@@ -37,6 +37,7 @@ import {
   recomputeOnPurchaseOrderLineChange,
   recomputeOnQuoteBillingChange,
 } from '../money/totals-hooks'
+import { registerMoneyTotalsReconcilers } from '../money/totals-reconciler'
 import { derivePhoneGeoOnChange, warmPhoneGeo } from '../phone-geo'
 import {
   rematchAfterBillLineDelete,
@@ -115,6 +116,11 @@ export function registerAllHooks(): void {
   // Both handlers swallow their own failures; the module's top-level imports stay light and
   // everything heavy is lazy-imported inside the wrappers.
   registerAutoBuildRules()
+
+  // The totals engine's six drains (plan 08 phase 2). The hooks registered below
+  // only MARK; without this nothing recomputes a document, so these two must stay
+  // in the same bootstrap.
+  registerMoneyTotalsReconcilers()
 
   // Field-change post-hook — fires `<prefix>:field:updated` after every field
   // write. Registered globally so contacts, tickets, companies, and custom

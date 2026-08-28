@@ -27,6 +27,7 @@ import {
   resolveRecordVisibilityScope,
 } from '../../permissions/capabilities/record-visibility-scope'
 import { buildDefIdToSlug } from '../../permissions/capabilities/resolve-capability-inputs'
+import { runWithDirtyParents } from '../../reconcilers/dirty-parents'
 import { resolveResourceAccessGrantees } from '../../resource-access/grantee-resolution'
 import { getCommonHooks, getSystemHooks } from '../hooks'
 import {
@@ -247,7 +248,13 @@ export class UnifiedCrudHandler {
    * signature change. Read methods stay unwrapped.
    */
   private inWriteSession<T>(fn: () => Promise<T>): Promise<T> {
-    return runWithWriteSession(this.session, fn)
+    // The dirty-parent scope wraps the session, not the other way round: hooks
+    // fired inside the write mark their parents, and the drain runs once the
+    // write method is done (plan 08 §5). Nesting joins, so a hook that builds
+    // its own handler still produces ONE drain.
+    return runWithDirtyParents(this.organizationId, this.userId, () =>
+      runWithWriteSession(this.session, fn)
+    )
   }
 
   /**
