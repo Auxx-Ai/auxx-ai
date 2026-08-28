@@ -58,37 +58,59 @@ export interface ToolActionContext {
  *
  * Admission rule: an entity a user thinks about and could open — business
  * records, not join rows or ledger lines. So no `line_item`, `subpart`,
- * `stock_movement` or `build`. `order` joins when the native order entity
- * ships (plans/products/03-order-entity.md) — adding it earlier would let an
- * app declare a field that silently provisions nothing, since the provisioner
- * warns-and-skips on a kind no org resolves. `quote` / `work_order` /
- * `payment` would qualify under the rule but wait for a consumer.
+ * `stock_movement`, `purchase_order_line`, `vendor_bill_line` or
+ * `gl_posting_line`. `quote` / `work_order` / `payment` / `vendor_payment`
+ * would qualify under the rule but wait for a consumer.
  *
- * ⚠️ `gl_posting` is the one deliberate EXCEPTION to the rule above, and it is
- * flagged rather than quietly folded in. It IS a ledger line, and it is
- * `isVisible: false` — a user never opens one. It is admitted because the
- * QuickBooks app must hang a connection-scoped `qboJournalEntryId` identity
- * field on it (gap-b §6.2), and that field is what makes double-posting to the
- * general ledger unrepresentable rather than merely detectable. The rule's
- * stated HAZARD — an app declaring a field that silently provisions nothing —
- * does not apply: entity-migration 103 seeds `gl_posting` in every org, so the
- * kind always resolves. Note this also widens `ref.entity(kind)`, the app TOOL
- * surface, which is the part of the trade worth revisiting if the rule is ever
- * tightened.
+ * 🛑 The HAZARD the rule guards against is admitting a kind **no org
+ * resolves**: `provisionAppField` warns-and-skips when `getCachedEntityDefId`
+ * returns nothing, so an app author declares a field, sees no error, and gets
+ * nothing. Every kind below must therefore be a system def seeded into EXISTING
+ * orgs by an entity migration, not merely present in `SYSTEM_ENTITIES` (which
+ * `ensureEntityDefinitions` only ever INSERTs, so it reaches fresh orgs alone).
+ * `order` is seeded by entity-migration **107**; `purchase_order`,
+ * `vendor_bill` and `gl_account` by **108**; `build` by **109**;
+ * `gl_posting` by **103**.
+ *
+ * 🛑 `deal`, `task` and `user` were REMOVED 2026-08-28 — they were the hazard
+ * above, shipping. None of the three has an `EntityDefinition` row in any org
+ * (verified across all 28) and none is in `SYSTEM_ENTITIES`, so every field an
+ * app declared against them was warned-and-skipped in silence. Removing them
+ * is a breaking SDK change made deliberately: it converts that silent runtime
+ * no-op into a compile error, which is the only place the author can act on it.
+ * Verified before removal — no reference in the platform repo, none in
+ * `auxxai-apps`, and no stored `targetEntity` among 45 `AppDeployment` rows.
+ * **Do not re-add any of them without seeding the def by an entity migration
+ * in the same change.**
+ *
+ * ⚠️ `gl_posting` and `gl_account` are the two deliberate EXCEPTIONS to the
+ * rule, flagged rather than quietly folded in. Both are `isVisible: false` and
+ * machine-written, and `gl_posting` IS a ledger header — a user never opens
+ * either. They are admitted because provider identity hangs off them:
+ * the QuickBooks app must put a connection-scoped `qboJournalEntryId` identity
+ * field on `gl_posting` (gap-b §6.2), which is what makes double-posting to the
+ * general ledger unrepresentable rather than merely detectable; and money
+ * decision `P2` keys every posting line on an account **CODE**, so the
+ * provider's own account id lives in `RecordIdentity` hung off `gl_account`.
+ * That is precisely the "an app addresses this record" case the union exists
+ * for. Note this also widens `ref.entity(kind)`, the app TOOL surface, which is
+ * the part of the trade worth revisiting if the rule is ever tightened.
  */
 export type EntityRefKind =
   | 'contact'
   | 'company'
-  | 'deal'
   | 'ticket'
-  | 'task'
-  | 'user'
   | 'article'
   | 'thread'
+  | 'order'
   | 'invoice'
   | 'catalog_item'
   | 'part'
   | 'product'
+  | 'build'
+  | 'purchase_order'
+  | 'vendor_bill'
+  | 'gl_account'
   | 'gl_posting'
 
 /**
