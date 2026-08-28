@@ -30,7 +30,6 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   GlAccountRole,
   GlAccountType,
-  GlPostingLineDirection,
   LandedCostAllocationBasis,
   PurchaseOrderBillingStatus,
   PurchaseOrderReceiptStatus,
@@ -46,8 +45,6 @@ import type { FieldOptionItem } from '../../../resources/registry/option-helpers
 import { COMPANY_FIELDS } from '../../../resources/registry/resources/company-fields'
 import { CONTACT_FIELDS } from '../../../resources/registry/resources/contact-fields'
 import { GL_ACCOUNT_FIELDS } from '../../../resources/registry/resources/gl-account-fields'
-import { GL_POSTING_FIELDS } from '../../../resources/registry/resources/gl-posting-fields'
-import { GL_POSTING_LINE_FIELDS } from '../../../resources/registry/resources/gl-posting-line-fields'
 import { INVOICE_FIELDS } from '../../../resources/registry/resources/invoice-fields'
 import { PART_FIELDS } from '../../../resources/registry/resources/part-fields'
 import { PURCHASE_ORDER_FIELDS } from '../../../resources/registry/resources/purchase-order-fields'
@@ -141,7 +138,6 @@ const NEW_TYPES = [
   'vendor_payment',
   'vendor_payment_allocation',
   'gl_account',
-  'gl_posting_line',
 ] as const
 
 const NEW_REGISTRIES: Record<(typeof NEW_TYPES)[number], Record<string, ResourceField>> = {
@@ -152,7 +148,6 @@ const NEW_REGISTRIES: Record<(typeof NEW_TYPES)[number], Record<string, Resource
   vendor_payment: VENDOR_PAYMENT_FIELDS,
   vendor_payment_allocation: VENDOR_PAYMENT_ALLOCATION_FIELDS,
   gl_account: GL_ACCOUNT_FIELDS,
-  gl_posting_line: GL_POSTING_LINE_FIELDS,
 }
 
 /** The ten fields of plans/purchasing/01-build-plan.md §2.1, in plan order. */
@@ -181,7 +176,6 @@ const INVERSE_KEYS: Record<string, readonly string[]> = {
   contact: ['purchaseOrders'],
   part: ['purchaseOrderLines', 'vendorBillLines', 'unit'],
   vendor_part: ['stockMovements', 'purchaseOrderLines'],
-  gl_posting: ['lines'],
 }
 
 const INCUMBENT_REGISTRIES: Record<string, Record<string, ResourceField>> = {
@@ -190,7 +184,6 @@ const INCUMBENT_REGISTRIES: Record<string, Record<string, ResourceField>> = {
   contact: CONTACT_FIELDS,
   part: PART_FIELDS,
   vendor_part: VENDOR_PART_FIELDS,
-  gl_posting: GL_POSTING_FIELDS,
 }
 
 /**
@@ -629,16 +622,15 @@ describe('the eight entity registrations', () => {
     expect(ModelTypeMeta.vendor_bill.hasDetailPage).toBe(false)
   })
 
-  // §7.2/§7.3: both GL defs and both payment defs are written only by machinery,
-  // like `gl_posting` itself. That is why the migration seeds them no field
-  // views and no saved table views - a hidden entity with no panel and no detail
-  // page has nothing to render them into.
-  it('the payment pair and both GL defs are hidden, page-less and view-less', () => {
+  // §7.2/§7.3: `gl_account` and both payment defs are written only by machinery
+  // - the chart by its seeder, the payment pair by nothing at all (P13). That is
+  // why the migration seeds them no field views and no saved table views: a
+  // hidden entity with no panel and no detail page has nothing to render into.
+  it('the payment pair and gl_account are hidden, page-less and view-less', () => {
     for (const entityType of [
       'vendor_payment',
       'vendor_payment_allocation',
       'gl_account',
-      'gl_posting_line',
     ] as const) {
       expect(SYSTEM_ENTITIES.find((e) => e.entityType === entityType)?.isVisible, entityType).toBe(
         false
@@ -1034,9 +1026,10 @@ describe('vendor_bill field shapes the plan is explicit about', () => {
 
 describe('the chart of accounts is ours', () => {
   // P2. The provider's id for an account is an app-owned identity field hung
-  // off this row - the identical pattern `gl_posting` already uses for
-  // `qboJournalEntryId` - which is what makes a second accounting provider a
-  // second identity field and nothing else.
+  // off this row, which is what makes a second accounting provider a second
+  // identity field and nothing else. It is also why `gl_account` stayed an
+  // EntityInstance when the posting defs became tables (G6): `RecordIdentity` is
+  // keyed on an instance and has no other addressing mode.
   it('gl_account models a code, a name and a type, and no provider id', () => {
     expect(GL_ACCOUNT_FIELDS.code?.systemAttribute).toBe('gl_account_code')
     expect(GL_ACCOUNT_FIELDS.code?.fieldType).toBe(FieldType.TEXT)
@@ -1069,55 +1062,7 @@ describe('the chart of accounts is ours', () => {
   })
 })
 
-describe('gl_posting_line', () => {
-  // §7.3. `amount` is always POSITIVE and `direction` carries the sign. Storing
-  // a signed amount AND a direction lets the two disagree, and a ledger that
-  // can contradict itself is not a ledger.
-  it('direction carries the sign, so amount stays positive', () => {
-    expect(GlPostingLineDirection.values.map((v) => v.value)).toEqual(['debit', 'credit'])
-    expect(GL_POSTING_LINE_FIELDS.direction?.options).toEqual({
-      options: GlPostingLineDirection.values,
-    })
-    expect(GL_POSTING_LINE_FIELDS.amount?.fieldType).toBe(FieldType.CURRENCY)
-  })
-
-  // P2, again and where it matters most: a line keyed on a provider's account
-  // id makes the whole subledger only as portable as that provider.
-  it('codes its account as text, never as a provider id or a relation', () => {
-    expect(GL_POSTING_LINE_FIELDS.accountCode?.systemAttribute).toBe('gl_posting_line_account_code')
-    expect(GL_POSTING_LINE_FIELDS.accountCode?.fieldType).toBe(FieldType.TEXT)
-    const attrs = Object.values(GL_POSTING_LINE_FIELDS).map((f) => f.systemAttribute)
-    expect(attrs.some((a) => a?.includes('qbo') || a?.includes('quickbooks'))).toBe(false)
-  })
-
-  // sourceType + sourceId is what makes a posting explainable three years later
-  // without joining through a provider's API.
-  it('carries the audit trail back to the row that produced it', () => {
-    expect(GL_POSTING_LINE_FIELDS.sourceType?.systemAttribute).toBe('gl_posting_line_source_type')
-    expect(GL_POSTING_LINE_FIELDS.sourceId?.systemAttribute).toBe('gl_posting_line_source_id')
-  })
-
-  // §7.3, and it is a real trap: an earlier draft put `naturalKeyPosition: 1`
-  // on this field, which declares that an entry has at most ONE line. A natural
-  // key here needs a second leg (sortOrder, or accountCode + direction) or none
-  // at all - and none is right.
-  it('glPosting carries NO naturalKeyPosition — an entry has many lines', () => {
-    expect(GL_POSTING_LINE_FIELDS.glPosting?.naturalKeyPosition).toBeUndefined()
-    expect(GL_POSTING_LINE_FIELDS.glPosting?.nullable).toBe(false)
-  })
-
-  // The chart itself is NOT seeded by this migration: which codes exist is a
-  // phase-0 question against the live books, and seeding a guessed chart into
-  // every org is worse than an empty one.
-  it('does not relate a posting line to an account row — the code is the join', () => {
-    expect(GL_POSTING_LINE_FIELDS.accountCode?.fieldType).not.toBe(FieldType.RELATIONSHIP)
-    for (const [key, field] of Object.entries(GL_ACCOUNT_FIELDS)) {
-      expect(field.relationship, `gl_account.${key} should not be a relationship`).toBeUndefined()
-    }
-  })
-})
-
-// ─── Relationship pairs ──────────────────────────────────────────────────────
+// ─── Relationship pairs// ─── Relationship pairs ──────────────────────────────────────────────────────
 
 describe('relationship pairs', () => {
   // `linkNewRelationships` looks the inverse up by this exact string in the
@@ -1231,13 +1176,6 @@ describe('relationship pairs', () => {
       owningRef: 'vendor_bill:paymentAllocations',
       inverse: VENDOR_BILL_FIELDS.paymentAllocations,
       inverseRef: 'vendor_payment_allocation:vendorBill',
-    },
-    {
-      name: 'gl_posting_line.glPosting ↔ gl_posting.lines',
-      owning: GL_POSTING_LINE_FIELDS.glPosting,
-      owningRef: 'gl_posting:lines',
-      inverse: GL_POSTING_FIELDS.lines,
-      inverseRef: 'gl_posting_line:glPosting',
     },
   ] as const
 
@@ -1513,19 +1451,6 @@ describe('migration 108 idempotency', () => {
       relationshipsLinked: 0,
       alreadyUpToDate: true,
     })
-  })
-
-  // 103 seeds `gl_posting`. An org that has not reached it yet must still get
-  // its eight new defs - the linker simply skips the half it cannot resolve,
-  // and a later run closes it.
-  it('tolerates a missing gl_posting def', async () => {
-    const writes: string[] = []
-    const db = migratedOrgDb(writes, { omit: ['gl_posting'] })
-
-    const result = await migration108Purchasing.up(db, 'org-3')
-
-    expect(result.alreadyUpToDate).toBe(true)
-    expect(writes.filter((w) => w.startsWith('insert'))).toEqual([])
   })
 
   // 🛑 The half of the option-refresh that actually matters. The first test

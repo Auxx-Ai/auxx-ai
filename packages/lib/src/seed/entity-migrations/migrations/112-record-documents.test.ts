@@ -21,10 +21,9 @@ describe('migration 112 registration', () => {
     expect(migration112RecordDocuments.id).toBe('112-record-documents')
   })
 
-  it('is last — a later migration must take 113, not reuse this number', () => {
-    const ids = ALL_ENTITY_MIGRATIONS.map((m) => m.id)
-    expect(ids.at(-1)).toBe('112-record-documents')
-  })
+  // The "is last" guard moved to `114-retire-gl-posting-defs.test.ts` when 114
+  // was appended. It belongs to whatever migration is actually last — that is
+  // the whole point of it.
 })
 
 describe('the four fields it converts are FILE in the registry', () => {

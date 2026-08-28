@@ -406,53 +406,6 @@ export const ProductStatus = {
 } as const
 
 /**
- * GL Posting Type Enum
- * The accrual entry types auxx.ai summarises into QuickBooks
- * (plans/auxx-lift/gap-b-quickbooks-journal-entry.md §6.2).
- *
- * `month_end_inventory` sits with the other `month_end_*` values rather than
- * being a fifth entry type on purpose — the integration surface stays at four
- * journal-entry types. `receipt` is deliberately ABSENT: per-receipt GRNI
- * postings need Accounts Payable, and no vendor bill has ever been entered in
- * this QuickBooks file, so nothing would debit it. It returns with Gap D §9.4.
- */
-export const GlPostingType = {
-  FULFILLMENT: 'fulfillment',
-  PAYOUT: 'payout',
-  BUILD: 'build',
-  MONTH_END_DEFERRAL: 'month_end_deferral',
-  MONTH_END_REVERSAL: 'month_end_reversal',
-  MONTH_END_INVENTORY: 'month_end_inventory',
-
-  values: [
-    { value: 'fulfillment', label: 'Fulfillment', color: 'green' },
-    { value: 'payout', label: 'Payout', color: 'blue' },
-    { value: 'build', label: 'Build', color: 'purple' },
-    { value: 'month_end_deferral', label: 'Month-end deferral', color: 'amber' },
-    { value: 'month_end_reversal', label: 'Month-end reversal', color: 'orange' },
-    { value: 'month_end_inventory', label: 'Month-end inventory', color: 'teal' },
-  ] satisfies FieldOptionItem[],
-} as const
-
-/**
- * GL Posting Status Enum
- * Lifecycle of one summary journal entry. A `pending` row that outlives its run
- * is the signal to reconcile against QuickBooks before retrying — it may mean
- * the entry posted and the write-back crashed.
- */
-export const GlPostingStatus = {
-  PENDING: 'pending',
-  POSTED: 'posted',
-  FAILED: 'failed',
-
-  values: [
-    { value: 'pending', label: 'Pending', color: 'gray' },
-    { value: 'posted', label: 'Posted', color: 'green' },
-    { value: 'failed', label: 'Failed', color: 'red' },
-  ] satisfies FieldOptionItem[],
-} as const
-
-/**
  * Order Financial Status Enum
  * Where an order sits on the money side (plans/products/08-order-build.md §2).
  * Deliberately mirrors the Shopify vocabulary so a future retargeting of the
@@ -870,24 +823,6 @@ export const GlAccountRole = {
     { value: 'cogs_materials', label: 'COGS — Materials', color: 'red' },
     { value: 'applied_overhead', label: 'COGS — Applied Overhead', color: 'red' },
     { value: 'ppv', label: 'Purchase Price Variance', color: 'orange' },
-  ] satisfies FieldOptionItem[],
-} as const
-
-/**
- * GL Posting Line Direction
- * plans/purchasing/01-build-plan.md §7.3.
- *
- * `amount` is always POSITIVE; this carries the sign. Storing a signed amount
- * and a direction lets the two disagree, and a ledger that can contradict
- * itself is not a ledger.
- */
-export const GlPostingLineDirection = {
-  DEBIT: 'debit',
-  CREDIT: 'credit',
-
-  values: [
-    { value: 'debit', label: 'Debit', color: 'blue' },
-    { value: 'credit', label: 'Credit', color: 'purple' },
   ] satisfies FieldOptionItem[],
 } as const
 

@@ -5,7 +5,7 @@
 **Last Updated:** 2026-08-28
 **Scope:** The money spine that points *inward and through* — buy, receive, bill, match, build,
 value, and post. `purchase_order` → `stock_movement` → `vendor_bill` → three-way match →
-`build` → `gl_posting`. What each entity owns, where a cost comes from and when it freezes,
+`build` → `GlPosting`. What each entity owns, where a cost comes from and when it freezes,
 who may write the movement ledger, and the silent-failure modes this subsystem has already
 paid for.
 
@@ -55,7 +55,7 @@ payment. This subsystem is the inward half plus the transformation in the middle
         │                  updatable: false        never computed)           ↓
         │                       │                       │            matched | exception
         └───────────────────────┴───────────────────────┘                     ↓
-                                │                                      (phase 7) gl_posting
+                                │                                      (phase 7) GlPosting
   MAKE                          │
  ──────────────────             │
   build                         │
@@ -118,8 +118,8 @@ Seeded in `packages/lib/src/seed/entity-seeder/constants.ts`:
 | `part` | ✅ | The stock master. Carries `partKind`, QoH, and the five frozen standard-cost fields. |
 | `vendor_part` | ❌ | The `(part, supplier)` price row. Prefill and provenance only. |
 | `gl_account` | ❌ | Our chart of accounts. The provider's id hangs off it via `RecordIdentity`. |
-| `gl_posting` | ❌ | One journal entry. Written only by the poster. |
-| `gl_posting_line` | ❌ | Double-entry lines, keyed on an account **code** (`'2160'`), never a provider id. |
+| ~~`gl_posting`~~ | — | 🛑 **NOT an entity.** One journal entry is a **`GlPosting` Drizzle table** row. The def was deleted 2026-08-28 (entity migration 114). |
+| ~~`gl_posting_line`~~ | — | 🛑 **NOT an entity.** `GlPostingLine`, a table. Double-entry lines keyed on an account **code** (`'2160'`), never a provider id. Def deleted 2026-08-28. |
 | `vendor_payment` | ❌ | 🛑 **INERT.** Seeded, zero writers, zero rows. See §11. |
 | `vendor_payment_allocation` | ❌ | 🛑 **INERT.** The header/allocation split that lets one bank line clear several bills. |
 
@@ -501,7 +501,24 @@ build's movements from exploding their own BOM. Update the reasoning, not the co
 
 ### 9.1 What is built
 
-- `gl_posting`, `gl_posting_line`, `gl_account` **entities**, seeded and invisible.
+- **`GlPosting` + `GlPostingLine` Drizzle TABLES** (migrations `0351`/`0352`), with a
+  Postgres-enforced unique index on `(organizationId, postingType, periodKey, revision)` and an
+  `INSERT … ON CONFLICT DO NOTHING` claim. Amounts are `bigint` **integer minor units**;
+  `GlPostingLine` has no `updatedAt` and no update path, so its immutability is structural rather
+  than advisory. **0 rows** — nothing writes them yet.
+- `gl_account` **entity**, seeded and invisible: a 28-account default chart in every org, each
+  account optionally carrying an auxx posting **role**.
+  🛑 **`gl_account` is the only one of the three that is still an entity, and that is deliberate.**
+  `RecordIdentity` is keyed on an `EntityInstance` and has **no other addressing mode**, and P2
+  hangs the provider's account id there. The posting defs became tables because their whole
+  double-post defence is a composite unique index, and across two *fields* of an instance that is
+  not merely unimplemented — it is **unexpressible**, since a unique index constrains within a row
+  and two fields are two `FieldValue` rows. Uniqueness on `gl_account` is single-field (`code`) and
+  therefore expressible. The `gl_posting` / `gl_posting_line` defs were deleted 2026-08-28.
+- Builders emit a **ROLE** (`'grni'`), never an account number. Once the chart is org-editable, the
+  number cannot carry the meaning: a customer renumbering GRNI from `2160` to `2155` would silently
+  break every builder that hardcoded it, and the entry would still balance, so nothing downstream
+  could detect it.
 - `packages/lib/src/postings/` — `build-entry.ts`, `periods.ts`, `provider.ts`. Pure-ish;
   persists nothing yet.
 - Postings are stored as **double-entry lines keyed on an account CODE** (`'2160'`), never a
@@ -799,7 +816,7 @@ Recorded because both documents still exist and a reader will otherwise trust th
 
 | Claim | Reality |
 | --- | --- |
-| Gap E §4.2 recommends `GlPosting` as a **real Drizzle table**, for a Postgres-enforced `(org, type, period)` unique index and a three-line `INSERT … ON CONFLICT` claim step. | ❌ **Not what shipped.** `gl_posting`, `gl_posting_line` and `gl_account` are all `EntityInstance`-backed system defs. Gap E's objection therefore stands and is **unaddressed**: there is no composite unique constraint across two fields of an instance, because they are two `FieldValue` rows, not two columns. Double-posting protection will have to be application-level check-then-insert — the shape this codebase already knows leaks (see `duplicate-detection-architecture-guide.md` on the exact-match arm as an enforcement-leak detector). Resolve before the poster persists anything. |
+| Gap E §4.2 recommends `GlPosting` as a **real Drizzle table**, for a Postgres-enforced unique index and a three-line `INSERT … ON CONFLICT` claim step. | ✅ **Resolved 2026-08-28 — Gap E was right.** `GlPosting` + `GlPostingLine` are tables (migrations `0351`/`0352`), the claim index is four columns (`revision` was added so a reversal can re-enter a period without polluting `periodKey`), and the superseded entity defs were **deleted** by entity migration 114. `gl_account` stays an `EntityInstance`, which is not an inconsistency: `RecordIdentity` is keyed on an instance and has no other addressing mode. |
 | Gap C §6.1's `rollStandardCost` formula (`standardMaterialCost = round(part_cost)`). | ❌ Superseded — see §7.2. The shipped roll sums children's `standardCost`, bottom-up, gated on `partKind`. |
 | Gap D §8 "purchase orders — later". | ❌ Stale. The buy side shipped ahead of it. |
 | `EntityTypeValues` / `EntityType` in `packages/database/src/enums.ts` | ⚠️ **Stale by thirteen types** — missing `order`, `purchase_order`, `vendor_bill`, `gl_account`, `build` and more. Its only consumer is a `z.enum` that system-seeded defs never reach, so nothing is broken. ⚠️ That file has a **destructive generator**; hand-edit it. |

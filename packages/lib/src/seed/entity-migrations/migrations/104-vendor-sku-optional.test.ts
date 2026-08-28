@@ -11,11 +11,16 @@ import { ALL_ENTITY_MIGRATIONS } from '../../entity-migrations'
 import { migration104VendorSkuOptional } from './104-vendor-sku-optional'
 
 describe('migration 104 registration', () => {
-  it('is registered exactly once, after 103, with a unique id', () => {
+  it('is registered exactly once, after 102, with a unique id', () => {
     const ids = ALL_ENTITY_MIGRATIONS.map((m) => m.id)
     expect(ids.filter((id) => id === '104-vendor-sku-optional')).toHaveLength(1)
     expect(new Set(ids).size).toBe(ids.length)
-    expect(ids.indexOf('104-vendor-sku-optional')).toBe(ids.indexOf('103-gl-posting') + 1)
+    // This used to read `indexOf('103-gl-posting') + 1`. 103 was REMOVED from
+    // the registry when the `gl_posting` def was retired (decision G6, migration
+    // 114), which made `indexOf` return -1 and the assertion compare against 0 —
+    // a guard that passes for the wrong reason is worse than none, so it is
+    // anchored to the surviving predecessor instead.
+    expect(ids.indexOf('104-vendor-sku-optional')).toBe(ids.indexOf('102-catalog-relabel') + 1)
     expect(migration104VendorSkuOptional.id).toBe('104-vendor-sku-optional')
   })
 })

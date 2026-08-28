@@ -141,7 +141,6 @@ export const ModelTypeValues = [
   'invoice',
   'payment',
   'product',
-  'gl_posting',
   'order',
   'purchase_order',
   'purchase_order_line',
@@ -150,7 +149,6 @@ export const ModelTypeValues = [
   'vendor_payment',
   'vendor_payment_allocation',
   'gl_account',
-  'gl_posting_line',
   'build',
 ] as const
 
@@ -194,7 +192,6 @@ export const ModelTypes = {
   INVOICE: 'invoice',
   PAYMENT: 'payment',
   PRODUCT: 'product',
-  GL_POSTING: 'gl_posting',
   ORDER: 'order',
   PURCHASE_ORDER: 'purchase_order',
   PURCHASE_ORDER_LINE: 'purchase_order_line',
@@ -203,7 +200,6 @@ export const ModelTypes = {
   VENDOR_PAYMENT: 'vendor_payment',
   VENDOR_PAYMENT_ALLOCATION: 'vendor_payment_allocation',
   GL_ACCOUNT: 'gl_account',
-  GL_POSTING_LINE: 'gl_posting_line',
   BUILD: 'build',
 } as const
 
@@ -491,15 +487,6 @@ export const ModelTypeMeta: Record<
     dbTable: 'EntityInstance',
     hasDetailPage: true,
   },
-  gl_posting: {
-    label: 'GL Posting',
-    plural: 'GL Postings',
-    icon: 'book-open',
-    color: 'gray',
-    apiSlug: 'gl-postings',
-    dbTable: 'EntityInstance',
-    hasDetailPage: false,
-  },
   order: {
     label: 'Order',
     plural: 'Orders',
@@ -574,15 +561,6 @@ export const ModelTypeMeta: Record<
     icon: 'book-open',
     color: 'indigo',
     apiSlug: 'gl-accounts',
-    dbTable: 'EntityInstance',
-    hasDetailPage: false,
-  },
-  gl_posting_line: {
-    label: 'GL Posting Line',
-    plural: 'GL Posting Lines',
-    icon: 'file-text',
-    color: 'indigo',
-    apiSlug: 'gl-posting-lines',
     dbTable: 'EntityInstance',
     hasDetailPage: false,
   },

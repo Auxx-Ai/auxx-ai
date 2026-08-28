@@ -69,8 +69,7 @@ export interface ToolActionContext {
  * orgs by an entity migration, not merely present in `SYSTEM_ENTITIES` (which
  * `ensureEntityDefinitions` only ever INSERTs, so it reaches fresh orgs alone).
  * `order` is seeded by entity-migration **107**; `purchase_order`,
- * `vendor_bill` and `gl_account` by **108**; `build` by **109**;
- * `gl_posting` by **103**.
+ * `vendor_bill` and `gl_account` by **108**; `build` by **109**.
  *
  * 🛑 `deal`, `task` and `user` were REMOVED 2026-08-28 — they were the hazard
  * above, shipping. None of the three has an `EntityDefinition` row in any org
@@ -83,18 +82,33 @@ export interface ToolActionContext {
  * **Do not re-add any of them without seeding the def by an entity migration
  * in the same change.**
  *
- * ⚠️ `gl_posting` and `gl_account` are the two deliberate EXCEPTIONS to the
- * rule, flagged rather than quietly folded in. Both are `isVisible: false` and
- * machine-written, and `gl_posting` IS a ledger header — a user never opens
- * either. They are admitted because provider identity hangs off them:
- * the QuickBooks app must put a connection-scoped `qboJournalEntryId` identity
- * field on `gl_posting` (gap-b §6.2), which is what makes double-posting to the
- * general ledger unrepresentable rather than merely detectable; and money
- * decision `P2` keys every posting line on an account **CODE**, so the
- * provider's own account id lives in `RecordIdentity` hung off `gl_account`.
- * That is precisely the "an app addresses this record" case the union exists
- * for. Note this also widens `ref.entity(kind)`, the app TOOL surface, which is
- * the part of the trade worth revisiting if the rule is ever tightened.
+ * 🛑 `gl_posting` was REMOVED 2026-08-28 — the same hazard as `deal` / `task` /
+ * `user`, arrived at from the other direction. It was admitted legitimately: the
+ * QuickBooks app hung a connection-scoped `qboJournalEntryId` identity field on
+ * it, which was what made double-posting to the general ledger unrepresentable
+ * rather than merely detectable. Money decision `G6` then replaced the entity
+ * with the `GlPosting` / `GlPostingLine` Drizzle **tables**, because the whole
+ * defence is a composite unique index across `(organizationId, postingType,
+ * periodKey, revision)` and `FieldValue` carries exactly two unique indexes —
+ * across two FIELDS of an instance such a constraint is not unimplemented, it is
+ * unexpressible. Entity migration **114** then dropped the def from all 28 orgs,
+ * so leaving the kind here would be a union entry no org resolves: an app author
+ * declares a field, sees no error, and gets nothing, forever.
+ * **Do not re-add it.** The provider's id for a journal entry is now
+ * `GlPosting.providerId` + `GlPosting.providerEntryId` — two columns, not a
+ * `RecordIdentity` mirror — so there is nothing left for an app to address.
+ *
+ * ⚠️ `gl_account` is the one deliberate EXCEPTION to the rule, flagged rather
+ * than quietly folded in. It is `isVisible: false` and machine-written, and a
+ * user never opens it. It is admitted because provider identity hangs off it:
+ * money decision `P2` keys every posting line on an account **CODE**, so the
+ * provider's own account id lives in `RecordIdentity` hung off `gl_account` —
+ * and `RecordIdentity` is keyed on an `EntityInstance` and has no other
+ * addressing mode, which is exactly why `gl_account` stayed an entity when the
+ * posting defs became tables. That is precisely the "an app addresses this
+ * record" case the union exists for. Note this also widens `ref.entity(kind)`,
+ * the app TOOL surface, which is the part of the trade worth revisiting if the
+ * rule is ever tightened.
  */
 export type EntityRefKind =
   | 'contact'
@@ -111,7 +125,6 @@ export type EntityRefKind =
   | 'purchase_order'
   | 'vendor_bill'
   | 'gl_account'
-  | 'gl_posting'
 
 /**
  * Per-tool configuration. See plans/kopilot/apps/README.md §4.2.

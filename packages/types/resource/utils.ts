@@ -156,7 +156,6 @@ export const ENTITY_DEFINITION_TYPES = [
   'invoice',
   'payment',
   'product',
-  'gl_posting',
   'order',
   'purchase_order',
   'purchase_order_line',
@@ -165,7 +164,6 @@ export const ENTITY_DEFINITION_TYPES = [
   'vendor_payment',
   'vendor_payment_allocation',
   'gl_account',
-  'gl_posting_line',
   'build',
 ] as const
 

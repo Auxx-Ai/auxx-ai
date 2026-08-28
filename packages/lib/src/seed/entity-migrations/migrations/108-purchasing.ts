@@ -11,8 +11,6 @@ import type { ResourceField } from '../../../resources/registry/field-types'
 import { COMPANY_FIELDS } from '../../../resources/registry/resources/company-fields'
 import { CONTACT_FIELDS } from '../../../resources/registry/resources/contact-fields'
 import { GL_ACCOUNT_FIELDS } from '../../../resources/registry/resources/gl-account-fields'
-import { GL_POSTING_FIELDS } from '../../../resources/registry/resources/gl-posting-fields'
-import { GL_POSTING_LINE_FIELDS } from '../../../resources/registry/resources/gl-posting-line-fields'
 import { PART_FIELDS } from '../../../resources/registry/resources/part-fields'
 import { PURCHASE_ORDER_FIELDS } from '../../../resources/registry/resources/purchase-order-fields'
 import { PURCHASE_ORDER_LINE_FIELDS } from '../../../resources/registry/resources/purchase-order-line-fields'
@@ -51,7 +49,6 @@ const NEW_TYPES = [
   'vendor_payment',
   'vendor_payment_allocation',
   'gl_account',
-  'gl_posting_line',
 ] as const
 
 /** Registry per new def — the full field set of each is materialised. */
@@ -63,7 +60,6 @@ const NEW_REGISTRIES: Record<(typeof NEW_TYPES)[number], Record<string, Resource
   vendor_payment: VENDOR_PAYMENT_FIELDS,
   vendor_payment_allocation: VENDOR_PAYMENT_ALLOCATION_FIELDS,
   gl_account: GL_ACCOUNT_FIELDS,
-  gl_posting_line: GL_POSTING_LINE_FIELDS,
 }
 
 /**
@@ -72,14 +68,7 @@ const NEW_REGISTRIES: Record<(typeof NEW_TYPES)[number], Record<string, Resource
  * org that has not reached the migration that seeds them has nothing to hang
  * an inverse off yet and a later run closes it.
  */
-const EXISTING_TYPES = [
-  'stock_movement',
-  'company',
-  'contact',
-  'part',
-  'vendor_part',
-  'gl_posting',
-] as const
+const EXISTING_TYPES = ['stock_movement', 'company', 'contact', 'part', 'vendor_part'] as const
 
 /**
  * The ten receiving fields added to `stock_movement`
@@ -130,16 +119,13 @@ const INCUMBENT_FIELDS: Record<string, Record<string, ResourceField | undefined>
     stockMovements: VENDOR_PART_FIELDS.stockMovements,
     purchaseOrderLines: VENDOR_PART_FIELDS.purchaseOrderLines,
   },
-  gl_posting: {
-    lines: GL_POSTING_FIELDS.lines,
-  },
 }
 
 /**
  * Migration 108: purchase-to-pay in one pass — receiving cost on
  * `stock_movement`, `purchase_order` + `purchase_order_line`, `vendor_bill` +
  * `vendor_bill_line`, the inert `vendor_payment` + `vendor_payment_allocation`
- * pair, and the `gl_account` + `gl_posting_line` posting seam
+ * pair, and the `gl_account` chart
  * (plans/purchasing/01-build-plan.md §2.4, §4.5, §5.2, §7.3).
  *
  * ## Why this is ONE migration and not four
@@ -184,7 +170,7 @@ const INCUMBENT_FIELDS: Record<string, Record<string, ResourceField | undefined>
  * The eight new defs, with their full registries, plus the inverse halves on
  * `company` (purchaseOrders / vendorBills / vendorPayments), `contact`
  * (purchaseOrders), `part` (purchaseOrderLines / vendorBillLines),
- * `vendor_part` (stockMovements / purchaseOrderLines) and `gl_posting` (lines).
+ * and `vendor_part` (stockMovements / purchaseOrderLines).
  *
  * `purchase_order.contact` / `contact.purchaseOrders` is the ADDRESSEE pair, and
  * it is what makes the order sendable at all: `purchase_order.vendor` targets a
@@ -330,7 +316,7 @@ export const migration108Purchasing: EntityMigration = {
   id: '108-purchasing',
   description:
     'Add purchase_order, purchase_order_line, vendor_bill, vendor_bill_line, the inert ' +
-    'vendor_payment / vendor_payment_allocation pair, gl_account and gl_posting_line as system ' +
+    'vendor_payment / vendor_payment_allocation pair, and gl_account as a system ' +
     'entities, plus cost, occurredAt and purchase provenance on stock_movement',
 
   async up(db: Database, organizationId: string): Promise<EntityMigrationResult> {
@@ -434,8 +420,7 @@ export const migration108Purchasing: EntityMigration = {
     // The create dialogs ARE materialized — a dialog is an allowlist, which the
     // registry has no per-field way to express. Only the two header entities get
     // one: line entities are managed from their header, both payment entities
-    // are inert and hidden, and `gl_account` / `gl_posting_line` are written
-    // only by the poster.
+    // are inert and hidden, and `gl_account` is written by the chart seed.
     //
     // `purchase_order.number` and `vendor_bill.internalNumber` are absent by
     // design: both are `RecordSequence`-issued and `creatable: false`, so

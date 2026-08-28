@@ -6,8 +6,29 @@
 // Shaped like `sync-invoice.ts`: invocation-agnostic, never throws, and keyed on
 // an id-map field so re-runs converge instead of double-posting. The difference
 // is what it is keyed ON — an invoice has a record of its own, a "2026-08-18
-// daily fulfillment summary" does not, so the `gl_posting` entity IS the record
-// (entity-migration 103) and `qboJournalEntryId` hangs on it.
+// daily fulfillment summary" does not, so the `gl_posting` entity WAS the record
+// (entity-migration 103) and `qboJournalEntryId` hung on it. That is no longer
+// true; see the block below.
+//
+// 🛑 LAYER 1 IS DANGLING AS OF 2026-08-28 — READ THIS BEFORE CALLING THIS FILE.
+//
+// The `gl_posting` EntityInstance def this file's PRIMARY idempotency layer maps
+// onto **no longer exists**. Decision `G6` replaced it with the `GlPosting` /
+// `GlPostingLine` Drizzle tables, and entity migration 114 removed the def from
+// every organization. So `readQuickbooksIdField` / `writeQuickbooksIdField`
+// below would now fail to resolve `gl_posting` at runtime.
+//
+// That was safe to do because this function has **no production caller** — only
+// its own test file, which mocks both helpers — exactly the half-wired shape
+// `sync-invoice.ts` is in. Nothing regressed; a defence that protected nothing
+// stopped existing.
+//
+// The file is kept, not deleted, because layers 2-4 below are the valuable part
+// and their reasoning is what the rewrite must preserve.
+// **plans/money/tasks/10-the-poster.md** moves layer 1 onto the table's unique
+// index (`INSERT … ON CONFLICT (organizationId, postingType, periodKey,
+// revision) DO NOTHING`) and leaves layers 2-4 exactly as they are. Do not wire
+// a caller to this file before that lands.
 //
 // ── Why four layers of idempotency ──────────────────────────────────────────
 // A double-posted journal entry silently misstates the financial statements —

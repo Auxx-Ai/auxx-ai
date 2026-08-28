@@ -66,7 +66,6 @@ import { migration075TagTemplateKey } from './migrations/075-tag-template-key'
 import { migration100PartCostProvenance } from './migrations/100-part-cost-provenance'
 import { migration101ProductFamily } from './migrations/101-product-family'
 import { migration102CatalogRelabel } from './migrations/102-catalog-relabel'
-import { migration103GlPosting } from './migrations/103-gl-posting'
 import { migration104VendorSkuOptional } from './migrations/104-vendor-sku-optional'
 import { migration106SupplierPricingRelabel } from './migrations/106-supplier-pricing-relabel'
 import { migration107Order } from './migrations/107-order'
@@ -75,6 +74,7 @@ import { migration109BuildAndStandardCost } from './migrations/109-build-and-sta
 import { migration110BuildVisible } from './migrations/110-build-visible'
 import { migration111OrderBuildDrift } from './migrations/111-order-build-drift'
 import { migration112RecordDocuments } from './migrations/112-record-documents'
+import { migration114RetireGlPostingDefs } from './migrations/114-retire-gl-posting-defs'
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
@@ -186,7 +186,8 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   migration100PartCostProvenance,
   migration101ProductFamily,
   migration102CatalogRelabel,
-  migration103GlPosting,
+  // 103 (gl-posting def) was REMOVED, not renumbered — the id space is shared
+  // and its ledger row stays `applied`. 114 retires what it created.
   migration104VendorSkuOptional,
   migration106SupplierPricingRelabel,
   migration107Order,
@@ -199,6 +200,9 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   // MUST sort after 108 — it converts four fields 108 creates, and
   // `ensureCustomFields` is INSERT-only so 108 itself can never do it.
   migration112RecordDocuments,
+  // MUST sort after 103 and 108 — it deletes the two defs they created. Both
+  // have been gutted of that work, so this is a no-op on a fresh database.
+  migration114RetireGlPostingDefs,
 ]
 
 /**
