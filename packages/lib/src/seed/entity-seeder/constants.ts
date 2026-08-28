@@ -331,17 +331,22 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     // writes them until `packages/lib/src/builds/` lands in phase 2. An entity
     // with zero rows can be reshaped for free; the first row ends that.
     //
-    // ⚠️ `isVisible: false` is NOT permanent — phase 2 flips it to true when the
-    // list, the detail page and the completion form land. Straight from the
-    // `vendor_payment` precedent: a visible nav entry for an empty list with no
-    // way to create a row is a worse first impression than no entry at all.
+    // ✅ Flipped to `isVisible: true` with phase 2 — the list, the detail page
+    // and the completion form landed, so the nav entry now leads somewhere.
+    //
+    // 🛑 This line reaches FRESH orgs only. `ensureEntityDefinitions` is a plain
+    // insert that skips an org already holding the def, so `isVisible` is read
+    // once at creation and never again; every org that ran 109 keeps the `false`
+    // it was seeded with. Entity migration **110-build-visible** is the other
+    // half, and the two must agree or the def means one thing on an old org and
+    // another on a new one.
     entityType: 'build',
     apiSlug: 'builds',
     singular: 'Build',
     plural: 'Builds',
     icon: 'hammer',
     color: 'orange',
-    isVisible: false,
+    isVisible: true,
   },
 ]
 

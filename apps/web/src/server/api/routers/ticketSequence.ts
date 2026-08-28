@@ -16,6 +16,7 @@ const scopeSchema = z
     'order',
     'purchase_order',
     'vendor_bill',
+    'build',
   ])
   .default('ticket')
 

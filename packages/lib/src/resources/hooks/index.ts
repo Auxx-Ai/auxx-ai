@@ -1,5 +1,6 @@
 // packages/lib/src/resources/hooks/index.ts
 
+export { BUILD_HOOKS } from './build-hooks'
 export { autoSetCreatedBy, COMMON_HOOKS } from './common-hooks'
 export { CONTACT_HOOKS } from './contact-hooks'
 export { INVOICE_HOOKS } from './invoice-hooks'

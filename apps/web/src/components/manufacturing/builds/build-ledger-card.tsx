@@ -1,0 +1,195 @@
+// apps/web/src/components/manufacturing/builds/build-ledger-card.tsx
+'use client'
+
+// `build:ledger` — the stock movements this build wrote
+// (plans/products/build/01-build-plan.md §1.6: "`build_movements` — has_many; a
+// card lists them").
+//
+// `build_movements` is declared `showInPanel: false`, so this card is its only
+// surface. `stock_movement_qty_per_unit` is `showInPanel: false` too, and
+// deliberately so — §1.6: "exposing it invites someone to 'correct' the as-built
+// snapshot, which destroys its only purpose". This card therefore renders what
+// that snapshot MEANS, not the number: a consume row with no per-unit quantity
+// is an off-BOM substitution, and it says so.
+//
+// The rows are read through the generic record list rather than through a lib
+// query, because they are ordinary `stock_movement` records and the mail/record
+// scope predicates that apply to every other movement list must apply here too.
+
+import type { ConditionGroup } from '@auxx/lib/conditions/client'
+import { StockMovementType } from '@auxx/lib/resources/client'
+import type { ResourceFieldId } from '@auxx/types/field'
+import type { RecordId } from '@auxx/types/resource'
+import { Badge, type Variant } from '@auxx/ui/components/badge'
+import { formatCurrency } from '@auxx/utils/currency'
+import { useMemo } from 'react'
+import { EmptyRow, RowSkeleton } from '~/components/drawers/cards/related-record-row'
+import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
+import { toRecordId, useRecord, useRecordList, useResourceProperty } from '~/components/resources'
+import { useSystemValuesForRecords } from '~/components/resources/hooks/use-system-values-for-records'
+import { useSettings } from '~/hooks/use-settings'
+
+/** Movement type value → badge colour, straight from the registry's own enum. */
+const TYPE_VARIANT: Record<string, Variant> = Object.fromEntries(
+  StockMovementType.values.map((value) => [value.value, value.color as Variant])
+)
+
+const TYPE_LABEL: Record<string, string> = Object.fromEntries(
+  StockMovementType.values.map((value) => [value.value, value.label])
+)
+
+const MOVEMENT_ATTRIBUTES = [
+  // The part IS a movement row's identity here — a build's ledger is read as
+  // "what went in and what came out", not as a list of movement ids.
+  'stock_movement_part',
+  'stock_movement_type',
+  'stock_movement_quantity',
+  'stock_movement_unit_cost',
+  'stock_movement_extended_cost',
+  'stock_movement_gl_account',
+  // Read to detect the OFF-BOM case, never rendered as a number — see the header.
+  'stock_movement_qty_per_unit',
+] as const
+
+/** How many movements render before the list stops. A build writes one row per component. */
+const MOVEMENT_LIMIT = 200
+
+export function BuildLedgerCard({ entityInstanceId }: DrawerTabProps) {
+  const { getSetting } = useSettings({})
+  const currencyCode = (getSetting('organization.currency') as string | null) ?? 'USD'
+
+  const movementDefId = useResourceProperty('stock_movement', 'id')
+
+  const filters: ConditionGroup[] = useMemo(
+    () => [
+      {
+        id: 'build-filter',
+        logicalOperator: 'AND' as const,
+        conditions: [
+          {
+            id: 'build-match',
+            fieldId: 'stock_movement:build' as ResourceFieldId,
+            operator: 'is' as const,
+            value: entityInstanceId,
+          },
+        ],
+      },
+    ],
+    [entityInstanceId]
+  )
+
+  const { records, isLoading } = useRecordList({
+    entityDefinitionId: movementDefId ?? '',
+    filters,
+    limit: MOVEMENT_LIMIT,
+    enabled: !!entityInstanceId && !!movementDefId,
+  })
+
+  const recordIds = useMemo(
+    () => (movementDefId ? records.map((record) => toRecordId(movementDefId, record.id)) : []),
+    [records, movementDefId]
+  )
+
+  const { valuesById } = useSystemValuesForRecords(recordIds, MOVEMENT_ATTRIBUTES, {
+    autoFetch: true,
+    enabled: recordIds.length > 0,
+  })
+
+  if (isLoading) return <RowSkeleton />
+  if (records.length === 0) {
+    // Not an error and not a gap: a `planned` build writes no movements at all
+    // (B2), which is the safety property the whole phasing rests on.
+    return <EmptyRow label='Nothing posted yet — a build writes its ledger when it completes' />
+  }
+
+  return (
+    <div className='divide-y divide-border/50'>
+      {records.map((record, index) => (
+        <MovementRow
+          key={record.id}
+          fallbackLabel={record.displayName}
+          values={valuesById[recordIds[index] ?? ''] ?? {}}
+          currencyCode={currencyCode}
+        />
+      ))}
+    </div>
+  )
+}
+
+function MovementRow({
+  fallbackLabel,
+  values,
+  currencyCode,
+}: {
+  fallbackLabel: string | null | undefined
+  values: Record<string, unknown>
+  currencyCode: string
+}) {
+  const partRecordId = unwrap(values.stock_movement_part) as RecordId | undefined
+  const { record: part } = useRecord({ recordId: partRecordId!, enabled: !!partRecordId })
+  const label = part?.displayName ?? fallbackLabel
+
+  const type = unwrap(values.stock_movement_type) as string | undefined
+  const quantity = numberOrNull(values.stock_movement_quantity)
+  const unitCost = numberOrNull(values.stock_movement_unit_cost)
+  const extendedCost = numberOrNull(values.stock_movement_extended_cost)
+  const glAccount = unwrap(values.stock_movement_gl_account) as string | undefined
+  const qtyPerUnit = numberOrNull(values.stock_movement_qty_per_unit)
+
+  // 🛑 The off-BOM marker, read as the marker it is. NULL `qtyPerUnit` on a
+  // CONSUME row means the component was not on the bill of materials — a floor
+  // substitution, made visible instead of silent (Gap C §4.1). It is NULL on
+  // every other movement type by definition, so the produce row must not be
+  // labelled a substitution.
+  const isConsume = type === 'build_consume'
+  const offBom = isConsume && qtyPerUnit == null
+
+  return (
+    <div className='flex items-center gap-2 py-1.5'>
+      <div className='min-w-0 flex-1'>
+        <div className='flex items-center gap-1.5'>
+          <span className='truncate text-sm'>{label || 'Movement'}</span>
+          {type && (
+            <Badge variant={TYPE_VARIANT[type] ?? 'secondary'} size='xs'>
+              {TYPE_LABEL[type] ?? type}
+            </Badge>
+          )}
+          {offBom && (
+            <Badge variant='amber' size='xs'>
+              Off BOM
+            </Badge>
+          )}
+        </div>
+        <span className='text-muted-foreground text-xs tabular-nums'>
+          {unitCost == null ? 'no cost' : `${formatCurrency(unitCost, { currencyCode })} each`}
+          {glAccount && ` · ${glAccount}`}
+        </span>
+      </div>
+
+      <span className='shrink-0 text-sm tabular-nums'>
+        {quantity == null ? '—' : formatSignedQuantity(quantity)}
+      </span>
+      <span className='w-24 shrink-0 text-right text-sm tabular-nums'>
+        {extendedCost == null ? '—' : formatCurrency(extendedCost, { currencyCode })}
+      </span>
+    </div>
+  )
+}
+
+/** SINGLE_SELECT and RELATIONSHIP reads come back as arrays; everything else scalar. */
+function unwrap(value: unknown): unknown {
+  return Array.isArray(value) ? value[0] : value
+}
+
+/** A NUMBER system value, with absence kept distinct from zero. */
+function numberOrNull(value: unknown): number | null {
+  const raw = unwrap(value)
+  const parsed = typeof raw === 'string' ? Number(raw) : raw
+  return typeof parsed === 'number' && Number.isFinite(parsed) ? parsed : null
+}
+
+/** A movement quantity keeps its sign — consume is negative, produce is positive. */
+function formatSignedQuantity(value: number): string {
+  const trimmed = Number.isInteger(value) ? String(value) : String(Number(value.toFixed(4)))
+  return value > 0 ? `+${trimmed}` : trimmed
+}

@@ -90,6 +90,7 @@ export type DetailViewEntityType =
   | 'work_order'
   | 'order'
   | 'purchase_order'
+  | 'build'
 
 /** Registry type mapping entity types to their configurations */
 export type DetailViewConfigRegistry = Record<DetailViewEntityType, DetailViewConfig>

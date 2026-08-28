@@ -14,6 +14,7 @@ export type SequenceScope =
   | 'order'
   | 'purchase_order'
   | 'vendor_bill'
+  | 'build'
 
 const SCOPE_DEFAULTS: Record<SequenceScope, { prefix: string }> = {
   ticket: { prefix: 'TKT' },
@@ -25,6 +26,11 @@ const SCOPE_DEFAULTS: Record<SequenceScope, { prefix: string }> = {
   purchase_order: { prefix: 'PO' },
   // Ours, beside the vendor's own invoice number - two different documents.
   vendor_bill: { prefix: 'BILL' },
+  // One letter, unlike every other scope here: the build plan fixes the format at
+  // `B-0001` (plans/products/build/01-build-plan.md section 1.1). Anything longer
+  // starting with a B would read as the vendor bill's `BILL-0001` at a glance, and
+  // these two numbers sit side by side on the same cost trail.
+  build: { prefix: 'B' },
 }
 
 /** Format a record number from a sequence record */

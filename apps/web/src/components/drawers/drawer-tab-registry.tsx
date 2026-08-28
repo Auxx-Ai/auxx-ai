@@ -197,6 +197,22 @@ export const DRAWER_TAB_CARD_COMPONENTS: Record<
     })),
 
   // ─────────────────────────────────────────────────────────────────
+  // BUILD OVERVIEW CARDS (plans/products/build/01-build-plan.md §3.6) — shared
+  // with the build detail-view sidebar, which reads this same registry.
+  // ─────────────────────────────────────────────────────────────────
+  // The run's numbers plus the ONLY surface for Start / Cancel / Complete /
+  // Reverse. `build_status` is `showInDialogs: false` and each transition is a
+  // procedure with its own preconditions, so there is no status dropdown.
+  'build:run': () =>
+    import('../manufacturing/builds/build-run-card').then((m) => ({ default: m.BuildRunCard })),
+  // The consume/produce rows the completion wrote. `build_movements` is
+  // `showInPanel: false`, so this card is its only surface.
+  'build:ledger': () =>
+    import('../manufacturing/builds/build-ledger-card').then((m) => ({
+      default: m.BuildLedgerCard,
+    })),
+
+  // ─────────────────────────────────────────────────────────────────
   // INVOICE OVERVIEW CARDS (money MI1 build spec §J.1 — drawer-only entity,
   // hasDetailPage: false, so these are the invoice's ONLY UI surface)
   // ─────────────────────────────────────────────────────────────────

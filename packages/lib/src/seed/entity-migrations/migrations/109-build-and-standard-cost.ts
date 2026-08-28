@@ -182,7 +182,12 @@ export const migration109BuildAndStandardCost: EntityMigration = {
     const smDef = existing.entityDefs.get('stock_movement')
     if (!smDef) return { ...state, alreadyUpToDate: true }
 
-    // ── Step 1: the `build` EntityDefinition, isVisible: false ─────────
+    // ── Step 1: the `build` EntityDefinition ───────────────────────────
+    // Visibility comes from `SYSTEM_ENTITIES`, which carried `isVisible: false`
+    // when this shipped and carries `true` since phase 2 landed the UI. An org
+    // that ran this migration before then keeps the `false` it was seeded with
+    // — `ensureEntityDefinitions` never revisits an existing row — which is what
+    // migration 110-build-visible exists to correct.
     const entityDefIds = await ensureEntityDefinitions(
       db,
       organizationId,
