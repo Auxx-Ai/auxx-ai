@@ -48,12 +48,16 @@ interface StockAdjustmentPopoverProps {
  * to a movement that knows its own direction.
  *
  * ⚠️ The `stock_movement_adjust_subparts` FIELD and the BOM explosion behind it
- * are deliberately untouched — only this control is gone. The inventory bridge
- * still sets the flag on `sale` movements
- * (`data-connectors/inventory-bridge-pass.ts`), and that use is CORRECT: selling
- * a finished good does consume its components, and a sale is negative, so the
- * explosion negates. It was only ever the arbitrary direction of an `adjust`
- * that made the cascade wrong. Do not remove the field.
+ * are deliberately untouched — only this control is gone. A movement that knows
+ * its own direction may legitimately set the flag: consuming a finished good
+ * does consume its components, and a negative movement makes the explosion
+ * negate. It was only ever the arbitrary direction of an `adjust` that made the
+ * cascade wrong. Do not remove the field.
+ *
+ * (The v9 inventory bridge used to be the in-tree example of that correct use.
+ * It was deleted on 2026-08-27 —
+ * plans/data-connectors/v9/inventory-bridge-disposition.md. The build path is
+ * the surviving consumer: plans/products/build/01-build-plan.md.)
  *
  * 🛑 **This form calls `purchasing.adjustStock`, never the generic
  * `record.create`.** It used to write a `stock_movement` directly, which made it

@@ -46,7 +46,7 @@ describe('assertRuleShape — native actions', () => {
       assertRuleShape({
         ...fieldRule,
         on: 'decreased',
-        actions: [{ type: 'native', handler: 'deductInventory' }],
+        actions: [{ type: 'native', handler: 'recalcPartQoh' }],
         managed: 'inventory',
       })
     ).not.toThrow()
@@ -57,7 +57,7 @@ describe('assertRuleShape — native actions', () => {
       assertRuleShape({
         ...fieldRule,
         on: 'decreased',
-        actions: [{ type: 'native', handler: 'deductInventory' }],
+        actions: [{ type: 'native', handler: 'recalcPartQoh' }],
       })
     ).toThrow(/server-declared/)
   })

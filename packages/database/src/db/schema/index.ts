@@ -103,8 +103,6 @@ export * from './insight-template'
 export * from './integration'
 export * from './integration-tag-label'
 // Inventory table dropped — inventory now tracked via entity system (stock_movement + field triggers)
-// InventoryBridgeLink — per-link watermark for the v9 inventory→part consumption bridge
-export * from './inventory-bridge-link'
 export * from './invoice'
 export * from './key-value-pair'
 export * from './knowledge-base'
