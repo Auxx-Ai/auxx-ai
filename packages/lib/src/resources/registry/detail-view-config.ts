@@ -40,15 +40,20 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
     // Renders nothing when the contact has no external identities (card
     // returns null), so it's inert until an app/store/chat links the record.
     sidebarCards: [
-      { value: 'external-identities', label: 'External identities' },
+      { value: 'external-identities', label: 'External identities', icon: 'plug' },
       // First/last interaction rows (records/interaction-fields plan Phase 5).
       // Renders nothing until the record has correspondence.
-      { value: 'interactions', label: 'Interactions' },
+      { value: 'interactions', label: 'Interactions', icon: 'activity' },
       // Mail-permissions contact sharing (UI plan §4) — grants every thread
       // this contact participates in. Admin-managed; hidden for other roles
       // unless shares already exist.
-      { value: 'shared-with', label: 'Shared with' },
-      { value: 'billing', label: 'Billing', permissionKey: 'dispatch.board.view' },
+      { value: 'shared-with', label: 'Shared with', icon: 'users' },
+      {
+        value: 'billing',
+        label: 'Billing',
+        icon: 'credit-card',
+        permissionKey: 'dispatch.board.view',
+      },
     ],
   },
 
@@ -67,7 +72,7 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
     defaultTab: 'timeline',
     defaultSidebarTab: 'overview',
     // First/last interaction rows — propagated from the company's contacts.
-    sidebarCards: [{ value: 'interactions', label: 'Interactions' }],
+    sidebarCards: [{ value: 'interactions', label: 'Interactions', icon: 'activity' }],
   },
 
   ticket: {
@@ -81,9 +86,9 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
     defaultTab: 'conversation',
     defaultSidebarTab: 'overview',
     sidebarCards: [
-      { value: 'metrics', label: 'Metrics', position: 'before', fullBleed: true },
-      { value: 'customer', label: 'Customer' },
-      { value: 'relationships', label: 'Related Tickets' },
+      { value: 'metrics', label: 'Metrics', icon: 'gauge', position: 'before', fullBleed: true },
+      { value: 'customer', label: 'Customer', icon: 'user' },
+      { value: 'relationships', label: 'Related Tickets', icon: 'ticket' },
     ],
   },
 
@@ -150,9 +155,9 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
     defaultTab: 'line-items',
     defaultSidebarTab: 'overview',
     sidebarCards: [
-      { value: 'customer', label: 'Customer' },
-      { value: 'origin', label: 'Origin' },
-      { value: 'jobs', label: 'Jobs', recordResource: 'work_order' },
+      { value: 'customer', label: 'Customer', icon: 'user' },
+      { value: 'origin', label: 'Origin', icon: 'link' },
+      { value: 'jobs', label: 'Jobs', icon: 'wrench', recordResource: 'work_order' },
     ],
   },
 
@@ -180,12 +185,12 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
     // an order carries no payment ledger (§5.4). `work_order` is the D4 manual
     // link that stands in for the deferred order→work_order conversion.
     sidebarCards: [
-      { value: 'customer', label: 'Customer' },
+      { value: 'customer', label: 'Customer', icon: 'user' },
       // `work-orders`, not the quote's `jobs`: DetailViewSidebar and the drawer read
       // the SAME `DRAWER_TAB_CARD_COMPONENTS` registry, so this value is the card key
       // and must match `order:work-orders` there and in the order's drawer block.
       // "Jobs" is dispatch vocabulary; an order links work orders (08 §5.8).
-      { value: 'work-orders', label: 'Work orders', recordResource: 'work_order' },
+      { value: 'work-orders', label: 'Work orders', icon: 'wrench', recordResource: 'work_order' },
     ],
   },
 
@@ -220,9 +225,9 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
       // from a list and one opened as a page must offer the same files, or
       // expanding the record makes them disappear.
       { value: 'documents', label: 'Documents', icon: 'paperclip' },
-      { value: 'vendor', label: 'Vendor' },
-      { value: 'receiving', label: 'Receiving' },
-      { value: 'bills', label: 'Bills', recordResource: 'vendor_bill' },
+      { value: 'vendor', label: 'Vendor', icon: 'store' },
+      { value: 'receiving', label: 'Receiving', icon: 'truck' },
+      { value: 'bills', label: 'Bills', icon: 'receipt', recordResource: 'vendor_bill' },
     ],
   },
 
@@ -268,8 +273,8 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
     defaultTab: 'schedule',
     defaultSidebarTab: 'overview',
     sidebarCards: [
-      { value: 'customer-site', label: 'Customer & site' },
-      { value: 'origin', label: 'Origin' },
+      { value: 'customer-site', label: 'Customer & site', icon: 'map-pin' },
+      { value: 'origin', label: 'Origin', icon: 'link' },
     ],
   },
 
@@ -296,8 +301,13 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
     // `ledger` is the only surface for `build_movements`, whose field is
     // `showInPanel: false` (section 1.6: "has_many; a card lists them").
     sidebarCards: [
-      { value: 'run', label: 'Run' },
-      { value: 'ledger', label: 'Ledger', recordResource: 'stock_movement' },
+      { value: 'run', label: 'Run', icon: 'hammer' },
+      {
+        value: 'ledger',
+        label: 'Ledger',
+        icon: 'arrow-left-right',
+        recordResource: 'stock_movement',
+      },
     ],
   },
 
