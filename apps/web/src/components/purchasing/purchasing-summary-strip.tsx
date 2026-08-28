@@ -32,6 +32,10 @@ export interface SummaryCell {
  * Column count is fixed to the cell count rather than container-queried: these
  * cards carry three cells, which fits the drawer's ~400px min width without the
  * reveal-as-it-widens treatment the six-cell billing strip needs.
+ *
+ * The strip owns its own spacing and border — call sites pass `className` only to
+ * place the strip, never to restyle it. Cell radius is the outer radius minus the
+ * outer padding (16px - 4px = 12px, `rounded-xl`) so the two curves stay concentric.
  */
 export function PurchasingSummaryStrip({
   cells,
@@ -42,10 +46,12 @@ export function PurchasingSummaryStrip({
 }) {
   return (
     <div
-      className={cn('grid gap-3', className)}
+      className={cn('grid gap-1 rounded-2xl border p-1', className)}
       style={{ gridTemplateColumns: `repeat(${cells.length}, minmax(0, 1fr))` }}>
       {cells.map((cell) => (
-        <div key={cell.label} className='flex flex-col gap-0.5'>
+        <div
+          key={cell.label}
+          className='flex flex-col gap-0.5 rounded-xl border px-2 py-1 bg-primary-100/50'>
           <span className='text-muted-foreground text-xs'>{cell.label}</span>
           <span
             className={cn(

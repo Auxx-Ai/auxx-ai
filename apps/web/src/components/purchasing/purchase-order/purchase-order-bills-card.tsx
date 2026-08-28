@@ -132,7 +132,6 @@ export function PurchaseOrderBillsCard({ recordId }: DrawerTabProps) {
         }}
       />
       <PurchasingSummaryStrip
-        className='pb-2'
         cells={[
           { label: 'Order total', value: formatCurrency(orderTotal, { currencyCode }) },
           { label: 'Billed', value: formatCurrency(billed, { currencyCode }) },

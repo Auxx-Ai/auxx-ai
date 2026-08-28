@@ -336,7 +336,6 @@ export function CreateBillFromPurchaseOrderDialog({
 
         <div className='space-y-4'>
           <PurchasingSummaryStrip
-            className='rounded-2xl border px-3 py-2'
             cells={[
               { label: 'Order total', value: formatCurrency(orderTotal, { currencyCode }) },
               { label: 'Already billed', value: formatCurrency(billed, { currencyCode }) },
