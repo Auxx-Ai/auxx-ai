@@ -43,7 +43,7 @@ export function AddPurchaseOrderLinesButton({
   onAdded?: () => void
 }) {
   const { lines: purchaseOrderLines } = usePurchaseOrderLines(purchaseOrderRecordId)
-  const { rows, refresh } = useVendorBillLines(billRecordId)
+  const { rows, ready, refresh } = useVendorBillLines(billRecordId)
 
   const billable = selectBillableLines(
     purchaseOrderLines,
@@ -65,7 +65,18 @@ export function AddPurchaseOrderLinesButton({
     onAdded?.()
   }, [lineDefId, billable, createMany, billRecordId, nextSortOrder, refresh, onAdded])
 
-  if (!purchaseOrderRecordId || billable.length === 0) return null
+  // 🛑 `ready`, not `rows.length` and not `isLoading` — see the flag's own note.
+  // `selectBillableLines` subtracts the order lines this bill already claims, and
+  // through every load window that subtraction comes out empty, so this button
+  // offers the WHOLE order back on a bill that already has it. Observed on a cold
+  // drawer open of a fully-linked bill: a live, clickable "Add 2 lines from
+  // order" for ~300–550 ms that would have duplicated both lines, with
+  // `nextSortOrder` reading 0 so they would have collided on order too.
+  //
+  // Hiding is the right failure: this button already renders nothing when there
+  // is nothing to add, so a late arrival is indistinguishable from the ordinary
+  // case, and the cost of being wrong the other way is silent double-billing.
+  if (!purchaseOrderRecordId || !ready || billable.length === 0) return null
 
   return (
     <Button
