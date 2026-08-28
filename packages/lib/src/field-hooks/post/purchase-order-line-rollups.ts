@@ -26,6 +26,14 @@ import type { EntityTriggerHandler } from '../types'
 const logger = createScopedLogger('field-hooks:purchase-order-line-rollups')
 
 /**
+ * Actor for the rematch this module triggers. Empty for the same reason
+ * `drift-reconciler.ts` passes an empty actor: nothing downstream reads it, and
+ * this pass acts for no particular person — it is a consequence of a receipt,
+ * not of somebody opening a bill.
+ */
+const ROLLUP_ACTOR = ''
+
+/**
  * The two subledger roll-ups a purchase order line carries
  * (plans/purchasing/01-build-plan.md §4.2). Both are `creatable: false`,
  * `updatable: false`, `computed: true` — this module is their ONLY writer.
@@ -234,6 +242,8 @@ export async function recalculatePurchaseOrderLineRollup(
       error: statuses.error.message,
     })
   }
+
+  await rematchBillsAfterReceipt(organizationId, spec, [purchaseOrderLineInstanceId])
 }
 
 /**
@@ -322,6 +332,45 @@ export async function recalculatePurchaseOrderLineRollups(
     logger.error('Failed to derive purchase order statuses after batched line roll-up', {
       target: spec.targetAttr,
       error: statuses.error.message,
+    })
+  }
+
+  await rematchBillsAfterReceipt(organizationId, spec, changed)
+}
+
+/**
+ * A receipt changes the match's answer, so the bills that charge these lines are
+ * re-matched.
+ *
+ * 🛑 **Without this the match's verdict depends on the order the paperwork
+ * arrives in.** It re-runs on a bill write and a bill-line write and on nothing
+ * else, so a bill entered before the goods records `billed 1 but only 0 received`
+ * and nothing ever revisits it — a permanent false exception in the queue a
+ * person is meant to work. The full argument, and the dev-data proof it was found
+ * in, are on `rematchBillsForPurchaseOrderLines`.
+ *
+ * ⚠️ **Gated on `spec.evidence`, never on `targetAttr`.** That field exists for
+ * exactly this reason — *"a string comparison at the call site is one careless
+ * edit away"*. The BILLED roll-up must not come through here: it is driven BY
+ * bill lines, whose writes already fire the match hook.
+ *
+ * Failure is logged and swallowed, like the status pass above it: the received
+ * quantity is the primary fact and is already committed.
+ */
+async function rematchBillsAfterReceipt(
+  organizationId: string,
+  spec: RollupSpec,
+  changedLineIds: string[]
+): Promise<void> {
+  if (spec.evidence !== 'receipt' || changedLineIds.length === 0) return
+  try {
+    const { rematchBillsForPurchaseOrderLines } = await import('../../purchasing/match-reconciler')
+    await rematchBillsForPurchaseOrderLines(organizationId, ROLLUP_ACTOR, changedLineIds)
+  } catch (error) {
+    logger.error('Failed to re-match bills after a receipt roll-up', {
+      target: spec.targetAttr,
+      lines: changedLineIds.length,
+      error: error instanceof Error ? error.message : String(error),
     })
   }
 }

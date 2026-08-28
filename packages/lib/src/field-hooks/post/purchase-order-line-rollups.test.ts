@@ -19,6 +19,9 @@ const h = vi.hoisted(() => ({
   publishFieldValueUpdates: vi.fn(),
   recalculatePurchaseOrderStatuses: vi.fn(),
   recalculatePurchaseOrderStatusesForLines: vi.fn(),
+  rematchBillsForPurchaseOrderLines: vi.fn(
+    async (_organizationId: string, _userId: string, _lineIds: string[]) => {}
+  ),
   // The two shapes the module asks the db for, in call order.
   dbResults: [] as unknown[][],
 }))
@@ -66,6 +69,9 @@ vi.mock('../../purchasing/purchase-order-status-writer', () => ({
   recalculatePurchaseOrderStatuses: h.recalculatePurchaseOrderStatuses,
   recalculatePurchaseOrderStatusesForLines: h.recalculatePurchaseOrderStatusesForLines,
 }))
+vi.mock('../../purchasing/match-reconciler', () => ({
+  rematchBillsForPurchaseOrderLines: h.rematchBillsForPurchaseOrderLines,
+}))
 
 import {
   PURCHASE_ORDER_LINE_ROLLUPS,
@@ -111,6 +117,7 @@ beforeEach(() => {
   h.publishFieldValueUpdates.mockResolvedValue(undefined)
   h.recalculatePurchaseOrderStatuses.mockResolvedValue(ok({}))
   h.recalculatePurchaseOrderStatusesForLines.mockResolvedValue(ok([]))
+  h.rematchBillsForPurchaseOrderLines.mockResolvedValue(undefined)
 })
 
 describe('recalculatePurchaseOrderLineReceived', () => {
@@ -486,5 +493,80 @@ describe('the batched roll-up', () => {
   it('is a no-op for an empty set', async () => {
     await recalculatePurchaseOrderLineRollups('org_1', [], PURCHASE_ORDER_LINE_ROLLUPS.received)
     expect(h.setValueWithType).not.toHaveBeenCalled()
+  })
+})
+
+describe('a receipt re-matches the bills that charge the line', () => {
+  // 🛑 The regression this pins: the three-way match re-runs on a bill write and a
+  // bill-LINE write and on nothing else, so a bill entered before the goods arrived
+  // recorded `billed 1 but only 0 received` and nothing ever revisited it. Found in
+  // dev data 2026-08-28 — BILL-0005's notes were stamped at 21:32:22 against a line
+  // whose receipt landed at 21:37:50, and the notes still said 0.
+  it('rematches the bills for a line whose received total moved', async () => {
+    h.dbResults.push([{ total: '2' }])
+
+    await recalculatePurchaseOrderLineReceived(
+      event({ stock_movement_purchase_order_line: PO_LINE })
+    )
+
+    expect(h.rematchBillsForPurchaseOrderLines).toHaveBeenCalledWith('org_1', '', [PO_LINE])
+  })
+
+  it('does NOT rematch when the received total did not move', async () => {
+    // Stored total equals the SUM — the write, the publish and the status pass are
+    // all short-circuited, and so is this.
+    h.dbResults.push([{ total: '2', current: 2 }])
+
+    await recalculatePurchaseOrderLineReceived(
+      event({ stock_movement_purchase_order_line: PO_LINE })
+    )
+
+    expect(h.setValueWithType).not.toHaveBeenCalled()
+    expect(h.rematchBillsForPurchaseOrderLines).not.toHaveBeenCalled()
+  })
+
+  it('never rematches off the BILLED roll-up — a bill line write already drives the match', async () => {
+    h.dbResults.push([{ total: '6' }])
+
+    await recalculatePurchaseOrderLineBilled(
+      event(
+        { vendor_bill_line_purchase_order_line: PO_LINE },
+        { entitySlug: 'vendor-bill-lines', entityInstanceId: 'vbl-1' }
+      )
+    )
+
+    expect(h.rematchBillsForPurchaseOrderLines).not.toHaveBeenCalled()
+  })
+
+  it('passes only the CHANGED lines from a batched receipt', async () => {
+    // Two lines in, one already correct: only the mover is rematched.
+    h.dbResults.push([
+      { lineId: 'pol-a', total: '5' },
+      { lineId: 'pol-b', total: '3' },
+    ])
+    h.dbResults.push([
+      { entityId: 'pol-a', valueNumber: 1 },
+      { entityId: 'pol-b', valueNumber: 3 },
+    ])
+
+    await recalculatePurchaseOrderLineRollups(
+      'org_1',
+      ['pol-a', 'pol-b'],
+      PURCHASE_ORDER_LINE_ROLLUPS.received
+    )
+
+    expect(h.rematchBillsForPurchaseOrderLines).toHaveBeenCalledWith('org_1', '', ['pol-a'])
+  })
+
+  it('a failing rematch never takes the roll-up down with it', async () => {
+    h.dbResults.push([{ total: '2' }])
+    h.rematchBillsForPurchaseOrderLines.mockRejectedValueOnce(new Error('boom'))
+
+    await expect(
+      recalculatePurchaseOrderLineReceived(event({ stock_movement_purchase_order_line: PO_LINE }))
+    ).resolves.toBeUndefined()
+
+    // The quantity is the primary fact and is already committed.
+    expect(h.setValueWithType).toHaveBeenCalled()
   })
 })
