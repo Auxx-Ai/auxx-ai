@@ -3,7 +3,7 @@
 import { FieldType } from '@auxx/database/enums'
 import { toFieldId } from '@auxx/types/field'
 import { BaseType } from '../../types'
-import { GlAccountRole, GlAccountType } from '../enum-values'
+import { GlAccountType } from '../enum-values'
 import type { ResourceField } from '../field-types'
 
 /**
@@ -30,10 +30,19 @@ import type { ResourceField } from '../field-types'
  * id at all. One resolver, written once against this chart, serves both the
  * journal-entry push and the posting lines.
  *
+ * **There is no `role` field here, and that is decision `G19`.** A posting role
+ * maps to an account through the `GlRoleAssignment` TABLE, not through a
+ * SINGLE_SELECT on this row. The field that used to live here enforced the
+ * constraint *and its converse*: `unique: true` meant one role per account, but
+ * it also meant one account could serve only one role — and an org that runs DTC
+ * and dealer revenue through a single account is the ordinary case `G19` names.
+ * A unique index on `(organizationId, role)` expresses exactly the required
+ * direction and nothing more. Do not reintroduce the field; two sources of truth
+ * for where money lands is the worst state this subsystem can be in.
+ *
  * Hidden system entity (`isVisible: false`), seeded with the accrual plan's
- * chart — the same shape `gl_posting` and `payment` use: a def that exists in
- * every org and is written by system code rather than through the generic
- * create dialog.
+ * chart — the same shape `payment` uses: a def that exists in every org and is
+ * written by system code rather than through the generic create dialog.
  */
 export const GL_ACCOUNT_FIELDS: Record<string, ResourceField> = {
   id: {
@@ -138,63 +147,6 @@ export const GL_ACCOUNT_FIELDS: Record<string, ResourceField> = {
     },
     placeholder: 'Select account type',
     description: 'The financial category for this account',
-  },
-
-  role: {
-    id: toFieldId('role'),
-    key: 'role',
-    label: 'auxx Role',
-    type: BaseType.ENUM,
-    fieldType: FieldType.SINGLE_SELECT,
-    isSystem: true,
-    systemAttribute: 'gl_account_role',
-    systemSortOrder: 'a3a',
-    // OPTIONAL, and that is the point. `G7` makes this chart a seeded DEFAULT
-    // the org edits; most of an org's accounts play no part in an auxx posting
-    // and are simply theirs. A role-less account is the ordinary case, not a
-    // half-configured one.
-    nullable: true,
-    options: { options: GlAccountRole.values },
-    // `isIdentifier` because the field is unique, and the registry invariant in
-    // `identifier-fields.test.ts` requires the pair: `mergeSystemAndCustomFields`
-    // coalesces `staticField.isIdentifier ?? CustomField.isUnique`, so declaring
-    // one without the other makes the seed date rather than the registry decide
-    // whether the field is a usable match key. It is an honest one here — at most
-    // one account carries a given role in an org, so re-importing a chart matched
-    // on role updates the right row. `code` stays the DEFAULT identifier: it comes
-    // first in this record and it is the value every posting line actually carries.
-    isIdentifier: true,
-    // At most ONE account per role, per org.
-    //
-    // `unique: true` on a NULLABLE field is safe here, and it was verified
-    // rather than assumed: the FieldValue-based gate skips nulls on every door.
-    // `validateUniqueFields` (resources/crud/unified-handler.ts) `continue`s on
-    // `undefined | null | ''` before it calls the checker, `setValue` routes a
-    // null to `deleteValue` instead of the gate, `setValueWithType` guards on
-    // `value !== null`, and `checkUniqueValueTyped` itself returns true for a
-    // null value. An absent role writes no FieldValue row at all, so there is
-    // nothing for a later account's NULL to collide with. Twenty-odd role-less
-    // accounts therefore coexist exactly as they would under a real Postgres
-    // partial unique index.
-    //
-    // ⚠️ What it is NOT: the gate is a check-then-write `SELECT ... LIMIT 1`
-    // with no lock and no index behind it (design/gl-posting-tables.md §1.2),
-    // and it excludes archived rows. So it stops a bookkeeper double-assigning
-    // a role at a form; it does not stop two concurrent writers. The chart is
-    // seeded by a single-writer migration, and the role resolver must fail
-    // CLOSED on more than one match — never "take the first", which is the one
-    // behaviour here that would put money in an arbitrary account.
-    capabilities: {
-      filterable: true,
-      sortable: true,
-      creatable: true,
-      updatable: true,
-      unique: true,
-      configurable: false,
-    },
-    placeholder: 'Not used by auxx',
-    description:
-      'Which auxx posting role this account fulfils. Builders post to a role, never to a number, so renumbering or renaming the account here never breaks posting. Leave empty for accounts auxx does not post to.',
   },
 
   isActive: {

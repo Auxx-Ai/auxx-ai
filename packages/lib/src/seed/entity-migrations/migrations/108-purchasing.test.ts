@@ -28,7 +28,6 @@ import { FieldType, ModelTypeMeta, ModelTypeValues } from '@auxx/database/enums'
 import { isSystemAttribute } from '@auxx/types/system-attribute'
 import { describe, expect, it, vi } from 'vitest'
 import {
-  GlAccountRole,
   GlAccountType,
   LandedCostAllocationBasis,
   PurchaseOrderBillingStatus,
@@ -87,9 +86,15 @@ vi.mock('../../../cache', async (importOriginal) => ({
 // `UnifiedCrudHandler`, which wants the org cache, `db.query.*` and a write
 // session — none of which the stub `Database` below has, and none of which this
 // file is about. Its own contract (idempotent on `code`, roles omitted rather
-// than nulled) is tested in `seed/__tests__/gl-account-chart.test.ts`. What is
-// pinned HERE is that 108 calls it and that its result feeds `alreadyUpToDate`.
-const chartSeed = vi.hoisted(() => ({ created: 0, calls: [] as (string | undefined)[] }))
+// than nulled) is tested in `seed/gl-account-chart.test.ts`. What is pinned HERE
+// is that 108 calls it and that BOTH halves of its result — accounts created and
+// `GlRoleAssignment` rows written — feed `alreadyUpToDate`. A pass that seeded
+// only the assignments still changed the org.
+const chartSeed = vi.hoisted(() => ({
+  created: 0,
+  rolesAssigned: 0,
+  calls: [] as (string | undefined)[],
+}))
 // `rematchBill` re-runs the three-way match through `UnifiedCrudHandler` and the
 // org cache — the same reason the chart seed is stubbed. Its own behaviour is
 // tested in `purchasing/__tests__/match-hook.test.ts`; what is pinned HERE is
@@ -125,7 +130,7 @@ vi.mock('../../gl-account-chart', () => ({
     defId: string | undefined
   ) => {
     chartSeed.calls.push(defId)
-    return { created: chartSeed.created, skipped: 0 }
+    return { created: chartSeed.created, skipped: 0, rolesAssigned: chartSeed.rolesAssigned }
   },
 }))
 
@@ -348,25 +353,29 @@ const ALL_DEF_REGISTRIES: Record<string, Record<string, ResourceField>> = {
 }
 
 /**
- * The three ways a stored option list goes stale:
+ * The two ways a stored option list goes stale:
  *
  *   vendor_bill_status     a value was ADDED to the enum — twice, and the second
  *                          time (`awaiting_receipt`) in the MIDDLE of the list,
  *                          which is why the refresh rewrites the whole array
  *                          rather than appending
  *   purchase_order_status  two values were REMOVED (they became their own fields)
- *   gl_account_role        the closed role vocabulary grows as posting builders
- *                          are written, always into the middle of a grouped list
  *
- * All three are invisible to `ensureCustomFields`, which skips a field that
- * already exists — which is the whole reason the refresh step exists.
+ * Both are invisible to `ensureCustomFields`, which skips a field that already
+ * exists — which is the whole reason the refresh step exists.
+ *
+ * ✅ `gl_account_role` was the third fixture here, and it is why the trap is
+ * worth restating: a CLOSED vocabulary that grows as builders are written is
+ * exactly the shape `ensureCustomFields` cannot maintain. Decision `G19` removed
+ * the field — roles live in the `GlRoleAssignment` table, whose `role` column is
+ * plain `text` — so that vocabulary now grows with a one-line constant edit and
+ * no options migration at all.
  */
 const STALE_STATUS_FIXTURES: Record<
-  'vendor_bill_status' | 'purchase_order_status' | 'gl_account_role',
+  'vendor_bill_status' | 'purchase_order_status',
   FieldOptionItem[]
 > = {
   vendor_bill_status: VendorBillStatus.values.filter((v) => v.value !== 'awaiting_receipt'),
-  gl_account_role: GlAccountRole.values.filter((v) => v.value !== 'ppv'),
   purchase_order_status: [
     ...PurchaseOrderStatus.values.slice(0, 2),
     { value: 'partially_received', label: 'Partially received', color: 'amber' },
@@ -944,12 +953,10 @@ describe('vendor_bill field shapes the plan is explicit about', () => {
     expect(source).toContain('refreshSelectOptions')
     expect(source).toContain('VENDOR_BILL_FIELDS.status')
     expect(source).toContain('PURCHASE_ORDER_FIELDS.status')
-    // `gl_account_role` is new in this pass, so `ensureCustomFields` writes its
-    // twelve options — but the role vocabulary is CLOSED and grows as posting
-    // builders are written, and every addition lands in the MIDDLE of a grouped
-    // list. It joins the refresh now so the next one is an enum edit rather than
-    // a migration nobody remembers to write.
-    expect(source).toContain('GL_ACCOUNT_FIELDS.role')
+    // 🛑 And NOT `GL_ACCOUNT_FIELDS.role` — decision `G19` removed that field
+    // entirely. Pinned negatively so a future edit that reflexively re-adds a
+    // role SELECT to the chart has to argue with a test.
+    expect(source).not.toContain('GL_ACCOUNT_FIELDS.role')
     // And the refresh must count toward "did something", or a run that only
     // rewrote options would report alreadyUpToDate and skip the cache flush that
     // makes the change visible to every read path.
@@ -1461,15 +1468,13 @@ describe('migration 108 idempotency', () => {
   // and the database disagreeing about what values exist.
   //
   // Both directions are covered: `vendor_bill_status` GAINED `partially_paid`
-  // and then `awaiting_receipt`, `purchase_order_status` LOST
-  // `partially_received` / `received` to the two derived fields (07 §3.3), and
-  // `gl_account_role` is the closed vocabulary that grows as builders are
-  // written. Narrowing is the one that matters more — a stored option nobody
-  // removed keeps rendering a value the type union no longer has.
+  // and then `awaiting_receipt`; `purchase_order_status` LOST
+  // `partially_received` / `received` to the two derived fields (07 §3.3).
+  // Narrowing is the one that matters more — a stored option nobody removed
+  // keeps rendering a value the type union no longer has.
   it.each([
     'vendor_bill_status',
     'purchase_order_status',
-    'gl_account_role',
   ] as const)('rewrites a stale %s option list, and says it did', async (systemAttribute) => {
     const writes: string[] = []
     const db = migratedOrgDb(writes, { staleStatus: systemAttribute })
@@ -1493,6 +1498,12 @@ describe('migration 108 idempotency', () => {
   // with every field EXCEPT the role, nothing threw, and the migration logged
   // "applied". A chart with no roles makes the posting resolver fail closed on
   // every entry.
+  //
+  // ✅ That exact field is gone (decision `G19`), so the 2026-08 incident cannot
+  // recur — but the ORDERING rule is unchanged and still load-bearing: the chart
+  // seed writes `gl_account_code` / `_name` / `_type` / `_is_active` through the
+  // same handler, and on a fresh org all four are created moments earlier in
+  // this very pass.
   it('flushes the org cache BEFORE anything that writes a record', () => {
     const here = fileURLToPath(new URL('.', import.meta.url))
     const source = readFileSync(join(here, '108-purchasing.ts'), 'utf8')
@@ -1508,7 +1519,7 @@ describe('migration 108 idempotency', () => {
   // `gl_account` list with nothing in it.
   it('reports work when the chart of accounts was seeded', async () => {
     const db = migratedOrgDb([])
-    chartSeed.created = 28
+    chartSeed.created = 29
     try {
       const result = await migration108Purchasing.up(db, 'org-chart')
       expect(result.alreadyUpToDate).toBe(false)
@@ -1516,6 +1527,21 @@ describe('migration 108 idempotency', () => {
       expect(chartSeed.calls.at(-1)).toBe('def-gl_account')
     } finally {
       chartSeed.created = 0
+    }
+  })
+
+  // The other half of the seed, and the half that is easy to forget: an org
+  // whose 29 accounts already exist but whose `GlRoleAssignment` rows do not
+  // still changed. Reporting `alreadyUpToDate` there would skip the org-cache
+  // flush and leave the role resolver failing closed on every posting.
+  it('reports work when only the role assignments were written', async () => {
+    const db = migratedOrgDb([])
+    chartSeed.rolesAssigned = 13
+    try {
+      const result = await migration108Purchasing.up(db, 'org-roles')
+      expect(result.alreadyUpToDate).toBe(false)
+    } finally {
+      chartSeed.rolesAssigned = 0
     }
   })
 

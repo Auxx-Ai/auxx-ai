@@ -63,9 +63,9 @@ export interface DefaultChartAccount {
  * **It is not a complete chart.** The source (`plans/money/accrual-accounting-plan.html`
  * §2) is titled *"Accounts to add in QuickBooks"* - it presumes an existing
  * book with bank accounts, equity, retained earnings, operating expenses and the
- * rest already in place. Four accounts the posting builders need are added on
- * top of it (`1000`, `2000`, `2160`, `2170`), because the accrual plan's table
- * does not list them. There are no equity accounts here at all, deliberately:
+ * rest already in place. Five accounts the posting builders need are added on
+ * top of it (`1000`, `2000`, `2160`, `2170`, `5095`), because the accrual plan's
+ * table does not list them. There are no equity accounts here at all, deliberately:
  * nothing auxx posts touches equity, and inventing an owner's-equity numbering
  * for someone else's book would be a guess with no purpose.
  *
@@ -172,8 +172,14 @@ export const DEFAULT_CHART_OF_ACCOUNTS: readonly DefaultChartAccount[] = [
     role: 'payroll_clearing',
   },
   {
+    // BROADER than "carrier freight", deliberately (`G17`). A customs broker's
+    // service charge is attributable to a shipment, so it is landed cost and it
+    // clears here — NOT through 2170, which is duty owed to the government. The
+    // internal role stays `freight_accrual`: `G17` explicitly permits the name
+    // and the role to differ, and renaming a role is a vocabulary migration
+    // across the ledger for no behavioural gain.
     code: '2150',
-    name: 'Freight Accrual',
+    name: 'Inbound Freight & Brokerage Accrual',
     accountType: GlAccountType.LIABILITY,
     role: 'freight_accrual',
   },
@@ -187,10 +193,18 @@ export const DEFAULT_CHART_OF_ACCOUNTS: readonly DefaultChartAccount[] = [
     role: 'grni',
   },
   {
-    // Not in the accrual plan's table. Only ever carries a balance when a
-    // receipt had a non-zero tariff portion; build plan phase 0.1 asks whether
-    // `tariffRate` is ever non-zero at all. An org that never imports can
-    // deactivate it and no posting will ever reference it.
+    // Not in the accrual plan's table. Tariffs and customs duties owed
+    // SEPARATELY TO THE U.S. GOVERNMENT.
+    //
+    // 🛑 NOT the customs broker's share. This file, `build-entry.ts` and the
+    // (now deleted) registry enum all used to say it held "the customs broker's
+    // share"; all three were wrong. A broker sells a service on a shipment, so
+    // their charge is inbound freight's problem and clears through 2150.
+    //
+    // Only ever carries a balance when a receipt had a non-zero tariff portion;
+    // build plan phase 0.1 asks whether `tariffRate` is ever non-zero at all. An
+    // org that never imports can deactivate it and no posting will ever
+    // reference it.
     code: '2170',
     name: 'Duties Accrual',
     accountType: GlAccountType.LIABILITY,
@@ -274,6 +288,20 @@ export const DEFAULT_CHART_OF_ACCOUNTS: readonly DefaultChartAccount[] = [
     name: 'Inventory / Purchase Price Variance',
     accountType: GlAccountType.EXPENSE,
     role: 'ppv',
+  },
+  {
+    // 🛑 A SIBLING of 5090, not a merge with it (`G12`). 5090 answers "the
+    // vendor billed something other than what we accrued"; this one answers
+    // "the shelf disagrees with the ledger". Different owner, different remedy,
+    // different trend — one account holding both answers neither, and the L1
+    // month-end assertion would absorb count variance into the COGS plug, which
+    // is precisely the separation `G12` exists to get.
+    //
+    // Numbered 5095 so the two read as a pair in a sorted chart.
+    code: '5095',
+    name: 'Inventory Count Variance',
+    accountType: GlAccountType.EXPENSE,
+    role: 'inventory_count_variance',
   },
 
   // ── Operating expenses ──────────────────────────────────────────────────

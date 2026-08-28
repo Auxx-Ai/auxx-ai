@@ -411,6 +411,68 @@ export async function readPartKind(
   )
 }
 
+/**
+ * One part's frozen standard cost and its display name, in a single query.
+ *
+ * 🛑 **Returns `standardCost: null` rather than a fallback.** The one number
+ * that must never substitute for it is `part_cost`: that is LIVE REPLACEMENT
+ * cost, rewritten on every vendor-price change, so valuing a movement with it
+ * would silently restate the ledger the next time a supplier sent a price list.
+ * Only `part_standard_cost` values a movement (architecture guide section 11,
+ * rule 2). A caller with no standard cost must refuse, not guess.
+ *
+ * The `displayName` travels with it because every caller that has to refuse
+ * needs to name the part — "this part has no standard cost" is unactionable
+ * when a form is showing a name and the error is showing a cuid.
+ */
+export async function readPartStandardCost(
+  db: Database,
+  organizationId: string,
+  partInstanceId: string
+): Promise<Result<{ standardCost: number | null; displayName: string | null }, Error>> {
+  return guard(
+    async () => {
+      const [instance] = await db
+        .select({ displayName: schema.EntityInstance.displayName })
+        .from(schema.EntityInstance)
+        .where(
+          and(
+            eq(schema.EntityInstance.organizationId, organizationId),
+            eq(schema.EntityInstance.id, partInstanceId)
+          )
+        )
+        .limit(1)
+
+      const fields = await getOrgCache()
+        .from(organizationId, 'customFields')
+        .bySystemAttributes(['part_standard_cost'])
+      const standardField = fields.part_standard_cost
+      if (!standardField) {
+        return { standardCost: null, displayName: instance?.displayName ?? null }
+      }
+
+      const [row] = await db
+        .select({ valueNumber: schema.FieldValue.valueNumber })
+        .from(schema.FieldValue)
+        .where(
+          and(
+            eq(schema.FieldValue.organizationId, organizationId),
+            eq(schema.FieldValue.entityId, partInstanceId),
+            eq(schema.FieldValue.fieldId, standardField.id)
+          )
+        )
+        .limit(1)
+
+      return {
+        standardCost: row?.valueNumber ?? null,
+        displayName: instance?.displayName ?? null,
+      }
+    },
+    'Failed to read part standard cost',
+    { organizationId, partInstanceId }
+  )
+}
+
 /** Read several numeric field values for one instance in a single query. */
 async function readNumbersByFieldId(
   db: Database,

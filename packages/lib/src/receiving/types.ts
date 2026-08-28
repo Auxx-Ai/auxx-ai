@@ -93,10 +93,10 @@ export interface MovementRecord {
   /**
    * Landed cost per unit, whole minor units.
    *
-   * `null` on exactly one shape of row: a NEGATIVE stock adjustment, which
-   * consumes value the ledger already carries rather than creating any. See
-   * {@link AdjustStockInput.unitCost} — every other writer in this module
-   * refuses to produce a row without a cost.
+   * Nullable in the TYPE only because pre-migration rows exist; every writer in
+   * this module now refuses to produce a row without a cost, INCLUDING a
+   * negative stock adjustment — decision `G12` values a removal at the part's
+   * frozen `part_standard_cost` exactly as it values an addition.
    */
   unitCost: number | null
   /** `round(unitCost x quantity)`, signed like `quantity`; `null` with the cost. */
@@ -104,7 +104,10 @@ export interface MovementRecord {
   /** Raw supplier price per unit, whole minor units; `null` when not known. */
   vendorUnitPrice: number | null
   vendorPartId: string | null
-  /** The inventory account CODE ('1310'), never a provider id; `null` with the cost. */
+  /**
+   * The inventory account ROLE ('inventory_raw_materials'), never an account
+   * code and never a provider id (decision `G8` — the field name predates it).
+   */
   glAccount: string | null
   occurredAt: Date
   purchaseOrderLineId: string | null
@@ -119,6 +122,12 @@ export interface MovementRecord {
  * with a supplier and a packing slip; a reversal undoes a specific movement and
  * carries that movement's frozen cost. An adjustment has neither — it is the
  * answer to "we counted, and there are three more than we thought".
+ *
+ * 🛑 **There is no `unitCost` here, and there must not be one.** Decision `G12`
+ * makes an adjustment carry the part's own frozen `part_standard_cost`, read by
+ * the SERVER, in both directions. An adjustment has no supplier row, no purchase
+ * order and no packing slip, so there is no ACTUAL for a caller to state — a
+ * typed number would make the ledger's valuation depend on who was counting.
  */
 export interface AdjustStockInput {
   /** `EntityInstance.id` of the `part` being adjusted. */
@@ -130,22 +139,6 @@ export interface AdjustStockInput {
    * in an append-only ledger that changes nothing and can never be removed.
    */
   quantity: number
-  /**
-   * What one added unit is worth, minor units. REQUIRED when {@link quantity}
-   * is positive, and ignored when it is negative.
-   *
-   * 🛑 **The asymmetry is the contract, not an oversight.** A positive
-   * adjustment CREATES inventory value out of nothing and something has to say
-   * what that value is; writing it at zero understates COGS and drags the
-   * part's average cost toward zero, which is the defect section 1.5 of the
-   * plan documents. A negative adjustment CONSUMES value the ledger already
-   * carries, and answering "at what cost" correctly needs a costing method
-   * (FIFO, moving average, specific identification) that this system does not
-   * have yet. Guessing one here would freeze the guess onto an `updatable:
-   * false` row forever, so a removal is written with no cost at all until that
-   * method exists.
-   */
-  unitCost?: number
   /**
    * The ACCOUNTING date. Defaults to now.
    *

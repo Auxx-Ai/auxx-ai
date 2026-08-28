@@ -9,6 +9,7 @@
 // a client-reference proxy there. See docs/lib-module-guide.md section 7.
 
 export {
+  ACCOUNT_ROLE_LABELS,
   ACCOUNT_ROLES,
   type AccountRole,
   type BuildEntryInput,
@@ -16,12 +17,20 @@ export {
   buildReceiptEntry,
   buildVendorBillEntry,
   type ReceiptEntryInput,
+  ROLE_ACCOUNT_TYPES,
   type VendorBillEntryInput,
 } from './build-entry'
 export {
   DEFAULT_CHART_OF_ACCOUNTS,
   type DefaultChartAccount,
+  type GlAccountTypeValue,
 } from './default-chart'
+export {
+  buildDocNumber,
+  DOC_NUMBER_MAX_LENGTH,
+  DOC_NUMBER_PREFIX,
+  type DocNumberInput,
+} from './doc-number'
 export {
   assertPeriodOpen,
   compareMonths,

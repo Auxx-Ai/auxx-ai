@@ -610,10 +610,10 @@ export const SYSTEM_ATTRIBUTES = [
   'gl_account_code',
   'gl_account_name',
   'gl_account_type',
-  // G8: which auxx posting ROLE this account fulfils. Optional and unique per
-  // org — builders emit a role, the org maps its own account to it, so a
-  // renumbered chart never breaks posting.
-  'gl_account_role',
+  // 🛑 There is NO `gl_account_role` here. Decision `G19` replaced that field
+  // with the `GlRoleAssignment` table: a role must resolve to exactly one
+  // account (enforced), but an account may serve many roles (permitted), and a
+  // `unique: true` SINGLE_SELECT enforces the constraint AND its converse.
   'gl_account_is_active',
 
   // ─── Build / standard cost (plans/products/build/01-build-plan.md §1) ──

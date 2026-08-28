@@ -90,6 +90,8 @@ export * from './free-tool-lead'
 // The general ledger (decision G6) — plans/money/design/gl-posting-tables.md
 export * from './gl-posting'
 export * from './gl-posting-line'
+// role -> the org's own gl_account (decision G19)
+export * from './gl-role-assignment'
 export * from './import-job'
 export * from './import-job-mappable-property'
 export * from './import-job-property'

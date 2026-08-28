@@ -60,11 +60,11 @@ export const GlPostingLine = pgTable(
      * `'inventory_raw_materials'`, `'ppv'` — which `accountCode` was resolved
      * from (decision G8). Nullable
      * because a manual or legacy entry may name a code directly, and because the
-     * role vocabulary is `GlAccountRole` in
-     * `packages/lib/src/resources/registry/enum-values.ts`, not here: this
-     * column STORES a role, it does not define the set. Plain `text` rather than
-     * a `pgEnum` on purpose — a second copy of that vocabulary is the thing that
-     * would drift.
+     * role vocabulary is `ACCOUNT_ROLES` in
+     * `packages/lib/src/postings/build-entry.ts`, not here: this column STORES a
+     * role, it does not define the set. Plain `text` rather than a `pgEnum` on
+     * purpose — a second copy of that vocabulary is the thing that would drift,
+     * and `GlRoleAssignment.role` makes the same call for the same reason.
      *
      * Recorded on the line for the same reason `accountName` is: once the chart
      * is org-editable (G7) the number stops carrying the meaning, and without the

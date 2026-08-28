@@ -17,7 +17,8 @@
 // scope predicates that apply to every other movement list must apply here too.
 
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
-import { GlAccountRole, StockMovementType } from '@auxx/lib/resources/client'
+import { ACCOUNT_ROLE_LABELS } from '@auxx/lib/postings/client'
+import { StockMovementType } from '@auxx/lib/resources/client'
 import type { ResourceFieldId } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
 import { Badge, type Variant } from '@auxx/ui/components/badge'
@@ -44,10 +45,13 @@ const TYPE_LABEL: Record<string, string> = Object.fromEntries(
  * number frozen onto an append-only movement would be silently reinterpreted by
  * a renumber. The field name predates the decision and cannot be changed
  * without reshaping a materialised field in every org.
+ *
+ * The labels come from `postings/client` rather than the resource registry:
+ * decision `G19` deleted the `GlAccountRole` registry enum along with the
+ * `gl_account.role` field it existed to populate, leaving `ACCOUNT_ROLES` and
+ * its label map as the single home of the vocabulary.
  */
-const INVENTORY_ROLE_LABEL: Record<string, string> = Object.fromEntries(
-  GlAccountRole.values.map((value) => [value.value, value.label])
-)
+const INVENTORY_ROLE_LABEL: Record<string, string> = ACCOUNT_ROLE_LABELS
 
 const MOVEMENT_ATTRIBUTES = [
   // The part IS a movement row's identity here — a build's ledger is read as

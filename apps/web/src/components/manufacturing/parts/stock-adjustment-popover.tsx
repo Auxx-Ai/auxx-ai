@@ -9,7 +9,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { BaseType } from '~/components/workflow/types'
-import { useSettings } from '~/hooks/use-settings'
 import { api } from '~/trpc/react'
 
 type Direction = 'add' | 'remove'
@@ -67,11 +66,21 @@ interface StockAdjustmentPopoverProps {
  * drags the part's average cost toward zero
  * (plans/purchasing/05-receiving-cost-and-corrections.md §1.5).
  *
- * That is why the Unit cost input below appears only when the adjustment ADDS
- * stock. Adding creates inventory value and something has to say what it is
- * worth; removing consumes value the ledger already carries, and valuing a
- * removal properly needs a costing method this system does not have yet. So a
- * removal is exactly as unencumbered as it has always been.
+ * 🛑 **There is no Unit cost input, and there must not be one.** There used to
+ * be, shown only when the adjustment ADDED stock, on the argument that adding
+ * creates inventory value and somebody has to say what it is worth. Decision
+ * `G12` settles that differently and in both directions: an adjustment is valued
+ * at the part's own frozen `part_standard_cost`, read by the SERVER. A typed
+ * number made the ledger's valuation depend on who happened to be counting, and
+ * a removal that carried no cost at all was invisible to every period total that
+ * sums the ledger — so the L1 month-end assertion absorbed shrinkage into the
+ * COGS plug, which is exactly the separation `G12` exists to get.
+ *
+ * A part with NO standard cost is refused by `adjustStock`, naming the part and
+ * saying to roll standard cost first. That refusal surfaces here as the error
+ * toast; it is deliberately not duplicated as a disabled button, because this
+ * form does not know the part's standard cost and a guess would be worse than
+ * the server's sentence.
  */
 export function StockAdjustmentPopover({
   partId,
@@ -83,16 +92,8 @@ export function StockAdjustmentPopover({
   const [direction, setDirection] = useState<Direction>('add')
   const [quantityMode, setQuantityMode] = useState<QuantityMode>('adjust_by')
   const [quantity, setQuantity] = useState<number | null>(null)
-  const [unitCost, setUnitCost] = useState<number | null>(null)
-  // Whether the cost shown is the person's own number rather than the prefill.
-  // Without this, the prefill effect would quietly overwrite a typed cost once
-  // the query resolved.
-  const [costEdited, setCostEdited] = useState(false)
   const [reason, setReason] = useState('')
   const [reference, setReference] = useState('')
-
-  const { getSetting } = useSettings({})
-  const currencyCode = (getSetting('organization.currency') as string | null) ?? 'USD'
 
   // Reset form when popover opens
   useEffect(() => {
@@ -100,38 +101,21 @@ export function StockAdjustmentPopover({
       setDirection('add')
       setQuantityMode('adjust_by')
       setQuantity(null)
-      setUnitCost(null)
-      setCostEdited(false)
       setReason('')
       setReference('')
     }
   }, [open])
 
   /**
-   * The signed delta this form will send — the one number both the cost input's
-   * visibility and the submit guard are derived from, so they can never disagree
-   * about which direction the adjustment goes.
+   * The signed delta this form will send — one number, derived once, so the
+   * "Set to" preview and the submit guard can never disagree about which
+   * direction the adjustment goes.
    */
   const delta = useMemo(() => {
     const qty = quantity ?? 0
     if (quantityMode === 'set_to') return qty - currentQoH
     return direction === 'remove' ? -Math.abs(qty) : Math.abs(qty)
   }, [quantity, quantityMode, direction, currentQoH])
-
-  const isAdding = delta > 0
-
-  // What we last actually paid for this part — the honest default for "what are
-  // the added units worth". Absent history simply leaves the field empty; it is
-  // a prefill and never a floor.
-  const lastCost = api.purchasing.lastReceiptCost.useQuery(
-    { partInstanceId: partId },
-    { enabled: open }
-  )
-
-  useEffect(() => {
-    if (!open || costEdited) return
-    setUnitCost(lastCost.data ?? null)
-  }, [open, costEdited, lastCost.data])
 
   const adjustStock = api.purchasing.adjustStock.useMutation({
     onError: (error) => {
@@ -142,15 +126,17 @@ export function StockAdjustmentPopover({
   const isPending = adjustStock.isPending
 
   /**
-   * The friendly duplicate of the server guard, not the guard itself.
+   * The friendly duplicate of the ONE server guard this form can honestly
+   * duplicate, not the guard itself.
    *
-   * `adjustStock` refuses a zero delta and refuses an addition that does not
-   * round to a positive cost; both are real `AuxxError`s. Disabling the button
-   * is a better answer than a toast, but it must never be the only check —
-   * `receipt-input.ts` states the same rule for the receive form.
+   * `adjustStock` refuses a zero delta, and it refuses a part with no standard
+   * cost. Only the first is knowable here — the browser does not read
+   * `part_standard_cost` — so the second arrives as an error toast naming the
+   * part, which is a better answer than a button disabled for a reason the form
+   * would have to guess at. `receipt-input.ts` states the same rule about a
+   * client check never being the only one.
    */
-  const missingCost = isAdding && (unitCost == null || unitCost <= 0)
-  const canSubmit = delta !== 0 && !missingCost
+  const canSubmit = delta !== 0
 
   const handleSubmit = useCallback(async () => {
     if (!canSubmit) return
@@ -158,7 +144,6 @@ export function StockAdjustmentPopover({
       await adjustStock.mutateAsync({
         partId,
         quantity: delta,
-        ...(delta > 0 && unitCost != null ? { unitCost } : {}),
         ...(reason ? { reason } : {}),
         ...(reference ? { reference } : {}),
       })
@@ -167,16 +152,12 @@ export function StockAdjustmentPopover({
     } catch {
       // onError above already surfaced the toast.
     }
-  }, [canSubmit, adjustStock, partId, delta, unitCost, reason, reference, onSuccess])
+  }, [canSubmit, adjustStock, partId, delta, reason, reference, onSuccess])
 
   const isSetToMode = quantityMode === 'set_to'
 
   const directionFieldOptions = useMemo(() => ({ options: DIRECTION_OPTIONS }), [])
   const quantityModeFieldOptions = useMemo(() => ({ options: QUANTITY_MODE_OPTIONS }), [])
-  const currencyFieldOptions = useMemo(
-    () => ({ currencyCode, decimals: 2, useGrouping: true }),
-    [currencyCode]
-  )
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -239,31 +220,9 @@ export function StockAdjustmentPopover({
               )}
             </FieldPanelRow>
 
-            {/* Unit cost — additions only. See the note on this component. */}
-            {isAdding && (
-              <FieldPanelRow
-                title='Unit cost'
-                type={BaseType.CURRENCY}
-                showIcon
-                isRequired
-                description='What one added unit is worth'>
-                <FieldInputAdapter
-                  fieldType={FieldType.CURRENCY}
-                  fieldOptions={currencyFieldOptions}
-                  value={unitCost}
-                  onChange={(val) => {
-                    setUnitCost((val as number) ?? null)
-                    setCostEdited(true)
-                  }}
-                  disabled={isPending}
-                />
-                <p className='text-xs text-muted-foreground mt-1'>
-                  {missingCost
-                    ? 'Adding stock creates inventory value, so it cannot be added at no cost.'
-                    : 'Prefilled from the last receipt of this part. Overwrite it with what these units are worth.'}
-                </p>
-              </FieldPanelRow>
-            )}
+            {/* No cost input. See the note on this component: `G12` values an
+                adjustment at the part's own frozen standard cost, server-side,
+                in both directions. */}
 
             {/* Reason */}
             <FieldPanelRow title='Reason' type={BaseType.STRING} showIcon>

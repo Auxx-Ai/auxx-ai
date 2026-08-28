@@ -421,8 +421,8 @@ one until a year of margins is wrong.
 | --- | --- |
 | `unitCost` | Standard cost per unit, frozen at write time, integer cents. |
 | `extendedCost` | `round(unitCost × quantity)`, **signed like `quantity`**, so a period rollup is a plain `SUM`. |
-| `costBasis` | `standard` \| `actual`. Always `standard` today. |
-| `glAccount` | `1310` / `1330`, resolved from `partKind` **at write time**. |
+| `costBasis` | `standard` \| `actual`. `receiveStock` writes `actual` (a real vendor price); `adjustStock` and `completeBuild` write `standard`. |
+| `glAccount` | An inventory **ROLE** (`inventory_raw_materials` / `inventory_finished_goods`), resolved from `partKind` **at write time**. Never a code — see §9.1. |
 | `qtyPerUnit` | The as-built BOM snapshot on a `build_consume` row. NULL means the component was **off-BOM** — a floor substitution. |
 
 **Why store both `unitCost` and `extendedCost`:** `unitCost` is what a human audits;
@@ -434,6 +434,25 @@ value is the classification *as of the movement*.
 
 **Historical movements have NULL costs and stay NULL.** They predate the regime and are not
 postable; any `listUnpostedMovements` must filter `unitCost IS NOT NULL`.
+
+#### An `adjust` is valued at standard cost, in BOTH directions (`G12`)
+
+🛑 `adjustStock` used to be asymmetric, and both halves were wrong. A **positive** adjustment
+demanded a caller-supplied `unitCost` and stamped `cost_basis: actual` — but an adjustment has no
+supplier row, no purchase order and no packing slip, so there is no *actual* to record, and asking
+a person to type one made the ledger's valuation depend on who was counting. A **negative**
+adjustment stamped **no cost at all**, which is the worse of the two: a shrinkage carrying no cost
+is invisible to every period total that sums the ledger, so the L1 month-end assertion absorbs it
+into the COGS plug — precisely the separation `G12` exists to get (`5095 Inventory Count Variance`
+is a sibling of `5090 PPV`, not a merge with it).
+
+Both directions now carry the part's frozen `part_standard_cost`, read by the **server**, with
+`cost_basis: standard` and the inventory role stamped. A part with **no** standard cost fails
+**closed, naming the part**: it must not fall back to `part_cost` (live replacement cost — §7.1
+rule 2) and must not write zero. The popover's Unit cost input is gone.
+
+⚠️ Rows written before this carry the old costing and **cannot be back-filled** — every field is
+`updatable: false`. A period spanning the change holds both shapes.
 
 ### 7.5 Landed cost and the accrual split
 
@@ -448,9 +467,18 @@ own invoice:
 ```
 Dr 1310 Inventory              landed
   Cr 2160 GRNI                 vendorUnitPrice × qty   ← clears against the vendor bill
-  Cr 2150 Freight Accrual      the shipping portion    ← clears against the freight invoice
+  Cr 2150 Inbound Freight &    the shipping portion    ← clears against the freight invoice,
+     Brokerage Accrual                                    and against the customs BROKER's
+                                                          service charge (G17)
   Cr 2170 Duties Accrual       the tariff portion      ← only if tariffRate is ever non-zero
 ```
+
+🛑 **`2170` is duty owed separately to the U.S. government — NOT the customs broker's share.**
+Three files used to say otherwise and all three were wrong. A broker sells a service on a
+shipment, so their charge is inbound freight's problem and clears through the broadened `2150`
+(`G17`). The internal role stays `freight_accrual`: `G17` explicitly permits the account name and
+the role name to differ, and renaming a role is a vocabulary migration across the ledger for no
+behavioural gain.
 
 ---
 
@@ -506,8 +534,11 @@ build's movements from exploding their own BOM. Update the reasoning, not the co
   `INSERT … ON CONFLICT DO NOTHING` claim. Amounts are `bigint` **integer minor units**;
   `GlPostingLine` has no `updatedAt` and no update path, so its immutability is structural rather
   than advisory. **0 rows** — nothing writes them yet.
-- `gl_account` **entity**, seeded and invisible: a 28-account default chart in every org, each
-  account optionally carrying an auxx posting **role**.
+- **`GlRoleAssignment` Drizzle TABLE** (migration `0353`): `(organizationId, role) -> gl_account`,
+  with a Postgres unique index on the pair. This is where a posting role is mapped, and
+  `postings/resolve-roles.ts` is the single door that reads it.
+- `gl_account` **entity**, seeded and invisible: a 29-account default chart in every org. The
+  account itself carries **no role** — see the `G19` note below.
   🛑 **`gl_account` is the only one of the three that is still an entity, and that is deliberate.**
   `RecordIdentity` is keyed on an `EntityInstance` and has **no other addressing mode**, and P2
   hangs the provider's account id there. The posting defs became tables because their whole
@@ -525,20 +556,57 @@ build's movements from exploding their own BOM. Update the reasoning, not the co
   provider account id. Provider ids live in `RecordIdentity`, hung off `gl_account` by the app
   that owns them. This is the whole cash value of "the provider is an exporter" (P2).
 
-#### The chart of accounts is seeded, and a posting names a ROLE (`G7` / `G8`)
+#### The chart of accounts is seeded, and a posting names a ROLE (`G7` / `G8` / `G19`)
 
-`postings/default-chart.ts` is a **default the org edits**, not a standard: 28 accounts, seeded
-into every org by entity migration 108 (`seed/gl-account-chart.ts`, idempotent on `code`). Twelve
-of them carry a `gl_account_role`; the other sixteen are ordinary bookkeeping auxx never posts to,
-and a role-less account is the normal case.
+`postings/default-chart.ts` is a **default the org edits**, not a standard: 29 accounts, seeded
+into every org by entity migration 108 (`seed/gl-account-chart.ts`, idempotent on `code`).
+Thirteen posting roles are mapped onto thirteen of those accounts; the rest are ordinary
+bookkeeping auxx never posts to, and a role-less account is the normal case.
 
 🛑 **Because the chart is editable, no code may name a number.** A builder emits
 `ACCOUNT_ROLES.GRNI` and a resolver reads *this* org's chart to learn that GRNI is `2160` here and
 `2155` at the customer who renumbered it. The chain is `role -> the org's gl_account -> code ->
 the provider's id`, and only the last hop belongs to a provider adapter. The resolver must fail
 **closed** on zero or more than one match — never "take the first", which is the one behaviour
-that would put money in an arbitrary account. That is why the seed is a single sequential writer
-and why `gl_account_role` is `unique: true`.
+that would put money in an arbitrary account.
+
+🛑 **The mapping is a TABLE, not a field on `gl_account` (`G19`).** There used to be a
+`gl_account_role` SINGLE_SELECT with `unique: true`. It is gone, and the reason is directional:
+each **role** must resolve to exactly one account (required, enforced), but each **account** may
+serve **many** roles (permitted, ordinary — an org combining DTC and dealer revenue). A
+`unique: true` select enforces the constraint *and its converse*, so it rejects the exact case
+`G19` names; a MULTI_SELECT cannot express the constraint at all, because "each role appears on at
+most one account" is set-membership uniqueness *across rows* and `FieldValue` carries only the PK
+and `(entityId, fieldId, sortKey)` — `G6`'s argument verbatim.
+`uniqueIndex('GlRoleAssignment_org_role_key')` is the shape, in one line.
+
+`GlRoleAssignment` carries `source` (`'seed' | 'human' | 'suggested'`), `confirmedAt` /
+`confirmedByUserId`, and `markedUnused` — `G19`'s wizard has to render "we chose this for you"
+differently from "you chose this", and an ABSENT row ("nobody has looked yet") is different from
+`markedUnused` ("we don't use this"). There is **no FK on `glAccountId`**, the same call
+`GlPostingLine.accountCode` makes: cascade destroys config silently, restrict blocks a bookkeeper
+from archiving an account behind an error that cannot explain itself, and the resolver revalidates
+existence, active status and type compatibility on **every** read anyway.
+
+`postings/resolve-roles.ts` is that resolver, and it is a **batch**: a month-end entry naming six
+roles fails **once** naming six, not six times naming one. It fails closed on five distinct
+conditions with five distinct messages (no assignment / `markedUnused` / account missing or
+archived / inactive / `accountType` incompatible with the role). Type compatibility comes from
+`ROLE_ACCOUNT_TYPES` in `build-entry.ts` — **declared, never derived**, because a derivation from
+the chart it is checking is tautological.
+
+⚠️ **`resolveRoles` is deliberately NOT cached.** The invalidation doors it would need do not
+exist: `gl_account` is an `EntityInstance`, and `INVALIDATION_GRAPH` has no per-entity-type record
+event — only `entity-def.*` and `custom-field.*`, neither of which fires when a bookkeeper renames
+or archives an *account*. A key wired to the doors that do exist is correct for an hour and then
+posts to the account somebody renamed, and it fails **open** because the entry still balances.
+Cache it when the `G19` wizard gives assignment writes an event of their own, and wire
+`gl_account` create/update/archive at the same time or not at all.
+
+`ACCOUNT_ROLES` (13 roles, `postings/build-entry.ts`) is now the **only** copy of the role
+vocabulary — the `GlAccountRole` registry enum existed solely to populate the retired select field
+and went with it. `ROLE_ACCOUNT_TYPES` and `ACCOUNT_ROLE_LABELS` sit beside it and are pinned to it
+by exact-key equality.
 
 ⚠️ **`stock_movement.glAccount` stores a ROLE, not a code**, despite its name and its
 `stock_movement_gl_account` system attribute (both predate `G8` and cannot be renamed without
@@ -686,10 +754,17 @@ value whose field it cannot resolve** rather than failing. Entity migration 108 
 the end of `up()`. Every create ran against a `customFields` snapshot taken before the field
 existed: **784 accounts across 28 orgs, every column written except the role**, nothing threw, and
 the migration logged `applied`. A chart with no roles makes the posting resolver fail closed on
-every entry. The flush now sits between the structure work and the record work,
-`seedDefaultChartOfAccounts` re-reads what it wrote and throws if a role did not land, and
+every entry. The flush now sits between the structure work and the record work, and
 `108-purchasing.test.ts` pins the ordering by source position. Verify a migration by querying
 Postgres, never by reading its log line.
+
+✅ **That specific failure is now structurally unavailable, which is a real and easy-to-miss win
+of the `G19` table route.** A role is written as a plain Drizzle insert into `GlRoleAssignment` —
+no field resolution, no org cache, nothing for the handler to drop — so the `assertRolesLanded`
+guard that used to make the drop loud has been deleted rather than kept. The ORDERING rule above
+is unchanged and still load-bearing: the chart seed still writes `gl_account_code` / `_name` /
+`_type` / `_is_active` through the same handler, and on a fresh org all four are created moments
+earlier in the same pass.
 
 **A migration that changes the MEANING of a stored derived value owns re-deriving it.** `P24` did
 not add an option to `vendor_bill_status`; it changed what the stored value means — billed-but-not-
@@ -835,7 +910,7 @@ Recorded because both documents still exist and a reader will otherwise trust th
 | `packages/lib/src/receiving/` | `receive-stock.ts`, `receive-purchase-order.ts`, `adjust-stock.ts`, `reverse-movement.ts`, `cost-fields.ts`, `guard.ts`, `receipt-queries.ts` |
 | `packages/lib/src/builds/` | `complete-build.ts`, `standard-cost.ts`, `build-mutations.ts`, `reverse-build.ts`, `reconcile-order-builds.ts`, `reconcile-policy.ts`, `drift-*.ts`, `auto-build-*.ts`, `write-lane.ts`, `guard.ts` |
 | `packages/lib/src/bom/` | `cost-calculator.ts` (`computeLandedCost`, the live roll-up), `qoh.ts` (`recalculatePartQoH`), `subpart-graph.ts` |
-| `packages/lib/src/postings/` | `build-entry.ts`, `periods.ts`, `provider.ts` — the posting seam, persisting nothing yet |
+| `packages/lib/src/postings/` | `build-entry.ts` (`ACCOUNT_ROLES` / `ROLE_ACCOUNT_TYPES` / `ACCOUNT_ROLE_LABELS` — the ONLY role vocabulary), `default-chart.ts`, `resolve-roles.ts` (role -> account, fails closed), `doc-number.ts` (the deterministic natural key), `periods.ts`, `provider.ts` — the posting seam, persisting nothing yet |
 | `packages/lib/src/money/gl/` | 🛑 **does not exist** — Gap E is design-only |
 
 **Registry & seed**
