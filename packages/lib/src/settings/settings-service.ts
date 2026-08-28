@@ -85,6 +85,60 @@ async function applyInvoiceDefaultTimingWriteThrough(params: {
 }
 
 /**
+ * AB8's enablement stamp (plans/products/12-order-triggered-build.md §4).
+ *
+ * `inventory.autoBuildFromOrders` flipping ON records the moment it happened in
+ * `inventory.autoBuildEnabledAt`, and the order-triggered build refuses every
+ * order placed before it. Without the stamp the trigger has no way to tell an
+ * order placed this morning from one back-filled out of years of Shopify
+ * history, and switching the feature on would raise a build for every
+ * historical order at once — the same lesson the polling backfill cutoff
+ * already taught.
+ *
+ * Written here rather than in a form so that EVERY door that can flip the
+ * boolean — the settings router, a batch save, a future onboarding step —
+ * carries the stamp with it. Mirrors the `documents.invoice.defaultTiming`
+ * write-through directly below it.
+ *
+ * 🛑 **Re-stamped on every off→on transition, not only the first.** A switch
+ * turned off for three months must not reopen those three months when it comes
+ * back on. Turning it OFF leaves the stamp alone — the value is only ever read
+ * while the boolean is true.
+ *
+ * Returns `true` when it wrote, so the batch path can decide about cache busts.
+ */
+async function stampAutoBuildEnabledAt(params: {
+  organizationId: string
+  /** The stored value BEFORE this write. `undefined` when no row existed. */
+  previousValue: SettingValue | undefined
+  value: SettingValue
+  db: Database | Transaction
+}): Promise<boolean> {
+  const { organizationId, previousValue, value, db } = params
+  // 🛑 The TRANSITION, not the value. Stamping on every write of `true` would let
+  // a settings form re-saved unchanged move the cutoff forward, silently skipping
+  // every order placed since the switch was actually turned on.
+  if (value !== true || previousValue === true) return false
+
+  const stampedAt = new Date().toISOString()
+  await db
+    .insert(schema.OrganizationSetting)
+    .values({
+      organizationId,
+      key: 'inventory.autoBuildEnabledAt',
+      value: stampedAt,
+      scope: SETTINGS_CATALOG['inventory.autoBuildEnabledAt'].scope,
+      updatedAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: [schema.OrganizationSetting.organizationId, schema.OrganizationSetting.key],
+      set: { value: stampedAt, updatedAt: new Date() },
+    })
+
+  return true
+}
+
+/**
  * Get an organization setting, ignoring user overrides.
  */
 export async function getOrganizationSetting(params: {
@@ -303,6 +357,13 @@ export async function updateOrganizationSetting(params: {
 
   const normalizedValue = normalizeSettingValue(key, settingConfig, value)
 
+  // Read BEFORE the upsert — the off→on transition is what AB8's stamp keys on,
+  // and it is not observable from the row once the write has landed.
+  const previousValue =
+    key === 'inventory.autoBuildFromOrders'
+      ? await readOrganizationSettingValue({ organizationId, key, db })
+      : undefined
+
   await db
     .insert(schema.OrganizationSetting)
     .values({
@@ -320,6 +381,28 @@ export async function updateOrganizationSetting(params: {
   if (key === 'documents.invoice.defaultTiming') {
     await applyInvoiceDefaultTimingWriteThrough({ organizationId, value: normalizedValue, db })
   }
+  if (key === 'inventory.autoBuildFromOrders') {
+    await stampAutoBuildEnabledAt({ organizationId, previousValue, value: normalizedValue, db })
+  }
+}
+
+/** The raw stored value for one key, or `undefined` when the org has no row. */
+async function readOrganizationSettingValue(params: {
+  organizationId: string
+  key: SettingKey
+  db: Database | Transaction
+}): Promise<SettingValue | undefined> {
+  const [row] = await params.db
+    .select({ value: schema.OrganizationSetting.value })
+    .from(schema.OrganizationSetting)
+    .where(
+      and(
+        eq(schema.OrganizationSetting.organizationId, params.organizationId),
+        eq(schema.OrganizationSetting.key, params.key)
+      )
+    )
+    .limit(1)
+  return row ? (row.value as SettingValue) : undefined
 }
 
 /**
@@ -411,6 +494,13 @@ export async function batchUpdateOrganizationSettings(params: {
 
       const normalizedValue = normalizeSettingValue(key, settingConfig, value)
 
+      // See `updateOrganizationSetting` — read before the upsert, or the
+      // transition AB8's stamp keys on is already gone.
+      const previousValue =
+        key === 'inventory.autoBuildFromOrders'
+          ? await readOrganizationSettingValue({ organizationId, key, db: tx })
+          : undefined
+
       await tx
         .insert(schema.OrganizationSetting)
         .values({
@@ -432,6 +522,14 @@ export async function batchUpdateOrganizationSettings(params: {
           db: tx,
         })
         if (wrote) touchedInvoiceDefaultTiming = true
+      }
+      if (key === 'inventory.autoBuildFromOrders') {
+        await stampAutoBuildEnabledAt({
+          organizationId,
+          previousValue,
+          value: normalizedValue,
+          db: tx,
+        })
       }
     }
   })
