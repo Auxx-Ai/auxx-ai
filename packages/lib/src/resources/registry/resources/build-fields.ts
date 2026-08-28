@@ -635,6 +635,43 @@ export const BUILD_FIELDS: Record<string, ResourceField> = {
     description: 'Builds that undo this one',
   },
 
+  /**
+   * The order's demand fingerprint AS IT WAS when this build was raised
+   * (plans/products/13 Model A+). Stamped once, by `createBuild`, and only for a
+   * build the order raised — a hand-raised build tracks no order and gets none.
+   *
+   * 🛑 **Never rewritten.** The whole value of the stamp is that it is a record
+   * of a moment; refreshing it would erase the drift it exists to show. It works
+   * identically for `planned`, `in_progress` and `completed`, which is why plan
+   * 13 preferred it to a status field — §1.5 forbids automation from amending an
+   * `in_progress` build, but nothing forbids it from being HONEST about one.
+   */
+  orderRevision: {
+    id: toFieldId('orderRevision'),
+    key: 'orderRevision',
+    label: 'Order revision',
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemAttribute: 'build_order_revision',
+    systemSortOrder: 'aL',
+    nullable: true,
+    showInPanel: false,
+    showInTable: false,
+    showInDialogs: false,
+    capabilities: {
+      filterable: false,
+      sortable: false,
+      // Set on the insert by `createBuild` — there is no second write.
+      creatable: true,
+      updatable: false,
+      configurable: false,
+    },
+    description:
+      'Fingerprint of what the order asked production for at the moment this build was ' +
+      'raised. Differs from the order’s current fingerprint once the order has changed',
+  },
+
   createdAt: {
     id: toFieldId('createdAt'),
     key: 'createdAt',

@@ -69,6 +69,7 @@ const BUILD_ATTRIBUTES = [
   'build_order',
   'build_source',
   'build_reversal_of',
+  'build_order_revision',
 ] as const
 
 type BuildAttribute = (typeof BUILD_ATTRIBUTES)[number]
@@ -473,6 +474,7 @@ function toBuildRecord(
     orderId: read('build_order')?.relatedEntityId ?? null,
     source: read('build_source')?.optionId ?? null,
     reversalOfBuildId: read('build_reversal_of')?.relatedEntityId ?? null,
+    orderRevision: read('build_order_revision')?.valueText ?? null,
     createdAt: row.createdAt,
   }
 }

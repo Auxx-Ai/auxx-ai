@@ -620,6 +620,43 @@ export const ORDER_FIELDS: Record<string, ResourceField> = {
       'Builds raised to satisfy this order — what "cancel the builds for this order" looks up',
   },
 
+  /**
+   * The order's CURRENT production-demand fingerprint (plans/products/13 Model A+).
+   *
+   * Maintained by `builds/drift-reconciler.ts` and compared against a build's
+   * `build_order_revision` to answer "has this order changed since its builds
+   * were raised". Opaque — a SHA-256 hex string, never parsed, only compared.
+   *
+   * `updatable: false` and `creatable: false`: the reconciler is the only writer,
+   * and a hand-typed value would silence the drift signal on exactly the order
+   * somebody was looking at.
+   */
+  buildRevision: {
+    id: toFieldId('buildRevision'),
+    key: 'buildRevision',
+    label: 'Build revision',
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemAttribute: 'order_build_revision',
+    systemSortOrder: 'aL',
+    nullable: true,
+    // An internal comparison token. Nobody reads a hash off a screen.
+    showInPanel: false,
+    showInTable: false,
+    showInDialogs: false,
+    capabilities: {
+      filterable: false,
+      sortable: false,
+      creatable: false,
+      updatable: false,
+      configurable: false,
+    },
+    description:
+      'Fingerprint of what this order currently asks production for. Compared against a ' +
+      "build's own stamp to show that the order changed after the build was raised",
+  },
+
   createdAt: {
     id: toFieldId('createdAt'),
     key: 'createdAt',

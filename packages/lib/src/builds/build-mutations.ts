@@ -124,6 +124,23 @@ export async function createBuild(
       if (input.orderId) {
         const orderDefId = await requireDefId(organizationId, 'order')
         values.build_order = toRecordId(orderDefId, input.orderId)
+
+        // Stamp what the order asked production for AT THIS MOMENT
+        // (plans/products/13 Model A+). Compared later against the order's own
+        // `order_build_revision` to show that the order has changed since.
+        //
+        // 🛑 Only for a build the ORDER raised. A person who raises a build
+        // against an order deliberately is not tracking it, and stamping them
+        // would report drift for a build that never claimed to follow anything
+        // — the same distinction `build_source` exists to make (12 AB7).
+        //
+        // Absent on failure rather than fatal: `hasDrifted` reads a missing
+        // stamp as *unknown*, not *drifted*, so the worst case is a build that
+        // cannot show drift — never a build that is not raised.
+        if ((input.source ?? 'manual') === 'order' && ctx.fields.build_order_revision) {
+          const stamp = await readOrderDemandFingerprint(db, organizationId, input.orderId)
+          if (stamp) values.build_order_revision = stamp
+        }
       }
 
       // The DEFAULT (interactive) write session on purpose. Only the two paths
@@ -237,6 +254,36 @@ async function updateBuild(
     bypassFieldGuards: BUILD_STATUS_BYPASS,
   })
   await crud.update(toRecordId(ctx.buildDefId, buildId) as RecordId, values)
+}
+
+/**
+ * The order's current demand fingerprint, or `null` when it cannot be computed.
+ *
+ * Never throws: a build must be raised whether or not its drift stamp can be
+ * taken. Lazy-imported so `build-mutations` keeps no static edge to the
+ * auto-build query layer.
+ */
+async function readOrderDemandFingerprint(
+  db: Database,
+  organizationId: string,
+  orderId: string
+): Promise<string | null> {
+  try {
+    const [{ loadAutoBuildOrders }, { orderDemandFingerprint }] = await Promise.all([
+      import('./auto-build-queries'),
+      import('./order-fingerprint'),
+    ])
+    const [order] = await loadAutoBuildOrders(db, organizationId, [orderId])
+    if (!order) return null
+    return orderDemandFingerprint({ cancelledAt: order.cancelledAt, lines: order.lines })
+  } catch (error) {
+    logger.warn('Could not stamp the build with its order revision', {
+      organizationId,
+      orderId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return null
+  }
 }
 
 /** {@link getBuild}, as the `NotFoundError` a write path needs. */

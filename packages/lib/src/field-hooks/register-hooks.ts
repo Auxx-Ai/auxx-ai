@@ -3,6 +3,12 @@
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
 import { registerAutoBuildRules } from '../builds/auto-build-rule'
 import {
+  stampOrderAfterLineDelete,
+  stampOrderOnLineChange,
+  stampOrderOnOrderChange,
+} from '../builds/drift-hooks'
+import { registerOrderDriftReconcilers } from '../builds/drift-reconciler'
+import {
   ensureVisitOnWorkOrderCreate,
   syncVisitPinsOnAddressNormalized,
 } from '../dispatch/visit-hooks'
@@ -132,6 +138,12 @@ export function registerAllHooks(): void {
   // below only MARK, so without this nothing rebuilds a projection.
   registerBillingReconcilers()
 
+  // The order-demand drift stamp's two drains (plans/products/13 Model A+). The
+  // hooks below only MARK, so without this an order's fingerprint goes stale —
+  // which is a drift signal that lies. Writes one field on the ORDER and never
+  // touches a build.
+  registerOrderDriftReconcilers()
+
   // Field-change post-hook — fires `<prefix>:field:updated` after every field
   // write. Registered globally so contacts, tickets, companies, and custom
   // entities all produce timeline entries.
@@ -198,9 +210,12 @@ export function registerAllHooks(): void {
     recomputeOnLineChange,
     syncBillingOnLineChange,
     stampPartOnCatalogItemChange,
+    // Model A+ (plans/products/13): a line's part, quantity or parent order
+    // moved, so what the order asks production for may have moved with it.
+    stampOrderOnLineChange,
   ])
   registerEntityFieldChangeHooks('quotes', [recomputeOnQuoteBillingChange])
-  registerEntityFieldChangeHooks('orders', [recomputeOnOrderBillingChange])
+  registerEntityFieldChangeHooks('orders', [recomputeOnOrderBillingChange, stampOrderOnOrderChange])
 
   // Buy-side totals engine (plans/purchasing/01-build-plan.md §4.1/§4.2). Same engine, a
   // different line entity and a different header shape — both named in
@@ -455,6 +470,9 @@ export function registerAllHooks(): void {
   // bill sits in the queue forever for a line that no longer exists.
   registerEntityPostDeleteHooks('vendor-bill-lines', [rematchAfterBillLineDelete])
   registerEntityPostDeleteHooks('invoices', [syncBillingAfterInvoiceDelete])
-  registerEntityPostDeleteHooks('line-items', [syncBillingAfterLineDelete])
+  registerEntityPostDeleteHooks('line-items', [
+    syncBillingAfterLineDelete,
+    stampOrderAfterLineDelete,
+  ])
   registerEntityPostDeleteHooks('work-orders', [syncContactAfterWorkOrderDelete])
 }
