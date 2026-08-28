@@ -84,6 +84,7 @@ export { type BuildDrift, readBuildDrift } from './drift-queries'
 export {
   markOrStampOrder,
   markOrStampOrderLine,
+  reconcileOrdersFromSync,
   registerOrderDriftReconcilers,
 } from './drift-reconciler'
 export { hasDrifted, type OrderDemand, orderDemandFingerprint } from './order-fingerprint'

@@ -222,6 +222,33 @@ async function reconcileOrders(organizationId: string, orderIds: string[]): Prom
 }
 
 /**
+ * Reconcile a batch of orders NOW, with no dirty-parent buffer in play.
+ *
+ * The **R6(c)** seam of `plans/events/08-derived-parent-reconciler-plan.md` §6.6:
+ * sync finalize, off the plan-07 manifest. It exists because the other two
+ * seams provably cannot see a connector write —
+ * `derivePublishEvents` returns `false` for the `sync` lane, and
+ * `field-value-mutations.ts`'s post-hook chain is gated on exactly that — so
+ * {@link markOrStampOrderLine} never fires for a value the connector writes
+ * (products/13 §1.6 traces the four steps).
+ *
+ * 🛑 **Takes the whole batch, deliberately.** The caller has already resolved
+ * every order the run touched; handing them over one at a time would run the
+ * settings read, the order load, the field lookup and the stored-fingerprint
+ * read once per order, which is the N+1 this plan exists to remove. The
+ * no-op guard inside means an order whose demand did not actually move costs
+ * two reads and no writes, so over-delivery from a large manifest is cheap.
+ *
+ * Never throws — it is called from a finalize door that must not fail a run.
+ */
+export async function reconcileOrdersFromSync(
+  organizationId: string,
+  orderIds: string[]
+): Promise<void> {
+  await reconcileOrders(organizationId, [...new Set(orderIds.filter(Boolean))])
+}
+
+/**
  * Mark an order for reconciliation, or reconcile it now when nothing will drain.
  *
  * The inline fallback is load-bearing — see `ParentReconciler.mark`: a caller that
