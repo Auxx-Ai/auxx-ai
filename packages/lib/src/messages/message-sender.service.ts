@@ -4,6 +4,7 @@ import { IntegrationProviderType, ParticipantRole, SendStatus } from '@auxx/data
 import type { ParticipantRole as ParticipantRoleType } from '@auxx/database/types'
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
+import { toRecordId } from '@auxx/types/resource'
 import { and, asc, desc, eq, inArray, like, or, sql } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
 import { getComposerCapabilities, identifierTypeForProvider } from '../channels/capabilities'
@@ -12,6 +13,9 @@ import {
   touchInteractionForMessage,
 } from '../entity-instances/activity'
 import { ForbiddenError, UsageLimitError } from '../errors'
+// Leaf imports, not the package barrels: `../events` and `../threads` both re-export
+// modules that import back into `messages/`, and this file is on the send hot path.
+import { publisher } from '../events/publisher'
 import { getAssetWithRelations, updateAsset } from '../files/assets'
 import { getAssetContent } from '../files/assets/content'
 import type { FilesCtx } from '../files/ctx'
@@ -40,6 +44,7 @@ import { isSuppressed } from '../sequences/suppression'
 import { getOrganizationSetting } from '../settings/settings-service'
 import { instrumentEmailHtml } from '../signals/email/instrument-html'
 import { buildUnsubscribeUrl, issueUnsubscribeToken } from '../signals/unsubscribe'
+import { linkEntityToThread } from '../threads/links.service'
 import { createUsageGuard } from '../usage/create-usage-guard'
 import { checkAutomatedSendLimits, notifyAdminsOfSendBreakerTrip } from './automated-send-guard'
 import { MessageComposerService } from './message-composer.service'
@@ -476,24 +481,46 @@ export class MessageSenderService {
         await this.persistProviderErrorRaw(composed.id, sendResult.metadata?.providerErrorRaw)
       }
 
+      // The message's ACTUAL thread, re-read rather than taken from `threadContext.id`.
+      // Reconciliation can move it: when the provider hands back a conversation key we
+      // already have a thread for, `reconcileThread` merges the pending thread into the
+      // existing one and DELETES the pending row. Everything in the tail below — the
+      // entity link, the realtime publishes, the `message:sent` event — has to address the
+      // surviving thread or it addresses one that no longer exists.
+      const effectiveThreadId = await this.resolveEffectiveThreadId(composed.id, threadContext.id)
+
+      // Step 7.5: Link the requested entity to the thread, BEFORE the post-send tail.
+      //
+      // 🛑 Ordering is the whole point (dispatch/money plan 22 §3). This used to happen in
+      // `thread.ts` AFTER `sendMessage` returned, so on a send that opens a new thread every
+      // tail consumer that resolves the thread's links saw none: `touchActivityForThreadLinks`
+      // below stamped nothing, and a document send published no link for `message:sent`'s
+      // consumers to find. Nobody noticed because the second message on the thread fixes it.
+      if (input.linkEntity) {
+        try {
+          await linkEntityToThread({
+            threadId: effectiveThreadId,
+            entityInstanceId: input.linkEntity.entityInstanceId,
+            role: input.linkEntity.role,
+            organizationId: input.organizationId,
+            actorId: input.userId,
+          })
+        } catch (linkError) {
+          // Non-fatal: the mail is already gone. Logged at error level — a document send's
+          // status flip hangs off this link, so this is not a routine miss.
+          logger.error('Failed to link entity to thread after send', {
+            threadId: effectiveThreadId,
+            entityInstanceId: input.linkEntity.entityInstanceId,
+            error: linkError instanceof Error ? linkError.message : String(linkError),
+          })
+        }
+      }
+
       // Realtime: publish `thread:created` (when this send opened the thread) and then
       // `message:created`, so open tabs see the row land without waiting for the post-send sync
       // re-import. The post-send sync emits `message:updated` later for provider-authoritative
       // columns — accepted duplicate.
-      //
-      // Both events are keyed off the message's ACTUAL thread, re-read here rather than off
-      // `threadContext.id`. Reconciliation can move it: when the provider hands back a
-      // conversation key we already have a thread for, `reconcileThread` merges the pending
-      // thread into the existing one and DELETES the pending row. Publishing the stale id would
-      // address a thread that no longer exists.
       try {
-        const [messageRow] = await (this.db ?? db)
-          .select({ threadId: schema.Message.threadId })
-          .from(schema.Message)
-          .where(eq(schema.Message.id, composed.id))
-          .limit(1)
-        const effectiveThreadId = messageRow?.threadId ?? threadContext.id
-
         const [threadRow] = await (this.db ?? db)
           .select({ inboxId: schema.Thread.inboxId, assigneeId: schema.Thread.assigneeId })
           .from(schema.Thread)
@@ -555,6 +582,26 @@ export class MessageSenderService {
           this.organizationId,
           sendResult.timestamp ?? new Date()
         )
+      }
+      // Step 8.5: Publish `message:sent` — THE choke point for outbound mail.
+      //
+      // Every send door in the repo (composer, scheduled send, sequence step, workflow
+      // answer node, agent tools, chat, receipts) reaches this line, so a consumer
+      // registered on `message:sent` runs on all of them instead of on whichever router
+      // happened to hand-roll it (dispatch/money plan 22). Until this existed the event
+      // type was declared, handler-mapped and offered as a customer-facing webhook while
+      // being published by nothing.
+      //
+      // Successful sends only: a FAILED row is not a send, and `message:failed` is the
+      // event for that. Placed after the stamps above so an in-request write can never
+      // lose a race with the worker that picks this up.
+      if (sendResult.success) {
+        await this.publishMessageSent({
+          input,
+          messageId: composed.id,
+          threadId: effectiveThreadId,
+          participants,
+        })
       }
       // Step 9: Trigger post-send sync (skip for providers without external
       // state to reconcile, e.g. chat).
@@ -632,6 +679,75 @@ export class MessageSenderService {
       throw error
     }
   }
+  /**
+   * The thread the composed message actually ended up on.
+   *
+   * Reconciliation can merge a pending thread into an existing one and delete the pending
+   * row, so `threadContext.id` is not authoritative once the provider has answered. Falls
+   * back to it when the message row cannot be read — a missing row means something worse is
+   * already wrong, and the tail is best-effort bookkeeping either way.
+   */
+  private async resolveEffectiveThreadId(
+    messageId: string,
+    fallbackThreadId: string
+  ): Promise<string> {
+    try {
+      const [messageRow] = await (this.db ?? db)
+        .select({ threadId: schema.Message.threadId })
+        .from(schema.Message)
+        .where(eq(schema.Message.id, messageId))
+        .limit(1)
+      return messageRow?.threadId ?? fallbackThreadId
+    } catch (error) {
+      logger.debug('Failed to resolve effective thread id after send', {
+        messageId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      return fallbackThreadId
+    }
+  }
+
+  /**
+   * Publish `message:sent` for a landed send.
+   *
+   * `origin` defaults to `'system'` — the fail-closed end of the discriminator. A door that
+   * forgets to declare itself gets the origin that makes consumers do nothing, never the one
+   * that issues a document (dispatch/money plan 22 §6.1).
+   *
+   * `recordId` is the recipient's linked contact, taken from the participant rows the
+   * composer already resolved (no extra query). It is what routes `createTimelineEvent`'s
+   * `contact:email:sent` row — the outbound twin of the `contact:email:received` row
+   * `message:received` has always written. Nothing else writes that event type and the
+   * `message:sent` EntitySignal projects as `timeline: 'none'`, so this adds no duplicate.
+   *
+   * Never throws: `publishLater` swallows its own enqueue errors, and this whole tail runs
+   * after the mail is gone.
+   */
+  private async publishMessageSent(args: {
+    input: SendMessageInput
+    messageId: string
+    threadId: string
+    participants: ProcessedParticipants
+  }): Promise<void> {
+    const { input, messageId, threadId, participants } = args
+    const primaryRecipient = participants.to[0]
+    await publisher.publishLater({
+      type: 'message:sent',
+      data: {
+        messageId,
+        organizationId: input.organizationId,
+        threadId,
+        userId: input.userId,
+        ...(primaryRecipient?.entityInstanceId
+          ? { recordId: toRecordId('contact', primaryRecipient.entityInstanceId) }
+          : {}),
+        ...(input.subject ? { subject: input.subject } : {}),
+        ...(primaryRecipient?.identifier ? { to: primaryRecipient.identifier } : {}),
+        origin: input.origin ?? 'system',
+      },
+    })
+  }
+
   /**
    * Validates send message input against the provider's capabilities.
    * Subject / recipient checks are skipped for providers that don't require

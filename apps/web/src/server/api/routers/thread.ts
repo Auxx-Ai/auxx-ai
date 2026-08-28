@@ -2,11 +2,10 @@
 
 import { schema } from '@auxx/database'
 import { IdentifierType } from '@auxx/database/enums'
-import { getCachedEntityDefId, getCachedUserInstanceGrants } from '@auxx/lib/cache'
+import { getCachedUserInstanceGrants } from '@auxx/lib/cache'
 import { conditionGroupsSchema } from '@auxx/lib/conditions'
 import { DraftService } from '@auxx/lib/drafts'
 import { getUserOrganizationId } from '@auxx/lib/email' // Adjust import path if needed
-import { BadRequestError } from '@auxx/lib/errors'
 import {
   cancelScheduledMessage,
   createScheduledMessage,
@@ -16,13 +15,7 @@ import {
   updateScheduledMessage,
   updateScheduledMessageStatus,
 } from '@auxx/lib/mail-schedule'
-import { MessageSenderService } from '@auxx/lib/messages'
-import {
-  markInvoiceSent,
-  markPurchaseOrderSent,
-  markQuoteSent,
-  recordDocumentSendSignal,
-} from '@auxx/lib/money'
+import { MessageSenderService, type SendMessageInput } from '@auxx/lib/messages'
 import { PermissionKey } from '@auxx/lib/permissions'
 import { satisfiesRung } from '@auxx/lib/permissions/capabilities/rung'
 import { getThreadLens, type UserInstanceGrants } from '@auxx/lib/permissions/visibility'
@@ -369,8 +362,19 @@ export const threadRouter = createTRPCRouter({
           }
         }
 
-        // Transform input to MessageSenderService format
-        const senderInput = {
+        // Transform input to MessageSenderService format.
+        //
+        // `linkEntity` and `origin` are what make the confirmed-send status flip work
+        // (dispatch/money plan 22). The link is performed INSIDE `sendMessage`, before its
+        // post-send tail, rather than here afterwards: on a send that opens a new thread the
+        // link did not exist yet when the tail ran, so the activity stamp silently no-opped
+        // and a document send had nothing for `message:sent`'s consumers to find. `origin:
+        // 'compose'` is the only origin that issues a document — everything else defaults to
+        // `'system'` and flips nothing.
+        //
+        // Both ride along into the scheduled path below, which persists this exact payload:
+        // a quote scheduled for tomorrow morning now flips when it actually goes out.
+        const senderInput: SendMessageInput = {
           userId,
           organizationId,
           integrationId,
@@ -395,6 +399,10 @@ export const threadRouter = createTRPCRouter({
             identifierType: p.identifierType,
           })),
           attachmentIds: attachments?.map((att) => att.id) || undefined, // Map attachments to IDs
+          ...(input.linkTicketId
+            ? { linkEntity: { entityInstanceId: input.linkTicketId, role: 'primary' as const } }
+            : {}),
+          origin: 'compose' as const,
         }
         // --- Schedule send path ---
         if (input.scheduledAt) {
@@ -461,160 +469,6 @@ export const threadRouter = createTRPCRouter({
           draftId: input.draftMessageId,
         })
         const sentMessage = await messageSender.sendMessage(senderInput)
-
-        // Auto-link thread to ticket if linkTicketId is provided.
-        // Uses linkEntityToThread so primary swaps demote the prior primary
-        // atomically and entityDefinitionId is read from EntityInstance.
-        if (input.linkTicketId && sentMessage.threadId) {
-          try {
-            await linkEntityToThread({
-              threadId: sentMessage.threadId,
-              entityInstanceId: input.linkTicketId,
-              role: 'primary',
-              organizationId,
-              actorId: userId,
-            })
-            logger.info('Auto-linked new thread to ticket', {
-              threadId: sentMessage.threadId,
-              ticketId: input.linkTicketId,
-            })
-
-            // Confirmed-send status flip (money MQ2 build spec §E.3; MI1 §H.3 adds the
-            // invoice branch) — only reached once the primary link above has actually
-            // succeeded (no flip-without-timeline-evidence).
-            try {
-              const linkedInstance = await ctx.db.query.EntityInstance.findFirst({
-                columns: { entityDefinitionId: true },
-                where: (t, { eq: eqCol }) => eqCol(t.id, input.linkTicketId as string),
-              })
-              const quoteDefId = await getCachedEntityDefId(organizationId, 'quote')
-              if (
-                linkedInstance &&
-                quoteDefId &&
-                linkedInstance.entityDefinitionId === quoteDefId
-              ) {
-                try {
-                  await markQuoteSent({
-                    organizationId,
-                    userId,
-                    quoteInstanceId: input.linkTicketId,
-                  })
-                } catch (flipError) {
-                  // markQuoteSent asserts status === 'draft' — a BadRequestError here
-                  // means the quote was already sent (resend) or otherwise not a
-                  // draft; that's the expected idempotent no-op, not a failure.
-                  if (!(flipError instanceof BadRequestError)) throw flipError
-                }
-
-                // Communications-view signal (client-notifications plan §4.8/Phase 4) — a
-                // CONFIRMED send (incl. a resend) writes one row per message, regardless of
-                // whether the status flip above was a no-op. Never throws.
-                if (sentMessage.sendStatus === 'SENT') {
-                  await recordDocumentSendSignal({
-                    organizationId,
-                    userId,
-                    documentType: 'quote',
-                    documentInstanceId: input.linkTicketId,
-                    messageId: sentMessage.id,
-                    threadId: sentMessage.threadId,
-                    subject: input.subject ?? 'Quote sent',
-                  })
-                }
-              }
-
-              const invoiceDefId = await getCachedEntityDefId(organizationId, 'invoice')
-              if (
-                linkedInstance &&
-                invoiceDefId &&
-                linkedInstance.entityDefinitionId === invoiceDefId
-              ) {
-                try {
-                  await markInvoiceSent({
-                    organizationId,
-                    userId,
-                    invoiceInstanceId: input.linkTicketId,
-                  })
-                } catch (flipError) {
-                  // markInvoiceSent asserts status === 'draft' — a BadRequestError here
-                  // means the invoice was already sent (resend) or otherwise not a
-                  // draft; that's the expected idempotent no-op, not a failure.
-                  if (!(flipError instanceof BadRequestError)) throw flipError
-                }
-
-                // Communications-view signal — see the quote branch above for rationale.
-                if (sentMessage.sendStatus === 'SENT') {
-                  await recordDocumentSendSignal({
-                    organizationId,
-                    userId,
-                    documentType: 'invoice',
-                    documentInstanceId: input.linkTicketId,
-                    messageId: sentMessage.id,
-                    threadId: sentMessage.threadId,
-                    subject: input.subject ?? 'Invoice sent',
-                  })
-                }
-              }
-
-              // Purchase order (plans/purchasing/07-purchase-order-send-and-status.md §3.4).
-              // `issued` IS "sent to the vendor" — one event, no separate `sent` value — so
-              // the confirmed-send flip writes `issued` where the two branches above write
-              // `sent`. `recordDocumentSendSignal`'s own header already names this branch.
-              const purchaseOrderDefId = await getCachedEntityDefId(
-                organizationId,
-                'purchase_order'
-              )
-              if (
-                linkedInstance &&
-                purchaseOrderDefId &&
-                linkedInstance.entityDefinitionId === purchaseOrderDefId
-              ) {
-                try {
-                  await markPurchaseOrderSent({
-                    organizationId,
-                    userId,
-                    purchaseOrderInstanceId: input.linkTicketId,
-                  })
-                } catch (flipError) {
-                  // markPurchaseOrderSent asserts status === 'draft' — a BadRequestError
-                  // here means the order was already issued (resend) or is closed/canceled;
-                  // that's the expected idempotent no-op, not a failure.
-                  if (!(flipError instanceof BadRequestError)) throw flipError
-                }
-
-                // Communications-view signal — see the quote branch above for rationale.
-                if (sentMessage.sendStatus === 'SENT') {
-                  await recordDocumentSendSignal({
-                    organizationId,
-                    userId,
-                    documentType: 'purchase_order',
-                    documentInstanceId: input.linkTicketId,
-                    messageId: sentMessage.id,
-                    threadId: sentMessage.threadId,
-                    subject: input.subject ?? 'Purchase order sent',
-                  })
-                }
-              }
-            } catch (statusFlipError) {
-              logger.error('Failed to flip document status to sent after send', {
-                threadId: sentMessage.threadId,
-                ticketId: input.linkTicketId,
-                error:
-                  statusFlipError instanceof Error
-                    ? statusFlipError.message
-                    : String(statusFlipError),
-              })
-            }
-          } catch (linkError) {
-            // Non-fatal: message was sent, link failure is acceptable. Logged at
-            // error level (money MQ2 §E.3) — for document sends the status flip
-            // depends on this link succeeding, so this is no longer a routine miss.
-            logger.error('Failed to auto-link thread to ticket', {
-              threadId: sentMessage.threadId,
-              ticketId: input.linkTicketId,
-              error: linkError instanceof Error ? linkError.message : String(linkError),
-            })
-          }
-        }
 
         // Clean up draft after successful send
         if (draftMessageId) {

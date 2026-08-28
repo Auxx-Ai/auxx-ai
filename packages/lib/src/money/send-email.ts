@@ -25,8 +25,11 @@ import { UnifiedCrudHandler } from '../resources/crud'
 import { getOrganizationSetting } from '../settings/settings-service'
 import { recordSignal, toSignalRecordKey } from '../signals'
 import { getSystemSnippet } from '../snippets'
+import { markInvoiceSent } from './invoice-lifecycle'
 import { getPaymentAccount } from './payments/account-state'
 import { buildPayUrl, ensureInvoicePublicToken, isPaymentsConnected } from './public-token'
+import { markPurchaseOrderSent } from './purchase-order-lifecycle'
+import { markQuoteSent } from './quote-lifecycle'
 import { buildQuoteViewUrl, ensureQuotePublicToken } from './quote-public-token'
 
 const logger = createScopedLogger('money-send-email')
@@ -70,6 +73,22 @@ export interface DocumentEmailProfile {
   noun: string
   /** Tail of the no-contact error, after the em dash. Names the field as the UI labels it. */
   noContactHint: string
+  /**
+   * The sanctioned lifecycle writer for a CONFIRMED send — the one thing that may move this
+   * document out of `draft` because an email went out.
+   *
+   * Deliberately a function pointer rather than declared data (`{ statusSystemAttribute,
+   * sentValue }` + one generic writer). The three are genuinely different: quote and invoice
+   * write `sent`, a purchase order writes `issued` AND defaults `purchase_order_expected_at`
+   * from its lines. Declaring the shape would need a per-type extras hook back immediately —
+   * a function pointer with more ceremony (dispatch/money plan 22 §6.2).
+   *
+   * Throws `BadRequestError` when the document is not a draft. Callers treat that as the
+   * idempotent no-op it is: a resend, or a document somebody already marked sent by hand.
+   */
+  markSent: (input: { organizationId: string; userId: string; instanceId: string }) => Promise<void>
+  /** Signal/timeline title for a send whose caller supplied no subject line. */
+  sentSubjectFallback: string
 }
 
 /**
@@ -84,6 +103,9 @@ export const DOCUMENT_EMAIL_PROFILES: Record<DocumentType, DocumentEmailProfile>
     snippetSystemType: 'quote_email',
     noun: 'quote',
     noContactHint: 'add one before sending',
+    markSent: ({ organizationId, userId, instanceId }) =>
+      markQuoteSent({ organizationId, userId, quoteInstanceId: instanceId }),
+    sentSubjectFallback: 'Quote sent',
   },
   invoice: {
     contactSystemAttribute: 'invoice_contact',
@@ -91,6 +113,9 @@ export const DOCUMENT_EMAIL_PROFILES: Record<DocumentType, DocumentEmailProfile>
     snippetSystemType: 'invoice_email',
     noun: 'invoice',
     noContactHint: 'add one before sending',
+    markSent: ({ organizationId, userId, instanceId }) =>
+      markInvoiceSent({ organizationId, userId, invoiceInstanceId: instanceId }),
+    sentSubjectFallback: 'Invoice sent',
   },
   purchase_order: {
     contactSystemAttribute: 'purchase_order_contact',
@@ -102,6 +127,10 @@ export const DOCUMENT_EMAIL_PROFILES: Record<DocumentType, DocumentEmailProfile>
     // restatement. "Contact" is the field's label in `purchase-order-fields.ts`.
     noContactHint:
       'set the Contact field to the person at the vendor who should receive this order',
+    // `issued` IS "sent to the vendor" — one event, no separate `sent` value.
+    markSent: ({ organizationId, userId, instanceId }) =>
+      markPurchaseOrderSent({ organizationId, userId, purchaseOrderInstanceId: instanceId }),
+    sentSubjectFallback: 'Purchase order sent',
   },
 }
 
@@ -120,7 +149,7 @@ const DOCUMENT_CONTACT_SYSTEM_ATTRIBUTES = Object.values(DOCUMENT_EMAIL_PROFILES
  * `DocumentType` is derived from a mutable descriptor array, so a type registered at runtime
  * that never got a profile row must fail loudly here, the same way `documentTypeOf` does.
  */
-function documentEmailProfile(documentType: DocumentType): DocumentEmailProfile {
+export function documentEmailProfile(documentType: DocumentType): DocumentEmailProfile {
   const profile = DOCUMENT_EMAIL_PROFILES[documentType]
   if (!profile) {
     throw new BadRequestError(`No email profile is registered for document type "${documentType}"`)

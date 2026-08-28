@@ -56,7 +56,7 @@ describe('publishEventJob — ungated entries', () => {
       data: { type: 'message:sent', data: { messageId: 'm', organizationId: 'o' } },
     } as never)
 
-    expect(enqueuedNames()).toEqual(['createTimelineEvent'])
+    expect(enqueuedNames()).toEqual(['createTimelineEvent', 'flipDocumentStatusOnSend'])
   })
 
   it('enqueues nothing for an event type with an empty handler list', async () => {

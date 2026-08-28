@@ -212,6 +212,26 @@ export type MessageReceivedEvent = AuxxEventGeneric<
     fromOwnAddress?: true
   }
 >
+/**
+ * Which door produced an outbound send, carried on {@link MessageSentEvent}.
+ *
+ * The discriminator lives on the EVENT, not on a caller-side "please flip" flag
+ * (dispatch/money plan 22 §6.1): consumers that may only act on a deliberate,
+ * human-composed send — `flipDocumentStatusOnSend` is the first — decide from
+ * the payload, and a caller that says nothing gets `'system'`. That fails
+ * CLOSED. A flag the caller has to remember to set fails open, which is the
+ * defect class this whole event exists to retire.
+ *
+ * - `'compose'` — a person hit Send in the composer (incl. its scheduled twin,
+ *   which replays the very same payload). The only origin that issues a document.
+ * - `'sequence'` — a sequence step. Marketing follow-up, never an issuance: a
+ *   nurture mail on a thread that happens to carry a draft quote must not mark
+ *   that quote sent.
+ * - `'system'` — everything else, and the DEFAULT: agents, chat, workflow answer
+ *   nodes, receipts, unsubscribe mailto, API sends.
+ */
+export type MessageSendOrigin = 'compose' | 'sequence' | 'system'
+
 export type MessageSentEvent = AuxxEventGeneric<
   'message:sent',
   {
@@ -225,6 +245,8 @@ export type MessageSentEvent = AuxxEventGeneric<
     subject?: string
     to?: string
     snippet?: string
+    /** See {@link MessageSendOrigin}. Absent reads as `'system'`. */
+    origin?: MessageSendOrigin
   }
 >
 export type MessageFailedEvent = AuxxEventGeneric<
