@@ -1,28 +1,46 @@
 // apps/web/src/components/drawers/cards/part-costing-card.tsx
 'use client'
 
+import { standardCostDrift } from '@auxx/lib/builds/client'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import { CostSource, parseRecordId } from '@auxx/lib/resources/client'
 import type { ResourceFieldId } from '@auxx/types/field'
 import { Badge, type Variant } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
 import { formatCurrency } from '@auxx/utils/currency'
 import { useMemo } from 'react'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { Tooltip } from '~/components/global/tooltip'
+import { RollStandardCostPopover } from '~/components/manufacturing/parts/roll-standard-cost-popover'
 import { useRecordList, useResourceProperty } from '~/components/resources'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import type { DrawerTabProps } from '../drawer-tab-registry'
 
 /**
  * The three provenance fields migration 100 added under `part_cost`, plus the
- * cost itself. All computed by the cost calculator — this card is read-only.
+ * cost itself — and the frozen standard migration 109 added beside it.
+ *
+ * All six are computed; this card is read-only and the roll is the only writer
+ * of the standard. The five `part_standard_*` fields are declared
+ * `showInPanel: false` / `showInDialogs: false` precisely so they surface HERE
+ * rather than burying the part's Details panel under five uneditable cost rows
+ * (plans/products/build/01-build-plan.md §1.6, §2.5).
  */
 const PART_COSTING_ATTRIBUTES = [
   'part_cost',
   'part_purchase_cost',
   'part_rollup_cost',
   'part_cost_source',
+  'part_standard_cost',
+  'part_standard_cost_effective_at',
 ] as const
+
+/** "12 Aug 2026" — the day the current standard took effect. */
+function formatEffectiveDate(value: string | Date): string {
+  const date = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
+}
 
 /** `CostSource.values` keyed by option value, for badge label + color. */
 const COST_SOURCE_BY_VALUE = Object.fromEntries(CostSource.values.map((v) => [v.value, v]))
@@ -75,9 +93,18 @@ export function PartCostingCard({ recordId }: DrawerTabProps) {
   const purchaseCost = values.part_purchase_cost as number | null | undefined
   const rollupCost = values.part_rollup_cost as number | null | undefined
   const costSource = values.part_cost_source as string | undefined
+  const liveCost = values.part_cost as number | null | undefined
+  const standardCost = values.part_standard_cost as number | null | undefined
+  const standardEffectiveAt = values.part_standard_cost_effective_at as string | undefined
 
   const hasComparison = purchaseCost != null && rollupCost != null
   const isUncosted = costSource === CostSource.NONE
+  // The standard block shows as soon as there is anything to say about it —
+  // including "not rolled yet", which is the state that needs the action most.
+  const hasStandardBlock = standardCost != null || liveCost != null
+  // How far the standard has drifted from reality since it was last rolled.
+  // Genuinely useful on its own: it is the number that tells you a roll is due.
+  const drift = standardCostDrift(liveCost, standardCost)
 
   // Whether the part has a bill of materials at all — decides which "why" the
   // uncosted state shows. Same filter shape as PartInventoryCard's hasSubparts
@@ -108,7 +135,7 @@ export function PartCostingCard({ recordId }: DrawerTabProps) {
   })
   const hasSubparts = subpartRecords.length > 0
 
-  if (!hasComparison && !isUncosted) return null
+  if (!hasComparison && !isUncosted && !hasStandardBlock) return null
 
   const noneMeta = COST_SOURCE_BY_VALUE[CostSource.NONE]
 
@@ -134,7 +161,7 @@ export function PartCostingCard({ recordId }: DrawerTabProps) {
             </div>
           </FieldPanelRow>
         </>
-      ) : (
+      ) : isUncosted ? (
         <FieldPanelRow title='Cost'>
           <div className='flex min-h-8 flex-wrap items-center gap-2 text-sm'>
             <Badge variant={(noneMeta?.color ?? 'amber') as Variant} size='xs'>
@@ -151,6 +178,48 @@ export function PartCostingCard({ recordId }: DrawerTabProps) {
             )}
           </div>
         </FieldPanelRow>
+      ) : null}
+
+      {hasStandardBlock && (
+        <>
+          <FieldPanelRow
+            title='Standard'
+            description='The frozen value every stock movement is stamped with'>
+            <div className='flex min-h-8 flex-wrap items-center gap-2 text-sm tabular-nums'>
+              {standardCost == null ? (
+                <Badge variant='amber' size='xs'>
+                  Not rolled
+                </Badge>
+              ) : (
+                <>
+                  {formatCurrency(standardCost)}
+                  {standardEffectiveAt && (
+                    <span className='text-muted-foreground text-xs'>
+                      set {formatEffectiveDate(standardEffectiveAt)}
+                    </span>
+                  )}
+                </>
+              )}
+              <RollStandardCostPopover partId={partId}>
+                <Button variant='outline' size='xs' className='ms-auto'>
+                  Roll
+                </Button>
+              </RollStandardCostPopover>
+            </div>
+          </FieldPanelRow>
+
+          {drift != null && (
+            <FieldPanelRow
+              title='Drift'
+              description="Today's cost minus the standard — how stale the standard is">
+              <div className='flex min-h-8 items-center text-sm text-muted-foreground tabular-nums'>
+                {drift === 0
+                  ? 'None — the standard matches today\u2019s cost'
+                  : `${drift > 0 ? '+' : ''}${formatCurrency(drift)}`}
+              </div>
+            </FieldPanelRow>
+          )}
+        </>
       )}
     </FieldPanel>
   )
