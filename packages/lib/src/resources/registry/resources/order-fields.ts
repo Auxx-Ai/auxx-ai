@@ -165,6 +165,36 @@ export const ORDER_FIELDS: Record<string, ResourceField> = {
     description: 'When the order was placed — the period key every revenue read groups on',
   },
 
+  cancelledAt: {
+    id: toFieldId('cancelledAt'),
+    key: 'cancelledAt',
+    label: 'Cancelled',
+    type: BaseType.DATETIME,
+    fieldType: FieldType.DATETIME,
+    isSystem: true,
+    systemAttribute: 'order_cancelled_at',
+    systemSortOrder: 'a4a',
+    nullable: true,
+    // Meaningful when set, so it stays in the panel — but you do not cancel an
+    // order by typing a date into a create dialog
+    // (plans/products/build/01-build-plan.md §1.6).
+    showInDialogs: false,
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      // `creatable: true` on purpose: a Shopify order can arrive ALREADY
+      // cancelled, so the value has to be settable on the insert rather than
+      // requiring a second write (plans/products/12 §6.1a).
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    placeholder: 'Select date cancelled',
+    description:
+      'When the order was cancelled. Set, never cleared — the cancellation rule reads it to ' +
+      'cancel or reverse the builds this order caused',
+  },
+
   financialStatus: {
     id: toFieldId('financialStatus'),
     key: 'financialStatus',
@@ -558,6 +588,36 @@ export const ORDER_FIELDS: Record<string, ResourceField> = {
       isInverse: true,
     },
     description: 'Work orders raised off this order — linked by hand (D4 defers the conversion)',
+  },
+
+  // Reverse relationship: builds (from build.order). The `build` side lands
+  // with entity migration 109; both halves are created in that one pass, so
+  // `linkNewRelationships` resolves this immediately.
+  builds: {
+    id: toFieldId('builds'),
+    key: 'builds',
+    label: 'Builds',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'order_builds',
+    systemSortOrder: 'aK',
+    showInPanel: false, // has_many inverse; surfaced from the build side
+    showInDialogs: false,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'build:order' as ResourceFieldId,
+      relationshipType: 'has_many',
+      isInverse: true,
+    },
+    description:
+      'Builds raised to satisfy this order — what "cancel the builds for this order" looks up',
   },
 
   createdAt: {

@@ -546,5 +546,73 @@ export const STOCK_MOVEMENT_FIELDS: Record<string, ResourceField> = {
     description: 'Rows that undo this movement',
   },
 
+  // ─── Build provenance and the as-built BOM snapshot ────────────────
+  // plans/products/build/01-build-plan.md §1.2. Entity migration 109, inert:
+  // `packages/lib/src/builds/` does not exist yet, so both read NULL on every
+  // existing row and there is no backfill.
+
+  build: {
+    id: toFieldId('build'),
+    key: 'build',
+    label: 'Build',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'stock_movement_build',
+    systemSortOrder: 'c0',
+    nullable: true,
+    // Provenance read by the ledger UI, not a row a person fills in.
+    showInPanel: false,
+    showInDialogs: false,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: false,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'build:movements' as ResourceFieldId,
+      relationshipType: 'belongs_to',
+      isInverse: false,
+    },
+    relationshipConfig: {
+      relatedEntityType: 'build',
+      relationshipType: 'belongs_to',
+      inverseName: 'Stock Movements',
+      inverseSystemAttribute: 'build_movements',
+    },
+    description:
+      'The build that wrote this row. `reference` stays as-is - a free-text batch string is ' +
+      'not something a query can join on',
+  },
+
+  qtyPerUnit: {
+    id: toFieldId('qtyPerUnit'),
+    key: 'qtyPerUnit',
+    label: 'Qty Per Unit',
+    type: BaseType.NUMBER,
+    fieldType: FieldType.NUMBER,
+    isSystem: true,
+    systemAttribute: 'stock_movement_qty_per_unit',
+    systemSortOrder: 'c1',
+    nullable: true,
+    // A diagnostic for the usage cross-check. Exposing it invites someone to
+    // "correct" the as-built snapshot, which destroys its only purpose.
+    showInPanel: false,
+    showInDialogs: false,
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: true,
+      updatable: false,
+      configurable: false,
+    },
+    description:
+      'The AS-BUILT BOM snapshot: on a build_consume row, the per-unit quantity in force at ' +
+      'build time. NULL on a consume row means the component was OFF-BOM - a floor ' +
+      'substitution, made visible instead of silent. NULL on every other movement type.',
+  },
+
   createdBy: CREATED_BY_FIELD,
 }

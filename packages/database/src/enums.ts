@@ -151,6 +151,7 @@ export const ModelTypeValues = [
   'vendor_payment_allocation',
   'gl_account',
   'gl_posting_line',
+  'build',
 ] as const
 
 /**
@@ -203,6 +204,7 @@ export const ModelTypes = {
   VENDOR_PAYMENT_ALLOCATION: 'vendor_payment_allocation',
   GL_ACCOUNT: 'gl_account',
   GL_POSTING_LINE: 'gl_posting_line',
+  BUILD: 'build',
 } as const
 
 /**
@@ -583,6 +585,19 @@ export const ModelTypeMeta: Record<
     apiSlug: 'gl-posting-lines',
     dbTable: 'EntityInstance',
     hasDetailPage: false,
+  },
+  build: {
+    label: 'Build',
+    plural: 'Builds',
+    icon: 'hammer',
+    color: 'orange',
+    apiSlug: 'builds',
+    dbTable: 'EntityInstance',
+    // A build is raised, worked and completed against — the `quote` / `order`
+    // shape (plans/products/build/01-build-plan.md §1.1). Seeded
+    // `isVisible: false` by entity migration 109 and flipped in phase 2, when
+    // there is a UI and a way to create a row.
+    hasDetailPage: true,
   },
 }
 

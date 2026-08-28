@@ -325,6 +325,24 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     color: 'indigo',
     isVisible: false, // Written only by the poster, like gl_posting itself
   },
+  {
+    // Ships INERT with entity migration 109 (plans/products/build/README.md
+    // B10): the def and all 24 of its fields exist in every org, and NOTHING
+    // writes them until `packages/lib/src/builds/` lands in phase 2. An entity
+    // with zero rows can be reshaped for free; the first row ends that.
+    //
+    // ⚠️ `isVisible: false` is NOT permanent — phase 2 flips it to true when the
+    // list, the detail page and the completion form land. Straight from the
+    // `vendor_payment` precedent: a visible nav entry for an empty list with no
+    // way to create a row is a worse first impression than no entry at all.
+    entityType: 'build',
+    apiSlug: 'builds',
+    singular: 'Build',
+    plural: 'Builds',
+    icon: 'hammer',
+    color: 'orange',
+    isVisible: false,
+  },
 ]
 
 /**
@@ -469,6 +487,10 @@ export const DISPLAY_FIELD_CONFIG: Record<string, DisplayFieldConfig> = {
   gl_posting_line: {
     primaryDisplayField: 'accountCode',
     secondaryDisplayField: undefined,
+  },
+  build: {
+    primaryDisplayField: 'number',
+    secondaryDisplayField: 'part',
   },
 }
 
