@@ -17,8 +17,13 @@ import { cn } from '@auxx/ui/lib/utils'
 export interface SummaryCell {
   label: string
   value: string
-  /** Muted renders the figure in the label's colour — for a zero that is not news. */
-  tone?: 'default' | 'muted'
+  /**
+   * `muted` renders the figure in the label's colour — for a zero that is not
+   * news. `warning` is for the one figure on a card that is the reason a human
+   * opened it (a non-zero match variance), so it does not read as flat as the
+   * two figures it was derived from.
+   */
+  tone?: 'default' | 'muted' | 'warning'
 }
 
 /**
@@ -45,7 +50,8 @@ export function PurchasingSummaryStrip({
           <span
             className={cn(
               'font-medium text-sm tabular-nums',
-              cell.tone === 'muted' && 'text-muted-foreground'
+              cell.tone === 'muted' && 'text-muted-foreground',
+              cell.tone === 'warning' && 'text-amber-600'
             )}>
             {cell.value}
           </span>
