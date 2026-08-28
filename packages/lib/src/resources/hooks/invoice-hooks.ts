@@ -1,7 +1,11 @@
 // packages/lib/src/resources/hooks/invoice-hooks.ts
 
 import { recordNumbering } from '../../records/record-numbering'
-import { createLifecycleStatusGuard } from './lifecycle-status-guard'
+import {
+  createLifecycleStatusGuard,
+  INVOICE_ACTION_STATUS_MESSAGE,
+  INVOICE_ACTION_STATUSES,
+} from './lifecycle-status-guard'
 import type { SystemHook, SystemHookRegistry } from './types'
 
 /**
@@ -29,10 +33,17 @@ const autoGenerateInvoiceNumber: SystemHook = async ({
  * sanctioned writes. `draft` stays freely editable — the edit-sent-back-to-draft flow writes
  * plain status `'draft'` after a `useConfirm`, and un-void (manual `draft` write) both flow
  * through it.
+ *
+ * ⚠️ **This chain is coverage, not enforcement.** It runs for `record.create`/`record.update`,
+ * the CSV importer and the SDK — NOT for `fieldValue.set`, which is how the drawer, the grid's
+ * inline edit and a kanban drag write. Its field-chain twin
+ * (`field-hooks/pre/lifecycle-status-guard.ts`) is what stops a human typing `paid` with no
+ * payment behind it, and the two share their value set and message through the constants they
+ * both import.
  */
 const rejectManualLifecycleStatus: SystemHook = createLifecycleStatusGuard({
-  guardedValues: ['sent', 'partially_paid', 'paid', 'void'],
-  message: 'Use the invoice actions (Send / Record payment / Void) to set this status',
+  guardedValues: INVOICE_ACTION_STATUSES,
+  message: INVOICE_ACTION_STATUS_MESSAGE,
 })
 
 export const INVOICE_HOOKS: SystemHookRegistry = {

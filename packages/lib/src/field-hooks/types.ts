@@ -1,5 +1,6 @@
 // packages/lib/src/field-hooks/types.ts
 
+import type { TypedFieldValueInput } from '@auxx/types'
 import type { RecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
 import type { CachedField } from '../field-values/types'
@@ -63,8 +64,25 @@ export interface FieldPreHookEvent {
   /**
    * Post-coercion value the caller is about to write. May be `null` to
    * signal a delete intent — guards that forbid clearing must handle `null`.
+   *
+   * 🛑 **Typed, not `unknown`, and that is load-bearing**
+   * (plans/dispatch/money/21-lifecycle-status-guards-are-inert.md §5b).
+   * `fireFieldPreHooks` runs AFTER `validateAndConvertValue`, so what arrives here is the
+   * COERCED envelope — a SINGLE_SELECT is `{ type: 'option', optionId }`, never the bare
+   * string the caller typed. Three guards were written comparing this directly to a string
+   * literal; every one of them was inert, read correctly in review, and passed a unit test
+   * that fed it a bare string. Because `TypedFieldValueInput` is a union of OBJECT types,
+   * that comparison is now `error TS2367: This comparison appears to be unintentional […]
+   * have no overlap` — the mistake is unwriteable rather than merely discouraged.
+   *
+   * ⚠️ Unwrap deliberately, per field type. There is no framework-level normalisation on
+   * purpose: it would be lossy (a relationship guard needs `relatedEntityId`, an actor guard
+   * the actor envelope) and it would make the mistake invisible rather than impossible — a
+   * guard comparing a normalised value to the wrong literal still fails silently.
+   * `unwrapStatusValue` (`resources/hooks/lifecycle-status-guard.ts`) is the SINGLE_SELECT
+   * one.
    */
-  newValue: unknown
+  newValue: TypedFieldValueInput | TypedFieldValueInput[] | null
   /**
    * Existing value on the record for this field. Pre-fetched on the bulk
    * path; `undefined` on the single-field path (hooks that need it can
@@ -90,9 +108,13 @@ export interface FieldPreHookEvent {
  * write for this field, or throws to reject the operation.
  *
  * Multiple hooks for the same (entitySlug, systemAttribute) compose
- * left-to-right; entity-scoped run before global (`'*'`-scoped) hooks.
+ * left-to-right; entity-scoped run before global (`'*'`-scoped) hooks — so a
+ * handler's return value is the next handler's `newValue`, which is why it is
+ * typed the same way rather than `unknown`.
  */
-export type FieldPreHookHandler = (event: FieldPreHookEvent) => Promise<unknown>
+export type FieldPreHookHandler = (
+  event: FieldPreHookEvent
+) => Promise<TypedFieldValueInput | TypedFieldValueInput[] | null | undefined>
 
 /**
  * Pre-delete entity hook — fired before an entity is permanently deleted.

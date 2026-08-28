@@ -6,6 +6,7 @@ import { createScopedLogger } from '@auxx/logger'
 import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
+import type { SystemAttribute } from '@auxx/types/system-attribute'
 import { and, asc, eq, inArray, isNotNull, or, sql } from 'drizzle-orm'
 import { getOrgCache } from '../../cache'
 import { BadRequestError, ForbiddenError, NotFoundError } from '../../errors'
@@ -165,11 +166,28 @@ export async function listWorkOrderPayments(
 }
 
 /**
+ * The bypass the ledger projection carries
+ * (plans/dispatch/money/21-lifecycle-status-guards-are-inert.md §4).
+ *
+ * 🛑 `invoice_status` is guarded on the FIELD pre-hook chain
+ * (`field-hooks/pre/lifecycle-status-guard.ts`), which `FieldValueService` writes DO reach —
+ * unlike the system pre-hook, which they clear structurally. This function is the ONLY writer
+ * of `paid` and `partially_paid` and of the payment-reversal `-> sent`, which is exactly why
+ * the wall exists and exactly why this call has to be exempt from it.
+ *
+ * It names `invoice_status` and nothing else. The other two fields written here —
+ * `invoice_amount_paid` and `invoice_balance` — need no exemption: `BILLING_PROJECTION_ATTRS`
+ * deliberately excludes `invoice_amount_paid`, and neither carries a field pre-hook.
+ */
+const INVOICE_STATUS_BYPASS = new Set<SystemAttribute>(['invoice_status'])
+
+/**
  * Project the ledger onto an invoice's mirrored `amountPaid`/`balance`/`status` fields
  * (money MI1 build spec §E.4) — the one function where ledger truth becomes invoice state.
  * Writes go through `FieldValueService` (the sanctioned-writer path that structurally
- * bypasses the `rejectManualLifecycleStatus` system pre-hook — the convert-quote.ts:206-210
- * precedent). Only writes fields that actually changed, to avoid no-op event churn.
+ * bypasses the system pre-hook — the convert-quote.ts:206-210 precedent) plus
+ * {@link INVOICE_STATUS_BYPASS} for the field pre-hook, which that path does NOT clear on its
+ * own. Only writes fields that actually changed, to avoid no-op event churn.
  */
 export async function syncInvoicePaymentState(
   input: SyncInvoicePaymentStateInput & { db?: Database }
@@ -230,7 +248,9 @@ export async function syncInvoicePaymentState(
   if (nextStatus !== status) writes.push({ fieldId: 'invoice_status', value: nextStatus })
   if (writes.length === 0) return
 
-  const fieldValueService = new FieldValueService(organizationId, userId, db)
+  const fieldValueService = new FieldValueService(organizationId, userId, db, undefined, {
+    bypassFieldGuards: INVOICE_STATUS_BYPASS,
+  })
   // No `publishEvents` (plan 04 §7.3): the ambient write session decides. On the
   // four Stripe rails these writes are and stay loud; reached from
   // `recomputeInvoiceTotals` during a buffered billing composition they are

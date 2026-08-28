@@ -19,6 +19,43 @@ export const PURCHASE_ORDER_ACTION_STATUSES = ['issued'] as const
 export const PURCHASE_ORDER_ACTION_STATUS_MESSAGE = 'Use Send to issue this purchase order'
 
 /**
+ * The `quote_status` values an ACTION owns (money MQ1 build spec §F.3). Same one-source rule
+ * as the purchase order's set above: the system pre-hook in `quote-hooks.ts` and the field
+ * pre-hook in `field-hooks/pre/lifecycle-status-guard.ts` both read this, so the two chains
+ * cannot drift into guarding different values.
+ *
+ * `draft`, `declined` and `canceled` stay freely editable. `declined` has a sanctioned writer
+ * (`declineQuote`) but no side effects a manual write would skip, and the edit-a-sent-quote
+ * flow writes plain `draft` after a `useConfirm` — that transition is walled separately, and
+ * only when money is at stake, by `pre/quote-deposit-guard.ts`.
+ */
+export const QUOTE_ACTION_STATUSES = ['sent', 'approved'] as const
+
+/** The one message both quote lifecycle guards throw. */
+export const QUOTE_ACTION_STATUS_MESSAGE =
+  'Use the quote actions (Send / Mark approved) to set this status'
+
+/**
+ * The `invoice_status` values an ACTION owns (money MI1 build spec §F.2).
+ *
+ * 🛑 `paid` and `partially_paid` are in here for a different and sharper reason than `sent`.
+ * They are LEDGER-DERIVED: `syncInvoicePaymentState` computes them from the
+ * `PaymentTransaction` rows and nothing else. A hand-set `paid` therefore records a settled
+ * bill with no payment behind it — no transaction, no allocation, no `invoice_amount_paid` —
+ * and every downstream read believes it. That is the one case in this file where an inert
+ * guard silently corrupts money rather than merely skipping a mirror
+ * (plans/dispatch/money/21-lifecycle-status-guards-are-inert.md §3).
+ *
+ * `draft` stays editable: both the edit-a-sent-invoice flow and un-voiding write it directly
+ * after a confirmation.
+ */
+export const INVOICE_ACTION_STATUSES = ['sent', 'partially_paid', 'paid', 'void'] as const
+
+/** The one message both invoice lifecycle guards throw. */
+export const INVOICE_ACTION_STATUS_MESSAGE =
+  'Use the invoice actions (Send / Record payment / Void) to set this status'
+
+/**
  * Reduce a status write to the bare value being set, whatever shape it arrives in.
  *
  * 🛑 The two chains hand a guard **different shapes**, and this is the whole reason the

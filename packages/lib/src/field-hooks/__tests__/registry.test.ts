@@ -1,6 +1,7 @@
 // packages/lib/src/field-hooks/__tests__/registry.test.ts
 
 import type { FieldType } from '@auxx/database/types'
+import type { TypedFieldValueInput } from '@auxx/types'
 import type { RecordId } from '@auxx/types/resource'
 import { describe, expect, it, vi } from 'vitest'
 import type { CachedField } from '../../field-values/types'
@@ -20,6 +21,14 @@ import type { EntityFieldChangeEvent, FieldPreHookEvent } from '../types'
 
 const TEST_RECORD: RecordId = 'fhk-test-record:abc' as RecordId
 
+/**
+ * A pre-hook's `newValue` is post-coercion, so the sentinels these tests pass down the chain
+ * have to be real typed envelopes rather than bare strings — the type says so, and the reason
+ * it says so is that three shipped guards compared this value to a string literal and were
+ * inert (plans/dispatch/money/21-lifecycle-status-guards-are-inert.md §5b).
+ */
+const typed = (value: string): TypedFieldValueInput => ({ type: 'text', value })
+
 function buildEvent(overrides: Partial<FieldPreHookEvent> = {}): FieldPreHookEvent {
   return {
     recordId: TEST_RECORD,
@@ -29,9 +38,9 @@ function buildEvent(overrides: Partial<FieldPreHookEvent> = {}): FieldPreHookEve
     fieldId: 'fld_1',
     systemAttribute: 'title',
     field: { id: 'fld_1', systemAttribute: 'title' } as unknown as CachedField,
-    newValue: 'before',
+    newValue: typed('before'),
     existingValue: undefined,
-    allValues: new Map<string, unknown>([['fld_1', 'before']]),
+    allValues: new Map<string, unknown>([['fld_1', typed('before')]]),
     organizationId: 'org_1',
     userId: 'user_1',
     bypass: new Set(),
@@ -48,8 +57,8 @@ describe('field-hooks registry — pre-hooks', () => {
   it('keys hooks by (entitySlug, systemAttribute) — different slugs do not collide', () => {
     const slugA = 'fhk-slug-a'
     const slugB = 'fhk-slug-b'
-    const handlerA = vi.fn(async () => 'A')
-    const handlerB = vi.fn(async () => 'B')
+    const handlerA = vi.fn(async () => typed('A'))
+    const handlerB = vi.fn(async () => typed('B'))
     registerFieldPreHooks(slugA, 'tag_parent', [handlerA])
     registerFieldPreHooks(slugB, 'tag_parent', [handlerB])
 
@@ -62,11 +71,11 @@ describe('field-hooks registry — pre-hooks', () => {
     const calls: string[] = []
     const scoped = async () => {
       calls.push('scoped')
-      return 'mid'
+      return typed('mid')
     }
     const global = async () => {
       calls.push('global')
-      return 'last'
+      return typed('last')
     }
     registerFieldPreHooks(slug, 'tag_parent', [scoped])
     registerFieldPreHooks('*', 'tag_parent', [global])
@@ -74,18 +83,18 @@ describe('field-hooks registry — pre-hooks', () => {
     const chain = getFieldPreHooks(slug, 'tag_parent')
     expect(chain).toEqual([scoped, global])
 
-    let value: unknown = 'first'
+    let value: TypedFieldValueInput | TypedFieldValueInput[] | null = typed('first')
     for (const fn of chain) {
-      value = await fn(buildEvent({ newValue: value }))
+      value = (await fn(buildEvent({ newValue: value }))) ?? null
     }
     expect(calls).toEqual(['scoped', 'global'])
-    expect(value).toBe('last')
+    expect(value).toEqual(typed('last'))
   })
 
   it('registers multiple hooks under one (slug, attribute) and preserves order', () => {
     const slug = 'fhk-multi-slug'
-    const a = vi.fn(async () => 'A')
-    const b = vi.fn(async () => 'B')
+    const a = vi.fn(async () => typed('A'))
+    const b = vi.fn(async () => typed('B'))
     registerFieldPreHooks(slug, 'title', [a])
     registerFieldPreHooks(slug, 'title', [b])
 
@@ -96,10 +105,10 @@ describe('field-hooks registry — pre-hooks', () => {
     const slug = 'fhk-has-slug'
     expect(hasFieldPreHooks(slug, 'title')).toBe(false)
 
-    registerFieldPreHooks(slug, 'title', [async () => 'x'])
+    registerFieldPreHooks(slug, 'title', [async () => typed('x')])
     expect(hasFieldPreHooks(slug, 'title')).toBe(true)
 
-    registerFieldPreHooks('*', 'tag_parent', [async () => 'y'])
+    registerFieldPreHooks('*', 'tag_parent', [async () => typed('y')])
     expect(hasFieldPreHooks('any-other-slug', 'tag_parent')).toBe(true)
   })
 })

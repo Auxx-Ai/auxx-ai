@@ -441,15 +441,18 @@ async function fireFieldPreHooks(
     bypass: ctx.bypassFieldGuards,
   }
 
-  let value: unknown = args.typedValue
+  // Typed, not `unknown`: `args.typedValue` already carries the coerced shape, and widening
+  // it here is what let three guards ship comparing an option envelope to a bare string
+  // (plans/dispatch/money/21-lifecycle-status-guards-are-inert.md §5b). Keeping the type is
+  // what turns that mistake into `error TS2367` in the guard's own file. The `undefined`
+  // check narrows the drop case out, so no cast is needed on the way back either.
+  let value: TypedFieldValueInput | TypedFieldValueInput[] | null = args.typedValue
   for (const hook of hooks) {
-    value = await hook({ ...event, newValue: value })
-    if (value === undefined) return { kind: 'drop' }
+    const next = await hook({ ...event, newValue: value })
+    if (next === undefined) return { kind: 'drop' }
+    value = next
   }
-  return {
-    kind: 'continue',
-    value: value as TypedFieldValueInput | TypedFieldValueInput[] | null,
-  }
+  return { kind: 'continue', value }
 }
 
 // =============================================================================

@@ -4,6 +4,7 @@ import { database, schema } from '@auxx/database'
 import type { RecordId, TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
+import type { SystemAttribute } from '@auxx/types/system-attribute'
 import { and, eq } from 'drizzle-orm'
 import { getEntityDefIdResolver, getOrgCache } from '../cache'
 import { BadRequestError } from '../errors'
@@ -55,12 +56,37 @@ export async function unstampSourceLines(
 }
 
 /**
+ * The bypass both invoice lifecycle actions carry
+ * (plans/dispatch/money/21-lifecycle-status-guards-are-inert.md §4).
+ *
+ * 🛑 **Two chains guard `invoice_status`, and only ONE of them is cleared structurally.**
+ * Writing through `FieldValueService` rather than `UnifiedCrudHandler` clears the system
+ * pre-hook (`resources/hooks/invoice-hooks.ts`), which never runs for a `FieldValueService`
+ * write. But that is not the chain a drawer edit or a kanban drag takes, so `invoice_status`
+ * also carries a FIELD pre-hook (`field-hooks/pre/lifecycle-status-guard.ts`) that DOES see
+ * these writes. `fireFieldPreHooks` short-circuits on
+ * `ctx.bypassFieldGuards.has(systemAttribute)` before any handler runs, so naming the
+ * attribute here is the whole mechanism — without it Send and Void are refused by the wall
+ * built to protect them.
+ *
+ * It names `invoice_status` and nothing else. `markInvoiceSent` also writes
+ * `invoice_issued_at`, which is deliberately NOT in here: that field is not in
+ * `BILLING_PROJECTION_ATTRS` and carries no guard, and naming a field a bypass does not need
+ * is how a projection-owned field quietly becomes writable later.
+ *
+ * The third sanctioned writer, `syncInvoicePaymentState` (`payments/ledger.ts`), builds the
+ * identical one-attribute set — it is the only writer of `paid` / `partially_paid`.
+ */
+const INVOICE_STATUS_BYPASS = new Set<SystemAttribute>(['invoice_status'])
+
+/**
  * Mark a draft invoice as sent (money MI1 build spec §G.2) — send is issuance, so
  * `invoice_issued_at` is stamped to today if it's still empty. No `markPaid` mutation exists
  * on purpose: "Mark as paid" in the UI records a full-balance payment through
  * `recordManualPayment` (decision 4, one code path). Writes go through `FieldValueService` —
- * the sanctioned-writer path the `rejectManualLifecycleStatus` system pre-hook
- * (resources/hooks/invoice-hooks.ts) is built to let through.
+ * the sanctioned-writer path both `invoice_status` guards are built to let through: the
+ * system pre-hook (resources/hooks/invoice-hooks.ts) structurally, and the field pre-hook via
+ * {@link INVOICE_STATUS_BYPASS}.
  */
 export async function markInvoiceSent(input: InvoiceLifecycleInput): Promise<void> {
   const { organizationId, userId, invoiceInstanceId } = input
@@ -100,7 +126,9 @@ export async function markInvoiceSent(input: InvoiceLifecycleInput): Promise<voi
   // precedent for the identical gap. Mirrors `UnifiedCrudHandler.update`'s own
   // recordId-resolution step (unified-handler-mutations.ts:452).
   const resolveDefId = await getEntityDefIdResolver(organizationId)
-  const fieldValueService = new FieldValueService(organizationId, userId)
+  const fieldValueService = new FieldValueService(organizationId, userId, undefined, undefined, {
+    bypassFieldGuards: INVOICE_STATUS_BYPASS,
+  })
   await fieldValueService.setValuesForEntity({
     recordId: toRecordId(resolveDefId('invoice'), invoiceInstanceId),
     values: writes,
@@ -122,8 +150,8 @@ export async function markInvoiceSent(input: InvoiceLifecycleInput): Promise<voi
  * (decision 6 — delete manual payments first; MP1 extends the message to refunds). Unstamps
  * every source line so the job can be re-gathered later (decision 5) — the invoice's own
  * copies stay, so the void document remains readable history. Un-void is the manual `draft`
- * write escape hatch, deliberately unguarded (`rejectManualLifecycleStatus` only blocks the
- * ledger-derived/send statuses).
+ * write escape hatch, deliberately unguarded — neither `invoice_status` guard blocks `draft`,
+ * only the ledger-derived and send statuses.
  */
 export async function voidInvoice(input: InvoiceLifecycleInput): Promise<void> {
   const { organizationId, userId, invoiceInstanceId } = input
@@ -142,7 +170,9 @@ export async function voidInvoice(input: InvoiceLifecycleInput): Promise<void> {
   // identical note in `markInvoiceSent` above (unresolved `invoice:<id>` RecordId silently
   // no-ops every field-change hook, including this plan's invoice-reminders subject guard).
   const resolveDefId = await getEntityDefIdResolver(organizationId)
-  const fieldValueService = new FieldValueService(organizationId, userId)
+  const fieldValueService = new FieldValueService(organizationId, userId, undefined, undefined, {
+    bypassFieldGuards: INVOICE_STATUS_BYPASS,
+  })
   await fieldValueService.setValuesForEntity({
     recordId: toRecordId(resolveDefId('invoice'), invoiceInstanceId),
     values: [{ fieldId: 'invoice_status', value: 'void' }],

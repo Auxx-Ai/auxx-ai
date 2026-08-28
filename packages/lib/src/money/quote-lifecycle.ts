@@ -3,6 +3,7 @@
 import type { RecordId, TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { toRecordId } from '@auxx/types/resource'
+import type { SystemAttribute } from '@auxx/types/system-attribute'
 import { getOrgCache } from '../cache'
 import { BadRequestError } from '../errors'
 import { FieldValueService } from '../field-values/field-value-service'
@@ -53,13 +54,37 @@ async function getQuoteStatusAndRequest(
 }
 
 /**
+ * The bypass every quote lifecycle action carries
+ * (plans/dispatch/money/21-lifecycle-status-guards-are-inert.md §4).
+ *
+ * 🛑 **Two chains guard `quote_status`, and only ONE of them is cleared structurally.**
+ * Writing through `FieldValueService` rather than `UnifiedCrudHandler` is what clears the
+ * system pre-hook (`resources/hooks/quote-hooks.ts`), which never runs for a
+ * `FieldValueService` write. But that is not the chain a drawer edit or a kanban drag takes,
+ * so `quote_status` also carries a FIELD pre-hook
+ * (`field-hooks/pre/lifecycle-status-guard.ts`) that DOES see these writes.
+ * `fireFieldPreHooks` short-circuits on `ctx.bypassFieldGuards.has(systemAttribute)` before
+ * any handler runs, so naming the attribute here is the whole mechanism — without it Send and
+ * Mark approved are refused by the wall built to protect them.
+ *
+ * It names `quote_status` and nothing else, matching `markPurchaseOrderSent`'s scoping:
+ * naming more would quietly disarm guards on fields these actions have no business writing.
+ *
+ * `declineQuote` carries it too, though `declined` is not currently a guarded value — the
+ * exemption belongs to the sanctioned WRITER rather than to today's value set, so adding
+ * `declined` to the wall later cannot silently break the action that produces it.
+ */
+const QUOTE_STATUS_BYPASS = new Set<SystemAttribute>(['quote_status'])
+
+/**
  * Mark a quote as sent (money MQ1 build spec §F.3). Bare status flip until MQ2 wraps
  * it with the real PDF/email send. Mirrors the linked request to `quoted` if present.
  *
- * Writes go through `FieldValueService` directly — this is the sanctioned writer the
- * `rejectManualLifecycleStatus` system pre-hook (resources/hooks/quote-hooks.ts) is
- * built to let through, since `FieldValueService` bypasses `UnifiedCrudHandler`'s
- * system pre-hook chain entirely (the M1 `converted`-mirror precedent).
+ * Writes go through `FieldValueService` directly — this is the sanctioned writer both
+ * `quote_status` guards are built to let through. `FieldValueService` bypasses
+ * `UnifiedCrudHandler`'s system pre-hook chain entirely (the M1 `converted`-mirror
+ * precedent), and {@link QUOTE_STATUS_BYPASS} clears the field pre-hook, which this write
+ * does reach.
  */
 export async function markQuoteSent(input: QuoteLifecycleInput): Promise<void> {
   const { organizationId, userId, quoteInstanceId } = input
@@ -73,7 +98,9 @@ export async function markQuoteSent(input: QuoteLifecycleInput): Promise<void> {
   )
   assertStatus(status, 'draft', 'mark as sent')
 
-  const fieldValueService = new FieldValueService(organizationId, userId)
+  const fieldValueService = new FieldValueService(organizationId, userId, undefined, undefined, {
+    bypassFieldGuards: QUOTE_STATUS_BYPASS,
+  })
   await fieldValueService.setValuesForEntity({
     recordId: quoteRecordId,
     values: [{ fieldId: 'quote_status', value: 'sent' }],
@@ -103,7 +130,9 @@ export async function approveQuote(input: QuoteLifecycleInput): Promise<void> {
   )
   assertStatus(status, 'sent', 'approve')
 
-  const fieldValueService = new FieldValueService(organizationId, userId)
+  const fieldValueService = new FieldValueService(organizationId, userId, undefined, undefined, {
+    bypassFieldGuards: QUOTE_STATUS_BYPASS,
+  })
   await fieldValueService.setValuesForEntity({
     recordId: quoteRecordId,
     values: [{ fieldId: 'quote_status', value: 'approved' }],
@@ -129,7 +158,9 @@ export async function declineQuote(input: QuoteLifecycleInput): Promise<void> {
   const { status } = await getQuoteStatusAndRequest(handler, organizationId, quoteRecordId)
   assertStatus(status, 'sent', 'decline')
 
-  const fieldValueService = new FieldValueService(organizationId, userId)
+  const fieldValueService = new FieldValueService(organizationId, userId, undefined, undefined, {
+    bypassFieldGuards: QUOTE_STATUS_BYPASS,
+  })
   await fieldValueService.setValuesForEntity({
     recordId: quoteRecordId,
     values: [{ fieldId: 'quote_status', value: 'declined' }],
