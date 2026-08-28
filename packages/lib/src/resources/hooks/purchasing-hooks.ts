@@ -1,12 +1,19 @@
 // packages/lib/src/resources/hooks/purchasing-hooks.ts
 
+import { createScopedLogger } from '@auxx/logger'
+import type { TypedFieldValue } from '@auxx/types'
+import { getOrgCache } from '../../cache'
+import { FieldValueService } from '../../field-values/field-value-service'
 import { recordNumbering } from '../../records/record-numbering'
+import { isRecordId, type RecordId } from '../resource-id'
 import {
   createLifecycleStatusGuard,
   PURCHASE_ORDER_ACTION_STATUS_MESSAGE,
   PURCHASE_ORDER_ACTION_STATUSES,
 } from './lifecycle-status-guard'
 import type { SystemHook, SystemHookRegistry } from './types'
+
+const logger = createScopedLogger('resources:purchasing-hooks')
 
 /**
  * Auto-generate the purchase order number on create. Mirrors autoGenerateOrderNumber.
@@ -42,6 +49,119 @@ const autoGenerateVendorBillInternalNumber: SystemHook = async ({
   if (operation !== 'create') return values
   const { recordNumber } = await recordNumbering.create(organizationId, 'vendor_bill')
   return { ...values, [field.id]: recordNumber }
+}
+
+/**
+ * Unwrap a write-time value that may be scalar or a single-element array, then read a
+ * `RecordId` out of it. Relationship values reach a pre-hook as the `"<defId>:<instanceId>"`
+ * string, but some writers wrap the value in an array or in a `{ recordId }` object.
+ */
+function readRecordId(raw: unknown): RecordId | null {
+  const value = Array.isArray(raw) ? raw[0] : raw
+  if (typeof value === 'string') return isRecordId(value) ? value : null
+  if (value && typeof value === 'object' && 'recordId' in value) {
+    const inner = (value as { recordId?: unknown }).recordId
+    return typeof inner === 'string' && isRecordId(inner) ? inner : null
+  }
+  return null
+}
+
+/**
+ * Read `company_primary_contact` off a company.
+ *
+ * Three-state on purpose, mirroring `resolveCatalogItemPart`:
+ * - a `RecordId` — the company names that person as its primary contact
+ * - `null` — the company resolved and names NOBODY
+ * - `undefined` — the primary contact could not be resolved at all (the org has no
+ *   `company_primary_contact` field, or the read failed). The caller must leave any
+ *   existing value alone in that case; collapsing it into `null` would clear a good
+ *   contact on a transient failure.
+ *
+ * ⚠️ A contact reaches a company through TWO different edges and this is only one of
+ * them: `company_primary_contact` inverts to `contact:company`, while
+ * `company_employees` inverts to `contact:employer`. A primary contact is not
+ * automatically an employee, and vice versa.
+ */
+export async function resolveCompanyPrimaryContact(params: {
+  organizationId: string
+  userId: string
+  companyRecordId: RecordId
+}): Promise<RecordId | null | undefined> {
+  const { organizationId, userId, companyRecordId } = params
+
+  try {
+    const cf = await getOrgCache()
+      .from(organizationId, 'customFields')
+      .bySystemAttributes(['company_primary_contact'] as const)
+    if (!cf.company_primary_contact) return undefined
+
+    const values = await new FieldValueService(organizationId, userId).getValues({
+      recordId: companyRecordId,
+      fieldIds: [cf.company_primary_contact.id],
+    })
+    const entry = values.get(cf.company_primary_contact.id)
+    const typed: TypedFieldValue | undefined = Array.isArray(entry) ? entry[0] : entry
+    if (typed?.type === 'relationship' && typed.recordId) return typed.recordId
+    return null
+  } catch (error) {
+    logger.warn('could not resolve company_primary_contact', {
+      organizationId,
+      companyRecordId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return undefined
+  }
+}
+
+/**
+ * Default `purchase_order_contact` from the vendor's primary contact on CREATE
+ * (purchasing plan 07). `purchase_order_vendor` targets a `company`, and a company
+ * carries no email of its own, so without a contact a drafted order has nobody to
+ * send it to — the field was declared with this intent and shipped without a writer.
+ *
+ * ⚠️ **Registered under `purchase_order_vendor`, not `purchase_order_contact`.**
+ * `runPreHooks` skips a hook on UPDATE unless its own registered systemAttribute is
+ * present in `values`; keyed on the contact this would never see a vendor at all.
+ *
+ * ⚠️ **Create only.** This is the CRUD door — `record.create`, the importer, the SDK.
+ * Every interactive vendor change goes through `fieldValue.set`, which never reads
+ * this registry, and is handled by the field-change twin in
+ * `field-hooks/post/purchase-order-contact-prefill.ts`. That twin owns the re-point
+ * case because it is the only one of the two given `oldValue`, which is what tells
+ * this hook's own prefill apart from a human's pick.
+ *
+ * An explicit contact in the SAME write always wins — a caller that named a person
+ * is not asking for a default.
+ */
+const prefillContactFromVendor: SystemHook = async ({
+  operation,
+  values,
+  organizationId,
+  userId,
+  allFields,
+}) => {
+  if (operation !== 'create') return values
+
+  const contactField = allFields.find((f) => f.systemAttribute === 'purchase_order_contact')
+  if (!contactField) return values
+  // `values` is accepted keyed by field id OR by systemAttribute, so an explicit
+  // contact can arrive under either.
+  if (values[contactField.id] != null || values.purchase_order_contact != null) return values
+
+  const vendorField = allFields.find((f) => f.systemAttribute === 'purchase_order_vendor')
+  const vendor = readRecordId(
+    (vendorField ? values[vendorField.id] : undefined) ?? values.purchase_order_vendor
+  )
+  if (!vendor) return values
+
+  const contact = await resolveCompanyPrimaryContact({
+    organizationId,
+    userId,
+    companyRecordId: vendor,
+  })
+  if (!contact) return values
+
+  return { ...values, [contactField.id]: contact }
 }
 
 /**
@@ -83,12 +203,14 @@ const rejectManualLifecycleStatus: SystemHook = createLifecycleStatusGuard({
 })
 
 /**
- * `purchase_order` system hooks: the RecordSequence number on create, and the lifecycle
- * guard that keeps `issued` an action rather than a dropdown value.
+ * `purchase_order` system hooks: the RecordSequence number on create, the lifecycle guard
+ * that keeps `issued` an action rather than a dropdown value, and the contact default
+ * derived from the vendor.
  */
 export const PURCHASE_ORDER_HOOKS: SystemHookRegistry = {
   purchase_order_number: [autoGeneratePurchaseOrderNumber],
   purchase_order_status: [rejectManualLifecycleStatus],
+  purchase_order_vendor: [prefillContactFromVendor],
 }
 
 /**

@@ -14,6 +14,17 @@ vi.mock('../../../records/record-numbering', () => ({
   recordNumbering: { create: vi.fn() },
 }))
 
+const h = vi.hoisted(() => ({ bySystemAttributes: vi.fn(), getValues: vi.fn() }))
+
+vi.mock('../../../cache', () => ({
+  getOrgCache: () => ({ from: () => ({ bySystemAttributes: h.bySystemAttributes }) }),
+}))
+vi.mock('../../../field-values/field-value-service', () => ({
+  FieldValueService: class {
+    getValues = h.getValues
+  },
+}))
+
 const { recordNumbering } = await import('../../../records/record-numbering')
 const createMock = vi.mocked(recordNumbering.create)
 
@@ -93,6 +104,93 @@ describe('vendor_bill_internal_number issuance', () => {
   })
 })
 
+const CONTACT_FIELD = { id: 'fld-contact', systemAttribute: 'purchase_order_contact' }
+const VENDOR_FIELD = { id: 'fld-vendor', systemAttribute: 'purchase_order_vendor' }
+const VENDOR = 'codef:co-1'
+const PRIMARY = 'ctdef:ct-1'
+
+/** What `company_primary_contact` resolves to for the vendor in the write. */
+function primaryContactIs(recordId: string | null) {
+  h.bySystemAttributes.mockResolvedValue({ company_primary_contact: { id: 'fld-cpc' } })
+  h.getValues.mockResolvedValue(
+    new Map(recordId ? [['fld-cpc', [{ type: 'relationship', recordId }]]] : [])
+  )
+}
+
+function vendorContext(overrides: Record<string, unknown> = {}): SystemHookContext {
+  return buildContext('purchase_order', 'purchase_order_vendor', VENDOR_FIELD.id, {
+    values: { [VENDOR_FIELD.id]: VENDOR },
+    allFields: [CONTACT_FIELD, VENDOR_FIELD],
+    ...overrides,
+  } as unknown as Partial<SystemHookContext>)
+}
+
+/** The CRUD door for the vendor -> contact default (purchasing plan 07). */
+describe('purchase_order_contact default', () => {
+  const hook = () => PURCHASE_ORDER_HOOKS.purchase_order_vendor![0]!
+
+  it('defaults the contact from the vendor\u2019s primary contact on create', async () => {
+    primaryContactIs(PRIMARY)
+
+    const values = await hook()(vendorContext())
+
+    expect(values[CONTACT_FIELD.id]).toBe(PRIMARY)
+  })
+
+  // A caller that named a person is not asking for a default. `values` is accepted keyed by
+  // field id OR by systemAttribute, so both keys have to be honoured.
+  it('never overwrites a contact named in the same write', async () => {
+    primaryContactIs(PRIMARY)
+
+    const byId = await hook()(
+      vendorContext({ values: { [VENDOR_FIELD.id]: VENDOR, [CONTACT_FIELD.id]: 'ctdef:mine' } })
+    )
+    const byAttribute = await hook()(
+      vendorContext({
+        values: { [VENDOR_FIELD.id]: VENDOR, purchase_order_contact: 'ctdef:mine' },
+      })
+    )
+
+    expect(byId[CONTACT_FIELD.id]).toBe('ctdef:mine')
+    expect(byAttribute[CONTACT_FIELD.id]).toBeUndefined()
+  })
+
+  // Re-pointing an existing order is the field-change twin's job \u2014 it is the only one of
+  // the two given `oldValue`, which is what tells this hook's own prefill from a human's pick.
+  it('does nothing on update', async () => {
+    primaryContactIs(PRIMARY)
+
+    const values = await hook()(vendorContext({ operation: 'update' }))
+
+    expect(values[CONTACT_FIELD.id]).toBeUndefined()
+  })
+
+  it('leaves the contact unset when the vendor names nobody', async () => {
+    primaryContactIs(null)
+
+    const values = await hook()(vendorContext())
+
+    expect(values[CONTACT_FIELD.id]).toBeUndefined()
+  })
+
+  it('leaves the contact unset when the write carries no vendor', async () => {
+    primaryContactIs(PRIMARY)
+
+    const values = await hook()(vendorContext({ values: {} }))
+
+    expect(values[CONTACT_FIELD.id]).toBeUndefined()
+  })
+
+  // An org that has not run migration 108's contact half has no field to write.
+  it('is inert on an org with no contact field', async () => {
+    primaryContactIs(PRIMARY)
+
+    const values = await hook()(vendorContext({ allFields: [VENDOR_FIELD] }))
+
+    expect(values).toEqual({ [VENDOR_FIELD.id]: VENDOR })
+  })
+})
+
 describe('purchasing hook registration', () => {
   // The miss that made native-order phase 1 ship numberless orders.
   it('is reachable through the entity-type registry, not just the module export', () => {
@@ -120,8 +218,17 @@ describe('purchasing hook registration', () => {
     expect(Object.keys(PURCHASE_ORDER_HOOKS).sort()).toEqual([
       'purchase_order_number',
       'purchase_order_status',
+      'purchase_order_vendor',
     ])
     expect(getHooksForAttribute('purchase_order', 'purchase_order_status')).toHaveLength(1)
+  })
+
+  // The contact default is keyed on the VENDOR, never on the contact: `runPreHooks` skips a
+  // hook on update unless its own systemAttribute is in `values`, so keyed on the contact it
+  // could never see which supplier the order was placed with.
+  it('keys the contact default on the vendor, not the contact', () => {
+    expect(getHooksForAttribute('purchase_order', 'purchase_order_vendor')).toHaveLength(1)
+    expect(getHooksForAttribute('purchase_order', 'purchase_order_contact')).toHaveLength(0)
   })
 
   // `vendor_bill_status` is recomputed by the match hook on every create/update, so a manual
