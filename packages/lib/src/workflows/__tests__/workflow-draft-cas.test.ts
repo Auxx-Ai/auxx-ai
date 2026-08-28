@@ -182,6 +182,9 @@ describe('WorkflowService.update draft CAS', () => {
     expect(updateCalls).toHaveLength(0)
   })
 
+  // 30s, not the 10s default. This one test owns ~6.5s of the file's runtime on an
+  // idle machine, so under any load it tipped the default and failed as a TIMEOUT
+  // rather than an assertion — which looks like a real break and is not one.
   it('writes under FOR UPDATE and returns the new graph hash when the hash matches', async () => {
     const { tx, updateCalls, forUpdate } = makeTx([{ graph: storedGraphJsonb, version: 3 }])
     const service = makeService(tx)
@@ -204,7 +207,7 @@ describe('WorkflowService.update draft CAS', () => {
     expect(draftWrite?.set?.version).toBe(4)
 
     expect(result.graphHash).toBe(hashWorkflowGraph(newGraph))
-  })
+  }, 30_000)
 
   it('keeps the legacy unconditional write when expectedGraphHash is absent', async () => {
     const { tx, updateCalls, forUpdate } = makeTx([])

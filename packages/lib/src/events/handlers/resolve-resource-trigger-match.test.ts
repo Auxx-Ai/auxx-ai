@@ -38,6 +38,12 @@ describe('resolveResourceTriggerMatch', () => {
     hoisted.getCachedEntityDefId.mockImplementation(async (_orgId, slug) => CACHE[slug])
   })
 
+  // 30s, not the 10s default. This test pays for the whole
+  // `trigger-resource-workflows` module graph on its dynamic import — ~6.1s on an
+  // idle machine, and the rest of the file rides on it for free. Against a 10s
+  // budget that tipped whenever the box was busy, and a timing failure on a loaded
+  // machine reads exactly like a deterministic one: it has now cost three separate
+  // false-alarm investigations. The number is the import, not the assertion.
   it('normalizes the legacy ticket slug to the org EntityDefinition id', async () => {
     const { resolveResourceTriggerMatch } = await import('./trigger-resource-workflows')
 
@@ -49,7 +55,7 @@ describe('resolveResourceTriggerMatch', () => {
     // The picker stores the CUID; without this the strict compare in
     // `byTrigger` / `trigger-agents` never matches and the trigger is dead.
     expect(match?.entityDefinitionId).toBe(TICKET_DEF)
-  })
+  }, 30_000)
 
   it('keeps the slug in matchIds so slug-keyed rows still fire', async () => {
     const { resolveResourceTriggerMatch } = await import('./trigger-resource-workflows')
