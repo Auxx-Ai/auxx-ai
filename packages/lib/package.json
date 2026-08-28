@@ -1144,6 +1144,12 @@
       "import": "./dist/purchasing/index.mjs",
       "default": "./src/purchasing/index.ts"
     },
+    "./purchasing/client": {
+      "types": "./src/purchasing/client.ts",
+      "source": "./src/purchasing/client.ts",
+      "import": "./dist/purchasing/client.mjs",
+      "default": "./src/purchasing/client.ts"
+    },
     "./quick-actions": {
       "types": "./src/quick-actions/index.ts",
       "source": "./src/quick-actions/index.ts",

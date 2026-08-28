@@ -30,7 +30,7 @@ const BUILT_PART_KINDS: ReadonlySet<PartKindValue> = new Set<PartKindValue>([
  * afterthought.
  *
  * An unrecognised string falls to the same default rather than throwing, exactly
- * as `resolveGlAccountForPartKind` does: a roll is not the place to discover
+ * as `resolveInventoryRoleForPartKind` does: a roll is not the place to discover
  * that somebody added a fourth part kind.
  */
 export function resolvePartKind(raw: string | null | undefined): PartKindValue {

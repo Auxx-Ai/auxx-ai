@@ -236,6 +236,32 @@ export const VENDOR_BILL_LINE_FIELDS: Record<string, ResourceField> = {
   // ledger is ours and the accounting system is an exporter; the provider's id
   // for an account lives on `gl_account`, where it can change without touching
   // a single line.
+  /**
+   * The account this bill line is coded to, as a **CODE** (`'2160'`).
+   *
+   * 🛑 Deliberately NOT a role, and this is the one place in the purchasing
+   * subsystem where a code is the right answer — so the difference from
+   * `stock_movement.glAccount` (which stores a `G8` ROLE) is stated here rather
+   * than left to be rediscovered.
+   *
+   * Two things separate them:
+   *
+   *  1. **This is the bookkeeper's own coding, against THEIR chart.** Most of a
+   *     chart carries no auxx role at all — 16 of the 28 accounts in
+   *     `DEFAULT_CHART_OF_ACCOUNTS` have none, and an org adds twenty more of
+   *     its own on day one. A role-typed field could not express "code this
+   *     line to 6410 Office Supplies", which is the ordinary case.
+   *  2. **Nothing here is frozen history.** `updatable: true`: a bill line is a
+   *     transcription of a document that a human corrects. The movement's role
+   *     is frozen precisely because it can never be corrected.
+   *
+   * ⚠️ What is still wrong: `bill-lines-from-purchase-order.ts` hardcodes
+   * `GRNI_ACCOUNT_CODE = '2160'` to prefill a PO-matched line. That IS a `G8`
+   * violation — the prefill should resolve the `grni` role through the org's
+   * own `gl_account` chart and use whatever code it finds. It is a prefill and
+   * a human can overtype it, which is why it is a defect rather than a
+   * corruption, but it breaks for any org that renumbers GRNI.
+   */
   glAccount: {
     id: toFieldId('glAccount'),
     key: 'glAccount',
@@ -254,6 +280,8 @@ export const VENDOR_BILL_LINE_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     placeholder: '2160',
+    description:
+      "The account code this line is coded to, in the organization's own chart of accounts. A code, not an auxx posting role: most of a chart plays no part in an auxx posting.",
   },
 
   sortOrder: {

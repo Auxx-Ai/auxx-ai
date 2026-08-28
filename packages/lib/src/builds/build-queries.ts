@@ -24,7 +24,7 @@ import type { Result } from 'neverthrow'
 import { loadDirectSubparts } from '../bom/subpart-graph'
 import { getCachedEntityDefId, getOrgCache } from '../cache'
 import { ConflictError, NotFoundError, UnprocessableEntityError } from '../errors'
-import { computeExtendedCost, resolveGlAccountForPartKind } from '../receiving/client'
+import { computeExtendedCost, resolveInventoryRoleForPartKind } from '../receiving/client'
 import { toRecordId } from '../resources/resource-id'
 import {
   type BuildStatusValue,
@@ -788,7 +788,7 @@ export async function planBuildComponents(
       extendedCost: standard
         ? computeExtendedCost(standard.standardCost, line.quantityConsumed)
         : null,
-      glAccount: resolveGlAccountForPartKind(kinds.get(line.partId) ?? null),
+      glAccount: resolveInventoryRoleForPartKind(kinds.get(line.partId) ?? null),
       offBom: line.qtyPerUnit == null,
     }
   })

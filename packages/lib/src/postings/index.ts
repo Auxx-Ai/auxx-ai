@@ -10,8 +10,8 @@
 // Client code must import `@auxx/lib/postings/client`, never this barrel.
 
 export {
-  ACCOUNT_CODES,
-  type AccountCode,
+  ACCOUNT_ROLES,
+  type AccountRole,
   type BuildEntryInput,
   buildEntry,
   buildReceiptEntry,
@@ -19,6 +19,10 @@ export {
   type ReceiptEntryInput,
   type VendorBillEntryInput,
 } from './build-entry'
+export {
+  DEFAULT_CHART_OF_ACCOUNTS,
+  type DefaultChartAccount,
+} from './default-chart'
 export {
   assertPeriodOpen,
   compareMonths,
@@ -51,4 +55,5 @@ export {
   type PostEntryStatus,
   type PostingDirection,
   type PostingType,
+  type ResolvedPostingLine,
 } from './types'

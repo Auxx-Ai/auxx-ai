@@ -1,5 +1,7 @@
 // packages/lib/src/purchasing/index.ts
 
+export type { VendorBillAgingSweepSummary } from './aging-sweep'
+export { sweepAgingVendorBills } from './aging-sweep'
 export {
   allocateCapitalisedCost,
   allocateLandedCost,
@@ -7,8 +9,12 @@ export {
 } from './allocate-landed-cost'
 export {
   DEFAULT_MATCH_TOLERANCE,
+  describeAwaitingLine,
+  describeAwaitingLines,
   describeMatchReason,
   describeMatchReasons,
+  isAwaitingReceipt,
+  isReceiptOverdue,
   matchBill,
   matchBillLine,
   matchVariance,
@@ -38,6 +44,7 @@ export type {
   AllocationBasis,
   AllocationHeader,
   AllocationLine,
+  AwaitingLine,
   MatchLine,
   MatchReason,
   MatchResult,

@@ -370,7 +370,7 @@ describe('receiveStock — step 3, rounding', () => {
       extendedCost: 44430,
       vendorUnitPrice: 4133,
       vendorPartId: 'vp_1',
-      glAccount: '1310',
+      glAccount: 'inventory_raw_materials',
       purchaseOrderLineId: null,
     })
   })
@@ -412,13 +412,13 @@ describe('receiveStock — step 4, the movement it writes', () => {
   it('stamps the GL account resolved from the part kind', async () => {
     h.partKind = 'finished_good'
     const values = await receiveAndRead({ partId: 'part_1', quantity: 1, unitCost: 4400 })
-    expect(values.stock_movement_gl_account).toBe('1330')
+    expect(values.stock_movement_gl_account).toBe('inventory_finished_goods')
   })
 
-  it('stamps 1310 for an unclassified part', async () => {
+  it('stamps raw materials for an unclassified part', async () => {
     h.partKind = null
     const values = await receiveAndRead({ partId: 'part_1', quantity: 1, unitCost: 4400 })
-    expect(values.stock_movement_gl_account).toBe('1310')
+    expect(values.stock_movement_gl_account).toBe('inventory_raw_materials')
   })
 
   it('stamps the supplied accounting date, not the moment it was keyed', async () => {

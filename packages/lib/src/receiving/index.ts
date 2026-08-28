@@ -5,12 +5,12 @@ export {
   computeExtendedCost,
   computeReceiptLandedBreakdown,
   computeReceiptLandedCost,
-  DEFAULT_RECEIPT_GL_ACCOUNT,
+  DEFAULT_RECEIPT_INVENTORY_ROLE,
   formatLandedCostSummary,
-  GL_ACCOUNT_BY_PART_KIND,
+  INVENTORY_ROLE_BY_PART_KIND,
   type ReceiptCostInputs,
   type ReceiptCostParts,
-  resolveGlAccountForPartKind,
+  resolveInventoryRoleForPartKind,
   roundMinorUnits,
 } from './client'
 export {

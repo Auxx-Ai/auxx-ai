@@ -317,7 +317,7 @@ function completedMovementRows(): ValueRow[] {
     value('mv_1', 'stock_movement_quantity', { valueNumber: -24 }),
     value('mv_1', 'stock_movement_unit_cost', { valueNumber: 3661 }),
     value('mv_1', 'stock_movement_extended_cost', { valueNumber: -87864 }),
-    value('mv_1', 'stock_movement_gl_account', { valueText: '1310' }),
+    value('mv_1', 'stock_movement_gl_account', { valueText: 'inventory_raw_materials' }),
     value('mv_1', 'stock_movement_qty_per_unit', { valueNumber: 2 }),
     value('mv_1', 'stock_movement_cost_basis', { optionId: 'standard' }),
     value('mv_2', 'stock_movement_part', { relatedEntityId: PART_LIFT }),
@@ -325,7 +325,7 @@ function completedMovementRows(): ValueRow[] {
     value('mv_2', 'stock_movement_quantity', { valueNumber: 10 }),
     value('mv_2', 'stock_movement_unit_cost', { valueNumber: 8022 }),
     value('mv_2', 'stock_movement_extended_cost', { valueNumber: 80220 }),
-    value('mv_2', 'stock_movement_gl_account', { valueText: '1330' }),
+    value('mv_2', 'stock_movement_gl_account', { valueText: 'inventory_finished_goods' }),
     value('mv_2', 'stock_movement_cost_basis', { optionId: 'standard' }),
   ]
 }
@@ -746,7 +746,7 @@ describe('completeBuild', () => {
       stock_movement_unit_cost: 3661,
       stock_movement_extended_cost: -73220,
       // A subassembly's stock sits in Raw Materials, not Finished Goods.
-      stock_movement_gl_account: '1310',
+      stock_movement_gl_account: 'inventory_raw_materials',
       stock_movement_cost_basis: 'standard',
       // The as-built BOM snapshot.
       stock_movement_qty_per_unit: 2,
@@ -757,7 +757,7 @@ describe('completeBuild', () => {
       stock_movement_quantity: 10,
       stock_movement_unit_cost: 8022,
       stock_movement_extended_cost: 80220,
-      stock_movement_gl_account: '1330',
+      stock_movement_gl_account: 'inventory_finished_goods',
       stock_movement_build: 'def_build:bld_1',
     })
     // NULL on the produce row, never a zero.
@@ -808,7 +808,7 @@ describe('completeBuild', () => {
     expect(substitution?.stock_movement_quantity).toBe(-5)
     expect(substitution).not.toHaveProperty('stock_movement_qty_per_unit')
     // A component's stock sits in Raw Materials.
-    expect(substitution?.stock_movement_gl_account).toBe('1310')
+    expect(substitution?.stock_movement_gl_account).toBe('inventory_raw_materials')
   })
 
   it('absorbs nothing when no rate is declared, and keeps the variance honest', async () => {
@@ -858,7 +858,7 @@ describe('reverseBuild', () => {
       stock_movement_quantity: 24,
       stock_movement_unit_cost: 3661,
       stock_movement_extended_cost: 87864,
-      stock_movement_gl_account: '1310',
+      stock_movement_gl_account: 'inventory_raw_materials',
       stock_movement_qty_per_unit: 2,
       stock_movement_cost_basis: 'standard',
       stock_movement_reverses_movement: 'def_mv:mv_1',

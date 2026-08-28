@@ -375,7 +375,7 @@ export async function readVendorPartCostInputs(
  *
  * NULL is returned as NULL rather than defaulted here on purpose: this is a
  * read, and the "NULL reads as component" rule is an interpretation that belongs
- * to whoever is interpreting it. {@link import('./client').resolveGlAccountForPartKind}
+ * to whoever is interpreting it. {@link import('./client').resolveInventoryRoleForPartKind}
  * applies it for the GL account; the sale-path explode gate applies the OPPOSITE
  * default to the same NULL (costing plan section 4.3), and a read that had
  * already picked one would make the other impossible to express.

@@ -67,6 +67,7 @@ export type {
 // Enum values (for badge labels, select options, etc.)
 export {
   CostSource,
+  GlAccountRole,
   PartKind,
   ProductStatus,
   StockMovementType,

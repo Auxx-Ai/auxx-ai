@@ -39,6 +39,11 @@ describe('maintenance worker registrations', () => {
     // consumer, and the 6h scheduler — so a missing registration would silently
     // disable duplicate detection everywhere at once.
     ['duplicate scan', 'duplicateScanJob'],
+    // The only time-driven trigger in the three-way match (money P24). A missing
+    // registration here restores the exact hole it was built to close — a prepaid
+    // bill that never ages out of `awaiting_receipt` — with nothing on screen to
+    // say so.
+    ['vendor bill aging', 'vendorBillAgingJob'],
   ])('has a handler for the %s job', (_label, name) => {
     expect(Object.keys(jobMappings)).toContain(name)
   })

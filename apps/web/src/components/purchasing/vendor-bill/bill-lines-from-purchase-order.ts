@@ -29,12 +29,19 @@
 //
 // ⚠️ `quantityBilled` cannot actually be left empty — it is `nullable: false`
 // with `defaultValue: 1`, so a created line reads **1** until someone types the
-// real number. That is deliberate and it is SAFE, because `DEFAULT_MATCH_TOLERANCE`
-// carries `quantityExact: true`: a line billed 1 against 10 received raises
-// `quantity_under_billed` rather than passing quietly. A forgotten quantity is
-// loud. Prefilling it from the receipt would be the opposite trade — fast, and
-// silently asserting that the vendor billed exactly what arrived, which is the
-// question the quantity arm exists to ask.
+// real number. That is deliberate, and it is loud in the case that matters:
+// `DEFAULT_MATCH_TOLERANCE` carries `quantityExact: true`, so a line billed 1
+// against 10 RECEIVED raises `quantity_under_billed` rather than passing quietly.
+// Prefilling it from the receipt would be the opposite trade — fast, and silently
+// asserting that the vendor billed exactly what arrived, which is the question
+// the quantity arm exists to ask.
+//
+// ⚠️ It is NOT loud when nothing has been received yet. Under P24 a line billed 1
+// against 0 received is `awaiting_receipt`, not an exception — the prepaid case —
+// so a forgotten quantity on a bill entered ahead of the goods sits amber rather
+// than red until the goods land, and only then becomes `quantity_under_billed`.
+// That is the price of not flooding the queue with prepayments; the forgotten
+// quantity does still surface, just later.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { RecordId } from '@auxx/types/resource'

@@ -70,7 +70,7 @@ vi.mock('../../dedup/enqueue-scan', async (importOriginal) => {
 
 const h = vi.hoisted(() => ({
   /**
-   * Armed only around the call under test. `resolveGlAccountForPartKind` is
+   * Armed only around the call under test. `resolveInventoryRoleForPartKind` is
    * called once per component line while the plan is PRICED (outside any write)
    * and then once more for the produce row — after every consume movement has
    * been written and before the build's own status/cost update. Throwing on the
@@ -86,13 +86,13 @@ vi.mock('../../receiving/client', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../receiving/client')>()
   return {
     ...actual,
-    resolveGlAccountForPartKind: (
-      kind: Parameters<typeof actual.resolveGlAccountForPartKind>[0]
+    resolveInventoryRoleForPartKind: (
+      kind: Parameters<typeof actual.resolveInventoryRoleForPartKind>[0]
     ) => {
       if (h.failOnFinishedGoodGlAccount && kind === 'finished_good') {
         throw new Error('injected failure between the consume rows and the produce row')
       }
-      return actual.resolveGlAccountForPartKind(kind)
+      return actual.resolveInventoryRoleForPartKind(kind)
     },
   }
 })

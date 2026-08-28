@@ -28,6 +28,7 @@ import { FieldType, ModelTypeMeta, ModelTypeValues } from '@auxx/database/enums'
 import { isSystemAttribute } from '@auxx/types/system-attribute'
 import { describe, expect, it, vi } from 'vitest'
 import {
+  GlAccountRole,
   GlAccountType,
   GlPostingLineDirection,
   LandedCostAllocationBasis,
@@ -83,6 +84,52 @@ vi.mock('../../../users/system-user-service', () => ({
 vi.mock('../../../cache', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   getOrgCache: () => ({ invalidateAndRecompute: async () => {} }),
+}))
+
+// The chart-of-accounts seed writes 28 `gl_account` records through
+// `UnifiedCrudHandler`, which wants the org cache, `db.query.*` and a write
+// session — none of which the stub `Database` below has, and none of which this
+// file is about. Its own contract (idempotent on `code`, roles omitted rather
+// than nulled) is tested in `seed/__tests__/gl-account-chart.test.ts`. What is
+// pinned HERE is that 108 calls it and that its result feeds `alreadyUpToDate`.
+const chartSeed = vi.hoisted(() => ({ created: 0, calls: [] as (string | undefined)[] }))
+// `rematchBill` re-runs the three-way match through `UnifiedCrudHandler` and the
+// org cache — the same reason the chart seed is stubbed. Its own behaviour is
+// tested in `purchasing/__tests__/match-hook.test.ts`; what is pinned HERE is
+// that 108 runs it, that it runs after the option refresh, and that a changed
+// verdict counts as work.
+const rematch = vi.hoisted(() => ({
+  calls: [] as string[],
+  /** The status rows the stub `Database` serves, mutated in place like a write. */
+  rows: [] as {
+    entityId: string
+    fieldId: string
+    optionId: string | null
+    valueText: string | null
+    valueNumber: number | null
+  }[],
+  /** What the fake match decides, or null to leave every verdict where it is. */
+  verdict: null as string | null,
+}))
+vi.mock('../../../purchasing/match-hook', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  rematchBill: async (params: { vendorBillInstanceId: string }) => {
+    rematch.calls.push(params.vendorBillInstanceId)
+    if (!rematch.verdict) return
+    const row = rematch.rows.find((r) => r.entityId === params.vendorBillInstanceId)
+    if (row) row.optionId = rematch.verdict
+  },
+}))
+
+vi.mock('../../gl-account-chart', () => ({
+  seedDefaultChartOfAccounts: async (
+    _db: unknown,
+    _organizationId: string,
+    defId: string | undefined
+  ) => {
+    chartSeed.calls.push(defId)
+    return { created: chartSeed.created, skipped: 0 }
+  },
 }))
 
 /** The eight defs this migration creates. */
@@ -225,6 +272,7 @@ const TABLE_NAMES = new Map<unknown, string>([
   [schema.EntityDefinition, 'EntityDefinition'],
   [schema.CustomField, 'CustomField'],
   [schema.TableView, 'TableView'],
+  [schema.FieldValue, 'FieldValue'],
 ])
 
 /**
@@ -307,19 +355,25 @@ const ALL_DEF_REGISTRIES: Record<string, Record<string, ResourceField>> = {
 }
 
 /**
- * The two ways a stored option list goes stale, one per direction:
+ * The three ways a stored option list goes stale:
  *
- *   vendor_bill_status     a value was ADDED to the enum (`partially_paid`)
+ *   vendor_bill_status     a value was ADDED to the enum — twice, and the second
+ *                          time (`awaiting_receipt`) in the MIDDLE of the list,
+ *                          which is why the refresh rewrites the whole array
+ *                          rather than appending
  *   purchase_order_status  two values were REMOVED (they became their own fields)
+ *   gl_account_role        the closed role vocabulary grows as posting builders
+ *                          are written, always into the middle of a grouped list
  *
- * Both are invisible to `ensureCustomFields`, which skips a field that already
- * exists — which is the whole reason the refresh step exists.
+ * All three are invisible to `ensureCustomFields`, which skips a field that
+ * already exists — which is the whole reason the refresh step exists.
  */
 const STALE_STATUS_FIXTURES: Record<
-  'vendor_bill_status' | 'purchase_order_status',
+  'vendor_bill_status' | 'purchase_order_status' | 'gl_account_role',
   FieldOptionItem[]
 > = {
-  vendor_bill_status: VendorBillStatus.values.filter((v) => v.value !== 'partially_paid'),
+  vendor_bill_status: VendorBillStatus.values.filter((v) => v.value !== 'awaiting_receipt'),
+  gl_account_role: GlAccountRole.values.filter((v) => v.value !== 'ppv'),
   purchase_order_status: [
     ...PurchaseOrderStatus.values.slice(0, 2),
     { value: 'partially_received', label: 'Partially received', color: 'amber' },
@@ -334,6 +388,10 @@ function migratedOrgDb(
     linked?: boolean
     omit?: readonly string[]
     staleStatus?: keyof typeof STALE_STATUS_FIXTURES
+    /** `stock_movement_gl_account` FieldValue rows the org already holds. */
+    movementAccountValues?: { id: string; valueText: string }[]
+    /** Existing `vendor_bill` instances, with the verdict each currently holds. */
+    bills?: { id: string; status: string }[]
   } = {}
 ) {
   const omit = new Set(opts.omit ?? [])
@@ -353,6 +411,17 @@ function migratedOrgDb(
     }
   }
 
+  // `fieldId` must be the status field's own id, because the verdict read now
+  // covers status, variance and notes and tells them apart by it. The stub
+  // mints CustomField ids as `field-<defId>-<systemAttribute>`.
+  rematch.rows = (opts.bills ?? []).map((bill) => ({
+    entityId: bill.id,
+    fieldId: 'field-def-vendor_bill-vendor_bill_status',
+    optionId: bill.status,
+    valueText: null,
+    valueNumber: null,
+  }))
+
   return stubDb(
     new Map<unknown, unknown[]>([
       [
@@ -362,6 +431,13 @@ function migratedOrgDb(
       [schema.CustomField, customFields],
       // A view already exists for every context, so both view helpers no-op.
       [schema.TableView, [{ id: 'view-1' }]],
+      // The movement remap and the bill-verdict read both select from
+      // `FieldValue`, and the stub ignores WHERE clauses, so they share one
+      // table. That is harmless in both directions: a movement row carries no
+      // `entityId` and a status row carries no `valueText`, so each step skips
+      // the other's rows exactly as the real predicates would.
+      [schema.FieldValue, [...(opts.movementAccountValues ?? []), ...rematch.rows]],
+      [schema.EntityInstance, (opts.bills ?? []).map((bill) => ({ id: bill.id }))],
     ]),
     writes
   )
@@ -818,9 +894,10 @@ describe('vendor_bill field shapes the plan is explicit about', () => {
     expect(VENDOR_BILL_FIELDS.internalNumber?.capabilities?.updatable).toBe(false)
   })
 
-  it('status is the seven-value bill lifecycle, wired to the enum list', () => {
+  it('status is the eight-value bill lifecycle, wired to the enum list', () => {
     expect(VendorBillStatus.values.map((v) => v.value)).toEqual([
       'draft',
+      'awaiting_receipt',
       'matched',
       'exception',
       'posted',
@@ -829,6 +906,24 @@ describe('vendor_bill field shapes the plan is explicit about', () => {
       'void',
     ])
     expect(VENDOR_BILL_FIELDS.status?.options).toEqual({ options: VendorBillStatus.values })
+  })
+
+  // 🛑 P24, and the mirror image of `partially_paid`'s argument. This business
+  // prepays: a vendor who will not ship until the invoice is paid produces
+  // `billed > received` on a CORRECT bill, for weeks. Without a value for that,
+  // the match has only `exception` to say it with, and a queue that is always
+  // red is one nobody reads — the same failure the match exists to prevent,
+  // arriving from the other side. It sits between `draft` and `matched` because
+  // that is the lifecycle order: it is a verdict the match reached, not a state
+  // preceding one.
+  it('separates the prepaid case from a genuine match exception', () => {
+    expect(VendorBillStatus.AWAITING_RECEIPT).toBe('awaiting_receipt')
+    const values = VendorBillStatus.values.map((v) => v.value)
+    expect(values.indexOf('draft')).toBeLessThan(values.indexOf('awaiting_receipt'))
+    expect(values.indexOf('awaiting_receipt')).toBeLessThan(values.indexOf('matched'))
+    // Amber, not red: a state that still needs something to happen, exactly as
+    // `partially_paid` is. Red is reserved for `exception`.
+    expect(VendorBillStatus.values.find((v) => v.value === 'awaiting_receipt')?.color).toBe('amber')
   })
 
   // 🛑 The reason `partially_paid` exists, stated as an assertion rather than a
@@ -849,18 +944,26 @@ describe('vendor_bill field shapes the plan is explicit about', () => {
   // disagree about what values exist.
   //
   // The behaviour is asserted for real in the idempotency block below; what is
-  // pinned here is that BOTH status fields go through the refresh, and that a
-  // refresh counts as work.
-  it('re-materializes both status fields rather than only seeding new orgs', () => {
+  // pinned here is that ALL THREE configurable-false selects go through the
+  // refresh, and that a refresh counts as work.
+  it('re-materializes every seeded option list rather than only seeding new orgs', () => {
     const here = fileURLToPath(new URL('.', import.meta.url))
     const source = readFileSync(join(here, '108-purchasing.ts'), 'utf8')
-    expect(source).toContain('refreshStatusOptions')
+    expect(source).toContain('refreshSelectOptions')
     expect(source).toContain('VENDOR_BILL_FIELDS.status')
     expect(source).toContain('PURCHASE_ORDER_FIELDS.status')
+    // `gl_account_role` is new in this pass, so `ensureCustomFields` writes its
+    // twelve options — but the role vocabulary is CLOSED and grows as posting
+    // builders are written, and every addition lands in the MIDDLE of a grouped
+    // list. It joins the refresh now so the next one is an enum edit rather than
+    // a migration nobody remembers to write.
+    expect(source).toContain('GL_ACCOUNT_FIELDS.role')
     // And the refresh must count toward "did something", or a run that only
     // rewrote options would report alreadyUpToDate and skip the cache flush that
     // makes the change visible to every read path.
-    expect(source).toContain('!statusRefreshed')
+    expect(source).toContain('optionsRefreshed')
+    expect(source).toMatch(/structureChanged =[\s\S]{0,240}optionsRefreshed/)
+    expect(source).toContain('!structureChanged')
   })
 
   // §5.3, and it is the same discipline as the zero-cost receipt guard: never
@@ -1432,13 +1535,16 @@ describe('migration 108 idempotency', () => {
   // `ensureCustomFields` returns an incumbent field untouched — leaving the code
   // and the database disagreeing about what values exist.
   //
-  // Both directions are covered: `vendor_bill_status` GAINED `partially_paid`,
-  // `purchase_order_status` LOST `partially_received` / `received` to the two
-  // derived fields (07 §3.3). Narrowing is the one that matters more — a stored
-  // option nobody removed keeps rendering a value the type union no longer has.
+  // Both directions are covered: `vendor_bill_status` GAINED `partially_paid`
+  // and then `awaiting_receipt`, `purchase_order_status` LOST
+  // `partially_received` / `received` to the two derived fields (07 §3.3), and
+  // `gl_account_role` is the closed vocabulary that grows as builders are
+  // written. Narrowing is the one that matters more — a stored option nobody
+  // removed keeps rendering a value the type union no longer has.
   it.each([
     'vendor_bill_status',
     'purchase_order_status',
+    'gl_account_role',
   ] as const)('rewrites a stale %s option list, and says it did', async (systemAttribute) => {
     const writes: string[] = []
     const db = migratedOrgDb(writes, { staleStatus: systemAttribute })
@@ -1450,5 +1556,160 @@ describe('migration 108 idempotency', () => {
     // work, or it skips the org-cache flush that makes the change visible to
     // every read path.
     expect(result.alreadyUpToDate).toBe(false)
+  })
+
+  // 🛑 The defect the first run of this migration actually shipped, pinned as
+  // an ORDERING rule because that is what it is.
+  //
+  // `UnifiedCrudHandler.warmCache` resolves an entity's fields from the org
+  // cache and DROPS a value whose field it cannot resolve. With the flush at the
+  // end of `up()`, the chart seed ran against a `customFields` snapshot taken
+  // before `gl_account_role` existed: 784 accounts across 28 orgs were written
+  // with every field EXCEPT the role, nothing threw, and the migration logged
+  // "applied". A chart with no roles makes the posting resolver fail closed on
+  // every entry.
+  it('flushes the org cache BEFORE anything that writes a record', () => {
+    const here = fileURLToPath(new URL('.', import.meta.url))
+    const source = readFileSync(join(here, '108-purchasing.ts'), 'utf8')
+    expect(source.indexOf('invalidateAndRecompute')).toBeGreaterThan(0)
+    expect(source.indexOf('invalidateAndRecompute')).toBeLessThan(
+      source.indexOf('await seedDefaultChartOfAccounts')
+    )
+  })
+
+  // The chart of accounts is seeded per org, and it is the reason the posting
+  // role resolver has anything to resolve against. A pass that created accounts
+  // must NOT report `alreadyUpToDate`, or the org cache keeps serving a
+  // `gl_account` list with nothing in it.
+  it('reports work when the chart of accounts was seeded', async () => {
+    const db = migratedOrgDb([])
+    chartSeed.created = 28
+    try {
+      const result = await migration108Purchasing.up(db, 'org-chart')
+      expect(result.alreadyUpToDate).toBe(false)
+      // Handed the org's own `gl_account` def, never a bare entity type.
+      expect(chartSeed.calls.at(-1)).toBe('def-gl_account')
+    } finally {
+      chartSeed.created = 0
+    }
+  })
+
+  // 🛑 decision `G8`. `stock_movement_gl_account` was written with account CODES
+  // ('1310' / '1330') before the chart became org-editable; it holds an auxx
+  // ROLE now. A movement is append-only and frozen at write time, so a number
+  // left on one is silently reinterpreted the day the org renumbers — and the
+  // posting it feeds still balances, so nothing downstream can detect it.
+  //
+  // This is the one edit the append-only rule permits: no quantity and no cost
+  // is restated, only the vocabulary the account is named in.
+  it('remaps legacy account codes on stock movements into roles', async () => {
+    const writes: string[] = []
+    const db = migratedOrgDb(writes, {
+      movementAccountValues: [
+        { id: 'fv-1', valueText: '1310' },
+        { id: 'fv-2', valueText: '1330' },
+        // Already a role — a second pass must leave it alone, which is what
+        // makes the whole step idempotent.
+        { id: 'fv-3', valueText: 'inventory_finished_goods' },
+      ],
+    })
+
+    const result = await migration108Purchasing.up(db, 'org-remap')
+
+    expect(writes.filter((w) => w === 'update FieldValue')).toHaveLength(2)
+    expect(result.alreadyUpToDate).toBe(false)
+  })
+
+  // 🛑 `P24` did not add a value to a list — it changed what
+  // `vendor_bill_status` MEANS. A bill billed-but-not-received used to be an
+  // `exception`; it is `awaiting_receipt` now, until the purchase order's
+  // `expectedAt` passes. Every bill already stored carries a verdict computed
+  // under the old rule, and NOTHING else re-derives it: materialising the option
+  // changes no stored value, and the nightly aging sweep only reads bills
+  // already in `awaiting_receipt`, to age them FORWARD. So without this step the
+  // change is invisible — a bill against an order not due for another twelve
+  // days keeps rendering a red Exception badge.
+  it('re-derives the verdict of every bill the match is allowed to overwrite', async () => {
+    const db = migratedOrgDb([], {
+      bills: [
+        { id: 'bill-draft', status: 'draft' },
+        { id: 'bill-exception', status: 'exception' },
+        { id: 'bill-matched', status: 'matched' },
+      ],
+    })
+    rematch.calls.length = 0
+
+    await migration108Purchasing.up(db, 'org-rematch')
+
+    expect(rematch.calls.sort()).toEqual(['bill-draft', 'bill-exception', 'bill-matched'])
+  })
+
+  // `posted`, `paid` and `void` are settled facts about a document that has
+  // already left this system — a migration must never silently un-post a bill
+  // the GL has an entry for.
+  it('never re-derives a bill that has left the matchable lifecycle', async () => {
+    const db = migratedOrgDb([], {
+      bills: [
+        { id: 'bill-posted', status: 'posted' },
+        { id: 'bill-paid', status: 'paid' },
+        { id: 'bill-void', status: 'void' },
+      ],
+    })
+    rematch.calls.length = 0
+
+    await migration108Purchasing.up(db, 'org-settled')
+
+    expect(rematch.calls).toEqual([])
+  })
+
+  // A changed verdict is work: without it the run reports `alreadyUpToDate` and
+  // skips the org-cache flush, so every read path keeps serving the old badge.
+  it('counts a changed verdict as work', async () => {
+    const db = migratedOrgDb([], { bills: [{ id: 'bill-exception', status: 'exception' }] })
+    rematch.verdict = 'awaiting_receipt'
+    try {
+      const result = await migration108Purchasing.up(db, 'org-verdict-changed')
+      expect(result.alreadyUpToDate).toBe(false)
+    } finally {
+      rematch.verdict = null
+    }
+  })
+
+  it('stays quiet when every verdict re-derives to what it already was', async () => {
+    const db = migratedOrgDb([], { bills: [{ id: 'bill-matched', status: 'matched' }] })
+
+    const result = await migration108Purchasing.up(db, 'org-verdict-same')
+
+    expect(result.alreadyUpToDate).toBe(true)
+  })
+
+  // ⚠️ ORDERING. `rematchBill` resolves `customFields` from the org cache and
+  // writes a SINGLE_SELECT. Run it before the option refresh and the flush, and
+  // it writes `awaiting_receipt` against a cached option list that does not
+  // contain it — which is how a raw unlabelled string reaches the screen.
+  it('re-derives verdicts only after the new option is materialized and cached', () => {
+    const here = fileURLToPath(new URL('.', import.meta.url))
+    const source = readFileSync(join(here, '108-purchasing.ts'), 'utf8')
+    const refresh = source.indexOf('await refreshSelectOptions')
+    const flush = source.indexOf('invalidateAndRecompute')
+    const rematchCall = source.indexOf('await rematchExistingBills')
+    expect(refresh).toBeGreaterThan(0)
+    expect(rematchCall).toBeGreaterThan(flush)
+    expect(flush).toBeGreaterThan(refresh)
+  })
+
+  it('leaves a movement whose account is already a role completely alone', async () => {
+    const writes: string[] = []
+    const db = migratedOrgDb(writes, {
+      movementAccountValues: [
+        { id: 'fv-1', valueText: 'inventory_raw_materials' },
+        { id: 'fv-2', valueText: 'inventory_finished_goods' },
+      ],
+    })
+
+    const result = await migration108Purchasing.up(db, 'org-remap-idempotent')
+
+    expect(writes.filter((w) => w === 'update FieldValue')).toEqual([])
+    expect(result.alreadyUpToDate).toBe(true)
   })
 })

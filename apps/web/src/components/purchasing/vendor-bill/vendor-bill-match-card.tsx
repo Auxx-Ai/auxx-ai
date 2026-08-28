@@ -22,10 +22,10 @@
 // `PurchasingSummaryStrip` the Payment card uses, so the two cards in this drawer
 // share one rhythm.
 //
-// What this card deliberately does NOT do is decide the outcome. Tolerances live
-// in `matchBill` (phase 5) and are settings, not code; the verdict this card
-// shows is the STORED `vendor_bill_status` / `matchVariance` / `matchNotes` the
-// hook wrote. Re-deriving pass/fail on the client with guessed tolerances would
+// What this card deliberately does NOT do is decide the outcome. Tolerances are
+// the hardcoded constants in `matchBill` (`DEFAULT_MATCH_TOLERANCE`); the verdict
+// this card shows is the STORED `vendor_bill_status` / `matchVariance` /
+// `matchNotes` the hook wrote. Re-deriving pass/fail on the client would
 // produce a second, disagreeing answer on the same screen. The amber cell
 // highlight is not that second answer — it marks two numbers that DIFFER, which
 // is an observation about the row and true regardless of where the tolerance
@@ -40,6 +40,7 @@
 // `TabCardSection`: the portal target is absent and `DrawerCardActions` yields
 // null, which is the documented behaviour and not a badge worth duplicating.
 
+import { DEFAULT_MATCH_TOLERANCE, isAwaitingReceipt } from '@auxx/lib/purchasing/client'
 import type { RecordId } from '@auxx/lib/resources/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { EmptySection } from '@auxx/ui/components/section'
@@ -73,17 +74,34 @@ const BILL_MATCH_ATTRIBUTES = [
   'vendor_bill_match_notes',
 ] as const
 
-/** The two legs of the match that live on the purchase order line. */
+/**
+ * The legs of the match that live on the purchase order line, plus the hop to
+ * its order — the header is where `expectedAt` lives.
+ */
 const PO_LINE_MATCH_ATTRIBUTES = [
   'purchase_order_line_quantity_received',
   'purchase_order_line_expected_unit_price',
+  'purchase_order_line_purchase_order',
 ] as const
 
-/** Statuses worth a badge — `draft` is the default, so it is not one. */
+/** What the aging rule reads off the purchase order HEADER. */
+const PURCHASE_ORDER_MATCH_ATTRIBUTES = ['purchase_order_expected_at'] as const
+
+/**
+ * Statuses worth a badge — `draft` is the default, so it is not one.
+ *
+ * 🛑 Every value of `VendorBillStatus` except `draft` belongs here. A status with
+ * no entry renders NO badge at all — silently, with no fallback — so the card
+ * that exists to show the verdict shows nothing. `awaiting_receipt` is amber for
+ * the same reason `partially_paid` is: a state that still needs something to
+ * happen, but is not a failure.
+ */
 const STATUS_BADGE: Record<string, { label: string; variant: 'green' | 'amber' | 'red' }> = {
+  awaiting_receipt: { label: 'Awaiting Receipt', variant: 'amber' },
   matched: { label: 'Matched', variant: 'green' },
   exception: { label: 'Exception', variant: 'red' },
   posted: { label: 'Posted', variant: 'green' },
+  partially_paid: { label: 'Partially Paid', variant: 'amber' },
   paid: { label: 'Paid', variant: 'green' },
   void: { label: 'Void', variant: 'amber' },
 }
@@ -95,6 +113,21 @@ function firstString(raw: unknown): string | undefined {
 
 function toNumber(raw: unknown): number | null {
   return typeof raw === 'number' ? raw : null
+}
+
+/** A relation system value, which arrives as a `RecordId[]`. */
+function firstRecordId(raw: unknown): RecordId | undefined {
+  const value = Array.isArray(raw) ? raw[0] : raw
+  return typeof value === 'string' && value ? (value as RecordId) : undefined
+}
+
+/** A DATETIME system value, which arrives as the ISO string the column stores. */
+function toDate(raw: unknown): Date | null {
+  const value = unwrapValue(raw)
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value
+  if (typeof value !== 'string' || !value) return null
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? null : parsed
 }
 
 function formatQuantity(value: number | null): string {
@@ -127,6 +160,11 @@ interface MatchRow {
   expectedAmount: number
   /** `billedAmount - expectedAmount`, integer minor units. */
   variance: number
+  /**
+   * Billed ahead of the receipt and not yet late (P24). Not a failure — and the
+   * reason this row's `expectedAmount` is priced on the BILLED quantity.
+   */
+  awaiting: boolean
 }
 
 export function VendorBillMatchCard({ recordId }: DrawerTabProps) {
@@ -169,6 +207,36 @@ export function VendorBillMatchCard({ recordId }: DrawerTabProps) {
     { autoFetch: true, enabled: purchaseOrderLineIds.length > 0 }
   )
 
+  // The order HEADERS behind those lines. `expectedAt` is a property of the order,
+  // not of the line, so ageing an awaiting line costs this second hop — batched
+  // the same way, and usually one record for the whole bill.
+  const purchaseOrderIds = useMemo(
+    () =>
+      [
+        ...new Set(
+          purchaseOrderLineIds
+            .map((id) => firstRecordId(poLineValues[id]?.purchase_order_line_purchase_order))
+            .filter((id): id is RecordId => !!id)
+        ),
+      ] as RecordId[],
+    [purchaseOrderLineIds, poLineValues]
+  )
+
+  const { valuesById: orderValues } = useSystemValuesForRecords(
+    purchaseOrderIds,
+    PURCHASE_ORDER_MATCH_ATTRIBUTES,
+    { autoFetch: true, enabled: purchaseOrderIds.length > 0 }
+  )
+
+  /**
+   * "Now", read once per mount rather than per render.
+   *
+   * The aging rule has a 7 day granularity, so a card that lives for an hour
+   * cannot cross a boundary in a way anybody notices — and a fresh `new Date()`
+   * inside the memo would make it recompute on every render for no gain.
+   */
+  const asOf = useMemo(() => new Date(), [])
+
   const matchRows: MatchRow[] = useMemo(
     () =>
       rows.map(({ lineRecordId, values }) => {
@@ -177,6 +245,10 @@ export function VendorBillMatchCard({ recordId }: DrawerTabProps) {
           : undefined
         const quantityReceived = toNumber(poLine?.purchase_order_line_quantity_received)
         const expectedUnitPrice = toNumber(poLine?.purchase_order_line_expected_unit_price)
+        const orderRecordId = firstRecordId(poLine?.purchase_order_line_purchase_order)
+        const expectedAt = orderRecordId
+          ? toDate(orderValues[orderRecordId]?.purchase_order_expected_at)
+          : null
 
         // Both sides mirror `matchVariance` EXACTLY, including its two choices
         // that look like bugs and are not:
@@ -191,10 +263,33 @@ export function VendorBillMatchCard({ recordId }: DrawerTabProps) {
         //    over-billed line out of its own variance, which is the exact
         //    failure the match exists to catch (see `matchVariance`).
         //
+        // ...with the ONE exception `matchVariance` also makes (P24): an
+        // AWAITING line — billed ahead of its receipt and not yet late — is
+        // priced on the billed quantity, because its quantity is not judgeable
+        // yet and pricing it on the received one makes a prepaid bill show its
+        // entire value as variance for weeks. Getting this wrong here does not
+        // just mis-state the strip: it would put every prepaid bill permanently
+        // under the "Last checked at ..." stale-variance warning below, because
+        // the hook's stored figure and this one would never agree.
+        //
         // Rounded on the product: `CURRENCY` is minor units in a double column,
         // so an unrounded product leaks a fraction of a cent into the sum.
-        const billedAmount = Math.round((values.quantityBilled ?? 0) * (values.unitPrice ?? 0))
-        const expectedAmount = Math.round((quantityReceived ?? 0) * (expectedUnitPrice ?? 0))
+        const quantityBilled = values.quantityBilled ?? 0
+        const awaiting = isAwaitingReceipt(
+          {
+            quantityBilled,
+            quantityReceived: quantityReceived ?? 0,
+            unitPriceBilled: values.unitPrice ?? 0,
+            unitPriceExpected: expectedUnitPrice ?? 0,
+            expectedAt,
+          },
+          DEFAULT_MATCH_TOLERANCE,
+          asOf
+        )
+        const billedAmount = Math.round(quantityBilled * (values.unitPrice ?? 0))
+        const expectedAmount = Math.round(
+          (awaiting ? quantityBilled : (quantityReceived ?? 0)) * (expectedUnitPrice ?? 0)
+        )
 
         return {
           lineRecordId,
@@ -204,9 +299,10 @@ export function VendorBillMatchCard({ recordId }: DrawerTabProps) {
           billedAmount,
           expectedAmount,
           variance: billedAmount - expectedAmount,
+          awaiting,
         }
       }),
-    [rows, poLineValues]
+    [rows, poLineValues, orderValues, asOf]
   )
 
   const totals = useMemo(
@@ -300,7 +396,11 @@ export function VendorBillMatchCard({ recordId }: DrawerTabProps) {
             {matchRows.map((row) => {
               // Quantity is exact by default (§6.1): a partial delivery is not a
               // price problem and should be visible as its own thing.
+              // An awaiting row's quantities differ by design — the goods have
+              // not landed yet — so amber there would mark the normal state of a
+              // correct bill as a problem (P24).
               const quantityDiffers =
+                !row.awaiting &&
                 row.quantityReceived !== null &&
                 row.line.quantityBilled !== null &&
                 row.line.quantityBilled !== row.quantityReceived

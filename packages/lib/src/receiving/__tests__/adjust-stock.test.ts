@@ -154,7 +154,7 @@ describe('adjustStock — a POSITIVE adjustment must carry a cost', () => {
     for (const field of COST_FIELDS) expect(values).toHaveProperty(field)
     expect(values.stock_movement_unit_cost).toBe(4400)
     expect(values.stock_movement_extended_cost).toBe(22000)
-    expect(values.stock_movement_gl_account).toBe('1310')
+    expect(values.stock_movement_gl_account).toBe('inventory_raw_materials')
     expect(values.stock_movement_cost_basis).toBe('actual')
   })
 
@@ -212,7 +212,7 @@ describe('adjustStock — a POSITIVE adjustment must carry a cost', () => {
   it('stamps the GL account resolved from the part kind', async () => {
     h.partKind = 'finished_good'
     const values = await adjustAndRead({ partId: 'part_1', quantity: 1, unitCost: 4400 })
-    expect(values.stock_movement_gl_account).toBe('1330')
+    expect(values.stock_movement_gl_account).toBe('inventory_finished_goods')
   })
 
   it('refuses to write before the cost fields are provisioned', async () => {
@@ -351,7 +351,7 @@ describe('adjustStock — the movement it writes', () => {
       quantity: 10,
       unitCost: 4443,
       extendedCost: 44430,
-      glAccount: '1310',
+      glAccount: 'inventory_raw_materials',
     })
   })
 

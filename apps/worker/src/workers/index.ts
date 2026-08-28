@@ -486,6 +486,29 @@ export async function setupSchedules() {
     }
   )
 
+  // Money P24 vendor-bill aging daily sweep — every day at 04:15 UTC. The ONLY
+  // time-driven trigger in the three-way match: `awaiting_receipt` -> `exception`
+  // is otherwise computed only when a bill line is edited or a receipt lands, so a
+  // prepaid bill whose goods never arrive would sit amber forever.
+  //
+  // Daily is the right cadence because the boundary it crosses is
+  // `purchase_order_expected_at` + a SEVEN DAY grace — the worst case is that a
+  // human sees the bill turn red the morning after it went late. Idempotent, so a
+  // missed tick costs nothing but a day.
+  await maintenanceQueue.upsertJobScheduler(
+    'vendorBillAgingJob',
+    { pattern: '15 4 * * *', tz: 'UTC' },
+    {
+      opts: {
+        attempts: 2,
+        backoff: { type: 'exponential', delay: 60000 },
+        priority: 8,
+        removeOnComplete: { count: 14 },
+        removeOnFail: { count: 30 },
+      },
+    }
+  )
+
   // Money MI2 invoice-draft daily sweep — every day at 03:30 UTC (08-mi2-build.md §G), 30
   // minutes after the dispatch recurring engine's visit sweep so a same-day visit
   // materialization can't race the billing pass.

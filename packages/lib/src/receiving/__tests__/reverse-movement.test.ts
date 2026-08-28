@@ -150,7 +150,9 @@ function originalReceipt(
     stock_movement_quantity: value('stock_movement_quantity', { valueNumber: 10 }),
     stock_movement_cost_basis: value('stock_movement_cost_basis', { optionId: 'actual' }),
     stock_movement_unit_cost: value('stock_movement_unit_cost', { valueNumber: 4443 }),
-    stock_movement_gl_account: value('stock_movement_gl_account', { valueText: '1310' }),
+    stock_movement_gl_account: value('stock_movement_gl_account', {
+      valueText: 'inventory_raw_materials',
+    }),
     stock_movement_vendor_unit_price: value('stock_movement_vendor_unit_price', {
       valueNumber: 4133,
     }),
@@ -232,7 +234,7 @@ describe('reverseMovement — the row it writes', () => {
 
   it('copies the GL account, the vendor price, the vendor part and the part', async () => {
     const values = await reverseAndRead()
-    expect(values.stock_movement_gl_account).toBe('1310')
+    expect(values.stock_movement_gl_account).toBe('inventory_raw_materials')
     expect(values.stock_movement_vendor_unit_price).toBe(4133)
     expect(values.stock_movement_vendor_part).toBe('def_vp:vp_1')
     expect(values.stock_movement_part).toBe('def_part:part_1')
@@ -288,7 +290,7 @@ describe('reverseMovement — the row it writes', () => {
       extendedCost: -44430,
       vendorUnitPrice: 4133,
       vendorPartId: 'vp_1',
-      glAccount: '1310',
+      glAccount: 'inventory_raw_materials',
       purchaseOrderLineId: 'pol_1',
     })
   })

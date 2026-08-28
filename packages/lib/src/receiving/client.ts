@@ -2,8 +2,8 @@
 
 /**
  * Client-safe surface of the receiving module: the landed-cost view the Receive
- * form shows while somebody is keying a receipt, and the GL-account map the
- * write path stamps onto the movement.
+ * form shows while somebody is keying a receipt, and the inventory-ROLE map the
+ * write path freezes onto the movement.
  *
  * **No `'use client'` directive here on purpose.** `receive-stock.ts` imports
  * this file on the server, and the directive would turn every export into a
@@ -22,6 +22,10 @@ import {
   computeLandedCost,
   type LandedCostBreakdown,
 } from '../bom/vendor-cost'
+// `postings/client.ts` is pure data and pure functions - no db, no logger - so
+// this stays a client-safe import. `ACCOUNT_ROLES` is the module's own copy of
+// the role vocabulary, pinned to `GlAccountRole` by an equality test.
+import { ACCOUNT_ROLES, type AccountRole } from '../postings/client'
 
 /**
  * A supplier's priced terms, in the shape a receipt cares about.
@@ -179,43 +183,57 @@ function formatMinorUnitsUsd(minorUnits: number): string {
  * How a part's classification decides which inventory account a receipt lands in
  * (plans/products/01-product-family.md section 4).
  *
- * `subassembly` maps to `1310`, not to `1320`. The build plan's field table names
- * the code space as "`1310` / `1320` / `1330`" but the per-value table in the
- * product-family plan is the one that assigns them, and it puts subassemblies in
- * Raw Materials: `1320` is Work In Process, which is where a part sits *during* a
- * build, not where a purchased subassembly sits on the shelf. Receiving never
- * produces WIP.
+ * ## These are ROLES, not account codes (decision `G8`)
  *
- * One map, exported, so the day a chart-of-accounts row moves there is a single
- * place to move it — and so a test can assert the mapping rather than a comment
- * claiming it.
+ * This map returned `'1310'` / `'1330'` until the chart of accounts became a
+ * seeded **default the org edits** (decision `G7`). Once an org may renumber
+ * Raw Materials, a number stamped onto a movement stops meaning anything: the
+ * movement is append-only and frozen at write time, so a renumber in 2027
+ * silently reinterprets every receipt written in 2026, and the entry still
+ * balances so nothing downstream can detect it.
+ *
+ * A role is stable by construction. The resolution chain is
+ * `role -> the org's gl_account -> its code -> the provider's id`, and only the
+ * value in the FIRST position is safe to freeze onto a ledger row.
+ * `buildReceiptEntry` consumes exactly this value as its `inventoryAccountRole`.
+ *
+ * `subassembly` maps to raw materials, NOT to work in process. The build plan's
+ * field table names the code space as "`1310` / `1320` / `1330`" but the
+ * per-value table in the product-family plan is the one that assigns them, and
+ * it puts subassemblies in Raw Materials: work in process is where a part sits
+ * *during* a build, not where a purchased subassembly sits on the shelf.
+ * Receiving never produces WIP.
+ *
+ * One map, exported, so the day a part kind moves there is a single place to
+ * move it - and so a test can assert the mapping rather than a comment claiming
+ * it.
  */
-export const GL_ACCOUNT_BY_PART_KIND: Readonly<Record<string, string>> = Object.freeze({
-  component: '1310',
-  subassembly: '1310',
-  finished_good: '1330',
+export const INVENTORY_ROLE_BY_PART_KIND: Readonly<Record<string, AccountRole>> = Object.freeze({
+  component: ACCOUNT_ROLES.INVENTORY_RAW_MATERIALS,
+  subassembly: ACCOUNT_ROLES.INVENTORY_RAW_MATERIALS,
+  finished_good: ACCOUNT_ROLES.INVENTORY_FINISHED_GOODS,
 })
 
-/** Where an unclassified part's stock is assumed to sit. See {@link resolveGlAccountForPartKind}. */
-export const DEFAULT_RECEIPT_GL_ACCOUNT = '1310'
+/** Where an unclassified part's stock is assumed to sit. See {@link resolveInventoryRoleForPartKind}. */
+export const DEFAULT_RECEIPT_INVENTORY_ROLE: AccountRole = ACCOUNT_ROLES.INVENTORY_RAW_MATERIALS
 
 /**
- * The inventory account code a receipt of this part should be stamped with.
+ * The inventory account ROLE a receipt of this part should be stamped with.
  *
- * NULL reads as `component`, which is `1310` — and that is the conservative
- * choice on purpose. `partKind` is human-set and unbackfilled, so most parts in
- * an existing org read NULL; defaulting an unclassified part into Raw Materials
- * understates Finished Goods rather than overstating it, and it matches what
- * `readPartKind` already does everywhere else NULL is interpreted.
+ * NULL reads as `component`, which is raw materials - and that is the
+ * conservative choice on purpose. `partKind` is human-set and unbackfilled, so
+ * most parts in an existing org read NULL; defaulting an unclassified part into
+ * Raw Materials understates Finished Goods rather than overstating it, and it
+ * matches what `readPartKind` already does everywhere else NULL is interpreted.
  *
  * An unrecognised value falls to the same default rather than throwing: a
  * receipt is not the place to discover that somebody added a fourth part kind,
- * and a movement stamped `1310` is correctable while a receipt that failed to
- * write is a pallet nobody counted.
+ * and a movement stamped raw materials is correctable while a receipt that
+ * failed to write is a pallet nobody counted.
  */
-export function resolveGlAccountForPartKind(partKind: string | null | undefined): string {
-  if (!partKind) return DEFAULT_RECEIPT_GL_ACCOUNT
-  return GL_ACCOUNT_BY_PART_KIND[partKind] ?? DEFAULT_RECEIPT_GL_ACCOUNT
+export function resolveInventoryRoleForPartKind(partKind: string | null | undefined): AccountRole {
+  if (!partKind) return DEFAULT_RECEIPT_INVENTORY_ROLE
+  return INVENTORY_ROLE_BY_PART_KIND[partKind] ?? DEFAULT_RECEIPT_INVENTORY_ROLE
 }
 
 /**

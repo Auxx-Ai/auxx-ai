@@ -71,6 +71,11 @@ const matchTolerance = z.object({
   pricePercent: z.number().finite().nonnegative().default(DEFAULT_MATCH_TOLERANCE.pricePercent),
   priceAbsolute: minorUnits.nonnegative().default(DEFAULT_MATCH_TOLERANCE.priceAbsolute),
   quantityExact: z.boolean().default(DEFAULT_MATCH_TOLERANCE.quantityExact),
+  receiptGraceDays: z
+    .number()
+    .finite()
+    .nonnegative()
+    .default(DEFAULT_MATCH_TOLERANCE.receiptGraceDays),
 })
 
 /**
@@ -472,6 +477,13 @@ export const purchasingRouter = createTRPCRouter({
               quantityReceived: z.number().finite().nonnegative(),
               unitPriceBilled: minorUnits,
               unitPriceExpected: minorUnits,
+              /**
+               * The purchase order HEADER's expected arrival, which is what ages
+               * an `awaiting_receipt` line into a `receipt_overdue` exception
+               * (P24). Absent means the order carries no expected date and the
+               * line stays awaiting — see `isReceiptOverdue`.
+               */
+              expectedAt: z.coerce.date().nullish(),
             })
           )
           .max(500),
@@ -483,6 +495,9 @@ export const purchasingRouter = createTRPCRouter({
       const billDefId = await requireDefId(organizationId, 'vendor_bill')
       ctx.capabilities.assertEditEntity(billDefId)
 
-      return matchBill(input.lines, input.tolerance)
+      // `match.ts` reads no clock so that its aging rule is testable to
+      // exhaustion; the impure edges supply "now". This is one of two (the other
+      // is `rematchBill`).
+      return matchBill(input.lines, new Date(), input.tolerance)
     }),
 })
