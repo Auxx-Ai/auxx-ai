@@ -130,7 +130,7 @@ export const INVOICE_FIELDS: Record<string, ResourceField> = {
       inverseName: 'Invoices',
       inverseSystemAttribute: 'contact_invoices',
     },
-    description: 'Customer contact for this invoice — required, the billing party',
+    description: 'The customer being billed',
   },
 
   workOrder: {
@@ -161,7 +161,7 @@ export const INVOICE_FIELDS: Record<string, ResourceField> = {
       inverseName: 'Invoices',
       inverseSystemAttribute: 'work_order_invoices',
     },
-    description: 'Job this invoice was gathered from — optional, standalone invoices have none',
+    description: 'The work order associated with this invoice, if applicable',
   },
 
   issuedAt: {
@@ -182,7 +182,7 @@ export const INVOICE_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     placeholder: 'Select issue date',
-    description: 'Prefilled today at create; stamped by mark-sent if empty (§G.2)',
+    description: 'The date the invoice was issued',
   },
 
   dueDate: {
@@ -203,7 +203,6 @@ export const INVOICE_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     placeholder: 'Select due date',
-    description: 'Overdue badge derives from this (UI-side) — never a status',
   },
 
   discountType: {
@@ -226,7 +225,7 @@ export const INVOICE_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     placeholder: 'Select discount type',
-    description: 'Null = no discount',
+    description: 'How the discount is calculated',
   },
 
   discountValue: {
@@ -267,7 +266,7 @@ export const INVOICE_FIELDS: Record<string, ResourceField> = {
       updatable: true,
       configurable: false,
     },
-    description: "Snapshot of the picked tax rate's name (documents.taxRates)",
+    description: 'The tax name shown on the invoice',
   },
 
   taxRate: {
@@ -288,7 +287,7 @@ export const INVOICE_FIELDS: Record<string, ResourceField> = {
       updatable: true,
       configurable: false,
     },
-    description: 'Snapshot of the picked tax rate, percent (e.g. 7.5)',
+    description: 'The tax percentage applied to the invoice',
   },
 
   subtotal: {
@@ -315,7 +314,7 @@ export const INVOICE_FIELDS: Record<string, ResourceField> = {
       updatable: false,
       configurable: false,
     },
-    description: 'Sum of line totals — written by the totals engine hook',
+    description: 'The total before discounts, tax, and payments',
   },
 
   taxTotal: {
@@ -342,7 +341,7 @@ export const INVOICE_FIELDS: Record<string, ResourceField> = {
       updatable: false,
       configurable: false,
     },
-    description: 'Written by the totals engine hook',
+    description: 'The total tax charged on the invoice',
   },
 
   total: {
@@ -369,7 +368,7 @@ export const INVOICE_FIELDS: Record<string, ResourceField> = {
       updatable: false,
       configurable: false,
     },
-    description: 'Written by the totals engine hook',
+    description: 'The final invoice amount after discounts and tax',
   },
 
   amountPaid: {
@@ -395,7 +394,7 @@ export const INVOICE_FIELDS: Record<string, ResourceField> = {
       updatable: false,
       configurable: false,
     },
-    description: 'Sum of succeeded payments — written by syncInvoicePaymentState',
+    description: 'The total amount paid toward this invoice',
   },
 
   balance: {
@@ -421,7 +420,7 @@ export const INVOICE_FIELDS: Record<string, ResourceField> = {
       updatable: false,
       configurable: false,
     },
-    description: 'total - amountPaid — written by syncInvoicePaymentState',
+    description: 'The amount still due on this invoice',
   },
 
   notes: {
@@ -443,7 +442,7 @@ export const INVOICE_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     placeholder: 'Enter internal notes',
-    description: 'Internal notes — not shown to the customer',
+    description: 'Internal notes that are not shown to the customer',
   },
 
   terms: {
@@ -465,7 +464,7 @@ export const INVOICE_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     placeholder: 'Enter customer-facing terms',
-    description: 'Customer-facing terms (plain text, PDF-friendly)',
+    description: 'Payment terms shown to the customer',
   },
 
   photos: {
@@ -488,9 +487,7 @@ export const INVOICE_FIELDS: Record<string, ResourceField> = {
       updatable: true,
       configurable: false,
     },
-    description:
-      'Photos attached directly to this invoice (plan 37b scouting build spec) — no ' +
-      'auto-copy from quote_photos',
+    description: 'Photos attached to this invoice',
   },
 
   // The last-rendered invoice PDF, as a single FILE value
@@ -527,9 +524,7 @@ export const INVOICE_FIELDS: Record<string, ResourceField> = {
       configurable: false,
       hidden: true,
     },
-    description:
-      'The generated invoice PDF ({ ref: "asset:<MediaAsset id>" }) — written only by ' +
-      'ensureDocumentPdf, surfaced read-only through the documents card, never user-editable',
+    description: 'The generated PDF for this invoice',
   },
 
   lineItems: {
@@ -579,7 +574,7 @@ export const INVOICE_FIELDS: Record<string, ResourceField> = {
       relationshipType: 'has_many',
       isInverse: true,
     },
-    description: 'Payment mirror records for this invoice (ledger-backed, §E)',
+    description: 'Payments applied to this invoice',
   },
 
   publicToken: {
@@ -601,10 +596,7 @@ export const INVOICE_FIELDS: Record<string, ResourceField> = {
       configurable: false,
       hidden: true,
     },
-    description:
-      'Unguessable capability token for the public /pay/{token} page (money MP1 build spec ' +
-      '§H) — lazily minted by ensureInvoicePublicToken on first send/PDF-render, never ' +
-      'user-editable. Mirrors the invoice_pdf_asset recipe (FieldValueService-only writer).',
+    description: 'Secure token used to access the public payment page',
   },
 
   billingKind: {
@@ -627,7 +619,7 @@ export const INVOICE_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     defaultValue: 'standalone',
-    description: 'Read-only billing intent for this invoice snapshot',
+    description: 'The type of billing represented by this invoice',
   },
   servicePeriodStart: {
     id: toFieldId('servicePeriodStart'),

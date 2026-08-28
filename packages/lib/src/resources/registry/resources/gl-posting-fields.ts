@@ -72,8 +72,7 @@ export const GL_POSTING_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     placeholder: 'AUXX-FUL-20260818',
-    description:
-      'Deterministic natural key, also written to QuickBooks DocNumber. Max 21 characters — the QuickBooks limit. Derived from posting type and period, never random',
+    description: 'The reference number for this journal entry',
   },
 
   postingType: {
@@ -96,7 +95,7 @@ export const GL_POSTING_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     placeholder: 'Select posting type',
-    description: 'Which of the accrual entry types this posting represents',
+    description: 'The type of accounting activity represented by this journal entry',
   },
 
   periodKey: {
@@ -118,8 +117,7 @@ export const GL_POSTING_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     placeholder: '2026-08-18',
-    description:
-      'The summarization window — a day (2026-08-18) for daily entries, a month (2026-08) for month-end ones. Together with posting type this is what makes a double-post unrepresentable',
+    description: 'The day or month covered by this journal entry',
   },
 
   status: {
@@ -142,8 +140,7 @@ export const GL_POSTING_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     placeholder: 'Select status',
-    description:
-      'pending until the journal entry lands, then posted or failed. A pending row that outlives its run is the signal to reconcile against QuickBooks before retrying',
+    description: 'The current posting status of this journal entry',
   },
 
   totalDebit: {
@@ -169,8 +166,7 @@ export const GL_POSTING_FIELDS: Record<string, ResourceField> = {
       updatable: true,
       configurable: false,
     },
-    description:
-      'What was posted, in minor units. Computed from our own lines — QuickBooks TotalAmt is always zero on a journal entry and would read as $0',
+    description: 'The total debit amount for this journal entry',
   },
 
   postedAt: {
@@ -190,7 +186,7 @@ export const GL_POSTING_FIELDS: Record<string, ResourceField> = {
       updatable: true,
       configurable: false,
     },
-    description: 'When the journal entry was accepted by QuickBooks. Null until it posts',
+    description: 'When the journal entry was successfully posted',
   },
 
   failureReason: {
@@ -210,8 +206,7 @@ export const GL_POSTING_FIELDS: Record<string, ResourceField> = {
       updatable: true,
       configurable: false,
     },
-    description:
-      'The QuickBooks fault, verbatim, including its numeric code. Kept verbatim on purpose — a paraphrased accounting error is not diagnosable',
+    description: 'Details about why the journal entry failed to post',
   },
 
   createdAt: {
@@ -279,7 +274,6 @@ export const GL_POSTING_FIELDS: Record<string, ResourceField> = {
       relationshipType: 'has_many',
       isInverse: true,
     },
-    description:
-      'The double-entry lines of this posting - account CODE plus a positive amount and a direction',
+    description: 'The debit and credit lines included in this journal entry',
   },
 }

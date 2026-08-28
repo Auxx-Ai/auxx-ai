@@ -60,7 +60,6 @@ export const GL_POSTING_LINE_FIELDS: Record<string, ResourceField> = {
       updatable: false,
       configurable: false,
     },
-    description: 'Unique GL posting line identifier',
   },
 
   glPosting: {
@@ -94,7 +93,6 @@ export const GL_POSTING_LINE_FIELDS: Record<string, ResourceField> = {
       inverseName: 'Lines',
       inverseSystemAttribute: 'gl_posting_lines',
     },
-    description: 'The journal entry this line belongs to — required',
   },
 
   accountCode: {
@@ -117,10 +115,6 @@ export const GL_POSTING_LINE_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     placeholder: '1310',
-    description:
-      "An account CODE such as '1310', matching `gl_account.code` — NEVER a provider " +
-      'account id (P2). Provider ids live in RecordIdentity on `gl_account`, so the ' +
-      'stored ledger survives disconnecting, re-authorising or replacing the provider',
   },
 
   direction: {
@@ -143,9 +137,6 @@ export const GL_POSTING_LINE_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     placeholder: 'Select direction',
-    description:
-      'debit or credit. This field alone carries the SIGN of the line — `amount` is ' +
-      'always positive',
   },
 
   amount: {
@@ -173,10 +164,6 @@ export const GL_POSTING_LINE_FIELDS: Record<string, ResourceField> = {
       required: true,
       configurable: false,
     },
-    description:
-      'Integer minor units, ALWAYS POSITIVE — `direction` carries the sign. Storing a ' +
-      'signed amount as well as a direction would let the two disagree, and a ledger ' +
-      'that can contradict itself is not a ledger',
   },
 
   memo: {
@@ -197,7 +184,6 @@ export const GL_POSTING_LINE_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     placeholder: 'Line description',
-    description: 'Per-line description, pushed through to the provider line where one exists',
   },
 
   sourceType: {
@@ -219,9 +205,6 @@ export const GL_POSTING_LINE_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     placeholder: 'stock_movement, vendor_bill',
-    description:
-      'Which KIND of row produced this line. Half of the audit trail: with `sourceId` it ' +
-      "makes a posting explainable years later without joining through a provider's API",
   },
 
   sourceId: {
@@ -242,10 +225,6 @@ export const GL_POSTING_LINE_FIELDS: Record<string, ResourceField> = {
       updatable: false,
       configurable: false,
     },
-    description:
-      'WHICH row produced this line — the id within `sourceType`. Kept as plain text ' +
-      'rather than a relation on purpose: the source can be any of several entities, ' +
-      'and the trail must stay readable even if that row is later archived',
   },
 
   sortOrder: {
@@ -266,7 +245,6 @@ export const GL_POSTING_LINE_FIELDS: Record<string, ResourceField> = {
       updatable: true,
       configurable: false,
     },
-    description: 'Presentation order of the lines within the entry',
   },
 
   createdAt: {
@@ -287,7 +265,6 @@ export const GL_POSTING_LINE_FIELDS: Record<string, ResourceField> = {
       updatable: false,
       configurable: false,
     },
-    description: 'Automatically set when the GL posting line is created',
   },
 
   updatedAt: {
@@ -308,6 +285,5 @@ export const GL_POSTING_LINE_FIELDS: Record<string, ResourceField> = {
       updatable: false,
       configurable: false,
     },
-    description: 'Automatically updated when the GL posting line is modified',
   },
 }

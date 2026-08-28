@@ -35,7 +35,6 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
       updatable: false,
       configurable: false,
     },
-    description: 'Unique line item identifier',
   },
 
   name: {
@@ -58,7 +57,6 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     placeholder: 'Enter line name',
-    description: 'The catalog-combobox cell edits this field',
   },
 
   description: {
@@ -79,7 +77,6 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     placeholder: 'Enter description',
-    description: 'Toggleable sub-line shown under the line name (01-ui #1)',
   },
 
   qty: {
@@ -121,8 +118,6 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     placeholder: 'Select unit',
-    description:
-      'Immutable-at-copy-time display snapshot; the current editable line may subsequently change it',
   },
 
   unitPrice: {
@@ -173,7 +168,6 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
       updatable: false,
       configurable: false,
     },
-    description: 'qty * unitPrice — written by the totals engine hook',
   },
 
   taxable: {
@@ -215,7 +209,6 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     defaultValue: false,
-    description: 'True for quote line items the customer can opt in/out of',
   },
 
   optionalSelected: {
@@ -237,7 +230,6 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     defaultValue: true,
-    description: 'Meaningful only when optional is true; required lines ignore this',
   },
 
   category: {
@@ -299,7 +291,6 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
       updatable: true,
       configurable: false,
     },
-    description: 'Written by the reorder mutation (§G.4)',
   },
 
   visitId: {
@@ -320,7 +311,6 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
       updatable: true,
       configurable: false,
     },
-    description: 'Plain text bridge to WorkOrderVisit — visits are not entities (dispatch lock)',
   },
 
   sourceLine: {
@@ -341,8 +331,6 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
       updatable: true,
       configurable: false,
     },
-    description:
-      'Quote-line instance id this line was copied from at convert (money plan 20 §E) — provenance only, no reader yet',
   },
 
   catalogItem: {
@@ -373,7 +361,6 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
       inverseName: 'Line Items',
       inverseSystemAttribute: 'catalog_item_line_items',
     },
-    description: 'Catalog item this line was picked from — provenance only, values are snapshots',
   },
 
   quote: {
@@ -404,7 +391,6 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
       inverseName: 'Line Items',
       inverseSystemAttribute: 'quote_line_items',
     },
-    description: 'Quote this line belongs to',
   },
 
   workOrder: {
@@ -435,7 +421,6 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
       inverseName: 'Line Items',
       inverseSystemAttribute: 'work_order_line_items',
     },
-    description: 'Work order this line belongs to (copied from a converted quote)',
   },
 
   invoice: {
@@ -466,7 +451,6 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
       inverseName: 'Line Items',
       inverseSystemAttribute: 'invoice_line_items',
     },
-    description: 'Parent invoice relation for invoice-owned snapshot lines only',
   },
 
   // The fourth document slot (plans/products/08-order-build.md §2). Sort keys
@@ -500,7 +484,6 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
       inverseName: 'Line Items',
       inverseSystemAttribute: 'order_line_items',
     },
-    description: 'Order this line belongs to',
   },
 
   part: {
@@ -531,9 +514,6 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
       inverseName: 'Line Items',
       inverseSystemAttribute: 'part_line_items',
     },
-    description:
-      'Part this line sells — STAMPED at write from the line\u2019s catalog item, not hand-set (08 \u00a76.2). ' +
-      'Provenance and grouping only, never a pricing input: `catalogItem` wins for pricing.',
   },
 
   photos: {
@@ -556,9 +536,6 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
       updatable: true,
       configurable: false,
     },
-    description:
-      'Line-level scouting photos (plan 37b build spec) — surfaced via the line-builder ' +
-      'photo chip, not a generic dialog',
   },
 
   createdAt: {
@@ -579,7 +556,6 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
       updatable: false,
       configurable: false,
     },
-    description: 'Automatically set when the line item is created',
   },
 
   updatedAt: {
@@ -600,7 +576,6 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
       updatable: false,
       configurable: false,
     },
-    description: 'Automatically updated when the line item is modified',
   },
 
   createdBy: CREATED_BY_FIELD,

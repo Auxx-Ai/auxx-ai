@@ -91,10 +91,7 @@ export const GL_ACCOUNT_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     placeholder: '1310',
-    description:
-      'The account code, unique per org. This is the key `gl_posting_line.accountCode` ' +
-      'points at, and the value a provider resolver maps to a provider id — never the ' +
-      "provider's id itself",
+    description: 'The unique code used to identify this account',
   },
 
   name: {
@@ -117,7 +114,7 @@ export const GL_ACCOUNT_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     placeholder: 'Raw Materials',
-    description: 'Human-readable account name, e.g. Raw Materials or GRNI',
+    description: 'The name used to identify this account',
   },
 
   accountType: {
@@ -140,9 +137,7 @@ export const GL_ACCOUNT_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     placeholder: 'Select account type',
-    description:
-      'asset, liability, equity, revenue or expense. Ours rather than the provider ' +
-      'classification, so a posting can be sanity-checked before it is pushed anywhere',
+    description: 'The financial category for this account',
   },
 
   isActive: {
@@ -163,9 +158,7 @@ export const GL_ACCOUNT_FIELDS: Record<string, ResourceField> = {
       updatable: true,
       configurable: false,
     },
-    description:
-      'Whether the account can still be coded to. Retired accounts are deactivated, never ' +
-      'deleted — historical postings reference the code and must stay explainable',
+    description: 'Whether this account is available for new postings',
   },
 
   createdAt: {
