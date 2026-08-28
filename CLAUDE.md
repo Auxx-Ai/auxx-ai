@@ -321,31 +321,32 @@ record per `EntityType` in `upload/handlers/`, not a class hierarchy: the
 call sites to them. History and the open items are in `plans/attachments/`
 (untracked).
 
-## Duplicate Detection
+## Inventory, Purchasing & Costing
 
-**Before touching the dedup engine, the duplicate scan job, `DuplicateSuggestion`
-rows, or the duplicate review surfaces, read
-`docs/duplicate-detection-architecture-guide.md`.** It documents the **genesis
-map** (which write-time check produces which shape of duplicate, and why the
-exact arm is largely a backfill/enforcement-leak detector while the name arm
-catches what happens next), why **trigram cannot rank names** — `john smith`/`jane
-smith` measures 0.47, above `william klooth`/`bill klooth` at 0.42, and
-`bob`/`robert` share zero trigrams — the three-condition **name-alone rule** and
-why surname rarity exists, the one-job/three-scopes/two-arms scan, and the pair
-lifecycle.
+**Before touching purchase orders, vendor bills, the three-way match, receiving,
+`stock_movement`, builds, standard cost, QoH, or GL postings, read
+`docs/inventory-costing-architecture-guide.md`.** It documents the thirteen
+entities this subsystem adds (all `EntityInstance`-backed — **no new Drizzle
+tables**), the buy→receive→bill→match path, the costing model and where each
+number comes from, the movement writers and their doors, the L1/L3 posting
+regimes, and §12's list of places the plans and the code currently disagree.
 
-Short version: pairs are stored in canonical `(low, high)` order; **deletion is
-how an `open` pair goes away** while `dismissed`/`merged` are the only persisted
-terminal states; the watermark stamp MUST be raw SQL touching one column, because
-`EntityInstance.updatedAt` carries `$onUpdate` and a Drizzle update re-dirties the
-row into an infinite scan loop; the `sync:records:changed` consumer must never
-claim the manifest (that latch belongs to record rules); blocking is one lookup
-core call **per value**, because the core dedupes hits across candidates by
-recordId; both scan arms must merge onto the canonical key before scoring or
-`upsertPairs`' last-writer-wins silently rewrites a `high` pair as `medium`;
-trigram similarity is a blocker only and must never reach `score` or a `Signal`;
-and every read path filters `archivedAt IS NULL` on **both** sides and applies
-record scope per join alias (`dupLow`/`dupHigh`).
+Short version: the movement ledger is **append-only** (`updatable: false`
+everywhere) and a mistake is corrected by **reversing**, never editing; cost is
+**frozen onto the movement at write time** and a standard-cost change revalues
+on-hand inventory to 5090 rather than restating history — so `part_cost` (live
+replacement cost, rewritten on every vendor-price change) must never value a
+movement; `part_quantity_on_hand` is a **full re-SUM of the ledger** that only
+`recalculatePartQoH` may write, which is also why FIFO and lot *costing* are
+ruled out; the match's variance must use `quantityReceived × unitPriceExpected`
+or an over-billed quantity nets out against an under-billed price to zero;
+receiving part-first sets no `purchaseOrderLineId`, so it moves QoH and leaves
+the match with no receipt leg; a bill's totals are **transcribed, never
+computed**, because recomputing them silently corrects the vendor's arithmetic;
+`skipEvents` is insufficient for a silent ledger write (use `quietSession`, and
+remember a quiet lane also silences the QoH recalc); and **a balance assertion
+and per-event postings may never both drive 1310/1320/1330** — L1 or L3, never
+both. Status and open work live in `plans/money/` (untracked).
 
 ## Workflows
 
