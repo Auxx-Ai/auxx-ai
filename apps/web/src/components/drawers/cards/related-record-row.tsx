@@ -10,6 +10,7 @@ import { getDefinitionId, type RecordId } from '@auxx/types/resource'
 import { Badge, type Variant } from '@auxx/ui/components/badge'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { TREE_SECONDARY_NOTRUNCATE, TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
+import { cn } from '@auxx/ui/lib/utils'
 import { ExternalLink } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useOpenRecord } from '~/components/records/record-drill-panels'
@@ -37,7 +38,11 @@ export function RelatedRecordRow({
    * records-view drawer convention.
    */
   href?: string
-  /** Extra classes for the row (passed through to `TreeRow`), e.g. a hover tint. */
+  /**
+   * Extra classes for the row. Merged AFTER the shared `hover:bg-primary-100`
+   * tint, so passing a `hover:bg-*` of your own replaces it rather than fighting
+   * it (`cn` is tailwind-merge).
+   */
   rowClassName?: string
 }) {
   const router = useRouter()
@@ -63,7 +68,13 @@ export function RelatedRecordRow({
 
   return (
     <TreeRow
-      rowClassName={rowClassName}
+      // `TreeRow`'s own default is `hover:bg-background`, i.e. no visible tint on a
+      // card that already sits on the background. Every related-record block wants
+      // the same `primary-100` hover the hand-rolled `TreeRow`s in
+      // `work-order-related-cards.tsx` set inline, and before this the prop existed
+      // but no caller passed it — so the tint is the default here, not a per-card
+      // opt-in that eight cards each have to remember.
+      rowClassName={cn('hover:bg-primary-100', rowClassName)}
       onDrill={handleOpen}
       icon={
         <RecordIcon

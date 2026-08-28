@@ -3,7 +3,8 @@
 
 import { extractRelationshipRecordIds } from '@auxx/lib/field-values/client'
 import { Button } from '@auxx/ui/components/button'
-import { ArrowRight, CalendarDays, Wrench } from 'lucide-react'
+import { EmptySection } from '@auxx/ui/components/section'
+import { ArrowRight, CalendarDays, Receipt, Wrench } from 'lucide-react'
 import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
 import { useOpenRecord } from '~/components/records/record-drill-panels'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
@@ -25,8 +26,11 @@ export function InvoiceBillingContextCard({ recordId }: DrawerTabProps) {
   if (isLoading) return <div className='h-14 animate-pulse rounded-xl bg-muted' />
   const kind = String(values.invoice_billing_kind ?? 'standalone')
   const workOrderId = extractRelationshipRecordIds(values.invoice_work_order)[0]
+  // `horizontal` rather than the default `vertical`: this is the card's ordinary
+  // resting state, not a failure to load anything, so it holds one TreeRow's height
+  // instead of a 6rem empty panel.
   if (kind === 'standalone')
-    return <p className='text-sm text-muted-foreground'>Standalone invoice</p>
+    return <EmptySection orientation='horizontal' icon={<Receipt />} title='Standalone invoice' />
   const installmentValue = unwrap(values.invoice_installment_name)
   const installment = installmentValue == null ? null : String(installmentValue)
   const progress = Number(unwrap(values.invoice_progress_percent) ?? 0)

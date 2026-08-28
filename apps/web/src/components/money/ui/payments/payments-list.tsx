@@ -176,6 +176,7 @@ export function PaymentsList({
 
         return (
           <TreeRow
+            rowClassName='hover:bg-primary-100'
             icon={<CreditCard className='size-4' />}
             title={
               <span className='flex min-w-0 items-center gap-1.5'>

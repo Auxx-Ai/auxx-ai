@@ -24,11 +24,12 @@ import { useJobVisits } from '~/components/dispatch/ui/job-schedule/use-job-visi
 import { SchedulePopover } from '~/components/dispatch/ui/schedule-popover'
 import { DrawerCardActions } from '~/components/drawers/drawer-card-actions'
 import { BillingActionDialog } from '~/components/money/billing/billing-action-dialog'
-import { BillingSummaryStrip } from '~/components/money/billing/billing-summary-strip'
 import { InvoiceTreeRow } from '~/components/money/billing/invoice-tree-row'
 import { NewWorkOrderInvoiceButton } from '~/components/money/billing/new-work-order-invoice-button'
 import { resolveBillingAction } from '~/components/money/billing/types'
 import { useWorkOrderBillingState } from '~/components/money/billing/use-work-order-billing-state'
+import { formatCurrency } from '~/components/money/ui/line-builder/shared'
+import { PurchasingSummaryStrip } from '~/components/purchasing/purchasing-summary-strip'
 import { useOpenRecord, useRecordDrill } from '~/components/records/record-drill-panels'
 import type { DrawerTabProps } from '../drawer-tab-registry'
 import { EmptyRow, RowSkeleton, TREE_SECONDARY_NOTRUNCATE } from './related-record-row'
@@ -160,7 +161,38 @@ export function WorkOrderBillingCard({ recordId, entityInstanceId }: DrawerTabPr
           onOpenInvoice={(invoiceRecordId) => openRecord?.(invoiceRecordId)}
         />
       </DrawerCardActions>
-      <BillingSummaryStrip billing={billing} className='pb-2' />
+      {/*
+        `PurchasingSummaryStrip`, not the `BillingSummaryStrip` the full-page Billing tab
+        uses. That strip is `@container`-responsive across six cells, and at the drawer's
+        ~400px it had already collapsed to the two it considers the action-relevant tail
+        (Remaining + Balance due) — so the drawer was paying for a reveal ladder it never
+        climbed, in a shape no other drawer card uses. Three fixed cells is what every
+        other purchasing/manufacturing card in a drawer renders, so the job drawer now
+        shares that rhythm. The full-page tab keeps `BillingSummaryStrip`, where the wide
+        container does show the whole funnel.
+
+        Deposit held is dropped rather than made a fourth cell: it was already hidden
+        below @xl, so the drawer never showed it, and four money cells do not fit.
+      */}
+      <PurchasingSummaryStrip
+        cells={[
+          {
+            label: 'Invoiced',
+            value: formatCurrency(billing.invoiced, billing.currencyCode),
+            tone: billing.invoiced === 0 ? 'muted' : 'default',
+          },
+          {
+            label: 'Remaining',
+            value: formatCurrency(billing.remaining, billing.currencyCode),
+            tone: billing.remaining === 0 ? 'muted' : 'default',
+          },
+          {
+            label: 'Balance due',
+            value: formatCurrency(billing.balanceDue, billing.currencyCode),
+            tone: billing.balanceDue === 0 ? 'muted' : 'default',
+          },
+        ]}
+      />
       <TreeRow
         rowClassName='hover:bg-primary-100'
         icon={<CreditCard className='size-4' />}
