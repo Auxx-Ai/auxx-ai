@@ -19,10 +19,10 @@
  * 🛑 **A build with `build_source = 'manual'` is never touched**, even when it
  * points at the cancelled order. A person raised it deliberately, against this
  * order, on purpose — that is the entire reason AB7 added `build_source`
- * alongside `build_order`. The read filters on it in SQL AND this file
- * re-checks it in memory, because `listBuilds` silently drops a filter whose
- * field the org has not materialised, and a dropped `source` filter would turn
- * "undo what the system raised" into "undo everything anyone raised".
+ * alongside `build_order`. The read that guarantees it is
+ * {@link readOrderRaisedBuilds} in `reconcile-queries.ts`, which filters in SQL
+ * AND re-checks in memory because `listBuilds` silently drops a filter whose
+ * field the org has not materialised; its header carries the full argument.
  *
  * 🛑 **Never throws.** Same contract as `auto-build.ts`: one build that will not
  * cancel must not strand the others.
@@ -34,25 +34,13 @@ import type { Result } from 'neverthrow'
 import { SystemUserService } from '../users/system-user-service'
 import { loadAutoBuildOrders } from './auto-build-queries'
 import { cancelBuild } from './build-mutations'
-import { listBuilds } from './build-queries'
 import { canCancelBuild, canReverseBuild } from './client'
 import { guard } from './guard'
+import { readOrderRaisedBuilds } from './reconcile-queries'
 import { reverseBuild } from './reverse-build'
 import type { BuildRecord } from './types'
 
 const logger = createScopedLogger('builds:auto-build-cancel')
-
-/** One page of the build read. Orders raise a handful of builds, not thousands. */
-const PAGE_SIZE = 100
-
-/**
- * How many builds one order is allowed to have before the sweep stops walking.
- *
- * A cap rather than an unbounded loop: this runs inline on a field write, and a
- * pathological order must degrade to "some builds were not undone, and it is in
- * the log" rather than to a write that never returns.
- */
-const MAX_BUILDS_PER_ORDER = 1000
 
 const CANCEL_REASON = 'Order cancelled'
 
@@ -131,7 +119,7 @@ export async function cancelAutoBuildsForOrders(
       const systemUserId = await SystemUserService.getSystemUserForActions(organizationId)
 
       for (const order of cancelled) {
-        const builds = await readAutoBuilds(db, organizationId, order.orderId)
+        const builds = await readOrderRaisedBuilds(db, organizationId, order.orderId)
         // A build that already carries a reversal must not be reversed twice —
         // `reverseBuild` refuses it, but refusing is a logged failure and this
         // rule can legitimately fire more than once on the same order.
@@ -209,41 +197,4 @@ async function undoBuild(
 
   // `canceled`, or a row whose status is missing entirely. Terminal either way.
   return skipped
-}
-
-/**
- * Every `source: 'order'` build raised against one order.
- *
- * Paged, because `listBuilds` defaults to 50 and an order that raised 60 builds
- * must not have 10 of them silently survive its cancellation.
- */
-async function readAutoBuilds(
-  db: Database,
-  organizationId: string,
-  orderId: string
-): Promise<BuildRecord[]> {
-  const builds: BuildRecord[] = []
-  for (let offset = 0; offset < MAX_BUILDS_PER_ORDER; offset += PAGE_SIZE) {
-    const page = await listBuilds(db, organizationId, {
-      orderId,
-      source: 'order',
-      limit: PAGE_SIZE,
-      offset,
-    })
-    if (page.isErr()) throw page.error
-    // 🛑 Re-assert both filters in memory. `listBuilds` drops a filter whose
-    // field the org has not materialised, and a dropped `source` filter would
-    // hand a hand-raised build to the cancellation path.
-    builds.push(
-      ...page.value.filter((build) => build.orderId === orderId && build.source === 'order')
-    )
-    if (page.value.length < PAGE_SIZE) return builds
-  }
-
-  logger.warn('Order has more auto-raised builds than the cancellation sweep walks', {
-    organizationId,
-    orderId,
-    cap: MAX_BUILDS_PER_ORDER,
-  })
-  return builds
 }

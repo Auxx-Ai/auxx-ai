@@ -35,7 +35,7 @@ import {
   readPartKinds,
   requireBuildFieldContext,
 } from './build-queries'
-import { canCancelBuild, canStartBuild, resolvePartKind } from './client'
+import { canAmendBuild, canCancelBuild, canStartBuild, resolvePartKind } from './client'
 import { guard } from './guard'
 import type { BuildRecord, CancelBuildInput, CreateBuildInput, StartBuildInput } from './types'
 
@@ -137,8 +137,15 @@ export async function createBuild(
         // Absent on failure rather than fatal: `hasDrifted` reads a missing
         // stamp as *unknown*, not *drifted*, so the worst case is a build that
         // cannot show drift — never a build that is not raised.
+        //
+        // `input.orderRevision` short-circuits the read and nothing else. The
+        // convergence pass has already computed this exact fingerprint in order
+        // to decide whether to raise anything at all, so re-deriving it here
+        // would re-run `loadAutoBuildOrders` for one order per build raised.
         if ((input.source ?? 'manual') === 'order' && ctx.fields.build_order_revision) {
-          const stamp = await readOrderDemandFingerprint(db, organizationId, input.orderId)
+          const stamp =
+            input.orderRevision ??
+            (await readOrderDemandFingerprint(db, organizationId, input.orderId))
           if (stamp) values.build_order_revision = stamp
         }
       }
@@ -239,7 +246,94 @@ export async function cancelBuild(
   )
 }
 
-/** One `UnifiedCrudHandler.update` on the default lane, for a status-only write. */
+/**
+ * Amend what a `planned` run intends to produce — the write plan 13's Model B
+ * reconciler converges an order-raised build with.
+ *
+ * 🛑 **`planned` ONLY**, via {@link canAmendBuild}, which is deliberately
+ * narrower than {@link canCancelBuild}. An `in_progress` build has written no
+ * movements, so nothing in the ledger forbids the write; what forbids it is
+ * that somebody may already be cutting material against the old quantity. It
+ * stays cancellable and stops being amendable
+ * (plans/products/13-order-build-reconciliation.md §1.0(a), §1.5). Any other
+ * status — including a row whose status is missing entirely — is a
+ * `ConflictError`.
+ *
+ * 🛑 **Writes no movements**, like everything else in this file (B2). The
+ * quantity a run *plans* is not a number the ledger has seen; only
+ * `completeBuild` turns intent into stock.
+ *
+ * `orderRevision` re-stamps `build_order_revision`, the drift fingerprint
+ * `createBuild` sets on the insert. Rewriting it is the point here rather than
+ * a violation of the "stamped once" rule that field's registry entry states:
+ * under Model B a reconcile is the moment the build *stops* differing from its
+ * order, so leaving the old stamp would report drift that has just been
+ * resolved. Passing `null` clears it back to *unknown* — which is what a caller
+ * that could not compute the order's fingerprint should say, since
+ * `hasDrifted` reads a missing stamp as unknown and never as drifted. Omitting
+ * the property leaves whatever is stored untouched.
+ */
+export async function amendPlannedBuildQuantity(
+  db: Database,
+  organizationId: string,
+  userId: string,
+  input: { buildId: string; quantityPlanned: number; orderRevision?: string | null }
+): Promise<Result<BuildRecord, Error>> {
+  return guard(
+    async () => {
+      const ctx = await requireBuildFieldContext(organizationId)
+
+      // The same refusal, in the same words, as `createBuild`: a build that
+      // plans to produce nothing is not an amendment, it is a cancellation, and
+      // `cancelBuild` is the function that performs one.
+      if (!Number.isFinite(input.quantityPlanned) || input.quantityPlanned <= 0) {
+        throw new BadRequestError('A build must plan to produce at least one unit')
+      }
+
+      const build = await requireBuild(db, organizationId, input.buildId)
+      assertBuildStatus(
+        build,
+        canAmendBuild,
+        'Only a planned build can be amended. An in-progress build may be cancelled, never ' +
+          'silently changed, because material may already be cut.'
+      )
+
+      const values: Record<string, unknown> = {
+        build_quantity_planned: input.quantityPlanned,
+      }
+      // One update, not two. The quantity and the stamp that explains which
+      // version of the order it came from must land together, or a reader
+      // between the two writes sees a build that disagrees with its own
+      // fingerprint.
+      if (input.orderRevision !== undefined && ctx.fields.build_order_revision) {
+        values.build_order_revision = input.orderRevision
+      }
+
+      await updateBuild(db, organizationId, userId, ctx, input.buildId, values)
+
+      logger.info('Amended a planned build', {
+        organizationId,
+        buildId: input.buildId,
+        quantityPlanned: input.quantityPlanned,
+        restamped: values.build_order_revision !== undefined,
+      })
+
+      return requireBuild(db, organizationId, input.buildId)
+    },
+    'Failed to amend build quantity',
+    { organizationId, buildId: input.buildId }
+  )
+}
+
+/**
+ * One `UnifiedCrudHandler.update` on the DEFAULT (interactive) lane.
+ *
+ * Every caller here writes only fields a `planned` build carries — a status, a
+ * note, a planned quantity — and none of them writes a stock movement, so the
+ * quiet lane is wrong: `buildWriteSession()` exists for `completeBuild` and
+ * `reverseBuild` alone (`write-lane.ts`), and silencing an amendment would cost
+ * the build list its realtime update for no benefit.
+ */
 async function updateBuild(
   db: Database,
   organizationId: string,
@@ -249,8 +343,11 @@ async function updateBuild(
   values: Record<string, unknown>
 ): Promise<void> {
   const crud = new UnifiedCrudHandler(organizationId, userId, db, undefined, {
-    // Both callers write a GUARDED value — `startBuild` sets `in_progress`, `cancelBuild`
-    // sets `canceled` — so this is what keeps the two actions working.
+    // Two of the three callers write a GUARDED value — `startBuild` sets `in_progress`,
+    // `cancelBuild` sets `canceled` — so this is what keeps those actions working.
+    // `amendPlannedBuildQuantity` writes no guarded value and carries the set anyway, for
+    // the reason `createBuild` does: the exemption belongs to the sanctioned WRITER rather
+    // than to today's value set.
     bypassFieldGuards: BUILD_STATUS_BYPASS,
   })
   await crud.update(toRecordId(ctx.buildDefId, buildId) as RecordId, values)

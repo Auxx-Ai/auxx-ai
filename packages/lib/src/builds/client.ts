@@ -155,6 +155,25 @@ export function canCancelBuild(status: BuildStatusValue | null): boolean {
 }
 
 /**
+ * `planned` is the only status whose plan may be amended.
+ *
+ * 🛑 **Deliberately NARROWER than {@link canCancelBuild}, and the difference is
+ * the whole point.** An `in_progress` build has written no movements either
+ * (B2 — `startBuild` only flips the status), so a ledger argument would let it
+ * through. The reason it is refused is **operational**: material may already be
+ * cut against the quantity somebody was told to build. So an `in_progress`
+ * build is *cancellable but never silently amendable*
+ * (plans/products/13-order-build-reconciliation.md §1.0(a) and §1.5).
+ *
+ * `completed` and `canceled` are terminal for the usual reasons — B6/B8 — and a
+ * `null` status is refused like every other write gate here
+ * ({@link resolveBuildStatus}).
+ */
+export function canAmendBuild(status: BuildStatusValue | null): boolean {
+  return status === 'planned'
+}
+
+/**
  * Only a completed build can be reversed.
  *
  * B6: a completed build is never edited or deleted — it is reversed by a second

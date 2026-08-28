@@ -159,7 +159,7 @@ vi.mock('../../resources/crud/unified-handler', () => ({
   },
 }))
 
-import { cancelBuild, createBuild, startBuild } from '../build-mutations'
+import { amendPlannedBuildQuantity, cancelBuild, createBuild, startBuild } from '../build-mutations'
 import { completeBuild } from '../complete-build'
 import { reverseBuild } from '../reverse-build'
 
@@ -243,6 +243,7 @@ const BUILD_ATTRS = [
   'build_order',
   'build_source',
   'build_reversal_of',
+  'build_order_revision',
 ]
 
 const MOVEMENT_ATTRS = [
@@ -429,6 +430,167 @@ describe('createBuild', () => {
     )
     expect(error).toBeInstanceOf(BadRequestError)
     expect(h.created).toEqual([])
+  })
+})
+
+// ─── amendPlannedBuildQuantity ──────────────────────────────────────────
+
+/**
+ * The writer plan 13's Model B reconciler converges an order-raised build with
+ * (plans/products/13-order-build-reconciliation.md §1.5, §5).
+ *
+ * 🛑 Two properties are what this suite is for: it writes NO movements, like
+ * everything else in `build-mutations.ts` (B2); and it accepts `planned` ONLY,
+ * which is deliberately narrower than `cancelBuild` — an `in_progress` build has
+ * written nothing either, but material may already be cut against the quantity
+ * somebody was told to build (§1.0(a)).
+ */
+describe('amendPlannedBuildQuantity', () => {
+  /** The one build update the CRUD double was asked to perform. */
+  function amendment(): Record<string, unknown> | undefined {
+    return h.updated[0]?.values
+  }
+
+  it('amends a planned build and re-stamps the order revision in the SAME update', async () => {
+    const result = await amendPlannedBuildQuantity(db, ORG, USER, {
+      buildId: BUILD,
+      quantityPlanned: 25,
+      orderRevision: 'rev_after',
+    })
+
+    expect(result.isOk()).toBe(true)
+    // 🛑 One update, not two. A reader between two writes would see a build that
+    // disagrees with its own drift fingerprint.
+    expect(h.updated).toHaveLength(1)
+    expect(amendment()).toEqual({
+      build_quantity_planned: 25,
+      build_order_revision: 'rev_after',
+    })
+    // B2 — nothing here reaches the ledger.
+    expect(movementWrites()).toEqual([])
+    expect(h.created).toEqual([])
+  })
+
+  it('writes only the quantity when no revision is given', async () => {
+    const result = await amendPlannedBuildQuantity(db, ORG, USER, {
+      buildId: BUILD,
+      quantityPlanned: 3,
+    })
+
+    expect(result.isOk()).toBe(true)
+    expect(amendment()).toEqual({ build_quantity_planned: 3 })
+    expect(amendment()).not.toHaveProperty('build_order_revision')
+  })
+
+  it('clears the stamp back to unknown when the caller passes null explicitly', async () => {
+    // `hasDrifted` reads a missing stamp as *unknown*, never as *drifted*, so a
+    // reconciler that converged the build but could not compute the order's new
+    // fingerprint says so rather than leaving a stamp that now reports drift
+    // which has just been resolved.
+    const result = await amendPlannedBuildQuantity(db, ORG, USER, {
+      buildId: BUILD,
+      quantityPlanned: 4,
+      orderRevision: null,
+    })
+
+    expect(result.isOk()).toBe(true)
+    expect(amendment()).toEqual({ build_quantity_planned: 4, build_order_revision: null })
+  })
+
+  it('leaves the revision alone on an org that has not materialised the field', async () => {
+    h.materialised.delete('build_order_revision')
+
+    const result = await amendPlannedBuildQuantity(db, ORG, USER, {
+      buildId: BUILD,
+      quantityPlanned: 7,
+      orderRevision: 'rev_after',
+    })
+
+    expect(result.isOk()).toBe(true)
+    expect(amendment()).toEqual({ build_quantity_planned: 7 })
+  })
+
+  it('🛑 REFUSES an in_progress build — cancellable, never silently amendable', async () => {
+    h.valueRows = [
+      value(BUILD, 'build_status', { optionId: 'in_progress' }),
+      value(BUILD, 'build_part', { relatedEntityId: PART_LIFT }),
+      value(BUILD, 'build_quantity_planned', { valueNumber: 10 }),
+      ...partKindRows(),
+    ]
+
+    const error = await expectErr(
+      amendPlannedBuildQuantity(db, ORG, USER, { buildId: BUILD, quantityPlanned: 25 })
+    )
+
+    expect(error).toBeInstanceOf(ConflictError)
+    expect(h.updated).toEqual([])
+    // And the same build is still cancellable — that is the asymmetry §1.5 asks for.
+    const cancelled = await cancelBuild(db, ORG, USER, { buildId: BUILD })
+    expect(cancelled.isOk()).toBe(true)
+  })
+
+  it('refuses a completed build — B6/B8, it is reversed, never edited', async () => {
+    h.valueRows = [...completedBuildRows(), ...partKindRows()]
+
+    const error = await expectErr(
+      amendPlannedBuildQuantity(db, ORG, USER, { buildId: BUILD, quantityPlanned: 25 })
+    )
+
+    expect(error).toBeInstanceOf(ConflictError)
+    expect(h.updated).toEqual([])
+  })
+
+  it('refuses a canceled build — terminal', async () => {
+    h.valueRows = [
+      value(BUILD, 'build_status', { optionId: 'canceled' }),
+      value(BUILD, 'build_part', { relatedEntityId: PART_LIFT }),
+      ...partKindRows(),
+    ]
+
+    const error = await expectErr(
+      amendPlannedBuildQuantity(db, ORG, USER, { buildId: BUILD, quantityPlanned: 25 })
+    )
+
+    expect(error).toBeInstanceOf(ConflictError)
+    expect(h.updated).toEqual([])
+  })
+
+  it('refuses a build whose status is missing entirely', async () => {
+    // A row nobody can state the lifecycle of is never defaulted to `planned`
+    // on a path that writes (`resolveBuildStatus`).
+    h.valueRows = [
+      value(BUILD, 'build_part', { relatedEntityId: PART_LIFT }),
+      value(BUILD, 'build_quantity_planned', { valueNumber: 10 }),
+      ...partKindRows(),
+    ]
+
+    const error = await expectErr(
+      amendPlannedBuildQuantity(db, ORG, USER, { buildId: BUILD, quantityPlanned: 25 })
+    )
+
+    expect(error).toBeInstanceOf(ConflictError)
+    expect(h.updated).toEqual([])
+  })
+
+  it('refuses a quantity that plans to produce nothing — the same words as createBuild', async () => {
+    for (const quantityPlanned of [0, -5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      const error = await expectErr(
+        amendPlannedBuildQuantity(db, ORG, USER, { buildId: BUILD, quantityPlanned })
+      )
+      expect(error, String(quantityPlanned)).toBeInstanceOf(BadRequestError)
+      expect(error.message).toBe('A build must plan to produce at least one unit')
+    }
+    expect(h.updated).toEqual([])
+  })
+
+  it('takes the DEFAULT lane — a planned build writes no ledger and must stay realtime', async () => {
+    // Only `completeBuild` / `reverseBuild` take `buildWriteSession()`
+    // (`write-lane.ts`); silencing an amendment would cost the build list its
+    // realtime update for no benefit.
+    await amendPlannedBuildQuantity(db, ORG, USER, { buildId: BUILD, quantityPlanned: 25 })
+
+    expect(h.constructions).toHaveLength(1)
+    expect(h.constructions[0]?.session).toBeUndefined()
   })
 })
 
