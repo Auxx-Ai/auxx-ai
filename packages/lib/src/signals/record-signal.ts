@@ -15,8 +15,25 @@ import type { SignalKind } from './types'
 
 const logger = createScopedLogger('signals-record')
 
-/** `EntitySignalLink.recordKey` root — string keys because visits aren't `EntityInstance`s. */
-export type SignalRecordKind = 'contact' | 'work_order' | 'visit' | 'invoice' | 'quote'
+/**
+ * `EntitySignalLink.recordKey` root — string keys because visits aren't `EntityInstance`s.
+ *
+ * ⚠️ Every `DocumentType` must be a member: `recordDocumentSendSignal` passes its
+ * `documentType` straight into {@link toSignalRecordKey}, so a document type missing here is
+ * a compile error at that call site (purchasing plan 07 §2.2 relies on that coupling).
+ * `'purchase_order'` was added for the PO send path.
+ *
+ * Readers key off the composed string, not this union — `listSignalsForRecordKeys` takes
+ * caller-built `recordKey`s and the rollup writer only ever looks at the `contact:` root — so
+ * adding a member widens what can be LINKED without obliging any consumer to handle it.
+ */
+export type SignalRecordKind =
+  | 'contact'
+  | 'work_order'
+  | 'visit'
+  | 'invoice'
+  | 'quote'
+  | 'purchase_order'
 
 /**
  * Compose an `EntitySignalLink.recordKey` — the one place every writer/reader builds this

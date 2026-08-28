@@ -1,6 +1,11 @@
 // packages/lib/src/resources/hooks/purchasing-hooks.ts
 
 import { recordNumbering } from '../../records/record-numbering'
+import {
+  createLifecycleStatusGuard,
+  PURCHASE_ORDER_ACTION_STATUS_MESSAGE,
+  PURCHASE_ORDER_ACTION_STATUSES,
+} from './lifecycle-status-guard'
 import type { SystemHook, SystemHookRegistry } from './types'
 
 /**
@@ -40,11 +45,50 @@ const autoGenerateVendorBillInternalNumber: SystemHook = async ({
 }
 
 /**
- * `purchase_order` has no lifecycle guard. `purchase_order_status` is a plain human-set
- * field with no sanctioned action carrying side effects, so nothing a manual write skips.
+ * Guard: `issued` may only be set by the Send action (`markPurchaseOrderSent`,
+ * plans/purchasing/07-purchase-order-send-and-status.md §3.4/§6.4).
+ *
+ * ⚠️ This field used to be documented here as *"a plain human-set field with no sanctioned
+ * action"*, and that was accurate only by accident: nothing could write it, so calling it
+ * the human axis cost nothing. Send changes that. For a purchase order, **issued IS sent to
+ * the vendor** — one event, and the accounting word is the better one, so there is no
+ * separate `sent` value — which makes `issued` a thing an action produces rather than a
+ * value somebody picks. Typing it by hand claims an order went out that never did, and the
+ * expediting list, the `expected_at` default and (per §6.1) the receipt pull-forward all
+ * read it.
+ *
+ * `draft`, `closed` and `canceled` stay freely editable. They are genuine human decisions:
+ * §3.6 deliberately does NOT derive `closed`, because an order where the vendor short-shipped
+ * and the remainder has been forgiven must still be closeable and no derived rule could ever
+ * close it.
+ *
+ * ⚠️ **This guard covers the CRUD chain only, and is NOT the main enforcement point.**
+ * `UnifiedCrudHandler.runPreHooks` runs for `record.create`/`record.update`, bulk record
+ * writes, the CSV importer and the SDK — worth having, and removing it would narrow
+ * coverage. But every *interactive* edit goes through `fieldValue.set` ->
+ * `FieldValueService`, which never reads this registry, so a drawer edit or a kanban drag
+ * reaches only the field pre-hook twin in
+ * `field-hooks/pre/purchase-order-status-guard.ts`. That one is what actually stops a human
+ * typing `issued`. The two share their guarded set and message via
+ * `PURCHASE_ORDER_ACTION_STATUSES` / `PURCHASE_ORDER_ACTION_STATUS_MESSAGE` so they cannot
+ * drift, and `pre/quote-deposit-guard.ts` records the same finding for `quote_status`.
+ *
+ * The sanctioned writer reaches the field through `FieldValueService`, which bypasses this
+ * chain entirely, so this guard never sees it. On the field chain it clears the twin by
+ * naming `purchase_order_status` in `bypassFieldGuards`.
+ */
+const rejectManualLifecycleStatus: SystemHook = createLifecycleStatusGuard({
+  guardedValues: PURCHASE_ORDER_ACTION_STATUSES,
+  message: PURCHASE_ORDER_ACTION_STATUS_MESSAGE,
+})
+
+/**
+ * `purchase_order` system hooks: the RecordSequence number on create, and the lifecycle
+ * guard that keeps `issued` an action rather than a dropdown value.
  */
 export const PURCHASE_ORDER_HOOKS: SystemHookRegistry = {
   purchase_order_number: [autoGeneratePurchaseOrderNumber],
+  purchase_order_status: [rejectManualLifecycleStatus],
 }
 
 /**

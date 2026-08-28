@@ -31,6 +31,8 @@ import {
   GlAccountType,
   GlPostingLineDirection,
   LandedCostAllocationBasis,
+  PurchaseOrderBillingStatus,
+  PurchaseOrderReceiptStatus,
   PurchaseOrderStatus,
   StockMovementCostBasis,
   VendorBillPaidSource,
@@ -39,13 +41,17 @@ import {
 } from '../../../resources/registry/enum-values'
 import { RESOURCE_FIELD_REGISTRY } from '../../../resources/registry/field-registry'
 import type { ResourceField } from '../../../resources/registry/field-types'
+import type { FieldOptionItem } from '../../../resources/registry/option-helpers'
 import { COMPANY_FIELDS } from '../../../resources/registry/resources/company-fields'
+import { CONTACT_FIELDS } from '../../../resources/registry/resources/contact-fields'
 import { GL_ACCOUNT_FIELDS } from '../../../resources/registry/resources/gl-account-fields'
 import { GL_POSTING_FIELDS } from '../../../resources/registry/resources/gl-posting-fields'
 import { GL_POSTING_LINE_FIELDS } from '../../../resources/registry/resources/gl-posting-line-fields'
+import { INVOICE_FIELDS } from '../../../resources/registry/resources/invoice-fields'
 import { PART_FIELDS } from '../../../resources/registry/resources/part-fields'
 import { PURCHASE_ORDER_FIELDS } from '../../../resources/registry/resources/purchase-order-fields'
 import { PURCHASE_ORDER_LINE_FIELDS } from '../../../resources/registry/resources/purchase-order-line-fields'
+import { QUOTE_FIELDS } from '../../../resources/registry/resources/quote-fields'
 import { STOCK_MOVEMENT_FIELDS } from '../../../resources/registry/resources/stock-movement-fields'
 import { VENDOR_BILL_FIELDS } from '../../../resources/registry/resources/vendor-bill-fields'
 import { VENDOR_BILL_LINE_FIELDS } from '../../../resources/registry/resources/vendor-bill-line-fields'
@@ -125,6 +131,7 @@ const RECEIVING_KEYS = [
  */
 const INVERSE_KEYS: Record<string, readonly string[]> = {
   company: ['purchaseOrders', 'vendorBills', 'vendorPayments'],
+  contact: ['purchaseOrders'],
   part: ['purchaseOrderLines', 'vendorBillLines', 'unit'],
   vendor_part: ['stockMovements', 'purchaseOrderLines'],
   gl_posting: ['lines'],
@@ -133,6 +140,7 @@ const INVERSE_KEYS: Record<string, readonly string[]> = {
 const INCUMBENT_REGISTRIES: Record<string, Record<string, ResourceField>> = {
   stock_movement: STOCK_MOVEMENT_FIELDS,
   company: COMPANY_FIELDS,
+  contact: CONTACT_FIELDS,
   part: PART_FIELDS,
   vendor_part: VENDOR_PART_FIELDS,
   gl_posting: GL_POSTING_FIELDS,
@@ -298,9 +306,35 @@ const ALL_DEF_REGISTRIES: Record<string, Record<string, ResourceField>> = {
   ...INCUMBENT_REGISTRIES,
 }
 
+/**
+ * The two ways a stored option list goes stale, one per direction:
+ *
+ *   vendor_bill_status     a value was ADDED to the enum (`partially_paid`)
+ *   purchase_order_status  two values were REMOVED (they became their own fields)
+ *
+ * Both are invisible to `ensureCustomFields`, which skips a field that already
+ * exists — which is the whole reason the refresh step exists.
+ */
+const STALE_STATUS_FIXTURES: Record<
+  'vendor_bill_status' | 'purchase_order_status',
+  FieldOptionItem[]
+> = {
+  vendor_bill_status: VendorBillStatus.values.filter((v) => v.value !== 'partially_paid'),
+  purchase_order_status: [
+    ...PurchaseOrderStatus.values.slice(0, 2),
+    { value: 'partially_received', label: 'Partially received', color: 'amber' },
+    { value: 'received', label: 'Received', color: 'green' },
+    ...PurchaseOrderStatus.values.slice(2),
+  ],
+}
+
 function migratedOrgDb(
   writes: string[],
-  opts: { linked?: boolean; omit?: readonly string[]; staleVendorBillStatus?: boolean } = {}
+  opts: {
+    linked?: boolean
+    omit?: readonly string[]
+    staleStatus?: keyof typeof STALE_STATUS_FIXTURES
+  } = {}
 ) {
   const omit = new Set(opts.omit ?? [])
   const defs = Object.entries(ALL_DEF_REGISTRIES).filter(([entityType]) => !omit.has(entityType))
@@ -308,14 +342,14 @@ function migratedOrgDb(
     fieldRows(`def-${entityType}`, registry, opts.linked ?? true)
   )
 
-  // An org migrated BEFORE a value was added to the enum: the row still carries
-  // the option list it was created with.
-  if (opts.staleVendorBillStatus) {
-    const statusRow = customFields.find((row) => row.systemAttribute === 'vendor_bill_status')
-    if (!statusRow) throw new Error('fixture: vendor_bill_status row is missing')
+  // An org migrated BEFORE the enum changed: the row still carries the option
+  // list it was created with.
+  if (opts.staleStatus) {
+    const statusRow = customFields.find((row) => row.systemAttribute === opts.staleStatus)
+    if (!statusRow) throw new Error(`fixture: ${opts.staleStatus} row is missing`)
     statusRow.options = {
       ...statusRow.options,
-      options: VendorBillStatus.values.filter((v) => v.value !== 'partially_paid'),
+      options: STALE_STATUS_FIXTURES[opts.staleStatus],
     }
   }
 
@@ -639,16 +673,114 @@ describe('purchase_order field shapes the plan is explicit about', () => {
     })
   })
 
-  it('status is the six-value purchasing lifecycle, wired to the enum list', () => {
+  // 07 §3.3. The ACTION axis and only the action axis — four values, all of
+  // which a person or the Send action can actually reach.
+  it('status is the four-value action lifecycle, wired to the enum list', () => {
     expect(PurchaseOrderStatus.values.map((v) => v.value)).toEqual([
       'draft',
       'issued',
-      'partially_received',
-      'received',
       'closed',
       'canceled',
     ])
     expect(PURCHASE_ORDER_FIELDS.status?.options).toEqual({ options: PurchaseOrderStatus.values })
+  })
+
+  // 🛑 The split itself, stated as an assertion rather than a comment. Receiving
+  // and billing move independently — a prepaid order is fully billed with
+  // nothing received for weeks — so neither may live on `status`, and `status`
+  // must not re-acquire them. This is the defect `VendorBillStatus` already has:
+  // its payment values overwrite its match verdict and `MATCHABLE_STATUSES` then
+  // refuses to recompute it.
+  it('keeps receiving and billing off the action axis', () => {
+    const actionValues = PurchaseOrderStatus.values.map((v) => v.value)
+    for (const leaked of ['partially_received', 'received', 'partially_billed', 'billed']) {
+      expect(actionValues, `${leaked} belongs on its own axis`).not.toContain(leaked)
+    }
+
+    expect(PurchaseOrderReceiptStatus.values.map((v) => v.value)).toEqual([
+      'not_received',
+      'partially_received',
+      'received',
+    ])
+    expect(PurchaseOrderBillingStatus.values.map((v) => v.value)).toEqual([
+      'not_billed',
+      'partially_billed',
+      'billed',
+    ])
+    expect(PURCHASE_ORDER_FIELDS.receiptStatus?.options).toEqual({
+      options: PurchaseOrderReceiptStatus.values,
+    })
+    expect(PURCHASE_ORDER_FIELDS.billingStatus?.options).toEqual({
+      options: PurchaseOrderBillingStatus.values,
+    })
+  })
+
+  // Both are DERIVED: the line roll-up is the only writer, exactly as
+  // `quantityReceived` / `quantityBilled` are on the line itself. A creatable
+  // derived field is a box a user can fill in and the next roll-up silently
+  // overwrites.
+  it('receiptStatus and billingStatus are computed, never typed', () => {
+    for (const key of ['receiptStatus', 'billingStatus'] as const) {
+      const field = PURCHASE_ORDER_FIELDS[key]
+      expect(field?.fieldType, key).toBe(FieldType.SINGLE_SELECT)
+      expect(field?.isSystem, key).toBe(true)
+      expect(field?.capabilities?.creatable, key).toBe(false)
+      expect(field?.capabilities?.updatable, key).toBe(false)
+      expect(field?.capabilities?.computed, key).toBe(true)
+      expect(field?.capabilities?.configurable, key).toBe(false)
+      // No `defaultValue`: `applyDefaults` skips non-creatable fields, so one
+      // here would be dead code that reads like a guarantee.
+      expect(field?.defaultValue, key).toBeUndefined()
+    }
+  })
+
+  // The three status fields are read together on every PO surface, so they sort
+  // together: `a3` (status), `a3a`, `a3b`, then `a4` (orderedAt).
+  it('sorts the two derived statuses immediately after status', () => {
+    const order = (key: string) => PURCHASE_ORDER_FIELDS[key]?.systemSortOrder
+    expect(order('status')).toBe('a3')
+    expect(order('receiptStatus')).toBe('a3a')
+    expect(order('billingStatus')).toBe('a3b')
+    expect(order('orderedAt')).toBe('a4')
+    const keys = ['status', 'receiptStatus', 'billingStatus', 'orderedAt'].map(order)
+    expect([...keys].sort()).toEqual(keys)
+  })
+
+  // 🛑 The pointer `RegisteredDocumentType.pointerAttr` resolves. `ensure-pdf.ts`
+  // reads `cf[pointerAttr]` to decide whether to REUSE the last render; with no
+  // such field the lookup is `undefined`, `existingAssetId` is always
+  // `undefined`, and every send re-renders AND mints a fresh MediaAsset. That
+  // leaks an asset per send, throws nothing, and returns a correct PDF every
+  // time — so this is asserted rather than trusted.
+  //
+  // The shape is copied verbatim from the two incumbents because all three go
+  // through the same read path: a bare MediaAsset id in TEXT, hidden, and
+  // `updatable` but not `creatable` (only `ensureDocumentPdf` writes it, via
+  // `FieldValueService`, which bypasses the pre-hook chain).
+  it('carries a pdf-asset pointer shaped exactly like the quote and invoice ones', () => {
+    const po = PURCHASE_ORDER_FIELDS.pdfAsset
+    expect(po?.systemAttribute).toBe('purchase_order_pdf_asset')
+
+    for (const twin of [QUOTE_FIELDS.pdfAsset, INVOICE_FIELDS.pdfAsset]) {
+      expect(twin, 'the incumbent pdfAsset field vanished').toBeDefined()
+      expect(po?.type).toBe(twin?.type)
+      expect(po?.fieldType).toBe(twin?.fieldType)
+      expect(po?.nullable).toBe(twin?.nullable)
+      expect(po?.showInPanel).toBe(twin?.showInPanel)
+      expect(po?.capabilities).toEqual(twin?.capabilities)
+    }
+
+    // Spelled out too, so a change to all three at once still trips something.
+    expect(po?.fieldType).toBe(FieldType.TEXT)
+    expect(po?.capabilities?.creatable).toBe(false)
+    expect(po?.capabilities?.updatable).toBe(true)
+    expect(po?.capabilities?.hidden).toBe(true)
+    // Not a RELATIONSHIP: it stores a MediaAsset id as text, and `media_asset`
+    // is not an entity def, so a relation would have nothing to link to.
+    expect(po?.relationship).toBeUndefined()
+    // Late/administrative, where the quote (aK) and invoice (aI) put theirs —
+    // after `bills` (aJ) and before the createdAt/updatedAt `b*` block.
+    expect(po?.systemSortOrder).toBe('aK')
   })
 
   // §4.2, and the same rule `part_quantity_on_hand` already lives by: the ledger
@@ -702,16 +834,22 @@ describe('vendor_bill field shapes the plan is explicit about', () => {
 
   // `ensureCustomFields` SKIPS an existing field and never touches its options,
   // so an org that already ran 108 keeps whatever option list the field was
-  // CREATED with. Adding a value to the enum is therefore only half the change —
-  // the migration has to re-materialize the row, or the code believes in seven
-  // values while the database holds six.
-  it('re-materializes an existing status field rather than only seeding new orgs', () => {
+  // CREATED with. Changing an enum is therefore only half the change — the
+  // migration has to re-materialize the row, or the code and the database
+  // disagree about what values exist.
+  //
+  // The behaviour is asserted for real in the idempotency block below; what is
+  // pinned here is that BOTH status fields go through the refresh, and that a
+  // refresh counts as work.
+  it('re-materializes both status fields rather than only seeding new orgs', () => {
     const here = fileURLToPath(new URL('.', import.meta.url))
     const source = readFileSync(join(here, '108-purchasing.ts'), 'utf8')
-    expect(source).toContain('refreshVendorBillStatusOptions')
+    expect(source).toContain('refreshStatusOptions')
+    expect(source).toContain('VENDOR_BILL_FIELDS.status')
+    expect(source).toContain('PURCHASE_ORDER_FIELDS.status')
     // And the refresh must count toward "did something", or a run that only
     // rewrote options would report alreadyUpToDate and skip the cache flush that
-    // makes the new value visible to every read path.
+    // makes the change visible to every read path.
     expect(source).toContain('!statusRefreshed')
   })
 
@@ -894,6 +1032,15 @@ describe('relationship pairs', () => {
       inverseRef: 'purchase_order:vendor',
     },
     {
+      // The ADDRESSEE pair. Without it a PO has no email recipient at all:
+      // `vendor` targets a `company`, and a company carries no email of its own.
+      name: 'purchase_order.contact ↔ contact.purchaseOrders',
+      owning: PURCHASE_ORDER_FIELDS.contact,
+      owningRef: 'contact:purchaseOrders',
+      inverse: CONTACT_FIELDS.purchaseOrders,
+      inverseRef: 'purchase_order:contact',
+    },
+    {
       name: 'purchase_order_line.purchaseOrder ↔ purchase_order.lines',
       owning: PURCHASE_ORDER_LINE_FIELDS.purchaseOrder,
       owningRef: 'purchase_order:lines',
@@ -1033,6 +1180,11 @@ describe('relationship pairs', () => {
 
   it('the required legs are required, and the optional ones stay optional', () => {
     expect(PURCHASE_ORDER_FIELDS.vendor?.nullable).toBe(false)
+    // Unlike `quote_contact`, which is required: a PO is drafted against a
+    // supplier first, and who to send it to is settled later. Requiring it here
+    // would block the create dialog on a person nobody has picked yet.
+    expect(PURCHASE_ORDER_FIELDS.contact?.nullable).toBe(true)
+    expect(PURCHASE_ORDER_FIELDS.contact?.required).toBeUndefined()
     expect(PURCHASE_ORDER_LINE_FIELDS.purchaseOrder?.nullable).toBe(false)
     expect(PURCHASE_ORDER_LINE_FIELDS.part?.nullable).toBe(false)
     expect(PURCHASE_ORDER_LINE_FIELDS.vendorPart?.nullable).toBe(true)
@@ -1263,21 +1415,29 @@ describe('migration 108 idempotency', () => {
     expect(writes.filter((w) => w.startsWith('insert'))).toEqual([])
   })
 
-  // 🛑 The half of the option-refresh that actually matters. The test above
-  // proves it stays QUIET when the stored options already match; this proves it
-  // FIRES when they do not. Without this, adding a value to `VendorBillStatus`
+  // 🛑 The half of the option-refresh that actually matters. The first test
+  // proves it stays QUIET when the stored options already match; these prove it
+  // FIRES when they do not. Without them, changing an enum in `enum-values.ts`
   // would reach a fresh org and silently skip every org that already ran 108 —
   // `ensureCustomFields` returns an incumbent field untouched — leaving the code
-  // believing in seven values while the database holds six.
-  it('rewrites a stale vendor_bill_status option list, and says it did', async () => {
+  // and the database disagreeing about what values exist.
+  //
+  // Both directions are covered: `vendor_bill_status` GAINED `partially_paid`,
+  // `purchase_order_status` LOST `partially_received` / `received` to the two
+  // derived fields (07 §3.3). Narrowing is the one that matters more — a stored
+  // option nobody removed keeps rendering a value the type union no longer has.
+  it.each([
+    'vendor_bill_status',
+    'purchase_order_status',
+  ] as const)('rewrites a stale %s option list, and says it did', async (systemAttribute) => {
     const writes: string[] = []
-    const db = migratedOrgDb(writes, { staleVendorBillStatus: true })
+    const db = migratedOrgDb(writes, { staleStatus: systemAttribute })
 
-    const result = await migration108Purchasing.up(db, 'org-4')
+    const result = await migration108Purchasing.up(db, `org-${systemAttribute}`)
 
     expect(writes).toContain('update CustomField')
     // Not `alreadyUpToDate`: a run that only rewrote options must still report
-    // work, or it skips the org-cache flush that makes the new value visible to
+    // work, or it skips the org-cache flush that makes the change visible to
     // every read path.
     expect(result.alreadyUpToDate).toBe(false)
   })

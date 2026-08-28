@@ -8,9 +8,15 @@
 
 import type { RecordId } from '@auxx/types/resource'
 import type { ComponentType } from 'react'
-import { DOCUMENT_TYPE_DESCRIPTORS, type PrintOptionField } from './client'
-import { buildInvoicePdfPayload, buildQuotePdfPayload, type DocumentPdfPayload } from './payload'
+import { DOCUMENT_TYPE_DESCRIPTORS, type DocumentTypeId, type PrintOptionField } from './client'
+import {
+  buildInvoicePdfPayload,
+  buildPurchaseOrderPdfPayload,
+  buildQuotePdfPayload,
+  type DocumentPdfPayload,
+} from './payload'
 import { InvoicePdf } from './pdf/invoice-pdf'
+import { PurchaseOrderPdf } from './pdf/purchase-order-pdf'
 import { QuotePdf } from './pdf/quote-pdf'
 
 /**
@@ -19,8 +25,9 @@ import { QuotePdf } from './pdf/quote-pdf'
  * type" the print wizard's Document style relies on.
  */
 export interface RegisteredDocumentType {
-  /** Matches `DocumentType` ('quote' | 'invoice') and the client descriptor's `id`. */
-  id: string
+  /** Matches `DocumentType` and the client descriptor's `id` — one union, declared in
+   * `./client.ts` so the client-safe half owns it. */
+  id: DocumentTypeId
   /** `EntityDefinition.entityType` slug this document type renders records of — resolve to a
    * per-org `EntityDefinition.id` via `requireCachedEntityDefId` before comparing against one. */
   entityType: string
@@ -51,7 +58,13 @@ export interface RegisteredDocumentType {
 
 /** Per-type renderer wiring — the part `./client.ts`'s descriptors can't carry (react-pdf +
  * server-only payload builders). Merged with `DOCUMENT_TYPE_DESCRIPTORS` below so
- * id/entityType are defined exactly once. */
+ * id/entityType are defined exactly once.
+ *
+ * ⚠️ `pointerAttr` is not optional in practice, even though nothing throws without it.
+ * `ensure-pdf.ts` reads the pointer to decide whether a cached render can be reused; when the
+ * org has no such field the lookup simply returns nothing, so every send re-renders AND mints
+ * a fresh `MediaAsset` rather than versioning the existing one. That is an asset leak with no
+ * error attached, which is why a new entry names a real field and never a plausible one. */
 const RENDER_ENTRIES: Array<
   Pick<RegisteredDocumentType, 'id' | 'pointerAttr' | 'buildPayload' | 'Pdf'>
 > = [
@@ -76,6 +89,17 @@ const RENDER_ENTRIES: Array<
         invoiceRecordId: params.recordId,
       }),
     Pdf: InvoicePdf as unknown as RegisteredDocumentType['Pdf'],
+  },
+  {
+    id: 'purchase_order',
+    pointerAttr: 'purchase_order_pdf_asset',
+    buildPayload: (params) =>
+      buildPurchaseOrderPdfPayload({
+        organizationId: params.organizationId,
+        userId: params.userId,
+        purchaseOrderRecordId: params.recordId,
+      }),
+    Pdf: PurchaseOrderPdf as unknown as RegisteredDocumentType['Pdf'],
   },
 ]
 

@@ -197,6 +197,7 @@ export const SYSTEM_ATTRIBUTES = [
   'contact_quotes',
   'contact_invoices', // inverse of invoice_contact
   'contact_orders', // inverse of order_contact
+  'contact_purchase_orders', // inverse of purchase_order_contact — the BUY side
   'contact_balance_due',
   'contact_uninvoiced_amount',
   'contact_billing_revision',
@@ -474,7 +475,17 @@ export const SYSTEM_ATTRIBUTES = [
   // `goods_receipt` header is needed.
   'purchase_order_number',
   'purchase_order_vendor',
+  // The ADDRESSEE. `purchase_order_vendor` targets a `company`, and a company
+  // carries no email of its own, so without this there is nobody to send the
+  // order to. Mirrors `quote_contact` / `invoice_contact`.
+  'purchase_order_contact',
   'purchase_order_status',
+  // The two DERIVED axes the single `purchase_order_status` could not express
+  // (plans/purchasing/07-purchase-order-send-and-status.md §3.3): receiving and
+  // billing move independently — a prepaid order is fully billed with nothing
+  // received — so each gets its own field, written by the line roll-up.
+  'purchase_order_receipt_status',
+  'purchase_order_billing_status',
   'purchase_order_ordered_at',
   'purchase_order_expected_at',
   'purchase_order_terms',
@@ -489,6 +500,7 @@ export const SYSTEM_ATTRIBUTES = [
   'purchase_order_allocation_basis',
   'purchase_order_tax_recoverable',
   'purchase_order_notes',
+  'purchase_order_pdf_asset', // MediaAsset id, TEXT — the quote/invoice_pdf_asset precedent
   'purchase_order_lines', // inverse of purchase_order_line_purchase_order
   'purchase_order_bills', // inverse of vendor_bill_purchase_order
   'company_purchase_orders', // inverse of purchase_order_vendor

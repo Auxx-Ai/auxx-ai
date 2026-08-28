@@ -131,6 +131,8 @@ export {
   type PublicInvoicePayload,
   resolveInvoiceByPublicToken,
 } from './public-token'
+export type { PurchaseOrderLifecycleInput } from './purchase-order-lifecycle'
+export { markPurchaseOrderSent } from './purchase-order-lifecycle'
 export {
   type SyncInvoiceResult,
   type SyncInvoiceToQuickbooksInput,

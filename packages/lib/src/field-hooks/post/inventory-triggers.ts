@@ -24,7 +24,8 @@ const logger = createScopedLogger('field-hooks:inventory')
  * is created or deleted.
  *
  * 1. Resolve which part was affected from the stock_movement_part relationship
- * 2. SUM all movement quantities for that part via a single self-join SQL query
+ * 2. SUM all movement quantities for that part via a single self-join SQL query,
+ *    which also carries the part's reorder point back as a scalar subquery
  * 3. Write part_quantity_on_hand and derive part_stock_status
  */
 export const recalculatePartQoH: EntityTriggerHandler = async (event) => {
@@ -155,6 +156,10 @@ export const recalculateStockStatus: FieldTriggerHandler = async (event) => {
 /**
  * Recalculate QoH for a specific part by summing all its stock movement quantities
  * in a single self-join query, then write QoH + stock status in parallel.
+ *
+ * ⚡ ONE read. The reorder point used to be a second statement run alongside the
+ * SUM; it is a scalar subquery in the same statement now, because this function
+ * runs once per stock movement and a ten-line receipt paid for ten of them.
  */
 async function recalculateQoHForPart(organizationId: string, partInstanceId: string) {
   const cache = getOrgCache()
@@ -190,6 +195,15 @@ async function recalculateQoHForPart(organizationId: string, partInstanceId: str
   const [sumRow] = await database
     .select({
       total: sql<string>`COALESCE(SUM(${schema.FieldValue.valueNumber}), 0)`,
+      // The part's reorder point rides along as an uncorrelated scalar
+      // subquery rather than a second round trip. It is one index lookup
+      // inside a statement that was already being issued, and it references
+      // no column of the FROM list, so it is a constant to the aggregate.
+      reorderPoint: sql<number | null>`(SELECT fv_rp."valueNumber" FROM "FieldValue" fv_rp
+        WHERE fv_rp."entityId" = ${partInstanceId}
+          AND fv_rp."fieldId" = ${reorderPointField?.id ?? ''}
+          AND fv_rp."organizationId" = ${organizationId}
+        LIMIT 1)`,
     })
     .from(schema.FieldValue)
     .innerJoin(
@@ -214,12 +228,9 @@ async function recalculateQoHForPart(organizationId: string, partInstanceId: str
     )
 
   const qoh = Number(sumRow?.total ?? 0)
+  const reorderPoint = sumRow?.reorderPoint != null ? Number(sumRow.reorderPoint) : null
 
-  // Resolve part context once
-  const [partDefId, reorderPoint] = await Promise.all([
-    requireCachedEntityDefId(organizationId, 'part'),
-    readReorderPoint(organizationId, partInstanceId, reorderPointField?.id),
-  ])
+  const partDefId = await requireCachedEntityDefId(organizationId, 'part')
 
   const recordId = toRecordId(partDefId, partInstanceId) as RecordId
   const ctx = createFieldValueContext(organizationId)
@@ -272,31 +283,6 @@ async function recalculateQoHForPart(organizationId: string, partInstanceId: str
   })
 
   logger.info('QoH recalculated', { partInstanceId, qoh, status })
-}
-
-/**
- * Read the reorder point field value for a part. Returns null if not set.
- */
-async function readReorderPoint(
-  organizationId: string,
-  partInstanceId: string,
-  reorderPointFieldId: string | undefined
-): Promise<number | null> {
-  if (!reorderPointFieldId) return null
-
-  const rpRow = await database
-    .select({ valueNumber: schema.FieldValue.valueNumber })
-    .from(schema.FieldValue)
-    .where(
-      and(
-        eq(schema.FieldValue.entityId, partInstanceId),
-        eq(schema.FieldValue.organizationId, organizationId),
-        eq(schema.FieldValue.fieldId, reorderPointFieldId)
-      )
-    )
-    .limit(1)
-
-  return rpRow[0]?.valueNumber != null ? Number(rpRow[0].valueNumber) : null
 }
 
 /**

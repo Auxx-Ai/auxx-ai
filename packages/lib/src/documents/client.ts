@@ -31,13 +31,32 @@ export type PrintOptionField =
     }
 
 /**
+ * Every registered document type's id — the single literal union `DocumentType`
+ * (`./ensure-pdf.ts`) is derived from, so that union never has to be hand-maintained.
+ *
+ * {@link DocumentTypeDescriptor.id} is typed as this union rather than `string`, which is
+ * what keeps `DOCUMENT_TYPE_DESCRIPTORS`' ids literal: a plain `id: string` widens them and
+ * any derivation off the array yields `string`. Adding a document type therefore means
+ * adding its id here, a descriptor below, and an entry in `./registry.ts`'s
+ * `RENDER_ENTRIES` — a descriptor whose id is not in this union does not compile.
+ *
+ * ⚠️ `as const satisfies readonly DocumentTypeDescriptor[]` on the array below is the more
+ * obvious way to keep the ids literal and was tried first. It forces `printOptions` (and the
+ * nested `options`/`default` arrays) readonly, and `print-document-content-page.tsx` in
+ * `apps/web` declares its prop as a mutable `PrintOptionField[]` — so it costs two TS4104s
+ * there plus one where `registry.ts` merges the descriptor in. This union is the same
+ * guarantee with no ripple.
+ */
+export type DocumentTypeId = 'quote' | 'invoice' | 'purchase_order'
+
+/**
  * Client-safe shape of a registered document type — enough for the print wizard to decide
  * whether "Document" style is available for the current entity and which extra fields to
  * render, without importing the server-only registry (`./registry.ts`).
  */
 export interface DocumentTypeDescriptor {
-  /** Matches `RegisteredDocumentType.id` ('quote' | 'invoice'). */
-  id: string
+  /** Matches `RegisteredDocumentType.id`. */
+  id: DocumentTypeId
   /** `EntityDefinition.entityType` slug this document type renders records of — NOT the
    * per-org generated `EntityDefinition.id`; callers resolve/compare via the entity's
    * `entityType` (client `Resource.entityType`, server `requireCachedEntityDefId`). */
@@ -72,4 +91,8 @@ export const DOCUMENT_TYPE_DESCRIPTORS: DocumentTypeDescriptor[] = [
       },
     ],
   },
+  // The buy-side document (plans/purchasing/07 §1.2). No `printOptions`: the invoice's
+  // `sortBy` exists for stacks of customer statements, and nothing in the batch-print flow
+  // sorts purchase orders by anything but their number yet.
+  { id: 'purchase_order', entityType: 'purchase_order', printOptions: [] },
 ]

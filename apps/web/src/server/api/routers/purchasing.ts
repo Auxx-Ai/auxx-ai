@@ -2,6 +2,7 @@
 
 import { getCachedEntityDefId } from '@auxx/lib/cache'
 import { NotFoundError } from '@auxx/lib/errors'
+import { markPurchaseOrderSent } from '@auxx/lib/money'
 import {
   allocateLandedCost,
   DEFAULT_MATCH_TOLERANCE,
@@ -100,6 +101,7 @@ async function requireDefId(organizationId: string, entityType: string): Promise
  *
  * | procedure                          | gate                                  |
  * | ---------------------------------- | ------------------------------------- |
+ * | `markPurchaseOrderSent`            | edit on `purchase_order`              |
  * | `receiveStock`, `receivePurchaseOrder`, `adjustStock`, `reverseMovement` | edit on `stock_movement` |
  * | `listReceipts`, `partReceiptHistory`, `lastReceiptCost` | view on `stock_movement` |
  * | `previewLandedCost`                | edit on `stock_movement`              |
@@ -116,6 +118,39 @@ async function requireDefId(organizationId: string, entityType: string): Promise
  * a `TRPCError` would flatten every 404/422 into a 500.
  */
 export const purchasingRouter = createTRPCRouter({
+  /**
+   * Send a draft purchase order to its vendor — the writer `purchase_order_status`
+   * never had.
+   *
+   * `issued` IS "sent to the vendor": one event, and the accounting word is the
+   * better one, so there is no separate `sent` value. That is also why this is a
+   * procedure rather than a dropdown write — once a Send exists, `issued` stops
+   * being a value somebody picks, and the `rejectManualLifecycleStatus` system
+   * pre-hook refuses the manual write that would otherwise claim an order went out
+   * that never did (plans/purchasing/07-purchase-order-send-and-status.md §3.4).
+   *
+   * Gated on EDIT of `purchase_order`, not of `stock_movement`: this writes the
+   * order, and nothing about a receipt.
+   *
+   * `markPurchaseOrderSent` throws its `AuxxError` directly rather than returning a
+   * `Result` — it is a `@auxx/lib/money` lifecycle mutation and follows that
+   * module's convention, not `@auxx/lib/receiving`'s. `auxxErrorMiddleware` maps it,
+   * so there is nothing to unwrap here.
+   */
+  markPurchaseOrderSent: capabilityProcedure
+    .input(z.object({ purchaseOrderId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
+      const purchaseOrderDefId = await requireDefId(organizationId, 'purchase_order')
+      ctx.capabilities.assertEditEntity(purchaseOrderDefId)
+
+      await markPurchaseOrderSent({
+        organizationId,
+        userId,
+        purchaseOrderInstanceId: input.purchaseOrderId,
+      })
+    }),
+
   /**
    * Receive one line against a bare part: this many arrived, at this price.
    *

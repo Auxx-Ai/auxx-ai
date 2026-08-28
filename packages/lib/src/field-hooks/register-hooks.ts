@@ -57,6 +57,11 @@ import { touchActivityOnFieldChange } from './post/touch-activity-on-field-chang
 import { guardInboxOwnerField } from './pre/inbox-owner-guard'
 import { guardInvoiceDelete } from './pre/invoice-delete-guard'
 import { cascadeOrderLinesOnDelete } from './pre/order-delete-guard'
+import {
+  EVIDENCE_LOCKED_LINE_ATTRS,
+  guardEvidenceLockedLineFields,
+} from './pre/purchase-order-line-evidence-lock'
+import { guardManualPurchaseOrderIssued } from './pre/purchase-order-status-guard'
 import { guardQuoteConvertedDelete } from './pre/quote-delete-guard'
 import { guardQuoteDraftReturnWithPaidDeposit } from './pre/quote-deposit-guard'
 import { rejectDeleteIfTagInUse } from './pre/tag-in-use-guard'
@@ -300,6 +305,36 @@ export function registerAllHooks(): void {
     'line_item_visit_id',
   ] as const) {
     registerFieldPreHooks('line-items', attribute, [guardAllocatedSourceLineChange])
+  }
+
+  // Manual-`issued` wall for `purchase_order_status` (§3.4). The system-hook twin in
+  // `resources/hooks/purchasing-hooks.ts` covers `record.create`/`record.update`, the CSV
+  // importer and the SDK; this one covers every interactive edit — drawer, grid inline edit,
+  // kanban drag — because those all write through `fieldValue.set` -> `FieldValueService`,
+  // which never reads the system-hook registry. Without this registration `issued` is
+  // typeable by hand and the plan's claim that it is action-set is false.
+  //
+  // Both sanctioned writers of the `-> issued` transition pass
+  // `bypassFieldGuards: ['purchase_order_status']`, which `fireFieldPreHooks` honours before
+  // reaching this handler: `markPurchaseOrderSent` (Send) and `derivePurchaseOrderStatuses`
+  // (§6.1's receipt pull-forward).
+  registerFieldPreHooks('purchase-orders', 'purchase_order_status', [
+    guardManualPurchaseOrderIssued,
+  ])
+
+  // Purchase order line evidence lock (plans/purchasing/07-purchase-order-send-and-status.md
+  // §6.5) — a line's agreed quantity and price freeze once a receipt or a vendor bill line
+  // has been booked against it, at ANY order status.
+  //
+  // 🛑 Registered on the FIELD pre-hook chain, not the system-hook registry, for the reason
+  // `quote-deposit-guard.ts` already documents for `quote_status`: every real edit to these
+  // fields goes through `fieldValue.set` → `FieldValueService` (the LineBuilder's
+  // `useSaveFieldValue` is the only editing surface), which never reads the system-hook
+  // registry. A `PURCHASE_ORDER_LINE_HOOKS` entry would have been a lock that never fires.
+  // This chain covers the CRUD path too — `UnifiedCrudHandler.setFieldValues` writes through
+  // `FieldValueService`, so the importer and Kopilot reach it as well.
+  for (const attribute of EVIDENCE_LOCKED_LINE_ATTRS) {
+    registerFieldPreHooks('purchase-order-lines', attribute, [guardEvidenceLockedLineFields])
   }
 
   registerFieldPreHooks('tags', 'is_system_tag', [dropUnauthorizedSystemFlag])

@@ -553,27 +553,91 @@ export const StockMovementCostBasis = {
 } as const
 
 /**
- * Purchase Order Status
- * plans/purchasing/01-build-plan.md §4.1.
+ * Purchase Order Status — the ACTION axis, and nothing else
+ * plans/purchasing/07-purchase-order-send-and-status.md §3.3.
  *
- * `partially_received` and `received` are driven by the computed
- * `quantityReceived` roll-up, not set by hand.
+ * `draft` -> `issued` -> `closed` | `canceled`. `issued` means **sent to the
+ * vendor** and nothing more (§6.4) — not "the vendor accepted", which is a
+ * `confirmed` state that does not exist yet and must not be smuggled in here.
+ *
+ * 🛑 **Receiving and billing are NOT on this axis.** `partially_received` and
+ * `received` used to sit in this list and had no writer at all; they are now
+ * {@link PurchaseOrderReceiptStatus}, alongside {@link PurchaseOrderBillingStatus}.
+ * The decisive case is prepayment: a vendor that will not ship until the invoice
+ * is paid leaves the order *fully billed, fully paid, nothing received* for
+ * weeks, and one enum cannot say that — whichever axis you pick, the other
+ * becomes invisible. {@link VendorBillStatus} is what this looks like when the
+ * two are left conflated: its payment values destroy its match verdict, and
+ * `partially_paid` had to be invented to compensate.
+ *
+ * `OrderFinancialStatus` / `OrderFulfillmentStatus` are the same split on the
+ * sell side; the purchase order simply predates them.
+ *
+ * ✅ `closed` is deliberately never derived: an order the vendor short-shipped,
+ * where the remainder has been agreed away, must still be closeable, and no
+ * roll-up rule can decide that.
  */
 export const PurchaseOrderStatus = {
   DRAFT: 'draft',
   ISSUED: 'issued',
-  PARTIALLY_RECEIVED: 'partially_received',
-  RECEIVED: 'received',
   CLOSED: 'closed',
   CANCELED: 'canceled',
 
   values: [
     { value: 'draft', label: 'Draft', color: 'gray' },
     { value: 'issued', label: 'Issued', color: 'blue' },
-    { value: 'partially_received', label: 'Partially received', color: 'amber' },
-    { value: 'received', label: 'Received', color: 'green' },
     { value: 'closed', label: 'Closed', color: 'forest' },
     { value: 'canceled', label: 'Canceled', color: 'red' },
+  ] satisfies FieldOptionItem[],
+} as const
+
+/**
+ * Purchase Order Receipt Status — the GOODS axis
+ * plans/purchasing/07-purchase-order-send-and-status.md §3.3.
+ *
+ * Derived from the `purchase_order_line_quantity_received` roll-up that already
+ * re-SUMs on every stock movement; the order-level verdict is the same
+ * computation one level up, on the same trigger and with no new query. Never
+ * set by hand — the enum carries no `not_applicable`-style escape hatch for the
+ * same reason `part_quantity_on_hand` carries none.
+ *
+ * The register mirrors {@link OrderFulfillmentStatus}: grey for nothing yet,
+ * amber for the partial state somebody has to chase, green for complete.
+ */
+export const PurchaseOrderReceiptStatus = {
+  NOT_RECEIVED: 'not_received',
+  PARTIALLY_RECEIVED: 'partially_received',
+  RECEIVED: 'received',
+
+  values: [
+    { value: 'not_received', label: 'Not received', color: 'gray' },
+    { value: 'partially_received', label: 'Partially received', color: 'amber' },
+    { value: 'received', label: 'Received', color: 'green' },
+  ] satisfies FieldOptionItem[],
+} as const
+
+/**
+ * Purchase Order Billing Status — the MONEY axis
+ * plans/purchasing/07-purchase-order-send-and-status.md §3.3.
+ *
+ * Derived from the `purchase_order_line_quantity_billed` roll-up, the twin of
+ * {@link PurchaseOrderReceiptStatus}'s source and written by the same pass.
+ *
+ * 🛑 This is BILLED, not PAID (§3.6). Payment lives on the vendor bill, one
+ * order can carry several bills, and a PO-level payment field would be a
+ * summary of state owned elsewhere — free to drift from the rows it claims to
+ * summarise. "Everything here is settled" is what `closed` means, and a human
+ * sets it.
+ */
+export const PurchaseOrderBillingStatus = {
+  NOT_BILLED: 'not_billed',
+  PARTIALLY_BILLED: 'partially_billed',
+  BILLED: 'billed',
+
+  values: [
+    { value: 'not_billed', label: 'Not billed', color: 'gray' },
+    { value: 'partially_billed', label: 'Partially billed', color: 'amber' },
+    { value: 'billed', label: 'Billed', color: 'green' },
   ] satisfies FieldOptionItem[],
 } as const
 

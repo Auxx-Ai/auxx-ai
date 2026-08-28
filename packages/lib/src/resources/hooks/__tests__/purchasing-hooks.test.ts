@@ -111,8 +111,22 @@ describe('purchasing hook registration', () => {
   // The scopes themselves are guarded by the type system: `recordNumbering.create`'s
   // second parameter is the `SequenceScope` union, so `'purchase_order'` / `'vendor_bill'`
   // only compile because both scopes (and their `PO` / `BILL` prefixes) exist.
-  it('registers no lifecycle guards', () => {
-    expect(Object.keys(PURCHASE_ORDER_HOOKS)).toEqual(['purchase_order_number'])
+  //
+  // `purchase_order_status` gained a lifecycle guard with Send
+  // (plans/purchasing/07-purchase-order-send-and-status.md §3.4): `issued` is what sending
+  // DOES, not a value somebody picks. The guard's own behaviour is covered in
+  // `lifecycle-status-guard.test.ts`; this only pins that it is registered and reachable.
+  it('guards purchase_order_status and nothing else on the order', () => {
+    expect(Object.keys(PURCHASE_ORDER_HOOKS).sort()).toEqual([
+      'purchase_order_number',
+      'purchase_order_status',
+    ])
+    expect(getHooksForAttribute('purchase_order', 'purchase_order_status')).toHaveLength(1)
+  })
+
+  // `vendor_bill_status` is recomputed by the match hook on every create/update, so a manual
+  // write is OVERWRITTEN rather than rejected — a guard here would fight that writer.
+  it('registers no lifecycle guard on the vendor bill', () => {
     expect(Object.keys(VENDOR_BILL_HOOKS)).toEqual(['vendor_bill_internal_number'])
   })
 })
