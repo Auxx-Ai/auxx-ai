@@ -1,7 +1,11 @@
 // packages/lib/src/resources/hooks/quote-hooks.ts
 
 import { recordNumbering } from '../../records/record-numbering'
-import { createLifecycleStatusGuard } from './lifecycle-status-guard'
+import {
+  createLifecycleStatusGuard,
+  QUOTE_ACTION_STATUS_MESSAGE,
+  QUOTE_ACTION_STATUSES,
+} from './lifecycle-status-guard'
 import type { SystemHook, SystemHookRegistry } from './types'
 
 /**
@@ -28,10 +32,16 @@ const autoGenerateQuoteNumber: SystemHook = async ({
  * never sees the sanctioned write. `draft`/`declined`/`canceled` stay freely editable — the
  * edit-sent-back-to-draft flow writes plain status `'draft'` after a `useConfirm`, which this
  * guard also allows through.
+ *
+ * ⚠️ **This chain is coverage, not enforcement.** It runs for `record.create`/`record.update`,
+ * the CSV importer and the SDK — NOT for `fieldValue.set`, which is how the drawer, the grid's
+ * inline edit and a kanban drag write. Its field-chain twin
+ * (`field-hooks/pre/lifecycle-status-guard.ts`) is what stops a human typing `sent`, and the
+ * two share their value set and message through the constants they both import.
  */
 const rejectManualLifecycleStatus: SystemHook = createLifecycleStatusGuard({
-  guardedValues: ['sent', 'approved'],
-  message: 'Use the quote actions (Send / Mark approved) to set this status',
+  guardedValues: QUOTE_ACTION_STATUSES,
+  message: QUOTE_ACTION_STATUS_MESSAGE,
 })
 
 export const QUOTE_HOOKS: SystemHookRegistry = {

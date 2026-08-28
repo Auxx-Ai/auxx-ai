@@ -1,15 +1,11 @@
 // packages/lib/src/field-hooks/pre/purchase-order-status-guard.ts
 
-import { BadRequestError } from '../../errors'
 import {
   PURCHASE_ORDER_ACTION_STATUS_MESSAGE,
   PURCHASE_ORDER_ACTION_STATUSES,
-  unwrapStatusValue,
 } from '../../resources/hooks/lifecycle-status-guard'
 import type { FieldPreHookHandler } from '../types'
-
-/** The guarded set as a membership test, built once. */
-const GUARDED = new Set<unknown>(PURCHASE_ORDER_ACTION_STATUSES)
+import { createFieldLifecycleStatusGuard } from './lifecycle-status-guard'
 
 /**
  * The manual-`issued` wall for `purchase_order_status`, on the chain that actually runs for
@@ -21,8 +17,9 @@ const GUARDED = new Set<unknown>(PURCHASE_ORDER_ACTION_STATUSES)
  * importer and the SDK. Every *interactive* edit of a status field goes through
  * `fieldValue.set` -> `FieldValueService`, which never reads the system-hook registry, so a
  * drawer edit or a kanban drag reaches only THIS handler.
- * `pre/quote-deposit-guard.ts` records the identical finding for `quote_status`. Both guards
- * are kept: together they cover every write path, and each names the other.
+ * `quote_status` and `invoice_status` now carry the same pair (`pre/lifecycle-status-guard.ts`),
+ * built from the same factory this one uses. Both chains are kept for each: together they
+ * cover every write path, and each names the other.
  *
  * ⚠️ **The value here is already coerced, and that is the trap.** By the time
  * `fireFieldPreHooks` runs, `validateAndConvertValue` has turned a SINGLE_SELECT write into
@@ -44,9 +41,7 @@ const GUARDED = new Set<unknown>(PURCHASE_ORDER_ACTION_STATUSES)
  * and §3.6 deliberately does not derive `closed` so that an order whose remainder has been
  * forgiven is still closeable by hand.
  */
-export const guardManualPurchaseOrderIssued: FieldPreHookHandler = async (event) => {
-  if (GUARDED.has(unwrapStatusValue(event.newValue))) {
-    throw new BadRequestError(PURCHASE_ORDER_ACTION_STATUS_MESSAGE)
-  }
-  return event.newValue
-}
+export const guardManualPurchaseOrderIssued: FieldPreHookHandler = createFieldLifecycleStatusGuard({
+  guardedValues: PURCHASE_ORDER_ACTION_STATUSES,
+  message: PURCHASE_ORDER_ACTION_STATUS_MESSAGE,
+})

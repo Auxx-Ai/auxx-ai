@@ -56,6 +56,10 @@ import { publishFieldChangeEvent } from './post/publish-field-change-event'
 import { touchActivityOnFieldChange } from './post/touch-activity-on-field-change'
 import { guardInboxOwnerField } from './pre/inbox-owner-guard'
 import { guardInvoiceDelete } from './pre/invoice-delete-guard'
+import {
+  guardManualInvoiceLifecycleStatus,
+  guardManualQuoteLifecycleStatus,
+} from './pre/lifecycle-status-guard'
 import { cascadeOrderLinesOnDelete } from './pre/order-delete-guard'
 import {
   EVIDENCE_LOCKED_LINE_ATTRS,
@@ -280,12 +284,34 @@ export function registerAllHooks(): void {
   registerFieldPreHooks('inboxes', 'inbox_owner_user_id', [guardInboxOwnerField])
   registerFieldPreHooks('personal-inboxes', 'inbox_owner_user_id', [guardInboxOwnerField])
 
-  // Return-to-draft wall (money MP2 §B.10) — `rejectManualLifecycleStatus`
-  // (`resources/hooks/quote-hooks.ts`) is dead for real client writes to
-  // `quote_status` (the generic records path never runs the system-hook
-  // chain), so the deposit guard lives here instead, on the field-pre-hook
-  // chain that actually runs.
-  registerFieldPreHooks('quotes', 'quote_status', [guardQuoteDraftReturnWithPaidDeposit])
+  // Lifecycle status walls for `quote_status` and `invoice_status`
+  // (plans/dispatch/money/21-lifecycle-status-guards-are-inert.md §4). The system-hook twins
+  // in `resources/hooks/quote-hooks.ts` / `invoice-hooks.ts` cover `record.create` /
+  // `record.update`, the CSV importer and the SDK; these cover every interactive edit —
+  // drawer, grid inline edit, kanban drag, Kopilot record tools — because those all write
+  // through `fieldValue.set` -> `FieldValueService`, which never reads the system-hook
+  // registry. Until these two registrations existed, an invoice could be typed to `paid` with
+  // no payment behind it and a quote to `sent` without its request ever being mirrored.
+  //
+  // Every sanctioned writer names its attribute in `bypassFieldGuards`, which
+  // `fireFieldPreHooks` honours before reaching these handlers: `markQuoteSent` /
+  // `approveQuote` / `declineQuote` for the quote, and `markInvoiceSent` / `voidInvoice` /
+  // `syncInvoicePaymentState` (the ledger projection — the only writer of `paid`) for the
+  // invoice. 🛑 A new sanctioned writer means a new bypass, not a weaker guard.
+  //
+  // ⚠️ ORDER IS COST, not semantics. The two quote guards are disjoint by value — this one
+  // walls `sent`/`approved`, the deposit wall walls `-> draft` — so either order behaves the
+  // same; the in-memory membership test runs first so the deposit wall's query is only spent
+  // on a write that could actually trip it.
+  //
+  // Return-to-draft wall (money MP2 §B.10): the deposit guard is here for the same reason,
+  // and had been here alone — inert, because it compared the coerced option envelope to a
+  // bare string (21 §2).
+  registerFieldPreHooks('quotes', 'quote_status', [
+    guardManualQuoteLifecycleStatus,
+    guardQuoteDraftReturnWithPaidDeposit,
+  ])
+  registerFieldPreHooks('invoices', 'invoice_status', [guardManualInvoiceLifecycleStatus])
 
   for (const attribute of BILLING_PROJECTION_ATTRS) {
     const entitySlug = attribute.startsWith('work_order_')
