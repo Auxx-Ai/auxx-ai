@@ -52,6 +52,7 @@ import {
 import { invalidateInboxCacheOnFieldChange } from './post/inbox-cache-invalidation'
 import { stampPartOnCatalogItemChange } from './post/line-item-part-stamp'
 import { publishFieldChangeEvent } from './post/publish-field-change-event'
+import { prefillContactOnVendorChange } from './post/purchase-order-contact-prefill'
 import { touchActivityOnFieldChange } from './post/touch-activity-on-field-change'
 import { guardInboxOwnerField } from './pre/inbox-owner-guard'
 import { guardInvoiceDelete } from './pre/invoice-delete-guard'
@@ -184,7 +185,17 @@ export function registerAllHooks(): void {
   // supplier's document (01 §5.4b). Recomputing them would silently correct the vendor's
   // arithmetic — the exact discrepancy the three-way match exists to surface.
   registerEntityFieldChangeHooks('purchase-order-lines', [recomputeOnPurchaseOrderLineChange])
-  registerEntityFieldChangeHooks('purchase-orders', [recomputeOnPurchaseOrderBillingChange])
+  // ⚠️ `prefillContactOnVendorChange` is the SECOND door for the vendor -> contact default
+  // (purchasing plan 07). The `purchase_order_vendor` system hook in
+  // `resources/hooks/purchasing-hooks.ts` fires only for writes through
+  // `UnifiedCrudHandler`, which is how an order is first drafted; re-pointing an existing
+  // order at a different supplier goes through `fieldValue.set` and reaches only this
+  // handler. It is also the only one of the two given `oldValue`, so it owns the rule that
+  // replaces this hook's own prefill without ever discarding a human's pick.
+  registerEntityFieldChangeHooks('purchase-orders', [
+    recomputeOnPurchaseOrderBillingChange,
+    prefillContactOnVendorChange,
+  ])
 
   // The three-way match (plans/purchasing/01-build-plan.md §6.2). `vendor_bill_status`,
   // `_match_variance` and `_match_notes` all declare the match hook as their only writer,

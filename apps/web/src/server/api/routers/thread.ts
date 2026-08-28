@@ -17,7 +17,12 @@ import {
   updateScheduledMessageStatus,
 } from '@auxx/lib/mail-schedule'
 import { MessageSenderService } from '@auxx/lib/messages'
-import { markInvoiceSent, markQuoteSent, recordDocumentSendSignal } from '@auxx/lib/money'
+import {
+  markInvoiceSent,
+  markPurchaseOrderSent,
+  markQuoteSent,
+  recordDocumentSendSignal,
+} from '@auxx/lib/money'
 import { PermissionKey } from '@auxx/lib/permissions'
 import { satisfiesRung } from '@auxx/lib/permissions/capabilities/rung'
 import { getThreadLens, type UserInstanceGrants } from '@auxx/lib/permissions/visibility'
@@ -549,8 +554,48 @@ export const threadRouter = createTRPCRouter({
                   })
                 }
               }
+
+              // Purchase order (plans/purchasing/07-purchase-order-send-and-status.md §3.4).
+              // `issued` IS "sent to the vendor" — one event, no separate `sent` value — so
+              // the confirmed-send flip writes `issued` where the two branches above write
+              // `sent`. `recordDocumentSendSignal`'s own header already names this branch.
+              const purchaseOrderDefId = await getCachedEntityDefId(
+                organizationId,
+                'purchase_order'
+              )
+              if (
+                linkedInstance &&
+                purchaseOrderDefId &&
+                linkedInstance.entityDefinitionId === purchaseOrderDefId
+              ) {
+                try {
+                  await markPurchaseOrderSent({
+                    organizationId,
+                    userId,
+                    purchaseOrderInstanceId: input.linkTicketId,
+                  })
+                } catch (flipError) {
+                  // markPurchaseOrderSent asserts status === 'draft' — a BadRequestError
+                  // here means the order was already issued (resend) or is closed/canceled;
+                  // that's the expected idempotent no-op, not a failure.
+                  if (!(flipError instanceof BadRequestError)) throw flipError
+                }
+
+                // Communications-view signal — see the quote branch above for rationale.
+                if (sentMessage.sendStatus === 'SENT') {
+                  await recordDocumentSendSignal({
+                    organizationId,
+                    userId,
+                    documentType: 'purchase_order',
+                    documentInstanceId: input.linkTicketId,
+                    messageId: sentMessage.id,
+                    threadId: sentMessage.threadId,
+                    subject: input.subject ?? 'Purchase order sent',
+                  })
+                }
+              }
             } catch (statusFlipError) {
-              logger.error('Failed to flip quote/invoice status to sent after send', {
+              logger.error('Failed to flip document status to sent after send', {
                 threadId: sentMessage.threadId,
                 ticketId: input.linkTicketId,
                 error:
