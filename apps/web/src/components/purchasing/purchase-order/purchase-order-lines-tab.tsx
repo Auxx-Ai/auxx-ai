@@ -35,21 +35,43 @@ import type { PartPrefillLookup } from '~/components/money/ui/line-builder/line-
 import { useSystemValues } from '~/components/resources/hooks'
 import { api } from '~/trpc/react'
 
-const PO_STATUS_ATTRS = ['purchase_order_status'] as const
+const PO_STATUS_ATTRS = [
+  'purchase_order_status',
+  'purchase_order_receipt_status',
+  'purchase_order_billing_status',
+] as const
+
+type BadgeSpec = { label: string; variant: 'green' | 'amber' | 'red' }
 
 /**
- * States worth calling out in the header. `draft` is the default so it is not
- * here, and `issued` is the ordinary working state.
+ * The ACTION axis — what a person decided. `draft` is the default and `issued` is
+ * the ordinary working state, so neither earns a badge; only the two terminal
+ * decisions do.
  *
- * `partially_received` / `received` are driven by the `quantityReceived` roll-up
- * rather than set by hand, which is exactly why they are worth a badge: they are
- * the only two the person looking at the screen did not choose.
+ * 🛑 `partially_received` / `received` used to live here. They are no longer values
+ * of this field at all — receiving and billing are independent axes and moved to
+ * their own derived fields (plans/purchasing/07-purchase-order-send-and-status.md
+ * §3.3). Keying them here after the split rendered nothing and failed no test,
+ * because the map is indexed loosely.
  */
-const STATUS_BADGE: Record<string, { label: string; variant: 'green' | 'amber' | 'red' }> = {
-  partially_received: { label: 'Partially received', variant: 'amber' },
-  received: { label: 'Received', variant: 'green' },
+const STATUS_BADGE: Record<string, BadgeSpec> = {
   closed: { label: 'Closed', variant: 'green' },
   canceled: { label: 'Canceled', variant: 'red' },
+}
+
+/**
+ * The two DERIVED axes — what the roll-up observed, which nobody chose. Only the
+ * states that say something is outstanding or complete are shown; the "nothing has
+ * happened yet" values are the default and would be noise on every draft order.
+ */
+const RECEIPT_BADGE: Record<string, BadgeSpec> = {
+  partially_received: { label: 'Partially received', variant: 'amber' },
+  received: { label: 'Received', variant: 'green' },
+}
+
+const BILLING_BADGE: Record<string, BadgeSpec> = {
+  partially_billed: { label: 'Partially billed', variant: 'amber' },
+  billed: { label: 'Billed', variant: 'green' },
 }
 
 export function PurchaseOrderLinesTab({ recordId, variant = 'tab' }: DetailViewTabProps) {
@@ -58,7 +80,15 @@ export function PurchaseOrderLinesTab({ recordId, variant = 'tab' }: DetailViewT
   // SINGLE_SELECT values arrive as arrays — take the first (see the
   // `use_system_values_single_select_arrays` convention).
   const status = firstValue(values.purchase_order_status)
-  const badge = status ? STATUS_BADGE[status] : undefined
+  const receiptStatus = firstValue(values.purchase_order_receipt_status)
+  const billingStatus = firstValue(values.purchase_order_billing_status)
+  // Order matters: the decision first, then what actually arrived, then what was
+  // invoiced — the same left-to-right reading as the document's own lifecycle.
+  const badges = [
+    status ? STATUS_BADGE[status] : undefined,
+    receiptStatus ? RECEIPT_BADGE[receiptStatus] : undefined,
+    billingStatus ? BILLING_BADGE[billingStatus] : undefined,
+  ].filter((b): b is BadgeSpec => !!b)
 
   // `variant='section'`: rendered inside a DetailViewSections <Section> on an
   // outer-owned scroll column instead of a `TabsContent` that grants `h-full`, so
@@ -101,12 +131,16 @@ export function PurchaseOrderLinesTab({ recordId, variant = 'tab' }: DetailViewT
 
   return (
     <div className={cn('flex flex-col', isSection ? '' : 'h-full min-h-0')}>
-      {badge && (
+      {badges.length > 0 && (
         <DocumentSectionActions
           badge={
-            <Badge variant={badge.variant} size='sm'>
-              {badge.label}
-            </Badge>
+            <span className='flex items-center gap-1.5'>
+              {badges.map((b) => (
+                <Badge key={b.label} variant={b.variant} size='sm'>
+                  {b.label}
+                </Badge>
+              ))}
+            </span>
           }
         />
       )}

@@ -119,6 +119,56 @@ Let us know if you have any questions.`
   }
 }
 
+function buildPurchaseOrderEmailTemplate(
+  entityDefs: Record<string, string>
+): SystemSnippetTemplate | null {
+  const purchaseOrderDefId = entityDefs.purchase_order
+  const contactDefId = entityDefs.contact
+  if (!purchaseOrderDefId || !contactDefId) return null
+
+  // Token vocabulary deliberately matches the quote/invoice templates above: the contact's
+  // first name plus the document's own `number`, `total` and one date field. Every one of
+  // these is a real `key` on `purchase-order-fields.ts` (`number`/`total`/`expectedAt`), so
+  // the resolver finds a FieldReference for each — an unresolvable token throws rather than
+  // degrading, so nothing speculative belongs here.
+  //
+  // ⚠️ The addressee is the purchase order's CONTACT (`purchase_order_contact`), not its
+  // vendor: `purchase_order_vendor` points at a `company`, and a company carries no email
+  // field. So the greeting reads off the contact def exactly as the other two templates do.
+  const firstName = fieldToken(contactDefId, 'firstName')
+  const number = fieldToken(purchaseOrderDefId, 'number')
+  const total = fieldToken(purchaseOrderDefId, 'total')
+  const expectedAt = fieldToken(purchaseOrderDefId, 'expectedAt')
+
+  const firstNameSpan = placeholderSpan(firstName, { v: 1, t: 'TEXT', d: 'there' })
+  const numberSpan = placeholderSpan(number)
+  const totalSpan = placeholderSpan(total)
+  // `purchase_order_expected_at` is nullable and nothing prefills it today (purchasing plan
+  // 07 §6.2 gives Send an overwritable default), so the fallback is the common path.
+  const expectedAtSpan = placeholderSpan(expectedAt, {
+    v: 1,
+    t: 'TEXT',
+    d: 'at your earliest convenience',
+  })
+
+  // No hard-coded sign-off — the composer appends the sender's email signature on send
+  // (mirrors the quote_email/invoice_email templates above).
+  const contentHtml = `<p>Hi ${firstNameSpan},</p><p>Please find our purchase order ${numberSpan} attached. Total ${totalSpan}, requested delivery ${expectedAtSpan}.</p><p>Please confirm receipt of this order and your expected ship date.</p>`
+
+  const content = `Hi {{${firstName}}},
+
+Please find our purchase order {{${number}}} attached. Total {{${total}}}, requested delivery {{${expectedAt}}}.
+
+Please confirm receipt of this order and your expected ship date.`
+
+  return {
+    systemType: 'purchase_order_email',
+    title: 'Purchase order attached',
+    content,
+    contentHtml,
+  }
+}
+
 /**
  * Build the system-snippet template rows for an org, given its `entityDefs`
  * cache map (entityType → per-org `EntityDefinition.id`). Placeholder tokens
@@ -127,9 +177,12 @@ Let us know if you have any questions.`
  *
  * `invoice_email` (money MI1) mirrors `quote_email`'s shape/mechanics —
  * greeting, number/total tokens, plus a due-date token in place of
- * valid-until. Both templates guard on their def id being present in
- * `entityDefs` (`entityDefs.quote`/`entityDefs.invoice` + `entityDefs.contact`),
- * so an org mid-migration simply gets fewer templates rather than a broken
+ * valid-until. `purchase_order_email` (purchasing plan 07) is the same shape
+ * again with an expected-delivery token, addressed to a supplier rather than
+ * a customer. Every template guards on its def id being present in
+ * `entityDefs` (`entityDefs.quote`/`entityDefs.invoice`/
+ * `entityDefs.purchase_order` + `entityDefs.contact`), so an org
+ * mid-migration simply gets fewer templates rather than a broken
  * one — `getSystemSnippet` surfaces a clear `NotFoundError` if a template is
  * requested before its def exists.
  */
@@ -144,12 +197,15 @@ export function buildSystemSnippetTemplates(
   const invoiceEmail = buildInvoiceEmailTemplate(entityDefs)
   if (invoiceEmail) templates.push(invoiceEmail)
 
+  const purchaseOrderEmail = buildPurchaseOrderEmailTemplate(entityDefs)
+  if (purchaseOrderEmail) templates.push(purchaseOrderEmail)
+
   return templates
 }
 
 /**
  * Get-or-create the org's system snippet for `systemType` (`quote_email` /
- * `invoice_email`). Lazily materializes on first call — covers both freshly
+ * `invoice_email` / `purchase_order_email`). Lazily materializes on first call — covers both freshly
  * seeded orgs (the seeder pre-creates the row) and existing orgs (no data
  * migration needed, per the README decision). Idempotent under concurrent
  * calls via `onConflictDoNothing` against the partial unique

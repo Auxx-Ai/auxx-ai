@@ -5,6 +5,7 @@ import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { toResourceFieldId } from '@auxx/types/field'
 import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
+import { type AddressStructValue, formatAddress } from '@auxx/utils/address'
 import { stableHash } from '@auxx/utils/hash'
 import { getOrgCache } from '../cache'
 import type { ConditionGroup } from '../conditions'
@@ -14,7 +15,7 @@ import type { TypedFieldValueResult } from '../field-values/types'
 import { getPaymentAccount } from '../money/payments/account-state'
 import { getInvoiceDepositApplied } from '../money/payments/allocation-reads'
 import { buildPayUrl, ensureInvoicePublicToken, isPaymentsConnected } from '../money/public-token'
-import { computeDocumentTotals } from '../money/totals'
+import { computeDocumentTotals, roundCents } from '../money/totals'
 import type { DiscountType } from '../money/types'
 import type { LineItemUnit } from '../money/units'
 import { UnifiedCrudHandler } from '../resources/crud'
@@ -173,9 +174,118 @@ export interface InvoicePdfPayload {
   photos?: PdfPhotoRef[]
 }
 
+/**
+ * The vendor a purchase order is addressed to — a `company` (`purchase_order_vendor`), never
+ * a customer contact, so this is deliberately NOT {@link QuotePdfContact}: a company carries
+ * `company_name`/`company_headquarters`/`company_website` and has no email or phone field of
+ * its own.
+ */
+export interface PurchaseOrderPdfVendor {
+  /** `company_name`. */
+  name: string
+  /** `company_headquarters` as ordered display lines. Empty when the address is unset. */
+  addressLines: string[]
+  /** First `company_website` value (the field is multi-value), or `null`. */
+  website: string | null
+}
+
+/**
+ * One rendered line on the purchase order PDF's line table. Deliberately not
+ * {@link QuotePdfLineItem}: a PO line is a `purchase_order_line`, not a `line_item` — it has
+ * a vendor SKU and no notion of taxability, optionality or photos.
+ */
+export interface PurchaseOrderPdfLineItem {
+  /** `purchase_order_line` EntityInstance id. */
+  lineInstanceId: string
+  /** `purchase_order_line_description` — how the line reads on the supplier-facing document
+   * — falling back to the part's display name when the buyer typed none. */
+  name: string
+  /** `vendor_part_vendor_sku`, reached through `purchase_order_line_vendor_part`. `null`
+   * when the line carries no supplier-catalogue link: that link is optional (a one-off buy
+   * from a supplier with no maintained price list is a legitimate line), so the SKU column
+   * degrades to blank rather than the row failing to build. */
+  vendorSku: string | null
+  /** `purchase_order_line_quantity_ordered`. */
+  qty: number
+  /** Integer minor units — `purchase_order_line_expected_unit_price`. `null` = not yet
+   * priced, and every sum excludes it (the MQ1 convention). */
+  unitPrice: number | null
+  /** Integer minor units — `purchase_order_line_line_total`. */
+  lineTotal: number | null
+  /** Never populated: `purchase_order_line` has no photo field. Declared so `render.ts`'s
+   * shared photo resolver type-checks across every member of {@link DocumentPdfPayload}. */
+  photos?: PdfPhotoRef[]
+}
+
+/**
+ * Everything `<PurchaseOrderPdf>` needs to render (plans/purchasing/07 §1.3/§6.3) — the
+ * buy-side document. Written new rather than adapted from {@link QuotePdfPayload}: a quote
+ * sells TO a customer (optional lines, acceptance, customer-facing pricing presentation)
+ * while a purchase order instructs a VENDOR, so the only genuine overlap is the layout frame.
+ *
+ * `subtotal`/`discountAmount`/`total` are recomputed from the lines with the same math the
+ * totals engine writes (`money/totals-hooks.ts`'s `purchase_order` spec: a flat discount, no
+ * tax rate, and `shippingTotal` + `taxTotal` added on top as STATED header amounts), so the
+ * printed arithmetic and the stored mirrors agree by construction.
+ */
+export interface PurchaseOrderPdfPayload {
+  documentType: 'purchase_order'
+  /** Needed by `render.ts` to load the logo `MediaAsset` bytes server-side. */
+  organizationId: string
+  /** `purchase_order_number` — the reference the vendor quotes back on their invoice. */
+  number: string
+  status: string
+  /** ISO date — `purchase_order_ordered_at` if set, else the instance's `createdAt` (never
+   * `new Date()`; that would defeat the content-hash cache, the MQ2 lesson). */
+  issuedAt: string
+  /** ISO date — `purchase_order_expected_at`, or `null` when unset. */
+  expectedAt: string | null
+  /** `purchase_order_reference` — the supplier's OWN order/confirmation number, or `null`.
+   * Distinct from `number`, which is the document we issued. */
+  vendorReference: string | null
+  terms: string | null
+  vendor: PurchaseOrderPdfVendor
+  /**
+   * The PERSON at the vendor the order is sent to (`purchase_order_contact`) — not the
+   * addressee party, which is {@link vendor}: a company carries no email of its own, so this
+   * is who the send path actually mails.
+   *
+   * The field is nullable and nothing prefills it yet, so this is routinely an
+   * empty-but-PRESENT object — never omitted. `print-records-job.ts`'s `sortBy: 'contact'`
+   * reads `payload.contact.name` across the whole {@link DocumentPdfPayload} union, so a
+   * missing key would break batch-print sorting for every document type, not just this one.
+   */
+  contact: QuotePdfContact
+  /** `purchase_order_ship_to` as ordered display lines — a drop-ship is not always our own
+   * dock. Empty when unset. */
+  shipToLines: string[]
+  lines: PurchaseOrderPdfLineItem[]
+  /** Integer minor units — sum of line totals. */
+  subtotal: number
+  /** Integer minor units — `purchase_order_discount_value`. Flat amount only: a supplier
+   * discount arrives as a number, so there is no percent/amount shape to carry. */
+  discountValue: number | null
+  /** Integer minor units — the discount actually applied, clamped to `[0, subtotal]`. */
+  discountAmount: number
+  /** Integer minor units — `purchase_order_shipping_total`, a stated header amount. */
+  shippingTotal: number
+  /** Integer minor units — `purchase_order_tax_total`, a stated header amount (typed off the
+   * supplier's acknowledgement, never derived from a rate). */
+  taxTotal: number
+  /** Integer minor units — `subtotal - discountAmount + shippingTotal + taxTotal`. */
+  total: number
+  /** `purchase_order_currency`, falling back to the org's currency — a PO can be denominated
+   * in the supplier's currency rather than ours. */
+  currency: string
+  settings: ResolvedDocumentSettings
+  /** Never populated: `purchase_order` has no photo field. Declared so `render.ts`'s shared
+   * photo resolver type-checks across every member of {@link DocumentPdfPayload}. */
+  photos?: PdfPhotoRef[]
+}
+
 /** The render/content-hash dispatch union — `render.ts` and `ensure-pdf.ts` branch on
  * `documentType` to pick the right PDF template and pointer systemAttribute. */
-export type DocumentPdfPayload = QuotePdfPayload | InvoicePdfPayload
+export type DocumentPdfPayload = QuotePdfPayload | InvoicePdfPayload | PurchaseOrderPdfPayload
 
 /** Unwrap a `getFieldValues()` map entry — takes the first value if array-returned. */
 function firstTyped(
@@ -719,6 +829,408 @@ export async function buildInvoicePdfPayload(params: {
     payLink,
     settings,
     photos,
+  }
+
+  return { payload, hash: stableHash(payload) }
+}
+
+// ─── Purchase order (plans/purchasing/07 §1.3/§6.3) ───────────────────────────
+
+/**
+ * Ordered display lines for an `AddressStruct` value — street, street 2,
+ * `"city, state zip"`, country. `[]` for an unset or wholly empty address.
+ *
+ * Multi-line rather than `formatAddress`'s comma-joined single string: a ship-to block on a
+ * purchase order is read off the page by a warehouse, not parsed as prose. The country line
+ * still goes through `formatAddress` (with only a country and `country: 'name'` it returns
+ * just that country's display name) so the ISO code -> name table stays in one place.
+ */
+function addressDisplayLines(address: Partial<AddressStructValue> | null | undefined): string[] {
+  if (!address) return []
+  const trim = (value: string | undefined) => (value ?? '').trim()
+  // Germany puts the postcode BEFORE the city — the same split `formatAddress` makes. A PO
+  // is the document that most often crosses a border, so getting this backwards is a real
+  // delivery risk rather than a cosmetic one.
+  const cityLine =
+    trim(address.country).toUpperCase() === 'DE'
+      ? [trim(address.zipCode), trim(address.city)].filter(Boolean).join(' ')
+      : [
+          [trim(address.city), trim(address.state)].filter(Boolean).join(', '),
+          trim(address.zipCode),
+        ]
+          .filter(Boolean)
+          .join(' ')
+  const country = address.country
+    ? formatAddress({ country: address.country }, { country: 'name' })
+    : ''
+  return [trim(address.street1), trim(address.street2), cityLine, country].filter(
+    (line) => line.length > 0
+  )
+}
+
+/** Read an ADDRESS_STRUCT field value off a `getFieldValues()` entry — stored as jsonb. */
+function addressLinesFromTyped(typed: TypedFieldValue | undefined): string[] {
+  if (!typed || typed.type !== 'json' || !typed.value) return []
+  return addressDisplayLines(typed.value as Partial<AddressStructValue>)
+}
+
+/**
+ * Resolve the vendor block for a purchase order PDF. The vendor is a `company`, so this
+ * cannot reuse `loadPdfContact` — that reader is built around `contact`'s NAME composite and
+ * its email/phone fields, none of which a company has.
+ */
+async function loadPurchaseOrderVendor(
+  cache: ReturnType<typeof getOrgCache>,
+  handler: UnifiedCrudHandler,
+  organizationId: string,
+  vendorRecordId: RecordId | undefined
+): Promise<PurchaseOrderPdfVendor> {
+  const vendor: PurchaseOrderPdfVendor = { name: '', addressLines: [], website: null }
+  if (!vendorRecordId) return vendor
+
+  const companyCf = await cache
+    .from(organizationId, 'customFields')
+    .bySystemAttributes(['company_name', 'company_headquarters', 'company_website'] as const)
+
+  const fieldIds = [
+    companyCf.company_name,
+    companyCf.company_headquarters,
+    companyCf.company_website,
+  ]
+    .filter(Boolean)
+    .map((f) => f!.id)
+  if (fieldIds.length === 0) return vendor
+
+  const values = await handler.getFieldValues(vendorRecordId, fieldIds)
+  const get = (f?: { id: string } | null) => (f ? firstTyped(values.get(f.id)) : undefined)
+
+  const nameTyped = get(companyCf.company_name)
+  const websiteTyped = get(companyCf.company_website)
+
+  vendor.name = nameTyped ? (extractValue(nameTyped) as string) : ''
+  vendor.addressLines = addressLinesFromTyped(get(companyCf.company_headquarters))
+  vendor.website = websiteTyped ? (extractValue(websiteTyped) as string) : null
+  return vendor
+}
+
+/**
+ * Load a purchase order's lines in `sortOrder`, resolving each line's vendor SKU and its
+ * name fallback.
+ *
+ * Two batched follow-up reads rather than a per-line drill: the SKUs come back in ONE
+ * `batchGetValues` over every referenced `vendor_part` (direct field ref — a relationship
+ * PATH ref would flip the whole batch onto the sequential lane), and the name fallbacks come
+ * back in one `EntityInstance` read of the referenced parts' display names.
+ *
+ * A line with no `purchase_order_line_vendor_part` simply has no entry in the SKU map and
+ * renders `vendorSku: null` — that link is optional and its absence must never break the row.
+ */
+async function loadPurchaseOrderPdfLines(
+  cache: ReturnType<typeof getOrgCache>,
+  handler: UnifiedCrudHandler,
+  organizationId: string,
+  purchaseOrderRecordId: RecordId
+): Promise<PurchaseOrderPdfLineItem[]> {
+  const lineCf = await cache
+    .from(organizationId, 'customFields')
+    .bySystemAttributes([
+      'purchase_order_line_description',
+      'purchase_order_line_quantity_ordered',
+      'purchase_order_line_expected_unit_price',
+      'purchase_order_line_line_total',
+      'purchase_order_line_part',
+      'purchase_order_line_vendor_part',
+    ] as const)
+
+  const { ids: lineInstanceIds } = await handler.listFiltered({
+    entityDefinitionId: 'purchase_order_line',
+    filters: [
+      {
+        id: 'purchase-order-lines',
+        logicalOperator: 'AND',
+        conditions: [
+          {
+            id: 'purchase-order-lines-c1',
+            fieldId: 'purchase_order_line:purchaseOrder',
+            operator: 'is',
+            value: purchaseOrderRecordId,
+          },
+        ],
+      },
+    ],
+    sorting: [{ id: 'sortOrder', desc: false }],
+    limit: 1000,
+  })
+
+  const lineFieldIds = [
+    lineCf.purchase_order_line_description,
+    lineCf.purchase_order_line_quantity_ordered,
+    lineCf.purchase_order_line_expected_unit_price,
+    lineCf.purchase_order_line_line_total,
+    lineCf.purchase_order_line_part,
+    lineCf.purchase_order_line_vendor_part,
+  ]
+    .filter(Boolean)
+    .map((f) => f!.id)
+
+  interface RawLine {
+    lineInstanceId: string
+    description: string | null
+    qty: number
+    unitPrice: number | null
+    lineTotal: number | null
+    partRecordId: RecordId | undefined
+    vendorPartRecordId: RecordId | undefined
+  }
+
+  const raw: RawLine[] = []
+  for (const lineInstanceId of lineInstanceIds) {
+    const lineRecordId = toRecordId('purchase_order_line', lineInstanceId)
+    const values = await handler.getFieldValues(lineRecordId, lineFieldIds)
+    const getLine = (f?: { id: string } | null) => (f ? firstTyped(values.get(f.id)) : undefined)
+
+    const descriptionTyped = getLine(lineCf.purchase_order_line_description)
+    const qtyTyped = getLine(lineCf.purchase_order_line_quantity_ordered)
+    const unitPriceTyped = getLine(lineCf.purchase_order_line_expected_unit_price)
+    const lineTotalTyped = getLine(lineCf.purchase_order_line_line_total)
+    const partTyped = getLine(lineCf.purchase_order_line_part)
+    const vendorPartTyped = getLine(lineCf.purchase_order_line_vendor_part)
+
+    raw.push({
+      lineInstanceId,
+      description: descriptionTyped ? (extractValue(descriptionTyped) as string) : null,
+      qty: qtyTyped ? (extractValue(qtyTyped) as number) : 0,
+      unitPrice: unitPriceTyped ? (extractValue(unitPriceTyped) as number) : null,
+      lineTotal: lineTotalTyped ? (extractValue(lineTotalTyped) as number) : null,
+      partRecordId: partTyped?.type === 'relationship' ? partTyped.recordId : undefined,
+      vendorPartRecordId:
+        vendorPartTyped?.type === 'relationship' ? vendorPartTyped.recordId : undefined,
+    })
+  }
+
+  const [skuByVendorPart, nameByPart] = await Promise.all([
+    loadVendorSkus(
+      cache,
+      handler,
+      organizationId,
+      raw.map((line) => line.vendorPartRecordId)
+    ),
+    loadPartDisplayNames(raw.map((line) => line.partRecordId)),
+  ])
+
+  return raw.map((line) => ({
+    lineInstanceId: line.lineInstanceId,
+    // The supplier-facing description is the authority — printing our own part name on their
+    // order is how a picking error becomes a dispute — but it is nullable, and a blank row on
+    // a vendor document is worse than our name for the thing.
+    name:
+      line.description ||
+      (line.partRecordId ? (nameByPart.get(line.partRecordId) ?? '') : '') ||
+      '',
+    vendorSku: line.vendorPartRecordId
+      ? (skuByVendorPart.get(line.vendorPartRecordId) ?? null)
+      : null,
+    qty: line.qty,
+    unitPrice: line.unitPrice,
+    lineTotal: line.lineTotal,
+  }))
+}
+
+/** One batched `vendor_part_vendor_sku` read over every `vendor_part` the lines reference. */
+async function loadVendorSkus(
+  cache: ReturnType<typeof getOrgCache>,
+  handler: UnifiedCrudHandler,
+  organizationId: string,
+  vendorPartRecordIds: Array<RecordId | undefined>
+): Promise<Map<RecordId, string>> {
+  const skus = new Map<RecordId, string>()
+  const recordIds = Array.from(new Set(vendorPartRecordIds.filter((id): id is RecordId => !!id)))
+  if (recordIds.length === 0) return skus
+
+  const vendorPartCf = await cache
+    .from(organizationId, 'customFields')
+    .bySystemAttributes(['vendor_part_vendor_sku'] as const)
+  const skuField = vendorPartCf.vendor_part_vendor_sku
+  if (!skuField) return skus
+
+  const { entityDefinitionId } = parseRecordId(recordIds[0]!)
+  const { values } = await handler.fieldValueService.batchGetValues({
+    recordIds,
+    fieldReferences: [toResourceFieldId(entityDefinitionId, skuField.id)],
+  })
+
+  for (const value of values) {
+    if (Array.isArray(value.fieldRef)) continue
+    const typed = firstTyped(
+      Array.isArray(value.value) ? value.value[0] : (value.value ?? undefined)
+    )
+    if (!typed) continue
+    const sku = extractValue(typed) as string
+    if (sku) skus.set(value.recordId, sku)
+  }
+  return skus
+}
+
+/** One batched `EntityInstance.displayName` read for the lines' name fallback. */
+async function loadPartDisplayNames(
+  partRecordIds: Array<RecordId | undefined>
+): Promise<Map<RecordId, string>> {
+  const names = new Map<RecordId, string>()
+  const recordIds = Array.from(new Set(partRecordIds.filter((id): id is RecordId => !!id)))
+  if (recordIds.length === 0) return names
+
+  const byInstanceId = new Map<string, RecordId>()
+  for (const recordId of recordIds) {
+    byInstanceId.set(parseRecordId(recordId).entityInstanceId, recordId)
+  }
+
+  const instances = await database.query.EntityInstance.findMany({
+    columns: { id: true, displayName: true },
+    where: (t, { inArray }) => inArray(t.id, Array.from(byInstanceId.keys())),
+  })
+  for (const instance of instances) {
+    const recordId = byInstanceId.get(instance.id)
+    if (recordId && instance.displayName) names.set(recordId, instance.displayName)
+  }
+  return names
+}
+
+/**
+ * Load a purchase order + its lines + its vendor, embed the org's resolved document settings,
+ * and hash the whole thing with `stableHash` for the render-or-reuse cache check — the
+ * buy-side analog of {@link buildQuotePdfPayload}, written new per plans/purchasing/07 §6.3.
+ *
+ * Totals are recomputed from the lines exactly as `money/totals-hooks.ts` writes them for a
+ * `purchase_order`: a flat discount clamped to the subtotal, no tax RATE, and
+ * `purchase_order_shipping_total` + `purchase_order_tax_total` added on top as stated header
+ * amounts the engine must never overwrite.
+ */
+export async function buildPurchaseOrderPdfPayload(params: {
+  organizationId: string
+  userId: string
+  purchaseOrderRecordId: RecordId
+}): Promise<{ payload: PurchaseOrderPdfPayload; hash: string }> {
+  const { organizationId, userId, purchaseOrderRecordId } = params
+  const { entityInstanceId: purchaseOrderInstanceId } = parseRecordId(purchaseOrderRecordId)
+  const handler = new UnifiedCrudHandler(organizationId, userId)
+  const cache = getOrgCache()
+
+  // Stable fallback for `issuedAt` when `purchase_order_ordered_at` is unset (a draft that
+  // has not been placed yet) — never `new Date()`, which would defeat the content hash.
+  const orderInstance = await database.query.EntityInstance.findFirst({
+    columns: { createdAt: true },
+    where: (t, { eq }) => eq(t.id, purchaseOrderInstanceId),
+  })
+
+  const cf = await cache
+    .from(organizationId, 'customFields')
+    .bySystemAttributes([
+      'purchase_order_number',
+      'purchase_order_status',
+      'purchase_order_vendor',
+      'purchase_order_contact',
+      'purchase_order_ordered_at',
+      'purchase_order_expected_at',
+      'purchase_order_reference',
+      'purchase_order_terms',
+      'purchase_order_currency',
+      'purchase_order_ship_to',
+      'purchase_order_shipping_total',
+      'purchase_order_tax_total',
+      'purchase_order_discount_value',
+    ] as const)
+
+  const orderFieldIds = [
+    cf.purchase_order_number,
+    cf.purchase_order_status,
+    cf.purchase_order_vendor,
+    cf.purchase_order_contact,
+    cf.purchase_order_ordered_at,
+    cf.purchase_order_expected_at,
+    cf.purchase_order_reference,
+    cf.purchase_order_terms,
+    cf.purchase_order_currency,
+    cf.purchase_order_ship_to,
+    cf.purchase_order_shipping_total,
+    cf.purchase_order_tax_total,
+    cf.purchase_order_discount_value,
+  ]
+    .filter(Boolean)
+    .map((f) => f!.id)
+  const orderValues = await handler.getFieldValues(purchaseOrderRecordId, orderFieldIds)
+  const get = (f?: { id: string } | null) => (f ? firstTyped(orderValues.get(f.id)) : undefined)
+
+  const numberTyped = get(cf.purchase_order_number)
+  const statusTyped = get(cf.purchase_order_status)
+  const vendorTyped = get(cf.purchase_order_vendor)
+  const contactTyped = get(cf.purchase_order_contact)
+  const orderedAtTyped = get(cf.purchase_order_ordered_at)
+  const expectedAtTyped = get(cf.purchase_order_expected_at)
+  const referenceTyped = get(cf.purchase_order_reference)
+  const termsTyped = get(cf.purchase_order_terms)
+  const currencyTyped = get(cf.purchase_order_currency)
+  const shippingTotalTyped = get(cf.purchase_order_shipping_total)
+  const taxTotalTyped = get(cf.purchase_order_tax_total)
+  const discountValueTyped = get(cf.purchase_order_discount_value)
+
+  const number = numberTyped ? (extractValue(numberTyped) as string) : ''
+  const status = statusTyped ? (extractValue(statusTyped) as string) : 'draft'
+  const issuedAt = orderedAtTyped
+    ? (extractValue(orderedAtTyped) as string)
+    : (orderInstance?.createdAt ?? new Date(0)).toISOString()
+  const expectedAt = expectedAtTyped ? (extractValue(expectedAtTyped) as string) : null
+  const vendorReference = referenceTyped ? (extractValue(referenceTyped) as string) : null
+  const terms = termsTyped ? (extractValue(termsTyped) as string) : null
+  const shippingTotal = shippingTotalTyped ? (extractValue(shippingTotalTyped) as number) : 0
+  const taxTotal = taxTotalTyped ? (extractValue(taxTotalTyped) as number) : 0
+  const discountValue = discountValueTyped ? (extractValue(discountValueTyped) as number) : null
+  const vendorRecordId = vendorTyped?.type === 'relationship' ? vendorTyped.recordId : undefined
+  const contactRecordId = contactTyped?.type === 'relationship' ? contactTyped.recordId : undefined
+  const shipToLines = addressLinesFromTyped(get(cf.purchase_order_ship_to))
+
+  // `loadPdfContact` returns an empty-but-present contact for an undefined recordId, which is
+  // the common case today: `purchase_order_contact` is nullable and nothing prefills it yet.
+  const [vendor, contact, lines, settings] = await Promise.all([
+    loadPurchaseOrderVendor(cache, handler, organizationId, vendorRecordId),
+    loadPdfContact(cache, handler, organizationId, contactRecordId),
+    loadPurchaseOrderPdfLines(cache, handler, organizationId, purchaseOrderRecordId),
+    resolveDocumentSettings(organizationId),
+  ])
+
+  // A supplier discount is always a flat amount (there is no `purchase_order_discount_type`
+  // field to read a shape from) and there is no tax RATE on the buy side, so freight and tax
+  // are added on top rather than derived — the `purchase_order` spec in `totals-hooks.ts`.
+  const totals = computeDocumentTotals(
+    lines.map((line) => ({ lineTotal: line.lineTotal, taxable: true })),
+    { discountType: 'amount', discountValue, taxRate: null }
+  )
+  const total = roundCents(totals.total + shippingTotal + taxTotal)
+
+  const currency = currencyTyped
+    ? (extractValue(currencyTyped) as string) || settings.currency
+    : settings.currency
+
+  const payload: PurchaseOrderPdfPayload = {
+    documentType: 'purchase_order',
+    organizationId,
+    number,
+    status,
+    issuedAt,
+    expectedAt,
+    vendorReference,
+    terms,
+    vendor,
+    contact,
+    shipToLines,
+    lines,
+    subtotal: totals.subtotal,
+    discountValue,
+    discountAmount: totals.discountAmount,
+    shippingTotal,
+    taxTotal,
+    total,
+    currency,
+    settings,
   }
 
   return { payload, hash: stableHash(payload) }

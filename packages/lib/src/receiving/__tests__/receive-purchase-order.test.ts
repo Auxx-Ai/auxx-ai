@@ -17,6 +17,8 @@ const h = vi.hoisted(() => ({
   materialised: new Set<string>(),
   /** `purchase_order_line` instance id -> its stored expected unit price. */
   prices: new Map<string, number | null>(),
+  /** The batched roll-up this door runs once the whole receipt is committed. */
+  settleSpy: vi.fn(),
 }))
 
 vi.mock('../../cache', () => ({
@@ -28,6 +30,13 @@ vi.mock('../../cache', () => ({
         ),
     }),
   }),
+}))
+
+vi.mock('../../field-hooks/post/purchase-order-line-rollups', () => ({
+  PURCHASE_ORDER_LINE_ROLLUPS: {
+    received: { targetAttr: 'purchase_order_line_quantity_received' },
+  },
+  recalculatePurchaseOrderLineRollups: (...args: unknown[]) => h.settleSpy(...args),
 }))
 
 vi.mock('../receive-stock', async () => {
@@ -86,6 +95,7 @@ const line = (
 
 beforeEach(() => {
   vi.clearAllMocks()
+  h.settleSpy.mockResolvedValue(undefined)
   h.materialised = new Set([PRICE_ATTR])
   h.prices = new Map([
     ['pol_1', 1000],
@@ -329,5 +339,65 @@ describe('receivePurchaseOrder — failure propagation', () => {
       })
     )
     expect(h.receiveSpy).toHaveBeenCalledTimes(0)
+  })
+})
+
+describe('receivePurchaseOrder — the roll-up is settled once, not once per line', () => {
+  it('🛑 rolls the WHOLE line set up in one call after the last movement', async () => {
+    // The amplifier this exists to remove: `stock_movement` create fires a
+    // lifecycle rule per row, and that rule derives the entire purchase order.
+    // Ten lines meant ten identical derivations. One batched call knows the
+    // whole set and does it once.
+    h.prices = new Map([
+      ['pol_1', 100],
+      ['pol_2', 200],
+    ])
+    await receivePurchaseOrder(db, ORG, USER, {
+      lines: [line(), line({ partId: 'part_2', purchaseOrderLineId: 'pol_2' })],
+    })
+
+    expect(h.settleSpy).toHaveBeenCalledTimes(1)
+    expect(h.settleSpy).toHaveBeenCalledWith(
+      ORG,
+      ['pol_1', 'pol_2'],
+      expect.objectContaining({ targetAttr: 'purchase_order_line_quantity_received' })
+    )
+  })
+
+  it('settles AFTER every movement, never between them', async () => {
+    const order: string[] = []
+    h.receiveSpy.mockImplementation(() => order.push('movement'))
+    h.settleSpy.mockImplementation(async () => {
+      order.push('settle')
+    })
+    h.prices = new Map([
+      ['pol_1', 100],
+      ['pol_2', 200],
+    ])
+
+    await receivePurchaseOrder(db, ORG, USER, {
+      lines: [line(), line({ partId: 'part_2', purchaseOrderLineId: 'pol_2' })],
+    })
+
+    expect(order).toEqual(['movement', 'movement', 'settle'])
+  })
+
+  it('does not settle when the receipt was refused before writing anything', async () => {
+    h.prices = new Map()
+    await receivePurchaseOrder(db, ORG, USER, { lines: [line()] })
+    expect(h.settleSpy).not.toHaveBeenCalled()
+  })
+
+  it('🛑 still reports the receipt as written when the roll-up fails', async () => {
+    // The movements are the primary fact and are already committed. Throwing
+    // here would report a receipt that happened as a receipt that failed — and
+    // the per-movement lifecycle rules are the fallback, so the quantity still
+    // lands.
+    h.settleSpy.mockRejectedValue(new Error('roll-up exploded'))
+
+    const result = await receivePurchaseOrder(db, ORG, USER, { lines: [line()] })
+
+    expect(result.isOk()).toBe(true)
+    expect(result._unsafeUnwrap()).toHaveLength(1)
   })
 })

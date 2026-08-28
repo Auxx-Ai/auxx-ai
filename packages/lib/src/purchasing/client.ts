@@ -25,6 +25,15 @@ export {
   priceAllowance,
 } from './match'
 export type {
+  PurchaseOrderBillingStatusValue,
+  PurchaseOrderDerivedStatuses,
+  PurchaseOrderLineQuantities,
+  PurchaseOrderReceiptStatusValue,
+} from './purchase-order-status'
+// The pure classifier only. 🛑 `recalculatePurchaseOrderStatuses` (its writer sibling)
+// reads and writes the database and must NEVER be re-exported here.
+export { derivePurchaseOrderStatuses } from './purchase-order-status'
+export type {
   AllocationBasis,
   AllocationHeader,
   AllocationLine,

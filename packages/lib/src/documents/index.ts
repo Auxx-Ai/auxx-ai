@@ -18,12 +18,16 @@ export {
 } from './ensure-pdf'
 export {
   buildInvoicePdfPayload,
+  buildPurchaseOrderPdfPayload,
   buildQuotePdfPayload,
   type DocumentPdfPayload,
   type InvoicePdfPayload,
   type InvoicePdfPaymentRow,
   loadPdfContact,
   type PdfPhotoRef,
+  type PurchaseOrderPdfLineItem,
+  type PurchaseOrderPdfPayload,
+  type PurchaseOrderPdfVendor,
   type QuotePdfContact,
   type QuotePdfLineItem,
   type QuotePdfPayload,

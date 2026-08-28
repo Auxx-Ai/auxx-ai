@@ -1,7 +1,7 @@
 // packages/lib/src/resources/hooks/invoice-hooks.ts
 
-import { BadRequestError } from '../../errors'
 import { recordNumbering } from '../../records/record-numbering'
+import { createLifecycleStatusGuard } from './lifecycle-status-guard'
 import type { SystemHook, SystemHookRegistry } from './types'
 
 /**
@@ -30,18 +30,10 @@ const autoGenerateInvoiceNumber: SystemHook = async ({
  * plain status `'draft'` after a `useConfirm`, and un-void (manual `draft` write) both flow
  * through it.
  */
-const rejectManualLifecycleStatus: SystemHook = async ({ operation, field, values }) => {
-  if (operation === 'create') return values // creates can't start sent/partially_paid/paid/void (defaultValue 'draft')
-  // Update values may be keyed by fieldId or systemAttribute, scalar or single-element array.
-  const raw = field.id in values ? values[field.id] : values[field.systemAttribute ?? '']
-  const next = Array.isArray(raw) ? raw[0] : raw
-  if (next === 'sent' || next === 'partially_paid' || next === 'paid' || next === 'void') {
-    throw new BadRequestError(
-      'Use the invoice actions (Send / Record payment / Void) to set this status'
-    )
-  }
-  return values
-}
+const rejectManualLifecycleStatus: SystemHook = createLifecycleStatusGuard({
+  guardedValues: ['sent', 'partially_paid', 'paid', 'void'],
+  message: 'Use the invoice actions (Send / Record payment / Void) to set this status',
+})
 
 export const INVOICE_HOOKS: SystemHookRegistry = {
   invoice_number: [autoGenerateInvoiceNumber],

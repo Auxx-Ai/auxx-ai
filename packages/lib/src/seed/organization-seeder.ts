@@ -313,13 +313,16 @@ export class OrganizationSeeder {
     logger.info(`Email templates seeded for organization: ${organizationId}`)
   }
   /**
-   * Seed the system snippets (`quote_email` — money MQ2; `invoice_email` — MI1) for a
-   * new organization, keyed to its just-seeded `EntityDefinition` cuids. Runs after
-   * `seedEntities` so the quote/invoice/contact defs already exist —
-   * `buildSystemSnippetTemplates` returns both templates once `entityDefs.quote`/
-   * `entityDefs.invoice` + `entityDefs.contact` are all present, and simply omits
-   * whichever def is still missing (e.g. an org seeded before MI1 shipped, until its
-   * entity migration runs). NOT the only path that creates these rows —
+   * Seed the system snippets — one per sendable document type (`quote_email`,
+   * `invoice_email`, `purchase_order_email`) — for a new organization, keyed to its
+   * just-seeded `EntityDefinition` cuids. Runs after `seedEntities` so the document and
+   * contact defs already exist.
+   *
+   * `buildSystemSnippetTemplates` returns a template once that document's def AND
+   * `entityDefs.contact` are present, and simply omits one whose def is still missing
+   * (e.g. an org seeded before that document type shipped, until its entity migration
+   * runs). Deliberately no list of types here: the builder is the registry, and a list in
+   * this comment is one more thing to forget. NOT the only path that creates these rows —
    * `getSystemSnippet` lazily materializes them for pre-existing orgs on first read.
    */
   private async seedSystemSnippets(organizationId: string): Promise<void> {

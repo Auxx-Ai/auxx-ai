@@ -25,10 +25,15 @@
  */
 
 import { type Database, schema } from '@auxx/database'
+import { createScopedLogger } from '@auxx/logger'
 import { and, eq, inArray } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import { getOrgCache } from '../cache'
 import { BadRequestError, UnprocessableEntityError } from '../errors'
+import {
+  PURCHASE_ORDER_LINE_ROLLUPS,
+  recalculatePurchaseOrderLineRollups,
+} from '../field-hooks/post/purchase-order-line-rollups'
 import { guard } from './guard'
 import { receiveStock } from './receive-stock'
 import type {
@@ -36,6 +41,8 @@ import type {
   ReceivePurchaseOrderInput,
   ReceivePurchaseOrderLineInput,
 } from './types'
+
+const logger = createScopedLogger('receiving:receive-purchase-order')
 
 /** The one field this door reads to price a receipt. */
 const EXPECTED_UNIT_PRICE_ATTRIBUTE = 'purchase_order_line_expected_unit_price'
@@ -115,11 +122,58 @@ export async function receivePurchaseOrder(
         written.push(result.value)
       }
 
+      await settleLineRollups(
+        organizationId,
+        lines.map((line) => line.purchaseOrderLineId)
+      )
+
       return written
     },
     'Failed to receive purchase order',
     { organizationId, lineCount: input.lines?.length ?? 0 }
   )
+}
+
+/**
+ * Roll the whole receipt up ONCE, now that every movement is committed.
+ *
+ * 🛑 The 10x. `stock_movement` create fires a lifecycle rule PER ROW, and that
+ * rule re-SUMs one line and then derives the whole purchase order from it. A
+ * ten-line receipt therefore ran the order-level pass ten times over the same
+ * order — the same parent lookup, the same line set, the same answer nine times
+ * out of ten. This call knows the entire line set before the first movement was
+ * written, so it does the work once: one grouped SUM, one write per line that
+ * actually moved, one order-level derivation.
+ *
+ * ⚠️ **It suppresses nothing, and that is the design.** The per-movement rules
+ * still fire behind it. They find each line's `quantity_received` already equal
+ * to the SUM they compute and return before writing, so the order-level pass
+ * behind them never runs. The saving comes from getting there FIRST, not from a
+ * flag — there is no context to thread, nothing to leak across the queue
+ * boundary those rules actually run on, and if this call never happens the old
+ * per-movement path produces exactly the same result, just more slowly.
+ *
+ * ⚠️ A failure here is logged and swallowed. The movements are the primary fact
+ * and are already committed; throwing would report a receipt that happened as a
+ * receipt that failed. The lifecycle rules are the fallback and still run.
+ */
+async function settleLineRollups(
+  organizationId: string,
+  purchaseOrderLineIds: string[]
+): Promise<void> {
+  try {
+    await recalculatePurchaseOrderLineRollups(
+      organizationId,
+      purchaseOrderLineIds,
+      PURCHASE_ORDER_LINE_ROLLUPS.received
+    )
+  } catch (error) {
+    logger.error('Failed to settle purchase order line roll-ups after a receipt', {
+      organizationId,
+      lineCount: purchaseOrderLineIds.length,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
 }
 
 /**

@@ -1,7 +1,7 @@
 // packages/lib/src/resources/hooks/quote-hooks.ts
 
-import { BadRequestError } from '../../errors'
 import { recordNumbering } from '../../records/record-numbering'
+import { createLifecycleStatusGuard } from './lifecycle-status-guard'
 import type { SystemHook, SystemHookRegistry } from './types'
 
 /**
@@ -29,16 +29,10 @@ const autoGenerateQuoteNumber: SystemHook = async ({
  * edit-sent-back-to-draft flow writes plain status `'draft'` after a `useConfirm`, which this
  * guard also allows through.
  */
-const rejectManualLifecycleStatus: SystemHook = async ({ operation, field, values }) => {
-  if (operation === 'create') return values // creates can't start sent/approved (defaultValue 'draft')
-  // Update values may be keyed by fieldId or systemAttribute, scalar or single-element array.
-  const raw = field.id in values ? values[field.id] : values[field.systemAttribute ?? '']
-  const next = Array.isArray(raw) ? raw[0] : raw
-  if (next === 'sent' || next === 'approved') {
-    throw new BadRequestError('Use the quote actions (Send / Mark approved) to set this status')
-  }
-  return values
-}
+const rejectManualLifecycleStatus: SystemHook = createLifecycleStatusGuard({
+  guardedValues: ['sent', 'approved'],
+  message: 'Use the quote actions (Send / Mark approved) to set this status',
+})
 
 export const QUOTE_HOOKS: SystemHookRegistry = {
   quote_number: [autoGenerateQuoteNumber],

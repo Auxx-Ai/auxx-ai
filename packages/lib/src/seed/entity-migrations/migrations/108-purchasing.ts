@@ -6,9 +6,9 @@ import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
 import { getOrgCache } from '../../../cache'
 import type { FieldOptions } from '../../../custom-fields'
-import { VendorBillStatus } from '../../../resources/registry/enum-values'
 import type { ResourceField } from '../../../resources/registry/field-types'
 import { COMPANY_FIELDS } from '../../../resources/registry/resources/company-fields'
+import { CONTACT_FIELDS } from '../../../resources/registry/resources/contact-fields'
 import { GL_ACCOUNT_FIELDS } from '../../../resources/registry/resources/gl-account-fields'
 import { GL_POSTING_FIELDS } from '../../../resources/registry/resources/gl-posting-fields'
 import { GL_POSTING_LINE_FIELDS } from '../../../resources/registry/resources/gl-posting-line-fields'
@@ -70,7 +70,14 @@ const NEW_REGISTRIES: Record<(typeof NEW_TYPES)[number], Record<string, Resource
  * org that has not reached the migration that seeds them has nothing to hang
  * an inverse off yet and a later run closes it.
  */
-const EXISTING_TYPES = ['stock_movement', 'company', 'part', 'vendor_part', 'gl_posting'] as const
+const EXISTING_TYPES = [
+  'stock_movement',
+  'company',
+  'contact',
+  'part',
+  'vendor_part',
+  'gl_posting',
+] as const
 
 /**
  * The ten receiving fields added to `stock_movement`
@@ -105,6 +112,11 @@ const INCUMBENT_FIELDS: Record<string, Record<string, ResourceField | undefined>
     purchaseOrders: COMPANY_FIELDS.purchaseOrders,
     vendorBills: COMPANY_FIELDS.vendorBills,
     vendorPayments: COMPANY_FIELDS.vendorPayments,
+  },
+  contact: {
+    // Inverse of `purchase_order.contact`, the order's ADDRESSEE. The buy-side
+    // twin of `contact.orders`.
+    purchaseOrders: CONTACT_FIELDS.purchaseOrders,
   },
   part: {
     purchaseOrderLines: PART_FIELDS.purchaseOrderLines,
@@ -168,9 +180,28 @@ const INCUMBENT_FIELDS: Record<string, Record<string, ResourceField | undefined>
  * the seeder materialises them from `relationshipConfig`.
  *
  * The eight new defs, with their full registries, plus the inverse halves on
- * `company` (purchaseOrders / vendorBills / vendorPayments), `part`
- * (purchaseOrderLines / vendorBillLines), `vendor_part` (stockMovements /
- * purchaseOrderLines) and `gl_posting` (lines).
+ * `company` (purchaseOrders / vendorBills / vendorPayments), `contact`
+ * (purchaseOrders), `part` (purchaseOrderLines / vendorBillLines),
+ * `vendor_part` (stockMovements / purchaseOrderLines) and `gl_posting` (lines).
+ *
+ * `purchase_order.contact` / `contact.purchaseOrders` is the ADDRESSEE pair, and
+ * it is what makes the order sendable at all: `purchase_order.vendor` targets a
+ * `company`, and a company carries no email of its own — only
+ * `company_primary_contact` — so there would be nobody to address the mail to.
+ * Shaped after `quote_contact` / `invoice_contact` so the send path's contact
+ * lookup extends by a map entry rather than a branch, but NULLABLE where the
+ * quote's is required: a PO is drafted against a supplier first and the person
+ * is settled later.
+ *
+ * `purchase_order.pdfAsset` (`purchase_order_pdf_asset`) is the third field the
+ * send flow needs and the second one it fails SILENTLY without: `ensure-pdf.ts`
+ * reads `cf[pointerAttr]` to decide whether to reuse the last render, so a
+ * missing pointer makes `existingAssetId` permanently `undefined` and every
+ * send re-renders AND mints a fresh `MediaAsset`. Nothing throws, the PDF is
+ * correct, and the only symptom is unbounded storage growth. Copied verbatim
+ * from `quote_pdf_asset` / `invoice_pdf_asset` — a bare MediaAsset id in TEXT,
+ * hidden, `updatable` but not `creatable`, because all three are read through
+ * the same code path and only `ensureDocumentPdf` writes them.
  *
  * Plus one field that is not an inverse: `part.unit`, the stock unit of measure
  * (SINGLE_SELECT, nullable, no backfill). Every quantity in the inventory chain
@@ -179,6 +210,33 @@ const INCUMBENT_FIELDS: Record<string, Record<string, ResourceField | undefined>
  * quantity. It is deliberately NOT on the line: a line ordered in `box` and
  * received in `ea` would make the received-vs-ordered roll-up compare two
  * different units, which is the number the three-way match rests on.
+ *
+ * ## The purchase-order status SPLIT (07 §3.3)
+ *
+ * `purchase_order` carries THREE status fields, not one, and this migration
+ * materialises all three:
+ *
+ *   purchase_order_status           SELECT  draft | issued | closed | canceled
+ *   purchase_order_receipt_status   SELECT  not_received | partially_received | received
+ *   purchase_order_billing_status   SELECT  not_billed | partially_billed | billed
+ *
+ * Receiving and billing are INDEPENDENT axes. This business prepays, so *fully
+ * billed, fully paid, nothing received* is a normal state lasting weeks, and one
+ * enum cannot say it — whichever axis the single field picks, the other becomes
+ * invisible. `vendor_bill_status` is what conflating them looks like once it has
+ * shipped: `posted`/`paid` overwrite the `matched`/`exception` verdict and
+ * `MATCHABLE_STATUSES` then refuses to recompute it, so a paid bill can never
+ * say whether it matched. `OrderFinancialStatus` / `OrderFulfillmentStatus` are
+ * the same split done right on the sell side.
+ *
+ * `purchase_order_status` therefore declares FOUR values here, not the six it
+ * originally shipped with: `partially_received` and `received` moved to
+ * `purchase_order_receipt_status`. They were the two values with no writer at
+ * all, so the move costs nothing and makes `purchasing-hooks.ts`'s "a plain
+ * human-set field" true rather than aspirational. Both new fields are
+ * `creatable: false` / `updatable: false` / `computed: true` — the line
+ * `quantityReceived` / `quantityBilled` roll-up owns them, and this migration
+ * only creates the columns to write into.
  *
  * `purchase_order` is `hasDetailPage: true` and `isVisible: true` — the `quote`
  * shape, because a PO is built, issued and received against. `vendor_bill` is
@@ -384,25 +442,43 @@ export const migration108Purchasing: EntityMigration = {
       )
     }
 
-    // ── Re-materialize `vendor_bill_status`'s options ──────────────────
+    // ── Re-materialize the two status option sets ──────────────────────
     //
     // 🛑 `ensureCustomFields` SKIPS a field that already exists — it returns the
-    // incumbent row and never touches its `options`. So adding a value to
-    // `VendorBillStatus` reaches a fresh org (which seeds from the registry) and
+    // incumbent row and never touches its `options`. So changing an enum in
+    // `enum-values.ts` reaches a fresh org (which seeds from the registry) and
     // silently does nothing for every org that already ran this migration. The
-    // field would keep the six values it was created with while the code, the
-    // types and the UI all believed in seven.
+    // field keeps the values it was created with while the code, the types and
+    // the UI all believe in the new list.
     //
-    // `partially_paid` is what forced this. The whole array is rewritten rather
-    // than the new value appended, so the option ORDER matches the registry
-    // everywhere — an appended value would sit last on migrated orgs and
-    // mid-list on fresh ones, which is the kind of difference nobody notices
-    // until two screenshots disagree. Safe because `status` is
+    // Both directions of that have now bitten:
+    //
+    //   `vendor_bill_status`   gained `partially_paid`
+    //   `purchase_order_status` LOST `partially_received` and `received`, which
+    //                           moved to their own derived fields
+    //                           (plans/purchasing/07-purchase-order-send-and-status.md §3.3)
+    //
+    // The whole array is rewritten rather than diffed, so the option ORDER
+    // matches the registry everywhere — an appended value would sit last on
+    // migrated orgs and mid-list on fresh ones, the kind of difference nobody
+    // notices until two screenshots disagree. Safe because both fields are
     // `configurable: false`: there are no user-added options to preserve.
-    const statusRefreshed = await refreshVendorBillStatusOptions(
-      db,
-      entityDefIds.get('vendor_bill')
-    )
+    //
+    // ⚠️ Narrowing an option set orphans any `FieldValue.optionId` holding a
+    // removed key. Deliberately NOT remapped here: 108 is the only migration
+    // that has ever created `purchase_order_status`, it has run on local dev
+    // orgs only, and the two values it drops never had a writer — so the orphan
+    // set is a hand-set dev row or two, and `098-prune-orphaned-option-values`
+    // is the pass that exists for orphans. A remap here would be permanent
+    // machinery earning its keep exactly once.
+    let statusRefreshed = false
+    for (const [entityType, field] of [
+      ['vendor_bill', VENDOR_BILL_FIELDS.status],
+      ['purchase_order', PURCHASE_ORDER_FIELDS.status],
+    ] as const) {
+      const refreshed = await refreshStatusOptions(db, entityDefIds.get(entityType), field)
+      statusRefreshed ||= refreshed
+    }
 
     const alreadyUpToDate =
       state.entityDefsCreated === 0 &&
@@ -429,8 +505,8 @@ export const migration108Purchasing: EntityMigration = {
 }
 
 /**
- * Bring an existing `vendor_bill_status` field's SINGLE_SELECT options back in
- * line with {@link VendorBillStatus}.
+ * Bring one existing SINGLE_SELECT status field's options back in line with the
+ * registry declaration it was seeded from.
  *
  * Reads the row rather than trusting `loadExistingState`'s snapshot or the
  * `allFieldMaps` entry: the snapshot is taken before this migration writes
@@ -440,18 +516,24 @@ export const migration108Purchasing: EntityMigration = {
  *
  * Idempotent by comparison — returns `false` when the stored values already
  * match, so a second run reports `alreadyUpToDate` rather than dirtying the row
- * and re-invalidating the org cache on every pass.
+ * and re-invalidating the org cache on every pass. The comparison is on the
+ * `value` keys in order, which is what `FieldValue.optionId` stores; a relabel
+ * or recolour alone does not trigger a rewrite.
  *
+ * @param defId the owning `EntityDefinition`, or undefined when the org has none
+ * @param field the registry field whose `options.options` is the target state
  * @returns whether the row was actually rewritten.
  */
-async function refreshVendorBillStatusOptions(
+async function refreshStatusOptions(
   db: Database,
-  vendorBillDefId: string | undefined
+  defId: string | undefined,
+  field: ResourceField | undefined
 ): Promise<boolean> {
-  if (!vendorBillDefId) return false
+  if (!defId) return false
+  if (!field?.systemAttribute) return false
 
-  const statusField = VENDOR_BILL_FIELDS.status
-  if (!statusField?.systemAttribute) return false
+  const wanted = field.options?.options
+  if (!wanted?.length) return false
 
   // Scoped in SQL to the def, then picked by attribute in JS. One query either
   // way — a `vendor_bill` carries ~28 fields — and it keeps the pick explicit
@@ -463,12 +545,11 @@ async function refreshVendorBillStatusOptions(
       options: schema.CustomField.options,
     })
     .from(schema.CustomField)
-    .where(eq(schema.CustomField.entityDefinitionId, vendorBillDefId))
+    .where(eq(schema.CustomField.entityDefinitionId, defId))
 
-  const row = rows.find((candidate) => candidate.systemAttribute === statusField.systemAttribute)
+  const row = rows.find((candidate) => candidate.systemAttribute === field.systemAttribute)
   if (!row) return false
 
-  const wanted = VendorBillStatus.values
   const current = ((row.options as FieldOptions | null)?.options ?? []) as {
     value?: string
     label?: string
@@ -488,8 +569,9 @@ async function refreshVendorBillStatusOptions(
     })
     .where(eq(schema.CustomField.id, row.id))
 
-  logger.info('Refreshed vendor_bill_status options', {
-    vendorBillDefId,
+  logger.info('Refreshed status options', {
+    defId,
+    systemAttribute: field.systemAttribute,
     from: current.length,
     to: wanted.length,
   })

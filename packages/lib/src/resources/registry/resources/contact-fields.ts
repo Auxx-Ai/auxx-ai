@@ -698,6 +698,34 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
     description: 'Orders placed by this contact',
   },
 
+  // Reverse relationship: purchase orders (from purchase_order.contact).
+  // The BUY side: this contact works for a supplier and is who our orders are
+  // addressed to — the mirror of `orders`, which is what they bought from us.
+  purchaseOrders: {
+    id: toFieldId('purchaseOrders'),
+    key: 'purchaseOrders',
+    label: 'Purchase Orders',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'contact_purchase_orders',
+    showInPanel: false,
+    systemSortOrder: 'aI',
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'purchase_order:contact' as ResourceFieldId,
+      relationshipType: 'has_many',
+      isInverse: true,
+    },
+    description: 'Purchase orders addressed to this contact',
+  },
+
   balanceDue: {
     id: toFieldId('balanceDue'),
     key: 'balanceDue',

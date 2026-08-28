@@ -14,6 +14,7 @@ import { createStorageManager } from '../files/storage/storage-manager'
 import { getQueue, Queues } from '../jobs/queues'
 import { UnifiedCrudHandler } from '../resources/crud'
 import { quietSession } from '../resources/crud/write-origin'
+import type { DOCUMENT_TYPE_DESCRIPTORS } from './client'
 
 /**
  * C5 (plan 04 §3): a machine-owned pointer to the rendered asset, written once
@@ -30,10 +31,23 @@ import type { DocumentPdfPayload } from './payload'
 import { getDocumentType, type RegisteredDocumentType } from './registry'
 import { renderDocumentPdf } from './render'
 
-/** Which PDF template/pointer-field a render-or-reuse call targets (money MI1 §H.1). Kept as
- * a literal alias for the two callers/back-compat wrappers below — the actual dispatch goes
- * through the document-type registry (`./registry.ts`). */
-export type DocumentType = 'quote' | 'invoice'
+/**
+ * Which PDF template/pointer-field a render-or-reuse call targets (money MI1 §H.1). The
+ * actual dispatch goes through the document-type registry (`./registry.ts`); this union only
+ * has to name the ids that registry holds.
+ *
+ * ✅ DERIVED — adding a document type is a descriptor in `./client.ts` and nothing here.
+ *
+ * ⚠️ The derivation only works because `DocumentTypeDescriptor.id` is typed as the
+ * `DocumentTypeId` literal union. An earlier attempt used
+ * `as const satisfies readonly DocumentTypeDescriptor[]` on the array instead, which forces
+ * `printOptions` and its nested arrays `readonly` and produces five errors in `apps/web`'s
+ * print wizard. If this ever resolves to `string`, that is what regressed: every
+ * `documentType` parameter in the print pipeline silently loses its safety, and
+ * `recordDocumentSendSignal`'s `toSignalRecordKey` call stops being checked against
+ * `SignalRecordKind`.
+ */
+export type DocumentType = (typeof DOCUMENT_TYPE_DESCRIPTORS)[number]['id']
 
 /** Result of {@link ensureDocumentPdf} / {@link ensureDocumentPdfViaQueue}. */
 export interface EnsureDocumentPdfResult {

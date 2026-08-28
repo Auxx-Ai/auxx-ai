@@ -4,7 +4,12 @@ import { FieldType } from '@auxx/database/enums'
 import { type ResourceFieldId, toFieldId } from '@auxx/types/field'
 import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
-import { LandedCostAllocationBasis, PurchaseOrderStatus } from '../enum-values'
+import {
+  LandedCostAllocationBasis,
+  PurchaseOrderBillingStatus,
+  PurchaseOrderReceiptStatus,
+  PurchaseOrderStatus,
+} from '../enum-values'
 import type { ResourceField } from '../field-types'
 
 /**
@@ -107,6 +112,49 @@ export const PURCHASE_ORDER_FIELDS: Record<string, ResourceField> = {
     description: 'Supplier this order was placed with — required, the selling party',
   },
 
+  contact: {
+    id: toFieldId('contact'),
+    key: 'contact',
+    label: 'Contact',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'purchase_order_contact',
+    systemSortOrder: 'a2a',
+    // Optional, unlike `quote_contact`: a quote cannot exist without the
+    // customer it is addressed to, but a PO is drafted against a `company`
+    // first and the person to send it to is settled later.
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'contact:purchaseOrders' as ResourceFieldId,
+      relationshipType: 'belongs_to',
+      isInverse: false,
+    },
+    relationshipConfig: {
+      relatedEntityType: 'contact',
+      relationshipType: 'belongs_to',
+      inverseName: 'Purchase Orders',
+      inverseSystemAttribute: 'contact_purchase_orders',
+    },
+    // The ADDRESSEE, and the reason this field exists at all: `vendor` targets a
+    // `company`, and a company carries no email of its own — only
+    // `company_primary_contact` — so without this there is nobody to send the
+    // order to. Mirrors `quote_contact` / `invoice_contact` so the send path's
+    // contact lookup extends by one map entry rather than growing a branch.
+    //
+    // Intended to DEFAULT from the vendor's `company_primary_contact` and stay
+    // overwritable — the prefill is not written yet.
+    description:
+      'Person at the vendor this order is sent to — defaults from the vendor’s primary contact',
+  },
+
   status: {
     id: toFieldId('status'),
     key: 'status',
@@ -126,8 +174,63 @@ export const PURCHASE_ORDER_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     placeholder: 'Select status',
-    description: 'Where the order sits between drafted and closed',
+    // The ACTION axis only — where a person (or the Send action) has moved the
+    // order to. What arrived and what was billed are `receiptStatus` and
+    // `billingStatus` below, because those two move independently of this one
+    // and of each other.
+    description:
+      'Where the order sits between drafted and closed — issued means sent to the vendor',
     defaultValue: 'draft',
+  },
+
+  receiptStatus: {
+    id: toFieldId('receiptStatus'),
+    key: 'receiptStatus',
+    label: 'Receipt Status',
+    type: BaseType.ENUM,
+    fieldType: FieldType.SINGLE_SELECT,
+    isSystem: true,
+    systemAttribute: 'purchase_order_receipt_status',
+    systemSortOrder: 'a3a',
+    nullable: true,
+    options: { options: PurchaseOrderReceiptStatus.values },
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: false, // the line roll-up is the ONLY writer
+      updatable: false,
+      computed: true,
+      configurable: false,
+    },
+    // Same shape and same reason as `purchase_order_line_quantity_received`: the
+    // subledger is the truth, and a hand-set copy of a SUM diverges silently.
+    description:
+      'How much of the order has arrived — derived from the line quantityReceived roll-up, never typed',
+  },
+
+  billingStatus: {
+    id: toFieldId('billingStatus'),
+    key: 'billingStatus',
+    label: 'Billing Status',
+    type: BaseType.ENUM,
+    fieldType: FieldType.SINGLE_SELECT,
+    isSystem: true,
+    systemAttribute: 'purchase_order_billing_status',
+    systemSortOrder: 'a3b',
+    nullable: true,
+    options: { options: PurchaseOrderBillingStatus.values },
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: false, // the line roll-up is the ONLY writer
+      updatable: false,
+      computed: true,
+      configurable: false,
+    },
+    // BILLED, not PAID: payment lives on the vendor bill and one order can carry
+    // several, so a PO-level payment figure would summarise state it does not own.
+    description:
+      'How much of the order has been billed — derived from the line quantityBilled roll-up, never typed',
   },
 
   orderedAt: {
@@ -479,6 +582,40 @@ export const PURCHASE_ORDER_FIELDS: Record<string, ResourceField> = {
     },
     placeholder: 'Enter internal notes',
     description: 'Internal notes — not shown to the supplier',
+  },
+
+  // Verbatim the `quote_pdf_asset` / `invoice_pdf_asset` shape — a bare
+  // MediaAsset id in TEXT, not a relation. `ensure-pdf.ts` reads all three
+  // through `cf[pointerAttr]` on the same code path, so a divergence here is a
+  // bug in that path rather than a local choice.
+  //
+  // 🛑 It is what makes a re-send REUSE the last render. Without the field the
+  // lookup returns undefined, `existingAssetId` is always undefined, and every
+  // send re-renders AND mints a fresh MediaAsset — an asset leak that grows per
+  // send, throws nothing, and produces a correct PDF every time. Nothing but
+  // storage growth would ever show it.
+  pdfAsset: {
+    id: toFieldId('pdfAsset'),
+    key: 'pdfAsset',
+    label: 'PDF Asset',
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemAttribute: 'purchase_order_pdf_asset',
+    systemSortOrder: 'aK',
+    showInPanel: false,
+    nullable: true,
+    capabilities: {
+      filterable: false,
+      sortable: false,
+      creatable: false,
+      updatable: true,
+      configurable: false,
+      hidden: true,
+    },
+    description:
+      'MediaAsset id of the last-rendered purchase order PDF (money MQ2 build spec §C.1 recipe) ' +
+      '— written only by ensureDocumentPdf via FieldValueService, never user-editable',
   },
 
   // Reverse relationship: lines (from purchase_order_line.purchaseOrder).

@@ -1,6 +1,7 @@
 // packages/lib/src/money/send-email.ts
 
 import { database as db } from '@auxx/database'
+import type { SnippetSystemType } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
 import type { RecordId, TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
@@ -9,6 +10,12 @@ import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import { getOrgCache } from '../cache'
 import type { DocumentType } from '../documents'
 import { ensureDocumentPdf, ensureDocumentPdfViaQueue } from '../documents'
+// Imported from the registry's CLIENT-SAFE half, not `../documents/registry` — `registry.ts`
+// pulls in `@react-pdf/renderer` components and the server-only payload builders, and
+// `documents/index.ts` re-exports it. `documents/client.ts` is constants only (no react-pdf,
+// no storage, no 'use client' directive) and is the module `registry.ts` itself imports its
+// id/entityType pairing from, so this is the same source of truth with none of the weight.
+import { DOCUMENT_TYPE_DESCRIPTORS } from '../documents/client'
 import { BadRequestError } from '../errors'
 import { formatToDisplayValue } from '../field-values/formatter'
 import { extractRelationshipRecordIds } from '../field-values/relationship-field'
@@ -33,21 +40,141 @@ function firstTyped(
 }
 
 /**
- * Resolve a quote/invoice RecordId's document type. The def component arrives in TWO
- * conventions: the internal builders (`quote-lifecycle.ts`/`gather.ts`/`money.ts`) use the
- * literal system entityType string (`toRecordId('invoice', ...)`), while the records view /
- * drawer keys off the EntityDefinition CUID (`toRecordId(entityDefinitionId, ...)` in
- * records-view.tsx). The drawer's "Send" button uses the CUID form, so a plain
- * `=== 'invoice'` string check misclassifies every drawer-sent invoice as a quote (money MI1
- * build spec §H.2/§H.3). Match the literal first, then fall back to the org's `entityDefs`
- * cache so both conventions resolve correctly.
+ * Everything that used to be a `documentType === 'invoice' ? … : <quote>` ternary in
+ * {@link prepareDocumentEmail}, as one row per document type.
+ *
+ * 🛑 The ternaries were the same "everything else is a quote" shape as the `documentTypeOf`
+ * default fixed above (purchasing plan 07 §2.1). They fail loudly rather than silently — a
+ * purchase order reported *"This quote has no contact"* — but they still blocked the PO send
+ * path outright. A table means a fourth document type is a row, not another nested ternary.
  */
-async function documentTypeOf(organizationId: string, recordId: RecordId): Promise<DocumentType> {
+export interface DocumentEmailProfile {
+  /**
+   * `CustomField.systemAttribute` of the document's `belongs_to -> contact` field — the
+   * EMAIL RECIPIENT.
+   *
+   * 🛑 A purchase order's addressee is genuinely different from a quote's or an invoice's and
+   * this row is where that is resolved, not papered over. The party a PO is FOR is its
+   * `purchase_order_vendor`, which points at a `company` — and `company` has no email field
+   * at all, so it can never be a recipient. `purchase_order_contact` exists precisely to name
+   * the PERSON at that vendor the order is sent to, and it is deliberately shaped as a copy
+   * of `quote_contact` so this stays a map entry rather than a second code path. Never try to
+   * email the vendor company.
+   */
+  contactSystemAttribute: 'quote_contact' | 'invoice_contact' | 'purchase_order_contact'
+  /** `entityDefs` cache key (the `EntityDefinition.entityType` slug) for the placeholder root. */
+  entityDefsKey: string
+  /** The org's seeded system snippet used as the email body. */
+  snippetSystemType: SnippetSystemType
+  /** Human noun for this document in error copy. */
+  noun: string
+  /** Tail of the no-contact error, after the em dash. Names the field as the UI labels it. */
+  noContactHint: string
+}
+
+/**
+ * One profile per {@link DocumentType} — keyed by the union derived from
+ * `DOCUMENT_TYPE_DESCRIPTORS`, so registering a FOURTH document type for printing without
+ * giving it a send profile here is a compile error rather than a runtime surprise.
+ */
+export const DOCUMENT_EMAIL_PROFILES: Record<DocumentType, DocumentEmailProfile> = {
+  quote: {
+    contactSystemAttribute: 'quote_contact',
+    entityDefsKey: 'quote',
+    snippetSystemType: 'quote_email',
+    noun: 'quote',
+    noContactHint: 'add one before sending',
+  },
+  invoice: {
+    contactSystemAttribute: 'invoice_contact',
+    entityDefsKey: 'invoice',
+    snippetSystemType: 'invoice_email',
+    noun: 'invoice',
+    noContactHint: 'add one before sending',
+  },
+  purchase_order: {
+    contactSystemAttribute: 'purchase_order_contact',
+    entityDefsKey: 'purchase_order',
+    snippetSystemType: 'purchase_order_email',
+    noun: 'purchase order',
+    // ⚠️ `purchase_order_contact` is nullable and nothing prefills it, so "no contact" is the
+    // COMMON case, not an edge case — the message has to be actionable rather than a bare
+    // restatement. "Contact" is the field's label in `purchase-order-fields.ts`.
+    noContactHint:
+      'set the Contact field to the person at the vendor who should receive this order',
+  },
+}
+
+/**
+ * The contact `systemAttribute` of every profile — the single `bySystemAttributes` batch both
+ * {@link prepareDocumentEmail} and {@link recordDocumentSendSignal} resolve their recipient
+ * field out of. Derived from the table so the fetched set can never drift from it.
+ */
+const DOCUMENT_CONTACT_SYSTEM_ATTRIBUTES = Object.values(DOCUMENT_EMAIL_PROFILES).map(
+  (p) => p.contactSystemAttribute
+)
+
+/**
+ * Look up the profile for a document type, or throw rather than guess a default. The runtime
+ * guard is belt-and-braces over the compile-time `Record<DocumentType, …>` exhaustiveness:
+ * `DocumentType` is derived from a mutable descriptor array, so a type registered at runtime
+ * that never got a profile row must fail loudly here, the same way `documentTypeOf` does.
+ */
+function documentEmailProfile(documentType: DocumentType): DocumentEmailProfile {
+  const profile = DOCUMENT_EMAIL_PROFILES[documentType]
+  if (!profile) {
+    throw new BadRequestError(`No email profile is registered for document type "${documentType}"`)
+  }
+  return profile
+}
+
+/**
+ * Resolve a document RecordId's {@link DocumentType} against the document-type registry, or
+ * throw.
+ *
+ * The def component arrives in TWO conventions, and both must keep working: the internal
+ * builders (`quote-lifecycle.ts`/`gather.ts`/`money.ts`) use the literal system entityType
+ * string (`toRecordId('invoice', ...)`), while the records view / drawer keys off the
+ * EntityDefinition CUID (`toRecordId(entityDefinitionId, ...)` in records-view.tsx). The
+ * drawer's "Send" button uses the CUID form, so a plain `=== 'invoice'` string check
+ * misclassifies every drawer-sent invoice as a quote (money MI1 build spec §H.2/§H.3). Match
+ * the literal against every registered `entityType` first, then fall back to the org's
+ * `entityDefs` cache so both conventions resolve correctly.
+ *
+ * Resolution runs over `DOCUMENT_TYPE_DESCRIPTORS` and THROWS on an unregistered def — it
+ * must never default. The previous version fell back to `'quote'`, so anything that was not
+ * an invoice was classified a quote: the first purchase order sent through this path would
+ * have run the quote branch in {@link prepareDocumentEmail} and been minted a public,
+ * customer-facing approve/decline link for a document addressed to a vendor (purchasing plan
+ * 07 §2.1). Nothing threw — the email sent and the PDF attached. A function that cannot fail
+ * cannot tell you it guessed. Adding an entry to the registry is now all that send needs, and
+ * forgetting to is a loud error rather than a wrong branch.
+ *
+ * @param organizationId Org whose `entityDefs` cache resolves the CUID convention.
+ * @param recordId The document record being sent.
+ * @throws {BadRequestError} when no registered document type matches the record's def.
+ */
+export async function documentTypeOf(
+  organizationId: string,
+  recordId: RecordId
+): Promise<DocumentType> {
   const { entityDefinitionId } = parseRecordId(recordId)
-  if (entityDefinitionId === 'invoice') return 'invoice'
-  if (entityDefinitionId === 'quote') return 'quote'
+
+  // Convention 1 — the literal `EntityDefinition.entityType` slug.
+  const byEntityType = DOCUMENT_TYPE_DESCRIPTORS.find((d) => d.entityType === entityDefinitionId)
+  if (byEntityType) return byEntityType.id
+
+  // Convention 2 — the per-org `EntityDefinition.id` cuid. `entityDefs` maps entityType slug
+  // to def id, which is exactly the pairing the descriptors carry.
   const entityDefs = await getOrgCache().get(organizationId, 'entityDefs')
-  return entityDefinitionId === entityDefs.invoice ? 'invoice' : 'quote'
+  const byDefId = DOCUMENT_TYPE_DESCRIPTORS.find(
+    (d) => entityDefs[d.entityType] === entityDefinitionId
+  )
+  if (byDefId) return byDefId.id
+
+  throw new BadRequestError(
+    `No document type is registered for entity definition "${entityDefinitionId}" — it cannot be sent as a document`
+  )
 }
 
 export interface EnsureQuoteDocumentPdfInput {
@@ -112,10 +239,11 @@ export interface PrepareDocumentEmailResult {
 }
 
 /**
- * Build the prefilled send-email payload for a quote OR invoice (money MQ2
- * build spec §E.1; MI1 §H.2 adds the invoice branch). Resolves the org's
- * seeded `quote_email`/`invoice_email` system snippet's placeholder spans
- * against the document + its contact at PREFILL time (not send time) — for
+ * Build the prefilled send-email payload for any registered document type — quote, invoice or
+ * purchase order (money MQ2 build spec §E.1; MI1 §H.2 added the invoice branch; purchasing
+ * plan 07 replaced the branches with {@link DOCUMENT_EMAIL_PROFILES}). Resolves the org's
+ * seeded `quote_email`/`invoice_email`/`purchase_order_email` system snippet's placeholder
+ * spans against the document + its contact at PREFILL time (not send time) — for
  * a brand-new outbound thread the primary-entity link is only applied AFTER
  * send (`thread.ts`'s `linkTicketId` block), so send-time resolution would
  * have no record to resolve `quote:*`/`invoice:*`/`contact:*` tokens
@@ -131,20 +259,17 @@ export async function prepareDocumentEmail(
   const handler = new UnifiedCrudHandler(organizationId, userId)
   const cache = getOrgCache()
 
-  const noContactMessage =
-    documentType === 'invoice'
-      ? 'This invoice has no contact — add one before sending'
-      : 'This quote has no contact — add one before sending'
-  const noEmailMessage =
-    documentType === 'invoice'
-      ? 'This invoice contact has no email address — add one before sending'
-      : 'This quote contact has no email address — add one before sending'
+  const profile = documentEmailProfile(documentType)
+
+  const noContactMessage = `This ${profile.noun} has no contact — ${profile.noContactHint}`
+  const noEmailMessage = `This ${profile.noun} contact has no email address — add one before sending`
 
   // ─── Step 1: the document's contact (email required to send) ───────────
+  // The fetched attribute set is derived from the profile table so the two can never drift.
   const cf = await cache
     .from(organizationId, 'customFields')
-    .bySystemAttributes(['quote_contact', 'invoice_contact'] as const)
-  const contactField = documentType === 'invoice' ? cf.invoice_contact : cf.quote_contact
+    .bySystemAttributes(DOCUMENT_CONTACT_SYSTEM_ATTRIBUTES)
+  const contactField = cf[profile.contactSystemAttribute]
   const contactFieldId = contactField?.id
   const documentValues = contactFieldId
     ? await handler.getFieldValues(documentRecordId, [contactFieldId])
@@ -210,19 +335,15 @@ export async function prepareDocumentEmail(
     throw new BadRequestError(noEmailMessage)
   }
 
-  // ─── Step 2: the seeded quote_email/invoice_email system snippet ────────
-  const snippet = await getSystemSnippet(
-    db,
-    organizationId,
-    documentType === 'invoice' ? 'invoice_email' : 'quote_email'
-  )
+  // ─── Step 2: the seeded per-document-type system snippet ────────────────
+  const snippet = await getSystemSnippet(db, organizationId, profile.snippetSystemType)
 
   // ─── Step 3: resolve the snippet's placeholder spans ────────────────────
   // recordIdsByRoot keys off `EntityDefinition.id` cuids (the field-token
   // root — see system-snippets.ts's `fieldToken`), NOT the RecordId's own
   // (possibly literal-type-string) def component.
   const entityDefs = await cache.get(organizationId, 'entityDefs')
-  const documentDefId = documentType === 'invoice' ? entityDefs.invoice : entityDefs.quote
+  const documentDefId = entityDefs[profile.entityDefsKey]
   const recordIdsByRoot = new Map<string, RecordId>()
   if (documentDefId) recordIdsByRoot.set(documentDefId, documentRecordId)
   if (entityDefs.contact) recordIdsByRoot.set(entityDefs.contact, contactRecordId)
@@ -261,6 +382,15 @@ export async function prepareDocumentEmail(
   // Same rationale as the invoice pay-link above — appended here rather than a snippet
   // placeholder. Gated on `documents.quote.acceptancePageEnabled` only; when off, the email
   // is left exactly as resolved by the snippet (PDF-only behavior, unchanged).
+  //
+  // DO NOT HOIST `ensureQuotePublicToken` / `buildQuoteViewUrl` OUT OF THIS BRANCH.
+  // `./quote-public-token` is imported at module level, so the only thing keeping a quote
+  // public token off a non-quote document is this `documentType === 'quote'` test
+  // (purchasing plan 07 §2.3). A quote's public link exists so a CUSTOMER can approve or
+  // decline; a purchase order is addressed to a VENDOR, who responds by email or by shipping,
+  // and must never be handed an approve/decline link. Minting one fails silently — the email
+  // still sends, the PDF still attaches — so a refactor that lifts token minting to the
+  // common path would re-acquire the §2.1 bug with no test and no exception to notice it by.
   if (documentType === 'quote') {
     const { entityInstanceId: quoteInstanceId } = parseRecordId(documentRecordId)
     const acceptancePageEnabled = await getOrganizationSetting({
@@ -306,10 +436,14 @@ export interface RecordDocumentSendSignalInput {
 /**
  * Manual document-send signal writer (client-notifications plan §4.8/Phase 4) — called from
  * `thread.ts`'s `sendMessage` procedure right after a CONFIRMED successful send flips the
- * quote/invoice to `sent`. Resolves the recipient contact and the linked work order (if any)
- * so the job/contact communications view is honest about manual sends, not just sequence
- * sends. Never throws — a signal-write failure must not fail (or retroactively look like it
- * failed) an email that already went out.
+ * document's lifecycle status (quote/invoice `sent`, purchase order `issued`). Resolves the
+ * recipient contact — through the same {@link DOCUMENT_EMAIL_PROFILES} table the email itself
+ * used — and the linked work order (if any) so the job/contact communications view is honest
+ * about manual sends, not just sequence sends. Never throws — a signal-write failure must not
+ * fail (or retroactively look like it failed) an email that already went out.
+ *
+ * `documentType` flows straight into `toSignalRecordKey`, so every `DocumentType` must also
+ * be a `SignalRecordKind` (`signals/record-signal.ts`).
  */
 export async function recordDocumentSendSignal(
   input: RecordDocumentSendSignalInput
@@ -322,11 +456,12 @@ export async function recordDocumentSendSignal(
     const cache = getOrgCache()
 
     // ─── Recipient contact ──────────────────────────────────────────────────
+    // Same profile table as `prepareDocumentEmail`, so the signal's recipient is by
+    // construction the address the email actually went to.
     const contactCf = await cache
       .from(organizationId, 'customFields')
-      .bySystemAttributes(['quote_contact', 'invoice_contact', 'primary_email'] as const)
-    const contactField =
-      documentType === 'invoice' ? contactCf.invoice_contact : contactCf.quote_contact
+      .bySystemAttributes([...DOCUMENT_CONTACT_SYSTEM_ATTRIBUTES, 'primary_email' as const])
+    const contactField = contactCf[documentEmailProfile(documentType).contactSystemAttribute]
 
     let contactEntityInstanceId: string | undefined
     let recipientEmail: string | undefined
@@ -348,6 +483,10 @@ export async function recordDocumentSendSignal(
 
     // ─── Linked work order (invoice: singular `invoice_work_order`; quote: array
     // `quote_work_orders`, first entry — a quote can spawn more than one job) ──────────
+    // NOT table-ified: this is not one concept with three spellings. The two fields have
+    // different cardinality (belongs_to vs has_many) and therefore different extraction, and
+    // a purchase order has no work-order link at all — it is a supplier document, not a job
+    // document. Both `if` arms simply don't fire for it, which is the correct behavior.
     const woCf = await cache
       .from(organizationId, 'customFields')
       .bySystemAttributes(['invoice_work_order', 'quote_work_orders'] as const)
