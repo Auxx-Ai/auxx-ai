@@ -22,6 +22,13 @@ const h = vi.hoisted(() => ({
   rematchBillsForPurchaseOrderLines: vi.fn(
     async (_organizationId: string, _userId: string, _lineIds: string[]) => {}
   ),
+  // The reconciler the billed roll-up's EDIT door marks into. Captured at module
+  // load so a test can invoke the spec's own `rebuild` — the only way to prove
+  // the drain is wired to the BILLED spec and not the received one.
+  reconcilerSpec: null as { key: string; rebuild: Function; resolve?: unknown } | null,
+  mark: vi.fn(async (_org: string, _user: string, _id: string) => {}),
+  register: vi.fn(),
+  resolveParentsByRelation: vi.fn(async () => [] as string[]),
   // The two shapes the module asks the db for, in call order.
   dbResults: [] as unknown[][],
 }))
@@ -72,13 +79,24 @@ vi.mock('../../purchasing/purchase-order-status-writer', () => ({
 vi.mock('../../purchasing/match-reconciler', () => ({
   rematchBillsForPurchaseOrderLines: h.rematchBillsForPurchaseOrderLines,
 }))
+vi.mock('../../reconcilers/parent-reconciler', () => ({
+  defineParentReconciler: (spec: { key: string; rebuild: Function }) => {
+    h.reconcilerSpec = spec
+    return { register: h.register, mark: h.mark }
+  },
+  resolveParentsByRelation: h.resolveParentsByRelation,
+}))
 
+import type { EntityFieldChangeEvent } from '../types'
 import {
+  PURCHASE_ORDER_LINE_BILLED_ROLLUP,
   PURCHASE_ORDER_LINE_ROLLUPS,
+  recalculateBilledRollupOnBillLineChange,
   recalculatePurchaseOrderLineBilled,
   recalculatePurchaseOrderLineReceived,
   recalculatePurchaseOrderLineRollup,
   recalculatePurchaseOrderLineRollups,
+  registerPurchaseOrderLineRollupReconcilers,
 } from './purchase-order-line-rollups'
 
 const PO_LINE = 'poline-1'
@@ -118,6 +136,7 @@ beforeEach(() => {
   h.recalculatePurchaseOrderStatuses.mockResolvedValue(ok({}))
   h.recalculatePurchaseOrderStatusesForLines.mockResolvedValue(ok([]))
   h.rematchBillsForPurchaseOrderLines.mockResolvedValue(undefined)
+  h.resolveParentsByRelation.mockResolvedValue([])
 })
 
 describe('recalculatePurchaseOrderLineReceived', () => {
@@ -568,5 +587,145 @@ describe('a receipt re-matches the bills that charge the line', () => {
 
     // The quantity is the primary fact and is already committed.
     expect(h.setValueWithType).toHaveBeenCalled()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The EDIT door.
+//
+// The create/delete triggers above are complete coverage for RECEIPTS, because a
+// movement is append-only. They were never complete for BILLING: a bill line is
+// created at its registry default of `1` and the real quantity typed in after, so
+// the ordinary act of transcribing an invoice moved the child and left the parent
+// permanently stale. Found in a browser, not by a test — these are the tests that
+// would have.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** A post-write field-change event on a bill line. */
+function billLineChange(
+  systemAttribute: string,
+  {
+    oldValue = null,
+    newValue = null,
+    recordId = 'vbldef:vbl-1',
+  }: { oldValue?: unknown; newValue?: unknown; recordId?: string } = {}
+): EntityFieldChangeEvent {
+  return {
+    recordId,
+    entityDefinitionId: 'vbldef',
+    entityType: 'vendor_bill_line',
+    entitySlug: 'vendor-bill-lines',
+    field: { id: 'fld', systemAttribute },
+    oldValue,
+    newValue,
+    oldDisplay: null,
+    newDisplay: null,
+    organizationId: 'org_1',
+    userId: 'usr_1',
+  } as unknown as EntityFieldChangeEvent
+}
+
+/** Every PO line id the handler marked, sorted so order is not asserted. */
+const markedLines = () => h.mark.mock.calls.map((call) => call[2]).sort()
+
+describe('recalculateBilledRollupOnBillLineChange', () => {
+  it('re-SUMs the line a quantity edit belongs to — the case create/delete missed', async () => {
+    h.resolveParentsByRelation.mockResolvedValue(['poline-9'])
+
+    await recalculateBilledRollupOnBillLineChange(
+      billLineChange('vendor_bill_line_quantity_billed')
+    )
+
+    // A quantity write does not say which line it belongs to, so the match key is
+    // resolved off the bill line itself.
+    expect(h.resolveParentsByRelation).toHaveBeenCalledWith(
+      'org_1',
+      'vendor_bill_line_purchase_order_line',
+      ['vbl-1']
+    )
+    expect(markedLines()).toEqual(['poline-9'])
+  })
+
+  it('marks BOTH sides of a repoint, so the line the bill line left is re-SUMmed', async () => {
+    await recalculateBilledRollupOnBillLineChange(
+      billLineChange('vendor_bill_line_purchase_order_line', {
+        oldValue: [{ recordId: 'poldef:poline-old' }],
+        newValue: [{ recordId: 'poldef:poline-new' }],
+      })
+    )
+
+    // 🛑 The whole point. `newValue` names only the line it now points at; without
+    // `oldValue` the vacated line keeps the phantom quantity forever.
+    expect(markedLines()).toEqual(['poline-new', 'poline-old'])
+    // Both sides came off the event — a repoint costs no read.
+    expect(h.resolveParentsByRelation).not.toHaveBeenCalled()
+  })
+
+  it('re-SUMs the vacated line when the match key is CLEARED, not swapped', async () => {
+    await recalculateBilledRollupOnBillLineChange(
+      billLineChange('vendor_bill_line_purchase_order_line', {
+        oldValue: [{ recordId: 'poldef:poline-old' }],
+        newValue: null,
+      })
+    )
+
+    expect(markedLines()).toEqual(['poline-old'])
+  })
+
+  it('accepts the legacy relationship shape as well as { recordId }', async () => {
+    await recalculateBilledRollupOnBillLineChange(
+      billLineChange('vendor_bill_line_purchase_order_line', {
+        oldValue: null,
+        newValue: [{ relatedEntityId: 'poline-legacy', relatedEntityDefinitionId: 'poldef' }],
+      })
+    )
+
+    expect(markedLines()).toEqual(['poline-legacy'])
+  })
+
+  it('ignores an attribute that cannot move the total', async () => {
+    // Moving a line to another BILL does not change which order line it feeds.
+    await recalculateBilledRollupOnBillLineChange(
+      billLineChange('vendor_bill_line_vendor_bill', { newValue: [{ recordId: 'bdef:bill-2' }] })
+    )
+
+    expect(h.mark).not.toHaveBeenCalled()
+    expect(h.resolveParentsByRelation).not.toHaveBeenCalled()
+  })
+
+  it('marks nothing for a bill line with no match key — a freight line is ordinary', async () => {
+    h.resolveParentsByRelation.mockResolvedValue([])
+
+    await recalculateBilledRollupOnBillLineChange(
+      billLineChange('vendor_bill_line_quantity_billed')
+    )
+
+    expect(h.mark).not.toHaveBeenCalled()
+  })
+})
+
+describe('the billed roll-up reconciler', () => {
+  it('is keyed on the PURCHASE ORDER LINE, with no child resolve step', () => {
+    // Load-bearing: the marked record IS the parent. A reconciler keyed on the
+    // bill line could only ever name the line it now points at, which is exactly
+    // what makes a repoint unexpressible.
+    expect(h.reconcilerSpec?.key).toBe(PURCHASE_ORDER_LINE_BILLED_ROLLUP)
+    expect(h.reconcilerSpec?.resolve).toBeUndefined()
+  })
+
+  it('rebuilds with the BILLED spec, never the received one', async () => {
+    h.dbResults.push([{ total: '9' }])
+
+    await h.reconcilerSpec?.rebuild('org_1', 'usr_1', PO_LINE)
+
+    expect(h.setValueWithType).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ fieldId: 'fld-billed', value: { type: 'number', value: 9 } })
+    )
+  })
+
+  it('registers its drain — without it the hook marks into nothing', () => {
+    registerPurchaseOrderLineRollupReconcilers()
+    expect(h.register).toHaveBeenCalled()
   })
 })

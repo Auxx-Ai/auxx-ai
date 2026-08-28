@@ -129,9 +129,17 @@ export function PurchaseOrderLinesTab({ recordId, variant = 'tab' }: DetailViewT
   ].filter((b): b is BadgeSpec => !!b)
 
   // ⚠️ The addressee is the CONTACT, never the vendor: `purchase_order_vendor` targets a
-  // `company` and a company carries no email field at all (§7.2). `purchase_order_contact`
-  // is nullable and nothing prefills it, so "no contact" is the COMMON case — surfacing it
-  // as a disabled reason beats letting `prepareDocumentEmail` reject the round trip.
+  // `company` and a company carries no email field at all (§7.2).
+  //
+  // `purchase_order_contact` IS prefilled from the vendor's `company_primary_contact` —
+  // `field-hooks/post/purchase-order-contact-prefill.ts`, two doors, one for creates through
+  // `UnifiedCrudHandler` and one for later edits. But it stays nullable and the prefill has
+  // nothing to copy when the vendor has no primary contact, so "no contact" remains a case
+  // worth naming rather than a rarity — surfacing it as a disabled reason beats letting
+  // `prepareDocumentEmail` reject the round trip.
+  //
+  // (This comment previously claimed nothing prefills the field. That was true before #1948
+  // and false after it, and it misled a later reader into recording the gap as by-design.)
   const hasContact = extractRelationshipRecordIds(values.purchase_order_contact).length > 0
 
   // Shared send/download flow (compose + PDF + no-channel guard) — the same hook quote

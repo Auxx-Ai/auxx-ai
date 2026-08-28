@@ -10,6 +10,7 @@ import { and, eq, inArray, type SQL, sql } from 'drizzle-orm'
 import { getOrgCache, requireCachedEntityDefId } from '../../cache'
 import { createFieldValueContext } from '../../field-values/field-value-helpers'
 import { setValueWithType } from '../../field-values/field-value-mutations'
+import { extractRelationshipRecordIds } from '../../field-values/relationship-field'
 import { type StoredFieldType, toFieldType } from '../../field-values/stored-field-type'
 import {
   type PurchaseOrderStatusEvidence,
@@ -21,7 +22,11 @@ import {
   getRealtimeService,
   publishFieldValueUpdates,
 } from '../../realtime'
-import type { EntityTriggerHandler } from '../types'
+import {
+  defineParentReconciler,
+  resolveParentsByRelation,
+} from '../../reconcilers/parent-reconciler'
+import type { EntityFieldChangeHandler, EntityTriggerHandler } from '../types'
 
 const logger = createScopedLogger('field-hooks:purchase-order-line-rollups')
 
@@ -515,6 +520,123 @@ export const PURCHASE_ORDER_LINE_ROLLUPS = {
   received: RECEIVED_ROLLUP,
   billed: BILLED_ROLLUP,
 } as const
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The EDIT door for the billed roll-up
+//
+// 🛑 The create/delete triggers above are NOT complete coverage for billing, and
+// this is the half that was missing (verified in a browser 2026-08-28; the
+// architecture guide §12 carries the finding).
+//
+// `purchase-order-status-writer.ts` states the assumption the old shape rested
+// on — the roll-ups "fire on exactly the two events that can move either axis (a
+// `stock_movement` or a `vendor_bill_line` create/delete)". That is true of
+// RECEIPTS, because a movement is append-only: correcting one means reversing
+// it, which is another create. It is false of BILLING, because a bill line is
+// created at its registry default of `1` and the real quantity is typed in
+// AFTERWARDS. So the ordinary act of transcribing an invoice moved the child and
+// never re-SUMMED the parent, and the divergence was permanent: two dev orders
+// sat at a stored `1` against bill lines reading `4` and `10`.
+//
+// What that broke, beyond the number itself: `selectBillableLines` gates on
+// `billed < ordered`, so a fully-billed line kept being offered back on the next
+// bill, and `purchase_order_billing_status` is classified from the same stale
+// figure.
+//
+// ⚠️ The receipt roll-up deliberately does NOT get an edit door. `stock_movement`
+// declares every field `updatable: false` and a correction is a reversal, so
+// there is no legitimate edit to catch. (That capability is advisory rather than
+// enforced at the write path — but the answer to a movement being edited is to
+// stop the edit, not to re-derive around it.)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** `dirty-parents` key for the billed roll-up. The marked record IS the parent. */
+export const PURCHASE_ORDER_LINE_BILLED_ROLLUP = 'po-line-rollup:billed'
+
+/**
+ * Coalescing drain for the billed roll-up.
+ *
+ * Marked with a PURCHASE ORDER LINE id, not a bill line id — the marked record
+ * is already the parent, so the spec needs no `resolve`. That is what makes a
+ * repoint expressible at all: one bill line write can dirty TWO parents, and a
+ * reconciler keyed on the child could only ever name the one it now points at.
+ *
+ * Coalescing is the other half of the point. Typing quantity and price on a
+ * three-line bill is six field writes hitting the same three lines; the drain
+ * re-SUMs each distinct line once.
+ */
+const billedRollupReconciler = defineParentReconciler<string>({
+  key: PURCHASE_ORDER_LINE_BILLED_ROLLUP,
+  rebuild: (organizationId, _userId, purchaseOrderLineInstanceId) =>
+    recalculatePurchaseOrderLineRollup(organizationId, purchaseOrderLineInstanceId, BILLED_ROLLUP),
+})
+
+/**
+ * Register the billed roll-up's drain. Called from `registerAllHooks()`.
+ *
+ * 🛑 Must stay paired with the hook below, which only MARKS. Without this,
+ * nothing re-SUMs — which is the exact bug this pair exists to close, restored
+ * by omission.
+ */
+export function registerPurchaseOrderLineRollupReconcilers(): void {
+  billedRollupReconciler.register()
+}
+
+/** The two bill-line attributes whose EDIT can move a purchase order line's billed total. */
+const BILLED_ROLLUP_TRIGGER_ATTRS = new Set<SystemAttribute>([
+  'vendor_bill_line_quantity_billed',
+  'vendor_bill_line_purchase_order_line',
+])
+
+/**
+ * Re-SUM the billed roll-up after a bill line is EDITED.
+ *
+ * Deliberately a second handler beside `rematchOnBillLineChange` rather than a
+ * branch inside it. They fire on overlapping attributes and are otherwise
+ * unrelated: the match writes the BILL's verdict, this writes the ORDER LINE's
+ * quantity, and this module is that field's only writer. Folding one into the
+ * other would put the roll-up's write behind the match's trigger set, where the
+ * next person to tune that set would move it by accident.
+ *
+ * 🛑 **A repoint dirties the line it LEFT.** `vendor_bill_line_purchase_order_line`
+ * is user-editable through `PurchaseOrderLinePicker`, so picking the wrong line
+ * and correcting it is ordinary. The post-hook's `newValue` names only the new
+ * line; without `oldValue` the old one keeps the phantom quantity forever, which
+ * is the same defect one level down. Both are marked.
+ */
+export const recalculateBilledRollupOnBillLineChange: EntityFieldChangeHandler = async (event) => {
+  const attr = event.field.systemAttribute as SystemAttribute | undefined
+  if (!attr || !BILLED_ROLLUP_TRIGGER_ATTRS.has(attr)) return
+
+  const lineInstanceIds = new Set<string>()
+
+  if (attr === 'vendor_bill_line_purchase_order_line') {
+    // Both sides come off the event — no read needed, and `oldValue` is the only
+    // place the vacated line is still named.
+    for (const value of [event.oldValue, event.newValue]) {
+      for (const recordId of extractRelationshipRecordIds(value)) {
+        lineInstanceIds.add(parseRecordId(recordId).entityInstanceId)
+      }
+    }
+  } else {
+    // A quantity write says nothing about which line it belongs to, so resolve
+    // the bill line's current match key. One query, and the same helper the match
+    // reconciler uses for its own parent lookup.
+    const { entityInstanceId: billLineInstanceId } = parseRecordId(event.recordId)
+    const parents = await resolveParentsByRelation(
+      event.organizationId,
+      'vendor_bill_line_purchase_order_line',
+      [billLineInstanceId]
+    )
+    for (const parent of parents) lineInstanceIds.add(parent)
+  }
+
+  // A bill line with no match key is ordinary — a freight line, a one-off — and
+  // contributes nothing to any order line's total.
+  for (const lineInstanceId of lineInstanceIds) {
+    await billedRollupReconciler.mark(event.organizationId, event.userId, lineInstanceId)
+  }
+}
 
 /**
  * Extract a related entity id from threaded event values. Values may be keyed by
