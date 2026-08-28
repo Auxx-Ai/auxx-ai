@@ -202,6 +202,18 @@
       "import": "./dist/bom/client.mjs",
       "default": "./src/bom/client.ts"
     },
+    "./builds": {
+      "types": "./src/builds/index.ts",
+      "source": "./src/builds/index.ts",
+      "import": "./dist/builds/index.mjs",
+      "default": "./src/builds/index.ts"
+    },
+    "./builds/client": {
+      "types": "./src/builds/client.ts",
+      "source": "./src/builds/client.ts",
+      "import": "./dist/builds/client.mjs",
+      "default": "./src/builds/client.ts"
+    },
     "./cache": {
       "types": "./src/cache/index.ts",
       "source": "./src/cache/index.ts",
