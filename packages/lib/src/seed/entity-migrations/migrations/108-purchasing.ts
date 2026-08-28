@@ -199,9 +199,15 @@ const INCUMBENT_FIELDS: Record<string, Record<string, ResourceField | undefined>
  * missing pointer makes `existingAssetId` permanently `undefined` and every
  * send re-renders AND mints a fresh `MediaAsset`. Nothing throws, the PDF is
  * correct, and the only symptom is unbounded storage growth. Copied verbatim
- * from `quote_pdf_asset` / `invoice_pdf_asset` — a bare MediaAsset id in TEXT,
- * hidden, `updatable` but not `creatable`, because all three are read through
- * the same code path and only `ensureDocumentPdf` writes them.
+ * from `quote_pdf_asset` / `invoice_pdf_asset`, because all three are read
+ * through the same code path and only `ensureDocumentPdf` writes them.
+ *
+ * ⚠️ All three were a bare MediaAsset id in TEXT when this migration was
+ * written. `112-record-documents` made them single `FILE` fields, read-only via
+ * `isUpdatable: false`. This migration reads the registry, so a FRESH org gets
+ * the new shape here and 112 is a no-op for it; 112 exists for the orgs that
+ * ran 108 while the registry still said TEXT, because `ensureCustomFields` is
+ * INSERT-only and can never reshape a row it already created.
  *
  * Plus one field that is not an inverse: `part.unit`, the stock unit of measure
  * (SINGLE_SELECT, nullable, no backfill). Every quantity in the inventory chain

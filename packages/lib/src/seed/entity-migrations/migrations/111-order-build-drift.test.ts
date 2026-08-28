@@ -28,9 +28,12 @@ describe('migration 111 registration', () => {
     expect(migration111OrderBuildDrift.id).toBe('111-order-build-drift')
   })
 
-  it('is last — a later migration must take 112, not reuse this number', () => {
+  // The "is last" guard this used to carry moved to `112-record-documents.test.ts`
+  // when 112 took the next number. What stays here is the ordering claim, which
+  // is the part that was ever about 111.
+  it('sorts before 112, which took the next number', () => {
     const ids = ALL_ENTITY_MIGRATIONS.map((m) => m.id)
-    expect(ids.at(-1)).toBe('111-order-build-drift')
+    expect(ids.indexOf('111-order-build-drift')).toBeLessThan(ids.indexOf('112-record-documents'))
   })
 })
 

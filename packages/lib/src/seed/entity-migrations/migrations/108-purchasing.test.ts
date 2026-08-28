@@ -754,9 +754,15 @@ describe('purchase_order field shapes the plan is explicit about', () => {
   // time — so this is asserted rather than trusted.
   //
   // The shape is copied verbatim from the two incumbents because all three go
-  // through the same read path: a bare MediaAsset id in TEXT, hidden, and
-  // `updatable` but not `creatable` (only `ensureDocumentPdf` writes it, via
-  // `FieldValueService`, which bypasses the pre-hook chain).
+  // through the same read path: a single FILE value carrying `asset:<MediaAsset
+  // id>`, hidden, and neither creatable nor updatable — only `ensureDocumentPdf`
+  // writes it, via `FieldValueService`, which does not read the capability at all.
+  //
+  // 🛑 `updatable: false` is load-bearing here, not cosmetic. It is what stops a
+  // person putting their own upload in the slot: `ensureDocumentPdf` appends a
+  // new VERSION to whatever asset the pointer names when the content hash
+  // disagrees, and a user's file has no hash at all, so the next send would
+  // republish it as our PDF (plans/purchasing/08-documents-on-records.md P20).
   it('carries a pdf-asset pointer shaped exactly like the quote and invoice ones', () => {
     const po = PURCHASE_ORDER_FIELDS.pdfAsset
     expect(po?.systemAttribute).toBe('purchase_order_pdf_asset')
@@ -771,12 +777,16 @@ describe('purchase_order field shapes the plan is explicit about', () => {
     }
 
     // Spelled out too, so a change to all three at once still trips something.
-    expect(po?.fieldType).toBe(FieldType.TEXT)
+    expect(po?.fieldType).toBe(FieldType.FILE)
     expect(po?.capabilities?.creatable).toBe(false)
-    expect(po?.capabilities?.updatable).toBe(true)
+    expect(po?.capabilities?.updatable).toBe(false)
     expect(po?.capabilities?.hidden).toBe(true)
-    // Not a RELATIONSHIP: it stores a MediaAsset id as text, and `media_asset`
-    // is not an entity def, so a relation would have nothing to link to.
+    // Single, and a re-render replaces in place — which is what the pipeline
+    // already does (one MediaAsset per document, a new version per change).
+    expect(po?.options?.file?.allowMultiple).toBe(false)
+    expect(po?.options?.file?.maxFiles).toBe(1)
+    // Not a RELATIONSHIP: it stores a MediaAsset ref, and `media_asset` is not
+    // an entity def, so a relation would have nothing to link to.
     expect(po?.relationship).toBeUndefined()
     // Late/administrative, where the quote (aK) and invoice (aI) put theirs —
     // after `bills` (aJ) and before the createdAt/updatedAt `b*` block.

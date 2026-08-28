@@ -500,7 +500,8 @@ export const SYSTEM_ATTRIBUTES = [
   'purchase_order_allocation_basis',
   'purchase_order_tax_recoverable',
   'purchase_order_notes',
-  'purchase_order_pdf_asset', // MediaAsset id, TEXT — the quote/invoice_pdf_asset precedent
+  'purchase_order_pdf_asset', // FILE — the generated PO PDF, written only by ensureDocumentPdf
+  'purchase_order_attachments', // FILE, multi — vendor confirmations, drawings, signed terms
   'purchase_order_lines', // inverse of purchase_order_line_purchase_order
   'purchase_order_bills', // inverse of vendor_bill_purchase_order
   'company_purchase_orders', // inverse of purchase_order_vendor
@@ -542,7 +543,8 @@ export const SYSTEM_ATTRIBUTES = [
   'vendor_bill_total',
   'vendor_bill_match_variance',
   'vendor_bill_match_notes',
-  'vendor_bill_document', // MediaAsset id, TEXT — the invoice_pdf_asset precedent
+  'vendor_bill_document', // FILE — the vendor's invoice as received; the phase-2 parse target
+  'vendor_bill_attachments', // FILE, multi — packing slips, freight invoices, photos
   'vendor_bill_lines',
   // Payment (P12): the same six fields in both modes. What differs is who
   // writes them and whether relieving A/P is our job.

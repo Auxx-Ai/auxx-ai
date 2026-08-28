@@ -594,28 +594,76 @@ export const PURCHASE_ORDER_FIELDS: Record<string, ResourceField> = {
   // send re-renders AND mints a fresh MediaAsset — an asset leak that grows per
   // send, throws nothing, and produces a correct PDF every time. Nothing but
   // storage growth would ever show it.
+  // The last-rendered purchase order PDF, as a single FILE value
+  // (plans/purchasing/08-documents-on-records.md P19/P20). Written ONLY by
+  // `ensureDocumentPdf`; `updatable: false` is what keeps every human door shut —
+  // it is read by the grid cell, the panel, the dialogs and connector writability,
+  // and NOT by the field-value write path, so the renderer is unaffected
+  // (the `079-enrichment-fields-backend-owned` shape).
+  //
+  // 🛑 Never make this user-writable. `ensureDocumentPdf` reads the pointer, loads
+  // that MediaAsset and appends a new VERSION to it whenever the content hash
+  // disagrees. A file a person uploaded has no `contentHash` at all, so the
+  // comparison always fails and the next send would silently republish their file
+  // as our PDF.
   pdfAsset: {
     id: toFieldId('pdfAsset'),
     key: 'pdfAsset',
-    label: 'PDF Asset',
-    type: BaseType.STRING,
-    fieldType: FieldType.TEXT,
+    label: 'Purchase order PDF',
+    type: BaseType.FILE,
+    fieldType: FieldType.FILE,
     isSystem: true,
     systemAttribute: 'purchase_order_pdf_asset',
     systemSortOrder: 'aK',
     showInPanel: false,
     nullable: true,
+    options: {
+      file: { allowMultiple: false, maxFiles: 1, allowedFileTypes: ['document'] },
+    },
     capabilities: {
       filterable: false,
       sortable: false,
       creatable: false,
-      updatable: true,
+      updatable: false,
       configurable: false,
       hidden: true,
     },
     description:
-      'MediaAsset id of the last-rendered purchase order PDF (money MQ2 build spec §C.1 recipe) ' +
-      '— written only by ensureDocumentPdf via FieldValueService, never user-editable',
+      'The generated purchase order PDF ({ ref: "asset:<MediaAsset id>" }) — written only by ' +
+      'ensureDocumentPdf, surfaced read-only through the documents card, never user-editable',
+  },
+
+  // What the vendor sent back, and anything else worth keeping with the order:
+  // their order confirmation, their quote, a drawing, signed T&Cs
+  // (plans/purchasing/08-documents-on-records.md P18). Hidden from the Details
+  // panel — the documents card renders this beside the generated PDF.
+  //
+  // 🛑 An attachment is INTERNAL by default. Nothing here enters the PO's PDF
+  // payload or the send attachment set unless it is explicitly chosen (P22).
+  attachments: {
+    id: toFieldId('attachments'),
+    key: 'attachments',
+    label: 'Attachments',
+    type: BaseType.FILE,
+    fieldType: FieldType.FILE,
+    isSystem: true,
+    systemAttribute: 'purchase_order_attachments',
+    systemSortOrder: 'aK1',
+    showInPanel: false,
+    nullable: true,
+    options: {
+      file: { allowMultiple: true, maxFiles: 20, allowedFileTypes: ['document', 'image'] },
+    },
+    capabilities: {
+      filterable: false,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    description:
+      'Supporting documents for this purchase order — vendor order confirmations, quotes, ' +
+      'drawings, signed terms',
   },
 
   // Reverse relationship: lines (from purchase_order_line.purchaseOrder).
