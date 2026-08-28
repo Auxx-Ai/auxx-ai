@@ -229,7 +229,7 @@ export function CompleteBuildDialog({
           <DialogTitle>Complete {number ?? 'build'}</DialogTitle>
           <DialogDescription>
             Consumes the components and puts the finished units into stock at their standard cost. A
-            completed build is never edited or deleted — it is corrected by a reversing build.
+            completed build is never edited or deleted (it is corrected by a reversing build).
           </DialogDescription>
         </DialogHeader>
 
@@ -628,7 +628,7 @@ function UnpricedWarning({
   }
   return (
     <div className='rounded-md bg-destructive/10 p-2 text-destructive text-xs'>
-      <p className='font-medium'>Cannot post — these parts have no standard cost:</p>
+      <p className='font-medium'>Cannot post: these parts have no standard cost:</p>
       <ul className='mt-1 space-y-0.5'>
         {partIds.map((id) => (
           <li key={id} className='truncate'>
@@ -737,7 +737,7 @@ function SummaryLine({
  * and set the rate.
  */
 function absorptionHint(rate: number | null | undefined, currencyCode: string): string {
-  if (rate == null) return 'No rate declared — absorbs nothing unless you enter an amount'
+  if (rate == null) return 'No rate declared: absorbs nothing unless you enter an amount'
   return `${formatCurrency(rate, { currencyCode })} per unit started`
 }
 

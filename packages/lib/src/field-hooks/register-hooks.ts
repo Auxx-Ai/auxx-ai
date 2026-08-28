@@ -1,6 +1,7 @@
 // packages/lib/src/field-hooks/register-hooks.ts
 
 import { FieldType as FieldTypeEnum } from '@auxx/database/enums'
+import { registerAutoBuildRules } from '../builds/auto-build-rule'
 import {
   ensureVisitOnWorkOrderCreate,
   syncVisitPinsOnAddressNormalized,
@@ -106,6 +107,14 @@ export function registerAllHooks(): void {
   // dispatch through door 2 (`handleRecordRules`) + the manifest consumer, so they gain
   // sync/import visibility for free. Replaces the deleted ENTITY_TRIGGERS registry.
   registerEntitySystemRules()
+
+  // The order-triggered build (plans/products/12-order-triggered-build.md, AB2/AB6): two
+  // more code-declared system rules on the NATIVE `orders` def — one lifecycle rule that
+  // raises a `planned` build per ordered part on create, and one field rule that cancels or
+  // REVERSES those builds when `order_cancelled_at` is set. Nothing is ever deleted (AB6).
+  // Both handlers swallow their own failures; the module's top-level imports stay light and
+  // everything heavy is lazy-imported inside the wrappers.
+  registerAutoBuildRules()
 
   // Field-change post-hook — fires `<prefix>:field:updated` after every field
   // write. Registered globally so contacts, tickets, companies, and custom

@@ -11,6 +11,45 @@
  * first standard has ever been rolled without producing a wrong number.
  */
 
+export {
+  type AutoBuildCreation,
+  type AutoBuildFailure,
+  type AutoBuildSkip,
+  type AutoBuildSkipReason,
+  type AutoBuildSummary,
+  runAutoBuildForOrders,
+} from './auto-build'
+export {
+  type AutoBuildCancellationAction,
+  type AutoBuildCancellationFailure,
+  type AutoBuildCancellationOutcome,
+  type AutoBuildCancellationSummary,
+  cancelAutoBuildsForOrders,
+} from './auto-build-cancel'
+export {
+  AUTO_BUILD_STATUSES,
+  AUTO_BUILD_STOCK_RULES,
+  type AutoBuildLine,
+  type AutoBuildStatus,
+  type AutoBuildStockRule,
+  isCoveredByStock,
+  isWithinEnablementWindow,
+  parseAutoBuildEnabledAt,
+  resolveAutoBuildStatus,
+  resolveAutoBuildStockRule,
+  sumQuantityByPart,
+} from './auto-build-policy'
+export {
+  type AutoBuildOrder,
+  loadAutoBuildOrders,
+  readPartQuantitiesOnHand,
+} from './auto-build-queries'
+export {
+  AUTO_BUILD_FROM_ORDER,
+  CANCEL_AUTO_BUILDS_ON_ORDER_CANCELLED,
+  registerAutoBuildRules,
+} from './auto-build-rule'
+export { type AutoBuildSettings, loadAutoBuildSettings } from './auto-build-settings'
 export { cancelBuild, createBuild, startBuild } from './build-mutations'
 export {
   type BuildComponentPlanInput,

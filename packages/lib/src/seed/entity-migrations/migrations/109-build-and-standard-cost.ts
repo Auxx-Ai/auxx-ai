@@ -133,7 +133,7 @@ const INCUMBENT_FIELD_KEYS: Record<(typeof EXISTING_TYPES)[number], readonly str
  * **No backfill, anywhere** (§1.5). Every new field reads NULL on every
  * existing row and every future reader must handle that. There is nothing to
  * reconstruct: a past movement's cost is not recoverable from a later ledger
- * state, and pretending otherwise is the Stocksmith failure exactly.
+ * state, and pretending otherwise is the Others failure exactly.
  *
  * **No field views and no default table views.** 108 materialised
  * `dialog_create` views because a dialog is an allowlist the registry cannot

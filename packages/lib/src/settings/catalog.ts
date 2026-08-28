@@ -872,6 +872,72 @@ export const SETTINGS_CATALOG = {
       'Applied overhead per assembled unit, integer minor units: total annual factory ' +
       'overhead / expected annual units. Unset = no overhead absorption.',
   },
+
+  // ── Order-triggered auto-build (plans/products/12-order-triggered-build.md §5.4) ────────
+  //
+  // Scoped GENERAL, following the `manufacturing.*` precedent directly above:
+  // there is no INVENTORY value in the `SettingScope` pg enum and adding one is
+  // a Drizzle migration this phase does not carry. The enum's existing
+  // `INVENTORY_BRIDGE` member is NOT reused — it is the dead scope of the v9
+  // bridge deleted in #1941, and naming the bridge's replacement after the
+  // bridge is worse than a generic scope.
+  'inventory.autoBuildFromOrders': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'CHECKBOX',
+    options: { variant: 'switch' },
+    // Off by default. Turning it on starts production automatically, which is a
+    // business decision nobody should acquire by upgrading.
+    defaultValue: false,
+    description:
+      'When on, creating an order raises a planned build for each ordered part that has a ' +
+      'bill of materials.',
+  },
+  // 🛑 Written by the settings write path, not by a form: flipping
+  // `inventory.autoBuildFromOrders` on stamps this with the moment it happened
+  // (AB8). Orders placed before it are never built — without it, switching this
+  // on against a Shopify back-fill fires a build for every historical order at
+  // once. Re-stamped on every off->on transition, so a switch turned off for
+  // three months does not reopen those three months when it comes back.
+  'inventory.autoBuildEnabledAt': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'DATETIME',
+    defaultValue: null,
+    description:
+      'When auto-build was last switched on, ISO 8601. Orders placed before it are never ' +
+      'built. Stamped automatically; not a user-facing field.',
+  },
+  // ⚠️ ONE legal value today, on purpose (AB5). A planned build writes no stock
+  // movements, which is what lets this trigger ship before a single standard
+  // cost has been rolled. `completed` becomes selectable in phase 4, once
+  // `part_kind` is set on the parts that are actually built — offering it now
+  // would abort `completeBuild` on the first auto-run, on every order.
+  'inventory.autoBuildStatus': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'SINGLE_SELECT',
+    defaultValue: 'planned',
+    options: { options: [{ value: 'planned', label: 'Planned' }] },
+    description: 'The status an automatically raised build lands in.',
+  },
+  // 🛑 The DEFAULT is the safe value (AB4). `all_stock_levels` builds a lift that is already
+  // crated on the shelf, which gives you two lifts and one order.
+  'inventory.autoBuildStockRule': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'SINGLE_SELECT',
+    defaultValue: 'out_of_stock_only',
+    options: {
+      options: [
+        { value: 'out_of_stock_only', label: 'Out of stock only' },
+        { value: 'all_stock_levels', label: 'All stock levels' },
+      ],
+    },
+    description:
+      'Whether an auto-build is raised for a part whose quantity on hand already covers the ' +
+      'ordered quantity.',
+  },
 } satisfies Record<string, SettingConfig>
 
 /**
