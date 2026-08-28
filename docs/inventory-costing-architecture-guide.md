@@ -528,8 +528,9 @@ it VACATED holding a phantom quantity. `newValue` names only the destination, so
 reads `EntityFieldChangeEvent.oldValue` — the pre-write value, and the only place the vacated
 parent is still named — and marks both. This is why the reconciler is keyed on the PURCHASE ORDER
 LINE (the marked record IS the parent, no `resolve` step): one keyed on the bill line could only
-ever resolve the parent it now points at. ⚠️ The fix prevents new divergence; it does **not**
-repair rows that already diverged — those need a backfill.
+ever resolve the parent it now points at. ⚠️ A fix of this shape prevents new divergence and does
+**not** repair rows that already diverged; whether that needs a backfill is a separate call, and
+for this one it did not (purchasing was pre-deployment, so the stale rows went with the dev seed).
 
 **A cached value derived from CODE outlives the code.** The `recordRules` cache once held DB
 rules unioned with code-declared system rules, so adding an action to a system rule did nothing

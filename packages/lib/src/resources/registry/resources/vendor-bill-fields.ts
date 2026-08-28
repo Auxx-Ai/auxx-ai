@@ -468,6 +468,21 @@ export const VENDOR_BILL_FIELDS: Record<string, ResourceField> = {
       'the provider poll while `vendor_payment` is inert',
   },
 
+  // Written by `purchasing/vendor-bill-balance.ts`, never by hand — a
+  // hand-maintained copy of a subtraction diverges silently. Stored, like every
+  // money field here, in integer minor units.
+  //
+  // 🛑 `computed` was FALSE while the field also had no writer, which is how the
+  // two halves of one defect hid each other: nothing derived the value, and
+  // nothing declared that anything should. It is `true` now for the same reason
+  // `purchase_order_line_quantity_billed` is — it is what `fieldLockReason`
+  // reads to say "computed" rather than merely "system", and what excludes the
+  // field from connector-writable surfaces.
+  //
+  // ⚠️ `ensureCustomFields` is INSERT-only, so flipping it here reaches NEW orgs
+  // only — an org that already ran 108 keeps whatever its `CustomField` row was
+  // created with. No migration carries it, deliberately: nothing is live yet, so
+  // the dev database was corrected in place instead.
   balance: {
     id: toFieldId('balance'),
     key: 'balance',
@@ -489,11 +504,10 @@ export const VENDOR_BILL_FIELDS: Record<string, ResourceField> = {
       sortable: true,
       creatable: false, // computed from total and amountPaid
       updatable: false,
+      computed: true,
       configurable: false,
     },
-    description:
-      'Computed as `total - amountPaid`, integer minor units — what is still owed. Never typed: ' +
-      'a hand-maintained copy of a subtraction diverges silently.',
+    description: 'What is still owed on this bill — the total minus what has been paid',
   },
 
   paymentMethod: {
