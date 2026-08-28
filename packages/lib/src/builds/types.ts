@@ -212,6 +212,20 @@ export interface CreateBuildInput {
    * person raised against the same order deliberately (products/12 AB7).
    */
   source?: 'manual' | 'order'
+  /**
+   * The order's demand fingerprint to stamp on the new build, when the caller
+   * already has it.
+   *
+   * Purely an optimisation, and the ONLY thing it changes is a read: omitted,
+   * `createBuild` derives the same value by re-running `loadAutoBuildOrders` for
+   * this one order. The convergence pass computed it before deciding to raise
+   * anything at all (`reconcile-order-builds.ts`), so handing it over spares a
+   * four-query round trip per build.
+   *
+   * Ignored unless `source` is `order` — a hand-raised build never carries a
+   * stamp, because it is not tracking anything (products/12 AB7).
+   */
+  orderRevision?: string
 }
 
 /** Move a `planned` run to `in_progress`. */

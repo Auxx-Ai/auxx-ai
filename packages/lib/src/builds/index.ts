@@ -7,18 +7,10 @@
  *
  * `completeBuild` is the ONLY export here that writes a stock movement, and it
  * is gated on a real `part_standard_cost` (README B2). Everything else — the
- * entity, the list, the plan, the auto-build trigger — can be used before the
+ * entity, the list, the plan, the order reconciler — can be used before the
  * first standard has ever been rolled without producing a wrong number.
  */
 
-export {
-  type AutoBuildCreation,
-  type AutoBuildFailure,
-  type AutoBuildSkip,
-  type AutoBuildSkipReason,
-  type AutoBuildSummary,
-  runAutoBuildForOrders,
-} from './auto-build'
 export {
   type AutoBuildCancellationAction,
   type AutoBuildCancellationFailure,
@@ -44,13 +36,14 @@ export {
   loadAutoBuildOrders,
   readPartQuantitiesOnHand,
 } from './auto-build-queries'
-export {
-  AUTO_BUILD_FROM_ORDER,
-  CANCEL_AUTO_BUILDS_ON_ORDER_CANCELLED,
-  registerAutoBuildRules,
-} from './auto-build-rule'
+export { CANCEL_AUTO_BUILDS_ON_ORDER_CANCELLED, registerAutoBuildRules } from './auto-build-rule'
 export { type AutoBuildSettings, loadAutoBuildSettings } from './auto-build-settings'
-export { cancelBuild, createBuild, startBuild } from './build-mutations'
+export {
+  amendPlannedBuildQuantity,
+  cancelBuild,
+  createBuild,
+  startBuild,
+} from './build-mutations'
 export {
   type BuildComponentPlanInput,
   type BuildFieldContext,
@@ -70,6 +63,7 @@ export {
   type BuildCompletionSummary,
   type BuildStatusValue,
   buildVariance,
+  canAmendBuild,
   canCancelBuild,
   canCompleteBuild,
   canReverseBuild,
@@ -84,8 +78,8 @@ export {
   unitsStarted,
 } from './client'
 export { completeBuild } from './complete-build'
-// Model A+ drift (plans/products/13). Read-only and stamp-only — nothing here
-// creates, amends or cancels a build.
+// Model A+ drift (plans/products/13) — the read that shows an order and a build
+// disagreeing. Read-only; Model B's convergence is `reconcileOrderBuilds`.
 export { type BuildDrift, readBuildDrift } from './drift-queries'
 export {
   markOrStampOrder,
@@ -93,6 +87,26 @@ export {
   registerOrderDriftReconcilers,
 } from './drift-reconciler'
 export { hasDrifted, type OrderDemand, orderDemandFingerprint } from './order-fingerprint'
+export {
+  type OrderBuildAmendment,
+  type OrderBuildCancellation,
+  type OrderBuildRaise,
+  type OrderBuildReconcileFailure,
+  type OrderBuildReconcileSkip,
+  type OrderBuildReconcileSkipReason,
+  type OrderBuildReconcileSummary,
+  type ReconcileOrderInput,
+  reconcileOrderBuilds,
+} from './reconcile-order-builds'
+// Model B (plans/products/13, events/08 phase 5) — the decision, then the writer.
+export {
+  type BuildConvergenceAction,
+  type ConvergenceSkipReason,
+  type OrderBuildConvergenceInput,
+  type OrderBuildPlan,
+  planOrderBuildConvergence,
+} from './reconcile-policy'
+export { readOrderRaisedBuilds } from './reconcile-queries'
 export { reverseBuild } from './reverse-build'
 export { rollStandardCost } from './standard-cost'
 export {

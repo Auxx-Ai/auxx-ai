@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest'
 import {
   absorbedRunCost,
   buildVariance,
+  canAmendBuild,
   canCancelBuild,
   canCompleteBuild,
   canReverseBuild,
@@ -43,6 +44,7 @@ describe('the status gates', () => {
     expect(canCompleteBuild(null)).toBe(false)
     expect(canCancelBuild(null)).toBe(false)
     expect(canReverseBuild(null)).toBe(false)
+    expect(canAmendBuild(null)).toBe(false)
   })
 
   it('allows exactly one completion (B8)', () => {
@@ -59,6 +61,27 @@ describe('the status gates', () => {
     expect(canCancelBuild('planned')).toBe(true)
     expect(canCancelBuild('in_progress')).toBe(true)
     expect(canCancelBuild('completed')).toBe(false)
+  })
+
+  // 🛑 The one gate that is NARROWER than `canCancelBuild`, and the asymmetry is
+  // the point: an `in_progress` build has written no movements either, so a
+  // ledger argument would let it through. The reason it is refused is
+  // operational — material may already be cut against the quantity somebody was
+  // told to build (plans/products/13 §1.0(a), §1.5).
+  it('amends only a planned build — in_progress is cancellable, never amendable', () => {
+    expect(canAmendBuild('planned')).toBe(true)
+    expect(canAmendBuild('in_progress')).toBe(false)
+    expect(canAmendBuild('completed')).toBe(false)
+    expect(canAmendBuild('canceled')).toBe(false)
+  })
+
+  it('is strictly narrower than the cancellation gate, on every status', () => {
+    // Asserted as an implication rather than four literals, so widening
+    // `canAmendBuild` later cannot pass while leaving §1.5 broken.
+    for (const status of ['planned', 'in_progress', 'completed', 'canceled', null] as const) {
+      if (canAmendBuild(status)) expect(canCancelBuild(status)).toBe(true)
+    }
+    expect(canCancelBuild('in_progress') && !canAmendBuild('in_progress')).toBe(true)
   })
 })
 

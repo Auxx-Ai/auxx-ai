@@ -1,22 +1,36 @@
 // packages/lib/src/builds/auto-build-rule.ts
 
 /**
- * The two system rules that make the build entity react to an order.
+ * The ONE system rule that makes the build entity react to an order.
  *
  * plans/products/12-order-triggered-build.md sections 5.1 (AB2) and 6.2 (AB6).
  *
- * 🛑 **AB2 — code-declared system rules, not managed `RecordRule` rows.**
+ * 🛑 **Q13 (plans/products/13 section 4) — there is exactly ONE raise door, and
+ * it is not here.** Plan 12's `auto-build-from-order` rule (`on: 'created'`) and
+ * the `runAutoBuildForOrders` orchestrator behind it were DELETED in the same
+ * change that turned the reconciler's `apply` on. Under Model B the reconciler
+ * (`drift-reconciler.ts` -> `reconcileOrderBuilds`) raises, amends and cancels an
+ * order's builds, and that job is a strict superset of what the trigger did.
+ * Keeping both was not merely redundant: the rule dispatched at sync finalize
+ * while the drain runs post-commit of the **same write**, so both could read
+ * *"no build exists for this part"* and both raise.
+ * `planOrderBuildConvergence` then amends only the OLDEST planned build per pair
+ * and marks the rest `duplicate-build` — a **skip, never a cancel** — so the
+ * extra build was permanent until a person cancelled it by hand.
+ * ⚠️ Do not reintroduce a second door "just for the connector"; plan 13 section
+ * 1.6 traces why the drain is reached anyway, and events/08 R6(c) is the right
+ * fix for the one lane it is not.
+ *
+ * What survives is **cancellation**, which is a different concern: it also
+ * *reverses* completed builds, and it is deliberately NOT gated on the
+ * `inventory.autoBuildFromOrders` switch — an org that turned raising off still
+ * has to unwind what was already raised.
+ *
+ * 🛑 **AB2 — a code-declared system rule, not a managed `RecordRule` row.**
  * Declarations are unioned into the org rule cache at compute time
  * (`record-rules/system-rules.ts`), resolved per org, and dropped for an org
  * that lacks the def or the field. The v9 inventory bridge needed a DB row per
  * org, a provisioning step and a teardown path; this needs none of them.
- *
- * ⚠️ Contrary to plan 12 section 5.1, `declarations` was NOT empty when this was
- * written — `field-hooks/system-entity-rules.ts` and
- * `field-hooks/system-record-rules.ts` already declare nine lifecycle and seven
- * field system rules between them, including the live
- * `mfg-stock-movements-created`. These two follow that shipped shape exactly
- * rather than inventing one.
  *
  * 🛑 **AB3 — `defSlug` is the NATIVE order, never `shopify_orders`.** Only a
  * native `line_item` carries `line_item_part`. The slug used is the def's
@@ -29,10 +43,10 @@
  * for record rules is correct, because a seeded demo order must not manufacture
  * anything.
  *
- * Top-level imports stay light — the two orchestrators pull `@auxx/database`,
- * the CRUD handler and the BOM graph, so they are lazy-imported inside the
- * wrappers. A static import here would drag all of that into
- * `registerAllHooks()`'s module graph (same rule as `system-entity-rules.ts`).
+ * Top-level imports stay light — the orchestrator pulls `@auxx/database`, the
+ * CRUD handler and the BOM graph, so it is lazy-imported inside the wrapper. A
+ * static import here would drag all of that into `registerAllHooks()`'s module
+ * graph (same rule as `system-entity-rules.ts`).
  */
 
 import { createScopedLogger } from '@auxx/logger'
@@ -43,37 +57,19 @@ import { declareSystemRules } from '../record-rules/system-rules'
 
 const logger = createScopedLogger('builds:auto-build-rule')
 
-/** Native handler keys. Registered here, referenced by the declarations below. */
-export const AUTO_BUILD_FROM_ORDER = 'autoBuildFromOrder'
+/** Native handler key. Registered here, referenced by the declaration below. */
 export const CANCEL_AUTO_BUILDS_ON_ORDER_CANCELLED = 'cancelAutoBuildsOnOrderCancelled'
 
 let registered = false
 
 /**
- * Declare the two auto-build system rules and register their native handlers.
- * Called from `registerAllHooks()`. Idempotent — safe under repeated init.
+ * Declare the auto-build cancellation system rule and register its native
+ * handler. Called from `registerAllHooks()`. Idempotent — safe under repeated
+ * init.
  */
 export function registerAutoBuildRules(): void {
   if (registered) return
   registered = true
-
-  registerNativeRuleHandler(AUTO_BUILD_FROM_ORDER, async (event) => {
-    // Lifecycle rule: `deleted` never reaches this declaration, but a native
-    // handler is keyed by name and could in principle be reused, so be explicit.
-    if (event.action !== 'created') return
-    await runQuietly('auto-build from order', event.organizationId, async () => {
-      const [{ database }, { runAutoBuildForOrders }] = await Promise.all([
-        import('@auxx/database'),
-        import('./auto-build'),
-      ])
-      const result = await runAutoBuildForOrders(
-        database,
-        event.organizationId,
-        toInstanceIds(event.recordIds)
-      )
-      if (result.isErr()) throw result.error
-    })
-  })
 
   registerNativeRuleHandler(CANCEL_AUTO_BUILDS_ON_ORDER_CANCELLED, async (event) => {
     await runQuietly('cancel auto-builds', event.organizationId, async () => {
@@ -93,7 +89,7 @@ export function registerAutoBuildRules(): void {
   declareSystemRules(AUTO_BUILD_SYSTEM_RULES)
 }
 
-/** `<defId>:<instanceId>` -> `instanceId`, which is what the orchestrators take. */
+/** `<defId>:<instanceId>` -> `instanceId`, which is what the orchestrator takes. */
 function toInstanceIds(recordIds: readonly string[]): string[] {
   return recordIds.map((recordId) => parseRecordId(recordId as never).entityInstanceId)
 }
@@ -104,9 +100,9 @@ function toInstanceIds(recordIds: readonly string[]): string[] {
  * The engine already records a per-action failure and moves on, so a throw here
  * would not lose the order; it would, however, mark the rule run failed for a
  * reason nobody can act on, and it would put a dynamic-import failure on the
- * same footing as a genuine business refusal. Both orchestrators already return
- * a `Result` and isolate each order and each part internally; this is the last
- * wall, and it catches the import itself.
+ * same footing as a genuine business refusal. The orchestrator already returns a
+ * `Result` and isolates each order internally; this is the last wall, and it
+ * catches the import itself.
  */
 async function runQuietly(
   what: string,
@@ -124,19 +120,16 @@ async function runQuietly(
 }
 
 /**
- * The two declarations.
+ * The one declaration.
  *
- * `assertSystemRuleShape` requires all-native actions, forbids a `fieldRef` on a
- * lifecycle rule and requires one on a field rule — both of these satisfy it.
+ * 🛑 This list is asserted to have exactly ONE entry
+ * (`__tests__/auto-build-rule.test.ts`). That test is the guard against Q13
+ * being undone — a second entry here is a second raise door.
+ *
+ * `assertSystemRuleShape` requires all-native actions and requires a `fieldRef`
+ * on a field rule — this satisfies it.
  */
 const AUTO_BUILD_SYSTEM_RULES: SystemRuleDeclaration[] = [
-  {
-    key: 'auto-build-from-order',
-    name: 'Build finished goods when an order is created',
-    defSlug: 'orders',
-    on: 'created',
-    actions: [{ type: 'native', handler: AUTO_BUILD_FROM_ORDER }],
-  },
   {
     // ⚠️ `on: 'set'` is the intent, but it is not a guarantee. The interactive
     // native-field door dispatches with `oldValue: undefined` and a sentinel new

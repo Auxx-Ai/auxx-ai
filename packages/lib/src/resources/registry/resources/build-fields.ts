@@ -636,15 +636,23 @@ export const BUILD_FIELDS: Record<string, ResourceField> = {
   },
 
   /**
-   * The order's demand fingerprint AS IT WAS when this build was raised
-   * (plans/products/13 Model A+). Stamped once, by `createBuild`, and only for a
+   * The order's demand fingerprint AS IT WAS when this build was last agreed
+   * with its order (plans/products/13). Stamped by `createBuild`, and only for a
    * build the order raised — a hand-raised build tracks no order and gets none.
    *
-   * 🛑 **Never rewritten.** The whole value of the stamp is that it is a record
-   * of a moment; refreshing it would erase the drift it exists to show. It works
-   * identically for `planned`, `in_progress` and `completed`, which is why plan
-   * 13 preferred it to a status field — §1.5 forbids automation from amending an
-   * `in_progress` build, but nothing forbids it from being HONEST about one.
+   * 🛑 **Rewritten by exactly one other writer, and only alongside the amendment
+   * that earns it.** Under Model A+ this was stamped once and never rewritten,
+   * because refreshing a stamp nothing else had changed would erase the drift it
+   * exists to show. Model B (decided 2026-08-28) adds
+   * `amendPlannedBuildQuantity`, which converges a `planned` build ON its order
+   * and re-stamps in the SAME update — there the old stamp would report drift
+   * that has just been resolved. The invariant is therefore not "never
+   * rewritten" but **"never rewritten on its own"**.
+   *
+   * It works identically for `planned`, `in_progress` and `completed`, which is
+   * why plan 13 preferred it to a status field — §1.5 forbids automation from
+   * amending an `in_progress` build, but nothing forbids it from being HONEST
+   * about one, and `canAmendBuild` is what keeps the amendment off it.
    */
   orderRevision: {
     id: toFieldId('orderRevision'),
@@ -662,7 +670,16 @@ export const BUILD_FIELDS: Record<string, ResourceField> = {
     capabilities: {
       filterable: false,
       sortable: false,
-      // Set on the insert by `createBuild` — there is no second write.
+      // Set on the insert by `createBuild`; re-stamped by exactly one other
+      // writer, `builds/build-mutations.ts`'s `amendPlannedBuildQuantity`.
+      //
+      // 🛑 `updatable: false` STAYS, and is not a contradiction: it means there
+      // is no INTERACTIVE writer — this field is backend-owned, and a person
+      // editing a build must never be able to move its drift stamp. The flag is
+      // documentation and a UI/connector gate; the write path does not read
+      // `capabilities.updatable` at all (`field-hooks/register-hooks.ts:443`,
+      // and data-migrations 078/079 say the same), so a server-side writer needs
+      // no registry change and no migration.
       creatable: true,
       updatable: false,
       configurable: false,
