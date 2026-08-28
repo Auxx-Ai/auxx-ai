@@ -210,3 +210,120 @@ export function buildVariance(parts: {
  * carried so the number and its destination stay in one place.
  */
 export const BUILD_VARIANCE_ACCOUNT = '5090'
+
+/**
+ * The absorbed amount for one rate over the WHOLE run, in whole minor units.
+ *
+ * An explicit input from the completion form wins. Otherwise it is the declared
+ * rate times the units STARTED — not the units produced.
+ *
+ * 🛑 The choice of `unitsStarted` is what makes the variance arithmetic close.
+ * With `s` units scrapped, material, labour and overhead are all absorbed on
+ * `produced + s` while `producedValue` values only `produced`, so the variance
+ * comes out at exactly `s x standardCost`: the scrapped units' whole standard
+ * cost, to 5090, which is what B7 asks for. Absorbing labour on the survivors
+ * instead would net the scrap loss down to material alone and understate it.
+ *
+ * An UNDECLARED rate absorbs `0` here, and that is not the same decision
+ * {@link absorbedRate} makes for the part standard. There, a NULL must survive
+ * into storage because it is the difference between "no rate declared" and "a
+ * declared rate of zero" on a number that gets rolled up and frozen forever.
+ * Here the field records what a specific run actually absorbed, and a run under
+ * no declared rate absorbed nothing — which is a fact, not an absence. It also
+ * keeps the arithmetic consistent: with no rate the part's standard carries no
+ * labour either, so both sides of the variance stay zero.
+ */
+export function absorbedRunCost(
+  explicit: number | null | undefined,
+  rate: number | null | undefined,
+  started: number
+): number {
+  if (explicit != null && Number.isFinite(explicit)) return roundMinorUnits(explicit)
+  if (rate == null || !Number.isFinite(rate)) return 0
+  return roundMinorUnits(rate * started)
+}
+
+/** The five numbers a completion freezes onto the build, all in whole minor units. */
+export interface BuildCompletionSummary {
+  /** Sum of the consumed lines' extended standard cost, POSITIVE. */
+  materialCost: number
+  laborCost: number
+  overheadCost: number
+  /** `round(quantityProduced x the produced part's standard cost)`. */
+  producedValue: number
+  /** `(material + labour + overhead) - producedValue` -> account 5090. */
+  varianceAmount: number
+}
+
+/** Everything {@link summarizeBuildCompletion} needs, and nothing that touches a database. */
+export interface BuildCompletionInputs {
+  /** The priced component lines, exactly as `explodeBuildComponents` returns them. */
+  components: readonly { extendedCost: number | null }[]
+  /** The produced part's frozen standard cost. */
+  producedUnitCost: number
+  quantityProduced: number
+  quantityScrapped: number
+  /** An explicit absorbed amount for the whole run, or absent to use the rate. */
+  laborCost?: number | null
+  overheadCost?: number | null
+  /** The two `manufacturing.*` org rates, per assembled unit. `null` absorbs nothing. */
+  rates: { laborCostPerUnit: number | null; overheadCostPerUnit: number | null }
+}
+
+/**
+ * What a completion costs, from inputs a browser already holds.
+ *
+ * 🛑 **This is the ONE definition of the arithmetic, and `completeBuild` calls
+ * it too.** The completion form has to show the variance before the write —
+ * `completeBuild` is irreversible except by a reversing build (B6) and refuses a
+ * second completion (B8), so a person must see the number they are committing
+ * to. Two implementations of that number, one for the preview and one for the
+ * write, is exactly the drift this codebase pays for elsewhere; the preview is
+ * trustworthy only because it is literally the same function.
+ *
+ * Every input is already rounded to whole minor units by the reads that produced
+ * it, and the two derived terms round again on the way out.
+ */
+export function summarizeBuildCompletion(inputs: BuildCompletionInputs): BuildCompletionSummary {
+  const started = unitsStarted(inputs.quantityProduced, inputs.quantityScrapped)
+
+  let materialCost = 0
+  for (const line of inputs.components) materialCost += line.extendedCost ?? 0
+
+  const laborCost = absorbedRunCost(inputs.laborCost, inputs.rates.laborCostPerUnit, started)
+  const overheadCost = absorbedRunCost(
+    inputs.overheadCost,
+    inputs.rates.overheadCostPerUnit,
+    started
+  )
+  // `round(unitCost x quantity)`, never a sum of rounded units — the same rule,
+  // and the same reason, as `computeExtendedCost` in the receiving module.
+  const producedValue = roundMinorUnits(inputs.producedUnitCost * inputs.quantityProduced)
+
+  return {
+    materialCost,
+    laborCost,
+    overheadCost,
+    producedValue,
+    varianceAmount: buildVariance({ materialCost, laborCost, overheadCost, producedValue }),
+  }
+}
+
+// ─── Client-safe re-exports of the build event's data shapes ───────────
+
+/**
+ * The four shapes a browser needs to render a completion form, re-exported so
+ * `@auxx/lib/builds/client` is the one door client code goes through.
+ *
+ * 🛑 Client code must NEVER import from `@auxx/lib/builds` — that barrel pulls in
+ * the Drizzle handlers, the realtime service and the crud stack, and a browser
+ * bundle that reaches any of them fails the build. These are pure data
+ * interfaces, `types.ts` imports nothing but this file, and `export type` is
+ * erased entirely at build time, so this costs a browser bundle nothing at all.
+ */
+export type {
+  AbsorptionRates,
+  BuildComponentLine,
+  BuildComponentOverride,
+  BuildComponentPlan,
+} from './types'

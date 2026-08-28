@@ -269,6 +269,34 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
     ],
   },
 
+  build: {
+    entityType: 'build',
+    // No entity-specific main tab. A build is not a document with lines you
+    // edit — it is raised, worked, and completed once (B8), so everything worth
+    // reading about a run fits the two sidebar cards below. The two universal
+    // tabs are the whole main area, exactly as the generic `entity` config.
+    mainTabs: [
+      { value: 'timeline', label: 'Timeline', icon: 'clock' },
+      { value: 'tasks', label: 'Tasks', icon: 'list-todo' },
+    ],
+    sidebarTabs: DEFAULT_SIDEBAR_TABS,
+    defaultTab: 'timeline',
+    defaultSidebarTab: 'overview',
+    // The sidebar and the drawer read the SAME `DRAWER_TAB_CARD_COMPONENTS`
+    // registry, so each value here is the card key and must match the `build:*`
+    // entries there and in the build's drawer block.
+    //
+    // `run` is the only place the lifecycle actions live — Start, Cancel,
+    // Complete, Reverse — because `build_status` is `showInDialogs: false` and
+    // `completeBuild` is a procedure, not a status somebody picks.
+    // `ledger` is the only surface for `build_movements`, whose field is
+    // `showInPanel: false` (section 1.6: "has_many; a card lists them").
+    sidebarCards: [
+      { value: 'run', label: 'Run' },
+      { value: 'ledger', label: 'Ledger', recordResource: 'stock_movement' },
+    ],
+  },
+
   /** Generic entities (custom entityDefinitions with entityType='entity') */
   entity: {
     entityType: 'entity',

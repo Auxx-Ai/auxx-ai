@@ -256,6 +256,22 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
     },
   },
 
+  build: {
+    entityType: 'build',
+    // Drawer parity with the detail page (detail-view-config.ts): the same two
+    // cards, from the same `DRAWER_TAB_CARD_COMPONENTS` keys. A build opened
+    // from the parts list or an order must offer the same Complete button the
+    // page does, or the drawer becomes a read-only view of a run somebody then
+    // has to navigate away to finish.
+    additionalTabs: [],
+    tabCards: {
+      overview: [
+        { value: 'run', label: 'Run' },
+        { value: 'ledger', label: 'Ledger', recordResource: 'stock_movement' },
+      ],
+    },
+  },
+
   vendor_bill: {
     entityType: 'vendor_bill',
     // Drawer-only, no detail page: a bill RECORDS something already settled, so

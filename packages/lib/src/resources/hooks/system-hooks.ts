@@ -1,5 +1,6 @@
 // packages/lib/src/resources/hooks/system-hooks.ts
 
+import { BUILD_HOOKS } from './build-hooks'
 import { COMMON_HOOKS } from './common-hooks'
 import { CONTACT_HOOKS } from './contact-hooks'
 import { INVOICE_HOOKS } from './invoice-hooks'
@@ -34,6 +35,7 @@ const HOOKS_BY_ENTITY_TYPE: Record<string, SystemHookRegistry> = {
   line_item: LINE_ITEM_HOOKS,
   purchase_order: PURCHASE_ORDER_HOOKS,
   vendor_bill: VENDOR_BILL_HOOKS,
+  build: BUILD_HOOKS,
 }
 
 /**

@@ -54,7 +54,7 @@ import {
   getRealtimeService,
   publishFieldValueUpdates,
 } from '../realtime'
-import { computeExtendedCost, resolveGlAccountForPartKind } from '../receiving/client'
+import { resolveGlAccountForPartKind } from '../receiving/client'
 import { UnifiedCrudHandler } from '../resources/crud/unified-handler'
 import {
   BuildStatus,
@@ -72,7 +72,7 @@ import {
   requireBuildFieldContext,
   requireBuildMovementFieldContext,
 } from './build-queries'
-import { buildVariance, canCompleteBuild, roundMinorUnits, unitsStarted } from './client'
+import { canCompleteBuild, summarizeBuildCompletion } from './client'
 import { guard } from './guard'
 import { loadAbsorptionRates } from './standard-cost-queries'
 import type {
@@ -220,9 +220,6 @@ async function writeCompletion(
   })
   assertPlanIsPostable(plan)
 
-  const started = unitsStarted(quantityProduced, quantityScrapped)
-  const laborCost = absorbed(input.laborCost, rates.laborCostPerUnit, started)
-  const overheadCost = absorbed(input.overheadCost, rates.overheadCostPerUnit, started)
   // Non-null by construction: `assertPlanIsPostable` refuses a plan whose
   // produced part has no standard, which is the same "never post a zero cost"
   // rule seen from the other side. Re-checked rather than cast, because a cast
@@ -233,17 +230,22 @@ async function writeCompletion(
       'Refusing to complete a build at zero cost: roll the standard cost for the produced part first'
     )
   }
-  const producedValue = computeExtendedCost(producedUnitCost, quantityProduced)
 
-  let materialCost = 0
-  for (const line of plan.components) materialCost += line.extendedCost ?? 0
-
-  const varianceAmount = buildVariance({
-    materialCost,
-    laborCost,
-    overheadCost,
-    producedValue,
-  })
+  // 🛑 The SAME function the completion form runs to preview these five numbers
+  // (`client.ts`). The form has to show the variance before the write, because a
+  // completion is irreversible except by a reversing build (B6) and refuses a
+  // second attempt (B8) — and a preview computed by a second implementation is
+  // only accidentally the number that gets stored.
+  const { materialCost, laborCost, overheadCost, producedValue, varianceAmount } =
+    summarizeBuildCompletion({
+      components: plan.components,
+      producedUnitCost,
+      quantityProduced,
+      quantityScrapped,
+      laborCost: input.laborCost,
+      overheadCost: input.overheadCost,
+      rates,
+    })
 
   const producedKinds = await readPartKinds(txDb, organizationId, [build.partId])
   const crud = new UnifiedCrudHandler(organizationId, userId, txDb, undefined, {
@@ -380,34 +382,6 @@ function assertPlanIsPostable(plan: BuildComponentPlan): void {
       { partIds: plan.missingStandardPartIds }
     )
   }
-}
-
-/**
- * The absorbed amount for one rate over the whole run, in whole minor units.
- *
- * An explicit input from the completion form wins. Otherwise it is the declared
- * rate times the units STARTED — not the units produced.
- *
- * 🛑 The choice of `unitsStarted` is what makes the variance arithmetic close.
- * With `s` units scrapped, material, labour and overhead are all absorbed on
- * `produced + s` while `producedValue` values only `produced`, so the variance
- * comes out at exactly `s x standardCost`: the scrapped units' whole standard
- * cost, to 5090, which is what B7 asks for. Absorbing labour on the survivors
- * instead would net the scrap loss down to material alone and understate it.
- *
- * An UNDECLARED rate absorbs `0` here, and that is not the same decision
- * {@link absorbedRate} makes for the part standard. There, a NULL must survive
- * into storage because it is the difference between "no rate declared" and "a
- * declared rate of zero" on a number that gets rolled up and frozen forever.
- * Here the field records what a specific run actually absorbed, and a run under
- * no declared rate absorbed nothing — which is a fact, not an absence. It also
- * keeps the arithmetic consistent: with no rate the part's standard carries no
- * labour either, so both sides of the variance stay zero.
- */
-function absorbed(explicit: number | undefined, rate: number | null, started: number): number {
-  if (explicit != null && Number.isFinite(explicit)) return roundMinorUnits(explicit)
-  if (rate == null || !Number.isFinite(rate)) return 0
-  return roundMinorUnits(rate * started)
 }
 
 /**

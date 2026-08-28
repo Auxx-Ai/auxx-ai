@@ -23,9 +23,12 @@ export {
 } from './build-queries'
 export {
   absorbedRate,
+  absorbedRunCost,
   absorbsConversionCost,
   BUILD_STATUS_LABELS,
   BUILD_VARIANCE_ACCOUNT,
+  type BuildCompletionInputs,
+  type BuildCompletionSummary,
   type BuildStatusValue,
   buildVariance,
   canCancelBuild,
@@ -38,6 +41,7 @@ export {
   resolvePartKind,
   roundMinorUnits,
   standardCostDrift,
+  summarizeBuildCompletion,
   unitsStarted,
 } from './client'
 export { completeBuild } from './complete-build'
