@@ -19,6 +19,7 @@
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import type { SystemAttribute } from '@auxx/types/system-attribute'
 import { and, eq, isNull } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import { loadDirectSubparts } from '../bom/subpart-graph'
@@ -39,6 +40,27 @@ import { guard } from './guard'
 import type { BuildRecord, CancelBuildInput, CreateBuildInput, StartBuildInput } from './types'
 
 const logger = createScopedLogger('builds:mutations')
+
+/**
+ * The exemption every sanctioned writer of `build_status` carries.
+ *
+ * `field-hooks/pre/build-status-guard.ts` refuses a manual write of `in_progress`,
+ * `completed` or `canceled`, and `fireFieldPreHooks` short-circuits on
+ * `ctx.bypassFieldGuards.has(systemAttribute)` before that handler runs.
+ * `UnifiedCrudHandler` forwards this set to the `FieldValueService` it owns, so passing it at
+ * construction is what lets these functions produce the values the wall exists to protect.
+ *
+ * 🛑 **Without it the guard refuses the actions it was built for** — Start, Complete and
+ * Cancel simply stop working, which is the half-a-fix failure mode
+ * (plans/dispatch/money/21-lifecycle-status-guards-are-inert.md §4).
+ *
+ * 🛑 **ONE element, asserted by a test.** `completeBuild` and `reverseBuild` write their stock
+ * movements through the same handler and so inherit this set; naming a second attribute would
+ * silently disarm a guard on the movement rows, and nothing would say so.
+ */
+export const BUILD_STATUS_BYPASS: ReadonlySet<SystemAttribute> = new Set<SystemAttribute>([
+  'build_status',
+])
 
 /**
  * Raise a build. Always lands `planned`.
@@ -108,7 +130,12 @@ export async function createBuild(
       // that write stock movements take the quiet lane (`write-lane.ts`); a
       // planned build writes nothing a record rule can act on, and silencing it
       // would cost the list its realtime update for no benefit.
-      const crud = new UnifiedCrudHandler(organizationId, userId, db)
+      // `planned` is not in the guarded set, but the bypass is here anyway: the exemption
+      // belongs to the sanctioned WRITER rather than to today's value set, so widening the
+      // guard later cannot silently break the action that raises a build.
+      const crud = new UnifiedCrudHandler(organizationId, userId, db, undefined, {
+        bypassFieldGuards: BUILD_STATUS_BYPASS,
+      })
       const created = await crud.create(ctx.buildDefId, values)
 
       logger.info('Raised build', {
@@ -204,7 +231,11 @@ async function updateBuild(
   buildId: string,
   values: Record<string, unknown>
 ): Promise<void> {
-  const crud = new UnifiedCrudHandler(organizationId, userId, db)
+  const crud = new UnifiedCrudHandler(organizationId, userId, db, undefined, {
+    // Both callers write a GUARDED value — `startBuild` sets `in_progress`, `cancelBuild`
+    // sets `canceled` — so this is what keeps the two actions working.
+    bypassFieldGuards: BUILD_STATUS_BYPASS,
+  })
   await crud.update(toRecordId(ctx.buildDefId, buildId) as RecordId, values)
 }
 

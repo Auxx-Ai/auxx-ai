@@ -159,7 +159,7 @@ vi.mock('../../resources/crud/unified-handler', () => ({
   },
 }))
 
-import { createBuild } from '../build-mutations'
+import { cancelBuild, createBuild, startBuild } from '../build-mutations'
 import { completeBuild } from '../complete-build'
 import { reverseBuild } from '../reverse-build'
 
@@ -766,5 +766,98 @@ describe('reverseBuild', () => {
     const error = await expectErr(reverseBuild(db, ORG, USER, { buildId: BUILD }))
     expect(error).toBeInstanceOf(ConflictError)
     expect(h.created).toEqual([])
+  })
+})
+
+// ─── the build_status lifecycle wall ────────────────────────────────────
+
+/**
+ * 🛑 `field-hooks/pre/build-status-guard.ts` refuses a manual write of `in_progress`,
+ * `completed` or `canceled`. `fireFieldPreHooks` short-circuits on
+ * `ctx.bypassFieldGuards.has(systemAttribute)` BEFORE that handler runs, and
+ * `UnifiedCrudHandler` forwards the set it was constructed with to the `FieldValueService`
+ * it owns — so these assertions are the only thing standing between the guard and Start /
+ * Complete / Cancel / Reverse silently ceasing to work
+ * (plans/dispatch/money/21-lifecycle-status-guards-are-inert.md §4: half of this fix is
+ * worse than none).
+ *
+ * Nothing in this file's doubles enforces the guard, which is precisely why the bypass has
+ * to be asserted rather than inferred from a green test.
+ */
+describe('every sanctioned build_status writer carries its bypass', () => {
+  /** The bypass set of the handler that performed the Nth construction. */
+  function bypasses(index = 0): string[] {
+    const options = h.constructions[index]
+    const set = options?.bypassFieldGuards as ReadonlySet<string> | undefined
+    return set ? [...set] : []
+  }
+
+  it('createBuild bypasses, even though planned is not guarded', async () => {
+    // The exemption belongs to the WRITER, not to today's value set — widening the guard
+    // later must not break the action that raises a build.
+    await createBuild(db, ORG, USER, { partId: PART_LIFT, quantityPlanned: 10 })
+    expect(bypasses()).toEqual(['build_status'])
+  })
+
+  it('startBuild bypasses — it writes the guarded in_progress', async () => {
+    const result = await startBuild(db, ORG, USER, { buildId: BUILD })
+    expect(result.isOk()).toBe(true)
+    expect(h.updated[0]?.values).toMatchObject({ build_status: 'in_progress' })
+    expect(bypasses()).toEqual(['build_status'])
+  })
+
+  it('cancelBuild bypasses — it writes the guarded canceled', async () => {
+    const result = await cancelBuild(db, ORG, USER, { buildId: BUILD })
+    expect(result.isOk()).toBe(true)
+    expect(h.updated[0]?.values).toMatchObject({ build_status: 'canceled' })
+    expect(bypasses()).toEqual(['build_status'])
+  })
+
+  it('completeBuild bypasses — without it the ledger writer is refused by its own wall', async () => {
+    const result = await completeBuild(db, ORG, USER, { buildId: BUILD, quantityProduced: 10 })
+    expect(result.isOk()).toBe(true)
+    expect(bypasses()).toEqual(['build_status'])
+  })
+
+  it('reverseBuild bypasses — the reversing build is CREATED at completed', async () => {
+    // 🛑 The field chain has no `operation === 'create'` exemption, so a create carrying a
+    // guarded value is refused exactly like an update. B6's only correction for a posted run
+    // depends on this.
+    h.valueRows = [...completedBuildRows(), ...completedMovementRows(), ...partKindRows()]
+    h.movementInstances = [{ id: 'mv_1' }, { id: 'mv_2' }]
+
+    const result = await reverseBuild(db, ORG, USER, { buildId: BUILD })
+    expect(result.isOk()).toBe(true)
+    expect(buildWrites()[0]).toMatchObject({ build_status: 'completed' })
+    expect(bypasses()).toEqual(['build_status'])
+  })
+
+  // 🛑 ONE element. `completeBuild` and `reverseBuild` write their stock movements through
+  // the SAME handler and so inherit this set; a second attribute would silently disarm a
+  // guard on the movement rows and nothing would say so — the same narrowness that keeps
+  // `markQuoteSent`'s mirror write safe (21 §7.1).
+  it('names build_status and nothing else, on every handler it constructs', async () => {
+    h.valueRows = [...completedBuildRows(), ...completedMovementRows(), ...partKindRows()]
+    h.movementInstances = [{ id: 'mv_1' }, { id: 'mv_2' }]
+    await reverseBuild(db, ORG, USER, { buildId: BUILD })
+
+    expect(h.constructions.length).toBeGreaterThan(0)
+    for (const options of h.constructions) {
+      const set = options?.bypassFieldGuards as ReadonlySet<string> | undefined
+      expect(set).toBeDefined()
+      expect(set?.size).toBe(1)
+      expect(set?.has('build_status')).toBe(true)
+      expect(set?.has('stock_movement_type')).toBe(false)
+      expect(set?.has('stock_movement_unit_cost')).toBe(false)
+    }
+  })
+
+  it('keeps the quiet lane and the bypass on the same handler', async () => {
+    await completeBuild(db, ORG, USER, { buildId: BUILD, quantityProduced: 10 })
+    const ledgerHandlers = h.constructions.filter((options) => options?.session)
+    expect(ledgerHandlers).toHaveLength(1)
+    expect([...(ledgerHandlers[0]?.bypassFieldGuards as ReadonlySet<string>)]).toEqual([
+      'build_status',
+    ])
   })
 })

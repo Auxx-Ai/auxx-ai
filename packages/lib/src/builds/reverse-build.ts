@@ -54,7 +54,7 @@ import { computeExtendedCost } from '../receiving/client'
 import { UnifiedCrudHandler } from '../resources/crud/unified-handler'
 import { BuildStatus, StockMovementCostBasis } from '../resources/registry/enum-values'
 import { toRecordId } from '../resources/resource-id'
-import { requireDefId } from './build-mutations'
+import { BUILD_STATUS_BYPASS, requireDefId } from './build-mutations'
 import {
   assertBuildStatus,
   type BuildFieldContext,
@@ -185,6 +185,11 @@ async function writeReversal(
     // The same quiet lane the completion takes, for the same reasons — see
     // `write-lane.ts` and `complete-build.ts`'s header.
     session: buildWriteSession(),
+    // 🛑 The reversing build is CREATED at `completed` (there is no planned reversal), and
+    // the field pre-hook chain has no `operation === 'create'` exemption — a create carrying
+    // a guarded value is refused exactly like an update. Without this, B6's only correction
+    // for a posted run stops working.
+    bypassFieldGuards: BUILD_STATUS_BYPASS,
   })
 
   // Resolved only when the original names one, so an org with no orders is

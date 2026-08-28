@@ -62,6 +62,7 @@ import {
   StockMovementType,
 } from '../resources/registry/enum-values'
 import { type RecordId, toRecordId } from '../resources/resource-id'
+import { BUILD_STATUS_BYPASS } from './build-mutations'
 import {
   assertBuildStatus,
   type BuildFieldContext,
@@ -251,6 +252,13 @@ async function writeCompletion(
   const crud = new UnifiedCrudHandler(organizationId, userId, txDb, undefined, {
     // The one construction site for the quiet lane. See `write-lane.ts`.
     session: buildWriteSession(),
+    // 🛑 Step 6 writes `build_status: 'completed'`, which
+    // `field-hooks/pre/build-status-guard.ts` refuses on a manual write. Without this the
+    // wall built to protect the ledger would refuse the only function that writes it.
+    // ⚠️ The movement `create`s below share this handler and so inherit the set; that is
+    // safe only because it names `build_status` alone and `stock_movement` has no such
+    // attribute.
+    bypassFieldGuards: BUILD_STATUS_BYPASS,
   })
 
   const buildRecordId = toRecordId(ctx.buildDefId, build.buildId)
