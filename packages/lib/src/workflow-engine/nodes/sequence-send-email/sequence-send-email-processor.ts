@@ -341,6 +341,13 @@ export class SequenceSendEmailProcessor extends BaseNodeProcessor {
         signatureId: config.signatureId ?? undefined,
         to: [{ identifier: recipientEmail, identifierType: IdentifierType.EMAIL }],
         attachmentIds: config.attachmentIds,
+        // 🛑 A sequence step must NEVER issue a document (dispatch/money plan 22 §6.1). It
+        // goes through the same `MessageSenderService` choke point that publishes
+        // `message:sent`, and a nurture mail on a thread that happens to carry a draft quote
+        // would otherwise mark that quote sent — a follow-up went out, the quote was not
+        // issued. Declaring the origin is how the flip handler is told to stand down; the
+        // default (`'system'`) would already stand down, so this is accuracy, not the guard.
+        origin: 'sequence',
       }
 
       contextManager.log('INFO', node.name, 'Sending sequence step email', {

@@ -5,6 +5,7 @@ import {
   createTimelineEvent,
   deriveMessageReplySignal,
   deriveThreadResolvedSignal,
+  flipDocumentStatusOnSend,
   handleFieldTriggerJob,
   handleRecordRules,
   handleSignalRecordRules,
@@ -54,6 +55,10 @@ const eventHandlersJobMappings = {
   deriveThreadResolvedSignal,
   ingestBounceMessage,
   projectSignalToTimeline,
+  // `message:sent` → the confirmed-send lifecycle flip for quote/invoice/purchase order
+  // (dispatch/money plan 22). Registered here or the job name never resolves and the
+  // status silently never moves — which is the exact failure the plan retired.
+  flipDocumentStatusOnSend,
   // Signal door (record rules) + auto-complete-on-reply — also fanned out from
   // signal:recorded (plans/signals/06-follow-ups-build.md Steps 3 + 5).
   handleSignalRecordRules,

@@ -2,6 +2,7 @@
 // `@auxx/database/enums` exports these as const *objects* (values); the matching
 // string-literal union *types* live in `@auxx/database/types`.
 import type { IdentifierType, ParticipantRole, SendStatus } from '@auxx/database/types'
+import type { MessageSendOrigin } from '../../events/types'
 
 /**
  * Input for sending a message
@@ -33,6 +34,33 @@ export interface SendMessageInput {
   includePreviousMessage?: boolean // Include previous message content
   // Attachments
   attachmentIds?: string[] // MediaAsset IDs to attach
+  /**
+   * Entity to link to the thread this send lands on.
+   *
+   * 🛑 Performed INSIDE `sendMessage`, before the post-send tail — not by the
+   * caller afterwards (dispatch/money plan 22 §3). `thread.ts` used to link
+   * after `sendMessage` returned, so for a send that OPENS a thread every
+   * post-send consumer that resolves the thread's links ran against zero links:
+   * `touchActivityForThreadLinks` silently stamped nothing, and the
+   * `message:sent` consumers would find no document to flip. The link has to
+   * exist before the tail runs, so the tail is where it belongs.
+   *
+   * Resolved against the message's ACTUAL thread, which reconciliation may have
+   * moved. Never fatal — the mail is already gone by then.
+   */
+  linkEntity?: SendMessageLink
+  /**
+   * Which door this send came through — carried onto the published
+   * `message:sent` event. Omitted reads as `'system'`, which is the fail-closed
+   * default; only the composer says `'compose'`. See `MessageSendOrigin`.
+   */
+  origin?: MessageSendOrigin
+}
+
+/** One entity → thread association requested by a send. */
+export interface SendMessageLink {
+  entityInstanceId: string
+  role: 'primary' | 'secondary'
 }
 /**
  * Participant input data

@@ -17,6 +17,7 @@ import { autoCompleteTasks } from './auto-complete-tasks'
 import { createAuditLog } from './create-audit-log'
 import { createTimelineEvent } from './create-timeline-event'
 import { deriveMessageReplySignal, deriveThreadResolvedSignal } from './derive-message-signals'
+import { flipDocumentStatusOnSend } from './flip-document-status-on-send'
 import { handleRecordRules } from './handle-record-rules'
 import { handleSignalRecordRules } from './handle-signal-record-rules'
 import { handleSyncDuplicateScan } from './handle-sync-duplicate-scan'
@@ -96,7 +97,13 @@ export const EventHandlers: IEventsHandlers = {
       enqueueMailClassification,
     ],
   },
-  'message:sent': [createTimelineEvent],
+  // Published by `MessageSenderService` for every landed send, on every door
+  // (dispatch/money plan 22). `createTimelineEvent` writes the outbound
+  // `contact:email:sent` row — the twin of `message:received`'s — and only when the
+  // payload carries the recipient's contact `recordId`; `flipDocumentStatusOnSend`
+  // moves a sent quote/invoice/purchase order out of `draft`, and only for
+  // `origin: 'compose'`.
+  'message:sent': [createTimelineEvent, flipDocumentStatusOnSend],
   'message:failed': [],
   'message:comment:created': [],
   'message:assignee:changed': [],
