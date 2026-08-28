@@ -99,7 +99,7 @@ export function BuildLedgerCard({ entityInstanceId }: DrawerTabProps) {
   if (records.length === 0) {
     // Not an error and not a gap: a `planned` build writes no movements at all
     // (B2), which is the safety property the whole phasing rests on.
-    return <EmptyRow label='Nothing posted yet — a build writes its ledger when it completes' />
+    return <EmptyRow label='Nothing posted yet (A build writes its ledger when it completes)' />
   }
 
   return (

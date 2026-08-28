@@ -36,12 +36,32 @@ const autoGenerateBuildNumber: SystemHook = async ({
 /**
  * `build` system hooks: the RecordSequence number on create, and nothing else.
  *
- * No lifecycle guard for `build_status`. Unlike `quote_status` / `invoice_status` /
- * `purchase_order_status`, the build lifecycle is enforced inside the commands that own
- * it — `startBuild` / `completeBuild` / `cancelBuild` all go through `assertBuildStatus`
- * in `builds/build-queries.ts`. That is a different door from this registry, so a raw
- * `record.update` is not walled the way those three attributes are; putting that wall up
- * is its own change, not a side effect of giving the number a writer.
+ * 🛑 **`build_status` IS walled now, and deliberately NOT here.** Its guard lives on the
+ * FIELD pre-hook chain only — `field-hooks/pre/build-status-guard.ts`, registered against
+ * `('builds', 'build_status')`. That is a departure from `quote_status` / `invoice_status` /
+ * `purchase_order_status`, which carry the guard on both chains, and the reason is
+ * mechanical rather than a matter of taste:
+ *
+ * 1. **A system hook cannot be bypassed.** `UnifiedCrudHandler.runPreHooks` consults no
+ *    equivalent of `bypassFieldGuards` — the exemption exists only on the field chain
+ *    (`fireFieldPreHooks`). The money writers never collide with that because they write
+ *    status through `FieldValueService` directly and so never enter this registry at all.
+ *    **The build writers do not**: `startBuild`, `cancelBuild` and `completeBuild` each write
+ *    `build_status` through `UnifiedCrudHandler.update`, which runs every hook registered
+ *    here. A twin would therefore refuse the three actions it was built to protect — trap 2
+ *    of plans/dispatch/money/21-lifecycle-status-guards-are-inert.md §4, arriving through a
+ *    chain that has no way to answer it.
+ * 2. **It would add no coverage.** The doors a system hook is kept for — `record.create` /
+ *    `record.update`, the CSV importer, the SDK — all reach the field values through
+ *    `UnifiedCrudHandler.setFieldValues` -> `FieldValueService` -> `fireFieldPreHooks` with
+ *    an empty bypass set, so the field guard already sees them. The system twin's one
+ *    distinguishing behaviour is its `operation === 'create'` exemption, which makes it
+ *    strictly weaker, not additive.
+ *
+ * The transition MATRIX still lives where it always did — `assertBuildStatus` in
+ * `builds/build-queries.ts`, against `canStartBuild` / `canCompleteBuild` / `canCancelBuild`
+ * / `canReverseBuild`. The field guard does not duplicate it; it only stops a manual write
+ * from routing around it.
  */
 export const BUILD_HOOKS: SystemHookRegistry = {
   build_number: [autoGenerateBuildNumber],

@@ -54,6 +54,7 @@ import { stampPartOnCatalogItemChange } from './post/line-item-part-stamp'
 import { publishFieldChangeEvent } from './post/publish-field-change-event'
 import { prefillContactOnVendorChange } from './post/purchase-order-contact-prefill'
 import { touchActivityOnFieldChange } from './post/touch-activity-on-field-change'
+import { guardManualBuildLifecycleStatus } from './pre/build-status-guard'
 import { guardInboxOwnerField } from './pre/inbox-owner-guard'
 import { guardInvoiceDelete } from './pre/invoice-delete-guard'
 import {
@@ -352,6 +353,26 @@ export function registerAllHooks(): void {
   registerFieldPreHooks('purchase-orders', 'purchase_order_status', [
     guardManualPurchaseOrderIssued,
   ])
+
+  // Manual-`in_progress`/`completed`/`canceled` wall for `build_status`. The build subsystem
+  // enforced its transitions inside `startBuild` / `completeBuild` / `cancelBuild` /
+  // `reverseBuild` via `assertBuildStatus`, which is a DIFFERENT door: a drawer edit, a grid
+  // inline edit, a kanban drag or a Kopilot record tool writes through `fieldValue.set` ->
+  // `FieldValueService` and reaches none of them. Until this registration existed,
+  // `build_status: 'completed'` was typeable by hand — a finished production run with no
+  // movements, no costs and no variance, believed by every downstream read.
+  //
+  // All five sanctioned writers pass `bypassFieldGuards: ['build_status']` through their
+  // `UnifiedCrudHandler`, which forwards it to the `FieldValueService` it owns: `createBuild`,
+  // `startBuild`, `cancelBuild` (`builds/build-mutations.ts`), `completeBuild`
+  // (`builds/complete-build.ts`) and `reverseBuild` (`builds/reverse-build.ts`).
+  // 🛑 A new sanctioned writer means a new bypass, not a weaker guard.
+  //
+  // 🛑 NO system-hook twin, unlike the other three — see `resources/hooks/build-hooks.ts`.
+  // System hooks do not consult `bypassFieldGuards`, and the three build writers that write
+  // status on an UPDATE go through `UnifiedCrudHandler.runPreHooks`, so a twin would refuse
+  // Start, Complete and Cancel while adding no coverage this registration lacks.
+  registerFieldPreHooks('builds', 'build_status', [guardManualBuildLifecycleStatus])
 
   // Purchase order line evidence lock (plans/purchasing/07-purchase-order-send-and-status.md
   // §6.5) — a line's agreed quantity and price freeze once a receipt or a vendor bill line

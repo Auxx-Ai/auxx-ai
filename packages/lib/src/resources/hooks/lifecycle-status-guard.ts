@@ -56,6 +56,49 @@ export const INVOICE_ACTION_STATUS_MESSAGE =
   'Use the invoice actions (Send / Record payment / Void) to set this status'
 
 /**
+ * The `build_status` values an ACTION owns. The enum is
+ * `planned | in_progress | completed | canceled`, and this set is three of the four.
+ *
+ * 🛑 **`completed` is ledger-derived, and more strongly than any status above it.**
+ * `completeBuild` writes one `build_consume` movement per component plus one
+ * `build_produce`, stamps five cost fields and computes the variance — all of it frozen onto
+ * `updatable: false` rows in an append-only ledger. A hand-set `completed` therefore records
+ * a finished production run with **no movements, no costs and no variance**, and every
+ * downstream read — quantity on hand, COGS, margin, account 5090 — believes it. This is the
+ * build's analogue of invoice `paid` "silently corrupting money rather than merely skipping a
+ * mirror" (plans/dispatch/money/21-lifecycle-status-guards-are-inert.md §3), except that a
+ * build IS the thing that writes the ledger.
+ *
+ * ✅ **`in_progress` and `canceled` are guarded for a second, independent reason: they are
+ * two of the three ways to LEAVE `completed`.** B6 says a completed build is never edited or
+ * deleted, only reversed — a status flip out of `completed` leaves its movements in the
+ * ledger valuing inventory against a run the system now says never happened, which is the
+ * same corruption seen from the other side. `cancelBuild` refuses exactly that transition
+ * ("A completed build is reversed, never cancelled"); a drawer edit or a kanban drag onto
+ * Canceled does it anyway. Their own side effects reinforce it — `startBuild` stamps
+ * `build_started_at`, `cancelBuild` appends the reason to the notes — but the stranded ledger
+ * is what makes them worth guarding rather than leaving editable the way `declined` is on a
+ * quote.
+ *
+ * 🛑 **`planned` is deliberately absent, and it is NOT a judgement call.** It is
+ * `build_status`'s `defaultValue`, and `applyDefaults` injects a `creatable` field's default
+ * into every create before the write reaches the field chain — which, unlike the system
+ * chain, has no `operation === 'create'` exemption (21 §7.3). Guarding `planned` would
+ * therefore refuse *every* build create through the generic door, not merely one carrying an
+ * unusual status. That is the same structural reason `draft` is absent from all three sets
+ * above, and it is why the exit door cannot be closed completely: `completed -> planned` by
+ * hand stays reachable. Closing it needs a transition guard, and the field chain cannot
+ * express one — `existingValue` is `undefined` on the single-field path
+ * (`field-value-mutations.ts`), so a guard reading it would be inert in exactly the way §2
+ * describes. Shipping that would be the bug, not the fix.
+ */
+export const BUILD_ACTION_STATUSES = ['in_progress', 'completed', 'canceled'] as const
+
+/** The one message the build lifecycle guard throws, for the same reason as the set above. */
+export const BUILD_ACTION_STATUS_MESSAGE =
+  'Use the build actions (Start / Complete / Cancel / Reverse) to set this status'
+
+/**
  * Reduce a status write to the bare value being set, whatever shape it arrives in.
  *
  * 🛑 The two chains hand a guard **different shapes**, and this is the whole reason the
