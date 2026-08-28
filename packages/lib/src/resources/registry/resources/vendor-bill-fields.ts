@@ -566,31 +566,62 @@ export const VENDOR_BILL_FIELDS: Record<string, ResourceField> = {
       'unconfirmed filter until a provider read or a bank line confirms them.',
   },
 
-  // TEXT holding a MediaAsset id, following the `invoice_pdf_asset` precedent —
-  // deliberately NOT a relation. MediaAsset is not an entity definition, so
-  // there is nothing on the far side for a relation to point at.
+  // The vendor's own paper — the bill itself, as a single FILE value
+  // (plans/purchasing/08-documents-on-records.md P18). `image` is in the allowed
+  // list deliberately: what arrives is very often a phone photo of paper. This is
+  // the phase-2 parse target, which is why it is a single slot and not the first
+  // element of `attachments` — a caption is a label, not a contract.
   document: {
     id: toFieldId('document'),
     key: 'document',
-    label: 'Document',
-    type: BaseType.STRING,
-    fieldType: FieldType.TEXT,
+    label: 'Bill document',
+    type: BaseType.FILE,
+    fieldType: FieldType.FILE,
     isSystem: true,
     systemAttribute: 'vendor_bill_document',
     systemSortOrder: 'aL',
     showInPanel: false,
     nullable: true,
+    options: {
+      file: { allowMultiple: false, maxFiles: 1, allowedFileTypes: ['document', 'image'] },
+    },
     capabilities: {
       filterable: false,
       sortable: false,
       creatable: true,
       updatable: true,
       configurable: false,
-      hidden: true,
     },
     description:
-      "MediaAsset id of the vendor's PDF (invoice_pdf_asset precedent) — surfaced through the " +
-      'bill drawer, never as an editable text box',
+      "The vendor's invoice as received (PDF or photo) — surfaced through the documents card, " +
+      'never as an editable text box',
+  },
+
+  // Everything that is not the bill: packing slip, freight invoice, correspondence,
+  // a photo of the damage. Multi, and hidden from the Details panel for the same
+  // reason `document` is — the documents card renders both.
+  attachments: {
+    id: toFieldId('attachments'),
+    key: 'attachments',
+    label: 'Attachments',
+    type: BaseType.FILE,
+    fieldType: FieldType.FILE,
+    isSystem: true,
+    systemAttribute: 'vendor_bill_attachments',
+    systemSortOrder: 'aL1',
+    showInPanel: false,
+    nullable: true,
+    options: {
+      file: { allowMultiple: true, maxFiles: 20, allowedFileTypes: ['document', 'image'] },
+    },
+    capabilities: {
+      filterable: false,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    description: 'Supporting documents for this bill — packing slips, freight invoices, photos',
   },
 
   // Reverse relationship: lines (from vendor_bill_line.vendorBill). Until the

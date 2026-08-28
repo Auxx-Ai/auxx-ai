@@ -78,6 +78,25 @@ function firstTyped(
   return Array.isArray(entry) ? entry[0] : entry
 }
 
+const ASSET_REF_PREFIX = 'asset:'
+
+/**
+ * Read a MediaAsset id back out of the pointer field's FILE value
+ * (plans/purchasing/08-documents-on-records.md §4).
+ *
+ * The stored shape is a single-element array of `{ ref: 'asset:<id>' }` envelopes.
+ * A `file:`-prefixed ref is treated as NO pointer rather than parsed: it names a
+ * `FolderFile`, not a `MediaAsset`, so the lookup that follows would find nothing
+ * and the caller must fall through to minting a fresh asset.
+ */
+export function assetIdFromFileValue(value: unknown): string | undefined {
+  const first = Array.isArray(value) ? value[0] : value
+  const ref = (first as { ref?: unknown } | null | undefined)?.ref
+  if (typeof ref !== 'string' || !ref.startsWith(ASSET_REF_PREFIX)) return undefined
+  const id = ref.slice(ASSET_REF_PREFIX.length)
+  return id.length > 0 ? id : undefined
+}
+
 async function buildPdfPayload(params: {
   documentType: DocumentType
   organizationId: string
@@ -128,7 +147,7 @@ export async function ensureDocumentPdf(params: {
   if (pointerField) {
     const values = await handler.getFieldValues(recordId, [pointerField.id])
     const typed = firstTyped(values.get(pointerField.id))
-    existingAssetId = typed ? (extractValue(typed) as string) : undefined
+    existingAssetId = typed ? assetIdFromFileValue(extractValue(typed)) : undefined
   }
 
   if (existingAssetId) {
@@ -220,7 +239,12 @@ export async function ensureDocumentPdf(params: {
     })
     await fieldValueService.setValuesForEntity({
       recordId,
-      values: [{ fieldId: pointerField.id, value: assetId }],
+      // A single-value FILE field, so the value is a ONE-ELEMENT ARRAY of envelopes —
+      // the same shape the web uploader writes through `fieldValue.set`. Passing the
+      // bare envelope (or the raw id, as this did while the field was TEXT) lands on
+      // the scalar path, and the read above then finds nothing: the symptom is a PDF
+      // that re-renders on every single call and no other error anywhere.
+      values: [{ fieldId: pointerField.id, value: [{ ref: `${ASSET_REF_PREFIX}${assetId}` }] }],
     })
   }
 

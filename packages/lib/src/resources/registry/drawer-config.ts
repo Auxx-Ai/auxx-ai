@@ -249,6 +249,9 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
       // would be a second, competing rendering of the same five mirrors.
       overview: [
         { value: 'lines', label: 'Lines', fullBleed: true },
+        // The generated PDF + the vendor's paperwork. Both fields are
+        // `showInPanel: false`, so this card is their only surface (plan 08 P21).
+        { value: 'documents', label: 'Documents', icon: 'paperclip' },
         { value: 'vendor', label: 'Vendor' },
         { value: 'receiving', label: 'Receiving' },
         { value: 'bills', label: 'Bills', recordResource: 'vendor_bill' },
@@ -282,6 +285,9 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
       overview: [
         { value: 'lines', label: 'Lines', fullBleed: true },
         { value: 'match', label: 'Match' },
+        // The vendor's own invoice, plus the packing slips and freight bills
+        // that came with it (plan 08 P18/P21).
+        { value: 'documents', label: 'Documents', icon: 'paperclip' },
         { value: 'vendor', label: 'Vendor' },
         { value: 'payment', label: 'Payment' },
       ],

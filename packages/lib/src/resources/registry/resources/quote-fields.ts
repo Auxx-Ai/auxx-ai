@@ -504,28 +504,43 @@ export const QUOTE_FIELDS: Record<string, ResourceField> = {
     description: 'Site photos captured for this quote (plan 37b scouting build spec)',
   },
 
+  // The last-rendered quote PDF, as a single FILE value
+  // (plans/purchasing/08-documents-on-records.md P19/P20). Written ONLY by
+  // `ensureDocumentPdf`; `updatable: false` is what keeps every human door shut —
+  // it is read by the grid cell, the panel, the dialogs and connector writability,
+  // and NOT by the field-value write path, so the renderer is unaffected
+  // (the `079-enrichment-fields-backend-owned` shape).
+  //
+  // 🛑 Never make this user-writable. `ensureDocumentPdf` reads the pointer, loads
+  // that MediaAsset and appends a new VERSION to it whenever the content hash
+  // disagrees. A file a person uploaded has no `contentHash` at all, so the
+  // comparison always fails and the next send would silently republish their file
+  // as our PDF.
   pdfAsset: {
     id: toFieldId('pdfAsset'),
     key: 'pdfAsset',
-    label: 'PDF Asset',
-    type: BaseType.STRING,
-    fieldType: FieldType.TEXT,
+    label: 'Quote PDF',
+    type: BaseType.FILE,
+    fieldType: FieldType.FILE,
     isSystem: true,
     systemAttribute: 'quote_pdf_asset',
     systemSortOrder: 'aK',
     showInPanel: false,
     nullable: true,
+    options: {
+      file: { allowMultiple: false, maxFiles: 1, allowedFileTypes: ['document'] },
+    },
     capabilities: {
       filterable: false,
       sortable: false,
       creatable: false,
-      updatable: true,
+      updatable: false,
       configurable: false,
       hidden: true,
     },
     description:
-      'MediaAsset id of the last-rendered quote PDF (money MQ2 build spec §C.1) — written ' +
-      'only by ensureQuotePdf via FieldValueService, never user-editable',
+      'The generated quote PDF ({ ref: "asset:<MediaAsset id>" }) — written only by ' +
+      'ensureDocumentPdf, surfaced read-only through the documents card, never user-editable',
   },
 
   lineItems: {

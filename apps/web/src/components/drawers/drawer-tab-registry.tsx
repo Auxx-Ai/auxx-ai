@@ -273,6 +273,18 @@ export const DRAWER_TAB_CARD_COMPONENTS: Record<
     })),
   // One component behind both vendor keys — a PO and a bill each link exactly one
   // company and ask the same question of it.
+  // The files on the record — the generated PDF (read-only) and the uploads.
+  // Both fields are `showInPanel: false`, so this card is their only surface
+  // (plans/purchasing/08-documents-on-records.md P21).
+  'purchase_order:documents': () =>
+    import('../purchasing/record-documents-card').then((m) => ({
+      default: m.PurchaseOrderDocumentsCard,
+    })),
+  'vendor_bill:documents': () =>
+    import('../purchasing/record-documents-card').then((m) => ({
+      default: m.VendorBillDocumentsCard,
+    })),
+
   'purchase_order:vendor': () =>
     import('../purchasing/vendor-card').then((m) => ({ default: m.PurchaseOrderVendorCard })),
   'vendor_bill:vendor': () =>

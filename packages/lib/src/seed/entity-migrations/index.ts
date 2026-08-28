@@ -74,6 +74,7 @@ import { migration108Purchasing } from './migrations/108-purchasing'
 import { migration109BuildAndStandardCost } from './migrations/109-build-and-standard-cost'
 import { migration110BuildVisible } from './migrations/110-build-visible'
 import { migration111OrderBuildDrift } from './migrations/111-order-build-drift'
+import { migration112RecordDocuments } from './migrations/112-record-documents'
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
@@ -195,6 +196,9 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   // for why the `SYSTEM_ENTITIES` edit alone reaches no existing org.
   migration110BuildVisible,
   migration111OrderBuildDrift,
+  // MUST sort after 108 — it converts four fields 108 creates, and
+  // `ensureCustomFields` is INSERT-only so 108 itself can never do it.
+  migration112RecordDocuments,
 ]
 
 /**

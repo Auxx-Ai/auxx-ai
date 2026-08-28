@@ -216,6 +216,10 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
     // the LineBuilder's TotalsFooter already renders them under the lines, so a
     // totals card would compete with it — the same call `order` made.
     sidebarCards: [
+      // Drawer parity: the same card key, from the same registry. A PO opened
+      // from a list and one opened as a page must offer the same files, or
+      // expanding the record makes them disappear.
+      { value: 'documents', label: 'Documents', icon: 'paperclip' },
       { value: 'vendor', label: 'Vendor' },
       { value: 'receiving', label: 'Receiving' },
       { value: 'bills', label: 'Bills', recordResource: 'vendor_bill' },
