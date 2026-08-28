@@ -506,6 +506,31 @@ different connection and cannot see uncommitted rows.
 
 These are the silent failures this subsystem has already paid for. Every one of them passed CI.
 
+**A child-to-parent roll-up needs a door for every way its child can change, and
+`created`/`deleted` is only complete when the child is append-only.**
+`purchase_order_line_quantity_billed` had exactly those two triggers, and
+`purchase-order-status-writer.ts` asserted in prose that they were "the two events that can move
+either axis". That held for the RECEIPT roll-up, whose child `stock_movement` is append-only —
+a correction is a reversal, which is another create. It was false for BILLING, because a
+`vendor_bill_line` is created at its registry default of `1` and the real quantity is typed in
+**afterwards**: the ordinary act of transcribing an invoice moved the child and never re-SUMmed
+the parent. Two dev orders sat at a stored `1` against bill lines reading `4` and `10`, and the
+divergence was permanent. Downstream, `selectBillableLines` gates on `billed < ordered`, so a
+fully-billed line kept being offered back on the next bill, and `purchase_order_billing_status`
+is classified from the same stale figure. Fixed 2026-08-28 by
+`recalculateBilledRollupOnBillLineChange` marking a per-line reconciler.
+
+**A relationship repoint dirties TWO parents, and the post-hook only names one.** The edit door
+above is keyed on `vendor_bill_line_quantity_billed` *and*
+`vendor_bill_line_purchase_order_line`, because the match key is user-editable
+(`PurchaseOrderLinePicker`) and re-pointing a bill line at a different order line leaves the line
+it VACATED holding a phantom quantity. `newValue` names only the destination, so the handler
+reads `EntityFieldChangeEvent.oldValue` — the pre-write value, and the only place the vacated
+parent is still named — and marks both. This is why the reconciler is keyed on the PURCHASE ORDER
+LINE (the marked record IS the parent, no `resolve` step): one keyed on the bill line could only
+ever resolve the parent it now points at. ⚠️ The fix prevents new divergence; it does **not**
+repair rows that already diverged — those need a backfill.
+
 **A cached value derived from CODE outlives the code.** The `recordRules` cache once held DB
 rules unioned with code-declared system rules, so adding an action to a system rule did nothing
 for a day per org — the cached list kept firing, nothing threw, nothing logged. Two rules:

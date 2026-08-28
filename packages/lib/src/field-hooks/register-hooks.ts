@@ -63,6 +63,10 @@ import { invalidateInboxCacheOnFieldChange } from './post/inbox-cache-invalidati
 import { stampPartOnCatalogItemChange } from './post/line-item-part-stamp'
 import { publishFieldChangeEvent } from './post/publish-field-change-event'
 import { prefillContactOnVendorChange } from './post/purchase-order-contact-prefill'
+import {
+  recalculateBilledRollupOnBillLineChange,
+  registerPurchaseOrderLineRollupReconcilers,
+} from './post/purchase-order-line-rollups'
 import { touchActivityOnFieldChange } from './post/touch-activity-on-field-change'
 import { guardManualBuildLifecycleStatus } from './pre/build-status-guard'
 import { guardInboxOwnerField } from './pre/inbox-owner-guard'
@@ -133,6 +137,12 @@ export function registerAllHooks(): void {
   // The three-way match's two drains. Same rule as above: the bill and bill-line
   // hooks only MARK, so without this nothing re-matches.
   registerMatchReconcilers()
+
+  // The billed roll-up's drain. Same rule again: the bill-line hook below only
+  // MARKS, so without this a bill line EDIT never re-SUMs
+  // `purchase_order_line_quantity_billed` — which is the shape the create/delete
+  // triggers alone left open.
+  registerPurchaseOrderLineRollupReconcilers()
 
   // The billing projectors' four drains. Same rule again: the six billing hooks
   // below only MARK, so without this nothing rebuilds a projection.
@@ -243,7 +253,14 @@ export function registerAllHooks(): void {
   // so these registrations are what make the exception queue anything other than empty.
   // The bill's own totals are NOT recomputed here — they are transcribed (01 §5.4b).
   registerEntityFieldChangeHooks('vendor-bills', [rematchOnBillChange])
-  registerEntityFieldChangeHooks('vendor-bill-lines', [rematchOnBillLineChange])
+  // Two independent derivations off the same writes: the match writes the BILL's
+  // verdict, the roll-up writes the ORDER LINE's billed quantity. Both must be
+  // here — a bill line is created at the default quantity `1` and the real
+  // number typed in after, and only the second handler sees that edit.
+  registerEntityFieldChangeHooks('vendor-bill-lines', [
+    rematchOnBillLineChange,
+    recalculateBilledRollupOnBillLineChange,
+  ])
   //
   // Client-notifications plan §4.3: enroll the seeded `invoice_reminders` sequence on the
   // draft→sent transition (`enrollInvoiceReminderOnSent` checks the PREVIOUS value so a

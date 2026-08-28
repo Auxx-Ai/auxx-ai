@@ -147,10 +147,33 @@ export function CreateBillFromPurchaseOrderDialog({
 
   const vendorRecordId = extractRelationshipRecordIds(values.purchase_order_vendor)[0] ?? null
   const billRecordIds = extractRelationshipRecordIds(values.purchase_order_bills)
-  const { valuesById } = useSystemValuesForRecords(billRecordIds, BILL_ATTRS, {
+  const { valuesById, loadedById } = useSystemValuesForRecords(billRecordIds, BILL_ATTRS, {
     autoFetch: true,
     enabled: open && billRecordIds.length > 0,
   })
+
+  // 🛑 Every remainder below subtracts what the existing bills already charged,
+  // and an UNFETCHED value reads as 0 — which silently turns "order minus
+  // billed" into "order". That is not a transient: the prefill fires on the
+  // first render where a figure is non-zero and its `=== null` guard then makes
+  // that first wrong number permanent.
+  //
+  // It is not hypothetical either. `purchase_order_bills` arrives with the
+  // order, so this second read cannot even START until the first resolves, and
+  // whichever of the four attributes some card on the page happens to have
+  // warmed already resolves a render earlier than the rest. Observed on PO-0007
+  // (fully billed, unbilled $0.00): the Bills card had warmed
+  // `vendor_bill_total`, so Total correctly did not prefill — while Subtotal,
+  // still unread, prefilled the order's full $30.00.
+  //
+  // `loadedById` is the hook's own answer to this: it distinguishes "no value"
+  // from "not fetched yet", which is precisely the difference that matters here.
+  // Failing closed costs a prefill; failing open writes a wrong payable.
+  const billFiguresLoaded =
+    billRecordIds.length === 0 ||
+    billRecordIds.every((billRecordId) =>
+      BILL_ATTRS.every((attr) => loadedById[billRecordId]?.[attr])
+    )
 
   /** An order figure minus what every existing bill already charged for it. */
   const remainder = (orderAttr: (typeof PO_ATTRS)[number], billAttr: (typeof BILL_ATTRS)[number]) =>
@@ -209,7 +232,7 @@ export function CreateBillFromPurchaseOrderDialog({
   // that is what makes it unable to overwrite typing, including a total the user
   // deliberately cleared to zero.
   useEffect(() => {
-    if (!open) return
+    if (!open || !billFiguresLoaded) return
     setDraft((prev) => {
       const next = { ...prev }
       if (prev.total === null && unbilled > 0) {
@@ -224,7 +247,15 @@ export function CreateBillFromPurchaseOrderDialog({
       }
       return next
     })
-  }, [open, unbilled, hasDiscount, unbilledSubtotal, unbilledShipping, unbilledTax])
+  }, [
+    open,
+    billFiguresLoaded,
+    unbilled,
+    hasDiscount,
+    unbilledSubtotal,
+    unbilledShipping,
+    unbilledTax,
+  ])
 
   // The order's received-but-unbilled lines, raised onto the new bill so the
   // person holding the invoice types NUMBERS rather than rebuilding its line list
