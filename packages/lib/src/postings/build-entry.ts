@@ -159,11 +159,25 @@ export const ACCOUNT_ROLES = {
    */
   DUTIES_ACCRUAL: 'duties_accrual',
   /**
-   * COGS - materials (default `5000`). The balancing figure of the L1 month-end
-   * entry, and the account parts purchases must be coded to off the bank feed
-   * for that entry to have anything to reclassify (04-books §2.1).
+   * COGS - product cost (default `5000`). The balancing figure of the L1
+   * month-end entry, and the account parts purchases must be coded to off the
+   * bank feed for that entry to have anything to reclassify (04-books §2.1).
+   *
+   * 🛑 **Named "product cost", not "materials", because it holds more than
+   * materials and cannot be made to hold less.** The month-end entry credits
+   * the FULL labour and overhead absorbed this period out of `2110` and `5020`,
+   * but a unit that ships carries its whole frozen cost - materials, labour and
+   * overhead together - out of finished goods. The difference lands here.
+   *
+   * There is no `cogs_direct_labor` role and there cannot be one: a
+   * `stock_movement` freezes a single total `unit_cost` and carries no labour or
+   * overhead column, so nothing can say how much of a shipped unit's cost was
+   * labour. Reconstructing it from the part's CURRENT `standardLaborCost` would
+   * value last month's shipments at this month's rates, which is the
+   * restatement the frozen-cost rule exists to prevent. `5010 COGS - Direct
+   * Labor` is therefore in the chart with no role and stays at zero under L1.
    */
-  COGS_MATERIALS: 'cogs_materials',
+  COGS_PRODUCT_COST: 'cogs_product_cost',
   /**
    * COGS - applied overhead (default `5020`). Overhead absorbed into inventory
    * this period, credited by the L1 month-end entry.
@@ -219,7 +233,7 @@ export const ROLE_ACCOUNT_TYPES: Record<AccountRole, GlAccountTypeValue> = {
   freight_accrual: 'liability',
   grni: 'liability',
   duties_accrual: 'liability',
-  cogs_materials: 'expense',
+  cogs_product_cost: 'expense',
   applied_overhead: 'expense',
   ppv: 'expense',
   inventory_count_variance: 'expense',
@@ -245,7 +259,7 @@ export const ACCOUNT_ROLE_LABELS: Record<AccountRole, string> = {
   freight_accrual: 'Inbound Freight & Brokerage Accrual',
   grni: 'Goods Received Not Invoiced',
   duties_accrual: 'Duties Accrual',
-  cogs_materials: 'COGS — Materials',
+  cogs_product_cost: 'COGS - Product Cost',
   applied_overhead: 'COGS — Applied Overhead',
   ppv: 'Purchase Price Variance',
   inventory_count_variance: 'Inventory Count Variance',

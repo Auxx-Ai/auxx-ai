@@ -855,6 +855,242 @@ export const SETTINGS_CATALOG = {
       'Postings into that month or earlier are refused. Unset = nothing is closed.',
   },
 
+  // ── Accounting setup / opening baseline (plans/money/tasks/12-accounting-setup.md §2) ───
+  //
+  // The opening baseline every organization needs before it can close its first
+  // month. Task 12 builds the wizard that WRITES these; `postings/opening-baseline.ts`
+  // is the reader that consumes them.
+  //
+  // Flat scalar keys, NOT one `JSON` blob. `fieldType: 'JSON'` exists, but its
+  // users are the `sidebar.*` keys — UI-state blobs written by code, not forms.
+  // This is a form, so its precedent is `documents.invoice.*` and
+  // `manufacturing.*`: sibling scalars get `normalizeSettingValue` validation and
+  // `SettingsFieldRow` rendering for free, and the catalog stays the schema of
+  // record instead of a hand-rolled `v:` field.
+  //
+  // Scoped GENERAL, following the `manufacturing.*` precedent above: there is no
+  // ACCOUNTING value in the `SettingScope` pg enum (`_shared.ts:520` — thirteen
+  // values, none of them) and adding one is a Drizzle migration this phase
+  // deliberately does not carry.
+  //
+  // 🛑 Every value below ships NULL except `setupState`. A null opening balance
+  // means "not configured" and must never collapse to `0` — `0` is a legitimate
+  // opening balance (a business with no WIP at cutover has exactly that), so the
+  // two readings are not interchangeable. This is the same rule
+  // `loadAbsorptionRates` follows for the absorption rates, and for the same
+  // reason: a null read as zero absorbs nothing while looking like it worked.
+  // `readOpeningBaseline` fails CLOSED on a null rather than defaulting.
+  //
+  // ⚠️ `CURRENCY` values here are integer MINOR units, and the catalog cannot
+  // enforce that: `normalizeSettingValue` routes `CURRENCY` through
+  // `fieldValueSchemas.number`, which only rejects a non-finite number. So
+  // `12.5` would be accepted on write. `readOpeningBaseline` therefore validates
+  // integrality itself on read, the same way `resolvePeriodLock` validates the
+  // `TEXT` period lock the catalog cannot pattern-check.
+
+  // 🛑 THE GATE ON THE WHOLE BASELINE. `readOpeningBaseline` refuses unless this
+  // reads `finalized`, so a half-filled wizard cannot value a journal entry.
+  //
+  // The opening baseline and book timezone also freeze at the first accounting
+  // claim, because changing either rewrites the arithmetic behind an entry that
+  // has already posted. That gate is an ordinary "does a posting exist" check,
+  // NOT a row lock — an earlier design took `SELECT … FOR UPDATE` on this row
+  // inside the posting transaction and it was dropped deliberately. It is
+  // technically race-able and the race is accepted: it needs two actors inside
+  // the same few hundred milliseconds of a once-a-month operation, and the
+  // claimed entry records the baseline it actually used in `assertions.before`
+  // on its draft envelope, so the outcome is discoverable in the ledger rather
+  // than silent. The ledger is the audit trail; a lock is not the only thing
+  // that can be one.
+  'accounting.setupState': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'SINGLE_SELECT',
+    // The only key with a non-null default: an organization that has never
+    // opened the wizard is genuinely in `draft`, and every posting path refuses
+    // until it says `finalized`.
+    defaultValue: 'draft',
+    options: {
+      options: [
+        { value: 'draft', label: 'Draft' },
+        { value: 'finalized', label: 'Finalized' },
+      ],
+    },
+    description:
+      'Whether the accounting opening baseline has been finalized. Postings are refused ' +
+      'while it is draft. Posting is refused until this reads finalized.',
+  },
+  // Parsed by `postings/periods.ts`'s `parsePeriodKey` and required to be a
+  // MONTH key. As with `ledger.lockedThroughMonth`, there is no pattern
+  // validation on a `TEXT` setting — `FieldOptions` has no such member — so the
+  // shape is validated on read, and fails closed.
+  'accounting.cutoffPeriod': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'TEXT',
+    defaultValue: null,
+    description:
+      'The last month closed in the previous accounting system, YYYY-MM. Subledger activity ' +
+      'after it values the general ledger; the opening balances cover everything before it.',
+  },
+  // 🛑 NO UTC FALLBACK. `periodKeyForDate` defaults to UTC because its callers
+  // have already normalized; this setting has no such caller. A receipt logged
+  // at 7pm on January 31 in `America/New_York` is already February 1 in UTC, so
+  // an org whose zone was quietly assumed posts a month's edge activity into the
+  // wrong period — invisible except at a close, and uncorrectable once the
+  // period is locked. Unset fails closed.
+  'accounting.bookTimeZone': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'TEXT',
+    defaultValue: null,
+    description:
+      'The IANA timezone the books are kept in, e.g. America/New_York. Period keys are ' +
+      'derived in it. Unset refuses to post rather than assuming UTC.',
+  },
+
+  // The frozen auxx.ai snapshot: the December 31 physical count valued at
+  // CPA-approved costs. This is the valuation layer that intentionally uncosted
+  // historical movements cannot supply, and it is what `readOpeningBaseline`
+  // returns. Integer minor units.
+  'accounting.openingRawMaterials': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'CURRENCY',
+    options: {
+      currencyCode: 'USD',
+      decimals: 2,
+      useGrouping: true,
+      currencyDisplay: 'symbol',
+    },
+    defaultValue: null,
+    description:
+      'Opening 1310 Raw Materials balance at the cutoff, integer minor units, from the ' +
+      'December 31 physical count at CPA-approved costs. Unset = not configured, not zero.',
+  },
+  'accounting.openingWip': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'CURRENCY',
+    options: {
+      currencyCode: 'USD',
+      decimals: 2,
+      useGrouping: true,
+      currencyDisplay: 'symbol',
+    },
+    defaultValue: null,
+    description:
+      'Opening 1320 Work in Process balance at the cutoff, integer minor units. Typically 0 ' +
+      'at cutover. Unset = not configured, not zero.',
+  },
+  'accounting.openingFinishedGoods': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'CURRENCY',
+    options: {
+      currencyCode: 'USD',
+      decimals: 2,
+      useGrouping: true,
+      currencyDisplay: 'symbol',
+    },
+    defaultValue: null,
+    description:
+      'Opening 1330 Finished Goods balance at the cutoff, integer minor units, from the ' +
+      'December 31 physical count at CPA-approved costs. Unset = not configured, not zero.',
+  },
+
+  // The provider's side of the same three balances, plus the reference to the
+  // journal entry that booked them there. Existing QuickBooks organizations are
+  // the primary case, so the wizard IMPORTS rather than assumes — and neither
+  // number silently overrides the other. The wizard shows the difference and
+  // refuses to finalize until they agree: a difference falling into January's
+  // balancing plug would classify a cutover problem as January COGS, and the
+  // auxx.ai number alone would let the provider and the subledger disagree
+  // silently from day one.
+  //
+  // ⚠️ These are PROVENANCE. `readOpeningBaseline` deliberately does not read
+  // them — the reconciliation is the wizard's gate, and once it passes there is
+  // one agreed set of balances, which is the `accounting.opening*` set above.
+  'accounting.qboOpeningRawMaterials': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'CURRENCY',
+    options: {
+      currencyCode: 'USD',
+      decimals: 2,
+      useGrouping: true,
+      currencyDisplay: 'symbol',
+    },
+    defaultValue: null,
+    description:
+      "The accounting provider's opening raw-materials balance at the cutoff, integer minor " +
+      'units. Reconciled against the auxx.ai snapshot before setup can be finalized.',
+  },
+  'accounting.qboOpeningWip': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'CURRENCY',
+    options: {
+      currencyCode: 'USD',
+      decimals: 2,
+      useGrouping: true,
+      currencyDisplay: 'symbol',
+    },
+    defaultValue: null,
+    description:
+      "The accounting provider's opening work-in-process balance at the cutoff, integer minor " +
+      'units. Reconciled against the auxx.ai snapshot before setup can be finalized.',
+  },
+  'accounting.qboOpeningFinishedGoods': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'CURRENCY',
+    options: {
+      currencyCode: 'USD',
+      decimals: 2,
+      useGrouping: true,
+      currencyDisplay: 'symbol',
+    },
+    defaultValue: null,
+    description:
+      "The accounting provider's opening finished-goods balance at the cutoff, integer minor " +
+      'units. Reconciled against the auxx.ai snapshot before setup can be finalized.',
+  },
+  // Not a `GlPosting`. The opening entry was built and booked in the provider,
+  // its retained-earnings leg uses an account the default chart deliberately
+  // does not seed, and `month_end_inventory` would be a false posting type for a
+  // zero-line sentinel auxx.ai never posted. So the link is a reference string.
+  'accounting.qboOpeningJournalRef': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'TEXT',
+    defaultValue: null,
+    description:
+      'Reference to the opening journal entry in the accounting provider, for audit trail. ' +
+      'Not an auxx.ai posting — auxx.ai did not book it.',
+  },
+
+  // Who finalized the baseline and when. Written by the wizard's finalize step,
+  // not by a form field.
+  'accounting.setupFinalizedAt': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'DATETIME',
+    defaultValue: null,
+    description:
+      'When the accounting opening baseline was finalized, ISO 8601. Stamped by the wizard; ' +
+      'not a user-facing field.',
+  },
+  'accounting.setupFinalizedByUserId': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'TEXT',
+    defaultValue: null,
+    description:
+      'The user who finalized the accounting opening baseline. Stamped by the wizard; not a ' +
+      'user-facing field.',
+  },
+
   // ── Manufacturing absorption rates (plans/products/build/01-build-plan.md §1.4) ─────────
   //
   // Per-UNIT, not per-hour: the merchant supplies a percentage split of a

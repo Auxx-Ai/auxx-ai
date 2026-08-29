@@ -32,6 +32,22 @@ export {
   DOC_NUMBER_PREFIX,
   type DocNumberInput,
 } from './doc-number'
+export {
+  buildPostingDraft,
+  type MonthEndInventorySnapshot,
+  POSTING_DRAFT_VERSION,
+  type PostingAssertions,
+  type PostingDraftV1,
+  parsePostingDraft,
+  requiresAssertions,
+  reverseAssertions,
+} from './draft'
+export {
+  FINALIZED_SETUP_STATE,
+  OPENING_BASELINE_SETTING_KEYS,
+  type OpeningBaseline,
+  readOpeningBaseline,
+} from './opening-baseline'
 export { PERIOD_LOCK_SETTING_KEY, resolvePeriodLock } from './period-lock'
 export {
   assertPeriodOpen,
