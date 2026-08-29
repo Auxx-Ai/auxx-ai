@@ -91,6 +91,11 @@ export enum PermissionKey {
   snippetsView = 'snippets.view',
   snippetsEdit = 'snippets.edit',
   snippetsManage = 'snippets.manage',
+
+  // general ledger (plans/money/tasks/10-the-poster.md §6). NOT an instance-access
+  // resource: a posting is org-scoped bookkeeping, not a shareable object.
+  ledgerView = 'ledger.view',
+  ledgerPost = 'ledger.post',
 }
 
 /** Metadata describing a single capability key. Mirrors `FeatureMetadata`. */
@@ -454,6 +459,20 @@ export const PERMISSION_REGISTRY: PermissionMetadata[] = [
     description: 'Create, delete, and share reply snippets, and manage snippet folders.',
     group: 'Channels',
   },
+
+  // ── Accounting ──
+  {
+    key: PermissionKey.ledgerView,
+    label: 'View Ledger',
+    description: 'Read the general ledger, preview an entry, and check the books balance.',
+    group: 'Accounting',
+  },
+  {
+    key: PermissionKey.ledgerPost,
+    label: 'Post to Ledger',
+    description: 'Post and reverse journal entries in the general ledger.',
+    group: 'Accounting',
+  },
 ]
 
 /** Lookup map for quick access to a key's metadata. */
@@ -536,6 +555,10 @@ export enum Area {
   datasets = 'datasets',
   knowledgeBase = 'knowledgeBase',
   dashboards = 'dashboards',
+  // ledger is the general ledger's own area - declared last, so `areaGroups()`
+  // (which walks AREA_ORDER, i.e. this declaration order) renders the new
+  // Accounting heading after every existing group rather than splitting one.
+  ledger = 'ledger',
 }
 
 /** A single rung of an area's ladder — the keys ADDED at (and above) `level`. */
@@ -1086,6 +1109,49 @@ export const PERMISSION_AREAS: Record<Area, AreaMetadata> = {
     // directly. Full = create and duplicate (the instance-less actions).
     // The USER-rank floor is `Read` (plan 43 §3.2).
     featureKey: FeatureKey.dashboards,
+  },
+  [Area.ledger]: {
+    area: Area.ledger,
+    label: 'General ledger',
+    description: 'The double-entry ledger, its entries, and what is pushed to accounting.',
+    group: 'Accounting',
+    rungs: [
+      { level: Level.Read, keys: [PermissionKey.ledgerView] },
+      { level: Level.Full, keys: [PermissionKey.ledgerPost] },
+    ],
+    // Created 2026-08-28 (plans/money/tasks/10-the-poster.md §6). Posting is
+    // manual for the cutover - a person clicks Post, roughly 30 entries a month
+    // - so this area is the only thing standing between a member and the
+    // financial statements.
+    //
+    // WHY NOT `billingManage`, which is the alternative and was rejected:
+    // posting to the general ledger is not billing. `billing` governs what auxx
+    // charges THIS org (plan, seats, payment method, invoices from us); this
+    // governs what the org's own books say about its money. They are different
+    // authorities held by different people - a founder who owns the auxx
+    // subscription is usually not the bookkeeper who closes a period, and the
+    // bookkeeper who closes a period usually has no business changing the plan.
+    // Welding them would mean either handing the card to the bookkeeper or
+    // handing the ledger to whoever pays the bill.
+    //
+    // TWO RUNGS, no `Edit`. There is no third thing between reading the ledger
+    // and writing to it: an entry is immutable once posted and a mistake is
+    // corrected by REVERSING it (task 10 §5), which is itself a post. So `Edit`
+    // would be dead vocabulary. Partial ladders are established precedent -
+    // `Area.billing` and `Area.files` both jump Read → Full.
+    //   Read = `ledger.preview` (persists nothing), `ledger.unpostedPeriods`,
+    //          `ledger.verifyBalance`.
+    //   Full = `ledger.post` and `ledger.reverse`, the two writes.
+    //
+    // Ships CLOSED, by construction and deliberately: omitted from
+    // `MEMBER_BASELINE_LEVELS` and from `ROLE_DEFAULTS.USER`'s three floored
+    // areas, so a member lands at `None` and needs an explicit grant. Admins and
+    // owners hold it through `ROLE_DEFAULTS.ADMIN`/`.OWNER` (`ALL_FULL`).
+    // Absent from `WORKER_AREAS`, so `SEAT_CEILINGS.worker` clamps it to `None`
+    // - a field seat can never reach the books.
+    //
+    // No `featureKey`: the ledger is ours whether or not an accounting provider
+    // is connected (decision P1), so it is not gated on a plan feature.
   },
 }
 

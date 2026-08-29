@@ -825,6 +825,36 @@ export const SETTINGS_CATALOG = {
       'When on, accrual summaries are posted to the QuickBooks general ledger as journal entries.',
   },
 
+  // ── The general-ledger period lock (plans/money/tasks/10-the-poster.md §3) ──────────────
+  //
+  // `'2026-07'` closes July and everything before it; empty/unset means nothing
+  // is closed yet. `packages/lib/src/postings/periods.ts` owns the comparison
+  // (`isPeriodLocked` / `assertPeriodOpen`) and takes the lock as an argument;
+  // `postings/period-lock.ts` is the one place that turns this row into that
+  // argument.
+  //
+  // NOTE: there is no pattern validation on a `TEXT` setting. `FieldOptions` has
+  // no such member, so the shape is NOT enforced here. `resolvePeriodLock`
+  // therefore validates on read and fails CLOSED: a value that is not `YYYY-MM`
+  // throws rather than degrading to "nothing is closed", because the degraded
+  // reading would let an entry into a month an accountant has already filed.
+  //
+  // Scoped `DOCUMENTS` to match its nearest neighbour, the GL posting switch
+  // directly above. There is no LEDGER or ACCOUNTING member in the `SettingScope`
+  // pg enum and adding one is a Drizzle migration this task deliberately does not
+  // carry, exactly as the `manufacturing.*` block below says of MANUFACTURING.
+  'ledger.lockedThroughMonth': {
+    scope: 'DOCUMENTS',
+    access: 'org',
+    fieldType: 'TEXT',
+    // Null, not `''`: nothing has been closed until an accountant says so, and a
+    // default that locked anything would refuse the first entry ever posted.
+    defaultValue: null,
+    description:
+      'The last accounting month closed to new general-ledger postings, YYYY-MM. ' +
+      'Postings into that month or earlier are refused. Unset = nothing is closed.',
+  },
+
   // ── Manufacturing absorption rates (plans/products/build/01-build-plan.md §1.4) ─────────
   //
   // Per-UNIT, not per-hour: the merchant supplies a percentage split of a

@@ -66,6 +66,14 @@ import { SYSTEM_PROFILE_SEEDS } from './system-profiles'
  *      derived, because it is exactly the hole the slice set out to close.
  * Every other def, every instance, and every pre-existing `areaLevels` entry is
  * byte-identical; the amendment script refused to write otherwise.
+ *
+ * **AMENDED AGAIN 2026-08-28 - `Area.ledger`** (plans/money/tasks/10-the-poster.md
+ * §6). The narrowest of the four amendments so far: one new area, no scenario
+ * names it, so every scenario gained a single `areaLevels.ledger` entry equal to
+ * its policy's `areas.default` plus the keys that level implies. The ledger is
+ * not an instance-access resource and has no def, so `defs` and `instances` are
+ * untouched in every scenario. Re-derived by the ledger sibling of
+ * {@link agentsRungsAreTheOnlyAmendment} below.
  */
 
 const RESOURCES: PolicyResourceRef[] = [
@@ -272,6 +280,27 @@ describe('the vocabulary rename changes no authority (plan 26 §2.6 / §4)', () 
         ...(level >= 3 ? [PermissionKey.inboxesManage] : []),
       ]
       const actual = scenario.composed.keys.filter((key) => key.startsWith('inboxes.')).sort()
+      expect(actual, name).toEqual([...expected].sort())
+    }
+  })
+
+  /**
+   * The 2026-08-28 amendment (plans/money/tasks/10-the-poster.md §6), held to
+   * the same standard as the three above.
+   *
+   * `Area.ledger` is new, no scenario names it, so every scenario gained one
+   * `areaLevels` entry equal to its policy's `areas.default` and the keys that
+   * level implies. Its ladder is PARTIAL in the same way `inboxes` is - Read and
+   * Full only, no `Edit` - so a recorded level of 2 implies `ledger.view` and
+   * nothing else. Derived from `PERMISSION_AREAS` rather than a hardcoded rung
+   * list, so a later rung change here needs no edit in this file.
+   */
+  it('carries exactly the ledger keys its recorded area level implies', () => {
+    const rungs = PERMISSION_AREAS[Area.ledger].rungs
+    for (const [name, scenario] of Object.entries(SCENARIOS)) {
+      const level = scenario.composed.areaLevels.ledger ?? 0
+      const expected = rungs.filter((rung) => level >= rung.level).flatMap((rung) => rung.keys)
+      const actual = scenario.composed.keys.filter((key) => key.startsWith('ledger.')).sort()
       expect(actual, name).toEqual([...expected].sort())
     }
   })
