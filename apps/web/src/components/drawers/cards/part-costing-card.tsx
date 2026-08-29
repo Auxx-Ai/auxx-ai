@@ -194,39 +194,46 @@ export function PartCostingCard({ recordId }: DrawerTabProps) {
           <FieldPanelRow
             title='Standard'
             description='The frozen value every stock movement is stamped with'>
-            <div className='flex min-h-8 flex-wrap items-center gap-2 text-sm tabular-nums'>
-              {standardCost == null ? (
-                <>
+            {/* The value and the action share ONE non-wrapping line, so the Roll
+                button sits at the same right edge whatever the left side says.
+                The bulk-roll hint is a separate block beneath it: inside the flex
+                row it wrapped, and `ms-auto` then pushed the button to the end of
+                whichever line it happened to land on. */}
+            <div className='space-y-1'>
+              <div className='flex min-h-8 items-center gap-2 text-sm tabular-nums'>
+                {standardCost == null ? (
                   <Badge variant='amber' size='xs'>
                     Not rolled
                   </Badge>
-                  {rollWouldValueIt && (
-                    <span className='text-muted-foreground text-xs'>
-                      Roll it here, or{' '}
-                      <Link
-                        href='/app/accounting/settings/general'
-                        className='underline underline-offset-2 hover:text-foreground'>
-                        Settings &rsaquo; Accounting &rsaquo; General
-                      </Link>{' '}
-                      rolls every part at once.
-                    </span>
-                  )}
-                </>
-              ) : (
-                <>
-                  {formatCurrency(standardCost)}
-                  {standardEffectiveAt && (
-                    <span className='text-muted-foreground text-xs'>
-                      set {formatEffectiveDate(standardEffectiveAt)}
-                    </span>
-                  )}
-                </>
+                ) : (
+                  <>
+                    {formatCurrency(standardCost)}
+                    {standardEffectiveAt && (
+                      <span className='text-muted-foreground text-xs'>
+                        set {formatEffectiveDate(standardEffectiveAt)}
+                      </span>
+                    )}
+                  </>
+                )}
+                <RollStandardCostPopover partId={partId}>
+                  <Button variant='outline' size='xs' className='ms-auto'>
+                    Roll
+                  </Button>
+                </RollStandardCostPopover>
+              </div>
+
+              {/* No "roll it here" — the button is one line up. This says only the
+                  thing the button cannot: that 205 parts do not need 205 clicks. */}
+              {rollWouldValueIt && (
+                <p className='text-muted-foreground text-xs'>
+                  <Link
+                    href='/app/accounting/settings/general'
+                    className='underline underline-offset-2 hover:text-foreground'>
+                    Settings &rsaquo; Accounting &rsaquo; General
+                  </Link>{' '}
+                  rolls every part at once.
+                </p>
               )}
-              <RollStandardCostPopover partId={partId}>
-                <Button variant='outline' size='xs' className='ms-auto'>
-                  Roll
-                </Button>
-              </RollStandardCostPopover>
             </div>
           </FieldPanelRow>
 
