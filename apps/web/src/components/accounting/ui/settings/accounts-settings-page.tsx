@@ -8,20 +8,22 @@
 // column is a PERSISTENT editor pane, docked at `lg` and a floating
 // `DockableDrawer` below it. The products-services page is the reference.
 //
-// 🛑 PLACEHOLDER STATE. Neither tab has a procedure behind it:
-//   * the role map would need `GlRoleAssignment` read/write, which does not
-//     exist, which is why `resolveRoles` returns `account_unmapped` in every
-//     org today;
-//   * the chart would need `gl_account` record reads/writes through this
-//     surface.
-// So both run on `components/accounting/fixtures.ts` seeds plus local state.
-// Every handler below is shaped like the mutation that will replace it.
+// Both tabs read real rows now: `ledger.roleMap` returns one row for EVERY role
+// in `ACCOUNT_ROLES` (mapped or not, so the list is a checklist rather than a
+// table dump) and `ledger.chartAccounts` returns the org's live `gl_account`
+// instances.
+//
+// 🛑 The Roles tab WRITES; the Chart tab is READ-ONLY. `ledger.setRoleAssignment`
+// exists; there is no create/update procedure for `gl_account` through any
+// surface yet, so the chart is presented as a reference list with a detail pane
+// that has no inputs at all. A disabled-looking form that silently discarded
+// what somebody typed would be strictly worse than not offering the field.
 
 import { FeatureKey, PermissionKey } from '@auxx/lib/permissions/client'
-import { ACCOUNT_ROLES, type AccountRole } from '@auxx/lib/postings/client'
+import type { AccountRole, RoleAssignmentRow } from '@auxx/lib/postings/client'
 import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'
 import { ResponsiveTabs } from '@auxx/ui/components/responsive-tabs'
-import { generateId } from '@auxx/utils'
+import { toastError } from '@auxx/ui/components/toast'
 import { Landmark, Lock, Waypoints } from 'lucide-react'
 import { useQueryState } from 'nuqs'
 import { useMemo, useState } from 'react'
@@ -30,10 +32,8 @@ import SettingsPage from '~/components/global/settings-page'
 import { useMedia } from '~/hooks/use-media'
 import { useRequireCapability } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
-import { FIXTURE_CHART, FIXTURE_ROLE_ACCOUNTS, FIXTURE_ROLE_ASSIGNMENT_STATE } from '../../fixtures'
-import { useAccountingSettingsFreeze } from '../../hooks/use-accounting-settings-freeze'
-import type { ChartAccount, ChartDraftHandle, RoleAssignment } from './accounts-types'
-import { ChartAccountEditor } from './chart-account-editor'
+import { api } from '~/trpc/react'
+import { ChartAccountDetail } from './chart-account-editor'
 import { ChartList } from './chart-list'
 import { RoleMapEditor } from './role-map-editor'
 import { RoleMapList } from './role-map-list'
@@ -54,175 +54,80 @@ const BREADCRUMBS = [
 const PAGE_DESCRIPTION =
   'Which account each posting role lands on, and the chart those accounts live in.'
 
-const ALL_ROLES = Object.values(ACCOUNT_ROLES) as AccountRole[]
-
-/** PLACEHOLDER: replaced by a `gl_account` record list. */
-function seedChart(): ChartAccount[] {
-  return FIXTURE_CHART.map((row) => ({ ...row }))
-}
-
-/** PLACEHOLDER: replaced by a `GlRoleAssignment` read. */
-function seedAssignments(accounts: ChartAccount[]): Record<string, RoleAssignment> {
-  const byCode = new Map(accounts.map((account) => [account.code, account]))
-  const seeded: Record<string, RoleAssignment> = {}
-  for (const role of ALL_ROLES) {
-    const state = FIXTURE_ROLE_ASSIGNMENT_STATE[role] ?? 'unmapped'
-    const code = FIXTURE_ROLE_ACCOUNTS[role]?.code
-    const account = code ? byCode.get(code) : undefined
-    seeded[role] = {
-      state,
-      accountId: state === 'unused' ? null : (account?.id ?? null),
-    }
-    // A role the fixture claims is mapped but whose account is missing from the
-    // chart is unmapped, not quietly confirmed against nothing.
-    if (seeded[role].accountId === null && state !== 'unused') seeded[role].state = 'unmapped'
-  }
-  return seeded
-}
-
 export function AccountingAccountsSettingsPage() {
   useRequireCapability(PermissionKey.ledgerView)
   const { hasAccess } = useFeatureFlags()
-  const { frozen: postingsExist } = useAccountingSettingsFreeze()
+  const utils = api.useUtils()
 
   const [tab, setTab] = useQueryState('s', { defaultValue: 'roles' as string })
   const activeTab: AccountsTab = tab === 'chart' ? 'chart' : 'roles'
 
-  const [accounts, setAccounts] = useState<ChartAccount[]>(seedChart)
-  const [assignments, setAssignments] = useState<Record<string, RoleAssignment>>(() =>
-    seedAssignments(seedChart())
-  )
+  const roleMap = api.ledger.roleMap.useQuery()
+  const chart = api.ledger.chartAccounts.useQuery()
 
   const [selectedRole, setSelectedRole] = useState<AccountRole | null>(null)
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null)
 
-  // The phantom draft. An untouched draft is dropped silently on selecting
-  // another row, adding another draft, or switching tabs. Never on a re-render.
-  const [chartDraft, setChartDraft] = useState<ChartDraftHandle | null>(null)
-
   const isDesktop = useMedia('(min-width: 1024px)')
 
-  const accountsById = useMemo(
-    () => new Map(accounts.map((account) => [account.id, account])),
-    [accounts]
-  )
+  const roleRows = useMemo<RoleAssignmentRow[]>(() => roleMap.data ?? [], [roleMap.data])
+  const accounts = useMemo(() => chart.data ?? [], [chart.data])
 
-  /** Which roles point at each account. Drives the delete refusal. */
+  const rowsByRole = useMemo(() => new Map(roleRows.map((row) => [row.role, row])), [roleRows])
+
+  /** Which roles point at each account. Renders the "2 roles" note on a chart row. */
   const rolesByAccountId = useMemo(() => {
     const map = new Map<string, AccountRole[]>()
-    for (const role of ALL_ROLES) {
-      const accountId = assignments[role]?.accountId
-      if (!accountId) continue
-      const list = map.get(accountId) ?? []
-      list.push(role)
-      map.set(accountId, list)
+    for (const row of roleRows) {
+      if (!row.accountId) continue
+      const list = map.get(row.accountId) ?? []
+      list.push(row.role as AccountRole)
+      map.set(row.accountId, list)
     }
     return map
-  }, [assignments])
+  }, [roleRows])
 
-  const isCodeTaken = (code: string, exceptId: string | null) =>
-    accounts.some((account) => account.code === code && account.id !== exceptId)
-
-  // ── Roles tab ────────────────────────────────────────────────────────────
+  // ── The one write on this page ───────────────────────────────────────────
+  //
+  // 🛑 `setRoleAssignment` already refuses an unknown role, a missing or
+  // archived account, an inactive account and a type-incompatible one, each with
+  // a message naming the role and the problem. That message is surfaced VERBATIM
+  // rather than re-checked here: a second client-side authority would drift, and
+  // replacing "'grni' must be mapped to a liability account, but 4000 Sales is a
+  // revenue account" with "Could not save" throws away the only sentence that
+  // says what to do next.
+  const setRole = api.ledger.setRoleAssignment.useMutation({
+    onSuccess: () => {
+      void utils.ledger.roleMap.invalidate()
+    },
+    onError: (error) => {
+      toastError({ title: 'Error saving the role map', description: error.message })
+    },
+  })
 
   function handleAssignRole(role: AccountRole, accountId: string) {
-    // PLACEHOLDER: replaced by a `GlRoleAssignment` upsert. Picking an account
-    // is what turns a suggestion into a confirmation; that is the whole point
-    // of `G19` step 4.
-    setAssignments((prev) => ({ ...prev, [role]: { accountId, state: 'confirmed' } }))
-  }
-
-  function handleClearRole(role: AccountRole) {
-    // PLACEHOLDER: replaced by a `GlRoleAssignment` delete.
-    setAssignments((prev) => ({ ...prev, [role]: { accountId: null, state: 'unmapped' } }))
-  }
-
-  function handleToggleUnused(role: AccountRole) {
-    setAssignments((prev) => {
-      const current = prev[role] ?? { accountId: null, state: 'unmapped' as const }
-      if (current.state === 'unused') {
-        return {
-          ...prev,
-          [role]: {
-            accountId: current.accountId,
-            state: current.accountId ? 'confirmed' : 'unmapped',
-          },
-        }
-      }
-      return { ...prev, [role]: { accountId: null, state: 'unused' } }
-    })
-  }
-
-  // ── Chart tab ────────────────────────────────────────────────────────────
-
-  function handleSelectAccount(id: string | null) {
-    // Selecting anything other than the draft itself, or its committed row
-    // (which keeps the draft form mounted), drops the draft.
-    if (chartDraft && id !== chartDraft.draftId && id !== chartDraft.recordId) {
-      setChartDraft(null)
-    }
-    setSelectedAccountId(id)
-  }
-
-  function handleAddDraft() {
-    if (chartDraft && !chartDraft.recordId) {
-      setSelectedAccountId(chartDraft.draftId) // an uncommitted one exists; re-select it
-      return
-    }
-    const draftId = generateId('draft')
-    setChartDraft({ draftId, code: '', name: '' })
-    setSelectedAccountId(draftId)
-  }
-
-  function handleDraftChange(patch: { code?: string; name?: string }) {
-    setChartDraft((prev) => (prev ? { ...prev, ...patch } : prev))
+    // Picking an account is what turns a suggestion into a confirmation; that is
+    // the whole point of `G19` step 4. The server stamps `confirmedAt`.
+    setRole.mutate({ role, glAccountId: accountId })
   }
 
   /**
-   * PLACEHOLDER: replaced by `record.create` on the `gl_account` definition.
+   * Mark a role unused, or clear that mark.
    *
-   * Kept async and id-returning so the draft form's create path does not change
-   * shape when the mutation lands. `checkUniqueValueTyped` will throw a
-   * `UniqueValueConflictError` from the real one when the code race is lost;
-   * the local check in the draft form is the same refusal, run earlier.
+   * 🛑 Never called on an `unmapped` role. `GlRoleAssignment.glAccountId` is
+   * `NOT NULL`, so there is no row to flip and the server answers `NotFoundError`.
+   * Both callers hide or disable the affordance in that state - the list drops
+   * the button, the editor renders it disabled beside the reason - so the refusal
+   * is explained before it can be provoked rather than after.
    */
-  async function handleCreateAccount(values: Omit<ChartAccount, 'id'>): Promise<string> {
-    const id = generateId('gla')
-    setAccounts((prev) => [...prev, { id, ...values }])
-    return id
-  }
-
-  function handleUpdateAccount(id: string, patch: Partial<Omit<ChartAccount, 'id'>>) {
-    // PLACEHOLDER: replaced by `useSaveFieldValue` against the `gl_account` row.
-    setAccounts((prev) =>
-      prev.map((account) => (account.id === id ? { ...account, ...patch } : account))
-    )
-  }
-
-  function handleDeleteAccount(account: ChartAccount) {
-    // PLACEHOLDER: replaced by `record.delete`. The refusal for a mapped
-    // account is enforced in `ChartList` before this is ever reached.
-    setAccounts((prev) => prev.filter((row) => row.id !== account.id))
-    if (selectedAccountId === account.id) setSelectedAccountId(null)
-  }
-
-  function handleToggleActive(account: ChartAccount) {
-    handleUpdateAccount(account.id, { isActive: !account.isActive })
-  }
-
-  // First create resolved: swap selection to the real id but KEEP the draft, so
-  // the draft editor form stays mounted and text typed during the round trip
-  // survives.
-  function handleDraftCommitted(recordId: string) {
-    setChartDraft((prev) => (prev ? { ...prev, recordId } : prev))
-    setSelectedAccountId(recordId)
+  function handleToggleUnused(role: AccountRole) {
+    const current = rowsByRole.get(role)
+    if (!current || current.state === 'unmapped') return
+    setRole.mutate({ role, markedUnused: current.state !== 'unused' })
   }
 
   function handleTabChange(next: string) {
     setTab(next)
-    // An untouched draft does not survive a tab switch: the other tab's list no
-    // longer renders the phantom row, so keeping it would be confusing.
-    if (chartDraft) setChartDraft(null)
   }
 
   if (!hasAccess(FeatureKey.accounting)) {
@@ -242,23 +147,18 @@ export function AccountingAccountsSettingsPage() {
     activeTab === 'roles' ? (
       <RoleMapEditor
         role={selectedRole}
-        assignment={selectedRole ? assignments[selectedRole] : undefined}
+        assignment={selectedRole ? rowsByRole.get(selectedRole) : undefined}
         accounts={accounts}
+        accountsLoading={chart.isPending}
+        pending={setRole.isPending}
         onAssign={handleAssignRole}
-        onClear={handleClearRole}
         onToggleUnused={handleToggleUnused}
       />
     ) : (
-      <ChartAccountEditor
+      <ChartAccountDetail
         selectedId={selectedAccountId}
         accounts={accounts}
-        postingsExist={postingsExist}
-        isCodeTaken={isCodeTaken}
-        onUpdate={handleUpdateAccount}
-        draft={chartDraft}
-        onDraftChange={handleDraftChange}
-        onCreate={handleCreateAccount}
-        onDraftCommitted={handleDraftCommitted}
+        roles={selectedAccountId ? (rolesByAccountId.get(selectedAccountId) ?? []) : []}
       />
     )
 
@@ -277,23 +177,23 @@ export function AccountingAccountsSettingsPage() {
         <div className='min-w-0'>
           {activeTab === 'roles' ? (
             <RoleMapList
-              assignments={assignments}
-              accountsById={accountsById}
+              rows={roleRows}
+              // 🛑 Gate on the query, never on an empty array. Thirteen rows
+              // reading "Not mapped - every preview refuses until this is set"
+              // is a CLAIM about the org, and rendering it mid-load makes it a
+              // false one.
+              isLoading={roleMap.isPending}
               selectedRole={selectedRole}
               onSelect={setSelectedRole}
-              onClear={handleClearRole}
               onToggleUnused={handleToggleUnused}
             />
           ) : (
             <ChartList
               accounts={accounts}
+              isLoading={chart.isPending}
               selectedId={selectedAccountId}
-              onSelect={handleSelectAccount}
+              onSelect={setSelectedAccountId}
               rolesByAccountId={rolesByAccountId}
-              onAdd={handleAddDraft}
-              onDelete={handleDeleteAccount}
-              onToggleActive={handleToggleActive}
-              draft={chartDraft}
             />
           )}
         </div>
@@ -304,7 +204,7 @@ export function AccountingAccountsSettingsPage() {
             room to travel, which an already-full-height element does not have.
 
             `--settings-sticky-top` is published by `SettingsPage`, which owns the
-            `sticky top-0 z-20` title/tabs block above — pinning at a hardcoded `0`
+            `sticky top-0 z-20` title/tabs block above - pinning at a hardcoded `0`
             would slide this underneath it. `z-10` matches `FormSaveBar`, i.e.
             deliberately below that header. */}
         <div className='hidden border-l lg:block'>
@@ -326,7 +226,6 @@ export function AccountingAccountsSettingsPage() {
           if (!open) {
             setSelectedRole(null)
             setSelectedAccountId(null)
-            setChartDraft(null)
           }
         }}
         isDocked={false}
@@ -334,7 +233,7 @@ export function AccountingAccountsSettingsPage() {
         onWidthChange={() => {}}
         minWidth={320}
         maxWidth={480}
-        title={activeTab === 'roles' ? 'Map role' : 'Edit account'}>
+        title={activeTab === 'roles' ? 'Map role' : 'Account'}>
         {editorContent}
       </DockableDrawer>
     </SettingsPage>

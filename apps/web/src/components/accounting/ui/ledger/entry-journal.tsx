@@ -2,7 +2,7 @@
 
 'use client'
 
-import type { ResolvedPostingLine } from '@auxx/lib/postings/client'
+import type { PostingDetailLine, ResolvedPostingLine } from '@auxx/lib/postings/client'
 import { Button } from '@auxx/ui/components/button'
 import {
   Table,
@@ -126,4 +126,30 @@ export function EntryJournal({ lines, currencyCode, onDrillDown }: EntryJournalP
       </div>
     </div>
   )
+}
+
+/**
+ * A STORED posting's lines, in the shape this table renders.
+ *
+ * 🛑 The mapping is deliberately lossless in the direction that matters:
+ * `accountName` is the snapshot taken at posting time and is passed straight
+ * through, never re-read from the live chart. Renaming or renumbering an account
+ * must not restate an entry that has already been posted - decision `P2` is why
+ * a posting line names an account by code with no foreign key in the first
+ * place.
+ *
+ * `lineNumber` becomes `sortOrder` because it IS the stored order: the table
+ * sorts debits and credits independently, so the two have to agree.
+ */
+export function journalLinesFromDetail(lines: PostingDetailLine[]): ResolvedPostingLine[] {
+  return lines.map((line) => ({
+    accountCode: line.accountCode,
+    accountName: line.accountName ?? undefined,
+    direction: line.direction,
+    amount: line.amountMinor,
+    memo: line.memo ?? undefined,
+    sourceType: line.sourceType,
+    sourceId: line.sourceId,
+    sortOrder: line.lineNumber,
+  }))
 }

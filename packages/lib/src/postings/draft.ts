@@ -21,69 +21,23 @@
 // arithmetic that decides what a journal entry says.
 
 import { UnprocessableEntityError } from '../errors'
-import type { BuiltEntry, PostingType, ResolvedPostingLine } from './types'
+import type {
+  BuiltEntry,
+  MonthEndInventorySnapshot,
+  PostingAssertions,
+  PostingType,
+  ResolvedPostingLine,
+} from './types'
+
+// `MonthEndInventorySnapshot` and `PostingAssertions` moved to `types.ts` - the
+// client-safe leaf - because the close console renders a roll-forward from them
+// and a browser must hold the shape without importing this file's validators.
+// Re-exported so every existing importer is unaffected. Same move task 13 made
+// for `EntryPreview` and the four other read models.
+export type { MonthEndInventorySnapshot, PostingAssertions } from './types'
 
 /** The envelope version. Bump only for a shape change readers must branch on. */
 export const POSTING_DRAFT_VERSION = 1
-
-/**
- * The three inventory balances and the three cumulative activity totals, as one
- * posting asserted them.
- *
- * Every number is integer minor units. `inventoryAdjustments` is SIGNED - a
- * shrinkage is negative - and it is the only one of the six that may be, because
- * the other five are balances and cumulative absorption, which cannot go
- * negative in any state the subledger can reach.
- *
- * 🛑 The activity totals are CUMULATIVE from the opening cutoff through the
- * period end, not the amounts in this one entry. That is what lets a build or an
- * adjustment entered after its accounting month has closed appear in the next
- * open entry carrying its own frozen labour, overhead and 5095 classification,
- * instead of vanishing into the COGS plug.
- */
-export interface MonthEndInventorySnapshot {
-  balances: {
-    inventory_raw_materials: number
-    inventory_wip: number
-    inventory_finished_goods: number
-  }
-  activityTotals: {
-    absorbedLabor: number
-    absorbedOverhead: number
-    /** Signed. Negative is shrinkage. */
-    inventoryAdjustments: number
-  }
-}
-
-/**
- * What a posting asserts about the world on either side of itself.
- *
- * ## Why BOTH sides, and why a reversal never re-reads the subledger
- *
- * `after` is what the next month's entry computes its delta from. `before` looks
- * redundant with the previous posting's `after` - and it is, on the happy path.
- * It earns its place twice.
- *
- * 1. **It makes the chain testable.** Row N's `before` must equal row N-1's
- *    `after`. Nothing else in this design can detect a broken prior-row
- *    selection rule, because a wrong prior still produces a *balanced* entry.
- * 2. **It is what a reversal swaps.** See {@link reverseAssertions}.
- *
- * 🛑 The rejected alternative was to reconstruct a reversal's assertions by
- * re-running the month-end reader against the prior-prior period. That is wrong:
- * movements that arrived AFTER the original posted would be included, and the
- * reversal would assert figures unrelated to the lines it is backing out. A
- * reversal must reverse the FROZEN posting, never reinterpret today's subledger
- * - the same rule that stops a standard-cost change from restating a movement.
- *
- * `kind` is a discriminant so a second assertion-carrying posting type is
- * additive rather than a reshape.
- */
-export interface PostingAssertions {
-  kind: 'month_end_inventory'
-  before: MonthEndInventorySnapshot
-  after: MonthEndInventorySnapshot
-}
 
 /**
  * The audit record of WHAT WAS POSTED, verbatim.

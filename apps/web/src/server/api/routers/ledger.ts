@@ -2,13 +2,21 @@
 
 import { PermissionKey } from '@auxx/lib/permissions'
 import {
+  ACCOUNT_ROLES,
   buildEntry,
+  getPosting,
+  listChartAccounts,
+  listClosePeriods,
+  listRoleMap,
   listUnpostedPeriods,
   POSTING_TYPES,
   postEntry,
+  postMonthEnd,
   previewEntry,
+  previewMonthEnd,
   resolvePeriodLock,
   reverseEntry,
+  setRoleAssignment,
   verifyBooksBalance,
 } from '@auxx/lib/postings'
 import { z } from 'zod'
@@ -110,6 +118,19 @@ const draftEntry = z.object({
  * rethrew would have to guard with `isAuxxError(e)` from `~/server/api/trpc`,
  * never `e instanceof TRPCError`, or the 422 flattens into a 500.
  */
+/**
+ * An accounting MONTH, `'2026-08'`.
+ *
+ * Validated here only for SHAPE. Whether the month is closable - after the
+ * cutoff, not already locked, with something in it to close - is decided by
+ * `previewMonthEnd` / `postMonthEnd`, which answer with a status and a message
+ * naming the exact row to fix. Restating any of that in Zod would give the same
+ * input two authorities and the worse error would win.
+ */
+const monthKey = z.object({
+  periodKey: z.string().regex(/^\d{4}-\d{2}$/, 'periodKey must be a YYYY-MM month'),
+})
+
 export const ledgerRouter = createTRPCRouter({
   /**
    * What an entry WOULD look like, resolved against the org's own chart.
@@ -197,6 +218,138 @@ export const ledgerRouter = createTRPCRouter({
         memo: input.memo,
       })
     }),
+
+  /**
+   * Every month from the accounting cutoff to now, with its state - the
+   * console's period strip.
+   *
+   * Derived from `GlPosting` + `accounting.cutoffPeriod` +
+   * `ledger.lockedThroughMonth`, with **no new table**. Task 13 deferred the
+   * `gl_close_period` entity pair and this is why that deferral holds: there is
+   * nothing for a table to hold that the ledger does not already answer.
+   *
+   * An organization that has not finished setup gets an EMPTY strip rather than
+   * an error. "You have not started" is not a failure, and the module home
+   * renders the setup checklist in that case.
+   */
+  periods: permissionProcedure(PermissionKey.ledgerView).query(async ({ ctx }) => {
+    const result = await listClosePeriods(ctx.db, ctx.session.organizationId)
+    if (result.isErr()) throw result.error
+    return result.value
+  }),
+
+  /**
+   * What the month-end inventory entry for one PERIOD would look like.
+   *
+   * The difference from {@link preview} is the input: that one takes a
+   * client-supplied line array and is effectively a manual-journal-entry
+   * surface, while this one takes a month and builds the entry from the
+   * subledger. The close console uses this one; nothing should be asking an
+   * operator to hand-write the lines of a month-end close.
+   *
+   * **Persists nothing.** Every refusal arrives on `blockedBy` rather than as a
+   * throw - including `nothing_to_close` (no activity this month) and
+   * `setup_incomplete` (no reconciled opening baseline yet), which are ordinary
+   * outcomes and not failures. The message is the gathered one verbatim: it
+   * names the exact uncosted movement, unpriced row or blank setting to fix, and
+   * losing that text is the single most expensive thing this procedure could do.
+   */
+  previewMonthEnd: permissionProcedure(PermissionKey.ledgerView)
+    .input(monthKey)
+    .mutation(async ({ ctx, input }) => {
+      return previewMonthEnd(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        periodKey: input.periodKey,
+      })
+    }),
+
+  /**
+   * Close one month: gather, build, claim the period, persist, export.
+   *
+   * Returns a `PostResult` and never throws for a business refusal, exactly as
+   * {@link post} does. `nothing_to_close` and `setup_incomplete` are NOT errors
+   * and must not be surfaced as such - see `postings/types.ts`.
+   */
+  postMonthEnd: permissionProcedure(PermissionKey.ledgerPost)
+    .input(monthKey.extend({ memo: z.string().max(4000).optional() }))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
+
+      return postMonthEnd(ctx.db, {
+        organizationId,
+        periodKey: input.periodKey,
+        actorUserId: userId,
+        memo: input.memo,
+      })
+    }),
+
+  /**
+   * One posting, with its lines and its stored draft - the posting drawer's
+   * single read.
+   *
+   * 🛑 The `draft` comes back as it was STORED, assertions included. The
+   * roll-forward panel renders `assertions.before` / `assertions.after` from it
+   * and must never re-derive them from the subledger: a posted entry asserts
+   * what the world looked like when it was posted, and a reversal swaps the pair
+   * rather than recomputing it. Re-reading would make a reversed month render as
+   * though it had never been reversed.
+   */
+  get: permissionProcedure(PermissionKey.ledgerView)
+    .input(z.object({ id: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      const result = await getPosting(ctx.db, ctx.session.organizationId, input.id)
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /**
+   * Every posting role and the account it resolves to.
+   *
+   * Returns a row for EVERY role in `ACCOUNT_ROLES`, mapped or not: the role map
+   * is a complete checklist, and a list of only the rows that happen to exist
+   * could never show what is missing.
+   */
+  roleMap: permissionProcedure(PermissionKey.ledgerView).query(async ({ ctx }) => {
+    const result = await listRoleMap(ctx.db, ctx.session.organizationId)
+    if (result.isErr()) throw result.error
+    return result.value
+  }),
+
+  /**
+   * Point one role at an account, or mark it unused.
+   *
+   * Gated on `ledgerPost` rather than `ledgerView`: this decides which account
+   * real money lands in, so it belongs with the people trusted to write to the
+   * books, not with everyone who can read them.
+   */
+  setRoleAssignment: permissionProcedure(PermissionKey.ledgerPost)
+    .input(
+      z.object({
+        role: z.enum(Object.values(ACCOUNT_ROLES) as [string, ...string[]]),
+        glAccountId: z.string().min(1).nullish(),
+        markedUnused: z.boolean().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
+
+      const result = await setRoleAssignment(ctx.db, {
+        organizationId,
+        role: input.role,
+        glAccountId: input.glAccountId,
+        markedUnused: input.markedUnused,
+        actorUserId: userId,
+      })
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /** The organization's chart of accounts - every non-archived `gl_account`. */
+  chartAccounts: permissionProcedure(PermissionKey.ledgerView).query(async ({ ctx }) => {
+    const result = await listChartAccounts(ctx.db, ctx.session.organizationId)
+    if (result.isErr()) throw result.error
+    return result.value
+  }),
 
   /**
    * Every entry that has been claimed but is not in the books - the close

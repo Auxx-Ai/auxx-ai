@@ -2,6 +2,7 @@
 
 'use client'
 
+import type { ClosePeriod } from '@auxx/lib/postings/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -12,20 +13,22 @@ import {
 } from '@auxx/ui/components/dropdown-menu'
 import { Separator } from '@auxx/ui/components/separator'
 import { cn } from '@auxx/ui/lib/utils'
-import { ChevronDown, ChevronLeft, ChevronRight, Lock } from 'lucide-react'
-import type { FixturePeriodState, FixturePeriodSummary } from '~/components/accounting/fixtures'
+import { ChevronDown, ChevronLeft, ChevronRight, Lock, Plug, PlugZap } from 'lucide-react'
+import { useAccountingProviderStatus } from '~/components/accounting/hooks/use-accounting-provider-status'
 import type { LedgerPeriodOption } from '~/components/accounting/hooks/use-ledger-period'
 import { Tooltip } from '~/components/global/tooltip'
 import { formatPeriodLabel } from './format'
 
-const STATE_LABEL: Record<FixturePeriodState, string> = {
+type PeriodState = ClosePeriod['state']
+
+const STATE_LABEL: Record<PeriodState, string> = {
   open: 'Open',
   posted: 'Posted',
   locked: 'Locked',
 }
 
 /** The pill's dot. Locked reads as "shut", not as a stronger Posted. */
-const STATE_DOT: Record<FixturePeriodState, string> = {
+const STATE_DOT: Record<PeriodState, string> = {
   open: 'bg-amber-500',
   posted: 'bg-green-500',
   locked: 'bg-primary-400',
@@ -34,7 +37,7 @@ const STATE_DOT: Record<FixturePeriodState, string> = {
 interface LedgerToolbarProps {
   periodKey: string
   options: LedgerPeriodOption[]
-  summary?: FixturePeriodSummary
+  period?: ClosePeriod
   previousPeriodKey: string | null
   nextPeriodKey: string | null
   resolvedPeriodKey: string
@@ -48,7 +51,7 @@ interface LedgerToolbarProps {
  * (`gap-1 p-1`, ghost `h-7` buttons, `Separator` dividers, tooltips).
  *
  * ```
- * [ Current ] [ ‹ ] [ March 2027 ▾ ] [ › ]  │  ● Posted · AUXX-MEI-2027-03
+ * [ Current ] [ ‹ ] [ March 2027 ▾ ] [ › ]  │  ● Posted · AUXX-MEI-2027-03  │  QuickBooks Online
  * ```
  *
  * ⚠️ Ordered by `BoardToolbar`'s own rule: the period nav is the STABLE PREFIX
@@ -58,19 +61,19 @@ interface LedgerToolbarProps {
  * 🛑 Post and Reverse are deliberately NOT here. They are the decision, not
  * navigation, and a consequential button in a dense ghost strip reads as a
  * minor control. They sit in the body beside the entry they act on
- * (13-accounting-ui.md §5.1).
+ * (13-accounting-ui.md section 5.1).
  */
 export function LedgerToolbar({
   periodKey,
   options,
-  summary,
+  period,
   previousPeriodKey,
   nextPeriodKey,
   resolvedPeriodKey,
   onSelectPeriod,
   disabled = false,
 }: LedgerToolbarProps) {
-  const state = summary?.state ?? 'open'
+  const state = period?.state ?? 'open'
 
   return (
     <div className='flex flex-wrap items-center gap-1 border-b p-1'>
@@ -94,9 +97,9 @@ export function LedgerToolbar({
       </Tooltip>
 
       <DropdownMenu>
-        <DropdownMenuTrigger asChild disabled={disabled}>
+        <DropdownMenuTrigger asChild disabled={disabled || options.length === 0}>
           <Button variant='ghost' size='sm' className='min-w-[9.5rem] justify-between'>
-            {formatPeriodLabel(periodKey)}
+            {periodKey ? formatPeriodLabel(periodKey) : 'No months yet'}
             <ChevronDown />
           </Button>
         </DropdownMenuTrigger>
@@ -110,8 +113,8 @@ export function LedgerToolbar({
                 {option.label}
               </span>
               <span className='flex items-center gap-1.5 text-xs text-muted-foreground'>
-                {option.summary.state === 'locked' && <Lock className='size-3' />}
-                {STATE_LABEL[option.summary.state]}
+                {option.period.state === 'locked' && <Lock className='size-3' />}
+                {STATE_LABEL[option.period.state]}
               </span>
             </DropdownMenuItem>
           ))}
@@ -135,21 +138,61 @@ export function LedgerToolbar({
         <div className='flex items-center gap-2 px-1 text-xs text-muted-foreground'>
           <span className={cn('size-1.5 rounded-full', STATE_DOT[state])} aria-hidden />
           <span className='text-foreground'>{STATE_LABEL[state]}</span>
-          {summary?.docNumber && (
+          {period?.docNumber && (
             <>
               <span aria-hidden>·</span>
-              <span className='font-mono'>{summary.docNumber}</span>
+              <span className='font-mono'>{period.docNumber}</span>
             </>
           )}
-          {summary && summary.revision > 0 && (
+          {period && period.revision > 0 && (
             <Badge variant='outline' size='sm'>
-              Revision {summary.revision}
+              Revision {period.revision}
             </Badge>
           )}
         </div>
       )}
 
+      <Separator orientation='vertical' className='h-6' />
+      <ProviderPill />
+
       <div className='flex-1' />
     </div>
+  )
+}
+
+/**
+ * Whether an accounting system is connected, beside the controls that push to
+ * one.
+ *
+ * 🛑 "None connected" is INFORMATION, not a warning, and this is the surface
+ * most likely to turn it into one. Decision `P1` makes an unconnected org a
+ * first-class outcome: the entry is still built, balanced and persisted, and the
+ * post result is `not_connected` rather than a failure. So no destructive
+ * colour, no alert icon, no "action required" - it reads exactly like the state
+ * pill beside it, because it is exactly as ordinary
+ * (14-drive-the-close.md section 4.3).
+ *
+ * ⚠️ Renders nothing while the two app queries are still resolving. They land
+ * separately, so `connected` is false for a beat after `installed` turns true,
+ * and an ungated pill flashes "none connected" on every cold load.
+ */
+function ProviderPill() {
+  const provider = useAccountingProviderStatus()
+  if (provider.loading) return null
+
+  const Icon = provider.connected ? PlugZap : Plug
+
+  return (
+    <Tooltip
+      content={
+        provider.connected
+          ? 'Posted entries are mirrored into this accounting system and carry a link back to it.'
+          : 'Entries are still built, balanced and recorded here. There is simply nowhere to push them.'
+      }>
+      <span className='flex items-center gap-1.5 px-1 text-xs text-muted-foreground'>
+        <Icon className='size-3.5' aria-hidden />
+        {provider.connected ? provider.providerLabel : 'No accounting system'}
+      </span>
+    </Tooltip>
   )
 }

@@ -14,7 +14,6 @@ import {
 } from '@auxx/ui/components/table'
 import { cn } from '@auxx/ui/lib/utils'
 import { ClipboardCheck } from 'lucide-react'
-import type { FixtureCountAdjustment } from '~/components/accounting/fixtures'
 import {
   formatAccountingDate,
   formatMinor,
@@ -22,8 +21,28 @@ import {
   formatSignedQuantity,
 } from './format'
 
+/** One count adjustment in the period, valued at its frozen standard cost. */
+export interface CountAdjustmentRow {
+  movementId: string
+  partNumber: string
+  partName: string
+  systemQuantity: number
+  countedQuantity: number
+  delta: number
+  /** Frozen standard cost at the time of the adjustment, minor units. */
+  unitCostMinor: number
+  extendedCostMinor: number
+  reason: string
+  actorName: string
+  occurredAt: string
+}
+
 interface CountEvidenceSectionProps {
-  adjustments: FixtureCountAdjustment[]
+  /**
+   * `undefined` means NOBODY ASKED - the read does not exist yet. An empty array
+   * means the period genuinely had no counts, which is a different claim.
+   */
+  adjustments?: CountAdjustmentRow[]
   currencyCode: string
   bookTimeZone: string
 }
@@ -38,13 +57,23 @@ interface CountEvidenceSectionProps {
  * fail trains people to stop reading checks.
  *
  * The physical count is the real error detector: it is the only row on this
- * whole screen that can disagree with itself (13-accounting-ui.md §0.1).
+ * whole screen that can disagree with itself (13-accounting-ui.md section 0.1).
+ *
+ * ⚠️ WAITING ON A READ THAT DOES NOT EXIST. Nothing in `packages/lib` returns
+ * the period's count adjustments joined to their parts, actors and frozen unit
+ * costs, and 14-drive-the-close.md section 7 leaves that read unspecified. So
+ * this renders NOTHING at all when it is handed no data: an empty state here
+ * would read as "no counts were recorded this period", and that is a claim about
+ * the subledger that nobody has actually gone and checked. The component stays
+ * because the read is coming and the shape it wants is right here.
  */
 export function CountEvidenceSection({
   adjustments,
   currencyCode,
   bookTimeZone,
 }: CountEvidenceSectionProps) {
+  if (!adjustments) return null
+
   if (adjustments.length === 0) {
     return (
       <EmptySection

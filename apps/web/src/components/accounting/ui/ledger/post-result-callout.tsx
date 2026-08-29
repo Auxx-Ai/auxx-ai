@@ -7,7 +7,25 @@ import { Button } from '@auxx/ui/components/button'
 import { cn } from '@auxx/ui/lib/utils'
 import { CheckCircle2, CircleSlash, ExternalLink, PlugZap, TriangleAlert } from 'lucide-react'
 import type { ComponentType } from 'react'
-import { fixtureProviderEntryUrl } from '~/components/accounting/fixtures'
+
+/**
+ * A deep link into the provider's own register.
+ *
+ * Two systems that never link to each other is how reconciliation becomes
+ * copy-paste (gap-g section 3), so a posted entry gets a way back to the entry
+ * the provider actually holds.
+ *
+ * ⚠️ Returns `null` for anything but a provider whose URL shape we know. A
+ * guessed link that 404s is worse than no link: it reads as "the entry is not
+ * there", which is the one conclusion this button exists to prevent. `none` is
+ * the id `postEntry` records when nothing was pushed, so it never gets a link.
+ */
+function providerEntryUrl(providerId: string | undefined, entryId: string): string | null {
+  if (providerId === 'quickbooks') {
+    return `https://app.qbo.intuit.com/app/journal?txnId=${encodeURIComponent(entryId)}`
+  }
+  return null
+}
 
 interface OutcomeCopy {
   icon: ComponentType<{ className?: string }>
@@ -31,6 +49,14 @@ interface OutcomeCopy {
  * `disabled` is kept separate from `not_connected` on purpose: one is a setting
  * somebody can flip, the other is a missing integration, and merging them makes
  * the remedy unguessable from the record.
+ *
+ * 🛑 `nothing_to_close` and `setup_incomplete` are `neutral`, never `failure`
+ * (14-drive-the-close.md §1.3). They are the two most ORDINARY things an
+ * organization meets: a month in which nothing moved, and a setup still in
+ * draft on day one. Both were previously reachable only as `error`, which is the
+ * one tone reserved for something actually breaking. An org whose cutoff
+ * predates its first movement walks through a run of `nothing_to_close`; the
+ * console must skip them, not alarm on each one.
  */
 const OUTCOMES: Record<PostResultStatus, OutcomeCopy> = {
   posted: {
@@ -85,6 +111,20 @@ const OUTCOMES: Record<PostResultStatus, OutcomeCopy> = {
     detail: 'Nothing was written. A retry cannot change this answer.',
     tone: 'failure',
   },
+  nothing_to_close: {
+    icon: CircleSlash,
+    title: 'Nothing to close',
+    detail:
+      'No inventory balance or activity total changed this month, so there is no entry to post. Move on to the next month.',
+    tone: 'neutral',
+  },
+  setup_incomplete: {
+    icon: PlugZap,
+    title: 'Finish the accounting setup first',
+    detail:
+      'There is no reconciled opening baseline yet, so a month-end delta cannot be computed. Nothing was written.',
+    tone: 'neutral',
+  },
   error: {
     icon: TriangleAlert,
     title: 'The post failed',
@@ -120,6 +160,9 @@ interface PostResultCalloutProps {
 export function PostResultCallout({ result, providerLabel }: PostResultCalloutProps) {
   const copy = OUTCOMES[result.status]
   const Icon = copy.icon
+  const entryUrl = result.providerEntryId
+    ? providerEntryUrl(result.providerId, result.providerEntryId)
+    : null
 
   return (
     <div
@@ -143,15 +186,9 @@ export function PostResultCallout({ result, providerLabel }: PostResultCalloutPr
           </p>
         )}
       </div>
-      {result.providerEntryId && (
+      {entryUrl && (
         <Button asChild variant='outline' size='sm' className='shrink-0'>
-          {/* PLACEHOLDER: the real deep link comes from the connected provider's
-              adapter. `fixtureProviderEntryUrl` stands in until `ledger.get`
-              returns the provider entry id alongside the stored draft. */}
-          <a
-            href={fixtureProviderEntryUrl(result.providerEntryId)}
-            target='_blank'
-            rel='noreferrer'>
+          <a href={entryUrl} target='_blank' rel='noreferrer'>
             <ExternalLink />
             Open in {providerLabel}
           </a>

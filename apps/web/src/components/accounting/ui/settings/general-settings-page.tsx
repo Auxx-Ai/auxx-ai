@@ -3,8 +3,8 @@
 
 // Accounting > Settings > General (13-accounting-ui.md §5.4).
 //
-// Shape A, the sectioned form page: `SettingsPage` + a two-column grid of
-// `SettingsSection`s, `FieldPanel` + `SettingsFieldRow`, and a `useDirtyDraft`
+// Shape A, the sectioned form page: `SettingsPage` + two independently flowing
+// columns of `SettingsSection`s, `FieldPanel` + `SettingsFieldRow`, and a `useDirtyDraft`
 // slice PER SECTION.
 //
 // 🛑 Draft keys are scoped explicitly. `useSettings({ scope: 'GENERAL' })`
@@ -47,6 +47,7 @@ import {
   readMinorUnits,
   readText,
 } from './accounting-settings-keys'
+import { QuickbooksSettingsSection } from './quickbooks-section'
 import { SetupStatusSection } from './setup-status-section'
 import { StandardCostSection } from './standard-cost-section'
 
@@ -127,97 +128,141 @@ export function AccountingGeneralSettingsPage() {
   return (
     <SettingsPage title='General' description={PAGE_DESCRIPTION} breadcrumbs={BREADCRUMBS}>
       <div className='flex flex-1 flex-col gap-8 p-3 sm:p-6'>
+        {/*
+          TWO INDEPENDENT COLUMNS, not a grid of rows.
+
+          Each column is its own flex stack, so a tall section on one side does
+          not push the next section down on the other. The previous shape was
+          three stacked `lg:grid-cols-2` rows, which forces every row to wait for
+          its tallest cell: `Setup status` and `Standard cost` are both tall
+          action panels and `Accounting period` is two fields, so the left side
+          grew a large hole under it before `Absorption rates` could start.
+
+          Left is what you FILL IN - the two draft-backed forms feeding the one
+          save bar - plus the provider, which is short and would otherwise be
+          stranded below the right column's very tall `Standard cost`. Right is
+          what the page DOES or REPORTS: both own their own actions and neither
+          writes the drafts.
+
+          ⚠️ On mobile the columns stack, so the reading order becomes
+          period -> absorption -> provider -> setup -> standard rather than the
+          previous interleave. That is the trade for column-major flow, and it is
+          the right way round: what you type comes before what you press.
+        */}
         <div className='grid grid-cols-1 items-start gap-8 lg:grid-cols-2'>
-          <SettingsSection
-            icon={CalendarRange}
-            title='Accounting period'
-            description='The month the previous system last closed, and the timezone every period key is derived in.'>
-            <FieldPanel
-              className='mt-1 p-0'
-              resizeId='accounting-general-period'
-              defaultLabelWidth={220}>
-              <SettingsFieldRow settingKey={ACCOUNTING_KEYS.cutoffPeriod} title='Cutoff period'>
-                <MonthTextField
-                  value={cutoff}
-                  error={cutoffError}
-                  readOnly={frozen}
-                  readOnlyReason={FREEZE_REASON}
-                  onChange={(value) =>
-                    patchPeriod({ [ACCOUNTING_KEYS.cutoffPeriod]: value as SettingValue })
-                  }
-                />
-              </SettingsFieldRow>
+          <div className='flex flex-col gap-8'>
+            <SettingsSection
+              icon={CalendarRange}
+              title='Accounting period'
+              description='The month the previous system last closed, and the timezone every period key is derived in.'>
+              <FieldPanel
+                className='mt-1 p-0'
+                resizeId='accounting-general-period'
+                defaultLabelWidth={220}>
+                <SettingsFieldRow settingKey={ACCOUNTING_KEYS.cutoffPeriod} title='Cutoff period'>
+                  <MonthTextField
+                    value={cutoff}
+                    error={cutoffError}
+                    readOnly={frozen}
+                    readOnlyReason={FREEZE_REASON}
+                    onChange={(value) =>
+                      patchPeriod({ [ACCOUNTING_KEYS.cutoffPeriod]: value as SettingValue })
+                    }
+                  />
+                </SettingsFieldRow>
 
-              <SettingsFieldRow settingKey={ACCOUNTING_KEYS.bookTimeZone} title='Book timezone'>
-                <BookTimeZoneField
-                  value={bookZone}
-                  error={zoneError}
-                  readOnly={frozen}
-                  readOnlyReason={FREEZE_REASON}
-                  onChange={(zone) =>
-                    patchPeriod({ [ACCOUNTING_KEYS.bookTimeZone]: zone as SettingValue })
-                  }
-                />
-              </SettingsFieldRow>
-            </FieldPanel>
-          </SettingsSection>
+                <SettingsFieldRow settingKey={ACCOUNTING_KEYS.bookTimeZone} title='Book timezone'>
+                  <BookTimeZoneField
+                    value={bookZone}
+                    error={zoneError}
+                    readOnly={frozen}
+                    readOnlyReason={FREEZE_REASON}
+                    onChange={(zone) =>
+                      patchPeriod({ [ACCOUNTING_KEYS.bookTimeZone]: zone as SettingValue })
+                    }
+                  />
+                </SettingsFieldRow>
+              </FieldPanel>
+            </SettingsSection>
 
-          <SetupStatusSection
-            readiness={readiness}
-            finalizedAt={readText(getSetting(ACCOUNTING_KEYS.setupFinalizedAt))}
-            finalizedByUserId={readText(getSetting(ACCOUNTING_KEYS.setupFinalizedByUserId))}
-            hasUnsavedChanges={dirty}
-            isFinalizing={isBatchUpdatingOrgSettings}
-            onFinalize={handleFinalize}
-          />
-        </div>
+            <SettingsSection
+              icon={Scale}
+              title='Absorption rates'
+              description='Per assembled unit, in whole cents. An unset rate absorbs nothing; a zero rate is a real choice.'>
+              <FieldPanel
+                className='mt-1 p-0'
+                resizeId='accounting-general-absorption'
+                defaultLabelWidth={220}>
+                <SettingsFieldRow
+                  settingKey={ACCOUNTING_KEYS.assemblyLaborCostPerUnit}
+                  title='Assembly labor'>
+                  <AbsorptionRateField
+                    value={readMinorUnits(
+                      absorptionDraft[ACCOUNTING_KEYS.assemblyLaborCostPerUnit]
+                    )}
+                    error={minorUnitError(
+                      absorptionDraft[ACCOUNTING_KEYS.assemblyLaborCostPerUnit]
+                    )}
+                    onChange={(value) =>
+                      patchAbsorption({
+                        [ACCOUNTING_KEYS.assemblyLaborCostPerUnit]: value as SettingValue,
+                      })
+                    }
+                  />
+                </SettingsFieldRow>
 
-        <div className='grid grid-cols-1 items-start gap-8 lg:grid-cols-2'>
-          <SettingsSection
-            icon={Scale}
-            title='Absorption rates'
-            description='Per assembled unit, in whole cents. An unset rate absorbs nothing; a zero rate is a real choice.'>
-            <FieldPanel
-              className='mt-1 p-0'
-              resizeId='accounting-general-absorption'
-              defaultLabelWidth={220}>
-              <SettingsFieldRow
-                settingKey={ACCOUNTING_KEYS.assemblyLaborCostPerUnit}
-                title='Assembly labor'>
-                <AbsorptionRateField
-                  value={readMinorUnits(absorptionDraft[ACCOUNTING_KEYS.assemblyLaborCostPerUnit])}
-                  error={minorUnitError(absorptionDraft[ACCOUNTING_KEYS.assemblyLaborCostPerUnit])}
-                  onChange={(value) =>
-                    patchAbsorption({
-                      [ACCOUNTING_KEYS.assemblyLaborCostPerUnit]: value as SettingValue,
-                    })
-                  }
-                />
-              </SettingsFieldRow>
+                <SettingsFieldRow
+                  settingKey={ACCOUNTING_KEYS.overheadCostPerUnit}
+                  title='Applied overhead'>
+                  <AbsorptionRateField
+                    value={readMinorUnits(absorptionDraft[ACCOUNTING_KEYS.overheadCostPerUnit])}
+                    error={minorUnitError(absorptionDraft[ACCOUNTING_KEYS.overheadCostPerUnit])}
+                    onChange={(value) =>
+                      patchAbsorption({
+                        [ACCOUNTING_KEYS.overheadCostPerUnit]: value as SettingValue,
+                      })
+                    }
+                  />
+                </SettingsFieldRow>
+              </FieldPanel>
 
-              <SettingsFieldRow
-                settingKey={ACCOUNTING_KEYS.overheadCostPerUnit}
-                title='Applied overhead'>
-                <AbsorptionRateField
-                  value={readMinorUnits(absorptionDraft[ACCOUNTING_KEYS.overheadCostPerUnit])}
-                  error={minorUnitError(absorptionDraft[ACCOUNTING_KEYS.overheadCostPerUnit])}
-                  onChange={(value) =>
-                    patchAbsorption({
-                      [ACCOUNTING_KEYS.overheadCostPerUnit]: value as SettingValue,
-                    })
-                  }
-                />
-              </SettingsFieldRow>
-            </FieldPanel>
+              <p className='text-muted-foreground text-xs'>
+                Conversion cost applies to a subassembly or a finished good only. Applying these
+                rates to a purchased component would capitalize labor that was never spent and
+                overstate raw materials.
+              </p>
+            </SettingsSection>
 
-            <p className='text-muted-foreground text-xs'>
-              Conversion cost applies to a subassembly or a finished good only. Applying these rates
-              to a purchased component would capitalize labor that was never spent and overstate raw
-              materials.
-            </p>
-          </SettingsSection>
+            {/*
+              The export target, last in this column: the books are kept here
+              whether or not anything is connected (decision `P1`), so the
+              provider follows the period and the rates rather than leading them.
+              It owns no settings values, stays out of both draft slices, adds
+              nothing to `DRAFT_KEYS`, and must never read as a readiness gate.
 
-          <StandardCostSection />
+              🛑 It lives in the LEFT column, not below both, and that is load
+              bearing. `Standard cost` on the right renders every part it would
+              revalue - roughly 2000px on a real chart - so a section placed
+              after both columns is pushed a full screen below anything the left
+              column shows, and reads as missing. Observed 2026-08-28 on
+              `abgwpa1l81reht2zmwrcihfu`: the left column ended after ~400px and
+              the provider sat alone off the bottom.
+            */}
+            <QuickbooksSettingsSection />
+          </div>
+
+          <div className='flex flex-col gap-8'>
+            <SetupStatusSection
+              readiness={readiness}
+              finalizedAt={readText(getSetting(ACCOUNTING_KEYS.setupFinalizedAt))}
+              finalizedByUserId={readText(getSetting(ACCOUNTING_KEYS.setupFinalizedByUserId))}
+              hasUnsavedChanges={dirty}
+              isFinalizing={isBatchUpdatingOrgSettings}
+              onFinalize={handleFinalize}
+            />
+
+            <StandardCostSection />
+          </div>
         </div>
 
         {/*

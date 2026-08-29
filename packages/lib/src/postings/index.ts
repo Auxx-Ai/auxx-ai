@@ -27,6 +27,13 @@ export {
   type MonthEndInventoryInputs,
 } from './build-month-end-inventory'
 export {
+  type PostMonthEndOptions,
+  type PreviewMonthEndOptions,
+  postMonthEnd,
+  previewMonthEnd,
+} from './close-month'
+export { listClosePeriods } from './close-periods'
+export {
   DEFAULT_CHART_OF_ACCOUNTS,
   type DefaultChartAccount,
   type GlAccountTypeValue,
@@ -86,6 +93,7 @@ export {
   resolveAccountingProvider,
   setConnectedProviderResolver,
 } from './provider'
+export { getPosting } from './read-posting'
 export {
   ENABLED_POSTING_TYPES,
   findInventoryWriterConflicts,
@@ -96,19 +104,32 @@ export {
 export { type ResolvedAccount, resolveRoles } from './resolve-roles'
 export { type ReverseEntryOptions, reverseEntry } from './reverse-entry'
 export {
+  listChartAccounts,
+  listRoleMap,
+  type SetRoleAssignmentOptions,
+  setRoleAssignment,
+} from './role-map'
+export {
   type BuiltEntry,
+  type ChartAccountRow,
+  type ClosePeriod,
   type GlPostingLineInput,
+  NON_FAILURE_REFUSALS,
   POSTING_TYPES,
   type PostEntryInput,
   type PostEntryResult,
   type PostEntryStatus,
   type PostFailureClass,
+  type PostingDetail,
+  type PostingDetailLine,
   type PostingDirection,
   type PostingType,
   type PostResult,
   type PostResultStatus,
   ProviderPostError,
   type ResolvedPostingLine,
+  type RoleAssignmentRow,
+  type RoleAssignmentState,
 } from './types'
 export {
   type BooksBalanceDiscrepancy,

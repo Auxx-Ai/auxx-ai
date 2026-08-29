@@ -20,7 +20,6 @@ import {
   TableRow,
 } from '@auxx/ui/components/table'
 import { FileSearch } from 'lucide-react'
-import { FIXTURE_DRILL_DOWN } from '~/components/accounting/fixtures'
 import { formatAccountingDate, formatMinor, formatSignedMinor } from './format'
 
 export interface LineDrillDownTarget {
@@ -28,8 +27,24 @@ export interface LineDrillDownTarget {
   accountName?: string
 }
 
+/** One subledger row behind a posting line. */
+export interface LineDrillDownRow {
+  id: string
+  reference: string
+  description: string
+  occurredAt: string
+  quantity: number
+  unitCostMinor: number
+  extendedCostMinor: number
+}
+
 interface LineDrillDownProps {
   target: LineDrillDownTarget | null
+  /**
+   * The subledger rows for `target`. `undefined` means the read does not exist,
+   * and the caller must not offer the affordance that opens this dialog at all.
+   */
+  rows?: LineDrillDownRow[]
   onOpenChange: (open: boolean) => void
   currencyCode: string
   bookTimeZone: string
@@ -47,17 +62,24 @@ interface LineDrillDownProps {
  * subledger, and presenting it as an inline expander would imply the ledger
  * stores something it does not (13-accounting-ui.md §5.2).
  *
- * 🛑 PLACEHOLDER data: `FIXTURE_DRILL_DOWN`, keyed by account code. The real
- * version is a subledger query scoped to the account role and the period.
+ * ⚠️ WAITING ON A READ THAT DOES NOT EXIST: a subledger query scoped to the
+ * account role and the period. Nothing in `packages/lib` produces it and
+ * 14-drive-the-close.md section 7 leaves it unspecified. Until it lands the
+ * CALLER must not offer the magnifier that opens this dialog - an empty dialog
+ * saying "no subledger rows resolved to this account" is a false answer, not a
+ * missing one, and it is worse than no button. The component and its shape stay
+ * because the report is coming.
  */
 export function LineDrillDown({
   target,
+  rows,
   onOpenChange,
   currencyCode,
   bookTimeZone,
   periodLabel,
 }: LineDrillDownProps) {
-  const rows = target ? (FIXTURE_DRILL_DOWN[target.accountCode] ?? []) : []
+  if (!rows) return null
+
   const total = rows.reduce((sum, row) => sum + row.extendedCostMinor, 0)
 
   return (

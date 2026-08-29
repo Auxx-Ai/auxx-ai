@@ -17,27 +17,29 @@
 // 🛑 There are NO phantom drafts on this tab. The thirteen roles are a fixed
 // vocabulary and a person cannot create one; adding a role is a code change to
 // `ACCOUNT_ROLES`.
+//
+// 🛑 The rows come from `ledger.roleMap`, which returns one row for EVERY role
+// whether or not an assignment exists. That is what makes this a checklist, so
+// this component renders whatever it is handed rather than filtering.
+//
+// ⚠️ No `TREE_SECONDARY_NOTRUNCATE` here, unlike the chart list. This list's
+// `secondary` slot carries a SENTENCE ("Every preview refuses until this is
+// set"), and the class turns the slot's truncation off - which would let the
+// sentence push the row wide instead of ellipsing. It belongs on a badge-shaped
+// secondary only.
 
 import {
   ACCOUNT_ROLE_LABELS,
-  ACCOUNT_ROLES,
   type AccountRole,
   ROLE_ACCOUNT_TYPES,
+  type RoleAssignmentRow,
 } from '@auxx/lib/postings/client'
 import { Badge } from '@auxx/ui/components/badge'
-import { Section } from '@auxx/ui/components/section'
+import { EmptySection, Section } from '@auxx/ui/components/section'
 import { TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
-import { Ban, Coins, CreditCard, Eraser, Pencil, Receipt, RotateCcw, Sparkles } from 'lucide-react'
-import { useAppsContext } from '~/components/apps/providers/apps-context'
-import {
-  ACCOUNT_TYPE_OPTIONS,
-  type ChartAccount,
-  formatAccount,
-  type RoleAssignment,
-} from './accounts-types'
-
-const ALL_ROLES = Object.values(ACCOUNT_ROLES) as AccountRole[]
+import { Ban, Coins, CreditCard, Pencil, Receipt, RotateCcw, Sparkles } from 'lucide-react'
+import { ACCOUNT_TYPE_OPTIONS, formatAccount } from './accounts-types'
 
 /** Statement-section icon, one per group. */
 const GROUP_ICONS: Record<string, typeof Coins> = {
@@ -48,41 +50,46 @@ const GROUP_ICONS: Record<string, typeof Coins> = {
   expense: Receipt,
 }
 
-const QUICKBOOKS_APP_SLUG = 'quickbooks'
-
 interface RoleMapListProps {
-  assignments: Record<string, RoleAssignment>
-  accountsById: Map<string, ChartAccount>
+  rows: RoleAssignmentRow[]
+  /** True while `ledger.roleMap` is in flight. */
+  isLoading: boolean
   selectedRole: AccountRole | null
   onSelect: (role: AccountRole) => void
-  onClear: (role: AccountRole) => void
   onToggleUnused: (role: AccountRole) => void
 }
 
 export function RoleMapList({
-  assignments,
-  accountsById,
+  rows,
+  isLoading,
   selectedRole,
   onSelect,
-  onClear,
   onToggleUnused,
 }: RoleMapListProps) {
+  if (isLoading) {
+    // 🛑 A spinner, never thirteen `unmapped` rows. "Not mapped - every preview
+    // refuses until this is set" is an assertion about the organization, and
+    // rendering it before the answer arrives makes it a false one.
+    return (
+      <div className='p-3'>
+        <EmptySection loading />
+      </div>
+    )
+  }
+
   return (
     <div className='flex flex-col gap-4 p-3'>
-      <ProviderStatusSection />
-
       {ACCOUNT_TYPE_OPTIONS.map(({ value: type, label }) => {
-        const roles = ALL_ROLES.filter((role) => ROLE_ACCOUNT_TYPES[role] === type)
+        const group = rows.filter((row) => ROLE_ACCOUNT_TYPES[row.role as AccountRole] === type)
         // Equity and revenue have no roles today, and an empty section headed
         // "no roles here" would be noise rather than information.
-        if (roles.length === 0) return null
+        if (group.length === 0) return null
 
         const Icon = GROUP_ICONS[type] ?? Coins
-        const needed = roles.filter((role) => assignments[role]?.state !== 'unused')
-        const mapped = needed.filter((role) => {
-          const state = assignments[role]?.state
-          return state === 'confirmed' || state === 'suggested'
-        })
+        const needed = group.filter((row) => row.state !== 'unused')
+        const mapped = needed.filter(
+          (row) => row.state === 'confirmed' || row.state === 'suggested'
+        )
 
         return (
           <Section
@@ -92,19 +99,12 @@ export function RoleMapList({
             title={label}
             secondary={`${mapped.length} of ${needed.length} mapped`}>
             <div className='flex flex-col gap-0.5'>
-              {roles.map((role) => (
+              {group.map((row) => (
                 <RoleRow
-                  key={role}
-                  role={role}
-                  assignment={assignments[role]}
-                  account={
-                    assignments[role]?.accountId
-                      ? accountsById.get(assignments[role].accountId as string)
-                      : undefined
-                  }
-                  selected={selectedRole === role}
+                  key={row.role}
+                  row={row}
+                  selected={selectedRole === row.role}
                   onSelect={onSelect}
-                  onClear={onClear}
                   onToggleUnused={onToggleUnused}
                 />
               ))}
@@ -117,61 +117,57 @@ export function RoleMapList({
 }
 
 function RoleRow({
-  role,
-  assignment,
-  account,
+  row,
   selected,
   onSelect,
-  onClear,
   onToggleUnused,
 }: {
-  role: AccountRole
-  assignment: RoleAssignment | undefined
-  account: ChartAccount | undefined
+  row: RoleAssignmentRow
   selected: boolean
   onSelect: (role: AccountRole) => void
-  onClear: (role: AccountRole) => void
   onToggleUnused: (role: AccountRole) => void
 }) {
-  const state = assignment?.state ?? 'unmapped'
+  const role = row.role as AccountRole
   const Icon = GROUP_ICONS[ROLE_ACCOUNT_TYPES[role]] ?? Coins
 
   return (
     <TreeRow
       icon={<Icon className='size-4 text-muted-foreground' />}
-      title={ACCOUNT_ROLE_LABELS[role]}
+      title={ACCOUNT_ROLE_LABELS[role] ?? row.role}
       secondaryFill
       onToggleOpen={() => onSelect(role)}
       rowClassName={cn(
         'bg-primary-100/50 hover:bg-primary-100',
         selected && 'bg-primary-100 ring-1 ring-primary-200',
-        state === 'unused' && 'opacity-60'
+        row.state === 'unused' && 'opacity-60'
       )}
-      secondary={<AssignmentSecondary state={state} account={account} />}
+      secondary={<AssignmentSecondary row={row} />}
       actions={
         // Always `TreeRowButton`, never a raw icon Button: it owns the
         // hover-fade, the sizing and the tooltip side, and it stops the click
         // from reaching the row's own `onToggleOpen`.
         <div className='flex items-center gap-1'>
-          {state !== 'unused' && (
+          {row.state !== 'unused' && (
             <TreeRowButton tooltipText='Change account' onClick={() => onSelect(role)}>
               <Pencil />
             </TreeRowButton>
           )}
-          {account && state !== 'unused' && (
-            <TreeRowButton tooltipText='Clear mapping' onClick={() => onClear(role)}>
-              <Eraser />
+          {/* 🛑 No "mark unused" on an UNMAPPED role. `GlRoleAssignment.glAccountId`
+              is `NOT NULL`, so there is no row to flip and the server answers
+              `NotFoundError`. Offering the button and toasting a 404 would read as
+              a bug; the editor pane renders it disabled beside the reason, which
+              is where somebody looking for it will be. */}
+          {row.state !== 'unmapped' && (
+            <TreeRowButton
+              tooltipText={
+                row.state === 'unused'
+                  ? 'Mark used again'
+                  : 'Mark unused. Nothing posts to it, so it stops blocking a preview.'
+              }
+              onClick={() => onToggleUnused(role)}>
+              {row.state === 'unused' ? <RotateCcw /> : <Ban />}
             </TreeRowButton>
           )}
-          <TreeRowButton
-            tooltipText={
-              state === 'unused'
-                ? 'Mark used again'
-                : 'Mark unused. Nothing posts to it, so it stops blocking a preview.'
-            }
-            onClick={() => onToggleUnused(role)}>
-            {state === 'unused' ? <RotateCcw /> : <Ban />}
-          </TreeRowButton>
         </div>
       }
     />
@@ -184,15 +180,14 @@ function RoleRow({
  * ⚠️ A suggested match reads visibly differently from a confirmed one. A
  * suggestion is auxx's guess from the seeded default chart; nobody has agreed
  * to it, and `resolveRoles` will happily post to whatever it names.
+ *
+ * ⚠️ `confirmed` with no account is a real state and it is not the same as
+ * `unmapped`: somebody chose an account and it has since been archived or
+ * deleted out from under the mapping. `listRoleMap` returns exactly that, and it
+ * is the repair `resolveRoles` would otherwise refuse a close over.
  */
-function AssignmentSecondary({
-  state,
-  account,
-}: {
-  state: RoleAssignment['state']
-  account: ChartAccount | undefined
-}) {
-  if (state === 'unused') {
+function AssignmentSecondary({ row }: { row: RoleAssignmentRow }) {
+  if (row.state === 'unused') {
     return (
       <span className='flex items-center gap-1.5 text-muted-foreground text-xs'>
         <Badge variant='outline' size='xs'>
@@ -203,7 +198,7 @@ function AssignmentSecondary({
     )
   }
 
-  if (!account) {
+  if (row.state === 'unmapped') {
     return (
       <span className='flex items-center gap-1.5 text-xs'>
         <Badge variant='destructive' size='xs'>
@@ -214,7 +209,20 @@ function AssignmentSecondary({
     )
   }
 
-  if (state === 'suggested') {
+  if (!row.account) {
+    return (
+      <span className='flex items-center gap-1.5 text-xs'>
+        <Badge variant='destructive' size='xs'>
+          Account missing
+        </Badge>
+        <span className='text-muted-foreground'>
+          The account this role names is archived or gone. Pick another.
+        </span>
+      </span>
+    )
+  }
+
+  if (row.state === 'suggested') {
     return (
       <span className='flex min-w-0 items-center gap-1.5 text-xs'>
         <Badge variant='amber' size='xs' className='shrink-0'>
@@ -222,51 +230,13 @@ function AssignmentSecondary({
           Suggested
         </Badge>
         <span className='truncate text-amber-700 dark:text-amber-400'>
-          {formatAccount(account)}
+          {formatAccount(row.account)}
         </span>
       </span>
     )
   }
 
-  return <span className='truncate text-muted-foreground text-xs'>{formatAccount(account)}</span>
-}
-
-/**
- * Whether an accounting provider is connected.
- *
- * 🛑 "None connected" is a NORMAL state, not a warning. `NoneAccountingProvider`
- * makes it first class: the entry is still built, balanced and persisted, and
- * the result is `not_connected` rather than a failure. Nagging for a provider
- * here would contradict the decision the whole poster is built on.
- */
-function ProviderStatusSection() {
-  const { appInstallations, appConnections } = useAppsContext()
-
-  const installation = appInstallations.find((inst) => inst.app.slug === QUICKBOOKS_APP_SLUG)
-  const connected = installation
-    ? appConnections.some(
-        (conn) => conn.appId === installation.app.id && conn.connectionStatus === 'connected'
-      )
-    : false
-
   return (
-    <Section
-      collapsible={false}
-      icon={<CreditCard className='size-4' />}
-      title='Accounting provider'
-      secondary={connected ? 'QuickBooks Online' : 'None connected'}>
-      <div className='rounded-xl border p-3 text-sm'>
-        <div className='flex flex-wrap items-center gap-2'>
-          <Badge variant={connected ? 'green' : 'outline'} size='xs'>
-            {connected ? 'Connected' : 'None connected'}
-          </Badge>
-          <span className='text-muted-foreground text-xs'>
-            {connected
-              ? 'Posted entries are mirrored into QuickBooks Online and carry a deep link back.'
-              : 'Entries are still built, balanced and stored here. Nothing is blocked by this.'}
-          </span>
-        </div>
-      </div>
-    </Section>
+    <span className='truncate text-muted-foreground text-xs'>{formatAccount(row.account)}</span>
   )
 }

@@ -2,97 +2,82 @@
 
 'use client'
 
-import { useQueryState } from 'nuqs'
+import { type ClosePeriod, FINALIZED_SETUP_STATE } from '@auxx/lib/postings/client'
 import { useMemo } from 'react'
-import {
-  FIXTURE_PERIOD_SUMMARIES,
-  FIXTURE_PERIODS,
-  type FixturePeriodSummary,
-} from '~/components/accounting/fixtures'
 import { formatPeriodLabel } from '~/components/accounting/ui/ledger/format'
+import { useSettings } from '~/hooks/use-settings'
+import { api } from '~/trpc/react'
 
-/**
- * Which of the module home's three states the ledger is in
- * (plans/money/tasks/13-accounting-ui.md §5.1), plus `blocked`.
- *
- * `blocked` is not a fourth ORG state. It is the open state with a refused
- * preview, and it is selectable here only so the blocker treatment can be seen
- * before `ledger.previewMonthEnd` exists to produce one.
- */
-export type LedgerScreenState = 'checklist' | 'open' | 'blocked' | 'posted'
-
-const SCREEN_STATES: LedgerScreenState[] = ['checklist', 'open', 'blocked', 'posted']
+/** The org's book time zone, when `accounting.bookTimeZone` has never been set. */
+const FALLBACK_BOOK_TIME_ZONE = 'UTC'
 
 export interface LedgerPeriodOption {
   periodKey: string
   label: string
-  summary: FixturePeriodSummary
+  period: ClosePeriod
 }
 
 export interface LedgerPeriodModel {
-  screenState: LedgerScreenState
-  setScreenState: (state: LedgerScreenState) => void
-  /** Whether a provider is treated as connected. Placeholder toggle, see below. */
-  providerConnected: boolean
-  setProviderConnected: (connected: boolean) => void
-  /** Cutoff through now, oldest first. */
+  /**
+   * Setup is not finalized, so the module home renders the checklist instead of
+   * a month. Read from `accounting.setupState`, which is the same key the wizard
+   * writes and the same one `readOpeningBaseline` refuses on server-side.
+   */
+  isSetupDraft: boolean
+  /** The period list is still in flight. Gate "nothing to close" copy on this. */
+  isLoading: boolean
+  /** Cutoff + 1 through the current month, oldest first. */
   options: LedgerPeriodOption[]
-  /** Earliest unposted month, else the most recent posted one. */
+  /** Earliest open month, else the most recent posted one. */
   resolvedPeriodKey: string
   /** What the screen is actually showing. */
   activePeriodKey: string
-  activeSummary: FixturePeriodSummary | undefined
+  activePeriod: ClosePeriod | undefined
   previousPeriodKey: string | null
   nextPeriodKey: string | null
   /** False once every month from the cutoff forward is posted or locked. */
   hasOpenPeriod: boolean
+  /** The zone the period boundaries were drawn in. Never the viewer's zone. */
+  bookTimeZone: string
+  currencyCode: string
 }
 
 /**
  * Everything the ledger screens need to know about WHICH month they are on.
  *
- * 🛑 PLACEHOLDER. Both the period list and each month's state come from
- * `~/components/accounting/fixtures`. The real version derives all of it from
- * `GlPosting` rows plus `accounting.cutoffPeriod` and `ledger.lockedThroughMonth`,
- * with no new table, per 13-accounting-ui.md §5.1.
+ * Every month's state is derived server-side from `GlPosting` rows plus
+ * `accounting.cutoffPeriod` and `ledger.lockedThroughMonth`, with no new table
+ * (14-drive-the-close.md section 6). `ledger.periods` returns the months from
+ * the cutoff forward, oldest first; nothing about the list is computed here
+ * beyond the navigation answers the toolbar asks for.
  *
- * ⚠️ `?state=` and `?provider=` are DEV TOGGLES and nothing else. They exist so
- * every screen state is reachable while the four procedures in §4 are still
- * missing; both disappear with the fixtures.
+ * ⚠️ The `?state=` and `?provider=` dev toggles that used to live here are gone
+ * with the fixtures. Whether a provider is connected is not a property of a
+ * period at all - it comes from `useAccountingProviderStatus()`, which reads the
+ * installed-app and connection state directly.
  */
 export function useLedgerPeriod(periodKey?: string): LedgerPeriodModel {
-  const [stateParam, setStateParam] = useQueryState('state')
-  const [providerParam, setProviderParam] = useQueryState('provider')
+  const { getSetting } = useSettings({ scope: 'GENERAL' })
+  const periodsQuery = api.ledger.periods.useQuery()
 
-  const screenState: LedgerScreenState = SCREEN_STATES.includes(stateParam as LedgerScreenState)
-    ? (stateParam as LedgerScreenState)
-    : 'open'
+  const setupState = getSetting('accounting.setupState')
+  const bookTimeZone = (getSetting('accounting.bookTimeZone') as string) || FALLBACK_BOOK_TIME_ZONE
+  const currencyCode = (getSetting('organization.currency') as string) || 'USD'
+  const isSetupDraft = setupState !== FINALIZED_SETUP_STATE
 
-  const providerConnected = providerParam !== 'none'
+  const periods = periodsQuery.data
 
   return useMemo(() => {
-    // In the everything-posted state the open month is treated as closed, so the
-    // "nothing to close" body has a posted month to render behind it.
-    const summaries: FixturePeriodSummary[] = FIXTURE_PERIOD_SUMMARIES.map((summary) =>
-      screenState === 'posted' && summary.state === 'open'
-        ? {
-            ...summary,
-            state: 'posted',
-            docNumber: `AUXX-MEI-${summary.periodKey}`,
-            totalMinor: 981_000,
-            postedAt: '2027-04-02T10:12:00.000Z',
-          }
-        : summary
-    )
+    const rows: ClosePeriod[] = periods ?? []
+    const byKey = new Map(rows.map((row) => [row.periodKey, row]))
+    const options: LedgerPeriodOption[] = rows.map((row) => ({
+      periodKey: row.periodKey,
+      label: formatPeriodLabel(row.periodKey),
+      period: row,
+    }))
 
-    const byKey = new Map(summaries.map((summary) => [summary.periodKey, summary]))
-    const options: LedgerPeriodOption[] = FIXTURE_PERIODS.map((key) => {
-      const summary = byKey.get(key) ?? { periodKey: key, state: 'open' as const, revision: 0 }
-      return { periodKey: key, label: formatPeriodLabel(key), summary }
-    })
-
-    const firstOpen = options.find((option) => option.summary.state === 'open')
-    const lastPosted = [...options].reverse().find((option) => option.summary.state !== 'open')
+    const firstOpen = options.find((option) => option.period.state === 'open')
+    const lastPosted = [...options].reverse().find((option) => option.period.state !== 'open')
     const resolvedPeriodKey =
       firstOpen?.periodKey ?? lastPosted?.periodKey ?? options[options.length - 1]?.periodKey ?? ''
 
@@ -100,22 +85,18 @@ export function useLedgerPeriod(periodKey?: string): LedgerPeriodModel {
     const index = options.findIndex((option) => option.periodKey === requested)
 
     return {
-      screenState,
-      setScreenState: (next: LedgerScreenState) => {
-        void setStateParam(next === 'open' ? null : next)
-      },
-      providerConnected,
-      setProviderConnected: (connected: boolean) => {
-        void setProviderParam(connected ? null : 'none')
-      },
+      isSetupDraft,
+      isLoading: periodsQuery.isPending,
       options,
       resolvedPeriodKey,
       activePeriodKey: requested,
-      activeSummary: byKey.get(requested),
+      activePeriod: byKey.get(requested),
       previousPeriodKey: index > 0 ? (options[index - 1]?.periodKey ?? null) : null,
       nextPeriodKey:
         index >= 0 && index < options.length - 1 ? (options[index + 1]?.periodKey ?? null) : null,
       hasOpenPeriod: !!firstOpen,
+      bookTimeZone,
+      currencyCode,
     }
-  }, [periodKey, providerConnected, screenState, setProviderParam, setStateParam])
+  }, [bookTimeZone, currencyCode, isSetupDraft, periodKey, periods, periodsQuery.isPending])
 }

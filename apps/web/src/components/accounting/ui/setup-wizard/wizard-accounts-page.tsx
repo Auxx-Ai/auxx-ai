@@ -1,21 +1,23 @@
 // apps/web/src/components/accounting/ui/setup-wizard/wizard-accounts-page.tsx
 'use client'
 
-import { ACCOUNT_ROLE_LABELS, type AccountRole } from '@auxx/lib/postings/client'
+import {
+  ACCOUNT_ROLE_LABELS,
+  type AccountRole,
+  type RoleAssignmentState,
+} from '@auxx/lib/postings/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
+import { EmptySection } from '@auxx/ui/components/section'
 import { ArrowUpRight } from 'lucide-react'
 import Link from 'next/link'
-import {
-  FIXTURE_ROLE_ACCOUNTS,
-  FIXTURE_ROLE_ASSIGNMENT_STATE,
-  type FixtureRoleAssignmentState,
-} from '~/components/accounting/fixtures'
+import { formatAccount } from '~/components/accounting/ui/settings/accounts-types'
+import { api } from '~/trpc/react'
 
 const ROLES_HREF = '/app/accounting/settings/accounts?s=roles'
 
 const STATE_BADGE: Record<
-  FixtureRoleAssignmentState,
+  RoleAssignmentState,
   { label: string; variant: 'green' | 'amber' | 'destructive' | 'gray' }
 > = {
   confirmed: { label: 'Confirmed', variant: 'green' },
@@ -25,18 +27,11 @@ const STATE_BADGE: Record<
 }
 
 /** Display order: the ones needing attention first, then confirmed, then excused. */
-const STATE_ORDER: Record<FixtureRoleAssignmentState, number> = {
+const STATE_ORDER: Record<RoleAssignmentState, number> = {
   unmapped: 0,
   suggested: 1,
   confirmed: 2,
   unused: 3,
-}
-
-interface RoleRow {
-  role: string
-  label: string
-  account: string | null
-  state: FixtureRoleAssignmentState
 }
 
 /**
@@ -46,27 +41,27 @@ interface RoleRow {
  * was suggested, lives on `settings/accounts` and this page links there rather than shipping a
  * second copy that could disagree with it. Dispatch's workers page does the same thing.
  *
- * ⚠️ Two roles ship excused rather than unmapped, and that is a decision. Nothing emits `ppv`
- * under L1 (purchase price variance is a report, not a posting) and `inventory_wip` is
+ * ⚠️ Two roles typically ship excused rather than unmapped, and that is a decision. Nothing emits
+ * `ppv` under L1 (purchase price variance is a report, not a posting) and `inventory_wip` is
  * structurally unreachable, so a map that demanded all thirteen would block every Preview on two
  * roles nothing can ever post to.
  *
- * 🛑 PLACEHOLDER DATA. There is no procedure that can read a `GlRoleAssignment` yet
- * (13-accounting-ui.md section 4), so the counts come from
- * `~/components/accounting/fixtures`. Swap the source, keep the rendering.
+ * 🛑 `ledger.roleMap` returns a row for EVERY role, mapped or not, so the counts below are a
+ * checklist rather than a tally of the rows that happen to exist. The list is not rendered until
+ * the query answers: "0 of 13 confirmed" is a claim about the organization, and showing it during
+ * the load would be a false one on the one screen whose whole job is telling somebody what is left
+ * to do.
  */
 export function WizardAccountsPage() {
-  const rows: RoleRow[] = Object.entries(FIXTURE_ROLE_ASSIGNMENT_STATE)
-    .map(([role, state]) => {
-      const account = FIXTURE_ROLE_ACCOUNTS[role as AccountRole]
-      return {
-        role,
-        label: ACCOUNT_ROLE_LABELS[role as AccountRole] ?? role,
-        account: account ? `${account.code} · ${account.name}` : null,
-        state,
-      }
-    })
-    .sort((a, b) => STATE_ORDER[a.state] - STATE_ORDER[b.state] || a.label.localeCompare(b.label))
+  const roleMap = api.ledger.roleMap.useQuery()
+
+  const rows = [...(roleMap.data ?? [])].sort(
+    (a, b) =>
+      STATE_ORDER[a.state] - STATE_ORDER[b.state] ||
+      (ACCOUNT_ROLE_LABELS[a.role as AccountRole] ?? a.role).localeCompare(
+        ACCOUNT_ROLE_LABELS[b.role as AccountRole] ?? b.role
+      )
+  )
 
   const required = rows.filter((row) => row.state !== 'unused')
   const confirmed = required.filter((row) => row.state === 'confirmed').length
@@ -79,34 +74,47 @@ export function WizardAccountsPage() {
         account in your chart. Nothing can be previewed until they do.
       </p>
 
-      <div className='flex flex-wrap items-center gap-2'>
-        <span className='font-medium text-foreground text-sm'>
-          {confirmed} of {required.length} roles confirmed
-        </span>
-        {outstanding.length > 0 && (
-          <span className='text-muted-foreground text-sm'>
-            {outstanding.length} still need{outstanding.length === 1 ? 's' : ''} a look
-          </span>
-        )}
-      </div>
-
-      <div className='overflow-hidden rounded-xl border'>
-        <ul className='flex flex-col'>
-          {rows.map((row) => (
-            <li
-              key={row.role}
-              className='flex items-center justify-between gap-2 border-b px-3 py-1.5 text-sm last:border-b-0'>
-              <span className='min-w-0 flex-1 truncate'>{row.label}</span>
-              <span className='hidden min-w-0 flex-1 truncate text-muted-foreground sm:block'>
-                {row.account ?? '—'}
+      {roleMap.isPending ? (
+        <EmptySection loading />
+      ) : roleMap.isError ? (
+        <div className='rounded-xl border border-destructive/40 bg-destructive/5 p-3'>
+          <p className='font-medium text-sm'>Could not read the account map</p>
+          <p className='text-muted-foreground text-xs'>{roleMap.error.message}</p>
+        </div>
+      ) : (
+        <>
+          <div className='flex flex-wrap items-center gap-2'>
+            <span className='font-medium text-foreground text-sm'>
+              {confirmed} of {required.length} roles confirmed
+            </span>
+            {outstanding.length > 0 && (
+              <span className='text-muted-foreground text-sm'>
+                {outstanding.length} still need{outstanding.length === 1 ? 's' : ''} a look
               </span>
-              <Badge variant={STATE_BADGE[row.state].variant} size='sm' className='shrink-0'>
-                {STATE_BADGE[row.state].label}
-              </Badge>
-            </li>
-          ))}
-        </ul>
-      </div>
+            )}
+          </div>
+
+          <div className='overflow-hidden rounded-xl border'>
+            <ul className='flex flex-col'>
+              {rows.map((row) => (
+                <li
+                  key={row.role}
+                  className='flex items-center justify-between gap-2 border-b px-3 py-1.5 text-sm last:border-b-0'>
+                  <span className='min-w-0 flex-1 truncate'>
+                    {ACCOUNT_ROLE_LABELS[row.role as AccountRole] ?? row.role}
+                  </span>
+                  <span className='hidden min-w-0 flex-1 truncate text-muted-foreground sm:block'>
+                    {formatAccount(row.account) || '-'}
+                  </span>
+                  <Badge variant={STATE_BADGE[row.state].variant} size='sm' className='shrink-0'>
+                    {STATE_BADGE[row.state].label}
+                  </Badge>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </>
+      )}
 
       <p className='text-muted-foreground text-xs'>
         A suggested account is a guess from the account number and name. Confirm it so a later
