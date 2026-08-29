@@ -329,7 +329,7 @@ export function AccountingAccountsSettingsPage() {
         <ResponsiveTabs value={activeTab} onValueChange={handleTabChange} size='sm' items={TABS} />
       }>
       {activeTab === 'quickbooks' ? (
-        <div className='min-w-0 p-4'>
+        <div className='min-w-0'>
           <AccountMapList />
         </div>
       ) : (

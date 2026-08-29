@@ -37,14 +37,18 @@ const MAP_HREF = '/app/accounting/settings/accounts?s=quickbooks'
  */
 export function WizardAccountMapPage() {
   return (
-    <div className='flex flex-col gap-4 p-4'>
+    <div className='flex flex-col gap-2 p-4'>
       <p className='text-muted-foreground text-sm'>
         A journal entry names your accounts; QuickBooks needs its own. Pair them once here and every
         month-end entry lands in the right place. Nothing is matched automatically - a wrong account
         still balances, so it would never be caught later.
       </p>
 
-      <AccountMapList compact />
+      {/* Owns its own padding (it is `chart-list.tsx`'s shape), so it is pulled
+          back out of this page's `p-4` rather than sitting inside a second inset. */}
+      <div className='-mx-4'>
+        <AccountMapList compact />
+      </div>
 
       <div>
         <Button variant='outline' size='sm' asChild>

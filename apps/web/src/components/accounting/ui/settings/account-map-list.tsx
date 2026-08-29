@@ -11,6 +11,18 @@
 // QuickBooks and being able to post, and sending somebody out of the wizard to
 // do it is sending them out of the wizard at its most important moment.
 //
+// ── Why this list has no detail pane ────────────────────────────────────────
+//
+// `chart-list.tsx`'s row shape, deliberately - the same `TreeRow`, the same
+// `code · name` title, the same badge-shaped `secondary`. What differs is the
+// trailing slot: the chart's rows OPEN an editor, and these rows ARE the editor.
+// A mapping is one value chosen from one list, so a detail pane would hold a
+// single dropdown and cost a click to reach it. The picker lives in `actions`.
+//
+// That is also why no row is selectable and `onToggleOpen` is unset: a row click
+// would have nothing to do, and with an interactive `actions` slot it would fire
+// on every use of the picker.
+//
 // 🛑 A confirmation is a WRITE, and the picker only ever offers type-compatible
 // active accounts. Both are conveniences, not authorities: `setAccountIdentity`
 // re-checks existence, active status and classification against the LIVE
@@ -23,9 +35,13 @@ import type { AccountIdentityRow, AccountSuggestionReason } from '@auxx/lib/post
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Combobox } from '@auxx/ui/components/combobox'
+import { InputSearch } from '@auxx/ui/components/input-search'
 import { EmptySection } from '@auxx/ui/components/section'
 import { toastError } from '@auxx/ui/components/toast'
-import { Check, Sparkles, TriangleAlert, X } from 'lucide-react'
+import { TREE_SECONDARY_NOTRUNCATE, TreeRow } from '@auxx/ui/components/tree-row'
+import { cn } from '@auxx/ui/lib/utils'
+import { Check, Landmark, Link2, Sparkles, TriangleAlert, X } from 'lucide-react'
+import { useState } from 'react'
 import { api } from '~/trpc/react'
 import { accountTypeColor, accountTypeLabel } from './accounts-types'
 
@@ -37,8 +53,8 @@ const REASON_COPY: Record<AccountSuggestionReason, string> = {
 
 export interface AccountMapListProps {
   /**
-   * Hide the mapped rows once everything that needs attention is dealt with.
-   * The wizard wants a short list of what is left; settings wants the whole map.
+   * Show only the rows that still need a decision. The wizard wants a short list
+   * of what is left; settings wants the whole map, including what is settled.
    */
   compact?: boolean
 }
@@ -50,8 +66,8 @@ export interface AccountMapListProps {
  *
  * | State | What the reader is being told | What they can do |
  * | --- | --- | --- |
- * | `confirmed` | somebody paired these two | unmap it |
- * | `unmapped` + suggestion | we found a likely match, and here is why | confirm, or pick another |
+ * | `confirmed` | somebody paired these two | change it, or unmap it |
+ * | `unmapped` + suggestion | we found a likely match, and here is why | accept it, or pick another |
  * | `unmapped` | nothing plausible matched | pick one |
  *
  * ⚠️ A `confirmed` row whose `liveProviderAccount` is null is the DANGLING case
@@ -60,6 +76,7 @@ export interface AccountMapListProps {
  * close to refuse on exactly these, so the screen has to lead with them.
  */
 export function AccountMapList({ compact = false }: AccountMapListProps) {
+  const [search, setSearch] = useState('')
   const accountMap = api.ledger.accountMap.useQuery()
   const utils = api.useUtils()
 
@@ -108,22 +125,37 @@ export function AccountMapList({ compact = false }: AccountMapListProps) {
   // nothing to map against.
   if (providerId === 'none' || providerAccounts.length === 0) {
     return (
-      <p className='text-muted-foreground text-sm'>
-        No accounting system is connected, so there is nothing to map yet. Entries are still built,
-        balanced and stored here.
-      </p>
+      <EmptySection
+        icon={<Link2 className='size-5' />}
+        title='No accounting system connected'
+        description='Entries are still built, balanced and stored here. There is just nothing to map them onto yet.'
+      />
     )
   }
 
   const mapped = rows.filter((row) => row.state === 'confirmed')
   const suggested = rows.filter((row) => row.suggestion)
-  const visible = compact ? rows.filter((row) => row.state !== 'confirmed' || isBroken(row)) : rows
+
+  const visible = (
+    compact ? rows.filter((row) => row.state !== 'confirmed' || isBroken(row)) : rows
+  ).filter(
+    (row) =>
+      !search ||
+      row.account.name.toLowerCase().includes(search.toLowerCase()) ||
+      row.account.code.includes(search)
+  )
 
   return (
-    <div className='flex flex-col gap-3'>
-      <div className='flex flex-wrap items-center justify-between gap-2'>
-        <span className='font-medium text-foreground text-sm'>
-          {mapped.length} of {rows.length} accounts mapped
+    <div className='flex flex-col gap-3 p-3'>
+      <div className='flex flex-wrap items-center gap-2'>
+        <InputSearch
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder='Search accounts...'
+          className='min-w-40 flex-1'
+        />
+        <span className='text-muted-foreground text-sm tabular-nums'>
+          {mapped.length} of {rows.length} mapped
         </span>
         {suggested.length > 0 && (
           <Button
@@ -133,7 +165,7 @@ export function AccountMapList({ compact = false }: AccountMapListProps) {
             loadingText='Confirming...'
             onClick={() => confirmSuggested.mutate()}>
             <Sparkles />
-            Confirm {suggested.length} suggestion{suggested.length === 1 ? '' : 's'}
+            Accept {suggested.length}
           </Button>
         )}
       </div>
@@ -154,33 +186,104 @@ export function AccountMapList({ compact = false }: AccountMapListProps) {
       )}
 
       {visible.length === 0 ? (
-        <p className='text-muted-foreground text-sm'>
-          Every account is mapped. Nothing here needs a decision.
-        </p>
+        <EmptySection
+          icon={<Landmark className='size-5' />}
+          title={search ? 'No matches' : 'Every account is mapped'}
+          description={search ? undefined : 'Nothing here needs a decision.'}
+        />
       ) : (
-        <div className='overflow-hidden rounded-xl border'>
-          <ul className='flex flex-col'>
-            {visible.map((row) => (
-              <li
-                key={row.account.id}
-                className='flex flex-wrap items-center gap-2 border-b px-3 py-2 text-sm last:border-b-0'>
-                <div className='flex min-w-0 flex-1 items-center gap-2'>
-                  <span className='truncate font-medium'>{row.account.code}</span>
-                  <span className='truncate text-muted-foreground'>{row.account.name}</span>
-                  <Badge variant={accountTypeColor(row.account.accountType)} size='sm'>
-                    {accountTypeLabel(row.account.accountType)}
-                  </Badge>
-                </div>
+        // `TREE_SECONDARY_NOTRUNCATE`: TreeRow's `secondary` slot truncates by
+        // default, which clips a Badge's pill edges and its ring. `secondary`
+        // here is badge-shaped ONLY - the provider account's name lives in the
+        // picker, which is the control that owns it - so this list wears the
+        // class for the same reason `chart-list.tsx` does. Do not put a sentence
+        // in `secondary` without taking it back off.
+        <div className={cn('flex flex-col gap-0.5', TREE_SECONDARY_NOTRUNCATE)}>
+          {visible.map((row) => {
+            const brokenRow = isBroken(row)
+            const options = providerAccounts
+              .filter(
+                (account) => account.active && account.classification === row.account.accountType
+              )
+              .map((account) => ({
+                value: account.id,
+                label: account.number
+                  ? `${account.number} · ${account.fullyQualifiedName}`
+                  : account.fullyQualifiedName,
+              }))
 
-                <div className='flex min-w-0 flex-1 items-center justify-end gap-2'>
-                  {row.state === 'confirmed' && !isBroken(row) ? (
-                    <>
-                      <span className='min-w-0 truncate text-muted-foreground'>
-                        {row.providerAccountName}
-                      </span>
+            return (
+              <TreeRow
+                key={row.account.id}
+                icon={<Landmark className='size-4 text-muted-foreground' />}
+                title={
+                  <span className='flex items-baseline gap-2'>
+                    <span className='text-muted-foreground text-xs tabular-nums'>
+                      {row.account.code}
+                    </span>
+                    <span className='text-sm'>{row.account.name}</span>
+                  </span>
+                }
+                secondaryFill
+                rowClassName={cn(
+                  'bg-primary-100/50 hover:bg-primary-100',
+                  brokenRow && 'ring-1 ring-destructive/40'
+                )}
+                secondary={
+                  <span className='flex items-center gap-1.5'>
+                    <Badge variant={accountTypeColor(row.account.accountType)} size='xs'>
+                      {accountTypeLabel(row.account.accountType)}
+                    </Badge>
+                    {brokenRow ? (
+                      <Badge variant='destructive' size='xs'>
+                        Re-map
+                      </Badge>
+                    ) : row.state === 'unmapped' && !row.suggestion ? (
+                      <Badge variant='outline' size='xs'>
+                        Not mapped
+                      </Badge>
+                    ) : null}
+                  </span>
+                }
+                actions={
+                  <span className='flex items-center gap-1'>
+                    {row.suggestion && (
+                      <Button
+                        variant='outline'
+                        size='xs'
+                        disabled={setAccountIdentity.isPending}
+                        title={`Suggested by ${REASON_COPY[row.suggestion.reason]}`}
+                        onClick={() =>
+                          setAccountIdentity.mutate({
+                            glAccountId: row.account.id,
+                            providerAccountId: row.suggestion?.account.id,
+                          })
+                        }>
+                        <Check />
+                        <span className='max-w-32 truncate'>
+                          {row.suggestion.account.fullyQualifiedName}
+                        </span>
+                      </Button>
+                    )}
+                    <Combobox
+                      size='xs'
+                      className='max-w-56'
+                      placeholder={row.suggestion ? 'Or pick...' : 'Pick an account'}
+                      emptyText='No compatible account'
+                      value={row.providerAccountId ?? undefined}
+                      options={options}
+                      disabled={setAccountIdentity.isPending}
+                      onChangeValue={(value) =>
+                        setAccountIdentity.mutate({
+                          glAccountId: row.account.id,
+                          providerAccountId: value,
+                        })
+                      }
+                    />
+                    {row.state === 'confirmed' && (
                       <Button
                         variant='ghost'
-                        size='sm'
+                        size='xs'
                         title='Remove this mapping'
                         disabled={setAccountIdentity.isPending}
                         onClick={() =>
@@ -191,54 +294,12 @@ export function AccountMapList({ compact = false }: AccountMapListProps) {
                         }>
                         <X />
                       </Button>
-                    </>
-                  ) : (
-                    <>
-                      {row.suggestion && (
-                        <Button
-                          variant='outline'
-                          size='sm'
-                          disabled={setAccountIdentity.isPending}
-                          title={`Suggested by ${REASON_COPY[row.suggestion.reason]}`}
-                          onClick={() =>
-                            setAccountIdentity.mutate({
-                              glAccountId: row.account.id,
-                              providerAccountId: row.suggestion?.account.id,
-                            })
-                          }>
-                          <Check />
-                          {row.suggestion.account.fullyQualifiedName}
-                        </Button>
-                      )}
-                      <Combobox
-                        size='sm'
-                        placeholder={row.suggestion ? 'Or pick...' : 'Pick an account'}
-                        emptyText='No compatible account'
-                        value={row.providerAccountId ?? undefined}
-                        options={providerAccounts
-                          .filter(
-                            (account) =>
-                              account.active && account.classification === row.account.accountType
-                          )
-                          .map((account) => ({
-                            value: account.id,
-                            label: account.number
-                              ? `${account.number} · ${account.fullyQualifiedName}`
-                              : account.fullyQualifiedName,
-                          }))}
-                        onChangeValue={(value) =>
-                          setAccountIdentity.mutate({
-                            glAccountId: row.account.id,
-                            providerAccountId: value,
-                          })
-                        }
-                      />
-                    </>
-                  )}
-                </div>
-              </li>
-            ))}
-          </ul>
+                    )}
+                  </span>
+                }
+              />
+            )
+          })}
         </div>
       )}
 
