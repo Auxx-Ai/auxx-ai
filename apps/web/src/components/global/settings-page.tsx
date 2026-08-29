@@ -61,6 +61,7 @@ export default function SettingsPage({
   const [isScrolled, setIsScrolled] = useState(false)
   const sentinelRef = useRef<HTMLDivElement>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
+  const stickyHeaderRef = useRef<HTMLDivElement>(null)
 
   // Use Intersection Observer for efficient scroll detection
   useEffect(() => {
@@ -82,6 +83,47 @@ export default function SettingsPage({
     )
 
     observer.observe(sentinel)
+
+    return () => {
+      observer.disconnect()
+    }
+  }, [])
+
+  /**
+   * Publish the sticky header's height, and the viewport's, as CSS variables on
+   * the scroll viewport.
+   *
+   * A page that wants a sticky side pane needs to know how far down to pin it,
+   * and that distance is NOT a constant: the header block below is title +
+   * optional description + optional `subHeader` + separator, so it differs per
+   * page and changes when a tab strip is added. Hardcoding a pixel value works
+   * on the page it was measured on and is quietly wrong on the next one.
+   *
+   * Measuring it here rather than in each page is the point — `SettingsPage`
+   * owns the sticky block, so it is the only thing that can answer this
+   * correctly, and every page opts in with one class:
+   *
+   *     lg:sticky lg:top-[var(--settings-sticky-top)]
+   *
+   * ⚠️ `--settings-viewport-h` is the SCROLL VIEWPORT's height, not the
+   * window's. This ScrollArea is nested inside a panel frame with its own
+   * insets, so `100dvh` overshoots by the chrome above and below it and a pane
+   * capped that way would run off the bottom.
+   */
+  useEffect(() => {
+    const header = stickyHeaderRef.current
+    const viewport = viewportRef.current
+    if (!header || !viewport) return
+
+    const publish = () => {
+      viewport.style.setProperty('--settings-sticky-top', `${header.offsetHeight}px`)
+      viewport.style.setProperty('--settings-viewport-h', `${viewport.clientHeight}px`)
+    }
+
+    publish()
+    const observer = new ResizeObserver(publish)
+    observer.observe(header)
+    observer.observe(viewport)
 
     return () => {
       observer.disconnect()
@@ -129,7 +171,9 @@ export default function SettingsPage({
         </header>
       )}
 
-      <div className='sticky top-0 z-20 backdrop-blur-sm bg-background/80 rounded-tr-xl'>
+      <div
+        ref={stickyHeaderRef}
+        className='sticky top-0 z-20 backdrop-blur-sm bg-background/80 rounded-tr-xl'>
         <div
           className={cn(
             'flex flex-col sm:flex-row sm:items-center gap-2 bg-muted/50 px-5 py-3 pe-2 sm:pe-5',

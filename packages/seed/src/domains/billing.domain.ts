@@ -176,6 +176,10 @@ const BOOLEAN_GATES = {
     dataConnectors: true,
     dashboards: true,
     dispatch: true,
+    // The accounting module (plans/money/tasks/13-accounting-ui.md): the general
+    // ledger, the close console and the setup wizard. Tracks `dispatch` above -
+    // same tiers, and both are the manufacturing/field-service bundle.
+    accounting: true,
     // Sequences is metered by `sequencesLimit`, not bundled with `dispatch`. Demo
     // now carries both gates, so the dispatch-triggered client-notification templates
     // are reachable here too (see client-notifications-settings-page.tsx, which
@@ -213,6 +217,10 @@ const BOOLEAN_GATES = {
     dataConnectors: true,
     dashboards: true,
     dispatch: false,
+    // The accounting module (plans/money/tasks/13-accounting-ui.md): the general
+    // ledger, the close console and the setup wizard. Tracks `dispatch` above -
+    // same tiers, and both are the manufacturing/field-service bundle.
+    accounting: false,
     sequences: false,
     granularPermissions: false,
     unrestrictedAiProviders: false,
@@ -242,6 +250,10 @@ const BOOLEAN_GATES = {
     dataConnectors: true,
     dashboards: true,
     dispatch: false,
+    // The accounting module (plans/money/tasks/13-accounting-ui.md): the general
+    // ledger, the close console and the setup wizard. Tracks `dispatch` above -
+    // same tiers, and both are the manufacturing/field-service bundle.
+    accounting: false,
     // On at a metered 3 (`sequencesLimit`) — the upgrade lever into Growth's 25.
     sequences: true,
     granularPermissions: false,
@@ -272,6 +284,10 @@ const BOOLEAN_GATES = {
     dataConnectors: true,
     dashboards: true,
     dispatch: true,
+    // The accounting module (plans/money/tasks/13-accounting-ui.md): the general
+    // ledger, the close console and the setup wizard. Tracks `dispatch` above -
+    // same tiers, and both are the manufacturing/field-service bundle.
+    accounting: true,
     sequences: true,
     granularPermissions: true,
     unrestrictedAiProviders: false,
@@ -301,6 +317,10 @@ const BOOLEAN_GATES = {
     dataConnectors: true,
     dashboards: true,
     dispatch: true,
+    // The accounting module (plans/money/tasks/13-accounting-ui.md): the general
+    // ledger, the close console and the setup wizard. Tracks `dispatch` above -
+    // same tiers, and both are the manufacturing/field-service bundle.
+    accounting: true,
     sequences: true,
     granularPermissions: true,
     unrestrictedAiProviders: false,

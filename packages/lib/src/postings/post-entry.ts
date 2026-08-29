@@ -134,16 +134,12 @@ export interface PreviewEntryOptions {
   lock: PeriodLock
 }
 
-export interface EntryPreview {
-  postingType: PostingType
-  periodKey: string
-  txnDate: string
-  docNumber: string
-  lines: ResolvedPostingLine[]
-  totalMinor: number
-  /** Non-empty when the preview would refuse: the same statuses `postEntry` returns. */
-  blockedBy?: { status: PostResultStatus; error: string }
-}
+// `EntryPreview` moved to `types.ts` (client-safe) so a browser can hold the
+// shape without importing this file, which pulls `@auxx/database`. Re-exported
+// here so existing importers are unaffected.
+export type { EntryPreview } from './types'
+
+import type { EntryPreview } from './types'
 
 /** One line after resolution, paired with the role it was resolved FROM. */
 interface PreparedLine {

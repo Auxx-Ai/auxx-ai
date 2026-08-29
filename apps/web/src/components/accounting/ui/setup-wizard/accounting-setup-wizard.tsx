@@ -1,0 +1,149 @@
+// apps/web/src/components/accounting/ui/setup-wizard/accounting-setup-wizard.tsx
+'use client'
+
+import { Button } from '@auxx/ui/components/button'
+import { Dialog, DialogContent, DialogFooter } from '@auxx/ui/components/dialog'
+import { DialogNav, DialogNavPage, DialogNavPages } from '@auxx/ui/components/dialog-nav'
+import { useEffect, useRef, useState } from 'react'
+import { api } from '~/trpc/react'
+import { WizardAccountsPage } from './wizard-accounts-page'
+import { WizardCostingPage } from './wizard-costing-page'
+import { WizardDonePage } from './wizard-done-page'
+import { WizardOpeningPage } from './wizard-opening-page'
+import { WizardPeriodPage } from './wizard-period-page'
+import type { WizardLeaveDirection, WizardStepHandle } from './wizard-step-handle'
+import { WizardWelcomePage } from './wizard-welcome-page'
+
+const PAGES = ['welcome', 'period', 'opening', 'costing', 'accounts', 'done'] as const
+type WizardPage = (typeof PAGES)[number]
+
+const PAGE_TITLES: Record<WizardPage, string> = {
+  welcome: 'Set up accounting',
+  period: 'Accounting period',
+  opening: 'Opening balances',
+  costing: 'Costing',
+  accounts: 'Account map',
+  done: 'Finalize',
+}
+
+export interface AccountingSetupWizardProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}
+
+/**
+ * `AccountingSetupWizard` (plans/money/tasks/13-accounting-ui.md section 3.3) - a six-page
+ * `DialogNav` wizard covering the four things that have to be true before a month-end entry can
+ * legally be posted (accounting period, opening balances, costing, the account map) plus a
+ * "finalize" page that freezes the opening baseline.
+ *
+ * 🛑 Pages write REAL data through the settings catalog keys, never a wizard-local progress
+ * record. That is task 12's scalar-keys decision and it is what lets the settings pages, the
+ * checklist and the Post gate all read one source and agree.
+ *
+ * Pages holding a dirty draft expose a {@link WizardStepHandle} the shell consults before leaving
+ * the page in any direction - saving a dirty draft, or blocking Continue when the draft is
+ * invalid - so Back, Continue and "Set up later" never lose work. Only Continue is ever refused;
+ * see `wizard-step-handle.ts` for why the exits stay open.
+ *
+ * "Set up later" (any page) and reaching the last page both call `setWizardCompleted` for the
+ * `accounting` checklist - one timestamp, so the wizard never auto-opens again either way.
+ */
+export function AccountingSetupWizard({ open, onOpenChange }: AccountingSetupWizardProps) {
+  const [page, setPage] = useState<WizardPage>('welcome')
+  const periodRef = useRef<WizardStepHandle | null>(null)
+  const openingRef = useRef<WizardStepHandle | null>(null)
+  const costingRef = useRef<WizardStepHandle | null>(null)
+
+  // Reset to the first page each time the wizard is (re)opened.
+  useEffect(() => {
+    if (open) setPage('welcome')
+  }, [open])
+
+  const utils = api.useUtils()
+  // Write the stamp into the cache up front, then invalidate. `finish()` is often the last thing
+  // that happens before a navigation away from `/app/accounting` (the done page's "Open the
+  // ledger" link), which unmounts the gate - an invalidation that lands after that only marks the
+  // entry stale, so the stale `wizardCompletedAt: null` is what a remounted gate would read.
+  const setWizardCompleted = api.gettingStarted.setWizardCompleted.useMutation({
+    onMutate: () => {
+      utils.gettingStarted.getStatus.setData({ checklist: 'accounting' }, (prev) =>
+        prev ? { ...prev, wizardCompletedAt: new Date().toISOString() } : prev
+      )
+    },
+    // `onSettled`, not `onSuccess`: a failed write must not leave the optimistic stamp standing.
+    onSettled: () => utils.gettingStarted.getStatus.invalidate(),
+  })
+
+  const index = PAGES.indexOf(page)
+
+  /** Ask the current page (if it registered a handle) whether it is safe to navigate away. */
+  const attemptLeave = (direction: WizardLeaveDirection) => {
+    const handle =
+      page === 'period'
+        ? periodRef.current
+        : page === 'opening'
+          ? openingRef.current
+          : page === 'costing'
+            ? costingRef.current
+            : null
+    return handle?.tryAdvance(direction) ?? true
+  }
+
+  const goNext = () => {
+    if (attemptLeave('next')) setPage(PAGES[Math.min(index + 1, PAGES.length - 1)] ?? 'done')
+  }
+  const goBack = () => {
+    if (attemptLeave('back')) setPage(PAGES[Math.max(index - 1, 0)] ?? 'welcome')
+  }
+  const finish = () => {
+    if (!attemptLeave('exit')) return
+    setWizardCompleted.mutate({ checklist: 'accounting' })
+    onOpenChange(false)
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(next) => !next && finish()}>
+      <DialogContent size='content' position='tc' innerClassName='p-0'>
+        <DialogNav
+          title='Set up accounting'
+          description='A few things to configure before your books can be closed from Auxx.'
+          onBack={page !== 'welcome' && page !== 'done' ? goBack : undefined}
+          crumbs={[{ label: PAGE_TITLES[page] }]}
+        />
+
+        <DialogNavPages value={page}>
+          <DialogNavPage value='welcome' size='md'>
+            <WizardWelcomePage />
+          </DialogNavPage>
+          <DialogNavPage value='period' size='lg'>
+            <WizardPeriodPage ref={periodRef} />
+          </DialogNavPage>
+          <DialogNavPage value='opening' size='xl'>
+            <WizardOpeningPage ref={openingRef} />
+          </DialogNavPage>
+          <DialogNavPage value='costing' size='lg'>
+            <WizardCostingPage ref={costingRef} />
+          </DialogNavPage>
+          <DialogNavPage value='accounts' size='lg'>
+            <WizardAccountsPage />
+          </DialogNavPage>
+          <DialogNavPage value='done' size='md'>
+            <WizardDonePage onFinish={finish} />
+          </DialogNavPage>
+        </DialogNavPages>
+
+        {page !== 'done' && (
+          <DialogFooter className='border-t px-4 py-3 sm:justify-between'>
+            <Button variant='ghost' size='sm' onClick={finish}>
+              Set up later
+            </Button>
+            <Button variant='outline' size='sm' onClick={goNext}>
+              {page === 'welcome' ? 'Get started' : 'Continue'}
+            </Button>
+          </DialogFooter>
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}

@@ -48,6 +48,7 @@ export enum FeatureKey {
   dataConnectors = 'dataConnectors',
   dashboards = 'dashboards',
   dispatch = 'dispatch',
+  accounting = 'accounting',
   sequences = 'sequences',
   granularPermissions = 'granularPermissions',
   /**
@@ -219,6 +220,14 @@ export const FEATURE_REGISTRY: FeatureMetadata[] = [
     label: 'Dispatch',
     description: 'Field-service work orders, scheduling, and dispatching.',
     group: 'Dispatch',
+  },
+  {
+    key: FeatureKey.accounting,
+    type: 'boolean',
+    label: 'Accounting',
+    description:
+      'The general ledger, the month-end close console, and the accounting setup wizard.',
+    group: 'Accounting',
   },
   {
     key: FeatureKey.sequences,

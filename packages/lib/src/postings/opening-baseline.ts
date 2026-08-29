@@ -48,17 +48,12 @@ import { getOrganizationSetting } from '../settings/settings-service'
 import { parsePeriodKey } from './periods'
 
 /** The catalog keys this module reads. Nothing else in the read path names them. */
-export const OPENING_BASELINE_SETTING_KEYS = {
-  setupState: 'accounting.setupState',
-  cutoffPeriod: 'accounting.cutoffPeriod',
-  bookTimeZone: 'accounting.bookTimeZone',
-  inventory_raw_materials: 'accounting.openingRawMaterials',
-  inventory_wip: 'accounting.openingWip',
-  inventory_finished_goods: 'accounting.openingFinishedGoods',
-} as const
+// Declared in `setup-readiness.ts` - the client-safe half - because the setup
+// wizard needs these keys in a browser and this file reaches the database.
+// Re-exported so every existing server importer is unaffected.
+export { FINALIZED_SETUP_STATE, OPENING_BASELINE_SETTING_KEYS } from './setup-readiness'
 
-/** The value `accounting.setupState` must hold before anything may post. */
-export const FINALIZED_SETUP_STATE = 'finalized' as const
+import { FINALIZED_SETUP_STATE, OPENING_BASELINE_SETTING_KEYS } from './setup-readiness'
 
 /**
  * The frozen opening position the first month-end entry is measured against.

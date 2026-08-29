@@ -17,6 +17,8 @@ import {
   getCachedMembers,
   getOrgCache,
 } from '../cache'
+import { ENABLED_POSTING_TYPES, INVENTORY_ROLES_BY_POSTING_TYPE } from '../postings/regime'
+import { resolveSetupReadiness } from '../postings/setup-readiness'
 import type { ChecklistId, GoalKey } from './client'
 import type { GettingStartedContext } from './types'
 
@@ -162,6 +164,78 @@ async function hasScheduledVisit(ctx: GettingStartedContext): Promise<boolean> {
   return rows.length > 0
 }
 
+// ── accounting checklist signals ──
+//
+// 🛑 Three of the six delegate to `resolveSetupReadiness` rather than
+// re-implementing the arithmetic. That predicate is ALSO what the accounting
+// settings pages call client-side against hydrated `useSettings`, and writing
+// the same rules twice is the thing that rots: the two copies drift and the
+// checklist starts disagreeing with the button.
+//
+// ⚠️ None of these gate Post. `previewMonthEnd`'s `blockedBy` does. A checklist
+// says "set up costing"; a refusal names the part with no standard cost.
+
+/** One settings-derived requirement from the shared predicate. */
+async function settingsRequirementMet(ctx: GettingStartedContext, key: string): Promise<boolean> {
+  const settings = await getOrgCache().get(ctx.organizationId, 'orgSettings')
+  const readiness = resolveSetupReadiness(settings as Record<string, unknown>)
+  return readiness.requirements.find((r) => r.key === key)?.met ?? false
+}
+
+const hasAccountingPeriod = (ctx: GettingStartedContext) =>
+  settingsRequirementMet(ctx, 'set-accounting-period')
+const hasOpeningBalances = (ctx: GettingStartedContext) =>
+  settingsRequirementMet(ctx, 'set-opening-balances')
+const hasCostingRates = (ctx: GettingStartedContext) => settingsRequirementMet(ctx, 'set-costing')
+
+/** `accounting.setupState === 'finalized'`. */
+async function isSetupFinalized(ctx: GettingStartedContext): Promise<boolean> {
+  const settings = await getOrgCache().get(ctx.organizationId, 'orgSettings')
+  return resolveSetupReadiness(settings as Record<string, unknown>).finalized
+}
+
+/**
+ * Every role the enabled posting regime requires has a `GlRoleAssignment`.
+ *
+ * ⚠️ Scoped to `INVENTORY_ROLES_BY_POSTING_TYPE` for the ENABLED types only, not
+ * to all 13 roles. `ppv` and `inventory_wip` are in the vocabulary but nothing
+ * emits them under L1 — PPV is a report (task 09 §3) and WIP is unreachable —
+ * so demanding them would leave this goal permanently red.
+ */
+async function hasRequiredRoleAssignments(ctx: GettingStartedContext): Promise<boolean> {
+  const required = new Set<string>()
+  for (const postingType of ENABLED_POSTING_TYPES) {
+    for (const role of INVENTORY_ROLES_BY_POSTING_TYPE[postingType]) required.add(role)
+  }
+  if (required.size === 0) return true
+
+  const db = ctx.db ?? database
+  const rows = await db
+    .select({ role: schema.GlRoleAssignment.role })
+    .from(schema.GlRoleAssignment)
+    .where(eq(schema.GlRoleAssignment.organizationId, ctx.organizationId))
+
+  const assigned = new Set(rows.map((r) => r.role))
+  for (const role of required) if (!assigned.has(role)) return false
+  return true
+}
+
+/** At least one `posted` month-end entry exists. The books have started. */
+async function hasPostedEntry(ctx: GettingStartedContext): Promise<boolean> {
+  const db = ctx.db ?? database
+  const rows = await db
+    .select({ id: schema.GlPosting.id })
+    .from(schema.GlPosting)
+    .where(
+      and(
+        eq(schema.GlPosting.organizationId, ctx.organizationId),
+        eq(schema.GlPosting.status, 'posted')
+      )
+    )
+    .limit(1)
+  return rows.length > 0
+}
+
 /** Map of checklist → auto-inferred goal → signal. Manual-only goals have no entry. */
 const AUTO_SIGNALS: Record<ChecklistId, Partial<Record<GoalKey, Signal>>> = {
   main: {
@@ -180,6 +254,14 @@ const AUTO_SIGNALS: Record<ChecklistId, Partial<Record<GoalKey, Signal>>> = {
     'create-request': hasServiceRequest,
     'create-work-order': hasWorkOrder,
     'schedule-visit': hasScheduledVisit,
+  },
+  accounting: {
+    'set-accounting-period': hasAccountingPeriod,
+    'set-opening-balances': hasOpeningBalances,
+    'set-costing': hasCostingRates,
+    'map-accounts': hasRequiredRoleAssignments,
+    'finalize-setup': isSetupFinalized,
+    'post-first-entry': hasPostedEntry,
   },
 }
 

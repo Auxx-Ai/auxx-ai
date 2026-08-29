@@ -18,6 +18,7 @@ import {
   History,
   Import,
   Inbox,
+  Landmark,
   Layers,
   LayoutDashboard,
   Map,
@@ -183,6 +184,22 @@ export const SIDEBAR_MENU: SidebarProps[] = [
         icon: <Receipt />,
       },
     ],
+  },
+  {
+    // The accounting module (plans/money/tasks/13-accounting-ui.md §1) — the
+    // general ledger, the month-end close and the accounting setup wizard.
+    //
+    // No sub-items, deliberately. Orders, Purchase Orders, Vendor Bills, Parts,
+    // Products and Builds stay at their existing top-level routes; the Dispatch
+    // entry below shows how they COULD be grouped later (`skipParentSlug` + child
+    // items pointing at top-level routes), but grouping operational records under
+    // "Accounting" would force the group's gate to the loosest of its children.
+    id: 'accounting',
+    label: 'Accounting',
+    slug: 'accounting',
+    icon: <Landmark />,
+    featureKey: 'accounting',
+    permissionKey: 'ledger.view',
   },
   {
     // The sellable catalog's first-class entry (plans/products/01-product-family.md

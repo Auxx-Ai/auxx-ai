@@ -295,3 +295,64 @@ export interface PostResult {
   /** `true` only for a transport failure. The retry decision, precomputed. */
   retryable?: boolean
 }
+
+/**
+ * What an entry WOULD look like, resolved against the org's own chart.
+ *
+ * A read model: `previewEntry` builds it and writes nothing. It lives here
+ * rather than beside `previewEntry` because it crosses the wire to a browser,
+ * and everything in this file is client-safe by construction - `post-entry.ts`
+ * imports `@auxx/database`, so a UI importing this type from there would drag
+ * the server graph into a bundle.
+ */
+export interface EntryPreview {
+  postingType: PostingType
+  periodKey: string
+  txnDate: string
+  docNumber: string
+  lines: ResolvedPostingLine[]
+  totalMinor: number
+  /** Non-empty when the preview would refuse: the same statuses `postEntry` returns. */
+  blockedBy?: { status: PostResultStatus; error: string }
+}
+
+/** One claimed-but-not-posted entry, as the close console's banner reads it. */
+export interface UnpostedPeriod {
+  periodKey: string
+  postingType: PostingType
+  glPostingId: string
+  /**
+   * Kept distinct rather than collapsed into "unposted": `pending` is claimed
+   * and in flight (or claimed by a run that died mid-push, which the idempotency
+   * ladder heals), `failed` was attempted and refused and carries the reason.
+   * They call for different actions.
+   */
+  status: 'pending' | 'failed'
+  docNumber: string
+  attempts: number
+  failureReason: string | null
+}
+
+/** One entry whose lines do not tie, or do not sum to its recorded total. */
+export interface BooksBalanceDiscrepancy {
+  glPostingId: string
+  docNumber: string
+  postingType: PostingType
+  periodKey: string
+  totalDebitMinor: number
+  totalCreditMinor: number
+  /** `GlPosting.totalMinor`, which must equal BOTH sides. */
+  recordedTotalMinor: number
+}
+
+/**
+ * The after-the-fact balance sweep.
+ *
+ * `postingsChecked` rides along on purpose - "0 discrepancies out of 0" and
+ * "0 out of 412" are very different answers and a banner has to tell them apart.
+ */
+export interface BooksBalanceReport {
+  balanced: boolean
+  postingsChecked: number
+  discrepancies: BooksBalanceDiscrepancy[]
+}
