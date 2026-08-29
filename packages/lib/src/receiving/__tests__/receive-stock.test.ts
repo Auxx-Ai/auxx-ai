@@ -16,6 +16,7 @@ const h = vi.hoisted(() => ({
   /** entityType -> def id; a missing key models a def the org does not have. */
   defs: new Map<string, string>(),
   partKind: null as string | null,
+  ensureSpy: vi.fn(),
   vendorTerms: null as {
     unitPrice: number | null
     shippingCost?: number | null
@@ -55,6 +56,13 @@ vi.mock('../receipt-queries', async () => {
   }
 })
 
+// A part's first receipt gives it a standard cost
+// (plans/money/tasks/15-costing-usability.md §2c). Mocked here because the real
+// one reads the standard-cost fields, and this file has no database.
+vi.mock('../../builds/ensure-standard-cost', () => ({
+  ensureStandardCost: h.ensureSpy,
+}))
+
 import { receiveStock } from '../receive-stock'
 
 const ORG = 'org_1'
@@ -83,6 +91,10 @@ beforeEach(() => {
   h.partKind = null
   h.vendorTerms = null
   h.createSpy.mockResolvedValue({ instance: { id: 'mv_1' } })
+  h.ensureSpy.mockImplementation(async (_db: unknown, _org: string, partIds: string[]) => {
+    const { ok } = await import('neverthrow')
+    return ok({ writtenPartIds: partIds })
+  })
 })
 
 /** The value bag handed to `UnifiedCrudHandler.create` on the single write. */
@@ -507,3 +519,64 @@ async function receiveAndRead(
   expect(result.isOk()).toBe(true)
   return writtenValues()
 }
+
+// A part's FIRST receipt gives it a standard cost
+// (plans/money/tasks/15-costing-usability.md §2c), so the adjust, build and
+// close paths that refuse without one stop refusing.
+describe('receiveStock — the first receipt sets the standard cost', () => {
+  it('offers the resolved LANDED cost, not the raw supplier price', async () => {
+    h.vendorTerms = { unitPrice: 4400, shippingCost: 300, tariffRate: 10, otherCost: 100 }
+    await receiveAndRead({ partId: 'part_1', quantity: 5, vendorPartId: 'vp_1' })
+    expect(h.ensureSpy).toHaveBeenCalledTimes(1)
+    expect(h.ensureSpy).toHaveBeenCalledWith(db, ORG, ['part_1'], {
+      kind: 'receipt',
+      unitCost: 5240,
+    })
+  })
+
+  it('offers it before the movement is written', async () => {
+    const order: string[] = []
+    h.ensureSpy.mockImplementation(async () => {
+      order.push('ensure')
+      const { ok } = await import('neverthrow')
+      return ok({ writtenPartIds: ['part_1'] })
+    })
+    h.createSpy.mockImplementation(async () => {
+      order.push('create')
+      return { instance: { id: 'mv_1' } }
+    })
+    await receiveStock(db, ORG, USER, { partId: 'part_1', quantity: 1, unitCost: 4400 })
+    expect(order).toEqual(['ensure', 'create'])
+  })
+
+  // 🛑 The scope limit. This does NOT change what the receipt is valued at:
+  // receiving AT standard and posting the difference to 5090 is a books change
+  // and lives in `plans/money/design/ppv-treatment.md`.
+  it('still values the receipt at the landed cost, on an ACTUAL basis', async () => {
+    const values = await receiveAndRead({ partId: 'part_1', quantity: 5, unitCost: 4400 })
+    expect(values.stock_movement_cost_basis).toBe('actual')
+    expect(values.stock_movement_unit_cost).toBe(4400)
+  })
+
+  // The receipt is the fact being recorded and it is already priced. Losing the
+  // arrival because a derived convenience could not be written is the worse
+  // outcome; the part simply stays unrolled.
+  it('records the receipt anyway when the standard cost could not be set', async () => {
+    h.ensureSpy.mockImplementation(async () => {
+      const { err } = await import('neverthrow')
+      return err(new Error('boom'))
+    })
+    const result = await receiveStock(db, ORG, USER, {
+      partId: 'part_1',
+      quantity: 5,
+      unitCost: 4400,
+    })
+    expect(result.isOk()).toBe(true)
+    expect(h.createSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('is not attempted when the receipt is refused for having no price', async () => {
+    await expectErr(receiveStock(db, ORG, USER, { partId: 'part_1', quantity: 5 }))
+    expect(h.ensureSpy).not.toHaveBeenCalled()
+  })
+})

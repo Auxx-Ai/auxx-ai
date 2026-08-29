@@ -129,12 +129,22 @@ export interface StandardCostRollResult extends StandardCostRollPlan {
 /** Input to {@link rollStandardCost} and {@link previewStandardCostRoll}. */
 export interface RollStandardCostInput {
   /**
-   * Restrict the roll to these parts **and every ancestor of them**.
+   * Restrict the roll to these parts, **every ancestor of them, and every
+   * descendant that has no stored standard yet**.
    *
-   * Omitted (or empty) rolls every non-archived part in the org. Descendants are
-   * deliberately NOT pulled in: rolling a finished good values it at its
-   * subassemblies' already-agreed standards, which is what a standard cost roll
-   * is for.
+   * Omitted (or empty) rolls every non-archived part in the org.
+   *
+   * 🛑 The descendant half is ASYMMETRIC and the asymmetry is the point
+   * (plans/money/tasks/15-costing-usability.md §3):
+   *
+   * - A descendant that **already has** a standard is left alone and contributes
+   *   its stored value. Rolling a finished good values it at its subassemblies'
+   *   already-agreed standards, which is what a standard cost roll is for, and
+   *   re-valuing them is not something the caller asked for.
+   * - A descendant with **no** standard is pulled in, because it has nothing to
+   *   re-value and because leaving it out is what used to make this throw on
+   *   every built part in a fresh org: it would contribute a NULL stored standard
+   *   and abort the parent rather than value it short.
    */
   partIds?: string[]
   /** When the new standards take effect. */

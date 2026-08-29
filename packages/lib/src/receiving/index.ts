@@ -13,6 +13,7 @@ export {
   resolveInventoryRoleForPartKind,
   roundMinorUnits,
 } from './client'
+export { openStockBalance } from './open-stock-balance'
 export {
   getLastReceiptCost,
   getPartReceiptHistory,
@@ -29,6 +30,7 @@ export type {
   AdjustStockInput,
   ListReceiptsFilters,
   MovementRecord,
+  OpenStockBalanceInput,
   ReceiptRow,
   ReceivePurchaseOrderInput,
   ReceivePurchaseOrderLineInput,

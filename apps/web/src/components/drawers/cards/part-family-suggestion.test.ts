@@ -2,11 +2,19 @@
 //
 // The finished_good suggestion (plans/products/01-product-family.md §4) is
 // gated on ALL of: (a) the part HAS a product, (b) it is nobody's subpart,
-// (c) part_kind is unset — never over an explicit human choice. Gap C §3.2:
-// a suggestion the human confirms, never a derivation.
+// (c) part_kind is UNCLASSIFIED. Gap C §3.2: a suggestion the human confirms,
+// never a derivation.
+//
+// (c) used to mean "unset". Since 15-costing-usability.md §4c the `part_kind`
+// field carries `defaultValue: 'component'`, so a stored `component` no longer
+// proves a human typed it, and the unclassified set is "unset OR component".
+// Leaving the gate at unset-only would have silently deleted the only safety
+// net against a finished good posting to 1310 instead of 1330 on movement rows
+// that are `updatable: false` and can never be corrected.
 
 import { describe, expect, it } from 'vitest'
 import {
+  isPartKindUnclassified,
   isPartKindUnset,
   shouldSuggestFamily,
   shouldSuggestFinishedGood,
@@ -43,19 +51,40 @@ describe('shouldSuggestFinishedGood', () => {
     ).toBe(false)
   })
 
-  it('(c) never suggests over an explicit human choice — any set kind blocks it', () => {
-    expect(shouldSuggestFinishedGood({ ...ELIGIBLE, partKind: 'component' })).toBe(false)
-    expect(shouldSuggestFinishedGood({ ...ELIGIBLE, partKind: 'subassembly' })).toBe(false)
-    // Already finished_good: nothing to suggest.
-    expect(shouldSuggestFinishedGood({ ...ELIGIBLE, partKind: 'finished_good' })).toBe(false)
-    // SINGLE_SELECT stored values are arrays on some read paths — same answer.
-    expect(shouldSuggestFinishedGood({ ...ELIGIBLE, partKind: ['component'] })).toBe(false)
+  it('(c) still suggests over a `component`, the field default, not a human choice', () => {
+    // The load-bearing case: a finished good created through the form (or an
+    // import, or the API) lands on `component` without anybody saying so.
+    expect(shouldSuggestFinishedGood({ ...ELIGIBLE, partKind: 'component' })).toBe(true)
+    // SINGLE_SELECT stored values are arrays on some read paths, same answer.
+    expect(shouldSuggestFinishedGood({ ...ELIGIBLE, partKind: ['component'] })).toBe(true)
   })
 
-  it('(c) array-shaped and empty select values still read as unset', () => {
+  it('(c) never suggests over a deliberate classification', () => {
+    // Neither of these is reachable without somebody picking it.
+    expect(shouldSuggestFinishedGood({ ...ELIGIBLE, partKind: 'subassembly' })).toBe(false)
+    expect(shouldSuggestFinishedGood({ ...ELIGIBLE, partKind: ['subassembly'] })).toBe(false)
+    // Already finished_good: nothing to suggest.
+    expect(shouldSuggestFinishedGood({ ...ELIGIBLE, partKind: 'finished_good' })).toBe(false)
+    expect(shouldSuggestFinishedGood({ ...ELIGIBLE, partKind: ['finished_good'] })).toBe(false)
+  })
+
+  it('(c) array-shaped and empty select values still read as unclassified', () => {
     expect(shouldSuggestFinishedGood({ ...ELIGIBLE, partKind: null })).toBe(true)
     expect(shouldSuggestFinishedGood({ ...ELIGIBLE, partKind: '' })).toBe(true)
     expect(shouldSuggestFinishedGood({ ...ELIGIBLE, partKind: [] })).toBe(true)
+    expect(shouldSuggestFinishedGood({ ...ELIGIBLE, partKind: [''] })).toBe(true)
+  })
+
+  it('(a) and (b) are unaffected by the widening: component alone is not enough', () => {
+    expect(
+      shouldSuggestFinishedGood({ ...ELIGIBLE, partKind: 'component', hasProduct: false })
+    ).toBe(false)
+    expect(
+      shouldSuggestFinishedGood({ ...ELIGIBLE, partKind: 'component', isSubpartOfAssembly: true })
+    ).toBe(false)
+    expect(
+      shouldSuggestFinishedGood({ ...ELIGIBLE, partKind: 'component', subpartCheckLoaded: false })
+    ).toBe(false)
   })
 })
 
@@ -71,6 +100,28 @@ describe('isPartKindUnset', () => {
   it('treats any concrete value as set, scalar or array-wrapped', () => {
     expect(isPartKindUnset('component')).toBe(false)
     expect(isPartKindUnset(['finished_good'])).toBe(false)
+  })
+})
+
+describe('isPartKindUnclassified', () => {
+  it('agrees with isPartKindUnset on every unset shape', () => {
+    for (const value of [undefined, null, '', [], ['']]) {
+      expect(isPartKindUnset(value)).toBe(true)
+      expect(isPartKindUnclassified(value)).toBe(true)
+    }
+  })
+
+  it('adds `component`, the field default, so not a human choice', () => {
+    expect(isPartKindUnset('component')).toBe(false)
+    expect(isPartKindUnclassified('component')).toBe(true)
+    expect(isPartKindUnclassified(['component'])).toBe(true)
+  })
+
+  it('leaves the two deliberate kinds classified', () => {
+    expect(isPartKindUnclassified('subassembly')).toBe(false)
+    expect(isPartKindUnclassified(['subassembly'])).toBe(false)
+    expect(isPartKindUnclassified('finished_good')).toBe(false)
+    expect(isPartKindUnclassified(['finished_good'])).toBe(false)
   })
 })
 
@@ -100,16 +151,41 @@ describe('shouldSuggestFamily', () => {
     }
   })
 
+  it('is UNAFFECTED by the widened finished-good gate', () => {
+    // The widening only moved `component` into the unclassified set.
+    // shouldSuggestFamily gates on an explicit `finished_good`, which was never
+    // in that set, so every answer here is exactly what it was before.
+    for (const partKind of [
+      undefined,
+      null,
+      '',
+      [],
+      [''],
+      'component',
+      ['component'],
+      'subassembly',
+    ]) {
+      expect(shouldSuggestFamily({ hasProduct: false, partKind })).toBe(false)
+    }
+    expect(shouldSuggestFamily({ hasProduct: false, partKind: 'finished_good' })).toBe(true)
+  })
+
   it('is mutually exclusive with the finished-good suggestion', () => {
-    // The two gate on opposite sides of the same fact: one refuses to speak
-    // OVER a human choice of part_kind, the other refuses to speak WITHOUT one.
+    // The two gate on opposite sides of the same fact: one only speaks while
+    // part_kind is unclassified, the other only once it says finished_good,
+    // and finished_good is never unclassified. They also disagree on
+    // hasProduct, so the exclusion is doubly true.
     const cases: Array<{ hasProduct: boolean; partKind: unknown }> = [
       { hasProduct: false, partKind: undefined },
       { hasProduct: false, partKind: 'finished_good' },
       { hasProduct: false, partKind: 'component' },
+      { hasProduct: false, partKind: ['component'] },
+      { hasProduct: false, partKind: 'subassembly' },
       { hasProduct: true, partKind: undefined },
       { hasProduct: true, partKind: 'finished_good' },
       { hasProduct: true, partKind: 'component' },
+      { hasProduct: true, partKind: ['component'] },
+      { hasProduct: true, partKind: 'subassembly' },
     ]
     for (const input of cases) {
       const both =

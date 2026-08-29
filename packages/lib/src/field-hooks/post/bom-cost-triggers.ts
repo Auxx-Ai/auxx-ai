@@ -42,6 +42,7 @@ const recalculatePartCost: FieldTriggerHandler = async (event) => {
   })
 
   await recalculateAffectedParts(organizationId, partIds)
+  await ensureFirstStandardCosts(organizationId, partIds)
 }
 
 /**
@@ -100,10 +101,83 @@ export async function recalculatePartCostForEntityBatch(params: {
     affectedParts: partIds.size,
     organizationId,
   })
-  await recalculateAffectedParts(organizationId, [...partIds])
+  const affected = [...partIds]
+  await recalculateAffectedParts(organizationId, affected)
+  await ensureFirstStandardCosts(organizationId, affected)
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────
+
+/**
+ * Give a newly priced part, and its parents, a FIRST standard cost
+ * (plans/money/tasks/15-costing-usability.md §2a).
+ *
+ * Runs immediately after `recalculateAffectedParts`, so `part_cost` is already
+ * the refreshed replacement cost `ensureStandardCost` rolls from. It widens to
+ * ancestors itself: pricing a component is what makes its parent rollable, and
+ * without the widening the parent stays unvalued one level up.
+ *
+ * 🛑 **This can never restate an existing standard.** `ensureStandardCost`
+ * writes exclusively where `part_standard_cost IS NULL`. A price change on a
+ * part that already has a standard moves `part_cost` and leaves the standard
+ * alone, which is the whole reason the two fields are separate: a standard that
+ * drifted with vendor quotes would silently restate every closed period.
+ *
+ * 🛑 **It must never break the price save.** This is a post-commit hook on a
+ * `vendor_part` or `subpart` write, and the price is the fact the user asked to
+ * record. A failure here is logged and swallowed, including the setting read:
+ * the worst case is a part that stays unrolled, which is the state it was in
+ * before the price arrived.
+ *
+ * The two collaborators are imported lazily, the same way `settings-service`
+ * reaches the org cache. Neither is on the path a field hook has to be able to
+ * load: this is optional, best-effort work hanging off the end of a recalc, and
+ * a static import would put the whole standard-cost and settings graph into
+ * every module that so much as registers a trigger.
+ */
+async function ensureFirstStandardCosts(organizationId: string, partIds: string[]): Promise<void> {
+  if (partIds.length === 0) return
+
+  try {
+    const [{ ensureStandardCost }, { getOrganizationSetting }] = await Promise.all([
+      import('../../builds/ensure-standard-cost'),
+      import('../../settings/settings-service'),
+    ])
+
+    const enabled = await getOrganizationSetting({
+      organizationId,
+      key: 'manufacturing.autoRollFirstStandard',
+    })
+    // Default is on, so only an explicit `false` turns it off. An org running a
+    // strict standard-cost discipline sets it and keeps the manual roll.
+    if (enabled === false) return
+
+    const result = await ensureStandardCost(database, organizationId, partIds, {
+      kind: 'supplier-price',
+    })
+    if (result.isErr()) {
+      logger.warn('Could not set first standard costs after a price change', {
+        organizationId,
+        consideredParts: partIds.length,
+        error: result.error,
+      })
+      return
+    }
+    if (result.value.writtenPartIds.length > 0) {
+      logger.info('Set first standard costs after a price change', {
+        organizationId,
+        consideredParts: partIds.length,
+        writtenParts: result.value.writtenPartIds.length,
+      })
+    }
+  } catch (error) {
+    logger.warn('First standard cost pass failed after a price change', {
+      organizationId,
+      consideredParts: partIds.length,
+      error,
+    })
+  }
+}
 
 /**
  * Batch resolve parent partIds for multiple entity instances in a single query.

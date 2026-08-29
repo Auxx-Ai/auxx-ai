@@ -14,6 +14,7 @@ import {
   getLastReceiptCost,
   getPartReceiptHistory,
   listReceipts,
+  openStockBalance,
   receivePurchaseOrder,
   receiveStock,
   reverseMovement,
@@ -277,6 +278,48 @@ export const purchasingRouter = createTRPCRouter({
       ctx.capabilities.assertEditEntity(movementDefId)
 
       const result = await adjustStock(ctx.db, organizationId, userId, input)
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /**
+   * A part's opening balance: quantity and cost, once.
+   *
+   * plans/money/tasks/15-costing-usability.md §2.2. Writes one `initial`
+   * movement and sets the part's FIRST `part_standard_cost` from the typed
+   * `unitCost`, so the two agree by construction and the opening balance
+   * carries no variance.
+   *
+   * 🛑 A typed unit cost here does NOT reopen `G12`. That decision removed
+   * `adjustStock`'s cost input because an adjustment has no supplier row, no
+   * purchase order and no packing slip, so there is no *actual* to record. An
+   * opening balance is the one case where there is one, which is why `initial`
+   * is its own movement type. `adjustStock` still takes no cost.
+   *
+   * Gated on edit for `stock_movement` — the same door `receiveStock`,
+   * `adjustStock` and `reverseMovement` go through, because this writes the
+   * ledger. It also writes `part_standard_cost`, but a person who may move
+   * stock may set the opening cost of stock they are moving.
+   */
+  openStockBalance: capabilityProcedure
+    .input(
+      z.object({
+        partId: z.string().min(1),
+        /** Units on hand at the opening date. Strictly positive. */
+        quantity: z.number().finite().positive(),
+        /** What a unit cost, whole minor units. Strictly positive. */
+        unitCost: z.number().int().positive(),
+        /** The ACCOUNTING date, which is not `createdAt`. Defaults to now. */
+        occurredAt: z.coerce.date().optional(),
+        notes: z.string().max(2000).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
+      const movementDefId = await requireDefId(organizationId, 'stock_movement')
+      ctx.capabilities.assertEditEntity(movementDefId)
+
+      const result = await openStockBalance(ctx.db, organizationId, userId, input)
       if (result.isErr()) throw result.error
       return result.value
     }),

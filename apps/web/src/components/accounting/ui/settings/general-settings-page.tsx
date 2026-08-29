@@ -187,8 +187,8 @@ export function AccountingGeneralSettingsPage() {
 
             <SettingsSection
               icon={Scale}
-              title='Absorption rates'
-              description='Per assembled unit, in whole cents. An unset rate absorbs nothing; a zero rate is a real choice.'>
+              title='Standard cost'
+              description='Absorption per assembled unit, in whole cents, and how a part first gets a standard. An unset rate absorbs nothing; a zero rate is a real choice.'>
               <FieldPanel
                 className='mt-1 p-0'
                 resizeId='accounting-general-absorption'
@@ -224,12 +224,25 @@ export function AccountingGeneralSettingsPage() {
                     }
                   />
                 </SettingsFieldRow>
+                <SettingsFieldRow
+                  settingKey={ACCOUNTING_KEYS.autoRollFirstStandard}
+                  title='Set a first standard automatically'
+                  description='When a part first gets a price, opening stock or a receipt, freeze that as its standard cost.'
+                  value={absorptionDraft[ACCOUNTING_KEYS.autoRollFirstStandard] ?? true}
+                  onChange={(value) =>
+                    patchAbsorption({
+                      [ACCOUNTING_KEYS.autoRollFirstStandard]: value as SettingValue,
+                    })
+                  }
+                />
               </FieldPanel>
 
               <p className='text-muted-foreground text-xs'>
                 Conversion cost applies to a subassembly or a finished good only. Applying these
                 rates to a purchased component would capitalize labor that was never spent and
-                overstate raw materials.
+                overstate raw materials. Setting a first standard never overwrites one that already
+                exists, so a supplier raising a price moves the part&apos;s cost and leaves its
+                standard where it is. Re-valuing is what the roll below is for.
               </p>
             </SettingsSection>
 

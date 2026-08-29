@@ -11,22 +11,51 @@
  */
 
 /**
- * Whether `part_kind` counts as unset — the "never suggest over an explicit
- * human choice" gate. `useSystemValues` collapses SINGLE_SELECT to a scalar,
- * but stored select values are arrays on other read paths, so both shapes are
- * handled: `null`/`undefined`, `''`, `[]`, and an array whose first entry is
- * empty all read as unset; any concrete value (including an explicit
- * `component`) is a human choice and blocks the suggestion.
+ * Whether `part_kind` counts as unset. `useSystemValues` collapses SINGLE_SELECT
+ * to a scalar, but stored select values are arrays on other read paths, so both
+ * shapes are handled: `null`/`undefined`, `''`, `[]`, and an array whose first
+ * entry is empty all read as unset.
+ *
+ * ⚠️ This is no longer the whole suggestion gate. `part_kind` now carries
+ * `defaultValue: 'component'` (part-fields.ts, 15-costing-usability.md §4c), so
+ * a stored `component` no longer proves a human chose it. See
+ * {@link isPartKindUnclassified}, which is what the suggestion gates on.
  */
 export function isPartKindUnset(value: unknown): boolean {
   const first = Array.isArray(value) ? value[0] : value
   return first == null || first === ''
 }
 
+/**
+ * Whether `part_kind` still reads as "nobody has said what this part is":
+ * unset, **or** the `component` the field now defaults to.
+ *
+ * 🛑 Why `component` counts. The old rule was "any concrete value (including an
+ * explicit `component`) is a human choice and blocks the suggestion", and its
+ * premise was that `component` only ever got there because somebody typed it.
+ * Defaulting `part_kind` to `component` falsifies that premise: after
+ * 15-costing-usability.md §4c it means "nobody said otherwise". Left alone, the
+ * gate would go quiet on exactly the parts it exists for, and a finished good
+ * sitting on the default posts to `1310` instead of `1330` and freezes that on
+ * `updatable: false` movement rows that can never be corrected.
+ *
+ * So the suggestion stops being "fill in the blank" and becomes "this looks
+ * misclassified", which also catches imported, seeded and API-created parts that
+ * the unset-only gate never could. `subassembly` and `finished_good` still block
+ * it: neither is reachable without somebody picking it.
+ */
+export function isPartKindUnclassified(value: unknown): boolean {
+  const first = Array.isArray(value) ? value[0] : value
+  return first == null || first === '' || first === 'component'
+}
+
 interface SuggestFinishedGoodInput {
   /** (a) The part HAS a product — it heads (or belongs to) a family. */
   hasProduct: boolean
-  /** (c) Raw `part_kind` value — any set value blocks the suggestion. */
+  /**
+   * (c) Raw `part_kind` value. Unset or `component` (the field default) leaves
+   * the suggestion open; `subassembly` and `finished_good` block it.
+   */
   partKind: unknown
   /**
    * Whether the "is anybody's subpart?" read has actually completed. Until it
@@ -43,11 +72,14 @@ interface SuggestFinishedGoodInput {
 
 /**
  * ALL required: (a) the part has a product, (b) it is nobody's subpart, and
- * (c) `part_kind` is currently unset.
+ * (c) `part_kind` is unclassified: unset, or the defaulted `component`.
+ *
+ * (a) and (b) are unchanged. Only (c) widened; see
+ * {@link isPartKindUnclassified} for why.
  */
 export function shouldSuggestFinishedGood(input: SuggestFinishedGoodInput): boolean {
   if (!input.hasProduct) return false
-  if (!isPartKindUnset(input.partKind)) return false
+  if (!isPartKindUnclassified(input.partKind)) return false
   if (!input.subpartCheckLoaded) return false
   return !input.isSubpartOfAssembly
 }
@@ -70,9 +102,11 @@ interface SuggestFamilyInput {
  * find the Product field in the Details panel.
  *
  * Note the symmetry with {@link shouldSuggestFinishedGood}, which is why the two
- * can never fire together: that one refuses to speak OVER a human choice of
- * `part_kind`, this one refuses to speak WITHOUT one. `finished_good` is
- * required explicitly and is never inferred — the same Gap C §3.2 rule.
+ * can never fire together: that one only speaks while the kind is unclassified,
+ * this one only speaks once it says `finished_good`, and `finished_good` is
+ * never in the unclassified set. It is required explicitly and never inferred,
+ * the same Gap C §3.2 rule. (They also disagree on `hasProduct`, so the two
+ * conditions are doubly exclusive.)
  */
 export function shouldSuggestFamily(input: SuggestFamilyInput): boolean {
   if (input.hasProduct) return false

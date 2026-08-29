@@ -38,7 +38,7 @@
 // implementation of the variance to drift.
 
 import { FieldType } from '@auxx/database/enums'
-import { summarizeBuildCompletion } from '@auxx/lib/builds/client'
+import { absorbedRunCost, summarizeBuildCompletion } from '@auxx/lib/builds/client'
 import { getInstanceId, type RecordId } from '@auxx/lib/resources/client'
 import type { RelationshipConfig } from '@auxx/types/custom-field'
 import { toResourceFieldId } from '@auxx/types/field'
@@ -57,12 +57,14 @@ import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
 import { formatCurrency } from '@auxx/utils/currency'
+import { keepPreviousData } from '@tanstack/react-query'
 import { RotateCcw, TriangleAlert } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { toRecordId, useResourceProperty } from '~/components/resources'
 import { BaseType } from '~/components/workflow/types'
+import { useDebounce } from '~/hooks/use-debounced-value'
 import { useSettings } from '~/hooks/use-settings'
 import { api } from '~/trpc/react'
 import {
@@ -79,6 +81,15 @@ const OFF_BOM_PART_RELATIONSHIP: RelationshipConfig = {
   relationshipType: 'belongs_to',
   isInverse: false,
 }
+
+/**
+ * How long a typed quantity is held back before it becomes a preview request.
+ *
+ * Typing `120` is three keystrokes, and without this it is three explosions of
+ * the whole bill of materials. Only what feeds the query waits — the inputs
+ * themselves stay instant, so nothing on screen lags behind the keyboard.
+ */
+const PREVIEW_DEBOUNCE_MS = 250
 
 interface CompleteBuildDialogProps {
   open: boolean
@@ -107,7 +118,7 @@ export function CompleteBuildDialog({
   const [quantityScrapped, setQuantityScrapped] = useState<number>(0)
   const [overrides, setOverrides] = useState<Record<string, number>>({})
   // Every component the form has ever seen for this run — see `rememberComponents`.
-  const [known, setKnown] = useState<KnownComponent[]>([])
+  const [known, setKnown] = useState<readonly KnownComponent[]>([])
   // `null` means "take the org rate"; a number is what this run actually absorbed.
   const [laborCost, setLaborCost] = useState<number | null>(null)
   const [overheadCost, setOverheadCost] = useState<number | null>(null)
@@ -137,15 +148,51 @@ export function CompleteBuildDialog({
   const scrapped = quantityScrapped ?? 0
   const componentOverrides = useMemo(() => buildComponentOverrides(overrides), [overrides])
 
+  // What the preview is actually asked about. Held back so `1` -> `12` -> `120`
+  // is one explosion rather than three; the inputs above render the untouched
+  // state, so the keyboard never waits on the network.
+  const previewProduced = useDebounce(produced, PREVIEW_DEBOUNCE_MS)
+  const previewScrapped = useDebounce(scrapped, PREVIEW_DEBOUNCE_MS)
+  const previewOverrides = useDebounce(componentOverrides, PREVIEW_DEBOUNCE_MS)
+
   // The preview IS the form. It re-runs on every quantity and every override, so
   // what is on screen is always what the write would freeze.
+  //
+  // 🛑 `keepPreviousData` is load-bearing, not polish. Without it every keystroke
+  // changes the query key, `data` goes undefined, and the summary, the absorbed
+  // amounts, the unpriced warning and the submit button all blank together —
+  // which reads as "the numbers just went away" on the one form in this
+  // subsystem whose write cannot be undone.
   const preview = api.builds.previewCompletion.useQuery(
-    { partId, quantityProduced: produced, quantityScrapped: scrapped, componentOverrides },
-    { enabled: open && produced > 0, retry: false, refetchOnWindowFocus: false }
+    {
+      partId,
+      quantityProduced: previewProduced,
+      quantityScrapped: previewScrapped,
+      componentOverrides: previewOverrides,
+    },
+    {
+      enabled: open && previewProduced > 0,
+      retry: false,
+      refetchOnWindowFocus: false,
+      placeholderData: keepPreviousData,
+    }
   )
 
   const plan = preview.data?.plan
   const rates = preview.data?.rates
+
+  /**
+   * The numbers on screen do not yet answer the quantities in the inputs.
+   *
+   * True through the debounce window as well as the request, so the summary dims
+   * from the first keystroke instead of a beat later, and so the submit button
+   * can refuse a run whose figures nobody has actually seen.
+   */
+  const previewStale =
+    preview.isFetching ||
+    previewProduced !== produced ||
+    previewScrapped !== scrapped ||
+    previewOverrides !== componentOverrides
 
   // Accumulate rather than replace: a line overridden to zero is not in the
   // plan's `components`, and dropping it from the row list would take the input
@@ -164,18 +211,41 @@ export function CompleteBuildDialog({
   // is null until the produced part has a standard, and there is deliberately no
   // fallback: a completion at zero cost is what this whole subsystem exists to
   // prevent, so the summary shows nothing rather than a confident zero.
+  //
+  // Built from the quantities the PLAN was exploded at, not the ones in the
+  // inputs: pairing a fresh `quantityProduced` with a stale component list would
+  // print a variance that no single state of the form ever produced.
   const summary = useMemo(() => {
     if (!plan || plan.producedUnitCost == null || !rates) return null
     return summarizeBuildCompletion({
       components: plan.components,
       producedUnitCost: plan.producedUnitCost,
-      quantityProduced: produced,
-      quantityScrapped: scrapped,
+      quantityProduced: previewProduced,
+      quantityScrapped: previewScrapped,
       laborCost,
       overheadCost,
       rates,
     })
-  }, [plan, rates, produced, scrapped, laborCost, overheadCost])
+  }, [plan, rates, previewProduced, previewScrapped, laborCost, overheadCost])
+
+  // The org-rate prefill for the two absorption inputs, derived from `rates`
+  // rather than from `summary` so it survives a refetch: `summary` is null
+  // whenever the produced part has no standard, and chaining the displayed
+  // default off it is what emptied both inputs on every keystroke.
+  //
+  // 🛑 An UNDECLARED rate shows nothing, not `$0.00`. `absorbedRunCost` answers
+  // `0` for a null rate on purpose (a run under no rate absorbed nothing), but a
+  // confident zero in the input would tell somebody the rates are set when they
+  // are not — the same distinction `absorptionHint` makes just below.
+  const startedNow = produced + scrapped
+  const laborDefault =
+    rates?.laborCostPerUnit == null
+      ? null
+      : absorbedRunCost(null, rates.laborCostPerUnit, startedNow)
+  const overheadDefault =
+    rates?.overheadCostPerUnit == null
+      ? null
+      : absorbedRunCost(null, rates.overheadCostPerUnit, startedNow)
 
   const utils = api.useUtils()
   const buildDefId = useResourceProperty('build', 'id')
@@ -218,7 +288,12 @@ export function CompleteBuildDialog({
 
   const unpriced = plan?.missingStandardPartIds ?? []
   const blocked = unpriced.length > 0 || rows.every((row) => row.dropped)
-  const canSubmit = !!summary && produced > 0 && !blocked && !completeBuild.isPending
+  // 🛑 `!previewStale` is part of the gate, not a spinner nicety. The button
+  // posts the quantities in the INPUTS, so accepting a press while the summary
+  // still answers the previous ones would freeze an irreversible ledger entry
+  // whose variance nobody was ever shown.
+  const canSubmit =
+    !!summary && produced > 0 && !blocked && !previewStale && !completeBuild.isPending
 
   const writtenRows = rows.filter((row) => !row.dropped).length
 
@@ -300,9 +375,15 @@ export function CompleteBuildDialog({
                 <FieldInputAdapter
                   fieldType={FieldType.CURRENCY}
                   fieldOptions={{ currencyCode, decimals: 2, useGrouping: true }}
-                  value={laborCost ?? summary?.laborCost ?? null}
+                  value={laborCost ?? laborDefault}
                   onChange={(val) => setLaborCost((val as number) ?? null)}
                   disabled={completeBuild.isPending}
+                />
+                <AbsorptionOrigin
+                  explicit={laborCost}
+                  rate={rates?.laborCostPerUnit}
+                  started={startedNow}
+                  currencyCode={currencyCode}
                 />
               </FieldPanelRow>
 
@@ -315,9 +396,15 @@ export function CompleteBuildDialog({
                 <FieldInputAdapter
                   fieldType={FieldType.CURRENCY}
                   fieldOptions={{ currencyCode, decimals: 2, useGrouping: true }}
-                  value={overheadCost ?? summary?.overheadCost ?? null}
+                  value={overheadCost ?? overheadDefault}
                   onChange={(val) => setOverheadCost((val as number) ?? null)}
                   disabled={completeBuild.isPending}
+                />
+                <AbsorptionOrigin
+                  explicit={overheadCost}
+                  rate={rates?.overheadCostPerUnit}
+                  started={startedNow}
+                  currencyCode={currencyCode}
                 />
               </FieldPanelRow>
 
@@ -339,7 +426,7 @@ export function CompleteBuildDialog({
               error={preview.error?.message ?? null}
               currencyCode={currencyCode}
               disabled={completeBuild.isPending}
-              unitsStarted={produced + scrapped}
+              unitsStarted={previewProduced + previewScrapped}
               onOverride={(rowPartId, quantity) =>
                 setOverrides((current) => ({ ...current, [rowPartId]: quantity }))
               }
@@ -368,14 +455,21 @@ export function CompleteBuildDialog({
               <UnpricedWarning partIds={unpriced} rows={rows} producedPartId={partId} />
             )}
 
+            {/* Dimmed while the figures are catching up, never unmounted: a
+                block that disappears reads as "there is no answer", and a person
+                looking at an irreversible variance should see the previous
+                answer greying out rather than the space it used to occupy. */}
             {summary && (
-              <CostSummary
-                summary={summary}
-                currencyCode={currencyCode}
-                quantityProduced={produced}
-                quantityScrapped={scrapped}
-                producedUnitCost={plan?.producedUnitCost ?? null}
-              />
+              <div
+                className={previewStale ? 'opacity-60 transition-opacity' : 'transition-opacity'}>
+                <CostSummary
+                  summary={summary}
+                  currencyCode={currencyCode}
+                  quantityProduced={previewProduced}
+                  quantityScrapped={previewScrapped}
+                  producedUnitCost={plan?.producedUnitCost ?? null}
+                />
+              </div>
             )}
           </div>
         </ScrollArea>
@@ -600,6 +694,37 @@ function ComponentRowInput({
         <RotateCcw />
       </Button>
     </div>
+  )
+}
+
+/**
+ * Where the amount in an absorption input came from.
+ *
+ * The input holds `null` while it is showing the org rate's arithmetic, and
+ * `null` is what gets SENT — the server owns the multiplication. So the number
+ * on screen would otherwise be unattributable: a person cannot tell a prefilled
+ * figure from one somebody typed, and the difference decides whether editing the
+ * rate later changes anything. This line says which it is.
+ */
+function AbsorptionOrigin({
+  explicit,
+  rate,
+  started,
+  currencyCode,
+}: {
+  explicit: number | null
+  rate: number | null | undefined
+  started: number
+  currencyCode: string
+}) {
+  if (explicit != null) {
+    return <p className='mt-1 text-muted-foreground text-xs'>Entered for this run.</p>
+  }
+  if (rate == null) return null
+  return (
+    <p className='mt-1 text-muted-foreground text-xs tabular-nums'>
+      {formatCurrency(rate, { currencyCode })} × {formatQuantity(started)} units started (org rate)
+    </p>
   )
 }
 

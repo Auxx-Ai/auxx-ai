@@ -25,6 +25,7 @@ import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
 import { formatCurrency } from '@auxx/utils/currency'
+import { keepPreviousData } from '@tanstack/react-query'
 import { Calculator, Lock } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
@@ -61,9 +62,17 @@ export function StandardCostSection() {
     if (canRoll) setEffectiveAt(new Date().toISOString())
   }, [canRoll])
 
+  // `keepPreviousData` because the effective date is part of the query key:
+  // without it every change to it blanks the whole preview (15 §4a), and this
+  // one is org-wide, so the list that unmounts mid-keystroke is every part.
   const preview = api.builds.previewRoll.useQuery(
     { effectiveAt: new Date(effectiveAt) },
-    { enabled: canRoll, retry: false, refetchOnWindowFocus: false }
+    {
+      enabled: canRoll,
+      retry: false,
+      refetchOnWindowFocus: false,
+      placeholderData: keepPreviousData,
+    }
   )
 
   const utils = api.useUtils()
@@ -140,8 +149,15 @@ export function StandardCostSection() {
           ) : plan ? (
             <div className='space-y-3 rounded-xl border p-3'>
               {changed.length === 0 ? (
+                // Two different empty states, and calling the second one the
+                // first is a lie: "already matches" claims every part carries a
+                // current standard, when in fact not one of them could be valued.
+                // Only say it when there genuinely were valuable lines and none
+                // moved. The other case has its reasons listed right below.
                 <p className='text-muted-foreground text-xs'>
-                  Nothing to roll. Every part&apos;s standard already matches today&apos;s cost.
+                  {plan.lines.length === 0 && plan.skipped.length > 0
+                    ? 'Nothing to roll. No part can be valued yet, see why below.'
+                    : 'Nothing to roll. Every part’s standard already matches today’s cost.'}
                 </p>
               ) : (
                 <div className='space-y-1'>

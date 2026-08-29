@@ -498,3 +498,89 @@ describe('readStandardCost', () => {
     expect(result._unsafeUnwrap().size).toBe(0)
   })
 })
+
+// ─── task 15 section 3: the roll used to throw on every built part ─────────
+//
+// `RollStandardCostPopover` sends `partIds: [thisPart]`. The scope widened to
+// ancestors ONLY, so a child was never in scope, `contributionOf` read its
+// stored (null) standard, and the walk aborted on every built part in a fresh
+// org. The fix widens DOWN as well, to the descendants with nothing to
+// re-value.
+describe('planStandardCostRoll descendant widening', () => {
+  it('pulls in a descendant that has no stored standard, and values it first', async () => {
+    h.subparts = liftSubparts()
+    queueOrg(PARTS, [
+      fv(MOTOR, FIELD.part_kind!.id, { option: 'component' }),
+      fv(MOTOR, FIELD.part_cost!.id, { number: 2010 }),
+      fv(ASSEMBLY, FIELD.part_kind!.id, { option: 'subassembly' }),
+      fv(LIFT, FIELD.part_kind!.id, { option: 'finished_good' }),
+    ])
+
+    // Rolling the finished good from its own drawer, exactly as the popover does.
+    const result = await previewStandardCostRoll(db, ORG, {
+      partIds: [LIFT],
+      effectiveAt: EFFECTIVE_AT,
+    })
+
+    expect(result.isOk()).toBe(true)
+    const plan = result._unsafeUnwrap()
+    const valued = new Map(plan.lines.map((line) => [line.partId, line]))
+    // Bottom-up, so the component is valued before the assembly built from it.
+    expect(plan.lines.map((line) => line.partId)).toEqual([MOTOR, ASSEMBLY, LIFT])
+    expect(valued.get(MOTOR)!.standardCost).toBe(2010)
+    expect(valued.get(ASSEMBLY)!.standardCost).toBe(2010)
+    expect(valued.get(LIFT)!.standardCost).toBe(4020)
+    // Every one of them is a FIRST valuation, which is what makes pulling them
+    // in safe: there is nothing to re-value.
+    expect(plan.lines.every((line) => line.isInitial)).toBe(true)
+    expect(plan.revaluationDelta).toBe(0)
+  })
+
+  it('leaves a descendant that already has a standard alone, and takes its stored value', async () => {
+    h.subparts = liftSubparts()
+    queueOrg(PARTS, [
+      fv(MOTOR, FIELD.part_kind!.id, { option: 'component' }),
+      fv(MOTOR, FIELD.part_cost!.id, { number: 2010 }),
+      fv(ASSEMBLY, FIELD.part_kind!.id, { option: 'subassembly' }),
+      // An agreed standard. Re-valuing it is what the caller did NOT ask for.
+      fv(ASSEMBLY, FIELD.part_standard_cost!.id, { number: 9999 }),
+      fv(ASSEMBLY, FIELD.part_standard_material_cost!.id, { number: 9999 }),
+      fv(ASSEMBLY, FIELD.part_standard_cost_effective_at!.id, { date: '2026-01-01T00:00:00.000Z' }),
+      fv(LIFT, FIELD.part_kind!.id, { option: 'finished_good' }),
+    ])
+
+    const plan = (
+      await previewStandardCostRoll(db, ORG, { partIds: [LIFT], effectiveAt: EFFECTIVE_AT })
+    )._unsafeUnwrap()
+
+    const partIds = plan.lines.map((line) => line.partId)
+    expect(partIds).not.toContain(ASSEMBLY)
+    // 2 x the assembly's STORED standard, not a freshly rolled one. This is what
+    // keeps `completeBuild` balanced: the consume rows are valued at the same
+    // number the parent was built from.
+    expect(plan.lines.find((line) => line.partId === LIFT)!.standardCost).toBe(19998)
+  })
+
+  it('names the real remedy when a component genuinely cannot be valued', async () => {
+    h.subparts = liftSubparts()
+    queueOrg(PARTS, [
+      // No `part_cost` at all, so the motor is skipped and the assembly above it
+      // has no number to build from.
+      fv(MOTOR, FIELD.part_kind!.id, { option: 'component' }),
+      fv(ASSEMBLY, FIELD.part_kind!.id, { option: 'subassembly' }),
+      fv(LIFT, FIELD.part_kind!.id, { option: 'finished_good' }),
+    ])
+
+    const result = await previewStandardCostRoll(db, ORG, {
+      partIds: [LIFT],
+      effectiveAt: EFFECTIVE_AT,
+    })
+
+    expect(result.isErr()).toBe(true)
+    // "Give it a price or roll it first" was wrong: it is a lie when the
+    // component already HAS a price and simply has no priced bill of materials.
+    expect(result._unsafeUnwrapErr().message).toMatch(
+      /has no supplier price and no priced bill of materials/
+    )
+  })
+})

@@ -172,7 +172,13 @@ export function computeStandardCosts(inputs: StandardCostRollInputs): StandardCo
       const childStandard = contributionOf(child.childId)
       if (childStandard == null) {
         throw new UnprocessableEntityError(
-          `Cannot roll standard cost for "${name(partId)}": its component "${name(child.childId)}" has no standard cost. Give it a price or roll it first.`
+          // The remedy matters. Since the scope widens to descendants that have
+          // no stored standard (see `widenToUnvaluedDescendants`), a child that
+          // reaches here was either rolled and could not be valued, or is not a
+          // live part at all. Telling somebody to "give it a price" is wrong
+          // when the child already HAS one and simply has no priced bill of
+          // materials underneath it.
+          `Cannot roll standard cost for "${name(partId)}": its component "${name(child.childId)}" has no supplier price and no priced bill of materials, so it cannot be valued.`
         )
       }
       material += childStandard * child.qty
@@ -217,4 +223,52 @@ export function widenToAncestors(
   }
   for (const partId of partIds) walk(partId)
   return widened
+}
+
+/**
+ * Widen a set of part ids DOWNWARD, to the descendants that carry no stored
+ * standard cost.
+ *
+ * 🛑 The complement of {@link widenToAncestors}, and the two objections do not
+ * overlap. Refusing descendants outright (which this module used to do) is what
+ * made the part drawer's Roll button throw on every built part: the child was
+ * never in scope, so `contributionOf` read its STORED standard, which is `null`
+ * in an org that has never rolled, and the walk aborted.
+ *
+ * A descendant that already HAS a standard is still excluded, and that is the
+ * whole distinction: it has an agreed value to re-value, and re-valuing a
+ * subassembly the caller did not name is exactly what `widenToAncestors`'
+ * comment refuses. A descendant with NO standard has nothing to re-value, so
+ * the objection does not apply to it. It appears in the plan as `isInitial`,
+ * which is how the preview tells a person this is a first valuation.
+ *
+ * The walk continues THROUGH a valued descendant, because a valued
+ * subassembly's own children may still be unvalued and are equally free to
+ * value.
+ *
+ * @param partIds the parts already in scope, normally the ancestor-widened set
+ * @param subpartGraph parent -> children, the same graph the roll walks
+ * @param storedStandardCosts `part_standard_cost` as currently stored
+ */
+export function widenToUnvaluedDescendants(
+  partIds: Iterable<string>,
+  subpartGraph: ReadonlyMap<string, SubpartEdge[]>,
+  storedStandardCosts: ReadonlyMap<string, number>
+): Set<string> {
+  const unvalued = new Set<string>()
+  // Separate from `unvalued` so a cycle terminates even though a valued node is
+  // walked through without being collected.
+  const visited = new Set<string>()
+
+  const walk = (partId: string) => {
+    if (visited.has(partId)) return
+    visited.add(partId)
+    for (const edge of subpartGraph.get(partId) ?? []) {
+      if (storedStandardCosts.get(edge.childId) == null) unvalued.add(edge.childId)
+      walk(edge.childId)
+    }
+  }
+
+  for (const partId of partIds) walk(partId)
+  return unvalued
 }

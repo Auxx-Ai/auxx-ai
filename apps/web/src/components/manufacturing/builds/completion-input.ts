@@ -67,13 +67,30 @@ export interface KnownComponent {
  * them. Rebuilding the row list from each response alone would make the row
  * disappear the moment somebody typed `0`, taking the input that produced it
  * with it.
+ *
+ * 🛑 **Returns `known` itself when the merge changes nothing**, which is the
+ * common case: the preview re-runs on every keystroke and almost always names
+ * the same parts it named last time. A fresh array would be a new state value
+ * on every response, re-rendering the whole component table (and the row inputs
+ * somebody is typing into) for no change at all.
  */
 export function rememberComponents(
   known: readonly KnownComponent[],
   lines: readonly BuildComponentLine[]
-): KnownComponent[] {
+): readonly KnownComponent[] {
   const merged = new Map(known.map((entry) => [entry.partId, entry]))
+  let changed = false
   for (const line of lines) {
+    const existing = merged.get(line.partId)
+    if (
+      existing &&
+      existing.partName === line.partName &&
+      existing.qtyPerUnit === line.qtyPerUnit &&
+      existing.offBom === line.offBom
+    ) {
+      continue
+    }
+    changed = true
     merged.set(line.partId, {
       partId: line.partId,
       partName: line.partName,
@@ -81,6 +98,7 @@ export function rememberComponents(
       offBom: line.offBom,
     })
   }
+  if (!changed) return known
   return [...merged.values()]
 }
 

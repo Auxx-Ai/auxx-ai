@@ -320,6 +320,21 @@ export const PART_FIELDS: Record<string, ResourceField> = {
   // consumer; an absent value reads NULL and every reader must treat NULL as
   // `component`, preserving today's explode-on-sale behaviour for every
   // unclassified part. No backfill.
+  //
+  // `defaultValue: 'component'` (15-costing-usability.md §4c) makes the common
+  // case the preselected one instead of an empty select nobody fills in. It is
+  // the SINGLE source of that default: the create dialog seeds its state from
+  // this field rather than from a literal, and `applyDefaults` covers the doors
+  // that send no key at all (import, API, connectors, seed). Reachable for
+  // existing orgs because `mergeSystemAndCustomFields` resolves
+  // `dbField.defaultValue ?? staticField.defaultValue`, and `part_kind` is NULL
+  // on every stored field row, exactly like `build_status` and its 'planned'.
+  //
+  // 🛑 It also changes what a stored `component` MEANS: it no longer proves a
+  // human typed it. `shouldSuggestFinishedGood` (part-family-suggestion.ts) was
+  // widened in the same change to fire on `component` as well as unset, because
+  // the unset-only gate was the only safety net against a finished good being
+  // posted to 1310 instead of 1330 and frozen on `updatable: false` movements.
   partKind: {
     id: toFieldId('partKind'),
     key: 'partKind',
@@ -339,6 +354,7 @@ export const PART_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     placeholder: 'Select part kind',
+    defaultValue: PartKind.COMPONENT,
     description:
       'How this part is classified for build and sell purposes. Unset reads as a component',
   },
