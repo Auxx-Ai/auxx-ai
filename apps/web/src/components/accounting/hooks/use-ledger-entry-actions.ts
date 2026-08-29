@@ -2,25 +2,51 @@
 
 'use client'
 
-import type { EntryPreview, PostResult } from '@auxx/lib/postings/client'
+import type { EntryPreview, PostResult, PostResultStatus } from '@auxx/lib/postings/client'
+import { toastError } from '@auxx/ui/components/toast'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import {
-  FIXTURE_POST_RESULT,
-  FIXTURE_POST_RESULT_NOT_CONNECTED,
-  FIXTURE_PREVIEW,
-  FIXTURE_PREVIEW_BLOCKED,
-} from '~/components/accounting/fixtures'
+import { api } from '~/trpc/react'
+
+/**
+ * The statuses that mean a `GlPosting` row now exists for the month.
+ *
+ * 🛑 Five of them, not one. `not_connected` and `disabled` are first-class
+ * successes under decision `P1` - the entry is built, balanced and persisted
+ * identically, there is simply nowhere to push it - and `already_posted` and
+ * `healed` are converged re-runs. Treating any of the five as a failure is the
+ * single most common way this screen could be got wrong.
+ *
+ * Everything else (`period_closed`, `account_unmapped`, `unbalanced`,
+ * `nothing_to_close`, `setup_incomplete`, `error`) wrote nothing, and all six
+ * arrive as an ordinary result the callout renders. Only `error` is a fault.
+ */
+const POSTED_STATUSES = new Set<PostResultStatus>([
+  'posted',
+  'already_posted',
+  'healed',
+  'not_connected',
+  'disabled',
+])
 
 interface UseLedgerEntryActionsOptions {
   periodKey: string
-  /** Render the refused preview instead of the buildable one. */
-  blocked: boolean
-  /** With no provider connected, a post still succeeds with outcome `not_connected`. */
-  providerConnected: boolean
+  /**
+   * The posting `runReverse` acts on: the posting open in the drawer if there is
+   * one, else the month's effective entry from the period model. `null` when the
+   * month has never been posted, which is when Reverse is not offered at all.
+   */
+  glPostingId?: string | null
+  /**
+   * Build the preview for this month on mount. False while setup is a draft or
+   * the month is already posted - in both cases the screen has something else to
+   * render and a preview would be a wasted round trip.
+   */
+  enabled?: boolean
 }
 
 export interface LedgerEntryActions {
-  preview: EntryPreview
+  /** `null` until the first preview resolves, and whenever the month changes. */
+  preview: EntryPreview | null
   postResult: PostResult | null
   isPreviewing: boolean
   isPosting: boolean
@@ -33,48 +59,35 @@ export interface LedgerEntryActions {
   clearPostResult: () => void
 }
 
-/** How long the placeholder pretends the round trip takes. */
-const FAKE_LATENCY_MS = 550
-
 /**
- * Post / Reverse / Preview, against local state.
+ * Preview / Post / Reverse for one month, against the real ledger procedures.
  *
- * 🛑 PLACEHOLDER: none of the three procedures exist yet
- * (13-accounting-ui.md §4), so nothing here talks to a server:
+ * 🛑 A refusal is NOT an error. `previewMonthEnd` returns every refusal on
+ * `EntryPreview.blockedBy` and `postMonthEnd` returns one as a `PostResult`
+ * status; neither ever throws for a business outcome. So `onError` here fires
+ * only for a genuine transport or 500 failure, and that is the only path that
+ * raises a toast. Routing `not_connected`, `already_posted`, `disabled`,
+ * `nothing_to_close` or `setup_incomplete` through an error channel would train
+ * everyone to ignore the channel a real double-post would arrive on.
  *
- *   * `runPreview` will become `ledger.previewMonthEnd({ periodKey })`
- *   * `runPost`    will become `ledger.postMonthEnd({ periodKey })`
- *   * `runReverse` will become `ledger.reverse({ glPostingId, memo })`
- *   * the posted read behind it will become `ledger.get(id)`
- *
- * Everything else about this file is real: the shapes are the shipped
- * `EntryPreview` / `PostResult`, and `not_connected` is returned as a SUCCESS
- * (decision `P1`) rather than an error, which is the behaviour the screens have
- * to get right whether the data is fixture or not.
+ * ⚠️ The preview is fired from an effect rather than a query because
+ * `previewMonthEnd` is a mutation. It is a mutation for the reason
+ * `ledger.preview` is - it is not usefully cacheable and the answer is the
+ * input - and it persists nothing, so running it on arrival is safe. The ref
+ * guard keeps it to exactly one call per month.
  */
 export function useLedgerEntryActions({
   periodKey,
-  blocked,
-  providerConnected,
+  glPostingId,
+  enabled = true,
 }: UseLedgerEntryActionsOptions): LedgerEntryActions {
-  const [isPreviewing, setIsPreviewing] = useState(false)
-  const [isPosting, setIsPosting] = useState(false)
-  const [isReversing, setIsReversing] = useState(false)
+  const utils = api.useUtils()
+  const previewMonth = api.ledger.previewMonthEnd.useMutation()
+  const postMonth = api.ledger.postMonthEnd.useMutation()
+  const reversePosting = api.ledger.reverse.useMutation()
+
   const [postResult, setPostResult] = useState<PostResult | null>(null)
   const [justPosted, setJustPosted] = useState(false)
-
-  const timers = useRef<ReturnType<typeof setTimeout>[]>([])
-  useEffect(() => {
-    const pending = timers.current
-    return () => {
-      for (const timer of pending) clearTimeout(timer)
-    }
-  }, [])
-
-  const schedule = useCallback((run: () => void) => {
-    const timer = setTimeout(run, FAKE_LATENCY_MS)
-    timers.current.push(timer)
-  }, [])
 
   // A new month clears whatever the previous one's buttons produced. Adjusted
   // during render rather than in an effect: an effect would paint the previous
@@ -86,46 +99,93 @@ export function useLedgerEntryActions({
     setJustPosted(false)
   }
 
-  const preview: EntryPreview = blocked
-    ? { ...FIXTURE_PREVIEW_BLOCKED, periodKey, docNumber: `AUXX-MEI-${periodKey}` }
-    : { ...FIXTURE_PREVIEW, periodKey, docNumber: `AUXX-MEI-${periodKey}` }
+  const previewMutate = previewMonth.mutate
+  const requestedRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!enabled || !periodKey) return
+    if (requestedRef.current === periodKey) return
+    requestedRef.current = periodKey
+    previewMutate({ periodKey })
+  }, [enabled, periodKey, previewMutate])
+
+  /** Everything the books-level reads show changes the moment a month lands. */
+  const refreshBooks = useCallback(() => {
+    void utils.ledger.periods.invalidate()
+    void utils.ledger.unpostedPeriods.invalidate()
+    void utils.ledger.verifyBalance.invalidate()
+  }, [utils])
 
   const runPreview = useCallback(() => {
-    setIsPreviewing(true)
-    schedule(() => setIsPreviewing(false))
-  }, [schedule])
+    if (!periodKey) return
+    requestedRef.current = periodKey
+    previewMutate(
+      { periodKey },
+      {
+        onError: (error) =>
+          toastError({ title: 'Could not build the entry', description: error.message }),
+      }
+    )
+  }, [periodKey, previewMutate])
 
+  const postMutate = postMonth.mutate
   const runPost = useCallback(() => {
-    setIsPosting(true)
-    schedule(() => {
-      setIsPosting(false)
-      setJustPosted(true)
-      // ⚠️ `not_connected` is a first-class SUCCESS, not a degraded post: the
-      // entry is built, balanced and persisted identically. Never an error.
-      setPostResult(providerConnected ? FIXTURE_POST_RESULT : FIXTURE_POST_RESULT_NOT_CONNECTED)
-    })
-  }, [providerConnected, schedule])
+    if (!periodKey) return
+    postMutate(
+      { periodKey },
+      {
+        // 🛑 Every business refusal arrives HERE, on `result.status`, and is
+        // rendered by the callout. Nothing in this branch is an error.
+        onSuccess: (result) => {
+          setPostResult(result)
+          if (POSTED_STATUSES.has(result.status)) {
+            setJustPosted(true)
+            refreshBooks()
+          }
+        },
+        onError: (error) =>
+          toastError({ title: 'The post could not be sent', description: error.message }),
+      }
+    )
+  }, [periodKey, postMutate, refreshBooks])
 
+  const reverseMutate = reversePosting.mutate
   const runReverse = useCallback(
-    (_memo: string) => {
-      setIsReversing(true)
-      schedule(() => {
-        setIsReversing(false)
-        setJustPosted(false)
-        setPostResult(null)
-      })
+    (memo: string) => {
+      if (!glPostingId) return
+      reverseMutate(
+        { glPostingId, memo: memo.trim() || undefined },
+        {
+          onSuccess: (result) => {
+            setPostResult(result)
+            if (POSTED_STATUSES.has(result.status)) {
+              setJustPosted(false)
+              requestedRef.current = null
+              refreshBooks()
+              void utils.ledger.get.invalidate({ id: glPostingId })
+            }
+          },
+          onError: (error) =>
+            toastError({ title: 'The reversal could not be sent', description: error.message }),
+        }
+      )
     },
-    [schedule]
+    [glPostingId, refreshBooks, reverseMutate, utils]
   )
 
   const clearPostResult = useCallback(() => setPostResult(null), [])
 
+  // The mutation's own cache is the source of truth, filtered by month so a
+  // stale answer can never be painted against the wrong period.
+  const previewData = previewMonth.data
+  const preview = previewData && previewData.periodKey === periodKey ? previewData : null
+
   return {
     preview,
     postResult,
-    isPreviewing,
-    isPosting,
-    isReversing,
+    isPreviewing: previewMonth.isPending,
+    isPosting: postMonth.isPending,
+    isReversing: reversePosting.isPending,
     justPosted,
     runPreview,
     runPost,

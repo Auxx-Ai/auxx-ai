@@ -13,17 +13,33 @@ import {
   TableRow,
 } from '@auxx/ui/components/table'
 import { Clock3 } from 'lucide-react'
-import type { FixtureLateArrival } from '~/components/accounting/fixtures'
 import { formatAccountingDate, formatAuditTimestamp, formatSignedMinor } from './format'
 
-const KIND_LABEL: Record<FixtureLateArrival['kind'], string> = {
+/** One row dated before the period but entered after the prior close. */
+export interface LateArrivalRow {
+  id: string
+  kind: 'build' | 'adjustment' | 'receipt'
+  reference: string
+  description: string
+  /** The ACCOUNTING date - what decides which period it belongs to. */
+  occurredAt: string
+  /** When auxx LEARNED about it. Audit evidence, never an accounting date. */
+  createdAt: string
+  amountMinor: number
+}
+
+const KIND_LABEL: Record<LateArrivalRow['kind'], string> = {
   build: 'Build',
   adjustment: 'Adjustment',
   receipt: 'Receipt',
 }
 
 interface LateArrivalsSectionProps {
-  arrivals: FixtureLateArrival[]
+  /**
+   * `undefined` means NOBODY ASKED - the read does not exist yet. An empty array
+   * means nothing genuinely arrived late, which is a different claim.
+   */
+  arrivals?: LateArrivalRow[]
   currencyCode: string
   bookTimeZone: string
   /** The month being closed, for the explanatory sentence. */
@@ -44,6 +60,14 @@ interface LateArrivalsSectionProps {
  * disagree by weeks. `occurredAt` is the ACCOUNTING date, which decides which
  * period a row belongs to. `createdAt` is when auxx LEARNED about the row: audit
  * evidence, never an accounting date.
+ *
+ * ⚠️ WAITING ON A READ THAT DOES NOT EXIST. The rows are computable from data we
+ * hold - movements and builds whose accounting date precedes the period but
+ * whose `createdAt` falls after the prior close - but no lib function produces
+ * them and 14-drive-the-close.md section 7 leaves the read unspecified. So this
+ * renders NOTHING at all when it is handed no data. "Nothing arrived late" is a
+ * strong statement about why the entry's number is what it is, and it must not
+ * be made by a component that was never given anything to check.
  */
 export function LateArrivalsSection({
   arrivals,
@@ -51,6 +75,8 @@ export function LateArrivalsSection({
   bookTimeZone,
   periodLabel,
 }: LateArrivalsSectionProps) {
+  if (!arrivals) return null
+
   if (arrivals.length === 0) {
     return (
       <EmptySection

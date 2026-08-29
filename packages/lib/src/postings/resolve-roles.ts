@@ -58,22 +58,25 @@
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, inArray, isNull } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
-import { getOrgCache } from '../cache'
 import { AuxxError, UnprocessableEntityError } from '../errors'
 import { type AccountRole, ROLE_ACCOUNT_TYPES } from './build-entry'
+import { loadChartAccountsById } from './chart-accounts'
 import type { GlAccountTypeValue } from './default-chart'
 
 const logger = createScopedLogger('postings:resolve-roles')
 
-/** The `gl_account` attributes a resolution reads. All four are required. */
-const ACCOUNT_ATTRIBUTES = [
-  'gl_account_code',
-  'gl_account_name',
-  'gl_account_type',
-  'gl_account_is_active',
-] as const
+/**
+ * What an unprovisioned chart refuses a POSTING with.
+ *
+ * `role-map.ts` checks the same fact through the same door and says something
+ * else, and that is deliberate: this sentence is read by whoever is trying to
+ * post, the other by whoever is setting the chart up. `chart-accounts.ts` shares
+ * the check and takes the message rather than picking one for both.
+ */
+const NOT_PROVISIONED =
+  'The chart of accounts is not provisioned for this organization - gl_account_code / gl_account_type are missing. Run the entity migrations before posting.'
 
 /** One role's account, as it stands right now. Snapshot it onto the line; do not re-read. */
 export interface ResolvedAccount {
@@ -223,107 +226,37 @@ export async function resolveRoles(
 }
 
 /**
- * Load the named `gl_account` instances with their four attributes.
+ * The named accounts, shaped as {@link ResolvedAccount}.
  *
- * Archived instances are excluded by the query rather than filtered afterwards,
- * so "archived" and "deleted" produce the same refusal — from the resolver's
- * point of view they are the same fact: the account the mapping names is not
- * available to post to.
+ * A thin re-key of the shared chart read in `chart-accounts.ts` - `id` becomes
+ * `glAccountId`, because a `gl_posting_line` names an ACCOUNT and a bare `id` on
+ * a resolved line would not say which id it is. Everything below the re-key -
+ * the four attributes, the org-cache field lookup, the archived-excluded-by-the-
+ * query rule, the `optionId` read for the type, "missing code or type means
+ * ABSENT, never defaulted", "missing active flag means active" - lives there, so
+ * that the role map and this resolver cannot come to disagree about what one
+ * account says.
  *
- * An account missing `code` or `accountType` is treated as ABSENT rather than
- * defaulted. A blank code on a ledger line is unauditable, and guessing a type
- * would defeat the compatibility check that is the whole reason the type is
- * read.
+ * `malformed` is discarded rather than logged: a role pointing at an undecodable
+ * account already produces a refusal naming that role, and the warning would be
+ * the same fact a second time.
  */
 async function loadAccounts(
   db: Database,
   organizationId: string,
   accountIds: string[]
 ): Promise<Map<string, ResolvedAccount>> {
+  const { accounts } = await loadChartAccountsById(db, organizationId, accountIds, NOT_PROVISIONED)
+
   const result = new Map<string, ResolvedAccount>()
-  if (accountIds.length === 0) return result
-
-  const fields = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([...ACCOUNT_ATTRIBUTES])
-
-  const codeField = fields.gl_account_code
-  const nameField = fields.gl_account_name
-  const typeField = fields.gl_account_type
-  const activeField = fields.gl_account_is_active
-
-  if (!codeField || !typeField) {
-    throw new UnprocessableEntityError(
-      'The chart of accounts is not provisioned for this organization — gl_account_code / gl_account_type are missing. Run the entity migrations before posting.',
-      { organizationId }
-    )
-  }
-
-  const live = await db
-    .select({ id: schema.EntityInstance.id })
-    .from(schema.EntityInstance)
-    .where(
-      and(
-        eq(schema.EntityInstance.organizationId, organizationId),
-        inArray(schema.EntityInstance.id, accountIds),
-        isNull(schema.EntityInstance.archivedAt)
-      )
-    )
-
-  const liveIds = live.map((row) => row.id)
-  if (liveIds.length === 0) return result
-
-  const fieldIds = [codeField.id, typeField.id]
-  if (nameField) fieldIds.push(nameField.id)
-  if (activeField) fieldIds.push(activeField.id)
-
-  const values = await db
-    .select({
-      entityId: schema.FieldValue.entityId,
-      fieldId: schema.FieldValue.fieldId,
-      valueText: schema.FieldValue.valueText,
-      optionId: schema.FieldValue.optionId,
-      valueBoolean: schema.FieldValue.valueBoolean,
-    })
-    .from(schema.FieldValue)
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        inArray(schema.FieldValue.entityId, liveIds),
-        inArray(schema.FieldValue.fieldId, fieldIds)
-      )
-    )
-
-  const draft = new Map<
-    string,
-    { code?: string; name?: string; accountType?: string; isActive?: boolean }
-  >()
-  for (const row of values) {
-    const entry = draft.get(row.entityId) ?? {}
-    if (row.fieldId === codeField.id) entry.code = row.valueText ?? undefined
-    // A SINGLE_SELECT stores its chosen value in `optionId`; for a system-seeded
-    // enum that id IS the value ('liability').
-    else if (row.fieldId === typeField.id) entry.accountType = row.optionId ?? undefined
-    else if (nameField && row.fieldId === nameField.id) entry.name = row.valueText ?? undefined
-    else if (activeField && row.fieldId === activeField.id)
-      entry.isActive = row.valueBoolean ?? undefined
-    draft.set(row.entityId, entry)
-  }
-
-  for (const [id, entry] of draft) {
-    if (!entry.code || !entry.accountType) continue
+  for (const [id, account] of accounts) {
     result.set(id, {
       glAccountId: id,
-      code: entry.code,
-      name: entry.name ?? '',
-      accountType: entry.accountType as GlAccountTypeValue,
-      // `gl_account_is_active` declares `defaultValue: true`, and an account
-      // written before the field existed has no row at all. Absence therefore
-      // means active — the opposite reading would refuse to post to a chart that
-      // nobody has ever deactivated anything in.
-      isActive: entry.isActive ?? true,
+      code: account.code,
+      name: account.name,
+      accountType: account.accountType,
+      isActive: account.isActive,
     })
   }
-
   return result
 }

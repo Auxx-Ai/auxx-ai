@@ -466,12 +466,14 @@ export const PERMISSION_REGISTRY: PermissionMetadata[] = [
     label: 'View Ledger',
     description: 'Read the general ledger, preview an entry, and check the books balance.',
     group: 'Accounting',
+    featureKey: FeatureKey.accounting,
   },
   {
     key: PermissionKey.ledgerPost,
     label: 'Post to Ledger',
     description: 'Post and reverse journal entries in the general ledger.',
     group: 'Accounting',
+    featureKey: FeatureKey.accounting,
   },
 ]
 

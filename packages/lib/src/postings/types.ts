@@ -20,6 +20,8 @@
  * entity migration 114 retired the def (task 11) - so there are two, and there
  * must never be a third. See plans/money/tasks/done/07-align-gl-foundation.md section 6.
  */
+import type { GlAccountTypeValue } from './default-chart'
+
 export const POSTING_TYPES = [
   'fulfillment',
   'payout',
@@ -265,7 +267,37 @@ export type PostResultStatus =
   | 'period_closed'
   | 'account_unmapped'
   | 'unbalanced'
+  | 'nothing_to_close'
+  | 'setup_incomplete'
   | 'error'
+
+/**
+ * The two refusals that are NOT failures, added 2026-08-28 by task 14.
+ *
+ * Both were previously reachable only as `error`, which is the one status a
+ * screen has to treat as "something broke". They are the opposite: the two most
+ * ordinary things an organization encounters.
+ *
+ * - `nothing_to_close` - every inventory balance and activity total is unchanged
+ *   for the period, so there is no entry to build.
+ *   `buildMonthEndInventoryEntry` throws `UnprocessableEntityError` on this
+ *   deliberately (an empty line array would otherwise report "at least one
+ *   line", which names the wrong thing), and the composer above it converts the
+ *   throw into this status. An org whose cutoff predates its first movement
+ *   walks through a run of these; the console SKIPS them, it does not alarm.
+ * - `setup_incomplete` - there is no usable opening baseline, so there is nothing
+ *   to compute a delta from. Two ways in: `accounting.setupState` is still a
+ *   draft (the refusal every organization hits on day one), or it says finalized
+ *   while required keys are blank. 🛑 The second is an anomaly - finalize is
+ *   supposed to gate on completeness - but it is deliberately NOT reported as
+ *   `error`, because the remedy is identical: go to the wizard and fill in the
+ *   named rows. The refusal message names exactly which keys are missing, so the
+ *   operator gets the actionable link AND the diagnosis, and neither is lost.
+ *
+ * 🛑 Neither may be logged as an error, for the reason `already_posted` may not
+ * be: a channel that fires on routine outcomes is a channel nobody reads.
+ */
+export const NON_FAILURE_REFUSALS = ['nothing_to_close', 'setup_incomplete'] as const
 
 /**
  * What `postEntry` returns. It NEVER throws.
@@ -297,6 +329,65 @@ export interface PostResult {
 }
 
 /**
+ * The three inventory balances and the three cumulative activity totals, as one
+ * posting asserted them.
+ *
+ * Every number is integer minor units. `inventoryAdjustments` is SIGNED - a
+ * shrinkage is negative - and it is the only one of the six that may be, because
+ * the other five are balances and cumulative absorption, which cannot go
+ * negative in any state the subledger can reach.
+ *
+ * 🛑 The activity totals are CUMULATIVE from the opening cutoff through the
+ * period end, not the amounts in this one entry. That is what lets a build or an
+ * adjustment entered after its accounting month has closed appear in the next
+ * open entry carrying its own frozen labour, overhead and 5095 classification,
+ * instead of vanishing into the COGS plug.
+ */
+export interface MonthEndInventorySnapshot {
+  balances: {
+    inventory_raw_materials: number
+    inventory_wip: number
+    inventory_finished_goods: number
+  }
+  activityTotals: {
+    absorbedLabor: number
+    absorbedOverhead: number
+    /** Signed. Negative is shrinkage. */
+    inventoryAdjustments: number
+  }
+}
+
+/**
+ * What a posting asserts about the world on either side of itself.
+ *
+ * ## Why BOTH sides, and why a reversal never re-reads the subledger
+ *
+ * `after` is what the next month's entry computes its delta from. `before` looks
+ * redundant with the previous posting's `after` - and it is, on the happy path.
+ * It earns its place twice.
+ *
+ * 1. **It makes the chain testable.** Row N's `before` must equal row N-1's
+ *    `after`. Nothing else in this design can detect a broken prior-row
+ *    selection rule, because a wrong prior still produces a *balanced* entry.
+ * 2. **It is what a reversal swaps.** See {@link reverseAssertions}.
+ *
+ * 🛑 The rejected alternative was to reconstruct a reversal's assertions by
+ * re-running the month-end reader against the prior-prior period. That is wrong:
+ * movements that arrived AFTER the original posted would be included, and the
+ * reversal would assert figures unrelated to the lines it is backing out. A
+ * reversal must reverse the FROZEN posting, never reinterpret today's subledger
+ * - the same rule that stops a standard-cost change from restating a movement.
+ *
+ * `kind` is a discriminant so a second assertion-carrying posting type is
+ * additive rather than a reshape.
+ */
+export interface PostingAssertions {
+  kind: 'month_end_inventory'
+  before: MonthEndInventorySnapshot
+  after: MonthEndInventorySnapshot
+}
+
+/**
  * What an entry WOULD look like, resolved against the org's own chart.
  *
  * A read model: `previewEntry` builds it and writes nothing. It lives here
@@ -314,6 +405,146 @@ export interface EntryPreview {
   totalMinor: number
   /** Non-empty when the preview would refuse: the same statuses `postEntry` returns. */
   blockedBy?: { status: PostResultStatus; error: string }
+  /**
+   * What this entry WOULD assert about the world on either side of itself.
+   *
+   * Present only for a posting type that carries assertions (today, the
+   * month-end inventory entry) and only when the preview actually built. The
+   * close console renders its roll-forward from this, so an OPEN month shows
+   * the same before/after panel a posted one does. Without it the roll-forward
+   * could only appear AFTER posting, which is the wrong way round: the point
+   * of a preview is to check the movement before committing to it.
+   */
+  assertions?: PostingAssertions
+}
+
+/**
+ * One line of a POSTED entry, as the drawer reads it back.
+ *
+ * Distinct from {@link ResolvedPostingLine} (what a preview projects) because a
+ * stored line carries what the chart said AT POSTING TIME - `accountName` is a
+ * snapshot, like a movement's frozen cost - plus its stable `lineNumber`.
+ * Reading it back through the live chart would silently restate history the
+ * moment somebody renames an account, which is the exact thing decision G8
+ * stores `accountRole` to prevent.
+ */
+export interface PostingDetailLine {
+  id: string
+  lineNumber: number
+  accountCode: string
+  /** The role the builder emitted. Null on a manual or legacy entry. */
+  accountRole: string | null
+  /** The account name as it stood when this was posted. A snapshot, never re-read. */
+  accountName: string | null
+  direction: PostingDirection
+  /** Integer minor units, always > 0. `direction` is the only carrier of sign. */
+  amountMinor: number
+  memo: string | null
+  sourceType: string
+  sourceId: string
+}
+
+/**
+ * One posted entry, everything the posting drawer needs, in ONE call.
+ *
+ * 🛑 `draft` is the STORED envelope, returned verbatim - assertions included.
+ * The roll-forward panel renders `assertions.before` / `assertions.after` from
+ * here and must never re-derive them by reading the subledger: task 09's whole
+ * contract is that a posted entry asserts what the world looked like when it was
+ * posted, and a reversal SWAPS the pair rather than recomputing it. Re-reading
+ * would make a reversed month render as though it had never been reversed.
+ */
+export interface PostingDetail {
+  id: string
+  postingType: PostingType
+  periodKey: string
+  txnDate: string
+  docNumber: string
+  status: 'pending' | 'posted' | 'failed' | 'reversed'
+  revision: number
+  /** The posting this one reverses, when it is a reversal. */
+  reversesId: string | null
+  currency: string
+  totalMinor: number
+  lines: PostingDetailLine[]
+  /** The stored `PostingDraftV1` envelope, verbatim. Parsed by the caller. */
+  draft: unknown
+  providerId: string | null
+  providerEntryId: string | null
+  postedAt: string | null
+  postedByUserId: string | null
+  failureReason: string | null
+  attempts: number
+  createdAt: string
+}
+
+/**
+ * Whether a role's account was chosen by a person or merely proposed.
+ *
+ * `G19` step 4: a suggested-but-unconfirmed match must read visibly differently
+ * from a confirmed one, and a role nothing can ever emit must be markable unused
+ * rather than blocking Preview forever.
+ *
+ * Derived, not stored: `GlRoleAssignment` carries `source`, `confirmedAt` and
+ * `markedUnused`, and this collapses those three into the one answer a screen
+ * renders. An ABSENT row is `unmapped`; a row with `markedUnused` is `unused`;
+ * a row with `confirmedAt` is `confirmed`; anything else is `suggested`.
+ */
+export type RoleAssignmentState = 'confirmed' | 'suggested' | 'unmapped' | 'unused'
+
+/** One row of the org's editable chart. Mirrors the `gl_account` EntityInstance. */
+export interface ChartAccountRow {
+  id: string
+  code: string
+  name: string
+  accountType: GlAccountTypeValue
+  isActive: boolean
+}
+
+/**
+ * One role, its mapping, and the account it currently resolves to.
+ *
+ * Returned for EVERY role in `ACCOUNT_ROLES`, mapped or not - the role map is a
+ * complete checklist, not a list of rows that happen to exist, and a screen that
+ * only rendered existing rows could never show what is missing.
+ */
+export interface RoleAssignmentRow {
+  role: string
+  state: RoleAssignmentState
+  /** The `gl_account` id, or null while unmapped or unused. */
+  accountId: string | null
+  /** Resolved for display. Null when unmapped, or when the account has vanished. */
+  account: ChartAccountRow | null
+  /** `'seed'` | `'human'` | `'suggested'`, or null with no row. */
+  source: string | null
+  confirmedAt: string | null
+}
+
+/**
+ * One month in the close console's period strip.
+ *
+ * Derived, never stored. `state` is computed from three things that already
+ * exist - the `GlPosting` rows, `accounting.cutoffPeriod` and
+ * `ledger.lockedThroughMonth` - which is why task 13 deferred the
+ * `gl_close_period` table: there is nothing for it to hold that is not already
+ * answerable.
+ *
+ * 🛑 `locked` and `posted` are not the same and must not be collapsed. A locked
+ * month may never have been posted (an org can lock a range it does not intend
+ * to close), and a posted month is not locked until somebody says so. They call
+ * for different actions, and the toolbar renders them differently.
+ */
+export interface ClosePeriod {
+  /** `'2026-08'`. */
+  periodKey: string
+  state: 'open' | 'posted' | 'locked'
+  /** The effective posting for the month, when there is one. */
+  glPostingId: string | null
+  docNumber: string | null
+  totalMinor: number | null
+  postedAt: string | null
+  /** `0` for an original; a reversal chain climbs from there. */
+  revision: number
 }
 
 /** One claimed-but-not-posted entry, as the close console's banner reads it. */
