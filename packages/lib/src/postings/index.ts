@@ -22,6 +22,11 @@ export {
   type VendorBillEntryInput,
 } from './build-entry'
 export {
+  type BuiltMonthEndInventoryDraft,
+  buildMonthEndInventoryEntry,
+  type MonthEndInventoryInputs,
+} from './build-month-end-inventory'
+export {
   DEFAULT_CHART_OF_ACCOUNTS,
   type DefaultChartAccount,
   type GlAccountTypeValue,
@@ -42,6 +47,7 @@ export {
   requiresAssertions,
   reverseAssertions,
 } from './draft'
+export { gatherMonthEndInventoryInputs } from './gather-month-end-inventory'
 export {
   FINALIZED_SETUP_STATE,
   OPENING_BASELINE_SETTING_KEYS,
@@ -80,6 +86,13 @@ export {
   resolveAccountingProvider,
   setConnectedProviderResolver,
 } from './provider'
+export {
+  ENABLED_POSTING_TYPES,
+  findInventoryWriterConflicts,
+  INVENTORY_ROLES,
+  INVENTORY_ROLES_BY_POSTING_TYPE,
+  type InventoryWriterConflict,
+} from './regime'
 export { type ResolvedAccount, resolveRoles } from './resolve-roles'
 export { type ReverseEntryOptions, reverseEntry } from './reverse-entry'
 export {

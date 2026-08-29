@@ -533,7 +533,7 @@ build's movements from exploding their own BOM. Update the reasoning, not the co
   Postgres-enforced unique index on `(organizationId, postingType, periodKey, revision)` and an
   `INSERT … ON CONFLICT DO NOTHING` claim. Amounts are `bigint` **integer minor units**;
   `GlPostingLine` has no `updatedAt` and no update path, so its immutability is structural rather
-  than advisory. **0 rows** — nothing writes them yet.
+  than advisory. **`postings/post-entry.ts` writes them** (#1978).
 - **`GlRoleAssignment` Drizzle TABLE** (migration `0353`): `(organizationId, role) -> gl_account`,
   with a Postgres unique index on the pair. This is where a posting role is mapped, and
   `postings/resolve-roles.ts` is the single door that reads it.
@@ -550,8 +550,12 @@ build's movements from exploding their own BOM. Update the reasoning, not the co
   number cannot carry the meaning: a customer renumbering GRNI from `2160` to `2155` would silently
   break every builder that hardcoded it, and the entry would still balance, so nothing downstream
   could detect it.
-- `packages/lib/src/postings/` — `build-entry.ts`, `periods.ts`, `provider.ts`. Pure-ish;
-  persists nothing yet.
+- `packages/lib/src/postings/` — the whole seam. `build-entry.ts`, `periods.ts`, `period-lock.ts`,
+  `provider.ts`, `default-chart.ts`, `resolve-roles.ts`, `doc-number.ts`, `verify-balance.ts`
+  (pure); `post-entry.ts` + `reverse-entry.ts` (the poster and its reversal, #1978);
+  `draft.ts` (the `GlPosting.draft` envelope contract), `opening-baseline.ts`,
+  `build-month-end-inventory.ts` and `gather-month-end-inventory.ts` (the L1 month-end entry,
+  #1979 + this change). See §9.5.
 - Postings are stored as **double-entry lines keyed on an account CODE** (`'2160'`), never a
   provider account id. Provider ids live in `RecordIdentity`, hung off `gl_account` by the app
   that owns them. This is the whole cash value of "the provider is an exporter" (P2).
@@ -624,13 +628,16 @@ that one *is* a `G8` violation and should resolve the `grni` role instead.)
 
 ### 9.2 What is designed and not built
 
-`packages/lib/src/money/gl/` **does not exist**. The builder/poster seam, the fulfillment entry,
-and the close console are all design-only — see `plans/money/design/gap-e/f/g`.
+⚠️ **Corrected 2026-08-28.** This section previously said the builder/poster seam was design-only.
+It is **built** — the seam lives in `packages/lib/src/postings/`, not in a `money/gl/` directory
+that never existed. *Builders are the accounting, the poster is the plumbing*: a builder returns a
+`BuiltEntry` of **posting ROLES** and **integer minor units, always positive, with direction as a
+separate field**; `postEntry` resolves roles to account codes, asserts `Σ Debit === Σ Credit`,
+claims the period and handles idempotency.
 
-The intended seam is *builders are the accounting, the poster is the plumbing*: each builder
-returns a `DraftJournalEntry` of **logical account keys** and **integer minor units, always
-positive, with direction as a separate field**; one poster resolves keys to provider ids,
-asserts `Σ Debit === Σ Credit`, and handles idempotency.
+Still design-only: **the fulfillment entry, the payout entry, the month-end deferral, and the close
+console**. The accounting **setup wizard** that produces the opening baseline §9.5 consumes is also
+unbuilt — see `plans/money/tasks/12-accounting-setup.md`.
 
 ### 9.3 L1 vs L3 — the load-bearing constraint
 
@@ -714,6 +721,66 @@ fails such a write with `22003` — so a month-end close would refuse to post ra
 Caught and widened before either table held a row. Any *new* money column anywhere in this
 subsystem is `bigint` minor units for the same reason; the type is pinned by the structural tests
 in `packages/database/src/tests/gl-posting-schema.test.ts` so it cannot silently regress.
+
+### 9.5 The L1 month-end inventory reader — `gatherMonthEndInventoryInputs`
+
+`postings/gather-month-end-inventory.ts` is the read half of the one entry that turns the
+subledger into the general ledger. `build-month-end-inventory.ts` is the pure arithmetic beside
+it, and the split is the module guide's read/write split: an arithmetic failure is a bug and
+throws, a read failure is a runtime condition and returns a `Result`.
+
+**Two source lanes, and that is a property of the design.** The inventory BALANCES come from the
+movement ledger — Σ signed `stock_movement_extended_cost` grouped by each movement's own frozen
+`stock_movement_gl_account` role. The ABSORPTION totals cannot: a movement freezes a single total
+`unit_cost` and has no labour or overhead column, so the split is not in there to recover.
+`build_labor_cost` / `build_overhead_cost` on the **build** are where it is frozen (§7).
+
+**The window starts at the cutoff, ends at the period end, and is CUMULATIVE.** Never "movements
+in this month". A build dated in January but entered after the January close must show up in the
+next open entry still carrying its own frozen labour and overhead; that only works because both
+lanes sum from the cutoff forward and the builder takes the delta against the prior snapshot.
+
+🛑 **Both boundaries are INSTANTS derived from wall-clock midnights in `accounting.bookTimeZone`.**
+Membership is `stock_movement_occurred_at` and `build_completed_at` — never `createdAt`, which
+records when auxx.ai learned of a row. A receipt logged at 7pm on January 31 in `America/New_York`
+is already February 1 in UTC, so a UTC-derived boundary posts month-edge activity into the wrong
+month: invisible except at a close, and uncorrectable once the period is locked.
+
+🛑 **The NULL-cost rule is DIFFERENT on each side of the cutoff.** Before it, uncosted movements
+are ignored — they predate the costing regime and the opening snapshot replaces that history.
+After it, a movement missing `occurred_at`, `unit_cost`, `extended_cost` or its inventory role
+**fails the close and names itself**. Every sanctioned writer already refuses to write one, so
+such a row came through some other door, and *filtering it produces a balanced entry that
+understates inventory with no signal* — the exact failure the assertion design exists to prevent.
+A movement with no `occurred_at` at all cannot be placed in any period, so the window predicate
+cannot see it; the reader catches it on `EntityInstance.createdAt >= windowStart` instead, which
+is the only use of `createdAt` in the file and is a "recent enough to be a defect?" test rather
+than a period classification.
+
+⚠️ **`stock_movement_adjust_subparts = true` rows are excluded from both the sums and that scan.**
+They are the PARENT of a bill-of-materials explosion; the children carry the real quantities,
+which is why `recalculateQoHForPart` excludes the parent from the quantity ledger too
+(`field-hooks/post/inventory-triggers.ts`). Including them would double-count. The CHILDREN are
+not excluded — `explodeBomMovement` writes them with no cost fields at all, so post-cutoff they
+correctly trip the rule above.
+
+**An `adjust` movement appears in BOTH the balance and the adjustment total.** It moved inventory,
+so it is in the balance; `G12` requires count and shrinkage to be classified into their own role,
+so it is also its own signed total. The adjustment total is never subtracted out of the balance —
+the builder emits them as separate legs and the 5000 plug absorbs the difference.
+
+**Build reversals are NOT filtered.** `reverse-build.ts` writes a *negated* `build_labor_cost` on
+a second build row, so a cumulative sum nets a reversal out on its own. Filtering would leave the
+original's absorption in the total and remove the correction that cancels it.
+
+**The prior-row rule is exact:** the `posted` `month_end_inventory` row with the greatest
+`periodKey` strictly before this period, then the greatest `revision` in that period, and its
+draft's `assertions.after` is the prior snapshot. The original of a reversal pair is `reversed`
+and drops out. At cutover there is no such row and the frozen opening baseline stands in with
+all-zero activity totals — never a synthetic `GlPosting`, never zero balances. 🛑 A prior row whose
+draft carries **no** assertions is a corrupt chain and fails the close naming the document; falling
+back to the baseline there would silently restate every month since the cutoff into one entry that
+balances perfectly.
 
 ---
 
