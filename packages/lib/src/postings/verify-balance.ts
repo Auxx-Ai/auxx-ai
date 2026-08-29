@@ -36,7 +36,12 @@ import { and, asc, eq, inArray, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError } from '../errors'
 import { compareMonths, periodMonth } from './periods'
-import type { PostingType } from './types'
+import type {
+  BooksBalanceDiscrepancy,
+  BooksBalanceReport,
+  PostingType,
+  UnpostedPeriod,
+} from './types'
 
 const logger = createScopedLogger('postings:verify-balance')
 
@@ -64,23 +69,9 @@ const logger = createScopedLogger('postings:verify-balance')
 const POSTED_STATUSES = ['posted', 'reversed'] as const
 
 /** One entry whose lines do not tie, or do not agree with its recorded total. */
-export interface BooksBalanceDiscrepancy {
-  glPostingId: string
-  docNumber: string
-  postingType: PostingType
-  periodKey: string
-  totalDebitMinor: number
-  totalCreditMinor: number
-  /** `GlPosting.totalMinor`, which must equal BOTH sides. */
-  recordedTotalMinor: number
-}
-
-export interface BooksBalanceReport {
-  balanced: boolean
-  postingsChecked: number
-  /** One per entry whose lines do not tie, or whose lines do not sum to `totalMinor`. */
-  discrepancies: BooksBalanceDiscrepancy[]
-}
+// `BooksBalanceDiscrepancy` moved to `types.ts` - see the note there.
+// `BooksBalanceReport` moved to `types.ts` - see the note there.
+export type { BooksBalanceDiscrepancy, BooksBalanceReport } from './types'
 
 /**
  * Prove Sigma debit = Sigma credit across every posted entry.
@@ -180,16 +171,8 @@ export async function verifyBooksBalance(
   }
 }
 
-/** One claimed-but-not-posted entry, as the close console's banner reads it. */
-export interface UnpostedPeriod {
-  periodKey: string
-  postingType: PostingType
-  glPostingId: string
-  status: 'pending' | 'failed'
-  docNumber: string
-  attempts: number
-  failureReason: string | null
-}
+// `UnpostedPeriod` moved to `types.ts` - see the note there.
+export type { UnpostedPeriod } from './types'
 
 /**
  * Every entry that has been claimed but is not in the books.

@@ -141,6 +141,20 @@ export const SETTINGS_CATALOG = {
     description: 'Dispatch getting-started state (wizard + checklist dismissal/completions)',
   },
 
+  'onboarding.accountingGettingStarted': {
+    scope: 'ONBOARDING',
+    access: 'org',
+    fieldType: 'JSON',
+    // GettingStartedState — { dismissedAt, manualCompletions, wizardCompletedAt }
+    //
+    // ⚠️ Only the DISMISSAL and the wizard stamp live here. Every goal is a live
+    // signal computed per call (`getting-started/signals.ts`), which is what
+    // keeps task 12's rule — readiness is derived on read, never stored, because
+    // a stored flag goes stale the moment somebody changes a rate.
+    defaultValue: { dismissedAt: null, manualCompletions: [], wizardCompletedAt: null },
+    description: 'Accounting getting-started state (wizard + checklist dismissal/completions)',
+  },
+
   'notification.emailDigest': {
     scope: 'NOTIFICATION',
     access: 'user',

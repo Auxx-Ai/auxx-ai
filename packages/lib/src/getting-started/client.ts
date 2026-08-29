@@ -9,8 +9,14 @@ export const GETTING_STARTED_SETTING_KEY = 'onboarding.gettingStarted' as const
 /** The setting key under which the dispatch getting-started state is persisted. */
 export const DISPATCH_GETTING_STARTED_SETTING_KEY = 'onboarding.dispatchGettingStarted' as const
 
-/** The known onboarding checklists. `main` is the org-wide checklist; `dispatch` is the module one. */
-export const CHECKLIST_IDS = ['main', 'dispatch'] as const
+/** The setting key under which the accounting getting-started state is persisted. */
+export const ACCOUNTING_GETTING_STARTED_SETTING_KEY = 'onboarding.accountingGettingStarted' as const
+
+/**
+ * The known onboarding checklists. `main` is the org-wide checklist; `dispatch`
+ * and `accounting` are the module ones.
+ */
+export const CHECKLIST_IDS = ['main', 'dispatch', 'accounting'] as const
 
 export type ChecklistId = (typeof CHECKLIST_IDS)[number]
 
@@ -36,15 +42,42 @@ export const DISPATCH_GOAL_KEYS = [
   'schedule-visit',
 ] as const
 
+/**
+ * Canonical, ordered list of accounting onboarding goal keys. Order is display order.
+ *
+ * Deliberately COARSE - one goal per wizard page, not one per settings field.
+ * Cutoff and book timezone are two inputs on one page that take five seconds
+ * together, and `dispatch` does not split `set-address` into street and city
+ * either (plans/money/tasks/13-accounting-ui.md section 3.2).
+ *
+ * 🛑 There is no `connect-quickbooks` goal, and that is a decision rather than an
+ * omission. Decision `P1` makes "nothing connected" a FIRST-CLASS case: the entry
+ * is built, balanced and persisted identically and the poster reports
+ * `not_connected`. A checklist that nagged for a provider would contradict the
+ * design the whole poster rests on.
+ */
+export const ACCOUNTING_GOAL_KEYS = [
+  'set-accounting-period',
+  'set-opening-balances',
+  'set-costing',
+  'map-accounts',
+  'finalize-setup',
+  'post-first-entry',
+] as const
+
 export type MainGoalKey = (typeof MAIN_GOAL_KEYS)[number]
 export type DispatchGoalKey = (typeof DISPATCH_GOAL_KEYS)[number]
-export type GoalKey = MainGoalKey | DispatchGoalKey
+export type AccountingGoalKey = (typeof ACCOUNTING_GOAL_KEYS)[number]
+export type GoalKey = MainGoalKey | DispatchGoalKey | AccountingGoalKey
 
 /** Per-checklist registry: setting key, goal-key set, and manual-only goals. */
 export const CHECKLISTS: Record<
   ChecklistId,
   {
-    settingKey: typeof GETTING_STARTED_SETTING_KEY | typeof DISPATCH_GETTING_STARTED_SETTING_KEY
+    settingKey:
+      | typeof GETTING_STARTED_SETTING_KEY
+      | typeof DISPATCH_GETTING_STARTED_SETTING_KEY
+      | typeof ACCOUNTING_GETTING_STARTED_SETTING_KEY
     goalKeys: readonly GoalKey[]
     /** Goals with no server signal — completed only via manualCompletions. */
     manualGoalKeys: readonly GoalKey[]
@@ -58,6 +91,11 @@ export const CHECKLISTS: Record<
   dispatch: {
     settingKey: DISPATCH_GETTING_STARTED_SETTING_KEY,
     goalKeys: DISPATCH_GOAL_KEYS,
+    manualGoalKeys: [],
+  },
+  accounting: {
+    settingKey: ACCOUNTING_GETTING_STARTED_SETTING_KEY,
+    goalKeys: ACCOUNTING_GOAL_KEYS,
     manualGoalKeys: [],
   },
 }
