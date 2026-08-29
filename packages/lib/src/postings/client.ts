@@ -79,6 +79,15 @@ export {
   type SetupReadiness,
 } from './setup-readiness'
 export {
+  type AccountSuggestion,
+  isMappableTo,
+  suggestAccountIdentities,
+  validateProviderMapping,
+} from './suggest-account-identities'
+export {
+  type AccountIdentityRow,
+  type AccountIdentityState,
+  type AccountSuggestionReason,
   type BooksBalanceDiscrepancy,
   type BooksBalanceReport,
   type BuiltEntry,
@@ -98,6 +107,7 @@ export {
   type PostingType,
   type PostResult,
   type PostResultStatus,
+  type ProviderAccount,
   ProviderPostError,
   type ResolvedPostingLine,
   type RoleAssignmentRow,

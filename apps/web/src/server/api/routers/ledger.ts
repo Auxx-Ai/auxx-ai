@@ -6,9 +6,11 @@ import { PermissionKey } from '@auxx/lib/permissions'
 import {
   ACCOUNT_ROLES,
   buildEntry,
+  confirmSuggestedIdentities,
   createChartAccount,
   GL_ACCOUNT_TYPES,
   getPosting,
+  listAccountIdentities,
   listChartAccounts,
   listChartAccountUsage,
   listClosePeriods,
@@ -22,6 +24,7 @@ import {
   removeChartAccount,
   resolvePeriodLock,
   reverseEntry,
+  setAccountIdentity,
   setRoleAssignment,
   updateChartAccount,
   verifyBooksBalance,
@@ -371,6 +374,74 @@ export const ledgerRouter = createTRPCRouter({
     if (result.isErr()) throw result.error
     return result.value
   }),
+
+  /**
+   * The `G19` account map: every account in the org's chart, the account it is
+   * mapped to in the connected accounting system, and what the matcher would
+   * suggest for the ones without a mapping.
+   *
+   * ⚠️ **This one reaches the provider**, unlike every other read on this
+   * router - it fetches the connected system's chart of accounts over the app
+   * Lambda. Expect it to be slow relative to its neighbours, and do not put it
+   * behind a component that renders on every page.
+   *
+   * An org with nothing connected gets its own chart back with every row
+   * `unmapped` and no provider accounts, which is `P1`'s supported
+   * configuration rather than an error.
+   */
+  accountMap: permissionProcedure(PermissionKey.ledgerView).query(async ({ ctx }) => {
+    const result = await listAccountIdentities(ctx.db, ctx.session.organizationId)
+    if (result.isErr()) throw result.error
+    return result.value
+  }),
+
+  /**
+   * Confirm that one of the org's accounts IS one account in the connected
+   * system, or withdraw that confirmation by sending a null id.
+   *
+   * Gated on `ledgerPost` for `setRoleAssignment`'s reason: this decides which
+   * external account real money lands in, so it belongs with the people trusted
+   * to write to the books rather than everyone who can read them.
+   */
+  setAccountIdentity: permissionProcedure(PermissionKey.ledgerPost)
+    .input(
+      z.object({
+        glAccountId: z.string().min(1),
+        providerAccountId: z.string().min(1).nullish(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const result = await setAccountIdentity(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        glAccountId: input.glAccountId,
+        providerAccountId: input.providerAccountId,
+        actorUserId: ctx.session.userId,
+      })
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /**
+   * Confirm every suggestion at once - the wizard's "accept all" action.
+   *
+   * 🛑 Still a human confirmation under `G19`, not an automatic mapping: the
+   * person has been shown every proposed pairing and the reason for it, and this
+   * is them agreeing to the set. Nothing calls it on connect, and nothing may.
+   *
+   * Reports partial success rather than rolling back. Twenty good mappings and
+   * one refusal is a better outcome than none, and the refusals come back named
+   * so the screen can show which.
+   */
+  confirmSuggestedAccounts: permissionProcedure(PermissionKey.ledgerPost).mutation(
+    async ({ ctx }) => {
+      const result = await confirmSuggestedIdentities(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        actorUserId: ctx.session.userId,
+      })
+      if (result.isErr()) throw result.error
+      return result.value
+    }
+  ),
 
   /**
    * Write the 29-account default chart, and point each role at the account that

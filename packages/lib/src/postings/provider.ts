@@ -16,8 +16,8 @@
 
 import { createScopedLogger } from '@auxx/logger'
 import { err, ok, type Result } from 'neverthrow'
-import { NotFoundError } from '../errors'
-import type { PostEntryInput, PostEntryResult } from './types'
+import { NotFoundError, UnprocessableEntityError } from '../errors'
+import type { PostEntryInput, PostEntryResult, ProviderAccount } from './types'
 
 const logger = createScopedLogger('postings-provider')
 
@@ -59,6 +59,63 @@ export interface AccountingProvider {
    * an unbalanced one. An adapter must not silently repair amounts.
    */
   postEntry(input: PostEntryInput): Promise<Result<PostEntryResult, Error>>
+
+  /**
+   * The connected system's own chart, for the `G19` mapping screen.
+   *
+   * 🛑 This is what keeps the mapping UI provider-neutral. A screen that fetched
+   * QuickBooks' chart directly could only ever map QuickBooks, and `P2` exists
+   * precisely so that swapping the accounting system is a settings change rather
+   * than a rewrite. Everything above this line speaks {@link ProviderAccount}.
+   *
+   * Inactive accounts are INCLUDED. `G19` requires every close to revalidate
+   * that a mapping's target still exists and is still active, and a screen
+   * cannot say "the account you mapped has been deactivated" about a row it
+   * never received.
+   */
+  listProviderAccounts(orgId: string): Promise<Result<ProviderAccount[], Error>>
+
+  /**
+   * Which provider account each of the org's own accounts is mapped to, as
+   * `glAccountId -> providerAccountId`.
+   *
+   * A missing entry means unmapped, which is the state that blocks a close with
+   * a message naming the account. Never guess: `G19` has no default-account
+   * fallback, because a guess that lands on a real account produces an entry
+   * that balances and is wrong, and nothing downstream can detect it.
+   */
+  listAccountMappings(orgId: string): Promise<Result<Map<string, string>, Error>>
+
+  /**
+   * Record that one of the org's accounts IS one provider account - the human
+   * confirmation `G19` step 4 requires.
+   *
+   * The caller has already checked that the pairing is legal (the provider
+   * account exists, is active, and its classification matches ours). An adapter
+   * may re-check but must not silently repair.
+   */
+  setAccountMapping(input: SetAccountMappingInput): Promise<Result<void, Error>>
+
+  /** Withdraw a confirmation. The account goes back to unmapped. */
+  clearAccountMapping(input: ClearAccountMappingInput): Promise<Result<void, Error>>
+}
+
+/** One confirmed pairing, as {@link AccountingProvider.setAccountMapping} takes it. */
+export interface SetAccountMappingInput {
+  orgId: string
+  /** The `gl_account` `EntityInstance` id. */
+  glAccountId: string
+  /** The provider's own account id. */
+  providerAccountId: string
+  /** Who confirmed it, for the audit trail the mapping's storage keeps. */
+  actorUserId?: string
+}
+
+/** One withdrawal, as {@link AccountingProvider.clearAccountMapping} takes it. */
+export interface ClearAccountMappingInput {
+  orgId: string
+  glAccountId: string
+  actorUserId?: string
 }
 
 /**
@@ -86,6 +143,47 @@ class NoneAccountingProvider implements AccountingProvider {
       docNumber: input.docNumber,
     })
     return ok({ status: 'not_connected', externalId: '', providerId: NONE_PROVIDER_ID })
+  }
+
+  /**
+   * No external chart to read, and that is an ANSWER rather than a failure.
+   *
+   * An empty list is what the mapping screen needs to render "nothing is
+   * connected, so there is nothing to map" - which under `P1` is a supported
+   * configuration, not a setup step somebody has skipped.
+   */
+  async listProviderAccounts(): Promise<Result<ProviderAccount[], Error>> {
+    return ok([])
+  }
+
+  async listAccountMappings(): Promise<Result<Map<string, string>, Error>> {
+    return ok(new Map())
+  }
+
+  /**
+   * 🛑 A write REFUSES rather than succeeding silently.
+   *
+   * The two reads above answer emptily because "nothing connected" is a true and
+   * complete answer to them. A write is different: somebody is trying to record
+   * a pairing with a system that is not there, and an `ok()` would tell them it
+   * was saved. Nothing would have been.
+   */
+  async setAccountMapping(input: SetAccountMappingInput): Promise<Result<void, Error>> {
+    return err(
+      new UnprocessableEntityError(
+        'No accounting system is connected, so there is no account to map to.',
+        { organizationId: input.orgId, glAccountId: input.glAccountId }
+      )
+    )
+  }
+
+  async clearAccountMapping(input: ClearAccountMappingInput): Promise<Result<void, Error>> {
+    return err(
+      new UnprocessableEntityError(
+        'No accounting system is connected, so there is no mapping to clear.',
+        { organizationId: input.orgId, glAccountId: input.glAccountId }
+      )
+    )
   }
 }
 
