@@ -32,6 +32,7 @@ export const ACCOUNTING_KEYS = {
   qboOpeningJournalRef: 'accounting.qboOpeningJournalRef',
   assemblyLaborCostPerUnit: 'manufacturing.assemblyLaborCostPerUnit',
   overheadCostPerUnit: 'manufacturing.overheadCostPerUnit',
+  autoRollFirstStandard: 'manufacturing.autoRollFirstStandard',
 } as const
 
 /**
@@ -49,6 +50,7 @@ export const PERIOD_DRAFT_KEYS = [
 export const ABSORPTION_DRAFT_KEYS = [
   ACCOUNTING_KEYS.assemblyLaborCostPerUnit,
   ACCOUNTING_KEYS.overheadCostPerUnit,
+  ACCOUNTING_KEYS.autoRollFirstStandard,
 ] as const
 
 export const OPENING_DRAFT_KEYS = [

@@ -16,6 +16,7 @@ import {
 } from '@auxx/ui/components/dialog'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { toastError } from '@auxx/ui/components/toast'
+import { formatCurrency } from '@auxx/utils/currency'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
@@ -25,7 +26,16 @@ import { useSystemField } from '~/components/resources/hooks/use-field'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { BaseType } from '~/components/workflow/types'
+import { useSettings } from '~/hooks/use-settings'
 import { api } from '~/trpc/react'
+import {
+  buildOpeningStockInput,
+  defaultOpeningStockValues,
+  isOpeningStockEmpty,
+  type OpeningStockFormValues,
+  openingStockAccountLabel,
+  validateOpeningStock,
+} from './opening-stock-input'
 import {
   defaultVendorPartValues,
   VendorPartFields,
@@ -95,6 +105,14 @@ export function PartFormDialog({
   // products taxonomy's option ids into part records.
   const categoryField = useSystemField('category', partDefId)
 
+  // The Kind select's preselection comes from the FIELD, not from a literal in
+  // this file, so an org that changes the default gets it everywhere and there
+  // is one source of truth for the fact (task 15 §4c).
+  const partKindField = useSystemField('part_kind', partDefId)
+
+  const { getSetting } = useSettings({})
+  const currencyCode = (getSetting('organization.currency') as string | null) ?? 'USD'
+
   // Load initial values for edit mode
   const { values: systemValues } = useSystemValues(recordId, PART_SYSTEM_ATTRIBUTES, {
     autoFetch: true,
@@ -109,10 +127,13 @@ export function PartFormDialog({
     hsCode: '',
     category: [] as string[],
     productId: '',
-    // Deliberately never defaulted, not even when created from a product —
-    // Gap C §3.2 requires `part_kind` human-confirmed and auditable, and the
-    // part drawer's Family card is the confirmation surface. A silent default
-    // would defeat the `isPartKindUnset` gate that suggestion is built on.
+    // Seeded from `part_kind`'s own `defaultValue` in the reset effect below.
+    //
+    // 🛑 Preselecting is NOT the silent default Gap C §3.2 rules out. That rule
+    // asks for `part_kind` to be human-confirmed and auditable, and a value
+    // shown in the form, before save, changeable in one click, IS confirmed —
+    // the person saw it and pressed the button. A server-side fill on a key the
+    // form never sent is what it refuses, because nobody was ever shown it.
     kind: '',
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -120,6 +141,10 @@ export function PartFormDialog({
   const [vendorPartValues, setVendorPartValues] =
     useState<VendorPartFormValues>(defaultVendorPartValues)
   const [vendorPartErrors, setVendorPartErrors] = useState<Record<string, string>>({})
+  const [showOpeningStock, setShowOpeningStock] = useState(false)
+  const [openingStockValues, setOpeningStockValues] =
+    useState<OpeningStockFormValues>(defaultOpeningStockValues)
+  const [openingStockErrors, setOpeningStockErrors] = useState<Record<string, string>>({})
 
   // Initialize/reset values when dialog opens
   useEffect(() => {
@@ -151,8 +176,28 @@ export function PartFormDialog({
       setShowSupplier(false)
       setVendorPartValues(defaultVendorPartValues)
       setVendorPartErrors({})
+      setShowOpeningStock(false)
+      setOpeningStockValues(defaultOpeningStockValues())
+      setOpeningStockErrors({})
     }
   }, [open, isEditMode, systemValues, lockedProductId])
+
+  // Preselect Kind from the field's own `defaultValue` (task 15 §4c).
+  //
+  // Kept out of the reset effect above on purpose: the field store hydrates
+  // independently of this dialog, so the default can land AFTER somebody has
+  // started typing, and re-running the reset then would wipe the form. This one
+  // only ever fills a Kind that is still blank.
+  //
+  // The `?? ''` case is the field carrying no default, which is the state before
+  // the registry sets one — the select simply shows its placeholder, as it did
+  // before.
+  useEffect(() => {
+    if (!open || isEditMode) return
+    const preselect = partKindField?.defaultValue
+    if (typeof preselect !== 'string' || !preselect) return
+    setValues((prev) => (prev.kind ? prev : { ...prev, kind: preselect }))
+  }, [open, isEditMode, partKindField?.defaultValue])
 
   // Field change handler
   const handleChange = useCallback((field: string, value: any) => {
@@ -182,7 +227,20 @@ export function PartFormDialog({
     }
     setVendorPartErrors(vpErrors)
 
-    return Object.keys(newErrors).length === 0 && Object.keys(vpErrors).length === 0
+    // The opening-stock section is optional as a whole and complete once opened
+    // and answered: a quantity with no cost is not an opening balance, it is a
+    // hand-valued adjustment, which §2.2 refuses outright.
+    const osErrors =
+      showOpeningStock && !isOpeningStockEmpty(openingStockValues)
+        ? validateOpeningStock(openingStockValues)
+        : {}
+    setOpeningStockErrors(osErrors)
+
+    return (
+      Object.keys(newErrors).length === 0 &&
+      Object.keys(vpErrors).length === 0 &&
+      Object.keys(osErrors).length === 0
+    )
   }
 
   // Create mutation via entity system
@@ -192,10 +250,24 @@ export function PartFormDialog({
     },
   })
 
+  /**
+   * The part's opening balance: one `initial` movement, its first standard cost.
+   *
+   * A separate procedure and a separate call on purpose — it is chained AFTER
+   * the part exists (see `handleSubmit`), because a failure here leaves a part
+   * somebody can open the drawer on and set stock for, while the reverse order
+   * would leave a movement pointing at nothing.
+   */
+  const openStockBalance = api.purchasing.openStockBalance.useMutation({
+    onError: (error) => {
+      toastError({ title: 'Part created, opening stock failed', description: error.message })
+    },
+  })
+
   // Save field values for edit mode
   const { saveMultipleAsync, isPending: isSavingFields } = useSaveFieldValue({})
 
-  const isPending = createRecord.isPending || isSavingFields
+  const isPending = createRecord.isPending || isSavingFields || openStockBalance.isPending
 
   // Submit
   const handleSubmit = async () => {
@@ -255,6 +327,21 @@ export function PartFormDialog({
           })
         }
 
+        // Opening stock LAST, and never inside the try that would abandon the
+        // rest: the part is already saved by now, so a refused opening balance
+        // is a toast and a drawer to finish the job in, not a lost form.
+        const openingStock =
+          showOpeningStock && !isOpeningStockEmpty(openingStockValues)
+            ? buildOpeningStockInput(result.instance.id, openingStockValues)
+            : null
+        if (openingStock) {
+          try {
+            await openStockBalance.mutateAsync(openingStock)
+          } catch {
+            // Surfaced by the mutation's onError. The part still stands.
+          }
+        }
+
         onSuccess?.(result.instance.id)
         onOpenChange(false)
       }
@@ -275,6 +362,22 @@ export function PartFormDialog({
       return prev
     })
   }, [])
+
+  // Handler for opening-stock field changes
+  const handleOpeningStockChange = useCallback(
+    (field: keyof OpeningStockFormValues, value: any) => {
+      setOpeningStockValues((prev) => ({ ...prev, [field]: value }))
+      setOpeningStockErrors((prev) => {
+        if (prev[field]) {
+          const next = { ...prev }
+          delete next[field]
+          return next
+        }
+        return prev
+      })
+    },
+    []
+  )
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -372,7 +475,8 @@ export function PartFormDialog({
             </FieldPanelRow>
           )}
 
-          {/* Kind — the GL classification. No default, ever (see state above). */}
+          {/* Kind — the GL classification. Preselected from the field's own
+              `defaultValue`, visibly and changeably (see the effect above). */}
           {!isEditMode && (
             <FieldPanelRow
               title='Kind'
@@ -452,6 +556,98 @@ export function PartFormDialog({
           </div>
         )}
 
+        {/* Opening stock — the same collapsible-optional pattern as Supplier,
+            chained into a second mutation after the part is created.
+
+            Never gated on Kind (task 15 §2.2, "DECIDED: no gate"). A disabled
+            section teaches nobody anything; naming the account the movement will
+            be stamped with does, and somebody creating a lift who reads "Raw
+            Materials" under it notices. */}
+        {!isEditMode && (
+          <div className='border-t pt-4 mt-4'>
+            <button
+              type='button'
+              onClick={() => setShowOpeningStock(!showOpeningStock)}
+              className='flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors'>
+              {showOpeningStock ? (
+                <ChevronDown className='h-4 w-4' />
+              ) : (
+                <ChevronRight className='h-4 w-4' />
+              )}
+              Add Opening Stock (Optional)
+            </button>
+
+            {showOpeningStock && (
+              <>
+                <FieldPanel
+                  className='p-0 mt-4'
+                  orientation='responsive'
+                  breakpoint='md'
+                  resizeId='part-form'
+                  defaultLabelWidth={200}>
+                  <FieldPanelRow
+                    title='Quantity'
+                    description='Units on hand at the opening date'
+                    type={BaseType.NUMBER}
+                    showIcon
+                    validationError={openingStockErrors.quantity}
+                    validationType='error'>
+                    <FieldInputAdapter
+                      fieldType={FieldType.NUMBER}
+                      value={openingStockValues.quantity}
+                      onChange={(val) => handleOpeningStockChange('quantity', val ?? null)}
+                      placeholder='0'
+                      disabled={isPending}
+                    />
+                  </FieldPanelRow>
+
+                  <FieldPanelRow
+                    title='Unit Cost'
+                    description='What a unit cost when it was bought'
+                    type={BaseType.CURRENCY}
+                    showIcon
+                    validationError={openingStockErrors.unitCost}
+                    validationType='error'>
+                    <FieldInputAdapter
+                      fieldType={FieldType.CURRENCY}
+                      fieldOptions={{ currencyCode, decimals: 2, useGrouping: true }}
+                      value={openingStockValues.unitCost}
+                      onChange={(val) => handleOpeningStockChange('unitCost', val ?? null)}
+                      placeholder='0.00'
+                      disabled={isPending}
+                    />
+                  </FieldPanelRow>
+
+                  <FieldPanelRow
+                    title='As of'
+                    description='The accounting date, which is not when it was keyed'
+                    type={BaseType.DATE}
+                    showIcon>
+                    <FieldInputAdapter
+                      fieldType={FieldType.DATETIME}
+                      value={openingStockValues.occurredAt}
+                      onChange={(val) =>
+                        handleOpeningStockChange(
+                          'occurredAt',
+                          (val as string) ?? new Date().toISOString()
+                        )
+                      }
+                      disabled={isPending}
+                    />
+                  </FieldPanelRow>
+                </FieldPanel>
+
+                <OpeningStockConsequence
+                  quantity={openingStockValues.quantity}
+                  unitCost={openingStockValues.unitCost}
+                  kind={values.kind}
+                  currencyCode={currencyCode}
+                />
+              </>
+            )}
+          </div>
+        )}
+
         <DialogFooter>
           <Button
             type='button'
@@ -475,4 +671,48 @@ export function PartFormDialog({
       </DialogContent>
     </Dialog>
   )
+}
+
+/**
+ * What the opening balance will actually do, in one sentence, live.
+ *
+ * 🛑 The account name is recomputed from the Kind select on every change, and it
+ * is resolved through the SAME `resolveInventoryRoleForPartKind` the write uses
+ * (via `openingStockAccountLabel`). This is the house pattern the complete-build
+ * dialog uses for scrap: state the consequence at the input rather than block
+ * the input. It matters more here because `stock_movement_gl_account` is frozen
+ * at write time on an `updatable: false` row, so a finished good stamped raw
+ * materials stays that way — the sentence is the only chance to catch it.
+ */
+function OpeningStockConsequence({
+  quantity,
+  unitCost,
+  kind,
+  currencyCode,
+}: {
+  quantity: number | null
+  unitCost: number | null
+  kind: string
+  currencyCode: string
+}) {
+  const account = openingStockAccountLabel(kind || null)
+  const units = quantity != null && quantity > 0 ? formatQuantity(quantity) : 'N'
+  const each = unitCost != null && unitCost > 0 ? formatCurrency(unitCost, { currencyCode }) : '$X'
+
+  return (
+    <div className='mt-3 space-y-1 text-muted-foreground text-xs'>
+      <p>
+        Records {units} units at {each} into <span className='font-medium'>{account}</span>.
+      </p>
+      <p>
+        This is the part&apos;s opening balance and its first standard cost, and it can only be set
+        once.
+      </p>
+    </div>
+  )
+}
+
+/** Trim a quantity's trailing zeros — `10` not `10.00`, `2.5` kept. */
+function formatQuantity(value: number): string {
+  return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(4)))
 }

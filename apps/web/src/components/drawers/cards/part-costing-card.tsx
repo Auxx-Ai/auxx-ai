@@ -8,6 +8,7 @@ import type { ResourceFieldId } from '@auxx/types/field'
 import { Badge, type Variant } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { formatCurrency } from '@auxx/utils/currency'
+import Link from 'next/link'
 import { useMemo } from 'react'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { Tooltip } from '~/components/global/tooltip'
@@ -99,8 +100,16 @@ export function PartCostingCard({ recordId }: DrawerTabProps) {
 
   const hasComparison = purchaseCost != null && rollupCost != null
   const isUncosted = costSource === CostSource.NONE
-  // The standard block shows as soon as there is anything to say about it —
+  // Has a cost, has never been rolled. THIS is the state the org-wide roll fixes,
+  // and the only one worth pointing at it: a part with no live cost is skipped by
+  // that roll too (`no-live-cost`), so sending someone there would be bad advice.
+  // The `isUncosted` branch above already tells that part what it actually needs,
+  // which is a supplier price or a priced bill of materials.
+  const rollWouldValueIt = standardCost == null && liveCost != null
+  // The standard block shows as soon as there is anything to say about it,
   // including "not rolled yet", which is the state that needs the action most.
+  // A part with NO cost at all is deliberately not in that set: it would add a
+  // second amber row saying nothing the "Not costed" row above has not said.
   const hasStandardBlock = standardCost != null || liveCost != null
   // How far the standard has drifted from reality since it was last rolled.
   // Genuinely useful on its own: it is the number that tells you a roll is due.
@@ -187,9 +196,22 @@ export function PartCostingCard({ recordId }: DrawerTabProps) {
             description='The frozen value every stock movement is stamped with'>
             <div className='flex min-h-8 flex-wrap items-center gap-2 text-sm tabular-nums'>
               {standardCost == null ? (
-                <Badge variant='amber' size='xs'>
-                  Not rolled
-                </Badge>
+                <>
+                  <Badge variant='amber' size='xs'>
+                    Not rolled
+                  </Badge>
+                  {rollWouldValueIt && (
+                    <span className='text-muted-foreground text-xs'>
+                      Roll it here, or{' '}
+                      <Link
+                        href='/app/accounting/settings/general'
+                        className='underline underline-offset-2 hover:text-foreground'>
+                        Settings &rsaquo; Accounting &rsaquo; General
+                      </Link>{' '}
+                      rolls every part at once.
+                    </span>
+                  )}
+                </>
               ) : (
                 <>
                   {formatCurrency(standardCost)}

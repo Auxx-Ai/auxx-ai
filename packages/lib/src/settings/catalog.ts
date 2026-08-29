@@ -1152,6 +1152,28 @@ export const SETTINGS_CATALOG = {
       'Applied overhead per assembled unit, integer minor units: total annual factory ' +
       'overhead / expected annual units. Unset = no overhead absorption.',
   },
+  // ⚠️ A FIRST standard only. `ensureStandardCost` writes exclusively where
+  // `part_standard_cost IS NULL`, so this can never restate a part that already
+  // has a standard: a supplier price change moves `part_cost` (live replacement
+  // cost) and leaves the standard where the last roll put it. Re-valuing on-hand
+  // inventory stays the manual roll's job
+  // (plans/money/tasks/15-costing-usability.md §1 and §2a).
+  //
+  // On by default: without it a newly priced part shows "Not rolled" next to
+  // every action that refuses without a standard, which is the state 205 of 206
+  // parts in the dev org were found in. An org running a strict standard-cost
+  // discipline turns it off and keeps rolling by hand.
+  'manufacturing.autoRollFirstStandard': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'CHECKBOX',
+    options: { variant: 'switch' },
+    defaultValue: true,
+    description:
+      'When on, adding or changing a supplier price gives an unvalued part (and its parents) ' +
+      'a first standard cost. It only ever sets a standard that is missing, and never ' +
+      'overwrites one that already exists.',
+  },
 
   // ── Order-triggered auto-build (plans/products/12-order-triggered-build.md §5.4) ────────
   //

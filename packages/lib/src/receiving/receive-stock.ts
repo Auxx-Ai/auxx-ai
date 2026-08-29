@@ -14,7 +14,9 @@
  */
 
 import type { Database } from '@auxx/database'
+import { createScopedLogger } from '@auxx/logger'
 import type { Result } from 'neverthrow'
+import { ensureStandardCost } from '../builds/ensure-standard-cost'
 import { getCachedEntityDefId, requireCachedEntityDefId } from '../cache'
 import { BadRequestError, NotFoundError, UnprocessableEntityError } from '../errors'
 import { UnifiedCrudHandler } from '../resources/crud/unified-handler'
@@ -31,6 +33,8 @@ import { guard } from './guard'
 import { readPartKind, readVendorPartCostInputs } from './receipt-queries'
 import type { MovementRecord, ReceiveStockInput } from './types'
 
+const logger = createScopedLogger('receiving')
+
 /**
  * Receive stock against a part.
  *
@@ -42,7 +46,9 @@ import type { MovementRecord, ReceiveStockInput } from './types'
  * 2. Resolve the price. See {@link resolveReceiptPrice} — the base is the price
  *    the caller sent, and the supplier row contributes only the landed adders.
  * 3. Round both money values ONCE, at the point of storage.
- * 4. Write one movement.
+ * 4. Give the part a standard cost if, and only if, it has none. See
+ *    {@link setFirstStandardCostFromReceipt}.
+ * 5. Write one movement.
  *
  * 🛑 **A receipt is never written at zero cost.** If neither a supplied price nor
  * the supplier row yields a positive number this fails with
@@ -72,6 +78,8 @@ export async function receiveStock(
 
       const priced = await resolveReceiptPrice(db, organizationId, input)
       const partKind = await unwrap(readPartKind(db, organizationId, input.partId))
+
+      await setFirstStandardCostFromReceipt(db, organizationId, input.partId, priced.unitCost)
 
       const written = await writeReceiveMovement(db, organizationId, userId, {
         movementDefId,
@@ -226,7 +234,52 @@ interface WriteReceiveMovementArgs {
 }
 
 /**
- * Step 4: write the one movement.
+ * Step 4: a part's FIRST receipt gives it a standard cost
+ * (plans/money/tasks/15-costing-usability.md §2c).
+ *
+ * `ensureStandardCost` writes only where `part_standard_cost IS NULL`, so this
+ * is a no-op on every receipt after the first, and on any part somebody already
+ * rolled. It is not gated on a setting: a receipt carries a landed cost off an
+ * invoice, which is a fact, not an inference from a price list.
+ *
+ * 🛑 **This does NOT change what the receipt is valued at.** The movement below
+ * still stamps `cost_basis: 'actual'` at the landed cost, exactly as before.
+ * Receiving AT standard and posting the difference to `5090` is a books change
+ * and lives in `plans/money/design/ppv-treatment.md`; all this does is make the
+ * part HAVE a standard afterwards, so the adjust, build and close paths that
+ * refuse without one stop refusing.
+ *
+ * 🛑 **A receipt never MOVES an existing standard.** That is the same file's §5:
+ * a standard that follows the last purchase is a moving average wearing a
+ * standard's name. A later receipt at a different price varies against the
+ * standard; it does not become it.
+ *
+ * Failures are swallowed. The receipt is the fact being recorded and it is
+ * already priced; refusing to record it because a derived convenience could not
+ * be written would lose the arrival. The part simply stays unrolled, which is
+ * the state it was in a moment ago.
+ */
+async function setFirstStandardCostFromReceipt(
+  db: Database,
+  organizationId: string,
+  partId: string,
+  unitCost: number
+): Promise<void> {
+  const ensured = await ensureStandardCost(db, organizationId, [partId], {
+    kind: 'receipt',
+    unitCost,
+  })
+  if (ensured.isErr()) {
+    logger.warn('Could not set a first standard cost from a receipt', {
+      organizationId,
+      partId,
+      error: ensured.error,
+    })
+  }
+}
+
+/**
+ * Step 5: write the one movement.
  *
  * Values are keyed by `systemAttribute` and go through `UnifiedCrudHandler`
  * rather than a hand-built `EntityInstance` + `FieldValue` insert. That is the

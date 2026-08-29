@@ -23,6 +23,7 @@ import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
 import { formatCurrency } from '@auxx/utils/currency'
+import { keepPreviousData } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
@@ -56,9 +57,19 @@ export function RollStandardCostPopover({
     if (open) setEffectiveAt(new Date().toISOString())
   }, [open])
 
+  // `keepPreviousData` because the effective date is part of the query key:
+  // without it every change to it blanks the whole preview (15 §4a). The lines,
+  // the revaluation summary and the skipped list all unmount and the confirm
+  // button disables, mid-keystroke, on a surface whose entire job is showing
+  // numbers before a write.
   const preview = api.builds.previewRoll.useQuery(
     { partIds: [partId], effectiveAt: new Date(effectiveAt) },
-    { enabled: open, retry: false, refetchOnWindowFocus: false }
+    {
+      enabled: open,
+      retry: false,
+      refetchOnWindowFocus: false,
+      placeholderData: keepPreviousData,
+    }
   )
 
   const utils = api.useUtils()
@@ -88,9 +99,12 @@ export function RollStandardCostPopover({
         <div className='space-y-3'>
           <div>
             <h4 className='font-semibold text-sm'>Roll standard cost</h4>
+            {/* The mechanism AND the consequence: the second sentence is why
+                anyone would press this, and it is what "Not rolled" costs. */}
             <p className='mt-0.5 text-muted-foreground text-xs'>
               Freezes today&apos;s cost as the value every stock movement will be stamped with. This
-              part and everything built from it.
+              part and everything built from it. Without a standard this part cannot be built,
+              adjusted, received, or counted into a month-end close.
             </p>
           </div>
 
@@ -124,8 +138,15 @@ export function RollStandardCostPopover({
           ) : plan ? (
             <div className='space-y-2'>
               {changed.length === 0 ? (
+                // Two different empty states, and calling the second one the
+                // first is a lie: "already matches" claims a standard exists and
+                // is current, when in fact nothing could be valued at all. Only
+                // say it when there genuinely were valuable lines and none moved.
+                // The "cannot be valued" case has its reasons listed right below.
                 <p className='text-muted-foreground text-xs'>
-                  Nothing to roll — the standard already matches today&apos;s cost.
+                  {plan.lines.length === 0 && plan.skipped.length > 0
+                    ? 'Nothing to roll: no part here can be valued yet. See why below.'
+                    : 'Nothing to roll: the standard already matches today’s cost.'}
                 </p>
               ) : (
                 <ScrollArea className='max-h-48' allowScrollChaining>

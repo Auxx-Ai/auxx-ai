@@ -26,7 +26,7 @@ import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { RecordLink } from '~/components/resources/ui/record-link'
 import type { DrawerTabProps } from '../drawer-tab-registry'
 import {
-  isPartKindUnset,
+  isPartKindUnclassified,
   shouldSuggestFamily,
   shouldSuggestFinishedGood,
 } from './part-family-suggestion'
@@ -75,8 +75,10 @@ function relatedInstanceId(raw: unknown): string | undefined {
  * exclusive by construction:
  *
  * - the `finished_good` suggestion (01 §4) — a part that has a product and is
- *   nobody's subpart is almost certainly a finished good. Never offered over an
- *   explicit human choice of `part_kind`.
+ *   nobody's subpart is almost certainly a finished good. Offered while
+ *   `part_kind` is unclassified (unset, or the `component` the field defaults
+ *   to since 15-costing-usability.md §4c); never over an explicit
+ *   `subassembly` or `finished_good`.
  * - the **family** suggestion (09 §6) — a part already classified
  *   `finished_good` that sits in no family. Without it a part with no family
  *   rendered nothing at all, so there was no route into a family from this side
@@ -142,7 +144,13 @@ export function PartFamilyCard({ recordId }: DrawerTabProps) {
 
   // Finished-good condition (b): is this part anybody's subpart? Child-side
   // filter (`subpart:childPart`), limit 1 — presence is the only question.
-  const partKindUnset = isPartKindUnset(partKind)
+  //
+  // Gated on the same predicate condition (c) uses, so the read runs for every
+  // part the suggestion could fire on. That now includes a part sitting on the
+  // defaulted `component` (15-costing-usability.md §4c). With the old
+  // unset-only gate the lookup would never run for those, `subpartCheckLoaded`
+  // would stay false, and the widened suggestion could never appear.
+  const partKindUnclassified = isPartKindUnclassified(partKind)
   const usedInFilters: ConditionGroup[] = useMemo(
     () => [
       {
@@ -164,7 +172,7 @@ export function PartFamilyCard({ recordId }: DrawerTabProps) {
     entityDefinitionId: subpartDefId ?? '',
     filters: usedInFilters,
     limit: 1,
-    enabled: !!productId && partKindUnset && !!partId && !!subpartDefId,
+    enabled: !!productId && partKindUnclassified && !!partId && !!subpartDefId,
   })
 
   const { save, isPending } = useSaveSystemValues(recordId)

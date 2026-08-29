@@ -12,6 +12,7 @@ import {
   type StandardCostRollInputs,
   type SubpartEdge,
   widenToAncestors,
+  widenToUnvaluedDescendants,
 } from '../standard-cost-roll'
 import type { AbsorptionRates } from '../types'
 
@@ -388,5 +389,59 @@ describe('widenToAncestors', () => {
       [LIFT, [ASSEMBLY]],
     ])
     expect([...widenToAncestors([ASSEMBLY], cyclic)].sort()).toEqual([ASSEMBLY, LIFT].sort())
+  })
+})
+
+describe('widenToUnvaluedDescendants', () => {
+  // subpart graph: parent -> children. lift -> assembly -> [motor, tube]
+  const subpartGraph = new Map<string, SubpartEdge[]>([
+    [LIFT, [{ childId: ASSEMBLY, qty: 2 }]],
+    [
+      ASSEMBLY,
+      [
+        { childId: MOTOR, qty: 1 },
+        { childId: TUBE, qty: 4 },
+      ],
+    ],
+  ])
+
+  it('pulls in a descendant that has no stored standard', () => {
+    // The task 15 section 3 bug: without this the child is never in scope, so
+    // `contributionOf` reads its null stored standard and the walk aborts.
+    expect([...widenToUnvaluedDescendants([LIFT], subpartGraph, new Map())].sort()).toEqual(
+      [ASSEMBLY, MOTOR, TUBE].sort()
+    )
+  })
+
+  it('leaves a descendant that already has a standard alone', () => {
+    // It has an agreed value to re-value, which is exactly what a scoped roll
+    // must not do behind the caller's back.
+    const stored = new Map([[ASSEMBLY, 5000]])
+    expect([...widenToUnvaluedDescendants([LIFT], subpartGraph, stored)].sort()).toEqual(
+      [MOTOR, TUBE].sort()
+    )
+  })
+
+  it('walks THROUGH a valued descendant to reach an unvalued one beneath it', () => {
+    const stored = new Map([
+      [ASSEMBLY, 5000],
+      [TUBE, 400],
+    ])
+    expect([...widenToUnvaluedDescendants([LIFT], subpartGraph, stored)]).toEqual([MOTOR])
+  })
+
+  it('never includes the named parts themselves', () => {
+    // They arrive through the ancestor widening, which owns the upward half.
+    expect([...widenToUnvaluedDescendants([MOTOR], subpartGraph, new Map())]).toEqual([])
+  })
+
+  it('terminates on a cycle in the bill of materials', () => {
+    const cyclic = new Map<string, SubpartEdge[]>([
+      [ASSEMBLY, [{ childId: LIFT, qty: 1 }]],
+      [LIFT, [{ childId: ASSEMBLY, qty: 1 }]],
+    ])
+    expect([...widenToUnvaluedDescendants([LIFT], cyclic, new Map())].sort()).toEqual(
+      [ASSEMBLY, LIFT].sort()
+    )
   })
 })

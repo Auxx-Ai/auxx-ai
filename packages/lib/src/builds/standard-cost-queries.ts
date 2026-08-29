@@ -27,6 +27,7 @@ import {
   type StandardCostRollComputation,
   type SubpartEdge,
   widenToAncestors,
+  widenToUnvaluedDescendants,
 } from './standard-cost-roll'
 import type {
   AbsorptionRates,
@@ -221,6 +222,14 @@ export interface StandardCostRollContext {
   plan: StandardCostRollPlan
   stored: StoredPartValues
   computation: StandardCostRollComputation
+  /**
+   * Every non-archived `part` in the org.
+   *
+   * Exposed so a caller writing a FIRST standard outside the plan (see
+   * `ensureStandardCost`) can tell "this id does not exist" from "this id has
+   * no cost", without a second round trip.
+   */
+  allPartIds: Set<string>
 }
 
 /**
@@ -258,13 +267,24 @@ export async function planStandardCostRoll(
   const subpartGraph: ReadonlyMap<string, SubpartEdge[]> = buildSubpartGraph(pricing.subparts)
   const parentGraph = buildParentGraph(pricing.subparts)
 
-  // Scoped -> widen to every ancestor, then intersect with the parts that
+  // Scoped -> widen UP to every ancestor, then DOWN to the descendants of that
+  // widened set that have no stored standard, then intersect with the parts that
   // actually exist, so a stale id from the caller cannot invent a write target.
+  //
+  // The downward half is not symmetric with the upward half: it takes only the
+  // parts with nothing to re-value (`widenToUnvaluedDescendants`). It is also
+  // computed from the ANCESTOR-widened set rather than from `requested`,
+  // because an ancestor pulled in by the upward walk has its own unvalued
+  // children, and leaving those out reproduces the same abort one level up.
   const requested = input.partIds?.filter((id) => allPartIds.has(id)) ?? []
-  const scope =
-    input.partIds && input.partIds.length > 0
-      ? new Set([...widenToAncestors(requested, parentGraph)].filter((id) => allPartIds.has(id)))
-      : allPartIds
+  let scope: Set<string>
+  if (input.partIds && input.partIds.length > 0) {
+    const upward = widenToAncestors(requested, parentGraph)
+    const downward = widenToUnvaluedDescendants(upward, subpartGraph, stored.standardCosts)
+    scope = new Set([...upward, ...downward].filter((id) => allPartIds.has(id)))
+  } else {
+    scope = allPartIds
+  }
 
   const computation = computeStandardCosts({
     scope,
@@ -320,6 +340,7 @@ export async function planStandardCostRoll(
     fields,
     stored,
     computation,
+    allPartIds,
     plan: {
       effectiveAt: new Date(effectiveAtIso),
       rates,
@@ -434,4 +455,43 @@ export async function readStandardCost(
     'Failed to read standard costs',
     { organizationId, partCount: partIds.length }
   )
+}
+
+/**
+ * The minimum a caller needs to write a FIRST standard cost onto a part
+ * without planning a roll at all.
+ *
+ * {@link planStandardCostRoll} returns a superset of this, so the happy path
+ * never calls it. It exists for the one case that matters at the doors in
+ * plans/money/tasks/15-costing-usability.md section 2: a part created with
+ * opening stock, or received for the first time, carries an EXPLICIT unit cost,
+ * and that number must still be frozen even when planning the roll around it
+ * aborts (an unpriced sibling under a shared parent is enough to abort it).
+ */
+export interface StandardCostWriteContext {
+  partDefId: string
+  fields: StandardCostFields
+  /** Every non-archived `part`. An id outside this set is stale and never written. */
+  allPartIds: Set<string>
+  /** `part_standard_cost` as stored. Absence is the NULL that makes a part writable. */
+  standardCosts: ReadonlyMap<string, number>
+}
+
+/** Load {@link StandardCostWriteContext}. Reads only. */
+export async function loadStandardCostWriteContext(
+  db: Database,
+  organizationId: string
+): Promise<StandardCostWriteContext> {
+  const partDefId = await requireCachedEntityDefId(organizationId, 'part')
+  const fields = await loadStandardCostFields(organizationId)
+  const [partRows, stored] = await Promise.all([
+    loadPartRows(db, organizationId, partDefId),
+    loadStoredPartValues(db, organizationId, fields),
+  ])
+  return {
+    partDefId,
+    fields,
+    allPartIds: new Set(partRows.map((row) => row.id)),
+    standardCosts: stored.standardCosts,
+  }
 }

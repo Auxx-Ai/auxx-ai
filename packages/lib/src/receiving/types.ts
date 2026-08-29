@@ -154,6 +154,40 @@ export interface AdjustStockInput {
 }
 
 /**
+ * A part's opening balance: the quantity and unit cost it starts life holding
+ * (plans/money/tasks/15-costing-usability.md section 2.2).
+ *
+ * 🛑 **Not an adjustment and not a receipt.** It is written once, by the create
+ * form, as `StockMovementType.INITIAL`. See `open-stock-balance.ts` for why this
+ * is the one movement type whose cost a caller is entitled to state.
+ */
+export interface OpenStockBalanceInput {
+  /** `EntityInstance.id` of the `part`. */
+  partId: string
+  /** Units on hand at the opening date. Strictly positive. */
+  quantity: number
+  /**
+   * What a unit cost, in whole minor units. Strictly positive.
+   *
+   * Becomes the part's first `part_standard_cost` as well as this movement's
+   * frozen `unit_cost`, so the two agree by construction and the opening
+   * balance carries no variance.
+   */
+  unitCost: number
+  /**
+   * The ACCOUNTING date. Defaults to now.
+   *
+   * 🛑 Load-bearing for the close: an `initial` movement dated at or before
+   * `accounting.cutoffPeriod` falls outside the month-end window and is covered
+   * by the frozen `accounting.opening*` baseline; one dated after it is summed
+   * into inventory. Both are correct and the date is what chooses.
+   */
+  occurredAt?: Date
+  /** Free text: 'Opening count 2026-01-01'. */
+  notes?: string
+}
+
+/**
  * One line of a multi-line purchase-order receipt.
  *
  * 🛑 **No price.** The agreed price is already on the `purchase_order_line`, and
