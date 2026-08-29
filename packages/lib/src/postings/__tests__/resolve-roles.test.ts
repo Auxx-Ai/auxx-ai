@@ -273,7 +273,7 @@ describe('resolveRoles — it answers for the whole set at once', () => {
   // the night of a close.
   it('names every failing role in a single error', async () => {
     const db = stubDb([], [])
-    const roles = ['grni', 'ppv', 'cash', 'inventory_wip', 'cogs_materials', 'applied_overhead']
+    const roles = ['grni', 'ppv', 'cash', 'inventory_wip', 'cogs_product_cost', 'applied_overhead']
     const error = await expectErr(resolveRoles(db, ORG, roles))
 
     for (const role of roles) expect(error.message, role).toContain(`'${role}'`)

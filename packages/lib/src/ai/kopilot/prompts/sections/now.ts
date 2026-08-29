@@ -54,12 +54,19 @@ function formatIsoDate(now: Date, timeZone: string): string {
  * cache entry was written.
  *
  * **Zone resolution is org → user → UTC, and the org tier is a documented
- * no-op.** Nothing stores an org zone: `SETTINGS_CATALOG`
- * (`lib/settings/catalog.ts`) has no timezone key and the `Organization` table
- * has no timezone column, so the `orgSettings`/`orgProfile` cache keys have
+ * no-op.** The `Organization` table has no timezone column and nothing stores a
+ * DISPLAY zone for an org, so the `orgSettings`/`orgProfile` cache keys have
  * nothing to carry. No column or setting was invented to fill the tier — when
  * one is added, it slots in ahead of the user value at the `PromptCtx.timezone`
  * call site (`agents/agent.ts`), not here.
+ *
+ * 🛑 **`accounting.bookTimeZone` is NOT that setting. Do not wire it in here.**
+ * It was added for the general ledger, and it is the zone a journal entry's
+ * period is derived in — fail-closed, frozen at the first posting, and changed
+ * only through a ledger reversal. A display default is none of those things, and
+ * borrowing it would mean a bookkeeper correcting how a chat renders "yesterday"
+ * silently re-dates every future close. The two are different questions that
+ * happen to have the same units.
  *
  * The user tier is live: `User.preferredTimezone` rides the org `members` cache
  * projection and is threaded by `hydrateCaller` in `agents/agent.ts`. A caller

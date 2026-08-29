@@ -27,6 +27,7 @@ import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, asc, eq } from 'drizzle-orm'
 import { buildEntry } from './build-entry'
+import { parsePostingDraft, requiresAssertions, reverseAssertions } from './draft'
 import type { PeriodLock } from './periods'
 import { postEntry } from './post-entry'
 import { resolveRoles } from './resolve-roles'
@@ -92,6 +93,7 @@ export async function reverseEntry(
         revision: schema.GlPosting.revision,
         status: schema.GlPosting.status,
         docNumber: schema.GlPosting.docNumber,
+        draft: schema.GlPosting.draft,
       })
       .from(schema.GlPosting)
       .where(
@@ -217,6 +219,28 @@ export async function reverseEntry(
       lines: reversedLines,
     })
 
+    // ── The assertions, swapped ────────────────────────────────────────────
+    // A posting that ASSERTS a balance (month-end inventory) records the state
+    // on either side of itself. Its reversal asserts the same pair the other way
+    // round, so the next period's prior-row read lands on the state that existed
+    // before the original - and reversing the reversal swaps back.
+    //
+    // 🛑 Read from the FROZEN draft, never recomputed from today's subledger.
+    // Re-running the month-end reader here would pick up movements that arrived
+    // after the original posted, and the reversal would assert figures unrelated
+    // to the lines it is backing out.
+    //
+    // Parsed ONLY for a type that requires assertions. A receipt or vendor-bill
+    // posting has none to carry, so its draft is irrelevant to the reversal -
+    // and `parsePostingDraft` is strict on purpose, so parsing one anyway would
+    // let an old or hand-written envelope block a reversal that does not depend
+    // on it. Where assertions ARE required, a draft that will not parse is
+    // fatal: writing the reversal without them would silently break the chain
+    // the next close reads its opening figures from.
+    const originalAssertions = requiresAssertions(original.postingType as PostingType)
+      ? parsePostingDraft(original.draft).assertions
+      : undefined
+
     logger.info('Reversing posting', {
       organizationId,
       glPostingId: original.id,
@@ -228,6 +252,7 @@ export async function reverseEntry(
     return await postEntry(db, {
       organizationId,
       entry,
+      assertions: originalAssertions ? reverseAssertions(originalAssertions) : undefined,
       actorUserId,
       memo: memo ?? `Reversal of ${original.docNumber}`,
       lock,

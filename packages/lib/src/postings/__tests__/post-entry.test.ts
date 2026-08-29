@@ -607,6 +607,45 @@ describe('the claim', () => {
 // ── Refusals, and that none of them write ──────────────────────────────────
 
 describe('refusals', () => {
+  it('refuses a month-end inventory posting that carries no assertions', async () => {
+    const fake = createFakeDb(FULL_CHART)
+    const result = await postEntry(fake.db, {
+      organizationId: ORG,
+      entry: receiptEntry({ postingType: 'month_end_inventory', periodKey: '2026-08' }),
+      lock: OPEN,
+    })
+
+    // A month-end entry ASSERTS a balance rather than accumulating one, so the
+    // next close reads its opening figures out of this row's draft. Written
+    // without them it would hold the period - nothing can repair a claimed
+    // period - and leave the next month computing a delta from nothing. That
+    // entry balances perfectly, which is why this door exists.
+    expect(result.status).toBe('error')
+    expect(result.failureClass).toBe('data')
+    expect(result.retryable).toBe(false)
+    expect(result.error).toContain('assertions')
+    // Refused BEFORE the claim: nothing holds the period.
+    expect(fake.postings).toHaveLength(0)
+    expect(fake.lines).toHaveLength(0)
+  })
+
+  it('accepts a month-end inventory posting WITH assertions, and stores them verbatim', async () => {
+    const fake = createFakeDb(FULL_CHART)
+    const snapshot = {
+      balances: { inventory_raw_materials: 0, inventory_wip: 0, inventory_finished_goods: 0 },
+      activityTotals: { absorbedLabor: 0, absorbedOverhead: 0, inventoryAdjustments: 0 },
+    }
+    await postEntry(fake.db, {
+      organizationId: ORG,
+      entry: receiptEntry({ postingType: 'month_end_inventory', periodKey: '2026-08' }),
+      lock: OPEN,
+      assertions: { kind: 'month_end_inventory', before: snapshot, after: snapshot },
+    })
+
+    const draft = fake.postings[0]!.draft as { assertions?: { kind: string } }
+    expect(draft.assertions?.kind).toBe('month_end_inventory')
+  })
+
   it('refuses a closed period and writes nothing', async () => {
     const fake = createFakeDb(FULL_CHART)
     const result = await postEntry(fake.db, {

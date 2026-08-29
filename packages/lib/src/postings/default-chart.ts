@@ -258,16 +258,20 @@ export const DEFAULT_CHART_OF_ACCOUNTS: readonly DefaultChartAccount[] = [
     // the bank feed (or in a Purchases account that closes to it), so the L1
     // month-end entry has the right account to offset (04-books §2.1).
     code: '5000',
-    name: 'COGS - Materials',
+    name: 'COGS - Product Cost',
     accountType: GlAccountType.EXPENSE,
-    role: 'cogs_materials',
+    role: 'cogs_product_cost',
   },
   {
     code: '5010',
     name: 'COGS - Direct Labor',
     accountType: GlAccountType.EXPENSE,
-    // No role. Under L1 the labour that went into inventory is relieved from
-    // 2110 Payroll Clearing by the month-end entry, not from here.
+    // No role, and it stays empty under L1. The labour that went into inventory
+    // is relieved from 2110 Payroll Clearing by the month-end entry, and the
+    // labour that then LEFT inventory on a shipment lands in 5000's plug - a
+    // movement freezes one total unit cost, so nothing can say how much of a
+    // shipped unit's cost was labour. That is why 5000 is named for product
+    // cost rather than materials. See `COGS_PRODUCT_COST` in build-entry.ts.
   },
   {
     code: '5020',

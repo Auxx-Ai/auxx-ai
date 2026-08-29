@@ -38,9 +38,11 @@
 import { createHash } from 'node:crypto'
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { formatCurrency } from '@auxx/utils'
 import { and, eq, sql } from 'drizzle-orm'
 import { databaseErrorCodes, UnprocessableEntityError } from '../errors'
 import { buildDocNumber } from './doc-number'
+import { buildPostingDraft, type PostingAssertions, requiresAssertions } from './draft'
 import { assertPeriodOpen, type PeriodLock, parsePeriodKey } from './periods'
 import { resolveAccountingProvider } from './provider'
 import { resolveRoles } from './resolve-roles'
@@ -76,11 +78,17 @@ export const LEDGER_CURRENCY = 'USD'
  */
 const REQUEST_ID_MAX_LENGTH = 50
 
-const MONEY = new Intl.NumberFormat('en-US', { style: 'currency', currency: LEDGER_CURRENCY })
-
-/** Minor units to a string a bookkeeper reads - `1234000` -> `$12,340.00`. */
+/**
+ * Minor units to a string a bookkeeper reads - `1234000` -> `$12,340.00`.
+ *
+ * Delegates to `@auxx/utils`'s `formatCurrency` rather than dividing by 100
+ * here. The local version hardcoded a two-decimal scale, which is right for USD
+ * and wrong for JPY (0) and KWD (3) - latent rather than live only because
+ * {@link LEDGER_CURRENCY} pins the ledger to USD for the cutover. When that
+ * pin comes off, this is one of the places that would have been silently wrong.
+ */
 function formatMinor(minor: number): string {
-  return MONEY.format(minor / 100)
+  return formatCurrency(minor, { currencyCode: LEDGER_CURRENCY })
 }
 
 export interface PostEntryOptions {
@@ -102,6 +110,22 @@ export interface PostEntryOptions {
    */
   reversesId?: string
   revision?: number
+  /**
+   * Balance assertions recorded on the draft envelope.
+   *
+   * 🛑 **Required for every posting type {@link requiresAssertions} names**, and
+   * refused as a `data` failure when absent. `month_end_inventory` ASSERTS a
+   * balance rather than accumulating one, so the next month's entry is
+   * computable only from what this one recorded - a month-end posting written
+   * without them silently ends the chain, and the next close reads its delta
+   * from nothing. That entry balances perfectly, which is why the check is here
+   * and not left to a reviewer.
+   *
+   * Typed, not a loose `Record`: the poster stays generic because
+   * {@link PostingAssertions} is discriminated on `kind`, not because the field
+   * is untyped.
+   */
+  assertions?: PostingAssertions
 }
 
 export interface PreviewEntryOptions {
@@ -419,10 +443,25 @@ export async function previewEntry(
  *    cannot be two statements.
  */
 export async function postEntry(db: Database, options: PostEntryOptions): Promise<PostResult> {
-  const { organizationId, entry, actorUserId, memo, lock, reversesId } = options
+  const { organizationId, entry, actorUserId, memo, lock, reversesId, assertions } = options
   const revision = options.revision ?? 0
 
   try {
+    // Fail CLOSED before the claim, not after. A `month_end_inventory` row
+    // written with no assertions holds the period - so no later run can repair
+    // it - while leaving the next close nothing to compute its delta from.
+    if (requiresAssertions(entry.postingType) && !assertions) {
+      return {
+        status: 'error',
+        failureClass: 'data',
+        retryable: false,
+        error:
+          `A ${entry.postingType} posting must carry balance assertions. ` +
+          'It asserts a balance rather than accumulating one, so the next period reads ' +
+          'its opening figures from this entry and there would be nothing to read.',
+      }
+    }
+
     // `GlPosting_reversal_check` is `(revision = 0 AND reversesId IS NULL) OR
     // (revision > 0 AND reversesId IS NOT NULL)`. Caught here so the caller
     // gets a sentence instead of a constraint name.
@@ -481,6 +520,7 @@ export async function postEntry(db: Database, options: PostEntryOptions): Promis
         lines,
         memo,
         actorUserId,
+        assertions,
       })
     } catch (error) {
       // 🛑 `ON CONFLICT (organizationId, postingType, periodKey, revision) DO
@@ -728,6 +768,7 @@ async function claimPeriod(
     lines: PreparedLine[]
     memo?: string
     actorUserId?: string
+    assertions?: PostingAssertions
   }
 ): Promise<ClaimOutcome> {
   const { organizationId, entry, revision, reversesId, docNumber, requestId, totalMinor, lines } =
@@ -751,8 +792,10 @@ async function claimPeriod(
         // the resolved lines, not a hint for reconstructing them: rebuilding
         // from the subledger later gives a different answer once the subledger
         // moves, which is the one property a ledger must not have.
-        draft: {
-          v: 1,
+        // One construction site, in `draft.ts`, because this shape is no longer
+        // written-and-never-read: the L1 month-end reader reads the previous
+        // month's envelope to learn what balance was last asserted.
+        draft: buildPostingDraft({
           docNumber,
           revision,
           memo: input.memo,
@@ -761,7 +804,8 @@ async function claimPeriod(
             accountRole: line.accountRole,
             ...line.resolved,
           })),
-        },
+          assertions: input.assertions,
+        }),
         requestId,
         // A reversal names its original in the INSERT. `GlPosting_reversal_check`
         // makes inserting-then-linking impossible.
