@@ -1024,6 +1024,11 @@ describe('plan 22 (member baseline strip) — §5 verification', () => {
       [Area.datasets]: Level.Read,
       [Area.knowledgeBase]: Level.Edit,
       [Area.dashboards]: Level.Full,
+      // Added by plans/money/tasks/10-the-poster.md §6, and `None` - a NEW area
+      // again, so the plan-22 parity claim is untouched. The general ledger is
+      // omitted from `MEMBER_BASELINE_LEVELS` on purpose: a member has no
+      // business posting to the books without an explicit grant.
+      [Area.ledger]: Level.None,
     }
     const caps = composeUserCapabilities({
       role: 'USER',

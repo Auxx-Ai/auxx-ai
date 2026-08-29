@@ -49,7 +49,11 @@ export {
   type PostEntryInput,
   type PostEntryResult,
   type PostEntryStatus,
+  type PostFailureClass,
   type PostingDirection,
   type PostingType,
+  type PostResult,
+  type PostResultStatus,
+  ProviderPostError,
   type ResolvedPostingLine,
 } from './types'

@@ -43,7 +43,8 @@
         "connectors": 0,
         "datasets": 0,
         "knowledgeBase": 0,
-        "dashboards": 0
+        "dashboards": 0,
+        "ledger": 0
       },
       "defs": {
         "deals": {
@@ -173,6 +174,8 @@
         "knowledgeBase.edit",
         "knowledgeBase.manage",
         "knowledgeBase.view",
+        "ledger.post",
+        "ledger.view",
         "members.manage",
         "permissions.manage",
         "records.delete",
@@ -214,7 +217,8 @@
         "connectors": 3,
         "datasets": 3,
         "knowledgeBase": 3,
-        "dashboards": 3
+        "dashboards": 3,
+        "ledger": 3
       },
       "defs": {
         "deals": {
@@ -354,6 +358,7 @@
         "knowledgeBase.edit",
         "knowledgeBase.manage",
         "knowledgeBase.view",
+        "ledger.view",
         "records.edit",
         "records.view",
         "signatures.view",
@@ -387,7 +392,8 @@
         "connectors": 1,
         "datasets": 1,
         "knowledgeBase": 3,
-        "dashboards": 0
+        "dashboards": 0,
+        "ledger": 1
       },
       "defs": {
         "deals": {
@@ -552,7 +558,8 @@
         "connectors": 2,
         "datasets": 3,
         "knowledgeBase": 0,
-        "dashboards": 1
+        "dashboards": 1,
+        "ledger": 0
       },
       "defs": {
         "deals": {
@@ -682,6 +689,8 @@
         "knowledgeBase.edit",
         "knowledgeBase.manage",
         "knowledgeBase.view",
+        "ledger.post",
+        "ledger.view",
         "members.manage",
         "permissions.manage",
         "records.delete",
@@ -723,7 +732,8 @@
         "connectors": 3,
         "datasets": 3,
         "knowledgeBase": 3,
-        "dashboards": 3
+        "dashboards": 3,
+        "ledger": 3
       },
       "defs": {
         "deals": {
@@ -849,7 +859,8 @@
         "connectors": 0,
         "datasets": 0,
         "knowledgeBase": 0,
-        "dashboards": 0
+        "dashboards": 0,
+        "ledger": 0
       },
       "defs": {
         "deals": {
@@ -993,7 +1004,8 @@
         "connectors": 0,
         "datasets": 0,
         "knowledgeBase": 1,
-        "dashboards": 0
+        "dashboards": 0,
+        "ledger": 0
       },
       "defs": {
         "deals": {
@@ -1132,7 +1144,8 @@
         "connectors": 0,
         "datasets": 1,
         "knowledgeBase": 1,
-        "dashboards": 1
+        "dashboards": 1,
+        "ledger": 0
       },
       "defs": {
         "deals": {

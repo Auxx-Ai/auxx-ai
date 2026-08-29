@@ -916,6 +916,12 @@
       "import": "./dist/money/client.mjs",
       "default": "./src/money/client.ts"
     },
+    "./money/quickbooks/quickbooks-accounting-provider": {
+      "types": "./src/money/quickbooks/quickbooks-accounting-provider.ts",
+      "source": "./src/money/quickbooks/quickbooks-accounting-provider.ts",
+      "import": "./dist/money/quickbooks/quickbooks-accounting-provider.mjs",
+      "default": "./src/money/quickbooks/quickbooks-accounting-provider.ts"
+    },
     "./notifications": {
       "types": "./src/notifications/index.ts",
       "source": "./src/notifications/index.ts",
@@ -1071,6 +1077,12 @@
       "source": "./src/posthog/posthog-client.ts",
       "import": "./dist/posthog/posthog-client.mjs",
       "default": "./src/posthog/posthog-client.ts"
+    },
+    "./postings": {
+      "types": "./src/postings/index.ts",
+      "source": "./src/postings/index.ts",
+      "import": "./dist/postings/index.mjs",
+      "default": "./src/postings/index.ts"
     },
     "./postings/client": {
       "types": "./src/postings/client.ts",

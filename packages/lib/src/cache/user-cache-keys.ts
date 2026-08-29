@@ -554,5 +554,34 @@ export const USER_CACHE_KEY_CONFIG: Record<
   // (`packages/lib/scripts/flush-user-capabilities-cache.ts`): a draining old
   // instance repopulates the same keyspace during a rollout, which is the entire
   // reason `vN` exists.
-  userCapabilities: { prefix: 'user:capabilities:v17', ttlSeconds: ONE_DAY },
+  //
+  // v18 (plans/money/tasks/10-the-poster.md §6): a new L2 AREA, `Area.ledger`,
+  // with two new `PermissionKey`s (`ledger.view`, `ledger.post`). The shape is
+  // unchanged - still the same six fields - so this is a `keys` CONTENT bump,
+  // the same class as v14's `Area.inboxes` and v15's `comments.view`.
+  //
+  // WHICH WAY A STALE BLOB FAILS, traced rather than inherited. A v17 blob was
+  // composed before either key existed, so it holds neither. `areaLevelFromKeys`
+  // walks `Area.ledger`'s rungs in ascending order and breaks at the first rung
+  // whose keys are not all held, so it breaks on rung 1 and the area composes to
+  // `Level.None` - and `requirePermission(ledgerView)` / `(ledgerPost)` read the
+  // key set directly, so both deny. FAIL-CLOSED, in both rollout directions:
+  // old code reading a v18 blob simply ignores two keys it has no area for.
+  //
+  // The victim is the ADMIN, which is the part worth writing down. Every other
+  // grantee lands at `None` here BY DESIGN (the area is omitted from
+  // `MEMBER_BASELINE_LEVELS`), so for them a stale blob and a fresh one agree.
+  // An admin's `ROLE_DEFAULTS.ADMIN` is `ALL_FULL` and therefore SHOULD hold
+  // both new keys - but the level→keys expansion happens at COMPOSE time, not at
+  // read time, so a v17 blob composed yesterday carries an admin's key set
+  // frozen without them. Result: the one population that is supposed to be able
+  // to post gets a 403 on `ledger.post` for a full ONE_DAY TTL, on a surface
+  // that is used at month end and where "it worked last month" is the only
+  // baseline anyone has. That is the known repeat failure this ledger exists to
+  // stop; see the note on `Area.ledger` in `registry.ts`.
+  //
+  // Deploy-time flush is mandatory and is NOT a substitute for the bump
+  // (`packages/lib/scripts/flush-user-capabilities-cache.ts`), for the same
+  // rolling-deploy reason recorded above.
+  userCapabilities: { prefix: 'user:capabilities:v18', ttlSeconds: ONE_DAY },
 }

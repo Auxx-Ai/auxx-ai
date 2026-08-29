@@ -147,7 +147,26 @@ export async function resolveQuickbooksContext(input: {
     })
 
     if (result.isErr()) {
-      throw new Error(`QuickBooks tool ${toolId} failed: ${result.error.message}`)
+      // Carry `code` and `statusCode` onto the thrown error rather than
+      // flattening the failure to a message.
+      //
+      // `quickbooks-accounting-provider.ts` classifies a failed post as
+      // configuration / data / transport, and that split decides whether a
+      // journal entry is retried. Retrying a `2300` imbalance can never succeed;
+      // NOT retrying a 429 turns a rate limit into a permanent posting failure.
+      // With only a message string to read, every failure looks the same.
+      //
+      // The QBO fault itself is attached by the apps repo as a NON-ENUMERABLE
+      // `quickbooksFault` property, so it does not survive the Lambda boundary's
+      // JSON round-trip. `code`/`statusCode` do survive, on
+      // `LambdaExecutionError`, and were being discarded right here.
+      const error = new Error(`QuickBooks tool ${toolId} failed: ${result.error.message}`)
+      Object.assign(error, {
+        code: result.error.code,
+        statusCode: result.error.statusCode,
+        details: result.error.details,
+      })
+      throw error
     }
 
     const { execution_result: executionResult, metadata } = result.value

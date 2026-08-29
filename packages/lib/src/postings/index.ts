@@ -32,6 +32,7 @@ export {
   DOC_NUMBER_PREFIX,
   type DocNumberInput,
 } from './doc-number'
+export { PERIOD_LOCK_SETTING_KEY, resolvePeriodLock } from './period-lock'
 export {
   assertPeriodOpen,
   compareMonths,
@@ -43,6 +44,14 @@ export {
   periodKeyForDate,
   periodMonth,
 } from './periods'
+export {
+  type EntryPreview,
+  LEDGER_CURRENCY,
+  type PostEntryOptions,
+  type PreviewEntryOptions,
+  postEntry,
+  previewEntry,
+} from './post-entry'
 export {
   type AccountingProvider,
   type AccountingProviderFactory,
@@ -56,6 +65,7 @@ export {
   setConnectedProviderResolver,
 } from './provider'
 export { type ResolvedAccount, resolveRoles } from './resolve-roles'
+export { type ReverseEntryOptions, reverseEntry } from './reverse-entry'
 export {
   type BuiltEntry,
   type GlPostingLineInput,
@@ -63,7 +73,18 @@ export {
   type PostEntryInput,
   type PostEntryResult,
   type PostEntryStatus,
+  type PostFailureClass,
   type PostingDirection,
   type PostingType,
+  type PostResult,
+  type PostResultStatus,
+  ProviderPostError,
   type ResolvedPostingLine,
 } from './types'
+export {
+  type BooksBalanceDiscrepancy,
+  type BooksBalanceReport,
+  listUnpostedPeriods,
+  type UnpostedPeriod,
+  verifyBooksBalance,
+} from './verify-balance'
