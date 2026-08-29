@@ -10,6 +10,14 @@
 // Client code must import `@auxx/lib/postings/client`, never this barrel.
 
 export {
+  type AccountIdentityMap,
+  confirmSuggestedIdentities,
+  listAccountIdentities,
+  resolveProviderAccountIds,
+  type SetAccountIdentityOptions,
+  setAccountIdentity,
+} from './account-identities'
+export {
   ACCOUNT_ROLE_LABELS,
   ACCOUNT_ROLES,
   type AccountRole,
@@ -120,6 +128,15 @@ export {
   setRoleAssignment,
 } from './role-map'
 export {
+  type AccountSuggestion,
+  isMappableTo,
+  suggestAccountIdentities,
+  validateProviderMapping,
+} from './suggest-account-identities'
+export {
+  type AccountIdentityRow,
+  type AccountIdentityState,
+  type AccountSuggestionReason,
   type BuiltEntry,
   type ChartAccountRow,
   type ClosePeriod,
@@ -136,6 +153,7 @@ export {
   type PostingType,
   type PostResult,
   type PostResultStatus,
+  type ProviderAccount,
   ProviderPostError,
   type ResolvedPostingLine,
   type RoleAssignmentRow,

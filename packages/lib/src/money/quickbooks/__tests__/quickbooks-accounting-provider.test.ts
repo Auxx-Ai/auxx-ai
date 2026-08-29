@@ -7,6 +7,7 @@
 // the duplicate-document-number net under the create, and the retry
 // classification the core routes on.
 
+import { ok } from 'neverthrow'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const getOrganizationSetting = vi.fn()
@@ -17,6 +18,22 @@ vi.mock('../../../settings/settings-service', () => ({
 const resolveQuickbooksContext = vi.fn()
 vi.mock('../invoke-quickbooks-tool', () => ({
   resolveQuickbooksContext: (...a: unknown[]) => resolveQuickbooksContext(...a),
+}))
+
+// The `G19` account map replaced AcctNum matching, so resolution now reads two
+// things this file has no database for: OUR chart, and the confirmed
+// `gl_account -> QuickBooks account` map. Both are stubbed; the QuickBooks chart
+// itself still comes through the real `callTool` below, because how this adapter
+// reads a provider chart is exactly what these tests are for.
+const listChartAccounts = vi.fn()
+vi.mock('../../../postings/role-map', () => ({
+  listChartAccounts: (...a: unknown[]) => listChartAccounts(...a),
+}))
+
+const readQuickbooksAccountMap = vi.fn()
+vi.mock('../account-map', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../account-map')>()),
+  readQuickbooksAccountMap: (...a: unknown[]) => readQuickbooksAccountMap(...a),
 }))
 
 import type { PostEntryInput } from '../../../postings/types'
@@ -33,11 +50,55 @@ const DOC_NUMBER = 'AUXX-FUL-20260818'
 /** What the core wrote to `GlPosting.requestId` at claim time. No run salt. */
 const IDEMPOTENCY_KEY = 'a1b2c3d4e5f60718293a4b5c6d7e8f90'
 
+/** The QuickBooks company's chart, in `list_quickbooks_accounts`' own shape. */
 const CHART = [
-  { id: '92', name: 'Inventory', fullyQualifiedName: 'Inventory', acctNum: '1310', active: true },
-  { id: '79', name: 'GRNI', fullyQualifiedName: 'GRNI', acctNum: '2160', active: true },
-  { id: '11', name: 'Retired', fullyQualifiedName: 'Retired', acctNum: '9999', active: false },
+  {
+    id: '92',
+    name: 'Inventory',
+    fullyQualifiedName: 'Inventory',
+    acctNum: '1310',
+    accountType: 'Other Current Asset',
+    classification: 'Asset',
+    active: true,
+  },
+  {
+    id: '79',
+    name: 'GRNI',
+    fullyQualifiedName: 'GRNI',
+    acctNum: '2160',
+    accountType: 'Other Current Liability',
+    classification: 'Liability',
+    active: true,
+  },
+  {
+    id: '11',
+    name: 'Retired',
+    fullyQualifiedName: 'Retired',
+    acctNum: '9999',
+    accountType: 'Other Current Asset',
+    classification: 'Asset',
+    active: false,
+  },
 ]
+
+/** The org's OWN chart - what a posting line's `accountCode` names. */
+const OUR_CHART = [
+  { id: 'gl1310', code: '1310', name: 'Inventory', accountType: 'asset', isActive: true },
+  { id: 'gl2160', code: '2160', name: 'GRNI', accountType: 'liability', isActive: true },
+  { id: 'gl5090', code: '5090', name: 'PPV', accountType: 'expense', isActive: true },
+  { id: 'gl9999', code: '9999', name: 'Retired', accountType: 'asset', isActive: true },
+]
+
+/**
+ * The confirmed map. `5090` is deliberately absent - it is the unmapped account
+ * every "fails closed" test below leans on, and under `G19` unmapped is the
+ * ONLY reason a code fails to resolve. There is no matching left to miss.
+ */
+const ACCOUNT_MAP = new Map([
+  ['gl1310', '92'],
+  ['gl2160', '79'],
+  ['gl9999', '11'],
+])
 
 function baseInput(over: Partial<PostEntryInput> = {}): PostEntryInput {
   return {
@@ -94,6 +155,8 @@ function connect(handlers: Record<string, (inputs: any) => unknown> = {}) {
       callTool,
     },
   })
+  listChartAccounts.mockResolvedValue(ok(OUR_CHART))
+  readQuickbooksAccountMap.mockResolvedValue(new Map(ACCOUNT_MAP))
   return callTool
 }
 
@@ -511,47 +574,66 @@ describe('failure classification', () => {
 })
 
 describe('resolveAccount - the only place a code becomes a provider id', () => {
-  it('resolves an account code by AcctNum', async () => {
+  it('resolves a code through the confirmed account map', async () => {
     connect()
     const result = await provider.resolveAccount(ORG_ID, '1310')
     expect(result._unsafeUnwrap()).toBe('92')
   })
 
-  it('fails closed and names the code when nothing matches', async () => {
+  it('fails closed and names the code when nothing is mapped to it', async () => {
     connect()
     const result = await provider.resolveAccount(ORG_ID, '5090')
 
     expect(result.isErr()).toBe(true)
     expect(result._unsafeUnwrapErr().message).toContain('5090')
+    expect(result._unsafeUnwrapErr().message).toContain('not mapped')
   })
 
-  it('ignores inactive accounts rather than posting to one', async () => {
+  it('refuses a mapping whose target has been deactivated', async () => {
+    // 9999 IS mapped, to account 11, which is inactive. `G19` requires every
+    // resolution to revalidate active status, and the remedy differs from
+    // "unmapped" - so the message has to say which of the two it is.
     connect()
     const result = await provider.resolveAccount(ORG_ID, '9999')
+
     expect(result.isErr()).toBe(true)
+    expect(result._unsafeUnwrapErr().message).toContain('9999')
   })
 
-  it('refuses ambiguity instead of taking the first hit', async () => {
-    resolveQuickbooksContext.mockResolvedValue({
-      connected: true,
-      context: {
-        organizationId: ORG_ID,
-        installationId: 'i',
-        connectionId: 'c',
-        userId: 'u',
-        callTool: vi.fn(async () => ({
-          accounts: [
-            { id: '1', name: 'A', fullyQualifiedName: 'A', acctNum: '1310', active: true },
-            { id: '2', name: 'B', fullyQualifiedName: 'B', acctNum: '1310', active: true },
-          ],
-        })),
-      },
-    })
+  it('refuses a mapping whose target has vanished from the provider chart', async () => {
+    connect()
+    readQuickbooksAccountMap.mockResolvedValue(new Map([['gl1310', 'deleted-99']]))
 
     const result = await provider.resolveAccount(ORG_ID, '1310')
 
     expect(result.isErr()).toBe(true)
-    expect(result._unsafeUnwrapErr().message).toContain('matches 2 QuickBooks accounts')
+    expect(result._unsafeUnwrapErr().message).toContain('no longer exists')
+  })
+
+  it('refuses a mapping that has drifted into the wrong statement section', async () => {
+    // The one failure no downstream reader can catch: an entry posted to a
+    // revenue account instead of an asset one still BALANCES.
+    connect()
+    readQuickbooksAccountMap.mockResolvedValue(new Map([['gl1310', '79']]))
+
+    const result = await provider.resolveAccount(ORG_ID, '1310')
+
+    expect(result.isErr()).toBe(true)
+    expect(result._unsafeUnwrapErr().message).toContain('liability')
+  })
+
+  it('does NOT fall back to matching account numbers', async () => {
+    // The behaviour this replaced. `1310` appears in both charts with the same
+    // number, and that must no longer be enough on its own - `G19` has no
+    // fallback, because a renumber in QuickBooks would otherwise move where a
+    // role posts with nothing to notice it.
+    connect()
+    readQuickbooksAccountMap.mockResolvedValue(new Map())
+
+    const result = await provider.resolveAccount(ORG_ID, '1310')
+
+    expect(result.isErr()).toBe(true)
+    expect(result._unsafeUnwrapErr().message).toContain('not mapped')
   })
 
   it('an unresolvable line code fails the post as configuration, before anything is sent', async () => {
@@ -584,6 +666,7 @@ describe('resolveAccount - the only place a code becomes a provider id', () => {
     expect(error.failureClass).toBe('configuration')
     expect(error.retryable).toBe(false)
     expect(error.message).toContain('5090')
+    expect(error.message).toContain('not mapped')
     expect(callTool).not.toHaveBeenCalledWith('create_quickbooks_journal_entry', expect.anything())
     expect(callTool).not.toHaveBeenCalledWith('find_quickbooks_journal_entry', expect.anything())
   })

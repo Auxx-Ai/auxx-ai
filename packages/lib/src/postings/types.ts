@@ -521,6 +521,98 @@ export interface RoleAssignmentRow {
 }
 
 /**
+ * One account as a connected accounting provider reports it.
+ *
+ * Provider-neutral by construction, and deliberately NOT QuickBooks' own shape:
+ * `AccountingProvider.listProviderAccounts` is what a mapping screen reads, and
+ * a screen that spoke `MappedAccount` could only ever map one provider.
+ *
+ * `number` is the account NUMBER ('1310'), not the id, and is null for a company
+ * that does not use account numbers at all - which is the ordinary case in
+ * QuickBooks, where numbering is off by default. That is exactly why `G19` maps
+ * by CONFIRMATION rather than by matching numbers at post time.
+ */
+export interface ProviderAccount {
+  /** The provider's own id. The only value that ever reaches a journal entry. */
+  id: string
+  name: string
+  /** `'Sales:Product Income'` where the provider nests accounts; else `name`. */
+  fullyQualifiedName: string
+  number: string | null
+  /** The provider's own type string, for display - `'Other Current Asset'`. */
+  accountType: string
+  /** Normalised to the five statement sections every double-entry system shares. */
+  classification: GlAccountTypeValue
+  active: boolean
+}
+
+/**
+ * Whether an account's provider mapping was chosen by a person or merely proposed.
+ *
+ * The same three-way distinction {@link RoleAssignmentState} draws one level up,
+ * and for the same `G19` reason: a match the suggester made must read visibly
+ * differently from one a human agreed to, because only the second is allowed to
+ * put money into a provider account.
+ *
+ * 🛑 There is no `unused` member, and that asymmetry with `RoleAssignmentState`
+ * is deliberate. A ROLE may legitimately be one an org never emits. An ACCOUNT
+ * in the org's own chart that no provider account corresponds to is not
+ * "excused" - it is either not mapped yet or not needed by any role, and the
+ * role map is where the second is already recorded. A second way to say it would
+ * let the two disagree.
+ */
+export type AccountIdentityState = 'confirmed' | 'suggested' | 'unmapped'
+
+/**
+ * Why the suggester proposed a provider account, in the words a screen shows.
+ *
+ * `G19` requires the UI to "clearly separate suggestions from confirmed
+ * mappings", which means saying WHY - "matched on account number 1310" earns a
+ * different amount of trust than "matched on the name Inventory Asset", and the
+ * person confirming is the only one who can tell which is right.
+ */
+export type AccountSuggestionReason = 'number' | 'name'
+
+/**
+ * One of the org's own accounts, its provider mapping, and the state of that
+ * mapping.
+ *
+ * Returned for EVERY live account in the chart, mapped or not - the same
+ * checklist rule {@link RoleAssignmentRow} follows, for the same reason: a list
+ * of only the rows that happen to exist could never show what is missing, and
+ * "which accounts still need mapping" is the question this screen exists to
+ * answer.
+ */
+export interface AccountIdentityRow {
+  /** The `gl_account` instance, always present - this row IS an account. */
+  account: ChartAccountRow
+  state: AccountIdentityState
+  /** The provider account this maps to. Null while `unmapped`. */
+  providerAccountId: string | null
+  /** As recorded when the mapping was made - see the schema on why it is display-only. */
+  providerAccountName: string | null
+  providerAccountNumber: string | null
+  /** `'suggested'` | `'human'`, or null with no row. */
+  source: string | null
+  confirmedAt: string | null
+  /**
+   * The live provider account the mapping currently names, re-read from the
+   * provider's chart.
+   *
+   * 🛑 Null with a non-null `providerAccountId` is the DANGLING case - the
+   * provider account was deleted, deactivated or merged out from under a
+   * confirmed mapping. `G19` requires every close to revalidate exactly this, so
+   * a screen must render it as a repair rather than as a mapping.
+   */
+  liveProviderAccount: ProviderAccount | null
+  /**
+   * What the matcher would propose for an unmapped account, and why. Null once
+   * something is mapped, and null when nothing plausible matched.
+   */
+  suggestion: { account: ProviderAccount; reason: AccountSuggestionReason } | null
+}
+
+/**
  * One month in the close console's period strip.
  *
  * Derived, never stored. `state` is computed from three things that already

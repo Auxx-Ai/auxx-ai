@@ -6,7 +6,9 @@ import { Dialog, DialogContent, DialogFooter } from '@auxx/ui/components/dialog'
 import { DialogNav, DialogNavPage, DialogNavPages } from '@auxx/ui/components/dialog-nav'
 import { useEffect, useRef, useState } from 'react'
 import { api } from '~/trpc/react'
+import { WizardAccountMapPage } from './wizard-account-map-page'
 import { WizardAccountsPage } from './wizard-accounts-page'
+import { WizardConnectPage } from './wizard-connect-page'
 import { WizardCostingPage } from './wizard-costing-page'
 import { WizardDonePage } from './wizard-done-page'
 import { WizardOpeningPage } from './wizard-opening-page'
@@ -14,7 +16,21 @@ import { WizardPeriodPage } from './wizard-period-page'
 import type { WizardLeaveDirection, WizardStepHandle } from './wizard-step-handle'
 import { WizardWelcomePage } from './wizard-welcome-page'
 
-const PAGES = ['welcome', 'period', 'opening', 'costing', 'accounts', 'done'] as const
+// 🛑 `connect` sits immediately before `accountMap`, and the order is the whole
+// point of the pair: the mapping page cannot render a single row until a
+// provider chart exists to map against. `accounts` (the role map) stays BEFORE
+// both, because a role has to point at one of our accounts before that account
+// has anything to be paired with.
+const PAGES = [
+  'welcome',
+  'period',
+  'opening',
+  'costing',
+  'accounts',
+  'connect',
+  'accountMap',
+  'done',
+] as const
 type WizardPage = (typeof PAGES)[number]
 
 const PAGE_TITLES: Record<WizardPage, string> = {
@@ -22,7 +38,9 @@ const PAGE_TITLES: Record<WizardPage, string> = {
   period: 'Accounting period',
   opening: 'Opening balances',
   costing: 'Costing',
-  accounts: 'Account map',
+  accounts: 'Account roles',
+  connect: 'Accounting system',
+  accountMap: 'QuickBooks accounts',
   done: 'Finalize',
 }
 
@@ -32,10 +50,16 @@ export interface AccountingSetupWizardProps {
 }
 
 /**
- * `AccountingSetupWizard` (plans/money/tasks/13-accounting-ui.md section 3.3) - a six-page
- * `DialogNav` wizard covering the four things that have to be true before a month-end entry can
- * legally be posted (accounting period, opening balances, costing, the account map) plus a
- * "finalize" page that freezes the opening baseline.
+ * `AccountingSetupWizard` (plans/money/tasks/13-accounting-ui.md section 3.3) - an eight-page
+ * `DialogNav` wizard covering the things that have to be true before a month-end entry can
+ * legally be posted (accounting period, opening balances, costing, the role map) plus the
+ * `G19` provider pair - connect an accounting system, then say which of ITS accounts each of
+ * ours corresponds to - and a "finalize" page that freezes the opening baseline.
+ *
+ * 🛑 The two `G19` pages are SKIPPABLE, like every other page here. `P1` makes
+ * "nothing connected" a supported configuration rather than an unfinished setup: the ledger is
+ * ours, entries are still built, balanced and persisted, and only the export does not happen.
+ * Neither page may ever block Continue.
  *
  * 🛑 Pages write REAL data through the settings catalog keys, never a wizard-local progress
  * record. That is task 12's scalar-keys decision and it is what lets the settings pages, the
@@ -127,6 +151,12 @@ export function AccountingSetupWizard({ open, onOpenChange }: AccountingSetupWiz
           </DialogNavPage>
           <DialogNavPage value='accounts' size='lg'>
             <WizardAccountsPage />
+          </DialogNavPage>
+          <DialogNavPage value='connect' size='lg'>
+            <WizardConnectPage />
+          </DialogNavPage>
+          <DialogNavPage value='accountMap' size='xl'>
+            <WizardAccountMapPage />
           </DialogNavPage>
           <DialogNavPage value='done' size='md'>
             <WizardDonePage onFinish={finish} />

@@ -36,7 +36,7 @@ import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'
 import { ResponsiveTabs } from '@auxx/ui/components/responsive-tabs'
 import { toastError } from '@auxx/ui/components/toast'
 import { generateId } from '@auxx/utils'
-import { Landmark, Lock, Waypoints } from 'lucide-react'
+import { Landmark, Link2, Lock, Waypoints } from 'lucide-react'
 import { useQueryState } from 'nuqs'
 import { useCallback, useMemo, useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
@@ -46,17 +46,19 @@ import { useMedia } from '~/hooks/use-media'
 import { useRequireCapability } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
+import { AccountMapList } from './account-map-list'
 import type { ChartDraftHandle } from './accounts-types'
 import { ChartAccountEditor } from './chart-account-editor'
 import { ChartList } from './chart-list'
 import { RoleMapEditor } from './role-map-editor'
 import { RoleMapList } from './role-map-list'
 
-type AccountsTab = 'roles' | 'chart'
+type AccountsTab = 'roles' | 'chart' | 'quickbooks'
 
 const TABS = [
   { value: 'roles', label: 'Roles', icon: Waypoints },
   { value: 'chart', label: 'Chart of accounts', icon: Landmark },
+  { value: 'quickbooks', label: 'QuickBooks', icon: Link2 },
 ]
 
 const BREADCRUMBS = [
@@ -66,7 +68,7 @@ const BREADCRUMBS = [
 ]
 
 const PAGE_DESCRIPTION =
-  'Which account each posting role lands on, and the chart those accounts live in.'
+  'Which account each posting role lands on, the chart those accounts live in, and which account in QuickBooks each one corresponds to.'
 
 export function AccountingAccountsSettingsPage() {
   useRequireCapability(PermissionKey.ledgerView)
@@ -74,7 +76,8 @@ export function AccountingAccountsSettingsPage() {
   const utils = api.useUtils()
 
   const [tab, setTab] = useQueryState('s', { defaultValue: 'roles' as string })
-  const activeTab: AccountsTab = tab === 'chart' ? 'chart' : 'roles'
+  const activeTab: AccountsTab =
+    tab === 'chart' ? 'chart' : tab === 'quickbooks' ? 'quickbooks' : 'roles'
 
   const roleMap = api.ledger.roleMap.useQuery()
   const chart = api.ledger.chartAccounts.useQuery()
@@ -312,7 +315,10 @@ export function AccountingAccountsSettingsPage() {
     )
 
   const selectedId = activeTab === 'roles' ? selectedRole : selectedAccountId
-  const mobileDrawerOpen = !isDesktop && !!selectedId
+  // 🛑 The QuickBooks tab is NOT master-detail. Its rows are edited in place by
+  // a picker, so there is nothing for a right-hand editor pane to hold and a
+  // drawer would open onto an empty panel on mobile.
+  const mobileDrawerOpen = activeTab !== 'quickbooks' && !isDesktop && !!selectedId
 
   return (
     <SettingsPage
@@ -322,33 +328,38 @@ export function AccountingAccountsSettingsPage() {
       subHeader={
         <ResponsiveTabs value={activeTab} onValueChange={handleTabChange} size='sm' items={TABS} />
       }>
-      <div className='grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_420px]'>
-        <div className='min-w-0'>
-          {activeTab === 'roles' ? (
-            <RoleMapList
-              rows={roleRows}
-              // 🛑 Gate on the query, never on an empty array. Thirteen rows
-              // reading "Not mapped - every preview refuses until this is set"
-              // is a CLAIM about the org, and rendering it mid-load makes it a
-              // false one.
-              isLoading={roleMap.isPending}
-              selectedRole={selectedRole}
-              onSelect={setSelectedRole}
-              onToggleUnused={handleToggleUnused}
-            />
-          ) : (
-            <ChartList
-              accounts={accounts}
-              isLoading={chart.isPending}
-              selectedId={selectedAccountId}
-              onSelect={handleSelectAccount}
-              rolesByAccountId={rolesByAccountId}
-              draft={chartDraft}
-              onAddDraft={handleAddChartDraft}
-            />
-          )}
+      {activeTab === 'quickbooks' ? (
+        <div className='min-w-0 p-4'>
+          <AccountMapList />
         </div>
-        {/* The column stays STRETCHED and a wrapper inside it does the sticking.
+      ) : (
+        <div className='grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_420px]'>
+          <div className='min-w-0'>
+            {activeTab === 'roles' ? (
+              <RoleMapList
+                rows={roleRows}
+                // 🛑 Gate on the query, never on an empty array. Thirteen rows
+                // reading "Not mapped - every preview refuses until this is set"
+                // is a CLAIM about the org, and rendering it mid-load makes it a
+                // false one.
+                isLoading={roleMap.isPending}
+                selectedRole={selectedRole}
+                onSelect={setSelectedRole}
+                onToggleUnused={handleToggleUnused}
+              />
+            ) : (
+              <ChartList
+                accounts={accounts}
+                isLoading={chart.isPending}
+                selectedId={selectedAccountId}
+                onSelect={handleSelectAccount}
+                rolesByAccountId={rolesByAccountId}
+                draft={chartDraft}
+                onAddDraft={handleAddChartDraft}
+              />
+            )}
+          </div>
+          {/* The column stays STRETCHED and a wrapper inside it does the sticking.
             Making the column itself `self-start` would size it to the editor, and
             `border-l` would then stop dead at the editor's bottom edge instead of
             dividing the whole list. A stretched column also gives the sticky child
@@ -358,18 +369,19 @@ export function AccountingAccountsSettingsPage() {
             `sticky top-0 z-20` title/tabs block above - pinning at a hardcoded `0`
             would slide this underneath it. `z-10` matches `FormSaveBar`, i.e.
             deliberately below that header. */}
-        <div className='hidden border-l lg:block'>
-          <div
-            className='lg:sticky lg:z-10 lg:overflow-hidden'
-            style={{
-              top: 'var(--settings-sticky-top, 0px)',
-              maxHeight:
-                'calc(var(--settings-viewport-h, 100vh) - var(--settings-sticky-top, 0px))',
-            }}>
-            {editorContent}
+          <div className='hidden border-l lg:block'>
+            <div
+              className='lg:sticky lg:z-10 lg:overflow-hidden'
+              style={{
+                top: 'var(--settings-sticky-top, 0px)',
+                maxHeight:
+                  'calc(var(--settings-viewport-h, 100vh) - var(--settings-sticky-top, 0px))',
+              }}>
+              {editorContent}
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       <DockableDrawer
         open={mobileDrawerOpen}

@@ -58,17 +58,32 @@
 // does not depend on recognising QuickBooks' duplicate-document-number fault
 // code (see `classifyQuickbooksFailure`).
 
+import { database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { err, ok, type Result } from 'neverthrow'
 import { UnprocessableEntityError } from '../../errors'
-import type { AccountingProvider } from '../../postings/provider'
+import type {
+  AccountingProvider,
+  ClearAccountMappingInput,
+  SetAccountMappingInput,
+} from '../../postings/provider'
+import { listChartAccounts } from '../../postings/role-map'
+import { validateProviderMapping } from '../../postings/suggest-account-identities'
 import {
+  type ChartAccountRow,
   type PostEntryInput,
   type PostEntryResult,
   type PostFailureClass,
+  type ProviderAccount,
   ProviderPostError,
 } from '../../postings/types'
 import { getOrganizationSetting } from '../../settings/settings-service'
+import {
+  clearQuickbooksAccountMapping,
+  listQuickbooksProviderAccounts,
+  readQuickbooksAccountMap,
+  setQuickbooksAccountMapping,
+} from './account-map'
 import { type QuickbooksToolContext, resolveQuickbooksContext } from './invoke-quickbooks-tool'
 
 const logger = createScopedLogger('quickbooks-accounting-provider')
@@ -99,16 +114,6 @@ interface QboJournalLine {
   accountId: string
   accountName?: string
   description?: string
-}
-
-/** The subset of `list_quickbooks_accounts`' mapped account this adapter reads. */
-interface QboAccount {
-  id: string
-  name: string
-  fullyQualifiedName: string
-  /** The account NUMBER ('1310'), not the id. Null when the company has none. */
-  acctNum: string | null
-  active: boolean
 }
 
 /**
@@ -260,59 +265,98 @@ function norm(value: string | null | undefined): string {
 }
 
 /**
- * Fetch the org's QuickBooks chart of accounts, once.
+ * Fetch the org's QuickBooks chart of accounts, once, in the provider-neutral
+ * shape.
  *
  * `Account.AcctNum` is NOT filterable, so `WHERE AcctNum = '1310'` is
- * unsupported by the API - the obvious server-side design does not work and
- * matching has to happen client-side. A chart is a few hundred rows, inside the
- * API's 1000-row page cap, so one `returnAll` fetch is both correct and cheap.
+ * unsupported by the API - which is moot now that resolution runs off the `G19`
+ * account map rather than off account numbers, but is still why the chart is
+ * fetched whole. A chart is a few hundred rows, inside the API's 1000-row page
+ * cap, so one `returnAll` fetch is both correct and cheap.
+ *
+ * Only ACTIVE accounts, unlike `listQuickbooksProviderAccounts`' read for the
+ * mapping screen. A posting cannot use an inactive account, and a mapping that
+ * names one has to be reported as broken rather than silently resolved - which
+ * `validateProviderMapping` does off the absence.
  */
-async function fetchChart(ctx: QuickbooksToolContext): Promise<QboAccount[]> {
-  const result = await ctx.callTool(TOOL_LIST_ACCOUNTS, {})
-  const accounts: QboAccount[] = Array.isArray(result?.accounts) ? result.accounts : []
-  return accounts.filter((a) => a.active !== false)
+async function fetchChart(ctx: QuickbooksToolContext): Promise<ProviderAccount[]> {
+  const accounts = await listQuickbooksProviderAccounts(ctx)
+  return accounts.filter((account) => account.active)
 }
 
 /**
- * Match one account CODE against a fetched chart, failing closed both ways.
+ * Resolve every account CODE an entry names to a QuickBooks account id, through
+ * the `G19` account map.
  *
- * Matches on `AcctNum` alone. A name fallback is deliberately NOT offered: our
- * codes come from `G7`'s seeded chart, our names will not be QuickBooks' names,
- * and a near-miss here puts a wrong account id into a journal entry - which is
- * the single failure a resolver exists to prevent. When a company does not use
- * account numbers at all, every `acctNum` is null and this refuses every code,
- * which is the correct and legible outcome: turn account numbers on, or map the
- * chart.
+ * 🛑 **There is no matching here, and that is the point.** This used to compare
+ * our code against `Account.AcctNum` and take the single hit. That looked like a
+ * sensible resolver and had two fatal properties: QuickBooks ships with account
+ * numbers switched OFF, so every `AcctNum` is null and every code refuses; and
+ * for the companies that do number their accounts, renumbering one in QuickBooks
+ * silently moved where a role posted. `G19` replaced it with a confirmation a
+ * person makes once - "this account IS that account" - which is what the map
+ * below reads.
  *
- * Ambiguity is refused, never resolved by taking the first hit.
+ * Every mapping is revalidated on every entry against the chart just fetched:
+ * the target must still exist, still be active, and still sit in the same
+ * statement section. `G19` requires exactly this at every close, and it is the
+ * whole reason the map stores an id rather than a resolved account.
+ *
+ * ⚠️ Every failure is collected, never thrown on the first one. Fixing a chart
+ * one refused post at a time is how a close slips a day.
  */
-function matchAccount(chart: QboAccount[], code: string): Result<QboAccount, Error> {
-  const needle = norm(code)
-  if (!needle) {
-    return err(new UnprocessableEntityError('An account code is required to resolve an account'))
-  }
+async function resolveMappedAccounts(
+  ctx: QuickbooksToolContext,
+  codes: readonly string[]
+): Promise<Result<Map<string, ProviderAccount>, Error>> {
+  const [chart, ourChart] = await Promise.all([
+    fetchChart(ctx),
+    listChartAccounts(database, ctx.organizationId),
+  ])
+  if (ourChart.isErr()) return err(ourChart.error)
 
-  const hits = chart.filter((a) => norm(a.acctNum) === needle)
-  if (hits.length === 1) return ok(hits[0]!)
+  const map = await readQuickbooksAccountMap({
+    organizationId: ctx.organizationId,
+    installationId: ctx.installationId,
+    connectionId: ctx.connectionId,
+  })
 
-  if (hits.length > 1) {
-    const shown = hits.map((a) => `${a.fullyQualifiedName} (id ${a.id})`).join(', ')
-    return err(
-      new UnprocessableEntityError(
-        `Account code '${code}' matches ${hits.length} QuickBooks accounts: ${shown}. ` +
-          'Give each one a distinct account number in QuickBooks.',
-        { accountCode: code }
+  const byCode = new Map(ourChart.value.map((row) => [norm(row.code), row]))
+  const byProviderId = new Map(chart.map((account) => [account.id, account]))
+
+  const resolved = new Map<string, ProviderAccount>()
+  const problems: string[] = []
+
+  for (const code of new Set(codes)) {
+    const account = byCode.get(norm(code))
+    if (!account) {
+      problems.push(`No account in this organization's chart has the code '${code}'.`)
+      continue
+    }
+
+    const providerAccountId = map.get(account.id)
+    if (!providerAccountId) {
+      problems.push(
+        `${account.code} ${account.name} is not mapped to a QuickBooks account. Map it under Accounting > Settings > Accounts.`
       )
-    )
+      continue
+    }
+
+    const live = byProviderId.get(providerAccountId)
+    const invalid = validateProviderMapping(account, live, providerAccountId)
+    if (invalid) {
+      problems.push(invalid)
+      continue
+    }
+
+    // `validateProviderMapping` returns null only when `live` is present.
+    resolved.set(code, live as ProviderAccount)
   }
 
-  return err(
-    new UnprocessableEntityError(
-      `No active QuickBooks account has account number '${code}'. ` +
-        'Add the number to the matching account in QuickBooks, or change the code in the chart of accounts.',
-      { accountCode: code }
-    )
-  )
+  if (problems.length > 0) {
+    return err(new UnprocessableEntityError(problems.join(' ')))
+  }
+  return ok(resolved)
 }
 
 /**
@@ -362,11 +406,11 @@ export class QuickbooksAccountingProvider implements AccountingProvider {
    *
    * NOT cached across calls. The provider instance is a process-lifetime
    * singleton, so an instance-level cache would keep serving an account id after
-   * the account was renumbered, merged or deactivated in QuickBooks, with no
+   * the mapping was changed or its target deactivated in QuickBooks, with no
    * invalidation signal to act on - and a stale account id in a journal entry
    * balances perfectly and is therefore invisible. {@link postEntry} instead
-   * fetches the chart ONCE per entry and resolves every line against it, which
-   * gets the read amplification down without holding anything between calls.
+   * resolves every line of an entry in ONE call, which gets the read
+   * amplification down without holding anything between calls.
    */
   async resolveAccount(orgId: string, code: string): Promise<Result<string, Error>> {
     const resolved = await resolveQuickbooksContext({ organizationId: orgId })
@@ -380,13 +424,138 @@ export class QuickbooksAccountingProvider implements AccountingProvider {
     }
 
     try {
-      const chart = await fetchChart(resolved.context)
-      return matchAccount(chart, code).map((account) => account.id)
+      const accounts = await resolveMappedAccounts(resolved.context, [code])
+      if (accounts.isErr()) return err(accounts.error)
+      const account = accounts.value.get(code)
+      return account
+        ? ok(account.id)
+        : err(
+            new UnprocessableEntityError(
+              `Account code '${code}' could not be resolved to a QuickBooks account.`,
+              { accountCode: code }
+            )
+          )
     } catch (error) {
       return err(
         new UnprocessableEntityError(
           `Could not read the QuickBooks chart of accounts to resolve '${code}': ${errorMessage(error)}`,
           { accountCode: code }
+        )
+      )
+    }
+  }
+
+  /**
+   * The connected company's chart, for the `G19` mapping screen.
+   *
+   * Inactive accounts INCLUDED - see the interface. This is the only chart read
+   * in this file that keeps them, and the difference is deliberate: a screen has
+   * to be able to say "the account you mapped has been deactivated", which it
+   * cannot do about a row it never received.
+   */
+  async listProviderAccounts(orgId: string): Promise<Result<ProviderAccount[], Error>> {
+    const resolved = await resolveQuickbooksContext({ organizationId: orgId })
+    if (!resolved.connected) return ok([])
+
+    try {
+      return ok(await listQuickbooksProviderAccounts(resolved.context))
+    } catch (error) {
+      return err(
+        new UnprocessableEntityError(
+          `Could not read the QuickBooks chart of accounts: ${errorMessage(error)}`
+        )
+      )
+    }
+  }
+
+  /** The org's confirmed `gl_account -> QuickBooks account` map. */
+  async listAccountMappings(orgId: string): Promise<Result<Map<string, string>, Error>> {
+    const resolved = await resolveQuickbooksContext({ organizationId: orgId })
+    if (!resolved.connected) return ok(new Map())
+
+    try {
+      return ok(
+        await readQuickbooksAccountMap({
+          organizationId: orgId,
+          installationId: resolved.context.installationId,
+          connectionId: resolved.context.connectionId,
+        })
+      )
+    } catch (error) {
+      return err(
+        new UnprocessableEntityError(
+          `Could not read the QuickBooks account map: ${errorMessage(error)}`
+        )
+      )
+    }
+  }
+
+  /**
+   * Record one human confirmation.
+   *
+   * The pairing has already been validated by `postings/account-identities.ts`
+   * against the live chart. This writes it and does not re-decide it.
+   */
+  async setAccountMapping(input: SetAccountMappingInput): Promise<Result<void, Error>> {
+    const resolved = await resolveQuickbooksContext({ organizationId: input.orgId })
+    if (!resolved.connected) {
+      return err(
+        new UnprocessableEntityError(
+          'QuickBooks is not connected, so an account mapping cannot be saved.',
+          { organizationId: input.orgId }
+        )
+      )
+    }
+
+    try {
+      await setQuickbooksAccountMapping({
+        organizationId: input.orgId,
+        installationId: resolved.context.installationId,
+        connectionId: resolved.context.connectionId,
+        glAccountId: input.glAccountId,
+        providerAccountId: input.providerAccountId,
+        userId: input.actorUserId,
+      })
+      return ok(undefined)
+    } catch (error) {
+      return err(
+        new UnprocessableEntityError(`Could not save the account mapping: ${errorMessage(error)}`, {
+          organizationId: input.orgId,
+          glAccountId: input.glAccountId,
+        })
+      )
+    }
+  }
+
+  /** Withdraw one confirmation. The account goes back to unmapped. */
+  async clearAccountMapping(input: ClearAccountMappingInput): Promise<Result<void, Error>> {
+    const resolved = await resolveQuickbooksContext({ organizationId: input.orgId })
+    if (!resolved.connected) {
+      return err(
+        new UnprocessableEntityError(
+          'QuickBooks is not connected, so there is no account mapping to clear.',
+          { organizationId: input.orgId }
+        )
+      )
+    }
+
+    try {
+      await clearQuickbooksAccountMapping({
+        organizationId: input.orgId,
+        installationId: resolved.context.installationId,
+        connectionId: resolved.context.connectionId,
+        glAccountId: input.glAccountId,
+        userId: input.actorUserId,
+      })
+      return ok(undefined)
+    } catch (error) {
+      return err(
+        new UnprocessableEntityError(
+          `Could not clear the account mapping: ${errorMessage(error)}`,
+          {
+            organizationId: input.orgId,
+            glAccountId: input.glAccountId,
+          }
         )
       )
     }
@@ -437,32 +606,35 @@ export class QuickbooksAccountingProvider implements AccountingProvider {
       const ctx = resolved.context
 
       // ── Resolve every account code before anything is written ────────────
-      // Naming every offending code at once matters: fixing them one failed post
-      // at a time is how a close slips a day.
-      const chart = await fetchChart(ctx)
-      const lines: QboJournalLine[] = []
-      const unresolved: string[] = []
-      for (const line of [...input.lines].sort((a, b) => a.sortOrder - b.sortOrder)) {
-        const match = matchAccount(chart, line.accountCode)
-        if (match.isErr()) {
-          unresolved.push(match.error.message)
-          continue
-        }
-        lines.push({
-          amountMinor: line.amount,
-          postingType: line.direction === 'debit' ? 'Debit' : 'Credit',
-          accountId: match.value.id,
-          accountName: match.value.fullyQualifiedName,
-          ...(line.memo && { description: line.memo }),
-        })
-      }
-      if (unresolved.length > 0) {
+      // One call for the whole entry, and it collects every problem rather than
+      // stopping at the first: naming all the offending codes at once matters,
+      // because fixing them one failed post at a time is how a close slips a day.
+      const accounts = await resolveMappedAccounts(
+        ctx,
+        input.lines.map((line) => line.accountCode)
+      )
+      if (accounts.isErr()) {
         return err(
-          new ProviderPostError(unresolved.join(' '), {
+          new ProviderPostError(accounts.error.message, {
             failureClass: 'configuration',
             providerId: QUICKBOOKS_PROVIDER_ID,
           })
         )
+      }
+
+      const lines: QboJournalLine[] = []
+      for (const line of [...input.lines].sort((a, b) => a.sortOrder - b.sortOrder)) {
+        // `resolveMappedAccounts` refuses unless every code resolved, so a miss
+        // here is unreachable rather than merely unlikely.
+        const account = accounts.value.get(line.accountCode)
+        if (!account) continue
+        lines.push({
+          amountMinor: line.amount,
+          postingType: line.direction === 'debit' ? 'Debit' : 'Credit',
+          accountId: account.id,
+          accountName: account.fullyQualifiedName,
+          ...(line.memo && { description: line.memo }),
+        })
       }
 
       // ── Layer 2: query by DocNumber, and HEAL rather than re-post ────────

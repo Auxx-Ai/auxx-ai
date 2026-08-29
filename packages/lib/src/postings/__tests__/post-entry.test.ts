@@ -414,6 +414,21 @@ beforeEach(() => {
   __resetAccountingProvidersForTests()
 })
 
+/**
+ * The `G19` account-map half of `AccountingProvider`, stubbed to "nothing
+ * mapped, nothing to map".
+ *
+ * `postEntry`'s own path never touches these four - resolution lives inside an
+ * adapter - so a posting test states them once here rather than restating an
+ * empty chart in every stub it builds.
+ */
+const NO_ACCOUNT_MAP = {
+  listProviderAccounts: async () => ok([]),
+  listAccountMappings: async () => ok(new Map<string, string>()),
+  setAccountMapping: async () => ok(undefined),
+  clearAccountMapping: async () => ok(undefined),
+}
+
 /** A provider that records what it was handed and answers however the test says. */
 function stubProvider(
   answer: (input: PostEntryInput) => Result<PostEntryResult, Error>,
@@ -422,6 +437,7 @@ function stubProvider(
   const seen: PostEntryInput[] = []
   registerAccountingProvider(id, async () => ({
     id,
+    ...NO_ACCOUNT_MAP,
     resolveAccount: async (_org: string, code: string) => ok(code),
     postEntry: async (input: PostEntryInput) => {
       seen.push(input)
@@ -907,6 +923,7 @@ describe('the provider outcome', () => {
     const fake = createFakeDb(FULL_CHART)
     registerAccountingProvider('explodes', async () => ({
       id: 'explodes',
+      ...NO_ACCOUNT_MAP,
       resolveAccount: async (_org: string, code: string) => ok(code),
       postEntry: async () => {
         throw new Error('boom')
