@@ -70,3 +70,28 @@ export function formatAccount(account: ChartAccountRow | null | undefined): stri
   if (!account) return ''
   return `${account.code} · ${account.name}`
 }
+
+/**
+ * The phantom draft the Chart of accounts tab keeps while somebody is adding an
+ * account, owned by `accounts-settings-page.tsx`.
+ *
+ * Only enough to render the list's phantom row and to know whether the current
+ * selection is a draft — the full field set lives inside the draft form instance
+ * (keyed by `draftId`), exactly as `CatalogDraftHandle` has it.
+ */
+export interface ChartDraftHandle {
+  draftId: string
+  /** Live preview of the code being typed, for the phantom row. */
+  code: string
+  /** Live preview of the name being typed, for the phantom row. */
+  name: string
+  /**
+   * Set once the draft's `chartAccountCreate` resolves. The draft is KEPT alive
+   * after creation (with selection swapped to this id) so the draft form stays
+   * mounted — a remount onto the query-bound form mid-typing would replace the
+   * input's text and cancel the pending debounced commit. The list hides the
+   * phantom row once this is set (the real row arrived with the invalidated
+   * query); the draft is dropped when the user navigates to another row or tab.
+   */
+  recordId?: string
+}

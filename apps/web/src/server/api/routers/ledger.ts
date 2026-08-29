@@ -1,11 +1,16 @@
 // apps/web/src/server/api/routers/ledger.ts
 
+import { getCachedEntityDefId } from '@auxx/lib/cache'
+import { UnprocessableEntityError } from '@auxx/lib/errors'
 import { PermissionKey } from '@auxx/lib/permissions'
 import {
   ACCOUNT_ROLES,
   buildEntry,
+  createChartAccount,
+  GL_ACCOUNT_TYPES,
   getPosting,
   listChartAccounts,
+  listChartAccountUsage,
   listClosePeriods,
   listRoleMap,
   listUnpostedPeriods,
@@ -14,11 +19,14 @@ import {
   postMonthEnd,
   previewEntry,
   previewMonthEnd,
+  removeChartAccount,
   resolvePeriodLock,
   reverseEntry,
   setRoleAssignment,
+  updateChartAccount,
   verifyBooksBalance,
 } from '@auxx/lib/postings'
+import { seedDefaultChartOfAccounts } from '@auxx/lib/seed'
 import { z } from 'zod'
 import { createTRPCRouter, permissionProcedure } from '~/server/api/trpc'
 
@@ -350,6 +358,145 @@ export const ledgerRouter = createTRPCRouter({
     if (result.isErr()) throw result.error
     return result.value
   }),
+
+  /**
+   * How many posted lines carry each account CODE.
+   *
+   * Read by the Chart of accounts tab alone, to turn the renumber caution into a
+   * number: a posting line names an account by code with no foreign key (`P2`),
+   * so renumbering leaves every line already posted holding the old one.
+   */
+  chartAccountUsage: permissionProcedure(PermissionKey.ledgerView).query(async ({ ctx }) => {
+    const result = await listChartAccountUsage(ctx.db, ctx.session.organizationId)
+    if (result.isErr()) throw result.error
+    return result.value
+  }),
+
+  /**
+   * Write the 29-account default chart, and point each role at the account that
+   * fulfils it.
+   *
+   * ── Why this is a BUTTON and not part of creating an organization ──
+   *
+   * `gl_account`'s DEFINITION ships with every org (`SYSTEM_ENTITIES`), but its
+   * ROWS do not, deliberately: most orgs never open the accounting module, and 29
+   * `EntityInstance`s plus 13 `GlRoleAssignment`s each is a chart nobody asked for
+   * in a table everybody has to scan. Provisioning is the first step of setting
+   * accounting up, so it lives where somebody has said they want accounting.
+   *
+   * 🛑 It also closes a real hole. `seedDefaultChartOfAccounts`' only other caller
+   * is entity migration 108, which reaches production through the DataMigration
+   * ledger - and `DataMigration.id` is the PRIMARY KEY, one global row, no
+   * `organizationId`. Once 108 is `applied` it never runs again, so **every org
+   * created after that deploy would have had a def, no accounts, thirteen
+   * unmapped roles and no way to fix it.** This is that way.
+   *
+   * Safe to press twice: the seed is idempotent on `code` and its assignments are
+   * `ON CONFLICT (organizationId, role) DO NOTHING`, so a second press reports
+   * `created: 0` and cannot disturb an account or a mapping somebody has edited.
+   * That is `seedDefaultChartOfAccounts`' rules 1, 3 and 4, and they are the whole
+   * reason this can be offered as a button at all.
+   */
+  provisionChart: permissionProcedure(PermissionKey.ledgerPost).mutation(async ({ ctx }) => {
+    const { organizationId } = ctx.session
+
+    const glAccountDefId = await getCachedEntityDefId(organizationId, 'gl_account')
+    if (!glAccountDefId) {
+      throw new UnprocessableEntityError(
+        'This organization has no gl_account definition, so there is nothing to seed a chart into. Run the entity migrations.',
+        { organizationId }
+      )
+    }
+
+    return await seedDefaultChartOfAccounts(ctx.db, organizationId, glAccountDefId)
+  }),
+
+  /**
+   * Add one account to the org's chart.
+   *
+   * ── Why these live on `ledgerPost` and not on the generic record path ──
+   *
+   * 🛑 `record.create` / `record.update` are `capabilityProcedure` and assert the
+   * RECORDS capability for the definition. Routing the chart through them would
+   * hand "which account does `grni` resolve to" to anyone with records-Full and
+   * ledger-None - and a renumber there is undetectable downstream, because the
+   * resulting entry still balances. The ledger area has exactly two rungs, and
+   * `setRoleAssignment` above already made this call for the same reason: this
+   * decides where real money lands.
+   *
+   * `gl_account` therefore stays `isVisible: false` and this is its only door.
+   *
+   * The refusals are the lib's, verbatim - see `postings/chart-write.ts`. Zod
+   * checks structure only, for the reason `postingLine` gives at the top of this
+   * file: two authorities over one input, and the worse message wins.
+   */
+  chartAccountCreate: permissionProcedure(PermissionKey.ledgerPost)
+    .input(
+      z.object({
+        code: z.string().min(1),
+        name: z.string().min(1),
+        accountType: z.enum(GL_ACCOUNT_TYPES),
+        isActive: z.boolean().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
+      const result = await createChartAccount(ctx.db, {
+        ...input,
+        organizationId,
+        actorUserId: userId,
+      })
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /**
+   * Change one account. Only the keys sent are written.
+   *
+   * `code` and `name` are unconditional (`G7`); `accountType` and `isActive` are
+   * refused when a role still posts to the account, naming it.
+   */
+  chartAccountUpdate: permissionProcedure(PermissionKey.ledgerPost)
+    .input(
+      z.object({
+        id: z.string().min(1),
+        code: z.string().optional(),
+        name: z.string().optional(),
+        accountType: z.enum(GL_ACCOUNT_TYPES).optional(),
+        isActive: z.boolean().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
+      const { id, ...values } = input
+      const result = await updateChartAccount(ctx.db, {
+        ...values,
+        organizationId,
+        accountId: id,
+        actorUserId: userId,
+      })
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /**
+   * Take one account out of the chart.
+   *
+   * ARCHIVES - the lib module carries the three reasons there is no hard delete.
+   * Refused while a role still posts to the account.
+   */
+  chartAccountRemove: permissionProcedure(PermissionKey.ledgerPost)
+    .input(z.object({ id: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
+      const result = await removeChartAccount(ctx.db, {
+        organizationId,
+        accountId: input.id,
+        actorUserId: userId,
+      })
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
 
   /**
    * Every entry that has been claimed but is not in the books - the close

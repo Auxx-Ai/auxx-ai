@@ -28,6 +28,7 @@ export {
 export {
   DEFAULT_CHART_OF_ACCOUNTS,
   type DefaultChartAccount,
+  GL_ACCOUNT_TYPES,
   type GlAccountTypeValue,
 } from './default-chart'
 export {

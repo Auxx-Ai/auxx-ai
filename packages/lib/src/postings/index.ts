@@ -27,6 +27,14 @@ export {
   type MonthEndInventoryInputs,
 } from './build-month-end-inventory'
 export {
+  type CreateChartAccountOptions,
+  createChartAccount,
+  type RemoveChartAccountOptions,
+  removeChartAccount,
+  type UpdateChartAccountOptions,
+  updateChartAccount,
+} from './chart-write'
+export {
   type PostMonthEndOptions,
   type PreviewMonthEndOptions,
   postMonthEnd,
@@ -36,6 +44,7 @@ export { listClosePeriods } from './close-periods'
 export {
   DEFAULT_CHART_OF_ACCOUNTS,
   type DefaultChartAccount,
+  GL_ACCOUNT_TYPES,
   type GlAccountTypeValue,
 } from './default-chart'
 export {
@@ -105,6 +114,7 @@ export { type ResolvedAccount, resolveRoles } from './resolve-roles'
 export { type ReverseEntryOptions, reverseEntry } from './reverse-entry'
 export {
   listChartAccounts,
+  listChartAccountUsage,
   listRoleMap,
   type SetRoleAssignmentOptions,
   setRoleAssignment,

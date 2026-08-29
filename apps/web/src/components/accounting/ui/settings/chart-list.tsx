@@ -1,24 +1,30 @@
 // apps/web/src/components/accounting/ui/settings/chart-list.tsx
 'use client'
 
-// The left column of the Chart of accounts tab: search above a flat `TreeRow`
-// list of the org's live `gl_account` rows, from `ledger.chartAccounts`.
+// The left column of the Chart of accounts tab: search and an Add button above a
+// flat `TreeRow` list of the org's live `gl_account` rows, from
+// `ledger.chartAccounts`.
 //
-// 🛑 READ-ONLY, and deliberately so. There is no create, update, archive or
-// activate procedure for a `gl_account` through any surface yet, so this list
-// offers no Add button, no delete and no active/inactive switch. An affordance
-// that looked writable and was not is worse than no affordance: it teaches
-// somebody the chart is theirs to edit here, and then loses the edit.
+// The chart WRITES now (`ledger.chartAccountCreate` / `Update` / `Remove`, all on
+// `ledgerPost`). This list owns only the Add affordance and the phantom row; the
+// fields, the removal and every refusal live in the detail pane, where a message
+// has a row to land on.
+//
+// 🛑 The phantom row is what makes the draft's buffering visible. Between "Add
+// account" and the Create button becoming enabled, the only evidence that
+// anything is happening is this row tracking what is being typed - without it
+// the person is filling in a form with no place in the list.
 
 import type { AccountRole, ChartAccountRow } from '@auxx/lib/postings/client'
 import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
 import { InputSearch } from '@auxx/ui/components/input-search'
 import { EmptySection } from '@auxx/ui/components/section'
 import { TREE_SECONDARY_NOTRUNCATE, TreeRow } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
-import { Landmark } from 'lucide-react'
+import { Landmark, Plus } from 'lucide-react'
 import { useState } from 'react'
-import { accountTypeColor, accountTypeLabel } from './accounts-types'
+import { accountTypeColor, accountTypeLabel, type ChartDraftHandle } from './accounts-types'
 
 interface ChartListProps {
   accounts: ChartAccountRow[]
@@ -29,6 +35,9 @@ interface ChartListProps {
   onSelect: (id: string | null) => void
   /** Roles pointing at each account id, for the "2 roles" note on a row. */
   rolesByAccountId: Map<string, AccountRole[]>
+  /** The uncommitted draft, if any. Rendered as a phantom row at the top. */
+  draft: ChartDraftHandle | null
+  onAddDraft: () => void
 }
 
 export function ChartList({
@@ -37,6 +46,8 @@ export function ChartList({
   selectedId,
   onSelect,
   rolesByAccountId,
+  draft,
+  onAddDraft,
 }: ChartListProps) {
   const [search, setSearch] = useState('')
 
@@ -47,24 +58,39 @@ export function ChartList({
       )
     : accounts
 
+  // Hidden once `recordId` is stamped: the real row arrived with the invalidated
+  // query, and rendering both would show the same account twice.
+  const phantom = draft && !draft.recordId ? draft : null
+
   return (
     <div className='flex flex-col gap-3 p-3'>
-      <InputSearch
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        placeholder='Search accounts...'
-      />
+      <div className='flex items-center gap-2'>
+        <InputSearch
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder='Search accounts...'
+          className='flex-1'
+        />
+        <Button variant='outline' size='sm' onClick={onAddDraft}>
+          <Plus />
+          Add account
+        </Button>
+      </div>
 
       {isLoading ? (
         <EmptySection loading />
-      ) : filtered.length === 0 ? (
+      ) : filtered.length === 0 && !phantom ? (
         <EmptySection
           icon={<Landmark className='size-5' />}
           title={search ? 'No matches' : 'No accounts in the chart'}
+          // ⚠️ This copy used to blame the entity migrations, and that stopped
+          // being true: `gl_account`'s DEFINITION ships with every org, its ROWS
+          // are provisioned on purpose from the setup wizard, so an empty chart
+          // is now an ordinary state rather than a broken one.
           description={
             search
               ? undefined
-              : 'The chart is provisioned with the org. If it is empty, the accounting entity migrations have not run for this organization.'
+              : 'Add accounts here, or let the accounting setup create the 29-account default chart for you.'
           }
         />
       ) : (
@@ -75,6 +101,30 @@ export function ChartList({
         // has. The role map's secondary carries a sentence instead, so it must
         // NOT wear this class or the sentence stops truncating and overflows.
         <div className={cn('flex flex-col gap-0.5', TREE_SECONDARY_NOTRUNCATE)}>
+          {phantom && (
+            <TreeRow
+              key={phantom.draftId}
+              icon={<Landmark className='size-4 text-muted-foreground' />}
+              title={
+                <span className='flex items-baseline gap-2'>
+                  <span className='text-muted-foreground text-xs tabular-nums'>
+                    {phantom.code || '—'}
+                  </span>
+                  <span className='text-sm'>{phantom.name || 'New account'}</span>
+                </span>
+              }
+              secondaryFill
+              onToggleOpen={() => onSelect(phantom.draftId)}
+              rowClassName={cn(
+                'bg-primary-100/50 hover:bg-primary-100',
+                selectedId === phantom.draftId && 'bg-primary-100 ring-1 ring-primary-200'
+              )}
+              secondary={
+                <span className='text-muted-foreground text-xs italic'>Not created yet</span>
+              }
+            />
+          )}
+
           {filtered.map((account) => {
             const roles = rolesByAccountId.get(account.id) ?? []
             return (
