@@ -20,6 +20,7 @@
 // the adapter on the server, which answers `not_connected`. That is consistent.
 // Do not reconcile the two, and do not build this hook on `resolveConnectedProvider`.
 
+import type { AppConnection } from '~/components/apps/providers/apps-context'
 import { useAppsContext } from '~/components/apps/providers/apps-context'
 
 /** The QuickBooks app's installed-app slug. Same spelling the server's registry uses. */
@@ -37,6 +38,24 @@ export interface AccountingProviderStatus {
   providerLabel: string | null
   /** Where the user goes to install or authorize. */
   appDetailPath: string
+  /**
+   * The installed app's type, required by `AppSettingsDialog`'s settings queries.
+   * `null` until the app is installed - which is exactly when there is no dialog
+   * to open, so a consumer gating on `installed` never sees the null.
+   */
+  installationType: 'development' | 'production' | null
+  /**
+   * The authorized credential itself, when one exists - its label, who connected
+   * it and when, and whether it is org-wide.
+   *
+   * ⚠️ The QuickBooks COMPANY NAME is not in here and cannot be: the credential
+   * stores `metadata.realmId` and nothing else about the company, and the
+   * QuickBooks app's catalog has no `CompanyInfo` tool to fetch a name with. The
+   * label the OAuth callback writes is `Company <realmId>`, so the realm id is
+   * what a person can actually be shown. Naming the company needs a new tool in
+   * the QuickBooks app, not a change here.
+   */
+  connection: AppConnection | null
   /**
    * Installations or connections are still resolving. They land on two separate
    * queries, so `connected` is `false` for a beat after `installed` turns true.
@@ -67,17 +86,20 @@ export function useAccountingProviderStatus(): AccountingProviderStatus {
   // A connection identifies its app by `appId`, not by slug - `listAppConnections`
   // matches the credential's `appId` against the App table and carries no slug - so
   // the installed app's id is the only thing the two sides share.
-  const connected = installation
-    ? appConnections.some(
+  const connection = installation
+    ? (appConnections.find(
         (conn) => conn.appId === installation.app.id && conn.connectionStatus === 'connected'
-      )
-    : false
+      ) ?? null)
+    : null
+  const connected = Boolean(connection)
 
   return {
     installed: Boolean(installation),
     connected,
     providerLabel: connected ? 'QuickBooks Online' : null,
     appDetailPath: QUICKBOOKS_APP_DETAIL_PATH,
+    installationType: installation?.installationType ?? null,
+    connection,
     loading: isLoading || isLoadingConnections,
   }
 }

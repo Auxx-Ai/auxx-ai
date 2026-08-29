@@ -9,12 +9,14 @@ import {
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { EmptySection } from '@auxx/ui/components/section'
+import { toastError } from '@auxx/ui/components/toast'
 import { ArrowUpRight } from 'lucide-react'
 import Link from 'next/link'
 import { formatAccount } from '~/components/accounting/ui/settings/accounts-types'
 import { api } from '~/trpc/react'
 
 const ROLES_HREF = '/app/accounting/settings/accounts?s=roles'
+const CHART_HREF = '/app/accounting/settings/accounts?s=chart'
 
 const STATE_BADGE: Record<
   RoleAssignmentState,
@@ -54,6 +56,20 @@ const STATE_ORDER: Record<RoleAssignmentState, number> = {
  */
 export function WizardAccountsPage() {
   const roleMap = api.ledger.roleMap.useQuery()
+  const chart = api.ledger.chartAccounts.useQuery()
+  const utils = api.useUtils()
+
+  const provisionChart = api.ledger.provisionChart.useMutation({
+    onSuccess: async () => {
+      await Promise.all([
+        utils.ledger.chartAccounts.invalidate(),
+        utils.ledger.roleMap.invalidate(),
+      ])
+    },
+    onError: (error) => {
+      toastError({ title: 'Error creating the chart', description: error.message })
+    },
+  })
 
   const rows = [...(roleMap.data ?? [])].sort(
     (a, b) =>
@@ -67,6 +83,50 @@ export function WizardAccountsPage() {
   const confirmed = required.filter((row) => row.state === 'confirmed').length
   const outstanding = required.filter((row) => row.state !== 'confirmed')
 
+  // 🛑 Gate on the QUERY, never on an empty array. An org whose chart has not
+  // loaded yet and an org that genuinely has no chart are different answers, and
+  // offering "create the default chart" to the first one is an offer to duplicate
+  // a chart that already exists.
+  const chartIsEmpty = !chart.isPending && !chart.isError && (chart.data?.length ?? 0) === 0
+
+  if (chartIsEmpty) {
+    return (
+      <div className='flex flex-col gap-4 p-4'>
+        <p className='text-muted-foreground text-sm'>
+          Every line of a journal entry names an account by role, and each role has to point at a
+          real account in your chart. This organization has no chart yet.
+        </p>
+
+        <div className='flex flex-col gap-2 rounded-xl border p-3'>
+          <p className='font-medium text-sm'>Create the default chart of accounts</p>
+          <p className='text-muted-foreground text-xs'>
+            29 accounts, with each posting role pointed at the one that fulfils it. It is a starting
+            template, not a standard - rename, renumber and add your own afterwards, and nothing
+            here is overwritten if you run this again.
+          </p>
+          <div>
+            <Button
+              variant='outline'
+              size='sm'
+              loading={provisionChart.isPending}
+              loadingText='Creating...'
+              onClick={() => provisionChart.mutate()}>
+              Create the default chart
+            </Button>
+          </div>
+        </div>
+
+        <p className='text-muted-foreground text-xs'>
+          Prefer to build your own? Add accounts on{' '}
+          <Link href={CHART_HREF} className='underline'>
+            the chart of accounts
+          </Link>
+          , then come back and map each role.
+        </p>
+      </div>
+    )
+  }
+
   return (
     <div className='flex flex-col gap-4 p-4'>
       <p className='text-muted-foreground text-sm'>
@@ -74,7 +134,7 @@ export function WizardAccountsPage() {
         account in your chart. Nothing can be previewed until they do.
       </p>
 
-      {roleMap.isPending ? (
+      {roleMap.isPending || chart.isPending ? (
         <EmptySection loading />
       ) : roleMap.isError ? (
         <div className='rounded-xl border border-destructive/40 bg-destructive/5 p-3'>

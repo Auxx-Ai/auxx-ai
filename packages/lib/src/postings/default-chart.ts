@@ -24,6 +24,23 @@ export type GlAccountTypeValue = (typeof GlAccountType)[Exclude<
   'values'
 >]
 
+/**
+ * The five statement classifications as a non-empty tuple, for a `z.enum`.
+ *
+ * Derived from `GlAccountType`'s NAMED members for the reason
+ * {@link GlAccountTypeValue} gives: `values` widens `value` to `string`, so a
+ * schema built from it would accept `'nonsense'`. Listed here rather than in the
+ * registry because a router needs it client-safely and this module is already
+ * the client-safe home of the type it is checked against.
+ */
+export const GL_ACCOUNT_TYPES = [
+  GlAccountType.ASSET,
+  GlAccountType.LIABILITY,
+  GlAccountType.EQUITY,
+  GlAccountType.REVENUE,
+  GlAccountType.EXPENSE,
+] as const satisfies readonly GlAccountTypeValue[]
+
 /** One account in the seeded default chart. */
 export interface DefaultChartAccount {
   /** The account number. Unique per org, and the org may change it. */

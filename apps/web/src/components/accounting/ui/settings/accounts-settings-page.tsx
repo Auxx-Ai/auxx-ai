@@ -13,27 +13,41 @@
 // table dump) and `ledger.chartAccounts` returns the org's live `gl_account`
 // instances.
 //
-// 🛑 The Roles tab WRITES; the Chart tab is READ-ONLY. `ledger.setRoleAssignment`
-// exists; there is no create/update procedure for `gl_account` through any
-// surface yet, so the chart is presented as a reference list with a detail pane
-// that has no inputs at all. A disabled-looking form that silently discarded
-// what somebody typed would be strictly worse than not offering the field.
+// 🛑 BOTH tabs write, and every write on this page is on `ledgerPost` - the
+// Full rung of the ledger area. `gl_account` stays `isVisible: false` and this
+// page is its only door, deliberately: `record.create` asserts the generic
+// RECORDS capability, so routing the chart through it would let records-Full /
+// ledger-None decide where money lands. See `routers/ledger.ts`.
+//
+// The chart tab keeps a phantom draft (`ChartDraftHandle`) exactly as the
+// products-services page does, with one difference: the create fires on an
+// explicit button, not on a commit. `gl_account` has three required fields to
+// `catalog_item`'s one, and a unique-code conflict belongs on an act somebody
+// knowingly performed.
 
 import { FeatureKey, PermissionKey } from '@auxx/lib/permissions/client'
-import type { AccountRole, RoleAssignmentRow } from '@auxx/lib/postings/client'
+import type {
+  AccountRole,
+  ChartAccountRow,
+  GlAccountTypeValue,
+  RoleAssignmentRow,
+} from '@auxx/lib/postings/client'
 import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'
 import { ResponsiveTabs } from '@auxx/ui/components/responsive-tabs'
 import { toastError } from '@auxx/ui/components/toast'
+import { generateId } from '@auxx/utils'
 import { Landmark, Lock, Waypoints } from 'lucide-react'
 import { useQueryState } from 'nuqs'
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
 import SettingsPage from '~/components/global/settings-page'
+import { useConfirm } from '~/hooks/use-confirm'
 import { useMedia } from '~/hooks/use-media'
 import { useRequireCapability } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
-import { ChartAccountDetail } from './chart-account-editor'
+import type { ChartDraftHandle } from './accounts-types'
+import { ChartAccountEditor } from './chart-account-editor'
 import { ChartList } from './chart-list'
 import { RoleMapEditor } from './role-map-editor'
 import { RoleMapList } from './role-map-list'
@@ -64,9 +78,20 @@ export function AccountingAccountsSettingsPage() {
 
   const roleMap = api.ledger.roleMap.useQuery()
   const chart = api.ledger.chartAccounts.useQuery()
+  // Chart tab only: how many posted lines carry each CODE, for the renumber
+  // note. A separate read rather than a field on `ChartAccountRow`, which is
+  // shared with the resolver's path and decoded by every reader of this chart.
+  const chartUsage = api.ledger.chartAccountUsage.useQuery()
 
   const [selectedRole, setSelectedRole] = useState<AccountRole | null>(null)
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null)
+  // The phantom draft for the Chart tab. The full field set lives inside the
+  // draft form instance (keyed by `draftId`); this page tracks only enough to
+  // render the list's phantom row and to know whether the selection is a draft.
+  // An untouched draft is dropped on selecting another row, on adding another
+  // draft, or on switching tabs - never on a mere re-render.
+  const [chartDraft, setChartDraft] = useState<ChartDraftHandle | null>(null)
+  const [confirm, ConfirmDialog] = useConfirm()
 
   const isDesktop = useMedia('(min-width: 1024px)')
 
@@ -126,7 +151,124 @@ export function AccountingAccountsSettingsPage() {
     setRole.mutate({ role, markedUnused: current.state !== 'unused' })
   }
 
+  // ── The chart writes ────────────────────────────────────────────────────
+  //
+  // 🛑 Every refusal below is surfaced VERBATIM, for the reason `setRole` above
+  // states: the server's sentence names the role, the account and what to do
+  // next, and "Could not save" throws that away. Nothing is re-validated here.
+  //
+  // The mutations expose `mutateAsync` to the editor rather than firing toasts,
+  // because a chart refusal belongs on the FIELD that caused it - the code that
+  // collided, the type a role cannot accept - not in a corner of the screen.
+  const createAccount = api.ledger.chartAccountCreate.useMutation()
+  const updateAccount = api.ledger.chartAccountUpdate.useMutation()
+  const removeAccount = api.ledger.chartAccountRemove.useMutation()
+
+  /** A rename or a renumber changes the account rendered on every role row too. */
+  const invalidateChart = useCallback(async () => {
+    await Promise.all([utils.ledger.chartAccounts.invalidate(), utils.ledger.roleMap.invalidate()])
+  }, [utils])
+
+  const handleCreateAccount = useCallback(
+    async (values: {
+      code: string
+      name: string
+      accountType: GlAccountTypeValue
+      isActive: boolean
+    }): Promise<ChartAccountRow> => {
+      const created = await createAccount.mutateAsync(values)
+      await invalidateChart()
+      return created
+    },
+    [createAccount, invalidateChart]
+  )
+
+  const handleUpdateAccount = useCallback(
+    async (
+      id: string,
+      patch: {
+        code?: string
+        name?: string
+        accountType?: GlAccountTypeValue | null
+        isActive?: boolean
+      }
+    ): Promise<ChartAccountRow> => {
+      const updated = await updateAccount.mutateAsync({
+        id,
+        code: patch.code,
+        name: patch.name,
+        // `null` is the draft form's "not chosen yet"; it never reaches a write.
+        accountType: patch.accountType ?? undefined,
+        isActive: patch.isActive,
+      })
+      await invalidateChart()
+      return updated
+    },
+    [updateAccount, invalidateChart]
+  )
+
+  /**
+   * Remove is ARCHIVE server-side, and the confirm says what that means.
+   *
+   * 🛑 The refusal when a role still posts here is the server's, not a
+   * pre-check: a client-side copy of `liveRolesFor` would be a second authority
+   * over the one question this page must not get wrong.
+   */
+  const handleRemoveAccount = useCallback(
+    async (id: string) => {
+      const account = accounts.find((row) => row.id === id)
+      const confirmed = await confirm({
+        title: 'Remove account?',
+        description: `${account ? `${account.code} ${account.name} ` : 'This account '}comes out of the chart. Entries already posted keep the code and the name they were written with, and a re-seed will not bring it back.`,
+        confirmText: 'Remove',
+        cancelText: 'Cancel',
+        destructive: true,
+      })
+      if (!confirmed) return
+
+      await removeAccount.mutateAsync({ id })
+      await invalidateChart()
+      if (selectedAccountId === id) setSelectedAccountId(null)
+    },
+    [accounts, confirm, removeAccount, invalidateChart, selectedAccountId]
+  )
+
+  // ── The phantom draft ───────────────────────────────────────────────────
+
+  function handleSelectAccount(id: string | null) {
+    // Selecting anything other than the draft itself - or its committed record,
+    // which keeps the draft form mounted - drops the draft.
+    if (chartDraft && id !== chartDraft.draftId && id !== chartDraft.recordId) {
+      setChartDraft(null)
+    }
+    setSelectedAccountId(id)
+  }
+
+  function handleAddChartDraft() {
+    if (chartDraft && !chartDraft.recordId) {
+      setSelectedAccountId(chartDraft.draftId) // uncommitted one exists - re-select it
+      return
+    }
+    const draftId = generateId('draft')
+    setChartDraft({ draftId, code: '', name: '' })
+    setSelectedAccountId(draftId)
+  }
+
+  function handleChartDraftChange(patch: { code?: string; name?: string }) {
+    setChartDraft((prev) => (prev ? { ...prev, ...patch } : prev))
+  }
+
+  /** First create resolved: swap selection to the real id but KEEP the draft, so
+   *  the draft form stays mounted and text typed mid-round-trip is not lost. */
+  function handleChartDraftCommitted(recordId: string) {
+    setChartDraft((prev) => (prev ? { ...prev, recordId } : prev))
+    setSelectedAccountId(recordId)
+  }
+
   function handleTabChange(next: string) {
+    // An untouched draft does not survive a tab switch - the other tab's list no
+    // longer renders the phantom row, so hanging onto it would be confusing.
+    if (chartDraft) setChartDraft(null)
     setTab(next)
   }
 
@@ -155,10 +297,17 @@ export function AccountingAccountsSettingsPage() {
         onToggleUnused={handleToggleUnused}
       />
     ) : (
-      <ChartAccountDetail
+      <ChartAccountEditor
         selectedId={selectedAccountId}
         accounts={accounts}
         roles={selectedAccountId ? (rolesByAccountId.get(selectedAccountId) ?? []) : []}
+        usage={chartUsage.data ?? {}}
+        draft={chartDraft}
+        onDraftChange={handleChartDraftChange}
+        onCreate={handleCreateAccount}
+        onDraftCommitted={handleChartDraftCommitted}
+        onUpdate={handleUpdateAccount}
+        onRemove={handleRemoveAccount}
       />
     )
 
@@ -192,8 +341,10 @@ export function AccountingAccountsSettingsPage() {
               accounts={accounts}
               isLoading={chart.isPending}
               selectedId={selectedAccountId}
-              onSelect={setSelectedAccountId}
+              onSelect={handleSelectAccount}
               rolesByAccountId={rolesByAccountId}
+              draft={chartDraft}
+              onAddDraft={handleAddChartDraft}
             />
           )}
         </div>
@@ -225,7 +376,7 @@ export function AccountingAccountsSettingsPage() {
         onOpenChange={(open) => {
           if (!open) {
             setSelectedRole(null)
-            setSelectedAccountId(null)
+            handleSelectAccount(null)
           }
         }}
         isDocked={false}
@@ -236,6 +387,8 @@ export function AccountingAccountsSettingsPage() {
         title={activeTab === 'roles' ? 'Map role' : 'Account'}>
         {editorContent}
       </DockableDrawer>
+
+      <ConfirmDialog />
     </SettingsPage>
   )
 }

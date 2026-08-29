@@ -42,7 +42,7 @@
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, count, eq, isNull } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError, BadRequestError, NotFoundError, UnprocessableEntityError } from '../errors'
 import { ACCOUNT_ROLES, type AccountRole, ROLE_ACCOUNT_TYPES } from './build-entry'
@@ -243,6 +243,53 @@ export async function listChartAccounts(
   } catch (error) {
     if (error instanceof AuxxError) return err(error)
     logger.error('Failed to list the chart of accounts', { error, organizationId })
+    return err(new AuxxError('Internal error'))
+  }
+}
+
+/**
+ * How many posted lines name each account CODE.
+ *
+ * The one number the chart's renumber warning needs. A posting line stores the
+ * account code with **no foreign key** (`P2`), deliberately, so the ledger
+ * outlives the chart - which means renumbering an account leaves every line
+ * already posted holding the old code. That is a feature, and it is also the
+ * kind of feature a person should be told about with a NUMBER rather than a
+ * caution: "142 posted lines carry 1310" is what makes the trade concrete.
+ *
+ * ⚠️ **Keyed on CODE, not on account id**, because a code is what a posted line
+ * actually stores. Two consequences, both correct: an account never posted to
+ * reports nothing, and an account whose code was PREVIOUSLY carried by a
+ * different account reports that history too. The question the number answers is
+ * "how many posted lines say `1310`", which is exactly the question somebody
+ * about to renumber is asking.
+ *
+ * 🛑 Deliberately NOT folded into {@link listChartAccounts}. `ChartAccountRow` is
+ * shared with `resolveRoles`' path and decoded by every reader of this chart; a
+ * field only the settings screen renders does not belong on it.
+ */
+export async function listChartAccountUsage(
+  db: Database,
+  organizationId: string
+): Promise<Result<Record<string, number>, Error>> {
+  try {
+    const rows = await db
+      .select({
+        accountCode: schema.GlPostingLine.accountCode,
+        lines: count(),
+      })
+      .from(schema.GlPostingLine)
+      .where(eq(schema.GlPostingLine.organizationId, organizationId))
+      .groupBy(schema.GlPostingLine.accountCode)
+
+    const usage: Record<string, number> = {}
+    for (const row of rows) {
+      if (row.accountCode) usage[row.accountCode] = Number(row.lines) || 0
+    }
+    return ok(usage)
+  } catch (error) {
+    if (error instanceof AuxxError) return err(error)
+    logger.error('Failed to count posted lines per account', { error, organizationId })
     return err(new AuxxError('Internal error'))
   }
 }
