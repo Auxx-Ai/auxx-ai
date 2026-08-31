@@ -325,7 +325,7 @@ export function PartPricingCard({ recordId }: DrawerTabProps) {
       {/* The partKind nudge — the ONLY kind interplay (§6.1): for a finished
           good, no active catalog item is almost certainly an omission. */}
       {(showOfferNudge || showInactiveNudge) && (
-        <div className='flex items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5'>
+        <div className='flex items-center gap-2 rounded-2xl border border-amber-500/40 bg-amber-500/10 p-2.5'>
           <Sparkles className='size-4 shrink-0 text-amber-600' />
           <p className='flex-1 text-xs text-muted-foreground'>
             <span className='font-medium text-foreground'>
