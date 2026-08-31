@@ -276,10 +276,15 @@ export async function generatePlan(options: GeneratePlanOptions): Promise<Genera
     })
 
     // Add to batch
+    // `errors` is persisted, not just streamed. It used to travel only on the
+    // `onRowAnalyzed` SSE frame, so reloading the wizard left the user with a
+    // pile of `skip` rows and no reason for any of them — a whole BOM file
+    // rejected for unresolvable part SKUs looked identical to a no-op import.
     assignments.push({
       strategyId: strategy.id,
       rowIndex: analysis.rowIndex,
       existingRecordId: analysis.existingRecordId,
+      errorMessage: analysis.errors.length > 0 ? analysis.errors.join('; ') : undefined,
       warningMessage: analysis.warnings.length > 0 ? analysis.warnings.join('; ') : undefined,
     })
 

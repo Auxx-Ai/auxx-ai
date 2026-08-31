@@ -45,6 +45,7 @@ const { findCachedResource } = await import('../../../cache')
 const { createFindExistingRecord } = await import('../find-existing-record')
 const { createDefaultStrategies } = await import('../create-strategy')
 const { generatePlan } = await import('../generate-plan')
+const { hashValue } = await import('../../hashing/hash-value')
 
 import type { ImportMappingProperty } from '../../types/mapping'
 import type { StrategyType } from '../../types/plan'
@@ -78,11 +79,18 @@ const RESOURCE = {
 
 /**
  * Fake db. `insert().values()` is both awaitable (batchAssignRows) and carries
- * `.returning()` (createPlan / createStrategy); `update().set().where()` resolves.
+ * `.returning()` (createPlan / createStrategy); `update().set().where()` and
+ * `delete().where()` (createPlan's replace-the-previous-plan step) resolve.
  */
 function fakeDb() {
   let seq = 0
-  const planRows: Array<{ importPlanStrategyId: string; rowIndex: number }> = []
+  const planRows: Array<{
+    importPlanStrategyId: string
+    rowIndex: number
+    errorMessage?: string
+    warningMessage?: string
+  }> = []
+  const deletes: string[] = []
   const db = {
     insert: () => ({
       values: (vals: Record<string, unknown> | Array<Record<string, unknown>>) => {
@@ -104,8 +112,13 @@ function fakeDb() {
       },
     }),
     update: () => ({ set: () => ({ where: async () => undefined }) }),
+    delete: (table: { _: { name?: string } } | undefined) => ({
+      where: async () => {
+        deletes.push(table?._?.name ?? 'unknown')
+      },
+    }),
   }
-  return { db: db as never, planRows }
+  return { db: db as never, planRows, deletes }
 }
 
 function mapping(overrides: Partial<ImportMappingProperty>): ImportMappingProperty {
@@ -312,6 +325,83 @@ describe('generatePlan, no row may leave the plan silently', () => {
       toUnmatched: 2,
     })
     expect(planRows).toHaveLength(3)
+  })
+})
+
+describe('generatePlan, a skipped row records WHY it was skipped', () => {
+  // The errors used to travel only on the `onRowAnalyzed` SSE frame, so the
+  // persisted plan row carried `errorMessage: null`. Reloading the wizard then
+  // showed a wall of skipped rows with no reason on any of them — an entire BOM
+  // file rejected for unresolvable part SKUs was indistinguishable from a no-op.
+  it('persists the analyzer errors onto the plan row, not just the SSE frame', async () => {
+    const { db, planRows } = fakeDb()
+
+    await generatePlan({
+      db,
+      organizationId: ORG,
+      jobId: 'job-1',
+      entityDefinitionId: DEF,
+      rawData: rows('M400L', 'M400L'),
+      mappings: MAPPINGS,
+      resolutions: new Map(),
+      identifierFieldKeys: ['part_sku'],
+    })
+
+    const skipped = planRows.find((r) => r.rowIndex === 1)
+    expect(skipped?.errorMessage).toContain('Duplicate identifier')
+    // A clean row must not gain a spurious message.
+    expect(planRows.find((r) => r.rowIndex === 0)?.errorMessage).toBeUndefined()
+  })
+
+  it('joins several errors on one row with "; "', async () => {
+    const { db, planRows } = fakeDb()
+
+    await generatePlan({
+      db,
+      organizationId: ORG,
+      jobId: 'job-1',
+      entityDefinitionId: DEF,
+      rawData: rows('M400L'),
+      mappings: MAPPINGS,
+      // An unresolvable relation cell — the BOM case: the SKU names a part
+      // that does not exist, so the column resolves to an error.
+      resolutions: new Map([
+        [
+          hashValue('M400L'),
+          {
+            hashedValue: hashValue('M400L'),
+            rawValue: 'M400L',
+            resolvedValues: [],
+            isValid: false,
+            errorMessage: 'No match found for "M400L"',
+          } as never,
+        ],
+      ]),
+      identifierFieldKeys: ['part_sku'],
+    })
+
+    expect(planRows[0]?.errorMessage).toContain('No match found for "M400L"')
+  })
+})
+
+describe('generatePlan, one job has exactly one plan', () => {
+  // Four plans and 1244 rows for a 311-row file: the wizard re-fired the
+  // enqueue while the job still read `waiting`, and every run appended.
+  it('clears any previous plan for the job before creating the new one', async () => {
+    const { db, deletes } = fakeDb()
+
+    await generatePlan({
+      db,
+      organizationId: ORG,
+      jobId: 'job-1',
+      entityDefinitionId: DEF,
+      rawData: rows('M400L'),
+      mappings: MAPPINGS,
+      resolutions: new Map(),
+      identifierFieldKeys: ['part_sku'],
+    })
+
+    expect(deletes).toHaveLength(1)
   })
 })
 
