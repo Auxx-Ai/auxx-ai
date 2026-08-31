@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.225](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.224...auxx-v0.1.225) (2026-08-31)
+
+
+### Bug Fixes
+
+* **import:** say why a row was skipped, and stop planning four times ([#1999](https://github.com/Auxx-Ai/auxx-ai/issues/1999)) ([e6fd2c1](https://github.com/Auxx-Ai/auxx-ai/commit/e6fd2c16f98d44339e89289c4bb976c2ae73a7f4))
+* **money:** fold the account map into the chart of accounts ([#1992](https://github.com/Auxx-Ai/auxx-ai/issues/1992)) ([2580a31](https://github.com/Auxx-Ai/auxx-ai/commit/2580a31ce4b69a3d0c0f13a76cfacc6bcaab6b98))
+* **money:** guard deletes on every visible money parent ([#1995](https://github.com/Auxx-Ai/auxx-ai/issues/1995)) ([2d9dc34](https://github.com/Auxx-Ai/auxx-ai/commit/2d9dc349f88fac23d90901efc9c984f7f182f2ba))
+* **money:** unhang locked months, and let dev reopen accounting setup ([#1996](https://github.com/Auxx-Ai/auxx-ai/issues/1996)) ([13ce74e](https://github.com/Auxx-Ai/auxx-ai/commit/13ce74eea183cf7289d2ed0e272827149b46e827))
+* **records:** surface guard rejections from bulk delete instead of "Internal server error" ([#1998](https://github.com/Auxx-Ai/auxx-ai/issues/1998)) ([0847b9e](https://github.com/Auxx-Ai/auxx-ai/commit/0847b9e65be4ec7f00b960aba947084aecd0fd24))
+* report import failures honestly, and stop supplier prices rendering nameless ([#1997](https://github.com/Auxx-Ai/auxx-ai/issues/1997)) ([638bedb](https://github.com/Auxx-Ai/auxx-ai/commit/638bedb9b21dcbcffab85c51bf528b9e4ee5a64b))
+
 ## [0.1.224](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.223...auxx-v0.1.224) (2026-08-31)
 
 
