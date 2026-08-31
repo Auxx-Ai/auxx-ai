@@ -189,9 +189,14 @@ export function useEntityInstanceOperations(options: UseEntityInstanceOperations
         destructive: true,
       })
       if (confirmed) {
+        // `mutateAsync` REJECTS when every record failed (the router raises the
+        // guard's reason as a 4xx there) — `bulkDeleteInstances.onError` already
+        // toasts it, so swallow the rejection rather than leaving an
+        // unhandledRejection behind.
         const result = await bulkDeleteMutateAsync({
           recordIds: rows.map((r) => buildRecordId(r.id)),
-        })
+        }).catch(() => null)
+        if (!result) return
 
         // Optimistic removal from store
         const failedIds = new Set(
@@ -212,9 +217,13 @@ export function useEntityInstanceOperations(options: UseEntityInstanceOperations
         onRefetch?.()
 
         if (result.errors.length > 0) {
+          // Say WHY, not just how many: the per-record messages are the pre-delete
+          // hooks' own guard text ("This purchase order has 1 vendor bill billed
+          // against it…"), which is the only thing that tells the user what to do next.
+          const reasons = [...new Set(result.errors.map((e) => e.message))].join(' ')
           toastError({
             title: 'Some records could not be deleted',
-            description: `${result.count} deleted, ${result.errors.length} failed.`,
+            description: `${result.count} deleted, ${result.errors.length} failed. ${reasons}`,
           })
         }
       }
