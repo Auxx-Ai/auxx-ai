@@ -352,6 +352,97 @@ incremental and therefore locked). See §7.3.
 a date correction under standard or average costing — and a full recomputation under FIFO. That
 asymmetry is one of the reasons FIFO is not on the table.
 
+### 6.4 The generic delete door, and why `updatable: false` does not close it
+
+**Every entity in this subsystem is `EntityInstance`-backed and adds no Drizzle table (§3). The
+consequence nobody decided on is that each one inherits the generic records table — with its row
+delete and its bulk delete — for free.** Everything else in this guide reasons about the money
+doors (receive, bill, match, reverse). This is the door that arrived with the storage choice, and
+it is the one that had no guard for the first six weeks of this subsystem's life.
+
+🛑 **`updatable: false` is ADVISORY and has no delete counterpart.** It is read by the grid cell
+and the connector catalog and by nothing on the write path
+(`postings/build-month-end-inventory.ts:35` says so in prose). There is no `deletable: false`
+anywhere in the schema. So "append-only" is a claim about EDITS only, and reading it as a claim
+about the row's existence is the specific mistake that let a part be hard-deleted out of a posted
+period.
+
+⚠️ **The evidence lock has the same hole, and it is the third instance of this shape.**
+`field-hooks/pre/purchase-order-line-evidence-lock.ts` freezes a line's `quantityOrdered` and
+`expectedUnitPrice` the moment a receipt or a bill line exists — an EDIT guard with no delete
+counterpart, so until `guardPurchaseOrderDelete` shipped you could not change a received line's
+quantity but could delete the line outright, or the order above it.
+
+🛑 **And the generic delete is quieter than a dangling reference, not louder.**
+`deleteEntityInstance` calls `sweepEntityFieldValues`, which removes **both halves** of every
+relation `FieldValue` before dropping the row. A dangling id is evidence — you can still see what
+the child pointed at. A swept relation leaves the child with an **empty cell and no trace a parent
+ever existed**, so an unguarded parent delete is unrecoverable rather than merely wrong. Children
+are never themselves deleted: before these guards, deleting a purchase order left its lines, its
+receipts and any bill naming it all alive and all unlinked.
+
+The seam that does close it is `registerEntityPreDeleteHooks(apiSlug, [...])`
+(`field-hooks/register-hooks.ts`), which fires synchronously inside `deleteEntity` — before
+`deleteEntityInstance` — on **every** path: `record.delete`, `record.bulkDelete`, drawers, Kopilot
+and the API. Throwing rejects the delete.
+
+⚠️ **A `deleted` record rule is NOT that seam.** It fires after the row is gone and cannot refuse;
+`RecordRuleRun.entityInstanceId` has no foreign key precisely because deleted-rules log runs for
+records that no longer exist. The four `on: 'deleted'` rules this subsystem declares
+(`mfg-vendor-parts-deleted`, `mfg-subparts-deleted`, `mfg-stock-movements-deleted`,
+`purchasing-vendor-bill-lines-deleted`) each recompute a roll-up on a **surviving parent** — which
+is also why a pre-delete cascade must delete its children through `UnifiedCrudHandler.delete` and
+not raw SQL, or those rules never fire.
+
+**Who is visible, and who is guarded:**
+
+| Entity | `isVisible` | Pre-delete hook |
+| --- | --- | --- |
+| `part` | **true** | ✅ `guardPartDelete` — refuses when a movement sits in a settled period; cascades `subpart` + `vendor_part`; leaves the vendor documents |
+| `build` | **true** | ✅ `guardBuildDelete` — refuses on a settled movement **or** on either end of a reversal pair; cascades the `build_consume`/`build_produce` movements |
+| `purchase_order` | **true** | ✅ `guardPurchaseOrderDelete` — refuses when any `vendor_bill` names it, or when a receipt under any of its lines is settled; cascades receipts **then** lines |
+| `vendor_bill` | **true** | ✅ `guardVendorBillDelete` — refuses on `posted`/`partially_paid`/`paid`, on any `vendor_payment_allocation`, or on a settled `billedAt`; cascades its lines |
+| `stock_movement`, `subpart`, `vendor_part`, `purchase_order_line`, `vendor_bill_line`, `gl_account` | false | n/a — not reachable from a records table, only through a parent |
+
+All four share `postings/settled-periods.ts` (`settledPeriodsFor`) and, where they read the ledger,
+`field-hooks/pre/guarded-movements.ts`. Both were extracted precisely so the reasoning below
+survives being reused — a copied predicate keeps the behaviour and loses the reason.
+
+The set is pinned by `field-hooks/__tests__/delete-guard-registration.test.ts`, which now derives
+the visible money parents from `SYSTEM_ENTITIES` and asserts every one carries a hook, rather than
+listing the unguarded ones — that earlier form went vacuously true the moment the list emptied. So
+a money entity flipping to visible, or a new one shipping visible, is a test failure rather than a
+discovery six weeks later.
+
+🛑 **`suppressPostDeleteHooks` is the trap, and the correct answer differs per guard.** Suppress
+when the child's post-delete hook re-projects **the document being deleted** — `vendor_bill`, whose
+`rematchAfterBillLineDelete` calls `markOrRematchBill` on the dying bill once per line, and the
+existing `invoices`/`orders` guards. Do **not** suppress when it lands on a **surviving** record —
+`part`, `build` and `purchase_order`, where `recalculatePartQoH` on the other end is the entire
+integration and suppressing it reproduces the stale-rolled-cost bug the part guard exists to fix.
+Nothing at the call site distinguishes the two cases.
+
+**"Settled" is three predicates, and each catches a case the others miss.** `settledPeriodsFor`
+refuses when a month is locked (`resolvePeriodLock` + `isPeriodLocked`), **or** has an
+entry currently standing in the books, **or** falls at or before `accounting.cutoffPeriod` (those
+months "are covered by the frozen opening baseline and can never be closed here" —
+`postings/close-periods.ts`).
+
+🛑 **The posted check reads `GlPosting` directly and must NOT use `listClosePeriods`.** The close
+strip answers *"can I close this month?"*, so `resolveState` reports the **effective** posting —
+the highest revision that is not itself reversed. A month holding rev 1 `posted` followed by rev 2
+`failed` therefore reads **`open`**, correctly, because there is an unfinished attempt in it — while
+rev 1 is still standing in the books with `assertions.before.balances` computed from the very
+movements a guard would be deciding about. This is not hypothetical: it is the state of DemoOrg1's
+`2026-08` today. `status = 'posted'` is the right predicate because a reversal flips the row it
+supersedes to `reversed`, so a reversed entry stops matching on its own.
+
+🛑 **A guard that reads movements must not be built on `listReceipts` /
+`getPartReceiptHistory`.** Both hard-filter `stock_movement_type = 'receive'`
+(`receiving/receipt-queries.ts`), so a part whose only history is a `scrap`, an `initial` opening
+balance or a `build_consume` would pass a receipts-only check and delete clean out of a posted
+month.
+
 ---
 
 ## 7. Costing — where a number comes from and when it freezes
