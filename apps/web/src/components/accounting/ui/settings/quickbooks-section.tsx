@@ -29,6 +29,7 @@ import { InlineAppInstallButton } from '~/components/apps/ui/app-install-button'
 import { AppSettingsDialog } from '~/components/apps/ui/app-settings-dialog'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { SettingsSection } from '~/components/global/settings-page'
+import { SettingsFieldRow } from '~/components/settings/settings-field-row'
 import { useAccountingProviderStatus } from '../../hooks/use-accounting-provider-status'
 
 /** What "none connected" actually means, spelled the same way everywhere. */
@@ -54,9 +55,13 @@ function formatDate(value: Date | string | null | undefined): string | null {
  *    its `connections` tab, which owns the whole OAuth flow.
  * 3. Connected - which company, who authorized it and when, plus Manage.
  *
- * 🛑 This section owns NO settings values. It is presentational plus two dialog
- * actions, so it stays outside the page's `useDirtyDraft` slices and adds nothing
- * to `DRAFT_KEYS`.
+ * 🛑 The export switch is the section's ONLY settings value, and it stays outside
+ * the page's `useDirtyDraft` slices anyway: an uncontrolled `SettingsFieldRow`
+ * autosaves straight through to `updateOrganizationSetting`, so there is no draft
+ * for it to join and nothing to add to `DRAFT_KEYS`. Do not "fix" that by wiring
+ * it to the page's `scope: 'GENERAL'` draft - the key's catalog scope is
+ * `DOCUMENTS`, so a scoped read would return nothing and the switch would render
+ * permanently off while appearing to save.
  *
  * 🛑 None of the three states is a warning. See the `P1` note at the top of this
  * file and in `use-accounting-provider-status.ts` before changing a badge colour.
@@ -156,6 +161,12 @@ export function QuickbooksSettingsSection() {
                   : (connectedAt ?? '-')}
               </div>
             </FieldPanelRow>
+
+            <SettingsFieldRow
+              settingKey='quickbooks.postJournalEntries'
+              title='Export posted entries'
+              description='When on, a posted entry is also pushed to QuickBooks as a journal entry. Off, the entry is still built, balanced and stored here - the close is unaffected.'
+            />
           </>
         )}
       </FieldPanel>

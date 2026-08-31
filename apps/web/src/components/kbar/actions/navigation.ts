@@ -347,6 +347,33 @@ export function useNavigationActions(): PaletteAction[] {
         perform: () => nav('/files'),
       })
     }
+    // Gates mirror SIDEBAR_MENU exactly (`featureKey: 'accounting'` +
+    // `permissionKey: 'ledger.view'`), and they have to: the close console
+    // guards on the same key, so a looser gate here would walk a member into
+    // the landing page's /access-denied redirect.
+    if (hasAccess('accounting') && can('ledger.view')) {
+      actions.push({
+        id: 'nav.accounting',
+        label: 'Accounting',
+        subtitle: 'Close the books',
+        icon: 'calculator',
+        keywords: 'accounting ledger close books journal gl month end period',
+        perform: () => nav('/accounting'),
+      })
+    }
+    // `dispatch` + `settings.manage` — matches SIDEBAR_MENU and the page's own
+    // `useRequireCapability(settingsManage)` in `catalog-page.tsx`. The feature
+    // key is deliberately `dispatch`, not a catalog key of its own.
+    if (hasAccess('dispatch') && can('settings.manage')) {
+      actions.push({
+        id: 'nav.catalog',
+        label: 'Catalog',
+        subtitle: 'The sellable catalog',
+        icon: 'tags',
+        keywords: 'catalog items groups products sellable services',
+        perform: () => nav('/catalog'),
+      })
+    }
     return actions
   }, [hasAccess, can, nav, viewableSlugs, resourcesLoading])
 }

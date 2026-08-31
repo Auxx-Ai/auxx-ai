@@ -26,6 +26,8 @@ const SIDEBAR_TO_ACTION: Record<string, string> = {
   workflows: 'nav.workflows',
   tasks: 'nav.tasks',
   schedule: 'nav.schedule',
+  accounting: 'nav.accounting',
+  catalog: 'nav.catalog',
 }
 
 /** Warn (once per render that trips it) about uncovered top-level sidebar items. */
