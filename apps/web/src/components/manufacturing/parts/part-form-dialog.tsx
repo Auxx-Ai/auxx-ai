@@ -222,8 +222,9 @@ export function PartFormDialog({
     // Validate vendor part fields if supplier section is shown
     const vpErrors: Record<string, string> = {}
     if (showSupplier) {
+      // Supplier only. The supplier's own part number is optional — see the
+      // matching note in `vendor-part-dialog.tsx`.
       if (!vendorPartValues.entityInstanceId) vpErrors.entityInstanceId = 'Supplier is required'
-      if (!vendorPartValues.vendorSku) vpErrors.vendorSku = 'Supplier SKU is required'
     }
     setVendorPartErrors(vpErrors)
 

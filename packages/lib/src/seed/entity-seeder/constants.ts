@@ -372,9 +372,20 @@ export const DISPLAY_FIELD_CONFIG: Record<string, DisplayFieldConfig> = {
     primaryDisplayField: 'name',
     secondaryDisplayField: undefined,
   },
+  // 🛑 The primary is the PART, not `vendorSku`. `vendorSku` is optional — under
+  // the `(part, supplier)` natural key the supplier's own part number is
+  // metadata, not identity, and real price lists routinely omit the column — and
+  // `computeDisplayValue` has no fallback: an absent value writes
+  // `displayName: null` and the record renders nameless everywhere a relation
+  // chip resolves it. `vendor_part_part` is `required: true` / `nullable: false`,
+  // so it is the only leg guaranteed to be there.
+  //
+  // Reaches EXISTING orgs only through migration 115 — `linkDisplayFields` runs
+  // at seed time, so editing this constant alone repoints fresh orgs and leaves
+  // every current one pointing at the SKU.
   vendor_part: {
-    primaryDisplayField: 'vendorSku',
-    secondaryDisplayField: undefined,
+    primaryDisplayField: 'part',
+    secondaryDisplayField: 'vendorSku',
   },
   subpart: {
     primaryDisplayField: 'childPart',

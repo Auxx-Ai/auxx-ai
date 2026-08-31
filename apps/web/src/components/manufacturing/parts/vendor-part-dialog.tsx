@@ -166,7 +166,11 @@ export function VendorPartDialog({
     const newErrors: Record<string, string> = {}
     if (isPartMode && !values.entityInstanceId) newErrors.entityInstanceId = 'Supplier is required'
     if (isContactMode && !values.partId) newErrors.partId = 'Part is required'
-    if (!values.vendorSku) newErrors.vendorSku = 'Supplier SKU is required'
+    // No `vendorSku` check. Identity here is the `(part, supplier)` pair — both
+    // legs above — and the supplier's own part number is metadata a real price
+    // list is allowed to omit. `vendor_part_vendor_sku` is optional in the
+    // registry and on every org's CustomField row (migration 104); this
+    // client-side rule was the last thing still demanding it.
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }

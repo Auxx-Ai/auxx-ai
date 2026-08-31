@@ -75,6 +75,7 @@ import { migration110BuildVisible } from './migrations/110-build-visible'
 import { migration111OrderBuildDrift } from './migrations/111-order-build-drift'
 import { migration112RecordDocuments } from './migrations/112-record-documents'
 import { migration114RetireGlPostingDefs } from './migrations/114-retire-gl-posting-defs'
+import { migration115VendorPartDisplayPart } from './migrations/115-vendor-part-display-part'
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
@@ -203,6 +204,10 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   // MUST sort after 103 and 108 — it deletes the two defs they created. Both
   // have been gutted of that work, so this is a no-op on a fresh database.
   migration114RetireGlPostingDefs,
+  // MUST sort after 001 — it repoints display fields 001 creates. The
+  // `DISPLAY_FIELD_CONFIG` edit that ships with it reaches fresh orgs only,
+  // because `linkDisplayFields` runs at seed time.
+  migration115VendorPartDisplayPart,
 ]
 
 /**
