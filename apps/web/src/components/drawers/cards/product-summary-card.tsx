@@ -64,15 +64,20 @@ export function ProductSummaryCard({ entityInstanceId, recordId }: DrawerTabProp
     [entityInstanceId]
   )
 
-  const { records, total, hasNextPage, isLoading } = useRecordList({
+  const { recordIds, total, hasNextPage, isLoading } = useRecordList({
     entityDefinitionId: partDefId ?? '',
     filters,
     enabled: !!entityInstanceId && !!partDefId,
   })
 
+  // 🛑 Ids, not `records`. `records` is the record-store resolution of these
+  // ids and arrives a wave later; the list is served from the store cache with
+  // `isLoading: false`, so a `records`-keyed gate makes the whole card (and its
+  // section header) vanish on a cached reopen of a product that has variants.
+  // Nothing here reads `RecordMeta` — only the id.
   const rowRecordIds = useMemo(
-    () => (partDefId ? records.map((record) => toRecordId(partDefId, record.id)) : []),
-    [partDefId, records]
+    () => (partDefId ? recordIds.map((id) => toRecordId(partDefId, id)) : []),
+    [partDefId, recordIds]
   )
 
   const { valuesById } = useSystemValuesForRecords(rowRecordIds, VARIANT_ATTRIBUTES, {
@@ -106,7 +111,7 @@ export function ProductSummaryCard({ entityInstanceId, recordId }: DrawerTabProp
 
   const rows: VariantRow[] = useMemo(
     () =>
-      records.map((record, index) => {
+      recordIds.map((id, index) => {
         const own = valuesById[rowRecordIds[index] as RecordId]
         const items = (own?.part_catalog_items as RecordId[] | undefined) ?? []
         // Only a SINGLE backing item supplies a price — price tiers are not a
@@ -118,13 +123,13 @@ export function ProductSummaryCard({ entityInstanceId, recordId }: DrawerTabProp
         const price =
           (soleValues?.catalog_item_default_unit_price as number | null | undefined) ?? null
         return {
-          id: record.id,
+          id,
           quantityOnHand: (own?.part_quantity_on_hand as number | null | undefined) ?? null,
           priceCents: soleItem && active ? price : null,
           catalogItemCount: items.length,
         }
       }),
-    [records, rowRecordIds, valuesById, itemValues]
+    [recordIds, rowRecordIds, valuesById, itemValues]
   )
 
   const summary = useMemo(
@@ -133,7 +138,7 @@ export function ProductSummaryCard({ entityInstanceId, recordId }: DrawerTabProp
   )
 
   // Nothing to summarize → no card, and TabCardSection drops the header too.
-  if (isLoading || records.length === 0) return null
+  if (isLoading || recordIds.length === 0) return null
 
   const statusMeta = status ? PRODUCT_STATUS_BY_VALUE[status] : undefined
   const { priceRange } = summary

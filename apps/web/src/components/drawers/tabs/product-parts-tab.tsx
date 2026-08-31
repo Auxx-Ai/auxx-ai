@@ -139,12 +139,21 @@ export function ProductPartsTab({ entityInstanceId }: DrawerTabProps) {
     [entityInstanceId]
   )
 
-  const { records, isLoading, total, hasNextPage, fetchNextPage, isFetchingNextPage, refresh } =
-    useRecordList({
-      entityDefinitionId: partDefId ?? '',
-      filters,
-      enabled: !!entityInstanceId && !!partDefId,
-    })
+  const {
+    records,
+    recordIds,
+    isLoading,
+    isLoadingRecords,
+    total,
+    hasNextPage,
+    fetchNextPage,
+    isFetchingNextPage,
+    refresh,
+  } = useRecordList({
+    entityDefinitionId: partDefId ?? '',
+    filters,
+    enabled: !!entityInstanceId && !!partDefId,
+  })
 
   const rowRecordIds = useMemo(
     () => (partDefId ? records.map((record) => toRecordId(partDefId, record.id)) : []),
@@ -244,7 +253,15 @@ export function ProductPartsTab({ entityInstanceId }: DrawerTabProps) {
     [partDefId, confirmDetach, saveMultipleAsync, refresh]
   )
 
-  if (isLoading) {
+  // 🛑 `isLoadingRecords` too. The rows read `RecordMeta` (`record.displayName`
+  // feeds the detach confirmation), which resolves a wave after the ids — and a
+  // list served from the store cache reports `isLoading: false` in between, so
+  // without this the tab shows "No variants yet" over a product that has some.
+  //
+  // Qualified on an empty `records`, because this list pages behind a "Load
+  // more" button: an unqualified gate would blank the whole tab to a skeleton
+  // on every additional page.
+  if (isLoading || (isLoadingRecords && !records.length)) {
     return (
       <div className='p-4 space-y-4'>
         <Skeleton className='h-6 w-32' />
@@ -282,7 +299,7 @@ export function ProductPartsTab({ entityInstanceId }: DrawerTabProps) {
         className='flex flex-col flex-1 min-h-0 w-full [&_[data-slot=section]]:flex-1 [&_[data-slot=section]]:border-b-0 [&_[data-slot=section-content]]:flex-1'
         collapsible={false}
         icon={<Package className='size-4 text-muted-foreground/50' />}>
-        {records.length === 0 ? (
+        {recordIds.length === 0 ? (
           <div className='flex h-28 flex-col items-center justify-center gap-1 text-center border rounded-lg bg-muted/30'>
             <Package className='mb-1 h-6 w-6 text-muted-foreground' />
             <p className='text-sm text-muted-foreground'>No variants yet</p>

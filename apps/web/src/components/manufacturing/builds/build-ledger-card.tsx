@@ -93,7 +93,12 @@ export function BuildLedgerCard({ entityInstanceId }: DrawerTabProps) {
     [entityInstanceId]
   )
 
-  const { records, isLoading } = useRecordList({
+  const {
+    records,
+    recordIds: movementIds,
+    isLoading,
+    isLoadingRecords,
+  } = useRecordList({
     entityDefinitionId: movementDefId ?? '',
     filters,
     limit: MOVEMENT_LIMIT,
@@ -110,8 +115,13 @@ export function BuildLedgerCard({ entityInstanceId }: DrawerTabProps) {
     enabled: recordIds.length > 0,
   })
 
-  if (isLoading) return <RowSkeleton />
-  if (records.length === 0) {
+  // 🛑 Both halves. Rows read `RecordMeta` (`displayName`), which resolves in a
+  // SECOND wave after the ids — and a list served from the store cache reports
+  // `isLoading: false` with `records` still empty. Without `isLoadingRecords`
+  // the empty row below claims a completed build posted nothing, which is
+  // exactly the statement it exists to make about a `planned` one.
+  if (isLoading || isLoadingRecords) return <RowSkeleton />
+  if (movementIds.length === 0) {
     // Not an error and not a gap: a `planned` build writes no movements at all
     // (B2), which is the safety property the whole phasing rests on.
     return <EmptyRow label='Nothing posted yet (A build writes its ledger when it completes)' />
