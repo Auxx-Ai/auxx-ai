@@ -71,7 +71,6 @@ export const OPENING_PAIRS = [
     label: 'Raw materials',
     auxxKey: ACCOUNTING_KEYS.openingRawMaterials,
     qboKey: ACCOUNTING_KEYS.qboOpeningRawMaterials,
-    hint: undefined as string | undefined,
   },
   {
     role: 'inventory_wip' as const,
@@ -79,7 +78,6 @@ export const OPENING_PAIRS = [
     label: 'Work in process',
     auxxKey: ACCOUNTING_KEYS.openingWip,
     qboKey: ACCOUNTING_KEYS.qboOpeningWip,
-    hint: 'Expected to be 0 at cutover. Zero is a real balance; unset is not.',
   },
   {
     role: 'inventory_finished_goods' as const,
@@ -87,7 +85,6 @@ export const OPENING_PAIRS = [
     label: 'Finished goods',
     auxxKey: ACCOUNTING_KEYS.openingFinishedGoods,
     qboKey: ACCOUNTING_KEYS.qboOpeningFinishedGoods,
-    hint: undefined as string | undefined,
   },
 ]
 

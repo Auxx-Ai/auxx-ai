@@ -117,7 +117,6 @@ export function AccountingOpeningSettingsPage() {
                     onQboChange={(value) => patchKey(pair.qboKey, value)}
                     auxxError={minorUnitError(draft[pair.auxxKey])}
                     qboError={minorUnitError(draft[pair.qboKey])}
-                    hint={pair.hint}
                     showLabels={index === 0}
                     readOnly={frozen}
                     readOnlyReason={FREEZE_REASON}

@@ -47,6 +47,7 @@ import {
   readMinorUnits,
   readText,
 } from './accounting-settings-keys'
+import { FrozenLock } from './frozen-lock'
 import { QuickbooksSettingsSection } from './quickbooks-section'
 import { SetupStatusSection } from './setup-status-section'
 import { StandardCostSection } from './standard-cost-section'
@@ -462,13 +463,17 @@ function ReadOnlyValue({
 }) {
   return (
     <div className={className}>
-      <div className='flex min-h-8 flex-wrap items-center gap-2 px-2 py-1.5 text-sm'>
-        <span>{value}</span>
-        <Badge variant='outline' size='xs' className='shrink-0'>
-          Locked
-        </Badge>
+      {/*
+        The value on the left, the lock on the right, and the reason in the
+        lock's tooltip. It used to be a `Locked` badge beside the value plus the
+        whole reason as body text underneath, which made a settled state read
+        like a warning and pushed the two rows out of line with every other row
+        on the page.
+      */}
+      <div className='flex min-h-8 items-center gap-2 px-2 py-1.5 text-sm'>
+        <span className='min-w-0 flex-1 truncate'>{value}</span>
+        {reason && <FrozenLock reason={reason} />}
       </div>
-      {reason && <p className='px-2 pb-1.5 text-muted-foreground text-xs'>{reason}</p>}
     </div>
   )
 }

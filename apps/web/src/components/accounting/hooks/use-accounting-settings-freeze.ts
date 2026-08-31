@@ -12,9 +12,8 @@ import { api } from '~/trpc/react'
  * editing setup history.
  */
 export const FREEZE_REASON =
-  'Locked because an entry has already posted. Changing this would rewrite the arithmetic ' +
-  'behind a posted journal entry. Correct a mistake by reversing and re-entering, never by ' +
-  'editing setup history.'
+  'Locked because an entry has already posted. Correct a mistake by reversing and re-entering, ' +
+  'never by editing setup history.'
 
 export interface AccountingSettingsFreeze {
   /** True once anything has posted. */
