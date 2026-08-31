@@ -7,6 +7,7 @@ import type { ExecutionProgress, ExecutionResult, FieldWriteModes } from '../typ
 import type { ImportMappingProperty } from '../types/mapping'
 import type { ImportPlan, ImportPlanStrategy } from '../types/plan'
 import type { ValueResolution } from '../types/resolution'
+import { classifyImportOutcome } from './classify-outcome'
 import type { BatchRecordData } from './execute-batch'
 import { type ExecuteStrategyContext, executeStrategy } from './execute-strategy'
 
@@ -140,13 +141,19 @@ export async function executePlan(options: ExecutePlanOptions): Promise<Executio
 
   const durationMs = Date.now() - startTime
 
-  // Determine final status
-  const allSucceeded = totalFailed === 0
-  const allFailed =
-    totalCreated + totalUpdated + totalSkipped + totalUnmatched + totalNoOps === 0 &&
-    totalFailed > 0
+  const statistics = {
+    created: totalCreated,
+    updated: totalUpdated,
+    skipped: totalSkipped,
+    unmatched: totalUnmatched,
+    noOps: totalNoOps,
+    failed: totalFailed,
+    warnings: totalWarnings,
+  }
 
-  const status = allFailed ? 'failed' : allSucceeded ? 'completed' : 'partial'
+  // Shared with `markJobCompleted`, so the status written on the job row can
+  // never disagree with the one reported here.
+  const status = classifyImportOutcome(statistics)
 
   // Mark plan as completed
   await db
@@ -161,15 +168,7 @@ export async function executePlan(options: ExecutePlanOptions): Promise<Executio
   return {
     planId: plan.id,
     status,
-    statistics: {
-      created: totalCreated,
-      updated: totalUpdated,
-      skipped: totalSkipped,
-      unmatched: totalUnmatched,
-      noOps: totalNoOps,
-      failed: totalFailed,
-      warnings: totalWarnings,
-    },
+    statistics,
     errors,
     durationMs,
   }

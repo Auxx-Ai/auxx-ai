@@ -8,8 +8,9 @@ export type ImportJobStatus =
   | 'planning' // Generating import plan
   | 'ready' // Plan complete, awaiting confirmation
   | 'executing' // Import in progress
-  | 'completed' // Import finished
-  | 'failed' // Import failed
+  | 'completed' // Import finished, every row landed
+  | 'completed_with_errors' // Import finished, but some rows failed
+  | 'failed' // Import failed — ingestion threw, or every row failed
   | 'canceled' // User canceled
 
 /** Import job record */
@@ -37,7 +38,19 @@ export interface ImportJob {
 export interface ImportStatistics {
   created: number
   updated: number
+  /** Rows skipped because they carry an ERROR. */
   skipped: number
+  /**
+   * Rows skipped because update-only mode found no record to update.
+   * Not an error, and never folded into `skipped`.
+   *
+   * Optional here and written by `executeImportPlan`; it was missing from this
+   * type while being present on the row, so anything reading statistics through
+   * `ImportStatistics` silently lost it.
+   */
+  unmatched?: number
+  /** Update rows whose payload was empty — nothing written, not a failure. */
+  noOps?: number
   failed: number
   /** Rows that imported with at least one warning */
   warnings?: number

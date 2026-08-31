@@ -634,8 +634,9 @@ export const importJobStatus = pgEnum('ImportJobStatus', [
   'planning', // Generating import plan
   'ready', // Plan complete, awaiting confirmation
   'executing', // Import in progress
-  'completed', // Import finished successfully
-  'failed', // Import failed
+  'completed', // Import finished, every row landed
+  'completed_with_errors', // Import finished, but some rows failed
+  'failed', // Import failed — ingestion threw, or every row failed
   'canceled', // User canceled
 ])
 

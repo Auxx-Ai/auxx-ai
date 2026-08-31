@@ -30,9 +30,12 @@ export {
   generatePlan,
 } from './generate-plan'
 export {
+  getJobFailureSummary,
   getPlanErrors,
   getPlanWarnings,
   getPlanWithEstimates,
+  type JobFailureReason,
+  type JobFailureSummary,
   type PlanError,
   type PlanWarning,
   type PlanWarningsResult,

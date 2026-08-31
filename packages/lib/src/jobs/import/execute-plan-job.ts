@@ -388,8 +388,12 @@ export async function executePlanJob(ctx: JobContext<ExecutePlanJobProps>): Prom
       })
     )
 
-    // Mark job as completed
-    await markJobCompleted(db, jobId, result.statistics)
+    // Mark job finished. The terminal status is derived from the statistics
+    // inside `markJobCompleted` — `completed`, `completed_with_errors`, or
+    // `failed` when no row landed at all — and is what the SSE frame below
+    // carries. Publishing a literal `'completed'` here is what let a run that
+    // rejected all 201 rows close the wizard on a green success card.
+    const finalStatus = await markJobCompleted(db, jobId, result.statistics)
 
     // Final frame, unthrottled: the last batch's progress publish may have been
     // swallowed by the throttle, and it is the one carrying the tail of the rows.
@@ -447,11 +451,12 @@ export async function executePlanJob(ctx: JobContext<ExecutePlanJobProps>): Prom
       durationMs: result.durationMs,
     })
 
-    await publishEvent({ type: 'job:status', status: 'completed' })
+    await publishEvent({ type: 'job:status', status: finalStatus })
 
     logger.info('Plan execution complete', {
       jobId,
       planId,
+      status: finalStatus,
       statistics: result.statistics,
       durationMs: result.durationMs,
     })

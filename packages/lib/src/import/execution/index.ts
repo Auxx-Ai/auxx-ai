@@ -7,6 +7,13 @@ export {
   type SourceRow,
 } from './build-record-data'
 export {
+  classifyImportOutcome,
+  type ImportOutcome,
+  isFinishedImportStatus,
+  type OutcomeCounters,
+  outcomeToJobStatus,
+} from './classify-outcome'
+export {
   type BatchRecord,
   type BatchRecordData,
   type ExecuteBatchContext,

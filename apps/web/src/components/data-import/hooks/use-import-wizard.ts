@@ -2,6 +2,7 @@
 
 'use client'
 
+import { isFinishedImportStatus } from '@auxx/lib/import/client'
 import { useCallback, useMemo } from 'react'
 import { api } from '~/trpc/react'
 import { IMPORT_STEPS } from '../constants'
@@ -56,8 +57,11 @@ export function useImportWizard({ jobId, currentStep, mapColumnsData }: UseImpor
               ? 'error'
               : 'active'
             : 'pending',
-      confirm:
-        job?.status === 'completed' ? 'complete' : currentStep === 'confirm' ? 'active' : 'pending',
+      confirm: isFinishedImportStatus(job?.status)
+        ? 'complete'
+        : currentStep === 'confirm'
+          ? 'active'
+          : 'pending',
     }
   }, [currentStep, jobId, job?.status, mappedColumns])
 
@@ -103,7 +107,7 @@ export function useImportWizard({ jobId, currentStep, mapColumnsData }: UseImpor
       if (step === currentStep) return true
 
       // Can always go to confirm step if job is completed
-      if (step === 'confirm' && job?.status === 'completed') return true
+      if (step === 'confirm' && isFinishedImportStatus(job?.status)) return true
 
       // Can go back to any completed step
       if (targetIndex < currentIndex) {
@@ -135,7 +139,7 @@ export function useImportWizard({ jobId, currentStep, mapColumnsData }: UseImpor
     stepStatuses,
     stepData,
     isLoading: !!jobId && isJobLoading,
-    isComplete: job?.status === 'completed',
+    isComplete: isFinishedImportStatus(job?.status),
 
     // Navigation check
     canNavigateToStep,
