@@ -64,29 +64,80 @@
 //
 // The map is connection-scoped, so it is resolved through the org's QuickBooks
 // `Credential`, and an org with no connection simply has no map to clear.
+//
+// ── `--unfinalize`, and the two locks it is NOT ─────────────────────────────
+//
+// Three separate things gate accounting setup, and they are worth keeping
+// straight because only the third one this flag touches:
+//
+//   1. **The field freeze.** `useAccountingSettingsFreeze` derives `frozen` from
+//      a live `ledger.verifyBalance` sweep - `postingsChecked > 0` - not from a
+//      stored bit. So deleting a period's postings ALREADY unfreezes the opening
+//      baseline and book timezone; `--unfinalize` is not needed for that and
+//      does not do it.
+//   2. **The server guard.** There isn't one. `setting.ts` asserts
+//      `settingsManage` and calls through to `batchUpdateOrganizationSettings`;
+//      nothing on the server knows what `accounting.openingRawMaterials` means
+//      (README rank 2b). So this script is not defeating a lock - it is writing
+//      the same keys through the same door the settings page uses.
+//   3. **`accounting.setupState`.** The posting-readiness gate
+//      (`setup-readiness.ts`), and the ONLY one of the three with no reverse
+//      gear in the product. That is what `--unfinalize` walks back, to `draft`.
+//
+// It refuses while ANY posting remains for the organization - not just in
+// `periodKey` - because that is the same question the field freeze asks, and
+// reopening setup underneath a posted entry in some other month is the exact
+// edit the freeze exists to prevent. `--force` overrides.
+//
+// 🛑 It fires `org.settings.changed` itself. `batchUpdateOrganizationSettings`
+// does NOT bust the `orgSettings` cache - the settings ROUTER does
+// (`setting.ts:134`), and this script is not going through the router. The key's
+// TTL is one day, so skipping the event leaves the wizard reading `finalized`
+// out of Redis long after the row says `draft`.
 
 import { database as db, schema } from '@auxx/database'
 import { and, desc, eq } from 'drizzle-orm'
+import { onCacheEvent } from '../src/cache/invalidate'
 import {
   clearQuickbooksAccountMapping,
   readQuickbooksAccountMap,
 } from '../src/money/quickbooks/account-map'
 import { listChartAccounts } from '../src/postings'
+import { batchUpdateOrganizationSettings } from '../src/settings/settings-service'
 
 const ORG = process.argv[2] ?? ''
 const PERIOD = process.argv[3] ?? ''
 const args = process.argv.slice(4)
 const CONFIRM = args.includes('--confirm')
 const POSTINGS_ONLY = args.includes('--postings-only')
+const UNFINALIZE = args.includes('--unfinalize')
 const FORCE = args.includes('--force')
 
 if (!ORG || !/^\d{4}-\d{2}$/.test(PERIOD)) {
   console.error(
-    'usage: reset-month-end-close.ts <organizationId> <periodKey> [--postings-only] [--force] [--confirm]\n' +
-      '       periodKey is YYYY-MM, e.g. 2026-08'
+    'usage: reset-month-end-close.ts <organizationId> <periodKey>\n' +
+      '         [--postings-only] [--unfinalize] [--force] [--confirm]\n' +
+      '       periodKey is YYYY-MM, e.g. 2026-08\n' +
+      '       --unfinalize returns accounting.setupState to draft (organization-wide,\n' +
+      '       not scoped to periodKey) so the setup wizard can be run again'
   )
   process.exit(1)
 }
+
+/**
+ * The three keys the wizard's finalize step writes.
+ *
+ * Returned to their catalog defaults rather than deleted: `setupState` defaults
+ * to `'draft'` and the two audit keys to `null`, so writing those values lands
+ * the organization in exactly the state one that never opened the wizard is in,
+ * while still going through `batchUpdateOrganizationSettings`' normalization and
+ * its unknown-key check. A raw row delete would skip both.
+ */
+const FINALIZE_KEYS = [
+  { key: 'accounting.setupState' as const, value: 'draft' },
+  { key: 'accounting.setupFinalizedAt' as const, value: null },
+  { key: 'accounting.setupFinalizedByUserId' as const, value: null },
+]
 
 const QUICKBOOKS_APP_SLUG = 'quickbooks'
 
@@ -148,7 +199,9 @@ async function main() {
   console.log(`\norganization ${org.name} (${org.id})`)
   console.log(`period       ${PERIOD}`)
   console.log(`mode         ${CONFIRM ? 'DELETE' : 'dry run (pass --confirm to delete)'}`)
-  console.log(`scope        postings${POSTINGS_ONLY ? '' : ' + QuickBooks account map'}\n`)
+  console.log(
+    `scope        postings${POSTINGS_ONLY ? '' : ' + QuickBooks account map'}${UNFINALIZE ? ' + setup state' : ''}\n`
+  )
 
   // ── 1. The postings ───────────────────────────────────────────────────────
 
@@ -248,6 +301,23 @@ async function main() {
 
   // ── 3. Do it ──────────────────────────────────────────────────────────────
 
+  if (UNFINALIZE) {
+    const current = await db
+      .select({ value: schema.OrganizationSetting.value })
+      .from(schema.OrganizationSetting)
+      .where(
+        and(
+          eq(schema.OrganizationSetting.organizationId, ORG),
+          eq(schema.OrganizationSetting.key, 'accounting.setupState')
+        )
+      )
+      .limit(1)
+    const state = current[0]?.value
+    console.log(
+      `setup state: ${typeof state === 'string' ? state : JSON.stringify(state ?? 'draft (unset)')} -> draft\n`
+    )
+  }
+
   if (!CONFIRM) {
     console.log('dry run - nothing was deleted. Re-run with --confirm.\n')
     return
@@ -274,11 +344,48 @@ async function main() {
     }
   }
 
+  // ── 4. The setup state ────────────────────────────────────────────────────
+  //
+  // AFTER the deletes, so the remaining-postings check sees the world this run
+  // leaves behind rather than the one it found. Resetting a period and then
+  // refusing to unfinalize because of the postings you just removed would be
+  // an ordering bug, not a guard.
+
+  let unfinalized = false
+  if (UNFINALIZE) {
+    const [remaining] = await db
+      .select({ n: schema.GlPosting.id })
+      .from(schema.GlPosting)
+      .where(eq(schema.GlPosting.organizationId, ORG))
+      .limit(1)
+
+    if (remaining && !FORCE) {
+      console.error(
+        '\n🛑 NOT unfinalizing. Postings still exist for this organization in other periods.\n' +
+          '   Reopening setup underneath a posted entry rewrites the arithmetic behind it -\n' +
+          '   the same edit the field freeze exists to prevent. Reset those periods too, or\n' +
+          '   pass --force.\n'
+      )
+    } else {
+      await batchUpdateOrganizationSettings({ organizationId: ORG, settings: FINALIZE_KEYS })
+      // The router's job when a human does this. See the header.
+      await onCacheEvent('org.settings.changed', { orgId: ORG, broadcastUserKeys: true })
+      unfinalized = true
+      console.log(
+        `set accounting.setupState to draft${remaining ? ' (--force: postings remain)' : ''}`
+      )
+    }
+  }
+
   console.log(
-    `\ndone. ${postings.length} posting(s), ${mappings.length} mapping(s).\n` +
+    `\ndone. ${postings.length} posting(s), ${mappings.length} mapping(s)` +
+      `${unfinalized ? ', setup reopened' : ''}.\n` +
       `${PERIOD} is unclaimed - preview and Post it again from /app/accounting.\n` +
       (mappings.length > 0
         ? 'The account map is empty, so the first Post will refuse until the accounts are\nre-mapped in the setup wizard. That refusal is the mapping step working.\n'
+        : '') +
+      (unfinalized
+        ? 'Setup is back to draft, so the wizard reruns and the Cutover snapshot is editable.\n'
         : '')
   )
 }
