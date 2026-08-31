@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.224](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.223...auxx-v0.1.224) (2026-08-31)
+
+
+### Bug Fixes
+
+* **money:** show the setup freeze as a lock and tooltip, not a paragraph ([#1989](https://github.com/Auxx-Ai/auxx-ai/issues/1989)) ([7613bba](https://github.com/Auxx-Ai/auxx-ai/commit/7613bbad5bee9f64fc530d85920b631304d04635))
+* **resources:** don't serve a list cache too short for the reader asking ([#1991](https://github.com/Auxx-Ai/auxx-ai/issues/1991)) ([dfc6f0b](https://github.com/Auxx-Ai/auxx-ai/commit/dfc6f0b006b3554609d7cd1288714f4287e5af01))
+
 ## [0.1.223](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.222...auxx-v0.1.223) (2026-08-31)
 
 
