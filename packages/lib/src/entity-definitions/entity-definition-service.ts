@@ -156,7 +156,25 @@ export class EntityDefinitionService {
       changedDisplayFields.push('avatar')
     }
 
-    // 4. Trigger recalculation if any changed
+    // 4. Bust the org cache — BEFORE the recalculation below, never after.
+    //
+    // 🛑 The order of these two is load-bearing and looks backwards.
+    // `recalculateDisplayFields` resolves the field to read through
+    // `getCachedResource` → `getOrgCache().get(orgId, 'resources')`, and that
+    // snapshot carries `primaryDisplayFieldId` as it was when it was built.
+    // `updateEntityDefinition` performs no invalidation of its own and the
+    // `resources` key has a ONE_DAY Redis TTL, so with this call sitting after
+    // the recalc — where it used to be — a display-field change recomputed every
+    // `displayName` from the OLD field and then cleared the cache. Subsequent
+    // READS then looked correct while the denormalized column stayed wrong until
+    // something else happened to rewrite it.
+    //
+    // The cost of this order is that a client may briefly hold the new def
+    // alongside display names that are still being rebuilt. That is a cosmetic
+    // race measured in milliseconds, against a wrong column that persisted.
+    await notifyEntityDefChanged(this.organizationId, id, 'updated')
+
+    // 5. Recalculate. Now reads the pointer that was just written.
     if (changedDisplayFields.length > 0) {
       try {
         const displayFieldService = new DisplayFieldService(this.organizationId)
@@ -167,7 +185,6 @@ export class EntityDefinitionService {
       }
     }
 
-    await notifyEntityDefChanged(this.organizationId, id, 'updated')
     return result.value
   }
 
