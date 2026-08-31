@@ -12,7 +12,7 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Table, TableBody, TableHead, TableHeader, TableRow } from '@auxx/ui/components/table'
 import { toastError } from '@auxx/ui/components/toast'
 import { Store } from 'lucide-react'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { VendorPartDialog } from '~/components/manufacturing/parts/vendor-part-dialog'
 import { toRecordId, useRecordList, useResourceProperty } from '~/components/resources'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
@@ -22,6 +22,13 @@ import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import type { DrawerTabProps } from '../drawer-tab-registry'
 import { VendorPartRow, type VendorPartRowValues } from './part-vendors-tab-row'
+
+/**
+ * Page size for the supplier list — a page size, NOT a cap. The effect below
+ * drains every page; a part's supplier list is bounded, and the previous
+ * default of 50 truncated with a header count that agreed with the truncation.
+ */
+const VENDOR_PAGE_SIZE = 100
 
 /** Everything a supplier row renders, and everything the winner rule needs. */
 const VENDOR_PART_ATTRIBUTES = [
@@ -85,15 +92,25 @@ export function PartVendorsTab({ recordId }: DrawerTabProps) {
     [partId]
   )
 
-  const { records, isLoading, refresh } = useRecordList({
-    entityDefinitionId: vendorPartDefId ?? '',
-    filters,
-    enabled: !!partId && !!vendorPartDefId,
-  })
+  const { recordIds, total, isLoading, hasNextPage, isFetchingNextPage, fetchNextPage, refresh } =
+    useRecordList({
+      entityDefinitionId: vendorPartDefId ?? '',
+      filters,
+      limit: VENDOR_PAGE_SIZE,
+      enabled: !!partId && !!vendorPartDefId,
+    })
 
+  useEffect(() => {
+    if (hasNextPage && !isFetchingNextPage && !isLoading) fetchNextPage()
+  }, [hasNextPage, isFetchingNextPage, isLoading, fetchNextPage])
+
+  // 🛑 Ids, not `records`. `records` resolves from the record store in a second
+  // wave, and a list served from the store cache reports `isLoading: false`
+  // with the ids already known — so a `records`-keyed count renders short (or
+  // renders the empty state) for that window. Rows need only the id.
   const rowRecordIds = useMemo(
-    () => (vendorPartDefId ? records.map((record) => toRecordId(vendorPartDefId, record.id)) : []),
-    [records, vendorPartDefId]
+    () => (vendorPartDefId ? recordIds.map((id) => toRecordId(vendorPartDefId, id)) : []),
+    [recordIds, vendorPartDefId]
   )
 
   // Lifted out of the rows: the winner is a property of the LIST, so no row can
@@ -191,7 +208,7 @@ export function PartVendorsTab({ recordId }: DrawerTabProps) {
   return (
     <ScrollArea className='flex-1'>
       <Section
-        title={`Suppliers (${records.length})`}
+        title={`Suppliers (${total})`}
         initialOpen
         actions={
           canCreate ? (
@@ -201,7 +218,7 @@ export function PartVendorsTab({ recordId }: DrawerTabProps) {
             </Button>
           ) : undefined
         }>
-        {records.length === 0 ? (
+        {recordIds.length === 0 ? (
           <div className='flex h-24 flex-col items-center justify-center text-center border rounded-lg bg-muted/30'>
             <Store className='mb-2 h-6 w-6 text-muted-foreground' />
             <p className='text-sm text-muted-foreground'>No suppliers added yet</p>
@@ -223,17 +240,17 @@ export function PartVendorsTab({ recordId }: DrawerTabProps) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {records.map((record, index) => {
+                {recordIds.map((id, index) => {
                   const rowRecordId = rowRecordIds[index] as RecordId
                   return (
                     <VendorPartRow
-                      key={record.id}
+                      key={id}
                       recordId={rowRecordId}
                       values={toRowValues(valuesById[rowRecordId])}
                       isWinner={rowRecordId === winningRecordId}
-                      onEdit={() => handleEditVendorPart(record.id)}
-                      onDelete={() => handleDeleteVendorPart(record.id)}
-                      onSetPreferred={() => handleSetPreferred(record.id)}
+                      onEdit={() => handleEditVendorPart(id)}
+                      onDelete={() => handleDeleteVendorPart(id)}
+                      onSetPreferred={() => handleSetPreferred(id)}
                     />
                   )
                 })}

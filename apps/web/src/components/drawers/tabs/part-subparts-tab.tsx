@@ -26,7 +26,7 @@ import { toastError } from '@auxx/ui/components/toast'
 import { pluralize } from '@auxx/utils'
 import { formatCurrency } from '@auxx/utils/currency'
 import { CircleAlert, Edit, MoreHorizontal, Package, PlusCircle, Trash2 } from 'lucide-react'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
 import { SubpartDialog } from '~/components/manufacturing/parts/subpart-dialog'
 import { toRecordId, useRecordList, useResourceProperty } from '~/components/resources'
@@ -37,6 +37,17 @@ import { useConfirm } from '~/hooks/use-confirm'
 import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import type { DrawerTabProps } from '../drawer-tab-registry'
+
+/**
+ * Page size for both directions of the BOM.
+ *
+ * A page size, NOT a cap — the effects below drain every page, the same call
+ * `line-builder.tsx` makes for document lines. Both lists are bounded (an
+ * assembly has tens of components, a part is used in tens of assemblies), and
+ * the previous default of 50 truncated silently: the section headers counted
+ * the loaded rows, so a 60-component BOM read "Subparts (50)" and looked right.
+ */
+const BOM_PAGE_SIZE = 100
 
 /** What the assembly-level unpriced check reads off each subpart row. */
 const SUBPART_CHILD_ATTRIBUTES = ['subpart_child_part'] as const
@@ -88,14 +99,23 @@ export function PartSubpartsTab({ recordId }: DrawerTabProps) {
   )
 
   const {
-    records: subpartRecords,
+    recordIds: subpartIds,
+    total: subpartTotal,
     isLoading: isLoadingSubparts,
+    hasNextPage: hasMoreSubparts,
+    isFetchingNextPage: isFetchingMoreSubparts,
+    fetchNextPage: fetchMoreSubparts,
     refresh: refreshSubparts,
   } = useRecordList({
     entityDefinitionId: subpartDefId ?? '',
     filters: subpartFilters,
+    limit: BOM_PAGE_SIZE,
     enabled: !!partId && !!subpartDefId,
   })
+
+  useEffect(() => {
+    if (hasMoreSubparts && !isFetchingMoreSubparts && !isLoadingSubparts) fetchMoreSubparts()
+  }, [hasMoreSubparts, isFetchingMoreSubparts, isLoadingSubparts, fetchMoreSubparts])
 
   // Used In Assemblies section: parents of this part
   const parentFilters: ConditionGroup[] = useMemo(
@@ -117,14 +137,23 @@ export function PartSubpartsTab({ recordId }: DrawerTabProps) {
   )
 
   const {
-    records: parentRecords,
+    recordIds: parentIds,
+    total: parentTotal,
     isLoading: isLoadingParents,
+    hasNextPage: hasMoreParents,
+    isFetchingNextPage: isFetchingMoreParents,
+    fetchNextPage: fetchMoreParents,
     refresh: refreshParents,
   } = useRecordList({
     entityDefinitionId: subpartDefId ?? '',
     filters: parentFilters,
+    limit: BOM_PAGE_SIZE,
     enabled: !!partId && !!subpartDefId,
   })
+
+  useEffect(() => {
+    if (hasMoreParents && !isFetchingMoreParents && !isLoadingParents) fetchMoreParents()
+  }, [hasMoreParents, isFetchingMoreParents, isLoadingParents, fetchMoreParents])
 
   const isLoading = isLoadingSubparts || isLoadingParents
 
@@ -135,9 +164,16 @@ export function PartSubpartsTab({ recordId }: DrawerTabProps) {
   // Two lifted reads, because the answer spans the list: the subpart rows say
   // WHICH parts are components, and those parts say whether they are priced.
   // A row subscribing to its own values can only ever answer for itself.
+  //
+  // 🛑 Keyed on `recordIds`, never on `records`. `useRecordList` resolves
+  // `records` from the record store in a SECOND wave, and the list is served
+  // from the store cache (5-min TTL) with `isLoading: false` — so on a cached
+  // open the ids are known while `records` is still empty. Everything that
+  // decides what renders reads ids for that reason; only a row that needs
+  // `RecordMeta` itself (a `createdAt`, a `displayName`) may read `records`.
   const subpartRecordIds = useMemo(
-    () => (subpartDefId ? subpartRecords.map((record) => toRecordId(subpartDefId, record.id)) : []),
-    [subpartRecords, subpartDefId]
+    () => (subpartDefId ? subpartIds.map((id) => toRecordId(subpartDefId, id)) : []),
+    [subpartIds, subpartDefId]
   )
 
   const { valuesById: subpartValues } = useSystemValuesForRecords(
@@ -259,7 +295,7 @@ export function PartSubpartsTab({ recordId }: DrawerTabProps) {
     <ScrollArea className='flex-1'>
       {/* Subparts Section */}
       <Section
-        title={`Subparts (${subpartRecords.length})`}
+        title={`Subparts (${subpartTotal})`}
         initialOpen
         actions={
           canCreate ? (
@@ -269,7 +305,7 @@ export function PartSubpartsTab({ recordId }: DrawerTabProps) {
             </Button>
           ) : undefined
         }>
-        {subpartRecords.length === 0 ? (
+        {subpartIds.length === 0 ? (
           <div className='flex h-24 flex-col items-center justify-center text-center border rounded-lg bg-muted/30'>
             <Package className='mb-2 h-6 w-6 text-muted-foreground' />
             <p className='text-sm text-muted-foreground'>No subparts added yet</p>
@@ -301,16 +337,16 @@ export function PartSubpartsTab({ recordId }: DrawerTabProps) {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {subpartRecords.map((record) => (
+                  {subpartIds.map((id) => (
                     <SubpartRow
-                      key={record.id}
-                      recordId={toRecordId(subpartDefId!, record.id)}
+                      key={id}
+                      recordId={toRecordId(subpartDefId!, id)}
                       relatedPartField='subpart_child_part'
                       linkTab='subparts'
                       showActions
                       unpricedChildIds={unpricedChildIds}
-                      onEdit={() => handleEditSubpart(record.id)}
-                      onDelete={() => handleDeleteSubpart(record.id)}
+                      onEdit={() => handleEditSubpart(id)}
+                      onDelete={() => handleDeleteSubpart(id)}
                     />
                   ))}
                 </TableBody>
@@ -321,8 +357,8 @@ export function PartSubpartsTab({ recordId }: DrawerTabProps) {
       </Section>
 
       {/* Parent Parts Section */}
-      {parentRecords.length > 0 && (
-        <Section title={`Used In (${parentRecords.length})`} initialOpen>
+      {parentIds.length > 0 && (
+        <Section title={`Used In (${parentTotal})`} initialOpen>
           <div className='rounded-md border'>
             <Table>
               <TableHeader>
@@ -332,10 +368,10 @@ export function PartSubpartsTab({ recordId }: DrawerTabProps) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {parentRecords.map((record) => (
+                {parentIds.map((id) => (
                   <SubpartRow
-                    key={record.id}
-                    recordId={toRecordId(subpartDefId!, record.id)}
+                    key={id}
+                    recordId={toRecordId(subpartDefId!, id)}
                     relatedPartField='subpart_parent_part'
                     linkTab='subparts'
                   />

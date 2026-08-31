@@ -16,7 +16,8 @@
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
 import type { ResourceFieldId } from '@auxx/types/field'
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
+import { LINE_PAGE_SIZE } from '~/components/money/ui/line-builder/line-values'
 import { toRecordId, useRecordList, useResourceProperty } from '~/components/resources'
 import { useSystemValuesForRecords } from '~/components/resources/hooks/use-system-values-for-records'
 
@@ -100,15 +101,27 @@ export function useVendorBillLines(billRecordId: RecordId) {
     [billId]
   )
 
-  const { records, isLoading, refresh } = useRecordList({
-    entityDefinitionId: lineDefId ?? '',
-    filters,
-    enabled: !!billId && !!lineDefId,
-  })
+  const { recordIds, isLoading, hasNextPage, isFetchingNextPage, fetchNextPage, refresh } =
+    useRecordList({
+      entityDefinitionId: lineDefId ?? '',
+      filters,
+      limit: LINE_PAGE_SIZE,
+      enabled: !!billId && !!lineDefId,
+    })
 
+  // Every page, eagerly — the same call the builder makes for the same rows.
+  // On the old un-drained default of 50 a bill with more lines than that fed
+  // the match card a SHORT line set, which reads as "the bill does not claim
+  // these order lines" and offers them for import a second time.
+  useEffect(() => {
+    if (hasNextPage && !isFetchingNextPage && !isLoading) fetchNextPage()
+  }, [hasNextPage, isFetchingNextPage, isLoading, fetchNextPage])
+
+  // Ids, not `records`: the record-store resolution is a second wave, and
+  // `ready` below already carries the "values have landed" half of the answer.
   const rowRecordIds = useMemo(
-    () => (lineDefId ? records.map((record) => toRecordId(lineDefId, record.id)) : []),
-    [records, lineDefId]
+    () => (lineDefId ? recordIds.map((id) => toRecordId(lineDefId, id)) : []),
+    [recordIds, lineDefId]
   )
 
   const { valuesById, loadedById } = useSystemValuesForRecords(
@@ -149,6 +162,10 @@ export function useVendorBillLines(billRecordId: RecordId) {
     !!billId &&
     !!lineDefId &&
     !isLoading &&
+    // A half-paged list is a SHORT list, which is the third window all over
+    // again — an absent line reads as "not claimed by this bill".
+    !hasNextPage &&
+    !isFetchingNextPage &&
     rowRecordIds.every((lineRecordId) =>
       VENDOR_BILL_LINE_ATTRIBUTES.every((attr) => loadedById[lineRecordId]?.[attr])
     )

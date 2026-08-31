@@ -11,7 +11,7 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Table, TableBody, TableHead, TableHeader, TableRow } from '@auxx/ui/components/table'
 import { toastError } from '@auxx/ui/components/toast'
 import { Package } from 'lucide-react'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { VendorPartDialog } from '~/components/manufacturing/parts/vendor-part-dialog'
 import { toRecordId, useRecordList, useResourceProperty } from '~/components/resources'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
@@ -20,6 +20,13 @@ import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import type { DrawerTabProps } from '../drawer-tab-registry'
 import { ContactVendorPartRow } from './contact-parts-tab-row'
+
+/**
+ * Page size for the supplied-parts list — a page size, NOT a cap. The effect
+ * below drains every page; the previous default of 50 truncated silently,
+ * with a header count taken from the loaded rows so it agreed with itself.
+ */
+const SUPPLIED_PARTS_PAGE_SIZE = 100
 
 /**
  * Parts tab for company drawer - shows parts this company supplies.
@@ -57,11 +64,17 @@ export function CompanyPartsTab({ entityInstanceId }: DrawerTabProps) {
     [entityInstanceId]
   )
 
-  const { records, isLoading, refresh } = useRecordList({
-    entityDefinitionId: vendorPartDefId ?? '',
-    filters,
-    enabled: !!entityInstanceId && !!vendorPartDefId,
-  })
+  const { recordIds, total, isLoading, hasNextPage, isFetchingNextPage, fetchNextPage, refresh } =
+    useRecordList({
+      entityDefinitionId: vendorPartDefId ?? '',
+      filters,
+      limit: SUPPLIED_PARTS_PAGE_SIZE,
+      enabled: !!entityInstanceId && !!vendorPartDefId,
+    })
+
+  useEffect(() => {
+    if (hasNextPage && !isFetchingNextPage && !isLoading) fetchNextPage()
+  }, [hasNextPage, isFetchingNextPage, isLoading, fetchNextPage])
 
   // Delete via entity system
   const deleteRecord = api.record.delete.useMutation({
@@ -132,7 +145,7 @@ export function CompanyPartsTab({ entityInstanceId }: DrawerTabProps) {
     <>
       <ScrollArea className='flex-1'>
         <Section
-          title={`Parts (${records.length})`}
+          title={`Parts (${total})`}
           className='flex flex-col flex-1 min-h-0 w-full [&_[data-slot=section]]:flex-1 [&_[data-slot=section]]:border-b-0 [&_[data-slot=section-content]]:flex-1'
           collapsible={false}
           icon={<Package className='size-4 text-muted-foreground/50' />}
@@ -144,7 +157,7 @@ export function CompanyPartsTab({ entityInstanceId }: DrawerTabProps) {
               </Button>
             ) : undefined
           }>
-          {records.length === 0 ? (
+          {recordIds.length === 0 ? (
             <div className='flex h-24 flex-col items-center justify-center text-center border rounded-lg bg-muted/30'>
               <Package className='mb-2 h-6 w-6 text-muted-foreground' />
               <p className='text-sm text-muted-foreground'>No parts added yet</p>
@@ -163,13 +176,13 @@ export function CompanyPartsTab({ entityInstanceId }: DrawerTabProps) {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {records.map((record) => (
+                  {recordIds.map((id) => (
                     <ContactVendorPartRow
-                      key={record.id}
-                      recordId={toRecordId(vendorPartDefId!, record.id)}
-                      onEdit={() => handleEditVendorPart(record.id)}
-                      onDelete={() => handleDeleteVendorPart(record.id)}
-                      onSetPreferred={() => handleSetPreferred(record.id)}
+                      key={id}
+                      recordId={toRecordId(vendorPartDefId!, id)}
+                      onEdit={() => handleEditVendorPart(id)}
+                      onDelete={() => handleDeleteVendorPart(id)}
+                      onSetPreferred={() => handleSetPreferred(id)}
                     />
                   ))}
                 </TableBody>

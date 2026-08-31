@@ -45,6 +45,15 @@ const TYPE_LABEL_MAP: Record<string, string> = Object.fromEntries(
   StockMovementType.values.map((t) => [t.value, t.label])
 )
 
+/**
+ * Movements per page.
+ *
+ * Unlike a BOM this list is UNBOUNDED — a busy part accumulates thousands — so
+ * it pages behind a control rather than draining. What changed is that the
+ * truncation is now visible: the header counts `total`, not the loaded rows.
+ */
+const MOVEMENT_PAGE_SIZE = 50
+
 /** Stock status → badge variant */
 const STATUS_VARIANT_MAP: Record<string, Variant> = {
   in_stock: 'green',
@@ -121,17 +130,33 @@ export function PartInventoryTab({ recordId }: DrawerTabProps) {
 
   const {
     records,
+    recordIds,
+    total,
     isLoading: isLoadingMovements,
+    isLoadingRecords,
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
     refresh,
   } = useRecordList({
     entityDefinitionId: stockMovementDefId ?? '',
     filters,
     sorting,
-    limit: 50,
+    limit: MOVEMENT_PAGE_SIZE,
     enabled: !!partId && !!stockMovementDefId,
   })
 
-  const isLoading = isLoadingPart || isLoadingMovements
+  // 🛑 `isLoadingRecords` belongs in this gate, not just `isLoadingMovements`.
+  // The rows below need `RecordMeta` (`createdAt`), which `useRecordList`
+  // resolves in a SECOND wave — and a list served from the store cache reports
+  // `isLoading: false` with `records` still empty, so without this the tab
+  // renders "Stock Movements (0)" and the "No stock movements yet" placeholder
+  // over a part that has plenty.
+  //
+  // Only when NOTHING is rendered yet, though: `isLoadingRecords` goes true
+  // again for each "Load more" page, and an unqualified gate would swap the
+  // whole tab back to a skeleton every time the user asked for more.
+  const isLoading = isLoadingPart || isLoadingMovements || (isLoadingRecords && !records.length)
 
   const handleAdjustSuccess = () => {
     refresh()
@@ -164,7 +189,7 @@ export function PartInventoryTab({ recordId }: DrawerTabProps) {
 
       {/* Stock Movements */}
       <Section
-        title={`Stock Movements (${records.length})`}
+        title={`Stock Movements (${total})`}
         initialOpen
         actions={
           canAdjustStock ? (
@@ -189,7 +214,7 @@ export function PartInventoryTab({ recordId }: DrawerTabProps) {
             </div>
           ) : undefined
         }>
-        {records.length === 0 ? (
+        {recordIds.length === 0 ? (
           <div className='flex h-24 flex-col items-center justify-center text-center border rounded-lg bg-muted/30'>
             <Package className='mb-2 h-6 w-6 text-muted-foreground' />
             <p className='text-sm text-muted-foreground'>No stock movements yet</p>
@@ -223,6 +248,18 @@ export function PartInventoryTab({ recordId }: DrawerTabProps) {
                 ))}
               </TableBody>
             </Table>
+            {hasNextPage && (
+              <div className='flex justify-center border-t p-1'>
+                <Button
+                  variant='ghost'
+                  size='xs'
+                  loading={isFetchingNextPage}
+                  loadingText='Loading...'
+                  onClick={() => fetchNextPage()}>
+                  Load more
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </Section>

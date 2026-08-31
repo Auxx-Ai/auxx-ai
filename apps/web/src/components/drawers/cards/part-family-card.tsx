@@ -17,7 +17,7 @@ import { Badge, type Variant } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { pluralize } from '@auxx/utils'
 import { Package, Sparkles } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { toRecordId, useRecordList, useResourceProperty } from '~/components/resources'
@@ -47,6 +47,15 @@ const PRODUCT_STATUS_BY_VALUE = Object.fromEntries(ProductStatus.values.map((v) 
  * kind of family this is.
  */
 const SIBLING_LIMIT = 5
+
+/**
+ * Siblings per page — a page size, NOT a cap. The effect below drains every
+ * page before any count is rendered, because every number this card shows
+ * ("Variant 3 of 12", "Show all 12") is derived from the LOADED rows. On the
+ * old un-drained default of 50 a 60-variant family offered "Show all 50", and
+ * clicking it was the end of the road.
+ */
+const SIBLING_PAGE_SIZE = 100
 
 /** Synthetic relationship config for the ad-hoc product picker (not a real field). */
 const PRODUCT_RELATIONSHIP: RelationshipConfig = {
@@ -136,11 +145,30 @@ export function PartFamilyCard({ recordId }: DrawerTabProps) {
     ],
     [productId]
   )
-  const { records: siblings, isLoading: isLoadingSiblings } = useRecordList({
+  const {
+    records: siblings,
+    isLoading: isLoadingSiblingList,
+    isLoadingRecords: isLoadingSiblingRecords,
+    hasNextPage: hasMoreSiblings,
+    isFetchingNextPage: isFetchingMoreSiblings,
+    fetchNextPage: fetchMoreSiblings,
+  } = useRecordList({
     entityDefinitionId: partDefId ?? '',
     filters: siblingFilters,
+    limit: SIBLING_PAGE_SIZE,
     enabled: !!productId && !!partDefId,
   })
+
+  useEffect(() => {
+    if (hasMoreSiblings && !isFetchingMoreSiblings && !isLoadingSiblingList) fetchMoreSiblings()
+  }, [hasMoreSiblings, isFetchingMoreSiblings, isLoadingSiblingList, fetchMoreSiblings])
+
+  // Held at "Loading..." until the family is BOTH fully paged and fully
+  // resolved. `siblings` is the record-store resolution of the ids, which
+  // arrives in a second wave and reports `isLoading: false` in between — so a
+  // count taken any earlier is a wrong number rather than a late one.
+  const isLoadingSiblings =
+    isLoadingSiblingList || isLoadingSiblingRecords || hasMoreSiblings || isFetchingMoreSiblings
 
   // Finished-good condition (b): is this part anybody's subpart? Child-side
   // filter (`subpart:childPart`), limit 1 — presence is the only question.
