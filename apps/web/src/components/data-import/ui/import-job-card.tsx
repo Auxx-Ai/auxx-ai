@@ -18,11 +18,19 @@ import type { RouterOutputs } from '~/trpc/react'
 
 type ImportJob = RouterOutputs['dataImport']['listJobs'][number]
 
-/** Status badge variant. */
+/**
+ * Status badge variant.
+ *
+ * `completed_with_errors` must never share `default` with `completed`: a run
+ * that lost rows and one that did not are the two states this list exists to
+ * tell apart.
+ */
 function statusBadgeVariant(status: string): 'default' | 'secondary' | 'destructive' | 'outline' {
   switch (status) {
     case 'completed':
       return 'default'
+    case 'completed_with_errors':
+      return 'outline'
     case 'failed':
     case 'canceled':
       return 'destructive'
@@ -31,6 +39,11 @@ function statusBadgeVariant(status: string): 'default' | 'secondary' | 'destruct
     default:
       return 'outline'
   }
+}
+
+/** Human-readable status label — the raw enum value is not a UI string. */
+function statusLabel(status: string): string {
+  return status === 'completed_with_errors' ? 'completed with errors' : status
 }
 
 interface ImportJobCardProps {
@@ -96,7 +109,7 @@ export function ImportJobCard({ job, onDelete }: ImportJobCardProps) {
 
       {/* Right: status + actions */}
       <div className='flex items-center gap-2'>
-        <Badge variant={statusBadgeVariant(job.status)}>{job.status}</Badge>
+        <Badge variant={statusBadgeVariant(job.status)}>{statusLabel(job.status)}</Badge>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>

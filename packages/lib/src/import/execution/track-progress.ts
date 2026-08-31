@@ -9,7 +9,8 @@ import type {
   SyncChangeManifest,
   SyncChangeManifestV1,
 } from '../../record-rules/sync-manifest-types'
-import type { ImportStatistics } from '../types/job'
+import type { ImportJobStatus, ImportStatistics } from '../types/job'
+import { classifyImportOutcome, outcomeToJobStatus } from './classify-outcome'
 
 /**
  * Update import job progress and statistics.
@@ -52,26 +53,38 @@ export async function markJobExecuting(db: Database, jobId: string): Promise<voi
 }
 
 /**
- * Mark import job as completed.
+ * Mark an import job finished, with the terminal status DERIVED from its own
+ * statistics — `completed`, `completed_with_errors`, or `failed`.
+ *
+ * The status is derived here rather than passed in on purpose. This function
+ * used to hard-code `'completed'`, so a run in which every single row was
+ * rejected was stored, badged and rendered exactly like a clean one; the caller
+ * held a correctly-classified result and simply never forwarded it. Deriving
+ * from the counters removes the opportunity to forget.
  *
  * @param db - Database instance
  * @param jobId - Import job ID
  * @param statistics - Final statistics
+ * @returns The terminal status written to the job row
  */
 export async function markJobCompleted(
   db: Database,
   jobId: string,
   statistics: ImportStatistics
-): Promise<void> {
+): Promise<ImportJobStatus> {
+  const status = outcomeToJobStatus(classifyImportOutcome(statistics))
+
   await db
     .update(schema.ImportJob)
     .set({
-      status: 'completed',
+      status,
       statistics,
       completedAt: new Date(),
       updatedAt: new Date(),
     })
     .where(eq(schema.ImportJob.id, jobId))
+
+  return status
 }
 
 /**

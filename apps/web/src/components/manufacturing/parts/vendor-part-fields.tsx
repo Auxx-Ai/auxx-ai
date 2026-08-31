@@ -83,13 +83,12 @@ export function VendorPartFields({
         </FieldPanelRow>
       )}
 
-      {/* Vendor SKU */}
+      {/* Vendor SKU — optional; identity is the (part, supplier) pair above */}
       <FieldPanelRow
         title='Supplier SKU'
         description='The SKU or part number used by this supplier'
         type={BaseType.STRING}
         showIcon
-        isRequired
         validationError={errors?.vendorSku}
         validationType='error'>
         <FieldInputAdapter

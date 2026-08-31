@@ -15,6 +15,17 @@ export {
   isImportMergeStrategy,
   type OnAmbiguous,
 } from '../write-policy/client'
+// Run-outcome classification. Pure counter arithmetic with no server deps, and
+// the UI must gate "is the wizard finished" on `isFinishedImportStatus` rather
+// than comparing against `'completed'` — a run that finished with failed rows
+// carries `completed_with_errors` and otherwise reads as still executing.
+export {
+  classifyImportOutcome,
+  type ImportOutcome,
+  isFinishedImportStatus,
+  type OutcomeCounters,
+  outcomeToJobStatus,
+} from './execution/classify-outcome'
 export {
   autoMapColumns,
   type ColumnAutoMapping,

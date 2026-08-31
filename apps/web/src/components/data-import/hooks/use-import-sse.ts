@@ -198,8 +198,12 @@ export function useImportSSE({
           callbacksRef.current.onResolutionComplete?.()
         }
 
-        // Execution complete
-        if (data.status === 'completed') {
+        // Execution finished. `completed_with_errors` lands here rather than in
+        // the failure arm below: rows DID import, the wizard must advance to the
+        // outcome card, and that card is what reports the rows that did not.
+        // Matching only `'completed'` left such a run with the spinner up and
+        // the stream open until the connection timed out.
+        if (data.status === 'completed' || data.status === 'completed_with_errors') {
           isCompleteRef.current = true
           setProgress((prev) => ({ ...prev, phase: 'complete' }))
           callbacksRef.current.onComplete?.({
@@ -209,7 +213,7 @@ export function useImportSSE({
           eventSource.close()
         }
 
-        // Execution failed
+        // Execution failed — the run wrote nothing, or ingestion threw
         if (data.status === 'failed') {
           isCompleteRef.current = true
           setProgress((prev) => ({ ...prev, phase: 'error' }))

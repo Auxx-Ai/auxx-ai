@@ -8,6 +8,7 @@ import {
   finalizeUpload,
   getImportableFields,
   getJobByOrg,
+  getJobFailureSummary,
   getJobWithMapping,
   getMappablePropertiesWithSamples,
   getMappedColumnsWithStats,
@@ -672,6 +673,22 @@ export const dataImportRouter = createTRPCRouter({
       await requireImportJob(ctx.db, ctx.capabilities, ctx.session.organizationId, plan.importJobId)
 
       return getPlanErrors(ctx.db, input.planId, input.limit)
+    }),
+
+  /**
+   * Get a finished job's execution failures, grouped by reason.
+   *
+   * Keyed on the job, not a plan: the outcome card knows which job it ran, and
+   * a job accumulates one plan per mapping revision. Grouped because a systemic
+   * failure (one unmapped required field) produces an identical message on
+   * every row, and 201 copies of it hide the one fact worth reading.
+   */
+  getJobFailures: capabilityProcedure
+    .input(z.object({ jobId: z.string(), limit: z.number().optional().default(10) }))
+    .query(async ({ ctx, input }) => {
+      await requireImportJob(ctx.db, ctx.capabilities, ctx.session.organizationId, input.jobId)
+
+      return getJobFailureSummary(ctx.db, input.jobId, input.limit)
     }),
 
   /**

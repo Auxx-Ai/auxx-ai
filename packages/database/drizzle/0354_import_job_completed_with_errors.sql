@@ -1,0 +1,1 @@
+ALTER TYPE "public"."ImportJobStatus" ADD VALUE 'completed_with_errors' BEFORE 'failed';

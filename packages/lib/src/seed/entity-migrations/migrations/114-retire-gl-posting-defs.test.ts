@@ -75,9 +75,25 @@ describe('migration 114 registration', () => {
     expect(migration114RetireGlPostingDefs.id).toBe('114-retire-gl-posting-defs')
   })
 
-  it('is last — a later migration must take 115, not reuse this number', () => {
-    const ids = ALL_ENTITY_MIGRATIONS.map((m) => m.id)
-    expect(ids.at(-1)).toBe('114-retire-gl-posting-defs')
+  // Was "is last", pinned to 114 while 114 WAS last. 115 has since taken the
+  // next number, which is the outcome that assertion was protecting — so this
+  // now states the invariant directly instead of the incidental fact that
+  // encoded it, and does not need editing again at 116.
+  //
+  // 🛑 The NNN id space is SHARED with `data-migrations/`, and a number can be
+  // consumed by a migration that no longer exists on disk (113 was, and left an
+  // `applied` ledger row behind). Ascending-and-unique here is the on-disk half
+  // of that check; the ledger is the other half and this cannot see it.
+  it('numbers ascend and are never reused', () => {
+    const numbers = ALL_ENTITY_MIGRATIONS.map((m) => {
+      const prefix = m.id.match(/^(\d+)-/)?.[1]
+      expect(prefix, `migration id is not NNN-prefixed: ${m.id}`).toBeDefined()
+      return Number(prefix)
+    })
+
+    expect(new Set(numbers).size, 'a number is reused').toBe(numbers.length)
+    expect(numbers).toEqual([...numbers].sort((a, b) => a - b))
+    expect(numbers.indexOf(114)).toBeGreaterThan(-1)
   })
 
   // 103 was REMOVED from the registry rather than renumbered or emptied: it did

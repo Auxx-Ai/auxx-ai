@@ -2,7 +2,7 @@
 
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
-import { and, eq, isNotNull } from 'drizzle-orm'
+import { and, count, desc, eq, isNotNull, min } from 'drizzle-orm'
 import type { ImportPlanStatus, PlanEstimates } from '../types/plan'
 import { calculateEstimatesFromCounts } from './calculate-estimates'
 
@@ -177,6 +177,68 @@ export async function getPlanWarnings(
     warnings: rows.slice(0, limit).map((row) => ({
       rowIndex: row.rowIndex,
       warning: row.warningMessage ?? '',
+    })),
+  }
+}
+
+/** One distinct failure reason and how many rows hit it. */
+export interface JobFailureReason {
+  message: string
+  count: number
+  /** Lowest row index carrying this reason, for "first seen at row N". */
+  firstRowIndex: number
+}
+
+/** Grouped execution failures for a finished job. */
+export interface JobFailureSummary {
+  /** Total failed rows across the job's plans. */
+  total: number
+  /** Distinct reasons, most frequent first. */
+  reasons: JobFailureReason[]
+}
+
+/**
+ * Group a finished job's failed rows by their error message.
+ *
+ * Keyed on the JOB rather than a plan: a job accumulates a plan per mapping
+ * revision, and the caller showing the outcome knows the job, not which of its
+ * plans was the one actually executed.
+ *
+ * Grouped because import failures are overwhelmingly systemic — one unmapped
+ * required field fails every row with an identical message, and listing that
+ * 201 times buries the single fact the user needs.
+ *
+ * @param db - Database instance
+ * @param jobId - Import job ID
+ * @param limit - Max distinct reasons to return (default 10)
+ */
+export async function getJobFailureSummary(
+  db: Database,
+  jobId: string,
+  limit: number = 10
+): Promise<JobFailureSummary> {
+  const rows = await db
+    .select({
+      message: schema.ImportPlanRow.errorMessage,
+      count: count(),
+      firstRowIndex: min(schema.ImportPlanRow.rowIndex),
+    })
+    .from(schema.ImportPlanRow)
+    .innerJoin(
+      schema.ImportPlanStrategy,
+      eq(schema.ImportPlanRow.importPlanStrategyId, schema.ImportPlanStrategy.id)
+    )
+    .innerJoin(schema.ImportPlan, eq(schema.ImportPlanStrategy.importPlanId, schema.ImportPlan.id))
+    .where(and(eq(schema.ImportPlan.importJobId, jobId), eq(schema.ImportPlanRow.status, 'failed')))
+    .groupBy(schema.ImportPlanRow.errorMessage)
+    .orderBy(desc(count()))
+
+  return {
+    total: rows.reduce((sum, row) => sum + row.count, 0),
+    reasons: rows.slice(0, limit).map((row) => ({
+      message: row.message ?? 'Unknown error',
+      count: row.count,
+      firstRowIndex: row.firstRowIndex ?? 0,
     })),
   }
 }

@@ -2,6 +2,7 @@
 
 'use client'
 
+import { isFinishedImportStatus } from '@auxx/lib/import/client'
 import { Button } from '@auxx/ui/components/button'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { Play } from 'lucide-react'
@@ -94,6 +95,19 @@ export function StepConfirmImport({ jobId, onComplete }: StepConfirmImportProps)
       // intent against the real one.
       utils.record.listFiltered.invalidate()
     },
+    // A run that writes nothing now terminates as `failed` rather than being
+    // laundered into `completed`, which makes this arm reachable for the first
+    // time — the SSE hook has always emitted it, but with no handler attached
+    // `isExecuting` was never cleared and the wizard sat on the progress
+    // spinner until the stream timed out. Clearing it lets the outcome card
+    // render the failure.
+    onError: () => {
+      setIsExecuting(false)
+      utils.dataImport.getJob.invalidate({ jobId })
+      // Relation auto-create runs before the rows do, so even a run that
+      // imported nothing may have minted records on a TARGET def.
+      utils.record.listFiltered.invalidate()
+    },
   })
 
   const handleConfirmImport = async () => {
@@ -113,29 +127,34 @@ export function StepConfirmImport({ jobId, onComplete }: StepConfirmImportProps)
     return <ExecutionProgress progress={sseProgress} isConnected={isConnected} />
   }
 
-  // Show completion
-  if (job?.status === 'completed') {
-    // `unmatched` is read here for the same reason the plan summary reads it:
-    // `executeImportPlan` counts "update-only mode found no record" separately
-    // from "this row has an error", and dropping it on the way to the card is
-    // how a run that imported nothing reports 0/0/0 and looks fine.
+  // Show completion. `completed_with_errors` and `failed` are terminal too —
+  // gating this on `'completed'` alone left a run that lost rows stuck on the
+  // pre-run plan summary with no outcome shown at all.
+  if (job && isFinishedImportStatus(job.status)) {
+    // Every counter is read here, for one reason: whatever this cast omits is
+    // silently dropped on the way to the card. `failed` used to be missing from
+    // this list, which is how an import that rejected all 201 of its rows
+    // rendered 0/0/0/0 beneath a green check.
     const stats = job.statistics as
       | {
           created?: number
           updated?: number
           skipped?: number
           unmatched?: number
+          failed?: number
           warnings?: number
         }
       | undefined
     return (
       <ImportCompleteCard
+        jobId={jobId}
         entityDefinitionId={job.importMapping.entityDefinitionId}
         statistics={{
           created: stats?.created ?? 0,
           updated: stats?.updated ?? 0,
           skipped: stats?.skipped ?? 0,
           unmatched: stats?.unmatched ?? 0,
+          failed: stats?.failed ?? 0,
           warnings: stats?.warnings ?? 0,
         }}
         onComplete={onComplete}

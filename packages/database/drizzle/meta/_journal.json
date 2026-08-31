@@ -2479,6 +2479,13 @@
       "when": 1787958690601,
       "tag": "0353_gl_role_assignment",
       "breakpoints": true
+    },
+    {
+      "idx": 354,
+      "version": "7",
+      "when": 1788213642018,
+      "tag": "0354_import_job_completed_with_errors",
+      "breakpoints": true
     }
   ]
 }
