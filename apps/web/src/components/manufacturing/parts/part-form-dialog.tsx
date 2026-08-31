@@ -594,6 +594,7 @@ export function PartFormDialog({
                     validationType='error'>
                     <FieldInputAdapter
                       fieldType={FieldType.NUMBER}
+                      triggerProps={{ className: 'ps-0 pe-1 w-full' }}
                       value={openingStockValues.quantity}
                       onChange={(val) => handleOpeningStockChange('quantity', val ?? null)}
                       placeholder='0'
@@ -610,6 +611,7 @@ export function PartFormDialog({
                     validationType='error'>
                     <FieldInputAdapter
                       fieldType={FieldType.CURRENCY}
+                      triggerProps={{ className: 'ps-0 pe-1 w-full' }}
                       fieldOptions={{ currencyCode, decimals: 2, useGrouping: true }}
                       value={openingStockValues.unitCost}
                       onChange={(val) => handleOpeningStockChange('unitCost', val ?? null)}
@@ -625,6 +627,7 @@ export function PartFormDialog({
                     showIcon>
                     <FieldInputAdapter
                       fieldType={FieldType.DATETIME}
+                      triggerProps={{ className: 'ps-0 pe-1 w-full' }}
                       value={openingStockValues.occurredAt}
                       onChange={(val) =>
                         handleOpeningStockChange(

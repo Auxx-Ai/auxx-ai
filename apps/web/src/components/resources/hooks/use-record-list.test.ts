@@ -81,8 +81,10 @@ function pages(...list: Array<ReturnType<typeof page>>) {
   return { pages: list, pageParams: [undefined] }
 }
 
-function render() {
-  return renderHook(() => useRecordList({ entityDefinitionId: DEF }))
+function render(limit?: number) {
+  return renderHook(() =>
+    useRecordList({ entityDefinitionId: DEF, ...(limit === undefined ? {} : { limit }) })
+  )
 }
 
 beforeEach(() => {
@@ -138,6 +140,67 @@ describe('store cache vs query', () => {
     h.enabledSeen = []
     render()
     expect(h.enabledSeen.at(-1)).toBe(true)
+  })
+})
+
+// A cached list is shared by every reader of the same (def, filters, sorting,
+// search) — `createListKey` deliberately ignores `limit`. So a PRESENCE check
+// (`limit: 1`, "does this part have any subparts?") writes a one-id list under
+// the same key as the tab that wants the whole BOM. Being served that list is
+// terminal: the store cache disables the query, so `hasNextPage` is false and
+// there is nothing left to page from.
+describe('cache sufficiency', () => {
+  it('refuses a partial cache too short for this reader (the presence-check poison)', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(NOW)
+    // What `part-costing-card` / `part-family-card` leave behind at limit 1.
+    useRecordStore.getState().setList(LIST_KEY, {
+      ids: ['a'],
+      total: 12,
+      fetchedAt: NOW,
+      nextCursor: 'more',
+    })
+
+    const { result } = render(100)
+
+    expect(result.current.isCached).toBe(false)
+    expect(h.enabledSeen.at(-1)).toBe(true)
+  })
+
+  it('serves a COMPLETE cache whatever limit produced it', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(NOW)
+    // The same presence check on a part that really does have one subpart.
+    useRecordStore.getState().setList(LIST_KEY, {
+      ids: ['a'],
+      total: 1,
+      fetchedAt: NOW,
+      nextCursor: null,
+    })
+
+    const { result } = render(100)
+
+    expect(result.current.recordIds).toEqual(['a'])
+    expect(result.current.isCached).toBe(true)
+    expect(h.enabledSeen.at(-1)).toBe(false)
+  })
+
+  it("still serves a partial cache that fills this reader's page", () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(NOW)
+    const ids = Array.from({ length: 50 }, (_, i) => `r${i}`)
+    useRecordStore.getState().setList(LIST_KEY, {
+      ids,
+      total: 500,
+      fetchedAt: NOW,
+      nextCursor: 'more',
+    })
+
+    const { result } = render(50)
+
+    expect(result.current.recordIds).toEqual(ids)
+    expect(result.current.isCached).toBe(true)
+    expect(h.enabledSeen.at(-1)).toBe(false)
   })
 })
 

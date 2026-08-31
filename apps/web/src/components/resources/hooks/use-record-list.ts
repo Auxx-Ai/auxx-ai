@@ -128,7 +128,30 @@ export function useRecordList<T extends RecordMeta = RecordMeta>({
   // Check if we have a valid cache before fetching
 
   const listCache = useRecordStore((s) => s.lists[listKey])
-  const cachedList = listCache && !isListStale(listCache) ? listCache : undefined
+
+  // 🛑 A cached list is only usable by a reader whose own first page it could
+  // have satisfied — being fresh is not enough.
+  //
+  // `createListKey` hashes (def, filters, sorting, search) and deliberately
+  // NOT `limit`, so readers of the same rows share one entry. But a PRESENCE
+  // check writes under that shared key too: `part-costing-card` and
+  // `part-family-card` both ask `subpart` with `limit: 1` and filters that are
+  // byte-identical to `part-subparts-tab`'s, and they are OVERVIEW cards, so
+  // they run first. Without the length test the tab mounts, finds a two-second-
+  // old one-id list, and is served it — `shouldFetch` goes false, so its query
+  // never runs at all, `hasNextPage` is false (a disabled query has no pages to
+  // continue from) and the drain effect cannot save it. The Subparts and Used In
+  // sections render ONE row of a twelve-row BOM until the page is reloaded.
+  //
+  // A complete list (`nextCursor === null`) is always usable — it is the whole
+  // answer, whatever limit produced it — which is what keeps the deliberate
+  // sharing in `line-builder` / `use-purchase-order-lines` / this tab intact.
+  const cachedList =
+    listCache &&
+    !isListStale(listCache) &&
+    (listCache.nextCursor === null || listCache.ids.length >= limit)
+      ? listCache
+      : undefined
 
   // Select action functions (stable references)
   const setList = useRecordStore((s) => s.setList)
