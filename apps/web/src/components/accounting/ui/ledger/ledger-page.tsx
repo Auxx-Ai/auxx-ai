@@ -169,7 +169,16 @@ export function LedgerPage({ periodKey }: LedgerPageProps) {
       : null
     : (actions.preview?.assertions ?? null)
 
-  const isEntryLoading = isPostedPeriod ? postedQuery.isPending : actions.isPreviewing
+  // 🛑 `isPostedPeriod` is `state !== 'open'`, so a LOCKED month takes this
+  // branch too - and a locked month that was never posted carries no
+  // `glPostingId`, which leaves `postedQuery` disabled. A disabled query sits at
+  // `status: 'pending'` forever, so reading `isPending` alone pinned the journal
+  // section to a skeleton that never resolved for every locked, never-posted
+  // month. `lines` already falls back to `[]` on this path; the entry renders
+  // empty, which is the truth about a month with no entry.
+  const isEntryLoading = isPostedPeriod
+    ? !!postedPostingId && postedQuery.isPending
+    : actions.isPreviewing
   const canPost =
     !isPostedPeriod &&
     !isLocked &&
