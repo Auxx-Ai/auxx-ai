@@ -14,6 +14,20 @@
 // account" and the Create button becoming enabled, the only evidence that
 // anything is happening is this row tracking what is being typed - without it
 // the person is filling in a form with no place in the list.
+//
+// ── The account map lives here too (task 19) ────────────────────────────────
+//
+// There is no QuickBooks tab any more. Which provider account each of ours
+// corresponds to is an ATTRIBUTE of a `gl_account` - it is stored on the
+// instance, and it is edited in the detail pane beside the code, the name and
+// the type. What is left on this side is the part of the map that is about the
+// LIST rather than about a row: the progress counter, the bulk confirm, the
+// broken banner, and one badge per row.
+//
+// 🛑 The map DECORATES this list, it never sources it. `ChartMapView`'s header
+// has the argument; the operative consequence is that everything below renders
+// from `accounts` and stays fully usable while `map.isPending`, while
+// `map.isError`, and with no provider connected at all.
 
 import type { AccountRole, ChartAccountRow } from '@auxx/lib/postings/client'
 import { Badge } from '@auxx/ui/components/badge'
@@ -22,9 +36,15 @@ import { InputSearch } from '@auxx/ui/components/input-search'
 import { EmptySection } from '@auxx/ui/components/section'
 import { TREE_SECONDARY_NOTRUNCATE, TreeRow } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
-import { Landmark, Plus } from 'lucide-react'
+import { Landmark, Plus, Sparkles, TriangleAlert } from 'lucide-react'
 import { useState } from 'react'
-import { accountTypeColor, accountTypeLabel, type ChartDraftHandle } from './accounts-types'
+import {
+  accountTypeColor,
+  accountTypeLabel,
+  type ChartDraftHandle,
+  type ChartMapView,
+  isMappingBroken,
+} from './accounts-types'
 
 interface ChartListProps {
   accounts: ChartAccountRow[]
@@ -38,6 +58,11 @@ interface ChartListProps {
   /** The uncommitted draft, if any. Rendered as a phantom row at the top. */
   draft: ChartDraftHandle | null
   onAddDraft: () => void
+  /** The account map, decorating the rows. Never the source of them. */
+  map: ChartMapView
+  /** Confirms every suggested mapping at once. */
+  onConfirmSuggested: () => void
+  confirming: boolean
 }
 
 export function ChartList({
@@ -48,8 +73,17 @@ export function ChartList({
   rolesByAccountId,
   draft,
   onAddDraft,
+  map,
+  onConfirmSuggested,
+  confirming,
 }: ChartListProps) {
   const [search, setSearch] = useState('')
+
+  // 29 rows, recomputed per keystroke of the search box. A `useMemo` here would
+  // cost more to read than the loop costs to run.
+  const mapped = accounts.filter(
+    (account) => map.byAccountId.get(account.id)?.state === 'confirmed'
+  ).length
 
   const filtered = search
     ? accounts.filter(
@@ -76,6 +110,53 @@ export function ChartList({
           Add account
         </Button>
       </div>
+
+      {/* 🛑 Gate on the PROVIDER, never on an empty map. "Nothing is connected"
+          and "connected but nothing mapped" are different answers needing
+          different actions, and collapsing them would tell somebody to map a
+          chart with nothing to map it against. With nothing connected this whole
+          strip is absent and the chart is unchanged - the explanation lives in
+          the detail pane, on the row it is about. */}
+      {map.connected && (
+        <div className='flex flex-wrap items-center gap-2'>
+          <span className='text-muted-foreground text-xs tabular-nums'>
+            {mapped} of {accounts.length} mapped to {map.providerLabel ?? 'your accounting system'}
+          </span>
+          {map.suggested > 0 && (
+            <Button
+              variant='outline'
+              size='xs'
+              loading={confirming}
+              loadingText='Confirming...'
+              onClick={onConfirmSuggested}>
+              <Sparkles />
+              Accept {map.suggested}
+            </Button>
+          )}
+        </div>
+      )}
+
+      {/* A dangling mapping is a REPAIR, not a mapping, and `G19` requires every
+          close to refuse on exactly these - so it leads the tab rather than
+          waiting to be found by selecting the right row. */}
+      {map.broken.length > 0 && (
+        <div className='flex items-start gap-2 rounded-xl border border-destructive/40 bg-destructive/5 p-3'>
+          <TriangleAlert className='mt-0.5 size-4 shrink-0 text-destructive' />
+          <div className='min-w-0'>
+            <p className='font-medium text-sm'>
+              {map.broken.length} mapping{map.broken.length === 1 ? '' : 's'} no longer valid
+            </p>
+            <p className='text-muted-foreground text-xs'>
+              {map.broken.join(', ')}{' '}
+              {map.broken.length === 1
+                ? 'points at an account that has'
+                : 'point at accounts that have'}{' '}
+              been removed, deactivated or moved to a different section. Every close refuses until{' '}
+              {map.broken.length === 1 ? 'it is' : 'they are'} re-mapped.
+            </p>
+          </div>
+        </div>
+      )}
 
       {isLoading ? (
         <EmptySection loading />
@@ -127,6 +208,7 @@ export function ChartList({
 
           {filtered.map((account) => {
             const roles = rolesByAccountId.get(account.id) ?? []
+            const identity = map.byAccountId.get(account.id)
             return (
               <TreeRow
                 key={account.id}
@@ -156,6 +238,23 @@ export function ChartList({
                         Inactive
                       </Badge>
                     )}
+                    {/* Only ever rendered against a LOADED map. An unmapped
+                        badge on rows the provider round trip has not answered
+                        for yet is a claim about the org, and rendering it
+                        mid-load makes it a false one. */}
+                    {map.connected && !map.isPending && identity && isMappingBroken(identity) && (
+                      <Badge variant='destructive' size='xs'>
+                        Re-map
+                      </Badge>
+                    )}
+                    {map.connected &&
+                      !map.isPending &&
+                      identity?.state === 'unmapped' &&
+                      !identity.suggestion && (
+                        <Badge variant='outline' size='xs'>
+                          Not mapped
+                        </Badge>
+                      )}
                     {roles.length > 0 && (
                       <span>
                         {roles.length} {roles.length === 1 ? 'role' : 'roles'}

@@ -10,7 +10,14 @@
 // statement classifications, the two roles the L1 regime never emits, and how an
 // account reads inside a row.
 
-import type { AccountRole, ChartAccountRow, GlAccountTypeValue } from '@auxx/lib/postings/client'
+import type {
+  AccountIdentityRow,
+  AccountRole,
+  AccountSuggestionReason,
+  ChartAccountRow,
+  GlAccountTypeValue,
+  ProviderAccount,
+} from '@auxx/lib/postings/client'
 import type { SelectOptionColor } from '@auxx/types/custom-field'
 
 /**
@@ -48,6 +55,78 @@ export function accountTypeLabel(type: GlAccountTypeValue): string {
  */
 export function accountTypeColor(type: GlAccountTypeValue): SelectOptionColor {
   return ACCOUNT_TYPE_OPTIONS.find((option) => option.value === type)?.color ?? 'blue'
+}
+
+/**
+ * The account map, as the Chart of accounts tab consumes it.
+ *
+ * 🛑 This DECORATES the chart, it never sources it. `ledger.chartAccounts` is a
+ * local read and `ledger.accountMap` is a provider round trip that can fail for
+ * reasons that have nothing to do with us - an expired token, a revoked
+ * connection, QuickBooks being down. The list renders from the first and is
+ * annotated by the second, so a provider outage can never make an org's chart
+ * unreadable or unrenamable. `P1` makes "nothing connected" first class: every
+ * field below has an honest value when there is no provider at all.
+ */
+export interface ChartMapView {
+  /** A provider is connected AND returned a chart to map against. */
+  connected: boolean
+  /** The map row per `gl_account` id. Empty until `ledger.accountMap` resolves. */
+  byAccountId: Map<string, AccountIdentityRow>
+  /** The provider's own chart, for the picker. Empty when nothing is connected. */
+  providerAccounts: ProviderAccount[]
+  /**
+   * Codes whose confirmed mapping no longer validates - the target was deleted,
+   * deactivated, or its classification no longer agrees.
+   *
+   * Carried separately from the rows because `G19` requires every close to
+   * refuse on exactly these, so the screen has to be able to LEAD with them
+   * rather than leave them to be found by scrolling.
+   */
+  broken: string[]
+  /** How many unmapped accounts the matcher has a candidate for. */
+  suggested: number
+  /** `'QuickBooks Online'`, or null with nothing connected. Never hardcode it. */
+  providerLabel: string | null
+  /** The provider round trip is in flight. The chart does not wait on it. */
+  isPending: boolean
+  /** The provider round trip failed. One muted line, not a page-level error. */
+  isError: boolean
+}
+
+/**
+ * How a suggestion earned itself, in the words a person is shown.
+ *
+ * 🛑 Always rendered WITH the suggestion, never behind a tooltip in settings. A
+ * wrong account id in a journal entry balances, so nothing downstream can catch
+ * it and the confirming person is the last line of defence - showing them the
+ * answer without the evidence turns a confirmation back into a guess.
+ */
+export const ACCOUNT_SUGGESTION_REASON_COPY: Record<AccountSuggestionReason, string> = {
+  number: 'same account number',
+  name: 'same name',
+}
+
+/** `1310 · Inventory Asset`, the way a PROVIDER account reads in a picker. */
+export function formatProviderAccount(account: ProviderAccount): string {
+  return account.number
+    ? `${account.number} · ${account.fullyQualifiedName}`
+    : account.fullyQualifiedName
+}
+
+/**
+ * A confirmed mapping whose target has gone, been deactivated, or changed
+ * statement section.
+ *
+ * 🛑 ONE definition, two screens. This predicate decides whether a close will
+ * refuse (`resolveMappedAccounts` re-checks the identical three conditions
+ * against the chart it just fetched), so the chart list and the wizard's map
+ * must not each carry their own copy of it to drift.
+ */
+export function isMappingBroken(row: AccountIdentityRow): boolean {
+  if (row.state !== 'confirmed') return false
+  const live = row.liveProviderAccount
+  return !live || !live.active || live.classification !== row.account.accountType
 }
 
 /**
