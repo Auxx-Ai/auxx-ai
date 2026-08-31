@@ -9,6 +9,13 @@ export interface AssignRowInput {
   strategyId: string
   rowIndex: number
   existingRecordId?: string
+  /**
+   * Fatal planning issues — joined with '; '. A row carrying one of these was
+   * bucketed as `skip` by the analyzer, and this is the ONLY record of why:
+   * the live SSE stream is gone the moment the wizard is reloaded, so a plan
+   * row without it shows the user a silently skipped row and no reason.
+   */
+  errorMessage?: string
   /** Non-fatal planning issues (dropped split elements) — joined with '; ' */
   warningMessage?: string
 }
@@ -30,6 +37,7 @@ export async function assignRowToStrategy(
       importPlanStrategyId: input.strategyId,
       rowIndex: input.rowIndex,
       existingRecordId: input.existingRecordId,
+      errorMessage: input.errorMessage,
       warningMessage: input.warningMessage,
       status: 'planned',
       updatedAt: new Date(),
@@ -71,6 +79,7 @@ export async function batchAssignRows(db: Database, assignments: AssignRowInput[
       importPlanStrategyId: a.strategyId,
       rowIndex: a.rowIndex,
       existingRecordId: a.existingRecordId,
+      errorMessage: a.errorMessage,
       warningMessage: a.warningMessage,
       status: 'planned' as const,
       updatedAt: now,

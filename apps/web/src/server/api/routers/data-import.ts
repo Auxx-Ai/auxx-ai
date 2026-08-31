@@ -591,12 +591,25 @@ export const dataImportRouter = createTRPCRouter({
       // Update job status to planning
       await markJobPlanning(ctx.db, input.jobId)
 
-      // Queue the planning job (async, with SSE progress)
+      // Queue the planning job (async, with SSE progress).
+      //
+      // The `jobId` is a dedupe key, not decoration. This procedure only
+      // ENQUEUES and returns, so the wizard's auto-generate effect sees the
+      // import job still sitting at `waiting` in its own cache and fires again
+      // on the next render — one BOM import produced four plans in 800ms, each
+      // with a full set of strategies and rows. BullMQ coalesces adds that
+      // share a job id while the job is still queued or running, so repeat
+      // calls collapse into the single run. A deliberate re-plan after a remap
+      // still works: by then the previous job has left the queue.
       const queue = getQueue(Queues.dataImportQueue)
-      await queue.add('generatePlanJob', {
-        jobId: input.jobId,
-        organizationId,
-      })
+      await queue.add(
+        'generatePlanJob',
+        {
+          jobId: input.jobId,
+          organizationId,
+        },
+        { jobId: `generate-plan-${input.jobId}` }
+      )
 
       return { success: true }
     }),

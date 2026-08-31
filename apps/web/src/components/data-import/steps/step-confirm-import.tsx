@@ -6,7 +6,7 @@ import { isFinishedImportStatus } from '@auxx/lib/import/client'
 import { Button } from '@auxx/ui/components/button'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { Play } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api } from '~/trpc/react'
 import { useImportSSE } from '../hooks/use-import-sse'
 import type { PreviewColumnMapping } from '../plan-preview'
@@ -55,20 +55,31 @@ export function StepConfirmImport({ jobId, onComplete }: StepConfirmImportProps)
       targetFieldLabel: col.targetFieldKey ?? undefined,
     })) ?? []
 
-  // Auto-generate plan when entering this step if not already generated
+  // Auto-generate plan when entering this step if not already generated.
+  //
+  // The ref is the guard that actually holds. `generatePlan.isPending` does
+  // not: the mutation only ENQUEUES the planning job, so it resolves long
+  // before the worker flips the import job off `waiting`, and `job.status`
+  // here is a cached query that is not re-fetched until the mutation settles.
+  // Every render in that window passed both conditions — a single BOM import
+  // fired this four times. `generatePlan` is also a fresh object identity each
+  // render, so listing it as a dependency re-ran the effect continuously.
+  const planRequestedForJob = useRef<string | null>(null)
   useEffect(() => {
-    if (!jobLoading && job?.status === 'waiting' && !generatePlan.isPending) {
-      clearRows() // Clear any stale SSE rows
-      generatePlan.mutateAsync({ jobId }).then(() => {
-        utils.dataImport.getPlan.invalidate({ jobId })
-        utils.dataImport.getJob.invalidate({ jobId })
-      })
-    }
+    if (jobLoading || job?.status !== 'waiting') return
+    if (planRequestedForJob.current === jobId) return
+    planRequestedForJob.current = jobId
+
+    clearRows() // Clear any stale SSE rows
+    generatePlan.mutateAsync({ jobId }).then(() => {
+      utils.dataImport.getPlan.invalidate({ jobId })
+      utils.dataImport.getJob.invalidate({ jobId })
+    })
   }, [
     jobLoading,
     job?.status,
     jobId,
-    generatePlan,
+    generatePlan.mutateAsync,
     clearRows,
     utils.dataImport.getPlan,
     utils.dataImport.getJob,
