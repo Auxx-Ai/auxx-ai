@@ -1,5 +1,92 @@
 # Changelog
 
+## [0.1.223](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.222...auxx-v0.1.223) (2026-08-31)
+
+
+### Features
+
+* **build:** an order raises the builds needed to fulfil it ([#1952](https://github.com/Auxx-Ai/auxx-ai/issues/1952)) ([2244e79](https://github.com/Auxx-Ai/auxx-ai/commit/2244e79a5905ec7d91a35e540c9bc5b616266a2d))
+* **build:** an order's builds track the order, and there is one raise door ([#1963](https://github.com/Auxx-Ai/auxx-ai/issues/1963)) ([f89c2b7](https://github.com/Auxx-Ai/auxx-ai/commit/f89c2b737e945f89af4883c5aa9dec806fda034c))
+* **build:** freeze a part's standard cost, separately from its live cost ([#1945](https://github.com/Auxx-Ai/auxx-ai/issues/1945)) ([e14e023](https://github.com/Auxx-Ai/auxx-ai/commit/e14e0237616f46324aefa62a747b9865da171eac))
+* **build:** raise, complete and reverse a build from the app ([#1947](https://github.com/Auxx-Ai/auxx-ai/issues/1947)) ([f47d334](https://github.com/Auxx-Ai/auxx-ai/commit/f47d3348e6037d9addd8a5deeca891fd60115640))
+* **build:** record what a build consumed and produced, at a cost that sticks ([#1946](https://github.com/Auxx-Ai/auxx-ai/issues/1946)) ([fdfade8](https://github.com/Auxx-Ai/auxx-ai/commit/fdfade863624aea5b722a5d1788bb0c12ec34161))
+* **build:** say when a build no longer matches its order, and when an edit will not stick ([#1965](https://github.com/Auxx-Ai/auxx-ai/issues/1965)) ([e39695a](https://github.com/Auxx-Ai/auxx-ai/commit/e39695ac3a2329e15c37ac2234f63d18a9f79910))
+* **build:** seed the build entity and standard-cost fields, inert ([#1943](https://github.com/Auxx-Ai/auxx-ai/issues/1943)) ([ead1bd4](https://github.com/Auxx-Ai/auxx-ai/commit/ead1bd4ebe3b9c518778551ba68cf3abb2b390d7))
+* **build:** show when an order changed after its builds were raised ([#1958](https://github.com/Auxx-Ai/auxx-ai/issues/1958)) ([068ece4](https://github.com/Auxx-Ai/auxx-ai/commit/068ece4d5f1257d5e84ac88869bc094c52c4c30c))
+* **connections:** let a definition declare optional oauth scopes ([#1908](https://github.com/Auxx-Ai/auxx-ai/issues/1908)) ([32c26d3](https://github.com/Auxx-Ai/auxx-ai/commit/32c26d318f8ccb2c28882bf6c40f8a144c560d70))
+* **connections:** pick optional oauth scopes at connect time ([#1909](https://github.com/Auxx-Ai/auxx-ai/issues/1909)) ([4f0603f](https://github.com/Auxx-Ai/auxx-ai/commit/4f0603f26f4f4e3abcc00266feb8d27ffe3dfad9))
+* **field-values:** announce the inverse side of a relationship write (D-11) ([#1937](https://github.com/Auxx-Ai/auxx-ai/issues/1937)) ([0a81a94](https://github.com/Auxx-Ai/auxx-ai/commit/0a81a949853238e7b13f25d9ffc20ea177ec836d))
+* **money:** drive the close - wire the accounting UI to the ledger ([#1982](https://github.com/Auxx-Ai/auxx-ai/issues/1982)) ([c4566dc](https://github.com/Auxx-Ai/auxx-ai/commit/c4566dc6f7fba0710e06be27a38c95b31ea954cd))
+* **money:** gather the month-end inventory entry's inputs, and guard the regime ([#1980](https://github.com/Auxx-Ai/auxx-ai/issues/1980)) ([1cbc027](https://github.com/Auxx-Ai/auxx-ai/commit/1cbc02799a37e971a95aea886e93890ae88ed8ab))
+* **money:** land the GL foundation's final shape ([#1977](https://github.com/Auxx-Ai/auxx-ai/issues/1977)) ([5fc9bfc](https://github.com/Auxx-Ai/auxx-ai/commit/5fc9bfcbf4794bf222ca56489ba8d63abbd202ae))
+* **money:** make the chart of accounts editable ([#1983](https://github.com/Auxx-Ai/auxx-ai/issues/1983)) ([03d9e0d](https://github.com/Auxx-Ai/auxx-ai/commit/03d9e0d43778df4b5b92b3cbc8ad2cb685804b34))
+* **money:** post the general ledger, provider-agnostically ([#1978](https://github.com/Auxx-Ai/auxx-ai/issues/1978)) ([3c1401d](https://github.com/Auxx-Ai/auxx-ai/commit/3c1401d9a6a735f5b478b5b368503f3ab2a0442d))
+* **money:** prepaid bills await receipt, and the GL gets its chart and tables ([#1975](https://github.com/Auxx-Ai/auxx-ai/issues/1975)) ([3431984](https://github.com/Auxx-Ai/auxx-ai/commit/3431984e575673f0e35c806fc83c4c6030deaa67))
+* **money:** QuickBooks export toggle, and Accounting/Catalog in the palette ([#1987](https://github.com/Auxx-Ai/auxx-ai/issues/1987)) ([e245846](https://github.com/Auxx-Ai/auxx-ai/commit/e245846668b1e096561892cb423ff931cd9aa99c))
+* **money:** the accounting module and the close console UI ([#1981](https://github.com/Auxx-Ai/auxx-ai/issues/1981)) ([ad2f8d8](https://github.com/Auxx-Ai/auxx-ai/commit/ad2f8d8fae48dfe5d5dd7b1888ff03a401638d95))
+* **money:** the G19 account map - pair the chart with QuickBooks ([#1985](https://github.com/Auxx-Ai/auxx-ai/issues/1985)) ([51d3ff2](https://github.com/Auxx-Ai/auxx-ai/commit/51d3ff25f56f1aa845d6ebcf2f6aecb995ab184b))
+* **money:** the month-end inventory entry's contract, builder and baseline ([#1979](https://github.com/Auxx-Ai/auxx-ai/issues/1979)) ([3c3993d](https://github.com/Auxx-Ai/auxx-ai/commit/3c3993d00520b970dc3c18c2ab21ec50e6f7d435))
+* **money:** the standard-cost lifecycle ([#1984](https://github.com/Auxx-Ai/auxx-ai/issues/1984)) ([1c983f2](https://github.com/Auxx-Ai/auxx-ai/commit/1c983f2a3e7fccd37c12bf90deb161fe02526a39))
+* **orders:** add the native order entity ([#1911](https://github.com/Auxx-Ai/auxx-ai/issues/1911)) ([cb5d3ec](https://github.com/Auxx-Ai/auxx-ai/commit/cb5d3ec492556f7cc63e8a41c7ece151ea179bb5))
+* **orders:** line items, totals and the order number ([#1914](https://github.com/Auxx-Ai/auxx-ai/issues/1914)) ([4bd81dc](https://github.com/Auxx-Ai/auxx-ai/commit/4bd81dc1fc63be541dcb71f9547a8fab665d144c))
+* **orders:** stamp line_item_part from the line's catalog item ([#1917](https://github.com/Auxx-Ai/auxx-ai/issues/1917)) ([a2e5fe2](https://github.com/Auxx-Ai/auxx-ai/commit/a2e5fe2b446d97306f5192365d1a35c1f093e484))
+* **products:** add, link and detach variants from a product ([#1913](https://github.com/Auxx-Ai/auxx-ai/issues/1913)) ([9a7dcab](https://github.com/Auxx-Ai/auxx-ai/commit/9a7dcabb44826fa6e75c673b42e66407c5dd3a88))
+* **purchasing:** a purchase order can be sent, and its status splits into three axes ([#1939](https://github.com/Auxx-Ai/auxx-ai/issues/1939)) ([8dcce71](https://github.com/Auxx-Ai/auxx-ai/commit/8dcce71fd3a421df2767845610d48a9aaa9fe28f))
+* **purchasing:** add bills from the order, scope the PO-line picker ([#1925](https://github.com/Auxx-Ai/auxx-ai/issues/1925)) ([328bbaa](https://github.com/Auxx-Ai/auxx-ai/commit/328bbaa63d5ec312e12f51b4602d9ecb8600b755))
+* **purchasing:** compute a vendor bill's balance ([#1974](https://github.com/Auxx-Ai/auxx-ai/issues/1974)) ([e5c1b55](https://github.com/Auxx-Ai/auxx-ai/commit/e5c1b5568917408351c0e27018a78d5d56c0dcea))
+* **purchasing:** files on a record, and the generated PDF as a FILE value ([#1967](https://github.com/Auxx-Ai/auxx-ai/issues/1967)) ([02339c3](https://github.com/Auxx-Ai/auxx-ai/commit/02339c3befe201e46302e8a381e179e3ff36c502))
+* **purchasing:** fill a bill's lines from the order it was received against ([#1930](https://github.com/Auxx-Ai/auxx-ai/issues/1930)) ([7b637aa](https://github.com/Auxx-Ai/auxx-ai/commit/7b637aa7ad325282ab48c6cafe97563dcbf8995e))
+* **purchasing:** purchase orders, receiving, vendor bills and the three-way match ([#1918](https://github.com/Auxx-Ai/auxx-ai/issues/1918)) ([8e23054](https://github.com/Auxx-Ai/auxx-ai/commit/8e230541eee513fe193209f89683fb249a882b4f))
+* **purchasing:** put the vendor bill on the shared line builder, with an editable amount ([#1928](https://github.com/Auxx-Ai/auxx-ai/issues/1928)) ([37665c7](https://github.com/Auxx-Ai/auxx-ai/commit/37665c7136b902764277e253c83c88fd54ee1a47))
+* **purchasing:** receive a whole PO in one dialog, pay bills from the order ([#1922](https://github.com/Auxx-Ai/auxx-ai/issues/1922)) ([aefd038](https://github.com/Auxx-Ai/auxx-ai/commit/aefd0385319e1878b4dc8c4801219ad500e7234c))
+* **purchasing:** render a record's documents as expandable TreeRows ([#1968](https://github.com/Auxx-Ai/auxx-ai/issues/1968)) ([27047d7](https://github.com/Auxx-Ai/auxx-ai/commit/27047d7fe3446974db95adfb814913c2e9d1c579))
+* **purchasing:** send a purchase order from its page, and default its contact ([#1948](https://github.com/Auxx-Ai/auxx-ai/issues/1948)) ([6a32f13](https://github.com/Auxx-Ai/auxx-ai/commit/6a32f136b99b1b7187a44c2b9fc91a689c15b3d7))
+* **purchasing:** vendor, receiving, bills and payment cards ([#1920](https://github.com/Auxx-Ai/auxx-ai/issues/1920)) ([fc8e857](https://github.com/Auxx-Ai/auxx-ai/commit/fc8e8576df36e1425695673557370c754545a9f9))
+* **receiving:** the receipt form, and the first caller of the purchasing router ([#1921](https://github.com/Auxx-Ai/auxx-ai/issues/1921)) ([cfc3e22](https://github.com/Auxx-Ai/auxx-ai/commit/cfc3e22aa8cf78bd56311dc1987a235d057579c9))
+* **reconcilers:** converge an order's builds when the connector edits it ([#1964](https://github.com/Auxx-Ai/auxx-ai/issues/1964)) ([e9711e8](https://github.com/Auxx-Ai/auxx-ai/commit/e9711e8aee8adcdaa734161e42915582e00e5e76))
+* **records:** a related record opens in the drawer instead of navigating away ([#1942](https://github.com/Auxx-Ai/auxx-ai/issues/1942)) ([ba914d6](https://github.com/Auxx-Ai/auxx-ai/commit/ba914d630d8373fce5909b881efc1092a1e8b8d5))
+* **records:** open the record you just created, and say when the list isn't showing it ([#1932](https://github.com/Auxx-Ai/auxx-ai/issues/1932)) ([fc1006f](https://github.com/Auxx-Ai/auxx-ai/commit/fc1006f58bb583b268e8cb5b021efb7d3c261fb1))
+* **sdk:** widen EntityRefKind, and remove three kinds no org resolves ([#1971](https://github.com/Auxx-Ai/auxx-ai/issues/1971)) ([1e1bbc7](https://github.com/Auxx-Ai/auxx-ai/commit/1e1bbc71cf3248c70f55082db23abe9c3f0a38b8))
+* **table:** sort from the toolbar, not only from a column header ([#1933](https://github.com/Auxx-Ai/auxx-ai/issues/1933)) ([a99e236](https://github.com/Auxx-Ai/auxx-ai/commit/a99e236d5bab9562da790f8359475d2329ccf438))
+
+
+### Bug Fixes
+
+* **build:** a build cannot be marked completed by hand ([#1949](https://github.com/Auxx-Ai/auxx-ai/issues/1949)) ([5d0b002](https://github.com/Auxx-Ai/auxx-ai/commit/5d0b00284679d6f800895ec23f4250333f79c7a7))
+* **connections:** shopify admin api needs its own header, not bearer ([#1910](https://github.com/Auxx-Ai/auxx-ai/issues/1910)) ([e2d6024](https://github.com/Auxx-Ai/auxx-ai/commit/e2d60241098ce27af74615283fe57b740dadda6d))
+* **custom-fields:** stop the allowNewOptions sentinel leaking into stored options ([#1912](https://github.com/Auxx-Ai/auxx-ai/issues/1912)) ([8c6e33d](https://github.com/Auxx-Ai/auxx-ai/commit/8c6e33d1408335e205e10c1feeecc6cfba71516f))
+* **delete:** cascade order lines and sweep the timeline a deleted record leaves behind ([#1916](https://github.com/Auxx-Ai/auxx-ai/issues/1916)) ([878c71c](https://github.com/Auxx-Ai/auxx-ai/commit/878c71c96af789da83ba44ec07437fb18272f9e6))
+* **drawers:** stop the record lists truncating and vanishing silently ([#1988](https://github.com/Auxx-Ai/auxx-ai/issues/1988)) ([1cb9144](https://github.com/Auxx-Ai/auxx-ai/commit/1cb9144923fd0d106816596a31b6a4d859c51b99))
+* **dynamic-table:** close the bulk action bar when the selected rows are deleted ([#1915](https://github.com/Auxx-Ai/auxx-ai/issues/1915)) ([23909f9](https://github.com/Auxx-Ai/auxx-ai/commit/23909f905dec619c65ff5bd2d814f47624ab76b4))
+* **kanban:** key column visibility by option value, not a nonexistent id ([#1926](https://github.com/Auxx-Ai/auxx-ai/issues/1926)) ([40b44f4](https://github.com/Auxx-Ai/auxx-ai/commit/40b44f4307105a0086a9bbdbe63743815352e016))
+* **line-builder:** render the part, restore units, make a PO's stated amounts editable ([#1919](https://github.com/Auxx-Ai/auxx-ai/issues/1919)) ([4d87214](https://github.com/Auxx-Ai/auxx-ai/commit/4d8721496273a0af9aa50d0d1d7738135cb4afce))
+* **money:** flip a sent document's status on every send door ([#1950](https://github.com/Auxx-Ai/auxx-ai/issues/1950)) ([adb0234](https://github.com/Auxx-Ai/auxx-ai/commit/adb0234713e9c9a6ac30a3263b42ad11f945c908))
+* **money:** render the account map as TreeRow, picker in the actions slot ([#1986](https://github.com/Auxx-Ai/auxx-ai/issues/1986)) ([5337b07](https://github.com/Auxx-Ai/auxx-ai/commit/5337b07c6e2ae18bb1f0ced71001fc809a09efab))
+* **money:** the lifecycle status guards actually fire ([#1940](https://github.com/Auxx-Ai/auxx-ai/issues/1940)) ([86dc21d](https://github.com/Auxx-Ai/auxx-ai/commit/86dc21d82cf405a89b139ef196c325bc65d11eec))
+* **pickers:** show the entity-definition icon on relationship rows by default ([#1931](https://github.com/Auxx-Ai/auxx-ai/issues/1931)) ([814a949](https://github.com/Auxx-Ai/auxx-ai/commit/814a9494bc0f705b9d3f54adb08fd88cac525b9c))
+* **pickers:** stop re-filtering server search results by label ([#1929](https://github.com/Auxx-Ai/auxx-ai/issues/1929)) ([3898e5c](https://github.com/Auxx-Ai/auxx-ai/commit/3898e5cb892ffce0cf23dc5adeb59c9865072799))
+* **purchasing:** a bill can be raised before the goods arrive ([#1935](https://github.com/Auxx-Ai/auxx-ai/issues/1935)) ([5b1e50c](https://github.com/Auxx-Ai/auxx-ai/commit/5b1e50c53bc342f825096821f63d633fef073d62))
+* **purchasing:** make the three-way match readable ([#1954](https://github.com/Auxx-Ai/auxx-ai/issues/1954)) ([39fd38d](https://github.com/Auxx-Ai/auxx-ai/commit/39fd38da0592cfee3141cd7514a4894e814547f4))
+* **purchasing:** re-run the three-way match when the goods arrive ([#1966](https://github.com/Auxx-Ai/auxx-ai/issues/1966)) ([b3df1ae](https://github.com/Auxx-Ai/auxx-ai/commit/b3df1ae712aaecff961e55dff1d0c08532d694af))
+* **purchasing:** re-sum the billed roll-up when a bill line is edited ([#1972](https://github.com/Auxx-Ai/auxx-ai/issues/1972)) ([cd22abc](https://github.com/Auxx-Ai/auxx-ai/commit/cd22abc6774fc5418ae7461755ae3666895bd278))
+* **purchasing:** read a PO's lines from the list lane, not the inverse mirror ([#1934](https://github.com/Auxx-Ai/auxx-ai/issues/1934)) ([b1de64b](https://github.com/Auxx-Ai/auxx-ai/commit/b1de64babce4fcd8bbac9a1a91ef1fbcef34e92f))
+* **purchasing:** resolve system rules per read so the PO line roll-up runs ([#1923](https://github.com/Auxx-Ai/auxx-ai/issues/1923)) ([2c15ea2](https://github.com/Auxx-Ai/auxx-ai/commit/2c15ea2410f5883af6abc3c5ecf4054f97a6ce74))
+* **purchasing:** show an empty state on the documents card ([#1969](https://github.com/Auxx-Ai/auxx-ai/issues/1969)) ([3333e54](https://github.com/Auxx-Ai/auxx-ai/commit/3333e54dcbb13bc252a4ae67dc0930c09f91bb53))
+* **purchasing:** stop the bill-line duplicate window, and show a record's documents ([#1973](https://github.com/Auxx-Ai/auxx-ai/issues/1973)) ([991c9f6](https://github.com/Auxx-Ai/auxx-ai/commit/991c9f617414234a07262a5d35505cbbf3b1512c))
+* **purchasing:** the server prices a receipt, not the browser ([#1938](https://github.com/Auxx-Ai/auxx-ai/issues/1938)) ([80a8dee](https://github.com/Auxx-Ai/auxx-ai/commit/80a8dee11bedd78418af68796dfc628820cb0021))
+* **reconcilers:** isolate each parent, as three consumers already claimed ([#1961](https://github.com/Auxx-Ai/auxx-ai/issues/1961)) ([d4cb2b7](https://github.com/Auxx-Ai/auxx-ai/commit/d4cb2b74e56476ef32a62a50094f05c899622423))
+* **records:** write optimistic list membership to both caches, not just the store ([#1924](https://github.com/Auxx-Ai/auxx-ai/issues/1924)) ([ca5912a](https://github.com/Auxx-Ai/auxx-ai/commit/ca5912a9d06e1f8107eeb5eef6709e41e23fe3ec))
+* **shopify:** stop looping merchants back to plan selection after they approve ([#1936](https://github.com/Auxx-Ai/auxx-ai/issues/1936)) ([9320d53](https://github.com/Auxx-Ai/auxx-ai/commit/9320d5369353a83aaaf97423f102322d2dcf9d48))
+
+
+### Performance Improvements
+
+* **money:** read a document's lines in one query, and skip a write that changes nothing ([#1953](https://github.com/Auxx-Ai/auxx-ai/issues/1953)) ([2275491](https://github.com/Auxx-Ai/auxx-ai/commit/2275491019896fcc438e91ccc2deaf7f9141062e))
+* **money:** rebuild a billing projection once per write, not once per changed field ([#1957](https://github.com/Auxx-Ai/auxx-ai/issues/1957)) ([256de80](https://github.com/Auxx-Ai/auxx-ai/commit/256de8099da71b7df7689ab08222e4ef31ae01af))
+* **money:** rebuild a document once per write, not once per changed field ([#1955](https://github.com/Auxx-Ai/auxx-ai/issues/1955)) ([5c2e226](https://github.com/Auxx-Ai/auxx-ai/commit/5c2e2260441c56b9e1a1729dd6999ed0966f4e4c))
+* **purchasing:** match a vendor bill once per write, in four queries not two per line ([#1956](https://github.com/Auxx-Ai/auxx-ai/issues/1956)) ([5f1e8fe](https://github.com/Auxx-Ai/auxx-ai/commit/5f1e8fe5688bd40925c5a7a1861125938e92a535))
+* **test:** cut the lib suite 252s to 148s and make turbo cacheable in CI ([#1905](https://github.com/Auxx-Ai/auxx-ai/issues/1905)) ([fb9cefa](https://github.com/Auxx-Ai/auxx-ai/commit/fb9cefa19b6fa29e1b6a66d49fde08fa587e4280))
+
 ## [0.1.222](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.221...auxx-v0.1.222) (2026-08-26)
 
 
