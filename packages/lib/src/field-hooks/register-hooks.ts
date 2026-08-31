@@ -72,6 +72,7 @@ import {
   registerPurchaseOrderLineRollupReconcilers,
 } from './post/purchase-order-line-rollups'
 import { touchActivityOnFieldChange } from './post/touch-activity-on-field-change'
+import { guardBuildDelete } from './pre/build-delete-guard'
 import { guardManualBuildLifecycleStatus } from './pre/build-status-guard'
 import { guardInboxOwnerField } from './pre/inbox-owner-guard'
 import { guardInvoiceDelete } from './pre/invoice-delete-guard'
@@ -80,6 +81,8 @@ import {
   guardManualQuoteLifecycleStatus,
 } from './pre/lifecycle-status-guard'
 import { cascadeOrderLinesOnDelete } from './pre/order-delete-guard'
+import { guardPartDelete } from './pre/part-delete-guard'
+import { guardPurchaseOrderDelete } from './pre/purchase-order-delete-guard'
 import {
   EVIDENCE_LOCKED_LINE_ATTRS,
   guardEvidenceLockedLineFields,
@@ -94,6 +97,7 @@ import {
   rejectIfSystemTag,
 } from './pre/tag-system-guard'
 import { dropUnauthorizedTemplateKey, rejectDeleteIfTemplateTag } from './pre/tag-template-guard'
+import { guardVendorBillDelete } from './pre/vendor-bill-delete-guard'
 import { guardWorkOrderDelete } from './pre/work-order-delete-guard'
 import {
   registerEntityFieldChangeHooks,
@@ -501,6 +505,23 @@ export function registerAllHooks(): void {
   registerEntityPreDeleteHooks('quotes', [guardQuoteConvertedDelete])
   // Orders own their lines outright (08 §5.4) — no guard, just the cascade.
   registerEntityPreDeleteHooks('orders', [cascadeOrderLinesOnDelete])
+
+  // Inventory delete-safety (plans/money/tasks/20-part-delete-safety.md) — the same pass, six
+  // weeks later, for the subsystem that never inherited it. `parts` is `isVisible: true`, so it
+  // has carried an ordinary row delete and bulk delete since the day it shipped: refuses when a
+  // movement sits in a settled period, cascades the BOM and supplier rows, and leaves the vendor's
+  // own documents alone.
+  registerEntityPreDeleteHooks('parts', [guardPartDelete])
+
+  // The other three visible money parents (plans/money/tasks/21-money-parent-delete-safety.md).
+  // Same threshold as `parts` — cascade when the period is open, refuse when it is settled — and
+  // the same shared `settledPeriodsFor` behind all four.
+  // 🛑 The `suppressPostDeleteHooks` answer DIFFERS per guard and is invisible here: `vendor-bills`
+  // suppresses because `rematchAfterBillLineDelete` re-projects the bill being deleted, while
+  // `builds` and `purchase-orders` must NOT, because their recompute lands on a surviving part.
+  registerEntityPreDeleteHooks('builds', [guardBuildDelete])
+  registerEntityPreDeleteHooks('purchase-orders', [guardPurchaseOrderDelete])
+  registerEntityPreDeleteHooks('vendor-bills', [guardVendorBillDelete])
 
   // Billing projections after deletes (plan 24 §4.6) — deletes fire no field-change hooks, so
   // these are the explicit post-cleanup projector calls for every delete path (generic
