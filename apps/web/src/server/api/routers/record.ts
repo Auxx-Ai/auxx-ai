@@ -2,7 +2,14 @@
 
 import { getCachedResource, getCachedResources } from '@auxx/lib/cache'
 import { conditionGroupSchema } from '@auxx/lib/conditions'
-import { BadRequestError, ForbiddenError } from '@auxx/lib/errors'
+import {
+  type AuxxError,
+  BadRequestError,
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
+  UnprocessableEntityError,
+} from '@auxx/lib/errors'
 import { getDescendantIds } from '@auxx/lib/field-values'
 import { getRecordIdentityViews } from '@auxx/lib/identity'
 import {
@@ -66,6 +73,46 @@ function rethrowIfInvoicePaymentFkViolation(error: unknown): void {
     }
     current = (current as { cause?: unknown }).cause
   }
+}
+
+/** Pre-delete-hook statuses that carry a message written for the user. */
+const AUXX_ERROR_BY_STATUS: Record<number, new (message: string) => AuxxError> = {
+  400: BadRequestError,
+  403: ForbiddenError,
+  404: NotFoundError,
+  409: ConflictError,
+  422: UnprocessableEntityError,
+}
+
+/**
+ * Turns an all-failed `record.bulkDelete` into the error the user should see.
+ *
+ * `bulkDeleteEntities` flattens each per-record failure to `{ recordId, message,
+ * statusCode }`. When every failure is a deliberate guard rejection (a 4xx from a
+ * pre-delete hook — "This purchase order has 1 vendor bill billed against it…"),
+ * the message is written for the user, so it is surfaced under the hook's own
+ * status code and survives `errorFormatter`. Anything else stays a 500 with its
+ * message masked — those carry internals like raw SQL.
+ */
+function bulkDeleteFailure(
+  errors: Array<{ message: string; statusCode?: number }>
+): TRPCError | AuxxError {
+  const statuses = errors.map((e) => e.statusCode)
+  const allUserFacing = statuses.every((s) => s !== undefined && s >= 400 && s < 500)
+  if (!allUserFacing) {
+    return new TRPCError({
+      code: 'INTERNAL_SERVER_ERROR',
+      message: `Failed to delete ${errors.length} record(s): ${errors[0]?.message}`,
+    })
+  }
+
+  // One reason per distinct message, so a batch that trips the same guard N times
+  // reads as one sentence rather than N copies of it.
+  const message = [...new Set(errors.map((e) => e.message))].join(' ')
+  // Mixed statuses collapse to the first — they are all 4xx, and the message is
+  // what the user acts on.
+  const Ctor = AUXX_ERROR_BY_STATUS[statuses[0] as number] ?? BadRequestError
+  return new Ctor(message)
 }
 
 /**
@@ -1204,12 +1251,14 @@ export const recordRouter = createTRPCRouter({
       await assertCanDeleteRows(handler, ctx.capabilities, input.recordIds)
 
       try {
-        // NOTE on friendly messages here: the invoice pre-delete hook's admin-gate /
-        // succeeded-charges guard throws `BadRequestError` with an already-friendly message
-        // (e.g. "Remove recorded payments before deleting this invoice") — `bulkDeleteEntities`
-        // (packages/lib/src/resources/crud/unified-handler-mutations.ts) catches that per-record
-        // and stores `error.message` verbatim in `result.errors`, so it reads well here with no
-        // extra mapping needed.
+        // NOTE on friendly messages here: the pre-delete hooks (the invoice payment guard,
+        // the money three-way-match guards) throw `AuxxError`s with an already-friendly
+        // message — `bulkDeleteEntities` (packages/lib/src/resources/crud/unified-handler-mutations.ts)
+        // catches that per-record and stores `error.message` verbatim in `result.errors`
+        // alongside the error's `statusCode`. `bulkDeleteFailure` needs that status: an
+        // `INTERNAL_SERVER_ERROR` has its message replaced with "Internal server error" by
+        // `errorFormatter`, so a guard rejection raised as a 500 reaches the toast with no
+        // reason at all.
         // The raw-FK defense-in-depth mapping (`rethrowIfInvoicePaymentFkViolation`, used in the
         // `delete` mutation above) does NOT apply here: `bulkDeleteEntities` flattens each per-record
         // failure to a plain `{ recordId, message }` string before it ever reaches this router
@@ -1221,10 +1270,7 @@ export const recordRouter = createTRPCRouter({
         const result = await handler.bulkDelete(input.recordIds)
 
         if (result.errors.length > 0 && result.count === 0) {
-          throw new TRPCError({
-            code: 'INTERNAL_SERVER_ERROR',
-            message: `Failed to delete ${result.errors.length} record(s): ${result.errors[0]?.message}`,
-          })
+          throw bulkDeleteFailure(result.errors)
         }
 
         return result

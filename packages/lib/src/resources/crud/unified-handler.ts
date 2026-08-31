@@ -46,6 +46,7 @@ import { assertRecordRowsEditable } from './record-row-access'
 import type { ResolvedEntityDefinition } from './types'
 import {
   archiveEntity,
+  type BulkDeleteResult,
   bulkArchiveEntities,
   bulkCreateEntities,
   bulkDeleteEntities,
@@ -763,10 +764,7 @@ export class UnifiedCrudHandler {
    * @param recordIds - Array of RecordIds to delete
    * @param options - Optional CRUD options (skipEvents)
    */
-  async bulkDelete(
-    recordIds: RecordId[],
-    options: CrudOptions = {}
-  ): Promise<{ count: number; errors: Array<{ recordId: RecordId; message: string }> }> {
+  async bulkDelete(recordIds: RecordId[], options: CrudOptions = {}): Promise<BulkDeleteResult> {
     if (recordIds.length === 0) return { count: 0, errors: [] }
     return this.inWriteSession(async () => {
       await this.assertEditRows(recordIds)

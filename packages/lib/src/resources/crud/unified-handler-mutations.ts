@@ -15,7 +15,7 @@ import {
   getEntityInstance,
   updateEntityInstance,
 } from '../../entity-instances'
-import { UnprocessableEntityError } from '../../errors'
+import { AuxxError, UnprocessableEntityError } from '../../errors'
 import { getEntityPostDeleteHooks, getEntityPreDeleteHooks } from '../../field-hooks/registry'
 import type { FieldValueService } from '../../field-values'
 // Leaf path on purpose (not the field-values barrel): the one shared narrowing
@@ -1009,6 +1009,33 @@ export async function bulkArchiveEntities(
 }
 
 /**
+ * One record's failure inside a bulk delete.
+ *
+ * `statusCode` is the HTTP status of the `AuxxError` the pre-delete hooks threw —
+ * 400/409/… for a deliberate guard rejection ("this purchase order has 1 vendor
+ * bill billed against it"), `undefined` for anything unexpected. The loop below
+ * flattens the error to a string, so this is the ONLY thing left telling the
+ * router whether `message` is safe to show the user: `record.bulkDelete`'s
+ * errorFormatter masks every `INTERNAL_SERVER_ERROR` message as "Internal server
+ * error", which is what a guard rejection used to surface as.
+ */
+export type BulkDeleteError = { recordId: RecordId; message: string; statusCode?: number }
+
+export type BulkDeleteResult = { count: number; errors: BulkDeleteError[] }
+
+/** HTTP status of an `AuxxError`, or `undefined` for an unexpected error. */
+function auxxStatusCode(error: unknown): number | undefined {
+  if (error instanceof AuxxError) return error.statusCode
+  // Duck-type fallback: `@auxx/lib` is transpiled per consumer, so a hook thrown
+  // from another copy of the module fails `instanceof` (see `isAuxxError` in
+  // apps/web/src/server/api/trpc.ts).
+  if (error instanceof Error && typeof (error as AuxxError).statusCode === 'number') {
+    return (error as AuxxError).statusCode
+  }
+  return undefined
+}
+
+/**
  * Bulk delete entities (hard delete)
  *
  * @param ctx - Mutation context
@@ -1019,11 +1046,11 @@ export async function bulkDeleteEntities(
   ctx: MutationContext,
   recordIds: RecordId[],
   options: CrudOptions = {}
-): Promise<{ count: number; errors: Array<{ recordId: RecordId; message: string }> }> {
+): Promise<BulkDeleteResult> {
   if (recordIds.length === 0) return { count: 0, errors: [] }
 
   let count = 0
-  const errors: Array<{ recordId: RecordId; message: string }> = []
+  const errors: BulkDeleteError[] = []
 
   for (const recordId of recordIds) {
     try {
@@ -1035,6 +1062,7 @@ export async function bulkDeleteEntities(
       errors.push({
         recordId,
         message: error instanceof Error ? error.message : 'Unknown error',
+        statusCode: auxxStatusCode(error),
       })
     }
   }
