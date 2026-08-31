@@ -17,23 +17,27 @@
 // works, because an org that never connects QuickBooks still has a complete
 // internal ledger. What it does not do is pretend the map is done.
 //
-// The editor itself is `AccountMapList`, shared with the Accounts settings tab,
-// so the two cannot drift into disagreeing about what a mapping is.
+// The editor itself is `AccountMapList`, which since task 19 renders HERE only -
+// settings folded the map into the chart of accounts, where the provider account
+// is a row in the detail pane beside the code, the name and the type. The two
+// surfaces cannot drift into disagreeing about what a mapping is because the
+// authority is `ledger.setAccountIdentity`, which revalidates against the live
+// provider chart before writing, not the component either one renders.
 
 import { Button } from '@auxx/ui/components/button'
 import { ArrowUpRight } from 'lucide-react'
 import Link from 'next/link'
 import { AccountMapList } from '~/components/accounting/ui/settings/account-map-list'
 
-const MAP_HREF = '/app/accounting/settings/accounts?s=quickbooks'
+const MAP_HREF = '/app/accounting/settings/accounts?s=chart'
 
 /**
  * The account map, in `compact` mode: only the rows that still need a decision,
  * plus any confirmed mapping that has since broken.
  *
  * Compact because a wizard page answers "what is left to do" - a full 29-row
- * table with twenty already-settled rows buries the four that are not. The
- * settings tab renders the whole map for the times somebody wants to audit it.
+ * table with twenty already-settled rows buries the four that are not. The chart
+ * of accounts carries the whole map for the times somebody wants to audit it.
  */
 export function WizardAccountMapPage() {
   return (
@@ -53,7 +57,7 @@ export function WizardAccountMapPage() {
       <div>
         <Button variant='outline' size='sm' asChild>
           <Link href={MAP_HREF}>
-            Open the full account map
+            Open the chart of accounts
             <ArrowUpRight />
           </Link>
         </Button>

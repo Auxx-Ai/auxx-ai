@@ -4,24 +4,40 @@
 // The `G19` account map: which account in the connected accounting system each
 // of the org's own accounts corresponds to.
 //
-// 🛑 One component, two homes - the setup wizard's mapping step and the Accounts
-// settings page's third tab. `wizard-accounts-page.tsx` deliberately does the
-// opposite (a read-only summary linking to settings) because the ROLE map is a
-// review, not a task. This one is a task: it is the step between connecting
-// QuickBooks and being able to post, and sending somebody out of the wizard to
-// do it is sending them out of the wizard at its most important moment.
+// 🛑 ONE home, since task 19: the setup wizard's mapping step. This used to be
+// the Accounts settings page's third tab as well, and that tab is gone - the
+// provider account is an attribute of a `gl_account`, so in settings it is a row
+// in `chart-account-editor.tsx` beside the code, the name and the type, with the
+// list-level half (counter, bulk accept, broken banner, badges) in
+// `chart-list.tsx`.
+//
+// What survives here is the WIZARD's version, and the difference is the point:
+// `compact` shows only what still needs a decision, because a wizard page
+// answers "what is left" where settings answers "what is the state of things".
+// `wizard-accounts-page.tsx` does the opposite again (a read-only summary
+// linking to settings) because the ROLE map is a review, not a task. This one is
+// a task: it is the step between connecting QuickBooks and being able to post,
+// and sending somebody out of the wizard to do it is losing them at the exact
+// moment they were going to finish.
 //
 // ── Why this list has no detail pane ────────────────────────────────────────
 //
 // `chart-list.tsx`'s row shape, deliberately - the same `TreeRow`, the same
 // `code · name` title, the same badge-shaped `secondary`. What differs is the
 // trailing slot: the chart's rows OPEN an editor, and these rows ARE the editor.
-// A mapping is one value chosen from one list, so a detail pane would hold a
-// single dropdown and cost a click to reach it. The picker lives in `actions`.
+// A mapping is one value chosen from one list, so inside a wizard a detail pane
+// would hold a single dropdown and cost a click to reach it. The picker lives in
+// `actions`.
 //
 // That is also why no row is selectable and `onToggleOpen` is unset: a row click
 // would have nothing to do, and with an interactive `actions` slot it would fire
 // on every use of the picker.
+//
+// ⚠️ Two renderings of one map now exist, and that is accepted. The shared
+// authority is the three `ledger` procedures, NOT this component:
+// `setAccountIdentity` revalidates against the live provider chart before
+// writing, whatever any picker was offering. `isMappingBroken` is shared for the
+// same reason - it is the predicate a close refuses on.
 //
 // 🛑 A confirmation is a WRITE, and the picker only ever offers type-compatible
 // active accounts. Both are conveniences, not authorities: `setAccountIdentity`
@@ -31,7 +47,6 @@
 // person from being offered a choice that would be refused; it does not replace
 // the refusal.
 
-import type { AccountIdentityRow, AccountSuggestionReason } from '@auxx/lib/postings/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Combobox } from '@auxx/ui/components/combobox'
@@ -43,13 +58,13 @@ import { cn } from '@auxx/ui/lib/utils'
 import { Check, Landmark, Link2, Sparkles, TriangleAlert, X } from 'lucide-react'
 import { useState } from 'react'
 import { api } from '~/trpc/react'
-import { accountTypeColor, accountTypeLabel } from './accounts-types'
-
-/** How a suggestion earned itself, in the words the row shows. */
-const REASON_COPY: Record<AccountSuggestionReason, string> = {
-  number: 'same account number',
-  name: 'same name',
-}
+import {
+  ACCOUNT_SUGGESTION_REASON_COPY,
+  accountTypeColor,
+  accountTypeLabel,
+  formatProviderAccount,
+  isMappingBroken,
+} from './accounts-types'
 
 export interface AccountMapListProps {
   /**
@@ -137,7 +152,7 @@ export function AccountMapList({ compact = false }: AccountMapListProps) {
   const suggested = rows.filter((row) => row.suggestion)
 
   const visible = (
-    compact ? rows.filter((row) => row.state !== 'confirmed' || isBroken(row)) : rows
+    compact ? rows.filter((row) => row.state !== 'confirmed' || isMappingBroken(row)) : rows
   ).filter(
     (row) =>
       !search ||
@@ -178,8 +193,12 @@ export function AccountMapList({ compact = false }: AccountMapListProps) {
               {broken.length} mapping{broken.length === 1 ? '' : 's'} no longer valid
             </p>
             <p className='text-muted-foreground text-xs'>
-              {broken.join(', ')} point at accounts that have been removed, deactivated or moved to
-              a different section. Every close refuses until they are re-mapped.
+              {broken.join(', ')}{' '}
+              {broken.length === 1
+                ? 'points at an account that has'
+                : 'point at accounts that have'}{' '}
+              been removed, deactivated or moved to a different section. Every close refuses until{' '}
+              {broken.length === 1 ? 'it is' : 'they are'} re-mapped.
             </p>
           </div>
         </div>
@@ -200,17 +219,12 @@ export function AccountMapList({ compact = false }: AccountMapListProps) {
         // in `secondary` without taking it back off.
         <div className={cn('flex flex-col gap-0.5', TREE_SECONDARY_NOTRUNCATE)}>
           {visible.map((row) => {
-            const brokenRow = isBroken(row)
+            const brokenRow = isMappingBroken(row)
             const options = providerAccounts
               .filter(
                 (account) => account.active && account.classification === row.account.accountType
               )
-              .map((account) => ({
-                value: account.id,
-                label: account.number
-                  ? `${account.number} · ${account.fullyQualifiedName}`
-                  : account.fullyQualifiedName,
-              }))
+              .map((account) => ({ value: account.id, label: formatProviderAccount(account) }))
 
             return (
               <TreeRow
@@ -252,7 +266,7 @@ export function AccountMapList({ compact = false }: AccountMapListProps) {
                         variant='outline'
                         size='xs'
                         disabled={setAccountIdentity.isPending}
-                        title={`Suggested by ${REASON_COPY[row.suggestion.reason]}`}
+                        title={`Suggested by ${ACCOUNT_SUGGESTION_REASON_COPY[row.suggestion.reason]}`}
                         onClick={() =>
                           setAccountIdentity.mutate({
                             glAccountId: row.account.id,
@@ -309,11 +323,4 @@ export function AccountMapList({ compact = false }: AccountMapListProps) {
       </p>
     </div>
   )
-}
-
-/** A confirmed mapping whose target has gone, been deactivated, or changed section. */
-function isBroken(row: AccountIdentityRow): boolean {
-  if (row.state !== 'confirmed') return false
-  const live = row.liveProviderAccount
-  return !live || !live.active || live.classification !== row.account.accountType
 }

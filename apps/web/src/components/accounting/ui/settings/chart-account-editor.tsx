@@ -30,24 +30,52 @@
 // it was an autosaving form whose every commit wrote LOCAL REACT STATE. The
 // read-only pane was the fix for that, not a placeholder for this: what makes the
 // inputs honest now is that `chartAccountUpdate` exists, and nothing else.
+//
+// ── The provider account (task 19) ──────────────────────────────────────────
+//
+// The sixth row is the account map, which used to be a whole tab. It is here
+// because it IS an attribute of this account - stored on the `gl_account`
+// instance as a connection-scoped `qboAccountId`, exactly as its code and its
+// type are stored on it.
+//
+// 🛑 It writes through `ledger.setAccountIdentity` (`ledgerPost`), NOT through
+// `onUpdate`. `chartAccountUpdate` knows nothing about a provider, and the
+// mapping write has its own job: it revalidates the target against the LIVE
+// provider chart before writing, because a picker rendered five minutes ago may
+// be offering an account somebody has since deactivated.
+//
+// 🛑 The row degrades, it never blocks. With no provider connected, while the
+// map is loading, and when the provider round trip has FAILED, the row renders
+// one muted line and the other five rows stay fully editable. A QuickBooks
+// outage must not be able to stop somebody renaming an account.
 
 import { FieldType } from '@auxx/database/enums'
 import {
   ACCOUNT_ROLE_LABELS,
+  type AccountIdentityRow,
   type AccountRole,
   type ChartAccountRow,
   type GlAccountTypeValue,
 } from '@auxx/lib/postings/client'
 import { Button } from '@auxx/ui/components/button'
+import { Combobox } from '@auxx/ui/components/combobox'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { EmptySection } from '@auxx/ui/components/section'
-import { Landmark, Trash2 } from 'lucide-react'
+import { Check, Landmark, Trash2 } from 'lucide-react'
 import { useCallback, useRef, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
+import { PickerTrigger } from '~/components/ui/picker-trigger'
 import { BaseType } from '~/components/workflow/types'
 import { useDebouncedCallback } from '~/hooks/use-debounced-value'
-import { ACCOUNT_TYPE_OPTIONS, type ChartDraftHandle } from './accounts-types'
+import {
+  ACCOUNT_SUGGESTION_REASON_COPY,
+  ACCOUNT_TYPE_OPTIONS,
+  type ChartDraftHandle,
+  type ChartMapView,
+  formatProviderAccount,
+  isMappingBroken,
+} from './accounts-types'
 
 /**
  * ⚠️ A `SINGLE_SELECT` hands its value back as an ARRAY - `['expense']` - because
@@ -65,7 +93,7 @@ function firstSelected(value: unknown): string | null {
 }
 
 /** Which field a refusal belongs to. Routed from the patch key that caused it. */
-type FieldKey = 'code' | 'name' | 'accountType' | 'isActive' | 'form'
+type FieldKey = 'code' | 'name' | 'accountType' | 'isActive' | 'mapping' | 'form'
 
 /** The four writable attributes, as the form holds them. */
 interface AccountValues {
@@ -103,6 +131,10 @@ interface ChartAccountEditorProps {
   onUpdate: (id: string, patch: Partial<AccountValues>) => Promise<ChartAccountRow>
   /** Confirms, then archives. Rejects with the server's message. */
   onRemove: (id: string) => Promise<void>
+  /** The account map. Decorates this pane; never gates the rest of it. */
+  map: ChartMapView
+  /** Pairs this account with a provider account, or clears it with `null`. */
+  onSetIdentity: (glAccountId: string, providerAccountId: string | null) => Promise<void>
 }
 
 /**
@@ -134,6 +166,8 @@ export function ChartAccountEditor({
   onDraftCommitted,
   onUpdate,
   onRemove,
+  map,
+  onSetIdentity,
 }: ChartAccountEditorProps) {
   // The draft stays active while `selectedId` is its COMMITTED id too - swapping
   // to a query-bound instance would remount the inputs mid-typing (replaced text,
@@ -153,6 +187,8 @@ export function ChartAccountEditor({
         onDraftCommitted={onDraftCommitted}
         onUpdate={onUpdate}
         onRemove={onRemove}
+        map={map}
+        onSetIdentity={onSetIdentity}
       />
     )
   }
@@ -183,6 +219,8 @@ export function ChartAccountEditor({
       onDraftCommitted={onDraftCommitted}
       onUpdate={onUpdate}
       onRemove={onRemove}
+      map={map}
+      onSetIdentity={onSetIdentity}
     />
   )
 }
@@ -211,13 +249,21 @@ function ChartAccountForm({
   onDraftCommitted,
   onUpdate,
   onRemove,
+  map,
+  onSetIdentity,
 }: {
   account: ChartAccountRow | null
   roles: AccountRole[]
   postedLines: number
 } & Pick<
   ChartAccountEditorProps,
-  'onDraftChange' | 'onCreate' | 'onDraftCommitted' | 'onUpdate' | 'onRemove'
+  | 'onDraftChange'
+  | 'onCreate'
+  | 'onDraftCommitted'
+  | 'onUpdate'
+  | 'onRemove'
+  | 'map'
+  | 'onSetIdentity'
 >) {
   const valuesRef = useRef<AccountValues>({
     code: account?.code ?? '',
@@ -229,6 +275,7 @@ function ChartAccountForm({
   const [errors, setErrors] = useState<Partial<Record<FieldKey, string>>>({})
   const [creating, setCreating] = useState(false)
   const [removing, setRemoving] = useState(false)
+  const [mapping, setMapping] = useState(false)
 
   // 🛑 Synchronous, NOT state-derived: a `disabled` prop driven by `creating` is
   // not enough, because two clicks landing before a re-render both pass it. In
@@ -333,6 +380,35 @@ function ChartAccountForm({
     }
   }, [onCreate, onDraftCommitted, onUpdate])
 
+  /**
+   * Pair this account with a provider account, or clear the pairing with `null`.
+   *
+   * 🛑 Nothing is re-validated here. `setAccountIdentity` re-checks existence,
+   * active status and classification against the LIVE provider chart before
+   * writing, and its refusal names the account and the problem; a second
+   * client-side authority would drift from it and "Could not save" would throw
+   * away the only sentence that says what to do next.
+   */
+  const handleSetIdentity = useCallback(
+    async (providerAccountId: string | null) => {
+      const recordId = recordIdRef.current
+      if (!recordId) return
+      setErrors((prev) => ({ ...prev, mapping: undefined }))
+      setMapping(true)
+      try {
+        await onSetIdentity(recordId, providerAccountId)
+      } catch (error) {
+        setErrors((prev) => ({
+          ...prev,
+          mapping: error instanceof Error ? error.message : 'Could not save the mapping.',
+        }))
+      } finally {
+        setMapping(false)
+      }
+    },
+    [onSetIdentity]
+  )
+
   const handleRemove = useCallback(async () => {
     const recordId = recordIdRef.current
     if (!recordId) return
@@ -436,6 +512,25 @@ function ChartAccountForm({
 
           {committed && (
             <FieldPanelRow
+              title={map.providerLabel ?? 'Accounting system'}
+              type={BaseType.STRING}
+              showIcon
+              description={PROVIDER_ROW_DESCRIPTION}>
+              <ProviderAccountField
+                map={map}
+                accountType={values.accountType}
+                identity={
+                  recordIdRef.current ? map.byAccountId.get(recordIdRef.current) : undefined
+                }
+                pending={mapping}
+                onSet={handleSetIdentity}
+              />
+              <FieldError message={errors.mapping} />
+            </FieldPanelRow>
+          )}
+
+          {committed && (
+            <FieldPanelRow
               title='Roles'
               type={BaseType.STRING}
               showIcon
@@ -490,6 +585,160 @@ function ChartAccountForm({
           )}
         </div>
       </ScrollArea>
+    </div>
+  )
+}
+
+/**
+ * ⚠️ Says CONFIRM, not "pick". `G19` stores a human confirmation rather than a
+ * match, and the sentence has to carry why: without it, a later rename or
+ * renumber on either side silently moves where a role posts.
+ */
+const PROVIDER_ROW_DESCRIPTION =
+  'The account over there that this one corresponds to. Confirming it once is what stops a later rename or renumber on either side from quietly moving where a role posts.'
+
+/**
+ * The provider account for one `gl_account`: a picker, the matcher's suggestion
+ * with its reason, and the unmap control.
+ *
+ * 🛑 Four states, and three of them are NOT errors. Nothing connected, a map
+ * still loading, and a map that failed to load all render one muted line - never
+ * an alert, never a blocked pane. `P1` makes "nothing connected" a first-class
+ * outcome: the entry is still built, balanced and stored here.
+ */
+function ProviderAccountField({
+  map,
+  accountType,
+  identity,
+  pending,
+  onSet,
+}: {
+  map: ChartMapView
+  /** The LIVE local value, not the saved one - see the filter below. */
+  accountType: GlAccountTypeValue | null
+  identity: AccountIdentityRow | undefined
+  pending: boolean
+  onSet: (providerAccountId: string | null) => Promise<void>
+}) {
+  // 🛑 LOADING is checked before "nothing connected", not after. `connected` is
+  // false for the whole of the provider round trip, so testing it first would
+  // tell every reader their accounting system is disconnected for as long as it
+  // takes to answer - a CLAIM about the org, made false by the render order.
+  if (map.isPending) {
+    return (
+      <p className='flex min-h-8 items-center text-muted-foreground text-sm'>
+        Reading the account map...
+      </p>
+    )
+  }
+
+  if (map.isError) {
+    return (
+      <p className='flex min-h-8 items-center text-muted-foreground text-sm'>
+        Could not read the account map. Everything else about this account is unaffected.
+      </p>
+    )
+  }
+
+  if (!map.connected) {
+    return (
+      <p className='flex min-h-8 items-center text-muted-foreground text-sm'>
+        Nothing connected. Entries are still built, balanced and stored here.
+      </p>
+    )
+  }
+
+  // Live in the chart but not yet in the map: an account created moments ago,
+  // before the invalidated `accountMap` came back.
+  if (!identity) {
+    return (
+      <p className='flex min-h-8 items-center text-muted-foreground text-sm'>
+        Not in the account map yet.
+      </p>
+    )
+  }
+
+  // 🛑 Filtered by the LIVE `accountType`, not by `identity.account.accountType`.
+  // Somebody who has just changed this account's type is picking for what it is
+  // NOW; offering candidates for the type it used to be would hand them a
+  // mapping the server is about to refuse.
+  //
+  // ⚠️ Type compatibility is a FILTER, not a tiebreak. A candidate in the wrong
+  // statement section is never offered at any confidence: mapping a liability to
+  // a revenue account balances AND misstates the P&L, and the number somebody
+  // recognises gives them no way to tell.
+  const options = map.providerAccounts
+    .filter((account) => account.active && account.classification === accountType)
+    .map((account) => ({ value: account.id, label: formatProviderAccount(account) }))
+
+  const suggestion = identity.suggestion
+  const broken = isMappingBroken(identity)
+
+  // The confirmed target, as it should READ. `liveProviderAccount` is the truth
+  // when there is one; the recorded name is the fallback that keeps a BROKEN row
+  // able to say what it used to point at, which is the only clue to what it
+  // should point at now.
+  const selectedLabel = identity.liveProviderAccount
+    ? formatProviderAccount(identity.liveProviderAccount)
+    : identity.providerAccountNumber
+      ? `${identity.providerAccountNumber} · ${identity.providerAccountName ?? 'Unknown account'}`
+      : (identity.providerAccountName ?? 'Unknown account')
+
+  return (
+    <div className='flex min-w-0 flex-col gap-1.5'>
+      {/* 🛑 `PickerTrigger`, not the Combobox's own default button. Every other
+          picker in a `FieldPanelRow` is a transparent full-width trigger with the
+          chevron at the end - the Type row directly above this one included - and
+          an outline button here would read as the one control on the pane that
+          came from somewhere else.
+
+          Its clear affordance IS the unmap: `onClear` writes `null`, which is
+          what `setAccountIdentity` takes to mean "this pairing is off". A
+          separate Unmap button would be a second control for one act. */}
+      <Combobox
+        placeholder='Select account'
+        emptyText='No compatible account'
+        value={identity.providerAccountId ?? undefined}
+        options={options}
+        disabled={pending}
+        onChangeValue={(value) => void onSet(value)}
+        trigger={
+          <PickerTrigger
+            asCombobox
+            disabled={pending}
+            className='w-full ps-0 pe-1'
+            hasValue={!!identity.providerAccountId}
+            placeholder='Select account'
+            showClear
+            onClear={() => void onSet(null)}>
+            <span className='truncate text-sm'>{selectedLabel}</span>
+          </PickerTrigger>
+        }
+      />
+
+      {suggestion && (
+        <div className='flex min-w-0 items-center gap-1.5'>
+          <Button
+            variant='outline'
+            size='xs'
+            className='min-w-0'
+            disabled={pending}
+            onClick={() => void onSet(suggestion.account.id)}>
+            <Check />
+            <span className='truncate'>Confirm {formatProviderAccount(suggestion.account)}</span>
+          </Button>
+          <span className='shrink-0 text-muted-foreground text-xs'>
+            {ACCOUNT_SUGGESTION_REASON_COPY[suggestion.reason]}
+          </span>
+        </div>
+      )}
+
+      {broken && (
+        <p className='text-destructive text-xs'>
+          The account this points at has been removed, deactivated or moved to a different section.
+          Every close refuses until it is re-mapped.
+        </p>
+      )}
     </div>
   )
 }
