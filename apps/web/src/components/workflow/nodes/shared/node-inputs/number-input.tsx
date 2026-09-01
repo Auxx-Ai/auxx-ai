@@ -8,6 +8,8 @@ import {
   NumberInputIncrement,
   NumberInput as NumberInputUi,
 } from '@auxx/ui/components/input-number'
+import { cn } from '@auxx/ui/lib/utils'
+import type { PickerTriggerOptions } from '~/components/ui/picker-trigger'
 import { createNodeInput, type NodeInputProps } from './base-node-input'
 
 interface NumberInputProps extends NodeInputProps {
@@ -25,6 +27,8 @@ interface NumberInputProps extends NodeInputProps {
   allowDecimals?: boolean
   /** Stepper control style: 'buttons' (default +/- buttons) or 'arrows' (compact vertical arrows) */
   stepper?: 'buttons' | 'arrows'
+  /** Trigger customization options (className is merged into the input group) */
+  triggerProps?: PickerTriggerOptions
 }
 
 /**
@@ -44,6 +48,7 @@ export const NumberInput = createNodeInput<NumberInputProps>(
     step,
     allowDecimals = true,
     stepper = 'arrows',
+    triggerProps,
   }) => {
     // Parse value to ensure it's a number, not a string (prevents "3" + 1 = "31" bug)
     const rawValue = inputs[name]
@@ -97,8 +102,12 @@ export const NumberInput = createNodeInput<NumberInputProps>(
         min={min}
         step={step}
         disabled={isLoading}>
-        <div className='flex flex-col items-start w-full'>
-          <InputGroup className='bg-transparent! min-h-8 shadow-none ring-0 border-0 has-[[data-slot=input-group-control]:focus-visible]:ring-[0px]'>
+        <div className={cn('flex flex-col items-start w-full', triggerProps?.className)}>
+          <InputGroup
+            className={cn(
+              'bg-transparent! min-h-8 shadow-none ring-0 border-0 has-[[data-slot=input-group-control]:focus-visible]:ring-[0px]',
+              triggerProps?.className
+            )}>
             <NumberInputField
               id={inputId}
               placeholder={placeholder}

@@ -336,6 +336,8 @@ export function PartFormDialog({
               vendor_part_lead_time: vendorPartValues.leadTime,
               vendor_part_min_order_qty: vendorPartValues.minOrderQty,
               vendor_part_is_preferred: vendorPartValues.isPreferred,
+              vendor_part_purchase_unit: vendorPartValues.purchaseUnit,
+              vendor_part_purchase_ratio: vendorPartValues.purchaseRatio,
             },
           })
         }
@@ -554,20 +556,17 @@ export function PartFormDialog({
             </button>
 
             {showSupplier && (
-              <FieldPanel
-                className='p-0 mt-4'
-                orientation='responsive'
-                breakpoint='md'
-                resizeId='part-form'
-                defaultLabelWidth={200}>
+              <div className='mt-4'>
                 <VendorPartFields
                   values={vendorPartValues}
                   onChange={handleVendorPartChange}
                   errors={vendorPartErrors}
                   disabled={isPending}
                   partHsCode={values.hsCode}
+                  resizeId='part-form'
+                  defaultLabelWidth={200}
                 />
-              </FieldPanel>
+              </div>
             )}
           </div>
         )}
