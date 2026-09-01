@@ -344,6 +344,8 @@ export const dataImportRouter = createTRPCRouter({
         identityRole: identityRoleSchema.nullish(),
         /** Same tri-state. Per-column write policy on the update path. */
         mergeStrategy: mergeStrategySchema.nullish(),
+        /** Same tri-state. How this column's cells mark decimals; `null` is per-cell detection. */
+        numberDecimalSeparator: z.enum(['.', ',']).nullish(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -372,6 +374,7 @@ export const dataImportRouter = createTRPCRouter({
         options: input.options,
         identityRole: input.identityRole,
         mergeStrategy: input.mergeStrategy,
+        numberDecimalSeparator: input.numberDecimalSeparator,
         naturalKeyFieldKeys: resource ? getNaturalKeyFieldKeys(resource) : undefined,
       })
 

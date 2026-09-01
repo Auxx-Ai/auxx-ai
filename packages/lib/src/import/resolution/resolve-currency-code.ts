@@ -5,6 +5,7 @@ import { findCachedResource } from '../../cache'
 import { resolveCurrencyCode } from '../../field-values/converters/currency'
 import { getOrgCurrencyCode } from '../../field-values/org-currency'
 import { getFieldOutputKey } from '../../resources/registry/field-types'
+import { BaseType } from '../../resources/types'
 
 /** What {@link resolveColumnCurrencyCodes} needs to answer for a whole mapping */
 export interface ResolveColumnCurrencyCodesInput {
@@ -116,4 +117,60 @@ export async function resolveColumnDecimals(
   }
 
   return decimals
+}
+
+/** What {@link resolveColumnCurrencyFields} needs to answer for a set of columns */
+export interface ResolveColumnCurrencyFieldsInput {
+  organizationId: string
+  /** `ImportMapping.entityDefinitionId` — the resource every column targets */
+  entityDefinitionId: string
+  /** `targetFieldKey` of the columns to check; non-money keys are simply absent from the answer */
+  targetFieldKeys: string[]
+}
+
+/** How a CURRENCY target field denominates and displays its minor units. */
+export interface ColumnCurrencyField {
+  /** ISO 4217 code, resolved through the field → org → USD chain */
+  currencyCode: string
+  /** The field's declared major-unit precision (`options.decimals`), when it declares one */
+  decimals?: number
+}
+
+/**
+ * The currency code and precision of every column whose TARGET FIELD is a
+ * CURRENCY field, whatever resolution type the column uses.
+ *
+ * The two helpers above are keyed on the column being read with `currency:*`.
+ * This one is keyed on the FIELD, because the review and confirm steps need to
+ * show a resolved minor-unit number as money regardless of how it was read: a
+ * `number:integer` column feeding Unit Price still resolves to cents, and a
+ * bare `1594` beside `$15.94` in the file reads as a hundredfold error.
+ *
+ * @param db - Database instance (for the org-settings read)
+ * @param input - Org, target resource and the column keys to look up
+ * @returns Map of `targetFieldKey` → code and precision, CURRENCY fields only
+ */
+export async function resolveColumnCurrencyFields(
+  db: Database | Transaction,
+  input: ResolveColumnCurrencyFieldsInput
+): Promise<Map<string, ColumnCurrencyField>> {
+  const result = new Map<string, ColumnCurrencyField>()
+  if (input.targetFieldKeys.length === 0) return result
+
+  const resource = await findCachedResource(input.organizationId, input.entityDefinitionId)
+  const wanted = new Set(input.targetFieldKeys)
+  const moneyFields = (resource?.fields ?? []).filter(
+    (field) => field.type === BaseType.CURRENCY && wanted.has(getFieldOutputKey(field))
+  )
+  if (moneyFields.length === 0) return result
+
+  const orgCurrencyCode = await getOrgCurrencyCode(input.organizationId, db)
+  for (const field of moneyFields) {
+    const decimals = field.options?.decimals
+    result.set(getFieldOutputKey(field), {
+      currencyCode: resolveCurrencyCode(field.options?.currencyCode, orgCurrencyCode),
+      decimals: typeof decimals === 'number' ? decimals : undefined,
+    })
+  }
+  return result
 }

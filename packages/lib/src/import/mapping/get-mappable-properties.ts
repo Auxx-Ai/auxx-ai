@@ -102,6 +102,7 @@ export async function getMappablePropertiesWithSamples(
         // JSON purely to recover these two.
         onNoMatch: config.relationConfig?.onNoMatch ?? null,
         linkMode: config.relationConfig?.linkMode ?? null,
+        numberDecimalSeparator: config.numberDecimalSeparator ?? null,
         distinctValueCount: counts?.distinct ?? 0,
         totalValueCount: counts?.total ?? 0,
       }

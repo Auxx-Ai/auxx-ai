@@ -53,5 +53,9 @@ export interface PreviewColumnMapping {
   targetFieldKey: string | null
   targetFieldLabel?: string
   targetType?: string
+  /** The target field's storage type (`FieldType`), decides the cell renderer */
   fieldType?: string
+  /** CURRENCY targets: what the resolved minor units are denominated in, and the field's precision */
+  currencyCode?: string
+  decimals?: number
 }

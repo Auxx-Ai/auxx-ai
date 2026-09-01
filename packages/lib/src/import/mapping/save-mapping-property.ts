@@ -63,6 +63,13 @@ export interface SaveMappingInput {
    */
   mergeStrategy?: ImportMergeStrategy | null
   /**
+   * The decimal separator this column's cells use, `.` or `,`. Same tri-state
+   * as `mergeStrategy`: omit to keep what is stored, `null` to go back to
+   * per-cell detection. It is how a column's cells are READ, so a change
+   * invalidates the column's resolutions exactly like a resolution-type change.
+   */
+  numberDecimalSeparator?: '.' | ',' | null
+  /**
    * The resource's declared NATURAL KEY, in leg order, when it declares one.
    *
    * Same set auto-map receives, and it is here for the case auto-map cannot
@@ -317,6 +324,7 @@ export async function saveMappingProperty(db: Database, input: SaveMappingInput)
       // are about a field this column no longer feeds.
       identityRole: retargeted || unmapped ? undefined : stored.identityRole,
       mergeStrategy: retargeted || unmapped ? undefined : stored.mergeStrategy,
+      numberDecimalSeparator: retargeted || unmapped ? undefined : stored.numberDecimalSeparator,
     }
 
     // An explicit value in the same call wins over both the preserve and the
@@ -327,10 +335,18 @@ export async function saveMappingProperty(db: Database, input: SaveMappingInput)
     if (input.mergeStrategy !== undefined) {
       next.mergeStrategy = input.mergeStrategy ?? undefined
     }
+    if (input.numberDecimalSeparator !== undefined) {
+      next.numberDecimalSeparator = input.numberDecimalSeparator ?? undefined
+    }
+    // A separator change reads every cell differently (`1,5` is 15 or 1.5),
+    // so it invalidates the column like a resolution-type change does.
+    const separatorChanged =
+      (next.numberDecimalSeparator ?? null) !== (stored.numberDecimalSeparator ?? null)
     // An unmapped column is never part of the match key, whatever was requested.
     if (unmapped) {
       next.identityRole = undefined
       next.mergeStrategy = undefined
+      next.numberDecimalSeparator = undefined
     }
 
     // Update the mapping property
@@ -375,7 +391,7 @@ export async function saveMappingProperty(db: Database, input: SaveMappingInput)
     // …and re-resolution only re-resolves what is not already cached. A column
     // pointed at a new field, or read as a different type, has to lose its rows
     // or the re-run is a no-op behind a control that looks like it worked.
-    if (retargeted || reinterpreted) {
+    if (retargeted || reinterpreted || separatorChanged) {
       await invalidateColumnResolutions(tx, [current?.id])
     }
   })

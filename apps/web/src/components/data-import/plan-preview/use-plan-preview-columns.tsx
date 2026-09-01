@@ -10,6 +10,12 @@ import { FormattedCell } from '~/components/dynamic-table'
 import { StrategyCell } from './strategy-cell'
 import type { PlanPreviewRow, PreviewColumnMapping } from './types'
 
+/** The cell renderer a preview column gets. Only the numeric types render as the field would. */
+function renderableType(fieldType: string | undefined): 'CURRENCY' | 'NUMBER' | 'TEXT' {
+  const upper = fieldType?.toUpperCase()
+  return upper === 'CURRENCY' || upper === 'NUMBER' ? upper : 'TEXT'
+}
+
 interface UsePlanPreviewColumnsOptions {
   /** Mapped columns from import job */
   mappings: PreviewColumnMapping[]
@@ -74,12 +80,21 @@ export function usePlanPreviewColumns(options: UsePlanPreviewColumnsOptions) {
 
     for (const mapping of mappedFields) {
       const fieldKey = mapping.targetFieldKey!
+      // A preview cell holds the RESOLVED value: minor units for money, a
+      // number for NUMBER. Those two are rendered as the field would render
+      // them; everything else (an ISO date string, a relation's pending
+      // lookup, an option key) stays text, which is what it is at this point.
+      const previewType = renderableType(mapping.fieldType)
+      const options =
+        previewType === 'CURRENCY'
+          ? { currencyCode: mapping.currencyCode, decimals: mapping.decimals }
+          : undefined
 
       columns.push({
         id: `field_${fieldKey}`,
         accessorFn: (row) => row.fields[fieldKey],
         header: mapping.targetFieldLabel ?? mapping.sourceColumnName ?? fieldKey,
-        fieldType: (mapping.fieldType?.toUpperCase() ?? 'TEXT') as FieldType,
+        fieldType: previewType as FieldType,
         enableSorting: true,
         enableFiltering: false,
         enableResize: true,
@@ -94,8 +109,9 @@ export function usePlanPreviewColumns(options: UsePlanPreviewColumnsOptions) {
           return (
             <FormattedCell
               value={value}
-              fieldType={mapping.fieldType?.toUpperCase() ?? 'TEXT'}
+              fieldType={previewType}
               columnId={`field_${fieldKey}`}
+              options={options}
             />
           )
         },

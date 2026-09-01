@@ -51,6 +51,8 @@ interface ColumnSavePayload {
     linkMode?: 'add' | 'set'
   }
   options?: Array<{ value: string; label: string }>
+  /** Tri-state, see `saveMappingProperty`: omit keeps, null clears, a value sets. */
+  numberDecimalSeparator?: '.' | ',' | null
 }
 
 /**
@@ -119,6 +121,7 @@ export function StepMapColumns({ jobId, onComplete, onMappingChange }: StepMapCo
         mergeStrategy: prop.mergeStrategy ?? null,
         onNoMatch: prop.onNoMatch ?? null,
         linkMode: prop.linkMode ?? null,
+        numberDecimalSeparator: prop.numberDecimalSeparator ?? null,
         distinctValueCount: prop.distinctValueCount ?? 0,
         totalValueCount: prop.totalValueCount ?? 0,
         createdAt: new Date(),
@@ -294,6 +297,7 @@ export function StepMapColumns({ jobId, onComplete, onMappingChange }: StepMapCo
             mergeStrategy: null,
             onNoMatch: null,
             linkMode: null,
+            numberDecimalSeparator: null,
             isMapped: false,
           }
         }
@@ -309,6 +313,7 @@ export function StepMapColumns({ jobId, onComplete, onMappingChange }: StepMapCo
             mergeStrategy: null,
             onNoMatch: payload.relationConfig?.onNoMatch ?? null,
             linkMode: payload.relationConfig?.linkMode ?? null,
+            numberDecimalSeparator: null,
             isMapped: !!fieldKey,
           }
         }
@@ -466,6 +471,44 @@ export function StepMapColumns({ jobId, onComplete, onMappingChange }: StepMapCo
     }
   }
 
+  /**
+   * Change which character marks decimals in a column's cells.
+   *
+   * Same shape as {@link handleResolutionTypeChange}, for the same reason: it
+   * changes how every cell is READ (`1,5` is fifteen or one and a half), so
+   * `saveMappingProperty` drops the column's cached resolutions and the review
+   * step re-resolves it. `null` returns the column to per-cell detection.
+   */
+  const handleDecimalSeparatorChange = async (columnIndex: number, next: '.' | ',' | null) => {
+    const mapping = mappings.find((m) => m.sourceColumnIndex === columnIndex)
+    if (!mapping?.targetFieldKey) return
+    const field = fields?.find((f) => f.key === mapping.targetFieldKey)
+
+    setMappings((prev) =>
+      prev.map((m) =>
+        m.sourceColumnIndex === columnIndex ? { ...m, numberDecimalSeparator: next } : m
+      )
+    )
+
+    markSaving(columnIndex, true)
+    try {
+      await saveColumnMapping.mutateAsync({
+        jobId,
+        columnIndex,
+        ...buildPayload(mapping, field, { targetFieldKey: mapping.targetFieldKey }),
+        numberDecimalSeparator: next,
+      })
+    } catch (error) {
+      toastError({
+        title: 'Could not change the decimal separator',
+        description: error instanceof Error ? error.message : 'Unknown error',
+      })
+    } finally {
+      markSaving(columnIndex, false)
+      await refreshMappingState()
+    }
+  }
+
   const handleModeChange = async (nextMode: ImportStrategyMode) => {
     try {
       await setImportStrategy.mutateAsync({ jobId, mode: nextMode })
@@ -601,6 +644,7 @@ export function StepMapColumns({ jobId, onComplete, onMappingChange }: StepMapCo
             onToggleIdentifier={handleToggleIdentifier}
             onPolicyChange={handlePolicyChange}
             onResolutionTypeChange={handleResolutionTypeChange}
+            onDecimalSeparatorChange={handleDecimalSeparatorChange}
           />
         </div>
 

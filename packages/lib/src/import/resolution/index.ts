@@ -90,9 +90,12 @@ export {
 export { type ResolveColumnOptionsInput, resolveColumnOptions } from './resolve-column-options'
 // CURRENCY denomination and precision for `currency:*` columns, resolved at RUN time
 export {
+  type ColumnCurrencyField,
   type ResolveColumnCurrencyCodesInput,
+  type ResolveColumnCurrencyFieldsInput,
   type ResolveColumnDecimalsInput,
   resolveColumnCurrencyCodes,
+  resolveColumnCurrencyFields,
   resolveColumnDecimals,
 } from './resolve-currency-code'
 // Relation lookup resolution

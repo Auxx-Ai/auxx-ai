@@ -6,6 +6,7 @@ import { FieldType } from '@auxx/database/enums'
 import { isOptionResolutionType } from '@auxx/lib/import/client'
 import { getFieldOutputKey } from '@auxx/lib/resources/client'
 import { Input } from '@auxx/ui/components/input'
+import { minorToMajorString, parseMajorToMinor } from '@auxx/utils/currency'
 import { useEffect, useMemo, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { useResourceFields } from '~/components/resources'
@@ -29,13 +30,23 @@ function sameKeys(a: string[], b: string[]): boolean {
   return sortedA.every((key, i) => key === sortedB[i])
 }
 
+/** A resolved or overridden minor-unit amount as a number, or undefined when there is none. */
+function readMinorUnits(text: string | null | undefined): number | undefined {
+  if (text === null || text === undefined || text.trim() === '') return undefined
+  const n = Number(text)
+  return Number.isFinite(n) ? n : undefined
+}
+
 /**
  * Component for editing value overrides.
  *
  * Option columns (`select:*` / `multiselect:*`) render the real select picker
  * via `FieldInputAdapter`, showing labels (`TagsView` chips inside the trigger)
- * instead of raw option keys. Everything else renders a text input that saves
- * on blur.
+ * instead of raw option keys. Money columns (a CURRENCY target field) render
+ * the currency input: the resolver's answer is MINOR units, and `1594` in a
+ * text box beside a cell reading `15.94` looks like a hundredfold error, while
+ * a rate resolved to `1.594` looks like a wrong one. Everything else renders a
+ * text input that saves on blur.
  */
 export function EditingInput({
   fieldConfig,
@@ -155,6 +166,67 @@ export function EditingInput({
       return
     }
     onSave(keys.map((value) => ({ type: 'value' as const, value })))
+  }
+
+  // ── Money editor ───────────────────────────────────────────────────
+  // The input works in minor units (what the resolver produced). What is
+  // SAVED is text the column's own resolver reads back: a major-unit string
+  // for `currency:major` (`1.594` → `0.01594`, at the field's precision), the
+  // minor-unit number itself for a column read as raw cents. The server
+  // re-resolves the override either way, so the two stay one contract.
+  const isMoneyColumn = fieldConfig?.type === 'currency' && !!fieldConfig.currencyCode
+  const currencyCode = fieldConfig?.currencyCode ?? 'USD'
+  const decimals = fieldConfig?.decimals
+  const toOverrideText = (minor: number): string =>
+    resolutionType === 'number:integer'
+      ? String(minor)
+      : minorToMajorString(minor, currencyCode, decimals)
+
+  // The EFFECTIVE minor-unit amount. An override is what the row displays
+  // (the optimistic cache patch writes `overrideValues`, not `resolvedValue`),
+  // so it is read back through the same conversion that produced it; otherwise
+  // `resolvedValue` is the resolver's answer. An unreadable cell has neither,
+  // and its raw text must never be read as minor units.
+  const overrideText = isOverridden && !isSkipped ? overrideValues?.[0]?.value : undefined
+  const moneyValue =
+    overrideText === undefined
+      ? readMinorUnits(resolvedValue)
+      : overrideText.trim() === ''
+        ? undefined
+        : resolutionType === 'number:integer'
+          ? readMinorUnits(overrideText)
+          : (parseMajorToMinor(overrideText, currencyCode, decimals) ?? undefined)
+
+  const handleMoneyChange = (next: unknown) => {
+    const minor = typeof next === 'number' && Number.isFinite(next) ? next : undefined
+
+    if (minor === undefined) {
+      // Cleared. Same override the text editor writes for an emptied cell: a
+      // blank the resolver reads as "import nothing".
+      if (moneyValue === undefined) return
+      onSave([{ type: 'value', value: '' }])
+      return
+    }
+    if (minor === moneyValue) return
+    onSave([{ type: 'value', value: toOverrideText(minor) }])
+  }
+
+  if (isMoneyColumn && fieldConfig) {
+    const value = moneyValue
+    return (
+      <div className='min-w-0 flex-1' title={rawValue}>
+        <FieldInputAdapter
+          fieldType={FieldType.CURRENCY}
+          fieldOptions={{ currencyCode, decimals }}
+          value={value ?? null}
+          onChange={handleMoneyChange}
+          // An unreadable cell has no resolved value; the cell text is the
+          // hint for what to type.
+          placeholder={value === undefined ? rawValue : undefined}
+          triggerProps={{ className: 'h-7' }}
+        />
+      </div>
+    )
   }
 
   // Option columns always render the picker — even with an empty live list —

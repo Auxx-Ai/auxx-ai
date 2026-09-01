@@ -15,6 +15,7 @@ import {
 } from './effective-status'
 import { isOptionResolutionType, resolveOptionLabel } from './option-labels'
 import { resolveColumnOptions } from './resolve-column-options'
+import { resolveColumnCurrencyFields } from './resolve-currency-code'
 import { isPendingRelationLookup } from './resolvers/relation'
 
 export type { EffectiveStatus, ResolutionStatus } from './effective-status'
@@ -234,6 +235,24 @@ export async function getUniqueValuesWithResolution(
 
   // Build field config from mapping property
   const fieldConfig = buildFieldConfig(mappingProp, entityDefinitionId)
+
+  // A money column's resolved value is MINOR units. The review row shows it as
+  // money, and for that it needs the field's code and precision, resolved live
+  // for the same reason the option list below is: both describe the target
+  // field, not a choice the user made about the column.
+  if (fieldConfig) {
+    const currencyFields = await resolveColumnCurrencyFields(db, {
+      organizationId,
+      entityDefinitionId,
+      targetFieldKeys: [fieldConfig.key],
+    })
+    const money = currencyFields.get(fieldConfig.key)
+    if (money) {
+      fieldConfig.type = 'currency'
+      fieldConfig.currencyCode = money.currencyCode
+      fieldConfig.decimals = money.decimals
+    }
+  }
 
   // Overlay the LIVE option list for select-ish columns, same rule as
   // `resolve-values-job`: the live list WINS, the stored snapshot only stands

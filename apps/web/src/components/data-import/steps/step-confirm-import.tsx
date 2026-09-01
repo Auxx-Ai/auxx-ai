@@ -52,7 +52,10 @@ export function StepConfirmImport({ jobId, onComplete }: StepConfirmImportProps)
       sourceColumnIndex: col.columnIndex,
       sourceColumnName: col.columnName,
       targetFieldKey: col.targetFieldKey,
-      targetFieldLabel: col.targetFieldKey ?? undefined,
+      targetFieldLabel: col.targetFieldLabel ?? col.targetFieldKey ?? undefined,
+      fieldType: col.fieldType ?? undefined,
+      currencyCode: col.currencyCode,
+      decimals: col.decimals,
     })) ?? []
 
   // Auto-generate plan when entering this step if not already generated.
