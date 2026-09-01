@@ -45,20 +45,20 @@ export function suggestResolutionType(
 
   // Map field types to resolution types
   switch (field.type) {
+    // A NUMBER field is a double (`valueNumber`), and `BaseType` has no
+    // integer/decimal split, so this one case covers a quantity, a 7.5%
+    // tariff rate and a 453.592 purchase ratio alike. `number:decimal` reads
+    // every one of them exactly; `number:integer` used to be the default here
+    // and truncated the last two without a word.
     case 'number':
-    case 'integer':
-      return 'number:integer'
+      return 'number:decimal'
 
-    // Money is stored as INTEGER MINOR UNITS, so a decimal resolver is wrong
-    // twice over: `12.34` reaches the write path as `12.34` and is rejected
-    // ("CURRENCY values are integer minor units"), while `12` imports silently
-    // as 12 cents. `currency:major` scales by the field's own exponent.
+    // Money is stored as MINOR UNITS, so a decimal resolver is wrong twice
+    // over: `12.34` reaches the write path as `12.34` and is rejected, while
+    // `12` imports silently as 12 cents. `currency:major` scales by the
+    // field's own exponent and precision.
     case 'currency':
       return 'currency:major'
-
-    case 'decimal':
-    case 'float':
-      return 'number:decimal'
 
     case 'date':
       return 'date:iso'
@@ -188,9 +188,10 @@ function validResolutionTypesFor(field: ImportableField): ResolutionType[] {
   }
 
   switch (field.type) {
+    // `number:integer` stays on offer as the strict choice: it refuses a cell
+    // with a fraction, which is what a count column wants.
     case 'number':
-    case 'integer':
-      return ['number:integer', 'number:decimal', 'text:value']
+      return ['number:decimal', 'number:integer', 'text:value']
 
     // `number:integer` stays on offer for a file that ALREADY holds minor
     // units (an accounting export in cents). The labels are what keep the two

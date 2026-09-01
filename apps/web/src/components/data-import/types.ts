@@ -73,6 +73,8 @@ export interface ColumnMappingUI {
   onNoMatch: RelationOnNoMatch | null
   /** Relation policy: replace or append on the update path (multi-valued only). */
   linkMode: RelationLinkMode | null
+  /** How this column's cells mark decimals, `.` or `,`; null means per-cell detection. */
+  numberDecimalSeparator: string | null
   /**
    * Distinct raw values in THIS column of THIS file. `distinctValueCount <
    * totalValueCount` on a identifier column is the failure field-level `isUnique`
@@ -144,6 +146,9 @@ export interface ColumnFieldConfig {
   /** `ImportMapping.entityDefinitionId` — the resource this column targets */
   entityDefinitionId?: string
   options?: SelectOption[]
+  /** CURRENCY targets only: what the resolved minor units are denominated in, and the field's precision */
+  currencyCode?: string
+  decimals?: number
 }
 
 // Re-export ImportableField from the lib package's CLIENT barrel, the server

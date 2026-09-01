@@ -132,6 +132,8 @@ export interface MappablePropertyWithSamples {
   onNoMatch: RelationOnNoMatch | null
   /** Replace-or-append for a multi-valued relation on the update path. */
   linkMode: RelationLinkMode | null
+  /** How this column's cells mark decimals, `.` or `,`; null means per-cell detection. */
+  numberDecimalSeparator: string | null
   /**
    * Distinct raw values in THIS column of THIS file.
    *

@@ -269,6 +269,7 @@ export {
   resolveArraySplit,
   resolveBoolean,
   resolveColumnCurrencyCodes,
+  resolveColumnCurrencyFields,
   resolveColumnDecimals,
   resolveColumnOptions,
   resolveCurrencyMajor,

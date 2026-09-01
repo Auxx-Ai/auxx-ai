@@ -900,3 +900,38 @@ describe('natural key defaults on after a hand REPAIR', () => {
     expect(db.mapping.defaultStrategy).toBe('create')
   })
 })
+
+describe('decimal separator, a per-column reading policy', () => {
+  let db: FakeDb
+
+  const storedSeparator = () =>
+    (JSON.parse(db.properties[0]?.resolutionConfig ?? '{}') as { numberDecimalSeparator?: string })
+      .numberDecimalSeparator
+
+  beforeEach(() => {
+    db = new FakeDb([column(0, { sourceColumnName: 'Price' })], {
+      identifierFieldKeys: [],
+      defaultStrategy: 'create',
+    })
+  })
+
+  it('is stored, kept across an unrelated re-save, and cleared by null', async () => {
+    await save(db, mapTo(0, 'vendor_part_unit_price', { numberDecimalSeparator: ',' }))
+    expect(storedSeparator()).toBe(',')
+
+    // A resolution-type change says nothing about the separator.
+    await save(db, mapTo(0, 'vendor_part_unit_price', { resolutionType: 'number:integer' }))
+    expect(storedSeparator()).toBe(',')
+
+    await save(db, mapTo(0, 'vendor_part_unit_price', { numberDecimalSeparator: null }))
+    expect(storedSeparator()).toBeUndefined()
+  })
+
+  it('is dropped when the column is retargeted', async () => {
+    await save(db, mapTo(0, 'vendor_part_unit_price', { numberDecimalSeparator: ',' }))
+
+    await save(db, mapTo(0, 'vendor_part_shipping_cost'))
+
+    expect(storedSeparator()).toBeUndefined()
+  })
+})

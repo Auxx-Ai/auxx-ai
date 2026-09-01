@@ -25,6 +25,7 @@ interface ColumnMappingTableProps {
   onToggleIdentifier: (columnIndex: number, next: boolean) => void
   onPolicyChange: (columnIndex: number, patch: ColumnPolicyPatch) => void
   onResolutionTypeChange: (columnIndex: number, next: ResolutionType) => void
+  onDecimalSeparatorChange: (columnIndex: number, next: '.' | ',' | null) => void
 }
 
 /**
@@ -42,6 +43,7 @@ export function ColumnMappingTable({
   onToggleIdentifier,
   onPolicyChange,
   onResolutionTypeChange,
+  onDecimalSeparatorChange,
 }: ColumnMappingTableProps) {
   /**
    * How many OTHER columns carry the identity flag. A composite-only (RELATION)
@@ -83,6 +85,9 @@ export function ColumnMappingTable({
             onPolicyChange={(patch) => onPolicyChange(mapping.sourceColumnIndex, patch)}
             onResolutionTypeChange={(next) =>
               onResolutionTypeChange(mapping.sourceColumnIndex, next)
+            }
+            onDecimalSeparatorChange={(next) =>
+              onDecimalSeparatorChange(mapping.sourceColumnIndex, next)
             }
           />
         ))}

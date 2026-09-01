@@ -58,6 +58,8 @@ interface ColumnMappingRowProps {
   onPolicyChange: (patch: ColumnPolicyPatch) => void
   /** How this column's cells are read. Offered only where more than one type is valid. */
   onResolutionTypeChange: (next: ResolutionType) => void
+  /** Which character marks decimals in this column's cells; null is per-cell detection. */
+  onDecimalSeparatorChange: (next: '.' | ',' | null) => void
 }
 
 /**
@@ -83,6 +85,7 @@ export function ColumnMappingRow({
   onToggleIdentifier,
   onPolicyChange,
   onResolutionTypeChange,
+  onDecimalSeparatorChange,
 }: ColumnMappingRowProps) {
   const [open, setOpen] = useState(false)
 
@@ -220,8 +223,10 @@ export function ColumnMappingRow({
             <ResolutionTypePopover
               field={selectedField}
               value={mapping.resolutionType}
+              decimalSeparator={mapping.numberDecimalSeparator}
               disabled={isSaving}
               onChange={onResolutionTypeChange}
+              onDecimalSeparatorChange={onDecimalSeparatorChange}
             />
           )}
 

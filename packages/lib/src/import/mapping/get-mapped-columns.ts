@@ -3,6 +3,9 @@
 import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { and, asc, eq, inArray, sql } from 'drizzle-orm'
+import { findCachedResource } from '../../cache'
+import { getFieldOutputKey } from '../../resources/registry/field-types'
+import { resolveColumnCurrencyFields } from '../resolution/resolve-currency-code'
 
 /**
  * Input for getting mapped columns with stats.
@@ -22,6 +25,13 @@ export interface MappedColumnWithStats {
   columnIndex: number
   columnName: string
   targetFieldKey: string | null
+  /** The target field's label, for the plan preview header; null when the field is gone */
+  targetFieldLabel: string | null
+  /** The target field's storage type (`FieldType`), so the preview renders a cell as the field would */
+  fieldType: string | null
+  /** CURRENCY targets only: the code and precision the preview formats minor units with */
+  currencyCode?: string
+  decimals?: number
   uniqueCount: number
   errorCount: number
   warningCount: number
@@ -138,13 +148,32 @@ export async function getMappedColumnsWithStats(
     }
   }
 
+  // The target fields themselves: label and type for the preview header and
+  // cell, plus code and precision for the money columns. The preview used to
+  // show the raw output key as the header and every value as text, so a unit
+  // price resolved to `1594` minor units read as "1594".
+  const entityDefinitionId = job.importMapping.entityDefinitionId
+  const resource = await findCachedResource(organizationId, entityDefinitionId)
+  const fieldByKey = new Map((resource?.fields ?? []).map((f) => [getFieldOutputKey(f), f]))
+  const currencyFields = await resolveColumnCurrencyFields(db, {
+    organizationId,
+    entityDefinitionId,
+    targetFieldKeys: mappedProperties.flatMap((p) => (p.targetFieldKey ? [p.targetFieldKey] : [])),
+  })
+
   // Build result
   return mappedProperties.map((prop) => {
     const mappable = mappableByIndex.get(prop.sourceColumnIndex)
+    const field = prop.targetFieldKey ? fieldByKey.get(prop.targetFieldKey) : undefined
+    const money = prop.targetFieldKey ? currencyFields.get(prop.targetFieldKey) : undefined
     return {
       columnIndex: prop.sourceColumnIndex,
       columnName: mappable?.visibleName ?? `Column ${prop.sourceColumnIndex}`,
       targetFieldKey: prop.targetFieldKey,
+      targetFieldLabel: field?.label ?? null,
+      fieldType: field?.fieldType ?? null,
+      currencyCode: money?.currencyCode,
+      decimals: money?.decimals,
       uniqueCount: countByColumn.get(prop.sourceColumnIndex) ?? 0,
       errorCount: errorByPropertyId.get(prop.id) ?? 0,
       warningCount: warningByPropertyId.get(prop.id) ?? 0,

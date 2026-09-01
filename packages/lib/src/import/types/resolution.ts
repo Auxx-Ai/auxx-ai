@@ -218,11 +218,20 @@ export interface OverrideValue {
  */
 export interface ColumnFieldConfig {
   key: string
-  type: string // BaseType: 'text', 'number', 'enum', 'relationship', etc.
+  type: string // BaseType: 'text', 'number', 'currency', 'enum', 'relationship', etc.
   resolutionType: string // e.g., 'select:value', 'relation:match'
   /** `ImportMappingProperty.customFieldId` — null for system fields */
   customFieldId?: string | null
   /** `ImportMapping.entityDefinitionId` — the resource this column targets */
   entityDefinitionId?: string
   options?: SelectOption[]
+  /**
+   * Set when the TARGET FIELD is a CURRENCY field, whatever the column's
+   * resolution type. The resolved value is minor units (`1594`, or `1.594`
+   * on a rate field), and the review step needs the code and the field's
+   * precision to show that as `$15.94` / `$0.01594` rather than as a bare
+   * number. Resolved live, like `options`, never from the stored config.
+   */
+  currencyCode?: string
+  decimals?: number
 }

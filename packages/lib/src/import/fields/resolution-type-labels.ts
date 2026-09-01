@@ -31,9 +31,9 @@ export const RESOLUTION_TYPE_LABELS: Record<ResolutionType, ResolutionTypeLabel>
   'text:cuid': { label: 'Record ID', hint: 'The record’s internal ID, used to match' },
   'number:integer': {
     label: 'Whole number',
-    hint: 'No decimals — on a money field this is the raw cents value: 1234 → $12.34',
+    hint: 'No fraction, 12.5 is refused — on a money field this is the raw cents value: 1234 → $12.34',
   },
-  'number:decimal': { label: 'Decimal number', hint: 'Decimals kept: 12.34 → 12.34' },
+  'number:decimal': { label: 'Decimal number', hint: 'Fraction kept: 12.34 → 12.34, 7.5% → 7.5' },
   'currency:major': {
     label: 'Money amount',
     hint: 'What you would write on an invoice: 12.34 → $12.34, 1,234.56 → $1,234.56',

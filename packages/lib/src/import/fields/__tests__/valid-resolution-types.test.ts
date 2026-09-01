@@ -167,3 +167,19 @@ describe('getValidResolutionTypes — everything else', () => {
     ])
   })
 })
+
+describe('getValidResolutionTypes — a NUMBER field is a double', () => {
+  it('suggests the decimal reader, so a 7.5% rate or a 453.592 ratio survives', () => {
+    // `BaseType` has no integer/decimal split; `number:integer` used to be
+    // the default here and truncated every fraction without a word.
+    expect(suggestResolutionType(field({ type: 'number' }))).toBe('number:decimal')
+  })
+
+  it('keeps the strict whole-number reader on offer, suggestion first', () => {
+    expect(getValidResolutionTypes(field({ type: 'number' }))).toEqual([
+      'number:decimal',
+      'number:integer',
+      'text:value',
+    ])
+  })
+})
