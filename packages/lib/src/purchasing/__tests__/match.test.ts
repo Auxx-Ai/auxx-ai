@@ -564,6 +564,41 @@ describe('matchVariance', () => {
       )
     ).toBe(100_000)
   })
+
+  // PO-0013, the fastener order the whole task exists for: 105,000 nylock nuts
+  // quoted at $15.94 / 1,000 = $0.01594 (1.594 minor units) a unit.
+  it('is zero when a per-thousand rate is billed at exactly the agreed five-place price', () => {
+    expect(
+      matchVariance(
+        [
+          line({
+            quantityBilled: 105_000,
+            quantityReceived: 105_000,
+            unitPriceBilled: 1.594,
+            unitPriceExpected: 1.594,
+          }),
+        ],
+        NOW
+      )
+    ).toBe(0)
+  })
+
+  it('is non-zero when the same line is billed at the old whole-cent rounding instead', () => {
+    // round(105000 x 2) - round(105000 x 1.594) = 210000 - 167370.
+    expect(
+      matchVariance(
+        [
+          line({
+            quantityBilled: 105_000,
+            quantityReceived: 105_000,
+            unitPriceBilled: 2,
+            unitPriceExpected: 1.594,
+          }),
+        ],
+        NOW
+      )
+    ).toBe(42_630)
+  })
 })
 
 describe('matchBillLine - invalid input', () => {
@@ -579,10 +614,22 @@ describe('matchBillLine - invalid input', () => {
     ).toThrow(BadRequestError)
   })
 
-  it('rejects a non-integer price', () => {
+  it('rejects a price beyond five places', () => {
     expect(() =>
-      matchBillLine(line({ unitPriceBilled: 10.5 }), DEFAULT_MATCH_TOLERANCE, 0, NOW)
+      matchBillLine(line({ unitPriceBilled: 10.5001 }), DEFAULT_MATCH_TOLERANCE, 0, NOW)
     ).toThrow(BadRequestError)
+  })
+
+  it('accepts a price at RATE_DECIMALS precision, such as a per-thousand rate', () => {
+    // $15.94 / 1,000 = $0.01594 a unit, exact at five major-unit places.
+    expect(() =>
+      matchBillLine(
+        line({ unitPriceBilled: 1.594, unitPriceExpected: 1.594 }),
+        DEFAULT_MATCH_TOLERANCE,
+        0,
+        NOW
+      )
+    ).not.toThrow()
   })
 
   it('allows a negative price - a credit line on a vendor bill is real', () => {

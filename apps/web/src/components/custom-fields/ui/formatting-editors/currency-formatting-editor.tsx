@@ -3,7 +3,7 @@
 
 import type { CurrencyFieldOptions } from '@auxx/lib/field-values/client'
 import { Button } from '@auxx/ui/components/button'
-import { Field, FieldGroup, FieldLabel } from '@auxx/ui/components/field'
+import { Field, FieldDescription, FieldGroup, FieldLabel } from '@auxx/ui/components/field'
 import {
   Select,
   SelectContent,
@@ -126,8 +126,14 @@ export function CurrencyFormattingEditor({
               <SelectItem value='auto'>Match the currency (recommended)</SelectItem>
               <SelectItem value='0'>No decimals (11)</SelectItem>
               <SelectItem value='2'>Two decimal places (10.99)</SelectItem>
+              <SelectItem value='3'>Three decimal places (10.990)</SelectItem>
+              <SelectItem value='4'>Four decimal places (10.9900)</SelectItem>
+              <SelectItem value='5'>Five decimal places (10.99000)</SelectItem>
             </SelectContent>
           </Select>
+          <FieldDescription>
+            Places a value can carry. Affects what can be entered, not only how it is shown.
+          </FieldDescription>
         </Field>
       )}
 

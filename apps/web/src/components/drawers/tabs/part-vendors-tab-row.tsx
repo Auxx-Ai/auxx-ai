@@ -17,7 +17,7 @@ import {
 } from '@auxx/ui/components/dropdown-menu'
 import { TableCell, TableRow } from '@auxx/ui/components/table'
 import { pluralize } from '@auxx/utils'
-import { formatCurrency } from '@auxx/utils/currency'
+import { formatCurrency, RATE_DECIMALS } from '@auxx/utils/currency'
 import { BadgeCheck, Edit, Globe, MoreHorizontal, Star, Trash2 } from 'lucide-react'
 import { Tooltip } from '~/components/global/tooltip'
 import { authorityLabel } from '~/components/manufacturing/tariff-types'
@@ -43,6 +43,13 @@ export interface VendorPartRowValues {
   isPreferred: boolean
   /** Supplier `RecordId` (encodes the company entity def); `RecordBadge` resolves it. */
   supplierRecordId?: RecordId
+  /**
+   * `vendor_part_purchase_unit` / `vendor_part_purchase_ratio` - B-lite
+   * (plans/money/tasks/31-sub-cent-rates.md §2.9). `undefined` (not yet read by
+   * the parent tab) and `null` (no unit set) both mean "show `unitPrice` alone."
+   */
+  purchaseUnit?: string | null
+  purchaseRatio?: number | null
 }
 
 interface VendorPartRowProps {
@@ -121,7 +128,9 @@ function LandedBreakdown({
       )}
       <div className='flex justify-between gap-4 border-t pt-1 text-xs font-medium'>
         <span>Landed</span>
-        <span className='tabular-nums'>{formatCurrency(breakdown.landed)}</span>
+        <span className='tabular-nums'>
+          {formatCurrency(breakdown.landed, { decimals: RATE_DECIMALS })}
+        </span>
       </div>
     </div>
   )
@@ -143,7 +152,16 @@ export function VendorPartRow({
   const { canEditEntity } = useAccess()
   const canEdit = canEditEntity(parseRecordId(recordId).entityDefinitionId)
 
-  const { vendorSku, unitPrice, leadTime, isPreferred, supplierRecordId } = values
+  const {
+    vendorSku,
+    unitPrice,
+    leadTime,
+    isPreferred,
+    supplierRecordId,
+    purchaseUnit,
+    purchaseRatio,
+  } = values
+  const hasPurchaseUnit = !!purchaseRatio && purchaseRatio > 1
 
   // One definition of the formula, shared with the cost calculator that
   // actually persists this number.
@@ -191,7 +209,24 @@ export function VendorPartRow({
       <TableCell className='font-mono text-sm'>{vendorSku ?? '—'}</TableCell>
       <TableCell className='text-right tabular-nums'>
         {unitPrice != null ? (
-          formatCurrency(unitPrice)
+          hasPurchaseUnit ? (
+            // $15.94 / thousand, beside $0.01594 ea - the per-each rate is the
+            // stored field; the purchase-unit price is `unit_price x ratio`,
+            // formatted at RATE_DECIMALS so it doesn't round a sub-cent each
+            // back to $0.00 or $0.02 (30-sub-cent-rates.md §2.9).
+            <div className='flex flex-col items-end'>
+              <span>
+                {formatCurrency(unitPrice * purchaseRatio, { decimals: RATE_DECIMALS })}
+                {' / '}
+                {purchaseUnit ?? purchaseRatio}
+              </span>
+              <span className='text-muted-foreground text-xs'>
+                {formatCurrency(unitPrice, { decimals: RATE_DECIMALS })} ea
+              </span>
+            </div>
+          ) : (
+            formatCurrency(unitPrice, { decimals: RATE_DECIMALS })
+          )
         ) : (
           <span className='text-muted-foreground'>—</span>
         )}
@@ -207,7 +242,7 @@ export function VendorPartRow({
               <LandedBreakdown breakdown={breakdown} tariff={tariff} codeLabel={codeLabel} />
             }>
             <span className='underline decoration-dotted underline-offset-4'>
-              {formatCurrency(breakdown.landed)}
+              {formatCurrency(breakdown.landed, { decimals: RATE_DECIMALS })}
             </span>
           </Tooltip>
         ) : (

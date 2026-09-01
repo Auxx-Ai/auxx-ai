@@ -2,6 +2,7 @@
 
 import { FieldType } from '@auxx/database/enums'
 import { type ResourceFieldId, toFieldId } from '@auxx/types/field'
+import { RATE_DECIMALS } from '@auxx/utils/currency'
 import { LINE_ITEM_UNIT_OPTIONS } from '../../../money/units'
 import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
@@ -130,9 +131,10 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
     systemAttribute: 'line_item_unit_price',
     systemSortOrder: 'a5',
     nullable: true,
+    // RATE, not amount: per-each (plans/money/tasks/31-sub-cent-rates.md §2.2).
     options: {
       currencyCode: 'USD',
-      decimals: 2,
+      decimals: RATE_DECIMALS,
       useGrouping: true,
       currencyDisplay: 'symbol',
     },

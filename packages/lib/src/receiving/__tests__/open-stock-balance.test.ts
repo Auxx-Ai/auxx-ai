@@ -344,13 +344,21 @@ describe('openStockBalance — the quantity and cost guards', () => {
   it.each([
     Number.NaN,
     Number.POSITIVE_INFINITY,
-    12.5,
-  ])('refuses a unit cost that is not a whole number of minor units (%s)', async (unitCost) => {
-    // Not rounded into a legal value: a fraction arriving here means the caller
-    // is working in the wrong units, and rounding would freeze that forever.
+    12.5001,
+  ])('refuses a unit cost finer than RATE_DECIMALS can hold (%s)', async (unitCost) => {
+    // Not rounded into a legal value: a fraction beyond five major-unit places
+    // arriving here means the caller is working in the wrong units, and
+    // rounding would freeze that forever. `12.5` (three fractional-cent places)
+    // is now legal - a RATE, not an amount - so the boundary case needs a
+    // fourth place to still be refused.
     const error = await expectErr(openStockBalance(db, ORG, USER, { ...OPENING, unitCost }))
     expect(error).toBeInstanceOf(BadRequestError)
     expect(h.createSpy).not.toHaveBeenCalled()
+  })
+
+  it('accepts a unit cost at RATE_DECIMALS precision - a fraction of a cent is real money', async () => {
+    const values = await openAndRead({ ...OPENING, unitCost: 1.594 })
+    expect(values.stock_movement_unit_cost).toBe(1.594)
   })
 
   it('runs the input guards before anything else', async () => {

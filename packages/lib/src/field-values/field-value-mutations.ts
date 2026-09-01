@@ -82,7 +82,7 @@ import {
   typedExistingValuesFromSetRows,
 } from './batch-existing-values'
 import {
-  assertCurrencyIntegerMinorUnits,
+  assertCurrencyAtFieldPrecision,
   type CachedField,
   canonicalizeRelationshipRecordId,
   canonicalizeRelationshipValue,
@@ -575,12 +575,13 @@ export async function setValue(
   // 3. Determine strategy and execute
   let result: TypedFieldValue[]
 
+  const currencyOptions = field.options as CurrencyPrecisionOptions
   if (isMultiValueFieldType(fieldType, fieldOptions)) {
     // Multi-value: positional row-set reconcile (shared with setValueWithType)
-    result = await setMultiValue(ctx, recordId, fieldId, fieldType, typedInput)
+    result = await setMultiValue(ctx, recordId, fieldId, fieldType, typedInput, currencyOptions)
   } else {
     // Single-value: UPSERT (UPDATE or INSERT)
-    result = await setSingleValue(ctx, recordId, fieldId, fieldType, typedInput)
+    result = await setSingleValue(ctx, recordId, fieldId, fieldType, typedInput, currencyOptions)
   }
 
   // 4. Update display value if this is a display field
@@ -816,13 +817,21 @@ export async function setValueWithType(
   }
 
   // Ordering guard only — the rule itself lives in
-  // `assertCurrencyIntegerMinorUnits` and is enforced for every writer by
+  // `assertCurrencyAtFieldPrecision` and is enforced for every writer by
   // `buildFieldValueRow`. But that fires while building INSERT rows, which in
   // this function is after the destructive delete; asserting up front means a
-  // rejected fractional write leaves the record's existing values intact.
+  // rejected out-of-precision write leaves the record's existing values intact.
   if (fieldType === 'CURRENCY') {
+    const currencyOptions = field.options as
+      | { decimals?: number; currencyCode?: string }
+      | undefined
     for (const v of Array.isArray(value) ? value : [value]) {
-      if (v?.type === 'number') assertCurrencyIntegerMinorUnits(v.value)
+      if (v?.type === 'number')
+        assertCurrencyAtFieldPrecision(
+          v.value,
+          currencyOptions?.decimals,
+          currencyOptions?.currencyCode
+        )
     }
   }
 
@@ -861,6 +870,7 @@ export async function setValueWithType(
       fieldType,
       value: v,
       sortKey: sortKeys[index]!,
+      currencyOptions: field.options as CurrencyPrecisionOptions,
     })
     return params.aiGeneration ? applyAiMarker(baseRow, params.aiGeneration) : baseRow
   })
@@ -1022,6 +1032,7 @@ export async function addValue(
     fieldType,
     value,
     sortKey,
+    currencyOptions: field.options as CurrencyPrecisionOptions,
   })
 
   const [inserted] = await ctx.db.insert(schema.FieldValue).values(insertRow).returning()
@@ -1982,6 +1993,7 @@ export async function addValues(
         fieldType,
         value: v,
         sortKey,
+        currencyOptions: field.options as CurrencyPrecisionOptions,
       })
     })
 
@@ -2342,6 +2354,7 @@ export async function addValuesBulk(
             fieldType,
             value: typedInputs[i]!,
             sortKey,
+            currencyOptions: field.options as CurrencyPrecisionOptions,
           })
         )
         insertedTyped.push(typedInputs[i]!)
@@ -2572,6 +2585,7 @@ async function findUnchangedSetResult(
     entityInstanceId: string
     fieldId: string
     value: TypedFieldValueInput | TypedFieldValueInput[]
+    currencyOptions?: CurrencyPrecisionOptions
   }
 ): Promise<TypedFieldValue[] | null> {
   try {
@@ -2605,6 +2619,7 @@ async function findUnchangedSetResult(
         // Payload-only comparison target; the row's own key keeps
         // `buildFieldValueRow` honest without comparing sortKeys themselves.
         sortKey: row.sortKey,
+        currencyOptions: args.currencyOptions,
       })
       if (!existingRowMatchesInsert(row, insert)) return null
     }
@@ -2983,6 +2998,7 @@ export async function setValueWithBuiltIn(
       entityInstanceId,
       fieldId,
       value: typedValue,
+      currencyOptions: field.options as CurrencyPrecisionOptions,
     })
     if (unchanged !== null) {
       return {
@@ -4318,7 +4334,8 @@ async function setSingleValue(
   recordId: RecordId,
   fieldId: string,
   fieldType: FieldType,
-  value: TypedFieldValueInput | TypedFieldValueInput[]
+  value: TypedFieldValueInput | TypedFieldValueInput[],
+  currencyOptions?: CurrencyPrecisionOptions
 ): Promise<TypedFieldValue[]> {
   const { entityInstanceId } = parseRecordId(recordId)
   const singleValue = Array.isArray(value) ? value[0] : value
@@ -4339,7 +4356,7 @@ async function setSingleValue(
 
   if (existing) {
     // UPDATE existing row
-    const updateData = buildUpdateData(fieldType, singleValue)
+    const updateData = buildUpdateData(fieldType, singleValue, currencyOptions)
     const updatedResult = await updateFieldValue({
       id: existing.id,
       organizationId: ctx.organizationId,
@@ -4353,7 +4370,7 @@ async function setSingleValue(
     return [rowToTypedValue(updatedResult.value as unknown as FieldValueRow, fieldType)]
   } else {
     // INSERT new row - pass recordId to buildInsertData
-    const insertData = buildInsertData(fieldType, singleValue)
+    const insertData = buildInsertData(fieldType, singleValue, currencyOptions)
     const insertedResult = await insertFieldValue({
       recordId,
       fieldId,
@@ -4378,7 +4395,8 @@ async function setMultiValue(
   recordId: RecordId,
   fieldId: string,
   fieldType: FieldType,
-  value: TypedFieldValueInput | TypedFieldValueInput[]
+  value: TypedFieldValueInput | TypedFieldValueInput[],
+  currencyOptions?: CurrencyPrecisionOptions
 ): Promise<TypedFieldValue[]> {
   const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
   const values = Array.isArray(value) ? value : [value]
@@ -4390,7 +4408,7 @@ async function setMultiValue(
     entityDefinitionId,
     fieldId,
     sortKey: sortKeys[index]!,
-    ...buildInsertData(fieldType, v),
+    ...buildInsertData(fieldType, v, currencyOptions),
   }))
 
   // Atomic reconcile — same lock + transaction + positional diff as
@@ -4418,12 +4436,21 @@ async function setMultiValue(
 }
 
 /**
+ * `field.options`, narrowed to the two keys the CURRENCY precision guard
+ * reads. Shared by every `buildFieldValueRow`/`buildInsertData`/
+ * `buildUpdateData` call site so a rate field's `decimals: RATE_DECIMALS`
+ * reaches the guard instead of falling back to the whole-minor-unit default.
+ */
+type CurrencyPrecisionOptions = { decimals?: number; currencyCode?: string } | undefined
+
+/**
  * Build insert data from typed value input (for service layer).
  * Converts recordId back to two DB columns for relationship type.
  */
 function buildInsertData(
   fieldType: FieldType,
-  value: TypedFieldValueInput
+  value: TypedFieldValueInput,
+  currencyOptions?: CurrencyPrecisionOptions
 ): {
   valueText?: string | null
   valueNumber?: number | null
@@ -4441,7 +4468,12 @@ function buildInsertData(
     case 'number':
       // CURRENCY stores its amount in valueNumber exactly like NUMBER — the
       // denomination is the field's, so nothing rides the envelope.
-      if (fieldType === 'CURRENCY') assertCurrencyIntegerMinorUnits(value.value)
+      if (fieldType === 'CURRENCY')
+        assertCurrencyAtFieldPrecision(
+          value.value,
+          currencyOptions?.decimals,
+          currencyOptions?.currencyCode
+        )
       return { valueNumber: value.value }
     case 'boolean':
       return { valueBoolean: value.value }
@@ -4487,7 +4519,8 @@ function buildInsertData(
  */
 function buildUpdateData(
   fieldType: FieldType,
-  value: TypedFieldValueInput
+  value: TypedFieldValueInput,
+  currencyOptions?: CurrencyPrecisionOptions
 ): {
   valueText?: string | null
   valueNumber?: number | null
@@ -4506,7 +4539,12 @@ function buildUpdateData(
     case 'number':
       // CURRENCY stores its amount in valueNumber exactly like NUMBER — the
       // denomination is the field's, so nothing rides the envelope.
-      if (fieldType === 'CURRENCY') assertCurrencyIntegerMinorUnits(value.value)
+      if (fieldType === 'CURRENCY')
+        assertCurrencyAtFieldPrecision(
+          value.value,
+          currencyOptions?.decimals,
+          currencyOptions?.currencyCode
+        )
       return { valueNumber: value.value }
     case 'boolean':
       return { valueBoolean: value.value }
@@ -4546,11 +4584,15 @@ function buildUpdateData(
  * Exported for use in batch inserts (e.g., BOM explosion trigger).
  *
  * `fieldType` exists for one reason: this is the last stop before a number
- * becomes a `valueNumber` row, so it is where the CURRENCY integer-minor-units
+ * becomes a `valueNumber` row, so it is where the CURRENCY at-field-precision
  * invariant is enforced for EVERY writer — including the ones that never pass
  * through `setValueWithType` (addValue, the bulk fan-outs, the connector sink,
  * the BOM explosion trigger). A `{type: 'number'}` input alone cannot carry
  * the distinction, because a fractional NUMBER is legal.
+ *
+ * `currencyOptions` is optional and defaults to whole minor units (the
+ * pre-rate-precision behaviour) when omitted: a caller that does not carry
+ * the field's `options` still gets the strict integer check.
  */
 export function buildFieldValueRow(params: {
   organizationId: string
@@ -4560,9 +4602,18 @@ export function buildFieldValueRow(params: {
   fieldType: FieldType
   value: TypedFieldValueInput
   sortKey: string
+  currencyOptions?: CurrencyPrecisionOptions
 }): typeof schema.FieldValue.$inferInsert {
-  const { organizationId, entityId, entityDefinitionId, fieldId, fieldType, value, sortKey } =
-    params
+  const {
+    organizationId,
+    entityId,
+    entityDefinitionId,
+    fieldId,
+    fieldType,
+    value,
+    sortKey,
+    currencyOptions,
+  } = params
 
   const base = {
     organizationId,
@@ -4585,7 +4636,12 @@ export function buildFieldValueRow(params: {
     case 'text':
       return { ...base, valueText: value.value }
     case 'number':
-      if (fieldType === 'CURRENCY') assertCurrencyIntegerMinorUnits(value.value)
+      if (fieldType === 'CURRENCY')
+        assertCurrencyAtFieldPrecision(
+          value.value,
+          currencyOptions?.decimals,
+          currencyOptions?.currencyCode
+        )
       return { ...base, valueNumber: value.value }
     case 'boolean':
       return { ...base, valueBoolean: value.value }

@@ -162,6 +162,10 @@ export const SYSTEM_ATTRIBUTES = [
   'vendor_part_lead_time',
   'vendor_part_min_order_qty',
   'vendor_part_is_preferred',
+  // B-lite entry conversion (plans/money/tasks/31-sub-cent-rates.md §2.9):
+  // the offer's price field, never a stock or storage unit.
+  'vendor_part_purchase_unit',
+  'vendor_part_purchase_ratio',
 
   // ─── Subpart fields ────────────────────────────────────────────
   'subpart_parent_part',

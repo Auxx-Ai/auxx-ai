@@ -3,6 +3,7 @@
 
 import { FieldType } from '@auxx/database/enums'
 import { getInstanceId, type RecordId, toRecordId } from '@auxx/lib/field-values/client'
+import { RATE_DECIMALS, roundMinor } from '@auxx/utils/currency'
 import Link from 'next/link'
 import { useMemo } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
@@ -28,6 +29,18 @@ export const defaultVendorPartValues = {
   leadTime: null as number | null,
   minOrderQty: null as number | null,
   isPreferred: false,
+  /**
+   * `vendor_part_purchase_unit` - the vendor's selling unit, free text
+   * ('thousand', 'box of 500', 'kg'). B-lite, plans/money/tasks/31-sub-cent-rates.md
+   * §2.9. `null` means the offer form never got this far / carries no unit yet.
+   */
+  purchaseUnit: null as string | null,
+  /**
+   * `vendor_part_purchase_ratio` - tracking units per purchase unit (`1000`,
+   * `500`, `453.592`). `null` or `1` means the vendor sells by the each - the
+   * ordinary case, where `unitPrice` above is the whole story.
+   */
+  purchaseRatio: null as number | null,
 }
 
 /**
@@ -116,7 +129,10 @@ export function VendorPartFields({
         />
       </FieldPanelRow>
 
-      {/* Unit Price */}
+      {/* Unit Price - a RATE (plans/money/tasks/31-sub-cent-rates.md §2.2): a
+          quote per thousand needs the fifth decimal place ($15.94 / 1000 =
+          $0.01594), so `decimals: RATE_DECIMALS` here, unlike the per-line
+          amounts elsewhere in the app. */}
       <FieldPanelRow title='Unit Price' type={BaseType.CURRENCY} showIcon>
         <FieldInputAdapter
           fieldType={FieldType.CURRENCY}
@@ -124,7 +140,7 @@ export function VendorPartFields({
           onChange={(val) => onChange('unitPrice', val)}
           placeholder='0.00'
           disabled={disabled}
-          fieldOptions={{ currencyCode: 'USD' }}
+          fieldOptions={{ currencyCode: 'USD', decimals: RATE_DECIMALS }}
         />
       </FieldPanelRow>
 
@@ -169,7 +185,7 @@ export function VendorPartFields({
         <DutyRow tariffCodeId={values.tariffCodeId} tariffRate={values.tariffRate} />
       </FieldPanelRow>
 
-      {/* Shipping Cost */}
+      {/* Shipping Cost - a RATE too (§2.2). */}
       <FieldPanelRow
         title='Shipping Cost'
         description='Per-unit shipping/freight'
@@ -181,11 +197,11 @@ export function VendorPartFields({
           onChange={(val) => onChange('shippingCost', val)}
           placeholder='0.00'
           disabled={disabled}
-          fieldOptions={{ currencyCode: 'USD' }}
+          fieldOptions={{ currencyCode: 'USD', decimals: RATE_DECIMALS }}
         />
       </FieldPanelRow>
 
-      {/* Other Cost */}
+      {/* Other Cost - a RATE too (§2.2). */}
       <FieldPanelRow
         title='Other Cost'
         description='Insurance, brokerage, handling'
@@ -197,7 +213,7 @@ export function VendorPartFields({
           onChange={(val) => onChange('otherCost', val)}
           placeholder='0.00'
           disabled={disabled}
-          fieldOptions={{ currencyCode: 'USD' }}
+          fieldOptions={{ currencyCode: 'USD', decimals: RATE_DECIMALS }}
         />
       </FieldPanelRow>
 
@@ -230,6 +246,66 @@ export function VendorPartFields({
           disabled={disabled}
         />
       </FieldPanelRow>
+
+      {/* Purchase unit + ratio - B-lite (30 §2.9): how THIS supplier packs the
+          part, as an entry conversion only. Stock, BOM lines and the PO line all
+          stay in the part's own unit; this is what lets the Price-per-unit row
+          below exist, and the PO line editor's purchase-quantity draft. */}
+      <FieldPanelRow
+        title='Purchase Unit'
+        description="The vendor's selling unit - thousand, box of 500, kg"
+        type={BaseType.STRING}
+        showIcon>
+        <FieldInputAdapter
+          fieldType={FieldType.TEXT}
+          value={values.purchaseUnit}
+          onChange={(val) => onChange('purchaseUnit', val || null)}
+          placeholder='thousand'
+          disabled={disabled}
+        />
+      </FieldPanelRow>
+
+      <FieldPanelRow
+        title='Purchase Ratio'
+        description='Tracking units per purchase unit, e.g. 1000. Blank or 1 means sold by the each.'
+        type={BaseType.NUMBER}
+        showIcon>
+        <FieldInputAdapter
+          fieldType={FieldType.NUMBER}
+          value={values.purchaseRatio}
+          onChange={(val) => onChange('purchaseRatio', val)}
+          placeholder='1'
+          disabled={disabled}
+        />
+      </FieldPanelRow>
+
+      {/* Derived - shown only once a ratio actually changes the math. Editing
+          THIS field writes `unitPrice` (the stored, per-each field); it never
+          stores anything of its own. */}
+      {values.purchaseRatio !== null && values.purchaseRatio > 1 && (
+        <FieldPanelRow
+          title={`Price per ${values.purchaseUnit || 'purchase unit'}`}
+          description={`unit_price x ${values.purchaseRatio} - editing this divides back into the per-each price above`}
+          type={BaseType.CURRENCY}
+          showIcon>
+          <FieldInputAdapter
+            fieldType={FieldType.CURRENCY}
+            value={values.unitPrice !== null ? values.unitPrice * values.purchaseRatio : null}
+            onChange={(val) => {
+              const typed = val as number | null
+              onChange(
+                'unitPrice',
+                typed === null || !values.purchaseRatio
+                  ? typed
+                  : roundMinor(typed / values.purchaseRatio, RATE_DECIMALS)
+              )
+            }}
+            placeholder='0.00'
+            disabled={disabled}
+            fieldOptions={{ currencyCode: 'USD', decimals: RATE_DECIMALS }}
+          />
+        </FieldPanelRow>
+      )}
 
       {/* Is Preferred */}
       <FieldPanelRow

@@ -1205,10 +1205,10 @@ export function LineBuilder({
   useLineNav({
     containerRef: rowsContainerRef,
     rowCount: displayRecords.length + visibleDrafts.length,
-    // 4 where the amount cell is an INPUT (`amountMode: 'stored'`) — otherwise
-    // nav would land on a column with nothing focusable in it. `LineGridRow`'s
-    // `totalNavigable` tags the cell to match.
-    colCount: schema.amountMode === 'stored' ? 4 : 3,
+    // 4 where the amount cell is an INPUT (`stored`, or the purchase order's
+    // `derived-editable`) - otherwise nav would land on a column with nothing
+    // focusable in it. `LineGridRow`'s `totalNavigable` tags the cell to match.
+    colCount: schema.amountMode === 'stored' || schema.amountMode === 'derived-editable' ? 4 : 3,
     onAddRow: addLine,
     readOnly,
   })

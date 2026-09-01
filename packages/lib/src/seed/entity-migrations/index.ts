@@ -81,6 +81,7 @@ import { migration117PartKindFromBom } from './migrations/117-part-kind-from-bom
 import { migration118MovementTypeRelabel } from './migrations/118-movement-type-relabel'
 import { migration119TariffSchedule } from './migrations/119-tariff-schedule'
 import { migration120TariffCodeLabel } from './migrations/120-tariff-code-label'
+import { migration121RatePrecision } from './migrations/121-rate-precision'
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
@@ -224,6 +225,7 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   // MUST sort after 119 - it adds a derived field to the def 119 creates and
   // repoints that def's display field at it.
   migration120TariffCodeLabel,
+  migration121RatePrecision,
 ]
 
 /**

@@ -42,6 +42,8 @@ const VENDOR_PART_ATTRIBUTES = [
   'vendor_part_lead_time',
   'vendor_part_is_preferred',
   'vendor_part_contact',
+  'vendor_part_purchase_unit',
+  'vendor_part_purchase_ratio',
 ] as const
 
 /**
@@ -65,6 +67,8 @@ function toRowValues(
     leadTime: (values?.vendor_part_lead_time as number | null | undefined) ?? null,
     isPreferred: (values?.vendor_part_is_preferred as boolean | undefined) ?? false,
     supplierRecordId: contact?.[0],
+    purchaseUnit: (values?.vendor_part_purchase_unit as string | null | undefined) ?? null,
+    purchaseRatio: (values?.vendor_part_purchase_ratio as number | null | undefined) ?? null,
   }
 }
 

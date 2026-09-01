@@ -2,7 +2,7 @@
 'use client'
 
 import { cn } from '@auxx/ui/lib/utils'
-import { minorUnitExponent } from '@auxx/utils/currency'
+import { minorToMajorString, minorUnitExponent, parseMajorToMinor } from '@auxx/utils/currency'
 import * as React from 'react'
 import { clampValue, decrementValue, incrementValue } from './input-number-utils'
 
@@ -194,35 +194,24 @@ function CurrencyInput({
   }, [locale, currencyCode])
 
   /**
-   * Format cents to display string (without currency symbol)
+   * Format minor units to a display string - full stored precision (the
+   * `minorToMajorString` rule): trailing zeros past the currency's exponent
+   * are trimmed, so a whole-cent value at `decimals: 5` still shows `16.50`,
+   * not `16.50000`, while a fractional-cent rate shows every digit it holds.
    */
   const formatValue = React.useCallback(
-    (minorUnits: number): string => {
-      const major = minorUnits / 10 ** exponent
-      return major.toFixed(decimals)
-    },
-    [exponent, decimals]
+    (minorUnits: number): string => minorToMajorString(minorUnits, currencyCode, decimals),
+    [currencyCode, decimals]
   )
 
   /**
-   * Parse display string to cents
+   * Parse a typed major-unit string to minor units, honouring `decimals` with
+   * the exponent floor (`parseMajorToMinor`): a five-place field turns
+   * `'0.01594'` into `1.594`, a two-place (or unset) one turns it into `2`.
    */
   const parseValue = React.useCallback(
-    (display: string): number | null => {
-      // Strip anything that is not part of a number. Deliberately not a fixed
-      // symbol list — that only covered five currencies and mangled the rest.
-      const cleaned = display
-        .replace(/[^0-9.,-]/g, '')
-        .replace(/,/g, '')
-        .trim()
-      if (!cleaned) return null
-
-      const parsed = Number.parseFloat(cleaned)
-      if (Number.isNaN(parsed)) return null
-
-      return Math.round(parsed * 10 ** exponent)
-    },
-    [exponent]
+    (display: string): number | null => parseMajorToMinor(display, currencyCode, decimals),
+    [currencyCode, decimals]
   )
 
   /**
@@ -322,13 +311,14 @@ function CurrencyInput({
  * ```
  */
 const CurrencyInputField = React.forwardRef<HTMLInputElement, CurrencyInputFieldProps>(
-  ({ className, showSymbol = true, onKeyDown, onBlur, ...props }, ref) => {
+  ({ className, showSymbol = true, onKeyDown, onBlur, onFocus, ...props }, ref) => {
     const {
       value,
       disabled,
       readOnly,
       min,
       max,
+      exponent,
       decimals,
       increment,
       decrement,
@@ -341,8 +331,14 @@ const CurrencyInputField = React.forwardRef<HTMLInputElement, CurrencyInputField
     // Local state for what user is typing
     const [displayValue, setDisplayValue] = React.useState<string>('')
 
-    // Step for keyboard navigation (100 cents)
-    const step = 100
+    // Whether the text was edited since the field was last focused. Blur only
+    // parses and commits when it is: otherwise a stored fractional-cent rate
+    // shown rounded-for-humans-never (formatValue is always full precision)
+    // would get re-parsed and silently re-rounded on every focus + click-away.
+    const [isDirty, setIsDirty] = React.useState(false)
+
+    // Step for keyboard navigation: one MAJOR unit ($1.00 = 100 cents, ¥1 = 1 yen).
+    const step = 10 ** exponent
 
     // Get currency symbol
     const symbol = getCurrencySymbol()
@@ -350,6 +346,7 @@ const CurrencyInputField = React.forwardRef<HTMLInputElement, CurrencyInputField
     // Sync display value with context value when it changes externally
     React.useEffect(() => {
       setDisplayValue(value !== undefined ? formatValue(value) : '')
+      setIsDirty(false)
     }, [value, formatValue])
 
     /**
@@ -392,20 +389,28 @@ const CurrencyInputField = React.forwardRef<HTMLInputElement, CurrencyInputField
             break
         }
       },
-      [disabled, readOnly, onKeyDown, increment, decrement, setValue, value, max, min]
+      [disabled, readOnly, onKeyDown, increment, decrement, setValue, value, max, min, step]
     )
 
     /**
-     * Handle blur - parse, clamp, and sync to context
+     * Handle blur - parse, clamp, and sync to context. Only when the text was
+     * actually edited since focus: an untouched field just re-renders the
+     * canonical (full-precision) display, it never re-parses and re-commits.
      */
     const handleBlur = React.useCallback(
       (e: React.FocusEvent<HTMLInputElement>) => {
         onBlur?.(e)
 
+        if (!isDirty) {
+          setDisplayValue(value !== undefined ? formatValue(value) : '')
+          return
+        }
+
         const inputValue = displayValue.trim()
         if (inputValue === '' || inputValue === '-') {
           setValue(undefined)
           setDisplayValue('')
+          setIsDirty(false)
           return
         }
 
@@ -418,15 +423,29 @@ const CurrencyInputField = React.forwardRef<HTMLInputElement, CurrencyInputField
           // Invalid input - revert to context value
           setDisplayValue(value !== undefined ? formatValue(value) : '')
         }
+        setIsDirty(false)
       },
-      [onBlur, displayValue, setValue, parseValue, min, max, value, formatValue]
+      [onBlur, isDirty, displayValue, setValue, parseValue, min, max, value, formatValue]
     )
 
     /**
-     * Handle input change - update display value only
+     * Handle focus - reset the dirty flag so a later blur without an edit
+     * never re-commits.
+     */
+    const handleFocus = React.useCallback(
+      (e: React.FocusEvent<HTMLInputElement>) => {
+        onFocus?.(e)
+        setIsDirty(false)
+      },
+      [onFocus]
+    )
+
+    /**
+     * Handle input change - update display value and mark the field dirty
      */
     const handleChange = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
       setDisplayValue(e.target.value)
+      setIsDirty(true)
     }, [])
 
     return (
@@ -449,6 +468,7 @@ const CurrencyInputField = React.forwardRef<HTMLInputElement, CurrencyInputField
           value={displayValue}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
+          onFocus={handleFocus}
           onBlur={handleBlur}
           disabled={disabled}
           readOnly={readOnly}

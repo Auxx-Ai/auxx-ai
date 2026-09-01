@@ -65,7 +65,7 @@ const WRITE_BATCH_SIZE = 20
 export interface EnsureStandardCostSource {
   kind: 'supplier-price' | 'opening-stock' | 'receipt' | 'manual'
   /**
-   * The cost to freeze, in whole minor units.
+   * The cost to freeze, in minor units, at rate precision (five major-unit places).
    *
    * Supplied by `opening-stock` and `receipt`, which know an exact number.
    * Omitted by `supplier-price` and `manual`, which fall back to the part's
@@ -210,7 +210,7 @@ export async function ensureStandardCost(
 }
 
 /**
- * Validate the caller's cost, in whole minor units.
+ * Validate the caller's cost, in minor units at rate precision.
  *
  * A zero or negative standard is refused rather than stored: `completeBuild`,
  * `adjustStock` and `receiveStock` all treat a zero standard as "not rolled",
@@ -220,7 +220,7 @@ export async function ensureStandardCost(
 function resolveExplicitCost(unitCost: number | undefined): number | null {
   if (unitCost == null) return null
   if (!Number.isFinite(unitCost) || unitCost <= 0) {
-    throw new BadRequestError('A standard cost must be a positive amount in whole minor units')
+    throw new BadRequestError('A standard cost must be a positive amount in minor units')
   }
   return roundMinorUnits(unitCost)
 }

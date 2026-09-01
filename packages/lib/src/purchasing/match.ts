@@ -1,6 +1,6 @@
 // packages/lib/src/purchasing/match.ts
 
-import { minorToMajorString } from '@auxx/utils/currency'
+import { isAtPrecision, minorToMajorString, RATE_DECIMALS } from '@auxx/utils/currency'
 import { BadRequestError } from '../errors'
 import { roundCents } from '../money/totals'
 import type { AwaitingLine, MatchLine, MatchReason, MatchResult, MatchTolerance } from './types'
@@ -64,9 +64,12 @@ function assertQuantity(value: number, label: string, index: number): void {
 
 function assertPrice(value: number, label: string, index: number): void {
   // Negative unit prices are allowed: a credit line on a vendor bill is a real
-  // thing. Non-integers are not — money is minor units everywhere in this module.
-  if (!Number.isFinite(value) || !Number.isInteger(value)) {
-    throw new BadRequestError(`Line ${index} ${label} must be an integer amount in minor units`)
+  // thing. `unitPriceBilled` / `unitPriceExpected` are RATES, so the guard
+  // accepts up to RATE_DECIMALS (five major-unit places), never a whole
+  // minor unit only - a fastener vendor's per-thousand price is exact at
+  // `1.594` and must not be refused here.
+  if (!Number.isFinite(value) || !isAtPrecision(value, RATE_DECIMALS)) {
+    throw new BadRequestError(`Line ${index} ${label} must have at most five decimal places`)
   }
 }
 

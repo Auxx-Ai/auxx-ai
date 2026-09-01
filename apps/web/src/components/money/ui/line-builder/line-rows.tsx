@@ -47,6 +47,7 @@ import { Kbd, KbdGroup } from '@auxx/ui/components/kbd'
 import { SimpleTooltip, TooltipExplanation } from '@auxx/ui/components/tooltip'
 import { TreeRowButton } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
+import { minorToMajorString, parseMajorToMinor, RATE_DECIMALS } from '@auxx/utils/currency'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import {
@@ -90,6 +91,7 @@ import {
   lineAttributesFor,
   lineSchemaFor,
   lineValuesFromSystemValues,
+  numberOrNull,
 } from './line-values'
 import { formatCurrency, titleCase } from './shared'
 import { LINE_ROW_ACTION_EVENT, type LineRowAction } from './use-line-hotkeys'
@@ -896,6 +898,10 @@ function LineNameCellView({
  * cell-treatment lock in 01-ui #1). Commits on blur/Enter, no-ops if the value
  * didn't actually change. Handles the rate (`line_item_unit_price`) column only —
  * quantity moved to the smart {@link QuantityCellView} (money plan 13 §5).
+ *
+ * `RATE_DECIMALS` (five places) - a unit price can hold a fraction of a cent
+ * (plans/money/tasks/31-sub-cent-rates.md §2.2); the amount cell it shares this
+ * view with never does.
  */
 function PriceCellView(props: {
   value: number | null
@@ -903,41 +909,70 @@ function PriceCellView(props: {
   currencyCode: string
   onCommit: (next: number | null) => void
 }) {
-  return <CurrencyCellInput {...props} />
+  return <CurrencyCellInput {...props} decimals={RATE_DECIMALS} />
 }
 
 /**
  * The shared chromeless currency editor behind {@link PriceCellView} and the
- * `stored` branch of {@link LineTotalCellView} — typed in dollars, stored as
- * integer cents. Extracted rather than copied when the amount column became
- * editable: two inputs over the same storage convention that round differently
- * is how a rate and an amount stop agreeing.
+ * `stored`/`derived-editable` amount cells in {@link LineTotalCellView} - typed
+ * in major units, stored as (possibly fractional) integer minor units. Extracted
+ * rather than copied when the amount column became editable: two inputs over the
+ * same storage convention that round differently is how a rate and an amount
+ * stop agreeing.
+ *
+ * `decimals` is the field's declared precision (`RATE_DECIMALS` for a rate cell,
+ * omitted for an amount cell - the exponent floor). Parsing and drafting go
+ * through the shared `@auxx/utils/currency` seam (`parseMajorToMinor` /
+ * `minorToMajorString`) rather than a hardcoded `* 100` / `/ 100`, which used to
+ * round a typed `0.01594` down to whole cents on every commit AND on every
+ * focus-then-blur with nothing typed (§2.5 - the blur fix needed regardless of
+ * precision).
+ *
+ * 🛑 Blur must not destroy precision: `dirtyRef` tracks whether the draft was
+ * actually EDITED (not merely focused). A focus that immediately blurs without a
+ * keystroke skips parsing entirely - `draft` alone isn't enough, because focus
+ * seeds it with the full-precision string and a naive "unchanged after
+ * round-trip" comparison can still drift on a five-place value across a double's
+ * floating-point rounding.
  */
 function CurrencyCellInput({
   value,
   readOnly,
   currencyCode,
+  decimals,
   onCommit,
   ariaLabel,
 }: {
   value: number | null
   readOnly: boolean
   currencyCode: string
+  /** The field's declared precision - `RATE_DECIMALS` for a rate, omitted for an amount. */
+  decimals?: number
   onCommit: (next: number | null) => void
   ariaLabel?: string
 }) {
   const [draft, setDraft] = useState<string | null>(null)
+  // Set only by onChange, cleared on focus/commit - whether the draft was
+  // actually typed into, not just opened. See the function doc.
+  const dirtyRef = useRef(false)
 
-  const display = formatCurrency(value ?? null, currencyCode)
+  const display = formatCurrency(value ?? null, currencyCode, decimals)
 
   const commit = () => {
     if (draft === null) return
-    const trimmed = draft.trim()
-    const parsed = trimmed === '' ? null : Number(trimmed)
+    const wasEdited = dirtyRef.current
+    const raw = draft
     setDraft(null)
-    if (parsed !== null && Number.isNaN(parsed)) return
-    // Typed in dollars but stored as integer cents (CURRENCY convention).
-    const next = parsed !== null ? Math.round(parsed * 100) : parsed
+    dirtyRef.current = false
+    if (!wasEdited) return
+    const trimmed = raw.trim()
+    if (trimmed === '') {
+      if (value === null || value === undefined) return
+      onCommit(null)
+      return
+    }
+    const next = parseMajorToMinor(trimmed, currencyCode, decimals)
+    if (next === null) return
     if (next === (value ?? null)) return
     onCommit(next)
   }
@@ -950,11 +985,26 @@ function CurrencyCellInput({
     <input
       aria-label={ariaLabel}
       value={draft ?? display}
-      onChange={(e) => setDraft(e.target.value)}
-      onFocus={() => setDraft(value !== null && value !== undefined ? String(value / 100) : '')}
+      onChange={(e) => {
+        setDraft(e.target.value)
+        dirtyRef.current = true
+      }}
+      onFocus={() => {
+        // Full stored precision, never the display-rounded string - otherwise a
+        // focus that changes nothing still truncates a five-place rate on blur.
+        setDraft(
+          value !== null && value !== undefined
+            ? minorToMajorString(value, currencyCode, decimals)
+            : ''
+        )
+        dirtyRef.current = false
+      }}
       onBlur={commit}
       onKeyDown={(e) => {
-        if (e.key === 'Escape') setDraft(null)
+        if (e.key === 'Escape') {
+          setDraft(null)
+          dirtyRef.current = false
+        }
       }}
       inputMode='decimal'
       className='h-full w-full rounded-sm border-none bg-transparent px-2 text-right text-sm tabular-nums outline-none'
@@ -989,6 +1039,8 @@ function QuantityCellView({
   unit,
   unitEditable,
   readOnly,
+  purchaseUnit,
+  purchaseRatio,
   onCommit,
 }: {
   quantity: number
@@ -1006,13 +1058,30 @@ function QuantityCellView({
    */
   unitEditable: boolean
   readOnly: boolean
+  /**
+   * The line's offer purchase unit (`vendor_part_purchase_unit`) - B-lite
+   * (plans/money/tasks/31-sub-cent-rates.md §2.9 item 2). `null`/absent hides the
+   * secondary draft entirely.
+   */
+  purchaseUnit?: string | null
+  /**
+   * Tracking units per purchase unit (`vendor_part_purchase_ratio`). Only a ratio
+   * greater than 1 earns the secondary draft - 1 or blank means "by the each",
+   * which is what the main cell already shows.
+   */
+  purchaseRatio?: number | null
   onCommit: (next: { quantity: number; unit: LineItemUnit | null }) => void
 }) {
   const [draft, setDraft] = useState<string | null>(null)
   const [invalid, setInvalid] = useState(false)
   const invalidTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [purchaseDraft, setPurchaseDraft] = useState<string | null>(null)
 
   const display = formatQtyDisplay(quantity, unit)
+  const hasPurchaseUnit = !!purchaseUnit && !!purchaseRatio && purchaseRatio > 1
+  const purchaseDisplay = hasPurchaseUnit
+    ? formatQtyNumber(quantity / (purchaseRatio as number))
+    : null
 
   const flashInvalid = () => {
     setInvalid(true)
@@ -1042,67 +1111,124 @@ function QuantityCellView({
     onCommit({ quantity, unit: nextUnit })
   }
 
+  // The purchase-unit draft is ONE number (`{n} {purchaseUnit}`) that maps onto
+  // the same each-quantity the main cell edits - `qty = n x ratio`. It never
+  // touches `unit`, which stays the part's own (see `unitEditable`'s doc).
+  const commitPurchase = () => {
+    if (purchaseDraft === null || !hasPurchaseUnit) return
+    const raw = purchaseDraft.trim()
+    setPurchaseDraft(null)
+    const parsed = Number(raw)
+    if (raw === '' || !Number.isFinite(parsed) || parsed < 0) {
+      flashInvalid()
+      return
+    }
+    const nextQuantity = parsed * (purchaseRatio as number)
+    if (nextQuantity === quantity) return
+    onCommit({ quantity: nextQuantity, unit })
+  }
+
   if (readOnly) {
-    return <div className='w-full px-2 text-right text-sm tabular-nums'>{display}</div>
+    return (
+      <div className='flex w-full flex-col items-end px-2 py-1'>
+        <span className='text-sm tabular-nums'>{display}</span>
+        {hasPurchaseUnit && (
+          <span className='text-[10px] text-muted-foreground tabular-nums'>
+            {purchaseDisplay} {purchaseUnit}
+          </span>
+        )}
+      </div>
+    )
   }
 
   return (
-    <div className='group/qty relative flex h-full w-full items-center'>
-      <input
-        value={draft ?? display}
-        onChange={(e) => setDraft(e.target.value)}
-        onFocus={() => setDraft(display)}
-        onBlur={commit}
-        onKeyDown={(e) => {
-          if (e.key === 'Escape') setDraft(null)
-        }}
-        inputMode='text'
-        className={cn(
-          'h-full w-full rounded-sm border-none bg-transparent py-1 pr-5 pl-2 text-right text-sm tabular-nums outline-none transition-colors',
-          invalid && 'bg-destructive/10 ring-1 ring-destructive/60'
+    <div className='group/qty relative flex h-full w-full flex-col justify-center'>
+      <div className='relative flex w-full items-center'>
+        <input
+          value={draft ?? display}
+          onChange={(e) => setDraft(e.target.value)}
+          onFocus={() => setDraft(display)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') setDraft(null)
+          }}
+          inputMode='text'
+          className={cn(
+            'h-full w-full rounded-sm border-none bg-transparent py-1 pr-5 pl-2 text-right text-sm tabular-nums outline-none transition-colors',
+            invalid && 'bg-destructive/10 ring-1 ring-destructive/60'
+          )}
+        />
+        {unitEditable && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type='button'
+                tabIndex={-1}
+                onMouseDown={(e) => e.preventDefault()}
+                className='-translate-y-1/2 absolute top-1/2 right-0.5 rounded-sm p-0.5 text-muted-foreground opacity-0 outline-none hover:bg-primary-100 focus:opacity-100 group-hover/qty:opacity-100'>
+                <ChevronsUpDown className='size-3' />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align='end' className='max-h-64 overflow-y-auto'>
+              <DropdownMenuItem onSelect={() => pickUnitOnly(null)}>No unit</DropdownMenuItem>
+              <DropdownMenuSeparator />
+              {LINE_ITEM_UNIT_OPTIONS.map((option) => (
+                <DropdownMenuItem key={option.value} onSelect={() => pickUnitOnly(option.value)}>
+                  {option.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
-      />
-      {unitEditable && (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type='button'
-              tabIndex={-1}
-              onMouseDown={(e) => e.preventDefault()}
-              className='-translate-y-1/2 absolute top-1/2 right-0.5 rounded-sm p-0.5 text-muted-foreground opacity-0 outline-none hover:bg-primary-100 focus:opacity-100 group-hover/qty:opacity-100'>
-              <ChevronsUpDown className='size-3' />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align='end' className='max-h-64 overflow-y-auto'>
-            <DropdownMenuItem onSelect={() => pickUnitOnly(null)}>No unit</DropdownMenuItem>
-            <DropdownMenuSeparator />
-            {LINE_ITEM_UNIT_OPTIONS.map((option) => (
-              <DropdownMenuItem key={option.value} onSelect={() => pickUnitOnly(option.value)}>
-                {option.label}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+      </div>
+      {hasPurchaseUnit && (
+        <div className='flex w-full items-center justify-end gap-0.5 pr-2 pb-0.5'>
+          <input
+            aria-label={`Quantity in ${purchaseUnit}`}
+            value={purchaseDraft ?? purchaseDisplay ?? ''}
+            onChange={(e) => setPurchaseDraft(e.target.value)}
+            onFocus={() => setPurchaseDraft(purchaseDisplay ?? '')}
+            onBlur={commitPurchase}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') setPurchaseDraft(null)
+            }}
+            inputMode='decimal'
+            className='h-4 w-10 rounded-sm border-none bg-transparent text-right text-[10px] text-muted-foreground tabular-nums outline-none'
+          />
+          <span className='text-[10px] text-muted-foreground'>{purchaseUnit}</span>
+        </div>
       )}
     </div>
   )
 }
 
 /**
- * The amount cell — read-only on five documents, an input on the sixth
- * (plans/purchasing/04-vendor-bill-lines-and-the-amount-cell.md §3).
+ * The amount cell - read-only on four documents, an input on the other two
+ * (plans/purchasing/04-vendor-bill-lines-and-the-amount-cell.md §3,
+ * widened by plans/money/tasks/31-sub-cent-rates.md §2.6).
  *
  * `derived`: `computeLineTotal` over the row's qty and rate. The stored
  * `…_line_total` behind it is `creatable: false` with the server totals hook as
  * its only writer, so there is nothing here to type into.
  *
+ * `derived-editable`: the purchase order. Same engine-owned total as `derived` -
+ * still nothing to type INTO - but the cell IS an input: typing a value with a
+ * blank rate cross-fills `expected_unit_price` (see `crossFillAmount`), and once
+ * that write round-trips the cell goes back to rendering `computeLineTotal`. A
+ * local `typedAmount` remembers what was last typed just long enough to flag a
+ * disagreement with the recomputed total - there is no persisted amount field to
+ * compare against, unlike `stored`.
+ *
  * `stored`: the vendor bill. The amount is TRANSCRIBED, so it is an input, and
  * `crossFillAmount` fills whichever of rate/amount was left blank.
  *
  * 🛑 When `qty × rate` disagrees with the typed amount the cell MARKS it and
- * changes nothing. That disagreement is the vendor's own arithmetic — the exact
- * discrepancy the three-way match exists to surface — so a cell that quietly
- * reconciled the two would be deleting the finding.
+ * changes nothing. On a vendor bill that disagreement is the vendor's own
+ * arithmetic - the exact discrepancy the three-way match exists to surface. On a
+ * purchase order it means the derived rate didn't round back to what was typed
+ * (a vendor who rounded differently) - the engine's total still wins, because
+ * `expected_unit_price` is the price arm of the three-way match: it is what WE
+ * agreed, not a transcription.
  */
 function LineTotalCellView({
   amountMode,
@@ -1117,17 +1243,53 @@ function LineTotalCellView({
   amountMode: AmountMode
   qty: number
   unitPrice: number | null
-  /** The transcribed amount — `stored` mode only; ignored when `derived`. */
+  /** The transcribed amount - `stored` mode only; ignored otherwise. */
   lineTotal: number | null
   mismatch: boolean
   readOnly: boolean
   currencyCode: string
   onCommit: (next: number | null) => void
 }) {
+  // Remembers the last amount typed into a `derived-editable` cell, purely to
+  // flag a post-derivation disagreement - there is no server field to read it
+  // back from (see the component doc).
+  const [typedAmount, setTypedAmount] = useState<number | null>(null)
+
   if (amountMode === 'derived') {
     return (
       <div className='w-full px-2 text-right text-muted-foreground text-sm tabular-nums'>
         {formatCurrency(computeLineTotal(qty, unitPrice), currencyCode)}
+      </div>
+    )
+  }
+
+  if (amountMode === 'derived-editable') {
+    const computed = computeLineTotal(qty, unitPrice)
+    const derivedMismatch = typedAmount !== null && computed !== typedAmount
+    return (
+      <div className='flex h-full w-full items-center justify-end gap-1'>
+        {derivedMismatch && (
+          <SimpleTooltip
+            content={`Typed as ${formatCurrency(
+              typedAmount,
+              currencyCode
+            )}. The purchase order total is computed from quantity x rate (${formatCurrency(
+              computed,
+              currencyCode
+            )}) - the rate is what the three-way match holds the vendor to, not the typed total.`}>
+            <TriangleAlert className='size-3.5 shrink-0 text-warning-600' />
+          </SimpleTooltip>
+        )}
+        <CurrencyCellInput
+          value={computed}
+          readOnly={readOnly}
+          currencyCode={currencyCode}
+          onCommit={(next) => {
+            setTypedAmount(next)
+            onCommit(next)
+          }}
+          ariaLabel='Amount'
+        />
       </div>
     )
   }
@@ -1873,6 +2035,49 @@ function usePartUnit(partRecordId: RecordId | null): LineItemUnit {
 
 const PART_UNIT_ATTRS = ['part_unit'] as const
 
+/** How a PO line's offer packs the part - B-lite (§2.9 item 2). */
+interface OfferPurchaseUnit {
+  /** `vendor_part_purchase_unit` - free text ('thousand', 'box of 500'). */
+  purchaseUnit: string | null
+  /** `vendor_part_purchase_ratio` - tracking units per purchase unit. */
+  purchaseRatio: number | null
+}
+
+const VENDOR_PART_PURCHASE_ATTRS = [
+  'vendor_part_purchase_unit',
+  'vendor_part_purchase_ratio',
+] as const
+
+const NO_OFFER_PURCHASE_UNIT: OfferPurchaseUnit = { purchaseUnit: null, purchaseRatio: null }
+
+/**
+ * The offer's purchase unit + ratio, for the quantity cell's secondary draft
+ * (plans/money/tasks/31-sub-cent-rates.md §2.9 item 2).
+ *
+ * 🛑 No new tRPC procedure: this is the exact same generic mechanism
+ * {@link usePartUnit} already uses to read one arbitrary system attribute pair
+ * off an arbitrary record id - `useSystemValues` resolves system attributes
+ * against the record's OWN definition and fetches through `useFieldValues`, so
+ * a `vendor_part` record is no different from the `part` record `usePartUnit`
+ * reads. `vendorPartRecordId` is `null` on a line with no offer link
+ * (`purchase_order_line_vendor_part`), which is also true before the part is
+ * picked - the hook simply skips the fetch.
+ */
+function useVendorPartPurchaseUnit(vendorPartRecordId: RecordId | null): OfferPurchaseUnit {
+  const { values } = useSystemValues(
+    vendorPartRecordId ?? ('' as RecordId),
+    VENDOR_PART_PURCHASE_ATTRS,
+    { autoFetch: !!vendorPartRecordId, enabled: !!vendorPartRecordId }
+  )
+  if (!vendorPartRecordId) return NO_OFFER_PURCHASE_UNIT
+  const rawUnit = values.vendor_part_purchase_unit
+  const unit = Array.isArray(rawUnit) ? rawUnit[0] : rawUnit
+  return {
+    purchaseUnit: typeof unit === 'string' && unit ? unit : null,
+    purchaseRatio: numberOrNull(values.vendor_part_purchase_ratio),
+  }
+}
+
 /**
  * A ref that always holds the value from the latest render.
  *
@@ -1985,6 +2190,11 @@ export function LineRow({
   const { values } = useSystemValues(recordId, lineAttributesFor(schema), { autoFetch: false })
   const line = lineValuesFromSystemValues(values, schema)
   const partUnit = usePartUnit(schema.capabilities.partPicker ? line.partRecordId : null)
+  // `schema.attrs.vendorPartRecordId` is only set on the purchase order - a bill
+  // line has no offer link, so this is null there too (§2.9 item 2).
+  const { purchaseUnit, purchaseRatio } = useVendorPartPurchaseUnit(
+    schema.attrs.vendorPartRecordId ? line.vendorPartRecordId : null
+  )
   // Read at prefill-completion time, never at pick time — see `applyPartPrefill`.
   const priceRef = useLatestRef(line.unitPriceCents)
   // FILE is array-return (plan 37b §3) — the photos attribute reads back as an array
@@ -2100,6 +2310,8 @@ export function LineRow({
             unit={schema.capabilities.partPicker ? partUnit : line.unit}
             unitEditable={schema.capabilities.unit}
             readOnly={readOnly}
+            purchaseUnit={purchaseUnit}
+            purchaseRatio={purchaseRatio}
             onCommit={(next) => {
               const patch: LinePatch = {}
               if (next.quantity !== line.qty) patch.qty = next.quantity
@@ -2122,7 +2334,7 @@ export function LineRow({
             }
           />
         }
-        totalNavigable={schema.amountMode === 'stored'}
+        totalNavigable={schema.amountMode === 'stored' || schema.amountMode === 'derived-editable'}
         total={
           <LineTotalCellView
             amountMode={schema.amountMode}
@@ -2194,6 +2406,9 @@ export function DraftLineRow({
   const schema = lineSchemaFor(documentType)
   const showOptional = schema.capabilities.optional
   const partUnit = usePartUnit(schema.capabilities.partPicker ? draft.partRecordId : null)
+  const { purchaseUnit, purchaseRatio } = useVendorPartPurchaseUnit(
+    schema.attrs.vendorPartRecordId ? draft.vendorPartRecordId : null
+  )
   const priceRef = useLatestRef(draft.unitPriceCents)
 
   return (
@@ -2289,6 +2504,8 @@ export function DraftLineRow({
           unit={schema.capabilities.partPicker ? partUnit : draft.unit}
           unitEditable={schema.capabilities.unit}
           readOnly={false}
+          purchaseUnit={purchaseUnit}
+          purchaseRatio={purchaseRatio}
           onCommit={(next) =>
             void createDraft(draft.draftId, { qty: next.quantity, unit: next.unit })
           }
@@ -2307,7 +2524,7 @@ export function DraftLineRow({
           }
         />
       }
-      totalNavigable={schema.amountMode === 'stored'}
+      totalNavigable={schema.amountMode === 'stored' || schema.amountMode === 'derived-editable'}
       total={
         <LineTotalCellView
           amountMode={schema.amountMode}

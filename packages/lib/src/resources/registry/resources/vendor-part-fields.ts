@@ -2,6 +2,7 @@
 
 import { FieldType } from '@auxx/database/enums'
 import { type ResourceFieldId, toFieldId } from '@auxx/types/field'
+import { RATE_DECIMALS } from '@auxx/utils/currency'
 import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
 import type { ResourceField } from '../field-types'
@@ -141,6 +142,8 @@ export const VENDOR_PART_FIELDS: Record<string, ResourceField> = {
     systemAttribute: 'vendor_part_unit_price',
     systemSortOrder: 'a4',
     nullable: true,
+    // RATE, not amount: per-each (plans/money/tasks/31-sub-cent-rates.md §2.2).
+    options: { decimals: RATE_DECIMALS },
     capabilities: {
       filterable: true,
       sortable: true,
@@ -161,6 +164,8 @@ export const VENDOR_PART_FIELDS: Record<string, ResourceField> = {
     systemAttribute: 'vendor_part_shipping_cost',
     systemSortOrder: 'a4a',
     nullable: true,
+    // RATE, not amount: per-each. §2.2.
+    options: { decimals: RATE_DECIMALS },
     capabilities: {
       filterable: true,
       sortable: true,
@@ -258,6 +263,8 @@ export const VENDOR_PART_FIELDS: Record<string, ResourceField> = {
     systemAttribute: 'vendor_part_other_cost',
     systemSortOrder: 'a4c',
     nullable: true,
+    // RATE, not amount: per-each. §2.2.
+    options: { decimals: RATE_DECIMALS },
     capabilities: {
       filterable: true,
       sortable: true,
@@ -308,6 +315,56 @@ export const VENDOR_PART_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     placeholder: 'Enter minimum order quantity',
+  },
+
+  // B-lite entry conversion (plans/money/tasks/31-sub-cent-rates.md §2.9): the
+  // vendor's selling unit and how many tracking units it holds. An entry
+  // conversion on the offer's price field only, never a stock or storage
+  // unit, and never read by costing. Both nullable; null/1 ratio means "by
+  // the each".
+  purchaseUnit: {
+    id: toFieldId('purchaseUnit'),
+    key: 'purchaseUnit',
+    label: 'Purchase Unit',
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemAttribute: 'vendor_part_purchase_unit',
+    systemSortOrder: 'a6a',
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    placeholder: 'thousand, box of 500, kg…',
+    description:
+      'How this vendor sells the part: thousand, box of 500, kg. Blank means by the each.',
+  },
+
+  purchaseRatio: {
+    id: toFieldId('purchaseRatio'),
+    key: 'purchaseRatio',
+    label: 'Units per Purchase Unit',
+    type: BaseType.NUMBER,
+    fieldType: FieldType.NUMBER,
+    isSystem: true,
+    systemAttribute: 'vendor_part_purchase_ratio',
+    systemSortOrder: 'a6b',
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    placeholder: 'Enter units per purchase unit',
+    description:
+      'Tracking units in one purchase unit: 1000 for a thousand, 500 for a box of 500. ' +
+      'Blank or 1 means by the each.',
   },
 
   isPreferred: {

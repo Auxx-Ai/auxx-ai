@@ -2,6 +2,7 @@
 
 import { FieldType } from '@auxx/database/enums'
 import { type ResourceFieldId, toFieldId } from '@auxx/types/field'
+import { RATE_DECIMALS } from '@auxx/utils/currency'
 import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
 import { StockMovementCostBasis, StockMovementType } from '../enum-values'
@@ -264,9 +265,11 @@ export const STOCK_MOVEMENT_FIELDS: Record<string, ResourceField> = {
     systemAttribute: 'stock_movement_unit_cost',
     systemSortOrder: 'b0',
     nullable: true,
+    // RATE, not amount: per-each (plans/money/tasks/31-sub-cent-rates.md §2.2).
+    // `extendedCost` below is the amount and stays at the currency's exponent.
     options: {
       currencyCode: 'USD',
-      decimals: 2,
+      decimals: RATE_DECIMALS,
       useGrouping: true,
       currencyDisplay: 'symbol',
     },
@@ -443,9 +446,10 @@ export const STOCK_MOVEMENT_FIELDS: Record<string, ResourceField> = {
     systemAttribute: 'stock_movement_vendor_unit_price',
     systemSortOrder: 'b6',
     nullable: true,
+    // RATE, not amount: per-each. §2.2.
     options: {
       currencyCode: 'USD',
-      decimals: 2,
+      decimals: RATE_DECIMALS,
       useGrouping: true,
       currencyDisplay: 'symbol',
     },

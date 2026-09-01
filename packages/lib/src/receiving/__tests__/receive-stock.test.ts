@@ -176,14 +176,15 @@ describe('receiveStock — step 2, the zero-cost guard', () => {
     expect(h.createSpy).not.toHaveBeenCalled()
   })
 
-  it('refuses a sub-half-cent price rather than storing the zero it rounds to', async () => {
-    // The check is applied AFTER rounding on purpose: 0.4c stored as 0 is a
-    // receipt the ledger cannot explain.
-    const error = await expectErr(
-      receiveStock(db, ORG, USER, { partId: 'part_1', quantity: 10, unitCost: 0.4 })
-    )
-    expect(error).toBeInstanceOf(UnprocessableEntityError)
-    expect(h.createSpy).not.toHaveBeenCalled()
+  it('receives a sub-cent price at five places, instead of refusing it as a rounds-to-zero cost', async () => {
+    // `unitCost` is a RATE, kept at RATE_DECIMALS: 0.4 (of a cent) is real
+    // money, not zero, so it must not be refused just because it would round
+    // to zero at whole-cent precision. The zero-cost guard now runs on the
+    // UNROUNDED landed cost, before rounding.
+    await receiveStock(db, ORG, USER, { partId: 'part_1', quantity: 10000, unitCost: 0.4 })
+    const values = writtenValues()
+    expect(values.stock_movement_unit_cost).toBe(0.4)
+    expect(values.stock_movement_extended_cost).toBe(4000) // round(0.4 x 10000)
   })
 
   it('surfaces a missing supplier part as NotFound, not as a zero-cost receipt', async () => {
@@ -339,31 +340,33 @@ describe('receiveStock — door 1, the SENT price is the base', () => {
   })
 })
 
-describe('receiveStock — step 3, rounding', () => {
-  it('rounds the fractional cent the landed formula leaves behind', async () => {
-    // 4133 at 7.5% is 4442.975; CURRENCY is cents in a doublePrecision column.
+describe('receiveStock - step 3, rounding to a RATE, not a whole cent', () => {
+  it('keeps the fractional cent the landed formula leaves behind, at five places', async () => {
+    // 4133 at 7.5% is 4442.975; already at RATE_DECIMALS, so `unitCost` stores
+    // it exactly rather than rounding to the nearest whole cent (4443).
     h.vendorTerms = { unitPrice: 4133, tariffRate: 7.5 }
     await receiveStock(db, ORG, USER, { partId: 'part_1', quantity: 1, vendorPartId: 'vp_1' })
-    expect(writtenValues().stock_movement_unit_cost).toBe(4443)
+    expect(writtenValues().stock_movement_unit_cost).toBe(4442.975)
   })
 
-  it('rounds a supplied fractional price too', async () => {
-    await receiveStock(db, ORG, USER, { partId: 'part_1', quantity: 1, unitCost: 4442.975 })
-    expect(writtenValues().stock_movement_unit_cost).toBe(4443)
+  it('rounds a supplied price beyond five places down to five, not to a whole cent', async () => {
+    // 4442.9754 needs a sixth place, so it rounds to 4442.975 - still a RATE.
+    await receiveStock(db, ORG, USER, { partId: 'part_1', quantity: 1, unitCost: 4442.9754 })
+    expect(writtenValues().stock_movement_unit_cost).toBe(4442.975)
   })
 
-  it('rounds the vendor unit price as well as the landed cost', async () => {
+  it('keeps the vendor unit price at five places too, not rounded to a whole cent', async () => {
     h.vendorTerms = { unitPrice: 4000.6 }
     await receiveStock(db, ORG, USER, { partId: 'part_1', quantity: 1, vendorPartId: 'vp_1' })
-    expect(writtenValues().stock_movement_vendor_unit_price).toBe(4001)
+    expect(writtenValues().stock_movement_vendor_unit_price).toBe(4000.6)
   })
 
-  it('computes the extended cost from the ROUNDED unit cost times the quantity', async () => {
+  it('computes the extended cost - a whole-cent AMOUNT - from the five-place unit cost times the quantity', async () => {
     h.vendorTerms = { unitPrice: 4133, tariffRate: 7.5 }
     await receiveStock(db, ORG, USER, { partId: 'part_1', quantity: 10, vendorPartId: 'vp_1' })
     const values = writtenValues()
-    expect(values.stock_movement_unit_cost).toBe(4443)
-    expect(values.stock_movement_extended_cost).toBe(44430)
+    expect(values.stock_movement_unit_cost).toBe(4442.975)
+    expect(values.stock_movement_extended_cost).toBe(44430) // round(4442.975 x 10)
   })
 
   it('returns exactly what it stored', async () => {
@@ -378,7 +381,7 @@ describe('receiveStock — step 3, rounding', () => {
       recordId: 'def_mv:mv_1',
       partInstanceId: 'part_1',
       quantity: 10,
-      unitCost: 4443,
+      unitCost: 4442.975,
       extendedCost: 44430,
       vendorUnitPrice: 4133,
       vendorPartId: 'vp_1',

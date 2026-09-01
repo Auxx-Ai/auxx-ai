@@ -17,6 +17,7 @@
  * plans/purchasing/01-build-plan.md sections 3.2 and 3.5.
  */
 
+import { RATE_DECIMALS, roundMinor } from '@auxx/utils/currency'
 import {
   computeLandedBreakdown,
   computeLandedCost,
@@ -252,17 +253,20 @@ export function resolveInventoryRoleForPartKind(partKind: string | null | undefi
 }
 
 /**
- * Round a money value to whole minor units.
+ * Round a money value to a RATE field's precision (`RATE_DECIMALS`).
  *
- * 🛑 `CURRENCY` is cents in a `doublePrecision` column and the landed formula
- * does not round its tariff term, so a fractional-cent tail reaches the write
- * path intact (build plan section 2.2). Every money value this module stores
- * goes through here first — not as defensive tidying, but because an unrounded
- * cent stored in a float is a number that will not compare equal to itself after
- * a round trip, and the three-way match compares stored costs.
+ * 🛑 For RATES ONLY - `unitCost`, `vendorUnitPrice`, a standard cost. `CURRENCY`
+ * is cents in a `doublePrecision` column and the landed formula does not round
+ * its tariff term, so a fractional-cent tail reaches the write path intact
+ * (build plan section 2.2). Every RATE this module stores goes through here
+ * first - not as defensive tidying, but because an unrounded value stored in a
+ * float is a number that will not compare equal to itself after a round trip,
+ * and the three-way match compares stored costs. Rates never round to a whole
+ * minor unit, only AMOUNTS do - an extended cost still goes through
+ * {@link computeExtendedCost}, never through this function.
  */
 export function roundMinorUnits(value: number): number {
-  return Math.round(value)
+  return roundMinor(value, RATE_DECIMALS)
 }
 
 /**

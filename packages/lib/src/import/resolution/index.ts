@@ -88,10 +88,12 @@ export {
 } from './relation-policy'
 // Live option lists for `select:*` / `multiselect:*` columns, resolved at RUN time
 export { type ResolveColumnOptionsInput, resolveColumnOptions } from './resolve-column-options'
-// CURRENCY denomination for `currency:*` columns, resolved at RUN time
+// CURRENCY denomination and precision for `currency:*` columns, resolved at RUN time
 export {
   type ResolveColumnCurrencyCodesInput,
+  type ResolveColumnDecimalsInput,
   resolveColumnCurrencyCodes,
+  resolveColumnDecimals,
 } from './resolve-currency-code'
 // Relation lookup resolution
 export {
