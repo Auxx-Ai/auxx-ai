@@ -15,10 +15,7 @@ import {
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback, useEffect, useState } from 'react'
-import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
-import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { useResourceProperty } from '~/components/resources'
-import { useSystemField } from '~/components/resources/hooks/use-field'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { api } from '~/trpc/react'
@@ -83,10 +80,6 @@ export function VendorPartDialog({
   const companyDefId = useResourceProperty('company', 'id')
   const tariffCodeDefId = useResourceProperty('tariff_code', 'id')
 
-  // Field definition for the Part relationship picker (contact-centric mode) — sourced live
-  // so FieldInputAdapter gets a real RelationshipConfig and can offer "create new part"
-  const partField = useSystemField('vendor_part_part')
-
   // Load initial values for edit mode via system attributes
   const { values: systemValues } = useSystemValues(recordId, VENDOR_PART_SYSTEM_ATTRIBUTES, {
     autoFetch: true,
@@ -104,11 +97,7 @@ export function VendorPartDialog({
   )
   const partHsCode = (partValues?.hs_code as string | undefined) ?? null
 
-  // State - uses shared type plus partId for contact-centric mode
-  const [values, setValues] = useState<VendorPartFormValues & { partId: string }>({
-    ...defaultVendorPartValues,
-    partId: '',
-  })
+  const [values, setValues] = useState<VendorPartFormValues>(defaultVendorPartValues)
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   // Initialize/reset values when dialog opens
@@ -155,10 +144,7 @@ export function VendorPartDialog({
           purchaseRatio: (systemValues.vendor_part_purchase_ratio as number) ?? null,
         })
       } else if (!isEditMode) {
-        setValues({
-          ...defaultVendorPartValues,
-          partId: '',
-        })
+        setValues(defaultVendorPartValues)
       }
       setErrors({})
     }
@@ -166,19 +152,6 @@ export function VendorPartDialog({
 
   // Handler for vendor part field changes
   const handleVendorPartChange = useCallback((field: keyof VendorPartFormValues, value: any) => {
-    setValues((prev) => ({ ...prev, [field]: value }))
-    setErrors((prev) => {
-      if (prev[field]) {
-        const next = { ...prev }
-        delete next[field]
-        return next
-      }
-      return prev
-    })
-  }, [])
-
-  // Field change handler
-  const handleChange = useCallback((field: string, value: any) => {
     setValues((prev) => ({ ...prev, [field]: value }))
     setErrors((prev) => {
       if (prev[field]) {
@@ -328,40 +301,18 @@ export function VendorPartDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <FieldPanel className='p-0' breakpoint='md' resizeId='vendor-part'>
-          {/* Part Selection - only shown in contact-centric mode */}
-          {isContactMode && (
-            <FieldPanelRow
-              title='Part'
-              isRequired
-              validationError={errors.partId}
-              validationType='error'>
-              <FieldInputAdapter
-                fieldType={partField?.fieldType ?? FieldType.RELATIONSHIP}
-                triggerProps={{ className: 'w-full ps-0 pe-1' }}
-                fieldOptions={partField?.options}
-                value={values.partId ? [toRecordId('part', values.partId)] : []}
-                onChange={(recordIds) => {
-                  const ids = recordIds as RecordId[]
-                  handleChange('partId', ids[0] ? getInstanceId(ids[0]) : '')
-                }}
-                placeholder='Select part...'
-                disabled={isPending || isEditMode}
-              />
-            </FieldPanelRow>
-          )}
-
-          {/* Shared vendor part fields */}
-          <VendorPartFields
-            values={values}
-            onChange={handleVendorPartChange}
-            errors={errors}
-            disabled={isPending}
-            disableContactEdit={isEditMode}
-            showContactField={isPartMode}
-            partHsCode={partHsCode}
-          />
-        </FieldPanel>
+        <VendorPartFields
+          values={values}
+          onChange={handleVendorPartChange}
+          errors={errors}
+          disabled={isPending}
+          showContactField={isPartMode}
+          disableContactEdit={isEditMode}
+          showPartField={isContactMode}
+          disablePartEdit={isEditMode}
+          partHsCode={partHsCode}
+          resizeId='vendor-part'
+        />
 
         <DialogFooter>
           <Button

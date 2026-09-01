@@ -6,8 +6,10 @@ import {
   CurrencyInput as CurrencyInputUi,
 } from '@auxx/ui/components/input-currency'
 import { InputGroup } from '@auxx/ui/components/input-group'
+import { cn } from '@auxx/ui/lib/utils'
 import type React from 'react'
 import { useCallback, useRef } from 'react'
+import type { PickerTriggerOptions } from '~/components/ui/picker-trigger'
 import { createNodeInput, type NodeInputProps } from './base-node-input'
 
 /**
@@ -26,6 +28,8 @@ interface CurrencyInputProps extends NodeInputProps {
   currencyDisplay?: 'symbol' | 'code' | 'name' | 'compact'
   /** Whether to use grouping separators */
   useGrouping?: boolean
+  /** Trigger customization options (className is merged into the input group) */
+  triggerProps?: PickerTriggerOptions
 }
 
 /**
@@ -46,6 +50,7 @@ export const CurrencyInput = createNodeInput<CurrencyInputProps>(
     currencyCode = 'USD',
     decimals,
     currencyDisplay = 'symbol',
+    triggerProps,
   }) => {
     // Track if we should trigger onChange after blur parsing
     const shouldUpdateRef = useRef(false)
@@ -96,7 +101,11 @@ export const CurrencyInput = createNodeInput<CurrencyInputProps>(
         currencyDisplay={currencyDisplay === 'compact' ? 'symbol' : currencyDisplay}
         decimals={decimals}
         disabled={isLoading}>
-        <InputGroup className='bg-transparent dark:bg-transparent h-[28px] shadow-none ring-0 border-0 has-[[data-slot=input-group-control]:focus-visible]:ring-[0px]'>
+        <InputGroup
+          className={cn(
+            'bg-transparent dark:bg-transparent h-[28px] shadow-none ring-0 border-0 has-[[data-slot=input-group-control]:focus-visible]:ring-[0px]',
+            triggerProps?.className
+          )}>
           <CurrencyInputField
             onBlur={handleBlur}
             onKeyDown={handleKeyDown}

@@ -561,7 +561,7 @@ export function FieldInputAdapter({
     case FieldType.NUMBER:
       return (
         <FocusableInputWrapper open={open} onOpenChange={onOpenChange}>
-          <NumberInput {...nodeInputProps} />
+          <NumberInput {...nodeInputProps} triggerProps={triggerProps} />
         </FocusableInputWrapper>
       )
 
@@ -582,6 +582,7 @@ export function FieldInputAdapter({
                 : (fieldOptions?.currencyDisplay ?? 'symbol')
             }
             useGrouping={fieldOptions?.useGrouping ?? true}
+            triggerProps={triggerProps}
           />
         </FocusableInputWrapper>
       )
