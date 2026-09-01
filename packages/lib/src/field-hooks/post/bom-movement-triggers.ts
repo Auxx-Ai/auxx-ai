@@ -4,7 +4,7 @@ import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { TypedFieldValueInput } from '@auxx/types'
 import type { RecordId } from '@auxx/types/resource'
-import { parseRecordId, toRecordId } from '@auxx/types/resource'
+import { toRecordId } from '@auxx/types/resource'
 import { nextKeyAfter } from '@auxx/utils/fractional-indexing'
 import { batchRecalculateQoH } from '../../bom/qoh'
 import { getDeductionTargets, loadSubpartGraph } from '../../bom/subpart-graph'
@@ -12,6 +12,7 @@ import { getOrgCache, requireCachedEntityDefId } from '../../cache'
 import { createFieldValueContext } from '../../field-values/field-value-helpers'
 import { buildFieldValueRow, setValueWithType } from '../../field-values/field-value-mutations'
 import { type StoredFieldType, toFieldType } from '../../field-values/stored-field-type'
+import { unwrapRelationId } from '../../resources/events/captured-values'
 import type { EntityTriggerHandler } from '../types'
 
 const logger = createScopedLogger('field-hooks:bom-movement')
@@ -41,7 +42,7 @@ export const explodeBomMovement: EntityTriggerHandler = async (event) => {
   if (values.stock_movement_parent_movement) return
 
   // Resolve the affected part
-  const partInstanceId = extractRelatedEntityId(values, 'stock_movement_part')
+  const partInstanceId = unwrapRelationId(values.stock_movement_part)
   if (!partInstanceId) {
     logger.warn('Could not resolve part for BOM explosion', { entityInstanceId })
     return
@@ -230,14 +231,4 @@ async function clearAdjustSubpartsFlag(
     fieldType: toFieldType(flagField.type),
     value: { type: 'boolean', value: false },
   })
-}
-
-/** Extract a related entity ID from event values. */
-function extractRelatedEntityId(
-  values: Record<string, unknown>,
-  systemAttribute: string
-): string | undefined {
-  const value = values[systemAttribute]
-  if (typeof value !== 'string') return undefined
-  return value.includes(':') ? parseRecordId(value as any).entityInstanceId : value
 }

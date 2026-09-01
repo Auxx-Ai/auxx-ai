@@ -6,6 +6,7 @@ import { and, eq } from 'drizzle-orm'
 import { BadRequestError } from '../../errors'
 import { settledPeriodsFor } from '../../postings/settled-periods'
 import { UnifiedCrudHandler } from '../../resources/crud'
+import { unwrapStatusValue } from '../../resources/events/captured-values'
 import { VendorBillStatus } from '../../resources/registry/enum-values'
 import type { EntityPreDeleteEvent, EntityPreDeleteHandler } from '../types'
 
@@ -97,21 +98,13 @@ function refuseOnStatus(event: EntityPreDeleteEvent): void {
 /**
  * A captured SINGLE_SELECT value, reduced to its option id.
  *
- * ⚠️ Captured values are not uniformly bare strings — `rematchAfterBillLineDelete`
- * has to unwrap a `RecordId` from the same source, and a select arrives as
- * `{ type: 'option', optionId }` on the field chain. Both shapes are handled
- * rather than assumed, because a guard that compares the wrong shape is inert
- * and reads perfectly in review (`pre/build-status-guard.ts` documents that
- * exact trap).
+ * Delegates to the shared `unwrapStatusValue` rather than carrying a private
+ * copy of its body — the three chains and the shapes each one produces are
+ * documented once, on `resources/events/captured-values.ts`.
  */
 function unwrapStatus(value: unknown): string | null {
-  if (typeof value === 'string') return value.length > 0 ? value : null
-  if (Array.isArray(value)) return unwrapStatus(value[0])
-  if (value && typeof value === 'object') {
-    if ('optionId' in value) return unwrapStatus((value as { optionId: unknown }).optionId)
-    if ('value' in value) return unwrapStatus((value as { value: unknown }).value)
-  }
-  return null
+  const unwrapped = unwrapStatusValue(value)
+  return typeof unwrapped === 'string' && unwrapped.length > 0 ? unwrapped : null
 }
 
 /** Refuse when a vendor payment has been applied to this bill. */

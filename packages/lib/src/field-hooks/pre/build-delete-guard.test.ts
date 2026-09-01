@@ -58,6 +58,7 @@ vi.mock('@auxx/database', async () => {
   }
 })
 
+import { capturedRelation } from '../__tests__/support/captured'
 import { guardBuildDelete } from './build-delete-guard'
 
 const BUILD_DEF = 'b5hzr4xbn1fhznih3u74gtza'
@@ -135,10 +136,26 @@ describe('guardBuildDelete — refusals', () => {
     await expect(guardBuildDelete(event())).rejects.toThrow(/reverse the build/i)
   })
 
+  // 🛑 Through `capturedRelation`, NOT a bare string. This case shipped green in
+  // #1995 against `build_reversal_of: 'def:other'` while the guard was inert in
+  // production, because the capture chain sends `['def:other']` and the guard
+  // tested `typeof === 'string'`. Deleting build B-0007 in dev on 2026-08-31
+  // succeeded and cascaded its 9 movements. Keep the array.
   it('refuses when this build IS a reversal', async () => {
+    await expect(
+      guardBuildDelete(event({ build_reversal_of: capturedRelation(`${BUILD_DEF}:other`) }))
+    ).rejects.toThrow(/reverses another build/i)
+  })
+
+  it('refuses on a bare-string relation too — the create chain shape still counts', async () => {
     await expect(
       guardBuildDelete(event({ build_reversal_of: `${BUILD_DEF}:other` }))
     ).rejects.toThrow(/reverses another build/i)
+  })
+
+  it('does not refuse when the relation is absent or empty', async () => {
+    await expect(guardBuildDelete(event({ build_reversal_of: [] }))).resolves.toBeUndefined()
+    await expect(guardBuildDelete(event({ build_reversal_of: null }))).resolves.toBeUndefined()
   })
 
   it('refuses when this build HAS BEEN reversed', async () => {

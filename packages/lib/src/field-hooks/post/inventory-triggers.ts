@@ -15,6 +15,7 @@ import {
   getRealtimeService,
   publishFieldValueUpdates,
 } from '../../realtime'
+import { unwrapRelationId } from '../../resources/events/captured-values'
 import type { EntityTriggerHandler, FieldTriggerHandler } from '../types'
 
 const logger = createScopedLogger('field-hooks:inventory')
@@ -36,10 +37,16 @@ export const recalculatePartQoH: EntityTriggerHandler = async (event) => {
   if (values.stock_movement_adjust_subparts === true) return
 
   // Resolve the affected part ID
-  let partInstanceId = extractRelatedEntityId(values, 'stock_movement_part')
+  let partInstanceId = unwrapRelationId(values.stock_movement_part)
 
   if (!partInstanceId) {
-    // Look up from field values directly
+    // 🛑 This fallback CANNOT cover a delete, and must never be read as if it did.
+    // `deleteEntityInstance` has already swept the movement's `FieldValue` rows by the time
+    // the lifecycle event reaches the worker, so the select below returns nothing and the
+    // handler warns out. It rescues a create/update whose event data is thin — nothing else.
+    // While `unwrapRelationId` above was a `typeof === 'string'` test, that combination made
+    // this handler a silent no-op on EVERY delete, and QoH drifted from the ledger it is
+    // supposed to be a re-SUM of (plans/money/tasks/24-captured-value-shape.md §1.1).
     const partRow = await database
       .select({ relatedEntityId: schema.FieldValue.relatedEntityId })
       .from(schema.FieldValue)
@@ -292,16 +299,4 @@ function deriveStockStatus(qoh: number, reorderPoint: number | null): string {
   if (qoh <= 0) return 'out_of_stock'
   if (reorderPoint != null && qoh <= reorderPoint) return 'low_stock'
   return 'in_stock'
-}
-
-/**
- * Extract a related entity ID from event values.
- */
-function extractRelatedEntityId(
-  values: Record<string, unknown>,
-  systemAttribute: string
-): string | undefined {
-  const value = values[systemAttribute]
-  if (typeof value !== 'string') return undefined
-  return value.includes(':') ? parseRecordId(value as any).entityInstanceId : value
 }
