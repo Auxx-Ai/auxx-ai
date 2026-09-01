@@ -128,23 +128,31 @@ function whereValues(node: unknown, out: string[] = [], depth = 0): string[] {
  * fixture returning what it was told to.
  */
 function stubDb(accounts: Account[], assignments: Assignment[] = []): Database {
-  const visible = accounts.filter((a) => !a.archived && (a.organizationId ?? ORG) === ORG)
-  const fieldValues = visible.flatMap((account) => {
-    const rows: Record<string, unknown>[] = []
-    if (account.code !== undefined) {
-      rows.push({ entityId: account.id, fieldId: CODE_FIELD, valueText: account.code })
-    }
-    if (account.name !== undefined) {
-      rows.push({ entityId: account.id, fieldId: NAME_FIELD, valueText: account.name })
-    }
-    if (account.accountType !== undefined) {
-      rows.push({ entityId: account.id, fieldId: TYPE_FIELD, optionId: account.accountType })
-    }
-    if (account.isActive !== undefined) {
-      rows.push({ entityId: account.id, fieldId: ACTIVE_FIELD, valueBoolean: account.isActive })
-    }
-    return rows
-  })
+  // A create fixture seeds the row the create is ABOUT to write, so `readBack`
+  // can find it afterwards. That row must not be visible BEFORE the write, or
+  // `assertCodeIsFree` sees the account colliding with its own future self.
+  // The stub cannot model time in general; it only has to model this one edge,
+  // and `h.creates` is exactly the signal for it.
+  const notYetCreated = (a: Account) => a.id === h.createdId && h.creates.length === 0
+  const liveAccounts = () =>
+    accounts.filter((a) => !a.archived && (a.organizationId ?? ORG) === ORG && !notYetCreated(a))
+  const visibleFieldValues = () =>
+    liveAccounts().flatMap((account) => {
+      const rows: Record<string, unknown>[] = []
+      if (account.code !== undefined) {
+        rows.push({ entityId: account.id, fieldId: CODE_FIELD, valueText: account.code })
+      }
+      if (account.name !== undefined) {
+        rows.push({ entityId: account.id, fieldId: NAME_FIELD, valueText: account.name })
+      }
+      if (account.accountType !== undefined) {
+        rows.push({ entityId: account.id, fieldId: TYPE_FIELD, optionId: account.accountType })
+      }
+      if (account.isActive !== undefined) {
+        rows.push({ entityId: account.id, fieldId: ACTIVE_FIELD, valueBoolean: account.isActive })
+      }
+      return rows
+    })
 
   const rowsFor = (table: unknown, params: string[]): unknown[] => {
     if (table === schema.GlRoleAssignment) {
@@ -158,13 +166,20 @@ function stubDb(accounts: Account[], assignments: Assignment[] = []): Database {
         .map((a) => ({ role: a.role, glAccountId: a.glAccountId }))
     }
     if (table === schema.EntityInstance) {
-      return accounts
-        .filter(
-          (a) => !a.archived && params.includes(a.organizationId ?? ORG) && params.includes(a.id)
-        )
+      return liveAccounts()
+        .filter((a) => params.includes(a.organizationId ?? ORG) && params.includes(a.id))
         .map((a) => ({ id: a.id }))
     }
-    return fieldValues.filter((row) => params.includes(row.entityId as string))
+    // `assertCodeIsFree` looks a code UP rather than reading rows for known ids,
+    // so its where-params are (org, codeFieldId, code) with no entityId at all.
+    // `readChartAccountValues` also carries CODE_FIELD, but alongside the other
+    // three field ids - so the absence of NAME_FIELD is what tells them apart.
+    if (params.includes(CODE_FIELD) && !params.includes(NAME_FIELD)) {
+      return visibleFieldValues().filter(
+        (row) => row.fieldId === CODE_FIELD && params.includes(row.valueText as string)
+      )
+    }
+    return visibleFieldValues().filter((row) => params.includes(row.entityId as string))
   }
 
   return {
@@ -357,6 +372,136 @@ describe('createChartAccount', () => {
   })
 })
 
+// ─── I4: a code another live account holds ───────────────────────────────────
+//
+// 🛑 Neither gate below this module stops a duplicate, which is why a collision
+// used to return HTTP 200 carrying the OLD code with no message anywhere:
+// `validateUniqueFields` reads `values[field.id]` while this module keys by
+// systemAttribute, and the field-value layer's throw is swallowed by
+// `setValuesForEntity`'s per-field catch. `readBack` cannot cover for either -
+// a dropped code leaves a perfectly well-formed account. So the refusal has to
+// happen HERE, before the handler is called at all.
+describe('I4: a code another live account already holds', () => {
+  const RAW_MATERIALS: Account = {
+    id: 'acct_1310',
+    code: '1310',
+    name: 'Raw Materials / Parts',
+    accountType: 'asset',
+    isActive: true,
+  }
+
+  it('refuses a create whose code is taken, naming the code, and writes nothing', async () => {
+    const error = (
+      await createChartAccount(stubDb([RAW_MATERIALS]), {
+        organizationId: ORG,
+        code: '1310',
+        name: 'Something Else',
+        accountType: 'asset',
+        actorUserId: USER,
+      })
+    )._unsafeUnwrapErr()
+
+    expect(error).toBeInstanceOf(UniqueValueConflictError)
+    expect(error.message).toBe('1310 is already in use by another account in this chart.')
+    expect(h.creates).toHaveLength(0)
+  })
+
+  it('refuses a RENUMBER onto a taken code, and writes nothing', async () => {
+    const mine: Account = {
+      id: 'acct_mine',
+      code: '1350',
+      name: 'Test Scrap Inventory',
+      accountType: 'asset',
+      isActive: true,
+    }
+
+    const error = (
+      await updateChartAccount(stubDb([RAW_MATERIALS, mine]), {
+        organizationId: ORG,
+        accountId: mine.id,
+        code: '1310',
+        actorUserId: USER,
+      })
+    )._unsafeUnwrapErr()
+
+    expect(error).toBeInstanceOf(UniqueValueConflictError)
+    expect(error.message).toBe('1310 is already in use by another account in this chart.')
+    // 🛑 The whole point. Before this guard the handler was called, dropped the
+    // field, and the caller was told it succeeded.
+    expect(h.updates).toHaveLength(0)
+  })
+
+  it('lets an account keep its own code, so any other edit still saves', async () => {
+    const result = await updateChartAccount(stubDb([RAW_MATERIALS]), {
+      organizationId: ORG,
+      accountId: RAW_MATERIALS.id,
+      code: '1310',
+      name: 'Raw Materials',
+      actorUserId: USER,
+    })
+
+    expect(result.isOk()).toBe(true)
+    expect(h.updates).toHaveLength(1)
+  })
+
+  it('still writes a renumber onto a free code', async () => {
+    const mine: Account = {
+      id: 'acct_mine',
+      code: '1350',
+      name: 'Test Scrap Inventory',
+      accountType: 'asset',
+      isActive: true,
+    }
+
+    const result = await updateChartAccount(stubDb([RAW_MATERIALS, mine]), {
+      organizationId: ORG,
+      accountId: mine.id,
+      code: '1355',
+      actorUserId: USER,
+    })
+
+    expect(result.isOk()).toBe(true)
+    expect(h.updates[0]?.values).toMatchObject({ gl_account_code: '1355' })
+  })
+
+  // Removal IS archival, and every reader of this chart excludes archived rows.
+  // A code held only by a removed account is free, or removing an account would
+  // burn its number forever.
+  it('lets an ARCHIVED account release its code', async () => {
+    const removed: Account = { ...RAW_MATERIALS, id: 'acct_old', archived: true }
+    // `h.createdId`'s row, seeded so `readBack` finds it; the stub keeps it
+    // invisible until the create actually runs.
+    const written: Account = { ...RAW_MATERIALS, id: h.createdId, name: 'Raw Materials, again' }
+
+    const result = await createChartAccount(stubDb([removed, written]), {
+      organizationId: ORG,
+      code: '1310',
+      name: 'Raw Materials, again',
+      accountType: 'asset',
+      actorUserId: USER,
+    })
+
+    expect(result.isOk()).toBe(true)
+    expect(h.creates).toHaveLength(1)
+  })
+
+  it('does not see a code held in ANOTHER organization', async () => {
+    const theirs: Account = { ...RAW_MATERIALS, id: 'acct_theirs', organizationId: OTHER_ORG }
+    const written: Account = { ...RAW_MATERIALS, id: h.createdId }
+
+    const result = await createChartAccount(stubDb([theirs, written]), {
+      organizationId: ORG,
+      code: '1310',
+      name: 'Raw Materials',
+      accountType: 'asset',
+      actorUserId: USER,
+    })
+
+    expect(result.isOk()).toBe(true)
+    expect(h.creates).toHaveLength(1)
+  })
+})
+
 describe('updateChartAccount', () => {
   it('writes only the keys it was sent', async () => {
     const db = stubDb([GRNI_ACCOUNT])
@@ -463,6 +608,31 @@ describe('I1: a type change may not break a role that posts here', () => {
     expect(error.message).toContain('revenue')
     expect(error.message).toContain('liability')
     expect(h.updates).toHaveLength(0)
+  })
+
+  // Three of the five account types start with a vowel, so a hardcoded "a"
+  // rendered "a asset account" on the sentence a person is meant to act on.
+  it('picks the article from the type, so it reads "an asset" and "a revenue"', async () => {
+    const cash: Account = {
+      id: 'acct_cash',
+      code: '1000',
+      name: 'Cash',
+      accountType: 'asset',
+      isActive: true,
+    }
+    const db = stubDb([cash], [{ role: 'cash', glAccountId: cash.id }])
+
+    const error = (
+      await updateChartAccount(db, {
+        organizationId: ORG,
+        accountId: cash.id,
+        accountType: 'revenue',
+        actorUserId: USER,
+      })
+    )._unsafeUnwrapErr()
+
+    expect(error.message).toContain('a revenue account')
+    expect(error.message).toContain('an asset account')
   })
 
   it('allows a type change the role still accepts', async () => {
