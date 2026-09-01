@@ -32,6 +32,8 @@ function inputs(overrides: Partial<StandardCostRollInputs> = {}): StandardCostRo
     subpartGraph: new Map<string, SubpartEdge[]>(),
     storedStandardCosts: new Map<string, number>(),
     rates: RATES,
+    laborOverrides: new Map<string, number>(),
+    overheadOverrides: new Map<string, number>(),
     ...overrides,
   }
 }
@@ -274,6 +276,168 @@ describe('computeStandardCosts', () => {
 
     expect(costs.get(ASSEMBLY)!.standardLaborCost).toBe(0)
     expect(costs.get(ASSEMBLY)!.standardOverheadCost).toBeNull()
+  })
+
+  // ── Per-part absorption overrides (plans/money/tasks/22) ────────────
+
+  describe('per-part absorption overrides', () => {
+    /** A motor at $10.00 under a subassembly, with the org at $5.00 / $2.00. */
+    const twoLevel = (over: Partial<StandardCostRollInputs> = {}) =>
+      inputs({
+        scope: new Set([MOTOR, ASSEMBLY]),
+        partKinds: new Map<string, PartKindValue>([
+          [MOTOR, 'component'],
+          [ASSEMBLY, 'subassembly'],
+        ]),
+        liveCosts: new Map([[MOTOR, 1000]]),
+        subpartGraph: new Map([[ASSEMBLY, [{ childId: MOTOR, qty: 1 }]]]),
+        ...over,
+      })
+
+    it('prefers a per-part override over the org rate, in both directions', () => {
+      const { costs } = computeStandardCosts(
+        twoLevel({
+          laborOverrides: new Map([[ASSEMBLY, 4500]]),
+          overheadOverrides: new Map([[ASSEMBLY, 50]]),
+        })
+      )
+
+      expect(costs.get(ASSEMBLY)).toEqual({
+        standardMaterialCost: 1000,
+        standardLaborCost: 4500, // not the org's 500
+        standardOverheadCost: 50, // not the org's 200
+        standardCost: 5550,
+      })
+    })
+
+    // 🛑 The `??`-not-`||` pin. A stored 0 is "this part absorbs nothing" — the
+    // phantom case — and `0 || 500` is `500`, which would silently reinstate the
+    // org rate on exactly the parts somebody took the trouble to zero out.
+    it('lets a stored ZERO override beat a non-zero org rate', () => {
+      const { costs } = computeStandardCosts(
+        twoLevel({
+          laborOverrides: new Map([[ASSEMBLY, 0]]),
+          overheadOverrides: new Map([[ASSEMBLY, 0]]),
+        })
+      )
+
+      expect(costs.get(ASSEMBLY)).toEqual({
+        standardMaterialCost: 1000,
+        standardLaborCost: 0,
+        standardOverheadCost: 0,
+        standardCost: 1000, // material and nothing else
+      })
+    })
+
+    it('falls through to the org rate when a part has no override', () => {
+      const { costs } = computeStandardCosts(twoLevel({ laborOverrides: new Map([[MOTOR, 9999]]) }))
+
+      // The override sits on a DIFFERENT part; the assembly reads the org rate.
+      expect(costs.get(ASSEMBLY)!.standardLaborCost).toBe(500)
+      expect(costs.get(ASSEMBLY)!.standardOverheadCost).toBe(200)
+    })
+
+    it('stores NULL when neither an override nor an org rate is declared', () => {
+      const { costs } = computeStandardCosts(
+        twoLevel({ rates: { laborCostPerUnit: null, overheadCostPerUnit: null } })
+      )
+
+      // Still an ABSENCE, never a confident zero — `absorbedRate`'s rule.
+      expect(costs.get(ASSEMBLY)!.standardLaborCost).toBeNull()
+      expect(costs.get(ASSEMBLY)!.standardOverheadCost).toBeNull()
+    })
+
+    it('stores a declared zero override even when the org rate is undeclared', () => {
+      const { costs } = computeStandardCosts(
+        twoLevel({
+          rates: { laborCostPerUnit: null, overheadCostPerUnit: null },
+          laborOverrides: new Map([[ASSEMBLY, 0]]),
+        })
+      )
+
+      // 0 is a claim, null is the absence of one, and they must not collapse.
+      expect(costs.get(ASSEMBLY)!.standardLaborCost).toBe(0)
+      expect(costs.get(ASSEMBLY)!.standardOverheadCost).toBeNull()
+    })
+
+    // README B11: an override must not be a way around the partKind gate.
+    // Capitalising assembly labour onto a purchased motor overstates 1310
+    // whether the number came from the org setting or the part's own cell.
+    it('ignores an override on a component', () => {
+      const { costs } = computeStandardCosts(
+        twoLevel({
+          laborOverrides: new Map([[MOTOR, 7500]]),
+          overheadOverrides: new Map([[MOTOR, 7500]]),
+        })
+      )
+
+      expect(costs.get(MOTOR)).toEqual({
+        standardMaterialCost: 1000,
+        standardLaborCost: 0,
+        standardOverheadCost: 0,
+        standardCost: 1000,
+      })
+    })
+
+    it("carries a child's override up into its parent's material cost", () => {
+      const { costs } = computeStandardCosts(
+        inputs({
+          scope: new Set([MOTOR, ASSEMBLY, LIFT]),
+          partKinds: new Map<string, PartKindValue>([
+            [MOTOR, 'component'],
+            [ASSEMBLY, 'subassembly'],
+            [LIFT, 'finished_good'],
+          ]),
+          liveCosts: new Map([[MOTOR, 1000]]),
+          subpartGraph: new Map([
+            [ASSEMBLY, [{ childId: MOTOR, qty: 1 }]],
+            [LIFT, [{ childId: ASSEMBLY, qty: 2 }]],
+          ]),
+          laborOverrides: new Map([[ASSEMBLY, 100]]),
+        })
+      )
+
+      // assembly = 1000 material + 100 labour + 200 overhead = 1300
+      expect(costs.get(ASSEMBLY)!.standardCost).toBe(1300)
+      // lift material = 2 x 1300, and it still absorbs the ORG rate itself
+      expect(costs.get(LIFT)).toEqual({
+        standardMaterialCost: 2600,
+        standardLaborCost: 500,
+        standardOverheadCost: 200,
+        standardCost: 3300,
+      })
+    })
+
+    // The case the whole task exists for: the real lift carried 9 x the flat
+    // rate because it has 8 subassemblies. Zeroing them collapses the standard
+    // back to material plus the finished good's own absorption.
+    it('reduces a parent to material plus its OWN absorption when children are zeroed', () => {
+      const zeroed = computeStandardCosts(
+        inputs({
+          scope: new Set([MOTOR, ASSEMBLY, LIFT]),
+          partKinds: new Map<string, PartKindValue>([
+            [MOTOR, 'component'],
+            [ASSEMBLY, 'subassembly'],
+            [LIFT, 'finished_good'],
+          ]),
+          liveCosts: new Map([[MOTOR, 1000]]),
+          subpartGraph: new Map([
+            [ASSEMBLY, [{ childId: MOTOR, qty: 1 }]],
+            [LIFT, [{ childId: ASSEMBLY, qty: 2 }]],
+          ]),
+          laborOverrides: new Map([[ASSEMBLY, 0]]),
+          overheadOverrides: new Map([[ASSEMBLY, 0]]),
+        })
+      )
+
+      expect(zeroed.costs.get(ASSEMBLY)!.standardCost).toBe(1000)
+      expect(zeroed.costs.get(LIFT)).toEqual({
+        standardMaterialCost: 2000, // 2 x bare material, no embedded conversion
+        standardLaborCost: 500,
+        standardOverheadCost: 200,
+        standardCost: 2700,
+      })
+    })
   })
 
   it('rounds before freezing, because CURRENCY is integer minor units', () => {

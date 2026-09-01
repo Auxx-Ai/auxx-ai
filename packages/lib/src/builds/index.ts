@@ -119,8 +119,11 @@ export { reverseBuild } from './reverse-build'
 export { rollStandardCost } from './standard-cost'
 export {
   loadAbsorptionRates,
+  loadEffectiveAbsorptionRates,
+  loadPartAbsorptionOverrides,
   loadStandardCostFields,
   loadStandardCostWriteContext,
+  type PartAbsorptionOverrides,
   previewStandardCostRoll,
   readStandardCost,
   type StandardCostFields,

@@ -76,6 +76,7 @@ import { migration111OrderBuildDrift } from './migrations/111-order-build-drift'
 import { migration112RecordDocuments } from './migrations/112-record-documents'
 import { migration114RetireGlPostingDefs } from './migrations/114-retire-gl-posting-defs'
 import { migration115VendorPartDisplayPart } from './migrations/115-vendor-part-display-part'
+import { migration116PerPartAbsorption } from './migrations/116-per-part-absorption'
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
@@ -208,6 +209,7 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   // `DISPLAY_FIELD_CONFIG` edit that ships with it reaches fresh orgs only,
   // because `linkDisplayFields` runs at seed time.
   migration115VendorPartDisplayPart,
+  migration116PerPartAbsorption,
 ]
 
 /**
