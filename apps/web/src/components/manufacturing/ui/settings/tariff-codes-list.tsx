@@ -27,7 +27,7 @@ import { InputSearch } from '@auxx/ui/components/input-search'
 import { EmptySection } from '@auxx/ui/components/section'
 import { TREE_SECONDARY_NOTRUNCATE, TreeRow } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
-import { Globe, Plus } from 'lucide-react'
+import { BookOpen, Globe, Plus } from 'lucide-react'
 import { useState } from 'react'
 import {
   composeTariffLabel,
@@ -55,6 +55,8 @@ interface TariffCodesListProps {
   /** The uncommitted draft, if any. Rendered as a phantom row at the top. */
   draft: TariffCodeDraft | null
   onAddDraft: () => void
+  /** Opens the "Add from catalogue" dialog (money 32 §3). */
+  onAddFromCatalogue: () => void
   /** False when the viewer cannot write `tariff_code` - Add hides. */
   canEdit: boolean
 }
@@ -70,6 +72,7 @@ export function TariffCodesList({
   onSelect,
   draft,
   onAddDraft,
+  onAddFromCatalogue,
   canEdit,
 }: TariffCodesListProps) {
   const [search, setSearch] = useState('')
@@ -103,10 +106,16 @@ export function TariffCodesList({
           className='flex-1'
         />
         {canEdit && (
-          <Button variant='outline' size='sm' onClick={onAddDraft}>
-            <Plus />
-            Add code
-          </Button>
+          <>
+            <Button variant='outline' size='sm' onClick={onAddFromCatalogue}>
+              <BookOpen />
+              From catalogue
+            </Button>
+            <Button variant='outline' size='sm' onClick={onAddDraft}>
+              <Plus />
+              Add code
+            </Button>
+          </>
         )}
       </div>
 
@@ -174,7 +183,11 @@ export function TariffCodesList({
                 )}
                 secondary={
                   <span className='flex min-w-0 items-center gap-1.5 text-muted-foreground text-xs'>
-                    <Badge variant={badge.variant} size='xs' title={badge.title}>
+                    <Badge
+                      variant={badge.variant}
+                      size='xs'
+                      className='shrink-0'
+                      title={badge.title}>
                       {badge.label}
                     </Badge>
                     <span className='min-w-0 truncate'>

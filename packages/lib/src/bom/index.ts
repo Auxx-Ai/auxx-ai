@@ -1,10 +1,41 @@
 // packages/lib/src/bom/index.ts
 
+export {
+  type AdoptTariffStartersInput,
+  type AdoptTariffStartersResult,
+  adoptTariffStarters,
+} from './adopt-tariff-starters'
 export { type ApplyTariffScheduleResult, applyTariffSchedule } from './apply-tariff-schedule'
 export { recalculateAffectedParts, recalculateAllPartCosts } from './cost-calculator'
 export { batchRecalculateQoH } from './qoh'
 export { getDeductionTargets, loadDirectSubparts, loadSubpartGraph } from './subpart-graph'
+export {
+  findHtsGeneral,
+  type HtsGeneralCatalogue,
+  type HtsGeneralLine,
+  type HtsNode,
+  listHtsChildren,
+  loadHtsGeneral,
+  normalizeHtsCode,
+  searchHtsGeneral,
+} from './tariff-hts-general'
 export { loadTariffSchedule, readBookTimeZone } from './tariff-schedule'
+export type {
+  ActionKey,
+  StarterAction,
+  StarterExpansion,
+  StarterRow,
+  StarterStep,
+} from './tariff-starters'
+export {
+  expandTariffStarter,
+  MFN_EFFECTIVE_FROM,
+  membershipsFor,
+  starterNote,
+  TARIFF_ACTIONS,
+  TARIFF_MEMBERSHIPS,
+  TARIFF_STARTERS_VERSION,
+} from './tariff-starters'
 export type {
   LandedCostBreakdown,
   OfferTariff,

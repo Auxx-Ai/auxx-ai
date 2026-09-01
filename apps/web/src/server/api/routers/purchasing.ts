@@ -1,6 +1,13 @@
 // apps/web/src/server/api/routers/purchasing.ts
 
-import { applyTariffSchedule } from '@auxx/lib/bom'
+import {
+  adoptTariffStarters,
+  applyTariffSchedule,
+  expandTariffStarter,
+  listHtsChildren,
+  loadHtsGeneral,
+  TARIFF_STARTERS_VERSION,
+} from '@auxx/lib/bom'
 import { getCachedEntityDefId } from '@auxx/lib/cache'
 import { NotFoundError } from '@auxx/lib/errors'
 import { markPurchaseOrderSent } from '@auxx/lib/money'
@@ -597,4 +604,69 @@ export const purchasingRouter = createTRPCRouter({
     if (result.isErr()) throw result.error
     return result.value
   }),
+
+  /**
+   * The starter catalogue, browsed as a tree for one origin (money 32 §1.4,
+   * §10): a 4-digit heading, a 6-digit subheading, then the 10-digit lines
+   * under it. There is no 8-digit level by decision - the general rate is set
+   * at 8 digits in the source, but the lines below a subheading are few
+   * enough (a single direct line under roughly two in five subheadings) that
+   * an extra expand step mostly revealed one row, so the 8-digit row's own
+   * text folds into the subheading node or the leaf's short description
+   * instead of getting a tree level of its own.
+   *
+   * `parent: null` returns every heading; a heading code returns its
+   * subheadings; a subheading code returns its lines, each expanded through
+   * the same `expandTariffStarter` the adopt mutation writes with. A search
+   * term prunes every level to what has a match beneath it and never
+   * flattens the tree. Pure data, no db: the generated HTS file is lazily
+   * loaded on first use.
+   */
+  listTariffStarterChildren: capabilityProcedure
+    .input(
+      z.object({
+        country: z.string().length(2),
+        parent: z.string().max(20).nullable(),
+        /** Prunes the tree to matches at every level; never flattens it. */
+        q: z.string().max(80).default(''),
+      })
+    )
+    .query(async ({ input }) => {
+      const catalogue = await loadHtsGeneral()
+      const { nodes, leaves } = listHtsChildren(catalogue, input.parent, input.q)
+      return {
+        version: TARIFF_STARTERS_VERSION,
+        nodes,
+        leaves: leaves.map((line) => expandTariffStarter(line, input.country)),
+      }
+    }),
+
+  /**
+   * Create `tariff_code` records, each with its catalogue rate rows, for the
+   * pairs named (money 32 §2).
+   *
+   * Asserts edit on BOTH defs - the same gate `record.create` applies to each
+   * and the one the tariffs page already redirects on (29 §12 d). Not
+   * `settingsManage`: a tariff code is reference data, not a control surface.
+   * Everything else - skip pairs the org holds, refuse unknown codes, write a
+   * pair whole or not at all - is the lib function's contract.
+   */
+  adoptTariffStarters: capabilityProcedure
+    .input(
+      z.object({
+        entries: z
+          .array(z.object({ code: z.string().min(4).max(20), country: z.string().length(2) }))
+          .min(1)
+          .max(200),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
+      ctx.capabilities.assertEditEntity(await requireDefId(organizationId, 'tariff_code'))
+      ctx.capabilities.assertEditEntity(await requireDefId(organizationId, 'tariff_rate'))
+
+      const result = await adoptTariffStarters(ctx.db, organizationId, userId, input)
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
 })

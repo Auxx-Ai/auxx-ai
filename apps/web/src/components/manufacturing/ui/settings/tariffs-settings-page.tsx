@@ -46,7 +46,7 @@ import {
 import { useConfirm } from '~/hooks/use-confirm'
 import { useSettings } from '~/hooks/use-settings'
 import { useAccess, useRequireEntityEdit } from '~/providers/capabilities-provider'
-import { api } from '~/trpc/react'
+import { api, type RouterOutputs } from '~/trpc/react'
 import {
   useOfferClassification,
   VENDOR_PART_TARIFF_ATTRS,
@@ -69,6 +69,7 @@ import { TariffClassificationList } from './tariff-classification-list'
 import { TariffCodeEditor, type TariffCodeValues } from './tariff-code-editor'
 import { TariffCodesList } from './tariff-codes-list'
 import type { TariffRateValues } from './tariff-rate-history'
+import { TariffStarterDialog } from './tariff-starter-dialog'
 
 const BREADCRUMBS = [
   { title: 'Parts', href: '/app/parts' },
@@ -112,6 +113,8 @@ export function TariffsSettingsPage() {
     removeCode,
     appendRate,
     removeRate,
+    refreshRates,
+    refreshCodes,
   } = useTariffSchedule()
 
   // The client mirror of what the server will actually do. An unresolved def id
@@ -186,6 +189,8 @@ export function TariffsSettingsPage() {
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [selectedOfferId, setSelectedOfferId] = useState<string | null>(null)
+  // "Add from catalogue" (money 32 §3).
+  const [starterOpen, setStarterOpen] = useState(false)
 
   // ── The Classification tab's read and writes ────────────────────────────
   //
@@ -509,6 +514,23 @@ export function TariffsSettingsPage() {
     setSelectedId(recordId)
   }, [])
 
+  // ── "Add from catalogue" (money 32 §3) ──────────────────────────────────
+  //
+  // The dialog writes `tariff_code` + `tariff_rate` rows outside this page's
+  // own create paths, so the two `listAll` reads are refetched rather than
+  // patched record-by-record. `skipped`/`unknown` are not errors - a pair the
+  // org already held or one the catalogue doesn't carry is reported inside
+  // the dialog, not toasted here.
+  const handleStarterAdopted = useCallback(
+    (result: RouterOutputs['purchasing']['adoptTariffStarters']) => {
+      refreshCodes()
+      refreshRates()
+      const first = result.created[0]
+      if (first) handleSelect(first.instanceId)
+    },
+    [refreshCodes, refreshRates, handleSelect]
+  )
+
   const editorContent = (
     <TariffCodeEditor
       selectedId={selectedId}
@@ -618,6 +640,7 @@ export function TariffsSettingsPage() {
             onSelect={handleSelect}
             draft={draft}
             onAddDraft={handleAddDraft}
+            onAddFromCatalogue={() => setStarterOpen(true)}
             canEdit={canEditCodes}
           />
         </MasterDetailSplit>
@@ -640,6 +663,16 @@ export function TariffsSettingsPage() {
       )}
 
       <ConfirmDialog />
+
+      <TariffStarterDialog
+        open={starterOpen}
+        onOpenChange={setStarterOpen}
+        codeDefId={codeDefId}
+        existingCodes={codes}
+        today={today}
+        bookTimeZone={bookTimeZone}
+        onAdopted={handleStarterAdopted}
+      />
     </SettingsPage>
   )
 }
