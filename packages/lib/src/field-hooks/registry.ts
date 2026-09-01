@@ -6,6 +6,7 @@ import { registerAllHooks } from './register-hooks'
 import type {
   EntityFieldChangeHandler,
   EntityPostDeleteHandler,
+  EntityPreCreateHandler,
   EntityPreDeleteHandler,
   FieldPreHookHandler,
 } from './types'
@@ -30,6 +31,8 @@ import type {
  */
 const FIELD_PRE_HOOKS: Map<string, FieldPreHookHandler[]> = new Map()
 
+/** Pre-create entity hooks keyed by entitySlug. */
+const ENTITY_PRE_CREATE_HOOKS = /* @__PURE__ */ new Map<string, EntityPreCreateHandler[]>()
 /** Pre-delete entity hooks keyed by entitySlug. */
 const ENTITY_PRE_DELETE_HOOKS: Map<string, EntityPreDeleteHandler[]> = new Map()
 
@@ -126,6 +129,28 @@ export function hasFieldPreHooks(entitySlug: string, systemAttribute: SystemAttr
     (FIELD_PRE_HOOKS.get(preHookKey(entitySlug, systemAttribute))?.length ?? 0) > 0 ||
     (FIELD_PRE_HOOKS.get(preHookKey('*', systemAttribute))?.length ?? 0) > 0
   )
+}
+
+/**
+ * Register pre-create handlers for an entity slug.
+ *
+ * The seam for anything that must refuse a create outright - a composite
+ * uniqueness key, a quota, a precondition on another record. See
+ * {@link EntityPreCreateEvent} for why a field pre-hook cannot do this.
+ */
+export function registerEntityPreCreateHooks(
+  entitySlug: string,
+  handlers: EntityPreCreateHandler[]
+): void {
+  if (handlers.length === 0) return
+  const existing = ENTITY_PRE_CREATE_HOOKS.get(entitySlug) ?? []
+  ENTITY_PRE_CREATE_HOOKS.set(entitySlug, [...existing, ...handlers])
+}
+
+/** Get pre-create handlers for an entity slug. */
+export function getEntityPreCreateHooks(entitySlug: string): EntityPreCreateHandler[] {
+  ensureInitialized()
+  return ENTITY_PRE_CREATE_HOOKS.get(entitySlug) ?? []
 }
 
 /** Register pre-delete handlers for an entity slug. */

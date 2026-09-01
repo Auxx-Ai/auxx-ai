@@ -665,6 +665,43 @@ export const SYSTEM_ATTRIBUTES = [
   'order_build_revision',
   'build_order_revision',
 
+  // ─── Tariff schedule (plans/money/tasks/29-tariff-schedule.md) ──
+  // Entity migration 119, and INERT on deploy: a duty rate is a function of
+  // (classification, origin, date) and today only the rate itself is
+  // expressible, as a hand-keyed percentage on the supplier offer. These add
+  // the other two and the history.
+  //
+  // 🛑 `tariff_code` is keyed on `(code, country)` and the two halves stay
+  // SEPARATE fields. `8481.80.9005 CN` and `8481.80.9005 DE` are two records,
+  // the label is composed, and a stored concatenation would have to be parsed
+  // back apart for type-ahead on the code half and for "what origins have I
+  // classified this code for" - which works until someone leaves a trailing
+  // space.
+  'tariff_code_code',
+  'tariff_code_country', // ISO 3166-1 alpha-2, a seeded SINGLE_SELECT
+  'tariff_code_description',
+  'tariff_code_rates', // inverse of tariff_rate_tariff_code
+  'tariff_code_vendor_parts', // inverse of vendor_part_tariff_code
+  // The schedule. EVERY row carries a date and there is no null-means-current
+  // row: "current" is `max(effectiveFrom) <= lookupDate`, and one rule answers
+  // both "what is it today" and "what was it on Jan 15". For the same reason
+  // there is no `effectiveTo` - the next row's start is the previous row's end,
+  // and a rate that expires is an explicit row at 0.
+  'tariff_rate_tariff_code',
+  'tariff_rate_rate', // a PERCENTAGE; 25 means 25%, matching vendor_part_tariff_rate
+  'tariff_rate_effective_from',
+  'tariff_rate_authority', // nullable; blank counts as its own authority when summing
+  // ⚠️ Documentation, never an input. The Chapter 99 code lets someone reconcile
+  // an estimate against the broker's entry summary line by line; the arithmetic
+  // never reads it.
+  'tariff_rate_chapter99_code',
+  'tariff_rate_note',
+  // The pointer, on the OFFER and not on the part: a `tariff_code` asserts an
+  // origin, so a part dual-sourced from China and Germany could hold only one.
+  // The supplier offer is the only row that knows both what the thing is and
+  // where it ships from.
+  'vendor_part_tariff_code',
+
   // ─── Inbox fields ───────────────────────────────────────────────
   'inbox_name',
   'inbox_description',

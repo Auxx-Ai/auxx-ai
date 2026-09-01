@@ -16,7 +16,11 @@ import {
   updateEntityInstance,
 } from '../../entity-instances'
 import { AuxxError, UnprocessableEntityError } from '../../errors'
-import { getEntityPostDeleteHooks, getEntityPreDeleteHooks } from '../../field-hooks/registry'
+import {
+  getEntityPostDeleteHooks,
+  getEntityPreCreateHooks,
+  getEntityPreDeleteHooks,
+} from '../../field-hooks/registry'
 import type { FieldValueService } from '../../field-values'
 // Leaf path on purpose (not the field-values barrel): the one shared narrowing
 // helper for tier-1 sync capture, so this file's lifecycle seams and the field
@@ -332,6 +336,27 @@ export async function createEntity(
 
   // Check uniqueness constraints
   await ctx.validateUniqueFields(entityDef.id, processedValues)
+
+  // Entity pre-create hooks: throw to refuse the create outright. Fired HERE,
+  // after defaults/validation and BEFORE `createEntityInstance`, so a rejection
+  // leaves nothing behind at all.
+  //
+  // 🛑 A field pre-hook cannot serve this purpose. `setValuesForEntity` catches
+  // per-field throws, logs `Failed to set field <id>` and continues, so a guard
+  // that rejects there still gets a record - just one missing the field it
+  // objected to. `validateUniqueFields` above only covers SINGLE unique fields;
+  // a composite key like `tariff_code (code, country)` has no other seam.
+  const preCreateHooks = entityDef.apiSlug ? getEntityPreCreateHooks(entityDef.apiSlug) : []
+  for (const hook of preCreateHooks) {
+    await hook({
+      entityDefinitionId: entityDef.id,
+      entityType: entityDef.entityType,
+      entitySlug: entityDef.apiSlug as string,
+      values: processedValues,
+      organizationId: ctx.organizationId,
+      userId: ctx.userId,
+    })
+  }
 
   // Create EntityInstance. Connector-minted provenance now lives on
   // `DataConnectorItem.mintedInstance`, not on the instance row.

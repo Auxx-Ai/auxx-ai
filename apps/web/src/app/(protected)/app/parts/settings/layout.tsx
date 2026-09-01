@@ -3,17 +3,21 @@
 'use client'
 
 import { MainPageContent } from '@auxx/ui/components/main-page'
-import { SlidersHorizontal } from 'lucide-react'
+import { Globe, SlidersHorizontal } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import SidebarSecondary from '~/components/global/sidebar-secondary'
 import type { SidebarProps } from '~/constants/menu'
 
 /**
- * Parts settings navigation (25-parts-settings-tab.md §3) — ONE page.
+ * Parts settings navigation (25-parts-settings-tab.md §3).
  *
- * Auto-build is the only org setting the parts domain owns today: receiving has
- * none, and the `manufacturing.*` absorption rates live in Accounting > General,
- * where a per-part override already overrides them.
+ * General owns the auto-build switch, the only org SETTING the parts domain has:
+ * receiving has none, and the `manufacturing.*` absorption rates live in
+ * Accounting > General, where a per-part override already overrides them.
+ *
+ * Tariffs is not a settings catalog page at all - it edits `tariff_code` and
+ * `tariff_rate` records (29-tariff-schedule.md §6.1), which is why it gates on
+ * the record capability rather than on `settingsManage` like its neighbour.
  */
 const PARTS_SETTINGS: SidebarProps[] = [
   {
@@ -28,6 +32,14 @@ const PARTS_SETTINGS: SidebarProps[] = [
         icon: <SlidersHorizontal />,
         description: 'Whether an order raises a build, and for which parts',
         keywords: ['auto-build', 'production', 'manufacturing', 'orders'],
+      },
+      {
+        id: 'parts-settings-tariffs',
+        label: 'Tariffs',
+        slug: 'tariffs',
+        icon: <Globe />,
+        description: 'Harmonized codes by country of origin, and the rates behind them',
+        keywords: ['hs code', 'hts', 'duty', 'customs', 'harmonized', 'section 301'],
       },
     ],
   },

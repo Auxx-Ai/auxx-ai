@@ -329,6 +329,36 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     color: 'orange',
     isVisible: true,
   },
+  {
+    // The classification registry, one record per (code, country)
+    // (plans/money/tasks/29-tariff-schedule.md §1.1). Seeded by entity
+    // migration 119 and INERT: nothing resolves through it until somebody
+    // classifies an offer, and a set `vendor_part_tariff_rate` still wins.
+    //
+    // ✅ `isVisible` on purpose (§12 d), unlike `gl_account` beside it. A
+    // records-Full actor creating a tariff code decides nothing about where
+    // money lands; it is reference data. Visible also gets the importer, which
+    // matters because loading a schedule is a bulk job.
+    entityType: 'tariff_code',
+    apiSlug: 'tariff-codes',
+    singular: 'Tariff Code',
+    plural: 'Tariff Codes',
+    icon: 'globe',
+    color: 'teal',
+    isVisible: true,
+  },
+  {
+    // The dated schedule behind a code. An ENTITY and not JSON on the code row
+    // (§12 f / §12.1): rows are importable, queryable across codes, and audited
+    // individually.
+    entityType: 'tariff_rate',
+    apiSlug: 'tariff-rates',
+    singular: 'Tariff Rate',
+    plural: 'Tariff Rates',
+    icon: 'percent',
+    color: 'teal',
+    isVisible: true,
+  },
 ]
 
 /**
@@ -472,6 +502,22 @@ export const DISPLAY_FIELD_CONFIG: Record<string, DisplayFieldConfig> = {
   vendor_payment_allocation: {
     primaryDisplayField: 'amount',
     secondaryDisplayField: undefined,
+  },
+  // 🛑 The primary is the CODE and the secondary the COUNTRY, because the label
+  // `8481.80.9005 CN` is COMPOSED and never stored - see the field file. Both
+  // legs are `required: true` / `nullable: false`, so neither can render the
+  // record nameless the way an optional primary would.
+  tariff_code: {
+    primaryDisplayField: 'code',
+    secondaryDisplayField: 'country',
+  },
+  // The `authority` is the natural thing to read first, but it is NULLABLE and
+  // `computeDisplayValue` has no fallback - an absent value writes
+  // `displayName: null` and the row renders nameless. `tariffCode` is the only
+  // required leg.
+  tariff_rate: {
+    primaryDisplayField: 'tariffCode',
+    secondaryDisplayField: 'effectiveFrom',
   },
   gl_account: {
     primaryDisplayField: 'code',

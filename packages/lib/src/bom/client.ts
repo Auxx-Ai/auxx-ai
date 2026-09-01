@@ -12,9 +12,20 @@
  * every export into a client-reference proxy on that side.
  */
 
-export type { LandedCostBreakdown, VendorCostRow } from './vendor-cost'
+export type {
+  LandedCostBreakdown,
+  TariffRateComponent,
+  TariffRateRow,
+  TariffResolution,
+  TariffResolutionStatus,
+  VendorCostRow,
+} from './vendor-cost'
 export {
   computeLandedBreakdown,
   computeLandedCost,
+  // The tariffs settings screen and the supplier drawer resolve the schedule in
+  // the browser through this export. Resolving server-side only and shipping
+  // the client a number is how the landed formula came to live in two places.
+  resolveTariffRate,
   selectWinningVendor,
 } from './vendor-cost'

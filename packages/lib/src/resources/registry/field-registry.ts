@@ -31,6 +31,8 @@ import { SERVICE_REQUEST_FIELDS } from './resources/service-request-fields'
 import { SIGNATURE_FIELDS } from './resources/signature-fields'
 import { STOCK_MOVEMENT_FIELDS } from './resources/stock-movement-fields'
 import { SUBPART_FIELDS } from './resources/subpart-fields'
+import { TARIFF_CODE_FIELDS } from './resources/tariff-code-fields'
+import { TARIFF_RATE_FIELDS } from './resources/tariff-rate-fields'
 import { THREAD_FIELDS } from './resources/thread-fields'
 import { TICKET_FIELDS } from './resources/ticket-fields'
 import { USER_FIELDS } from './resources/user-fields'
@@ -148,6 +150,8 @@ export const RESOURCE_FIELD_REGISTRY: ResourceFieldRegistry = {
   vendor_payment_allocation: VENDOR_PAYMENT_ALLOCATION_FIELDS,
   gl_account: GL_ACCOUNT_FIELDS,
   build: BUILD_FIELDS,
+  tariff_code: TARIFF_CODE_FIELDS,
+  tariff_rate: TARIFF_RATE_FIELDS,
 }
 
 /**

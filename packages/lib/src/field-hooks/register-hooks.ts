@@ -97,11 +97,13 @@ import {
   rejectIfSystemTag,
 } from './pre/tag-system-guard'
 import { dropUnauthorizedTemplateKey, rejectDeleteIfTemplateTag } from './pre/tag-template-guard'
+import { guardTariffCodeUniqueness } from './pre/tariff-code-uniqueness-guard'
 import { guardVendorBillDelete } from './pre/vendor-bill-delete-guard'
 import { guardWorkOrderDelete } from './pre/work-order-delete-guard'
 import {
   registerEntityFieldChangeHooks,
   registerEntityPostDeleteHooks,
+  registerEntityPreCreateHooks,
   registerEntityPreDeleteHooks,
   registerFieldPreHooks,
   registerFieldTypeChangeHooks,
@@ -471,6 +473,11 @@ export function registerAllHooks(): void {
   for (const attribute of EVIDENCE_LOCKED_LINE_ATTRS) {
     registerFieldPreHooks('purchase-order-lines', attribute, [guardEvidenceLockedLineFields])
   }
+
+  // `(code, country)` is a natural key and `naturalKeyPosition` enforces nothing
+  // on create. This must be a PRE-CREATE hook, not a field pre-hook - see the
+  // guard's header for the record it produced when it was the latter.
+  registerEntityPreCreateHooks('tariff-codes', [guardTariffCodeUniqueness])
 
   registerFieldPreHooks('tags', 'is_system_tag', [dropUnauthorizedSystemFlag])
   registerFieldPreHooks('tags', 'title', [rejectIfSystemTag])

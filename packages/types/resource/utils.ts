@@ -165,6 +165,8 @@ export const ENTITY_DEFINITION_TYPES = [
   'vendor_payment_allocation',
   'gl_account',
   'build',
+  'tariff_code',
+  'tariff_rate',
 ] as const
 
 /** Type for system entity types stored in EntityDefinition */

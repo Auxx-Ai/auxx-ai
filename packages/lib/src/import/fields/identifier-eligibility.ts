@@ -33,6 +33,32 @@ export interface IdentifierEligibility {
 }
 
 /**
+ * ENUM is not an identifier type in general - "which ticket has status Open" is
+ * every ticket. It is admitted for ONE case: a field the registry declares a
+ * leg of a composite natural key.
+ *
+ * `tariff_code` is what forced it. Its identity is `(code, country)` and
+ * `country` is a seeded `SINGLE_SELECT` over ISO 3166-1 rather than free text,
+ * precisely so two people cannot fork the key by spelling the United Kingdom
+ * `UK` and `GB`. Excluding ENUM outright left that key declared in the registry
+ * and undeclarable in the picker - the import would key on `code` alone and
+ * collapse `8481.80.9005 CN` onto `8481.80.9005 DE`, which is the exact
+ * silent fork the closed option set exists to prevent.
+ *
+ * The stored value is an option key, so the lookup matches it like any other
+ * scalar; the general exclusion is a POLICY about bad identities, and a
+ * declared key leg is by definition not one.
+ */
+function isNaturalKeyLeg(field: ResourceField): boolean {
+  return field.naturalKeyPosition !== undefined
+}
+
+/** An ENUM admitted by the rule on {@link isNaturalKeyLeg}, and nothing else. */
+function isEligibleEnumLeg(field: ResourceField): boolean {
+  return field.type === BaseType.ENUM && isNaturalKeyLeg(field)
+}
+
+/**
  * The IDENTIFIER type gate. Policy, not a technical limit.
  *
  * The identifier lookup is fully type-generic, `buildLookupCondition` routes
@@ -102,9 +128,16 @@ export function getIdentifierEligibility(field: ResourceField): IdentifierEligib
   // record" has no answer, and `TAGS` is the same question with nicer syntax.
   if (field.options?.multi === true) return null
 
-  if (!ELIGIBLE_IDENTIFIER_TYPES.has(field.type)) return null
+  if (!ELIGIBLE_IDENTIFIER_TYPES.has(field.type) && !isEligibleEnumLeg(field)) return null
 
-  const compositeOnly = field.type === BaseType.RELATION
+  // 🛑 Every natural-key leg is composite-only, whatever its type. The rule was
+  // written as `type === RELATION` when both declared keys were relation pairs,
+  // and the reasoning it gives - a leg "can still never be flagged as a lone
+  // key" - was never about relations. `tariff_code.code` is a STRING leg, and
+  // left alone it is tier 1, not composite-only, and therefore what the
+  // planner AUTO-SELECTS: every origin of one classification keyed together and
+  // silently merged on import.
+  const compositeOnly = field.type === BaseType.RELATION || isNaturalKeyLeg(field)
 
   const outputKey = getFieldOutputKey(field)
   const isRecommended =

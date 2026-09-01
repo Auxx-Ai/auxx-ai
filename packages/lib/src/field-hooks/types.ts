@@ -117,6 +117,36 @@ export type FieldPreHookHandler = (
 ) => Promise<TypedFieldValueInput | TypedFieldValueInput[] | null | undefined>
 
 /**
+ * Pre-create entity hook — fired ONCE, before the `EntityInstance` row exists.
+ * Throw to reject the create; nothing is written.
+ *
+ * 🛑 **This is the only seam where a create can actually be refused.** A field
+ * pre-hook cannot do it: `setValuesForEntity` wraps each field write in its own
+ * try/catch, logs `Failed to set field <id>` and CONTINUES, so a guard that
+ * throws there does not abort the create - it only drops the one field, leaving
+ * a record that exists and is missing the value the guard objected to. That is
+ * strictly worse than whatever the guard was preventing. Measured on
+ * `tariff_code` uniqueness, which produced a code with a country and no code
+ * (plans/money/tasks/29-tariff-schedule.md section 12 d).
+ *
+ * ⚠️ `values` is the caller's patch keyed by whatever the caller used -
+ * systemAttribute or field id - and is PRE-COERCION. Unlike
+ * {@link FieldPreHookEvent.newValue} there is no typed envelope here, because
+ * nothing has been through `validateAndConvertValue` yet. Read it defensively.
+ */
+export interface EntityPreCreateEvent {
+  entityDefinitionId: string
+  entityType: string | null
+  entitySlug: string
+  /** The values the create was called with, pre-coercion. */
+  values: Record<string, unknown>
+  organizationId: string
+  userId: string
+}
+
+export type EntityPreCreateHandler = (event: EntityPreCreateEvent) => Promise<void>
+
+/**
  * Pre-delete entity hook — fired before an entity is permanently deleted.
  * Throw to reject the delete. (No return value — delete has nothing to transform.)
  */

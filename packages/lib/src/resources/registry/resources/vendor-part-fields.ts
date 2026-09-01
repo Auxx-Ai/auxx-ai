@@ -172,6 +172,59 @@ export const VENDOR_PART_FIELDS: Record<string, ResourceField> = {
     description: 'Flat per-unit shipping/freight cost',
   },
 
+  // 🛑 The pointer lives HERE and not on `part`, because a `tariff_code` record
+  // asserts an origin, so whatever points at it is asserting one. A part
+  // dual-sourced from China and Germany can hold only one pointer, so
+  // `part.tariffCode` would silently force one origin per part - which is the
+  // exact situation a shop shifting sourcing away from China is in. The
+  // supplier offer is the only row that knows both what the thing is and where
+  // it ships from (plans/money/tasks/29-tariff-schedule.md §4).
+  //
+  // ⚠️ Origin is NOT the supplier company's country. A US distributor selling
+  // Chinese-made goods is the common case, which is why this is its own field
+  // and never derived from the supplier's address.
+  tariffCode: {
+    id: toFieldId('tariffCode'),
+    key: 'tariffCode',
+    label: 'Tariff Code',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'vendor_part_tariff_code',
+    systemSortOrder: 'a4aa',
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'tariff_code:vendorParts' as ResourceFieldId,
+      relationshipType: 'belongs_to',
+      isInverse: false,
+    },
+    relationshipConfig: {
+      relatedEntityType: 'tariff_code',
+      relationshipType: 'belongs_to',
+      inverseName: 'Supplier Offers',
+      inverseSystemAttribute: 'tariff_code_vendor_parts',
+    },
+    description:
+      'Classification and country of origin for this offer. The duty rate is resolved from ' +
+      "this code's dated schedule unless Tariff Rate below is set",
+  },
+
+  // ✅ KEPT, and its meaning is now OVERRIDE - not legacy, and not deprecated.
+  // Precedence at the point of use (§3.1): a set rate wins and the schedule is
+  // not consulted; otherwise `tariffCode` resolves from the schedule at the
+  // caller's date; otherwise 0, exactly as today.
+  //
+  // This is the designed escape hatch. It covers a DDP price that already
+  // contains the duty, an unclassified part, and - the case that matters - a
+  // Section 301 product exclusion, which is genuinely per-product and not
+  // derivable from the code.
   tariffRate: {
     id: toFieldId('tariffRate'),
     key: 'tariffRate',
@@ -189,8 +242,10 @@ export const VENDOR_PART_FIELDS: Record<string, ResourceField> = {
       updatable: true,
       configurable: false,
     },
-    placeholder: 'Tariff percentage',
-    description: 'Tariff rate as a percentage of unit price',
+    placeholder: 'Leave empty to use the schedule',
+    description:
+      'OVERRIDE for this offer, as a percentage of unit price. Set it and the tariff code ' +
+      'schedule is ignored entirely; leave it empty and the rate is resolved from the code',
   },
 
   otherCost: {

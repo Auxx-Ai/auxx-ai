@@ -79,6 +79,7 @@ import { migration115VendorPartDisplayPart } from './migrations/115-vendor-part-
 import { migration116PerPartAbsorption } from './migrations/116-per-part-absorption'
 import { migration117PartKindFromBom } from './migrations/117-part-kind-from-bom'
 import { migration118MovementTypeRelabel } from './migrations/118-movement-type-relabel'
+import { migration119TariffSchedule } from './migrations/119-tariff-schedule'
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
@@ -216,6 +217,9 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   // promotes, which changes the inputs 116's per-part rates resolve against.
   migration117PartKindFromBom,
   migration118MovementTypeRelabel,
+  // MUST sort after 001 - it hangs `vendor_part.tariffCode` off the def 001
+  // creates, and skips an org that has not reached 001 yet.
+  migration119TariffSchedule,
 ]
 
 /**

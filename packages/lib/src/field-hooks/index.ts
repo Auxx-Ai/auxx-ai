@@ -7,6 +7,7 @@ export { registerAllHooks } from './register-hooks'
 export {
   getEntityFieldChangeHooks,
   getEntityPostDeleteHooks,
+  getEntityPreCreateHooks,
   getEntityPreDeleteHooks,
   getFieldPreHooks,
   hasEntityFieldChangeHooks,

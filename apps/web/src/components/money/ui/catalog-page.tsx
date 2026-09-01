@@ -2,7 +2,6 @@
 'use client'
 
 import { FeatureKey, PermissionKey } from '@auxx/lib/permissions/client'
-import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'
 import { MainPageContent } from '@auxx/ui/components/main-page'
 import { ResponsiveTabs } from '@auxx/ui/components/responsive-tabs'
 import { generateId } from '@auxx/utils'
@@ -10,7 +9,7 @@ import { Boxes, Lock, Package } from 'lucide-react'
 import { useQueryState } from 'nuqs'
 import { useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
-import { useMedia } from '~/hooks/use-media'
+import { MasterDetailSplit } from '~/components/global/master-detail-split'
 import { useSettings } from '~/hooks/use-settings'
 import { useRequireCapability } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
@@ -110,8 +109,6 @@ export function CatalogPage() {
   const { getSetting } = useSettings({ scope: 'GENERAL' })
   const currency = (getSetting('organization.currency') as string) || 'USD'
 
-  const isDesktop = useMedia('(min-width: 1024px)')
-
   if (!hasAccess(FeatureKey.dispatch)) {
     return (
       <MainPageContent>
@@ -126,7 +123,6 @@ export function CatalogPage() {
   }
 
   const selectedId = activeTab === 'items' ? selectedItemId : selectedGroupId
-  const mobileDrawerOpen = !isDesktop && !!selectedId
 
   const editorContent =
     activeTab === 'items' ? (
@@ -157,48 +153,40 @@ export function CatalogPage() {
             items={TABS}
           />
         </div>
-        <div className='grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_420px]'>
-          <div className='min-w-0 overflow-y-auto'>
-            {activeTab === 'items' ? (
-              <ProductsList
-                selectedId={selectedItemId}
-                onSelect={handleSelectItem}
-                currency={currency}
-                draft={itemDraft}
-                onAddDraft={handleAddItemDraft}
-              />
-            ) : (
-              <GroupsList
-                selectedId={selectedGroupId}
-                onSelect={handleSelectGroup}
-                currency={currency}
-                draft={groupDraft}
-                onAddDraft={handleAddGroupDraft}
-              />
-            )}
-          </div>
-          <div className='hidden overflow-y-auto border-l lg:block'>{editorContent}</div>
-        </div>
-      </div>
-
-      <DockableDrawer
-        open={mobileDrawerOpen}
-        onOpenChange={(open) => {
-          if (!open) {
+        {/* `scroll='columns'`: there is no `SettingsPage` here, so no page-level
+            scroll container for a sticky pane to travel in - each column scrolls
+            on its own inside the fixed-height frame. */}
+        <MasterDetailSplit
+          id='money-catalog'
+          scroll='columns'
+          pane={editorContent}
+          paneTitle={activeTab === 'items' ? 'Edit item' : 'Edit group'}
+          paneOpen={!!selectedId}
+          onPaneClose={() => {
             setSelectedItemId(null)
             setSelectedGroupId(null)
             setItemDraft(null)
             setGroupDraft(null)
-          }
-        }}
-        isDocked={false}
-        width={380}
-        onWidthChange={() => {}}
-        minWidth={320}
-        maxWidth={480}
-        title={activeTab === 'items' ? 'Edit item' : 'Edit group'}>
-        {editorContent}
-      </DockableDrawer>
+          }}>
+          {activeTab === 'items' ? (
+            <ProductsList
+              selectedId={selectedItemId}
+              onSelect={handleSelectItem}
+              currency={currency}
+              draft={itemDraft}
+              onAddDraft={handleAddItemDraft}
+            />
+          ) : (
+            <GroupsList
+              selectedId={selectedGroupId}
+              onSelect={handleSelectGroup}
+              currency={currency}
+              draft={groupDraft}
+              onAddDraft={handleAddGroupDraft}
+            />
+          )}
+        </MasterDetailSplit>
+      </div>
     </MainPageContent>
   )
 }
