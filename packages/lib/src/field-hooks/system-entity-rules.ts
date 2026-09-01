@@ -23,6 +23,7 @@ import type { EntityTriggerEvent, EntityTriggerHandler } from './types'
 
 const ENTITY_COST_RECALC_VENDOR = 'entityCostRecalcVendor'
 const ENTITY_COST_RECALC_SUBPART = 'entityCostRecalcSubpart'
+const DERIVE_PART_KIND = 'derivePartKind'
 const EXPLODE_BOM_MOVEMENT = 'explodeBomMovement'
 const RECALC_PART_QOH = 'recalculatePartQoH'
 const ENRICH_COMPANY_ON_CREATE = 'enrichCompanyOnCreate'
@@ -95,6 +96,22 @@ export function registerEntitySystemRules(): void {
     })
   })
 
+  // `part_kind` from the bill of materials (plans/money/tasks/23 §4) — BATCH, and declared
+  // BEFORE the subpart cost recalc on the same rule. The recalc ends in
+  // `ensureFirstStandardCosts`, and `absorbsConversionCost` is false for a `component`, so a
+  // roll that ran first would freeze a standard with no conversion cost in it on exactly the
+  // parts this promotion exists to make buildable.
+  registerNativeRuleHandler(DERIVE_PART_KIND, async (event) => {
+    const { derivePartKindForSubpartBatch } = await import('./post/part-kind-derivation')
+    await derivePartKindForSubpartBatch({
+      organizationId: event.organizationId,
+      records: event.recordIds.map((rid) => ({
+        entityInstanceId: parseRecordId(rid).entityInstanceId,
+        values: event.eventDataByRecordId?.[rid],
+      })),
+    })
+  })
+
   // Stock movement explosion + QoH — per-record (each movement resolves its own part). Order
   // within the created rule is [explode, qoh]; explode clears the parent adjust-subparts flag,
   // and because we thread the ORIGINAL create values, qoh's `adjust_subparts` skip stays correct.
@@ -153,16 +170,25 @@ const ENTITY_SYSTEM_RULES: SystemRuleDeclaration[] = [
   },
   {
     key: 'mfg-subparts-created',
-    name: 'Recalculate part cost on subpart create',
+    name: 'Derive part kind and recalculate part cost on subpart create',
     defSlug: 'subparts',
     on: 'created',
-    actions: [{ type: 'native', handler: ENTITY_COST_RECALC_SUBPART }],
+    // ORDER MATTERS — promote the parent to `subassembly` BEFORE the recalc rolls it.
+    // See `post/part-kind-derivation.ts` for why, and for why this promotion is the ONLY
+    // one the derivation makes.
+    actions: [
+      { type: 'native', handler: DERIVE_PART_KIND },
+      { type: 'native', handler: ENTITY_COST_RECALC_SUBPART },
+    ],
   },
   {
     key: 'mfg-subparts-deleted',
     name: 'Recalculate part cost on subpart delete',
     defSlug: 'subparts',
     on: 'deleted',
+    // 🛑 No `DERIVE_PART_KIND` here, deliberately (23 §4.3 decision 2). A subassembly whose
+    // last subpart was removed is a data question, and auto-demoting would silently restate
+    // its standard cost; the kind stays and a human changes it.
     actions: [{ type: 'native', handler: ENTITY_COST_RECALC_SUBPART }],
   },
   {

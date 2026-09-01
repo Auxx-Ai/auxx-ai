@@ -44,6 +44,9 @@ export {
   createBuild,
   startBuild,
 } from './build-mutations'
+// One call that raises, starts and completes. NOT atomic — a refused completion
+// comes back as `left_in_progress` carrying the run it left behind (§3.3).
+export { type BuildNowInput, type BuildNowOutcome, buildNow } from './build-now'
 export {
   type BuildComponentPlanInput,
   type BuildFieldContext,

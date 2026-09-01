@@ -77,6 +77,8 @@ import { migration112RecordDocuments } from './migrations/112-record-documents'
 import { migration114RetireGlPostingDefs } from './migrations/114-retire-gl-posting-defs'
 import { migration115VendorPartDisplayPart } from './migrations/115-vendor-part-display-part'
 import { migration116PerPartAbsorption } from './migrations/116-per-part-absorption'
+import { migration117PartKindFromBom } from './migrations/117-part-kind-from-bom'
+import { migration118MovementTypeRelabel } from './migrations/118-movement-type-relabel'
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
@@ -210,6 +212,10 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   // because `linkDisplayFields` runs at seed time.
   migration115VendorPartDisplayPart,
   migration116PerPartAbsorption,
+  // MUST sort after 116 — it turns on conversion-cost absorption for the parts it
+  // promotes, which changes the inputs 116's per-part rates resolve against.
+  migration117PartKindFromBom,
+  migration118MovementTypeRelabel,
 ]
 
 /**

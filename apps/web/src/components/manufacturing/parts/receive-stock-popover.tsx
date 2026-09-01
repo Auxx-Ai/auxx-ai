@@ -60,15 +60,23 @@ interface SupplierOption {
   terms: ReceiptCostInputs
 }
 
-interface ReceiveStockPopoverProps {
+interface ReceiveStockFormProps {
   /** The part's entityInstanceId. */
   partId: string
   onSuccess?: () => void
-  children: React.ReactNode
+  /** Dismiss whatever surface this form is mounted in. */
+  onDone: () => void
 }
 
-export function ReceiveStockPopover({ partId, onSuccess, children }: ReceiveStockPopoverProps) {
-  const [open, setOpen] = useState(false)
+/**
+ * The receipt form itself, with no surface of its own.
+ *
+ * 🛑 **It resets by UNMOUNTING, not by watching an `open` flag.** Both callers
+ * render it only while it is visible — `PopoverContent` unmounts its children on
+ * close, and the Actions pane swaps them — so a fresh form IS a fresh mount and
+ * there is no open state here to drift out of step with the surface's.
+ */
+export function ReceiveStockForm({ partId, onSuccess, onDone }: ReceiveStockFormProps) {
   const [vendorPartId, setVendorPartId] = useState<string | null>(null)
   const [quantity, setQuantity] = useState<number | null>(null)
   const [unitPrice, setUnitPrice] = useState<number | null>(null)
@@ -83,34 +91,22 @@ export function ReceiveStockPopover({ partId, onSuccess, children }: ReceiveStoc
   const { getSetting } = useSettings({})
   const currencyCode = (getSetting('organization.currency') as string | null) ?? 'USD'
 
-  const suppliers = usePartSuppliers(partId, open)
+  const suppliers = usePartSuppliers(partId)
   const selected = suppliers.find((option) => option.id === vendorPartId) ?? null
 
-  // Reset to a fresh form every time the popover opens, defaulting to the
-  // preferred supplier (§3.5) — the row the buyer already chose.
+  // Prefill the supplier once the rows land, defaulting to the preferred one
+  // (§3.5) — the row the buyer already chose. It is an effect rather than an
+  // initial value because the rows arrive asynchronously, after the mount.
   useEffect(() => {
-    if (!open) return
-    setQuantity(null)
-    setUnitPrice(null)
-    setPriceEdited(false)
-    setOccurredAt(new Date().toISOString())
-    setReference('')
-    setReason('')
-    setVendorPartId(null)
-  }, [open])
-
-  // Prefill the supplier once the rows land, then the price from that supplier.
-  // Split from the reset above because the rows arrive asynchronously, after it.
-  useEffect(() => {
-    if (!open || vendorPartId || suppliers.length === 0) return
+    if (vendorPartId || suppliers.length === 0) return
     const preferred = suppliers.find((option) => option.isPreferred) ?? suppliers[0]
     if (preferred) setVendorPartId(preferred.id)
-  }, [open, vendorPartId, suppliers])
+  }, [vendorPartId, suppliers])
 
   useEffect(() => {
-    if (!open || priceEdited) return
+    if (priceEdited) return
     setUnitPrice(selected?.terms.unitPrice ?? null)
-  }, [open, priceEdited, selected])
+  }, [priceEdited, selected])
 
   // Everything that decides the payload, in one value — so what the breakdown
   // below renders and what the mutation sends are computed from the same state
@@ -141,7 +137,7 @@ export function ReceiveStockPopover({ partId, onSuccess, children }: ReceiveStoc
     try {
       await receiveStock.mutateAsync(payload)
       onSuccess?.()
-      setOpen(false)
+      onDone()
     } catch {
       // onError above already surfaced the toast.
     }
@@ -153,123 +149,151 @@ export function ReceiveStockPopover({ partId, onSuccess, children }: ReceiveStoc
   )
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>{children}</PopoverTrigger>
-      <PopoverContent className='w-96' align='end'>
-        <div className='space-y-3'>
-          <h4 className='font-semibold text-sm'>Receive Stock</h4>
+    <>
+      <FieldPanel className='p-0' orientation='horizontal' defaultLabelWidth={112}>
+        <FieldPanelRow
+          title='Supplier part'
+          type={BaseType.ENUM}
+          showIcon
+          description='Sets the price and the freight and tariff terms'>
+          <FieldInputAdapter
+            fieldType={FieldType.SINGLE_SELECT}
+            value={vendorPartId}
+            onChange={(val) => {
+              setVendorPartId((val as string[])[0] ?? null)
+              // A different supplier means different terms, so the prefill is
+              // live again — the typed price belonged to the old row.
+              setPriceEdited(false)
+            }}
+            fieldOptions={supplierOptions}
+            disabled={isPending || suppliers.length === 0}
+          />
+        </FieldPanelRow>
 
-          <FieldPanel className='p-0'>
-            <FieldPanelRow
-              title='Supplier part'
-              type={BaseType.ENUM}
-              showIcon
-              description='Sets the price and the freight and tariff terms'>
-              <FieldInputAdapter
-                fieldType={FieldType.SINGLE_SELECT}
-                value={vendorPartId}
-                onChange={(val) => {
-                  setVendorPartId((val as string[])[0] ?? null)
-                  // A different supplier means different terms, so the prefill is
-                  // live again — the typed price belonged to the old row.
-                  setPriceEdited(false)
-                }}
-                fieldOptions={supplierOptions}
-                disabled={isPending || suppliers.length === 0}
-              />
-            </FieldPanelRow>
+        <FieldPanelRow title='Quantity' type={BaseType.NUMBER} showIcon isRequired>
+          <FieldInputAdapter
+            fieldType={FieldType.NUMBER}
+            value={quantity}
+            onChange={(val) => setQuantity((val as number) ?? null)}
+            placeholder='0'
+            disabled={isPending}
+          />
+        </FieldPanelRow>
 
-            <FieldPanelRow title='Quantity' type={BaseType.NUMBER} showIcon isRequired>
-              <FieldInputAdapter
-                fieldType={FieldType.NUMBER}
-                value={quantity}
-                onChange={(val) => setQuantity((val as number) ?? null)}
-                placeholder='0'
-                disabled={isPending}
-              />
-            </FieldPanelRow>
-
-            <FieldPanelRow
-              title='Unit price'
-              type={BaseType.CURRENCY}
-              showIcon
-              isRequired
-              description='What the vendor actually charged'>
-              <FieldInputAdapter
-                fieldType={FieldType.CURRENCY}
-                fieldOptions={{ currencyCode, decimals: 2, useGrouping: true }}
-                value={unitPrice}
-                onChange={(val) => {
-                  setUnitPrice((val as number) ?? null)
-                  setPriceEdited(true)
-                }}
-                disabled={isPending}
-              />
-              {breakdown && (
-                <p className='mt-1 text-muted-foreground text-xs tabular-nums'>
-                  {formatLandedCostSummary(breakdown, (minorUnits) =>
-                    formatCurrency(minorUnits, { currencyCode })
-                  )}
-                  {' landed'}
-                </p>
+        <FieldPanelRow
+          title='Unit price'
+          type={BaseType.CURRENCY}
+          showIcon
+          isRequired
+          description='What the vendor actually charged'>
+          <FieldInputAdapter
+            fieldType={FieldType.CURRENCY}
+            fieldOptions={{ currencyCode, decimals: 2, useGrouping: true }}
+            value={unitPrice}
+            onChange={(val) => {
+              setUnitPrice((val as number) ?? null)
+              setPriceEdited(true)
+            }}
+            disabled={isPending}
+          />
+          {breakdown && (
+            <p className='mt-1 text-muted-foreground text-xs tabular-nums'>
+              {formatLandedCostSummary(breakdown, (minorUnits) =>
+                formatCurrency(minorUnits, { currencyCode })
               )}
-            </FieldPanelRow>
-
-            <FieldPanelRow
-              title='Received on'
-              type={BaseType.DATE}
-              showIcon
-              isRequired
-              description='The accounting date, which is not when it was keyed'>
-              <FieldInputAdapter
-                fieldType={FieldType.DATETIME}
-                value={occurredAt}
-                onChange={(val) => setOccurredAt(val as string)}
-                disabled={isPending}
-              />
-            </FieldPanelRow>
-
-            <FieldPanelRow title='Reference' type={BaseType.STRING} showIcon>
-              <FieldInputAdapter
-                fieldType={FieldType.TEXT}
-                value={reference}
-                onChange={(val) => setReference((val as string) ?? '')}
-                placeholder='e.g. Packing slip 88213'
-                disabled={isPending}
-              />
-            </FieldPanelRow>
-
-            <FieldPanelRow title='Reason' type={BaseType.STRING} showIcon>
-              <FieldInputAdapter
-                fieldType={FieldType.TEXT}
-                value={reason}
-                onChange={(val) => setReason((val as string) ?? '')}
-                placeholder='e.g. Partial delivery'
-                disabled={isPending}
-              />
-            </FieldPanelRow>
-          </FieldPanel>
-
-          {suppliers.length === 0 && (
-            <p className='text-muted-foreground text-xs'>
-              This part has no supplier rows. Enter the price paid to receive it anyway.
+              {' landed'}
             </p>
           )}
+        </FieldPanelRow>
 
-          <div className='flex justify-end gap-2'>
-            <Button variant='ghost' size='xs' onClick={() => setOpen(false)} disabled={isPending}>
-              Cancel
-            </Button>
-            <Button
-              variant='outline'
-              size='xs'
-              onClick={handleSubmit}
-              loading={isPending}
-              loadingText='Receiving...'
-              disabled={!payload}>
-              Receive
-            </Button>
-          </div>
+        <FieldPanelRow
+          title='Received on'
+          type={BaseType.DATE}
+          showIcon
+          isRequired
+          description='The accounting date, which is not when it was keyed'>
+          <FieldInputAdapter
+            fieldType={FieldType.DATETIME}
+            value={occurredAt}
+            onChange={(val) => setOccurredAt(val as string)}
+            disabled={isPending}
+          />
+        </FieldPanelRow>
+
+        <FieldPanelRow title='Reference' type={BaseType.STRING} showIcon>
+          <FieldInputAdapter
+            fieldType={FieldType.TEXT}
+            value={reference}
+            onChange={(val) => setReference((val as string) ?? '')}
+            placeholder='e.g. Packing slip 88213'
+            disabled={isPending}
+          />
+        </FieldPanelRow>
+
+        <FieldPanelRow title='Reason' type={BaseType.STRING} showIcon>
+          <FieldInputAdapter
+            fieldType={FieldType.TEXT}
+            value={reason}
+            onChange={(val) => setReason((val as string) ?? '')}
+            placeholder='e.g. Partial delivery'
+            disabled={isPending}
+          />
+        </FieldPanelRow>
+      </FieldPanel>
+
+      {suppliers.length === 0 && (
+        <p className='text-muted-foreground text-xs'>
+          This part has no supplier rows. Enter the price paid to receive it anyway.
+        </p>
+      )}
+
+      <div className='flex justify-end gap-2'>
+        <Button variant='ghost' size='xs' onClick={onDone} disabled={isPending}>
+          Cancel
+        </Button>
+        <Button
+          variant='outline'
+          size='xs'
+          onClick={handleSubmit}
+          loading={isPending}
+          loadingText='Receiving...'
+          disabled={!payload}>
+          Receive
+        </Button>
+      </div>
+    </>
+  )
+}
+
+interface ReceiveStockPopoverProps {
+  /** The part's entityInstanceId. */
+  partId: string
+  onSuccess?: () => void
+  /** The trigger. */
+  children: React.ReactNode
+}
+
+/**
+ * The receipt form in a popover of its own, for a surface with room for a
+ * trigger of its own — the Parts detail page's Inventory tab.
+ *
+ * 🛑 **Do NOT reach for this from inside a menu.** A `PopoverTrigger` in a
+ * `DropdownMenuItem` unmounts with the menu, and the popover that opens in the
+ * same tick races the menu's dismissable layer — it opened, closed instantly,
+ * and then did neither reliably. The part drawer uses `part-stock-actions.tsx`
+ * instead, which mounts this form as a pane of ONE popover and has no second
+ * layer to race.
+ */
+export function ReceiveStockPopover({ partId, onSuccess, children }: ReceiveStockPopoverProps) {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>{children}</PopoverTrigger>
+      <PopoverContent className='w-96 p-3' align='end'>
+        <div className='space-y-3'>
+          <h4 className='font-semibold text-sm'>Receive Stock</h4>
+          <ReceiveStockForm partId={partId} onSuccess={onSuccess} onDone={() => setOpen(false)} />
         </div>
       </PopoverContent>
     </Popover>
@@ -283,7 +307,7 @@ export function ReceiveStockPopover({ partId, onSuccess, children }: ReceiveStoc
  * nothing, it only prefills, so it wants the terms and a label and not the
  * lead-time/contact columns that tab renders.
  */
-function usePartSuppliers(partId: string, enabled: boolean): SupplierOption[] {
+function usePartSuppliers(partId: string): SupplierOption[] {
   const vendorPartDefId = useResourceProperty('vendor_part', 'id')
 
   const filters: ConditionGroup[] = useMemo(
@@ -308,7 +332,7 @@ function usePartSuppliers(partId: string, enabled: boolean): SupplierOption[] {
     entityDefinitionId: vendorPartDefId ?? '',
     filters,
     limit: 50,
-    enabled: enabled && !!partId && !!vendorPartDefId,
+    enabled: !!partId && !!vendorPartDefId,
   })
 
   const recordIds = useMemo(
@@ -318,7 +342,7 @@ function usePartSuppliers(partId: string, enabled: boolean): SupplierOption[] {
 
   const { valuesById } = useSystemValuesForRecords(recordIds, VENDOR_PART_ATTRIBUTES, {
     autoFetch: true,
-    enabled: enabled && recordIds.length > 0,
+    enabled: recordIds.length > 0,
   })
 
   return useMemo(

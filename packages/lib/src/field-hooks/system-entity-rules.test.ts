@@ -12,6 +12,7 @@ const h = vi.hoisted(() => ({
   recalculatePartQoH: vi.fn(async () => {}),
   enrichCompanyOnCreate: vi.fn(async () => {}),
   recalculatePartCostForEntityBatch: vi.fn(async () => {}),
+  derivePartKindForSubpartBatch: vi.fn(async () => {}),
 }))
 
 vi.mock('./post/bom-movement-triggers', () => ({ explodeBomMovement: h.explodeBomMovement }))
@@ -19,6 +20,9 @@ vi.mock('./post/inventory-triggers', () => ({ recalculatePartQoH: h.recalculateP
 vi.mock('./post/company-triggers', () => ({ enrichCompanyOnCreate: h.enrichCompanyOnCreate }))
 vi.mock('./post/bom-cost-triggers', () => ({
   recalculatePartCostForEntityBatch: h.recalculatePartCostForEntityBatch,
+}))
+vi.mock('./post/part-kind-derivation', () => ({
+  derivePartKindForSubpartBatch: h.derivePartKindForSubpartBatch,
 }))
 
 import { __clearNativeRuleHandlers, getNativeRuleHandler } from '../record-rules/actions'
@@ -74,6 +78,31 @@ describe('registerEntitySystemRules — declarations', () => {
     expect(handlers.indexOf('explodeBomMovement')).toBeLessThan(
       handlers.indexOf('recalculatePartQoH')
     )
+  })
+
+  // 🛑 `derivePartKind` promotes the parent to `subassembly`, and the recalc that
+  // follows ends in `ensureFirstStandardCosts`. `absorbsConversionCost` is false
+  // for a `component`, so a roll that ran first would freeze a standard with no
+  // labour or overhead in it on exactly the parts the promotion exists to make
+  // buildable (plans/money/tasks/23 §4.1).
+  it('derives part kind BEFORE the cost recalc on subpart create', () => {
+    const created = getSystemRuleDeclarations().find(
+      (d) => d.defSlug === 'subparts' && d.on === 'created'
+    )!
+    const handlers = created.actions.map((a) => (a as { handler?: string }).handler)
+    expect(handlers).toEqual(['derivePartKind', 'entityCostRecalcSubpart'])
+  })
+
+  // 🛑 Decision 2 (§4.3): a subassembly whose last subpart was removed is a data
+  // question, and auto-demoting would silently restate its standard cost. The
+  // derivation is a `created`-only rule and this is what says so.
+  it('never runs the derivation on subpart DELETE', () => {
+    const deleted = getSystemRuleDeclarations().find(
+      (d) => d.defSlug === 'subparts' && d.on === 'deleted'
+    )!
+    const handlers = deleted.actions.map((a) => (a as { handler?: string }).handler)
+    expect(handlers).toEqual(['entityCostRecalcSubpart'])
+    expect(handlers).not.toContain('derivePartKind')
   })
 
   it('re-SUMs the PO line qty billed on both bill-line lifecycle doors', () => {
@@ -153,6 +182,24 @@ describe('native handlers — fan-out + batch adaptation', () => {
       records: [
         { entityInstanceId: 'v1', values: { vendor_part_part: 'p1' } },
         { entityInstanceId: 'v2', values: undefined },
+      ],
+    })
+  })
+
+  it('part kind derivation BATCHES the whole firing, with the threaded parents', async () => {
+    const handler = getNativeRuleHandler('derivePartKind')!
+    await handler({
+      recordIds: [RID('spDef:s1'), RID('spDef:s2')],
+      organizationId: 'org_1',
+      action: 'created',
+      eventDataByRecordId: { [RID('spDef:s1')]: { subpart_parent_part: 'p1' } },
+    })
+    expect(h.derivePartKindForSubpartBatch).toHaveBeenCalledTimes(1)
+    expect(h.derivePartKindForSubpartBatch).toHaveBeenCalledWith({
+      organizationId: 'org_1',
+      records: [
+        { entityInstanceId: 's1', values: { subpart_parent_part: 'p1' } },
+        { entityInstanceId: 's2', values: undefined },
       ],
     })
   })

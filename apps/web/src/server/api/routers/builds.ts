@@ -1,6 +1,7 @@
 // apps/web/src/server/api/routers/builds.ts
 
 import {
+  buildNow,
   cancelBuild,
   completeBuild,
   createBuild,
@@ -10,6 +11,7 @@ import {
   loadEffectiveAbsorptionRates,
   previewStandardCostRoll,
   readBuildDrift,
+  readPartQuantitiesOnHand,
   reverseBuild,
   rollStandardCost,
   startBuild,
@@ -86,7 +88,7 @@ const completionShape = {
  * | `previewRoll`, `roll`                  | edit on `part`                            |
  * | `list`, `get`                          | view on `build`                           |
  * | `create`, `start`, `cancel`            | edit on `build`                           |
- * | `previewCompletion`, `complete`, `reverse` | edit on `build` AND edit on `stock_movement` |
+ * | `previewCompletion`, `complete`, `reverse`, `buildNow` | edit on `build` AND edit on `stock_movement` |
  *
  * Three notes on why those, and not something coarser:
  *
@@ -325,7 +327,52 @@ export const buildsRouter = createTRPCRouter({
         loadEffectiveAbsorptionRates(ctx.db, organizationId, input.partId),
       ])
       if (plan.isErr()) throw plan.error
-      return { plan: plan.value, rates }
+
+      // What each consumed part has on hand RIGHT NOW, so a preview can say
+      // `will take Feet Bracket to -3` (23 §3.4). `completeBuild` performs no
+      // sufficiency check at all and deliberately still does not — receiving
+      // keyed late is normal in a small shop, and a build refused on a stale
+      // count is a worse failure than a negative a receipt corrects an hour
+      // later. So this is a WARNING's input, never a gate's.
+      const onHand = await readPartQuantitiesOnHand(
+        ctx.db,
+        organizationId,
+        plan.value.components.map((line) => line.partId)
+      )
+
+      return { plan: plan.value, rates, onHand: Object.fromEntries(onHand) }
+    }),
+
+  /**
+   * Raise, start and complete a run in one call — the part drawer's `Build now`
+   * (plans/money/tasks/23-build-from-the-part.md §3.3).
+   *
+   * Gated exactly as `complete` is, because it ends in a completion.
+   *
+   * 🛑 **It is not atomic and the result says so.** A refused completion comes
+   * back with `status: 'left_in_progress'` and the build that was raised, at a
+   * 200 — not as an error. The caller MUST render that arm as a failure that
+   * names and links the run, because "nothing happened" is what makes somebody
+   * press the button a second time and raise a duplicate.
+   */
+  buildNow: capabilityProcedure
+    .input(
+      z.object({
+        partId: z.string().min(1),
+        /** Good units produced. Both the planned and the produced quantity. */
+        quantity: runQuantity,
+        notes: z.string().max(2000).optional(),
+        /** THE accounting date, stamped on the build and every movement. Defaults to now. */
+        completedAt: z.coerce.date().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
+      await assertCanPostBuildLedger(ctx)
+
+      const result = await buildNow(ctx.db, organizationId, userId, input)
+      if (result.isErr()) throw result.error
+      return result.value
     }),
 
   /**

@@ -7,7 +7,6 @@ import type { ResourceFieldId } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
 import type { Variant } from '@auxx/ui/components/badge'
 import { Badge } from '@auxx/ui/components/badge'
-import { Button } from '@auxx/ui/components/button'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Skeleton } from '@auxx/ui/components/skeleton'
@@ -17,8 +16,7 @@ import { formatCurrency } from '@auxx/utils/currency'
 import { ChevronRight } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useMemo, useState } from 'react'
-import { ReceiveStockPopover } from '~/components/manufacturing/parts/receive-stock-popover'
-import { StockAdjustmentPopover } from '~/components/manufacturing/parts/stock-adjustment-popover'
+import { PartStockActions } from '~/components/manufacturing/parts/part-stock-actions'
 import { toRecordId, useRecordList, useResourceProperty } from '~/components/resources'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { useSettings } from '~/hooks/use-settings'
@@ -48,7 +46,8 @@ const STATUS_LABEL_MAP: Record<string, string> = {
   out_of_stock: 'Out of Stock',
 }
 
-const PART_ATTRIBUTES = ['part_quantity_on_hand', 'part_stock_status'] as const
+// `part_kind` rides along for the Build gate below — one read, already made.
+const PART_ATTRIBUTES = ['part_quantity_on_hand', 'part_stock_status', 'part_kind'] as const
 
 const MOVEMENT_ATTRIBUTES = [
   'stock_movement_type',
@@ -119,14 +118,27 @@ function MovementRow({
 // Movements List (inline collapsible content)
 // ─────────────────────────────────────────────────────────────────
 
+/**
+ * The movements list, and the `Actions` popover that produces them.
+ *
+ * The three write forms live in `part-stock-actions.tsx`; this component owns
+ * only the list and hands that surface a refresh.
+ *
+ * Actions stays INSIDE this component, i.e. behind the Status row's expand,
+ * rather than being promoted to the card's always-visible top row. Promoting it
+ * would put a write action above a read-only count on a card that is otherwise a
+ * clean label/value grid; it is noted as an option and not taken here
+ * (plans/money/tasks/23 §2.1).
+ */
 function MovementsList({
   partId,
   currentQoH,
-  onAdjustSuccess,
+  partKind,
 }: {
   partId: string
   currentQoH: number
-  onAdjustSuccess: () => void
+  /** The part's stored `part_kind`, read once by the card above. */
+  partKind: string | undefined
 }) {
   const stockMovementDefId = useResourceProperty('stock_movement', 'id')
   const { getSetting } = useSettings({})
@@ -160,30 +172,32 @@ function MovementsList({
     enabled: !!partId && !!stockMovementDefId,
   })
 
-  const handleAdjustSuccess = () => {
+  /**
+   * What every write form calls when it lands.
+   *
+   * Only the movements list. The QoH number at the top of the card is NOT
+   * refetched here on purpose: every writer of it — `recalculateQoHForPart` and
+   * `batchRecalculateQoH` — ends in `publishFieldValueUpdates` with no
+   * `excludeSocketId`, and `use-resource-sync` merges that frame with no
+   * self-filter, so the acting tab repaints from realtime like every other. The
+   * alternative, `invalidateResource`, DELETES every cached field value on the
+   * part — the pattern two purchasing surfaces removed after it visibly reset
+   * their open forms.
+   */
+  const handleSuccess = () => {
     refresh()
-    onAdjustSuccess()
   }
 
   return (
     <div className='border-t border-border/50 pt-2 mt-1'>
       <div className='flex items-center justify-between mb-2'>
         <h4 className='text-xs font-semibold text-muted-foreground'>Stock Movements</h4>
-        <div className='flex items-center gap-1'>
-          <ReceiveStockPopover partId={partId} onSuccess={handleAdjustSuccess}>
-            <Button variant='outline' size='xs'>
-              Receive
-            </Button>
-          </ReceiveStockPopover>
-          <StockAdjustmentPopover
-            partId={partId}
-            currentQoH={currentQoH}
-            onSuccess={handleAdjustSuccess}>
-            <Button variant='outline' size='xs'>
-              Adjust
-            </Button>
-          </StockAdjustmentPopover>
-        </div>
+        <PartStockActions
+          partId={partId}
+          currentQoH={currentQoH}
+          partKind={partKind}
+          onSuccess={handleSuccess}
+        />
       </div>
 
       {isLoading || isLoadingRecords ? (
@@ -223,6 +237,7 @@ export function PartInventoryCard({ recordId, entityInstanceId }: DrawerTabProps
   const [isOpen, setIsOpen] = useState(false)
 
   const qoh = (values.part_quantity_on_hand as number) ?? 0
+  const partKind = values.part_kind as string | undefined
   const stockStatus =
     (values.part_stock_status as string | undefined) ?? (qoh <= 0 ? 'out_of_stock' : 'in_stock')
 
@@ -299,7 +314,7 @@ export function PartInventoryCard({ recordId, entityInstanceId }: DrawerTabProps
               }}
               exit={{ height: 0, opacity: 0, filter: 'blur(3px)', overflow: 'hidden' }}
               transition={{ type: 'spring', stiffness: 300, damping: 30 }}>
-              <MovementsList partId={partId} currentQoH={qoh} onAdjustSuccess={() => {}} />
+              <MovementsList partId={partId} currentQoH={qoh} partKind={partKind} />
             </motion.div>
           )}
         </AnimatePresence>
