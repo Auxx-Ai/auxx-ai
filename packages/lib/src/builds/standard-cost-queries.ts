@@ -20,7 +20,7 @@ import { buildParentGraph, buildSubpartGraph, loadOrgPricingData } from '../bom/
 import { getOrgCache, requireCachedEntityDefId } from '../cache'
 import { UnprocessableEntityError } from '../errors'
 import { getOrganizationSetting } from '../settings/settings-service'
-import { type PartKindValue, resolvePartKind } from './client'
+import { type PartKindValue, resolveAbsorptionRates, resolvePartKind } from './client'
 import { guard } from './guard'
 import {
   computeStandardCosts,
@@ -47,6 +47,8 @@ const ROLL_ATTRIBUTES = [
   'part_standard_overhead_cost',
   'part_standard_cost',
   'part_standard_cost_effective_at',
+  'part_labor_cost_per_unit',
+  'part_overhead_cost_per_unit',
 ] as const
 
 /** The five `part_standard_*` fields the roll owns. `rollStandardCost` is their only writer. */
@@ -60,6 +62,17 @@ export interface StandardCostFields {
   partKind: CustomFieldEntity | null
   liveCost: CustomFieldEntity | null
   quantityOnHand: CustomFieldEntity | null
+  /**
+   * The two per-part absorption overrides (migration 116).
+   *
+   * 🛑 Nullable, and {@link loadStandardCostFields} must NOT refuse when they are
+   * absent — unlike the five `part_standard_*` fields above. An org whose
+   * migration has not run has no overrides, every part falls through to the org
+   * rate, and the roll produces exactly what it produced before the feature
+   * existed. Refusing here would break the roll for every org until 116 lands.
+   */
+  laborOverride: CustomFieldEntity | null
+  overheadOverride: CustomFieldEntity | null
 }
 
 /**
@@ -96,6 +109,8 @@ export async function loadStandardCostFields(organizationId: string): Promise<St
     partKind: fields.part_kind,
     liveCost: fields.part_cost,
     quantityOnHand: fields.part_quantity_on_hand,
+    laborOverride: fields.part_labor_cost_per_unit,
+    overheadOverride: fields.part_overhead_cost_per_unit,
   }
 }
 
@@ -115,6 +130,87 @@ export async function loadAbsorptionRates(organizationId: string): Promise<Absor
     laborCostPerUnit: typeof labor === 'number' ? labor : null,
     overheadCostPerUnit: typeof overhead === 'number' ? overhead : null,
   }
+}
+
+/** One part's two absorption overrides, as stored. */
+export interface PartAbsorptionOverrides {
+  /** `undefined` = no stored value = use the org rate. A `0` is a real override. */
+  laborCostPerUnit?: number | null
+  overheadCostPerUnit?: number | null
+}
+
+/**
+ * Read one part's `part_labor_cost_per_unit` / `part_overhead_cost_per_unit`.
+ *
+ * Returns an empty object when the override fields are not provisioned, which
+ * resolves to the bare org rates — exactly the pre-migration-116 behaviour.
+ *
+ * Takes `db` so a caller inside a transaction can pass the transaction handle
+ * and read the same snapshot its standard costs came from.
+ */
+export async function loadPartAbsorptionOverrides(
+  db: Database,
+  organizationId: string,
+  partId: string
+): Promise<PartAbsorptionOverrides> {
+  const fields = await loadStandardCostFields(organizationId)
+  const fieldIds = [fields.laborOverride?.id, fields.overheadOverride?.id].filter(
+    (id): id is string => Boolean(id)
+  )
+  if (fieldIds.length === 0) return {}
+
+  const rows = await db
+    .select({
+      fieldId: schema.FieldValue.fieldId,
+      valueNumber: schema.FieldValue.valueNumber,
+    })
+    .from(schema.FieldValue)
+    .where(
+      and(
+        eq(schema.FieldValue.organizationId, organizationId),
+        eq(schema.FieldValue.entityId, partId),
+        inArray(schema.FieldValue.fieldId, fieldIds)
+      )
+    )
+
+  // `undefined` (no row) and `null` (a row with an empty cell) both mean "use
+  // the org rate"; only a real number, `0` included, overrides it.
+  const overrides: PartAbsorptionOverrides = {}
+  for (const row of rows) {
+    if (fields.laborOverride && row.fieldId === fields.laborOverride.id) {
+      overrides.laborCostPerUnit = row.valueNumber
+    } else if (fields.overheadOverride && row.fieldId === fields.overheadOverride.id) {
+      overrides.overheadCostPerUnit = row.valueNumber
+    }
+  }
+  return overrides
+}
+
+/**
+ * The org rates with ONE part's overrides applied — the rates a BUILD absorbs.
+ *
+ * 🛑 **`completeBuild` and `builds.previewCompletion` must both resolve the
+ * produced part's overrides, and the roll must apply the same ones per part.**
+ * If a part's frozen standard carries an override and its run absorbs the bare
+ * org rate, every completion produces
+ * `material + labour + overhead - producedValue != 0` and the difference lands
+ * in account 5090 forever, on `updatable: false` rows. That is the one way this
+ * feature can quietly corrupt the ledger.
+ *
+ * `completeBuild` does NOT call this — it already reads the org rates outside
+ * its transaction on purpose and composes {@link loadPartAbsorptionOverrides}
+ * inside, after the lock, where the produced part is known.
+ */
+export async function loadEffectiveAbsorptionRates(
+  db: Database,
+  organizationId: string,
+  partId: string
+): Promise<AbsorptionRates> {
+  const [orgRates, overrides] = await Promise.all([
+    loadAbsorptionRates(organizationId),
+    loadPartAbsorptionOverrides(db, organizationId, partId),
+  ])
+  return resolveAbsorptionRates(orgRates, overrides)
 }
 
 /** Every non-archived `part` in the org, with the name error messages use. */
@@ -145,6 +241,15 @@ export interface StoredPartValues {
   standardOverheadCosts: Map<string, number>
   standardCosts: Map<string, number>
   effectiveDates: Map<string, string>
+  /**
+   * `part_labor_cost_per_unit` / `part_overhead_cost_per_unit` as stored.
+   *
+   * 🛑 A part is in the map **only when it has a non-NULL stored value**, which
+   * is what keeps a declared `0` (absorb nothing) apart from an unset cell (use
+   * the org rate). `resolveAbsorptionRates` reads that absence with `??`.
+   */
+  laborOverrides: Map<string, number>
+  overheadOverrides: Map<string, number>
 }
 
 async function loadStoredPartValues(
@@ -161,6 +266,8 @@ async function loadStoredPartValues(
     standardOverheadCosts: new Map(),
     standardCosts: new Map(),
     effectiveDates: new Map(),
+    laborOverrides: new Map(),
+    overheadOverrides: new Map(),
   }
 
   const fieldIds = [
@@ -172,6 +279,8 @@ async function loadStoredPartValues(
     fields.overhead.id,
     fields.standard.id,
     fields.effectiveAt.id,
+    fields.laborOverride?.id,
+    fields.overheadOverride?.id,
   ].filter((id): id is string => Boolean(id))
 
   const rows = await db
@@ -209,6 +318,13 @@ async function loadStoredPartValues(
       if (row.valueNumber != null) values.standardCosts.set(row.entityId, row.valueNumber)
     } else if (row.fieldId === fields.effectiveAt.id) {
       if (row.valueDate != null) values.effectiveDates.set(row.entityId, row.valueDate)
+    } else if (fields.laborOverride && row.fieldId === fields.laborOverride.id) {
+      // `!= null` and not a truthiness check: a stored `0` is a declared
+      // "absorbs nothing" and MUST land in the map, or it reads as unset and
+      // silently reinstates the org rate.
+      if (row.valueNumber != null) values.laborOverrides.set(row.entityId, row.valueNumber)
+    } else if (fields.overheadOverride && row.fieldId === fields.overheadOverride.id) {
+      if (row.valueNumber != null) values.overheadOverrides.set(row.entityId, row.valueNumber)
     }
   }
 
@@ -293,6 +409,8 @@ export async function planStandardCostRoll(
     subpartGraph,
     storedStandardCosts: stored.standardCosts,
     rates,
+    laborOverrides: stored.laborOverrides,
+    overheadOverrides: stored.overheadOverrides,
     partNames,
   })
 

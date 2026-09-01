@@ -919,6 +919,98 @@ export const PART_FIELDS: Record<string, ResourceField> = {
       'between part_cost and part_standard_cost since this date is what tells you a roll is due',
   },
 
+  // ─── Per-part absorption overrides (plans/money/tasks/22) ───────────
+  //
+  // The INPUTS whose output is the frozen `part_standard_labor_cost` /
+  // `part_standard_overhead_cost` block above — the same relationship
+  // `part_cost` has to `part_standard_cost`: one is live and editable, the
+  // other is what was agreed and only `rollStandardCost` writes it.
+  //
+  // Without these, `standard-cost-roll.ts` reads ONE org-wide rate for every
+  // built part at every level of every bill of materials, so a finished good
+  // assembled from 8 subassemblies carries 9 x the flat rate whether or not
+  // that describes the work. A NULL here means "use the org rate"; a stored 0
+  // means "absorb nothing" and is how a subassembly is made cost-transparent.
+  //
+  // 🛑 `creatable` / `updatable` are TRUE and `computed` is absent — unlike
+  // every `part_standard_*` field. That is deliberate and it is what makes
+  // them settable by the importer: `getImportableFields` filters on
+  // `creatable && !hidden && !relationship` and never reads `updatable`, while
+  // the CRUD layer enforces `updatable` on the write. Both are needed — one to
+  // be offered a column, one so a second update pass can revise it.
+  //
+  // ⚠️ `showInPanel: false` is a DEFAULT, not a lock (`resolveFieldVisible`
+  // lets an explicit org choice win) and it does NOT affect import. They are
+  // hidden because 82% of parts are components, where both fields are inert;
+  // the part drawer's Costing card renders them gated on `part_kind`, next to
+  // the frozen composition they produce.
+
+  laborCostPerUnit: {
+    id: toFieldId('laborCostPerUnit'),
+    key: 'laborCostPerUnit',
+    label: 'Labor Cost Per Unit',
+    type: BaseType.CURRENCY,
+    fieldType: FieldType.CURRENCY,
+    isSystem: true,
+    systemAttribute: 'part_labor_cost_per_unit',
+    systemSortOrder: 'a5j',
+    nullable: true,
+    showInPanel: false,
+    // Explicit, because an unset `showInTable` resolves to `showInPanel !== false`
+    // — omitting both would add two mostly-empty columns to every parts list.
+    showInTable: false,
+    showInDialogs: false,
+    options: {
+      currencyCode: 'USD',
+      decimals: 2,
+      useGrouping: true,
+      currencyDisplay: 'symbol',
+    },
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    description:
+      'Absorbed direct labour per assembled unit for THIS part, integer minor units. Overrides ' +
+      'manufacturing.assemblyLaborCostPerUnit. Empty = use the org rate; 0 = absorb nothing. ' +
+      'Ignored on a component, which never absorbs conversion cost (README B11). On re-import a ' +
+      'blank cell LEAVES the stored value alone — clearing one needs mergeStrategy: overwrite',
+  },
+
+  overheadCostPerUnit: {
+    id: toFieldId('overheadCostPerUnit'),
+    key: 'overheadCostPerUnit',
+    label: 'Overhead Cost Per Unit',
+    type: BaseType.CURRENCY,
+    fieldType: FieldType.CURRENCY,
+    isSystem: true,
+    systemAttribute: 'part_overhead_cost_per_unit',
+    systemSortOrder: 'a5k',
+    nullable: true,
+    showInPanel: false,
+    showInTable: false,
+    showInDialogs: false,
+    options: {
+      currencyCode: 'USD',
+      decimals: 2,
+      useGrouping: true,
+      currencyDisplay: 'symbol',
+    },
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    description:
+      'Applied overhead per assembled unit for THIS part, integer minor units. Overrides ' +
+      'manufacturing.overheadCostPerUnit. Gated on partKind exactly as laborCostPerUnit is',
+  },
+
   // Reverse relationship: builds (from build.part)
   builds: {
     id: toFieldId('builds'),

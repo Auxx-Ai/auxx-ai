@@ -7,7 +7,7 @@ import {
   explodeBuildComponents,
   getBuild,
   listBuilds,
-  loadAbsorptionRates,
+  loadEffectiveAbsorptionRates,
   previewStandardCostRoll,
   readBuildDrift,
   reverseBuild,
@@ -315,9 +315,14 @@ export const buildsRouter = createTRPCRouter({
       const { organizationId } = ctx.session
       await assertCanPostBuildLedger(ctx)
 
+      // 🛑 The EFFECTIVE rates, not the bare org ones. The dialog previews the
+      // variance this run will post, and `completeBuild` resolves the produced
+      // part's own absorption overrides before it writes — a preview built from
+      // the org rate would disagree with the write on exactly the parts that
+      // carry an override.
       const [plan, rates] = await Promise.all([
         explodeBuildComponents(ctx.db, organizationId, input),
-        loadAbsorptionRates(organizationId),
+        loadEffectiveAbsorptionRates(ctx.db, organizationId, input.partId),
       ])
       if (plan.isErr()) throw plan.error
       return { plan: plan.value, rates }

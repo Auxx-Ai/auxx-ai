@@ -648,6 +648,12 @@ export const SYSTEM_ATTRIBUTES = [
   'part_standard_overhead_cost',
   'part_standard_cost', // the sum — the value every movement stamps
   'part_standard_cost_effective_at',
+  // The two per-part absorption overrides (plans/money/tasks/22). The INPUTS
+  // whose output is the frozen block above — NULL falls through to the org
+  // rate, a stored 0 means "absorbs nothing", and unlike the frozen fields
+  // these are creatable and updatable so the importer can set them in bulk.
+  'part_labor_cost_per_unit',
+  'part_overhead_cost_per_unit',
   'part_builds', // inverse of build_part
   'stock_movement_build', // nullable; `reference` stays as-is
   'stock_movement_qty_per_unit', // as-built BOM snapshot; NULL on a consume row = off-BOM
