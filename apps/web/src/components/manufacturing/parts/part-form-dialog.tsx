@@ -96,6 +96,7 @@ export function PartFormDialog({
   const partDefId = useResourceProperty('part', 'id')
   const productDefId = useResourceProperty('product', 'id')
   const vendorPartDefId = useResourceProperty('vendor_part', 'id')
+  const tariffCodeDefId = useResourceProperty('tariff_code', 'id')
   const companyDefId = useResourceProperty('company', 'id')
 
   // Live field def for the Category TAGS input (sources existing option pool).
@@ -321,6 +322,17 @@ export function PartFormDialog({
               vendor_part_contact: toRecordId(companyDefId!, vendorPartValues.entityInstanceId),
               vendor_part_vendor_sku: vendorPartValues.vendorSku,
               vendor_part_unit_price: vendorPartValues.unitPrice,
+              // ⚠️ Every field `VendorPartFields` renders is written. Shipping,
+              // tariff and other cost were rendered and NOT written here for a
+              // long time, so anything typed into them at part creation was
+              // dropped without error (task 30 §3.5).
+              vendor_part_shipping_cost: vendorPartValues.shippingCost,
+              vendor_part_tariff_code:
+                vendorPartValues.tariffCodeId && tariffCodeDefId
+                  ? toRecordId(tariffCodeDefId, vendorPartValues.tariffCodeId)
+                  : undefined,
+              vendor_part_tariff_rate: vendorPartValues.tariffRate,
+              vendor_part_other_cost: vendorPartValues.otherCost,
               vendor_part_lead_time: vendorPartValues.leadTime,
               vendor_part_min_order_qty: vendorPartValues.minOrderQty,
               vendor_part_is_preferred: vendorPartValues.isPreferred,
@@ -496,10 +508,12 @@ export function PartFormDialog({
             </FieldPanelRow>
           )}
 
-          {/* HS Code */}
+          {/* HS Code. ⚠️ Read by nothing (29 §0.1). The duty comes from the
+              supplier offer's tariff code, which pairs a code with an origin;
+              this is a hint the supplier form shows under that picker. */}
           <FieldPanelRow
             title='HS Code'
-            description='Harmonized System Code for customs'
+            description="A hint for the supplier's tariff code picker. The duty itself comes from each supplier offer's tariff code, which pairs the code with a country of origin."
             type={BaseType.STRING}
             showIcon>
             <FieldInputAdapter
@@ -551,6 +565,7 @@ export function PartFormDialog({
                   onChange={handleVendorPartChange}
                   errors={vendorPartErrors}
                   disabled={isPending}
+                  partHsCode={values.hsCode}
                 />
               </FieldPanel>
             )}

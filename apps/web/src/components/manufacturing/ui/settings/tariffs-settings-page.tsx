@@ -7,13 +7,10 @@
 // column is a PERSISTENT editor pane, docked at `lg` and a floating drawer below
 // it.
 //
-// ⚠️ ONE TAB, so no tab strip - and that is deliberate rather than unfinished.
-// §6.1 specifies two tabs, Codes and Classification, with the active one in
-// `useQueryState('s')`. Classification is not built. A `ResponsiveTabs` strip
-// with a single item is a control that cannot be operated, and a second tab that
-// renders a placeholder is a half-wired feature; both are worse than the strip
-// arriving with the thing it switches to. The `subHeader` slot and the `s` query
-// param land together with that tab, and nothing else about this shell moves.
+// Two tabs, the active one in `useQueryState('s')`: Codes (the registry) and
+// Classification (every priced supplier offer, classified or not - task 30 §6).
+// Codes is the entry point even though a first-run org has its work on the
+// other tab, because nothing can be classified before a code exists.
 //
 // 🛑 THE GATE IS THE RECORD CAPABILITY, not `settingsManage` - decided in §12
 // (d) and it is the opposite call from the sibling Parts > General page. Both
@@ -28,10 +25,12 @@
 
 import { FieldType } from '@auxx/database/enums'
 import type { FieldType as FieldTypeValue } from '@auxx/database/types'
-import type { RecordId } from '@auxx/lib/resources/client'
+import { type RecordId, toRecordId } from '@auxx/lib/resources/client'
+import { ResponsiveTabs } from '@auxx/ui/components/responsive-tabs'
 import { toastError } from '@auxx/ui/components/toast'
 import { generateId } from '@auxx/utils'
-import { Globe } from 'lucide-react'
+import { Globe, Package } from 'lucide-react'
+import { useQueryState } from 'nuqs'
 import { useCallback, useMemo, useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
 import { MasterDetailSplit } from '~/components/global/master-detail-split'
@@ -46,9 +45,15 @@ import { useConfirm } from '~/hooks/use-confirm'
 import { useSettings } from '~/hooks/use-settings'
 import { useAccess, useRequireEntityEdit } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
-import { TariffCodeEditor, type TariffCodeValues } from './tariff-code-editor'
-import { TariffCodesList } from './tariff-codes-list'
-import type { TariffRateValues } from './tariff-rate-history'
+import {
+  useOfferClassification,
+  VENDOR_PART_TARIFF_ATTRS,
+} from '../../hooks/use-offer-classification'
+import {
+  useTariffCountryFieldOptions,
+  useTariffCountryLabels,
+  useTariffSchedule,
+} from '../../hooks/use-tariff-schedule'
 import {
   composeTariffLabel,
   TARIFF_CODE_ATTRS,
@@ -56,12 +61,12 @@ import {
   type TariffCode,
   type TariffCodeDraft,
   type TariffRate,
-} from './tariff-types'
-import {
-  useTariffCountryFieldOptions,
-  useTariffCountryLabels,
-  useTariffSchedule,
-} from './use-tariff-schedule'
+} from '../../tariff-types'
+import { TariffClassificationEditor } from './tariff-classification-editor'
+import { TariffClassificationList } from './tariff-classification-list'
+import { TariffCodeEditor, type TariffCodeValues } from './tariff-code-editor'
+import { TariffCodesList } from './tariff-codes-list'
+import type { TariffRateValues } from './tariff-rate-history'
 
 const BREADCRUMBS = [
   { title: 'Parts', href: '/app/parts' },
@@ -72,7 +77,17 @@ const BREADCRUMBS = [
 const PAGE_DESCRIPTION =
   'Harmonized codes by country of origin, and the rates behind them. A rate is a function of what the thing is, where it was made, and when - so a code is a classification for an origin, and its rates are dated rows that are never edited in place.'
 
+const TABS = [
+  { value: 'codes', label: 'Codes', icon: Globe },
+  { value: 'classification', label: 'Classification', icon: Package },
+]
+
+type TariffsTab = 'codes' | 'classification'
+
 export function TariffsSettingsPage() {
+  const [tab, setTab] = useQueryState('s', { defaultValue: 'codes' as string })
+  const activeTab: TariffsTab = tab === 'classification' ? 'classification' : 'codes'
+
   const {
     codes,
     ratesByCode,
@@ -117,6 +132,21 @@ export function TariffsSettingsPage() {
   const bookTimeZone = (getSetting('accounting.bookTimeZone') as string) || 'UTC'
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selectedOfferId, setSelectedOfferId] = useState<string | null>(null)
+
+  // ── The Classification tab's read and writes ────────────────────────────
+  //
+  // The country per code, so the offer list can filter by origin.
+  const codeCountryById = useMemo(
+    () => new Map(codes.map((code) => [code.id, code.country])),
+    [codes]
+  )
+  const classification = useOfferClassification(codeCountryById)
+  const canEditOffers = classification.vendorPartDefId
+    ? canEditEntity(classification.vendorPartDefId)
+    : false
+  const selectedOffer = classification.offers.find((offer) => offer.id === selectedOfferId) ?? null
+
   // The phantom draft. The full field set lives inside the draft form instance
   // (keyed by `draftId`); this page tracks only enough to render the list's
   // phantom row and to know whether the selection is a draft.
@@ -249,6 +279,37 @@ export function TariffsSettingsPage() {
       if (draft?.recordId === code.id) setDraft(null)
     },
     [ratesByCode, confirm, deleteRecord, removeCode, selectedId, draft]
+  )
+
+  // ── The offer writes ────────────────────────────────────────────────────
+  //
+  // The same two attributes the supplier dialog writes, through the same door.
+  // `mfg-vendor-part-tariff-code` / `-tariff-rate` recalculate the part's cost
+  // on the server; nothing here computes a number.
+
+  const handleSetOfferCode = useCallback(
+    async (recordId: RecordId, tariffCodeId: string | null) => {
+      if (!codeDefId) throw new Error('Tariff codes are not available in this organization yet.')
+      const ok = await saveMultipleAsync(recordId, [
+        {
+          fieldId: VENDOR_PART_TARIFF_ATTRS.tariffCode,
+          value: tariffCodeId ? [toRecordId(codeDefId, tariffCodeId)] : [],
+          fieldType: FieldType.RELATIONSHIP,
+        },
+      ])
+      if (ok === false) throw new Error('Could not save the tariff code.')
+    },
+    [codeDefId, saveMultipleAsync]
+  )
+
+  const handleSetOfferOverride = useCallback(
+    async (recordId: RecordId, rate: number | null) => {
+      const ok = await saveMultipleAsync(recordId, [
+        { fieldId: VENDOR_PART_TARIFF_ATTRS.tariffRate, value: rate, fieldType: FieldType.NUMBER },
+      ])
+      if (ok === false) throw new Error('Could not save the override.')
+    },
+    [saveMultipleAsync]
   )
 
   // ── The rate writes ─────────────────────────────────────────────────────
@@ -435,31 +496,72 @@ export function TariffsSettingsPage() {
     )
   }
 
+  const classificationEditor = (
+    <TariffClassificationEditor
+      offer={selectedOffer}
+      scheduleTariff={selectedOffer ? classification.scheduleById.get(selectedOffer.id) : undefined}
+      unavailable={classification.unavailable}
+      tariffCodeDefId={codeDefId}
+      canEdit={canEditOffers}
+      onSetCode={handleSetOfferCode}
+      onSetOverride={handleSetOfferOverride}
+    />
+  )
+
   return (
-    <SettingsPage title='Tariffs' description={PAGE_DESCRIPTION} breadcrumbs={BREADCRUMBS}>
-      <MasterDetailSplit
-        id='tariff-codes'
-        pane={editorContent}
-        paneTitle='Tariff code'
-        paneOpen={!!selectedId}
-        onPaneClose={() => handleSelect(null)}>
-        <TariffCodesList
-          codes={codes}
-          ratesByCode={ratesByCode}
-          today={today}
-          bookTimeZone={bookTimeZone}
-          countryLabels={countryLabels}
-          // 🛑 Gate on the QUERY, never on an empty array. "No tariff codes
-          // yet" is a claim about the org, and rendering it mid-load makes it
-          // a false one.
-          isLoading={isLoading}
-          selectedId={selectedId}
-          onSelect={handleSelect}
-          draft={draft}
-          onAddDraft={handleAddDraft}
-          canEdit={canEditCodes}
+    <SettingsPage
+      title='Tariffs'
+      description={PAGE_DESCRIPTION}
+      breadcrumbs={BREADCRUMBS}
+      subHeader={
+        <ResponsiveTabs
+          value={activeTab}
+          onValueChange={(next) => void setTab(next)}
+          size='sm'
+          items={TABS}
         />
-      </MasterDetailSplit>
+      }>
+      {activeTab === 'codes' ? (
+        <MasterDetailSplit
+          id='tariff-codes'
+          pane={editorContent}
+          paneTitle='Tariff code'
+          paneOpen={!!selectedId}
+          onPaneClose={() => handleSelect(null)}>
+          <TariffCodesList
+            codes={codes}
+            ratesByCode={ratesByCode}
+            today={today}
+            bookTimeZone={bookTimeZone}
+            countryLabels={countryLabels}
+            // 🛑 Gate on the QUERY, never on an empty array. "No tariff codes
+            // yet" is a claim about the org, and rendering it mid-load makes it
+            // a false one.
+            isLoading={isLoading}
+            selectedId={selectedId}
+            onSelect={handleSelect}
+            draft={draft}
+            onAddDraft={handleAddDraft}
+            canEdit={canEditCodes}
+          />
+        </MasterDetailSplit>
+      ) : (
+        <MasterDetailSplit
+          id='tariff-classification'
+          pane={classificationEditor}
+          paneTitle='Supplier offer'
+          paneOpen={!!selectedOfferId}
+          onPaneClose={() => setSelectedOfferId(null)}>
+          <TariffClassificationList
+            offers={classification.offers}
+            countries={classification.countries}
+            countryLabels={countryLabels}
+            isLoading={classification.isLoading}
+            selectedId={selectedOfferId}
+            onSelect={setSelectedOfferId}
+          />
+        </MasterDetailSplit>
+      )}
 
       <ConfirmDialog />
     </SettingsPage>

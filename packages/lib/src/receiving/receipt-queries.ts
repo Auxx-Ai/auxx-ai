@@ -18,6 +18,8 @@ import { type Database, schema } from '@auxx/database'
 import { and, desc, eq, gte, inArray, isNull, lte, type SQL, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
+import { loadTariffSchedule, readBookTimeZone } from '../bom/tariff-schedule'
+import { resolveOfferTariff } from '../bom/vendor-cost'
 import { getCachedEntityDefId, getOrgCache } from '../cache'
 import type { ReceiptCostInputs } from './client'
 import { guard } from './guard'
@@ -317,11 +319,21 @@ export async function getLastReceiptCost(
  * Exported because the Receive form prefills from exactly this — the form and
  * the write path must derive the landed cost from the same four numbers or the
  * price shown is not the price frozen.
+ *
+ * **The tariff rate is RESOLVED, not read** (29 §3.1, 30 §5). A set
+ * `vendor_part_tariff_rate` is an override and wins outright; otherwise the
+ * offer's `tariff_code` schedule is resolved at `atDate` in the org's book
+ * timezone. `atDate` is the receipt's `occurredAt` - a receipt back-dated to
+ * before a rate change is valued at the earlier rate, which is the whole point
+ * of a dated schedule. ⚠️ This serves the AD-HOC receive door only;
+ * `receivePurchaseOrder` passes `unitCost` explicitly and never reaches here
+ * (29 §5.1).
  */
 export async function readVendorPartCostInputs(
   db: Database,
   organizationId: string,
-  vendorPartInstanceId: string
+  vendorPartInstanceId: string,
+  atDate: Date = new Date()
 ): Promise<Result<ReceiptCostInputs | null, Error>> {
   return guard(
     async () => {
@@ -348,6 +360,7 @@ export async function readVendorPartCostInputs(
           'vendor_part_unit_price',
           'vendor_part_shipping_cost',
           'vendor_part_tariff_rate',
+          'vendor_part_tariff_code',
           'vendor_part_other_cost',
         ])
 
@@ -358,16 +371,65 @@ export async function readVendorPartCostInputs(
         fields.vendor_part_other_cost?.id,
       ])
 
+      const override = pick(numbers, fields.vendor_part_tariff_rate?.id)
+      const tariffRate =
+        override ??
+        (await resolveScheduledRate(
+          db,
+          organizationId,
+          vendorPartInstanceId,
+          fields.vendor_part_tariff_code?.id,
+          atDate
+        ))
+
       return {
         unitPrice: pick(numbers, fields.vendor_part_unit_price?.id),
         shippingCost: pick(numbers, fields.vendor_part_shipping_cost?.id),
-        tariffRate: pick(numbers, fields.vendor_part_tariff_rate?.id),
+        tariffRate,
         otherCost: pick(numbers, fields.vendor_part_other_cost?.id),
       }
     },
     'Failed to read vendor part cost inputs',
     { organizationId, vendorPartInstanceId }
   )
+}
+
+/**
+ * The schedule half of the precedence rule for one offer: its `tariff_code`
+ * pointer, that code's rows, and `resolveOfferTariff` at `atDate`. `null` when
+ * the offer is unclassified, so the caller's `?? 0` reads the same as today.
+ *
+ * The pointer is read separately from the numbers because it lives in
+ * `relatedEntityId`, not `valueNumber`. The schedule and the timezone are only
+ * fetched once a pointer is actually found.
+ */
+async function resolveScheduledRate(
+  db: Database,
+  organizationId: string,
+  vendorPartInstanceId: string,
+  tariffCodeFieldId: string | undefined,
+  atDate: Date
+): Promise<number | null> {
+  if (!tariffCodeFieldId) return null
+  const [pointer] = await db
+    .select({ relatedEntityId: schema.FieldValue.relatedEntityId })
+    .from(schema.FieldValue)
+    .where(
+      and(
+        eq(schema.FieldValue.organizationId, organizationId),
+        eq(schema.FieldValue.entityId, vendorPartInstanceId),
+        eq(schema.FieldValue.fieldId, tariffCodeFieldId)
+      )
+    )
+    .limit(1)
+  const tariffCodeId = pointer?.relatedEntityId ?? null
+  if (!tariffCodeId) return null
+
+  const [schedule, timeZone] = await Promise.all([
+    loadTariffSchedule(db, organizationId, [tariffCodeId]),
+    readBookTimeZone(organizationId),
+  ])
+  return resolveOfferTariff({ tariffRate: null, tariffCodeId }, schedule, atDate, timeZone).rate
 }
 
 /**

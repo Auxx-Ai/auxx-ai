@@ -679,6 +679,13 @@ export const SYSTEM_ATTRIBUTES = [
   // space.
   'tariff_code_code',
   'tariff_code_country', // ISO 3166-1 alpha-2, a seeded SINGLE_SELECT
+  // DERIVED, never typed: `{code} {country}`, stamped by a hook on every write
+  // to either leg. It exists so the display name and the importers' relation
+  // match have ONE text field that names the whole `(code, country)` identity -
+  // a relation column matches on one field, and matching on `code` alone
+  // resolves `8481.80.9005` to CN and DE interchangeably (task 30 §8). Nothing
+  // parses it back apart; the two legs stay the source of truth.
+  'tariff_code_label',
   'tariff_code_description',
   'tariff_code_rates', // inverse of tariff_rate_tariff_code
   'tariff_code_vendor_parts', // inverse of vendor_part_tariff_code

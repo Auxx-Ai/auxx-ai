@@ -1,7 +1,11 @@
 // apps/web/src/components/drawers/tabs/part-vendors-tab-row.tsx
 'use client'
 
-import { computeLandedBreakdown, type LandedCostBreakdown } from '@auxx/lib/bom/client'
+import {
+  computeLandedBreakdown,
+  type LandedCostBreakdown,
+  type OfferTariff,
+} from '@auxx/lib/bom/client'
 import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -14,8 +18,9 @@ import {
 import { TableCell, TableRow } from '@auxx/ui/components/table'
 import { pluralize } from '@auxx/utils'
 import { formatCurrency } from '@auxx/utils/currency'
-import { BadgeCheck, Edit, MoreHorizontal, Star, Trash2 } from 'lucide-react'
+import { BadgeCheck, Edit, Globe, MoreHorizontal, Star, Trash2 } from 'lucide-react'
 import { Tooltip } from '~/components/global/tooltip'
+import { authorityLabel } from '~/components/manufacturing/tariff-types'
 import { RecordBadge } from '~/components/resources/ui/record-badge'
 import { useAccess } from '~/providers/capabilities-provider'
 
@@ -31,6 +36,7 @@ export interface VendorPartRowValues {
   vendorSku?: string
   unitPrice: number | null
   shippingCost: number | null
+  /** The RESOLVED rate - override or schedule - once the tab has resolved it. */
   tariffRate: number | null
   otherCost: number | null
   leadTime: number | null
@@ -42,6 +48,10 @@ export interface VendorPartRowValues {
 interface VendorPartRowProps {
   recordId: RecordId
   values: VendorPartRowValues
+  /** Where `values.tariffRate` came from, for the breakdown's label. */
+  tariff?: OfferTariff
+  /** `8481.80.9005 CN`, when the offer carries a code. Drives the Globe chip. */
+  codeLabel?: string
   /**
    * Whether this offer is the one the part's Cost actually came from.
    *
@@ -63,13 +73,31 @@ interface VendorPartRowProps {
  * carry a fraction. The tariff shows both its rate and the money that rate
  * produced, because "10%" alone does not answer where the tariff went.
  */
-function LandedBreakdown({ breakdown }: { breakdown: LandedCostBreakdown }) {
+function LandedBreakdown({
+  breakdown,
+  tariff,
+  codeLabel,
+}: {
+  breakdown: LandedCostBreakdown
+  tariff?: OfferTariff
+  codeLabel?: string
+}) {
+  // Where the rate came from, so "10%" is never a bare number (task 30 §4):
+  // `(override)`, or the code it resolved from with the components beneath.
+  const tariffSource =
+    tariff?.source === 'override'
+      ? ' (override)'
+      : tariff?.source === 'schedule' && codeLabel
+        ? ` (${codeLabel})`
+        : ''
   const rows: { label: string; value: number }[] = [
     { label: 'Unit price', value: breakdown.unitPrice },
     { label: 'Shipping', value: breakdown.shipping },
-    { label: `Tariff (${breakdown.tariffRate}%)`, value: breakdown.tariff },
+    { label: `Tariff ${breakdown.tariffRate}%${tariffSource}`, value: breakdown.tariff },
     { label: 'Other', value: breakdown.other },
   ]
+  const components =
+    tariff?.source === 'schedule' && tariff.status === 'resolved' ? tariff.components : []
 
   return (
     <div className='min-w-44 space-y-1'>
@@ -79,6 +107,18 @@ function LandedBreakdown({ breakdown }: { breakdown: LandedCostBreakdown }) {
           <span className='tabular-nums'>{row.value === 0 ? '—' : formatCurrency(row.value)}</span>
         </div>
       ))}
+      {components.length > 1 && (
+        <div className='space-y-0.5 ps-3'>
+          {components.map((component) => (
+            <div
+              key={component.id}
+              className='flex justify-between gap-4 text-muted-foreground text-xs'>
+              <span className='truncate'>{authorityLabel(component.authority)}</span>
+              <span className='tabular-nums'>{component.rate}%</span>
+            </div>
+          ))}
+        </div>
+      )}
       <div className='flex justify-between gap-4 border-t pt-1 text-xs font-medium'>
         <span>Landed</span>
         <span className='tabular-nums'>{formatCurrency(breakdown.landed)}</span>
@@ -91,6 +131,8 @@ function LandedBreakdown({ breakdown }: { breakdown: LandedCostBreakdown }) {
 export function VendorPartRow({
   recordId,
   values,
+  tariff,
+  codeLabel,
   isWinner,
   onEdit,
   onDelete,
@@ -135,6 +177,15 @@ export function VendorPartRow({
               </div>
             </Tooltip>
           )}
+          {/* Standing-control-once-set: rendered only when the offer carries a
+              code, so a domestic row shows nothing and loses no width. */}
+          {codeLabel && (
+            <Tooltip content={`Tariff code ${codeLabel}`}>
+              <div className='text-muted-foreground'>
+                <Globe className='size-3.5' />
+              </div>
+            </Tooltip>
+          )}
         </div>
       </TableCell>
       <TableCell className='font-mono text-sm'>{vendorSku ?? '—'}</TableCell>
@@ -151,7 +202,10 @@ export function VendorPartRow({
           // whenever landed equalled the unit price, which is most rows — a
           // supplier with no shipping, tariff or other costs still HAS a landed
           // cost, and it is that supplier's unit price.
-          <Tooltip contentComponent={<LandedBreakdown breakdown={breakdown} />}>
+          <Tooltip
+            contentComponent={
+              <LandedBreakdown breakdown={breakdown} tariff={tariff} codeLabel={codeLabel} />
+            }>
             <span className='underline decoration-dotted underline-offset-4'>
               {formatCurrency(breakdown.landed)}
             </span>

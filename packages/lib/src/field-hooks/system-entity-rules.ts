@@ -29,6 +29,8 @@ const RECALC_PART_QOH = 'recalculatePartQoH'
 const ENRICH_COMPANY_ON_CREATE = 'enrichCompanyOnCreate'
 const RECALC_PO_LINE_RECEIVED = 'recalculatePurchaseOrderLineReceived'
 const RECALC_PO_LINE_BILLED = 'recalculatePurchaseOrderLineBilled'
+/** Lifecycle twin of the field handler in `system-record-rules.ts`; same key on purpose. */
+const RECALC_PART_COST_TARIFF_RATE = 'recalculatePartCostFromTariffRate'
 
 /**
  * Fan a batch native event out to a single-record `EntityTriggerHandler`, reconstructing the
@@ -140,6 +142,22 @@ export function registerEntitySystemRules(): void {
     await fanOutEntityHandler(event, 'vendor-bill-lines', recalculatePurchaseOrderLineBilled)
   })
 
+  // The tariff schedule (29 §7) — BATCH. A rate row appearing or disappearing
+  // reprices every offer behind its code. The captured create/delete values
+  // carry the code, so the common case resolves without a DB read.
+  registerNativeRuleHandler(RECALC_PART_COST_TARIFF_RATE, async (event) => {
+    const { recalculatePartCostForTariffRates } = await import('./post/tariff-rate-triggers')
+    const values: Record<string, Record<string, unknown> | undefined> = {}
+    for (const rid of event.recordIds) {
+      values[parseRecordId(rid).entityInstanceId] = event.eventDataByRecordId?.[rid]
+    }
+    await recalculatePartCostForTariffRates({
+      organizationId: event.organizationId,
+      rateInstanceIds: event.recordIds.map((rid) => parseRecordId(rid).entityInstanceId),
+      values,
+    })
+  })
+
   // Company enrichment — created only, per-record (HTTP fetch).
   registerNativeRuleHandler(ENRICH_COMPANY_ON_CREATE, async (event) => {
     const { enrichCompanyOnCreate } = await import('./post/company-triggers')
@@ -167,6 +185,20 @@ const ENTITY_SYSTEM_RULES: SystemRuleDeclaration[] = [
     defSlug: 'vendor-parts',
     on: 'deleted',
     actions: [{ type: 'native', handler: ENTITY_COST_RECALC_VENDOR }],
+  },
+  {
+    key: 'mfg-tariff-rates-created',
+    name: 'Recalculate part cost on tariff rate create',
+    defSlug: 'tariff-rates',
+    on: 'created',
+    actions: [{ type: 'native', handler: RECALC_PART_COST_TARIFF_RATE }],
+  },
+  {
+    key: 'mfg-tariff-rates-deleted',
+    name: 'Recalculate part cost on tariff rate delete',
+    defSlug: 'tariff-rates',
+    on: 'deleted',
+    actions: [{ type: 'native', handler: RECALC_PART_COST_TARIFF_RATE }],
   },
   {
     key: 'mfg-subparts-created',

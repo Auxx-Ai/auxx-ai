@@ -41,6 +41,8 @@ const FIXED = [
   'build-delete-guard.ts',
   'part-delete-guard.ts',
   'purchase-order-delete-guard.ts',
+  // Born on `findRelatedInstanceIds` (task 30 §9.1); never had the defect.
+  'tariff-code-delete-guard.ts',
   'vendor-bill-delete-guard.ts',
 ]
 

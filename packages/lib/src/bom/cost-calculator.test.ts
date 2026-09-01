@@ -16,6 +16,10 @@ const h = vi.hoisted(() => ({
   getRealtimeService: vi.fn(() => ({})),
   publishFieldValueUpdates: vi.fn(async (_svc: unknown, _orgId: string, _entries: unknown[]) => {}),
   syncCatalogItemPricing: vi.fn(async () => {}),
+  // The schedule read behind a classified offer (task 30 §1). Keyed by
+  // `tariff_code` instance id; empty unless a test loads one.
+  loadTariffSchedule: vi.fn(async () => new Map<string, unknown[]>()),
+  readBookTimeZone: vi.fn(async () => 'UTC'),
 }))
 
 function nextRows(): unknown[] {
@@ -57,6 +61,7 @@ const FIELD: Record<string, { id: string; type: string }> = {
   vendor_part_is_preferred: { id: 'f_vp_pref', type: 'CHECKBOX' },
   vendor_part_shipping_cost: { id: 'f_vp_ship', type: 'CURRENCY' },
   vendor_part_tariff_rate: { id: 'f_vp_tariff', type: 'NUMBER' },
+  vendor_part_tariff_code: { id: 'f_vp_tariff_code', type: 'RELATIONSHIP' },
   vendor_part_other_cost: { id: 'f_vp_other', type: 'CURRENCY' },
   subpart_parent_part: { id: 'f_sp_parent', type: 'RELATIONSHIP' },
   subpart_child_part: { id: 'f_sp_child', type: 'RELATIONSHIP' },
@@ -97,6 +102,11 @@ vi.mock('../realtime', () => ({
 
 vi.mock('../money/catalog-pricing', () => ({
   syncCatalogItemPricing: h.syncCatalogItemPricing,
+}))
+
+vi.mock('./tariff-schedule', () => ({
+  loadTariffSchedule: h.loadTariffSchedule,
+  readBookTimeZone: h.readBookTimeZone,
 }))
 
 import {
@@ -587,5 +597,89 @@ describe('loadOrgPricingData — the offer id the tiebreak depends on', () => {
     expect(vendorPrices.map((row) => row.id).sort()).toEqual(['vp_acme', 'vp_bolt'])
     // ...and the part id stays a separate field rather than being overwritten.
     expect(new Set(vendorPrices.map((row) => row.partInstanceId))).toEqual(new Set([MOTOR]))
+  })
+})
+
+describe('loadOrgPricingData — the tariff schedule (task 30 §1)', () => {
+  /** A `tariff_code` pointer FieldValue row on an offer. */
+  function codeRow(instanceId: string, codeId: string) {
+    return {
+      instanceId,
+      fieldId: FIELD.vendor_part_tariff_code!.id,
+      valueNumber: null,
+      valueBoolean: null,
+      relatedEntityId: codeId,
+    }
+  }
+
+  /** A `tariff_rate` FieldValue row on an offer (the OVERRIDE). */
+  function overrideRow(instanceId: string, rate: number) {
+    return {
+      instanceId,
+      fieldId: FIELD.vendor_part_tariff_rate!.id,
+      valueNumber: rate,
+      valueBoolean: null,
+      relatedEntityId: null,
+    }
+  }
+
+  const CN_VALVE = 'code_cn'
+  const CN_SCHEDULE = new Map<string, unknown[]>([
+    [
+      CN_VALVE,
+      [
+        { id: 'mfn', authority: 'MFN', rate: 2, effectiveFrom: '1995-01-01', chapter99Code: null },
+        {
+          id: 's301',
+          authority: 'Section 301 List 3',
+          rate: 25,
+          effectiveFrom: '2019-05-10',
+          chapter99Code: '9903.88.03',
+        },
+      ],
+    ],
+  ])
+
+  it('resolves a classified offer with no override from the schedule', async () => {
+    h.loadTariffSchedule.mockResolvedValue(CN_SCHEDULE)
+    queue([...vendorPartRows('vp_motor', MOTOR, 1999), codeRow('vp_motor', CN_VALVE)], [], [])
+
+    const { vendorPrices } = await loadOrgPricingData(ORG)
+
+    expect(h.loadTariffSchedule).toHaveBeenCalledTimes(1)
+    expect(h.readBookTimeZone).toHaveBeenCalledWith(ORG)
+    expect(vendorPrices).toEqual([expect.objectContaining({ id: 'vp_motor', tariffRate: 27 })])
+  })
+
+  it('a set override wins and the schedule is not even loaded', async () => {
+    queue(
+      [
+        ...vendorPartRows('vp_motor', MOTOR, 1999),
+        codeRow('vp_motor', CN_VALVE),
+        overrideRow('vp_motor', 12),
+      ],
+      [],
+      []
+    )
+
+    const { vendorPrices } = await loadOrgPricingData(ORG)
+
+    expect(h.loadTariffSchedule).not.toHaveBeenCalled()
+    expect(vendorPrices[0]!.tariffRate).toBe(12)
+  })
+
+  it('an unclassified org pays no schedule read at all', async () => {
+    queue(vendorPartRows('vp_motor', MOTOR, 1999), [], [])
+    await loadOrgPricingData(ORG)
+    expect(h.loadTariffSchedule).not.toHaveBeenCalled()
+    expect(h.readBookTimeZone).not.toHaveBeenCalled()
+  })
+
+  it('a classified offer whose code has no rows resolves to no duty, not to a failure', async () => {
+    h.loadTariffSchedule.mockResolvedValue(new Map())
+    queue([...vendorPartRows('vp_motor', MOTOR, 1999), codeRow('vp_motor', 'code_empty')], [], [])
+
+    const { vendorPrices } = await loadOrgPricingData(ORG)
+    expect(vendorPrices[0]!.tariffRate).toBe(0)
   })
 })

@@ -39,7 +39,10 @@ export interface ReceiptFormState {
   /** The selected supplier row, or null when the part has none. */
   vendorPartId: string | null
   /** The selected row's freight/tariff/other terms. */
-  terms: Pick<ReceiptCostInputs, 'shippingCost' | 'tariffRate' | 'otherCost'> | null
+  terms: Pick<
+    ReceiptCostInputs,
+    'shippingCost' | 'tariffRate' | 'tariffSource' | 'otherCost'
+  > | null
   /** The base price as it stands in the input — prefilled, possibly edited. */
   unitPrice: number | null
   /** ISO string from the date input. */
@@ -63,6 +66,7 @@ export function receiptBreakdown(state: ReceiptFormState): ReceiptCostParts | nu
     unitPrice: state.unitPrice,
     shippingCost: state.terms?.shippingCost ?? null,
     tariffRate: state.terms?.tariffRate ?? null,
+    tariffSource: state.terms?.tariffSource ?? null,
     otherCost: state.terms?.otherCost ?? null,
   })
 }

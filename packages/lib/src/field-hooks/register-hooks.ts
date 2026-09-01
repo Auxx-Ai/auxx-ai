@@ -97,6 +97,8 @@ import {
   rejectIfSystemTag,
 } from './pre/tag-system-guard'
 import { dropUnauthorizedTemplateKey, rejectDeleteIfTemplateTag } from './pre/tag-template-guard'
+import { guardTariffCodeDelete } from './pre/tariff-code-delete-guard'
+import { restampTariffCodeLabel, stampTariffCodeLabel } from './pre/tariff-code-label'
 import { guardTariffCodeUniqueness } from './pre/tariff-code-uniqueness-guard'
 import { guardVendorBillDelete } from './pre/vendor-bill-delete-guard'
 import { guardWorkOrderDelete } from './pre/work-order-delete-guard'
@@ -477,7 +479,11 @@ export function registerAllHooks(): void {
   // `(code, country)` is a natural key and `naturalKeyPosition` enforces nothing
   // on create. This must be a PRE-CREATE hook, not a field pre-hook - see the
   // guard's header for the record it produced when it was the latter.
-  registerEntityPreCreateHooks('tariff-codes', [guardTariffCodeUniqueness])
+  // ORDER MATTERS: refuse the duplicate first, then stamp the derived label into
+  // the same value bag the create writes (task 30 §8). Edits to either leg
+  // re-stamp it through the field-change door below.
+  registerEntityPreCreateHooks('tariff-codes', [guardTariffCodeUniqueness, stampTariffCodeLabel])
+  registerEntityFieldChangeHooks('tariff-codes', [restampTariffCodeLabel])
 
   registerFieldPreHooks('tags', 'is_system_tag', [dropUnauthorizedSystemFlag])
   registerFieldPreHooks('tags', 'title', [rejectIfSystemTag])
@@ -529,6 +535,12 @@ export function registerAllHooks(): void {
   registerEntityPreDeleteHooks('builds', [guardBuildDelete])
   registerEntityPreDeleteHooks('purchase-orders', [guardPurchaseOrderDelete])
   registerEntityPreDeleteHooks('vendor-bills', [guardVendorBillDelete])
+
+  // The tariff registry (plans/money/tasks/30-tariff-offer-surfaces.md §9.1). Visible, so it
+  // has the same ordinary row delete `parts` had; refuses while any supplier offer is
+  // classified under the code (duty would silently drop to zero on every one of them) and
+  // cascades the code's rate rows through the handler so `mfg-tariff-rates-deleted` fires.
+  registerEntityPreDeleteHooks('tariff-codes', [guardTariffCodeDelete])
 
   // Billing projections after deletes (plan 24 §4.6) — deletes fire no field-change hooks, so
   // these are the explicit post-cleanup projector calls for every delete path (generic

@@ -31,6 +31,7 @@ import { guardInvoiceDelete } from '../pre/invoice-delete-guard'
 import { cascadeOrderLinesOnDelete } from '../pre/order-delete-guard'
 import { guardPartDelete } from '../pre/part-delete-guard'
 import { guardPurchaseOrderDelete } from '../pre/purchase-order-delete-guard'
+import { guardTariffCodeDelete } from '../pre/tariff-code-delete-guard'
 import { guardVendorBillDelete } from '../pre/vendor-bill-delete-guard'
 import { getEntityPreDeleteHooks } from '../registry'
 
@@ -42,6 +43,7 @@ const GUARDED = [
   { slug: 'builds', handler: guardBuildDelete },
   { slug: 'purchase-orders', handler: guardPurchaseOrderDelete },
   { slug: 'vendor-bills', handler: guardVendorBillDelete },
+  { slug: 'tariff-codes', handler: guardTariffCodeDelete },
 ] as const
 
 /**
@@ -68,6 +70,11 @@ const MONEY_ENTITY_TYPES = [
   'gl_account',
   'vendor_payment',
   'vendor_payment_allocation',
+  // The tariff schedule (tasks 29/30). `tariff_code` is a visible parent with
+  // two child types behind it. `tariff_rate` is deliberately NOT listed: it is
+  // a visible LEAF - nothing points at a rate row - and a guard that guards
+  // nothing would only make this list read as complete when it is not.
+  'tariff_code',
 ] as const
 
 /**
@@ -116,10 +123,16 @@ describe('pre-delete hook registration', () => {
     expect(unguarded).toEqual([])
   })
 
-  it('holds the four visible money parents the costing guide §3 names', () => {
+  it('holds the four visible money parents the costing guide §3 names, plus the tariff registry', () => {
     // Pins the derivation itself: if a money entity flips to visible, or a new
     // one ships visible, this fails and the guard question gets asked BEFORE the
     // delete button is live — which is the whole point of the file.
-    expect(visibleMoneyParents()).toEqual(['builds', 'parts', 'purchase-orders', 'vendor-bills'])
+    expect(visibleMoneyParents()).toEqual([
+      'builds',
+      'parts',
+      'purchase-orders',
+      'tariff-codes',
+      'vendor-bills',
+    ])
   })
 })

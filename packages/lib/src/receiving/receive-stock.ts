@@ -178,7 +178,16 @@ async function resolveReceiptPrice(
   // already known it is not read at all.
   let terms: ReceiptCostInputs | null = null
   if ((landed == null || vendorUnitPrice == null) && input.vendorPartId) {
-    terms = await unwrap(readVendorPartCostInputs(db, organizationId, input.vendorPartId))
+    // Resolved at the receipt's accounting date, not at now: a back-dated receipt
+    // takes the duty rate that was in force on the day (29 §5.1, 30 §5).
+    terms = await unwrap(
+      readVendorPartCostInputs(
+        db,
+        organizationId,
+        input.vendorPartId,
+        input.occurredAt ?? new Date()
+      )
+    )
     if (!terms) {
       throw new NotFoundError(`Vendor part ${input.vendorPartId} not found`)
     }

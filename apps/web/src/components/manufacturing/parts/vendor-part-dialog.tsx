@@ -32,6 +32,7 @@ const VENDOR_PART_SYSTEM_ATTRIBUTES = [
   'vendor_part_vendor_sku',
   'vendor_part_unit_price',
   'vendor_part_shipping_cost',
+  'vendor_part_tariff_code',
   'vendor_part_tariff_rate',
   'vendor_part_other_cost',
   'vendor_part_lead_time',
@@ -40,6 +41,8 @@ const VENDOR_PART_SYSTEM_ATTRIBUTES = [
   'vendor_part_contact',
   'vendor_part_part',
 ] as const
+
+const PART_HINT_ATTRIBUTES = ['hs_code'] as const
 
 /** Props for VendorPartDialog component */
 interface VendorPartDialogProps {
@@ -76,6 +79,7 @@ export function VendorPartDialog({
   const vendorPartDefId = useResourceProperty('vendor_part', 'id')
   const partDefId = useResourceProperty('part', 'id')
   const companyDefId = useResourceProperty('company', 'id')
+  const tariffCodeDefId = useResourceProperty('tariff_code', 'id')
 
   // Field definition for the Part relationship picker (contact-centric mode) — sourced live
   // so FieldInputAdapter gets a real RelationshipConfig and can offer "create new part"
@@ -86,6 +90,17 @@ export function VendorPartDialog({
     autoFetch: true,
     enabled: isEditMode && open,
   })
+
+  // The part's free-text HS code, as a hint under the tariff code picker (task
+  // 30 §3.6). Part-centric mode knows the part up front; company-centric mode
+  // knows it once one is picked.
+  const hintPartId = partIdProp ?? (isEditMode ? undefined : undefined)
+  const { values: partValues } = useSystemValues(
+    partDefId && hintPartId ? toRecordId(partDefId, hintPartId) : undefined,
+    PART_HINT_ATTRIBUTES,
+    { autoFetch: true, enabled: open && !!partDefId && !!hintPartId }
+  )
+  const partHsCode = (partValues?.hs_code as string | undefined) ?? null
 
   // State - uses shared type plus partId for contact-centric mode
   const [values, setValues] = useState<VendorPartFormValues & { partId: string }>({
@@ -113,12 +128,22 @@ export function VendorPartDialog({
             ? getInstanceId(partFirst)
             : ((partFirst as string) ?? '')
 
+        const codeRaw = systemValues.vendor_part_tariff_code
+        const codeFirst = Array.isArray(codeRaw) ? codeRaw[0] : codeRaw
+        const tariffCodeId =
+          typeof codeFirst === 'string' && codeFirst.length > 0
+            ? isRecordId(codeFirst)
+              ? getInstanceId(codeFirst)
+              : codeFirst
+            : null
+
         setValues({
           entityInstanceId: contactId,
           partId,
           vendorSku: (systemValues.vendor_part_vendor_sku as string) ?? '',
           unitPrice: (systemValues.vendor_part_unit_price as number) ?? null,
           shippingCost: (systemValues.vendor_part_shipping_cost as number) ?? null,
+          tariffCodeId,
           tariffRate: (systemValues.vendor_part_tariff_rate as number) ?? null,
           otherCost: (systemValues.vendor_part_other_cost as number) ?? null,
           leadTime: (systemValues.vendor_part_lead_time as number) ?? null,
@@ -210,6 +235,14 @@ export function VendorPartDialog({
           fieldType: FieldType.CURRENCY,
         },
         {
+          fieldId: 'vendor_part_tariff_code',
+          value:
+            values.tariffCodeId && tariffCodeDefId
+              ? [toRecordId(tariffCodeDefId, values.tariffCodeId)]
+              : [],
+          fieldType: FieldType.RELATIONSHIP,
+        },
+        {
           fieldId: 'vendor_part_tariff_rate',
           value: values.tariffRate,
           fieldType: FieldType.NUMBER,
@@ -248,6 +281,10 @@ export function VendorPartDialog({
           vendor_part_vendor_sku: values.vendorSku,
           vendor_part_unit_price: values.unitPrice,
           vendor_part_shipping_cost: values.shippingCost,
+          vendor_part_tariff_code:
+            values.tariffCodeId && tariffCodeDefId
+              ? toRecordId(tariffCodeDefId, values.tariffCodeId)
+              : undefined,
           vendor_part_tariff_rate: values.tariffRate,
           vendor_part_other_cost: values.otherCost,
           vendor_part_lead_time: values.leadTime,
@@ -306,6 +343,7 @@ export function VendorPartDialog({
             disabled={isPending}
             disableContactEdit={isEditMode}
             showContactField={isPartMode}
+            partHsCode={partHsCode}
           />
         </FieldPanel>
 

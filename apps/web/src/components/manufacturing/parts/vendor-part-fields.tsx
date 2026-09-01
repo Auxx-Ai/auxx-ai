@@ -3,10 +3,14 @@
 
 import { FieldType } from '@auxx/database/enums'
 import { getInstanceId, type RecordId, toRecordId } from '@auxx/lib/field-values/client'
+import Link from 'next/link'
+import { useMemo } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanelRow } from '~/components/global/forms/field-panel'
 import { useSystemField } from '~/components/resources/hooks/use-field'
 import { BaseType } from '~/components/workflow/types'
+import { useOfferTariffs } from '../hooks/use-offer-tariffs'
+import { OfferTariffReadout } from '../ui/offer-tariff-readout'
 
 /**
  * Default values for vendor part form fields
@@ -16,6 +20,9 @@ export const defaultVendorPartValues = {
   vendorSku: '',
   unitPrice: null as number | null,
   shippingCost: null as number | null,
+  /** `tariff_code` instance id. The classification and origin the duty resolves from. */
+  tariffCodeId: null as string | null,
+  /** The OVERRIDE. `null` means "use the schedule" (29 §3.1). */
   tariffRate: null as number | null,
   otherCost: null as number | null,
   leadTime: null as number | null,
@@ -44,6 +51,13 @@ interface VendorPartFieldsProps {
   disableContactEdit?: boolean
   /** Whether to show the contact field (false for contact-centric mode) */
   showContactField?: boolean
+  /**
+   * The part's free-text `hsCode`, when the host knows it. Shown as a hint
+   * under the code picker so the person can find the right origin for it -
+   * the picker cannot be pre-searched, and the field itself is read by nothing
+   * (29 §0.1, 30 §3.6).
+   */
+  partHsCode?: string | null
 }
 
 /**
@@ -56,8 +70,10 @@ export function VendorPartFields({
   disabled,
   disableContactEdit,
   showContactField = true,
+  partHsCode,
 }: VendorPartFieldsProps) {
   const contactField = useSystemField('vendor_part_contact')
+  const tariffCodeField = useSystemField('vendor_part_tariff_code')
 
   return (
     <>
@@ -112,19 +128,45 @@ export function VendorPartFields({
         />
       </FieldPanelRow>
 
-      {/* Tariff Rate */}
+      {/* Tariff — three rows where there was one (30 §3.1). The code sets the
+          duty from the schedule; the rate is the OVERRIDE; the readout is the
+          only feedback that the code picked actually has rates behind it. */}
       <FieldPanelRow
-        title='Tariff Rate (%)'
-        description='Percentage of unit price'
+        title='Tariff code'
+        description='Classification and country of origin. Sets the duty from the schedule.'
+        type={BaseType.RELATION}
+        showIcon>
+        <FieldInputAdapter
+          triggerProps={{ className: 'w-full ps-0 pe-1' }}
+          fieldType={tariffCodeField?.fieldType ?? FieldType.RELATIONSHIP}
+          fieldOptions={tariffCodeField?.options}
+          value={values.tariffCodeId ? [toRecordId('tariff_code', values.tariffCodeId)] : []}
+          onChange={(recordIds) => {
+            const ids = recordIds as RecordId[]
+            onChange('tariffCodeId', ids[0] ? getInstanceId(ids[0]) : null)
+          }}
+          placeholder='Select tariff code...'
+          disabled={disabled}
+        />
+        <TariffCodeHint tariffCodeId={values.tariffCodeId} partHsCode={partHsCode} />
+      </FieldPanelRow>
+
+      <FieldPanelRow
+        title='Override rate (%)'
+        description='Leave blank to use the schedule. Set it for a DDP price that already includes duty, a Section 301 exclusion, or an unclassified part.'
         type={BaseType.NUMBER}
         showIcon>
         <FieldInputAdapter
           fieldType={FieldType.NUMBER}
           value={values.tariffRate}
           onChange={(val) => onChange('tariffRate', val)}
-          placeholder='0'
+          placeholder='Schedule'
           disabled={disabled}
         />
+      </FieldPanelRow>
+
+      <FieldPanelRow title='Duty' type={BaseType.NUMBER} showIcon>
+        <DutyRow tariffCodeId={values.tariffCodeId} tariffRate={values.tariffRate} />
       </FieldPanelRow>
 
       {/* Shipping Cost */}
@@ -206,3 +248,67 @@ export function VendorPartFields({
     </>
   )
 }
+
+/** The form's own draft, resolved through the shared seam like any saved offer. */
+function DutyRow({
+  tariffCodeId,
+  tariffRate,
+}: {
+  tariffCodeId: string | null
+  tariffRate: number | null
+}) {
+  const offers = useMemo(
+    () => [{ id: 'draft', tariffCodeId, tariffRate }],
+    [tariffCodeId, tariffRate]
+  )
+  const { byId, scheduleById, codeLabelById, unavailable } = useOfferTariffs(offers)
+  const tariff = byId.get('draft')
+  if (!tariff) return null
+  return (
+    <OfferTariffReadout
+      tariff={tariff}
+      scheduleTariff={scheduleById.get('draft')}
+      codeLabel={tariffCodeId ? codeLabelById.get(tariffCodeId) : undefined}
+      unavailable={unavailable}
+    />
+  )
+}
+
+/**
+ * Under the code picker: the empty-state link when the org has no codes yet
+ * (an empty picker is a dead control), or the part's free-text HS code as a
+ * search hint when no code is chosen yet.
+ */
+function TariffCodeHint({
+  tariffCodeId,
+  partHsCode,
+}: {
+  tariffCodeId: string | null
+  partHsCode?: string | null
+}) {
+  const { hasCodes, isLoading } = useOfferTariffs(NO_OFFERS)
+  if (isLoading) return null
+  if (!hasCodes) {
+    return (
+      <p className='mt-1 text-muted-foreground text-xs'>
+        No tariff codes yet.{' '}
+        <Link
+          href='/app/parts/settings/tariffs'
+          className='underline underline-offset-2 hover:text-foreground'>
+          Add them in Parts &rsaquo; Settings &rsaquo; Tariffs
+        </Link>
+      </p>
+    )
+  }
+  if (!tariffCodeId && partHsCode?.trim()) {
+    return (
+      <p className='mt-1 text-muted-foreground text-xs'>
+        The part's HS code is <span className='tabular-nums'>{partHsCode.trim()}</span> - search for
+        it and pick the country of origin.
+      </p>
+    )
+  }
+  return null
+}
+
+const NO_OFFERS: never[] = []

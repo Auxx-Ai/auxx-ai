@@ -49,7 +49,7 @@ import {
   isBaseAuthority,
   type TariffRate,
   type TariffScheduleView,
-} from './tariff-types'
+} from '../../tariff-types'
 
 /** The writable half of a rate row, as a form holds it. */
 export interface TariffRateValues {
