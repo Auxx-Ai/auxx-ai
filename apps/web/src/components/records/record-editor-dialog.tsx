@@ -4,6 +4,7 @@
 import { getInstanceId, isRecordId, type RecordId } from '@auxx/lib/resources/client'
 import { EntityInstanceDialog } from '~/components/custom-fields/ui/entity-instance-dialog'
 import { WorkOrderEditorDialog } from '~/components/dispatch/ui/work-order-editor'
+import { BuildFormDialog } from '~/components/manufacturing/builds/build-form-dialog'
 import { PartFormDialog } from '~/components/manufacturing/parts/part-form-dialog'
 import { useSystemField } from '~/components/resources/hooks/use-field'
 import { useResource } from '~/components/resources/hooks/use-resource'
@@ -38,12 +39,41 @@ export interface RecordEditorDialogProps {
  * {@link RecordEditorDialogProps}.
  */
 const CUSTOM_EDITORS: Record<string, React.ComponentType<RecordEditorDialogProps>> = {
+  build: BuildEditorAdapter,
   part: PartEditorAdapter,
   work_order: WorkOrderEditorAdapter,
 }
 
 function WorkOrderEditorAdapter(props: RecordEditorDialogProps) {
   return <WorkOrderEditorDialog {...props} />
+}
+
+/**
+ * Routes "New build" through `builds.create`
+ * (plans/money/tasks/23-build-from-the-part.md §5).
+ *
+ * 🛑 **CREATE only.** `createBuild` makes two validations nothing else enforces
+ * — the part must not be classified as purchased, and it must have at least one
+ * direct subpart — and until this adapter existed the generic dialog reached
+ * `record.create` and skipped both. Editing a build is a different question:
+ * `build_status` is `showInDialogs: false` and every transition is a procedure
+ * with its own preconditions, so an edit falls through to the generic form
+ * rather than to a bespoke one that would have to reimplement the panel.
+ */
+function BuildEditorAdapter(props: RecordEditorDialogProps) {
+  const partField = useSystemField('build_part', props.entityDefinitionId)
+  const partId = presetInstanceId(props.presetValues, partField?.id)
+
+  if (props.recordId) return <EntityInstanceDialog {...props} />
+
+  return (
+    <BuildFormDialog
+      open={props.open}
+      onOpenChange={props.onOpenChange}
+      partId={partId}
+      onSuccess={(buildId) => props.onSaved?.(buildId)}
+    />
+  )
 }
 
 /**

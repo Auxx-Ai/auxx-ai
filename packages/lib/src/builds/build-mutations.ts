@@ -69,10 +69,17 @@ export const BUILD_STATUS_BYPASS: ReadonlySet<SystemAttribute> = new Set<SystemA
  *
  * 1. **`part_kind` must be `finished_good` or `subassembly`.** A `component` is
  *    purchased, not assembled; a build against one would consume nothing and
- *    produce inventory value out of thin air. NULL reads as `component`
- *    ({@link resolvePartKind}), so an unclassified part is refused with a
- *    message that says so — classifying the built parts is a prerequisite of
- *    the first roll and of the first build alike.
+ *    produce inventory value out of thin air.
+ *
+ *    ⚠️ **The refusal means something different since the derivation landed**
+ *    (plans/money/tasks/23 §4). `part_kind` used to be a field somebody had to
+ *    remember, defaulted to `component`, so this check refused parts nobody had
+ *    classified — 4 orgs of 5 held it NULL on every part. Now
+ *    `post/part-kind-derivation.ts` promotes a part to `subassembly` the moment
+ *    it gets a bill of materials, so a stored `component` ON A PART WITH A BOM
+ *    is somebody having deliberately overridden that rule. Refusing it is
+ *    correct rather than accidental, and the message says *classified as
+ *    purchased* rather than *set the part kind first* for that reason.
  * 2. **At least one direct subpart.** A run with no bill of materials has
  *    nothing to consume, and completing it would write a lone `build_produce`
  *    row: inventory created from nothing, at a standard cost that no consumed
@@ -103,7 +110,8 @@ export async function createBuild(
       const partKind = resolvePartKind(kinds.get(input.partId))
       if (partKind === 'component') {
         throw new UnprocessableEntityError(
-          'Only a finished good or a subassembly can be built. Set the part kind first.'
+          'This part is classified as purchased, so it cannot be built. Change its part kind ' +
+            'to a subassembly or a finished good if it is made in-house.'
         )
       }
 

@@ -5,7 +5,7 @@ import { FieldType } from '@auxx/database/enums'
 import { Button } from '@auxx/ui/components/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { toastError } from '@auxx/ui/components/toast'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { BaseType } from '~/components/workflow/types'
@@ -24,17 +24,21 @@ const QUANTITY_MODE_OPTIONS = [
   { label: 'Set to', value: 'set_to' },
 ]
 
-interface StockAdjustmentPopoverProps {
+interface StockAdjustmentFormProps {
   /** The part's entityInstanceId */
   partId: string
   /** Current quantity on hand (needed for "Set to" mode) */
   currentQoH: number
   onSuccess?: () => void
-  children: React.ReactNode
+  /** Dismiss whatever surface this form is mounted in. */
+  onDone: () => void
 }
 
 /**
- * Popover for creating manual stock movements — `type: 'adjust'` only.
+ * The form for creating manual stock movements — `type: 'adjust'` only.
+ *
+ * 🛑 It resets by UNMOUNTING rather than by watching an `open` flag; see
+ * `ReceiveStockForm` for why both callers guarantee that.
  *
  * 🛑 There is deliberately no "Adjust subparts" control and no BOM cascade.
  * The toggle that used to live here exploded the bill of materials WITHOUT
@@ -82,29 +86,17 @@ interface StockAdjustmentPopoverProps {
  * form does not know the part's standard cost and a guess would be worse than
  * the server's sentence.
  */
-export function StockAdjustmentPopover({
+export function StockAdjustmentForm({
   partId,
   currentQoH,
   onSuccess,
-  children,
-}: StockAdjustmentPopoverProps) {
-  const [open, setOpen] = useState(false)
+  onDone,
+}: StockAdjustmentFormProps) {
   const [direction, setDirection] = useState<Direction>('add')
   const [quantityMode, setQuantityMode] = useState<QuantityMode>('adjust_by')
   const [quantity, setQuantity] = useState<number | null>(null)
   const [reason, setReason] = useState('')
   const [reference, setReference] = useState('')
-
-  // Reset form when popover opens
-  useEffect(() => {
-    if (open) {
-      setDirection('add')
-      setQuantityMode('adjust_by')
-      setQuantity(null)
-      setReason('')
-      setReference('')
-    }
-  }, [open])
 
   /**
    * The signed delta this form will send — one number, derived once, so the
@@ -148,11 +140,11 @@ export function StockAdjustmentPopover({
         ...(reference ? { reference } : {}),
       })
       onSuccess?.()
-      setOpen(false)
+      onDone()
     } catch {
       // onError above already surfaced the toast.
     }
-  }, [canSubmit, adjustStock, partId, delta, reason, reference, onSuccess])
+  }, [canSubmit, adjustStock, partId, delta, reason, reference, onSuccess, onDone])
 
   const isSetToMode = quantityMode === 'set_to'
 
@@ -160,108 +152,141 @@ export function StockAdjustmentPopover({
   const quantityModeFieldOptions = useMemo(() => ({ options: QUANTITY_MODE_OPTIONS }), [])
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>{children}</PopoverTrigger>
-      <PopoverContent className='w-96' align='end'>
-        <div className='space-y-3'>
-          <h4 className='text-sm font-semibold'>Adjust Stock</h4>
+    <>
+      <FieldPanel className='p-0' orientation='horizontal' defaultLabelWidth={112}>
+        {/* Mode */}
+        <FieldPanelRow
+          title='Mode'
+          type={BaseType.ENUM}
+          showIcon
+          isRequired
+          description='Adjust by a relative amount or set to an absolute quantity'>
+          <FieldInputAdapter
+            fieldType={FieldType.SINGLE_SELECT}
+            value={quantityMode}
+            onChange={(val) =>
+              setQuantityMode(((val as string[])[0] as QuantityMode) ?? 'adjust_by')
+            }
+            fieldOptions={quantityModeFieldOptions}
+            disabled={isPending}
+          />
+        </FieldPanelRow>
 
-          <FieldPanel className='p-0'>
-            {/* Mode */}
-            <FieldPanelRow
-              title='Mode'
-              type={BaseType.ENUM}
-              showIcon
-              isRequired
-              description='Adjust by a relative amount or set to an absolute quantity'>
-              <FieldInputAdapter
-                fieldType={FieldType.SINGLE_SELECT}
-                value={quantityMode}
-                onChange={(val) =>
-                  setQuantityMode(((val as string[])[0] as QuantityMode) ?? 'adjust_by')
-                }
-                fieldOptions={quantityModeFieldOptions}
-                disabled={isPending}
-              />
-            </FieldPanelRow>
+        {/* Direction */}
+        {!isSetToMode && (
+          <FieldPanelRow
+            title='Direction'
+            type={BaseType.ENUM}
+            showIcon
+            isRequired
+            description='Whether to add or remove stock'>
+            <FieldInputAdapter
+              fieldType={FieldType.SINGLE_SELECT}
+              value={direction}
+              onChange={(val) => setDirection(((val as string[])[0] as Direction) ?? 'add')}
+              fieldOptions={directionFieldOptions}
+              disabled={isPending}
+            />
+          </FieldPanelRow>
+        )}
 
-            {/* Direction */}
-            {!isSetToMode && (
-              <FieldPanelRow
-                title='Direction'
-                type={BaseType.ENUM}
-                showIcon
-                isRequired
-                description='Whether to add or remove stock'>
-                <FieldInputAdapter
-                  fieldType={FieldType.SINGLE_SELECT}
-                  value={direction}
-                  onChange={(val) => setDirection(((val as string[])[0] as Direction) ?? 'add')}
-                  fieldOptions={directionFieldOptions}
-                  disabled={isPending}
-                />
-              </FieldPanelRow>
-            )}
+        {/* Quantity */}
+        <FieldPanelRow title='Quantity' type={BaseType.NUMBER} showIcon isRequired>
+          <FieldInputAdapter
+            fieldType={FieldType.NUMBER}
+            value={quantity}
+            onChange={(val) => setQuantity((val as number) ?? null)}
+            placeholder={isSetToMode ? String(currentQoH) : '0'}
+            disabled={isPending}
+          />
+          {isSetToMode && quantity !== null && (
+            <p className='text-xs text-muted-foreground mt-1'>
+              Delta: {delta >= 0 ? '+' : ''}
+              {delta}
+            </p>
+          )}
+        </FieldPanelRow>
 
-            {/* Quantity */}
-            <FieldPanelRow title='Quantity' type={BaseType.NUMBER} showIcon isRequired>
-              <FieldInputAdapter
-                fieldType={FieldType.NUMBER}
-                value={quantity}
-                onChange={(val) => setQuantity((val as number) ?? null)}
-                placeholder={isSetToMode ? String(currentQoH) : '0'}
-                disabled={isPending}
-              />
-              {isSetToMode && quantity !== null && (
-                <p className='text-xs text-muted-foreground mt-1'>
-                  Delta: {delta >= 0 ? '+' : ''}
-                  {delta}
-                </p>
-              )}
-            </FieldPanelRow>
-
-            {/* No cost input. See the note on this component: `G12` values an
+        {/* No cost input. See the note on this component: `G12` values an
                 adjustment at the part's own frozen standard cost, server-side,
                 in both directions. */}
 
-            {/* Reason */}
-            <FieldPanelRow title='Reason' type={BaseType.STRING} showIcon>
-              <FieldInputAdapter
-                fieldType={FieldType.TEXT}
-                value={reason}
-                onChange={(val) => setReason((val as string) ?? '')}
-                placeholder='e.g. Recount, Damaged goods'
-                disabled={isPending}
-              />
-            </FieldPanelRow>
+        {/* Reason */}
+        <FieldPanelRow title='Reason' type={BaseType.STRING} showIcon>
+          <FieldInputAdapter
+            fieldType={FieldType.TEXT}
+            value={reason}
+            onChange={(val) => setReason((val as string) ?? '')}
+            placeholder='e.g. Recount, Damaged goods'
+            disabled={isPending}
+          />
+        </FieldPanelRow>
 
-            {/* Reference */}
-            <FieldPanelRow title='Reference' type={BaseType.STRING} showIcon>
-              <FieldInputAdapter
-                fieldType={FieldType.TEXT}
-                value={reference}
-                onChange={(val) => setReference((val as string) ?? '')}
-                placeholder='e.g. PO-1234, RMA-567'
-                disabled={isPending}
-              />
-            </FieldPanelRow>
-          </FieldPanel>
+        {/* Reference */}
+        <FieldPanelRow title='Reference' type={BaseType.STRING} showIcon>
+          <FieldInputAdapter
+            fieldType={FieldType.TEXT}
+            value={reference}
+            onChange={(val) => setReference((val as string) ?? '')}
+            placeholder='e.g. PO-1234, RMA-567'
+            disabled={isPending}
+          />
+        </FieldPanelRow>
+      </FieldPanel>
 
-          {/* Actions */}
-          <div className='flex justify-end gap-2'>
-            <Button variant='ghost' size='xs' onClick={() => setOpen(false)} disabled={isPending}>
-              Cancel
-            </Button>
-            <Button
-              variant='outline'
-              size='xs'
-              onClick={handleSubmit}
-              loading={isPending}
-              loadingText='Saving...'
-              disabled={!canSubmit}>
-              Save
-            </Button>
-          </div>
+      {/* Actions */}
+      <div className='flex justify-end gap-2'>
+        <Button variant='ghost' size='xs' onClick={onDone} disabled={isPending}>
+          Cancel
+        </Button>
+        <Button
+          variant='outline'
+          size='xs'
+          onClick={handleSubmit}
+          loading={isPending}
+          loadingText='Saving...'
+          disabled={!canSubmit}>
+          Save
+        </Button>
+      </div>
+    </>
+  )
+}
+
+interface StockAdjustmentPopoverProps {
+  /** The part's entityInstanceId */
+  partId: string
+  /** Current quantity on hand (needed for "Set to" mode) */
+  currentQoH: number
+  onSuccess?: () => void
+  /** The trigger. */
+  children: React.ReactNode
+}
+
+/**
+ * The adjustment form in a popover of its own, for a surface with room for a
+ * trigger. See `ReceiveStockPopover` for why a menu must not use this.
+ */
+export function StockAdjustmentPopover({
+  partId,
+  currentQoH,
+  onSuccess,
+  children,
+}: StockAdjustmentPopoverProps) {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>{children}</PopoverTrigger>
+      <PopoverContent className='w-96 p-3' align='end'>
+        <div className='space-y-3'>
+          <h4 className='text-sm font-semibold'>Adjust Stock</h4>
+          <StockAdjustmentForm
+            partId={partId}
+            currentQoH={currentQoH}
+            onSuccess={onSuccess}
+            onDone={() => setOpen(false)}
+          />
         </div>
       </PopoverContent>
     </Popover>
