@@ -150,6 +150,11 @@ export const ModelTypeValues = [
   'vendor_payment_allocation',
   'gl_account',
   'build',
+  // The tariff schedule (plans/money/tasks/29-tariff-schedule.md §1). A duty
+  // rate is a function of (classification, origin, date); `tariff_code` is the
+  // first two and `tariff_rate` is the third.
+  'tariff_code',
+  'tariff_rate',
 ] as const
 
 /**
@@ -201,6 +206,8 @@ export const ModelTypes = {
   VENDOR_PAYMENT_ALLOCATION: 'vendor_payment_allocation',
   GL_ACCOUNT: 'gl_account',
   BUILD: 'build',
+  TARIFF_CODE: 'tariff_code',
+  TARIFF_RATE: 'tariff_rate',
 } as const
 
 /**
@@ -576,6 +583,27 @@ export const ModelTypeMeta: Record<
     // `isVisible: false` by entity migration 109 and flipped in phase 2, when
     // there is a UI and a way to create a row.
     hasDetailPage: true,
+  },
+  tariff_code: {
+    label: 'Tariff Code',
+    plural: 'Tariff Codes',
+    icon: 'globe',
+    color: 'teal',
+    apiSlug: 'tariff-codes',
+    dbTable: 'EntityInstance',
+    // Reference data, edited from Parts > Settings > Tariffs (§6.1) rather
+    // than from a hand-authored `/app/tariff-codes/[id]` route. There is none,
+    // and claiming one here puts a fullscreen button on the drawer that 404s.
+    hasDetailPage: false,
+  },
+  tariff_rate: {
+    label: 'Tariff Rate',
+    plural: 'Tariff Rates',
+    icon: 'percent',
+    color: 'teal',
+    apiSlug: 'tariff-rates',
+    dbTable: 'EntityInstance',
+    hasDetailPage: false,
   },
 }
 

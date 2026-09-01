@@ -13,7 +13,13 @@
  *
  * Re-exported to the client through `bom/client.ts`; never import this module's
  * neighbours from here.
+ *
+ * The one import is `../errors`, which is a dependency-free leaf of plain
+ * classes — it is not a neighbour of this module and pulls nothing into a
+ * browser bundle.
  */
+
+import { BadRequestError } from '../errors'
 
 /**
  * One supplier's priced offer for a part.
@@ -183,4 +189,247 @@ function isBetterOffer(
   if (row.isPreferred !== best.isPreferred) return row.isPreferred
   if (rowLanded !== bestLanded) return rowLanded < bestLanded
   return row.id < best.id
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// The tariff schedule (plans/money/tasks/29-tariff-schedule.md §3)
+// ─────────────────────────────────────────────────────────────────────
+
+/**
+ * One dated row of a `tariff_code`'s schedule.
+ *
+ * Structural, like {@link VendorCostRow}: the server builds these from
+ * `FieldValue` rows and the settings screen builds them from its field-value
+ * store, and neither should have to know the other's shape.
+ */
+export interface TariffRateRow {
+  /** The `tariff_rate` instance id. Carried so ordering is total. */
+  id: string
+  /**
+   * What imposes the rate - `MFN`, `Section 301 List 3`, `IEEPA fentanyl`.
+   *
+   * **A blank or null authority is its own authority**, not a missing value.
+   * Left blank on every row the rule degrades to "the latest row wins", which
+   * is the simple blended schedule people enter first.
+   */
+  authority: string | null
+  /** A PERCENTAGE, not minor units - `25` means 25%. */
+  rate: number | null
+  /**
+   * The day this rate took effect.
+   *
+   * A calendar day, not an instant. A `Date` is read in **UTC** because that is
+   * how a `FieldType.DATE` value is stored - reinterpreting midnight UTC in a
+   * western timezone would move every row back a day. A string is taken as
+   * already being a `YYYY-MM-DD` day and only its first ten characters are read.
+   */
+  effectiveFrom: Date | string | null
+  /** `9903.88.03`. Display only - see {@link TariffResolution}. */
+  chapter99Code: string | null
+}
+
+/** One authority's winning row, as resolved at a lookup date. */
+export interface TariffRateComponent {
+  id: string
+  /** `null` for the unnamed authority. */
+  authority: string | null
+  /** The percentage this authority contributes. */
+  rate: number
+  /** The resolved `YYYY-MM-DD` day the row took effect. */
+  effectiveFrom: string
+  /**
+   * 🛑 Carried for DISPLAY and reconciliation only. It lets someone check an
+   * estimate against the broker's entry summary line by line and know which
+   * rows a Federal Register notice touches. The arithmetic never reads it.
+   */
+  chapter99Code: string | null
+}
+
+/** Why {@link TariffResolution.rate} is what it is. */
+export type TariffResolutionStatus =
+  /** No rate rows at all. The code is unclassified and the rate is not "0%". */
+  | 'unclassified'
+  /** Rows exist, but every one of them starts AFTER the lookup date. */
+  | 'pending'
+  /** At least one authority is in force; `components` says which. */
+  | 'resolved'
+
+/**
+ * A resolved duty rate, with the components that produced it.
+ *
+ * 🛑 **`rate` alone is not a sufficient answer and callers must not treat it as
+ * one.** Under a summing rule a code with a Section 301 row and no base row
+ * resolves to 25% rather than 27%, and nothing about the number looks wrong.
+ * The only way anyone catches that is by seeing the components, which is the
+ * same argument {@link LandedCostBreakdown} already makes: a breakdown that
+ * shows "10%" without "$4.00" does not answer *where did the tariff go*.
+ *
+ * `status` exists so `unclassified` is never mistaken for "0%". They produce
+ * the same arithmetic and mean opposite things - one is a domestic part with no
+ * duty, the other is an unfinished row.
+ */
+export interface TariffResolution {
+  status: TariffResolutionStatus
+  /**
+   * The summed percentage in force at the lookup date. `0` for both
+   * `unclassified` and `pending`.
+   */
+  rate: number
+  /**
+   * One entry per authority in force, oldest `effectiveFrom` first - the order
+   * an entry summary reads in (MFN, then the 301 layer, then IEEPA). Empty
+   * unless `status` is `resolved`.
+   */
+  components: TariffRateComponent[]
+}
+
+/**
+ * The resolution rule: **sum the latest row per `authority`, as of `atDate`.**
+ *
+ * ```
+ * rate(code, date) = SUM over distinct authority of (
+ *   the row with the greatest effectiveFrom <= date, for that authority
+ * ).rate
+ * ```
+ *
+ * One rule covers both shapes people actually enter. With every `authority`
+ * blank it degrades exactly to "the latest row wins" - the simple blended
+ * schedule. The day someone wants MFN and 301 apart they start filling
+ * `authority` in and nothing else changes.
+ *
+ * **Pure**, and deliberately so: it is called server-side by the cost
+ * calculator and in the browser by the tariffs settings screen and the supplier
+ * drawer, through `bom/client.ts`. Resolving server-side only and shipping the
+ * client a number is how the landed formula came to live in two places once
+ * already.
+ *
+ * ### Why the timezone is a parameter
+ *
+ * `effectiveFrom` is a calendar day and `atDate` is an instant, so turning the
+ * instant into a day is a timezone decision - and it is the org's
+ * `bookTimeZone`, the same rule `gather-month-end-inventory.ts` applies to
+ * period membership. Compared in UTC, a rate that starts on March 2 values a
+ * March 1 evening lookup on the wrong side of the change, silently and by
+ * exactly one day. The default is `'UTC'`, which is correct only when the
+ * caller has already normalized; pass the org's book timezone otherwise.
+ *
+ * ### What it does not do
+ *
+ * It has no opinion on the supplier offer's override. Precedence (§3.1) is the
+ * caller's: a set `vendor_part.tariffRate` wins and this function is not called
+ * at all.
+ *
+ * @param rows Every rate row for ONE `tariff_code`. Rows for other codes must
+ *   not be mixed in - nothing here can tell them apart.
+ * @param atDate The instant to resolve as of.
+ * @param timeZone IANA zone the instant is turned into a day in.
+ * @throws {BadRequestError} when `atDate` is an invalid `Date`.
+ */
+export function resolveTariffRate(
+  rows: readonly TariffRateRow[],
+  atDate: Date,
+  timeZone = 'UTC'
+): TariffResolution {
+  if (Number.isNaN(atDate.getTime())) {
+    throw new BadRequestError('Cannot resolve a tariff rate at an invalid date')
+  }
+  if (rows.length === 0) return { status: 'unclassified', rate: 0, components: [] }
+
+  const asOf = dayKeyInZone(atDate, timeZone)
+
+  // Latest row per authority, blank grouped as its own. A row with no usable
+  // day is skipped rather than treated as "always in force": `effectiveFrom` is
+  // required on every row, so an absent one is a broken row, and letting it win
+  // would silently shadow the real schedule.
+  const winners = new Map<string, { row: TariffRateRow; day: string }>()
+  for (const row of rows) {
+    const day = effectiveDay(row.effectiveFrom)
+    if (day === null || day > asOf) continue
+
+    const key = authorityKey(row.authority)
+    const held = winners.get(key)
+    if (!held || day > held.day || (day === held.day && row.id > held.row.id)) {
+      winners.set(key, { row, day })
+    }
+  }
+
+  if (winners.size === 0) return { status: 'pending', rate: 0, components: [] }
+
+  const components: TariffRateComponent[] = [...winners.values()].map(({ row, day }) => ({
+    id: row.id,
+    authority: normalizeAuthority(row.authority),
+    rate: row.rate ?? 0,
+    effectiveFrom: day,
+    chapter99Code: row.chapter99Code,
+  }))
+
+  components.sort(compareComponents)
+
+  return {
+    status: 'resolved',
+    rate: components.reduce((total, component) => total + component.rate, 0),
+    components,
+  }
+}
+
+/**
+ * Display order: oldest first, so a code reads the way an entry summary does -
+ * the base duty, then the layers stacked on top of it. Ties fall through to the
+ * authority and then the id so the order is TOTAL: two rows sharing a day would
+ * otherwise swap places between renders for no reason a user can see, exactly
+ * as {@link selectWinningVendor}'s tiebreak prevents.
+ */
+function compareComponents(a: TariffRateComponent, b: TariffRateComponent): number {
+  if (a.effectiveFrom !== b.effectiveFrom) return a.effectiveFrom < b.effectiveFrom ? -1 : 1
+  const aa = a.authority ?? ''
+  const ba = b.authority ?? ''
+  if (aa !== ba) return aa < ba ? -1 : 1
+  return a.id < b.id ? -1 : 1
+}
+
+/**
+ * The grouping key for an authority. Trimmed and case-folded so `MFN`, `mfn`
+ * and ` MFN ` are one authority rather than three that all get summed - which
+ * would triple a base duty with nothing on screen to show it.
+ */
+function authorityKey(authority: string | null): string {
+  return (authority ?? '').trim().toLowerCase()
+}
+
+/** The authority as displayed: trimmed, and empty folded back to `null`. */
+function normalizeAuthority(authority: string | null): string | null {
+  const trimmed = (authority ?? '').trim()
+  return trimmed === '' ? null : trimmed
+}
+
+/**
+ * A row's effective day as `YYYY-MM-DD`, or `null` when it has none.
+ *
+ * A `Date` is read in UTC on purpose - see {@link TariffRateRow.effectiveFrom}.
+ */
+function effectiveDay(effectiveFrom: Date | string | null): string | null {
+  if (effectiveFrom == null) return null
+  if (typeof effectiveFrom === 'string') {
+    const day = effectiveFrom.slice(0, 10)
+    return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : null
+  }
+  if (Number.isNaN(effectiveFrom.getTime())) return null
+  return effectiveFrom.toISOString().slice(0, 10)
+}
+
+/**
+ * An instant as a `YYYY-MM-DD` day in `timeZone`.
+ *
+ * `Intl.DateTimeFormat` with the `en-CA` locale because that locale's short
+ * date format IS `YYYY-MM-DD`; hand-rolled offset arithmetic gets DST wrong
+ * roughly twice a year. The same technique `postings/periods.ts` uses, copied
+ * rather than imported because this file stays free of lib neighbours.
+ */
+function dayKeyInZone(date: Date, timeZone: string): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date)
 }

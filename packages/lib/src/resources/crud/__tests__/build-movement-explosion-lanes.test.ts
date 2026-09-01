@@ -107,7 +107,13 @@ vi.mock('../../../field-hooks/post/bom-movement-triggers', () => ({
 vi.mock('../../../field-hooks/post/inventory-triggers', () => ({
   recalculatePartQoH: h.recalculatePartQoH,
 }))
-vi.mock('../../../field-hooks/post/purchase-order-line-rollups', () => ({
+// Partial, not wholesale: `createEntity` now reads the hook registry for
+// entity pre-create hooks, and that read calls `ensureInitialized` ->
+// `registerAllHooks`, which imports this module's OTHER exports. A bare factory
+// mock drops them and the create path fails on the missing name rather than on
+// anything this file is testing.
+vi.mock('../../../field-hooks/post/purchase-order-line-rollups', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   recalculatePurchaseOrderLineReceived: h.recalculatePurchaseOrderLineReceived,
   recalculatePurchaseOrderLineBilled: h.recalculatePurchaseOrderLineBilled,
 }))

@@ -5,7 +5,6 @@
 import { FieldType } from '@auxx/database/enums'
 import { FeatureKey, PermissionKey } from '@auxx/lib/permissions/client'
 import { Button } from '@auxx/ui/components/button'
-import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'
 import { SortableList } from '@auxx/ui/components/sortable'
 import { toastError } from '@auxx/ui/components/toast'
 import { TreeRow } from '@auxx/ui/components/tree-row'
@@ -18,11 +17,11 @@ import { QualityCheckTreeRow } from '~/components/dispatch/ui/quality-check-tree
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { EmptyState } from '~/components/global/empty-state'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
+import { MasterDetailSplit } from '~/components/global/master-detail-split'
 import SettingsPage from '~/components/global/settings-page'
 import { BaseType } from '~/components/workflow/types'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useDebouncedCallback } from '~/hooks/use-debounced-value'
-import { useMedia } from '~/hooks/use-media'
 import { useRequireCapability } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
@@ -96,7 +95,6 @@ export function QualityChecksPage() {
   const creatingDraftIdRef = useRef<string | null>(null)
   const createdIdRef = useRef<string | null>(null)
 
-  const isDesktop = useMedia('(min-width: 1024px)')
   const [confirm, ConfirmDialog] = useConfirm()
 
   const invalidate = () => utils.dispatch.listQcTemplates.invalidate()
@@ -300,7 +298,7 @@ export function QualityChecksPage() {
     draft !== null &&
     (selectedId === draft.draftId || (!!draft.recordId && selectedId === draft.recordId))
 
-  const mobileDrawerOpen = !isDesktop && (!!selected || draftActive)
+  const detailOpen = !!selected || draftActive
 
   const editorContent =
     draftActive && draft ? (
@@ -333,82 +331,69 @@ export function QualityChecksPage() {
       title='Quality Checks'
       description='Manage the quality-check checklist workers complete on every visit.'
       breadcrumbs={BREADCRUMBS}>
-      <div className='grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_420px]'>
-        <div className='min-w-0'>
-          <div className='flex flex-col gap-3 p-3'>
-            <div className='flex items-center justify-end'>
-              <Button variant='outline' size='sm' onClick={handleAdd}>
-                <Plus />
-                Add check
-              </Button>
-            </div>
-
-            {orderedTemplates.length === 0 && !draft ? (
-              <div className='p-4 text-center text-sm text-muted-foreground'>
-                No checks yet — add one to start building the visit checklist.
-              </div>
-            ) : (
-              <div className='flex flex-col gap-0.5'>
-                {orderedTemplates.length > 0 && (
-                  <SortableList items={orderedTemplates.map((t) => t.id)} onReorder={handleReorder}>
-                    {orderedTemplates.map((template) => (
-                      <QualityCheckTreeRow
-                        key={template.id}
-                        template={template}
-                        isSelected={selectedId === template.id}
-                        onSelect={() => selectRow(template.id)}
-                        onToggleActive={() => handleToggleActive(template)}
-                        onDelete={() => handleDelete(template)}
-                        isPending={updateTemplate.isPending}
-                      />
-                    ))}
-                  </SortableList>
-                )}
-
-                {draft && !draft.recordId && (
-                  // Minimal inline draft row — not draggable (rendered outside the
-                  // SortableContext above, so it can never enter a reorder payload), no
-                  // Switch/Required badge (nothing to toggle until the row is real). Hidden
-                  // once the draft committed — the real row is in the cache by then.
-                  <TreeRow
-                    icon={<span className='size-4' />}
-                    isOpen={isDraftSelected}
-                    onToggleOpen={() => setSelectedId(draft.draftId)}
-                    rowClassName={cn(
-                      'bg-primary-100/50 hover:bg-primary-100',
-                      isDraftSelected && 'bg-primary-100 ring-1 ring-primary-200'
-                    )}
-                    title={
-                      <span
-                        className={cn('text-sm', !draft.title && 'text-muted-foreground italic')}>
-                        {draft.title || 'Untitled check'}
-                      </span>
-                    }
-                  />
-                )}
-              </div>
-            )}
+      <MasterDetailSplit
+        id='dispatch-quality-checks'
+        pane={editorContent}
+        paneTitle='Edit check'
+        paneOpen={detailOpen}
+        onPaneClose={() => {
+          dropDraft()
+          setSelectedId(null)
+        }}>
+        <div className='flex flex-col gap-3 p-3'>
+          <div className='flex items-center justify-end'>
+            <Button variant='outline' size='sm' onClick={handleAdd}>
+              <Plus />
+              Add check
+            </Button>
           </div>
-        </div>
-        <div className='hidden border-l lg:block'>{editorContent}</div>
-      </div>
 
-      <DockableDrawer
-        open={mobileDrawerOpen}
-        onOpenChange={(open) => {
-          if (!open) {
-            dropDraft()
-            setSelectedId(null)
-          }
-        }}
-        isDocked={false}
-        width={380}
-        onWidthChange={() => {}}
-        minWidth={320}
-        maxWidth={480}
-        title='Edit check'>
-        {editorContent}
-      </DockableDrawer>
+          {orderedTemplates.length === 0 && !draft ? (
+            <div className='p-4 text-center text-sm text-muted-foreground'>
+              No checks yet — add one to start building the visit checklist.
+            </div>
+          ) : (
+            <div className='flex flex-col gap-0.5'>
+              {orderedTemplates.length > 0 && (
+                <SortableList items={orderedTemplates.map((t) => t.id)} onReorder={handleReorder}>
+                  {orderedTemplates.map((template) => (
+                    <QualityCheckTreeRow
+                      key={template.id}
+                      template={template}
+                      isSelected={selectedId === template.id}
+                      onSelect={() => selectRow(template.id)}
+                      onToggleActive={() => handleToggleActive(template)}
+                      onDelete={() => handleDelete(template)}
+                      isPending={updateTemplate.isPending}
+                    />
+                  ))}
+                </SortableList>
+              )}
+
+              {draft && !draft.recordId && (
+                // Minimal inline draft row — not draggable (rendered outside the
+                // SortableContext above, so it can never enter a reorder payload), no
+                // Switch/Required badge (nothing to toggle until the row is real). Hidden
+                // once the draft committed — the real row is in the cache by then.
+                <TreeRow
+                  icon={<span className='size-4' />}
+                  isOpen={isDraftSelected}
+                  onToggleOpen={() => setSelectedId(draft.draftId)}
+                  rowClassName={cn(
+                    'bg-primary-100/50 hover:bg-primary-100',
+                    isDraftSelected && 'bg-primary-100 ring-1 ring-primary-200'
+                  )}
+                  title={
+                    <span className={cn('text-sm', !draft.title && 'text-muted-foreground italic')}>
+                      {draft.title || 'Untitled check'}
+                    </span>
+                  }
+                />
+              )}
+            </div>
+          )}
+        </div>
+      </MasterDetailSplit>
 
       <ConfirmDialog />
     </SettingsPage>

@@ -28,6 +28,8 @@ import { SIGNATURE_FIELDS } from '../../resources/registry/resources/signature-f
 import { STOCK_MOVEMENT_FIELDS } from '../../resources/registry/resources/stock-movement-fields'
 import { SUBPART_FIELDS } from '../../resources/registry/resources/subpart-fields'
 import { TAG_FIELDS } from '../../resources/registry/resources/tag-fields'
+import { TARIFF_CODE_FIELDS } from '../../resources/registry/resources/tariff-code-fields'
+import { TARIFF_RATE_FIELDS } from '../../resources/registry/resources/tariff-rate-fields'
 import { THREAD_FIELDS } from '../../resources/registry/resources/thread-fields'
 import { TICKET_FIELDS } from '../../resources/registry/resources/ticket-fields'
 import { VENDOR_BILL_FIELDS } from '../../resources/registry/resources/vendor-bill-fields'
@@ -83,6 +85,8 @@ export const FIELD_REGISTRY: Record<string, Record<string, ResourceField>> = {
   vendor_payment_allocation: VENDOR_PAYMENT_ALLOCATION_FIELDS,
   gl_account: GL_ACCOUNT_FIELDS,
   build: BUILD_FIELDS,
+  tariff_code: TARIFF_CODE_FIELDS,
+  tariff_rate: TARIFF_RATE_FIELDS,
 }
 
 /**

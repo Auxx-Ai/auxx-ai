@@ -2,15 +2,14 @@
 'use client'
 
 import { FeatureKey, PermissionKey } from '@auxx/lib/permissions/client'
-import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'
 import { ResponsiveTabs } from '@auxx/ui/components/responsive-tabs'
 import { generateId } from '@auxx/utils'
 import { Boxes, Lock, Package, Percent } from 'lucide-react'
 import { useQueryState } from 'nuqs'
 import { useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
+import { MasterDetailSplit } from '~/components/global/master-detail-split'
 import SettingsPage from '~/components/global/settings-page'
-import { useMedia } from '~/hooks/use-media'
 import { useSettings } from '~/hooks/use-settings'
 import { useRequireCapability } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
@@ -129,8 +128,6 @@ export function ProductsServicesPage() {
   const currency = (getGeneralSetting('organization.currency') as string) || 'USD'
   const taxRates = (getDocumentsSetting('documents.taxRates') as TaxRate[] | null) ?? []
 
-  const isDesktop = useMedia('(min-width: 1024px)')
-
   // No `/app/dispatch` module home yet (M2 brings it) — the trail stays local
   // to settings rather than linking a route that doesn't exist.
   const breadcrumbs = [{ title: 'Dispatch Settings' }, { title: 'Catalog' }]
@@ -192,7 +189,6 @@ export function ProductsServicesPage() {
       : activeTab === 'groups'
         ? selectedGroupId
         : selectedTaxRateId
-  const mobileDrawerOpen = !isDesktop && !!selectedId
 
   const editorContent =
     activeTab === 'products' ? (
@@ -225,63 +221,51 @@ export function ProductsServicesPage() {
       subHeader={
         <ResponsiveTabs value={activeTab} onValueChange={handleTabChange} size='sm' items={TABS} />
       }>
-      <div className='grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_420px]'>
-        <div className='min-w-0'>
-          {activeTab === 'products' ? (
-            <ProductsList
-              selectedId={selectedProductId}
-              onSelect={handleSelectProduct}
-              currency={currency}
-              draft={productDraft}
-              onAddDraft={handleAddProductDraft}
-            />
-          ) : activeTab === 'groups' ? (
-            <GroupsList
-              selectedId={selectedGroupId}
-              onSelect={handleSelectGroup}
-              currency={currency}
-              draft={groupDraft}
-              onAddDraft={handleAddGroupDraft}
-            />
-          ) : (
-            <TaxRatesList
-              taxRates={taxRates}
-              selectedId={selectedTaxRateId}
-              onSelect={setSelectedTaxRateId}
-              onAdd={handleAddTaxRate}
-              onSetDefault={handleSetDefaultTaxRate}
-              onDelete={handleDeleteTaxRate}
-            />
-          )}
-        </div>
-        <div className='hidden border-l lg:block'>{editorContent}</div>
-      </div>
-
-      <DockableDrawer
-        open={mobileDrawerOpen}
-        onOpenChange={(open) => {
-          if (!open) {
-            setSelectedProductId(null)
-            setSelectedGroupId(null)
-            setSelectedTaxRateId(null)
-            setProductDraft(null)
-            setGroupDraft(null)
-          }
-        }}
-        isDocked={false}
-        width={380}
-        onWidthChange={() => {}}
-        minWidth={320}
-        maxWidth={480}
-        title={
+      <MasterDetailSplit
+        id='money-catalog-settings'
+        pane={editorContent}
+        paneTitle={
           activeTab === 'products'
             ? 'Edit item'
             : activeTab === 'groups'
               ? 'Edit group'
               : 'Edit tax rate'
-        }>
-        {editorContent}
-      </DockableDrawer>
+        }
+        paneOpen={!!selectedId}
+        onPaneClose={() => {
+          setSelectedProductId(null)
+          setSelectedGroupId(null)
+          setSelectedTaxRateId(null)
+          setProductDraft(null)
+          setGroupDraft(null)
+        }}>
+        {activeTab === 'products' ? (
+          <ProductsList
+            selectedId={selectedProductId}
+            onSelect={handleSelectProduct}
+            currency={currency}
+            draft={productDraft}
+            onAddDraft={handleAddProductDraft}
+          />
+        ) : activeTab === 'groups' ? (
+          <GroupsList
+            selectedId={selectedGroupId}
+            onSelect={handleSelectGroup}
+            currency={currency}
+            draft={groupDraft}
+            onAddDraft={handleAddGroupDraft}
+          />
+        ) : (
+          <TaxRatesList
+            taxRates={taxRates}
+            selectedId={selectedTaxRateId}
+            onSelect={setSelectedTaxRateId}
+            onAdd={handleAddTaxRate}
+            onSetDefault={handleSetDefaultTaxRate}
+            onDelete={handleDeleteTaxRate}
+          />
+        )}
+      </MasterDetailSplit>
     </SettingsPage>
   )
 }

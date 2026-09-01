@@ -42,7 +42,6 @@ import type {
   GlAccountTypeValue,
   RoleAssignmentRow,
 } from '@auxx/lib/postings/client'
-import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'
 import { ResponsiveTabs } from '@auxx/ui/components/responsive-tabs'
 import { toastError } from '@auxx/ui/components/toast'
 import { generateId } from '@auxx/utils'
@@ -50,9 +49,9 @@ import { Landmark, Lock, Waypoints } from 'lucide-react'
 import { useQueryState } from 'nuqs'
 import { useCallback, useMemo, useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
+import { MasterDetailSplit } from '~/components/global/master-detail-split'
 import SettingsPage from '~/components/global/settings-page'
 import { useConfirm } from '~/hooks/use-confirm'
-import { useMedia } from '~/hooks/use-media'
 import { useRequireCapability } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
@@ -111,8 +110,6 @@ export function AccountingAccountsSettingsPage() {
   // draft, or on switching tabs - never on a mere re-render.
   const [chartDraft, setChartDraft] = useState<ChartDraftHandle | null>(null)
   const [confirm, ConfirmDialog] = useConfirm()
-
-  const isDesktop = useMedia('(min-width: 1024px)')
 
   const roleRows = useMemo<RoleAssignmentRow[]>(() => roleMap.data ?? [], [roleMap.data])
   const accounts = useMemo(() => chart.data ?? [], [chart.data])
@@ -416,9 +413,6 @@ export function AccountingAccountsSettingsPage() {
     )
 
   const selectedId = activeTab === 'roles' ? selectedRole : selectedAccountId
-  // Both tabs are master-detail now. The exception this used to carry was for the
-  // QuickBooks tab, which edited in place and had nothing for a drawer to hold.
-  const mobileDrawerOpen = !isDesktop && !!selectedId
 
   return (
     <SettingsPage
@@ -428,74 +422,44 @@ export function AccountingAccountsSettingsPage() {
       subHeader={
         <ResponsiveTabs value={activeTab} onValueChange={handleTabChange} size='sm' items={TABS} />
       }>
-      <div className='grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_420px]'>
-        <div className='min-w-0'>
-          {activeTab === 'roles' ? (
-            <RoleMapList
-              rows={roleRows}
-              // 🛑 Gate on the query, never on an empty array. Thirteen rows
-              // reading "Not mapped - every preview refuses until this is set"
-              // is a CLAIM about the org, and rendering it mid-load makes it a
-              // false one.
-              isLoading={roleMap.isPending}
-              selectedRole={selectedRole}
-              onSelect={setSelectedRole}
-              onToggleUnused={handleToggleUnused}
-            />
-          ) : (
-            <ChartList
-              accounts={accounts}
-              isLoading={chart.isPending}
-              selectedId={selectedAccountId}
-              onSelect={handleSelectAccount}
-              rolesByAccountId={rolesByAccountId}
-              draft={chartDraft}
-              onAddDraft={handleAddChartDraft}
-              map={mapView}
-              onConfirmSuggested={() => confirmSuggested.mutate()}
-              confirming={confirmSuggested.isPending}
-            />
-          )}
-        </div>
-        {/* The column stays STRETCHED and a wrapper inside it does the sticking.
-            Making the column itself `self-start` would size it to the editor, and
-            `border-l` would then stop dead at the editor's bottom edge instead of
-            dividing the whole list. A stretched column also gives the sticky child
-            room to travel, which an already-full-height element does not have.
-
-            `--settings-sticky-top` is published by `SettingsPage`, which owns the
-            `sticky top-0 z-20` title/tabs block above - pinning at a hardcoded `0`
-            would slide this underneath it. `z-10` matches `FormSaveBar`, i.e.
-            deliberately below that header. */}
-        <div className='hidden border-l lg:block'>
-          <div
-            className='lg:sticky lg:z-10 lg:overflow-hidden'
-            style={{
-              top: 'var(--settings-sticky-top, 0px)',
-              maxHeight:
-                'calc(var(--settings-viewport-h, 100vh) - var(--settings-sticky-top, 0px))',
-            }}>
-            {editorContent}
-          </div>
-        </div>
-      </div>
-
-      <DockableDrawer
-        open={mobileDrawerOpen}
-        onOpenChange={(open) => {
-          if (!open) {
-            setSelectedRole(null)
-            handleSelectAccount(null)
-          }
-        }}
-        isDocked={false}
-        width={380}
-        onWidthChange={() => {}}
-        minWidth={320}
-        maxWidth={480}
-        title={activeTab === 'roles' ? 'Map role' : 'Account'}>
-        {editorContent}
-      </DockableDrawer>
+      {/* Both tabs are master-detail. The exception this used to carry was for the
+          QuickBooks tab, which edited in place and had nothing for a drawer to hold. */}
+      <MasterDetailSplit
+        id='accounting-accounts'
+        pane={editorContent}
+        paneTitle={activeTab === 'roles' ? 'Map role' : 'Account'}
+        paneOpen={!!selectedId}
+        onPaneClose={() => {
+          setSelectedRole(null)
+          handleSelectAccount(null)
+        }}>
+        {activeTab === 'roles' ? (
+          <RoleMapList
+            rows={roleRows}
+            // 🛑 Gate on the query, never on an empty array. Thirteen rows
+            // reading "Not mapped - every preview refuses until this is set"
+            // is a CLAIM about the org, and rendering it mid-load makes it a
+            // false one.
+            isLoading={roleMap.isPending}
+            selectedRole={selectedRole}
+            onSelect={setSelectedRole}
+            onToggleUnused={handleToggleUnused}
+          />
+        ) : (
+          <ChartList
+            accounts={accounts}
+            isLoading={chart.isPending}
+            selectedId={selectedAccountId}
+            onSelect={handleSelectAccount}
+            rolesByAccountId={rolesByAccountId}
+            draft={chartDraft}
+            onAddDraft={handleAddChartDraft}
+            map={mapView}
+            onConfirmSuggested={() => confirmSuggested.mutate()}
+            confirming={confirmSuggested.isPending}
+          />
+        )}
+      </MasterDetailSplit>
 
       <ConfirmDialog />
     </SettingsPage>

@@ -19,6 +19,7 @@ import {
 import { useRouter } from 'next/navigation'
 import { useQueryState } from 'nuqs'
 import { useState } from 'react'
+import { MasterDetailSplit } from '~/components/global/master-detail-split'
 import SettingsPage from '~/components/global/settings-page'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
@@ -205,12 +206,13 @@ export function ChatWidgetSettings({ channelId }: ChatWidgetSettingsProps) {
         </div>
       }>
       <ConfirmDialog />
-      <div className='grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_420px]'>
-        <div className='min-w-0'>{renderActiveSection()}</div>
-        <div className='hidden border-l lg:block'>
-          <PreviewPane channelId={channelId} intent={activeSection} />
-        </div>
-      </div>
+      {/* No `paneTitle`: below `lg` the preview is reached through the floating
+          trigger and `MobilePreviewSheet` below, not a detail drawer. */}
+      <MasterDetailSplit
+        id='chat-widget-preview'
+        pane={<PreviewPane channelId={channelId} intent={activeSection} />}>
+        {renderActiveSection()}
+      </MasterDetailSplit>
       {/* Tablet (md–lg): tab strip is shown instead of the dropdown, so float the trigger. */}
       <MobilePreviewTrigger
         onOpen={() => setPreviewOpen(true)}
