@@ -86,6 +86,18 @@ const TABS = [
 
 type TariffsTab = 'codes' | 'classification'
 
+function plural(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? '' : 's'}`
+}
+
+/** The one-line readout beside the Apply button. */
+function describeApply(result: { classifiedOffers: number; changed: number }): string {
+  if (result.classifiedOffers === 0) return 'No classified offers to reprice'
+  const offers = plural(result.classifiedOffers, 'classified offer')
+  if (result.changed === 0) return `Already current for ${offers}`
+  return `${plural(result.changed, 'part')} repriced from ${offers}`
+}
+
 export function TariffsSettingsPage() {
   const [tab, setTab] = useQueryState('s', { defaultValue: 'codes' as string })
   const activeTab: TariffsTab = tab === 'classification' ? 'classification' : 'codes'
@@ -131,14 +143,22 @@ export function TariffsSettingsPage() {
   const partDefId = useResourceProperty('part', 'id')
   const canApplyRates = !!partDefId && canEditEntity(partDefId)
   const applyRates = api.purchasing.applyTariffSchedule.useMutation()
-  const [lastApply, setLastApply] = useState<{ affectedParts: number; changed: number } | null>(
+  // ⚠️ `changed` is NOT a subset of the classified parts. The recalc dirties
+  // every ancestor of a repriced part, so one classified screw under an
+  // assembly comes back as 25 changed - and "25 of 1" was what the first
+  // driven run printed. The two numbers are reported side by side, never as a
+  // fraction.
+  const [lastApply, setLastApply] = useState<{ classifiedOffers: number; changed: number } | null>(
     null
   )
 
   const handleApplyRates = useCallback(async () => {
     try {
       const result = await applyRates.mutateAsync()
-      setLastApply({ affectedParts: result.affectedParts, changed: result.changedPartIds.length })
+      setLastApply({
+        classifiedOffers: result.classifiedOffers,
+        changed: result.changedPartIds.length,
+      })
     } catch (error) {
       toastError({
         title: 'Error applying rate changes',
@@ -542,18 +562,12 @@ export function TariffsSettingsPage() {
   )
 
   // The result stays on the page rather than in a toast: it is a number the
-  // person will read against the list below it, and "0 of 40 changed" is as
-  // much of an answer as "12 of 40" - it says the schedule was already applied.
+  // person will read against the list below it, and "Already current" is as
+  // much of an answer as "25 parts repriced" - it says the schedule was applied.
   const applyButton = canApplyRates ? (
     <div className='flex items-center gap-3'>
       {lastApply && !applyRates.isPending && (
-        <span className='text-xs text-muted-foreground'>
-          {lastApply.affectedParts === 0
-            ? 'No classified offers to reprice'
-            : `${lastApply.changed} of ${lastApply.affectedParts} ${
-                lastApply.affectedParts === 1 ? 'part' : 'parts'
-              } changed`}
-        </span>
+        <span className='text-xs text-muted-foreground'>{describeApply(lastApply)}</span>
       )}
       <Button
         variant='outline'
