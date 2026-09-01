@@ -16,7 +16,13 @@ import {
   getRealtimeService,
   publishFieldValueUpdates,
 } from '../realtime'
-import { computeLandedCost, selectWinningVendor, type VendorCostRow } from './vendor-cost'
+import { loadTariffSchedule, readBookTimeZone } from './tariff-schedule'
+import {
+  computeLandedCost,
+  resolveOfferTariff,
+  selectWinningVendor,
+  type VendorCostRow,
+} from './vendor-cost'
 
 const logger = createScopedLogger('bom:cost-calculator')
 
@@ -141,6 +147,7 @@ async function loadOrgPricingData(orgId: string): Promise<OrgPricingData> {
       'vendor_part_is_preferred',
       'vendor_part_shipping_cost',
       'vendor_part_tariff_rate',
+      'vendor_part_tariff_code',
       'vendor_part_other_cost',
       'subpart_parent_part',
       'subpart_child_part',
@@ -152,6 +159,7 @@ async function loadOrgPricingData(orgId: string): Promise<OrgPricingData> {
   const vpPreferredField = cfFields.vendor_part_is_preferred
   const vpShippingField = cfFields.vendor_part_shipping_cost
   const vpTariffField = cfFields.vendor_part_tariff_rate
+  const vpTariffCodeField = cfFields.vendor_part_tariff_code
   const vpOtherField = cfFields.vendor_part_other_cost
   const spParentField = cfFields.subpart_parent_part
   const spChildField = cfFields.subpart_child_part
@@ -205,6 +213,7 @@ async function loadOrgPricingData(orgId: string): Promise<OrgPricingData> {
         unitPrice: number | null
         shippingCost: number | null
         tariffRate: number | null
+        tariffCodeId: string | null
         otherCost: number | null
         isPreferred: boolean
       }
@@ -217,6 +226,7 @@ async function loadOrgPricingData(orgId: string): Promise<OrgPricingData> {
           unitPrice: null,
           shippingCost: null,
           tariffRate: null,
+          tariffCodeId: null,
           otherCost: null,
           isPreferred: false,
         })
@@ -232,8 +242,29 @@ async function loadOrgPricingData(orgId: string): Promise<OrgPricingData> {
         entry.shippingCost = row.valueNumber
       } else if (vpTariffField && row.fieldId === vpTariffField.id) {
         entry.tariffRate = row.valueNumber
+      } else if (vpTariffCodeField && row.fieldId === vpTariffCodeField.id) {
+        entry.tariffCodeId = row.relatedEntityId
       } else if (vpOtherField && row.fieldId === vpOtherField.id) {
         entry.otherCost = row.valueNumber
+      }
+    }
+
+    // The schedule half of 29 §3.1: an offer with NO override and a tariff code
+    // takes its rate from the code's dated rows, resolved at NOW in the book
+    // timezone - `part_cost` is the live replacement cost by definition (29
+    // §5.1). Loaded only when some offer actually needs it, so an org that has
+    // never classified anything pays no extra query and no settings read.
+    const classified = [...byInstance.values()].filter(
+      (entry) => entry.partInstanceId && entry.tariffRate == null && entry.tariffCodeId
+    )
+    if (classified.length > 0) {
+      const [schedule, timeZone] = await Promise.all([
+        loadTariffSchedule(database, orgId),
+        readBookTimeZone(orgId),
+      ])
+      const now = new Date()
+      for (const entry of classified) {
+        entry.tariffRate = resolveOfferTariff(entry, schedule, now, timeZone).rate
       }
     }
 

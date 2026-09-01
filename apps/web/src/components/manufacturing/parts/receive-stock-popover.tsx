@@ -28,6 +28,7 @@
 import { FieldType } from '@auxx/database/enums'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import { formatLandedCostSummary, type ReceiptCostInputs } from '@auxx/lib/receiving/client'
+import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
 import type { ResourceFieldId } from '@auxx/types/field'
 import { Button } from '@auxx/ui/components/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
@@ -36,6 +37,7 @@ import { formatCurrency } from '@auxx/utils/currency'
 import { useEffect, useMemo, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
+import { useOfferTariffs } from '~/components/manufacturing/hooks/use-offer-tariffs'
 import { toRecordId, useRecordList, useResourceProperty } from '~/components/resources'
 import { useSystemValuesForRecords } from '~/components/resources/hooks/use-system-values-for-records'
 import { BaseType } from '~/components/workflow/types'
@@ -48,6 +50,7 @@ const VENDOR_PART_ATTRIBUTES = [
   'vendor_part_vendor_sku',
   'vendor_part_unit_price',
   'vendor_part_shipping_cost',
+  'vendor_part_tariff_code',
   'vendor_part_tariff_rate',
   'vendor_part_other_cost',
   'vendor_part_is_preferred',
@@ -91,7 +94,10 @@ export function ReceiveStockForm({ partId, onSuccess, onDone }: ReceiveStockForm
   const { getSetting } = useSettings({})
   const currencyCode = (getSetting('organization.currency') as string | null) ?? 'USD'
 
-  const suppliers = usePartSuppliers(partId)
+  // Resolved at the RECEIPT'S date, not at now (task 30 §5): a receipt back-dated
+  // to before a rate change shows the earlier rate, and changing the date below
+  // re-resolves. The server read makes the same call at `occurredAt`.
+  const suppliers = usePartSuppliers(partId, occurredAt)
   const selected = suppliers.find((option) => option.id === vendorPartId) ?? null
 
   // Prefill the supplier once the rows land, defaulting to the preferred one
@@ -307,7 +313,7 @@ export function ReceiveStockPopover({ partId, onSuccess, children }: ReceiveStoc
  * nothing, it only prefills, so it wants the terms and a label and not the
  * lead-time/contact columns that tab renders.
  */
-function usePartSuppliers(partId: string): SupplierOption[] {
+function usePartSuppliers(partId: string, occurredAt: string): SupplierOption[] {
   const vendorPartDefId = useResourceProperty('vendor_part', 'id')
 
   const filters: ConditionGroup[] = useMemo(
@@ -345,11 +351,28 @@ function usePartSuppliers(partId: string): SupplierOption[] {
     enabled: recordIds.length > 0,
   })
 
+  // The override and the pointer, per offer, for the shared precedence rule.
+  const offers = useMemo(
+    () =>
+      records.map((record, index) => {
+        const values = valuesById[recordIds[index] ?? ''] ?? ({} as Record<string, unknown>)
+        const code = values.vendor_part_tariff_code as RecordId[] | undefined
+        return {
+          id: record.id,
+          tariffRate: (values.vendor_part_tariff_rate as number | null | undefined) ?? null,
+          tariffCodeId: code?.[0] ? parseRecordId(code[0]).entityInstanceId : null,
+        }
+      }),
+    [records, recordIds, valuesById]
+  )
+  const { byId: tariffById } = useOfferTariffs(offers, occurredAt)
+
   return useMemo(
     () =>
       records.map((record, index) => {
         const values = valuesById[recordIds[index] ?? ''] ?? ({} as Record<string, unknown>)
         const sku = values.vendor_part_vendor_sku as string | undefined
+        const tariff = tariffById.get(record.id)
         return {
           id: record.id,
           label: record.displayName || sku || 'Supplier part',
@@ -357,11 +380,15 @@ function usePartSuppliers(partId: string): SupplierOption[] {
           terms: {
             unitPrice: (values.vendor_part_unit_price as number | null | undefined) ?? null,
             shippingCost: (values.vendor_part_shipping_cost as number | null | undefined) ?? null,
-            tariffRate: (values.vendor_part_tariff_rate as number | null | undefined) ?? null,
+            // Resolved, never the raw override: the server resolves the same
+            // way at the same date, so the figure shown is the figure frozen.
+            tariffRate: tariff ? tariff.rate : null,
+            tariffSource:
+              tariff?.source === 'override' || tariff?.source === 'schedule' ? tariff.source : null,
             otherCost: (values.vendor_part_other_cost as number | null | undefined) ?? null,
           },
         }
       }),
-    [records, recordIds, valuesById]
+    [records, recordIds, valuesById, tariffById]
   )
 }

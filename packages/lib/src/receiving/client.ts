@@ -41,8 +41,14 @@ export interface ReceiptCostInputs {
   unitPrice: number | null
   /** Minor units, per unit. */
   shippingCost?: number | null
-  /** A PERCENTAGE, not minor units: `4.3` means 4.3%. */
+  /** A PERCENTAGE, not minor units: `4.3` means 4.3%. Already RESOLVED - override or schedule. */
   tariffRate?: number | null
+  /**
+   * Where {@link tariffRate} came from, for the summary line. Display only;
+   * the arithmetic never reads it. Absent on the server path, which has no
+   * summary to print.
+   */
+  tariffSource?: 'override' | 'schedule' | null
   /** Minor units, per unit. */
   otherCost?: number | null
 }
@@ -68,6 +74,8 @@ export interface ReceiptCostParts {
   tariff: number
   /** The percentage that produced {@link tariff}, carried for display. */
   tariffRate: number
+  /** Where the rate came from, when the caller knows. See {@link ReceiptCostInputs.tariffSource}. */
+  tariffSource?: 'override' | 'schedule' | null
   /** Anything else the supplier row capitalises, minor units. */
   other: number
   /** `base + freight + tariff + other`, exact by construction. */
@@ -133,6 +141,9 @@ export function computeReceiptLandedBreakdown(inputs: ReceiptCostInputs): Receip
     freight: breakdown.shipping,
     tariff: breakdown.tariff,
     tariffRate: breakdown.tariffRate,
+    // Only when the caller said: the server path has no source to report and
+    // its consumers compare these parts by exact shape.
+    ...(inputs.tariffSource !== undefined ? { tariffSource: inputs.tariffSource } : {}),
     other: breakdown.other,
     landed: breakdown.landed,
   }
@@ -158,7 +169,10 @@ export function formatLandedCostSummary(
   const terms: string[] = []
   if (parts.freight !== 0) terms.push(`${format(parts.freight)} freight`)
   if (parts.tariff !== 0) {
-    terms.push(`${format(parts.tariff)} tariff (${formatTariffRate(parts.tariffRate)})`)
+    // `(47%, schedule)` / `(12%, override)` - the source rides along so a
+    // person can tell a hand-keyed rate from a resolved one (task 30 §5).
+    const source = parts.tariffSource ? `, ${parts.tariffSource}` : ''
+    terms.push(`${format(parts.tariff)} tariff (${formatTariffRate(parts.tariffRate)}${source})`)
   }
   if (parts.other !== 0) terms.push(`${format(parts.other)} other`)
   if (terms.length === 0) return format(parts.landed)

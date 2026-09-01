@@ -36,7 +36,7 @@ import {
   type TariffCode,
   type TariffCodeDraft,
   type TariffRate,
-} from './tariff-types'
+} from '../../tariff-types'
 
 interface TariffCodesListProps {
   codes: TariffCode[]

@@ -38,7 +38,6 @@ import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapte
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { BaseType } from '~/components/workflow/types'
 import { useDebouncedCallback } from '~/hooks/use-debounced-value'
-import { TariffRateHistory, type TariffRateValues } from './tariff-rate-history'
 import {
   authorityLabel,
   formatEffectiveFrom,
@@ -48,7 +47,8 @@ import {
   type TariffCodeDraft,
   type TariffRate,
   type TariffScheduleView,
-} from './tariff-types'
+} from '../../tariff-types'
+import { TariffRateHistory, type TariffRateValues } from './tariff-rate-history'
 
 /**
  * ⚠️ A `SINGLE_SELECT` hands its value back as an ARRAY - `['CN']` - because the

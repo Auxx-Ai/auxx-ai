@@ -373,6 +373,104 @@ export function resolveTariffRate(
 }
 
 /**
+ * The composed label of a `tariff_code`: `8481.80.9005 CN`.
+ *
+ * ONE definition, shared by the browser (pickers, chips) and the server (the
+ * derived `tariff_code_label` field the importers match on - 30 §8). Two
+ * spellings of this string would fork the relation match the same way two
+ * spellings of a country fork the natural key.
+ */
+export function composeTariffCodeLabel(code: string, country: string | null): string {
+  const trimmed = code.trim()
+  return country ? `${trimmed} ${country.trim().toUpperCase()}` : trimmed
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Precedence at the point of use (29 §3.1, 30 §1)
+// ─────────────────────────────────────────────────────────────────────
+
+/**
+ * The two fields on a supplier offer that decide its duty rate.
+ *
+ * Structural, like {@link VendorCostRow}: the calculator reads them off
+ * `FieldValue` rows and the browser off its field-value store.
+ */
+export interface OfferTariffInputs {
+  /** `vendor_part_tariff_rate` - the OVERRIDE. A percentage; `null` means "use the schedule". */
+  tariffRate: number | null
+  /** `vendor_part_tariff_code` - the `tariff_code` instance id, or `null` when unclassified. */
+  tariffCodeId: string | null
+}
+
+/**
+ * Where an offer's duty rate came from, with the rate itself.
+ *
+ * 🛑 **`rate` alone is not the answer, for the same reason it is not on
+ * {@link TariffResolution}.** `none`, `unclassified` and `pending` all carry
+ * `0`, and they mean three different things: no code was ever set; a code is
+ * set but has no rows; a code is set and every row starts in the future. A UI
+ * that prints `0%` for all three tells a person with an unfinished row that
+ * they are done.
+ */
+export type OfferTariff =
+  /** `tariffRate` is set. The schedule was not consulted. */
+  | { source: 'override'; rate: number }
+  /** `tariffCodeId` is set and at least one authority is in force. */
+  | {
+      source: 'schedule'
+      status: 'resolved'
+      rate: number
+      components: TariffRateComponent[]
+    }
+  /** `tariffCodeId` is set but nothing resolves: no rows, or none in force yet. */
+  | { source: 'schedule'; status: 'pending' | 'unclassified'; rate: 0; components: [] }
+  /** Neither field is set. Today's behaviour for every existing offer. */
+  | { source: 'none'; rate: 0 }
+
+/**
+ * 29 §3.1 as one function: **a set override wins; else the schedule at
+ * `atDate`; else zero.**
+ *
+ * This is the only place the precedence lives. Before it existed the rule was
+ * prose on {@link resolveTariffRate}, and six callers - the cost calculator, the
+ * receipt read, the supplier form, the Suppliers tab, the Receive form and the
+ * Classification tab - would each have re-derived it. The one that actually
+ * diverges under that arrangement is the three-state handling: a UI author
+ * collapses `pending` into `0%` and a server author does not, and the two then
+ * disagree about whether an offer is classified.
+ *
+ * Pure, and exported through `bom/client.ts` for the same reason
+ * {@link resolveTariffRate} is.
+ *
+ * @param offer The offer's override and pointer.
+ * @param ratesByCode Every rate row in the org, grouped by `tariff_code`
+ *   instance id. A code with no entry resolves as `unclassified`.
+ * @param atDate The instant to resolve as of. `part_cost` passes now; a receipt
+ *   passes its `occurredAt`.
+ * @param timeZone The org's `bookTimeZone`. See {@link resolveTariffRate}.
+ */
+export function resolveOfferTariff(
+  offer: OfferTariffInputs,
+  ratesByCode: ReadonlyMap<string, readonly TariffRateRow[]>,
+  atDate: Date,
+  timeZone = 'UTC'
+): OfferTariff {
+  if (offer.tariffRate != null) return { source: 'override', rate: offer.tariffRate }
+  if (!offer.tariffCodeId) return { source: 'none', rate: 0 }
+
+  const resolution = resolveTariffRate(ratesByCode.get(offer.tariffCodeId) ?? [], atDate, timeZone)
+  if (resolution.status === 'resolved') {
+    return {
+      source: 'schedule',
+      status: 'resolved',
+      rate: resolution.rate,
+      components: resolution.components,
+    }
+  }
+  return { source: 'schedule', status: resolution.status, rate: 0, components: [] }
+}
+
+/**
  * Display order: oldest first, so a code reads the way an entry summary does -
  * the base duty, then the layers stacked on top of it. Ties fall through to the
  * authority and then the id so the order is TOTAL: two rows sharing a day would

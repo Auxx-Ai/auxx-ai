@@ -1,4 +1,4 @@
-// apps/web/src/components/manufacturing/ui/settings/tariff-types.ts
+// apps/web/src/components/manufacturing/tariff-types.ts
 
 // Shared shapes for Parts > Settings > Tariffs (money 29-tariff-schedule.md).
 //
@@ -12,7 +12,7 @@
 // renders.
 
 import type { TariffRateComponent, TariffResolutionStatus } from '@auxx/lib/bom/client'
-import { resolveTariffRate } from '@auxx/lib/bom/client'
+import { composeTariffCodeLabel, resolveTariffRate } from '@auxx/lib/bom/client'
 import type { RecordId } from '@auxx/lib/resources/client'
 
 /** apiSlug of the two definitions this page reads and writes. */
@@ -170,13 +170,14 @@ export function formatEffectiveFrom(iso: string | null): string {
 /**
  * The composed label: `8481.80.9005 CN`.
  *
- * 🛑 Composed, never stored (§1.1). The two halves stay separate fields so the
- * code half can be typed ahead of, so *"what origins have I classified this code
- * for"* is answerable, and so a trailing space in a hand-typed string can never
- * fork the `(code, country)` natural key.
+ * 🛑 ONE composer, in `@auxx/lib/bom/client`, because the server stamps the
+ * same string into the derived `tariff_code_label` field the importers match
+ * on (task 30 §8). The two legs stay separate fields - the code half can be
+ * typed ahead of, *"what origins have I classified this code for"* stays
+ * answerable, and nothing ever parses the label back apart.
  */
 export function composeTariffLabel(code: string, country: string | null): string {
-  return country ? `${code} ${country}` : code
+  return composeTariffCodeLabel(code, country)
 }
 
 /** Newest first - the order the rate history renders in. */

@@ -107,6 +107,22 @@ export async function recalculatePartCostForEntityBatch(params: {
   await ensureFirstStandardCosts(organizationId, affected)
 }
 
+/**
+ * Recalculate a known set of parts and give any newly priced one its first
+ * standard - the tail every handler in this file ends with, exported so a
+ * handler that resolves its parts by a different route (`tariff-rate-triggers.ts`
+ * walks rate -> code -> offer -> part) ends the same way.
+ */
+export async function recalculatePartCostsForParts(
+  organizationId: string,
+  partIds: readonly string[]
+): Promise<void> {
+  if (partIds.length === 0) return
+  const affected = [...new Set(partIds)]
+  await recalculateAffectedParts(organizationId, affected)
+  await ensureFirstStandardCosts(organizationId, affected)
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────
 
 /**
@@ -181,10 +197,11 @@ async function ensureFirstStandardCosts(organizationId: string, partIds: string[
 }
 
 /**
- * Batch resolve parent partIds for multiple entity instances in a single query.
- * Looks up the relationship field value (e.g., vendor_part_part) for all instances at once.
+ * Batch resolve the related instance ids behind one relationship attribute for
+ * many entity instances, in a single query - `vendor_part_part` for a set of
+ * offers, `tariff_rate_tariff_code` for a set of rates. De-duplicated.
  */
-async function batchResolvePartIds(
+export async function batchResolvePartIds(
   entityInstanceIds: string[],
   organizationId: string,
   relationshipSystemAttribute: string

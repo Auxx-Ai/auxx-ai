@@ -503,13 +503,14 @@ export const DISPLAY_FIELD_CONFIG: Record<string, DisplayFieldConfig> = {
     primaryDisplayField: 'amount',
     secondaryDisplayField: undefined,
   },
-  // 🛑 The primary is the CODE and the secondary the COUNTRY, because the label
-  // `8481.80.9005 CN` is COMPOSED and never stored - see the field file. Both
-  // legs are `required: true` / `nullable: false`, so neither can render the
-  // record nameless the way an optional primary would.
+  // 🛑 The primary is the DERIVED `label` - `8481.80.9005 CN` - stamped by a
+  // hook from the two legs on every write (task 30 §8), so the display name and
+  // the importers' relation match read the same string that names the whole
+  // `(code, country)` identity. It was `code` until migration 120, which
+  // repoints existing orgs; this constant reaches fresh orgs only.
   tariff_code: {
-    primaryDisplayField: 'code',
-    secondaryDisplayField: 'country',
+    primaryDisplayField: 'label',
+    secondaryDisplayField: 'description',
   },
   // The `authority` is the natural thing to read first, but it is NULLABLE and
   // `computeDisplayValue` has no fallback - an absent value writes

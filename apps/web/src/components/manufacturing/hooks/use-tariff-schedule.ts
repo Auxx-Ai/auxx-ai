@@ -1,4 +1,4 @@
-// apps/web/src/components/manufacturing/ui/settings/use-tariff-schedule.ts
+// apps/web/src/components/manufacturing/hooks/use-tariff-schedule.ts
 
 // Reads the whole tariff schedule - every `tariff_code` and every `tariff_rate`
 // in the org - through the generic record system.
@@ -30,7 +30,7 @@ import {
   TARIFF_RATE_SLUG,
   type TariffCode,
   type TariffRate,
-} from './tariff-types'
+} from '../tariff-types'
 
 /** `tariff_code` as `useAllRecords` hands it back (systemAttribute-keyed). */
 interface TariffCodeRecord extends RecordMeta {

@@ -125,6 +125,39 @@ export const TARIFF_CODE_FIELDS: Record<string, ResourceField> = {
       'Chinese-made goods is origin CN',
   },
 
+  // 🛑 DERIVED - `{code} {country}` - and the record's PRIMARY DISPLAY FIELD.
+  // Stamped by `field-hooks/pre/tariff-code-label.ts` on create and whenever
+  // either leg changes; never creatable or updatable by a person. It exists
+  // because a relation column on import matches ONE field and this record's
+  // identity is two: matched on `code`, `8481.80.9005` resolves to the CN and
+  // DE records interchangeably and the import succeeds pointing half the
+  // Chinese offers at the German classification (30 §8). This does not reopen
+  // §1.1's "compose, never store": nothing parses it, and `code` / `country`
+  // remain the only inputs.
+  label: {
+    id: toFieldId('label'),
+    key: 'label',
+    label: 'Tariff Code',
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemAttribute: 'tariff_code_label',
+    systemSortOrder: 'a2b',
+    nullable: true,
+    showInPanel: false,
+    showInDialogs: false,
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: false,
+      updatable: false,
+      configurable: false,
+    },
+    description:
+      'The code and country of origin as one label, e.g. 8481.80.9005 CN. Derived from the two ' +
+      'fields above; this is what a spreadsheet column names when it points at a tariff code',
+  },
+
   description: {
     id: toFieldId('description'),
     key: 'description',

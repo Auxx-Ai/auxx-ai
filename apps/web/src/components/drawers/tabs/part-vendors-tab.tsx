@@ -13,6 +13,7 @@ import { Table, TableBody, TableHead, TableHeader, TableRow } from '@auxx/ui/com
 import { toastError } from '@auxx/ui/components/toast'
 import { Store } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useOfferTariffs } from '~/components/manufacturing/hooks/use-offer-tariffs'
 import { VendorPartDialog } from '~/components/manufacturing/parts/vendor-part-dialog'
 import { toRecordId, useRecordList, useResourceProperty } from '~/components/resources'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
@@ -35,6 +36,7 @@ const VENDOR_PART_ATTRIBUTES = [
   'vendor_part_vendor_sku',
   'vendor_part_unit_price',
   'vendor_part_shipping_cost',
+  'vendor_part_tariff_code',
   'vendor_part_tariff_rate',
   'vendor_part_other_cost',
   'vendor_part_lead_time',
@@ -42,14 +44,23 @@ const VENDOR_PART_ATTRIBUTES = [
   'vendor_part_contact',
 ] as const
 
-/** Narrow one record's raw system values into the row's shape. */
-function toRowValues(values: Record<string, unknown> | undefined): VendorPartRowValues {
+/**
+ * Narrow one record's raw system values into the row's shape.
+ *
+ * `tariffRate` here is the RAW override; the tab resolves the schedule into it
+ * before the winner rule or the row sees it (task 30 §4).
+ */
+function toRowValues(
+  values: Record<string, unknown> | undefined
+): VendorPartRowValues & { tariffCodeId: string | null } {
   const contact = values?.vendor_part_contact as RecordId[] | undefined
+  const code = values?.vendor_part_tariff_code as RecordId[] | undefined
   return {
     vendorSku: values?.vendor_part_vendor_sku as string | undefined,
     unitPrice: (values?.vendor_part_unit_price as number | null | undefined) ?? null,
     shippingCost: (values?.vendor_part_shipping_cost as number | null | undefined) ?? null,
     tariffRate: (values?.vendor_part_tariff_rate as number | null | undefined) ?? null,
+    tariffCodeId: code?.[0] ? parseRecordId(code[0]).entityInstanceId : null,
     otherCost: (values?.vendor_part_other_cost as number | null | undefined) ?? null,
     leadTime: (values?.vendor_part_lead_time as number | null | undefined) ?? null,
     isPreferred: (values?.vendor_part_is_preferred as boolean | undefined) ?? false,
@@ -120,6 +131,31 @@ export function PartVendorsTab({ recordId }: DrawerTabProps) {
     enabled: rowRecordIds.length > 0,
   })
 
+  // The raw rows, then the schedule resolved INTO each row's `tariffRate` the
+  // way the cost calculator does server-side (task 30 §4). Before this the tab
+  // computed landed cost from the raw override alone, so a classified offer
+  // with no override showed no duty here while `part_cost` included it - two
+  // numbers both called "the landed cost".
+  const rawOffers = useMemo(
+    () => rowRecordIds.map((recordId) => ({ id: recordId, ...toRowValues(valuesById[recordId]) })),
+    [rowRecordIds, valuesById]
+  )
+  const { byId: tariffById, codeLabelById } = useOfferTariffs(rawOffers)
+  const offers = useMemo(
+    () =>
+      rawOffers.map((offer) => {
+        const tariff = tariffById.get(offer.id)
+        return {
+          ...offer,
+          tariffRate: tariff ? tariff.rate : offer.tariffRate,
+          tariff,
+          codeLabel: offer.tariffCodeId ? codeLabelById.get(offer.tariffCodeId) : undefined,
+        }
+      }),
+    [rawOffers, tariffById, codeLabelById]
+  )
+  const offersById = useMemo(() => new Map(offers.map((offer) => [offer.id, offer])), [offers])
+
   /**
    * Which offer the part's Cost came from.
    *
@@ -128,13 +164,7 @@ export function PartVendorsTab({ recordId }: DrawerTabProps) {
    * float produced by `unitPrice * (tariffRate / 100)`, and equality on it is
    * not a safe key.
    */
-  const winningRecordId = useMemo(() => {
-    const offers = rowRecordIds.map((recordId) => ({
-      id: recordId,
-      ...toRowValues(valuesById[recordId]),
-    }))
-    return selectWinningVendor(offers)?.id ?? null
-  }, [rowRecordIds, valuesById])
+  const winningRecordId = useMemo(() => selectWinningVendor(offers)?.id ?? null, [offers])
 
   // Delete via entity system
   const deleteRecord = api.record.delete.useMutation({
@@ -242,11 +272,14 @@ export function PartVendorsTab({ recordId }: DrawerTabProps) {
               <TableBody>
                 {recordIds.map((id, index) => {
                   const rowRecordId = rowRecordIds[index] as RecordId
+                  const offer = offersById.get(rowRecordId)
                   return (
                     <VendorPartRow
                       key={id}
                       recordId={rowRecordId}
-                      values={toRowValues(valuesById[rowRecordId])}
+                      values={offer ?? toRowValues(valuesById[rowRecordId])}
+                      tariff={offer?.tariff}
+                      codeLabel={offer?.codeLabel}
                       isWinner={rowRecordId === winningRecordId}
                       onEdit={() => handleEditVendorPart(id)}
                       onDelete={() => handleDeleteVendorPart(id)}

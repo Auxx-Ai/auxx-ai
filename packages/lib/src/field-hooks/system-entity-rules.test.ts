@@ -57,6 +57,10 @@ describe('registerEntitySystemRules — declarations', () => {
         'stock-movements:created',
         'stock-movements:deleted',
         'companies:created',
+        // The tariff schedule (29 §7): a rate row appearing or disappearing
+        // reprices every offer behind its code.
+        'tariff-rates:created',
+        'tariff-rates:deleted',
       ])
     )
     // No lifecycle rule declares a fieldRef.

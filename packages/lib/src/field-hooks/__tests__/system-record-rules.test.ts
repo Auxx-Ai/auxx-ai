@@ -35,16 +35,22 @@ afterEach(() => {
 })
 
 describe('registerFieldSystemRules — declarations', () => {
-  it('declares exactly the 7 field triggers', () => {
+  it('declares exactly the 11 field triggers', () => {
     const decls = getSystemRuleDeclarations()
-    expect(decls).toHaveLength(7)
+    expect(decls).toHaveLength(11)
     expect(decls.map((d) => d.fieldRef?.systemAttribute).sort()).toEqual(
       [
         'part_reorder_point',
         'subpart_quantity',
+        // The schedule (29 §7): the three rate-row fields the resolver reads,
+        // and the offer's pointer.
+        'tariff_rate_authority',
+        'tariff_rate_effective_from',
+        'tariff_rate_rate',
         'vendor_part_is_preferred',
         'vendor_part_other_cost',
         'vendor_part_shipping_cost',
+        'vendor_part_tariff_code',
         'vendor_part_tariff_rate',
         'vendor_part_unit_price',
       ].sort()
@@ -67,14 +73,23 @@ describe('registerFieldSystemRules — declarations', () => {
     const bySlug = (attr: string) =>
       getSystemRuleDeclarations().find((d) => d.fieldRef?.systemAttribute === attr)!.defSlug
     expect(bySlug('vendor_part_unit_price')).toBe('vendor-parts')
+    expect(bySlug('vendor_part_tariff_code')).toBe('vendor-parts')
     expect(bySlug('subpart_quantity')).toBe('subparts')
     expect(bySlug('part_reorder_point')).toBe('parts')
+    expect(bySlug('tariff_rate_rate')).toBe('tariff-rates')
+  })
+
+  it('routes the tariff rate fields to the two-join handler, not the vendor-part one', () => {
+    const handlers = getSystemRuleDeclarations()
+      .filter((d) => d.defSlug === 'tariff-rates')
+      .flatMap((d) => d.actions.map((a) => (a as { handler: string }).handler))
+    expect(new Set(handlers)).toEqual(new Set(['recalculatePartCostFromTariffRate']))
   })
 
   it('is idempotent — a second call does not duplicate declarations', () => {
     __resetFieldSystemRulesLatch()
     registerFieldSystemRules()
-    expect(getSystemRuleDeclarations()).toHaveLength(7)
+    expect(getSystemRuleDeclarations()).toHaveLength(11)
   })
 })
 

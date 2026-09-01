@@ -11,6 +11,7 @@
 // realtime, field-value-mutations) are lazy-imported inside the wrappers so loading this
 // module never drags those in.
 
+import { parseRecordId } from '@auxx/types/resource'
 import { registerNativeRuleHandler } from '../record-rules/actions'
 import type { SystemRuleDeclaration } from '../record-rules/system-rules'
 import { declareSystemRules } from '../record-rules/system-rules'
@@ -27,6 +28,12 @@ const RECALC_PART_COST_VENDOR = 'recalculatePartCostFromVendorPart'
 const RECALC_PART_COST_SUBPART = 'recalculatePartCostFromSubpart'
 const CLEAR_OTHER_PREFERRED = 'clearOtherPreferred'
 const RECALC_STOCK_STATUS = 'recalculateStockStatus'
+/**
+ * A `tariff_rate` write is two joins away from a part (rate -> code -> every
+ * offer on that code -> its part), which is why it is its own handler rather
+ * than a third branch in `recalculatePartCost` (29 §7).
+ */
+const RECALC_PART_COST_TARIFF_RATE = 'recalculatePartCostFromTariffRate'
 
 /** Adapt a native batch event to the legacy `FieldTriggerEvent` shape. */
 function asFieldTriggerEvent(
@@ -69,16 +76,37 @@ export function registerFieldSystemRules(): void {
     const { recalculateStockStatus } = await import('./post/inventory-triggers')
     await recalculateStockStatus(asFieldTriggerEvent(event, 'part_reorder_point'))
   })
+  registerNativeRuleHandler(RECALC_PART_COST_TARIFF_RATE, async (event) => {
+    const { recalculatePartCostForTariffRates } = await import('./post/tariff-rate-triggers')
+    await recalculatePartCostForTariffRates({
+      organizationId: event.organizationId,
+      rateInstanceIds: event.recordIds.map((id) => parseRecordId(id).entityInstanceId),
+    })
+  })
 
   declareSystemRules(FIELD_SYSTEM_RULES)
 }
 
 /**
- * The 7 field triggers, one declaration per systemAttribute. All fire `on: 'changed'` — the
+ * The field triggers, one declaration per systemAttribute. All fire `on: 'changed'` — the
  * transition the legacy registry implied (any field-value change). `vendor_part_is_preferred`
  * keeps its ORDERED pair `[recalculatePartCost, clearOtherPreferred]`.
  */
 const FIELD_SYSTEM_RULES: SystemRuleDeclaration[] = [
+  // The schedule (29 §7). Editing a rate row's number, day or authority moves
+  // `part_cost` on every offer behind its code. Create and delete are lifecycle
+  // rules in `system-entity-rules.ts`; `tariffCode` is `updatable: false`, so a
+  // row can never be re-parented and needs no rule.
+  ...(['tariff_rate_rate', 'tariff_rate_effective_from', 'tariff_rate_authority'] as const).map(
+    (systemAttribute) => ({
+      key: `mfg-${systemAttribute.replace(/_/g, '-')}`,
+      name: `Recalculate part cost on ${systemAttribute} change`,
+      defSlug: 'tariff-rates',
+      fieldRef: { systemAttribute },
+      on: 'changed' as const,
+      actions: [{ type: 'native' as const, handler: RECALC_PART_COST_TARIFF_RATE }],
+    })
+  ),
   {
     key: 'mfg-vendor-part-unit-price',
     name: 'Recalculate part cost on vendor unit price change',
@@ -100,6 +128,14 @@ const FIELD_SYSTEM_RULES: SystemRuleDeclaration[] = [
     name: 'Recalculate part cost on vendor tariff rate change',
     defSlug: 'vendor-parts',
     fieldRef: { systemAttribute: 'vendor_part_tariff_rate' },
+    on: 'changed',
+    actions: [{ type: 'native', handler: RECALC_PART_COST_VENDOR }],
+  },
+  {
+    key: 'mfg-vendor-part-tariff-code',
+    name: 'Recalculate part cost on vendor tariff code change',
+    defSlug: 'vendor-parts',
+    fieldRef: { systemAttribute: 'vendor_part_tariff_code' },
     on: 'changed',
     actions: [{ type: 'native', handler: RECALC_PART_COST_VENDOR }],
   },
