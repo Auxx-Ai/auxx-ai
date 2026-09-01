@@ -12,6 +12,19 @@
  * every export into a client-reference proxy on that side.
  */
 
+// The starter catalogue's TYPES and its pure expander are client-safe; the
+// picker previews exactly the rows the mutation will write by running them
+// through `resolveTariffRate`. The DATA stays server-side (32 §1.2, §1.4): the
+// hand-kept actions table reaches the browser through `purchasing.listTariffStarters`
+// and the generated HTS file never leaves the server.
+export type {
+  ActionKey,
+  StarterAction,
+  StarterExpansion,
+  StarterRow,
+  StarterStep,
+} from './tariff-starters'
+export { expandTariffStarter, membershipsFor, starterNote } from './tariff-starters'
 export type {
   LandedCostBreakdown,
   OfferTariff,

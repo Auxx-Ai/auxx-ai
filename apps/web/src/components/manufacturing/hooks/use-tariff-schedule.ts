@@ -111,6 +111,10 @@ export interface UseTariffScheduleResult {
   appendRate: (item: AllRecordsItem) => void
   removeRate: (id: string) => void
   refreshRates: () => void
+  /** Refetch the codes `listAll` query - the "Add from catalogue" dialog writes
+   *  new `tariff_code` rows outside this hook's `appendCode`, so the list is
+   *  brought current with a refetch instead. */
+  refreshCodes: () => void
 }
 
 /** The whole schedule, both definitions, in one hook. */
@@ -158,6 +162,7 @@ export function useTariffSchedule(): UseTariffScheduleResult {
     appendRate: rateQuery.appendRecord,
     removeRate: rateQuery.removeRecord,
     refreshRates: rateQuery.refresh,
+    refreshCodes: codeQuery.refresh,
   }
 }
 

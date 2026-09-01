@@ -96,7 +96,8 @@
       "!**/sst-env.d.ts",
       "!**/*.gen.ts",
       "!**/*.generated.ts",
-      "!**/packages/sdk/template"
+      "!**/packages/sdk/template",
+      "!**/tariff-hts-general.json"
     ]
   },
   "overrides": [
