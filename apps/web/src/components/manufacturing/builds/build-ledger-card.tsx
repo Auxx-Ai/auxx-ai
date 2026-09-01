@@ -22,9 +22,12 @@ import { StockMovementType } from '@auxx/lib/resources/client'
 import type { ResourceFieldId } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
 import { Badge, type Variant } from '@auxx/ui/components/badge'
+import { TREE_SECONDARY_NOTRUNCATE, TreeRow } from '@auxx/ui/components/tree-row'
+import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { formatCurrency } from '@auxx/utils/currency'
+import { PackageMinus, PackagePlus } from 'lucide-react'
 import { useMemo } from 'react'
-import { EmptyRow, RowSkeleton } from '~/components/drawers/cards/related-record-row'
+import { EmptyRow } from '~/components/drawers/cards/related-record-row'
 import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
 import { toRecordId, useRecord, useRecordList, useResourceProperty } from '~/components/resources'
 import { useSystemValuesForRecords } from '~/components/resources/hooks/use-system-values-for-records'
@@ -35,6 +38,16 @@ const TYPE_VARIANT: Record<string, Variant> = Object.fromEntries(
   StockMovementType.values.map((value) => [value.value, value.color as Variant])
 )
 
+/**
+ * Movement type value → badge text, straight from the registry.
+ *
+ * `build_consume` / `build_produce` read "Consumed" / "Produced" — renamed in
+ * `enum-values.ts` itself, so this card and the two part-inventory surfaces
+ * share one vocabulary. ⚠️ Orgs installed before that rename still hold the old
+ * "Build (consume)" label in their materialized `CustomField.options`, so the
+ * movements GRID and its filters can disagree with this badge until a migration
+ * rewrites them. Known and accepted, not a bug to "fix" by hardcoding here.
+ */
 const TYPE_LABEL: Record<string, string> = Object.fromEntries(
   StockMovementType.values.map((value) => [value.value, value.label])
 )
@@ -68,6 +81,9 @@ const MOVEMENT_ATTRIBUTES = [
 
 /** How many movements render before the list stops. A build writes one row per component. */
 const MOVEMENT_LIMIT = 200
+
+/** Placeholder rows while the ids and their values land. */
+const SKELETON_ROWS = 3
 
 export function BuildLedgerCard({ entityInstanceId }: DrawerTabProps) {
   const { getSetting } = useSettings({})
@@ -120,24 +136,28 @@ export function BuildLedgerCard({ entityInstanceId }: DrawerTabProps) {
   // `isLoading: false` with `records` still empty. Without `isLoadingRecords`
   // the empty row below claims a completed build posted nothing, which is
   // exactly the statement it exists to make about a `planned` one.
-  if (isLoading || isLoadingRecords) return <RowSkeleton />
-  if (movementIds.length === 0) {
+  const loading = isLoading || isLoadingRecords
+
+  if (!loading && movementIds.length === 0) {
     // Not an error and not a gap: a `planned` build writes no movements at all
     // (B2), which is the safety property the whole phasing rests on.
     return <EmptyRow label='Nothing posted yet (A build writes its ledger when it completes)' />
   }
 
   return (
-    <div className='divide-y divide-border/50'>
-      {records.map((record, index) => (
+    <TreeRowList
+      items={records}
+      loading={loading}
+      skeletonCount={SKELETON_ROWS}
+      getKey={(record) => record.id}
+      renderRow={(record, index) => (
         <MovementRow
-          key={record.id}
           fallbackLabel={record.displayName}
           values={valuesById[recordIds[index] ?? ''] ?? {}}
           currencyCode={currencyCode}
         />
-      ))}
-    </div>
+      )}
+    />
   )
 }
 
@@ -173,11 +193,29 @@ function MovementRow({
   const isConsume = type === 'build_consume'
   const offBom = isConsume && qtyPerUnit == null
 
+  // What the row cost and where it posted, as one string for `description`.
+  // ⚠️ `description` is a TOOLTIP, not a subtitle — TreeRow renders it as a
+  // `HelpCircle` beside the title (`tooltip.tsx` `TooltipExplanation`), so this
+  // text is only readable on hover. Deliberate: it keeps the row to a name, a
+  // badge and two numbers. Move it back into `actions` to make it always visible.
+  const costDescription = [
+    unitCost == null ? 'no cost' : `${formatCurrency(unitCost, { currencyCode })} each`,
+    inventoryRoleLabel,
+  ]
+    .filter(Boolean)
+    .join(' · ')
+
   return (
-    <div className='flex items-center gap-2 py-1.5'>
-      <div className='min-w-0 flex-1'>
-        <div className='flex items-center gap-1.5'>
-          <span className='truncate text-sm'>{label || 'Movement'}</span>
+    // `TREE_SECONDARY_NOTRUNCATE`: the `secondary` slot truncates by default,
+    // which would clip a two-badge cluster into an ellipsis on a narrow drawer.
+    // The part name is the one thing here that should absorb the squeeze.
+    <TreeRow
+      className={TREE_SECONDARY_NOTRUNCATE}
+      icon={isConsume ? <PackageMinus className='size-4' /> : <PackagePlus className='size-4' />}
+      title={<span className='truncate text-sm'>{label || 'Movement'}</span>}
+      description={costDescription}
+      secondary={
+        <span className='flex items-center gap-1.5'>
           {type && (
             <Badge variant={TYPE_VARIANT[type] ?? 'secondary'} size='xs'>
               {TYPE_LABEL[type] ?? type}
@@ -188,20 +226,17 @@ function MovementRow({
               Off BOM
             </Badge>
           )}
-        </div>
-        <span className='text-muted-foreground text-xs tabular-nums'>
-          {unitCost == null ? 'no cost' : `${formatCurrency(unitCost, { currencyCode })} each`}
-          {inventoryRoleLabel && ` · ${inventoryRoleLabel}`}
         </span>
-      </div>
-
-      <span className='shrink-0 text-sm tabular-nums'>
-        {quantity == null ? '—' : formatSignedQuantity(quantity)}
-      </span>
-      <span className='w-24 shrink-0 text-right text-sm tabular-nums'>
-        {extendedCost == null ? '—' : formatCurrency(extendedCost, { currencyCode })}
-      </span>
-    </div>
+      }
+      actions={
+        <div className='flex shrink-0 items-center gap-3 pr-1 text-sm tabular-nums'>
+          <span>{quantity == null ? '—' : formatSignedQuantity(quantity)}</span>
+          <span className='w-24 text-right'>
+            {extendedCost == null ? '—' : formatCurrency(extendedCost, { currencyCode })}
+          </span>
+        </div>
+      }
+    />
   )
 }
 

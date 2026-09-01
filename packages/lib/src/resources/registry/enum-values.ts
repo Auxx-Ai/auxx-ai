@@ -325,8 +325,17 @@ export const StockMovementType = {
     { value: 'ship', label: 'Ship', color: 'blue' },
     { value: 'adjust', label: 'Adjustment', color: 'amber' },
     { value: 'sale', label: 'Sale', color: 'indigo' },
-    { value: 'build_consume', label: 'Build (consume)', color: 'orange' },
-    { value: 'build_produce', label: 'Build (produce)', color: 'teal' },
+    // ⚠️ These two labels are ALSO materialized per org into `CustomField.options`
+    // at install time (`stock-movement-fields.ts`), and `ensureCustomFields` never
+    // updates an existing field's options (see migration 037). So this edit reaches
+    // only the code that reads the constant — `build-ledger-card`,
+    // `part-inventory-tab`, `part-inventory-card` — plus orgs installed from here
+    // on. The 28 existing orgs keep 'Build (consume)' / 'Build (produce)' in the
+    // movements grid and its filter dropdowns until a migration rewrites them.
+    // Deliberate: the qualifier is redundant inside a build, and still useful on a
+    // grid that mixes receipts, sales and adjustments.
+    { value: 'build_consume', label: 'Consumed', color: 'orange' },
+    { value: 'build_produce', label: 'Produced', color: 'teal' },
     { value: 'scrap', label: 'Scrap', color: 'red' },
     { value: 'return_in', label: 'Return (inbound)', color: 'purple' },
     { value: 'return_out', label: 'Return (outbound)', color: 'pink' },

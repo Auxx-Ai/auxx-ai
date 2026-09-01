@@ -89,6 +89,10 @@ export function BuildRunCard({ entityInstanceId }: DrawerTabProps) {
    * its own realtime events. Either way the tab that pressed the button is the
    * one that has to invalidate — which is what this does, in the one place all
    * four mutations funnel through.
+   *
+   * Builds only. The movement rows a completion or a reversal writes are
+   * announced by `publishBuildMovements` on the server, so the ledger card
+   * repaints from realtime and nothing here needs to touch `stock_movement`.
    */
   const refresh = async () => {
     await Promise.all([

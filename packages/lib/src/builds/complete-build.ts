@@ -83,7 +83,7 @@ import type {
   CompleteBuildInput,
   CompleteBuildResult,
 } from './types'
-import { buildWriteSession } from './write-lane'
+import { buildWriteSession, publishQuietBuildWrites } from './write-lane'
 
 const logger = createScopedLogger('builds:complete')
 
@@ -150,6 +150,10 @@ export async function completeBuild(
       // rows above; per movement it would be 51 full re-SUMs.
       await recalculateAfterCommit(organizationId, written.result.recalculatedPartIds)
       publishBuildUpdate(organizationId, ctx, written.result, completedAt)
+      // The ledger's own frame. `publishBuildUpdate` covers the build ROW; the
+      // movement rows are silent without this and `build-ledger-card` goes on
+      // rendering "Nothing posted yet" until the drawer remounts.
+      publishQuietBuildWrites(organizationId, movementCtx.movementDefId, written.result.movementIds)
 
       logger.info('Completed build', {
         organizationId,
