@@ -267,7 +267,12 @@ describe('previewStandardCostRoll', () => {
     expect(plan.lines.find((l) => l.partId === LIFT)!.standardCost).toBe(6120)
   })
 
-  it('surfaces an unpriced component as UnprocessableEntityError before anything commits', async () => {
+  // ⤵️ Was 'surfaces an unpriced component as UnprocessableEntityError'. The
+  // preview no longer fails the whole run for one unpriced part — it reports it
+  // and values everything else. The information is not lost, it moved from an
+  // error message into `skipped`, where a list can render every offender rather
+  // than only the first one the walk happened to reach.
+  it('reports an unpriced component in `skipped` instead of failing the preview', async () => {
     h.subparts = liftSubparts()
     queueOrg(PARTS, [
       fv(ASSEMBLY, FIELD.part_kind!.id, { option: 'subassembly' }),
@@ -276,8 +281,14 @@ describe('previewStandardCostRoll', () => {
 
     const result = await previewStandardCostRoll(db, ORG, { effectiveAt: EFFECTIVE_AT })
 
-    expect(result.isErr()).toBe(true)
-    expect(result._unsafeUnwrapErr().message).toMatch(/400Lbs Motor/)
+    const plan = result._unsafeUnwrap()
+    expect(plan.skipped.some((s) => s.partName === '400Lbs Motor')).toBe(true)
+    // The parent gave up too, and it names the motor rather than itself.
+    expect(
+      plan.skipped.some(
+        (s) => s.reason === 'component-not-valuable' && s.blockedByPartName === '400Lbs Motor'
+      )
+    ).toBe(true)
   })
 
   it('refuses when the part_standard_* fields have not been provisioned', async () => {
@@ -493,6 +504,42 @@ describe('readStandardCost', () => {
     expect(map.has(LIFT)).toBe(false)
   })
 
+  // 🛑 The invariant is POSITIVE, not non-null. `assertPlanIsPostable` documents
+  // this function as the reason it can exist ("a missing standard is a refusal,
+  // never a zero"), and its error says "Refusing to complete a build at zero
+  // cost" — but while a stored `0` stayed in the map, that check could not fire
+  // for the case it is named after, and `unitCost: 0` froze onto an append-only
+  // movement. A zero only ever arrives from a part that could not be valued.
+  it('omits a part rolled to ZERO, exactly like one never rolled at all', async () => {
+    h.queryQueue = [
+      [
+        fv(MOTOR, FIELD.part_standard_cost!.id, { number: 0 }),
+        fv(MOTOR, FIELD.part_standard_material_cost!.id, { number: 0 }),
+        fv(ASSEMBLY, FIELD.part_standard_cost!.id, { number: 2200 }),
+        fv(ASSEMBLY, FIELD.part_standard_material_cost!.id, { number: 2200 }),
+      ],
+    ]
+
+    const result = await readStandardCost(db, ORG, [MOTOR, ASSEMBLY])
+
+    const map = result._unsafeUnwrap()
+    expect(map.has(MOTOR)).toBe(false)
+    expect(map.get(ASSEMBLY)?.standardCost).toBe(2200)
+  })
+
+  it('keeps a part standing at one minor unit, so the rule is > 0 and not a threshold', async () => {
+    h.queryQueue = [
+      [
+        fv(MOTOR, FIELD.part_standard_cost!.id, { number: 1 }),
+        fv(MOTOR, FIELD.part_standard_material_cost!.id, { number: 1 }),
+      ],
+    ]
+
+    const result = await readStandardCost(db, ORG, [MOTOR])
+
+    expect(result._unsafeUnwrap().get(MOTOR)?.standardCost).toBe(1)
+  })
+
   it('short-circuits on an empty part list without querying', async () => {
     const result = await readStandardCost(db, ORG, [])
     expect(result._unsafeUnwrap().size).toBe(0)
@@ -576,11 +623,15 @@ describe('planStandardCostRoll descendant widening', () => {
       effectiveAt: EFFECTIVE_AT,
     })
 
-    expect(result.isErr()).toBe(true)
+    // ⤵️ Was an `isErr` assertion on the message. The remedy is still the point,
+    // it is just carried structurally now: `blockedByPartName` names the part to
+    // go price, and the two screens render it through `skipReasonLabel`.
     // "Give it a price or roll it first" was wrong: it is a lie when the
     // component already HAS a price and simply has no priced bill of materials.
-    expect(result._unsafeUnwrapErr().message).toMatch(
-      /has no supplier price and no priced bill of materials/
-    )
+    const plan = result._unsafeUnwrap()
+    const lift = plan.skipped.find((s) => s.partId === LIFT)
+    expect(lift?.reason).toBe('component-not-valuable')
+    // NOT the assembly in between, which nobody can price.
+    expect(lift?.blockedByPartName).toBe('400Lbs Motor')
   })
 })

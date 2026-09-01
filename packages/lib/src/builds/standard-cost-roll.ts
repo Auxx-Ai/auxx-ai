@@ -101,11 +101,20 @@ export interface StandardCostRollComputation {
 /**
  * Roll every in-scope part, bottom-up.
  *
- * @throws UnprocessableEntityError when a built part's component has no standard
- * cost, or when the bill of materials contains a cycle. Both abort the roll
- * rather than valuing the parent short: silently treating a missing child as
- * zero understates the finished good and dumps the difference into 5090, which
- * is the precise failure section 2.2a exists to prevent.
+ * 🛑 **A part that cannot be valued is SKIPPED, never valued short.** Treating a
+ * missing child as zero understates the finished good and dumps the difference
+ * into 5090, which is the precise failure section 2.2a exists to prevent. A
+ * skipped part keeps whatever standard it already had: stale is a state a person
+ * can see and fix, an understated number is not.
+ *
+ * ⚠️ Skipping CASCADES upward - a parent of a skipped part cannot be valued
+ * either - and every level carries the same `blockedByPartName`, so a finished
+ * good three levels up still names the one component to go price.
+ *
+ * @throws UnprocessableEntityError only when the bill of materials contains a
+ * cycle. That is a data-integrity fault rather than a pricing gap: there is no
+ * node on the cycle that could be costed even in principle, and no part to go
+ * price, so there is nothing to report and continue with.
  */
 export function computeStandardCosts(inputs: StandardCostRollInputs): StandardCostRollComputation {
   const costs = new Map<string, StandardCostComponents>()
@@ -121,6 +130,16 @@ export function computeStandardCosts(inputs: StandardCostRollInputs): StandardCo
   const name = (partId: string) => inputs.partNames?.get(partId) ?? partId
   /** The name for a REPORT, where a missing one should read as absent, not as an id. */
   const partName = (partId: string) => inputs.partNames?.get(partId) ?? null
+
+  /**
+   * partId -> the name of the part whose missing price is the ROOT cause.
+   *
+   * A part that cannot be valued on its own blames itself. A parent that gave up
+   * because a child could not be valued inherits that child's blame rather than
+   * naming the child, so a three-level cascade still points at the one screw
+   * somebody has to go price. Only populated for parts that were skipped.
+   */
+  const blameFor = new Map<string, string | null>()
 
   /**
    * The standard a PARENT should multiply by its quantity.
@@ -166,8 +185,18 @@ export function computeStandardCosts(inputs: StandardCostRollInputs): StandardCo
     // ── A purchased part: its landed cost, and nothing else ──
     if (!absorbsConversionCost(partKind)) {
       const live = inputs.liveCosts.get(partId)
-      if (live == null || !Number.isFinite(live)) {
+      // 🛑 `<= 0` belongs here with the nulls. `part_cost` is written as a real
+      // `0` for a part with no supplier price and no priced bill of materials,
+      // not left NULL, so a null-only test read "unpriced" as "worth nothing"
+      // and froze a $0.00 standard onto it. That standard then passes every
+      // downstream guard, because those test `== null` too, and ends up as
+      // `unitCost: 0` on an append-only movement. `ensureStandardCost` already
+      // refuses an explicit `unitCost <= 0` for the same reason; this is the
+      // same rule at the other door.
+      if (live == null || !Number.isFinite(live) || live <= 0) {
         skipped.push({ partId, reason: 'no-live-cost', partName: partName(partId) })
+        // Its own root cause: this is the part somebody has to go price.
+        blameFor.set(partId, partName(partId))
         return null
       }
       const material = roundMinorUnits(live)
@@ -188,6 +217,8 @@ export function computeStandardCosts(inputs: StandardCostRollInputs): StandardCo
       // bill of materials was entered has no inputs at all, so no number is
       // being understated. It is reported so it is visible, not written.
       skipped.push({ partId, reason: 'no-bill-of-materials', partName: partName(partId) })
+      // Its own root cause: this is the part whose bill of materials is missing.
+      blameFor.set(partId, partName(partId))
       return null
     }
 
@@ -195,15 +226,29 @@ export function computeStandardCosts(inputs: StandardCostRollInputs): StandardCo
     for (const child of children) {
       const childStandard = contributionOf(child.childId)
       if (childStandard == null) {
-        throw new UnprocessableEntityError(
-          // The remedy matters. Since the scope widens to descendants that have
-          // no stored standard (see `widenToUnvaluedDescendants`), a child that
-          // reaches here was either rolled and could not be valued, or is not a
-          // live part at all. Telling somebody to "give it a price" is wrong
-          // when the child already HAS one and simply has no priced bill of
-          // materials underneath it.
-          `Cannot roll standard cost for "${name(partId)}": its component "${name(child.childId)}" has no supplier price and no priced bill of materials, so it cannot be valued.`
-        )
+        // 🛑 SKIP, do not abort. This used to throw, which killed the entire
+        // run: one unpriced screw stopped every other part in the org from
+        // rolling, so the org-wide button was unusable until somebody found and
+        // priced it. Skipping writes nothing for this part - it keeps whatever
+        // standard it already had, stale but visible - and lets every part that
+        // CAN be valued be valued.
+        //
+        // ⚠️ The parent is not the remedy and naming it would be bad advice.
+        // The scope widens to descendants with no stored standard
+        // (`widenToUnvaluedDescendants`), so a child reaching here was either
+        // rolled and found unvaluable, or is not a live part at all. Either way
+        // the part to go price is the ROOT of the chain, which is what
+        // `blameFor` carries up: a finished good blames the screw, not the
+        // sub-assembly that also gave up on it.
+        const blockedByPartName = blameFor.get(child.childId) ?? partName(child.childId)
+        skipped.push({
+          partId,
+          reason: 'component-not-valuable',
+          partName: partName(partId),
+          blockedByPartName,
+        })
+        blameFor.set(partId, blockedByPartName)
+        return null
       }
       material += childStandard * child.qty
     }

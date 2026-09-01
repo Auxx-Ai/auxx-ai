@@ -246,7 +246,14 @@ async function setFirstStandardCost(
   if (standard.isErr()) throw standard.error
 
   const { standardCost, displayName } = standard.value
-  if (standardCost == null || !Number.isFinite(standardCost)) {
+  // `<= 0` is part of the post-condition, not a separate case. `ensureStandardCost`
+  // writes only where the standard IS NULL, so a part already sitting at a stored
+  // `0` comes back from it unchanged — and a null-only test would then pass on
+  // that zero and leave the part holding a standard its own opening movement
+  // disagrees with. The movement itself is safe either way (`unit_cost` is the
+  // caller's number, and `assertOpeningUnitCost` already refused `<= 0`); this is
+  // about the part not being left in a state nothing downstream can value.
+  if (standardCost == null || !Number.isFinite(standardCost) || standardCost <= 0) {
     const partLabel = displayName ? `"${displayName}"` : `part ${input.partId}`
     throw new UnprocessableEntityError(
       `Could not set a standard cost for ${partLabel}, so its opening stock was not recorded. Stock that carries no standard cost cannot be adjusted, built or closed.`,

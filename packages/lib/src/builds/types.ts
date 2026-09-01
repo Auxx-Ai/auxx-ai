@@ -57,6 +57,17 @@ export type SkipReason =
   | 'no-live-cost'
   /** A `subassembly` / `finished_good` with no bill of materials to roll. */
   | 'no-bill-of-materials'
+  /**
+   * A built part with at least one component that could not be valued.
+   *
+   * 🛑 This USED to abort the whole run with an `UnprocessableEntityError`, so
+   * one unpriced screw blocked every other part in the org. It skips now, and
+   * the skip CASCADES: a parent of a skipped part is itself unvaluable, so it
+   * skips too, naming the same root cause rather than its own child. Whatever
+   * standard the skipped part already carries is left exactly as it was - stale
+   * is a state a person can see and fix, an understated number is not.
+   */
+  | 'component-not-valuable'
 
 /** One part the roll declined to value, with the reason a person can act on. */
 export interface SkippedPart {
@@ -64,6 +75,15 @@ export interface SkippedPart {
   reason: SkipReason
   /** `EntityInstance.displayName`, so a preview can name the part to go fix. */
   partName: string | null
+  /**
+   * For `component-not-valuable`: the descendant that actually has no price.
+   *
+   * The part named by {@link partName} is only the one the roll gave up on -
+   * pricing it is not the remedy and never was. This is the part to go price,
+   * carried up unchanged through every level of the cascade so a finished good
+   * blames the screw and not the sub-assembly.
+   */
+  blockedByPartName?: string | null
 }
 
 /** One part the roll will write, with the balance-sheet effect of writing it. */

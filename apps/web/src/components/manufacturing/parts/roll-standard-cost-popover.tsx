@@ -17,6 +17,7 @@
 // this popover was opened from.
 
 import { FieldType } from '@auxx/database/enums'
+import { skipReasonLabel } from '@auxx/lib/builds/client'
 import { Button } from '@auxx/ui/components/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
@@ -29,12 +30,6 @@ import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapte
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { BaseType } from '~/components/workflow/types'
 import { api } from '~/trpc/react'
-
-/** Why a part could not be valued, in words a person can act on. */
-const SKIP_REASON_LABEL: Record<string, string> = {
-  'no-live-cost': 'no supplier price and no priced bill of materials',
-  'no-bill-of-materials': 'classified as buildable but has no bill of materials',
-}
 
 interface RollStandardCostPopoverProps {
   /** The part's entityInstanceId. */
@@ -194,8 +189,7 @@ export function RollStandardCostPopover({
                   <ul className='mt-1 space-y-0.5'>
                     {plan.skipped.slice(0, 5).map((skip) => (
                       <li key={skip.partId} className='truncate text-muted-foreground'>
-                        {skip.partName ?? skip.partId} —{' '}
-                        {SKIP_REASON_LABEL[skip.reason] ?? skip.reason}
+                        {skip.partName ?? skip.partId} — {skipReasonLabel(skip)}
                       </li>
                     ))}
                   </ul>

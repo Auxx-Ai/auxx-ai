@@ -154,27 +154,92 @@ describe('computeStandardCosts', () => {
     })
   })
 
-  it('aborts the parent with UnprocessableEntityError when a child has no standard cost', () => {
-    const naming = inputs({
-      scope: new Set([MOTOR, ASSEMBLY]),
-      partKinds: new Map<string, PartKindValue>([
-        [MOTOR, 'component'],
-        [ASSEMBLY, 'subassembly'],
-      ]),
-      // MOTOR has no `part_cost`, so it has no standard to contribute.
-      liveCosts: new Map(),
-      subpartGraph: new Map([[ASSEMBLY, [{ childId: MOTOR, qty: 1 }]]]),
-      partNames: new Map([
-        [MOTOR, '400Lbs Motor'],
-        [ASSEMBLY, '400Lbs motor Assembly'],
-      ]),
-    })
+  // 🛑 This used to THROW, which killed the whole run: one unpriced screw
+  // stopped every other part in the org from rolling. It skips now. What must
+  // NOT change is that the assembly is never valued at $0 for the motor -
+  // that understates it and dumps the difference into 5090.
+  it('skips the parent when a child has no standard cost, and writes nothing for it', () => {
+    const { costs, skipped } = computeStandardCosts(
+      inputs({
+        scope: new Set([MOTOR, ASSEMBLY]),
+        partKinds: new Map<string, PartKindValue>([
+          [MOTOR, 'component'],
+          [ASSEMBLY, 'subassembly'],
+        ]),
+        // MOTOR has no `part_cost`, so it has no standard to contribute.
+        liveCosts: new Map(),
+        subpartGraph: new Map([[ASSEMBLY, [{ childId: MOTOR, qty: 1 }]]]),
+        partNames: new Map([
+          [MOTOR, '400Lbs Motor'],
+          [ASSEMBLY, '400Lbs motor Assembly'],
+        ]),
+      })
+    )
 
-    expect(() => computeStandardCosts(naming)).toThrow(UnprocessableEntityError)
-    // Naming both parts is the point: silently valuing the assembly at $0 for
-    // the motor understates it and dumps the difference into 5090.
-    expect(() => computeStandardCosts(naming)).toThrow(/400Lbs motor Assembly/)
-    expect(() => computeStandardCosts(naming)).toThrow(/400Lbs Motor/)
+    expect(costs.has(ASSEMBLY)).toBe(false)
+    expect(skipped).toEqual([
+      { partId: MOTOR, reason: 'no-live-cost', partName: '400Lbs Motor' },
+      {
+        partId: ASSEMBLY,
+        reason: 'component-not-valuable',
+        partName: '400Lbs motor Assembly',
+        // The remedy is the MOTOR's price, never the assembly's.
+        blockedByPartName: '400Lbs Motor',
+      },
+    ])
+  })
+
+  // The whole point of skipping rather than aborting: everything that CAN be
+  // valued still is, in the same run.
+  it('rolls every other part in the same run', () => {
+    const { costs, skipped } = computeStandardCosts(
+      inputs({
+        scope: new Set([MOTOR, TUBE, ASSEMBLY]),
+        partKinds: new Map<string, PartKindValue>([
+          [MOTOR, 'component'],
+          [TUBE, 'component'],
+          [ASSEMBLY, 'subassembly'],
+        ]),
+        // TUBE is priced and unrelated; MOTOR is not and blocks ASSEMBLY.
+        liveCosts: new Map([[TUBE, 951]]),
+        subpartGraph: new Map([[ASSEMBLY, [{ childId: MOTOR, qty: 1 }]]]),
+      })
+    )
+
+    expect(costs.get(TUBE)!.standardCost).toBe(951)
+    expect(costs.has(ASSEMBLY)).toBe(false)
+    expect(skipped.map((s) => s.partId).sort()).toEqual([ASSEMBLY, MOTOR].sort())
+  })
+
+  // A three-level cascade must still name the ONE part to go price, not the
+  // sub-assembly that also gave up on it.
+  it('carries the root blame up through every level of the cascade', () => {
+    const { costs, skipped } = computeStandardCosts(
+      inputs({
+        scope: new Set([MOTOR, ASSEMBLY, LIFT]),
+        partKinds: new Map<string, PartKindValue>([
+          [MOTOR, 'component'],
+          [ASSEMBLY, 'subassembly'],
+          [LIFT, 'finished_good'],
+        ]),
+        liveCosts: new Map(),
+        subpartGraph: new Map<string, SubpartEdge[]>([
+          [ASSEMBLY, [{ childId: MOTOR, qty: 1 }]],
+          [LIFT, [{ childId: ASSEMBLY, qty: 2 }]],
+        ]),
+        partNames: new Map([
+          [MOTOR, '400Lbs Motor'],
+          [ASSEMBLY, 'Motor Assembly'],
+          [LIFT, 'Auxx Lift 400'],
+        ]),
+      })
+    )
+
+    expect(costs.size).toBe(0)
+    const lift = skipped.find((s) => s.partId === LIFT)
+    expect(lift?.reason).toBe('component-not-valuable')
+    // NOT 'Motor Assembly' — that is not the part anybody can price.
+    expect(lift?.blockedByPartName).toBe('400Lbs Motor')
   })
 
   it('aborts on a circular bill of materials rather than contributing zero', () => {
@@ -221,17 +286,31 @@ describe('computeStandardCosts', () => {
     expect(costs.has(ASSEMBLY)).toBe(false)
   })
 
-  it('aborts when an out-of-scope child has never been rolled', () => {
-    expect(() =>
-      computeStandardCosts(
-        inputs({
-          scope: new Set([LIFT]),
-          partKinds: new Map<string, PartKindValue>([[LIFT, 'finished_good']]),
-          subpartGraph: new Map([[LIFT, [{ childId: ASSEMBLY, qty: 2 }]]]),
-          storedStandardCosts: new Map(),
-        })
-      )
-    ).toThrow(UnprocessableEntityError)
+  it('skips when an out-of-scope child has never been rolled, blaming that child', () => {
+    const { costs, skipped } = computeStandardCosts(
+      inputs({
+        scope: new Set([LIFT]),
+        partKinds: new Map<string, PartKindValue>([[LIFT, 'finished_good']]),
+        subpartGraph: new Map([[LIFT, [{ childId: ASSEMBLY, qty: 2 }]]]),
+        storedStandardCosts: new Map(),
+        partNames: new Map([
+          [LIFT, 'Auxx Lift 400'],
+          [ASSEMBLY, 'Motor Assembly'],
+        ]),
+      })
+    )
+
+    expect(costs.has(LIFT)).toBe(false)
+    // The child is out of scope, so it was never itself skipped and has no
+    // blame entry — it IS the root, and gets named directly.
+    expect(skipped).toEqual([
+      {
+        partId: LIFT,
+        reason: 'component-not-valuable',
+        partName: 'Auxx Lift 400',
+        blockedByPartName: 'Motor Assembly',
+      },
+    ])
   })
 
   it('stores NULL, not zero, for an absorption rate that has not been declared', () => {
@@ -474,6 +553,83 @@ describe('computeStandardCosts', () => {
     expect(costs.has(MOTOR)).toBe(false)
     expect(skipped).toEqual([{ partId: MOTOR, reason: 'no-live-cost', partName: null }])
     expect(costs.get(TUBE)!.standardCost).toBe(951)
+  })
+
+  // 🛑 `part_cost` is written as a real `0` for a part with no supplier price and
+  // no priced bill of materials, not left NULL. Reading that as a cost rolled 83
+  // parts in the dev org to a $0.00 standard, which then passes every downstream
+  // `== null` guard and freezes onto an append-only movement.
+  it('skips a component whose live cost is a stored ZERO, not just a missing one', () => {
+    const { costs, skipped } = computeStandardCosts(
+      inputs({
+        scope: new Set([MOTOR, TUBE]),
+        partKinds: new Map<string, PartKindValue>([
+          [MOTOR, 'component'],
+          [TUBE, 'component'],
+        ]),
+        liveCosts: new Map([
+          [MOTOR, 0],
+          [TUBE, 951],
+        ]),
+      })
+    )
+
+    expect(costs.has(MOTOR)).toBe(false)
+    expect(skipped).toEqual([{ partId: MOTOR, reason: 'no-live-cost', partName: null }])
+    expect(costs.get(TUBE)!.standardCost).toBe(951)
+  })
+
+  it('still rolls a component priced at one minor unit, so the guard is > 0 and not a threshold', () => {
+    const { costs, skipped } = computeStandardCosts(
+      inputs({
+        scope: new Set([MOTOR]),
+        partKinds: new Map<string, PartKindValue>([[MOTOR, 'component']]),
+        liveCosts: new Map([[MOTOR, 1]]),
+      })
+    )
+
+    expect(skipped).toEqual([])
+    expect(costs.get(MOTOR)!.standardCost).toBe(1)
+  })
+
+  // A zero live cost on a CHILD must skip the parent by name rather than quietly
+  // contributing nothing to it — the same treatment a missing cost already gets.
+  // 🛑 The assembly must NOT come back at 951 + 0: that is the understatement.
+  it('skips a parent whose child has a zero live cost, rather than costing the parent short', () => {
+    const { costs, skipped } = computeStandardCosts(
+      inputs({
+        scope: new Set([ASSEMBLY, MOTOR, TUBE]),
+        partKinds: new Map<string, PartKindValue>([
+          [ASSEMBLY, 'subassembly'],
+          [MOTOR, 'component'],
+          [TUBE, 'component'],
+        ]),
+        liveCosts: new Map([
+          [MOTOR, 0],
+          [TUBE, 951],
+        ]),
+        subpartGraph: new Map<string, SubpartEdge[]>([
+          [
+            ASSEMBLY,
+            [
+              { childId: MOTOR, qty: 1 },
+              { childId: TUBE, qty: 1 },
+            ],
+          ],
+        ]),
+        partNames: new Map([[MOTOR, 'Crown for 59 Motor']]),
+      })
+    )
+
+    expect(costs.has(ASSEMBLY)).toBe(false)
+    // The priced sibling still rolls — that is the point of skipping.
+    expect(costs.get(TUBE)!.standardCost).toBe(951)
+    expect(skipped.find((s) => s.partId === ASSEMBLY)).toEqual({
+      partId: ASSEMBLY,
+      reason: 'component-not-valuable',
+      partName: null,
+      blockedByPartName: 'Crown for 59 Motor',
+    })
   })
 
   it('skips a buildable part that has no bill of materials yet', () => {
