@@ -1,11 +1,12 @@
 // packages/lib/src/field-hooks/pre/purchase-order-delete-guard.ts
 
-import { type RecordId, toRecordId } from '@auxx/types/resource'
+import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
 import { BadRequestError } from '../../errors'
 import { describeSettledPeriods, settledPeriodsFor } from '../../postings/settled-periods'
 import { UnifiedCrudHandler } from '../../resources/crud'
 import type { EntityPreDeleteHandler } from '../types'
 import { readMovementsByRelation } from './guarded-movements'
+import { findRelatedInstanceIds } from './related-rows'
 
 /**
  * Pre-delete guard for `purchase-orders`
@@ -47,9 +48,9 @@ export const guardPurchaseOrderDelete: EntityPreDeleteHandler = async (event) =>
   const handler = new UnifiedCrudHandler(organizationId, userId)
 
   // Refuse BEFORE any cascade, so a rejected delete mutates nothing.
-  await refuseIfBilled(handler, organizationId, recordId)
+  await refuseIfBilled(organizationId, recordId)
 
-  const lineIds = await readLineIds(handler, recordId)
+  const lineIds = await readLineIds(organizationId, recordId)
   const movements = await readMovementsByRelation(
     organizationId,
     'stock_movement_purchase_order_line',
@@ -100,29 +101,17 @@ export const guardPurchaseOrderDelete: EntityPreDeleteHandler = async (event) =>
  * three-way match is computed against — `purchasing/match.ts` reads the order
  * leg to produce a verdict at all.
  */
-async function refuseIfBilled(
-  handler: UnifiedCrudHandler,
-  organizationId: string,
-  recordId: RecordId
-): Promise<void> {
-  const { ids } = await handler.listFiltered({
-    entityDefinitionId: 'vendor_bill',
-    filters: [
-      {
-        id: 'po-bills',
-        logicalOperator: 'AND',
-        conditions: [
-          {
-            id: 'po-bills-order',
-            fieldId: 'vendor_bill:purchaseOrder',
-            operator: 'is',
-            value: recordId,
-          },
-        ],
-      },
-    ],
-    limit: 1000,
-  })
+async function refuseIfBilled(organizationId: string, recordId: RecordId): Promise<void> {
+  const { entityInstanceId } = parseRecordId(recordId)
+  // ⚠️ Through `findRelatedInstanceIds`, NOT `listFiltered` — an ARCHIVED bill
+  // still names this order, and the shared list path cannot see one. Driving
+  // this guard on 2026-08-31 deleted `PO-0002` out from under exactly that.
+  const ids = await findRelatedInstanceIds(
+    organizationId,
+    'vendor_bill',
+    'vendor_bill_purchase_order',
+    [entityInstanceId]
+  )
 
   if (ids.length > 0) {
     throw new BadRequestError(
@@ -135,27 +124,14 @@ async function refuseIfBilled(
 }
 
 /** The order's own lines. */
-async function readLineIds(
-  handler: UnifiedCrudHandler,
-  recordId: RecordId
-): Promise<readonly string[]> {
-  const { ids } = await handler.listFiltered({
-    entityDefinitionId: 'purchase_order_line',
-    filters: [
-      {
-        id: 'po-lines',
-        logicalOperator: 'AND',
-        conditions: [
-          {
-            id: 'po-lines-order',
-            fieldId: 'purchase_order_line:purchaseOrder',
-            operator: 'is',
-            value: recordId,
-          },
-        ],
-      },
-    ],
-    limit: 1000,
-  })
-  return ids
+async function readLineIds(organizationId: string, recordId: RecordId): Promise<readonly string[]> {
+  const { entityInstanceId } = parseRecordId(recordId)
+  // Archived lines are collected too — a line left behind by its order is the
+  // strand this cascade exists to prevent, and archiving it does not change that.
+  return findRelatedInstanceIds(
+    organizationId,
+    'purchase_order_line',
+    'purchase_order_line_purchase_order',
+    [entityInstanceId]
+  )
 }

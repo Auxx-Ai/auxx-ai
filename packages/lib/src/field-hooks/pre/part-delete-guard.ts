@@ -6,6 +6,7 @@ import { describeSettledPeriods, settledPeriodsFor } from '../../postings/settle
 import { UnifiedCrudHandler } from '../../resources/crud'
 import type { EntityPreDeleteHandler } from '../types'
 import { type GuardedMovement, readMovementsByRelation } from './guarded-movements'
+import { findRelatedInstanceIds } from './related-rows'
 
 /**
  * Pre-delete guard for `parts` (plans/money/tasks/20-part-delete-safety.md).
@@ -75,8 +76,8 @@ export const guardPartDelete: EntityPreDeleteHandler = async (event) => {
   }
 
   const handler = new UnifiedCrudHandler(organizationId, userId)
-  await cascadeBomRows(handler, recordId)
-  await cascadeSupplierPricing(handler, recordId)
+  await cascadeBomRows(handler, organizationId, recordId)
+  await cascadeSupplierPricing(handler, organizationId, recordId)
   await cascadeMovements(handler, movements)
 }
 
@@ -111,23 +112,22 @@ function describeRefusal(settled: Map<string, number>): string {
  * both. Ids are de-duplicated before deletion so a part that is its own
  * assembly's component is not deleted twice.
  */
-async function cascadeBomRows(handler: UnifiedCrudHandler, partRecordId: RecordId): Promise<void> {
+async function cascadeBomRows(
+  handler: UnifiedCrudHandler,
+  organizationId: string,
+  partRecordId: RecordId
+): Promise<void> {
+  const { entityInstanceId } = parseRecordId(partRecordId)
+  // Archived rows are collected too — see `related-rows.ts`. A subpart left
+  // behind by its part is nameless (the display cascade nulls it) and keeps its
+  // parent's rolled cost stale forever, archived or not.
   const ids = new Set<string>()
-  for (const field of ['subpart:parentPart', 'subpart:childPart'] as const) {
-    const { ids: found } = await handler.listFiltered({
-      entityDefinitionId: 'subpart',
-      filters: [
-        {
-          id: 'part-bom-rows',
-          logicalOperator: 'AND',
-          conditions: [
-            { id: `part-bom-rows-${field}`, fieldId: field, operator: 'is', value: partRecordId },
-          ],
-        },
-      ],
-      limit: 1000,
-    })
-    for (const id of found) ids.add(id)
+  for (const attribute of ['subpart_parent_part', 'subpart_child_part'] as const) {
+    for (const id of await findRelatedInstanceIds(organizationId, 'subpart', attribute, [
+      entityInstanceId,
+    ])) {
+      ids.add(id)
+    }
   }
 
   for (const id of ids) {
@@ -138,26 +138,12 @@ async function cascadeBomRows(handler: UnifiedCrudHandler, partRecordId: RecordI
 /** Supplier prices. A price for a part that does not exist prices nothing. */
 async function cascadeSupplierPricing(
   handler: UnifiedCrudHandler,
+  organizationId: string,
   partRecordId: RecordId
 ): Promise<void> {
-  const { ids } = await handler.listFiltered({
-    entityDefinitionId: 'vendor_part',
-    filters: [
-      {
-        id: 'part-supplier-pricing',
-        logicalOperator: 'AND',
-        conditions: [
-          {
-            id: 'part-supplier-pricing-part',
-            fieldId: 'vendor_part:part',
-            operator: 'is',
-            value: partRecordId,
-          },
-        ],
-      },
-    ],
-    limit: 1000,
-  })
+  const ids = await findRelatedInstanceIds(organizationId, 'vendor_part', 'vendor_part_part', [
+    parseRecordId(partRecordId).entityInstanceId,
+  ])
 
   for (const id of ids) {
     await handler.delete(toRecordId('vendor_part', id))

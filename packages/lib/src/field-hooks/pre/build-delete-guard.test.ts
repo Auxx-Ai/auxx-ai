@@ -14,6 +14,7 @@ import type { EntityPreDeleteEvent } from '../types'
 
 const h = vi.hoisted(() => ({
   listFiltered: vi.fn(),
+  findRelated: vi.fn(),
   del: vi.fn(),
   getCachedEntityDefId: vi.fn(),
   bySystemAttributes: vi.fn(),
@@ -29,6 +30,8 @@ vi.mock('../../resources/crud', () => ({
     delete = h.del
   },
 }))
+
+vi.mock('./related-rows', () => ({ findRelatedInstanceIds: h.findRelated }))
 
 vi.mock('../../cache', () => ({
   getCachedEntityDefId: h.getCachedEntityDefId,
@@ -99,7 +102,7 @@ beforeEach(() => {
   h.resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: null })
   h.postedPeriodRows.mockResolvedValue([])
   h.movementRows.mockResolvedValue([])
-  h.listFiltered.mockResolvedValue({ ids: [] })
+  h.findRelated.mockResolvedValue([])
   settings({})
 })
 
@@ -159,13 +162,13 @@ describe('guardBuildDelete — refusals', () => {
   })
 
   it('refuses when this build HAS BEEN reversed', async () => {
-    h.listFiltered.mockResolvedValue({ ids: ['reversing-build'] })
+    h.findRelated.mockResolvedValue(['reversing-build'])
 
     await expect(guardBuildDelete(event())).rejects.toThrow(/already been reversed/i)
   })
 
   it('checks the reversal pair before reading movements, so nothing is deleted', async () => {
-    h.listFiltered.mockResolvedValue({ ids: ['reversing-build'] })
+    h.findRelated.mockResolvedValue(['reversing-build'])
     h.movementRows.mockResolvedValue([movement('m1', '2026-09-01')])
 
     await expect(guardBuildDelete(event())).rejects.toThrow()

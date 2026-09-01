@@ -408,6 +408,34 @@ a re-SUM of (§8), silently, with `hygiene.danglingRelationValues` still reading
 `typeof === 'string'`** — on a relation or a select it is always false, and the reader silently
 matches nothing.
 
+🛑 **And a guard must count ARCHIVED children, which none of them did.** Every guard asked "does
+anything still depend on this record?" through `UnifiedCrudHandler.listFiltered`, whose paged query
+hardcodes `isNull(archivedAt)` into the `baseWhere` it shares with its `COUNT(*)`
+(`unified-handler-queries.ts:692`) with no way to disable it. So an archived child was invisible,
+and that broke the guards in two directions at once: a **refusal under-refused** —
+`guardPurchaseOrderDelete` deleted `PO-0002` on 2026-08-31 while an archived vendor bill still named
+it, and the sweep then erased both halves of the relation — and a **cascade under-cascaded**,
+stranding the archived subpart, vendor-part or line it exists to collect. `readMovementsByRelation`
+had it too, so an archived movement could not hold its settled month closed.
+
+The replacement is `field-hooks/pre/related-rows.ts` (`findRelatedInstanceIds`), which reads
+`EntityInstance ⋈ FieldValue` directly and deliberately applies no `archivedAt` predicate.
+**`archivedAt` is a soft delete, not a delete:** the row is still in the table, a vendor's bill is
+still a document the vendor sent, and the three-way match still references it. The guards' own
+messages say *"archive it instead"* — archiving is the sanctioned way to retire a record, which is
+exactly why it cannot also mean "nothing depends on this any more".
+
+⚠️ **The dispatch guards (`invoice`, `order`, `quote`, `work-order`) still carry this**, five
+`listFiltered` call sites, pinned by `field-hooks/__tests__/guard-sees-archived.test.ts`'s
+`KNOWN_UNFIXED` list rather than silently excluded.
+
+🛑 **Archive was also a one-way door, which is why the refusal's own advice was impossible.**
+`getEntityInstance` excluded archived rows, and both `restoreEntity` and `deleteEntity` load through
+it — so `restoreEntity`, whose only purpose is to clear `archivedAt`, could never find its target,
+and an archived record could be neither restored nor purged. `guardPurchaseOrderDelete` telling a
+caller to "delete or unlink the bills first" was asking for something the API refused to do. Fixed
+with an explicit `includeArchived` on the loader, passed by those two callers only.
+
 ⚠️ The lesson for this guide is narrower than "write better guards": every one of these four
 instances passed review and passed its unit tests, and each was found only by performing the
 action in a browser and then asking the database whether it had happened. Budget for that step.

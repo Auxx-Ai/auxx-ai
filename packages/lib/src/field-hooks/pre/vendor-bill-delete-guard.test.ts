@@ -12,6 +12,7 @@ import type { EntityPreDeleteEvent } from '../types'
 
 const h = vi.hoisted(() => ({
   listFiltered: vi.fn(),
+  findRelated: vi.fn(),
   del: vi.fn(),
   resolvePeriodLock: vi.fn(),
   postedPeriodRows: vi.fn(),
@@ -25,6 +26,8 @@ vi.mock('../../resources/crud', () => ({
     delete = h.del
   },
 }))
+
+vi.mock('./related-rows', () => ({ findRelatedInstanceIds: h.findRelated }))
 
 vi.mock('../../postings/period-lock', () => ({ resolvePeriodLock: h.resolvePeriodLock }))
 vi.mock('../../settings/settings-service', () => ({
@@ -69,11 +72,10 @@ function event(values: Record<string, unknown> = {}): EntityPreDeleteEvent {
   }
 }
 
-/** `listFiltered` answers per entity, so a test cannot confuse the two reads. */
+/** `findRelatedInstanceIds` answers per child type, so a test cannot confuse the two reads. */
 function children({ allocations = [], lines = [] }: { allocations?: string[]; lines?: string[] }) {
-  h.listFiltered.mockImplementation(
-    async ({ entityDefinitionId }: { entityDefinitionId: string }) =>
-      entityDefinitionId === 'vendor_payment_allocation' ? { ids: allocations } : { ids: lines }
+  h.findRelated.mockImplementation(async (_org: string, childType: string) =>
+    childType === 'vendor_payment_allocation' ? allocations : lines
   )
 }
 

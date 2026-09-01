@@ -9,6 +9,7 @@ import { UnifiedCrudHandler } from '../../resources/crud'
 import { unwrapStatusValue } from '../../resources/events/captured-values'
 import { VendorBillStatus } from '../../resources/registry/enum-values'
 import type { EntityPreDeleteEvent, EntityPreDeleteHandler } from '../types'
+import { findRelatedInstanceIds } from './related-rows'
 
 /**
  * The bill statuses that mean the document is already in the books or already
@@ -67,7 +68,7 @@ export const guardVendorBillDelete: EntityPreDeleteHandler = async (event) => {
 
   // Refuse BEFORE any cascade, so a rejected delete mutates nothing.
   refuseOnStatus(event)
-  await refuseIfAllocated(handler, organizationId, recordId)
+  await refuseIfAllocated(organizationId, recordId)
 
   const billedAt = await resolveAccountingDate(organizationId, billInstanceId, event)
   const settled = await settledPeriodsFor(organizationId, [billedAt])
@@ -80,7 +81,7 @@ export const guardVendorBillDelete: EntityPreDeleteHandler = async (event) => {
     )
   }
 
-  await cascadeLines(handler, recordId)
+  await cascadeLines(handler, organizationId, recordId)
 }
 
 /** The status wall, read off the values `deleteEntity` already captured. */
@@ -108,29 +109,16 @@ function unwrapStatus(value: unknown): string | null {
 }
 
 /** Refuse when a vendor payment has been applied to this bill. */
-async function refuseIfAllocated(
-  handler: UnifiedCrudHandler,
-  organizationId: string,
-  recordId: RecordId
-): Promise<void> {
-  const { ids } = await handler.listFiltered({
-    entityDefinitionId: 'vendor_payment_allocation',
-    filters: [
-      {
-        id: 'bill-allocations',
-        logicalOperator: 'AND',
-        conditions: [
-          {
-            id: 'bill-allocations-bill',
-            fieldId: 'vendor_payment_allocation:vendorBill',
-            operator: 'is',
-            value: recordId,
-          },
-        ],
-      },
-    ],
-    limit: 1000,
-  })
+async function refuseIfAllocated(organizationId: string, recordId: RecordId): Promise<void> {
+  const { entityInstanceId } = parseRecordId(recordId)
+  // ⚠️ Archived allocations count. Money that has been applied stays applied
+  // whether or not somebody archived the row recording it — see `related-rows.ts`.
+  const ids = await findRelatedInstanceIds(
+    organizationId,
+    'vendor_payment_allocation',
+    'vendor_payment_allocation_vendor_bill',
+    [entityInstanceId]
+  )
 
   if (ids.length > 0) {
     throw new BadRequestError(
@@ -179,25 +167,18 @@ async function resolveAccountingDate(
 }
 
 /** The bill's own lines. See the class docblock for why this one suppresses. */
-async function cascadeLines(handler: UnifiedCrudHandler, recordId: RecordId): Promise<void> {
-  const { ids } = await handler.listFiltered({
-    entityDefinitionId: 'vendor_bill_line',
-    filters: [
-      {
-        id: 'bill-lines',
-        logicalOperator: 'AND',
-        conditions: [
-          {
-            id: 'bill-lines-bill',
-            fieldId: 'vendor_bill_line:vendorBill',
-            operator: 'is',
-            value: recordId,
-          },
-        ],
-      },
-    ],
-    limit: 1000,
-  })
+async function cascadeLines(
+  handler: UnifiedCrudHandler,
+  organizationId: string,
+  recordId: RecordId
+): Promise<void> {
+  const { entityInstanceId } = parseRecordId(recordId)
+  const ids = await findRelatedInstanceIds(
+    organizationId,
+    'vendor_bill_line',
+    'vendor_bill_line_vendor_bill',
+    [entityInstanceId]
+  )
 
   for (const id of ids) {
     await handler.delete(toRecordId('vendor_bill_line', id), { suppressPostDeleteHooks: true })

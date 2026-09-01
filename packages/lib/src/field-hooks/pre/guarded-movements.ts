@@ -101,8 +101,14 @@ export async function readMovementsByRelation(
   ).where(
     and(
       eq(schema.EntityInstance.organizationId, organizationId),
-      eq(schema.EntityInstance.entityDefinitionId, movementDefId),
-      isNull(schema.EntityInstance.archivedAt)
+      eq(schema.EntityInstance.entityDefinitionId, movementDefId)
+      // 🛑 Archived movements are INCLUDED, deliberately. `archivedAt` is a soft
+      // delete — the row is still in the ledger and still under whatever entry
+      // was filed for its month, so a settled period containing an archived
+      // movement is still settled. Filtering them here let a parent delete its
+      // history out from under a posted entry as long as somebody had archived
+      // the rows first. See `related-rows.ts` for the same decision on the
+      // relation side and the dev evidence behind it.
     )
   )
 
