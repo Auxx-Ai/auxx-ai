@@ -329,11 +329,11 @@ export function PartPricingCard({ recordId }: DrawerTabProps) {
           <Sparkles className='size-4 shrink-0 text-amber-600' />
           <p className='flex-1 text-xs text-muted-foreground'>
             <span className='font-medium text-foreground'>
-              {showOfferNudge ? 'No price set' : 'Not sellable'}
+              {showOfferNudge ? 'No price set.' : 'Not sellable.'}
             </span>{' '}
             {showOfferNudge
-              ? "— this finished good isn't sellable yet. Check Sellable to set a price."
-              : "— this finished good's catalog item is inactive. Re-check Sellable to sell it again."}
+              ? "This finished good isn't sellable yet. Check Sellable to set a price."
+              : "This finished good's catalog item is inactive. Re-check Sellable to sell it again."}
           </p>
         </div>
       )}
