@@ -2,44 +2,58 @@
 
 'use client'
 
-import {
-  MainPage,
-  MainPageBreadcrumb,
-  MainPageBreadcrumbItem,
-  MainPageHeader,
-} from '@auxx/ui/components/main-page'
-import { Package } from 'lucide-react'
+import { PermissionKey } from '@auxx/lib/permissions/client'
+import { Settings } from 'lucide-react'
 import { usePathname } from 'next/navigation'
+import { EntityRouteLayout } from '~/components/records'
+import { useAccess } from '~/providers/capabilities-provider'
 
 const BASE_PATH = '/app/parts'
 
 /**
- * Parts layout — a plain breadcrumb shell (not an `EntityRouteLayout`; parts
- * has no Dashboard tab). `RecordsView` (mounted by `parts/page.tsx`) renders
- * its own MainPageContent and contributes the Create button via
- * `MainPageAction`.
+ * Parts layout — the shared entity route shell (Parts | Dashboard | Settings).
+ *
+ * Only the tabbed routes get it. Detail (`[partId]`) and import
+ * (`import/[jobId]`) render their own `MainPage` via `DetailView` / `ImportPage`
+ * and must bypass this one, or two `MainPage` trees nest. Same guard as
+ * `companies/layout.tsx`, with the settings clause added.
+ *
+ * `RecordsView` (mounted by `page.tsx`) renders its own `MainPageContent` and
+ * contributes the Create button through `MainPageAction`.
  */
 export default function PartsLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
+  const { can } = useAccess()
 
-  // Detail pages (via DetailView) and import pages (via ImportPage) render their
-  // own MainPage — only the list route gets this breadcrumb shell.
-  if (pathname !== BASE_PATH) {
+  const isShellRoute =
+    pathname === BASE_PATH ||
+    pathname.startsWith(`${BASE_PATH}/dashboard`) ||
+    pathname.startsWith(`${BASE_PATH}/settings`)
+
+  if (!isShellRoute) {
     return <>{children}</>
   }
 
   return (
-    <MainPage>
-      <MainPageHeader>
-        <MainPageBreadcrumb>
-          <MainPageBreadcrumbItem
-            title='Parts'
-            href={BASE_PATH}
-            icon={<Package className='size-4' />}
-          />
-        </MainPageBreadcrumb>
-      </MainPageHeader>
+    <EntityRouteLayout
+      slug='parts'
+      basePath={BASE_PATH}
+      extraTabs={[
+        {
+          value: 'settings',
+          label: 'Settings',
+          icon: <Settings />,
+          // The segment, never `settings/general`: `MainPageTabs` matches by
+          // LONGEST PREFIX, so a leaf href makes every other settings page fall
+          // through to the `/app/parts` prefix and light up the Parts tab.
+          href: `${BASE_PATH}/settings`,
+          // Mirrors what the page and the mutation both assert. Hiding it can
+          // collapse the strip to a single tab, at which point `MainPageTabs`
+          // drops the whole control — that is intended, not a bug to patch.
+          hidden: !can(PermissionKey.settingsManage),
+        },
+      ]}>
       {children}
-    </MainPage>
+    </EntityRouteLayout>
   )
 }
