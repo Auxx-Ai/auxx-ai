@@ -26,6 +26,7 @@ import {
   defineParentReconciler,
   resolveParentsByRelation,
 } from '../../reconcilers/parent-reconciler'
+import { unwrapRelationId } from '../../resources/events/captured-values'
 import type { EntityFieldChangeHandler, EntityTriggerHandler } from '../types'
 
 const logger = createScopedLogger('field-hooks:purchase-order-line-rollups')
@@ -483,7 +484,7 @@ function buildRollupTrigger(spec: RollupSpec): EntityTriggerHandler {
   return async (event) => {
     const { organizationId, entityInstanceId, values } = event
 
-    let lineInstanceId = extractRelatedEntityId(values, spec.lineRelAttr)
+    let lineInstanceId = unwrapRelationId(values[spec.lineRelAttr])
 
     if (!lineInstanceId) {
       const [row] = await database
@@ -636,18 +637,4 @@ export const recalculateBilledRollupOnBillLineChange: EntityFieldChangeHandler =
   for (const lineInstanceId of lineInstanceIds) {
     await billedRollupReconciler.mark(event.organizationId, event.userId, lineInstanceId)
   }
-}
-
-/**
- * Extract a related entity id from threaded event values. Values may be keyed by
- * systemAttribute or by field id, and a relationship value may be a bare instance id
- * or a `defId:instanceId` RecordId.
- */
-function extractRelatedEntityId(
-  values: Record<string, unknown>,
-  systemAttribute: string
-): string | undefined {
-  const value = values[systemAttribute]
-  if (typeof value !== 'string' || value.length === 0) return undefined
-  return value.includes(':') ? parseRecordId(value as RecordId).entityInstanceId : value
 }

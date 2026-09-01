@@ -4,6 +4,7 @@ import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import { BadRequestError } from '../../errors'
 import { describeSettledPeriods, settledPeriodsFor } from '../../postings/settled-periods'
 import { UnifiedCrudHandler } from '../../resources/crud'
+import { unwrapRelationId } from '../../resources/events/captured-values'
 import type { EntityPreDeleteEvent, EntityPreDeleteHandler } from '../types'
 import { type GuardedMovement, readMovementsByRelation } from './guarded-movements'
 
@@ -88,8 +89,13 @@ async function refuseIfReversalPair(
 ): Promise<void> {
   const { organizationId, recordId } = event
 
-  const reversalOf = event.values.build_reversal_of
-  if (typeof reversalOf === 'string' && reversalOf.length > 0) {
+  // 🛑 Through `unwrapRelationId`, never `typeof === 'string'`. The capture chain hands a
+  // RELATIONSHIP over as `['defId:instId']` — an array of one — so the string test this
+  // originally used was always false and the refusal never fired in production, while its
+  // unit test passed a bare string and stayed green. See the three-chain table on
+  // `resources/events/captured-values.ts`.
+  const reversalOf = unwrapRelationId(event.values.build_reversal_of)
+  if (reversalOf) {
     throw new BadRequestError(
       'This build reverses another build. Deleting it would leave the original ' +
         'reversed by nothing — archive it instead.',

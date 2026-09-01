@@ -5,6 +5,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { parseRecordId } from '@auxx/types/resource'
 import { and, eq, inArray } from 'drizzle-orm'
 import { recalculateAffectedParts, recalculateAllPartCosts } from '../../bom/cost-calculator'
+import { unwrapRelationId } from '../../resources/events/captured-values'
 import type { FieldTriggerHandler } from '../types'
 
 const logger = createScopedLogger('field-hooks:bom-cost')
@@ -66,7 +67,7 @@ export async function recalculatePartCostForEntityBatch(params: {
   const partIds = new Set<string>()
   const missing: string[] = []
   for (const { entityInstanceId, values } of records) {
-    const fromValues = values ? extractRelatedEntityId(values, relationshipAttr) : undefined
+    const fromValues = values ? unwrapRelationId(values[relationshipAttr]) : undefined
     if (fromValues) partIds.add(fromValues)
     else missing.push(entityInstanceId)
   }
@@ -208,21 +209,6 @@ async function batchResolvePartIds(
 
   // Deduplicate — multiple instances may point to the same part
   return [...new Set(partIds)]
-}
-
-/**
- * Extract a related entity ID from event values.
- * Handles both plain entity instance IDs (from create events)
- * and RecordId format "defId:instId" (from delete events using captureEventData).
- */
-function extractRelatedEntityId(
-  values: Record<string, unknown>,
-  systemAttribute: string
-): string | undefined {
-  const value = values[systemAttribute]
-  if (typeof value !== 'string') return undefined
-  // RecordId format contains a colon — extract the entity instance ID
-  return value.includes(':') ? parseRecordId(value as any).entityInstanceId : value
 }
 
 export { recalculatePartCost }

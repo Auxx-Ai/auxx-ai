@@ -1,6 +1,7 @@
 // packages/lib/src/resources/hooks/lifecycle-status-guard.ts
 
 import { BadRequestError } from '../../errors'
+import { unwrapStatusValue } from '../events/captured-values'
 import type { SystemHook } from './types'
 
 /**
@@ -101,32 +102,15 @@ export const BUILD_ACTION_STATUS_MESSAGE =
 /**
  * Reduce a status write to the bare value being set, whatever shape it arrives in.
  *
- * 🛑 The two chains hand a guard **different shapes**, and this is the whole reason the
- * function exists rather than being inlined twice:
- *
- * - On the **system**-hook chain (`UnifiedCrudHandler.runPreHooks`) the value is raw caller
- *   input — usually the bare string, sometimes a single-element array.
- * - On the **field** pre-hook chain (`fireFieldPreHooks`) the value has already been through
- *   `validateAndConvertValue`, so a SINGLE_SELECT arrives as `{ type: 'option', optionId }`
- *   and **never** as a bare string. A guard on that chain that compares the value directly
- *   to `'issued'` is inert: the comparison can never be true, so the guard silently passes
- *   everything.
- *
- * Unwrapping the envelope makes the system-hook side strictly stricter (it now also catches
- * a caller that passes the typed shape), which can only ever reject a write that was trying
- * to set a guarded status.
- *
- * @param raw - The value as the chain handed it over.
- * @returns The scalar the guard should compare against.
+ * 🛑 **Moved to `resources/events/captured-values.ts`** and re-exported here so the callers
+ * that already import it from this path keep working. It moved because a THIRD chain — the
+ * `captureEventData` capture that feeds pre-delete hooks, post-delete hooks and the lifecycle
+ * event — hands over yet another shape, and keeping the unwrapper next to the function that
+ * produces the shapes is what stops a fourth private copy being written
+ * (`plans/money/tasks/24-captured-value-shape.md`). The three-chain table lives on the
+ * definition.
  */
-export function unwrapStatusValue(raw: unknown): unknown {
-  if (Array.isArray(raw)) return unwrapStatusValue(raw[0])
-  if (raw && typeof raw === 'object') {
-    if ('optionId' in raw) return (raw as { optionId: unknown }).optionId
-    if ('value' in raw) return (raw as { value: unknown }).value
-  }
-  return raw
-}
+export { unwrapStatusValue }
 
 /** Options for {@link createLifecycleStatusGuard}. */
 export interface LifecycleStatusGuardOptions {

@@ -238,6 +238,36 @@ All four are registered in the events worker's job mapping (`events-worker.ts`
 `eventHandlersJobMappings`) *and* the `EventHandlers` map (`events/handlers/publish-event-job.ts`) —
 miss either and the queued job won't resolve.
 
+### 7.1 The payload shape each door hands over
+
+🛑 **The same systemAttribute arrives in a different shape depending on which chain fired you, and
+nothing in the types says so** — every fire point declares `Record<string, unknown>`.
+
+| chain | fire point | SINGLE_SELECT | RELATIONSHIP |
+| --- | --- | --- | --- |
+| system hook | `UnifiedCrudHandler.runPreHooks` | `'issued'`, sometimes `['issued']` | `'defId:instId'` |
+| field pre-hook | `fireFieldPreHooks`, after `validateAndConvertValue` | `{type:'option', optionId}` | `{type:'relationship', recordId}` |
+| **capture** | `captureEventData` — feeds pre-delete hooks, post-delete hooks **and** the door-2 lifecycle payload | **`['issued']`** | **`['defId:instId']`** |
+
+The capture chain reads through `getValues`, which arrays every `ARRAY_RETURN_FIELD_TYPES` member
+(`SINGLE_SELECT`, `MULTI_SELECT`, `TAGS`, `RELATIONSHIP`, `FILE`) **regardless of how many values
+are stored** — a to-one relation is still an array of one. A create/update threads the caller's own
+input instead, where the same field is a bare string. Scalars (NUMBER, CURRENCY, TEXT, CHECKBOX)
+are bare everywhere; DATETIME is a **string**, not a `Date`; ACTOR is an object.
+
+⚠️ **Never test a captured value with `typeof value === 'string'`.** On a SINGLE_SELECT or
+RELATIONSHIP it is always false, so the reader matches nothing — it does not throw, it silently
+does nothing, and it passes any unit test built from a hand-written string fixture. That has
+shipped twice: once on the field pre-hook chain (#1940) and once on the capture chain (#1995,
+where a delete guard was inert in production and a delete that should have been refused cascaded
+9 stock movements).
+
+**Read through `resources/events/captured-values.ts`** — `unwrapStatusValue`,
+`unwrapRelationId`, `unwrapRelationIds` — which handle all three chains. The shape itself is
+pinned by `resources/events/captured-shape.test.ts`; guard fixtures build it with
+`field-hooks/__tests__/support/captured.ts` so a test cannot pass against a shape production never
+sends.
+
 ---
 
 ## 8. The Sync-Change Manifest (B2)
@@ -387,6 +417,10 @@ misses + 1 deduped recalc, not 500×).
 
 ## 13. Gotchas & Invariants
 
+- **A captured value is not the shape a create event sends.** `RELATIONSHIP` and `SINGLE_SELECT`
+  arrive as one-element arrays on the capture chain and as bare strings on create. Unwrap through
+  `resources/events/captured-values.ts`; a `typeof === 'string'` test is silently always false.
+  See §7.1 — this has shipped as a live defect twice.
 - **`skipEvents` suppresses everything.** Sync/import writes fire no per-write events, hooks, or
   realtime. The **only** way to react to synced data is the sync-change manifest (door 3). Do not
   add per-write hooks on the sync thread.
@@ -431,6 +465,8 @@ misses + 1 deduped recalc, not 500×).
 | Manifest types | `packages/lib/src/record-rules/sync-manifest-types.ts` |
 | Manifest collector + subscriptions | `packages/lib/src/record-rules/sync-manifest-collector.ts`, `subscriptions.ts` |
 | Old-value capture | `packages/lib/src/record-rules/capture-field-changes.ts` |
+| Payload capture (delete/lifecycle) | `packages/lib/src/resources/events/extract-event-data.ts` (`captureEventData`) |
+| Payload unwrappers + the three-chain table (§7.1) | `packages/lib/src/resources/events/captured-values.ts` |
 | Retention | `packages/lib/src/record-rules/run-retention-job.ts` |
 | Door 1 (interactive field) | `packages/lib/src/record-rules/hook-handler.ts`, `field-hooks/register-hooks.ts` |
 | Door 1b (native field-trigger) | `packages/lib/src/field-hooks/collect-triggers.ts`, `field-hook-job.ts` |
