@@ -33,6 +33,7 @@ import {
   useRecordDrillStack,
   useRecordPeekStack,
 } from '~/components/records/record-drill-panels'
+import { RecordIdentityHeader } from '~/components/records/ui/record-identity-header'
 import { useCanViewRecordResource, useRecord, useResource } from '~/components/resources'
 import { useRecordLink } from '~/components/resources/utils/get-record-link'
 import { TasksSection } from '~/components/tasks/ui/tasks-section'
@@ -404,8 +405,15 @@ function DrawerRecordFrame({
             onReset={handleResetTabs}
           />
 
-          {/* Card content (person card, entity card, etc.) — base frame only (decision #9) */}
-          {isBase && cardContent}
+          {/* Identity header (avatar + display name + secondary line). The HOST's
+              `cardContent` is base-frame only (decision #9) — a peeked frame must
+              derive from its own resource, not the opener's. It still needs a
+              name though: without one, drilling into a supplier/part lands on a
+              header reading only the resource label ("Supplier") with the record's
+              name nowhere but a Details row. Every host's `cardContent` today IS a
+              `RecordIdentityHeader`, so a peeked frame renders the bare one against
+              its own `recordId`. */}
+          {isBase ? cardContent : <RecordIdentityHeader recordId={recordId} readOnly={readOnly} />}
 
           <div className='flex flex-1 overflow-hidden'>
             {/* Base tabs - static */}
