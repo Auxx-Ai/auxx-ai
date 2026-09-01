@@ -40,6 +40,8 @@ const VENDOR_PART_SYSTEM_ATTRIBUTES = [
   'vendor_part_is_preferred',
   'vendor_part_contact',
   'vendor_part_part',
+  'vendor_part_purchase_unit',
+  'vendor_part_purchase_ratio',
 ] as const
 
 const PART_HINT_ATTRIBUTES = ['hs_code'] as const
@@ -149,6 +151,8 @@ export function VendorPartDialog({
           leadTime: (systemValues.vendor_part_lead_time as number) ?? null,
           minOrderQty: (systemValues.vendor_part_min_order_qty as number) ?? null,
           isPreferred: (systemValues.vendor_part_is_preferred as boolean) ?? false,
+          purchaseUnit: (systemValues.vendor_part_purchase_unit as string) || null,
+          purchaseRatio: (systemValues.vendor_part_purchase_ratio as number) ?? null,
         })
       } else if (!isEditMode) {
         setValues({
@@ -263,6 +267,16 @@ export function VendorPartDialog({
           value: values.isPreferred,
           fieldType: FieldType.CHECKBOX,
         },
+        {
+          fieldId: 'vendor_part_purchase_unit',
+          value: values.purchaseUnit,
+          fieldType: FieldType.TEXT,
+        },
+        {
+          fieldId: 'vendor_part_purchase_ratio',
+          value: values.purchaseRatio,
+          fieldType: FieldType.NUMBER,
+        },
       ]
 
       const success = await saveMultipleAsync(recordId, fieldValues)
@@ -290,6 +304,8 @@ export function VendorPartDialog({
           vendor_part_lead_time: values.leadTime,
           vendor_part_min_order_qty: values.minOrderQty,
           vendor_part_is_preferred: values.isPreferred,
+          vendor_part_purchase_unit: values.purchaseUnit,
+          vendor_part_purchase_ratio: values.purchaseRatio,
         },
       })
 

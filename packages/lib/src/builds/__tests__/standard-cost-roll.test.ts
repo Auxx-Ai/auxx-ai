@@ -72,39 +72,42 @@ describe('computeStandardCosts', () => {
       ]),
     })
 
-  it("rolls children's standardCost, so a subassembly's conversion cost survives to the parent", () => {
+  it("rolls children's standardCost at RATE precision, so a subassembly's conversion cost survives to the parent without collapsing to a whole cent", () => {
     const { costs } = computeStandardCosts(liftGraph())
 
     expect(costs.get(ASSEMBLY)).toEqual({
-      standardMaterialCost: 2961, // round(2009.8) + round(951)
+      standardMaterialCost: 2960.8, // 2009.8 + 951, already within RATE_DECIMALS
       standardLaborCost: 500,
       standardOverheadCost: 200,
-      standardCost: 3661,
+      standardCost: 3660.8,
     })
 
-    // 2 x 3661 = 7322, NOT 2 x 2961 = 5922. The $14.00 difference is exactly the
-    // two assemblies' conversion cost, and rolling `part_cost` would drop it.
+    // 2 x 3660.8 = 7321.6, NOT 2 x part_cost's 2960.8 = 5921.6. The $14.00
+    // difference is exactly the two assemblies' conversion cost, and rolling
+    // `part_cost` would drop it.
     expect(costs.get(LIFT)).toEqual({
-      standardMaterialCost: 7322,
+      standardMaterialCost: 7321.6,
       standardLaborCost: 500,
       standardOverheadCost: 200,
-      standardCost: 8022,
+      standardCost: 8021.6,
     })
 
-    const naiveMaterial = Math.round(2960.8) * 2
+    const naiveMaterial = 2960.8 * 2
     expect(costs.get(LIFT)!.standardMaterialCost - naiveMaterial).toBe(1400)
   })
 
-  it('gives a purchased component zero labour and zero overhead', () => {
+  it('gives a purchased component zero labour and zero overhead, at its RATE precision', () => {
     const { costs } = computeStandardCosts(liftGraph())
 
     // Zero, not null: we know we did not assemble it. Adding $7.00 of assembly
     // labour to a motor capitalises cost never spent and overstates 1310.
+    // standardMaterialCost stays 2009.8 rather than rounding to 2010 - a
+    // standard cost is a RATE, not an amount.
     expect(costs.get(MOTOR)).toEqual({
-      standardMaterialCost: 2010,
+      standardMaterialCost: 2009.8,
       standardLaborCost: 0,
       standardOverheadCost: 0,
-      standardCost: 2010,
+      standardCost: 2009.8,
     })
   })
 
@@ -120,10 +123,10 @@ describe('computeStandardCosts', () => {
     )
 
     expect(costs.get(MOTOR)).toEqual({
-      standardMaterialCost: 2010,
+      standardMaterialCost: 2009.8,
       standardLaborCost: 0,
       standardOverheadCost: 0,
-      standardCost: 2010,
+      standardCost: 2009.8,
     })
   })
 
@@ -519,7 +522,7 @@ describe('computeStandardCosts', () => {
     })
   })
 
-  it('rounds before freezing, because CURRENCY is integer minor units', () => {
+  it('rounds a RATE to five places before freezing, not to a whole cent', () => {
     const { costs } = computeStandardCosts(
       inputs({
         scope: new Set([MOTOR, ASSEMBLY]),
@@ -535,10 +538,13 @@ describe('computeStandardCosts', () => {
       })
     )
 
-    expect(costs.get(MOTOR)!.standardCost).toBe(4443)
-    expect(costs.get(ASSEMBLY)!.standardMaterialCost).toBe(11108) // round(4443 x 2.5)
-    expect(costs.get(ASSEMBLY)!.standardLaborCost).toBe(500)
-    expect(Number.isInteger(costs.get(ASSEMBLY)!.standardCost)).toBe(true)
+    // 4442.975 is already at RATE_DECIMALS, so it survives unrounded.
+    expect(costs.get(MOTOR)!.standardCost).toBe(4442.975)
+    // 4442.975 x 2.5 = 11107.4375, which needs a fourth fractional-cent place
+    // and rounds to 11107.438 - RATE_DECIMALS, never a whole cent.
+    expect(costs.get(ASSEMBLY)!.standardMaterialCost).toBe(11107.438)
+    expect(costs.get(ASSEMBLY)!.standardLaborCost).toBe(500.4)
+    expect(costs.get(ASSEMBLY)!.standardCost).toBe(11607.838)
   })
 
   it('skips an unpriced component instead of writing it as zero', () => {

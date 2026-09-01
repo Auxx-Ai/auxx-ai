@@ -44,8 +44,10 @@ export function DisplayCurrency() {
   )
 
   // For copy, use the plain major-unit number — no symbol, no grouping, so it
-  // round-trips back into an input.
-  const copyValue = amount === null ? null : minorToMajorString(amount, options.currencyCode)
+  // round-trips back into an input. Full stored precision: omitting `decimals`
+  // here would silently truncate a fractional-cent rate to the copied text.
+  const copyValue =
+    amount === null ? null : minorToMajorString(amount, options.currencyCode, options.decimals)
 
   return <DisplayWrapper copyValue={copyValue}>{formattedValue || '-'}</DisplayWrapper>
 }

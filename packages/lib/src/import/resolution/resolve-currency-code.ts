@@ -67,3 +67,53 @@ export async function resolveColumnCurrencyCodes(
 
   return codes
 }
+
+/** What {@link resolveColumnDecimals} needs to answer for a whole mapping */
+export interface ResolveColumnDecimalsInput {
+  organizationId: string
+  /** `ImportMapping.entityDefinitionId`: the resource every column targets */
+  entityDefinitionId: string
+  /** `targetFieldKey` of every column resolved with `currency:*` */
+  targetFieldKeys: string[]
+}
+
+/**
+ * Resolve each `currency:*` column's field-declared major-unit precision
+ * (`options.decimals`), keyed by `targetFieldKey`. Companion to
+ * {@link resolveColumnCurrencyCodes}: the currency decides the EXPONENT, the
+ * field decides the PLACES. A rate field (`decimals: RATE_DECIMALS`) admits
+ * five; a plain amount field admits none beyond the exponent.
+ *
+ * 🛑 Resolved at RUN time, never persisted into the column's stored
+ * `resolutionConfig`, for the same reason `resolveColumnCurrencyCodes` is not:
+ * a field's precision can widen after a mapping was made (migration 121), and
+ * a frozen copy would keep refusing the extra places forever.
+ *
+ * A column whose key is absent from the returned map gets no `decimals`;
+ * `currency:major` then caps at the currency's exponent exactly as it always
+ * has.
+ *
+ * @param db - Database instance (unused today; symmetric with
+ *   `resolveColumnCurrencyCodes` and kept for the same future-proofing)
+ * @param input - Org, target resource, and the money columns' field keys
+ * @returns Map of `targetFieldKey` → `options.decimals`
+ */
+export async function resolveColumnDecimals(
+  db: Database | Transaction,
+  input: ResolveColumnDecimalsInput
+): Promise<Map<string, number>> {
+  const decimals = new Map<string, number>()
+  if (input.targetFieldKeys.length === 0) return decimals
+
+  const resource = await findCachedResource(input.organizationId, input.entityDefinitionId)
+
+  const wanted = new Set(input.targetFieldKeys)
+  for (const field of resource?.fields ?? []) {
+    const key = getFieldOutputKey(field)
+    if (!wanted.has(key)) continue
+    const value = field.options?.decimals
+    if (typeof value === 'number') decimals.set(key, value)
+  }
+
+  return decimals
+}

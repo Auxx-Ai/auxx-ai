@@ -12,6 +12,7 @@ import {
 } from '@auxx/lib/purchasing'
 import {
   adjustStock,
+  computeExtendedCost,
   getLastReceiptCost,
   getPartReceiptHistory,
   listReceipts,
@@ -19,13 +20,39 @@ import {
   receivePurchaseOrder,
   receiveStock,
   reverseMovement,
-  roundMinorUnits,
 } from '@auxx/lib/receiving'
+import { isAtPrecision, RATE_DECIMALS } from '@auxx/utils/currency'
 import { z } from 'zod'
 import { capabilityProcedure, createTRPCRouter } from '~/server/api/trpc'
 
-/** Money is stored in integer minor units (cents) everywhere in this subsystem. */
+/** An AMOUNT - money owed, paid or booked - is an integer minor unit everywhere in this subsystem. */
 const minorUnits = z.number().int()
+
+/**
+ * A RATE - money per one of something (`unitCost`, `vendorUnitPrice`, a line's
+ * unit price) - kept to `RATE_DECIMALS` (five major-unit places) rather than
+ * collapsed to a whole minor unit, so a fastener vendor's per-thousand price
+ * ($15.94 / 1,000 = 1.594 minor units) is exact rather than rounded away.
+ */
+const rateMinorUnits = z
+  .number()
+  .finite()
+  .positive()
+  .refine((value) => isAtPrecision(value, RATE_DECIMALS), {
+    message: 'must have at most five decimal places',
+  })
+
+/**
+ * The signed form of {@link rateMinorUnits}: a vendor-bill unit price may be
+ * negative (a credit line is real - `match.ts`'s `assertPrice` allows it),
+ * unlike a receipt or opening-balance cost, which must be a real positive price.
+ */
+const signedRateMinorUnits = z
+  .number()
+  .finite()
+  .refine((value) => isAtPrecision(value, RATE_DECIMALS), {
+    message: 'must have at most five decimal places',
+  })
 
 /** A movement quantity is a `doublePrecision` column, so fractions are legal; zero is not. */
 const receiptQuantity = z.number().finite().positive()
@@ -188,7 +215,7 @@ export const purchasingRouter = createTRPCRouter({
          * which is why it is one field and not two: the number the vendor
          * invoiced is the number the landed cost is built on.
          */
-        vendorUnitPrice: minorUnits.optional(),
+        vendorUnitPrice: rateMinorUnits.optional(),
         /** The ACCOUNTING date, which is not `createdAt`. Defaults to now. */
         occurredAt: z.coerce.date().optional(),
         reference: z.string().max(255).optional(),
@@ -308,8 +335,8 @@ export const purchasingRouter = createTRPCRouter({
         partId: z.string().min(1),
         /** Units on hand at the opening date. Strictly positive. */
         quantity: z.number().finite().positive(),
-        /** What a unit cost, whole minor units. Strictly positive. */
-        unitCost: z.number().int().positive(),
+        /** What a unit cost. A RATE - at most RATE_DECIMALS places, strictly positive. */
+        unitCost: rateMinorUnits,
         /** The ACCOUNTING date, which is not `createdAt`. Defaults to now. */
         occurredAt: z.coerce.date().optional(),
         notes: z.string().max(2000).optional(),
@@ -462,9 +489,10 @@ export const purchasingRouter = createTRPCRouter({
    *
    * Pure arithmetic — nothing is read or written. It takes the same line shape as
    * `receivePurchaseOrder` and derives each line total with the same
-   * `roundMinorUnits` helper that path uses, so the number previewed here is the
-   * number that gets frozen on the movements. Gated on the receive write rather
-   * than on a read, because this only ever renders inside the receive dialog.
+   * `computeExtendedCost` helper that path uses, so the number previewed here is
+   * the number that gets frozen on the movements. Gated on the receive write
+   * rather than on a read, because this only ever renders inside the receive
+   * dialog.
    */
   previewLandedCost: capabilityProcedure
     .input(
@@ -473,7 +501,7 @@ export const purchasingRouter = createTRPCRouter({
           .array(
             z.object({
               quantity: receiptQuantity,
-              unitPrice: minorUnits,
+              unitPrice: rateMinorUnits,
               weight: z.number().finite().nonnegative().optional(),
             })
           )
@@ -489,7 +517,9 @@ export const purchasingRouter = createTRPCRouter({
 
       const unitCosts = allocateLandedCost(
         input.lines.map((line) => ({
-          lineTotal: roundMinorUnits(line.unitPrice * line.quantity),
+          // `lineTotal` is an AMOUNT (`unitPrice x quantity`, whole minor
+          // units) - never `roundMinorUnits`, which now rounds RATES.
+          lineTotal: computeExtendedCost(line.unitPrice, line.quantity),
           quantity: line.quantity,
           weight: line.weight,
         })),
@@ -518,8 +548,8 @@ export const purchasingRouter = createTRPCRouter({
             z.object({
               quantityBilled: z.number().finite().nonnegative(),
               quantityReceived: z.number().finite().nonnegative(),
-              unitPriceBilled: minorUnits,
-              unitPriceExpected: minorUnits,
+              unitPriceBilled: signedRateMinorUnits,
+              unitPriceExpected: signedRateMinorUnits,
               /**
                * The purchase order HEADER's expected arrival, which is what ages
                * an `awaiting_receipt` line into a `receipt_overdue` exception

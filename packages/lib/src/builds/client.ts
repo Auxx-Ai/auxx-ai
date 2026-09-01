@@ -10,6 +10,7 @@
  * (`docs/lib-module-guide.md` section 7).
  */
 
+import { RATE_DECIMALS, roundMinor } from '@auxx/utils/currency'
 import type { AbsorptionRates } from './types'
 
 /** The three values `part_kind` can hold. Mirrors `PartKind` in the registry. */
@@ -54,20 +55,25 @@ export function absorbsConversionCost(partKind: PartKindValue): boolean {
 }
 
 /**
- * Round a money value to whole minor units.
+ * Round a money value to a RATE field's precision (`RATE_DECIMALS`).
  *
- * 🛑 Not optional. `CURRENCY` is cents in a `doublePrecision` column and
- * `computeLandedCost` can emit a fractional-cent tariff term (Gap C section 1.7,
- * R11). Round before freezing, or every downstream balance check holds by luck
- * instead of by construction — and `setValueWithType` rejects a fractional
- * CURRENCY write outright (`assertCurrencyIntegerMinorUnits`).
+ * 🛑 For RATES ONLY - a standard cost, an absorption rate, a per-part
+ * override. `CURRENCY` is cents in a `doublePrecision` column and
+ * `computeLandedCost` can emit a fractional-cent tariff term (Gap C section
+ * 1.7, R11), so a rate is kept at five major-unit places rather than
+ * collapsed to a whole minor unit - rates never round, only amounts do. An
+ * AMOUNT (an absorbed run cost, a produced value, anything posted) must round
+ * to a whole minor unit with `Math.round` directly, never through this
+ * function: the write guard on a CURRENCY field checks the field's declared
+ * precision, and an amount field's precision is the currency's exponent.
  */
 export function roundMinorUnits(value: number): number {
-  return Math.round(value)
+  return roundMinor(value, RATE_DECIMALS)
 }
 
 /**
- * The absorbed amount for one rate, in whole minor units, or `null`.
+ * `part_labor_cost_per_unit` / `part_overhead_cost_per_unit`, rounded to a
+ * RATE's precision, or `null`.
  *
  * 🛑 **A NULL rate means "no absorption declared" and must never read as zero.**
  * The two are numerically indistinguishable once summed, so the distinction is
@@ -291,9 +297,12 @@ export function absorbedRunCost(
   rate: number | null | undefined,
   started: number
 ): number {
-  if (explicit != null && Number.isFinite(explicit)) return roundMinorUnits(explicit)
+  // AMOUNT, not a rate: this is what one run absorbed, rounded to a whole
+  // minor unit like every other posted figure - never through
+  // `roundMinorUnits`, which now rounds to a RATE's five places.
+  if (explicit != null && Number.isFinite(explicit)) return Math.round(explicit)
   if (rate == null || !Number.isFinite(rate)) return 0
-  return roundMinorUnits(rate * started)
+  return Math.round(rate * started)
 }
 
 /** The five numbers a completion freezes onto the build, all in whole minor units. */
@@ -350,8 +359,9 @@ export function summarizeBuildCompletion(inputs: BuildCompletionInputs): BuildCo
     started
   )
   // `round(unitCost x quantity)`, never a sum of rounded units — the same rule,
-  // and the same reason, as `computeExtendedCost` in the receiving module.
-  const producedValue = roundMinorUnits(inputs.producedUnitCost * inputs.quantityProduced)
+  // and the same reason, as `computeExtendedCost` in the receiving module. An
+  // AMOUNT, so `Math.round` directly, not `roundMinorUnits` (RATE precision).
+  const producedValue = Math.round(inputs.producedUnitCost * inputs.quantityProduced)
 
   return {
     materialCost,

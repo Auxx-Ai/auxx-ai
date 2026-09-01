@@ -166,11 +166,13 @@ describe('allocateLandedCost - bases', () => {
     expect(adders).toEqual([100, 9900])
   })
 
-  it('divides the landed line total by the line quantity', () => {
+  it('divides the landed line total by the line quantity, at RATE precision rather than a whole cent', () => {
     // Quantity basis: line 1 takes 9000 of the freight over 9 units = 1000/unit,
-    // on top of 100/9 = 11.11 of goods -> 1011 per unit after rounding.
+    // on top of 100/9 = 11.111... of goods -> (100 + 9000) / 9 = 1011.111...
+    // per unit, which is a RATE, so it keeps three fractional-cent places
+    // (1011.111) instead of rounding to the whole cent (1011) it used to.
     expect(allocateLandedCost(lines, header({ shipping: 10_000 }), 'quantity')).toEqual([
-      101_000, 1011,
+      101_000, 1011.111,
     ])
   })
 
@@ -348,8 +350,9 @@ describe('allocateLandedCost - degenerate inputs', () => {
   it('handles a single line by giving it the whole header amount', () => {
     const lines: AllocationLine[] = [{ lineTotal: 100, quantity: 4 }]
     expect(allocateCapitalisedCost(lines, header({ shipping: 1001 }), 'value')).toEqual([1001])
-    // (100 + 1001) / 4 = 275.25 -> 275
-    expect(allocateLandedCost(lines, header({ shipping: 1001 }), 'value')).toEqual([275])
+    // (100 + 1001) / 4 = 275.25, a RATE, kept at RATE_DECIMALS rather than
+    // rounded to the whole cent (275) it used to be.
+    expect(allocateLandedCost(lines, header({ shipping: 1001 }), 'value')).toEqual([275.25])
   })
 })
 

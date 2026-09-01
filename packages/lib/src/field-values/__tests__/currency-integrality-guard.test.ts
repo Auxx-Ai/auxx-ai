@@ -1,14 +1,21 @@
 // packages/lib/src/field-values/__tests__/currency-integrality-guard.test.ts
 //
-// The CURRENCY integrality guard on the TYPED write path. The coercion path
-// has always rejected fractional amounts, but typed callers skip coercion
-// entirely — which is how the BOM cost calculator stored fractional minor
-// units (plans/importer/01-current-state.md §4.2). The rule is defined once
-// (`assertCurrencyIntegerMinorUnits`, field-value-helpers.ts) and enforced in
-// two places these tests pin separately: `buildFieldValueRow` — the last stop
-// before a number becomes a `valueNumber` row, covering EVERY writer — and an
-// early check in `setValueWithType`, whose only job is ordering: rejecting
-// BEFORE the destructive DELETE so existing values survive.
+// The CURRENCY at-field-precision guard on the TYPED write path. The coercion
+// path has always rejected out-of-precision amounts, but typed callers skip
+// coercion entirely, which is how the BOM cost calculator stored fractional
+// minor units (plans/importer/01-current-state.md §4.2). The rule is defined
+// once (`assertCurrencyAtFieldPrecision`, field-value-helpers.ts) and enforced
+// in three places these tests pin separately: `buildFieldValueRow` (the last
+// stop before a number becomes a `valueNumber` row, covering EVERY writer),
+// an early check in `setValueWithType`, whose only job is ordering: rejecting
+// BEFORE the destructive DELETE so existing values survive, and the function
+// itself, in isolation.
+//
+// A field's precision is `options.decimals` (major-unit places). Unset or at
+// (or below) the currency's exponent, the field is a whole-minor-unit AMOUNT
+// and any fraction is refused: that is the pre-rate-precision behaviour and
+// it must not regress. `RATE_DECIMALS` (5 for USD) admits fractional minor
+// units: `1.594` is legal, a sixth-place value like `1.5941` still is not.
 
 import { toRecordId } from '@auxx/types/resource'
 
@@ -28,7 +35,7 @@ vi.mock('../../cache', () => ({
 }))
 
 import { BadRequestError } from '../../errors'
-import { createFieldValueContext } from '../field-value-helpers'
+import { assertCurrencyAtFieldPrecision, createFieldValueContext } from '../field-value-helpers'
 import { buildFieldValueRow, setValueWithType } from '../field-value-mutations'
 
 /** Chainable fake db that records whether the destructive DELETE ever ran. */
@@ -75,12 +82,50 @@ const CURRENCY_FIELD = {
   systemAttribute: null,
 } as any
 
+/** A rate field: `options.decimals: 5`, e.g. `part_cost` or `vendor_part_unit_price`. */
+const RATE_FIELD = {
+  ...CURRENCY_FIELD,
+  id: 'field-rate',
+  options: { decimals: 5 },
+} as any
+
+/** A CURRENCY field explicitly pinned to whole cents: must behave like unset. */
+const TWO_PLACE_FIELD = {
+  ...CURRENCY_FIELD,
+  id: 'field-two-place',
+  options: { decimals: 2 },
+} as any
+
 function makeCtx(db: any) {
   const ctx = createFieldValueContext('org-1', undefined, db)
   // Pre-seed so `getField` never reaches the mocked org cache.
   ctx.fieldCache.set(CURRENCY_FIELD.id, CURRENCY_FIELD)
+  ctx.fieldCache.set(RATE_FIELD.id, RATE_FIELD)
+  ctx.fieldCache.set(TWO_PLACE_FIELD.id, TWO_PLACE_FIELD)
   return ctx
 }
+
+describe('assertCurrencyAtFieldPrecision: the rule, in isolation', () => {
+  it('a 5-place field accepts 1.594', () => {
+    expect(() => assertCurrencyAtFieldPrecision(1.594, 5)).not.toThrow()
+  })
+
+  it('a 5-place field refuses a sixth place (1.5941)', () => {
+    expect(() => assertCurrencyAtFieldPrecision(1.5941, 5)).toThrow(BadRequestError)
+  })
+
+  it('a 2-place field refuses 1.594', () => {
+    expect(() => assertCurrencyAtFieldPrecision(1.594, 2)).toThrow(BadRequestError)
+  })
+
+  it('an unset (undefined) decimals refuses 1.594, same as 2-place', () => {
+    expect(() => assertCurrencyAtFieldPrecision(1.594)).toThrow(BadRequestError)
+  })
+
+  it('names the field precision in the message', () => {
+    expect(() => assertCurrencyAtFieldPrecision(1.5941, 5)).toThrow(/5 decimal places/)
+  })
+})
 
 describe('buildFieldValueRow — the bottom-most enforcement, every writer passes through it', () => {
   const rowParams = {
@@ -91,7 +136,7 @@ describe('buildFieldValueRow — the bottom-most enforcement, every writer passe
     sortKey: 'a0',
   }
 
-  it('rejects a fractional minor-unit amount for a CURRENCY field', () => {
+  it('rejects a fractional minor-unit amount for a CURRENCY field with no declared precision', () => {
     expect(() =>
       buildFieldValueRow({
         ...rowParams,
@@ -117,6 +162,38 @@ describe('buildFieldValueRow — the bottom-most enforcement, every writer passe
       value: { type: 'number', value: 0.5 },
     })
     expect(row.valueNumber).toBe(0.5)
+  })
+
+  it('a rate field (decimals: 5) accepts a fractional minor-unit rate', () => {
+    const row = buildFieldValueRow({
+      ...rowParams,
+      fieldType: 'CURRENCY',
+      value: { type: 'number', value: 1.594 },
+      currencyOptions: { decimals: 5 },
+    })
+    expect(row.valueNumber).toBe(1.594)
+  })
+
+  it('a rate field (decimals: 5) still refuses a sixth place', () => {
+    expect(() =>
+      buildFieldValueRow({
+        ...rowParams,
+        fieldType: 'CURRENCY',
+        value: { type: 'number', value: 1.5941 },
+        currencyOptions: { decimals: 5 },
+      })
+    ).toThrow(BadRequestError)
+  })
+
+  it('a 2-place field still refuses 1.594 (decimals does not widen without opting in)', () => {
+    expect(() =>
+      buildFieldValueRow({
+        ...rowParams,
+        fieldType: 'CURRENCY',
+        value: { type: 'number', value: 1.594 },
+        currencyOptions: { decimals: 2 },
+      })
+    ).toThrow(BadRequestError)
   })
 })
 
@@ -182,5 +259,41 @@ describe('setValueWithType — CURRENCY integrality guard', () => {
         value: { type: 'number', value: 0.5 },
       })
     ).resolves.toHaveLength(1)
+  })
+
+  it('a rate field (decimals: 5) accepts a fractional minor-unit rate', async () => {
+    const { db, calls } = makeFakeDb()
+    const result = await setValueWithType(makeCtx(db), {
+      recordId,
+      fieldId: RATE_FIELD.id,
+      fieldType: 'CURRENCY',
+      value: { type: 'number', value: 1.594 },
+    })
+    expect(calls.delete).toBe(0)
+    expect(result).toHaveLength(1)
+  })
+
+  it('a rate field (decimals: 5) still refuses a sixth place', async () => {
+    const { db } = makeFakeDb()
+    await expect(
+      setValueWithType(makeCtx(db), {
+        recordId,
+        fieldId: RATE_FIELD.id,
+        fieldType: 'CURRENCY',
+        value: { type: 'number', value: 1.5941 },
+      })
+    ).rejects.toThrow(BadRequestError)
+  })
+
+  it('a field explicitly pinned to 2 places still refuses 1.594', async () => {
+    const { db } = makeFakeDb()
+    await expect(
+      setValueWithType(makeCtx(db), {
+        recordId,
+        fieldId: TWO_PLACE_FIELD.id,
+        fieldType: 'CURRENCY',
+        value: { type: 'number', value: 1.594 },
+      })
+    ).rejects.toThrow(BadRequestError)
   })
 })

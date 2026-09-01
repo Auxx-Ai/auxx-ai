@@ -213,15 +213,19 @@ async function resolveReceiptPrice(
     )
   }
 
-  const unitCost = roundMinorUnits(landed)
-  if (unitCost <= 0) {
+  if (landed <= 0) {
     // The hard failure the plan asks for, and deliberately NOT a default of any
-    // kind. Rounding is applied before the check so a sub-half-cent price is
-    // rejected here rather than stored as a zero the ledger cannot explain.
+    // kind. Checked on the UNROUNDED landed cost, before it is rounded to a
+    // RATE's five places - a sub-cent price such as $0.004 is real money, not
+    // zero, and must not be refused just because it rounds toward zero at
+    // whole-cent precision. Only a genuinely non-positive landed cost is
+    // refused here.
     throw new UnprocessableEntityError(
       'Refusing to write a receipt at zero cost. Enter the price actually paid.'
     )
   }
+
+  const unitCost = roundMinorUnits(landed)
 
   return {
     unitCost,

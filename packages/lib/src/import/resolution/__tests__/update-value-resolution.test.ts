@@ -34,8 +34,12 @@ interface CapturedWrite {
 // The money column's exponent is resolved at WRITE time through the org
 // (`field → org → USD`), which needs the org cache and the settings table.
 // Stubbed here so the assertion is about the SCALING, not about the lookup.
+// `resolveColumnDecimals` is the field-precision companion, stubbed empty so
+// these tests keep testing plain amount scaling (an unset `decimals` behaves
+// exactly as before).
 vi.mock('../resolve-currency-code', () => ({
   resolveColumnCurrencyCodes: async () => new Map([['price', 'USD']]),
+  resolveColumnDecimals: async () => new Map(),
 }))
 
 class FakeDb {

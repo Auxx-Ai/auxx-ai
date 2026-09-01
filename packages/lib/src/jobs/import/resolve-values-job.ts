@@ -10,6 +10,7 @@ import {
   isPendingRelationLookup,
   processColumnValues,
   resolveColumnCurrencyCodes,
+  resolveColumnDecimals,
   resolveColumnOptions,
 } from '../../import'
 import type { ResolutionConfig, ResolutionType } from '../../import/types'
@@ -74,6 +75,17 @@ export async function resolveValuesJob(ctx: JobContext<ResolveValuesJobProps>): 
       .filter((p) => p.resolutionType?.startsWith('currency:') && p.targetFieldKey)
       .map((p) => p.targetFieldKey as string)
     const currencyCodes = await resolveColumnCurrencyCodes(db, {
+      organizationId,
+      entityDefinitionId: importJob.importMapping.entityDefinitionId,
+      targetFieldKeys: currencyColumnKeys,
+    })
+
+    // The field's declared precision (`options.decimals`, `RATE_DECIMALS` on
+    // a rate field) caps how many fractional digits a `currency:*` cell may
+    // carry, alongside the currency's exponent above. Same run-time-only rule:
+    // a field's precision can widen after a mapping was made, and a frozen
+    // copy would keep refusing the extra places forever.
+    const currencyDecimals = await resolveColumnDecimals(db, {
       organizationId,
       entityDefinitionId: importJob.importMapping.entityDefinitionId,
       targetFieldKeys: currencyColumnKeys,
@@ -164,6 +176,13 @@ export async function resolveValuesJob(ctx: JobContext<ResolveValuesJobProps>): 
         : undefined
       if (currencyCode) {
         resolutionConfig = { ...resolutionConfig, currencyCode }
+      }
+
+      const currencyFieldDecimals = mappingProp.targetFieldKey
+        ? currencyDecimals.get(mappingProp.targetFieldKey)
+        : undefined
+      if (currencyFieldDecimals !== undefined) {
+        resolutionConfig = { ...resolutionConfig, decimals: currencyFieldDecimals }
       }
 
       // The live list WINS over the stored one. Falling back to the stored copy

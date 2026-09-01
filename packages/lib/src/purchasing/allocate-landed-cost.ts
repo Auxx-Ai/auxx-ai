@@ -1,5 +1,6 @@
 // packages/lib/src/purchasing/allocate-landed-cost.ts
 
+import { RATE_DECIMALS, roundMinor } from '@auxx/utils/currency'
 import { BadRequestError } from '../errors'
 import { roundCents } from '../money/totals'
 import type { AllocationBasis, AllocationHeader, AllocationLine } from './types'
@@ -175,24 +176,30 @@ export function allocateCapitalisedCost(
 }
 
 /**
- * Landed UNIT cost per line, integer minor units — the number that is written to
- * `stock_movement.unitCost` when a purchase order is received (build plan
- * section 4.3).
+ * Landed UNIT cost per line - a RATE, kept at `RATE_DECIMALS` - the number that
+ * is written to `stock_movement.unitCost` when a purchase order is received
+ * (build plan section 4.3).
  *
- * `(lineTotal + allocated share) / quantity`, rounded to a whole minor unit.
- * The rounding decision: the ADDERS reconcile to the header exactly (see
- * `allocateCapitalisedCost`); the unit costs are then a second, independent
- * rounding of `landed line total / quantity` and do NOT re-multiply back to the
- * line total when the quantity does not divide evenly. That is the correct
- * split of concerns — the freight invoice is what has to tie out, and it does,
- * while a unit cost is a per-unit rate that is inherently a rounded quotient.
- * Callers that need the exact landed line total should use
+ * `(lineTotal + allocated share) / quantity`, rounded to a RATE's five
+ * major-unit places, never to a whole minor unit - this is exactly the
+ * `rate x quantity` boundary in reverse, deriving a rate from an amount, and a
+ * unit cost is a per-unit rate that is inherently a rounded quotient. The
+ * rounding decision: the ADDERS reconcile to the header exactly (see
+ * `allocateCapitalisedCost`, which stays whole-minor-unit because it is an
+ * AMOUNT); the unit costs are then a second, independent rounding of
+ * `landed line total / quantity` and do NOT re-multiply back to the line total
+ * when the quantity does not divide evenly. That is the correct split of
+ * concerns - the freight invoice is what has to tie out, and it does, while a
+ * unit cost need not. Callers that need the exact landed line total should use
  * `allocateCapitalisedCost` and add it to `lineTotal` themselves.
  *
  * Worked example (costing plan section 4.2, purchase HZRA2W): lines of $1,000
  * and $1, one unit each, $10,000 shipping, basis 'value'. The $1 line lands at
- * `1 + 10000 x (1/1001)` = $10.99001 exactly, which is 1099 minor units once
- * rounded — and the two adders sum to the $10,000 freight bill to the cent.
+ * `1 + 10000 x (1/1001)` = $10.99001 exactly, which is 1099 minor units - this
+ * example happens to have quantity 1, so no rate rounding is exercised; a
+ * quantity that does not divide evenly is where the five-place precision
+ * shows, e.g. `(100 + 9000) / 9` = `1011.111...` stores as `1011.111`, not
+ * `1011` - and the two adders sum to the $10,000 freight bill to the cent.
  *
  * @throws BadRequestError on a non-integer money amount, a quantity that is not
  *   greater than zero, a negative weight, a weight on only some lines under
@@ -205,6 +212,6 @@ export function allocateLandedCost(
 ): number[] {
   const allocated = allocateCapitalisedCost(lines, header, basis)
   return lines.map((line, index) =>
-    roundCents((line.lineTotal + (allocated[index] ?? 0)) / line.quantity)
+    roundMinor((line.lineTotal + (allocated[index] ?? 0)) / line.quantity, RATE_DECIMALS)
   )
 }

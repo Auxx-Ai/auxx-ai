@@ -8,7 +8,7 @@ import { parseResolutionConfig } from '../mapping/resolution-config'
 import type { OverrideValue, ResolvedValue } from '../types'
 import type { ResolutionConfig, ResolutionType } from '../types/resolution'
 import { isOptionResolutionType } from './option-labels'
-import { resolveColumnCurrencyCodes } from './resolve-currency-code'
+import { resolveColumnCurrencyCodes, resolveColumnDecimals } from './resolve-currency-code'
 import { resolveValue } from './resolve-value'
 
 /** Input for updating a value resolution */
@@ -100,11 +100,13 @@ function resolveOverrides(
  * The config a re-resolved override must be read with.
  *
  * The stored `resolutionConfig` carries the column's POLICY (`dateFormat`,
- * `arraySeparator`, …), but `currencyCode` is deliberately NOT persisted — a
- * field that inherits `organization.currency` would keep scaling by a frozen
- * exponent — so it is resolved here at write time, exactly as
- * `resolve-values-job` resolves it at run time. Reading a money override with
- * the wrong exponent is off by a factor of 100, silently.
+ * `arraySeparator`, …), but `currencyCode` and `decimals` are deliberately NOT
+ * persisted: a field that inherits `organization.currency`, or whose
+ * `decimals` widens later, would keep scaling/capping by a frozen value, so
+ * both are resolved here at write time, exactly as `resolve-values-job`
+ * resolves them at run time. Reading a money override with the wrong exponent
+ * is off by a factor of 100, silently; with the wrong `decimals` it refuses a
+ * rate override the field now accepts.
  *
  * @param db - Database instance (for the org-settings read)
  * @param mappingProp - The column's stored type, target key and config
@@ -121,13 +123,26 @@ async function buildOverrideConfig(
     return config
   }
 
-  const codes = await resolveColumnCurrencyCodes(db, {
-    organizationId: scope.organizationId,
-    entityDefinitionId: scope.entityDefinitionId,
-    targetFieldKeys: [mappingProp.targetFieldKey],
-  })
+  const targetFieldKeys = [mappingProp.targetFieldKey]
+  const [codes, decimalsByKey] = await Promise.all([
+    resolveColumnCurrencyCodes(db, {
+      organizationId: scope.organizationId,
+      entityDefinitionId: scope.entityDefinitionId,
+      targetFieldKeys,
+    }),
+    resolveColumnDecimals(db, {
+      organizationId: scope.organizationId,
+      entityDefinitionId: scope.entityDefinitionId,
+      targetFieldKeys,
+    }),
+  ])
   const currencyCode = codes.get(mappingProp.targetFieldKey)
-  return currencyCode ? { ...config, currencyCode } : config
+  const decimals = decimalsByKey.get(mappingProp.targetFieldKey)
+
+  let next = config
+  if (currencyCode) next = { ...next, currencyCode }
+  if (decimals !== undefined) next = { ...next, decimals }
+  return next
 }
 
 /**

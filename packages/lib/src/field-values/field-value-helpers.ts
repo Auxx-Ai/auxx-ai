@@ -38,6 +38,7 @@ import {
 import { type FileRef, getFileRefDownloadUrl } from '@auxx/types/file-ref'
 import { isEntityDefinitionType, type RecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
+import { isAtPrecision, minorUnitExponent } from '@auxx/utils/currency'
 import { and, eq, inArray } from 'drizzle-orm'
 import { findCachedResource, getCachedEntityDefId, getCachedResource, getOrgCache } from '../cache'
 import type { FieldOptions } from '../custom-fields/field-options'
@@ -627,11 +628,12 @@ export function validateRowReferences(row: FieldValueRow, fieldType: FieldType):
 // =============================================================================
 
 /**
- * A fractional value in a minor-units field is ALWAYS wrong — cents, yen and
- * thousandths of a dinar are integers for every ISO currency. This is
- * decidable, unlike dollars-vs-cents on a whole number, and it is the single
- * check that would have caught the connector passthrough bug at the first sync
- * instead of months later.
+ * A CURRENCY value must be exact at the field's declared precision: no more
+ * fractional places than `field.options.decimals` admits (the exponent when
+ * `decimals` is unset or below it, so a plain field still refuses any
+ * fraction). This is decidable, unlike dollars-vs-cents on a whole number,
+ * and it is the single check that would have caught the connector
+ * passthrough bug at the first sync instead of months later.
  *
  * The ONE definition of the rule. Called from the coercion path (the CURRENCY
  * case in {@link validateAndConvertValue}'s validator), from
@@ -639,17 +641,30 @@ export function validateRowReferences(row: FieldValueRow, fieldType: FieldType):
  * row, covering every typed writer), and early in `setValueWithType` (so the
  * rejection lands before its destructive DELETE).
  *
+ * ⚠️ **Weakened on RATE fields only** (`decimals: RATE_DECIMALS`, five
+ * places): a Shopify `49.99` written raw into a five-place rate field would
+ * now pass, where it used to be caught as 100×-wrong. Every AMOUNT field in
+ * the registry keeps the full-strength integer check; see
+ * `docs/inventory-costing-architecture-guide.md` §9.4.
+ *
  * 🛑 Never converts units. Given `600` it cannot know whether that is $6.00 or
  * $600 — the undecidable guess that produced 100×-wrong stored data. A caller
  * holding decimal major units scales (or rounds) in its own projection.
  */
-export function assertCurrencyIntegerMinorUnits(num: number): void {
-  if (!Number.isInteger(num)) {
-    throw new BadRequestError(
-      `CURRENCY values are integer minor units (cents for USD), but received ${num}. ` +
-        'A caller holding decimal major units must scale or round before writing.'
-    )
-  }
+export function assertCurrencyAtFieldPrecision(
+  num: number,
+  decimals?: number | null,
+  currencyCode?: string | null
+): void {
+  const code = currencyCode ?? 'USD'
+  if (isAtPrecision(num, decimals, code)) return
+
+  const places = decimals ?? minorUnitExponent(code)
+  const placesLabel = `${places} decimal place${places === 1 ? '' : 's'}`
+  throw new BadRequestError(
+    `CURRENCY values must be exact at this field's precision (${placesLabel}), but received ${num}. ` +
+      'A caller holding decimal major units must scale or round before writing.'
+  )
 }
 
 /**
@@ -692,12 +707,12 @@ export async function validateAndConvertValue(
     // uniformly wrap values in arrays (for shape consistency) keep working.
     if (!isMulti) {
       if (value.length === 0) return null
-      return validateSingleValue(ctx, value[0], fieldType)
+      return validateSingleValue(ctx, value[0], fieldType, field)
     }
 
     const converted: TypedFieldValueInput[] = []
     for (const v of value) {
-      const single = await validateSingleValue(ctx, v, fieldType)
+      const single = await validateSingleValue(ctx, v, fieldType, field)
       if (single !== null) {
         converted.push(single)
       }
@@ -714,7 +729,7 @@ export async function validateAndConvertValue(
   }
 
   // Single value
-  return validateSingleValue(ctx, value, fieldType)
+  return validateSingleValue(ctx, value, fieldType, field)
 }
 
 /**
@@ -735,11 +750,16 @@ function toActorFieldType(type: ActorIdType): ActorFieldValue['actorType'] {
 /**
  * Validate single value using appropriate Zod schema.
  * Each field type has its own validation logic.
+ *
+ * `field` is optional and used only by the CURRENCY case, to read
+ * `options.decimals`/`options.currencyCode` for the precision guard; every
+ * other case validates on `fieldType` alone.
  */
 export async function validateSingleValue(
   ctx: FieldValueContext,
   value: unknown,
-  fieldType: FieldType
+  fieldType: FieldType,
+  field?: CachedField
 ): Promise<TypedFieldValueInput | null> {
   // Helper to throw validation error with proper message
   const throwValidationError = (result: { success: false; error: any }) => {
@@ -806,7 +826,8 @@ export async function validateSingleValue(
       if (!result.success) throwValidationError(result)
       const num = result.data ?? 0
 
-      assertCurrencyIntegerMinorUnits(num)
+      const currencyOptions = field?.options as FieldOptions | undefined
+      assertCurrencyAtFieldPrecision(num, currencyOptions?.decimals, currencyOptions?.currencyCode)
 
       return { type: 'number', value: num }
     }

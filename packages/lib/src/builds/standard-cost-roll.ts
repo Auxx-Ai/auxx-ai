@@ -253,8 +253,11 @@ export function computeStandardCosts(inputs: StandardCostRollInputs): StandardCo
       material += childStandard * child.qty
     }
 
-    // Quantities are `doublePrecision`, so the sum can carry a fractional cent
-    // even though every child standard is a whole one.
+    // `standardMaterialCost` is a RATE, so this keeps the sum at RATE_DECIMALS
+    // rather than collapsing it to a whole cent - quantities are
+    // `doublePrecision` and every child standard can itself carry a fraction of
+    // a cent, so the sum needs the same five places the children were stored
+    // at, or a BOM of forty sub-cent screws would restate to a whole cent here.
     const standardMaterialCost = roundMinorUnits(material)
 
     // 🛑 Resolved HERE and not above the `absorbsConversionCost` branch, however

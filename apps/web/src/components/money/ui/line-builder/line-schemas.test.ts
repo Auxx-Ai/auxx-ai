@@ -452,6 +452,60 @@ describe('cross-filling the rate/amount pair', () => {
   })
 })
 
+// plans/money/tasks/31-sub-cent-rates.md §2.6: the purchase order's amount cell
+// is an INPUT (`derived-editable`), but there is still no `…_line_total` field -
+// typing an amount with a blank rate derives `expected_unit_price` at
+// RATE_DECIMALS instead of whole cents, and the typed total itself is never
+// sent to the server.
+describe('cross-filling on the purchase order (derived-editable)', () => {
+  const po = LINE_SCHEMAS.purchase_order
+  const line = (over: Partial<LineValues>): LineValues => ({
+    ...DEFAULT_LINE_VALUES,
+    qty: 105_000,
+    unitPriceCents: null,
+    lineTotal: null,
+    ...over,
+  })
+
+  // $15.94 / 1,000 pcs - the fastener quote a whole-cent rate misstates by 25.5%
+  // (plans/money/tasks/31-sub-cent-rates.md §0.1).
+  it('derives the rate at RATE_DECIMALS, not whole cents', () => {
+    expect(crossFillAmount({ lineTotal: 167_370 }, line({}), po)).toEqual({
+      lineTotal: 167_370,
+      unitPriceCents: 1.594,
+    })
+  })
+
+  it('never overwrites a rate already entered', () => {
+    expect(crossFillAmount({ lineTotal: 167_370 }, line({ unitPriceCents: 2 }), po)).toEqual({
+      lineTotal: 167_370,
+    })
+  })
+
+  // "Type a rate with a blank amount: unchanged today's behaviour" (§2.6) - there
+  // is no line total field to fill, so the patch passes through untouched.
+  it('typing a rate with a blank amount fills nothing - there is no field to fill', () => {
+    const patch = { unitPriceCents: 1.594 }
+    expect(crossFillAmount(patch, line({}), po)).toBe(patch)
+  })
+
+  it('a zero quantity derives no rate', () => {
+    expect(crossFillAmount({ lineTotal: 167_370 }, line({ qty: 0 }), po)).toEqual({
+      lineTotal: 167_370,
+    })
+  })
+
+  // §2.6 / §3 step 9: `purchase_order_line_line_total` is `creatable: false,
+  // updatable: false` - the typed amount is only ever used to derive the rate
+  // client-side and must never reach the server.
+  it('the typed amount never reaches a field value - the server owns the total', () => {
+    const patched = crossFillAmount({ lineTotal: 167_370 }, line({}), po)
+    expect(linePatchToFieldValues(patched, po).map((u) => u.fieldId)).toEqual([
+      'purchase_order_line_expected_unit_price',
+    ])
+  })
+})
+
 describe('the amount mismatch is reported, never reconciled', () => {
   const bill = LINE_SCHEMAS.vendor_bill
   const line = (over: Partial<LineValues>): LineValues => ({

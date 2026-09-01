@@ -12,10 +12,20 @@ import { formatCurrency as formatCurrencyUtil } from '@auxx/utils/currency'
  * Delegates the formatting itself to `@auxx/utils` so the minor-unit exponent
  * comes from the code (JPY 0, KWD 3) rather than a hardcoded /100. The only
  * thing this wrapper adds is the em dash: an unpriced line is not `$0.00`.
+ *
+ * `decimals` is the field's declared precision (see `RATE_DECIMALS`) - pass it
+ * for a RATE (a unit price), omit it for an AMOUNT (a line total, a balance),
+ * which never carries more than the currency's exponent. Display's
+ * minimum/maximum split (`formatCurrency` in `@auxx/utils/currency`) is what
+ * keeps a whole-cent rate printing `$16.50`, not `$16.50000`.
  */
-export function formatCurrency(value: number | null | undefined, currencyCode: string): string {
+export function formatCurrency(
+  value: number | null | undefined,
+  currencyCode: string,
+  decimals?: number
+): string {
   if (value === null || value === undefined) return '—'
-  return formatCurrencyUtil(value, { currencyCode })
+  return formatCurrencyUtil(value, { currencyCode, decimals })
 }
 
 /** Capitalize a category value for chip display ('service' → 'Service'). */

@@ -55,7 +55,7 @@ describe('resolveCurrencyMajor — cents and whole numbers', () => {
 
   it('accepts excess decimals only when they are lossless zeros', () => {
     expect(minor('12.3400')).toBe(1234)
-    expect(minor('12.3456')).toMatch(/more decimals than USD supports/)
+    expect(minor('12.3456')).toMatch(/more decimals than this field supports \(2\)/)
   })
 })
 
@@ -90,7 +90,7 @@ describe('resolveCurrencyMajor — thousands separators, both conventions', () =
 
   it('honours an explicit column decimal separator over the convention', () => {
     expect(minor('1,234', { currencyCode: 'USD', numberDecimalSeparator: ',' })).toMatch(
-      /more decimals than USD supports/
+      /more decimals than this field supports \(2\)/
     )
     expect(minor('1,23', { currencyCode: 'USD', numberDecimalSeparator: ',' })).toBe(123)
   })
@@ -110,7 +110,7 @@ describe('resolveCurrencyMajor — zero-decimal and three-decimal currencies', (
   })
 
   it('rejects a JPY amount that claims sub-yen precision', () => {
-    expect(minor('1000.50', jpy)).toMatch(/more decimals than JPY supports \(0\)/)
+    expect(minor('1000.50', jpy)).toMatch(/more decimals than this field supports \(0\)/)
   })
 
   it('scales KWD by 1000, not 100', () => {
@@ -192,5 +192,41 @@ describe('parseCurrencyMajorToMinor — defaults', () => {
     const result = parseCurrencyMajorToMinor('12.3456', { currencyCode: 'USD' })
     expect(result.ok).toBe(false)
     expect(result.ok === false && result.reason).toContain('12.3456')
+  })
+})
+
+describe('resolveCurrencyMajor: rate fields (decimals: RATE_DECIMALS), the per-thousand quote', () => {
+  const rate: ResolutionConfig = { currencyCode: 'USD', decimals: 5 }
+
+  it('turns a per-thousand price into a fractional minor unit, not a rounded cent', () => {
+    // $15.94 / 1,000 pcs, plans/money/tasks/31-sub-cent-rates.md §0
+    expect(minor('0.01594', rate)).toBe(1.594)
+    expect(minor('0.00912', rate)).toBe(0.912)
+    expect(minor('0.0096', rate)).toBe(0.96)
+  })
+
+  it('a whole-cent value at five places still reads as a plain integer', () => {
+    expect(minor('16.50', rate)).toBe(1650)
+    expect(minor('12', rate)).toBe(1200)
+  })
+
+  it('still refuses a sixth place beyond the field precision', () => {
+    expect(minor('0.015941', rate)).toMatch(/more decimals than this field supports \(5\)/)
+  })
+
+  it('excess zeros beyond five places are still lossless', () => {
+    expect(minor('0.0159400', rate)).toBe(1.594)
+  })
+
+  it('a plain (unset decimals) USD field is unaffected: still capped at 2', () => {
+    expect(minor('0.01594')).toMatch(/more decimals than this field supports \(2\)/)
+  })
+
+  it('decimals below the exponent is a floor, not a ceiling: still capped at the exponent', () => {
+    expect(minor('12.34', { currencyCode: 'USD', decimals: 0 })).toBe(1234)
+  })
+
+  it('negatives round-trip through the fractional-minor-unit path', () => {
+    expect(minor('-0.01594', rate)).toBe(-1.594)
   })
 })

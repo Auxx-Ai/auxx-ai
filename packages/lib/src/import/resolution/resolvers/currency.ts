@@ -38,6 +38,15 @@ export interface CurrencyParseOptions {
    * ambiguity below; when absent the parser must decide from the cell alone.
    */
   decimalSeparator?: string
+  /**
+   * The TARGET FIELD's declared major-unit precision (`options.decimals`,
+   * `RATE_DECIMALS` for a rate field). The cap on how many fractional digits
+   * a cell may carry is `max(decimals, exponent)`: decimals may ADD
+   * precision beyond the currency's exponent, never remove it (the same
+   * floor `parseMajorToMinor` applies). Unset behaves exactly as before:
+   * capped at the currency's exponent.
+   */
+  decimals?: number
 }
 
 function fail(reason: string): CurrencyParseFailure {
@@ -80,8 +89,14 @@ function hasValidGrouping(intPart: string, groupSep: string): boolean {
  * ### Rejected (as a row error, never a guess)
  * - A currency code in the cell that disagrees with the field's
  *   (`12.34 EUR` into a USD field) — importing euros as dollars is silent.
- * - More non-zero decimals than the currency has (`12.3456` for USD). Rounding
- *   a unit cost loses money that no downstream sum can recover.
+ * - More non-zero decimals than the FIELD supports (`12.3456` into a
+ *   whole-cent USD field). The cap is `max(field decimals, currency
+ *   exponent)`: a rate field (`decimals: RATE_DECIMALS`) admits five major
+ *   places, e.g. `0.01594`, and the excess digits become a fractional MINOR
+ *   unit (`1.594`), built by the same string-concatenation approach, never a
+ *   float multiply. An amount field with no declared `decimals` is capped at
+ *   the currency's exponent exactly as before. Rounding either away loses
+ *   money that no downstream sum can recover.
  * - `1.234` — a lone DOT with three digits behind it. `.` is the en-US decimal
  *   point, so that is plausibly a three-decimal unit cost, and it is equally
  *   plausibly `1,234`. The readings differ by 1000×, so it refuses. Same for
@@ -103,6 +118,11 @@ export function parseCurrencyMajorToMinor(
 ): CurrencyParseResult {
   const fieldCode = (options.currencyCode || 'USD').trim().toUpperCase()
   const exponent = minorUnitExponent(fieldCode)
+  // `decimals` may only ADD major-unit places beyond the exponent, never
+  // remove them - the same floor `parseMajorToMinor` (`@auxx/utils/currency`)
+  // applies. An amount field (no `decimals`, or `decimals <= exponent`)
+  // behaves exactly as before: capped at the currency's exponent.
+  const maxMajorPlaces = Math.max(exponent, options.decimals ?? exponent)
 
   let text = rawValue.trim()
   if (!text) return fail(`Invalid currency amount: "${rawValue}" is empty`)
@@ -238,26 +258,36 @@ export function parseCurrencyMajorToMinor(
   }
 
   let fraction = fracPart
-  if (fraction.length > exponent) {
-    const dropped = fraction.slice(exponent)
+  if (fraction.length > maxMajorPlaces) {
+    const dropped = fraction.slice(maxMajorPlaces)
     if (/[^0]/.test(dropped)) {
       return fail(
-        `"${rawValue}" has more decimals than ${fieldCode} supports (${exponent}). ` +
+        `"${rawValue}" has more decimals than this field supports (${maxMajorPlaces}). ` +
           'Rounding it here would silently lose money — round it in the file instead.'
       )
     }
-    fraction = fraction.slice(0, exponent)
+    fraction = fraction.slice(0, maxMajorPlaces)
   }
-  fraction = fraction.padEnd(exponent, '0')
+  fraction = fraction.padEnd(maxMajorPlaces, '0')
 
   // String concatenation, not `major * 10 ** exponent`: 1.005 * 100 is
   // 100.49999999999999 in binary floating point, and `Math.round` of that is a
   // cent short.
-  const digits = `${intDigits || '0'}${fraction}`
-  const minorUnits = Number(digits)
-  if (!Number.isSafeInteger(minorUnits)) {
+  //
+  // The first `exponent` fraction digits scale into whole minor units exactly
+  // as before. Any digits BEYOND the exponent (only possible on a rate field,
+  // `maxMajorPlaces > exponent`) become a fractional minor unit: `$0.01594`
+  // is `1.594` minor units, not `2`, via the same string-built decimal, never
+  // a float divide.
+  const minorFractionDigits = fraction.slice(0, exponent)
+  const subMinorDigits = fraction.slice(exponent)
+  const wholeDigits = `${intDigits || '0'}${minorFractionDigits}`
+  const minorUnitsWhole = Number(wholeDigits)
+  if (!Number.isSafeInteger(minorUnitsWhole)) {
     return fail(`Invalid currency amount: "${rawValue}" is too large to store exactly`)
   }
+  const minorUnits =
+    subMinorDigits.length > 0 ? Number(`${wholeDigits}.${subMinorDigits}`) : minorUnitsWhole
 
   return { ok: true, minorUnits: negative && minorUnits !== 0 ? -minorUnits : minorUnits }
 }
@@ -272,8 +302,10 @@ export function parseCurrencyMajorToMinor(
  * 12 cents. Files already holding minor units keep `number:integer`.
  *
  * @param rawValue - The raw cell text
- * @param config - Column config; `currencyCode` decides the exponent
- * @returns The resolved minor-unit integer, `null` for a blank cell, or an error
+ * @param config - Column config; `currencyCode` decides the exponent, `decimals`
+ *   the field's declared precision (`RATE_DECIMALS` on a rate field)
+ * @returns The resolved minor-unit integer (or fractional minor unit, on a
+ *   rate field), `null` for a blank cell, or an error
  */
 export function resolveCurrencyMajor(rawValue: string, config: ResolutionConfig): ResolvedValue {
   const trimmed = rawValue.trim()
@@ -285,6 +317,7 @@ export function resolveCurrencyMajor(rawValue: string, config: ResolutionConfig)
   const parsed = parseCurrencyMajorToMinor(trimmed, {
     currencyCode: config.currencyCode,
     decimalSeparator: config.numberDecimalSeparator,
+    decimals: config.decimals,
   })
 
   if (!parsed.ok) {

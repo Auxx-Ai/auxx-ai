@@ -2,6 +2,7 @@
 
 import { FieldType } from '@auxx/database/enums'
 import { type ResourceFieldId, toFieldId } from '@auxx/types/field'
+import { RATE_DECIMALS } from '@auxx/utils/currency'
 import { LINE_ITEM_UNIT_OPTIONS } from '../../../money/units'
 import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
@@ -171,6 +172,8 @@ export const PART_FIELDS: Record<string, ResourceField> = {
     systemSortOrder: 'a5b',
     showInTable: false, // diagnostic — `part_cost` stays the headline column in the parts list
     nullable: true,
+    // RATE, not amount: this is a per-each price (plans/money/tasks/31-sub-cent-rates.md §2.2).
+    options: { decimals: RATE_DECIMALS },
     capabilities: {
       filterable: true,
       sortable: true,
@@ -194,6 +197,8 @@ export const PART_FIELDS: Record<string, ResourceField> = {
     systemSortOrder: 'a5c',
     showInTable: false, // diagnostic — `part_cost` stays the headline column in the parts list
     nullable: true,
+    // RATE, not amount: per-each. §2.2.
+    options: { decimals: RATE_DECIMALS },
     capabilities: {
       filterable: true,
       sortable: true,
@@ -240,6 +245,8 @@ export const PART_FIELDS: Record<string, ResourceField> = {
     systemSortOrder: 'a6',
     dbColumn: 'cost',
     nullable: true,
+    // RATE, not amount: per-each. §2.2.
+    options: { decimals: RATE_DECIMALS },
     capabilities: {
       filterable: true,
       sortable: true,
@@ -779,9 +786,10 @@ export const PART_FIELDS: Record<string, ResourceField> = {
     nullable: true,
     showInPanel: false,
     showInDialogs: false,
+    // RATE, not amount: per-each (plans/money/tasks/31-sub-cent-rates.md §2.2).
     options: {
       currencyCode: 'USD',
-      decimals: 2,
+      decimals: RATE_DECIMALS,
       useGrouping: true,
       currencyDisplay: 'symbol',
     },
@@ -811,9 +819,10 @@ export const PART_FIELDS: Record<string, ResourceField> = {
     nullable: true,
     showInPanel: false,
     showInDialogs: false,
+    // RATE, not amount: per-each (plans/money/tasks/31-sub-cent-rates.md §2.2).
     options: {
       currencyCode: 'USD',
-      decimals: 2,
+      decimals: RATE_DECIMALS,
       useGrouping: true,
       currencyDisplay: 'symbol',
     },
@@ -843,9 +852,10 @@ export const PART_FIELDS: Record<string, ResourceField> = {
     nullable: true,
     showInPanel: false,
     showInDialogs: false,
+    // RATE, not amount: per-each (plans/money/tasks/31-sub-cent-rates.md §2.2).
     options: {
       currencyCode: 'USD',
-      decimals: 2,
+      decimals: RATE_DECIMALS,
       useGrouping: true,
       currencyDisplay: 'symbol',
     },
@@ -874,9 +884,10 @@ export const PART_FIELDS: Record<string, ResourceField> = {
     nullable: true,
     showInPanel: false,
     showInDialogs: false,
+    // RATE, not amount: per-each (plans/money/tasks/31-sub-cent-rates.md §2.2).
     options: {
       currencyCode: 'USD',
-      decimals: 2,
+      decimals: RATE_DECIMALS,
       useGrouping: true,
       currencyDisplay: 'symbol',
     },
@@ -960,9 +971,10 @@ export const PART_FIELDS: Record<string, ResourceField> = {
     // — omitting both would add two mostly-empty columns to every parts list.
     showInTable: false,
     showInDialogs: false,
+    // RATE, not amount: per-each (plans/money/tasks/31-sub-cent-rates.md §2.2).
     options: {
       currencyCode: 'USD',
-      decimals: 2,
+      decimals: RATE_DECIMALS,
       useGrouping: true,
       currencyDisplay: 'symbol',
     },
@@ -993,9 +1005,10 @@ export const PART_FIELDS: Record<string, ResourceField> = {
     showInPanel: false,
     showInTable: false,
     showInDialogs: false,
+    // RATE, not amount: per-each (plans/money/tasks/31-sub-cent-rates.md §2.2).
     options: {
       currencyCode: 'USD',
-      decimals: 2,
+      decimals: RATE_DECIMALS,
       useGrouping: true,
       currencyDisplay: 'symbol',
     },

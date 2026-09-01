@@ -51,6 +51,22 @@ export interface ResolutionConfig {
    * resolved fresh each run, in `resolve-values-job`.
    */
   currencyCode?: string
+
+  /**
+   * The TARGET CURRENCY field's declared major-unit precision
+   * (`options.decimals`): `RATE_DECIMALS` (5) on a rate field, unset on a
+   * plain amount field. Read by `currency:major` alongside `currencyCode` to
+   * cap fractional digits at `max(decimals, exponent)`: an amount field stays
+   * capped at the currency's exponent exactly as before; a rate field admits
+   * the extra major-unit places and the excess becomes a fractional MINOR
+   * unit (`$0.01594` → `1.594`), never rounded away on import.
+   *
+   * 🛑 NOT persisted, for the same reason `currencyCode` is not: resolved
+   * fresh each run in `resolve-values-job` (and at override time in
+   * `update-value-resolution`) via `resolveColumnDecimals`, so a field whose
+   * precision changes after mapping is read correctly on the next run.
+   */
+  decimals?: number
   options?: SelectOption[]
 
   /**

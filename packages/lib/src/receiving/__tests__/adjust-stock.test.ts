@@ -188,11 +188,12 @@ describe('adjustStock — every adjustment carries the part standard cost', () =
     ).toBe(-13200)
   })
 
-  it('rounds a fractional standard cost once, at the point of storage', async () => {
+  it('keeps a fractional standard cost at RATE precision, not rounded to a whole cent', async () => {
     h.standardCost = 4442.975
     const values = await adjustAndRead({ partId: 'part_1', quantity: 10 })
-    expect(values.stock_movement_unit_cost).toBe(4443)
-    // Rounded AFTER multiplying, never as a sum of rounded units.
+    expect(values.stock_movement_unit_cost).toBe(4442.975)
+    // Rounded AFTER multiplying, never as a sum of rounded units. This IS an
+    // AMOUNT, so it still collapses to a whole minor unit.
     expect(values.stock_movement_extended_cost).toBe(44430)
   })
 
@@ -247,12 +248,22 @@ describe('adjustStock — a part with no standard cost fails CLOSED', () => {
     expect(error.message).toMatch(/replacement price/i)
   })
 
-  it('refuses a standard cost that rounds to zero rather than storing the zero', async () => {
-    h.standardCost = 0.4
+  it('refuses a standard cost that STILL rounds to zero at five places, rather than storing the zero', async () => {
+    // 0.4 of a cent used to round to zero at whole-cent precision and was
+    // refused; it is now a legitimate RATE (0.0001 is the value that actually
+    // rounds to zero at RATE_DECIMALS).
+    h.standardCost = 0.0001
     const error = await expectErr(adjustStock(db, ORG, USER, { partId: 'part_1', quantity: 5 }))
     expect(error).toBeInstanceOf(UnprocessableEntityError)
     expect(error.message).toMatch(/rounds to zero/i)
     expect(h.createSpy).not.toHaveBeenCalled()
+  })
+
+  it('accepts a sub-cent standard cost that used to round to zero, at five places', async () => {
+    h.standardCost = 0.4
+    const values = await adjustAndRead({ partId: 'part_1', quantity: 5 })
+    expect(values.stock_movement_unit_cost).toBe(0.4)
+    expect(values.stock_movement_extended_cost).toBe(2) // round(0.4 x 5)
   })
 
   it('refuses a negative standard cost', async () => {
@@ -354,7 +365,7 @@ describe('adjustStock — the movement it writes', () => {
       recordId: 'def_mv:mv_1',
       partInstanceId: 'part_1',
       quantity: 10,
-      unitCost: 4443,
+      unitCost: 4442.975,
       extendedCost: 44430,
       glAccount: 'inventory_raw_materials',
     })

@@ -518,7 +518,7 @@ describe('calculateAllCosts — the unpriced-components signal', () => {
   })
 })
 
-describe('persistCosts — fractional costs round at the write seam', () => {
+describe('persistCosts - RATE fields round to five places at the write seam', () => {
   /** A tariff-rate FieldValue row for an existing vendor_part instance. */
   function tariffRow(instanceId: string, rate: number) {
     return {
@@ -530,10 +530,11 @@ describe('persistCosts — fractional costs round at the write seam', () => {
     }
   }
 
-  it('stores a tariff-bearing landed cost as an integer', async () => {
-    // $19.99 at 7.5%: landed = 1999 + 149.925 = 2148.925. CURRENCY FieldValues
-    // are integer minor units, so the persisted number must be 2149 — the
-    // unrounded value used to be written verbatim and stored a fraction.
+  it('stores a tariff-bearing landed cost at five places, not rounded to a whole cent', async () => {
+    // $19.99 at 7.5%: landed = 1999 + 149.925 = 2148.925. part_cost and
+    // part_purchase_cost are RATE fields (money per one of something), so the
+    // write seam keeps RATE_DECIMALS rather than collapsing to a whole minor
+    // unit - 2148.925 is already at five places and is stored as-is.
     queue(
       [...vendorPartRows('vp_motor', MOTOR, 1999), tariffRow('vp_motor', 7.5)],
       [],
@@ -543,15 +544,33 @@ describe('persistCosts — fractional costs round at the write seam', () => {
     await recalculateAffectedParts(ORG, [MOTOR])
 
     expect(writesFor(FIELD.part_cost!.id)).toEqual([
-      { recordId: `part_def:${MOTOR}`, value: { type: 'number', value: 2149 } },
+      { recordId: `part_def:${MOTOR}`, value: { type: 'number', value: 2148.925 } },
     ])
     expect(writesFor(FIELD.part_purchase_cost!.id)).toEqual([
-      { recordId: `part_def:${MOTOR}`, value: { type: 'number', value: 2149 } },
+      { recordId: `part_def:${MOTOR}`, value: { type: 'number', value: 2148.925 } },
     ])
   })
 
-  it('stores a fractional-quantity roll-up as an integer', async () => {
-    // 0.5 m of $3.33 wire: rollup = 166.5 → 167.
+  it('rounds a landed cost beyond five places down to five, not to a whole cent', async () => {
+    // $19.99 at 7.5254%: tariff = 1999 * 0.075254 = 150.432746, landed =
+    // 2149.432746, not exactly representable at three fractional-cent places,
+    // so it rounds to 2149.433 - still a RATE, never collapsed to the nearest
+    // whole cent.
+    queue(
+      [...vendorPartRows('vp_motor', MOTOR, 1999), tariffRow('vp_motor', 7.5254)],
+      [],
+      storedRows([])
+    )
+
+    await recalculateAffectedParts(ORG, [MOTOR])
+
+    expect(writesFor(FIELD.part_cost!.id)).toEqual([
+      { recordId: `part_def:${MOTOR}`, value: { type: 'number', value: 2149.433 } },
+    ])
+  })
+
+  it('stores a fractional-quantity roll-up at five places, not rounded to a whole cent', async () => {
+    // 0.5 m of $3.33 wire: rollup = 166.5, already at five places.
     queue(
       vendorPartRows('vp_motor', MOTOR, 333),
       subpartRows('sp_1', ASSEMBLY, MOTOR, 0.5),
@@ -561,17 +580,18 @@ describe('persistCosts — fractional costs round at the write seam', () => {
     await recalculateAffectedParts(ORG, [ASSEMBLY])
 
     expect(writesFor(FIELD.part_cost!.id)).toEqual([
-      { recordId: `part_def:${ASSEMBLY}`, value: { type: 'number', value: 167 } },
+      { recordId: `part_def:${ASSEMBLY}`, value: { type: 'number', value: 166.5 } },
     ])
   })
 
-  it('compares the ROUNDED value against storage, so a confirming recalc writes nothing', async () => {
-    // Stored 2149 already equals round(2148.925). Comparing the unrounded
-    // value would classify this as a change and rewrite it on every recalc.
+  it('compares the FIVE-PLACE-ROUNDED value against storage, so a confirming recalc writes nothing', async () => {
+    // Stored 2148.925 already equals roundMinor(2148.925, RATE_DECIMALS).
+    // Comparing the unrounded value would classify this as a change and
+    // rewrite it on every recalculation.
     queue(
       [...vendorPartRows('vp_motor', MOTOR, 1999), tariffRow('vp_motor', 7.5)],
       [],
-      storedRows([{ partId: MOTOR, cost: 2149, purchaseCost: 2149, source: 'vendor' }])
+      storedRows([{ partId: MOTOR, cost: 2148.925, purchaseCost: 2148.925, source: 'vendor' }])
     )
 
     await recalculateAffectedParts(ORG, [MOTOR])

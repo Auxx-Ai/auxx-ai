@@ -35,6 +35,7 @@
  */
 
 import { type Database, schema } from '@auxx/database'
+import { isAtPrecision, RATE_DECIMALS } from '@auxx/utils/currency'
 import { and, eq } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import { ensureStandardCost } from '../builds/ensure-standard-cost'
@@ -123,7 +124,8 @@ function assertOpeningQuantity(quantity: number): void {
 }
 
 /**
- * Step 1b: the opening unit cost must be a finite whole number above zero.
+ * Step 1b: the opening unit cost must be finite, above zero, and no finer than
+ * a RATE's precision.
  *
  * The same hard refusal `receiveStock` gives at zero, and for the same reason: a
  * zero frozen onto an append-only row sums into the inventory balance as
@@ -131,13 +133,14 @@ function assertOpeningQuantity(quantity: number): void {
  *
  * Unlike a receipt this does NOT round a fractional input down into a legal
  * value. A receipt derives its cost from supplier terms and rounds the result;
- * an opening balance is typed, in whole minor units, by a person looking at what
- * was paid, so a fraction arriving here means the caller is working in the wrong
- * units and silently rounding it would freeze that mistake forever.
+ * an opening balance is typed, by a person looking at what was paid, so a value
+ * finer than `stock_movement_unit_cost` can hold (RATE_DECIMALS - five
+ * major-unit places) means the caller is working in the wrong units and
+ * silently rounding it would freeze that mistake forever.
  */
 function assertOpeningUnitCost(unitCost: number): void {
-  if (!Number.isFinite(unitCost) || !Number.isInteger(unitCost)) {
-    throw new BadRequestError('Opening unit cost must be a whole number of minor units')
+  if (!Number.isFinite(unitCost) || !isAtPrecision(unitCost, RATE_DECIMALS)) {
+    throw new BadRequestError('Opening unit cost must have at most five decimal places')
   }
   if (unitCost <= 0) {
     throw new UnprocessableEntityError(

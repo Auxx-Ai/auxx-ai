@@ -578,7 +578,7 @@ one until a year of margins is wrong.
 
 | Field | Meaning |
 | --- | --- |
-| `unitCost` | Standard cost per unit, frozen at write time, integer cents. |
+| `unitCost` | Standard cost per unit, frozen at write time, a RATE: five major-unit places (`RATE_DECIMALS`), so it may hold a fractional minor unit. |
 | `extendedCost` | `round(unitCost × quantity)`, **signed like `quantity`**, so a period rollup is a plain `SUM`. |
 | `costBasis` | `standard` \| `actual`. `receiveStock` writes `actual` (a real vendor price); `adjustStock` and `completeBuild` write `standard`. |
 | `glAccount` | An inventory **ROLE** (`inventory_raw_materials` / `inventory_finished_goods`), resolved from `partKind` **at write time**. Never a code — see §9.1. |
@@ -852,8 +852,30 @@ units: `G2`, `money/totals.ts`, the `CURRENCY` `FieldType` convention, `matchVar
 pure builders in `postings/build-entry.ts`, which are typed on `number`. Introducing decimal
 strings only in the GL creates a conversion boundary between the subledger and the ledger it
 feeds — and a conversion boundary is precisely where money bugs live. Consistency is the
-correctness argument here, not convenience. `numeric` would be right if sub-cent precision were
-ever needed; it is not.
+correctness argument here, not convenience.
+
+🛑 **Retracted, 2026-09-01:** this section used to end "`numeric` would be right if sub-cent
+precision were ever needed; it is not." A real vendor quotation (fasteners priced per thousand,
+`$0.01594` each) falsified that: whole-cent rates misstated every one of 30 lines on a real
+purchase order (`plans/money/tasks/31-sub-cent-rates.md`). Sub-cent precision **is** needed, on
+rates. The argument against `numeric` above still stands unchanged; it was never about whether a
+fraction of a cent exists, it was about the GL speaking minor units. What changed is which of this
+subsystem's `CURRENCY` fields are integers.
+
+**The rate/amount rule.** A `CURRENCY` field is one of two kinds, and `options.decimals` says
+which:
+
+- **Rate**, money per one of something: a vendor's unit price, `part_cost`, a standard cost, a
+  line's unit price. Carries `RATE_DECIMALS` (5) major-unit places, so `valueNumber` may hold a
+  *fractional* minor unit (`1.594` cents for a $15.94-per-1,000 screw). Rates never round on their
+  own, only at the boundary where they become an amount.
+- **Amount**, money owed, paid, or booked: a line total, a subtotal, a balance, an extended cost,
+  anything that reaches the GL. Stays an INTEGER number of minor units, exactly as this section
+  always said. `rate × quantity = amount` is the one boundary that rounds, and it is the only
+  place a fraction of a cent is ever created or destroyed.
+
+`GlPosting.totalMinor` and `GlPostingLine.amountMinor` are untouched by any of this: they are
+amounts, always were, and stay `bigint`. Nothing fractional ever reaches a posting.
 
 **Why `mode: 'number'` and not `mode: 'bigint'`.** Two reasons, the second more practical than the
 first.

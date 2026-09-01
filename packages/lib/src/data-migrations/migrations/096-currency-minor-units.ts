@@ -1,4 +1,8 @@
 // packages/lib/src/data-migrations/migrations/096-currency-minor-units.ts
+//
+// 🛑 The "a fractional value proves the data is still in major units" heuristic
+// below (~line 145) predates rate precision (`plans/money/tasks/31-sub-cent-rates.md`)
+// and must not be reused: a rate field can legitimately hold a fractional minor unit.
 
 import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'

@@ -18,6 +18,7 @@ import {
   type LineItemUnit,
 } from '@auxx/lib/money/client'
 import { cn } from '@auxx/ui/lib/utils'
+import { RATE_DECIMALS } from '@auxx/utils/currency'
 import { Fragment, useMemo, useState } from 'react'
 import { formatCurrency } from '~/components/money/ui/line-builder/shared'
 import { PhotoGallery } from '~/components/money/ui/public-document/photo-gallery'
@@ -158,9 +159,11 @@ export function QuoteLinesWithSelection({
                       {unitSuffix ? `${formatQty(line.qty)} ${unitSuffix}` : formatQty(line.qty)}
                     </td>
                     <td className='py-2 text-right tabular-nums'>
+                      {/* RATE_DECIMALS - see public-document-line-items.tsx's
+                          matching comment. */}
                       {unitSuffix && line.unitPrice !== null
-                        ? `${formatCurrency(line.unitPrice, currency)}/${unitSuffix}`
-                        : formatCurrency(line.unitPrice, currency)}
+                        ? `${formatCurrency(line.unitPrice, currency, RATE_DECIMALS)}/${unitSuffix}`
+                        : formatCurrency(line.unitPrice, currency, RATE_DECIMALS)}
                     </td>
                     <td className='py-2 text-right tabular-nums'>
                       {formatCurrency(line.lineTotal, currency)}

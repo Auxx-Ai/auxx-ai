@@ -6,6 +6,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { buildFieldValueKey, type FieldId } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
 import { toRecordId } from '@auxx/types/resource'
+import { RATE_DECIMALS, roundMinor } from '@auxx/utils/currency'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { getOrgCache, requireCachedEntityDefId } from '../cache'
 import { createFieldValueContext } from '../field-values/field-value-helpers'
@@ -697,11 +698,12 @@ function diffPart(
   for (const [field, next, stored] of numeric) {
     if (!field) continue
     // Landed and roll-up costs are exact and can carry a sub-minor-unit
-    // fraction (4133 at 7.5% → 4442.975), but the stored FieldValue is integer
-    // minor units. This seam is where the exact value becomes a stored one, so
-    // round here — and compare the ROUNDED value, or an unchanged fractional
-    // cost re-writes on every recalculation.
-    const rounded = next == null ? null : Math.round(next)
+    // fraction (4133 at 7.5% → 4442.975). These fields are RATES (part_cost,
+    // part_purchase_cost, part_rollup_cost), so the write seam rounds to
+    // RATE_DECIMALS rather than to a whole minor unit - round here - and
+    // compare the ROUNDED value, or an unchanged fractional cost re-writes on
+    // every recalculation.
+    const rounded = next == null ? null : roundMinor(next, RATE_DECIMALS)
     const prev = stored.get(partId) ?? null
     if (rounded === prev) continue
     writes.push({ field, value: rounded == null ? null : { type: 'number', value: rounded } })

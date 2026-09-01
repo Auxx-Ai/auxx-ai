@@ -179,15 +179,15 @@ describe('resolveInventoryRoleForPartKind', () => {
   })
 })
 
-describe('roundMinorUnits', () => {
-  it('rounds a fractional cent to a whole one', () => {
-    expect(roundMinorUnits(4442.975)).toBe(4443)
-    expect(roundMinorUnits(4442.4)).toBe(4442)
+describe('roundMinorUnits - a RATE keeps five places, it does not round to a whole cent', () => {
+  it('keeps a fractional cent that is already within RATE_DECIMALS', () => {
+    expect(roundMinorUnits(4442.975)).toBe(4442.975)
+    expect(roundMinorUnits(4442.4)).toBe(4442.4)
   })
 
-  it('rounds a half cent up, matching Math.round', () => {
-    expect(roundMinorUnits(0.5)).toBe(1)
-    expect(roundMinorUnits(1.5)).toBe(2)
+  it('rounds a value beyond RATE_DECIMALS down to five places, still not to a whole cent', () => {
+    expect(roundMinorUnits(4442.9754)).toBe(4442.975)
+    expect(roundMinorUnits(0.0005)).toBe(0.001)
   })
 
   it('leaves whole minor units untouched', () => {

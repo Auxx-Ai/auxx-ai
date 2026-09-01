@@ -7,6 +7,7 @@
 
 import { formatLineItemUnit, type LineItemUnit } from '@auxx/lib/money/client'
 import { cn } from '@auxx/ui/lib/utils'
+import { RATE_DECIMALS } from '@auxx/utils/currency'
 import { Fragment } from 'react'
 import { formatCurrency } from '~/components/money/ui/line-builder/shared'
 import { PhotoGallery } from './photo-gallery'
@@ -70,9 +71,12 @@ export function PublicDocumentLineItems({
                     {unitSuffix ? `${formatQty(line.qty)} ${unitSuffix}` : formatQty(line.qty)}
                   </td>
                   <td className='py-2 text-right tabular-nums'>
+                    {/* RATE_DECIMALS: a five-place unit price (a per-thousand
+                        quote) must not print $0.00 here - see `formatCurrency`'s
+                        `decimals` param. The line total stays whole cents. */}
                     {unitSuffix && line.unitPrice !== null
-                      ? `${formatCurrency(line.unitPrice, currency)}/${unitSuffix}`
-                      : formatCurrency(line.unitPrice, currency)}
+                      ? `${formatCurrency(line.unitPrice, currency, RATE_DECIMALS)}/${unitSuffix}`
+                      : formatCurrency(line.unitPrice, currency, RATE_DECIMALS)}
                   </td>
                   <td className='py-2 text-right tabular-nums'>
                     {formatCurrency(line.lineTotal, currency)}

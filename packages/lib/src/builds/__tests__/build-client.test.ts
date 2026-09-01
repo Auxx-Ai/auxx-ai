@@ -7,6 +7,7 @@
 
 import { describe, expect, it } from 'vitest'
 import {
+  absorbedRate,
   absorbedRunCost,
   buildVariance,
   canAmendBuild,
@@ -17,6 +18,7 @@ import {
   componentConsumption,
   resolveAbsorptionRates,
   resolveBuildStatus,
+  roundMinorUnits,
   summarizeBuildCompletion,
   unitsStarted,
 } from '../client'
@@ -83,6 +85,37 @@ describe('the status gates', () => {
       if (canAmendBuild(status)) expect(canCancelBuild(status)).toBe(true)
     }
     expect(canCancelBuild('in_progress') && !canAmendBuild('in_progress')).toBe(true)
+  })
+})
+
+describe('roundMinorUnits - RATE precision, not a whole minor unit', () => {
+  it('keeps a fraction of a cent instead of collapsing to the nearest whole cent', () => {
+    // A rate (a standard cost, an absorption rate) rounds to RATE_DECIMALS
+    // (five major-unit places = three fractional cents on USD), never to a
+    // whole minor unit the way an AMOUNT does.
+    expect(roundMinorUnits(4442.975)).toBe(4442.975)
+    expect(roundMinorUnits(2148.9254)).toBe(2148.925)
+  })
+
+  it('still rounds a whole-cent rate to itself', () => {
+    expect(roundMinorUnits(4400)).toBe(4400)
+    expect(roundMinorUnits(0)).toBe(0)
+  })
+})
+
+describe('absorbedRate - a per-part override at RATE precision', () => {
+  it('keeps a sub-cent labour or overhead rate rather than rounding it to a whole cent', () => {
+    expect(absorbedRate(33.4254)).toBe(33.425)
+  })
+
+  it('stays NULL, never zero, when no rate is declared', () => {
+    expect(absorbedRate(null)).toBeNull()
+    expect(absorbedRate(undefined)).toBeNull()
+    expect(absorbedRate(Number.NaN)).toBeNull()
+  })
+
+  it('a stored zero survives as zero, distinct from an absent rate', () => {
+    expect(absorbedRate(0)).toBe(0)
   })
 })
 

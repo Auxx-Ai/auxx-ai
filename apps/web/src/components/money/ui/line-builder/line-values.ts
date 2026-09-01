@@ -5,6 +5,7 @@ import type { FieldType as FieldTypeValue } from '@auxx/database/types'
 import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import { computeLineTotal, type LineItemUnit, roundCents } from '@auxx/lib/money/client'
 import type { RecordId } from '@auxx/lib/resources/client'
+import { RATE_DECIMALS, roundMinor } from '@auxx/utils/currency'
 
 /**
  * The documents that own editable line rows.
@@ -51,19 +52,38 @@ export type TotalsMode = 'computed' | 'stated' | 'stored' | 'none'
  *
  * `derived` — `…_line_total` is `creatable: false` on that line entity and the
  * server totals hook (`packages/lib/src/money/totals-hooks.ts`) is its only
- * writer, so the cell renders `qty × unitPrice` and is read-only. Typing there
- * could only back-solve the rate, and unit price is integer minor units: qty 3
- * against a typed $100.00 gives 3333¢, which the hook then re-multiplies to
- * $99.99 and pushes back over realtime. Drift is up to `qty × ½¢`. On a purchase
- * order it is worse than cosmetic — `expected_unit_price` is the price arm of the
- * three-way match, so back-solving it holds the vendor to a number nobody agreed.
- * See plans/purchasing/04-vendor-bill-lines-and-the-amount-cell.md §3.
+ * writer, so the cell renders `qty × unitPrice` and is read-only.
+ *
+ * 🛑 It USED to be that typing there could only back-solve the rate at whole
+ * cents: qty 3 against a typed $100.00 gave 3333¢, which the hook then
+ * re-multiplied to $99.99 and pushed back over realtime - a drift of up to
+ * `qty × ½¢` that made back-solving `expected_unit_price` (the three-way
+ * match's price arm) hold the vendor to a number nobody agreed. **That
+ * objection was a two-decimal objection.** At `RATE_DECIMALS` (five places)
+ * $100.00 / 3 divides to $33.33333, which re-multiplies to $99.99999 and
+ * rounds to $100.00 exactly - plans/money/tasks/31-sub-cent-rates.md §0.6.
+ * `derived-editable` (below) is what that unlocks on a purchase order; plain
+ * `derived` (quote/invoice/order/work_order) still has nothing to back-solve
+ * INTO - those documents have no rate the buyer froze, so the cell stays
+ * read-only.
+ *
+ * `derived-editable` - purchase order only (plans/money/tasks/31-sub-cent-rates.md
+ * §2.6). The amount cell is an INPUT, but there is still no writable
+ * `…_line_total` behind it: `purchase_order_line_line_total` is
+ * `creatable: false, updatable: false` same as `derived`, so a typed amount is
+ * never sent to the server (see `linePatchToFieldValues`, which drops any key
+ * the schema maps to `null`). Typing there with a BLANK rate instead derives
+ * `expected_unit_price = roundMinor(typed / qty, RATE_DECIMALS)` - the rate the
+ * PO order freezes - and the cell then renders the ENGINE's `computeLineTotal`,
+ * not the typed number. When the two disagree the row shows the same mismatch
+ * marker `stored` does, because on a per-thousand quote they should already
+ * agree by construction and a disagreement is worth a look.
  *
  * `stored` — the amount is a writable transcribed field with no hook behind it.
  * All three of qty / rate / amount are inputs, and {@link crossFillAmount} fills
  * only a BLANK sibling: it never corrects one the user already entered.
  */
-export type AmountMode = 'derived' | 'stored'
+export type AmountMode = 'derived' | 'derived-editable' | 'stored'
 
 /**
  * What a document's line rows can actually do.
@@ -457,7 +477,11 @@ export const LINE_SCHEMAS: Record<DocumentType, LineSchema> = {
   purchase_order: {
     slug: 'purchase-order-lines',
     lineEntityType: 'purchase_order_line',
-    amountMode: 'derived',
+    // 🛑 `derived-editable`, not `derived`: the total cell is still engine-owned
+    // (`purchase_order_line_line_total` is `creatable: false, updatable: false`),
+    // but it is an INPUT - typing an amount with a blank rate derives
+    // `expected_unit_price` at RATE_DECIMALS. See AmountMode's own doc.
+    amountMode: 'derived-editable',
     matchScopeAttr: null,
     // The supplier the order is placed with, and the second half of the
     // `(part, supplier)` natural key the price prefill resolves on (§5.2).
@@ -803,7 +827,9 @@ export function lineValuesFromSystemValues(
 
 /**
  * Fill the sibling of whichever of rate / amount was just typed — the bidirectional
- * amount cell (plans/purchasing/04-vendor-bill-lines-and-the-amount-cell.md §3.5).
+ * amount cell (plans/purchasing/04-vendor-bill-lines-and-the-amount-cell.md §3.5,
+ * widened to the purchase order's `derived-editable` cell by
+ * plans/money/tasks/31-sub-cent-rates.md §2.6).
  *
  * 🛑 ONE rule, and every arm below is that rule: **cross-fill only ever fills a
  * BLANK sibling. It never overwrites a value already entered.** On a vendor bill
@@ -812,14 +838,21 @@ export function lineValuesFromSystemValues(
  * discrepancy the three-way match exists to find. Where they disagree the row
  * renders a mismatch marker instead; see `LineTotalCellView`.
  *
- * A no-op on every `derived` document, where the amount is the server's to write.
+ * A no-op on every plain `derived` document, where the amount is the server's to
+ * write and there is nothing to back-solve into.
+ *
+ * On `derived-editable` (the purchase order) the amount → rate arm rounds to
+ * `RATE_DECIMALS`, not whole cents - `roundCents(167370 / 105000)` is `2`, but
+ * `roundMinor(167370 / 105000, RATE_DECIMALS)` is the vendor's own `1.594`. The
+ * rate → amount arm is a no-op there: `…_line_total` is engine-derived
+ * (`computeLineTotal`), never a field this schema can write - see AmountMode.
  *
  * @param patch what the cell just committed
  * @param line the row's values BEFORE the patch
  * @returns `patch`, plus at most one filled-in sibling
  */
 export function crossFillAmount(patch: LinePatch, line: LineValues, schema: LineSchema): LinePatch {
-  if (schema.amountMode !== 'stored') return patch
+  if (schema.amountMode !== 'stored' && schema.amountMode !== 'derived-editable') return patch
   const qty = patch.qty ?? line.qty
 
   if (Object.hasOwn(patch, 'lineTotal') && !Object.hasOwn(patch, 'unitPriceCents')) {
@@ -827,12 +860,19 @@ export function crossFillAmount(patch: LinePatch, line: LineValues, schema: Line
     // `qty > 0` is a division guard, not a policy: a zero-quantity line has no
     // per-unit price to derive and typing one anyway would divide by zero.
     if (lineTotal !== null && line.unitPriceCents === null && qty > 0) {
-      return { ...patch, unitPriceCents: roundCents(lineTotal / qty) }
+      const unitPriceCents =
+        schema.amountMode === 'derived-editable'
+          ? roundMinor(lineTotal / qty, RATE_DECIMALS)
+          : roundCents(lineTotal / qty)
+      return { ...patch, unitPriceCents }
     }
     return patch
   }
 
   if (Object.hasOwn(patch, 'unitPriceCents') && !Object.hasOwn(patch, 'lineTotal')) {
+    // `derived-editable`: the total has no field to fill - the engine derives it
+    // from qty x rate at render time. See AmountMode.
+    if (schema.amountMode === 'derived-editable') return patch
     const unitPriceCents = patch.unitPriceCents ?? null
     if (unitPriceCents !== null && line.lineTotal === null) {
       return { ...patch, lineTotal: computeLineTotal(qty, unitPriceCents) }
@@ -846,6 +886,10 @@ export function crossFillAmount(patch: LinePatch, line: LineValues, schema: Line
  *
  * `false` unless all three are present: a line still being transcribed is not in
  * disagreement with itself, it is simply incomplete.
+ *
+ * `stored` only. A `derived-editable` line has no persisted amount to compare -
+ * `LineTotalCellView` computes that mismatch itself, from what was last typed
+ * into the cell, because there is no field for this function to read.
  */
 export function hasAmountMismatch(line: LineValues, schema: LineSchema): boolean {
   if (schema.amountMode !== 'stored') return false
