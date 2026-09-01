@@ -693,9 +693,12 @@ export async function restoreEntity(
   const publishEvents = derivePublishEvents(ctx, options)
   const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
 
+  // 🛑 `includeArchived` — an archived row is the ONLY kind this function is
+  // ever called for, and without it the loader excluded every one of them.
   const instanceResult = await getEntityInstance({
     id: entityInstanceId,
     organizationId: ctx.organizationId,
+    includeArchived: true,
   })
   const instance = instanceResult.isOk() ? instanceResult.value : null
   if (!instance) throw new Error(`Entity not found: ${entityInstanceId}`)
@@ -743,9 +746,14 @@ export async function deleteEntity(
   const publishEvents = derivePublishEvents(ctx, options)
   const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
 
+  // 🛑 `includeArchived` — a hard delete must reach an archived row. Without it
+  // an archived record could be neither restored nor purged, so archive was a
+  // one-way door, and a guard telling the caller to "delete the bills first"
+  // was asking for something the API refused to do.
   const instanceResult = await getEntityInstance({
     id: entityInstanceId,
     organizationId: ctx.organizationId,
+    includeArchived: true,
   })
   const instance = instanceResult.isOk() ? instanceResult.value : null
   if (!instance) throw new Error(`Entity not found: ${entityInstanceId}`)

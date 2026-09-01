@@ -7,6 +7,7 @@ import { UnifiedCrudHandler } from '../../resources/crud'
 import { unwrapRelationId } from '../../resources/events/captured-values'
 import type { EntityPreDeleteEvent, EntityPreDeleteHandler } from '../types'
 import { type GuardedMovement, readMovementsByRelation } from './guarded-movements'
+import { findRelatedInstanceIds } from './related-rows'
 
 /**
  * Pre-delete guard for `builds` (plans/money/tasks/21-money-parent-delete-safety.md §3).
@@ -50,7 +51,7 @@ export const guardBuildDelete: EntityPreDeleteHandler = async (event) => {
   const handler = new UnifiedCrudHandler(organizationId, userId)
 
   // Refuse BEFORE any cascade, so a rejected delete mutates nothing.
-  await refuseIfReversalPair(handler, event)
+  await refuseIfReversalPair(event)
 
   const movements = await readMovementsByRelation(organizationId, 'stock_movement_build', [
     buildInstanceId,
@@ -83,10 +84,7 @@ export const guardBuildDelete: EntityPreDeleteHandler = async (event) => {
  * data already in hand. **"This build HAS BEEN reversed"** lives on a different
  * row and has to be looked up.
  */
-async function refuseIfReversalPair(
-  handler: UnifiedCrudHandler,
-  event: EntityPreDeleteEvent
-): Promise<void> {
+async function refuseIfReversalPair(event: EntityPreDeleteEvent): Promise<void> {
   const { organizationId, recordId } = event
 
   // 🛑 Through `unwrapRelationId`, never `typeof === 'string'`. The capture chain hands a
@@ -103,24 +101,12 @@ async function refuseIfReversalPair(
     )
   }
 
-  const { ids: reversedBy } = await handler.listFiltered({
-    entityDefinitionId: 'build',
-    filters: [
-      {
-        id: 'build-reversed-by',
-        logicalOperator: 'AND',
-        conditions: [
-          {
-            id: 'build-reversed-by-original',
-            fieldId: 'build:reversalOf',
-            operator: 'is',
-            value: recordId,
-          },
-        ],
-      },
-    ],
-    limit: 1000,
-  })
+  // ⚠️ Archived reversals count — see `related-rows.ts`. A reversal somebody
+  // archived still negates this build's movements, so deleting the original
+  // would leave that negation explaining nothing.
+  const reversedBy = await findRelatedInstanceIds(organizationId, 'build', 'build_reversal_of', [
+    parseRecordId(recordId).entityInstanceId,
+  ])
 
   if (reversedBy.length > 0) {
     throw new BadRequestError(

@@ -14,6 +14,7 @@ import type { EntityPreDeleteEvent } from '../types'
 
 const h = vi.hoisted(() => ({
   listFiltered: vi.fn(),
+  findRelated: vi.fn(),
   del: vi.fn(),
   getCachedEntityDefId: vi.fn(),
   bySystemAttributes: vi.fn(),
@@ -29,6 +30,8 @@ vi.mock('../../resources/crud', () => ({
     delete = h.del
   },
 }))
+
+vi.mock('./related-rows', () => ({ findRelatedInstanceIds: h.findRelated }))
 
 vi.mock('../../cache', () => ({
   getCachedEntityDefId: h.getCachedEntityDefId,
@@ -110,7 +113,7 @@ const BOOKS_OPEN = {
 beforeEach(() => {
   vi.clearAllMocks()
   h.del.mockResolvedValue(undefined)
-  h.listFiltered.mockResolvedValue({ ids: [] })
+  h.findRelated.mockResolvedValue([])
   h.getCachedEntityDefId.mockResolvedValue('v9xn5fhvb68jja0wcvog5gl4')
   h.bySystemAttributes.mockResolvedValue({
     stock_movement_part: { id: 'fld_part' },
@@ -215,9 +218,8 @@ describe('guardPartDelete — open books', () => {
 
 describe('guardPartDelete — cascades', () => {
   it('deletes the BOM rows on BOTH ends, de-duplicated', async () => {
-    h.listFiltered.mockImplementation(
-      async ({ entityDefinitionId }: { entityDefinitionId: string }) =>
-        entityDefinitionId === 'subpart' ? { ids: ['sub1', 'sub2'] } : { ids: [] }
+    h.findRelated.mockImplementation(async (_org: string, childType: string) =>
+      childType === 'subpart' ? ['sub1', 'sub2'] : []
     )
 
     await guardPartDelete(event())
@@ -234,38 +236,31 @@ describe('guardPartDelete — cascades', () => {
   it('queries both subpart relations, not just one', async () => {
     await guardPartDelete(event())
 
-    const subpartFields = h.listFiltered.mock.calls
-      .filter((c) => c[0].entityDefinitionId === 'subpart')
-      .map((c) => c[0].filters[0].conditions[0].fieldId)
-    expect(subpartFields).toEqual(['subpart:parentPart', 'subpart:childPart'])
+    const subpartAttributes = h.findRelated.mock.calls
+      .filter((c) => c[1] === 'subpart')
+      .map((c) => c[2])
+    expect(subpartAttributes).toEqual(['subpart_parent_part', 'subpart_child_part'])
   })
 
   it('deletes the supplier pricing rows', async () => {
-    h.listFiltered.mockImplementation(
-      async ({ entityDefinitionId }: { entityDefinitionId: string }) =>
-        entityDefinitionId === 'vendor_part' ? { ids: ['vp1'] } : { ids: [] }
+    h.findRelated.mockImplementation(async (_org: string, childType: string) =>
+      childType === 'vendor_part' ? ['vp1'] : []
     )
 
     await guardPartDelete(event())
 
     expect(h.del).toHaveBeenCalledWith('vendor_part:vp1')
-    const [query] = h.listFiltered.mock.calls.find(
-      (c) => c[0].entityDefinitionId === 'vendor_part'
-    )!
-    expect(query.filters[0].conditions[0]).toEqual({
-      id: 'part-supplier-pricing-part',
-      fieldId: 'vendor_part:part',
-      operator: 'is',
-      value: PART_RECORD_ID,
-    })
+    const call = h.findRelated.mock.calls.find((c) => c[1] === 'vendor_part')!
+    expect(call[2]).toBe('vendor_part_part')
+    expect(call[3]).toEqual([PART_ID])
   })
 
   it('never touches the vendor documents — a bill line is not ours to delete', async () => {
-    h.listFiltered.mockResolvedValue({ ids: ['x1'] })
+    h.findRelated.mockResolvedValue(['x1'])
 
     await guardPartDelete(event())
 
-    const queried = h.listFiltered.mock.calls.map((c) => c[0].entityDefinitionId)
+    const queried = h.findRelated.mock.calls.map((c) => c[1])
     expect(queried).not.toContain('purchase_order_line')
     expect(queried).not.toContain('vendor_bill_line')
     expect(queried).not.toContain('catalog_item')
