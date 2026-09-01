@@ -95,6 +95,7 @@ Four properties carry the whole design:
 | **`partKind`** | `component` \| `subassembly` \| `finished_good`. Decides the inventory account (`1310` / `1330`) and whether a part is *buildable*. Stored and auditable — deliberately not derived. |
 | **L1 / L3** | The GL posting regime. **L1** = one periodic entry per month asserting inventory balances. **L3** = perpetual per-event postings. Exactly one may drive `1310/1320/1330`. |
 | **Buildable** | `subassembly` or `finished_good`. Only these absorb conversion (labour + overhead) cost. |
+| **Absorption rate** | Labour or overhead per assembled unit. Resolved **per part**: `part_labor_cost_per_unit` / `part_overhead_cost_per_unit` if set, else the org's `manufacturing.*` setting. A stored `0` is a declared "absorbs nothing"; NULL is "no override". Absorbed once per BOM **level**, not once per finished good. |
 
 ---
 
@@ -394,6 +395,23 @@ records that no longer exist. The four `on: 'deleted'` rules this subsystem decl
 is also why a pre-delete cascade must delete its children through `UnifiedCrudHandler.delete` and
 not raw SQL, or those rules never fire.
 
+🛑 **A registered guard is not a working guard, and the fourth instance of this shape was the
+guard itself.** `guardBuildDelete` shipped in #1995 registered, reviewed and green across 260
+tests, and was **inert in production**: it read `event.values.build_reversal_of` with a
+`typeof === 'string'` test, while `captureEventData` hands a RELATIONSHIP over as a one-element
+**array**. Deleting a reversal build in dev succeeded and cascaded its 9 stock movements. The same
+defect sat in four copy-pasted `extractRelatedEntityId` helpers, one of which made
+**`recalculatePartQoH` a no-op on every delete** — so QoH drifted from the ledger it is defined as
+a re-SUM of (§8), silently, with `hygiene.danglingRelationValues` still reading zero. Fixed by
+`resources/events/captured-values.ts`; the three payload shapes are tabulated in
+`docs/entity-events-architecture-guide.md` §7.1. **Never test a captured value with
+`typeof === 'string'`** — on a relation or a select it is always false, and the reader silently
+matches nothing.
+
+⚠️ The lesson for this guide is narrower than "write better guards": every one of these four
+instances passed review and passed its unit tests, and each was found only by performing the
+action in a browser and then asking the database whether it had happened. Budget for that step.
+
 **Who is visible, and who is guarded:**
 
 | Entity | `isVisible` | Pre-delete hook |
@@ -465,7 +483,7 @@ The standard is split into four components plus an effective date —
 **5000 Materials / 5010 Direct Labor / 5020 Applied Overhead**, and it can only do that if the
 finished-good standard remembers its composition.
 
-### 7.2 `rollStandardCost` — four rules learned the hard way
+### 7.2 `rollStandardCost` — five rules learned the hard way
 
 `packages/lib/src/builds/standard-cost.ts`.
 
@@ -482,6 +500,28 @@ finished-good standard remembers its composition.
    everybody runs first. `revaluationDelta` (old non-NULL: a real restatement, and the only one
    that belongs in the 5090 entry) is summed separately from `initialValue` (old NULL: opening
    balance material).
+5. **The absorption rate is resolved PER PART, and one rate compounds with tree depth.** Because
+   rule 1 sums children's `standardCost` and a child's standard already carries its own conversion
+   cost, a single org-wide rate is absorbed **once per level of the bill of materials** — a
+   finished good over 8 subassemblies carries 9 × the rate. That is arithmetically correct (rule 1
+   requires it, and `completeBuild`'s variance closes to zero when each subassembly is genuinely
+   built) but it is only *meaningful* if the rate describes one assembly operation rather than one
+   finished good. `part_labor_cost_per_unit` / `part_overhead_cost_per_unit` override the org
+   setting per part; `resolveAbsorptionRates` (`builds/client.ts`) is the single place that choice
+   is made, and it uses **`??`, never `||`** — a stored `0` means "this part absorbs nothing" and
+   `0 || rate` would silently reinstate the org rate on exactly the parts somebody zeroed out.
+
+   🛑 **All three readers must resolve the same overrides**: the roll, `completeBuild`, and
+   `builds.previewCompletion`. If a part's frozen standard carries an override and its run absorbs
+   the bare org rate, `material + labour + overhead − producedValue` stops closing to zero and the
+   difference lands in **5090 on every completion**, on `updatable: false` rows, with no error
+   raised. `completeBuild` resolves **inside** its transaction, after `lockBuild` names the part —
+   the produced part is not known any earlier, and reading on the transaction handle also keeps the
+   rates on the same snapshot the standard costs came from.
+
+   ⚠️ An override is still gated on `partKind` (rule 2). It is applied inside the buildable branch,
+   never above it: an override must not become a way to capitalise assembly labour onto a purchased
+   component.
 
 **Abort vs skip:** a *built* part whose child has no standard **throws**; a part with no inputs
 at all is **skipped and reported** — never written, and above all **never zeroed**, because `0`
