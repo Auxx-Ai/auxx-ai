@@ -379,4 +379,37 @@ export type {
   BuildComponentLine,
   BuildComponentOverride,
   BuildComponentPlan,
+  SkippedPart,
+  SkipReason,
 } from './types'
+
+/**
+ * Why the roll left a part alone, in words somebody can act on.
+ *
+ * 🛑 Lives here and not in either screen because there are TWO of them - the
+ * per-part popover and the org-wide section - and they were already carrying
+ * duplicate copies of this map. A reason added in lib with no label renders as
+ * its own slug, which is ugly but never wrong.
+ *
+ * ⚠️ `component-not-valuable` MUST name `blockedByPartName` rather than the part
+ * it is reported against. The part that was skipped is not the remedy: pricing
+ * a finished good does nothing: the missing price is on some component below it,
+ * possibly several levels down.
+ */
+export function skipReasonLabel(skip: {
+  reason: string
+  blockedByPartName?: string | null
+}): string {
+  switch (skip.reason) {
+    case 'no-live-cost':
+      return 'no supplier price and no priced bill of materials'
+    case 'no-bill-of-materials':
+      return 'classified as buildable but has no bill of materials'
+    case 'component-not-valuable':
+      return skip.blockedByPartName
+        ? `needs a price on "${skip.blockedByPartName}"`
+        : 'a component below it has no price'
+    default:
+      return skip.reason
+  }
+}

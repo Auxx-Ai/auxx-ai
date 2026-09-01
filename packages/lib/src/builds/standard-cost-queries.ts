@@ -496,10 +496,22 @@ export async function previewStandardCostRoll(
 /**
  * The batch read `completeBuild` uses: the frozen standard for these parts.
  *
- * Returns an entry ONLY for a part that has a `part_standard_cost`. A part
- * missing from the map has never been rolled, and the caller must treat that as
- * a refusal — never as a zero. `completeBuild`'s "never post a zero cost" rule
- * is the same rule stated from the other side.
+ * Returns an entry ONLY for a part that has a **usable** `part_standard_cost`. A
+ * part missing from the map has never been rolled, and the caller must treat
+ * that as a refusal — never as a zero. `completeBuild`'s "never post a zero
+ * cost" rule is the same rule stated from the other side.
+ *
+ * 🛑 **A stored `0` is omitted too, exactly like a NULL.** The invariant every
+ * caller enforces is *positive*, not *non-null*: `assertPlanIsPostable` says
+ * this function "omits a part that has never been rolled rather than defaulting
+ * it, precisely so this check can exist", and its error reads *"Refusing to
+ * complete a build at zero cost"*. Keeping a zero here made that check unable to
+ * fire for the one case it is named after — `missingStandardPartIds` stayed
+ * empty, `completeBuild` proceeded, and `unitCost: 0` froze onto an
+ * `updatable: false` movement forever. A zero standard only ever arrives from a
+ * part that could not be valued (`part_cost = 0` reads as a real cost to
+ * `planStandardCostRoll`, which is fixed at its own end in `standard-cost-roll.ts`);
+ * it is never somebody asserting a part is genuinely free.
  */
 export async function readStandardCost(
   db: Database,
@@ -555,9 +567,11 @@ export async function readStandardCost(
       }
 
       for (const [partId, entry] of draft) {
-        // No `standardCost` means the part has never been rolled. It is omitted
-        // rather than defaulted, so a caller cannot mistake absence for zero.
-        if (entry.standardCost == null) continue
+        // No `standardCost` means the part has never been rolled, and a stored
+        // `0` means it was rolled from a cost that could not value it. Both are
+        // omitted rather than defaulted, so a caller cannot mistake either for a
+        // number it may freeze onto a movement. See the header.
+        if (entry.standardCost == null || entry.standardCost <= 0) continue
         result.set(partId, {
           partId,
           standardMaterialCost: entry.standardMaterialCost ?? entry.standardCost,

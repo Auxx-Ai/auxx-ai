@@ -20,6 +20,7 @@
 // with who to ask.
 
 import { FieldType } from '@auxx/database/enums'
+import { skipReasonLabel } from '@auxx/lib/builds/client'
 import { Button } from '@auxx/ui/components/button'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Skeleton } from '@auxx/ui/components/skeleton'
@@ -35,12 +36,6 @@ import { useResource } from '~/components/resources'
 import { BaseType } from '~/components/workflow/types'
 import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
-
-/** Why a part could not be valued, in words a person can act on. */
-const SKIP_REASON_LABEL: Record<string, string> = {
-  'no-live-cost': 'no supplier price and no priced bill of materials',
-  'no-bill-of-materials': 'classified as buildable but has no bill of materials',
-}
 
 /** How many skipped parts to name before summarising the rest. */
 const SKIPPED_VISIBLE = 8
@@ -210,8 +205,7 @@ export function StandardCostSection() {
                   <ul className='space-y-0.5'>
                     {plan.skipped.slice(0, SKIPPED_VISIBLE).map((skip) => (
                       <li key={skip.partId} className='truncate text-muted-foreground'>
-                        {skip.partName ?? skip.partId} &mdash;{' '}
-                        {SKIP_REASON_LABEL[skip.reason] ?? skip.reason}
+                        {skip.partName ?? skip.partId} &mdash; {skipReasonLabel(skip)}
                       </li>
                     ))}
                   </ul>

@@ -1460,7 +1460,29 @@ export class UnifiedCrudHandler {
     const uniqueFields = fields.filter((f) => f.isUnique)
 
     for (const field of uniqueFields) {
-      const value = values[field.id]
+      // 🛑 Values reach here keyed by fieldId OR by systemAttribute, and this
+      // check has to accept both or it is a no-op for half its callers.
+      // `setFieldValues` resolves both (it builds a `keyToIdMap` off
+      // `systemAttribute ?? name`) and `runPreHooks` tests both, for the reason
+      // its own comment gives: *"a systemAttribute-keyed update would silently
+      // bypass update hooks"*. This function sat between those two doing
+      // neither, so a caller keying by systemAttribute - `chart-write.ts` with
+      // `gl_account_code`, ingest with `primary_email` - skipped the gate
+      // entirely.
+      //
+      // ⚠️ What that produced was NOT a silent success. The field-value layer
+      // has its own uniqueness gate and it throws. But `setValuesForEntity`
+      // catches per field, records `state: 'failed'` (which nothing reads) and
+      // carries on, so the record wrote without the field and the caller was
+      // told it worked. `addValues` has no such catch, so the SAME logical
+      // write propagated or vanished depending on whether the field happened to
+      // be multi-value. Checking here, before any write, is what makes the two
+      // agree.
+      //
+      // Precedence matches `setFieldValues`: an explicit UUID key wins, so a
+      // caller mixing both shapes in one call behaves identically in both.
+      const key = field.id in values ? field.id : (field.systemAttribute ?? field.name)
+      const value = values[key]
       if (value === undefined || value === null || value === '') continue
 
       // Multi-value fields (`options.multi`) arrive as arrays — check each

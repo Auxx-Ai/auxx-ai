@@ -386,7 +386,13 @@ describe('ensureStandardCost: the doors it is called from', () => {
     expect(writesFor(ASSEMBLY)).toEqual([])
   })
 
-  it('surfaces the failure when the roll aborts and there is no explicit cost', async () => {
+  // ⤵️ Was 'surfaces the failure when the roll aborts'. The roll no longer aborts
+  // on an unvaluable component — it skips it — so this door now returns OK
+  // having written nothing, which is what this module's header asked for all
+  // along: *"a post-commit hook that throws on a vendor-price save is worse than
+  // one that writes nothing"*. The `explicitCost` fallback below still guards
+  // the one case that can still throw, a circular bill of materials.
+  it('writes nothing, and does not fail, when the roll can value nothing', async () => {
     h.subparts = [
       { parentPartId: ASSEMBLY, childPartId: MOTOR, quantity: 1 },
       { parentPartId: ASSEMBLY, childPartId: TUBE, quantity: 4 },
@@ -399,7 +405,7 @@ describe('ensureStandardCost: the doors it is called from', () => {
 
     const result = await ensureStandardCost(db, ORG, [MOTOR], { kind: 'manual' })
 
-    expect(result.isErr()).toBe(true)
+    expect(result._unsafeUnwrap().writtenPartIds).toEqual([])
     expect(h.setValueWithType).not.toHaveBeenCalled()
   })
 

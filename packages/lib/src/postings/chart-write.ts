@@ -48,7 +48,7 @@
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import {
   AuxxError,
@@ -151,6 +151,7 @@ export async function createChartAccount(
     if (!name) throw new BadRequestError('An account needs a name.', { organizationId })
 
     const { fields, defId } = await loadChartTarget(organizationId)
+    await assertCodeIsFree(db, organizationId, code, fields)
 
     const handler = crudHandler(db, organizationId, actorUserId)
     const created = await namingTheCode(code, () =>
@@ -191,6 +192,12 @@ export async function updateChartAccount(
     if (options.code !== undefined) {
       const code = options.code.trim()
       if (!code) throw new BadRequestError('An account needs a code.', { organizationId })
+      // Only when it actually moves: re-asserting an account's own code is a
+      // no-op the person cannot tell apart from any other save, and checking it
+      // would make the account collide with itself.
+      if (code !== account.code) {
+        await assertCodeIsFree(db, organizationId, code, fields, accountId)
+      }
       values.gl_account_code = code
     }
 
@@ -212,7 +219,7 @@ export async function updateChartAccount(
         const expected = ROLE_ACCOUNT_TYPES[role]
         if (expected !== options.accountType) {
           throw new UnprocessableEntityError(
-            `Cannot make ${account.code} ${account.name} a ${options.accountType} account: '${role}' (${ACCOUNT_ROLE_LABELS[role]}) posts here and must be mapped to a ${expected} account. Repoint the role first, or mark it unused.`,
+            `Cannot make ${account.code} ${account.name} ${article(options.accountType)} account: '${role}' (${ACCOUNT_ROLE_LABELS[role]}) posts here and must be mapped to ${article(expected)} account. Repoint the role first, or mark it unused.`,
             { organizationId, accountId, role }
           )
         }
@@ -342,6 +349,16 @@ function crudHandler(db: Database, organizationId: string, actorUserId: string) 
  * error serialises as a plain 409. `code` is the only unique field on
  * `gl_account`, so any conflict from a chart write is that one, and the sentence
  * a person needs is the whole of "4000 is already in use".
+ *
+ * ⚠️ **Kept deliberately, and it cannot fire today.** {@link assertCodeIsFree}
+ * now refuses a duplicate before the handler is ever called, and the two gates
+ * this wrapper was written to catch are both inert for this caller anyway (see
+ * that function's header for why). It stays as the belt to that pre-check's
+ * braces: it costs one `try`, it is already tested, and the moment either gate
+ * is repaired - which is the point of the second stage of this fix - it starts
+ * carrying real conflicts again, including the concurrent-write race the
+ * pre-check knowingly does not close. Do not delete it as dead code without
+ * reading both.
  */
 async function namingTheCode<T>(code: string, write: () => Promise<T>): Promise<T> {
   try {
@@ -425,6 +442,89 @@ async function readBack(
 }
 
 /** One live (non-archived) account, decoded, or undefined. */
+/**
+ * "an asset", "a liability". Three of the five `GlAccountTypeValue`s take "an",
+ * so a hardcoded "a" is wrong more often than not.
+ */
+function article(accountType: string): string {
+  return /^[aeiou]/i.test(accountType) ? `an ${accountType}` : `a ${accountType}`
+}
+
+/**
+ * Refuse a code another live account in this chart already holds.
+ *
+ * 🛑 **This is THE uniqueness guard for the chart, and it has to live here.**
+ * The two gates below it both fail to stop a duplicate, which is why a
+ * collision used to return HTTP 200 carrying the OLD code, with no message
+ * anywhere and the editor pane left disagreeing with the list:
+ *
+ *  1. `UnifiedCrudHandler.validateUniqueFields` reads its candidate as
+ *     `values[field.id]`, keyed by **CustomField id**. This module keys
+ *     `AccountValues` by **systemAttribute** (`gl_account_code`), exactly as
+ *     `setFieldValues` invites callers to, so the lookup is `undefined` and the
+ *     whole gate `continue`s past it.
+ *  2. The field-value layer's own uniqueness gate DOES throw - and
+ *     `setValuesForEntity`'s per-field loop catches it, logs it, records
+ *     `state: 'failed'` and carries on. Nothing reads that state (it is written
+ *     in two places and inspected in none), so the throw never reaches
+ *     `handler.update` and {@link namingTheCode} never sees it.
+ *
+ * `readBack` cannot cover for either: a dropped `code` leaves a perfectly
+ * well-formed account, so it decodes fine and reports success.
+ *
+ * ⚠️ **Check-then-write, and knowingly so.** Two concurrent creates could still
+ * both pass. There is no backstop to lose: `gl_account_code` is a `FieldValue`
+ * row with no database unique index, so the behaviour this replaces had the
+ * identical race and merely hid it behind a silent no-op. Closing it properly
+ * means a partial index on the field-value table, which is its own change.
+ */
+async function assertCodeIsFree(
+  db: Database,
+  organizationId: string,
+  code: string,
+  fields: ChartAccountFields,
+  excludeAccountId?: string
+): Promise<void> {
+  const holders = await db
+    .select({ entityId: schema.FieldValue.entityId })
+    .from(schema.FieldValue)
+    .where(
+      and(
+        eq(schema.FieldValue.organizationId, organizationId),
+        eq(schema.FieldValue.fieldId, fields.code.id),
+        eq(schema.FieldValue.valueText, code)
+      )
+    )
+
+  const candidates = holders.map((row) => row.entityId).filter((id) => id !== excludeAccountId)
+  if (candidates.length === 0) return
+
+  // An ARCHIVED account keeps its code and does not block a new one: every
+  // reader of this chart excludes archived rows, so the code is free as far as
+  // the chart, the role picker and the resolver are concerned. That matches
+  // `removeChartAccount`'s contract, where removal IS archival.
+  const live = await db
+    .select({ id: schema.EntityInstance.id })
+    .from(schema.EntityInstance)
+    .where(
+      and(
+        eq(schema.EntityInstance.organizationId, organizationId),
+        inArray(schema.EntityInstance.id, candidates),
+        isNull(schema.EntityInstance.archivedAt)
+      )
+    )
+    .limit(1)
+
+  if (live.length === 0) return
+
+  throw new UniqueValueConflictError({
+    message: `${code} is already in use by another account in this chart.`,
+    conflictingValue: code,
+    fieldId: fields.code.id,
+    existingEntityId: live[0]?.id,
+  })
+}
+
 async function loadLiveAccount(
   db: Database,
   organizationId: string,
