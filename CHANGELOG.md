@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.1.226](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.225...auxx-v0.1.226) (2026-09-01)
+
+
+### Features
+
+* **money:** let a part carry its own labour and overhead rate ([#2003](https://github.com/Auxx-Ai/auxx-ai/issues/2003)) ([0198f09](https://github.com/Auxx-Ai/auxx-ai/commit/0198f096a0416d12a502b7e513ee897546457ad4))
+* **parts:** build a part from its own drawer ([#2009](https://github.com/Auxx-Ai/auxx-ai/issues/2009)) ([0753b0c](https://github.com/Auxx-Ai/auxx-ai/commit/0753b0c63c642a0d74fce5491bb910330bbefa97))
+* **parts:** give the auto-build switch a screen to live on ([#2007](https://github.com/Auxx-Ai/auxx-ai/issues/2007)) ([baf38aa](https://github.com/Auxx-Ai/auxx-ai/commit/baf38aa47a379d541f6ba17e91356f34e28b369b))
+* **products:** link several existing parts into a family at once ([#2000](https://github.com/Auxx-Ai/auxx-ai/issues/2000)) ([14a1d3e](https://github.com/Auxx-Ai/auxx-ai/commit/14a1d3e13cf097cf1e77564ac33298f058740f58))
+
+
+### Bug Fixes
+
+* **builds:** show the ledger as soon as a build completes ([#2002](https://github.com/Auxx-Ai/auxx-ai/issues/2002)) ([c87c077](https://github.com/Auxx-Ai/auxx-ai/commit/c87c077109b0c630d8d95270487bb0f5cee4945a))
+* **drawers:** name the record you drilled into ([#2010](https://github.com/Auxx-Ai/auxx-ai/issues/2010)) ([69e4ab6](https://github.com/Auxx-Ai/auxx-ai/commit/69e4ab6352f86ecd5963f0f16f043de7f8cf0599))
+* **hooks:** unwrap captured values, and stop five delete readers matching nothing ([#2004](https://github.com/Auxx-Ai/auxx-ai/issues/2004)) ([5a8f2bd](https://github.com/Auxx-Ai/auxx-ai/commit/5a8f2bd647268e32c4c7d79e513252e70fe11ac6))
+* **import:** five resources had no import route, so Import opened a record ([#2006](https://github.com/Auxx-Ai/auxx-ai/issues/2006)) ([cad5dde](https://github.com/Auxx-Ai/auxx-ai/commit/cad5ddeacc257b9bef9af26999b9167975f2ad3f))
+* **records:** let a delete guard see archived children, and make archive reversible ([#2005](https://github.com/Auxx-Ai/auxx-ai/issues/2005)) ([2759e39](https://github.com/Auxx-Ai/auxx-ai/commit/2759e390635d414ccea42ac832c5209814080115))
+* two silent-drop defects found driving the money tasks ([#2008](https://github.com/Auxx-Ai/auxx-ai/issues/2008)) ([3fc888b](https://github.com/Auxx-Ai/auxx-ai/commit/3fc888bf50675d7c910fde1a88b9974db85aa43e))
+
 ## [0.1.225](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.224...auxx-v0.1.225) (2026-08-31)
 
 
