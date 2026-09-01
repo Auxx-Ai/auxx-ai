@@ -1,5 +1,6 @@
 // apps/web/src/server/api/routers/purchasing.ts
 
+import { applyTariffSchedule } from '@auxx/lib/bom'
 import { getCachedEntityDefId } from '@auxx/lib/cache'
 import { NotFoundError } from '@auxx/lib/errors'
 import { markPurchaseOrderSent } from '@auxx/lib/money'
@@ -542,4 +543,28 @@ export const purchasingRouter = createTRPCRouter({
       // is `rematchBill`).
       return matchBill(input.lines, new Date(), input.tolerance)
     }),
+
+  /**
+   * Reprice every part with a classified supplier offer at today's tariff
+   * schedule (money 29 §8, §12 a).
+   *
+   * A future-dated rate row does not apply itself - nothing is written at
+   * midnight and `recalculateAllPartCosts` has no scheduled caller - so the
+   * schedule screen carries this as an explicit action, in keeping with the
+   * rest of the subsystem, where nothing revalues without a person.
+   *
+   * Asserts `part` edit because `part_cost` on `part` rows is what it writes,
+   * the same gate `builds.roll` uses. It touches no standard cost and no
+   * movement: `part_cost` is the live replacement cost the same recalc rewrites
+   * on every vendor-price change, and a stale one is the whole reason the
+   * button exists.
+   */
+  applyTariffSchedule: capabilityProcedure.mutation(async ({ ctx }) => {
+    const { organizationId } = ctx.session
+    ctx.capabilities.assertEditEntity(await requireDefId(organizationId, 'part'))
+
+    const result = await applyTariffSchedule(ctx.db, organizationId)
+    if (result.isErr()) throw result.error
+    return result.value
+  }),
 })

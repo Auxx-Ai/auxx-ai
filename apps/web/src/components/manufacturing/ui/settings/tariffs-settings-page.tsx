@@ -26,15 +26,17 @@
 import { FieldType } from '@auxx/database/enums'
 import type { FieldType as FieldTypeValue } from '@auxx/database/types'
 import { type RecordId, toRecordId } from '@auxx/lib/resources/client'
+import { Button } from '@auxx/ui/components/button'
 import { ResponsiveTabs } from '@auxx/ui/components/responsive-tabs'
 import { toastError } from '@auxx/ui/components/toast'
 import { generateId } from '@auxx/utils'
-import { Globe, Package } from 'lucide-react'
+import { Globe, Package, RefreshCw } from 'lucide-react'
 import { useQueryState } from 'nuqs'
 import { useCallback, useMemo, useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
 import { MasterDetailSplit } from '~/components/global/master-detail-split'
 import SettingsPage from '~/components/global/settings-page'
+import { useResourceProperty } from '~/components/resources'
 import { useSaveFieldValue } from '~/components/resources/hooks/use-save-field-value'
 import {
   type CreatedRecordInstance,
@@ -113,6 +115,37 @@ export function TariffsSettingsPage() {
   // to append a rate - and an affordance that is refused on click is worse than
   // one that is absent.
   const canEditRates = rateDefId ? canEditEntity(rateDefId) : false
+
+  // ── Apply rate changes (29 §8, §12 a) ───────────────────────────────────
+  //
+  // A future-dated rate row does not apply itself: nothing is written at
+  // midnight and the full recalc has no scheduled caller, so `part_cost` keeps
+  // the old rate until some unrelated vendor-price edit sweeps the part. The
+  // decision was an explicit action rather than a daily sweep, because nothing
+  // else in this subsystem revalues without a person.
+  //
+  // 🛑 Gated on PART edit, not on the code or rate defs, because `part` rows
+  // are what the mutation writes and what `purchasing.applyTariffSchedule`
+  // asserts. Same rule as the two gates above: a button the server refuses is
+  // worse than one that is absent.
+  const partDefId = useResourceProperty('part', 'id')
+  const canApplyRates = !!partDefId && canEditEntity(partDefId)
+  const applyRates = api.purchasing.applyTariffSchedule.useMutation()
+  const [lastApply, setLastApply] = useState<{ affectedParts: number; changed: number } | null>(
+    null
+  )
+
+  const handleApplyRates = useCallback(async () => {
+    try {
+      const result = await applyRates.mutateAsync()
+      setLastApply({ affectedParts: result.affectedParts, changed: result.changedPartIds.length })
+    } catch (error) {
+      toastError({
+        title: 'Error applying rate changes',
+        description: error instanceof Error ? error.message : 'Could not reprice the parts.',
+      })
+    }
+  }, [applyRates])
 
   const countryOptions = useTariffCountryFieldOptions(codeDefId)
   const countryLabels = useTariffCountryLabels(codeDefId)
@@ -508,11 +541,40 @@ export function TariffsSettingsPage() {
     />
   )
 
+  // The result stays on the page rather than in a toast: it is a number the
+  // person will read against the list below it, and "0 of 40 changed" is as
+  // much of an answer as "12 of 40" - it says the schedule was already applied.
+  const applyButton = canApplyRates ? (
+    <div className='flex items-center gap-3'>
+      {lastApply && !applyRates.isPending && (
+        <span className='text-xs text-muted-foreground'>
+          {lastApply.affectedParts === 0
+            ? 'No classified offers to reprice'
+            : `${lastApply.changed} of ${lastApply.affectedParts} ${
+                lastApply.affectedParts === 1 ? 'part' : 'parts'
+              } changed`}
+        </span>
+      )}
+      <Button
+        variant='outline'
+        size='sm'
+        onClick={() => void handleApplyRates()}
+        disabled={isLoading || codes.length === 0}
+        loading={applyRates.isPending}
+        loadingText='Applying...'
+        title='Reprice every part with a classified supplier offer at the rates in force today. Standard costs and movements are not touched.'>
+        <RefreshCw />
+        Apply rate changes
+      </Button>
+    </div>
+  ) : undefined
+
   return (
     <SettingsPage
       title='Tariffs'
       description={PAGE_DESCRIPTION}
       breadcrumbs={BREADCRUMBS}
+      button={applyButton}
       subHeader={
         <ResponsiveTabs
           value={activeTab}
