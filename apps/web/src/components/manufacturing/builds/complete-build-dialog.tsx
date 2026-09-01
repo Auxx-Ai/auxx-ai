@@ -268,10 +268,17 @@ export function CompleteBuildDialog({
         completedAt: new Date(completedAt),
         notes: notes || undefined,
       })
-      // `completeBuild` publishes its own field-value frame for the build row, so
-      // OTHER tabs repaint on their own. The acting tab is excluded from its own
-      // realtime events, and the movements were written on the quiet lane and
-      // announce nothing anywhere — so the ledger card's list has to be told.
+      // The BUILD row only. `completeBuild` publishes its own field-value frame
+      // for it, but the acting tab is excluded from its own realtime events, so
+      // this tab still has to invalidate the two `builds.*` reads and the
+      // generic record list.
+      //
+      // The ledger is NOT this tab's job: the movements are written on the quiet
+      // lane, and `publishBuildMovements` announces them with one tier-2
+      // `records:changed` frame that every tab receives — including this one, it
+      // passes no `excludeSocketId`. Invalidating them from here would aim at
+      // the `stock_movement` def, not `build`, and would still miss the store
+      // list cache that `useRecordList` checks before it fetches.
       await Promise.all([
         utils.builds.get.invalidate({ buildId }),
         utils.builds.list.invalidate(),

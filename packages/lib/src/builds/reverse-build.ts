@@ -69,7 +69,7 @@ import { canReverseBuild } from './client'
 import { recalculateAfterCommit } from './complete-build'
 import { guard } from './guard'
 import type { BuildRecord, ReverseBuildInput, ReverseBuildResult } from './types'
-import { buildWriteSession } from './write-lane'
+import { buildWriteSession, publishQuietBuildWrites } from './write-lane'
 
 const logger = createScopedLogger('builds:reverse')
 
@@ -120,6 +120,15 @@ export async function reverseBuild(
       )
 
       await recalculateAfterCommit(organizationId, result.recalculatedPartIds)
+      // Two frames, two defs — a reversal writes on BOTH.
+      //
+      // The movements, so the reversing build's own ledger renders. And the
+      // `build` ROW, which `completeBuild` never has to announce because its row
+      // already exists and `publishBuildUpdate` carries the field changes: a
+      // reversal CREATES a build, on the quiet lane, so without this frame no
+      // open builds list ever learns the reversal happened.
+      publishQuietBuildWrites(organizationId, movementCtx.movementDefId, result.movementIds)
+      publishQuietBuildWrites(organizationId, ctx.buildDefId, [result.buildId])
 
       logger.info('Reversed build', {
         organizationId,

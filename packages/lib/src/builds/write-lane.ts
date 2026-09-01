@@ -48,6 +48,7 @@
  * if the lane is ever changed.
  */
 
+import { getRealtimeService, publishRecordsChanged } from '../realtime'
 import { quietSession, type WriteSession } from '../resources/crud/write-origin'
 
 /** The prose recorded on every silent build write. Greppable, and the audit trail. */
@@ -65,4 +66,63 @@ export const BUILD_WRITE_LANE_REASON =
  */
 export function buildWriteSession(): WriteSession {
   return quietSession(BUILD_WRITE_LANE_REASON)
+}
+
+/**
+ * Announce rows a build wrote silently — the ONE frame per def that replaces
+ * the per-write frames {@link buildWriteSession} suppresses.
+ *
+ * The lane above is right to silence 51 `record:created` frames and wrong to
+ * leave the rows unannounced. Two surfaces prove it: `build-ledger-card` reads
+ * the movements through the ordinary `record.listFiltered` query, so with no
+ * frame it renders "Nothing posted yet" until the drawer is remounted; and a
+ * REVERSAL creates a whole `build` row on the same lane, so the builds list
+ * never learns the reversal happened. `publishBuildUpdate` already does this
+ * for a completion's build row; this covers everything else.
+ *
+ * Tier-2 (`records:changed`, plan events/03 §7b) rather than tier-1, because
+ * that is what the tier exists for: a bulk-shaped write that suppressed its
+ * per-record frames. The client (`use-resource-sync`) coalesces the frame into
+ * one list invalidate per def, and its other two lanes short-circuit — freshly
+ * written rows are in neither the record store nor the value store, so nothing
+ * is fetched that is not already on screen. The row VALUES then arrive in the
+ * card's own second wave (`useSystemValuesForRecords`), which is why a ledger
+ * row can render its id before its cost.
+ *
+ * 🛑 No `excludeSocketId`, deliberately, and unlike `bulkArchiveEntities`. The
+ * tab that completed the build is the one most likely to have the ledger open,
+ * and it is excluded from its own tier-1 frames everywhere else — excluding it
+ * here would silence the exact surface this call exists to repair.
+ *
+ * ⚠️ A quiet lane normally emits nothing because a finalize pass announces on
+ * its behalf. `quietSession` carries no `txScope` and no collector, so a build
+ * has no finalize pass — it announces its own writes, here and in
+ * `publishBuildUpdate`. Do not "restore" the silence.
+ *
+ * Fire-and-forget, after the commit: a Pusher hiccup must never fail a build
+ * whose ledger is already written.
+ *
+ * @param organizationId The org whose record channel receives the frame.
+ * @param entityDefinitionId The def the rows belong to — one def per call, since
+ *   a `records:changed` frame is addressed to that def's own record channel.
+ * @param recordIds Bare `EntityInstance` ids — never composite `RecordId`s.
+ */
+export function publishQuietBuildWrites(
+  organizationId: string,
+  entityDefinitionId: string,
+  recordIds: string[]
+): void {
+  if (recordIds.length === 0) return
+  // 🛑 try/catch AND `.catch`, both. `getRealtimeService()` resolves transport
+  // config and throws SYNCHRONOUSLY when it is absent, which a promise handler
+  // never sees — and this runs after the commit, so a throw here would report a
+  // build that is already in the ledger as failed.
+  try {
+    publishRecordsChanged(getRealtimeService(), organizationId, {
+      entityDefinitionId,
+      entries: recordIds.map((recordId) => ({ recordId })),
+    }).catch(() => {})
+  } catch {
+    // Best effort. The next list fetch or channel rebind catches the rows up.
+  }
 }

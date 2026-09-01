@@ -40,6 +40,8 @@ interface ValueRow {
 /** One created record, as the CRUD double reports it back. */
 interface CreatedRecord {
   defId: string
+  /** The id the double minted — what a realtime frame must carry, bare. */
+  id: string
   values: Record<string, unknown>
 }
 
@@ -70,6 +72,8 @@ const h = vi.hoisted(() => ({
   /** Interleaved trace: what ran, and on which side of the commit. */
   trace: [] as string[],
   publishedEntries: [] as unknown[],
+  /** Every tier-2 `records:changed` frame `publishQuietBuildWrites` emitted. */
+  movementFrames: [] as Array<{ entityDefinitionId: string; entries: Array<{ recordId: string }> }>,
   getDeductionTargets: vi.fn(),
   loadSubpartGraph: vi.fn(),
   nextId: 0,
@@ -131,6 +135,16 @@ vi.mock('../../realtime', () => ({
     h.trace.push('publish')
     h.publishedEntries.push(...entries)
   }),
+  publishRecordsChanged: vi.fn(
+    async (
+      _svc: unknown,
+      _org: string,
+      args: { entityDefinitionId: string; entries: Array<{ recordId: string }> }
+    ) => {
+      h.trace.push('publish-movements')
+      h.movementFrames.push(args)
+    }
+  ),
 }))
 
 vi.mock('../../resources/crud/unified-handler', () => ({
@@ -145,9 +159,9 @@ vi.mock('../../resources/crud/unified-handler', () => ({
       h.constructions.push(options)
     }
     async create(defId: string, values: Record<string, unknown>) {
-      h.created.push({ defId, values })
       h.nextId += 1
       const id = defId === h.defs.get('build') ? `bld_new_${h.nextId}` : `mv_new_${h.nextId}`
+      h.created.push({ defId, id, values })
       h.trace.push(`create:${String(values.stock_movement_type ?? 'build')}`)
       return { instance: { id }, recordId: `${defId}:${id}`, values }
     }
@@ -367,12 +381,18 @@ beforeEach(() => {
   h.recalcCalls = []
   h.trace = []
   h.publishedEntries = []
+  h.movementFrames = []
   h.nextId = 0
 })
 
 /** Every `stock_movement` the CRUD double was asked to create. */
 function movementWrites(): Record<string, unknown>[] {
   return h.created.filter((row) => row.defId === 'def_mv').map((row) => row.values)
+}
+
+/** The ids of every `stock_movement` written, in write order. */
+function movementIdsWritten(): string[] {
+  return h.created.filter((row) => row.defId === 'def_mv').map((row) => row.id)
 }
 
 /** Every `build` the CRUD double was asked to create. */
@@ -718,6 +738,24 @@ describe('completeBuild', () => {
     }
   })
 
+  it('announces the movements with ONE tier-2 frame, after the commit', async () => {
+    await completeBuild(db, ORG, USER, { buildId: BUILD, quantityProduced: 10 })
+
+    // ONE frame: a completion writes movements only — its build row already
+    // exists, and `publishBuildUpdate` carries that row's changed values.
+    expect(h.movementFrames).toHaveLength(1)
+    const frame = h.movementFrames[0]!
+    // The `stock_movement` def, NOT `build`: the ledger card lists movements, so
+    // a frame addressed to the build def is delivered to the wrong query.
+    expect(frame.entityDefinitionId).toBe('def_mv')
+    // BARE instance ids (`RecordChangedEntry.recordId`), never composite ones.
+    expect(frame.entries.map((entry) => entry.recordId)).toEqual(movementIdsWritten())
+    for (const entry of frame.entries) expect(entry.recordId).not.toContain(':')
+    // After the commit, like every other post-commit door here — the rows have
+    // to be readable by the refetch the frame provokes.
+    expect(h.trace.indexOf('publish-movements')).toBeGreaterThan(h.trace.indexOf('commit'))
+  })
+
   it('writes the ledger on the quiet lane, and never with the deprecated skipEvents alias', async () => {
     await completeBuild(db, ORG, USER, { buildId: BUILD, quantityProduced: 10 })
 
@@ -902,6 +940,28 @@ describe('reverseBuild', () => {
     expect(h.recalcCalls).toHaveLength(1)
     expect([...h.recalcCalls[0]!].sort()).toEqual([PART_ASM, PART_LIFT].sort())
     expect(h.trace.indexOf('recalc')).toBeGreaterThan(h.trace.indexOf('commit'))
+  })
+
+  it('announces BOTH defs — the reversing movements and the new build row', async () => {
+    // A reversal writes on two defs and both are silent. The movements feed the
+    // reversing build's own ledger; the `build` row is a CREATE that no open
+    // builds list would otherwise learn about (`completeBuild` never needs this
+    // — its build row already exists).
+    await reverseBuild(db, ORG, USER, { buildId: BUILD })
+
+    expect(h.movementFrames).toHaveLength(2)
+    const byDef = Object.fromEntries(
+      h.movementFrames.map((frame) => [frame.entityDefinitionId, frame.entries])
+    )
+    expect(Object.keys(byDef).sort()).toEqual(['def_build', 'def_mv'])
+    expect(byDef.def_mv?.map((entry) => entry.recordId)).toEqual(movementIdsWritten())
+    // The REVERSING build, not the one being reversed — that is the row the
+    // list is missing.
+    expect(byDef.def_build?.map((entry) => entry.recordId)).toEqual(['bld_new_1'])
+    for (const entry of [...(byDef.def_mv ?? []), ...(byDef.def_build ?? [])]) {
+      expect(entry.recordId).not.toContain(':')
+    }
+    expect(h.trace.indexOf('publish-movements')).toBeGreaterThan(h.trace.indexOf('commit'))
   })
 
   it('refuses a build that is already reversed — a second negation is invisible', async () => {
