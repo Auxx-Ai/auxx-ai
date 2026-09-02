@@ -488,8 +488,15 @@ function compareComponents(a: TariffRateComponent, b: TariffRateComponent): numb
  * The grouping key for an authority. Trimmed and case-folded so `MFN`, `mfn`
  * and ` MFN ` are one authority rather than three that all get summed - which
  * would triple a base duty with nothing on screen to show it.
+ *
+ * 🛑 **Exported so the catalogue re-sync folds IDENTICALLY** (money 35 §2).
+ * `resync-tariff-starters.ts` has to decide whether a row it is about to write
+ * lands in an authority group the org already has; if its folding rule and this
+ * one ever disagree, an appended step lands in a SECOND group and the resolver
+ * sums the two - a silently doubled rate, with no error and no warning. One
+ * folding rule, one definition (29 §13).
  */
-function authorityKey(authority: string | null): string {
+export function authorityKey(authority: string | null): string {
   return (authority ?? '').trim().toLowerCase()
 }
 
@@ -504,8 +511,14 @@ function normalizeAuthority(authority: string | null): string | null {
  *
  * DATE values are stored as UTC midnight per the platform contract, so the UTC
  * slice is the day.
+ *
+ * Exported for the same reason {@link authorityKey} is (money 35 §2): the
+ * catalogue re-sync pairs a stored row against a catalogue row on
+ * `(chapter99Code, effectiveFrom)`, so its notion of "the same day" has to be
+ * this one. A second copy that read a `Date` in local time rather than UTC
+ * would mis-pair rows by a day and append a duplicate step.
  */
-function effectiveDay(effectiveFrom: Date | string | null): string | null {
+export function effectiveDay(effectiveFrom: Date | string | null): string | null {
   if (effectiveFrom == null) return null
   if (typeof effectiveFrom === 'string') {
     const day = effectiveFrom.slice(0, 10)
