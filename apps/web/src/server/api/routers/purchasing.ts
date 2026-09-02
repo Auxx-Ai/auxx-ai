@@ -2,11 +2,13 @@
 
 import {
   adoptTariffStarters,
+  applyTariffResync,
   applyTariffSchedule,
   expandTariffStarter,
   listHtsChildren,
   loadHtsGeneral,
   loadTariffMemberships,
+  planTariffResync,
   TARIFF_STARTERS_VERSION,
 } from '@auxx/lib/bom'
 import { getCachedEntityDefId } from '@auxx/lib/cache'
@@ -672,6 +674,59 @@ export const purchasingRouter = createTRPCRouter({
       ctx.capabilities.assertEditEntity(await requireDefId(organizationId, 'tariff_rate'))
 
       const result = await adoptTariffStarters(ctx.db, organizationId, userId, input)
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /**
+   * What the catalogue would ADD to the codes this org already holds, grouped
+   * by the government action that would add it (money 35 §6).
+   *
+   * ONE query for the whole page, not one per row: the tariffs page already
+   * loads every code and every rate, and a per-row query would be N round trips
+   * to render a badge. The per-row button (§7.2) filters this same answer
+   * client-side rather than asking again.
+   *
+   * A read, so `assertViewEntity` on both defs - the plan resolves the schedule
+   * to say what a code would go from and to, which is reading rate rows.
+   */
+  planTariffResync: capabilityProcedure.query(async ({ ctx }) => {
+    const { organizationId } = ctx.session
+    ctx.capabilities.assertViewEntity(await requireDefId(organizationId, 'tariff_code'))
+    ctx.capabilities.assertViewEntity(await requireDefId(organizationId, 'tariff_rate'))
+
+    const result = await planTariffResync(ctx.db, organizationId)
+    if (result.isErr()) throw result.error
+    return result.value
+  }),
+
+  /**
+   * Append one government action's missing rows to the codes named (money 35
+   * §6).
+   *
+   * Asserts edit on BOTH defs - the same gate `adoptTariffStarters` uses, for
+   * the same reason: a tariff code is reference data, not a control surface, so
+   * this is not `settingsManage`.
+   *
+   * 🛑 The posted `codeInstanceIds` are a NARROWING, never a plan. The lib
+   * function re-derives the diff from the live schedule inside the call, so a
+   * stale browser plan cannot write a row that is already there. Everything
+   * else - insert only, one transaction per code, a partial run reported rather
+   * than thrown - is the lib function's contract.
+   */
+  applyTariffResync: capabilityProcedure
+    .input(
+      z.object({
+        actionKey: z.string().min(1).max(64),
+        codeInstanceIds: z.array(z.string().min(1)).min(1).max(500),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
+      ctx.capabilities.assertEditEntity(await requireDefId(organizationId, 'tariff_code'))
+      ctx.capabilities.assertEditEntity(await requireDefId(organizationId, 'tariff_rate'))
+
+      const result = await applyTariffResync(ctx.db, organizationId, userId, input)
       if (result.isErr()) throw result.error
       return result.value
     }),

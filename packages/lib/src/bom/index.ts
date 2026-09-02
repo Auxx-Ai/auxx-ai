@@ -8,6 +8,18 @@ export {
 export { type ApplyTariffScheduleResult, applyTariffSchedule } from './apply-tariff-schedule'
 export { recalculateAffectedParts, recalculateAllPartCosts } from './cost-calculator'
 export { batchRecalculateQoH } from './qoh'
+export {
+  applyTariffResync,
+  MFN_ACTION_KEY,
+  planTariffResync,
+  type ResyncAction,
+  type ResyncAddition,
+  type ResyncApplyResult,
+  type ResyncCode,
+  type ResyncDeps,
+  type ResyncDivergence,
+  type ResyncPlan,
+} from './resync-tariff-starters'
 export { getDeductionTargets, loadDirectSubparts, loadSubpartGraph } from './subpart-graph'
 export {
   loadTariff301Memberships,

@@ -15,6 +15,24 @@
 // is filling in a form with no place in the list. `chart-list.tsx` is the
 // pattern.
 //
+// 🛑 The per-row catalogue button (money 35 §7.2) is a `TreeRowButton` in the
+// `actions` slot, hover-revealed by default and `persistent` when that code has
+// something waiting - so it doubles as the indicator without a second badge
+// competing with the resolved rate. It belongs only inside a `TreeRow`: it is
+// styled off the `group/tree-row` hover group and is inert anywhere else, and
+// `TreeRow`'s `actions` wrapper already stops propagation, so pressing it does
+// not also select the row.
+//
+// 🛑 The row's delete button is the SAME `onRemove` the detail editor calls -
+// the confirm, the `record.delete` and the local list patch all live once, on
+// the page. A second delete path here would be a second chance to get the
+// "nothing already valued changes" wording wrong. It is hover-revealed and NOT
+// `persistent`: unlike the catalogue button it advertises no state, and a
+// destructive affordance sitting on every row invites a misclick. It comes
+// FIRST in the slot, so the button that appears and disappears with a code's
+// pending updates is the one on the outside edge - the delete button then keeps
+// one position for every row instead of shifting under the pointer.
+//
 // 🛑 A code whose rows are ALL non-blank authorities is marked, not just
 // totalled. §3's rule sums one row per authority, so a 301 row with no MFN row
 // behind it resolves to 25% instead of 27% - arithmetically consistent, and
@@ -25,9 +43,10 @@ import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { InputSearch } from '@auxx/ui/components/input-search'
 import { EmptySection } from '@auxx/ui/components/section'
-import { TREE_SECONDARY_NOTRUNCATE, TreeRow } from '@auxx/ui/components/tree-row'
+import { toastError } from '@auxx/ui/components/toast'
+import { TREE_SECONDARY_NOTRUNCATE, TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
-import { BookOpen, Globe, Plus } from 'lucide-react'
+import { BookOpen, BookOpenCheck, Globe, Plus, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import {
   composeTariffLabel,
@@ -57,7 +76,25 @@ interface TariffCodesListProps {
   onAddDraft: () => void
   /** Opens the "Add from catalogue" dialog (money 32 §3). */
   onAddFromCatalogue: () => void
-  /** False when the viewer cannot write `tariff_code` - Add hides. */
+  /**
+   * Instance id -> how many rows the catalogue would add to that code (money 35
+   * §7.2). Read off the ONE plan query the page already runs; a per-row query
+   * would be N round trips to render a badge.
+   */
+  resyncCounts: Map<string, number>
+  /** Opens the catalogue-updates dialog filtered to one code. Absent hides the button. */
+  onResync?: (codeInstanceId: string) => void
+  /**
+   * Remove a code. The page's own `handleRemoveCode` - the same one the detail
+   * editor's Trash2 calls, confirm copy included. Never a second delete path.
+   *
+   * It REJECTS on refusal rather than swallowing, because the editor renders
+   * the message as a field error. A row has no field for one to land on, so
+   * this list catches and toasts - the same call `handleRemoveRate` makes on
+   * the page, for the same reason.
+   */
+  onRemove: (code: TariffCode) => Promise<void>
+  /** False when the viewer cannot write `tariff_code` - Add and Remove hide. */
   canEdit: boolean
 }
 
@@ -73,6 +110,9 @@ export function TariffCodesList({
   draft,
   onAddDraft,
   onAddFromCatalogue,
+  resyncCounts,
+  onResync,
+  onRemove,
   canEdit,
 }: TariffCodesListProps) {
   const [search, setSearch] = useState('')
@@ -166,6 +206,7 @@ export function TariffCodesList({
             )
             const badge = resolutionBadge(resolution)
             const countryName = code.country ? countryLabels.get(code.country) : undefined
+            const pending = resyncCounts.get(code.id) ?? 0
             return (
               <TreeRow
                 key={code.id}
@@ -194,6 +235,42 @@ export function TariffCodesList({
                       {code.description || countryName || ''}
                     </span>
                   </span>
+                }
+                actions={
+                  <>
+                    {canEdit && (
+                      <TreeRowButton
+                        variant='destructive'
+                        tooltipText='Remove code'
+                        aria-label={`Remove ${composeTariffLabel(code.code, code.country)}`}
+                        onClick={() => {
+                          void onRemove(code).catch((error: unknown) => {
+                            toastError({
+                              title: 'Error removing the code',
+                              description:
+                                error instanceof Error
+                                  ? error.message
+                                  : 'Could not remove the tariff code.',
+                            })
+                          })
+                        }}>
+                        <Trash2 />
+                      </TreeRowButton>
+                    )}
+                    {onResync && (
+                      <TreeRowButton
+                        persistent={pending > 0}
+                        tooltipText={
+                          pending > 0
+                            ? `${pending} ${pending === 1 ? 'update' : 'updates'} from the catalogue`
+                            : 'Check catalogue'
+                        }
+                        aria-label='Check the catalogue for this code'
+                        onClick={() => onResync(code.id)}>
+                        <BookOpenCheck />
+                      </TreeRowButton>
+                    )}
+                  </>
                 }
               />
             )

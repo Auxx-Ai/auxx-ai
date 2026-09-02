@@ -26,11 +26,12 @@
 import { FieldType } from '@auxx/database/enums'
 import type { FieldType as FieldTypeValue } from '@auxx/database/types'
 import { type RecordId, toRecordId } from '@auxx/lib/resources/client'
+import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { ResponsiveTabs } from '@auxx/ui/components/responsive-tabs'
 import { toastError } from '@auxx/ui/components/toast'
 import { generateId } from '@auxx/utils'
-import { Globe, Package, RefreshCw } from 'lucide-react'
+import { BookOpenCheck, Globe, Package, RefreshCw } from 'lucide-react'
 import { useQueryState } from 'nuqs'
 import { useCallback, useMemo, useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
@@ -69,6 +70,7 @@ import { TariffClassificationList } from './tariff-classification-list'
 import { TariffCodeEditor, type TariffCodeValues } from './tariff-code-editor'
 import { TariffCodesList } from './tariff-codes-list'
 import type { TariffRateValues } from './tariff-rate-history'
+import { TariffResyncDialog } from './tariff-resync-dialog'
 import { TariffStarterDialog } from './tariff-starter-dialog'
 
 const BREADCRUMBS = [
@@ -191,6 +193,50 @@ export function TariffsSettingsPage() {
   const [selectedOfferId, setSelectedOfferId] = useState<string | null>(null)
   // "Add from catalogue" (money 32 §3).
   const [starterOpen, setStarterOpen] = useState(false)
+
+  // ── "Catalogue updates" (money 35 §7) ───────────────────────────────────
+  //
+  // ONE query for the whole page. The header button's badge, the per-row
+  // indicator and the dialog all read this single plan; a per-row query would
+  // be N round trips to render a badge, and two plans could disagree.
+  //
+  // 🛑 Gated on edit of BOTH defs even though the query itself only needs view.
+  // Every action the plan describes is an append to `tariff_rate` against a
+  // `tariff_code`, so a viewer who cannot write both would be shown a button
+  // the mutation then refuses - the same call the three gates above make.
+  const canResync = canEditCodes && canEditRates
+  const resyncPlan = api.purchasing.planTariffResync.useQuery(undefined, {
+    enabled: canResync,
+  })
+  const [resyncOpen, setResyncOpen] = useState(false)
+  /** Set by the per-row button; `null` is the whole-org view (§7.1 vs §7.2). */
+  const [resyncFocusId, setResyncFocusId] = useState<string | null>(null)
+
+  const resyncCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const action of resyncPlan.data?.actions ?? []) {
+      for (const code of action.codes) {
+        counts.set(
+          code.codeInstanceId,
+          (counts.get(code.codeInstanceId) ?? 0) + code.additions.length
+        )
+      }
+    }
+    return counts
+  }, [resyncPlan.data])
+
+  const openResync = useCallback((codeInstanceId: string | null) => {
+    setResyncFocusId(codeInstanceId)
+    setResyncOpen(true)
+  }, [])
+
+  // Rows were appended to `tariff_rate` outside this page's own create paths,
+  // so the rate read is refetched rather than patched row by row - and the plan
+  // is re-derived, because a partial run leaves work behind.
+  const handleResynced = useCallback(() => {
+    refreshRates()
+    void resyncPlan.refetch()
+  }, [refreshRates, resyncPlan])
 
   // ── The Classification tab's read and writes ────────────────────────────
   //
@@ -586,31 +632,55 @@ export function TariffsSettingsPage() {
   // The result stays on the page rather than in a toast: it is a number the
   // person will read against the list below it, and "Already current" is as
   // much of an answer as "25 parts repriced" - it says the schedule was applied.
-  const applyButton = canApplyRates ? (
-    <div className='flex items-center gap-3'>
-      {lastApply && !applyRates.isPending && (
-        <span className='text-xs text-muted-foreground'>{describeApply(lastApply)}</span>
+  // 🛑 The badge IS the notification (§10): there is no page banner, and nothing
+  // runs in the background. A code deploy must not rewrite org data, so every
+  // write here is a person pressing this button and then an action's Apply.
+  const resyncCount = resyncPlan.data?.actions.length ?? 0
+  const headerButtons = (
+    <div className='flex flex-wrap items-center gap-3'>
+      {canResync && (
+        <Button
+          variant='outline'
+          size='sm'
+          onClick={() => openResync(null)}
+          disabled={isLoading || codes.length === 0}
+          title='What the auxx catalogue would add to the codes you already hold. Rows are only ever appended.'>
+          <BookOpenCheck />
+          Catalogue updates
+          {resyncCount > 0 && (
+            <Badge variant='amber' size='xs'>
+              {resyncCount}
+            </Badge>
+          )}
+        </Button>
       )}
-      <Button
-        variant='outline'
-        size='sm'
-        onClick={() => void handleApplyRates()}
-        disabled={isLoading || codes.length === 0}
-        loading={applyRates.isPending}
-        loadingText='Applying...'
-        title='Reprice every part with a classified supplier offer at the rates in force today. Standard costs and movements are not touched.'>
-        <RefreshCw />
-        Apply rate changes
-      </Button>
+      {canApplyRates && (
+        <div className='flex items-center gap-3'>
+          {lastApply && !applyRates.isPending && (
+            <span className='text-xs text-muted-foreground'>{describeApply(lastApply)}</span>
+          )}
+          <Button
+            variant='outline'
+            size='sm'
+            onClick={() => void handleApplyRates()}
+            disabled={isLoading || codes.length === 0}
+            loading={applyRates.isPending}
+            loadingText='Applying...'
+            title='Reprice every part with a classified supplier offer at the rates in force today. Standard costs and movements are not touched.'>
+            <RefreshCw />
+            Apply rate changes
+          </Button>
+        </div>
+      )}
     </div>
-  ) : undefined
+  )
 
   return (
     <SettingsPage
       title='Tariffs'
       description={PAGE_DESCRIPTION}
       breadcrumbs={BREADCRUMBS}
-      button={applyButton}
+      button={canResync || canApplyRates ? headerButtons : undefined}
       subHeader={
         <ResponsiveTabs
           value={activeTab}
@@ -641,6 +711,9 @@ export function TariffsSettingsPage() {
             draft={draft}
             onAddDraft={handleAddDraft}
             onAddFromCatalogue={() => setStarterOpen(true)}
+            resyncCounts={resyncCounts}
+            onResync={canResync ? openResync : undefined}
+            onRemove={handleRemoveCode}
             canEdit={canEditCodes}
           />
         </MasterDetailSplit>
@@ -672,6 +745,15 @@ export function TariffsSettingsPage() {
         today={today}
         bookTimeZone={bookTimeZone}
         onAdopted={handleStarterAdopted}
+      />
+
+      <TariffResyncDialog
+        open={resyncOpen}
+        onOpenChange={setResyncOpen}
+        plan={resyncPlan.data}
+        isLoading={resyncPlan.isLoading}
+        focusCodeInstanceId={resyncFocusId}
+        onApplied={handleResynced}
       />
     </SettingsPage>
   )
