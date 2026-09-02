@@ -11,6 +11,7 @@ import {
 import { formatPhoneNumber } from '@auxx/utils/contact'
 import { formatEmail } from '@auxx/utils/email'
 import { z } from 'zod'
+import { normalizeCalendarDayIso } from './calendar-day'
 
 /**
  * Validation schemas for each field type using Zod.
@@ -59,6 +60,19 @@ const dateSchema = z.unknown().transform((v, ctx) => {
   return date.toISOString()
 })
 
+// DATE only: a calendar day, normalised to `YYYY-MM-DDT00:00:00.000Z`
+// (plans/money/tasks/33-calendar-day-fields.md §3). A null/empty input is
+// rejected here exactly as `dateSchema` rejects it; clearing a value is decided
+// upstream in `validateAndConvertValue`, which never reaches a schema for null.
+const calendarDateSchema = z.unknown().transform((v, ctx) => {
+  const iso = normalizeCalendarDayIso(v)
+  if (!iso) {
+    ctx.addIssue({ code: 'custom', message: 'Invalid date value' })
+    return z.NEVER
+  }
+  return iso
+})
+
 // Field-specific schemas
 export const fieldValueSchemas = {
   // TEXT, RICH_TEXT, ADDRESS
@@ -101,8 +115,11 @@ export const fieldValueSchemas = {
   // CHECKBOX
   boolean: booleanSchema,
 
-  // DATE, DATETIME, TIME
+  // DATETIME, TIME
   date: dateSchema,
+
+  // DATE
+  calendarDate: calendarDateSchema,
 
   // SINGLE_SELECT, MULTI_SELECT, TAGS
   option: z
@@ -259,10 +276,17 @@ export class FieldValueValidator {
   }
 
   /**
-   * Validate date/datetime/time
+   * Validate datetime/time (an instant)
    */
   validateDate(value: unknown) {
     return fieldValueSchemas.date.safeParse(value)
+  }
+
+  /**
+   * Validate a DATE (a calendar day, normalised to UTC midnight)
+   */
+  validateCalendarDate(value: unknown) {
+    return fieldValueSchemas.calendarDate.safeParse(value)
   }
 
   /**

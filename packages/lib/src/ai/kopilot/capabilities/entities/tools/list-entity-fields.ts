@@ -100,6 +100,7 @@ Response shape:
     createOnly: true     — set at create, never updated after
     options              — valid values for select / multi-select / status
     relationship         — target entity for RELATIONSHIP fields
+    format: 'YYYY-MM-DD' - DATE fields take a bare calendar day, not a datetime
   Computed fields are omitted — the LLM can't set them.`,
     parameters: {
       type: 'object',

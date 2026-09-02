@@ -81,8 +81,11 @@ export function DateTimePickerContent({
   /** Handle date selection from calendar */
   const handleDateSelect = useCallback(
     (date: Date) => {
-      // Preserve time from existing selection or use start of day
-      const newDate = selectedDate ? cloneTimeToDate(date, selectedDate) : startOfDay(date)
+      // Date mode is a calendar day and never carries a time-of-day, so a stray
+      // time on the incoming value must not survive a re-pick. Datetime mode
+      // preserves the time from the existing selection.
+      const newDate =
+        mode !== 'date' && selectedDate ? cloneTimeToDate(date, selectedDate) : startOfDay(date)
       setSelectedDate(newDate)
       setCurrentMonth(date)
 
@@ -91,7 +94,7 @@ export function DateTimePickerContent({
         onChange(newDate)
       }
     },
-    [selectedDate, noConfirm, onChange]
+    [mode, selectedDate, noConfirm, onChange]
   )
 
   /** Handle hour selection */

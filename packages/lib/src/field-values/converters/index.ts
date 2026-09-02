@@ -67,6 +67,7 @@ export interface FieldValueConverter {
 import { actorConverter } from './actor'
 import { booleanConverter } from './boolean'
 import { calcConverter } from './calc'
+import { calendarDateConverter } from './calendar-date'
 import {
   currencyConverter,
   normalizeCurrencyCode,
@@ -107,8 +108,9 @@ export const converters: Record<StoredFieldType, FieldValueConverter> = {
   // Boolean - stores as valueBoolean in database
   CHECKBOX: booleanConverter,
 
-  // Date family - store as valueDate in database
-  DATE: dateConverter,
+  // Date family - store as valueDate in database.
+  // DATE is a calendar day (UTC midnight); DATETIME and TIME are instants.
+  DATE: calendarDateConverter,
   DATETIME: dateConverter,
   TIME: dateConverter,
 
@@ -140,6 +142,7 @@ export {
   numberConverter,
   currencyConverter,
   booleanConverter,
+  calendarDateConverter,
   dateConverter,
   selectConverter,
   relationshipConverter,

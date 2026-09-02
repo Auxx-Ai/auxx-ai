@@ -66,6 +66,7 @@ import { migration098PruneOrphanedOptionValues } from './migrations/098-prune-or
 import { migration099ImapBackfillStamps } from './migrations/099-imap-backfill-stamps'
 import { migration103BackfillEmailStorageLocationOrg } from './migrations/103-backfill-email-storage-location-org'
 import { migration105PruneDanglingRelationValues } from './migrations/105-prune-dangling-relation-values'
+import { migration106DateFieldsUtcMidnight } from './migrations/106-date-fields-utc-midnight'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
 import { wrapEntityMigration } from './wrap-entity-migration'
@@ -160,6 +161,7 @@ function buildRegistry(): DataMigrationDef[] {
     // 104 (`vendor_sku_optional`) is an ENTITY migration and arrives via
     // ALL_ENTITY_MIGRATIONS above; it owns 104 in the shared id sequence.
     migration105PruneDanglingRelationValues,
+    migration106DateFieldsUtcMidnight,
   ]
 
   all.sort((a, b) => a.id.localeCompare(b.id))

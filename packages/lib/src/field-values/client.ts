@@ -15,6 +15,8 @@ export {
   type ParsedExpression,
   validateCalcExpression,
 } from '@auxx/utils/calc-expression'
+// Calendar-day rule for FieldType.DATE, shared by the server normalisers and the browser doors
+export { fromCalendarDayIso, normalizeCalendarDayIso, toCalendarDayIso } from './calendar-day'
 // Converters (for direct access if needed)
 export { converters, type FileValue } from './converters'
 // Currency value narrowing — shared by every render/edit surface

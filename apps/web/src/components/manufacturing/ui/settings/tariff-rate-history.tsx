@@ -437,14 +437,6 @@ function TariffRateForm({
           />
         </FieldPanelRow>
 
-        {/* ⚠️ A `FieldType.DATE` is stored as a full ISO instant, so the calendar
-            day the resolver reads is the UTC slice of whatever the picker
-            produced. That is the platform's DATE semantics, shared with every
-            other date field in the app, and it is left alone here on purpose:
-            normalising the write to a bare `YYYY-MM-DD` would fix the stored day
-            for eastern viewers and break what the picker renders back to western
-            ones, and this page must not be the one writer that disagrees with
-            the importer and the API about what a date field holds. */}
         <FieldPanelRow
           title='Effective from'
           type={BaseType.DATE}

@@ -315,8 +315,8 @@ export class EntityMergeService {
     // Convert field array to map for quick lookup
     const fieldMap = new Map(fields.map((f) => [f.id, f]))
 
-    // FieldValueService.setValue internally uses formatToTypedInput
-    // to convert raw values → TypedFieldValueInput
+    // setValuesForEntity runs each raw value through validateAndConvertValue
+    // (the validator schemas), not formatToTypedInput, to build the TypedFieldValueInput
     await fieldValueService.setValuesForEntity({
       recordId: targetRecordId,
       values: mergedValues,

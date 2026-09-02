@@ -838,7 +838,12 @@ export async function validateSingleValue(
       return { type: 'boolean', value: result.data ?? false }
     }
 
-    case 'DATE':
+    case 'DATE': {
+      const result = ctx.validator.validateCalendarDate(value)
+      if (!result.success) throwValidationError(result)
+      return { type: 'date', value: result.data || '' }
+    }
+
     case 'DATETIME':
     case 'TIME': {
       const result = ctx.validator.validateDate(value)
