@@ -21,8 +21,25 @@ function resolveDistinctId(data: Record<string, unknown>): string | null {
   )
 }
 
-/** Publishes AuxxEvents to PostHog for analytics tracking. */
-export const publishToAnalyticsJob = async ({ data: event }: { data: AuxxEvent }) => {
+/**
+ * Whether an event type is worth a PostHog capture.
+ *
+ * Per-field edits (`*:field:updated`) and the field-hook fan-out
+ * (`field:trigger`) fire once per changed field on every write. They are
+ * write-path noise, not product analytics: a single record save can emit
+ * dozens of them, which drowns the events people actually look at and burns
+ * PostHog volume for nothing.
+ */
+export function isAnalyticsEvent(type: string): boolean {
+  if (type === 'field:trigger') return false
+  if (type.endsWith(':field:updated')) return false
+  return true
+}
+
+/** Captures one AuxxEvent to PostHog. Skips types {@link isAnalyticsEvent} rejects. */
+export function captureAnalytics(event: AuxxEvent): void {
+  if (!isAnalyticsEvent(event.type)) return
+
   const d = event.data as Record<string, unknown>
 
   const distinctId = resolveDistinctId(d)
@@ -42,4 +59,12 @@ export const publishToAnalyticsJob = async ({ data: event }: { data: AuxxEvent }
     properties,
     groups: organizationId ? { organization: organizationId as string } : undefined,
   })
+}
+
+/**
+ * Legacy job name. `publishEventJob` now calls {@link captureAnalytics} inline;
+ * this stays registered so jobs queued before a deploy still resolve.
+ */
+export const publishToAnalyticsJob = async ({ data: event }: { data: AuxxEvent }) => {
+  captureAnalytics(event)
 }

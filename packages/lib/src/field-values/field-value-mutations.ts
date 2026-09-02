@@ -32,6 +32,7 @@ import {
 } from '../custom-fields/built-in-fields'
 import { checkUniqueValueTyped } from '../custom-fields/check-unique-value-typed'
 import { BadRequestError, NotFoundError, UniqueValueConflictError } from '../errors'
+import { fieldTouchesActivity } from '../field-hooks/activity-touch'
 import {
   collectTriggeredFields,
   deduplicateBySystemAttribute,
@@ -81,6 +82,7 @@ import {
   setRowsKey,
   typedExistingValuesFromSetRows,
 } from './batch-existing-values'
+import { emitFieldChange } from './field-change-events'
 import {
   assertCurrencyAtFieldPrecision,
   type CachedField,
@@ -104,6 +106,11 @@ import { getValue, getValueFromStoredRows } from './field-value-queries'
 import { formatToTypedInput } from './formatter'
 import { getExistingFieldValue } from './get-existing-value'
 import { insertFieldValue } from './insert-value'
+import {
+  type EntityInstanceRow,
+  flushInstanceDerived,
+  flushInstancesDerived,
+} from './instance-derived'
 import { coerceNameInput, type NameParts, readNameParts } from './name-parts'
 import { MAX_MULTI_VALUES } from './primary-value'
 import {
@@ -186,7 +193,7 @@ export function syncCollectorOf(session?: WriteSession): ManifestCollector | nul
  * form for table-backed system resources. Zero subscriptions ⇒ false ⇒ no delta work at
  * all (the tier-1 recordTouched is the only capture).
  */
-function isDeltaSubscribed(
+export function isDeltaSubscribed(
   collector: ManifestCollector | null,
   field: CachedField,
   fieldId: string,
@@ -238,7 +245,7 @@ function typedRowsOrNull(
  * Unsubscribed fields, and subscribed writes with no honest pre-state in hand
  * (`oldValues === null`), degrade to tier-1 membership only.
  */
-function captureSyncFieldWrite(args: {
+export function captureSyncFieldWrite(args: {
   collector: ManifestCollector
   /** Pre-computed `isDeltaSubscribed` answer for this field. */
   subscribed: boolean
@@ -365,7 +372,7 @@ function bufferFieldChange(
  * Outcome of running the per-field pre-hook chain for a single
  * `(recordId, fieldId)` write.
  */
-type FieldPreHookOutcome =
+export type FieldPreHookOutcome =
   | { kind: 'continue'; value: TypedFieldValueInput | TypedFieldValueInput[] | null }
   | { kind: 'drop' }
 
@@ -386,7 +393,7 @@ type FieldPreHookOutcome =
  *   - the systemAttribute is in `ctx.bypassFieldGuards`
  *   - no hooks are registered for the `(entitySlug, systemAttribute)` pair
  */
-async function fireFieldPreHooks(
+export async function fireFieldPreHooks(
   ctx: FieldValueContext,
   args: {
     recordId: RecordId
@@ -463,7 +470,7 @@ async function fireFieldPreHooks(
  * Validate self-referential relationship constraints before saving.
  * Checks for circular references and max depth violations.
  */
-async function validateRelationshipValue(
+export async function validateRelationshipValue(
   ctx: FieldValueContext,
   params: {
     entityId: string
@@ -882,14 +889,75 @@ export async function setValueWithType(
   // only the differences are written — an unchanged position keeps its row
   // id, sortKey and updatedAt. Display recompute, inverse sync, hooks and
   // realtime are derived work and stay after COMMIT.
-  const outcome = await ctx.db.transaction(async (tx) =>
-    reconcileSetRowsInTx(tx, {
-      organizationId: ctx.organizationId,
-      entityId: entityInstanceId,
-      fieldId,
-      insertRows,
-    })
-  )
+  //
+  // Single-value fast path (update-path-and-events.md section 3D). A field
+  // whose storage is one row by type (no `addValue` door can ever give it a
+  // second one) with a target of one value and a known stored set of at
+  // most one row has exactly one plan: UPDATE that row in place, or INSERT
+  // when there is none. A single-row UPDATE by id is atomic under the row
+  // lock, so the advisory lock, the in-lock re-read and the savepoint buy
+  // nothing here; the §5B race they guard against needs a multi-row
+  // positional diff. `updatedAt` is taken by the server AFTER the row lock,
+  // so a writer that waited on a concurrent one cannot commit a stamp older
+  // than the value it replaced (the dedup watermark's max must not go back).
+  const outcome = await (async () => {
+    const known = params.knownStoredRows
+    const fieldOptions = field.options as
+      | { actor?: { multiple?: boolean }; multi?: boolean }
+      | undefined
+    if (
+      known !== undefined &&
+      known !== null &&
+      known.length <= 1 &&
+      insertRows.length === 1 &&
+      !isMultiValueFieldType(fieldType, fieldOptions)
+    ) {
+      const target = insertRows[0]!
+      const stored = known[0]
+      if (stored) {
+        // The stamp is taken before the statement rather than after a lock
+        // wait (there is no lock to wait on); the record-level flush stamps
+        // `EntityInstance.updatedAt` fresh after this returns, which is the
+        // leg of the dedup watermark that must never fall behind a scan.
+        const writeStamp = new Date()
+        const columns = updateColumnsFor(target)
+        const updated = await ctx.db
+          .update(schema.FieldValue)
+          .set({ ...columns, updatedAt: writeStamp })
+          .where(
+            and(
+              eq(schema.FieldValue.id, stored.id),
+              eq(schema.FieldValue.organizationId, ctx.organizationId)
+            )
+          )
+        // Assembled in memory like the reconcile's surviving rows: no
+        // post-write re-SELECT. `rowCount` is only known on a real driver
+        // result; anything else counts as updated.
+        const rowCount = (updated as { rowCount?: number | null } | undefined)?.rowCount
+        if (rowCount !== 0) {
+          return {
+            rows: [{ ...stored, ...columns, updatedAt: writeStamp } as unknown as ExistingSetRow],
+            deletionOnly: false,
+          }
+        }
+        // The row went away under us (a concurrent clear): insert instead.
+      }
+      const rows = (await ctx.db
+        .insert(schema.FieldValue)
+        .values([target])
+        .onConflictDoUpdate(replaceConflictUpdate())
+        .returning()) as unknown as ExistingSetRow[]
+      return { rows, deletionOnly: false }
+    }
+    return ctx.db.transaction(async (tx) =>
+      reconcileSetRowsInTx(tx, {
+        organizationId: ctx.organizationId,
+        entityId: entityInstanceId,
+        fieldId,
+        insertRows,
+      })
+    )
+  })()
 
   // A deletion-only diff (shrink or clear) touches no surviving FieldValue
   // row, so nothing bumps `max(fv.updatedAt)` — stamp the instance so the
@@ -1206,7 +1274,10 @@ export async function setPrimaryValue(
  * @param ctx - Field value context
  * @param params - Delete value input
  */
-export async function deleteValue(ctx: FieldValueContext, params: DeleteValueInput): Promise<void> {
+export async function deleteValue(
+  ctx: FieldValueContext,
+  params: DeleteValueInput
+): Promise<number> {
   const { entityInstanceId } = parseRecordId(params.recordId)
 
   const deleted = await ctx.db
@@ -1229,6 +1300,7 @@ export async function deleteValue(ctx: FieldValueContext, params: DeleteValueInp
   if (deleted.length > 0 && !params.skipInstanceStamp) {
     await stampEntityInstanceUpdatedAt(ctx, entityInstanceId)
   }
+  return deleted.length
 }
 
 // =============================================================================
@@ -2405,19 +2477,24 @@ export async function addValuesBulk(
   if (insertedTypedByEntity.size > 0 && ctx.userId !== undefined) {
     const resource = await getCachedResource(ctx.organizationId, entityDefinitionId)
     const entitySlug = resource?.apiSlug ?? ''
-    if (hasEntityFieldChangeHooks(entitySlug) || hasFieldTypeChangeHooks(fieldType)) {
-      await dispatchAddRemoveFieldChangeEvents({
-        ctx,
-        field,
-        fieldType,
-        entityDefinitionId,
-        entitySlug,
-        entityType: resource?.entityType ?? null,
-        recordIds,
-        entityIds,
-        oldRowsByEntity,
-        deltaTypedByEntity: insertedTypedByEntity,
-        mode: 'add',
+    await dispatchAddRemoveFieldChangeEvents({
+      ctx,
+      field,
+      fieldType,
+      entityDefinitionId,
+      entitySlug,
+      entityType: resource?.entityType ?? null,
+      recordIds,
+      entityIds,
+      oldRowsByEntity,
+      deltaTypedByEntity: insertedTypedByEntity,
+      mode: 'add',
+    })
+    // Adding to a record is activity on it: one batched touch for every
+    // record that received rows (was one UPDATE per record from the old hook).
+    if (fieldTouchesActivity(field)) {
+      await flushInstancesDerived(ctx.db, ctx.organizationId, [...insertedTypedByEntity.keys()], {
+        touchActivity: true,
       })
     }
   }
@@ -2475,9 +2552,7 @@ export async function removeValuesBulk(
   // listener presence so silent paths skip the read entirely.
   const resource = await getCachedResource(ctx.organizationId, entityDefinitionId)
   const entitySlug = resource?.apiSlug ?? ''
-  const willDispatchFieldChange =
-    ctx.userId !== undefined &&
-    (hasEntityFieldChangeHooks(entitySlug) || hasFieldTypeChangeHooks(fieldType))
+  const willDispatchFieldChange = ctx.userId !== undefined
 
   const oldRowsByEntity = new Map<string, FieldValueRow[]>()
   if (willDispatchFieldChange) {
@@ -2516,7 +2591,12 @@ export async function removeValuesBulk(
 
   // Dedup watermark stamp for every entity that actually lost rows, in one
   // batched UPDATE (see removeValue for the per-write rule).
-  await stampEntityInstancesUpdatedAt(ctx, [...new Set(deleted.map((r) => r.entityId))])
+  await flushInstancesDerived(
+    ctx.db,
+    ctx.organizationId,
+    [...new Set(deleted.map((r) => r.entityId))],
+    { stampUpdatedAt: true, touchActivity: willDispatchFieldChange && fieldTouchesActivity(field) }
+  )
 
   // Tier-1 sync capture (plan 07 §4): per record that actually lost rows.
   // Tier-1 ONLY — same rationale as `addValuesBulk` above.
@@ -2670,6 +2750,8 @@ export async function setValueWithBuiltIn(
     skipSearchTextRefresh,
     skipInstanceStamp,
     skipNameCompose,
+    isCreate = false,
+    collectFieldChanges,
   } = params
 
   // Plan 04 §6.2. An explicit `publishEvents: false` is the C3 escape hatch —
@@ -2826,6 +2908,8 @@ export async function setValueWithBuiltIn(
         // An AI stage-2 commit on a NAME field lands on the parts, so the
         // marker rides along with the value instead of being dropped.
         aiGeneration: params.aiGeneration,
+        isCreate,
+        collectFieldChanges,
       })
       partChanged = partChanged || partResult.changed === true
     }
@@ -2866,18 +2950,24 @@ export async function setValueWithBuiltIn(
     // statement carries `updatedAt` in the same UPDATE (the display write has
     // always doubled as a content stamp), so a separate one would be a second
     // UPDATE on the same row for the same reason.
-    if (!skipInstanceStamp && partChanged && !displayWritten) {
-      await stampEntityInstanceUpdatedAt(ctx, entityInstanceId)
-    }
-
     // One searchText recompute for the composite write, on the same
     // either-part-changed condition. The parts are TEXT — an indexed type —
     // so this is the single flush that replaces the two the part writes would
     // otherwise each have run (query-reduction plan §3A's pattern, applied one
     // level down). `skipSearchTextRefresh` hands ownership up to
     // `setValuesForEntity` / `setBulkValues`, which flush per record / per op.
-    if (!skipSearchTextRefresh && partChanged) {
-      await updateSearchText(ctx.db, entityInstanceId, ctx.organizationId)
+    // The stamp, the activity touch and the recompute ride ONE statement
+    // (`instance-derived.ts`).
+    if (partChanged) {
+      await flushInstanceDerived(ctx.db, ctx.organizationId, entityInstanceId, {
+        stampUpdatedAt: !skipInstanceStamp && !displayWritten,
+        touchActivity:
+          !skipInstanceStamp &&
+          publishEvents &&
+          ctx.userId !== undefined &&
+          fieldTouchesActivity(field),
+        refreshSearchText: !skipSearchTextRefresh,
+      })
     }
 
     // §4c: the NAME key is CLIENT-COMPUTED — `computed-field-registry.ts`
@@ -3014,10 +3104,17 @@ export async function setValueWithBuiltIn(
   // paths need it to fire post-hooks identically. Gated on
   // `hasEntityFieldChangeHooks`/`hasFieldTypeChangeHooks` so writes nobody
   // listens for (by entity OR by field type) pay nothing.
+  // The `<prefix>:field:updated` bus event is a step of this path, not a
+  // hook (`field-change-events.ts`): it wants the same old/new pair the
+  // hooks do, on the same gate. A CREATE announces nothing per field — the
+  // `:created` lifecycle event carries the whole record.
+  const announce = publishEvents && ctx.userId !== undefined
+  const emitEvent = announce && !isCreate
   const willFirePostHook =
-    publishEvents &&
-    ctx.userId !== undefined &&
-    (hasEntityFieldChangeHooks(entitySlug) || hasFieldTypeChangeHooks(field.type as FieldType))
+    announce &&
+    (emitEvent ||
+      hasEntityFieldChangeHooks(entitySlug) ||
+      hasFieldTypeChangeHooks(field.type as FieldType))
   // A buffered write needs `o` too, and needs it NOW: post-commit the pre-write
   // value is gone (plan 04 §6.3). The guard already holds the stored rows, so
   // derive `o` from them instead of re-reading (query-reduction §2c) —
@@ -3071,7 +3168,41 @@ export async function setValueWithBuiltIn(
         })
       }
     }
+    if (emitEvent) {
+      emitFieldChange(
+        {
+          recordId,
+          entityDefinitionId,
+          entitySlug,
+          entityType,
+          organizationId: ctx.organizationId,
+          userId: ctx.userId!,
+          change: {
+            fieldId: field.id,
+            fieldName: field.name,
+            fieldType: field.type,
+            oldValue,
+            newValue,
+            oldDisplay,
+            newDisplay,
+          },
+        },
+        collectFieldChanges
+      )
+    }
   }
+
+  // Every derived `EntityInstance` column this write leaves behind rides ONE
+  // statement after the rows land (`instance-derived.ts`). An orchestrator
+  // that owns the record flush (`setValuesForEntity`, the bulk writers)
+  // passes `skipInstanceStamp` / `skipSearchTextRefresh` and flushes once per
+  // record or per op instead.
+  const flushDerived = () =>
+    flushInstanceDerived(ctx.db, ctx.organizationId, entityInstanceId, {
+      stampUpdatedAt: !skipInstanceStamp,
+      touchActivity: !skipInstanceStamp && announce && fieldTouchesActivity(field),
+      refreshSearchText: !skipSearchTextRefresh && fieldFeedsSearchCorpus(field),
+    })
 
   // Handle null values (deletion)
   if (typedValue === null) {
@@ -3088,11 +3219,12 @@ export async function setValueWithBuiltIn(
         changed: false,
       }
     }
-    await deleteValue(ctx, { recordId, fieldId, skipInstanceStamp })
+    const deletedCount = await deleteValue(ctx, { recordId, fieldId, skipInstanceStamp: true })
     await maybeUpdateDisplayValue(ctx, recordId, field, null, {
-      skipSearchTextRefresh,
+      skipSearchTextRefresh: true,
       skipNameCompose,
     })
+    if (deletedCount > 0) await flushDerived()
     if (publishEvents || txScope) {
       // Routed through buildPublishEntry like the set branch below — this
       // publishes `[]` (not `null`) for array-return fields, matching
@@ -3160,10 +3292,12 @@ export async function setValueWithBuiltIn(
     value: typedValue,
     skipInverseSync,
     aiGeneration: params.aiGeneration,
-    skipSearchTextRefresh,
-    skipInstanceStamp,
+    skipSearchTextRefresh: true,
+    skipInstanceStamp: true,
     skipNameCompose,
+    knownStoredRows: guardRows,
   })
+  await flushDerived()
 
   // Sync capture (plan 07 §4): the step-3.55 guard already decided this is a
   // REAL write — an identical re-assertion returned at 3.55 and records nothing
@@ -3198,7 +3332,9 @@ export async function setValueWithBuiltIn(
 
   // 8. Check for field triggers (only when publishing events, to avoid double-fire from setBulkValues)
   if (publishEvents && ctx.userId) {
-    const triggeredFields = await collectTriggeredFields(ctx.organizationId, [fieldId])
+    const triggeredFields = await collectTriggeredFields(ctx.organizationId, [fieldId], {
+      isCreate,
+    })
     if (triggeredFields.length > 0) {
       await publishFieldTriggerEvents(
         { organizationId: ctx.organizationId, userId: ctx.userId },
@@ -3268,6 +3404,30 @@ export async function setValuesForEntity(
   ctx: FieldValueContext,
   params: SetValuesForEntityInput
 ): Promise<SetValuesResult[]> {
+  return (await writeValuesForEntity(ctx, params)).results
+}
+
+/** What one record write produced: the per-field results plus the row. */
+export interface WriteValuesForEntityResult {
+  results: SetValuesResult[]
+  /**
+   * The `EntityInstance` row as the write's own derived-column flush returned
+   * it (`RETURNING`), so a caller building a realtime frame or a response
+   * does not re-read it. `null` when nothing changed, when the caller owns
+   * the flush (`skipInstanceStamp` + `skipSearchTextRefresh`), or when the
+   * flush failed.
+   */
+  instance: EntityInstanceRow | null
+}
+
+/**
+ * {@link setValuesForEntity} that also hands back the record row from the
+ * flush. Same contract otherwise.
+ */
+export async function writeValuesForEntity(
+  ctx: FieldValueContext,
+  params: SetValuesForEntityInput
+): Promise<WriteValuesForEntityResult> {
   const {
     recordId,
     values,
@@ -3279,6 +3439,8 @@ export async function setValuesForEntity(
     skipSearchTextRefresh = false,
     skipInstanceStamp = false,
     preloadedSetRows,
+    isCreate = false,
+    collectFieldChanges,
   } = params
 
   // Parse RecordId to get both parts and derive modelType
@@ -3290,7 +3452,7 @@ export async function setValuesForEntity(
     ctx.organizationId,
     values.filter((v) => v.value !== undefined)
   )
-  if (validValues.length === 0) return []
+  if (validValues.length === 0) return { results: [], instance: null }
 
   // Separate built-in from custom fields
   const builtIns: typeof validValues = []
@@ -3457,10 +3619,13 @@ export async function setValuesForEntity(
             publishEvents && getAmbientTxWriteScope(ctx.session) === undefined
               ? collected
               : undefined,
-          // The record-level flush below owns the searchText recompute — one
-          // per record instead of one per indexed field.
+          // The record-level flush below owns every derived column (stamp,
+          // activity touch, searchText) — one statement per record instead
+          // of one or more per field.
           skipSearchTextRefresh: true,
-          skipInstanceStamp,
+          skipInstanceStamp: true,
+          isCreate,
+          collectFieldChanges,
         })
 
         results.push({ fieldId: v.fieldId, ...result })
@@ -3515,10 +3680,6 @@ export async function setValuesForEntity(
   // write must not re-dirty the dedup watermark.
   // `skipInstanceStamp` hands ownership up to `setBulkValues`, which stamps
   // every changed record of the op in one batched UPDATE.
-  if (!skipInstanceStamp && results.some((r) => r.changed)) {
-    await stampEntityInstanceUpdatedAt(ctx, entityInstanceId)
-  }
-
   // One searchText recompute per record write (query-reduction plan §3A):
   // the per-field refreshes were suppressed above, so flush exactly once when
   // at least one changed field feeds the search corpus. Runs after every
@@ -3526,11 +3687,40 @@ export async function setValuesForEntity(
   // the derived-work-after-commit rule. An all-no-op write flushes nothing.
   // `skipSearchTextRefresh` hands ownership up to `setBulkValues`, which
   // recomputes all changed records in one batched statement.
-  if (!skipSearchTextRefresh && results.some((r) => fieldFeedsSearchText(ctx, r))) {
-    await updateSearchText(ctx.db, entityInstanceId, ctx.organizationId)
-  }
+  //
+  // The stamp, the `lastActivityAt` touch (once per record, only for fields
+  // that count as activity, only on the announcing lane) and the recompute
+  // are ONE statement (`instance-derived.ts`), and its RETURNING row is what
+  // the caller gets back instead of a re-read.
+  const anyChanged = results.some((r) => r.changed)
+  const touchesActivity =
+    publishEvents &&
+    ctx.userId !== undefined &&
+    results.some((r) => {
+      if (!r.changed) return false
+      const field = ctx.fieldCache.get(r.fieldId)
+      return !!field && fieldTouchesActivity(field)
+    })
+  const instance = await flushInstanceDerived(ctx.db, ctx.organizationId, entityInstanceId, {
+    stampUpdatedAt: !skipInstanceStamp && anyChanged,
+    touchActivity: !skipInstanceStamp && touchesActivity,
+    refreshSearchText: !skipSearchTextRefresh && results.some((r) => fieldFeedsSearchText(ctx, r)),
+  })
 
-  return results
+  return { results, instance }
+}
+
+/**
+ * True when a real change to this field must refresh the record's
+ * `searchText`: its type is part of the corpus, or it drives the
+ * `displayName` / `secondaryDisplayValue` column the corpus embeds.
+ */
+export function fieldFeedsSearchCorpus(field: CachedField): boolean {
+  if (isSearchTextIndexedFieldType(field.type)) return true
+  const entityDef = field.entityDefinition
+  return (
+    entityDef?.primaryDisplayFieldId === field.id || entityDef?.secondaryDisplayFieldId === field.id
+  )
 }
 
 /**
@@ -3550,11 +3740,7 @@ function fieldFeedsSearchText(ctx: FieldValueContext, result: SetValuesResult): 
   if (!result.changed && result.state !== 'failed') return false
   const field = ctx.fieldCache.get(result.fieldId)
   if (!field) return false
-  if (isSearchTextIndexedFieldType(field.type)) return true
-  const entityDef = field.entityDefinition
-  return (
-    entityDef?.primaryDisplayFieldId === field.id || entityDef?.secondaryDisplayFieldId === field.id
-  )
+  return fieldFeedsSearchCorpus(field)
 }
 
 /**
@@ -3703,10 +3889,10 @@ export async function setBulkValues(
     const f = fieldMap.get(fieldId)
     return f ? hasFieldTypeChangeHooks(f.type as FieldType) : false
   })
-  const willDispatchFieldChange =
-    ctx.userId !== undefined &&
-    customFieldIds.length > 0 &&
-    (hasEntityFieldChangeHooks(entitySlug) || anyFieldTypeHasHooks)
+  // The bus event is always wanted on the announcing lane; the registry probe
+  // only decides whether hook handlers run as well.
+  const willDispatchFieldChange = ctx.userId !== undefined && customFieldIds.length > 0
+  void anyFieldTypeHasHooks
 
   // One raw batch pre-read for the WHOLE bulk op (query-reduction §3B). It
   // feeds every pair's D-6 guard via `preloadedSetRows` below AND — converted
@@ -3776,7 +3962,15 @@ export async function setBulkValues(
     if (result?.status !== 'fulfilled') continue
     if (result.value.some((r) => r.changed)) changedStampIds.push(entityInstanceIds[i]!)
   }
-  await stampEntityInstancesUpdatedAt(ctx, changedStampIds)
+  await flushInstancesDerived(ctx.db, ctx.organizationId, changedStampIds, {
+    stampUpdatedAt: true,
+    touchActivity:
+      willDispatchFieldChange &&
+      customFieldIds.some((fieldId) => {
+        const f = fieldMap.get(fieldId)
+        return !!f && fieldTouchesActivity(f)
+      }),
+  })
 
   // One batched searchText recompute for every record with a corpus-feeding
   // change (query-reduction plan §3A) — the per-record flushes were
@@ -4101,9 +4295,6 @@ async function dispatchBulkFieldChangeEvents(args: {
   // Bail before paying for snapshot resolution when nothing registered could ever fire for any
   // write in this batch.
   const entityHandlers = getEntityFieldChangeHooks(entitySlug)
-  const distinctFieldTypes = new Set(writes.map((w) => w.field.type as FieldType))
-  const anyTypeHandlers = [...distinctFieldTypes].some((ft) => hasFieldTypeChangeHooks(ft))
-  if (entityHandlers.length === 0 && !anyTypeHandlers) return
 
   const bulkOperationId = generateId()
 
@@ -4156,6 +4347,27 @@ async function dispatchBulkFieldChangeEvents(args: {
             })
           }
         }
+        emitFieldChange(
+          {
+            recordId: w.recordId,
+            entityDefinitionId,
+            entitySlug,
+            entityType,
+            organizationId: ctx.organizationId,
+            userId: ctx.userId!,
+            bulkOperationId,
+            change: {
+              fieldId: w.field.id,
+              fieldName: w.field.name,
+              fieldType: w.field.type,
+              oldValue: w.oldValue,
+              newValue: w.newValue,
+              oldDisplay: snapshot?.oldDisplay ?? null,
+              newDisplay: snapshot?.newDisplay ?? null,
+            },
+          },
+          undefined
+        )
       })
     )
   }
@@ -4248,7 +4460,6 @@ async function dispatchAddRemoveFieldChangeEvents(
   // `field`/`fieldType` are constant for this whole call (one field across many entities), so
   // the combined chain can be computed once, unlike the per-write-varying `setBulkValues` path.
   const handlers = [...getEntityFieldChangeHooks(entitySlug), ...getFieldTypeChangeHooks(fieldType)]
-  if (handlers.length === 0) return
 
   const CHUNK_SIZE = 100
   for (let i = 0; i < writes.length; i += CHUNK_SIZE) {
@@ -4281,6 +4492,27 @@ async function dispatchAddRemoveFieldChangeEvents(
             })
           }
         }
+        emitFieldChange(
+          {
+            recordId: w.recordId,
+            entityDefinitionId,
+            entitySlug,
+            entityType,
+            organizationId: ctx.organizationId,
+            userId: ctx.userId!,
+            bulkOperationId,
+            change: {
+              fieldId: w.field.id,
+              fieldName: w.field.name,
+              fieldType: w.field.type,
+              oldValue: w.oldValue,
+              newValue: w.newValue,
+              oldDisplay: snapshot?.oldDisplay ?? null,
+              newDisplay: snapshot?.newDisplay ?? null,
+            },
+          },
+          undefined
+        )
       })
     )
   }

@@ -34,6 +34,8 @@ export {
   selectConverter,
   textConverter,
 } from './converters'
+// The create-only batched write
+export { createValuesForEntity } from './create-values'
 export {
   cascadeDependentDisplayNames,
   type DisplayFieldDep,
@@ -86,6 +88,8 @@ export {
   setValuesForEntity,
   setValueWithBuiltIn,
   setValueWithType,
+  type WriteValuesForEntityResult,
+  writeValuesForEntity,
 } from './field-value-mutations'
 // Queries (for direct usage)
 export {

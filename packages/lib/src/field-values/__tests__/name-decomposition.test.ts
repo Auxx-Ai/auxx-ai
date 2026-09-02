@@ -617,9 +617,24 @@ const NAME_FLIPPED = fieldFixture('field-z-name-owned-flipped', 'NAME', {
 })
 const OWNED_FIELDS = [PART_FIRST, PART_LAST, NAME_OVER_PARTS, NAME_FLIPPED]
 
+/**
+ * The post-write work now rides ONE derived-column UPDATE per record
+ * (`instance-derived.ts`): a bare D-7 stamp is a payload carrying `updatedAt`
+ * without a display column, and a searchText rebuild is a payload carrying
+ * `searchText`. The old `stampEntityInstanceUpdatedAt` / `updateSearchText`
+ * helpers are no longer on this path, so the fake's captured payloads are the
+ * evidence.
+ */
+function bareStamps(state: { updatedPayloads: any[] }): any[] {
+  return state.updatedPayloads.filter((p) => 'updatedAt' in p && !('displayName' in p))
+}
+function searchTextFlushes(state: { updatedPayloads: any[] }): any[] {
+  return state.updatedPayloads.filter((p) => 'searchText' in p)
+}
+
 describe('NAME decomposition — post-write ownership', () => {
   it('the single-set door stamps ONCE and rebuilds searchText ONCE, not twice', async () => {
-    const { db } = makeFakeDb()
+    const { db, state } = makeFakeDb()
     const ctx = makeCtx(db, OWNED_FIELDS)
 
     await setValueWithBuiltIn(ctx, {
@@ -630,8 +645,8 @@ describe('NAME decomposition — post-write ownership', () => {
 
     // Two part writes landed, but the post-write work ran exactly once — the
     // parts were handed `skipInstanceStamp` / `skipSearchTextRefresh`.
-    expect(stampSpy).toHaveBeenCalledTimes(1)
-    expect(searchTextSpy).toHaveBeenCalledTimes(1)
+    expect(bareStamps(state)).toHaveLength(1)
+    expect(searchTextFlushes(state)).toHaveLength(1)
   })
 
   it('nested under a caller that owns both, the NAME frame stamps and flushes nothing', async () => {
@@ -648,8 +663,8 @@ describe('NAME decomposition — post-write ownership', () => {
 
     // The write itself still happened; only the derived work is the caller's.
     expect(state.insertedRows).toHaveLength(2)
-    expect(stampSpy).not.toHaveBeenCalled()
-    expect(searchTextSpy).not.toHaveBeenCalled()
+    expect(bareStamps(state)).toHaveLength(0)
+    expect(searchTextFlushes(state)).toHaveLength(0)
   })
 
   it('EITHER part changing is enough — when only the FIRST-written part moves', async () => {
@@ -668,8 +683,8 @@ describe('NAME decomposition — post-write ownership', () => {
 
     expect(writes(state)).toEqual([{ fieldId: PART_FIRST.id, value: 'Anita' }])
     expect(result.changed).toBe(true)
-    expect(stampSpy).toHaveBeenCalledTimes(1)
-    expect(searchTextSpy).toHaveBeenCalledTimes(1)
+    expect(bareStamps(state)).toHaveLength(1)
+    expect(searchTextFlushes(state)).toHaveLength(1)
   })
 
   it('EITHER part changing is enough — when only the LAST-written part moves', async () => {
@@ -687,12 +702,12 @@ describe('NAME decomposition — post-write ownership', () => {
 
     expect(writes(state)).toEqual([{ fieldId: PART_LAST.id, value: 'Anita' }])
     expect(result.changed).toBe(true)
-    expect(stampSpy).toHaveBeenCalledTimes(1)
-    expect(searchTextSpy).toHaveBeenCalledTimes(1)
+    expect(bareStamps(state)).toHaveLength(1)
+    expect(searchTextFlushes(state)).toHaveLength(1)
   })
 
   it('a pure no-op composite write stamps nothing and rebuilds nothing', async () => {
-    const { db } = makeFakeDb()
+    const { db, state } = makeFakeDb()
     const ctx = makeCtx(db, OWNED_FIELDS)
 
     const result = await setValueWithBuiltIn(ctx, {
@@ -702,8 +717,8 @@ describe('NAME decomposition — post-write ownership', () => {
     })
 
     expect(result.changed).toBe(false)
-    expect(stampSpy).not.toHaveBeenCalled()
-    expect(searchTextSpy).not.toHaveBeenCalled()
+    expect(bareStamps(state)).toHaveLength(0)
+    expect(searchTextFlushes(state)).toHaveLength(0)
   })
 })
 
@@ -787,7 +802,7 @@ describe('NAME decomposition — composed displayName', () => {
   })
 
   it('the display write carries the stamp, so no second bare UPDATE is issued', async () => {
-    const { db } = makeFakeDb()
+    const { db, state } = makeFakeDb()
     const ctx = makeCtx(db, DISPLAY_FIELDS)
 
     await setValueWithBuiltIn(ctx, {
@@ -798,9 +813,9 @@ describe('NAME decomposition — composed displayName', () => {
 
     // `displayName` and `updatedAt` go in one statement; a separate D-7 stamp
     // would be a second UPDATE on the same row for the same reason.
-    expect(stampSpy).not.toHaveBeenCalled()
+    expect(bareStamps(state)).toHaveLength(0)
     // The searchText flush is still this frame's, and still fires once.
-    expect(searchTextSpy).toHaveBeenCalledTimes(1)
+    expect(searchTextFlushes(state)).toHaveLength(1)
   })
 
   it('only the FIRST-written part changes: displayName still recomputes', async () => {
@@ -845,8 +860,8 @@ describe('NAME decomposition — composed displayName', () => {
     expect(result.changed).toBe(false)
     expect(displayWrites(state)).toEqual([])
     expect(state.siblingSelects).toBe(0)
-    expect(stampSpy).not.toHaveBeenCalled()
-    expect(searchTextSpy).not.toHaveBeenCalled()
+    expect(bareStamps(state)).toHaveLength(0)
+    expect(searchTextFlushes(state)).toHaveLength(0)
   })
 
   it('clearing a composed name writes displayName = null exactly once', async () => {
@@ -900,6 +915,6 @@ describe('NAME decomposition — composed displayName', () => {
     expect(displayWrites(state)).toEqual([])
     expect(state.siblingSelects).toBe(0)
     // Nothing wrote `updatedAt` for us, so the D-7 stamp is this frame's again.
-    expect(stampSpy).toHaveBeenCalledTimes(1)
+    expect(bareStamps(state)).toHaveLength(1)
   })
 })

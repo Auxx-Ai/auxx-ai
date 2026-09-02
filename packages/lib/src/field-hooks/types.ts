@@ -234,6 +234,14 @@ export interface EntityFieldChangeEvent {
    * paths leave this `undefined`.
    */
   bulkOperationId?: string
+  /**
+   * The field was written as part of its record's CREATION. A hook that
+   * derives another field of the same record from this one usually has a
+   * pre-create counterpart that already ran (`stampTariffCodeLabel`), and a
+   * write from here would collide with the create's own rows inside a
+   * transaction-scoped handler. Absent on updates.
+   */
+  isCreate?: boolean
 }
 
 /**

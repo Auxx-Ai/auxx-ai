@@ -12,10 +12,13 @@ import { deleteOpenPairsForRecord } from '../../dedup/pairs'
 import {
   createEntityInstance,
   deleteEntityInstance,
+  type EntityInstanceRow,
   getEntityInstance,
+  getEntityInstanceRow,
   updateEntityInstance,
 } from '../../entity-instances'
 import { AuxxError, UnprocessableEntityError } from '../../errors'
+import type { RecordFieldChange } from '../../events/types'
 import {
   getEntityPostDeleteHooks,
   getEntityPreCreateHooks,
@@ -132,16 +135,37 @@ export interface MutationContext {
     excludeEntityId?: string
   ) => Promise<void>
   /**
-   * Write a record's values. Resolves to the SET-lane writes that failed,
-   * because the field-value layer swallows a per-field throw and continues.
-   * See {@link FieldWriteFailure}.
+   * Write a record's values. Resolves to what the write produced: the
+   * SET-lane writes that failed (the field-value layer swallows a per-field
+   * throw and continues), whether anything changed, the per-field changes
+   * for the record-level event, and the fresh row. See {@link FieldWriteOutcome}.
    */
   setFieldValues: (
     recordId: RecordId,
     values: Record<string, unknown>,
     modes?: Record<string, 'set' | 'add' | 'remove'>,
-    opts?: { publishEvents?: boolean }
-  ) => Promise<FieldWriteFailure[]>
+    opts?: { publishEvents?: boolean; isCreate?: boolean }
+  ) => Promise<FieldWriteOutcome>
+}
+
+/** What one record's field write produced, as `createEntity` / `updateEntity` read it. */
+export interface FieldWriteOutcome {
+  /** SET-lane writes that were refused and swallowed. See {@link FieldWriteFailure}. */
+  failures: FieldWriteFailure[]
+  /** At least one field performed a real change (D-6 no-ops do not count). */
+  changed: boolean
+  /**
+   * One entry per SET-lane field that actually changed, with old/new values
+   * and resolved snapshots: the payload of the record-level `:updated`
+   * event. Empty on a create (the `:created` event carries the values).
+   */
+  changes: RecordFieldChange[]
+  /**
+   * The `EntityInstance` row as the write's own derived-column flush returned
+   * it, or `null` when no flush ran. Saves the callers their post-write
+   * re-read (which loaded every FieldValue with it).
+   */
+  instance: EntityInstanceRow | null
 }
 
 /**
@@ -443,9 +467,11 @@ export async function createEntity(
   // passes `true` here on purpose: the field-value layer resolves the scope
   // itself and captures instead of publishing, so a `false` would be read as
   // the C3 "an aggregator announces this" escape hatch and lose the writes.
-  const failures = await ctx.setFieldValues(recordId, processedValues, undefined, {
+  const outcome = await ctx.setFieldValues(recordId, processedValues, undefined, {
     publishEvents: publishEvents || txScope !== undefined,
+    isCreate: true,
   })
+  const failures = outcome.failures
 
   // A create that lost a REQUIRED field is not a record, it is a stub that
   // reads as complete and is not. `assertRequiredFieldsPresent` above cannot
@@ -478,16 +504,16 @@ export async function createEntity(
     }
   }
 
-  // Re-read the instance so displayName / secondaryDisplayValue / avatarUrl
-  // reflect what setFieldValues' maybeUpdateDisplayValue just wrote. The
-  // in-memory `instance` captured above was snapshotted before those columns
-  // were populated, so using it for the realtime event would poison other
-  // tabs' record store with stale nulls.
-  const freshResult = await getEntityInstance({
-    id: instance.id,
-    organizationId: ctx.organizationId,
-  })
-  const freshInstance = freshResult.isOk() ? freshResult.value : instance
+  // The row as the field write left it: displayName / secondaryDisplayValue
+  // / avatarUrl / updatedAt come back on the write's own derived-column
+  // flush (`RETURNING`), on the same connection as the write, so no re-read.
+  // The in-memory `instance` from the insert predates those columns and is
+  // only the fallback for a write that flushed nothing (no custom fields).
+  // A re-read here used to run on the POOL connection: inside a
+  // transaction-scoped handler it could not see the uncommitted row at all,
+  // and it was one of the two connections one create held at once
+  // (plans/field-values/create-path-batching.md section 2b).
+  const freshInstance = outcome.instance ?? instance
 
   // Publish event (unless suppressed by the silent lane)
   if (publishEvents) {
@@ -566,12 +592,13 @@ export async function updateEntity(
   const publishEvents = derivePublishEvents(ctx, options)
   const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
 
-  // Single fetch to verify existence
-  const instanceResult = await getEntityInstance({
-    id: entityInstanceId,
-    organizationId: ctx.organizationId,
-  })
-  const instance = instanceResult.isOk() ? instanceResult.value : null
+  // Existence check: the bare row, on the write's own connection. This used
+  // to be `getEntityInstance`, which joins every FieldValue and its field for
+  // a row the pre-hooks only read `id` and `metadata` from.
+  const instance = await getEntityInstanceRow(
+    { id: entityInstanceId, organizationId: ctx.organizationId },
+    ctx.db
+  )
   if (!instance) throw new Error(`Entity not found: ${entityInstanceId}`)
 
   const entityDef = await ctx.resolveEntityDefinition(entityDefinitionId)
@@ -591,20 +618,24 @@ export async function updateEntity(
   // Silent-lane writes suppress the field-value realtime + triggers too; the
   // buffered lane passes `true` so the field-value layer captures rather than
   // reading `false` as the C3 escape hatch (see the same note in createEntity).
-  await ctx.setFieldValues(resolvedRecordId, processedValues, modes, {
+  const outcome = await ctx.setFieldValues(resolvedRecordId, processedValues, modes, {
     publishEvents: publishEvents || deriveTxWriteScope(ctx, options) !== undefined,
   })
 
-  // Re-read so displayName / secondaryDisplayValue / avatarUrl / updatedAt
-  // reflect what setFieldValues just wrote. The `instance` captured at the
-  // top is now stale for any denormalized display column the update touched.
-  const freshResult = await getEntityInstance({
-    id: entityInstanceId,
-    organizationId: ctx.organizationId,
-  })
-  const freshInstance = freshResult.isOk() ? freshResult.value : instance
+  // The row as the write left it (displayName / secondaryDisplayValue /
+  // avatarUrl / updatedAt) comes back on the write's own flush; the row
+  // loaded above is only the fallback for a write that changed nothing.
+  const freshInstance = outcome.instance ?? instance
 
-  // Publish event (unless suppressed by the silent lane)
+  // A write that changed nothing announces nothing: no bus event, no
+  // timeline row, no realtime frame, no duplicate scan. Before this gate an
+  // idempotent re-save still produced all four
+  // (plans/field-values/update-path-and-events.md section 1b).
+  if (!outcome.changed) return freshInstance
+
+  // Publish event (unless suppressed by the silent lane). ONE record-level
+  // event carrying every field change; the per-field `<prefix>:field:updated`
+  // events were collected into it instead of being published (section 1a).
   if (publishEvents) {
     const fields = await ctx.getFields(entityDef.id)
     const eventData = extractEventData(entityDef.entityType, fields, processedValues)
@@ -620,6 +651,7 @@ export async function updateEntity(
       userId: ctx.userId,
       eventData,
       relatedRecordId,
+      changes: outcome.changes,
     })
   }
 

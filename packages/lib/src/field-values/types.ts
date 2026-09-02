@@ -5,6 +5,7 @@ import type { TypedFieldValue, TypedFieldValueInput } from '@auxx/types'
 import type { FieldPath, FieldReference, ResourceFieldId } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
 import type { FieldOptions } from '../custom-fields/field-options'
+import type { RecordFieldChange } from '../events/types'
 import type { AiStatus, FieldValueUpdateEntry } from '../realtime/events'
 import type { AiValueMetadata } from './ai-autofill/generation-service'
 
@@ -123,6 +124,21 @@ export interface SetValueWithBuiltInInput {
    * just committed (`plans/field-values/name-field-writes.md` §4a).
    */
   skipNameCompose?: boolean
+  /**
+   * The field is being written as part of its record's CREATION
+   * (`createEntity`). Native field triggers declared `skipOnCreate` are left
+   * to the def's lifecycle `created` rule, and no per-field bus event is
+   * published: the `:created` lifecycle event announces the whole record.
+   */
+  isCreate?: boolean
+  /**
+   * When set, the `<prefix>:field:updated` bus event this write would publish
+   * is pushed here instead, for a record-level producer (`updateEntity`) that
+   * announces every field of the write in ONE `:updated` event carrying
+   * `changes[]` (plans/field-values/update-path-and-events.md section 3A).
+   * Post-hooks still fire per field.
+   */
+  collectFieldChanges?: RecordFieldChange[]
 }
 
 /**
@@ -159,6 +175,10 @@ export interface SetValuesForEntityInput {
    * batched UPDATE after its fan-out (query-reduction plan §3C).
    */
   skipInstanceStamp?: boolean
+  /** See {@link SetValueWithBuiltInInput.isCreate}. */
+  isCreate?: boolean
+  /** See {@link SetValueWithBuiltInInput.collectFieldChanges}. */
+  collectFieldChanges?: RecordFieldChange[]
 }
 
 /**
@@ -327,6 +347,15 @@ export interface SetValueWithTypeInput {
   skipInstanceStamp?: boolean
   /** See {@link SetValueWithBuiltInInput.skipNameCompose}. */
   skipNameCompose?: boolean
+  /**
+   * The pair's stored rows as the caller just read them (the D-6 guard's
+   * load), or `null` when it has no honest snapshot. A single-value field
+   * with at most one known row takes the one-statement fast path
+   * (`UPDATE ... WHERE id` / `INSERT`) instead of the locked reconcile
+   * (plans/field-values/update-path-and-events.md section 3D). Multi-value
+   * fields and unknown snapshots always reconcile.
+   */
+  knownStoredRows?: FieldValueRow[] | null
 }
 
 /** Input for adding a value to a multi-value field */

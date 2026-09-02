@@ -349,6 +349,7 @@ export {
   processSingleWebhookJob,
 } from './webhooks/process-single-webhook-job'
 export { processWebhookJob, WEBHOOK_EVENTS } from './webhooks/process-webhook-job'
+export { isWebhookEvent } from './webhooks/webhook-events'
 // Workflow
 export {
   type AppTriggerDispatchJobData,

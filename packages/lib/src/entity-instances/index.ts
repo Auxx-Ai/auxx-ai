@@ -22,7 +22,12 @@ export {
 } from './create-entity-instance'
 export { type DeleteEntityInstanceParams, deleteEntityInstance } from './delete-entity-instance'
 export type { EntityInstanceError } from './errors'
-export { type GetEntityInstanceParams, getEntityInstance } from './get-entity-instance'
+export {
+  type EntityInstanceRow,
+  type GetEntityInstanceParams,
+  getEntityInstance,
+  getEntityInstanceRow,
+} from './get-entity-instance'
 export { type ListEntityInstancesParams, listEntityInstances } from './list-entity-instances'
 export type {
   ContactMetadata,

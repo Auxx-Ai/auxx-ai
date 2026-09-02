@@ -226,8 +226,10 @@ describe('setValuesForEntity D-7 updatedAt stamp', () => {
     const stamps = stampWrites(state)
     expect(stamps).toHaveLength(1)
     expect(stamps[0]!.set.updatedAt).toBeInstanceOf(Date)
-    // The stamp is a pure freshness write — it must not smuggle other columns.
-    expect(Object.keys(stamps[0]!.set)).toEqual(['updatedAt'])
+    // The stamp rides the record's ONE derived-column flush (`instance-derived.ts`)
+    // with `lastActivityAt` / `searchText`; it must never carry content columns.
+    expect(Object.keys(stamps[0]!.set)).not.toContain('displayName')
+    expect(Object.keys(stamps[0]!.set)).not.toContain('valueText')
   })
 
   it('an idempotent no-op set (D-6 guard hit) does NOT stamp', async () => {

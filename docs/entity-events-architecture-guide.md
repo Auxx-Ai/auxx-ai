@@ -430,6 +430,23 @@ misses + 1 deduped recalc, not 500×).
   try to express old→new in a `ConditionGroup`.
 - **Native actions are server-only; rules are all-native or native-free.** The tRPC schema and
   `assertRuleShape` enforce this; `hasNativeAction` routes the two doors as exact complements.
+- **One `:updated` event per record write, not one per field.** A write through `updateEntity`
+  collects its per-field changes and publishes ONE record-level `:updated` event carrying
+  `changes[]`; the per-field `<prefix>:field:updated` event is published only by doors that have
+  no record-level event (the panel's `fieldValue.set`, bulk edits, add/remove). A write that
+  changed nothing publishes nothing. `createTimelineEvent` writes one FIELD_UPDATED row per entry
+  of `changes[]` and no summary row. Creates publish `:created` only; their field writes emit no
+  per-field events. Native field triggers declared `skipOnCreate` are left to the def's lifecycle
+  `created` rule, and every native trigger now runs OFF the request through the `field:trigger`
+  bus event (`FIELD_TRIGGERS_ASYNC`). `publishLater` enqueues ONE `publishEventJob` (which persists
+  the `Event` row and captures analytics inline) plus `processWebhookJob` only for
+  `WEBHOOK_EVENTS` types. See `plans/field-values/update-path-and-events.md`.
+- **Hooks inherit the write's connection.** A handler, service or field-value context built with
+  no `db` inside a write takes the ambient connection of the write in flight
+  (`getAmbientWriteDb`, `resources/crud/write-session-als.ts`), so a hook inside a
+  transaction-scoped write joins that transaction instead of opening a second pool connection
+  that cannot see its rows and can deadlock against it. A field-change event carries
+  `isCreate` so a hook that derives a sibling field can stand down on a create.
 - **The userId gate.** Door 1 requires `ctx.userId`; deliberate system writes without an actor skip
   interactive field hooks. (This gate was left in place; relaxing it is an audited, unshipped
   change.)

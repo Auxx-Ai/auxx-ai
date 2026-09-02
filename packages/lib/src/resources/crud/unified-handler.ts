@@ -15,6 +15,7 @@ import { checkUniqueValue } from '../../custom-fields'
 import { getEntityInstance, listEntityInstances } from '../../entity-instances'
 import { ForbiddenError, UniqueValueConflictError } from '../../errors'
 import { publisher } from '../../events/publisher'
+import type { RecordFieldChange } from '../../events/types'
 import { FieldValueService } from '../../field-values'
 import { upsertRecordIdentity } from '../../identity'
 import { systemTableVisibilityScope } from '../../permissions/capabilities/article-visibility-scope'
@@ -58,6 +59,7 @@ import {
   createWithValues as createWithValuesImpl,
   deleteEntity,
   type FieldWriteFailure,
+  type FieldWriteOutcome,
   type MutationContext,
   mergeEntities,
   restoreEntity,
@@ -76,7 +78,12 @@ import {
   resolveEntityIdFromCache,
 } from './unified-handler-queries'
 import { interactiveSession, type WriteSession } from './write-origin'
-import { getAmbientWriteSession, runWithWriteSession } from './write-session-als'
+import {
+  getAmbientWriteDb,
+  getAmbientWriteSession,
+  runWithWriteDb,
+  runWithWriteSession,
+} from './write-session-als'
 
 type EntityInstanceEntity = typeof schema.EntityInstance.$inferSelect
 
@@ -198,7 +205,12 @@ export class UnifiedCrudHandler {
     private socketId?: string,
     options: UnifiedCrudHandlerOptions = {}
   ) {
-    this.db = db ?? defaultDatabase
+    // Resolution: explicit connection, then the connection of the write in
+    // flight (a hook building a handler inside a transaction-scoped write
+    // joins that transaction), then the pool.
+    // The same `tx as Database` shape every transaction-scoped caller already
+    // hands the constructor.
+    this.db = db ?? (getAmbientWriteDb() as Database | undefined) ?? defaultDatabase
     this.bypassFieldGuards = options.bypassFieldGuards ?? new Set()
     // S1 resolution: explicit option → ambient (hook re-entry inherits its
     // parent's session) → default interactive from the constructor identity.
@@ -255,7 +267,7 @@ export class UnifiedCrudHandler {
     // write method is done (plan 08 §5). Nesting joins, so a hook that builds
     // its own handler still produces ONE drain.
     return runWithDirtyParents(this.organizationId, this.userId, () =>
-      runWithWriteSession(this.session, fn)
+      runWithWriteSession(this.session, () => runWithWriteDb(this.db, fn))
     )
   }
 
@@ -1319,8 +1331,8 @@ export class UnifiedCrudHandler {
     recordId: RecordId,
     values: Record<string, unknown>,
     modes?: Record<string, 'set' | 'add' | 'remove'>,
-    opts?: { publishEvents?: boolean }
-  ): Promise<FieldWriteFailure[]> {
+    opts?: { publishEvents?: boolean; isCreate?: boolean }
+  ): Promise<FieldWriteOutcome> {
     const { entityDefinitionId } = parseRecordId(recordId)
 
     // Get cached fields and build key → id map for all entity types
@@ -1353,19 +1365,35 @@ export class UnifiedCrudHandler {
     const publishEvents = opts?.publishEvents ?? true
 
     const failures: FieldWriteFailure[] = []
+    const changes: RecordFieldChange[] = []
+    let changed = false
+    let instance: FieldWriteOutcome['instance'] = null
     if (setEntries.length > 0) {
-      const results = await this.fieldValueService.setValuesForEntity({
+      // A CREATE writes the fields of a row nothing else can see yet, so it
+      // takes the batched insert path; an UPDATE reconciles per field.
+      const write = opts?.isCreate
+        ? this.fieldValueService.createValuesForEntity.bind(this.fieldValueService)
+        : this.fieldValueService.writeValuesForEntity.bind(this.fieldValueService)
+      const written = await write({
         recordId,
         values: setEntries.map((e) => ({ fieldId: e.fieldId, value: e.value })),
         publishEvents,
+        isCreate: opts?.isCreate,
+        // The per-field bus events land here; `updateEntity` publishes them
+        // as ONE record-level event (`createEntity` announces via `:created`).
+        collectFieldChanges: changes,
       })
-      for (const result of results) {
+      instance = written.instance
+      for (const result of written.results) {
+        if (result.changed) changed = true
         if (result.state === 'failed') {
           failures.push({ fieldId: result.fieldId, error: result.error ?? 'Write failed' })
         }
       }
     }
 
+    // The add/remove lanes announce per field themselves (no idempotency
+    // signal exists for them, so they count as a change when present).
     for (const e of addEntries) {
       await this.fieldValueService.addValues({
         recordId,
@@ -1373,6 +1401,7 @@ export class UnifiedCrudHandler {
         values: Array.isArray(e.value) ? e.value : [e.value],
         skipPublishEvents: !publishEvents,
       })
+      changed = true
     }
 
     for (const e of removeEntries) {
@@ -1382,9 +1411,10 @@ export class UnifiedCrudHandler {
         values: Array.isArray(e.value) ? e.value : [e.value],
         skipPublishEvents: !publishEvents,
       })
+      changed = true
     }
 
-    return failures
+    return { failures, changed, changes, instance }
   }
 
   /**

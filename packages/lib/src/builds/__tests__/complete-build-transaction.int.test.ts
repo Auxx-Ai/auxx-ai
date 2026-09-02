@@ -101,9 +101,22 @@ vi.mock('../../entity-instances', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../entity-instances')>()
   return {
     ...actual,
-    getEntityInstance: async (params: Parameters<typeof actual.getEntityInstance>[0]) => {
-      const result = await actual.getEntityInstance(params)
-      h.freshReadOutcomes.push({ id: params.id, found: result.isOk() })
+    // Right after each instance insert, probe for the row through the
+    // MODULE-LEVEL pool (a different connection from `tx`). `createEntity`
+    // used to do such a re-read itself; now the fresh row comes back on the
+    // write's own connection, so the probe lives here.
+    createEntityInstance: async (
+      params: Parameters<typeof actual.createEntityInstance>[0],
+      tx?: Parameters<typeof actual.createEntityInstance>[1]
+    ) => {
+      const result = await actual.createEntityInstance(params, tx)
+      if (result.isOk()) {
+        const probe = await actual.getEntityInstance({
+          id: result.value.id,
+          organizationId: params.organizationId,
+        })
+        h.freshReadOutcomes.push({ id: result.value.id, found: probe.isOk() })
+      }
       return result
     },
   }
@@ -299,9 +312,9 @@ describe('completeBuild commits its whole ledger', () => {
   })
 
   // 🛑 The wrinkle `complete-build.ts` reasons about but no unit test can see:
-  // `createEntity` re-reads the instance it just created through the MODULE-LEVEL
-  // pool, which is a different connection from `tx`. If the movement writes were
-  // (wrongly) on the pool, this read would find them.
+  // the mock above probes each instance it just created through the
+  // MODULE-LEVEL pool, which is a different connection from `tx`. If the
+  // movement writes were (wrongly) on the pool, that probe would find them.
   it('cannot see its own uncommitted rows from the module-level pool — which is how we know they are on tx', async () => {
     const buildId = await anInProgressBuild()
     h.freshReadOutcomes = []
@@ -340,9 +353,9 @@ describe('a failure partway through rolls the whole completion back', () => {
 
     expect(done.isErr()).toBe(true)
 
-    // 🛑 The premise, made explicit rather than assumed: `createEntity` ran once
-    // per component before the failure fired, so there really were rows in
-    // flight for the rollback to undo. Without this the assertion below would
+    // 🛑 The premise, made explicit rather than assumed: an instance insert ran
+    // once per component before the failure fired, so there really were rows
+    // in flight for the rollback to undo. Without this the assertion below would
     // pass just as happily against a `completeBuild` that failed before writing
     // anything at all, and would be proving nothing.
     expect(h.freshReadOutcomes.length).toBeGreaterThanOrEqual(f.componentPartIds.length)

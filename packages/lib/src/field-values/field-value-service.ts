@@ -8,6 +8,7 @@ import { getCachedResourceFields } from '../cache'
 import type { CapabilityView } from '../permissions/capabilities/capability-view'
 import { runWithDirtyParents } from '../reconcilers/dirty-parents'
 import type { WriteSession } from '../resources/crud/write-origin'
+import { createValuesForEntity } from './create-values'
 import {
   type CachedField,
   createFieldValueContext,
@@ -107,7 +108,7 @@ export class FieldValueService {
      * the service inside `db.transaction(...)` so its field-value writes join the
      * caller's transaction. See {@link FieldValueContext.db}.
      */
-    db: Database | Transaction = database,
+    db?: Database | Transaction,
     socketId?: string,
     options: FieldValueServiceOptions = {}
   ) {
@@ -173,7 +174,7 @@ export class FieldValueService {
    *
    * @param params - Delete value input
    */
-  deleteValue(params: DeleteValueInput): Promise<void> {
+  deleteValue(params: DeleteValueInput): Promise<number> {
     return this.inReconcileScope(() => mutations.deleteValue(this.ctx, params))
   }
 
@@ -292,6 +293,29 @@ export class FieldValueService {
    */
   setValuesForEntity(params: SetValuesForEntityInput): Promise<SetValuesResult[]> {
     return this.inReconcileScope(() => mutations.setValuesForEntity(this.ctx, params))
+  }
+
+  /**
+   * {@link setValuesForEntity} that also returns the `EntityInstance` row the
+   * write's derived-column flush produced, so a caller that needs the fresh
+   * row (a realtime frame, a create response) does not re-read it.
+   */
+  writeValuesForEntity(
+    params: SetValuesForEntityInput
+  ): Promise<mutations.WriteValuesForEntityResult> {
+    return this.inReconcileScope(() => mutations.writeValuesForEntity(this.ctx, params))
+  }
+
+  /**
+   * The create-only field write: one multi-row INSERT for every field of an
+   * instance `createEntity` inserted in this same call, no per-field lock or
+   * reconcile (plans/field-values/create-path-batching.md). Falls back to
+   * {@link writeValuesForEntity} whenever the instance already holds values.
+   */
+  createValuesForEntity(
+    params: SetValuesForEntityInput
+  ): Promise<mutations.WriteValuesForEntityResult> {
+    return this.inReconcileScope(() => createValuesForEntity(this.ctx, params))
   }
 
   /**

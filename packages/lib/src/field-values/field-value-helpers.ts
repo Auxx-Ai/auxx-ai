@@ -46,6 +46,7 @@ import { BadRequestError } from '../errors'
 import type { CapabilityView } from '../permissions/capabilities/capability-view'
 import { getRealtimeService, rooms } from '../realtime'
 import type { WriteSession } from '../resources/crud/write-origin'
+import { getAmbientWriteDb } from '../resources/crud/write-session-als'
 import type { ResourceRegistryService } from '../resources/registry/resource-registry-service'
 import { isRecordId, parseRecordId, toRecordId } from '../resources/resource-id'
 import { cascadeDependentDisplayNames, getDisplayFieldDeps } from './display-field-deps'
@@ -150,12 +151,15 @@ const EMPTY_BYPASS: ReadonlySet<SystemAttribute> = new Set()
 export function createFieldValueContext(
   organizationId: string,
   userId?: string,
-  db: Database | Transaction = database,
+  db?: Database | Transaction,
   socketId?: string,
   options: CreateFieldValueContextOptions = {}
 ): FieldValueContext {
   return {
-    db,
+    // Explicit connection, then the connection of the write in flight (a
+    // hook's context built inside a transaction-scoped write joins that
+    // transaction rather than taking a second pool connection), then the pool.
+    db: db ?? getAmbientWriteDb() ?? database,
     organizationId,
     userId,
     socketId,

@@ -2,7 +2,7 @@
 
 import { database as db } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { toRecordId } from '@auxx/types/resource'
+import { type RecordId, toRecordId } from '@auxx/types/resource'
 import {
   ContactEventType,
   EntityInstanceEventType,
@@ -29,6 +29,7 @@ import type {
   EntityInstanceUpdatedEvent,
   MessageReceivedEvent,
   MessageSentEvent,
+  RecordFieldChange,
   TicketCreatedEvent,
   TicketDeletedEvent,
   TicketFieldUpdatedEvent,
@@ -117,16 +118,21 @@ function mapEventToTimeline(event: AuxxEvent): CreateTimelineEventInput[] {
       const data = event.data as TicketUpdatedEvent['data']
       const events: CreateTimelineEventInput[] = []
 
-      // 1. Ticket-perspective event
-      events.push({
-        eventType: TicketEventType.UPDATED,
-        recordId: data.recordId,
-        relatedRecordId: data.relatedRecordId,
-        actorType: TimelineActorType.USER,
-        actorId: data.userId,
-        eventData: data.eventData,
-        organizationId: data.organizationId,
-      })
+      // 1. Ticket-perspective event: one row per field change when the
+      //    write carries them (see `contact:updated`), else the summary.
+      if (data.changes && data.changes.length > 0) {
+        events.push(...mapRecordChanges(data, TicketEventType.FIELD_UPDATED))
+      } else {
+        events.push({
+          eventType: TicketEventType.UPDATED,
+          recordId: data.recordId,
+          relatedRecordId: data.relatedRecordId,
+          actorType: TimelineActorType.USER,
+          actorId: data.userId,
+          eventData: data.eventData,
+          organizationId: data.organizationId,
+        })
+      }
 
       // 2. Contact-perspective event
       if (data.relatedRecordId) {
@@ -267,6 +273,13 @@ function mapEventToTimeline(event: AuxxEvent): CreateTimelineEventInput[] {
 
     case 'contact:updated': {
       const data = event.data as ContactUpdatedEvent['data']
+
+      // A write that carries its field changes gets one row per change and no
+      // "updated contact details" summary: the summary was a duplicate of the
+      // per-field rows since those landed (#484).
+      if (data.changes && data.changes.length > 0) {
+        return mapRecordChanges(data, ContactEventType.FIELD_UPDATED)
+      }
 
       return [
         {
@@ -460,6 +473,14 @@ function mapEventToTimeline(event: AuxxEvent): CreateTimelineEventInput[] {
     case 'entity:updated': {
       const data = event.data as EntityInstanceUpdatedEvent['data']
 
+      // See `contact:updated`: per-change rows replace the summary row.
+      if (data.changes && data.changes.length > 0) {
+        return mapRecordChanges(data, EntityInstanceEventType.FIELD_UPDATED, {
+          entityDefinitionId: data.entityDefinitionId,
+          entitySlug: data.entitySlug,
+        })
+      }
+
       // Use RESTORED if this was a restore operation
       const isRestored = data.eventData?.restored === true
       const eventType = isRestored
@@ -516,6 +537,52 @@ function mapEventToTimeline(event: AuxxEvent): CreateTimelineEventInput[] {
     default:
       return []
   }
+}
+
+/**
+ * One `<prefix>:field:updated` timeline row per entry of a record-level
+ * `:updated` event's `changes[]`: the same row shape {@link mapFieldUpdated}
+ * builds from a per-field event, so the timeline reads identically whether
+ * the write announced per field or once per record.
+ */
+function mapRecordChanges(
+  data: {
+    recordId: RecordId
+    organizationId: string
+    userId: string
+    changes?: RecordFieldChange[]
+  },
+  eventType:
+    | ContactEventType.FIELD_UPDATED
+    | TicketEventType.FIELD_UPDATED
+    | EntityInstanceEventType.FIELD_UPDATED,
+  entity: { entityDefinitionId?: string; entitySlug?: string } = {}
+): CreateTimelineEventInput[] {
+  return (data.changes ?? []).map((change) => ({
+    eventType,
+    recordId: data.recordId,
+    relatedRecordId: toRecordId('custom_field', change.fieldId),
+    actorType: TimelineActorType.USER,
+    actorId: data.userId,
+    eventData: {
+      recordId: data.recordId,
+      ...entity,
+      fieldId: change.fieldId,
+      fieldName: change.fieldName,
+      fieldType: change.fieldType,
+    },
+    changes: [
+      {
+        field: change.fieldName,
+        fieldType: change.fieldType,
+        oldDisplay: change.oldDisplay,
+        newDisplay: change.newDisplay,
+        oldValue: change.oldValue,
+        newValue: change.newValue,
+      },
+    ],
+    organizationId: data.organizationId,
+  }))
 }
 
 /** Build a timeline event for any `<prefix>:field:updated` variant. */

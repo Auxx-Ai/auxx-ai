@@ -35,6 +35,7 @@ vi.mock('../../../dedup/enqueue-scan', async (importOriginal) => ({
 
 vi.mock('../../../entity-instances', () => ({
   getEntityInstance: vi.fn(async () => ok({ id: 'inst_1', archivedAt: null })),
+  getEntityInstanceRow: vi.fn(async () => ({ id: 'inst_1', archivedAt: null })),
   updateEntityInstance: vi.fn(async () => ok({ id: 'inst_1' })),
   createEntityInstance: vi.fn(async () => ok({ id: 'inst_1' })),
   deleteEntityInstance: vi.fn(async () => ok({ id: 'inst_1' })),
@@ -65,7 +66,7 @@ function ctx(): MutationContext {
     getFields: async () => [],
     runPreHooks: async (_o, _d, values) => values,
     validateUniqueFields: async () => {},
-    setFieldValues: async () => [],
+    setFieldValues: async () => ({ failures: [], changed: true, changes: [], instance: null }),
   }
 }
 

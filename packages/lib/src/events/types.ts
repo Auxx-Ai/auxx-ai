@@ -112,6 +112,12 @@ export type TicketUpdatedEvent = AuxxEventGeneric<
     organizationId: string
     userId: string
     eventData: Record<string, unknown>
+    /**
+     * The field changes this update performed, one per field that actually
+     * changed. Present on writes through `updateEntity`; absent on legacy
+     * producers, where the timeline falls back to a summary row.
+     */
+    changes?: RecordFieldChange[]
   }
 >
 export type TicketDeletedEvent = AuxxEventGeneric<
@@ -622,6 +628,12 @@ export type ContactUpdatedEvent = AuxxEventGeneric<
     organizationId: string
     userId: string
     eventData: Record<string, unknown>
+    /**
+     * The field changes this update performed, one per field that actually
+     * changed. Present on writes through `updateEntity`; absent on legacy
+     * producers, where the timeline falls back to a summary row.
+     */
+    changes?: RecordFieldChange[]
   }
 >
 // Contact Deleted Event
@@ -652,6 +664,24 @@ export type ContactMergedEvent = AuxxEventGeneric<
  * contact, ticket, and custom-entity variants — only the event `type` differs.
  * Consumers that need entity-specific rendering switch on the event type.
  */
+/**
+ * One field's change inside a record-level `:updated` event. The same shape
+ * `FieldUpdatedData` carries per event, minus the record envelope, so the
+ * timeline can write one row per entry without a second event.
+ */
+export interface RecordFieldChange {
+  fieldId: string
+  fieldName: string
+  fieldType: string
+  /** Raw pre-write value; `null` when the field was empty. */
+  oldValue?: any
+  /** Raw post-write value; `null` when the field was cleared. */
+  newValue: any
+  /** Server-resolved snapshot. Render from these, not from oldValue/newValue. */
+  oldDisplay?: TimelineFieldChangeSnapshotValue
+  newDisplay?: TimelineFieldChangeSnapshotValue
+}
+
 export type FieldUpdatedData = {
   recordId: RecordId
   entityDefinitionId: string
@@ -822,6 +852,12 @@ export type EntityInstanceUpdatedEvent = AuxxEventGeneric<
     organizationId: string
     userId: string
     eventData: Record<string, unknown>
+    /**
+     * The field changes this update performed, one per field that actually
+     * changed. Present on writes through `updateEntity`; absent on legacy
+     * producers, where the timeline falls back to a summary row.
+     */
+    changes?: RecordFieldChange[]
   }
 >
 

@@ -53,6 +53,9 @@ export const stampTariffCodeLabel: EntityPreCreateHandler = async (event) => {
 export const restampTariffCodeLabel: EntityFieldChangeHandler = async (event) => {
   const attribute = event.field.systemAttribute
   if (attribute !== CODE_ATTR && attribute !== COUNTRY_ATTR) return
+  // A create is stamped by `stampTariffCodeLabel` in the same write; a
+  // second write from here would only re-assert it.
+  if (event.isCreate) return
 
   const { organizationId, userId, recordId } = event
   try {

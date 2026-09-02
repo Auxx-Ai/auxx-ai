@@ -100,6 +100,10 @@ vi.mock('../../../dedup/enqueue-scan', async (importOriginal) => ({
 }))
 vi.mock('../../../entity-instances', () => ({
   getEntityInstance: h.getEntityInstance,
+  getEntityInstanceRow: async () => {
+    const r = await h.getEntityInstance()
+    return r.isOk() ? r.value : null
+  },
   updateEntityInstance: h.updateEntityInstance,
   createEntityInstance: h.createEntityInstance,
   deleteEntityInstance: h.deleteEntityInstance,
@@ -186,6 +190,15 @@ async function runScenario(
   // The field-value write itself is not under test (its own doors — per-field
   // timeline, searchText, D-7 content stamp — are the field-value layer's).
   vi.spyOn(handler.fieldValueService, 'setValuesForEntity').mockResolvedValue([])
+  // A changed result, or `updateEntity` (rightly) announces nothing.
+  vi.spyOn(handler.fieldValueService, 'createValuesForEntity').mockResolvedValue({
+    results: [{ fieldId: 'f_1', state: 'complete', performedAt: '', values: [], changed: true }],
+    instance: null,
+  })
+  vi.spyOn(handler.fieldValueService, 'writeValuesForEntity').mockResolvedValue({
+    results: [{ fieldId: 'f_1', state: 'complete', performedAt: '', values: [], changed: true }],
+    instance: null,
+  })
   const recordId = 'def_1:inst_1' as RecordId
   const create = await observeOp(() => handler.create('contact', { first_name: 'Ada' }, options))
   const update = await observeOp(() =>

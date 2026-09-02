@@ -6,8 +6,17 @@ import type { FieldTriggerJobEvent } from '../events/types'
 import type { TriggeredField } from './collect-triggers'
 import { handleFieldTriggerJob } from './field-hook-job'
 
-/** Set to `true` to dispatch field triggers async via BullMQ instead of inline. */
-const FIELD_TRIGGERS_ASYNC = false
+/**
+ * Native field triggers run OFF the request, through the events queue
+ * (`field:trigger` → `handleFieldTriggerJob` in the worker). Inline, a vendor
+ * price edit waited for a whole-org part cost recalculation before the save
+ * returned, and inside a transaction-scoped write the recalc could not see
+ * the rows it was recomputing from
+ * (plans/field-values/update-path-and-events.md section 3E). The handlers
+ * recompute from current state, so a later edit is never repriced from an
+ * earlier one's input.
+ */
+const FIELD_TRIGGERS_ASYNC = true
 
 /**
  * Publish field trigger events for a single record update.
