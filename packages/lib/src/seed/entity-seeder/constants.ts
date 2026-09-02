@@ -335,29 +335,42 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     // migration 119 and INERT: nothing resolves through it until somebody
     // classifies an offer, and a set `vendor_part_tariff_rate` still wins.
     //
-    // ✅ `isVisible` on purpose (§12 d), unlike `gl_account` beside it. A
-    // records-Full actor creating a tariff code decides nothing about where
-    // money lands; it is reference data. Visible also gets the importer, which
-    // matters because loading a schedule is a bulk job.
+    // 🛑 `isVisible: false`, like `gl_account` beside it - this REVERSES the
+    // §12 d decision, which read `true`. Parts > Settings > Tariffs is the door
+    // and it is a better one: the code list, the rate history, the
+    // classification editor and the starter catalogue all live there, so an
+    // auto-linked entity sidebar entry would be a second, dumber way into the
+    // same reference data. The cost is the record importer (§12 e), which was
+    // the argument for visible; the starter catalogue covers the bulk case it
+    // was meant to serve.
+    //
+    // Migration 119 reads THIS line rather than carrying its own flag, and it
+    // has not shipped in a release yet, so no org has been seeded `true`. If
+    // one has (a dev org that ran 119 early), `ensureEntityDefinitions` is
+    // insert-only and will not correct it - update the row by hand.
     entityType: 'tariff_code',
     apiSlug: 'tariff-codes',
     singular: 'Tariff Code',
     plural: 'Tariff Codes',
     icon: 'globe',
     color: 'teal',
-    isVisible: true,
+    isVisible: false,
   },
   {
     // The dated schedule behind a code. An ENTITY and not JSON on the code row
-    // (§12 f / §12.1): rows are importable, queryable across codes, and audited
+    // (§12 f / §12.1): rows are queryable across codes and audited
     // individually.
+    //
+    // Hidden with `tariff_code` above, for the same reason: the rate history
+    // reads under its code on Parts > Settings > Tariffs, where the dates mean
+    // something, and never as a flat list of loose percentages.
     entityType: 'tariff_rate',
     apiSlug: 'tariff-rates',
     singular: 'Tariff Rate',
     plural: 'Tariff Rates',
     icon: 'percent',
     color: 'teal',
-    isVisible: true,
+    isVisible: false,
   },
 ]
 

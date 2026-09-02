@@ -48,11 +48,17 @@ const VENDOR_PART_FIELD_KEYS = ['tariffCode'] as const
  *
  * ## What it adds
  *
- * Two defs, both `isVisible` with ordinary record CRUD (§12 d):
+ * Two defs, both `isVisible: false` with ordinary record CRUD:
  *
  *   tariff_code   code, country, description, + rates / vendorParts inverses
  *   tariff_rate   tariffCode, rate, effectiveFrom, authority,
  *                 chapter99Code, note
+ *
+ * The visibility flag is NOT set here - it is read off `SYSTEM_ENTITIES`, and
+ * the reversal of §12 d's `isVisible: true` is written up on those two entries.
+ * Short version: Parts > Settings > Tariffs is the door, so the entity sidebar
+ * should not auto-link a second one. This migration has not shipped in a
+ * release, so no org was seeded with the old value.
  *
  * And one field on the supplier offer:
  *
