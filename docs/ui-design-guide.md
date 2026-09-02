@@ -125,7 +125,7 @@ export default function WebhooksPage() {
 }
 ```
 
-- `SettingsPage` is the scroll container + sticky header (icon/title/description/breadcrumbs, optional `subHeader` for a tab strip, optional `button` top-right action). It handles the scroll-shadow-on-scroll effect itself — don't reimplement it.
+- `SettingsPage` is the scroll container + sticky header (icon/title/description/breadcrumbs, optional `subHeader` for a tab strip, optional `button` top-right action). It handles the scroll-shadow-on-scroll effect itself — don't reimplement it. The button sits below the title until `lg`, then beside it; pass `buttonBreakpoint='sm'` or `'md'` only for a page whose `description` is a few words and can share the row earlier. Anything sticky below the header reads its measured height from `--settings-sticky-top` (and the scroll viewport's from `--settings-viewport-h`) rather than a hardcoded offset — `MasterDetailSplit`, the AI models toolbar and the marketplace search all do.
 - Gate admin-only settings pages with `useUser({ requireRoles: [...] })` at the top, and gate paid features with `useFeatureFlags().hasAccess(FeatureKey.x)` — render an `EmptyState` (`~/components/global/empty-state`) with a lock icon when the org doesn't have access, don't just hide the page.
 - Body content is stacked `SettingsSection`s (`icon`, `title`, `description`, right-aligned `action`) inside a `flex flex-col gap-8 p-3 sm:p-6` wrapper — one section per logical group (e.g. "Webhooks" config + "Webhook Endpoints" list as two sections on one page).
 - **Empty/add-new tiles in a settings grid use `ListCard` with `variant='placeholder'`**, not a bespoke dashed box:

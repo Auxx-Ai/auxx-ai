@@ -245,8 +245,10 @@ export function TariffStarterDialog({
 
         <div className='flex flex-col gap-3 p-3'>
           <FieldPanel
-            orientation='horizontal'
-            breakpoint='md'
+            // The dialog is wide on desktop and phone-width on mobile, where the
+            // labels move above the inputs.
+            orientation='responsive'
+            breakpoint='sm'
             resizeId='tariff-starter-dialog'
             defaultLabelWidth={180}
             className='shrink-0 grow-0 p-0'>

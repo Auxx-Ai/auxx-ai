@@ -135,8 +135,7 @@ export function AiModelsList({ initialUnifiedData }: AiModelsListProps) {
     <SettingsPage
       title='AI Models'
       description='Connect your AI provider to Auxx.Ai'
-      breadcrumbs={[{ title: 'Settings', href: '/app/settings' }, { title: 'AI Models' }]}
-      button={<div className='flex gap-2'></div>}>
+      breadcrumbs={[{ title: 'Settings', href: '/app/settings' }, { title: 'AI Models' }]}>
       {isLoading ? (
         <EmptyState
           icon={RefreshCw}
@@ -159,7 +158,7 @@ export function AiModelsList({ initialUnifiedData }: AiModelsListProps) {
         />
       ) : (
         <div className='flex-1 h-full shrink-0 flex flex-col @container'>
-          <div className='h-12 shrink-0 flex items-center justify-between border-b px-2 gap-2 bg-primary-200/50 dark:bg-primary-100/50 sticky top-[67px] z-10 backdrop-blur'>
+          <div className='h-12 shrink-0 flex items-center justify-between border-b px-2 gap-2 bg-primary-200/50 dark:bg-primary-100/50 sticky top-[var(--settings-sticky-top,0px)] z-10 backdrop-blur'>
             <div className='flex items-center gap-2'>
               {quotaStatus && (
                 <BadgeAiQuota

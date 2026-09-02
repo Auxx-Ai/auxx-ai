@@ -121,8 +121,10 @@ function OfferForm({
         </div>
 
         <FieldPanel
-          orientation='horizontal'
-          breakpoint='md'
+          // Side by side at the default pane width, stacked in the mobile drawer
+          // or once the pane is dragged near its minimum.
+          orientation='responsive'
+          breakpoint='sm'
           resizeId='tariff-classification-detail'
           defaultLabelWidth={150}
           className='shrink-0 grow-0 p-0'>

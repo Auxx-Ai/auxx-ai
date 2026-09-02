@@ -64,8 +64,7 @@ export default function AppsInstalledListPage() {
         { title: 'Settings', href: '/app/settings' },
         { title: 'Apps', href: '/app/settings/apps' },
         { title: 'Installed' },
-      ]}
-      button={<></>}>
+      ]}>
       <ConfirmDialog />
       <div className='flex flex-col flex-1 p-3 sm:p-6 space-y-6 @container'>
         <Input

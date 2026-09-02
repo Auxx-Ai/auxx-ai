@@ -124,7 +124,7 @@ export function TariffCodeEditor(props: TariffCodeEditorProps) {
     return (
       <div className='p-3'>
         <EmptySection
-          orientation='horizontal'
+          orientation='vertical'
           icon={<Globe />}
           title='Select a code'
           description='Or add one. A code is a classification for an origin, so 8481.80.9005 from China and from Germany are two of them.'
@@ -296,8 +296,11 @@ function TariffCodeForm({
     <div className='flex h-full min-h-0 flex-col p-3'>
       <ScrollArea className='min-h-0 flex-1' allowScrollChaining>
         <FieldPanel
-          orientation='horizontal'
-          breakpoint='md'
+          // Labels beside the inputs at the default pane width, above them in the
+          // mobile drawer or once the pane is dragged near its minimum. `md` would
+          // stack at the default width too.
+          orientation='responsive'
+          breakpoint='sm'
           resizeId='tariff-code-detail'
           defaultLabelWidth={150}
           className='shrink-0 grow-0 p-0'>

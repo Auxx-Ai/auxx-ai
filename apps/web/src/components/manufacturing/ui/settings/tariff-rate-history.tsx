@@ -417,7 +417,9 @@ function TariffRateForm({
   return (
     <div className='flex flex-col gap-2'>
       <FieldPanel
-        orientation='horizontal'
+        // Same pane as the code form above, so it stacks and unstacks with it.
+        orientation='responsive'
+        breakpoint='sm'
         resizeId='tariff-rate-form'
         defaultLabelWidth={160}
         className='p-0'>
