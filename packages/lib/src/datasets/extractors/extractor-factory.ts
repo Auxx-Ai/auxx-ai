@@ -9,6 +9,7 @@ import './text-extractor'
 import './pdf-extractor'
 import './docx-extractor'
 import './html-extractor'
+import './xlsx-extractor'
 
 const logger = createScopedLogger('extractor-factory')
 

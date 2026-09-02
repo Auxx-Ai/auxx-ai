@@ -76,6 +76,7 @@ import { createKnowledgeCapabilities } from '../knowledge'
 import { createKopilotCapabilities } from '../kopilot'
 import { createLearnedKbCapabilities } from '../learned'
 import { createMailCapabilities } from '../mail'
+import { createPurchasingIntakeCapabilities } from '../purchasing-intake'
 import { createRecordViewCapabilities } from '../record-views'
 import { createCapabilityRegistry } from '../registry'
 import { createTaskCapabilities } from '../tasks'
@@ -160,6 +161,7 @@ async function collectNativeCapabilities(): Promise<PageCapability[]> {
     createKbCapabilities(getDeps),
     createKbReadCapabilities(getDeps),
     createLearnedKbCapabilities(getDeps),
+    createPurchasingIntakeCapabilities(getDeps),
     createRecordViewCapabilities(getDeps),
     createNativeWorkflowCapabilities(getDeps),
     createWorkflowBuilderCapabilities(getDeps),

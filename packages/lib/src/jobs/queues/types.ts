@@ -61,6 +61,12 @@ export enum Queues {
   learnedExtractionQueue = 'learned-extraction',
   // QuickBooks invoice sync queue (plans/dispatch/37e-quickbooks-invoice-sync.md §3, P3)
   quickbooksInvoiceSyncQueue = 'quickbooks-invoice-sync',
+  // Purchase-order intake: read a vendor's quote into a draft purchase order
+  // (plans/money/tasks/38-purchase-order-from-a-document.md §3.3). Its own queue
+  // because one job is a multimodal LLM read of a whole document — 10 to 40
+  // seconds — and a burst of uploads must not sit behind, or in front of, the
+  // shared AI pool.
+  purchaseIntakeQueue = 'purchase-intake',
   // Inbound-mail AI categorisation (mail-classification plan §4). Its OWN queue:
   // the call cannot run in the `message:received` gate (2s timeout, shared
   // `eventsQueue`) and must not hold `eventHandlersQueue` slots for seconds.

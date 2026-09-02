@@ -70,6 +70,13 @@ const ALWAYS_ON_TOOLS = new Set<string>([
   'apply_template',
   'validate_workflow',
   'run_node',
+  // Purchase-order intake tools — mounted by page context
+  // (`page: 'purchasing.intake'`), never by an org toolset. Same reasoning as
+  // the workflow-builder block above, and plans/money/tasks/38 §8 rejects a
+  // user-configurable agent for intake outright: these are purpose-built like
+  // the builders', not a toolset anyone picks.
+  'resolve_lines',
+  'propose_draft',
 ])
 
 const CAPABILITIES_DIR = join(__dirname, '..', 'capabilities')

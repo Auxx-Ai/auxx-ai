@@ -60,6 +60,27 @@ const PRODUCT_RELATIONSHIP: RelationshipConfig = {
   isInverse: false,
 }
 
+/**
+ * Seeds the CREATE form from something already on screen — today, the vendor's
+ * printed quote line (plans/money/tasks/38 §5.2, tier 4 "create the part").
+ *
+ * 🛑 `skuSuggestion` is deliberately NOT a value. `part_sku` is OUR number and
+ * the vendor's printed code is THEIRS; the two are only sometimes the same
+ * string, and a vendor's line code is sometimes their order number. So the
+ * suggestion is offered under the SKU field with the field left empty and
+ * required — the person has to look at it and adopt it in one click, or type
+ * ours. The vendor's own code has its own home: the `vendorSku` write-back on
+ * the `(part, vendor)` `vendor_part` row (§5.3).
+ */
+export interface PartFormPrefill {
+  /** Seeds Title. */
+  title?: string
+  /** Seeds Description. */
+  description?: string
+  /** Offered under SKU as a one-click suggestion. Never written on its own. */
+  skuSuggestion?: string
+}
+
 /** Props for PartFormDialog component */
 interface PartFormDialogProps {
   /** Whether the dialog is open */
@@ -80,6 +101,11 @@ interface PartFormDialogProps {
    * two writers for one relation is exactly what D15 rejected for price.
    */
   productId?: string
+  /**
+   * Seeds the form in CREATE mode. Ignored on edit, where the record's own
+   * values are the only source.
+   */
+  prefill?: PartFormPrefill
 }
 
 /** Dialog for creating/editing a part */
@@ -89,6 +115,7 @@ export function PartFormDialog({
   recordId,
   onSuccess,
   productId: lockedProductId,
+  prefill,
 }: PartFormDialogProps) {
   const isEditMode = !!recordId
 
@@ -147,6 +174,13 @@ export function PartFormDialog({
     useState<OpeningStockFormValues>(defaultOpeningStockValues)
   const [openingStockErrors, setOpeningStockErrors] = useState<Record<string, string>>({})
 
+  // Read off the prefill as primitives, so the reset effect below depends on the
+  // VALUES rather than on the object identity — a caller passing an inline
+  // literal would otherwise re-run the reset on every render and wipe the form.
+  const prefillTitle = prefill?.title ?? ''
+  const prefillDescription = prefill?.description ?? ''
+  const skuSuggestion = prefill?.skuSuggestion ?? ''
+
   // Initialize/reset values when dialog opens
   useEffect(() => {
     if (open) {
@@ -164,8 +198,9 @@ export function PartFormDialog({
         })
       } else if (!isEditMode) {
         setValues({
-          title: '',
-          description: '',
+          title: prefillTitle,
+          description: prefillDescription,
+          // 🛑 Never seeded, not even from `skuSuggestion`. See `PartFormPrefill`.
           sku: '',
           hsCode: '',
           category: [],
@@ -181,7 +216,7 @@ export function PartFormDialog({
       setOpeningStockValues(defaultOpeningStockValues())
       setOpeningStockErrors({})
     }
-  }, [open, isEditMode, systemValues, lockedProductId])
+  }, [open, isEditMode, systemValues, lockedProductId, prefillTitle, prefillDescription])
 
   // Preselect Kind from the field's own `defaultValue` (task 15 §4c).
   //
@@ -443,6 +478,21 @@ export function PartFormDialog({
               placeholder='Unique part number'
               disabled={isPending}
             />
+            {!isEditMode && skuSuggestion && values.sku !== skuSuggestion && (
+              <div className='flex flex-wrap items-center gap-1.5 pt-0.5 pb-1 text-muted-foreground text-xs'>
+                <span>
+                  The supplier printed <span className='font-mono'>{skuSuggestion}</span>.
+                </span>
+                <Button
+                  type='button'
+                  variant='ghost'
+                  size='xs'
+                  disabled={isPending}
+                  onClick={() => handleChange('sku', skuSuggestion)}>
+                  Use as our SKU
+                </Button>
+              </div>
+            )}
           </FieldPanelRow>
 
           {/* Category — inline TAGS (free-form, multi-value) */}

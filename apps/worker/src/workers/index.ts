@@ -30,6 +30,7 @@ import { startMessageSyncWorker } from './worker-definitions/message-sync-worker
 import { startOAuth2RefreshWorker } from './worker-definitions/oauth2-refresh-worker'
 import { startPollingSyncWorker } from './worker-definitions/polling-sync-worker'
 import { startPollingTriggerWorker } from './worker-definitions/polling-trigger-worker'
+import { startPurchaseIntakeWorker } from './worker-definitions/purchase-intake-worker'
 import { startQuickbooksInvoiceSyncWorker } from './worker-definitions/quickbooks-invoice-sync-worker'
 import { startRecordingBotWorker } from './worker-definitions/recording-bot-worker'
 import { startRecordingProcessingWorker } from './worker-definitions/recording-processing-worker'
@@ -131,6 +132,10 @@ export async function startWorkers() {
   // Inbound-mail AI categorisation worker (mail-classification plan §4)
   const mailClassificationWorker = startMailClassificationWorker()
 
+  // Quote-intake worker: reads an uploaded vendor quote into a draft purchase
+  // order (plans/money/tasks/38-purchase-order-from-a-document.md §3.3)
+  const purchaseIntakeWorker = startPurchaseIntakeWorker()
+
   const workers = [
     // defaultWorker,
     eventsWorker,
@@ -166,6 +171,7 @@ export async function startWorkers() {
     documentPdfWorker,
     quickbooksInvoiceSyncWorker,
     mailClassificationWorker,
+    purchaseIntakeWorker,
   ]
 
   return Promise.all(workers)

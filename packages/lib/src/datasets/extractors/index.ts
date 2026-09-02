@@ -11,3 +11,4 @@ export { HtmlExtractor } from './html-extractor'
 export { PdfExtractor } from './pdf-extractor'
 // Export specific extractors
 export { TextExtractor } from './text-extractor'
+export { XlsxExtractor } from './xlsx-extractor'

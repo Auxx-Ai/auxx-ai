@@ -29,6 +29,7 @@ import {
   createKopilotCapabilities,
   createKopilotDomainConfig,
   createMailCapabilities,
+  createPurchasingIntakeCapabilities,
   createToolDepsFactory,
 } from '../kopilot'
 import type { TriggerContext } from '../kopilot/prompts/trigger-context'
@@ -207,6 +208,12 @@ export async function buildAgentCapabilityRegistry(args: {
   registry.register(createEntityCapabilities(getToolDeps))
   registry.register(createMailCapabilities(getToolDeps))
   registry.register(createKopilotCapabilities(getToolDeps))
+  // Purchase-order intake (plans/money/tasks/38 §4). Page-scoped, so registering
+  // it unconditionally costs every other page nothing — `getTools` only hands a
+  // capability's tools to its own page key. Registered HERE rather than only in
+  // the chat route because the intake run is a worker job (§3.3), and this is the
+  // builder every autonomous run resolves its tools from.
+  registry.register(createPurchasingIntakeCapabilities(getToolDeps))
   registry.register(
     await createAppCapabilities({
       organizationId,
