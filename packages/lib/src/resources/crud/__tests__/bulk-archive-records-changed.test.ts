@@ -70,7 +70,7 @@ function ctx(session: WriteSession = interactiveSession('user_1', 'sock_1')): Mu
     getFields: async () => [],
     runPreHooks: async (_o: unknown, _d: unknown, values: unknown) => values,
     validateUniqueFields: async () => {},
-    setFieldValues: async () => {},
+    setFieldValues: async () => [],
   } as never
 }
 

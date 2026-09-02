@@ -293,6 +293,13 @@ export interface SetValuesResult {
   values: TypedFieldValue[]
   /** See {@link SetValueResult.changed} — real change vs idempotent no-op. */
   changed?: boolean
+  /**
+   * Why the write failed, present only when `state === 'failed'`.
+   * `setValuesForEntity` swallows a per-field throw so the other fields still
+   * land; this is the message it swallowed, so a caller that must not accept a
+   * partial record (a create losing a required field) can refuse it.
+   */
+  error?: string
 }
 
 /**

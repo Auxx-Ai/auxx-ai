@@ -90,7 +90,7 @@ function ctx(session: WriteSession, fields: unknown[] = []): MutationContext {
     getFields: async () => fields as never,
     runPreHooks: async (_o, _d, values) => values,
     validateUniqueFields: async () => {},
-    setFieldValues: async () => {},
+    setFieldValues: async () => [],
   }
 }
 

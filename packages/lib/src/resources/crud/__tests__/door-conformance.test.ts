@@ -185,7 +185,7 @@ async function runScenario(
   const handler = makeHandler()
   // The field-value write itself is not under test (its own doors — per-field
   // timeline, searchText, D-7 content stamp — are the field-value layer's).
-  vi.spyOn(handler.fieldValueService, 'setValuesForEntity').mockResolvedValue(undefined as never)
+  vi.spyOn(handler.fieldValueService, 'setValuesForEntity').mockResolvedValue([])
   const recordId = 'def_1:inst_1' as RecordId
   const create = await observeOp(() => handler.create('contact', { first_name: 'Ada' }, options))
   const update = await observeOp(() =>

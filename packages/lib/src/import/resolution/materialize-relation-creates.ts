@@ -2,6 +2,7 @@
 
 import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { type RecordId, toRecordId } from '@auxx/types/resource'
 import { getCachedResource } from '../../cache'
 import { ForbiddenError } from '../../errors'
 import type { RelationCreateRequest, ResolvedValue } from '../types/resolution'
@@ -53,8 +54,18 @@ export interface MaterializeRelationCreatesResult {
   failures: Array<{ entityDefinitionId: string; value: string; error: string }>
 }
 
-/** One distinct target: either minted, or failed with a reason. */
-type MintOutcome = { id: string } | { error: string }
+/**
+ * One distinct target: either minted, or failed with a reason.
+ *
+ * A minted target is carried as a full `defId:instanceId` RecordId, never the
+ * bare `EntityInstance.id` the writer returns. The write path's `relationship`
+ * arm parses the stored value with `recordIdSchema`, which requires the colon,
+ * so a bare id is rejected at write time; and because `setValuesForEntity`
+ * swallows a per-field throw, the rejection surfaced as a record created with
+ * every field EXCEPT the link. The match path (`resolve-relation-lookups.ts`)
+ * has stored a RecordId for the same reason; this is the same value shape.
+ */
+type MintOutcome = { recordId: RecordId } | { error: string }
 
 /**
  * Every resolution row that shares one mint outcome. Bucketing is what lets N
@@ -128,8 +139,8 @@ export async function materializeRelationCreates(
     let outcome = outcomes.get(key)
     if (!outcome) {
       try {
-        const id = await mintTarget(organizationId, row.request, createRecord)
-        outcome = { id }
+        const recordId = await mintTarget(organizationId, row.request, createRecord)
+        outcome = { recordId }
         created++
         byEntityDefinition[row.request.entityDefinitionId] =
           (byEntityDefinition[row.request.entityDefinitionId] ?? 0) + 1
@@ -184,9 +195,9 @@ async function writeBackOutcomes(db: Database, buckets: WriteBackBucket[]): Prom
 
   for (const bucket of buckets) {
     const settled = bucket.outcome
-    const succeeded = 'id' in settled
+    const succeeded = 'recordId' in settled
     const resolvedValues: ResolvedValue[] = succeeded
-      ? [{ type: 'value', value: settled.id }]
+      ? [{ type: 'value', value: settled.recordId }]
       : [{ type: 'error', error: `Could not create "${bucket.value}": ${settled.error}` }]
     const errorMessage = succeeded ? null : (resolvedValues[0]?.error ?? null)
 
@@ -210,12 +221,16 @@ async function writeBackOutcomes(db: Database, buckets: WriteBackBucket[]): Prom
  * The field is addressed by its CustomField id when it has one and by its key
  * otherwise, the same dual convention `buildRecordData` uses, so the CRUD
  * layer routes it identically to every other imported value.
+ *
+ * Returns the new record as a RecordId built on the org's EntityDefinition
+ * CUID (`resource.entityDefinitionId`), not on `request.entityDefinitionId`,
+ * which may be the bare slug. See {@link MintOutcome}.
  */
 async function mintTarget(
   organizationId: string,
   request: RelationCreateRequest,
   createRecord: RelationTargetWriter
-): Promise<string> {
+): Promise<RecordId> {
   const resource = await getCachedResource(organizationId, request.entityDefinitionId)
   if (!resource) {
     throw new Error(`Relation target not found: ${request.entityDefinitionId}`)
@@ -223,7 +238,7 @@ async function mintTarget(
   const field = resource.fields.find((f) => f.key === request.matchField)
   const dataKey = field?.id ?? request.matchField
   const result = await createRecord(resource.entityDefinitionId, { [dataKey]: request.value })
-  return result.id
+  return toRecordId(resource.entityDefinitionId, result.id)
 }
 
 /** Options for {@link createRelationTargetWriter} */

@@ -486,7 +486,7 @@ describe('convergence through the REAL createEntity — B-17, the point of Phase
       getFields: async () => [],
       runPreHooks: async (_op: string, _def: unknown, values: Record<string, unknown>) => values,
       validateUniqueFields: async () => {},
-      setFieldValues: vi.fn(async () => {}),
+      setFieldValues: vi.fn(async () => []),
     } as unknown as Parameters<typeof createEntity>[0]
   }
 

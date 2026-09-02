@@ -206,7 +206,7 @@ function ctx(session: WriteSession): MutationContext {
     getFields: async () => MOVEMENT_FIELDS as never,
     runPreHooks: async (_o, _d, values) => values,
     validateUniqueFields: async () => {},
-    setFieldValues: async () => {},
+    setFieldValues: async () => [],
   }
 }
 

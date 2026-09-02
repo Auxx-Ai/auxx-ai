@@ -1,5 +1,6 @@
 // packages/lib/src/import/resolution/__tests__/materialize-relation-creates.test.ts
 
+import { isRecordId } from '@auxx/types/resource'
 import { PgDialect } from 'drizzle-orm/pg-core'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { BaseType } from '../../../resources/types'
@@ -156,8 +157,32 @@ describe('materializeRelationCreates', () => {
     for (const write of writes) {
       expect(write.status).toBe('valid')
       expect(write.isValid).toBe('true')
-      expect(write.resolvedValues).toEqual([{ type: 'value', value: 'company-new' }])
+      expect(write.resolvedValues).toEqual([{ type: 'value', value: 'def-company:company-new' }])
     }
+  })
+
+  it('stores the minted target as a full RecordId, the same shape the match path stores', async () => {
+    // A bare `EntityInstance.id` is rejected by the write path's `recordIdSchema`
+    // and the rejection is swallowed per field, so the importer used to land a
+    // record with every field except the link. The RecordId is built on the
+    // org's def CUID, never on the request's slug.
+    const { db, statements } = buildFakeDb([
+      pendingRow('res-1', 'Acme Motors', { entityDefinitionId: 'company' }),
+    ])
+    const createRecord = vi.fn(async () => ({ id: 'company-new' }))
+
+    await materializeRelationCreates(db, {
+      organizationId: 'org-1',
+      jobId: 'job-1',
+      userId: 'user-1',
+      createRecord,
+      ...allow,
+    })
+
+    const [write] = allWrites(statements)
+    const value = (write?.resolvedValues as Array<{ value: string }>)[0]?.value
+    expect(isRecordId(value)).toBe(true)
+    expect(value).toBe('def-company:company-new')
   })
 
   it('mints the RAW cell onto the display field, addressed by its CustomField id', async () => {
@@ -226,7 +251,9 @@ describe('materializeRelationCreates', () => {
     for (const id of ['res-1', 'res-3']) {
       expect(byId.get(id)?.status).toBe('valid')
       expect(byId.get(id)?.isValid).toBe('true')
-      expect(byId.get(id)?.resolvedValues).toEqual([{ type: 'value', value: 'company-acme' }])
+      expect(byId.get(id)?.resolvedValues).toEqual([
+        { type: 'value', value: 'def-company:company-acme' },
+      ])
       expect(byId.get(id)?.errorMessage).toBeNull()
     }
     expect(byId.get('res-2')?.status).toBe('error')
@@ -256,9 +283,9 @@ describe('materializeRelationCreates', () => {
     expect(statements.map((s) => s.writes.length)).toEqual([500, 500, 201])
     const writes = allWrites(statements)
     expect(writes).toHaveLength(total)
-    expect(writes[0]?.resolvedValues).toEqual([{ type: 'value', value: 'company-0' }])
+    expect(writes[0]?.resolvedValues).toEqual([{ type: 'value', value: 'def-company:company-0' }])
     expect(writes[total - 1]?.resolvedValues).toEqual([
-      { type: 'value', value: `company-${total - 1}` },
+      { type: 'value', value: `def-company:company-${total - 1}` },
     ])
   })
 

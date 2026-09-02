@@ -131,12 +131,35 @@ export interface MutationContext {
     values: Record<string, unknown>,
     excludeEntityId?: string
   ) => Promise<void>
+  /**
+   * Write a record's values. Resolves to the SET-lane writes that failed,
+   * because the field-value layer swallows a per-field throw and continues.
+   * See {@link FieldWriteFailure}.
+   */
   setFieldValues: (
     recordId: RecordId,
     values: Record<string, unknown>,
     modes?: Record<string, 'set' | 'add' | 'remove'>,
     opts?: { publishEvents?: boolean }
-  ) => Promise<void>
+  ) => Promise<FieldWriteFailure[]>
+}
+
+/**
+ * One field whose write was refused and swallowed by `setValuesForEntity`.
+ *
+ * On an EDIT this is the lenient behaviour every caller relies on: the other
+ * fields still land and the record stays whole. On a CREATE it is how a
+ * record ends up existing without a required field, because the required
+ * check ran on presence before the coercion that refused the value. The
+ * importer produced 232 supplier offers with no supplier this way: the
+ * relation materializer handed it a bare instance id, `recordIdSchema`
+ * refused it, and the create kept going.
+ */
+export interface FieldWriteFailure {
+  /** `CustomField.id` of the field that did not land */
+  fieldId: string
+  /** The message the field-value layer swallowed */
+  error: string
 }
 
 /**
@@ -420,9 +443,40 @@ export async function createEntity(
   // passes `true` here on purpose: the field-value layer resolves the scope
   // itself and captures instead of publishing, so a `false` would be read as
   // the C3 "an aggregator announces this" escape hatch and lose the writes.
-  await ctx.setFieldValues(recordId, processedValues, undefined, {
+  const failures = await ctx.setFieldValues(recordId, processedValues, undefined, {
     publishEvents: publishEvents || txScope !== undefined,
   })
+
+  // A create that lost a REQUIRED field is not a record, it is a stub that
+  // reads as complete and is not. `assertRequiredFieldsPresent` above cannot
+  // catch this: it checks presence, and the value WAS present, just refused by
+  // coercion (a relationship handed a bare instance id, a select handed a
+  // label). Roll the instance back and surface the reason, so the caller (an
+  // import row, a form) sees an error where it would otherwise see a success.
+  // Optional fields keep the lenient behaviour every edit path relies on.
+  if (failures.length > 0) {
+    const requiredById = new Map(
+      entityFields.filter((f) => f.required && f.isCreatable).map((f) => [f.id, f] as const)
+    )
+    const fatal = failures.filter((f) => requiredById.has(f.fieldId))
+    if (fatal.length > 0) {
+      // `deleteEntityInstance` sweeps the values already written for the row
+      // inside its own transaction, so nothing is left behind.
+      unwrapResult(
+        await deleteEntityInstance({ id: instance.id, organizationId: ctx.organizationId })
+      )
+      syncCollectorOf(ctx.session)?.recordArchived(recordId)
+      const detail = fatal
+        .map((f) => `${requiredById.get(f.fieldId)?.name ?? f.fieldId}: ${f.error}`)
+        .join('; ')
+      throw new UnprocessableEntityError(`Could not write required field ${detail}`, {
+        failedFields: fatal.map((f) => {
+          const field = requiredById.get(f.fieldId)
+          return field?.systemAttribute ?? field?.name ?? f.fieldId
+        }),
+      })
+    }
+  }
 
   // Re-read the instance so displayName / secondaryDisplayValue / avatarUrl
   // reflect what setFieldValues' maybeUpdateDisplayValue just wrote. The

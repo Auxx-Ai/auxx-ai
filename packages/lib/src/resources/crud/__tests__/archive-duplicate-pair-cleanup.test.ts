@@ -65,7 +65,7 @@ function ctx(): MutationContext {
     getFields: async () => [],
     runPreHooks: async (_o, _d, values) => values,
     validateUniqueFields: async () => {},
-    setFieldValues: async () => {},
+    setFieldValues: async () => [],
   }
 }
 
