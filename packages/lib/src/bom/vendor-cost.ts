@@ -218,9 +218,8 @@ export interface TariffRateRow {
   /**
    * The day this rate took effect.
    *
-   * A calendar day, not an instant. A `Date` is read in **UTC** because that is
-   * how a `FieldType.DATE` value is stored - reinterpreting midnight UTC in a
-   * western timezone would move every row back a day. A string is taken as
+   * A calendar day, not an instant. DATE values are stored as UTC midnight per
+   * the platform contract, so the UTC slice is the day. A string is taken as
    * already being a `YYYY-MM-DD` day and only its first ten characters are read.
    */
   effectiveFrom: Date | string | null
@@ -503,7 +502,8 @@ function normalizeAuthority(authority: string | null): string | null {
 /**
  * A row's effective day as `YYYY-MM-DD`, or `null` when it has none.
  *
- * A `Date` is read in UTC on purpose - see {@link TariffRateRow.effectiveFrom}.
+ * DATE values are stored as UTC midnight per the platform contract, so the UTC
+ * slice is the day.
  */
 function effectiveDay(effectiveFrom: Date | string | null): string | null {
   if (effectiveFrom == null) return null

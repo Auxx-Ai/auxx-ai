@@ -1,6 +1,7 @@
 // apps/web/src/components/workflow/nodes/shared/node-inputs/datetime-input.tsx
 'use client'
 
+import { fromCalendarDayIso, toCalendarDayIso } from '@auxx/lib/field-values/client'
 import { format } from 'date-fns'
 import { DateTimePicker, type PickerMode } from '~/components/pickers/date-time-picker'
 import type { PickerTriggerOptions } from '~/components/ui/picker-trigger'
@@ -28,6 +29,10 @@ interface DateTimeInputProps extends NodeInputProps {
 /**
  * DateTime input component using DateTimePicker
  * Wraps DateTimePicker to match node-input interface (ISO string values)
+ *
+ * `type='date'` is a calendar day: it is read back as the local day with the same
+ * Y/M/D and written as `YYYY-MM-DDT00:00:00.000Z`, so the viewer's zone never
+ * crosses the wire. `datetime` and `time` are instants.
  */
 export const DateTimeInput = createNodeInput<DateTimeInputProps>(
   ({
@@ -46,9 +51,10 @@ export const DateTimeInput = createNodeInput<DateTimeInputProps>(
   }) => {
     const value = inputs[name]
     // const error = errors[name]
+    const isDay = type === 'date'
 
     // Parse ISO string to Date object
-    const dateValue = value ? new Date(value) : undefined
+    const dateValue = isDay ? fromCalendarDayIso(value) : value ? new Date(value) : undefined
     const isValidDate = dateValue && !Number.isNaN(dateValue.getTime())
 
     // Map type prop to mode prop
@@ -73,8 +79,8 @@ export const DateTimeInput = createNodeInput<DateTimeInputProps>(
       }
 
       onError(name, null)
-      // Store as ISO string (maintains existing behavior)
-      onChange(name, date.toISOString())
+      // Store as ISO string: the picked day for a date, the instant otherwise
+      onChange(name, isDay ? toCalendarDayIso(date) : date.toISOString())
     }
 
     /** Get placeholder based on mode */

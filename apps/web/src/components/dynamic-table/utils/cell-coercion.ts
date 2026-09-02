@@ -7,6 +7,7 @@ import {
   findOptionKey,
   resolveOptionId,
 } from '@auxx/lib/custom-fields/client'
+import { toCalendarDayIso } from '@auxx/lib/field-values/client'
 import {
   getRelatedEntityDefinitionId,
   isRecordId,
@@ -89,8 +90,11 @@ export function reasonToLabel(reason: CoerceReason): string {
 /**
  * Coerce a source payload into a value suitable for the target field.
  * Returns {ok: true, value} on success, or {ok: false, reason} on skip.
- * The returned `value` is a raw primitive (string, number, array, etc.) —
+ * The returned `value` is a raw primitive (string, number, array, etc.);
  * server-side `formatToTypedInput` will convert it to the internal typed form.
+ * A DATE target is the one case that is already canonical on the way out: it
+ * emits the pasted calendar day as `YYYY-MM-DDT00:00:00.000Z`, which the
+ * server's DATE normaliser passes through unchanged.
  */
 export function coerceForPaste(
   source: CopyCellPayload,
@@ -164,7 +168,19 @@ export function coerceForPaste(
       return { ok: false, reason: 'not-a-boolean' }
     }
 
-    case 'DATE':
+    case 'DATE': {
+      // A DATE is a calendar day, so the pasted text names a day, not an
+      // instant, and the browser's zone must not shift it.
+      const candidates: unknown[] = []
+      if (hasRaw) candidates.push(source.raw)
+      if (display !== '') candidates.push(display)
+      for (const c of candidates) {
+        const iso = parseCalendarDayIso(c)
+        if (iso !== null) return { ok: true, value: iso }
+      }
+      return { ok: false, reason: 'not-a-date' }
+    }
+
     case 'DATETIME':
     case 'TIME': {
       const candidates: unknown[] = []
@@ -339,17 +355,48 @@ function parseBool(v: unknown): boolean | null {
   return null
 }
 
-function parseDateIso(v: unknown): string | null {
-  if (v instanceof Date) return Number.isNaN(v.getTime()) ? null : v.toISOString()
+function parseDate(v: unknown): Date | null {
+  if (v instanceof Date) return Number.isNaN(v.getTime()) ? null : v
   if (typeof v === 'number') {
     const d = new Date(v)
-    return Number.isNaN(d.getTime()) ? null : d.toISOString()
+    return Number.isNaN(d.getTime()) ? null : d
   }
   if (typeof v !== 'string') return null
   const trimmed = v.trim()
   if (trimmed === '') return null
   const d = new Date(trimmed)
-  return Number.isNaN(d.getTime()) ? null : d.toISOString()
+  return Number.isNaN(d.getTime()) ? null : d
+}
+
+/** An instant for DATETIME and TIME targets. */
+function parseDateIso(v: unknown): string | null {
+  return parseDate(v)?.toISOString() ?? null
+}
+
+/**
+ * A bare `YYYY-MM-DD` or a UTC-midnight instant (the stored shape of a DATE value).
+ * Both name a day outright, so they must not go through `new Date(string)`, which
+ * reads them as UTC and lands on the previous day for every browser west of UTC.
+ */
+const DAY_PREFIX = /^(\d{4})-(\d{2})-(\d{2})(?:T00:00:00(?:\.000)?Z)?$/
+
+/**
+ * The calendar day a pasted value names, as `YYYY-MM-DDT00:00:00.000Z`.
+ *
+ * A bare day (or a stored DATE value) is taken as written. Anything else is
+ * parsed as the browser does and the local calendar day of that instant is
+ * kept, which is the day the user saw in the source cell.
+ */
+function parseCalendarDayIso(v: unknown): string | null {
+  if (typeof v === 'string') {
+    const match = DAY_PREFIX.exec(v.trim())
+    if (match) {
+      const [, y, m, d] = match
+      return toCalendarDayIso(new Date(Number(y), Number(m) - 1, Number(d)))
+    }
+  }
+  const date = parseDate(v)
+  return date ? toCalendarDayIso(date) : null
 }
 
 /**

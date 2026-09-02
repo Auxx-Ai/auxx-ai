@@ -2,7 +2,7 @@
 
 import type { ResourceField } from '@auxx/lib/resources/client'
 import { toFieldId } from '@auxx/types/field'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { coerceForPaste, optionLabel } from './cell-coercion'
 
 /**
@@ -172,5 +172,83 @@ describe('coerceForPaste — dangling relationship targets', () => {
       { columnId: 'rel' }
     )
     expect(result).toEqual({ ok: true, value: DEAD })
+  })
+})
+
+/**
+ * A DATE field is a calendar day stored as UTC midnight. Pasting "May 10" must
+ * land on May 10 in every browser zone; only DATETIME keeps the instant.
+ */
+describe('coerceForPaste - calendar days', () => {
+  const originalTz = process.env.TZ
+  afterEach(() => {
+    process.env.TZ = originalTz
+  })
+
+  function dateField(fieldType: 'DATE' | 'DATETIME'): ResourceField {
+    return {
+      id: toFieldId('when'),
+      key: 'when',
+      label: 'When',
+      type: 'string',
+      fieldType,
+      capabilities: { updatable: true },
+    } as unknown as ResourceField
+  }
+
+  const MAY_10 = '2026-05-10T00:00:00.000Z'
+
+  for (const tz of ['Pacific/Auckland', 'America/Los_Angeles', 'Europe/Berlin']) {
+    describe(`in ${tz}`, () => {
+      it('takes a bare day as written', () => {
+        process.env.TZ = tz
+        const result = coerceForPaste({ display: '2026-05-10' }, dateField('DATE'), {
+          columnId: 'when',
+        })
+        expect(result).toEqual({ ok: true, value: MAY_10 })
+      })
+
+      it('keeps a stored DATE value on its day', () => {
+        process.env.TZ = tz
+        const result = coerceForPaste({ display: 'May 10, 2026', raw: MAY_10 }, dateField('DATE'), {
+          columnId: 'when',
+        })
+        expect(result).toEqual({ ok: true, value: MAY_10 })
+      })
+
+      it('reads a formatted day in the local zone', () => {
+        process.env.TZ = tz
+        const result = coerceForPaste({ display: 'May 10, 2026' }, dateField('DATE'), {
+          columnId: 'when',
+        })
+        expect(result).toEqual({ ok: true, value: MAY_10 })
+      })
+    })
+  }
+
+  it('keeps the local calendar day of a pasted instant', () => {
+    process.env.TZ = 'America/Los_Angeles'
+    // 03:00Z on May 10 is still the evening of May 9 in Los Angeles.
+    const result = coerceForPaste(
+      { display: 'May 9, 2026 8:00 PM', raw: '2026-05-10T03:00:00.000Z', fieldType: 'DATETIME' },
+      dateField('DATE'),
+      { columnId: 'when' }
+    )
+    expect(result).toEqual({ ok: true, value: '2026-05-09T00:00:00.000Z' })
+  })
+
+  it('leaves DATETIME as the instant', () => {
+    process.env.TZ = 'Pacific/Auckland'
+    const result = coerceForPaste({ display: '2026-05-10T03:00:00.000Z' }, dateField('DATETIME'), {
+      columnId: 'when',
+    })
+    expect(result).toEqual({ ok: true, value: '2026-05-10T03:00:00.000Z' })
+  })
+
+  it('still rejects text that is not a date', () => {
+    const result = coerceForPaste({ display: 'sometime soon' }, dateField('DATE'), {
+      columnId: 'when',
+    })
+    expect(result).toEqual({ ok: false, reason: 'not-a-date' })
   })
 })

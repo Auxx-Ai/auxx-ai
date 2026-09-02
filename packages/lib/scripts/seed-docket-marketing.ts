@@ -273,8 +273,12 @@ await database.transaction(async (tx) => {
     .onConflictDoNothing({ target: Participant.id })
 
   // -------- 2. Bump the Docket deal so it looks like an active opportunity ---
-  const expectedClose = new Date()
-  expectedClose.setDate(expectedClose.getDate() + 14) // ~2 weeks out
+  // `expected_close` is a DATE field (a calendar day stored at UTC midnight),
+  // and this writes `valueDate` directly, bypassing the normalisers, so it must
+  // carry the canonical shape itself rather than a live instant.
+  const expectedCloseInstant = new Date()
+  expectedCloseInstant.setUTCDate(expectedCloseInstant.getUTCDate() + 14) // ~2 weeks out
+  const expectedClose = `${expectedCloseInstant.toISOString().slice(0, 10)}T00:00:00.000Z`
 
   // Stage
   await tx

@@ -56,6 +56,8 @@ export interface FieldOutput {
   readOnly?: true
   /** Only present when creatable && !updatable (e.g. ticket_type). */
   createOnly?: true
+  /** DATE fields only: the value shape to send (a bare calendar day). */
+  format?: 'YYYY-MM-DD'
   /** Select / multi-select / status option values. */
   options?: Array<{ value: string; label: string }>
   moreOptions?: true
@@ -110,6 +112,8 @@ export function formatFieldOutput(field: ResourceField): FieldOutput | null {
   }
 
   const ft = fieldType?.toUpperCase()
+
+  if (ft === 'DATE') entry.format = 'YYYY-MM-DD'
 
   // Select options
   if (ft && SELECT_TYPES.has(ft) && field.options?.options?.length) {

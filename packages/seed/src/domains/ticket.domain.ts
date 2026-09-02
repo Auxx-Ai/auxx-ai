@@ -229,8 +229,14 @@ export class TicketDomain {
     return new Date(Date.now() - daysAgo * 86400000)
   }
 
-  /** generateTicketDueDate creates priority-based due dates. */
-  private generateTicketDueDate(status: string, priority: string, createdAt: Date): Date | null {
+  /**
+   * generateTicketDueDate creates priority-based due dates.
+   *
+   * `due_date` is a DATE field, a calendar day, so this returns the bare
+   * `YYYY-MM-DD` of the computed instant's UTC day rather than the instant
+   * itself: the write funnel stores a day at UTC midnight, never a time-of-day.
+   */
+  private generateTicketDueDate(status: string, priority: string, createdAt: Date): string | null {
     // Open/In Progress tickets have due dates
     if (!['OPEN', 'IN_PROGRESS'].includes(status)) {
       return null
@@ -245,7 +251,7 @@ export class TicketDomain {
     }
 
     const hours = urgencyHours[priority as keyof typeof urgencyHours] || 72
-    return new Date(baseTime + hours * 3600000)
+    return new Date(baseTime + hours * 3600000).toISOString().slice(0, 10)
   }
 
   /** generateTicketTitle creates type-appropriate titles. */

@@ -48,6 +48,28 @@ interface FilterDatePickerProps {
   placeholder?: string
   /** Custom trigger element - if provided, will be used instead of default button */
   children?: React.ReactNode
+  /**
+   * The filtered field is a `DATE` (a calendar day). A picked day is emitted as a
+   * bare `YYYY-MM-DD`, which the SQL side compares with `::date`. Leave unset for a
+   * `DATETIME` field: `before`/`after` compare the raw instant, so a bare day there
+   * would move a local-midnight boundary to UTC midnight.
+   */
+  dateOnly?: boolean
+}
+
+const BARE_DAY = /^(\d{4})-(\d{2})-(\d{2})$/
+
+/**
+ * A bare `YYYY-MM-DD` as a local `Date` at midnight of that day, so the calendar
+ * highlights the day the value names in every browser zone. Any other string is
+ * parsed as the browser does.
+ */
+function parseFilterDate(value: string): Date | undefined {
+  const match = BARE_DAY.exec(value)
+  const date = match
+    ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+    : new Date(value)
+  return Number.isNaN(date.getTime()) ? undefined : date
 }
 
 /**
@@ -63,6 +85,7 @@ export function FilterDatePicker({
   disabled = false,
   placeholder = 'Select date...',
   children,
+  dateOnly = false,
 }: FilterDatePickerProps) {
   const [isOpen, setIsOpen] = React.useState(false)
 
@@ -77,15 +100,8 @@ export function FilterDatePicker({
     if (relativeMatch) return relativeMatch.label
 
     // Otherwise, try to parse it as a date and format it
-    try {
-      const date = new Date(value)
-      // Check if parsing resulted in a valid date
-      if (!Number.isNaN(date.getTime())) {
-        return format(date, 'PPP') // e.g., "Dec 31st, 2023"
-      }
-    } catch (e) {
-      // Ignore errors if value is not a parsable date string
-    }
+    const date = parseFilterDate(value)
+    if (date) return format(date, 'PPP') // e.g., "Dec 31st, 2023"
     // Fallback: if value is not null, not relative, and not parsable, show the raw value
     return value
   }
@@ -105,8 +121,9 @@ export function FilterDatePicker({
    */
   const handleDateSelect = (selectedDate?: Date) => {
     if (selectedDate) {
-      // Output date as ISO string, consistent with how parseDateValue expects specific dates
-      onChange(selectedDate.toISOString())
+      // A DATE field gets the picked local day itself; a DATETIME field gets the
+      // instant, consistent with how parseDateValue expects specific dates.
+      onChange(dateOnly ? format(selectedDate, 'yyyy-MM-dd') : selectedDate.toISOString())
     } else {
       // If the calendar allows clearing, handle setting value to null
       // onChange(null); // Uncomment this if clearing is desired/possible
@@ -124,13 +141,7 @@ export function FilterDatePicker({
     if (relativeOptions.some((opt) => opt.value === value)) {
       return undefined // Don't highlight a date in calendar for relative ranges
     }
-    // Try to parse as a date
-    try {
-      const date = new Date(value)
-      return !Number.isNaN(date.getTime()) ? date : undefined
-    } catch {
-      return undefined // Invalid date string
-    }
+    return parseFilterDate(value)
   }, [value])
 
   return (
