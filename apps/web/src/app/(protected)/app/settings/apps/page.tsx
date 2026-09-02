@@ -19,7 +19,7 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 // ~/app/(protected)/app/settings/integrations/_components/integration-list.tsx
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 import { dedupeInstallationsByApp } from '~/components/apps/dedupe-installations'
 import { useUninstallApp } from '~/components/apps/hooks/use-uninstall-app'
 import { AppIcon } from '~/components/apps/ui/app-icon'
@@ -44,6 +44,12 @@ const iconMap = {
 
 /** Flag to control whether to show empty categories */
 const SHOW_EMPTY_CATEGORIES = false
+/** Air between the settings header and the stuck search bar, so it sits clear of the header's scroll shadow. */
+const STICKY_INSET = 12
+/** Gap between the stuck search bar and a section scrolled up to meet it. */
+const SECTION_GAP = 10
+/** How far past that line a section's top must be before it becomes the active category. */
+const ACTIVATION_BUFFER = 20
 
 /**
  * IntegrationList component
@@ -124,30 +130,49 @@ export default function IntegrationList() {
 
   // Create refs for each category section
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({})
-  const scrollContainerRef = useRef<HTMLDivElement | null>(null)
+  // The stuck search-and-categories block. Measured, never assumed: its height
+  // changes with the breakpoint, and the header above it changes with the page.
+  const stickyRef = useRef<HTMLDivElement | null>(null)
 
   // Track active category based on scroll position
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
 
+  /**
+   * Where content becomes visible, in window coordinates: the scroll viewport's
+   * top, plus the settings header it publishes as `--settings-sticky-top`, plus
+   * the stuck search block. A section scrolled to here sits just under the
+   * search bar. `null` before the DOM is ready.
+   */
+  const contentTop = useCallback(() => {
+    const sticky = stickyRef.current
+    const viewport = sticky?.closest<HTMLElement>('[data-slot="scroll-area-viewport"]')
+    if (!sticky || !viewport) return null
+    const headerHeight =
+      Number.parseFloat(getComputedStyle(viewport).getPropertyValue('--settings-sticky-top')) || 0
+    return {
+      viewport,
+      y:
+        viewport.getBoundingClientRect().top +
+        headerHeight +
+        STICKY_INSET +
+        sticky.offsetHeight +
+        SECTION_GAP,
+    }
+  }, [])
+
   // Scroll to category section
   const scrollToCategory = (categoryValue: string) => {
     const section = sectionRefs.current[categoryValue]
-    if (section) {
-      const scrollContainer = document.querySelector('[data-slot="settings-page"]')
-      if (scrollContainer) {
-        const rect = section.getBoundingClientRect()
-        const scrollTop = scrollContainer.scrollTop
-        const offset = 130 // Account for sticky header (80px) + input field (40px) + spacing (10px)
-
-        scrollContainer.scrollTo({
-          top: scrollTop + rect.top - offset,
-          behavior: 'smooth',
-        })
-      } else {
-        // Fallback
-        section.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      }
+    if (!section) return
+    const target = contentTop()
+    if (!target) {
+      section.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      return
     }
+    target.viewport.scrollTo({
+      top: target.viewport.scrollTop + section.getBoundingClientRect().top - target.y,
+      behavior: 'smooth',
+    })
   }
 
   // Track scroll position to update active category using IntersectionObserver
@@ -169,10 +194,10 @@ export default function IntegrationList() {
           updateTimeout = setTimeout(() => {
             // Check all sections, not just the ones in entries
             let bestCategory: string | null = null
-            const stickyHeaderOffset = 80 // pt-20 = 5rem = 80px
-            const inputFieldHeight = 40 // Input field height
-            const spacing = 10 // Additional spacing
-            const activationPoint = stickyHeaderOffset + inputFieldHeight + spacing + 20 // 150px total with 20px buffer
+            const target = contentTop()
+            if (!target) return
+            // A little past the search bar, so a section counts once it is clearly the one on show.
+            const activationPoint = target.y + ACTIVATION_BUFFER
 
             // Loop through categories in order and find the LAST one that has passed the activation point
             for (const category of categoriesToDisplay) {
@@ -221,7 +246,7 @@ export default function IntegrationList() {
         observer.disconnect()
       }
     }
-  }, [categoriesToDisplay]) // Re-run when categories change
+  }, [categoriesToDisplay, contentTop]) // Re-run when categories change
   // Members see only the Installed strip (all installed apps, no Browse marketplace).
   // Their rendering uses installation.app directly because `apps.list` is admin-only.
   const memberInstalledCards = installed.map((installation) => ({
@@ -244,8 +269,7 @@ export default function IntegrationList() {
           ? 'Manage your external service integrations for email, messaging, and telephony'
           : 'Manage your personal connections to installed apps.'
       }
-      breadcrumbs={[{ title: 'Settings', href: '/app/settings' }, { title: 'Apps' }]}
-      button={<></>}>
+      breadcrumbs={[{ title: 'Settings', href: '/app/settings' }, { title: 'Apps' }]}>
       <ConfirmDialog />
       <div className='flex flex-col flex-1 p-3 sm:p-6 space-y-8'>
         <SettingsSection
@@ -333,7 +357,10 @@ export default function IntegrationList() {
             title='Browse apps'
             description='Discover new apps to help you work better'>
             <div className='flex flex-col gap-6 justify-start w-full'>
-              <div className='sticky pt-20 -mt-20 top-0 z-11'>
+              <div
+                ref={stickyRef}
+                className='sticky z-11'
+                style={{ top: `calc(var(--settings-sticky-top, 0px) + ${STICKY_INSET}px)` }}>
                 <div className='grid sm:grid-cols-3 pb-4 sm:pb-0'>
                   <Input
                     placeholder='Search apps'
@@ -342,7 +369,7 @@ export default function IntegrationList() {
                     onChange={(e) => setSearchQuery(e.target.value)}
                   />
                 </div>
-                <div className='sm:absolute sm:left-0 sm:top-[80px] z-1 pointer-events-none sm:grid sm:grid-cols-3'>
+                <div className='sm:absolute sm:left-0 sm:top-0 z-1 pointer-events-none sm:grid sm:grid-cols-3'>
                   <div className='pointer-events-auto '>
                     <div className='flex flex-row sm:flex-col sm:space-y-1 space-x-2 sm:space-x-0 no-scrollbar overflow-x-auto sm:overflow-x-hidden '>
                       {categoriesToDisplay.map((category) => {

@@ -36,7 +36,10 @@ export function PreviewPane({ channelId, className }: PreviewPaneProps) {
 
   return (
     <div className={cn('h-full', className)}>
-      <div className='sticky top-[128px] flex h-[680px] max-h-[calc(100vh-9rem)] flex-col gap-3 p-4'>
+      {/* `MasterDetailSplit` does the sticking. The cap is the room it has under the
+          settings header, in the variables `SettingsPage` publishes - `100vh` would
+          overshoot by the chrome around the scroll viewport. */}
+      <div className='flex h-[680px] max-h-[calc(var(--settings-viewport-h,100vh)-var(--settings-sticky-top,0px))] flex-col gap-3 p-4'>
         <div className='flex items-center justify-between'>
           <div className='text-sm font-medium text-muted-foreground'>Live preview</div>
           <ThemeToggle value={theme} onChange={setTheme} />

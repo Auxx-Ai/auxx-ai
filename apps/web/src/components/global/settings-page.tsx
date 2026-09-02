@@ -41,8 +41,25 @@ type Props = {
    * strip (e.g. an underlined `TabsList variant='outline'`).
    */
   subHeaderClassName?: string
+  /**
+   * The breakpoint from which `button` sits beside the title instead of below
+   * it. Defaults to `lg`: beside a button, a description of any length wraps
+   * into several lines at tablet widths. Lower it for a page whose description
+   * is a few words.
+   */
+  buttonBreakpoint?: 'sm' | 'md' | 'lg'
   backLink?: string
 }
+
+/**
+ * Static class strings per breakpoint: Tailwind only ships classes it can see in
+ * source, so the variant cannot be built from the prop at runtime.
+ */
+const HEADER_ROW_AT = {
+  sm: { row: 'sm:flex-row sm:items-center sm:pe-5', button: 'sm:ml-auto' },
+  md: { row: 'md:flex-row md:items-center md:pe-5', button: 'md:ml-auto' },
+  lg: { row: 'lg:flex-row lg:items-center lg:pe-5', button: 'lg:ml-auto' },
+} as const
 
 export default function SettingsPage({
   icon,
@@ -53,8 +70,10 @@ export default function SettingsPage({
   button,
   subHeader,
   subHeaderClassName,
+  buttonBreakpoint = 'lg',
   backLink,
 }: Props) {
+  const headerRow = HEADER_ROW_AT[buttonBreakpoint]
   breadcrumbs = breadcrumbs || []
 
   // Track scroll state for shadow effect
@@ -175,12 +194,9 @@ export default function SettingsPage({
         ref={stickyHeaderRef}
         className='sticky top-0 z-20 backdrop-blur-sm bg-background/80 rounded-tr-xl'>
         <div
-          className={cn(
-            'flex flex-col sm:flex-row sm:items-center gap-2 bg-muted/50 px-5 py-3 pe-2 sm:pe-5',
-            {
-              'ps-2': !!icon,
-            }
-          )}>
+          className={cn('flex flex-col gap-2 bg-muted/50 px-5 py-3 pe-2', headerRow.row, {
+            'ps-2': !!icon,
+          })}>
           <div className='flex items-center gap-2'>
             {icon && <div className='flex h-10 w-10 items-center justify-center'>{icon}</div>}
             <div className='me-3'>
@@ -188,7 +204,7 @@ export default function SettingsPage({
               {description && <div className='text-sm text-muted-foreground'>{description}</div>}
             </div>
           </div>
-          {button && <div className='sm:ml-auto shrink-0'>{button}</div>}
+          {button && <div className={cn('shrink-0', headerRow.button)}>{button}</div>}
         </div>
         {subHeader && (
           <div className={cn('border-t bg-background/60 px-3 py-2.5', subHeaderClassName)}>
