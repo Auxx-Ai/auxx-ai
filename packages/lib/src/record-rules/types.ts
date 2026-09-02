@@ -155,6 +155,14 @@ export interface CachedRecordRule {
    * (`system-rules.ts`) — NOT a DB row. Excluded from the tRPC `list` output and UI.
    */
   isSystem?: boolean
+  /**
+   * Do not dispatch this field rule for a field written as part of its
+   * record's CREATION. A `changed` rule that recomputes something from the
+   * row cannot do its job from inside the creating transaction anyway (the
+   * row is uncommitted for the pool connection it reads on), and the def's
+   * lifecycle `created` rule owns that case. System-declared only.
+   */
+  skipOnCreate?: boolean
 }
 
 /** One record event within a batch fire (see `fireRecordRulesBatch`). */

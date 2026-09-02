@@ -9,14 +9,13 @@ import { toRecordId } from '@auxx/types/resource'
 import { RATE_DECIMALS, roundMinor } from '@auxx/utils/currency'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { getOrgCache, requireCachedEntityDefId } from '../cache'
-import { createFieldValueContext } from '../field-values/field-value-helpers'
-import { setValueWithType } from '../field-values/field-value-mutations'
 import { toFieldType } from '../field-values/stored-field-type'
 import {
   type FieldValueUpdateEntry,
   getRealtimeService,
   publishFieldValueUpdates,
 } from '../realtime'
+import { type CostWrite, writeCostValues } from './cost-writer'
 import { loadTariffSchedule, readBookTimeZone } from './tariff-schedule'
 import {
   computeLandedCost,
@@ -570,6 +569,8 @@ interface CurrentPartValues {
   purchaseCosts: Map<string, number>
   rollupCosts: Map<string, number>
   sources: Map<string, string>
+  /** Stored row id per (part, field) pair, see `pairKey`; absent = no row. */
+  rowIds: Map<string, string>
 }
 
 /** The four `part` fields `persistCosts` owns, resolved from the org cache. */
@@ -625,6 +626,7 @@ async function loadCurrentPartValues(
     purchaseCosts: new Map(),
     rollupCosts: new Map(),
     sources: new Map(),
+    rowIds: new Map(),
   }
 
   const fieldIds = [
@@ -636,6 +638,7 @@ async function loadCurrentPartValues(
 
   const rows = await database
     .select({
+      id: schema.FieldValue.id,
       entityId: schema.FieldValue.entityId,
       fieldId: schema.FieldValue.fieldId,
       valueNumber: schema.FieldValue.valueNumber,
@@ -647,6 +650,7 @@ async function loadCurrentPartValues(
     )
 
   for (const row of rows) {
+    current.rowIds.set(pairKey(row.entityId, row.fieldId), row.id)
     if (row.fieldId === fields.cost.id) {
       if (row.valueNumber != null) current.costs.set(row.entityId, row.valueNumber)
     } else if (fields.purchaseCost && row.fieldId === fields.purchaseCost.id) {
@@ -739,7 +743,6 @@ async function persistCosts(
   previous: CurrentPartValues
 ): Promise<string[]> {
   const partDefId = await requireCachedEntityDefId(orgId, 'part')
-  const ctx = createFieldValueContext(orgId)
 
   logger.info('Persisting costs', {
     costFieldId: fields.cost.id,
@@ -758,42 +761,37 @@ async function persistCosts(
 
   logger.info('Parts with changed values', { count: changedEntries.length })
 
-  // Write all changed values concurrently (bounded to avoid overwhelming the DB)
-  const BATCH_SIZE = 20
+  // Cost fields are single-value system fields with no hooks, no display
+  // role and no search-corpus membership, so the write is exactly two
+  // statements per batch: one UPDATE over every pair that has a stored row,
+  // one INSERT for every pair that does not. It used to be one locked
+  // transaction PER FIELD PER PART, opened in parallel across pool
+  // connections (plans/field-values/update-path-and-events.md section 1f).
   const changedPartIds = new Set<string>()
-
+  const BATCH_SIZE = 200
   for (let i = 0; i < changedEntries.length; i += BATCH_SIZE) {
     const batch = changedEntries.slice(i, i + BATCH_SIZE)
-    const results = await Promise.allSettled(
-      batch.map(async (entry) => {
-        const recordId = toRecordId(partDefId, entry.partId) as RecordId
-
-        // `value: null` IS the clear — `setValueWithType` deletes the field's rows and
-        // returns early. Same writer for set and clear, matching `catalog-pricing.ts`'s
-        // `writeCatalogNumberValues`; a raw `deleteValue` would skip `maybeUpdateDisplayValue`.
-        await Promise.all(
-          entry.writes.map((write) =>
-            setValueWithType(ctx, {
-              recordId,
-              fieldId: write.field.id,
-              fieldType: toFieldType(write.field.type),
-              value: write.value,
-            })
-          )
-        )
-        return entry.partId
-      })
-    )
-
-    for (const result of results) {
-      if (result.status === 'fulfilled') {
-        changedPartIds.add(result.value)
-      } else {
-        logger.error('Failed to persist values for part', {
-          error: result.reason instanceof Error ? result.reason.message : String(result.reason),
-          stack: result.reason instanceof Error ? result.reason.stack : undefined,
-        })
+    try {
+      const writes: CostWrite[] = []
+      for (const entry of batch) {
+        for (const write of entry.writes) {
+          writes.push({
+            recordId: toRecordId(partDefId, entry.partId) as RecordId,
+            fieldId: write.field.id,
+            fieldType: toFieldType(write.field.type),
+            value: write.value,
+            rowId: previous.rowIds.get(pairKey(entry.partId, write.field.id)) ?? null,
+          })
+        }
       }
+      await writeCostValues(orgId, partDefId, writes)
+      for (const entry of batch) changedPartIds.add(entry.partId)
+    } catch (error) {
+      logger.error('Failed to persist part cost values', {
+        parts: batch.length,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      })
     }
   }
 
@@ -819,6 +817,11 @@ async function persistCosts(
   }
 
   return [...changedPartIds]
+}
+
+/** Map key for one (part, field) pair in {@link CurrentPartValues.rowIds}. */
+function pairKey(partId: string, fieldId: string): string {
+  return `${partId}:${fieldId}`
 }
 
 // ─── Public API ──────────────────────────────────────────────────────

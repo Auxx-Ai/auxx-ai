@@ -29,6 +29,8 @@ import { createWorker } from '../utils/createWorker'
 // Events Queue job mappings
 const eventsJobMappings = {
   publishEventJob,
+  // Legacy job names kept for in-flight jobs queued before a deploy.
+  // `publishEventJob` now persists the Event row and captures analytics inline.
   createEventJob,
   publishToAnalyticsJob,
 }

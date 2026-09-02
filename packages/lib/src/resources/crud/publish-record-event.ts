@@ -11,7 +11,7 @@
 // it the org cache) into a composition site's static module graph.
 
 import { publisher } from '../../events/publisher'
-import type { Events } from '../../events/types'
+import type { Events, RecordFieldChange } from '../../events/types'
 import type { RecordId } from '../resource-id'
 
 /**
@@ -27,6 +27,13 @@ export interface PublishEventParams {
   userId: string
   eventData: Record<string, unknown>
   relatedRecordId?: RecordId
+  /**
+   * The field changes an UPDATE performed, one per field that actually
+   * changed. Carried on the record-level `:updated` event so the timeline
+   * writes one row per change and no summary row; the per-field
+   * `<prefix>:field:updated` events are not published for such a write.
+   */
+  changes?: RecordFieldChange[]
 }
 
 /**
@@ -91,10 +98,17 @@ export function publishRecordLifecycleEvent(params: PublishEventParams): void {
     userId,
     eventData,
     relatedRecordId,
+    changes,
   } = params
 
   const specific = `${entityType}:${action}`
-  const base = { recordId, organizationId, userId, eventData }
+  const base = {
+    recordId,
+    organizationId,
+    userId,
+    eventData,
+    ...(action === 'updated' && changes && changes.length > 0 ? { changes } : {}),
+  }
 
   // The ticket/contact family is the only one whose payload carries a second perspective
   // (the contact-side timeline row keys off `relatedRecordId`).

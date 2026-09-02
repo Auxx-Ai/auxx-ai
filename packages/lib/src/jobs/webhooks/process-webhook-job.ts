@@ -3,52 +3,23 @@
 import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
-import type { AuxxEvent, Events } from '../../events'
+import type { AuxxEvent } from '../../events'
 import { getQueue } from '../queues'
 import { Queues } from '../queues/types'
+import { isWebhookEvent, WEBHOOK_EVENTS } from './webhook-events'
 
 const logger = createScopedLogger('webhook-jobs')
 
-export const WEBHOOK_EVENTS: Array<Events> = [
-  'user:created',
-  'project:created',
-  'membership:created',
-  'ticket:created',
-  'ticket:updated',
-  'ticket:deleted',
-  'ticket:status:changed',
-  'ticket:assignee:added',
-  'ticket:assignee:removed',
-  'ticket:reply:created',
-
-  // message events
-  'message:received',
-  'message:sent',
-  'message:failed',
-  'message:comment:created',
-  'message:assignee:changed',
-  'message:tag:added',
-  'message:tag:removed',
-
-  // thread events
-  'thread:moved',
-  'thread:archived',
-  'thread:deleted',
-  'thread:reopened',
-  'thread:restored',
-
-  // workflow events
-  'workflow:paused',
-  'workflow:resumed',
-  'workflow:resume:failed',
-]
+// The list lives in the leaf `webhook-events.ts`; re-exported here so existing
+// `@auxx/lib/jobs` imports keep resolving.
+export { WEBHOOK_EVENTS }
 
 export async function processWebhookJob({ data: event }: { data: AuxxEvent }) {
   if (!('organizationId' in event.data) || !event.data.organizationId) {
     logger.debug(`Skipping webhook event: ${event.type}. No organizationId found in event data.`)
     return // Skip silently as this is an expected condition
   }
-  if (!WEBHOOK_EVENTS.includes(event.type as Events)) {
+  if (!isWebhookEvent(event.type)) {
     logger.debug(`Skipping webhook event: ${event.type}. Not in the list of supported events.`)
     return // Skip silently as this is an expected condition
   }

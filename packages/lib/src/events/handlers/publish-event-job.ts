@@ -15,6 +15,7 @@ import type {
 import { applyMailFilters } from './apply-mail-filters'
 import { autoCompleteTasks } from './auto-complete-tasks'
 import { createAuditLog } from './create-audit-log'
+import { persistEvent } from './create-event-job'
 import { createTimelineEvent } from './create-timeline-event'
 import { deriveMessageReplySignal, deriveThreadResolvedSignal } from './derive-message-signals'
 import { flipDocumentStatusOnSend } from './flip-document-status-on-send'
@@ -25,6 +26,7 @@ import { handleSyncRecordRules } from './handle-sync-record-rules'
 import { ingestBounceMessage } from './ingest-bounce-message'
 import { projectSignalToTimeline } from './project-signal-to-timeline'
 import { publishThreadEventToRealtime } from './publish-thread-event-to-realtime'
+import { captureAnalytics } from './publish-to-analytics-job'
 import { sendInvitationUserJob } from './send-invitation-user-job'
 import { triggerAgents } from './trigger-agents'
 import { triggerMessageWorkflows } from './trigger-message-workflows'
@@ -114,9 +116,9 @@ export const EventHandlers: IEventsHandlers = {
   'thread:moved': [],
   'thread:deleted': [],
   'thread:restored': [],
-  // Chat thread lifecycle events — persisted via the generic createEventJob
-  // pipeline AND fanned out to the per-thread realtime room so widget +
-  // admin clients render centered system lines without polling.
+  // Chat thread lifecycle events — skipped by `persistEvent` (the realtime
+  // handler is their single writer) AND fanned out to the per-thread realtime
+  // room so widget + admin clients render centered system lines without polling.
   'thread:archived': [publishThreadEventToRealtime],
   'thread:reopened': [publishThreadEventToRealtime],
   'thread:taken_over': [publishThreadEventToRealtime],
@@ -280,7 +282,39 @@ async function runGate(gate: GateHandler<AuxxEvent>[], event: AuxxEvent): Promis
   return suppressed
 }
 
+/**
+ * The single per-event job on `eventsQueue`. In order:
+ *
+ * 1. persist the `Event` row (`persistEvent`);
+ * 2. capture analytics (`captureAnalytics`);
+ * 3. enqueue one `eventHandlersQueue` job per handler in `EventHandlers[type]`.
+ *
+ * Steps 1 and 2 used to be their own jobs (`createEventJob`,
+ * `publishToAnalyticsJob`) enqueued alongside this one, so they ran
+ * independently of the fan-out. They are inline now to cut the per-event queue
+ * round-trips, but the independence is kept: a failure in either is logged and
+ * swallowed, never allowed to stop the handlers. Only a handler enqueue failure
+ * fails the job (so BullMQ retries it).
+ */
 export const publishEventJob = async ({ data: event }: { data: AuxxEvent }) => {
+  try {
+    await persistEvent(event)
+  } catch (error) {
+    logger.error('Failed to persist Event row; continuing with the handler fan-out', {
+      eventType: event.type,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
+
+  try {
+    captureAnalytics(event)
+  } catch (error) {
+    logger.error('Failed to capture analytics event', {
+      eventType: event.type,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
+
   // The map is keyed per event type, so indexing it with a union `event.type`
   // yields a union of unrelated handler-array types. Widen once, here.
   const entry = EventHandlers[event.type] as

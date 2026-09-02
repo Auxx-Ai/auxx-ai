@@ -54,6 +54,10 @@ vi.mock('../../../dedup/enqueue-scan', () => ({ enqueueDuplicateScan: h.enqueueD
 vi.mock('../../../cache', () => ({ findCachedResource: h.findCachedResource }))
 vi.mock('../../../entity-instances', () => ({
   getEntityInstance: h.getEntityInstance,
+  getEntityInstanceRow: async () => {
+    const r = await h.getEntityInstance()
+    return r.isOk() ? r.value : null
+  },
   createEntityInstance: h.createEntityInstance,
   updateEntityInstance: vi.fn(async () => ok({ id: 'inst_1' })),
   deleteEntityInstance: vi.fn(async () => ok({ id: 'inst_1' })),
@@ -486,7 +490,12 @@ describe('convergence through the REAL createEntity — B-17, the point of Phase
       getFields: async () => [],
       runPreHooks: async (_op: string, _def: unknown, values: Record<string, unknown>) => values,
       validateUniqueFields: async () => {},
-      setFieldValues: vi.fn(async () => []),
+      setFieldValues: vi.fn(async () => ({
+        failures: [],
+        changed: true,
+        changes: [],
+        instance: null,
+      })),
     } as unknown as Parameters<typeof createEntity>[0]
   }
 

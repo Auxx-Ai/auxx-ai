@@ -93,14 +93,16 @@ webhooks), and `handleRecordRules` lifecycle firing.
 and `fieldValues:updated` frames (`field-value-mutations.ts:2231-2258`, `:2304-2325`)
 never reach an open grid.
 
-**Every registered field-change hook.** The three global `'*'` ones
-(`field-hooks/register-hooks.ts:100-104`):
+**Every registered field-change hook**, and the two write-path steps that
+used to be global `'*'` hooks (since 2026-09-02 they are steps of
+`setValueWithBuiltIn` itself, on the same `publishEvents && userId` gate; see
+`plans/field-values/update-path-and-events.md`):
 
-| Hook | Lost |
+| Step | Lost |
 | --- | --- |
-| `publishFieldChangeEvent` | `entity:field:updated` → no per-field timeline entry |
-| `touchActivityOnFieldChange` | `EntityInstance.lastActivityAt` never advances, stated verbatim in the schema comment at `entity-instance.ts:182-184` |
-| `handleRecordRulesOnFieldChange` | org-configured record rules do not evaluate |
+| per-field bus event (`field-values/field-change-events.ts`) | `entity:field:updated` / the `changes[]` on `:updated` → no per-field timeline entry |
+| activity touch (`field-values/instance-derived.ts`) | `EntityInstance.lastActivityAt` never advances, stated verbatim in the schema comment at `entity-instance.ts:182-184` |
+| `handleRecordRulesOnFieldChange` (the one remaining `'*'` hook) | org-configured record rules do not evaluate |
 
 …plus every scoped one: inbox cache invalidation, work-order visit/draft-invoice/
 sequence hooks, **quote & invoice total recomputation** (`money/totals-hooks.ts`),

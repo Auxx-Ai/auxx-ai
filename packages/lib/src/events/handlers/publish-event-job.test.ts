@@ -8,6 +8,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const h = vi.hoisted(() => ({
   addBulk: vi.fn(),
   applyMailFilters: vi.fn(),
+  persistEvent: vi.fn(),
+  captureAnalytics: vi.fn(),
 }))
 
 // PARTIAL mock — `Queues` is read at module scope by several importers
@@ -17,8 +19,20 @@ vi.mock('../../jobs/queues', async (importOriginal) => ({
   getQueue: () => ({ addBulk: h.addBulk }),
 }))
 vi.mock('./apply-mail-filters', () => ({ applyMailFilters: h.applyMailFilters }))
+vi.mock('./create-event-job', () => ({
+  persistEvent: h.persistEvent,
+  createEventJob: vi.fn(),
+}))
+// PARTIAL mock: `isAnalyticsEvent` is tested for real below; only the PostHog
+// capture is stubbed.
+vi.mock('./publish-to-analytics-job', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  captureAnalytics: h.captureAnalytics,
+}))
 
+import { isWebhookEvent } from '../../jobs/webhooks/webhook-events'
 import { publishEventJob } from './publish-event-job'
+import { isAnalyticsEvent } from './publish-to-analytics-job'
 
 /** Handler job names from the single `addBulk` call. */
 function enqueuedNames(): string[] {
@@ -48,6 +62,92 @@ beforeEach(() => {
   vi.clearAllMocks()
   h.addBulk.mockResolvedValue(undefined)
   h.applyMailFilters.mockResolvedValue(undefined)
+  h.persistEvent.mockResolvedValue(undefined)
+  h.captureAnalytics.mockReturnValue(undefined)
+})
+
+describe('publishEventJob — inline persist + analytics', () => {
+  const MESSAGE_SENT_EVENT = {
+    type: 'message:sent',
+    data: { messageId: 'm', organizationId: 'o' },
+  } as never
+  const MESSAGE_SENT = { data: MESSAGE_SENT_EVENT }
+
+  it('persists the Event row, then captures analytics, then fans out', async () => {
+    const order: string[] = []
+    h.persistEvent.mockImplementation(async () => {
+      order.push('persist')
+    })
+    h.captureAnalytics.mockImplementation(() => {
+      order.push('analytics')
+    })
+    h.addBulk.mockImplementation(async () => {
+      order.push('fanOut')
+    })
+
+    await publishEventJob(MESSAGE_SENT)
+
+    expect(h.persistEvent).toHaveBeenCalledWith(MESSAGE_SENT_EVENT)
+    expect(h.captureAnalytics).toHaveBeenCalledWith(MESSAGE_SENT_EVENT)
+    expect(order).toEqual(['persist', 'analytics', 'fanOut'])
+  })
+
+  it('still persists and captures for an event type with no handlers', async () => {
+    await publishEventJob({
+      data: { type: 'message:failed', data: { messageId: 'm', organizationId: 'o' } },
+    } as never)
+
+    expect(h.persistEvent).toHaveBeenCalledTimes(1)
+    expect(h.captureAnalytics).toHaveBeenCalledTimes(1)
+    expect(h.addBulk).not.toHaveBeenCalled()
+  })
+
+  it('still fans out when the Event insert fails', async () => {
+    h.persistEvent.mockRejectedValue(new Error('insert exploded'))
+
+    await expect(publishEventJob(MESSAGE_SENT)).resolves.toBeUndefined()
+
+    expect(enqueuedNames()).toEqual(['createTimelineEvent', 'flipDocumentStatusOnSend'])
+  })
+
+  it('still fans out when the analytics capture throws', async () => {
+    h.captureAnalytics.mockImplementation(() => {
+      throw new Error('posthog exploded')
+    })
+
+    await expect(publishEventJob(MESSAGE_SENT)).resolves.toBeUndefined()
+
+    expect(enqueuedNames()).toEqual(['createTimelineEvent', 'flipDocumentStatusOnSend'])
+  })
+
+  it('still fails the job when the handler enqueue fails, so BullMQ retries', async () => {
+    h.addBulk.mockRejectedValue(new Error('redis down'))
+
+    await expect(publishEventJob(MESSAGE_SENT)).rejects.toThrow('redis down')
+  })
+})
+
+describe('isAnalyticsEvent', () => {
+  it('rejects per-field edits and the field-hook fan-out', () => {
+    expect(isAnalyticsEvent('contact:field:updated')).toBe(false)
+    expect(isAnalyticsEvent('entity:field:updated')).toBe(false)
+    expect(isAnalyticsEvent('field:trigger')).toBe(false)
+  })
+
+  it('accepts product events', () => {
+    expect(isAnalyticsEvent('contact:created')).toBe(true)
+    expect(isAnalyticsEvent('message:received')).toBe(true)
+  })
+})
+
+describe('isWebhookEvent', () => {
+  it('answers from WEBHOOK_EVENTS', () => {
+    expect(isWebhookEvent('ticket:created')).toBe(true)
+    expect(isWebhookEvent('message:received')).toBe(true)
+    expect(isWebhookEvent('contact:field:updated')).toBe(false)
+    expect(isWebhookEvent('field:trigger')).toBe(false)
+    expect(isWebhookEvent('not:an:event')).toBe(false)
+  })
 })
 
 describe('publishEventJob — ungated entries', () => {

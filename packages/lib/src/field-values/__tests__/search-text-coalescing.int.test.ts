@@ -26,6 +26,7 @@ import { and, eq } from 'drizzle-orm'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createFieldValueContext, type FieldValueContext } from '../field-value-helpers'
 import { setBulkValues, setValuesForEntity, setValueWithType } from '../field-value-mutations'
+import { flushInstanceDerived, flushInstancesDerived } from '../instance-derived'
 import { updateSearchText, updateSearchTextForInstances } from '../search-text'
 
 const db = () => getTestDb() as never as Database
@@ -38,6 +39,18 @@ vi.mock('../search-text', async (importOriginal) => {
     ...mod,
     updateSearchText: vi.fn(mod.updateSearchText),
     updateSearchTextForInstances: vi.fn(mod.updateSearchTextForInstances),
+  }
+})
+
+// A record write's searchText recompute rides its ONE derived-column flush
+// (`instance-derived.ts`); the direct `setValueWithType` door still calls
+// `updateSearchText` itself. Both count as one refresh.
+vi.mock('../instance-derived', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('../instance-derived')>()
+  return {
+    ...mod,
+    flushInstanceDerived: vi.fn(mod.flushInstanceDerived),
+    flushInstancesDerived: vi.fn(mod.flushInstancesDerived),
   }
 })
 
@@ -214,12 +227,18 @@ async function storedSearchText(orgId: string, instanceId: string): Promise<stri
   return row?.searchText ?? null
 }
 
-const refreshCount = () => vi.mocked(updateSearchText).mock.calls.length
-const batchRefreshCount = () => vi.mocked(updateSearchTextForInstances).mock.calls.length
+const refreshCount = () =>
+  vi.mocked(updateSearchText).mock.calls.length +
+  vi.mocked(flushInstanceDerived).mock.calls.filter((c) => c[3]?.refreshSearchText === true).length
+const batchRefreshCount = () =>
+  vi.mocked(updateSearchTextForInstances).mock.calls.length +
+  vi.mocked(flushInstancesDerived).mock.calls.filter((c) => c[3]?.refreshSearchText === true).length
 
 beforeEach(() => {
   vi.mocked(updateSearchText).mockClear()
   vi.mocked(updateSearchTextForInstances).mockClear()
+  vi.mocked(flushInstanceDerived).mockClear()
+  vi.mocked(flushInstancesDerived).mockClear()
 })
 
 // ── Tests ──────────────────────────────────────────────────────────────────────
@@ -257,6 +276,7 @@ describe('searchText coalescing (query-reduction Phase 0)', () => {
     await setValuesForEntity(f.ctx, { recordId, values })
     const before = await storedSearchText(f.orgId, inst.id)
     vi.mocked(updateSearchText).mockClear()
+    vi.mocked(flushInstanceDerived).mockClear()
 
     const results = await setValuesForEntity(f.ctx, { recordId, values })
 

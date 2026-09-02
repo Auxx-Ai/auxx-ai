@@ -266,7 +266,9 @@ describe('set idempotency guard (D-6)', () => {
     expect(result.values[0]!.id).toBe('fv-existing-1')
     expect(state.deleteCalls).toBe(0)
     expect(state.insertCalls).toBe(0)
-    expect(state.updateCalls).toBe(1)
+    // The in-place FieldValue UPDATE plus the record's derived-column flush
+    // (`instance-derived.ts`): stamp, activity and searchText in ONE statement.
+    expect(state.updateCalls).toBe(2)
     expect(state.updatedPayloads[0]).toMatchObject({ valueText: 'world', aiStatus: null })
     expect(hookSpy).toHaveBeenCalledTimes(1)
     const event = hookSpy.mock.calls[0]![0] as any
@@ -313,8 +315,9 @@ describe('set idempotency guard (D-6)', () => {
     // Positional matching: both rows survive with payloads swapped in place.
     expect(state.deleteCalls).toBe(0)
     expect(state.insertCalls).toBe(0)
-    expect(state.updateCalls).toBe(2)
-    expect(state.updatedPayloads.map((r) => r.optionId)).toEqual(['opt-b', 'opt-a'])
+    // Two in-place FieldValue UPDATEs plus the derived-column flush.
+    expect(state.updateCalls).toBe(3)
+    expect(state.updatedPayloads.slice(0, 2).map((r) => r.optionId)).toEqual(['opt-b', 'opt-a'])
     expect(hookSpy).toHaveBeenCalledTimes(1)
   })
 
@@ -331,7 +334,8 @@ describe('set idempotency guard (D-6)', () => {
 
     // The identical first position is kept untouched; only the tail inserts.
     expect(state.deleteCalls).toBe(0)
-    expect(state.updateCalls).toBe(0)
+    // No FieldValue UPDATE; the one UPDATE is the record's derived-column flush.
+    expect(state.updateCalls).toBe(1)
     expect(state.insertCalls).toBe(1)
     expect(state.insertedRows.map((r) => r.optionId)).toEqual(['opt-b'])
   })
@@ -377,7 +381,9 @@ describe('set idempotency guard (D-6)', () => {
 
     expect(state.deleteCalls).toBe(0)
     expect(state.insertCalls).toBe(0)
-    expect(state.updateCalls).toBe(1)
+    // The in-place FieldValue UPDATE plus the record's derived-column flush
+    // (`instance-derived.ts`): stamp, activity and searchText in ONE statement.
+    expect(state.updateCalls).toBe(2)
   })
 
   it('identical set WITH aiGeneration metadata: guard bypassed, write proceeds', async () => {
@@ -397,7 +403,9 @@ describe('set idempotency guard (D-6)', () => {
     // the SURVIVING row in place instead of re-minting it.
     expect(state.deleteCalls).toBe(0)
     expect(state.insertCalls).toBe(0)
-    expect(state.updateCalls).toBe(1)
+    // The in-place FieldValue UPDATE plus the record's derived-column flush
+    // (`instance-derived.ts`): stamp, activity and searchText in ONE statement.
+    expect(state.updateCalls).toBe(2)
     expect(state.updatedPayloads[0]).toMatchObject({ aiStatus: 'result' })
     expect(result.values[0]!.id).toBe('fv-existing-1')
   })
@@ -422,7 +430,9 @@ describe('set idempotency guard (D-6)', () => {
     // The marker clears IN PLACE: explicit aiStatus null on the update.
     expect(state.deleteCalls).toBe(0)
     expect(state.insertCalls).toBe(0)
-    expect(state.updateCalls).toBe(1)
+    // The in-place FieldValue UPDATE plus the record's derived-column flush
+    // (`instance-derived.ts`): stamp, activity and searchText in ONE statement.
+    expect(state.updateCalls).toBe(2)
     expect(state.updatedPayloads[0]).toMatchObject({ aiStatus: null })
   })
 })

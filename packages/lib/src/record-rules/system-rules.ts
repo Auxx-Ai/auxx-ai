@@ -24,6 +24,8 @@ export interface SystemRuleDeclaration {
   condition?: ConditionGroup[]
   /** Ordered actions — ALL native (server-declared). */
   actions: RecordRuleAction[]
+  /** See `CachedRecordRule.skipOnCreate`. Field rules only. */
+  skipOnCreate?: boolean
 }
 
 const declarations: SystemRuleDeclaration[] = []
@@ -109,6 +111,7 @@ export function resolveSystemRules(
       actions: decl.actions,
       enabled: true,
       isSystem: true,
+      ...(decl.skipOnCreate ? { skipOnCreate: true } : {}),
     })
   }
   return resolved

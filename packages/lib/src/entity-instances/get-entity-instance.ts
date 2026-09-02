@@ -1,7 +1,8 @@
 // packages/lib/src/entity-instances/get-entity-instance.ts
 
-import { database } from '@auxx/database'
+import { type Database, database, schema, type Transaction } from '@auxx/database'
 import { fromDatabase } from '@auxx/services/shared/utils'
+import { and, eq, isNull } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
 
 /** Parameters for getting an entity instance */
@@ -64,4 +65,35 @@ export async function getEntityInstance(params: GetEntityInstanceParams) {
   }
 
   return ok(dbResult.value)
+}
+
+/** The bare `EntityInstance` row, without its values. */
+export type EntityInstanceRow = typeof schema.EntityInstance.$inferSelect
+
+/**
+ * Load just the `EntityInstance` row, on the caller's connection.
+ *
+ * {@link getEntityInstance} joins every FieldValue and its CustomField, on
+ * the pool. A write path that only needs the row (an existence check, the
+ * pre-hooks' `id` and `metadata`) must not pay that join, and inside a
+ * transaction it must read on the transaction's connection or it cannot see
+ * its own uncommitted rows.
+ */
+export async function getEntityInstanceRow(
+  params: GetEntityInstanceParams,
+  db: Database | Transaction = database
+): Promise<EntityInstanceRow | null> {
+  const { id, organizationId, includeArchived = false } = params
+  const [row] = await db
+    .select()
+    .from(schema.EntityInstance)
+    .where(
+      and(
+        eq(schema.EntityInstance.id, id),
+        eq(schema.EntityInstance.organizationId, organizationId),
+        includeArchived ? undefined : isNull(schema.EntityInstance.archivedAt)
+      )
+    )
+    .limit(1)
+  return row ?? null
 }

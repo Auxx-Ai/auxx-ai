@@ -22,23 +22,23 @@ import { createTestOrganization, getTestDb } from '@auxx/test-utils'
 import type { RecordId } from '@auxx/types/resource'
 import { eq } from 'drizzle-orm'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  createFieldValueContext,
-  stampEntityInstancesUpdatedAt,
-  stampEntityInstanceUpdatedAt,
-} from '../field-value-helpers'
+import { createFieldValueContext } from '../field-value-helpers'
 import { removeValuesBulk, setBulkValues, setValuesForEntity } from '../field-value-mutations'
+import { flushInstanceDerived, flushInstancesDerived } from '../instance-derived'
 
 const db = () => getTestDb() as never as Database
 
 // ── Mocks ──────────────────────────────────────────────────────────────────────
 
-vi.mock('../field-value-helpers', async (importOriginal) => {
-  const mod = await importOriginal<typeof import('../field-value-helpers')>()
+// The D-7 stamp rides the record's ONE derived-column flush
+// (`instance-derived.ts`): a batched stamp is a `flushInstancesDerived` call
+// with `stampUpdatedAt`, a per-record one a `flushInstanceDerived` call.
+vi.mock('../instance-derived', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('../instance-derived')>()
   return {
     ...mod,
-    stampEntityInstanceUpdatedAt: vi.fn(mod.stampEntityInstanceUpdatedAt),
-    stampEntityInstancesUpdatedAt: vi.fn(mod.stampEntityInstancesUpdatedAt),
+    flushInstanceDerived: vi.fn(mod.flushInstanceDerived),
+    flushInstancesDerived: vi.fn(mod.flushInstancesDerived),
   }
 })
 
@@ -190,12 +190,17 @@ async function instanceUpdatedAt(instanceId: string): Promise<number> {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
-const batchedStampCalls = () => vi.mocked(stampEntityInstancesUpdatedAt).mock.calls
-const singleStampCalls = () => vi.mocked(stampEntityInstanceUpdatedAt).mock.calls
+const batchedStampCalls = () =>
+  vi.mocked(flushInstancesDerived).mock.calls.filter((call) => call[3]?.stampUpdatedAt === true)
+const singleStampCalls = () =>
+  vi.mocked(flushInstanceDerived).mock.calls.filter((call) => call[3]?.stampUpdatedAt === true)
+const clearStampSpies = () => {
+  vi.mocked(flushInstancesDerived).mockClear()
+  vi.mocked(flushInstanceDerived).mockClear()
+}
 
 beforeEach(() => {
-  vi.mocked(stampEntityInstancesUpdatedAt).mockClear()
-  vi.mocked(stampEntityInstanceUpdatedAt).mockClear()
+  clearStampSpies()
 })
 
 // ── Tests ──────────────────────────────────────────────────────────────────────
@@ -219,8 +224,7 @@ describe('batched watermark stamps in bulk ops (query-reduction Phase 2)', () =>
 
     const noopBefore = await instanceUpdatedAt(noop.id)
     const changedBefore = await instanceUpdatedAt(changed.id)
-    vi.mocked(stampEntityInstancesUpdatedAt).mockClear()
-    vi.mocked(stampEntityInstanceUpdatedAt).mockClear()
+    clearStampSpies()
     await sleep(10)
 
     await setBulkValues(ctx, {
@@ -231,7 +235,7 @@ describe('batched watermark stamps in bulk ops (query-reduction Phase 2)', () =>
     // One direct batched call from the bulk path, naming only the changed
     // record; the suppressed per-record stamp never fired.
     expect(batchedStampCalls()).toHaveLength(1)
-    expect(batchedStampCalls()[0]![1]).toEqual([changed.id])
+    expect(batchedStampCalls()[0]![2]).toEqual([changed.id])
     expect(singleStampCalls()).toHaveLength(0)
 
     expect(await instanceUpdatedAt(noop.id)).toBe(noopBefore)
@@ -251,7 +255,7 @@ describe('batched watermark stamps in bulk ops (query-reduction Phase 2)', () =>
     }
     await setBulkValues(ctx, input)
     const before = await instanceUpdatedAt(a.id)
-    vi.mocked(stampEntityInstancesUpdatedAt).mockClear()
+    clearStampSpies()
     await sleep(10)
 
     await setBulkValues(ctx, input)
@@ -278,8 +282,7 @@ describe('batched watermark stamps in bulk ops (query-reduction Phase 2)', () =>
 
     const aBefore = await instanceUpdatedAt(a.id)
     const bBefore = await instanceUpdatedAt(b.id)
-    vi.mocked(stampEntityInstancesUpdatedAt).mockClear()
-    vi.mocked(stampEntityInstanceUpdatedAt).mockClear()
+    clearStampSpies()
     await sleep(10)
 
     // Clears route through deleteValue / the reconcile's deletion-only
@@ -293,7 +296,7 @@ describe('batched watermark stamps in bulk ops (query-reduction Phase 2)', () =>
 
     expect(singleStampCalls()).toHaveLength(0)
     expect(batchedStampCalls()).toHaveLength(1)
-    expect([...batchedStampCalls()[0]![1]].sort()).toEqual([a.id, b.id].sort())
+    expect([...batchedStampCalls()[0]![2]].sort()).toEqual([a.id, b.id].sort())
     expect(await instanceUpdatedAt(a.id)).toBeGreaterThan(aBefore)
     expect(await instanceUpdatedAt(b.id)).toBeGreaterThan(bBefore)
   })
@@ -315,8 +318,7 @@ describe('batched watermark stamps in bulk ops (query-reduction Phase 2)', () =>
 
     const aBefore = await instanceUpdatedAt(a.id)
     const bBefore = await instanceUpdatedAt(b.id)
-    vi.mocked(stampEntityInstancesUpdatedAt).mockClear()
-    vi.mocked(stampEntityInstanceUpdatedAt).mockClear()
+    clearStampSpies()
     await sleep(10)
 
     const { removed } = await removeValuesBulk(ctx, {
@@ -327,7 +329,7 @@ describe('batched watermark stamps in bulk ops (query-reduction Phase 2)', () =>
 
     expect(removed).toBe(2)
     expect(batchedStampCalls()).toHaveLength(1)
-    expect([...batchedStampCalls()[0]![1]].sort()).toEqual([a.id, b.id].sort())
+    expect([...batchedStampCalls()[0]![2]].sort()).toEqual([a.id, b.id].sort())
     expect(singleStampCalls()).toHaveLength(0)
     expect(await instanceUpdatedAt(a.id)).toBeGreaterThan(aBefore)
     expect(await instanceUpdatedAt(b.id)).toBeGreaterThan(bBefore)

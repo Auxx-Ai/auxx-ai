@@ -105,6 +105,7 @@ const FIELD_SYSTEM_RULES: SystemRuleDeclaration[] = [
       fieldRef: { systemAttribute },
       on: 'changed' as const,
       actions: [{ type: 'native' as const, handler: RECALC_PART_COST_TARIFF_RATE }],
+      skipOnCreate: true,
     })
   ),
   {
@@ -113,6 +114,7 @@ const FIELD_SYSTEM_RULES: SystemRuleDeclaration[] = [
     defSlug: 'vendor-parts',
     fieldRef: { systemAttribute: 'vendor_part_unit_price' },
     on: 'changed',
+    skipOnCreate: true,
     actions: [{ type: 'native', handler: RECALC_PART_COST_VENDOR }],
   },
   {
@@ -121,6 +123,7 @@ const FIELD_SYSTEM_RULES: SystemRuleDeclaration[] = [
     defSlug: 'vendor-parts',
     fieldRef: { systemAttribute: 'vendor_part_shipping_cost' },
     on: 'changed',
+    skipOnCreate: true,
     actions: [{ type: 'native', handler: RECALC_PART_COST_VENDOR }],
   },
   {
@@ -129,6 +132,7 @@ const FIELD_SYSTEM_RULES: SystemRuleDeclaration[] = [
     defSlug: 'vendor-parts',
     fieldRef: { systemAttribute: 'vendor_part_tariff_rate' },
     on: 'changed',
+    skipOnCreate: true,
     actions: [{ type: 'native', handler: RECALC_PART_COST_VENDOR }],
   },
   {
@@ -137,6 +141,7 @@ const FIELD_SYSTEM_RULES: SystemRuleDeclaration[] = [
     defSlug: 'vendor-parts',
     fieldRef: { systemAttribute: 'vendor_part_tariff_code' },
     on: 'changed',
+    skipOnCreate: true,
     actions: [{ type: 'native', handler: RECALC_PART_COST_VENDOR }],
   },
   {
@@ -145,6 +150,7 @@ const FIELD_SYSTEM_RULES: SystemRuleDeclaration[] = [
     defSlug: 'vendor-parts',
     fieldRef: { systemAttribute: 'vendor_part_other_cost' },
     on: 'changed',
+    skipOnCreate: true,
     actions: [{ type: 'native', handler: RECALC_PART_COST_VENDOR }],
   },
   {
@@ -153,6 +159,7 @@ const FIELD_SYSTEM_RULES: SystemRuleDeclaration[] = [
     defSlug: 'vendor-parts',
     fieldRef: { systemAttribute: 'vendor_part_is_preferred' },
     on: 'changed',
+    skipOnCreate: true,
     // ORDER MATTERS — recalculate cost, THEN clear the sibling preferred flags.
     actions: [
       { type: 'native', handler: RECALC_PART_COST_VENDOR },
@@ -165,6 +172,7 @@ const FIELD_SYSTEM_RULES: SystemRuleDeclaration[] = [
     defSlug: 'subparts',
     fieldRef: { systemAttribute: 'subpart_quantity' },
     on: 'changed',
+    skipOnCreate: true,
     actions: [{ type: 'native', handler: RECALC_PART_COST_SUBPART }],
   },
   {

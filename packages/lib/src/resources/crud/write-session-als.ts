@@ -8,9 +8,23 @@
 // silently resetting to interactive.
 
 import { AsyncLocalStorage } from 'node:async_hooks'
+import type { Database, Transaction } from '@auxx/database'
 import type { WriteSession } from './write-origin'
 
 const writeSessionAls = new AsyncLocalStorage<WriteSession>()
+
+/**
+ * The CONNECTION of the write in flight, alongside the session. A handler
+ * constructed on a transaction runs every public write inside
+ * `runWithWriteDb(tx, ...)`, so a hook that builds its own handler, service
+ * or field-value context mid-write inherits the transaction instead of
+ * grabbing a second pool connection. That second connection is what turned a
+ * transaction-scoped create into a 30 s idle-in-transaction timeout: it
+ * cannot see the uncommitted rows, and a write on it that conflicts with one
+ * of them waits on the very transaction that is waiting for it
+ * (plans/field-values/create-path-batching.md section 2b).
+ */
+const writeDbAls = new AsyncLocalStorage<Database | Transaction>()
 
 /**
  * Run `fn` with `session` as the ambient write session. Nested calls with the
@@ -27,4 +41,18 @@ export function runWithWriteSession<T>(session: WriteSession, fn: () => T): T {
  */
 export function getAmbientWriteSession(): WriteSession | undefined {
   return writeSessionAls.getStore()
+}
+
+/** Run `fn` with `db` as the ambient connection of the write in flight. */
+export function runWithWriteDb<T>(db: Database | Transaction, fn: () => T): T {
+  return writeDbAls.run(db, fn)
+}
+
+/**
+ * The connection of the write in flight, or undefined outside one. Resolution
+ * order for anything that needs a db and was not handed one: explicit
+ * argument, then this, then the pool.
+ */
+export function getAmbientWriteDb(): Database | Transaction | undefined {
+  return writeDbAls.getStore()
 }

@@ -11,7 +11,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
   queryQueue: [] as unknown[][],
-  setValueWithType: vi.fn(async (_ctx: unknown, _params: unknown) => [] as unknown[]),
+  writeCostValues: vi.fn(async (_orgId: string, _partDefId: string, _writes: unknown[]) => {}),
   createFieldValueContext: vi.fn((organizationId: string) => ({ organizationId })),
   getRealtimeService: vi.fn(() => ({})),
   publishFieldValueUpdates: vi.fn(async (_svc: unknown, _orgId: string, _entries: unknown[]) => {}),
@@ -87,8 +87,8 @@ vi.mock('../field-values/field-value-helpers', () => ({
   createFieldValueContext: h.createFieldValueContext,
 }))
 
-vi.mock('../field-values/field-value-mutations', () => ({
-  setValueWithType: h.setValueWithType,
+vi.mock('./cost-writer', () => ({
+  writeCostValues: h.writeCostValues,
 }))
 
 vi.mock('../field-values/stored-field-type', () => ({
@@ -198,10 +198,16 @@ function queueFullSweep(
   h.queryQueue = [vendorParts, subparts, partIds.map((id) => ({ id })), stored]
 }
 
-/** Every `setValueWithType` call for one field, as `{ recordId, value }`. */
+type ObservedWrite = { recordId: string; fieldId: string; value: unknown }
+
+/** Every value handed to the cost writer, across every batch. */
+function allWrites(): ObservedWrite[] {
+  return h.writeCostValues.mock.calls.flatMap((call) => call[2] as ObservedWrite[])
+}
+
+/** Every write for one field, as `{ recordId, value }`. */
 function writesFor(fieldId: string) {
-  return h.setValueWithType.mock.calls
-    .map((call) => call[1] as { recordId: string; fieldId: string; value: unknown })
+  return allWrites()
     .filter((params) => params.fieldId === fieldId)
     .map(({ recordId, value }) => ({ recordId, value }))
 }
@@ -209,8 +215,7 @@ function writesFor(fieldId: string) {
 /** Every field written for one part, keyed by field id. */
 function writesForPart(partId: string): Record<string, unknown> {
   const out: Record<string, unknown> = {}
-  for (const call of h.setValueWithType.mock.calls) {
-    const params = call[1] as { recordId: string; fieldId: string; value: unknown }
+  for (const params of allWrites()) {
     if (params.recordId !== `part_def:${partId}`) continue
     out[params.fieldId] = params.value
   }
@@ -301,7 +306,7 @@ describe('recalculateAffectedParts — clearing values', () => {
 
     await recalculateAffectedParts(ORG, [ASSEMBLY])
 
-    expect(h.setValueWithType).not.toHaveBeenCalled()
+    expect(allWrites()).toEqual([])
     expect(h.publishFieldValueUpdates).not.toHaveBeenCalled()
   })
 
@@ -319,9 +324,7 @@ describe('recalculateAffectedParts — clearing values', () => {
 
     await recalculateAffectedParts(ORG, [ASSEMBLY])
 
-    const touched = h.setValueWithType.mock.calls.map(
-      (call) => (call[1] as { recordId: string }).recordId
-    )
+    const touched = allWrites().map((w) => w.recordId)
     expect(new Set(touched)).toEqual(new Set([`part_def:${ASSEMBLY}`]))
   })
 })
@@ -410,9 +413,7 @@ describe('recalculateAllPartCosts — scope is every part, not the graph', () =>
 
     await recalculateAllPartCosts(ORG)
 
-    const touched = h.setValueWithType.mock.calls.map(
-      (call) => (call[1] as { recordId: string }).recordId
-    )
+    const touched = allWrites().map((w) => w.recordId)
     expect(touched.every((id) => id === `part_def:${ASSEMBLY}`)).toBe(true)
   })
 })
@@ -596,7 +597,7 @@ describe('persistCosts - RATE fields round to five places at the write seam', ()
 
     await recalculateAffectedParts(ORG, [MOTOR])
 
-    expect(h.setValueWithType).not.toHaveBeenCalled()
+    expect(allWrites()).toEqual([])
   })
 })
 

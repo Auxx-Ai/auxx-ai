@@ -65,13 +65,11 @@ import {
 } from '../sequences/field-change-hooks'
 import { invalidateInboxCacheOnFieldChange } from './post/inbox-cache-invalidation'
 import { stampPartOnCatalogItemChange } from './post/line-item-part-stamp'
-import { publishFieldChangeEvent } from './post/publish-field-change-event'
 import { prefillContactOnVendorChange } from './post/purchase-order-contact-prefill'
 import {
   recalculateBilledRollupOnBillLineChange,
   registerPurchaseOrderLineRollupReconcilers,
 } from './post/purchase-order-line-rollups'
-import { touchActivityOnFieldChange } from './post/touch-activity-on-field-change'
 import { guardBuildDelete } from './pre/build-delete-guard'
 import { guardManualBuildLifecycleStatus } from './pre/build-status-guard'
 import { guardInboxOwnerField } from './pre/inbox-owner-guard'
@@ -172,16 +170,14 @@ export function registerAllHooks(): void {
   // touches a build.
   registerOrderDriftReconcilers()
 
-  // Field-change post-hook — fires `<prefix>:field:updated` after every field
-  // write. Registered globally so contacts, tickets, companies, and custom
-  // entities all produce timeline entries.
-  // handleRecordRulesOnFieldChange dispatches org-configured RecordRules (it
-  // no-ops fast when the org has none and lazy-imports its own internals).
-  registerEntityFieldChangeHooks('*', [
-    publishFieldChangeEvent,
-    touchActivityOnFieldChange,
-    handleRecordRulesOnFieldChange,
-  ])
+  // Global field-change post-hook: handleRecordRulesOnFieldChange dispatches
+  // org-configured RecordRules (it no-ops fast when the org has none and
+  // lazy-imports its own internals). The `<prefix>:field:updated` bus event
+  // and the `lastActivityAt` touch are no longer hooks: both are steps of the
+  // write path itself (`field-values/field-change-events.ts`,
+  // `field-values/instance-derived.ts`), so a record write announces once and
+  // stamps once instead of once per field.
+  registerEntityFieldChangeHooks('*', [handleRecordRulesOnFieldChange])
 
   // Inbox cache coherence (mail-permissions §7.1): the generic records path
   // (form edits, Kopilot record tools, workflow CRUD) bypasses InboxService
