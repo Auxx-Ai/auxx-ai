@@ -41,6 +41,7 @@ import {
 } from '~/server/api/trpc'
 import { assertDatasetDocumentAssetAccess } from '~/server/lib/dataset-document-asset-access'
 import { toFilesCtx, toFilesDownloadDeps, toFilesWriteDeps } from '~/server/lib/files-ctx'
+import { assertIntakeDraftAssetAccess } from '~/server/lib/intake-draft-asset-access'
 
 /**
  * Unwrap a `files/` `Result` into this router's throw-based flow.
@@ -173,10 +174,16 @@ const getFileSystemSchema = z.object({
  * content and authorizes against the parent dataset instead. See
  * `assertDatasetDocumentAssetAccess` for why, and for the check that stops the
  * scope from being claimed over an unrelated asset.
+ *
+ * `intakeDraft` — the asset is the vendor quote a purchase-order intake draft was
+ * read from, so it authorizes against viewing purchase orders
+ * (plans/money/tasks/38 §6.2). Same argument, same asset-equality check; see
+ * `assertIntakeDraftAssetAccess`.
  */
 const attachmentPreviewScopeSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('files') }),
   z.object({ kind: z.literal('datasetDocument'), documentId: z.string() }),
+  z.object({ kind: z.literal('intakeDraft'), draftId: z.string() }),
 ])
 
 const getAttachmentPreviewRefSchema = z.object({
@@ -482,6 +489,18 @@ export const fileRouter = createTRPCRouter({
         }
         await assertDatasetDocumentAssetAccess(ctx.db, ctx.capabilities, {
           documentId: input.scope.documentId,
+          assetId: input.id,
+          organizationId,
+        })
+      } else if (input.scope.kind === 'intakeDraft') {
+        if (input.type !== 'asset') {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Quote drafts are backed by media assets',
+          })
+        }
+        await assertIntakeDraftAssetAccess(ctx.capabilities, {
+          draftId: input.scope.draftId,
           assetId: input.id,
           organizationId,
         })

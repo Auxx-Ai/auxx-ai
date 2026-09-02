@@ -172,6 +172,11 @@ export type UsageSource =
   // per-message classification spend is separable from `agent`/`autofill` in
   // cost reporting — it is the one source that scales with mail volume.
   | 'mail_classification'
+  // Reading a vendor's quote into a drafted purchase order (plans/money/tasks/38).
+  // Its own arm because this spend scales with quote volume rather than with
+  // seats, so it has to be separable from `agent`/`autofill` in cost reporting -
+  // the same argument that earned `mail_classification` one.
+  | 'purchase_intake'
   | 'transcription'
   | 'other'
 

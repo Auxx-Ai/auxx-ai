@@ -16,6 +16,12 @@ export { createKnowledgeCapabilities } from './knowledge'
 export { createKopilotCapabilities } from './kopilot'
 export { createLearnedKbCapabilities } from './learned'
 export { createMailCapabilities } from './mail'
+export {
+  createPurchasingIntakeCapabilities,
+  INTAKE_DRAFT_REF_KIND,
+  PURCHASING_INTAKE_KEPT_GLOBAL_TOOLS,
+  PURCHASING_INTAKE_PAGE,
+} from './purchasing-intake'
 export { createRecordViewCapabilities, RECORDS_PAGE } from './record-views'
 export { createCapabilityRegistry } from './registry'
 export { createTaskCapabilities } from './tasks'

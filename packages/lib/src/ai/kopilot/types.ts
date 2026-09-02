@@ -16,6 +16,7 @@ export type SessionRefKind =
   | 'actor' // `user:<id>` or `group:<id>`
   | 'agent' // user-authored agent id — present on the builder page
   | 'workflow' // WorkflowApp id — present on the workflow builder page
+  | 'intakeDraft' // Purchase-order intake draft id - present on the intake review page
 
 /**
  * A single thing the user has in focus this turn — either because a page

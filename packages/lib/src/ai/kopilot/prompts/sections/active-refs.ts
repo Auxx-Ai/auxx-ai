@@ -14,6 +14,7 @@ const REF_KIND_LABEL: Record<SessionRefKind, string> = {
   actor: 'actor',
   agent: 'agent',
   workflow: 'workflow',
+  intakeDraft: 'quote draft',
 }
 
 export const activeRefs: PromptSection = {

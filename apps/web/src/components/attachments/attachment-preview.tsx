@@ -42,8 +42,17 @@ interface AttachmentPreviewProps {
    * authority (`FeatureKey.files` + `filesView`). Pass `datasetDocument` when the
    * asset belongs to a dataset document so it authorizes against the parent
    * dataset instead — a member scoped to datasets need not hold `files` access.
+   *
+   * `intakeDraft` is the same argument for a vendor quote being read into a
+   * purchase order (plans/money/tasks/38 §6.2): the asset is the draft's own
+   * uploaded document, so it authorizes against the draft's `purchase_order`
+   * view. Without it a purchasing member who does not hold the Files app could
+   * not preview the quote they themselves just uploaded.
    */
-  scope?: { kind: 'files' } | { kind: 'datasetDocument'; documentId: string }
+  scope?:
+    | { kind: 'files' }
+    | { kind: 'datasetDocument'; documentId: string }
+    | { kind: 'intakeDraft'; draftId: string }
 }
 
 /**

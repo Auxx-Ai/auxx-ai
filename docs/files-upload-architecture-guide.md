@@ -976,6 +976,23 @@ sweep that has not happened yet.
 - **`UploadPolicy.allowedExtensions` is recorded and never enforced.** `enforceUploadPolicy` has no
   extension rule, so the narrowing `CUSTOM_FIELD`'s `refineConfig` writes has never been read.
   Typed rather than deleted so the intent stays visible; enforcing it is a decision.
+- 🛑 **Every custom-field upload in the product is on a 24-hour fuse that nothing ever lifts.**
+  `convertTempAssetToPermanent` (`assets/asset-mutations.ts:270`) is the only writer that clears
+  `MediaAsset.expiresAt`, and its callers are **only** `comment-service.ts:1228` and
+  `message-attachment.service.ts:60`. Meanwhile `useFieldFileUpload` *always* sends
+  `entityId: 'field-<fieldRef>'` (`use-field-file-upload.ts:678`) — the temp prefix is not
+  conditional on the record existing — so `customFieldHandler`'s `assetExpiresAt` stamps
+  `now + TEMP_ASSET_TTL_MS` on **every** field upload, and no code path on the field-value side
+  ever converts it. Record photos, purchasing documents and quote attachments are all in this
+  state today.
+  - It survives only because the sweep is scheduled `dryRun: true`
+    (`apps/worker/src/workers/index.ts:620`). **Flipping that flag would delete live customer
+    files.** That dry-run was enabled for a different reason (a first pass over rows accumulated
+    since `expiresAt` shipped), so the protection here is incidental, not designed.
+  - The fix is either to convert on the field-value write, or to stop stamping the expiry when the
+    upload lands on a real record. Both are one-liners; picking between them is the decision.
+  - New code must not assume the sweep is inert: `plans/money/tasks/38` §6.3 calls
+    `convertTempAssetToPermanent` explicitly at commit for exactly this reason.
 
 **Multipart, after #1866**
 

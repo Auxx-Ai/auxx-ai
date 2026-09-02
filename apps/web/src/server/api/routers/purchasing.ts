@@ -16,10 +16,17 @@ import { NotFoundError } from '@auxx/lib/errors'
 import { markPurchaseOrderSent } from '@auxx/lib/money'
 import {
   allocateLandedCost,
+  checkIntakeModelCapability,
+  commitIntakeDraft,
+  createIntakeDraft,
   DEFAULT_MATCH_TOLERANCE,
+  discardIntakeDraft,
   findVendorPartForLine,
+  getIntakeDraft,
   matchBill,
+  updateIntakeDraftPayload,
 } from '@auxx/lib/purchasing'
+import { INTAKE_TIERS } from '@auxx/lib/purchasing/intake/client'
 import {
   adjustStock,
   computeExtendedCost,
@@ -31,6 +38,7 @@ import {
   receiveStock,
   reverseMovement,
 } from '@auxx/lib/receiving'
+import { recordIdSchema } from '@auxx/types/resource'
 import { isAtPrecision, RATE_DECIMALS } from '@auxx/utils/currency'
 import { z } from 'zod'
 import { capabilityProcedure, createTRPCRouter } from '~/server/api/trpc'
@@ -117,6 +125,99 @@ const matchTolerance = z.object({
     .default(DEFAULT_MATCH_TOLERANCE.receiptGraceDays),
 })
 
+// ── Quote intake (plans/money/tasks/38-purchase-order-from-a-document.md) ────
+//
+// The draft payload round-trips through the browser: the worker writes it, the
+// review screen edits it, `saveIntakeDraft` writes it back. These schemas are
+// the wire's half of `IntakeDraftPayload` — the compile-time coupling is at the
+// call site, where the parsed value is handed to a lib function that takes the
+// interface, so a drift in either direction is a type error rather than a
+// silently accepted blob in a jsonb column.
+//
+// 🛑 Every money field stays a STRING here, exactly as the vendor printed it.
+// `parseIntakeMoney` is the one place a printed amount becomes minor units; a
+// second parse on this boundary is how the review screen and the committed
+// order come to disagree about a price.
+
+const transcribedPriceBreak = z.object({
+  minQuantity: z.number().finite(),
+  unitPriceText: z.string().nullable(),
+})
+
+const transcribedLine = z.object({
+  lineNumber: z.number().finite().nullable(),
+  vendorCode: z.string().nullable(),
+  description: z.string().nullable(),
+  quantity: z.number().finite().nullable(),
+  unit: z.string().nullable(),
+  unitPriceText: z.string().nullable(),
+  lineTotalText: z.string().nullable(),
+  leadTime: z.string().nullable(),
+  priceBreaks: z.array(transcribedPriceBreak).max(20),
+})
+
+const transcribedQuote = z.object({
+  vendorName: z.string().nullable(),
+  vendorEmail: z.string().nullable(),
+  vendorPhone: z.string().nullable(),
+  vendorAddress: z.string().nullable(),
+  quoteNumber: z.string().nullable(),
+  quoteDate: z.string().nullable(),
+  validUntil: z.string().nullable(),
+  currency: z.string().nullable(),
+  subtotalText: z.string().nullable(),
+  shippingText: z.string().nullable(),
+  taxText: z.string().nullable(),
+  totalText: z.string().nullable(),
+  lines: z.array(transcribedLine).max(500),
+})
+
+const intakeCandidate = z.object({
+  recordId: recordIdSchema,
+  displayName: z.string(),
+  secondary: z.string().nullable(),
+})
+
+const intakePartCandidate = intakeCandidate.extend({ tier: z.enum(INTAKE_TIERS) })
+
+const intakeLine = z.object({
+  lineId: z.string().min(1).max(64),
+  printed: transcribedLine,
+  tier: z.enum(INTAKE_TIERS),
+  candidates: z.array(intakePartCandidate).max(20),
+  partRecordId: recordIdSchema.nullable(),
+  vendorPartRecordId: recordIdSchema.nullable(),
+  description: z.string().nullable(),
+  quantity: z.number().finite(),
+  unitPriceCents: rateMinorUnits.nullable(),
+  chosenBreakIndex: z.number().int().nonnegative().nullable(),
+  foldedInto: z.enum(['shipping', 'tax']).nullable(),
+})
+
+const intakeDraftPayload = z.object({
+  transcription: transcribedQuote,
+  vendorRecordId: recordIdSchema.nullable(),
+  vendorCandidates: z.array(intakeCandidate).max(20),
+  lines: z.array(intakeLine).max(500),
+  currency: z.string().length(3),
+  quoteNumber: z.string().nullable(),
+  quoteDate: z.string().nullable(),
+  expectedDeliveryDate: z.string().nullable(),
+  shippingCents: minorUnits,
+  taxCents: minorUnits,
+})
+
+/**
+ * One accepted `vendorSku` write-back, offered per line and unchecked by
+ * default (§5.3). A vendor's printed line code is sometimes their order number
+ * rather than their part number, so writing it blind poisons every future
+ * tier-1 match.
+ */
+const intakeWriteBack = z.object({
+  partRecordId: recordIdSchema,
+  vendorSku: z.string().min(1).max(255),
+})
+
 /**
  * Resolve an entity definition id from the org cache, or refuse.
  *
@@ -150,6 +251,15 @@ async function requireDefId(organizationId: string, entityType: string): Promise
  * | `listReceipts`, `partReceiptHistory`, `lastReceiptCost` | view on `stock_movement` |
  * | `previewLandedCost`                | edit on `stock_movement`              |
  * | `previewMatch`                     | edit on `vendor_bill`                 |
+ * | `intakeModelCapability`, `startQuoteIntake`, `getIntakeDraft`, `saveIntakeDraft`, `discardIntakeDraft` | **view** on `purchase_order` |
+ * | `commitIntakeDraft`                | edit on `purchase_order`              |
+ *
+ * 🛑 The quote-intake group gating on VIEW is deliberate, not an oversight. The
+ * five read/draft procedures write an intake draft and nothing else - no
+ * number, no list entry, self-collected in 24 hours — so create authority is not
+ * what reading a supplier's PDF should cost. `commitIntakeDraft` is the moment
+ * records appear, and it is the one that asks for edit
+ * (plans/money/tasks/38-purchase-order-from-a-document.md §4.3, §6.3).
  *
  * `assertEditEntity` (not the coarser `assertWriteEntity`) is deliberate: it is
  * the server mirror of the `canEditEntity(stockMovementDefId)` the part drawer's
@@ -727,6 +837,150 @@ export const purchasingRouter = createTRPCRouter({
       ctx.capabilities.assertEditEntity(await requireDefId(organizationId, 'tariff_rate'))
 
       const result = await applyTariffResync(ctx.db, organizationId, userId, input)
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+  /**
+   * Can this organization's default model read an uploaded document at all?
+   *
+   * The upload dialog asks before it offers a file picker, because a model with
+   * no file input refuses AFTER the upload otherwise — the same sentence, spent
+   * at the least useful moment. Fails OPEN inside
+   * `resolveCapabilityGates`: an unknown model is allowed to try.
+   *
+   * A read, so it gates on VIEW of `purchase_order`.
+   */
+  // `.optional()` so both `useQuery()` and `useQuery({})` typecheck on the
+  // client — the procedure takes nothing either way.
+  intakeModelCapability: capabilityProcedure
+    .input(z.object({}).optional())
+    .query(async ({ ctx }) => {
+      const { organizationId } = ctx.session
+      ctx.capabilities.assertViewEntity(await requireDefId(organizationId, 'purchase_order'))
+
+      const result = await checkIntakeModelCapability(organizationId)
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /**
+   * Take an uploaded quote and start reading it (§3.3).
+   *
+   * Two steps and no third: create the draft row, enqueue the job. The read is
+   * 10 to 40 seconds of model time on a three-page quote, far past a
+   * comfortable mutation, so what comes back is the `draftId` the dialog then
+   * polls. The row exists before the enqueue on purpose — the job's stable
+   * `jobId` is built from it, and a message pointing at a row that is not there
+   * yet is a race with nothing to gain.
+   *
+   * 🛑 Gated on VIEW, not create. This writes an intake draft and
+   * nothing else; a draft is not a purchase order, has no number, appears in no
+   * list, and self-collects in 24 hours (§4.3 / §6.3). Requiring create here
+   * would mean a member who may not raise orders cannot even read a quote for
+   * somebody who can — and `commitIntakeDraft`, the one procedure that creates
+   * records, is where the create authority actually belongs.
+   */
+  startQuoteIntake: capabilityProcedure
+    .input(
+      z.object({
+        /** `asset:<mediaAssetId>` — the temp upload the custom-field door left. */
+        assetRef: z.string().min(1).max(255),
+        fileName: z.string().max(500).nullish(),
+        mimeType: z.string().max(255).nullish(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
+      ctx.capabilities.assertViewEntity(await requireDefId(organizationId, 'purchase_order'))
+
+      const draft = await createIntakeDraft(organizationId, userId, input)
+      if (draft.isErr()) throw draft.error
+
+      const { enqueuePurchaseIntake } = await import('@auxx/lib/jobs')
+      await enqueuePurchaseIntake({ organizationId, userId, draftId: draft.value.draftId })
+
+      return draft.value
+    }),
+
+  /**
+   * The draft as the dialog and the review screen read it.
+   *
+   * Polled while `status` is `reading` — `phase` is what turns a 40-second wait
+   * into a checklist rather than a spinner.
+   */
+  getIntakeDraft: capabilityProcedure
+    .input(z.object({ draftId: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      ctx.capabilities.assertViewEntity(await requireDefId(organizationId, 'purchase_order'))
+
+      const result = await getIntakeDraft(organizationId, input.draftId)
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /**
+   * Write the review screen's edits back onto the draft.
+   *
+   * The whole payload, not a patch: the review screen holds it as one object
+   * and a per-field mutation would need a merge rule for a blob nothing else
+   * reads. Nothing here creates a record (§6.1).
+   *
+   * 🛑 VIEW again, for the same reason as `startQuoteIntake`: picking a part on
+   * a draft row writes no `purchase_order` and no `purchase_order_line`.
+   */
+  saveIntakeDraft: capabilityProcedure
+    .input(z.object({ draftId: z.string().min(1), payload: intakeDraftPayload }))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      ctx.capabilities.assertViewEntity(await requireDefId(organizationId, 'purchase_order'))
+
+      const result = await updateIntakeDraftPayload(organizationId, input.draftId, input.payload)
+      if (result.isErr()) throw result.error
+      return { ok: true as const }
+    }),
+
+  /**
+   * Abandon a draft. Leaves no records behind, because there were never any
+   * (§6.1) — the temp upload it points at expires on its own 24-hour fuse.
+   */
+  discardIntakeDraft: capabilityProcedure
+    .input(z.object({ draftId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      ctx.capabilities.assertViewEntity(await requireDefId(organizationId, 'purchase_order'))
+
+      const result = await discardIntakeDraft(organizationId, input.draftId)
+      if (result.isErr()) throw result.error
+    }),
+
+  /**
+   * Turn a reviewed draft into a real purchase order (§6.3).
+   *
+   * 🛑 The ONE procedure in this group that gates on EDIT, and the only one that
+   * writes records. It goes through the generic create path so the RecordSequence
+   * hook mints the number, links the quote into `purchase_order.attachments`
+   * (INTERNAL by default, so the vendor's own quote never rides back to that
+   * vendor on our order), and performs the accepted `vendorSku` write-backs.
+   *
+   * The hard gate — every orderable line must carry a part — lives in
+   * `commitIntakeDraft`, not here: `purchase_order_line.part` is leg 2 of the
+   * natural key and `required: true` (§0), so a partless line is rejected at
+   * create anyway. Refusing in lib means the browser's disabled button and the
+   * server's door are the same rule, checked once.
+   */
+  commitIntakeDraft: capabilityProcedure
+    .input(
+      z.object({
+        draftId: z.string().min(1),
+        writeBacks: z.array(intakeWriteBack).max(500),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
+      ctx.capabilities.assertEditEntity(await requireDefId(organizationId, 'purchase_order'))
+
+      const result = await commitIntakeDraft(ctx.db, organizationId, userId, input)
       if (result.isErr()) throw result.error
       return result.value
     }),

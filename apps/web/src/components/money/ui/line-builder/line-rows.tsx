@@ -2376,6 +2376,7 @@ export function DraftLineRow({
   renderMatchKeyEditor,
   weightRevealed = false,
   resolvePartPrefill,
+  grip = null,
   onRevealWeight,
   deleteDraft,
   createDraft,
@@ -2397,6 +2398,17 @@ export function DraftLineRow({
   renderMatchKeyEditor?: MatchKeyEditorRenderer
   weightRevealed?: boolean
   resolvePartPrefill?: PartPrefillResolver
+  /**
+   * What rides in the left gutter slot the drag grip occupies on a real row.
+   *
+   * Draft rows are not sortable, so this slot has always been empty here
+   * (`grip={null}` was hardcoded). It is a prop rather than a fifth column
+   * because `LINE_COLS` is shared by every document and widening it for one
+   * screen widens it for all six (see the note at `LineRowMenu`). Purchase-order
+   * intake puts its match-tier badge here; every other caller omits it and gets
+   * the previous behaviour unchanged.
+   */
+  grip?: ReactNode
   onRevealWeight: () => void
   deleteDraft: (draftId: string) => void
   createDraft: (draftId: string, overrides?: LinePatch) => Promise<void>
@@ -2415,7 +2427,7 @@ export function DraftLineRow({
     <LineGridRow
       rowIndex={rowIndex}
       optional={showOptional && draft.optional}
-      grip={null}
+      grip={grip}
       name={
         schema.capabilities.partPicker && schema.attrs.partRecordId ? (
           <LinePartCellView
