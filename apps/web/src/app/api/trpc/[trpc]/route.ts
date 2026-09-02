@@ -44,6 +44,11 @@ const handler = async (req: NextRequest) => {
     req,
     router: appRouter,
     createContext: () => createContext(req),
+    // Lets the browser clients send queries as POST so their input travels in
+    // the body instead of the URL (see `~/trpc/react.tsx`). GET still works —
+    // this only widens what POST is allowed to resolve, and tRPC still refuses
+    // a subscription over it.
+    allowMethodOverride: true,
     onError:
       configService.get<string>('NODE_ENV') === 'development'
         ? ({ path, error }) => {

@@ -65,6 +65,14 @@ export function TRPCReactProvider(props: { children: React.ReactNode }) {
         unstable_httpBatchStreamLink({
           transformer: SuperJSON,
           url: getBaseUrl() + '/api/trpc',
+          // Queries go out as POST with their input in the BODY, not on the
+          // query string. A batch is only as sendable as its URL is short, and
+          // id-list procedures blow that budget quickly: six `record.getByIds`
+          // calls coalescing into one batch put ~25KB of RecordIds on the URL
+          // and the server answered 431 Request Header Fields Too Large for
+          // every procedure in the batch, unrelated ones included. Requires
+          // `allowMethodOverride` on the handler — see `api/trpc/[trpc]/route.ts`.
+          methodOverride: 'POST',
           headers: () => {
             const headers = new Headers()
             headers.set('x-trpc-source', 'nextjs-react')
