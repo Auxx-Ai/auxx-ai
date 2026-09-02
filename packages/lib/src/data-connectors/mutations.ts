@@ -7,7 +7,10 @@
 
 import { listCredentials } from '@auxx/credentials/store'
 import {
+  type CatalogConnectorOwnedMappingField,
+  type CatalogConnectorStream,
   type CatalogDataConnector,
+  type CatalogEntity,
   type CatalogPayload,
   type Database,
   schema,
@@ -21,10 +24,11 @@ import {
   toResourceFieldId,
 } from '@auxx/types/field'
 import { generateId } from '@auxx/utils'
-import { and, eq, inArray, isNull, ne } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNull, ne } from 'drizzle-orm'
 import { getCachedCustomFields, getCachedEntityDefId } from '../cache'
 import { onCacheEvent } from '../cache/invalidate'
 import { notifyEntityDefChanged } from '../entity-definitions/notify'
+import { appTemplateId } from '../entity-templates'
 import { BadRequestError, NotFoundError } from '../errors'
 import { toRecordId } from '../resources/resource-id'
 import {
@@ -33,6 +37,8 @@ import {
   buildContributingConnectionAppFields,
   buildContributingFieldBindings,
   buildContributingMatchBindings,
+  isContributingCatalogMapping,
+  isOwnedCatalogMapping,
 } from './app-catalog'
 import { removeConnectorScheduler, syncConnectorScheduler } from './data-connector-scheduler'
 import {
@@ -455,7 +461,10 @@ export async function createConnectorFromAppCatalog(
   db: Database,
   organizationId: string,
   input: Omit<CreateConnectorInput, 'definitionKind' | 'templateId' | 'config'>,
-  catalog: CatalogDataConnector
+  catalog: CatalogDataConnector,
+  /** The app's `catalog.entities` (`defineEntity`) — owned mappings resolve their
+   *  target's `apiSlug` here (the mapping itself only names `entityKey`). */
+  entities: readonly CatalogEntity[] = []
 ): Promise<DataConnectorRow> {
   // Auto-link the connection when the connector needs one and the org has EXACTLY one
   // for this app installation — the unambiguous case (e.g. a single Shopify account
@@ -494,13 +503,14 @@ export async function createConnectorFromAppCatalog(
     // Owned mappings first so a nested contributing mapping (e.g. order → customer)
     // can parent to the owned root it hangs off — the parentMappingId forms the fan-out
     // tree at sync AND anchors the install-created relationship edge.
-    const ownedMappingIdByRootPath = await seedAppOwnedMappings(
+    const ownedMappingsByRootPath = await seedAppOwnedMappings(
       db,
       organizationId,
       streamRow.id,
       stream,
       appSlug,
-      input.appInstallationId
+      input.appInstallationId,
+      entities
     )
     await materializeAppContributingMappings(
       db,
@@ -508,7 +518,7 @@ export async function createConnectorFromAppCatalog(
       streamRow.id,
       stream,
       appSlug,
-      ownedMappingIdByRootPath
+      ownedMappingsByRootPath
     )
   }
 
@@ -644,49 +654,6 @@ export function storedRootPath(rootPath: string, allRootPaths: string[]): string
   return parentRootPath != null ? relativeSourcePath(rootPath, parentRootPath) : rootPath
 }
 
-/** A stream field assigned to an owned mapping, with its subtree-relative source path. */
-export interface OwnedFieldEntry {
-  field: CatalogDataConnector['streams'][number]['fields'][number]
-  /** sourcePath relative to the owning mapping's rootPath (e.g. `sku`, not `line_items[].sku`). */
-  relativeSourcePath: string
-}
-
-/**
- * Partition a stream's declared fields across its OWNED-upsert mappings (the multi-level
- * field split the relationship-provisioning plan deferred). Each field is assigned to the
- * mapping — of ANY mode — whose rootPath is the LONGEST boundary-prefix of its sourcePath;
- * only fields owned by an owned-upsert mapping are returned (those become real columns on
- * that mapping's def). A field claimed by a `contributing` branch (`customer.email`) or a
- * `reference` branch (`line_items[].product_id`, the id-only edge FK) is excluded — those
- * paths bind/stamp it themselves and must not surface as an owned-def column. Returned
- * sourcePaths are rewritten subtree-relative so `mapRecord` resolves them against each
- * extracted subtree. Pure + exported for unit coverage.
- */
-export function partitionOwnedFields(
-  fields: CatalogDataConnector['streams'][number]['fields'],
-  mappings: NonNullable<CatalogDataConnector['streams'][number]['defaultMappings']>
-): Record<string, OwnedFieldEntry[]> {
-  const allRootPaths = mappings.map((m) => m.rootPath)
-  const ownedUpsertRootPaths = new Set(
-    mappings
-      .filter((m) => m.target.mode === 'owned' && (m.linkMode ?? 'upsert') !== 'reference')
-      .map((m) => m.rootPath)
-  )
-
-  const partition: Record<string, OwnedFieldEntry[]> = {}
-  for (const field of fields) {
-    const owners = allRootPaths.filter((r) => isBoundaryPrefix(field.sourcePath, r))
-    if (owners.length === 0) continue
-    const owner = owners.reduce((longest, r) => (r.length > longest.length ? r : longest))
-    if (!ownedUpsertRootPaths.has(owner)) continue
-    ;(partition[owner] ??= []).push({
-      field,
-      relativeSourcePath: relativeSourcePath(field.sourcePath, owner),
-    })
-  }
-  return partition
-}
-
 /**
  * The id of an existing, non-archived app-owned def for `sourceKey` under this app
  * install, or `null` to fork a new one. Adoption REQUIRES the same `appInstallationId`:
@@ -714,6 +681,7 @@ export async function adoptSharedOwnedDefId(
         isNull(schema.EntityDefinition.archivedAt)
       )
     )
+    .orderBy(asc(schema.EntityDefinition.createdAt))
     .limit(1)
   return existing?.id ?? null
 }
@@ -734,31 +702,41 @@ export async function adoptSharedOwnedDefId(
  *
  * `parentMappingId` is wired from rootPath nesting (parents first) so the fan-out tree —
  * and the install-created relationship edge it anchors — forms before any def exists.
+ *
+ * **Dev-reinstall note:** existing dev installs of a connector whose owned entity keys
+ * change shape (e.g. Shopify's variant/line-item keys moving from dotted
+ * (`variants.shopifyId`) to entity-scoped (`shopifyId`) under this plan) must be
+ * DELETED and RE-CREATED, not migrated in place — the reconciler would otherwise hide
+ * the old columns as orphans. No production users exist for this shape, so no
+ * migration is written (app-fields-and-entities-plan Phase 2 §4.3 item 6).
  */
 async function seedAppOwnedMappings(
   db: Database,
   organizationId: string,
   streamId: string,
-  stream: CatalogDataConnector['streams'][number],
+  stream: CatalogConnectorStream,
   appSlug: string,
-  appInstallationId: string | null | undefined
-): Promise<Record<string, string>> {
-  const allMappings = stream.defaultMappings ?? []
-  const owned = allMappings.filter((m) => m.target.mode === 'owned')
+  appInstallationId: string | null | undefined,
+  entities: readonly CatalogEntity[]
+): Promise<Record<string, { mappingId: string; apiSlug: string }>> {
+  const entityByKey = new Map(entities.map((e) => [e.key, e]))
+  const owned = stream.mappings.filter(isOwnedCatalogMapping)
   const allRootPaths = owned.map((m) => m.rootPath)
-  // Each owned-upsert def gets ONLY its own subtree's fields (multi-level partition).
-  const partition = partitionOwnedFields(stream.fields, allMappings)
   // Parents before children so a child's `parentMappingId` always resolves.
   const ordered = [...owned].sort((a, b) => a.rootPath.length - b.rootPath.length)
 
-  const mappingIdByRootPath: Record<string, string> = {}
+  const mappingByRootPath: Record<string, { mappingId: string; apiSlug: string }> = {}
 
   for (const mapping of ordered) {
-    if (mapping.target.mode !== 'owned') continue
-    const { entity } = mapping.target
-    // A `reference` owned mapping (id-only edge, e.g. line→product) owns no columns —
-    // its entry list is empty; it only carries the structural link (parent + edge key).
-    const entries = partition[mapping.rootPath] ?? []
+    const entity = entityByKey.get(mapping.target.entityKey)
+    if (!entity) {
+      logger.warn('Owned mapping targets an undeclared entity — skipping', {
+        organizationId,
+        entityKey: mapping.target.entityKey,
+        streamKey: stream.key,
+      })
+      continue
+    }
     const linkMode = mapping.linkMode ?? ('upsert' as LinkMode)
 
     // Share an existing app-owned def for this record type instead of forking a new
@@ -771,16 +749,11 @@ async function seedAppOwnedMappings(
     )
 
     const parentRootPath = ownedParentRootPath(mapping.rootPath, allRootPaths)
-    const parentMappingId = parentRootPath != null ? mappingIdByRootPath[parentRootPath] : null
+    const parent = parentRootPath != null ? mappingByRootPath[parentRootPath] : undefined
     // The edge field lives on the PARENT def — namespace the relationship key with the
     // parent's apiSlug (cosmetic), falling back to this mapping's own slug for a
     // top-level reference (no parent in scope).
-    const parentManifest =
-      parentRootPath != null ? owned.find((m) => m.rootPath === parentRootPath) : undefined
-    const parentSlug =
-      parentManifest?.target.mode === 'owned'
-        ? parentManifest.target.entity.apiSlug
-        : entity.apiSlug
+    const parentSlug = parent?.apiSlug ?? entity.apiSlug
 
     const row = await addMapping(db, organizationId, {
       dataConnectorStreamId: streamId,
@@ -790,13 +763,13 @@ async function seedAppOwnedMappings(
       // subtree descent — treats a child's stored rootPath as relative to its parent.
       // `storedRootPath` recomputes the same parent resolved above, so the stored form
       // and `projectConnectorOwnedTargets`' emitted form agree by construction.
-      // NB: `mappingIdByRootPath` below stays keyed by the ABSOLUTE path, because
+      // NB: `mappingByRootPath` below stays keyed by the ABSOLUTE path, because
       // parent detection nests on absolute paths.
       rootPath: storedRootPath(mapping.rootPath, allRootPaths),
       linkMode,
       targetMode: 'owned' as TargetMode,
       entityDefinitionId,
-      parentMappingId,
+      parentMappingId: parent?.mappingId ?? null,
       relationshipFieldKey: appRelationshipFieldKey(
         mapping.relationshipFieldKey,
         appSlug,
@@ -811,39 +784,41 @@ async function seedAppOwnedMappings(
       fieldMappings:
         linkMode === 'reference'
           ? [buildReferenceAnchor()]
-          : buildAppOwnedFieldMappings(entries, appSlug, entity.apiSlug),
+          : buildAppOwnedFieldMappings(mapping.fields ?? [], appSlug, entity.apiSlug),
       // Incremental connectors only see the delta each run, so unseen ≠ deleted —
       // never archive owned orphans automatically. Full-snapshot sweeps can still
       // reconcile; v1 keeps it safe.
       orphanBehavior: 'ignore' as OrphanBehavior,
     })
 
-    mappingIdByRootPath[mapping.rootPath] = row.id
+    mappingByRootPath[mapping.rootPath] = { mappingId: row.id, apiSlug: entity.apiSlug }
   }
 
-  return mappingIdByRootPath
+  return mappingByRootPath
 }
 
 /**
- * Field mappings for an UNBOUND owned mapping (v6 — Option A). Each entry carries the
- * connection-late-bound `@app:` ref `${ownedApiSlug}:@app:${appSlug}:${fieldKey}` — the
- * fieldKey rides in the ref so the install `onComplete` can rewrite it to a concrete id
- * (`fieldIdMap[app:slug:ownedKey:fieldKey]`), and the ref also resolves at sync time
- * against the connector's connection (no rewrite needed when the installed def's slug
- * matches). The expression mirrors the manual editor — `{<relativeSourcePath>}` over an
- * identity `sourceFields` map — with the SUBTREE-relative path (`sku`, not
- * `line_items[].sku`) because `mapRecord` evaluates a child mapping against its subtree.
+ * Field mappings for an UNBOUND owned mapping (v6 — Option A). Each declared owned
+ * field (`{ key, sourcePath }`, already normalized with type/name/identity copied from
+ * the entity's own `FieldDecl` at catalog-extraction time) becomes one entry carrying
+ * the connection-late-bound `@app:` ref `${ownedApiSlug}:@app:${appSlug}:${key}` — the
+ * key rides in the ref so the install `onComplete` can rewrite it to a concrete id
+ * (`fieldIdMap[app:slug:ownedKey:key]`), and the ref also resolves at sync time against
+ * the connector's connection (no rewrite needed when the installed def's slug matches).
+ * The expression mirrors the manual editor — `{<sourcePath>}` over an identity
+ * `sourceFields` map — with `sourcePath` already relative to the mapping's `rootPath`
+ * (the SDK contract), since `mapRecord` evaluates a child mapping against its subtree.
  */
 export function buildAppOwnedFieldMappings(
-  entries: OwnedFieldEntry[],
+  fields: readonly CatalogConnectorOwnedMappingField[],
   appSlug: string,
   ownedApiSlug: string
 ): FieldMapping[] {
-  // The manifest may flag one field as the owned record's External ID (`isExternalId`).
+  // The manifest may flag one field `identity: true` — the owned record's External ID.
   // v1 allows at most one per owned def — first-wins, warn on extras — so the stamped
   // `identityRole` is unambiguous.
   let externalIdClaimed = false
-  return entries.map(({ field, relativeSourcePath: relPath }) => {
+  return fields.map((field) => {
     // Stamp the External-ID anchor onto the flagged field's mapping WITHOUT dropping its
     // column write: it keeps its `targetFieldRef` (writes the "Shopify ID" column) and
     // gains `identityRole: externalId` (drives record identity). `resolveExternalId` then
@@ -851,21 +826,21 @@ export function buildAppOwnedFieldMappings(
     // visible column and the record's identity agree by construction. `deriveLinkMode`
     // stays `upsert` (a real target write always wins), so this never flips an owned def
     // to `reference`.
-    let isExternalId = field.isExternalId === true
+    let isExternalId = field.identity === true
     if (isExternalId && externalIdClaimed) {
-      logger.warn('Multiple isExternalId fields on one owned def — ignoring extra', {
+      logger.warn('Multiple identity fields on one owned def — ignoring extra', {
         appSlug,
         ownedApiSlug,
-        fieldKey: field.fieldKey,
+        fieldKey: field.key,
       })
       isExternalId = false
     }
     if (isExternalId) externalIdClaimed = true
     return {
       id: generateId(),
-      targetFieldRef: toAppFieldRef(ownedApiSlug, appSlug, field.fieldKey),
-      expression: `{${relPath}}`,
-      sourceFields: { [relPath]: relPath },
+      targetFieldRef: toAppFieldRef(ownedApiSlug, appSlug, field.key),
+      expression: `{${field.sourcePath}}`,
+      sourceFields: { [field.sourcePath]: field.sourcePath },
       ...(isExternalId ? { identityRole: { kind: 'externalId' as const } } : {}),
     }
   })
@@ -937,25 +912,29 @@ export interface ConnectorOwnedTarget {
 
 export function projectConnectorOwnedTargets(
   appSlug: string,
-  catalog: CatalogDataConnector
+  catalog: CatalogDataConnector,
+  /** The app's `catalog.entities` — an owned mapping only names `entityKey`; the
+   *  entity's own `apiSlug` is read from here. */
+  entities: readonly CatalogEntity[] = []
 ): ConnectorOwnedTarget[] {
+  const entityByKey = new Map(entities.map((e) => [e.key, e]))
   const targets: ConnectorOwnedTarget[] = []
   for (const stream of catalog.streams) {
     // Relativize each mapping's manifest (payload-absolute) rootPath the same way the
     // seeder does — the binder matches `(streamKey, rootPath)` with `===` against the
     // STORED rows, so emitting the absolute form here left every nested owned mapping
     // (e.g. `line_items[].product_id`, stored as `product_id`) permanently unbound.
-    const ownedRootPaths = (stream.defaultMappings ?? [])
-      .filter((m) => m.target.mode === 'owned')
-      .map((m) => m.rootPath)
-    for (const m of stream.defaultMappings ?? []) {
-      if (m.target.mode !== 'owned') continue
+    const owned = stream.mappings.filter(isOwnedCatalogMapping)
+    const ownedRootPaths = owned.map((m) => m.rootPath)
+    for (const m of owned) {
+      const entityKey = m.target.entityKey
+      const entity = entityByKey.get(entityKey)
       targets.push({
-        ownedKey: m.target.entity.key,
-        apiSlug: m.target.entity.apiSlug,
+        ownedKey: entityKey,
+        apiSlug: entity?.apiSlug ?? entityKey,
         streamKey: stream.key,
         rootPath: storedRootPath(m.rootPath, ownedRootPaths),
-        templateId: `app:${appSlug}:${m.target.entity.key}`,
+        templateId: appTemplateId(appSlug, entityKey),
       })
     }
   }
@@ -1020,16 +999,17 @@ export async function resolveContributingRelationshipFieldKey(
 }
 
 /**
- * Materialize a catalog stream's `contributing` default-mappings into draft
+ * Materialize a catalog stream's `contributing` mappings into draft
  * `DataConnectorMapping` rows — the symmetric counterpart to
  * {@link provisionStreamOwnedDefs}. Unlike an owned target (the connector
  * provisions the def + binds every field), a contributing target merges INTO an
  * existing system def (e.g. `contact`), so we only resolve the def and best-effort
- * pre-bind the declared identity-match keys (`matchFieldKeys`, e.g. `['email']`). Any
- * key that doesn't resolve cleanly leaves the row a draft (`fieldMappings: []`) — the
- * setup overview flags it `needs-mapping` and the user authors it against the source
- * tree. A target def the org lacks (no system `contact`) is skipped, never failing
- * creation. See multi-stream-setup-plan §5.
+ * pre-bind the mapping's declared `fields` — the `match: true` ones first (the
+ * identity-match keys, e.g. `email`), then the rest. A field that doesn't resolve
+ * cleanly is dropped, leaving the row a draft — the setup overview flags it
+ * `needs-mapping` and the user authors it against the source tree. A target def the
+ * org lacks (no system `contact`) is skipped, never failing creation. See
+ * multi-stream-setup-plan §5 and app-fields-and-entities-plan Phase 2 §4.3.
  *
  * Parenting: a contributing mapping can hang off an OWNED mapping (the order stream's
  * embedded `customer`) or a CONTRIBUTING sibling (full contribute mode: `'' → product`
@@ -1044,20 +1024,19 @@ export async function materializeAppContributingMappings(
   db: Database,
   organizationId: string,
   streamId: string,
-  stream: CatalogDataConnector['streams'][number],
+  stream: CatalogConnectorStream,
   /** Namespaces the late-bound `@app:` relationship-field refs (`app:<slug>`). */
   appSlug: string,
-  /** rootPath → owned-mapping id, so a nested contributing branch can find its parent. */
-  ownedMappingIdByRootPath: Record<string, string> = {}
+  /** rootPath → owned-mapping id + apiSlug, so a nested contributing branch can find
+   *  its parent (`seedAppOwnedMappings`'s return). */
+  ownedMappingsByRootPath: Record<string, { mappingId: string; apiSlug: string }> = {}
 ): Promise<void> {
-  const ownedRootPaths = Object.keys(ownedMappingIdByRootPath)
+  const ownedRootPaths = Object.keys(ownedMappingsByRootPath)
   // ABSOLUTE rootPath → the contributing row created for it, threaded as rows are
   // written so later siblings can parent onto it. First-wins on a shared rootPath (the
   // flat child never shadows the mapping it drilled from).
   const contributingByRootPath: Record<string, { id: string; entityDefinitionId: string }> = {}
-  const contributing = (stream.defaultMappings ?? []).filter(
-    (m) => m.target.mode === 'contributing'
-  )
+  const contributing = stream.mappings.filter(isContributingCatalogMapping)
   // Parents before children: shorter rootPaths first; among same-rootPath siblings the
   // explicit `parentRootPath` declarer (the flat child) comes after its parent.
   const ordered = [...contributing].sort(
@@ -1067,12 +1046,12 @@ export async function materializeAppContributingMappings(
   )
 
   for (const mapping of ordered) {
-    if (mapping.target.mode !== 'contributing') continue
-    const { entityKind, matchFieldKeys, fieldBindings, connectionAppFields } = mapping.target
+    const entityKind = mapping.target.entityKind
+    const fields = mapping.fields ?? []
 
     const entityDefinitionId = await getCachedEntityDefId(organizationId, entityKind)
     if (!entityDefinitionId) {
-      logger.warn('Skipping contributing default-mapping — system entity not found', {
+      logger.warn('Skipping contributing mapping — system entity not found', {
         organizationId,
         entityKind,
         streamId,
@@ -1083,41 +1062,28 @@ export async function materializeAppContributingMappings(
     const defFields = await getCachedCustomFields(organizationId, entityDefinitionId)
     // Identity-match bindings first; then author-declared non-identity field bindings,
     // skipping any target a match key already claimed (match's `identityRole` wins).
-    const matchBindings = buildContributingMatchBindings(
-      entityDefinitionId,
-      mapping.rootPath,
-      matchFieldKeys ?? [],
-      stream.fields,
-      defFields
-    )
+    const matchBindings = buildContributingMatchBindings(entityDefinitionId, fields, defFields)
     const boundTargets = new Set(matchBindings.map((b) => b.targetFieldRef))
-    // Author-declared `fieldBindings` win; if none were declared, fall back to the
-    // zero-config name-match heuristic (automap-plan §5). Either way, drop any target a
-    // match key already claimed (match's `identityRole` wins).
+    // Author-declared `fields` win; if none were declared, fall back to the zero-config
+    // name-match heuristic (automap-plan §5). Either way, drop any target a match key
+    // already claimed (match's `identityRole` wins).
     const valueBindings = (
-      (fieldBindings?.length ?? 0) > 0
-        ? buildContributingFieldBindings(
-            entityDefinitionId,
-            appSlug,
-            mapping.rootPath,
-            fieldBindings ?? [],
-            stream.fields,
-            defFields
-          )
+      fields.length > 0
+        ? buildContributingFieldBindings(entityDefinitionId, appSlug, fields, defFields)
         : buildContributingAutoBindings(
             entityDefinitionId,
             mapping.rootPath,
-            stream.fields,
+            stream.exampleRecord,
             defFields
           )
     ).filter((b) => !boundTargets.has(b.targetFieldRef))
     // Connection-metadata fields (e.g. `storeDomain`) — no source binding, so no
-    // boundTargets filter applies; a declared connectionAppFields target never
-    // collides with a match/value binding in practice (different app fields).
+    // boundTargets filter applies; a declared connectionFields target never collides
+    // with a match/value binding in practice (different app fields).
     const connMetaBindings = buildContributingConnectionAppFields(
       entityDefinitionId,
       appSlug,
-      connectionAppFields ?? []
+      mapping.connectionFields ?? []
     )
     const linkMode = mapping.linkMode ?? ('upsert' as LinkMode)
     // A `reference` contributing edge owns no value columns — it carries only the
@@ -1157,12 +1123,12 @@ export async function materializeAppContributingMappings(
         ...Object.keys(contributingByRootPath),
       ])
     }
-    const ownedParentId = parentRootPath != null ? ownedMappingIdByRootPath[parentRootPath] : null
+    const ownedParent = parentRootPath != null ? ownedMappingsByRootPath[parentRootPath] : null
     const contribParent =
-      parentRootPath != null && ownedParentId == null
+      parentRootPath != null && ownedParent == null
         ? contributingByRootPath[parentRootPath]
         : undefined
-    const parentMappingId = ownedParentId ?? contribParent?.id ?? null
+    const parentMappingId = ownedParent?.mappingId ?? contribParent?.id ?? null
     if (parentRootPath != null && mapping.parentRootPath != null && parentMappingId == null) {
       logger.warn('parentRootPath names no materialized mapping — creating as a root', {
         streamId,
@@ -1172,23 +1138,13 @@ export async function materializeAppContributingMappings(
     }
     // The edge field lives on the PARENT def — namespace the relationship key with the
     // parent's slug (cosmetic), falling back to this mapping's own entity for a top-level
-    // contributing reference. Exclude self so a flat child at the parent's own rootPath
-    // never resolves itself, and match the mode the parent id actually resolved from.
-    const parentManifest =
-      parentRootPath != null
-        ? (stream.defaultMappings ?? []).find(
-            (m) =>
-              m !== mapping &&
-              m.rootPath === parentRootPath &&
-              (ownedParentId != null ? m.target.mode === 'owned' : m.target.mode === 'contributing')
-          )
+    // contributing reference. The owned parent's apiSlug came back from
+    // `seedAppOwnedMappings`; a contributing parent's "slug" is just its entityKind.
+    const contribParentMapping =
+      parentRootPath != null && ownedParent == null
+        ? contributing.find((m) => m !== mapping && m.rootPath === parentRootPath)
         : undefined
-    const parentSlug =
-      parentManifest?.target.mode === 'owned'
-        ? parentManifest.target.entity.apiSlug
-        : parentManifest?.target.mode === 'contributing'
-          ? parentManifest.target.entityKind
-          : entityKind
+    const parentSlug = ownedParent?.apiSlug ?? contribParentMapping?.target.entityKind ?? entityKind
 
     const row = await addMapping(db, organizationId, {
       dataConnectorStreamId: streamId,
@@ -1428,9 +1384,12 @@ export async function deleteConnector(
   if (behavior === 'delete') {
     // Route every teardown through the sanctioned service entry points (NOT raw db.delete)
     // so each one busts the org cache (resources / customFields / entityDefs) and fires the
-    // same events a UI delete would. Connector fields aren't protected (no
-    // appInstallationId / systemAttribute), so the services delete them cleanly. Lazy-import
-    // to keep this module's pure-helper exports loadable without the teardown chains.
+    // same events a UI delete would. An app connector's owned columns DO carry
+    // `appInstallationId` (the template installer stamps it on every column, §4.4 of
+    // the app-fields-and-entities plan) so `isProtectedField` refuses them without
+    // `allowProtectedDeletion` below — this teardown is the sanctioned bypass, same as
+    // uninstall's `deleteAppFields`. Lazy-import to keep this module's pure-helper
+    // exports loadable without the teardown chains.
     const { EntityDefinitionService } = await import('../entity-definitions')
     const { deleteCustomField, notifyCustomFieldChanged, toFieldError } = await import(
       '../custom-fields'
@@ -1502,8 +1461,12 @@ export async function deleteConnector(
 
     // Then any contributing columns the connector added to SHARED defs (e.g. fields on the
     // system Contact def) — tagged by `dataConnectorId` but not owned by a torn-down def.
-    // `deleteField` handles values + relationship inverses + display-field cleanup and busts
-    // the custom-field cache. Skip columns on a kept shared def — they were reassigned above.
+    // These are commonly ALSO app-owned (`appInstallationId` set alongside `dataConnectorId`
+    // — an "owned connector column", §1/§4.4 of the app-fields-and-entities plan), so
+    // `allowProtectedDeletion: true` is required or `isProtectedField` refuses every one of
+    // them. `deleteField` handles values + relationship inverses + display-field cleanup and
+    // busts the custom-field cache. Skip columns on a kept shared def — they were reassigned
+    // above.
     const strayFields = await db
       .select({
         id: schema.CustomField.id,
@@ -1522,6 +1485,7 @@ export async function deleteConnector(
       const deleted = await deleteCustomField({
         resourceFieldId: toResourceFieldId(stray.entityDefinitionId, stray.id),
         organizationId,
+        allowProtectedDeletion: true,
       })
       if (deleted.isErr()) throw toFieldError(deleted.error)
       await notifyCustomFieldChanged(organizationId, stray.entityDefinitionId, 'deleted')

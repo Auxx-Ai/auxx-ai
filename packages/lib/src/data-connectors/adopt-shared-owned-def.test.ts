@@ -15,6 +15,7 @@ function mockDb(rows: Array<{ id: string }>) {
     select: vi.fn(() => chain),
     from: vi.fn(() => chain),
     where: vi.fn(() => chain),
+    orderBy: vi.fn(() => chain),
     limit,
   }
   return { db: chain as unknown as Database, select: chain.select, limit }

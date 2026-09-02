@@ -2,10 +2,11 @@
 
 import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { onCacheEvent } from '../cache/invalidate'
 import { createCustomField } from '../custom-fields'
 import { checkSlugExists, createEntityDefinition } from '../entity-definitions'
+import { BadRequestError } from '../errors'
 import { getTemplatesByIds } from './template-registry'
 import type { EntityTemplate, EntityTemplateField } from './types'
 import { isSymbolicRef, parseSymbolicRef } from './types'
@@ -34,6 +35,11 @@ export interface InstallTemplatesOptions {
   installContext?: {
     dataConnectorId?: string
     appInstallationId?: string
+    /** The app's slug (e.g. 'shopify') — stamped onto every created field as
+     *  `CustomField.appSlug`, the `RecordIdentity.source` value for its identity
+     *  field. Without this the owned identity column never mirrors into
+     *  `RecordIdentity` (the sink logs "identity field has no appSlug, skipping"). */
+    appSlug?: string
   }
 }
 
@@ -140,6 +146,27 @@ export async function installTemplates(
     // If this template is linked to an existing entity, skip creation
     const linkConfig = linkedEntities?.[template.id]
     if (linkConfig) {
+      // An app/connector install (installContext set) may never link its template onto a
+      // PLATFORM system definition (Contact, Order, Line Item, …) — only onto an ordinary
+      // user-created entity. `EntityDefinition.entityType` is null for every user-created
+      // def (the installer itself never sets it — see Pass 2 below) and non-null for the
+      // platform's fixed record types (entity-architecture-guide §"entityType"), so a
+      // non-null `entityType` on the link target is the system marker. Refusing this here
+      // is what §4.4's dev-DB defect (a Product/Variant RELATIONSHIP pair planted on the
+      // system `line-items` def) should have hit.
+      if (installContext?.appInstallationId || installContext?.dataConnectorId) {
+        const linkedDef = await database.query.EntityDefinition.findFirst({
+          where: and(
+            eq(schema.EntityDefinition.id, linkConfig.entityDefinitionId),
+            eq(schema.EntityDefinition.organizationId, organizationId)
+          ),
+        })
+        if (linkedDef?.entityType) {
+          throw new BadRequestError(
+            `Cannot link the "${template.name}" template onto "${linkedDef.singular}": it is a system entity definition (entityType "${linkedDef.entityType}"), not a user-created one.`
+          )
+        }
+      }
       entityIdMap.set(template.id, linkConfig.entityDefinitionId)
       linked.push({
         templateId: template.id,
@@ -320,7 +347,8 @@ export async function installTemplates(
         },
         organizationId,
         entityDefinitionId,
-        installContext
+        installContext,
+        !!linkConfig
       )
 
       if (result.ok) {
@@ -376,28 +404,43 @@ export async function installTemplates(
   return { created, linked, skippedRelationships, fieldIdMap: Object.fromEntries(fieldIdMap) }
 }
 
-/** Helper: Create a single field from template field definition */
+/**
+ * Helper: Create a single field from template field definition.
+ *
+ * @param isLinkedEntity - True when `entityDefinitionId` is a PRE-EXISTING def the
+ *   template was linked onto (not one this install created). `systemAttribute` marks
+ *   platform/system-owned field configuration — stamping it with the template's own
+ *   field key here would make an app/connector-planted field on someone else's
+ *   definition look system-owned. `fieldInput.appFieldKey` (already present when the
+ *   field came from an app template) is enough for idempotent reinstall matching, so
+ *   it stays; `systemAttribute` is only stamped for fields on a def this install owns.
+ */
 async function createField(
   field: EntityTemplateField,
   organizationId: string,
   entityDefinitionId: string,
-  installContext?: InstallTemplatesOptions['installContext']
+  installContext?: InstallTemplatesOptions['installContext'],
+  isLinkedEntity = false
 ): Promise<{ ok: true; fieldId: string } | { ok: false; error: string }> {
   const { templateFieldId, ...fieldInput } = field
 
   const result = await createCustomField({
-    // `...fieldInput` already carries the projected app-template field's `appFieldKey`;
-    // the install context stamps the owner FKs so the field is connector-/app-owned and
-    // idempotent per `(owner, appFieldKey)` on re-install.
+    // `...fieldInput` already carries the projected app-template field's `appFieldKey`
+    // and `isIdentity`; the install context stamps the owner FKs + `appSlug` so an
+    // identity column is stamped exactly the way the manifest field path
+    // (`app-field-provisioning.ts`) stamps it — without `appSlug` the sink's
+    // `mirrorIdentityWrites` skips the `RecordIdentity` mirror entirely.
     ...fieldInput,
     organizationId,
     entityDefinitionId,
     isCustom: true,
     appInstallationId: installContext?.appInstallationId ?? fieldInput.appInstallationId,
     dataConnectorId: installContext?.dataConnectorId ?? fieldInput.dataConnectorId,
-    // Store templateFieldId as systemAttribute so template resolution can match
-    // fields reliably even if the user renames them later
-    systemAttribute: templateFieldId,
+    appSlug: installContext?.appSlug ?? fieldInput.appSlug,
+    // Store templateFieldId as systemAttribute so template resolution can match fields
+    // reliably even if the user renames them later — but only for a def this install
+    // created; see the `isLinkedEntity` doc above.
+    ...(isLinkedEntity ? {} : { systemAttribute: templateFieldId }),
   })
 
   if (result.isOk()) {

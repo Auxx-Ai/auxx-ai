@@ -27,6 +27,14 @@ export interface DocumentBillingInputs {
   discountValue?: number | null
   /** Percent, e.g. `7.5` for 7.5%. */
   taxRate?: number | null
+  /**
+   * Stated shipping amount, integer cents, folded into `total` (money plan 37 §6). Only
+   * `order` reads a header field into this today (`order_shipping_total`) — quote and
+   * invoice never set it, so it defaults to 0 and their arithmetic is unchanged. Distinct
+   * from the purchase order's `statedAdditionAttrs` mechanism, which adds shipping/tax on
+   * top of this function's result rather than inside it.
+   */
+  shipping?: number | null
 }
 
 /** Computed document totals — mirrors the three stored quote fields. */

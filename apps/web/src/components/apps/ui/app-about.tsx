@@ -10,6 +10,7 @@ import type { LucideIcon } from 'lucide-react'
 import { Blocks, Code, Globe, Link2, LucideGitGraph, Mail, Plug, Wrench, Zap } from 'lucide-react'
 import { Tooltip } from '~/components/global/tooltip'
 import type { RouterOutputs } from '~/trpc/react'
+import { AppInstallEntitiesAction } from './app-install-entities-action'
 
 type CapabilityGroup = RouterOutputs['apps']['getBySlug']['capabilities']['tools']
 
@@ -214,6 +215,14 @@ function AppAbout({ app }: Props) {
                     Dev
                   </Badge>
                 )}
+              </ItemContent>
+            </Item>
+          )}
+          {app.installation.isInstalled && (
+            <Item className='p-0 gap-1'>
+              <ItemHeader className='text-xs text-primary-400'>Entities</ItemHeader>
+              <ItemContent>
+                <AppInstallEntitiesAction appSlug={app.app.slug} />
               </ItemContent>
             </Item>
           )}

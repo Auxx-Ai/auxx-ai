@@ -29,6 +29,10 @@ import type { FieldValueService } from '../../field-values'
 // helper for tier-1 sync capture, so this file's lifecycle seams and the field
 // seams apply the identical sync-origin policy (plan 07 §4).
 import { syncCollectorOf } from '../../field-values/field-value-mutations'
+// Leaf path on purpose, same reasoning as `syncCollectorOf` above: the Phase 3
+// server-side read-only guard for app/connector-owned fields
+// (plans/apps/app-fields-and-entities-plan.md §5).
+import { assertOriginMayWriteFields } from '../../field-values/write-guard'
 import {
   getRealtimeService,
   publishRecordsChanged,
@@ -365,6 +369,13 @@ export async function createEntity(
   // entity fields. Runs before the required check so defaults satisfy it.
   const resource = await findCachedResource(ctx.organizationId, entityDef.id)
   const resourceFields = resource?.fields ?? []
+
+  // Phase 3 server-side read-only guard (plan app-fields-and-entities §5):
+  // an interactive/api write may not set an app- or connector-owned field
+  // whose declared capability refuses it. Every other origin (sync,
+  // automation, seed) is exempt — see `write-guard.ts` for the full table.
+  assertOriginMayWriteFields(ctx.session.origin, resourceFields, Object.keys(values), 'create')
+
   const defaultedValues = applyDefaults(values, resourceFields)
   if (Object.keys(defaultedValues).length > Object.keys(values).length) {
     logger.debug('Applied field defaults', {
@@ -606,6 +617,18 @@ export async function updateEntity(
   // Rebuild RecordId with resolved UUID so cache lookups in setFieldValues work
   // (input recordId may use entityType string like "inbox:xxx" instead of UUID)
   const resolvedRecordId = toRecordId(entityDef.id, entityInstanceId)
+
+  // Phase 3 server-side read-only guard (plan app-fields-and-entities §5):
+  // an interactive/api write may not update an app- or connector-owned field
+  // whose declared capability refuses it. Every other origin (sync,
+  // automation, seed) is exempt — see `write-guard.ts` for the full table.
+  const resource = await findCachedResource(ctx.organizationId, entityDef.id)
+  assertOriginMayWriteFields(
+    ctx.session.origin,
+    resource?.fields ?? [],
+    Object.keys(values),
+    'update'
+  )
 
   // Run pre-update hooks
   const processedValues = await ctx.runPreHooks('update', entityDef, values, instance)

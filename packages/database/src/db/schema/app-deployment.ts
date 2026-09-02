@@ -195,138 +195,187 @@ export interface CatalogBlock {
 }
 
 /**
- * An app-registered custom field, projected from the app's `fields[]`
- * declaration. Provisioned on install (`installation` scope) or per connected
- * account (`connection` scope), optionally hidden, removed on uninstall. See
- * app-registered custom fields.
+ * Every field type the platform supports, as string literals. Mirrors the
+ * SDK's `FieldType` (`packages/sdk/src/root/fields/field-types.ts`), which in
+ * turn mirrors the `ContactFieldType` pg enum. The database package can't
+ * depend on the published SDK, so this is kept in lock-step by hand.
  */
-export interface CatalogAppField {
-  /** App-stable id (e.g. 'customerId') — idempotency + reverse-lookup key. */
-  appFieldKey: string
+export type CatalogFieldType =
+  | 'TEXT'
+  | 'EMAIL'
+  | 'URL'
+  | 'RICH_TEXT'
+  | 'PHONE_INTL'
+  | 'ADDRESS'
+  | 'ADDRESS_STRUCT'
+  | 'FILE'
+  | 'DATE'
+  | 'DATETIME'
+  | 'TIME'
+  | 'NUMBER'
+  | 'CURRENCY'
+  | 'CHECKBOX'
+  | 'JSON'
+  | 'NAME'
+  | 'SINGLE_SELECT'
+  | 'MULTI_SELECT'
+  | 'TAGS'
+  | 'RELATIONSHIP'
+  | 'CALC'
+  | 'ACTOR'
+
+/**
+ * Per-field write behavior once a contributing connector binding lands on the
+ * target. Mirrors the SDK's `FieldMergeStrategy`
+ * (`packages/sdk/src/root/data-connectors/types.ts`), which in turn mirrors
+ * the platform's `FieldMergeStrategy` (`packages/lib/src/write-policy/types.ts`).
+ * Absent ⇒ `'overwrite'`.
+ */
+export type CatalogFieldMergeStrategy =
+  | 'overwrite'
+  | 'fill_blank'
+  | 'connector_owned_only'
+  | 'manual_review'
+  | 'ignore'
+
+/** Author-settable field capabilities projected onto the catalog. */
+export interface CatalogFieldCapabilities {
+  filterable?: boolean
+  sortable?: boolean
+  creatable?: boolean
+  updatable?: boolean
+  required?: boolean
+  unique?: boolean
+  computed?: boolean
+  hidden?: boolean
+}
+
+/**
+ * One field declaration, projected — the shared shape for `catalog.fields[]`
+ * (a `defineFields` manifest field, via `CatalogAppField`), a `defineEntity`
+ * entity's own fields (`CatalogEntity.fields`), and a connector OWNED
+ * mapping's normalized fields (`CatalogConnectorOwnedMappingField`). Mirrors
+ * the SDK's `FieldDecl` (`packages/sdk/src/root/fields/define-field.ts`).
+ */
+export interface CatalogField {
+  /** Stable id (e.g. 'customerId'). The DB column stays `appFieldKey`. */
+  key: string
+  type: CatalogFieldType
+  /** Display name — used only when not hidden. */
+  name: string
+  description?: string
+  capabilities?: CatalogFieldCapabilities
+  /** This field is an external-system identity (e.g. Shopify `customerId`) —
+   *  drives the sink write-ownership rule + the `RecordIdentity` mirror. */
+  identity?: boolean
+  /** Select options for SINGLE_SELECT / MULTI_SELECT / TAGS. */
+  options?: Array<{ value: string; label?: string; color?: string }>
+  /** Sub-field set for an ADDRESS_STRUCT field (e.g. `['street', 'city', 'state', 'country']`). */
+  addressComponents?: string[]
+  /** Relationship config for RELATIONSHIP fields — `{ entityKey }` for another
+   *  entity of the same app, `{ entityKind }` for a platform kind. */
+  relationship?: {
+    target: { entityKey: string } | { entityKind: string }
+    cardinality: 'has_many' | 'has_one' | 'belongs_to' | 'many_to_many'
+    inverseName?: string
+  }
+  /** Calc config for CALC fields. */
+  calc?: { expression: string }
+  /** Flag PII. Carried into the catalog; no platform consumer yet. */
+  pii?: boolean
+}
+
+/**
+ * An app-registered custom field, projected from the app's `fields[]`
+ * declaration (`defineFields`, adding a field to an EXISTING platform
+ * entity). Provisioned on install (`installation` scope) or per connected
+ * account (`connection` scope), optionally hidden, removed on uninstall. See
+ * docs/app-fields-and-entities-guide.md.
+ */
+export interface CatalogAppField extends CatalogField {
   /** `installation` (one per install) or `connection` (one per connected account). */
   scope: 'installation' | 'connection'
   /** Target entity kind (EntityRefKind) — resolved to entityDefinitionId on provision. */
   targetEntity: string
-  /** Platform FieldType (e.g. 'TEXT', 'SINGLE_SELECT'). */
-  type: string
-  /** Display name — used only when not hidden. */
-  name: string
-  description?: string
-  /** Select options for SINGLE_SELECT / MULTI_SELECT / TAGS. */
-  options?: Array<{ value: string; label?: string; color?: string }>
-  /** Relationship config for RELATIONSHIP fields. */
-  relationship?: { targetEntity: string; cardinality: 'one' | 'many' }
-  /** Calc config for CALC fields. */
-  calc?: { expression: string }
-  /** Author-settable capabilities (hidden, filterable, updatable, …). */
-  capabilities?: {
-    filterable?: boolean
-    sortable?: boolean
-    creatable?: boolean
-    updatable?: boolean
-    required?: boolean
-    unique?: boolean
-    computed?: boolean
-    hidden?: boolean
-  }
-  /** This field is an external-system identity (e.g. Shopify `customerId`) —
-   *  drives the sink write-ownership rule + the `RecordIdentity` mirror. */
-  identity?: boolean
-}
-
-/** One source field declaration projected from a data connector's stream. */
-export interface CatalogConnectorField {
-  fieldKey: string
-  sourcePath: string
-  type: string
-  name: string
-  pii?: boolean
-  capabilities?: { hidden?: boolean; filterable?: boolean }
-  /** Predefined select option set (SINGLE_SELECT / MULTI_SELECT / TAGS) provisioned onto the owned column. */
-  options?: Array<{ value: string; label?: string; color?: string }>
-  /** Sub-field set for an ADDRESS_STRUCT field (e.g. `['street', 'city', 'state', 'country']`). */
-  addressComponents?: string[]
-  /** This field's value is the owned record's stable external id — the seeder stamps `identityRole: externalId` on its mapping. */
-  isExternalId?: boolean
 }
 
 /**
- * Provisioning declaration for a parent↔child relationship edge (v5). Drives
- * auto-creation of the relationship field (+ inverse) on the parent def at
- * connector materialization. Mirrors the SDK `ConnectorRelationshipDecl`.
+ * A definition an app owns end to end, projected from the app's `entities[]`
+ * declaration (`defineEntity`). See docs/app-fields-and-entities-guide.md.
  */
-export interface CatalogConnectorRelationshipDecl {
-  /** Stable field key of the edge created on the PARENT def (== `relationshipFieldKey`). */
-  fieldKey: string
-  /** Display name for the forward edge (e.g. `'Line Items'`). */
-  name: string
-  /** Forward cardinality from PARENT → this mapping's target. */
-  cardinality: 'has_many' | 'has_one' | 'belongs_to' | 'many_to_many'
-  /** Display name for the auto-created inverse edge on the child/target def. */
-  inverseName: string
-  /** Target def; omit for an owned child (resolves to the mapping's own provisioned def). */
-  targetRef?: { ownedKey: string } | { entityKind: string }
+export interface CatalogEntity {
+  /** Stable owner-scoped identity key — becomes `EntityDefinition.sourceKey`. */
+  key: string
+  /** Cosmetic API slug, collision-suffixed by the installer. */
+  apiSlug: string
+  singular: string
+  plural: string
+  description?: string
+  icon?: string
+  color?: string
+  primaryDisplayField: string
+  secondaryDisplayField?: string
+  avatarField?: string
+  fields: CatalogField[]
 }
 
-/** A recommended fan-out mapping projected from a data connector's stream. */
-export interface CatalogConnectorDefaultMapping {
+/** One field on a connector OWNED mapping — a `CatalogField` normalized with
+ *  type/name/options/identity copied from the target entity, plus its
+ *  `sourcePath`, so the platform never has to re-resolve it. */
+export interface CatalogConnectorOwnedMappingField extends CatalogField {
+  sourcePath: string
+}
+
+/** One field on a connector CONTRIBUTING mapping — a binding, not a full
+ *  field declaration (most of its shape resolves against the existing target). */
+export interface CatalogConnectorContributingMappingField {
+  sourcePath: string
+  /** Resolves against the target def's `systemAttribute` or field name. */
+  target?: string
+  /** Names a `defineFields` field declared for the same `entityKind`. */
+  appField?: string
+  /** Secondary identity-match flag. */
+  match?: boolean
+  /** Per-field write behavior once bound. Default 'overwrite'. */
+  mergeStrategy?: CatalogFieldMergeStrategy
+  /** Required only for a source-only field with no target/appField. */
+  type?: CatalogFieldType
+  name?: string
+}
+
+/** `{ appField, from }` — fills a plain app field from connection metadata. */
+export interface CatalogConnectorConnectionField {
+  appField: string
+  from: string
+}
+
+/**
+ * One fan-out mapping projected from a data connector's stream — the unit
+ * that carries source paths. `target: { entityKey }` names an entity the app
+ * owns (`fields` are `CatalogConnectorOwnedMappingField[]`); `target: {
+ * entityKind }` names a platform kind the app merely contributes to (`fields`
+ * are `CatalogConnectorContributingMappingField[]`).
+ */
+export interface CatalogConnectorMapping {
   rootPath: string
   /** Explicit parent mapping's rootPath (payload-absolute) for the flat drilled child
    *  (a second mapping over the parent's own subtree). Mirrors the SDK type. */
   parentRootPath?: string
   linkMode?: 'upsert' | 'reference'
-  /** Bare key → `@app:` envelope; `'system:<systemAttribute>'` → pre-existing system
-   *  relationship field on the (contributing) parent def. Mirrors the SDK type. */
+  /** Bare field key on the parent entity, or `'system:<systemAttribute>'` for
+   *  a pre-existing system edge on a contributing parent. */
   relationshipFieldKey?: string
-  /** Provisioning decl for the parent↔child edge — auto-creates the field at materialization. */
-  relationship?: CatalogConnectorRelationshipDecl
-  target:
-    | {
-        mode: 'owned'
-        entity: {
-          /** Stable owner-scoped identity key (distinct from cosmetic `apiSlug`). */
-          key: string
-          apiSlug: string
-          singular: string
-          plural: string
-          primaryDisplayField?: string
-          /** `fieldKey` of a URL/FILE field to wire as the def's avatar/display image. */
-          avatarField?: string
-        }
-      }
-    | {
-        mode: 'contributing'
-        entityKind: string
-        /** Target field keys to flag as secondary identity-match keys (e.g. `['email']`). */
-        matchFieldKeys?: string[]
-        /**
-         * Non-identity field bindings the app author pre-declares so a contributing
-         * stream is born closer to `ready` (e.g. `first_name` → contact's first-name
-         * attribute). Each binds a source field to a target `contact` field by key —
-         * the same resolver the match keys use, just without an `identityRole`, unless
-         * `targetAppField` names an `identity: true` app field (auto-stamps one — the
-         * `isExternalId` mechanism extended to contributing). Unresolved bindings are
-         * dropped (the row stays a `needs-mapping` draft).
-         */
-        fieldBindings?: { sourceFieldKey: string; targetKey?: string; targetAppField?: string }[]
-        /**
-         * Fill a plain (non-identity) app field from the connector's CONNECTION
-         * METADATA (e.g. Shopify `shopDomain`) rather than the source record — the
-         * only synthetic write channel. `appFieldKey` must name a declared,
-         * non-identity app field; `from` is the connection metadata key.
-         */
-        connectionAppFields?: { appFieldKey: string; from: string }[]
-      }
+  target: { entityKey: string } | { entityKind: string }
+  fields?: Array<CatalogConnectorOwnedMappingField | CatalogConnectorContributingMappingField>
+  connectionFields?: CatalogConnectorConnectionField[]
 }
 
 /** One stream (fetch) projected from a data connector. */
 export interface CatalogConnectorStream {
   key: string
-  displayFieldKey: string
   /** Stream scheduling — `incremental` backfills once then runs deltas. */
   syncMode?: 'snapshot' | 'incremental'
-  fields: CatalogConnectorField[]
-  defaultMappings?: CatalogConnectorDefaultMapping[]
+  mappings: CatalogConnectorMapping[]
   exampleRecord?: Record<string, unknown>
   /**
    * Per-stream webhook STEERING. `filter` matches against the delivery's triggerData;
@@ -339,10 +388,9 @@ export interface CatalogConnectorStream {
 
 /**
  * A data connector projected from the app's `dataConnectors[]` declaration.
- * Carries the stream/field/mapping declarations + `requiresConnection` so the
- * UI can list + set up a connector and the platform adapter can resolve streams
- * without evaluating bundle code. See
- * plans/data-connectors/claude/03-connectors-and-sources.md §4.
+ * Carries the stream/mapping declarations + `requiresConnection` so the UI can
+ * list + set up a connector and the platform adapter can resolve streams
+ * without evaluating bundle code. See docs/app-fields-and-entities-guide.md.
  */
 export interface CatalogDataConnector {
   id: string
@@ -390,6 +438,8 @@ export interface CatalogPayload {
   actions: CatalogAction[]
   /** App-registered custom fields (optional — older catalogs omit it). */
   fields?: CatalogAppField[]
+  /** Definitions the app owns end to end (optional — older catalogs omit it). */
+  entities?: CatalogEntity[]
   /** App-declared data connectors (optional — older catalogs omit it). */
   dataConnectors?: CatalogDataConnector[]
   /** Ids of app-side event handlers this deployment declares, e.g.

@@ -1,11 +1,13 @@
 // packages/lib/src/money/totals-hooks.ts
 
-import type { Database } from '@auxx/database'
+import { type Database, database } from '@auxx/database'
+import { createScopedLogger } from '@auxx/logger'
 import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
 import { getOrgCache } from '../cache'
+import { isFieldConnectorManaged } from '../data-connectors/managed-fields'
 import { BadRequestError } from '../errors'
 import type { EntityFieldChangeHandler } from '../field-hooks/types'
 import { FieldValueService } from '../field-values/field-value-service'
@@ -25,6 +27,8 @@ import type {
   LineForTotals,
   RecomputeTotalsInput,
 } from './types'
+
+const logger = createScopedLogger('money:totals-hooks')
 
 /** Unwrap a `getFieldValues()` map entry — takes the first value if array-returned. */
 function firstTyped(
@@ -75,11 +79,20 @@ export const INVOICE_TRIGGER_ATTRS = new Set<SystemAttribute>([
   'invoice_tax_rate',
 ])
 
-/** Fields on `orders` whose write should trigger a recompute (08 §5.4). */
+/**
+ * Fields on `orders` whose write should trigger a recompute (08 §5.4).
+ *
+ * `order_shipping_total` joined this set in money plan 37 §6/§8: unlike
+ * `purchase_order_shipping_total` (a `PURCHASE_ORDER_TRIGGER_ATTRS` member because the PO adds
+ * it on top via `statedAdditionAttrs`), the order's shipping folds INSIDE `computeDocumentTotals`
+ * (see `rateBilling`'s `shippingAttr`), so a change to it has to reach the same recompute path
+ * discount/tax already do.
+ */
 export const ORDER_TRIGGER_ATTRS = new Set<SystemAttribute>([
   'order_discount_type',
   'order_discount_value',
   'order_tax_rate',
+  'order_shipping_total',
 ])
 
 /**
@@ -174,6 +187,13 @@ interface DocumentBillingSpec {
   /** Header attr holding the tax RATE percent, or `null` when the document states an amount. */
   taxRateAttr: SystemAttribute | null
   /**
+   * Header attr holding a stated shipping amount, folded INSIDE `computeDocumentTotals`
+   * (money plan 37 §6) — `null` for every document but `order`. Distinct from
+   * `statedAdditionAttrs` below: this one is read into `DocumentBillingInputs.shipping` and
+   * added by the pure formula itself, not bolted on after the call.
+   */
+  shippingAttr: SystemAttribute | null
+  /**
    * Header attrs whose STATED amounts are added on top of the computed total. Empty on the
    * sell side, where freight and tax are either lines or derived from a rate.
    */
@@ -182,13 +202,20 @@ interface DocumentBillingSpec {
   writesTaxTotal: boolean
 }
 
-/** The sell-side billing shape: a typed discount plus a tax rate, both on the header. */
+/**
+ * The sell-side billing shape: a typed discount plus a tax rate, both on the header.
+ *
+ * Only `order` carries a `shippingAttr` (money plan 37 §6): quote and invoice have no
+ * shipping term, on purpose (§11) — a per-prefix derivation here would otherwise expect
+ * `quote_shipping_total` / `invoice_shipping_total` fields that do not exist.
+ */
 function rateBilling(prefix: 'quote' | 'invoice' | 'order'): DocumentBillingSpec {
   return {
     discountTypeAttr: `${prefix}_discount_type` as SystemAttribute,
     fixedDiscountType: null,
     discountValueAttr: `${prefix}_discount_value` as SystemAttribute,
     taxRateAttr: `${prefix}_tax_rate` as SystemAttribute,
+    shippingAttr: prefix === 'order' ? 'order_shipping_total' : null,
     statedAdditionAttrs: [],
     writesTaxTotal: true,
   }
@@ -288,6 +315,10 @@ const DOCUMENT_TOTALS_SPECS: Record<TotalledDocumentType, DocumentTotalsSpec> = 
       fixedDiscountType: 'amount',
       discountValueAttr: 'purchase_order_discount_value',
       taxRateAttr: null,
+      // `null`, not `'purchase_order_shipping_total'`: the PO already adds its shipping via
+      // `statedAdditionAttrs` below (added AFTER `computeDocumentTotals`, not inside it), so
+      // setting both here would double-count it.
+      shippingAttr: null,
       statedAdditionAttrs: ['purchase_order_shipping_total', 'purchase_order_tax_total'],
       writesTaxTotal: false,
     },
@@ -348,6 +379,7 @@ async function recomputeDocumentTotals(params: {
     spec.billing.discountTypeAttr,
     spec.billing.discountValueAttr,
     spec.billing.taxRateAttr,
+    spec.billing.shippingAttr,
     ...spec.billing.statedAdditionAttrs,
   ].filter((a): a is SystemAttribute => a !== null)
 
@@ -383,6 +415,7 @@ async function recomputeDocumentTotals(params: {
     : undefined
   const discountValueField = cf[spec.billing.discountValueAttr]
   const taxRateField = spec.billing.taxRateAttr ? cf[spec.billing.taxRateAttr] : undefined
+  const shippingField = spec.billing.shippingAttr ? cf[spec.billing.shippingAttr] : undefined
 
   const headerFieldIds = [...headerAttrs, ...mirrorAttrs]
     .map((a) => cf[a]?.id)
@@ -407,6 +440,7 @@ async function recomputeDocumentTotals(params: {
       : spec.billing.fixedDiscountType,
     discountValue: readNumber(discountValueField?.id),
     taxRate: readNumber(taxRateField?.id),
+    shipping: readNumber(shippingField?.id),
   }
 
   // Stated header amounts (buy-side freight + tax). Empty on the sell side, so this sums
@@ -478,12 +512,35 @@ async function recomputeDocumentTotals(params: {
   })
 
   if (!unchanged) {
-    const fieldValueService = new FieldValueService(organizationId, userId, db)
-    await fieldValueService.setValuesForEntity({
-      recordId: documentRecordId,
-      values,
-      publishEvents: spec.publishEvents,
-    })
+    /**
+     * The totals stand-down (money plan 37 §6): a synced order's totals are transcribed
+     * from the connector, not computed, so the engine must never overwrite them. One call
+     * per RECORD, keyed on `${prefix}_total` — if a connector manages the total it manages
+     * the whole mirror set (the sink binds subtotal/tax/shipping/total together, §6.1), so
+     * checking every mirror individually would be redundant round trips for the same
+     * answer. Gated on `!unchanged` so a no-op recompute never pays this lookup either.
+     */
+    const managed = await isFieldConnectorManaged(
+      db ?? database,
+      organizationId,
+      documentInstanceId,
+      `${spec.attrPrefix}_total`
+    )
+
+    if (managed) {
+      logger.debug('totals recompute skipped — connector-managed record', {
+        organizationId,
+        documentType,
+        documentInstanceId,
+      })
+    } else {
+      const fieldValueService = new FieldValueService(organizationId, userId, db)
+      await fieldValueService.setValuesForEntity({
+        recordId: documentRecordId,
+        values,
+        publishEvents: spec.publishEvents,
+      })
+    }
   }
 
   await spec.afterWrite?.({ organizationId, userId, documentInstanceId, db })
@@ -574,11 +631,29 @@ export async function recomputeLineTotal(params: {
   lineInstanceId: string
   /** Defaults to `line_item` — the finalize integrity passes call it that way. */
   line?: LineTotalsSpec
+  db?: Database
 }): Promise<void> {
-  const { organizationId, userId, lineInstanceId } = params
+  const { organizationId, userId, lineInstanceId, db } = params
   const line = params.line ?? LINE_ITEM_TOTALS_SPEC
   const lineRecordId = toRecordId(line.lineEntityType, lineInstanceId)
-  const handler = new UnifiedCrudHandler(organizationId, userId)
+  const handler = new UnifiedCrudHandler(organizationId, userId, db)
+
+  // The totals stand-down (money plan 37 §6): a connector-transcribed line's own total must
+  // never be overwritten by the engine — the sink already wrote the true `lineTotal`.
+  const lineManaged = await isFieldConnectorManaged(
+    db ?? database,
+    organizationId,
+    lineInstanceId,
+    line.lineTotalAttr
+  )
+  if (lineManaged) {
+    logger.debug('line total recompute skipped — connector-managed record', {
+      organizationId,
+      lineInstanceId,
+      lineTotalAttr: line.lineTotalAttr,
+    })
+    return
+  }
 
   const cf = await getOrgCache()
     .from(organizationId, 'customFields')
@@ -593,7 +668,7 @@ export async function recomputeLineTotal(params: {
   const qty = qtyTyped ? (extractValue(qtyTyped) as number) : 0
   const unitPrice = unitPriceTyped ? (extractValue(unitPriceTyped) as number) : null
 
-  const fieldValueService = new FieldValueService(organizationId, userId)
+  const fieldValueService = new FieldValueService(organizationId, userId, db)
   await fieldValueService.setValuesForEntity({
     recordId: lineRecordId,
     values: [{ fieldId: line.lineTotalAttr, value: computeLineTotal(qty, unitPrice) }],

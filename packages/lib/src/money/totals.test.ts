@@ -145,6 +145,56 @@ describe('computeDocumentTotals', () => {
   })
 })
 
+describe('computeDocumentTotals — shipping (money plan 37 §6)', () => {
+  it('defaults shipping to 0 when absent, matching the pre-shipping formula byte-for-byte', () => {
+    const lines: LineForTotals[] = [{ lineTotal: 10_000, taxable: true }]
+    const withoutShipping = computeDocumentTotals(lines, { taxRate: 10 })
+    const explicitlyUndefined = computeDocumentTotals(lines, { taxRate: 10, shipping: undefined })
+    expect(withoutShipping).toEqual({
+      subtotal: 10_000,
+      discountAmount: 0,
+      taxTotal: 1000,
+      total: 11_000,
+    })
+    expect(explicitlyUndefined).toEqual(withoutShipping)
+  })
+
+  it('defaults shipping to 0 when explicitly null', () => {
+    const lines: LineForTotals[] = [{ lineTotal: 10_000, taxable: true }]
+    const result = computeDocumentTotals(lines, { shipping: null })
+    expect(result.total).toBe(10_000)
+  })
+
+  it('adds a stated shipping amount on top of subtotal - discount + tax', () => {
+    const lines: LineForTotals[] = [{ lineTotal: 10_000, taxable: true }]
+    const result = computeDocumentTotals(lines, { taxRate: 10, shipping: 500 })
+    expect(result.subtotal).toBe(10_000)
+    expect(result.taxTotal).toBe(1000)
+    // 10000 - 0 discount + 1000 tax + 500 shipping
+    expect(result.total).toBe(11_500)
+  })
+
+  it('shipping is never taxed and never discounted — it folds in after both', () => {
+    const lines: LineForTotals[] = [{ lineTotal: 10_000, taxable: true }]
+    const result = computeDocumentTotals(lines, {
+      discountType: 'percent',
+      discountValue: 50,
+      taxRate: 10,
+      shipping: 500,
+    })
+    // subtotal 10000, discount 5000, taxBase 5000, tax 500, total = 10000-5000+500+500 = 6000
+    expect(result.discountAmount).toBe(5000)
+    expect(result.taxTotal).toBe(500)
+    expect(result.total).toBe(6000)
+  })
+
+  it('does not add a shipping key to the returned totals shape', () => {
+    const result = computeDocumentTotals([], { shipping: 500 })
+    expect(Object.keys(result).sort()).toEqual(['discountAmount', 'subtotal', 'taxTotal', 'total'])
+    expect(result.total).toBe(500)
+  })
+})
+
 describe('computeDocumentTotals — optional lines (money plan 18)', () => {
   it('excludes a deselected optional line from subtotal, taxable subtotal, and discount base', () => {
     const lines: LineForTotals[] = [

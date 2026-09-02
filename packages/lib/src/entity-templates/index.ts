@@ -1,6 +1,10 @@
 // packages/lib/src/entity-templates/index.ts
 
-export { appTemplateId, projectAppConnectorTemplates } from './app-template-projector'
+export {
+  appTemplateId,
+  projectAppEntityTemplate,
+  projectAppEntityTemplates,
+} from './app-template-projector'
 export {
   getAppTemplates,
   getOrgTemplateSummaries,

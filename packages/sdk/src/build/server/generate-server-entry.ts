@@ -27,7 +27,7 @@ type ToolModules = Map<string, { execute?: WorkflowHandlerData | null }>
 /**
  * Map of data connector handlers — `{ execute: WorkflowHandlerData }` per
  * connector id. Registry consumed by the lambda data-connector executor. See
- * plans/data-connectors/claude/03-connectors-and-sources.md §4.
+ * docs/app-fields-and-entities-guide.md.
  */
 type DataConnectorModules = Map<string, { execute?: WorkflowHandlerData | null }>
 
@@ -375,7 +375,7 @@ export async function generateServerEntry({
         // Build __AUXX_DATA_CONNECTORS__ — the connector registry read by the
         // lambda data-connector-executor. Mirrors __AUXX_TOOLS__: the executor
         // reads execute({ streamKey, mode, state, connection, config }) off this
-        // global. See plans/data-connectors/claude/03-connectors-and-sources.md §4.
+        // global. See docs/app-fields-and-entities-guide.md.
         const __AUXX_DATA_CONNECTORS__ = {};
 
         for (const [connectorId, handlers] of dataConnectorModulesMap.entries()) {

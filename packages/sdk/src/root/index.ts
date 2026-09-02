@@ -26,22 +26,28 @@ export { parseScopeString, resolveCapabilities } from '../shared/scopes.js'
 export type { App, AppSettings, Permission } from './app.js'
 export type {
   ConnectorConnection,
-  ConnectorDefaultMapping,
-  ConnectorEntityDecl,
+  ConnectorConnectionField,
+  ConnectorContributingFieldSourceOnly,
+  ConnectorContributingFieldToAppField,
+  ConnectorContributingFieldToTarget,
+  ConnectorContributingMappingField,
   ConnectorExecute,
   ConnectorExecuteArgs,
   ConnectorFetchResult,
-  ConnectorFieldCapabilities,
-  ConnectorFieldDecl,
+  ConnectorMapping,
+  ConnectorOwnedMappingField,
   ConnectorRecord,
-  ConnectorRelationshipDecl,
-  ConnectorRelationshipTargetRef,
   ConnectorStreamDecl,
   ConnectorStreamState,
+  ContributingConnectorMapping,
   DataConnectorDefinition,
+  FieldMergeStrategy,
+  OwnedConnectorMapping,
 } from './data-connectors/index.js'
 // Data Connectors surface — `import { defineDataConnector } from '@auxx/sdk/data-connectors'`
 export { defineDataConnector } from './data-connectors/index.js'
+// Entities surface — `import { defineEntity } from '@auxx/sdk/entities'`
+export { defineEntity, type EntityDecl } from './entities/index.js'
 // Fields surface — `import { defineField, defineFields } from '@auxx/sdk/fields'`
 export {
   type AppFieldDefinition,
@@ -50,6 +56,7 @@ export {
   defineFields,
   FIELD_TYPES,
   type FieldCapabilities,
+  type FieldDecl,
   type FieldScope,
   type FieldSelectOption,
   type FieldType,

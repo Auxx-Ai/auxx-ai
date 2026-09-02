@@ -18,6 +18,10 @@ const h = vi.hoisted(() => ({
   setValuesForEntity: vi.fn(),
   syncInvoicePaymentState: vi.fn(),
   fieldValueRows: vi.fn(),
+  /** The totals stand-down's `isFieldConnectorManaged` read — a DIFFERENT table
+   * (`DataConnectorItem`) from the line-value read below, kept off `fieldValueRows`'s
+   * call count so the "one query, not one per line" assertions still measure only that. */
+  managedFieldsRows: vi.fn(),
 }))
 
 vi.mock('../cache', () => ({
@@ -39,7 +43,14 @@ vi.mock('@auxx/database', async () => {
   const schema = await import('../../../database/src/db/schema/index')
   return {
     schema,
-    database: { select: () => ({ from: () => ({ where: () => h.fieldValueRows() }) }) },
+    database: {
+      select: () => ({
+        from: (table: unknown) => ({
+          where: () =>
+            table === schema.DataConnectorItem ? h.managedFieldsRows() : h.fieldValueRows(),
+        }),
+      }),
+    },
   }
 })
 
@@ -89,6 +100,7 @@ beforeEach(() => {
   h.listFiltered.mockResolvedValue({ ids: [] })
   h.getFieldValues.mockResolvedValue(new Map())
   h.fieldValueRows.mockResolvedValue([])
+  h.managedFieldsRows.mockResolvedValue([])
 })
 
 describe('the line read is set-based', () => {

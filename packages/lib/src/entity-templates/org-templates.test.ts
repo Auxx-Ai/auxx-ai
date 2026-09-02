@@ -1,9 +1,10 @@
 // packages/lib/src/entity-templates/org-templates.test.ts
-// Covers the org-aware resolver (v6): the static gallery merges with templates
-// projected from the org's installed-app catalogs, and `app:*` ids resolve only when
-// an installed app declares them.
+// Covers the org-aware resolver (app-fields-and-entities-plan Phase 2): the static
+// gallery merges with templates projected from the org's installed apps' declared
+// entities (`catalog.entities`), and `app:*` ids resolve only when an installed app
+// declares them.
 
-import type { CatalogDataConnector } from '@auxx/database'
+import type { CatalogEntity } from '@auxx/database'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const getCachedInstalledApps = vi.fn()
@@ -17,40 +18,18 @@ import {
   resolveOrgTemplatesByIds,
 } from './org-templates'
 
-const CONNECTOR: CatalogDataConnector = {
-  id: 'shopify.core',
-  label: 'Shopify Core',
-  description: null,
-  requiresConnection: true,
-  iconKey: 'shopping-bag',
-  configJsonSchema: {},
-  streams: [
-    {
-      key: 'order',
-      displayFieldKey: 'name',
-      fields: [{ fieldKey: 'name', sourcePath: 'name', type: 'TEXT', name: 'Order Name' }],
-      defaultMappings: [
-        {
-          rootPath: '',
-          target: {
-            mode: 'owned',
-            entity: {
-              key: 'orders',
-              apiSlug: 'shopify_orders',
-              singular: 'Order',
-              plural: 'Orders',
-              primaryDisplayField: 'name',
-            },
-          },
-        },
-      ],
-    },
-  ],
+const ORDERS_ENTITY: CatalogEntity = {
+  key: 'orders',
+  apiSlug: 'shopify_orders',
+  singular: 'Order',
+  plural: 'Orders',
+  primaryDisplayField: 'name',
+  fields: [{ key: 'name', type: 'TEXT', name: 'Order Name' }],
 }
 
 const INSTALLED_APP = {
   app: { slug: 'shopify', title: 'Shopify' },
-  dataConnectors: [CONNECTOR],
+  entities: [ORDERS_ENTITY],
 }
 
 describe('org-aware template resolution', () => {

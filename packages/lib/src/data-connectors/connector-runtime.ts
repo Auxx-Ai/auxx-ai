@@ -13,8 +13,14 @@ import {
   type RuntimeConnectionData,
   resolveConnectionForRuntime,
 } from '../connections/resolve-connection-for-runtime'
+import { UnprocessableEntityError } from '../errors'
 import { connectorFor } from './connectors'
-import type { DataConnectorDefinition, StreamRequestConfig } from './connectors/types'
+import type {
+  ConnectorRecord,
+  ConnectorYield,
+  DataConnectorDefinition,
+  StreamRequestConfig,
+} from './connectors/types'
 import { isConnectorCheckpoint } from './connectors/types'
 import { type DataConnectorRow, listStreams } from './service'
 
@@ -200,4 +206,144 @@ function pickAllowlisted(
     if (headers[key] !== undefined) picked[key] = headers[key]
   }
   return Object.keys(picked).length > 0 ? picked : undefined
+}
+
+// ── Paginating sweep (duplicate-SKU pre-flight, plans/money/design/duplicate-sku-preflight.md §6.1) ──
+
+/**
+ * Thrown by {@link drainConnectorFetch} when a sweep is bounded by `maxPages`
+ * and the source has not reported exhaustion (no terminal checkpoint) within
+ * that ceiling.
+ *
+ * A bounded sweep that silently truncates is worse than one that fails loudly:
+ * the whole point of the duplicate-SKU pre-flight (design §5) is "read the
+ * whole catalog, never a sample" — a truncated sweep that reports "no
+ * duplicates" over a catalog it never finished reading is a false negative on
+ * the one guarantee the report exists to make.
+ */
+export class ConnectorSweepPageCeilingError extends UnprocessableEntityError {
+  constructor(streamKey: string, maxPages: number) {
+    super(
+      `Connector sweep of stream "${streamKey}" exceeded its ${maxPages}-page ceiling ` +
+        'before the source reported it was exhausted. Raise maxPages or run the sweep ' +
+        'as a background job instead of an interactive one (design §8 item 4).'
+    )
+  }
+}
+
+/** What {@link drainConnectorFetch} collected from one connector fetch. */
+export interface DrainConnectorFetchResult {
+  /** Every non-checkpoint record yielded, across every page. */
+  records: ConnectorRecord[]
+  /** Pages (checkpoints) observed. A connector that never checkpoints (a single
+   *  unpaginated response, e.g. the fixture connector) still counts as one page. */
+  pagesFetched: number
+}
+
+/**
+ * Drain a connector fetch's record iterable to exhaustion, collecting every
+ * yielded record.
+ *
+ * Both built-in connectors that page (`generic-rest`'s `fetchRecords` and the
+ * app-connector adapter's `invokePage` loop) already loop internally across
+ * EVERY page within one `fetch()` call, yielding a `ConnectorCheckpoint`
+ * between pages and a terminal one (no `cursor`) when the source is exhausted.
+ * That is different from {@link import('./connector-slice-loop').runConnectorSlice},
+ * which deliberately STOPS at a page/time/record budget mid-stream so one
+ * BullMQ job never blocks past its lock lease, and resumes the next slice from
+ * the held cursor. A one-shot interactive sweep has no lease to protect, so
+ * this never needs to re-invoke `fetch` with a resume cursor — it only needs to
+ * keep consuming until the iterable itself ends.
+ *
+ * `maxPages` is a sanity ceiling, not a resume point — design §8 item 4 leaves
+ * "job + progress vs. a bounded interactive path" for a future task to decide;
+ * this just refuses to run forever against a very large catalog. Exceeding it
+ * throws {@link ConnectorSweepPageCeilingError} rather than returning a partial
+ * result, because a partial sweep cannot honor "never a sample" (design §5).
+ *
+ * Exported (separately from {@link sweepConnectorFetch}) so the page-boundary
+ * and ceiling behavior — the exact regression this exists to guard against, a
+ * duplicate that only shows up on a later page — unit-tests against a
+ * hand-written `AsyncIterable<ConnectorYield>` without needing a real connector
+ * or credential.
+ */
+export async function drainConnectorFetch(
+  records: AsyncIterable<ConnectorYield>,
+  streamKey: string,
+  maxPages?: number
+): Promise<DrainConnectorFetchResult> {
+  const collected: ConnectorRecord[] = []
+  let pagesFetched = 0
+  let sawCheckpoint = false
+
+  for await (const y of records) {
+    if (isConnectorCheckpoint(y)) {
+      sawCheckpoint = true
+      pagesFetched += 1
+      if (maxPages !== undefined && pagesFetched > maxPages) {
+        throw new ConnectorSweepPageCeilingError(streamKey, maxPages)
+      }
+      continue
+    }
+    collected.push(y)
+  }
+
+  // A connector that never checkpoints at all (one unpaginated response) still
+  // read exactly one page — `pagesFetched` would otherwise read 0 for a
+  // perfectly complete sweep.
+  return { records: collected, pagesFetched: sawCheckpoint ? pagesFetched : 1 }
+}
+
+/** Input to a full-catalog sweep — a stream to page through in its entirety. */
+export interface SweepConnectorFetchInput {
+  /** Which stream to sweep, e.g. `'product'`. */
+  streamKey: string
+  /** Per-stream request config (generic-rest); omitted for app connectors. */
+  requestConfig?: StreamRequestConfig
+  /** Ceiling on pages fetched before {@link ConnectorSweepPageCeilingError}. Unbounded when omitted. */
+  maxPages?: number
+}
+
+/**
+ * Page through a connector stream in its ENTIRETY — the same definition +
+ * resolved credential {@link sampleConnectorFetch} uses (`prepareConnectorFetch`,
+ * §top-of-file), no sink, but never stopping at the first page. A sibling
+ * rather than a `sampleConnectorFetch` option: callers of the test-fetch
+ * preview rely on it returning immediately after the first page, so this
+ * cannot be folded into it without changing that contract.
+ *
+ * Read-only: this never constructs a sink, never calls `entitySink`, and never
+ * touches `DataConnectorItem`/`EntityInstance`. It is the read-only core the
+ * duplicate-SKU adoption pre-flight sweeps with
+ * (`data-connectors/preflight/sweep.ts`).
+ */
+export async function sweepConnectorFetch(
+  db: Database,
+  organizationId: string,
+  userId: string,
+  connector: DataConnectorRow,
+  input: SweepConnectorFetchInput
+): Promise<DrainConnectorFetchResult> {
+  const { definition, credential } = await prepareConnectorFetch(
+    db,
+    organizationId,
+    connector,
+    userId
+  )
+  const requestConfig = await resolveRequestConfig(db, organizationId, connector, {
+    streamKey: input.streamKey,
+    requestConfig: input.requestConfig,
+  })
+  const { records } = await definition.fetch({
+    streamKey: input.streamKey,
+    // Always a full crawl, never the incremental delta — the sweep must see
+    // every variant regardless of what the connector's steady-state cursor
+    // remembers (design §5: "read the whole catalog, not a sample").
+    mode: 'snapshot',
+    state: {},
+    credential,
+    config: connector.config,
+    requestConfig,
+  })
+  return drainConnectorFetch(records, input.streamKey, input.maxPages)
 }

@@ -18,7 +18,6 @@ export const FIELD_TYPES = [
   'EMAIL',
   'URL',
   'RICH_TEXT',
-  'PHONE',
   'PHONE_INTL',
   'ADDRESS',
   'ADDRESS_STRUCT',
@@ -39,7 +38,12 @@ export const FIELD_TYPES = [
   'ACTOR',
 ] as const
 
-/** A platform field type. */
+/**
+ * A platform field type. Shared by `defineFields`, `defineEntity` and connector
+ * mapping field declarations — the one field-type vocabulary the whole author
+ * surface uses. Mirrored (not imported — the SDK is a standalone npm package)
+ * by the `CatalogField` type in `packages/database/src/db/schema/app-deployment.ts`.
+ */
 export type FieldType = (typeof FIELD_TYPES)[number]
 
 /**
@@ -69,7 +73,7 @@ export interface FieldCapabilities {
   hidden?: boolean
 }
 
-/** Scope of an app-declared field — see app-registered custom fields §7. */
+/** Scope of an app-declared field — see docs/app-fields-and-entities-guide.md. */
 export type FieldScope = 'installation' | 'connection'
 
 /** A select option for SINGLE_SELECT / MULTI_SELECT / TAGS fields. */
@@ -80,17 +84,17 @@ export interface FieldSelectOption {
 }
 
 /**
- * Base `FieldType → TS value` map (not options-aware). Drives the typed
- * `ctx.entities` value types. Select types resolve to `string` here; the
- * options-aware `FieldValueType<F>` (define-field.ts) narrows them to the
- * declared option-value union for a concrete field definition.
+ * Base `FieldType → TS value` map (not options-aware). Drives the typed value
+ * I/O in `.auxx/app-fields.d.ts` (`@auxx/sdk/server`'s `setFieldValues` /
+ * `getFieldValue`). Select types resolve to `string` here; the options-aware
+ * `FieldValueType<F>` (define-field.ts) narrows them to the declared
+ * option-value union for a concrete field definition.
  */
 export interface FieldTypeValueMap {
   TEXT: string
   EMAIL: string
   URL: string
   RICH_TEXT: string
-  PHONE: string
   PHONE_INTL: string
   ADDRESS: string
   DATE: string

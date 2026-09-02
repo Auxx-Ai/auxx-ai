@@ -41,12 +41,15 @@ interface EntityTemplateDialogProps {
   /** Called after successful installation with the full result including fieldIdMap */
   onComplete?: (result: EntityTemplateInstallResult) => void
   /**
-   * Connector/app ownership to stamp on installed defs + fields (v6). Set when the
-   * dialog is opened inside a connector wizard so the installed record-type defs are
+   * Connector/app ownership to stamp on installed defs + fields. Set when the
+   * dialog is opened inside a connector wizard, or as the app-install consent step
+   * (app-fields-and-entities-plan §4.1), so the installed record-type defs are
    * connector-owned (delete prompt) and app-owned (uninstall cleanup + appFieldKey
-   * idempotency). Absent for a plain gallery install.
+   * idempotency). `appSlug` is required alongside `appInstallationId` so an owned
+   * identity column stamps `CustomField.appSlug` (mirrors into `RecordIdentity`).
+   * Absent for a plain gallery install.
    */
-  installContext?: { dataConnectorId?: string; appInstallationId?: string }
+  installContext?: { dataConnectorId?: string; appInstallationId?: string; appSlug?: string }
 }
 
 type EntityTemplate = RouterOutputs['entityDefinition']['getTemplates'][number]
@@ -150,7 +153,14 @@ export function EntityTemplateDialog({
     .filter(Boolean) as NonNullable<typeof templateDetail>[]
 
   // ── Conflict detection ──────────────────────────────────────────────
-  /** Map of templateId → conflicting Resource (if any) */
+  /**
+   * Map of templateId → conflicting Resource (if any). A `entityType`-carrying
+   * resource is a PLATFORM system definition (Contact, Order, Line Item, …) —
+   * never a candidate for "link to existing": `installTemplates`'s linked-entity
+   * guard (app-fields-and-entities-plan §4.4) already refuses this server-side
+   * for an app/connector install, so surfacing it here as an auto-"use existing"
+   * conflict would just make every such install fail after the user confirms.
+   */
   const conflictMap = useMemo(() => {
     const map = new Map<string, Resource>()
     if (!templateDetail) return map
@@ -160,13 +170,14 @@ export function EntityTemplateDialog({
     for (const template of templatesToCheck) {
       // Try matching by apiSlug first
       const bySlug = getResourceById(template.entity.apiSlug)
-      if (bySlug) {
+      if (bySlug && bySlug.entityType == null) {
         map.set(template.id, bySlug)
         continue
       }
       // Fallback: match by singular name (case-insensitive)
       const byName = resources.find(
-        (r) => r.label.toLowerCase() === template.entity.singular.toLowerCase()
+        (r) =>
+          r.entityType == null && r.label.toLowerCase() === template.entity.singular.toLowerCase()
       )
       if (byName) {
         map.set(template.id, byName)

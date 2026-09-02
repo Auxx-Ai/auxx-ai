@@ -31,9 +31,13 @@ const INSTALLED_APP = {
       streams: [
         {
           key: 'thing',
-          displayFieldKey: 'name',
-          fields: [{ fieldKey: 'name', sourcePath: 'name', type: 'TEXT', name: 'Name' }],
-          defaultMappings: [],
+          mappings: [
+            {
+              rootPath: '',
+              target: { entityKey: 'thing' },
+              fields: [{ key: 'name', sourcePath: 'name' }],
+            },
+          ],
           exampleRecord: {},
         },
       ],

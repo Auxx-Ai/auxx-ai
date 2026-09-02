@@ -1,14 +1,14 @@
 // packages/sdk/__fixtures__/connector-app/src/shopify-core.connector.ts
 //
-// The Shopify Core data connector — the first real app-connector (phase 4).
-// Declares an `order` stream (source schema for one order, incl. embedded
-// customer + line_items) plus the recommended fan-out: order root → owned
-// shopify_orders def, customer → contributing contact (match on email),
-// line_items[] → owned shopify_line_items, line_items[].product_id → reference
-// to shopify_products. The platform validates + maps + writes — this app only
-// declares the shape + ships the `execute` fetch handler.
+// The Shopify Core data connector — declares an `order` stream's fan-out: the
+// order root maps onto the owned `orders` entity, `customer` contributes to
+// the platform `contact` (matched on email, `storeDomain` filled from
+// connection metadata), `line_items[]` maps onto the owned `line_items`
+// entity, and `line_items[].product_id` is a reference-only edge onto the
+// owned `products` entity. The platform validates + maps + writes — this app
+// only declares the shape + ships the `execute` fetch handler.
 //
-// See plans/data-connectors/claude/03-connectors-and-sources.md §3-4.
+// See docs/app-fields-and-entities-guide.md.
 
 import { defineDataConnector } from '@auxx/sdk/data-connectors'
 import { z } from 'zod/v4'
@@ -41,111 +41,57 @@ export const shopifyCoreDataConnector = defineDataConnector({
   streams: [
     {
       key: 'order',
-      displayFieldKey: 'name',
       webhookTrigger: { filter: { topic: 'orders/updated' }, paths: ['resourceId'] },
-      // SOURCE schema (Layer A) — the shape of one fetched order, including the
-      // embedded customer + line_items. PII flags on customer fields are
-      // surfaced + default-excluded in the mapping UI.
-      fields: {
-        shopify_id: {
-          type: 'TEXT',
-          name: 'Shopify Order ID',
-          sourcePath: 'id',
-          isExternalId: true,
-        },
-        name: { type: 'TEXT', name: 'Order Name', sourcePath: 'name' },
-        totalPrice: { type: 'CURRENCY', name: 'Total', sourcePath: 'total_price' },
-        financialStatus: {
-          type: 'TEXT',
-          name: 'Financial Status',
-          sourcePath: 'financial_status',
-        },
-        'customer.email': {
-          type: 'EMAIL',
-          name: 'Customer Email',
-          sourcePath: 'customer.email',
-          pii: true,
-        },
-        'customer.firstName': {
-          type: 'TEXT',
-          name: 'Customer First',
-          sourcePath: 'customer.first_name',
-          pii: true,
-        },
-        'lineItems.sku': { type: 'TEXT', name: 'Line SKU', sourcePath: 'line_items[].sku' },
-        'lineItems.productId': {
-          type: 'TEXT',
-          name: 'Line Product ID',
-          sourcePath: 'line_items[].product_id',
-        },
-      },
-      // Recommended fan-out — root + each embedded branch + the id-only ref.
-      // The user confirms/overrides at setup; branches not declared here are
-      // inferred from the schema tree.
-      defaultMappings: [
+      mappings: [
         {
+          // Root record — owned `orders`. Each field's `key` names a field
+          // already declared on the entity; type/name/options/identity are
+          // inherited from there.
           rootPath: '',
-          target: {
-            mode: 'owned',
-            entity: {
-              key: 'orders',
-              apiSlug: 'shopify_orders',
-              singular: 'Shopify Order',
-              plural: 'Shopify Orders',
-              primaryDisplayField: 'name',
-            },
-          },
+          target: { entityKey: 'orders' },
+          fields: [
+            { key: 'shopifyId', sourcePath: 'id' },
+            { key: 'name', sourcePath: 'name' },
+            { key: 'totalPrice', sourcePath: 'total_price' },
+            { key: 'financialStatus', sourcePath: 'financial_status' },
+          ],
         },
         {
+          // Embedded customer — contributes to the platform `contact`. Matched
+          // on email (secondary key); `storeDomain` filled from connection
+          // metadata (the only synthetic write channel).
           rootPath: 'customer',
           relationshipFieldKey: 'customer',
-          target: {
-            mode: 'contributing',
-            entityKind: 'contact',
-            // Merge into an existing contact by email on first link (external id
-            // stays the primary key). The provisioner flags the bound `email` field.
-            matchFieldKeys: ['email'],
-          },
+          target: { entityKind: 'contact' },
+          fields: [
+            {
+              sourcePath: 'email',
+              target: 'primary_email',
+              match: true,
+              mergeStrategy: 'fill_blank',
+            },
+            { sourcePath: 'first_name', target: 'first_name' },
+          ],
+          connectionFields: [{ appField: 'storeDomain', from: 'label' }],
         },
         {
+          // Embedded line items — owned `line_items`, linked via the
+          // `lineItems` RELATIONSHIP field declared on `orders`.
           rootPath: 'line_items[]',
           relationshipFieldKey: 'lineItems',
-          relationship: {
-            fieldKey: 'lineItems',
-            name: 'Line Items',
-            cardinality: 'has_many',
-            inverseName: 'Order',
-          },
-          target: {
-            mode: 'owned',
-            entity: {
-              key: 'line_items',
-              apiSlug: 'shopify_line_items',
-              singular: 'Line Item',
-              plural: 'Line Items',
-            },
-          },
+          target: { entityKey: 'line_items' },
+          fields: [
+            { key: 'shopifyId', sourcePath: 'id' },
+            { key: 'sku', sourcePath: 'sku' },
+          ],
         },
         {
+          // Id-only reference — links each line item's `product` RELATIONSHIP
+          // field to the owned `products` entity. No fields: purely a link.
           rootPath: 'line_items[].product_id',
           linkMode: 'reference',
           relationshipFieldKey: 'product',
-          relationship: {
-            fieldKey: 'product',
-            name: 'Product',
-            cardinality: 'belongs_to',
-            inverseName: 'Line Items',
-            targetRef: { ownedKey: 'products' },
-          },
-          target: {
-            mode: 'owned',
-            entity: {
-              key: 'products',
-              apiSlug: 'shopify_products',
-              singular: 'Shopify Product',
-              plural: 'Shopify Products',
-            },
-          },
+          target: { entityKey: 'products' },
         },
       ],
       // Canonical sample → schema preview + dry-run before the first live fetch.

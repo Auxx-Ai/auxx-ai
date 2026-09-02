@@ -54,11 +54,10 @@ const catalogWithBinding: CatalogDataConnector = {
   streams: [
     {
       key: 'variant',
-      displayFieldKey: 'name',
-      fields: [],
+      mappings: [],
       webhookTrigger: { filter: { topic: 'inventory_levels/update' }, paths: ['resourceId'] },
     },
-    { key: 'orders', displayFieldKey: 'name', fields: [] },
+    { key: 'orders', mappings: [] },
   ],
 }
 
@@ -127,7 +126,7 @@ describe('restampConnectorWebhookBindings', () => {
     )
     const catalogStreamDropped: CatalogDataConnector = {
       ...catalogWithBinding,
-      streams: [{ key: 'variant', displayFieldKey: 'name', fields: [] }],
+      streams: [{ key: 'variant', mappings: [] }],
     }
 
     await restampConnectorWebhookBindings(db, ORG, INSTALL, catalogStreamDropped)

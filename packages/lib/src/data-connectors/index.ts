@@ -38,11 +38,11 @@ export { runWebhookSteeredRun } from './connector-webhook'
 export type {
   AppConnectorContext,
   ConnectorCheckpoint,
-  ConnectorDefaultMapping,
-  ConnectorEntityDecl,
+  ConnectorConnectionField,
+  ConnectorContributingMappingField,
   ConnectorFetchArgs,
-  ConnectorFieldCapabilities,
-  ConnectorFieldDecl,
+  ConnectorMapping,
+  ConnectorOwnedMappingField,
   ConnectorRecord,
   ConnectorStreamDecl,
   ConnectorStreamState,
@@ -78,6 +78,8 @@ export {
   syncConnectorScheduler,
   syncConnectorSweepScheduler,
 } from './data-connector-scheduler'
+// Connector-managed field check — the totals stand-down (plans/money/tasks/37 §6)
+export { isFieldConnectorManaged } from './managed-fields'
 export type { MappedWrite } from './map-record'
 // Mapping layer
 export { mapRecord } from './map-record'
@@ -112,6 +114,26 @@ export {
   updateMapping,
   updateStream,
 } from './mutations'
+// Duplicate-SKU adoption pre-flight, read-only core (plans/money/design/duplicate-sku-preflight.md)
+export {
+  type AdoptionPreflightReport,
+  type AmbiguousSku,
+  type ClassificationSummary,
+  type ClassifiedVariant,
+  classifyVariants,
+  type ExistingPart,
+  extractVariantsFromProducts,
+  findPartsBySkus,
+  findPartsBySkusForField,
+  type RunAdoptionPreflightDeps,
+  type RunAdoptionPreflightInput,
+  runAdoptionPreflight,
+  type SweepProductVariantsInput,
+  type SweepProductVariantsResult,
+  type SweptVariant,
+  sweepProductVariants,
+  type VariantClass,
+} from './preflight'
 export type {
   ProvisionFieldSpec,
   ProvisionResult,

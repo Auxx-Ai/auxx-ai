@@ -53,7 +53,9 @@ function computeDiscountAmount(
  * - tax base = the *taxable* share of the *discounted* subtotal, allocated pro-rata:
  *   `taxableSubtotal * (1 - discountAmount / subtotal)`
  * - `taxTotal` = `taxBase * taxRate / 100`
- * - `total` = `subtotal - discountAmount + taxTotal`
+ * - `total` = `subtotal - discountAmount + taxTotal + shipping` (money plan 37 §6). `shipping`
+ *   defaults to 0 when absent, so a caller that never sets it (quote, invoice) gets byte-for-byte
+ *   the pre-shipping formula.
  *
  * Deselected options (money plan 18 §2) — a line with `optional: true` and
  * `optionalSelected: false` contributes nothing to `subtotal`, `taxableSubtotal`, or (by
@@ -89,7 +91,8 @@ export function computeDocumentTotals(
   const taxBase = subtotal > 0 ? taxableSubtotal * (1 - discountAmount / subtotal) : 0
   const taxTotal = roundCents(taxBase * (taxRate / 100))
 
-  const total = roundCents(subtotal - discountAmount + taxTotal)
+  const shipping = billing.shipping ?? 0
+  const total = roundCents(subtotal - discountAmount + taxTotal + shipping)
 
   return { subtotal, discountAmount, taxTotal, total }
 }

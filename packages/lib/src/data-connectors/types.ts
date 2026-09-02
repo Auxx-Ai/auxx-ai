@@ -7,6 +7,13 @@
 // columns are all `jsonb`/`text`, so these richer unions round-trip safely —
 // the service layer casts at the read/write boundary.
 
+import type {
+  CatalogConnectorConnectionField,
+  CatalogConnectorContributingMappingField,
+  CatalogConnectorMapping,
+  CatalogConnectorOwnedMappingField,
+  CatalogConnectorStream,
+} from '@auxx/database'
 import type { FieldType } from '@auxx/database/types'
 import type { ResourceFieldId } from '@auxx/types/field'
 import type { RuntimeConnectionData } from '../connections/resolve-connection-for-runtime'
@@ -354,81 +361,25 @@ export interface FetchResult {
   nextState: ConnectorStreamState
 }
 
-// ── Source schema declarations (03 §1) ────────────────────────────────────────
+// ── Source schema declarations (app-fields-and-entities-plan Phase 2 §4.3) ────
+//
+// The engine no longer declares its own connector-catalog shapes — it mirrors
+// the ones `@auxx/database` already carries for `AppDeployment.catalog`
+// (`CatalogDataConnector`), so there is exactly one shape between the SDK
+// extractor, the catalog projection and the engine. `ConnectorMapping` is the
+// unit that carries source paths (owned: `{ key, sourcePath }` against an
+// entity's own declared field; contributing: `{ sourcePath, target?, appField?,
+// match?, mergeStrategy? }` against an existing def). See
+// docs/app-fields-and-entities-guide.md §5.
 
-/** Field capabilities surfaced on a declared source field. */
-export interface ConnectorFieldCapabilities {
-  hidden?: boolean
-  filterable?: boolean
-}
-
-/** One source field declaration (Layer A — the shape of what a fetch returns). */
-export interface ConnectorFieldDecl {
-  fieldKey: string
-  /** Provider JSON path, e.g. 'total_price' / 'customer.email'. */
-  sourcePath: string
-  type: FieldType
-  name: string
-  /** Flag PII — surfaced + default-excluded in the mapping UI. */
-  pii?: boolean
-  capabilities?: ConnectorFieldCapabilities
-  /** Predefined select option set (SINGLE_SELECT / MULTI_SELECT / TAGS). */
-  options?: Array<{ value: string; label?: string; color?: string }>
-  /** Sub-field set for an ADDRESS_STRUCT field. */
-  addressComponents?: string[]
-  /** This field's value is the owned record's stable external id (dedupe/link key). */
-  isExternalId?: boolean
-}
-
-/** A recommended fan-out mapping the connector suggests (05 §4). User confirms at setup. */
-export interface ConnectorDefaultMapping {
-  /** '' = root, else 'customer' / 'line_items[]'. */
-  rootPath: string
-  /** Explicit parent mapping's rootPath (payload-absolute) for the flat drilled child
-   *  — a second mapping over the parent's own subtree, which prefix nesting can't
-   *  derive. Must be a boundary prefix of (or equal to) `rootPath`. See SDK mirror. */
-  parentRootPath?: string
-  linkMode?: 'upsert' | 'reference'
-  /** Edge on the PARENT def. Bare key → `@app:` envelope; `'system:<systemAttribute>'`
-   *  → a pre-existing system relationship field on the (contributing) parent def. */
-  relationshipFieldKey?: string
-  target:
-    | { mode: 'owned'; entity: ConnectorEntityDecl }
-    | {
-        mode: 'contributing'
-        entityKind: string
-        /** Target field keys to flag as secondary identity-match keys (e.g. `['email']`). */
-        matchFieldKeys?: string[]
-        /** Non-identity field bindings pre-declared by the app author (e.g. `first_name`
-         *  → contact first-name). Bound by key like match keys, sans `identityRole` — unless
-         *  `targetAppField` names an `identity: true` app field, which auto-stamps one. */
-        fieldBindings?: { sourceFieldKey: string; targetKey?: string; targetAppField?: string }[]
-        /** Fill a plain (non-identity) app field from connection metadata (e.g. Shopify
-         *  `shopDomain`) — the only synthetic write channel. See SDK mirror for details. */
-        connectionAppFields?: { appFieldKey: string; from: string }[]
-      }
-}
-
-/** Minimal entity declaration for an owned-mode default mapping. */
-export interface ConnectorEntityDecl {
-  apiSlug: string
-  singular: string
-  plural: string
-  primaryDisplayField?: string
-  /** `fieldKey` of a URL/FILE field to wire as the def's avatar/display image. */
-  avatarField?: string
-}
-
-/** One stream (fetch) declaration. */
-export interface ConnectorStreamDecl {
-  key: string
-  /** Source field declarations (Layer A). */
-  fields: Record<string, ConnectorFieldDecl>
-  displayFieldKey: string
-  defaultMappings?: ConnectorDefaultMapping[]
-  /** Canonical sample → schema preview + dry-run before live call. */
-  exampleRecord?: Record<string, unknown>
-}
+export type ConnectorConnectionField = CatalogConnectorConnectionField
+export type ConnectorContributingMappingField = CatalogConnectorContributingMappingField
+export type ConnectorMapping = CatalogConnectorMapping
+export type ConnectorOwnedMappingField = CatalogConnectorOwnedMappingField
+/** One stream (fetch) declaration — kept under its historical engine name
+ *  (`ConnectorStreamDecl`) since `DataConnectorDefinition.streams` and every
+ *  connector implementation import it from here. */
+export type ConnectorStreamDecl = CatalogConnectorStream
 
 // ── The connector contract (03 §1) ────────────────────────────────────────────
 

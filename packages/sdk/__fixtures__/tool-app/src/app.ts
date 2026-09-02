@@ -172,7 +172,7 @@ export const app = {
   // mapping for `@auxx/sdk/fields` (see compile-and-extract-catalog.ts).
   fields: defineFields([
     {
-      appFieldKey: 'customerId',
+      key: 'customerId',
       type: 'TEXT',
       targetEntity: 'contact',
       scope: 'connection',
@@ -180,7 +180,7 @@ export const app = {
       capabilities: { hidden: true, updatable: false },
     },
     {
-      appFieldKey: 'tier',
+      key: 'tier',
       type: 'SINGLE_SELECT',
       targetEntity: 'contact',
       scope: 'installation',

@@ -354,7 +354,7 @@ export const dataConnectorRouter = createTRPCRouter({
       return {
         appSlug: slug as string | null,
         appTitle: (app?.app.title ?? slug) as string | null,
-        targets: projectConnectorOwnedTargets(slug, catalog),
+        targets: projectConnectorOwnedTargets(slug, catalog, app?.entities ?? []),
       }
     }),
 
@@ -537,7 +537,8 @@ export const dataConnectorRouter = createTRPCRouter({
               scheduleConfig: input.scheduleConfig,
               createdById: ctx.session.userId,
             },
-            catalog
+            catalog,
+            app?.entities ?? []
           )
         }
       }

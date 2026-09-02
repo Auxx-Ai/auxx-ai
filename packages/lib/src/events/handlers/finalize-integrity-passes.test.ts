@@ -273,6 +273,9 @@ describe('totals pass', () => {
       organizationId: ORG,
       userId: 'system',
       lineInstanceId: 'li1',
+      // Threaded through so the totals stand-down's connector-managed check (money plan
+      // 37 §6) reads through this pass's own connection, not a separate pool connection.
+      db: DB,
     })
     // The line-total rewrite happened before the parent recompute summed the lines.
     expect(h.recomputeLineTotal.mock.invocationCallOrder[0]!).toBeLessThan(

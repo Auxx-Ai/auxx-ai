@@ -12,16 +12,16 @@
  *
  * The SDK is published as a standalone npm package, so these types cannot import
  * from `@auxx/lib` / `@auxx/database`. They MUST stay structurally compatible
- * with the engine-side contract in
- * `packages/lib/src/data-connectors/types.ts` and the catalog projection in
+ * with the engine-side contract in `packages/lib/src/data-connectors/types.ts`
+ * and the catalog projection in
  * `packages/database/src/db/schema/app-deployment.ts` (CatalogDataConnector).
  *
- * See plans/data-connectors/claude/03-connectors-and-sources.md §4.
+ * See docs/app-fields-and-entities-guide.md.
  */
 
 import type { z } from 'zod/v4'
-import type { FieldSelectOption, FieldType } from '../fields/field-types.js'
-import type { ActionInputHint } from '../tools/types.js'
+import type { FieldType } from '../fields/field-types.js'
+import type { ActionInputHint, EntityRefKind } from '../tools/types.js'
 
 /**
  * One normalized, SOURCE-shaped record produced by a connector's `execute`. Not
@@ -36,7 +36,7 @@ export interface ConnectorRecord {
   externalId: string
   /** Denormalized display name for the landed entity instance. */
   displayName: string
-  /** Raw source-shaped values keyed by source path (matches the stream fields). */
+  /** Raw source-shaped values keyed by source path (matches the mapped fields). */
   fields: Record<string, unknown>
   /** Tombstone — explicit delete signal. */
   deleted?: boolean
@@ -90,187 +90,193 @@ export interface ConnectorFetchResult {
   }
 }
 
-/** Field capabilities surfaced on a declared source field. */
-export interface ConnectorFieldCapabilities {
-  /** Provision the field hidden (synced but not shown in the CRM grid). */
-  hidden?: boolean
-  /** Usable in Find-node filters. */
-  filterable?: boolean
+/**
+ * Per-field write behavior once a contributing binding lands on the target.
+ * Absent ⇒ `'overwrite'`.
+ *
+ * Mirrors the platform's `FieldMergeStrategy`
+ * (`packages/lib/src/write-policy/types.ts`) — the SDK cannot import
+ * `@auxx/lib`, so this is a structural duplicate. Keep the two in lock-step.
+ *
+ * - `overwrite`, the source value wins.
+ * - `fill_blank`, write only when the TARGET is empty ("don't clobber what a
+ *   human set").
+ * - `connector_owned_only`, write only fields this connector already owns.
+ * - `manual_review`, record a drift suggestion instead of writing.
+ * - `ignore`, never write; the binding is projection-only (Layer A schema
+ *   only).
+ */
+export type FieldMergeStrategy =
+  | 'overwrite'
+  | 'fill_blank'
+  | 'connector_owned_only'
+  | 'manual_review'
+  | 'ignore'
+
+/**
+ * One field on an OWNED mapping (`target: { entityKey }`) — a source path
+ * bound to a field already declared on that `defineEntity`. Type, name,
+ * options and identity are inherited from the entity's own `FieldDecl`, so
+ * nothing is declared twice; `key` is validated against the entity's declared
+ * fields at catalog-extraction time (unknown key ⇒ build error).
+ */
+export interface ConnectorOwnedMappingField {
+  /** Must name a field declared on the target `EntityDecl`. */
+  readonly key: string
+  /** Provider JSON path, relative to the mapping's `rootPath`. */
+  readonly sourcePath: string
+}
+
+/** Fields common to every contributing mapping field. */
+interface ConnectorContributingFieldBase {
+  /** Provider JSON path, relative to the mapping's `rootPath`. */
+  readonly sourcePath: string
+  /**
+   * Secondary identity-match key (today's `matchFieldKeys`) — merges an
+   * incoming record into an existing entity on first link. The external id
+   * (from `appField`, when that field is `identity: true`) is always the
+   * primary key; more than one `match: true` field is an ANDed composite key.
+   */
+  readonly match?: boolean
+  /** Per-field write behavior once bound. Default `'overwrite'`. */
+  readonly mergeStrategy?: FieldMergeStrategy
 }
 
 /**
- * One source field declaration (Layer A — the shape of what a fetch returns).
- * The map key is the stable `fieldKey`; `sourcePath` is the provider JSON path.
+ * Binds the source value onto the target def's own attribute — resolves
+ * against the target's `systemAttribute` or field name (today's `targetKey`).
  */
-export interface ConnectorFieldDecl {
-  /** Provider JSON path, e.g. `'total_price'` / `'customer.email'` / `'line_items[].sku'`. */
-  sourcePath: string
-  type: FieldType
-  name: string
-  /** Flag PII — surfaced + default-excluded in the mapping UI. */
-  pii?: boolean
-  capabilities?: ConnectorFieldCapabilities
-  /**
-   * Predefined option set for `SINGLE_SELECT` / `MULTI_SELECT` / `TAGS` fields.
-   * When present, the platform provisions the owned column with these options so a
-   * synced value renders as a real (colored, filterable) enum chip. Declare the
-   * provider's FULL value set — an incoming value outside the list is rejected at
-   * sink. Ignored for non-select types.
-   */
-  options?: FieldSelectOption[]
-  /**
-   * Sub-field set for an `ADDRESS_STRUCT` field, e.g. `['street', 'city', 'state',
-   * 'country']`. Controls which address components the provisioned field surfaces.
-   * The synced value must be shaped `{ street1, street2, city, state, zipCode,
-   * country }`. Ignored for non-address types.
-   */
-  addressComponents?: string[]
-  /**
-   * This field's value is the owned record's stable external id; the platform marks it
-   * the record's External ID (the dedupe/link key) — a visible, read-only blue-key
-   * column, not a synthetic managed row. Owned streams only, one per owned def; must be
-   * a coercible scalar (TEXT/NUMBER). The seeder stamps `identityRole: externalId` on the
-   * field's mapping (keeping its column write), so `resolveExternalId`'s
-   * `designatedExternalId` reads the same value the app sets on `ConnectorRecord.externalId`.
-   */
-  isExternalId?: boolean
-}
-
-/** Minimal entity declaration for an owned-mode default mapping. */
-export interface ConnectorEntityDecl {
-  /**
-   * Stable owner-scoped identity key for the owned def (e.g. `'orders'`). Distinct
-   * from the cosmetic, collision-suffixed `apiSlug` — this is the adopt/dedupe key
-   * the platform links the def by (`(owner, sourceKey)`) and the cross-stream
-   * relationship target ref (`ownedKey`).
-   */
-  key: string
-  apiSlug: string
-  singular: string
-  plural: string
-  primaryDisplayField?: string
-  /** `fieldKey` of a URL/FILE field to wire as the def's avatar/display image. */
-  avatarField?: string
+export interface ConnectorContributingFieldToTarget extends ConnectorContributingFieldBase {
+  readonly target: string
+  readonly appField?: never
+  readonly type?: never
+  readonly name?: never
 }
 
 /**
- * The edge's target def. For an owned child the target IS this mapping's own owned
- * def — omit `targetRef` (provisioning resolves it from the mapping's provisioned
- * def). For a `reference` to another stream's def, name that target by owned
- * `ownedKey` (the sibling owned def's stable `key`) or contributing `entityKind`.
+ * Binds the source value onto a `defineFields` field this app declares for
+ * the same `entityKind` (today's `targetAppField`). When that field is
+ * `identity: true`, the binding auto-stamps
+ * `identityRole: { kind: 'externalId' }`.
  */
-export type ConnectorRelationshipTargetRef = { ownedKey: string } | { entityKind: string }
-
-/**
- * Provisioning declaration for a parent↔child relationship edge (v5). Drives
- * auto-creation of the relationship field (+ inverse) on the parent def at
- * connector materialization. `fieldKey` must match the mapping's
- * `relationshipFieldKey` so the fan-out resolves the provisioned field.
- */
-export interface ConnectorRelationshipDecl {
-  /** Stable field key of the edge created on the PARENT def (== `relationshipFieldKey`). */
-  fieldKey: string
-  /** Display name for the forward edge (e.g. `'Line Items'`). */
-  name: string
-  /** Forward cardinality from PARENT → this mapping's target. */
-  cardinality: 'has_many' | 'has_one' | 'belongs_to' | 'many_to_many'
-  /** Display name for the auto-created inverse edge on the child/target def. */
-  inverseName: string
-  /** Target def of the edge; omit for an owned child (resolves to the mapping's own def). */
-  targetRef?: ConnectorRelationshipTargetRef
+export interface ConnectorContributingFieldToAppField extends ConnectorContributingFieldBase {
+  readonly appField: string
+  readonly target?: never
+  readonly type?: never
+  readonly name?: never
 }
 
 /**
- * A recommended fan-out mapping the connector suggests (05 §4). The user
- * confirms/overrides at setup; branches not declared here are inferred from the
- * schema tree.
+ * A source-only field with no target — projection only, needed for the
+ * Layer A schema (e.g. a value the `execute` fetch cares about but the
+ * mapping doesn't write anywhere). `type`/`name` are REQUIRED here since
+ * there is no target field to inherit them from.
  */
-export interface ConnectorDefaultMapping {
+export interface ConnectorContributingFieldSourceOnly extends ConnectorContributingFieldBase {
+  readonly type: FieldType
+  readonly name: string
+  readonly target?: never
+  readonly appField?: never
+}
+
+/** One field on a CONTRIBUTING mapping (`target: { entityKind }`). */
+export type ConnectorContributingMappingField =
+  | ConnectorContributingFieldToTarget
+  | ConnectorContributingFieldToAppField
+  | ConnectorContributingFieldSourceOnly
+
+/**
+ * Fills a plain (non-identity) `defineFields` field from the connector's
+ * CONNECTION METADATA (e.g. Shopify `shopDomain`) rather than the source
+ * record — the only synthetic write channel. `appField` must name a declared,
+ * non-identity app field for the mapping's `entityKind` (identity-field target
+ * is an extract-time error — connection metadata can't fill an identity cell);
+ * `from` is the connection metadata key (`ConnectorConnection.metadata`).
+ */
+export interface ConnectorConnectionField {
+  readonly appField: string
+  readonly from: string
+}
+
+/** Fields common to every mapping, owned or contributing. */
+interface ConnectorMappingBase {
   /** `''` = root record, else a subtree path (`'customer'` / `'line_items[]'`). */
-  rootPath: string
+  readonly rootPath: string
   /**
-   * Explicitly name the PARENT mapping's `rootPath` (payload-absolute, like every
-   * rootPath here) when prefix nesting cannot derive it — the flat drilled child: a
-   * SECOND mapping over the same subtree as its parent. E.g. a `variants[]` mapping
-   * contributes the `part`, and a flat `variants[]` sibling with
-   * `parentRootPath: 'variants[]'` contributes that part's `catalog_item`, the edge
-   * stamped via `relationshipFieldKey` (`'system:part_catalog_items'`). Must be a
-   * boundary prefix of — or equal to — `rootPath`. Omit for ordinary nesting: the
-   * platform derives the parent from the longest boundary-prefix mapping (owned or
-   * contributing).
+   * Explicitly name the PARENT mapping's `rootPath` (payload-absolute, like
+   * every rootPath here) when prefix nesting cannot derive it — a flat
+   * drilled child: a SECOND mapping over the same subtree as its parent. Must
+   * be a boundary prefix of — or equal to — `rootPath`. Omit for ordinary
+   * nesting: the platform derives the parent from the longest boundary-prefix
+   * mapping (owned or contributing).
    */
-  parentRootPath?: string
+  readonly parentRootPath?: string
   /** Default: `upsert` for embedded data, `reference` for id-only branches. */
-  linkMode?: 'upsert' | 'reference'
+  readonly linkMode?: 'upsert' | 'reference'
   /**
-   * Runtime pointer the fan-out reads to find the edge field at write time. Keep it
-   * equal to `relationship.fieldKey` when `relationship` is declared. A bare key (no
-   * `relationship`) resolves against a PRE-EXISTING edge — e.g. a reference FK to a
-   * field the connector doesn't provision. A `'system:<systemAttribute>'` value names
-   * a pre-existing SYSTEM relationship field on the parent def (e.g.
-   * `'system:part_catalog_items'`) — for a contributing child whose contributing
-   * parent's edge already exists as a system field; nothing is provisioned for it, so
-   * never pair it with a `relationship` declaration.
+   * Runtime pointer the fan-out reads to find the edge field at write time. A
+   * bare key names a `RELATIONSHIP` field declared on the parent entity
+   * (owned) — provisioning creates it (+ inverse) from that field's own
+   * `relationship` config, nothing is declared again here. A
+   * `'system:<systemAttribute>'` value names a pre-existing SYSTEM
+   * relationship field on a contributing parent def; nothing is provisioned
+   * for it.
    */
-  relationshipFieldKey?: string
-  /**
-   * Provisioning declaration for the parent↔child edge this mapping links on. When
-   * present, connector materialization auto-creates the relationship field (+ its
-   * inverse) on the parent def so the link actually forms at sync time. Omit for
-   * bare-key references that resolve to a pre-existing edge.
-   */
-  relationship?: ConnectorRelationshipDecl
-  target:
-    | { mode: 'owned'; entity: ConnectorEntityDecl }
-    | {
-        mode: 'contributing'
-        entityKind: string
-        /**
-         * Target field keys to flag as secondary identity-match keys (e.g.
-         * `['email']`). The external id is always the primary key; these merge an
-         * incoming record into an existing entity on first link.
-         */
-        matchFieldKeys?: string[]
-        /**
-         * Non-identity field bindings the author pre-declares so a contributing
-         * stream lands closer to `ready` — e.g. `{ sourceFieldKey: 'first_name',
-         * targetKey: 'first_name' }` binds the source field to the contact's
-         * first-name attribute. `targetKey` resolves against the target def's
-         * `systemAttribute` / field name. `targetAppField` (mutually exclusive
-         * with `targetKey`) instead names an app-declared field by its
-         * `appFieldKey` (`defineFields`) — when that field is `identity: true`,
-         * the binding auto-stamps `identityRole: { kind: 'externalId' }`, the
-         * mechanism `isExternalId` uses for owned defs, extended to contributing.
-         * Unresolved bindings are dropped (the mapping stays a setup draft).
-         */
-        fieldBindings?: { sourceFieldKey: string; targetKey?: string; targetAppField?: string }[]
-        /**
-         * Fill a plain (non-identity) app field from the connector's CONNECTION
-         * METADATA (e.g. Shopify `shopDomain`) rather than the source record —
-         * the only synthetic write channel. `appFieldKey` must name a declared,
-         * non-identity app field; `from` is the connection metadata key
-         * (`ConnectorConnection.metadata`).
-         */
-        connectionAppFields?: { appFieldKey: string; from: string }[]
-      }
+  readonly relationshipFieldKey?: string
 }
+
+/**
+ * A mapping whose target is an entity THIS APP OWNS (declared via
+ * `defineEntity`, resolved by `entityKey` against `app.entities` at
+ * catalog-extraction time). Its `fields` bind source paths onto fields
+ * already declared on that entity — type/name/options/identity are inherited,
+ * never redeclared.
+ */
+export interface OwnedConnectorMapping extends ConnectorMappingBase {
+  readonly target: { readonly entityKey: string }
+  readonly fields?: readonly ConnectorOwnedMappingField[]
+  readonly connectionFields?: never
+}
+
+/**
+ * A mapping whose target is a PLATFORM kind (`entityKind`) this app does not
+ * own — the mapping contributes to an existing (possibly shared) def. Its
+ * `fields` bind source paths onto the target's own attributes or onto
+ * `defineFields` app fields.
+ */
+export interface ContributingConnectorMapping extends ConnectorMappingBase {
+  readonly target: { readonly entityKind: EntityRefKind }
+  readonly fields?: readonly ConnectorContributingMappingField[]
+  readonly connectionFields?: readonly ConnectorConnectionField[]
+}
+
+/**
+ * One fan-out mapping — the unit that carries source paths (§2.4). Replaces
+ * the old stream-wide `fields` map + `defaultMappings` + the three parallel
+ * contributing binding lists (`fieldBindings`, `matchFieldKeys`,
+ * `connectionAppFields`), which collapse into `fields` + `connectionFields`
+ * here. The user confirms/overrides at setup; branches not declared here are
+ * inferred from the schema tree.
+ */
+export type ConnectorMapping = OwnedConnectorMapping | ContributingConnectorMapping
 
 /** One stream (fetch) declaration. */
 export interface ConnectorStreamDecl {
   /** Provider resource id / endpoint key, e.g. `'order'`. */
   key: string
-  /** Field-key that holds the record's display name. */
-  displayFieldKey: string
   /**
    * How the platform schedules this stream. `incremental` runs the backfill once
    * then steady `updatedSince`-floored delta runs; `snapshot` (default) re-crawls
    * in full every run. Drives the `mode` handed to `execute`.
    */
   syncMode?: 'snapshot' | 'incremental'
-  /** Source field declarations (Layer A) keyed by stable `fieldKey`. */
-  fields: Record<string, ConnectorFieldDecl>
-  /** Recommended fan-out — root + embedded branches + id-only refs. */
-  defaultMappings?: ConnectorDefaultMapping[]
+  /**
+   * Fan-out mappings — root + embedded branches + id-only refs. The Layer A
+   * source schema is built platform-side from the union of every mapping's
+   * absolute source paths (`rootPath` + `sourcePath`) plus `exampleRecord`,
+   * with declared types overlaid from the resolved target field.
+   */
+  mappings: ConnectorMapping[]
   /** Canonical sample → schema preview + dry-run before the first live fetch. */
   exampleRecord?: Record<string, unknown>
   /**

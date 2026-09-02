@@ -98,6 +98,16 @@ export interface ToolActionContext {
  * `GlPosting.providerId` + `GlPosting.providerEntryId` — two columns, not a
  * `RecordIdentity` mirror — so there is nothing left for an app to address.
  *
+ * ✅ `line_item` was ADDED 2026-09-02 (app-fields-and-entities plan §3.10, the
+ * Shopify native-retarget brief). It breaks the "an entity a user thinks about
+ * and could open" admission rule on purpose: the Shopify connector's
+ * `line_item` stream needs to contribute provenance columns onto the
+ * platform's `line_item` def (order line items), and nothing about this union
+ * is locked, so the earlier admission-rule objection to join-row kinds no
+ * longer applies to this one entry. `gl_posting` was reconsidered in the same
+ * edit and deliberately left OUT — see the retirement note below, which
+ * still applies unchanged: it is Drizzle tables now, not an entity kind.
+ *
  * ⚠️ `gl_account` is the one deliberate EXCEPTION to the rule, flagged rather
  * than quietly folded in. It is `isVisible: false` and machine-written, and a
  * user never opens it. It is admitted because provider identity hangs off it:
@@ -118,6 +128,7 @@ export type EntityRefKind =
   | 'thread'
   | 'order'
   | 'invoice'
+  | 'line_item'
   | 'catalog_item'
   | 'part'
   | 'product'

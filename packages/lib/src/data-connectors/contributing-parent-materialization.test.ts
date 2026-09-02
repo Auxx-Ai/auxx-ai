@@ -6,7 +6,7 @@
 // install to the concrete `defId:fieldId` ref the manual editor stores. DB + org
 // cache are mocked; the assertions read the inserted `DataConnectorMapping` values.
 
-import type { CatalogDataConnector, Database } from '@auxx/database'
+import type { CatalogConnectorStream, Database } from '@auxx/database'
 import { toResourceFieldId } from '@auxx/types/field'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { getCachedCustomFields, getCachedEntityDefId } from '../cache'
@@ -83,41 +83,26 @@ function mockDb() {
 }
 
 /** The full-contribute-mode product stream: product root + part child + flat catalog_item. */
-const STREAM = {
+const STREAM: CatalogConnectorStream = {
   key: 'product',
-  displayFieldKey: 'title',
-  fields: [
-    { fieldKey: 'title', sourcePath: 'title', type: 'TEXT', name: 'Title' },
-    { fieldKey: 'handle', sourcePath: 'handle', type: 'TEXT', name: 'Handle' },
-    { fieldKey: 'variants.sku', sourcePath: 'variants[].sku', type: 'TEXT', name: 'SKU' },
-    { fieldKey: 'variants.price', sourcePath: 'variants[].price', type: 'CURRENCY', name: 'Price' },
-  ],
-  defaultMappings: [
-    { rootPath: '', target: { mode: 'contributing', entityKind: 'product' } },
+  mappings: [
+    { rootPath: '', target: { entityKind: 'product' } },
     {
       rootPath: 'variants[]',
       relationshipFieldKey: 'system:product_parts',
-      target: {
-        mode: 'contributing',
-        entityKind: 'part',
-        fieldBindings: [{ sourceFieldKey: 'variants.sku', targetKey: 'part_sku' }],
-      },
+      target: { entityKind: 'part' },
+      fields: [{ sourcePath: 'sku', target: 'part_sku' }],
     },
     // The flat drilled child: same subtree as the part mapping, explicit parent.
     {
       rootPath: 'variants[]',
       parentRootPath: 'variants[]',
       relationshipFieldKey: 'system:part_catalog_items',
-      target: {
-        mode: 'contributing',
-        entityKind: 'catalog_item',
-        fieldBindings: [
-          { sourceFieldKey: 'variants.price', targetKey: 'catalog_item_default_unit_price' },
-        ],
-      },
+      target: { entityKind: 'catalog_item' },
+      fields: [{ sourcePath: 'price', target: 'catalog_item_default_unit_price' }],
     },
   ],
-} as unknown as CatalogDataConnector['streams'][number]
+}
 
 beforeEach(() => {
   vi.mocked(getCachedEntityDefId).mockImplementation(async (_org, kind) => DEF_IDS[kind])
@@ -154,7 +139,7 @@ describe('materializeAppContributingMappings — contributing parents', () => {
     expect(part?.relationshipFieldKey).toBe(toResourceFieldId('def_product', 'f_parts'))
 
     // The flat child: explicit parentRootPath, stored rootPath '' (the drilled shape
-    // mapRecord fans out over the parent's own subtree), parented onto the part row.
+    // mapRecord fans out), parented onto the part row.
     expect(catalog).toMatchObject({
       rootPath: '',
       entityDefinitionId: 'def_catalog',
@@ -163,7 +148,7 @@ describe('materializeAppContributingMappings — contributing parents', () => {
     expect(catalog?.relationshipFieldKey).toBe(toResourceFieldId('def_part', 'f_ci'))
   })
 
-  it('binds declared field bindings subtree-relative on both siblings', async () => {
+  it('binds declared fields, sourcePath already relative on both siblings', async () => {
     const { db, inserted } = mockDb()
     await materializeAppContributingMappings(db, ORG, STREAM_ID, STREAM, APP)
     const [, part, catalog] = inserted
@@ -176,8 +161,8 @@ describe('materializeAppContributingMappings — contributing parents', () => {
       '{sku}'
     )
     const catFms = catalog?.fieldMappings as Array<Record<string, unknown>>
-    // The flat child's bindings relativize against its OWN manifest rootPath
-    // (`variants[]`), matching the parent subtree its stored `''` rootPath reads.
+    // The flat child's fields are already relative to its OWN mapping (`price`), matching
+    // the parent subtree its stored `''` rootPath reads.
     expect(catFms.find((fm) => fm.targetFieldRef?.toString().endsWith('f_price'))?.expression).toBe(
       '{price}'
     )
@@ -185,35 +170,34 @@ describe('materializeAppContributingMappings — contributing parents', () => {
 
   it('still parents a nested contributing branch onto an OWNED root, with the @app: envelope', async () => {
     const { db, inserted } = mockDb()
-    const orderStream = {
+    const orderStream: CatalogConnectorStream = {
       key: 'orders',
-      displayFieldKey: 'name',
-      fields: [
-        { fieldKey: 'customer.email', sourcePath: 'customer.email', type: 'EMAIL', name: 'Email' },
-      ],
-      defaultMappings: [
+      mappings: [
         {
           rootPath: 'customer',
           relationshipFieldKey: 'customer',
-          target: { mode: 'contributing', entityKind: 'contact' },
+          target: { entityKind: 'contact' },
+          fields: [{ sourcePath: 'email', target: 'email' }],
         },
       ],
-    } as unknown as CatalogDataConnector['streams'][number]
+    }
     vi.mocked(getCachedEntityDefId).mockResolvedValue('def_contact')
+    vi.mocked(getCachedCustomFields).mockResolvedValue([
+      { id: 'f_email', name: 'Email', systemAttribute: 'email', type: 'EMAIL' },
+    ] as never)
 
     await materializeAppContributingMappings(db, ORG, STREAM_ID, orderStream, APP, {
-      '': 'm_owned_root',
+      '': { mappingId: 'm_owned_root', apiSlug: 'shopify_orders' },
     })
 
     expect(inserted).toHaveLength(1)
     // Owned parent wins; the bare key keeps the connection-late-bound @app: envelope
-    // (parentSlug falls back to the mapping's own entityKind — no parent manifest in
-    // the stream declares rootPath '' here, matching pre-change behavior).
+    // (namespaced with the owned parent's apiSlug, resolved via seedAppOwnedMappings).
     expect(inserted[0]).toMatchObject({
       rootPath: 'customer',
       parentMappingId: 'm_owned_root',
     })
-    expect(inserted[0]?.relationshipFieldKey).toContain(':@app:shopify:customer')
+    expect(inserted[0]?.relationshipFieldKey).toBe('shopify_orders:@app:shopify:customer')
   })
 })
 

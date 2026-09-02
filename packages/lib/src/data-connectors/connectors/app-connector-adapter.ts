@@ -79,27 +79,15 @@ function pickCatalogConnector(
   return connectors[0] ?? null
 }
 
-/** Project a catalog stream declaration into the engine `ConnectorStreamDecl` shape. */
+/**
+ * The engine's `ConnectorStreamDecl` is now a direct mirror of the catalog's
+ * `CatalogConnectorStream` (app-fields-and-entities-plan Phase 2 §4.3) — there
+ * is nothing left to reshape, so this is the identity projection. Kept as a
+ * named function (rather than inlining `catalog.streams`) so the two types
+ * staying in lock-step is a compile-time fact at exactly one call site.
+ */
 function toEngineStreams(catalog: CatalogDataConnector): ConnectorStreamDecl[] {
-  return catalog.streams.map((stream) => ({
-    key: stream.key,
-    displayFieldKey: stream.displayFieldKey,
-    fields: Object.fromEntries(
-      stream.fields.map((f) => [
-        f.fieldKey,
-        {
-          fieldKey: f.fieldKey,
-          sourcePath: f.sourcePath,
-          type: f.type as ConnectorStreamDecl['fields'][string]['type'],
-          name: f.name,
-          pii: f.pii,
-          capabilities: f.capabilities,
-        },
-      ])
-    ),
-    defaultMappings: stream.defaultMappings as ConnectorStreamDecl['defaultMappings'],
-    exampleRecord: stream.exampleRecord,
-  }))
+  return catalog.streams
 }
 
 /**

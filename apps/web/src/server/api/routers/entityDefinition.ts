@@ -289,6 +289,10 @@ export const entityDefinitionRouter = createTRPCRouter({
           .object({
             dataConnectorId: z.string().optional(),
             appInstallationId: z.string().optional(),
+            // The app's slug — stamped onto every created field's `appSlug` column so
+            // an owned identity field mirrors into `RecordIdentity` (see
+            // template-installer.ts `InstallTemplatesOptions.installContext`).
+            appSlug: z.string().optional(),
           })
           .optional(),
       })
