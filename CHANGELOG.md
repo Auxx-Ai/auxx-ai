@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.1.227](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.226...auxx-v0.1.227) (2026-09-02)
+
+
+### Features
+
+* **money:** a rate can be a fraction of a cent ([#2016](https://github.com/Auxx-Ai/auxx-ai/issues/2016)) ([31b7a96](https://github.com/Auxx-Ai/auxx-ai/commit/31b7a96919e96207de495c0538a64c40d7765f9f))
+* **parts:** a tariff schedule, so a rate change is a dated row ([#2011](https://github.com/Auxx-Ai/auxx-ai/issues/2011)) ([0391223](https://github.com/Auxx-Ai/auxx-ai/commit/03912233477637fe3671bdadb12c1535e390336f))
+* **parts:** a tariff starter catalogue, so adding a code is a pick ([#2018](https://github.com/Auxx-Ai/auxx-ai/issues/2018)) ([f98456a](https://github.com/Auxx-Ai/auxx-ai/commit/f98456a6f7739d50e0acd9265dd46b7eecb23a51))
+* **parts:** apply rate changes, so a future-dated tariff row reaches part cost ([#2014](https://github.com/Auxx-Ai/auxx-ai/issues/2014)) ([92ef3ad](https://github.com/Auxx-Ai/auxx-ai/commit/92ef3ad8079c5ee44c8511cd4ca65d6f24f3be7c))
+* **parts:** the supplier offer form owns its panels, and prices in the vendor's unit ([#2017](https://github.com/Auxx-Ai/auxx-ai/issues/2017)) ([297132f](https://github.com/Auxx-Ai/auxx-ai/commit/297132f537879d7807e6dfc750d76276322264da))
+* **parts:** the tariff schedule reaches the supplier offer ([#2013](https://github.com/Auxx-Ai/auxx-ai/issues/2013)) ([7ccd53c](https://github.com/Auxx-Ai/auxx-ai/commit/7ccd53c85b9b7b276fc03c2b96e133a2abec91b8))
+
+
+### Bug Fixes
+
+* **import:** money columns read, review and preview at the field's precision ([#2019](https://github.com/Auxx-Ai/auxx-ai/issues/2019)) ([45f4b5b](https://github.com/Auxx-Ai/auxx-ai/commit/45f4b5b7ac9c6e388c90eb1f5a5e14cd83531aec))
+* **parts:** the apply readout counted ancestors against classified parts ([#2015](https://github.com/Auxx-Ai/auxx-ai/issues/2015)) ([3a58809](https://github.com/Auxx-Ai/auxx-ai/commit/3a58809f974124cc3c12d003987346ab853757b3))
+* **parts:** the tariff defs stay out of the entity sidebar ([#2021](https://github.com/Auxx-Ai/auxx-ai/issues/2021)) ([f8f4cf4](https://github.com/Auxx-Ai/auxx-ai/commit/f8f4cf4630c540c675194e6f47713df97e40eb3a))
+* **ui:** the settings header button stacks until lg, and the detail pane grows the page ([#2020](https://github.com/Auxx-Ai/auxx-ai/issues/2020)) ([165a754](https://github.com/Auxx-Ai/auxx-ai/commit/165a75477ab037f1af6ae6c77b383c02f3e10e2b))
+
 ## [0.1.226](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.225...auxx-v0.1.226) (2026-09-01)
 
 
