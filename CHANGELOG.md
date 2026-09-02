@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.1.228](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.227...auxx-v0.1.228) (2026-09-02)
+
+
+### Features
+
+* **tariffs:** adopted codes can take catalogue corrections, and rows delete from the list ([#2026](https://github.com/Auxx-Ai/auxx-ai/issues/2026)) ([871b1f5](https://github.com/Auxx-Ai/auxx-ai/commit/871b1f5891222cee69c4a4dd08c5a3d7e5e56d40))
+
+
+### Bug Fixes
+
+* **fields:** a DATE field is a calendar day stored at UTC midnight ([#2022](https://github.com/Auxx-Ai/auxx-ai/issues/2022)) ([906ec03](https://github.com/Auxx-Ai/auxx-ai/commit/906ec0369daac358a66b2847d95ed9f26e7bb572))
+* **import:** relation auto-create stores a RecordId, and a create that loses a required field fails ([#2024](https://github.com/Auxx-Ai/auxx-ai/issues/2024)) ([5fd23fd](https://github.com/Auxx-Ai/auxx-ai/commit/5fd23fd5c2ba7856fd872fae19cf9a4db79e3341))
+* **tariffs:** every HTS line is reachable, and Section 301 membership is generated ([#2025](https://github.com/Auxx-Ai/auxx-ai/issues/2025)) ([1b92cb5](https://github.com/Auxx-Ai/auxx-ai/commit/1b92cb557f99f3cce2864bbd006a6379911346aa))
+* **trpc:** query input travels in the body, and the record catch-up is one pass ([#2027](https://github.com/Auxx-Ai/auxx-ai/issues/2027)) ([8d05d84](https://github.com/Auxx-Ai/auxx-ai/commit/8d05d848bc27ba4559e172e3f418f39429c956a2))
+
 ## [0.1.227](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.226...auxx-v0.1.227) (2026-09-02)
 
 
