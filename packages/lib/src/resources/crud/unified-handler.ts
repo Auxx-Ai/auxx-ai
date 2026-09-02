@@ -57,6 +57,7 @@ import {
   createEntity,
   createWithValues as createWithValuesImpl,
   deleteEntity,
+  type FieldWriteFailure,
   type MutationContext,
   mergeEntities,
   restoreEntity,
@@ -1306,12 +1307,20 @@ export class UnifiedCrudHandler {
    * watermark covers additions via `FieldValue.updatedAt`, matching the
    * pre-D-7 behavior for those paths.
    */
+  /**
+   * Write a record's values, bucketed by mode.
+   *
+   * Returns the SET-lane writes that failed. `setValuesForEntity` swallows a
+   * per-field throw so the other fields still land, which is right for an edit
+   * and wrong for a create that just lost a required field; `createEntity`
+   * reads this list to tell the two apart.
+   */
   private async setFieldValues(
     recordId: RecordId,
     values: Record<string, unknown>,
     modes?: Record<string, 'set' | 'add' | 'remove'>,
     opts?: { publishEvents?: boolean }
-  ): Promise<void> {
+  ): Promise<FieldWriteFailure[]> {
     const { entityDefinitionId } = parseRecordId(recordId)
 
     // Get cached fields and build key → id map for all entity types
@@ -1343,12 +1352,18 @@ export class UnifiedCrudHandler {
     // per-record field triggers. Default true preserves interactive-edit behavior.
     const publishEvents = opts?.publishEvents ?? true
 
+    const failures: FieldWriteFailure[] = []
     if (setEntries.length > 0) {
-      await this.fieldValueService.setValuesForEntity({
+      const results = await this.fieldValueService.setValuesForEntity({
         recordId,
         values: setEntries.map((e) => ({ fieldId: e.fieldId, value: e.value })),
         publishEvents,
       })
+      for (const result of results) {
+        if (result.state === 'failed') {
+          failures.push({ fieldId: result.fieldId, error: result.error ?? 'Write failed' })
+        }
+      }
     }
 
     for (const e of addEntries) {
@@ -1368,6 +1383,8 @@ export class UnifiedCrudHandler {
         skipPublishEvents: !publishEvents,
       })
     }
+
+    return failures
   }
 
   /**

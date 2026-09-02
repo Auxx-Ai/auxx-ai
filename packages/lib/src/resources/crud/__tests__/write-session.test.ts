@@ -152,7 +152,7 @@ describe('S3 — derived publishEvents at the mutation seam', () => {
       getFields: async () => [],
       runPreHooks: async (_o, _d, values) => values,
       validateUniqueFields: async () => {},
-      setFieldValues: async () => {},
+      setFieldValues: async () => [],
     }
   }
 

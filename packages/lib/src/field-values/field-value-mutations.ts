@@ -3474,6 +3474,7 @@ export async function setValuesForEntity(
           performedAt: new Date().toISOString(),
           values: [],
           changed: false,
+          error: error instanceof Error ? error.message : String(error),
         })
       } finally {
         // The pre-read snapshot for this pair is stale the moment the pair
