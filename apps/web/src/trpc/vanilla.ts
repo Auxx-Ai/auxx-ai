@@ -19,6 +19,9 @@ export const vanillaApi = createTRPCClient<AppRouter>({
     httpBatchLink({
       transformer: SuperJSON,
       url: `${getBaseUrl()}/api/trpc`,
+      // Same reason as the React client: query input belongs in the body, not
+      // on the URL. See `~/trpc/react.tsx`.
+      methodOverride: 'POST',
       headers: () => {
         const headers: Record<string, string> = {
           'x-trpc-source': 'nextjs-vanilla',

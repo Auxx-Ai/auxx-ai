@@ -225,6 +225,19 @@ export function useResourceSync() {
 
   const runCatchUp = useCallback(
     (entityDefinitionIds: string[]) => {
+      // Lane 2 is collected across ALL defs in the pass and issued as chunks of
+      // the input cap, not one request per def. `record.getByIds` takes mixed
+      // RecordIds, so a per-def fan-out bought nothing and cost a lot: six defs
+      // subscribing in the same coalesce window put six `getByIds` calls in one
+      // tRPC batch, ~25KB of ids on the query string, and the dev server
+      // answered 431 Request Header Fields Too Large for the whole batch
+      // (driven 2026-09-01, /app/parts/settings/tariffs). Chunking the union is
+      // ceil(total / cap) requests — never more than the fan-out, usually far
+      // fewer.
+      const catchUpIds: RecordId[] = []
+      /** entityInstanceId -> the def it was requested under. */
+      const defByInstanceId = new Map<string, string>()
+
       for (const entityDefinitionId of entityDefinitionIds) {
         // 1. Row membership — creates/deletes/archives/bulk invalidations. The
         //    tRPC data stays cached while it refetches, so rows do not blank.
@@ -234,12 +247,26 @@ export function useResourceSync() {
         const ids = cachedRecordIdsForDef(entityDefinitionId, CATCH_UP_RECORD_CAP)
         if (ids.length === 0) continue
 
-        // 2. Record meta — a missed `record:updated` (display name, avatar).
-        //    `updateRecord` patches rows we already hold and ignores the rest.
+        for (const id of ids) {
+          defByInstanceId.set(id, entityDefinitionId)
+          catchUpIds.push(toRecordId(entityDefinitionId, id))
+        }
+
+        // 3. Cell values — a missed `fieldValues:updated`. Refreshes exactly
+        //    the cells already in the store, in one batched request.
+        const requests = cachedValueRequests(entityDefinitionId, new Set(ids))
+        if (requests.length > 0) fieldValueFetchQueue.refetch(requests)
+      }
+
+      // 2. Record meta — a missed `record:updated` (display name, avatar).
+      //    `updateRecord` patches rows we already hold and ignores the rest.
+      for (let i = 0; i < catchUpIds.length; i += CATCH_UP_RECORD_CAP) {
         utils.record.getByIds
-          .fetch({ items: ids.map((id) => toRecordId(entityDefinitionId, id)) }, { staleTime: 0 })
+          .fetch({ items: catchUpIds.slice(i, i + CATCH_UP_RECORD_CAP) }, { staleTime: 0 })
           .then((data) => {
             for (const item of Object.values(data ?? {})) {
+              const entityDefinitionId = defByInstanceId.get(item.id)
+              if (!entityDefinitionId) continue
               updateRecord(entityDefinitionId, item.id, {
                 displayName: item.displayName,
                 secondaryInfo: item.secondaryInfo,
@@ -255,11 +282,6 @@ export function useResourceSync() {
           .catch(() => {
             /* best-effort; the next subscribe or refresh retries */
           })
-
-        // 3. Cell values — a missed `fieldValues:updated`. Refreshes exactly
-        //    the cells already in the store, in one batched request.
-        const requests = cachedValueRequests(entityDefinitionId, new Set(ids))
-        if (requests.length > 0) fieldValueFetchQueue.refetch(requests)
       }
     },
     [invalidateLists, updateRecord, utils]
