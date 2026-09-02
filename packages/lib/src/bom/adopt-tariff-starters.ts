@@ -57,6 +57,7 @@ import { getCachedEntityDefId, getOrgCache } from '../cache'
 import { AuxxError, BadRequestError, NotFoundError } from '../errors'
 import { UnifiedCrudHandler } from '../resources/crud'
 import { ISO_COUNTRY_OPTIONS } from '../resources/registry/iso-country-options'
+import { loadTariffMemberships } from './tariff-301-memberships'
 import {
   findHtsGeneral,
   type HtsGeneralLine,
@@ -192,7 +193,7 @@ async function createPair(
   line: HtsGeneralLine,
   country: string
 ): Promise<{ instanceId: string; rows: number }> {
-  const expansion = expandTariffStarter(line, country)
+  const expansion = expandTariffStarter(line, country, await loadTariffMemberships())
 
   return db.transaction(async (tx) => {
     // See the file header: `UnifiedCrudHandler` takes a `Database`, not a

@@ -91,6 +91,7 @@ vi.mock('./tariff-hts-general', async (importOriginal) => {
 
 import { AuxxError, BadRequestError, NotFoundError } from '../errors'
 import { adoptTariffStarters } from './adopt-tariff-starters'
+import { loadTariffMemberships } from './tariff-301-memberships'
 import { expandTariffStarter, TARIFF_STARTERS_VERSION } from './tariff-starters'
 
 const ORG = 'org_1'
@@ -137,7 +138,11 @@ describe('adoptTariffStarters', () => {
 
     // Cross-check against the real expander so this test doesn't hardcode a
     // row count that would silently drift when TARIFF_ACTIONS changes.
-    const expansion = expandTariffStarter(['8481.80.90.05', 2, 'Solenoid valves'], 'CN')
+    const expansion = expandTariffStarter(
+      ['8481.80.90.05', 2, 'Solenoid valves'],
+      'CN',
+      await loadTariffMemberships()
+    )
     expect(value.created[0]?.rows).toBe(expansion.rows.length)
 
     const codeCalls = h.createCalls.filter((c) => c.entityDefinitionId === h.tariffCodeDefId)

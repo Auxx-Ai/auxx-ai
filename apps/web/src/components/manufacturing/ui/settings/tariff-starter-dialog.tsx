@@ -30,6 +30,15 @@
 // flattening it: a heading survives when something under it matches and says
 // how many, and a level with a single survivor opens itself so a code typed in
 // full is two clicks fewer.
+//
+// 🛑 Pruning is also why the SELECTION TRAY is not optional. The flow this
+// dialog is used with is "type a code, check it, type the next one", and the
+// next search prunes the checked row straight off the screen. The selection
+// itself survives - it is only reset on open and on an origin change - but
+// with nothing rendering it the only evidence left was a count in the footer
+// button, and there was no way to drop one without hunting it down again. So
+// the picked codes are held as their whole `StarterExpansion`, not just their
+// code, and rendered as removable chips above the tree.
 
 import { FieldType } from '@auxx/database/enums'
 import { toRecordId } from '@auxx/lib/resources/client'
@@ -47,7 +56,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@auxx/ui/components/too
 import { TREE_SECONDARY_NOTRUNCATE, TreeRow } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
 import { keepPreviousData } from '@tanstack/react-query'
-import { Globe, TriangleAlert } from 'lucide-react'
+import { Globe, TriangleAlert, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
@@ -136,9 +145,12 @@ export function TariffStarterDialog({
 
   const [origin, setOrigin] = useState<string | null>(null)
   const [search, setSearch] = useState('')
-  const [checked, setChecked] = useState<Set<string>>(new Set())
-  // Open headings/subheadings when browsing the tree (no search term). A Set
-  // of node codes, same shape and same reset triggers as `checked`.
+  // Keyed by code, valued by the whole expansion, so a chip can render the
+  // code, its resolved rate and its membership warning after the search that
+  // found it has been replaced by the next one.
+  const [selected, setSelected] = useState<Map<string, StarterExpansion>>(new Map())
+  // Open headings/subheadings when browsing the tree. A Set of node codes -
+  // see the reset on `q` below for why it is per-search-term state.
   const [openNodes, setOpenNodes] = useState<Set<string>>(new Set())
   // Typing must not fire a request per keystroke, and the list must not blank
   // between one debounced search and the next.
@@ -150,7 +162,7 @@ export function TariffStarterDialog({
     if (open) {
       setOrigin(null)
       setSearch('')
-      setChecked(new Set())
+      setSelected(new Map())
       setOpenNodes(new Set())
     }
   }, [open])
@@ -160,7 +172,7 @@ export function TariffStarterDialog({
   // for which tree nodes are open - a heading's code is origin-specific.
   // biome-ignore lint/correctness/useExhaustiveDependencies: `origin` is the trigger, not a read
   useEffect(() => {
-    setChecked(new Set())
+    setSelected(new Map())
     setOpenNodes(new Set())
   }, [origin])
 
@@ -168,6 +180,17 @@ export function TariffStarterDialog({
   // search term. One request per opened node from here down. The previous
   // answer stays on screen while the next search resolves.
   const q = debouncedSearch.trim()
+
+  // 🛑 `nodeIsOpen` INVERTS the meaning of `openNodes` for a sole match, so a
+  // heading collapsed under one search term renders CLOSED when the next term
+  // leaves it the only survivor - with no clue why, and repeated searches
+  // inside one chapter hit it constantly. The set is per-search-term state;
+  // reset it whenever the term changes.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `q` is the trigger, not a read
+  useEffect(() => {
+    setOpenNodes(new Set())
+  }, [q])
+
   const treeQuery = api.purchasing.listTariffStarterChildren.useQuery(
     { country: origin ?? '', parent: null, q },
     { enabled: !!origin, placeholderData: keepPreviousData }
@@ -180,11 +203,19 @@ export function TariffStarterDialog({
     [existingCodes]
   )
 
-  const toggle = useCallback((code: string) => {
-    setChecked((prev) => {
-      const next = new Set(prev)
-      if (next.has(code)) next.delete(code)
-      else next.add(code)
+  const toggle = useCallback((entry: StarterExpansion) => {
+    setSelected((prev) => {
+      const next = new Map(prev)
+      if (next.has(entry.code)) next.delete(entry.code)
+      else next.set(entry.code, entry)
+      return next
+    })
+  }, [])
+
+  const deselect = useCallback((code: string) => {
+    setSelected((prev) => {
+      const next = new Map(prev)
+      next.delete(code)
       return next
     })
   }, [])
@@ -199,10 +230,10 @@ export function TariffStarterDialog({
   }, [])
 
   const handleAdopt = useCallback(async () => {
-    if (!origin || checked.size === 0) return
+    if (!origin || selected.size === 0) return
     try {
       const result = await adopt.mutateAsync({
-        entries: [...checked].map((code) => ({ code, country: origin })),
+        entries: [...selected.keys()].map((code) => ({ code, country: origin })),
       })
       onAdopted(result)
       onOpenChange(false)
@@ -212,7 +243,7 @@ export function TariffStarterDialog({
         description: error instanceof Error ? error.message : 'Could not add the selected codes.',
       })
     }
-  }, [origin, checked, adopt, onAdopted, onOpenChange])
+  }, [origin, selected, adopt, onAdopted, onOpenChange])
 
   const version = treeQuery.data?.version
 
@@ -225,13 +256,13 @@ export function TariffStarterDialog({
             q,
             openNodes,
             onToggleOpen: toggleOpen,
-            checked,
+            selected,
             existingSet,
             onToggleLeaf: toggle,
             today,
             bookTimeZone,
           },
-    [origin, q, openNodes, toggleOpen, checked, existingSet, toggle, today, bookTimeZone]
+    [origin, q, openNodes, toggleOpen, selected, existingSet, toggle, today, bookTimeZone]
   )
 
   return (
@@ -284,6 +315,14 @@ export function TariffStarterDialog({
                 placeholder='Search by code or description...'
               />
 
+              <SelectionTray
+                selected={selected}
+                today={today}
+                bookTimeZone={bookTimeZone}
+                onRemove={deselect}
+                onClear={() => setSelected(new Map())}
+              />
+
               <ScrollArea viewportClassName='max-h-[24rem]'>
                 {treeQuery.isLoading ? (
                   <EmptySection loading />
@@ -330,16 +369,96 @@ export function TariffStarterDialog({
               variant='outline'
               size='sm'
               onClick={() => void handleAdopt()}
-              disabled={checked.size === 0}
+              disabled={selected.size === 0}
               loading={adopt.isPending}
               loadingText='Adding...'
               data-dialog-submit>
-              {`Add ${plural(checked.size, 'code')}`} <KbdSubmit variant='outline' size='sm' />
+              {`Add ${plural(selected.size, 'code')}`} <KbdSubmit variant='outline' size='sm' />
             </Button>
           </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  )
+}
+
+/** The resolved badge for one candidate, through the same resolver the Codes
+ *  list and the tree row use. */
+function previewBadge(entry: StarterExpansion, today: Date, bookTimeZone: string) {
+  return resolutionBadge(resolveScheduleAt(toPreviewRates(entry), today, bookTimeZone))
+}
+
+interface SelectionTrayProps {
+  selected: Map<string, StarterExpansion>
+  today: Date
+  bookTimeZone: string
+  onRemove: (code: string) => void
+  onClear: () => void
+}
+
+/**
+ * What is picked so far, as removable chips.
+ *
+ * The tree below is pruned by the search term, so a code checked under one
+ * term is gone from the screen the moment the next one is typed. This is the
+ * only place the running selection is visible, and the only way to drop one
+ * without searching for it again.
+ */
+function SelectionTray({ selected, today, bookTimeZone, onRemove, onClear }: SelectionTrayProps) {
+  if (selected.size === 0) return null
+
+  return (
+    <div className='shrink-0 rounded-md border bg-muted/30 p-2'>
+      <div className='mb-1.5 flex items-center justify-between gap-2'>
+        <span className='text-muted-foreground text-xs'>
+          {plural(selected.size, 'code')} selected
+        </span>
+        <Button type='button' variant='ghost' size='xs' onClick={onClear}>
+          Clear all
+        </Button>
+      </div>
+      <div className='flex max-h-20 flex-wrap gap-1 overflow-y-auto'>
+        {[...selected.values()].map((entry) => {
+          const badge = previewBadge(entry, today, bookTimeZone)
+          return (
+            <span
+              key={entry.code}
+              className='flex items-center gap-1 rounded-md border bg-background ps-1.5 pe-0.5 py-0.5'>
+              <span className='text-xs tabular-nums' title={entry.description}>
+                {entry.code}
+              </span>
+              {entry.membershipRecorded === false && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Badge
+                      variant='amber'
+                      size='xs'
+                      className='h-4 min-w-4 justify-center'
+                      aria-label='Section 301 membership not recorded'>
+                      <TriangleAlert />
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent side='top'>
+                    Section 301 membership not recorded for this code. The schedule may be
+                    understated by that list's rate.
+                  </TooltipContent>
+                </Tooltip>
+              )}
+              <Badge variant={badge.variant} size='xs' title={badge.title}>
+                {badge.label}
+              </Badge>
+              <button
+                type='button'
+                onClick={() => onRemove(entry.code)}
+                aria-label={`Remove ${entry.code}`}
+                className='flex size-4 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-bad-100 hover:text-bad-500'>
+                <X className='size-3' />
+              </button>
+            </span>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 
@@ -434,9 +553,9 @@ interface TariffTreeCtx {
   q: string
   openNodes: Set<string>
   onToggleOpen: (code: string) => void
-  checked: Set<string>
+  selected: Map<string, StarterExpansion>
   existingSet: Set<string>
-  onToggleLeaf: (code: string) => void
+  onToggleLeaf: (entry: StarterExpansion) => void
   today: Date
   bookTimeZone: string
 }
@@ -538,9 +657,9 @@ function TariffLeafList({ parentCode, ctx }: { parentCode: string; ctx: TariffTr
           entry={entry}
           today={ctx.today}
           bookTimeZone={ctx.bookTimeZone}
-          checked={ctx.checked.has(entry.code)}
+          checked={ctx.selected.has(entry.code)}
           alreadyAdded={ctx.existingSet.has(existingKey(ctx.origin, entry.code))}
-          onToggle={() => ctx.onToggleLeaf(entry.code)}
+          onToggle={() => ctx.onToggleLeaf(entry)}
           depth={2}
         />
       ))}
