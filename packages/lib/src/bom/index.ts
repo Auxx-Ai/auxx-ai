@@ -10,6 +10,12 @@ export { recalculateAffectedParts, recalculateAllPartCosts } from './cost-calcul
 export { batchRecalculateQoH } from './qoh'
 export { getDeductionTargets, loadDirectSubparts, loadSubpartGraph } from './subpart-graph'
 export {
+  loadTariff301Memberships,
+  loadTariffMemberships,
+  type Tariff301Memberships,
+  type TariffMemberships,
+} from './tariff-301-memberships'
+export {
   findHtsGeneral,
   type HtsGeneralCatalogue,
   type HtsGeneralLine,
@@ -33,7 +39,6 @@ export {
   membershipsFor,
   starterNote,
   TARIFF_ACTIONS,
-  TARIFF_MEMBERSHIPS,
   TARIFF_STARTERS_VERSION,
 } from './tariff-starters'
 export type {

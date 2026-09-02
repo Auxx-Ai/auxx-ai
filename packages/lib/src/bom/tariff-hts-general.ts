@@ -133,6 +133,84 @@ function composeFullChain(
   return capDescription(segments, 200)
 }
 
+/**
+ * Drops repeat node rows that normalise to the same digits, keeping the first.
+ *
+ * Chapter 98 prints many differently-worded rows at one code - `9801.00`
+ * appears fourteen times - and a node's leaves are looked up by its digits,
+ * so every copy would list the identical leaves under a different label and
+ * collide on the React key the tree renders them with.
+ */
+function dedupeNodesByDigits(nodes: readonly HtsNode[]): HtsNode[] {
+  const seen = new Set<string>()
+  const kept: HtsNode[] = []
+  for (const node of nodes) {
+    const digits = normalizeHtsCode(node.code)
+    if (seen.has(digits)) continue
+    seen.add(digits)
+    kept.push(node)
+  }
+  return kept
+}
+
+/**
+ * Adds a 4-digit heading node for every heading that has lines but no row of
+ * its own in the export, in document (ascending code) order.
+ *
+ * 🛑 This is not cosmetic. The USITC export prints no separate 4-digit row for
+ * a heading that is not split into subheadings - heading 8503 is printed as
+ * `8503.00` and nothing else - which left 254 headings covering 796 lines with
+ * no node to reach them from. Those lines were unreachable by browsing (the
+ * tree root lists heading nodes) AND unfindable by search, because a search
+ * prunes the tree rather than flattening it: `8503.00.9520` matched its leaf,
+ * then the leaf was dropped because no surviving heading carried it, and the
+ * dialog said "No matches" for a code the catalogue holds.
+ *
+ * The description comes from the subheading directly beneath, which in exactly
+ * this case carries the heading's own text (`8503.00` is "Parts suitable for
+ * use solely or principally with the machines of heading 8501 or 8502"). It is
+ * deliberately NOT fed back into the `headingDescByCode` that
+ * `composeFullChain` reads: a line under an unsplit heading already starts its
+ * chain at that subheading, and seeding the heading too would read "X / X /
+ * leaf".
+ */
+function withSynthesizedHeadings(
+  nodes: readonly HtsNode[],
+  leafCounts: ReadonlyMap<string, number>
+): HtsNode[] {
+  const present = new Set<string>()
+  for (const node of nodes) {
+    const digits = normalizeHtsCode(node.code)
+    if (digits.length === 4) present.add(digits)
+  }
+
+  const synthesized: HtsNode[] = []
+  const done = new Set<string>()
+  for (const node of nodes) {
+    const digits = normalizeHtsCode(node.code)
+    if (digits.length !== 6) continue
+    const headingDigits = digits.slice(0, 4)
+    if (present.has(headingDigits) || done.has(headingDigits)) continue
+    done.add(headingDigits)
+    synthesized.push({
+      code: headingDigits,
+      description: node.description,
+      leafCount: leafCounts.get(headingDigits) ?? 0,
+    })
+  }
+  if (synthesized.length === 0) return [...nodes]
+
+  // `raw.nodes` is in ascending code order, so re-sorting on digits padded to
+  // a common width restores document order with the new headings woven in.
+  // The length suffix keeps a heading ahead of the subheading it pads to the
+  // same key: `8503` and `8503.00` both pad to `850300`.
+  const sortKey = (node: HtsNode) => {
+    const digits = normalizeHtsCode(node.code)
+    return `${digits.padEnd(6, '0')}${digits.length}`
+  }
+  return [...nodes, ...synthesized].sort((a, b) => sortKey(a).localeCompare(sortKey(b)))
+}
+
 /** Composes the in-memory catalogue and its children index from the on-disk shape. */
 function composeCatalogue(raw: RawHtsGeneralCatalogue): HtsGeneralCatalogue {
   const headingDescByCode = new Map<string, string>()
@@ -156,10 +234,13 @@ function composeCatalogue(raw: RawHtsGeneralCatalogue): HtsGeneralCatalogue {
     else shortLeavesBySubheading.set(subheadingDigits, [line])
   }
 
-  const nodes: HtsNode[] = raw.nodes.map(([code, description]) => {
-    const digits = normalizeHtsCode(code)
-    return { code, description, leafCount: leafCounts.get(digits) ?? 0 }
-  })
+  const nodes: HtsNode[] = dedupeNodesByDigits(
+    raw.nodes.map(([code, description]) => {
+      const digits = normalizeHtsCode(code)
+      return { code, description, leafCount: leafCounts.get(digits) ?? 0 }
+    })
+  )
+  const nodesWithHeadings = withSynthesizedHeadings(nodes, leafCounts)
 
   const lines: HtsGeneralLine[] = raw.lines.map(([code, rate, shortDescription]) => {
     const digits = normalizeHtsCode(code)
@@ -176,12 +257,12 @@ function composeCatalogue(raw: RawHtsGeneralCatalogue): HtsGeneralCatalogue {
     fetchedAt: raw.fetchedAt,
     source: raw.source,
     lines,
-    nodes,
+    nodes: nodesWithHeadings,
   }
 
-  const headingNodes = nodes.filter((node) => normalizeHtsCode(node.code).length === 4)
+  const headingNodes = nodesWithHeadings.filter((node) => normalizeHtsCode(node.code).length === 4)
   const subheadingNodesByHeading = new Map<string, HtsNode[]>()
-  for (const node of nodes) {
+  for (const node of nodesWithHeadings) {
     const digits = normalizeHtsCode(node.code)
     if (digits.length !== 6) continue
     const headingDigits = digits.slice(0, 4)

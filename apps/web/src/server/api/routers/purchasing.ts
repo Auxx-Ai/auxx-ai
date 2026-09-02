@@ -6,6 +6,7 @@ import {
   expandTariffStarter,
   listHtsChildren,
   loadHtsGeneral,
+  loadTariffMemberships,
   TARIFF_STARTERS_VERSION,
 } from '@auxx/lib/bom'
 import { getCachedEntityDefId } from '@auxx/lib/cache'
@@ -632,12 +633,17 @@ export const purchasingRouter = createTRPCRouter({
       })
     )
     .query(async ({ input }) => {
-      const catalogue = await loadHtsGeneral()
+      // Both loads memoise for the process; the second is free after the first
+      // request that touches the catalogue.
+      const [catalogue, memberships] = await Promise.all([
+        loadHtsGeneral(),
+        loadTariffMemberships(),
+      ])
       const { nodes, leaves } = listHtsChildren(catalogue, input.parent, input.q)
       return {
         version: TARIFF_STARTERS_VERSION,
         nodes,
-        leaves: leaves.map((line) => expandTariffStarter(line, input.country)),
+        leaves: leaves.map((line) => expandTariffStarter(line, input.country, memberships)),
       }
     }),
 

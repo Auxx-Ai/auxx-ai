@@ -517,3 +517,68 @@ describe('listHtsChildren with a search term', () => {
     expect(listHtsChildren(catalogue, null, 'zzzz-no-such-thing').nodes).toEqual([])
   })
 })
+
+describe('headings the export prints only as `NNNN.00`', () => {
+  // Regression: `8503.00.95.20` is in the generated file, but heading 8503 is
+  // not split into subheadings so the USITC export prints no 4-digit row for
+  // it. Without a synthesized heading node the tree root carried nothing for
+  // 8503, and because a search PRUNES the tree, searching the full code
+  // matched the leaf and then dropped it - the dialog said "No matches" for a
+  // code the catalogue holds.
+  it('reaches a line under an unsplit heading by browsing', async () => {
+    const catalogue = await loadHtsGeneral()
+
+    const root = listHtsChildren(catalogue, null, '')
+    const heading = root.nodes.find((node) => node.code === '8503')
+    expect(heading).toBeDefined()
+    expect(heading?.leafCount).toBeGreaterThan(0)
+
+    const sub = listHtsChildren(catalogue, '8503', '')
+    expect(sub.nodes.map((node) => node.code)).toEqual(['8503.00'])
+
+    const leaves = listHtsChildren(catalogue, '8503.00', '')
+    expect(leaves.leaves.map((line) => line[0])).toContain('8503.00.95.20')
+  })
+
+  it('finds the same line by searching its full code, in either spelling', async () => {
+    const catalogue = await loadHtsGeneral()
+
+    for (const q of ['8503.00.9520', '8503.00.95.20', '8503009520']) {
+      expect(listHtsChildren(catalogue, null, q).nodes.map((n) => n.code)).toEqual(['8503'])
+      expect(listHtsChildren(catalogue, '8503', q).nodes.map((n) => n.code)).toEqual(['8503.00'])
+      expect(listHtsChildren(catalogue, '8503.00', q).leaves.map((l) => l[0])).toEqual([
+        '8503.00.95.20',
+      ])
+    }
+  })
+
+  it('every line in the catalogue is reachable from a heading node', async () => {
+    const catalogue = await loadHtsGeneral()
+    const headings = new Set(
+      listHtsChildren(catalogue, null, '').nodes.map((node) => normalizeHtsCode(node.code))
+    )
+    const orphans = catalogue.lines.filter(
+      (line) => !headings.has(normalizeHtsCode(line[0]).slice(0, 4))
+    )
+    expect(orphans).toEqual([])
+  })
+
+  it('a synthesized heading does not repeat itself in a line description', async () => {
+    const catalogue = await loadHtsGeneral()
+    const line = findHtsGeneral(catalogue.lines, '8503.00.95.20')
+    expect(line?.[2]).toBe(
+      'Parts suitable for use solely or principally with the machines of heading 8501 or 8502 / Parts of motors'
+    )
+  })
+
+  it('repeat node rows at one code are deduped', async () => {
+    const catalogue = await loadHtsGeneral()
+    // Chapter 98 prints `9801.00` fourteen times with different text.
+    const seen = new Set<string>()
+    for (const node of catalogue.nodes) {
+      const digits = normalizeHtsCode(node.code)
+      expect(seen.has(digits)).toBe(false)
+      seen.add(digits)
+    }
+  })
+})
