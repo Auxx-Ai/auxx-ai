@@ -1,13 +1,14 @@
 // packages/lib/src/entity-templates/org-templates.ts
-// Org-aware entity-template resolution (v6). The static template registry is
-// org-agnostic + file-based; app-projected templates are PER-ORG (they depend on the
-// org's installed apps), so they cannot live in the static `templateMap`. This layer
-// merges the static gallery with templates projected from each installed app's
-// data-connector manifest — the same installed-app catalog the connector `create`
-// mutation reads.
+// Org-aware entity-template resolution (app-fields-and-entities-plan Phase 2). The
+// static template registry is org-agnostic + file-based; app-projected templates
+// are PER-ORG (they depend on the org's installed apps), so they cannot live in the
+// static `templateMap`. This layer merges the static gallery with templates
+// projected from each installed app's declared entities (`catalog.entities`,
+// `defineEntity`) — the same installed-app catalog the connector `create` mutation
+// reads.
 
 import { getCachedInstalledApps } from '../cache'
-import { projectAppConnectorTemplates } from './app-template-projector'
+import { projectAppEntityTemplates } from './app-template-projector'
 import {
   getAllTemplates,
   getTemplateById,
@@ -16,14 +17,13 @@ import {
 } from './template-registry'
 import type { EntityTemplate } from './types'
 
-/** Project every installed app's owned record types into installable templates. */
+/** Project every installed app's owned entities into installable templates. */
 export async function getAppTemplates(organizationId: string): Promise<EntityTemplate[]> {
   const apps = await getCachedInstalledApps(organizationId)
   const templates: EntityTemplate[] = []
   for (const app of apps) {
-    for (const connector of app.dataConnectors ?? []) {
-      templates.push(...projectAppConnectorTemplates(app.app.slug, app.app.title, connector))
-    }
+    if (!app.entities?.length) continue
+    templates.push(...projectAppEntityTemplates(app.app.slug, app.entities))
   }
   return templates
 }

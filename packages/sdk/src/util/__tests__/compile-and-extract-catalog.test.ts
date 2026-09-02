@@ -185,7 +185,7 @@ describe('compileAndExtractCatalog', () => {
     // catalog the platform provisions on install/connect (Phase 5/7).
     expect(catalog.fields).toHaveLength(2)
     expect(catalog.fields?.[0]).toMatchObject({
-      appFieldKey: 'customerId',
+      key: 'customerId',
       type: 'TEXT',
       targetEntity: 'contact',
       scope: 'connection',
@@ -193,7 +193,7 @@ describe('compileAndExtractCatalog', () => {
       capabilities: { hidden: true, updatable: false },
     })
     expect(catalog.fields?.[1]).toMatchObject({
-      appFieldKey: 'tier',
+      key: 'tier',
       type: 'SINGLE_SELECT',
       targetEntity: 'contact',
       scope: 'installation',

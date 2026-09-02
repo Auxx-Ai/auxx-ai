@@ -4,18 +4,31 @@
 // construction.
 
 import type { CatalogAppField } from '@auxx/database'
-import { describe, expect, it } from 'vitest'
+import { ok } from 'neverthrow'
+import { describe, expect, it, vi } from 'vitest'
+
+const getCachedEntityDefId = vi.fn()
+vi.mock('../../cache', () => ({
+  getCachedEntityDefId: (...args: unknown[]) => getCachedEntityDefId(...args),
+}))
+
+const createCustomField = vi.fn()
+vi.mock('../../custom-fields', () => ({
+  createCustomField: (...args: unknown[]) => createCustomField(...args),
+}))
+
 import {
   computeAppFieldReconcileActions,
   type ExistingAppFieldRow,
   isManifestAppFieldRow,
+  provisionAppField,
 } from './app-field-provisioning'
 
 const APP_SLUG = 'shopify'
 
 function field(overrides: Partial<CatalogAppField> = {}): CatalogAppField {
   return {
-    appFieldKey: 'customerId',
+    key: 'customerId',
     scope: 'installation',
     targetEntity: 'contact',
     type: 'TEXT',
@@ -81,8 +94,8 @@ describe('computeAppFieldReconcileActions', () => {
     // Catalog declares 2 connection-scoped fields, 1 org-scoped connection, 0 rows → 2 creates.
     const { actions, errors } = run({
       catalogFields: [
-        field({ appFieldKey: 'customerId', scope: 'connection' }),
-        field({ appFieldKey: 'storeDomain', scope: 'connection', name: 'Store Domain' }),
+        field({ key: 'customerId', scope: 'connection' }),
+        field({ key: 'storeDomain', scope: 'connection', name: 'Store Domain' }),
       ],
       connectionIds: ['conn_1'],
     })
@@ -225,12 +238,30 @@ describe('computeAppFieldReconcileActions', () => {
     expect(actions).toEqual([])
   })
 
-  it('takes no action and raises no error for a RELATIONSHIP field', () => {
-    const { actions, errors } = run({
-      catalogFields: [field({ type: 'RELATIONSHIP', appFieldKey: 'orders' })],
+  it('creates a missing RELATIONSHIP field — no longer special-cased (§4.2)', () => {
+    const relField = field({
+      key: 'orders',
+      type: 'RELATIONSHIP',
+      relationship: {
+        target: { entityKind: 'order' },
+        cardinality: 'has_many',
+        inverseName: 'Customer',
+      },
     })
-    expect(actions).toEqual([])
+    const { actions, errors } = run({ catalogFields: [relField] })
     expect(errors).toEqual([])
+    expect(actions).toHaveLength(1)
+    expect(actions[0]).toMatchObject({ kind: 'create', appFieldKey: 'orders', field: relField })
+  })
+
+  it('orphans a RELATIONSHIP row whose key no longer appears in the catalog', () => {
+    const { actions } = run({
+      catalogFields: [],
+      existingRows: [row({ id: 'cf_old', appFieldKey: 'orders', type: 'RELATIONSHIP' })],
+      hasValues: NO_VALUES,
+    })
+    expect(actions).toHaveLength(1)
+    expect(actions[0]).toMatchObject({ kind: 'orphan-delete', existingFieldId: 'cf_old' })
   })
 })
 
@@ -283,5 +314,83 @@ describe('isManifestAppFieldRow', () => {
     expect(
       isManifestAppFieldRow({ dataConnectorId: null, entityDefinitionId: null }, APP_OWNED_DEF_IDS)
     ).toBe(true)
+  })
+})
+
+// RELATIONSHIP manifest fields are provisioned like any other field (§4.2) —
+// through `createCustomField`'s relationship branch, target resolved from
+// `relationship.target`.
+describe('provisionAppField — RELATIONSHIP', () => {
+  const CTX = { appInstallationId: 'ai_1', organizationId: 'org_1', appSlug: APP_SLUG }
+
+  it('resolves an entityKind target via the org cache and passes it through', async () => {
+    getCachedEntityDefId.mockImplementation(async (_orgId: string, kind: string) =>
+      kind === 'contact' ? 'def_orders' : kind === 'order' ? 'def_order_kind' : undefined
+    )
+    createCustomField.mockResolvedValue(ok({ id: 'field_1' }))
+
+    const relField = field({
+      key: 'orders',
+      type: 'RELATIONSHIP',
+      targetEntity: 'contact',
+      relationship: {
+        target: { entityKind: 'order' },
+        cardinality: 'has_many',
+        inverseName: 'Customer',
+      },
+    })
+
+    const outcome = await provisionAppField(relField, CTX)
+
+    expect(outcome).toBe('created')
+    expect(createCustomField).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'RELATIONSHIP',
+        appFieldKey: 'orders',
+        relationship: {
+          relatedResourceId: 'def_order_kind',
+          relationshipType: 'has_many',
+          inverseName: 'Customer',
+        },
+      }),
+      undefined
+    )
+  })
+
+  it('skips (no throw) when the relationship target cannot be resolved', async () => {
+    const relField = field({
+      key: 'orders',
+      type: 'RELATIONSHIP',
+      targetEntity: 'contact',
+      relationship: {
+        target: { entityKind: 'nonexistent' },
+        cardinality: 'has_many',
+        inverseName: 'Customer',
+      },
+    })
+
+    // targetEntity ('contact') resolves so the function reaches the relationship
+    // branch, but the relationship target itself does not.
+    getCachedEntityDefId.mockImplementation(async (_orgId: string, kind: string) =>
+      kind === 'contact' ? 'def_contact' : undefined
+    )
+
+    const outcome = await provisionAppField(relField, CTX)
+    expect(outcome).toBe('skipped')
+    expect(createCustomField).not.toHaveBeenCalled()
+  })
+
+  it('uses resolvedEntityDefinitionId when provided, skipping the targetEntity cache lookup', async () => {
+    createCustomField.mockResolvedValue(ok({ id: 'field_2' }))
+    const scalarField = field({ key: 'sku', type: 'TEXT', name: 'SKU' })
+
+    const outcome = await provisionAppField(scalarField, CTX, undefined, 'def_owned_entity')
+
+    expect(outcome).toBe('created')
+    expect(getCachedEntityDefId).not.toHaveBeenCalled()
+    expect(createCustomField).toHaveBeenCalledWith(
+      expect.objectContaining({ entityDefinitionId: 'def_owned_entity', appFieldKey: 'sku' }),
+      undefined
+    )
   })
 })

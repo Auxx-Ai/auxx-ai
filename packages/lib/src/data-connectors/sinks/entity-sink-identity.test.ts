@@ -252,3 +252,95 @@ describe('entitySink identity write-ownership rule', () => {
     expect(ctx.counters.skipped).toBe(1)
   })
 })
+
+// app-fields-and-entities-plan Phase 2 §4.1 item 2: `template-installer.ts` now stamps
+// `appSlug` + `isIdentity` on an OWNED column too (previously only contributing/manifest
+// fields got `appSlug`, so an owned identity column silently skipped the mirror — "identity
+// field has no appSlug, skipping RecordIdentity mirror"). `mirrorIdentityWrites` itself
+// applies the SAME rule to both modes (it reads `field.appSlug` off the cached field map,
+// never `mapping.targetMode`); this proves the owned path now actually has the stamp to
+// read, with a test double standing in for the installer's `createCustomField` call.
+describe('entitySink identity write-ownership rule — OWNED mapping', () => {
+  const OWNED_DEF_ID = 'def_shopify_orders'
+  const OWNED_FIELD_ID = 'field_shopifyOrderId'
+  const OWNED_REF = toResourceFieldId(OWNED_DEF_ID, OWNED_FIELD_ID)
+
+  function ownedMapping(): DecodedMapping {
+    return {
+      row: { id: 'm_owned' },
+      rootPath: '',
+      linkMode: 'upsert',
+      targetMode: 'owned',
+      entityDefinitionId: OWNED_DEF_ID,
+      parentMappingId: null,
+      relationshipFieldKey: null,
+      orphanBehavior: 'ignore',
+      fieldMappings: [
+        {
+          id: 'fm_owned',
+          targetFieldRef: OWNED_REF,
+          expression: '{id}',
+          sourceFields: { id: 'id' },
+          identityRole: { kind: 'externalId' },
+        },
+      ],
+    } as unknown as DecodedMapping
+  }
+
+  function ownedRecord(): ProjectedRecord {
+    return {
+      externalId: '5501234567',
+      displayName: '#1001',
+      fields: { [OWNED_REF]: '5501234567' },
+      identityCandidates: [],
+      pendingRelations: [],
+    }
+  }
+
+  beforeEach(() => {
+    resolveConnectorFieldRef.mockImplementation(async (ref: string) =>
+      ref === OWNED_REF ? OWNED_REF : null
+    )
+    buildWriteKeyToFieldId.mockResolvedValue(new Map([[OWNED_FIELD_ID, OWNED_FIELD_ID]]))
+    // Stand-in for `createCustomField`'s installer stamp (`template-installer.ts`
+    // `installContext.appSlug` + `isIdentity` pass-through) — the owned column's
+    // cached field row now carries `appSlug`, which is the only thing
+    // `mirrorIdentityWrites` reads to resolve the RecordIdentity `source`.
+    getCachedFieldMap.mockResolvedValue(
+      new Map([
+        [
+          OWNED_FIELD_ID,
+          {
+            id: OWNED_FIELD_ID,
+            appSlug: 'shopify',
+            appInstallationId: 'install1',
+            connectionId: null,
+            appFieldKey: 'shopifyOrderId',
+            isIdentity: true,
+          },
+        ],
+      ])
+    )
+  })
+
+  it('mirrors an owned identity column into RecordIdentity, same as a contributing one', async () => {
+    findItem.mockResolvedValue(null)
+    create.mockResolvedValue({ instance: { id: 'inst_owned' } })
+    const ctx = makeCtx()
+
+    await entitySink.upsertRecord(ctx, ownedMapping(), ownedRecord())
+
+    expect(create).toHaveBeenCalledTimes(1)
+    expect(upsertRecordIdentity).toHaveBeenCalledTimes(1)
+    expect(upsertRecordIdentity.mock.calls[0]?.[0]).toMatchObject({
+      organizationId: 'org1',
+      entityInstanceId: 'inst_owned',
+      entityDefinitionId: OWNED_DEF_ID,
+      source: 'shopify',
+      appInstallationId: 'install1',
+      appFieldKey: 'shopifyOrderId',
+      fieldId: OWNED_FIELD_ID,
+      externalId: '5501234567',
+    })
+  })
+})

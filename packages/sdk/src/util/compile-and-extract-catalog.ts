@@ -164,110 +164,144 @@ export interface CatalogBlock {
 }
 
 /**
- * An app-registered custom field, projected from the app's `fields[]`
- * declaration. Provisioned on install (`installation` scope) or per connected
- * account (`connection` scope), optionally hidden, removed on uninstall. See
- * app-registered custom fields.
+ * Author-settable field capabilities projected onto the catalog. Shared by
+ * `CatalogField` — see there.
  */
-export interface CatalogAppField {
-  /** App-stable id (e.g. 'customerId') — idempotency + reverse-lookup key. */
-  appFieldKey: string
-  /** `installation` (one per install) or `connection` (one per connected account). */
-  scope: 'installation' | 'connection'
-  /** Target entity kind (EntityRefKind) — resolved to entityDefinitionId on provision. */
-  targetEntity: string
+export interface CatalogFieldCapabilities {
+  filterable?: boolean
+  sortable?: boolean
+  creatable?: boolean
+  updatable?: boolean
+  required?: boolean
+  unique?: boolean
+  computed?: boolean
+  hidden?: boolean
+}
+
+/**
+ * One field declaration, projected — the shared shape for `catalog.fields[]`
+ * (a `defineFields` manifest field, via `CatalogAppField`), a `defineEntity`
+ * entity's own fields (`CatalogEntity.fields`), and a connector OWNED
+ * mapping's normalized fields (`CatalogConnectorOwnedMappingField`). Mirrors
+ * the SDK's `FieldDecl` (`root/fields/define-field.ts`) plus the DB catalog
+ * mirror `CatalogField` (`packages/database/src/db/schema/app-deployment.ts`)
+ * — the three must stay in lock-step.
+ */
+export interface CatalogField {
+  /** Stable id (e.g. 'customerId'). The DB column stays `appFieldKey`. */
+  key: string
   /** Platform FieldType (e.g. 'TEXT', 'SINGLE_SELECT'). */
   type: string
   /** Display name — used only when not hidden. */
   name: string
   description?: string
-  /** Select options for SINGLE_SELECT / MULTI_SELECT / TAGS. */
-  options?: Array<{ value: string; label?: string; color?: string }>
-  /** Relationship config for RELATIONSHIP fields. */
-  relationship?: { targetEntity: string; cardinality: 'one' | 'many' }
-  /** Calc config for CALC fields. */
-  calc?: { expression: string }
-  /** Author-settable capabilities (hidden, filterable, updatable, …). */
-  capabilities?: {
-    filterable?: boolean
-    sortable?: boolean
-    creatable?: boolean
-    updatable?: boolean
-    required?: boolean
-    unique?: boolean
-    computed?: boolean
-    hidden?: boolean
-  }
+  capabilities?: CatalogFieldCapabilities
   /** This field is an external-system identity (e.g. Shopify `customerId`) —
    *  drives the sink write-ownership rule + the `RecordIdentity` mirror. */
   identity?: boolean
-}
-
-/** One source field declaration projected from a data connector's stream. */
-export interface CatalogConnectorField {
-  fieldKey: string
-  sourcePath: string
-  type: string
-  name: string
-  pii?: boolean
-  capabilities?: { hidden?: boolean; filterable?: boolean }
-  /** Predefined select option set (SINGLE_SELECT / MULTI_SELECT / TAGS). */
+  /** Select options for SINGLE_SELECT / MULTI_SELECT / TAGS. */
   options?: Array<{ value: string; label?: string; color?: string }>
   /** Sub-field set for an ADDRESS_STRUCT field. */
   addressComponents?: string[]
-  /** This field's value is the owned record's stable external id (dedupe/link key). */
-  isExternalId?: boolean
+  /** Relationship config for RELATIONSHIP fields — `{ entityKey }` for another
+   *  entity of the same app, `{ entityKind }` for a platform kind. */
+  relationship?: {
+    target: { entityKey: string } | { entityKind: string }
+    cardinality: 'has_many' | 'has_one' | 'belongs_to' | 'many_to_many'
+    inverseName?: string
+  }
+  /** Calc config for CALC fields. */
+  calc?: { expression: string }
+  /** Flag PII. Carried into the catalog; no platform consumer yet. */
+  pii?: boolean
 }
 
-/** Provisioning decl for a parent↔child edge — mirrors SDK `ConnectorRelationshipDecl`. */
-export interface CatalogConnectorRelationshipDecl {
-  fieldKey: string
-  name: string
-  cardinality: 'has_many' | 'has_one' | 'belongs_to' | 'many_to_many'
-  inverseName: string
-  targetRef?: { ownedKey: string } | { entityKind: string }
+/**
+ * An app-registered custom field, projected from the app's `fields[]`
+ * declaration (`defineFields`, adding a field to an EXISTING platform
+ * entity). Provisioned on install (`installation` scope) or per connected
+ * account (`connection` scope), optionally hidden, removed on uninstall. See
+ * docs/app-fields-and-entities-guide.md.
+ */
+export interface CatalogAppField extends CatalogField {
+  /** `installation` (one per install) or `connection` (one per connected account). */
+  scope: 'installation' | 'connection'
+  /** Target entity kind (EntityRefKind) — resolved to entityDefinitionId on provision. */
+  targetEntity: string
 }
 
-/** A recommended fan-out mapping projected from a data connector's stream. */
-export interface CatalogConnectorDefaultMapping {
+/**
+ * A definition an app owns end to end, projected from the app's `entities[]`
+ * declaration (`defineEntity`). See docs/app-fields-and-entities-guide.md.
+ */
+export interface CatalogEntity {
+  /** Stable owner-scoped identity key — becomes `EntityDefinition.sourceKey`. */
+  key: string
+  /** Cosmetic API slug, collision-suffixed by the installer. */
+  apiSlug: string
+  singular: string
+  plural: string
+  description?: string
+  icon?: string
+  color?: string
+  primaryDisplayField: string
+  secondaryDisplayField?: string
+  avatarField?: string
+  fields: CatalogField[]
+}
+
+/** One field on a connector OWNED mapping — a `CatalogField` normalized with
+ *  type/name/options/identity copied from the target entity, plus its
+ *  `sourcePath`, so the platform never has to re-resolve it. */
+export interface CatalogConnectorOwnedMappingField extends CatalogField {
+  sourcePath: string
+}
+
+/** One field on a connector CONTRIBUTING mapping — a binding, not a full
+ *  field declaration (most of its shape resolves against the existing target). */
+export interface CatalogConnectorContributingMappingField {
+  sourcePath: string
+  /** Resolves against the target def's `systemAttribute` or field name. */
+  target?: string
+  /** Names a `defineFields` field declared for the same `entityKind`. */
+  appField?: string
+  /** Secondary identity-match flag. */
+  match?: boolean
+  /** Per-field write behavior once bound. Default 'overwrite'. */
+  mergeStrategy?: string
+  /** Required only for a source-only field with no target/appField. */
+  type?: string
+  name?: string
+}
+
+/** `{ appField, from }` — fills a plain app field from connection metadata. */
+export interface CatalogConnectorConnectionField {
+  appField: string
+  from: string
+}
+
+/** One fan-out mapping projected from a data connector's stream. */
+export interface CatalogConnectorMapping {
   rootPath: string
   /** Explicit parent mapping's rootPath for the flat drilled child — see root types. */
   parentRootPath?: string
   linkMode?: 'upsert' | 'reference'
-  /** Bare app key, or `'system:<systemAttribute>'` for a pre-existing system edge. */
+  /** Bare field key on the parent entity, or `'system:<systemAttribute>'` for
+   *  a pre-existing system edge. */
   relationshipFieldKey?: string
-  relationship?: CatalogConnectorRelationshipDecl
-  target:
-    | {
-        mode: 'owned'
-        entity: {
-          /** Stable owner-scoped identity key (distinct from cosmetic `apiSlug`). */
-          key: string
-          apiSlug: string
-          singular: string
-          plural: string
-          primaryDisplayField?: string
-          /** `fieldKey` of a URL/FILE field to wire as the def's avatar/display image. */
-          avatarField?: string
-        }
-      }
-    | {
-        mode: 'contributing'
-        entityKind: string
-        matchFieldKeys?: string[]
-        fieldBindings?: { sourceFieldKey: string; targetKey?: string; targetAppField?: string }[]
-        connectionAppFields?: { appFieldKey: string; from: string }[]
-      }
+  /** `{ entityKey }` for an entity this app owns, `{ entityKind }` for a
+   *  platform kind the app merely contributes to. */
+  target: { entityKey: string } | { entityKind: string }
+  fields?: Array<CatalogConnectorOwnedMappingField | CatalogConnectorContributingMappingField>
+  connectionFields?: CatalogConnectorConnectionField[]
 }
 
 /** One stream (fetch) projected from a data connector. */
 export interface CatalogConnectorStream {
   key: string
-  displayFieldKey: string
   /** Stream scheduling — `incremental` backfills once then runs deltas. */
   syncMode?: 'snapshot' | 'incremental'
-  fields: CatalogConnectorField[]
-  defaultMappings?: CatalogConnectorDefaultMapping[]
+  mappings: CatalogConnectorMapping[]
   exampleRecord?: Record<string, unknown>
   /** Per-stream webhook STEERING — see `ConnectorStreamDecl.webhookTrigger` (root types). */
   webhookTrigger?: { filter?: Record<string, unknown>; paths: string[]; debounceMs?: number }
@@ -275,9 +309,9 @@ export interface CatalogConnectorStream {
 
 /**
  * A data connector projected from the app's `dataConnectors[]` declaration.
- * Carries the stream/field/mapping declarations + `requiresConnection` so the
- * UI can list + set up a connector without evaluating bundle code. See
- * plans/data-connectors/claude/03-connectors-and-sources.md §4.
+ * Carries the stream/mapping declarations + `requiresConnection` so the UI can
+ * list + set up a connector without evaluating bundle code. See
+ * docs/app-fields-and-entities-guide.md.
  */
 export interface CatalogDataConnector {
   id: string
@@ -315,6 +349,8 @@ export interface CatalogPayload {
   actions: CatalogAction[]
   /** App-registered custom fields (optional — older catalogs omit it). */
   fields?: CatalogAppField[]
+  /** Definitions the app owns end to end (optional — older catalogs omit it). */
+  entities?: CatalogEntity[]
   /** App-declared data connectors (optional — older catalogs omit it). */
   dataConnectors?: CatalogDataConnector[]
   /** Ids of app-side event handlers this deployment declares, e.g.
@@ -329,6 +365,29 @@ export type CompileAndExtractCatalogError =
   | { code: 'CATALOG_LOAD_FAILED'; error: Error }
   | { code: 'CATALOG_VALIDATION_FAILED'; message: string }
   | { code: 'CATALOG_NOT_SERIALIZABLE'; message: string }
+
+/**
+ * System attributes a contributing mapping field's `target` may never name —
+ * an extract-time hard error, not a warning. The extractor cannot see the
+ * platform's entity registry, so this list is a constant kept by hand; it
+ * covers the record-identity + numbering columns a connector binding could
+ * otherwise silently clobber (today's explicit binder skips `isWritableTarget`
+ * and binds anything — see app-fields-and-entities-guide.md §2.4 "Reserved
+ * targets"). Detecting a **computed** field (e.g. an entity's derived total)
+ * is NOT done here — the extractor has no access to `FieldCapabilities.computed`
+ * for a target it doesn't own, so that check is left to the platform seeder at
+ * connector-materialization time.
+ */
+const RESERVED_SYSTEM_ATTRIBUTES = new Set([
+  'record_id',
+  'created_at',
+  'updated_at',
+  'created_by_id',
+  'order_number',
+  'invoice_number',
+  'quote_number',
+  'part_quantity_on_hand',
+])
 
 /**
  * Compile the app entry point in catalog-extraction mode and project the
@@ -392,6 +451,7 @@ export async function compileAndExtractCatalog(): Promise<
   const SDK_REAL_TOOLS = path.join(SDK_ROOT, 'lib', 'root', 'tools', 'index.js')
   const SDK_REAL_WORKFLOW = path.join(SDK_ROOT, 'lib', 'root', 'workflow', 'index.js')
   const SDK_REAL_FIELDS = path.join(SDK_ROOT, 'lib', 'root', 'fields', 'index.js')
+  const SDK_REAL_ENTITIES = path.join(SDK_ROOT, 'lib', 'root', 'entities', 'index.js')
   const SDK_REAL_DATA_CONNECTORS = path.join(SDK_ROOT, 'lib', 'root', 'data-connectors', 'index.js')
   const stubSdkSubpaths: esbuild.Plugin = {
     name: 'auxx-stub-sdk-subpaths',
@@ -405,6 +465,9 @@ export async function compileAndExtractCatalog(): Promise<
         // keys, so esbuild's CJS→ESM interop drops the named export and the
         // call throws `defineFields is not a function`.
         if (args.path === '@auxx/sdk/fields') return { path: SDK_REAL_FIELDS }
+        // `defineEntity` is a validator called at module load too — same
+        // real-runtime requirement as `defineFields`.
+        if (args.path === '@auxx/sdk/entities') return { path: SDK_REAL_ENTITIES }
         // `defineDataConnector` is a validator called at module load too — same
         // real-runtime requirement as `defineFields`.
         if (args.path === '@auxx/sdk/data-connectors') return { path: SDK_REAL_DATA_CONNECTORS }
@@ -477,7 +540,8 @@ export async function compileAndExtractCatalog(): Promise<
   const toolsetsArr = (app.toolsets ?? []) as RawToolset[]
   const workflowBlocksArr = (app.workflow?.blocks ?? []) as RawBlock[]
   const workflowTriggersArr = (app.workflow?.triggers ?? []) as RawTrigger[]
-  const fieldsArr = (app.fields ?? []) as RawAppField[]
+  const fieldsArr = (app.fields ?? []) as RawAppFieldDecl[]
+  const entitiesArr = (app.entities ?? []) as RawEntity[]
   const dataConnectorsArr = (app.dataConnectors ?? []) as RawDataConnector[]
 
   // Empty app — nothing to publish.
@@ -487,6 +551,7 @@ export async function compileAndExtractCatalog(): Promise<
     !workflowBlocksArr.length &&
     !workflowTriggersArr.length &&
     !fieldsArr.length &&
+    !entitiesArr.length &&
     !dataConnectorsArr.length
   ) {
     return complete(undefined)
@@ -675,42 +740,127 @@ export async function compileAndExtractCatalog(): Promise<
     })
   }
 
-  // Project app-registered custom fields. Validation here is light — the SDK
-  // `defineField` discriminated union already enforces shape at author time;
-  // the platform re-validates at provision time via createCustomField.
-  const cataloguedFields: CatalogAppField[] = []
-  const seenFieldKeys = new Set<string>()
-  for (const field of fieldsArr) {
-    if (!field?.appFieldKey) {
-      return errored({ code: 'CATALOG_VALIDATION_FAILED', message: 'Field is missing appFieldKey' })
-    }
-    const dedupeKey = `${field.targetEntity}:${field.appFieldKey}`
-    if (seenFieldKeys.has(dedupeKey)) {
-      return errored({
-        code: 'CATALOG_VALIDATION_FAILED',
-        message: `Duplicate field "${field.appFieldKey}" on entity "${field.targetEntity}"`,
-      })
-    }
-    seenFieldKeys.add(dedupeKey)
-    cataloguedFields.push({
-      appFieldKey: field.appFieldKey,
-      scope: field.scope,
-      targetEntity: field.targetEntity,
+  // Project one FieldDecl (raw) into its catalog shape. Shared by top-level
+  // `fields[]`, `entities[].fields[]` and (normalized) connector owned
+  // mapping fields — the one field shape, projected the same way everywhere.
+  function projectFieldDecl(field: RawFieldDecl): CatalogField {
+    return {
+      key: field.key,
       type: field.type,
       name: field.name,
       description: field.description,
-      options: field.options,
-      relationship: field.relationship,
-      calc: field.calc,
       capabilities: field.capabilities,
       identity: field.identity,
+      options: field.options,
+      addressComponents: field.addressComponents,
+      relationship: field.relationship,
+      calc: field.calc,
+      pii: field.pii,
+    }
+  }
+
+  // Project app-registered custom fields (`defineFields` — adds a field to an
+  // EXISTING platform entity). Shape validation is light — the SDK
+  // `defineField` discriminated union already enforces it at author time; the
+  // platform re-validates at provision time via createCustomField. The
+  // extractor adds the one check `defineFields` can't: at most one
+  // `identity: true` field per `targetEntity` across the WHOLE app (several
+  // `defineFields` calls can all target the same entity kind).
+  const cataloguedFields: CatalogAppField[] = []
+  const seenFieldKeys = new Set<string>()
+  const identityFieldByTargetEntity = new Map<string, string>()
+  for (const field of fieldsArr) {
+    if (!field?.key) {
+      return errored({ code: 'CATALOG_VALIDATION_FAILED', message: 'Field is missing key' })
+    }
+    const dedupeKey = `${field.targetEntity}:${field.key}`
+    if (seenFieldKeys.has(dedupeKey)) {
+      return errored({
+        code: 'CATALOG_VALIDATION_FAILED',
+        message: `Duplicate field "${field.key}" on entity "${field.targetEntity}"`,
+      })
+    }
+    seenFieldKeys.add(dedupeKey)
+    if (field.identity) {
+      const existing = identityFieldByTargetEntity.get(field.targetEntity)
+      if (existing) {
+        return errored({
+          code: 'CATALOG_VALIDATION_FAILED',
+          message: `More than one identity field targets "${field.targetEntity}" ("${existing}" and "${field.key}") — at most one identity field is allowed per entity`,
+        })
+      }
+      identityFieldByTargetEntity.set(field.targetEntity, field.key)
+    }
+    cataloguedFields.push({
+      ...projectFieldDecl(field),
+      scope: field.scope,
+      targetEntity: field.targetEntity,
     })
   }
 
-  // Project app-declared data connectors. The stream/field/mapping
-  // declarations + exampleRecord must survive serialization so the connector
-  // setup UI can preview the source schema + recommended fan-out and the
-  // platform adapter can resolve the streams without evaluating bundle code.
+  // Project definitions the app owns end to end (`defineEntity`). Relationship
+  // `{ entityKey }` targets are resolved here, against the FULL `entities[]`
+  // list — a single entity module can't see its siblings, so this is the one
+  // place that check can run.
+  const cataloguedEntities: CatalogEntity[] = []
+  const entityKeys = new Set(entitiesArr.map((e) => e.key))
+  const entityFieldsByKey = new Map<string, Map<string, RawFieldDecl>>()
+  for (const entity of entitiesArr) {
+    if (!entity?.key) {
+      return errored({ code: 'CATALOG_VALIDATION_FAILED', message: 'Entity is missing a key' })
+    }
+    const fieldMap = new Map<string, RawFieldDecl>()
+    for (const field of entity.fields ?? []) {
+      fieldMap.set(field.key, field)
+      if (
+        field.type === 'RELATIONSHIP' &&
+        field.relationship &&
+        'entityKey' in field.relationship.target
+      ) {
+        const targetKey = field.relationship.target.entityKey
+        if (!entityKeys.has(targetKey)) {
+          return errored({
+            code: 'CATALOG_VALIDATION_FAILED',
+            message: `Entity "${entity.key}" field "${field.key}": relationship target entityKey "${targetKey}" is not a declared entity`,
+          })
+        }
+      }
+    }
+    entityFieldsByKey.set(entity.key, fieldMap)
+    cataloguedEntities.push({
+      key: entity.key,
+      apiSlug: entity.apiSlug,
+      singular: entity.singular,
+      plural: entity.plural,
+      description: entity.description,
+      icon: entity.icon,
+      color: entity.color,
+      primaryDisplayField: entity.primaryDisplayField,
+      secondaryDisplayField: entity.secondaryDisplayField,
+      avatarField: entity.avatarField,
+      fields: (entity.fields ?? []).map(projectFieldDecl),
+    })
+  }
+
+  // Also resolve `{ entityKey }` relationship targets declared on a top-level
+  // manifest field (a `defineFields` field on a platform entity may still
+  // relate to an entity this app owns).
+  for (const field of fieldsArr) {
+    if (field.type !== 'RELATIONSHIP' || !field.relationship) continue
+    if (!('entityKey' in field.relationship.target)) continue
+    const targetKey = field.relationship.target.entityKey
+    if (!entityKeys.has(targetKey)) {
+      return errored({
+        code: 'CATALOG_VALIDATION_FAILED',
+        message: `Field "${field.key}": relationship target entityKey "${targetKey}" is not a declared entity`,
+      })
+    }
+  }
+
+  // Project the app-declared data connector. The stream/mapping declarations +
+  // exampleRecord must survive serialization so the connector setup UI can
+  // preview the source schema + recommended fan-out and the platform adapter
+  // can resolve the streams without evaluating bundle code.
   const cataloguedDataConnectors: CatalogDataConnector[] = []
   const seenConnectorIds = new Set<string>()
   for (const connector of dataConnectorsArr) {
@@ -752,67 +902,106 @@ export async function compileAndExtractCatalog(): Promise<
       }
     }
 
-    // Cross-validate app-field-targeting contributing bindings against this app's
-    // declared `fields[]` (identity plan, phase 3): `targetAppField` must name a
-    // field the app declares for the SAME contributing entityKind;
-    // `connectionAppFields` must name a declared NON-identity field there too
-    // (connection metadata can't fill an identity cell).
+    const streams: CatalogConnectorStream[] = []
     for (const stream of connector.streams ?? []) {
-      for (const mapping of stream.defaultMappings ?? []) {
-        if (mapping.target.mode !== 'contributing') continue
-        const { entityKind, fieldBindings, connectionAppFields } = mapping.target
-        const fieldByKey = new Map(
-          cataloguedFields
-            .filter((f) => f.targetEntity === entityKind)
-            .map((f) => [f.appFieldKey, f])
-        )
-        for (const binding of fieldBindings ?? []) {
-          if (!binding.targetAppField) continue
-          if (!fieldByKey.has(binding.targetAppField)) {
+      const mappings: CatalogConnectorMapping[] = []
+      for (const mapping of stream.mappings ?? []) {
+        const context = `Connector "${connector.id}" stream "${stream.key}" mapping "${mapping.rootPath}"`
+
+        if ('entityKey' in mapping.target) {
+          // Owned mapping — target must be a declared entity; every field's
+          // `key` must exist on it. Normalize into full field decls so the
+          // platform never has to re-resolve type/name/options/identity.
+          const entityKey = mapping.target.entityKey
+          const fieldMap = entityFieldsByKey.get(entityKey)
+          if (!fieldMap) {
             return errored({
               code: 'CATALOG_VALIDATION_FAILED',
-              message: `Connector "${connector.id}" stream "${stream.key}": targetAppField "${binding.targetAppField}" is not a declared field on "${entityKind}"`,
+              message: `${context}: unknown entityKey "${entityKey}" — not a declared entity`,
+            })
+          }
+          const normalizedFields: CatalogConnectorOwnedMappingField[] = []
+          const ownedFields = (mapping.fields ?? []) as RawConnectorOwnedMappingField[]
+          for (const field of ownedFields) {
+            const entityField = fieldMap.get(field.key)
+            if (!entityField) {
+              return errored({
+                code: 'CATALOG_VALIDATION_FAILED',
+                message: `${context}: owned field key "${field.key}" is not declared on entity "${entityKey}"`,
+              })
+            }
+            normalizedFields.push({
+              ...projectFieldDecl(entityField),
+              sourcePath: field.sourcePath,
+            })
+          }
+          mappings.push({
+            rootPath: mapping.rootPath,
+            parentRootPath: mapping.parentRootPath,
+            linkMode: mapping.linkMode,
+            relationshipFieldKey: mapping.relationshipFieldKey,
+            target: { entityKey },
+            ...(mapping.fields ? { fields: normalizedFields } : {}),
+          })
+          continue
+        }
+
+        // Contributing mapping — bind onto the target's own attributes
+        // (`target`) or a declared `defineFields` field (`appField`) for the
+        // SAME `entityKind`.
+        const entityKind = mapping.target.entityKind
+        const fieldByKey = new Map(
+          cataloguedFields.filter((f) => f.targetEntity === entityKind).map((f) => [f.key, f])
+        )
+        const contributingFields = (mapping.fields ?? []) as RawConnectorContributingMappingField[]
+        for (const field of contributingFields) {
+          if (field.target && RESERVED_SYSTEM_ATTRIBUTES.has(field.target)) {
+            return errored({
+              code: 'CATALOG_VALIDATION_FAILED',
+              message: `${context}: target "${field.target}" is a reserved system attribute and cannot be bound by a contributing field`,
+            })
+          }
+          if (field.appField && !fieldByKey.has(field.appField)) {
+            return errored({
+              code: 'CATALOG_VALIDATION_FAILED',
+              message: `${context}: appField "${field.appField}" is not a declared field on "${entityKind}"`,
             })
           }
         }
-        for (const conn of connectionAppFields ?? []) {
-          const field = fieldByKey.get(conn.appFieldKey)
+        for (const conn of mapping.connectionFields ?? []) {
+          const field = fieldByKey.get(conn.appField)
           if (!field) {
             return errored({
               code: 'CATALOG_VALIDATION_FAILED',
-              message: `Connector "${connector.id}" stream "${stream.key}": connectionAppFields "${conn.appFieldKey}" is not a declared field on "${entityKind}"`,
+              message: `${context}: connectionFields "${conn.appField}" is not a declared field on "${entityKind}"`,
             })
           }
           if (field.identity) {
             return errored({
               code: 'CATALOG_VALIDATION_FAILED',
-              message: `Connector "${connector.id}" stream "${stream.key}": connectionAppFields "${conn.appFieldKey}" targets an identity field — connection metadata cannot fill an identity field`,
+              message: `${context}: connectionFields "${conn.appField}" targets an identity field — connection metadata cannot fill an identity field`,
             })
           }
         }
+        mappings.push({
+          rootPath: mapping.rootPath,
+          parentRootPath: mapping.parentRootPath,
+          linkMode: mapping.linkMode,
+          relationshipFieldKey: mapping.relationshipFieldKey,
+          target: { entityKind },
+          fields: mapping.fields,
+          connectionFields: mapping.connectionFields,
+        })
       }
-    }
 
-    const streams: CatalogConnectorStream[] = (connector.streams ?? []).map((stream) => ({
-      key: stream.key,
-      displayFieldKey: stream.displayFieldKey,
-      syncMode: stream.syncMode,
-      // Flatten the `fieldKey → decl` map into an array, carrying the key.
-      fields: Object.entries(stream.fields ?? {}).map(([fieldKey, decl]) => ({
-        fieldKey,
-        sourcePath: decl.sourcePath,
-        type: decl.type,
-        name: decl.name,
-        pii: decl.pii,
-        capabilities: decl.capabilities,
-        options: decl.options,
-        addressComponents: decl.addressComponents,
-        isExternalId: decl.isExternalId,
-      })),
-      defaultMappings: stream.defaultMappings,
-      exampleRecord: stream.exampleRecord,
-      webhookTrigger: stream.webhookTrigger,
-    }))
+      streams.push({
+        key: stream.key,
+        syncMode: stream.syncMode,
+        mappings,
+        exampleRecord: stream.exampleRecord,
+        webhookTrigger: stream.webhookTrigger,
+      })
+    }
 
     cataloguedDataConnectors.push({
       id: connector.id,
@@ -853,6 +1042,7 @@ export async function compileAndExtractCatalog(): Promise<
     },
     actions: cataloguedActions,
     fields: cataloguedFields,
+    entities: cataloguedEntities,
     dataConnectors: cataloguedDataConnectors,
     events: eventIds,
   }
@@ -1058,37 +1248,84 @@ interface RawWorkflowSchema {
   computeOutputs?: (inputs: Record<string, unknown>) => Record<string, unknown>
 }
 
-interface RawAppField {
-  appFieldKey: string
-  scope: 'installation' | 'connection'
-  targetEntity: string
+/**
+ * One `FieldDecl` (raw, from the bundle) — shared by top-level `fields[]`
+ * (`targetEntity`/`scope` present) and `entities[].fields[]` (absent). Mirrors
+ * `root/fields/define-field.ts` `FieldDecl` / `AppFieldDefinition`.
+ */
+interface RawFieldDecl {
+  key: string
+  /** Present on a `defineFields` manifest field only. */
+  targetEntity?: string
+  /** Present on a `defineFields` manifest field only. */
+  scope?: 'installation' | 'connection'
   type: string
   name: string
   description?: string
   options?: Array<{ value: string; label?: string; color?: string }>
-  relationship?: { targetEntity: string; cardinality: 'one' | 'many' }
+  addressComponents?: string[]
+  relationship?: {
+    target: { entityKey: string } | { entityKind: string }
+    cardinality: 'has_many' | 'has_one' | 'belongs_to' | 'many_to_many'
+    inverseName?: string
+  }
   calc?: { expression: string }
   capabilities?: CatalogAppField['capabilities']
   identity?: boolean
+  pii?: boolean
 }
 
-interface RawConnectorFieldDecl {
+/** A top-level `defineFields` manifest field (raw) — `targetEntity`/`scope`
+ *  are always present here (unlike an entity's own `RawFieldDecl` fields). */
+interface RawAppFieldDecl extends RawFieldDecl {
+  targetEntity: string
+  scope: 'installation' | 'connection'
+}
+
+/** A `defineEntity` declaration (raw, from the bundle). */
+interface RawEntity {
+  key: string
+  apiSlug: string
+  singular: string
+  plural: string
+  description?: string
+  icon?: string
+  color?: string
+  primaryDisplayField: string
+  secondaryDisplayField?: string
+  avatarField?: string
+  fields: RawFieldDecl[]
+}
+
+interface RawConnectorOwnedMappingField {
+  key: string
   sourcePath: string
-  type: string
-  name: string
-  pii?: boolean
-  capabilities?: { hidden?: boolean; filterable?: boolean }
-  options?: Array<{ value: string; label?: string; color?: string }>
-  addressComponents?: string[]
-  isExternalId?: boolean
+}
+
+interface RawConnectorContributingMappingField {
+  sourcePath: string
+  target?: string
+  appField?: string
+  match?: boolean
+  mergeStrategy?: string
+  type?: string
+  name?: string
+}
+
+interface RawConnectorMapping {
+  rootPath: string
+  parentRootPath?: string
+  linkMode?: 'upsert' | 'reference'
+  relationshipFieldKey?: string
+  target: { entityKey: string } | { entityKind: string }
+  fields?: Array<RawConnectorOwnedMappingField | RawConnectorContributingMappingField>
+  connectionFields?: Array<{ appField: string; from: string }>
 }
 
 interface RawConnectorStream {
   key: string
-  displayFieldKey: string
   syncMode?: 'snapshot' | 'incremental'
-  fields: Record<string, RawConnectorFieldDecl>
-  defaultMappings?: CatalogConnectorDefaultMapping[]
+  mappings: RawConnectorMapping[]
   exampleRecord?: Record<string, unknown>
   webhookTrigger?: { filter?: Record<string, unknown>; paths: string[]; debounceMs?: number }
 }
@@ -1115,5 +1352,6 @@ interface RawApp {
     triggers?: ReadonlyArray<unknown>
   }
   fields?: ReadonlyArray<unknown>
+  entities?: ReadonlyArray<unknown>
   dataConnectors?: ReadonlyArray<unknown>
 }

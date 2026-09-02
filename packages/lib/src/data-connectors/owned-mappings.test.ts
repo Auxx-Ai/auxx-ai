@@ -1,32 +1,33 @@
 // packages/lib/src/data-connectors/owned-mappings.test.ts
-// Pure-helper coverage for owned-mode app default-mapping materialization
-// (step-11 gap 2). The DB orchestration in `createConnectorFromAppCatalog` has no
-// vitest harness; these cover the ref-binding logic that's easy to get wrong.
+// Pure-helper coverage for owned-mode app mapping materialization
+// (app-fields-and-entities-plan Phase 2 §4.3). The DB orchestration in
+// `createConnectorFromAppCatalog` has no vitest harness; these cover the
+// ref-binding logic that's easy to get wrong.
 
-import type { CatalogDataConnector } from '@auxx/database'
+import type {
+  CatalogConnectorOwnedMappingField,
+  CatalogDataConnector,
+  CatalogEntity,
+} from '@auxx/database'
 import { describe, expect, it } from 'vitest'
 import {
   appRelationshipFieldKey,
   buildAppOwnedFieldMappings,
   buildReferenceAnchor,
-  type OwnedFieldEntry,
   ownedParentRootPath,
-  partitionOwnedFields,
   projectConnectorOwnedTargets,
   relativeSourcePath,
   storedRootPath,
 } from './mutations'
 
-type CatalogField = OwnedFieldEntry['field']
-
-const FIELDS: CatalogField[] = [
-  { fieldKey: 'id', sourcePath: 'id', type: 'TEXT', name: 'GitHub ID' },
-  { fieldKey: 'title', sourcePath: 'title', type: 'TEXT', name: 'Title' },
-  // fieldKey differs from sourcePath — the late-bound ref keys on fieldKey,
-  // the projection expression keys on sourcePath.
-  { fieldKey: 'author', sourcePath: 'user_login', type: 'TEXT', name: 'Author' },
+const FIELDS: CatalogConnectorOwnedMappingField[] = [
+  { key: 'id', sourcePath: 'id', type: 'TEXT', name: 'GitHub ID' },
+  { key: 'title', sourcePath: 'title', type: 'TEXT', name: 'Title' },
+  // key differs from sourcePath — the late-bound ref keys on `key`, the
+  // projection expression keys on `sourcePath`.
+  { key: 'author', sourcePath: 'user_login', type: 'TEXT', name: 'Author' },
   {
-    fieldKey: 'secret',
+    key: 'secret',
     sourcePath: 'secret',
     type: 'TEXT',
     name: 'Secret',
@@ -35,43 +36,36 @@ const FIELDS: CatalogField[] = [
 ]
 
 describe('buildAppOwnedFieldMappings', () => {
-  // Root-level fields: the subtree-relative path equals the sourcePath.
-  const entries = FIELDS.map((field) => ({ field, relativeSourcePath: field.sourcePath }))
-
-  it('emits the late-bound @app ref per field, keyed by fieldKey, no provision', () => {
-    const mappings = buildAppOwnedFieldMappings(entries, 'github', 'github_issues')
+  it('emits the late-bound @app ref per field, keyed by `key`, no provision', () => {
+    const mappings = buildAppOwnedFieldMappings(FIELDS, 'github', 'github_issues')
     // Every declared field becomes an entry (nothing dropped — no DB ids needed yet).
     expect(mappings).toHaveLength(4)
 
     const author = mappings.find((m) => m.targetFieldRef?.endsWith(':author'))
     expect(author).toBeDefined()
-    // The ref is `${ownedApiSlug}:@app:${appSlug}:${fieldKey}` — the fieldKey rides
-    // in the ref so the install can rewrite it; it also resolves at sync time.
+    // The ref is `${ownedApiSlug}:@app:${appSlug}:${key}` — the key rides in the ref
+    // so the install can rewrite it; it also resolves at sync time.
     expect(author?.targetFieldRef).toBe('github_issues:@app:github:author')
     // Option A carries no `provision` hint — install creates the column.
     expect(author?.provision).toBeUndefined()
-    // Expression reads the relative source path, not the fieldKey.
+    // Expression reads the (already mapping-relative) source path, not the key.
     expect(author?.expression).toBe('{user_login}')
     expect(author?.sourceFields).toEqual({ user_login: 'user_login' })
     expect(author?.id).toBeTruthy()
   })
 
-  it('stamps identityRole.externalId on the isExternalId field, keeping its column write', () => {
-    const flagged: CatalogField[] = [
+  it('stamps identityRole.externalId on the identity:true field, keeping its column write', () => {
+    const flagged: CatalogConnectorOwnedMappingField[] = [
       {
-        fieldKey: 'shopify_id',
+        key: 'shopify_id',
         sourcePath: 'id',
         type: 'TEXT',
         name: 'Shopify Order ID',
-        isExternalId: true,
+        identity: true,
       },
-      { fieldKey: 'name', sourcePath: 'name', type: 'TEXT', name: 'Order Name' },
+      { key: 'name', sourcePath: 'name', type: 'TEXT', name: 'Order Name' },
     ]
-    const mappings = buildAppOwnedFieldMappings(
-      flagged.map((field) => ({ field, relativeSourcePath: field.sourcePath })),
-      'shopify',
-      'shopify_orders'
-    )
+    const mappings = buildAppOwnedFieldMappings(flagged, 'shopify', 'shopify_orders')
     const idEntry = mappings.find((m) => m.targetFieldRef?.endsWith(':shopify_id'))
     // The flagged field is the External ID anchor AND still writes its own column.
     expect(idEntry?.identityRole).toEqual({ kind: 'externalId' })
@@ -83,35 +77,27 @@ describe('buildAppOwnedFieldMappings', () => {
   })
 
   it('is inert when no field is flagged (unchanged behavior)', () => {
-    const mappings = buildAppOwnedFieldMappings(entries, 'github', 'github_issues')
+    const mappings = buildAppOwnedFieldMappings(FIELDS, 'github', 'github_issues')
     expect(mappings.every((m) => m.identityRole === undefined)).toBe(true)
   })
 
-  it('first-wins when two fields are flagged on one owned def', () => {
-    const twoFlagged: CatalogField[] = [
-      { fieldKey: 'a', sourcePath: 'a', type: 'TEXT', name: 'A', isExternalId: true },
-      { fieldKey: 'b', sourcePath: 'b', type: 'TEXT', name: 'B', isExternalId: true },
+  it('first-wins when two fields are flagged identity on one owned def', () => {
+    const twoFlagged: CatalogConnectorOwnedMappingField[] = [
+      { key: 'a', sourcePath: 'a', type: 'TEXT', name: 'A', identity: true },
+      { key: 'b', sourcePath: 'b', type: 'TEXT', name: 'B', identity: true },
     ]
-    const mappings = buildAppOwnedFieldMappings(
-      twoFlagged.map((field) => ({ field, relativeSourcePath: field.sourcePath })),
-      'shopify',
-      'shopify_orders'
-    )
+    const mappings = buildAppOwnedFieldMappings(twoFlagged, 'shopify', 'shopify_orders')
     const stamped = mappings.filter((m) => m.identityRole?.kind === 'externalId')
     expect(stamped).toHaveLength(1)
     expect(stamped[0]?.targetFieldRef).toBe('shopify_orders:@app:shopify:a')
   })
 
-  it('keys a child mapping expression on the SUBTREE-relative path, not the full sourcePath', () => {
-    // A `line_items[]` child: the ref keys on the stable fieldKey, but the expression
-    // must read `{sku}` (the subtree is one line item), not `{line_items[].sku}`.
+  it('keys a child mapping expression on the ALREADY-RELATIVE sourcePath', () => {
+    // A `line_items[]` child field: the ref keys on the stable `key`, and the
+    // expression reads `{sku}` because the SDK contract already declares
+    // `sourcePath` relative to the mapping's own `rootPath`.
     const childMappings = buildAppOwnedFieldMappings(
-      [
-        {
-          field: { fieldKey: 'sku', sourcePath: 'line_items[].sku', type: 'TEXT', name: 'SKU' },
-          relativeSourcePath: 'sku',
-        },
-      ],
+      [{ key: 'sku', sourcePath: 'sku', type: 'TEXT', name: 'SKU' }],
       'shopify',
       'shopify_line_items'
     )
@@ -129,57 +115,56 @@ describe('projectConnectorOwnedTargets', () => {
     streams: [
       {
         key: 'products',
-        defaultMappings: [
-          {
-            rootPath: '',
-            target: {
-              mode: 'owned',
-              entity: { key: 'products', apiSlug: 'shopify_products', singular: 'P', plural: 'Ps' },
-            },
-          },
-        ],
+        mappings: [{ rootPath: '', target: { entityKey: 'products' } }],
       },
       {
         key: 'orders',
-        defaultMappings: [
-          {
-            rootPath: '',
-            target: {
-              mode: 'owned',
-              entity: { key: 'orders', apiSlug: 'shopify_orders', singular: 'O', plural: 'Os' },
-            },
-          },
+        mappings: [
+          { rootPath: '', target: { entityKey: 'orders' } },
           // A contributing customer branch — NOT owned, must be skipped.
-          { rootPath: 'customer', target: { mode: 'contributing', entityKind: 'contact' } },
+          { rootPath: 'customer', target: { entityKind: 'contact' } },
           // The owned line-item child — parent of the product reference below.
-          {
-            rootPath: 'line_items[]',
-            target: {
-              mode: 'owned',
-              entity: {
-                key: 'line_items',
-                apiSlug: 'shopify_line_items',
-                singular: 'L',
-                plural: 'Ls',
-              },
-            },
-          },
+          { rootPath: 'line_items[]', target: { entityKey: 'line_items' } },
           // A `reference` owned mapping pointing at the SAME product key as the products
           // stream — both must surface so onComplete binds both to the one product def.
           {
             rootPath: 'line_items[].product_id',
             linkMode: 'reference',
-            target: {
-              mode: 'owned',
-              entity: { key: 'products', apiSlug: 'shopify_products', singular: 'P', plural: 'Ps' },
-            },
+            target: { entityKey: 'products' },
           },
         ],
       },
     ],
   } as unknown as CatalogDataConnector
 
-  const targets = projectConnectorOwnedTargets('shopify', catalog)
+  const entities: CatalogEntity[] = [
+    {
+      key: 'products',
+      apiSlug: 'shopify_products',
+      singular: 'P',
+      plural: 'Ps',
+      primaryDisplayField: 'title',
+      fields: [],
+    },
+    {
+      key: 'orders',
+      apiSlug: 'shopify_orders',
+      singular: 'O',
+      plural: 'Os',
+      primaryDisplayField: 'name',
+      fields: [],
+    },
+    {
+      key: 'line_items',
+      apiSlug: 'shopify_line_items',
+      singular: 'L',
+      plural: 'Ls',
+      primaryDisplayField: 'sku',
+      fields: [],
+    },
+  ]
+
+  const targets = projectConnectorOwnedTargets('shopify', catalog, entities)
 
   it('emits one entry per owned mapping, skipping contributing branches', () => {
     expect(targets).toHaveLength(4)
@@ -202,7 +187,7 @@ describe('projectConnectorOwnedTargets', () => {
     expect(line?.rootPath).toBe('line_items[]')
   })
 
-  it('stamps the app:<slug>:<ownedKey> templateId + (streamKey, rootPath)', () => {
+  it('stamps the app:<slug>:<ownedKey> templateId + (streamKey, rootPath), reading entityKey off the mapping', () => {
     const orders = targets.find((t) => t.ownedKey === 'orders')
     expect(orders).toEqual({
       ownedKey: 'orders',
@@ -226,76 +211,11 @@ describe('projectConnectorOwnedTargets', () => {
   })
 })
 
-describe('partitionOwnedFields', () => {
-  // The multi-level Shopify order fan-out: order root + customer (contributing) +
-  // line_items[] (owned child) + line_items[].product_id (reference).
-  const FIELDS = [
-    { fieldKey: 'id', sourcePath: 'id', type: 'TEXT', name: 'Order ID' },
-    { fieldKey: 'name', sourcePath: 'name', type: 'TEXT', name: 'Order Name' },
-    { fieldKey: 'customer.email', sourcePath: 'customer.email', type: 'EMAIL', name: 'Email' },
-    { fieldKey: 'lineItems.sku', sourcePath: 'line_items[].sku', type: 'TEXT', name: 'SKU' },
-    { fieldKey: 'lineItems.qty', sourcePath: 'line_items[].quantity', type: 'NUMBER', name: 'Qty' },
-    {
-      fieldKey: 'lineItems.productId',
-      sourcePath: 'line_items[].product_id',
-      type: 'TEXT',
-      name: 'Product ID',
-    },
-  ]
-  const MAPPINGS = [
-    {
-      rootPath: '',
-      target: {
-        mode: 'owned' as const,
-        entity: { key: 'orders', apiSlug: 'shopify_orders', singular: 'O', plural: 'Os' },
-      },
-    },
-    { rootPath: 'customer', target: { mode: 'contributing' as const, entityKind: 'contact' } },
-    {
-      rootPath: 'line_items[]',
-      target: {
-        mode: 'owned' as const,
-        entity: { key: 'line_items', apiSlug: 'shopify_line_items', singular: 'L', plural: 'Ls' },
-      },
-    },
-    {
-      rootPath: 'line_items[].product_id',
-      linkMode: 'reference' as const,
-      target: {
-        mode: 'owned' as const,
-        entity: { key: 'products', apiSlug: 'shopify_products', singular: 'P', plural: 'Ps' },
-      },
-    },
-  ]
-
-  const result = partitionOwnedFields(FIELDS, MAPPINGS)
-
-  it('assigns root fields to the order def', () => {
-    expect(result['']?.map((e) => e.field.fieldKey)).toEqual(['id', 'name'])
-  })
-
-  it('assigns line fields to the line-item def, rewritten subtree-relative', () => {
-    const line = result['line_items[]'] ?? []
-    expect(line.map((e) => e.field.fieldKey)).toEqual(['lineItems.sku', 'lineItems.qty'])
-    expect(line.map((e) => e.relativeSourcePath)).toEqual(['sku', 'quantity'])
-  })
-
-  it('excludes a field owned by a contributing branch (customer.email is not an order column)', () => {
-    expect(result['']?.some((e) => e.field.fieldKey === 'customer.email')).toBe(false)
-  })
-
-  it('excludes the reference id field — it is the edge FK, not a line-item column', () => {
-    const line = result['line_items[]'] ?? []
-    expect(line.some((e) => e.field.fieldKey === 'lineItems.productId')).toBe(false)
-    // The reference mapping (shopify_products) owns no columns at all.
-    expect(result['line_items[].product_id']).toBeUndefined()
-  })
-})
-
 describe('relativeSourcePath (nested-child rootPath relativization)', () => {
   // The seeders relativize a child mapping's payload-absolute manifest rootPath
   // against its parent's rootPath before storing it — the shape the editor + sync
-  // runtime expect. Same helper that strips a field's sourcePath against its owner.
+  // runtime expect. (Field sourcePath relativization is no longer needed — the SDK
+  // contract already declares it relative to the field's own mapping.)
   it('strips a grandchild rootPath against its array parent', () => {
     // The product reference under line_items[]: `line_items[].product_id` must store
     // as `product_id` so it matches the relative leaf node + resolves at sync.
@@ -307,8 +227,6 @@ describe('relativeSourcePath (nested-child rootPath relativization)', () => {
   })
 
   it('leaves a top-level child unchanged (parent is the root)', () => {
-    // A one-level child parents to `''` → absolute == relative (accidentally correct
-    // before the fix, which is why only depth-≥2 children regressed).
     expect(relativeSourcePath('line_items[]', '')).toBe('line_items[]')
     expect(relativeSourcePath('customer', '')).toBe('customer')
   })

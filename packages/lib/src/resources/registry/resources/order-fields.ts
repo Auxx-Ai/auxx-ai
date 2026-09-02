@@ -360,6 +360,34 @@ export const ORDER_FIELDS: Record<string, ResourceField> = {
     showInTable: false,
   },
 
+  // Added by migration 122 (money plan 37 §8/§10.1). A merchant's delivery
+  // instruction is a fact that exists without any connector — `D8` — so it is
+  // a system field, not an app field. `mergeStrategy: 'fill_blank'` on the
+  // Shopify binding (money plan 37 §6.1) means a note typed in auxx survives a
+  // resync; this field itself carries no merge policy of its own.
+  note: {
+    id: toFieldId('note'),
+    key: 'note',
+    label: 'Note',
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemAttribute: 'order_note',
+    systemSortOrder: 'aB1',
+    showInTable: false,
+    nullable: true,
+    options: { multiline: true, rows: 2 },
+    capabilities: {
+      filterable: false,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    placeholder: 'Delivery instructions or other notes for this order',
+    description: '',
+  },
+
   subtotal: {
     id: toFieldId('subtotal'),
     key: 'subtotal',
@@ -505,6 +533,42 @@ export const ORDER_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     description: 'Integer minor units — written by the totals engine hook',
+  },
+
+  // Added by migration 122 (money plan 37 §6/§8). Modelled exactly on
+  // `purchase_order_shipping_total`: a STATED header amount, human-typed or
+  // transcribed from a connector's own total, and folded into `total` by the
+  // totals engine rather than derived from the lines. Sell-side documents had
+  // no shipping term before this — quote and invoice still don't (money plan
+  // 37 §11 keeps them out of scope).
+  shippingTotal: {
+    id: toFieldId('shippingTotal'),
+    key: 'shippingTotal',
+    label: 'Shipping Total',
+    type: BaseType.CURRENCY,
+    fieldType: FieldType.CURRENCY,
+    isSystem: true,
+    systemAttribute: 'order_shipping_total',
+    systemSortOrder: 'aG1',
+    showInPanel: false, // shown in the line-items overview card
+    nullable: true,
+    options: {
+      currencyCode: 'USD',
+      decimals: 2,
+      useGrouping: true,
+      currencyDisplay: 'symbol',
+    },
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    placeholder: 'Shipping charged on this order',
+    description:
+      'Shipping for the whole order, integer minor units — a stated header amount that folds ' +
+      'into the total, not derived from the lines',
   },
 
   total: {

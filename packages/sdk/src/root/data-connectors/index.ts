@@ -17,23 +17,28 @@
  * export const shopifyCoreDataConnector = defineDataConnector({ ... })
  * ```
  *
- * Register it on the app export: `app.dataConnectors = [shopifyCoreDataConnector]`.
+ * Register it on the app export: `app.dataConnectors = [shopifyCoreDataConnector]`
+ * — one connector per app.
  */
 
 export { defineDataConnector } from './define-data-connector.js'
 export type {
   ConnectorConnection,
-  ConnectorDefaultMapping,
-  ConnectorEntityDecl,
+  ConnectorConnectionField,
+  ConnectorContributingFieldSourceOnly,
+  ConnectorContributingFieldToAppField,
+  ConnectorContributingFieldToTarget,
+  ConnectorContributingMappingField,
   ConnectorExecute,
   ConnectorExecuteArgs,
   ConnectorFetchResult,
-  ConnectorFieldCapabilities,
-  ConnectorFieldDecl,
+  ConnectorMapping,
+  ConnectorOwnedMappingField,
   ConnectorRecord,
-  ConnectorRelationshipDecl,
-  ConnectorRelationshipTargetRef,
   ConnectorStreamDecl,
   ConnectorStreamState,
+  ContributingConnectorMapping,
   DataConnectorDefinition,
+  FieldMergeStrategy,
+  OwnedConnectorMapping,
 } from './types.js'

@@ -6,6 +6,7 @@
 
 import {
   type CatalogAppField,
+  type CatalogEntity,
   type CatalogPayload,
   type Database,
   database,
@@ -76,40 +77,100 @@ export interface ProvisionContext {
 export type ProvisionOutcome = 'created' | 'duplicate' | 'skipped'
 
 /**
+ * Resolve a manifest RELATIONSHIP field's target to an `EntityDefinition.id` —
+ * `{ entityKind }` resolves through the org cache (a platform kind, one def per
+ * entityType per org); `{ entityKey }` resolves to the SAME app installation's own
+ * `defineEntity` def by its stable `sourceKey` (mirrors `adoptSharedOwnedDefId`'s
+ * lookup for the connector-owned path). Undefined when unresolvable.
+ */
+async function resolveManifestRelationshipTarget(
+  db: Database | Transaction,
+  ctx: ProvisionContext,
+  target: NonNullable<CatalogAppField['relationship']>['target']
+): Promise<string | undefined> {
+  if ('entityKind' in target) {
+    return getCachedEntityDefId(ctx.organizationId, target.entityKind)
+  }
+  const def = await db.query.EntityDefinition.findFirst({
+    where: and(
+      eq(schema.EntityDefinition.organizationId, ctx.organizationId),
+      eq(schema.EntityDefinition.appInstallationId, ctx.appInstallationId),
+      eq(schema.EntityDefinition.sourceKey, target.entityKey),
+      isNull(schema.EntityDefinition.archivedAt)
+    ),
+    columns: { id: true },
+  })
+  return def?.id
+}
+
+/**
  * Provision one declared app field. Idempotent: `createCustomField` returns
  * DUPLICATE_FIELD_NAME when a field already exists for this
  * `(appInstallationId, connectionId?, appFieldKey)` — reported as `'duplicate'`.
  * A genuine (non-duplicate) create failure THROWS — the reconciler wraps the call
  * and records it as a field-level error (which parks the sync).
  *
- * RELATIONSHIP fields are not supported in v1 (their inverse-field wiring isn't
- * covered) — logged and skipped. Drift on an existing field is NOT handled here;
- * the reconciler's `update` action owns that (single source of truth).
+ * RELATIONSHIP fields are provisioned through `createCustomField`'s relationship
+ * branch (`createRelationshipFieldWithInverse`), the same path the entity-template
+ * installer uses — the target resolves via {@link resolveManifestRelationshipTarget}.
+ * Drift on an existing field is NOT handled here; the reconciler's `update` action
+ * owns that (single source of truth).
+ *
+ * @param resolvedEntityDefinitionId - Skip the `targetEntity` cache lookup and write
+ *   straight to this def. Used by {@link reconcileAppEntityFields}: an entity-owned
+ *   field's target is the entity's OWN def (already known from its `sourceKey`), not
+ *   a platform kind the `entityDefs` cache resolves.
  */
 export async function provisionAppField(
   field: CatalogAppField,
   ctx: ProvisionContext,
-  tx?: Transaction
+  tx?: Transaction,
+  resolvedEntityDefinitionId?: string
 ): Promise<ProvisionOutcome> {
-  if (field.type === 'RELATIONSHIP') {
-    logger.warn('skipping RELATIONSHIP field — not supported in v1', {
-      appFieldKey: field.appFieldKey,
+  const db = tx ?? database
+
+  // The catalog `targetEntity` IS the entityType (one def per entityType per org).
+  // Cache-resolved; defs pre-exist any install/sync transaction, so a tx caller
+  // never needs read-your-writes here.
+  const entityDefinitionId =
+    resolvedEntityDefinitionId ??
+    (await getCachedEntityDefId(ctx.organizationId, field.targetEntity))
+  if (!entityDefinitionId) {
+    logger.warn('cannot resolve targetEntity — skipping field', {
+      appFieldKey: field.key,
+      targetEntity: field.targetEntity,
       appInstallationId: ctx.appInstallationId,
     })
     return 'skipped'
   }
 
-  // The catalog `targetEntity` IS the entityType (one def per entityType per org).
-  // Cache-resolved; defs pre-exist any install/sync transaction, so a tx caller
-  // never needs read-your-writes here.
-  const entityDefinitionId = await getCachedEntityDefId(ctx.organizationId, field.targetEntity)
-  if (!entityDefinitionId) {
-    logger.warn('cannot resolve targetEntity — skipping field', {
-      appFieldKey: field.appFieldKey,
-      targetEntity: field.targetEntity,
-      appInstallationId: ctx.appInstallationId,
-    })
-    return 'skipped'
+  let relationship: CreateCustomFieldInput['relationship']
+  if (field.type === 'RELATIONSHIP') {
+    if (!field.relationship) {
+      logger.warn('RELATIONSHIP field missing relationship config — skipping', {
+        appFieldKey: field.key,
+        appInstallationId: ctx.appInstallationId,
+      })
+      return 'skipped'
+    }
+    const relatedResourceId = await resolveManifestRelationshipTarget(
+      db,
+      ctx,
+      field.relationship.target
+    )
+    if (!relatedResourceId) {
+      logger.warn('cannot resolve relationship target — skipping field', {
+        appFieldKey: field.key,
+        target: field.relationship.target,
+        appInstallationId: ctx.appInstallationId,
+      })
+      return 'skipped'
+    }
+    relationship = {
+      relatedResourceId,
+      relationshipType: field.relationship.cardinality,
+      inverseName: field.relationship.inverseName ?? field.name,
+    }
   }
 
   const result = await createCustomField(
@@ -122,9 +183,10 @@ export async function provisionAppField(
       options: buildFieldOptions(field),
       appInstallationId: ctx.appInstallationId,
       connectionId: ctx.connectionId,
-      appFieldKey: field.appFieldKey,
+      appFieldKey: field.key,
       isIdentity: field.identity ?? false,
       appSlug: ctx.appSlug,
+      relationship,
       ...capabilitiesToColumns(field.capabilities),
     },
     tx
@@ -133,9 +195,7 @@ export async function provisionAppField(
   if (result.isErr()) {
     if (result.error.code !== 'DUPLICATE_FIELD_NAME') {
       // Don't silently lose a declared field — surface real failures to the reconciler.
-      throw new Error(
-        `Failed to provision app field "${field.appFieldKey}": ${result.error.message}`
-      )
+      throw new Error(`Failed to provision app field "${field.key}": ${result.error.message}`)
     }
     return 'duplicate'
   }
@@ -347,7 +407,7 @@ export function computeAppFieldReconcileActions(params: {
   const actions: AppFieldReconcileAction[] = []
   const errors: AppFieldReconcileError[] = []
 
-  const catalogKeys = new Set(catalogFields.map((f) => f.appFieldKey))
+  const catalogKeys = new Set(catalogFields.map((f) => f.key))
   const rowByCell = new Map<string, ExistingAppFieldRow>()
   for (const row of existingRows) {
     if (!row.appFieldKey) continue
@@ -355,24 +415,22 @@ export function computeAppFieldReconcileActions(params: {
   }
 
   for (const field of catalogFields) {
-    // MANIFEST relationship fields aren't provisioned in v1 (their inverse wiring
-    // isn't covered) — skip create/update; their key stays in the catalog so their
-    // rows are never orphaned either. Connector-template relationship fields are the
-    // other universe and never reach this diff (see isManifestAppFieldRow).
-    if (field.type === 'RELATIONSHIP') continue
-
+    // RELATIONSHIP manifest fields are provisioned the same as any other field
+    // (app-fields-and-entities-plan §4.2) — no special-case skip. Connector-template
+    // relationship fields are a different universe and never reach this diff (see
+    // isManifestAppFieldRow).
     const cellConnectionIds: (string | null)[] =
       field.scope === 'connection' ? connectionIds : [null]
 
     for (const connectionId of cellConnectionIds) {
-      const existing = rowByCell.get(cellKey(field.appFieldKey, connectionId))
+      const existing = rowByCell.get(cellKey(field.key, connectionId))
       if (!existing) {
-        actions.push({ kind: 'create', appFieldKey: field.appFieldKey, connectionId, field })
+        actions.push({ kind: 'create', appFieldKey: field.key, connectionId, field })
         continue
       }
       if (existing.type !== field.type) {
         errors.push({
-          appFieldKey: field.appFieldKey,
+          appFieldKey: field.key,
           reason: `type changed ${existing.type} → ${field.type} — not auto-converted`,
         })
         continue
@@ -381,7 +439,7 @@ export function computeAppFieldReconcileActions(params: {
       if (Object.keys(changes).length > 0) {
         actions.push({
           kind: 'update',
-          appFieldKey: field.appFieldKey,
+          appFieldKey: field.key,
           connectionId,
           existingFieldId: existing.id,
           changes,
@@ -510,7 +568,7 @@ export async function reconcileAppFields(
 
   // Pre-compute `hasValues` for candidate-orphan fields (missing from the catalog)
   // so the pure diff can decide hide-vs-delete without a DB call.
-  const catalogKeys = new Set(catalogFields.map((f) => f.appFieldKey))
+  const catalogKeys = new Set(catalogFields.map((f) => f.key))
   const candidateOrphanIds = existingRows
     .filter((r) => r.appFieldKey && !catalogKeys.has(r.appFieldKey))
     .map((r) => r.id)
@@ -575,6 +633,147 @@ export async function reconcileAppFields(
           fieldId: action.existingFieldId,
           appInstallationId: ctx.appInstallationId,
         })
+      }
+    } catch (error) {
+      execErrors.push({
+        appFieldKey: action.appFieldKey,
+        reason: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
+  return { created, updated, orphaned, errors: execErrors }
+}
+
+/**
+ * Roll forward one already-installed `defineEntity` entity's fields against its
+ * catalog declaration — the entity-template analogue of {@link reconcileAppFields}.
+ * Reuses the SAME pure diff ({@link computeAppFieldReconcileActions}) so a new field
+ * added to an app's entity in a redeployed catalog creates/drifts/orphans exactly
+ * like a manifest field does, but resolves the target directly to the entity's own
+ * `entityDefinitionId` (via `sourceKey`) instead of through `provisionAppField`'s
+ * entity-KIND cache lookup — an app-owned custom entity has no `entityDefs` cache
+ * entry (that cache is keyed by system `entityType`, not `sourceKey`).
+ *
+ * Entities with no existing def are skipped entirely: creating one without consent
+ * is exactly what the install-time consent step (app-fields-and-entities-plan
+ * §4.1 item 3) exists to gate. This only adds/drifts/orphans FIELDS on a def that
+ * install (or a prior roll-forward) already created.
+ */
+export async function reconcileAppEntityFields(
+  entity: CatalogEntity,
+  ctx: { appInstallationId: string; organizationId: string; appSlug: string },
+  tx?: Transaction
+): Promise<ReconcileResult> {
+  const db = tx ?? database
+
+  const existingDef = await db.query.EntityDefinition.findFirst({
+    where: and(
+      eq(schema.EntityDefinition.organizationId, ctx.organizationId),
+      eq(schema.EntityDefinition.appInstallationId, ctx.appInstallationId),
+      eq(schema.EntityDefinition.sourceKey, entity.key),
+      isNull(schema.EntityDefinition.archivedAt)
+    ),
+    columns: { id: true },
+  })
+  if (!existingDef) return { created: 0, updated: 0, orphaned: 0, errors: [] }
+
+  // `targetEntity` is unused below — the target is always `existingDef.id`, passed
+  // explicitly to `provisionAppField`'s `resolvedEntityDefinitionId` override.
+  const catalogFields: CatalogAppField[] = entity.fields.map((f) => ({
+    ...f,
+    scope: 'installation',
+    targetEntity: entity.key,
+  }))
+
+  const loadedRows = await db.query.CustomField.findMany({
+    where: and(
+      eq(schema.CustomField.appInstallationId, ctx.appInstallationId),
+      eq(schema.CustomField.entityDefinitionId, existingDef.id)
+    ),
+    columns: {
+      id: true,
+      appFieldKey: true,
+      connectionId: true,
+      type: true,
+      name: true,
+      description: true,
+      isIdentity: true,
+      appSlug: true,
+      options: true,
+      required: true,
+      isUnique: true,
+      isCreatable: true,
+      isUpdatable: true,
+      isComputed: true,
+      isSortable: true,
+      isFilterable: true,
+      isHidden: true,
+    },
+  })
+  const existingRows: ExistingAppFieldRow[] = loadedRows
+
+  if (catalogFields.length === 0 && existingRows.length === 0) {
+    return { created: 0, updated: 0, orphaned: 0, errors: [] }
+  }
+
+  const catalogKeys = new Set(catalogFields.map((f) => f.key))
+  const candidateOrphanIds = existingRows
+    .filter((r) => r.appFieldKey && !catalogKeys.has(r.appFieldKey))
+    .map((r) => r.id)
+  const fieldsWithValues = new Set<string>()
+  if (candidateOrphanIds.length > 0) {
+    const valueRows = await db
+      .selectDistinct({ fieldId: schema.FieldValue.fieldId })
+      .from(schema.FieldValue)
+      .where(inArray(schema.FieldValue.fieldId, candidateOrphanIds))
+    for (const v of valueRows) fieldsWithValues.add(v.fieldId)
+  }
+
+  const { actions, errors } = computeAppFieldReconcileActions({
+    catalogFields,
+    existingRows,
+    // Entity-owned fields have no connection-scope concept (that's a manifest
+    // `defineFields` feature) — every cell is installation-scoped.
+    connectionIds: [],
+    hasValues: (id) => fieldsWithValues.has(id),
+    appSlug: ctx.appSlug,
+  })
+
+  let created = 0
+  let updated = 0
+  let orphaned = 0
+  const execErrors: AppFieldReconcileError[] = [...errors]
+
+  for (const action of actions) {
+    try {
+      if (action.kind === 'create' && action.field) {
+        const outcome = await provisionAppField(
+          action.field,
+          {
+            appInstallationId: ctx.appInstallationId,
+            organizationId: ctx.organizationId,
+            appSlug: ctx.appSlug,
+          },
+          tx,
+          existingDef.id
+        )
+        if (outcome === 'created') created++
+      } else if (action.kind === 'update' && action.existingFieldId) {
+        await db
+          .update(schema.CustomField)
+          .set({ ...action.changes, updatedAt: new Date() })
+          .where(eq(schema.CustomField.id, action.existingFieldId))
+        updated++
+      } else if (action.kind === 'orphan-hide' && action.existingFieldId) {
+        await db
+          .update(schema.CustomField)
+          .set({ isHidden: true, updatedAt: new Date() })
+          .where(eq(schema.CustomField.id, action.existingFieldId))
+        orphaned++
+      } else if (action.kind === 'orphan-delete' && action.existingFieldId) {
+        await db.delete(schema.CustomField).where(eq(schema.CustomField.id, action.existingFieldId))
+        orphaned++
       }
     } catch (error) {
       execErrors.push({
@@ -658,6 +857,43 @@ export async function applyInstallationCatalog(
       appSlug: params.appSlug,
       error: error instanceof Error ? error.message : String(error),
     })
+  }
+
+  // Roll forward already-installed `defineEntity` entities' fields too (§4.1 item 3).
+  // Runs for BOTH install (a reactivated installation may already own entity defs
+  // from before it was uninstalled) and roll-forward — this is the shared warm-up
+  // both call sites use. Entities the org never installed are skipped (see
+  // {@link reconcileAppEntityFields}), so this never creates a def without consent.
+  for (const entity of params.catalog?.entities ?? []) {
+    try {
+      const result = await reconcileAppEntityFields(
+        entity,
+        {
+          appInstallationId: params.appInstallationId,
+          organizationId: params.organizationId,
+          appSlug: params.appSlug,
+        },
+        tx
+      )
+      if (result.errors.length > 0) {
+        logger.warn('applyInstallationCatalog: entity field reconcile completed with errors', {
+          appInstallationId: params.appInstallationId,
+          appSlug: params.appSlug,
+          entityKey: entity.key,
+          errors: result.errors,
+        })
+      }
+    } catch (error) {
+      logger.error(
+        'applyInstallationCatalog: entity field reconcile threw — continuing (sync will re-check)',
+        {
+          appInstallationId: params.appInstallationId,
+          appSlug: params.appSlug,
+          entityKey: entity.key,
+          error: error instanceof Error ? error.message : String(error),
+        }
+      )
+    }
   }
 }
 

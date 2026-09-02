@@ -6,11 +6,11 @@ export { genericRestConnector } from './generic-rest'
 export { connectorFor } from './registry'
 export type {
   ConnectorCheckpoint,
-  ConnectorDefaultMapping,
-  ConnectorEntityDecl,
+  ConnectorConnectionField,
+  ConnectorContributingMappingField,
   ConnectorFetchArgs,
-  ConnectorFieldCapabilities,
-  ConnectorFieldDecl,
+  ConnectorMapping,
+  ConnectorOwnedMappingField,
   ConnectorRecord,
   ConnectorStreamDecl,
   ConnectorStreamState,

@@ -92,7 +92,9 @@ describe('installedAppsProvider methods[] scope projection', () => {
 describe('installedApps cache prefix', () => {
   // The projection above changed shape, so a stale blob under the previous prefix would
   // make every installed app read as declaring no optional scopes for the full 900 s TTL.
-  it('is bumped to v8', () => {
-    expect(ORG_CACHE_KEY_CONFIG.installedApps.prefix).toBe('org:installed-apps:v8')
+  // Bumped again to v9 for the app-fields-and-entities-plan catalog shape change (new
+  // `entities` blob + the connector `dataConnectors` mapping shape) — see org-cache-keys.ts.
+  it('is bumped to v9', () => {
+    expect(ORG_CACHE_KEY_CONFIG.installedApps.prefix).toBe('org:installed-apps:v9')
   })
 })

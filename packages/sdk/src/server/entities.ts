@@ -4,15 +4,15 @@
  * Entity value I/O for app-owned custom fields.
  *
  * An installed app reads and writes the **values** of the custom fields it
- * owns, scoped so it can only touch its own fields (`appFieldKey` — no app
- * prefix, resolved within the caller's installation). Connection-scoped fields
+ * owns, scoped so it can only touch its own fields (`key` — no app prefix,
+ * resolved within the caller's installation). Connection-scoped fields
  * resolve against the agent-bound connection.
  *
  * All implementations are injected by the Auxx platform at runtime via the
  * `AUXX_SERVER_SDK` global (same mechanism as `@auxx/sdk/server` settings /
  * connections). The generated per-app `.auxx/app-fields.d.ts` augments
  * {@link AppOwnedFieldRegistry}, narrowing these permissive signatures to the
- * app's own `appFieldKey` union and per-field value types (Layer 2).
+ * app's own field `key` union and per-field value types (Layer 2).
  */
 
 import type { AppFieldDefinition, AppFieldValues } from '../root/fields/define-field.js'
@@ -49,12 +49,12 @@ type RegisteredFields = AppOwnedFieldRegistry extends {
     : F
   : null
 
-/** `appFieldKey → value` write map — permissive record when unregistered. */
+/** `key → value` write map — permissive record when unregistered. */
 type WriteMap = RegisteredFields extends readonly AppFieldDefinition[]
   ? Partial<AppFieldValues<RegisteredFields>>
   : Record<string, FieldValueInput>
 
-/** Union of the app's declared `appFieldKey`s — any string when unregistered. */
+/** Union of the app's declared field `key`s — any string when unregistered. */
 type FieldKey = RegisteredFields extends readonly AppFieldDefinition[]
   ? keyof AppFieldValues<RegisteredFields> & string
   : string

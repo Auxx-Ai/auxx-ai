@@ -20,8 +20,12 @@ const h = vi.hoisted(() => ({
   syncInvoicePaymentState: vi.fn(),
   /** `select()` with no projection — the LINE VALUE read in `totals-hooks`. */
   fieldValueRows: vi.fn(),
-  /** `select({...})` — the RELATION read in `totals-reconciler`. */
+  /** `select({...})` from `FieldValue` — the RELATION read in `totals-reconciler`. */
   relationRows: vi.fn(),
+  /** `select({...})` from `DataConnectorItem` — the totals stand-down's connector-managed
+   * check (money plan 37 §6). A different table from the relation read above, so it must not
+   * share that counter. */
+  managedFieldsRows: vi.fn(),
 }))
 
 vi.mock('../cache', () => ({
@@ -44,10 +48,16 @@ vi.mock('@auxx/database', async () => {
   return {
     schema,
     database: {
-      // The two set-based reads are told apart by their projection: the line
-      // VALUE read takes no argument, the relation read names three columns.
+      // Told apart by TABLE first (DataConnectorItem is its own bucket, whether or not it
+      // carries a projection), then by projection: the line VALUE read takes no argument,
+      // the relation read names three columns.
       select: (projection?: unknown) => ({
-        from: () => ({ where: () => (projection ? h.relationRows() : h.fieldValueRows()) }),
+        from: (table: unknown) => ({
+          where: () => {
+            if (table === schema.DataConnectorItem) return h.managedFieldsRows()
+            return projection ? h.relationRows() : h.fieldValueRows()
+          },
+        }),
       }),
     },
   }
@@ -109,6 +119,7 @@ beforeEach(() => {
   h.getFieldValues.mockResolvedValue(new Map())
   h.fieldValueRows.mockResolvedValue([])
   h.relationRows.mockResolvedValue([])
+  h.managedFieldsRows.mockResolvedValue([])
 })
 
 describe('a paste rebuilds the document once', () => {

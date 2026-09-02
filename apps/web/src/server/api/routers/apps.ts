@@ -12,7 +12,12 @@ import {
   saveAppConnection,
   uninstallApp,
 } from '@auxx/lib/apps'
-import { getCachedAppBySlug, getOrgCache, onCacheEvent } from '@auxx/lib/cache'
+import {
+  getCachedAppBySlug,
+  getCachedInstalledApps,
+  getOrgCache,
+  onCacheEvent,
+} from '@auxx/lib/cache'
 import {
   appOAuthCallbackUrl,
   gateConnectionVariables,
@@ -356,6 +361,34 @@ export const appsRouter = createTRPCRouter({
       })
 
       return result.value
+    }),
+
+  /**
+   * List the entities an installed app declares (`catalog.entities`, `defineEntity`)
+   * as installable entity-template ids — the "Install entities" action on the app
+   * detail page (app-fields-and-entities-plan §4.1 item 3). The marketplace install
+   * button has no consent step of its own (a single-click mutation, no dialog), so
+   * entities otherwise only install lazily at connector setup; this lets a user
+   * install them from the app page too, via the same `EntityTemplateDialog` a
+   * connector wizard uses.
+   */
+  listInstallableEntities: protectedProcedure
+    .input(z.object({ appSlug: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const installedApps = await getCachedInstalledApps(ctx.session.organizationId)
+      const installed = installedApps.find((a) => a.app.slug === input.appSlug)
+      if (!installed) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: `App "${input.appSlug}" is not installed`,
+        })
+      }
+      const entities = installed.entities ?? []
+      return {
+        appInstallationId: installed.installationId,
+        appSlug: installed.app.slug,
+        templateIds: entities.map((e) => `app:${installed.app.slug}:${e.key}`),
+      }
     }),
 
   /**

@@ -2,9 +2,11 @@
 
 import { database, schema, type Transaction } from '@auxx/database'
 import { fromDatabase } from '@auxx/services/shared/utils'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
+import { getOrgCache } from '../../cache'
 import { deleteAppFields } from '../../custom-fields/delete-field'
+import { deleteConnector } from '../../data-connectors/mutations'
 
 /**
  * Input parameters for uninstallApp
@@ -95,6 +97,41 @@ export async function uninstallApp(input: UninstallAppInput) {
         : `App "${app.slug}" is not installed`,
       appId,
     })
+  }
+
+  // Delete every DataConnector this installation owns BEFORE tearing down its fields.
+  // `deleteConnector` is otherwise only reachable from the tRPC router, so without this
+  // an uninstalled app's connector survived with its mappings pointing at fields that
+  // `deleteAppFields` is about to remove, and its BullMQ schedule still ticking (failing
+  // auth on every run — the credential is preserved on uninstall, but its owning app is
+  // gone). Always `keep`: an order contributed by the connector can be referenced by
+  // `order_builds` / `order_build_revision`, and archiving it touches build reconciliation
+  // (app-fields-and-entities plan §4.4). `deleteConnector` takes `db: Database`, not a
+  // transaction, so this runs ahead of — not inside — the uninstall transaction below.
+  const connectorCleanupResult = await fromDatabase(
+    (async () => {
+      const ownedConnectors = await database
+        .select({ id: schema.DataConnector.id })
+        .from(schema.DataConnector)
+        .where(
+          and(
+            eq(schema.DataConnector.organizationId, organizationId),
+            eq(schema.DataConnector.appInstallationId, installation.id)
+          )
+        )
+      if (ownedConnectors.length === 0) return
+      // No real actor for a lifecycle-triggered teardown; `deleteConnector`'s userId is
+      // only read on the non-'keep' branches, so the org's system user is a safe stand-in.
+      const systemUserId = await getOrgCache().get(organizationId, 'systemUser')
+      for (const connector of ownedConnectors) {
+        await deleteConnector(database, organizationId, systemUserId, connector.id, 'keep')
+      }
+    })(),
+    'uninstall-app-delete-connectors'
+  )
+
+  if (connectorCleanupResult.isErr()) {
+    return connectorCleanupResult
   }
 
   // Uninstall in a transaction

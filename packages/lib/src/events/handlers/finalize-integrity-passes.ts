@@ -329,10 +329,14 @@ async function totalsPass(
     for (const line of lineWork) {
       try {
         if (line.rewriteLineTotal) {
+          // `db` threaded through so the totals stand-down's connector-managed check (money
+          // plan 37 §6) reads through the SAME connection this pass's manifest was built
+          // from, not a separate pool connection that may not see this run's writes yet.
           await totalsHooks.recomputeLineTotal({
             organizationId,
             userId: SYSTEM_ACTOR,
             lineInstanceId: line.lineInstanceId,
+            db,
           })
         }
         const parent = await totalsHooks.resolveLineParentDocument({

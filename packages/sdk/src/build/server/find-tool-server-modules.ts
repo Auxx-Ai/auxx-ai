@@ -391,7 +391,7 @@ export interface DataConnectorModule {
  * (`visitTool`), keyed by connector id. Consumed by `generate-server-entry.ts`
  * to emit the `__AUXX_DATA_CONNECTORS__` registry the lambda's
  * `data-connector-executor.ts` looks up at run time. See
- * plans/data-connectors/claude/03-connectors-and-sources.md §4.
+ * docs/app-fields-and-entities-guide.md.
  */
 export function findDataConnectorModulesFromSource(
   source: string,

@@ -264,5 +264,7 @@ export type {
 export { type UpdateAiMarkerInput, updateAiMarker } from './update-ai-marker'
 export { updateEntityDisplayName } from './update-display-name'
 export { updateFieldValue } from './update-value'
+// Server-side read-only guard for app/connector-owned fields (Phase 3)
+export { assertOriginMayWriteFields } from './write-guard'
 // writeKey (id | systemAttribute) → CustomField.id resolution
 export { buildWriteKeyToFieldIdMap } from './write-key-map'

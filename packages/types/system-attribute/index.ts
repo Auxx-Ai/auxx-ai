@@ -439,12 +439,16 @@ export const SYSTEM_ATTRIBUTES = [
   'order_payment_gateways',
   'order_currency',
   'order_shipping_address',
+  // Added by migration 122 (money plan 37 §8) — a merchant delivery note and a
+  // stated shipping amount, folded into `order_total` alongside subtotal/tax.
+  'order_note',
   'order_subtotal',
   'order_discount_type',
   'order_discount_value',
   'order_tax_name',
   'order_tax_rate',
   'order_tax_total',
+  'order_shipping_total',
   'order_total',
   'order_line_items', // inverse of line_item_order
   'order_work_orders', // inverse of work_order_order

@@ -2,6 +2,7 @@
 
 import type { BulkRecordAction, RecordAction, RecordWidget } from '../client/record-actions.js'
 import type { DataConnectorDefinition } from './data-connectors/types.js'
+import type { EntityDecl } from './entities/index.js'
 import type { AppFieldDefinition } from './fields/index.js'
 import type { ScopedSettingsSchema } from './settings/settings-schema.js'
 import type { ToolDefinition, Toolset } from './tools/types.js'
@@ -108,19 +109,35 @@ export interface App {
   readonly toolsets?: ReadonlyArray<Toolset>
 
   /**
-   * Custom fields this app owns on the platform's entities. Declared via
-   * `defineFields([...])`, provisioned on install (`installation` scope) or per
-   * connected account (`connection` scope), optionally hidden, and removed on
-   * uninstall. See app-registered custom fields.
+   * Custom fields this app owns on the platform's EXISTING entities (contact,
+   * order, ticket, ...). Declared via `defineFields([...])`, provisioned on
+   * install (`installation` scope) or per connected account (`connection`
+   * scope), optionally hidden, and removed on uninstall. To declare a whole
+   * new entity the app owns instead, use `entities` below. See
+   * docs/app-fields-and-entities-guide.md.
    */
   readonly fields?: ReadonlyArray<AppFieldDefinition>
 
   /**
-   * Data Connectors this app declares — structured-data sources that sync into
-   * the platform's entity model. Declared via `defineDataConnector(...)`. The
-   * build extractor serializes each into `AppDeployment.catalog.dataConnectors`;
-   * the org may set one up to provision owned defs + contribute to existing
-   * ones. See plans/data-connectors/claude/03-connectors-and-sources.md §4.
+   * Definitions this app owns end to end — declared via `defineEntity(...)`.
+   * Each becomes an `EntityDefinition` the app provisions on install (consent
+   * gated, like a connector's owned defs), with its own fields, display
+   * fields and relationships (to other entities in this list, or to platform
+   * kinds). See docs/app-fields-and-entities-guide.md.
+   */
+  readonly entities?: ReadonlyArray<EntityDecl>
+
+  /**
+   * The Data Connector this app declares — a structured-data source that syncs
+   * into the platform's entity model. Declared via `defineDataConnector(...)`.
+   * The build extractor serializes it into
+   * `AppDeployment.catalog.dataConnectors`; the org may set it up to provision
+   * owned defs + contribute to existing ones.
+   *
+   * Typed as an array for forward compatibility, but **an app may declare at
+   * most one connector today** — every functional read of
+   * `catalog.dataConnectors` uses index `[0]`, and declaring more than one is
+   * not validated or supported. See docs/app-fields-and-entities-guide.md.
    */
   readonly dataConnectors?: ReadonlyArray<DataConnectorDefinition>
 

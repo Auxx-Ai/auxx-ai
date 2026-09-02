@@ -82,6 +82,7 @@ import { migration118MovementTypeRelabel } from './migrations/118-movement-type-
 import { migration119TariffSchedule } from './migrations/119-tariff-schedule'
 import { migration120TariffCodeLabel } from './migrations/120-tariff-code-label'
 import { migration121RatePrecision } from './migrations/121-rate-precision'
+import { migration122OrderShippingAndNote } from './migrations/122-order-shipping-and-note'
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
@@ -226,6 +227,7 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   // repoints that def's display field at it.
   migration120TariffCodeLabel,
   migration121RatePrecision,
+  migration122OrderShippingAndNote,
 ]
 
 /**

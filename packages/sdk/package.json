@@ -46,6 +46,10 @@
       "types": "./lib/root/fields/index.d.ts",
       "import": "./lib/root/fields/index.js"
     },
+    "./entities": {
+      "types": "./lib/root/entities/index.d.ts",
+      "import": "./lib/root/entities/index.js"
+    },
     "./data-connectors": {
       "types": "./lib/root/data-connectors/index.d.ts",
       "import": "./lib/root/data-connectors/index.js"

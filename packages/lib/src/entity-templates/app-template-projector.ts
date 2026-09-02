@@ -1,43 +1,59 @@
 // packages/lib/src/entity-templates/app-template-projector.ts
-// Project an installed app's data-connector manifest into installable entity
-// templates (v6 — install-target-defs-via-templates). Each OWNED default-mapping
-// becomes one `EntityTemplate` whose def carries the stable `sourceKey` (the manifest
-// `key`) and whose fields carry `appFieldKey` so `installTemplates` stamps both the
-// def-level and field-level identity. Cross-stream/parent relationships are emitted as
-// `@template:`/`@system:` RELATIONSHIP fields so the installer's Pass 4 forms the edges
-// (replacing the old `materializeConnectorTargets` relationship pass).
+// Project an app's declared entities (`defineEntity`, `catalog.entities`) into
+// installable `EntityTemplate`s (app-fields-and-entities-plan, Phase 2 §4.1). One
+// `CatalogEntity` becomes one `EntityTemplate`: the def carries the stable
+// `sourceKey` (the entity's own `key`) and each field carries
+// `appFieldKey === templateFieldId === key` so `installTemplates` stamps both the
+// def-level and field-level identity. RELATIONSHIP fields carry symbolic
+// `@template:`/`@system:` refs resolved from the field's own `relationship.target`
+// so the installer's Pass 4 forms the edges. This supersedes the old
+// stream-derivation projector (which read `ConnectorStreamDecl.fields` +
+// `defaultMappings` and partitioned owned columns by rootPath) — the catalog now
+// carries the entity's field list directly, so there is nothing left to derive.
 
-import type { CatalogDataConnector } from '@auxx/database'
+import type { CatalogEntity, CatalogField } from '@auxx/database'
 import type { FieldType } from '@auxx/database/types'
-import type { SelectOption } from '@auxx/types/custom-field'
-import {
-  ownedParentRootPath,
-  partitionOwnedFields,
-  SYSTEM_RELATIONSHIP_PREFIX,
-} from '../data-connectors/mutations'
+import type { RelationshipType, SelectOption } from '@auxx/types/custom-field'
 import type { EntityTemplate, EntityTemplateField } from './types'
 
-type CatalogStream = CatalogDataConnector['streams'][number]
-type CatalogField = CatalogStream['fields'][number]
-type CatalogMapping = NonNullable<CatalogStream['defaultMappings']>[number]
-
-/** Registry id for an app-projected owned-def template: `app:<appSlug>:<ownedKey>`. */
-export function appTemplateId(appSlug: string, ownedKey: string): string {
-  return `app:${appSlug}:${ownedKey}`
+/** Registry id for an app-projected entity template: `app:<appSlug>:<entityKey>`. */
+export function appTemplateId(appSlug: string, entityKey: string): string {
+  return `app:${appSlug}:${entityKey}`
 }
 
-/** Map a catalog scalar field onto a template field, stamping `appFieldKey == templateFieldId`. */
-function projectScalarField(field: CatalogField): EntityTemplateField {
+/**
+ * Resolve a RELATIONSHIP field's symbolic target ref from its declared
+ * `relationship.target` — `{ entityKey }` names a sibling entity of the SAME app
+ * (`@template:app:<slug>:<key>`), `{ entityKind }` names a platform kind
+ * (`@system:<kind>`).
+ */
+function resolveRelationshipTargetRef(
+  appSlug: string,
+  target: NonNullable<CatalogField['relationship']>['target']
+): string {
+  if ('entityKey' in target) return `@template:${appTemplateId(appSlug, target.entityKey)}`
+  return `@system:${target.entityKind}`
+}
+
+/**
+ * Map one catalog field (scalar or relationship) onto a template field, stamping
+ * `appFieldKey === templateFieldId === key`. Capabilities default to
+ * `creatable: false, updatable: false` — an app-owned column is written by the
+ * app/connector, not the user, unless the author opted a field into `updatable`.
+ */
+function projectField(appSlug: string, field: CatalogField): EntityTemplateField {
   const projected: EntityTemplateField = {
-    templateFieldId: field.fieldKey,
-    appFieldKey: field.fieldKey,
+    templateFieldId: field.key,
+    appFieldKey: field.key,
     name: field.name,
+    description: field.description,
     type: field.type as FieldType,
-    // App-owned record-type columns are connector-managed (synced, user-read-only) —
-    // exactly the owned-field semantics the v5 provisioner stamped.
-    isUpdatable: false,
-    isCreatable: false,
+    isCreatable: field.capabilities?.creatable ?? false,
+    isUpdatable: field.capabilities?.updatable ?? false,
     isHidden: field.capabilities?.hidden ?? false,
+    required: field.capabilities?.required ?? false,
+    isUnique: field.capabilities?.unique ?? false,
+    isIdentity: field.identity ?? false,
   }
   if (field.options?.length) {
     projected.options = field.options.map((o) => ({
@@ -47,136 +63,58 @@ function projectScalarField(field: CatalogField): EntityTemplateField {
     }))
   }
   if (field.addressComponents?.length) projected.addressComponents = field.addressComponents
+  if (field.type === 'RELATIONSHIP' && field.relationship) {
+    projected.relationship = {
+      relatedResourceId: resolveRelationshipTargetRef(appSlug, field.relationship.target),
+      relationshipType: field.relationship.cardinality as RelationshipType,
+      inverseName: field.relationship.inverseName ?? field.name,
+    }
+  }
   return projected
 }
 
 /**
- * Resolve a relationship edge's symbolic target ref. A `targetRef` names a sibling
- * owned def (`ownedKey` → `@template:app:<slug>:<key>`) or a system/contributing def
- * (`entityKind` → `@system:<kind>`); absent ⇒ the edge points to the child mapping's
- * OWN target (its owned def, or its contributing `entityKind`).
+ * Project one app-declared entity into an installable `EntityTemplate`. A direct
+ * `CatalogEntity -> EntityTemplate` mapping — no stream derivation, no
+ * owned-vs-reference dedupe: the entity's own field list IS the def's field list.
  */
-function resolveRelTargetRef(
-  appSlug: string,
-  rel: NonNullable<CatalogMapping['relationship']>,
-  child: CatalogMapping
-): string {
-  const ref = rel.targetRef
-  if (ref && 'ownedKey' in ref) return `@template:${appTemplateId(appSlug, ref.ownedKey)}`
-  if (ref && 'entityKind' in ref) return `@system:${ref.entityKind}`
-  if (child.target.mode === 'owned') {
-    return `@template:${appTemplateId(appSlug, child.target.entity.key)}`
+export function projectAppEntityTemplate(appSlug: string, entity: CatalogEntity): EntityTemplate {
+  const templateId = appTemplateId(appSlug, entity.key)
+  return {
+    id: templateId,
+    name: entity.singular,
+    description: entity.description ?? `${entity.plural}, owned by this app.`,
+    categories: ['app'],
+    entity: {
+      apiSlug: entity.apiSlug,
+      singular: entity.singular,
+      plural: entity.plural,
+      icon: entity.icon ?? 'box',
+      color: entity.color ?? 'blue',
+      // The stable owner-scoped identity — strict adopt/dedupe key once owner-stamped.
+      sourceKey: entity.key,
+    },
+    primaryDisplayField: entity.primaryDisplayField,
+    secondaryDisplayField: entity.secondaryDisplayField,
+    avatarField: entity.avatarField,
+    fields: entity.fields.map((field) => projectField(appSlug, field)),
   }
-  return `@system:${child.target.entityKind}`
 }
 
 /**
- * Project all OWNED record types an app's connector declares into installable
- * `EntityTemplate`s — one per unique owned `key`, deduped across streams. Each template:
- *   - `entity.sourceKey = key` (the stable owner-scoped identity stamp);
- *   - scalar fields = the def's partitioned owned columns (`appFieldKey == fieldKey`);
- *   - relationship fields = the edges declared by child mappings parented on this def.
- * Owner (`appInstallationId`) is stamped at install via the install context, NOT baked
- * into the template — keeping the projection org-agnostic.
+ * Project every entity an app declares (`catalog.entities`) into installable
+ * templates, cross-linking `companions` so the install-consent dialog previews +
+ * installs the whole graph at once — mirroring how a static gallery template
+ * lists its companions.
  */
-export function projectAppConnectorTemplates(
+export function projectAppEntityTemplates(
   appSlug: string,
-  appTitle: string,
-  connector: CatalogDataConnector
+  entities: CatalogEntity[]
 ): EntityTemplate[] {
-  // Collect each unique owned def (by key) with the stream + rootPath that declares it.
-  const ownedByKey = new Map<
-    string,
-    {
-      entity: Extract<CatalogMapping['target'], { mode: 'owned' }>['entity']
-      stream: CatalogStream
-      rootPath: string
-      isReference: boolean
-    }
-  >()
-  for (const stream of connector.streams) {
-    for (const m of stream.defaultMappings ?? []) {
-      if (m.target.mode !== 'owned') continue
-      const key = m.target.entity.key
-      // A `reference` mapping only LINKS to a def owned elsewhere — it carries no
-      // columns. Prefer the real owner (the stream that roots the def with its fields)
-      // over a link-only reference declaration of the same def, so the projected
-      // template isn't the empty reference. A reference-only def (no owning stream,
-      // e.g. the fixture's products) still yields a template so its edge resolves.
-      const isReference = m.linkMode === 'reference'
-      const existing = ownedByKey.get(key)
-      if (!existing || (existing.isReference && !isReference)) {
-        ownedByKey.set(key, { entity: m.target.entity, stream, rootPath: m.rootPath, isReference })
-      }
-    }
-  }
-
-  // Every owned def the connector declares is an installable companion of the others:
-  // they're a cohesive set (order → line_items → products) the connector provisions
-  // together, so the template dialog previews + installs the whole graph at once —
-  // mirroring how a static template lists its `companions`.
-  const allOwnedTemplateIds = [...ownedByKey.keys()].map((k) => appTemplateId(appSlug, k))
-
-  const templates: EntityTemplate[] = []
-  for (const [key, { entity, stream, rootPath }] of ownedByKey) {
-    const mappings = stream.defaultMappings ?? []
-    const partition = partitionOwnedFields(stream.fields, mappings)
-    const ownedFields = partition[rootPath] ?? []
-    const ownedRootPaths = mappings.filter((m) => m.target.mode === 'owned').map((m) => m.rootPath)
-
-    const fields: EntityTemplateField[] = ownedFields.map(({ field }) => projectScalarField(field))
-
-    // Relationship edges live on the PARENT def — a child mapping parented here that
-    // declares a `relationship` becomes a RELATIONSHIP field on THIS def.
-    for (const child of mappings) {
-      if (!child.relationship) continue
-      // A `system:`-prefixed relationshipFieldKey names a PRE-EXISTING system edge —
-      // never provision one for it, even when the manifest (wrongly) also declares a
-      // `relationship`. The mapping-side wiring resolves at install (mutations.ts).
-      if (child.relationshipFieldKey?.startsWith(SYSTEM_RELATIONSHIP_PREFIX)) continue
-      if (ownedParentRootPath(child.rootPath, ownedRootPaths) !== rootPath) continue
-      fields.push({
-        templateFieldId: child.relationship.fieldKey,
-        appFieldKey: child.relationship.fieldKey,
-        name: child.relationship.name,
-        type: 'RELATIONSHIP' as FieldType,
-        isUpdatable: false,
-        isCreatable: false,
-        relationship: {
-          relatedResourceId: resolveRelTargetRef(appSlug, child.relationship, child),
-          relationshipType: child.relationship.cardinality,
-          inverseName: child.relationship.inverseName,
-        },
-      })
-    }
-
-    const primaryDisplayField =
-      entity.primaryDisplayField ??
-      ownedFields[0]?.field.fieldKey ??
-      fields[0]?.templateFieldId ??
-      ''
-
-    const templateId = appTemplateId(appSlug, key)
-    templates.push({
-      id: templateId,
-      name: entity.singular,
-      description: `${entity.plural} synced from the ${appTitle} app.`,
-      categories: ['app'],
-      entity: {
-        apiSlug: entity.apiSlug,
-        singular: entity.singular,
-        plural: entity.plural,
-        icon: connector.iconKey ?? 'box',
-        color: 'blue',
-        // The stable owner-scoped identity — strict adopt/dedupe key once owner-stamped.
-        sourceKey: key,
-      },
-      primaryDisplayField,
-      avatarField: entity.avatarField,
-      // The connector's other owned defs, so the dialog renders them as companion cards.
-      companions: allOwnedTemplateIds.filter((id) => id !== templateId),
-      fields,
-    })
+  const templates = entities.map((entity) => projectAppEntityTemplate(appSlug, entity))
+  const allIds = templates.map((t) => t.id)
+  for (const template of templates) {
+    template.companions = allIds.filter((id) => id !== template.id)
   }
   return templates
 }

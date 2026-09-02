@@ -8,7 +8,7 @@ import { defineFields } from '@auxx/sdk/fields'
 
 export const fields = defineFields([
   {
-    appFieldKey: 'customerId',
+    key: 'customerId',
     type: 'TEXT',
     targetEntity: 'contact',
     scope: 'connection',
@@ -16,7 +16,7 @@ export const fields = defineFields([
     capabilities: { hidden: true, updatable: false },
   },
   {
-    appFieldKey: 'tier',
+    key: 'tier',
     type: 'SINGLE_SELECT',
     targetEntity: 'contact',
     scope: 'installation',

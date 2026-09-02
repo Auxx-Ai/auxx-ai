@@ -80,10 +80,12 @@ describe('order entity registration wiring', () => {
       'fulfillmentStatus',
       'id',
       'lineItems',
+      'note', // added by migration 122 — money plan 37 §10.1
       'number',
       'paymentGateways',
       'placedAt',
       'shippingAddress',
+      'shippingTotal', // added by migration 122 — money plan 37 §6/§8
       'subtotal',
       'tags',
       'taxName', // folded into 108 (see the note below) — the LineBuilder writes it with taxRate
@@ -351,9 +353,14 @@ describe('the two new line_item slots', () => {
 
 describe('totals trigger vocabulary', () => {
   it('ORDER_TRIGGER_ATTRS is the order’s own billing fields', () => {
+    // `order_shipping_total` joined this set in migration 122 (money plan 37 §6/§8): unlike
+    // the purchase order's shipping (added on TOP of computeDocumentTotals via
+    // statedAdditionAttrs), the order's shipping folds INSIDE the formula, so a change to it
+    // has to reach the same recompute path discount/tax already do.
     expect([...ORDER_TRIGGER_ATTRS].sort()).toEqual([
       'order_discount_type',
       'order_discount_value',
+      'order_shipping_total',
       'order_tax_rate',
     ])
   })

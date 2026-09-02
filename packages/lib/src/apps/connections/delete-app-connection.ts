@@ -1,12 +1,16 @@
 // packages/lib/src/apps/connections/delete-app-connection.ts
 
 import { deleteCredential, revealSecrets } from '@auxx/credentials/store'
+import { database, schema } from '@auxx/database'
 import {
   type DecryptedConnectionData,
   logger,
   safeSerializeMetadata,
 } from '@auxx/services/app-connections'
+import { and, eq } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
+import { getOrgCache } from '../../cache'
+import { deleteConnector } from '../../data-connectors/mutations'
 import { triggerAppEvent } from '../events'
 
 /**
@@ -78,6 +82,44 @@ export async function deleteAppConnection(credentialId: string, organizationId: 
   }
 
   const { record: connection, secrets } = revealed.value
+
+  // Delete every DataConnector this credential backs BEFORE the credential itself goes
+  // away. `deleteConnector` is otherwise only reachable from the tRPC router, so without
+  // this a disconnect left the connector's mappings pointed at a dead credential, its
+  // BullMQ schedule still ticking (failing auth on every run), and its provisioned schema
+  // dangling with a `credentialId` FK the delete below would merely null out (row
+  // survives). Always `keep`: a contributed order can be referenced by `order_builds` /
+  // `order_build_revision`, and archiving it touches build reconciliation — the merchant
+  // chooses `archive` explicitly from the disconnect dialog, never here (app-fields-and-
+  // entities plan §4.4).
+  try {
+    const connectors = await database
+      .select({ id: schema.DataConnector.id })
+      .from(schema.DataConnector)
+      .where(
+        and(
+          eq(schema.DataConnector.organizationId, organizationId),
+          eq(schema.DataConnector.credentialId, credentialId)
+        )
+      )
+    if (connectors.length > 0) {
+      // No real actor for a lifecycle-triggered teardown; `deleteConnector`'s userId is
+      // only read on the non-'keep' branches, so the org's system user is a safe stand-in.
+      const systemUserId = await getOrgCache().get(organizationId, 'systemUser')
+      for (const connector of connectors) {
+        await deleteConnector(database, organizationId, systemUserId, connector.id, 'keep')
+      }
+    }
+  } catch (error) {
+    // `deleteConnector` throws AuxxError subclasses (e.g. NotFoundError from a
+    // TOCTOU race); a lib module never lets that escape as an unhandled rejection —
+    // fold it into this function's Result contract like every other failure here.
+    logger.error('Failed to remove data connector during app disconnect', {
+      error: error instanceof Error ? error.message : String(error),
+      credentialId,
+    })
+    return err(error instanceof Error ? error : new Error('Failed to remove data connector'))
+  }
 
   // Delete the connection. Connection-scoped app-registered custom fields
   // (CustomField.connectionId → this credential, ON DELETE CASCADE) and their

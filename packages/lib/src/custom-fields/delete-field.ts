@@ -7,7 +7,12 @@ import {
   getInverseFieldId,
   type RelationshipConfig,
 } from '@auxx/types/custom-field'
-import { isResourceFieldId, parseResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
+import {
+  isResourceFieldId,
+  parseResourceFieldId,
+  type ResourceFieldId,
+  toResourceFieldId,
+} from '@auxx/types/field'
 import { and, eq, or } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
 import { clearDisplayValues } from '../entity-instances/batch-update-display-values'
@@ -204,32 +209,63 @@ export async function deleteCustomField(input: DeleteCustomFieldInput) {
 }
 
 /**
- * Hard-delete app-owned custom fields for the lifecycle paths (uninstall sweep,
- * connection-removed). Deletes by ownership directly — `FieldValue` rows cascade
- * via the existing `onDelete: 'cascade'` FK. Pass a `connectionId` to scope to a
- * single connection's fields (connection-removed); omit it to remove every field
- * the installation owns (uninstall).
+ * Hard-delete every custom field an app installation owns, for the uninstall
+ * lifecycle path. Routes each field through {@link deleteCustomField} (with
+ * `allowProtectedDeletion: true`, the only sanctioned bypass of its user-facing
+ * protected-field refusal) instead of a raw table delete, so a RELATIONSHIP
+ * field's inverse and any display-field references on other defs are cleaned
+ * up the same way a user-initiated delete would. `FieldValue` rows still cascade
+ * via `deleteCustomField`'s own transaction.
  *
- * This is the only sanctioned way to remove a protected app field; user-facing
- * `deleteCustomField` rejects them. Accepts a transaction so the uninstall flow
- * can run it inside its existing tx.
+ * `tx` identifies the fields to remove — it is NOT threaded into
+ * `deleteCustomField`, which always opens its own transaction against the
+ * shared `database`. Pass the uninstall flow's transaction so the id lookup
+ * sees the same snapshot as the rest of the uninstall, not so the deletes are
+ * part of it: `Database` and `Transaction` are different Drizzle types (see
+ * `deleteConnector`'s stray-field sweep in `data-connectors/mutations.ts` for
+ * the same non-atomic shape, accepted there for the same reason).
  */
 export async function deleteAppFields(
-  params: { appInstallationId: string; connectionId?: string },
+  params: { appInstallationId: string },
   tx: Database | Transaction = database
 ) {
-  const { appInstallationId, connectionId } = params
-  const where = connectionId
-    ? and(
-        eq(schema.CustomField.appInstallationId, appInstallationId),
-        eq(schema.CustomField.connectionId, connectionId)
-      )
-    : eq(schema.CustomField.appInstallationId, appInstallationId)
-
-  return fromDatabase(
-    tx.delete(schema.CustomField).where(where).returning({ id: schema.CustomField.id }),
-    'delete-app-fields'
+  const { appInstallationId } = params
+  const fields = await fromDatabase(
+    tx
+      .select({
+        id: schema.CustomField.id,
+        entityDefinitionId: schema.CustomField.entityDefinitionId,
+        organizationId: schema.CustomField.organizationId,
+      })
+      .from(schema.CustomField)
+      .where(eq(schema.CustomField.appInstallationId, appInstallationId)),
+    'find-app-fields-for-delete'
   )
+
+  if (fields.isErr()) return fields
+
+  // A RELATIONSHIP field's inverse is stamped with the same `appInstallationId` (the FKs
+  // ride along; only `appFieldKey`/`appSlug` stay forward-only — see `create-field.ts`),
+  // so it appears a second time in `fields.value` and `deleteCustomField` already removed
+  // it as a side effect of deleting its pair. Track what is gone and skip re-processing;
+  // a `CUSTOM_FIELD_NOT_FOUND` for anything NOT already tracked is a real failure.
+  const deletedIds = new Set<string>()
+  for (const field of fields.value) {
+    if (deletedIds.has(field.id)) continue
+    if (!field.entityDefinitionId) continue
+    const result = await deleteCustomField({
+      resourceFieldId: toResourceFieldId(field.entityDefinitionId, field.id),
+      organizationId: field.organizationId,
+      allowProtectedDeletion: true,
+    })
+    if (result.isErr()) {
+      if (result.error.code === 'CUSTOM_FIELD_NOT_FOUND') continue
+      return err(result.error)
+    }
+    for (const deletedId of result.value.deletedFieldIds) deletedIds.add(deletedId)
+  }
+
+  return ok({ deletedFieldIds: [...deletedIds] })
 }
 
 /**

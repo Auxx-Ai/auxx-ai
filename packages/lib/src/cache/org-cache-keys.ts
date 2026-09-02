@@ -9,6 +9,7 @@ import type {
   CatalogAgentTool,
   CatalogBlock,
   CatalogDataConnector,
+  CatalogEntity,
   CatalogToolset,
   CatalogTriggerProjection,
   ConnectionVariable,
@@ -576,6 +577,13 @@ export interface CachedInstalledApp {
    * plans/data-connectors/claude/03-connectors-and-sources.md §4.
    */
   dataConnectors?: CatalogDataConnector[]
+  /**
+   * Definitions this app owns end to end (`catalog.entities`, `defineEntity`).
+   * Surfaced so the install-consent flow and roll-forward can offer/reconcile
+   * them without evaluating bundle code or re-reading the deployment row. See
+   * docs/app-fields-and-entities-guide.md.
+   */
+  entities?: CatalogEntity[]
 
   /**
    * Org-scope connection presence + expiry (decision G2 split path).
@@ -885,7 +893,14 @@ export const ORG_CACHE_KEY_CONFIG: Record<
   // optional scopes — it would render nothing at all, and the copyable full-scope line
   // would come out empty — for the full 900 s TTL. Silent and indistinguishable from
   // "this app has none", which is exactly the failure the picker exists to prevent.
-  installedApps: { prefix: 'org:installed-apps:v8', ttlSeconds: 900 },
+  // v9: the catalog shape changed (app-fields-and-entities-plan Phase 2) — `dataConnectors`
+  // streams lost their inline `fields`/`defaultMappings` shape in favor of per-mapping
+  // `fields`/`connectionFields`, and the new `entities` (`defineEntity`) blob was added. A
+  // v8 blob's `dataConnectors` would be read against the new `CatalogDataConnector` type by
+  // every consumer (the app-connector adapter, the template projector, the install-consent
+  // flow) and `entities` would be missing entirely, so this bump is required alongside the
+  // deploy, not optional.
+  installedApps: { prefix: 'org:installed-apps:v9', ttlSeconds: 900 },
   mcpServers: { prefix: 'org:mcpServers', ttlSeconds: ONE_DAY },
   // Read per CRUD event by trigger dispatch; changes only on admin edits →
   // 5 s local window (dispatch enqueues jobs, so peer staleness is benign).

@@ -1,15 +1,22 @@
 // packages/lib/src/data-connectors/app-catalog.test.ts
-// App-catalog → setup materialization (create-sync-flow §3.1, Tier 1): building a
-// Layer-A source schema from declared field paths, and preferring an exampleRecord.
+// App-catalog → setup materialization (app-fields-and-entities-plan Phase 2 §4.3):
+// building a Layer-A source schema from the union of every mapping's declared
+// field paths, and the contributing binders now fed straight from one mapping
+// `fields` list (no more stream-wide flat map / matchFieldKeys / fieldBindings).
 
+import type { CatalogConnectorStream } from '@auxx/database'
 import { describe, expect, it } from 'vitest'
+import { BadRequestError } from '../errors'
 import {
   appCatalogStreamSchema,
+  assertContributingTargetWritable,
   buildContributingAutoBindings,
   buildContributingConnectionAppFields,
   buildContributingFieldBindings,
+  buildContributingMatchBindings,
   buildSchemaFromFieldPaths,
   type ContributingTargetField,
+  collectStreamSourceFields,
   overlayDeclaredFieldTypes,
 } from './app-catalog'
 
@@ -71,12 +78,55 @@ describe('buildSchemaFromFieldPaths', () => {
   })
 })
 
+describe('collectStreamSourceFields', () => {
+  it('joins each mapping rootPath + field sourcePath into an absolute path', () => {
+    const stream: CatalogConnectorStream = {
+      key: 'order',
+      mappings: [
+        {
+          rootPath: '',
+          target: { entityKey: 'orders' },
+          fields: [{ key: 'shopifyId', sourcePath: 'id', type: 'TEXT', name: 'ID' }],
+        },
+        {
+          rootPath: 'customer',
+          target: { entityKind: 'contact' },
+          fields: [{ sourcePath: 'email', target: 'primary_email' }],
+        },
+      ],
+    }
+    expect(collectStreamSourceFields(stream)).toEqual([
+      { sourcePath: 'id', type: 'TEXT' },
+      { sourcePath: 'customer.email', type: undefined },
+    ])
+  })
+
+  it('carries a contributing source-only field its declared type', () => {
+    const stream: CatalogConnectorStream = {
+      key: 'order',
+      mappings: [
+        {
+          rootPath: '',
+          target: { entityKind: 'order' },
+          fields: [{ sourcePath: 'note', type: 'TEXT', name: 'Note' }],
+        },
+      ],
+    }
+    expect(collectStreamSourceFields(stream)).toEqual([{ sourcePath: 'note', type: 'TEXT' }])
+  })
+})
+
 describe('appCatalogStreamSchema', () => {
   it('unions declared field paths with exampleRecord shape (definition is the contract)', () => {
     const result = appCatalogStreamSchema({
       key: 'order',
-      displayFieldKey: 'name',
-      fields: [{ fieldKey: 'id', sourcePath: 'id', type: 'TEXT', name: 'ID' }],
+      mappings: [
+        {
+          rootPath: '',
+          target: { entityKey: 'orders' },
+          fields: [{ key: 'shopifyId', sourcePath: 'id', type: 'TEXT', name: 'ID' }],
+        },
+      ],
       exampleRecord: { id: 'o1', customer: { email: 'a@b.com' } },
     })
     expect(result.schemaSource).toBe('catalog')
@@ -89,10 +139,15 @@ describe('appCatalogStreamSchema', () => {
   it('keeps a declared field the exampleRecord omits (nested under an array fan-out)', () => {
     const result = appCatalogStreamSchema({
       key: 'product',
-      displayFieldKey: 'title',
-      fields: [
-        { fieldKey: 'v.option1', sourcePath: 'variants[].option1', type: 'TEXT', name: 'Option 1' },
-        { fieldKey: 'v.option2', sourcePath: 'variants[].option2', type: 'TEXT', name: 'Option 2' },
+      mappings: [
+        {
+          rootPath: 'variants[]',
+          target: { entityKey: 'variants' },
+          fields: [
+            { key: 'option1', sourcePath: 'option1', type: 'TEXT', name: 'Option 1' },
+            { key: 'option2', sourcePath: 'option2', type: 'TEXT', name: 'Option 2' },
+          ],
+        },
       ],
       // The example variant only carries option1 — option2 must still exist.
       exampleRecord: { variants: [{ option1: 'Medium' }] },
@@ -106,8 +161,13 @@ describe('appCatalogStreamSchema', () => {
   it('refines a leaf with the example wire type and stamps the declared field type', () => {
     const result = appCatalogStreamSchema({
       key: 'product',
-      displayFieldKey: 'title',
-      fields: [{ fieldKey: 'price', sourcePath: 'price', type: 'CURRENCY', name: 'Price' }],
+      mappings: [
+        {
+          rootPath: '',
+          target: { entityKey: 'products' },
+          fields: [{ key: 'price', sourcePath: 'price', type: 'CURRENCY', name: 'Price' }],
+        },
+      ],
       // Shopify sends money as a string — the wire type wins over the CURRENCY→number guess.
       exampleRecord: { price: '19.99' },
     })
@@ -119,8 +179,13 @@ describe('appCatalogStreamSchema', () => {
   it('keeps the declared type when the example value is null', () => {
     const result = appCatalogStreamSchema({
       key: 'order',
-      displayFieldKey: 'name',
-      fields: [{ fieldKey: 'note', sourcePath: 'note', type: 'TEXT', name: 'Note' }],
+      mappings: [
+        {
+          rootPath: '',
+          target: { entityKey: 'orders' },
+          fields: [{ key: 'note', sourcePath: 'note', type: 'TEXT', name: 'Note' }],
+        },
+      ],
       exampleRecord: { note: null },
     })
     const props = (result.sourceSchema as { properties: Record<string, any> }).properties
@@ -130,8 +195,13 @@ describe('appCatalogStreamSchema', () => {
   it('falls back to field paths when there is no exampleRecord', () => {
     const result = appCatalogStreamSchema({
       key: 'order',
-      displayFieldKey: 'name',
-      fields: [{ fieldKey: 'name', sourcePath: 'name', type: 'TEXT', name: 'Name' }],
+      mappings: [
+        {
+          rootPath: '',
+          target: { entityKey: 'orders' },
+          fields: [{ key: 'name', sourcePath: 'name', type: 'TEXT', name: 'Name' }],
+        },
+      ],
     })
     expect(result.sourceSchema).toEqual({
       type: 'object',
@@ -142,14 +212,19 @@ describe('appCatalogStreamSchema', () => {
   it('stamps x-auxx-fieldType on an ADDRESS_STRUCT field node (keeping its components)', () => {
     const result = appCatalogStreamSchema({
       key: 'order',
-      displayFieldKey: 'name',
-      fields: [
-        { fieldKey: 'id', sourcePath: 'id', type: 'TEXT', name: 'ID' },
+      mappings: [
         {
-          fieldKey: 'shippingAddress',
-          sourcePath: 'shipping_address',
-          type: 'ADDRESS_STRUCT',
-          name: 'Shipping Address',
+          rootPath: '',
+          target: { entityKey: 'orders' },
+          fields: [
+            { key: 'shopifyId', sourcePath: 'id', type: 'TEXT', name: 'ID' },
+            {
+              key: 'shippingAddress',
+              sourcePath: 'shipping_address',
+              type: 'ADDRESS_STRUCT',
+              name: 'Shipping Address',
+            },
+          ],
         },
       ],
       exampleRecord: {
@@ -183,8 +258,8 @@ describe('overlayDeclaredFieldTypes', () => {
       },
     }
     overlayDeclaredFieldTypes(schema, [
-      { fieldKey: 'a', sourcePath: 'customer.address', type: 'ADDRESS_STRUCT', name: 'A' },
-      { fieldKey: 'b', sourcePath: 'line_items[].ship', type: 'ADDRESS_STRUCT', name: 'B' },
+      { sourcePath: 'customer.address', type: 'ADDRESS_STRUCT' },
+      { sourcePath: 'line_items[].ship', type: 'ADDRESS_STRUCT' },
     ])
     expect(nodeAt(schema, 'properties.customer.properties.address')['x-auxx-fieldType']).toBe(
       'ADDRESS_STRUCT'
@@ -200,9 +275,9 @@ describe('overlayDeclaredFieldTypes', () => {
       properties: { name: { type: 'string' }, price: { type: 'string' } },
     }
     overlayDeclaredFieldTypes(schema, [
-      { fieldKey: 'name', sourcePath: 'name', type: 'TEXT', name: 'Name' },
-      { fieldKey: 'price', sourcePath: 'price', type: 'CURRENCY', name: 'Price' },
-      { fieldKey: 'gone', sourcePath: 'missing', type: 'ADDRESS_STRUCT', name: 'Gone' },
+      { sourcePath: 'name', type: 'TEXT' },
+      { sourcePath: 'price', type: 'CURRENCY' },
+      { sourcePath: 'missing', type: 'ADDRESS_STRUCT' },
     ])
     expect(nodeAt(schema, 'properties.name')['x-auxx-fieldType']).toBe('TEXT')
     expect(nodeAt(schema, 'properties.price')['x-auxx-fieldType']).toBe('CURRENCY')
@@ -222,9 +297,9 @@ describe('overlayDeclaredFieldTypes', () => {
       },
     }
     overlayDeclaredFieldTypes(schema, [
-      { fieldKey: 'customer', sourcePath: 'customer', type: 'JSON', name: 'Customer' },
-      { fieldKey: 'lines', sourcePath: 'line_items', type: 'JSON', name: 'Lines' },
-      { fieldKey: 'tags', sourcePath: 'tags', type: 'TAGS', name: 'Tags' },
+      { sourcePath: 'customer', type: 'JSON' },
+      { sourcePath: 'line_items', type: 'JSON' },
+      { sourcePath: 'tags', type: 'TAGS' },
     ])
     // Branches keep exploding — no stamp; an array of SCALARS is a value leaf — stamped.
     expect(nodeAt(schema, 'properties.customer')).not.toHaveProperty('x-auxx-fieldType')
@@ -233,195 +308,225 @@ describe('overlayDeclaredFieldTypes', () => {
   })
 })
 
+describe('assertContributingTargetWritable (reserved-target guard)', () => {
+  const recordId: ContributingTargetField = {
+    id: 'f_record_id',
+    name: 'ID',
+    systemAttribute: 'record_id',
+    type: 'TEXT',
+    isCreatable: false,
+    isUpdatable: false,
+  }
+  const orderTotal: ContributingTargetField = {
+    id: 'f_order_total',
+    name: 'Total',
+    systemAttribute: 'order_total',
+    type: 'CURRENCY',
+    isCreatable: false,
+    isUpdatable: false,
+  }
+  const fullName: ContributingTargetField = {
+    id: 'f_full_name',
+    name: 'Name',
+    systemAttribute: 'full_name',
+    type: 'TEXT',
+    isComputed: true,
+  }
+  const firstName: ContributingTargetField = {
+    id: 'f_first',
+    name: 'First Name',
+    systemAttribute: 'first_name',
+    type: 'TEXT',
+  }
+
+  it('refuses a computed-field-flagged-off target (record_id)', () => {
+    expect(() => assertContributingTargetWritable('record_id', recordId)).toThrow(BadRequestError)
+  })
+
+  it('refuses a computed field (full_name)', () => {
+    expect(() => assertContributingTargetWritable('full_name', fullName)).toThrow(BadRequestError)
+  })
+
+  it('accepts the sell-side totals allow-list despite isCreatable/isUpdatable both false (order_total)', () => {
+    expect(() => assertContributingTargetWritable('order_total', orderTotal)).not.toThrow()
+  })
+
+  it('accepts an ordinary writable target', () => {
+    expect(() => assertContributingTargetWritable('first_name', firstName)).not.toThrow()
+  })
+})
+
+describe('buildContributingMatchBindings', () => {
+  const contactFields: ContributingTargetField[] = [
+    { id: 'fld_email', name: 'Email', systemAttribute: 'primary_email', type: 'EMAIL' },
+    { id: 'fld_phone', name: 'Phone', systemAttribute: 'primary_phone', type: 'PHONE_INTL' },
+  ]
+
+  it('binds a match key when the target resolves, path already relative', () => {
+    const [binding, ...rest] = buildContributingMatchBindings(
+      'def_contact',
+      [{ sourcePath: 'email', target: 'email', match: true }],
+      contactFields
+    )
+    expect(rest).toHaveLength(0)
+    expect(binding).toMatchObject({
+      targetFieldRef: 'def_contact:fld_email',
+      expression: '{email}',
+      sourceFields: { email: 'email' },
+      identityRole: { kind: 'match', normalize: 'email' },
+    })
+  })
+
+  it('drops a match field with no matching target field', () => {
+    expect(
+      buildContributingMatchBindings(
+        'def_contact',
+        [{ sourcePath: 'nope', target: 'nope', match: true }],
+        contactFields
+      )
+    ).toEqual([])
+  })
+
+  it('ignores a non-match field entirely', () => {
+    expect(
+      buildContributingMatchBindings(
+        'def_contact',
+        [{ sourcePath: 'email', target: 'email' }],
+        contactFields
+      )
+    ).toEqual([])
+  })
+
+  it('returns nothing for an empty fields list', () => {
+    expect(buildContributingMatchBindings('def_contact', [], contactFields)).toEqual([])
+  })
+
+  it('throws refusing a match binding onto a reserved, non-writable target', () => {
+    const reserved: ContributingTargetField[] = [
+      {
+        id: 'f_id',
+        name: 'ID',
+        systemAttribute: 'record_id',
+        type: 'TEXT',
+        isCreatable: false,
+        isUpdatable: false,
+      },
+    ]
+    expect(() =>
+      buildContributingMatchBindings(
+        'def_contact',
+        [{ sourcePath: 'id', target: 'record_id', match: true }],
+        reserved
+      )
+    ).toThrow(BadRequestError)
+  })
+})
+
 describe('buildContributingFieldBindings', () => {
   const defFields: ContributingTargetField[] = [
     { id: 'f_first', name: 'First Name', systemAttribute: 'first_name', type: 'TEXT' },
     { id: 'f_last', name: 'Last Name', systemAttribute: null, type: 'TEXT' },
   ]
-  const sourceFields = [
-    { fieldKey: 'first_name', sourcePath: 'customer.first_name', type: 'TEXT', name: 'First' },
-    { fieldKey: 'last_name', sourcePath: 'customer.last_name', type: 'TEXT', name: 'Last' },
-    { fieldKey: 'unknown', sourcePath: 'customer.unknown', type: 'TEXT', name: 'Unknown' },
-  ]
 
-  it('binds by systemAttribute and by normalized name, subtree-relative, no identityRole', () => {
+  it('binds by systemAttribute and by normalized name, carrying the declared mergeStrategy', () => {
     const bindings = buildContributingFieldBindings(
       'def_contact',
       'shopify',
-      'customer',
       [
-        { sourceFieldKey: 'first_name', targetKey: 'first_name' }, // → by systemAttribute
-        { sourceFieldKey: 'last_name', targetKey: 'Last Name' }, // → by name (no systemAttribute)
+        { sourcePath: 'first_name', target: 'first_name', mergeStrategy: 'fill_blank' },
+        { sourcePath: 'last_name', target: 'Last Name' },
       ],
-      sourceFields,
       defFields
     )
     expect(bindings).toHaveLength(2)
     expect(bindings[0]).toMatchObject({
       targetFieldRef: 'def_contact:f_first',
-      expression: '{first_name}', // rootPath prefix stripped
+      expression: '{first_name}',
       sourceFields: { first_name: 'first_name' },
+      mergeStrategy: 'fill_blank',
     })
     expect(bindings[0]!.identityRole).toBeUndefined()
     expect(bindings[1]!.targetFieldRef).toBe('def_contact:f_last')
+    expect(bindings[1]!.mergeStrategy).toBeUndefined()
   })
 
   it('drops a binding whose target key does not resolve', () => {
     const bindings = buildContributingFieldBindings(
       'def_contact',
       'shopify',
-      'customer',
-      [{ sourceFieldKey: 'unknown', targetKey: 'no_such_field' }],
-      sourceFields,
+      [{ sourcePath: 'unknown', target: 'no_such_field' }],
       defFields
     )
     expect(bindings).toHaveLength(0)
   })
 
-  it('drops a binding whose source field key is unknown', () => {
+  it('skips a match field (handled by buildContributingMatchBindings)', () => {
     const bindings = buildContributingFieldBindings(
       'def_contact',
       'shopify',
-      'customer',
-      [{ sourceFieldKey: 'missing_source', targetKey: 'first_name' }],
-      sourceFields,
+      [{ sourcePath: 'first_name', target: 'first_name', match: true }],
       defFields
     )
     expect(bindings).toHaveLength(0)
   })
 
-  // A named array root relativizes deterministically ('variants[].sku' → 'sku'), the
-  // same rule the owned partitioner syncs on; only a NESTED array leaves a digit-less
-  // `[]` that `mapRecord.getByPath` cannot resolve, and that is skipped PER FIELD.
-  // Worked example from plans/products/02-shopify-mapping.md §1.4.
-  const partFields: ContributingTargetField[] = [
-    { id: 'f_sku', name: 'SKU', systemAttribute: 'part_sku', type: 'TEXT' },
-    { id: 'f_price', name: 'Price', systemAttribute: null, type: 'CURRENCY' },
-    { id: 'f_inventory', name: 'Inventory', systemAttribute: null, type: 'NUMBER' },
-  ]
-  const variantSourceFields = [
-    { fieldKey: 'variants.sku', sourcePath: 'variants[].sku', type: 'TEXT', name: 'SKU' },
-    { fieldKey: 'variants.price', sourcePath: 'variants[].price', type: 'CURRENCY', name: 'Price' },
-    {
-      fieldKey: 'variants.inventory_quantity',
-      sourcePath: 'variants[].inventory_quantity',
-      type: 'NUMBER',
-      name: 'Inventory quantity',
-    },
-    {
-      fieldKey: 'variants.option_value',
-      sourcePath: 'variants[].options[].value',
-      type: 'TEXT',
-      name: 'Option value',
-    },
-    { fieldKey: 'variants.id', sourcePath: 'variants[].id', type: 'TEXT', name: 'Variant ID' },
-  ]
-
-  it('binds declared fieldBindings under a named array root, subtree-relative (02 §1.4)', () => {
-    const bindings = buildContributingFieldBindings(
-      'def_part',
-      'shopify',
-      'variants[]',
-      [
-        { sourceFieldKey: 'variants.sku', targetKey: 'sku' },
-        { sourceFieldKey: 'variants.price', targetKey: 'price' },
-        { sourceFieldKey: 'variants.inventory_quantity', targetKey: 'inventory' },
-      ],
-      variantSourceFields,
-      partFields
-    )
-    expect(bindings.map((b) => b.targetFieldRef)).toEqual([
-      'def_part:f_sku',
-      'def_part:f_price',
-      'def_part:f_inventory',
-    ])
-    expect(bindings[0]).toMatchObject({
-      expression: '{sku}', // 'variants[].' stripped
-      sourceFields: { sku: 'sku' },
-    })
-    expect(bindings[1]!.expression).toBe('{price}')
-    expect(bindings[2]!.expression).toBe('{inventory_quantity}')
-  })
-
-  it('skips a NESTED array path per field, keeping its array-root siblings', () => {
-    const bindings = buildContributingFieldBindings(
-      'def_part',
-      'shopify',
-      'variants[]',
-      [
-        { sourceFieldKey: 'variants.sku', targetKey: 'sku' },
-        // 'options[].value' keeps a digit-less `[]` after stripping — unresolvable.
-        { sourceFieldKey: 'variants.option_value', targetKey: 'price' },
-      ],
-      variantSourceFields,
-      partFields
-    )
-    expect(bindings).toHaveLength(1)
-    expect(bindings[0]!.targetFieldRef).toBe('def_part:f_sku')
-  })
-
-  it('stamps identityRole externalId for an identity targetAppField under an array root', () => {
-    const bindings = buildContributingFieldBindings(
-      'def_part',
-      'shopify',
-      'variants[]',
-      [{ sourceFieldKey: 'variants.id', targetAppField: 'variantId' }],
-      variantSourceFields,
-      [
-        {
-          id: 'cf_variant_id',
-          name: 'Shopify variant ID',
-          systemAttribute: null,
-          type: 'TEXT',
-          appFieldKey: 'variantId',
-          appSlug: 'shopify',
-          isIdentity: true,
-        },
-      ]
-    )
-    expect(bindings).toHaveLength(1)
-    expect(bindings[0]).toMatchObject({
-      targetFieldRef: 'def_part:@app:shopify:variantId',
-      expression: '{id}',
-      identityRole: { kind: 'externalId' },
-    })
-  })
-
-  it('does NOT claim a source outside the root subtree boundary (customer vs customer_notes)', () => {
+  it('skips a source-only field (no target/appField)', () => {
     const bindings = buildContributingFieldBindings(
       'def_contact',
       'shopify',
-      'customer',
-      [{ sourceFieldKey: 'note_body', targetKey: 'first_name' }],
-      [{ fieldKey: 'note_body', sourcePath: 'customer_notes.body', type: 'TEXT', name: 'Note' }],
+      [{ sourcePath: 'raw', type: 'JSON', name: 'Raw' }],
       defFields
     )
     expect(bindings).toHaveLength(0)
   })
 
-  it('binds at root (no prefix) with the full source path', () => {
-    const bindings = buildContributingFieldBindings(
-      'def_contact',
-      'shopify',
-      '',
-      [{ sourceFieldKey: 'email', targetKey: 'email' }],
-      [{ fieldKey: 'email', sourcePath: 'email', type: 'EMAIL', name: 'Email' }],
-      [{ id: 'f_email', name: 'Email', systemAttribute: 'email', type: 'EMAIL' }]
-    )
-    expect(bindings).toHaveLength(1)
-    expect(bindings[0]).toMatchObject({
-      targetFieldRef: 'def_contact:f_email',
-      expression: '{email}',
-    })
+  it('throws refusing an explicit target that resolves to a reserved, non-writable field', () => {
+    const reserved: ContributingTargetField[] = [
+      {
+        id: 'f_id',
+        name: 'ID',
+        systemAttribute: 'record_id',
+        type: 'TEXT',
+        isCreatable: false,
+        isUpdatable: false,
+      },
+    ]
+    expect(() =>
+      buildContributingFieldBindings(
+        'def_contact',
+        'shopify',
+        [{ sourcePath: 'id', target: 'record_id' }],
+        reserved
+      )
+    ).toThrow(BadRequestError)
   })
 
-  it('binds targetAppField to the late-bound @app: ref, stamping identityRole when the app field is identity: true', () => {
+  it('accepts an explicit target in the sell-side totals allow-list', () => {
+    const totals: ContributingTargetField[] = [
+      {
+        id: 'f_total',
+        name: 'Total',
+        systemAttribute: 'order_total',
+        type: 'CURRENCY',
+        isCreatable: false,
+        isUpdatable: false,
+      },
+    ]
+    const bindings = buildContributingFieldBindings(
+      'def_order',
+      'shopify',
+      [{ sourcePath: 'total_price', target: 'order_total' }],
+      totals
+    )
+    expect(bindings).toHaveLength(1)
+    expect(bindings[0]?.targetFieldRef).toBe('def_order:f_total')
+  })
+
+  it('binds appField to the late-bound @app: ref, stamping identityRole when the app field is identity: true', () => {
     const bindings = buildContributingFieldBindings(
       'def_contact',
       'shopify',
-      '',
-      [{ sourceFieldKey: 'shopify_id', targetAppField: 'customerId' }],
-      [{ fieldKey: 'shopify_id', sourcePath: 'id', type: 'TEXT', name: 'Shopify ID' }],
+      [{ sourcePath: 'id', appField: 'customerId' }],
       [
         {
           id: 'cf_cust_us',
@@ -443,16 +548,10 @@ describe('buildContributingFieldBindings', () => {
   })
 
   it('stamps identityRole when ANY connection-scoped copy of the app field is identity (not find-first)', () => {
-    // Multiple connections of the same app → one `customerId` CustomField per connection.
-    // The oldest/first copy is a stale pre-feature row (isIdentity:false); a correctly
-    // stamped copy for the current connection is later in the list. Find-first would read
-    // the stale row's flag and skip identityRole — the bug. `.some()` must not.
     const bindings = buildContributingFieldBindings(
       'def_contact',
       'shopify',
-      '',
-      [{ sourceFieldKey: 'shopify_id', targetAppField: 'customerId' }],
-      [{ fieldKey: 'shopify_id', sourcePath: 'id', type: 'TEXT', name: 'Shopify ID' }],
+      [{ sourcePath: 'id', appField: 'customerId' }],
       [
         {
           id: 'cf_cust_stale',
@@ -481,13 +580,11 @@ describe('buildContributingFieldBindings', () => {
     })
   })
 
-  it('binds targetAppField with no identityRole when the app field is not identity: true', () => {
+  it('binds appField with no identityRole when the app field is not identity: true', () => {
     const bindings = buildContributingFieldBindings(
       'def_contact',
       'shopify',
-      '',
-      [{ sourceFieldKey: 'domain', targetAppField: 'storeDomain' }],
-      [{ fieldKey: 'domain', sourcePath: 'domain', type: 'TEXT', name: 'Domain' }],
+      [{ sourcePath: 'domain', appField: 'storeDomain' }],
       [
         {
           id: 'cf_domain',
@@ -505,15 +602,11 @@ describe('buildContributingFieldBindings', () => {
     expect(bindings[0]!.identityRole).toBeUndefined()
   })
 
-  it('does NOT match a targetAppField whose row belongs to a DIFFERENT app (slug scope)', () => {
-    // The org also runs Stripe, which provisioned its own `customerId` on contact.
-    // Shopify's binder (appSlug 'shopify') must never bind to the Stripe row.
+  it('does NOT match an appField whose row belongs to a DIFFERENT app (slug scope)', () => {
     const bindings = buildContributingFieldBindings(
       'def_contact',
       'shopify',
-      '',
-      [{ sourceFieldKey: 'shopify_id', targetAppField: 'customerId' }],
-      [{ fieldKey: 'shopify_id', sourcePath: 'id', type: 'TEXT', name: 'Shopify ID' }],
+      [{ sourcePath: 'id', appField: 'customerId' }],
       [
         {
           id: 'cf_cust_stripe',
@@ -529,13 +622,11 @@ describe('buildContributingFieldBindings', () => {
     expect(bindings).toHaveLength(0)
   })
 
-  it('does NOT match a targetAppField whose row has a null appSlug (fails closed)', () => {
+  it('does NOT match an appField whose row has a null appSlug (fails closed)', () => {
     const bindings = buildContributingFieldBindings(
       'def_contact',
       'shopify',
-      '',
-      [{ sourceFieldKey: 'shopify_id', targetAppField: 'customerId' }],
-      [{ fieldKey: 'shopify_id', sourcePath: 'id', type: 'TEXT', name: 'Shopify ID' }],
+      [{ sourcePath: 'id', appField: 'customerId' }],
       [
         {
           id: 'cf_cust_legacy',
@@ -551,13 +642,11 @@ describe('buildContributingFieldBindings', () => {
     expect(bindings).toHaveLength(0)
   })
 
-  it('drops a targetAppField binding whose appFieldKey is not declared', () => {
+  it('drops an appField binding whose appFieldKey is not declared', () => {
     const bindings = buildContributingFieldBindings(
       'def_contact',
       'shopify',
-      '',
-      [{ sourceFieldKey: 'shopify_id', targetAppField: 'noSuchField' }],
-      [{ fieldKey: 'shopify_id', sourcePath: 'id', type: 'TEXT', name: 'Shopify ID' }],
+      [{ sourcePath: 'id', appField: 'noSuchField' }],
       defFields
     )
     expect(bindings).toHaveLength(0)
@@ -567,7 +656,7 @@ describe('buildContributingFieldBindings', () => {
 describe('buildContributingConnectionAppFields', () => {
   it('builds a connectionMetaKey-flagged FieldMapping per entry, never carrying identityRole', () => {
     const bindings = buildContributingConnectionAppFields('def_contact', 'shopify', [
-      { appFieldKey: 'storeDomain', from: 'shopDomain' },
+      { appField: 'storeDomain', from: 'shopDomain' },
     ])
     expect(bindings).toHaveLength(1)
     expect(bindings[0]).toMatchObject({
@@ -610,15 +699,11 @@ describe('buildContributingAutoBindings (zero-config heuristic)', () => {
     },
   ]
 
-  it('name-matches leaf source fields to writable targets at root, no identityRole', () => {
+  it('name-matches leaf keys of the sampled root to writable targets, no identityRole', () => {
     const bindings = buildContributingAutoBindings(
       'def_contact',
       '',
-      [
-        { fieldKey: 'firstName', sourcePath: 'first_name', type: 'TEXT', name: 'First Name' },
-        { fieldKey: 'lastName', sourcePath: 'last_name', type: 'TEXT', name: 'Last Name' },
-        { fieldKey: 'phone', sourcePath: 'phone', type: 'TEXT', name: 'Phone' },
-      ],
+      { first_name: 'Ada', last_name: 'Lovelace', phone: '+1' },
       contactFields
     )
     expect(bindings.map((b) => b.targetFieldRef).sort()).toEqual([
@@ -633,43 +718,27 @@ describe('buildContributingAutoBindings (zero-config heuristic)', () => {
     const bindings = buildContributingAutoBindings(
       'def_contact',
       '',
-      [
-        { fieldKey: 'id', sourcePath: 'id', type: 'TEXT', name: 'Shopify ID' },
-        { fieldKey: 'createdAt', sourcePath: 'created_at', type: 'DATETIME', name: 'Created' },
-        { fieldKey: 'fullName', sourcePath: 'full_name', type: 'TEXT', name: 'Name' },
-      ],
+      { id: '1', created_at: '2024-01-01', full_name: 'Ada' },
       contactFields
     )
     expect(bindings).toHaveLength(0)
   })
 
-  it('skips a target two source fields both resolve to (ambiguous)', () => {
+  it('skips a target two source keys both resolve to (ambiguous)', () => {
     const bindings = buildContributingAutoBindings(
       'def_contact',
       '',
-      [
-        { fieldKey: 'firstName', sourcePath: 'first_name', type: 'TEXT', name: 'First Name' },
-        { fieldKey: 'givenName', sourcePath: 'First Name', type: 'TEXT', name: 'Given' },
-      ],
+      { first_name: 'Ada', 'First Name': 'Ada2' },
       contactFields
     )
     expect(bindings).toHaveLength(0)
   })
 
-  it('skips nested + array-element source paths, keeps only direct leaves', () => {
+  it('skips nested object / array values, keeps only scalar leaves', () => {
     const bindings = buildContributingAutoBindings(
       'def_contact',
       'customer',
-      [
-        {
-          fieldKey: 'firstName',
-          sourcePath: 'customer.first_name',
-          type: 'TEXT',
-          name: 'First Name',
-        },
-        { fieldKey: 'city', sourcePath: 'customer.address.phone', type: 'TEXT', name: 'Nested' },
-        { fieldKey: 'tag', sourcePath: 'customer.tags[].phone', type: 'TEXT', name: 'Array' },
-      ],
+      { customer: { first_name: 'Ada', address: { city: 'X' }, tags: ['a'] } },
       contactFields
     )
     expect(bindings).toHaveLength(1)
@@ -679,26 +748,11 @@ describe('buildContributingAutoBindings (zero-config heuristic)', () => {
     })
   })
 
-  it('binds direct leaves under a named array root, still skipping nested-array leaves', () => {
-    // 'line_items[].first_name' relativizes to 'first_name' — deterministic, binds;
-    // 'line_items[].options[].value' keeps a digit-less `[]` — skipped per field.
+  it('samples the FIRST element of an array root', () => {
     const bindings = buildContributingAutoBindings(
       'def_contact',
       'line_items[]',
-      [
-        {
-          fieldKey: 'firstName',
-          sourcePath: 'line_items[].first_name',
-          type: 'TEXT',
-          name: 'First Name',
-        },
-        {
-          fieldKey: 'optionValue',
-          sourcePath: 'line_items[].options[].value',
-          type: 'TEXT',
-          name: 'Option value',
-        },
-      ],
+      { line_items: [{ first_name: 'Ada' }, { first_name: 'Grace' }] },
       contactFields
     )
     expect(bindings).toHaveLength(1)
@@ -707,5 +761,9 @@ describe('buildContributingAutoBindings (zero-config heuristic)', () => {
       expression: '{first_name}',
       sourceFields: { first_name: 'first_name' },
     })
+  })
+
+  it('returns nothing when there is no exampleRecord', () => {
+    expect(buildContributingAutoBindings('def_contact', '', undefined, contactFields)).toEqual([])
   })
 })
