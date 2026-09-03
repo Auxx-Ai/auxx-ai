@@ -38,6 +38,7 @@ import {
   type ShapeResolver,
   storedRootPath,
 } from './catalog-shape'
+import { readCellSyncState } from './cell-sync-read'
 import { removeConnectorScheduler, syncConnectorScheduler } from './data-connector-scheduler'
 import {
   classifyConnectorChange,
@@ -56,6 +57,7 @@ import {
   loadConnector,
   stampResyncPending,
 } from './service'
+import type { CellSyncInfo } from './sync-state'
 import type {
   ConnectorTemplate,
   ConnectorTemplateFieldMapping,
@@ -1710,11 +1712,17 @@ export interface SetConnectorFieldPinInput {
  * must carry the pin. Idempotent by construction (jsonb `?` guards the append,
  * `-` removes every occurrence). Zero rows means the record is not bound to this
  * connector. Resume only removes the id: the next run heals the cell (D5).
+ *
+ * Returns the cell's resulting `CellSyncInfo` (`null` when nothing binds the
+ * field any more) so the caller can repaint that ONE cell. The badge used to
+ * drop the record's whole field-value cache instead, which refetched every
+ * other cell on the record and lost the badge outright whenever the new state
+ * was one the batch read stays silent on (task 42 §0).
  */
 export async function setConnectorFieldPin(
   db: DbOrTx,
   input: SetConnectorFieldPinInput
-): Promise<Result<{ pinnedFields: string[] }, Error>> {
+): Promise<Result<{ pinnedFields: string[]; sync: CellSyncInfo | null }, Error>> {
   const { pinnedFields } = schema.DataConnectorItem
   const next = input.pinned
     ? sql`CASE WHEN ${pinnedFields} ? ${input.fieldId}::text THEN ${pinnedFields} ELSE ${pinnedFields} || to_jsonb(array[${input.fieldId}::text]) END`
@@ -1735,5 +1743,11 @@ export async function setConnectorFieldPin(
 
   const first = rows[0]
   if (!first) return err(new NotFoundError('Record is not bound to this connector'))
-  return ok({ pinnedFields: first.pinnedFields ?? [] })
+
+  const sync = await readCellSyncState(db, {
+    organizationId: input.organizationId,
+    entityInstanceId: input.entityInstanceId,
+    fieldId: input.fieldId,
+  })
+  return ok({ pinnedFields: first.pinnedFields ?? [], sync })
 }

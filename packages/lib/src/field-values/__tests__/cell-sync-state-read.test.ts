@@ -5,9 +5,11 @@
  * (plans/money/tasks/40-per-field-sync-pin.md sections 4 D2 and 7): the
  * records' live `DataConnectorItem`s are read BESIDE the value query and
  * collapsed with the row marker through `resolveCellSyncState`, in the D2
- * order paused > synced > edited > none. An empty paused cell has no row to
- * ride on, so the path emits a value-less result for it, and the item read is
- * one call per batch whether or not anything is bound.
+ * order paused > synced > edited > none. A cell with no stored row has nothing
+ * to ride on, so the path emits a value-less result for it whenever it is
+ * paused or edited (task 42 §3: a cleared overwrite cell is healed like any
+ * other drift), and the item read is one call per batch whether or not anything
+ * is bound.
  *
  * NOTE on imports: `field-value-helpers` is imported for its TYPES only; see
  * the cache mock below for why the double sits under the barrel.
@@ -317,9 +319,21 @@ describe('batchGetValues, cells with no stored row', () => {
     expect(cell(values, P1, TITLE)).toBeUndefined()
   })
 
-  it('an emptied overwrite cell is NOT reported as edited (drift never heals a deleted row)', async () => {
+  it('an emptied overwrite cell reaches the badge as edited (drift heals a cleared row, task 42)', async () => {
     bound([[P1_ID, [shopifyItem()]]])
     const { values } = await read([], [P1], [DESCRIPTION])
+
+    expect(cell(values, P1, DESCRIPTION)?.sync).toEqual({
+      connectorId: SHOPIFY,
+      state: 'edited',
+      willOverwrite: true,
+    })
+    expect(cell(values, P1, DESCRIPTION)?.value).toBeNull()
+  })
+
+  it('an emptied cell whose binding never heals (fill_blank) stays silent', async () => {
+    bound([[P1_ID, [shopifyItem()]]])
+    const { values } = await read([], [P1], [NOTES])
 
     expect(values).toEqual([])
   })

@@ -11,6 +11,7 @@ import { NotFoundError } from '../errors'
 import {
   type BoundRecordFixture,
   bindThroughNewMapping,
+  insertTextValue,
   seedBoundRecord,
   testDb,
 } from './__int-test-helpers'
@@ -52,7 +53,7 @@ describe('setConnectorFieldPin', () => {
     const result = await pin(true)
 
     expect(result.isOk()).toBe(true)
-    expect(result._unsafeUnwrap()).toEqual({ pinnedFields: [f.descriptionFieldId] })
+    expect(result._unsafeUnwrap().pinnedFields).toEqual([f.descriptionFieldId])
     expect(await pinnedFieldsOf(f.itemId)).toEqual([f.descriptionFieldId])
   })
 
@@ -60,7 +61,7 @@ describe('setConnectorFieldPin', () => {
     await pin(true)
     const result = await pin(true)
 
-    expect(result._unsafeUnwrap()).toEqual({ pinnedFields: [f.descriptionFieldId] })
+    expect(result._unsafeUnwrap().pinnedFields).toEqual([f.descriptionFieldId])
     expect(await pinnedFieldsOf(f.itemId)).toEqual([f.descriptionFieldId])
   })
 
@@ -77,7 +78,7 @@ describe('setConnectorFieldPin', () => {
 
     const result = await pin(false)
 
-    expect(result._unsafeUnwrap()).toEqual({ pinnedFields: [f.titleFieldId] })
+    expect(result._unsafeUnwrap().pinnedFields).toEqual([f.titleFieldId])
     expect(await pinnedFieldsOf(f.itemId)).toEqual([f.titleFieldId])
   })
 
@@ -85,7 +86,7 @@ describe('setConnectorFieldPin', () => {
     const result = await pin(false)
 
     expect(result.isOk()).toBe(true)
-    expect(result._unsafeUnwrap()).toEqual({ pinnedFields: [] })
+    expect(result._unsafeUnwrap().pinnedFields).toEqual([])
   })
 
   it('fails with NotFoundError when the record is not bound to this connector', async () => {
@@ -140,13 +141,13 @@ describe('setConnectorFieldPin', () => {
 
     const result = await pin(true)
 
-    expect(result._unsafeUnwrap()).toEqual({ pinnedFields: [f.descriptionFieldId] })
+    expect(result._unsafeUnwrap().pinnedFields).toEqual([f.descriptionFieldId])
     expect(await pinnedFieldsOf(f.itemId)).toEqual([f.descriptionFieldId])
     expect(await pinnedFieldsOf(second.itemId)).toEqual([f.descriptionFieldId])
     expect(await pinnedFieldsOf(archived.itemId)).toEqual([])
 
     const unpinned = await pin(false)
-    expect(unpinned._unsafeUnwrap()).toEqual({ pinnedFields: [] })
+    expect(unpinned._unsafeUnwrap().pinnedFields).toEqual([])
     expect(await pinnedFieldsOf(second.itemId)).toEqual([])
   })
 
@@ -155,5 +156,84 @@ describe('setConnectorFieldPin', () => {
 
     expect(result.isErr()).toBe(true)
     expect(await pinnedFieldsOf(f.itemId)).toEqual([])
+  })
+})
+
+// The badge repaints the ONE cell it acted on from this answer instead of
+// dropping the record's whole field-value cache (task 42 §0), so the state it
+// gets back has to be the same one the batch read would have produced.
+describe('setConnectorFieldPin, the returned cell sync state', () => {
+  it('pinning answers paused, and names the connector that holds the pin', async () => {
+    await insertTextValue(testDb(), f, f.descriptionFieldId, 'From the shop', f.connectorId)
+
+    const result = await pin(true)
+
+    expect(result._unsafeUnwrap().sync).toEqual({
+      connectorId: f.connectorId,
+      state: 'paused',
+      willOverwrite: true,
+    })
+  })
+
+  it('resuming a still-stamped cell answers synced', async () => {
+    await insertTextValue(testDb(), f, f.descriptionFieldId, 'From the shop', f.connectorId)
+    await pin(true)
+
+    const result = await pin(false)
+
+    expect(result._unsafeUnwrap().sync).toEqual({
+      connectorId: f.connectorId,
+      state: 'synced',
+      willOverwrite: true,
+    })
+  })
+
+  it('resuming a hand-edited cell answers edited, not nothing', async () => {
+    await insertTextValue(testDb(), f, f.descriptionFieldId, 'my own words', null)
+    await pin(true)
+
+    const result = await pin(false)
+
+    expect(result._unsafeUnwrap().sync).toEqual({
+      connectorId: f.connectorId,
+      state: 'edited',
+      willOverwrite: true,
+    })
+  })
+
+  it('resuming a CLEARED cell answers edited: the next run re-fills it', async () => {
+    // No FieldValue row at all — the case that used to leave the cell with no
+    // badge, because the batch read only emits a row-less cell when it is paused.
+    await pin(true)
+
+    const result = await pin(false)
+
+    expect(result._unsafeUnwrap().sync).toEqual({
+      connectorId: f.connectorId,
+      state: 'edited',
+      willOverwrite: true,
+    })
+  })
+
+  it('a field the mapping does not bind answers null', async () => {
+    // Not pinned, no marker, not in `managedFields`: nothing binds this cell.
+    const [unbound] = await testDb()
+      .insert(schema.CustomField)
+      .values({
+        organizationId: f.orgId,
+        entityDefinitionId: f.defId,
+        modelType: 'product',
+        name: 'Internal note',
+        type: 'TEXT',
+        options: {},
+        sortOrder: 'a3',
+        isCustom: true,
+        updatedAt: new Date(),
+      })
+      .returning()
+
+    const result = await pin(false, { fieldId: unbound!.id })
+
+    expect(result._unsafeUnwrap().sync).toBeNull()
   })
 })

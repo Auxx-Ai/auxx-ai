@@ -13,7 +13,7 @@ import type { FieldId, ResourceFieldId } from '@auxx/types/field'
 import { getFieldId } from '@auxx/types/field'
 import type { TypedFieldValue } from '@auxx/types/field-value'
 import { stableHash } from '@auxx/utils/hash'
-import { and, eq, inArray, isNull, ne, or, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNull, ne, sql } from 'drizzle-orm'
 import { resolveConnectorFieldRef } from '../../agents/bindings/resolve'
 import { getCachedFieldMap } from '../../cache'
 import { UniqueValueConflictError } from '../../errors'
@@ -730,7 +730,11 @@ async function computeDriftedInstances(
   const connectionId = ctx.connector.credentialId ?? undefined
   const keyToId = await buildWriteKeyToFieldId(ctx.orgId, mapping.entityDefinitionId)
   const fieldMap = await getCachedFieldMap(ctx.orgId, mapping.entityDefinitionId)
-  const fieldIds = new Set<string>()
+  // The concrete `CustomField.id` a `FieldValue` row and a pin carry, paired with
+  // the RAW `targetFieldRef` an item's `managedFields` carries — the cleared-cell
+  // arm below needs both key spaces.
+  const fields: Array<{ uuid: string; ref: string }> = []
+  const seen = new Set<string>()
   for (const fm of healingBindings) {
     const concrete = await resolveConnectorFieldRef(fm.targetFieldRef, ctx.orgId, connectionId)
     if (!concrete) continue
@@ -745,36 +749,60 @@ async function computeDriftedInstances(
     // until the SOURCE value changes, consistent with never-touch-other-rows.
     const field = fieldMap.get(uuid) as SyncFieldShape | undefined
     if (!wouldHealField(fm, field)) continue
-    fieldIds.add(uuid)
+    if (seen.has(uuid)) continue
+    seen.add(uuid)
+    fields.push({ uuid, ref: fm.targetFieldRef })
   }
-  if (fieldIds.size === 0) return new Set()
+  if (fields.length === 0) return new Set()
 
-  // One query: bound instances of this mapping holding an overwrite cell no longer
-  // stamped by this connector (NULL = hand-edited, or a different connector took over).
-  // A cell the user PAUSED on the record (`pinnedFields`, plan 40) is not drift:
-  // the sink will not write it, so counting it would keep the record permanently
-  // drifted and the content-hash skip would never fire again. jsonb `?` tests
-  // string membership in the top-level array; one clause covers every field.
-  const rows = await ctx.db
-    .selectDistinct({ entityId: schema.FieldValue.entityId })
-    .from(schema.FieldValue)
-    .innerJoin(
-      schema.DataConnectorItem,
-      eq(schema.DataConnectorItem.entityInstanceId, schema.FieldValue.entityId)
-    )
-    .where(
-      and(
-        eq(schema.DataConnectorItem.dataConnectorId, ctx.connector.id),
-        eq(schema.DataConnectorItem.mappingId, mapping.row.id),
-        inArray(schema.FieldValue.fieldId, Array.from(fieldIds)),
-        or(
-          isNull(schema.FieldValue.managedByConnectorId),
-          ne(schema.FieldValue.managedByConnectorId, ctx.connector.id)
-        ),
-        sql`NOT (${schema.DataConnectorItem.pinnedFields} ? ${schema.FieldValue.fieldId})`
+  // One query: the mapping's live bindings CROSS JOINed with the healing fields
+  // and LEFT JOINed to the cell. A bound instance is drifted when a healing cell
+  //
+  //   - carries a row no longer stamped by this connector (NULL = hand-edited,
+  //     or a different connector took it over), or
+  //   - carries NO row at all — the user CLEARED it. `overwrite` means
+  //     overwrite, so a cleared cell is re-filled like any other drift (task 42
+  //     §3); before this it stayed empty forever, because the join was an INNER
+  //     one and the content-hash skip never fell through.
+  //
+  // The cleared arm is narrowed to fields the item already MANAGES: the
+  // connector has written that field on this record before, so it has a value to
+  // put back. Without that, a mapping whose source omits a field would mark
+  // every bound record permanently drifted and the content-hash skip would never
+  // fire again. It is also the exact rule the badge's `edited` state uses, so the
+  // two cannot disagree (plan 40 D2).
+  //
+  // A cell the user PAUSED (`pinnedFields`, plan 40) is not drift in either arm:
+  // the sink will not write it, so counting it would strand the record in the
+  // same never-skip loop, and an ARCHIVED binding is not drift either: the
+  // record is no longer bound through this mapping. jsonb `?` tests string
+  // membership in the top-level array; `managedFields` holds raw refs,
+  // `pinnedFields` concrete ids.
+  const I = schema.DataConnectorItem
+  const FV = schema.FieldValue
+  const result = await ctx.db.execute(sql`
+    SELECT DISTINCT ${I.entityInstanceId} AS "entityId"
+    FROM ${I}
+    CROSS JOIN unnest(
+        ${sql.param(fields.map((f) => f.uuid))}::text[],
+        ${sql.param(fields.map((f) => f.ref))}::text[]
+      ) AS healing(field_id, field_ref)
+    LEFT JOIN ${FV}
+      ON ${FV.entityId} = ${I.entityInstanceId}
+      AND ${FV.fieldId} = healing.field_id
+    WHERE ${I.dataConnectorId} = ${ctx.connector.id}
+      AND ${I.mappingId} = ${mapping.row.id}
+      AND ${I.archivedAt} IS NULL
+      AND ${I.entityInstanceId} IS NOT NULL
+      AND NOT (${I.pinnedFields} ? healing.field_id)
+      AND (
+        CASE WHEN ${FV.id} IS NULL
+          THEN ${I.managedFields} ? healing.field_ref
+          ELSE ${FV.managedByConnectorId} IS DISTINCT FROM ${ctx.connector.id}
+        END
       )
-    )
-  return new Set(rows.map((r) => r.entityId))
+  `)
+  return new Set((result.rows ?? []).map((r) => (r as { entityId: string }).entityId))
 }
 
 /**

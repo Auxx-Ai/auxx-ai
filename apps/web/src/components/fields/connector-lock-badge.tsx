@@ -4,7 +4,7 @@
 
 import type { CellSyncInfo } from '@auxx/lib/data-connectors/client'
 import type { RecordId } from '@auxx/lib/resources/client'
-import type { FieldId } from '@auxx/types/field'
+import type { FieldId, FieldReference } from '@auxx/types/field'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,6 +18,7 @@ import type { MouseEvent, PointerEvent } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
 import { useConnectorName } from '~/components/resources/hooks/use-connector-name'
 import { useFieldValueStore } from '~/components/resources/store/field-value-store'
+import { buildCanonicalFieldValueKey } from '~/components/resources/utils/canonicalize-field-ref'
 import { api } from '~/trpc/react'
 
 interface OwnedBadgeProps {
@@ -120,7 +121,7 @@ function ContributingBadge({
 }: Omit<ContributingBadgeProps, 'mode'>) {
   const name = useConnectorName(sync.connectorId)
   const who = name ?? 'a data connector'
-  const invalidateResource = useFieldValueStore((s) => s.invalidateResource)
+  const setManagedState = useFieldValueStore((s) => s.setManagedState)
   const setFieldPin = api.dataConnector.setFieldPin.useMutation()
 
   const Icon = STATE_ICON[sync.state]
@@ -152,7 +153,18 @@ function ContributingBadge({
     setFieldPin.mutate(
       { recordId, fieldId, connectorId: sync.connectorId, pinned },
       {
-        onSuccess: () => invalidateResource(recordId),
+        // Repaint THIS cell from the mutation's own answer. 🛑 Do not reinstate
+        // `invalidateResource(recordId)` here: it DELETES every cached value,
+        // AI marker and sync state on the record, so pausing one field
+        // refetched every other cell — and when the new state was one the batch
+        // read stays silent on (a cleared cell), the badge never came back.
+        onSuccess: ({ sync: next }) => {
+          const { key } = buildCanonicalFieldValueKey(
+            recordId,
+            fieldId as unknown as FieldReference
+          )
+          setManagedState(key, next)
+        },
         onError: (error) =>
           toastError({
             title: 'Could not change sync for this field',

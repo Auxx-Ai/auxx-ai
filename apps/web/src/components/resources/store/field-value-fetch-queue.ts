@@ -435,7 +435,7 @@ class FieldValueFetchQueue {
         aiMetadata: AiValueMetadata | null
       }> = []
       // Contributing data-connector sync states to rehydrate (mirrors aiEntries).
-      const managedEntries: Array<{ key: FieldValueKey; sync: CellSyncInfo }> = []
+      const syncByKey = new Map<FieldValueKey, CellSyncInfo>()
       for (const result of results) {
         if (result.status === 'fulfilled') {
           for (const v of result.value.values) {
@@ -445,7 +445,7 @@ class FieldValueFetchQueue {
               aiEntries.push({ key, aiStatus: v.aiStatus, aiMetadata: v.aiMetadata ?? null })
             }
             if (v.sync != null) {
-              managedEntries.push({ key, sync: v.sync })
+              syncByKey.set(key, v.sync)
             }
           }
         } else {
@@ -486,10 +486,13 @@ class FieldValueFetchQueue {
       }
 
       // Rehydrate contributing data-connector sync states so the cell badge
-      // survives refresh.
+      // survives refresh. The response is AUTHORITATIVE over the whole requested
+      // cross product — the server emits `sync` even for cells with no stored
+      // row — so a combination it stayed silent on clears its badge rather than
+      // keeping a state the last sync run has since ended.
       const setManagedState = useFieldValueStore.getState().setManagedState
-      for (const entry of managedEntries) {
-        setManagedState(entry.key, entry.sync)
+      for (const key of allRequestedCombinations) {
+        setManagedState(key, syncByKey.get(key) ?? null)
       }
     } catch (error) {
       console.error('[FieldValueFetchQueue] Fetch failed:', error)
