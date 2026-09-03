@@ -1048,15 +1048,16 @@ async function fetchFieldValueResults(
     })
   }
 
-  // A PAUSED cell with no stored row ("I removed the connector's value and want
-  // it to stay empty") has nothing above to ride on, and the client only
-  // null-backfills the combinations the server stayed silent on. Emit a
-  // value-less result for it so the badge still reaches the cell. Only
-  // `paused` qualifies: with no row there is nothing for `synced` to mark, and
-  // `edited` would promise a heal that `computeDriftedInstances` (an inner join
-  // on `FieldValue`) never performs for a deleted row.
+  // A cell with no stored row still has a sync state when the record is bound:
+  // PAUSED ("I cleared the connector's value and want it to stay empty") or
+  // EDITED (cleared without pausing — the connector re-fills it on the next
+  // run). Neither has a row to ride on above, and the client only null-backfills
+  // the combinations the server stayed silent on, so emit a value-less result
+  // for both. `synced` is excluded by construction: with no row there is nothing
+  // for a marker to be on. `edited` is honest here because
+  // `computeDriftedInstances` now heals a row-less overwrite cell too (task 42
+  // §3) — the two rules stay the same rule.
   for (const [entityId, bindings] of bindingsByInstance) {
-    if (!bindings.some((item) => item.pinnedFields.length > 0)) continue
     const recordId = instanceToRecordId.get(entityId)
     if (!recordId) continue
     for (const fieldId of fieldIds) {
@@ -1071,7 +1072,7 @@ async function fetchFieldValueResults(
         markerConnectorId: null,
         bindings,
       })
-      if (sync?.state !== 'paused') continue
+      if (!sync) continue
       results.push({
         recordId,
         fieldRef,

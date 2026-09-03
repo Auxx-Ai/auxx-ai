@@ -223,3 +223,60 @@ describe('computeDriftedInstances with a pinned field', () => {
     expect(await markerOf(f, f.titleFieldId)).toBe(f.connectorId)
   })
 })
+
+// Task 42 §3: `overwrite` means overwrite, so a cell the user CLEARED (row
+// deleted, not edited) is drift like any other and the next run puts the value
+// back. Before this the drift query inner-joined `FieldValue`, so a cleared cell
+// was invisible and the content-hash skip left it empty until the SOURCE changed.
+describe('computeDriftedInstances with a cleared cell', () => {
+  const clear = (fieldId: string) =>
+    testDb()
+      .delete(schema.FieldValue)
+      .where(
+        and(eq(schema.FieldValue.entityId, f.instanceId), eq(schema.FieldValue.fieldId, fieldId))
+      )
+
+  it('a cleared overwrite cell is drift: the source value is re-asserted and re-stamped', async () => {
+    await clear(f.descriptionFieldId)
+    const ctx = runCtx(f, update)
+
+    await entitySink.upsertRecord(ctx, decoded(f), projected(f))
+
+    expect(update).toHaveBeenCalledTimes(1)
+    expect(update.mock.calls[0]?.[1]).toEqual({
+      [f.descriptionFieldId]: SOURCE_DESCRIPTION,
+      [f.titleFieldId]: SOURCE_TITLE,
+    })
+    // No marker assertion here: `crud.update` is a double, so the row the write
+    // would recreate never exists for the stamp UPDATE to find.
+  })
+
+  it('a cleared cell that is PINNED is not drift: the record is skipped and the cell stays empty', async () => {
+    await clear(f.descriptionFieldId)
+    expect((await pin(f, true)).isOk()).toBe(true)
+    const ctx = runCtx(f, update)
+
+    await entitySink.upsertRecord(ctx, decoded(f), projected(f))
+
+    expect(update).not.toHaveBeenCalled()
+    expect(ctx.counters.skipped).toBe(1)
+    expect(await markerOf(f, f.descriptionFieldId)).toBeNull()
+  })
+
+  it('a cleared cell the connector never managed is not drift: nothing to put back', async () => {
+    // `managedFields` is the connector's record of what it has written here. A
+    // field the source has never carried must not strand the record in a
+    // never-skip loop.
+    await clear(f.descriptionFieldId)
+    await testDb()
+      .update(schema.DataConnectorItem)
+      .set({ managedFields: [f.titleRef] })
+      .where(eq(schema.DataConnectorItem.id, f.itemId))
+    const ctx = runCtx(f, update)
+
+    await entitySink.upsertRecord(ctx, decoded(f), projected(f))
+
+    expect(update).not.toHaveBeenCalled()
+    expect(ctx.counters.skipped).toBe(1)
+  })
+})
