@@ -73,7 +73,17 @@ export interface SyncSourceStream {
   mappings: DecodedMapping[]
 }
 
-/** Owned-mode handler skips registered system-field pre-hooks (mirror the importer). */
+/**
+ * Owned-mode handler's `bypassFieldGuards` set — EMPTY, i.e. it bypasses nothing.
+ *
+ * The name and its former comment ("skips registered system-field pre-hooks") both
+ * describe an intent that the value does not implement: `new Set<never>()` can
+ * contain no systemAttribute, so `fireFieldPreHooks`' `ctx.bypassFieldGuards.has(...)`
+ * check never matches and every registered pre-hook runs on connector writes like any
+ * other write. That is load-bearing for the contact name-casing repair
+ * (plans/records/contact-name-casing-plan.md §3) — leave it empty, and if a real
+ * bypass is ever needed, add the attributes explicitly rather than trusting the name.
+ */
 const OWNED_BYPASS: ReadonlySet<never> = new Set<never>()
 
 /** Map the mutable run counters onto the core's slice-counter shape for the ledger. */

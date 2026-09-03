@@ -112,6 +112,12 @@
       "import": "./dist/mime.js",
       "default": "./src/mime.ts"
     },
+    "./name-case": {
+      "types": "./src/name-case.ts",
+      "source": "./src/name-case.ts",
+      "import": "./dist/name-case.js",
+      "default": "./src/name-case.ts"
+    },
     "./objects": {
       "types": "./src/objects.ts",
       "source": "./src/objects.ts",
