@@ -541,6 +541,26 @@ export async function setupSchedules() {
     }
   )
 
+  // Contact/company interaction resolution gap filler — every day at 05:15 UTC, after the
+  // enrichment sweep so a company that just had its domain derived is already linkable. Both
+  // live callers are event-driven (pass 5 of the sync finalize integrity passes, and the
+  // contact/company field hooks), so this is only for what they drop: a bulk run whose
+  // manifest membership truncated, and a hook whose fire-and-forget died with its process.
+  // Windowed to records created in the last 30 days; older gaps are the backfill script's.
+  await maintenanceQueue.upsertJobScheduler(
+    'interactionResolutionSweepJob',
+    { pattern: '15 5 * * *', tz: 'UTC' },
+    {
+      opts: {
+        attempts: 2,
+        backoff: { type: 'exponential', delay: 60000 },
+        priority: 9,
+        removeOnComplete: { count: 14 },
+        removeOnFail: { count: 30 },
+      },
+    }
+  )
+
   // Money MI2 invoice-draft daily sweep — every day at 03:30 UTC (08-mi2-build.md §G), 30
   // minutes after the dispatch recurring engine's visit sweep so a same-day visit
   // materialization can't race the billing pass.

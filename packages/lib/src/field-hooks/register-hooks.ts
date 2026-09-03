@@ -16,6 +16,10 @@ import {
   normalizeAddressOnChange,
   registerAddressNormalizedListener,
 } from '../geocoding/address-normalize-hook'
+import {
+  resolveInteractionsOnCompanyDomainChange,
+  resolveInteractionsOnIdentifierChange,
+} from '../interactions/hooks'
 import { generateDraftOnCompletion } from '../money/auto-invoice'
 import {
   BILLING_PROJECTION_ATTRS,
@@ -331,6 +335,19 @@ export function registerAllHooks(): void {
   // code), and no-ops on entities that have no such fields. Unlike the address hook this needs
   // no fire-and-forget — the lookup is an in-memory table read, not a MapTiler call.
   registerFieldTypeChangeHooks(FieldTypeEnum.PHONE_INTL, [derivePhoneGeoOnChange])
+
+  // Interaction resolution, interactive lane (plans/company/v5-interaction-resolution.md §7).
+  // A contact created or edited by hand, by the API, by Kopilot or by a workflow never meets
+  // the `Participant` rows for its own addresses — ingest only links the ones it mints
+  // itself — so it shows no correspondence history and no mail. These two handlers adopt
+  // them. Def-slug keyed rather than field-type keyed (unlike the two hooks above): an EMAIL
+  // field on a purchase order must not adopt participants, so the handlers filter on
+  // `systemAttribute` and no-op in one comparison for every other write.
+  //
+  // Deliberately NOT registered for the sync lane, which never runs post hooks: bulk runs
+  // reach the same core through pass 5 of `events/handlers/finalize-integrity-passes.ts`.
+  registerEntityFieldChangeHooks('contacts', [resolveInteractionsOnIdentifierChange])
+  registerEntityFieldChangeHooks('companies', [resolveInteractionsOnCompanyDomainChange])
   // Deserialize the geocoding tables now rather than on the first phone write. Co-located with
   // the registration so the warm can never drift away from the hook that needs it; the worker
   // additionally calls this at boot. Idempotent and never throws.

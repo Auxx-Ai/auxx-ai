@@ -94,10 +94,14 @@ export async function runIntegrityPasses(db: Database, input: IntegrityPassesInp
   const { organizationId, manifest } = input
   try {
     // An archived-only manifest still has work: pass 4 reads `archivedRecordIds`
-    // (a deleted line means its order asks production for less).
+    // (a deleted line means its order asks production for less), and a created-only one
+    // does too: pass 5 reads `createdRecordIds`, which is unconditional membership. A create
+    // normally also lands in `touched` (creates record their written keys), so the third arm
+    // is a guard against a writer that only reports the lifecycle array, not a live path.
     if (
       Object.keys(manifest.touched).length === 0 &&
-      (manifest.archivedRecordIds?.length ?? 0) === 0
+      (manifest.archivedRecordIds?.length ?? 0) === 0 &&
+      (manifest.createdRecordIds?.length ?? 0) === 0
     ) {
       return
     }
@@ -107,6 +111,7 @@ export async function runIntegrityPasses(db: Database, input: IntegrityPassesInp
     await addressPass(db, organizationId, manifest, resolveDef)
     await phoneGeoPass(db, organizationId, manifest, resolveDef)
     await orderDemandPass(organizationId, manifest, resolveDef)
+    await interactionPass(db, organizationId, manifest, resolveDef)
   } catch (error) {
     logger.error('integrity passes failed', {
       organizationId,
@@ -627,6 +632,109 @@ async function orderDemandPass(
     })
   } catch (error) {
     logger.error('integrity order-demand pass failed', {
+      organizationId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
+}
+
+// =============================================================================
+// Pass 5: contact/company interaction resolution
+// =============================================================================
+
+/**
+ * Contact and company attributes whose write can change which participants (or which
+ * contacts) belong to a record. Mirrors `interactions/hooks.ts`, which is the same pass on
+ * the interactive lane.
+ */
+const INTERACTION_TRIGGER_ATTRS: ReadonlySet<string> = new Set([
+  'primary_email',
+  'phone',
+  'primary_phone',
+  'contact_employer',
+  'company_domain',
+])
+
+/**
+ * Give the contacts and companies a bulk run touched the correspondence history they
+ * already have.
+ *
+ * **Why this is a pass and not a record rule** (plans/company/v5-interaction-resolution.md
+ * §4). A field rule would fire from the sync door too, but that door matches transitions
+ * against TIER-2 deltas, which are capped at `MAX_DELTA_RECORDS` (5,000). The import this
+ * was written for created 20,414 contacts, so a rule would have fired for a quarter of them
+ * and silently skipped the rest — the exact under-selection this module's header describes.
+ * Tier-1 `touched` membership is unconditional, and `createdRecordIds` more so.
+ *
+ * Selection therefore reads membership, never deltas:
+ *  - every created record whose def is a contact or a company (an import's whole point),
+ *  - plus touched records carrying one of {@link INTERACTION_TRIGGER_ATTRS},
+ *  - plus ids-only degraded records (`touched[rid] === 1`), which may carry anything.
+ *
+ * The work itself is `resolveInteractions`, which batches internally and never throws. A run
+ * that touched no contact and no company resolves zero ids and returns before any query,
+ * which is how the other four passes guard themselves too.
+ */
+async function interactionPass(
+  db: Database,
+  organizationId: string,
+  manifest: SyncChangeManifest,
+  resolveDef: DefFieldResolver
+): Promise<void> {
+  try {
+    const instanceIds = new Set<string>()
+
+    const wanted = async (rawDefId: string): Promise<boolean> => {
+      const def = await resolveDef(rawDefId)
+      return def?.entityType === 'contact' || def?.entityType === 'company'
+    }
+
+    // Creates first: an imported contact has no "changed keys" worth inspecting — its
+    // existence is the trigger.
+    for (const rid of manifest.createdRecordIds ?? []) {
+      const { entityDefinitionId: rawDefId, entityInstanceId } = parseRecordId(rid)
+      if (await wanted(rawDefId)) instanceIds.add(entityInstanceId)
+    }
+
+    for (const [rid, touched] of Object.entries(manifest.touched)) {
+      const { entityDefinitionId: rawDefId, entityInstanceId } = parseRecordId(rid as RecordId)
+      if (instanceIds.has(entityInstanceId)) continue
+      // Ids-only degradation: the keys were shed under the byte budget, so any identifier
+      // may have moved and the record enters its def's arm.
+      const idsOnly = touched === 1
+      const hasTrigger =
+        idsOnly || (touched as string[]).some((key) => INTERACTION_TRIGGER_ATTRS.has(key))
+      if (!hasTrigger) continue
+      if (await wanted(rawDefId)) instanceIds.add(entityInstanceId)
+    }
+
+    if (instanceIds.size === 0) return
+
+    // Membership truncation is the one hole this pass cannot close by itself: past
+    // `MAX_TOUCHED_RECORDS` the manifest stops recording members at all, so the tail waits
+    // for the nightly sweep. Say so in the log rather than reporting a clean run.
+    if (manifest.membershipTruncated) {
+      logger.warn('integrity interaction pass: manifest membership truncated — tail deferred', {
+        organizationId,
+        selected: instanceIds.size,
+      })
+    }
+
+    const { resolveInteractions } = await import('../../interactions/resolve')
+    const summary = await resolveInteractions({
+      organizationId,
+      recordIds: [...instanceIds],
+      reason: 'sync',
+      db,
+    })
+
+    logger.info('integrity interaction pass done', {
+      organizationId,
+      selected: instanceIds.size,
+      ...summary,
+    })
+  } catch (error) {
+    logger.error('integrity interaction pass failed', {
       organizationId,
       error: error instanceof Error ? error.message : String(error),
     })
