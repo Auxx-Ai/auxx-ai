@@ -1,6 +1,7 @@
 // apps/web/src/server/api/routers/table-view-structural.ts
 
 import type { Resource } from '@auxx/lib/resources/client'
+import { isStructuralContextType } from '@auxx/lib/table-views'
 
 /**
  * Pure table-view def-admin gating logic (perms v2 doc 07), no server deps so it
@@ -13,8 +14,10 @@ import type { Resource } from '@auxx/lib/resources/client'
  * `isShared` is deliberately NOT a trigger.
  */
 
-/** Context types whose views are the def's shared panel/dialog field layouts. */
-const STRUCTURAL_CONTEXT_TYPES = new Set(['panel', 'dialog_create', 'dialog_edit'])
+// The context-type set itself lives in `@auxx/lib/table-views` because the
+// `savedViews` counter must exclude exactly the rows this gate protects — a
+// panel/dialog config is definition configuration, not a member's saved view.
+// Two copies of that list is how the billing counters drifted apart before.
 
 /** Shape of a write's structural inputs (from create input or a loaded row). */
 export interface StructuralViewShape {
@@ -27,10 +30,7 @@ export interface StructuralViewShape {
  * for panel/dialog field configs or any write that designates the org default.
  */
 export function isStructural(view: StructuralViewShape): boolean {
-  return (
-    (view.contextType != null && STRUCTURAL_CONTEXT_TYPES.has(view.contextType)) ||
-    view.isDefault === true
-  )
+  return isStructuralContextType(view.contextType) || view.isDefault === true
 }
 
 /** Table/kanban views built as `entity-<defId>`; panel/dialog use a bare `<defId>`. */
