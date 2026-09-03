@@ -60,7 +60,10 @@ export interface IntakeDraftEditor {
    * typed into the cell is nobody's break and clears it.
    */
   chooseBreak: (lineId: string, index: number | null) => void
+  /** Take a line out of the order — reversible, see {@link IntakeDraftEditor.restoreLine}. */
   removeLine: (lineId: string) => void
+  /** Put a removed line back as an ordinary line. */
+  restoreLine: (lineId: string) => void
   /** §5.4: move a line's amount onto a header total and take the row out. */
   foldLine: (lineId: string, into: IntakeFold) => void
   unfoldLine: (lineId: string) => void
@@ -196,11 +199,55 @@ export function useIntakeDraftEditor(
     [update]
   )
 
+  /**
+   * Take a line out of the order, keeping it on the draft.
+   *
+   * 🛑 A flag, not a `filter`. This screen autosaves, so dropping the line from
+   * the array put it beyond recovery the moment the debounce fired — on a
+   * forty-line quote the only way back was re-reading the document. `restoreLine`
+   * is the other half, and `orderableLines` is what keeps the removal invisible
+   * to the table, the totals, the commit gate and the commit.
+   *
+   * 🛑 Un-folds on the way out. A folded line's amount is already in
+   * `shippingCents`/`taxCents`; removing it while folded would leave that money
+   * on the header with nothing on screen accounting for it.
+   */
   const removeLine = useCallback(
+    (lineId: string) => {
+      update((current) => {
+        const target = current.lines.find((line) => line.lineId === lineId)
+        if (!target || target.removed) return current
+        const fold = target.foldedInto
+        const amount = fold ? foldAmountCents(target, current.currency) : 0
+        return {
+          ...current,
+          shippingCents: current.shippingCents - (fold === 'shipping' ? amount : 0),
+          taxCents: current.taxCents - (fold === 'tax' ? amount : 0),
+          lines: current.lines.map((line) =>
+            line.lineId === lineId ? { ...line, removed: true, foldedInto: null } : line
+          ),
+        }
+      })
+    },
+    [update]
+  )
+
+  /**
+   * Put a removed line back.
+   *
+   * It returns as an ORDINARY line — its part, price and printed data are
+   * untouched, because nothing about them changed when it left. A line that was
+   * folded when it was removed comes back unfolded: the fold was undone on the
+   * way out, and silently re-applying it would move money onto the header that
+   * the person restoring the line never asked for.
+   */
+  const restoreLine = useCallback(
     (lineId: string) => {
       update((current) => ({
         ...current,
-        lines: current.lines.filter((line) => line.lineId !== lineId),
+        lines: current.lines.map((line) =>
+          line.lineId === lineId ? { ...line, removed: false } : line
+        ),
       }))
     },
     [update]
@@ -252,6 +299,7 @@ export function useIntakeDraftEditor(
     patchLine,
     chooseBreak,
     removeLine,
+    restoreLine,
     foldLine,
     unfoldLine,
     flush,

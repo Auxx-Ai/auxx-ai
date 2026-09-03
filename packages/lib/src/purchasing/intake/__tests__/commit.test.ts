@@ -120,6 +120,7 @@ function intakeLine(partial: Partial<IntakeLine> = {}): IntakeLine {
     unitPriceCents: 42,
     chosenBreakIndex: null,
     foldedInto: null,
+    removed: false,
     ...partial,
   }
 }
@@ -425,6 +426,35 @@ describe('commitIntakeDraft — the shipping fold (§5.4)', () => {
       Number(line?.values.purchase_order_line_expected_unit_price) *
       Number(line?.values.purchase_order_line_quantity_ordered)
     expect(lineSum + Number(h.creates[0]?.values.purchase_order_shipping_total)).toBe(24500)
+  })
+})
+
+describe('commitIntakeDraft — a removed line', () => {
+  const dropped = () =>
+    intakeLine({ lineId: 'dropped', partRecordId: 'def_part:part_2' as never, removed: true })
+
+  it('never becomes a purchase order line', async () => {
+    h.draft = draftRow({ payload: payload({ lines: [intakeLine(), dropped()] }) })
+
+    await commitIntakeDraft(db, 'org_1', 'user_1', INPUT)
+
+    const lines = h.creates.filter((c) => c.def === 'purchase_order_line')
+    expect(lines).toHaveLength(1)
+    expect(lines[0]?.values.purchase_order_line_part).toBe('def_part:part_1')
+  })
+
+  // 🛑 The whole point of the soft flag. A removed line keeps whatever state it
+  // had — including no part — and it must not hold the commit hostage for a
+  // decision the person already made by removing it.
+  it('does not block the commit even with no part', async () => {
+    h.draft = draftRow({
+      payload: payload({
+        lines: [intakeLine(), intakeLine({ lineId: 'x', partRecordId: null, removed: true })],
+      }),
+    })
+
+    const result = await commitIntakeDraft(db, 'org_1', 'user_1', INPUT)
+    expect(result.isOk()).toBe(true)
   })
 })
 

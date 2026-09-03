@@ -14,13 +14,14 @@ import {
   type IntakeLine,
   isAutoLinkTier,
   orderableLines,
+  removedLines,
   unresolvedLines,
 } from '@auxx/lib/purchasing/intake/client'
 import type { RecordId } from '@auxx/lib/resources/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { cn } from '@auxx/ui/lib/utils'
-import { Receipt, Truck, Undo2 } from 'lucide-react'
+import { Receipt, Trash2, Truck, Undo2 } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
 import type { PartPrefillResolver } from '~/components/money/ui/line-builder/line-rows'
 import { LINE_COLS } from '~/components/money/ui/line-builder/line-rows'
@@ -42,6 +43,7 @@ interface IntakeLinesTableProps {
   onFold: (lineId: string, into: IntakeFold) => void
   onUnfold: (lineId: string) => void
   onRemove: (lineId: string) => void
+  onRestore: (lineId: string) => void
 }
 
 export function IntakeLinesTable({
@@ -55,13 +57,18 @@ export function IntakeLinesTable({
   onFold,
   onUnfold,
   onRemove,
+  onRestore,
 }: IntakeLinesTableProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [onlyReview, setOnlyReview] = useState(false)
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set())
 
   const orderable = useMemo(() => orderableLines(lines), [lines])
-  const folded = useMemo(() => lines.filter((line) => line.foldedInto !== null), [lines])
+  const folded = useMemo(
+    () => lines.filter((line) => line.foldedInto !== null && !line.removed),
+    [lines]
+  )
+  const removed = useMemo(() => removedLines(lines), [lines])
 
   // "Needs review" is broader than "blocks the commit": a `fuzzy` row that
   // somebody has since picked a part for no longer blocks anything, but a row the
@@ -161,6 +168,37 @@ export function IntakeLinesTable({
           {blocking.length} {blocking.length === 1 ? 'line' : 'lines'} still need a part. Pick one,
           create one, or fold the amount into shipping or tax.
         </p>
+      )}
+
+      {/* And a delete that cannot be seen or reversed is that with no way back at
+          all — which is what this was until the line gained a `removed` flag.
+          Same strip, same `Undo2`, deliberately: the two are the same promise. */}
+      {removed.length > 0 && (
+        <div className='mt-3 flex flex-col gap-1 rounded-lg border border-dashed p-2'>
+          <span className='px-1 font-medium text-muted-foreground text-xs'>
+            Removed from this order
+          </span>
+          {removed.map((line) => (
+            <div
+              key={line.lineId}
+              className='flex items-center gap-2 px-1 py-0.5 text-muted-foreground text-xs'>
+              <Trash2 className='size-3.5 shrink-0' />
+              <span className='truncate line-through'>
+                {line.printed.description ?? line.printed.vendorCode ?? 'Unnamed line'}
+              </span>
+              <span className='ml-auto shrink-0 tabular-nums'>
+                {formatCurrency(foldAmountCents(line, currency), currency)}
+              </span>
+              <Button
+                variant='ghost'
+                size='icon-xs'
+                aria-label='Put this line back'
+                onClick={() => onRestore(line.lineId)}>
+                <Undo2 />
+              </Button>
+            </div>
+          ))}
+        </div>
       )}
 
       {/* A fold that cannot be seen or reversed is a delete with extra steps. */}

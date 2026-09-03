@@ -510,6 +510,7 @@ export async function resolveQuoteLines(
           unitPriceCents: parseIntakeUnitPrice(printed.unitPriceText, currency),
           chosenBreakIndex: null,
           foldedInto: null,
+          removed: false,
         })
       }
 

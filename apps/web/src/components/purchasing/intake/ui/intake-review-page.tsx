@@ -286,6 +286,7 @@ export function IntakeReviewPage({ draftId }: { draftId: string }) {
                   onFold={editor.foldLine}
                   onUnfold={editor.unfoldLine}
                   onRemove={editor.removeLine}
+                  onRestore={editor.restoreLine}
                 />
               </div>
             </ResizablePanel>
