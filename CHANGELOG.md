@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.1.229](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.228...auxx-v0.1.229) (2026-09-03)
+
+
+### Features
+
+* **apps:** one field shape for app fields, entities and connector mappings ([#2030](https://github.com/Auxx-Ai/auxx-ai/issues/2030)) ([cb0d700](https://github.com/Auxx-Ai/auxx-ai/commit/cb0d700329c33495508a026a8824dbf427661a02))
+* **data-connectors:** pause syncing one field on one record ([#2037](https://github.com/Auxx-Ai/auxx-ai/issues/2037)) ([5a8bfc3](https://github.com/Auxx-Ai/auxx-ai/commit/5a8bfc3dbfbe371b0b5f248955c89a17b12631f8))
+* **data-connectors:** shopify first-sync follow-ups (task 39, 41) ([#2032](https://github.com/Auxx-Ai/auxx-ai/issues/2032)) ([8bbe1a6](https://github.com/Auxx-Ai/auxx-ai/commit/8bbe1a6cffd324a48ac4a7463405c29d4227a1b2))
+* **purchasing:** draft a purchase order from a vendor's quote ([#2031](https://github.com/Auxx-Ai/auxx-ai/issues/2031)) ([9c7ae78](https://github.com/Auxx-Ai/auxx-ai/commit/9c7ae780b9700214b33419bab5503e29d5c024e7))
+* **records:** dashboard tab on orders, purchase orders, vendor bills, builds and products ([#2036](https://github.com/Auxx-Ai/auxx-ai/issues/2036)) ([fb4153d](https://github.com/Auxx-Ai/auxx-ai/commit/fb4153dd14bfec9533f71fc1bbb04ef75aeb654d))
+
+
+### Bug Fixes
+
+* **data-connectors:** a skipped record no longer marks the run partial ([#2035](https://github.com/Auxx-Ai/auxx-ai/issues/2035)) ([4575594](https://github.com/Auxx-Ai/auxx-ai/commit/457559483c97d424c4727319b76249fa1c3fba0b))
+* **data-connectors:** pausing one field no longer refetches the record, and resume keeps its badge ([#2038](https://github.com/Auxx-Ai/auxx-ai/issues/2038)) ([095b32a](https://github.com/Auxx-Ai/auxx-ai/commit/095b32ae9b954ae5deb79b30f750143e469d77ef))
+* **purchasing:** a removed quote line can be put back ([#2034](https://github.com/Auxx-Ai/auxx-ai/issues/2034)) ([a9abb14](https://github.com/Auxx-Ai/auxx-ai/commit/a9abb144f454fecbfc44476579413da38bb60e4c))
+* **purchasing:** xlsx quotes reach the model, and the review screen fits one line ([#2033](https://github.com/Auxx-Ai/auxx-ai/issues/2033)) ([7ae0b44](https://github.com/Auxx-Ai/auxx-ai/commit/7ae0b443ded7bff383326a27ef07db228874fc15))
+
+
+### Performance Improvements
+
+* **field-values:** batched creates, one derived flush per record, one event per update ([#2028](https://github.com/Auxx-Ai/auxx-ai/issues/2028)) ([056a7a3](https://github.com/Auxx-Ai/auxx-ai/commit/056a7a31049a9d9abc2fb629705f3c1bf54bfe5b))
+
 ## [0.1.228](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.227...auxx-v0.1.228) (2026-09-02)
 
 
