@@ -94,6 +94,12 @@ export const dataConnectorStatus = pgEnum('DataConnectorStatus', [
   'live',
   'error',
   'paused',
+  // Teardown in flight (plans/records/bulk-delete-at-scale.md §7.2). The row is
+  // kept ONLY as the teardown's anchor: `DataConnectorItem` cascades with it and
+  // that is the record selection, so the connector cannot be deleted up front.
+  // A connector stuck here is a crashed teardown — visibly stuck rather than
+  // silently half-done, which is the whole reason it is a status.
+  'deleting',
 ])
 export const dataConnectorSyncBehavior = pgEnum('DataConnectorSyncBehavior', [
   'manual',

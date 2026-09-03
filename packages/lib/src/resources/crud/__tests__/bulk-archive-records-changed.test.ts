@@ -3,10 +3,16 @@
 // D-17/§7b realtime slice (plan events/03): `bulkArchiveEntities` is
 // bulk-shaped, so its realtime door is tier 2 — ONE `records:changed` delta
 // frame per def (ids only, publisher chunks at 100) instead of N per-record
-// `record:archived` frames. Everything else about the per-record loop is
-// unchanged: bus events (timeline / rules / workflows ride them) and
-// duplicate-pair cleanup still fire once per record, and the single-record
-// `archiveEntity` path keeps its tier-1 frame exactly as before.
+// `record:archived` frames. The single-record `archiveEntity` path keeps its
+// tier-1 frame exactly as before.
+//
+// The archive itself is now SET-BASED (plans/records/bulk-delete-at-scale.md
+// §5.5): one `archiveEntityInstances` statement and one pair-cleanup statement
+// per chunk, rather than a loop delegating to `archiveEntity`. What must NOT
+// change is what comes OUT: the bus event still fires once per record (timeline
+// / rules / workflows ride it), pair cleanup still covers every archived record
+// and still runs on the silent lane, and a record that did not actually move is
+// still neither counted nor announced. Those are the assertions below.
 //
 // Under a silent lane (seed/sync session, or the deprecated `skipEvents`
 // alias) NOTHING is emitted — the per-record frames were already suppressed
@@ -17,6 +23,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
   deleteOpenPairsForRecord: vi.fn(async () => ok(0)),
+  deleteOpenPairsForRecords: vi.fn(async (_db: unknown, _org: string, _ids: readonly string[]) =>
+    ok(0)
+  ),
+  /** Archives everything asked of it unless a test overrides. */
+  archiveEntityInstances: vi.fn(async (p: { ids: readonly string[] }) => ok([...p.ids])),
   enqueueDuplicateScan: vi.fn(async () => 'job_1'),
   publish: vi.fn(async () => {}),
   publishLater: vi.fn(() => {}),
@@ -26,6 +37,7 @@ const h = vi.hoisted(() => ({
 vi.mock('../../../dedup/pairs', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   deleteOpenPairsForRecord: h.deleteOpenPairsForRecord,
+  deleteOpenPairsForRecords: h.deleteOpenPairsForRecords,
 }))
 vi.mock('../../../dedup/enqueue-scan', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -38,6 +50,7 @@ vi.mock('../../../entity-instances', () => ({
   updateEntityInstance: vi.fn(async () => ok({ id: 'inst_1' })),
   createEntityInstance: vi.fn(async () => ok({ id: 'inst_1' })),
   deleteEntityInstance: vi.fn(async () => ok({ id: 'inst_1' })),
+  archiveEntityInstances: h.archiveEntityInstances,
 }))
 vi.mock('../../../realtime', () => ({
   getRealtimeService: () => ({ publish: h.publish }),
@@ -126,8 +139,11 @@ describe('bulkArchiveEntities — tier-2 records:changed (D-17/§7b)', () => {
 
     // Bus event (timeline / rules / workflow dispatch hang off it): per record.
     expect(h.publishLater).toHaveBeenCalledTimes(3)
-    // Duplicate-pair cleanup (outside the event guard): per record.
-    expect(h.deleteOpenPairsForRecord).toHaveBeenCalledTimes(3)
+    // Duplicate-pair cleanup (outside the event guard): ONE statement now, but
+    // it must still cover every archived record — the coverage is the invariant,
+    // the round-trip count never was.
+    expect(h.deleteOpenPairsForRecords).toHaveBeenCalledTimes(1)
+    expect(h.deleteOpenPairsForRecords.mock.calls[0]?.[2]).toEqual(['inst_1', 'inst_2', 'inst_3'])
   })
 
   it('emits NOTHING under a seed session — the silent lane stays silent', async () => {
@@ -136,8 +152,9 @@ describe('bulkArchiveEntities — tier-2 records:changed (D-17/§7b)', () => {
     expect(h.publish).not.toHaveBeenCalled()
     expect(h.publishRecordsChanged).not.toHaveBeenCalled()
     expect(h.publishLater).not.toHaveBeenCalled()
-    // Data hygiene is not an event: cleanup still runs per record.
-    expect(h.deleteOpenPairsForRecord).toHaveBeenCalledTimes(2)
+    // Data hygiene is not an event: cleanup still runs on the silent lane.
+    expect(h.deleteOpenPairsForRecords).toHaveBeenCalledTimes(1)
+    expect(h.deleteOpenPairsForRecords.mock.calls[0]?.[2]).toEqual(['inst_1', 'inst_2'])
   })
 
   it('emits NOTHING under the deprecated skipEvents alias either', async () => {
@@ -147,11 +164,12 @@ describe('bulkArchiveEntities — tier-2 records:changed (D-17/§7b)', () => {
     expect(h.publishRecordsChanged).not.toHaveBeenCalled()
   })
 
-  it('a failed record is skipped: not counted and not in the delta frame', async () => {
-    const { getEntityInstance } = await import('../../../entity-instances')
-    ;(getEntityInstance as ReturnType<typeof vi.fn>)
-      .mockResolvedValueOnce(ok({ id: 'inst_1', archivedAt: null }))
-      .mockRejectedValueOnce(new Error('boom'))
+  it('a record that did not move is skipped: not counted and not in the delta frame', async () => {
+    // The set-based archive only touches rows that are not already archived and
+    // returns exactly what changed, so an already-archived id comes back absent.
+    // That is the same set the old per-record loop counted, where `archiveEntity`
+    // threw for an archived row and the loop swallowed it.
+    h.archiveEntityInstances.mockResolvedValueOnce(ok(['inst_1']))
 
     const result = await bulkArchiveEntities(ctx(), ['def_1:inst_1', 'def_1:inst_2'] as never[])
     expect(result.count).toBe(1)

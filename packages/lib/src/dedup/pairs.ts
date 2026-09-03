@@ -235,13 +235,36 @@ export async function deleteOpenPairsForRecord(
   organizationId: string,
   instanceId: string
 ): Promise<Result<number, Error>> {
+  return deleteOpenPairsForRecords(db, organizationId, [instanceId])
+}
+
+/**
+ * {@link deleteOpenPairsForRecord} over a SET, in one statement.
+ *
+ * Same rules, same two statuses left alone. Exists because the bulk archive and
+ * bulk delete lanes remove hundreds of records at a time and issuing one
+ * `DELETE` per record is the kind of per-record round trip
+ * plans/records/bulk-delete-at-scale.md exists to remove.
+ *
+ * @returns how many open pairs were deleted across the whole set.
+ */
+export async function deleteOpenPairsForRecords(
+  db: Database,
+  organizationId: string,
+  instanceIds: readonly string[]
+): Promise<Result<number, Error>> {
+  const ids = [...new Set(instanceIds)]
+  if (ids.length === 0) return ok(0)
+
   const rows = await db
     .delete(T)
     .where(
       and(
         eq(T.organizationId, organizationId),
         eq(T.status, 'open'),
-        or(eq(T.instanceIdLow, instanceId), eq(T.instanceIdHigh, instanceId))
+        // A pair is stored with its two ids sorted, so a record being removed
+        // can sit on either side and both have to be matched.
+        or(inArray(T.instanceIdLow, ids), inArray(T.instanceIdHigh, ids))
       )
     )
     .returning({ id: T.id })

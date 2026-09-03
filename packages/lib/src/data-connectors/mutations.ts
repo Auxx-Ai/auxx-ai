@@ -41,6 +41,7 @@ import {
   storedRootPath,
 } from './catalog-shape'
 import { readCellSyncState } from './cell-sync-read'
+import { enqueueConnectorTeardown } from './data-connector-queue'
 import { removeConnectorScheduler, syncConnectorScheduler } from './data-connector-scheduler'
 import {
   classifyConnectorChange,
@@ -137,9 +138,10 @@ async function applyMappingEditSafety(
 
   let itemCount: number
   if (impact.level === 'rebind' && incremental) {
-    // The old (mappingId, externalId) binds are provably wrong now. Archive OWNED
-    // instances (clean replace), then delete the binds so reconcile can't archive
-    // what it can't list and the next backfill re-creates + re-binds.
+    // The old (mappingId, externalId) binds are provably wrong now: the sink reads
+    // `bound?.entityInstanceId` FIRST and only matches when it is absent
+    // (`entity-sink.ts`), so the link has to go or the edit never reaches a record
+    // that is already bound.
     const items = await tx.query.DataConnectorItem.findMany({
       where: and(
         eq(schema.DataConnectorItem.dataConnectorId, dataConnectorId),
@@ -149,6 +151,8 @@ async function applyMappingEditSafety(
     })
     itemCount = items.length
     if (mapping.targetMode === 'owned') {
+      // OWNED: the records are the connector's own mirror rows and the next
+      // backfill re-creates them, so archive (clean replace) then drop the binds.
       const now = new Date()
       for (const it of items) {
         if (it.entityInstanceId) {
@@ -160,15 +164,58 @@ async function applyMappingEditSafety(
             .where(eq(schema.EntityInstance.id, it.entityInstanceId))
         }
       }
-    }
-    await tx
-      .delete(schema.DataConnectorItem)
-      .where(
-        and(
-          eq(schema.DataConnectorItem.dataConnectorId, dataConnectorId),
-          eq(schema.DataConnectorItem.mappingId, mapping.id)
+      await tx
+        .delete(schema.DataConnectorItem)
+        .where(
+          and(
+            eq(schema.DataConnectorItem.dataConnectorId, dataConnectorId),
+            eq(schema.DataConnectorItem.mappingId, mapping.id)
+          )
         )
-      )
+    } else {
+      // CONTRIBUTING: the records are USER-OWNED and stay exactly where they are.
+      // Only the link is wrong, so only the link is cleared — the row survives,
+      // carrying the one thing nothing else records.
+      //
+      // 🛑 This used to `delete` the rows, and that silently destroyed the
+      // provenance of every record the connector had CREATED on a shared
+      // definition. `mintedInstance` is keyed by `(mappingId, externalId)`, so
+      // dropping the row drops the fact; the next backfill re-binds and writes
+      // `mintedInstance` from `justCreated`, which on a re-bind is `false` because
+      // the record already exists. Stickiness only protects a row that survives.
+      // On one dev connector this left 20,806 contacts — 20,412 of them created by
+      // that connector — permanently indistinguishable from contacts the user had
+      // added by hand, so `deleteConnector` could never clean them up again.
+      //
+      // 🛑 And the fact is moved to `mintedInstanceId` rather than left in
+      // `mintedInstance`, because the flag would otherwise ride along to whatever
+      // record this upstream id matches NEXT. If #123 minted contact A and now
+      // matches the user's pre-existing contact B, a carried flag would mark B as
+      // connector-created and the next teardown would delete a record the user
+      // owns. The fact is about the record, so it is stored against the record.
+      await tx
+        .update(schema.DataConnectorItem)
+        .set({
+          // `sql` rather than a JS value: one statement over every row, each
+          // keeping its OWN instance id.
+          mintedInstanceId: sql`CASE WHEN ${schema.DataConnectorItem.mintedInstance}
+            THEN COALESCE(${schema.DataConnectorItem.mintedInstanceId}, ${schema.DataConnectorItem.entityInstanceId})
+            ELSE ${schema.DataConnectorItem.mintedInstanceId} END`,
+          entityInstanceId: null,
+          mintedInstance: false,
+          // Forces a full rewrite on the next backfill rather than a
+          // content-hash skip, and keeps the row out of the orphan sweep until
+          // it has been seen again.
+          contentHash: null,
+          lastSeenRunId: null,
+        })
+        .where(
+          and(
+            eq(schema.DataConnectorItem.dataConnectorId, dataConnectorId),
+            eq(schema.DataConnectorItem.mappingId, mapping.id)
+          )
+        )
+    }
   } else {
     itemCount = await countMappingItems(tx, dataConnectorId, mapping.id)
   }
@@ -1038,52 +1085,56 @@ export async function deleteConnector(
   await loadConnectorRow(db, organizationId, id)
   await removeConnectorScheduler(id)
 
-  if (behavior !== 'keep') {
-    // archive/delete applies to records THIS connector CREATED — owned mirror rows
-    // AND contributing instances it minted — identified by the sticky
-    // `DataConnectorItem.mintedInstance` flag the sink sets on create (replaces the
-    // retired `EntityInstance.integrationSource` stamp). Records the connector merely
-    // ENRICHED (a pre-existing Contact/Ticket it matched) carry `mintedInstance=false`
-    // and are ALWAYS kept; their per-cell `FieldValue.managedByConnectorId` markers
-    // null automatically via the FK.
-    const created = await db
-      .selectDistinct({
-        id: schema.EntityInstance.id,
-        defId: schema.EntityInstance.entityDefinitionId,
-      })
-      .from(schema.DataConnectorItem)
-      .innerJoin(
-        schema.EntityInstance,
-        eq(schema.EntityInstance.id, schema.DataConnectorItem.entityInstanceId)
-      )
-      .where(
-        and(
-          eq(schema.DataConnectorItem.organizationId, organizationId),
-          eq(schema.DataConnectorItem.dataConnectorId, id),
-          eq(schema.DataConnectorItem.mintedInstance, true)
-        )
-      )
-    if (created.length > 0) {
-      // Route through the UnifiedCrudHandler (NOT a raw db.delete) so each record
-      // archive/delete fires the same side-effects as a UI delete: FieldValue cleanup,
-      // comment removal, pre-delete hooks, and the domain +
-      // realtime (`record:archived` / `record:deleted`) events. Lazy-imported so the
-      // pure-helper exports of this module stay loadable without the crud chain.
-      const { UnifiedCrudHandler } = await import('../resources/crud/unified-handler')
-      // Deliberately NOT a `sync` session yet (plan 03 B-11): declaring teardown
-      // sync would silence its per-record fan-out, and the finalize compensation
-      // (batched replay) has to land first — until then a large disconnect keeps
-      // today's full fan-out rather than losing it.
-      const crud = new UnifiedCrudHandler(organizationId, userId, db)
-      const recordIds = created.map((r) => toRecordId(r.defId, r.id))
-      if (behavior === 'archive') {
-        await crud.bulkArchive(recordIds)
-      } else {
-        await crud.bulkDelete(recordIds)
-      }
-    }
+  if (behavior === 'keep') {
+    // Touches no records at all, so it stays inline and returns immediately —
+    // which is the overwhelmingly common case.
+    return finalizeConnectorTeardown(db, organizationId, userId, id, behavior)
   }
 
+  // 🛑 The connector row is NOT deleted here, and cannot be: `DataConnectorItem`
+  // cascades with it, and those rows ARE the record selection (`mintedInstance`).
+  // So the row stays as the teardown's own anchor, marked `deleting`, and the
+  // last slice removes it. A connector stuck in `deleting` is a crashed teardown
+  // — visibly stuck rather than silently half-done.
+  await db
+    .update(schema.DataConnector)
+    .set({ status: 'deleting', error: null, updatedAt: new Date() })
+    .where(eq(schema.DataConnector.id, id))
+
+  // `dedupe` HERE and nowhere else: a fixed jobId coalesces a double-click on
+  // Remove. Continuation slices must not use one — see `enqueueConnectorTeardown`.
+  await enqueueConnectorTeardown(
+    { connectorId: id, organizationId, userId, behavior },
+    { dedupe: true }
+  )
+
+  logger.info('Connector teardown enqueued', { id, behavior })
+  return { success: true }
+}
+
+/**
+ * The last step of a teardown: tear down the provisioned SCHEMA (for `delete`)
+ * and remove the connector row, which cascades its streams, mappings, items and
+ * runs.
+ *
+ * Split out of {@link deleteConnector} so the teardown chain can call it once
+ * every minted record is gone. For `behavior: 'keep'` this IS the whole
+ * operation — no records are touched, so it runs inline.
+ *
+ * Ordering is deliberate and unchanged: records first (now sliced on the
+ * worker), schema second. Tearing the owned definitions down FIRST would be
+ * cheaper — `deleteEntityDefinitionDeep` removes every record on a definition in
+ * one transaction — but it would also bypass the per-record delete path for
+ * those records, and the saving is nil for the connectors that prompted this
+ * work, whose targets are all system definitions the deep teardown refuses.
+ */
+export async function finalizeConnectorTeardown(
+  db: Database,
+  organizationId: string,
+  userId: string,
+  id: string,
+  behavior: DeleteSyncedDataBehavior
+): Promise<{ success: boolean }> {
   // Full wipe (behavior='delete'): tear down the provisioned SCHEMA too, so a re-setup
   // starts clean instead of tripping over a stranded def/relationship. 'keep'/'archive'
   // deliberately leave the schema in place (the FK just nulls), keeping the synced data as

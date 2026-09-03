@@ -121,16 +121,31 @@ function checkDisplayField(
  * so the delete path (`field-values/sweep-entity-references.ts`) can reuse it with
  * `null` as the new value — a hard-deleted record leaves the same stale projection
  * behind as a rename, and nothing else clears it.
+ *
+ * ⚠️ `sourceInstanceIds` is a SET, and that is what makes a bulk delete affordable.
+ * A rename has exactly one source and passes a one-element array; a bulk delete
+ * passes the whole batch and pays 2 queries per dep for the batch instead of 2 per
+ * dep per record. `sweepEntityFieldValues` used to loop this function per id, which
+ * is 2×deps×N round trips — the single largest per-record cost on the delete path
+ * (plans/records/bulk-delete-at-scale.md §2.4).
+ *
+ * Batching is only meaningful because every source in one call gets the SAME
+ * `newDisplayValue`. That holds for a delete (always `null`) and for a rename (one
+ * source). Never pass several sources with a non-null value — they would all be
+ * projected the same name.
  */
 export async function cascadeDependentDisplayNames(
   ctx: Pick<FieldValueContext, 'db' | 'organizationId'>,
-  sourceInstanceId: string,
+  sourceInstanceIds: readonly string[],
   newDisplayValue: string | null,
   deps: DisplayFieldDep[]
 ): Promise<void> {
+  if (sourceInstanceIds.length === 0 || deps.length === 0) return
+  const sources = [...new Set(sourceInstanceIds)]
+
   for (const dep of deps) {
     // Find all instances of the dependent entity where the relationship
-    // field points to sourceInstanceId
+    // field points at any of the source records.
     const dependentInstances = await ctx.db
       .select({ entityId: schema.FieldValue.entityId })
       .from(schema.FieldValue)
@@ -138,14 +153,17 @@ export async function cascadeDependentDisplayNames(
       .where(
         and(
           eq(schema.CustomField.systemAttribute, dep.relationshipSystemAttribute),
-          eq(schema.FieldValue.relatedEntityId, sourceInstanceId),
+          inArray(schema.FieldValue.relatedEntityId, sources),
           eq(schema.FieldValue.organizationId, ctx.organizationId)
         )
       )
 
     if (dependentInstances.length === 0) continue
 
-    const instanceIds = dependentInstances.map((r) => r.entityId)
+    // De-duplicated: one dependent can hold rows pointing at several of the
+    // sources (a line item whose part AND order are both in the batch), and a
+    // repeated id would be re-projected once per row it matched.
+    const instanceIds = [...new Set(dependentInstances.map((r) => r.entityId))]
 
     // Batch update display column on dependent instances
     await ctx.db

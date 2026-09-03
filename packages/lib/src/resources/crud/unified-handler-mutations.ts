@@ -8,10 +8,12 @@ import type { Result } from 'neverthrow'
 import { findCachedResource } from '../../cache'
 import { CommentService } from '../../comments'
 import { enqueueDuplicateScan } from '../../dedup/enqueue-scan'
-import { deleteOpenPairsForRecord } from '../../dedup/pairs'
+import { deleteOpenPairsForRecord, deleteOpenPairsForRecords } from '../../dedup/pairs'
 import {
+  archiveEntityInstances,
   createEntityInstance,
   deleteEntityInstance,
+  deleteEntityInstances,
   type EntityInstanceRow,
   getEntityInstance,
   getEntityInstanceRow,
@@ -48,6 +50,11 @@ import type { MergeEntitiesResult } from '../merge'
 import { EntityMergeService } from '../merge'
 import type { ResourceField } from '../registry/field-types'
 import { parseRecordId, type RecordId, toRecordId } from '../resource-id'
+import {
+  type BulkDeleteGroup,
+  type BulkDeleteLane,
+  orderBulkDeleteGroups,
+} from './bulk-delete-order'
 import { publishRecordLifecycleEvent } from './publish-record-event'
 import {
   getAmbientTxWriteScope,
@@ -500,7 +507,11 @@ export async function createEntity(
       // `deleteEntityInstance` sweeps the values already written for the row
       // inside its own transaction, so nothing is left behind.
       unwrapResult(
-        await deleteEntityInstance({ id: instance.id, organizationId: ctx.organizationId })
+        await deleteEntityInstance({
+          id: instance.id,
+          organizationId: ctx.organizationId,
+          db: ctx.db,
+        })
       )
       syncCollectorOf(ctx.session)?.recordArchived(recordId)
       const detail = fatal
@@ -937,9 +948,25 @@ export async function deleteEntity(
   const deleteResult = await deleteEntityInstance({
     id: entityInstanceId,
     organizationId: ctx.organizationId,
+    db: ctx.db,
   })
 
   unwrapResult(deleteResult)
+
+  // Duplicate-suggestion cleanup — deliberately OUTSIDE the `publishEvents`
+  // guard, exactly as on `archiveEntity`. The argument there ("pair cleanup is
+  // data hygiene, not an event") applies MORE forcefully here: an archived
+  // record still exists and read paths filter it, while a hard-deleted one
+  // leaves the pair pointing at an id that resolves to nothing. This path never
+  // did the cleanup at all.
+  try {
+    await deleteOpenPairsForRecord(ctx.db, ctx.organizationId, entityInstanceId)
+  } catch (error) {
+    logger.warn('Duplicate-pair cleanup failed on delete', {
+      recordId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
 
   // Tier-1 sync capture (plan 07 §4): a hard delete is membership too — the
   // manifest has one archived set for both (`bulkDeleteEntities` delegates
@@ -1008,6 +1035,13 @@ export async function deleteEntity(
 // ═══════════════════════════════════════════════════════════════════════════
 // BULK MUTATIONS
 // ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * How many records one batched bulk transaction covers. Matches the chunking
+ * inside `deleteEntityInstances`, so a chunk here is a chunk there. Shared by
+ * the batched delete lane and the bulk archive.
+ */
+const BULK_CHUNK = 500
 
 /**
  * Bulk create entities
@@ -1104,29 +1138,89 @@ export async function bulkArchiveEntities(
   // the record store in place, which a delta frame would regress.
   const publishEvents = derivePublishEvents(ctx, options)
 
+  // Archive carries NO hooks — there is no `registerEntityPreArchiveHooks` and
+  // never has been — so unlike delete this path needs no per-definition lane
+  // split. Its three per-record statements (read, update, pair cleanup) collapse
+  // to two per chunk (plans/records/bulk-delete-at-scale.md §5.5).
   let count = 0
   // Archived instance ids grouped by (possibly slug-keyed) def id — the
   // publisher canonicalizes def keys itself.
   const archivedByDef = new Map<string, RecordChangedEntry[]>()
+
+  // Grouped by def so the tier-2 frames below and the per-record bus events can
+  // both be driven from the ids that ACTUALLY moved.
+  const byDef = new Map<string, RecordId[]>()
   for (const recordId of recordIds) {
-    try {
-      // Delegates per record, so `archiveEntity`'s duplicate-pair cleanup covers
-      // the bulk path too — including under `skipEvents`, where it sits outside
-      // the event guard precisely so this loop still cleans up. Every other
-      // per-record door (bus event → timeline/rules/workflows, pair cleanup)
-      // fires exactly as on a single archive; only the tier-1 realtime frame is
-      // suppressed in favor of the tier-2 delta below.
-      await archiveEntity(ctx, recordId, {
-        skipEvents: options.skipEvents,
-        suppressRealtimeFrame: true,
+    const { entityDefinitionId } = parseRecordId(recordId)
+    const items = byDef.get(entityDefinitionId) ?? []
+    items.push(recordId)
+    byDef.set(entityDefinitionId, items)
+  }
+
+  for (const [entityDefinitionId, items] of byDef) {
+    const entityDef = await ctx.resolveEntityDefinition(entityDefinitionId)
+
+    for (let offset = 0; offset < items.length; offset += BULK_CHUNK) {
+      const chunk = items.slice(offset, offset + BULK_CHUNK)
+      const instanceIds = chunk.map((recordId) => parseRecordId(recordId).entityInstanceId)
+
+      // Returns only the rows that were not already archived — the same set the
+      // per-record loop used to count, since `archiveEntity` threw for an
+      // archived row and this loop swallowed it.
+      const archived = await archiveEntityInstances({
+        ids: instanceIds,
+        organizationId: ctx.organizationId,
+        db: ctx.db,
       })
-      count++
-      const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
+      if (archived.isErr()) {
+        logger.error('Bulk archive chunk failed', {
+          entityDefinitionId,
+          error: archived.error.message,
+        })
+        continue
+      }
+      const archivedIds: Set<string> = new Set(archived.value)
+      if (archivedIds.size === 0) continue
+
+      // Duplicate-suggestion cleanup — OUTSIDE the event guard, exactly as in
+      // `archiveEntity`: pair cleanup is data hygiene, not an event, so a
+      // silent-lane bulk archive must still clean up after itself.
+      const pairs = await deleteOpenPairsForRecords(ctx.db, ctx.organizationId, [...archivedIds])
+      if (pairs.isErr()) {
+        logger.warn('Duplicate-pair cleanup failed on bulk archive', {
+          entityDefinitionId,
+          error: pairs.error.message,
+        })
+      }
+
+      count += archivedIds.size
       const entries = archivedByDef.get(entityDefinitionId) ?? []
-      entries.push({ recordId: entityInstanceId })
+
+      for (const recordId of chunk) {
+        const { entityInstanceId } = parseRecordId(recordId)
+        if (!archivedIds.has(entityInstanceId)) continue
+        entries.push({ recordId: entityInstanceId })
+
+        // In-process, no round trip. The tier-1 `record:archived` frame stays
+        // suppressed in favour of the tier-2 delta below (D-17/§7b); the bus
+        // event is NOT a realtime frame and still fires per record, exactly as
+        // when this loop delegated to `archiveEntity`.
+        if (publishEvents) {
+          publishRecordLifecycleEvent({
+            recordId,
+            entityType: entityDef.entityType,
+            entityDefinitionId: entityDef.id,
+            entitySlug: entityDef.apiSlug,
+            action: 'deleted',
+            organizationId: ctx.organizationId,
+            userId: ctx.userId,
+            eventData: { hardDelete: false },
+          })
+        }
+        syncCollectorOf(ctx.session)?.recordArchived(recordId)
+      }
+
       archivedByDef.set(entityDefinitionId, entries)
-    } catch {
-      // Skip failures
     }
   }
 
@@ -1191,21 +1285,202 @@ export async function bulkDeleteEntities(
 ): Promise<BulkDeleteResult> {
   if (recordIds.length === 0) return { count: 0, errors: [] }
 
+  const groups = orderBulkDeleteGroups(await groupRecordsForDelete(ctx, recordIds))
+
   let count = 0
   const errors: BulkDeleteError[] = []
 
+  for (const group of groups) {
+    if (group.lane === 'guarded') {
+      // Per record, exactly as before: the guards answer per record ("does THIS
+      // part have a movement in a settled period") and the cascades are per
+      // parent, so there is nothing here to batch without rewriting eleven
+      // guards to be set-based.
+      for (const recordId of group.items) {
+        try {
+          await deleteEntity(ctx, recordId, { skipEvents: options.skipEvents })
+          count++
+        } catch (error) {
+          errors.push({
+            recordId,
+            message: error instanceof Error ? error.message : 'Unknown error',
+            statusCode: auxxStatusCode(error),
+          })
+        }
+      }
+      continue
+    }
+
+    const result = await deleteEntitiesBatched(ctx, group, options)
+    count += result.count
+    errors.push(...result.errors)
+  }
+
+  return { count, errors }
+}
+
+/**
+ * Split a bulk delete by definition and decide each one's lane.
+ *
+ * The lane is a REGISTRY question, not a judgment call: a definition whose
+ * `apiSlug` has neither pre- nor post-delete hooks registered has nothing per
+ * record left to run, so its records can be removed set-based. Anything else
+ * keeps the per-record loop.
+ *
+ * A definition that fails to resolve keeps the guarded lane — the safe answer,
+ * since `deleteEntity` will surface the real error per record.
+ */
+async function groupRecordsForDelete(
+  ctx: MutationContext,
+  recordIds: readonly RecordId[]
+): Promise<BulkDeleteGroup<RecordId>[]> {
+  const byDef = new Map<string, RecordId[]>()
   for (const recordId of recordIds) {
+    const { entityDefinitionId } = parseRecordId(recordId)
+    const items = byDef.get(entityDefinitionId) ?? []
+    items.push(recordId)
+    byDef.set(entityDefinitionId, items)
+  }
+
+  const groups: BulkDeleteGroup<RecordId>[] = []
+  for (const [entityDefinitionId, items] of byDef) {
+    // Resolved ONCE per definition rather than once per record — the org cache
+    // makes this free after the first call, but a multi-def batch used to warm
+    // only the first record's definition (`unified-handler.ts` `bulkDelete`).
+    let apiSlug: string | null = null
+    let lane: BulkDeleteLane = 'guarded'
     try {
-      await deleteEntity(ctx, recordId, {
-        skipEvents: options.skipEvents,
+      const entityDef = await ctx.resolveEntityDefinition(entityDefinitionId)
+      apiSlug = entityDef.apiSlug ?? null
+      const hooked =
+        !apiSlug ||
+        getEntityPreDeleteHooks(apiSlug).length > 0 ||
+        getEntityPostDeleteHooks(apiSlug).length > 0
+      lane = hooked ? 'guarded' : 'batched'
+    } catch {
+      lane = 'guarded'
+    }
+    groups.push({ entityDefinitionId, apiSlug, lane, items })
+  }
+
+  return groups
+}
+
+/**
+ * The set-based delete lane: one definition's records, none of which carry
+ * pre/post-delete hooks, removed in four statements per chunk instead of ~10
+ * per record (plans/records/bulk-delete-at-scale.md §5.3).
+ *
+ * What it deliberately does NOT batch: the pre-delete `captureEventData` read,
+ * on the lane that publishes events. `getValues` composes linked NAME fields
+ * and applies the mail-host gate, so a hand-rolled batched read would change
+ * the payload shape of every `entity:deleted` event — a separate change from
+ * this one. On a QUIET lane (connector teardown, seeds) `publishEvents` is
+ * false and no hooks are registered, so the capture is skipped entirely and
+ * the whole delete really is four statements per 500 records.
+ */
+async function deleteEntitiesBatched(
+  ctx: MutationContext,
+  group: BulkDeleteGroup<RecordId>,
+  options: CrudOptions
+): Promise<BulkDeleteResult> {
+  const publishEvents = derivePublishEvents(ctx, options)
+  const txScope = deriveTxWriteScope(ctx, options)
+  const entityDef = await ctx.resolveEntityDefinition(group.entityDefinitionId)
+  const fields = publishEvents || txScope ? await ctx.getFields(entityDef.id) : []
+
+  const errors: BulkDeleteError[] = []
+  let count = 0
+
+  for (let offset = 0; offset < group.items.length; offset += BULK_CHUNK) {
+    const chunk = group.items.slice(offset, offset + BULK_CHUNK)
+    const instanceIds = chunk.map((recordId) => parseRecordId(recordId).entityInstanceId)
+
+    try {
+      // Captured BEFORE the delete, for the same reason the per-record path
+      // captures: the deleted event carries relationship data that entity
+      // triggers depend on. Empty on the quiet lane.
+      const captured = new Map<RecordId, Record<string, unknown>>()
+      for (const recordId of chunk) {
+        if (fields.length === 0) break
+        captured.set(recordId, {
+          hardDelete: true,
+          ...(await captureEventData(ctx.fieldValueService, recordId, fields)),
+        })
+      }
+
+      const commentService = new CommentService(ctx.organizationId, ctx.userId, ctx.db, null)
+      await commentService.deleteCommentsForDefinition(group.entityDefinitionId, instanceIds)
+
+      const deleteResult = await deleteEntityInstances({
+        ids: instanceIds,
+        organizationId: ctx.organizationId,
+        db: ctx.db,
       })
-      count++
+      unwrapResult(deleteResult)
+
+      // Duplicate-suggestion cleanup, matching `archiveEntity` and OUTSIDE the
+      // event guard for the same reason: an open pair pointing at a record that
+      // no longer exists is worse than one pointing at an archived record, and
+      // the per-record delete path never did this at all.
+      const pairs = await deleteOpenPairsForRecords(ctx.db, ctx.organizationId, instanceIds)
+      if (pairs.isErr()) {
+        logger.warn('Duplicate-pair cleanup failed on bulk delete', {
+          entityDefinitionId: group.entityDefinitionId,
+          error: pairs.error.message,
+        })
+      }
+
+      count += chunk.length
+
+      // In-process doors, replayed per record from the ids just removed. No
+      // round trips, so these stay per record — `record:deleted` in particular
+      // must stay tier 1, because the client removes those rows from the record
+      // store in place and a tier-2 delta frame would regress that.
+      for (const recordId of chunk) {
+        syncCollectorOf(ctx.session)?.recordArchived(recordId)
+        const eventData = captured.get(recordId) ?? { hardDelete: true }
+
+        if (publishEvents) {
+          publishRecordLifecycleEvent({
+            recordId,
+            entityType: entityDef.entityType,
+            entityDefinitionId: entityDef.id,
+            entitySlug: entityDef.apiSlug,
+            action: 'deleted',
+            organizationId: ctx.organizationId,
+            userId: ctx.userId,
+            eventData,
+          })
+          getRealtimeService()
+            .publish(
+              rooms.orgRecords(ctx.organizationId, entityDef.id),
+              'record:deleted',
+              { recordId, entityDefinitionId: entityDef.id },
+              { excludeSocketId: ctx.socketId }
+            )
+            .catch(() => {})
+        }
+
+        if (txScope) {
+          recordTxWriteArchive(txScope, {
+            recordId,
+            entityDefinitionId: entityDef.id,
+            entityType: entityDef.entityType,
+            entitySlug: entityDef.apiSlug,
+            realtimeEvent: 'record:deleted',
+            eventData,
+          })
+        }
+      }
     } catch (error) {
-      errors.push({
-        recordId,
-        message: error instanceof Error ? error.message : 'Unknown error',
-        statusCode: auxxStatusCode(error),
-      })
+      // A batched chunk fails whole — the transaction inside
+      // `deleteEntityInstances` rolled back, so no record in it was removed.
+      // Attribute the failure to every record in the chunk rather than
+      // reporting a partial success nobody can act on.
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      const statusCode = auxxStatusCode(error)
+      for (const recordId of chunk) errors.push({ recordId, message, statusCode })
     }
   }
 

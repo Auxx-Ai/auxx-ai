@@ -102,6 +102,14 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
   // copy so "delete definitions" doesn't imply a shared record type gets wiped.
   const sharedOwnedDefs = api.dataConnector.sharedOwnedDefs.useQuery({ id: connector.id })
   const sharedDefIds = useMemo(() => new Set(sharedOwnedDefs.data ?? []), [sharedOwnedDefs.data])
+  // How many records archive/delete would actually remove. The confirm named the
+  // definitions but never the volume, so "delete the synced records" read the same
+  // for a 12-record trial connector and a 23,265-record production one.
+  const mintedCounts = api.dataConnector.mintedRecordCounts.useQuery({ id: connector.id })
+  const mintedTotal = useMemo(
+    () => (mintedCounts.data ?? []).reduce((sum, row) => sum + row.count, 0),
+    [mintedCounts.data]
+  )
 
   const status = asConnectorStatus(connector.status)
   const isSyncing = status === 'syncing' || status === 'provisioning'
@@ -197,10 +205,16 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
     )
   }, [draftSeeded, draftMeta, draftStreams, draftConfig])
 
+  // Teardown in flight: the connector row survives only as the teardown's anchor
+  // until the last slice removes it, so every action on it is meaningless — and
+  // syncing a connector whose records are being deleted would fight the chain.
+  const isRemoving = status === 'deleting'
+
   // Sync / Sample need a COMPLETE config (readiness) AND a SAVED one (not dirty) — §7a.
   // Reason text, or null when the action is allowed.
-  const syncBlockReason =
-    readiness && !readiness.canSync
+  const syncBlockReason = isRemoving
+    ? 'Removing this connector'
+    : readiness && !readiness.canSync
       ? READINESS_REASON[readiness.problems[0] ?? 'no-endpoint']
       : isDirty
         ? 'Save changes first'
@@ -223,14 +237,27 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
           keptShared.length === 1 ? 'is' : 'are'
         } shared with another connector and will be kept.`
       : ''
+    // Named, not implied. `mintedTotal` counts only records this connector CREATED
+    // — a pre-existing contact it merely enriched is never touched.
+    const records = mintedTotal.toLocaleString()
     const copy = {
       keep: 'Synced records are kept; only the connector is removed.',
-      archive: 'Synced records are archived and the connector is removed.',
-      delete: `Synced records and the connector are permanently deleted${deleteClause}.${sharedClause}`,
+      archive: `${records} synced ${
+        mintedTotal === 1 ? 'record is' : 'records are'
+      } archived and the connector is removed.`,
+      delete: `${records} synced ${
+        mintedTotal === 1 ? 'record' : 'records'
+      } and the connector are permanently deleted${deleteClause}.${sharedClause}`,
     }[syncedData]
+    // Removing records runs in the background, so say so rather than leaving the
+    // user watching a connector that has not disappeared yet.
+    const background =
+      syncedData === 'keep' || mintedTotal === 0
+        ? ''
+        : ' Removing them runs in the background and may take a few minutes.'
     const ok = await confirm({
       title: 'Delete connector?',
-      description: `${copy} This cannot be undone.`,
+      description: `${copy} This cannot be undone.${background}`,
       confirmText: 'Delete',
       cancelText: 'Cancel',
       destructive: true,
@@ -387,8 +414,9 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
                     variant='outline'
                     size='xs'
                     className='px-1.5'
-                    loading={isDeleting}
+                    loading={isDeleting || isRemoving}
                     loadingText=''
+                    disabled={isRemoving}
                     aria-label='Delete connector'>
                     <Trash />
                     <ChevronDown />

@@ -20,7 +20,12 @@ export {
   type CreateEntityInstanceParams,
   createEntityInstance,
 } from './create-entity-instance'
-export { type DeleteEntityInstanceParams, deleteEntityInstance } from './delete-entity-instance'
+export {
+  type DeleteEntityInstanceParams,
+  type DeleteEntityInstancesParams,
+  deleteEntityInstance,
+  deleteEntityInstances,
+} from './delete-entity-instance'
 export type { EntityInstanceError } from './errors'
 export {
   type EntityInstanceRow,
@@ -37,6 +42,8 @@ export type {
   TicketMetadata,
 } from './metadata-types'
 export {
+  type ArchiveEntityInstancesParams,
+  archiveEntityInstances,
   type UpdateEntityInstanceParams,
   updateEntityInstance,
 } from './update-entity-instance'

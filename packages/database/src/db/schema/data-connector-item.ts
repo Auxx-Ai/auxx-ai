@@ -63,8 +63,42 @@ export const DataConnectorItem = pgTable(
      * true across re-syncs). Replaces the retired `EntityInstance.integrationSource`
      * marker — `deleteConnector`'s archive/delete only touches minted records so
      * an enriched pre-existing Contact is never removed with the connector.
+     *
+     * ⚠️ Keyed by UPSTREAM ID, not by record: this row is
+     * `(dataConnectorId, mappingId, externalId)`. So the flag answers "the record
+     * currently bound here was minted", and it stops being true of any particular
+     * record the moment the binding moves. That is why {@link mintedInstanceId}
+     * exists.
      */
     mintedInstance: boolean().default(false).notNull(),
+
+    /**
+     * The instance this binding minted, remembered independently of the binding.
+     *
+     * **Why a second column.** A `rebind` mapping edit (an identity-match change)
+     * invalidates the `(mappingId, externalId) → instance` link, so
+     * `applyMappingEditSafety` clears it and lets the next backfill re-match. For a
+     * CONTRIBUTING mapping the records are user-owned and stay put — but the
+     * binding row carried the only evidence that the connector had created them,
+     * and clearing it made ~20k connector-created contacts permanently
+     * indistinguishable from contacts the user had added themselves. They could
+     * never be cleaned up again, because a re-bind writes `mintedInstance` from
+     * what happens THAT run (`justCreated`), and on a re-bind the record already
+     * exists, so it comes back `false`. Sticky only protects a row that survives.
+     *
+     * 🛑 Carrying `mintedInstance` across the rebind instead would be WORSE, not
+     * better: if the new matching points the same upstream id at a DIFFERENT,
+     * pre-existing record, the preserved flag would mark a record the user owns as
+     * connector-created and teardown would delete it. The fact belongs to the
+     * record, so it is stored against the record.
+     *
+     * Set when the binding is cleared, never cleared by a later re-bind, and read
+     * alongside `entityInstanceId` by the connector teardown.
+     */
+    mintedInstanceId: text().references((): AnyPgColumn => EntityInstance.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
 
     contentHash: text(), // sorted-key hash → skip-unchanged
     // Which target field keys this connector writes for this record (per-field

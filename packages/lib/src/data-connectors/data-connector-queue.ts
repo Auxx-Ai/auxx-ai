@@ -51,6 +51,50 @@ export async function enqueueBackfillSlice(
   )
 }
 
+/** BullMQ job name for one teardown slice. */
+export const TEARDOWN_SLICE_JOB = 'data-connector-teardown'
+
+/** Job payload for one teardown slice (plans/records/bulk-delete-at-scale.md §7.1). */
+export interface TeardownSliceJobData {
+  type: typeof TEARDOWN_SLICE_JOB
+  connectorId: string
+  organizationId: string
+  /** Who asked, so the records are removed as them. */
+  userId: string
+  /** `archive` soft-deletes the minted records; `delete` also tears down the schema. */
+  behavior: 'archive' | 'delete'
+}
+
+/**
+ * Enqueue a teardown slice.
+ *
+ * 🛑 **`dedupe` is for the FIRST slice only, and getting this wrong silently
+ * kills the chain.** A fixed `jobId` coalesces a double-click on Remove, which
+ * is what the opening enqueue wants. A CONTINUATION must never use one: the
+ * slice enqueues its successor from inside its own handler, while its own job
+ * is still active and still holding that id, so BullMQ returns the existing job
+ * and adds nothing. The chain then runs exactly one slice and stops, leaving
+ * the connector parked in `deleting` with most of its records intact — observed,
+ * not theorised.
+ *
+ * Continuations need no dedup anyway: the chain is strictly sequential (a slice
+ * enqueues the next only after its own work commits) and `DataConnector.status`
+ * is the claim, so a stray duplicate stops on the status check. This is the same
+ * choice {@link enqueueBackfillSlice} makes, for the same reason.
+ */
+export async function enqueueConnectorTeardown(
+  data: Omit<TeardownSliceJobData, 'type'>,
+  opts: { dedupe?: boolean } = {}
+): Promise<void> {
+  const queue = getQueue(Queues.dataConnectorQueue)
+  await queue.add(
+    TEARDOWN_SLICE_JOB,
+    { type: TEARDOWN_SLICE_JOB, ...data } satisfies TeardownSliceJobData,
+    // BullMQ rejects ':' in custom ids — keep it hyphenated.
+    opts.dedupe ? { jobId: `data-connector-teardown-${data.connectorId}` } : {}
+  )
+}
+
 /**
  * Enqueue a connector sync. `jobId` coalesces duplicate manual "Sync now" clicks
  * for the same connector (BullMQ rejects ':' in custom ids — keep it hyphenated).

@@ -87,13 +87,15 @@ export async function sweepEntityFieldValues(
   // 1. Dependent display columns. A record whose displayName is projected from
   //    a relationship to a deleted record holds a stale copy of that record's
   //    name in a plain column; nothing else ever clears it.
+  //
+  //    The WHOLE batch goes in one call: every source here gets the same `null`,
+  //    which is exactly the condition that lets `cascadeDependentDisplayNames`
+  //    collapse its lookup to one query per dep. Looping per id — as this did —
+  //    made the display cascade the single largest per-record cost of a bulk
+  //    delete (2 × deps × N round trips).
   if (entityType) {
     const deps = await getDisplayFieldDeps(organizationId, entityType)
-    if (deps.length > 0) {
-      for (const entityId of entityIds) {
-        await cascadeDependentDisplayNames({ db, organizationId }, entityId, null, deps)
-      }
-    }
+    await cascadeDependentDisplayNames({ db, organizationId }, entityIds, null, deps)
   }
 
   // 2. The mirror half — the rows this whole function exists for. Served by

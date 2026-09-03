@@ -28,6 +28,7 @@ const h = vi.hoisted(() => ({
 vi.mock('../../../dedup/pairs', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   deleteOpenPairsForRecord: h.deleteOpenPairsForRecord,
+  deleteOpenPairsForRecords: vi.fn(async () => ok(0)),
 }))
 vi.mock('../../../dedup/enqueue-scan', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
@@ -39,6 +40,7 @@ vi.mock('../../../entity-instances', () => ({
   updateEntityInstance: vi.fn(async () => ok({ id: 'inst_1' })),
   createEntityInstance: vi.fn(async () => ok({ id: 'inst_1' })),
   deleteEntityInstance: vi.fn(async () => ok({ id: 'inst_1' })),
+  archiveEntityInstances: vi.fn(async (p: { ids: readonly string[] }) => ok([...new Set(p.ids)])),
 }))
 vi.mock('../../../realtime', () => ({
   getRealtimeService: () => ({ publish: h.publish }),
@@ -182,7 +184,7 @@ describe('tier-1 lifecycle capture — sync sessions', () => {
     expect(h.publishLater).not.toHaveBeenCalled()
   })
 
-  it('bulkArchiveEntities delegates per record — every id lands, once', async () => {
+  it('bulkArchiveEntities feeds the collector per record — every id lands, once', async () => {
     const collector = createManifestCollector({})
 
     await bulkArchiveEntities(ctx(syncSession(collector)), [

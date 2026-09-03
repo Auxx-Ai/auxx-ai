@@ -1186,7 +1186,7 @@ async function writeComposedDisplayName(
   const entityType = resource?.entityType ?? entityDef.id
   const deps = await getDisplayFieldDeps(ctx.organizationId, entityType)
   if (deps.length > 0) {
-    await cascadeDependentDisplayNames(ctx, entityInstanceId, displayName, deps)
+    await cascadeDependentDisplayNames(ctx, [entityInstanceId], displayName, deps)
   }
 
   await publishRecordColumnUpdate(ctx, entityDef.id, entityInstanceId, { displayName })
@@ -1563,7 +1563,7 @@ export async function maybeUpdateDisplayValue(
     const entityType = resource?.entityType ?? entityDef.id
     const deps = await getDisplayFieldDeps(ctx.organizationId, entityType)
     if (deps.length > 0) {
-      await cascadeDependentDisplayNames(ctx, entityInstanceId, displayValue, deps)
+      await cascadeDependentDisplayNames(ctx, [entityInstanceId], displayValue, deps)
     }
   }
 

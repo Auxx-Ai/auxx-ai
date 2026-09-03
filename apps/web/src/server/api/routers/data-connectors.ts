@@ -15,6 +15,7 @@ import {
   addStream,
   applyConnectorCatalogUpdate,
   backfillPendingChange,
+  countMintedRecords,
   countPendingRelationsByTarget,
   createConnector,
   createConnectorFromAppCatalog,
@@ -665,6 +666,17 @@ export const dataConnectorRouter = createTRPCRouter({
     .input(z.object({ id: z.string() }))
     .query(async ({ ctx, input }) => {
       return listSharedOwnedDefIds(ctx.db, ctx.session.organizationId, input.id)
+    }),
+
+  /**
+   * How many records an `archive`/`delete` teardown would remove, per definition.
+   * The confirm dialog names the definitions being destroyed but never said how
+   * many rows — which is the number that decides whether to press the button.
+   */
+  mintedRecordCounts: permissionProcedure(PermissionKey.connectorsManage)
+    .input(z.object({ id: z.string() }))
+    .query(async ({ ctx, input }) => {
+      return countMintedRecords(ctx.db, ctx.session.organizationId, input.id)
     }),
 
   delete: permissionProcedure(PermissionKey.connectorsManage)

@@ -1,0 +1,2 @@
+ALTER TABLE "DataConnectorItem" ADD COLUMN "mintedInstanceId" text;--> statement-breakpoint
+ALTER TABLE "DataConnectorItem" ADD CONSTRAINT "DataConnectorItem_mintedInstanceId_EntityInstance_id_fk" FOREIGN KEY ("mintedInstanceId") REFERENCES "public"."EntityInstance"("id") ON DELETE set null ON UPDATE cascade;

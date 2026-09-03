@@ -22,6 +22,7 @@ export type ConnectorStatus =
   | 'live'
   | 'error'
   | 'paused'
+  | 'deleting'
 
 /** The DataConnectorRun status (mirrors `DataConnectorRun.status`). */
 export type RunStatus = 'running' | 'completed' | 'partial' | 'failed'
@@ -97,6 +98,17 @@ export const CONNECTOR_STATUS_META: Record<ConnectorStatus, StatusMeta> = {
     icon: PauseCircle,
     pill: 'text-muted-foreground border-border bg-primary-50',
     active: false,
+  },
+  deleting: {
+    // Teardown in flight: the connector row is kept only as the teardown's anchor
+    // and the last slice removes it. `active` so the 4s status poll runs and the
+    // row disappears on its own when the chain finishes.
+    label: 'Removing',
+    tone: 'warning',
+    dot: 'bg-warning-500',
+    icon: Loader2,
+    pill: 'text-amber-600 border-amber-200 bg-amber-50',
+    active: true,
   },
 }
 
