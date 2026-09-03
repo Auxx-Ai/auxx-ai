@@ -14,35 +14,37 @@
 //
 // ⚠️ What does NOT fit is columns. `LINE_COLS` is four columns shared by all six
 // documents, and widening it here widens it everywhere. So the review's extra
-// data goes around and inside the existing grid instead:
+// data follows the convention `LineRowMenu` documents for exactly this — *"a
+// concept the row does not always carry is revealed in the `⋯` menu, and only
+// becomes a standing control in the cell once it is set"*:
 //
-//   - the tier marker rides the grip gutter (`DraftLineRow`'s one new prop);
-//   - the vendor's printed line is a muted sub-row directly beneath, indented to
-//     sit under the part cell it is being compared to;
-//   - price breaks expand as a full-width sub-row under that;
-//   - the fold/drop menu sits in the right gutter, outside the grid.
+//   - the tier marker rides the grip gutter (`DraftLineRow`'s `grip`);
+//   - the vendor's printed line is a standing CHIP in the cell (`cellChips`),
+//     beside the description and GL-account chips, opening a detail panel;
+//   - create-part, revert-to-match and the two folds are items in the row's ONE
+//     `⋯` (`cellMenuItems`), not a second menu;
+//   - the printed detail and the price breaks share that one expandable panel.
 //
-// The printed line is a sub-row rather than a second line INSIDE the part cell
-// because the part cell is `LinePartCellView`, in the shared money module, and
-// the one shared-code change this screen is allowed to make was spent on the grip
-// slot. Same reading position, one fewer edit to a file six documents share.
+// 🛑 The first cut got this wrong in the way the shared cell warns about. It drew
+// its own `⋯` in the right gutter — so every row had TWO, one holding delete and
+// one holding fold, with nothing on screen saying which was which — and hung the
+// printed line under the row as a permanent second line, which is the
+// *"the line never grows a permanent second row"* rule `LineNameCellView` states
+// and `LinePartCellView` was itself rewritten to obey. At rest a row is now one
+// line, like every other line surface in the app.
 
 import { type IntakeLine, parseIntakeUnitPrice } from '@auxx/lib/purchasing/intake/client'
-import { Button } from '@auxx/ui/components/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@auxx/ui/components/dropdown-menu'
+import type { RecordId } from '@auxx/lib/resources/client'
+import { DropdownMenuItem, DropdownMenuSeparator } from '@auxx/ui/components/dropdown-menu'
+import { TreeRowButton } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
 import { RATE_DECIMALS } from '@auxx/utils/currency'
-import { ChevronDown, Ellipsis, PackagePlus, Receipt, Trash2, Truck } from 'lucide-react'
+import { PackagePlus, Receipt, ReceiptText, Truck, Undo2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import type { CatalogGroup } from '~/components/money/hooks/use-catalog-groups'
 import type { CatalogItem } from '~/components/money/hooks/use-catalog-items'
 import {
+  applyPartPrefill,
   type DraftLine,
   DraftLineRow,
   type PartPrefillResolver,
@@ -80,6 +82,8 @@ interface IntakeLineRowProps {
   rowIndex: number
   currency: string
   vendorName: string | null
+  /** Seeds the create-part form's Supplier section. */
+  vendorRecordId: RecordId | null
   resolvePartPrefill?: PartPrefillResolver
   expanded: boolean
   onToggleExpanded: () => void
@@ -94,6 +98,7 @@ export function IntakeLineRow({
   rowIndex,
   currency,
   vendorName,
+  vendorRecordId,
   resolvePartPrefill,
   expanded,
   onToggleExpanded,
@@ -103,7 +108,6 @@ export function IntakeLineRow({
   onRemove,
 }: IntakeLineRowProps) {
   const draft = useMemo(() => toDraftLine(line), [line])
-  const breaks = line.printed.priceBreaks
   const unresolved = line.partRecordId === null
   const [createPartOpen, setCreatePartOpen] = useState(false)
   // Latched separately from `open` so the part form is not mounted on all forty
@@ -116,119 +120,236 @@ export function IntakeLineRow({
   // minting a catalogue part for either is exactly the fiction §5.4 refuses.
   const canCreatePart = unresolved && line.foldedInto === null
 
+  /**
+   * What the ladder proposed, still intact.
+   *
+   * ✅ `candidates` and `tier` are written once by `resolveQuoteLines` and never
+   * mutated by anything on this screen — picking, clearing and creating a part
+   * all touch `partRecordId` alone. So "put back what the read found" needs no
+   * undo stack and no snapshot: the proposal is still sitting on the line.
+   */
+  const proposed = line.candidates[0] ?? null
+  const canRevert = unresolved && proposed !== null
+
   // Every callback is synchronous local state; the `Promise<void>` shape is what
   // `DraftLineRow` expects because its OTHER caller is doing a `record.create`.
   const createDraft = async (_draftId: string, overrides?: LinePatch) => {
     if (overrides) onPatch(line.lineId, overrides)
   }
 
+  /**
+   * Put back the part the read proposed.
+   *
+   * Routed through `applyPartPrefill` exactly as a manual pick is, so the
+   * supplier link is re-resolved rather than restored from a stale copy — the
+   * catalogue may have gained an entry for this pair since the quote was read
+   * (creating a part from this very row does that).
+   */
+  const revertToProposed = () => {
+    if (!proposed) return
+    onPatch(line.lineId, { partRecordId: proposed.recordId })
+    void applyPartPrefill({
+      partRecordId: proposed.recordId,
+      resolve: resolvePartPrefill,
+      currentPriceRef: { current: line.unitPriceCents },
+      apply: (patch) => onPatch(line.lineId, patch),
+    })
+  }
+
   return (
     <div
       className={cn('relative border-b last:border-b-0', unresolved && 'bg-amber-400/5')}
       data-intake-line={line.lineId}>
-      <div className='relative pr-8'>
-        <DraftLineRow
-          draft={draft}
-          rowIndex={rowIndex}
-          autoFocus={false}
-          categoryOptions={EMPTY_CATEGORIES}
-          currencyCode={currency}
-          documentType='purchase_order'
-          catalogItems={EMPTY_ITEMS}
-          catalogGroups={EMPTY_GROUPS}
-          catalogItemMap={EMPTY_ITEM_MAP}
-          catalogLoading={false}
-          matchScopeRecordId={null}
-          resolvePartPrefill={resolvePartPrefill}
-          grip={<IntakeTierDot tier={line.tier} vendorName={vendorName} />}
-          onRevealWeight={() => {}}
-          deleteDraft={() => onRemove(line.lineId)}
-          createDraft={createDraft}
-          applyPrefillPatch={createDraft}
-          onSelectGroup={() => {}}
-        />
+      <DraftLineRow
+        draft={draft}
+        rowIndex={rowIndex}
+        autoFocus={false}
+        categoryOptions={EMPTY_CATEGORIES}
+        currencyCode={currency}
+        documentType='purchase_order'
+        catalogItems={EMPTY_ITEMS}
+        catalogGroups={EMPTY_GROUPS}
+        catalogItemMap={EMPTY_ITEM_MAP}
+        catalogLoading={false}
+        matchScopeRecordId={null}
+        resolvePartPrefill={resolvePartPrefill}
+        grip={<IntakeTierDot tier={line.tier} vendorName={vendorName} />}
+        cellChips={
+          <PrintedLineChip
+            line={line}
+            expanded={expanded}
+            onToggle={onToggleExpanded}
+            vendorName={vendorName}
+          />
+        }
+        allowClearPart
+        cellMenuItems={
+          <>
+            {/* The other half of the clear `X` on the picker. Clearing is only
+                safe to offer because getting back is one click: `candidates` is
+                what the ladder found and nothing on this screen overwrites it. */}
+            {canRevert && (
+              <>
+                <DropdownMenuItem onSelect={revertToProposed}>
+                  <Undo2 /> Use {proposed.displayName}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </>
+            )}
+            {/* §5.2: the ladder found nothing, and the part is genuinely one we
+                do not stock yet. Creating it is a real catalogue write and the
+                only write this screen makes before commit — see
+                `IntakeCreatePartDialog`. */}
+            {canCreatePart && (
+              <>
+                <DropdownMenuItem
+                  onSelect={() => {
+                    setCreatePartMounted(true)
+                    setCreatePartOpen(true)
+                  }}>
+                  <PackagePlus /> Create part
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </>
+            )}
+            {/* §5.4: freight, surcharges and tooling have no part to satisfy
+                `(purchaseOrder, part)` with, and minting a `part` called
+                "Freight" to get past the constraint puts a fiction in the
+                catalogue that then values movements forever. The amount moves to
+                the header instead, so the totals confrontation keeps balancing. */}
+            <DropdownMenuItem onSelect={() => onFold(line.lineId, 'shipping')}>
+              <Truck /> Fold into shipping
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => onFold(line.lineId, 'tax')}>
+              <Receipt /> Fold into tax
+            </DropdownMenuItem>
+          </>
+        }
+        onRevealWeight={() => {}}
+        // The menu's own "Delete line" lands here, which is why this row no
+        // longer offers a "Drop this line" of its own — one delete, one place.
+        deleteDraft={() => onRemove(line.lineId)}
+        createDraft={createDraft}
+        applyPrefillPatch={createDraft}
+        onSelectGroup={() => {}}
+      />
 
-        <div className='absolute top-1 right-0'>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant='ghost' size='icon-xs'>
-                <Ellipsis />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align='end' className='w-56'>
-              {/* §5.2: the ladder found nothing, and the part is genuinely one we
-                  do not stock yet. Creating it is a real catalogue write and the
-                  only write this screen makes before commit — see
-                  `IntakeCreatePartDialog`. */}
-              {canCreatePart && (
-                <>
-                  <DropdownMenuItem
-                    onSelect={() => {
-                      setCreatePartMounted(true)
-                      setCreatePartOpen(true)
-                    }}>
-                    <PackagePlus /> Create part
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                </>
-              )}
-              {/* §5.4: freight, surcharges and tooling have no part to satisfy
-                  `(purchaseOrder, part)` with, and minting a `part` called
-                  "Freight" to get past the constraint puts a fiction in the
-                  catalogue that then values movements forever. The amount moves
-                  to the header instead, so the totals confrontation keeps
-                  balancing. */}
-              <DropdownMenuItem onSelect={() => onFold(line.lineId, 'shipping')}>
-                <Truck /> Fold into shipping
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => onFold(line.lineId, 'tax')}>
-                <Receipt /> Fold into tax
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem variant='destructive' onSelect={() => onRemove(line.lineId)}>
-                <Trash2 /> Drop this line
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </div>
-
-      {/* The vendor's line, as printed. Indented to sit under the part cell. */}
-      <div className='flex flex-wrap items-center gap-x-2 gap-y-1 px-1 pb-1.5 pl-1 text-muted-foreground text-xs'>
-        <IntakeTierBadge tier={line.tier} vendorName={vendorName} />
-        <span className='font-mono'>{line.printed.vendorCode ?? '—'}</span>
-        {line.printed.description && <span className='truncate'>"{line.printed.description}"</span>}
-        <span>
-          {formatPrintedQuantity(line)} @ {line.printed.unitPriceText ?? '—'}
-        </span>
-        {line.printed.leadTime && <span>· {line.printed.leadTime}</span>}
-        {breaks.length > 0 && (
-          <button
-            type='button'
-            onClick={onToggleExpanded}
-            className='inline-flex items-center gap-0.5 underline underline-offset-2 hover:text-foreground'>
-            <ChevronDown className={cn('size-3 transition-transform', expanded && 'rotate-180')} />
-            {breaks.length} break{breaks.length === 1 ? '' : 's'}
-          </button>
-        )}
-      </div>
-
-      {expanded && breaks.length > 0 && (
-        <PriceBreakTable
+      {expanded && (
+        <PrintedDetail
           line={line}
           currency={currency}
-          onChoose={(index) => onChooseBreak(line.lineId, index)}
+          vendorName={vendorName}
+          onChooseBreak={(index) => onChooseBreak(line.lineId, index)}
         />
       )}
 
       {createPartMounted && (
         <IntakeCreatePartDialog
           line={line}
+          vendorRecordId={vendorRecordId}
           open={createPartOpen}
           onOpenChange={setCreatePartOpen}
           resolvePartPrefill={resolvePartPrefill}
           onPatch={onPatch}
         />
+      )}
+    </div>
+  )
+}
+
+/**
+ * The vendor's printed line, as a standing chip.
+ *
+ * ⚠️ Every intake row has one, so unlike the description and GL-account chips it
+ * is never absent — which is the point. This row exists to be checked against
+ * what the vendor printed, and a control that disappeared on the rows that
+ * matched cleanly would hide the comparison exactly where somebody wants to
+ * confirm it quickly. The tooltip carries the whole printed line so the common
+ * case costs a hover; the click opens the detail panel, which is the only place
+ * price breaks can be chosen.
+ */
+function PrintedLineChip({
+  line,
+  expanded,
+  onToggle,
+  vendorName,
+}: {
+  line: IntakeLine
+  expanded: boolean
+  onToggle: () => void
+  vendorName: string | null
+}) {
+  const breaks = line.printed.priceBreaks.length
+  // One line, not several: `SimpleTooltip` renders `content` into a plain
+  // `max-w-xs` div with no `whitespace-pre-line`, so a `\n` would collapse to a
+  // space anyway. The separator is the same `·` the detail panel uses.
+  const tooltip = [
+    `As printed by ${vendorName ?? 'the vendor'}: ${printedSummary(line)}`,
+    breaks > 0 ? `${breaks} quantity break${breaks === 1 ? '' : 's'}` : null,
+    'Click to open',
+  ]
+    .filter(Boolean)
+    .join(' · ')
+
+  return (
+    <TreeRowButton
+      persistent
+      tabIndex={-1}
+      tooltipText={tooltip}
+      className={cn(expanded && 'bg-primary-200')}
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={onToggle}>
+      <ReceiptText />
+    </TreeRowButton>
+  )
+}
+
+/** `041A · "120V/60HZ,443#" · 10000 pcs @ $20.50 · 30 days` */
+function printedSummary(line: IntakeLine): string {
+  const qty = line.printed.quantity ?? line.quantity
+  return [
+    line.printed.vendorCode,
+    line.printed.description ? `"${line.printed.description}"` : null,
+    `${line.printed.unit ? `${qty} ${line.printed.unit}` : qty} @ ${line.printed.unitPriceText ?? '—'}`,
+    line.printed.leadTime,
+  ]
+    .filter(Boolean)
+    .join(' · ')
+}
+
+/**
+ * The expanded panel: what the vendor printed, and the breaks they printed with
+ * it.
+ *
+ * The tier is said as a WORD here, not only as the grip dot's colour. §5.2:
+ * `Vendor SKU` and `Our SKU` are both exact and must not read as two shades of
+ * the same claim, so wherever there is room for the word it is used.
+ */
+function PrintedDetail({
+  line,
+  currency,
+  vendorName,
+  onChooseBreak,
+}: {
+  line: IntakeLine
+  currency: string
+  vendorName: string | null
+  onChooseBreak: (index: number | null) => void
+}) {
+  return (
+    <div className='mx-1 mb-2 flex flex-col gap-1.5 rounded-md border bg-muted/30 p-2 text-xs'>
+      <div className='flex flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground'>
+        <IntakeTierBadge tier={line.tier} vendorName={vendorName} />
+        <span className='font-mono'>{line.printed.vendorCode ?? '—'}</span>
+        {line.printed.description && <span>"{line.printed.description}"</span>}
+        <span>
+          {formatPrintedQuantity(line)} @ {line.printed.unitPriceText ?? '—'}
+        </span>
+        {line.printed.leadTime && <span>· {line.printed.leadTime}</span>}
+      </div>
+
+      {line.printed.priceBreaks.length > 0 && (
+        <PriceBreakTable line={line} currency={currency} onChoose={onChooseBreak} />
       )}
     </div>
   )
@@ -255,7 +376,7 @@ function PriceBreakTable({
   const chosen = line.chosenBreakIndex
 
   return (
-    <div className='mx-1 mb-2 overflow-hidden rounded-md border bg-muted/30 text-xs'>
+    <div className='overflow-hidden rounded-md border bg-background'>
       <BreakRow
         label='As printed'
         price={formatCurrency(basePrice, currency, RATE_DECIMALS)}
@@ -302,7 +423,7 @@ function BreakRow({
       disabled={disabled}
       className={cn(
         'flex w-full items-center justify-between px-3 py-1.5 text-left disabled:opacity-50',
-        selected ? 'bg-primary-200 font-medium text-foreground' : 'hover:bg-background'
+        selected ? 'bg-primary-200 font-medium text-foreground' : 'hover:bg-muted/50'
       )}>
       <span>{label}</span>
       <span className='tabular-nums'>{price}</span>

@@ -22,6 +22,7 @@ import {
   DEFAULT_MATCH_TOLERANCE,
   discardIntakeDraft,
   findVendorPartForLine,
+  findVendorPartsForParts,
   getIntakeDraft,
   matchBill,
   updateIntakeDraftPayload,
@@ -56,6 +57,32 @@ const rateMinorUnits = z
   .number()
   .finite()
   .positive()
+  .refine((value) => isAtPrecision(value, RATE_DECIMALS), {
+    message: 'must have at most five decimal places',
+  })
+
+/**
+ * The intake form of {@link rateMinorUnits}: a TRANSCRIBED unit price, which may
+ * be zero.
+ *
+ * 🛑 A quote prints 0.00 all the time - a free sample, a no-charge replacement,
+ * an "included" freight line - and §3.1's rule is that we transcribe what is
+ * printed and never correct it. `rateMinorUnits` refuses zero because it guards
+ * a RECEIPT or an opening-balance cost, where zero is a missing number; here it
+ * is the vendor's own number, and rejecting it fails the review screen's save
+ * with nothing on screen to explain why.
+ *
+ * `expectedUnitPrice`, which this becomes on commit, is `nullable: true` with no
+ * positivity constraint of its own, so the draft was stricter than the field it
+ * writes to.
+ *
+ * Still non-negative: a discount printed as a negative line is folded into the
+ * header or dropped (§5.4), never carried as a negative price into costing.
+ */
+const intakeRateMinorUnits = z
+  .number()
+  .finite()
+  .nonnegative()
   .refine((value) => isAtPrecision(value, RATE_DECIMALS), {
     message: 'must have at most five decimal places',
   })
@@ -189,7 +216,7 @@ const intakeLine = z.object({
   vendorPartRecordId: recordIdSchema.nullable(),
   description: z.string().nullable(),
   quantity: z.number().finite(),
-  unitPriceCents: rateMinorUnits.nullable(),
+  unitPriceCents: intakeRateMinorUnits.nullable(),
   chosenBreakIndex: z.number().int().nonnegative().nullable(),
   foldedInto: z.enum(['shipping', 'tax']).nullable(),
 })
@@ -538,6 +565,39 @@ export const purchasingRouter = createTRPCRouter({
       const result = await findVendorPartForLine(ctx.db, organizationId, input)
       if (result.isErr()) throw result.error
       return result.value
+    }),
+
+  /**
+   * Which of these parts this supplier already has a `vendor_part` for.
+   *
+   * 🛑 The intake commit dialog asks this before offering §5.3's write-backs,
+   * because the two outcomes are not the same act. A pair that already has a row
+   * gets one field set on it; a pair that does not gets a **new catalogue entry
+   * created** — a `vendor_part` that then takes part in price prefills,
+   * preferred-vendor reads and part-cost recalculation. Offering both behind one
+   * unlabelled checkbox hides the larger of the two.
+   *
+   * Read fresh at the moment of the decision rather than trusting the draft's
+   * stored `vendorPartRecordId`: parts can be picked before a vendor is chosen,
+   * and the vendor can be changed after the parts were picked, so the stored link
+   * can name another supplier's row.
+   */
+  vendorPartsForParts: capabilityProcedure
+    .input(
+      z.object({
+        vendorInstanceId: z.string().min(1),
+        partInstanceIds: z.array(z.string().min(1)).max(500),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      ctx.capabilities.assertViewEntity(await requireDefId(organizationId, 'vendor_part'))
+
+      const result = await findVendorPartsForParts(ctx.db, organizationId, input)
+      if (result.isErr()) throw result.error
+      // A Map does not survive superjson's default transformers here, and the
+      // caller only needs membership.
+      return { existingPartInstanceIds: [...result.value.keys()] }
     }),
 
   /** Receipts across the org, newest accounting date first, paginated in SQL. */

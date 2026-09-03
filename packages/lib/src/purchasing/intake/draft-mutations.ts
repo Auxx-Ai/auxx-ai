@@ -32,7 +32,11 @@ import { deleteRedisData, setRedisData } from '@auxx/redis'
 import { generateId } from '@auxx/utils'
 import type { Result } from 'neverthrow'
 import { ConflictError, NotFoundError } from '../../errors'
-import type { IntakeDraftPayload, IntakeDraftPhase } from './client'
+import {
+  INTAKE_EXTRACT_PREVIEW_MAX_CHARS,
+  type IntakeDraftPayload,
+  type IntakeDraftPhase,
+} from './client'
 import {
   INTAKE_DRAFT_TTL_SECONDS,
   intakeDraftKey,
@@ -73,6 +77,7 @@ export async function createIntakeDraft(
         assetRef: input.assetRef,
         fileName: input.fileName ?? null,
         mimeType: input.mimeType ?? null,
+        extractedText: null,
         payload: null,
         error: null,
         purchaseOrderInstanceId: null,
@@ -147,6 +152,34 @@ export async function setIntakeDraftPhase(
   phase: IntakeDraftPhase
 ): Promise<Result<void, Error>> {
   return updateDraft(organizationId, draftId, { phase }, 'Failed to set intake draft phase')
+}
+
+/**
+ * Keep the converted text the model read, for the review screen's preview pane.
+ *
+ * Only converted documents have one: a PDF or an image is previewed from the
+ * asset itself. Written the moment the read returns rather than folded into
+ * `markIntakeDraftReady`, so a run that dies matching vendors or lines still
+ * leaves behind the thing a person would look at to work out why.
+ *
+ * Truncated to `INTAKE_EXTRACT_PREVIEW_MAX_CHARS` — see the constant for why the
+ * model's copy is not.
+ */
+export async function setIntakeDraftExtractedText(
+  organizationId: string,
+  draftId: string,
+  text: string
+): Promise<Result<void, Error>> {
+  const extractedText =
+    text.length > INTAKE_EXTRACT_PREVIEW_MAX_CHARS
+      ? `${text.slice(0, INTAKE_EXTRACT_PREVIEW_MAX_CHARS)}\n\n[...truncated]`
+      : text
+  return updateDraft(
+    organizationId,
+    draftId,
+    { extractedText },
+    'Failed to store intake draft extracted text'
+  )
 }
 
 /**

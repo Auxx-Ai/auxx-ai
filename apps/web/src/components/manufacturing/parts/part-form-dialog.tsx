@@ -79,6 +79,34 @@ export interface PartFormPrefill {
   description?: string
   /** Offered under SKU as a one-click suggestion. Never written on its own. */
   skuSuggestion?: string
+  /**
+   * Seeds the Supplier section and OPENS it.
+   *
+   * For a caller that already knows who is selling the part and on what terms —
+   * purchase-order intake creating a part off a vendor's quote is the case this
+   * exists for. Without it that person retypes the supplier, their code and
+   * their price into a collapsed section, having just read all three off the
+   * document in the pane beside them.
+   *
+   * 🛑 Opening the section is the point, not a side effect. Seeded values inside
+   * a collapsed panel are values nobody agreed to: the section carries a real
+   * `vendor_part` create, so what it is about to write has to be on screen. The
+   * fields stay editable and the section stays closable — closing it drops the
+   * offer entirely, which is the "no thanks" this needs to keep having.
+   */
+  supplier?: PartFormSupplierPrefill
+}
+
+/** @see PartFormPrefill.supplier */
+export interface PartFormSupplierPrefill {
+  /** `company` instance id of the supplier. The one required field of the section. */
+  companyInstanceId: string
+  /** The supplier's OWN part number, which is what this field is for. */
+  vendorSku?: string | null
+  /** Their price, in minor units per purchase unit. */
+  unitPrice?: number | null
+  /** Their selling unit as free text — 'thousand', 'box of 500'. */
+  purchaseUnit?: string | null
 }
 
 /** Props for PartFormDialog component */
@@ -180,6 +208,10 @@ export function PartFormDialog({
   const prefillTitle = prefill?.title ?? ''
   const prefillDescription = prefill?.description ?? ''
   const skuSuggestion = prefill?.skuSuggestion ?? ''
+  const prefillSupplierId = prefill?.supplier?.companyInstanceId ?? ''
+  const prefillSupplierSku = prefill?.supplier?.vendorSku ?? ''
+  const prefillSupplierPrice = prefill?.supplier?.unitPrice ?? null
+  const prefillSupplierUnit = prefill?.supplier?.purchaseUnit ?? null
 
   // Initialize/reset values when dialog opens
   useEffect(() => {
@@ -209,14 +241,38 @@ export function PartFormDialog({
         })
       }
       setErrors({})
-      setShowSupplier(false)
-      setVendorPartValues(defaultVendorPartValues)
+      // A seeded supplier opens its own section — see `PartFormPrefill.supplier`
+      // for why a filled-in but collapsed panel is not an acceptable state.
+      const seedSupplier = !isEditMode && !!prefillSupplierId
+      setShowSupplier(seedSupplier)
+      setVendorPartValues(
+        seedSupplier
+          ? {
+              ...defaultVendorPartValues,
+              entityInstanceId: prefillSupplierId,
+              vendorSku: prefillSupplierSku,
+              unitPrice: prefillSupplierPrice,
+              purchaseUnit: prefillSupplierUnit,
+            }
+          : defaultVendorPartValues
+      )
       setVendorPartErrors({})
       setShowOpeningStock(false)
       setOpeningStockValues(defaultOpeningStockValues())
       setOpeningStockErrors({})
     }
-  }, [open, isEditMode, systemValues, lockedProductId, prefillTitle, prefillDescription])
+  }, [
+    open,
+    isEditMode,
+    systemValues,
+    lockedProductId,
+    prefillTitle,
+    prefillDescription,
+    prefillSupplierId,
+    prefillSupplierSku,
+    prefillSupplierPrice,
+    prefillSupplierUnit,
+  ])
 
   // Preselect Kind from the field's own `defaultValue` (task 15 §4c).
   //

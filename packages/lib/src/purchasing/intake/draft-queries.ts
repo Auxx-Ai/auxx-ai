@@ -84,6 +84,7 @@ export function toIntakeDraftView(stored: StoredIntakeDraft): IntakeDraftView {
     assetRef: stored.assetRef,
     fileName: stored.fileName ?? null,
     mimeType: stored.mimeType ?? null,
+    extractedText: stored.extractedText ?? null,
     payload: stored.payload ?? null,
     error: stored.error ?? null,
     purchaseOrderInstanceId: stored.purchaseOrderInstanceId ?? null,

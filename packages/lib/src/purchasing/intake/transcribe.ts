@@ -57,6 +57,22 @@ export interface IntakeModelCapability {
   reason: string | null
 }
 
+/** What one read produced. */
+export interface TranscribeQuoteOutput {
+  quote: TranscribedQuote
+  /**
+   * The converted text the model actually read, or `null` for a PDF or an image
+   * that went as bytes.
+   *
+   * The review screen has no way to render an `.xlsx` — its preview pane is an
+   * `AttachmentPreview`, and there is no spreadsheet renderer — so this is the
+   * only thing it can show beside the lines. It is also, deliberately, the exact
+   * input the model saw: checking a transcription against something else is
+   * checking the wrong document.
+   */
+  extractedText: string | null
+}
+
 /** What `transcribeQuote` was pointed at. */
 export interface TranscribeQuoteInput {
   /** `asset:<mediaAssetId>` — the FileRef the temp upload produced. */
@@ -126,20 +142,57 @@ function convertedMimeType(extension: string, sourceMimeType: string): string {
   return spreadsheet ? 'text/csv' : 'text/markdown'
 }
 
-/** The bytes and the MIME type the provider will actually be handed. */
-interface PreparedDocument {
-  buffer: Buffer
-  mimeType: string
-  fileName: string
+/**
+ * What the provider will actually be handed.
+ *
+ * 🛑 The two arms are not cosmetic. A `file` part on OpenAI accepts **PDF only**
+ * — a converted spreadsheet handed over as `text/csv` comes back as
+ * `400 Invalid file data: 'messages[0].content[1].file.file_data'`. Anthropic
+ * accepts the same block because its client rewrites text MIME types into a
+ * `document` with a text source, so the bug is invisible on half the providers.
+ * Once we have converted a document to text ourselves, it IS text: send it as a
+ * text part and let no provider guess.
+ */
+type PreparedDocument =
+  /** Bytes the model reads natively — a PDF or an image. Layout survives. */
+  | { kind: 'file'; buffer: Buffer; mimeType: string; fileName: string }
+  /** Something we converted first. `text` is the exact content the model sees. */
+  | { kind: 'text'; text: string; mimeType: string; fileName: string }
+
+/**
+ * Does the model read these bytes as a document, with the layout intact?
+ *
+ * PDFs and images only. `LLMClient.isSupportedFileMimeType` is a wider gate — it
+ * admits all of `text/*` as a *file* — and using it here is what produced the
+ * OpenAI 400: a CSV is legal to send, but not as a file part. Text goes as text.
+ */
+function isNativeDocumentMimeType(mimeType: string): boolean {
+  return mimeType === 'application/pdf' || mimeType.startsWith('image/')
+}
+
+/** Bytes that are already text, so the extractor has nothing to do. */
+function isAlreadyTextMimeType(mimeType: string): boolean {
+  return (
+    mimeType.startsWith('text/') ||
+    mimeType === 'application/json' ||
+    mimeType === 'application/xml'
+  )
 }
 
 /**
- * Get the document into something `LLMClient.isSupportedFileMimeType` admits.
+ * Get the document into one of the two shapes a provider accepts.
  *
- * 🛑 `isSupportedFileMimeType` REFUSES the OpenXML MIME types, so xlsx and docx
- * are converted **before** the gate rather than admitted through it (§3.2). PDFs
- * and images are already admitted and go as bytes — converting them is the
- * layout-destroying mistake §0 names.
+ * Three paths, and the split matters:
+ *
+ * - **PDF / image** — bytes, untouched. Converting them is the layout-destroying
+ *   mistake §0 names: a quote is a table where the column a number sits in IS
+ *   the meaning of the number, and only the model's own document reader sees it.
+ * - **Already text** (`text/*`, JSON, XML) — decoded and sent as text. No
+ *   extractor round trip, and no `file` part for a provider to reject.
+ * - **Everything else** (xlsx, docx, …) — through `ExtractorFactory` (§3.2),
+ *   then sent as text. `xlsx-extractor` renders every non-empty sheet as CSV
+ *   under a `# <SheetName>` heading, which preserves the grid exactly; a
+ *   spreadsheet loses nothing by not being an image.
  */
 async function prepareDocument(
   organizationId: string,
@@ -147,8 +200,16 @@ async function prepareDocument(
   mimeType: string,
   fileName: string
 ): Promise<PreparedDocument> {
-  if (LLMClient.isSupportedFileMimeType(mimeType)) {
-    return { buffer, mimeType, fileName }
+  if (isNativeDocumentMimeType(mimeType)) {
+    return { kind: 'file', buffer, mimeType, fileName }
+  }
+
+  if (isAlreadyTextMimeType(mimeType)) {
+    const text = buffer.toString('utf8')
+    if (!text.trim()) {
+      throw new UnprocessableEntityError('The uploaded document produced no readable content')
+    }
+    return { kind: 'text', text, mimeType, fileName: fileName || 'quote' }
   }
 
   const extension = extensionOf(fileName)
@@ -175,12 +236,29 @@ async function prepareDocument(
     throw new UnprocessableEntityError('The uploaded document produced no readable content')
   }
 
-  const converted = convertedMimeType(extension, mimeType)
   return {
-    buffer: Buffer.from(extracted, 'utf8'),
-    mimeType: converted,
-    fileName: `${fileName || 'quote'}${converted === 'text/csv' ? '.csv' : '.md'}`,
+    kind: 'text',
+    text: extracted,
+    mimeType: convertedMimeType(extension, mimeType),
+    fileName: fileName || 'quote',
   }
+}
+
+/**
+ * Name the source before the converted content.
+ *
+ * The model is about to read a CSV that was an `.xlsx` an instant ago. Saying so
+ * is what stops it reporting sheet headings as line items, and the filename is
+ * often where the vendor put the shipment or the quantity.
+ */
+function framePreparedText(document: { text: string; mimeType: string; fileName: string }): string {
+  const shape = document.mimeType === 'text/csv' ? 'CSV' : 'text'
+  return [
+    `The vendor's quote, "${document.fileName}", converted to ${shape}.`,
+    'A "# Name" heading starts a new sheet or section; it is not a line item.',
+    '',
+    document.text,
+  ].join('\n')
 }
 
 /**
@@ -216,7 +294,7 @@ export async function transcribeQuote(
   organizationId: string,
   userId: string | null,
   input: TranscribeQuoteInput
-): Promise<Result<TranscribedQuote, Error>> {
+): Promise<Result<TranscribeQuoteOutput, Error>> {
   return guard(
     async () => {
       const capability = await checkIntakeModelCapability(organizationId)
@@ -252,12 +330,14 @@ export async function transcribeQuote(
       // frame for the block that follows it.
       const content: MultiModalContent[] = [
         { type: 'text', data: TRANSCRIBE_QUOTE_PROMPT },
-        LLMClient.fileToMultiModalContent(
-          document.buffer.toString('base64'),
-          document.mimeType,
-          document.fileName,
-          document.buffer.length
-        ),
+        document.kind === 'file'
+          ? LLMClient.fileToMultiModalContent(
+              document.buffer.toString('base64'),
+              document.mimeType,
+              document.fileName,
+              document.buffer.length
+            )
+          : { type: 'text', data: framePreparedText(document) },
       ]
 
       const { provider, model } = await resolveModel(organizationId)
@@ -272,18 +352,24 @@ export async function transcribeQuote(
         structuredOutput: { enabled: true, schema: TRANSCRIBED_QUOTE_JSON_SCHEMA },
       })
 
-      const transcription = parseTranscribedQuote(
+      const quote = parseTranscribedQuote(
         extractJson(response.structured_output, response.content ?? '')
       )
 
       logger.info('Transcribed a vendor quote', {
         organizationId,
         model,
-        lines: transcription.lines.length,
-        mimeType: document.mimeType,
+        lines: quote.lines.length,
+        sourceMimeType: input.mimeType ?? '',
+        sentAs: document.kind,
+        sentMimeType: document.mimeType,
+        extractedChars: document.kind === 'text' ? document.text.length : null,
       })
 
-      return transcription
+      return {
+        quote,
+        extractedText: document.kind === 'text' ? document.text : null,
+      }
     },
     'Failed to transcribe a vendor quote',
     { organizationId, assetRef: input.assetRef }

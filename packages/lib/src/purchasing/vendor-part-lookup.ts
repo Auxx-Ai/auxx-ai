@@ -16,7 +16,7 @@
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { type RecordId, toRecordId } from '@auxx/types/resource'
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { err, ok, type Result } from 'neverthrow'
 import { getCachedEntityDefId, getOrgCache } from '../cache'
@@ -180,6 +180,103 @@ export async function findVendorPartForLine(
       organizationId,
       partInstanceId,
       vendorInstanceId,
+    })
+    return err(new AuxxError('Internal error'))
+  }
+}
+
+/**
+ * Which of these parts this supplier ALREADY has a catalogue entry for.
+ *
+ * One statement for the whole set, where {@link findVendorPartForLine} is one
+ * per pair — the caller is answering a question about a list (a quote's lines,
+ * a write-back offer), and N round trips to render one dialog is the shape the
+ * tier ladder was written to avoid.
+ *
+ * 🛑 Returns only what EXISTS. A part id absent from the map has no
+ * `(part, supplier)` row, which is a materially different act for the caller: an
+ * absent pair means a write CREATES a `vendor_part` — a new catalogue entry that
+ * then participates in pricing and preferred-vendor reads — where a present one
+ * only sets a field on a row that was already there. A screen that offers both
+ * under one label is asking for a decision it has hidden half of.
+ *
+ * Same natural key and the same refusals as {@link findVendorPartForLine}: both
+ * legs matched as equalities, no preferred-vendor fallback, and an empty map
+ * rather than an error for every "there is nothing here yet" shape.
+ */
+export async function findVendorPartsForParts(
+  db: Database,
+  organizationId: string,
+  params: { vendorInstanceId: string; partInstanceIds: string[] }
+): Promise<Result<Map<string, RecordId>, Error>> {
+  const { vendorInstanceId, partInstanceIds } = params
+  const found = new Map<string, RecordId>()
+  if (partInstanceIds.length === 0) return ok(found)
+
+  try {
+    const vendorPartDefId = await getCachedEntityDefId(organizationId, 'vendor_part')
+    if (!vendorPartDefId) return ok(found)
+
+    const fields = await getOrgCache()
+      .from(organizationId, 'customFields')
+      .bySystemAttributes(['vendor_part_part', 'vendor_part_contact'] as const)
+
+    const partField = fields.vendor_part_part
+    const supplierField = fields.vendor_part_contact
+    if (!partField || !supplierField) return ok(found)
+
+    const partValue = alias(schema.FieldValue, 'vendor_part_part_value')
+    const supplierValue = alias(schema.FieldValue, 'vendor_part_supplier_value')
+
+    const rows = await db
+      .select({
+        id: schema.EntityInstance.id,
+        partInstanceId: partValue.relatedEntityId,
+      })
+      .from(schema.EntityInstance)
+      .innerJoin(
+        partValue,
+        and(
+          eq(partValue.entityId, schema.EntityInstance.id),
+          eq(partValue.organizationId, schema.EntityInstance.organizationId),
+          eq(partValue.fieldId, partField.id),
+          inArray(partValue.relatedEntityId, [...new Set(partInstanceIds)])
+        )
+      )
+      .innerJoin(
+        supplierValue,
+        and(
+          eq(supplierValue.entityId, schema.EntityInstance.id),
+          eq(supplierValue.organizationId, schema.EntityInstance.organizationId),
+          eq(supplierValue.fieldId, supplierField.id),
+          eq(supplierValue.relatedEntityId, vendorInstanceId)
+        )
+      )
+      .where(
+        and(
+          eq(schema.EntityInstance.organizationId, organizationId),
+          eq(schema.EntityInstance.entityDefinitionId, vendorPartDefId),
+          isNull(schema.EntityInstance.archivedAt)
+        )
+      )
+
+    for (const row of rows) {
+      if (!row.partInstanceId) continue
+      // First wins, matching `findVendorPartForLine`'s `orderBy … limit 1`. Under
+      // the natural key there is at most one row per pair anyway.
+      if (!found.has(row.partInstanceId)) {
+        found.set(row.partInstanceId, toRecordId(vendorPartDefId, row.id))
+      }
+    }
+
+    return ok(found)
+  } catch (error) {
+    if (error instanceof AuxxError) return err(error)
+    logger.error('Failed to look up vendor parts for a set of parts', {
+      error,
+      organizationId,
+      vendorInstanceId,
+      parts: partInstanceIds.length,
     })
     return err(new AuxxError('Internal error'))
   }

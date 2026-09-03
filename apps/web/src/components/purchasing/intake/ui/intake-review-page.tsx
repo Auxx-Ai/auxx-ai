@@ -30,7 +30,6 @@ import { toastError } from '@auxx/ui/components/toast'
 import { Clock, TriangleAlert } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useCallback, useMemo, useState } from 'react'
-import { AttachmentPreview } from '~/components/attachments/attachment-preview'
 import { LoadingSpinner } from '~/components/global/loading-content'
 import type { PartPrefillLookup } from '~/components/money/ui/line-builder/line-rows'
 import { useRecord } from '~/components/resources'
@@ -39,6 +38,7 @@ import { api } from '~/trpc/react'
 import { useIntakeDraftEditor } from '../hooks/use-intake-draft'
 import { removeIntakePointer } from '../hooks/use-intake-pointer'
 import { IntakeCommitDialog } from './intake-commit-dialog'
+import { IntakeDocumentPreview } from './intake-document-preview'
 import { IntakeHeaderPanel } from './intake-header-panel'
 import { IntakeLinesTable } from './intake-lines-table'
 
@@ -255,19 +255,18 @@ export function IntakeReviewPage({ draftId }: { draftId: string }) {
                 against the DRAFT, not the Files app — see `AttachmentPreview`'s
                 `intakeDraft` scope. */}
             <ResizablePanel defaultSize={38} minSize={20} className='min-w-0'>
-              <div className='h-full overflow-auto p-3'>
-                {assetId ? (
-                  <AttachmentPreview
-                    type='asset'
-                    id={assetId}
-                    preferredRenderer='pdf'
-                    interactive
-                    height='100%'
-                    filename={draft.data?.fileName ?? undefined}
-                    knownMimeType={draft.data?.mimeType ?? undefined}
-                    scope={{ kind: 'intakeDraft', draftId }}
-                  />
-                ) : null}
+              {/* No `overflow-auto` here: `IntakeDocumentPreview` owns its own
+                  scrolling (a `ScrollArea` for a converted document, the
+                  renderer's own for a PDF), and nesting two scroll containers
+                  gives the pane two scrollbars that fight. */}
+              <div className='h-full min-h-0 p-3'>
+                <IntakeDocumentPreview
+                  draftId={draftId}
+                  assetId={assetId}
+                  fileName={draft.data?.fileName ?? null}
+                  mimeType={draft.data?.mimeType ?? null}
+                  extractedText={draft.data?.extractedText ?? null}
+                />
               </div>
             </ResizablePanel>
 
@@ -280,6 +279,7 @@ export function IntakeReviewPage({ draftId }: { draftId: string }) {
                   lines={payload.lines}
                   currency={payload.currency}
                   vendorName={vendorName}
+                  vendorRecordId={payload.vendorRecordId}
                   resolvePartPrefill={resolvePartPrefill}
                   onPatch={editor.patchLine}
                   onChooseBreak={editor.chooseBreak}

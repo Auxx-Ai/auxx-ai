@@ -26,6 +26,7 @@ export {
   resolveQuoteLines,
   resolveQuoteVendor,
   type StoredIntakeDraft,
+  setIntakeDraftExtractedText,
   setIntakeDraftPhase,
   TRANSCRIBE_QUOTE_PROMPT,
   TRANSCRIBED_QUOTE_JSON_SCHEMA,
@@ -33,6 +34,7 @@ export {
   toIntakeDraftView,
   transcribeQuote,
   updateIntakeDraftPayload,
+  type WriteBackTally,
 } from './intake'
 export {
   DEFAULT_MATCH_TOLERANCE,
@@ -78,4 +80,4 @@ export type {
   MatchTolerance,
 } from './types'
 export type { VendorPartLookupParams, VendorPartPrefill } from './vendor-part-lookup'
-export { findVendorPartForLine } from './vendor-part-lookup'
+export { findVendorPartForLine, findVendorPartsForParts } from './vendor-part-lookup'
