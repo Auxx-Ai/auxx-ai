@@ -11,7 +11,7 @@
     "color": "pink"
   },
   "primaryDisplayField": "campaignName",
-  "companions": ["product", "discount-rule", "email-sequence"],
+  "companions": ["discount-rule"],
   "fields": [
     {
       "templateFieldId": "campaignName",
@@ -89,7 +89,7 @@
       "name": "Products Included",
       "type": "RELATIONSHIP",
       "relationship": {
-        "relatedResourceId": "@template:product",
+        "relatedResourceId": "@system:product",
         "relationshipType": "many_to_many",
         "inverseName": "Campaigns"
       }

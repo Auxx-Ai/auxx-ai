@@ -11,7 +11,7 @@
     "color": "purple"
   },
   "primaryDisplayField": "projectName",
-  "companions": ["task"],
+  "companions": [],
   "fields": [
     { "templateFieldId": "projectName", "name": "Project Name", "type": "TEXT", "required": true },
     { "templateFieldId": "description", "name": "Description", "type": "RICH_TEXT" },
@@ -52,16 +52,6 @@
       "name": "Budget",
       "type": "CURRENCY",
       "options": { "currency": { "currencyCode": "USD", "showSymbol": true } }
-    },
-    {
-      "templateFieldId": "tasks",
-      "name": "Tasks",
-      "type": "RELATIONSHIP",
-      "relationship": {
-        "relatedResourceId": "@template:task",
-        "relationshipType": "has_many",
-        "inverseName": "Project"
-      }
     },
     {
       "templateFieldId": "company",

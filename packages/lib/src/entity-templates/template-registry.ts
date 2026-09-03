@@ -6,28 +6,22 @@ import complaintTemplate from './templates/complaint.json'
 import customerFeedbackTemplate from './templates/customer-feedback.json'
 import dealTemplate from './templates/deal.json'
 import discountRuleTemplate from './templates/discount-rule.json'
-import emailSequenceTemplate from './templates/email-sequence.json'
 import exchangeRequestTemplate from './templates/exchange-request.json'
 import expenseTemplate from './templates/expense.json'
 import faqArticleTemplate from './templates/faq-article.json'
 import featureRequestTemplate from './templates/feature-request.json'
 import giftCardTemplate from './templates/gift-card.json'
 import inventoryLocationTemplate from './templates/inventory-location.json'
-import invoiceTemplate from './templates/invoice.json'
 import leadTemplate from './templates/lead.json'
 import loyaltyMemberTemplate from './templates/loyalty-member.json'
-import productTemplate from './templates/product.json'
 import projectTemplate from './templates/project.json'
 import qualityInspectionTemplate from './templates/quality-inspection.json'
-import quoteTemplate from './templates/quote.json'
 import referralTemplate from './templates/referral.json'
 import returnRequestTemplate from './templates/return-request.json'
 import shipmentTemplate from './templates/shipment.json'
 import socialProofTemplate from './templates/social-proof.json'
 import subscriptionTemplate from './templates/subscription.json'
 import supplierContractTemplate from './templates/supplier-contract.json'
-import taskTemplate from './templates/task.json'
-import vendorTemplate from './templates/vendor.json'
 import warrantyClaimTemplate from './templates/warranty-claim.json'
 import wholesaleOrderTemplate from './templates/wholesale-order.json'
 import type { EntityTemplate } from './types'
@@ -38,11 +32,16 @@ const templateMap = new Map<string, EntityTemplate>()
 
 const allTemplates: EntityTemplate[] = [
   // Existing
-  // NOTE: `order.json` was retired with the native `order` system entity
-  // (plans/products/08-order-build.md §3.5). Templates that referenced it now
-  // resolve `@system:order` against the org's own def in installer pass 1.
-  productTemplate,
-  vendorTemplate,
+  // NOTE: seven templates have been retired as the platform grew a native
+  // equivalent. `order.json` went first with the native `order` system entity
+  // (plans/products/08-order-build.md §3.5); `product`, `quote` and `invoice`
+  // followed once those became system entity definitions, and `vendor`,
+  // `email-sequence` and `task` followed once Companies, the Sequence tables
+  // and the Task tables became the real home for each. Templates that
+  // referenced them now resolve `@system:order`, `@system:product` and
+  // `@system:company` against the org's own defs in installer pass 1; a vendor
+  // IS a Company everywhere in purchasing, and a Task attaches to any record
+  // through `TaskReference` rather than a relationship field.
   returnRequestTemplate,
   subscriptionTemplate,
   campaignTemplate,
@@ -57,7 +56,6 @@ const allTemplates: EntityTemplate[] = [
   // CRM
   leadTemplate,
   dealTemplate,
-  quoteTemplate,
   referralTemplate,
   loyaltyMemberTemplate,
   // Support
@@ -67,13 +65,10 @@ const allTemplates: EntityTemplate[] = [
   complaintTemplate,
   exchangeRequestTemplate,
   // Operations
-  taskTemplate,
   projectTemplate,
-  invoiceTemplate,
   expenseTemplate,
   supplierContractTemplate,
   // Marketing / Other
-  emailSequenceTemplate,
   socialProofTemplate,
   qualityInspectionTemplate,
 ] as EntityTemplate[]

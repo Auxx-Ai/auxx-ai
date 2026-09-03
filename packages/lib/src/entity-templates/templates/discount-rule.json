@@ -12,7 +12,7 @@
   },
   "primaryDisplayField": "name",
   "secondaryDisplayField": "code",
-  "companions": ["campaign", "product"],
+  "companions": ["campaign"],
   "fields": [
     {
       "templateFieldId": "code",

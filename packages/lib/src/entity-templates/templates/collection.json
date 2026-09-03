@@ -12,7 +12,7 @@
   },
   "primaryDisplayField": "collectionName",
   "avatarField": "image",
-  "companions": ["product", "campaign"],
+  "companions": ["campaign"],
   "fields": [
     {
       "templateFieldId": "collectionName",
@@ -62,7 +62,7 @@
       "name": "Products",
       "type": "RELATIONSHIP",
       "relationship": {
-        "relatedResourceId": "@template:product",
+        "relatedResourceId": "@system:product",
         "relationshipType": "many_to_many",
         "inverseName": "Collections"
       }
