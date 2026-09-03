@@ -158,7 +158,8 @@ export function registerEntitySystemRules(): void {
     })
   })
 
-  // Company enrichment — created only, per-record (HTTP fetch).
+  // Company enrichment — created only, per-record. The handler ENQUEUES; the fetch itself
+  // runs on `enrichmentQueue`, off this worker (see `companies/enrichment/enqueue.ts`).
   registerNativeRuleHandler(ENRICH_COMPANY_ON_CREATE, async (event) => {
     const { enrichCompanyOnCreate } = await import('./post/company-triggers')
     await fanOutEntityHandler(event, 'companies', enrichCompanyOnCreate)
@@ -260,7 +261,7 @@ const ENTITY_SYSTEM_RULES: SystemRuleDeclaration[] = [
     actions: [{ type: 'native', handler: RECALC_PO_LINE_BILLED }],
   },
   {
-    key: 'mfg-companies-created',
+    key: 'company-created',
     name: 'Enrich company from website on create',
     defSlug: 'companies',
     on: 'created',

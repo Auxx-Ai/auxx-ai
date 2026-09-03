@@ -298,6 +298,18 @@
       "import": "./dist/comments/index.mjs",
       "default": "./src/comments/index.ts"
     },
+    "./companies": {
+      "types": "./src/companies/index.ts",
+      "source": "./src/companies/index.ts",
+      "import": "./dist/companies/index.mjs",
+      "default": "./src/companies/index.ts"
+    },
+    "./companies/enqueue": {
+      "types": "./src/companies/enrichment/enqueue.ts",
+      "source": "./src/companies/enrichment/enqueue.ts",
+      "import": "./dist/companies/enrichment/enqueue.mjs",
+      "default": "./src/companies/enrichment/enqueue.ts"
+    },
     "./conditions": {
       "types": "./src/conditions/index.ts",
       "source": "./src/conditions/index.ts",

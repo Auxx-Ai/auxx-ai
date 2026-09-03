@@ -8,6 +8,7 @@ import {
   approvalOrphanSweeperJob,
   appStorageSweepJob,
   cleanupExpiredMediaAssetsJob,
+  companyEnrichmentSweepJob,
   type DemoSeedJobData,
   dataDeletionJob,
   dataMigrationsJob,
@@ -256,6 +257,12 @@ export const jobMappings = {
   // shipped. Re-uses `rematchBill`, so it decides which bills to re-ask about and
   // never what a bill's status is.
   vendorBillAgingJob,
+
+  // Company enrichment gap-filling sweep (plans/company/v4-enrichment-doors.md §5, Door
+  // 5b). Every other enrichment door is event-driven, so this is the only path back for
+  // companies created before a door existed, ones the per-org window limiter dropped
+  // mid-import, and ones stranded on `pending` by a worker that died mid-fetch.
+  companyEnrichmentSweepJob,
 
   // Dispatch worker-facing daily schedule digest sweep (plans/dispatch/19-client-notifications.md
   // §4.9, opt-in): hourly tick, per-org local-hour + Redis dedupe guard inside the job itself.

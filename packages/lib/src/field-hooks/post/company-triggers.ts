@@ -1,251 +1,67 @@
 // packages/lib/src/field-hooks/post/company-triggers.ts
+// Rule-door adapters for company enrichment. Thin on purpose: these translate a firing
+// into an enqueue and nothing else.
+//
+// The fetch, the parsing, the never-overwrite rules and the whole throttle live in
+// `packages/lib/src/companies/enrichment/`, because enrichment is reachable from four
+// doors now (record created, `company_domain` changed, `company_website` changed, manual
+// or backfill) and a policy split across four adapters would drift within a release.
+//
+// ⚠️ Neither adapter reads the event's values. A FIELD firing carries no `eventData`, and
+// the interactive field door presents a sentinel rather than the real write, so the only
+// trustworthy source is the record itself. `enrichCompany` re-reads it.
 
-import { database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { toRecordId } from '@auxx/types/resource'
-import { load } from 'cheerio'
-import { assertPublicHost, fetchAndStoreRemoteImage } from '../../files/fetch-remote-image'
-import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
-import { SystemUserService } from '../../users/system-user-service'
+import { parseRecordId, type RecordId } from '@auxx/types/resource'
+import { enqueueCompanyEnrichment } from '../../companies/enrichment/enqueue'
+import type { EnrichReason } from '../../companies/enrichment/guards'
 import type { EntityTriggerHandler } from '../types'
 
 const logger = createScopedLogger('field-hooks:company')
 
-const HTML_FETCH_TIMEOUT_MS = 8000
-const FAVICON_FETCH_TIMEOUT_MS = 5000
-const MAX_HTML_BYTES = 500_000
-const MAX_FAVICON_BYTES = 1_000_000
-const USER_AGENT = 'AuxxAi-Enrichment/1.0 (+https://auxx.ai/bot)'
-
 /**
- * Enrich a company from its website on create.
+ * Lifecycle door: a company row appeared.
  *
- * Fetches the company's homepage and extracts:
- * - Clean site name (from og:site_name or <title>) → company_name
- * - Description (from og:description or meta description) → company_notes
- * - Logo (apple-touch-icon, og:image, favicon) → company_logo
- *
- * Never overwrites user-edited values: only replaces company_name when it
- * equals the raw domain, and only fills company_notes / company_logo when empty.
+ * This is the only door that fires for a company created with a domain already on it, such
+ * as one the mail path minted from a sender address. Shaped as an `EntityTriggerHandler`
+ * because `fanOutEntityHandler` in `system-entity-rules.ts` invokes it per record.
  */
 export const enrichCompanyOnCreate: EntityTriggerHandler = async (event) => {
   if (event.action !== 'created') return
+  await queue(event.organizationId, event.entityInstanceId, 'created')
+}
 
-  const domain = event.values.company_domain
-  if (!domain || typeof domain !== 'string') {
-    logger.debug('Skipping enrichment — no domain', { entityInstanceId: event.entityInstanceId })
-    return
-  }
-
-  const { organizationId, entityInstanceId, entityDefinitionId } = event
-  const recordId = toRecordId(entityDefinitionId, entityInstanceId)
-
-  const systemUserId = await SystemUserService.getSystemUserForActions(organizationId)
-  const crud = new UnifiedCrudHandler(organizationId, systemUserId)
-
-  const currentName = typeof event.values.company_name === 'string' ? event.values.company_name : ''
-  const currentNotes = event.values.company_notes
-  const currentLogo = event.values.company_logo
-
-  const websiteUrl = `https://${domain}`
-
-  try {
-    await crud.update(recordId, { company_enrichment_status: 'pending' })
-
-    const metadata = await fetchWebsiteMetadata(websiteUrl)
-    const logoAssetId = await fetchAndStoreLogo({
-      organizationId,
-      userId: systemUserId,
-      metadata,
-    })
-
-    const updates: Record<string, unknown> = {
-      company_enrichment_status: 'enriched',
-      company_enriched_at: new Date(),
-    }
-
-    if (metadata.siteName && currentName === domain) {
-      updates.company_name = metadata.siteName
-    }
-    if (metadata.description && !currentNotes) {
-      updates.company_notes = metadata.description
-    }
-    if (logoAssetId && !currentLogo) {
-      updates.company_logo = { ref: `asset:${logoAssetId}` }
-    }
-
-    await crud.update(recordId, updates)
-
-    logger.info('Company enriched', {
-      organizationId,
-      companyId: entityInstanceId,
-      domain,
-      applied: Object.keys(updates),
-    })
-  } catch (err) {
-    logger.error('Enrichment failed', {
-      organizationId,
-      companyId: entityInstanceId,
-      domain,
-      error: (err as Error).message,
-    })
-    await crud.update(recordId, {
-      company_enrichment_status: 'failed',
-      company_enriched_at: new Date(),
-    })
+/**
+ * Field door: `company_domain` or `company_website` was written.
+ *
+ * ⚠️ NOT an `EntityTriggerHandler`, and not routed through `fanOutEntityHandler`. That
+ * helper bails on any firing without a lifecycle `action` ("Entity triggers are
+ * lifecycle-only"), and field firings carry none — routing this through it would silently
+ * never run. It takes the native batch event's `recordIds` directly instead.
+ *
+ * `company_website` is what makes that field mean something. Until this door existed,
+ * `company_domain` had exactly one writer in the codebase (the mail ingest path), so a
+ * company that did not arrive by email could never be enriched no matter what a user typed
+ * into it.
+ */
+export async function enqueueCompanyEnrichmentForRecords(
+  args: { organizationId: string; recordIds: readonly RecordId[] },
+  reason: Extract<EnrichReason, 'domain-changed' | 'website-changed'>
+): Promise<void> {
+  for (const recordId of args.recordIds) {
+    const { entityInstanceId } = parseRecordId(recordId)
+    await queue(args.organizationId, entityInstanceId, reason)
   }
 }
 
-// ─── Metadata fetch ────────────────────────────────────────────────────
-
-interface WebsiteMetadata {
-  siteName: string | null
-  description: string | null
-  faviconUrl: string | null
-  appleTouchIconUrl: string | null
-  ogImageUrl: string | null
-}
-
-async function fetchWebsiteMetadata(url: string): Promise<WebsiteMetadata> {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), HTML_FETCH_TIMEOUT_MS)
-
-  try {
-    assertPublicHost(url)
-
-    const res = await fetch(url, {
-      signal: controller.signal,
-      redirect: 'follow',
-      headers: {
-        'user-agent': USER_AGENT,
-        accept: 'text/html,application/xhtml+xml',
-      },
-    })
-
-    if (!res.ok) {
-      logger.warn('Non-OK response fetching website', { url, status: res.status })
-      return emptyMetadata()
-    }
-
-    const reader = res.body?.getReader()
-    if (!reader) return emptyMetadata()
-
-    const chunks: Uint8Array[] = []
-    let total = 0
-    while (total < MAX_HTML_BYTES) {
-      const { done, value } = await reader.read()
-      if (done) break
-      chunks.push(value)
-      total += value.byteLength
-    }
-    await reader.cancel()
-
-    const html = new TextDecoder('utf-8', { fatal: false }).decode(
-      Buffer.concat(chunks.map((c) => Buffer.from(c)))
-    )
-
-    const $ = load(html)
-
-    const rawTitle = $('title').first().text().trim()
-    const titleFirstSegment = rawTitle ? rawTitle.split(/[|\-—]/)[0]?.trim() : null
-
-    const siteName =
-      $('meta[property="og:site_name"]').attr('content')?.trim() ||
-      $('meta[name="application-name"]').attr('content')?.trim() ||
-      titleFirstSegment ||
-      null
-
-    const description =
-      $('meta[property="og:description"]').attr('content')?.trim() ||
-      $('meta[name="description"]').attr('content')?.trim() ||
-      null
-
-    const faviconUrl = resolveUrl(
-      url,
-      $('link[rel="icon"]').attr('href') ||
-        $('link[rel="shortcut icon"]').attr('href') ||
-        '/favicon.ico'
-    )
-
-    const appleTouchIconUrl = resolveUrl(url, $('link[rel="apple-touch-icon"]').attr('href'))
-    const ogImageUrl = resolveUrl(url, $('meta[property="og:image"]').attr('content'))
-
-    return {
-      siteName: truncate(siteName, 120),
-      description: truncate(description, 500),
-      faviconUrl,
-      appleTouchIconUrl,
-      ogImageUrl,
-    }
-  } catch (err) {
-    logger.warn('Fetch website metadata failed', { url, error: (err as Error).message })
-    return emptyMetadata()
-  } finally {
-    clearTimeout(timer)
+async function queue(
+  organizationId: string,
+  companyInstanceId: string,
+  reason: EnrichReason
+): Promise<void> {
+  if (!organizationId || !companyInstanceId) return
+  const queued = await enqueueCompanyEnrichment({ organizationId, companyInstanceId, reason })
+  if (!queued) {
+    logger.warn('Company enrichment was not queued', { organizationId, companyInstanceId, reason })
   }
-}
-
-// ─── Logo fetch + store ────────────────────────────────────────────────
-
-async function fetchAndStoreLogo(args: {
-  organizationId: string
-  userId: string
-  metadata: WebsiteMetadata
-}): Promise<string | null> {
-  // apple-touch-icon is usually the cleanest "logo-like" asset, followed by
-  // og:image, then the tiny favicon as a last resort.
-  const candidates = [
-    args.metadata.appleTouchIconUrl,
-    args.metadata.ogImageUrl,
-    args.metadata.faviconUrl,
-  ].filter((v): v is string => typeof v === 'string' && v.length > 0)
-
-  for (const url of candidates) {
-    try {
-      const result = await fetchAndStoreRemoteImage({
-        db: database,
-        url,
-        organizationId: args.organizationId,
-        userId: args.userId,
-        pathPrefix: 'company-logos',
-        purpose: 'company-logo',
-        name: 'company-logo',
-        maxBytes: MAX_FAVICON_BYTES,
-        timeoutMs: FAVICON_FETCH_TIMEOUT_MS,
-      })
-      return result.assetId
-    } catch (err) {
-      logger.debug('Logo candidate failed', { url, error: (err as Error).message })
-    }
-  }
-
-  return null
-}
-
-// ─── Helpers ───────────────────────────────────────────────────────────
-
-function emptyMetadata(): WebsiteMetadata {
-  return {
-    siteName: null,
-    description: null,
-    faviconUrl: null,
-    appleTouchIconUrl: null,
-    ogImageUrl: null,
-  }
-}
-
-function resolveUrl(base: string, href: string | null | undefined): string | null {
-  if (!href) return null
-  try {
-    return new URL(href, base).toString()
-  } catch {
-    return null
-  }
-}
-
-function truncate(s: string | null, max: number): string | null {
-  if (!s) return null
-  const trimmed = s.trim()
-  if (trimmed.length === 0) return null
-  return trimmed.length > max ? `${trimmed.slice(0, max - 1)}…` : trimmed
 }

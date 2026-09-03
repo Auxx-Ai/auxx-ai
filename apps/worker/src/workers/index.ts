@@ -18,6 +18,7 @@ import { startDatasetMaintenanceWorker } from './worker-definitions/dataset-main
 import { startDocumentPdfWorker } from './worker-definitions/document-pdf-worker'
 import { startDocumentProcessingWorker } from './worker-definitions/document-processing-worker'
 import { startEmailWorker } from './worker-definitions/email-worker'
+import { startEnrichmentWorker } from './worker-definitions/enrichment-worker'
 import { startEvalRunWorker } from './worker-definitions/eval-run-worker'
 import { startEventHandlersWorker, startEventsWorker } from './worker-definitions/events-worker'
 import { startKBSyncWorker } from './worker-definitions/kb-sync-worker'
@@ -136,6 +137,10 @@ export async function startWorkers() {
   // order (plans/money/tasks/38-purchase-order-from-a-document.md §3.3)
   const purchaseIntakeWorker = startPurchaseIntakeWorker()
 
+  // Company enrichment worker: one outbound homepage fetch per job, bounded apart
+  // from the events worker (plans/company/v4-enrichment-doors.md §6)
+  const enrichmentWorker = startEnrichmentWorker()
+
   const workers = [
     // defaultWorker,
     eventsWorker,
@@ -172,6 +177,7 @@ export async function startWorkers() {
     quickbooksInvoiceSyncWorker,
     mailClassificationWorker,
     purchaseIntakeWorker,
+    enrichmentWorker,
   ]
 
   return Promise.all(workers)
@@ -509,6 +515,26 @@ export async function setupSchedules() {
         attempts: 2,
         backoff: { type: 'exponential', delay: 60000 },
         priority: 8,
+        removeOnComplete: { count: 14 },
+        removeOnFail: { count: 30 },
+      },
+    }
+  )
+
+  // Company enrichment gap-filling sweep — every day at 04:45 UTC, half an hour after the
+  // vendor-bill sweep so the two large per-org passes do not overlap. Every other
+  // enrichment door is event-driven, so this is the only path back for companies created
+  // before a door existed, companies the per-org window limiter dropped mid-import, and
+  // companies stranded on `pending` by a worker that died mid-fetch. Idempotent: every
+  // record it enqueues reaches a terminal status, so a re-run selects strictly less.
+  await maintenanceQueue.upsertJobScheduler(
+    'companyEnrichmentSweepJob',
+    { pattern: '45 4 * * *', tz: 'UTC' },
+    {
+      opts: {
+        attempts: 2,
+        backoff: { type: 'exponential', delay: 60000 },
+        priority: 9,
         removeOnComplete: { count: 14 },
         removeOnFail: { count: 30 },
       },

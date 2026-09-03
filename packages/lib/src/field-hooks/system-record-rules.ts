@@ -34,6 +34,13 @@ const RECALC_STOCK_STATUS = 'recalculateStockStatus'
  * than a third branch in `recalculatePartCost` (29 §7).
  */
 const RECALC_PART_COST_TARIFF_RATE = 'recalculatePartCostFromTariffRate'
+/**
+ * Company enrichment reached from a FIELD write rather than the record's creation.
+ * Two declarations share one handler: `company_domain` (a domain arriving or being
+ * corrected) and `company_website` (a URL the domain can be derived from).
+ */
+const ENRICH_COMPANY_FROM_DOMAIN = 'enrichCompanyFromDomain'
+const ENRICH_COMPANY_FROM_WEBSITE = 'enrichCompanyFromWebsite'
 
 /** Adapt a native batch event to the legacy `FieldTriggerEvent` shape. */
 function asFieldTriggerEvent(
@@ -82,6 +89,17 @@ export function registerFieldSystemRules(): void {
       organizationId: event.organizationId,
       rateInstanceIds: event.recordIds.map((id) => parseRecordId(id).entityInstanceId),
     })
+  })
+
+  // Company enrichment, field doors. NOT routed through `fanOutEntityHandler`: it bails on
+  // any firing with no lifecycle `action`, and field firings carry none.
+  registerNativeRuleHandler(ENRICH_COMPANY_FROM_DOMAIN, async (event) => {
+    const { enqueueCompanyEnrichmentForRecords } = await import('./post/company-triggers')
+    await enqueueCompanyEnrichmentForRecords(event, 'domain-changed')
+  })
+  registerNativeRuleHandler(ENRICH_COMPANY_FROM_WEBSITE, async (event) => {
+    const { enqueueCompanyEnrichmentForRecords } = await import('./post/company-triggers')
+    await enqueueCompanyEnrichmentForRecords(event, 'website-changed')
   })
 
   declareSystemRules(FIELD_SYSTEM_RULES)
@@ -182,6 +200,36 @@ const FIELD_SYSTEM_RULES: SystemRuleDeclaration[] = [
     fieldRef: { systemAttribute: 'part_reorder_point' },
     on: 'changed',
     actions: [{ type: 'native', handler: RECALC_STOCK_STATUS }],
+  },
+  // ─── Company enrichment field doors ──────────────────────────────────
+  //
+  // `'changed'`, not `'set'`. `'set'` is `isEmpty(old) && !isEmpty(new)`, which misses a
+  // CORRECTION (`acme.com` to `acme.io`) — and a correction is exactly when the cached
+  // logo and description are wrong. On the interactive door the two behave identically
+  // anyway (the sentinel makes every transition match), so `'set'` would buy nothing and
+  // lose the case that matters.
+  //
+  // `skipOnCreate` suppresses the interactive create double-fire. It does NOT suppress the
+  // sync one: `handle-sync-record-rules.ts` never consults the flag, so an import creating
+  // a company with a domain fires this rule AND `company-created`. That is absorbed by the
+  // BullMQ jobId dedupe and the stored status, not here (see `companies/enrichment/guards.ts`).
+  {
+    key: 'company-domain-changed',
+    name: 'Enrich company when its domain changes',
+    defSlug: 'companies',
+    fieldRef: { systemAttribute: 'company_domain' },
+    on: 'changed',
+    skipOnCreate: true,
+    actions: [{ type: 'native', handler: ENRICH_COMPANY_FROM_DOMAIN }],
+  },
+  {
+    key: 'company-website-changed',
+    name: 'Enrich company when its website changes',
+    defSlug: 'companies',
+    fieldRef: { systemAttribute: 'company_website' },
+    on: 'changed',
+    skipOnCreate: true,
+    actions: [{ type: 'native', handler: ENRICH_COMPANY_FROM_WEBSITE }],
   },
 ]
 

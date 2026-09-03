@@ -1,6 +1,10 @@
 // apps/web/src/server/api/routers/record.ts
 
-import { getCachedResource, getCachedResources } from '@auxx/lib/cache'
+import { getCachedEntityDefId, getCachedResource, getCachedResources } from '@auxx/lib/cache'
+// Leaf subpath, NOT the `@auxx/lib/companies` barrel: the barrel reaches the fetch/parse
+// module, which pulls cheerio and the whole files graph into the web server for a function
+// that only writes a queue message.
+import { enqueueCompanyEnrichment } from '@auxx/lib/companies/enqueue'
 import { conditionGroupSchema } from '@auxx/lib/conditions'
 import {
   type AuxxError,
@@ -1113,6 +1117,47 @@ export const recordRouter = createTRPCRouter({
   /**
    * Archive entity instance (soft delete)
    */
+  /**
+   * Re-run website enrichment for one company, now.
+   *
+   * The explicit-intent door. Every other one is a rule firing off a write, so all of them
+   * pass `shouldEnrich`'s freshness windows (30 days after a success, 7 after a failure) —
+   * which is exactly right for automatic traffic and exactly wrong for a person looking at
+   * a stale logo. `reason: 'manual'` bypasses those windows, and only those: a company with
+   * no domain and no website still has nothing to fetch, and the per-org hourly budget
+   * still applies.
+   *
+   * Authority is `assertWriteEntity` on the company def. Enrichment writes
+   * `company_name` / `company_notes` / `company_logo` as the SYSTEM user once it reaches
+   * the worker, so this procedure is the only place a human's authority to cause those
+   * writes is ever checked.
+   */
+  enrichCompany: capabilityProcedure
+    .input(z.object({ recordId: recordIdSchema }))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      const { entityDefinitionId, entityInstanceId } = parseRecordId(input.recordId)
+
+      ctx.capabilities.assertWriteEntity(entityDefinitionId)
+      await assertNotInstanceAccessDefForWrite(organizationId, recordIdDefParts([input.recordId]))
+
+      const companyDefId = await getCachedEntityDefId(organizationId, 'company')
+      if (!companyDefId || companyDefId !== entityDefinitionId) {
+        throw new BadRequestError('Enrichment is only available for companies')
+      }
+
+      const queued = await enqueueCompanyEnrichment({
+        organizationId,
+        companyInstanceId: entityInstanceId,
+        reason: 'manual',
+      })
+      if (!queued) {
+        throw new UnprocessableEntityError('Could not queue enrichment, please try again')
+      }
+
+      return { queued }
+    }),
+
   archive: capabilityProcedure
     .input(z.object({ recordId: recordIdSchema }))
     .mutation(async ({ ctx, input }) => {

@@ -71,4 +71,10 @@ export enum Queues {
   // the call cannot run in the `message:received` gate (2s timeout, shared
   // `eventsQueue`) and must not hold `eventHandlersQueue` slots for seconds.
   mailClassificationQueue = 'mail-classification',
+  // Company website enrichment. Its OWN queue: one job is an outbound fetch of a
+  // third-party homepage plus a logo (8s + 5s worst case), and a bulk import can enqueue
+  // hundreds at once. Inline on the events worker, a 315-row import held one slot for the
+  // better part of an hour. `maintenanceQueue` is not an alternative — it runs at
+  // concurrency 1 shared with ~30 sweep jobs.
+  enrichmentQueue = 'enrichment',
 }

@@ -13,11 +13,15 @@ const h = vi.hoisted(() => ({
   enrichCompanyOnCreate: vi.fn(async () => {}),
   recalculatePartCostForEntityBatch: vi.fn(async () => {}),
   derivePartKindForSubpartBatch: vi.fn(async () => {}),
+  enqueueCompanyEnrichmentForRecords: vi.fn(async () => {}),
 }))
 
 vi.mock('./post/bom-movement-triggers', () => ({ explodeBomMovement: h.explodeBomMovement }))
 vi.mock('./post/inventory-triggers', () => ({ recalculatePartQoH: h.recalculatePartQoH }))
-vi.mock('./post/company-triggers', () => ({ enrichCompanyOnCreate: h.enrichCompanyOnCreate }))
+vi.mock('./post/company-triggers', () => ({
+  enrichCompanyOnCreate: h.enrichCompanyOnCreate,
+  enqueueCompanyEnrichmentForRecords: h.enqueueCompanyEnrichmentForRecords,
+}))
 vi.mock('./post/bom-cost-triggers', () => ({
   recalculatePartCostForEntityBatch: h.recalculatePartCostForEntityBatch,
 }))
@@ -139,6 +143,9 @@ describe('native handlers — fan-out + batch adaptation', () => {
       },
     })
     expect(h.enrichCompanyOnCreate).toHaveBeenCalledTimes(2)
+    // The threaded values still reach the handler, but enrichment no longer READS them:
+    // it re-reads the record, because the field doors carry no `eventData` at all and the
+    // interactive one carries a sentinel. See `companies/enrichment/enrich.ts`.
     expect(h.enrichCompanyOnCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         action: 'created',

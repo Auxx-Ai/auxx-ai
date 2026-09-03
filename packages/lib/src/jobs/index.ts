@@ -124,6 +124,7 @@ export {
 export { createEmailEnqueuer, enqueueEmailJob } from './email/enqueue-email-job'
 export { sendEmailJob } from './email/send-email-job'
 export type { EmailPayloadByType, EmailType, SendEmailJobData } from './email/types'
+export { enrichCompanyJob } from './enrichment/enrich-company-job'
 // Data export job
 export { type ExportRecordsJobData, exportRecordsJob } from './export/export-records-job'
 // Data print job (PDF export — plans/printing/01-unified-print.md §D)
@@ -153,6 +154,8 @@ export {
   type AppStorageSweepStats,
   appStorageSweepJob,
 } from './maintenance/app-storage-sweep-job'
+// Money P24 vendor-bill aging daily sweep — `awaiting_receipt` -> `exception`
+export { companyEnrichmentSweepJob } from './maintenance/company-enrichment-sweep-job'
 // Per-request provider deletion / deauthorize teardown
 // (plans/channels/meta-data-deletion-callback.md §4.4). On-demand: enqueued by the
 // Meta signed_request routes and the Shopify compliance webhook, never scheduled.
@@ -253,7 +256,6 @@ export {
   sendTrialConversionEmailsJob,
   type TrialConversionStats,
 } from './maintenance/trial-conversion-job'
-// Money P24 vendor-bill aging daily sweep — `awaiting_receipt` -> `exception`
 export { vendorBillAgingJob } from './maintenance/vendor-bill-aging-job'
 export {
   type WebhookRenewalJobData,
