@@ -8,7 +8,13 @@
 // WidgetFieldRefs. Field eligibility mirrors the server's validateGroupBy.
 
 import { FieldType } from '@auxx/database/enums'
-import type { DateGranularity, GroupBy, GroupSort, WidgetSource } from '@auxx/lib/dashboards/client'
+import {
+  type DateGranularity,
+  defaultGroupSort,
+  type GroupBy,
+  type GroupSort,
+  type WidgetSource,
+} from '@auxx/lib/dashboards/client'
 import type { SelectOption } from '@auxx/types/custom-field'
 import { isFieldPath, type ResourceFieldId } from '@auxx/types/field'
 import { useField } from '~/components/resources/hooks/use-field'
@@ -34,6 +40,14 @@ const SORT_OPTIONS: SelectOption[] = [
   { value: 'labelDesc', label: 'Label (Z → A)' },
 ]
 
+/** Same options for a date dimension, where "label" order IS chronological. */
+const DATE_SORT_OPTIONS: SelectOption[] = [
+  { value: 'labelAsc', label: 'Date (oldest → newest)' },
+  { value: 'labelDesc', label: 'Date (newest → oldest)' },
+  { value: 'valueDesc', label: 'Value (high → low)' },
+  { value: 'valueAsc', label: 'Value (low → high)' },
+]
+
 const leaf = (ref: GroupBy['fieldRef']): ResourceFieldId =>
   isFieldPath(ref) ? (ref[ref.length - 1] ?? ref[0]) : ref
 
@@ -57,6 +71,11 @@ export function GroupBySection({
   const field = useField(groupBy?.fieldRef ? leaf(groupBy.fieldRef) : null)
   const fieldType = field ? effectiveFieldTypeOf(field) : undefined
   const showGranularity = supportsDateGranularity(fieldType)
+  // Mirrors the server: a date dimension buckets by day unless told otherwise,
+  // and that is what decides the default sort.
+  const effectiveGranularity = showGranularity
+    ? (groupBy?.dateGranularity ?? ('day' as const))
+    : undefined
 
   const patch = (p: Partial<GroupBy>) => {
     if (!groupBy) return
@@ -90,10 +109,14 @@ export function GroupBySection({
           )}
           <ConfigFieldRow
             title='Sort'
-            description='Order the categories — by value (biggest first) or by name.'
+            description={
+              showGranularity
+                ? 'Order the buckets — chronologically, or by value.'
+                : 'Order the categories — by value (biggest first) or by name.'
+            }
             fieldType={FieldType.SINGLE_SELECT}
-            fieldOptions={{ options: SORT_OPTIONS }}
-            value={groupBy.sort ?? 'valueDesc'}
+            fieldOptions={{ options: showGranularity ? DATE_SORT_OPTIONS : SORT_OPTIONS }}
+            value={groupBy.sort ?? defaultGroupSort(effectiveGranularity)}
             onChange={(v) => patch({ sort: v as GroupSort })}
           />
           <ConfigFieldRow

@@ -84,7 +84,7 @@ export type GroupBy = {
   fieldRef: WidgetFieldRef
   /** Only when the resolved field is DATE/DATETIME. */
   dateGranularity?: DateGranularity
-  /** Default `'valueDesc'`. */
+  /** Default {@link defaultGroupSort} — chronological for date buckets. */
   sort?: GroupSort
   /** Default {@link DEFAULT_GROUP_LIMIT}, hard cap {@link MAX_GROUP_LIMIT}. */
   limit?: number
@@ -490,6 +490,16 @@ export const MAX_RECORD_LIST_PAGE_SIZE = 50
 export const DEFAULT_GAUGE_MAX = 100
 
 // ── Guards / helpers ────────────────────────────────────────────────────────
+
+/**
+ * The sort a group-by falls back to when it carries none. Date buckets sort
+ * chronologically (`labelAsc` compares the raw `yyyy-MM-dd` key, and the cyclic
+ * granularities their numeric key) — a time axis ordered by count is unreadable.
+ * Everything else keeps the biggest-first ranking a categorical chart wants.
+ */
+export function defaultGroupSort(dateGranularity: DateGranularity | undefined): GroupSort {
+  return dateGranularity ? 'labelAsc' : 'valueDesc'
+}
 
 /** Configs carrying a data `source` + `metric` (charts, KPI, gauge, recordList). */
 export function isDataWidget(config: WidgetConfiguration): config is DataWidgetConfig {

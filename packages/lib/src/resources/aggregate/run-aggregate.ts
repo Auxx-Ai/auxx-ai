@@ -23,6 +23,7 @@ import { getAggregateCache, getCachedResourceFields, PromiseMemoizer } from '../
 import { type ConditionGroup, resolveConditionContext } from '../../conditions'
 import {
   DEFAULT_GROUP_LIMIT,
+  defaultGroupSort,
   type GroupBy,
   MAX_GROUP_LIMIT,
   type WidgetFieldRef,
@@ -359,7 +360,7 @@ async function prepareAggregate(
     const resolvedGroup: ResolvedGroupBy = {
       field,
       dateGranularity,
-      sort: g.sort ?? 'valueDesc',
+      sort: g.sort ?? defaultGroupSort(dateGranularity),
       limit: Math.min(Math.max(g.limit ?? limit, 1), MAX_GROUP_LIMIT),
       omitEmpty: g.omitEmpty ?? false,
     }
@@ -571,6 +572,25 @@ function compareByLabel(
   const bn = Number(bv)
   if (Number.isFinite(an) && Number.isFinite(bn)) return an - bn
   return av.localeCompare(bv)
+}
+
+/**
+ * Apply the group cap. Categorical dimensions keep the FIRST `limit` groups —
+ * the sort already put the interesting ones there. A calendar date axis sorted
+ * chronologically must keep the most RECENT buckets instead: taking the head
+ * would end the chart months ago and read as "we stopped getting records".
+ * Cyclic granularities never exceed 12 keys, so they need no special case.
+ */
+export function capGroups(
+  sorted: AggregateGroup[],
+  groupBy: Pick<ResolvedGroupBy, 'dateGranularity' | 'sort'>,
+  limit: number
+): AggregateGroup[] {
+  if (sorted.length <= limit) return sorted
+  const calendarDates =
+    groupBy.dateGranularity !== undefined && !isCyclicGranularity(groupBy.dateGranularity)
+  if (calendarDates && groupBy.sort === 'labelAsc') return sorted.slice(sorted.length - limit)
+  return sorted.slice(0, limit)
 }
 
 function sortGroups(groups: AggregateGroup[], groupBy: ResolvedGroupBy): AggregateGroup[] {
@@ -821,7 +841,12 @@ async function computeAggregate(
   const totalValue = sorted.reduce((sum, g) => sum + g.value, 0)
   const hasMoreGroups = overflow || sorted.length > limit
 
-  return ok({ groups: sorted.slice(0, limit), totalValue, hasMoreGroups, ...droppedReport })
+  return ok({
+    groups: capGroups(sorted, groupBy, limit),
+    totalValue,
+    hasMoreGroups,
+    ...droppedReport,
+  })
 }
 
 /**
