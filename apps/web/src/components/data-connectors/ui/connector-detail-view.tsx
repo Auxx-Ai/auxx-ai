@@ -22,10 +22,10 @@ import {
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
 import { cn } from '@auxx/ui/lib/utils'
-import { ChevronDown, Plug, RefreshCw, Trash } from 'lucide-react'
+import { ArrowUpCircle, ChevronDown, Plug, RefreshCw, Trash } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useQueryState } from 'nuqs'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
 import { useResources } from '~/components/resources/hooks/use-resources'
 import { useConfirm } from '~/hooks/use-confirm'
@@ -40,6 +40,10 @@ import {
   visibleMappings,
 } from '../stores/connector-draft-store'
 import { ConnectorBreadcrumbSwitcher } from './connector-breadcrumb-switcher'
+import {
+  ConnectorCatalogUpdateDialog,
+  catalogDeploymentLabel,
+} from './connector-catalog-update-dialog'
 import { ConnectorDetailTabs } from './connector-detail-tabs'
 import { ConnectorResyncBanner } from './connector-resync-banner'
 import { ConnectorRunsPanel } from './connector-runs-panel'
@@ -62,9 +66,27 @@ interface ConnectorDetailViewProps {
  */
 export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
   const router = useRouter()
+  const utils = api.useUtils()
 
   const [confirm, ConfirmDialog] = useConfirm()
   const [, setTab] = useQueryState('tab')
+
+  // "Update available" (plans/money/tasks/41): derived at read time for app connectors
+  // only. The dialog applies the diff; afterwards every connector read is refetched so
+  // the draft store re-seeds and the re-sync banner picks up whatever was stamped.
+  const [updateOpen, setUpdateOpen] = useState(false)
+  const catalogUpdate = api.dataConnector.catalogUpdate.useQuery(
+    { id: connector.id },
+    { enabled: connector.definitionKind === 'app' }
+  )
+  const updateAvailable = catalogUpdate.data?.available === true
+  const handleUpdateApplied = () => {
+    void utils.dataConnector.catalogUpdate.invalidate({ id: connector.id })
+    void utils.dataConnector.getStatus.invalidate({ id: connector.id })
+    void utils.dataConnector.listStreams.invalidate({ id: connector.id })
+    void utils.dataConnector.getById.invalidate({ id: connector.id })
+    void utils.dataConnector.list.invalidate()
+  }
 
   // Owned entity defs this connector provisioned — already on the cached resource
   // shape (`CustomResource.dataConnectorId`), so no extra query. Used to spell out
@@ -237,9 +259,39 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
   return (
     <MainPage>
       <ConfirmDialog />
+      {catalogUpdate.data && (
+        <ConnectorCatalogUpdateDialog
+          connectorId={connector.id}
+          connectorName={connector.name}
+          update={catalogUpdate.data}
+          open={updateOpen}
+          onOpenChange={setUpdateOpen}
+          onApplied={handleUpdateApplied}
+        />
+      )}
       <MainPageHeader
         action={
           <div className='flex items-center gap-2'>
+            {/* Update available (task 41): the app's new version changed this connector's
+                definition. Gated on a clean draft so the apply never races unsaved edits. */}
+            {updateAvailable &&
+              (() => {
+                const button = (
+                  <Button
+                    variant='outline'
+                    size='xs'
+                    className={cn(isDirty && 'cursor-not-allowed opacity-50')}
+                    aria-disabled={isDirty}
+                    onClick={() => {
+                      if (isDirty) return
+                      setUpdateOpen(true)
+                    }}>
+                    <ArrowUpCircle />
+                    Update to {catalogDeploymentLabel(catalogUpdate.data?.to ?? null)}
+                  </Button>
+                )
+                return isDirty ? <Tooltip content='Save changes first'>{button}</Tooltip> : button
+              })()}
             {/* Reconnect stays a standalone CTA to the left of the cluster, shown only
                 when the connection needs attention (the resolver's action-needed state). */}
             {actionNeeded && (

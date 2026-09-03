@@ -384,6 +384,15 @@ export interface ResourceField {
   appFieldKey?: string
 
   /**
+   * Denormalized owning app slug for app-registered fields (undefined for
+   * user/system fields, and for rows provisioned before slug stamping). Lets a
+   * late-bound `@app:<slug>:<key>` ref pick the right column when two apps
+   * share an `appFieldKey` on the same definition (Stripe and Shopify both
+   * declare `customerId` on contacts).
+   */
+  appSlug?: string
+
+  /**
    * Owning DataConnector that provisioned this field (owned-mode only). When
    * set, the field's values are managed by a data connector and the column is
    * read-only (provisioning already sets `isUpdatable=false`). Surfaced so the

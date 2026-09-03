@@ -17,6 +17,7 @@ import type { ResourceFieldId } from '@auxx/types/field'
 import { and, eq, inArray, lt } from 'drizzle-orm'
 import { resolveConnectorFieldRef } from '../agents/bindings/resolve'
 import { reconcileInstallationAppFields } from '../apps/installations/app-field-provisioning'
+import type { SliceLedgerEntry } from '../sync-core/contracts'
 import { runSyncSlice } from '../sync-core/slice-runner'
 import { createThrottleHandle } from '../sync-core/throttle'
 import { connectionQuota } from '../utils/rate-limiter/quota'
@@ -63,9 +64,16 @@ export const SLICE_LOCK_DURATION_MS = 90_000
  * `fetched` count crosses this, so a mis-targeted or unexpectedly huge source can't
  * ingest unbounded volume + flood downstream jobs on shared infra. SOFT bound: the
  * check runs at slice (page) boundaries, so the actual stop overshoots by up to one
- * slice's worth of records — it's a guardrail, not an exact cap. The run parks
- * `partial` and the connector goes `paused`; "resume" (re-trigger) continues from the
- * checkpoint. NOT to be confused with `SLICE_BUDGET.maxRecords` (per-slice, not per-run).
+ * slice's worth of records; it's a guardrail, not an exact cap. NOT to be confused
+ * with `SLICE_BUDGET.maxRecords` (per-slice, not per-run).
+ *
+ * What happens at the ceiling: the run parks `partial`, the connector goes `paused`,
+ * and NOTHING re-queues. The next trigger (a human pressing Sync now, a schedule, a
+ * webhook) resumes every stream that was mid-backfill from its checkpointed cursor,
+ * whatever its `syncMode`; a source larger than the ceiling therefore needs one
+ * trigger per ceiling's worth of records, and each such run counts from zero. The
+ * ceiling is hard-coded and not per connector. Auto-continue and a configurable
+ * ceiling are plans/money/tasks/39 §6.3a step two.
  */
 export const MAX_BACKFILL_RECORDS = 9_000
 
@@ -277,12 +285,13 @@ async function startConnectorSyncInner(
   // (runs before `loadConnector`, on the raw rows). The connection `@app:` live-resolution
   // in the sink is a separate, unaffected concern.
 
-  // Phase decision (homogeneous per connector, G2):
-  //  - Incremental connector (every stream `syncMode='incremental'`): backfill ONCE
-  //    (resume mid-chain if a prior run crashed), then run STEADY watermark deltas
-  //    forever. Steady runs do NOT reset state.
-  //  - Snapshot connector (any non-incremental stream): re-crawl in FULL every run
-  //    so orphan reconciliation stays correct — always (re)backfill, reset cursors.
+  // RUN phase decision (one phase per run, G2):
+  //  - STEADY only when every stream is `syncMode='incremental'` AND every stream is
+  //    already past its backfill: the run is a watermark delta on all of them and
+  //    resets nothing.
+  //  - Otherwise BACKFILL. What each stream does inside a backfill run is decided
+  //    per stream below (resume / keep its delta / fresh crawl); the run phase only
+  //    picks who closes the run (the last stream, via the B1 latch, not the runner).
   // A sample run is always a bounded BACKFILL — there's no "sampling" a steady delta,
   // and a sample must never commit a watermark floor (trial-sync §2.1).
   const isSample = options.sampleLimit != null
@@ -295,29 +304,6 @@ async function startConnectorSyncInner(
     streamStates.every((st) => st.phase === 'steady')
       ? 'steady'
       : 'backfill'
-
-  // Reset to a fresh backfill unless we're resuming a crashed incremental backfill
-  // (keep its cursor) or running steady (keep its watermark).
-  const startedAtIso = new Date().toISOString()
-  if (phase === 'backfill') {
-    const span = connector.config?.backfillWindowSpan
-    for (const [i, s] of streams.entries()) {
-      const st = streamStates[i] ?? {}
-      const resumable = incrementalConnector && st.phase === 'backfill' && !!st.backfillCursor
-      // A sweep on an incremental stream is a watermark catch-up (v9 §3), not a fresh
-      // crawl — resetting state here would wipe the persisted watermark and turn every
-      // sweep into an unbounded from-scratch fetch on that stream, which is exactly the
-      // cost the per-stream syncMode split (Phase 4) exists to avoid. Snapshot streams
-      // still reset (their orphan reconciliation needs the full re-crawl).
-      const sweepIncrementalKeep = isSweep && s.syncMode === 'incremental'
-      if (resumable || sweepIncrementalKeep) continue
-      // Pin the floor per stream — the param is connector-level but the format is
-      // declared per stream; streams without a `backfillWindow` get no floor.
-      const window = s.stream.requestConfig?.backfillWindow
-      const floor = window ? computeBackfillFloor(span, window.format) : undefined
-      await persistStreamState(db, s.stream.id, freshBackfillState(st, startedAtIso, floor))
-    }
-  }
 
   // The pinned snapshot — decoded streams + (now-stamped) mappings. The mutable
   // stream `state`/cursor is deliberately NOT captured; it stays live.
@@ -342,6 +328,43 @@ async function startConnectorSyncInner(
     cursorBefore: connector.state,
     sampleLimit: options.sampleLimit ?? null,
   })
+
+  // Per-stream state decision for a backfill run (plans/money/tasks/39 §6.3a step one).
+  // A stream is reset to a fresh backfill only when it actually needs one:
+  //  - RESUME: phase `backfill` with a checkpointed cursor continues from it, whatever
+  //    its `syncMode`: a snapshot stream parked by the ingest ceiling picks up where
+  //    it stopped instead of re-reading page one on every trigger (§2.3).
+  //  - KEEP the delta: an incremental stream already in `steady` runs its watermark
+  //    catch-up inside this run (a plain re-trigger while a sibling is still
+  //    backfilling, or a sweep, v9 §3); resetting it would wipe the watermark and
+  //    turn the catch-up into an unbounded from-scratch fetch. Not for a sample (a
+  //    sample is a bounded backfill and must never commit a watermark floor), and not
+  //    for a stream with a pending structural re-sync (the backfill finalize clears
+  //    that marker, so the stream must really re-crawl in this run).
+  //  - FRESH otherwise: a snapshot stream past its backfill (its orphan reconciliation
+  //    needs the full re-crawl), a stream that never ran, a sample.
+  // The marker is the run row's own `startedAt`, so the orphan diff can key "seen this
+  // backfill" on runs started at or after it against one clock (`listBackfillRunIds`).
+  if (phase === 'backfill') {
+    const startedAtIso = run.startedAt.toISOString()
+    const span = connector.config?.backfillWindowSpan
+    const pendingResync = new Set(connector.resyncPending?.streamIds ?? [])
+    for (const [i, s] of streams.entries()) {
+      const st = streamStates[i] ?? {}
+      const resumable = st.phase === 'backfill' && !!st.backfillCursor
+      const keepDelta =
+        s.syncMode === 'incremental' &&
+        (st.phase === 'steady' || isSweep) &&
+        !isSample &&
+        !pendingResync.has(s.stream.id)
+      if (resumable || keepDelta) continue
+      // Pin the floor per stream — the param is connector-level but the format is
+      // declared per stream; streams without a `backfillWindow` get no floor.
+      const window = s.stream.requestConfig?.backfillWindow
+      const floor = window ? computeBackfillFloor(span, window.format) : undefined
+      await persistStreamState(db, s.stream.id, freshBackfillState(st, startedAtIso, floor))
+    }
+  }
 
   // Seed the completion latch to the stream count (B1) BEFORE enqueuing slices, so the
   // first stream to finish can't fire the connector finalize prematurely. Covers both
@@ -505,7 +528,12 @@ export async function runBackfillSlice(
     definition,
     credential,
     config: connector.config,
-    run: { id: runId, startedAt: run.startedAt },
+    // `phase` is a bare text column; the orchestrator only ever writes these two.
+    run: {
+      id: runId,
+      startedAt: run.startedAt,
+      phase: run.phase as 'backfill' | 'steady' | null,
+    },
     stream: streamSnap,
     allStreams: snapshot?.streams ?? [streamSnap],
     sweep: snapshot?.sweep ?? false,
@@ -523,11 +551,28 @@ export async function runBackfillSlice(
       ? { ...SLICE_BUDGET, maxRecords: Math.min(SLICE_BUDGET.maxRecords, run.sampleLimit) }
       : SLICE_BUDGET
 
+  // In a BACKFILL run the last stream closes the run (B1 latch, via the source's
+  // connector-level finalize), never the runner. A stream that kept its steady delta
+  // inside this run completes as `steady`, where the runner would call
+  // `ledger.finalize()` and close the run under sibling chains that are still crawling
+  // (their next slice reads `status !== 'running'` and stops, stranding the connector
+  // `syncing`). Make that call a no-op here; `finalizeSteady` closes the run instead
+  // when it is the last stream. A STEADY run keeps the runner's single-pass close.
+  const ledger = createConnectorRunLedger(db, { id: runId, startedAt: run.startedAt }, streamId)
+  const sliceLedger =
+    run.phase === 'backfill'
+      ? {
+          recordSlice: (entry: SliceLedgerEntry) => ledger.recordSlice(entry),
+          finalize: async () => {},
+          fail: (error: Error) => ledger.fail(error),
+        }
+      : ledger
+
   const sliceSignal = signal ?? new AbortController().signal
   const outcome = await runSyncSlice({
     source,
     stateStore: createStreamSyncStateStore(db, streamId),
-    ledger: createConnectorRunLedger(db, { id: runId, startedAt: run.startedAt }, streamId),
+    ledger: sliceLedger,
     throttle: createThrottleHandle(connectorQuota(connector), { signal: sliceSignal }),
     budget,
     signal: sliceSignal,
@@ -564,6 +609,9 @@ export async function runBackfillSlice(
           dataConnectorId: connectorId,
           sampleLimit: run.sampleLimit,
           startedAt: run.startedAt,
+          // The last stream links what the sample can link before the run parks
+          // (plans/money/tasks/39 §3.6), so the review shows related records related.
+          beforePark: () => source.resolveRelationshipsAtPark(),
         })
         await publishConnectorSync(db, organizationId, connectorId, 'run-finished')
         return
@@ -583,6 +631,11 @@ export async function runBackfillSlice(
           fetched,
           ceiling: MAX_BACKFILL_RECORDS,
         })
+        // A parked run never reaches the connector-level finalize, so link what this
+        // run can link BEFORE the run is marked partial (plans/money/tasks/39 §3.6).
+        // Edges whose target is still unsynced stay pending; the resumed run's
+        // finalize resolves them. The pass logs its resolved / still-pending counts.
+        await source.resolveRelationshipsAtPark()
         await parkBackfillAtCeiling(db, {
           runId,
           dataConnectorId: connectorId,
@@ -620,9 +673,10 @@ export async function runBackfillSlice(
     return
   }
 
-  // 'complete'. For BACKFILL the source already finalized the run + released the
-  // connector on its last stream (via the runner's `finalizeBackfill`). For STEADY
-  // the runner closed the run, but connector release is handler-owned — fire the
+  // 'complete'. For a stream that finished its BACKFILL the source already finalized
+  // the run + released the connector on the last stream (via the runner's
+  // `finalizeBackfill`). For a stream that completed a STEADY delta the connector
+  // release (and, inside a backfill run, the run close) is handler-owned; fire the
   // last-stream finalize here (no-op for non-last streams via the B1 latch).
   if (outcome.completedPhase === 'steady') {
     await source.finalizeSteady()

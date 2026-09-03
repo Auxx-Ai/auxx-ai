@@ -28,7 +28,7 @@ import type { SliceResult, SyncRunCounters, SyncSliceCtx, SyncSource } from '../
 import { runAsyncExportSlice } from './async-export'
 import { flattenConnectionMeta } from './connection-meta'
 import { runConnectorSlice } from './connector-slice-loop'
-import { reconcileManagedMarkers, reconcileOrphans } from './reconciliation'
+import { listBackfillRunIds, reconcileManagedMarkers, reconcileOrphans } from './reconciliation'
 import { newRecordFailureTally } from './record-failure-tally'
 import { resolveRelationships } from './relationship-pass'
 import {
@@ -99,7 +99,13 @@ export interface ConnectorSyncSourceDeps {
   definition: DataConnectorDefinition
   credential: RuntimeConnectionData | null
   config: DataConnectorConfig
-  run: { id: string; startedAt: Date }
+  /**
+   * The run this slice belongs to. `phase` is the RUN's phase (one per run): inside a
+   * `backfill` run the last stream closes the run whichever phase it completed in,
+   * because a sibling may have kept its steady delta while another stream crawled
+   * (see `finalizeSteady`). Absent/null on a legacy single-shot run.
+   */
+  run: { id: string; startedAt: Date; phase?: 'backfill' | 'steady' | null }
   /** The pinned stream this source drives (its own continuation chain). */
   stream: SyncSourceStream
   /**
@@ -137,6 +143,17 @@ export interface ConnectorSyncSourceDeps {
  */
 export interface ConnectorSyncSource extends SyncSource {
   finalizeSteady(): Promise<void>
+  /**
+   * The park-time relationship pass (plans/money/tasks/39 §3.6). A run parked at the
+   * ingest ceiling or a sample cap never reaches the connector-level finalize, so
+   * without this every edge whose target has already synced stays pending while the
+   * stream cards read "done". Same ctx and `relationshipCrud` session as the finalize
+   * (events fire the same way) and the same counter fold; unresolved edges stay
+   * pending and count as relationship warnings. The pass is idempotent, so the later
+   * finalize re-checks the same edges at the cost of one bulk pre-read. Call it BEFORE
+   * the run is marked `partial`.
+   */
+  resolveRelationshipsAtPark(): Promise<void>
 }
 
 class ConnectorStreamSyncSource implements ConnectorSyncSource {
@@ -297,19 +314,46 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
         dataConnectorId: this.deps.connector.id,
         sampleLimit: this.deps.sampleLimit,
         startedAt: this.deps.run.startedAt,
+        beforePark: () => this.resolveRelationshipsAtPark(),
       })
       return
     }
     await this.finalizeConnectorLevel({ finalizeRun: true, phase: 'backfill' })
   }
 
+  async resolveRelationshipsAtPark(): Promise<void> {
+    const counters = newRunCounters()
+    // The pass resolves across ALL streams (an order's contact came from a sibling
+    // stream), so warm every target def, exactly as the finalize does.
+    const allMappings = this.deps.allStreams.flatMap((s) => s.mappings)
+    const syncCtx = await this.buildCtx(counters, allMappings)
+
+    await resolveRelationships(syncCtx, { stage: 'park' })
+    await this.emitRecordsInvalidated(syncCtx.touchedDefs)
+
+    // Fold the pass's warnings the way the finalize folds its own (no checkpoint key,
+    // always folds), then fold its writes into the run manifest.
+    const ledger = createConnectorRunLedger(this.deps.db, this.deps.run, this.deps.stream.streamId)
+    await ledger.recordSlice({
+      counters: toSyncCounters(counters),
+      errorSample: counters.errorSample,
+    })
+    await this.persistManifest(syncCtx)
+  }
+
   /**
-   * Fired by the slice HANDLER when THIS stream's STEADY pass completes (the runner
-   * already closed the run for steady). The last stream resolves relationships +
-   * reconciles (which self-skips incremental streams) and releases the connector.
+   * Fired by the slice HANDLER when THIS stream's STEADY pass completes. In a STEADY
+   * run the runner already closed the run; in a BACKFILL run this stream kept its
+   * watermark delta while a sibling crawled, the handler made the runner's close a
+   * no-op, and the last stream closes the run here. Either way the last stream
+   * resolves relationships + reconciles (which self-skips incremental streams) and
+   * releases the connector.
    */
   async finalizeSteady(): Promise<void> {
-    await this.finalizeConnectorLevel({ finalizeRun: false, phase: 'steady' })
+    await this.finalizeConnectorLevel({
+      finalizeRun: this.deps.run.phase === 'backfill',
+      phase: 'steady',
+    })
   }
 
   /**
@@ -342,8 +386,24 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
     const syncCtx = await this.buildCtx(counters, allMappings)
 
     await resolveRelationships(syncCtx)
-    // reconcileOrphans self-skips non-snapshot streams, so it's a no-op for steady.
-    await reconcileOrphans(syncCtx, this.deps.allStreams)
+    // reconcileOrphans self-skips non-snapshot streams, so it's a no-op for steady. A
+    // snapshot stream's crawl may have spanned several runs (parked at the ingest
+    // ceiling, resumed from its cursor on the next trigger), so "seen this backfill"
+    // is the set of runs since the stream's backfill began, not just this run.
+    const reconcilable = await Promise.all(
+      this.deps.allStreams.map(async (s) =>
+        s.syncMode === 'snapshot'
+          ? {
+              ...s,
+              seenRunIds: await listBackfillRunIds(this.deps.db, {
+                dataConnectorId: this.deps.connector.id,
+                streamId: s.streamId,
+              }),
+            }
+          : s
+      )
+    )
+    await reconcileOrphans(syncCtx, reconcilable)
     // Clear contributing markers for fields the connector no longer maps (the FK
     // set-null only covers connector deletion, not a reconfigured mapping).
     await reconcileManagedMarkers(syncCtx, this.deps.allStreams)
@@ -360,17 +420,19 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
       errorSample: counters.errorSample,
     })
 
-    // Close the run for backfill (delegated by the runner); steady already finalized
-    // in the runner. Then release the connector claim + stamp the item count.
+    // Close the run when this finalize owns it (a backfill run; the runner delegates
+    // that here); a steady run was already finalized in the runner. Then release the
+    // connector claim + stamp the item count.
     if (opts.finalizeRun) await ledger.finalize()
     await finalizeConnector(this.deps.db, this.deps.connector.id, {
       ok: true,
       itemCount: await countConnectorItems(this.deps.db, this.deps.connector.id),
     })
-    // A completed BACKFILL re-projected + re-bound all history, so any pending
-    // mapping-edit re-sync is satisfied — clear the banner marker. A steady run
-    // touches only deltas, so it must NOT clear a pending rebackfill/rebind.
-    if (opts.phase === 'backfill') {
+    // A completed BACKFILL run re-crawled every stream with a pending mapping-edit
+    // re-sync (the orchestrator never lets such a stream keep its delta), so the
+    // marker is satisfied, so clear the banner. A steady run touches only deltas, so it
+    // must NOT clear a pending rebackfill/rebind.
+    if (opts.finalizeRun) {
       await clearResyncPending(this.deps.db, this.deps.connector.id)
     }
 

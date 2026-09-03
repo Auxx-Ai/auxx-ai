@@ -55,6 +55,10 @@ export const DataConnectorStream = pgTable(
     // Schema-inference provenance, if a sample run shaped this stream.
     sampleRunId: text(),
 
+    /** Hash of the shape the app catalog seeder wrote (task 41 D3); null when the row was
+     *  created by hand or before this column existed. */
+    catalogHash: text(),
+
     createdAt: timestamp({ precision: 3 }).defaultNow().notNull(),
     updatedAt: timestamp({ precision: 3 })
       .defaultNow()

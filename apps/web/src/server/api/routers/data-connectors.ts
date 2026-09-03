@@ -12,7 +12,9 @@ import { getCachedInstalledApps, getCachedResourceFields } from '@auxx/lib/cache
 import {
   addMapping,
   addStream,
+  applyConnectorCatalogUpdate,
   backfillPendingChange,
+  countPendingRelationsByTarget,
   createConnector,
   createConnectorFromAppCatalog,
   createConnectorFromTemplate,
@@ -23,6 +25,7 @@ import {
   finishConnectorSetup,
   getAllConnectorTemplates,
   getConnector,
+  getConnectorCatalogUpdate,
   getConnectorReadiness,
   getConnectorTemplateById,
   listConnectors,
@@ -376,10 +379,12 @@ export const dataConnectorRouter = createTRPCRouter({
       }
       const c = result.value
 
-      const [runs, streams] = await Promise.all([
+      const [runs, streams, pendingLinksResult] = await Promise.all([
         listRuns(ctx.db, ctx.session.organizationId, input.id, 1),
         listStreams(ctx.db, ctx.session.organizationId, input.id),
+        countPendingRelationsByTarget(ctx.db, ctx.session.organizationId, input.id),
       ])
+      if (pendingLinksResult.isErr()) throw pendingLinksResult.error
       const latest = runs[0] ?? null
 
       // Per-stream live progress, read off each stream's durable state jsonb. `done`
@@ -449,6 +454,10 @@ export const dataConnectorRouter = createTRPCRouter({
         cadenceLabel,
         latestRun,
         perStream,
+        // Relationship edges still to wire, per (source def, target def). Non-empty
+        // after a parked run whose targets have not synced yet; the runs panel shows
+        // them under the stream cards (plans/money/tasks/39 §3.6).
+        pendingLinks: pendingLinksResult.value,
       }
     }),
 
@@ -918,5 +927,38 @@ export const dataConnectorRouter = createTRPCRouter({
     .input(z.object({ mappingId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       return removeMapping(ctx.db, ctx.session.organizationId, input.mappingId)
+    }),
+
+  // ── Catalog update (plans/money/tasks/41) ──────────────────────────────────
+
+  /**
+   * "Update available" for an app connector: whether the installation's current
+   * deployment carries a different connector section than the one the rows were seeded
+   * from, and the per-row diff the dialog renders. Derived at read time (D2).
+   */
+  catalogUpdate: permissionProcedure(PermissionKey.connectorsManage)
+    .input(z.object({ id: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const result = await getConnectorCatalogUpdate(ctx.db, ctx.session.organizationId, input.id)
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /**
+   * Apply the accepted diff entries through the existing stream/mapping mutations (D4),
+   * stamp the new catalog hashes and move `catalogDeploymentId` forward. The client
+   * omits a conflict entry to keep its own version.
+   */
+  applyCatalogUpdate: permissionProcedure(PermissionKey.connectorsManage)
+    .input(z.object({ id: z.string(), entryIds: z.array(z.string()) }))
+    .mutation(async ({ ctx, input }) => {
+      const result = await applyConnectorCatalogUpdate(
+        ctx.db,
+        ctx.session.organizationId,
+        input.id,
+        { entryIds: input.entryIds }
+      )
+      if (result.isErr()) throw result.error
+      return result.value
     }),
 })

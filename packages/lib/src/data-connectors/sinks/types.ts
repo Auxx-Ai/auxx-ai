@@ -30,6 +30,11 @@ export interface ProjectedRecord {
     targetFieldRef: ResourceFieldId
     value: unknown
     normalize?: 'email' | 'phone' | 'domain' | 'none'
+    /**
+     * The binding's `identityRole.exclusive`: a hit on a record a sibling of the
+     * same mapping already binds is skipped, never bound (plan 39 section 6.1).
+     */
+    exclusive?: boolean
   }>
   /** Pending relations to register on this record's item (resolved in the two-pass). */
   pendingRelations: PendingRelation[]

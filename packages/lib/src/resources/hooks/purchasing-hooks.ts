@@ -11,25 +11,21 @@ import {
   PURCHASE_ORDER_ACTION_STATUS_MESSAGE,
   PURCHASE_ORDER_ACTION_STATUSES,
 } from './lifecycle-status-guard'
+import { keepOrAllocateRecordNumber } from './record-number-hook'
 import type { SystemHook, SystemHookRegistry } from './types'
 
 const logger = createScopedLogger('resources:purchasing-hooks')
 
 /**
- * Auto-generate the purchase order number on create. Mirrors autoGenerateOrderNumber.
- * `purchase_order_number` has creatable:false/updatable:false, so this hook is the ONLY
- * writer (plans/purchasing/01-build-plan.md §4.1).
+ * Number the purchase order on create. Mirrors autoGenerateOrderNumber.
+ * `purchase_order_number` has creatable:false/updatable:false, so this hook is the only
+ * writer when nothing is supplied (plans/purchasing/01-build-plan.md §4.1); a data
+ * connector that brings the source's own PO number keeps it and no `PO-` number is
+ * allocated ("theirs if they bring one, otherwise ours",
+ * plans/money/tasks/39-shopify-first-sync-followups.md section 6.5).
  */
-const autoGeneratePurchaseOrderNumber: SystemHook = async ({
-  operation,
-  field,
-  values,
-  organizationId,
-}) => {
-  if (operation !== 'create') return values
-  const { recordNumber } = await recordNumbering.create(organizationId, 'purchase_order')
-  return { ...values, [field.id]: recordNumber }
-}
+const autoGeneratePurchaseOrderNumber: SystemHook = (context) =>
+  keepOrAllocateRecordNumber(context, 'purchase_order')
 
 /**
  * Auto-generate OUR reference for a vendor bill on create — RecordSequence scope

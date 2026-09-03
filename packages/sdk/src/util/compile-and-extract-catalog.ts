@@ -265,8 +265,8 @@ export interface CatalogConnectorContributingMappingField {
   target?: string
   /** Names a `defineFields` field declared for the same `entityKind`. */
   appField?: string
-  /** Secondary identity-match flag. */
-  match?: boolean
+  /** Secondary identity-match flag; `'exclusive'` skips a second hit instead of binding it. */
+  match?: boolean | 'exclusive'
   /** Per-field write behavior once bound. Default 'overwrite'. */
   mergeStrategy?: string
   /** Required only for a source-only field with no target/appField. */
@@ -370,21 +370,24 @@ export type CompileAndExtractCatalogError =
  * System attributes a contributing mapping field's `target` may never name —
  * an extract-time hard error, not a warning. The extractor cannot see the
  * platform's entity registry, so this list is a constant kept by hand; it
- * covers the record-identity + numbering columns a connector binding could
- * otherwise silently clobber (today's explicit binder skips `isWritableTarget`
- * and binds anything — see app-fields-and-entities-guide.md §2.4 "Reserved
- * targets"). Detecting a **computed** field (e.g. an entity's derived total)
- * is NOT done here — the extractor has no access to `FieldCapabilities.computed`
- * for a target it doesn't own, so that check is left to the platform seeder at
- * connector-materialization time.
+ * covers the record-identity columns a connector binding could otherwise
+ * silently clobber (today's explicit binder skips `isWritableTarget` and binds
+ * anything, see app-fields-and-entities-guide.md §2.4 "Reserved targets").
+ * `order_number`, `invoice_number` and `purchase_order_number` are deliberately
+ * NOT reserved: a connector that brings the source's own document number keeps
+ * it, and the numbering hook only allocates when nothing was supplied ("theirs
+ * if they bring one, otherwise ours", plans/money/tasks/39 section 6.5). The
+ * platform mirrors that in `CONNECTOR_WRITABLE_NUMBERS_ALLOWLIST`. Quote
+ * numbers stay hook-only. Detecting a **computed** field (e.g. an entity's
+ * derived total) is NOT done here: the extractor has no access to
+ * `FieldCapabilities.computed` for a target it doesn't own, so that check is
+ * left to the platform seeder at connector-materialization time.
  */
 const RESERVED_SYSTEM_ATTRIBUTES = new Set([
   'record_id',
   'created_at',
   'updated_at',
   'created_by_id',
-  'order_number',
-  'invoice_number',
   'quote_number',
   'part_quantity_on_hand',
 ])
@@ -1306,7 +1309,7 @@ interface RawConnectorContributingMappingField {
   sourcePath: string
   target?: string
   appField?: string
-  match?: boolean
+  match?: boolean | 'exclusive'
   mergeStrategy?: string
   type?: string
   name?: string

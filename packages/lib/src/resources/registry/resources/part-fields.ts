@@ -69,19 +69,22 @@ export const PART_FIELDS: Record<string, ResourceField> = {
     systemAttribute: 'part_sku',
     systemSortOrder: 'a2',
     dbColumn: 'sku',
-    nullable: false,
+    // Optional since money plan 39 section 6.2: blank SKUs are the norm at small
+    // Shopify stores, and a required SKU left such a merchant with no parts at
+    // all. Still unique when set, and still the import/connector match key.
+    nullable: true,
     isIdentifier: true,
     capabilities: {
       filterable: true,
       sortable: true,
       creatable: true,
       updatable: true,
-      required: true,
+      required: false,
       unique: true,
       configurable: false,
     },
     placeholder: 'Enter SKU',
-    description: 'Stock Keeping Unit - must be unique',
+    description: 'Stock Keeping Unit - optional, unique when set',
   },
 
   description: {

@@ -334,8 +334,8 @@ export interface CatalogConnectorContributingMappingField {
   target?: string
   /** Names a `defineFields` field declared for the same `entityKind`. */
   appField?: string
-  /** Secondary identity-match flag. */
-  match?: boolean
+  /** Secondary identity-match flag; `'exclusive'` skips a second hit instead of binding it. */
+  match?: boolean | 'exclusive'
   /** Per-field write behavior once bound. Default 'overwrite'. */
   mergeStrategy?: CatalogFieldMergeStrategy
   /** Required only for a source-only field with no target/appField. */

@@ -40,7 +40,14 @@ export function makeConnectorRow(overrides: Partial<DataConnectorRow> = {}): Dat
   } as DataConnectorRow
 }
 
-/** One fixture product record, in the shape `fixtureConnector` expects under `config.filters.fixtures`. */
+/**
+ * One fixture product record, in the shape `fixtureConnector` expects under
+ * `config.filters.fixtures` — the post-task-37 Shopify projection shape
+ * (`shopify_id` at the product root, `shopifyId` per variant; see
+ * `extractVariantsFromProducts`'s docblock). The `id` parameter name is kept
+ * as this helper's own input shape for caller convenience; only the emitted
+ * `fields` keys changed.
+ */
 export function makeFixtureProductRecord(input: {
   externalId: string
   displayName?: string
@@ -51,9 +58,13 @@ export function makeFixtureProductRecord(input: {
     externalId: input.externalId,
     displayName: input.displayName ?? input.externalId,
     fields: {
-      id: input.externalId,
+      shopify_id: input.externalId,
       title: input.displayName ?? input.externalId,
-      variants: input.variants.map((v) => ({ id: v.id, sku: v.sku, title: v.title ?? null })),
+      variants: input.variants.map((v) => ({
+        shopifyId: v.id,
+        sku: v.sku,
+        title: v.title ?? null,
+      })),
     },
   }
 }

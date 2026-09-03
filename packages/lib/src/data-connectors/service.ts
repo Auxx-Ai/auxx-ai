@@ -10,6 +10,7 @@ import { and, asc, count, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm
 import { err, ok, type Result } from 'neverthrow'
 import type { SyncChangeManifest, SyncChangeManifestV1 } from '../record-rules/sync-manifest-types'
 import type { SyncRunErrorSample } from '../sync-core/contracts'
+import { hashCatalogConnectorSection, selectCatalogConnector } from './catalog-shape'
 import { maxLevel } from './edit-impact'
 import type {
   FieldMapping,
@@ -648,12 +649,25 @@ export async function parkConnectorSampleIfLastStream(
     dataConnectorId: string
     sampleLimit: number
     startedAt: Date
+    /**
+     * Runs on the LAST stream only, after the latch says the park is happening and
+     * before the run is marked `partial`: the park-time relationship pass
+     * (plans/money/tasks/39 §3.6), so the sampled records link to each other for review.
+     */
+    beforePark?: () => Promise<void>
   }
 ): Promise<void> {
   const remaining = await decrementConnectorBackfillLatch(db, input.dataConnectorId)
   if (remaining !== null && remaining > 0) return
+  await input.beforePark?.()
   const fetched = await getRunFetched(db, input.runId)
-  await parkBackfillAtSample(db, { ...input, fetched })
+  await parkBackfillAtSample(db, {
+    runId: input.runId,
+    dataConnectorId: input.dataConnectorId,
+    sampleLimit: input.sampleLimit,
+    startedAt: input.startedAt,
+    fetched,
+  })
 }
 
 /** Persist a stream's incremental cursor after the stream completes. */
@@ -1016,6 +1030,69 @@ export async function readRelationshipTargets(
   return out
 }
 
+/**
+ * One row of {@link countPendingRelationsByTarget}: the unresolved edges written on
+ * one def that resolve against one other def ("line item to part").
+ */
+export interface PendingRelationTargetCount {
+  /** The def carrying the edge (the belongs_to side). */
+  sourceDef: string
+  sourceLabel: string
+  /** The def the edge resolves against. */
+  targetDef: string
+  apiSlug: string
+  label: string
+  /** Distinct live items still carrying at least one unresolved edge to this target. */
+  records: number
+  /** Unresolved edges; an item carries at most one per relationship field. */
+  edges: number
+}
+
+/**
+ * How many relationship edges the connector still has to wire, per (source def,
+ * target def). A run parked at the ingest ceiling or a sample cap never reaches the
+ * connector-level finalize, so its edges whose target has not synced yet sit in
+ * `pendingRelations` while the stream cards read "done"; the runs panel shows this
+ * count instead (plans/money/tasks/39 §3.6). One aggregate: live bound items only
+ * (an archived or unbound row never gets a pass), the jsonb expanded per edge, CLEAR
+ * edges (null `targetExternalId`) excluded because they are terminal, not pending.
+ * Largest group first.
+ */
+export async function countPendingRelationsByTarget(
+  db: Database,
+  organizationId: string,
+  dataConnectorId: string
+): Promise<Result<PendingRelationTargetCount[], Error>> {
+  const I = schema.DataConnectorItem
+  const D = schema.EntityDefinition
+  try {
+    const result = await db.execute(sql`
+      SELECT
+        ${I.entityDefinitionId} AS "sourceDef",
+        source.singular AS "sourceLabel",
+        edge.value ->> 'targetDef' AS "targetDef",
+        target."apiSlug" AS "apiSlug",
+        target.singular AS "label",
+        COUNT(DISTINCT ${I.id})::int AS "records",
+        COUNT(*)::int AS "edges"
+      FROM ${I}
+      CROSS JOIN LATERAL jsonb_array_elements(COALESCE(${I.pendingRelations}, '[]'::jsonb)) AS edge
+      JOIN ${D} AS source ON source.id = ${I.entityDefinitionId}
+      JOIN ${D} AS target ON target.id = edge.value ->> 'targetDef'
+      WHERE ${I.organizationId} = ${organizationId}
+        AND ${I.dataConnectorId} = ${dataConnectorId}
+        AND ${I.archivedAt} IS NULL
+        AND ${I.entityInstanceId} IS NOT NULL
+        AND edge.value ->> 'targetExternalId' IS NOT NULL
+      GROUP BY 1, 2, 3, 4, 5
+      ORDER BY "edges" DESC, "targetDef", "sourceDef"
+    `)
+    return ok((result.rows ?? []) as unknown as PendingRelationTargetCount[])
+  } catch (error) {
+    return err(error instanceof Error ? error : new Error(String(error)))
+  }
+}
+
 /** Mark an item archived (set archivedAt). */
 export async function markItemArchived(
   db: Database,
@@ -1033,15 +1110,85 @@ export async function markItemArchived(
 
 // ── Reads for the (later) tRPC router ─────────────────────────────────────────
 
-/** List connectors for an org. */
+/** A connector row as the list reads it. */
+export interface ConnectorListRow extends DataConnectorRow {
+  /**
+   * An app connector whose installation moved to a deployment with a different
+   * connector section than the one its rows were seeded from (task 41 D2). Derived at
+   * read time, never stored.
+   */
+  updateAvailable: boolean
+}
+
+/** List connectors for an org, each flagged with `updateAvailable`. */
 export async function listConnectors(
   db: Database,
   organizationId: string
-): Promise<DataConnectorRow[]> {
-  return db.query.DataConnector.findMany({
+): Promise<ConnectorListRow[]> {
+  const rows = await db.query.DataConnector.findMany({
     where: eq(schema.DataConnector.organizationId, organizationId),
     orderBy: desc(schema.DataConnector.createdAt),
   })
+  const flags = await catalogUpdateFlags(db, rows)
+  return rows.map((row) => ({ ...row, updateAvailable: flags.get(row.id) ?? false }))
+}
+
+/**
+ * The "update available" flag per app connector: its installation's current deployment
+ * differs from `catalogDeploymentId` AND the two catalogs' connector sections differ.
+ * One query for the installations, one for the deployments involved; the section hash
+ * is computed per deployment, not per row.
+ */
+async function catalogUpdateFlags(
+  db: Database,
+  rows: readonly DataConnectorRow[]
+): Promise<Map<string, boolean>> {
+  const flags = new Map<string, boolean>()
+  const appRows = rows.filter((r) => r.definitionKind === 'app' && r.appInstallationId)
+  if (appRows.length === 0) return flags
+
+  const installations = await db.query.AppInstallation.findMany({
+    where: inArray(
+      schema.AppInstallation.id,
+      appRows.map((r) => r.appInstallationId as string)
+    ),
+    columns: { id: true, currentDeploymentId: true, uninstalledAt: true },
+  })
+  const installationById = new Map(installations.map((i) => [i.id, i]))
+
+  const deploymentIds = new Set<string>()
+  for (const row of appRows) {
+    const current = installationById.get(row.appInstallationId as string)?.currentDeploymentId
+    if (current) deploymentIds.add(current)
+    if (row.catalogDeploymentId) deploymentIds.add(row.catalogDeploymentId)
+  }
+  const deployments =
+    deploymentIds.size === 0
+      ? []
+      : await db.query.AppDeployment.findMany({
+          where: inArray(schema.AppDeployment.id, [...deploymentIds]),
+          columns: { id: true, catalog: true },
+        })
+  const sectionHashById = new Map(
+    deployments.map((d) => {
+      const section = selectCatalogConnector(d.catalog)
+      return [d.id, section ? hashCatalogConnectorSection(section) : null] as const
+    })
+  )
+
+  for (const row of appRows) {
+    const installation = installationById.get(row.appInstallationId as string)
+    const current = installation?.currentDeploymentId
+    if (!installation || installation.uninstalledAt || !current) continue
+    if (row.catalogDeploymentId === current) continue
+    const newHash = sectionHashById.get(current) ?? null
+    if (newHash == null) continue
+    const oldHash = row.catalogDeploymentId
+      ? (sectionHashById.get(row.catalogDeploymentId) ?? null)
+      : null
+    flags.set(row.id, oldHash !== newHash)
+  }
+  return flags
 }
 
 /** Get one connector by id, org-scoped. */

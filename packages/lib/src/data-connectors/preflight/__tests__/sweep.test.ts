@@ -54,7 +54,7 @@ describe('extractVariantsFromProducts', () => {
         streamKey: 'product',
         externalId: '',
         displayName: '',
-        fields: { variants: [{ id: 'var_1' }] },
+        fields: { variants: [{ shopifyId: 'var_1' }] },
       },
     ]
 
@@ -72,9 +72,9 @@ describe('drainConnectorFetch', () => {
         externalId: `prod_${page}`,
         displayName: `prod_${page}`,
         fields: {
-          id: `prod_${page}`,
+          shopify_id: `prod_${page}`,
           variants: [
-            { id: `var_${page}`, sku: page === 1 || page === 7 ? 'DUP' : `UNIQUE-${page}` },
+            { shopifyId: `var_${page}`, sku: page === 1 || page === 7 ? 'DUP' : `UNIQUE-${page}` },
           ],
         },
       }

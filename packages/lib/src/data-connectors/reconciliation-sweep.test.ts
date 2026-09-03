@@ -78,4 +78,27 @@ describe('reconcileOrphans sweep gate', () => {
     await reconcileOrphans(ctx(true), [{ syncMode: 'snapshot', mappings: [mapping] }])
     expect(archiveRecord).toHaveBeenCalledTimes(1)
   })
+
+  // plans/money/tasks/39 §6.3a: a snapshot crawl parked at the ingest ceiling resumes
+  // across runs, so an item last seen in an EARLIER run of the same backfill is not an
+  // orphan. `seenRunIds` (the runs since the stream's backfill began) widens the diff;
+  // the finalizing run always counts, and a run from before the backfill never does.
+  it('keeps an item last seen in an earlier run of the same backfill (seenRunIds)', async () => {
+    listExistingItems.mockResolvedValue([
+      { id: 'i-old', entityInstanceId: 'i0', entityDefinitionId: 'def1', lastSeenRunId: 'run-old' },
+      { id: 'i-first', entityInstanceId: 'i1', entityDefinitionId: 'def1', lastSeenRunId: 'run-1' },
+      {
+        id: 'i-current',
+        entityInstanceId: 'i2',
+        entityDefinitionId: 'def1',
+        lastSeenRunId: 'run-current',
+      },
+      { id: 'i-never', entityInstanceId: 'i3', entityDefinitionId: 'def1', lastSeenRunId: null },
+    ])
+    await reconcileOrphans(ctx(false), [
+      { syncMode: 'snapshot', mappings: [mapping], seenRunIds: new Set(['run-1']) },
+    ])
+    const archivedIds = archiveRecord.mock.calls.map((c) => (c[1] as { id: string }).id)
+    expect(archivedIds).toEqual(['i-old', 'i-never'])
+  })
 })

@@ -9,6 +9,49 @@
 export { collectSchemaLeaves, type SourceLeaf } from '../json-schema'
 // App-catalog → setup materialization (create-sync-flow §3.1, Tier 1)
 export { appCatalogStreamSchema, buildSchemaFromFieldPaths } from './app-catalog'
+// Connector catalog update (plans/money/tasks/41): the seeder's shape, the three-way
+// diff, and the read + apply behind "Update available".
+export type {
+  BindingSummary,
+  CatalogApplyStep,
+  CatalogChange,
+  CatalogDiffEntry,
+  ConnectorCatalogDiff,
+  StreamShapeField,
+} from './catalog-diff'
+export { applyBindingOp, diffConnectorCatalog, summarizeBinding } from './catalog-diff'
+export type {
+  BindingShape,
+  DerivedMapping,
+  DerivedStream,
+  MappingShape,
+  PersistedMapping,
+  PersistedShapeContext,
+  PersistedStream,
+  ShapeResolver,
+  StreamShape,
+} from './catalog-shape'
+export {
+  deriveConnectorShape,
+  deriveStreamShape,
+  hashCatalogConnectorSection,
+  hashMappingShape,
+  hashStreamShape,
+  selectCatalogConnector,
+  shapeFromPersistedStreams,
+} from './catalog-shape'
+export type {
+  ApplyConnectorCatalogUpdateInput,
+  ApplyConnectorCatalogUpdateResult,
+  CatalogUpdateWriters,
+} from './catalog-update'
+export { applyConnectorCatalogUpdate } from './catalog-update'
+export type {
+  CatalogUpdateDeployment,
+  ConnectorCatalogUpdate,
+  ConnectorCatalogUpdateContext,
+} from './catalog-update-queries'
+export { computeConnectorCatalogUpdate, getConnectorCatalogUpdate } from './catalog-update-queries'
 // Connector runtime — the shared definition+credential seam + test-fetch
 export type {
   PreparedConnectorFetch,
@@ -102,6 +145,8 @@ export {
   deleteConnector,
   finishConnectorSetup,
   listSharedOwnedDefIds,
+  loadShapeResolver,
+  persistStreamShape,
   projectConnectorOwnedTargets,
   removeMapping,
   removeStream,
@@ -162,7 +207,7 @@ export {
   type RecommendedAppConnector,
 } from './recommended-app-connectors'
 export { archiveExternalId, handleConnectorDelete, reconcileOrphans } from './reconciliation'
-export { resolveRelationships } from './relationship-pass'
+export { type RelationshipPassSummary, resolveRelationships } from './relationship-pass'
 // Orchestrator + passes
 export type { ResolveConnectorConfigOptionsInput } from './resolve-config-options'
 export { resolveConnectorConfigOptions } from './resolve-config-options'
@@ -175,6 +220,7 @@ export {
 export type { ConnectorScheduleInfo, DeriveScheduleInput } from './schedule-info'
 export { deriveConnectorScheduleInfo } from './schedule-info'
 export type {
+  ConnectorListRow,
   DataConnectorItemRow,
   DataConnectorMappingRow,
   DataConnectorRow,
@@ -183,6 +229,7 @@ export type {
   DecodedMapping,
   LoadedConnector,
   PendingRelation,
+  PendingRelationTargetCount,
   RunCounters,
   StreamWithMappings,
   StreamWithRawMappings,
@@ -192,6 +239,7 @@ export type {
 export {
   claimForSync,
   countConnectorItems,
+  countPendingRelationsByTarget,
   decodeMapping,
   decrementConnectorBackfillLatch,
   finalizeConnector,

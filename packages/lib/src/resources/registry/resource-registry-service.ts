@@ -92,6 +92,7 @@ type CustomFieldRecord = {
   // App ownership (app-registered custom fields)
   appInstallationId: string | null
   appFieldKey: string | null
+  appSlug: string | null
   // Data-connector ownership (owned-mode provisioned field)
   dataConnectorId: string | null
   // Connector-declared external-id field (e.g. Shopify customerId)
@@ -1139,6 +1140,7 @@ export class ResourceRegistryService {
         isAppOwned,
         appInstallationId: field.appInstallationId ?? undefined,
         appFieldKey: field.appFieldKey ?? undefined,
+        appSlug: field.appSlug ?? undefined,
 
         // Data-connector ownership (owned-mode provisioned field) — drives the
         // "Managed by <connector>" lock badge. Distinct from app/system ownership.

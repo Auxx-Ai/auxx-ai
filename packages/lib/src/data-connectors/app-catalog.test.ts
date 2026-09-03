@@ -338,6 +338,22 @@ describe('assertContributingTargetWritable (reserved-target guard)', () => {
     systemAttribute: 'first_name',
     type: 'TEXT',
   }
+  const orderNumber: ContributingTargetField = {
+    id: 'f_order_number',
+    name: 'Order Number',
+    systemAttribute: 'order_number',
+    type: 'TEXT',
+    isCreatable: false,
+    isUpdatable: false,
+  }
+  const quoteNumber: ContributingTargetField = {
+    id: 'f_quote_number',
+    name: 'Quote Number',
+    systemAttribute: 'quote_number',
+    type: 'TEXT',
+    isCreatable: false,
+    isUpdatable: false,
+  }
 
   it('refuses a computed-field-flagged-off target (record_id)', () => {
     expect(() => assertContributingTargetWritable('record_id', recordId)).toThrow(BadRequestError)
@@ -353,6 +369,17 @@ describe('assertContributingTargetWritable (reserved-target guard)', () => {
 
   it('accepts an ordinary writable target', () => {
     expect(() => assertContributingTargetWritable('first_name', firstName)).not.toThrow()
+  })
+
+  // "Theirs if they bring one, otherwise ours" (plans/money/tasks/39 section 6.5).
+  it('accepts the connector-writable numbers allow-list (order_number)', () => {
+    expect(() => assertContributingTargetWritable('order_number', orderNumber)).not.toThrow()
+  })
+
+  it('still refuses a hook-only number (quote_number)', () => {
+    expect(() => assertContributingTargetWritable('quote_number', quoteNumber)).toThrow(
+      BadRequestError
+    )
   })
 })
 
@@ -375,6 +402,31 @@ describe('buildContributingMatchBindings', () => {
       sourceFields: { email: 'email' },
       identityRole: { kind: 'match', normalize: 'email' },
     })
+  })
+
+  it("match: 'exclusive' stamps identityRole.exclusive, so the sink skips a second hit", () => {
+    const partFields: ContributingTargetField[] = [
+      { id: 'fld_sku', name: 'SKU', systemAttribute: 'part_sku', type: 'TEXT' },
+    ]
+    const [binding] = buildContributingMatchBindings(
+      'def_part',
+      [{ sourcePath: 'sku', target: 'part_sku', match: 'exclusive' }],
+      partFields
+    )
+    expect(binding).toMatchObject({
+      targetFieldRef: 'def_part:fld_sku',
+      identityRole: { kind: 'match', exclusive: true },
+    })
+  })
+
+  it('match: true is the plain role: no exclusive key at all, so both hits bind', () => {
+    const [binding] = buildContributingMatchBindings(
+      'def_contact',
+      [{ sourcePath: 'email', target: 'email', match: true }],
+      contactFields
+    )
+    expect(binding?.identityRole).toEqual({ kind: 'match', normalize: 'email' })
+    expect(binding?.identityRole).not.toHaveProperty('exclusive')
   })
 
   it('drops a match field with no matching target field', () => {

@@ -100,7 +100,7 @@ describe('the document-level stand-down', () => {
   it('writes nothing for an order whose total is connector-managed', async () => {
     h.listFiltered.mockResolvedValue({ ids: ['li-1'] })
     h.fieldValueRows.mockResolvedValue([row('li-1', 'f-li-total', 10_000)])
-    h.managedFieldsRows.mockResolvedValue([{ managedFields: ['order_total'] }])
+    h.managedFieldsRows.mockResolvedValue([{ managedFields: ['def_o:f-o-total'] }])
 
     await recomputeTotals({
       organizationId: 'org_1',
@@ -169,7 +169,7 @@ describe('the line-level stand-down', () => {
         ['f-li-price', { type: 'number', value: 500 }],
       ])
     )
-    h.managedFieldsRows.mockResolvedValue([{ managedFields: ['line_item_line_total'] }])
+    h.managedFieldsRows.mockResolvedValue([{ managedFields: ['def_li:f-li-total'] }])
 
     await recomputeLineTotal({ organizationId: 'org_1', userId: 'usr_1', lineInstanceId: 'li-1' })
 

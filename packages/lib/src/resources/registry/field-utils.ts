@@ -39,6 +39,10 @@ export function fieldMatchesRef(
   if (concreteRefOf(field, entityDefinitionId) === ref) return true
   const parts = parseAppFieldRef(ref)
   if (!parts || field.appFieldKey !== parts.appFieldKey) return false
+  // A row that knows its own app slug must belong to the ref's app. Rows provisioned
+  // before slug stamping carry no slug and stay eligible, so a legacy column still
+  // resolves; `resolveFieldRef` ranks a slug-stamped match above such a row.
+  if (field.appSlug != null && field.appSlug !== parts.appSlug) return false
   if (!slugByInstallationId) return true
   return (
     field.appInstallationId != null &&
@@ -50,6 +54,9 @@ export function fieldMatchesRef(
  * Resolve a stored ref (concrete OR late-bound `@app:`) to its `ResourceField` + concrete
  * `ResourceFieldId`, or null if nothing in `fields` matches. The pure twin of the resource
  * store's `getFieldByRef`, for callers that hold a field list but not the store.
+ *
+ * When several columns satisfy an `@app:` ref (two apps sharing a key, one of them not yet
+ * slug-stamped), the column whose `appSlug` equals the ref's slug wins over an unstamped one.
  */
 export function resolveFieldRef(
   fields: ResourceField[],
@@ -58,10 +65,13 @@ export function resolveFieldRef(
   slugByInstallationId?: Map<string, string>
 ): { field: ResourceField; concreteRef: ResourceFieldId } | null {
   if (!ref) return null
-  const field = fields.find((f) =>
+  const matches = fields.filter((f) =>
     fieldMatchesRef(f, entityDefinitionId, ref, slugByInstallationId)
   )
-  return field ? { field, concreteRef: concreteRefOf(field, entityDefinitionId) } : null
+  if (matches.length === 0) return null
+  const appSlug = parseAppFieldRef(ref)?.appSlug
+  const field = matches.find((f) => appSlug != null && f.appSlug === appSlug) ?? matches[0]!
+  return { field, concreteRef: concreteRefOf(field, entityDefinitionId) }
 }
 
 /**

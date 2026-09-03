@@ -47,24 +47,23 @@ export interface SweepProductVariantsInput {
 /**
  * Extract one row per variant from a page of `product`-stream records.
  *
- * **Assumed projected shape** — verified 2026-09-02 against the live Shopify
- * connector's `toProductRecord` projection
- * (`auxxai-apps/apps/shopify/src/shopify.connector.server.ts`, the sister repo
- * task 37 will retarget). The SDK's own connector-app fixture
- * (`packages/sdk/__fixtures__/connector-app`) has no `product` stream to check
- * against, so this is the real, currently-shipped shape rather than a fixture:
+ * **Assumed projected shape** — updated 2026-09-02 for task 37's retarget of
+ * the Shopify connector onto the native `product`/`part` entities
+ * (`auxxai-apps/apps/shopify/src/shopify.connector.server.ts`,
+ * `plans/money/tasks/37-shopify-native-retarget.md` §7.1). The SDK's own
+ * connector-app fixture (`packages/sdk/__fixtures__/connector-app`) has no
+ * `product` stream to check against, so this is the real, currently-shipped
+ * shape rather than a fixture:
  *
  *  - the product's external id is `record.externalId`, falling back to
- *    `record.fields.id` (both are the same stringified Shopify product id
- *    today; the fallback only matters for a connector that omits `externalId`)
- *  - `record.fields.variants` is an array; each element carries `id` (the
- *    variant's external id, already stringified), `sku`, and `title`
- *
- * Task 37 §7.1 plans to rename these source keys (`shopifyId`,
- * `inventoryQuantity`, …) when it retargets the connector onto native
- * `part`/`product`. That rename has not shipped — whoever ships it must update
- * this extraction in lockstep, or the pre-flight will read every SKU as absent
- * and report a false "will create" for a store full of real duplicates.
+ *    `record.fields.shopify_id` (both are the same stringified Shopify
+ *    product id today; the fallback only matters for a connector that omits
+ *    `externalId`)
+ *  - `record.fields.variants` is an array; each element carries `shopifyId`
+ *    (the variant's external id, already stringified), `sku`, and `title` —
+ *    renamed from the pre-task-37 `id` now that a contributing mapping's
+ *    `sourcePath` addresses the projected record directly (no more separate
+ *    Layer-A "declared field key" distinct from the raw payload path)
  *
  * A variant with no extractable id is dropped (logged nowhere — this is a pure
  * function): there is nothing to classify or link it by, and the design's
@@ -75,14 +74,14 @@ export function extractVariantsFromProducts(records: ConnectorRecord[]): SweptVa
 
   for (const record of records) {
     const fields = (record.fields ?? {}) as Record<string, unknown>
-    const productId = record.externalId ?? toStringId(fields.id)
+    const productId = record.externalId ?? toStringId(fields.shopify_id)
     if (!productId) continue
 
     const rawVariants = Array.isArray(fields.variants) ? fields.variants : []
     for (const rawVariant of rawVariants) {
       if (typeof rawVariant !== 'object' || rawVariant === null) continue
       const v = rawVariant as Record<string, unknown>
-      const variantId = toStringId(v.id)
+      const variantId = toStringId(v.shopifyId)
       if (!variantId) continue
 
       variants.push({
