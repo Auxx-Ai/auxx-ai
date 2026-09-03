@@ -70,8 +70,13 @@ const INDEXED_SEGMENT = /^(.*?)\[(\d+)\]$/
  *
  * `foo[]` (the fan-out selector consumed by {@link extractSubtrees}) has no digits and
  * so never matches here.
+ *
+ * EXPORTED because the per-stream record filter (`record-filter.ts`) resolves its
+ * condition `fieldId`s with it. The filter's vocabulary IS the mapping tree's source
+ * paths, so both must read `line_items[0].sku` the same way — a second path walker
+ * would silently disagree with the mapping on exactly the shapes that matter.
  */
-function getByPath(obj: unknown, path: string): unknown {
+export function getByPath(obj: unknown, path: string): unknown {
   if (!path) return obj
   let cur: unknown = obj
   for (const segment of path.split('.')) {

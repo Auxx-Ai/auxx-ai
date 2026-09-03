@@ -209,6 +209,12 @@ export {
   type RecommendedAppConnector,
 } from './recommended-app-connectors'
 export { archiveExternalId, handleConnectorDelete, reconcileOrphans } from './reconciliation'
+// Per-stream record filter (v11) — evaluated on the RAW source record before mapping.
+export {
+  assertRecordFilterCompiles,
+  type RecordFilterVerdict,
+  recordMatchesFilter,
+} from './record-filter'
 export { type RelationshipPassSummary, resolveRelationships } from './relationship-pass'
 // Orchestrator + passes
 export type { ResolveConnectorConfigOptionsInput } from './resolve-config-options'

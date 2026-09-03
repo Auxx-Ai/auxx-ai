@@ -34,6 +34,7 @@ export function toConnectorDraft(connector: Connector, streams: Stream[]): Conne
       requestConfig: (s.requestConfig as ConnectorDraft['streams'][number]['requestConfig']) ?? {},
       sourceSchema: (s.sourceSchema as Record<string, unknown> | null) ?? null,
       schemaSource: (s.schemaSource as 'catalog' | 'inferred' | 'manual' | null) ?? null,
+      recordFilter: (s.recordFilter as ConnectorDraft['streams'][number]['recordFilter']) ?? null,
       mappings: s.mappings.map((m) => ({
         id: m.id,
         parentMappingId: m.parentMappingId ?? null,

@@ -182,6 +182,34 @@ describe('runWebhookSteeredRun', () => {
     )
   })
 
+  // The steered fetch is the door a NEWLY QUALIFYING record comes through, so leaving
+  // it unfiltered would import exactly the rows a bulk sync drops. `sinkSourceRecord`
+  // owns the evaluation (see sink-source-record.test.ts); this pins the wiring.
+  it('threads the stream’s recordFilter into the sink', async () => {
+    resolveWebhookSteer.mockReturnValue({ kind: 'fetch', triggerContext: { id: '123' } })
+    const recordFilter = [
+      {
+        id: 'g1',
+        logicalOperator: 'AND',
+        conditions: [{ id: 'c0', fieldId: 'orders_count', operator: '>', value: 0 }],
+      },
+    ]
+    loadConnector.mockResolvedValue({
+      ...loaded,
+      streams: [{ ...loaded.streams[0], stream: { ...loaded.streams[0]?.stream, recordFilter } }],
+    })
+
+    await runWebhookSteeredRun(db as never, data)
+
+    expect(sinkSourceRecord).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      'updatedAt',
+      recordFilter
+    )
+  })
+
   it('archives by externalId on a delete steer and never fetches', async () => {
     resolveWebhookSteer.mockReturnValue({ kind: 'delete', externalId: '123' })
 

@@ -303,3 +303,37 @@ export type FieldMergeStrategy =
  * bound field flagged for match (see {@link FieldMapping}`.match`) carries one.
  */
 export type IdentityNormalize = 'email' | 'phone' | 'domain' | 'none'
+
+/**
+ * One condition inside a stream's {@link RecordFilterConditionGroup}. Structural
+ * mirror of `Condition` from `@auxx/lib/conditions` (this package can't import
+ * tier-3 lib) — deliberately LOOSER than the original (`operator` is the derived
+ * `keyof typeof OPERATOR_DEFINITIONS` union over there, which has no faithful
+ * hand-written mirror), so the engine casts once at its decode boundary the same
+ * way it already does for `syncMode`. A lib `Condition` is assignable to this.
+ *
+ * `fieldId` on a RECORD FILTER is a SOURCE PATH (`orders_count`,
+ * `customer.email`, `line_items[0].sku`), not a `ResourceFieldId` — the filter
+ * runs against the raw fetched payload, before mapping.
+ */
+export interface RecordFilterCondition {
+  id: string
+  fieldId: string | string[]
+  operator: string
+  value: unknown
+  logicalOperator?: 'AND' | 'OR'
+}
+
+/**
+ * Structural mirror of `ConditionGroup` from `@auxx/lib/conditions`, named for its
+ * one column ({@link DataConnectorStream.recordFilter}) rather than carrying the lib
+ * name: `@auxx/database` re-exports its whole schema barrel, and a top-level
+ * `ConditionGroup` export there would shadow the real one at every import site.
+ * Groups are AND'd; an empty array matches everything.
+ */
+export interface RecordFilterConditionGroup {
+  id: string
+  conditions: RecordFilterCondition[]
+  logicalOperator: 'AND' | 'OR'
+  order?: number
+}

@@ -1,8 +1,13 @@
 // packages/lib/src/data-connectors/sync-core-adapters.test.ts
 
-import { describe, expect, it } from 'vitest'
-import type { SyncState } from '../sync-core/contracts'
-import { applySyncStateToStream, syncStateFromStream } from './sync-core-adapters'
+import type { Database } from '@auxx/database'
+import { describe, expect, it, vi } from 'vitest'
+import type { SyncRunErrorSample, SyncState } from '../sync-core/contracts'
+import {
+  applySyncStateToStream,
+  createConnectorRunLedger,
+  syncStateFromStream,
+} from './sync-core-adapters'
 import type { ConnectorStreamState } from './types'
 
 describe('syncStateFromStream', () => {
@@ -75,5 +80,51 @@ describe('applySyncStateToStream', () => {
     expect(roundTripped.backfillCursor).toEqual({ kind: 'historyId', value: '99887766' })
     expect(roundTripped.phase).toBe('steady')
     expect(roundTripped.cursor).toBe('legacy') // legacy key untouched
+  })
+})
+
+// ── Run status fold ──────────────────────────────────────────────────────────────
+// `457559483` ("a skipped record no longer marks the run partial") is what makes the
+// v11 record filter usable at all: a stream that filters out every record must report
+// `completed`, not `partial`. The whole feature rests on it, so pin it here rather
+// than trusting a read of `finalize`.
+
+/** Minimal fake Database: one `DataConnectorRun` row in, the `set` payload out. */
+function fakeDb(row: { failed: number; errorSample: SyncRunErrorSample[] | null }) {
+  const set = vi.fn(() => ({ where: async () => undefined }))
+  const db = {
+    query: { DataConnectorRun: { findFirst: async () => row } },
+    update: () => ({ set }),
+  } as unknown as Database
+  return { db, set }
+}
+
+describe('ConnectorRunLedger.finalize — run status', () => {
+  const run = { id: 'run1', startedAt: new Date(0) }
+
+  it('a fully-FILTERED slice finalizes COMPLETED — skips are not failures', async () => {
+    // What a filtering run looks like: everything fetched, everything skipped, nothing
+    // written, and an empty errorSample (the sink never records a skip as an error).
+    const { db, set } = fakeDb({ failed: 0, errorSample: null })
+    await createConnectorRunLedger(db, run).finalize()
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({ status: 'completed' }))
+  })
+
+  it('a `skipped`-tier errorSample entry (the fail-open filter warning) stays COMPLETED', async () => {
+    const { db, set } = fakeDb({
+      failed: 0,
+      errorSample: [{ externalId: '', error: 'Record filter ignored — …', tier: 'skipped' }],
+    })
+    await createConnectorRunLedger(db, run).finalize()
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({ status: 'completed' }))
+  })
+
+  it('a genuine pre-write drop still degrades the run to PARTIAL', async () => {
+    const { db, set } = fakeDb({
+      failed: 0,
+      errorSample: [{ externalId: 'c1', error: 'unresolved field ref', tier: 'invalid' }],
+    })
+    await createConnectorRunLedger(db, run).finalize()
+    expect(set).toHaveBeenCalledWith(expect.objectContaining({ status: 'partial' }))
   })
 })

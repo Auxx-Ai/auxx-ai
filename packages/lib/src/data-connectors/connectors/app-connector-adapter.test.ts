@@ -90,14 +90,15 @@ function page(records: ConnectorRecord[], nextState: Record<string, unknown>) {
 /** Drive the adapter's fetch and collect everything the generator yields. */
 async function drain(
   state: Record<string, unknown> = {},
-  triggerContext?: Record<string, string>
+  triggerContext?: Record<string, string>,
+  config: Record<string, unknown> = {}
 ): Promise<ConnectorYield[]> {
   const { records } = await appConnectorAdapter('app:test', ctx()).fetch({
     streamKey: 'thing',
     mode: 'snapshot',
     state: state as never,
     credential: null,
-    config: {} as never,
+    config: config as never,
     triggerContext,
   })
   const out: ConnectorYield[] = []
@@ -259,5 +260,57 @@ describe('appConnectorAdapter resumes across slices', () => {
     })
     expect(slice2.hasMore).toBe(false)
     expect(invokeLambdaExecutor.mock.calls[1]![0].payload.state.cursor).toBe('c1')
+  })
+})
+
+// ── The app's declared config actually reaches `execute` ─────────────────────────
+// Regression for v11 §7. The adapter used to read the app's config as
+// `args.config?.filters`, but the setup stepper writes each declared key at the TOP
+// LEVEL of `connector.config` and `createConnectorFromAppCatalog` seeds only
+// `webhookTrigger` — nothing anywhere wrote `config.filters` for an app connector, so
+// every app's declared config arrived as `{}`. Shopify declares `config: z.object({})`,
+// which is the only reason nobody noticed.
+
+describe('appConnectorAdapter config passthrough', () => {
+  /** The `config` the sandbox was handed on the first (only) page. */
+  function sentConfig(): unknown {
+    return (invokeLambdaExecutor.mock.calls[0]?.[0] as { payload: { config: unknown } }).payload
+      .config
+  }
+
+  it('delivers the app’s top-level declared config keys to execute', async () => {
+    invokeLambdaExecutor.mockResolvedValueOnce(page([rec('a')], { backfillComplete: true }))
+
+    await drain({}, undefined, {
+      locationId: 'gid://shopify/Location/1',
+      includeArchived: false,
+    })
+
+    expect(sentConfig()).toEqual({
+      locationId: 'gid://shopify/Location/1',
+      includeArchived: false,
+    })
+  })
+
+  it('strips the four PLATFORM-reserved keys — an app never sees the engine’s own config', async () => {
+    invokeLambdaExecutor.mockResolvedValueOnce(page([rec('a')], { backfillComplete: true }))
+
+    await drain({}, undefined, {
+      endpoint: { baseUrl: 'https://example.test' },
+      // `filters` stays reserved rather than being repurposed as the app config bag:
+      // the fixture connector already reads `config.filters.fixtures`.
+      filters: { fixtures: [] },
+      backfillWindowSpan: 'last_90_days',
+      webhookTrigger: { triggerId: 't1' },
+      locationId: 'loc1',
+    })
+
+    expect(sentConfig()).toEqual({ locationId: 'loc1' })
+  })
+
+  it('an app that declares no config still gets `{}`, never undefined', async () => {
+    invokeLambdaExecutor.mockResolvedValueOnce(page([rec('a')], { backfillComplete: true }))
+    await drain()
+    expect(sentConfig()).toEqual({})
   })
 })

@@ -225,6 +225,59 @@ describe('classifyStreamRequestChange', () => {
       'cosmetic'
     )
   })
+
+  // v11 — LOOSENING a filter needs a re-crawl: the previously-dropped records were
+  // never written and no watermark will bring them back on their own. Tightening
+  // doesn't, but telling the two apart isn't worth it and re-crawling is the safe way.
+  it('recordFilter change is rebackfill', () => {
+    const filter = [
+      {
+        id: 'g1',
+        logicalOperator: 'AND',
+        conditions: [{ id: 'c0', fieldId: 'orders_count', operator: '>', value: 0 }],
+      },
+    ]
+    const out = classifyStreamRequestChange(stream(), {
+      requestConfig: { path: '/v1/a' },
+      recordFilter: filter,
+    })
+    expect(out.level).toBe('rebackfill')
+    expect(out.reasons).toEqual(['record-filter'])
+  })
+
+  it('CLEARING a filter is a change too (null vs the stored groups)', () => {
+    const stored = stream({
+      recordFilter: [
+        { id: 'g1', logicalOperator: 'AND', conditions: [] },
+      ] as DataConnectorStreamRow['recordFilter'],
+    })
+    expect(
+      classifyStreamRequestChange(stored, {
+        requestConfig: { path: '/v1/a' },
+        recordFilter: null,
+      }).level
+    ).toBe('rebackfill')
+  })
+
+  it('an unchanged filter is cosmetic, and `null` vs absent are the same thing', () => {
+    expect(
+      classifyStreamRequestChange(stream(), {
+        requestConfig: { path: '/v1/a' },
+        recordFilter: null,
+      }).level
+    ).toBe('cosmetic')
+  })
+
+  it('omitting recordFilter leaves it untouched — not a change', () => {
+    const stored = stream({
+      recordFilter: [
+        { id: 'g1', logicalOperator: 'AND', conditions: [] },
+      ] as DataConnectorStreamRow['recordFilter'],
+    })
+    expect(classifyStreamRequestChange(stored, { requestConfig: { path: '/v1/a' } }).level).toBe(
+      'cosmetic'
+    )
+  })
 })
 
 describe('maxLevel', () => {

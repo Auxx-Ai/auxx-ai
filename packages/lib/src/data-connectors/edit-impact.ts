@@ -202,6 +202,8 @@ export function classifyConnectorChange(
 export interface StreamRequestPatch {
   requestConfig?: StreamRequestConfig
   syncMode?: string
+  /** Per-stream record filter (v11) — `ConditionGroup[]`, compared by value. */
+  recordFilter?: unknown
 }
 
 /**
@@ -209,6 +211,11 @@ export interface StreamRequestPatch {
  * pagination) or a `syncMode` flip invalidates the cursor against the source →
  * `rebackfill`. `enabled` toggles are cosmetic (the next sync includes/excludes the
  * stream naturally). Never `rebind` (no identity here).
+ *
+ * A `recordFilter` change joins them. LOOSENING a filter genuinely needs a re-crawl —
+ * the previously-dropped records were never written and no watermark will bring them
+ * back on their own. Tightening does not, but telling the two apart is not worth the
+ * complexity and re-crawling is the safe direction.
  */
 export function classifyStreamRequestChange(
   prev: DataConnectorStreamRow,
@@ -221,6 +228,11 @@ export function classifyStreamRequestChange(
   )
     reasons.push('request-config')
   if (patch.syncMode !== undefined && patch.syncMode !== prev.syncMode) reasons.push('sync-mode')
+  if (
+    patch.recordFilter !== undefined &&
+    JSON.stringify(patch.recordFilter ?? null) !== JSON.stringify(prev.recordFilter ?? null)
+  )
+    reasons.push('record-filter')
   return { level: levelFor(reasons), reasons }
 }
 

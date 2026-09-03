@@ -9,6 +9,7 @@
 // @auxx/lib/data-connectors — this router is a thin, validated edge over it.
 
 import { getCachedInstalledApps, getCachedResourceFields } from '@auxx/lib/cache'
+import { conditionGroupsSchema } from '@auxx/lib/conditions'
 import {
   addMapping,
   addStream,
@@ -900,6 +901,15 @@ export const dataConnectorRouter = createTRPCRouter({
         requestConfig: requestConfigSchema,
         syncMode: z.enum(['snapshot', 'incremental']).optional(),
         enabled: z.boolean().optional(),
+        /**
+         * Per-stream record filter (v11), evaluated against the RAW SOURCE record
+         * before mapping. Condition `fieldId`s are SOURCE PATHS, not
+         * `ResourceFieldId`s — this filters the payload, not the target record.
+         * Absent ⇒ untouched; `null` ⇒ cleared. NOT folded into `requestConfig`:
+         * that bag is generic-rest-only, and the filter must work for app
+         * connectors too.
+         */
+        recordFilter: conditionGroupsSchema.nullish(),
       })
     )
     .mutation(async ({ ctx, input }) => {

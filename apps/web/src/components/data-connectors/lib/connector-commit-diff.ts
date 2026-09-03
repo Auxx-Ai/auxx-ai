@@ -1,5 +1,6 @@
 // apps/web/src/components/data-connectors/lib/connector-commit-diff.ts
 
+import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import type { FieldMapping, UiRequestConfig } from '../hooks/use-stream-mutations'
 import {
   type ConnectorDraft,
@@ -63,6 +64,11 @@ export interface CommitPlan {
     streamId: string
     requestConfig: UiRequestConfig
     syncMode?: SyncMode
+    /**
+     * Present only when the filter changed. `null` clears it — which is why this is
+     * `| null` rather than "omit to clear": omitting means "untouched".
+     */
+    recordFilter?: ConditionGroup[] | null
   }>
   streamSchemas: Array<{
     streamId: string
@@ -231,11 +237,16 @@ export function diffConnectorDraft(snapshot: ConnectorDraft, draft: ConnectorDra
 
     const requestChanged = !eq(prev.requestConfig, stream.requestConfig)
     const syncModeChanged = prev.syncMode !== stream.syncMode
-    if (requestChanged || syncModeChanged) {
+    // The record filter rides the same mutation as the request config (no fifth stream
+    // mutation) — so a filter-only edit still emits a `setStreamRequestConfig` call,
+    // carrying the unchanged `requestConfig` alongside it.
+    const filterChanged = !eq(prev.recordFilter ?? null, stream.recordFilter ?? null)
+    if (requestChanged || syncModeChanged || filterChanged) {
       streamRequestConfigs.push({
         streamId: stream.id,
         requestConfig: stream.requestConfig,
         ...(syncModeChanged ? { syncMode: stream.syncMode } : {}),
+        ...(filterChanged ? { recordFilter: stream.recordFilter ?? null } : {}),
       })
       structural = true
     }

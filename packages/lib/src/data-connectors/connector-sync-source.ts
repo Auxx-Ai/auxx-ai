@@ -21,6 +21,7 @@
 import { getCredential } from '@auxx/credentials/store'
 import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import type { ConditionGroup } from '../conditions/types'
 import type { RuntimeConnectionData } from '../connections/resolve-connection-for-runtime'
 import { UnifiedCrudHandler } from '../resources/crud/unified-handler'
 import type { WriteSession } from '../resources/crud/write-origin'
@@ -70,6 +71,13 @@ export interface SyncSourceStream {
   streamKey: string
   syncMode: SyncMode
   requestConfig?: StreamRequestConfig
+  /**
+   * Per-stream record filter (v11) — condition groups over SOURCE PATHS, evaluated in
+   * `sinkSourceRecord` against the raw payload. Pinned into the chain snapshot like
+   * everything else here; a filter edit is a `rebackfill` (edit-impact.ts), so the
+   * next chain re-reads it anyway.
+   */
+  recordFilter?: ConditionGroup[]
   mappings: DecodedMapping[]
 }
 
@@ -208,7 +216,13 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
         ctx,
         driver,
         sink: (record) =>
-          sinkSourceRecord(syncCtx, this.deps.stream.mappings, record, this.updatedAtPath),
+          sinkSourceRecord(
+            syncCtx,
+            this.deps.stream.mappings,
+            record,
+            this.updatedAtPath,
+            this.deps.stream.recordFilter
+          ),
       })
       await this.emitRecordsInvalidated(syncCtx.touchedDefs)
       await this.persistManifest(syncCtx)
@@ -248,7 +262,13 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
           signal: ctx.signal,
         }),
       sink: (record) =>
-        sinkSourceRecord(syncCtx, this.deps.stream.mappings, record, this.updatedAtPath),
+        sinkSourceRecord(
+          syncCtx,
+          this.deps.stream.mappings,
+          record,
+          this.updatedAtPath,
+          this.deps.stream.recordFilter
+        ),
     })
 
     await this.emitRecordsInvalidated(syncCtx.touchedDefs)

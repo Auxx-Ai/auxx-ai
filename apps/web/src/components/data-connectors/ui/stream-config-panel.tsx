@@ -43,6 +43,7 @@ import { useStreamMutations } from '../hooks/use-stream-mutations'
 import { getConnectorDraftState, useConnectorDraftStore } from '../stores/connector-draft-store'
 import { MappingTree } from './mapping-tree'
 import { PaginationSection } from './pagination-section'
+import { RecordFilterSection } from './record-filter-section'
 import {
   JsonBodyEditor,
   RecordKeyValueEditor,
@@ -469,6 +470,11 @@ export function StreamConfigPanel({
                 />
               </div>
             </Section>
+
+            {/* 4b. Record filter — which fetched records are allowed to be imported.
+                Renders for BOTH definition kinds: the filter runs on the raw source
+                record below the connector contract, so app connectors get it too. */}
+            <RecordFilterSection stream={stream} sourcePaths={sourcePaths} />
           </>
         )}
 

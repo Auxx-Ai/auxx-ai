@@ -20,6 +20,8 @@ import {
   toResourceFieldId,
 } from '@auxx/types/field'
 import { getCachedResourceFields } from '../cache'
+import type { ConditionDiagnostic } from '../conditions/evaluate'
+import type { ConditionGroup } from '../conditions/types'
 import { type ResourceField, resolveFieldRef } from '../resources'
 import { ConnectorRateLimitError, type ConnectorRecord } from './connectors/types'
 import type { MappedWrite } from './map-record'
@@ -31,6 +33,7 @@ import {
   tallyFailure,
   tallySuccess,
 } from './record-failure-tally'
+import { recordMatchesFilter } from './record-filter'
 import type { DecodedMapping, PendingRelation } from './service'
 import { entitySink } from './sinks/entity-sink'
 import type { ProjectedRecord, SyncCtx } from './sinks/types'
@@ -138,19 +141,54 @@ async function resolveEdge(
 }
 
 /**
+ * Record ONE run-level warning for a record filter that did not compile.
+ *
+ * `recordMatchesFilter` fails open, so the run imported everything — which is the
+ * safe outcome but not the one the author asked for, and a silent one. The warning
+ * rides in `errorSample` (the only per-run array that reaches the run panel) tiered
+ * `'skipped'`, so it is VISIBLE without degrading the run to `partial`:
+ * `sync-core-adapters`' finalize only counts entries whose `tier !== 'skipped'`.
+ *
+ * De-duplicated on the message rather than counted per record: the filter is a
+ * property of the stream, not of the row, so 13,637 identical entries would say
+ * nothing extra and would evict every real error from the 50-entry sample.
+ */
+function recordFilterCompileWarning(ctx: SyncCtx, diagnostics: ConditionDiagnostic[]): void {
+  const detail = diagnostics.map((d) => `${d.fieldId} (${d.reason})`).join(', ')
+  const message =
+    `Record filter ignored — these conditions could not be evaluated: ${detail}. ` +
+    'Every fetched record was imported. Fix the filter and re-sync.'
+  if (ctx.counters.errorSample.some((e) => e.error === message)) return
+  if (ctx.counters.errorSample.length < 50) {
+    ctx.counters.errorSample.push({ externalId: '', error: message, tier: 'skipped' })
+  }
+  logger.warn('record filter did not compile — failing open, every record imported', {
+    connectorId: ctx.connector.id,
+    diagnostics: detail,
+  })
+}
+
+/**
  * Map one connector payload across the mapping tree and sink each projected write.
  * `updatedAtPath` (the stream's `incremental.watermarkField`) seeds each root
  * record's `upstreamUpdatedAt` version stamp — the durable value the sink's
  * out-of-order write guard compares (sync-bridge §9 Q7).
+ *
+ * `recordFilter` is the stream's per-record filter (v11), evaluated here rather than
+ * at the three call sites (bulk-export backfill, sliced fetch, webhook-steered fetch)
+ * so one edit covers all of them and a fourth door cannot be opened without it. The
+ * webhook path is the one that would hurt most to miss: it is where a NEWLY qualifying
+ * record arrives.
  */
 export async function sinkSourceRecord(
   ctx: SyncCtx,
   mappings: DecodedMapping[],
   source: ConnectorRecord,
-  updatedAtPath?: string
+  updatedAtPath?: string,
+  recordFilter?: ConditionGroup[] | null
 ): Promise<void> {
   try {
-    await sinkOneSourceRecord(ctx, mappings, source, updatedAtPath)
+    await sinkOneSourceRecord(ctx, mappings, source, updatedAtPath, recordFilter)
     tallySuccess(ctx.failureTally)
   } catch (error) {
     // The abort signal and a throttle are the SLICE's business, not this record's —
@@ -193,20 +231,40 @@ async function sinkOneSourceRecord(
   ctx: SyncCtx,
   mappings: DecodedMapping[],
   source: ConnectorRecord,
-  updatedAtPath?: string
+  updatedAtPath?: string,
+  recordFilter?: ConditionGroup[] | null
 ): Promise<void> {
-  const writes = mapRecord(mappings, source, updatedAtPath)
-
   // Tombstone — an explicit upstream delete (event-feed `*.deleted`, a fixture
   // `deleted` flag). Archive every projected binding instead of upserting. We use the
   // per-mapping projected external id so a fan-out (parent + children) all archive.
+  //
+  // 🔴 A tombstone bypasses the record filter UNCONDITIONALLY, which is why this sits
+  // ABOVE the filter rather than behind a branch inside it. The delete signal carries
+  // the record's CURRENT payload, and the very change that deleted it is often the
+  // change that made it stop matching: refund a Shopify customer's last order and
+  // `orders_count` drops to 0, so an `orders_count > 0` filter would drop the delete
+  // itself and orphan the already-synced contact forever.
   if (source.deleted) {
-    for (const w of writes) {
+    for (const w of mapRecord(mappings, source, updatedAtPath)) {
       if (!w.projected) continue
       await archiveExternalId(ctx, [w.mapping], w.projected.externalId)
     }
     return
   }
+
+  // Per-stream record filter (v11) — evaluated on the RAW source payload, before the
+  // mapping runs, so a filtered record costs nothing beyond the fetch that already
+  // happened. A non-match is a deliberate, explained outcome: it bumps `skipped` and
+  // nothing else. It is NOT a failure and must never enter `errorSample` as one — a
+  // fully-filtering stream has to report `completed`, not `partial`.
+  const verdict = recordMatchesFilter(source, recordFilter)
+  if (verdict.diagnostics.length > 0) recordFilterCompileWarning(ctx, verdict.diagnostics)
+  if (!verdict.matched) {
+    ctx.counters.skipped += 1
+    return
+  }
+
+  const writes = mapRecord(mappings, source, updatedAtPath)
 
   // Index projected writes by (mapping, instance) so a child attaches its edge to
   // the exact parent instance's pendingRelations before that parent is sunk.

@@ -14,6 +14,7 @@ import { getCredential } from '@auxx/credentials/store'
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
+import type { ConditionGroup } from '../conditions/types'
 import { UnifiedCrudHandler } from '../resources/crud/unified-handler'
 import type { WriteSession } from '../resources/crud/write-origin'
 import { flattenConnectionMeta } from './connection-meta'
@@ -128,9 +129,14 @@ export async function runWebhookSteeredRun(
       // `upstreamUpdatedAt` from the fetched record's `watermarkField` so concurrent events
       // for one externalId can't regress to older data (the guard lives in the sink).
       const updatedAtPath = stream.stream.requestConfig?.incremental?.watermarkField
+      // The stream's record filter applies here too — a steered fetch is the door a
+      // NEWLY qualifying record comes through, so leaving it unfiltered would import
+      // exactly the rows a bulk sync drops. Cast at the decode boundary: the column's
+      // type is a structural mirror in @auxx/database (tier 1 can't import lib).
+      const recordFilter = (stream.stream.recordFilter as ConditionGroup[] | null) ?? undefined
       for await (const record of records) {
         if (isConnectorCheckpoint(record)) continue
-        await sinkSourceRecord(ctx, stream.mappings, record, updatedAtPath)
+        await sinkSourceRecord(ctx, stream.mappings, record, updatedAtPath, recordFilter)
       }
     }
 

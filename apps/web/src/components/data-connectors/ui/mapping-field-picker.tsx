@@ -22,36 +22,8 @@ import { useCustomFieldMutations } from '~/components/custom-fields/hooks/use-cu
 import { ComboPicker, type Option, type OptionGroup } from '~/components/pickers/combo-picker'
 import { FieldPickerContent } from '~/components/pickers/field-picker'
 import { useResourceFields } from '~/components/resources'
-import { lastSegment } from '../hooks/use-source-paths'
+import { inferFieldType } from '../lib/source-path-fields'
 import { isSourceTargetCompatible, isWritableTarget } from './field-type-compat'
-
-/**
- * Infer a sensible create-field type from the source node. A detected string
- * `format` (from the test-fetch values) wins over the segment-name heuristic,
- * which only falls back when the format is absent.
- */
-function inferFieldType(path: string, sourceType: string, format?: string): FieldTypeType {
-  switch (format) {
-    case 'email':
-      return FieldType.EMAIL
-    case 'uri':
-      return FieldType.URL
-    case 'date-time':
-      return FieldType.DATETIME
-    case 'date':
-      return FieldType.DATE
-    case 'time':
-      return FieldType.TIME
-  }
-  if (sourceType === 'array') return FieldType.TAGS
-  if (sourceType === 'number' || sourceType === 'integer') return FieldType.NUMBER
-  if (sourceType === 'boolean') return FieldType.CHECKBOX
-  const seg = lastSegment(path).toLowerCase()
-  if (seg.includes('email')) return FieldType.EMAIL
-  if (seg.includes('url') || seg.includes('website')) return FieldType.URL
-  if (seg.endsWith('_at') || seg.includes('date')) return FieldType.DATE
-  return FieldType.TEXT
-}
 
 interface MappingFieldPickerProps {
   /**
