@@ -18,7 +18,8 @@ import {
 import { createScopedLogger } from '@auxx/logger'
 import { getFieldDefinitionId, isAppFieldRef, toResourceFieldId } from '@auxx/types/field'
 import { generateId } from '@auxx/utils'
-import { and, asc, eq, inArray, isNull, ne } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNull, ne, sql } from 'drizzle-orm'
+import { err, ok, type Result } from 'neverthrow'
 import { getCachedCustomFields, getCachedEntityDefId } from '../cache'
 import { onCacheEvent } from '../cache/invalidate'
 import { notifyEntityDefChanged } from '../entity-definitions/notify'
@@ -1687,4 +1688,52 @@ export async function removeMapping(
       .where(eq(schema.DataConnectorMapping.id, mappingId))
     return { success: true }
   })
+}
+
+// ── Per-field sync pin (plans/money/tasks/40) ─────────────────────────────────
+
+export interface SetConnectorFieldPinInput {
+  organizationId: string
+  entityInstanceId: string
+  /** The concrete `CustomField.id` the record UI knows; the sink resolves its refs to it. */
+  fieldId: string
+  connectorId: string
+  /** `true` pauses the field on this record, `false` lets the next run heal it. */
+  pinned: boolean
+}
+
+/**
+ * Pause or resume one connector's writes to one field on one record. One
+ * `UPDATE ... RETURNING` over every live `DataConnectorItem` of the connector on
+ * the instance: a contact bound from both the `customer` stream and
+ * `order.customer` has two, and the sink reads its own item per mapping, so both
+ * must carry the pin. Idempotent by construction (jsonb `?` guards the append,
+ * `-` removes every occurrence). Zero rows means the record is not bound to this
+ * connector. Resume only removes the id: the next run heals the cell (D5).
+ */
+export async function setConnectorFieldPin(
+  db: DbOrTx,
+  input: SetConnectorFieldPinInput
+): Promise<Result<{ pinnedFields: string[] }, Error>> {
+  const { pinnedFields } = schema.DataConnectorItem
+  const next = input.pinned
+    ? sql`CASE WHEN ${pinnedFields} ? ${input.fieldId}::text THEN ${pinnedFields} ELSE ${pinnedFields} || to_jsonb(array[${input.fieldId}::text]) END`
+    : sql`${pinnedFields} - ${input.fieldId}::text`
+
+  const rows = await db
+    .update(schema.DataConnectorItem)
+    .set({ pinnedFields: next })
+    .where(
+      and(
+        eq(schema.DataConnectorItem.organizationId, input.organizationId),
+        eq(schema.DataConnectorItem.dataConnectorId, input.connectorId),
+        eq(schema.DataConnectorItem.entityInstanceId, input.entityInstanceId),
+        isNull(schema.DataConnectorItem.archivedAt)
+      )
+    )
+    .returning({ pinnedFields })
+
+  const first = rows[0]
+  if (!first) return err(new NotFoundError('Record is not bound to this connector'))
+  return ok({ pinnedFields: first.pinnedFields ?? [] })
 }

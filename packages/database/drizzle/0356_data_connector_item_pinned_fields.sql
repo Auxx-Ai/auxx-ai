@@ -1,0 +1,1 @@
+ALTER TABLE "DataConnectorItem" ADD COLUMN "pinnedFields" jsonb DEFAULT '[]'::jsonb NOT NULL;

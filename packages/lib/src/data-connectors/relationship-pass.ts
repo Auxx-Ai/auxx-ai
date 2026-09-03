@@ -38,7 +38,11 @@ const logger = createScopedLogger('data-connector-relationship-pass')
 export interface RelationshipPassSummary {
   /** Edges written, cleared, or confirmed already correct. */
   resolved: number
-  /** Edges left pending: target not synced yet, or the write failed. Each counted as a relationship warning. */
+  /**
+   * Edges left pending: target not synced yet, or the write failed (each counted
+   * as a relationship warning), or the field is paused on the record
+   * (`pinnedFields`, plan 40; a user choice, so not a warning).
+   */
   stillPending: number
 }
 
@@ -60,12 +64,23 @@ export async function resolveRelationships(
     if (!item.entityInstanceId) continue
     const pending = (item.pendingRelations ?? []) as PendingRelation[]
     const linked = new Set(item.linkedRelations ?? [])
+    const pinned = item.pinnedFields ?? []
     const stillPending: PendingRelation[] = []
     let linkedChanged = false
 
     const parentRecordId = toRecordId(item.entityDefinitionId, item.entityInstanceId)
 
     for (const rel of pending) {
+      // PAUSED on this record (plan 40 D4): the user pinned the relationship field
+      // (a product link they re-pointed by hand), so neither a set nor a clear may
+      // touch it. The edge stays pending, untouched, until the field is unpinned;
+      // the next pass then applies it. Not a warning: this is the user's choice.
+      const concreteFieldId = concreteFieldIds.get(`${item.id}::${rel.fieldKey}`)
+      if (concreteFieldId && pinned.includes(concreteFieldId)) {
+        stillPending.push(rel)
+        continue
+      }
+
       // CLEAR (FK went empty) — null the relationship field. Terminal: applied
       // once and never retained (no findItem, no deferral). The sink already
       // dropped clears whose field had no live edge, so a clear that reaches here
@@ -111,7 +126,6 @@ export async function resolveRelationships(
       // `currentTargets` is a snapshot taken before any write in this pass. That cannot
       // hide a write from itself: `mergePending` keys pending edges by `fieldKey`, so
       // one item carries at most one pending entry per field.
-      const concreteFieldId = concreteFieldIds.get(`${item.id}::${rel.fieldKey}`)
       const currentTarget = concreteFieldId
         ? currentTargets.get(`${item.entityInstanceId}::${concreteFieldId}`)
         : undefined
@@ -173,17 +187,18 @@ export async function resolveRelationships(
 }
 
 /**
- * Pre-read for the idempotency guard: resolve every non-clear pending edge's
- * `fieldKey` to a concrete `CustomField.id`, then read all their current targets in
- * one bulk query (chunked inside `readRelationshipTargets`).
+ * Pre-read for the idempotency guard and the pin check: resolve every pending
+ * edge's `fieldKey` to a concrete `CustomField.id`, then read the current targets
+ * of the non-clear edges in one bulk query (chunked inside `readRelationshipTargets`).
  *
  * A `fieldKey` that does not resolve is simply absent from `concreteFieldIds`, which
- * disables the guard for that edge and writes exactly as before. The guard is an
- * optimization — an unresolvable key must never silently drop an edge.
+ * disables the guard (and the pin check) for that edge and writes exactly as before.
+ * The guard is an optimization; an unresolvable key must never silently drop an edge.
  *
- * CLEAR edges are excluded on purpose: they are terminal (applied once, never
- * retained) and the sink already drops a clear whose field has no live edge. Guarding
- * them would risk re-introducing the fire-once bug.
+ * CLEAR edges get a concrete id (the pin check needs one: a paused field takes no
+ * clear either) but are excluded from the target read on purpose: they are terminal
+ * (applied once, never retained) and the sink already drops a clear whose field has
+ * no live edge. Guarding them would risk re-introducing the fire-once bug.
  */
 async function readCurrentEdges(
   ctx: SyncCtx,
@@ -212,10 +227,10 @@ async function readCurrentEdges(
   for (const item of items) {
     if (!item.entityInstanceId) continue
     for (const rel of (item.pendingRelations ?? []) as PendingRelation[]) {
-      if (rel.targetExternalId === null) continue
       const fieldId = (await writeKeyMap(item.entityDefinitionId)).get(rel.fieldKey)
       if (!fieldId) continue
       concreteFieldIds.set(`${item.id}::${rel.fieldKey}`, fieldId)
+      if (rel.targetExternalId === null) continue
       pairs.push({ entityInstanceId: item.entityInstanceId, fieldId })
     }
   }

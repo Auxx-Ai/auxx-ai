@@ -15,6 +15,8 @@ import type { RecordId } from '@auxx/types/resource'
 import { and, asc, eq, inArray, isNotNull, or, type SQL, sql } from 'drizzle-orm'
 import { findCachedResource } from '../cache'
 import type { FieldOptions } from '../custom-fields/field-options'
+import { listItemBindingsForInstances } from '../data-connectors/item-bindings'
+import { resolveCellSyncState } from '../data-connectors/sync-state'
 import { rungsAtOrAbove } from '../permissions/capabilities/record-visibility-scope'
 import type { AiStatus } from '../realtime/events'
 import {
@@ -903,17 +905,25 @@ async function fetchFieldValueResults(
   // `aiStatus`, which is every currency value that asserts its own code.
   const valueJsonWhen = isNotNull(schema.FieldValue.valueJson)
 
-  const rows = await ctx.db
-    .select(fieldValueColumns(valueJsonWhen))
-    .from(schema.FieldValue)
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, ctx.organizationId),
-        inArray(schema.FieldValue.fieldId, fieldIds),
-        inArray(schema.FieldValue.entityId, entityInstanceIds)
+  // The per-cell sync badge (plans/money/tasks/40-per-field-sync-pin.md
+  // section 7) needs the records' live connector items: a paused or
+  // hand-edited cell carries no marker, and an empty paused cell has no row at
+  // all. The item read runs BESIDE the value query, never after it, so the
+  // batch pays one more indexed query and no added latency.
+  const [rows, bindingsByInstance] = await Promise.all([
+    ctx.db
+      .select(fieldValueColumns(valueJsonWhen))
+      .from(schema.FieldValue)
+      .where(
+        and(
+          eq(schema.FieldValue.organizationId, ctx.organizationId),
+          inArray(schema.FieldValue.fieldId, fieldIds),
+          inArray(schema.FieldValue.entityId, entityInstanceIds)
+        )
       )
-    )
-    .orderBy(asc(schema.FieldValue.sortKey))
+      .orderBy(asc(schema.FieldValue.sortKey)),
+    listItemBindingsForInstances(ctx.db, ctx.organizationId, entityInstanceIds),
+  ])
 
   // Group by (entityId, fieldId)
   const grouped = new Map<string, (typeof rows)[number][]>()
@@ -1015,6 +1025,15 @@ async function fetchFieldValueResults(
     // happens to be user-owned. Scalar fields have one row; same answer.
     const managedByConnectorId =
       fieldRows.find((row) => row.managedByConnectorId != null)?.managedByConnectorId ?? null
+    // D2 order: paused (an item pins the field) beats synced (the marker) beats
+    // edited (no marker, but the binding heals the cell). `fieldId` is the
+    // concrete `CustomField.id` the rows carry, which is what a pin stores.
+    const sync = resolveCellSyncState({
+      fieldId,
+      field: { options: fieldOptions },
+      markerConnectorId: managedByConnectorId,
+      bindings: bindingsByInstance.get(entityId) ?? [],
+    })
 
     results.push({
       recordId,
@@ -1025,7 +1044,46 @@ async function fetchFieldValueResults(
       aiStatus,
       aiMetadata,
       managedByConnectorId,
+      sync,
     })
+  }
+
+  // A PAUSED cell with no stored row ("I removed the connector's value and want
+  // it to stay empty") has nothing above to ride on, and the client only
+  // null-backfills the combinations the server stayed silent on. Emit a
+  // value-less result for it so the badge still reaches the cell. Only
+  // `paused` qualifies: with no row there is nothing for `synced` to mark, and
+  // `edited` would promise a heal that `computeDriftedInstances` (an inner join
+  // on `FieldValue`) never performs for a deleted row.
+  for (const [entityId, bindings] of bindingsByInstance) {
+    if (!bindings.some((item) => item.pinnedFields.length > 0)) continue
+    const recordId = instanceToRecordId.get(entityId)
+    if (!recordId) continue
+    for (const fieldId of fieldIds) {
+      if (grouped.has(`${entityId}:${fieldId}`)) continue
+      const fieldRef = fieldIdToRef.get(fieldId)
+      const fieldType = fieldTypeMap.get(fieldId)
+      if (!fieldRef || !fieldType || isComputedStoredFieldType(fieldType)) continue
+      const fieldOptions = fieldOptionsMap.get(fieldId)
+      const sync = resolveCellSyncState({
+        fieldId,
+        field: { options: fieldOptions },
+        markerConnectorId: null,
+        bindings,
+      })
+      if (sync?.state !== 'paused') continue
+      results.push({
+        recordId,
+        fieldRef,
+        value: null,
+        fieldType,
+        fieldOptions,
+        aiStatus: null,
+        aiMetadata: null,
+        managedByConnectorId: null,
+        sync,
+      })
+    }
   }
 
   return results

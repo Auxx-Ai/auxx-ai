@@ -5,3 +5,11 @@
 
 export type { ConnectorReadiness, ReadinessProblem, ReadinessStream } from './readiness'
 export { getConnectorReadiness, READINESS_REASON } from './readiness'
+export type {
+  CellSyncInfo,
+  CellSyncState,
+  InstanceConnectorBinding,
+  SyncBinding,
+  SyncFieldShape,
+} from './sync-state'
+export { refNamesField, resolveCellSyncState, wouldHealField } from './sync-state'

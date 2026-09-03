@@ -1,5 +1,6 @@
 // apps/web/src/components/resources/store/field-value-fetch-queue.ts
 
+import type { CellSyncInfo } from '@auxx/lib/data-connectors/client'
 import type { AiStatus, AiValueMetadata } from '@auxx/lib/realtime/client'
 import type { RecordId } from '@auxx/lib/resources/client'
 import { fieldRefToKey, isResourceFieldId, type ResourceFieldId } from '@auxx/types/field'
@@ -31,8 +32,8 @@ type FetchFn = (params: { recordIds: RecordId[]; fieldReferences: FieldReference
     value: StoredFieldValue
     aiStatus?: AiStatus | null
     aiMetadata?: AiValueMetadata | null
-    /** Contributing data-connector marker (per-cell), null when unmanaged. */
-    managedByConnectorId?: string | null
+    /** Contributing data-connector sync state (per-cell), null when unbound. */
+    sync?: CellSyncInfo | null
   }>
 }>
 
@@ -433,8 +434,8 @@ class FieldValueFetchQueue {
         aiStatus: AiStatus
         aiMetadata: AiValueMetadata | null
       }> = []
-      // Contributing data-connector markers to rehydrate (mirrors aiEntries).
-      const managedEntries: Array<{ key: FieldValueKey; connectorId: string }> = []
+      // Contributing data-connector sync states to rehydrate (mirrors aiEntries).
+      const managedEntries: Array<{ key: FieldValueKey; sync: CellSyncInfo }> = []
       for (const result of results) {
         if (result.status === 'fulfilled') {
           for (const v of result.value.values) {
@@ -443,8 +444,8 @@ class FieldValueFetchQueue {
             if (v.aiStatus != null) {
               aiEntries.push({ key, aiStatus: v.aiStatus, aiMetadata: v.aiMetadata ?? null })
             }
-            if (v.managedByConnectorId != null) {
-              managedEntries.push({ key, connectorId: v.managedByConnectorId })
+            if (v.sync != null) {
+              managedEntries.push({ key, sync: v.sync })
             }
           }
         } else {
@@ -484,11 +485,11 @@ class FieldValueFetchQueue {
         setAiState(entry.key, entry.aiStatus, entry.aiMetadata)
       }
 
-      // Rehydrate contributing data-connector markers so the "Synced by
-      // <connector>" cell badge survives refresh.
+      // Rehydrate contributing data-connector sync states so the cell badge
+      // survives refresh.
       const setManagedState = useFieldValueStore.getState().setManagedState
       for (const entry of managedEntries) {
-        setManagedState(entry.key, entry.connectorId)
+        setManagedState(entry.key, entry.sync)
       }
     } catch (error) {
       console.error('[FieldValueFetchQueue] Fetch failed:', error)

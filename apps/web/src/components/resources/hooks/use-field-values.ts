@@ -1,5 +1,6 @@
 // apps/web/src/components/resources/hooks/use-field-values.ts
 
+import type { CellSyncInfo } from '@auxx/lib/data-connectors/client'
 import type { RecordId } from '@auxx/lib/resources/client'
 import {
   type FieldId,
@@ -194,15 +195,15 @@ export interface FieldCellState {
   value: StoredFieldValue | undefined
   isLoading: boolean
   aiState: AiCellState | undefined
-  /** Contributing data-connector id when the cell is connector-synced. */
-  managedConnectorId: string | undefined
+  /** Contributing data-connector sync state when the cell is bound to a connector. */
+  sync: CellSyncInfo | undefined
 }
 
 const EMPTY_CELL_STATE: FieldCellState = {
   value: undefined,
   isLoading: false,
   aiState: undefined,
-  managedConnectorId: undefined,
+  sync: undefined,
 }
 
 /**
@@ -226,7 +227,7 @@ export function useFieldCellState(
         value: s.values[key],
         isLoading: key in s.fetchingKeys,
         aiState: s.aiStates[key],
-        managedConnectorId: s.managedStates[key],
+        sync: s.managedStates[key],
       }
     })
   )
@@ -258,12 +259,15 @@ export function useFieldAiState(rawRecordId: RecordId, fieldId: FieldId): AiCell
 }
 
 /**
- * Subscribe to the contributing data-connector marker for a (record, field)
- * pair. Returns the owning connector id when the cell is synced by a
- * contributing connector, else `undefined`. Mirrors `useFieldAiState` — the cell
- * stays editable; this only drives the "Synced by <connector>" badge.
+ * Subscribe to the contributing data-connector sync state for a (record, field)
+ * pair. Returns the connector id, state and overwrite flag when the cell is
+ * bound to a contributing connector, else `undefined`. Mirrors `useFieldAiState`:
+ * the cell stays editable; this only drives the sync badge and its menu.
  */
-export function useFieldManagedState(rawRecordId: RecordId, fieldId: FieldId): string | undefined {
+export function useFieldManagedState(
+  rawRecordId: RecordId,
+  fieldId: FieldId
+): CellSyncInfo | undefined {
   const key = useAttributeKey(rawRecordId, fieldId)
   return useFieldValueStore((s) => (key ? s.managedStates[key] : undefined))
 }

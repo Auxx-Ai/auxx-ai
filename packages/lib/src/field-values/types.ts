@@ -5,6 +5,7 @@ import type { TypedFieldValue, TypedFieldValueInput } from '@auxx/types'
 import type { FieldPath, FieldReference, ResourceFieldId } from '@auxx/types/field'
 import type { RecordId } from '@auxx/types/resource'
 import type { FieldOptions } from '../custom-fields/field-options'
+import type { CellSyncInfo } from '../data-connectors/sync-state'
 import type { RecordFieldChange } from '../events/types'
 import type { AiStatus, FieldValueUpdateEntry } from '../realtime/events'
 import type { AiValueMetadata } from './ai-autofill/generation-service'
@@ -462,10 +463,23 @@ export interface TypedFieldValueResult {
 
   /**
    * Contributing data-connector that wrote/manages this value (per-cell marker
-   * from `FieldValue.managedByConnectorId`), `null` when user/AI/owned. Lets the
-   * client render a "Synced by <connector>" badge on an otherwise-editable cell.
+   * from `FieldValue.managedByConnectorId`), `null` when user/AI/owned.
+   *
+   * Superseded by {@link TypedFieldValueResult.sync}, which carries the same
+   * connector plus the state the badge renders. Kept on the wire for one
+   * release so nothing that still reads it breaks; to be removed.
    */
   managedByConnectorId?: string | null
+
+  /**
+   * The cell's contributing sync state (plans/money/tasks/40-per-field-sync-pin.md
+   * D2): `paused` when a live `DataConnectorItem` on the record pins the field,
+   * `synced` when a row carries the marker, `edited` when no row does but the
+   * binding would re-assert the source value on the next run. `null` when the
+   * field is not bound on the record. Only the batch read path emits it; the
+   * single-record `getValue` / `getValues` paths stay marker-only.
+   */
+  sync?: CellSyncInfo | null
 
   /** Issues found during fetch (optional) */
   issues?: string[]
