@@ -71,6 +71,12 @@ export const DataConnectorItem = pgTable(
     // ownership on a shared/contributing record). Read-only enforcement itself is
     // the CustomField capability (isUpdatable=false), not a frozen-set here.
     managedFields: jsonb().$type<string[]>().default([]).notNull(),
+    // Concrete `CustomField` ids the user has PAUSED for this record: the connector
+    // never writes them (scalar, row-level or relationship) until the id is removed
+    // (plans/money/tasks/40-per-field-sync-pin.md). Concrete ids, not
+    // `targetFieldRef`s, because the pin is set from the record UI, which only
+    // knows the field; the sink resolves its refs to concrete ids before comparing.
+    pinnedFields: jsonb().$type<string[]>().default([]).notNull(),
     // Edges to wire in the two-pass (relationship-linking v3 §9.6). Each carries the
     // relationship field id to write on THIS instance (belongs_to side) plus the
     // target's def + upstream id — DEF-KEYED resolution, so build-order stops

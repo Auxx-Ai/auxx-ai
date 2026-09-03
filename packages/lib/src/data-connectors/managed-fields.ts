@@ -2,6 +2,7 @@
 
 import { type Database, schema } from '@auxx/database'
 import { and, eq, isNull } from 'drizzle-orm'
+import { refNamesField } from './sync-state'
 
 /**
  * Whether `fieldId` is connector-managed on `entityInstanceId` — the same
@@ -41,9 +42,4 @@ export async function isFieldConnectorManaged(
     )
 
   return items.some((item) => (item.managedFields ?? []).some((ref) => refNamesField(ref, fieldId)))
-}
-
-/** `<defId>:<fieldId>` names the field; a bare id (legacy rows, tests) is accepted too. */
-function refNamesField(ref: string, fieldId: string): boolean {
-  return ref === fieldId || ref.endsWith(`:${fieldId}`)
 }

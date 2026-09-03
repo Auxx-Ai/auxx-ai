@@ -1,5 +1,6 @@
 // apps/web/src/stores/custom-field-value-store.ts
 
+import type { CellSyncInfo } from '@auxx/lib/data-connectors/client'
 import type { AiStatus, AiValueMetadata } from '@auxx/lib/realtime/client'
 import { type RecordId, toRecordId } from '@auxx/lib/resources/client'
 import {
@@ -79,12 +80,13 @@ interface CustomFieldValueState {
   aiStates: Record<FieldValueKey, AiCellState>
 
   /**
-   * Contributing data-connector marker per key (the owning connector id).
-   * Parallel slice to `values`, mirroring `aiStates`. A key with an entry has a
-   * "Synced by <connector>" badge; the cell stays editable. Hydrated from the
-   * `managedByConnectorId` field on fetched values.
+   * Contributing data-connector sync state per key (connector id, the
+   * synced/edited/paused state, and whether the connector would overwrite a
+   * hand edit). Parallel slice to `values`, mirroring `aiStates`. A key with an
+   * entry renders the sync badge; the cell stays editable. Hydrated from the
+   * `sync` field on fetched values.
    */
-  managedStates: Record<FieldValueKey, string>
+  managedStates: Record<FieldValueKey, CellSyncInfo>
 
   /** Pending optimistic AI markers (for rollback on mutation error). */
   pendingAiStates: Record<FieldValueKey, PendingAiState>
@@ -145,10 +147,10 @@ interface CustomFieldValueState {
   clearAiState: (key: FieldValueKey) => void
 
   /**
-   * Apply the contributing data-connector marker to a cell. `connectorId=null`
-   * clears the marker; otherwise records the owning connector id.
+   * Apply the contributing data-connector sync state to a cell. `info=null`
+   * clears it; otherwise records the connector id, state and overwrite flag.
    */
-  setManagedState: (key: FieldValueKey, connectorId: string | null) => void
+  setManagedState: (key: FieldValueKey, info: CellSyncInfo | null) => void
 
   /** Mark a batch of keys as loading */
   startLoading: (batchId: string, keys: FieldValueKey[]) => void
@@ -457,15 +459,23 @@ export const useFieldValueStore = create<CustomFieldValueState>()(
       })
     },
 
-    setManagedState: (key, connectorId) => {
+    setManagedState: (key, info) => {
       set((state) => {
-        if (connectorId === null) {
+        if (info === null) {
           if (!(key in state.managedStates)) return state
           const { [key]: _, ...rest } = state.managedStates
           return { managedStates: rest }
         }
-        if (state.managedStates[key] === connectorId) return state
-        return { managedStates: { ...state.managedStates, [key]: connectorId } }
+        const current = state.managedStates[key]
+        if (
+          current &&
+          current.connectorId === info.connectorId &&
+          current.state === info.state &&
+          current.willOverwrite === info.willOverwrite
+        ) {
+          return state
+        }
+        return { managedStates: { ...state.managedStates, [key]: info } }
       })
     },
 

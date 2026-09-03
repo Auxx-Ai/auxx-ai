@@ -44,10 +44,10 @@ function PropertyRow({
   const isGenerating = aiState?.status === 'generating'
 
   // Data-connector provenance. `dataConnectorId` is owned-mode (column-grain,
-  // read-only); the per-cell managed marker is contributing-mode (still editable).
-  // Owned wins — never show both.
+  // read-only); the per-cell sync state is contributing-mode (still editable).
+  // Owned wins, never show both.
   const ownedConnectorId = field.dataConnectorId
-  const managedConnectorId = useFieldManagedState(recordId, field.id)
+  const sync = useFieldManagedState(recordId, field.id)
 
   // `isAiField` reads `field.type` + `options.ai.enabled`; property-row uses
   // `field.fieldType` on the registry projection, so we adapt the shape here.
@@ -125,10 +125,12 @@ function PropertyRow({
             {ownedConnectorId ? (
               <ConnectorLockBadge connectorId={ownedConnectorId} mode='owned' className='ms-1' />
             ) : (
-              managedConnectorId && (
+              sync && (
                 <ConnectorLockBadge
-                  connectorId={managedConnectorId}
                   mode='contributing'
+                  sync={sync}
+                  recordId={recordId}
+                  fieldId={field.id}
                   multi={(field.options as { multi?: boolean } | null | undefined)?.multi === true}
                   className='ms-1'
                 />

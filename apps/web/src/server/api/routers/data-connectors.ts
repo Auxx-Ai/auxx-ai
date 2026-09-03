@@ -38,6 +38,7 @@ import {
   removeMapping,
   removeStream,
   sampleConnectorFetch,
+  setConnectorFieldPin,
   setStreamRequestConfig,
   setStreamSchema,
   suggestFieldMappings,
@@ -47,10 +48,17 @@ import {
 } from '@auxx/lib/data-connectors'
 import { inferJsonSchema } from '@auxx/lib/json-schema/client'
 import { PermissionKey } from '@auxx/lib/permissions'
-import { resourceFieldIdSchema } from '@auxx/types/field'
+import { fieldIdSchema, resourceFieldIdSchema } from '@auxx/types/field'
+import { parseRecordId, type RecordId } from '@auxx/types/resource'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
-import { createTRPCRouter, permissionProcedure, protectedProcedure } from '~/server/api/trpc'
+import {
+  capabilityProcedure,
+  createTRPCRouter,
+  permissionProcedure,
+  protectedProcedure,
+} from '~/server/api/trpc'
+import { assertFieldValueHostsWritable } from '~/server/lib/field-value-host-access'
 
 // ── Shared zod shapes ─────────────────────────────────────────────────────────
 
@@ -459,6 +467,43 @@ export const dataConnectorRouter = createTRPCRouter({
         // them under the stream cards (plans/money/tasks/39 §3.6).
         pendingLinks: pendingLinksResult.value,
       }
+    }),
+
+  /**
+   * Pause or resume a contributing connector for ONE field on ONE record
+   * (plans/money/tasks/40 §8). Gated on record write access, the same gate a
+   * field-value write passes, not on `connectors.manage`: the person editing
+   * the cell is the one who needs to keep their edit. The pin lands on every
+   * live `DataConnectorItem` of the connector on that instance; the sink skips
+   * the field and the drift query ignores it until the pin is removed.
+   */
+  setFieldPin: capabilityProcedure
+    .input(
+      z.object({
+        recordId: z.string(),
+        fieldId: fieldIdSchema,
+        connectorId: z.string(),
+        pinned: z.boolean(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      await assertFieldValueHostsWritable({
+        db: ctx.db,
+        capabilities: ctx.capabilities,
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.user.id,
+        hosts: [input.recordId as RecordId],
+      })
+      const { entityInstanceId } = parseRecordId(input.recordId as RecordId)
+      const result = await setConnectorFieldPin(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        entityInstanceId,
+        fieldId: input.fieldId,
+        connectorId: input.connectorId,
+        pinned: input.pinned,
+      })
+      if (result.isErr()) throw result.error
+      return result.value
     }),
 
   listRuns: permissionProcedure(PermissionKey.connectorsManage)

@@ -132,6 +132,7 @@ export type {
   ConnectorOwnedTarget,
   CreateConnectorInput,
   DeleteSyncedDataBehavior,
+  SetConnectorFieldPinInput,
   UpdateConnectorInput,
   UpdateMappingInput,
 } from './mutations'
@@ -153,6 +154,7 @@ export {
   resolveSoleAppConnection,
   restampConnectorWebhookBindings,
   restampWebhookBindingsForDeployment,
+  setConnectorFieldPin,
   setStreamRequestConfig,
   setStreamSchema,
   updateConnector,

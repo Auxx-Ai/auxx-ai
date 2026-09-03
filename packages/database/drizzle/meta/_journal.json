@@ -2493,6 +2493,13 @@
       "when": 1788393460565,
       "tag": "0355_connector_catalog_update",
       "breakpoints": true
+    },
+    {
+      "idx": 356,
+      "version": "7",
+      "when": 1788400740816,
+      "tag": "0356_data_connector_item_pinned_fields",
+      "breakpoints": true
     }
   ]
 }

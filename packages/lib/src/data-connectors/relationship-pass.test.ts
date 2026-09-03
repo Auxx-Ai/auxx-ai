@@ -63,13 +63,18 @@ const clearEdge = (fieldKey = 'customer'): PendingRelation => ({
   targetExternalId: null,
 })
 
-function item(pending: PendingRelation[], linked: string[] = []): DataConnectorItemRow {
+function item(
+  pending: PendingRelation[],
+  linked: string[] = [],
+  pinnedFields: string[] = []
+): DataConnectorItemRow {
   return {
     id: 'item_1',
     entityInstanceId: ORDER_INSTANCE,
     entityDefinitionId: ORDER_DEF,
     pendingRelations: pending,
     linkedRelations: linked.length > 0 ? linked : null,
+    pinnedFields,
   } as unknown as DataConnectorItemRow
 }
 
@@ -210,6 +215,85 @@ describe('resolveRelationships — idempotency guard', () => {
 
     expect(h.buildWriteKeyToFieldId).toHaveBeenCalledTimes(1)
     expect(h.buildWriteKeyToFieldId).toHaveBeenCalledWith(ORG, ORDER_DEF)
+  })
+})
+
+// A field the user paused on the record (plans/money/tasks/40 section 6.3): the edge
+// is neither written nor consumed. It stays pending, so the run after an unpin
+// applies it, and it is not a warning, because it is the user's choice.
+describe('resolveRelationships - pinned field', () => {
+  it('leaves a pinned set edge pending and writes nothing', async () => {
+    h.listItems.mockResolvedValue([item([setEdge()], [], [CUSTOMER_FIELD_ID])])
+    const c = ctx()
+
+    await resolveRelationships(c)
+
+    expect(h.update).not.toHaveBeenCalled()
+    // Still pending, still not linked: nothing changed, so no state write either.
+    expect(h.setRelationState).not.toHaveBeenCalled()
+    expect(c.counters.relationshipWarnings).toBe(0)
+    expect([...c.touchedDefs]).toEqual([])
+  })
+
+  it('leaves a pinned CLEAR pending too: a paused field takes no write of either kind', async () => {
+    h.listItems.mockResolvedValue([item([clearEdge()], ['customer'], [CUSTOMER_FIELD_ID])])
+
+    await resolveRelationships(ctx())
+
+    expect(h.update).not.toHaveBeenCalled()
+    expect(h.setRelationState).not.toHaveBeenCalled()
+  })
+
+  it('does not consume a pinned edge even when it already points at the target', async () => {
+    h.listItems.mockResolvedValue([item([setEdge()], [], [CUSTOMER_FIELD_ID])])
+    h.readTargets.mockResolvedValue(
+      new Map([[`${ORDER_INSTANCE}::${CUSTOMER_FIELD_ID}`, CONTACT_INSTANCE]])
+    )
+
+    await resolveRelationships(ctx())
+
+    expect(h.update).not.toHaveBeenCalled()
+    expect(h.setRelationState).not.toHaveBeenCalled()
+  })
+
+  it('still writes the unpinned edges of the same item', async () => {
+    h.buildWriteKeyToFieldId.mockResolvedValue(
+      new Map([
+        ['customer', CUSTOMER_FIELD_ID],
+        ['vendor', 'fld_vendor'],
+      ])
+    )
+    h.listItems.mockResolvedValue([
+      item([setEdge('customer'), setEdge('vendor')], [], [CUSTOMER_FIELD_ID]),
+    ])
+    const c = ctx()
+
+    const summary = await resolveRelationships(c)
+
+    expect(h.update).toHaveBeenCalledTimes(1)
+    expect(h.update).toHaveBeenCalledWith(
+      `${ORDER_DEF}:${ORDER_INSTANCE}`,
+      { vendor: `${CONTACT_DEF}:${CONTACT_INSTANCE}` },
+      undefined,
+      {}
+    )
+    expect(h.setRelationState).toHaveBeenCalledWith(expect.anything(), 'item_1', {
+      pendingRelations: [setEdge('customer')],
+      linkedRelations: ['vendor'],
+    })
+    expect(summary).toEqual({ resolved: 1, stillPending: 1 })
+    expect(c.counters.relationshipWarnings).toBe(0)
+  })
+
+  it('a pin on a field whose key does not resolve cannot be honoured, so the edge writes as before', async () => {
+    // Documented edge: the pin holds a concrete id, and an unresolvable key has none
+    // to compare against. Same fall-through as the idempotency guard.
+    h.buildWriteKeyToFieldId.mockResolvedValue(new Map())
+    h.listItems.mockResolvedValue([item([setEdge()], [], [CUSTOMER_FIELD_ID])])
+
+    await resolveRelationships(ctx())
+
+    expect(h.update).toHaveBeenCalledTimes(1)
   })
 })
 

@@ -13,7 +13,7 @@ import type { FieldId, ResourceFieldId } from '@auxx/types/field'
 import { getFieldId } from '@auxx/types/field'
 import type { TypedFieldValue } from '@auxx/types/field-value'
 import { stableHash } from '@auxx/utils/hash'
-import { and, eq, inArray, isNull, ne, or } from 'drizzle-orm'
+import { and, eq, inArray, isNull, ne, or, sql } from 'drizzle-orm'
 import { resolveConnectorFieldRef } from '../../agents/bindings/resolve'
 import { getCachedFieldMap } from '../../cache'
 import { UniqueValueConflictError } from '../../errors'
@@ -32,6 +32,7 @@ import {
   touchItem,
   upsertItem,
 } from '../service'
+import { type SyncFieldShape, wouldHealField } from '../sync-state'
 import type { FieldMergeStrategy } from '../types'
 import {
   executeRowLevelWrites,
@@ -397,6 +398,12 @@ async function captureAmbiguousMatch(
  * own-row-upsert path (B1; see `row-level-writes.ts`). A whole-field `set`
  * would wipe every row's connector marker and regenerate all sortKeys. On a
  * CREATE they stay in the write set (a fresh instance has no rows to protect).
+ *
+ * `pinnedFields` are the concrete `CustomField` ids the user PAUSED on this
+ * record (`DataConnectorItem.pinnedFields`, plans/money/tasks/40). A pinned field
+ * reaches neither `writeSet` nor `rowWrites`, so it is never written and never
+ * stamped (stamping keys off the write set); it stays in `managedFields`, so the
+ * read side can show `paused` rather than nothing.
  */
 async function buildWriteSet(
   ctx: SyncCtx,
@@ -404,6 +411,7 @@ async function buildWriteSet(
   record: ProjectedRecord,
   existingInstanceId: string | null,
   refToConcrete: Map<string, ResourceFieldId>,
+  pinnedFields: readonly string[],
   matched?: { fieldId?: FieldId; value: unknown }
 ): Promise<{
   writeSet: Record<string, unknown>
@@ -478,6 +486,12 @@ async function buildWriteSet(
     if (identityRefs.has(rawRef)) identityFieldKeys.push(fieldId)
 
     const fieldUuid = keyToId?.get(fieldId)
+    // Paused on this record: the pin holds the concrete `CustomField.id`, which is
+    // `fieldUuid`; the write key itself is that uuid for a custom field and the
+    // systemAttribute for a system field, so both forms are checked.
+    if (pinnedFields.includes(fieldId) || (fieldUuid != null && pinnedFields.includes(fieldUuid))) {
+      continue
+    }
     const fieldRow = fieldUuid ? fieldMap?.get(fieldUuid) : undefined
     const isMulti =
       !identityRefs.has(rawRef) &&
@@ -697,19 +711,19 @@ async function computeDriftedInstances(
 ): Promise<Set<string>> {
   if (mapping.targetMode !== 'contributing') return new Set()
 
-  // `overwrite` is the default when a binding carries no explicit mergeStrategy
-  // (mirrors `strategyFor` in buildWriteSet), so an unset strategy counts here.
-  // Identity-flagged refs are excluded — the sink forces them to fill-blank
-  // (mirrors `strategyFor`'s override), so they never re-assert and can't drift.
-  const overwriteRefs = mapping.fieldMappings
-    .filter(
-      (fm) =>
-        fm.targetFieldRef != null &&
-        fm.identityRole?.kind !== 'externalId' &&
-        (fm.mergeStrategy == null || fm.mergeStrategy === 'overwrite')
-    )
-    .map((fm) => fm.targetFieldRef as ResourceFieldId)
-  if (overwriteRefs.length === 0) return new Set()
+  // The bindings that re-assert the source value over a hand edit: strategy
+  // `overwrite` (or unset, which `strategyFor` in buildWriteSet defaults to it),
+  // not identity-flagged (the sink forces those to fill-blank, so they never
+  // re-assert and cannot drift), and not multi (checked below once the field is
+  // known). `wouldHealField` is the same rule the read path uses to show a cell
+  // as `edited`, so the badge and this query cannot disagree (plan 40 D2). The
+  // field-less call here is the strategy and identity half; a mapping with no
+  // healing binding pays nothing and short-circuits before querying.
+  const healingBindings = mapping.fieldMappings.filter(
+    (fm): fm is typeof fm & { targetFieldRef: ResourceFieldId } =>
+      fm.targetFieldRef != null && wouldHealField(fm, null)
+  )
+  if (healingBindings.length === 0) return new Set()
 
   // Resolve each ref to the concrete CustomField uuid `FieldValue.fieldId` carries
   // (refs may be the late-bound `@app:` form; system fields key by systemAttribute).
@@ -717,8 +731,8 @@ async function computeDriftedInstances(
   const keyToId = await buildWriteKeyToFieldId(ctx.orgId, mapping.entityDefinitionId)
   const fieldMap = await getCachedFieldMap(ctx.orgId, mapping.entityDefinitionId)
   const fieldIds = new Set<string>()
-  for (const ref of overwriteRefs) {
-    const concrete = await resolveConnectorFieldRef(ref, ctx.orgId, connectionId)
+  for (const fm of healingBindings) {
+    const concrete = await resolveConnectorFieldRef(fm.targetFieldRef, ctx.orgId, connectionId)
     if (!concrete) continue
     const uuid = keyToId.get(getFieldId(concrete))
     if (!uuid) continue
@@ -728,15 +742,19 @@ async function computeDriftedInstances(
     // signals a hand-edit. Without this, a single user alias makes every bound
     // record permanently "drifted" and the content-hash skip never fires again.
     // A user edit of the connector's own row is respected (never re-asserted)
-    // until the SOURCE value changes — consistent with never-touch-other-rows.
-    const field = fieldMap.get(uuid)
-    if ((field?.options as { multi?: boolean } | null | undefined)?.multi === true) continue
+    // until the SOURCE value changes, consistent with never-touch-other-rows.
+    const field = fieldMap.get(uuid) as SyncFieldShape | undefined
+    if (!wouldHealField(fm, field)) continue
     fieldIds.add(uuid)
   }
   if (fieldIds.size === 0) return new Set()
 
   // One query: bound instances of this mapping holding an overwrite cell no longer
   // stamped by this connector (NULL = hand-edited, or a different connector took over).
+  // A cell the user PAUSED on the record (`pinnedFields`, plan 40) is not drift:
+  // the sink will not write it, so counting it would keep the record permanently
+  // drifted and the content-hash skip would never fire again. jsonb `?` tests
+  // string membership in the top-level array; one clause covers every field.
   const rows = await ctx.db
     .selectDistinct({ entityId: schema.FieldValue.entityId })
     .from(schema.FieldValue)
@@ -752,7 +770,8 @@ async function computeDriftedInstances(
         or(
           isNull(schema.FieldValue.managedByConnectorId),
           ne(schema.FieldValue.managedByConnectorId, ctx.connector.id)
-        )
+        ),
+        sql`NOT (${schema.DataConnectorItem.pinnedFields} ? ${schema.FieldValue.fieldId})`
       )
     )
   return new Set(rows.map((r) => r.entityId))
@@ -1050,6 +1069,7 @@ export const entitySink: EntitySink = {
       record,
       instanceId,
       refToConcrete,
+      bound?.pinnedFields ?? [],
       matched
     )
 

@@ -50,7 +50,7 @@ export const CustomFieldCell = memo(function CustomFieldCell({
   // Combined cell state: value, loading, AI, and managed markers through ONE
   // canonical key + ONE store subscription (hardening plan Part 6).
   // autoFetch ensures isLoading=true on first render (queues synchronously)
-  const { value, isLoading, managedConnectorId } = useFieldCellState(recordId, fieldRef, {
+  const { value, isLoading, sync } = useFieldCellState(recordId, fieldRef, {
     autoFetch: true,
   })
 
@@ -105,18 +105,21 @@ export const CustomFieldCell = memo(function CustomFieldCell({
       cell
     )
 
-  // Contributing connector marker — a small badge in the cell's top-right.
-  // Editable cell: badge only, no read-only chrome (that's owned-mode, gated at
-  // the column header / `updatable=false`).
-  if (!managedConnectorId) return content
+  // Contributing connector sync state, a small badge in the cell's top-right.
+  // Editable cell: badge and its pause/resume menu, no read-only chrome (that's
+  // owned-mode, gated at the column header / `updatable=false`). A path cell
+  // gets no menu target: the bound record is the related one, not this row.
+  if (!sync) return content
 
   return (
     <div className='relative h-full w-full'>
       {content}
-      <div className='absolute top-0.5 right-0.5 z-10 opacity-60'>
+      <div className='absolute top-0.5 right-0.5 z-10 opacity-60 hover:opacity-100'>
         <ConnectorLockBadge
-          connectorId={managedConnectorId}
           mode='contributing'
+          sync={sync}
+          recordId={isPath ? undefined : recordId}
+          fieldId={isPath ? undefined : (field?.id as FieldId | undefined)}
           multi={(options as { multi?: boolean } | null | undefined)?.multi === true}
         />
       </div>
