@@ -131,7 +131,12 @@ const updateChain = {
 
 const db = {
   query: {
-    DataConnector: { findFirst: async () => world.connector },
+    DataConnector: {
+      findFirst: async () => world.connector,
+      // `sweepStrandedConnectors` (task 43 D-3) runs at chain start. Faithful rather
+      // than stubbed empty: it only ever sees a connector left `syncing` by this world.
+      findMany: async () => (world.connector.status === 'syncing' ? [world.connector] : []),
+    },
     DataConnectorRun: {
       findFirst: async ({ where }: { where: unknown }) => {
         const ids = paramValues(where)

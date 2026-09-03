@@ -59,7 +59,9 @@ export const fixtureConnector: DataConnectorDefinition = {
     logger.debug('fixture fetch', { streamKey: args.streamKey, count: records.length })
     return {
       records: yieldFixtures(records),
-      nextState: { ...args.state, backfillComplete: true },
+      // No `backfillComplete` — removed with the field itself (task 43 §4); `phase`
+      // is the completion signal and nothing ever read this back.
+      nextState: { ...args.state },
     }
   },
 

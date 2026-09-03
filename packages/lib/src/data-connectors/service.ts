@@ -222,6 +222,62 @@ export async function decrementConnectorBackfillLatch(
   return row?.remaining ?? null
 }
 
+/**
+ * Read the B1 latch without touching it (task 43 D-4).
+ *
+ * The latch decides whether a connector ever gets released, and until this existed it
+ * was inspectable ONLY by hand-reading `DataConnector.state` in SQL — which is how the
+ * strand that motivated task 43 had to be diagnosed. `null` ⇒ never initialized.
+ */
+export async function readConnectorBackfillLatch(
+  db: Database,
+  dataConnectorId: string
+): Promise<number | null> {
+  const row = await db.query.DataConnector.findFirst({
+    where: eq(schema.DataConnector.id, dataConnectorId),
+    columns: { state: true },
+  })
+  const remaining = (row?.state as { backfillStreamsRemaining?: unknown } | null)
+    ?.backfillStreamsRemaining
+  return typeof remaining === 'number' ? remaining : null
+}
+
+/**
+ * Release a connector stranded in `syncing` with no chain left to release it, and drop
+ * its leaked latch (task 43 D-3).
+ *
+ * 🛑 Deliberately NOT `finalizeConnector({ ok: true })`, for two reasons that both
+ * corrupt data:
+ *   1. that path writes `itemCount: input.itemCount ?? 0`, so releasing without
+ *      re-counting would ZERO the connector's record count — the same class of defect
+ *      as plans/records/bulk-delete-followups.md B.4;
+ *   2. it stamps `lastSyncedAt: now`, which would claim a sync happened at sweep time.
+ *      The strand is a lifecycle leak; the data landed whenever the run actually ran,
+ *      so `lastSyncedAt` must keep whatever the last real finalize recorded.
+ *
+ * `status` is re-checked in the WHERE so a connector legitimately re-claimed between
+ * the caller's read and this write is left alone.
+ */
+export async function releaseStrandedConnector(
+  db: Database,
+  dataConnectorId: string
+): Promise<boolean> {
+  const T = schema.DataConnector
+  const itemCount = await countConnectorItems(db, dataConnectorId)
+  const [released] = await db
+    .update(T)
+    .set({
+      status: 'live',
+      itemCount,
+      error: null,
+      state: sql`coalesce(${T.state}, '{}'::jsonb) - 'backfillStreamsRemaining'`,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(T.id, dataConnectorId), eq(T.status, 'syncing')))
+    .returning({ id: T.id })
+  return !!released
+}
+
 // ── Runs ────────────────────────────────────────────────────────────────────
 
 /** Mutable counters accumulated across a run, flushed in `finalizeRun`. */

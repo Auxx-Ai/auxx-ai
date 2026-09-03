@@ -33,9 +33,10 @@ export function syncStateFromStream(state: ConnectorStreamState): SyncState {
 
 /**
  * Merge a core `SyncState` back onto the persisted `ConnectorStreamState`,
- * preserving legacy/extra keys (`cursor`/`backfillComplete` from the single-shot
- * path, plus any connector-specific bookkeeping). Spread-first so only the
- * core-owned fields are overwritten.
+ * preserving legacy/extra keys (`cursor` from the single-shot path, the
+ * `backfillComplete` that older rows still carry from before task 43 §4 dropped it,
+ * plus any connector-specific bookkeeping). Spread-first so only the core-owned
+ * fields are overwritten.
  */
 export function applySyncStateToStream(
   prev: ConnectorStreamState,

@@ -216,7 +216,7 @@ export interface StreamWebhookTrigger {
  * Durable per-stream sync state (jsonb on `DataConnectorStream.state`). Persisted
  * across runs and checkpointed AFTER every committed slice. The shared sync-core
  * `SyncStateStore` adapter (sync-core/contracts `SyncState`) maps onto this; the
- * legacy single-shot generic-rest fetch path reads `cursor`/`backfillComplete`.
+ * legacy single-shot generic-rest fetch path reads `cursor`.
  *
  * This shape MUST stay byte-compatible with the DB mirror
  * `ConnectorStreamState` in `@auxx/database` schema/`data-connector-types.ts` —
@@ -245,8 +245,17 @@ export interface ConnectorStreamState {
   backfillFloor?: string
   /** Legacy single-shot incremental cursor (snapshot-first generic-rest path). */
   cursor?: string
-  /** Set by a connector's terminal `nextState` when its backfill is exhausted. */
-  backfillComplete?: boolean
+  // 🛑 No `backfillComplete` here, deliberately. It was written (`false` by
+  // `freshBackfillState`, `true` by generic-rest's terminal `nextState`) and read by
+  // NOTHING, so on every app connector it sat at `false` forever — a permanent false
+  // negative for anyone who took it to mean "this stream finished its backfill". The
+  // real signal is `phase` (`backfill` → `steady`). Removed in task 43 §4.
+  //
+  // ⚠️ Not to be confused with `AppConnectorPage['nextState'].backfillComplete`
+  // (`connectors/app-connector-adapter.ts`), which is the LIVE wire-protocol flag an
+  // app returns to mark its last page. That one is load-bearing — leave it alone.
+  //
+  // Existing rows still carry the key; the index signature below tolerates it.
   /** Consecutive no-progress slices (stall guard) — see the core `SyncState`. */
   noProgressStrikes?: number
   [key: string]: unknown
