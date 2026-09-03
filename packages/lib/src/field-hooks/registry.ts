@@ -185,6 +185,20 @@ export function getEntityPostDeleteHooks(entitySlug: string): EntityPostDeleteHa
   return ENTITY_POST_DELETE_HOOKS.get(entitySlug) ?? []
 }
 
+/**
+ * Every entity slug carrying a pre- OR post-delete hook.
+ *
+ * Exists for the bulk delete lane split: `bulkDeleteEntities` sends
+ * hook-carrying definitions down the per-record path and everything else down a
+ * set-based one, and `bulk-delete-order.ts` has to enumerate the first set to
+ * order it. A test asserts the two agree exactly, so a new registration cannot
+ * silently put a guarded entity on the lane that skips guards.
+ */
+export function entityDeleteHookSlugs(): string[] {
+  ensureInitialized()
+  return [...new Set([...ENTITY_PRE_DELETE_HOOKS.keys(), ...ENTITY_POST_DELETE_HOOKS.keys()])]
+}
+
 // =============================================================================
 // POST-WRITE FIELD-CHANGE HOOK ACCESSORS
 // =============================================================================

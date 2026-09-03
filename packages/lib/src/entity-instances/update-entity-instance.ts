@@ -1,8 +1,8 @@
 // packages/lib/src/entity-instances/update-entity-instance.ts
 
-import { database, schema } from '@auxx/database'
+import { type Database, database, schema } from '@auxx/database'
 import { fromDatabase } from '@auxx/services/shared/utils'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
 // Leaf-file import on purpose: the crud barrel pulls in UnifiedCrudHandler,
 // which imports this package's barrel — write-session-als itself only touches
@@ -72,4 +72,62 @@ export async function updateEntityInstance(params: UpdateEntityInstanceParams) {
   }
 
   return ok(updated)
+}
+
+/** Parameters for {@link archiveEntityInstances}. */
+export interface ArchiveEntityInstancesParams {
+  /** Ids to archive. Duplicates tolerated; unknown ids are no-ops. */
+  ids: readonly string[]
+  organizationId: string
+  db?: Database
+}
+
+/**
+ * Archive a SET of entity instances in one statement.
+ *
+ * The set-based twin of {@link updateEntityInstance}'s archive branch, and it
+ * reproduces that branch's two stamps exactly:
+ *
+ * - `updatedAt` always (D-7: archive is a record content change, and `$onUpdate`
+ *   was removed from the column).
+ * - `lastActivityAt` unless the ambient write session is a SEED — seeded data is
+ *   not activity, per the door matrix.
+ *
+ * ⚠️ **Only rows that are not already archived are touched**, and the returned
+ * ids are exactly the rows that changed. `archiveEntity` reads through
+ * `getEntityInstance` without `includeArchived` and throws for an archived row,
+ * which `bulkArchiveEntities` swallows — so an already-archived id has never
+ * counted toward a bulk archive, and it must not start counting now. This is
+ * also what keeps the tier-2 `records:changed` frame honest: it announces the
+ * rows that actually moved.
+ */
+export async function archiveEntityInstances(params: ArchiveEntityInstancesParams) {
+  const { organizationId, db = database } = params
+  const ids = [...new Set(params.ids)]
+  if (ids.length === 0) return ok([] as string[])
+
+  const now = new Date()
+  const updateData: Record<string, unknown> = { updatedAt: now, archivedAt: now }
+  if (getAmbientWriteSession()?.origin.kind !== 'seed') {
+    updateData.lastActivityAt = now
+  }
+
+  const dbResult = await fromDatabase(
+    db
+      .update(schema.EntityInstance)
+      .set(updateData)
+      .where(
+        and(
+          inArray(schema.EntityInstance.id, ids),
+          eq(schema.EntityInstance.organizationId, organizationId),
+          isNull(schema.EntityInstance.archivedAt)
+        )
+      )
+      .returning({ id: schema.EntityInstance.id }),
+    'archive-entity-instances'
+  )
+
+  if (dbResult.isErr()) return err(dbResult.error)
+
+  return ok(dbResult.value.map((row) => row.id))
 }

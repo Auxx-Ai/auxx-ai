@@ -9,8 +9,10 @@ import { database as db } from '@auxx/database'
 import {
   type BackfillSliceJobData,
   runBackfillSlice,
+  runConnectorTeardownSlice,
   SLICE_LOCK_DURATION_MS,
   startConnectorSync,
+  type TeardownSliceJobData,
 } from '@auxx/lib/data-connectors'
 import type { JobContext } from '@auxx/lib/jobs'
 import { Queues } from '@auxx/lib/jobs/queues'
@@ -60,10 +62,23 @@ async function handleBackfillSlice(ctx: JobContext<BackfillSliceJobData>) {
   await runBackfillSlice(db, { connectorId, organizationId, streamId, runId }, ctx.signal)
 }
 
+/**
+ * One slice of a connector TEARDOWN → remove the next batch of minted records
+ * and re-enqueue, or finalize and drop the connector row when nothing is left.
+ * Same continuation shape as a backfill slice, for the same reason: a real
+ * connector holds tens of thousands of records and no single job may own that.
+ */
+async function handleTeardownSlice(ctx: JobContext<TeardownSliceJobData>) {
+  const { connectorId, organizationId, behavior } = ctx.data
+  const outcome = await runConnectorTeardownSlice(db, ctx.data)
+  logger.info('Teardown slice done', { connectorId, organizationId, behavior, ...outcome })
+}
+
 const jobMappings = {
   'data-connector-sync': handleDataConnectorSync,
   'data-connector-sweep': handleDataConnectorSweep,
   'data-connector-backfill-slice': handleBackfillSlice,
+  'data-connector-teardown': handleTeardownSlice,
 }
 
 export function startDataConnectorWorker() {

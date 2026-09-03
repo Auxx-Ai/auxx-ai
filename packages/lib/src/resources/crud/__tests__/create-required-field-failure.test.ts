@@ -112,7 +112,9 @@ describe('createEntity when a field write is swallowed', () => {
     })
 
     // The stub is gone, not left behind as a record missing its supplier.
-    expect(h.deleteEntityInstance).toHaveBeenCalledWith({ id: 'inst_1', organizationId: 'org_1' })
+    expect(h.deleteEntityInstance).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'inst_1', organizationId: 'org_1' })
+    )
     // Nothing announced a record that no longer exists.
     expect(h.publish).not.toHaveBeenCalled()
     expect(h.publishLater).not.toHaveBeenCalled()

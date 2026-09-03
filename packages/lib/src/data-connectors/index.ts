@@ -108,7 +108,11 @@ export {
   isConnectorCheckpoint,
   PermanentSteerError,
 } from './connectors'
-export type { BackfillSliceJobData, DataConnectorSyncJobData } from './data-connector-queue'
+export type {
+  BackfillSliceJobData,
+  DataConnectorSyncJobData,
+  TeardownSliceJobData,
+} from './data-connector-queue'
 // Queue + scheduler
 export {
   BACKFILL_SLICE_JOB,
@@ -301,6 +305,12 @@ export {
   createStreamSyncStateStore,
   syncStateFromStream,
 } from './sync-core-adapters'
+export {
+  countMintedRecords,
+  runConnectorTeardownSlice,
+  TEARDOWN_SLICE_RECORDS,
+  type TeardownSliceOutcome,
+} from './teardown'
 // Connector templates (05c) — first-party generic-rest presets
 export type {
   ConnectorTemplate,

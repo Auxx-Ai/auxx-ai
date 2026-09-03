@@ -704,6 +704,51 @@ export class CommentService {
   }
 
   /**
+   * {@link deleteCommentsByRecordId} for a whole DEFINITION's worth of records,
+   * in one statement.
+   *
+   * The bulk delete lane removes hundreds of records of one definition at a time;
+   * the singular version costs two round trips per record (an `EntityInstance`
+   * read for the access assert, then the `DELETE`) even for the overwhelming
+   * majority of records that carry no comments at all
+   * (plans/records/bulk-delete-at-scale.md §5.3).
+   *
+   * 🛑 **No per-record access assert, deliberately, and this is why it takes a
+   * definition rather than a list of `RecordId`s.** `assertCanAccessRecord`
+   * answers a DEF-level question for everything except `thread` (it resolves the
+   * slug, tests `canViewEntity`, then proves the row's organization). Asking it
+   * once per record of one definition is the same question N times. The caller —
+   * `bulkDeleteEntities` — has already passed `assertCanDeleteRows`, the
+   * strictly stronger per-row DELETE gate, before reaching here.
+   *
+   * Not for `thread`: mail comments hang off a different host with its own lens,
+   * and `Thread.latestCommentId` would need clearing per thread. Threads are not
+   * `EntityInstance` rows and never reach the record bulk-delete lane.
+   */
+  async deleteCommentsForDefinition(
+    entityDefinitionId: string,
+    entityInstanceIds: readonly string[]
+  ): Promise<void> {
+    const ids = [...new Set(entityInstanceIds)]
+    if (ids.length === 0) return
+
+    const equivalentDefinitionKeys = await this.equivalentDefinitionKeys(entityDefinitionId)
+    if (equivalentDefinitionKeys.includes('thread')) {
+      throw new BadRequestError('Thread comments are not deletable through the record bulk lane.')
+    }
+
+    await this.db
+      .delete(schema.Comment)
+      .where(
+        and(
+          inArray(schema.Comment.entityId, ids),
+          inArray(schema.Comment.entityDefinitionId, equivalentDefinitionKeys),
+          eq(schema.Comment.organizationId, this.organizationId)
+        )
+      )
+  }
+
+  /**
    * Delete a comment (soft delete)
    */
   async deleteComment(id: string): Promise<void> {

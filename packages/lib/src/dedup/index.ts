@@ -87,6 +87,7 @@ export {
 export {
   type DismissPairParams,
   deleteOpenPairsForRecord,
+  deleteOpenPairsForRecords,
   dismissPair,
   type MergeResolution,
   type RescorePairsParams,

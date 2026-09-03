@@ -282,6 +282,19 @@ export class UnifiedCrudHandler {
   }
 
   /**
+   * Pre-warm every DISTINCT definition a batch touches.
+   *
+   * The bulk methods used to warm `recordIds[0]`'s definition only, so a batch
+   * spanning several definitions ran all but the first one cold — and a bulk
+   * delete spanning six definitions is the normal case when tearing down a data
+   * connector's synced records.
+   */
+  private async warmCacheForRecords(recordIds: readonly RecordId[]): Promise<void> {
+    const defIds = new Set(recordIds.map((recordId) => parseRecordId(recordId).entityDefinitionId))
+    for (const defId of defIds) await this.warmCache(defId)
+  }
+
+  /**
    * The §5.1 per-record visibility scope for one def, memoized per handler so a
    * request that lists and then stamps pays the (cache-only) grantee resolution
    * once.
@@ -765,8 +778,7 @@ export class UnifiedCrudHandler {
     if (recordIds.length === 0) return { count: 0 }
     return this.inWriteSession(async () => {
       await this.assertEditRows(recordIds)
-      const { entityDefinitionId } = parseRecordId(recordIds[0]!)
-      await this.warmCache(entityDefinitionId)
+      await this.warmCacheForRecords(recordIds)
       return bulkArchiveEntities(this.getMutationContext(), recordIds, options)
     })
   }
@@ -781,8 +793,7 @@ export class UnifiedCrudHandler {
     if (recordIds.length === 0) return { count: 0, errors: [] }
     return this.inWriteSession(async () => {
       await this.assertEditRows(recordIds)
-      const { entityDefinitionId } = parseRecordId(recordIds[0]!)
-      await this.warmCache(entityDefinitionId)
+      await this.warmCacheForRecords(recordIds)
       return bulkDeleteEntities(this.getMutationContext(), recordIds, options)
     })
   }

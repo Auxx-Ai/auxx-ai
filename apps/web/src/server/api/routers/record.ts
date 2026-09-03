@@ -52,6 +52,19 @@ function getSocketId(ctx: { headers: Headers }): string | undefined {
 const INVOICE_PAYMENT_FK_CONSTRAINT = 'PaymentTransaction_invoiceInstanceId_EntityInstance_id_fk'
 
 /**
+ * Ceiling on one `bulkArchive` / `bulkDelete` call.
+ *
+ * A BACKSTOP, not the fix. The records table is an infinite query with no
+ * `pageCount`, so TanStack's "page" is every row loaded so far and the header
+ * checkbox selects all of them — the input was unbounded, and a few thousand
+ * rows went through a per-record loop inside one request
+ * (plans/records/bulk-delete-at-scale.md §2.5). The lanes are set-based now, so
+ * this bound exists only to keep an unbounded array out of a request handler;
+ * it sits well above any selection the table can realistically produce.
+ */
+const BULK_MUTATION_MAX = 5_000
+
+/**
  * Defense-in-depth mapping for `record.delete`/`bulkDelete`: the invoice pre-delete hook
  * (plans/dispatch/money/12-delete-safety.md §A) purges non-succeeded ledger rows and rejects
  * succeeded/disputed ones before the instance delete runs, so this FK should be unreachable in
@@ -1257,7 +1270,7 @@ export const recordRouter = createTRPCRouter({
    * Bulk archive entity instances
    */
   bulkArchive: capabilityProcedure
-    .input(z.object({ recordIds: z.array(recordIdSchema).min(1) }))
+    .input(z.object({ recordIds: z.array(recordIdSchema).min(1).max(BULK_MUTATION_MAX) }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId, user } = ctx.session
       await assertNotInstanceAccessDefForWrite(organizationId, recordIdDefParts(input.recordIds))
@@ -1281,7 +1294,7 @@ export const recordRouter = createTRPCRouter({
    * Bulk delete entity instances
    */
   bulkDelete: capabilityProcedure
-    .input(z.object({ recordIds: z.array(recordIdSchema).min(1) }))
+    .input(z.object({ recordIds: z.array(recordIdSchema).min(1).max(BULK_MUTATION_MAX) }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId, user } = ctx.session
       await assertNotInstanceAccessDefForWrite(organizationId, recordIdDefParts(input.recordIds))
