@@ -2,26 +2,19 @@
 
 'use client'
 
-import {
-  MainPage,
-  MainPageBreadcrumb,
-  MainPageBreadcrumbItem,
-  MainPageHeader,
-} from '@auxx/ui/components/main-page'
 import { usePathname } from 'next/navigation'
-import { RecordRouteGuard } from '~/components/records'
-import { useResource } from '~/components/resources'
+import { EntityRouteLayout } from '~/components/records'
 
 type Props = { children: React.ReactNode }
 
 const BASE_PATH = '/app/builds'
 
 /**
- * Builds layout — the purchase-orders/orders recipe
- * (plans/products/build/01-build-plan.md §3.6): a plain breadcrumb shell for the
- * list route only. `RecordsView` (mounted by `builds/page.tsx`) renders its own
- * MainPageContent and contributes the Create button via `MainPageAction`; the
- * detail route (`[buildId]`) owns its own `MainPage` and bypasses the shell.
+ * Builds layout, the companies recipe: the shared entity route shell
+ * (List | Dashboard) for the list and dashboard routes only. `RecordsView`
+ * (mounted by `builds/page.tsx`) renders its own `MainPageContent` and
+ * contributes the Create button via `MainPageAction`. Detail (`[buildId]`)
+ * and import routes own their own `MainPage` and bypass the shell.
  *
  * There is no catch-all route for system entities, and the Records sidebar links
  * a system def as `/app/${apiSlug}`. This folder IS what makes entity migration
@@ -29,23 +22,16 @@ const BASE_PATH = '/app/builds'
  */
 export default function BuildsLayout({ children }: Props) {
   const pathname = usePathname()
-  const { resource } = useResource('builds')
-  const isDetailOrSpecialPage = pathname !== BASE_PATH
+  const isDetailOrSpecialPage =
+    pathname !== BASE_PATH && !pathname.startsWith(`${BASE_PATH}/dashboard`)
+
+  if (isDetailOrSpecialPage) {
+    return <>{children}</>
+  }
 
   return (
-    <RecordRouteGuard slug='builds'>
-      {isDetailOrSpecialPage ? (
-        <>{children}</>
-      ) : (
-        <MainPage>
-          <MainPageHeader>
-            <MainPageBreadcrumb>
-              <MainPageBreadcrumbItem title={resource?.plural ?? 'Builds'} href={BASE_PATH} />
-            </MainPageBreadcrumb>
-          </MainPageHeader>
-          {children}
-        </MainPage>
-      )}
-    </RecordRouteGuard>
+    <EntityRouteLayout slug='builds' basePath={BASE_PATH}>
+      {children}
+    </EntityRouteLayout>
   )
 }

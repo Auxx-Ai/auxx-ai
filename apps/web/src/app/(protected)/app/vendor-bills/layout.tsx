@@ -2,39 +2,32 @@
 
 'use client'
 
-import {
-  MainPage,
-  MainPageBreadcrumb,
-  MainPageBreadcrumbItem,
-  MainPageHeader,
-} from '@auxx/ui/components/main-page'
-import { RecordRouteGuard } from '~/components/records'
-import { useResource } from '~/components/resources'
+import { usePathname } from 'next/navigation'
+import { EntityRouteLayout } from '~/components/records'
 
 type Props = { children: React.ReactNode }
 
 const BASE_PATH = '/app/vendor-bills'
 
 /**
- * Vendor bills layout — the breadcrumb shell for the list route.
- *
- * Unlike `purchase-orders/layout.tsx` there is no detail-route escape hatch:
- * `vendor_bill` is drawer-only (plans/purchasing/01-build-plan.md §5.1), so this
- * segment has exactly one page and the shell always applies.
+ * Vendor bills layout, the companies recipe: the shared entity route shell
+ * (List | Dashboard) for the list and dashboard routes only. `vendor_bill` is
+ * drawer-only (plans/purchasing/01-build-plan.md §5.1) so there is no detail
+ * route, but `import/[jobId]` renders its own `MainPage` via `ImportPage`
+ * and must bypass the shell, or two `MainPage` trees nest.
  */
 export default function VendorBillsLayout({ children }: Props) {
-  const { resource } = useResource('vendor-bills')
+  const pathname = usePathname()
+  const isDetailOrSpecialPage =
+    pathname !== BASE_PATH && !pathname.startsWith(`${BASE_PATH}/dashboard`)
+
+  if (isDetailOrSpecialPage) {
+    return <>{children}</>
+  }
 
   return (
-    <RecordRouteGuard slug='vendor-bills'>
-      <MainPage>
-        <MainPageHeader>
-          <MainPageBreadcrumb>
-            <MainPageBreadcrumbItem title={resource?.plural ?? 'Vendor Bills'} href={BASE_PATH} />
-          </MainPageBreadcrumb>
-        </MainPageHeader>
-        {children}
-      </MainPage>
-    </RecordRouteGuard>
+    <EntityRouteLayout slug='vendor-bills' basePath={BASE_PATH}>
+      {children}
+    </EntityRouteLayout>
   )
 }
