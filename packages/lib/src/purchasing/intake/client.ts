@@ -154,6 +154,23 @@ export interface IntakeLine {
   chosenBreakIndex: number | null
   /** Set instead of a part when the amount belongs on a header total (§5.4). */
   foldedInto: IntakeFold | null
+  /**
+   * Taken out of the order, but NOT thrown away.
+   *
+   * 🛑 A soft flag rather than dropping the line from the array, for the same
+   * reason a fold is visible and reversible: *"a fold that cannot be seen or
+   * reversed is a delete with extra steps"* — and a delete that cannot be undone
+   * is that with no way back at all. The draft autosaves, so a dropped line was
+   * gone from Redis before anybody could regret it, and the only way to recover
+   * one was to re-read the whole document.
+   *
+   * Nothing downstream needs to know: {@link orderableLines} is the one gate the
+   * table, the totals, the commit gate and the commit itself all pass through.
+   *
+   * ⚠️ Read as falsy, never compared to `false`. A draft written before this
+   * field existed is still sitting under its 24-hour TTL with no `removed` key.
+   */
+  removed: boolean
 }
 
 /** The whole proposal, as stored under the draft's Redis key (plans/money/tasks/38 §6.1). */
@@ -336,9 +353,20 @@ export function effectiveUnitPriceCents(line: IntakeLine): number | null {
   return line.unitPriceCents
 }
 
-/** Lines that will become purchase order lines — folds and drops excluded. */
+/** Lines that will become purchase order lines — folds and removals excluded. */
 export function orderableLines(lines: IntakeLine[]): IntakeLine[] {
-  return lines.filter((line) => line.foldedInto === null)
+  return lines.filter((line) => line.foldedInto === null && !line.removed)
+}
+
+/**
+ * Lines somebody took out of the order, newest state last.
+ *
+ * The review screen lists these under the table so a removal can be undone. A
+ * folded line is NOT one of these: it still contributes its amount to a header
+ * total and has its own strip. @see IntakeLine.removed
+ */
+export function removedLines(lines: IntakeLine[]): IntakeLine[] {
+  return lines.filter((line) => line.removed)
 }
 
 /**

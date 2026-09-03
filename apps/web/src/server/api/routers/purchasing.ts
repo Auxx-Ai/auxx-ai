@@ -219,6 +219,9 @@ const intakeLine = z.object({
   unitPriceCents: intakeRateMinorUnits.nullable(),
   chosenBreakIndex: z.number().int().nonnegative().nullable(),
   foldedInto: z.enum(['shipping', 'tax']).nullable(),
+  // Defaulted, not required: a draft written before the field existed is still
+  // under its 24-hour TTL, and its lines come back with no `removed` key.
+  removed: z.boolean().default(false),
 })
 
 const intakeDraftPayload = z.object({
