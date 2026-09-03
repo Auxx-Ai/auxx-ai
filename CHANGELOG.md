@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.230](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.229...auxx-v0.1.230) (2026-09-03)
+
+
+### Features
+
+* **companies:** reach website enrichment from four doors, not one ([#2040](https://github.com/Auxx-Ai/auxx-ai/issues/2040)) ([5710bc0](https://github.com/Auxx-Ai/auxx-ai/commit/5710bc0d1fcaf5c58d44b4e0c4922111b227aadd))
+* **interactions:** give imported records the mail history they already have ([#2042](https://github.com/Auxx-Ai/auxx-ai/issues/2042)) ([b84729e](https://github.com/Auxx-Ai/auxx-ai/commit/b84729e262ee75aca1743b0cf45dcafef83228bd))
+* **records:** repair contact name casing on write, and only when it needs it ([#2043](https://github.com/Auxx-Ai/auxx-ai/issues/2043)) ([7cff904](https://github.com/Auxx-Ai/auxx-ai/commit/7cff90482c488433990b52ad213530b1271e9b51))
+
 ## [0.1.229](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.228...auxx-v0.1.229) (2026-09-03)
 
 
