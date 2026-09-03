@@ -43,6 +43,7 @@ function stream(id: string, streamKey: string, mappings: DraftMapping[]): DraftS
     requestConfig: {},
     sourceSchema: null,
     schemaSource: null,
+    recordFilter: null,
     mappings,
   }
 }

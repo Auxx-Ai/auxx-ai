@@ -2,12 +2,13 @@
 'use client'
 
 import { Button } from '@auxx/ui/components/button'
-import { Loader2 } from 'lucide-react'
+import { Loader2, TriangleAlert } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useConnectorCommit } from '../hooks/use-connector-commit'
 import {
   selectCanCommit,
   selectIsDirty,
+  selectRecordFilterChanged,
   useConnectorDraftStore,
 } from '../stores/connector-draft-store'
 
@@ -30,6 +31,10 @@ export function ConnectorSaveBar() {
   const canCommit = useConnectorDraftStore(selectCanCommit)
   const isSaving = useConnectorDraftStore((s) => s.isSaving)
   const autoSave = useConnectorDraftStore((s) => s.autoSave)
+  // The engine classifies a `recordFilter` change as `rebackfill`, so committing one
+  // re-crawls the stream. `ConnectorResyncBanner` says the same thing AFTER a save;
+  // this says it BEFORE, where it can still change the decision.
+  const filterChanged = useConnectorDraftStore(selectRecordFilterChanged)
   const commit = useConnectorCommit()
 
   // Setup mode: no button, just transient save feedback.
@@ -62,7 +67,14 @@ export function ConnectorSaveBar() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 24 }}
             transition={SPRING}
-            className='pointer-events-auto'>
+            className='pointer-events-auto flex items-center gap-2'>
+            {filterChanged && (
+              <span className='flex items-center gap-1.5 rounded-md border bg-background px-2.5 py-1.5 text-xs text-muted-foreground shadow-lg'>
+                {/* Same amber the `warning` Banner uses for `rebackfill` notices. */}
+                <TriangleAlert className='size-3.5 shrink-0 text-amber-600 dark:text-amber-400' />
+                Changing the filter restarts this stream's backfill
+              </span>
+            )}
             <Button
               size='sm'
               className='shadow-lg'

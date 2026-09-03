@@ -12,6 +12,7 @@ import {
   type CatalogEntity,
   type CatalogPayload,
   type Database,
+  type RecordFilterConditionGroup,
   schema,
   type Transaction,
 } from '@auxx/database'
@@ -22,6 +23,7 @@ import { and, asc, eq, inArray, isNull, ne, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { getCachedCustomFields, getCachedEntityDefId } from '../cache'
 import { onCacheEvent } from '../cache/invalidate'
+import type { ConditionGroup } from '../conditions/types'
 import { notifyEntityDefChanged } from '../entity-definitions/notify'
 import { appTemplateId } from '../entity-templates'
 import { BadRequestError, NotFoundError } from '../errors'
@@ -47,6 +49,7 @@ import {
   type StructuralImpact,
 } from './edit-impact'
 import { materializeConnectorTargets } from './provisioning'
+import { assertRecordFilterCompiles } from './record-filter'
 import {
   countConnectorItems,
   countMappingItems,
@@ -1375,14 +1378,33 @@ export async function setStreamSchema(
   return row
 }
 
-/** Set a stream's generic-rest request config + sync mode. */
+/**
+ * Set a stream's generic-rest request config + sync mode, and (v11) its per-record
+ * filter.
+ *
+ * `recordFilter` rides on this mutation rather than a fifth stream mutation because
+ * the draft store already routes every stream edit through it and the save bar
+ * already commits it. Pass `null` to clear the filter; omit the key to leave it
+ * untouched — the two are NOT the same, so the undefined check below is load-bearing.
+ * A filter change is a `rebackfill` (see `classifyStreamRequestChange`).
+ */
 export async function setStreamRequestConfig(
   db: Database,
   organizationId: string,
   streamId: string,
-  input: { requestConfig: StreamRequestConfig; syncMode?: SyncMode; enabled?: boolean }
+  input: {
+    requestConfig: StreamRequestConfig
+    syncMode?: SyncMode
+    enabled?: boolean
+    /** `ConditionGroup[]` over SOURCE PATHS; `null` clears, `undefined` leaves as-is. */
+    recordFilter?: ConditionGroup[] | null
+  }
 ): Promise<DataConnectorStreamRow> {
   assertSteeringConfigValid(input.requestConfig)
+  // Save-time gate. The sync path fails OPEN on a filter that doesn't compile (see
+  // `record-filter.ts`), so without this a typo'd operator is never surfaced anywhere
+  // except a run warning — the author would see a filter that silently does nothing.
+  assertRecordFilterCompiles(input.recordFilter)
   return db.transaction(async (tx) => {
     const existing = await loadStreamRow(tx, organizationId, streamId)
     const impact = classifyStreamRequestChange(existing, input)
@@ -1392,6 +1414,9 @@ export async function setStreamRequestConfig(
         requestConfig: input.requestConfig,
         ...(input.syncMode !== undefined ? { syncMode: input.syncMode } : {}),
         ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
+        ...(input.recordFilter !== undefined
+          ? { recordFilter: (input.recordFilter ?? null) as RecordFilterConditionGroup[] | null }
+          : {}),
         updatedAt: new Date(),
       })
       .where(eq(schema.DataConnectorStream.id, streamId))

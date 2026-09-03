@@ -8,6 +8,7 @@ import {
   isTempId,
   selectCanCommit,
   selectIsDirty,
+  selectRecordFilterChanged,
   useConnectorDraftStore,
   visibleMappings,
 } from './connector-draft-store'
@@ -29,6 +30,7 @@ function makeDraft(overrides: Partial<ConnectorDraft> = {}): ConnectorDraft {
         requestConfig: { path: '/orders' },
         sourceSchema: { id: { type: 'string' } },
         schemaSource: 'inferred',
+        recordFilter: null,
         mappings: [
           {
             id: 'map_1',
@@ -142,6 +144,24 @@ describe('stream setters', () => {
     }
     expect(rc.webhookTrigger).toEqual({ paths: ['resourceId'] })
     expect(rc.path).toBe('/orders')
+  })
+
+  it('setRecordFilter writes the filter and flips selectRecordFilterChanged', () => {
+    seed()
+    expect(selectRecordFilterChanged(getConnectorDraftState())).toBe(false)
+    getConnectorDraftState().setRecordFilter('stream_1', [
+      {
+        id: 'g1',
+        logicalOperator: 'AND',
+        conditions: [{ id: 'c1', fieldId: 'orders_count', operator: 'greater than', value: 0 }],
+      },
+    ])
+    const s = getConnectorDraftState().draft.streams[0]!
+    expect(s.recordFilter?.[0]?.conditions).toHaveLength(1)
+    expect(selectRecordFilterChanged(getConnectorDraftState())).toBe(true)
+    // Back to the seeded value ⇒ the save bar's backfill warning goes away again.
+    getConnectorDraftState().setRecordFilter('stream_1', null)
+    expect(selectRecordFilterChanged(getConnectorDraftState())).toBe(false)
   })
 
   it('setStreamSchema sets schema + source', () => {

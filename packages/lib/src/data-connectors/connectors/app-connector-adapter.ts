@@ -12,6 +12,7 @@
 import type { CatalogDataConnector, Database } from '@auxx/database'
 import { createScopedLogger } from '../../logger'
 import type { SyncCursor } from '../../sync-core/contracts'
+import type { DataConnectorConfig } from '../types'
 import { decodeCursor, encodeCursor } from './app-connector-state'
 import {
   ConnectorRateLimitError,
@@ -46,6 +47,32 @@ interface AppExecuteResult {
 }
 
 const logger = createScopedLogger('app-connector-adapter')
+
+/**
+ * Keys of `DataConnectorConfig` the PLATFORM owns. Everything else on a connector's
+ * `config` belongs to the app's own declared `config` schema — see
+ * {@link appDeclaredConfig}.
+ */
+const PLATFORM_RESERVED_CONFIG_KEYS = new Set([
+  'endpoint',
+  'filters',
+  'backfillWindowSpan',
+  'webhookTrigger',
+])
+
+/**
+ * The app's own connector config: every top-level key on `connector.config` that the
+ * platform hasn't reserved. The setup stepper writes the app's declared keys flat at
+ * the top level, so this is where they actually are.
+ */
+function appDeclaredConfig(config: DataConnectorConfig | undefined): Record<string, unknown> {
+  if (!config) return {}
+  return Object.fromEntries(
+    Object.entries(config as Record<string, unknown>).filter(
+      ([key]) => !PLATFORM_RESERVED_CONFIG_KEYS.has(key)
+    )
+  )
+}
 
 /**
  * Construction-time context for an app connector. Threaded from the orchestrator
@@ -226,9 +253,21 @@ export function appConnectorAdapter(
       })
 
       // The app's connector-level config (validated against its `config` zod schema
-      // inside the sandbox). The engine `DataConnectorConfig.filters` carries it; an
-      // app that declares top-level config keys reads them from `filters`.
-      const config = (args.config?.filters as Record<string, unknown>) ?? {}
+      // inside the sandbox).
+      //
+      // Read from the TOP LEVEL of `connector.config`, minus the platform's own keys.
+      // This used to read `args.config?.filters`, which was always `{}`: the setup
+      // stepper writes each declared key at the top level (`setConfig({ ...cur, [key]:
+      // next })`) and `createConnectorFromAppCatalog` seeds only `webhookTrigger`, so
+      // NOTHING ever wrote `config.filters` for an app connector. An app's declared
+      // config never reached its `execute`. Shopify declares `config: z.object({})`,
+      // which is the only reason nobody hit it.
+      //
+      // Subtracting the reserved keys rather than moving the UI under `filters` is
+      // deliberate: `filters` is a real engine key the fixture connector already reads
+      // (`config.filters.fixtures`), and the top-level shape is what the schema form and
+      // the required-field gate both assume.
+      const config = appDeclaredConfig(args.config)
       const serverBundleSha = installedApp.currentDeployment.serverBundleSha
 
       // Invoke the app's `execute` for ONE page. Each sandbox round-trip is request/

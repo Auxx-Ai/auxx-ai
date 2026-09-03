@@ -17,6 +17,7 @@ import type { ResourceFieldId } from '@auxx/types/field'
 import { and, eq, inArray, lt } from 'drizzle-orm'
 import { resolveConnectorFieldRef } from '../agents/bindings/resolve'
 import { reconcileInstallationAppFields } from '../apps/installations/app-field-provisioning'
+import type { ConditionGroup } from '../conditions/types'
 import type { SliceLedgerEntry } from '../sync-core/contracts'
 import { runSyncSlice } from '../sync-core/slice-runner'
 import { createThrottleHandle } from '../sync-core/throttle'
@@ -313,6 +314,10 @@ async function startConnectorSyncInner(
       streamKey: s.stream.streamKey ?? '',
       syncMode: s.syncMode,
       requestConfig: s.stream.requestConfig ?? undefined,
+      // The column mirrors `ConditionGroup[]` structurally but is typed loosely in
+      // @auxx/database (tier 1 can't import lib) — cast at the decode boundary, same
+      // as `syncMode` above.
+      recordFilter: (s.stream.recordFilter as ConditionGroup[] | null) ?? undefined,
       mappings: s.mappings,
     })),
     sweep: isSweep,

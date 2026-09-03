@@ -7,7 +7,11 @@
 import { createId } from '@paralleldrive/cuid2'
 import { type AnyPgColumn, boolean, jsonb, pgTable, text, timestamp, uniqueIndex } from './_shared'
 import { DataConnector } from './data-connector'
-import type { ConnectorStreamState, StreamRequestConfig } from './data-connector-types'
+import type {
+  ConnectorStreamState,
+  RecordFilterConditionGroup,
+  StreamRequestConfig,
+} from './data-connector-types'
 import { Organization } from './organization'
 
 export const DataConnectorStream = pgTable(
@@ -48,6 +52,17 @@ export const DataConnectorStream = pgTable(
 
     // Per-stream request config (generic-rest only).
     requestConfig: jsonb().$type<StreamRequestConfig>(),
+
+    // Per-stream record filter — evaluated against the RAW SOURCE record, after the
+    // fetch and BEFORE mapping. Null/empty ⇒ every record is sunk (today's behavior).
+    // Condition `fieldId`s are SOURCE PATHS (`orders_count`, `customer.email`), not
+    // ResourceFieldIds: this filters the payload, not the target record.
+    //
+    // Its own column, deliberately NOT a key on `requestConfig` — that bag is typed
+    // and documented generic-rest-only (app connectors bake their request into code
+    // and never read it), so a filter that must work for app connectors would be
+    // quietly inapplicable to the connector kind that motivated it.
+    recordFilter: jsonb().$type<RecordFilterConditionGroup[]>(),
 
     // Per-stream incremental cursor, persisted across runs.
     state: jsonb().$type<ConnectorStreamState>().default({}).notNull(),

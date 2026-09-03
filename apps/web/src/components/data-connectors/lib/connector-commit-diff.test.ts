@@ -24,6 +24,7 @@ function baseDraft(): ConnectorDraft {
         requestConfig: { path: '/orders' },
         sourceSchema: { id: { type: 'string' } },
         schemaSource: 'inferred',
+        recordFilter: null,
         mappings: [
           {
             id: 'map_root',
@@ -288,6 +289,36 @@ describe('stream config', () => {
       syncMode: 'incremental',
     })
     expect(plan.structural).toBe(true)
+  })
+
+  it('filter-only change → setStreamRequestConfig carrying recordFilter, structural', () => {
+    const filter = [
+      {
+        id: 'g1',
+        logicalOperator: 'AND' as const,
+        conditions: [{ id: 'c1', fieldId: 'orders_count', operator: 'greater than', value: 0 }],
+      },
+    ]
+    const [snap, draft] = withEdits(() => {
+      getConnectorDraftState().setRecordFilter('stream_1', filter)
+    })
+    const plan = diffConnectorDraft(snap, draft)
+    expect(plan.streamRequestConfigs).toEqual([
+      { streamId: 'stream_1', requestConfig: { path: '/orders' }, recordFilter: filter },
+    ])
+    expect(plan.structural).toBe(true)
+  })
+
+  it('clearing the filter emits recordFilter: null, not an omitted key', () => {
+    // Omitting means "untouched" on the mutation, so a clear MUST be an explicit null.
+    const seeded = baseDraft()
+    seeded.streams[0]!.recordFilter = [{ id: 'g1', logicalOperator: 'AND', conditions: [] }]
+    getConnectorDraftState().reset()
+    getConnectorDraftState().seed('conn_1', META, seeded)
+    getConnectorDraftState().setRecordFilter('stream_1', null)
+    const { snapshot, draft } = getConnectorDraftState()
+    const plan = diffConnectorDraft(snapshot!, draft)
+    expect(plan.streamRequestConfigs[0]).toHaveProperty('recordFilter', null)
   })
 
   it('schema change → setStreamSchema', () => {

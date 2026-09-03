@@ -86,6 +86,8 @@ export function useConnectorCommit() {
             streamId: rc.streamId,
             requestConfig: rc.requestConfig,
             ...(rc.syncMode ? { syncMode: rc.syncMode } : {}),
+            // `null` is meaningful (clear the filter), so key off presence, not truthiness.
+            ...('recordFilter' in rc ? { recordFilter: rc.recordFilter } : {}),
           })
         )
       }

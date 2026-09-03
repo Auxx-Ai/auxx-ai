@@ -2500,6 +2500,13 @@
       "when": 1788400740816,
       "tag": "0356_data_connector_item_pinned_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 357,
+      "version": "7",
+      "when": 1788459010198,
+      "tag": "0357_data_connector_stream_record_filter",
+      "breakpoints": true
     }
   ]
 }

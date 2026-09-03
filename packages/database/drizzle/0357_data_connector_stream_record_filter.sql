@@ -1,0 +1,1 @@
+ALTER TABLE "DataConnectorStream" ADD COLUMN "recordFilter" jsonb;

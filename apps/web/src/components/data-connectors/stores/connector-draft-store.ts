@@ -1,6 +1,7 @@
 // apps/web/src/components/data-connectors/stores/connector-draft-store.ts
 'use client'
 
+import type { ConditionGroup } from '@auxx/lib/conditions/client'
 import { generateId } from '@auxx/utils'
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
@@ -59,6 +60,12 @@ export interface DraftStream {
   requestConfig: UiRequestConfig
   sourceSchema: Record<string, unknown> | null
   schemaSource: SchemaSource | null
+  /**
+   * Per-stream record filter, evaluated against the RAW SOURCE record before mapping.
+   * Null/empty ⇒ every record is imported. Condition `fieldId`s are SOURCE PATHS
+   * (`orders_count`, `customer.email`), not `ResourceFieldId`s.
+   */
+  recordFilter: ConditionGroup[] | null
   mappings: DraftMapping[]
 }
 
@@ -174,6 +181,7 @@ interface ConnectorDraftState {
     schemaSource: SchemaSource
   ) => void
   setWebhookSteering: (streamId: string, steering: Record<string, unknown> | undefined) => void
+  setRecordFilter: (streamId: string, recordFilter: ConditionGroup[] | null) => void
 
   // ── mapping setters (temp-id / tombstone, draft-only) ──
   addMapping: (streamId: string, mapping: AddMappingDraft) => string
@@ -348,6 +356,11 @@ export const useConnectorDraftStore = create<ConnectorDraftState>()(
         })),
       })),
 
+    setRecordFilter: (streamId, recordFilter) =>
+      set((s) => ({
+        draft: patchStream(s.draft, streamId, (st) => ({ ...st, recordFilter })),
+      })),
+
     addMapping: (streamId, mapping) => {
       const tempId = `temp_${generateId()}`
       set((s) => ({
@@ -418,6 +431,21 @@ export function selectIsDirty(s: ConnectorDraftState): boolean {
 export function selectCanCommit(s: ConnectorDraftState): boolean {
   if (!selectIsDirty(s)) return false
   return Object.values(s.streamValidity).every(Boolean)
+}
+
+/**
+ * `true` when any stream's record filter differs from the last-committed snapshot.
+ * Drives the save bar's backfill warning: the engine classifies a `recordFilter`
+ * change as `rebackfill`, so committing one restarts that stream's backfill.
+ */
+export function selectRecordFilterChanged(s: ConnectorDraftState): boolean {
+  if (!s.snapshot) return false
+  const before = new Map(s.snapshot.streams.map((st) => [st.id, st.recordFilter ?? null]))
+  return s.draft.streams.some(
+    (st) =>
+      before.has(st.id) &&
+      JSON.stringify(before.get(st.id) ?? null) !== JSON.stringify(st.recordFilter ?? null)
+  )
 }
 
 /** A stream's live (non-tombstoned) mappings — the render set. */

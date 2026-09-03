@@ -26,7 +26,9 @@ vi.mock('../cache', () => ({
     Promise.resolve(fieldsByDef[defId] ?? []),
 }))
 
+import type { ConditionGroup } from '../conditions/types'
 import { ConnectorRateLimitError } from './connectors/types'
+import { archiveExternalId } from './reconciliation'
 import { newRecordFailureTally, SystemicSyncFailureError } from './record-failure-tally'
 import { newRunCounters } from './service'
 import { sinkSourceRecord } from './sink-source-record'
@@ -221,5 +223,102 @@ describe('sinkSourceRecord — per-record fault isolation', () => {
     expect((thrown as Error).message).toContain('field not found on contact')
     // Stopped early rather than burning every record in the crawl.
     expect(c.counters.failed).toBeLessThan(40)
+  })
+})
+
+// ── Per-stream record filter (v11) ───────────────────────────────────────────────
+// The filter lives INSIDE sinkSourceRecord rather than at its three call sites (bulk
+// export, sliced fetch, webhook steer) so one edit covers every door. These tests pin
+// the two things that are easy to get wrong: the tombstone carve-out, and fail-open.
+
+describe('sinkSourceRecord — record filter', () => {
+  const m = mapping({ id: 'm1' })
+  /** `orders_count > 0` — the merchant case that motivated the feature. */
+  const hasOrders: ConditionGroup[] = [
+    {
+      id: 'g1',
+      logicalOperator: 'AND',
+      conditions: [{ id: 'c0', fieldId: 'orders_count', operator: '>', value: 0 }],
+    } as ConditionGroup,
+  ]
+  const buyer: ConnectorRecord = {
+    streamKey: 'customer',
+    externalId: 'c1',
+    displayName: 'Buyer',
+    fields: { id: 'c1', orders_count: 3 },
+  }
+  const browser: ConnectorRecord = {
+    ...buyer,
+    externalId: 'c2',
+    fields: { id: 'c2', orders_count: 0 },
+  }
+
+  beforeEach(() => {
+    upsertRecord.mockReset().mockResolvedValue(undefined)
+    vi.mocked(archiveExternalId)
+      .mockReset()
+      .mockResolvedValue(undefined as never)
+  })
+
+  it('sinks every record when the filter is null or empty — no behavior change', async () => {
+    for (const filter of [undefined, null, [] as ConditionGroup[]]) {
+      const c = makeCtx()
+      await sinkSourceRecord(c, [m], browser, undefined, filter)
+      expect(upsertRecord).toHaveBeenCalledTimes(1)
+      expect(c.counters.skipped).toBe(0)
+      upsertRecord.mockClear()
+    }
+  })
+
+  it('sinks a matching record and SKIPS a non-matching one — skipped, never failed', async () => {
+    const c = makeCtx()
+    await sinkSourceRecord(c, [m], buyer, undefined, hasOrders)
+    await sinkSourceRecord(c, [m], browser, undefined, hasOrders)
+
+    expect(upsertRecord).toHaveBeenCalledTimes(1)
+    expect(upsertRecord.mock.calls[0]?.[2]?.externalId).toBe('c1')
+    expect(c.counters.skipped).toBe(1)
+    // A filtered record is a deliberate outcome, NOT a failure. `errorSample` staying
+    // empty is what keeps a fully-filtering run `completed` rather than `partial`.
+    expect(c.counters.failed).toBe(0)
+    expect(c.counters.errorSample).toEqual([])
+  })
+
+  // 🔴 The carve-out. Refund a customer's last order and `orders_count` drops to 0 —
+  // so the DELETE signal itself fails an `orders_count > 0` filter. If the filter ran
+  // first, the already-synced contact would be orphaned forever.
+  it('ARCHIVES a tombstone whose payload does not match the filter — never skips it', async () => {
+    const c = makeCtx()
+    await sinkSourceRecord(c, [m], { ...browser, deleted: true }, undefined, hasOrders)
+
+    expect(archiveExternalId).toHaveBeenCalledTimes(1)
+    expect(archiveExternalId).toHaveBeenCalledWith(c, [m], 'c2')
+    expect(c.counters.skipped).toBe(0)
+    expect(upsertRecord).not.toHaveBeenCalled()
+  })
+
+  it('FAILS OPEN on a filter that does not compile — sinks everything, records ONE warning', async () => {
+    const broken: ConditionGroup[] = [
+      {
+        id: 'g1',
+        logicalOperator: 'AND',
+        conditions: [{ id: 'c0', fieldId: 'orders_count', operator: 'greaterrr', value: 0 }],
+      } as unknown as ConditionGroup,
+    ]
+    const c = makeCtx()
+    await sinkSourceRecord(c, [m], buyer, undefined, broken)
+    await sinkSourceRecord(c, [m], browser, undefined, broken)
+
+    // Both records written — a fail-CLOSED filter would have dropped all 13,637.
+    expect(upsertRecord).toHaveBeenCalledTimes(2)
+    expect(c.counters.skipped).toBe(0)
+    // De-duplicated to ONE entry: the filter is a property of the stream, not the row,
+    // and 13,637 copies would evict every real error from the 50-entry sample.
+    expect(c.counters.errorSample).toHaveLength(1)
+    expect(c.counters.errorSample[0]).toMatchObject({ externalId: '', tier: 'skipped' })
+    expect(c.counters.errorSample[0]?.error).toContain('Record filter ignored')
+    // Tiered `skipped`, so the run still finalizes `completed` — see the ledger test in
+    // sync-core-adapters.test.ts.
+    expect(c.counters.failed).toBe(0)
   })
 })
