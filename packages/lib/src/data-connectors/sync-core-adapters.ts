@@ -176,9 +176,11 @@ class ConnectorRunLedger implements RunLedger {
     // A run is 'partial' if the entity write threw (`failed`) OR any record/field was
     // dropped before the write (an `errorSample` entry — e.g. an unresolved field ref).
     // Pre-write drops don't bump `failed`, so without this an all-dropped run reported
-    // `completed / failed: 0` while writing no data (Step 9 §8).
-    const status =
-      (row?.failed ?? 0) > 0 || (row?.errorSample?.length ?? 0) > 0 ? 'partial' : 'completed'
+    // `completed / failed: 0` while writing no data (Step 9 §8). A `skipped` entry is a
+    // deliberate, explained outcome (a sibling-bound exclusive match, task 39 section 6.1)
+    // and must not keep every later run partial.
+    const dropped = (row?.errorSample ?? []).some((e) => e.tier !== 'skipped')
+    const status = (row?.failed ?? 0) > 0 || dropped ? 'partial' : 'completed'
     await this.db
       .update(T)
       .set({ status, finishedAt: new Date(), durationMs: Date.now() - this.startedAt.getTime() })
