@@ -14,6 +14,7 @@ import {
   text,
   timestamp,
 } from './_shared'
+import { AppDeployment } from './app-deployment'
 import { AppInstallation } from './app-installation'
 import { Credential } from './credential'
 import type {
@@ -62,6 +63,16 @@ export const DataConnector = pgTable(
     }),
     // If the credential came from an installed app, remember it (for refresh + lifecycle).
     appInstallationId: text().references((): AnyPgColumn => AppInstallation.id, {
+      onUpdate: 'cascade',
+      onDelete: 'set null',
+    }),
+    /**
+     * The AppDeployment whose catalog seeded this connector's streams and mappings
+     * (app connectors only; null for builtin/template connectors). Compared with
+     * AppInstallation.currentDeploymentId to derive "update available" (task 41 D2).
+     * Moves forward only when an update is applied.
+     */
+    catalogDeploymentId: text().references((): AnyPgColumn => AppDeployment.id, {
       onUpdate: 'cascade',
       onDelete: 'set null',
     }),

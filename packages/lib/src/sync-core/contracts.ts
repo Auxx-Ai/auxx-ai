@@ -83,7 +83,7 @@ export interface SyncRunCounters {
 export interface SyncRunErrorSample {
   externalId: string
   error: string
-  tier?: 'invalid' | 'rejected'
+  tier?: 'invalid' | 'rejected' | 'skipped'
 }
 
 /**

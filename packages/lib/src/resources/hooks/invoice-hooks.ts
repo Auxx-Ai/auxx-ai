@@ -1,27 +1,22 @@
 // packages/lib/src/resources/hooks/invoice-hooks.ts
 
-import { recordNumbering } from '../../records/record-numbering'
 import {
   createLifecycleStatusGuard,
   INVOICE_ACTION_STATUS_MESSAGE,
   INVOICE_ACTION_STATUSES,
 } from './lifecycle-status-guard'
+import { keepOrAllocateRecordNumber } from './record-number-hook'
 import type { SystemHook, SystemHookRegistry } from './types'
 
 /**
- * Auto-generate the invoice number on create. Mirrors autoGenerateQuoteNumber.
- * invoice_number has creatable:false/updatable:false, so this hook is the ONLY writer.
+ * Number the invoice on create. Mirrors autoGenerateQuoteNumber, except that a
+ * data connector may bring the source's own invoice number (QuickBooks), which
+ * is kept; invoice_number has creatable:false/updatable:false, so this hook is
+ * the only writer when nothing is supplied ("theirs if they bring one, otherwise
+ * ours", plans/money/tasks/39-shopify-first-sync-followups.md section 6.5).
  */
-const autoGenerateInvoiceNumber: SystemHook = async ({
-  operation,
-  field,
-  values,
-  organizationId,
-}) => {
-  if (operation !== 'create') return values
-  const { recordNumber } = await recordNumbering.create(organizationId, 'invoice')
-  return { ...values, [field.id]: recordNumber }
-}
+const autoGenerateInvoiceNumber: SystemHook = (context) =>
+  keepOrAllocateRecordNumber(context, 'invoice')
 
 /**
  * Guard: `sent`, `partially_paid`, `paid`, and `void` may only be set by the invoice actions

@@ -251,11 +251,13 @@ export interface FieldMapping {
    * of the engine `FieldMapping.identityRole`. `externalId` designates the upstream
    * stable id (re-identification + link anchor; `order` sequences a fallback chain);
    * `match` is a secondary adoption key (external id stays primary). At most one role
-   * per field.
+   * per field. `exclusive` on a match key: a second source record of this mapping
+   * resolving to an already-bound record is skipped, never bound (a SKU collision);
+   * absent, both bind (the same person under two upstream ids).
    */
   identityRole?:
     | { kind: 'externalId'; order?: number }
-    | { kind: 'match'; normalize?: IdentityNormalize }
+    | { kind: 'match'; normalize?: IdentityNormalize; exclusive?: boolean }
   /** Per-field write behavior (folded in from the old parallel map). Absent ⇒ 'overwrite'. */
   mergeStrategy?: FieldMergeStrategy
   /**

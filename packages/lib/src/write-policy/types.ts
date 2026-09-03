@@ -47,12 +47,17 @@ export type FieldMergeStrategy =
  *   re-identification. `order` sequences a first-non-null fallback CHAIN.
  * - `match`, a match key. More than one column carrying `match` **is** the
  *   composite key, with no new concepts: the candidates are ANDed.
+ *   `exclusive` says two source records of one mapping hitting the same
+ *   record are a collision of different things (two Shopify variants sharing
+ *   a SKU), so the second is skipped and never bound. Absent, they are the
+ *   same thing seen twice (a guest checkout and a customer sharing an email)
+ *   and both bind (money plan 39 section 6.1).
  *
  * Absent = the field is projected only.
  */
 export type IdentityRole =
   | { kind: 'externalId'; order?: number }
-  | { kind: 'match'; normalize?: IdentityNormalize }
+  | { kind: 'match'; normalize?: IdentityNormalize; exclusive?: boolean }
 
 /**
  * The subset of {@link FieldMergeStrategy} the CSV importer offers.

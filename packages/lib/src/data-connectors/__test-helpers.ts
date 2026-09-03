@@ -65,3 +65,249 @@ export function makeSyncCtx(over: Partial<SyncCtx> = {}): SyncCtx {
     ...over,
   }
 }
+
+// ── Catalog-update fixtures (plans/money/tasks/41) ────────────────────────────
+//
+// A small Shopify-shaped app catalog in two versions, plus the org lookups the shape
+// derivation needs, so `catalog-shape` / `catalog-diff` / `catalog-update` tests share
+// one story: v2 turns `part_sku` into an exclusive match, makes `part_title`
+// fill-blank, binds `note -> notes` on the contact, drops the contact `phone` binding,
+// flips the customer stream to incremental, and adds a `fulfillment` stream.
+
+import type { CatalogConnectorStream, CatalogDataConnector } from '@auxx/database'
+import type { ContributingTargetField } from './app-catalog'
+import {
+  type DerivedStream,
+  hashMappingShape,
+  hashStreamShape,
+  type PersistedShapeContext,
+  type ShapeResolver,
+} from './catalog-shape'
+import type { StreamWithRawMappings } from './service'
+
+export const FIXTURE_DEF_IDS: Record<string, string> = {
+  product: 'def_product',
+  part: 'def_part',
+  catalog_item: 'def_catalog',
+  contact: 'def_contact',
+  fulfillment: 'def_fulfillment',
+}
+
+export const FIXTURE_DEF_FIELDS: Record<string, ContributingTargetField[]> = {
+  def_product: [
+    { id: 'f_ptitle', name: 'Title', systemAttribute: 'product_title', type: 'TEXT' },
+    { id: 'f_parts', name: 'Parts', systemAttribute: 'product_parts', type: 'RELATIONSHIP' },
+  ],
+  def_part: [
+    { id: 'f_sku', name: 'SKU', systemAttribute: 'part_sku', type: 'TEXT' },
+    { id: 'f_title', name: 'Title', systemAttribute: 'part_title', type: 'TEXT' },
+    {
+      id: 'f_ci',
+      name: 'Catalog Items',
+      systemAttribute: 'part_catalog_items',
+      type: 'RELATIONSHIP',
+    },
+  ],
+  def_catalog: [
+    {
+      id: 'f_price',
+      name: 'Default Unit Price',
+      systemAttribute: 'catalog_item_default_unit_price',
+      type: 'CURRENCY',
+    },
+  ],
+  def_contact: [
+    { id: 'f_email', name: 'Email', systemAttribute: 'primary_email', type: 'EMAIL' },
+    { id: 'f_first', name: 'First name', systemAttribute: 'first_name', type: 'TEXT' },
+    { id: 'f_phone', name: 'Phone', systemAttribute: 'phone', type: 'PHONE_INTL' },
+    { id: 'f_notes', name: 'Notes', systemAttribute: 'notes', type: 'RICH_TEXT' },
+    {
+      id: 'f_store',
+      name: 'Store domain',
+      systemAttribute: null,
+      type: 'TEXT',
+      appFieldKey: 'storeDomain',
+      appSlug: 'shopify',
+    },
+  ],
+  def_fulfillment: [
+    { id: 'f_status', name: 'Status', systemAttribute: 'fulfillment_status', type: 'TEXT' },
+  ],
+}
+
+/** A `ShapeResolver` over the fixture defs (no owned defs to adopt). */
+export function fixtureResolver(): ShapeResolver {
+  return {
+    entityDefIdByKind: (kind) => FIXTURE_DEF_IDS[kind],
+    fieldsByDefId: (defId) => FIXTURE_DEF_FIELDS[defId] ?? [],
+    ownedDefIdByEntityKey: () => null,
+  }
+}
+
+/** The matching `PersistedShapeContext` (labels resolve def ids back to kinds). */
+export function fixturePersistedContext(): PersistedShapeContext {
+  const kindByDefId = new Map(Object.entries(FIXTURE_DEF_IDS).map(([k, id]) => [id, k]))
+  return {
+    fieldsByDefId: (defId) => FIXTURE_DEF_FIELDS[defId] ?? [],
+    ownedEntityKeyByDefId: () => undefined,
+    entityKeyByApiSlug: () => undefined,
+    entityKindByDefId: (defId) => kindByDefId.get(defId),
+  }
+}
+
+function productStream(v2: boolean): CatalogConnectorStream {
+  return {
+    key: 'product',
+    syncMode: 'incremental',
+    mappings: [
+      {
+        rootPath: '',
+        target: { entityKind: 'product' },
+        fields: [{ sourcePath: 'title', target: 'product_title' }],
+      },
+      {
+        rootPath: 'variants[]',
+        relationshipFieldKey: 'system:product_parts',
+        target: { entityKind: 'part' },
+        fields: v2
+          ? [
+              { sourcePath: 'title', target: 'part_title', mergeStrategy: 'fill_blank' },
+              { sourcePath: 'sku', target: 'part_sku', match: 'exclusive' },
+            ]
+          : [
+              { sourcePath: 'title', target: 'part_title' },
+              { sourcePath: 'sku', target: 'part_sku' },
+            ],
+      },
+      {
+        rootPath: 'variants[]',
+        parentRootPath: 'variants[]',
+        relationshipFieldKey: 'system:part_catalog_items',
+        target: { entityKind: 'catalog_item' },
+        fields: [{ sourcePath: 'price', target: 'catalog_item_default_unit_price' }],
+      },
+    ],
+  }
+}
+
+function customerStream(v2: boolean): CatalogConnectorStream {
+  return {
+    key: 'customer',
+    syncMode: v2 ? 'incremental' : 'snapshot',
+    mappings: [
+      {
+        rootPath: '',
+        target: { entityKind: 'contact' },
+        fields: [
+          { sourcePath: 'email', target: 'primary_email', match: true },
+          {
+            sourcePath: 'first_name',
+            target: 'first_name',
+            mergeStrategy: v2 ? 'connector_owned_only' : 'fill_blank',
+          },
+          ...(v2 ? [] : [{ sourcePath: 'phone', target: 'phone' as const }]),
+          ...(v2
+            ? [
+                {
+                  sourcePath: 'note',
+                  target: 'notes' as const,
+                  mergeStrategy: 'fill_blank' as const,
+                },
+              ]
+            : []),
+        ],
+        connectionFields: [{ appField: 'storeDomain', from: 'label' }],
+      },
+    ],
+  }
+}
+
+const fulfillmentStream: CatalogConnectorStream = {
+  key: 'fulfillment',
+  syncMode: 'incremental',
+  mappings: [
+    {
+      rootPath: '',
+      target: { entityKind: 'fulfillment' },
+      fields: [{ sourcePath: 'status', target: 'fulfillment_status' }],
+    },
+  ],
+}
+
+function catalogFixture(v2: boolean): CatalogDataConnector {
+  return {
+    id: 'shopify',
+    label: 'Shopify',
+    description: null,
+    requiresConnection: true,
+    iconKey: null,
+    configJsonSchema: {},
+    streams: [productStream(v2), customerStream(v2), ...(v2 ? [fulfillmentStream] : [])],
+  }
+}
+
+/** The catalog the fixture connector was seeded from. */
+export function catalogFixtureV1(): CatalogDataConnector {
+  return catalogFixture(false)
+}
+
+/** The catalog the installation moved to. */
+export function catalogFixtureV2(): CatalogDataConnector {
+  return catalogFixture(true)
+}
+
+/**
+ * Fabricate the rows the seeder would have written for `streams` (what `listStreams`
+ * returns), with `catalogHash` stamped unless `withHash: false`. `edit` lets a test
+ * hand-edit a mapping row (by stream key + stored rootPath + target def) before the
+ * rows are handed to the diff.
+ */
+export function persistedRowsFromDerived(
+  streams: readonly DerivedStream[],
+  options: { withHash?: boolean } = {}
+): StreamWithRawMappings[] {
+  const withHash = options.withHash ?? true
+  const now = new Date('2026-09-01T00:00:00Z')
+  let n = 0
+  return streams.map((stream) => {
+    const streamId = `s_${stream.key}`
+    const idByKey = new Map<string, string>()
+    const mappings = stream.mappings.map((m) => {
+      const id = `m_${++n}`
+      idByKey.set(m.key, id)
+      return {
+        id,
+        dataConnectorStreamId: streamId,
+        organizationId: 'org1',
+        rootPath: m.rootPath,
+        linkMode: m.linkMode,
+        parentMappingId: m.parentKey ? (idByKey.get(m.parentKey) ?? null) : null,
+        relationshipFieldKey: m.storedRelationshipFieldKey,
+        targetMode: m.targetMode,
+        entityDefinitionId: m.entityDefinitionId,
+        fieldMappings: m.fieldMappings.map((fm) => ({ ...fm })),
+        orphanBehavior: m.orphanBehavior,
+        catalogHash: withHash ? hashMappingShape(m) : null,
+        createdAt: now,
+        updatedAt: now,
+      }
+    })
+    return {
+      id: streamId,
+      dataConnectorId: 'dc1',
+      organizationId: 'org1',
+      streamKey: stream.key,
+      enabled: true,
+      sourceSchema: stream.sourceSchema,
+      schemaSource: 'catalog',
+      syncMode: stream.syncMode,
+      requestConfig: stream.webhookTrigger ? { webhookTrigger: stream.webhookTrigger } : null,
+      state: {},
+      sampleRunId: null,
+      catalogHash: withHash ? hashStreamShape(stream) : null,
+      createdAt: now,
+      updatedAt: now,
+      mappings,
+    } as StreamWithRawMappings
+  })
+}

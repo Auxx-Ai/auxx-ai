@@ -83,4 +83,59 @@ describe('fieldMatchesRef / resolveFieldRef', () => {
     expect(resolveFieldRef(fields, 'def_orders', 'x:@app:shopify:missing')).toBeNull()
     expect(resolveFieldRef(fields, 'def_orders', null)).toBeNull()
   })
+
+  describe('two apps sharing an appFieldKey on one definition', () => {
+    // Stripe and Shopify both declare `customerId` on contacts. The Stripe rows predate
+    // slug stamping (`appSlug` undefined); the Shopify row is stamped.
+    const stripeLegacy = field({
+      id: toFieldId('cf_stripe'),
+      resourceFieldId: toResourceFieldId('def_contacts', 'cf_stripe'),
+      appFieldKey: 'customerId',
+      appInstallationId: 'inst_stripe',
+    })
+    const shopify = field({
+      id: toFieldId('cf_shopify'),
+      resourceFieldId: toResourceFieldId('def_contacts', 'cf_shopify'),
+      appFieldKey: 'customerId',
+      appInstallationId: 'inst_shopify',
+      appSlug: 'shopify',
+    })
+    const stripeStamped = field({
+      id: toFieldId('cf_stripe2'),
+      resourceFieldId: toResourceFieldId('def_contacts', 'cf_stripe2'),
+      appFieldKey: 'customerId',
+      appInstallationId: 'inst_stripe',
+      appSlug: 'stripe',
+    })
+
+    it('a slug-stamped row rejects a ref for another app', () => {
+      expect(fieldMatchesRef(shopify, 'def_contacts', 'x:@app:stripe:customerId')).toBe(false)
+      expect(fieldMatchesRef(stripeStamped, 'def_contacts', 'x:@app:shopify:customerId')).toBe(
+        false
+      )
+    })
+
+    it('an unstamped legacy row stays eligible for either app', () => {
+      expect(fieldMatchesRef(stripeLegacy, 'def_contacts', 'x:@app:shopify:customerId')).toBe(true)
+    })
+
+    it('resolves to the stamped match even when the legacy row is listed first', () => {
+      const r = resolveFieldRef(
+        [stripeLegacy, shopify],
+        'def_contacts',
+        'x:@app:shopify:customerId'
+      )
+      expect(r?.field).toBe(shopify)
+    })
+
+    it('falls back to the legacy row when no stamped row matches', () => {
+      const r = resolveFieldRef([stripeLegacy, shopify], 'def_contacts', 'x:@app:stripe:customerId')
+      expect(r?.field).toBe(stripeLegacy)
+    })
+
+    it('never returns a stamped row that belongs to another app', () => {
+      const r = resolveFieldRef([shopify, stripeStamped], 'def_contacts', 'x:@app:other:customerId')
+      expect(r).toBeNull()
+    })
+  })
 })

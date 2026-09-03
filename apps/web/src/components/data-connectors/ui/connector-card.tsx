@@ -36,6 +36,8 @@ export interface ConnectorCardData {
   itemCount: number
   lastSyncedAt: Date | string | null
   error: string | null
+  /** The app's newer version changed this connector's definition (task 41). */
+  updateAvailable?: boolean
 }
 
 /** Where the connector came from — drives the origin badge. */
@@ -156,6 +158,11 @@ export function ConnectorCard({ connector, streamCount }: ConnectorCardProps) {
             <Badge variant='outline' size='sm' className='shrink-0'>
               {ORIGIN_LABEL[origin]}
             </Badge>
+            {connector.updateAvailable && (
+              <Badge variant='blue' size='sm' className='shrink-0'>
+                Update available
+              </Badge>
+            )}
             <Badge variant='pill' size='sm' className='shrink-0'>
               {connector.itemCount} record{connector.itemCount === 1 ? '' : 's'}
             </Badge>

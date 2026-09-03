@@ -83,6 +83,7 @@ import { migration119TariffSchedule } from './migrations/119-tariff-schedule'
 import { migration120TariffCodeLabel } from './migrations/120-tariff-code-label'
 import { migration121RatePrecision } from './migrations/121-rate-precision'
 import { migration122OrderShippingAndNote } from './migrations/122-order-shipping-and-note'
+import { migration123PartSkuOptional } from './migrations/123-part-sku-optional'
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
@@ -228,6 +229,7 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   migration120TariffCodeLabel,
   migration121RatePrecision,
   migration122OrderShippingAndNote,
+  migration123PartSkuOptional,
 ]
 
 /**

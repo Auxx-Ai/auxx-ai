@@ -336,6 +336,60 @@ describe('compileAndExtractCatalog — connector/entity hard errors', () => {
     )
   })
 
+  // "Theirs if they bring one, otherwise ours" (plans/money/tasks/39 section 6.5):
+  // a connector may bind the source's own document number onto the sell-side
+  // order / invoice / purchase-order number; the numbering hook allocates only
+  // when nothing was supplied. Quote numbers stay hook-only.
+  it.each([
+    'order_number',
+    'invoice_number',
+    'purchase_order_number',
+  ])('accepts a contributing target on the connector-writable number %s', async (target) => {
+    const result = await runApp(`
+        import { defineDataConnector } from '@auxx/sdk/data-connectors'
+
+        export const app = {
+          dataConnectors: [defineDataConnector({
+            id: 'test.connector',
+            label: 'Test',
+            requiresConnection: false,
+            streams: [{
+              key: 'thing',
+              mappings: [{ rootPath: '', target: { entityKind: 'order' },
+                fields: [{ sourcePath: 'name', target: '${target}', mergeStrategy: 'fill_blank' }] }],
+            }],
+            execute: async () => ({ records: [], nextState: {} }),
+          })],
+        }
+      `)
+    expect(isComplete(result)).toBe(true)
+  })
+
+  it('still rejects a contributing target on quote_number', async () => {
+    const result = await runApp(`
+      import { defineDataConnector } from '@auxx/sdk/data-connectors'
+
+      export const app = {
+        dataConnectors: [defineDataConnector({
+          id: 'test.connector',
+          label: 'Test',
+          requiresConnection: false,
+          streams: [{
+            key: 'thing',
+            mappings: [{ rootPath: '', target: { entityKind: 'quote' },
+              fields: [{ sourcePath: 'name', target: 'quote_number' }] }],
+          }],
+          execute: async () => ({ records: [], nextState: {} }),
+        })],
+      }
+    `)
+    expect(isErrored(result)).toBe(true)
+    if (!isErrored(result)) throw new Error('expected error')
+    expect((result.error as { message: string }).message).toMatch(
+      /target "quote_number" is a reserved system attribute/
+    )
+  })
+
   it('rejects connectionFields targeting an identity field', async () => {
     const result = await runApp(`
       import { defineFields } from '@auxx/sdk/fields'

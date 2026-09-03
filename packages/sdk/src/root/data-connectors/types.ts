@@ -136,8 +136,14 @@ interface ConnectorContributingFieldBase {
    * incoming record into an existing entity on first link. The external id
    * (from `appField`, when that field is `identity: true`) is always the
    * primary key; more than one `match: true` field is an ANDed composite key.
+   *
+   * `'exclusive'` is a match key whose hits are different things colliding, not
+   * one thing seen twice: when a second source record of this mapping resolves
+   * to a record a sibling already binds, the sink skips it with a reason and
+   * never binds it (two Shopify variants sharing one SKU). Plain `true` binds
+   * both (a guest checkout and a customer sharing one email are one contact).
    */
-  readonly match?: boolean
+  readonly match?: boolean | 'exclusive'
   /** Per-field write behavior once bound. Default `'overwrite'`. */
   readonly mergeStrategy?: FieldMergeStrategy
 }

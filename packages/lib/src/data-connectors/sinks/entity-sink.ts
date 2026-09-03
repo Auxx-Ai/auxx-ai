@@ -275,7 +275,7 @@ async function resolveIdentity(
   refToConcrete: Map<string, ResourceFieldId>
 ): Promise<{
   instanceId: string | null
-  matched?: { fieldId?: FieldId; value: unknown }
+  matched?: { fieldId?: FieldId; value: unknown; exclusive?: boolean }
   failed?: boolean
 }> {
   let droppedArrayCandidate = false
@@ -293,9 +293,13 @@ async function resolveIdentity(
       if (isBlank(c.value)) return null
       const concrete = refToConcrete.get(c.targetFieldRef)
       if (!concrete) return null
-      return { fieldId: getFieldId(concrete), value: normalizeMatch(c.value, c.normalize) }
+      return {
+        fieldId: getFieldId(concrete),
+        value: normalizeMatch(c.value, c.normalize),
+        exclusive: c.exclusive === true,
+      }
     })
-    .filter((c): c is { fieldId: FieldId; value: string } => c !== null)
+    .filter((c): c is { fieldId: FieldId; value: string; exclusive: boolean } => c !== null)
 
   if (candidates.length === 0) {
     // All configured match keys degraded to unusable array values → FAIL the
@@ -329,7 +333,14 @@ async function resolveIdentity(
   // recordId is `entityDefId:instanceId`.
   const match = items[0]!
   const instanceId = match.recordId.split(':').slice(1).join(':')
-  return { instanceId, matched: { fieldId: match.matchedBy.fieldId, value: match.matchedBy.value } }
+  // Which declared candidate hit decides whether the binding is `exclusive`; a
+  // composite key is exclusive when any of its candidates is.
+  const hit = candidates.find((c) => c.fieldId === match.matchedBy.fieldId)
+  const exclusive = hit ? hit.exclusive : candidates.some((c) => c.exclusive)
+  return {
+    instanceId,
+    matched: { fieldId: match.matchedBy.fieldId, value: match.matchedBy.value, exclusive },
+  }
 }
 
 /**
@@ -770,6 +781,56 @@ async function findOtherLiveBinding(
   return !!row
 }
 
+/**
+ * The externalId of a LIVE binding of the SAME mapping that already references
+ * `instanceId`, other than `externalId` itself, or null when there is none
+ * (money plan 39 section 6.1). The in-slice claim is checked first: a sibling
+ * processed earlier this slice has claimed the instance in `sliceWriteWinners`
+ * before its binding row is necessarily visible, and the map answers without a
+ * query. The `DataConnectorItem` read covers the sibling that bound the instance
+ * in an earlier slice or run.
+ */
+async function findSiblingBinding(
+  ctx: SyncCtx,
+  mappingId: string,
+  instanceId: string,
+  externalId: string
+): Promise<string | null> {
+  const winner = ctx.sliceWriteWinners?.get(`${mappingId}::${instanceId}`)
+  if (winner !== undefined && winner !== externalId) return winner
+
+  const row = await ctx.db.query.DataConnectorItem.findFirst({
+    where: and(
+      eq(schema.DataConnectorItem.dataConnectorId, ctx.connector.id),
+      eq(schema.DataConnectorItem.mappingId, mappingId),
+      eq(schema.DataConnectorItem.entityInstanceId, instanceId),
+      ne(schema.DataConnectorItem.externalId, externalId),
+      isNull(schema.DataConnectorItem.archivedAt)
+    ),
+    columns: { externalId: true },
+  })
+  return row?.externalId ?? null
+}
+
+/**
+ * Human label for the field a secondary-key match hit on, for the skip reason
+ * (`SKU 177A already belongs to 45678`). Falls back to the field id: the reason
+ * must never be the thing that fails a record.
+ */
+async function matchFieldLabel(
+  ctx: SyncCtx,
+  mapping: DecodedMapping,
+  fieldId: FieldId | undefined
+): Promise<string> {
+  if (!fieldId) return 'match value'
+  try {
+    const fieldMap = await getCachedFieldMap(ctx.orgId, mapping.entityDefinitionId)
+    return fieldMap.get(fieldId)?.name ?? fieldId
+  } catch {
+    return fieldId
+  }
+}
+
 export const entitySink: EntitySink = {
   async upsertRecord(ctx, mapping, record) {
     ctx.counters.fetched += 1
@@ -830,7 +891,7 @@ export const entitySink: EntitySink = {
       )
       instanceId = shared?.entityInstanceId ?? null
     }
-    let matched: { fieldId?: FieldId; value: unknown } | undefined
+    let matched: { fieldId?: FieldId; value: unknown; exclusive?: boolean } | undefined
     if (!instanceId) {
       const resolved = await resolveIdentity(ctx, mapping, record, refToConcrete)
       if (resolved.failed) {
@@ -848,6 +909,53 @@ export const entitySink: EntitySink = {
       }
       instanceId = resolved.instanceId
       matched = resolved.matched
+    }
+
+    // 1b'. One instance, one binding per mapping, for an EXCLUSIVE match key only
+    //     (money plan 39 section 6.1). A `match` hit on an instance that a
+    //     DIFFERENT externalId of this same mapping already binds is a true
+    //     in-source duplicate when the key is exclusive (two Shopify variants
+    //     sharing one SKU): binding both would weld two upstream records onto one
+    //     part, with the slice dedupe below letting the first win the writes and
+    //     the second keep its binding forever. Skip the record with a reason
+    //     instead: no binding, no write, counted `skipped` rather than `failed`,
+    //     so the run is not `partial` for as long as the duplicate stands
+    //     upstream. A plain match key keeps the B1 behaviour (both bind, first
+    //     wins the writes): two customer records sharing an email are one person,
+    //     and a guest checkout carries a synthetic externalId per order, so
+    //     skipping it would leave that order's contact edge pending forever.
+    //     External-id bindings and def-keyed reuse never land here (`matched` is
+    //     only set on the secondary-key path).
+    if (instanceId && matched?.exclusive) {
+      const siblingExternalId = await findSiblingBinding(
+        ctx,
+        mapping.row.id,
+        instanceId,
+        record.externalId
+      )
+      if (siblingExternalId !== null) {
+        const label = await matchFieldLabel(ctx, mapping, matched.fieldId)
+        const reason = `${label} ${String(matched.value)} already belongs to ${siblingExternalId}`
+        logger.info(
+          'match hit an instance a sibling record of this mapping already binds - skipped',
+          {
+            mappingId: mapping.row.id,
+            externalId: record.externalId,
+            instanceId,
+            siblingExternalId,
+            reason,
+          }
+        )
+        ctx.counters.skipped += 1
+        if (ctx.counters.errorSample.length < 50) {
+          ctx.counters.errorSample.push({
+            externalId: record.externalId,
+            error: reason,
+            tier: 'skipped',
+          })
+        }
+        return
+      }
     }
 
     // 1c. In-slice two-source dedupe (B1, locked): the FIRST source record that

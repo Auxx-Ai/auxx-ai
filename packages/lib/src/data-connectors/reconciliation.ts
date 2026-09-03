@@ -2,38 +2,81 @@
 // Orphan reconciliation + explicit deletes (04 §4).
 //
 // Orphan reconciliation runs ONLY for owned + snapshot + upsert mappings: an
-// item row whose lastSeenRunId !== this run is an orphan → archiveRecord with the
-// mapping's orphanBehavior. Skipped for incremental (absence ≠ deletion), for
-// reference mappings (they write nothing), and for ALL contributing mode (never
-// archive a co-owned helpdesk record).
+// item row whose lastSeenRunId is not one of the runs of the stream's current
+// backfill (a crawl parked at the ingest ceiling resumes across runs) is an orphan
+// → archiveRecord with the mapping's orphanBehavior. Skipped for incremental
+// (absence ≠ deletion), for reference mappings (they write nothing), and for ALL
+// contributing mode (never archive a co-owned helpdesk record).
 //
 // Explicit deletes flow through the connector's resolveDelete → archiveRecord.
 
-import { schema } from '@auxx/database'
+import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { getFieldId, type ResourceFieldId } from '@auxx/types/field'
-import { and, eq, notInArray } from 'drizzle-orm'
+import { and, eq, gte, notInArray } from 'drizzle-orm'
 import { resolveConnectorFieldRef } from '../agents/bindings/resolve'
 import { connectorFor } from './connectors'
 import { buildWriteKeyToFieldId } from './field-id-resolver'
 import { type DecodedMapping, findItem, type StreamWithMappings } from './service'
 import { entitySink } from './sinks/entity-sink'
 import type { SyncCtx } from './sinks/types'
-import type { SyncMode } from './types'
+import type { ConnectorStreamState, SyncMode } from './types'
 
 const logger = createScopedLogger('data-connector-reconciliation')
 
-/** The slice of a stream reconciliation needs: its sync mode + decoded mappings. */
-type ReconcilableStream = { syncMode: SyncMode; mappings: DecodedMapping[] }
+/**
+ * The slice of a stream reconciliation needs: its sync mode + decoded mappings, plus
+ * the run ids that count as "seen this backfill" (`listBackfillRunIds`). Absent ⇒
+ * only the finalizing run counts, which is right for a crawl that ran in one run.
+ */
+type ReconcilableStream = {
+  syncMode: SyncMode
+  mappings: DecodedMapping[]
+  seenRunIds?: ReadonlySet<string>
+}
+
+/**
+ * The run ids a snapshot stream's orphan diff must treat as "seen": every run of the
+ * connector started at or after the stream's `backfillStartedAt`. A snapshot crawl
+ * parked at the ingest ceiling resumes from its cursor on the next trigger, so a
+ * record read in run 1 keeps `lastSeenRunId = run 1` while the crawl completes in
+ * run 2; keying the diff on run 2 alone would archive everything run 1 saw. The
+ * marker is the run row's own `startedAt` (the orchestrator pins it from the run it
+ * opens), so both sides of the comparison come from one clock. Runs of any kind
+ * count (a webhook run that touched the item since the backfill began saw it alive).
+ * Empty when the stream carries no marker (legacy state): the caller's own run id
+ * still counts.
+ */
+export async function listBackfillRunIds(
+  db: Database,
+  input: { dataConnectorId: string; streamId: string }
+): Promise<Set<string>> {
+  const stream = await db.query.DataConnectorStream.findFirst({
+    where: eq(schema.DataConnectorStream.id, input.streamId),
+    columns: { state: true },
+  })
+  const since = (stream?.state as ConnectorStreamState | null)?.backfillStartedAt
+  if (!since) return new Set()
+  const runs = await db.query.DataConnectorRun.findMany({
+    where: and(
+      eq(schema.DataConnectorRun.dataConnectorId, input.dataConnectorId),
+      gte(schema.DataConnectorRun.startedAt, new Date(since))
+    ),
+    columns: { id: true },
+  })
+  return new Set(runs.map((r) => r.id))
+}
 
 /**
  * Archive orphans for eligible mappings. `streams` carries each stream's syncMode
  * so we can gate snapshot-only. Only owned + snapshot + upsert mappings reconcile.
  * Accepts both the full `StreamWithMappings` (single-shot) and the pinned snapshot
- * shape (sliced chain) — it reads only `syncMode` + `mappings`.
+ * shape (sliced chain); it reads only `syncMode` + `mappings` (+ `seenRunIds`).
+ * An item is seen when its `lastSeenRunId` is the finalizing run or any run in the
+ * stream's `seenRunIds`.
  */
 export async function reconcileOrphans(ctx: SyncCtx, streams: ReconcilableStream[]): Promise<void> {
-  for (const { syncMode, mappings } of streams) {
+  for (const { syncMode, mappings, seenRunIds } of streams) {
     // Incremental: absence ≠ deletion — ALWAYS. Since v9 §3 a sweep runs incremental
     // streams as a watermark catch-up (they did NOT see every record), so the old
     // sweep override would mass-archive them. Deletes on incremental streams are
@@ -47,7 +90,9 @@ export async function reconcileOrphans(ctx: SyncCtx, streams: ReconcilableStream
 
       const items = await entitySink.listExistingItems(ctx, mapping)
       for (const item of items) {
-        if (item.lastSeenRunId === ctx.runId) continue // seen this run
+        // Seen this run, or in an earlier run of the same (resumed) backfill.
+        if (item.lastSeenRunId === ctx.runId) continue
+        if (item.lastSeenRunId != null && seenRunIds?.has(item.lastSeenRunId)) continue
         await entitySink.archiveRecord(ctx, item, mapping.orphanBehavior)
       }
     }

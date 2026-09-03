@@ -457,6 +457,17 @@ export function ConnectorRunsPanel({
   // Settled, solid state — sits above the freshness grid.
   const showCompletedSummary = !isSyncing && perStream.length > 0 && !!lastSyncedAt
 
+  // Relationship edges a parked run left unresolved, by source and target def. The
+  // stream cards read "done" for a parked run, so this is what says the records are
+  // not linked yet (plans/money/tasks/39 §3.6). Hidden once everything is wired.
+  const pendingLinks = statusData?.pendingLinks ?? []
+  const pendingLinksLine = pendingLinks
+    .map(
+      (p) =>
+        `${p.edges.toLocaleString()} ${p.sourceLabel.toLowerCase()} to ${p.label.toLowerCase()} ${pluralize(p.edges, 'link')} pending`
+    )
+    .join(', ')
+
   return (
     <div className='flex flex-1 min-h-0 flex-col bg-background'>
       <DrawerHeader
@@ -492,6 +503,12 @@ export function ConnectorRunsPanel({
           completed
           syncedAt={lastSyncedAt}
         />
+      )}
+
+      {pendingLinks.length > 0 && (
+        <div className='border-b px-4 py-2 text-[11px] text-muted-foreground'>
+          {pendingLinksLine}
+        </div>
       )}
 
       {showFreshness && (

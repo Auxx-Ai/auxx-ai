@@ -372,7 +372,13 @@ mergeStrategy?, type?, name? }`:
 - **`appField`** names a `defineFields`-declared field on the app (today's `targetAppField`).
   Identity is auto-stamped when that app field is `identity: true`.
 - **`match: true`** is today's `matchFieldKeys`: a secondary identity key used to adopt an existing
-  record on first contact (`match.email` → `primary_email`, for example).
+  record on first contact (`match.email` → `primary_email`, for example). **`match: 'exclusive'`**
+  is the same key with one extra rule: when a second source record of the mapping resolves to a
+  record a sibling already binds, the sink skips it with a reason instead of binding it (money plan
+  39 §6.1). Two Shopify customers sharing an email (a guest checkout and a registered customer) are
+  one contact, so `primary_email` stays `match: true` and both bind; two variants sharing a SKU are
+  different things colliding, so `part_sku` is `match: 'exclusive'` and the second is skipped.
+  Uniqueness cannot separate the two cases (both fields are unique), so the author has to say.
 - **`mergeStrategy`** is the sink's `FieldMergeStrategy` (`overwrite` default, `fill_blank`,
   `connector_owned_only`, `manual_review`, `ignore`), now declared by the author instead of set as a
   per-merchant click in the mapping editor.
@@ -415,14 +421,24 @@ the same source subtree).
 ### Reserved targets
 
 A contributing `target` that resolves to a computed field, or to a small reserved set of system
-attributes (`record_id`, the created/updated stamps, `order_number` / `invoice_number` /
-`quote_number`, `part_quantity_on_hand`), is an **extract-time error** in the target design. Today
-the explicit binder (`buildContributingFieldBindings`, `app-catalog.ts:187-247`) does not check
-this; only the automap fallback does, via `isWritableTarget`, so a manifest can bind a source
-field straight onto a record id today with no error. The totals fields (`order_total` and its
-siblings) are **deliberately not reserved**: a connector that transcribes a vendor's own totals, the
-way `vendor_bill` already does, needs to write them (§7's stand-down mechanism is what makes that
-safe).
+attributes (`record_id`, the created/updated stamps, `quote_number`, `part_quantity_on_hand`), is
+an **extract-time error** in the target design. Today the explicit binder
+(`buildContributingFieldBindings`, `app-catalog.ts:187-247`) does not check this; only the automap
+fallback does, via `isWritableTarget`, so a manifest can bind a source field straight onto a record
+id today with no error. The totals fields (`order_total` and its siblings) are **deliberately not
+reserved**: a connector that transcribes a vendor's own totals, the way `vendor_bill` already does,
+needs to write them (§7's stand-down mechanism is what makes that safe).
+
+The sell-side document numbers `order_number`, `invoice_number` and `purchase_order_number` are
+also **not reserved**, under the rule "theirs if they bring one, otherwise ours"
+(`plans/money/tasks/39-shopify-first-sync-followups.md` §6.5): a connector that carries the
+source's own document number (Shopify's `#1001`, a QuickBooks invoice number) binds it with
+`mergeStrategy: 'fill_blank'`, and the numbering hook keeps a non-blank incoming value on create
+instead of allocating from `RecordSequence`. With nothing supplied the hook allocates `ORD-` /
+`INV-` / `PO-` exactly as before, so hand-created records keep their sequence numbers. The
+platform side is `CONNECTOR_WRITABLE_NUMBERS_ALLOWLIST` in `app-catalog.ts`, honoured by
+`assertContributingTargetWritable` the same way as the totals allow-list. Quote, work-order,
+build, ticket and `vendor_bill_internal_number` numbers stay hook-only.
 
 ### Layer A schema and `exampleRecord`
 
@@ -495,8 +511,10 @@ streams: [{
     { rootPath: '', target: { entityKind: 'order' },
       fields: [
         { sourcePath: 'shopify_id',        appField: 'shopifyOrderId' },  // identity -> externalId
-        // `#1001` is an APP field. `order_number` is auxx's own `ORD-000N` and is
-        // NEVER bound here: the numbering hook is its only writer.
+        // `#1001` fills `order_number` once (`fill_blank`); the numbering hook
+        // keeps it and only allocates `ORD-000N` when nothing was supplied
+        // (§2.4 "Reserved targets"). The app field is a redundant grid column.
+        { sourcePath: 'name',              target: 'order_number', mergeStrategy: 'fill_blank' },
         { sourcePath: 'name',              appField: 'orderName' },
         { sourcePath: 'createdAt',         target: 'order_placed_at' },
         { sourcePath: 'cancelledAt',       target: 'order_cancelled_at' },

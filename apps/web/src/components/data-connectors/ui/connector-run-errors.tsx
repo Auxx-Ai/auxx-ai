@@ -21,8 +21,12 @@ import { downloadCsv } from '~/lib/csv'
 export interface ConnectorRunError {
   externalId: string
   error: string
-  /** 'invalid' = dropped before the write; 'rejected' = the write threw; absent = engine-level. */
-  tier?: 'invalid' | 'rejected'
+  /**
+   * 'invalid' = dropped before the write; 'rejected' = the write threw; 'skipped' = a
+   * deliberate no-op with a reason (a true in-source duplicate, money plan 39 section
+   * 6.1); absent = engine-level.
+   */
+  tier?: 'invalid' | 'rejected' | 'skipped'
 }
 
 /** errorSample is capped server-side (`service.ts` finalizeRun → `.slice(0, 50)`). */
@@ -31,6 +35,7 @@ const ERROR_SAMPLE_CAP = 50
 const TIER_META: Record<string, { label: string; variant: BadgeProps['variant'] }> = {
   invalid: { label: 'Invalid', variant: 'amber' },
   rejected: { label: 'Rejected', variant: 'red' },
+  skipped: { label: 'Skipped', variant: 'gray' },
 }
 const UNTAGGED_TIER = { label: 'Error', variant: 'gray' as const }
 

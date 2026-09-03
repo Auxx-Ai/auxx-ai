@@ -163,6 +163,25 @@ export const CONNECTOR_WRITABLE_TOTALS_ALLOWLIST = new Set([
 ])
 
 /**
+ * Sell-side document numbers a connector is allowed to write despite being
+ * flagged `isCreatable: false, isUpdatable: false` for the UI. The rule is
+ * "theirs if they bring one, otherwise ours": a connector that carries the
+ * source's own number (Shopify's `#1001`, a QuickBooks invoice number) binds it
+ * with `fill_blank`, and the numbering hook keeps a non-blank incoming value on
+ * create instead of allocating from `RecordSequence`; with nothing supplied the
+ * hook allocates `ORD-` / `INV-` / `PO-` as before. Keyed by `systemAttribute`.
+ * Quotes, work orders, builds, tickets and `vendor_bill_internal_number` stay
+ * hook-only and are NOT listed. The SDK extractor's `RESERVED_SYSTEM_ATTRIBUTES`
+ * mirrors this list by omission. See plans/money/tasks/39-shopify-first-sync-followups.md
+ * section 6.5.
+ */
+export const CONNECTOR_WRITABLE_NUMBERS_ALLOWLIST = new Set([
+  'order_number',
+  'invoice_number',
+  'purchase_order_number',
+])
+
+/**
  * Refuse an explicit contributing `target` binding that resolves to a computed
  * field, or one flagged neither creatable nor updatable — the reserved-target
  * check the SDK extractor cannot run (its `RESERVED_SYSTEM_ATTRIBUTES` is a
@@ -171,14 +190,19 @@ export const CONNECTOR_WRITABLE_TOTALS_ALLOWLIST = new Set([
  * {@link isWritableTarget} (never guess); an author who NAMES the target
  * explicitly gets a hard error instead, so a manifest can't quietly bind onto
  * `record_id` or a computed rollup. {@link CONNECTOR_WRITABLE_TOTALS_ALLOWLIST}
- * is the one exception — a connector transcribes those by design.
+ * and {@link CONNECTOR_WRITABLE_NUMBERS_ALLOWLIST} are the two exceptions: a
+ * connector transcribes those by design.
  */
 export function assertContributingTargetWritable(
   targetKey: string,
   target: ContributingTargetField
 ): void {
   if (isWritableTarget(target)) return
-  if (target.systemAttribute && CONNECTOR_WRITABLE_TOTALS_ALLOWLIST.has(target.systemAttribute)) {
+  if (
+    target.systemAttribute &&
+    (CONNECTOR_WRITABLE_TOTALS_ALLOWLIST.has(target.systemAttribute) ||
+      CONNECTOR_WRITABLE_NUMBERS_ALLOWLIST.has(target.systemAttribute))
+  ) {
     return
   }
   throw new BadRequestError(
@@ -187,7 +211,8 @@ export function assertContributingTargetWritable(
 }
 
 /**
- * Pre-bind a contributing mapping's declared identity-match fields (`match: true`)
+ * Pre-bind a contributing mapping's declared identity-match fields (`match: true`
+ * or `match: 'exclusive'`)
  * into `FieldMapping` entries flagged `match` (the secondary-identity link the sink
  * merges on, e.g. an existing contact by `email`). Pure (caller supplies `defFields`)
  * so it's unit-testable without the org cache. Only `target`-style fields (not
@@ -211,6 +236,9 @@ export function buildContributingMatchBindings(
       bindSourceToTarget(entityDefinitionId, field.sourcePath, target, field.mergeStrategy, {
         kind: 'match',
         normalize: deriveNormalizeFromType(target.type),
+        // `match: 'exclusive'` (SDK): a second hit is a collision, skipped by the
+        // sink and never bound; plain `true` binds both (plan 39 section 6.1).
+        ...(field.match === 'exclusive' ? { exclusive: true } : {}),
       })
     )
   }

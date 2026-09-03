@@ -5,8 +5,9 @@
 // never clears the list, drifted-forever regression (alias must not defeat the
 // content-hash skip), per-value uniqueness conflicts keep the sync green, an
 // array-shaped match candidate FAILS the record instead of creating a silent
-// duplicate, and in-slice two-source dedupe (first wins field writes, the
-// second still binds).
+// duplicate, in-slice two-source dedupe (first wins field writes, the second
+// still binds), and the opt-in EXCLUSIVE match key where the second is skipped
+// as a true in-source duplicate instead (plan 39 section 6.1).
 //
 // The trailing PHONE block covers the E.164 interaction (the Shopify `phone`
 // binding rides this path): a differently-FORMATTED source number must compare
@@ -162,11 +163,17 @@ function row(id: string, sortKey: string, valueText: string, marker: string | nu
   return { id, sortKey, valueText, managedByConnectorId: marker }
 }
 
-/** Chainable db stub: FieldValue row reads + recorded `update().set()` calls. */
-function makeDb(rows: FvRow[] = []) {
+/**
+ * Chainable db stub: FieldValue row reads + recorded `update().set()` calls, plus
+ * the `DataConnectorItem.findFirst` the sibling-binding check reads (money plan 39
+ * section 6.1) - `null` unless a case says a sibling already binds the instance.
+ */
+function makeDb(rows: FvRow[] = [], siblingItem: { externalId: string } | null = null) {
   const updateCalls: Array<Record<string, unknown>> = []
   const selectDistinct = vi.fn()
+  const findSiblingItem = vi.fn(async () => siblingItem)
   const db = {
+    query: { DataConnectorItem: { findFirst: findSiblingItem } },
     select: vi.fn(() => ({
       from: () => ({ where: () => ({ orderBy: async () => rows }) }),
     })),
@@ -179,7 +186,7 @@ function makeDb(rows: FvRow[] = []) {
       }),
     })),
   }
-  return { db, updateCalls, selectDistinct }
+  return { db, updateCalls, selectDistinct, findSiblingItem }
 }
 
 const create = vi.fn()
@@ -445,6 +452,9 @@ describe('entitySink row-level multi-field writes (B1)', () => {
 
   it('two source records matching two aliases of one contact: first wins field writes, second still binds', async () => {
     // Neither record is bound; both match the same instance by (different) alias.
+    // A PLAIN match key (no `exclusive`): the two records are one person (a guest
+    // checkout and a registered customer), so both bind and only the field
+    // writes are deduped. The exclusive rule (plan 39 section 6.1) is below.
     lookupByField.mockImplementation(async (params: { candidates: Array<{ value: string }> }) => ({
       items: [
         {
@@ -457,7 +467,7 @@ describe('entitySink row-level multi-field writes (B1)', () => {
       ],
       hasMore: false,
     }))
-    const { db, updateCalls } = makeDb([row('r1', 'a0', 'a@x.com', null)])
+    const { db, updateCalls, findSiblingItem } = makeDb([row('r1', 'a0', 'a@x.com', null)])
     const ctx = makeCtx({ db: db as never })
 
     const recA = record('a@x.com', { externalId: 'srcA' })
@@ -465,7 +475,7 @@ describe('entitySink row-level multi-field writes (B1)', () => {
     await entitySink.upsertRecord(ctx, mapping(), recA)
     await entitySink.upsertRecord(ctx, mapping(), recB)
 
-    // A won (match-by-alias no-op: matched row IS the value — nothing written).
+    // A won (match-by-alias no-op: matched row IS the value - nothing written).
     // B lost the slice dedupe: field writes skipped entirely.
     expect(update).toHaveBeenCalledTimes(1) // A's (empty) scalar write only
     expect(updateCalls).toHaveLength(0)
@@ -480,7 +490,162 @@ describe('entitySink row-level multi-field writes (B1)', () => {
       externalId: 'srcB',
       entityInstanceId: 'inst1',
     })
+    // A plain match key never consults the sibling-binding read.
+    expect(findSiblingItem).not.toHaveBeenCalled()
     expect(ctx.counters.skipped).toBe(1)
+    expect(ctx.counters.failed).toBe(0)
+    expect(ctx.counters.errorSample).toEqual([])
+  })
+})
+
+// ── True in-source duplicate on an EXCLUSIVE match key (plan 39 section 6.1) ──
+// The Shopify case this rule exists for: two variants carry one SKU. The first
+// variant creates (or adopts) the part and binds it; the second matches that
+// same part by SKU. Because `part_sku` is `match: 'exclusive'` (identityRole
+// `exclusive: true`, carried on the candidate), it must be skipped with a
+// reason, never bound, and counted `skipped` rather than `failed` so the run
+// does not stay `partial` forever. A plain match key (contacts, above) binds both.
+
+const SKU_KEY = 'part_sku'
+const SKU_UUID = 'field-sku-uuid'
+const SKU_REF = toResourceFieldId('def_part', SKU_KEY)
+
+function skuMapping(): DecodedMapping {
+  return mapping({
+    entityDefinitionId: 'def_part',
+    fieldMappings: [
+      {
+        id: 'fm-sku',
+        targetFieldRef: SKU_REF,
+        expression: '{sku}',
+        sourceFields: { sku: 'sku' },
+        identityRole: { kind: 'match', exclusive: true },
+      },
+    ],
+  } as never)
+}
+
+function variantRecord(externalId: string, sku: string, exclusive = true): ProjectedRecord {
+  return {
+    externalId,
+    displayName: `Variant ${externalId}`,
+    fields: { [SKU_REF]: sku },
+    identityCandidates: [
+      { targetFieldRef: SKU_REF, value: sku, ...(exclusive ? { exclusive: true } : {}) },
+    ],
+    pendingRelations: [],
+  }
+}
+
+/** Point the field lookups at a scalar, unique TEXT `part_sku` named "SKU". */
+function useSkuField() {
+  resolveConnectorFieldRef.mockImplementation(async (ref: string) =>
+    ref === SKU_REF ? SKU_REF : null
+  )
+  buildWriteKeyToFieldId.mockResolvedValue(
+    new Map([
+      [SKU_KEY, SKU_UUID],
+      [SKU_UUID, SKU_UUID],
+    ])
+  )
+  getCachedFieldMap.mockResolvedValue(
+    new Map([
+      [
+        SKU_UUID,
+        {
+          id: SKU_UUID,
+          name: 'SKU',
+          type: 'TEXT',
+          modelType: 'part',
+          systemAttribute: SKU_KEY,
+          options: {},
+          isUnique: true,
+        },
+      ],
+    ])
+  )
+  // The part the SKU resolves to: always inst-part-1, matched on the concrete field id.
+  lookupByField.mockImplementation(async (params: { candidates: Array<{ value: string }> }) => ({
+    items: [
+      {
+        recordId: 'def_part:inst-part-1',
+        matchedBy: { fieldId: SKU_UUID, value: params.candidates[0]!.value },
+        displayName: 'Widget',
+        secondaryDisplayValue: null,
+        avatarUrl: null,
+      },
+    ],
+    hasMore: false,
+  }))
+}
+
+describe('entitySink - a second record matching a part a sibling already binds (plan 39 section 6.1)', () => {
+  beforeEach(() => {
+    useSkuField()
+  })
+
+  it('cross-slice: the sibling bound the part in an earlier run - skipped with a reason, not bound, not failed', async () => {
+    // No in-slice claim (fresh slice); the DataConnectorItem read finds the sibling.
+    const { db, findSiblingItem } = makeDb([], { externalId: '45678' })
+    const ctx = makeCtx({ db: db as never })
+
+    await entitySink.upsertRecord(ctx, skuMapping(), variantRecord('99999', '177A'))
+
+    expect(findSiblingItem).toHaveBeenCalledTimes(1)
+    expect(upsertItem).not.toHaveBeenCalled()
+    expect(update).not.toHaveBeenCalled()
+    expect(create).not.toHaveBeenCalled()
+    expect(ctx.counters.skipped).toBe(1)
+    expect(ctx.counters.failed).toBe(0)
+    expect(ctx.counters.errorSample).toEqual([
+      { externalId: '99999', error: 'SKU 177A already belongs to 45678', tier: 'skipped' },
+    ])
+  })
+
+  it('a re-sync of the bound sibling itself is NOT a duplicate: the external-id path never consults the rule', async () => {
+    findItem.mockResolvedValue(boundItem({ entityInstanceId: 'inst-part-1' }))
+    const { db, findSiblingItem } = makeDb([], { externalId: '45678' })
+    const ctx = makeCtx({ db: db as never })
+
+    await entitySink.upsertRecord(ctx, skuMapping(), variantRecord('45678', '177A'))
+
+    expect(findSiblingItem).not.toHaveBeenCalled()
+    expect(lookupByField).not.toHaveBeenCalled()
+    expect(upsertItem).toHaveBeenCalledTimes(1)
+    expect(ctx.counters.skipped).toBe(0)
+    expect(ctx.counters.updated).toBe(1)
+  })
+
+  it('the same collision on a NON-exclusive candidate binds (the rule is opt-in per binding)', async () => {
+    const { db, findSiblingItem } = makeDb([], { externalId: '45678' })
+    const ctx = makeCtx({ db: db as never })
+
+    await entitySink.upsertRecord(ctx, skuMapping(), variantRecord('99999', '177A', false))
+
+    expect(findSiblingItem).not.toHaveBeenCalled()
+    expect(upsertItem).toHaveBeenCalledTimes(1)
+    expect(upsertItem.mock.calls[0]?.[1]).toMatchObject({
+      externalId: '99999',
+      entityInstanceId: 'inst-part-1',
+    })
+    expect(ctx.counters.skipped).toBe(0)
+    expect(ctx.counters.errorSample).toEqual([])
+  })
+
+  it('a match with NO sibling binding adopts the part normally (the merchant-owned part case)', async () => {
+    const { db, findSiblingItem } = makeDb([], null)
+    const ctx = makeCtx({ db: db as never })
+
+    await entitySink.upsertRecord(ctx, skuMapping(), variantRecord('45678', '177A'))
+
+    expect(findSiblingItem).toHaveBeenCalledTimes(1)
+    expect(create).not.toHaveBeenCalled()
+    expect(upsertItem).toHaveBeenCalledTimes(1)
+    expect(upsertItem.mock.calls[0]?.[1]).toMatchObject({
+      externalId: '45678',
+      entityInstanceId: 'inst-part-1',
+    })
+    expect(ctx.counters.skipped).toBe(0)
     expect(ctx.counters.failed).toBe(0)
   })
 })

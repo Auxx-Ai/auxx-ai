@@ -226,6 +226,7 @@ function identityCandidates(
       targetFieldRef: fm.targetFieldRef,
       value: evaluateFieldValue(fm, subtree),
       normalize: fm.identityRole.normalize,
+      ...(fm.identityRole.exclusive ? { exclusive: true } : {}),
     })
   }
   return candidates

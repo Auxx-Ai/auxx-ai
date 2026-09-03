@@ -519,13 +519,19 @@ async function recomputeDocumentTotals(params: {
      * the whole mirror set (the sink binds subtotal/tax/shipping/total together, §6.1), so
      * checking every mirror individually would be redundant round trips for the same
      * answer. Gated on `!unchanged` so a no-op recompute never pays this lookup either.
+     * `managedFields` stores `<defId>:<fieldId>` refs, so the lookup takes the concrete
+     * field id, never the attribute name; an org that has not materialised the mirror has
+     * no id and is never managed.
      */
-    const managed = await isFieldConnectorManaged(
-      db ?? database,
-      organizationId,
-      documentInstanceId,
-      `${spec.attrPrefix}_total`
-    )
+    const totalFieldId = cf[`${spec.attrPrefix}_total` as SystemAttribute]?.id
+    const managed = totalFieldId
+      ? await isFieldConnectorManaged(
+          db ?? database,
+          organizationId,
+          documentInstanceId,
+          totalFieldId
+        )
+      : false
 
     if (managed) {
       logger.debug('totals recompute skipped — connector-managed record', {
@@ -638,14 +644,25 @@ export async function recomputeLineTotal(params: {
   const lineRecordId = toRecordId(line.lineEntityType, lineInstanceId)
   const handler = new UnifiedCrudHandler(organizationId, userId, db)
 
+  const cf = await getOrgCache()
+    .from(organizationId, 'customFields')
+    .bySystemAttributes<SystemAttribute>([line.qtyAttr, line.unitPriceAttr, line.lineTotalAttr])
+  const qtyField = cf[line.qtyAttr]
+  const unitPriceField = cf[line.unitPriceAttr]
+  if (!qtyField || !unitPriceField) return
+
   // The totals stand-down (money plan 37 §6): a connector-transcribed line's own total must
-  // never be overwritten by the engine — the sink already wrote the true `lineTotal`.
-  const lineManaged = await isFieldConnectorManaged(
-    db ?? database,
-    organizationId,
-    lineInstanceId,
-    line.lineTotalAttr
-  )
+  // never be overwritten by the engine — the sink already wrote the true `lineTotal`. The
+  // lookup takes the concrete field id (`managedFields` stores `<defId>:<fieldId>` refs).
+  const lineTotalFieldId = cf[line.lineTotalAttr]?.id
+  const lineManaged = lineTotalFieldId
+    ? await isFieldConnectorManaged(
+        db ?? database,
+        organizationId,
+        lineInstanceId,
+        lineTotalFieldId
+      )
+    : false
   if (lineManaged) {
     logger.debug('line total recompute skipped — connector-managed record', {
       organizationId,
@@ -654,13 +671,6 @@ export async function recomputeLineTotal(params: {
     })
     return
   }
-
-  const cf = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes<SystemAttribute>([line.qtyAttr, line.unitPriceAttr])
-  const qtyField = cf[line.qtyAttr]
-  const unitPriceField = cf[line.unitPriceAttr]
-  if (!qtyField || !unitPriceField) return
 
   const values = await handler.getFieldValues(lineRecordId, [qtyField.id, unitPriceField.id])
   const qtyTyped = firstTyped(values.get(qtyField.id))

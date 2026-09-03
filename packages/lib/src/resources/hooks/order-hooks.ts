@@ -1,23 +1,18 @@
 // packages/lib/src/resources/hooks/order-hooks.ts
 
-import { recordNumbering } from '../../records/record-numbering'
+import { keepOrAllocateRecordNumber } from './record-number-hook'
 import type { SystemHook, SystemHookRegistry } from './types'
 
 /**
- * Auto-generate the order number on create. Mirrors autoGenerateInvoiceNumber.
- * order_number has creatable:false/updatable:false, so this hook is the ONLY writer
- * (plans/products/08-order-build.md §5.3/§5.5).
+ * Number the order on create. Mirrors autoGenerateInvoiceNumber.
+ * order_number has creatable:false/updatable:false, so this hook is the only writer
+ * when nothing is supplied (plans/products/08-order-build.md §5.3/§5.5). A data
+ * connector that brings the source's own number (Shopify's `#1001`) keeps it and
+ * no `ORD-` number is allocated: "theirs if they bring one, otherwise ours"
+ * (plans/money/tasks/39-shopify-first-sync-followups.md section 6.5).
  */
-const autoGenerateOrderNumber: SystemHook = async ({
-  operation,
-  field,
-  values,
-  organizationId,
-}) => {
-  if (operation !== 'create') return values
-  const { recordNumber } = await recordNumbering.create(organizationId, 'order')
-  return { ...values, [field.id]: recordNumber }
-}
+const autoGenerateOrderNumber: SystemHook = (context) =>
+  keepOrAllocateRecordNumber(context, 'order')
 
 /**
  * `order` has no lifecycle guard. Unlike quote and invoice, neither

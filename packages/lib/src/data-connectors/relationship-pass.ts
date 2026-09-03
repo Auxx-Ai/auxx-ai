@@ -34,14 +34,27 @@ import type { SyncCtx } from './sinks/types'
 
 const logger = createScopedLogger('data-connector-relationship-pass')
 
+/** What one pass did: edges consumed from `pendingRelations` vs. edges left in it. */
+export interface RelationshipPassSummary {
+  /** Edges written, cleared, or confirmed already correct. */
+  resolved: number
+  /** Edges left pending: target not synced yet, or the write failed. Each counted as a relationship warning. */
+  stillPending: number
+}
+
 /**
  * Resolve all pending relations for the connector. For each item with pending
  * edges, look up the target item and write the relationship; keep unresolved
- * edges pending for a later run.
+ * edges pending for a later run. Runs at the connector-level finalize and at a
+ * park (plans/money/tasks/39 §3.6); `stage` only tags the summary log line.
  */
-export async function resolveRelationships(ctx: SyncCtx): Promise<void> {
+export async function resolveRelationships(
+  ctx: SyncCtx,
+  opts: { stage?: 'finalize' | 'park' } = {}
+): Promise<RelationshipPassSummary> {
   const items = await listItemsWithPendingRelations(ctx.db, ctx.connector.id)
   const { currentTargets, concreteFieldIds } = await readCurrentEdges(ctx, items)
+  const summary: RelationshipPassSummary = { resolved: 0, stillPending: 0 }
 
   for (const item of items) {
     if (!item.entityInstanceId) continue
@@ -137,6 +150,9 @@ export async function resolveRelationships(ctx: SyncCtx): Promise<void> {
       }
     }
 
+    summary.resolved += pending.length - stillPending.length
+    summary.stillPending += stillPending.length
+
     if (stillPending.length !== pending.length || linkedChanged) {
       await setItemRelationState(ctx.db, item.id, {
         pendingRelations: stillPending,
@@ -144,6 +160,16 @@ export async function resolveRelationships(ctx: SyncCtx): Promise<void> {
       })
     }
   }
+
+  logger.info('relationship pass done', {
+    connectorId: ctx.connector.id,
+    runId: ctx.runId,
+    stage: opts.stage ?? 'finalize',
+    items: items.length,
+    resolved: summary.resolved,
+    stillPending: summary.stillPending,
+  })
+  return summary
 }
 
 /**
