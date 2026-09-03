@@ -11,7 +11,7 @@
     "color": "gray"
   },
   "primaryDisplayField": "contractName",
-  "companions": ["vendor"],
+  "companions": [],
   "fields": [
     {
       "templateFieldId": "contractName",
@@ -59,7 +59,7 @@
       "name": "Vendor",
       "type": "RELATIONSHIP",
       "relationship": {
-        "relatedResourceId": "@template:vendor",
+        "relatedResourceId": "@system:company",
         "relationshipType": "belongs_to",
         "inverseName": "Contracts"
       }

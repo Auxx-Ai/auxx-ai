@@ -11,7 +11,7 @@
     "color": "green"
   },
   "primaryDisplayField": "inspectionId",
-  "companions": ["product", "vendor"],
+  "companions": [],
   "fields": [
     {
       "templateFieldId": "inspectionId",
@@ -47,7 +47,7 @@
       "name": "Product",
       "type": "RELATIONSHIP",
       "relationship": {
-        "relatedResourceId": "@template:product",
+        "relatedResourceId": "@system:product",
         "relationshipType": "belongs_to",
         "inverseName": "Quality Inspections"
       }
@@ -57,7 +57,7 @@
       "name": "Vendor",
       "type": "RELATIONSHIP",
       "relationship": {
-        "relatedResourceId": "@template:vendor",
+        "relatedResourceId": "@system:company",
         "relationshipType": "belongs_to",
         "inverseName": "Quality Inspections"
       }

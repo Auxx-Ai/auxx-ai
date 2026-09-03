@@ -11,7 +11,7 @@
     "color": "amber"
   },
   "primaryDisplayField": "locationName",
-  "companions": ["product", "vendor"],
+  "companions": [],
   "fields": [
     {
       "templateFieldId": "locationName",
@@ -54,7 +54,7 @@
       "name": "Products",
       "type": "RELATIONSHIP",
       "relationship": {
-        "relatedResourceId": "@template:product",
+        "relatedResourceId": "@system:product",
         "relationshipType": "many_to_many",
         "inverseName": "Inventory Locations"
       }
