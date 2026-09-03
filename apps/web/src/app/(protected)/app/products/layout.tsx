@@ -2,40 +2,31 @@
 
 'use client'
 
-import {
-  MainPage,
-  MainPageBreadcrumb,
-  MainPageBreadcrumbItem,
-  MainPageHeader,
-} from '@auxx/ui/components/main-page'
-import { Package2 } from 'lucide-react'
 import { usePathname } from 'next/navigation'
+import { EntityRouteLayout } from '~/components/records'
+
+type Props = { children: React.ReactNode }
 
 const BASE_PATH = '/app/products'
 
 /**
- * Products layout — the parts recipe: a plain breadcrumb shell for the list
- * route only. Detail pages (via DetailView) render their own MainPage.
+ * Products layout, the companies recipe: the shared entity route shell
+ * (List | Dashboard) for the list and dashboard routes only. Detail
+ * (`[productId]`) and import routes own their own `MainPage` via
+ * `DetailView` / `ImportPage` and bypass the shell.
  */
-export default function ProductsLayout({ children }: { children: React.ReactNode }) {
+export default function ProductsLayout({ children }: Props) {
   const pathname = usePathname()
+  const isDetailOrSpecialPage =
+    pathname !== BASE_PATH && !pathname.startsWith(`${BASE_PATH}/dashboard`)
 
-  if (pathname !== BASE_PATH) {
+  if (isDetailOrSpecialPage) {
     return <>{children}</>
   }
 
   return (
-    <MainPage>
-      <MainPageHeader>
-        <MainPageBreadcrumb>
-          <MainPageBreadcrumbItem
-            title='Products'
-            href={BASE_PATH}
-            icon={<Package2 className='size-4' />}
-          />
-        </MainPageBreadcrumb>
-      </MainPageHeader>
+    <EntityRouteLayout slug='products' basePath={BASE_PATH}>
       {children}
-    </MainPage>
+    </EntityRouteLayout>
   )
 }

@@ -2,46 +2,33 @@
 
 'use client'
 
-import {
-  MainPage,
-  MainPageBreadcrumb,
-  MainPageBreadcrumbItem,
-  MainPageHeader,
-} from '@auxx/ui/components/main-page'
 import { usePathname } from 'next/navigation'
-import { RecordRouteGuard } from '~/components/records'
-import { useResource } from '~/components/resources'
+import { EntityRouteLayout } from '~/components/records'
 
 type Props = { children: React.ReactNode }
 
 const BASE_PATH = '/app/orders'
 
 /**
- * Orders layout — the quotes recipe (plans/products/08-order-build.md §5.7/§5.8,
- * D17): a plain breadcrumb shell for the list route only. `RecordsView` (mounted
- * by `orders/page.tsx`) renders its own MainPageContent and contributes the
- * Create button via `MainPageAction`; the detail route (`[orderId]`) owns its own
- * `MainPage` and bypasses the shell entirely.
+ * Orders layout, the companies recipe: the shared entity route shell
+ * (List | Dashboard) for the list and dashboard routes only. `RecordsView`
+ * (mounted by `orders/page.tsx`) renders its own `MainPageContent` and
+ * contributes the Create button via `MainPageAction`. Detail (`[orderId]`)
+ * and import (`import/[jobId]`) routes own their own `MainPage` and bypass
+ * the shell, or two `MainPage` trees nest.
  */
 export default function OrdersLayout({ children }: Props) {
   const pathname = usePathname()
-  const { resource } = useResource('orders')
-  const isDetailOrSpecialPage = pathname !== BASE_PATH
+  const isDetailOrSpecialPage =
+    pathname !== BASE_PATH && !pathname.startsWith(`${BASE_PATH}/dashboard`)
+
+  if (isDetailOrSpecialPage) {
+    return <>{children}</>
+  }
 
   return (
-    <RecordRouteGuard slug='orders'>
-      {isDetailOrSpecialPage ? (
-        <>{children}</>
-      ) : (
-        <MainPage>
-          <MainPageHeader>
-            <MainPageBreadcrumb>
-              <MainPageBreadcrumbItem title={resource?.plural ?? 'Orders'} href={BASE_PATH} />
-            </MainPageBreadcrumb>
-          </MainPageHeader>
-          {children}
-        </MainPage>
-      )}
-    </RecordRouteGuard>
+    <EntityRouteLayout slug='orders' basePath={BASE_PATH}>
+      {children}
+    </EntityRouteLayout>
   )
 }

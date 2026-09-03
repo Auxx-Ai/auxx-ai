@@ -2,50 +2,33 @@
 
 'use client'
 
-import {
-  MainPage,
-  MainPageBreadcrumb,
-  MainPageBreadcrumbItem,
-  MainPageHeader,
-} from '@auxx/ui/components/main-page'
 import { usePathname } from 'next/navigation'
-import { RecordRouteGuard } from '~/components/records'
-import { useResource } from '~/components/resources'
+import { EntityRouteLayout } from '~/components/records'
 
 type Props = { children: React.ReactNode }
 
 const BASE_PATH = '/app/purchase-orders'
 
 /**
- * Purchase orders layout — the orders/quotes recipe
- * (plans/purchasing/01-build-plan.md §4.4): a plain breadcrumb shell for the list
- * route only. `RecordsView` (mounted by `purchase-orders/page.tsx`) renders its
- * own MainPageContent and contributes the Create button via `MainPageAction`; the
- * detail route (`[purchaseOrderId]`) owns its own `MainPage` and bypasses the
- * shell entirely.
+ * Purchase orders layout, the companies recipe: the shared entity route shell
+ * (List | Dashboard) for the list and dashboard routes only. `RecordsView`
+ * (mounted by `purchase-orders/page.tsx`) renders its own `MainPageContent`
+ * and contributes the Create button via `MainPageAction`. Detail
+ * (`[purchaseOrderId]`), intake and import routes own their own `MainPage`
+ * and bypass the shell, or two `MainPage` trees nest.
  */
 export default function PurchaseOrdersLayout({ children }: Props) {
   const pathname = usePathname()
-  const { resource } = useResource('purchase-orders')
-  const isDetailOrSpecialPage = pathname !== BASE_PATH
+  const isDetailOrSpecialPage =
+    pathname !== BASE_PATH && !pathname.startsWith(`${BASE_PATH}/dashboard`)
+
+  if (isDetailOrSpecialPage) {
+    return <>{children}</>
+  }
 
   return (
-    <RecordRouteGuard slug='purchase-orders'>
-      {isDetailOrSpecialPage ? (
-        <>{children}</>
-      ) : (
-        <MainPage>
-          <MainPageHeader>
-            <MainPageBreadcrumb>
-              <MainPageBreadcrumbItem
-                title={resource?.plural ?? 'Purchase Orders'}
-                href={BASE_PATH}
-              />
-            </MainPageBreadcrumb>
-          </MainPageHeader>
-          {children}
-        </MainPage>
-      )}
-    </RecordRouteGuard>
+    <EntityRouteLayout slug='purchase-orders' basePath={BASE_PATH}>
+      {children}
+    </EntityRouteLayout>
   )
 }
