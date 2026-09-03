@@ -194,6 +194,17 @@ export const INTAKE_PHASE_LABELS: Record<IntakeDraftPhase, string> = {
   draft: 'Drafting the order',
 }
 
+/**
+ * How much of a converted document the draft carries for the preview pane.
+ *
+ * The draft is one Redis value with a 24-hour TTL, and a large workbook renders
+ * to CSV without any bound at all. The model still receives the whole thing —
+ * this cap is on what we store to show a person afterwards, and a quote whose
+ * first 100k characters are not enough to check the lines against is not one
+ * anybody is reviewing line by line either.
+ */
+export const INTAKE_EXTRACT_PREVIEW_MAX_CHARS = 100_000
+
 /** The draft as the review screen and the dialog read it. */
 export interface IntakeDraftView {
   id: string
@@ -202,6 +213,14 @@ export interface IntakeDraftView {
   assetRef: string
   fileName: string | null
   mimeType: string | null
+  /**
+   * The converted text the model read, for documents we had to convert first
+   * (xlsx, docx, …). `null` for a PDF or an image, which the preview pane
+   * renders from the asset itself.
+   *
+   * Truncated to {@link INTAKE_EXTRACT_PREVIEW_MAX_CHARS}.
+   */
+  extractedText: string | null
   payload: IntakeDraftPayload | null
   error: string | null
   purchaseOrderInstanceId: string | null

@@ -1391,6 +1391,7 @@ function LineRowMenu({
   onSetGlAccount,
   onSetWeight,
   onDelete,
+  extraItems,
 }: {
   taxable: boolean
   optional: boolean
@@ -1431,6 +1432,16 @@ function LineRowMenu({
   onSetGlAccount?: () => void
   onSetWeight?: () => void
   onDelete: () => void
+  /**
+   * Caller-supplied `DropdownMenuItem`s, rendered above the delete separator.
+   *
+   * ⚠️ The convention this menu documents cuts both ways: a screen with its own
+   * optional vocabulary belongs HERE, not in a second `⋯` of its own. Purchase
+   * order intake adds "create part" and the two folds this way; without the slot
+   * it grew a second menu button in the row's right gutter, and two `⋯` on one
+   * row is a coin toss about which one holds what.
+   */
+  extraItems?: ReactNode
 }) {
   return (
     <DropdownMenu>
@@ -1508,6 +1519,7 @@ function LineRowMenu({
             {hasWeight ? 'Change weight' : 'Set weight'}
           </DropdownMenuItem>
         )}
+        {extraItems}
         <DropdownMenuSeparator />
         <DropdownMenuItem variant='destructive' onSelect={onDelete}>
           <Trash2 />
@@ -1581,6 +1593,9 @@ function LinePartCellView({
   onCommitWeight,
   onRevealWeight,
   onDelete,
+  allowClearPart = false,
+  chips,
+  menuItems,
 }: {
   /** `purchase_order_line_part` / `vendor_bill_line_part`, from the schema. */
   partAttribute: string
@@ -1626,6 +1641,36 @@ function LinePartCellView({
   onRevealWeight: () => void
   /** Delete this line (real record or draft). */
   onDelete: () => void
+  /**
+   * Show the picker's clear (`X`) affordance, so a picked part can be un-picked.
+   *
+   * ⚠️ Off by default, and that default is a constraint rather than caution.
+   * `purchase_order_line.part` is `required: true` and leg 2 of the natural key,
+   * so a PERSISTED purchase order line cannot lose its part — the write is
+   * rejected. Only a caller whose row is unpersisted (purchase-order intake,
+   * whose `createDraft` writes to a draft blob) or whose document allows a
+   * part-less line (`capabilities.draftRequiresPart === false` — a vendor bill)
+   * may turn it on.
+   *
+   * 🛑 Without it a pick is a ONE-WAY DOOR. `MultiRelationInput` defaults
+   * `showClear` to `multi`, and a part relation is single, so no `X` renders; the
+   * picker itself cannot help either, because `multi-select-picker.tsx`'s
+   * `handleSelect` REPLACES in single-select mode rather than toggling, so
+   * re-clicking the chosen option cannot unset it. On intake that stranded any
+   * row the ladder auto-linked to the wrong part: "create a part instead" is
+   * offered only while the row has none, and there was no way back to none.
+   */
+  allowClearPart?: boolean
+  /**
+   * Caller-supplied standing controls, rendered in the chip run just before the
+   * `⋯` menu — the same slot and the same rule as the description button and the
+   * match-key chip: shown once the concept is SET, never a permanent second row.
+   *
+   * Purchase order intake puts the vendor's printed line here.
+   */
+  chips?: ReactNode
+  /** Extra `⋯` items — see {@link LineRowMenu}'s `extraItems`. */
+  menuItems?: ReactNode
 }) {
   const partField = useSystemField(partAttribute)
   /**
@@ -1836,6 +1881,7 @@ function LinePartCellView({
         )}
         {glAccount && <GlAccountChip code={glAccount} />}
         {weight !== null && <WeightChip weight={weight} />}
+        {chips}
       </div>
     )
   }
@@ -1849,6 +1895,10 @@ function LinePartCellView({
         // this trigger on `[role="combobox"]` instead — see use-line-nav.ts.
         triggerProps={{
           className: 'h-7 min-w-0 flex-1 border-none bg-transparent px-1 shadow-none',
+          // The `X` beside the chevron — `PickerTrigger` draws it, and
+          // `MultiRelationInput`'s `handleClearAll` sends `[]`, which arrives
+          // below as `onPickPart(null)`.
+          showClear: allowClearPart,
         }}
         value={partRecordId ? [partRecordId] : []}
         onChange={(next) => {
@@ -1907,10 +1957,13 @@ function LinePartCellView({
         />
       )}
 
+      {chips}
+
       {/* Always the cell's LAST flex child, so its slot is stable across the
           rest ↔ editor swaps. Category / taxable / images / optional are all off:
           a purchasing line carries none of those fields. */}
       <LineRowMenu
+        extraItems={menuItems}
         taxable={false}
         optional={false}
         showOptionalToggle={false}
@@ -2111,8 +2164,12 @@ function useLatestRef<T>(value: T): { current: T } {
  * 🛑 It runs once, on the pick. Nothing re-reads the supplier's price afterwards:
  * `vendor_part_unit_price` moves, and `expected_unit_price` is the price the
  * order froze. See `LineValues.vendorPartRecordId`.
+ *
+ * Exported because a pick is not only the picker: purchase-order intake reaches
+ * the same state by creating a part and by reverting a cleared row to the match
+ * the read proposed, and all three have to leave the line looking identical.
  */
-async function applyPartPrefill({
+export async function applyPartPrefill({
   partRecordId,
   resolve,
   currentPriceRef,
@@ -2241,7 +2298,16 @@ export function LineRow({
               // just did, and on a draft it is what materializes the row), while
               // the supplier lookup is a round trip that may resolve to nothing.
               onPickPart={(partRecordId) => {
-                onUpdateLine(recordId, { partRecordId })
+                // 🛑 Clearing the part clears the supplier link with it.
+                // `vendorPartRecordId` is provenance FOR that part, so a link
+                // left behind names a `vendor_part` for a part the line no
+                // longer carries — the same reason `applyPartPrefill` rewrites
+                // it on every pick. It cannot do that job here, because it
+                // returns early on a null part.
+                onUpdateLine(recordId, {
+                  partRecordId,
+                  ...(partRecordId === null ? { vendorPartRecordId: null } : {}),
+                })
                 void applyPartPrefill({
                   partRecordId,
                   resolve: resolvePartPrefill,
@@ -2377,6 +2443,9 @@ export function DraftLineRow({
   weightRevealed = false,
   resolvePartPrefill,
   grip = null,
+  cellChips = null,
+  cellMenuItems = null,
+  allowClearPart = false,
   onRevealWeight,
   deleteDraft,
   createDraft,
@@ -2409,6 +2478,22 @@ export function DraftLineRow({
    * the previous behaviour unchanged.
    */
   grip?: ReactNode
+  /**
+   * Standing controls appended to the leading cell's chip run, just before the
+   * `⋯` menu. Purchase-order intake puts the vendor's printed line there; every
+   * other caller omits it. Part-picker documents only — the sell-side cell has
+   * its own fixed anatomy.
+   */
+  cellChips?: ReactNode
+  /**
+   * Extra `⋯` menu items, rendered above the delete separator.
+   *
+   * 🛑 This exists so a screen with its own line vocabulary extends the ONE row
+   * menu instead of drawing a second `⋯` beside it. See {@link LineRowMenu}.
+   */
+  cellMenuItems?: ReactNode
+  /** @see LinePartCellView's `allowClearPart` — off by default, and why. */
+  allowClearPart?: boolean
   onRevealWeight: () => void
   deleteDraft: (draftId: string) => void
   createDraft: (draftId: string, overrides?: LinePatch) => Promise<void>
@@ -2457,7 +2542,12 @@ export function DraftLineRow({
             // patch that lands mid-create used to either flicker a placeholder
             // row or be silently dropped. See `applyPrefillPatch` for both.
             onPickPart={(partRecordId) => {
-              const created = createDraft(draft.draftId, { partRecordId })
+              // Clearing drops the supplier link too — see the note on the
+              // persisted row's `onPickPart` above.
+              const created = createDraft(draft.draftId, {
+                partRecordId,
+                ...(partRecordId === null ? { vendorPartRecordId: null } : {}),
+              })
               void applyPartPrefill({
                 partRecordId,
                 resolve: resolvePartPrefill,
@@ -2476,6 +2566,9 @@ export function DraftLineRow({
             onCommitWeight={(weight) => void createDraft(draft.draftId, { weight })}
             onRevealWeight={onRevealWeight}
             onDelete={() => deleteDraft(draft.draftId)}
+            chips={cellChips}
+            menuItems={cellMenuItems}
+            allowClearPart={allowClearPart}
           />
         ) : (
           <LineNameCellView

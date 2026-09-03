@@ -18,18 +18,23 @@
 // draft-state write the part PICKER uses.
 
 import type { IntakeLine } from '@auxx/lib/purchasing/intake/client'
-import { type RecordId, toRecordId } from '@auxx/lib/resources/client'
+import { parseRecordId, type RecordId, toRecordId } from '@auxx/lib/resources/client'
 import { useCallback, useMemo } from 'react'
 import {
   PartFormDialog,
   type PartFormPrefill,
 } from '~/components/manufacturing/parts/part-form-dialog'
-import type { PartPrefillResolver } from '~/components/money/ui/line-builder/line-rows'
+import {
+  applyPartPrefill,
+  type PartPrefillResolver,
+} from '~/components/money/ui/line-builder/line-rows'
 import type { LinePatch } from '~/components/money/ui/line-builder/line-values'
 import { useResourceProperty } from '~/components/resources'
 
 interface IntakeCreatePartDialogProps {
   line: IntakeLine
+  /** The quote's vendor. Seeds the form's Supplier section; `null` leaves it shut. */
+  vendorRecordId: RecordId | null
   open: boolean
   onOpenChange: (open: boolean) => void
   resolvePartPrefill?: PartPrefillResolver
@@ -45,6 +50,7 @@ interface IntakeCreatePartDialogProps {
  */
 export function IntakeCreatePartDialog({
   line,
+  vendorRecordId,
   open,
   onOpenChange,
   resolvePartPrefill,
@@ -61,10 +67,36 @@ export function IntakeCreatePartDialog({
       // vendor's, and the two coincide only sometimes. `PartFormDialog` renders
       // it under an EMPTY, required SKU field with a one-click adopt, so nothing
       // becomes our SKU without somebody looking at it. The vendor's own code
-      // has its own home — the §5.3 `vendorSku` write-back at commit.
+      // has its own home — the Supplier section below, and the §5.3 write-back.
       skuSuggestion: line.printed.vendorCode ?? '',
+      // ✅ Everything this section needs is already on screen: the vendor is the
+      // quote's vendor, the code and the price are the line the person is
+      // looking at. Retyping them into a collapsed panel is the step this
+      // removes — and creating the `vendor_part` HERE is strictly better than
+      // teaching it at commit, because a part created from a quote has no
+      // catalogue entry for this supplier by definition, so the §5.3 write-back
+      // would create one anyway, one screen later, with less context.
+      //
+      // 🛑 `unitPrice` is the printed price, not the chosen break. A break is a
+      // property of THIS order's quantity; the catalogue entry's price is the
+      // vendor's list price for one purchase unit.
+      supplier: vendorRecordId
+        ? {
+            companyInstanceId: parseRecordId(vendorRecordId).entityInstanceId,
+            vendorSku: line.printed.vendorCode,
+            unitPrice: line.unitPriceCents,
+            purchaseUnit: line.printed.unit,
+          }
+        : undefined,
     }),
-    [line.printed.description, line.printed.vendorCode, line.description]
+    [
+      line.printed.description,
+      line.printed.vendorCode,
+      line.printed.unit,
+      line.description,
+      line.unitPriceCents,
+      vendorRecordId,
+    ]
   )
 
   const handleSuccess = useCallback(
@@ -82,10 +114,12 @@ export function IntakeCreatePartDialog({
       // what the ladder actually found; stamping it `sku` would claim the
       // catalogue matched a part that did not exist a moment ago.
       onPatch(line.lineId, { partRecordId })
-      void applyNewPartPrefill({
+      void applyPartPrefill({
         partRecordId,
-        currentPriceCents: line.unitPriceCents,
         resolve: resolvePartPrefill,
+        // A plain box, not `useLatestRef`: this fires once from a dialog that is
+        // about to unmount, so there is no later edit for the ref to track.
+        currentPriceRef: { current: line.unitPriceCents },
         apply: (patch) => onPatch(line.lineId, patch),
       })
     },
@@ -100,35 +134,4 @@ export function IntakeCreatePartDialog({
       onSuccess={handleSuccess}
     />
   )
-}
-
-/**
- * Stamp the supplier link onto the line, mirroring `applyPartPrefill` in
- * `line-rows.tsx` — the part picker's own post-pick step.
- *
- * The link is provenance and is written whenever the lookup returned anything.
- * The price is written only into an EMPTY cell: the vendor's printed price
- * always wins, which on a quote it almost always is.
- */
-async function applyNewPartPrefill({
-  partRecordId,
-  currentPriceCents,
-  resolve,
-  apply,
-}: {
-  partRecordId: RecordId
-  currentPriceCents: number | null
-  resolve: PartPrefillResolver | undefined
-  apply: (patch: LinePatch) => void
-}): Promise<void> {
-  if (!resolve) return
-  // `null` is "the lookup could not run" — no vendor on the draft, a failed
-  // request. Writing a cleared link on that erases provenance nobody erased.
-  const prefill = await resolve(partRecordId)
-  if (!prefill) return
-  const patch: LinePatch = { vendorPartRecordId: prefill.vendorPartRecordId }
-  if (prefill.unitPriceCents !== null && currentPriceCents === null) {
-    patch.unitPriceCents = prefill.unitPriceCents
-  }
-  apply(patch)
 }

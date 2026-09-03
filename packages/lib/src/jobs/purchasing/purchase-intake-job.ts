@@ -10,6 +10,7 @@ import {
   markIntakeDraftReady,
   resolveQuoteLines,
   resolveQuoteVendor,
+  setIntakeDraftExtractedText,
   setIntakeDraftPhase,
   transcribeQuote,
 } from '../../purchasing'
@@ -188,24 +189,41 @@ export async function purchaseIntakeJob(ctx: JobContext<PurchaseIntakeJobData>) 
     return skip('model_cannot_read_files')
   }
 
-  const transcription = await transcribeQuote(database, organizationId, userId, {
+  const read = await transcribeQuote(database, organizationId, userId, {
     assetRef,
     fileName,
     mimeType,
   })
-  if (transcription.isErr()) {
-    await fail(
+  if (read.isErr()) {
+    await fail(organizationId, draftId, `We could not read this document. ${describe(read.error)}`)
+    throw read.error
+  }
+  const transcription = read.value.quote
+
+  // A converted document (xlsx, docx) has no renderer on the review screen, so
+  // the text the model read is the only thing the preview pane can show. Kept
+  // before the vendor and line phases so a failure there still leaves it.
+  if (read.value.extractedText) {
+    const stored = await setIntakeDraftExtractedText(
       organizationId,
       draftId,
-      `We could not read this document. ${describe(transcription.error)}`
+      read.value.extractedText
     )
-    throw transcription.error
+    if (stored.isErr()) {
+      // Costs the review screen its preview, nothing else. A read that is
+      // otherwise going fine should not be abandoned over it.
+      logger.warn('Failed to store the converted quote text', {
+        organizationId,
+        draftId,
+        error: stored.error.message,
+      })
+    }
   }
 
   // ── Phase 2: the vendor ──────────────────────────────────────────────────
   await phase(organizationId, draftId, 'vendor')
 
-  const vendors = await resolveQuoteVendor(database, organizationId, transcription.value)
+  const vendors = await resolveQuoteVendor(database, organizationId, transcription)
   if (vendors.isErr()) {
     await fail(
       organizationId,
@@ -224,13 +242,12 @@ export async function purchaseIntakeJob(ctx: JobContext<PurchaseIntakeJobData>) 
   // ── Phase 3: the lines ───────────────────────────────────────────────────
   await phase(organizationId, draftId, 'lines')
 
-  const currency =
-    transcription.value.currency ?? (await getOrgCurrencyCode(organizationId, database))
+  const currency = transcription.currency ?? (await getOrgCurrencyCode(organizationId, database))
 
   const lines = await resolveQuoteLines(database, organizationId, {
     vendorRecordId,
     currency,
-    lines: transcription.value.lines,
+    lines: transcription.lines,
   })
   if (lines.isErr()) {
     await fail(
@@ -245,7 +262,7 @@ export async function purchaseIntakeJob(ctx: JobContext<PurchaseIntakeJobData>) 
   await phase(organizationId, draftId, 'draft')
 
   const payload = buildPayload({
-    transcription: transcription.value,
+    transcription,
     currency,
     vendorRecordId,
     vendorCandidates: vendors.value,

@@ -40,7 +40,30 @@ export interface IntakeCommitResult {
   purchaseOrderInstanceId: string
   recordId: RecordId
   number: string | null
+  /**
+   * What the accepted write-backs actually did, counted separately.
+   *
+   * 🛑 The two are different acts and the log must be able to tell them apart
+   * afterwards. `updated` sets one field on a `vendor_part` that already existed;
+   * `created` mints a NEW catalogue entry that then feeds price prefills,
+   * preferred-vendor reads and part-cost recalculation. `failed` is the third
+   * outcome and is deliberately not fatal — see the loop.
+   *
+   * The commit dialog predicts this split before anything is written; this is
+   * what happened, and the two disagreeing is worth knowing about.
+   */
+  writeBacks: WriteBackTally
 }
+
+/** @see IntakeCommitResult.writeBacks */
+export interface WriteBackTally {
+  created: number
+  updated: number
+  failed: number
+}
+
+/** Which branch {@link applyWriteBack} took. */
+type WriteBackOutcome = 'created' | 'updated'
 
 /** Drop the keys the create path should never see as an explicit `null`. */
 function defined(values: Record<string, unknown>): Record<string, unknown> {
@@ -108,7 +131,7 @@ async function applyWriteBack(
   organizationId: string,
   vendorRecordId: RecordId,
   writeBack: IntakeWriteBack
-): Promise<void> {
+): Promise<WriteBackOutcome> {
   const partInstanceId = parseRecordId(writeBack.partRecordId).entityInstanceId
   const vendorInstanceId = parseRecordId(vendorRecordId).entityInstanceId
 
@@ -122,7 +145,7 @@ async function applyWriteBack(
     await handler.update(existing.value.vendorPartRecordId, {
       vendor_part_vendor_sku: writeBack.vendorSku,
     })
-    return
+    return 'updated'
   }
 
   await handler.create('vendor_part', {
@@ -130,6 +153,7 @@ async function applyWriteBack(
     vendor_part_contact: vendorRecordId,
     vendor_part_vendor_sku: writeBack.vendorSku,
   })
+  return 'created'
 }
 
 /**
@@ -257,10 +281,33 @@ export async function commitIntakeDraft(
       // vendor — tier 1 stays as thin as it was — never a reason to fail an
       // order that exists. Caught per write-back so one bad pair does not cost
       // the others either.
+      const writeBacks: WriteBackTally = { created: 0, updated: 0, failed: 0 }
       for (const writeBack of input.writeBacks) {
         try {
-          await applyWriteBack(db, handler, organizationId, payload.vendorRecordId, writeBack)
+          const outcome = await applyWriteBack(
+            db,
+            handler,
+            organizationId,
+            payload.vendorRecordId,
+            writeBack
+          )
+          writeBacks[outcome] += 1
+          // 🛑 A create is logged on its own line, at info. Ticking a code is a
+          // decision about matching; minting a `vendor_part` is a decision about
+          // the CATALOGUE, and when somebody later asks where an entry came from,
+          // "a quote intake on this date" has to be answerable.
+          if (outcome === 'created') {
+            logger.info('Created a vendor catalogue entry from a quote write-back', {
+              organizationId,
+              draftId: draft.id,
+              purchaseOrderInstanceId: order.instance.id,
+              vendorRecordId: payload.vendorRecordId,
+              partRecordId: writeBack.partRecordId,
+              vendorSku: writeBack.vendorSku,
+            })
+          }
         } catch (error) {
+          writeBacks.failed += 1
           logger.error('Committed a quote but could not write back a vendor SKU', {
             error,
             organizationId,
@@ -276,13 +323,17 @@ export async function commitIntakeDraft(
         organizationId,
         draftId: draft.id,
         lines: lines.length,
-        writeBacks: input.writeBacks.length,
+        writeBacksAccepted: input.writeBacks.length,
+        writeBacksCreated: writeBacks.created,
+        writeBacksUpdated: writeBacks.updated,
+        writeBacksFailed: writeBacks.failed,
       })
 
       return {
         purchaseOrderInstanceId: order.instance.id,
         recordId: purchaseOrderRecordId,
         number: typeof number === 'string' ? number : null,
+        writeBacks,
       }
     },
     'Failed to commit a purchase intake draft',

@@ -86,4 +86,76 @@ describe('OpenAILLMClient request shaping', () => {
     expect(outboundPayload.temperature).toBe(0.25)
     expect(outboundPayload.max_tokens).toBe(80)
   })
+  it('inlines a text file part instead of sending it as `file.file_data`', async () => {
+    // 🛑 Regression: OpenAI's `file` part accepts PDF ONLY. A converted
+    // spreadsheet sent as `text/csv` came back as
+    // `400 Invalid file data: 'messages[0].content[1].file.file_data'`, which
+    // broke every xlsx vendor quote. Anthropic's client already rewrites text
+    // MIME types into a text document source, so this failed on OpenAI alone.
+    const createMock = vi.fn().mockResolvedValue({
+      id: 'chatcmpl-test',
+      model: 'gpt-4o',
+      choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }],
+      usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8 },
+    })
+
+    const apiClient = { chat: { completions: { create: createMock } } } as any
+    const client = new OpenAILLMClient(apiClient, DEFAULT_CLIENT_CONFIG)
+
+    await client.invoke({
+      model: 'gpt-4o',
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', data: 'read this' },
+            {
+              type: 'file',
+              data: Buffer.from('sku,qty\nAF-4420,500').toString('base64'),
+              metadata: { filename: 'quote.csv', mimeType: 'text/csv' },
+            },
+          ],
+        },
+      ] as any,
+    })
+
+    const parts = payloadAt(createMock, 0).messages[0].content
+    expect(parts[1]).toEqual({ type: 'text', text: 'sku,qty\nAF-4420,500' })
+    expect(JSON.stringify(parts)).not.toContain('file_data')
+  })
+
+  it('still sends a PDF as a base64 `file` part', async () => {
+    const createMock = vi.fn().mockResolvedValue({
+      id: 'chatcmpl-test',
+      model: 'gpt-4o',
+      choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }],
+      usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8 },
+    })
+
+    const apiClient = { chat: { completions: { create: createMock } } } as any
+    const client = new OpenAILLMClient(apiClient, DEFAULT_CLIENT_CONFIG)
+
+    await client.invoke({
+      model: 'gpt-4o',
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', data: 'read this' },
+            {
+              type: 'file',
+              data: 'JVBERi0=',
+              metadata: { filename: 'quote.pdf', mimeType: 'application/pdf' },
+            },
+          ],
+        },
+      ] as any,
+    })
+
+    const parts = payloadAt(createMock, 0).messages[0].content
+    expect(parts[1]).toEqual({
+      type: 'file',
+      file: { filename: 'quote.pdf', file_data: 'data:application/pdf;base64,JVBERi0=' },
+    })
+  })
 })

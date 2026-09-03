@@ -25,6 +25,27 @@ import { TokenCalculator } from '../../clients/utils/token-calculator'
 import { ModelConfigService } from '../../model-config-service'
 import { ProviderRegistry } from '../provider-registry'
 
+/**
+ * Is this a file whose bytes are text the model can simply read?
+ *
+ * The same set Anthropic's client routes to a `text` document source. Kept in
+ * sync deliberately: `LLMClient.isSupportedFileMimeType` admits all of `text/*`,
+ * so both providers have to have an answer for a CSV or a markdown file.
+ */
+function isTextualFileMimeType(mimeType: string): boolean {
+  return (
+    mimeType.startsWith('text/') ||
+    mimeType === 'application/json' ||
+    mimeType === 'application/xml'
+  )
+}
+
+/** Strip a `data:...;base64,` prefix if the caller passed a whole data URL. */
+function extractBase64Data(data: string): string {
+  const index = data.indexOf('base64,')
+  return index === -1 ? data : data.slice(index + 7)
+}
+
 /** Extended delta type for providers that return reasoning_content (Kimi, DeepSeek, Qwen) */
 interface ReasoningDelta {
   content?: string | null
@@ -871,14 +892,30 @@ export class OpenAILLMClient extends LLMClient {
                   detail: item.metadata?.detail || 'auto',
                 },
               }
-            case 'file':
+            case 'file': {
+              const mimeType = item.metadata?.mimeType ?? 'application/octet-stream'
+
+              // OpenAI's `file` part accepts PDF only — it rejects every other
+              // MIME type with a 400 naming `file.file_data`. `LLMClient`
+              // admits all of `text/*` as a file though, so a caller handing us
+              // a CSV or a markdown document is legitimate: inline it as text,
+              // which is what Anthropic's client already does for the same
+              // blocks.
+              if (isTextualFileMimeType(mimeType)) {
+                return {
+                  type: 'text',
+                  text: Buffer.from(extractBase64Data(item.data), 'base64').toString('utf-8'),
+                }
+              }
+
               return {
                 type: 'file',
                 file: {
                   filename: item.metadata?.filename ?? 'document',
-                  file_data: `data:${item.metadata?.mimeType ?? 'application/octet-stream'};base64,${item.data}`,
+                  file_data: `data:${mimeType};base64,${extractBase64Data(item.data)}`,
                 },
               }
+            }
             default:
               throw new Error(`Unsupported content type: ${item.type}`)
           }

@@ -16,6 +16,7 @@ import {
   orderableLines,
   unresolvedLines,
 } from '@auxx/lib/purchasing/intake/client'
+import type { RecordId } from '@auxx/lib/resources/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { cn } from '@auxx/ui/lib/utils'
@@ -33,6 +34,8 @@ interface IntakeLinesTableProps {
   lines: IntakeLine[]
   currency: string
   vendorName: string | null
+  /** Seeds the create-part form's Supplier section, per row. */
+  vendorRecordId: RecordId | null
   resolvePartPrefill?: PartPrefillResolver
   onPatch: (lineId: string, patch: LinePatch) => void
   onChooseBreak: (lineId: string, index: number | null) => void
@@ -45,6 +48,7 @@ export function IntakeLinesTable({
   lines,
   currency,
   vendorName,
+  vendorRecordId,
   resolvePartPrefill,
   onPatch,
   onChooseBreak,
@@ -138,6 +142,7 @@ export function IntakeLinesTable({
                 rowIndex={index}
                 currency={currency}
                 vendorName={vendorName}
+                vendorRecordId={vendorRecordId}
                 resolvePartPrefill={resolvePartPrefill}
                 expanded={expanded.has(line.lineId)}
                 onToggleExpanded={() => toggleExpanded(line.lineId)}

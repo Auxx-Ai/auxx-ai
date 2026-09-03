@@ -11,6 +11,7 @@
 export {
   commitIntakeDraft,
   type IntakeCommitResult,
+  type WriteBackTally,
 } from './commit'
 export {
   type CreateIntakeDraftInput,
@@ -19,6 +20,7 @@ export {
   failIntakeDraft,
   markIntakeDraftCommitted,
   markIntakeDraftReady,
+  setIntakeDraftExtractedText,
   setIntakeDraftPhase,
   updateIntakeDraftPayload,
 } from './draft-mutations'
