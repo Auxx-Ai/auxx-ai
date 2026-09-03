@@ -4,7 +4,7 @@ import { getCachedEntityDefId, getCachedResource, getCachedResources } from '@au
 // Leaf subpath, NOT the `@auxx/lib/companies` barrel: the barrel reaches the fetch/parse
 // module, which pulls cheerio and the whole files graph into the web server for a function
 // that only writes a queue message.
-import { enqueueCompanyEnrichment } from '@auxx/lib/companies/enqueue'
+import { enqueueCompanyEnrichment } from '@auxx/lib/companies/enrichment/enqueue'
 import { conditionGroupSchema } from '@auxx/lib/conditions'
 import {
   type AuxxError,

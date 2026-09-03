@@ -23,6 +23,18 @@ const h = vi.hoisted(() => ({
   // Typed parameters, not `vi.fn(async () => {})` — an untyped mock makes
   // `mock.calls[0]` read as `[]` and forces a cast at every assertion (#1961).
   reconcileOrdersFromSync: vi.fn(async (_organizationId: string, _orderIds: string[]) => {}),
+  resolveInteractions: vi.fn(
+    async (_input: { organizationId: string; recordIds: string[]; reason: string }) => ({
+      contacts: 0,
+      companies: 0,
+      participantsAdopted: 0,
+      participantsSkippedLinkedElsewhere: 0,
+      threadParticipantsBackfilled: 0,
+      contactsStamped: 0,
+      companiesStamped: 0,
+      employersAttached: 0,
+    })
+  ),
 }))
 
 // Cache barrel — mocked whole, like sync-finalize.test.ts (the lazy import means the real
@@ -107,6 +119,11 @@ vi.mock('../../builds/drift-reconciler', () => ({
 vi.mock('../../reconcilers/parent-reconciler', () => ({
   resolveParentsByRelation: h.resolveParentsByRelation,
 }))
+
+// Pass 5 (contact/company interaction resolution). `resolveInteractions` is the observable
+// seam; the real one reaches the participant claim, the 082-shaped recompute and the crud
+// handler, none of which belong in a selection test.
+vi.mock('../../interactions/resolve', () => ({ resolveInteractions: h.resolveInteractions }))
 
 vi.mock('../../field-values/field-value-helpers', () => ({
   createFieldValueContext: vi.fn((organizationId: string, userId: string, db: unknown) => ({
@@ -574,5 +591,93 @@ describe('order-demand pass (events/08 R6(c))', () => {
     await expect(run(tier1Manifest({ 'def_li:l1': ['line_item_qty'] }))).resolves.toBeUndefined()
 
     expect(h.reconcileOrdersFromSync).not.toHaveBeenCalled()
+  })
+})
+
+describe('pass 5: contact/company interaction resolution', () => {
+  /** The ids `resolveInteractions` was called with, sorted. */
+  function selected(): string[] {
+    const call = h.resolveInteractions.mock.calls[0]?.[0]
+    return [...(call?.recordIds ?? [])].sort()
+  }
+
+  it('selects every created contact and company, whatever its keys say', async () => {
+    // An imported contact has no interesting "changed keys" — its existence is the trigger,
+    // and `createdRecordIds` is unconditional membership where the tier-2 deltas that a
+    // record rule would need are capped at 5,000 records per run.
+    await run({
+      version: 2,
+      detailTruncated: true,
+      membershipTruncated: false,
+      touched: {},
+      deltas: {},
+      createdRecordIds: ['def_contact:c1', 'def_ticket:t1'],
+      archivedRecordIds: [],
+    } as unknown as SyncChangeManifest)
+
+    expect(h.resolveInteractions).toHaveBeenCalledTimes(1)
+    expect(selected()).toEqual(['c1'])
+    expect(h.resolveInteractions.mock.calls[0]?.[0].reason).toBe('sync')
+  })
+
+  it('selects touched contacts carrying an identifier key', async () => {
+    await run(tier1Manifest({ 'def_contact:c1': ['primary_email'] }))
+
+    expect(selected()).toEqual(['c1'])
+  })
+
+  it('ignores a touched contact whose keys are all unrelated', async () => {
+    await run(tier1Manifest({ 'def_contact:c1': ['contact_status'] }))
+
+    expect(h.resolveInteractions).not.toHaveBeenCalled()
+  })
+
+  it('ignores a touched record on a def that is neither contact nor company', async () => {
+    await run(tier1Manifest({ 'def_ticket:t1': ['primary_email'] }))
+
+    expect(h.resolveInteractions).not.toHaveBeenCalled()
+  })
+
+  it('selects an ids-only degraded contact — the keys were shed, so anything may have moved', async () => {
+    await run(tier1Manifest({ 'def_contact:c1': 1 }))
+
+    expect(selected()).toEqual(['c1'])
+  })
+
+  it('resolves once for the whole run, never per record', async () => {
+    await run(
+      tier1Manifest({
+        'def_contact:c1': ['primary_email'],
+        'def_contact:c2': ['phone'],
+        'def_contact:c3': 1,
+      })
+    )
+
+    expect(h.resolveInteractions).toHaveBeenCalledTimes(1)
+    expect(selected()).toEqual(['c1', 'c2', 'c3'])
+  })
+
+  it('does not select a created record twice when it is also touched', async () => {
+    await run({
+      version: 2,
+      detailTruncated: false,
+      membershipTruncated: false,
+      touched: { 'def_contact:c1': ['primary_email'] },
+      deltas: {},
+      createdRecordIds: ['def_contact:c1'],
+      archivedRecordIds: [],
+    } as unknown as SyncChangeManifest)
+
+    expect(selected()).toEqual(['c1'])
+  })
+
+  it('never rejects when resolution throws — the run must not fail', async () => {
+    h.resolveInteractions.mockRejectedValueOnce(new Error('boom'))
+
+    await expect(
+      run(tier1Manifest({ 'def_contact:c1': ['primary_email'] }))
+    ).resolves.toBeUndefined()
+
+    expect(h.resolveInteractions).toHaveBeenCalledTimes(1)
   })
 })

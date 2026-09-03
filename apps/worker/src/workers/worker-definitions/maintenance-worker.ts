@@ -18,6 +18,7 @@ import {
   duplicateScanJob,
   expiredTrialAccountCleanupJob,
   flushUsageEventsJob,
+  interactionResolutionSweepJob,
   invoiceDraftsJob,
   type JobHandler,
   mailCountsReconcileJob,
@@ -263,6 +264,13 @@ export const jobMappings = {
   // companies created before a door existed, ones the per-org window limiter dropped
   // mid-import, and ones stranded on `pending` by a worker that died mid-fetch.
   companyEnrichmentSweepJob,
+
+  // Contact/company interaction resolution gap filler (plans/company/
+  // v5-interaction-resolution.md §7). Both live callers are event-driven — pass 5 of the
+  // sync finalize integrity passes, and a field-change hook — so this catches what they
+  // drop: a run whose manifest membership truncated, and a hook whose fire-and-forget died
+  // with its process. Windowed to 30 days; historical recovery is the backfill script's job.
+  interactionResolutionSweepJob,
 
   // Dispatch worker-facing daily schedule digest sweep (plans/dispatch/19-client-notifications.md
   // §4.9, opt-in): hourly tick, per-org local-hour + Redis dedupe guard inside the job itself.

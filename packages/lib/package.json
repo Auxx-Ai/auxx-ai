@@ -304,7 +304,7 @@
       "import": "./dist/companies/index.mjs",
       "default": "./src/companies/index.ts"
     },
-    "./companies/enqueue": {
+    "./companies/enrichment/enqueue": {
       "types": "./src/companies/enrichment/enqueue.ts",
       "source": "./src/companies/enrichment/enqueue.ts",
       "import": "./dist/companies/enrichment/enqueue.mjs",
@@ -717,6 +717,12 @@
       "source": "./src/ingest/index.ts",
       "import": "./dist/ingest/index.mjs",
       "default": "./src/ingest/index.ts"
+    },
+    "./interactions": {
+      "types": "./src/interactions/index.ts",
+      "source": "./src/interactions/index.ts",
+      "import": "./dist/interactions/index.mjs",
+      "default": "./src/interactions/index.ts"
     },
     "./jobs": {
       "types": "./src/jobs/index.ts",
