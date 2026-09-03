@@ -61,6 +61,7 @@ import {
   registerVendorBillBalanceReconcilers,
 } from '../purchasing/vendor-bill-balance'
 import { handleRecordRulesOnFieldChange } from '../record-rules/hook-handler'
+import { repairNameCasing } from '../records/name-case/hook'
 import {
   enqueueQuickbooksInvoiceSyncOnSent,
   enrollInvoiceReminderOnSent,
@@ -389,6 +390,14 @@ export function registerAllHooks(): void {
   //    is structural rather than papered over by a guard exemption.
   registerFieldPreHooks('inboxes', 'inbox_owner_user_id', [guardInboxOwnerField])
   registerFieldPreHooks('personal-inboxes', 'inbox_owner_user_id', [guardInboxOwnerField])
+
+  // Casing repair for contact names — `BRUCE` -> `Bruce`, `regina` -> `Regina`.
+  // Transforms rather than guards: a pre-hook's return value IS the value written.
+  // Scoped to `contacts` deliberately; org-created defs that reuse `first_name`
+  // (leads, vendors) are a one-line addition here if that is ever wanted.
+  // plans/records/contact-name-casing-plan.md
+  registerFieldPreHooks('contacts', 'first_name', [repairNameCasing])
+  registerFieldPreHooks('contacts', 'last_name', [repairNameCasing])
 
   // Lifecycle status walls for `quote_status` and `invoice_status`
   // (plans/dispatch/money/21-lifecycle-status-guards-are-inert.md §4). The system-hook twins

@@ -172,21 +172,11 @@ export const formatCompanyName = (name: string | null): string | null => {
   if (!name) return null
   return name.trim()
 }
-export const formatComplexName = (name: string | null): string | null => {
-  if (!name) return null
-  return name
-    .split(/[\s-']/)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
-    .join(' ')
-    .trim()
-}
-
-export const formatCityName = (city: string | null): string | null => {
-  if (!city) return null
-  return city
-    .toLowerCase()
-    .split(/[\s-]+/)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ')
-    .trim()
-}
+// `formatComplexName` and `formatCityName` were deleted here (2026-09-03). Both split
+// on a character class and re-joined on ' ', which DELETED every hyphen and
+// apostrophe they touched (`Creighton-Taylor` -> `Creighton Taylor`, `O'Brien` ->
+// `O Brien`), and both lower-cased the remainder, flattening `MacIver` -> `Maciver`
+// and `McAllen` -> `Mcallen`. Neither had a single caller anywhere in the repo.
+// Use `toDisplayCase` from `./name-case` for person names — it repairs casing ONLY
+// when the input is entirely upper- or lower-case, so it can never flatten a
+// deliberate capital. See plans/records/contact-name-casing-plan.md §4.

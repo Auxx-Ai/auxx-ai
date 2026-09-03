@@ -19,9 +19,7 @@ export { getGroupPosition, groupConsecutiveComments } from './comments'
 export {
   type ContactName,
   DEFAULT_PHONE_REGION,
-  formatCityName,
   formatCompanyName,
-  formatComplexName,
   formatPhoneNumber,
   formatStreetAddress,
   getContactDisplayName,
@@ -57,7 +55,6 @@ export {
   isSameWeek,
   parseTimeOfDay,
 } from './date'
-
 // Email utilities
 export {
   buildGraphFileAttachment,
@@ -82,7 +79,6 @@ export {
 } from './email'
 // Error utilities
 export { getErrorMessage, toError } from './errors'
-
 // File utilities
 export {
   calculateBase64Size,
@@ -100,7 +96,6 @@ export {
   sanitizeFilename,
   validateAttachmentSizes,
 } from './file'
-
 // Fractional indexing utilities
 export {
   BASE_62_DIGITS,
@@ -113,16 +108,12 @@ export {
   type SmartSortItem,
   type SmartSortResult,
 } from './fractional-indexing'
-
 // Function utilities
 export { debounce, throttle } from './functions'
-
 // ID generation
 export { generateId } from './generateId'
-
 // Header utilities
 export { filterSensitiveHeaders } from './headers'
-
 // MIME utilities
 export {
   encodeBase64WithLineBreaks,
@@ -136,6 +127,8 @@ export {
   validateLineLengths,
   validateMimeStructure,
 } from './mime'
+// Person-name casing repair
+export { toDisplayCase } from './name-case'
 // Number utilities
 export { formatNumberCompact } from './number'
 // OAuth utilities
