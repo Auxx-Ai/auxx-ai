@@ -9,8 +9,7 @@ import {
 } from '@auxx/services/app-connections'
 import { and, eq } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
-import { getOrgCache } from '../../cache'
-import { deleteConnector } from '../../data-connectors/mutations'
+import { disconnectConnectors } from '../../data-connectors/mutations'
 import { triggerAppEvent } from '../events'
 
 /**
@@ -83,15 +82,15 @@ export async function deleteAppConnection(credentialId: string, organizationId: 
 
   const { record: connection, secrets } = revealed.value
 
-  // Delete every DataConnector this credential backs BEFORE the credential itself goes
-  // away. `deleteConnector` is otherwise only reachable from the tRPC router, so without
-  // this a disconnect left the connector's mappings pointed at a dead credential, its
-  // BullMQ schedule still ticking (failing auth on every run), and its provisioned schema
-  // dangling with a `credentialId` FK the delete below would merely null out (row
-  // survives). Always `keep`: a contributed order can be referenced by `order_builds` /
-  // `order_build_revision`, and archiving it touches build reconciliation — the merchant
-  // chooses `archive` explicitly from the disconnect dialog, never here (app-fields-and-
-  // entities plan §4.4).
+  // DISCONNECT every DataConnector this credential backs, before the credential itself
+  // goes away (plans/money/tasks/44 D-1). This was a `deleteConnector(…, 'keep')` loop;
+  // it must move in lockstep with `uninstall-app.ts`'s, or disconnect quietly becomes
+  // the new silent delete for the same connectors uninstall now preserves.
+  //
+  // What the loop was for still holds and is still handled: without it a disconnect left
+  // the connector's mappings pointed at a dead credential and its BullMQ schedule still
+  // ticking, failing auth on every run. `disconnectConnectors` tears the schedule down
+  // and marks the row, keeping its `DataConnectorItem` bindings for a reconnect.
   try {
     const connectors = await database
       .select({ id: schema.DataConnector.id })
@@ -102,23 +101,20 @@ export async function deleteAppConnection(credentialId: string, organizationId: 
           eq(schema.DataConnector.credentialId, credentialId)
         )
       )
-    if (connectors.length > 0) {
-      // No real actor for a lifecycle-triggered teardown; `deleteConnector`'s userId is
-      // only read on the non-'keep' branches, so the org's system user is a safe stand-in.
-      const systemUserId = await getOrgCache().get(organizationId, 'systemUser')
-      for (const connector of connectors) {
-        await deleteConnector(database, organizationId, systemUserId, connector.id, 'keep')
-      }
-    }
+    await disconnectConnectors(
+      database,
+      organizationId,
+      connectors.map((c) => c.id),
+      'The connection this connector used was removed'
+    )
   } catch (error) {
-    // `deleteConnector` throws AuxxError subclasses (e.g. NotFoundError from a
-    // TOCTOU race); a lib module never lets that escape as an unhandled rejection —
-    // fold it into this function's Result contract like every other failure here.
-    logger.error('Failed to remove data connector during app disconnect', {
+    // A lib module never lets a throw escape as an unhandled rejection — fold it into
+    // this function's Result contract like every other failure here.
+    logger.error('Failed to disconnect data connector during app disconnect', {
       error: error instanceof Error ? error.message : String(error),
       credentialId,
     })
-    return err(error instanceof Error ? error : new Error('Failed to remove data connector'))
+    return err(error instanceof Error ? error : new Error('Failed to disconnect data connector'))
   }
 
   // Delete the connection. Connection-scoped app-registered custom fields

@@ -1,13 +1,13 @@
 // packages/lib/src/data-connectors/data-connector-scheduler.ts
 // BullMQ job-scheduler registration for scheduled connector syncs. Mirrors
-// source-scheduler.ts. Active iff syncBehavior='scheduled' ∧ status≠'paused' ∧
+// source-scheduler.ts. Active iff syncBehavior='scheduled' ∧ status not suspended ∧
 // scheduleConfig present. A scheduled fire enqueues the SAME job as a manual Sync
 // now, so there is no separate worker logic. `reconcileConnectorSchedulers` runs
 // on worker boot (Redis-flush hardening; idempotent upsert).
 
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, inArray, ne } from 'drizzle-orm'
+import { and, inArray, notInArray } from 'drizzle-orm'
 import { getQueue, Queues } from '../jobs/queues'
 import {
   type ScheduledTriggerConfig as CronTriggerConfig,
@@ -20,6 +20,26 @@ const logger = createScopedLogger('data-connector-scheduler')
 
 const schedulerId = (connectorId: string) => `data-connector-sync-${connectorId}`
 const sweepSchedulerId = (connectorId: string) => `data-connector-sweep-${connectorId}`
+
+/**
+ * Statuses that suspend every automated sync door — the BullMQ schedulers here AND
+ * the two webhook dispatch jobs, which do not go through this module at all
+ * (`app-trigger-sync-dispatch-job`, `webhook-endpoint-sync-dispatch-job`).
+ *
+ * 🛑 Exported precisely because those two bypass the scheduler: before
+ * `'disconnected'` existed each door hardcoded `!== 'paused'`, so a new suspended
+ * status added here would have left the webhook doors ingesting for an uninstalled
+ * app. One list, four call sites, no drift.
+ *
+ * `'deleting'` is deliberately absent: a teardown removes its schedulers outright
+ * (`removeConnectorScheduler`) rather than relying on a status predicate.
+ */
+export const SUSPENDED_CONNECTOR_STATUSES = ['paused', 'disconnected'] as const
+
+/** True when the connector's status suspends automated syncing. */
+export function isSuspendedConnectorStatus(status: string): boolean {
+  return (SUSPENDED_CONNECTOR_STATUSES as readonly string[]).includes(status)
+}
 
 /**
  * Nightly cron for the delete-reconciliation sweep (Step 8C). Fixed 03:00 — a sweep
@@ -61,7 +81,9 @@ export async function syncConnectorScheduler(connector: DataConnectorRow): Promi
   // 'scheduled' connector holding it has nothing to register.
   const cronConfig = config ? cronConfigOf(config) : null
   const active =
-    connector.syncBehavior === 'scheduled' && connector.status !== 'paused' && !!cronConfig
+    connector.syncBehavior === 'scheduled' &&
+    !isSuspendedConnectorStatus(connector.status) &&
+    !!cronConfig
 
   if (!active || !cronConfig) {
     try {
@@ -101,7 +123,7 @@ export async function syncConnectorScheduler(connector: DataConnectorRow): Promi
 
 /**
  * Register or remove this connector's delete-reconciliation sweep (Step 8C). Active
- * iff the connector pushes via webhooks (`syncBehavior = 'webhook'`) and isn't paused
+ * iff the connector pushes via webhooks (`syncBehavior = 'webhook'`) and isn't suspended
  * — those are the connectors that don't otherwise do a full reconciling crawl — AND
  * the cadence isn't explicitly turned off.
  *
@@ -116,7 +138,7 @@ export async function syncConnectorSweepScheduler(connector: DataConnectorRow): 
   const config = connector.syncBehavior === 'webhook' ? scheduleConfigOf(connector) : null
   const active =
     connector.syncBehavior === 'webhook' &&
-    connector.status !== 'paused' &&
+    !isSuspendedConnectorStatus(connector.status) &&
     config?.triggerInterval !== 'off'
   if (!active) {
     try {
@@ -164,7 +186,7 @@ export async function reconcileConnectorSchedulers(db: Database): Promise<void> 
   const connectors = await db.query.DataConnector.findMany({
     where: and(
       inArray(schema.DataConnector.syncBehavior, ['scheduled', 'webhook']),
-      ne(schema.DataConnector.status, 'paused')
+      notInArray(schema.DataConnector.status, [...SUSPENDED_CONNECTOR_STATUSES])
     ),
   })
 

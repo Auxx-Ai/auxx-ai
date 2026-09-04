@@ -120,8 +120,10 @@ export {
   enqueueConnectorSync,
 } from './data-connector-queue'
 export {
+  isSuspendedConnectorStatus,
   reconcileConnectorSchedulers,
   removeConnectorScheduler,
+  SUSPENDED_CONNECTOR_STATUSES,
   syncConnectorScheduler,
   syncConnectorSweepScheduler,
 } from './data-connector-scheduler'

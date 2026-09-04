@@ -22,9 +22,9 @@ vi.mock('@auxx/services/app-connections', () => ({
   safeSerializeMetadata: (m: unknown) => m,
 }))
 
-const deleteConnector = vi.fn()
+const disconnectConnectors = vi.fn()
 vi.mock('../../../data-connectors/mutations', () => ({
-  deleteConnector: (...args: unknown[]) => deleteConnector(...args),
+  disconnectConnectors: (...args: unknown[]) => disconnectConnectors(...args),
 }))
 
 const getSystemUser = vi.fn()
@@ -63,22 +63,26 @@ const CONNECTION = {
 beforeEach(() => {
   revealSecrets.mockReset().mockResolvedValue(ok(CONNECTION))
   deleteCredential.mockReset().mockResolvedValue(ok(undefined))
-  deleteConnector.mockReset().mockResolvedValue({ success: true })
+  disconnectConnectors.mockReset().mockResolvedValue({ disconnected: 0 })
   getSystemUser.mockReset().mockResolvedValue('system_user_1')
   triggerAppEvent.mockReset().mockResolvedValue(ok(undefined))
   vi.mocked(database.select).mockReset()
 })
 
 describe('deleteAppConnection — connector cleanup', () => {
-  it('deletes every DataConnector backed by the credential, behavior keep, before deleting the credential', async () => {
+  // INVERTED by plans/money/tasks/44 D-1. This block used to pin
+  // `deleteConnector(…, 'keep')`, which destroyed the connector row and its
+  // `DataConnectorItem` bindings. Disconnect and uninstall must move in lockstep or
+  // disconnect quietly becomes the new silent delete.
+  it('DISCONNECTS every DataConnector backed by the credential, before deleting the credential', async () => {
     const order: string[] = []
     vi.mocked(database.select).mockImplementation(() => {
       order.push('select-connectors')
       return chain([{ id: 'dc_1' }]) as never
     })
-    deleteConnector.mockImplementation(async () => {
-      order.push('delete-connector')
-      return { success: true }
+    disconnectConnectors.mockImplementation(async () => {
+      order.push('disconnect-connectors')
+      return { disconnected: 1 }
     })
     deleteCredential.mockImplementation(async () => {
       order.push('delete-credential')
@@ -88,24 +92,30 @@ describe('deleteAppConnection — connector cleanup', () => {
     const result = await deleteAppConnection('cred_1', 'org_1')
 
     expect(result.isOk()).toBe(true)
-    expect(deleteConnector).toHaveBeenCalledWith(database, 'org_1', 'system_user_1', 'dc_1', 'keep')
-    expect(order).toEqual(['select-connectors', 'delete-connector', 'delete-credential'])
+    expect(disconnectConnectors).toHaveBeenCalledWith(
+      database,
+      'org_1',
+      ['dc_1'],
+      expect.any(String)
+    )
+    // Ordering is the load-bearing half: the credential must still be alive when the
+    // connectors are marked, or a failure leaves them pointed at a row that is gone.
+    expect(order).toEqual(['select-connectors', 'disconnect-connectors', 'delete-credential'])
   })
 
-  it('skips the system-user lookup and deleteConnector when the credential backs no connector', async () => {
+  it('passes an empty list when the credential backs no connector, and still deletes it', async () => {
     vi.mocked(database.select).mockImplementation(() => chain([]) as never)
 
     const result = await deleteAppConnection('cred_1', 'org_1')
 
     expect(result.isOk()).toBe(true)
-    expect(deleteConnector).not.toHaveBeenCalled()
-    expect(getSystemUser).not.toHaveBeenCalled()
+    expect(disconnectConnectors).toHaveBeenCalledWith(database, 'org_1', [], expect.any(String))
     expect(deleteCredential).toHaveBeenCalledWith('cred_1', 'org_1')
   })
 
-  it('returns an error Result instead of throwing when deleteConnector fails, and never deletes the credential', async () => {
+  it('returns an error Result instead of throwing when the disconnect fails, and never deletes the credential', async () => {
     vi.mocked(database.select).mockImplementation(() => chain([{ id: 'dc_1' }]) as never)
-    deleteConnector.mockRejectedValue(new Error('connector not found'))
+    disconnectConnectors.mockRejectedValue(new Error('connector not found'))
 
     const result = await deleteAppConnection('cred_1', 'org_1')
 

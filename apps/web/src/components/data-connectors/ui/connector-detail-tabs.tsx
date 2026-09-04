@@ -46,6 +46,11 @@ interface ConnectorDetailTabsProps {
   /** On mobile (no dock) the Runs panel is appended as a tab/section. */
   mobileRunsPanel?: React.ReactNode
   /** Parked-sample review banner — pinned under the tabs strip, above the resync banner. */
+  /**
+   * Why this connector stopped when the merchant did not stop it. Rendered FIRST — a
+   * disconnected connector cannot act on the other two banners' offers.
+   */
+  disconnectedBanner?: React.ReactNode
   sampleReviewBanner?: React.ReactNode
   /** Pending mapping-edit re-sync banner — pinned directly under the tabs strip. */
   resyncBanner?: React.ReactNode
@@ -63,6 +68,7 @@ interface ConnectorDetailTabsProps {
 export function ConnectorDetailTabs({
   connector,
   mobileRunsPanel,
+  disconnectedBanner,
   sampleReviewBanner,
   resyncBanner,
 }: ConnectorDetailTabsProps) {
@@ -170,6 +176,7 @@ export function ConnectorDetailTabs({
               </Tabs>
             }>
             <div className='flex h-full flex-col'>
+              {disconnectedBanner}
               {sampleReviewBanner}
               {resyncBanner}
               <div className='relative min-h-0 flex-1'>

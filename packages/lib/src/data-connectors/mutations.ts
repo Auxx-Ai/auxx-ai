@@ -19,7 +19,7 @@ import {
 import { createScopedLogger } from '@auxx/logger'
 import { getFieldDefinitionId, isAppFieldRef, toResourceFieldId } from '@auxx/types/field'
 import { generateId } from '@auxx/utils'
-import { and, asc, eq, inArray, isNull, ne, sql } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { getCachedCustomFields, getCachedEntityDefId } from '../cache'
 import { onCacheEvent } from '../cache/invalidate'
@@ -1050,6 +1050,104 @@ export async function finishConnectorSetup(
   return updated
 }
 
+/**
+ * Suspend every connector in `connectorIds` because the thing it borrowed is gone —
+ * the app was uninstalled, or its connection removed. See
+ * plans/money/tasks/44 D-1 for why this replaced a `deleteConnector(…, 'keep')` loop
+ * in both lifecycle doors.
+ *
+ * 🛑 The connector row SURVIVES, and that is the entire point. `DataConnectorItem`
+ * cascades with the row, and its unique key is `(dataConnectorId, mappingId,
+ * externalId)` — connector-scoped. So a reinstall that mints a NEW connector id can
+ * never match the old bindings even in principle: deleting the row makes duplicate
+ * re-minting on reinstall unavoidable. On one dev org that is 13,173 bindings for
+ * 11,950 records. Keeping the row makes a reinstall a resume.
+ *
+ * ⚠️ `syncBehavior` is deliberately NOT touched. Forcing it to `'manual'` would look
+ * tidy and would silently destroy the merchant's cadence, with nothing to restore it
+ * from on reinstall. The scheduler is gated on STATUS
+ * (`isSuspendedConnectorStatus`), so a `'scheduled'` connector sitting at
+ * `'disconnected'` registers nothing while keeping its cadence intact.
+ *
+ * `removeConnectorScheduler` still runs: the status gate governs REGISTRATION, and an
+ * already-registered BullMQ scheduler keeps firing until it is torn down. That
+ * ticking schedule (failing auth on every run, because uninstall preserves the
+ * credential but not the app) was the original bug the delete loop existed to fix.
+ */
+export async function disconnectConnectors(
+  db: Database,
+  organizationId: string,
+  connectorIds: string[],
+  reason: string
+): Promise<{ disconnected: number }> {
+  if (connectorIds.length === 0) return { disconnected: 0 }
+
+  await db
+    .update(schema.DataConnector)
+    .set({ status: 'disconnected', error: reason, updatedAt: new Date() })
+    .where(
+      and(
+        eq(schema.DataConnector.organizationId, organizationId),
+        inArray(schema.DataConnector.id, connectorIds)
+      )
+    )
+
+  for (const id of connectorIds) {
+    await removeConnectorScheduler(id)
+  }
+
+  logger.info('Disconnected connectors', { organizationId, count: connectorIds.length, reason })
+  return { disconnected: connectorIds.length }
+}
+
+/**
+ * Undo {@link disconnectConnectors} for one installation's connectors on reinstall:
+ * `'disconnected'` → `'paused'`, error cleared.
+ *
+ * 🔀 **`'paused'`, not `'live'` — reinstalling an app is not consent to start a sync**
+ * (plans/money/tasks/44 D-1b). The first run after a gap is the one most likely to be
+ * large and most likely to surprise, so the merchant presses Resume.
+ *
+ * ⚠️ And `'paused'` rather than leaving it `'disconnected'`, because the two statuses
+ * mean different things to the UI: `'disconnected'` means *the app is gone* and the
+ * detail view disables its resume toggle on exactly that basis. Once the app is back
+ * the connector IS resumable by the merchant's own gesture, which is what `'paused'`
+ * means — so the existing pause/resume path works untouched and needs no new
+ * "is the app installed?" plumbing in the component.
+ *
+ * Scoped to `'disconnected'` so a connector the merchant paused THEMSELVES before the
+ * uninstall stays paused and is not silently re-labelled.
+ */
+export async function reconnectConnectorsForInstallation(
+  // Accepts a Transaction so reinstall can run this atomically with the installation
+  // reactivation — unlike `disconnectConnectors`, this touches no BullMQ scheduler and
+  // so has no side effect that a rollback could not undo.
+  db: Database | Transaction,
+  organizationId: string,
+  appInstallationId: string
+): Promise<{ reconnected: number }> {
+  const rows = await db
+    .update(schema.DataConnector)
+    .set({ status: 'paused', error: null, updatedAt: new Date() })
+    .where(
+      and(
+        eq(schema.DataConnector.organizationId, organizationId),
+        eq(schema.DataConnector.appInstallationId, appInstallationId),
+        eq(schema.DataConnector.status, 'disconnected')
+      )
+    )
+    .returning({ id: schema.DataConnector.id })
+
+  if (rows.length > 0) {
+    logger.info('Reconnected connectors on reinstall', {
+      organizationId,
+      appInstallationId,
+      count: rows.length,
+    })
+  }
+  return { reconnected: rows.length }
+}
+
 export type DeleteSyncedDataBehavior = 'keep' | 'archive' | 'delete'
 
 /**
@@ -1250,10 +1348,93 @@ export async function finalizeConnectorTeardown(
     }
   }
 
+  // Read the owning installation BEFORE the row goes — the delete below takes the
+  // `appInstallationId` with it, and the deferred sweep needs it.
+  const [owner] = await db
+    .select({ appInstallationId: schema.DataConnector.appInstallationId })
+    .from(schema.DataConnector)
+    .where(eq(schema.DataConnector.id, id))
+
   await db.delete(schema.DataConnector).where(eq(schema.DataConnector.id, id))
+
+  if (owner?.appInstallationId) {
+    await sweepAppFieldsIfLastConnectorGone(db, organizationId, owner.appInstallationId)
+  }
 
   logger.info('Deleted data connector', { id, behavior })
   return { success: true }
+}
+
+/**
+ * The deferred app-field sweep (plans/money/tasks/44 D-2b): an installation's
+ * app-registered columns go away when the connector that was part of the app is gone,
+ * not when the app is uninstalled.
+ *
+ * 🛑 **The condition is an AND and both halves are load-bearing.**
+ *
+ * - *Uninstalled* — because deleting a connector while the app is STILL installed must
+ *   sweep nothing. `writeShopifyCustomerIdField` writes the `customerId` column onto
+ *   contacts from an App-Proxy-signed JWT, resolving app → installation → connection →
+ *   field, with **no connector anywhere in the chain**. Sweeping on connector removal
+ *   alone would break chat identity for an app that is still installed and still serving.
+ * - *No surviving connector* — because a second connector on the same installation is
+ *   still writing those columns.
+ *
+ * Not swept at uninstall itself, which is what this replaced: that deleted 31,737 values
+ * on one dev org, 96% of them on records the connector had minted, in the same breath as
+ * promising to keep those records.
+ *
+ * ⚠️ Silent by design. This runs at the tail of a teardown chain that has already done
+ * the destructive work; a failure here must not fail the teardown, so it logs and
+ * returns. The columns simply survive, which is the same state as not having run.
+ */
+async function sweepAppFieldsIfLastConnectorGone(
+  db: Database,
+  organizationId: string,
+  appInstallationId: string
+): Promise<void> {
+  try {
+    const installation = await db.query.AppInstallation.findFirst({
+      where: and(
+        eq(schema.AppInstallation.id, appInstallationId),
+        isNotNull(schema.AppInstallation.uninstalledAt)
+      ),
+      columns: { id: true },
+    })
+    // Still installed ⇒ the app owns these columns and may still be writing them.
+    if (!installation) return
+
+    const survivors = await db
+      .select({ id: schema.DataConnector.id })
+      .from(schema.DataConnector)
+      .where(
+        and(
+          eq(schema.DataConnector.organizationId, organizationId),
+          eq(schema.DataConnector.appInstallationId, appInstallationId)
+        )
+      )
+      .limit(1)
+    if (survivors.length > 0) return
+
+    const { deleteAppFields } = await import('../custom-fields/delete-field')
+    const swept = await deleteAppFields({ appInstallationId }, db)
+    if (swept.isErr()) {
+      logger.warn('Deferred app-field sweep failed', {
+        appInstallationId,
+        error: swept.error.message,
+      })
+      return
+    }
+    logger.info('Swept app fields after the last connector was removed', {
+      appInstallationId,
+      fields: swept.value.deletedFieldIds.length,
+    })
+  } catch (error) {
+    logger.warn('Deferred app-field sweep threw', {
+      appInstallationId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
 }
 
 /**
