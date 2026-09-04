@@ -10,6 +10,8 @@ import type { DataConnectorConfig } from './types'
  * `problems[0]` is the hint to surface in a tooltip / error message.
  */
 export type ReadinessProblem =
+  | 'disconnected' // the app behind the connector was uninstalled (task 44 D-6)
+  | 'removing' // teardown in flight — the row survives only as the chain's anchor
   | 'no-endpoint' // no base URL (generic-rest) / no bound connection (app)
   | 'no-stream' // no enabled stream at all
   | 'stream-no-path' // best stream missing requestConfig.path
@@ -40,6 +42,8 @@ export interface ReadinessStream {
 
 /** Human-readable hint per problem — tooltip text + server error message. */
 export const READINESS_REASON = {
+  disconnected: 'Reinstall the app to resume syncing',
+  removing: 'Removing this connector',
   'no-endpoint': 'Add a base URL',
   'no-stream': 'Add a stream',
   'stream-no-path': 'Add a request path to the stream',
@@ -78,8 +82,12 @@ function firstStreamFailure(
 }
 
 /**
- * Compute a connector's sync-action readiness from its committed/draft config.
+ * Compute a connector's sync-action readiness from its lifecycle status and its
+ * committed/draft config.
  *
+ * - A `disconnected` or `deleting` connector refuses everything, whatever the config
+ *   says (task 44 §7.11 / D-6). This is FIRST because it is not a config problem and
+ *   no amount of authoring fixes it — see the block comment on the check itself.
  * - `canSample` = endpoint present (generic-rest: `config.endpoint.baseUrl`;
  *   app connector: a bound `credentialId`). Enough for a Test fetch.
  * - `canSync` = `canSample` AND ≥1 ENABLED, fully-configured stream (a request
@@ -91,12 +99,34 @@ function firstStreamFailure(
  */
 export function getConnectorReadiness(
   connector: {
+    /** `DataConnector.status`. Widened to string — the enum lives server-side. */
+    status: string
     definitionKind: string
     config: DataConnectorConfig | null
     credentialId: string | null
   },
   streams: ReadinessStream[]
 ): ConnectorReadiness {
+  // 🛑 Lifecycle refusals come BEFORE the config checks, and they are the whole
+  // point of this block (task 44 §7.11). Uninstalling an app deliberately PRESERVES
+  // the credential, so a `disconnected` app connector still satisfies `canSample`
+  // and, with its streams intact, `canSync` — every structural check below passes
+  // and the manual door waves it through. That is not academic: one "Sync now" click
+  // moved a disconnected connector to `error`, which discarded the Disconnected
+  // banner AND put it outside `reconnectConnectorsForInstallation`'s
+  // `status = 'disconnected'` scope, so reinstalling the app no longer repaired it.
+  //
+  // ⚠️ `paused` is deliberately NOT here. A merchant who paused a connector and then
+  // presses Sync now plausibly means it, and they can resume it themselves.
+  // `disconnected` is different: they cannot make it work from here, and the click
+  // silently discards a state they cannot get back.
+  if (connector.status === 'disconnected') {
+    return { canSample: false, canSync: false, problems: ['disconnected'] }
+  }
+  if (connector.status === 'deleting') {
+    return { canSample: false, canSync: false, problems: ['removing'] }
+  }
+
   const isApp = connector.definitionKind === 'app'
   const canSample = isApp
     ? !!connector.credentialId

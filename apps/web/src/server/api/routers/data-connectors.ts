@@ -757,6 +757,17 @@ export const dataConnectorRouter = createTRPCRouter({
       if (result.isErr()) {
         throw new TRPCError({ code: 'NOT_FOUND', message: result.error.message })
       }
+      // Same gate as `syncNow` — this is the OTHER manual door onto
+      // `enqueueConnectorSync` (task 44 §7.11), and it had no readiness check at all.
+      // A re-crawl is a sync, so it needs `canSync`, not just a connector that exists.
+      const streams = await listStreams(ctx.db, ctx.session.organizationId, input.id)
+      const readiness = getConnectorReadiness(result.value, streams)
+      if (!readiness.canSync) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: READINESS_REASON[readiness.problems[0] ?? 'no-endpoint'],
+        })
+      }
       await backfillPendingChange(ctx.db, ctx.session.organizationId, input.id)
       return { success: true }
     }),

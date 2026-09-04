@@ -90,6 +90,11 @@ export function ConnectorCard({ connector, streamCount }: ConnectorCardProps) {
   const origin = connectorOrigin(connector)
   const isSyncing = status === 'syncing' || status === 'provisioning'
   const isPaused = status === 'paused'
+  // The app behind this connector is gone (task 44 D-1a), or its teardown is in
+  // flight. Both refuse a sync server-side via `getConnectorReadiness`; the menu
+  // must not offer it, or the click reads as a broken button. Pause/Resume stay
+  // available — those are local state, not a source round-trip.
+  const isSyncBlocked = status === 'disconnected' || status === 'deleting'
 
   const { syncNow, sampleSync, pause, resume, remove } = useConnectorMutations()
 
@@ -179,13 +184,15 @@ export function ConnectorCard({ connector, streamCount }: ConnectorCardProps) {
               <FileText />
               Open
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={wrap(() => syncNow(connector.id))} disabled={isSyncing}>
+            <DropdownMenuItem
+              onClick={wrap(() => syncNow(connector.id))}
+              disabled={isSyncing || isSyncBlocked}>
               <RefreshCw />
               Sync now
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={wrap(() => sampleSync(connector.id, DEFAULT_SAMPLE_SIZE))}
-              disabled={isSyncing}>
+              disabled={isSyncing || isSyncBlocked}>
               <FlaskConical />
               Sample sync
             </DropdownMenuItem>
