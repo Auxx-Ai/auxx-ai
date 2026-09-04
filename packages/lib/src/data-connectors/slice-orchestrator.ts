@@ -14,7 +14,7 @@ import type { Database } from '@auxx/database'
 import { schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { ResourceFieldId } from '@auxx/types/field'
-import { and, eq, inArray, lt } from 'drizzle-orm'
+import { and, desc, eq, inArray, lt } from 'drizzle-orm'
 import { resolveConnectorFieldRef } from '../agents/bindings/resolve'
 import { reconcileInstallationAppFields } from '../apps/installations/app-field-provisioning'
 import type { ConditionGroup } from '../conditions/types'
@@ -41,6 +41,8 @@ import {
   parkBackfillAtCeiling,
   parkConnectorSampleIfLastStream,
   persistStreamState,
+  readConnectorBackfillLatch,
+  releaseStrandedConnector,
   setRunRateLimited,
 } from './service'
 import { createConnectorRunLedger, createStreamSyncStateStore } from './sync-core-adapters'
@@ -127,7 +129,6 @@ export function freshBackfillState(
     backfillStartedAt: startedAtIso,
     recordsSeen: 0,
     watermark: undefined,
-    backfillComplete: false,
     // Step 9 §1.2 — pin the window floor ONCE so every slice injects the same value
     // (no per-slice `now` drift). Undefined ⇒ span 'all' / no window ⇒ full history.
     backfillFloor,
@@ -191,8 +192,15 @@ async function startConnectorSyncInner(
   // `syncMode='incremental'` instead fetches a cheap watermark catch-up (its state is
   // deliberately NOT reset below) and never archives. `sweep` flows from the run snapshot.
   const isSweep = options.trigger === 'sweep'
-  // Clear a crashed prior chain first so its stuck claim can't block us (H5).
+  // Clear a crashed prior chain first so its stuck claim can't block us (H5), then the
+  // opposite shape: a claim leaked by a run that ENDED (task 43 D-3). Without the second
+  // call a stranded connector can never be re-synced from the UI at all — `claimForSync`
+  // refuses while `status = 'syncing'`, so every "Sync now" silently no-ops forever.
+  //
+  // ⚠️ Both are age-gated on `STALE_RUN_MS`, so a strand younger than that survives one
+  // click; the periodic job picks it up within the next sweep either way.
   await sweepStaleConnectorRuns(db, { dataConnectorId })
+  await sweepStrandedConnectors(db, { dataConnectorId })
 
   // One connector-row fetch feeds both the provision pass (type → appSlug) and the
   // app-field reconcile below (appInstallationId).
@@ -493,10 +501,21 @@ export async function runBackfillSlice(
     where: eq(schema.DataConnectorRun.id, runId),
   })
   if (!run || run.status !== 'running') {
-    logger.info('runBackfillSlice: run not active, stopping chain', {
+    // 🛑 This stream's chain ends here WITHOUT decrementing the B1 latch — the decrement
+    // lives in the source's connector-level finalize, which this return skips. That is
+    // benign when the run was cancelled or already failed, and a defect when the run was
+    // closed under a still-working sibling (task 43). `leakedLatch` is what tells the two
+    // apart after the fact: a nonzero value on a run that reads `completed` means the
+    // connector is about to be stranded `syncing`, which is otherwise only visible by
+    // hand-reading `DataConnector.state`.
+    const leakedLatch =
+      run?.status === 'completed' ? await readConnectorBackfillLatch(db, connectorId) : null
+    const log = leakedLatch && leakedLatch > 0 ? logger.warn : logger.info
+    log('runBackfillSlice: run not active, stopping chain', {
       runId,
       streamId,
       status: run?.status,
+      leakedLatch,
     })
     return
   }
@@ -556,22 +575,30 @@ export async function runBackfillSlice(
       ? { ...SLICE_BUDGET, maxRecords: Math.min(SLICE_BUDGET.maxRecords, run.sampleLimit) }
       : SLICE_BUDGET
 
-  // In a BACKFILL run the last stream closes the run (B1 latch, via the source's
-  // connector-level finalize), never the runner. A stream that kept its steady delta
-  // inside this run completes as `steady`, where the runner would call
-  // `ledger.finalize()` and close the run under sibling chains that are still crawling
-  // (their next slice reads `status !== 'running'` and stops, stranding the connector
-  // `syncing`). Make that call a no-op here; `finalizeSteady` closes the run instead
-  // when it is the last stream. A STEADY run keeps the runner's single-pass close.
+  // The last stream closes the run (B1 latch, via the source's connector-level
+  // finalize), never the runner — in EITHER phase. A stream that completes as `steady`
+  // would otherwise have the runner call `ledger.finalize()` and close the run under
+  // sibling chains that are still crawling; their next slice reads `status !== 'running'`
+  // and returns WITHOUT decrementing the latch, so the latch never reaches zero, the
+  // connector-level finalize never fires, and the connector is stranded `syncing` with
+  // a `completed` run that `sweepStaleConnectorRuns` (which only sees `running` runs)
+  // can never rescue.
+  //
+  // 🛑 This used to be scoped to `run.phase === 'backfill'`, on the premise that "a
+  // STEADY run keeps the runner's single-pass close". A steady run is single-pass PER
+  // STREAM, and a connector has as many chains as streams — so a 3-stream steady run
+  // raced exactly as described above and stranded a live connector
+  // (plans/money/tasks/43-connector-finalize-latch.md).
+  //
+  // ⚠️ Only safe together with `finalizeSteady` passing `closeRun: true` unconditionally.
+  // Suppressing the runner's close while the source still gated its own close on
+  // `phase === 'backfill'` would leave NOBODY closing a steady run.
   const ledger = createConnectorRunLedger(db, { id: runId, startedAt: run.startedAt }, streamId)
-  const sliceLedger =
-    run.phase === 'backfill'
-      ? {
-          recordSlice: (entry: SliceLedgerEntry) => ledger.recordSlice(entry),
-          finalize: async () => {},
-          fail: (error: Error) => ledger.fail(error),
-        }
-      : ledger
+  const sliceLedger = {
+    recordSlice: (entry: SliceLedgerEntry) => ledger.recordSlice(entry),
+    finalize: async () => {},
+    fail: (error: Error) => ledger.fail(error),
+  }
 
   const sliceSignal = signal ?? new AbortController().signal
   const outcome = await runSyncSlice({
@@ -735,4 +762,72 @@ export async function sweepStaleConnectorRuns(
     })
   }
   return stale.length
+}
+
+/**
+ * Release connectors stuck `syncing` whose newest run has already ENDED (task 43 D-3).
+ *
+ * {@link sweepStaleConnectorRuns} keys on `status = 'running'` + a cold heartbeat, so it
+ * is structurally blind to the opposite shape: a run that finished cleanly while leaking
+ * the B1 latch, leaving the connector claimed with no chain alive to release it. Nothing
+ * else looks for that, which is why the strand behind task 43 needed a manual SQL fix.
+ *
+ * With D-1 + D-2 in place a leak now parks the run `running` instead, which the sweep
+ * above already rescues — so this should be unreachable. It is the backstop for the NEXT
+ * leak of the class, not a fix for a live one.
+ *
+ * 🛑 The predicate is "newest run is TERMINAL and ended before the threshold", never the
+ * latch value. Keying off a nonzero latch would kill a legitimately running multi-stream
+ * chain, whose latch is nonzero for its entire life by design.
+ *
+ * ⚠️ A connector claimed but with NO run at all (a crash between `claimForSync` and
+ * `openRun`) is also released, keyed on its own `updatedAt`.
+ */
+export async function sweepStrandedConnectors(
+  db: Database,
+  opts: { dataConnectorId?: string; staleMs?: number } = {}
+): Promise<number> {
+  const threshold = new Date(Date.now() - (opts.staleMs ?? STALE_RUN_MS))
+
+  const claimed = await db.query.DataConnector.findMany({
+    where: and(
+      eq(schema.DataConnector.status, 'syncing'),
+      ...(opts.dataConnectorId ? [eq(schema.DataConnector.id, opts.dataConnectorId)] : [])
+    ),
+    columns: { id: true, organizationId: true, updatedAt: true },
+  })
+  if (claimed.length === 0) return 0
+
+  let released = 0
+  for (const connector of claimed) {
+    const [newest] = await db
+      .select({
+        status: schema.DataConnectorRun.status,
+        finishedAt: schema.DataConnectorRun.finishedAt,
+      })
+      .from(schema.DataConnectorRun)
+      .where(eq(schema.DataConnectorRun.dataConnectorId, connector.id))
+      .orderBy(desc(schema.DataConnectorRun.startedAt))
+      .limit(1)
+
+    // A live chain — leave it to `sweepStaleConnectorRuns`, which owns the cold-heartbeat
+    // case and can actually fail the run.
+    if (newest?.status === 'running') continue
+
+    const endedAt = newest ? (newest.finishedAt ?? connector.updatedAt) : connector.updatedAt
+    if (endedAt.getTime() > threshold.getTime()) continue
+
+    // Report the leaked latch before clearing it — this is the number that explains WHY
+    // the connector was stranded, and it is gone the moment the release commits.
+    const latch = await readConnectorBackfillLatch(db, connector.id)
+    if (!(await releaseStrandedConnector(db, connector.id))) continue
+    released += 1
+    logger.warn('sweepStrandedConnectors: released a connector stuck syncing with no live run', {
+      dataConnectorId: connector.id,
+      newestRunStatus: newest?.status ?? 'none',
+      leakedLatch: latch,
+    })
+    await publishConnectorSync(db, connector.organizationId, connector.id, 'run-finished')
+  }
+  return released
 }

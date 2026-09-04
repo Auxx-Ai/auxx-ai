@@ -118,10 +118,11 @@ export interface ConnectorSyncSourceDeps {
   credential: RuntimeConnectionData | null
   config: DataConnectorConfig
   /**
-   * The run this slice belongs to. `phase` is the RUN's phase (one per run): inside a
-   * `backfill` run the last stream closes the run whichever phase it completed in,
-   * because a sibling may have kept its steady delta while another stream crawled
-   * (see `finalizeSteady`). Absent/null on a legacy single-shot run.
+   * The run this slice belongs to. `phase` is the RUN's phase (one per run). The last
+   * stream closes the run whichever phase IT completed in and whichever phase the RUN
+   * is — a sibling may have kept its steady delta while another stream crawled. The
+   * run phase now decides only whether the pending re-sync marker may be cleared (see
+   * `finalizeSteady`). Absent/null on a legacy single-shot run.
    */
   run: { id: string; startedAt: Date; phase?: 'backfill' | 'steady' | null }
   /** The pinned stream this source drives (its own continuation chain). */
@@ -156,8 +157,9 @@ export interface ConnectorSyncSourceDeps {
 /**
  * A `SyncSource` plus the handler-invoked steady finalize. `finalizeBackfill` is
  * fired by the runner (backfill, before the steady flip); `finalizeSteady` is fired
- * by the slice handler after a steady-phase completion (the runner already closed
- * the run). Both gate connector-level finalize on the B1 latch.
+ * by the slice handler after a steady-phase completion. Both gate connector-level
+ * finalize on the B1 latch, and in both the LAST stream closes the run — the handler
+ * no-ops the runner's own close for every run, in either phase (task 43).
  */
 export interface ConnectorSyncSource extends SyncSource {
   finalizeSteady(): Promise<void>
@@ -348,7 +350,7 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
       })
       return
     }
-    await this.finalizeConnectorLevel({ finalizeRun: true, phase: 'backfill' })
+    await this.finalizeConnectorLevel({ closeRun: true, clearResync: true, phase: 'backfill' })
   }
 
   async resolveRelationshipsAtPark(): Promise<void> {
@@ -372,16 +374,25 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
   }
 
   /**
-   * Fired by the slice HANDLER when THIS stream's STEADY pass completes. In a STEADY
-   * run the runner already closed the run; in a BACKFILL run this stream kept its
-   * watermark delta while a sibling crawled, the handler made the runner's close a
-   * no-op, and the last stream closes the run here. Either way the last stream
-   * resolves relationships + reconciles (which self-skips incremental streams) and
-   * releases the connector.
+   * Fired by the slice HANDLER when THIS stream's STEADY pass completes. The handler
+   * no-ops the runner's run-close for EVERY multi-stream run, so the last stream
+   * closes the run here in both phases; it also resolves relationships + reconciles
+   * (which self-skips incremental streams) and releases the connector.
+   *
+   * 🛑 `closeRun` is unconditional, and that is the fix for task 43. It used to read
+   * `run.phase === 'backfill'`, which made a STEADY run's last stream decrement the
+   * latch and release the connector but never close the run — harmless only because
+   * the runner had already closed it, which is the very race that stranded the
+   * connector. Suppressing the runner's close without this becomes "nobody closes the
+   * run"; the two changes are one change.
+   *
+   * `clearResync` stays gated on the phase: only a BACKFILL run re-crawls every
+   * stream carrying a pending mapping-edit re-sync, so only it may clear the marker.
    */
   async finalizeSteady(): Promise<void> {
     await this.finalizeConnectorLevel({
-      finalizeRun: this.deps.run.phase === 'backfill',
+      closeRun: true,
+      clearResync: this.deps.run.phase === 'backfill',
       phase: 'steady',
     })
   }
@@ -393,7 +404,10 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
    * Shared by both phase completions so the lifecycle can't drift between them.
    */
   private async finalizeConnectorLevel(opts: {
-    finalizeRun: boolean
+    /** Close the run. True for the last stream of EITHER phase (task 43). */
+    closeRun: boolean
+    /** Clear the pending mapping-edit re-sync marker. BACKFILL runs only. */
+    clearResync: boolean
     phase: 'backfill' | 'steady'
   }): Promise<void> {
     const remaining = await decrementConnectorBackfillLatch(this.deps.db, this.deps.connector.id)
@@ -450,10 +464,10 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
       errorSample: counters.errorSample,
     })
 
-    // Close the run when this finalize owns it (a backfill run; the runner delegates
-    // that here); a steady run was already finalized in the runner. Then release the
-    // connector claim + stamp the item count.
-    if (opts.finalizeRun) await ledger.finalize()
+    // The last stream closes the run, in BOTH phases — the handler no-ops the runner's
+    // close for every multi-stream run, so this is the only place it happens. Then
+    // release the connector claim + stamp the item count.
+    if (opts.closeRun) await ledger.finalize()
     await finalizeConnector(this.deps.db, this.deps.connector.id, {
       ok: true,
       itemCount: await countConnectorItems(this.deps.db, this.deps.connector.id),
@@ -461,8 +475,9 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
     // A completed BACKFILL run re-crawled every stream with a pending mapping-edit
     // re-sync (the orchestrator never lets such a stream keep its delta), so the
     // marker is satisfied, so clear the banner. A steady run touches only deltas, so it
-    // must NOT clear a pending rebackfill/rebind.
-    if (opts.finalizeRun) {
+    // must NOT clear a pending rebackfill/rebind — hence a flag separate from
+    // `closeRun`, which a steady run's last stream DOES own.
+    if (opts.clearResync) {
       await clearResyncPending(this.deps.db, this.deps.connector.id)
     }
 

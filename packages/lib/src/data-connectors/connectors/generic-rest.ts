@@ -564,10 +564,14 @@ export const genericRestConnector: DataConnectorDefinition = {
     // The records iterable is lazy and emits resume checkpoints between pages. The
     // sliced `SyncSource` persists those checkpoints via the `SyncStateStore`; the
     // legacy single-shot path drains to exhaustion and persists `nextState` once at
-    // the end (a terminal `backfillComplete`, no mid-stream cursor).
+    // the end (no mid-stream cursor).
+    //
+    // 🛑 This used to stamp `backfillComplete: true`. Nothing ever read it back off the
+    // persisted stream state — `phase` is the completion signal — so it only served to
+    // make the state row look authoritative about something it did not track (task 43 §4).
     return {
       records: fetchRecords(args),
-      nextState: { ...args.state, backfillComplete: true },
+      nextState: { ...args.state },
     }
   },
 }

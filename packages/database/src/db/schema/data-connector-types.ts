@@ -163,8 +163,9 @@ export interface ConnectorStreamState {
   backfillFloor?: string
   /** Legacy single-shot incremental cursor (snapshot-first generic-rest path). */
   cursor?: string
-  /** Set by a connector's terminal `nextState` when its backfill is exhausted. */
-  backfillComplete?: boolean
+  // 🛑 No `backfillComplete` — write-only dead state, removed in task 43 §4. It sat at
+  // `false` forever on every app connector; `phase` is the real completion signal.
+  // Mirror of lib `ConnectorStreamState`, which carries the full rationale.
   /** Consecutive no-progress slices (pagination stall guard). Mirror of lib
    *  `ConnectorStreamState.noProgressStrikes`. */
   noProgressStrikes?: number

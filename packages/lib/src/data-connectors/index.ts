@@ -272,6 +272,8 @@ export {
   newRunCounters,
   openRun,
   persistStreamState,
+  readConnectorBackfillLatch,
+  releaseStrandedConnector,
   setItemPendingRelations,
   setRunRateLimited,
   touchItem,
@@ -291,6 +293,7 @@ export {
   STALE_RUN_MS,
   startConnectorSync,
   sweepStaleConnectorRuns,
+  sweepStrandedConnectors,
 } from './slice-orchestrator'
 // §1 global stale-run sweep — maintenance-schedule handler
 export {
