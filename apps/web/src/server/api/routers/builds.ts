@@ -1,23 +1,38 @@
 // apps/web/src/server/api/routers/builds.ts
 
+import type { Database } from '@auxx/database'
+import { schema } from '@auxx/database'
 import {
   buildNow,
   cancelBuild,
   completeBuild,
   createBuild,
+  executeBackfill,
   explodeBuildComponents,
   getBuild,
   listBuilds,
+  loadAutoBuildSettings,
   loadEffectiveAbsorptionRates,
+  planBackfill,
   previewStandardCostRoll,
+  readBackfillPlanReads,
   readBuildDrift,
   readPartQuantitiesOnHand,
   reverseBuild,
   rollStandardCost,
   startBuild,
 } from '@auxx/lib/builds'
+import type {
+  BackfillExclusion,
+  BackfillGrouping,
+  BackfillPartPlan,
+  BackfillPlan,
+  BackfillStatus,
+} from '@auxx/lib/builds/client'
 import { getCachedEntityDefId } from '@auxx/lib/cache'
-import { NotFoundError } from '@auxx/lib/errors'
+import { BadRequestError, NotFoundError } from '@auxx/lib/errors'
+import { getOrganizationSetting } from '@auxx/lib/settings'
+import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { z } from 'zod'
 import { capabilityProcedure, createTRPCRouter } from '~/server/api/trpc'
 
@@ -61,6 +76,39 @@ const componentOverride = z.object({
   /** Units consumed by the WHOLE run, not per produced unit. */
   quantityConsumed: z.number().finite().nonnegative().max(1_000_000),
 })
+
+/**
+ * The backfill's window and how it batches (plans/money/tasks/44 sections 7.0-7.3).
+ *
+ * `as const satisfies` rather than a bare `z.enum`: the vocabularies live in
+ * `backfill-types.ts`, and a member renamed there has to break this file rather
+ * than silently narrow what the browser is allowed to ask for.
+ */
+const BACKFILL_GROUPING_VALUES = [
+  'order',
+  'day',
+  'week',
+  'month',
+  'range',
+] as const satisfies readonly BackfillGrouping[]
+
+const BACKFILL_STATUS_VALUES = ['planned', 'completed'] as const satisfies readonly BackfillStatus[]
+
+const backfillShape = {
+  /** Inclusive lower bound on `order_placed_at`. */
+  from: z.coerce.date(),
+  /** Exclusive upper bound. Bounded above by the build cutoff (section 7.0). */
+  to: z.coerce.date(),
+  grouping: z.enum(BACKFILL_GROUPING_VALUES),
+  /**
+   * What the run would land in. Section 7.3.
+   *
+   * On the PREVIEW it is not merely decoration: `completed` is what turns the
+   * preflight on, and it is what makes this preview disclose the standard costs
+   * a completion would freeze — which is why it also raises the gate.
+   */
+  status: z.enum(BACKFILL_STATUS_VALUES),
+}
 
 /** The two quantities and the overrides — everything that prices a run. */
 const completionShape = {
@@ -444,7 +492,376 @@ export const buildsRouter = createTRPCRouter({
       if (result.isErr()) throw result.error
       return result.value
     }),
+
+  // ─── The backfill (plans/money/tasks/44 §7) ─────────────────────────
+
+  /**
+   * What the backfill WOULD create over a range, netted per part.
+   *
+   * 🛑 **The only read in this subsystem that is an AGGREGATE** (§7.1). Every
+   * other read in `builds/` answers for one order; this one answers *"what has
+   * been ordered and not yet built"* across a window, which is the whole content
+   * of the preview screen. Rows are `(part, period)` and an order is never a row
+   * — an order with two parts can carry a build for one and not the other, so it
+   * is neither covered nor uncovered as a whole.
+   *
+   * **It returns a REFUSAL rather than throwing on a bad range**, and that is
+   * deliberate. §7.0 says the dialog must refuse a `to` past the build cutoff
+   * *and say why* rather than clamp silently — but the dialog cannot bound its
+   * own date picker without knowing the cutoff, and a thrown error carries a
+   * sentence, not a date. So the cutoff rides on every response, a refused range
+   * comes back with `plan: null` and the reason, and the write door
+   * ({@link runBackfill}) throws on exactly the same conditions. The refusal is
+   * real; it is just legible.
+   *
+   * Gated as a write, not as a read, on the same argument `previewRoll` and
+   * `previewCompletion` make: the preview exists solely to be the first half of
+   * a write, and a reader who cannot raise a build has no use for it. When
+   * `status` is `completed` it also discloses the standard costs the run would
+   * freeze, so it takes the full ledger gate.
+   */
+  previewBackfill: capabilityProcedure
+    .input(z.object(backfillShape))
+    .query(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      await assertCanRunBackfill(ctx, input.status)
+
+      // ⚠️ `enabledAt`, not `enabled`. The bound exists because the reconciler is
+      // live ABOVE the cutoff (§7.0); a null stamp means no order has ever
+      // qualified for a live raise, so there is nothing for a batch build to
+      // collide with and the range is unbounded above.
+      const [{ enabledAt: cutoff }, timeZone] = await Promise.all([
+        loadAutoBuildSettings(organizationId),
+        readBookTimeZone(organizationId),
+      ])
+      const refusal = refuseBackfillRange(input, cutoff, timeZone)
+      if (refusal) return { cutoff, refusal, plan: null, partNames: {}, preflight: null }
+
+      const plan = await buildBackfillPlan(ctx.db, organizationId, input, timeZone)
+
+      // The contract carries part IDS; a screen somebody has to judge carries
+      // part NAMES. Resolved here rather than in the plan because the plan is
+      // the thing the writer executes, and a display name has no business in it.
+      const [partNames, preflight] = await Promise.all([
+        readEntityNames(ctx.db, organizationId, [
+          ...plan.parts.map((part: BackfillPartPlan) => part.partId),
+          ...plan.excluded.map((exclusion: BackfillExclusion) => exclusion.partId),
+        ]),
+        input.status === 'completed'
+          ? computeBackfillPreflight(ctx.db, organizationId, plan)
+          : Promise.resolve(null),
+      ])
+
+      return { cutoff, refusal: null, plan, partNames, preflight }
+    }),
+
+  /**
+   * Create the builds the preview showed.
+   *
+   * 🛑 **Not atomic, and the summary says so** (§7.4). `buildNow` reports a
+   * refused completion as the `left_in_progress` RESULT rather than an error,
+   * carrying the build it already raised, so the run records those and keeps
+   * going. A run that aborted on the first refusal would tell somebody "failed"
+   * about builds that exist, and they would press the button again.
+   *
+   * Same two gates as the preview, for the same reason — a `completed` backfill
+   * is a stock movement by any other name.
+   */
+  runBackfill: capabilityProcedure
+    .input(z.object(backfillShape))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
+      await assertCanRunBackfill(ctx, input.status)
+
+      const [{ enabledAt: cutoff }, timeZone] = await Promise.all([
+        loadAutoBuildSettings(organizationId),
+        readBookTimeZone(organizationId),
+      ])
+      // The write door throws where the preview merely explains. Both run the
+      // same predicate, so the button the dialog disables and the call the
+      // server refuses can never disagree.
+      const refusal = refuseBackfillRange(input, cutoff, timeZone)
+      if (refusal) throw new BadRequestError(refusal)
+
+      // 🛑 Re-planned server-side rather than taken from the browser. The plan
+      // is what `executeBackfill` writes, and a client-supplied one would let a
+      // stale preview (or a crafted payload) name quantities and periods that no
+      // read ever produced.
+      const plan = await buildBackfillPlan(ctx.db, organizationId, input, timeZone)
+
+      const result = await executeBackfill(ctx.db, organizationId, userId, plan, {
+        from: input.from,
+        to: input.to,
+        grouping: input.grouping,
+        status: input.status,
+      })
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
 })
+
+/**
+ * Read what the plan is decided from, then decide it.
+ *
+ * The split is `reconcile-policy.ts` / `reconcile-order-builds.ts`'s: the reads
+ * come back as data and the decision is pure, so the painful cases (a monthly
+ * build viewed by week, on hand spread across eight buckets) are unit tests
+ * rather than browser clicks. `grouping` and `timeZone` are the caller's — one
+ * is a dialog choice, the other an org setting, and neither is a read.
+ */
+async function buildBackfillPlan(
+  db: Database,
+  organizationId: string,
+  input: { from: Date; to: Date; grouping: BackfillGrouping },
+  timeZone: string | null
+): Promise<BackfillPlan> {
+  const reads = await readBackfillPlanReads(db, organizationId, {
+    from: input.from,
+    to: input.to,
+  })
+  if (reads.isErr()) throw reads.error
+  return planBackfill({ ...reads.value, grouping: input.grouping, timeZone: timeZone ?? 'UTC' })
+}
+
+/**
+ * `accounting.bookTimeZone`, or `null` when the org has not set one.
+ *
+ * ⚠️ The catalog says this setting fails CLOSED, and it does — for posting. It
+ * cannot fail closed here without contradicting §11.1, which puts the preview
+ * and the `planned` write in phases 1-3, explicitly *"blocked by nothing"* in
+ * the cutover chain: an org that has not begun the chain has no book timezone
+ * and would be unable to open this dialog at all. So the preview and a
+ * `planned` run fall back to UTC, and a `completed` run — the one that dates a
+ * ledger — is refused outright when the zone is unset
+ * ({@link refuseBackfillRange}). Nothing is silently posted into the wrong
+ * month, because nothing is posted.
+ */
+async function readBookTimeZone(organizationId: string): Promise<string | null> {
+  const value = await getOrganizationSetting({
+    organizationId,
+    key: 'accounting.bookTimeZone',
+  })
+  // Deliberately `null` rather than `'UTC'`: an org whose books genuinely ARE
+  // kept in UTC has SET the zone, and collapsing the two would refuse it a
+  // completed backfill it is entitled to.
+  return typeof value === 'string' && value.trim() ? value : null
+}
+
+/**
+ * What a `completed` backfill would write, checked before anything is written.
+ *
+ * §7.3 gates 2, 3 and 4: the consent for a completed run is *"N builds, M stock
+ * movements, on an append-only ledger correctable only by reversing"*, and both
+ * numbers have to be real. `completeBuild` also aborts per build when a
+ * component has no `part_standard_cost`, and discovering that on build 400 of
+ * 900 is the wrong time.
+ */
+interface BackfillPreflight {
+  /** Builds the run would raise. */
+  buildCount: number
+  /** `build_consume` + `build_produce` rows those builds would append. */
+  movementCount: number
+  /** Parts with no standard cost, which `completeBuild` refuses outright. */
+  unpricedParts: { partId: string; partName: string | null }[]
+  /**
+   * Where the run leaves each consumed component.
+   *
+   * ⚠️ A WARNING's input, never a gate's (§7.3 gate 4). Negative on hand is a
+   * true statement about a ledger missing its receipts, and refusing would make
+   * the backfill unusable on exactly the org that needs it most. The remedy is
+   * opening stock, which is the person's call to make first.
+   */
+  projectedOnHand: {
+    partId: string
+    partName: string | null
+    onHand: number
+    consumed: number
+    projected: number
+  }[]
+}
+
+/**
+ * Explode every part in the plan and total what the run would consume.
+ *
+ * Exploded once per part at its WHOLE range quantity rather than once per
+ * bucket: component quantities are linear in the produced quantity, so the total
+ * is identical and a twenty-part plan costs twenty round trips instead of
+ * ninety-four.
+ */
+async function computeBackfillPreflight(
+  db: Database,
+  organizationId: string,
+  plan: BackfillPlan
+): Promise<BackfillPreflight> {
+  const buildCount = plan.buildCount
+  let movementCount = 0
+  const unpriced = new Set<string>()
+  const consumed = new Map<string, number>()
+
+  const explosions = await Promise.all(
+    plan.parts.map((part) =>
+      explodeBuildComponents(db, organizationId, {
+        partId: part.partId,
+        quantityProduced: part.quantityToBuild,
+      })
+    )
+  )
+
+  for (const [index, explosion] of explosions.entries()) {
+    const part = plan.parts[index]
+    if (!part) continue
+    if (explosion.isErr()) throw explosion.error
+    const components = explosion.value.components
+    // One `build_produce` per build, plus one `build_consume` per component per
+    // build. The component set is the same for every bucket of a part.
+    movementCount += part.buckets.length * (components.length + 1)
+    for (const missing of explosion.value.missingStandardPartIds) unpriced.add(missing)
+    for (const line of components) {
+      consumed.set(line.partId, (consumed.get(line.partId) ?? 0) + line.quantityConsumed)
+    }
+  }
+
+  const componentIds = [...consumed.keys()]
+  const [onHand, names] = await Promise.all([
+    readPartQuantitiesOnHand(db, organizationId, componentIds),
+    readEntityNames(db, organizationId, [...componentIds, ...unpriced]),
+  ])
+
+  return {
+    buildCount,
+    movementCount,
+    unpricedParts: [...unpriced].map((partId) => ({
+      partId,
+      partName: names[partId] ?? null,
+    })),
+    projectedOnHand: componentIds
+      .map((partId) => {
+        const available = onHand.get(partId) ?? 0
+        const used = consumed.get(partId) ?? 0
+        return {
+          partId,
+          partName: names[partId] ?? null,
+          onHand: available,
+          consumed: used,
+          projected: available - used,
+        }
+      })
+      // Worst first: the rows that matter are the ones the run drives negative.
+      .sort((a, b) => a.projected - b.projected),
+  }
+}
+
+/**
+ * Why this range cannot be backfilled, or `null` when it can.
+ *
+ * One predicate, run by both the preview and the write, so the reason the dialog
+ * prints is literally the reason the server would give.
+ */
+function refuseBackfillRange(
+  input: { from: Date; to: Date; grouping: BackfillGrouping; status: BackfillStatus },
+  cutoff: Date | null,
+  timeZone: string | null
+): string | null {
+  if (!(input.from.getTime() < input.to.getTime())) {
+    return 'The from date has to be before the to date.'
+  }
+
+  // §7.0. A batch build is only safe BELOW the cutoff: above it the reconciler
+  // is live and a batch build does not suppress a raise, so any order up there
+  // that later moves would get a per-order build stacked on the batch one.
+  if (cutoff && input.to.getTime() > cutoff.getTime()) {
+    return `This range ends after the build cutoff of ${cutoff.toISOString().slice(0, 10)}. Above the cutoff builds are raised per order, so a batch build there would end up stacked on top of a live one. Move the to date back to the cutoff or earlier.`
+  }
+
+  if (input.status === 'completed') {
+    // The one place `accounting.bookTimeZone` still fails closed, as its catalog
+    // entry demands: a completed build carries the date that decides which
+    // month-end entry reflects it, and deriving that date in an assumed UTC is
+    // exactly the silent misstatement the setting exists to prevent.
+    if (!timeZone) {
+      return 'Set the book timezone in accounting settings before creating completed builds. A completed build carries the date that decides which month it closes in, and that date cannot be derived without it.'
+    }
+
+    // §7.3 gate 1. Completing future demand is meaningless.
+    if (input.to.getTime() > Date.now()) {
+      return 'A completed backfill dates the ledger, so its range cannot reach into the future. Move the to date back to today, or create the builds as planned.'
+    }
+
+    // §7.3 / the contract on `BackfillGrouping`. `build_completed_at` decides
+    // which month-end entry reflects a build, so one build for a range spanning
+    // several months misstates every month it spans.
+    //
+    // ⚠️ Compared in UTC, while the writer buckets in the org's book timezone.
+    // The two can disagree for a range that ends within hours of a month
+    // boundary; this is a guard rail on an obviously multi-month range, not the
+    // authority on where a period ends.
+    if (input.grouping === 'range' && spansSeveralMonths(input.from, input.to)) {
+      return 'One build for the whole range would date every unit to a single month, and this range spans more than one. Group by month or finer, or create the builds as planned.'
+    }
+  }
+
+  return null
+}
+
+/** Does `[from, to)` cross a calendar month boundary? `to` is exclusive. */
+function spansSeveralMonths(from: Date, to: Date): boolean {
+  const last = new Date(to.getTime() - 1)
+  return (
+    from.getUTCFullYear() !== last.getUTCFullYear() || from.getUTCMonth() !== last.getUTCMonth()
+  )
+}
+
+/**
+ * `EntityInstance.displayName` for a set of ids, as a plain record.
+ *
+ * A record rather than a `Map` because it crosses the tRPC boundary — superjson
+ * would carry a `Map`, but every consumer here is a lookup in JSX.
+ */
+async function readEntityNames(
+  db: Database,
+  organizationId: string,
+  ids: string[]
+): Promise<Record<string, string | null>> {
+  const unique = [...new Set(ids)]
+  if (unique.length === 0) return {}
+
+  const rows = await db
+    .select({ id: schema.EntityInstance.id, displayName: schema.EntityInstance.displayName })
+    .from(schema.EntityInstance)
+    .where(
+      and(
+        inArray(schema.EntityInstance.id, unique),
+        eq(schema.EntityInstance.organizationId, organizationId),
+        isNull(schema.EntityInstance.archivedAt)
+      )
+    )
+
+  const names: Record<string, string | null> = {}
+  for (const row of rows) names[row.id] = row.displayName
+  return names
+}
+
+/**
+ * The gate on both halves of the backfill.
+ *
+ * EDIT on `build` always, because builds are raised. Plus EDIT on
+ * `stock_movement` when the run lands `completed`, because that is the arm that
+ * appends consume and produce rows — the same split
+ * {@link assertCanPostBuildLedger} makes for a single completion.
+ */
+async function assertCanRunBackfill(
+  ctx: {
+    session: { organizationId: string }
+    capabilities: { assertEditEntity: (defId: string) => void }
+  },
+  status: BackfillStatus
+): Promise<void> {
+  if (status === 'completed') {
+    await assertCanPostBuildLedger(ctx)
+    return
+  }
+  ctx.capabilities.assertEditEntity(await requireDefId(ctx.session.organizationId, 'build'))
+}
 
 /**
  * The gate on every path that writes a build's ledger.

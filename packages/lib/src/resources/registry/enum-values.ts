@@ -763,18 +763,38 @@ export const BuildStatus = {
 
 /**
  * Build Source
- * plans/products/build/01-build-plan.md §1.1, plans/products/12 AB7.
+ * plans/products/build/01-build-plan.md §1.1, plans/products/12 AB7,
+ * plans/money/tasks/44-auto-build-cutoff-and-backfill.md §6.1.
  *
  * An auto-raised build must be distinguishable from one a person raised against
  * the same order deliberately — without that, "cancel the builds this order
  * caused" cannot tell the two apart and would revoke a human decision.
+ *
+ * ## 🛑 `batch` is not a label, it is the mechanism
+ *
+ * `reconcile-policy.ts:316` skips any build whose `source !== 'order'` as
+ * `not-order-raised`, so a `batch` build is invisible to Model B convergence the
+ * moment it is written: no rework to `planOrderBuildConvergence`, no change to
+ * the drift comparison, nothing new in the Model B path. The cancellation sweep
+ * is the same — `cancelAutoBuildsForOrders` goes through `readOrderRaisedBuilds`,
+ * which filters `source === 'order'` in SQL and re-checks in memory, so an order
+ * cancellation can never reach a batch build.
+ *
+ * ⚠️ The mirror of that, at `reconcile-policy.ts:227`: a non-`order` build does
+ * NOT block a raise, because blocking on one would let a single manual build
+ * suppress an order's build set forever. So a batch build is not coverage to the
+ * reconciler either — raise one inside the live window and per-order builds land
+ * on top of the same demand. **Batch builds are only safe below the auto-build
+ * cutoff**, which is exactly where per-order raising does not run.
  */
 export const BuildSource = {
   MANUAL: 'manual',
   ORDER: 'order',
+  BATCH: 'batch',
 
   values: [
     { value: 'manual', label: 'Manual', color: 'gray' },
     { value: 'order', label: 'Order', color: 'blue' },
+    { value: 'batch', label: 'Batch', color: 'purple' },
   ] satisfies FieldOptionItem[],
 } as const

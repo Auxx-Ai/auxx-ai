@@ -84,6 +84,7 @@ import { migration120TariffCodeLabel } from './migrations/120-tariff-code-label'
 import { migration121RatePrecision } from './migrations/121-rate-precision'
 import { migration122OrderShippingAndNote } from './migrations/122-order-shipping-and-note'
 import { migration123PartSkuOptional } from './migrations/123-part-sku-optional'
+import { migration124BuildBatchSourceAndPeriod } from './migrations/124-build-batch-source-and-period'
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
@@ -230,6 +231,10 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   migration121RatePrecision,
   migration122OrderShippingAndNote,
   migration123PartSkuOptional,
+  // MUST sort after 109 — it adds two fields to the def 109 creates and widens
+  // the `build_source` option list 109 materialized, and skips an org that has
+  // not reached 109 yet.
+  migration124BuildBatchSourceAndPeriod,
 ]
 
 /**

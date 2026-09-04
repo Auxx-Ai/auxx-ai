@@ -664,6 +664,89 @@ export const BUILD_FIELDS: Record<string, ResourceField> = {
     description: 'The order version used when this build was created or last updated',
   },
 
+  /**
+   * The DEMAND period a batch build claims, half-open: `periodStart` inclusive,
+   * `periodEnd` exclusive
+   * (plans/money/tasks/44-auto-build-cutoff-and-backfill.md §6.2).
+   *
+   * 🛑 **This is not when the build happened.** A batch build carries no orders
+   * — §6.2 rejected both widening `build_order` and adding a second relation,
+   * because the relation's real job was coverage, and coverage is answered
+   * better by netting ordered quantity against built quantity per
+   * `(part, period)`. That netting is what these two fields make queryable, and
+   * it is what absorbs a late order backfilled into a closed period: 345 ordered
+   * against 340 built raises a 5-unit build instead of leaving the demand
+   * permanently invisible.
+   *
+   * 🛑 **`build_completed_at` cannot be reused for this.** A build created in
+   * September covering January demand has to say January, and
+   * `build_completed_at` says September. The two answer different questions and
+   * both are needed: §7.3 makes `build_completed_at` THE accounting date, so the
+   * period and the completion date have to be kept in agreement by whoever
+   * writes them — a build that covers January and posts to September is the
+   * defect this pair exists to make visible rather than the one it causes.
+   *
+   * NULL on order-raised and manual builds. An order-raised build resolves its
+   * coverage date through `build_order` instead, and a manual build claims no
+   * period at all.
+   *
+   * DATETIME rather than DATE on purpose: a bucket boundary is a book-timezone
+   * instant, and January 31 19:00 in `America/New_York` is already February in
+   * UTC. Rounding these to UTC midnight would move demand across the month
+   * boundary, which is the exact error §7.1's `timeZone` input exists to avoid.
+   */
+  periodStart: {
+    id: toFieldId('periodStart'),
+    key: 'periodStart',
+    label: 'Period Start',
+    type: BaseType.DATETIME,
+    fieldType: FieldType.DATETIME,
+    isSystem: true,
+    systemAttribute: 'build_period_start',
+    systemSortOrder: 'aM',
+    nullable: true,
+    // Stamped by the bulk builder, never picked out of the create dialog: the
+    // period is derived from the range and grouping the dialog was given, and a
+    // hand-typed one could disagree with the demand the build was sized from.
+    showInPanel: true,
+    showInTable: false,
+    showInDialogs: false,
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: true,
+      // Backend-owned, like `orderRevision`: there is no interactive writer, and
+      // moving a completed build's claimed period would silently restate what
+      // the next netting run thinks is already covered.
+      updatable: false,
+      configurable: false,
+    },
+    description: 'Start of the demand period this build covers, inclusive',
+  },
+
+  periodEnd: {
+    id: toFieldId('periodEnd'),
+    key: 'periodEnd',
+    label: 'Period End',
+    type: BaseType.DATETIME,
+    fieldType: FieldType.DATETIME,
+    isSystem: true,
+    systemAttribute: 'build_period_end',
+    systemSortOrder: 'aN',
+    nullable: true,
+    showInPanel: true,
+    showInTable: false,
+    showInDialogs: false,
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: true,
+      updatable: false,
+      configurable: false,
+    },
+    description: 'End of the demand period this build covers, exclusive',
+  },
+
   createdAt: {
     id: toFieldId('createdAt'),
     key: 'createdAt',

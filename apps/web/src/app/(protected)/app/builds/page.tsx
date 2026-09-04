@@ -2,6 +2,7 @@
 
 'use client'
 
+import { BackfillBuildsButton } from '~/components/manufacturing/builds'
 import { RecordsView } from '~/components/records'
 
 /**
@@ -20,7 +21,12 @@ import { RecordsView } from '~/components/records'
  * so the primary cell falls back to the record's own display name. Nothing here
  * needs to know that; it is why no surface in this feature formats a number
  * without a fallback.
+ *
+ * The `pageActions` button is the backfill dialog's entry point
+ * (plans/money/tasks/44 §11.3), following the `purchase-orders` page's
+ * `ReadQuoteButton` precedent: one header action beside Create, no extra row
+ * above the table.
  */
 export default function BuildsPage() {
-  return <RecordsView slug='builds' basePath='/app/builds' />
+  return <RecordsView slug='builds' basePath='/app/builds' pageActions={<BackfillBuildsButton />} />
 }

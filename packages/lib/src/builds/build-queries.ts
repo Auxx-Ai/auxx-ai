@@ -70,6 +70,12 @@ const BUILD_ATTRIBUTES = [
   'build_source',
   'build_reversal_of',
   'build_order_revision',
+  // The demand period a `batch` build claims (plans/money/tasks/44 §6.2). Both
+  // are `updatable: false`, so `createBuild` is the only writer and this is the
+  // only place the ids are resolved. Absent on an org short of migration 124,
+  // which is why every reader guards on them rather than assuming.
+  'build_period_start',
+  'build_period_end',
 ] as const
 
 type BuildAttribute = (typeof BUILD_ATTRIBUTES)[number]

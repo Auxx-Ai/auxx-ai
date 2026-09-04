@@ -423,3 +423,29 @@ export function skipReasonLabel(skip: {
       return skip.reason
   }
 }
+
+/**
+ * The backfill contract, re-exported for the browser.
+ *
+ * `backfill-types.ts` is the shared seam
+ * (`plans/money/tasks/44-auto-build-cutoff-and-backfill.md` section 11.2) and it
+ * holds nothing but types plus two frozen vocabularies. The preview dialog
+ * renders exactly this shape, and client code may not reach `@auxx/lib/builds`
+ * (the index barrel pulls the whole write path in), so the two `const` arrays
+ * and every type it needs come through here.
+ *
+ * Additive only: nothing in `backfill-types.ts` is redeclared or narrowed.
+ */
+export {
+  BACKFILL_EXCLUSION_REASONS,
+  BACKFILL_GROUPINGS,
+  type BackfillBucket,
+  type BackfillExclusion,
+  type BackfillExclusionReason,
+  type BackfillGrouping,
+  type BackfillPartPlan,
+  type BackfillPlan,
+  type BackfillRequest,
+  type BackfillRunSummary,
+  type BackfillStatus,
+} from './backfill-types'

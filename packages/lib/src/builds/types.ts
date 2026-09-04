@@ -237,11 +237,18 @@ export interface CreateBuildInput {
   /** `EntityInstance.id` of the `order` that caused this run, if any. */
   orderId?: string
   /**
-   * `manual` (a person raised it) or `order` (the auto-build trigger did).
+   * `manual` (a person raised it), `order` (the auto-build trigger did) or
+   * `batch` (the backfill raised it for a whole demand period).
    * Defaults to `manual` — an auto-build must be distinguishable from one a
    * person raised against the same order deliberately (products/12 AB7).
+   *
+   * 🛑 `batch` is not a label, it is the mechanism: `reconcile-policy.ts` skips
+   * any build whose source is not `order`, so a batch build is invisible to
+   * Model B convergence — and, by the mirror rule at its line 227, is not
+   * coverage to the reconciler either. That is why a batch build is only safe
+   * below the auto-build cutoff (plans/money/tasks/44 §6.1).
    */
-  source?: 'manual' | 'order'
+  source?: 'manual' | 'order' | 'batch'
   /**
    * The order's demand fingerprint to stamp on the new build, when the caller
    * already has it.
@@ -256,6 +263,25 @@ export interface CreateBuildInput {
    * stamp, because it is not tracking anything (products/12 AB7).
    */
   orderRevision?: string
+  /**
+   * The DEMAND period a `batch` build claims. Half-open: `start` inclusive,
+   * `end` exclusive.
+   *
+   * 🛑 **It has to be settable HERE, at create time.** `build_period_start` and
+   * `build_period_end` are declared `updatable: false`, because moving a claimed
+   * period silently restates what the next netting run believes is already
+   * covered (plans/money/tasks/44 §6.2). So there is no legitimate second write,
+   * and a post-create update would be writing a field the schema says cannot be
+   * written.
+   *
+   * ⚠️ Not the same thing as when the build HAPPENED. A build raised in
+   * September covering January demand claims January and completes in January;
+   * `build_completed_at` is the accounting date and must fall inside this range.
+   *
+   * Ignored unless `source` is `batch`. An order-raised or hand-raised build
+   * claims no period: it answers to one order, or to nobody.
+   */
+  period?: { start: Date; end: Date }
 }
 
 /** Move a `planned` run to `in_progress`. */
@@ -406,7 +432,7 @@ export interface ListBuildsFilters {
   partId?: string
   /** Only runs raised against this `order` instance. */
   orderId?: string
-  source?: 'manual' | 'order'
+  source?: 'manual' | 'order' | 'batch'
   /** Defaults to 50. */
   limit?: number
   offset?: number
