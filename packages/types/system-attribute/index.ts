@@ -646,7 +646,18 @@ export const SYSTEM_ATTRIBUTES = [
   'build_posted_at', // denormalized convenience ONLY — never gate on it
   'build_notes',
   'build_order', // which order caused this build (plans/products/12 AB7)
-  'build_source', // manual | order — an auto-build must be distinguishable
+  'build_source', // manual | order | batch — an auto-build must be distinguishable
+  // The DEMAND period a `batch` build claims, half-open (start inclusive, end
+  // exclusive), entity migration 124. NULL on manual and order-raised builds.
+  //
+  // 🛑 NOT when the build happened. A batch build carries no orders (plan 44
+  // §6.2 rejected the relation), so coverage is answered by netting ordered
+  // quantity against built quantity per (part, period) — and a build created in
+  // September covering January demand has to say January, which
+  // `build_completed_at` cannot, because that is the accounting date and says
+  // September.
+  'build_period_start',
+  'build_period_end',
   // The frozen standard, deliberately separate from the live `part_cost`. The
   // three components are split because the fulfillment COGS entry has to land
   // across 5000 / 5010 / 5020, which it can only do if the finished good's

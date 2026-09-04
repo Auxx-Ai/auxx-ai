@@ -129,6 +129,28 @@ export async function createBuild(
         build_source: input.source ?? 'manual',
       }
       if (input.notes) values.build_notes = input.notes
+
+      // The demand period a batch build claims (plans/money/tasks/44 §6.2).
+      //
+      // 🛑 Written HERE or never: both fields are `updatable: false`, so a
+      // post-create write would be writing a field the schema refuses. That is
+      // deliberate — moving a claimed period restates what the next netting run
+      // believes is already covered.
+      //
+      // Guarded on `source` for the same reason `build_order_revision` is: an
+      // order-raised build answers to one order and a hand-raised one to nobody,
+      // so neither claims a period, and a stray period on one would make it look
+      // like coverage to a pass that must not see it.
+      if (input.period && (input.source ?? 'manual') === 'batch') {
+        if (input.period.end.getTime() <= input.period.start.getTime()) {
+          throw new BadRequestError('A build period must end after it starts')
+        }
+        if (ctx.fields.build_period_start && ctx.fields.build_period_end) {
+          values.build_period_start = input.period.start.toISOString()
+          values.build_period_end = input.period.end.toISOString()
+        }
+      }
+
       if (input.orderId) {
         const orderDefId = await requireDefId(organizationId, 'order')
         values.build_order = toRecordId(orderDefId, input.orderId)

@@ -38,6 +38,25 @@ export {
 } from './auto-build-queries'
 export { CANCEL_AUTO_BUILDS_ON_ORDER_CANCELLED, registerAutoBuildRules } from './auto-build-rule'
 export { type AutoBuildSettings, loadAutoBuildSettings } from './auto-build-settings'
+export { executeBackfill, resolveBackfillCompletedAt } from './backfill-builds'
+export { planBackfill } from './backfill-policy'
+export { readBackfillPlanReads } from './backfill-queries'
+export {
+  BACKFILL_EXCLUSION_REASONS,
+  BACKFILL_GROUPINGS,
+  type BackfillBucket,
+  type BackfillCoverage,
+  type BackfillDemandLine,
+  type BackfillExclusion,
+  type BackfillExclusionReason,
+  type BackfillGrouping,
+  type BackfillPartPlan,
+  type BackfillPlan,
+  type BackfillPlanInput,
+  type BackfillRequest,
+  type BackfillRunSummary,
+  type BackfillStatus,
+} from './backfill-types'
 export {
   amendPlannedBuildQuantity,
   cancelBuild,
