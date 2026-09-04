@@ -613,4 +613,8 @@ export interface ScheduledTriggerConfig {
 }
 
 /** Connector type union — built-in ids plus `app:${slug}`. */
-export type DataConnectorType = 'generic-rest' | 'fixture' | `app:${string}`
+export type DataConnectorType =
+  | 'generic-rest'
+  | 'fixture'
+  | 'stripe-financial-connections'
+  | `app:${string}`

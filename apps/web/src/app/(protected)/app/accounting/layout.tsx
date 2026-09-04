@@ -9,14 +9,14 @@ import {
   MainPageHeader,
 } from '@auxx/ui/components/main-page'
 import { MainPageTabs } from '@auxx/ui/components/main-page-tabs'
-import { BookOpenCheck, Settings } from 'lucide-react'
+import { BarChart3, BookOpenCheck, Landmark, Settings } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import { AccountingSetupWizardGate } from '~/components/accounting/ui/setup-wizard/setup-wizard-gate'
 import { CapabilityPageGuard } from '~/components/global/capability-page-guard'
 import { useAccess } from '~/providers/capabilities-provider'
 
 /**
- * Module header for `/app/accounting/*` — Ledger · Settings via `MainPageTabs`
+ * Module header for `/app/accounting/*` — Ledger · Banking · Reports · Settings via `MainPageTabs`
  * in route mode, the same shape `dispatch/layout.tsx` uses for Board · Settings.
  *
  * ⚠️ The date/period navigation is deliberately NOT here. Dispatch keeps its
@@ -40,6 +40,21 @@ function AccountingLayoutHeader() {
             icon: <BookOpenCheck />,
             href: '/app/accounting',
             tooltip: 'Ledger',
+          },
+          {
+            value: 'banking',
+            label: 'Banking',
+            icon: <Landmark />,
+            href: '/app/accounting/banking',
+            tooltip: 'Banking',
+            hidden: !can('ledger.post'),
+          },
+          {
+            value: 'reports',
+            label: 'Reports',
+            icon: <BarChart3 />,
+            href: '/app/accounting/reports',
+            tooltip: 'Reports',
           },
           {
             value: 'settings',

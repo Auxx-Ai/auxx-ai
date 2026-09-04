@@ -43,6 +43,7 @@ export {
   type HostedProvisionCompleteResult,
   type HostedProvisionHandler,
   type HostedProvisionStartCtx,
+  type HostedProvisionStartResult,
   resolveHostedProvisionHandler,
 } from './hosted-provision'
 export {

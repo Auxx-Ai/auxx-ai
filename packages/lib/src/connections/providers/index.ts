@@ -6,4 +6,4 @@ export {
   isPlatformProviderKey,
 } from './ensure-platform-providers'
 export { getAllProviders, getProviderByKey } from './provider-registry'
-export type { PlatformProviderDef, ProviderUiMetadata } from './types'
+export type { PlatformProviderDef, ProviderCapabilities, ProviderUiMetadata } from './types'

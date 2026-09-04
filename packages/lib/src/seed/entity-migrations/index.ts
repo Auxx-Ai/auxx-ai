@@ -85,6 +85,7 @@ import { migration121RatePrecision } from './migrations/121-rate-precision'
 import { migration122OrderShippingAndNote } from './migrations/122-order-shipping-and-note'
 import { migration123PartSkuOptional } from './migrations/123-part-sku-optional'
 import { migration124BuildBatchSourceAndPeriod } from './migrations/124-build-batch-source-and-period'
+import { migration125AccountingBooks } from './migrations/125-accounting-books'
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
@@ -235,6 +236,12 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   // the `build_source` option list 109 materialized, and skips an org that has
   // not reached 109 yet.
   migration124BuildBatchSourceAndPeriod,
+  // The whole accounting pass in one migration: the extended chart and its
+  // posting roles, the `journal_entry`, `bank_deposit`, `bank_account`,
+  // `bank_transaction` and `bank_rule` defs, the 1099/W-9 and write-off fields,
+  // the order shipment log and the `accountant` profile. MUST sort after 108 -
+  // three of its steps extend what 108 seeds and skip an org without it.
+  migration125AccountingBooks,
 ]
 
 /**

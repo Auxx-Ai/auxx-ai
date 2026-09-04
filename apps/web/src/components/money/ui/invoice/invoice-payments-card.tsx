@@ -17,15 +17,19 @@ import { PaymentsList } from '~/components/money/ui/payments/payments-list'
 import { useSystemValues } from '~/components/resources/hooks'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useSettings } from '~/hooks/use-settings'
+import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import { RecordPaymentDialog } from './record-payment-dialog'
+import { WriteOffDialog } from './write-off-dialog'
 
 const INVOICE_ATTRS = ['invoice_status', 'invoice_balance'] as const
 
 export function InvoicePaymentsCard({ recordId }: DrawerTabProps) {
   const { allowed: isAdmin } = useAdminGate()
+  const { can } = useAccess()
   const [confirm, ConfirmDialog] = useConfirm()
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [writeOffOpen, setWriteOffOpen] = useState(false)
 
   const { getSetting } = useSettings({})
   const currencyCode = (getSetting('organization.currency') as string | null) ?? 'USD'
@@ -77,6 +81,9 @@ export function InvoicePaymentsCard({ recordId }: DrawerTabProps) {
   }
 
   const canRecordPayment = status !== 'void' && balance > 0
+  // A write-off is a ledger post (HANDOFF slot 2K): gated on `ledger.post`,
+  // and only while there is a balance left to write off.
+  const canWriteOff = canRecordPayment && can('ledger.post')
 
   return (
     <div className='flex flex-col gap-2'>
@@ -86,6 +93,11 @@ export function InvoicePaymentsCard({ recordId }: DrawerTabProps) {
             <Plus />
             Record payment
           </Button>
+          {canWriteOff && (
+            <Button variant='ghost' size='xs' onClick={() => setWriteOffOpen(true)}>
+              Write off
+            </Button>
+          )}
         </DrawerCardActions>
       )}
 
@@ -107,6 +119,17 @@ export function InvoicePaymentsCard({ recordId }: DrawerTabProps) {
         balance={balance}
         currencyCode={currencyCode}
         onRecorded={() => {
+          void utils.money.listPayments.invalidate({ invoiceRecordId: recordId })
+        }}
+      />
+
+      <WriteOffDialog
+        open={writeOffOpen}
+        onOpenChange={setWriteOffOpen}
+        invoiceRecordId={recordId}
+        balanceMinor={balance}
+        currencyCode={currencyCode}
+        onWrittenOff={() => {
           void utils.money.listPayments.invalidate({ invoiceRecordId: recordId })
         }}
       />

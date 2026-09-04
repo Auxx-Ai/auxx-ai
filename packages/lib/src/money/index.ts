@@ -16,6 +16,33 @@ export {
   setInvoiceSchedule,
   sweepInvoiceDrafts,
 } from './auto-invoice'
+// ─── Bank deposits (plans/accounting/tasks/06-deposit-grouping.md, slot 1D) ──
+// Appended as one block, per HANDOFF §9a's rule for shared barrels.
+export {
+  BANK_DEPOSIT_SOURCE_TYPE,
+  type BankDepositDetail,
+  type BankDepositRecord,
+  type BankDepositStatus,
+  type CreateBankDepositResult,
+  clearBankDeposit,
+  createBankDeposit,
+  DEFAULT_PAYMENT_ROUTES,
+  getBankDeposit,
+  groupByDay,
+  hasBankDeposits,
+  isBankDepositFrozen,
+  listBankDeposits,
+  listUndepositedPayments,
+  methodsRoutedToUndepositedFunds,
+  PAYMENT_ROUTE_SETTING_KEYS,
+  PAYMENT_ROUTE_SETTING_OPTIONS,
+  type PaymentRoute,
+  type PaymentRouteMethod,
+  resolveBankDepositStatus,
+  resolvePaymentRoute,
+  type UndepositedPaymentRow,
+  updateBankDeposit,
+} from './bank-deposits'
 export {
   type InvoiceBatchItemResult,
   type InvoiceBatchRange,
@@ -67,6 +94,39 @@ export {
 export { convertQuoteToWorkOrder } from './convert-quote'
 export { createInvoiceFromWorkOrder, deleteInvoiceLine, listUninvoicedLines } from './gather'
 export { deleteInvoice, markInvoiceSent, voidInvoice } from './invoice-lifecycle'
+// ── HANDOFF slot 2K: writing off an invoice's balance to bad debt ──────────
+export {
+  type PreviewWriteOffInput,
+  previewWriteOffInvoice,
+  type WriteOffInvoiceInput,
+  writeOffInvoice,
+} from './invoices/write-off'
+// ─── Order fulfillment (tasks/01 phase A, HANDOFF slot 2G) ──────────────────
+// The sanctioned action decision 6.6 chose over a status hook: it carries WHAT
+// shipped, which a status flip cannot, and that is what makes a second
+// fulfillment able to avoid re-recognising the first.
+export {
+  type FulfillOrderInput,
+  type FulfillOrderLine,
+  type FulfillOrderResult,
+  fulfillmentStatusFor,
+  fulfillOrder,
+  loadOrderFieldContext,
+  nextFulfillmentSequence,
+  ORDER_FULFILLMENT_SOURCE_TYPE,
+  type OrderFieldContext,
+  type OrderForFulfillment,
+  type OrderFulfillment,
+  type OrderFulfillmentLine,
+  type OrderFulfillmentsEnvelope,
+  type OrderLineRemaining,
+  parseFulfillments,
+  previewFulfillment,
+  readOrderForFulfillment,
+  requireOrderFieldContext,
+  shippedByLine,
+  shippingStillOwed,
+} from './orders'
 export {
   disconnectPaymentAccount,
   getPaymentAccount,
@@ -106,6 +166,12 @@ export {
   type PartialPaymentBounds,
   resolvePartialPaymentBounds,
 } from './payments/partial'
+// The payment post door. `syncTransaction` calls it; nothing else should.
+export {
+  listPaymentPostings,
+  PAYMENT_POSTING_TYPE,
+  postPaymentTransaction,
+} from './payments/post-transaction'
 export { sendPaymentReceipt } from './payments/receipt-email'
 export {
   applyStripeEvent,

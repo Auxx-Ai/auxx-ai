@@ -10,4 +10,4 @@ export type {
 } from './name-case/backfill'
 export { backfillContactNameCasing } from './name-case/backfill'
 export type { SequenceScope } from './record-numbering'
-export { recordNumbering } from './record-numbering'
+export { recordNumbering, SEQUENCE_SCOPES } from './record-numbering'

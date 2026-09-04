@@ -8,8 +8,10 @@ import { NotFoundError } from '@auxx/lib/errors'
 import {
   addVisitExtrasToContract,
   approveQuote,
+  clearBankDeposit,
   clearInvoiceSchedule,
   convertQuoteToWorkOrder,
+  createBankDeposit,
   createExtraWorkInvoice,
   createFixedContractInvoice,
   createQuoteFromRequest,
@@ -21,16 +23,23 @@ import {
   deleteManualPayment,
   disconnectPaymentAccount,
   ensureQuoteDocumentPdf,
+  fulfillOrder,
   getAllocationTotalsByTransaction,
+  getBankDeposit,
   getContactBillingOverview,
   getInvoiceSchedule,
   getPaymentAccount,
   getWorkOrderBillingState,
+  listBankDeposits,
+  listUndepositedPayments,
   listWorkOrderPayments,
   markInvoiceSent,
   markQuoteSent,
   prepareDocumentEmail,
+  previewFulfillment,
   previewInvoiceBatch,
+  previewWriteOffInvoice,
+  readOrderForFulfillment,
   recomputeTotals,
   recordManualPayment,
   refundTransaction,
@@ -40,7 +49,9 @@ import {
   setInvoiceSchedule,
   syncAccountState,
   syncInvoiceToQuickbooks,
+  updateBankDeposit,
   voidInvoice,
+  writeOffInvoice,
 } from '@auxx/lib/money'
 import { FeaturePermissionService, getCapabilities, PermissionKey } from '@auxx/lib/permissions'
 import { FeatureKey } from '@auxx/lib/permissions/client'
@@ -53,7 +64,7 @@ import { getOrganizationSetting } from '@auxx/lib/settings'
 import { parseRecordId, recordIdSchema, toRecordId } from '@auxx/types/resource'
 import { and, asc, eq } from 'drizzle-orm'
 import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '../trpc'
+import { createTRPCRouter, permissionProcedure, protectedProcedure } from '../trpc'
 
 /**
  * protectedProcedure + the `dispatch` feature gate — money gates on dispatch (README). Layers
@@ -704,4 +715,294 @@ export const moneyRouter = createTRPCRouter({
       actorId: ctx.session.user.id,
     })
   }),
+
+  /**
+   * The order a fulfillment would be built from: its lines, and how much of
+   * each is still to ship.
+   *
+   * `ledgerView` rather than a dispatch key: the shipment log exists to answer
+   * a ledger question, and the dialog that reads it is about to post revenue.
+   */
+  orderForFulfillment: permissionProcedure(PermissionKey.ledgerView)
+    .input(z.object({ orderId: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      const result = await readOrderForFulfillment(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        orderId: input.orderId,
+      })
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /**
+   * What fulfilling this shipment WOULD post. Writes nothing.
+   *
+   * Runs the same builder and the same resolver the write runs, so what the
+   * dialog shows is what the write would freeze. A refusal comes back as
+   * `blockedBy`, which `EntryBlockers` renders - it is never a toast.
+   */
+  previewFulfillment: permissionProcedure(PermissionKey.ledgerView)
+    .input(
+      z.object({
+        orderId: z.string().min(1),
+        shippedLines: z
+          .array(z.object({ lineId: z.string().min(1), quantity: z.number().positive() }))
+          .min(1)
+          .max(200),
+        shippedAt: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .optional(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const result = await previewFulfillment(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        ...input,
+      })
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /**
+   * Record what shipped and post the revenue it recognises
+   * (plans/accounting/tasks/01-post-revenue-to-the-ledger.md phase A, handoff
+   * decision 6.6).
+   *
+   * 🛑 `ledgerPost`, not a `dispatch.board.*` key, and the reason is what this
+   * does rather than what it is called: it writes a `GlPosting`. Recognising
+   * revenue is a ledger write and `ledgerPost` is the key that says somebody may
+   * make one. The lib function asserts nothing at all
+   * (`docs/lib-module-guide.md` §6).
+   *
+   * The result carries the `PostResult` beside the shipment, because `postEntry`
+   * never throws: a locked period or an unmapped revenue role is a card the
+   * screen renders, not an error.
+   */
+  fulfillOrder: permissionProcedure(PermissionKey.ledgerPost)
+    .input(
+      z.object({
+        orderId: z.string().min(1),
+        shippedLines: z
+          .array(z.object({ lineId: z.string().min(1), quantity: z.number().positive() }))
+          .min(1)
+          .max(200),
+        shippedAt: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .optional(),
+        memo: z.string().max(4000).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const result = await fulfillOrder(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        actorUserId: ctx.session.userId,
+        ...input,
+      })
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /**
+   * Bank deposits (plans/accounting/tasks/06-deposit-grouping.md, HANDOFF 1D).
+   *
+   * ⚠️ A BANK deposit - N received payments banked as the one line the
+   * statement shows - never a customer deposit, which is a liability and lives
+   * on `PaymentTransaction`.
+   *
+   * 🛑 Gated on the LEDGER keys, not on `dispatch.board.*` like the rest of this
+   * router: every write here produces or would produce a `GlPosting`, and
+   * `ledgerPost` is the key that says somebody may write to the books. Reads are
+   * `ledgerView`. The lib functions assert nothing at all
+   * (`docs/lib-module-guide.md` §6).
+   */
+  bankDeposit: createTRPCRouter({
+    /**
+     * Payments waiting to be banked: routed to `undeposited_funds` by the org's
+     * route table, and in no deposit. Both halves are SQL filters.
+     */
+    listUndeposited: permissionProcedure(PermissionKey.ledgerView)
+      .input(
+        z
+          .object({
+            method: z.string().min(1).optional(),
+            from: z
+              .string()
+              .regex(/^\d{4}-\d{2}-\d{2}$/)
+              .optional(),
+            to: z
+              .string()
+              .regex(/^\d{4}-\d{2}-\d{2}$/)
+              .optional(),
+            limit: z.number().int().min(1).max(500).optional(),
+          })
+          .optional()
+      )
+      .query(async ({ ctx, input }) => {
+        const result = await listUndepositedPayments(ctx.db, {
+          organizationId: ctx.session.organizationId,
+          ...(input ?? {}),
+        })
+        if (result.isErr()) throw result.error
+        return result.value
+      }),
+
+    /** Recorded deposits, newest first. */
+    list: permissionProcedure(PermissionKey.ledgerView)
+      .input(
+        z
+          .object({
+            status: z.enum(['pending', 'cleared']).optional(),
+            limit: z.number().int().min(1).max(500).optional(),
+          })
+          .optional()
+      )
+      .query(async ({ ctx, input }) => {
+        const result = await listBankDeposits(ctx.db, {
+          organizationId: ctx.session.organizationId,
+          ...(input ?? {}),
+        })
+        if (result.isErr()) throw result.error
+        return result.value
+      }),
+
+    /** One deposit with the payments it grouped. */
+    get: permissionProcedure(PermissionKey.ledgerView)
+      .input(z.object({ depositId: z.string().min(1) }))
+      .query(async ({ ctx, input }) => {
+        const result = await getBankDeposit(ctx.db, {
+          organizationId: ctx.session.organizationId,
+          depositId: input.depositId,
+        })
+        if (result.isErr()) throw result.error
+        if (!result.value) throw new NotFoundError('That bank deposit does not exist')
+        return result.value
+      }),
+
+    /**
+     * Group the selected payments and post `Dr cash Cr undeposited_funds`.
+     *
+     * `ledgerPost`: this is the ledger's only writer of the `cash` role. The
+     * result carries the `PostResult` alongside the record, because `postEntry`
+     * never throws - a locked period is a refusal the screen renders as an
+     * `EntryBlockers` card, not an error.
+     */
+    create: permissionProcedure(PermissionKey.ledgerPost)
+      .input(
+        z.object({
+          paymentIds: z.array(z.string().min(1)).min(1).max(500),
+          depositDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+          bankAccountCode: z.string().min(1).max(32),
+          reference: z.string().max(120).optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const result = await createBankDeposit(ctx.db, {
+          organizationId: ctx.session.organizationId,
+          actorUserId: ctx.session.userId,
+          ...input,
+        })
+        if (result.isErr()) throw result.error
+        return result.value
+      }),
+
+    /**
+     * Match a deposit to the bank line that shows it.
+     *
+     * `ledgerPost` rather than a read key: clearing FREEZES the row, and after
+     * it the only correction is a reversal.
+     */
+    clear: permissionProcedure(PermissionKey.ledgerPost)
+      .input(
+        z.object({
+          depositId: z.string().min(1),
+          bankTransactionId: z.string().min(1).max(200),
+          clearedAt: z.string().datetime().optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const result = await clearBankDeposit(ctx.db, {
+          organizationId: ctx.session.organizationId,
+          actorUserId: ctx.session.userId,
+          depositId: input.depositId,
+          bankTransactionId: input.bankTransactionId,
+          clearedAt: input.clearedAt ? new Date(input.clearedAt) : undefined,
+        })
+        if (result.isErr()) throw result.error
+        return result.value
+      }),
+
+    /** Correct a deposit's slip details while it is still unmatched and unposted. */
+    update: permissionProcedure(PermissionKey.ledgerPost)
+      .input(
+        z.object({
+          depositId: z.string().min(1),
+          depositDate: z
+            .string()
+            .regex(/^\d{4}-\d{2}-\d{2}$/)
+            .optional(),
+          bankAccountCode: z.string().min(1).max(32).optional(),
+          reference: z.string().max(120).optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const result = await updateBankDeposit(ctx.db, {
+          organizationId: ctx.session.organizationId,
+          actorUserId: ctx.session.userId,
+          ...input,
+        })
+        if (result.isErr()) throw result.error
+        return result.value
+      }),
+  }),
+
+  /**
+   * Write off an invoice's balance to bad debt (HANDOFF slot 2K,
+   * gap-analysis.md §3 item 9). `ledgerPost` for the same reason `bankDeposit`
+   * above is: this produces a `GlPosting`, so it belongs with the people
+   * trusted to write to the books. `postEntry` never throws - a locked period
+   * or an unmapped role is a refusal the dialog renders as `EntryBlockers`,
+   * not an error, and the invoice's own status is untouched until the post
+   * actually lands.
+   */
+  writeOffInvoice: permissionProcedure(PermissionKey.ledgerPost)
+    .input(
+      z.object({
+        invoiceRecordId: recordIdSchema,
+        amountMinor: z.number().int().positive().optional(),
+        reason: z.string().min(1).max(2000),
+        expenseAccountCode: z.string().min(1).max(32).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { entityInstanceId } = parseRecordId(input.invoiceRecordId)
+      return writeOffInvoice(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        actorUserId: ctx.session.userId,
+        invoiceId: entityInstanceId,
+        amountMinor: input.amountMinor,
+        reason: input.reason,
+        expenseAccountCode: input.expenseAccountCode,
+      })
+    }),
+
+  /** What a write-off WOULD look like. Persists nothing. */
+  previewWriteOff: permissionProcedure(PermissionKey.ledgerView)
+    .input(
+      z.object({
+        invoiceRecordId: recordIdSchema,
+        amountMinor: z.number().int().positive().optional(),
+        expenseAccountCode: z.string().min(1).max(32).optional(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const { entityInstanceId } = parseRecordId(input.invoiceRecordId)
+      return previewWriteOffInvoice(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        invoiceId: entityInstanceId,
+        amountMinor: input.amountMinor,
+        expenseAccountCode: input.expenseAccountCode,
+      })
+    }),
 })

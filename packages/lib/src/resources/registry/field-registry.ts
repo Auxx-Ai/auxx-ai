@@ -5,6 +5,10 @@ import type { FieldId } from '@auxx/types/field'
 import { ENTITY_DEFINITION_TYPES } from '@auxx/types/resource'
 import type { ResourceField, ResourceFieldRegistry, ResourceTableDefinition } from './field-types'
 import { ARTICLE_FIELDS } from './resources/article-fields'
+import { BANK_ACCOUNT_FIELDS } from './resources/bank-account-fields'
+import { BANK_DEPOSIT_FIELDS } from './resources/bank-deposit-fields'
+import { BANK_RULE_FIELDS } from './resources/bank-rule-fields'
+import { BANK_TRANSACTION_FIELDS } from './resources/bank-transaction-fields'
 import { BUILD_FIELDS } from './resources/build-fields'
 import { CATALOG_GROUP_FIELDS } from './resources/catalog-group-fields'
 import { CATALOG_ITEM_FIELDS } from './resources/catalog-item-fields'
@@ -14,6 +18,7 @@ import { DATASET_FIELDS } from './resources/dataset-fields'
 import { GL_ACCOUNT_FIELDS } from './resources/gl-account-fields'
 import { INBOX_FIELDS } from './resources/inbox-fields'
 import { INVOICE_FIELDS } from './resources/invoice-fields'
+import { JOURNAL_ENTRY_FIELDS } from './resources/journal-entry-fields'
 import { KB_FIELDS } from './resources/kb-fields'
 import { LINE_ITEM_FIELDS } from './resources/line-item-fields'
 import { MEETING_FIELDS } from './resources/meeting-fields'
@@ -149,7 +154,12 @@ export const RESOURCE_FIELD_REGISTRY: ResourceFieldRegistry = {
   vendor_payment: VENDOR_PAYMENT_FIELDS,
   vendor_payment_allocation: VENDOR_PAYMENT_ALLOCATION_FIELDS,
   gl_account: GL_ACCOUNT_FIELDS,
+  journal_entry: JOURNAL_ENTRY_FIELDS,
   build: BUILD_FIELDS,
+  bank_deposit: BANK_DEPOSIT_FIELDS,
+  bank_account: BANK_ACCOUNT_FIELDS,
+  bank_transaction: BANK_TRANSACTION_FIELDS,
+  bank_rule: BANK_RULE_FIELDS,
   tariff_code: TARIFF_CODE_FIELDS,
   tariff_rate: TARIFF_RATE_FIELDS,
 }

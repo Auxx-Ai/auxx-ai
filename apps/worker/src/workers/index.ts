@@ -935,6 +935,27 @@ export async function setupSchedules() {
     }
   )
 
+  // Every day around 06:20 (jittered) - the bank feed's nightly sweep (HANDOFF
+  // slot 3A). Two duties that both fail SILENTLY if nobody runs them: releasing
+  // Financial Connections accounts that are still billed 30c/month with nothing
+  // feeding from them, and storing each bank account's coverage floor. 6 AM
+  // because 2-5 AM is already crowded and neither duty is time-critical.
+  const bankFeedJitter = Math.floor(Math.random() * 20)
+  await maintenanceQueue.upsertJobScheduler(
+    'bankFeedMaintenanceJob',
+    { pattern: `${bankFeedJitter} 6 * * *` },
+    {
+      data: {},
+      opts: {
+        attempts: 2,
+        backoff: { type: 'exponential', delay: 60000 },
+        priority: 10,
+        removeOnComplete: { count: 14 },
+        removeOnFail: { count: 30 },
+      },
+    }
+  )
+
   // Every day at 4:30 AM - Reconcile the RecordIdentity index against the
   // identity FieldValue cells (drift backstop for any un-instrumented writer).
   await maintenanceQueue.upsertJobScheduler(

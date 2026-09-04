@@ -111,6 +111,19 @@ const OUTCOMES: Record<PostResultStatus, OutcomeCopy> = {
     detail: 'Nothing was written. A retry cannot change this answer.',
     tone: 'failure',
   },
+  inventory_role_refused: {
+    icon: TriangleAlert,
+    title: 'Refused: a line names an inventory account',
+    detail:
+      'Nothing was written. The three inventory accounts are asserted by the month-end close and cannot be hand-keyed; a manual line there would be reversed by the next close.',
+    tone: 'failure',
+  },
+  account_invalid: {
+    icon: TriangleAlert,
+    title: 'Refused: a line names an account the chart does not hold',
+    detail: 'Nothing was written. The message names the row; fix the code or restore the account.',
+    tone: 'failure',
+  },
   nothing_to_close: {
     icon: CircleSlash,
     title: 'Nothing to close',

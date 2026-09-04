@@ -803,8 +803,33 @@ export async function applyStripeEvent(event: Stripe.Event): Promise<void> {
       return
     }
 
-    default:
+    default: {
+      // ── The bank feed (plans/bank-connection/01 §3, HANDOFF slot 3A) ──────────
+      //
+      // 🛑 ONE case, and it names no provider logic of its own: it asks the feed
+      // module whether this event type is one of its four, and hands the event over.
+      // The list and the handler live together in `banking/feed/webhook.ts` so they
+      // cannot drift - a case list here that fell behind the handler would silently
+      // stop routing an event type, and a bank feed that stops and says nothing is
+      // the most expensive bug in this subsystem.
+      //
+      // The lookup it does (`fca_...` → `Credential.metadata.providerAccountId` →
+      // `DataConnector`) exists nowhere else: both webhook dispatch jobs key on
+      // org-scoped ids that a PLATFORM Stripe event does not carry
+      // (plans/accounting/implementation-review.md §2).
+      //
+      // Lazy-imported so `money/` never statically pulls the connector engine.
+      // A throw propagates: the route 500s and Stripe retries, which is what we want.
+      const { applyFinancialConnectionsEvent, isFinancialConnectionsEvent } = await import(
+        '../../banking/feed/webhook'
+      )
+      if (isFinancialConnectionsEvent(event.type)) {
+        await applyFinancialConnectionsEvent(
+          event as unknown as Parameters<typeof applyFinancialConnectionsEvent>[0]
+        )
+      }
       return
+    }
   }
 }
 

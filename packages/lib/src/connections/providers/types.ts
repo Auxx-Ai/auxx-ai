@@ -28,6 +28,35 @@ export type ProviderUiMetadata = {
 }
 
 /**
+ * Declared, generically-read capabilities of a connection provider (decision B13).
+ *
+ * Deliberately a closed set of booleans rather than a free-form bag: a capability is
+ * only useful if generic code already knows what to do with it, and a key nothing
+ * reads is a comment pretending to be configuration.
+ */
+export type ProviderCapabilities = {
+  /**
+   * The org may hold SEVERAL credentials for this provider at once.
+   *
+   * 🛑 The default is one credential per provider per organization, and the connect
+   * return route enforces it by reusing the first credential it finds. That is right
+   * for a payments account and wrong for a bank: Bank of America plus Wells Fargo is
+   * two logins, and reusing one row for the second silently replaces the first. When
+   * this is set the route dedupes on the completion's `providerAccountId` instead, so
+   * re-running onboarding for a login already connected still updates in place.
+   */
+  multiAccount?: boolean
+  /**
+   * `start()` returns `{ kind: 'embed' }` - the browser mounts the provider's own
+   * widget rather than navigating away, and POSTs the result back to the return
+   * route itself. The connect surface still branches on what `start` ACTUALLY
+   * returned; this flag is what lets a caller know a page navigation is not coming
+   * before it calls (so it can `fetch` the start route instead of following it).
+   */
+  embed?: boolean
+}
+
+/**
  * A platform built-in connection provider. This is the column-shaped def with
  * one indirection: instead of the encrypted `oauth2ClientId/Secret` columns it
  * names the platform ENV vars that hold them — `ensure-platform-providers`
@@ -45,6 +74,19 @@ export type PlatformProviderDef = {
    * `PLATFORM_PROVIDER_DEFS` by `providerKey` (`getProviderByKey`).
    */
   hostedProvisionKey?: string
+  /**
+   * What this provider's connect flow can do, DECLARED here and read generically
+   * (decision B13 - the acceptance test is that a second provider of the same shape
+   * needs zero code changes, only a definition). The precedent is `authApply` and
+   * `baseUrlTemplate`: `'https://{shop}.myshopify.com'` is data the transport
+   * interpolates, not an `if (provider === 'shopify')`.
+   *
+   * 🛑 Nothing in the routes or the UI may branch on `providerKey`. A capability that
+   * is not declared here is one a caller has to guess, and the one time Shopify's
+   * non-bearer header was not declared, "every Shopify definition carried the wrong
+   * bearer spec unnoticed".
+   */
+  capabilities?: ProviderCapabilities
   label: string
   description?: string
   /** true = org-wide credential, false = per-user. Default false. */

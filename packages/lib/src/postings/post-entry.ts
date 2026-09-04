@@ -45,7 +45,8 @@ import { buildDocNumber } from './doc-number'
 import { buildPostingDraft, type PostingAssertions, requiresAssertions } from './draft'
 import { assertPeriodOpen, type PeriodLock, parsePeriodKey } from './periods'
 import { resolveAccountingProvider } from './provider'
-import { resolveRoles } from './resolve-roles'
+import { INVENTORY_ROLES } from './regime'
+import { loadRoleAccountCodes, resolveAccountLines } from './resolve-roles'
 import type {
   BuiltEntry,
   PostEntryInput,
@@ -147,8 +148,13 @@ interface PreparedLine {
    * The role the builder emitted. Stored on the `GlPostingLine` row (decision
    * G8) so a posted line can still answer "which account was this SUPPOSED to
    * be" after the chart is renumbered - and never handed to a provider.
+   *
+   * `null` on a CODE line (a manual or opening entry), because there is no role
+   * to record: the human named the account itself. `GlPostingLine.accountRole`
+   * is nullable for exactly this, and `read-posting.ts` already reads it back as
+   * `string | null`.
    */
-  accountRole: string
+  accountRole: string | null
   resolved: ResolvedPostingLine
 }
 
@@ -156,6 +162,89 @@ interface Refusal {
   status: PostResultStatus
   failureClass: PostFailureClass
   error: string
+}
+
+/**
+ * The posting types that get the inventory-by-name refusal below.
+ *
+ * A builder-produced type is absent because it emits ROLES, and
+ * `findWriterConflicts` in `regime.ts` already governs which of those may drive
+ * an asserted account - declared once, by a human, in that file.
+ *
+ * 🛑 **`opening_balance` was here and is deliberately not any more** (HANDOFF
+ * slot 1C). It is the one hand-keyed entry that MUST name `1310`/`1320`/`1330`:
+ * without those three lines the ledger's inventory opens at zero, and the first
+ * close - which posts `target − baseline` - would then report the entire
+ * opening stock as a movement.
+ *
+ * It does not become a second writer, because the month-end assertion never
+ * reads this entry. `gather-month-end-inventory.ts` takes its prior assertion
+ * from `readOpeningBaseline`, i.e. the `accounting.opening*` SETTINGS, so the
+ * ledger lands on `opening + (target − opening) = target` exactly once. And the
+ * two numbers cannot disagree: the wizard prefills those three rows FROM those
+ * settings and locks them.
+ *
+ * `manual_journal` keeps the refusal in full. A bookkeeper's adjusting entry
+ * against an asserted account IS reversed by the next close, with the residual
+ * landing in the COGS plug where it reads exactly like consumption.
+ *
+ * `bank_transaction` keeps it for the same reason and it is not optional: the
+ * review queue's CODE treatment posts `Dr <the GL code a reviewer picked> /
+ * Cr <the bank account's own GL code>` (bank plan B5), the picker is the whole
+ * chart, and `SINGLE_WRITER_ROLES_BY_POSTING_TYPE.bank_transaction` is `[]` -
+ * correctly, because the entry carries no role at all. So without this line
+ * nothing anywhere stops a reviewer coding a bank line straight into `1310`,
+ * and the next month-end assertion absorbs it into the COGS plug silently.
+ *
+ * Every other ENABLED type emits ROLES (`fulfillment`, `payment`, `payout`,
+ * `bank_deposit`, `month_end_inventory`) and is governed by
+ * `findWriterConflicts`. `write_off` is the one hybrid - its DEBIT leg takes an
+ * optional account code - and it is in this set for that leg.
+ */
+const CODE_ENTRY_TYPES = new Set<PostingType>(['manual_journal', 'bank_transaction', 'write_off'])
+
+/**
+ * Refuse a hand-keyed entry that names one of the three inventory accounts.
+ *
+ * Resolves the org's OWN codes for `INVENTORY_ROLES` and compares them against
+ * the codes the entry actually resolved to, so it catches the account whatever
+ * number this org gave it - which is the whole point of `G8` read backwards.
+ * An org that has not mapped a given inventory role has nothing to protect for
+ * it and contributes no code, rather than refusing everything.
+ *
+ * The message names the account AND the remedy, because "you may not touch
+ * 1320" with no next step is how a bookkeeper ends up creating a duplicate
+ * account called "WIP adjustment" and posting there instead.
+ */
+async function findInventoryCodeRefusal(
+  db: Database,
+  organizationId: string,
+  lines: PreparedLine[]
+): Promise<Refusal | undefined> {
+  const guarded = await loadRoleAccountCodes(db, organizationId, [...INVENTORY_ROLES])
+  if (guarded.size === 0) return undefined
+
+  const byCode = new Map<string, string>()
+  for (const [role, account] of guarded) byCode.set(account.code, role)
+
+  const offending: string[] = []
+  for (const line of lines) {
+    const role = byCode.get(line.resolved.accountCode)
+    if (!role) continue
+    const name = line.resolved.accountName ?? ''
+    offending.push(`${line.resolved.accountCode}${name ? ` ${name}` : ''} (${role})`)
+  }
+  if (offending.length === 0) return undefined
+
+  return {
+    status: 'inventory_role_refused',
+    failureClass: 'data',
+    error:
+      `This entry names ${[...new Set(offending)].join(', ')}. ` +
+      'The three inventory accounts are asserted to the subledger by the month-end close, so a ' +
+      'hand-keyed line against them is reversed by the next close and its residual lands in COGS. ' +
+      'Adjust inventory with a stock movement and let the close console post the difference.',
+  }
 }
 
 interface PreparedEntry {
@@ -244,36 +333,40 @@ async function prepareEntry(
   // behind. `resolveRoles` answers once for the whole set and its message names
   // every offending role - a bookkeeper fixing a close needs the list, not a
   // treasure hunt.
-  const roles = [...new Set(entry.lines.map((line) => line.accountRole))]
-  const resolved = await resolveRoles(db, organizationId, roles)
+  // Sorted once, here: `lineNumber` is derived from this order and is unique
+  // per posting, so the order the rows are written in IS the order a
+  // bookkeeper reads them in. The sort happens BEFORE resolution so the row
+  // numbers in a refusal message match the rows a bookkeeper is looking at.
+  const ordered = [...entry.lines].sort((a, b) => a.sortOrder - b.sortOrder)
+  const resolved = await resolveAccountLines(db, organizationId, ordered)
 
   const lines: PreparedLine[] = []
   if (resolved.isErr()) {
+    // A code line that names nothing in the chart is `account_invalid`, not
+    // `account_unmapped`: "you never mapped this role" and "there is no such
+    // account" send two different people to two different screens, and the
+    // remedy card branches on the status.
+    const hasCodeLine = ordered.some((line) => !!line.accountCode)
     refusal ??= {
-      status: 'account_unmapped',
+      status: hasCodeLine ? 'account_invalid' : 'account_unmapped',
       failureClass: 'configuration',
       error: resolved.error.message,
     }
   } else {
-    const accounts = resolved.value
-    // Sorted once, here: `lineNumber` is derived from this order and is unique
-    // per posting, so the order the rows are written in IS the order a
-    // bookkeeper reads them in.
-    const ordered = [...entry.lines].sort((a, b) => a.sortOrder - b.sortOrder)
-    for (const line of ordered) {
-      const account = accounts.get(line.accountRole)
+    for (const [index, line] of ordered.entries()) {
+      const account = resolved.value[index]
       if (!account) {
-        // Unreachable: `resolveRoles` refuses rather than omit a role. Asserted
-        // because the alternative is a line with no account code.
+        // Unreachable: `resolveAccountLines` refuses rather than omit a line.
+        // Asserted because the alternative is a line with no account code.
         refusal ??= {
           status: 'account_unmapped',
           failureClass: 'configuration',
-          error: `Role '${line.accountRole}' resolved to nothing. Refusing to post a line with no account.`,
+          error: `Row ${index + 1} resolved to nothing. Refusing to post a line with no account.`,
         }
         break
       }
       lines.push({
-        accountRole: line.accountRole,
+        accountRole: line.accountRole ?? null,
         resolved: {
           direction: line.direction,
           amount: line.amount,
@@ -288,6 +381,29 @@ async function prepareEntry(
           accountName: account.name || undefined,
         },
       })
+    }
+
+    // ── 2b. The single-writer refusal, for a CODE-POSTING entry ───────────
+    // A manual journal, a coded bank line or a write-off's expense override can
+    // name `1310` by code, which would make it a
+    // second writer of an account the L1 month-end assertion ASSERTS to a
+    // computed balance. The two are not additive and the conflict is
+    // undetectable downstream: the next close moves the account back to the
+    // subledger's number and dumps the residual into the COGS plug, where it
+    // reads exactly like consumption. Both entries balance. `regime.ts`'s
+    // `findWriterConflicts` cannot see this, by construction - a code line
+    // carries no role - which is why the refusal is here, by NAME.
+    //
+    // 🛑 `cash` is deliberately NOT refused. An opening trial balance must name
+    // the bank balance, and a bookkeeper correcting a deposit has to be able to
+    // reach it. Only `INVENTORY_ROLES` are asserted monthly.
+    //
+    // 🛑 And `opening_balance` is not checked at all: it must name all three
+    // inventory accounts, and it is not a second writer because the month-end
+    // assertion measures from the `accounting.opening*` settings rather than
+    // from this entry. See `CODE_ENTRY_TYPES`.
+    if (!refusal && CODE_ENTRY_TYPES.has(entry.postingType)) {
+      refusal = await findInventoryCodeRefusal(db, organizationId, lines)
     }
   }
 

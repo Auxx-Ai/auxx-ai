@@ -16,6 +16,7 @@ import {
   check,
   index,
   integer,
+  jsonb,
   pgTable,
   sql,
   text,
@@ -94,6 +95,15 @@ export const GlPostingLine = pgTable(
     /** `'stock_movement'` / `'vendor_bill'` + the row id. The audit trail (decision G3). */
     sourceType: text().notNull(),
     sourceId: text().notNull(),
+
+    /**
+     * Reporting dimensions on the line - `{ channel: 'dtc', class: '...' }` -
+     * as an open JSON object. NULLABLE and, as of 2026-09-04, WRITTEN BY
+     * NOTHING (plans/accounting/HANDOFF.md decision 6.5): the column exists so
+     * that adding a dimension later is a builder change, not a table migration
+     * over a ledger that already holds history. Never a lookup key.
+     */
+    dimensions: jsonb(),
 
     createdAt: timestamp({ precision: 3 }).defaultNow().notNull(),
     // NO updatedAt. A ledger line is never updated. A mistake is a reversing entry.

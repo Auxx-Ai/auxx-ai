@@ -307,6 +307,27 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     isVisible: false,
   },
   {
+    // The DRAFT of a hand-authored posting, and the holder of the opening trial
+    // balance (plans/accounting/tasks/02, HANDOFF slot 1A + decision 6.7).
+    // `GlPosting` cannot be the draft: its `pending` means claimed-and-mid-push
+    // and holds the period's unique index, so there is nowhere for "half typed".
+    //
+    // 🛑 `isVisible: false`, like `gl_account` above it. The ledger page and the
+    // journal-entry drawer are the doors, and both need a line grid with a
+    // running Dr/Cr difference. An auto-linked sidebar entry would be a second,
+    // dumber way in, where the lines are a JSON blob nobody can balance.
+    //
+    // 🛑 This line reaches FRESH orgs only - `ensureEntityDefinitions` skips an
+    // org that already holds the def. Entity migration 125 is the other half.
+    entityType: 'journal_entry',
+    apiSlug: 'journal-entries',
+    singular: 'Journal Entry',
+    plural: 'Journal Entries',
+    icon: 'book-open',
+    color: 'indigo',
+    isVisible: false,
+  },
+  {
     // Ships INERT with entity migration 109 (plans/products/build/README.md
     // B10): the def and all 24 of its fields exist in every org, and NOTHING
     // writes them until `packages/lib/src/builds/` lands in phase 2. An entity
@@ -328,6 +349,85 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     icon: 'hammer',
     color: 'orange',
     isVisible: true,
+  },
+  {
+    // The bank run: N received payments banked as ONE line the statement shows
+    // (plans/accounting/tasks/06-deposit-grouping.md). Entity migration 125.
+    //
+    // ⚠️ NOT a customer deposit — that is money taken before delivery, a
+    // liability against `2350 Customer Deposits`, and it lives on
+    // `PaymentTransaction`. Say "bank deposit" in full.
+    //
+    // `isVisible: false` like `gl_account` beside it: the door is Accounting >
+    // Banking > Deposits (ui-plan §2.6), where the undeposited list, the
+    // grouping panel and the recorded deposits all live. An auto-linked entity
+    // sidebar entry would be a second, dumber way into the same records, with
+    // no way to create one — a deposit is only ever created by grouping.
+    //
+    // 🛑 This line reaches FRESH orgs only. `ensureEntityDefinitions` skips an
+    // org that already holds the def, so `isVisible` is read once at creation
+    // and never again.
+    entityType: 'bank_deposit',
+    apiSlug: 'bank-deposits',
+    singular: 'Bank Deposit',
+    plural: 'Bank Deposits',
+    icon: 'landmark',
+    color: 'emerald',
+    isVisible: false,
+  },
+  {
+    // Where the bank feed meets the chart of accounts
+    // (plans/bank-connection/02-connection-architecture.md §6). Entity
+    // migration 125.
+    //
+    // `isVisible: false`: the door is Accounting > Settings > Bank accounts
+    // (ui-plan §2.7), a master-detail page that also carries connect,
+    // reconnect, coverage and the run history. An auto-linked entity sidebar
+    // entry would be a second, dumber way into the same rows.
+    entityType: 'bank_account',
+    apiSlug: 'bank-accounts',
+    singular: 'Bank Account',
+    plural: 'Bank Accounts',
+    icon: 'landmark',
+    color: 'sky',
+    isVisible: false,
+  },
+  {
+    // One line on a bank statement, from the feed or from an imported file.
+    //
+    // 🛑 A CONTRIBUTING-mode target, never an owned one (02 §5.1): the def is
+    // seeded here and owned by auxx, and the connector contributes with
+    // per-field ownership so orphan-archive is structurally unavailable. A
+    // sweep that could archive a row because it fell out of the upstream
+    // window would be deleting a posted journal entry's source document.
+    //
+    // `isVisible: false`: the door is the For Review queue under Accounting >
+    // Banking, which is a triage surface with three treatments — not a list
+    // with a create button.
+    entityType: 'bank_transaction',
+    apiSlug: 'bank-transactions',
+    singular: 'Bank Transaction',
+    plural: 'Bank Transactions',
+    icon: 'receipt',
+    color: 'sky',
+    isVisible: false,
+  },
+  {
+    // Suggest-from-history is the PRIMARY categorisation mechanism (bank plan
+    // 03 §4 - Stripe FC has no merchant enrichment and no categories); a
+    // bank_rule is the opt-in, ordered layer on top of it. Entity migration
+    // 132 (HANDOFF slot 3C).
+    //
+    // `isVisible: false`: the door is Accounting > Banking > Rules
+    // (ui-plan.md §2.8), a RecordsView tab with RecordDrawer editing - not an
+    // auto-linked sidebar entry.
+    entityType: 'bank_rule',
+    apiSlug: 'bank-rules',
+    singular: 'Bank Rule',
+    plural: 'Bank Rules',
+    icon: 'list-checks',
+    color: 'blue',
+    isVisible: false,
   },
   {
     // The classification registry, one record per (code, country)
@@ -537,9 +637,44 @@ export const DISPLAY_FIELD_CONFIG: Record<string, DisplayFieldConfig> = {
     primaryDisplayField: 'code',
     secondaryDisplayField: 'name',
   },
+  // The number is issued by a hook on create, so it is always there to read.
+  // `memo` is nullable and `computeDisplayValue` has no fallback, which is
+  // exactly why it is the SECONDARY: an entry with no memo still renders as
+  // `JNL-0007` rather than nameless.
+  journal_entry: {
+    primaryDisplayField: 'number',
+    secondaryDisplayField: 'memo',
+  },
   build: {
     primaryDisplayField: 'number',
     secondaryDisplayField: 'part',
+  },
+  // The number is issued by a hook on create and never edited, so it is always
+  // present; `depositDate` is required, which is what makes it a safe secondary
+  // (`computeDisplayValue` has no fallback and a null renders the row nameless).
+  bank_deposit: {
+    primaryDisplayField: 'number',
+    secondaryDisplayField: 'depositDate',
+  },
+  // `name` is required and `institution` is not, which is the right way round:
+  // `computeDisplayValue` has no fallback, so a null PRIMARY renders the row
+  // nameless while a null secondary just renders nothing.
+  bank_account: {
+    primaryDisplayField: 'name',
+    secondaryDisplayField: 'institution',
+  },
+  // `description` is the raw bank string and is what a person recognises a line
+  // by; `postedAt` disambiguates the four identical fuel charges in a month.
+  bank_transaction: {
+    primaryDisplayField: 'description',
+    secondaryDisplayField: 'postedAt',
+  },
+  // `name` is required; `matchValue` is what a person recognises the pattern
+  // by. `computeDisplayValue` has no fallback, so the required field is
+  // always the primary.
+  bank_rule: {
+    primaryDisplayField: 'name',
+    secondaryDisplayField: 'matchValue',
   },
 }
 

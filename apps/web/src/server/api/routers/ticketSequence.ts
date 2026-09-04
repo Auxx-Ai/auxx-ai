@@ -1,24 +1,20 @@
 // src/server/api/routers/ticketSequence.ts
 
 import { schema } from '@auxx/database'
-import { recordNumbering } from '@auxx/lib/records'
+import { recordNumbering, SEQUENCE_SCOPES } from '@auxx/lib/records'
 import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
 
-const scopeSchema = z
-  .enum([
-    'ticket',
-    'work_order',
-    'service_request',
-    'quote',
-    'invoice',
-    'order',
-    'purchase_order',
-    'vendor_bill',
-    'build',
-  ])
-  .default('ticket')
+/**
+ * Derived from `SEQUENCE_SCOPES` rather than retyped.
+ *
+ * This used to be a hand-written copy of the same nine strings, so every scope
+ * added to `record-numbering.ts` broke this file's typecheck until somebody
+ * noticed. The counter is per (org, scope) and a scope with no configured row
+ * simply reads its defaults, so widening the enum adds no UI on its own.
+ */
+const scopeSchema = z.enum(SEQUENCE_SCOPES).default('ticket')
 
 export const ticketSequenceRouter = createTRPCRouter({
   // Get the record sequence settings for an organization+scope

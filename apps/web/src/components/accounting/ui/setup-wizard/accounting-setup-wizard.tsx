@@ -12,6 +12,7 @@ import { WizardConnectPage } from './wizard-connect-page'
 import { WizardCostingPage } from './wizard-costing-page'
 import { WizardDonePage } from './wizard-done-page'
 import { WizardOpeningPage } from './wizard-opening-page'
+import { WizardOpeningTbPage } from './wizard-opening-tb-page'
 import { WizardPeriodPage } from './wizard-period-page'
 import type { WizardLeaveDirection, WizardStepHandle } from './wizard-step-handle'
 import { WizardWelcomePage } from './wizard-welcome-page'
@@ -25,6 +26,11 @@ const PAGES = [
   'welcome',
   'period',
   'opening',
+  // 🛑 The trial balance sits AFTER the inventory snapshot and the order is
+  // load-bearing: its three inventory rows are prefilled from the
+  // `accounting.opening*` keys the previous page writes, and locked. Put it
+  // first and those rows would be blank with no way to fill them.
+  'openingTrialBalance',
   'costing',
   'accounts',
   'connect',
@@ -36,7 +42,8 @@ type WizardPage = (typeof PAGES)[number]
 const PAGE_TITLES: Record<WizardPage, string> = {
   welcome: 'Set up accounting',
   period: 'Accounting period',
-  opening: 'Opening balances',
+  opening: 'Opening inventory',
+  openingTrialBalance: 'Opening trial balance',
   costing: 'Costing',
   accounts: 'Account roles',
   connect: 'Accounting system',
@@ -50,9 +57,10 @@ export interface AccountingSetupWizardProps {
 }
 
 /**
- * `AccountingSetupWizard` (plans/money/tasks/13-accounting-ui.md section 3.3) - an eight-page
+ * `AccountingSetupWizard` (plans/money/tasks/13-accounting-ui.md section 3.3) - a nine-page
  * `DialogNav` wizard covering the things that have to be true before a month-end entry can
- * legally be posted (accounting period, opening balances, costing, the role map) plus the
+ * legally be posted (accounting period, the opening inventory snapshot, the opening trial balance, costing, the
+ * role map) plus the
  * `G19` provider pair - connect an accounting system, then say which of ITS accounts each of
  * ours corresponds to - and a "finalize" page that freezes the opening baseline.
  *
@@ -77,6 +85,7 @@ export function AccountingSetupWizard({ open, onOpenChange }: AccountingSetupWiz
   const [page, setPage] = useState<WizardPage>('welcome')
   const periodRef = useRef<WizardStepHandle | null>(null)
   const openingRef = useRef<WizardStepHandle | null>(null)
+  const openingTbRef = useRef<WizardStepHandle | null>(null)
   const costingRef = useRef<WizardStepHandle | null>(null)
 
   // Reset to the first page each time the wizard is (re)opened.
@@ -108,9 +117,11 @@ export function AccountingSetupWizard({ open, onOpenChange }: AccountingSetupWiz
         ? periodRef.current
         : page === 'opening'
           ? openingRef.current
-          : page === 'costing'
-            ? costingRef.current
-            : null
+          : page === 'openingTrialBalance'
+            ? openingTbRef.current
+            : page === 'costing'
+              ? costingRef.current
+              : null
     return handle?.tryAdvance(direction) ?? true
   }
 
@@ -145,6 +156,9 @@ export function AccountingSetupWizard({ open, onOpenChange }: AccountingSetupWiz
           </DialogNavPage>
           <DialogNavPage value='opening' size='xl'>
             <WizardOpeningPage ref={openingRef} />
+          </DialogNavPage>
+          <DialogNavPage value='openingTrialBalance' size='xl'>
+            <WizardOpeningTbPage ref={openingTbRef} />
           </DialogNavPage>
           <DialogNavPage value='costing' size='lg'>
             <WizardCostingPage ref={costingRef} />

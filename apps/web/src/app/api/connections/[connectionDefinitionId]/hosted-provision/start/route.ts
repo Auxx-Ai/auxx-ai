@@ -12,7 +12,7 @@ import { type NextRequest, NextResponse } from 'next/server'
 import { auth } from '~/auth/server'
 
 const HOSTED_PROVISION_REDIRECT_BASE = process.env.NGROK_URL || WEBAPP_URL
-/** Onboarding can take a while (the user may abandon and come back) — keep the state generous. */
+/** Onboarding can take a while (the user may abandon and come back) - keep the state generous. */
 const STATE_TTL_SECONDS = 60 * 60 * 24
 
 const logger = createScopedLogger('connection-hosted-provision-start')
@@ -26,13 +26,13 @@ interface HostedProvisionState {
   connectionId?: string
 }
 
-/** Validate a returnTo value — must be a relative path, not protocol-relative. */
+/** Validate a returnTo value - must be a relative path, not protocol-relative. */
 function isValidReturnTo(value: string | null | undefined): value is string {
   return !!value && value.startsWith('/') && !value.startsWith('//')
 }
 
 /**
- * Generalized hosted-provision Start Route — platform providers only.
+ * Generalized hosted-provision Start Route - platform providers only.
  * GET /api/connections/:connectionDefinitionId/hosted-provision/start
  *
  * `:connectionDefinitionId` is resolved smartly: it matches either a ConnectionDefinition `id`
@@ -42,7 +42,7 @@ function isValidReturnTo(value: string | null | undefined): value is string {
  *  - Fresh connect (no `?state=`): session-guarded, mints a new state token and redirects into
  *    the provider's hosted onboarding flow.
  *  - Refresh leg (`?state=<token>`): the provider's `refresh_url` re-enters here when a hosted
- *    link expires mid-flow. Reuses the already-stored state (no session required — the provider
+ *    link expires mid-flow. Reuses the already-stored state (no session required - the provider
  *    calls this directly) and re-mints a link via the same idempotent `handler.start`.
  */
 export async function GET(
@@ -70,7 +70,7 @@ export async function GET(
       }
       state = stateParam
       stateData = JSON.parse(raw) as HostedProvisionState
-      // Extend the TTL — a refresh mid-flow means onboarding is still in progress.
+      // Extend the TTL - a refresh mid-flow means onboarding is still in progress.
       await redis.setex(`hosted-provision:${state}`, STATE_TTL_SECONDS, JSON.stringify(stateData))
     } else {
       // Fresh connect: session-guarded.
@@ -112,7 +112,7 @@ export async function GET(
       await redis.setex(`hosted-provision:${state}`, STATE_TTL_SECONDS, JSON.stringify(stateData))
     }
 
-    // Code-native resolution (fact §3): the def carries no `hostedProvisionKey` column — look the
+    // Code-native resolution (fact §3): the def carries no `hostedProvisionKey` column - look the
     // provider up in the platform catalog by its providerKey and read the key off the def.
     const provider = getProviderByKey(stateData.providerKey)
     if (!provider?.hostedProvisionKey) {
@@ -132,7 +132,7 @@ export async function GET(
       refresh: !!stateParam,
     })
 
-    const { redirectUrl } = await handler.start({
+    const started = await handler.start({
       organizationId: stateData.organizationId,
       userId: stateData.userId,
       connectionDefinitionId: stateData.connectionDefinitionId,
@@ -140,7 +140,22 @@ export async function GET(
       refreshUrl,
     })
 
-    return NextResponse.redirect(redirectUrl)
+    // 🛑 Branch on WHAT CAME BACK, never on which provider it is (decision B13). A
+    // `redirect` flow is hosted by the provider and continues as a page navigation; an
+    // `embed` flow has no page to navigate to, so the caller gets JSON, mounts the
+    // provider's widget itself, and POSTs the result to `returnUrl` when it finishes.
+    // The `state` token travels with the JSON because the browser - not the provider -
+    // is what completes an embed flow, and the return route still keys on it.
+    if (started.kind === 'embed') {
+      return NextResponse.json({
+        kind: 'embed',
+        config: started.config,
+        state,
+        returnUrl,
+      })
+    }
+
+    return NextResponse.redirect(started.url)
   } catch (error) {
     logger.error('Hosted-provision start failed', {
       error: error instanceof Error ? error.message : String(error),

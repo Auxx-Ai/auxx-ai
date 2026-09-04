@@ -150,11 +150,28 @@ export const ModelTypeValues = [
   'vendor_payment_allocation',
   'gl_account',
   'build',
+  // Undeposited funds moved to the bank as one line per bank run
+  // (plans/accounting/tasks/06-deposit-grouping.md). NOT a customer deposit,
+  // which is a liability and lives on `PaymentTransaction`.
+  'bank_deposit',
+  // The bank feed (plans/bank-connection/02-connection-architecture.md §6).
+  // `bank_account` is where the feed meets the chart of accounts;
+  // `bank_transaction` is a CONTRIBUTING-mode target, so the connector owns the
+  // raw columns and may never touch the review ones.
+  'bank_account',
+  'bank_transaction',
+  // Rules and suggestions over bank_transaction (HANDOFF slot 3C, migration
+  // 132). Suggest-from-history is the primary mechanism; a bank_rule is the
+  // opt-in, ordered layer applied on top of it.
+  'bank_rule',
   // The tariff schedule (plans/money/tasks/29-tariff-schedule.md §1). A duty
   // rate is a function of (classification, origin, date); `tariff_code` is the
   // first two and `tariff_rate` is the third.
   'tariff_code',
   'tariff_rate',
+  // The draft of a hand-authored posting, and the holder of the opening trial
+  // balance (plans/accounting/tasks/02-manual-journal-entry.md).
+  'journal_entry',
 ] as const
 
 /**
@@ -206,8 +223,13 @@ export const ModelTypes = {
   VENDOR_PAYMENT_ALLOCATION: 'vendor_payment_allocation',
   GL_ACCOUNT: 'gl_account',
   BUILD: 'build',
+  BANK_DEPOSIT: 'bank_deposit',
+  BANK_ACCOUNT: 'bank_account',
+  BANK_TRANSACTION: 'bank_transaction',
+  BANK_RULE: 'bank_rule',
   TARIFF_CODE: 'tariff_code',
   TARIFF_RATE: 'tariff_rate',
+  JOURNAL_ENTRY: 'journal_entry',
 } as const
 
 /**
@@ -584,6 +606,55 @@ export const ModelTypeMeta: Record<
     // there is a UI and a way to create a row.
     hasDetailPage: true,
   },
+  bank_deposit: {
+    label: 'Bank Deposit',
+    plural: 'Bank Deposits',
+    icon: 'landmark',
+    color: 'emerald',
+    apiSlug: 'bank-deposits',
+    dbTable: 'EntityInstance',
+    // Grouped and recorded from Accounting > Banking > Deposits
+    // (plans/accounting/ui-plan.md §2.6), read back in the record drawer. There
+    // is no `/app/bank-deposits/[id]` route, and claiming one here would put a
+    // fullscreen button on the drawer that 404s.
+    hasDetailPage: false,
+  },
+  bank_account: {
+    label: 'Bank Account',
+    plural: 'Bank Accounts',
+    icon: 'landmark',
+    color: 'sky',
+    apiSlug: 'bank-accounts',
+    dbTable: 'EntityInstance',
+    // The door is Accounting > Settings > Bank accounts (ui-plan.md §2.7), a
+    // master-detail settings page. There is no `/app/bank-accounts/[id]` route,
+    // and claiming one here would put a fullscreen button on the drawer that
+    // 404s.
+    hasDetailPage: false,
+  },
+  bank_transaction: {
+    label: 'Bank Transaction',
+    plural: 'Bank Transactions',
+    icon: 'receipt',
+    color: 'sky',
+    apiSlug: 'bank-transactions',
+    dbTable: 'EntityInstance',
+    // Read in the For Review queue under Accounting > Banking, and in the record
+    // drawer. Same reasoning as `bank_deposit`: no standalone detail route.
+    hasDetailPage: false,
+  },
+  bank_rule: {
+    label: 'Bank Rule',
+    plural: 'Bank Rules',
+    icon: 'list-checks',
+    color: 'blue',
+    apiSlug: 'bank-rules',
+    dbTable: 'EntityInstance',
+    // The door is Accounting > Banking > Rules (ui-plan.md §2.8), a
+    // RecordsView slug='bank-rules' tab with RecordDrawer editing. No
+    // `/app/bank-rules/[id]` route, same reasoning as its siblings.
+    hasDetailPage: false,
+  },
   tariff_code: {
     label: 'Tariff Code',
     plural: 'Tariff Codes',
@@ -603,6 +674,18 @@ export const ModelTypeMeta: Record<
     color: 'teal',
     apiSlug: 'tariff-rates',
     dbTable: 'EntityInstance',
+    hasDetailPage: false,
+  },
+  journal_entry: {
+    label: 'Journal Entry',
+    plural: 'Journal Entries',
+    icon: 'book-open',
+    color: 'indigo',
+    apiSlug: 'journal-entries',
+    dbTable: 'EntityInstance',
+    // The drawer on the ledger page is the door (`?je=`), not a hand-authored
+    // `/app/journal-entries/[id]` route. There is none, and claiming one here
+    // puts a fullscreen button on the drawer that 404s.
     hasDetailPage: false,
   },
 }
@@ -698,6 +781,12 @@ export const GlPostingTypeValues = [
   'month_end_inventory',
   'receipt',
   'vendor_bill',
+  'manual_journal',
+  'opening_balance',
+  'bank_transaction',
+  'bank_deposit',
+  'write_off',
+  'payment',
 ] as const
 export type GlPostingType = (typeof GlPostingTypeValues)[number]
 

@@ -2528,6 +2528,13 @@
       "when": 1788484617434,
       "tag": "0360_add_disconnected_connector_status",
       "breakpoints": true
+    },
+    {
+      "idx": 361,
+      "version": "7",
+      "when": 1788539797736,
+      "tag": "0361_accounting_posting_types_and_dimensions",
+      "breakpoints": true
     }
   ]
 }

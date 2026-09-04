@@ -36,7 +36,7 @@ const DRAFT_KEYS = [...AUXX_KEYS, ...QBO_KEYS, JOURNAL_REF_KEY] as const
 const ROW_TITLES = ['Raw materials', 'Work in process', 'Finished goods'] as const
 
 /**
- * Page 3 of `AccountingSetupWizard` - the two opening snapshots, side by side, and the difference
+ * Page 3 of `AccountingSetupWizard` ("Opening inventory") - the two opening inventory snapshots, side by side, and the difference
  * between them.
  *
  * 🛑 Neither number silently overrides the other, which is why this is a DIFFERENCE rather than a

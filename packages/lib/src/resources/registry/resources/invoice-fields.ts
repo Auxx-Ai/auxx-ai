@@ -6,13 +6,21 @@ import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
 import type { ResourceField } from '../field-types'
 
-/** Invoice lifecycle status (README §domain, money MI1 build spec §B.1). */
+/**
+ * Invoice lifecycle status (README §domain, money MI1 build spec §B.1).
+ *
+ * `written_off` added by plans/accounting/HANDOFF.md slot 2K (entity migration
+ * 129 appends it to the stored options of every existing org - the same
+ * `appendMissingOptions` pattern migration 124 used for `build_source`, since
+ * `FieldValue.optionId` stores the option's `value`, not a code position).
+ */
 export const INVOICE_STATUS_OPTIONS = [
   { label: 'Draft', value: 'draft', color: 'gray' },
   { label: 'Sent', value: 'sent', color: 'blue' },
   { label: 'Partially paid', value: 'partially_paid', color: 'amber' },
   { label: 'Paid', value: 'paid', color: 'green' },
   { label: 'Void', value: 'void', color: 'gray' },
+  { label: 'Written off', value: 'written_off', color: 'red' },
 ] as const
 
 const INVOICE_BILLING_KIND_OPTIONS = [

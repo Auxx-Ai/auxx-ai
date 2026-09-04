@@ -86,7 +86,7 @@ describe('one source for what is guarded', () => {
       document: 'invoice',
       attr: 'invoice_status',
       fieldGuard: guardManualInvoiceLifecycleStatus,
-      values: ['sent', 'partially_paid', 'paid', 'void'],
+      values: ['sent', 'partially_paid', 'paid', 'void', 'written_off'],
       hooks: () => import('../../resources/hooks/invoice-hooks').then((m) => m.INVOICE_HOOKS),
       constants: 'INVOICE_ACTION_STATUSES',
       messageKey: 'INVOICE_ACTION_STATUS_MESSAGE',

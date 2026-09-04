@@ -103,6 +103,13 @@ export const READINESS_LINKS: Record<string, { label: string; href: string }> = 
     label: 'Opening balances',
     href: '/app/accounting/settings/opening',
   },
+  // Added by HANDOFF slot 1C. Same page as the row above: the inventory
+  // snapshot and the full trial balance are two panels of `settings/opening`,
+  // and they are two requirements because they can fail independently.
+  'set-opening-trial-balance': {
+    label: 'Opening trial balance',
+    href: '/app/accounting/settings/opening',
+  },
   'set-costing': {
     label: 'Absorption rates',
     href: '/app/accounting/settings/general',
@@ -114,7 +121,7 @@ export const READINESS_LINKS: Record<string, { label: string; href: string }> = 
  *
  * Built from `SETUP_READINESS_SETTING_KEYS` so the record carries exactly what
  * the predicate reads. `getSetting` falls back to the catalog default, which is
- * `null` for every key here except `accounting.setupState` (`'draft'`) — and a
+ * `null` for every key here except `accounting.setupState` (`'draft'`), and a
  * `null` must stay a `null`, because an unset currency absorbs nothing while a
  * zero is a real choice.
  */

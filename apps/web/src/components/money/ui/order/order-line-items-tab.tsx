@@ -22,13 +22,19 @@
 // so there is nothing to teleport into the Section header and no read-only state:
 // an order records what was sold and stays editable.
 
+import { getInstanceId } from '@auxx/types/resource'
 import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
 import { cn } from '@auxx/ui/lib/utils'
+import { useState } from 'react'
 import type { DetailViewTabProps } from '~/components/detail-view'
 import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
 import { DocumentSectionActions } from '~/components/money/ui/document-actions-cluster'
 import { LineBuilder } from '~/components/money/ui/line-builder/line-builder'
 import { useSystemValues } from '~/components/resources/hooks'
+import { useAccess } from '~/providers/capabilities-provider'
+import { api } from '~/trpc/react'
+import { FulfillOrderDialog } from './fulfill-order-dialog'
 
 const ORDER_STATUS_ATTRS = ['order_financial_status', 'order_fulfillment_status'] as const
 
@@ -49,6 +55,9 @@ const FULFILLMENT_BADGE: Record<string, { label: string; variant: 'green' | 'amb
 
 export function OrderLineItemsTab({ recordId, variant = 'tab' }: DetailViewTabProps) {
   const { values } = useSystemValues(recordId, [...ORDER_STATUS_ATTRS], { autoFetch: true })
+  const { can } = useAccess()
+  const utils = api.useUtils()
+  const [fulfillOpen, setFulfillOpen] = useState(false)
 
   // SINGLE_SELECT values arrive as arrays — take the first (see the
   // `use_system_values_single_select_arrays` convention).
@@ -58,6 +67,11 @@ export function OrderLineItemsTab({ recordId, variant = 'tab' }: DetailViewTabPr
   const financialBadge = financial ? FINANCIAL_BADGE[financial] : undefined
   const fulfillmentBadge = fulfillment ? FULFILLMENT_BADGE[fulfillment] : undefined
 
+  // The sanctioned fulfillment action (HANDOFF decision 6.6): it carries what
+  // shipped, flips `order_fulfillment_status`, and posts the revenue entry, so
+  // it is a ledger write. Hidden once everything has shipped.
+  const canFulfill = can('ledger.post') && fulfillment !== 'fulfilled'
+
   // `variant='section'`: rendered inside a DetailViewSections <Section> on an
   // outer-owned scroll column instead of a `TabsContent` that grants `h-full`, so
   // the LineBuilder (a virtualized, scroll-owning table) needs the max-height +
@@ -66,7 +80,7 @@ export function OrderLineItemsTab({ recordId, variant = 'tab' }: DetailViewTabPr
 
   return (
     <div className={cn('flex flex-col', isSection ? '' : 'h-full min-h-0')}>
-      {(financialBadge || fulfillmentBadge) && (
+      {(financialBadge || fulfillmentBadge || canFulfill) && (
         <DocumentSectionActions
           badge={
             <div className='flex items-center gap-1.5'>
@@ -81,13 +95,28 @@ export function OrderLineItemsTab({ recordId, variant = 'tab' }: DetailViewTabPr
                 </Badge>
               )}
             </div>
-          }
-        />
+          }>
+          {canFulfill && (
+            <Button variant='outline' size='xs' onClick={() => setFulfillOpen(true)}>
+              Fulfill
+            </Button>
+          )}
+        </DocumentSectionActions>
       )}
 
       <div className={cn(isSection ? 'max-h-[60vh] overflow-auto ps-3 pe-3' : 'min-h-0 flex-1')}>
         <LineBuilder documentRecordId={recordId} documentType='order' />
       </div>
+
+      <FulfillOrderDialog
+        open={fulfillOpen}
+        onOpenChange={setFulfillOpen}
+        orderId={getInstanceId(recordId)}
+        onFulfilled={() => {
+          void utils.ledger.listPostingsForSource.invalidate()
+          void utils.money.orderForFulfillment.invalidate()
+        }}
+      />
     </div>
   )
 }

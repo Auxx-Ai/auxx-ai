@@ -219,6 +219,8 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
       // and must match `order:work-orders` there and in the order's drawer block.
       // "Jobs" is dispatch vocabulary; an order links work orders (08 §5.8).
       { value: 'work-orders', label: 'Work orders', icon: 'wrench', recordResource: 'work_order' },
+      // Same key as the drawer's `order:ledger` card. HANDOFF slot 2J.
+      { value: 'ledger', label: 'Ledger', icon: 'book-open-check', permissionKey: 'ledger.view' },
     ],
   },
 

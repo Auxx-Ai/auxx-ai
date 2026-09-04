@@ -381,7 +381,11 @@ describe('prepareDocumentEmail — per-document-type profile table (purchasing p
     it('gives every profile its OWN contact field, snippet and placeholder root', async () => {
       const profiles = Object.values(DOCUMENT_EMAIL_PROFILES)
       expect(new Set(profiles.map((p) => p.contactSystemAttribute)).size).toBe(profiles.length)
-      expect(new Set(profiles.map((p) => p.snippetSystemType)).size).toBe(profiles.length)
+      // The deposit slip is an internal document whose profile refuses before
+      // a snippet is ever read, so it borrows a snippet type rather than
+      // seeding one nobody renders (HANDOFF slot 1D).
+      const mailable = profiles.filter((p) => p.contactSystemAttribute !== 'bank_deposit_contact')
+      expect(new Set(mailable.map((p) => p.snippetSystemType)).size).toBe(mailable.length)
       expect(new Set(profiles.map((p) => p.entityDefsKey)).size).toBe(profiles.length)
       expect(new Set(profiles.map((p) => p.noun)).size).toBe(profiles.length)
     })

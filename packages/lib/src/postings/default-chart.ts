@@ -82,9 +82,10 @@ export interface DefaultChartAccount {
  * book with bank accounts, equity, retained earnings, operating expenses and the
  * rest already in place. Five accounts the posting builders need are added on
  * top of it (`1000`, `2000`, `2160`, `2170`, `5095`), because the accrual plan's
- * table does not list them. There are no equity accounts here at all, deliberately:
- * nothing auxx posts touches equity, and inventing an owner's-equity numbering
- * for someone else's book would be a guess with no purpose.
+ * table does not list them. Three equity accounts (`3000`, `3100`, `3900`) were
+ * added 2026-09-04 once the opening trial balance and the balance sheet needed
+ * somewhere to land (plans/accounting/HANDOFF.md decision 6.4), with `1050`,
+ * `4020` and `6300` in the same pass.
  *
  * ## The two things to check before this is seeded
  *
@@ -95,7 +96,7 @@ export interface DefaultChartAccount {
  *    `Accounts Receivable`, `contra-asset`). `GlAccountType` is the five-way
  *    statement classification, so they are collapsed: Income -> `revenue`, Cost
  *    of Goods Sold and Expense -> `expense`, every asset flavour -> `asset`,
- *    Other Current Liability -> `liability`. Nothing here is `equity`. The
+ *    Other Current Liability -> `liability`. The
  *    collapse loses the current/non-current split and the contra-asset marking
  *    on `1190`; that is a presentation concern for the provider's own chart,
  *    not something a posting reads.
@@ -115,11 +116,23 @@ export const DEFAULT_CHART_OF_ACCOUNTS: readonly DefaultChartAccount[] = [
     role: 'cash',
   },
   {
-    code: '1100',
-    name: 'Accounts Receivable - Dealers',
+    // A clearing account whose job is to be ZERO once every bank deposit has
+    // cleared. Cheques and cash land here on receipt and leave as one
+    // `bank_deposit` entry per bank run (tasks/06 §1). Numbered between cash
+    // and receivables so it reads as the cash-in-transit it is.
+    code: '1050',
+    name: 'Undeposited Funds',
     accountType: GlAccountType.ASSET,
-    // No role: nothing auxx posts today touches receivables. The fulfillment
-    // builder will, and that is when a role gets added - not before.
+    role: 'undeposited_funds',
+  },
+  {
+    // Was "Accounts Receivable - Dealers". Renamed by handoff decision 6.1:
+    // ONE receivable account carries the role whatever the channel, and
+    // migration 125 renames the seeded row where the org has not touched it.
+    code: '1100',
+    name: 'Accounts Receivable',
+    accountType: GlAccountType.ASSET,
+    role: 'accounts_receivable',
   },
   {
     code: '1190',
@@ -132,6 +145,7 @@ export const DEFAULT_CHART_OF_ACCOUNTS: readonly DefaultChartAccount[] = [
     code: '1200',
     name: 'Shopify Clearing',
     accountType: GlAccountType.ASSET,
+    role: 'clearing_shopify',
   },
   {
     // Must EXCLUDE every Affirm-gateway order or 1200 can never reconcile to
@@ -233,24 +247,56 @@ export const DEFAULT_CHART_OF_ACCOUNTS: readonly DefaultChartAccount[] = [
     code: '2200',
     name: 'Sales Tax Payable',
     accountType: GlAccountType.LIABILITY,
+    role: 'sales_tax_payable',
   },
   {
     code: '2300',
     name: 'Deferred Revenue',
     accountType: GlAccountType.LIABILITY,
-    // Month-end only, reversed on day one of the next month. The
-    // `month_end_deferral` / `month_end_reversal` builders will want a role
-    // here; they do not exist yet.
+    // Month-end only, reversed on day one of the next month.
+    role: 'deferred_revenue',
   },
   {
+    // Money taken BEFORE delivery - `money/payments/deposit.ts`. A BANK deposit
+    // is a different thing entirely and lands on `cash`.
     code: '2350',
     name: 'Customer Deposits',
     accountType: GlAccountType.LIABILITY,
+    role: 'customer_deposits',
   },
   {
     code: '2400',
     name: 'Returns Reserve',
     accountType: GlAccountType.LIABILITY,
+  },
+
+  // ── Equity ──────────────────────────────────────────────────────────────
+  // Added 2026-09-04 (handoff decision 6.4). The opening trial balance needs an
+  // equity leg to post against and the balance sheet needs a retained-earnings
+  // home; without both the ledger could hold activity but never a position.
+  {
+    // The org's own equity. No role: nothing auxx posts touches it, and the
+    // statement reader groups it by type.
+    code: '3000',
+    name: "Owner's Equity",
+    accountType: GlAccountType.EQUITY,
+  },
+  {
+    // Where prior years' net income rolls. A role because the balance-sheet
+    // reader must find it without knowing the org's numbering.
+    code: '3100',
+    name: 'Retained Earnings',
+    accountType: GlAccountType.EQUITY,
+    role: 'equity_retained_earnings',
+  },
+  {
+    // The balancing leg of the opening entry. A bookkeeper clears it to 3000
+    // or 3100 with a manual journal once the opening balances are agreed -
+    // exactly what QuickBooks does with the account of the same name.
+    code: '3900',
+    name: 'Opening Balance Equity',
+    accountType: GlAccountType.EQUITY,
+    role: 'equity_opening_balance',
   },
 
   // ── Revenue ─────────────────────────────────────────────────────────────
@@ -261,11 +307,21 @@ export const DEFAULT_CHART_OF_ACCOUNTS: readonly DefaultChartAccount[] = [
     code: '4000',
     name: 'Product Revenue - DTC',
     accountType: GlAccountType.REVENUE,
+    role: 'revenue_dtc',
   },
   {
     code: '4010',
     name: 'Product Revenue - Dealer',
     accountType: GlAccountType.REVENUE,
+    role: 'revenue_dealer',
+  },
+  {
+    // Its own account rather than folded into product revenue (handoff
+    // decision 6.3): shipping charged to customers is not product margin.
+    code: '4020',
+    name: 'Shipping Revenue',
+    accountType: GlAccountType.REVENUE,
+    role: 'revenue_shipping',
   },
 
   // ── Cost of goods sold ──────────────────────────────────────────────────
@@ -327,9 +383,12 @@ export const DEFAULT_CHART_OF_ACCOUNTS: readonly DefaultChartAccount[] = [
 
   // ── Operating expenses ──────────────────────────────────────────────────
   {
+    // What the processor withheld from a payout. The payout entry's expense
+    // leg. NOT the Connect application fee in `money/payments/fees.ts`.
     code: '6100',
     name: 'Merchant Fees - Cards',
     accountType: GlAccountType.EXPENSE,
+    role: 'payment_processing_fees',
   },
   {
     // Kept separate from 6100 for RECONCILIATION, not optimisation: Affirm
@@ -344,5 +403,14 @@ export const DEFAULT_CHART_OF_ACCOUNTS: readonly DefaultChartAccount[] = [
     code: '6200',
     name: 'Fulfillment Labor',
     accountType: GlAccountType.EXPENSE,
+  },
+  {
+    // The `write_off` entry's debit leg. `1190 Allowance for Doubtful Accounts`
+    // is the contra-asset the reserve method would credit; the direct
+    // write-off posts here and credits receivables.
+    code: '6300',
+    name: 'Bad Debt Expense',
+    accountType: GlAccountType.EXPENSE,
+    role: 'bad_debt_expense',
   },
 ]

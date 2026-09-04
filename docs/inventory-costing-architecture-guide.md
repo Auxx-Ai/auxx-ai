@@ -965,6 +965,203 @@ balances perfectly.
 
 ---
 
+### 9.6 The books beyond inventory (2026-09-04, plans/accounting/HANDOFF.md wave 0)
+
+The ledger stopped being an inventory-only instrument on 2026-09-04. What changed, and what a
+reader must now know:
+
+- **Posting types.** `POSTING_TYPES` and the `GlPostingType` pgEnum (drizzle `0361`) carry five
+  more: `manual_journal`, `opening_balance`, `bank_transaction`, `bank_deposit`, `write_off`.
+  Prefixes in `doc-number.ts` are three letters by a pinned test, so they are `JNL`, `OPB`,
+  `BNK`, `DEP`, `WOF`. The record-keyed ones (`manual_journal`, `bank_deposit`, `write_off`,
+  `bank_transaction`) key `periodKey` on the record's own number, exactly as a build does;
+  `opening_balance` keys on the cutover date. A cuid never fits the 21-character cap.
+- **Roles.** `ACCOUNT_ROLES` has thirteen more (`accounts_receivable`, `undeposited_funds`,
+  `clearing_shopify`, `sales_tax_payable`, `deferred_revenue`, `customer_deposits`,
+  `equity_retained_earnings`, `equity_opening_balance`, `revenue_dtc`, `revenue_dealer`,
+  `revenue_shipping`, `payment_processing_fees`, `bad_debt_expense`), every one seeded onto a
+  default account and assigned in existing orgs by entity migration 125. The chart gained
+  `1050 Undeposited Funds`, `3000 Owner's Equity`, `3100 Retained Earnings`, `3900 Opening
+  Balance Equity`, `4020 Shipping Revenue`, `6300 Bad Debt Expense`, and `1100` is plain
+  `Accounts Receivable` (one receivable account, whatever the channel).
+- **Single-writer roles.** `regime.ts` generalised `INVENTORY_ROLES` to `SINGLE_WRITER_ROLES`
+  (the three inventory accounts plus `cash`) and the map to
+  `SINGLE_WRITER_ROLES_BY_POSTING_TYPE`; `findWriterConflicts` is the guard and the old names
+  are aliases. `bank_deposit` is the one declared `cash` writer. A code-based entry (manual or
+  opening) carries no role and is invisible to this guard by construction, so the manual builder
+  refuses the three inventory accounts by name; it does not refuse cash, because an opening entry
+  must state the bank balance.
+- **Code-based lines.** `GlPostingLineInput` is a union of `{ accountRole }` (a builder) and
+  `{ accountCode }` (a person coding against the chart). The resolver validates a code against
+  the org's chart with the same refusals as a role. `PostResultStatus` gained
+  `inventory_role_refused` and `account_invalid`.
+- **The setup freeze is server-side.** `assertAccountingSetupUnfrozen(orgId, keys)` in
+  `settled-periods.ts` refuses any `accounting.opening*`, `accounting.bookTimeZone` or
+  `accounting.cutoffPeriod` write with a 409 once a `posted` or `pending` `GlPosting` exists.
+  The browser-side `useAccountingSettingsFreeze` is the courtesy; this is the guard.
+- **`GlPostingLine.dimensions`** is a nullable jsonb written by nothing (decision 6.5). It exists
+  so a later dimension is a builder change and not a table migration over history.
+- **`ENABLED_POSTING_TYPES` is not enforced by the poster.** It feeds `findWriterConflicts`,
+  the getting-started signals and the completeness banner. `postEntry` will persist any type in
+  the union; the constant records which types the organization's books are to be read as
+  complete for.
+
+### 9.7 The journal-entry draft (2026-09-04, HANDOFF slot 1A)
+
+A `GlPosting` cannot hold a draft: its `status` is `pending | posted | failed | reversed` and
+`pending` means *claimed and mid-push* - it holds the period's unique index. So the thing a
+bookkeeper types into is an `EntityInstance` on the **`journal_entry`** def (entity migration
+126, `isVisible: false`), with `number`, `date`, `memo`, `status` (`draft | posted | reversed`),
+`kind` (`manual | opening_balance | recurring_template`), `lines` (JSON), `attachment` (FILE) and
+`glPostingId`. `postings/journal-entries/` is its module; the router door is
+`ledger.journalEntry.*`, gated on `ledgerPost` for every write including `create`, because a
+draft is the thing somebody then presses Post on.
+
+Four things about it that are not obvious and cost a debugging session each:
+
+- **The NUMBER is the posting's `periodKey`.** `JNL-0007` is issued by a `RecordSequence` hook on
+  create and compacts to `AUXX-JNL-JNL0007`. That is why `journal_entry_number` is
+  `creatable: false` / `updatable: false`, and why an entry with no number cannot be posted at
+  all: a date key would make the second entry of the day collide with the first on
+  `(organizationId, postingType, periodKey, revision)` and come back `already_posted` having
+  written nothing.
+- 🛑 **A single-value JSON field must never be handed a top-level ARRAY.**
+  `validateAndConvertValue` reads an array as a MULTI-VALUE write, one `FieldValue` row per
+  element, and refuses with "single-value; received 2 values" - which
+  `UnifiedCrudHandler.setFieldValues` **logs and swallows**, so the update reports success over a
+  record that is silently empty. `journal_entry_lines` therefore stores `{ lines: [...] }`. The
+  field-value layer then wraps that in its own `{ v, meta }` envelope, so the column holds
+  `{ v: { lines: [...] } }` and a reader needs `readEnvelope` from `@auxx/types/field-value`
+  before it sees anything of its own. Found by driving the path, not by a test.
+- **`reverseEntry` reverses a code line to the same code, with no drift check.** It used to
+  refuse a role-less posting outright, which was right while `BuiltEntry` was role-keyed by
+  construction. A code line has no mapping for the chart to move underneath - the code IS the
+  authority - so re-resolving one would invent a role the person never chose.
+- **The inventory refusal lives in `prepareEntry`, not in the builder.** `buildManualEntry` is
+  pure and has no chart, so it cannot know which code carries `inventory_wip` in a given org -
+  which is the whole point of `G8`. `post-entry.ts` resolves `INVENTORY_ROLES` to this org's own
+  codes after resolution and refuses `manual_journal` / `opening_balance` by name, so `preview`
+  and `post` answer identically.
+
+### 9.8 Aging reads by `sourceType`, and `accounts_receivable`'s is `order`, not `invoice`
+(2026-09-04, HANDOFF slot 2H)
+
+`postings/reports/aging.ts` groups posted `accounts_receivable`/`accounts_payable` lines by the
+document their `sourceType`/`sourceId` name and nets each one - the GL-based aging task 05
+recommends, so the total ties to `readTrialBalance`'s own figure for the same account by
+construction. The one fact worth a line here: **the `invoice` entity is NOT what
+`buildFulfillmentEntry` (2G) debits.** It posts A/R against the `order` (`FULFILLMENT_SOURCE_TYPE
+= 'order'`, sourceId = the order's own id), because the DTC/dealer revenue path has no invoice
+record at all - `invoice` is the separate, service-business billing flow (`workOrder`, `terms`,
+`dueDate`), and orders settle immediately with no due date. Only three sourceTypes carry a due
+date an aging report can bucket on: `invoice` (`build-write-off-entry.ts`'s credit leg) and
+`vendor_bill` (the matched-bill entry). Everything else that can touch A/R -
+`payment_transaction` (a charge or refund, resolved via its own denormalized
+`contactInstanceId` column, never the `payment` entity mirror a refund never gets) and
+`journal_entry` (a manual or opening line) - carries no due date and is always `current`, grouped
+by contact when one resolves and into an "Unapplied and adjustments" catch-all otherwise. A
+reader adding a new A/R- or A/P-touching `sourceType` in the future needs a branch here too, or
+its lines still tie (the total is a GL sum, not a join) but land in the catch-all rather than
+under the right contact.
+
+### 9.9 The books, built (2026-09-04, plans/accounting/HANDOFF.md waves 1 and 2)
+
+What landed on top of §9.6, and the rules each piece keeps:
+
+- **Manual journal entries** (`postings/build-manual-entry.ts`, `postings/journal-entries/`,
+  the `journal_entry` entity, `ledger.journalEntry.*`). A person codes lines by account CODE;
+  `resolveAccountLines` validates codes against the chart with the same batched refusals as
+  roles. A manual line naming one of the three inventory accounts is refused
+  (`inventory_role_refused`) because the close asserts those balances. Lines are stored as a
+  `{ lines: [...] }` envelope on a JSON field: a bare top-level array is read by the field
+  layer as a multi-value write and silently dropped.
+- **The opening trial balance** (`postings/build-opening-balance-entry.ts`,
+  `postings/opening-trial-balance/`, `ledgerOpening.*`, wizard page "Opening trial balance").
+  A `journal_entry` of kind `opening_balance` holds the draft; Finalize posts it dated the last
+  day of `accounting.cutoffPeriod`, keyed on that date so a second post is unrepresentable. It
+  names the three inventory accounts by code and is NOT an inventory writer: the month-end
+  reader takes its prior assertion from the `accounting.opening*` settings, never from this
+  entry, and the wizard prefills and locks those three rows from the same settings so the two
+  cannot disagree. `CODE_ENTRY_TYPES` in `post-entry.ts` therefore refuses inventory codes for
+  `manual_journal` only.
+- **Bank deposits** (`money/bank-deposits/`, the `bank_deposit` entity, `money.bankDeposit.*`,
+  Banking > Deposits). Payments route by method through `accounting.paymentRoute.<method>`
+  (`undeposited_funds | cash | clearing`, `resolvePaymentRoute`). Grouping posts one
+  `Dr cash / Cr undeposited_funds` per bank run; a refused post rolls the grouping back; a
+  cleared or posted deposit refuses edits naming the bank line or the posting.
+- **Revenue** (`postings/build-fulfillment-entry.ts`, `money/orders/fulfill.ts`,
+  `money.fulfillOrder`). A sanctioned action, not a status hook: it carries what shipped, logs
+  it on `order_fulfillments`, and posts `Dr accounts_receivable / Cr revenue_dtc|revenue_dealer,
+  sales_tax_payable, revenue_shipping` keyed `ORD-nnnn-F<seq>`. `manual` and null channels are
+  REFUSED naming the order. The COGS leg exists behind `includeCogs: false` and nothing sets it;
+  it is the L3 switch. The A/R line's `sourceType` is `order`, not `invoice`; aging joins
+  accordingly.
+- **Payments** (`postings/build-payment-entry.ts`, `money/payments/post-transaction.ts`) post
+  from `PaymentTransaction` at the tail of `syncTransaction`, never from the `payment` entity
+  (refunds have no mirror). Type `payment`, prefix `PMT`, key `PMT-<hash of the id>`: a
+  counted sequence could converge two concurrent payments to one `already_posted` success.
+- **Payouts** (`postings/build-payout-entry.ts`) have a builder and no gatherer: auxx stores no
+  payout and no processor fee (`fees.ts` is the Connect application fee).
+- **Write-offs** (`postings/build-write-off-entry.ts`, `money/invoices/write-off.ts`) post
+  `Dr bad_debt_expense / Cr accounts_receivable` keyed on the invoice number, so one write-off
+  per invoice, and flip the invoice to `written_off`.
+- **Statements** (`postings/reports/`, `ledgerReports.*`, Reports tab). Trial balance is the
+  balance sweep grouped by code; the balance sheet computes retained earnings (prior years
+  rolled forward, current period from the P&L) rather than reading a posted balance; aging is
+  GL-based, bucketed on due date, and asserts its total against the balance sheet's A/R or A/P
+  as of the same date, showing the difference rather than hiding it. Every report carries a
+  completeness banner naming unposted periods and disabled posting types.
+- **`ENABLED_POSTING_TYPES`** now lists `month_end_inventory`, `manual_journal`,
+  `opening_balance`, `bank_deposit`, `bank_transaction`, `fulfillment`, `payment`, `payout`,
+  `write_off`. `receipt` and `vendor_bill` are the two that wait for the L3 switch.
+  `payment` is declared as driving no single-writer role: the guard is per type, and a payment
+  writes cash only on the `cash` route, which never carries the same money as a bank deposit.
+- **Entity migration 125** (`125-accounting-books`) seeds all of it in one pass: the accounts
+  and roles, the `journal_entry`, `bank_deposit`, `bank_account`, `bank_transaction` and
+  `bank_rule` defs, the 1099 fields on `company`, the `order_fulfillments` log, and the
+  `accountant` permission profile.
+
+### 9.10 The bank feed (2026-09-04, plans/accounting/HANDOFF.md wave 3)
+
+- **Entities.** `bank_account` (manual or connected; `glAccount` is a chart CODE as text, like
+  every other bookkeeper-coded field; `connectorId`, `coverageFrom`, `coverageGaps`) and
+  `bank_transaction` (raw columns the connector owns: `externalId`, `postedAt`, `description`,
+  `amountMinor` SIGNED because it mirrors the bank, `bankStatus`, `matchKey`, `source feed|import`;
+  review columns auxx owns: `reviewStatus`, `glAccount`, `matchedRecordId/Type`, `glPostingId`,
+  the `suggested*` fields, `ruleId`). Contributing mode only; the feed can never archive a row.
+- **The feed** is a built-in `DataConnector` type, `stripe-financial-connections`, on the platform
+  Stripe key through `hosted-provision` with the `embed` and `multiAccount` capabilities declared
+  on the definition and read generically. Stripe FC is embed-only (a session `client_secret`, no
+  hosted page). One connector per FC account; auxx creates the `bank_account` at connect time and
+  the connector adopts it by `connectorId`. The consumed `transaction_refresh` id rides on the
+  checkpoint watermark, prefixed by `last_attempted_at`, because the engine clears the cursor on
+  the terminal checkpoint and compares watermarks lexically. Webhooks route `fca_` to the
+  connector through the credential's `providerAccountId`. A nightly job refreshes coverage, runs
+  suggestions, and reaps FC accounts disconnected for 14 days (the billing reaper).
+- **Matched lines post nothing** (B5). Match links both ways and stamps the document
+  (`bankTransactionId` and `clearedAt` on a vendor payment or bank deposit; `bank_import` as the
+  confirmation source on a customer payment). **Coded lines post** `Dr <code> / Cr <bank
+  account's GL code>` as a `bank_transaction` entry keyed `BNK-<hash><attempt>`; the attempt
+  counter exists because an undo reverses the posting and a re-code must not re-claim the
+  reversed tuple as `already_posted`. A transfer posts one entry on the outgoing leg and matches
+  the other. The poster pins the raw columns so the feed cannot rewrite a posted row.
+- **Suggestions** come from history first (majority GL code over lines sharing a `matchKey` on
+  the account, the count in the reason), then rules (`bank_rule`, priority order, first match,
+  unsafe regex refused), with auto-apply off by default and every refusal falling back to a
+  suggestion. Run after an import, after the nightly sweep, and on demand.
+- **File import** reuses the shared data-import wizard with `bank_transaction` preselected. OFX,
+  QFX and QBO are parsed in the browser (SGML and XML, wall-clock dates, BigInt amounts) and skip
+  the mapping step when `FITID` is present; CSV mappings are remembered per header signature in
+  the `banking.importMappings` setting. A row the feed already holds is linked (marked `excluded`
+  pointing at the feed row), never duplicated. Reverse deletes only the rows of a batch that
+  carry no posting and are not matched, refusing the rest by name. `coverageFrom` only ever
+  moves earlier, except on reverse. `readCoverage` ignores archived rows.
+- **Three importer gotchas found by driving:** `targetFieldKey` is the field's SYSTEM ATTRIBUTE,
+  not its registry key (a wrong key imports rows with defaults and no error); the auto-mapper
+  sends any `externalId` to the `text:cuid` resolver, which rejects a real `FITID`; a
+  RELATIONSHIP value handed to `UnifiedCrudHandler` must be a `defId:instanceId` record id, and
+  a bare instance id fails with a logged warning only.
+
 ## 10. Write Lanes & the Silent Ledger Write
 
 🛑 **`skipEvents: true` is INSUFFICIENT, not merely deprecated — there are TWO doors.**

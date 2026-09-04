@@ -20,7 +20,7 @@
 // issues three distinct reads and each has to answer differently, which a
 // generic chainable spy cannot express.
 
-import type { Database } from '@auxx/database'
+import { type Database, schema } from '@auxx/database'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
@@ -37,7 +37,8 @@ vi.mock('../../cache', () => ({
   }),
 }))
 
-import { resolveRoles } from '../resolve-roles'
+import { loadRoleAccountCodes, resolveAccountLines, resolveRoles } from '../resolve-roles'
+import type { GlPostingLineInput } from '../types'
 
 const ORG = 'org_1'
 
@@ -137,7 +138,9 @@ beforeEach(() => {
   ])
 })
 
-async function expectErr(promise: ReturnType<typeof resolveRoles>) {
+async function expectErr(
+  promise: ReturnType<typeof resolveRoles> | ReturnType<typeof resolveAccountLines>
+) {
   const result = await promise
   expect(result.isErr()).toBe(true)
   return result._unsafeUnwrapErr()
@@ -324,5 +327,254 @@ describe('resolveRoles — the impossible case, asserted anyway', () => {
     const error = await expectErr(resolveRoles(db, ORG, ['grni']))
     expect(error.message).toMatch(/more than one account/i)
     expect(error.message).toMatch(/Refusing to choose/i)
+  })
+})
+
+// ── HANDOFF slot 1A: code lines ───────────────────────────────────────────
+//
+// A human coding an adjusting entry names an ACCOUNT, not a role. The property
+// this block exists to hold is that the second shape is not a cheaper door: a
+// code is validated against the org's chart with the same batched refusals a
+// role gets, and an entry naming six bad accounts fails ONCE naming six.
+
+/**
+ * A stub that dispatches on the TABLE rather than on a call counter.
+ *
+ * `resolveAccountLines` issues a different number of reads depending on whether
+ * the entry has role lines, code lines or both, so the counter the stub above
+ * uses cannot model it. Keying on the table object is what
+ * `reverse-entry.test.ts` does for the same reason.
+ */
+function stubLineDb(assignments: Assignment[], accounts: Account[]) {
+  const live = accounts.filter((a) => !a.archived)
+  const chain = (rows: unknown[]) => ({
+    where: () => chain(rows),
+    limit: () => chain(rows),
+    // biome-ignore lint/suspicious/noThenProperty: the stub must be awaitable
+    then: (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) =>
+      Promise.resolve(rows).then(resolve, reject),
+  })
+
+  const values = live.flatMap((account) => {
+    const rows: Record<string, unknown>[] = []
+    if (account.code !== undefined) {
+      rows.push({ entityId: account.id, fieldId: CODE_FIELD, valueText: account.code })
+    }
+    if (account.name !== undefined) {
+      rows.push({ entityId: account.id, fieldId: NAME_FIELD, valueText: account.name })
+    }
+    if (account.accountType !== undefined) {
+      rows.push({ entityId: account.id, fieldId: TYPE_FIELD, optionId: account.accountType })
+    }
+    if (account.isActive !== undefined) {
+      rows.push({ entityId: account.id, fieldId: ACTIVE_FIELD, valueBoolean: account.isActive })
+    }
+    return rows
+  })
+
+  return {
+    select: () => ({
+      from: (table: unknown) => {
+        if (table === schema.GlRoleAssignment) {
+          return chain(
+            assignments.map((a) => ({
+              role: a.role,
+              glAccountId: a.glAccountId,
+              markedUnused: a.markedUnused ?? false,
+            }))
+          )
+        }
+        if (table === schema.EntityInstance) return chain(live.map((a) => ({ id: a.id })))
+        // Both the by-code lookup and the value decode read `FieldValue`. The
+        // by-code lookup asks for `entityId` only and ignores the rest, so one
+        // answer serves both.
+        return chain(values)
+      },
+    }),
+  } as unknown as Database
+}
+
+const EXPENSE: Account = {
+  id: 'acct_bad_debt',
+  code: '6300',
+  name: 'Bad Debt Expense',
+  accountType: 'expense',
+  isActive: true,
+}
+
+function codeLine(accountCode: string, sortOrder = 0): GlPostingLineInput {
+  return {
+    accountCode,
+    direction: sortOrder === 0 ? 'debit' : 'credit',
+    amount: 1000,
+    sourceType: 'journal_entry',
+    sourceId: 'je_1',
+    sortOrder,
+  }
+}
+
+describe('resolveAccountLines - code lines', () => {
+  it('resolves a code to the account the chart holds under it', async () => {
+    const db = stubLineDb([], [EXPENSE])
+    const result = await resolveAccountLines(db, ORG, [codeLine('6300')])
+
+    expect(result.isOk()).toBe(true)
+    expect(result._unsafeUnwrap()).toEqual([
+      {
+        glAccountId: 'acct_bad_debt',
+        code: '6300',
+        name: 'Bad Debt Expense',
+        accountType: 'expense',
+        isActive: true,
+      },
+    ])
+  })
+
+  it('returns one account per line, in the SAME order as the input', async () => {
+    const db = stubLineDb([], [EXPENSE, GRNI_ACCOUNT])
+    const result = await resolveAccountLines(db, ORG, [codeLine('2160', 0), codeLine('6300', 1)])
+    expect(result._unsafeUnwrap().map((a) => a.code)).toEqual(['2160', '6300'])
+  })
+
+  it('resolves an empty line array to an empty result', async () => {
+    const db = stubLineDb([], [])
+    const result = await resolveAccountLines(db, ORG, [])
+    expect(result._unsafeUnwrap()).toEqual([])
+  })
+
+  // The same five refusals a role gets, minus the two that have no code
+  // counterpart (`markedUnused` is a property of a MAPPING, and a code has no
+  // declared type to be incompatible with - see the JSDoc).
+  it('refuses a code the chart does not hold, naming the row', async () => {
+    const db = stubLineDb([], [EXPENSE])
+    const error = await expectErr(resolveAccountLines(db, ORG, [codeLine('9999')]))
+    expect(error.message).toMatch(/Row 1/)
+    expect(error.message).toMatch(/9999/)
+  })
+
+  // Archived is excluded by the QUERY, so from a coder's point of view it reads
+  // exactly like an account that never existed - which is the same answer the
+  // role resolver gives for a mapping whose account was archived.
+  it('refuses an archived account the same way it refuses a missing one', async () => {
+    const db = stubLineDb([], [{ ...EXPENSE, archived: true }])
+    const error = await expectErr(resolveAccountLines(db, ORG, [codeLine('6300')]))
+    expect(error.message).toMatch(/no active account with code '6300'/i)
+  })
+
+  it('refuses an inactive account, naming it', async () => {
+    const db = stubLineDb([], [{ ...EXPENSE, isActive: false }])
+    const error = await expectErr(resolveAccountLines(db, ORG, [codeLine('6300')]))
+    expect(error.message).toMatch(/6300 Bad Debt Expense is not active/i)
+  })
+
+  // 🛑 `gl_account_code` is unique by REGISTRY CAPABILITY, not by a database
+  // constraint, so two live accounts can carry one code through the importer or
+  // through two concurrent creates. Picking one would put money in an arbitrary
+  // account and the entry would still balance.
+  it('refuses rather than choosing when two live accounts carry one code', async () => {
+    const db = stubLineDb(
+      [],
+      [EXPENSE, { id: 'acct_dupe', code: '6300', name: 'Bad Debt', accountType: 'expense' }]
+    )
+    const error = await expectErr(resolveAccountLines(db, ORG, [codeLine('6300')]))
+    expect(error.message).toMatch(/carried by 2 accounts/i)
+    expect(error.message).toMatch(/Refusing to choose/i)
+  })
+
+  // The batch property, at the line level. A bookkeeper fixing an entry needs
+  // the list, not a treasure hunt.
+  it('names EVERY bad row in one message', async () => {
+    const db = stubLineDb([], [EXPENSE])
+    const error = await expectErr(
+      resolveAccountLines(db, ORG, [codeLine('9998', 0), codeLine('9999', 1)])
+    )
+    expect(error.message).toMatch(/Row 1/)
+    expect(error.message).toMatch(/Row 2/)
+    expect(error.message).toMatch(/9998/)
+    expect(error.message).toMatch(/9999/)
+    expect(error.message).toMatch(/2 line\(s\)/)
+  })
+
+  it('refuses a line that names neither a role nor a code', async () => {
+    const db = stubLineDb([], [EXPENSE])
+    const bare = { ...codeLine('6300') } as Record<string, unknown>
+    bare.accountCode = ''
+    const error = await expectErr(
+      resolveAccountLines(db, ORG, [bare as unknown as GlPostingLineInput])
+    )
+    expect(error.message).toMatch(/neither an account role nor an account code/i)
+  })
+})
+
+describe('resolveAccountLines - role lines and mixed entries', () => {
+  it('resolves a role line through the existing door, unchanged', async () => {
+    const db = stubLineDb([GRNI_ASSIGNMENT], [GRNI_ACCOUNT])
+    const result = await resolveAccountLines(db, ORG, [
+      {
+        accountRole: 'grni',
+        direction: 'credit',
+        amount: 1000,
+        sourceType: 'stock_movement',
+        sourceId: 'mv_1',
+        sortOrder: 0,
+      },
+    ])
+    expect(result._unsafeUnwrap()[0]?.code).toBe('2160')
+  })
+
+  it('resolves an entry that mixes both shapes', async () => {
+    const db = stubLineDb([GRNI_ASSIGNMENT], [GRNI_ACCOUNT, EXPENSE])
+    const result = await resolveAccountLines(db, ORG, [
+      {
+        accountRole: 'grni',
+        direction: 'credit',
+        amount: 1000,
+        sourceType: 'stock_movement',
+        sourceId: 'mv_1',
+        sortOrder: 0,
+      },
+      codeLine('6300', 1),
+    ])
+    expect(result._unsafeUnwrap().map((a) => a.code)).toEqual(['2160', '6300'])
+  })
+
+  it("carries the role resolver's own message through, unedited", async () => {
+    const db = stubLineDb([], [EXPENSE])
+    const error = await expectErr(
+      resolveAccountLines(db, ORG, [
+        {
+          accountRole: 'grni',
+          direction: 'credit',
+          amount: 1000,
+          sourceType: 'stock_movement',
+          sourceId: 'mv_1',
+          sortOrder: 0,
+        },
+      ])
+    )
+    expect(error.message).toMatch(/'grni' is not mapped to any account/i)
+  })
+})
+
+describe('loadRoleAccountCodes', () => {
+  // It answers a QUESTION rather than posting, so an unmapped role is genuinely
+  // "none" and must not refuse. The one caller is the inventory-by-name guard,
+  // and an org that has never mapped `inventory_wip` has nothing to protect.
+  it('returns nothing, rather than refusing, for an unmapped role', async () => {
+    const db = stubLineDb([], [])
+    const found = await loadRoleAccountCodes(db, ORG, ['inventory_wip'])
+    expect(found.size).toBe(0)
+  })
+
+  it('returns the account a mapped role points at', async () => {
+    const db = stubLineDb([GRNI_ASSIGNMENT], [GRNI_ACCOUNT])
+    const found = await loadRoleAccountCodes(db, ORG, ['grni'])
+    expect(found.get('grni')?.code).toBe('2160')
+  })
+
+  it('skips a role somebody marked unused', async () => {
+    const db = stubLineDb([{ ...GRNI_ASSIGNMENT, markedUnused: true }], [GRNI_ACCOUNT])
+    const found = await loadRoleAccountCodes(db, ORG, ['grni'])
+    expect(found.size).toBe(0)
   })
 })

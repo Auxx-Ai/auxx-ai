@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest'
 import { CATEGORY_MIME_PATTERNS, getMimePatternsForCategories } from './file-type-constants'
 import { enforceUploadPolicy } from './storage/presign'
-import type { UploadPolicy } from './types/entities'
+import type { UploadPolicy } from './upload/init-types'
 
 /**
  * These patterns feed two consumers with different pattern languages: a browser
@@ -34,7 +34,7 @@ function policyFor(categories: Parameters<typeof getMimePatternsForCategories>[0
     maxTtl: 600,
     contentLengthRange: [0, 25 * 1024 * 1024],
     allowedMimeTypes: getMimePatternsForCategories(categories),
-  } as UploadPolicy
+  }
 }
 
 function accepts(policy: UploadPolicy, mimeType: string): boolean {

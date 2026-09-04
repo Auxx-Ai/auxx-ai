@@ -3,6 +3,7 @@
 import { getOrgCache, getUserCache, onCacheEvent } from '@auxx/lib/cache'
 import { BadRequestError } from '@auxx/lib/errors'
 import { PermissionKey, requirePermission } from '@auxx/lib/permissions'
+import { assertAccountingSetupUnfrozen } from '@auxx/lib/postings'
 import {
   batchUpdateOrganizationSettings,
   isSettingKey,
@@ -128,6 +129,9 @@ export const settingsRouter = createTRPCRouter({
       // Capability gate, not role (plan 21 §4.2): settingsManage is what a
       // profile turns off.
       await requirePermission(userId, organizationId, PermissionKey.settingsManage)
+      // The accounting baseline freezes once an entry stands in the books
+      // (409). The browser hides the fields; this is the half that holds.
+      await assertAccountingSetupUnfrozen(organizationId, [key])
 
       await updateOrganizationSetting({ organizationId, key, value, db: ctx.db })
 
@@ -211,6 +215,10 @@ export const settingsRouter = createTRPCRouter({
         throw new BadRequestError(`Unknown setting: ${unknownKey.key}`)
       }
       for (const setting of settings) assertNotRouterOwned(setting.key)
+      await assertAccountingSetupUnfrozen(
+        organizationId,
+        settings.map((s) => s.key)
+      )
 
       await batchUpdateOrganizationSettings({
         organizationId,

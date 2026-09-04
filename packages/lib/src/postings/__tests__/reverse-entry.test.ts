@@ -476,7 +476,13 @@ describe('refusals', () => {
     expect(fake.postings).toHaveLength(1)
   })
 
-  it('refuses a line that carries no account role', async () => {
+  // Before HANDOFF slot 1A this was a REFUSAL: a role-less line could not be
+  // expressed as a `BuiltEntry`, which was role-keyed by construction, so
+  // reversing one was impossible and refusing was the only honest answer. Since
+  // `GlPostingLineInput` carries both shapes, a code line reverses to the SAME
+  // code it posted to - which is what the drift check gives a role line, arrived
+  // at without a mapping to drift.
+  it('reverses a code line to the same code, with no drift check', async () => {
     const fake = createFakeDb({
       postings: [original()],
       lines: originalLines([{ accountRole: null }, {}]),
@@ -488,9 +494,12 @@ describe('refusals', () => {
       lock: OPEN,
     })
 
-    expect(result.status).toBe('error')
-    expect(result.error).toContain('1310')
-    expect(fake.postings).toHaveLength(1)
+    expect(result.status).toBe('not_connected')
+    expect(fake.postings).toHaveLength(2)
+    const reversalLines = fake.lines.filter((line) => line.glPostingId === 'post_2')
+    expect(reversalLines.map((line) => line.accountCode)).toEqual(['1310', '2160'])
+    // The role-less half stays role-less; the other half keeps its role.
+    expect(reversalLines.map((line) => line.accountRole)).toEqual([null, 'grni'])
   })
 
   it('refuses an entry with no lines', async () => {

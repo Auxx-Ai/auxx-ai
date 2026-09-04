@@ -47,7 +47,7 @@ export type PrintOptionField =
  * there plus one where `registry.ts` merges the descriptor in. This union is the same
  * guarantee with no ripple.
  */
-export type DocumentTypeId = 'quote' | 'invoice' | 'purchase_order'
+export type DocumentTypeId = 'quote' | 'invoice' | 'purchase_order' | 'bank_deposit'
 
 /**
  * Client-safe shape of a registered document type — enough for the print wizard to decide
@@ -95,4 +95,9 @@ export const DOCUMENT_TYPE_DESCRIPTORS: DocumentTypeDescriptor[] = [
   // `sortBy` exists for stacks of customer statements, and nothing in the batch-print flow
   // sorts purchase orders by anything but their number yet.
   { id: 'purchase_order', entityType: 'purchase_order', printOptions: [] },
+  // The deposit slip (plans/accounting/ui-plan.md §5.3). An INTERNAL document: it is carried
+  // to a bank teller or filed against the statement, never emailed to anybody, which is why
+  // it contributes no `printOptions` and why its send profile in `money/send-email.ts`
+  // refuses rather than mailing.
+  { id: 'bank_deposit', entityType: 'bank_deposit', printOptions: [] },
 ]

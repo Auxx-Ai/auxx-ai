@@ -259,6 +259,9 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
           icon: 'credit-card',
           permissionKey: 'dispatch.board.view',
         },
+        // The postings filed under this invoice (a write-off today; the
+        // fulfillment entry names the ORDER). HANDOFF slot 2J.
+        { value: 'ledger', label: 'Ledger', icon: 'book-open-check', permissionKey: 'ledger.view' },
       ],
     },
   },
@@ -292,6 +295,35 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
           icon: 'wrench',
           recordResource: 'work_order',
         },
+        // The fulfillment entries this order produced. HANDOFF slot 2J.
+        { value: 'ledger', label: 'Ledger', icon: 'book-open-check', permissionKey: 'ledger.view' },
+      ],
+    },
+  },
+
+  // A customer payment's ledger entry (`Dr undeposited_funds | cash | clearing`
+  // / `Cr accounts_receivable`), filed under `sourceType 'payment'`. The
+  // payment def is otherwise hidden, so this card is the only place a person
+  // sees where the money landed. HANDOFF slot 2J.
+  payment: {
+    entityType: 'payment',
+    additionalTabs: [],
+    tabCards: {
+      overview: [
+        { value: 'ledger', label: 'Ledger', icon: 'book-open-check', permissionKey: 'ledger.view' },
+      ],
+    },
+  },
+
+  // A bank deposit's one cash entry (`Dr cash / Cr undeposited_funds`). The
+  // grouped payments are on the deposits page; the drawer shows the posting.
+  // HANDOFF slot 2J.
+  bank_deposit: {
+    entityType: 'bank_deposit',
+    additionalTabs: [],
+    tabCards: {
+      overview: [
+        { value: 'ledger', label: 'Ledger', icon: 'book-open-check', permissionKey: 'ledger.view' },
       ],
     },
   },

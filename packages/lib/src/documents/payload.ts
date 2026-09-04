@@ -9,15 +9,18 @@ import { type AddressStructValue, formatAddress } from '@auxx/utils/address'
 import { stableHash } from '@auxx/utils/hash'
 import { getOrgCache } from '../cache'
 import type { ConditionGroup } from '../conditions'
+import { NotFoundError } from '../errors'
 import type { FileValue } from '../field-values/converters'
 import { formatToDisplayValue } from '../field-values/formatter'
 import type { TypedFieldValueResult } from '../field-values/types'
+import { readBankDepositDetail } from '../money/bank-deposits/reads'
 import { getPaymentAccount } from '../money/payments/account-state'
 import { getInvoiceDepositApplied } from '../money/payments/allocation-reads'
 import { buildPayUrl, ensureInvoicePublicToken, isPaymentsConnected } from '../money/public-token'
 import { computeDocumentTotals, roundCents } from '../money/totals'
 import type { DiscountType } from '../money/types'
 import type { LineItemUnit } from '../money/units'
+import { listChartAccounts } from '../postings/role-map'
 import { UnifiedCrudHandler } from '../resources/crud'
 import type { ResolvedDocumentSettings } from './resolve-settings'
 import { resolveDocumentSettings } from './resolve-settings'
@@ -285,7 +288,11 @@ export interface PurchaseOrderPdfPayload {
 
 /** The render/content-hash dispatch union — `render.ts` and `ensure-pdf.ts` branch on
  * `documentType` to pick the right PDF template and pointer systemAttribute. */
-export type DocumentPdfPayload = QuotePdfPayload | InvoicePdfPayload | PurchaseOrderPdfPayload
+export type DocumentPdfPayload =
+  | QuotePdfPayload
+  | InvoicePdfPayload
+  | PurchaseOrderPdfPayload
+  | BankDepositPdfPayload
 
 /** Unwrap a `getFieldValues()` map entry — takes the first value if array-returned. */
 function firstTyped(
@@ -1328,4 +1335,139 @@ export const SAMPLE_QUOTE_PDF_PAYLOAD: QuotePdfPayload = {
     },
     currency: 'USD',
   },
+}
+
+// ─── Bank deposit slip (plans/accounting/ui-plan.md §5.3) ────────────────────
+
+/** One banked payment on the deposit slip's line table. */
+export interface BankDepositPdfLine {
+  /** Who paid, from the invoice's display name. Empty when the payment is unapplied. */
+  payer: string
+  /** `PaymentMethod` as a label - `Check`, `Cash`. */
+  method: string
+  /** Cheque number, card last four, whatever the payer wrote. */
+  reference: string
+  /** ISO date the payment was received. Never the deposit date. */
+  date: string | null
+  /** Integer minor units. */
+  amount: number
+  /** Never populated: a banked payment has no photo field. Declared so `render.ts`'s
+   * shared photo resolver type-checks across every member of {@link DocumentPdfPayload}. */
+  photos?: PdfPhotoRef[]
+}
+
+/**
+ * Everything `<BankDepositPdf>` needs to render - the slip a teller is handed
+ * or that is filed against the statement.
+ *
+ * ⚠️ A BANK deposit slip. Not a customer deposit, which is money taken before
+ * delivery and lives on `PaymentTransaction`.
+ *
+ * 🛑 `total` is TRANSCRIBED from the record, not recomputed from `lines`, and
+ * the two are asserted equal by `createBankDeposit` at write time. Recomputing
+ * here would let a printed slip quietly disagree with the posted entry, which
+ * is the one number the bank will actually compare against.
+ */
+export interface BankDepositPdfPayload {
+  documentType: 'bank_deposit'
+  /** Needed by `render.ts` to load the logo `MediaAsset` bytes server-side. */
+  organizationId: string
+  /** `bank_deposit_number` - `DEP-0001`. */
+  number: string
+  /** ISO date the deposit hits the bank. THE accounting date. */
+  issuedAt: string
+  status: string
+  /** GL account CODE the money lands in. */
+  bankAccountCode: string
+  /** The account's name from the org's chart, when it resolves. */
+  bankAccountName: string | null
+  /** `bank_deposit_reference` - the slip number the bank issued. */
+  reference: string | null
+  /**
+   * Always an empty-but-PRESENT contact. A deposit has no counterparty: it is
+   * OUR document about OUR bank run. `print-records-job.ts`'s `sortBy: 'contact'`
+   * reads `payload.contact.name` across the whole {@link DocumentPdfPayload}
+   * union, so a missing key would break batch-print sorting for every document
+   * type, not just this one.
+   */
+  contact: QuotePdfContact
+  lines: BankDepositPdfLine[]
+  /** Integer minor units - the stored `bank_deposit_total`, transcribed. */
+  total: number
+  settings: ResolvedDocumentSettings
+  /** Never populated: `bank_deposit` has no photo field. Declared so `render.ts`'s
+   * shared photo resolver type-checks across every member of {@link DocumentPdfPayload}. */
+  photos?: PdfPhotoRef[]
+}
+
+/** Method value to the label the slip prints. */
+const DEPOSIT_METHOD_LABELS: Record<string, string> = {
+  cash: 'Cash',
+  check: 'Check',
+  card: 'Card',
+  bank: 'Bank transfer',
+  other: 'Other',
+}
+
+/**
+ * Build the deposit slip payload for one `bank_deposit` record.
+ *
+ * Reads the deposit and its payments through `money/bank-deposits/`, which is
+ * the one place that knows a payment's link is the OWNING side - reading the
+ * `bank_deposit_payments` inverse here would be a second, staler answer.
+ *
+ * The bank account's NAME is resolved from the org's chart for legibility only;
+ * the CODE is what identifies it, and a code with no matching account still
+ * prints (an account can be archived after a deposit was banked, and the slip
+ * must still render what actually happened).
+ */
+export async function buildBankDepositPdfPayload(params: {
+  organizationId: string
+  userId: string
+  bankDepositRecordId: RecordId
+}): Promise<{ payload: BankDepositPdfPayload; hash: string }> {
+  const { organizationId, bankDepositRecordId } = params
+  const { entityInstanceId: depositId } = parseRecordId(bankDepositRecordId)
+
+  const deposit = await readBankDepositDetail(database, organizationId, depositId)
+  if (!deposit) {
+    throw new NotFoundError('That bank deposit does not exist')
+  }
+
+  const [settings, accounts] = await Promise.all([
+    resolveDocumentSettings(organizationId),
+    listChartAccounts(database, organizationId),
+  ])
+
+  // A chart that will not read is not a reason to refuse a slip: the CODE is
+  // what identifies the account and it is already on the record. The name is
+  // legibility only.
+  const bankAccountName = accounts.isOk()
+    ? (accounts.value.find((account) => account.code === deposit.bankAccountCode)?.name ?? null)
+    : null
+
+  const payload: BankDepositPdfPayload = {
+    documentType: 'bank_deposit',
+    organizationId,
+    number: deposit.number ?? '',
+    // Never `new Date()` - that would defeat the content hash and re-render the
+    // slip on every open (the MQ2 lesson).
+    issuedAt: deposit.depositDate ?? deposit.createdAt.toISOString().slice(0, 10),
+    status: deposit.status,
+    bankAccountCode: deposit.bankAccountCode ?? '',
+    bankAccountName,
+    reference: deposit.reference,
+    contact: { name: '', email: null, phone: null, city: null, region: null, country: null },
+    lines: deposit.payments.map((payment) => ({
+      payer: payment.invoiceName ?? '',
+      method: payment.method ? (DEPOSIT_METHOD_LABELS[payment.method] ?? payment.method) : '',
+      reference: payment.reference ?? '',
+      date: payment.date,
+      amount: payment.amountMinor,
+    })),
+    total: deposit.totalMinor,
+    settings,
+  }
+
+  return { payload, hash: stableHash(payload) }
 }

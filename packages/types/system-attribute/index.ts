@@ -452,6 +452,14 @@ export const SYSTEM_ATTRIBUTES = [
   'order_total',
   'order_line_items', // inverse of line_item_order
   'order_work_orders', // inverse of work_order_order
+  // Added by migration 125 (plans/accounting/HANDOFF.md slot 2G). The
+  // shipment log `money.fulfillOrder` appends to, and the ONLY thing that
+  // makes "how much of this line is still to ship" answerable. JSON on the
+  // order rather than a `fulfillment` entity for the reason
+  // `journal_entry_lines` is JSON: a shipment has no independent identity,
+  // nothing links to it, and the accounting copy is already normalised in
+  // `GlPostingLine`.
+  'order_fulfillments',
 
   // ─── Receiving: cost, date and provenance on stock_movement ──────
   // plans/purchasing/01-build-plan.md §2. Every one of these is
@@ -605,6 +613,13 @@ export const SYSTEM_ATTRIBUTES = [
   'vendor_payment_allocation_amount',
   'company_vendor_payments', // inverse of vendor_payment_vendor
 
+  // ─── 1099 / W-9 (plans/accounting/HANDOFF.md slot 2K) ────────────
+  'company_tax_classification',
+  'company_tin',
+  'company_w9_on_file',
+  'company_is_1099_eligible',
+  'company_default_1099_box',
+
   // ─── GL account (the chart) ─────────────────────────────────────
   // P1/P2: the ledger is ours and the accounting system is an EXPORTER. A
   // posting line is keyed on an account CODE; the provider's own id for an
@@ -684,6 +699,108 @@ export const SYSTEM_ATTRIBUTES = [
   'order_build_revision',
   'build_order_revision',
 
+  // ─── Bank deposit (plans/accounting/tasks/06-deposit-grouping.md) ──
+  // Entity migration 125. Five cheques banked together arrive at the bank as
+  // ONE line, so without this grouping the bank feed can only ever code a
+  // receipt and never match it.
+  //
+  // ⚠️ NOT a customer deposit. `2350 Customer Deposits` is money taken before
+  // delivery, a liability, and lives on `PaymentTransaction`. Say "bank
+  // deposit" in full.
+  //
+  // 🛑 `bank_deposit_bank_transaction_id` is bare TEXT and copies
+  // `vendor_payment_bank_transaction_id` by name AND semantics, so the bank
+  // feed's matcher has one shape to look for. Both convert to a RELATIONSHIP
+  // together once the `bank_transaction` def exists.
+  'bank_deposit_number', // RecordSequence `DEP-0001`; the posting's docNumber keys on it
+  'bank_deposit_date', // THE accounting date
+  'bank_deposit_bank_account', // GL account CODE; becomes a relationship with `bank_account`
+  'bank_deposit_reference',
+  'bank_deposit_status', // pending | cleared
+  'bank_deposit_total', // integer minor units; must equal the sum of the payments
+  'bank_deposit_payments', // inverse of payment_bank_deposit
+  'bank_deposit_bank_transaction_id',
+  'bank_deposit_cleared_at',
+  'bank_deposit_reconciled_at',
+  'bank_deposit_gl_posting_id', // denormalized backlink; the posting is the authority
+  'bank_deposit_pdf_asset', // the rendered deposit slip
+  'payment_bank_deposit', // owning side — one deposit per payment, enforced on write
+
+  // ─── Bank feed (plans/bank-connection/02-connection-architecture.md §6) ──
+  // Entity migration 125. `bank_account` is where the feed meets the chart of
+  // accounts; `bank_transaction` is a CONTRIBUTING-mode target whose fields
+  // split into two groups that nothing may cross.
+  //
+  // 🛑 `bank_account_gl_account` is a GL account CODE as TEXT, not a
+  // relationship — every GL pointer in the money subsystem is (decision `P2`),
+  // and one later migration converts them all together.
+  'bank_account_name',
+  'bank_account_institution',
+  'bank_account_last4', // TEXT: a leading zero is part of the number
+  'bank_account_type', // depository (asset) | credit (a liability whose signs invert)
+  'bank_account_currency',
+  'bank_account_gl_account', // the CODE this account maps to. THE point of the entity
+  'bank_account_feed_start_date', // earliest date we TRUST
+  'bank_account_coverage_from', // earliest date we HOLD
+  'bank_account_coverage_gaps', // [{ from, to }]; a balance sheet over a hole is silent and wrong
+  'bank_account_connector_id', // a POINTER at DataConnector, never a copy of its health
+  'bank_account_status', // manual | connected | disconnected
+  'bank_account_transactions', // inverse of bank_transaction_bank_account
+
+  // Connector-owned (raw). The feed may correct any of these.
+  'bank_transaction_external_id', // the dedupe key, across BOTH the feed and file import
+  'bank_transaction_bank_account',
+  'bank_transaction_posted_at', // transacted_at, not posted_at — the economic event
+  'bank_transaction_description', // raw; Stripe FC gives no merchant name and no categories
+  // 🛑 SIGNED integer minor units — the one signed money column in the books,
+  // because it mirrors the bank. The LEDGER lines are still unsigned.
+  'bank_transaction_amount',
+  'bank_transaction_bank_status', // pending | posted | void AT THE BANK, not the fetch
+  'bank_transaction_match_key', // normalised description; the primary categorisation signal
+  'bank_transaction_import_batch_id',
+  'bank_transaction_source', // feed | import
+
+  // Auxx-owned (review). The connector may never write any of these.
+  'bank_transaction_review_status',
+  'bank_transaction_gl_account',
+  'bank_transaction_matched_record_id', // half of one polymorphic pointer
+  'bank_transaction_matched_record_type',
+  'bank_transaction_exclude_reason',
+  'bank_transaction_reviewed_at',
+  'bank_transaction_reviewed_by_user_id',
+  'bank_transaction_gl_posting_id', // also the freeze marker: raw fields stop moving
+  'bank_transaction_rule_id',
+
+  // Suggestion (HANDOFF slot 3C). Written by suggestFromHistory / evaluateRules.
+  'bank_transaction_suggested_gl_account',
+  'bank_transaction_suggested_record_id', // half of one polymorphic pointer (a transfer)
+  'bank_transaction_suggested_record_type',
+  'bank_transaction_suggestion_reason', // one explainable sentence, e.g. "last 6 -> 6100"
+  'bank_transaction_suggestion_source', // history | rule | transfer
+
+  // bank_rule (HANDOFF slot 3C, migration 125). Suggest-from-history is the
+  // PRIMARY mechanism (bank plan 03 §4); a rule is the opt-in, ordered layer on
+  // top of it. bankAccount/counterpartBankAccount/contact are entity-instance id
+  // pointers as TEXT, not RELATIONSHIPs - see bank-rule-fields.ts for why.
+  'bank_rule_name',
+  'bank_rule_enabled',
+  'bank_rule_auto_apply', // an auto-applied rule posts WITHOUT review, off by default
+  'bank_rule_priority',
+  'bank_rule_match_field', // description | matchKey
+  'bank_rule_match_operator', // contains | equals | starts_with | regex
+  'bank_rule_match_value',
+  'bank_rule_amount_min',
+  'bank_rule_amount_max',
+  'bank_rule_direction', // in | out | any
+  'bank_rule_bank_account', // scope to one account; any account when empty
+  'bank_rule_action', // code | exclude | transfer
+  'bank_rule_gl_account',
+  'bank_rule_counterpart_bank_account',
+  'bank_rule_contact',
+  'bank_rule_memo',
+  'bank_rule_applied_count',
+  'bank_rule_last_applied_at',
+
   // ─── Tariff schedule (plans/money/tasks/29-tariff-schedule.md) ──
   // Entity migration 119, and INERT on deploy: a duty rate is a function of
   // (classification, origin, date) and today only the rate itself is
@@ -727,6 +844,30 @@ export const SYSTEM_ATTRIBUTES = [
   // The supplier offer is the only row that knows both what the thing is and
   // where it ships from.
   'vendor_part_tariff_code',
+
+  // ─── Journal entry (plans/accounting/tasks/02-manual-journal-entry.md) ──
+  // Entity migration 125. The DRAFT of a hand-authored posting, and the holder
+  // of the opening trial balance (HANDOFF decision 6.7).
+  //
+  // 🛑 `journal_entry_number` is also the entry's `periodKey`, which is why it
+  // is hook-issued and never updatable: `doc-number.ts` keys `manual_journal` on
+  // the record number rather than on a date, because many entries can post in
+  // one day and a date key would make the second collide with the first on the
+  // claim's unique index.
+  'journal_entry_number',
+  'journal_entry_date', // a DATE - no time, no zone. The accounting date.
+  'journal_entry_memo',
+  'journal_entry_status', // draft | posted | reversed. Written by the post/reverse path only
+  'journal_entry_kind', // manual | opening_balance | recurring_template. Set once.
+  // The DRAFT lines as JSON, the `inbox_settings` shape. The POSTED lines are
+  // normalised in `GlPostingLine`, which is what every report reads; a second
+  // normalised copy would be two sources of truth for what the entry says.
+  'journal_entry_lines',
+  'journal_entry_attachment',
+  // TEXT, not a relationship: `GlPosting` is a Drizzle table (decision G6) and
+  // there is no `EntityDefinition` to point at. The audit direction that matters
+  // runs the other way - every line carries `sourceType: 'journal_entry'`.
+  'journal_entry_gl_posting_id',
 
   // ─── Inbox fields ───────────────────────────────────────────────
   'inbox_name',

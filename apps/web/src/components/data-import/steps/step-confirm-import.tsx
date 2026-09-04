@@ -6,7 +6,7 @@ import { isFinishedImportStatus } from '@auxx/lib/import/client'
 import { Button } from '@auxx/ui/components/button'
 import { EntityIcon } from '@auxx/ui/components/icons'
 import { Play } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { api } from '~/trpc/react'
 import { useImportSSE } from '../hooks/use-import-sse'
 import type { PreviewColumnMapping } from '../plan-preview'
@@ -17,14 +17,45 @@ import { ExecutionProgress } from '../progress/execution-progress'
 interface StepConfirmImportProps {
   jobId: string
   onComplete: () => void
+  /**
+   * Rendered above the plan summary, and above the completion card.
+   *
+   * A slot for what a HOST importer knows that the generic wizard cannot - the
+   * bank importer puts the coverage effect and the cross-source overlap here.
+   * Optional: with nothing passed this step is exactly what it was.
+   */
+  extra?: ReactNode
+  /**
+   * Fired once when the run terminates, on either the success or the failure
+   * arm - not when the user leaves the completion card.
+   *
+   * 🛑 The two are different moments. A host that has post-run work to do (the
+   * bank importer files the rows against an account) must not hang it on the
+   * "Done" button, or closing the tab on a green tick leaves the work undone.
+   */
+  onJobFinished?: () => void
 }
 
 /**
  * Step 4: Confirm and execute import.
  * Auto-generates plan on mount, shows summary with preview table, executes with real-time progress.
  */
-export function StepConfirmImport({ jobId, onComplete }: StepConfirmImportProps) {
+export function StepConfirmImport({
+  jobId,
+  onComplete,
+  extra,
+  onJobFinished,
+}: StepConfirmImportProps) {
   const [isExecuting, setIsExecuting] = useState(false)
+  // The host's post-run hook fires once per job. The SSE `onComplete` arm can be
+  // reached more than once (a reconnect replays the terminal event), and filing
+  // the same batch twice would stamp it twice and log two "filed" lines.
+  const finishedForJob = useRef<string | null>(null)
+  const notifyFinished = () => {
+    if (finishedForJob.current === jobId) return
+    finishedForJob.current = jobId
+    onJobFinished?.()
+  }
 
   const { data: plan, isLoading: planLoading } = api.dataImport.getPlan.useQuery({ jobId })
   const { data: job, isLoading: jobLoading } = api.dataImport.getJob.useQuery({ jobId })
@@ -101,6 +132,7 @@ export function StepConfirmImport({ jobId, onComplete }: StepConfirmImportProps)
     },
     onComplete: () => {
       setIsExecuting(false)
+      notifyFinished()
       utils.dataImport.getJob.invalidate({ jobId })
       // Refresh the record grid — an import is a bulk insert the list query
       // cannot know about. This previously targeted `utils.resource.listFiltered`,
@@ -117,6 +149,7 @@ export function StepConfirmImport({ jobId, onComplete }: StepConfirmImportProps)
     // render the failure.
     onError: () => {
       setIsExecuting(false)
+      notifyFinished()
       utils.dataImport.getJob.invalidate({ jobId })
       // Relation auto-create runs before the rows do, so even a run that
       // imported nothing may have minted records on a TARGET def.
@@ -133,7 +166,12 @@ export function StepConfirmImport({ jobId, onComplete }: StepConfirmImportProps)
 
   // Show loading with skeleton stats
   if (isLoading) {
-    return <ImportPlanSummary loading />
+    return (
+      <>
+        {extra}
+        <ImportPlanSummary loading />
+      </>
+    )
   }
 
   // Show execution progress
@@ -160,25 +198,29 @@ export function StepConfirmImport({ jobId, onComplete }: StepConfirmImportProps)
         }
       | undefined
     return (
-      <ImportCompleteCard
-        jobId={jobId}
-        entityDefinitionId={job.importMapping.entityDefinitionId}
-        statistics={{
-          created: stats?.created ?? 0,
-          updated: stats?.updated ?? 0,
-          skipped: stats?.skipped ?? 0,
-          unmatched: stats?.unmatched ?? 0,
-          failed: stats?.failed ?? 0,
-          warnings: stats?.warnings ?? 0,
-        }}
-        onComplete={onComplete}
-      />
+      <>
+        {extra}
+        <ImportCompleteCard
+          jobId={jobId}
+          entityDefinitionId={job.importMapping.entityDefinitionId}
+          statistics={{
+            created: stats?.created ?? 0,
+            updated: stats?.updated ?? 0,
+            skipped: stats?.skipped ?? 0,
+            unmatched: stats?.unmatched ?? 0,
+            failed: stats?.failed ?? 0,
+            warnings: stats?.warnings ?? 0,
+          }}
+          onComplete={onComplete}
+        />
+      </>
     )
   }
 
   // Show plan summary with preview table
   return (
     <div className='flex flex-col flex-1 min-h-0 min-w-0'>
+      {extra}
       {/* Plan Summary - fixed at top */}
       {plan && <ImportPlanSummary plan={plan} jobId={jobId} />}
 

@@ -8,9 +8,11 @@ import { cn } from '@auxx/ui/lib/utils'
 import {
   Ban,
   CircleSlash,
+  CircleX,
   KeyRound,
   Lock,
   Map as MapIcon,
+  PackageX,
   Scale,
   Settings2,
   TriangleAlert,
@@ -75,7 +77,7 @@ const REMEDIES: Partial<Record<PostResultStatus, BlockerRemedy>> = {
     icon: Scale,
     title: 'The entry does not balance',
     guidance:
-      'Debits and credits disagree, so the entry was refused before the period was claimed. This is a builder or subledger fault, not something a retry can change.',
+      'Debits and credits disagree, so the entry was refused before the period was claimed and nothing was written. The difference has to be found, never plugged.',
   },
   setup_incomplete: {
     tone: 'neutral',
@@ -116,6 +118,24 @@ const REMEDIES: Partial<Record<PostResultStatus, BlockerRemedy>> = {
     guidance:
       'This is not a blocker. The entry is built, balanced and persisted identically with no provider at all.',
   },
+  // ── HANDOFF slot 1B: the two statuses added by 1A's `inventory_role_refused`
+  // / `account_invalid` (types.ts, already present per 0B/9a) ────────────────
+  inventory_role_refused: {
+    tone: 'failure',
+    icon: PackageX,
+    title: 'This entry names an inventory account',
+    guidance:
+      'A manual or opening entry may never write to an inventory-role account - that balance is owned by the append-only stock movement ledger and asserted only by the month-end close. Adjust inventory through a stock movement, or remove the row naming it.',
+    href: '/app/accounting',
+    actionLabel: 'Open the close console',
+  },
+  account_invalid: {
+    tone: 'failure',
+    icon: CircleX,
+    title: 'An account on this entry is not valid',
+    guidance:
+      'The account named on this row does not exist in the chart, or is archived or inactive. The message above names the row - fix it there.',
+  },
 }
 
 const FALLBACK: BlockerRemedy = {
@@ -138,10 +158,20 @@ const TONE_ICON_CLASS: Record<BlockerRemedy['tone'], string> = {
 
 interface EntryBlockersProps {
   blockers: LedgerBlocker[]
-  /** Invoked by the `period_closed` remedy. */
+  /** Invoked by the `period_closed` remedy's "Review the lock" button. */
   onReviewLock?: () => void
   /** Invoked by the `nothing_to_close` remedy. Absent on the newest month. */
   onNextPeriod?: () => void
+  /**
+   * `period_closed`'s SECOND remedy - "post to the next open period instead",
+   * per HANDOFF slot 1B. Deliberately a distinct prop from {@link onNextPeriod}
+   * rather than reusing it: the ledger page's `onNextPeriod` NAVIGATES to
+   * another month (`nothing_to_close`'s remedy, where "this month" has no entry
+   * at all), while this one RE-DATES the entry on screen - the JE drawer is the
+   * only caller that supplies it, and passing both would be wrong on the
+   * month-end console's own `period_closed` card, which has no entry to re-date.
+   */
+  onPostToNextPeriod?: () => void
 }
 
 /**
@@ -152,7 +182,12 @@ interface EntryBlockersProps {
  * find out why the Post button does nothing has been given a puzzle instead of a
  * task (13-accounting-ui.md §5.2).
  */
-export function EntryBlockers({ blockers, onReviewLock, onNextPeriod }: EntryBlockersProps) {
+export function EntryBlockers({
+  blockers,
+  onReviewLock,
+  onNextPeriod,
+  onPostToNextPeriod,
+}: EntryBlockersProps) {
   if (blockers.length === 0) return null
 
   return (
@@ -188,6 +223,11 @@ export function EntryBlockers({ blockers, onReviewLock, onNextPeriod }: EntryBlo
             {remedy.action === 'unlock' && onReviewLock && (
               <Button variant='outline' size='sm' className='shrink-0' onClick={onReviewLock}>
                 {remedy.actionLabel}
+              </Button>
+            )}
+            {blocker.status === 'period_closed' && onPostToNextPeriod && (
+              <Button variant='outline' size='sm' className='shrink-0' onClick={onPostToNextPeriod}>
+                Post to the next open period
               </Button>
             )}
             {remedy.action === 'next-period' && onNextPeriod && (

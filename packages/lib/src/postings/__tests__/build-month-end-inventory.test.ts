@@ -61,7 +61,10 @@ function build(prior: SnapshotShorthand, current: SnapshotShorthand) {
 
 /** `[role, direction, amount]` per line, in emitted order. The golden shape. */
 function legs(draft: ReturnType<typeof build>): Array<[string, string, number]> {
-  return draft.entry.lines.map((line) => [line.accountRole, line.direction, line.amount])
+  // `accountRole` is `string | undefined` on the widened `GlPostingLineInput`
+  // union (HANDOFF slot 1A). Every line this builder emits is a ROLE line, so
+  // the fallback is unreachable and would fail the golden comparison loudly.
+  return draft.entry.lines.map((line) => [line.accountRole ?? '', line.direction, line.amount])
 }
 
 describe('the worked example - a month that produced, absorbed and shrank', () => {

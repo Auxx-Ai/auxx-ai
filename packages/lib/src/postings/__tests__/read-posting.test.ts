@@ -25,7 +25,7 @@
 import { type Database, schema } from '@auxx/database'
 import { describe, expect, it } from 'vitest'
 import { NotFoundError } from '../../errors'
-import { getPosting } from '../read-posting'
+import { getPosting, readPostingLineSourceIds } from '../read-posting'
 
 const ORG = 'org_1'
 const OTHER_ORG = 'org_2'
@@ -404,5 +404,107 @@ describe('getPosting - scope', () => {
     const detail = (await getPosting(stub.db, ORG, 'gp_1'))._unsafeUnwrap()
 
     expect(detail.lines.map((l) => l.accountCode)).toEqual(['1310'])
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// readPostingLineSourceIds - how a caller tells a converged re-post from a
+// period-key COLLISION. `already_posted` is a success status either way, so the
+// only difference visible anywhere is whose lines are in the winning posting.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** `selectDistinct().from().innerJoin().where()`, filtered on what was asked. */
+function sourceIdStub(lines: LineRow[]): Database {
+  return {
+    selectDistinct: () => ({
+      from: () => {
+        let params: string[] = []
+        const chain: any = {
+          innerJoin: () => chain,
+          where: (condition: unknown) => {
+            params = whereValues(condition)
+            return chain
+          },
+          // biome-ignore lint/suspicious/noThenProperty: the stub must be awaitable
+          then: (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) =>
+            Promise.resolve(
+              // DISTINCT, like the query - a two-line posting names its source
+              // once, not twice.
+              [
+                ...new Set(
+                  lines
+                    .filter(
+                      (row) =>
+                        params.includes(row.organizationId) &&
+                        params.includes(row.glPostingId) &&
+                        params.includes(row.sourceType)
+                    )
+                    .map((row) => row.sourceId)
+                ),
+              ].map((sourceId) => ({ sourceId }))
+            ).then(resolve, reject),
+        }
+        return chain
+      },
+    }),
+  } as unknown as Database
+}
+
+function paymentLine(sourceId: string, lineNumber: number): LineRow {
+  return {
+    id: `gpl_${lineNumber}`,
+    organizationId: ORG,
+    glPostingId: 'gp_1',
+    lineNumber,
+    accountCode: '1050',
+    accountRole: 'undeposited_funds',
+    accountName: 'Undeposited Funds',
+    direction: lineNumber === 1 ? 'debit' : 'credit',
+    amountMinor: 10_000,
+    memo: null,
+    sourceType: 'payment_transaction',
+    sourceId,
+  }
+}
+
+describe('readPostingLineSourceIds', () => {
+  it('names the transaction whose lines are actually in the posting', async () => {
+    const db = sourceIdStub([paymentLine('ptx_1', 1), paymentLine('ptx_1', 2)])
+    const result = await readPostingLineSourceIds(db, ORG, {
+      glPostingId: 'gp_1',
+      sourceType: 'payment_transaction',
+    })
+    expect(result._unsafeUnwrap()).toEqual(['ptx_1'])
+  })
+
+  it('names ANOTHER transaction when the key was collided into - the caller refuses on this', async () => {
+    const db = sourceIdStub([paymentLine('ptx_other', 1), paymentLine('ptx_other', 2)])
+    const owners = (
+      await readPostingLineSourceIds(db, ORG, {
+        glPostingId: 'gp_1',
+        sourceType: 'payment_transaction',
+      })
+    )._unsafeUnwrap()
+    expect(owners).toEqual(['ptx_other'])
+    expect(owners.includes('ptx_mine')).toBe(false)
+  })
+
+  it('reads nothing for another organization - a posting id is not a cross-org handle', async () => {
+    const db = sourceIdStub([paymentLine('ptx_1', 1)])
+    const result = await readPostingLineSourceIds(db, OTHER_ORG, {
+      glPostingId: 'gp_1',
+      sourceType: 'payment_transaction',
+    })
+    expect(result._unsafeUnwrap()).toEqual([])
+  })
+
+  it('ignores lines of a different sourceType on the same posting', async () => {
+    const other = { ...paymentLine('ord_9', 3), sourceType: 'order' }
+    const db = sourceIdStub([paymentLine('ptx_1', 1), other])
+    const result = await readPostingLineSourceIds(db, ORG, {
+      glPostingId: 'gp_1',
+      sourceType: 'payment_transaction',
+    })
+    expect(result._unsafeUnwrap()).toEqual(['ptx_1'])
   })
 })

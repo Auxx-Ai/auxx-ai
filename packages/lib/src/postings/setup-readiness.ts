@@ -99,6 +99,80 @@ export interface SetupReadiness {
   finalized: boolean
 }
 
+/** The trial-balance summary {@link resolveSetupReadiness} is given, if any. */
+export interface OpeningTrialBalanceSummary {
+  /** Σ of every debit row, integer minor units. */
+  debitMinor: number
+  /** Σ of every credit row, integer minor units. */
+  creditMinor: number
+  /** How many non-zero rows the trial balance holds. Zero means "nothing entered". */
+  rows: number
+}
+
+/**
+ * Everything this predicate needs that is NOT a setting.
+ *
+ * 🛑 The opening trial balance is the first requirement that is not eleven
+ * scalar keys. It is up to 35 rows now and unbounded once the chart is edited,
+ * so it lives on a `journal_entry` record of kind `opening_balance` (HANDOFF
+ * decision 6.7) rather than in the settings catalog - which means this
+ * otherwise-pure predicate cannot read it.
+ *
+ * ⚠️ **An absent `openingTrialBalance` reads as MET, not as unmet**, and the
+ * choice matters because the two callers are asymmetric:
+ *
+ * - `getting-started/signals.ts` runs server-side over `getOrgCache().get(orgId,
+ *   'orgSettings')` and has no journal-entry read in hand. It passes nothing.
+ *   Reporting "opening trial balance not balanced" there would light an
+ *   onboarding row red for every org on the strength of a fact the caller never
+ *   looked up, and the checklist would then disagree with the wizard - the one
+ *   failure `setup-readiness.ts` exists to prevent.
+ * - the wizard's done page and `settings/opening` both hold the entry (from
+ *   `ledgerOpening.get`) and pass it, so the requirement is answered from the
+ *   real rows exactly where somebody is about to act on it.
+ *
+ * Met-unknown is safe because this predicate NEVER gates a post: `postEntry`
+ * refuses an unbalanced entry on its own arithmetic, and it cannot be talked
+ * out of that by a checklist. See the "What this is NOT" section above.
+ */
+export interface SetupReadinessContext {
+  openingTrialBalance?: OpeningTrialBalanceSummary
+}
+
+/**
+ * Σ debits − Σ credits over a trial balance, in integer minor units.
+ *
+ * PURE, and the ONE place the trial balance's verdict is computed. The wizard
+ * page renders it under the grid, the settings twin renders it under its own,
+ * and this file turns it into a requirement - three screens, one arithmetic.
+ *
+ * `direction` is the only carrier of sign (ground rule 2), so a row's
+ * `amountMinor` is added, never subtracted: an amount that arrived negative is
+ * `buildManualEntry`'s refusal to make, naming the row, not this function's to
+ * silently absorb into a difference that then reads as balanced.
+ */
+export function openingTrialBalanceDifference(
+  lines: readonly { direction: 'debit' | 'credit'; amountMinor: number }[]
+): number {
+  return summariseOpeningTrialBalance(lines).differenceMinor
+}
+
+/** Both totals, the difference, and how many rows carry an amount. */
+export function summariseOpeningTrialBalance(
+  lines: readonly { direction: 'debit' | 'credit'; amountMinor: number }[]
+): OpeningTrialBalanceSummary & { differenceMinor: number } {
+  let debitMinor = 0
+  let creditMinor = 0
+  let rows = 0
+  for (const line of lines) {
+    if (!Number.isFinite(line.amountMinor) || line.amountMinor === 0) continue
+    rows += 1
+    if (line.direction === 'debit') debitMinor += line.amountMinor
+    else creditMinor += line.amountMinor
+  }
+  return { debitMinor, creditMinor, rows, differenceMinor: debitMinor - creditMinor }
+}
+
 /**
  * A `CURRENCY` setting, normalized.
  *
@@ -162,8 +236,15 @@ const MONTH_KEY = /^\d{4}-(0[1-9]|1[0-2])$/
  * Coarse on purpose - one requirement per wizard page, matching
  * `ACCOUNTING_GOAL_KEYS`. Cutoff and book timezone are two inputs on one page
  * and are reported as one row.
+ *
+ * @param context what this predicate cannot read out of settings. Optional, and
+ *   an omitted `openingTrialBalance` reads as met - see
+ *   {@link SetupReadinessContext} for why, and for which caller passes what.
  */
-export function resolveSetupReadiness(settings: SettingsRecord): SetupReadiness {
+export function resolveSetupReadiness(
+  settings: SettingsRecord,
+  context: SetupReadinessContext = {}
+): SetupReadiness {
   const K = OPENING_BASELINE_SETTING_KEYS
   const R = ABSORPTION_RATE_SETTING_KEYS
 
@@ -213,9 +294,27 @@ export function resolveSetupReadiness(settings: SettingsRecord): SetupReadiness 
         ? 'No overhead rate. An unset rate absorbs nothing.'
         : undefined
 
+  // The fourth requirement, and the only one whose input is not a setting.
+  // Absent context reads as met; `SetupReadinessContext` says why.
+  const trialBalance = context.openingTrialBalance
+  const trialBalanceReason = !trialBalance
+    ? undefined
+    : trialBalance.rows === 0
+      ? 'No opening trial balance entered. Every account with a balance at the cutover needs one.'
+      : trialBalance.debitMinor !== trialBalance.creditMinor
+        ? `The opening trial balance is out of balance by ${Math.abs(trialBalance.debitMinor - trialBalance.creditMinor)} ` +
+          'cents. It has to balance before it can post - a plug account to make it balance is the ' +
+          'one thing that must not happen here.'
+        : undefined
+
   const requirements: ReadinessRequirement[] = [
     { key: 'set-accounting-period', met: !periodReason, reason: periodReason },
     { key: 'set-opening-balances', met: !openingReason, reason: openingReason },
+    {
+      key: 'set-opening-trial-balance',
+      met: !trialBalanceReason,
+      reason: trialBalanceReason,
+    },
     { key: 'set-costing', met: !costingReason, reason: costingReason },
   ]
 

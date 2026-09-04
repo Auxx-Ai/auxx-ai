@@ -64,7 +64,17 @@ export interface DocumentEmailProfile {
    * of `quote_contact` so this stays a map entry rather than a second code path. Never try to
    * email the vendor company.
    */
-  contactSystemAttribute: 'quote_contact' | 'invoice_contact' | 'purchase_order_contact'
+  contactSystemAttribute:
+    | 'quote_contact'
+    | 'invoice_contact'
+    | 'purchase_order_contact'
+    // 🛑 There is NO such CustomField, deliberately. A deposit slip has no
+    // counterparty at all - it is OUR document about OUR bank run - so the
+    // lookup resolves to null and the send path refuses with
+    // {@link DocumentEmailProfile.noContactHint}'s sentence instead of mailing
+    // an internal banking document to whoever happened to be on the invoice.
+    // The alternative, pointing this at `invoice_contact`, would send it.
+    | 'bank_deposit_contact'
   /** `entityDefs` cache key (the `EntityDefinition.entityType` slug) for the placeholder root. */
   entityDefsKey: string
   /** The org's seeded system snippet used as the email body. */
@@ -131,6 +141,28 @@ export const DOCUMENT_EMAIL_PROFILES: Record<DocumentType, DocumentEmailProfile>
     markSent: ({ organizationId, userId, instanceId }) =>
       markPurchaseOrderSent({ organizationId, userId, purchaseOrderInstanceId: instanceId }),
     sentSubjectFallback: 'Purchase order sent',
+  },
+  // Registered so `prepareDocumentEmail` does not throw on an unregistered type
+  // and so the printing registry stays exhaustive - NOT because a deposit slip
+  // is ever emailed. It is an internal document: carried to a teller or filed
+  // against the statement. Both hooks below refuse rather than pretend.
+  bank_deposit: {
+    contactSystemAttribute: 'bank_deposit_contact',
+    entityDefsKey: 'bank_deposit',
+    // The nearest seeded snippet. Never rendered: the no-contact refusal fires
+    // first, every time, because the contact field does not exist.
+    snippetSystemType: 'invoice_email',
+    noun: 'deposit slip',
+    noContactHint:
+      'a deposit slip is an internal banking document with no recipient - download it from ' +
+      'the deposit instead',
+    markSent: async () => {
+      throw new BadRequestError(
+        'A deposit slip is not sent to anyone. Download it from the deposit and file it ' +
+          'against the bank statement.'
+      )
+    },
+    sentSubjectFallback: 'Deposit slip',
   },
 }
 

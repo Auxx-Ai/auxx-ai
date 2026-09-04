@@ -20,6 +20,8 @@ export async function resolveHostedProvisionHandler(key: string): Promise<Hosted
   switch (key) {
     case 'stripeConnect':
       return (await import('../../money/payments/connect')).stripeConnectHandler
+    case 'stripeFinancialConnections':
+      return (await import('../../banking/feed/fc-connect')).financialConnectionsHandler
     default:
       throw new NotFoundError(`No hosted-provision handler registered for key "${key}"`)
   }

@@ -18,6 +18,7 @@ import {
   Layers,
   Lock,
   LockOpen,
+  Plus,
   Scale,
   Send,
 } from 'lucide-react'
@@ -28,9 +29,13 @@ import { useAccountingProviderStatus } from '~/components/accounting/hooks/use-a
 import { useLedgerEntryActions } from '~/components/accounting/hooks/use-ledger-entry-actions'
 import { useLedgerPeriod } from '~/components/accounting/hooks/use-ledger-period'
 import { AccountingChecklistPanel } from '~/components/accounting/ui/checklist/accounting-checklist-panel'
+import { EntriesList } from '~/components/accounting/ui/journal/entries-list'
+import { JournalEntryDrawer } from '~/components/accounting/ui/journal/journal-entry-drawer'
+import { lastDayOfPeriod, today } from '~/components/accounting/ui/journal/period-helpers'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useMedia } from '~/hooks/use-media'
 import { useSettings } from '~/hooks/use-settings'
+import { useAccess } from '~/providers/capabilities-provider'
 import { useDockStore } from '~/stores/dock-store'
 import { api } from '~/trpc/react'
 import { BooksBalanceLine, UnpostedPeriodsBanner } from './books-health'
@@ -88,9 +93,12 @@ export function LedgerPage({ periodKey }: LedgerPageProps) {
   const setDockedWidth = useDockStore((state) => state.setDockedWidth)
   const [confirm, ConfirmDialog] = useConfirm()
   const utils = api.useUtils()
+  const { can } = useAccess()
 
   // 🛑 The deep link. A ledger entry is the thing somebody pastes into Slack.
   const [postingId, setPostingId] = useQueryState('posting')
+  // `?je=new` or `?je=<journalEntryId>` - the JE drawer (HANDOFF slot 1B).
+  const [journalEntryParam, setJournalEntryParam] = useQueryState('je')
   const lockSectionRef = useRef<HTMLDivElement | null>(null)
 
   const { activePeriod, activePeriodKey, bookTimeZone, currencyCode } = period
@@ -99,6 +107,17 @@ export function LedgerPage({ periodKey }: LedgerPageProps) {
   const isLocked = activePeriod?.state === 'locked'
   const isChecklistState = period.isSetupDraft
   const providerLabel = provider.providerLabel ?? 'the accounting system'
+
+  // The two drawers share ONE dock slot (ui-plan.md §2.1), so opening one
+  // closes the other rather than letting both params coexist unrendered.
+  function openPosting(id: string) {
+    void setJournalEntryParam(null)
+    void setPostingId(id)
+  }
+  function openJournalEntry(id: string) {
+    void setPostingId(null)
+    void setJournalEntryParam(id)
+  }
 
   const actions = useLedgerEntryActions({
     periodKey: activePeriodKey,
@@ -242,7 +261,7 @@ export function LedgerPage({ periodKey }: LedgerPageProps) {
       onOpenChange={(open) => {
         if (!open) void setPostingId(null)
       }}
-      onSelectPosting={(id) => void setPostingId(id)}
+      onSelectPosting={openPosting}
       isDocked={isDesktop}
       width={dockedWidth}
       onWidthChange={setDockedWidth}
@@ -254,18 +273,42 @@ export function LedgerPage({ periodKey }: LedgerPageProps) {
     />
   )
 
+  const journalEntryDrawer = (
+    <JournalEntryDrawer
+      journalEntryId={journalEntryParam === 'new' ? null : journalEntryParam}
+      isNew={journalEntryParam === 'new'}
+      open={!!journalEntryParam}
+      onOpenChange={(open) => {
+        if (!open) void setJournalEntryParam(null)
+      }}
+      isDocked={isDesktop}
+      width={dockedWidth}
+      onWidthChange={setDockedWidth}
+      currencyCode={currencyCode}
+      defaultDate={activePeriodKey ? lastDayOfPeriod(activePeriodKey) : today(bookTimeZone)}
+      onCreated={(id) => void setJournalEntryParam(id)}
+      onPosted={(glPostingId) => {
+        void utils.ledger.listPostings.invalidate()
+        void utils.ledger.journalEntry.list.invalidate()
+        void utils.ledger.periods.invalidate()
+        openPosting(glPostingId)
+      }}
+      onOpenPosting={openPosting}
+    />
+  )
+
   const content = (
     <MainPageContent
       dockedPanels={
-        isDesktop && postingId
+        isDesktop && (postingId || journalEntryParam)
           ? [
               {
-                key: 'posting',
-                content: postingDrawer,
+                key: journalEntryParam ? 'je' : 'posting',
+                content: journalEntryParam ? journalEntryDrawer : postingDrawer,
                 width: dockedWidth,
                 onWidthChange: setDockedWidth,
                 minWidth: 380,
-                maxWidth: 720,
+                maxWidth: 800,
               },
             ]
           : []
@@ -290,24 +333,33 @@ export function LedgerPage({ periodKey }: LedgerPageProps) {
               <Skeleton className='h-24 w-full' />
               <Skeleton className='h-64 w-full' />
             </div>
-          ) : !activePeriodKey ? (
-            <div className='flex items-start gap-3 rounded-xl border bg-muted/40 p-4'>
-              <CalendarCheck2 className='mt-0.5 size-5 shrink-0 text-muted-foreground' />
-              <div className='flex flex-col gap-1'>
-                <span className='font-medium'>No month is open for closing yet</span>
-                <p className='text-sm text-muted-foreground'>
-                  The first closable month is the one after the accounting cutoff. Nothing on or
-                  before the cutoff belongs to this system.
-                </p>
-              </div>
-            </div>
           ) : (
             <>
+              {/* 🛑 A BANNER, never a replacement for the body. As an early
+                  return this card took the Entries list and the New journal
+                  entry button down with it - and that button is the only door
+                  to a manual entry anywhere in the module - so an org whose
+                  cutoff is still ahead of the wall clock, or one whose period
+                  read failed, could not raise an entry at all. */}
+              {!activePeriodKey && (
+                <div className='flex items-start gap-3 rounded-xl border bg-muted/40 p-4'>
+                  <CalendarCheck2 className='mt-0.5 size-5 shrink-0 text-muted-foreground' />
+                  <div className='flex flex-col gap-1'>
+                    <span className='font-medium'>No month is open for closing yet</span>
+                    <p className='text-sm text-muted-foreground'>
+                      The first closable month is the one after the accounting cutoff. Nothing on or
+                      before the cutoff belongs to this system. A journal entry can still be raised
+                      below; it posts into whichever month its own date falls in.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {(unpostedQuery.data?.length ?? 0) > 0 && (
                 <UnpostedPeriodsBanner periods={unpostedQuery.data ?? []} />
               )}
 
-              {!period.hasOpenPeriod && (
+              {!!activePeriodKey && !period.hasOpenPeriod && (
                 <div className='flex items-start gap-3 rounded-xl border bg-muted/40 p-4'>
                   <CalendarCheck2 className='mt-0.5 size-5 shrink-0 text-muted-foreground' />
                   <div className='flex flex-col gap-1'>
@@ -320,14 +372,16 @@ export function LedgerPage({ periodKey }: LedgerPageProps) {
                 </div>
               )}
 
-              <RevisionStrip
-                entries={revisionEntries}
-                activePostingId={postingId}
-                onSelect={(id) => void setPostingId(id)}
-                bookTimeZone={bookTimeZone}
-              />
+              {!!activePeriodKey && (
+                <RevisionStrip
+                  entries={revisionEntries}
+                  activePostingId={postingId}
+                  onSelect={(id) => void setPostingId(id)}
+                  bookTimeZone={bookTimeZone}
+                />
+              )}
 
-              {blockers.length > 0 && (
+              {!!activePeriodKey && blockers.length > 0 && (
                 <Section
                   title={
                     isSoftRefusal
@@ -354,18 +408,20 @@ export function LedgerPage({ periodKey }: LedgerPageProps) {
               )}
 
               <Section
-                title='Journal entry'
+                title='Entries'
                 icon={<BookOpenCheck className='size-4' />}
                 secondary={docNumber ?? undefined}
                 description={
-                  isPostedPeriod
-                    ? 'The stored entry, exactly as it was posted. Never a re-run of the builder.'
-                    : `The month-end inventory entry auxx would post for ${periodLabel}.`
+                  !activePeriodKey
+                    ? 'Journal entries somebody has raised. There is no month-end entry to show until a month opens.'
+                    : isPostedPeriod
+                      ? 'The stored month-end entry, exactly as it was posted, plus every other entry this month. Never a re-run of the builder.'
+                      : `The month-end inventory entry auxx would post for ${periodLabel}, plus every other entry this month.`
                 }
                 collapsible={false}
                 actions={
                   <div className='flex items-center gap-1'>
-                    {!isPostedPeriod && (
+                    {!!activePeriodKey && !isPostedPeriod && (
                       <Button
                         variant='ghost'
                         size='sm'
@@ -375,9 +431,23 @@ export function LedgerPage({ periodKey }: LedgerPageProps) {
                         Rebuild preview
                       </Button>
                     )}
+                    {/* 🛑 NOT gated on a period. This is the only door to a
+                        manual entry in the module, and the drawer seeds its
+                        Date from `today(bookTimeZone)` when no month
+                        resolves. */}
+                    {can('ledger.post') && (
+                      <Button
+                        variant='ghost'
+                        size='sm'
+                        disabled={isChecklistState}
+                        onClick={() => openJournalEntry('new')}>
+                        <Plus />
+                        New journal entry
+                      </Button>
+                    )}
                   </div>
                 }>
-                {isEntryLoading && lines.length === 0 ? (
+                {!activePeriodKey ? null : isEntryLoading && lines.length === 0 ? (
                   <Skeleton className='h-48 w-full' />
                 ) : lines.length === 0 && blockers.length > 0 ? (
                   <p className='text-sm text-muted-foreground'>
@@ -429,9 +499,21 @@ export function LedgerPage({ periodKey }: LedgerPageProps) {
                     </div>
                   </div>
                 )}
+
+                {/* Everything the month-end entry above is NOT: other postings
+                    this period, plus drafts nobody has posted yet. With no
+                    month resolved it is the whole of the section. */}
+                <div className={activePeriodKey ? 'mt-4 border-t pt-3' : ''}>
+                  <EntriesList
+                    periodKey={activePeriodKey || undefined}
+                    currencyCode={currencyCode}
+                    onSelectPosting={openPosting}
+                    onSelectJournalEntry={openJournalEntry}
+                  />
+                </div>
               </Section>
 
-              {assertions && (
+              {!!activePeriodKey && assertions && (
                 <Section
                   title='Roll-forward'
                   icon={<Layers className='size-4' />}
@@ -445,35 +527,40 @@ export function LedgerPage({ periodKey }: LedgerPageProps) {
                 </Section>
               )}
 
-              <div ref={lockSectionRef}>
-                <Section
-                  title='Close the month'
-                  icon={isLocked ? <Lock className='size-4' /> : <LockOpen className='size-4' />}
-                  description='Declaring the month shut is a separate assertion from posting the entry.'
-                  collapsible={false}>
-                  <div className='flex flex-wrap items-center gap-3'>
-                    <Button
-                      variant={isLocked ? 'outline' : 'default'}
-                      disabled={!isPostedPeriod && !actions.justPosted}
-                      onClick={() => void handleToggleLock()}>
-                      {isLocked ? <LockOpen /> : <Lock />}
-                      {isLocked ? `Unlock ${periodLabel}` : `Lock ${periodLabel}`}
-                    </Button>
-                    <span className='text-sm text-muted-foreground'>
-                      {isLocked
-                        ? 'Locked. Nothing can post into this month until it is unlocked, and unlocking asks first.'
-                        : 'Open. The entry can still be reversed and re-entered.'}
-                    </span>
-                  </div>
-                  <p className='mt-2 text-xs text-muted-foreground'>
-                    {lockedThrough
-                      ? `The books are closed through ${formatPeriodLabel(lockedThrough)}.`
-                      : 'Nothing is closed yet.'}
-                  </p>
-                </Section>
-              </div>
+              {/* Every section below this point is ABOUT a month, so each is
+                  gated on one having resolved. Only the Entries section above
+                  and the books sweep below survive the no-period state. */}
+              {!!activePeriodKey && (
+                <div ref={lockSectionRef}>
+                  <Section
+                    title='Close the month'
+                    icon={isLocked ? <Lock className='size-4' /> : <LockOpen className='size-4' />}
+                    description='Declaring the month shut is a separate assertion from posting the entry.'
+                    collapsible={false}>
+                    <div className='flex flex-wrap items-center gap-3'>
+                      <Button
+                        variant={isLocked ? 'outline' : 'default'}
+                        disabled={!isPostedPeriod && !actions.justPosted}
+                        onClick={() => void handleToggleLock()}>
+                        {isLocked ? <LockOpen /> : <Lock />}
+                        {isLocked ? `Unlock ${periodLabel}` : `Lock ${periodLabel}`}
+                      </Button>
+                      <span className='text-sm text-muted-foreground'>
+                        {isLocked
+                          ? 'Locked. Nothing can post into this month until it is unlocked, and unlocking asks first.'
+                          : 'Open. The entry can still be reversed and re-entered.'}
+                      </span>
+                    </div>
+                    <p className='mt-2 text-xs text-muted-foreground'>
+                      {lockedThrough
+                        ? `The books are closed through ${formatPeriodLabel(lockedThrough)}.`
+                        : 'Nothing is closed yet.'}
+                    </p>
+                  </Section>
+                </div>
+              )}
 
-              {lateArrivals && (
+              {!!activePeriodKey && lateArrivals && (
                 <Section
                   title='Late-arriving activity'
                   icon={<Clock3 className='size-4' />}
@@ -488,7 +575,7 @@ export function LedgerPage({ periodKey }: LedgerPageProps) {
                 </Section>
               )}
 
-              {countAdjustments && (
+              {!!activePeriodKey && countAdjustments && (
                 <Section
                   title='Cycle-count evidence'
                   icon={<ClipboardCheck className='size-4' />}
@@ -524,10 +611,18 @@ export function LedgerPage({ periodKey }: LedgerPageProps) {
     <>
       {content}
 
-      {/* Below the dock breakpoint the same drawer renders as a floating
-          overlay. Placed outside `MainPageContent`, the way every other docked
-          panel's overlay fallback is. */}
-      {!isDesktop && postingDrawer}
+      {/* Below the dock breakpoint the same drawers render as floating
+          overlays. Placed outside `MainPageContent`, the way every other
+          docked panel's overlay fallback is.
+
+          🛑 Gated on the PARAM, not just the breakpoint. Rendered
+          unconditionally the JE drawer never unmounted, so its draft hook kept
+          the closed entry's lines and its "already asked for a record" guard,
+          and the next `?je=new` opened onto the previous entry with Save,
+          Preview and Post disabled forever. The dock above is gated the same
+          way; this is the mobile half of the same rule. */}
+      {!isDesktop && !!postingId && postingDrawer}
+      {!isDesktop && !!journalEntryParam && journalEntryDrawer}
 
       <ConfirmDialog />
     </>

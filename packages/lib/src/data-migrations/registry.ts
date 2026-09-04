@@ -162,6 +162,8 @@ function buildRegistry(): DataMigrationDef[] {
     // ALL_ENTITY_MIGRATIONS above; it owns 104 in the shared id sequence.
     migration105PruneDanglingRelationValues,
     migration106DateFieldsUtcMidnight,
+    // 107 and up are ENTITY migrations and own those ids in the shared
+    // sequence; they arrive via ALL_ENTITY_MIGRATIONS above.
   ]
 
   all.sort((a, b) => a.id.localeCompare(b.id))

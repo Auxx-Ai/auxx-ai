@@ -4,17 +4,31 @@ import { database, schema } from '@auxx/database'
 import { and, eq, sql } from 'drizzle-orm'
 import { NotFoundError } from '../errors'
 
+/**
+ * Which record kinds a `RecordSequence` row can count.
+ *
+ * A VALUE and not a bare type union, so the tRPC scope enum in
+ * `routers/ticketSequence.ts` can be derived from it. It used to be a type
+ * only, and the router re-typed the same nine strings by hand - which meant
+ * every scope added here (`bank_deposit`, `journal_entry`) broke the router's
+ * typecheck until somebody edited the second copy too. One list.
+ */
+export const SEQUENCE_SCOPES = [
+  'ticket',
+  'work_order',
+  'service_request',
+  'quote',
+  'invoice',
+  'order',
+  'purchase_order',
+  'vendor_bill',
+  'build',
+  'bank_deposit',
+  'journal_entry',
+] as const
+
 /** Which record kind a `RecordSequence` row counts. */
-export type SequenceScope =
-  | 'ticket'
-  | 'work_order'
-  | 'service_request'
-  | 'quote'
-  | 'invoice'
-  | 'order'
-  | 'purchase_order'
-  | 'vendor_bill'
-  | 'build'
+export type SequenceScope = (typeof SEQUENCE_SCOPES)[number]
 
 const SCOPE_DEFAULTS: Record<SequenceScope, { prefix: string }> = {
   ticket: { prefix: 'TKT' },
@@ -31,6 +45,14 @@ const SCOPE_DEFAULTS: Record<SequenceScope, { prefix: string }> = {
   // starting with a B would read as the vendor bill's `BILL-0001` at a glance, and
   // these two numbers sit side by side on the same cost trail.
   build: { prefix: 'B' },
+  // `DEP-0001`. The posting's document number keys on this string
+  // (`postings/doc-number.ts`), so it must stay short: `AUXX-DEP-DEP0001` is 16
+  // of the 21 characters the cap allows.
+  bank_deposit: { prefix: 'DEP' },
+  // `JNL-0001`, matching `DOC_NUMBER_PREFIX.manual_journal`. The number IS the
+  // posting's `periodKey`, so it must stay short for the same reason:
+  // `AUXX-JNL-JNL0001` is 16 of the 21 characters the cap allows.
+  journal_entry: { prefix: 'JNL' },
 }
 
 /** Format a record number from a sequence record */

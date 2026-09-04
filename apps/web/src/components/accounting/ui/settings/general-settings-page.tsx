@@ -15,11 +15,16 @@
 // hook the setup wizard narrows its writes with.
 
 import { FieldType } from '@auxx/database/enums'
+// The route table is owned by the module that READS it (`resolvePaymentRoute`),
+// so the five keys and their labels are imported rather than restated here - a
+// second copy would let this form offer a destination the resolver falls back
+// out of, silently.
+import { PAYMENT_ROUTE_SETTING_KEYS } from '@auxx/lib/money/client'
 import { FeatureKey, PermissionKey } from '@auxx/lib/permissions/client'
 import { isValidTimeZone, resolveSetupReadiness } from '@auxx/lib/postings/client'
 import type { SettingValue } from '@auxx/lib/settings/client'
 import { Badge } from '@auxx/ui/components/badge'
-import { CalendarRange, Lock, Scale } from 'lucide-react'
+import { Banknote, CalendarRange, Lock, Scale } from 'lucide-react'
 import { useMemo } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { EmptyState } from '~/components/global/empty-state'
@@ -53,6 +58,44 @@ import { SetupStatusSection } from './setup-status-section'
 import { StandardCostSection } from './standard-cost-section'
 
 const MONTH_KEY = /^\d{4}-(0[1-9]|1[0-2])$/
+
+/**
+ * One row per `PaymentMethod`, in the order a bookkeeper meets them.
+ *
+ * The keys come from `PAYMENT_ROUTE_SETTING_KEYS`; only the copy is local. The
+ * input itself is rendered by `SettingsFieldRow` from the catalog entry, so the
+ * three destinations are declared exactly once, in the catalog.
+ */
+const PAYMENT_ROUTE_ROWS = [
+  {
+    key: PAYMENT_ROUTE_SETTING_KEYS.cash,
+    title: 'Cash',
+    description: 'Banked in a run, so it waits to be grouped.',
+  },
+  {
+    key: PAYMENT_ROUTE_SETTING_KEYS.check,
+    title: 'Check',
+    description: 'Five cheques banked together are one bank line.',
+  },
+  {
+    key: PAYMENT_ROUTE_SETTING_KEYS.card,
+    title: 'Card',
+    description: 'Settles as a net payout, so it clears rather than banks.',
+  },
+  {
+    key: PAYMENT_ROUTE_SETTING_KEYS.bank,
+    title: 'Bank transfer',
+    description: 'ACH or wire - arrives on its own line.',
+  },
+  {
+    key: PAYMENT_ROUTE_SETTING_KEYS.other,
+    title: 'Other',
+    description: 'The unknown rail. Undeposited funds is the safe unknown.',
+  },
+] as const
+
+/** The five keys this page's route slice owns. Derived, never retyped. */
+const PAYMENT_ROUTE_DRAFT_KEYS = PAYMENT_ROUTE_ROWS.map((row) => row.key)
 
 const BREADCRUMBS = [
   { title: 'Accounting', href: '/app/accounting' },
@@ -94,14 +137,20 @@ export function AccountingGeneralSettingsPage() {
       : undefined
   const periodValid = !cutoffError && !zoneError
 
+  // ── Section: where payments land (plans/accounting/tasks/06 §2.3) ────────
+  // Its own slice, like every other section on this page: the route table
+  // validates nothing and could later save through a different mutation.
+  const routes = useAccountingSetupDraft(PAYMENT_ROUTE_DRAFT_KEYS)
+
   // ── Section 3: absorption rates ──────────────────────────────────────────
   const absorption = useAccountingSetupDraft(ABSORPTION_DRAFT_KEYS)
   const { draft: absorptionDraft, patch: patchAbsorption } = absorption
 
   const absorptionValid = everyMinorUnitValid(absorptionDraft, ABSORPTION_DRAFT_KEYS)
 
-  const dirty = period.dirty || absorption.dirty
-  const isSaving = period.isSaving || absorption.isSaving || isBatchUpdatingOrgSettings
+  const dirty = period.dirty || absorption.dirty || routes.dirty
+  const isSaving =
+    period.isSaving || absorption.isSaving || routes.isSaving || isBatchUpdatingOrgSettings
   const saveDisabled = (period.dirty && !periodValid) || (absorption.dirty && !absorptionValid)
 
   function handleFinalize() {
@@ -184,6 +233,35 @@ export function AccountingGeneralSettingsPage() {
                   />
                 </SettingsFieldRow>
               </FieldPanel>
+            </SettingsSection>
+
+            <SettingsSection
+              icon={Banknote}
+              title='Where payments land'
+              description='Which ledger account a received payment posts to, by how it was collected. Declared once here and read by every payment.'>
+              <FieldPanel
+                className='mt-1 p-0'
+                resizeId='accounting-general-payment-routes'
+                defaultLabelWidth={220}>
+                {PAYMENT_ROUTE_ROWS.map((row) => (
+                  <SettingsFieldRow
+                    key={row.key}
+                    settingKey={row.key}
+                    title={row.title}
+                    description={row.description}
+                    {...routes.controlled(row.key)}
+                  />
+                ))}
+              </FieldPanel>
+
+              <p className='text-muted-foreground text-xs'>
+                Cash and cheques are banked in a run, so they wait in undeposited funds until a
+                deposit groups them into the one line the statement shows. An ACH arrives on its own
+                line and goes straight to the bank account. A card settles as a net payout days
+                later, so it lands in a clearing account that the payout entry drains. Getting one
+                of these wrong still balances the books, and silently stops that rail from ever
+                matching a bank line.
+              </p>
             </SettingsSection>
 
             <SettingsSection

@@ -54,3 +54,37 @@ export const BILLING_TIMING_LABELS: Record<WorkOrderInvoiceTiming, string> = {
   as_needed: 'Manually',
   custom_schedule: 'On a schedule',
 }
+
+// ─── Bank deposits (plans/accounting/tasks/06-deposit-grouping.md, slot 1D) ──
+// The client-safe half only: constants, the status union, and the pure route
+// and grouping helpers the deposits page reads. Nothing here imports a database.
+export {
+  BANK_DEPOSIT_SOURCE_TYPE,
+  type BankDepositStatus,
+  DEFAULT_PAYMENT_ROUTES,
+  groupByDay,
+  isBankDepositFrozen,
+  methodsRoutedToUndepositedFunds,
+  PAYMENT_ROUTE_SETTING_KEYS,
+  PAYMENT_ROUTE_SETTING_OPTIONS,
+  type PaymentRoute,
+  type PaymentRouteMethod,
+  resolveBankDepositStatus,
+  resolvePaymentRoute,
+} from './bank-deposits/client'
+
+// ─── Order fulfillment (HANDOFF slot 2G) ────────────────────────────────────
+// The client-safe half only: the shipment-log shape and the pure functions over
+// it, which the fulfill dialog reads to prefill remaining quantities.
+export {
+  fulfillmentStatusFor,
+  nextFulfillmentSequence,
+  ORDER_FULFILLMENT_SOURCE_TYPE,
+  type OrderFulfillment,
+  type OrderFulfillmentLine,
+  type OrderFulfillmentsEnvelope,
+  type OrderLineRemaining,
+  shippedByLine,
+  shippedSubtotalMinor,
+  shippingStillOwed,
+} from './orders/client'

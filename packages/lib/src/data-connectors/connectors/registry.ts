@@ -7,12 +7,21 @@ import { NotFoundError } from '../../errors'
 import { type AppConnectorContext, appConnectorAdapter } from './app-connector-adapter'
 import { fixtureConnector } from './fixture'
 import { genericRestConnector } from './generic-rest'
+import {
+  STRIPE_FC_CONNECTOR_TYPE,
+  stripeFinancialConnectionsConnector,
+} from './stripe-financial-connections'
 import type { DataConnectorDefinition } from './types'
 
 /** Platform-owned, in-process built-in connectors (not backed by an installed app). */
 const BUILTIN_CONNECTORS: Record<string, DataConnectorDefinition> = {
   'generic-rest': genericRestConnector,
   fixture: fixtureConnector,
+  // The bank feed. Unlike the two above it drives no HTTP transport at all: it reads
+  // the `fca_...` account off its credential and calls the Stripe SDK on the platform
+  // key (plans/bank-connection/01). It is still just a built-in here - the orchestrator
+  // resolves it through `connectorFor` and never learns what it is.
+  [STRIPE_FC_CONNECTOR_TYPE]: stripeFinancialConnectionsConnector,
 }
 
 /**

@@ -219,3 +219,47 @@ function toDateKey(value: Date | string): string {
 function toMinor(value: string | number): number {
   return typeof value === 'number' ? value : Number(value)
 }
+
+/**
+ * Every distinct `sourceId` the lines of one posting carry, for one
+ * `sourceType`.
+ *
+ * 🛑 **This is how a caller tells a converged re-post from a KEY COLLISION.**
+ * `postEntry` answers `already_posted` whenever the claim's unique index on
+ * `(organizationId, postingType, periodKey, revision)` was already held, and
+ * that status is a SUCCESS - correctly, when the row that holds it is the same
+ * source re-posting. A minted key can collide across two DIFFERENT sources
+ * though (`paymentPeriodKey` hashes a cuid into six base-36 digits), and the
+ * loser of a collision gets the same success status while its money never
+ * reaches the books. The only way to tell the two apart is to look at whose
+ * lines are actually in the winning posting, which is what this reads.
+ *
+ * Scoped by organization for `getPosting`'s reason; an empty array means the
+ * posting is not this org's, does not exist, or has no line of that type.
+ *
+ * No permission checks here. The router asserts (`docs/lib-module-guide.md` §6).
+ */
+export async function readPostingLineSourceIds(
+  db: Database,
+  organizationId: string,
+  params: { glPostingId: string; sourceType: string }
+): Promise<Result<string[], Error>> {
+  try {
+    const rows = await db
+      .selectDistinct({ sourceId: schema.GlPostingLine.sourceId })
+      .from(schema.GlPostingLine)
+      .innerJoin(schema.GlPosting, eq(schema.GlPosting.id, schema.GlPostingLine.glPostingId))
+      .where(
+        and(
+          eq(schema.GlPosting.organizationId, organizationId),
+          eq(schema.GlPostingLine.glPostingId, params.glPostingId),
+          eq(schema.GlPostingLine.sourceType, params.sourceType)
+        )
+      )
+    return ok(rows.map((row) => row.sourceId).filter((id): id is string => Boolean(id)))
+  } catch (error) {
+    if (error instanceof AuxxError) return err(error)
+    logger.error("Failed to read a posting's line sources", { error, organizationId, ...params })
+    return err(new AuxxError('Internal error'))
+  }
+}

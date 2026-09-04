@@ -34,6 +34,11 @@ export type SignalRecordKind =
   | 'invoice'
   | 'quote'
   | 'purchase_order'
+  // Registered because `recordDocumentSendSignal` links whatever document type it
+  // was handed, and the printing registry now holds a fourth. In practice a
+  // deposit slip never reaches it - the send path refuses first - but the union
+  // has to admit it or the shared helper stops compiling.
+  | 'bank_deposit'
 
 /**
  * Compose an `EntitySignalLink.recordKey` — the one place every writer/reader builds this

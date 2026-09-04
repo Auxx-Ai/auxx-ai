@@ -1136,4 +1136,41 @@ export const PLATFORM_PROVIDER_DEFS: PlatformProviderDef[] = [
     authApply: null,
     uiMetadata: { icon: 'brand:stripe', category: 'other', brandColor: '#635bff' },
   },
+  {
+    // Stripe Financial Connections - the bank feed (plans/bank-connection/01). Runs on the
+    // SAME platform secret key as `stripeConnect`: there is no OAuth client, no mTLS
+    // certificate and no stored token, so `authApply` is null and the Credential's whole job
+    // is to anchor one `fca_...` account under `metadata.providerAccountId`. It drives no HTTP
+    // transport at all - the connector reads that id and calls the Stripe SDK through
+    // `getStripeConnectClient()` - which is why there is no `baseUrlTemplate` either.
+    //
+    // The two declared capabilities are the whole reason `ProviderCapabilities` exists:
+    //   - `multiAccount`, because one bank LOGIN is one credential and a business has
+    //     several (LFK has a Bank of America login and a Wells Fargo one). The default
+    //     one-credential-per-provider dedupe would make the second connection silently
+    //     overwrite the first.
+    //   - `embed`, because Financial Connections has NO provider-hosted page. The session
+    //     hands back a `client_secret` and Stripe.js opens the modal on our own page.
+    providerKey: 'stripeFinancialConnections',
+    connectionType: 'hosted-provision',
+    hostedProvisionKey: 'stripeFinancialConnections',
+    capabilities: { multiAccount: true, embed: true },
+    label: 'Bank feed',
+    description:
+      'Connect a bank account so transactions arrive automatically. US accounts only, and ' +
+      'the feed reaches back up to 180 days from the day you connect.',
+    global: true,
+    authApply: null,
+    // Declared so the keyspace the connector writes into `metadata.connectionVariables` has
+    // one definition rather than being invented at each read. None is `required`: they are
+    // filled by `complete()` from what the bank said, never typed into a connect form.
+    connectionVariables: [
+      { key: 'institution', label: 'Institution', required: false, placeholder: 'Bank of America' },
+      { key: 'accountName', label: 'Account name', required: false },
+      { key: 'last4', label: 'Last four', required: false, placeholder: '5381' },
+      { key: 'accountType', label: 'Type', required: false, placeholder: 'depository' },
+      { key: 'currency', label: 'Currency', required: false, placeholder: 'USD' },
+    ],
+    uiMetadata: { icon: 'brand:stripe', category: 'other', brandColor: '#635bff' },
+  },
 ]

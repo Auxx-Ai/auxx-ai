@@ -209,6 +209,49 @@ export const PAYMENT_FIELDS: Record<string, ResourceField> = {
       'so the ledger stays the only writer',
   },
 
+  /**
+   * The bank deposit this payment was banked in
+   * (plans/accounting/tasks/06-deposit-grouping.md §2.2), added by entity
+   * migration 125.
+   *
+   * 🛑 **The OWNING side of the pair, and the enforcement of "a payment can be
+   * in exactly one deposit."** `belongs_to` gives one value per payment;
+   * `createBankDeposit` reads this field before it writes and refuses a payment
+   * that already carries one, because `FieldValue` cannot express the
+   * constraint. Null is the ordinary state: a card or ACH receipt never routes
+   * through undeposited funds at all.
+   */
+  bankDeposit: {
+    id: toFieldId('bankDeposit'),
+    key: 'bankDeposit',
+    label: 'Bank Deposit',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'payment_bank_deposit',
+    systemSortOrder: 'a8',
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'bank_deposit:payments' as ResourceFieldId,
+      relationshipType: 'belongs_to',
+      isInverse: false,
+    },
+    relationshipConfig: {
+      relatedEntityType: 'bank_deposit',
+      relationshipType: 'belongs_to',
+      inverseName: 'Payments',
+      inverseSystemAttribute: 'bank_deposit_payments',
+    },
+    description: 'The bank deposit this payment was banked in. Null until it is grouped',
+  },
+
   createdAt: {
     id: toFieldId('createdAt'),
     key: 'createdAt',
