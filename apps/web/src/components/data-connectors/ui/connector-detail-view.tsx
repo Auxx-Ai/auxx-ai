@@ -209,13 +209,14 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
     }))
     return getConnectorReadiness(
       {
+        status,
         definitionKind: draftMeta.definitionKind,
         config: draftConfig as never,
         credentialId: draftMeta.credentialId,
       },
       streams
     )
-  }, [draftSeeded, draftMeta, draftStreams, draftConfig])
+  }, [draftSeeded, draftMeta, draftStreams, draftConfig, status])
 
   // Teardown in flight: the connector row survives only as the teardown's anchor
   // until the last slice removes it, so every action on it is meaningless — and
@@ -224,13 +225,21 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
 
   // Sync / Sample need a COMPLETE config (readiness) AND a SAVED one (not dirty) — §7a.
   // Reason text, or null when the action is allowed.
+  //
+  // ⚠️ The two lifecycle refusals are checked HERE as well as inside `getConnectorReadiness`,
+  // and the duplication is deliberate: `readiness` is null until the draft store seeds,
+  // so a reason derived only from it leaves the button live on first paint — which is
+  // exactly the window a merchant lands in when they open a disconnected connector from
+  // the list (task 44 §7.11).
   const syncBlockReason = isRemoving
-    ? 'Removing this connector'
-    : readiness && !readiness.canSync
-      ? READINESS_REASON[readiness.problems[0] ?? 'no-endpoint']
-      : isDirty
-        ? 'Save changes first'
-        : null
+    ? READINESS_REASON.removing
+    : isDisconnected
+      ? READINESS_REASON.disconnected
+      : readiness && !readiness.canSync
+        ? READINESS_REASON[readiness.problems[0] ?? 'no-endpoint']
+        : isDirty
+          ? 'Save changes first'
+          : null
 
   const handleDelete = async (syncedData: 'keep' | 'archive' | 'delete') => {
     // Owned defs split into those THIS delete tears down (sole owner) vs those it keeps
