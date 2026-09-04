@@ -258,7 +258,12 @@ export function TreeRow({
         className={cn(
           'group/tree-row flex items-center justify-between rounded-md text-sm px-1',
           'text-muted-foreground hover:bg-background',
-          rowClickable && 'cursor-pointer',
+          // A row is chrome, not prose. Without this the label falls back to
+          // `cursor: auto`, which every browser resolves to an I-beam over text,
+          // so a non-clickable row reads as an editable field on hover. `cursor`
+          // inherits, so the grip, buttons and any real input inside still win
+          // with their own value.
+          rowClickable ? 'cursor-pointer' : 'cursor-default',
           rowClassName
         )}
         onClick={rowClickable ? rowClick : undefined}>
@@ -347,6 +352,55 @@ export function TreeRow({
   )
 }
 
+export interface TreeRowGripProps {
+  /** The row's resting leading icon. Omit for a row that has no icon. */
+  icon?: React.ReactNode
+  /** dnd-kit's `attributes` + `listeners`, spread onto the handle itself. */
+  handleProps?: React.HTMLAttributes<HTMLElement>
+  /** True while THIS row is the one being dragged, which pins the grip visible. */
+  isDragging?: boolean
+}
+
+/**
+ * The drag handle every sortable {@link TreeRow} in the app shares: hover-revealed
+ * in the LEADING slot, cross-fading icon → grip, exactly mirroring how
+ * `chevronOnHover` swaps a row's icon for its chevron. A row with no icon fades
+ * the grip into the empty slot instead.
+ *
+ * Extracted so the placement is defined once. A handle parked in the trailing
+ * `actions` slot looks reasonable in isolation but reads as a different control
+ * from every other draggable row in the product, and it competes with the real
+ * actions (delete, visibility switches) for the same corner. Consumers that
+ * cannot use {@link SortableTreeRow} itself, because they run their own
+ * `DndContext` without a `SortableContext`, should render this into `icon`
+ * rather than hand-rolling a grip.
+ */
+export function TreeRowGrip({ icon, handleProps, isDragging }: TreeRowGripProps) {
+  return (
+    <span className='relative flex items-center justify-center'>
+      {icon !== undefined && (
+        <span
+          className={cn(
+            'flex items-center justify-center transition-opacity',
+            isDragging ? 'opacity-0' : 'group-hover/tree-row:opacity-0'
+          )}>
+          {icon}
+        </span>
+      )}
+      <span
+        {...handleProps}
+        onClick={stopPropagation}
+        className={cn(
+          'cursor-grab touch-none transition-opacity active:cursor-grabbing',
+          icon !== undefined && 'absolute inset-0 flex items-center justify-center',
+          isDragging ? 'opacity-100' : 'opacity-0 group-hover/tree-row:opacity-100'
+        )}>
+        <GripVertical className='size-4' />
+      </span>
+    </span>
+  )
+}
+
 export interface SortableTreeRowProps extends TreeRowProps {
   /** Unique sortable id — must appear in the parent `SortableList`'s `items`. */
   id: string
@@ -387,28 +441,11 @@ export function SortableTreeRow({
   }
 
   const grip = (
-    <span className='relative flex items-center justify-center'>
-      {icon !== undefined && (
-        <span
-          className={cn(
-            'flex items-center justify-center transition-opacity',
-            isDragging ? 'opacity-0' : 'group-hover/tree-row:opacity-0'
-          )}>
-          {icon}
-        </span>
-      )}
-      <span
-        {...attributes}
-        {...listeners}
-        onClick={stopPropagation}
-        className={cn(
-          'cursor-grab touch-none transition-opacity',
-          icon !== undefined && 'absolute inset-0 flex items-center justify-center',
-          isDragging ? 'opacity-100' : 'opacity-0 group-hover/tree-row:opacity-100'
-        )}>
-        <GripVertical className='size-4' />
-      </span>
-    </span>
+    <TreeRowGrip
+      icon={icon}
+      handleProps={{ ...attributes, ...listeners }}
+      isDragging={isDragging}
+    />
   )
 
   return (
@@ -536,7 +573,10 @@ export function GridTreeRow({
 
   const line = (
     <div
-      className={cn('group/tree-row relative text-sm', rowClickable && 'cursor-pointer')}
+      className={cn(
+        'group/tree-row relative text-sm',
+        rowClickable ? 'cursor-pointer' : 'cursor-default'
+      )}
       onClick={rowClickable ? rowClick : undefined}>
       {/* Hover background — a standalone layer, independent of the grid columns,
           inset to the indent so the highlight lines up with the content (matching

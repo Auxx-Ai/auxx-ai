@@ -6,6 +6,12 @@ import type {
   DetailViewEntityType,
   SidebarTabDefinition,
 } from './detail-view-config-types'
+import {
+  BILLING_TAB_ID,
+  COMPANY_PURCHASING_BLOCKS,
+  CONTACT_BILLING_BLOCKS,
+  PURCHASING_TAB_ID,
+} from './ledger-blocks'
 
 /** Default sidebar tabs for all entity types */
 const DEFAULT_SIDEBAR_TABS: SidebarTabDefinition[] = [
@@ -31,9 +37,20 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
       // Client-notifications plan §4.8/Phase 4 — same communications timeline as the job
       // detail page, over `contact:<id>`.
       { value: 'communications', label: 'Communications', icon: 'mail' },
+      // Drawer parity (§10): the same accounts-receivable sections, from the
+      // same shared list, so a contact opened as a page and one opened in the
+      // drawer show the same ledger. `hasOwnComponent: false` because it IS its
+      // blocks, there is no `contact:billing` detail-view tab component.
+      {
+        value: BILLING_TAB_ID,
+        label: 'Billing',
+        icon: 'credit-card',
+        hasOwnComponent: false,
+      },
       { value: 'timeline', label: 'Timeline', icon: 'clock' },
       { value: 'tasks', label: 'Tasks', icon: 'list-todo' },
     ],
+    tabBlocks: { [BILLING_TAB_ID]: CONTACT_BILLING_BLOCKS },
     sidebarTabs: DEFAULT_SIDEBAR_TABS,
     defaultTab: 'tickets',
     defaultSidebarTab: 'overview',
@@ -48,9 +65,11 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
       // this contact participates in. Admin-managed; hidden for other roles
       // unless shares already exist.
       { value: 'shared-with', label: 'Shared with', icon: 'users' },
+      // "Billing summary", not "Billing": the balance, not the documents the
+      // contact's `billing` main tab lists. Mirrors the drawer card's label.
       {
         value: 'billing',
-        label: 'Billing',
+        label: 'Billing summary',
         icon: 'credit-card',
         permissionKey: 'dispatch.board.view',
       },
@@ -65,9 +84,18 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
       // what the drawer already does. Gated on READ of vendor_part; most
       // companies aren't suppliers, so Timeline stays the landing tab.
       { value: 'parts', label: 'Parts', icon: 'package', recordResource: 'vendor_part' },
+      // Drawer parity (§10): the same accounts-payable sections as the company
+      // drawer, from the same shared list. Blocks only, no component.
+      {
+        value: PURCHASING_TAB_ID,
+        label: 'Purchasing',
+        icon: 'shopping-cart',
+        hasOwnComponent: false,
+      },
       { value: 'timeline', label: 'Timeline', icon: 'clock' },
       { value: 'tasks', label: 'Tasks', icon: 'list-todo' },
     ],
+    tabBlocks: { [PURCHASING_TAB_ID]: COMPANY_PURCHASING_BLOCKS },
     sidebarTabs: DEFAULT_SIDEBAR_TABS,
     defaultTab: 'timeline',
     defaultSidebarTab: 'overview',

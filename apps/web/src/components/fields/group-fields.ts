@@ -4,8 +4,11 @@
 // DERIVED position: a group has no stored index, its header renders wherever its
 // first member sits in `fieldOrder`. Two sources of truth — order in
 // `fieldOrder`, membership in `fieldGroups[].fieldIds` — and no third thing that
-// can drift out of sync with either. This module is the walk that turns those
-// two arrays into render sections, plus the two writes that keep them coherent.
+// can drift out of sync with either. This module adapts the generic grouped
+// list's section walk to those two arrays, plus the writes that keep them
+// coherent.
+
+import { groupItemOrder } from '~/components/grouped-drag-list/group-sections'
 
 /** Structural mirror of `FieldGroup` from `@auxx/lib/conditions/client`; kept local so this module stays dependency-free and unit-testable. */
 export interface FieldGroupLike {
@@ -40,37 +43,12 @@ export interface GroupFieldOrderParams {
 /**
  * Build the render sections for one flat field order.
  *
- * Walks `fieldOrder` once. An ungrouped field joins the run in progress; a
- * grouped field triggers its group's section *at that position*, containing
- * every surviving member of that group in `fieldOrder` order, and those ids are
- * then skipped for the rest of the walk. So a group whose members are scattered
- * gathers at the position of its FIRST member — which is exactly what
- * {@link normalizeGroupContiguity} makes true in the stored array too.
- *
- * Decisions this function pins down:
- * - **Consecutive ungrouped fields coalesce** into one `group: null` section. No
- *   empty ungrouped section is ever emitted between two adjacent groups, and a
- *   run that resumes after a group starts a NEW section rather than reopening
- *   the previous one — sections are positional, not per-kind buckets.
- * - **A field listed by two groups belongs to the earlier group** in the
- *   `groups` array. That input is malformed; resolving to the first keeps the
- *   walk deterministic instead of duplicating the field into both sections.
- * - **Ghost members are silently skipped.** Ids in a group's `fieldIds` that are
- *   absent from `fieldOrder` (deleted fields) contribute nothing — the same
- *   skip-the-miss pattern `fieldOrder` itself already relies on.
- * - **Duplicates in `fieldOrder` collapse** to their first occurrence, matching
- *   `mergeFieldOrder`.
- * - With `includeEmptyGroups`, groups with zero surviving members render
- *   immediately before their `anchorFieldId`, or at the END when they have no
- *   anchor or their anchor no longer exists. An empty group has no member to
- *   derive a position from, so the anchor is the only thing it can be placed by;
- *   it is written by dragging the group (see {@link resolveEmptyGroupAnchor}).
- *   Read mode passes false and empty groups vanish entirely, anchor or not.
- * - **An anchor only fires where a section STARTS.** Later members of a group
- *   are consumed while emitting that group's block, so an anchor naming one is
- *   never reached and the empty group falls through to the end. The resolver
- *   only ever writes an ungrouped field or a group's first member, so this
- *   costs nothing in practice and keeps a group's block unsplittable.
+ * A thin adaptation of {@link groupItemOrder}, which owns the walk and every
+ * decision it pins down (coalesced ungrouped runs, first-group-wins ownership,
+ * ghost members skipped, duplicate ids collapsed, anchored empty groups). The
+ * only difference is vocabulary: the persisted `FieldGroup` names its members
+ * `fieldIds` and its empty-group anchor `anchorFieldId`, where the generic list
+ * says `itemIds` / `anchorItemId`.
  *
  * Invariant: flattening the result's `fieldIds` yields a permutation of
  * `fieldOrder` (deduplicated) with no losses and no duplicates.
@@ -79,90 +57,13 @@ export interface GroupFieldOrderParams {
  * objects, not copies.
  */
 export function groupFieldOrder(params: GroupFieldOrderParams): GroupedFieldSection[] {
-  const { fieldOrder, groups } = params
-  const includeEmptyGroups = params.includeEmptyGroups ?? false
-
-  // Ownership is resolved once, first group wins, so a field listed twice can
-  // never land in two sections.
-  const ownerByField = new Map<string, number>()
-  for (let index = 0; index < groups.length; index++) {
-    const group = groups[index] as FieldGroupLike
-    for (const fieldId of group.fieldIds) {
-      if (!ownerByField.has(fieldId)) ownerByField.set(fieldId, index)
-    }
-  }
-
-  const sections: GroupedFieldSection[] = []
-  const consumed = new Set<string>()
-  const emitted = new Set<number>()
-  // The ungrouped run currently open, or null when the last thing emitted was a
-  // group (or nothing yet). This is what coalesces neighbours without ever
-  // producing an empty `group: null` section.
-  let openUngrouped: GroupedFieldSection | null = null
-
-  // Empty groups indexed by the field they render before, in `groups` order so
-  // several anchored on the same field keep a stable sequence.
-  const anchoredEmptyGroups = new Map<string, number[]>()
-  if (includeEmptyGroups) {
-    for (let index = 0; index < groups.length; index++) {
-      const group = groups[index] as FieldGroupLike
-      if (group.anchorFieldId === undefined) continue
-      if (group.fieldIds.some((fieldId) => fieldOrder.includes(fieldId))) continue
-      const pending = anchoredEmptyGroups.get(group.anchorFieldId)
-      if (pending) pending.push(index)
-      else anchoredEmptyGroups.set(group.anchorFieldId, [index])
-    }
-  }
-
-  for (const fieldId of fieldOrder) {
-    if (consumed.has(fieldId)) continue
-
-    // Anchored empty groups go in BEFORE the section this field opens. Emitting
-    // one closes the ungrouped run in progress, so the fields after it start a
-    // new section rather than reading as part of the run above the group.
-    for (const index of anchoredEmptyGroups.get(fieldId) ?? []) {
-      sections.push({ group: groups[index] as FieldGroupLike, fieldIds: [] })
-      emitted.add(index)
-      openUngrouped = null
-    }
-
-    consumed.add(fieldId)
-
-    const ownerIndex = ownerByField.get(fieldId)
-
-    if (ownerIndex === undefined) {
-      if (openUngrouped === null) {
-        openUngrouped = { group: null, fieldIds: [] }
-        sections.push(openUngrouped)
-      }
-      openUngrouped.fieldIds.push(fieldId)
-      continue
-    }
-
-    // First member seen decides the position; pull the rest of the group up to
-    // it. Everything before this point in `fieldOrder` is already consumed, so
-    // re-scanning from the head only ever picks up later members, in order.
-    const memberIds = [fieldId]
-    for (const candidateId of fieldOrder) {
-      if (consumed.has(candidateId)) continue
-      if (ownerByField.get(candidateId) !== ownerIndex) continue
-      consumed.add(candidateId)
-      memberIds.push(candidateId)
-    }
-
-    sections.push({ group: groups[ownerIndex] as FieldGroupLike, fieldIds: memberIds })
-    emitted.add(ownerIndex)
-    openUngrouped = null
-  }
-
-  if (includeEmptyGroups) {
-    for (let index = 0; index < groups.length; index++) {
-      if (emitted.has(index)) continue
-      sections.push({ group: groups[index] as FieldGroupLike, fieldIds: [] })
-    }
-  }
-
-  return sections
+  return groupItemOrder({
+    itemOrder: params.fieldOrder,
+    groups: params.groups,
+    itemIdsOf: (group) => group.fieldIds,
+    anchorItemIdOf: (group) => group.anchorFieldId,
+    includeEmptyGroups: params.includeEmptyGroups,
+  }).map((section) => ({ group: section.group, fieldIds: section.itemIds }))
 }
 
 /**

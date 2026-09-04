@@ -33,6 +33,21 @@ export type {
   RecordPickerItem,
   RecordSourceChip,
 } from './picker'
+export type {
+  BlockKind,
+  CardBlock,
+  FieldsBlock,
+  FieldsBlockConfig,
+  LayoutBlock,
+  LayoutBlockBase,
+  RecordsBlock,
+  RecordsBlockConfig,
+  RecordsQuerySource,
+  RecordsRelationSource,
+  RecordsSource,
+} from './registry/block-types'
+// Record layout block model (client-safe: types plus two id constants)
+export { CARD_BLOCK_ID_PREFIX, cardBlockId, DETAILS_BLOCK_ID } from './registry/block-types'
 // Detail view configuration (client-safe)
 export {
   DETAIL_VIEW_CONFIG_REGISTRY,

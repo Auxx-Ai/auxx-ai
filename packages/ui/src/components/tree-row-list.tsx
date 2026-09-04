@@ -74,7 +74,14 @@ export function TreeRowList<T>({
 
       {hidden.length > 0 && (
         <>
-          <AnimatedCollapsibleContent open={showAll} className='flex flex-col'>
+          {/* `gap-[inherit]` so the revealed rows sit at the SAME spacing as the
+              first `visibleLimit` ones. The collapse is its own flex container,
+              so without this a caller's `gap-*` on the outer container reaches
+              the collapse as a flex ITEM but never its children, and everything
+              behind "Show N more" rendered flush. Inheriting the parent's gap is
+              exact: it copies the one property that differs and leaves any
+              padding the caller set on the outer container alone. */}
+          <AnimatedCollapsibleContent open={showAll} className='flex flex-col gap-[inherit]'>
             {hidden.map((item, i) => (
               <Fragment key={getKey(item, limit + i)}>{renderRow(item, limit + i)}</Fragment>
             ))}

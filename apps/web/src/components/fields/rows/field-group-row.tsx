@@ -9,26 +9,19 @@ import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { ChevronRight, FolderPlus, GripVertical, Trash2 } from 'lucide-react'
 import { memo, useMemo } from 'react'
+import { groupDropId } from '~/components/grouped-drag-list/drop-targets'
 import type { FieldGroupLike } from '../group-fields'
 
 /**
- * Prefix for a group header's dnd id.
- *
- * The header is a sortable of its own: it is the drag SOURCE for moving the
- * whole block, and the drop TARGET that makes a field join the group. Field ids
- * are `resourceFieldId`s (`<cuid>:<fieldId>`), so this prefix can never collide
- * with one, and `parseGroupDropId` is what tells the two apart in the drag-end
- * router.
+ * Re-exported so the field panel's drag glue keeps one import site for the
+ * group id keyspace. The keyspace itself is owned by the generic grouped list,
+ * since every producer and consumer of these ids has to agree on one prefix.
  */
-export const GROUP_DROP_PREFIX = 'fieldgroup:'
-
-/** The group id when a dnd `active`/`over` id addresses a group header, else null. */
-export function parseGroupDropId(dndId: string): string | null {
-  return dndId.startsWith(GROUP_DROP_PREFIX) ? dndId.slice(GROUP_DROP_PREFIX.length) : null
-}
+export { GROUP_DROP_PREFIX, parseGroupDropId } from '~/components/grouped-drag-list/drop-targets'
 
 interface FieldGroupRowProps {
-  group: FieldGroupLike
+  /** Only identity and header chrome are read; the list owns membership and position. */
+  group: Pick<FieldGroupLike, 'id' | 'label' | 'icon'>
   /** Whether the group's members are hidden right now. */
   collapsed: boolean
   /** Number of member rows this group would render when expanded. */
@@ -85,7 +78,7 @@ export const FieldGroupRow = memo(function FieldGroupRow({
   autoFocusLabel = false,
 }: FieldGroupRowProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: `${GROUP_DROP_PREFIX}${group.id}`,
+    id: groupDropId(group.id),
     disabled: !isEditMode,
   })
 

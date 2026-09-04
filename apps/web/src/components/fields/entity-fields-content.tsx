@@ -20,6 +20,9 @@ import { toPanelField } from './rows/to-panel-field'
 import type { PanelField } from './rows/types'
 import { FieldGroupList } from './ui/field-group-list'
 
+/** Stable empty list, so `hideGroupHeaders` never re-keys `FieldGroupList`. */
+const EMPTY_FIELD_GROUPS: FieldGroup[] = []
+
 /**
  * Props for EntityFieldsContent component (unified version)
  */
@@ -101,6 +104,17 @@ export interface EntityFieldsContentProps {
    * group rendered first swallowed anything dragged to the top of the list.
    */
   onPlaceFieldBesideGroup?: (fieldId: string, groupId: string, side: 'before' | 'after') => void
+  /**
+   * Suppress the in-panel group chrome (headers, and the collapse/rename
+   * affordances that hang off them), rendering the fields as one flat list.
+   *
+   * For a `fields` block that has been narrowed to ONE promoted group
+   * (`plans/drawer/record-layout-system.md` §4): the block's own `<Section>`
+   * already carries that group's label, so drawing the group header again inside
+   * the panel prints the same name twice. Additive and off by default, so every
+   * existing panel is unchanged.
+   */
+  hideGroupHeaders?: boolean
 }
 
 /**
@@ -143,6 +157,7 @@ export function EntityFieldsContent({
   onDeleteGroup,
   onMoveGroup,
   onPlaceFieldBesideGroup,
+  hideGroupHeaders = false,
 }: EntityFieldsContentProps) {
   // Parse recordId to get entityDefinitionId
   const { entityDefinitionId } = parseRecordId(recordId)
@@ -268,7 +283,10 @@ export function EntityFieldsContent({
             rows={rows}
             rowId={(row) => row.id}
             rowKey={(row) => row.providerId}
-            groups={fieldGroups ?? []}
+            // Handing `FieldGroupList` no groups is what removes the chrome:
+            // it draws a header where each group's first member sits, so an
+            // empty group list renders the same rows as one flat run.
+            groups={hideGroupHeaders ? EMPTY_FIELD_GROUPS : (fieldGroups ?? [])}
             isEditMode={isEditMode}
             canEdit={canEdit}
             sensors={sensors}

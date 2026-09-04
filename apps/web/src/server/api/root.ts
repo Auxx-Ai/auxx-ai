@@ -77,6 +77,7 @@ import { realtimeRouter } from './routers/realtime'
 import { recordRouter } from './routers/record'
 import { recordRulesRouter } from './routers/record-rules'
 import { recordingRouter } from './routers/recording'
+import { recordLayoutRouter } from './routers/recordLayout'
 import { resourceRouter } from './routers/resource'
 import { resourceAccessRouter } from './routers/resourceAccess'
 import { searchRouter } from './routers/search'
@@ -178,6 +179,7 @@ export const appRouter = createTRPCRouter({
   quickAction: quickActionRouter,
   realtime: realtimeRouter,
   record: recordRouter,
+  recordLayout: recordLayoutRouter,
   recordRules: recordRulesRouter,
   recording: recordingRouter,
   resource: resourceRouter,

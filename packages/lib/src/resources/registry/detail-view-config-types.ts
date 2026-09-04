@@ -1,5 +1,6 @@
 // packages/lib/src/resources/registry/detail-view-config-types.ts
 
+import type { LayoutBlock } from './block-types'
 import type { DrawerTabCardDefinition } from './drawer-config-types'
 
 /**
@@ -32,6 +33,17 @@ export interface MainTabDefinition {
    * section body via `ChromedSection`.
    */
   fullBleed?: boolean
+  /**
+   * Whether this tab mounts a lazily loaded component of its own from
+   * `DETAIL_VIEW_TAB_COMPONENTS`. Defaults to `true`, which is every tab that
+   * predates the record layout system.
+   *
+   * Set to `false` for a tab that IS its blocks, so the detail view renders the
+   * blocks alone instead of a "Tab component not found" placeholder. The
+   * drawer's twin is {@link DrawerTabDefinition.hasOwnComponent}, and the two
+   * surfaces must agree or a tab shipped on one shows an error on the other.
+   */
+  hasOwnComponent?: boolean
 }
 
 /**
@@ -67,6 +79,15 @@ export interface DetailViewConfig {
   defaultSidebarTab?: string
   /** Cards rendered in the sidebar (reuses DrawerTabCardDefinition for shared card component registry) */
   sidebarCards?: DrawerTabCardDefinition[]
+  /**
+   * Blocks placed on a MAIN tab, keyed by tab value: the detail-view twin of
+   * {@link DrawerConfig.tabBlocks} (`plans/drawer/record-layout-system.md` §10:
+   * a shared block lands on both surfaces at once, or the two registries drift).
+   *
+   * The sidebar is deliberately NOT covered: it is a separate region and is out
+   * of scope for the layout system (§9.7), so `sidebarCards` stays as it is.
+   */
+  tabBlocks?: Record<string, LayoutBlock[]>
   /**
    * Main-area layout mode (dispatch M2 build spec §F.1):
    * - `'tabs'` (default): content-swapping `TabsContent` panels — unchanged ticket/contact/

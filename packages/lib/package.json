@@ -1234,6 +1234,18 @@
       "import": "./dist/receiving/client.mjs",
       "default": "./src/receiving/client.ts"
     },
+    "./record-layout": {
+      "types": "./src/record-layout/index.ts",
+      "source": "./src/record-layout/index.ts",
+      "import": "./dist/record-layout/index.mjs",
+      "default": "./src/record-layout/index.ts"
+    },
+    "./record-layout/client": {
+      "types": "./src/record-layout/client.ts",
+      "source": "./src/record-layout/client.ts",
+      "import": "./dist/record-layout/client.mjs",
+      "default": "./src/record-layout/client.ts"
+    },
     "./record-rules": {
       "types": "./src/record-rules/index.ts",
       "source": "./src/record-rules/index.ts",

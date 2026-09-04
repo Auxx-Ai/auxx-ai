@@ -1,8 +1,15 @@
 // apps/web/src/components/drawers/base-entity-drawer.tsx
 'use client'
 
-import type { DrawerTabCardDefinition, Resource } from '@auxx/lib/resources/client'
-import { getEntityDrawerConfig, parseRecordId } from '@auxx/lib/resources/client'
+import type { ResolvedLayoutTab, TabVisibilityContext } from '@auxx/lib/record-layout/client'
+import { permittedLayoutTabs, visibleTabBlocks } from '@auxx/lib/record-layout/client'
+import type {
+  DrawerTabCardDefinition,
+  DrawerTabDefinition,
+  LayoutBlock,
+  Resource,
+} from '@auxx/lib/resources/client'
+import { DETAILS_BLOCK_ID, getEntityDrawerConfig, parseRecordId } from '@auxx/lib/resources/client'
 import { COMMUNICATION_TIMELINE_EVENT_TYPES } from '@auxx/lib/timeline/client'
 import type { RecordId } from '@auxx/types/resource'
 import { Button } from '@auxx/ui/components/button'
@@ -15,17 +22,21 @@ import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
 import { OverflowTabsList, type TabDefinition, Tabs, TabsContent } from '@auxx/ui/components/tabs'
 import { cn } from '@auxx/ui/lib/utils'
-import { Clock, ExternalLink, HouseIcon, ListTodo, MessagesSquare } from 'lucide-react'
+import { Circle, ExternalLink } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useQueryState } from 'nuqs'
 import * as React from 'react'
 import { AppRecordActions } from '~/components/detail-view/components/app-record-actions'
 import { getIconComponent } from '~/components/detail-view/utils'
-import EntityFields from '~/components/fields/entity-fields'
 import DrawerComments from '~/components/global/comments/drawer-comments'
 import { useCommentAccess } from '~/components/global/comments/use-comment-access'
 import { DockToggleButton } from '~/components/global/dock-toggle-button'
 import { Tooltip } from '~/components/global/tooltip'
+import { resolveLayoutIcon } from '~/components/records/layout/layout-icon'
+import { useLegacyTabPreferences } from '~/components/records/layout/legacy-tab-preferences'
+import { useBlockVisibility } from '~/components/records/layout/use-block-visibility'
+import { useRecordLayout } from '~/components/records/layout/use-record-layout'
+import { RecordLayoutEditorDialog } from '~/components/records/layout-editor'
 import {
   getRecordDrillPanels,
   type RecordDrillContext,
@@ -38,7 +49,6 @@ import { useCanViewRecordResource, useRecord, useResource } from '~/components/r
 import { useRecordLink } from '~/components/resources/utils/get-record-link'
 import { TasksSection } from '~/components/tasks/ui/tasks-section'
 import { TimelineTab } from '~/components/timeline'
-import { safeLocalStorage } from '~/lib/safe-localstorage'
 import { useAccess } from '~/providers/capabilities-provider'
 import {
   useDehydratedOrganizationId,
@@ -46,6 +56,7 @@ import {
 } from '~/providers/dehydrated-state-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { useRecordDrawerReadOnly } from '../records/use-record-drawer-read-only'
+import { LayoutBlockSection } from './blocks'
 import { ThreadVisitCard } from './cards/thread-visit-card'
 import { DrawerCardActionsProvider } from './drawer-card-actions'
 import { getTabCardComponent, getTabComponent, isRestrictedDrawerTab } from './drawer-tab-registry'
@@ -88,64 +99,6 @@ interface BaseEntityDrawerProps {
    * (contact/dispatch) are also restricted for field seats.
    */
   readOnly?: boolean
-}
-
-/**
- * Apply a saved tab order to a tabs array.
- * Tabs in savedOrder come first, in that order.
- * Tabs NOT in savedOrder (new tabs added after user last saved) are appended at the end.
- * Saved values that no longer exist are silently dropped.
- */
-function applyTabOrder(tabs: TabDefinition[], savedOrder: string[]): TabDefinition[] {
-  const tabMap = new Map(tabs.map((t) => [t.value, t]))
-  const ordered: TabDefinition[] = []
-  for (const value of savedOrder) {
-    const tab = tabMap.get(value)
-    if (tab) {
-      ordered.push(tab)
-      tabMap.delete(value)
-    }
-  }
-  for (const tab of tabs) {
-    if (tabMap.has(tab.value)) ordered.push(tab)
-  }
-  return ordered
-}
-
-/** Stable empty array so an uncustomized drawer doesn't hand OverflowTabsList a
- *  fresh `hidden` reference on every render. */
-const EMPTY_HIDDEN_TABS: string[] = []
-
-/** Per-viewer, per-entity-definition tab customization, as stored in localStorage. */
-interface TabPreferences {
-  /** Tab values in the viewer's chosen order. */
-  order: string[]
-  /** Tab values the viewer hid from the strip. */
-  hidden: string[]
-}
-
-/**
- * Read the stored tab preferences, tolerating the legacy shape.
- *
- * Before show/hide existed the key held a bare `string[]` of tab values, so an
- * array is read as order-only with nothing hidden — the upgrade is silent and
- * costs no migration. Anything unparseable falls back to defaults.
- */
-function parseTabPreferences(raw: string | null): TabPreferences | null {
-  if (!raw) return null
-  try {
-    const parsed = JSON.parse(raw)
-    if (Array.isArray(parsed)) return { order: parsed, hidden: [] }
-    if (parsed && typeof parsed === 'object') {
-      return {
-        order: Array.isArray(parsed.order) ? parsed.order : [],
-        hidden: Array.isArray(parsed.hidden) ? parsed.hidden : [],
-      }
-    }
-  } catch {
-    // Invalid JSON, fall through to defaults
-  }
-  return null
 }
 
 /**
@@ -201,7 +154,7 @@ function DrawerRecordFrame({
 }: DrawerRecordFrameProps) {
   const [activeTab, setActiveTab] = useQueryState('tab', { defaultValue: 'overview' })
   const { hasAccess } = useFeatureFlags()
-  const { can } = useAccess()
+  const { can, canAdministerDef } = useAccess()
   const { canViewComments } = useCommentAccess(recordId)
   const canViewRecordResource = useCanViewRecordResource()
   const organizationId = useDehydratedOrganizationId()
@@ -267,111 +220,124 @@ function DrawerRecordFrame({
     return getEntityDrawerConfig(entityType, entityDefinitionId ?? undefined)
   }, [entityType, entityDefinitionId])
 
-  // The registry tabs this viewer may see — resolved ONCE so the tab strip and
-  // the rendered TabsContent below can never disagree. A `recordResource` tab
-  // lists another definition's records, so it is gated on that definition's read
-  // level: with `tickets: None` the contact drawer must not offer a Tickets tab
-  // at all (an always-empty tab fronting a Create button reads as a bug).
-  const visibleAdditionalTabs = React.useMemo(
-    () =>
-      (drawerConfig?.additionalTabs ?? [])
-        .filter((tab) => !tab.featureGate || hasAccess(tab.featureGate))
-        .filter((tab) => !readOnly || !isRestrictedDrawerTab(entityType ?? '', tab.value))
-        .filter((tab) => canViewRecordResource(tab.recordResource)),
-    [drawerConfig, hasAccess, readOnly, entityType, canViewRecordResource]
+  // ── The resolved layout (plans/drawer/record-layout-system.md §5) ─────────
+  // The registry default under the org and personal deltas. This REPLACES the
+  // hardcoded tab list, the `TabCards` calls and the literal Details section:
+  // every one of them is now a block on a tab.
+  // The pre-layout-system localStorage tab order enters here as the personal
+  // layer rather than being applied after the fact, which is what keeps tab
+  // order to one source of truth (§2).
+  const legacyTabPreferences = useLegacyTabPreferences(organizationId, user?.id, entityDefinitionId)
+
+  const { layout } = useRecordLayout({
+    entityDefinitionId,
+    entityType: entityType ?? '',
+    surface: 'drawer',
+    drawerConfig: drawerConfig ?? undefined,
+    canViewComments,
+    fallbackUserDelta: legacyTabPreferences,
+  })
+
+  const [layoutEditorOpen, setLayoutEditorOpen] = React.useState(false)
+
+  const isBlockVisible = useBlockVisibility({ entityType: entityType ?? '', readOnly })
+
+  // Registry tab definitions by id, for the gates a `ResolvedLayoutTab` does not
+  // carry. Placement is layout data; capability is always read back from the
+  // registry entry (§5, "the hard invariant").
+  const tabDefinitions = React.useMemo(() => {
+    const map = new Map<string, DrawerTabDefinition>()
+    for (const tab of drawerConfig?.additionalTabs ?? []) map.set(tab.value, tab)
+    return map
+  }, [drawerConfig])
+
+  /**
+   * Whether a tab that mounts a component of its own is allowed for this viewer.
+   *
+   * The four registry gates the old `visibleAdditionalTabs` filter applied, now
+   * evaluated per tab. A tab that IS its blocks (`hasOwnComponent: false`) never
+   * reaches this: its visibility is derived from its blocks instead (§7).
+   */
+  const isTabAllowed = React.useCallback(
+    (tab: ResolvedLayoutTab) => {
+      const definition = tabDefinitions.get(tab.id)
+      if (!definition) return true
+      if (definition.featureGate && !hasAccess(definition.featureGate)) return false
+      if (definition.permissionKey && !can(definition.permissionKey)) return false
+      return canViewRecordResource(definition.recordResource)
+    },
+    [tabDefinitions, hasAccess, can, canViewRecordResource]
   )
 
-  // Build tabs from registry + base tabs
-  const tabs = React.useMemo(() => {
-    if (!drawerConfig) return []
+  const visibilityCtx = React.useMemo<TabVisibilityContext>(
+    () => ({ isBlockVisible, isTabAllowed }),
+    [isBlockVisible, isTabAllowed]
+  )
 
-    // Overview is un-hideable: it's the fallback `effectiveTab` resolves to, and
-    // it's the only tab guaranteed to exist for every entity type.
-    const overviewTab = {
-      value: 'overview',
-      label: 'Overview',
-      icon: HouseIcon,
-      hideable: false,
-    }
-    const trailingTabs = [
-      { value: 'timeline', label: 'Timeline', icon: Clock },
-      { value: 'comments', label: 'Comments', icon: MessagesSquare },
-      { value: 'tasks', label: 'Tasks', icon: ListTodo },
-    ]
-      // Restricted mode drops the communication/comment tabs (§11.4).
-      .filter((tab) => !readOnly || !isRestrictedDrawerTab(entityType ?? '', tab.value))
-      .filter((tab) => tab.value !== 'comments' || canViewComments)
+  // Tab visibility is DERIVED (§7): a tab of blocks renders only while one of
+  // its blocks is visible for this viewer. CSS cannot answer this: the
+  // empty-section rule hides a section AFTER it renders nothing, so a tab whose
+  // every block is gated out would still show as a clickable empty tab.
+  //
+  // Restricted mode is applied on top because `isTabVisible` short-circuits base
+  // tabs (timeline / comments / tasks) before consulting the context, and those
+  // are exactly the tabs §11.4 drops for a field seat.
+  // Hidden tabs are kept here and handed to the strip separately, because
+  // `OverflowTabsList` excepts the ACTIVE tab from its hidden set: that is what
+  // lets a deep link into a tab this viewer hid still resolve instead of
+  // silently redirecting to Overview. Filtering them out here would look
+  // equivalent and quietly drop that.
+  const visibleTabs = React.useMemo(
+    () =>
+      permittedLayoutTabs(layout, visibilityCtx).filter(
+        (tab) => !readOnly || !isRestrictedDrawerTab(entityType ?? '', tab.id)
+      ),
+    [layout, visibilityCtx, readOnly, entityType]
+  )
 
-    const additionalTabs = visibleAdditionalTabs.map((tab) => ({
-      value: tab.value,
-      label: tab.label,
-      icon: getIconComponent(tab.icon),
-    }))
+  const hiddenTabIds = React.useMemo(
+    () => visibleTabs.filter((tab) => tab.hidden).map((tab) => tab.id),
+    [visibleTabs]
+  )
 
-    // Overview first, then entity-specific tabs, then the shared timeline/comments/tasks tabs
-    return [overviewTab, ...additionalTabs, ...trailingTabs]
-  }, [drawerConfig, visibleAdditionalTabs, readOnly, entityType, canViewComments])
+  const tabs = React.useMemo(
+    (): TabDefinition[] =>
+      visibleTabs.map((tab) => ({
+        value: tab.id,
+        label: tab.label,
+        // Union lookup, not `getIconComponent`: an ADMIN-created tab's icon comes
+        // from the picker's table (`ICON_DATA`), which only partly overlaps the
+        // registry's `ICON_MAP`, so resolving through the map alone renders every
+        // picked icon as the generic fallback box.
+        icon: resolveLayoutIcon(tab.icon) ?? Circle,
+        // Overview is un-hideable: it's the fallback `effectiveTab` resolves to,
+        // and it's the only tab guaranteed to exist for every entity type.
+        hideable: tab.hideable,
+      })),
+    [visibleTabs]
+  )
 
-  // Tab order persistence
-  const tabOrderStorageKey = React.useMemo(() => {
-    if (!organizationId || !user?.id || !entityDefinitionId) return null
-    return `tabOrder:${organizationId}:${user.id}:${entityDefinitionId}`
-  }, [organizationId, user?.id, entityDefinitionId])
-
-  const [tabPreferences, setTabPreferences] = React.useState<TabPreferences | null>(null)
-
-  React.useEffect(() => {
-    if (!tabOrderStorageKey) {
-      setTabPreferences(null)
-      return
-    }
-    setTabPreferences(parseTabPreferences(safeLocalStorage.get(tabOrderStorageKey)))
-  }, [tabOrderStorageKey])
-
-  const orderedTabs = React.useMemo(() => {
-    const savedOrder = tabPreferences?.order
-    if (!savedOrder || savedOrder.length === 0) return tabs
-    return applyTabOrder(tabs, savedOrder)
-  }, [tabs, tabPreferences])
-
-  // Hidden values for tabs that no longer exist are harmless (OverflowTabsList
-  // only ever matches them against real tabs), so they're kept as-is — a tab
-  // gated off today may come back tomorrow, and dropping them would silently
-  // un-hide it.
-  const hiddenTabs = tabPreferences?.hidden ?? EMPTY_HIDDEN_TABS
+  // Tab ORDER and hiding are resolved upstream, in `useRecordLayout`: the
+  // legacy `tabOrder:{org}:{user}:{def}` localStorage value is fed in as the
+  // personal layer (see `useLegacyTabPreferences`) and merged there. That is
+  // the plan's §2 requirement, and the reason there is no second ordering pass
+  // here: `layout.tabs` already arrives in the viewer's order, so re-sorting it
+  // locally would be the second source of truth this system exists to remove.
 
   // A `?tab=` pointing at a tab this viewer can't see (a stale deep link, or a
   // frame whose entity type has no such tab) must not render a blank body.
   // Resolved locally and deliberately NOT written back to the URL: every frame
   // of the peek stack shares this one query param, so a write here would clobber
   // the frame underneath.
-  const effectiveTab = orderedTabs.some((tab) => tab.value === activeTab)
+  const effectiveTab = tabs.some((tab) => tab.value === activeTab)
     ? activeTab
-    : (orderedTabs[0]?.value ?? 'overview')
+    : (tabs[0]?.value ?? 'overview')
 
-  const handleCustomizeTabs = React.useCallback(
-    (next: TabPreferences) => {
-      setTabPreferences(next)
-      if (tabOrderStorageKey) {
-        safeLocalStorage.set(tabOrderStorageKey, JSON.stringify(next))
-      }
-      // Hiding the tab you're standing on shouldn't leave it revealed — that
-      // reveal is reserved for deep links arriving at a hidden tab. Move to the
-      // first tab that survives the new hidden set instead.
-      if (next.hidden.includes(effectiveTab)) {
-        const fallback = next.order.find((value) => !next.hidden.includes(value))
-        if (fallback) setActiveTab(fallback)
-      }
-    },
-    [tabOrderStorageKey, effectiveTab, setActiveTab]
-  )
-
-  const handleResetTabs = React.useCallback(() => {
-    setTabPreferences(null)
-    if (tabOrderStorageKey) {
-      safeLocalStorage.remove(tabOrderStorageKey)
-    }
-  }, [tabOrderStorageKey])
+  // The editor writes both scopes, so any member may open it: personal tab
+  // order and hiding is theirs, section placement is def-admin only, and the
+  // dialog itself draws that line (§9.5). Gating the cog on def-admin would
+  // take the working per-user feature away from ordinary members.
+  const canOpenLayoutEditor = Boolean(organizationId && user?.id && entityDefinitionId)
 
   if (!drawerConfig || !entityType) return null
 
@@ -395,15 +361,29 @@ function DrawerRecordFrame({
       <div className='w-full h-full flex gap-0'>
         <div className='w-full h-full flex flex-col overflow-auto justify-start'>
           <OverflowTabsList
-            tabs={orderedTabs}
+            tabs={tabs}
             value={effectiveTab}
             onValueChange={setActiveTab}
             variant='outline'
-            canCustomize={!!tabOrderStorageKey}
-            hidden={hiddenTabs}
-            onCustomize={handleCustomizeTabs}
-            onReset={handleResetTabs}
+            hidden={hiddenTabIds}
+            canCustomize={canOpenLayoutEditor}
+            onOpenCustomize={() => setLayoutEditorOpen(true)}
           />
+
+          {/* Mounted only while open: the editor builds its own working model
+              from the registry plus the stored deltas, so keeping it mounted
+              would hold a stale session across record switches. */}
+          {canOpenLayoutEditor && entityDefinitionId && layoutEditorOpen && (
+            <RecordLayoutEditorDialog
+              open={layoutEditorOpen}
+              onOpenChange={setLayoutEditorOpen}
+              entityDefinitionId={entityDefinitionId}
+              entityType={entityType}
+              surface='drawer'
+              layout={layout}
+              canAdministerDef={canAdministerDef(entityDefinitionId)}
+            />
+          )}
 
           {/* Identity header (avatar + display name + secondary line). The HOST's
               `cardContent` is base-frame only (decision #9) — a peeked frame must
@@ -416,44 +396,12 @@ function DrawerRecordFrame({
           {isBase ? cardContent : <RecordIdentityHeader recordId={recordId} readOnly={readOnly} />}
 
           <div className='flex flex-1 overflow-hidden'>
-            {/* Base tabs - static */}
-            <TabsContent value='overview' className='w-full'>
-              <ScrollArea className='flex-1' scrollbarClassName='w-1!'>
-                <TabCards
-                  tab='overview'
-                  position='before'
-                  entityType={entityType}
-                  drawerConfig={drawerConfig}
-                  entityInstanceId={entityInstanceId}
-                  recordId={recordId}
-                  record={record}
-                  readOnly={readOnly}
-                />
-                <Section
-                  title='Details'
-                  className='[&>[data-slot=section]>[data-slot=section-content]]:pe-4'
-                  initialOpen
-                  collapsible={false}
-                  icon={<HouseIcon className='size-4' />}>
-                  <EntityFields recordId={recordId} readOnly={readOnly} canEdit={!readOnly} />
-                </Section>
-                {/* Context card: visit facts when opened over a chat thread */}
-                <ThreadVisitCard
-                  contactInstanceId={entityType === 'contact' ? entityInstanceId : undefined}
-                />
-                <TabCards
-                  tab='overview'
-                  position='after'
-                  entityType={entityType}
-                  drawerConfig={drawerConfig}
-                  entityInstanceId={entityInstanceId}
-                  recordId={recordId}
-                  record={record}
-                  readOnly={readOnly}
-                />
-              </ScrollArea>
-            </TabsContent>
-
+            {/* Base tabs render hard-coded content and accept no blocks (§9.3).
+                They are mounted unconditionally rather than from `visibleTabs`
+                so a tab dropped from the STRIP has no mountable content either
+                (the `!readOnly && canViewComments` guard below is that rule for
+                comments, which a stale `?tab=comments` deep link could otherwise
+                surface). */}
             <TabsContent value='timeline' className='w-full h-full mt-0'>
               <ScrollArea className='flex-1' scrollbarClassName='w-1!'>
                 <div className='p-3 flex-1 flex-col flex'>
@@ -465,9 +413,6 @@ function DrawerRecordFrame({
               </ScrollArea>
             </TabsContent>
 
-            {/* Comments tab is dropped from the tab bar in restricted mode; keep
-                its content unmounted too so a stale `?tab=comments` deep link
-                can't surface it. */}
             {!readOnly && canViewComments && (
               <TabsContent value='comments' className='w-full h-full mt-0'>
                 <ScrollArea className='flex-1' scrollbarClassName='w-1!'>
@@ -480,19 +425,26 @@ function DrawerRecordFrame({
               <TasksSection recordId={recordId} />
             </TabsContent>
 
-            {/* Dynamic tabs from registry — same filtered list as the strip, so a
-                gated-out tab has no mountable content either. */}
-            {visibleAdditionalTabs.map((tab) => (
-              <TabsContent key={tab.value} value={tab.value} className='w-full'>
-                <LazyTabComponent
+            {/* Every non-base tab, rendered from the RESOLVED LAYOUT: its
+                `before` blocks, its own lazy component when it has one, then its
+                `after` blocks. This subsumes the old `TabCards` calls, the
+                literal Details section (now the `core:details` block Overview
+                carries) and the `additionalTabs` map, which is why a section can
+                finally live on a tab other than Overview. */}
+            {visibleTabs
+              .filter((tab) => !tab.isBaseTab)
+              .map((tab) => (
+                <LayoutTabContent
+                  key={tab.id}
+                  tab={tab}
+                  blocks={visibleTabBlocks(tab, visibilityCtx)}
                   entityType={entityType}
-                  tabValue={tab.value}
                   entityInstanceId={entityInstanceId}
                   recordId={recordId}
                   record={record}
+                  readOnly={readOnly}
                 />
-              </TabsContent>
-            ))}
+              ))}
           </div>
         </div>
       </div>
@@ -741,6 +693,114 @@ export function BaseEntityDrawer({
 }
 
 /**
+ * The Details panel's one piece of chrome that is not part of the block model:
+ * the extra right padding the literal `<Section title='Details'>` carried.
+ *
+ * `LayoutBlockSection` takes no `className` (a stored layout must not be able to
+ * restyle a block), so this is applied from the parent instead. The selector
+ * walks Section's own DOM (wrapper, then body), which is why it is three levels
+ * deep rather than the two the old inline version used from inside the Section.
+ */
+const DETAILS_BLOCK_PADDING =
+  '[&>[data-slot=section-wrapper]>[data-slot=section]>[data-slot=section-content]]:pe-4'
+
+/**
+ * One non-base tab's body, composed from the resolved layout
+ * (`plans/drawer/record-layout-system.md` §4).
+ *
+ * Render order is `before` blocks, the tab's own lazy component when it has one,
+ * then `after` blocks: the same before/after split `TabCards` applied, now
+ * available on every tab rather than only Overview.
+ *
+ * **Scroll.** A tab that carries blocks gets its own `ScrollArea`; a tab that is
+ * only its registered component does not. That keeps Overview byte-identical
+ * (it always carries the Details block, so it always gets the wrapper it has
+ * today) and keeps every existing additional tab byte-identical too (they carry
+ * no blocks, and each already manages its own scroll: `ContactTicketsTab` and
+ * friends own a `ScrollArea` of their own, so wrapping them in a second one
+ * would collapse their height chain). Sections placed on an additional tab would
+ * otherwise grow the body unbounded, which is the case this fixes. Scroll
+ * ownership stays PER TAB here, so `plans/drawer/scroll-area-ownership.md`, which
+ * is not in scope, is neither implemented nor made harder.
+ */
+function LayoutTabContent({
+  tab,
+  blocks,
+  entityType,
+  entityInstanceId,
+  recordId,
+  record,
+  readOnly,
+}: {
+  tab: ResolvedLayoutTab
+  /** The blocks of this tab this viewer may see, in render order. */
+  blocks: LayoutBlock[]
+  entityType: string
+  entityInstanceId: string
+  recordId: RecordId
+  record?: Record<string, unknown>
+  readOnly?: boolean
+}) {
+  const renderBlock = (block: LayoutBlock) => {
+    const section = (
+      <LayoutBlockSection
+        block={block}
+        entityType={entityType}
+        entityInstanceId={entityInstanceId}
+        recordId={recordId}
+        record={record}
+        readOnly={readOnly}
+      />
+    )
+    return (
+      <React.Fragment key={block.id}>
+        {block.id === DETAILS_BLOCK_ID ? (
+          <div className={DETAILS_BLOCK_PADDING}>{section}</div>
+        ) : (
+          section
+        )}
+        {/* Context card: visit facts when opened over a chat thread. Pinned to
+            the Details block rather than to a tab id, so it keeps sitting
+            directly under the field panel wherever an admin moves it. */}
+        {block.id === DETAILS_BLOCK_ID && (
+          <ThreadVisitCard
+            contactInstanceId={entityType === 'contact' ? entityInstanceId : undefined}
+          />
+        )}
+      </React.Fragment>
+    )
+  }
+
+  const body = (
+    <>
+      {blocks.filter((block) => block.position === 'before').map(renderBlock)}
+      {tab.hasOwnComponent && (
+        <LazyTabComponent
+          entityType={entityType}
+          tabValue={tab.id}
+          entityInstanceId={entityInstanceId}
+          recordId={recordId}
+          record={record}
+        />
+      )}
+      {blocks.filter((block) => block.position !== 'before').map(renderBlock)}
+    </>
+  )
+
+  return (
+    <TabsContent value={tab.id} className='w-full'>
+      {blocks.length > 0 ? (
+        <ScrollArea className='flex-1' scrollbarClassName='w-1!'>
+          {body}
+        </ScrollArea>
+      ) : (
+        body
+      )}
+    </TabsContent>
+  )
+}
+
+/**
  * Lazy load and render a tab component
  */
 function LazyTabComponent({
@@ -777,58 +837,6 @@ function LazyTabComponent({
   }
 
   return <Component entityInstanceId={entityInstanceId} recordId={recordId} record={record} />
-}
-
-/**
- * Renders tab cards for a given base tab at the specified position (before/after default content)
- */
-function TabCards({
-  tab,
-  position,
-  entityType,
-  drawerConfig,
-  entityInstanceId,
-  recordId,
-  record,
-  readOnly,
-}: {
-  tab: string
-  position: 'before' | 'after'
-  entityType: string
-  drawerConfig: { tabCards?: Record<string, DrawerTabCardDefinition[]> }
-  entityInstanceId: string
-  recordId: RecordId
-  record?: Record<string, unknown>
-  readOnly?: boolean
-}) {
-  const { can } = useAccess()
-  const canViewRecordResource = useCanViewRecordResource()
-  const cards = drawerConfig.tabCards?.[tab]
-    ?.filter((c) => (c.position ?? 'after') === position)
-    // Restricted mode drops communication overview cards (e.g. work_order:communications).
-    .filter((c) => !readOnly || !isRestrictedDrawerTab(entityType, c.value))
-    // Layer-2 capability gate — hide the whole section (header included) when the
-    // viewer lacks the key, mirroring the card's router procedure gate.
-    .filter((c) => !c.permissionKey || can(c.permissionKey))
-    // Layer-3 per-definition gate for cards that are purely another definition's
-    // records (service_request work orders/quotes, quote jobs).
-    .filter((c) => canViewRecordResource(c.recordResource))
-  if (!cards?.length) return null
-
-  return (
-    <>
-      {cards.map((card) => (
-        <TabCardSection
-          key={card.value}
-          card={card}
-          entityType={entityType}
-          entityInstanceId={entityInstanceId}
-          recordId={recordId}
-          record={record}
-        />
-      ))}
-    </>
-  )
 }
 
 /**

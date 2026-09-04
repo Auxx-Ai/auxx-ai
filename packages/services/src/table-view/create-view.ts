@@ -7,8 +7,22 @@ import { err, ok } from 'neverthrow'
 import { fromDatabase } from '../shared/utils'
 import type { ViewAlreadyExistsError } from './errors'
 
-/** View context type for table views */
-type ViewContextType = 'table' | 'kanban' | 'panel' | 'dialog_create' | 'dialog_edit'
+/**
+ * View context type for table views.
+ *
+ * A local copy of `@auxx/lib/conditions`'s `viewContextTypes`, because
+ * `@auxx/services` sits below `@auxx/lib` in the dependency tiers and cannot
+ * import it. Keep the two in step: `drawer` and `detail` hold record layout
+ * deltas (plans/drawer/record-layout-system.md §5).
+ */
+type ViewContextType =
+  | 'table'
+  | 'kanban'
+  | 'panel'
+  | 'dialog_create'
+  | 'dialog_edit'
+  | 'drawer'
+  | 'detail'
 
 /**
  * Input for creating a view

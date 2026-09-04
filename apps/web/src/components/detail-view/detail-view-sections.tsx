@@ -1,12 +1,19 @@
 // apps/web/src/components/detail-view/detail-view-sections.tsx
 'use client'
 
+import type { TabVisibilityContext } from '@auxx/lib/record-layout/client'
+import { visibleLayoutTabs, visibleTabBlocks } from '@auxx/lib/record-layout/client'
 import { NavStack, NavStackBar, NavStackPanel, NavStackPanels } from '@auxx/ui/components/nav-stack'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
 import { Tabs, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
+import { Circle } from 'lucide-react'
 import * as React from 'react'
 import { createPortal } from 'react-dom'
+import { LayoutBlockSection } from '~/components/drawers/blocks'
+import { resolveLayoutIcon } from '~/components/records/layout/layout-icon'
+import { useBlockVisibility } from '~/components/records/layout/use-block-visibility'
+import { useRecordLayout } from '~/components/records/layout/use-record-layout'
 import {
   type RecordDrillContext,
   type RecordDrillPanel,
@@ -16,7 +23,6 @@ import { parseRecordId, type RecordId } from '~/components/resources'
 import { useScrollSpy } from '~/hooks/use-scroll-spy'
 import { getDetailViewTabComponent } from './detail-view-tab-registry'
 import type { DetailViewMainTabsProps, DetailViewTabProps } from './types'
-import { getIconComponent } from './utils'
 
 // Same rationale as agent-detail-tabs.tsx (the reference wiring, dispatch M2 build
 // spec §F.1 "verbatim" structure): the tab strip lives in <NavStackBar>, OUTSIDE the
@@ -85,7 +91,7 @@ export function DetailViewSections({
   record,
   drillPanels = [],
 }: DetailViewSectionsProps) {
-  const { entityInstanceId } = parseRecordId(recordId)
+  const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
 
   // Generic two-level drill protocol shared across every `layout: 'sections'`
   // consumer: `panel` selects a RecordDrillPanel, `item` (optional) drills one
@@ -93,7 +99,28 @@ export function DetailViewSections({
   // direct-entry rule) lives in `useRecordDrillStack`, shared with the drawer.
   const drill = useRecordDrillStack(drillPanels)
 
-  const sectionKeys = React.useMemo(() => config.mainTabs.map((t) => t.value), [config.mainTabs])
+  // `layout: 'sections'` is only a different RENDERER for the same `mainTabs`
+  // list (`plans/drawer/record-layout-system.md` §9.7), so it reads the same
+  // resolved layout `DetailViewMainTabs` does: a block placed on a main tab
+  // renders here as one more section on the scroll-spy column.
+  const { layout } = useRecordLayout({
+    entityDefinitionId,
+    entityType,
+    surface: 'detail',
+    detailConfig: config,
+  })
+
+  const isBlockVisible = useBlockVisibility({ entityType })
+  const visibilityCtx = React.useMemo<TabVisibilityContext>(
+    () => ({ isBlockVisible }),
+    [isBlockVisible]
+  )
+  const tabs = React.useMemo(
+    () => visibleLayoutTabs(layout, visibilityCtx),
+    [layout, visibilityCtx]
+  )
+
+  const sectionKeys = React.useMemo(() => tabs.map((t) => t.id), [tabs])
 
   // Re-bind the scroll listener after the root ScrollArea remounts (NavStackPanels
   // only mounts the top panel — returning from a drill recreates the viewport node).
@@ -144,10 +171,10 @@ export function DetailViewSections({
               <TabsList
                 className='w-full justify-start rounded-none bg-transparent px-2'
                 variant='outline'>
-                {config.mainTabs.map((tab) => {
-                  const Icon = getIconComponent(tab.icon)
+                {tabs.map((tab) => {
+                  const Icon = resolveLayoutIcon(tab.icon) ?? Circle
                   return (
-                    <TabsTrigger key={tab.value} value={tab.value} variant='outline'>
+                    <TabsTrigger key={tab.id} value={tab.id} variant='outline'>
                       <Icon className='size-3.5 mr-1.5 opacity-70' />
                       {tab.label}
                     </TabsTrigger>
@@ -161,22 +188,42 @@ export function DetailViewSections({
             className='h-full'
             scrollbarClassName='w-1.5 z-20'
             noFade>
-            {config.mainTabs.map((tab) => {
-              const Icon = getIconComponent(tab.icon)
+            {tabs.map((tab) => {
+              const Icon = resolveLayoutIcon(tab.icon) ?? Circle
+              const blocks = visibleTabBlocks(tab, visibilityCtx)
+              const fullBleed = config.mainTabs.find((t) => t.value === tab.id)?.fullBleed
               return (
-                <div key={tab.value} ref={assignRef(tab.value)}>
-                  <ChromedSection
-                    label={tab.label}
-                    icon={<Icon className='size-4' />}
-                    fullBleed={tab.fullBleed}>
-                    <LazySectionTabComponent
+                <div key={tab.id} ref={assignRef(tab.id)}>
+                  {/* A tab that IS its blocks gets NO ChromedSection of its own:
+                      every block already renders its own <Section>, so wrapping
+                      them would nest a header inside a header. */}
+                  {/* A base tab (timeline, tasks) has no registry entry of its
+                      own but DOES have a component, from the `*:timeline` /
+                      `*:tasks` wildcards. */}
+                  {(tab.hasOwnComponent || tab.isBaseTab) && (
+                    <ChromedSection
+                      label={tab.label}
+                      icon={<Icon className='size-4' />}
+                      fullBleed={fullBleed}>
+                      <LazySectionTabComponent
+                        entityType={entityType}
+                        tabValue={tab.id}
+                        entityInstanceId={entityInstanceId}
+                        recordId={recordId}
+                        record={record}
+                      />
+                    </ChromedSection>
+                  )}
+                  {blocks.map((block) => (
+                    <LayoutBlockSection
+                      key={block.id}
+                      block={block}
                       entityType={entityType}
-                      tabValue={tab.value}
                       entityInstanceId={entityInstanceId}
                       recordId={recordId}
                       record={record}
                     />
-                  </ChromedSection>
+                  ))}
                 </div>
               )
             })}
