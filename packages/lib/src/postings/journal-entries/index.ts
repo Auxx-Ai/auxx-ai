@@ -26,8 +26,14 @@ export {
   requireJournalEntryFieldContext,
 } from './reads'
 export {
+  assertJournalEntryHasNoPosting,
+  assertJournalEntryIsDraft,
+  type JournalEntryRefusalSubject,
+} from './refusals'
+export {
   type CreateJournalEntryInput,
   createJournalEntry,
+  discardJournalEntry,
   type PreviewJournalEntryInput,
   postJournalEntry,
   previewJournalEntry,

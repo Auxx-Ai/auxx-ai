@@ -22,7 +22,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const h = vi.hoisted(() => ({
   transaction: null as Record<string, unknown> | null,
   allocations: [] as Array<Record<string, unknown>>,
-  postings: [] as Array<{ glPostingId: string; docNumber: string; status: string }>,
+  postings: [] as Array<{
+    glPostingId: string
+    docNumber: string
+    status: string
+    postingType: string
+  }>,
   reverseResults: [] as Array<{ status: string; error?: string }>,
   /** Every call, in order, so "reversed BEFORE deleted" is assertable. */
   calls: [] as string[],
@@ -93,6 +98,7 @@ vi.mock('./post-transaction', () => ({
   postPaymentTransaction: async () => ({ status: 'posted' }),
   listPaymentPostings: async () => h.postings,
 }))
+vi.mock('./post-deposit-application', () => ({ postDepositApplications: async () => [] }))
 
 const { deleteManualPayment } = await import('./ledger')
 const { ConflictError, ForbiddenError } = await import('../../errors')
@@ -119,7 +125,14 @@ beforeEach(() => {
 
 describe('deleteManualPayment - the ledger comes out first', () => {
   it('reverses the payment entry BEFORE deleting the row it explains', async () => {
-    h.postings = [{ glPostingId: 'glp-1', docNumber: 'AUXX-PMT-ABC123', status: 'posted' }]
+    h.postings = [
+      {
+        glPostingId: 'glp-1',
+        docNumber: 'AUXX-PMT-ABC123',
+        status: 'posted',
+        postingType: 'payment',
+      },
+    ]
 
     await deleteManualPayment(input)
 
@@ -133,11 +146,45 @@ describe('deleteManualPayment - the ledger comes out first', () => {
 
   it('reverses every entry the transaction produced, not just the first', async () => {
     h.postings = [
-      { glPostingId: 'glp-1', docNumber: 'AUXX-PMT-AAA111', status: 'posted' },
-      { glPostingId: 'glp-2', docNumber: 'AUXX-PMT-BBB222', status: 'posted' },
+      {
+        glPostingId: 'glp-1',
+        docNumber: 'AUXX-PMT-AAA111',
+        status: 'posted',
+        postingType: 'payment',
+      },
+      {
+        glPostingId: 'glp-2',
+        docNumber: 'AUXX-PMT-BBB222',
+        status: 'posted',
+        postingType: 'payment',
+      },
     ]
     await deleteManualPayment(input)
     expect(h.reversedIds).toEqual(['glp-1', 'glp-2'])
+  })
+
+  // 🛑 The reclass debits `customer_deposits` against a liability the receipt
+  // raised, so backing the receipt out first leaves the reclass standing on a
+  // liability that no longer exists: `2350` ends negative by the applied amount
+  // and the receivable ends over-relieved, both with balanced entries. Undoing a
+  // pair of entries is undoing them in the opposite order they were made.
+  it('reverses a deposit application BEFORE the receipt entry it reclassed', async () => {
+    h.postings = [
+      {
+        glPostingId: 'glp-receipt',
+        docNumber: 'AUXX-PMT-AAA111',
+        status: 'posted',
+        postingType: 'payment',
+      },
+      {
+        glPostingId: 'glp-reclass',
+        docNumber: 'AUXX-DPA-BBB222',
+        status: 'posted',
+        postingType: 'deposit_application',
+      },
+    ]
+    await deleteManualPayment(input)
+    expect(h.reversedIds).toEqual(['glp-reclass', 'glp-receipt'])
   })
 
   it('deletes cleanly when the payment never reached the ledger', async () => {
@@ -151,8 +198,18 @@ describe('deleteManualPayment - the ledger comes out first', () => {
   // double the correction; a `failed` one never reached the ledger at all.
   it('skips entries that are already reversed or never posted', async () => {
     h.postings = [
-      { glPostingId: 'glp-1', docNumber: 'AUXX-PMT-AAA111', status: 'reversed' },
-      { glPostingId: 'glp-2', docNumber: 'AUXX-PMT-BBB222', status: 'failed' },
+      {
+        glPostingId: 'glp-1',
+        docNumber: 'AUXX-PMT-AAA111',
+        status: 'reversed',
+        postingType: 'payment',
+      },
+      {
+        glPostingId: 'glp-2',
+        docNumber: 'AUXX-PMT-BBB222',
+        status: 'failed',
+        postingType: 'payment',
+      },
     ]
     await deleteManualPayment(input)
     expect(h.reversedIds).toEqual([])
@@ -162,7 +219,14 @@ describe('deleteManualPayment - the ledger comes out first', () => {
 
 describe('deleteManualPayment - a reversal the ledger refuses refuses the delete', () => {
   it('throws naming the document number and writes nothing', async () => {
-    h.postings = [{ glPostingId: 'glp-1', docNumber: 'AUXX-PMT-ABC123', status: 'posted' }]
+    h.postings = [
+      {
+        glPostingId: 'glp-1',
+        docNumber: 'AUXX-PMT-ABC123',
+        status: 'posted',
+        postingType: 'payment',
+      },
+    ]
     h.reverseResults = [{ status: 'period_closed', error: 'August is closed.' }]
 
     await expect(deleteManualPayment(input)).rejects.toBeInstanceOf(ConflictError)
@@ -171,7 +235,14 @@ describe('deleteManualPayment - a reversal the ledger refuses refuses the delete
   })
 
   it('names the entry and the reversal path in the message', async () => {
-    h.postings = [{ glPostingId: 'glp-1', docNumber: 'AUXX-PMT-ABC123', status: 'posted' }]
+    h.postings = [
+      {
+        glPostingId: 'glp-1',
+        docNumber: 'AUXX-PMT-ABC123',
+        status: 'posted',
+        postingType: 'payment',
+      },
+    ]
     h.reverseResults = [{ status: 'period_closed', error: 'August is closed.' }]
 
     await expect(deleteManualPayment(input)).rejects.toThrow(/AUXX-PMT-ABC123/)
@@ -181,7 +252,14 @@ describe('deleteManualPayment - a reversal the ledger refuses refuses the delete
   // an org with no accounting provider still builds, balances and persists the
   // reversal. Treating it as a refusal would make the delete impossible there.
   it('treats an unconnected ledger as a taken reversal', async () => {
-    h.postings = [{ glPostingId: 'glp-1', docNumber: 'AUXX-PMT-ABC123', status: 'posted' }]
+    h.postings = [
+      {
+        glPostingId: 'glp-1',
+        docNumber: 'AUXX-PMT-ABC123',
+        status: 'posted',
+        postingType: 'payment',
+      },
+    ]
     h.reverseResults = [{ status: 'not_connected' }]
 
     await deleteManualPayment(input)
@@ -190,7 +268,14 @@ describe('deleteManualPayment - a reversal the ledger refuses refuses the delete
 
   it('still refuses a Stripe row before it ever looks at the ledger', async () => {
     h.transaction = manualCharge({ provider: 'stripe' })
-    h.postings = [{ glPostingId: 'glp-1', docNumber: 'AUXX-PMT-ABC123', status: 'posted' }]
+    h.postings = [
+      {
+        glPostingId: 'glp-1',
+        docNumber: 'AUXX-PMT-ABC123',
+        status: 'posted',
+        postingType: 'payment',
+      },
+    ]
 
     await expect(deleteManualPayment(input)).rejects.toBeInstanceOf(ForbiddenError)
     expect(h.reversedIds).toEqual([])

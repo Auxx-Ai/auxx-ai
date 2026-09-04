@@ -43,8 +43,8 @@ import type { PostingType } from './types'
 export const DOC_NUMBER_MAX_LENGTH = 21
 
 /**
- * Three letters per posting type. All eight, including the two the L3 per-event
- * regime writes.
+ * Three letters per posting type. Every member of `POSTING_TYPES`, including
+ * the two the L3 per-event regime writes and does not yet enable.
  *
  * Pinned to `POSTING_TYPES` by an exact-key-equality test: a new posting
  * type with no prefix would otherwise mint `AUXX-undefined-…`, which is a
@@ -71,6 +71,17 @@ export const DOC_NUMBER_PREFIX: Record<PostingType, string> = {
   // minting one key would converge the loser to `already_posted`, a SUCCESS,
   // silently merging two payments into one entry.
   payment: 'PMT',
+  // 🛑 `INV` is `month_end_inventory`'s and cannot be reused - documents
+  // already carry it. An issuance entry keys on the INVOICE NUMBER, compacted,
+  // exactly as `manual_journal`, `bank_deposit` and `write_off` key on their
+  // own record's number, so one entry per invoice falls out of the claim index.
+  invoice_issued: 'INI',
+  // A deposit application keys on a short hash of the ALLOCATION row's id
+  // (`DPA-<6 base36>`), for the reason spelled out at length in
+  // `build-payment-entry.ts`: a counted sequence lets two concurrent
+  // applications mint one key, and the loser converges to `already_posted` - a
+  // SUCCESS - with one customer's money folded into another's entry.
+  deposit_application: 'DPA',
 }
 
 /** What identifies one entry of one type. See {@link buildDocNumber}. */

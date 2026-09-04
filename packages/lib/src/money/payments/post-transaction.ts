@@ -15,15 +15,14 @@
  * entity would silently miss every refund and leave A/R overstated by the whole
  * refunded amount, forever, with a balanced ledger.
  *
- * ## ⚠️ This cannot post yet, and says so rather than pretending
+ * ## 🛑 The credit side depends on what is ALLOCATED
  *
- * `POSTING_TYPES` has no `payment` member. The union has exactly two copies -
- * `postings/types.ts` and the `GlPostingType` pgEnum - which move in ONE change,
- * and both are coordinator-held (HANDOFF §4). So {@link PAYMENT_POSTING_TYPE}
- * is a cast with a TODO, `postEntry` will be refused by the enum, and the
- * refusal comes back as a `PostResult` with `status: 'error'` rather than as a
- * throw. That is the honest shape: the path is wired, tested and driveable, and
- * the day the type lands it starts working with no other change.
+ * `allocatedMinor` is not a detail. Money taken before delivery is money you
+ * OWE, so the part of a receipt that is not applied to an invoice credits
+ * `customer_deposits`, not `accounts_receivable` - see
+ * `postings/build-payment-entry.ts`. `syncTransaction` already loads the
+ * allocations before it calls this, so the figure is in hand at the post site
+ * and simply has to be passed down.
  *
  * Nothing here throws. Every outcome is a `PostResult`, so `syncTransaction`
  * can call it without a try/catch of its own and a failed post can never fail
@@ -93,9 +92,26 @@ const POSTABLE_STATUSES = new Set(['succeeded', 'disputed'])
  */
 export async function postPaymentTransaction(
   db: Database,
-  params: { organizationId: string; transaction: PaymentTransactionEntity; actorUserId?: string }
+  params: {
+    organizationId: string
+    transaction: PaymentTransactionEntity
+    actorUserId?: string
+    /**
+     * The sum of this transaction's `PaymentAllocation` rows, in integer minor
+     * units. What is NOT allocated is a customer deposit: money held, not a
+     * receivable relieved (`build-payment-entry.ts`).
+     *
+     * 🛑 Required, not optional with a default. A default of `amountMinor`
+     * would silently restore the old behaviour - every prepayment booked
+     * against `accounts_receivable` - on any caller that forgot it, and the
+     * entry would still balance. A default of `0` would book every ordinary
+     * invoice payment as a deposit. Neither is detectable downstream, so the
+     * caller says.
+     */
+    allocatedMinor: number
+  }
 ): Promise<PostResult> {
-  const { organizationId, transaction, actorUserId } = params
+  const { organizationId, transaction, actorUserId, allocatedMinor } = params
 
   if (!POSTABLE_STATUSES.has(transaction.status)) {
     return {
@@ -131,6 +147,7 @@ export async function postPaymentTransaction(
       route,
       periodKey: paymentPeriodKey(transaction.id),
       ledgerCurrency: LEDGER_CURRENCY,
+      allocatedMinor,
     })
 
     const lock = await resolvePeriodLock(organizationId)
@@ -196,6 +213,7 @@ export async function postPaymentTransaction(
         transactionId: transaction.id,
         kind: transaction.kind,
         route,
+        allocatedMinor,
         status: post.status,
         docNumber: post.docNumber,
         claimed: Boolean(post.glPostingId),
@@ -225,16 +243,25 @@ export async function postPaymentTransaction(
  * because that pair is what makes a posting explainable later without joining
  * through a provider - and it is what the `ledger` record card on the payment
  * drawer will read.
+ *
+ * ⚠️ It returns the `deposit_application` reclasses too, and that is deliberate:
+ * they carry the same `payment_transaction`/`sourceId` pair precisely so that
+ * one read finds everything a payment put in the books, and deleting the
+ * payment backs all of it out.
  */
 export async function listPaymentPostings(
   db: Database,
   params: { organizationId: string; transactionId: string }
-): Promise<Array<{ glPostingId: string; docNumber: string; status: string }>> {
+): Promise<Array<{ glPostingId: string; docNumber: string; status: string; postingType: string }>> {
   const rows = await db
     .selectDistinct({
       glPostingId: schema.GlPosting.id,
       docNumber: schema.GlPosting.docNumber,
       status: schema.GlPosting.status,
+      // Carried so a reader can tell the receipt entry from the
+      // `deposit_application` reclass. `reversePaymentPostings` needs it: the
+      // reclass has to come out BEFORE the receipt it reclassed.
+      postingType: schema.GlPosting.postingType,
     })
     .from(schema.GlPostingLine)
     .innerJoin(schema.GlPosting, eq(schema.GlPosting.id, schema.GlPostingLine.glPostingId))

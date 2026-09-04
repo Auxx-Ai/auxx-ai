@@ -25,6 +25,7 @@ import { FieldValueService } from '../../field-values/field-value-service'
 import {
   type BuildWriteOffEntryInput,
   buildWriteOffEntry,
+  WRITE_OFF_SOURCE_TYPE,
 } from '../../postings/build-write-off-entry'
 import { resolvePeriodLock } from '../../postings/period-lock'
 import { periodKeyForDate } from '../../postings/periods'
@@ -42,13 +43,73 @@ import { getOrganizationSetting } from '../../settings/settings-service'
  */
 const INVOICE_STATUS_BYPASS = new Set<SystemAttribute>(['invoice_status'])
 
-const INVOICE_ATTRIBUTES = ['invoice_status', 'invoice_number', 'invoice_balance'] as const
+const INVOICE_ATTRIBUTES = [
+  'invoice_status',
+  'invoice_number',
+  'invoice_balance',
+  'invoice_total',
+  'invoice_amount_paid',
+  'invoice_written_off',
+] as const
 
 interface InvoiceForWriteOff {
   status: string
   number: string
   /** Integer minor units. `0` when the field has never been written. */
   balanceMinor: number
+  /** Integer minor units. `0` when the field has never been written. */
+  totalMinor: number
+  /** Integer minor units. `0` when the field has never been written. */
+  amountPaidMinor: number
+  /**
+   * Cumulative bad debt already taken off this invoice, integer minor units.
+   * `0` on an org that has not run entity migration 128 yet, which is also the
+   * right answer there: nothing has been written off through a path that could
+   * have recorded it.
+   */
+  writtenOffMinor: number
+  /**
+   * Whether this org has the `invoice_written_off` field at all - it arrives
+   * with entity migration 128, and an org short of it must not be handed a
+   * write for a field that does not exist.
+   */
+  hasWrittenOffField: boolean
+  /**
+   * What is still sitting in accounts receivable for this invoice, and so the
+   * most that may still be written off. See {@link resolveOutstandingMinor}.
+   */
+  outstandingMinor: number
+}
+
+/**
+ * The receivable this invoice still carries: `total - amountPaid - writtenOff`.
+ *
+ * 🛑 **Derived from the totals rather than read off `invoice_balance`, because
+ * two writers disagree about that field.** `syncInvoicePaymentState`
+ * (`money/payments/ledger.ts`) recomputes it as `total - amountPaid` on every
+ * payment event and knows nothing about bad debt, so the reduction a partial
+ * write-off makes to it is undone by the next payment sync. Deriving here is
+ * stable under that: `writtenOff` only ever grows, and it is never folded into
+ * the two numbers it is subtracted from.
+ *
+ * ⚠️ The fallback, for an invoice with no `total` written yet, is
+ * `invoice_balance` verbatim - what this file used before. It cannot subtract
+ * `writtenOff` there without double-counting, because with no total nothing
+ * re-derives the balance and the reduction this file made to it still stands.
+ * An invoice with no total is degenerate anyway: `syncInvoicePaymentState`
+ * would compute a negative balance for it.
+ */
+function resolveOutstandingMinor(parts: {
+  totalMinor: number
+  amountPaidMinor: number
+  writtenOffMinor: number
+  balanceMinor: number
+}): number {
+  const { totalMinor, amountPaidMinor, writtenOffMinor, balanceMinor } = parts
+  if (totalMinor > 0) {
+    return Math.max(0, totalMinor - amountPaidMinor - writtenOffMinor)
+  }
+  return Math.max(0, balanceMinor)
 }
 
 /**
@@ -65,7 +126,14 @@ async function loadInvoiceForWriteOff(
   const cf = await getOrgCache()
     .from(organizationId, 'customFields')
     .bySystemAttributes([...INVOICE_ATTRIBUTES])
-  const fieldIds = [cf.invoice_status, cf.invoice_number, cf.invoice_balance]
+  const fieldIds = [
+    cf.invoice_status,
+    cf.invoice_number,
+    cf.invoice_balance,
+    cf.invoice_total,
+    cf.invoice_amount_paid,
+    cf.invoice_written_off,
+  ]
     .filter((f) => f !== null)
     .map((f) => f.id)
   if (fieldIds.length === 0) return null
@@ -91,10 +159,62 @@ async function loadInvoiceForWriteOff(
   if (!status) return null
 
   const number = (cf.invoice_number ? byField.get(cf.invoice_number.id)?.valueText : null) ?? ''
-  const balanceMinor =
-    (cf.invoice_balance ? byField.get(cf.invoice_balance.id)?.valueNumber : null) ?? 0
+  const numberOf = (field: { id: string } | null): number =>
+    (field ? byField.get(field.id)?.valueNumber : null) ?? 0
 
-  return { status, number, balanceMinor }
+  const balanceMinor = numberOf(cf.invoice_balance)
+  const totalMinor = numberOf(cf.invoice_total)
+  const amountPaidMinor = numberOf(cf.invoice_amount_paid)
+  const writtenOffMinor = numberOf(cf.invoice_written_off)
+
+  return {
+    status,
+    number,
+    balanceMinor,
+    totalMinor,
+    amountPaidMinor,
+    writtenOffMinor,
+    hasWrittenOffField: cf.invoice_written_off !== null,
+    outstandingMinor: resolveOutstandingMinor({
+      totalMinor,
+      amountPaidMinor,
+      writtenOffMinor,
+      balanceMinor,
+    }),
+  }
+}
+
+/**
+ * How many `write_off` postings this invoice has already produced - the
+ * `attempt` {@link buildWriteOffEntry} keys on.
+ *
+ * 🛑 Counted off `GlPostingLine`'s `sourceType`/`sourceId` pair, filtered to the
+ * `write_off` posting type, and never off a mirrored column on the invoice: a
+ * mirror holds only the latest posting and a reversal clears it, so the count
+ * would fall back to zero and the next write-off would re-claim the reversed
+ * original's period tuple. The `write_off` filter is what the bank line's
+ * equivalent does not need: `sourceType` is `invoice`, which the payment and
+ * (soon) invoice-revenue entries also carry, so counting without it would
+ * inflate the attempt by every other entry the invoice has ever produced.
+ */
+async function countWriteOffPostings(
+  db: Database,
+  organizationId: string,
+  invoiceId: string
+): Promise<number> {
+  const rows = await db
+    .selectDistinct({ glPostingId: schema.GlPosting.id })
+    .from(schema.GlPostingLine)
+    .innerJoin(schema.GlPosting, eq(schema.GlPosting.id, schema.GlPostingLine.glPostingId))
+    .where(
+      and(
+        eq(schema.GlPosting.organizationId, organizationId),
+        eq(schema.GlPosting.postingType, 'write_off'),
+        eq(schema.GlPostingLine.sourceType, WRITE_OFF_SOURCE_TYPE),
+        eq(schema.GlPostingLine.sourceId, invoiceId)
+      )
+    )
+  return rows.length
 }
 
 /**
@@ -125,13 +245,21 @@ function assertWriteOffAllowed(invoice: InvoiceForWriteOff, invoiceId: string): 
   }
 }
 
-/** Resolve the amount to write off: the caller's, or the invoice's whole balance. */
+/**
+ * Resolve the amount to write off: the caller's, or everything still
+ * outstanding.
+ *
+ * 🛑 Bounded by what is STILL outstanding, not by the invoice's gross balance,
+ * so a second write-off can never take the same receivable off A/R twice. "Write
+ * off the rest" after a partial one therefore writes off the remainder, not the
+ * whole invoice again.
+ */
 function resolveWriteOffAmount(
   invoice: InvoiceForWriteOff,
   invoiceId: string,
   amountMinor: number | undefined
 ): number {
-  const amount = amountMinor ?? invoice.balanceMinor
+  const amount = amountMinor ?? invoice.outstandingMinor
   if (!Number.isFinite(amount) || !Number.isInteger(amount)) {
     throw new BadRequestError(`Write-off amount must be a whole number of cents, got ${amount}`, {
       invoiceId,
@@ -140,10 +268,22 @@ function resolveWriteOffAmount(
   if (amount <= 0) {
     throw new BadRequestError('There is no balance to write off on this invoice', { invoiceId })
   }
-  if (amount > invoice.balanceMinor) {
+  if (amount > invoice.outstandingMinor) {
+    const alreadyWrittenOff =
+      invoice.writtenOffMinor > 0
+        ? ` (${invoice.writtenOffMinor} of it has already been written off)`
+        : ''
     throw new BadRequestError(
-      `Write-off amount exceeds the invoice balance of ${invoice.balanceMinor}`,
-      { invoiceId, amountMinor: String(amount), balanceMinor: String(invoice.balanceMinor) }
+      `Write-off of ${amount} exceeds the ${invoice.outstandingMinor} still outstanding on ` +
+        `invoice ${invoice.number}${alreadyWrittenOff}. Write off the remainder instead, or ` +
+        'reverse the earlier write-off first.',
+      {
+        invoiceId,
+        invoiceNumber: invoice.number,
+        amountMinor: String(amount),
+        outstandingMinor: String(invoice.outstandingMinor),
+        writtenOffMinor: String(invoice.writtenOffMinor),
+      }
     )
   }
   return amount
@@ -157,6 +297,46 @@ async function todayInBookTimeZone(organizationId: string): Promise<string> {
   })
   const bookTimeZone = typeof raw === 'string' && raw.trim().length > 0 ? raw.trim() : 'UTC'
   return periodKeyForDate(new Date(), 'day', bookTimeZone)
+}
+
+export interface WriteOffState {
+  /** The invoice's own number, or `''` when it has none yet. */
+  invoiceNumber: string
+  /** The mirrored `invoice_balance`, integer minor units. */
+  balanceMinor: number
+  /** Cumulative bad debt already taken off, integer minor units. */
+  writtenOffMinor: number
+  /**
+   * The most that may still be written off, integer minor units. **The prefill
+   * and the bound a dialog should use, not `balanceMinor`** - the mirrored
+   * balance reads high after a partial write-off, because
+   * `syncInvoicePaymentState` re-derives it as `total - amountPaid` and knows
+   * nothing about bad debt.
+   */
+  outstandingMinor: number
+}
+
+/**
+ * What is left to write off on one invoice, and what has already gone.
+ *
+ * Read-only, and separate from {@link previewWriteOffInvoice} because the
+ * preview needs an amount to build an entry from and this is what tells the
+ * caller which amount to ask for.
+ *
+ * @throws {NotFoundError} when the invoice does not exist.
+ */
+export async function readWriteOffState(
+  db: Database,
+  params: { organizationId: string; invoiceId: string }
+): Promise<WriteOffState> {
+  const invoice = await loadInvoiceForWriteOff(db, params.organizationId, params.invoiceId)
+  if (!invoice) throw new NotFoundError('Invoice not found', { invoiceId: params.invoiceId })
+  return {
+    invoiceNumber: invoice.number,
+    balanceMinor: invoice.balanceMinor,
+    writtenOffMinor: invoice.writtenOffMinor,
+    outstandingMinor: invoice.outstandingMinor,
+  }
 }
 
 export interface PreviewWriteOffInput {
@@ -181,10 +361,14 @@ export async function previewWriteOffInvoice(
   assertWriteOffAllowed(invoice, invoiceId)
   const amount = resolveWriteOffAmount(invoice, invoiceId, amountMinor)
 
-  const txnDate = await todayInBookTimeZone(organizationId)
+  const [txnDate, attempt] = await Promise.all([
+    todayInBookTimeZone(organizationId),
+    countWriteOffPostings(db, organizationId, invoiceId),
+  ])
   const entry = buildWriteOffEntry({
     invoiceId,
     invoiceNumber: invoice.number,
+    attempt,
     amountMinor: amount,
     txnDate,
     expenseAccountCode,
@@ -198,7 +382,7 @@ export interface WriteOffInvoiceInput {
   organizationId: string
   actorUserId: string
   invoiceId: string
-  /** Integer minor units. Defaults to the invoice's whole balance. */
+  /** Integer minor units. Defaults to everything still outstanding. */
   amountMinor?: number
   reason: string
   expenseAccountCode?: string
@@ -215,20 +399,34 @@ export interface WriteOffInvoiceInput {
  * there is nothing to roll back, because nothing but the ledger claim wrote
  * anything.
  *
- * 🛑 One write-off per invoice, by construction: `buildWriteOffEntry` keys
- * `periodKey` on the invoice's own number, so a second call claims the same
- * `(org, write_off, periodKey, revision=0)` key and comes back `already_posted`
- * - which is also why `assertWriteOffAllowed` refuses a `written_off` invoice
- * before the ledger is ever asked, with a sentence a person can act on instead
- * of a document-number collision.
+ * ## A PARTIAL write-off can be topped up, and that took two things
  *
- * ⚠️ A PARTIAL write-off therefore posts once and cannot be topped up: the
- * remainder's entry would claim the same key. It leaves the status alone (there
- * is still a balance owed) and moves `invoice_balance` only - and that reduction
- * is re-derived away by the next `syncInvoicePaymentState`, which computes the
- * balance from the payment ledger and knows nothing about bad debt. Both need
- * the written-off amount stored on the invoice to fix properly, which is an
- * entity migration this slot does not own.
+ * `periodKey` used to be the invoice number and nothing else, so a second
+ * write-off claimed the same `(org, write_off, periodKey, revision = 0)` tuple,
+ * `postEntry` answered `already_posted` - a SUCCESS - and nothing posted while
+ * this function returned as though it had. The books were short by the second
+ * write-off with no error anywhere.
+ *
+ * 1. **The key carries an attempt** (`countWriteOffPostings` supplies it), the
+ *    same departure `bankTransactionPeriodKey` made for a re-coded bank line.
+ *    A genuine retry of the same first write-off still converges to
+ *    `already_posted`; a SECOND write-off mints its own key and posts.
+ * 2. **`invoice_written_off` records the cumulative amount** (entity migration
+ *    128), so the next write-off knows what is left and
+ *    {@link resolveWriteOffAmount} can refuse one that would exceed it. Before
+ *    it, the only trace was a reduction of `invoice_balance` that the next
+ *    `syncInvoicePaymentState` re-derived away.
+ *
+ * `assertWriteOffAllowed` still refuses a `written_off` invoice before the
+ * ledger is ever asked, with a sentence a person can act on: that status means
+ * the whole receivable is gone, and only a full write-off sets it.
+ *
+ * ⚠️ Still owed, in a file this does not own: `syncInvoicePaymentState`
+ * computes `balance = total - amountPaid` and knows nothing about
+ * `invoice_written_off`, so the mirrored balance reads high again after the
+ * next payment event. Nothing decides anything on that field any more - this
+ * file derives its own outstanding figure - but the number on screen is wrong
+ * until `money/payments/ledger.ts` subtracts it too.
  */
 export async function writeOffInvoice(
   db: Database,
@@ -245,10 +443,14 @@ export async function writeOffInvoice(
   assertWriteOffAllowed(invoice, invoiceId)
   const amount = resolveWriteOffAmount(invoice, invoiceId, amountMinor)
 
-  const txnDate = await todayInBookTimeZone(organizationId)
+  const [txnDate, attempt] = await Promise.all([
+    todayInBookTimeZone(organizationId),
+    countWriteOffPostings(db, organizationId, invoiceId),
+  ])
   const entry = buildWriteOffEntry({
     invoiceId,
     invoiceNumber: invoice.number,
+    attempt,
     amountMinor: amount,
     txnDate,
     expenseAccountCode,
@@ -271,7 +473,7 @@ export async function writeOffInvoice(
     result.status === 'disabled'
   if (!posted) return result
 
-  const remainingBalanceMinor = invoice.balanceMinor - amount
+  const remainingBalanceMinor = invoice.outstandingMinor - amount
 
   // 🛑 `written_off` is a statement about the WHOLE invoice, so only a write-off
   // that clears the whole balance may set it. A partial write-off that stamped it
@@ -280,10 +482,16 @@ export async function writeOffInvoice(
   // off the remainder ("already written off") - the balance would be unreachable
   // by every door at once. A partial write-off keeps the status it had (`sent` or
   // `partially_paid`, both of which still read as owed) and moves only the
-  // balance.
+  // balance and the cumulative written-off figure.
+  //
+  // `invoice_written_off` is what makes the NEXT write-off correct: it is the
+  // one durable record of the bad debt taken, and it only ever grows.
   const values: Array<{ fieldId: string; value: unknown }> = [
     { fieldId: 'invoice_balance', value: remainingBalanceMinor },
   ]
+  if (invoice.hasWrittenOffField) {
+    values.push({ fieldId: 'invoice_written_off', value: invoice.writtenOffMinor + amount })
+  }
   if (remainingBalanceMinor <= 0) {
     values.unshift({ fieldId: 'invoice_status', value: 'written_off' })
   }

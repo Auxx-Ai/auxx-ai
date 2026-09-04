@@ -184,119 +184,131 @@ export function ReviewDrawer({
           onClose={() => close(false)}
         />
 
+        {/* 🛑 The panels are PADDED and the Sections are not. `Section` draws its
+            own `p-3` and a full-width `border-b`, exactly as the record drawer's
+            cards do, so wrapping it in the treatment block's `p-4` inset that
+            rule 16px from each edge and it read as a floating line rather than a
+            divider. The padded stack ends where the sections begin. */}
         <ScrollArea className='min-h-0 flex-1'>
-          <div className='flex flex-col gap-4 p-4'>
-            {query.isPending ? (
-              <>
-                <Skeleton className='h-9 w-full' />
-                <Skeleton className='h-40 w-full' />
-              </>
-            ) : !line ? (
-              <p className='text-muted-foreground text-sm'>That bank line has gone.</p>
-            ) : (
-              <>
-                {/* 🛑 A void line is a destructive banner, not a disabled
+          <div className='flex flex-col'>
+            <div className='flex flex-col gap-4 p-4'>
+              {query.isPending ? (
+                <>
+                  <Skeleton className='h-9 w-full' />
+                  <Skeleton className='h-40 w-full' />
+                </>
+              ) : !line ? (
+                <p className='text-muted-foreground text-sm'>That bank line has gone.</p>
+              ) : (
+                <>
+                  {/* 🛑 A void line is a destructive banner, not a disabled
                     button with no explanation. The bank withdrew the
                     transaction, so nothing may be coded or matched against it -
                     and if it already posted, that posting has to come out. */}
-                {line.bankStatus === 'void' && (
-                  <div className='flex items-start gap-3 rounded-xl border border-destructive/40 bg-destructive/5 p-4'>
-                    <Ban className='mt-0.5 size-5 shrink-0 text-destructive' />
-                    <div className='flex min-w-0 flex-1 flex-col gap-1'>
-                      <span className='font-medium'>The bank voided this line</span>
-                      <p className='text-muted-foreground text-xs'>
-                        No money moved, so it cannot be coded or matched. The row is kept as the
-                        record that the bank showed it and withdrew it.
-                      </p>
+                  {line.bankStatus === 'void' && (
+                    <div className='flex items-start gap-3 rounded-xl border border-destructive/40 bg-destructive/5 p-4'>
+                      <Ban className='mt-0.5 size-5 shrink-0 text-destructive' />
+                      <div className='flex min-w-0 flex-1 flex-col gap-1'>
+                        <span className='font-medium'>The bank voided this line</span>
+                        <p className='text-muted-foreground text-xs'>
+                          No money moved, so it cannot be coded or matched. The row is kept as the
+                          record that the bank showed it and withdrew it.
+                        </p>
+                      </div>
+                      {line.glPostingId && (
+                        <Button
+                          variant='outline'
+                          size='sm'
+                          className='shrink-0'
+                          loading={undo.isPending}
+                          onClick={() => undo.mutate({ id: line.id })}>
+                          <Undo2 />
+                          Reverse posting
+                        </Button>
+                      )}
                     </div>
-                    {line.glPostingId && (
+                  )}
+
+                  {settled ? (
+                    <div className='flex items-center gap-3 rounded-xl border bg-muted/40 p-4'>
+                      <div className='flex min-w-0 flex-1 flex-col gap-0.5'>
+                        <span className='font-medium text-sm'>
+                          {REVIEW_STATUS_LABELS[line.reviewStatus]}
+                        </span>
+                        <span className='truncate text-muted-foreground text-xs'>
+                          {line.reviewStatus === 'coded'
+                            ? `Coded to ${line.glAccountCode ?? ''}`
+                            : line.reviewStatus === 'excluded'
+                              ? (line.excludeReason ?? '')
+                              : matchedLabel(line)}
+                        </span>
+                      </div>
                       <Button
                         variant='outline'
                         size='sm'
-                        className='shrink-0'
                         loading={undo.isPending}
                         onClick={() => undo.mutate({ id: line.id })}>
                         <Undo2 />
-                        Reverse posting
+                        {line.glPostingId ? 'Reverse and undo' : 'Undo'}
                       </Button>
-                    )}
-                  </div>
-                )}
-
-                {settled ? (
-                  <div className='flex items-center gap-3 rounded-xl border bg-muted/40 p-4'>
-                    <div className='flex min-w-0 flex-1 flex-col gap-0.5'>
-                      <span className='font-medium text-sm'>
-                        {REVIEW_STATUS_LABELS[line.reviewStatus]}
-                      </span>
-                      <span className='truncate text-muted-foreground text-xs'>
-                        {line.reviewStatus === 'coded'
-                          ? `Coded to ${line.glAccountCode ?? ''}`
-                          : line.reviewStatus === 'excluded'
-                            ? (line.excludeReason ?? '')
-                            : matchedLabel(line)}
-                      </span>
                     </div>
-                    <Button
-                      variant='outline'
-                      size='sm'
-                      loading={undo.isPending}
-                      onClick={() => undo.mutate({ id: line.id })}>
-                      <Undo2 />
-                      {line.glPostingId ? 'Reverse and undo' : 'Undo'}
-                    </Button>
-                  </div>
-                ) : (
-                  <>
-                    <RadioTab
-                      value={treatment}
-                      onValueChange={(value) => setTreatment(value as Treatment)}
-                      size='sm'>
-                      {TREATMENTS.map((item) => (
-                        <RadioTabItem key={item.value} value={item.value}>
-                          {item.label}
-                        </RadioTabItem>
-                      ))}
-                    </RadioTab>
+                  ) : (
+                    <>
+                      <RadioTab
+                        value={treatment}
+                        onValueChange={(value) => setTreatment(value as Treatment)}
+                        size='sm'>
+                        {TREATMENTS.map((item) => (
+                          <RadioTabItem key={item.value} value={item.value}>
+                            {item.label}
+                          </RadioTabItem>
+                        ))}
+                      </RadioTab>
 
-                    {/* 🛑 Keyed on the line, so a new row is a NEW form. React
+                      {/* 🛑 Keyed on the line, so a new row is a NEW form. React
                         would otherwise keep the previous row's picked account,
                         typed memo and chosen counterpart, which is exactly the
                         state that produces a run of confidently wrong postings
                         when somebody works down a backlog. */}
-                    {treatment === 'match' && (
-                      <MatchPanel
-                        key={line.id}
-                        line={line}
-                        currencyCode={currencyCode}
-                        onDone={() => close(false)}
-                      />
-                    )}
-                    {treatment === 'code' && (
-                      <CodePanel
-                        key={line.id}
-                        line={line}
-                        currencyCode={currencyCode}
-                        onDone={() => close(false)}
-                      />
-                    )}
-                    {treatment === 'transfer' && (
-                      <TransferPanel
-                        key={line.id}
-                        line={line}
-                        accounts={accounts}
-                        onDone={() => close(false)}
-                      />
-                    )}
+                      {treatment === 'match' && (
+                        <MatchPanel
+                          key={line.id}
+                          line={line}
+                          currencyCode={currencyCode}
+                          onDone={() => close(false)}
+                        />
+                      )}
+                      {treatment === 'code' && (
+                        <CodePanel
+                          key={line.id}
+                          line={line}
+                          currencyCode={currencyCode}
+                          onDone={() => close(false)}
+                        />
+                      )}
+                      {treatment === 'transfer' && (
+                        <TransferPanel
+                          key={line.id}
+                          line={line}
+                          accounts={accounts}
+                          onDone={() => close(false)}
+                        />
+                      )}
+                    </>
+                  )}
 
-                    <Section title='Exclude' collapsible initialOpen={false}>
-                      <ExcludePanel key={line.id} line={line} onDone={() => close(false)} />
-                    </Section>
-                  </>
+                  <EntryBlockers blockers={blockers} />
+                </>
+              )}
+            </div>
+
+            {line && (
+              <>
+                {!settled && (
+                  <Section title='Exclude' collapsible initialOpen={false}>
+                    <ExcludePanel key={line.id} line={line} onDone={() => close(false)} />
+                  </Section>
                 )}
-
-                <EntryBlockers blockers={blockers} />
-
                 <Section title='History' collapsible initialOpen={false}>
                   <HistoryPanel transactionId={line.id} onOpenPosting={onOpenPosting} />
                 </Section>

@@ -23,11 +23,9 @@ import {
 import { DOC_NUMBER_MAX_LENGTH } from '../doc-number'
 import type { PostingType } from '../types'
 
-// The `payment` posting type does not exist yet - `types.ts` is coordinator-held
-// and the union has two copies that move in one change. The builder takes the
-// type as a parameter for exactly this reason; the tests use an existing member
-// so nothing here depends on a union that has not landed.
-const POSTING_TYPE = 'manual_journal' as PostingType
+// The builder takes the posting type as a parameter, so the tests name the one
+// the writer actually passes.
+const POSTING_TYPE = 'payment' as PostingType
 
 const TRANSACTION = {
   id: 'pt_ab12cd34ef56gh78ij90kl',
@@ -39,12 +37,16 @@ const TRANSACTION = {
   reference: 'CHQ-8811',
 }
 
+// `allocatedMinor` equal to the whole amount is the ORDINARY invoice payment:
+// its allocation is in place before `syncTransaction` posts, so the whole
+// receipt relieves a receivable and no deposit leg appears.
 const BASE = {
   postingType: POSTING_TYPE,
   transaction: TRANSACTION,
   route: 'undeposited_funds' as const,
   periodKey: 'PMT-ABC1234',
   ledgerCurrency: 'USD',
+  allocatedMinor: TRANSACTION.amountMinor,
 }
 
 function line(entry: ReturnType<typeof buildPaymentEntry>['entry'], role: string) {
@@ -90,6 +92,72 @@ describe('a refund', () => {
     expect(line(charge.entry, ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE)?.direction).toBe('credit')
     expect(line(refund.entry, ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE)?.direction).toBe('debit')
     for (const row of refund.entry.lines) expect(row.amount).toBeGreaterThan(0)
+  })
+})
+
+describe('the credit side splits on what is allocated', () => {
+  it('credits accounts receivable alone when the whole receipt is applied', () => {
+    const built = buildPaymentEntry(BASE)
+    expect(built.receivableMinor).toBe(55_500)
+    expect(built.depositMinor).toBe(0)
+    expect(built.entry.lines).toHaveLength(2)
+    expect(line(built.entry, ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE)?.amount).toBe(55_500)
+    expect(line(built.entry, ACCOUNT_ROLES.CUSTOMER_DEPOSITS)).toBeUndefined()
+  })
+
+  it('credits customer deposits alone when nothing is applied', () => {
+    // A prepayment on quote acceptance. Nothing was owed, so nothing is
+    // relieved - the old behaviour drove A/R negative by the whole deposit.
+    const built = buildPaymentEntry({ ...BASE, allocatedMinor: 0 })
+    expect(built.receivableMinor).toBe(0)
+    expect(built.depositMinor).toBe(55_500)
+    expect(built.entry.lines).toHaveLength(2)
+    expect(line(built.entry, ACCOUNT_ROLES.CUSTOMER_DEPOSITS)?.direction).toBe('credit')
+    expect(line(built.entry, ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE)).toBeUndefined()
+  })
+
+  it('splits across three lines when the receipt is part applied', () => {
+    const built = buildPaymentEntry({ ...BASE, allocatedMinor: 20_000 })
+    expect(built.entry.lines).toHaveLength(3)
+    expect(line(built.entry, ACCOUNT_ROLES.UNDEPOSITED_FUNDS)?.amount).toBe(55_500)
+    expect(line(built.entry, ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE)?.amount).toBe(20_000)
+    expect(line(built.entry, ACCOUNT_ROLES.CUSTOMER_DEPOSITS)?.amount).toBe(35_500)
+    expect(built.entry.totalDebit).toBe(built.entry.totalCredit)
+  })
+
+  it('orders the lines route, receivable, deposits', () => {
+    const built = buildPaymentEntry({ ...BASE, allocatedMinor: 20_000 })
+    expect(built.entry.lines.map((row) => row.accountRole)).toEqual([
+      ACCOUNT_ROLES.UNDEPOSITED_FUNDS,
+      ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE,
+      ACCOUNT_ROLES.CUSTOMER_DEPOSITS,
+    ])
+  })
+
+  it('mirrors the split on a refund, so a refunded deposit debits the liability', () => {
+    // `refundCharge` copies the charge's allocations onto the refund row, so
+    // the refund resolves the SAME split with no branch of its own. A refunded
+    // held deposit must debit `customer_deposits`: debiting the receivable
+    // would leave the liability standing forever.
+    const refund = buildPaymentEntry({
+      ...BASE,
+      transaction: { ...TRANSACTION, kind: 'refund' },
+      allocatedMinor: 0,
+    })
+    expect(line(refund.entry, ACCOUNT_ROLES.CUSTOMER_DEPOSITS)?.direction).toBe('debit')
+    expect(line(refund.entry, ACCOUNT_ROLES.UNDEPOSITED_FUNDS)?.direction).toBe('credit')
+    expect(line(refund.entry, ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE)).toBeUndefined()
+  })
+
+  it('refuses an allocated part that is negative, fractional or over the amount', () => {
+    for (const allocatedMinor of [-1, 12.5, 55_501]) {
+      expect(() => buildPaymentEntry({ ...BASE, allocatedMinor })).toThrowError(
+        UnprocessableEntityError
+      )
+    }
+    expect(() => buildPaymentEntry({ ...BASE, allocatedMinor: 55_501 })).toThrowError(
+      /55501 of 55500/
+    )
   })
 })
 

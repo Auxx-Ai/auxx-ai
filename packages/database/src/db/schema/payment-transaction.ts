@@ -96,6 +96,32 @@ export const PaymentTransaction = pgTable(
       onUpdate: 'cascade',
       onDelete: 'set null',
     }),
+    /**
+     * The bank-feed line this payment was matched to, or null.
+     *
+     * 🛑 **Bare TEXT with no foreign key, copying `vendor_payment_bank_transaction_id`
+     * by name AND semantics** (see the note in `packages/types/system-attribute/index.ts`),
+     * so the bank feed's matcher has ONE shape to look for across the whole book
+     * rather than three. `bank_transaction` is an `EntityInstance` on a
+     * contributing-mode definition, so a real FK would point at a table whose
+     * rows the feed owns and re-syncs; the pointer is deliberately loose in the
+     * same way the vendor-payment and bank-deposit ones are, and all three
+     * convert to a RELATIONSHIP together or not at all.
+     *
+     * ⚠️ It replaces `metadata.bankTransactionId`, which the review queue used
+     * because `PaymentTransaction` had no typed home for the link (recorded as a
+     * known gap in `plans/accounting/HANDOFF.md` §5b). A JSON key cannot be
+     * indexed, cannot be constrained, and is invisible to anything that does not
+     * already know to look inside the blob.
+     *
+     * There is no `confirmationSource` column beside it on purpose:
+     * `bankTransactionId IS NOT NULL` is the same statement, and a second column
+     * saying so is a second thing that can disagree.
+     */
+    bankTransactionId: text(),
+    /** When the bank line that carries this payment cleared. Set and cleared with
+     * {@link bankTransactionId}, never on its own. */
+    bankClearedAt: timestamp({ precision: 3 }),
     metadata: jsonb(),
     createdAt: timestamp({ precision: 3 }).defaultNow().notNull(),
     updatedAt: timestamp({ precision: 3 })
@@ -119,6 +145,16 @@ export const PaymentTransaction = pgTable(
       'btree',
       table.organizationId.asc().nullsLast(),
       table.contactInstanceId.asc().nullsLast()
+    ),
+    // The review queue's "is this payment already matched to a bank line" read,
+    // and the undo path that clears it. An index rather than a unique index:
+    // uniqueness of the link is enforced by the queue's own refusal, which names
+    // the line already claiming the document, and a constraint here would turn
+    // that sentence into a driver error.
+    index('PaymentTransaction_organizationId_bankTransactionId_idx').using(
+      'btree',
+      table.organizationId.asc().nullsLast(),
+      table.bankTransactionId.asc().nullsLast()
     ),
     // PG: multiple NULLs allowed — only enforces uniqueness among rows that carry a value
     uniqueIndex('PaymentTransaction_stripePaymentIntentId_key').using(

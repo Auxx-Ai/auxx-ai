@@ -61,9 +61,20 @@ describe('migration 125 registration', () => {
     expect(migration125AccountingBooks.id).toBe(MIGRATION_ID)
   })
 
-  it('is the only migration claiming a 125-and-up id in the shared space', () => {
-    const ids = ALL_ENTITY_MIGRATIONS.map((m) => m.id)
-    expect(ids.filter((id) => id >= '125-')).toEqual([MIGRATION_ID])
+  // The original assertion here was "125 is the only id at or above 125-",
+  // which read as a collision guard but was really a CEILING - and the id space
+  // is meant to grow, so 126 and 128 broke it simply by existing. What the guard
+  // is actually for is that no OTHER migration claims 125's own number, and the
+  // shared space is `data-migrations/migrations/` plus this folder, so it is the
+  // numeric prefix that has to be unique, not the whole id.
+  it('is the only migration claiming the number 125 in the shared space', () => {
+    const claiming125 = ALL_ENTITY_MIGRATIONS.map((m) => m.id).filter((id) => id.startsWith('125-'))
+    expect(claiming125).toEqual([MIGRATION_ID])
+  })
+
+  it('leaves every registered id on a distinct number', () => {
+    const numbers = ALL_ENTITY_MIGRATIONS.map((m) => m.id.split('-')[0])
+    expect(new Set(numbers).size).toBe(numbers.length)
   })
 })
 

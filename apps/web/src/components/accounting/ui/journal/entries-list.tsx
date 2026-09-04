@@ -4,11 +4,14 @@
 
 import type { JournalEntryLine, PostingSummary } from '@auxx/lib/postings/client'
 import { Badge } from '@auxx/ui/components/badge'
-import { TREE_SECONDARY_NOTRUNCATE, TreeRow } from '@auxx/ui/components/tree-row'
+import { TREE_SECONDARY_NOTRUNCATE, TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { cn } from '@auxx/ui/lib/utils'
-import { FileText } from 'lucide-react'
+import { FileText, Trash2 } from 'lucide-react'
+import { useDiscardJournalEntry } from '~/components/accounting/hooks/use-discard-journal-entry'
+import { EntryBlockers } from '~/components/accounting/ui/ledger/entry-blockers'
 import { formatMinor } from '~/components/accounting/ui/ledger/format'
+import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 
 interface EntriesListProps {
@@ -38,6 +41,8 @@ interface EntryRow {
   docNumber: string | null
   amountMinor: number
   status: EntryStatus
+  /** `'JNL-0006'`, or null. Only a draft row carries one that Discard can name. */
+  number: string | null
 }
 
 /** The exact dot classes `ledger-toolbar.tsx`'s `STATE_DOT` uses, per ui-plan.md §2.1. */
@@ -91,6 +96,9 @@ export function EntriesList({
     status: 'draft',
   })
 
+  const { can } = useAccess()
+  const discard = useDiscardJournalEntry()
+
   // A DISABLED query sits at `isPending` forever, so the postings half only
   // counts toward the skeleton when it was actually asked for.
   const loading = (!!periodKey && postingsQuery.isPending) || draftsQuery.isPending
@@ -100,47 +108,78 @@ export function EntriesList({
     ...(draftsQuery.data ?? []).map(draftToRow),
   ].sort((a, b) => b.sortKey.localeCompare(a.sortKey))
 
-  if (!loading && rows.length === 0) {
-    return (
-      <p className='py-1 text-sm text-muted-foreground'>
-        {periodKey ? 'No other entries this month.' : 'No journal entries yet.'}
-      </p>
-    )
-  }
+  // 🛑 Drafts only, and only a `ledger.post` holder. A posting row's `id` is a
+  // `GlPosting` id, not a journal-entry id, and a posted entry is corrected by
+  // REVERSING it - offering Discard on one would be a second path around ground
+  // rule 6, which is exactly what this brief must not open.
+  const canDiscard = can('ledger.post')
 
   return (
-    <TreeRowList
-      items={rows}
-      loading={loading}
-      skeletonCount={2}
-      getKey={(row) => row.key}
-      renderRow={(row) => (
-        <TreeRow
-          className={TREE_SECONDARY_NOTRUNCATE}
-          icon={<FileText className='size-4' />}
-          title={<span className='truncate text-sm'>{row.title}</span>}
-          secondary={
-            <span className='flex items-center gap-1.5'>
-              {row.docNumber && (
-                <Badge variant='outline' size='xs' className='font-mono'>
-                  {row.docNumber}
-                </Badge>
-              )}
-              <span className='font-mono text-xs tabular-nums'>
-                {formatMinor(row.amountMinor, currencyCode)}
-              </span>
-              <span className='flex items-center gap-1 text-xs text-muted-foreground'>
-                <span className={cn('size-1.5 rounded-full', STATUS_DOT[row.status])} aria-hidden />
-                {STATUS_LABEL[row.status]}
-              </span>
-            </span>
-          }
-          onToggleOpen={() =>
-            row.kind === 'posting' ? onSelectPosting(row.id) : onSelectJournalEntry(row.id)
-          }
+    <div className='flex flex-col gap-3'>
+      {/* 🛑 A refusal is a card, never a toast (ground rule 9). It names the
+          entry and points at reversal, and it stays until the next attempt. */}
+      {discard.refusal && (
+        <EntryBlockers blockers={[{ status: 'discard_refused', error: discard.refusal }]} />
+      )}
+
+      {!loading && rows.length === 0 ? (
+        <p className='py-1 text-sm text-muted-foreground'>
+          {periodKey ? 'No other entries this month.' : 'No journal entries yet.'}
+        </p>
+      ) : (
+        <TreeRowList
+          items={rows}
+          loading={loading}
+          skeletonCount={2}
+          getKey={(row) => row.key}
+          renderRow={(row) => (
+            <TreeRow
+              className={TREE_SECONDARY_NOTRUNCATE}
+              icon={<FileText className='size-4' />}
+              title={<span className='truncate text-sm'>{row.title}</span>}
+              secondary={
+                <span className='flex items-center gap-1.5'>
+                  {row.docNumber && (
+                    <Badge variant='outline' size='xs' className='font-mono'>
+                      {row.docNumber}
+                    </Badge>
+                  )}
+                  <span className='font-mono text-xs tabular-nums'>
+                    {formatMinor(row.amountMinor, currencyCode)}
+                  </span>
+                  <span className='flex items-center gap-1 text-xs text-muted-foreground'>
+                    <span
+                      className={cn('size-1.5 rounded-full', STATUS_DOT[row.status])}
+                      aria-hidden
+                    />
+                    {STATUS_LABEL[row.status]}
+                  </span>
+                </span>
+              }
+              actions={
+                row.kind === 'draft' && canDiscard ? (
+                  <TreeRowButton
+                    variant='destructive'
+                    // An icon-only button has no accessible name of its own -
+                    // the tooltip is `aria-describedby`, not a label.
+                    aria-label={`Discard this draft${row.number ? ` (${row.number})` : ''}`}
+                    tooltipText='Discard this draft'
+                    disabled={discard.isDiscarding}
+                    onClick={() => void discard.requestDiscard({ id: row.id, number: row.number })}>
+                    <Trash2 />
+                  </TreeRowButton>
+                ) : undefined
+              }
+              onToggleOpen={() =>
+                row.kind === 'posting' ? onSelectPosting(row.id) : onSelectJournalEntry(row.id)
+              }
+            />
+          )}
         />
       )}
-    />
+
+      <discard.ConfirmDialog />
+    </div>
   )
 }
 
@@ -154,6 +193,7 @@ function postingToRow(posting: PostingSummary): EntryRow {
     docNumber: posting.docNumber,
     amountMinor: posting.totalMinor,
     status: posting.status === 'reversed' ? 'reversed' : posting.status,
+    number: null,
   }
 }
 
@@ -173,6 +213,7 @@ function draftToRow(entry: {
     docNumber: entry.number,
     amountMinor: sumDebits(entry.lines),
     status: 'draft',
+    number: entry.number,
   }
 }
 

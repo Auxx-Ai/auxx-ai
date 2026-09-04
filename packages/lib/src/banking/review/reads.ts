@@ -944,6 +944,9 @@ async function readTransactionCandidates(
       method: schema.PaymentTransaction.method,
       reference: schema.PaymentTransaction.reference,
       createdAt: schema.PaymentTransaction.createdAt,
+      // The bank-line pointer is a COLUMN since drizzle 0363; only the
+      // user-picked accounting date is still read out of the blob.
+      bankTransactionId: schema.PaymentTransaction.bankTransactionId,
       metadata: schema.PaymentTransaction.metadata,
     })
     .from(schema.PaymentTransaction)
@@ -970,10 +973,7 @@ async function readTransactionCandidates(
 
   const out: MatchCandidate[] = []
   for (const row of rows) {
-    const metadata = (row.metadata ?? {}) as {
-      date?: string
-      bankTransactionId?: string
-    }
+    const metadata = (row.metadata ?? {}) as { date?: string }
     // The user-picked (possibly backdated) date rides in `metadata.date`; the
     // row's `createdAt` is when it was KEYED, which is not the accounting date.
     // Same rule `postPaymentTransaction` applies when it dates the entry.
@@ -1002,7 +1002,7 @@ async function readTransactionCandidates(
         bankDateKey: dateKey,
         candidateDateKey,
       }),
-      matchedToBankTransactionId: metadata.bankTransactionId ?? null,
+      matchedToBankTransactionId: row.bankTransactionId ?? null,
     })
   }
   return out

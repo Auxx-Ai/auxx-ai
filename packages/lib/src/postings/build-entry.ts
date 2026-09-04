@@ -255,6 +255,20 @@ export const ACCOUNT_ROLES = {
   /** Shipping revenue (default `4020`). Its own account per handoff decision 6.3. */
   REVENUE_SHIPPING: 'revenue_shipping',
   /**
+   * Service revenue (default `4030`). The credit leg of the `invoice_issued`
+   * entry.
+   *
+   * 🛑 **Not a second product-revenue account.** `revenue_dtc` and
+   * `revenue_dealer` are credited on SHIPMENT by the fulfillment entry, sourced
+   * on an `order`. This one is credited on ISSUANCE, sourced on an `invoice`.
+   * `invoice` and `order` are disjoint document families - there is no order
+   * field on an invoice and no invoice field on an order, in either direction -
+   * so no code path can produce both for one sale and the system cannot
+   * double-count. A human hand-keying an invoice for a sale that also shipped
+   * as an order still can, which is a release-note line, not a builder's job.
+   */
+  REVENUE_SERVICE: 'revenue_service',
+  /**
    * Payment processing fees (default `6100`). What the processor withheld from
    * a payout. NOT `money/payments/fees.ts`, which is the Connect application
    * fee auxx charges, a different number.
@@ -309,6 +323,7 @@ export const ROLE_ACCOUNT_TYPES: Record<AccountRole, GlAccountTypeValue> = {
   revenue_dtc: 'revenue',
   revenue_dealer: 'revenue',
   revenue_shipping: 'revenue',
+  revenue_service: 'revenue',
   payment_processing_fees: 'expense',
   bad_debt_expense: 'expense',
 }
@@ -348,6 +363,7 @@ export const ACCOUNT_ROLE_LABELS: Record<AccountRole, string> = {
   revenue_dtc: 'Product Revenue - DTC',
   revenue_dealer: 'Product Revenue - Dealer',
   revenue_shipping: 'Shipping Revenue',
+  revenue_service: 'Service Revenue',
   payment_processing_fees: 'Payment Processing Fees',
   bad_debt_expense: 'Bad Debt Expense',
 }

@@ -42,6 +42,14 @@ export interface JournalEntryDraftState {
   setDate: (date: string) => void
   setMemo: (memo: string) => void
   setLines: (lines: JournalLineDraft[]) => void
+  /**
+   * `'JNL-0007'` once the record exists. Null while `?je=new` has not minted one.
+   *
+   * Read-only, and the drawer's Discard confirm is the only reader: a person
+   * about to throw a numbered entry away has to be told WHICH number, because
+   * the number is what survives the discard.
+   */
+  number: string | null
   /** `journal_entry.status` of the loaded record, or `'draft'` before it exists. */
   status: 'draft' | 'posted' | 'reversed'
   /** The `GlPosting` this entry became, once posted. `null` while `draft`. */
@@ -117,6 +125,7 @@ export function useJournalEntryDraft({
   const [date, setDateState] = useState(defaultDate)
   const [memo, setMemoState] = useState('')
   const [lines, setLinesState] = useState<JournalLineDraft[]>([])
+  const [number, setNumber] = useState<string | null>(null)
   const [status, setStatus] = useState<'draft' | 'posted' | 'reversed'>('draft')
   const [glPostingId, setGlPostingId] = useState<string | null>(null)
   const [preview, setPreview] = useState<EntryPreview | null>(null)
@@ -149,6 +158,7 @@ export function useJournalEntryDraft({
     setDateState(record.date ?? defaultDate)
     setMemoState(record.memo ?? '')
     setLinesState(draftRowsFromLines(record.lines))
+    setNumber(record.number)
     setStatus(record.status)
     setGlPostingId(record.glPostingId)
     setPreview(null)
@@ -174,6 +184,7 @@ export function useJournalEntryDraft({
     setDateState(latestRef.current.defaultDate)
     setMemoState('')
     setLinesState([])
+    setNumber(null)
     setStatus('draft')
     setGlPostingId(null)
     setPreview(null)
@@ -337,6 +348,7 @@ export function useJournalEntryDraft({
     setDate,
     setMemo,
     setLines,
+    number,
     status,
     glPostingId,
     isSaving: updateMutation.isPending || createMutation.isPending,

@@ -323,6 +323,23 @@ export const DEFAULT_CHART_OF_ACCOUNTS: readonly DefaultChartAccount[] = [
     accountType: GlAccountType.REVENUE,
     role: 'revenue_shipping',
   },
+  {
+    // The service side's revenue, credited when an INVOICE is issued
+    // (plans/accounting/tasks/08-invoice-revenue.md). Separate from `4000` and
+    // `4010` because those are the product side and are credited on SHIPMENT
+    // by the fulfillment entry; an invoice has no shipment, so issuance is the
+    // only event there is.
+    //
+    // ONE service revenue account, not a per-line mapping. A line-level
+    // revenue account is a real want and a much larger change - a field on
+    // `line_item` or the catalog item, plus a resolver and a fallback - and
+    // splitting this later is a chart edit plus a resolver, not a rewrite of
+    // the builder.
+    code: '4030',
+    name: 'Service Revenue',
+    accountType: GlAccountType.REVENUE,
+    role: 'revenue_service',
+  },
 
   // ── Cost of goods sold ──────────────────────────────────────────────────
   // `GlAccountType` has no COGS classification; all five map to `expense`.

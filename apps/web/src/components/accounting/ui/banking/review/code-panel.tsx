@@ -2,15 +2,17 @@
 
 'use client'
 
+import { FieldType } from '@auxx/database/enums'
 import type { BankTransactionRow } from '@auxx/lib/banking/review/client'
 import type { PostResultStatus, ResolvedPostingLine } from '@auxx/lib/postings/client'
 import { Button } from '@auxx/ui/components/button'
-import { Input } from '@auxx/ui/components/input'
 import { Label } from '@auxx/ui/components/label'
 import { Switch } from '@auxx/ui/components/switch'
 import { Lightbulb } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
+import { BaseType } from '~/components/workflow/types'
 import { api } from '~/trpc/react'
 import { GlAccountPicker, useChartAccounts } from '../../gl-account-picker'
 import { EntryBlockers, type LedgerBlocker } from '../../ledger/entry-blockers'
@@ -126,13 +128,20 @@ export function CodePanel({ line, currencyCode, onDone }: CodePanelProps) {
       <FieldPanel>
         <FieldPanelRow
           title='Account'
+          type={BaseType.STRING}
+          showIcon
           isRequired
           description={
             line.suggestionReason ??
             'The account this money belongs in. The bank side of the entry comes from the account mapping.'
           }>
           <div className='flex flex-col gap-1.5'>
-            <GlAccountPicker value={code} onChange={setCode} placeholder='Choose an account…' />
+            <GlAccountPicker
+              value={code}
+              onChange={setCode}
+              placeholder='Choose an account…'
+              triggerProps={{ variant: 'transparent', className: 'w-full ps-0 pe-1' }}
+            />
             {line.suggestedGlAccount && line.suggestedGlAccount !== code && (
               <button
                 type='button'
@@ -152,11 +161,13 @@ export function CodePanel({ line, currencyCode, onDone }: CodePanelProps) {
             )}
           </div>
         </FieldPanelRow>
-        <FieldPanelRow title='Memo' isLastRow>
-          <Input
+        <FieldPanelRow title='Memo' type={BaseType.STRING} showIcon isLastRow>
+          <FieldInputAdapter
+            fieldType={FieldType.TEXT}
             value={memo}
+            onChange={(value) => setMemo((value as string | null) ?? '')}
             placeholder={line.description ?? 'What this was for'}
-            onChange={(event) => setMemo(event.target.value)}
+            triggerProps={{ className: 'w-full ps-0 pe-1' }}
           />
         </FieldPanelRow>
       </FieldPanel>

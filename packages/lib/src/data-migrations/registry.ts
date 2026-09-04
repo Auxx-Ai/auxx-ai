@@ -67,6 +67,7 @@ import { migration099ImapBackfillStamps } from './migrations/099-imap-backfill-s
 import { migration103BackfillEmailStorageLocationOrg } from './migrations/103-backfill-email-storage-location-org'
 import { migration105PruneDanglingRelationValues } from './migrations/105-prune-dangling-relation-values'
 import { migration106DateFieldsUtcMidnight } from './migrations/106-date-fields-utc-midnight'
+import { migration131ReseedPlatformProvidersBankFeed } from './migrations/131-reseed-platform-providers-bank-feed'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
 import { wrapEntityMigration } from './wrap-entity-migration'
@@ -162,8 +163,9 @@ function buildRegistry(): DataMigrationDef[] {
     // ALL_ENTITY_MIGRATIONS above; it owns 104 in the shared id sequence.
     migration105PruneDanglingRelationValues,
     migration106DateFieldsUtcMidnight,
-    // 107 and up are ENTITY migrations and own those ids in the shared
+    // 107 to 130 are ENTITY migrations and own those ids in the shared
     // sequence; they arrive via ALL_ENTITY_MIGRATIONS above.
+    migration131ReseedPlatformProvidersBankFeed,
   ]
 
   all.sort((a, b) => a.id.localeCompare(b.id))

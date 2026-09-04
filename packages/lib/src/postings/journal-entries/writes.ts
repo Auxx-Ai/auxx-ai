@@ -2,7 +2,7 @@
 
 /**
  * Every WRITE over the journal-entry draft: create it, edit it while it is a
- * draft, post it, reverse it.
+ * draft, post it, reverse it, throw it away.
  *
  * Writes only. The reads live in `reads.ts` (`docs/lib-module-guide.md` §5).
  *
@@ -39,6 +39,7 @@ import {
 } from './client'
 import { guard } from './guard'
 import { requireJournalEntry, requireJournalEntryFieldContext } from './reads'
+import { assertJournalEntryHasNoPosting, assertJournalEntryIsDraft } from './refusals'
 
 const logger = createScopedLogger('postings:journal-entries')
 
@@ -134,7 +135,7 @@ export async function updateJournalEntry(
     async () => {
       const ctx = await requireJournalEntryFieldContext(organizationId)
       const entry = await requireJournalEntry(db, organizationId, input.journalEntryId)
-      assertDraft(entry, 'edited')
+      assertJournalEntryIsDraft(entry, 'edited')
 
       const values: Record<string, unknown> = {}
       if (input.date !== undefined) values.journal_entry_date = toStoredDate(input.date)
@@ -222,7 +223,7 @@ export async function postJournalEntry(
     async () => {
       const ctx = await requireJournalEntryFieldContext(organizationId)
       const entry = await requireJournalEntry(db, organizationId, input.journalEntryId)
-      assertDraft(entry, 'posted')
+      assertJournalEntryIsDraft(entry, 'posted')
 
       const { entry: built, warnings } = buildDraftEntry(entry)
       const lock = await resolvePeriodLock(organizationId)
@@ -331,6 +332,74 @@ export async function reverseJournalEntry(
 }
 
 /**
+ * Throw a draft away: ARCHIVE the record, never delete the row.
+ *
+ * ## Why archive
+ *
+ * A journal entry is an accounting artefact before it posts. `RecordSequence`
+ * issues `journal_entry_number` on CREATE, so an abandoned `JNL-0006` leaves a
+ * hole in a gapless sequence forever - and that hole is correct. A bookkeeper
+ * who reads `JNL-0005` then `JNL-0007` must be able to find out what happened to
+ * the one in between, and a hard delete makes that question unanswerable.
+ * `archivedAt` keeps the answer and takes the row out of every read:
+ * `listJournalEntries` and `getJournalEntry` both filter `archivedAt IS NULL`,
+ * so nothing else needs to learn a new state.
+ *
+ * 🛑 **There is no `discarded` status and there must not be one.** The entity
+ * layer already answers "is this record gone"; a fourth value on
+ * `journal_entry_status` would have to be handled by every switch that renders
+ * one, for no information the archive flag does not already carry.
+ *
+ * ## Why TWO guards
+ *
+ * `assertJournalEntryIsDraft` is the status wall and
+ * {@link assertJournalEntryHasNoPosting} is the posting-id wall, and the second
+ * is not redundant - see its own docblock for the row it catches.
+ *
+ * ## What this deliberately does not do
+ *
+ * There is no un-archive here. `UnifiedCrudHandler.restore()` exists, but a
+ * restore path needs a screen to restore FROM and there is no archived-entries
+ * view, so somebody who needs one back is one script away. That is the right
+ * cost for a rare case, and the confirm copy says so rather than implying the
+ * action is reversible.
+ *
+ * A second discard of the same entry is a `NotFoundError`, not a silent success:
+ * `requireJournalEntry` reads through the same `archivedAt IS NULL` filter every
+ * other reader does, so the row is already gone as far as this module is
+ * concerned. Pinned by test.
+ */
+export async function discardJournalEntry(
+  db: Database,
+  organizationId: string,
+  userId: string,
+  input: { journalEntryId: string }
+): Promise<Result<void, Error>> {
+  return guard(
+    async () => {
+      const ctx = await requireJournalEntryFieldContext(organizationId)
+      const entry = await requireJournalEntry(db, organizationId, input.journalEntryId)
+      assertJournalEntryIsDraft(entry, 'discarded')
+      assertJournalEntryHasNoPosting(entry, 'discarded')
+
+      const crud = new UnifiedCrudHandler(organizationId, userId, db)
+      await crud.archive(toRecordId(ctx.journalEntryDefId, entry.id) as RecordId)
+
+      // The sequence gap this leaves is permanent and deliberate, so the log is
+      // what makes it explainable six months later: this is the only record that
+      // `JNL-0006` was raised and then abandoned rather than lost.
+      logger.info('Discarded journal entry', {
+        organizationId,
+        journalEntryId: entry.id,
+        number: entry.number,
+      })
+    },
+    'Failed to discard journal entry',
+    { organizationId, journalEntryId: input.journalEntryId }
+  )
+}
+
+/**
  * Turn a stored draft into a `BuiltEntry`, or throw naming the row.
  *
  * The three things this has to get right, and each is a refusal rather than a
@@ -393,17 +462,6 @@ function buildDraftEntry(entry: JournalEntryRecord) {
     lines: entry.lines,
     sourceId: entry.id,
   })
-}
-
-/** Refuse anything but a draft, naming what was attempted. */
-function assertDraft(entry: JournalEntryRecord, verb: string): void {
-  if (entry.status === 'draft') return
-  throw new ConflictError(
-    `Journal entry ${entry.number ?? entry.id} is ${entry.status} and cannot be ${verb}. ` +
-      'A posted entry is corrected by reversing it and posting a new one - the ledger has no ' +
-      'update path.',
-    { journalEntryId: entry.id, status: entry.status }
-  )
 }
 
 /** The override keys a preview may supply, with `undefined` meaning "use what is stored". */

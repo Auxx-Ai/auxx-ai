@@ -41,7 +41,10 @@ interface WriteOffDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   invoiceRecordId: RecordId
-  /** Current invoice balance in integer minor units — the amount prefill. */
+  /**
+   * Current invoice balance in integer minor units - the prefill until
+   * `money.writeOffState` answers with what is actually still outstanding.
+   */
   balanceMinor: number
   currencyCode: string
   onWrittenOff?: () => void
@@ -67,14 +70,22 @@ export function WriteOffDialog({
   const [reason, setReason] = useState('')
   const [expenseAccountCode, setExpenseAccountCode] = useState<string | null>(null)
 
-  // Reset the draft to a fresh prefill every time the dialog opens.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: re-init only when the dialog opens.
+  // 🛑 The bound is what is still OUTSTANDING, never the invoice's mirrored
+  // balance. A partial write-off leaves that mirror reading high, because
+  // `syncInvoicePaymentState` re-derives it as `total - amountPaid` and knows
+  // nothing about bad debt, so prefilling from it would offer to write the
+  // first tranche off a second time, and the server would refuse the submit.
+  const stateQuery = api.money.writeOffState.useQuery({ invoiceRecordId }, { enabled: open })
+  const outstandingMinor = stateQuery.data?.outstandingMinor ?? balanceMinor
+
+  // Reset the draft to a fresh prefill every time the dialog opens, and again
+  // when the outstanding figure arrives.
   useEffect(() => {
     if (!open) return
-    setAmountMinor(balanceMinor)
+    setAmountMinor(outstandingMinor)
     setReason('')
     setExpenseAccountCode(null)
-  }, [open])
+  }, [open, outstandingMinor])
 
   const roleMapQuery = api.ledger.roleMap.useQuery(undefined, { enabled: open })
   const badDebtDefaultCode = useMemo(
@@ -95,7 +106,10 @@ export function WriteOffDialog({
       amountMinor: amountMinor ?? undefined,
       expenseAccountCode: expenseAccountCode ?? undefined,
     },
-    { enabled: open && !!amountMinor && amountMinor > 0, staleTime: 0 }
+    {
+      enabled: open && !!amountMinor && amountMinor > 0 && amountMinor <= outstandingMinor,
+      staleTime: 0,
+    }
   )
 
   const writeOff = api.money.writeOffInvoice.useMutation({
@@ -110,7 +124,7 @@ export function WriteOffDialog({
   const canSave =
     !!amountMinor &&
     amountMinor > 0 &&
-    amountMinor <= balanceMinor &&
+    amountMinor <= outstandingMinor &&
     reason.trim().length > 0 &&
     !!preview &&
     !preview.blockedBy

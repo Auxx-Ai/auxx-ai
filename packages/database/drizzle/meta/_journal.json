@@ -2535,6 +2535,20 @@
       "when": 1788539797736,
       "tag": "0361_accounting_posting_types_and_dimensions",
       "breakpoints": true
+    },
+    {
+      "idx": 362,
+      "version": "7",
+      "when": 1788545152479,
+      "tag": "0362_invoice_and_deposit_posting_types",
+      "breakpoints": true
+    },
+    {
+      "idx": 363,
+      "version": "7",
+      "when": 1788547075986,
+      "tag": "0363_payment_transaction_bank_match",
+      "breakpoints": true
     }
   ]
 }

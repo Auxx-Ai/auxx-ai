@@ -61,6 +61,11 @@ export const glPostingType = pgEnum('GlPostingType', [
   'write_off',
   // Slot 2G phase B, drizzle 0362.
   'payment',
+  // plans/accounting/tasks/08-invoice-revenue.md and 07-customer-deposits.md,
+  // drizzle 0362. An invoice's issuance entry, and the reclass of a held
+  // customer deposit out of the liability and onto a receivable.
+  'invoice_issued',
+  'deposit_application',
 ])
 
 /**

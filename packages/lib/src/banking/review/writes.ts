@@ -891,8 +891,12 @@ async function readDocumentLink(
   recordId: string
 ): Promise<string | null> {
   if (recordType === 'payment_transaction') {
+    // 🛑 A COLUMN, not `metadata.bankTransactionId` (drizzle 0363). The pointer
+    // lived in the JSON blob only because `PaymentTransaction` had no typed home
+    // for it, which meant it could not be indexed, could not be constrained, and
+    // was invisible to anything that did not already know to open the blob.
     const [row] = await db
-      .select({ metadata: schema.PaymentTransaction.metadata })
+      .select({ bankTransactionId: schema.PaymentTransaction.bankTransactionId })
       .from(schema.PaymentTransaction)
       .where(
         and(
@@ -902,8 +906,7 @@ async function readDocumentLink(
       )
       .limit(1)
     if (!row) throw new UnprocessableEntityError(`Payment ${recordId} was not found`)
-    const metadata = (row.metadata ?? {}) as { bankTransactionId?: string }
-    return metadata.bankTransactionId ?? null
+    return row.bankTransactionId ?? null
   }
 
   const attribute =
@@ -993,29 +996,19 @@ async function stampDocument(
   }
 
   if (recordType === 'payment_transaction') {
-    const [row] = await db
-      .select({ metadata: schema.PaymentTransaction.metadata })
-      .from(schema.PaymentTransaction)
-      .where(
-        and(
-          eq(schema.PaymentTransaction.id, recordId),
-          eq(schema.PaymentTransaction.organizationId, organizationId)
-        )
-      )
-      .limit(1)
-    const metadata = (row?.metadata ?? {}) as Record<string, unknown>
+    // 🛑 Two COLUMNS, not three JSON keys (drizzle 0363). The read-modify-write
+    // of the whole blob this used to do was also a lost-update waiting to
+    // happen: it read `metadata`, spread it, and wrote it back, so anything else
+    // writing another key on the same row in between was silently discarded.
+    // Setting two columns cannot do that.
+    //
+    // There is no `confirmationSource` write any more. It carried the
+    // `bank_import` vocabulary from `VendorBillPaidSource`, but on this table it
+    // said exactly what `bankTransactionId IS NOT NULL` already says, and a
+    // second field saying so is a second field that can disagree.
     await db
       .update(schema.PaymentTransaction)
-      .set({
-        metadata: {
-          ...metadata,
-          bankTransactionId: transactionId,
-          // The `bank_import` vocabulary from `VendorBillPaidSource`, reused so
-          // "a bank line confirmed this" reads the same on both sides of the book.
-          confirmationSource: 'bank_import',
-          bankClearedAt: now,
-        },
-      })
+      .set({ bankTransactionId: transactionId, bankClearedAt: new Date(now) })
       .where(
         and(
           eq(schema.PaymentTransaction.id, recordId),
@@ -1054,23 +1047,17 @@ async function unstampDocument(
   const { organizationId, actorUserId, recordType, recordId } = params
 
   if (recordType === 'payment_transaction') {
-    const [row] = await db
-      .select({ metadata: schema.PaymentTransaction.metadata })
-      .from(schema.PaymentTransaction)
-      .where(
-        and(
-          eq(schema.PaymentTransaction.id, recordId),
-          eq(schema.PaymentTransaction.organizationId, organizationId)
-        )
-      )
-      .limit(1)
-    const metadata = { ...((row?.metadata ?? {}) as Record<string, unknown>) }
-    metadata.bankTransactionId = undefined
-    metadata.confirmationSource = undefined
-    metadata.bankClearedAt = undefined
+    // Both columns, together and never one of them (drizzle 0363). A cleared
+    // date left standing on a payment with no bank line would read as "this
+    // cleared" with nothing able to say against what.
+    //
+    // ⚠️ The old version wrote `metadata.bankTransactionId = undefined` and
+    // saved the object, which is NOT a delete: `JSON.stringify` drops an
+    // `undefined` value, so it happened to work, but only because the whole blob
+    // was being rewritten. A column set to null is a delete by construction.
     await db
       .update(schema.PaymentTransaction)
-      .set({ metadata })
+      .set({ bankTransactionId: null, bankClearedAt: null })
       .where(
         and(
           eq(schema.PaymentTransaction.id, recordId),

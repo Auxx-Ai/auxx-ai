@@ -38,13 +38,22 @@
  * See `docs/inventory-costing-architecture-guide.md` §9.3 and
  * `plans/accounting/tasks/01-post-revenue-to-the-ledger.md` §1.1.
  *
- * ## Recognition is on SHIPMENT, never on the invoice
+ * ## Recognition is on SHIPMENT for GOODS, never on the invoice
  *
- * `invoice.issuedAt` is the tempting field and it is the wrong one. `invoice`
- * already carries `billingKind`, `servicePeriodStart/End`, `progressPercent`
- * and `installmentName`, which is this product saying out loud that invoice
- * date and delivery date routinely differ. Recognising on the invoice
- * misstates every period boundary.
+ * `invoice.issuedAt` is the tempting field and it is the wrong one FOR AN
+ * ORDER. `invoice` already carries `billingKind`, `servicePeriodStart/End`,
+ * `progressPercent` and `installmentName`, which is this product saying out
+ * loud that invoice date and delivery date routinely differ. Recognising a
+ * shipped product on paper misstates every period boundary.
+ *
+ * ⚠️ **That rule is about goods, and `build-invoice-entry.ts` is not a
+ * contradiction of it.** A service invoice has no shipment, so issuance is the
+ * only event there is: the work is billed and the customer owes it. The two
+ * builders are one policy read on two document families, and they cannot
+ * double-count, because `invoice` and `order` are disjoint - no order field on
+ * an invoice, no invoice field on an order, in either direction. Product
+ * revenue lands on `4000`/`4010` from here; service revenue lands on `4030`
+ * from there.
  *
  * @see plans/accounting/tasks/01-post-revenue-to-the-ledger.md
  */

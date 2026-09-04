@@ -787,6 +787,8 @@ export const GlPostingTypeValues = [
   'bank_deposit',
   'write_off',
   'payment',
+  'invoice_issued',
+  'deposit_application',
 ] as const
 export type GlPostingType = (typeof GlPostingTypeValues)[number]
 

@@ -11,11 +11,13 @@ import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import { BookOpenCheck, ExternalLink } from 'lucide-react'
+import { BookOpenCheck, ExternalLink, Trash2 } from 'lucide-react'
+import { useDiscardJournalEntry } from '~/components/accounting/hooks/use-discard-journal-entry'
 import { useJournalEntryDraft } from '~/components/accounting/hooks/use-journal-entry-draft'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { BaseType } from '~/components/workflow/types'
+import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import type { LedgerBlocker } from '../ledger/entry-blockers'
 import { EntryBlockers } from '../ledger/entry-blockers'
@@ -43,6 +45,12 @@ interface JournalEntryDrawerProps {
   onPosted: (glPostingId: string) => void
   /** View an already-posted entry's posting, without waiting for a new post. */
   onOpenPosting: (glPostingId: string) => void
+  /**
+   * The draft was discarded - close this drawer (`?je=` to null) and refresh the
+   * Entries list behind it. The record is archived, so leaving the drawer open
+   * over it would show a record no read path returns any more.
+   */
+  onDiscarded: () => void
 }
 
 /**
@@ -71,6 +79,7 @@ export function JournalEntryDrawer({
   onCreated,
   onPosted,
   onOpenPosting,
+  onDiscarded,
 }: JournalEntryDrawerProps) {
   const draft = useJournalEntryDraft({
     journalEntryId,
@@ -81,6 +90,9 @@ export function JournalEntryDrawer({
   })
 
   const periodsQuery = api.ledger.periods.useQuery()
+  const { can } = useAccess()
+
+  const discard = useDiscardJournalEntry({ onDiscarded })
 
   const isEditable = draft.status === 'draft'
   const isLoading = draft.isLoading && !isNew
@@ -88,6 +100,13 @@ export function JournalEntryDrawer({
   const entryPeriodKey = periodKeyForEntryDate(draft.date)
 
   const blockers: LedgerBlocker[] = []
+  // 🛑 The refusal card, never a toast (ground rule 9). A discard refused on a
+  // posted entry names the entry and points at reversal, and that sentence has
+  // to stay on screen. It is pushed FIRST because it is about the action the
+  // person just took, not about a preview they ran earlier.
+  if (discard.refusal) {
+    blockers.push({ status: 'discard_refused', error: discard.refusal })
+  }
   if (draft.preview?.blockedBy) {
     blockers.push(draft.preview.blockedBy)
   } else if (draft.postResult && !POSTED_STATUSES.has(draft.postResult.status)) {
@@ -110,6 +129,13 @@ export function JournalEntryDrawer({
 
   const canPost = isEditable && !!draft.preview && !draft.previewIsStale && !draft.preview.blockedBy
 
+  // 🛑 `!draft.glPostingId` as well as `isEditable`. Status and posting id are
+  // two facts written at two different moments, and a row that reads `draft`
+  // while carrying a posting id is the one the server refuses hardest - offering
+  // the button over it would be an affordance that cannot work.
+  const canDiscard =
+    !!journalEntryId && isEditable && !draft.glPostingId && can('ledger.post') && !isLoading
+
   return (
     <DockableDrawer
       open={open}
@@ -130,6 +156,27 @@ export function JournalEntryDrawer({
               </span>
               <StatusBadge status={draft.status} />
             </div>
+          }
+          actions={
+            // 🛑 A draft only, and a `ledger.post` holder only. Throwing a draft
+            // away is a WRITE, gated on the same key that gates creating and
+            // editing one - the server refuses it either way, but an action a
+            // read-only member cannot use should not be on their screen.
+            canDiscard && (
+              <Button
+                variant='ghost'
+                size='xs'
+                className='text-destructive hover:text-destructive'
+                loading={discard.isDiscarding}
+                loadingText='Discarding...'
+                onClick={() =>
+                  journalEntryId &&
+                  void discard.requestDiscard({ id: journalEntryId, number: draft.number })
+                }>
+                <Trash2 />
+                Discard
+              </Button>
+            )
           }
           onClose={() => onOpenChange(false)}
         />
@@ -270,6 +317,7 @@ export function JournalEntryDrawer({
           )}
         </DrawerFooter>
       </div>
+      <discard.ConfirmDialog />
     </DockableDrawer>
   )
 }

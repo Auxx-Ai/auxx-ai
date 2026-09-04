@@ -6,6 +6,7 @@ import { and, eq } from 'drizzle-orm'
 import { getOrgCache } from '../../cache'
 import { BadRequestError } from '../../errors'
 import { unstampSourceLines } from '../../money/invoice-lifecycle'
+import { hasLiveInvoicePostings } from '../../money/invoices/post-invoice'
 import { hasSucceededCharges } from '../../money/payments/ledger'
 import { PermissionKey, requirePermission } from '../../permissions'
 import { UnifiedCrudHandler } from '../../resources/crud'
@@ -17,7 +18,7 @@ import type { EntityPreDeleteHandler } from '../types'
  * `money.deleteInvoice`, and any future Kopilot/API caller — closing the gap where only the
  * drawer's bespoke lifecycle delete (`invoice-lifecycle.ts`) enforced these invariants.
  *
- * Order: admin gate → succeeded-charges guard → purge ledger residue (clears the
+ * Order: admin gate → succeeded-charges guard → posted-entry guard → purge ledger residue (clears the
  * `PaymentTransaction.invoiceInstanceId` RESTRICT FK, then the `PaymentAllocation.invoiceInstanceId`
  * RESTRICT FK, money 16-deposit-accounting.md §C.6 — so the instance delete that follows this
  * hook can never throw) → unstamp source lines → delete the invoice's own line copies.
@@ -34,6 +35,27 @@ export const guardInvoiceDelete: EntityPreDeleteHandler = async (event) => {
 
   if (await hasSucceededCharges(organizationId, invoiceInstanceId)) {
     throw new BadRequestError('Remove recorded payments before deleting this invoice')
+  }
+
+  // 🛑 An invoice with a general-ledger entry standing against it cannot be
+  // deleted, only voided (plans/accounting/tasks/08-invoice-revenue.md §3.5).
+  // Deleting the document behind a posted entry leaves lines whose `sourceId`
+  // resolves to nothing: the receivable and the revenue stay in the books
+  // forever, and A/R aging reports them under "Unapplied and adjustments"
+  // rather than against a document anybody can find. Voiding reverses the entry
+  // first, which is the whole difference between the two actions once an
+  // invoice has reached the ledger.
+  const posted = await hasLiveInvoicePostings(database, {
+    organizationId,
+    invoiceId: invoiceInstanceId,
+  })
+  if (posted.live) {
+    throw new BadRequestError(
+      `This invoice is in the general ledger (${posted.docNumbers.join(', ')}). Void it instead ` +
+        'of deleting it - voiding reverses the entry so the books stay explainable, and deleting ' +
+        'would leave the entry behind pointing at a document that no longer exists.',
+      { invoiceInstanceId, docNumbers: posted.docNumbers.join(', ') }
+    )
   }
 
   // Only pending/failed/canceled ledger rows can remain at this point — the guard above

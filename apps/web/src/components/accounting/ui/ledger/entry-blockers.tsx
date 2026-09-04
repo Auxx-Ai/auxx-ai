@@ -15,14 +15,27 @@ import {
   PackageX,
   Scale,
   Settings2,
+  Trash2,
   TriangleAlert,
 } from 'lucide-react'
 import Link from 'next/link'
 import type { ComponentType } from 'react'
 
-/** One reason a preview or a post refused, as the console renders it. */
+/**
+ * Every status this card can render a remedy for.
+ *
+ * ⚠️ Wider than `PostResultStatus` on purpose. `discard_refused` is NOT a
+ * posting outcome - nothing was built, claimed or pushed - so putting it in the
+ * posting union would make every exhaustive `switch` over a `PostResult` have to
+ * handle a case that can never appear in one. It is a refusal the SCREEN
+ * renders, which is what this card is for (ground rule 9: every refusal is an
+ * `EntryBlockers` card, never a toast).
+ */
+export type LedgerBlockerStatus = PostResultStatus | 'discard_refused'
+
+/** One reason a preview, a post or a discard refused, as the console renders it. */
 export interface LedgerBlocker {
-  status: PostResultStatus
+  status: LedgerBlockerStatus
   error: string
 }
 
@@ -53,7 +66,7 @@ interface BlockerRemedy {
  * "preview failed" is what sends an operator to the logs for a string that is
  * already in the database (13-accounting-ui.md §5.2).
  */
-const REMEDIES: Partial<Record<PostResultStatus, BlockerRemedy>> = {
+const REMEDIES: Partial<Record<LedgerBlockerStatus, BlockerRemedy>> = {
   account_unmapped: {
     tone: 'failure',
     icon: MapIcon,
@@ -135,6 +148,18 @@ const REMEDIES: Partial<Record<PostResultStatus, BlockerRemedy>> = {
     title: 'An account on this entry is not valid',
     guidance:
       'The account named on this row does not exist in the chart, or is archived or inactive. The message above names the row - fix it there.',
+  },
+  // ── Task 09: discarding a draft ───────────────────────────────────────────
+  //
+  // 🛑 A refusal here names a POSTED entry and points at reversal, which is
+  // exactly the kind of sentence that must not vanish in four seconds. Nothing
+  // was changed, so the entry is still where it was.
+  discard_refused: {
+    tone: 'failure',
+    icon: Trash2,
+    title: 'This entry cannot be discarded',
+    guidance:
+      'Only a draft can be thrown away, and only one that has not reached the ledger. An entry that has been posted is corrected by reversing it and posting a new one, so what it did to the books stays on the record. Nothing was changed.',
   },
 }
 

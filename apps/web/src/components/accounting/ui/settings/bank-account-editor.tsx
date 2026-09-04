@@ -20,7 +20,34 @@
 // spanning a hole renders happily and is wrong: arithmetically right,
 // financially meaningless, and silent. plans/bank-connection/01 §4.1 calls the
 // coverage record "the one most likely to be skipped"; putting it on the row a
-// person already has open is what keeps it from being skipped.
+// person already has open is what keeps it from being skipped. Each gap deep
+// links into the importer WITH THIS ACCOUNT ALREADY CHOSEN - the import page
+// reads `?account=<id>` into its own `nuqs` state - because the account is the
+// one thing a statement file never says, and asking for it again on the screen
+// you were just sent to is how a gap gets abandoned.
+//
+// ── ONE SAVE MODEL: every row commits on change ─────────────────────────────
+//
+// 🛑 This panel used to run two. Type and GL account wrote the moment you picked
+// them; Institution, Name, Last four and Currency buffered into a local draft
+// behind a Save button. So a person who remapped the account and then fixed its
+// name saw a Save button over an edit that was already half-written, and a
+// person who typed a name and clicked another account in the master list lost
+// it silently - there is no dirty guard on this pane and a master-detail split
+// has nowhere to put one.
+//
+// Commit-on-change is what the neighbouring record editor in this folder does
+// (`chart-account-editor.tsx`, per-field through `ledger.chartAccountUpdate`,
+// text rows debounced), and it is the model that survives the list selection
+// changing under the pane. The section-shaped settings pages here
+// (`general-settings-page`, `opening-settings-page`) keep `FormSaveBar` because
+// they are one form over org settings with no master list beside them; this is
+// a record editor, so it follows the record editor.
+//
+// ⚠️ Nothing is disabled while a write is in flight. A `disabled` driven by
+// `pending` fires 500ms after the last keystroke and takes the focus out of the
+// field the person is still typing into. `Saving…` says the same thing without
+// touching the inputs.
 
 import { FieldType } from '@auxx/database/enums'
 import type { BankAccountCoverage, BankAccountRow } from '@auxx/lib/banking/client'
@@ -36,13 +63,14 @@ import { Section } from '@auxx/ui/components/section'
 import { cn } from '@auxx/ui/lib/utils'
 import { PlugZap, RefreshCw, TriangleAlert } from 'lucide-react'
 import Link from 'next/link'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { GlAccountPicker } from '~/components/accounting/ui/gl-account-picker'
 import { ConnectorRunsPanel } from '~/components/data-connectors/ui/connector-runs-panel'
 import { asConnectorStatus } from '~/components/data-connectors/ui/connector-status'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { BaseType } from '~/components/workflow/types'
+import { useDebouncedCallback } from '~/hooks/use-debounced-value'
 import { accountTitle } from './bank-accounts-list'
 
 /** Whether this account's feed needs re-authenticating at the bank. */
@@ -60,7 +88,21 @@ const TYPE_OPTIONS = [
 ]
 
 /** The import route a coverage gap points at. */
-const IMPORT_HREF = '/app/accounting/banking/import'
+const IMPORT_PATH = '/app/accounting/banking/import'
+
+/**
+ * The importer, with this account already selected.
+ *
+ * ⚠️ The param name is `account`, and it is `BankImportPage`'s own
+ * `useQueryState('account')`. A different spelling lands on the importer with no
+ * account chosen and no sign that anything was meant to be.
+ */
+function importHref(bankAccountId: string): string {
+  return `${IMPORT_PATH}?account=${encodeURIComponent(bankAccountId)}`
+}
+
+/** How long a text row waits after the last keystroke before it writes. */
+const TEXT_COMMIT_DELAY_MS = 500
 
 export interface BankAccountPatch {
   name?: string
@@ -77,11 +119,11 @@ interface BankAccountEditorProps {
   coverage: BankAccountCoverage | null
   coverageLoading: boolean
   /**
-   * True while an `update` is in flight - the field rows and their Save.
+   * True while an `update` is in flight.
    *
-   * 🛑 Separate from {@link disconnecting}. One flag over both put the Save
-   * button into its spinner while a disconnect ran, which reads as "your edit
-   * is being saved" over a write that is not happening.
+   * 🛑 Separate from {@link disconnecting}. One flag over both put the pane into
+   * its saving state while a disconnect ran, which reads as "your edit is being
+   * saved" over a write that is not happening.
    */
   pending: boolean
   /** True while the disconnect is in flight. Drives the danger-zone button alone. */
@@ -96,7 +138,30 @@ interface BankAccountEditorProps {
   onDisconnect: () => void
 }
 
-export function BankAccountEditor({
+export function BankAccountEditor({ account, ...rest }: BankAccountEditorProps) {
+  if (!account) {
+    return (
+      <div className='p-4 text-muted-foreground text-sm'>
+        Select an account to map it to your chart, or connect a bank to add one.
+      </div>
+    )
+  }
+
+  // Keyed on the account: the text rows hold local state so an in-flight write
+  // cannot flicker a half-typed field back to its stored value, and selecting a
+  // different account has to reseed that state rather than carry it across.
+  return <BankAccountForm key={account.id} account={account} {...rest} />
+}
+
+/** The four text rows, as this pane holds them between keystroke and write. */
+interface TextValues {
+  name: string
+  institution: string
+  last4: string
+  currency: string
+}
+
+function BankAccountForm({
   account,
   coverage,
   coverageLoading,
@@ -107,20 +172,41 @@ export function BankAccountEditor({
   onSync,
   onReconnect,
   onDisconnect,
-}: BankAccountEditorProps) {
-  // Text rows buffer locally and commit on blur. Committing per keystroke would
-  // fire a write per character on a field a person is halfway through typing,
-  // and every one of them refuses `last4` until the fourth digit lands.
-  const [draft, setDraft] = useState<{ id: string; values: BankAccountPatch } | null>(null)
-  const values: BankAccountPatch = draft && account && draft.id === account.id ? draft.values : {}
+}: BankAccountEditorProps & { account: BankAccountRow }) {
+  const [values, setValues] = useState<TextValues>({
+    name: account.name ?? '',
+    institution: account.institution ?? '',
+    last4: account.last4 ?? '',
+    currency: account.currency ?? '',
+  })
 
-  if (!account) {
-    return (
-      <div className='p-4 text-muted-foreground text-sm'>
-        Select an account to map it to your chart, or connect a bank to add one.
-      </div>
-    )
+  // The debounced writer reads the merged values through a ref: two rows edited
+  // inside one delay window must not each send the state they captured on their
+  // own render and undo the other.
+  const valuesRef = useRef(values)
+
+  const bufferText = (key: keyof TextValues, value: string) => {
+    const merged = { ...valuesRef.current, [key]: value }
+    valuesRef.current = merged
+    setValues(merged)
   }
+
+  const commitName = useDebouncedCallback(
+    (value: string) => onPatch({ name: value }),
+    TEXT_COMMIT_DELAY_MS
+  )
+  const commitInstitution = useDebouncedCallback(
+    (value: string) => onPatch({ institution: value || null }),
+    TEXT_COMMIT_DELAY_MS
+  )
+  const commitLast4 = useDebouncedCallback(
+    (value: string) => onPatch({ last4: value || null }),
+    TEXT_COMMIT_DELAY_MS
+  )
+  const commitCurrency = useDebouncedCallback(
+    (value: string) => onPatch({ currency: value || null }),
+    TEXT_COMMIT_DELAY_MS
+  )
 
   // 🛑 Connector-owned identity: the feed rewrites these on every sync, so an
   // edit here would silently revert. `updateBankAccount` refuses them server
@@ -128,16 +214,6 @@ export function BankAccountEditor({
   // is about to reject them.
   const isConnected = account.connectorId != null
   const glFilterTypes = [BANK_ACCOUNT_GL_TYPES[account.type]]
-
-  const buffer = (patch: BankAccountPatch) =>
-    setDraft({ id: account.id, values: { ...values, ...patch } })
-
-  // 🛑 PRESENCE, not nullishness. `buffer` writes `null` for a cleared text
-  // field, and a `??` chain reads that null as "nothing buffered" and falls
-  // straight back to the stored value - so Last four, Institution and Currency
-  // could be typed into but never emptied.
-  const text = (key: 'name' | 'institution' | 'last4' | 'currency') =>
-    (key in values ? values[key] : account[key]) ?? ''
 
   return (
     <div className='flex h-full min-h-0 flex-col gap-3 overflow-y-auto p-3'>
@@ -157,20 +233,32 @@ export function BankAccountEditor({
         <FieldPanelRow title='Institution' type={BaseType.STRING} showIcon>
           <FieldInputAdapter
             fieldType={FieldType.TEXT}
-            value={text('institution')}
-            disabled={isConnected || pending}
+            value={values.institution}
+            disabled={isConnected}
             placeholder='Bank of America'
-            onChange={(value) => buffer({ institution: (value as string) || null })}
+            onChange={(value) => {
+              const next = (value as string) ?? ''
+              bufferText('institution', next)
+              commitInstitution(next)
+            }}
           />
         </FieldPanelRow>
 
         <FieldPanelRow title='Name' type={BaseType.STRING} showIcon isRequired>
           <FieldInputAdapter
             fieldType={FieldType.TEXT}
-            value={text('name')}
-            disabled={isConnected || pending}
+            value={values.name}
+            disabled={isConnected}
             placeholder='Business Adv Relationship'
-            onChange={(value) => buffer({ name: (value as string) || '' })}
+            onChange={(value) => {
+              const next = (value as string) ?? ''
+              bufferText('name', next)
+              // An empty name is refused server side, and clearing the field to
+              // retype it is the ordinary way to rename an account - so the
+              // write waits for something to write rather than earning a
+              // refusal for a keystroke that was on its way somewhere.
+              if (next.trim()) commitName(next)
+            }}
           />
         </FieldPanelRow>
 
@@ -181,10 +269,14 @@ export function BankAccountEditor({
           description='Digits only. A leading zero is part of the number, so it is stored as text.'>
           <FieldInputAdapter
             fieldType={FieldType.TEXT}
-            value={text('last4')}
-            disabled={isConnected || pending}
+            value={values.last4}
+            disabled={isConnected}
             placeholder='5381'
-            onChange={(value) => buffer({ last4: (value as string) || null })}
+            onChange={(value) => {
+              const next = (value as string) ?? ''
+              bufferText('last4', next)
+              commitLast4(next)
+            }}
           />
         </FieldPanelRow>
 
@@ -196,8 +288,8 @@ export function BankAccountEditor({
           <FieldInputAdapter
             fieldType={FieldType.SINGLE_SELECT}
             fieldOptions={{ options: TYPE_OPTIONS }}
-            value={values.type ?? account.type}
-            disabled={isConnected || pending}
+            value={account.type}
+            disabled={isConnected}
             triggerProps={{ className: 'w-full ps-0 pe-1' }}
             placeholder='Select type'
             onChange={(value) => {
@@ -210,10 +302,14 @@ export function BankAccountEditor({
         <FieldPanelRow title='Currency' type={BaseType.STRING} showIcon>
           <FieldInputAdapter
             fieldType={FieldType.TEXT}
-            value={text('currency')}
-            disabled={isConnected || pending}
+            value={values.currency}
+            disabled={isConnected}
             placeholder='USD'
-            onChange={(value) => buffer({ currency: (value as string) || null })}
+            onChange={(value) => {
+              const next = (value as string) ?? ''
+              bufferText('currency', next)
+              commitCurrency(next)
+            }}
           />
         </FieldPanelRow>
 
@@ -230,7 +326,6 @@ export function BankAccountEditor({
           <GlAccountPicker
             value={account.glAccountCode}
             filterTypes={glFilterTypes}
-            disabled={pending}
             placeholder='Map to an account…'
             triggerProps={{ className: 'w-full ps-0 pe-1' }}
             onChange={(code) => onPatch({ glAccountCode: code })}
@@ -245,7 +340,6 @@ export function BankAccountEditor({
           <FieldInputAdapter
             fieldType={FieldType.DATE}
             value={account.feedStartDate ? `${account.feedStartDate}T00:00:00.000Z` : null}
-            disabled={pending}
             onChange={(value) => {
               const iso = value as string | null
               onPatch({ feedStartDate: iso ? iso.slice(0, 10) : null })
@@ -254,7 +348,7 @@ export function BankAccountEditor({
         </FieldPanelRow>
 
         <FieldPanelRow title='Coverage' type={BaseType.DATE} showIcon>
-          <CoverageRow coverage={coverage} isLoading={coverageLoading} />
+          <CoverageRow bankAccountId={account.id} coverage={coverage} isLoading={coverageLoading} />
         </FieldPanelRow>
 
         {account.connector && (
@@ -290,25 +384,10 @@ export function BankAccountEditor({
         )}
       </FieldPanel>
 
-      {/* The text rows commit together: one write for whatever was typed, rather
-          than one per field, so a rename plus a last-four fix is one refusal
-          surface instead of two. */}
-      {draft?.id === account.id && Object.keys(draft.values).length > 0 && (
-        <div className='flex items-center gap-2'>
-          <Button
-            size='sm'
-            loading={pending}
-            onClick={() => {
-              onPatch(draft.values)
-              setDraft(null)
-            }}>
-            Save changes
-          </Button>
-          <Button size='sm' variant='ghost' onClick={() => setDraft(null)}>
-            Cancel
-          </Button>
-        </div>
-      )}
+      {/* The whole feedback surface for a write. A refusal arrives as the page's
+          toast, verbatim, which is where it already arrived for the two rows
+          that always committed on change. */}
+      <div className='min-h-4 text-muted-foreground text-xs'>{pending ? 'Saving…' : null}</div>
 
       {/* 🛑 Sync now is DISABLED on a disconnected feed, not hidden. One click on a
           disconnected connector moves it to `error`, which discards the Disconnected
@@ -386,9 +465,11 @@ export function BankAccountEditor({
  * has to be honest about that or people will start ignoring the badges.
  */
 function CoverageRow({
+  bankAccountId,
   coverage,
   isLoading,
 }: {
+  bankAccountId: string
   coverage: BankAccountCoverage | null
   isLoading: boolean
 }) {
@@ -427,7 +508,7 @@ function CoverageRow({
                   {gap.from} → {gap.to}
                 </span>
               </Badge>
-              <Link className='text-xs underline' href={IMPORT_HREF}>
+              <Link className='text-xs underline' href={importHref(bankAccountId)}>
                 Import statements for this range
               </Link>
             </div>

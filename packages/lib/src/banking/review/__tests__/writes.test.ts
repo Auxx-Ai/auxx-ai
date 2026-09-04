@@ -32,6 +32,15 @@ const h = vi.hoisted(() => ({
   selectRows: [] as Record<string, unknown>[],
   rows: new Map<string, BankTransactionRow>(),
   listRows: [] as BankTransactionRow[],
+  /**
+   * Every `db.update(...).set(values)` the treatments issued.
+   *
+   * The only two are the payment-transaction stamp and unstamp, which write
+   * COLUMNS since drizzle 0363. Recorded rather than ignored because the whole
+   * point of that move is WHICH fields are written - a test that only checks
+   * "an update happened" would pass just as happily against the old blob write.
+   */
+  dbUpdates: [] as Record<string, unknown>[],
 }))
 
 vi.mock('../../../postings/post-entry', () => ({ postEntry: h.postEntry }))
@@ -104,10 +113,15 @@ const db = new Proxy({} as never, {
 
 /** Every builder method, each answering the same thenable. */
 function promiseChain(): Record<string, () => unknown> {
-  const methods = ['from', 'innerJoin', 'leftJoin', 'where', 'limit', 'orderBy', 'set', 'returning']
+  const methods = ['from', 'innerJoin', 'leftJoin', 'where', 'limit', 'orderBy', 'returning']
   const chain: Record<string, () => unknown> = {}
   for (const method of methods) {
     chain[method] = () => Object.assign(Promise.resolve(h.selectRows), promiseChain())
+  }
+  // `set` is the one stage worth recording - see `h.dbUpdates`.
+  chain.set = (values?: unknown) => {
+    h.dbUpdates.push((values ?? {}) as Record<string, unknown>)
+    return Object.assign(Promise.resolve(h.selectRows), promiseChain())
   }
   return chain
 }
@@ -155,6 +169,7 @@ function updateFor(recordId: string): Record<string, unknown> | undefined {
 beforeEach(() => {
   vi.clearAllMocks()
   h.rows.clear()
+  h.dbUpdates = []
   h.postingCount = 0
   h.selectRows = [{ status: 'posted', docNumber: 'AUXX-BNK-EXISTING' }]
   h.listRows = []
@@ -786,5 +801,103 @@ describe('undoReview', () => {
       transactionId: 'txn_1',
     })
     expect(result.isErr()).toBe(true)
+  })
+})
+
+// ── The customer-payment link is a COLUMN, not a metadata key (drizzle 0363) ──
+//
+// 🛑 The review queue used to record "which bank line confirmed this payment" as
+// three keys inside `PaymentTransaction.metadata`, because the table had no
+// typed home for it (`plans/accounting/HANDOFF.md` §5b, departure 2). A JSON key
+// cannot be indexed, cannot be constrained, and is invisible to anything that
+// does not already know to open the blob - so the pointer that the whole
+// matcher turns on was the one link in the book nothing could query.
+//
+// These tests pin the two halves that a regression would quietly undo: that the
+// stamp writes COLUMNS and nothing else, and that the read asks the column.
+describe('matching a customer payment', () => {
+  it('stamps the two columns and writes no metadata at all', async () => {
+    row({ amountMinor: 55_500 })
+    const result = await matchTransaction(db, {
+      organizationId: ORG,
+      actorUserId: ACTOR,
+      transactionId: 'txn_1',
+      recordType: 'payment_transaction',
+      recordId: 'pt_1',
+    })
+
+    expect(result.isOk()).toBe(true)
+    expect(h.dbUpdates).toHaveLength(1)
+    const written = h.dbUpdates[0] ?? {}
+    expect(written.bankTransactionId).toBe('txn_1')
+    expect(written.bankClearedAt).toBeInstanceOf(Date)
+    // The blob is not touched. `metadata.date` is the user-picked accounting
+    // date every payment reader depends on, and a spread-and-rewrite of the
+    // whole object is how it would get lost.
+    expect(written).not.toHaveProperty('metadata')
+  })
+
+  it('writes no confirmationSource, because the pointer already says it', async () => {
+    row({ amountMinor: 55_500 })
+    await matchTransaction(db, {
+      organizationId: ORG,
+      actorUserId: ACTOR,
+      transactionId: 'txn_1',
+      recordType: 'payment_transaction',
+      recordId: 'pt_1',
+    })
+    // `bankTransactionId IS NOT NULL` is the same statement, and a second field
+    // saying so is a second field that can disagree with the first.
+    expect(h.dbUpdates[0]).not.toHaveProperty('confirmationSource')
+  })
+
+  it('🛑 still posts NOTHING - the payment entry already debited the route', async () => {
+    row({ amountMinor: 55_500 })
+    await matchTransaction(db, {
+      organizationId: ORG,
+      actorUserId: ACTOR,
+      transactionId: 'txn_1',
+      recordType: 'payment_transaction',
+      recordId: 'pt_1',
+    })
+    expect(h.postEntry).not.toHaveBeenCalled()
+  })
+
+  it('refuses a payment already matched to another bank line, naming it', async () => {
+    // The refusal is only reachable because `readDocumentLink` reads the COLUMN.
+    // Answering out of `metadata` here would make this test pass against a row
+    // that carries the pointer in the blob and fail against one that carries it
+    // in the column, which is exactly the direction the data moved.
+    row({ amountMinor: 55_500 })
+    h.selectRows = [{ bankTransactionId: 'txn_other' }]
+    const result = await matchTransaction(db, {
+      organizationId: ORG,
+      actorUserId: ACTOR,
+      transactionId: 'txn_1',
+      recordType: 'payment_transaction',
+      recordId: 'pt_1',
+    })
+    expect(result.isErr()).toBe(true)
+    if (result.isErr()) expect(result.error.message).toMatch(/txn_other/)
+    expect(h.dbUpdates).toHaveLength(0)
+  })
+
+  it('clears BOTH columns on undo, never one of them', async () => {
+    // A cleared date left standing on a payment with no bank line reads as
+    // "this cleared" with nothing able to say against what.
+    row({
+      reviewStatus: 'matched',
+      matchedRecordId: 'pt_1',
+      matchedRecordType: 'payment_transaction',
+    })
+    const result = await undoReview(db, {
+      organizationId: ORG,
+      actorUserId: ACTOR,
+      transactionId: 'txn_1',
+    })
+
+    expect(result.isOk()).toBe(true)
+    expect(h.dbUpdates).toHaveLength(1)
+    expect(h.dbUpdates[0]).toEqual({ bankTransactionId: null, bankClearedAt: null })
   })
 })

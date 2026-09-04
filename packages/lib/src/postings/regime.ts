@@ -60,6 +60,15 @@ export const ENABLED_POSTING_TYPES: readonly PostingType[] = [
   // Wave 3. A CODED bank line posts by account code against the bank account's
   // own GL code; a matched line posts nothing (bank plan B5).
   'bank_transaction',
+  // plans/accounting/tasks/08 and /07. `invoice_issued` raises the receivable
+  // every payment entry already relieved and nothing raised; the deposit
+  // application reclasses a held prepayment out of `2350` and onto that
+  // receivable. Neither drives a single-writer role, and the two are enabled
+  // together because a deposit applied to an invoice with no issuance entry
+  // relieves a receivable that was never raised - the same error one document
+  // along.
+  'invoice_issued',
+  'deposit_application',
   // `receipt` and `vendor_bill` are the L3 buy side and wait for the same
   // switch as the COGS leg.
 ]
@@ -139,6 +148,13 @@ export const SINGLE_WRITER_ROLES_BY_POSTING_TYPE: Record<PostingType, readonly A
   // `[CASH]` here beside `bank_deposit` would flag a conflict that is not one.
   // If the guard ever becomes route-aware, this is the entry to revisit.
   payment: [],
+  // Revenue, receivables and sales tax. No inventory account and no cash: an
+  // invoice is issued long before its money arrives, and the payment entry is
+  // what moves the money when it does.
+  invoice_issued: [],
+  // A reclass between two liabilities-and-receivables accounts. No money moves,
+  // so nothing here can be a cash or inventory writer.
+  deposit_application: [],
 }
 
 /**

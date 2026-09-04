@@ -35,12 +35,40 @@
  * orders into `1200` means it can never reconcile to zero. `clearingRole` is an
  * input for that reason - one payout drains ONE clearing account.
  *
- * ## Scope
+ * ## Scope, and what a gatherer would actually need (surveyed 2026-09-04)
  *
- * There is no payout source in auxx yet (no `payout` entity, no Stripe payout
- * ingest), so the GATHERER for this entry is out of scope. What ships is the
- * pure builder and `postPayoutEntry` - the writer a gatherer will call - with
- * no trigger.
+ * There is still no payout source in auxx: no `payout` entity, no Stripe payout
+ * ingest, no `payout.*` webhook case, and no stored balance transaction. So the
+ * GATHERER remains out of scope and what ships is the pure builder plus
+ * `postPayoutEntry`, with no trigger.
+ *
+ * 🛑 **But the DATA is reachable, and the next reader should not conclude
+ * otherwise from the paragraph above.** `PaymentAccount.stripeAccountId` is
+ * stored per org (`money/payments/account-state.ts`) and every merchant-facing
+ * call already runs on the platform key with a per-request `{ stripeAccount }`
+ * header, so `stripe.payouts.list` and `stripe.balanceTransactions.list({ payout })`
+ * would run today with no new credential storage. The withheld fee is on those
+ * balance transactions, exactly where the warning above says it lives. What is
+ * missing is the ingest and the bookkeeping around it, not the credentials:
+ *
+ * 1. a `payout` record to key on - `buildPayoutEntry` refuses a bare `po_…`
+ *    (27 characters), so a payout needs a short minted number;
+ * 2. a job or a `payout.paid` / `payout.failed` webhook case to pull them, with
+ *    a per-org watermark, and a reversal path for a failed payout;
+ * 3. **a policy for charges in the payout that auxx never posted.** Anything the
+ *    merchant took outside auxx settles in the same payout and was never debited
+ *    to clearing, so crediting the payout's full gross drives the clearing
+ *    account negative by that amount, permanently. This is a product decision,
+ *    not a coding one, and it is the reason a gatherer cannot simply be written.
+ *
+ * ⚠️ And note what `1200 Shopify Clearing` actually holds. `PaymentTransaction.provider`
+ * is `'manual' | 'stripe'` - there is no Shopify payment rail in auxx - while
+ * `DEFAULT_PAYMENT_ROUTES.card` is `clearing`, which `PAYMENT_ROUTE_ROLE` maps
+ * to `clearing_shopify`. So every STRIPE card receipt is already accumulating in
+ * an account named for Shopify, and `PAYOUT_CLEARING_ROLES` admits only that
+ * role. A Stripe payout would reconcile against it correctly and read wrongly;
+ * fixing the name means a new role in `build-entry.ts` and a new row in
+ * `default-chart.ts`.
  *
  * @see plans/accounting/tasks/01-post-revenue-to-the-ledger.md §1.3
  */

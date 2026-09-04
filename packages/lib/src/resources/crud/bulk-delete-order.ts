@@ -41,6 +41,10 @@ export const HOOKED_PARENT_DEF_SLUGS = [
   'purchase-orders',
   'vendor-bills',
   'tariff-codes',
+  // A refusal only: a posted or reversed entry is never deletable, and a draft
+  // cascades nothing (plans/accounting/tasks/09 §3.3). It is here rather than in
+  // the child tier because nothing it owns needs to run before it.
+  'journal-entries',
   'tags',
 ] as const
 

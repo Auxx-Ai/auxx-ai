@@ -2,15 +2,16 @@
 
 'use client'
 
+import { FieldType } from '@auxx/database/enums'
 import type { BankAccountRow } from '@auxx/lib/banking/client'
 import type { BankTransactionRow } from '@auxx/lib/banking/review/client'
 import type { PostResultStatus } from '@auxx/lib/postings/client'
 import { Button } from '@auxx/ui/components/button'
-import { Combobox } from '@auxx/ui/components/combobox'
-import { Input } from '@auxx/ui/components/input'
 import { TriangleAlert } from 'lucide-react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
+import { BaseType } from '~/components/workflow/types'
 import { api } from '~/trpc/react'
 import { EntryBlockers, type LedgerBlocker } from '../../ledger/entry-blockers'
 
@@ -75,35 +76,49 @@ export function TransferPanel({ line, accounts, onDone }: TransferPanelProps) {
     onError: (error) => setBlockers([{ status: 'error', error: error.message }]),
   })
 
-  const options = accounts
-    .filter((account) => account.id !== line.bankAccountId)
-    .map((account) => ({
-      value: account.id,
-      label: [account.institution, account.name, account.last4 && `···${account.last4}`]
-        .filter(Boolean)
-        .join(' · '),
-    }))
+  const options = useMemo(
+    () =>
+      accounts
+        .filter((account) => account.id !== line.bankAccountId)
+        .map((account) => ({
+          value: account.id,
+          label: [account.institution, account.name, account.last4 && `···${account.last4}`]
+            .filter(Boolean)
+            .join(' · '),
+        })),
+    [accounts, line.bankAccountId]
+  )
 
   return (
     <div className='flex flex-col gap-4'>
       <FieldPanel>
         <FieldPanelRow
           title='Other account'
+          type={BaseType.RELATION}
+          showIcon
           isRequired
           description='Where the money went, or came from. The matching line on that account is found automatically.'>
-          <Combobox
-            options={options}
+          {/* ⚠️ `FieldInputAdapter` hands a SINGLE_SELECT change back as an
+              ARRAY of option keys, not a string - the same widget serves
+              multi-select. `bank-import-page.tsx` learned this the hard way. */}
+          <FieldInputAdapter
+            fieldType={FieldType.SINGLE_SELECT}
+            fieldOptions={{ options }}
             value={counterpart ?? ''}
-            onChangeValue={setCounterpart}
+            onChange={(value) =>
+              setCounterpart((Array.isArray(value) ? value[0] : (value as string)) || null)
+            }
             placeholder='Choose the other account…'
-            emptyText='You only have one bank account'
+            triggerProps={{ className: 'w-full ps-0 pe-1' }}
           />
         </FieldPanelRow>
-        <FieldPanelRow title='Memo' isLastRow>
-          <Input
+        <FieldPanelRow title='Memo' type={BaseType.STRING} showIcon isLastRow>
+          <FieldInputAdapter
+            fieldType={FieldType.TEXT}
             value={memo}
+            onChange={(value) => setMemo((value as string | null) ?? '')}
             placeholder='Transfer'
-            onChange={(event) => setMemo(event.target.value)}
+            triggerProps={{ className: 'w-full ps-0 pe-1' }}
           />
         </FieldPanelRow>
       </FieldPanel>
