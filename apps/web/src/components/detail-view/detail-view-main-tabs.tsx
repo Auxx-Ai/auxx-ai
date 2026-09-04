@@ -1,16 +1,30 @@
 // apps/web/src/components/detail-view/detail-view-main-tabs.tsx
 'use client'
 
+import type { ResolvedLayoutTab, TabVisibilityContext } from '@auxx/lib/record-layout/client'
+import { visibleLayoutTabs, visibleTabBlocks } from '@auxx/lib/record-layout/client'
+import type { LayoutBlock } from '@auxx/lib/resources/client'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
+import { Circle } from 'lucide-react'
 import * as React from 'react'
+import { LayoutBlockSection } from '~/components/drawers/blocks'
+import { resolveLayoutIcon } from '~/components/records/layout/layout-icon'
+import { useBlockVisibility } from '~/components/records/layout/use-block-visibility'
+import { useRecordLayout } from '~/components/records/layout/use-record-layout'
 import { parseRecordId, type RecordId } from '~/components/resources'
 import { getDetailViewTabComponent } from './detail-view-tab-registry'
 import type { DetailViewMainTabsProps, DetailViewTabProps } from './types'
-import { getIconComponent } from './utils'
 
 /**
  * DetailViewMainTabs - main content area with tabs loaded from registry
+ *
+ * Tabs and the blocks placed on them come from the RESOLVED LAYOUT
+ * (`plans/drawer/record-layout-system.md` §5), the same resolver the drawer
+ * uses, so a section placed once renders on both surfaces (§10: landing the
+ * shared block on one surface only is how the two registries drift). The
+ * sidebar is deliberately untouched: it is a separate region and out of scope
+ * (§9.7).
  */
 export function DetailViewMainTabs({
   recordId,
@@ -20,17 +34,30 @@ export function DetailViewMainTabs({
   onTabChange,
   record,
 }: DetailViewMainTabsProps) {
-  const { entityInstanceId } = parseRecordId(recordId)
+  const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
 
-  // Build tab definitions with icons
+  const { layout } = useRecordLayout({
+    entityDefinitionId,
+    entityType,
+    surface: 'detail',
+    detailConfig: config,
+  })
+
+  const isBlockVisible = useBlockVisibility({ entityType })
+
+  // `detail-view.tsx` has already applied each registry tab's own
+  // `permissionKey` / `recordResource` to `config.mainTabs`, so a tab that
+  // reaches here and mounts a component of its own is allowed by definition.
+  // What is left is §7's derived rule for a tab that IS its blocks: it renders
+  // only while one of them is visible for this viewer.
+  const visibilityCtx = React.useMemo<TabVisibilityContext>(
+    () => ({ isBlockVisible }),
+    [isBlockVisible]
+  )
+
   const tabs = React.useMemo(
-    () =>
-      config.mainTabs.map((tab) => ({
-        value: tab.value,
-        label: tab.label,
-        icon: getIconComponent(tab.icon),
-      })),
-    [config.mainTabs]
+    () => visibleLayoutTabs(layout, visibilityCtx),
+    [layout, visibilityCtx]
   )
 
   return (
@@ -41,20 +68,24 @@ export function DetailViewMainTabs({
       <TabsList
         className='border-b w-full justify-start rounded-b-none bg-primary-150'
         variant='outline'>
-        {tabs.map((tab) => (
-          <TabsTrigger key={tab.value} value={tab.value} variant='outline'>
-            <tab.icon className='size-3.5 mr-1.5 opacity-70' />
-            {tab.label}
-          </TabsTrigger>
-        ))}
+        {tabs.map((tab) => {
+          const Icon = resolveLayoutIcon(tab.icon) ?? Circle
+          return (
+            <TabsTrigger key={tab.id} value={tab.id} variant='outline'>
+              <Icon className='size-3.5 mr-1.5 opacity-70' />
+              {tab.label}
+            </TabsTrigger>
+          )
+        })}
       </TabsList>
 
       {/* Render tab contents */}
-      {config.mainTabs.map((tab) => (
-        <TabsContent key={tab.value} value={tab.value} className='flex flex-col flex-1 min-h-0'>
-          <LazyTabComponent
+      {tabs.map((tab) => (
+        <TabsContent key={tab.id} value={tab.id} className='flex flex-col flex-1 min-h-0'>
+          <MainTabBody
+            tab={tab}
+            blocks={visibleTabBlocks(tab, visibilityCtx)}
             entityType={entityType}
-            tabValue={tab.value}
             entityInstanceId={entityInstanceId}
             recordId={recordId}
             record={record}
@@ -62,6 +93,68 @@ export function DetailViewMainTabs({
         </TabsContent>
       ))}
     </Tabs>
+  )
+}
+
+/**
+ * One main tab's body: its `before` blocks, its own lazy component when it has
+ * one, then its `after` blocks.
+ *
+ * A tab that carries blocks scrolls them in its own `ScrollArea`, because a
+ * block renders at intrinsic height and would otherwise grow the panel
+ * unbounded. A tab that is only its registered component keeps today's markup
+ * exactly, since those components own a full-height column and their own scroll and
+ * wrapping them would collapse that height chain.
+ */
+function MainTabBody({
+  tab,
+  blocks,
+  entityType,
+  entityInstanceId,
+  recordId,
+  record,
+}: {
+  tab: ResolvedLayoutTab
+  blocks: LayoutBlock[]
+  entityType: string
+  entityInstanceId: string
+  recordId: RecordId
+  record?: Record<string, unknown>
+}) {
+  const renderBlock = (block: LayoutBlock) => (
+    <LayoutBlockSection
+      key={block.id}
+      block={block}
+      entityType={entityType}
+      entityInstanceId={entityInstanceId}
+      recordId={recordId}
+      record={record}
+    />
+  )
+
+  // A base tab (timeline, tasks) carries no registry entry of its own but DOES
+  // have a component, from `DETAIL_VIEW_TAB_COMPONENTS`' `*:timeline` /
+  // `*:tasks` wildcards, so `hasOwnComponent` alone would blank it out.
+  const ownComponent =
+    tab.hasOwnComponent || tab.isBaseTab ? (
+      <LazyTabComponent
+        entityType={entityType}
+        tabValue={tab.id}
+        entityInstanceId={entityInstanceId}
+        recordId={recordId}
+        record={record}
+      />
+    ) : null
+
+  // No blocks means this tab is exactly what it was before the layout system.
+  if (blocks.length === 0) return ownComponent
+
+  return (
+    <ScrollArea className='flex-1'>
+      {blocks.filter((block) => block.position === 'before').map(renderBlock)}
+      {ownComponent}
+      {blocks.filter((block) => block.position !== 'before').map(renderBlock)}
+    </ScrollArea>
   )
 }
 

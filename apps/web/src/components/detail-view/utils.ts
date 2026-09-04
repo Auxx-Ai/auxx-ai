@@ -30,6 +30,7 @@ import {
   ReceiptText,
   ScanSearch,
   ShoppingBag,
+  ShoppingCart,
   Store,
   Tag,
   Ticket,
@@ -61,6 +62,8 @@ const ICON_MAP: Record<string, LucideIcon> = {
   'list-todo': ListTodo,
   ticket: Ticket,
   'shopping-bag': ShoppingBag,
+  // company Purchasing tab + the Purchase orders sections on it (record-layout §4).
+  'shopping-cart': ShoppingCart,
   mail: Mail,
   package: Package,
   layers: Layers,

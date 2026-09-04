@@ -11,6 +11,14 @@ import { type ViewContextType, viewContextTypes } from '../conditions/field-view
  * admin through a gate of its own (`isStructural` → `assertStructuralAccess`), and
  * nobody names it or picks it from a list.
  *
+ * A `drawer` / `detail` `TableView` is the same kind of thing one level up: the
+ * record LAYOUT of an entity definition, holding the sparse delta defined in
+ * `@auxx/lib/record-layout` (`plans/drawer/record-layout-system.md` §5). One row
+ * per definition per surface, written by a def admin, never named and never picked
+ * from a list — and the editor is designed to be used once per definition, so
+ * metering them would put an org on Free into overage after ten definitions
+ * (§5.1).
+ *
  * A `table` / `kanban` view is the opposite: a member makes it, names it, and
  * chooses it. That is the artifact the `savedViews` plan limit is meant to meter.
  *
@@ -26,6 +34,8 @@ export const STRUCTURAL_CONTEXT_TYPES = [
   'panel',
   'dialog_create',
   'dialog_edit',
+  'drawer',
+  'detail',
 ] as const satisfies readonly ViewContextType[]
 
 /** Set form for membership checks. */

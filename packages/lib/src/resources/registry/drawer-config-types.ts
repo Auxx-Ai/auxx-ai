@@ -1,5 +1,7 @@
 // packages/lib/src/resources/registry/drawer-config-types.ts
 
+import type { LayoutBlock } from './block-types'
+
 /**
  * Drawer tab metadata (no React components)
  * Just the data needed to describe a tab
@@ -14,6 +16,16 @@ export interface DrawerTabDefinition {
   /** Optional feature gate key — tab is hidden when the org lacks access */
   featureGate?: string
   /**
+   * Optional Layer-2 capability gate (a {@link PermissionKey} value, e.g.
+   * `dispatch.board.view`): the tab and its content are both dropped when the
+   * viewer lacks the key, mirroring the router's procedure gate so no empty tab
+   * fronts a query that 403s.
+   *
+   * The twin of {@link DrawerTabCardDefinition.permissionKey} and of
+   * `MainTabDefinition.permissionKey`, which the detail view has had all along.
+   */
+  permissionKey?: string
+  /**
    * Resource slug of the record type this tab LISTS (e.g. `ticket` for the
    * contact drawer's Tickets tab) — not the drawer's own entity type. The tab is
    * hidden when the viewer can't read that definition (Layer 3 `canViewEntity`),
@@ -22,6 +34,18 @@ export interface DrawerTabDefinition {
    * conversations, which are governed by the thread visibility lens instead).
    */
   recordResource?: string
+  /**
+   * Whether this tab mounts a lazily loaded component of its own from
+   * `DRAWER_TAB_COMPONENTS`. Defaults to `true`, which is every tab that
+   * predates the record layout system.
+   *
+   * Set to `false` for a tab that IS its blocks (`Purchasing`, `Billing`): it
+   * has no registered component, so the drawer must not try to mount one, and
+   * its visibility is derived from whether any of its blocks is visible for this
+   * viewer (`plans/drawer/record-layout-system.md` §7) rather than asserted by
+   * the tab itself.
+   */
+  hasOwnComponent?: boolean
 }
 
 /**
@@ -72,6 +96,21 @@ export interface DrawerConfig {
   additionalTabs: DrawerTabDefinition[]
   /** Cards injected into base tabs (overview, timeline, comments, tasks). Key is tab value. */
   tabCards?: Record<string, DrawerTabCardDefinition[]>
+  /**
+   * Non-`card` blocks placed on a tab, keyed by tab value exactly as
+   * {@link DrawerConfig.tabCards} is (`plans/drawer/record-layout-system.md` §4).
+   *
+   * `tabCards` can only ever declare a `card`: every entry there resolves to a
+   * component key in `DRAWER_TAB_CARD_COMPONENTS`. A `records` block has no
+   * component (it IS its config), so it needs a declaration site of its own.
+   * The two lists merge into one run per tab, `tabCards` first, and both are
+   * split by `position` the same way.
+   *
+   * Deliberately parallel rather than a widened `tabCards`: keeping the card
+   * list typed as `DrawerTabCardDefinition[]` is what lets the parity test keep
+   * asserting that every card has a registered component.
+   */
+  tabBlocks?: Record<string, LayoutBlock[]>
 }
 
 export type DrawerConfigRegistry = Record<string, DrawerConfig>

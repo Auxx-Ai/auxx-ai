@@ -49,6 +49,16 @@ interface EntityFieldsProps {
    * showing a field subset). Applied after `excludeFields`.
    */
   includeFields?: string[]
+  /**
+   * Render the fields as one flat list, without the group headers
+   * `FieldGroupList` normally draws.
+   *
+   * For a `fields` block narrowed to ONE promoted group
+   * (`plans/drawer/record-layout-system.md` §4): the block's `<Section>` already
+   * carries the group's label, so the in-panel header repeats it. Grouping still
+   * governs the field ORDER; only the chrome is suppressed.
+   */
+  hideGroupHeaders?: boolean
 }
 
 /**
@@ -67,6 +77,7 @@ function EntityFields({
   showTitle = true,
   excludeFields,
   includeFields,
+  hideGroupHeaders = false,
 }: EntityFieldsProps) {
   // Parse recordId to get entityDefinitionId
   const { entityDefinitionId } = parseRecordId(recordId)
@@ -395,6 +406,7 @@ function EntityFields({
         onDeleteGroup={handleDeleteGroup}
         onMoveGroup={moveGroup}
         onPlaceFieldBesideGroup={placeFieldBesideGroup}
+        hideGroupHeaders={hideGroupHeaders}
       />
     </FieldNavigationProvider>
   )

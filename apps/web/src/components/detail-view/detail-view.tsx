@@ -1,6 +1,7 @@
 // apps/web/src/components/detail-view/detail-view.tsx
 'use client'
 
+import { type TabVisibilityContext, visibleLayoutTabs } from '@auxx/lib/record-layout/client'
 import { getDetailViewConfig, type ModelType } from '@auxx/lib/resources/client'
 import { BreadcrumbItem } from '@auxx/ui/components/breadcrumb'
 import { Button } from '@auxx/ui/components/button'
@@ -16,6 +17,8 @@ import { PanelRight } from 'lucide-react'
 import { useQueryState } from 'nuqs'
 import { useEffect, useMemo, useState } from 'react'
 import { NoAccess } from '~/components/permissions/ui/no-access'
+import { useBlockVisibility } from '~/components/records/layout/use-block-visibility'
+import { useRecordLayout } from '~/components/records/layout/use-record-layout'
 import { RecordNavButtons, RecordSwitcherList, useRecordNavContext } from '~/components/records/nav'
 import { getRecordDrillPanels } from '~/components/records/record-drill-panels'
 import {
@@ -129,13 +132,41 @@ export function DetailView({ apiSlug, instanceId, backUrl: backUrlOverride }: De
         .filter((tab) => canViewRecordResource(tab.recordResource)),
     [config.mainTabs, can, canViewRecordResource]
   )
+  const { layout } = useRecordLayout({
+    entityDefinitionId,
+    entityType,
+    surface: 'detail',
+    detailConfig: config,
+  })
+
+  // §7's derived rule, applied at the SAME boundary as the registry gates above.
+  // A tab that IS its blocks asserts nothing itself, so `visibleMainTabs` keeps
+  // it whatever the viewer can read; without this, a hand-edited `?tab=billing`
+  // for a viewer who can read none of that tab's definitions resolves to a tab
+  // the strip has already dropped, and the main area renders blank. The strip
+  // components derive the same answer for themselves; this only has to agree.
+  const isBlockVisible = useBlockVisibility({ entityType })
+  const blockBearingTabsVisible = useMemo(() => {
+    const ctx: TabVisibilityContext = { isBlockVisible }
+    const visibleIds = new Set(visibleLayoutTabs(layout, ctx).map((tab) => tab.id))
+    return (tabValue: string) => visibleIds.has(tabValue)
+  }, [layout, isBlockVisible])
+
+  const selectableMainTabs = useMemo(
+    () =>
+      visibleMainTabs.filter(
+        (tab) => tab.hasOwnComponent !== false || blockBearingTabsVisible(tab.value)
+      ),
+    [visibleMainTabs, blockBearingTabsVisible]
+  )
+
   const requestedMainTab = mainTab ?? config.defaultTab ?? 'overview'
-  const activeMainTab = visibleMainTabs.some((tab) => tab.value === requestedMainTab)
+  const activeMainTab = selectableMainTabs.some((tab) => tab.value === requestedMainTab)
     ? requestedMainTab
-    : (visibleMainTabs[0]?.value ?? requestedMainTab)
+    : (selectableMainTabs[0]?.value ?? requestedMainTab)
   const visibleConfig = useMemo(
-    () => ({ ...config, mainTabs: visibleMainTabs, defaultTab: activeMainTab }),
-    [config, visibleMainTabs, activeMainTab]
+    () => ({ ...config, mainTabs: selectableMainTabs, defaultTab: activeMainTab }),
+    [config, selectableMainTabs, activeMainTab]
   )
   const visibleDrillPanels = useMemo(
     () =>

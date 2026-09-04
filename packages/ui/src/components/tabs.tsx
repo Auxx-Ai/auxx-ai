@@ -1,13 +1,5 @@
 'use client'
 
-import { Button } from '@auxx/ui/components/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@auxx/ui/components/dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,10 +7,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
-import { SortableList } from '@auxx/ui/components/sortable'
-import { Switch } from '@auxx/ui/components/switch'
-import { SortableTreeRow } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
 import { cva, type VariantProps } from 'class-variance-authority'
 import { ChevronDown, Settings } from 'lucide-react'
@@ -144,19 +132,32 @@ export interface OverflowTabsListProps extends VariantProps<typeof tabsListVaria
   moreClassName?: string
   /** Variant toggle for the overflow "more" trigger */
   moreVariant?: VariantProps<typeof tabsTriggerVariants>['variant']
-  /** Whether tabs can be reordered and shown/hidden via the customize dialog */
+  /**
+   * Whether the strip offers a "customize" affordance at all — the gear button
+   * when nothing overflows, the dropdown item when something does.
+   *
+   * It gates the affordance and nothing else. What the affordance DOES is the
+   * caller's business: {@link OverflowTabsListProps.onOpenCustomize} hands the
+   * click back.
+   */
   canCustomize?: boolean
   /**
    * Values of tabs the viewer has hidden. Hidden tabs are dropped from the strip
-   * *and* the overflow dropdown — the customize dialog is the only way back.
+   * *and* the overflow dropdown — the customize affordance is the only way back.
    * The active tab is never filtered out, so a deep link into a hidden tab still
    * resolves (see {@link OverflowTabsListProps.value}).
    */
   hidden?: string[]
-  /** Called with the full committed state when the user saves the customize dialog */
-  onCustomize?: (next: { order: string[]; hidden: string[] }) => void
-  /** Called when the user resets tab order and visibility to defaults */
-  onReset?: () => void
+  /**
+   * Open the caller's own customize surface.
+   *
+   * Fired from BOTH entry points (the gear and the dropdown item). This package
+   * deliberately owns no customize surface of its own: the record layout editor
+   * (`apps/web/src/components/records/layout-editor`) is that surface, and its
+   * tree needs the block registry, capabilities and tRPC, none of which belong
+   * here.
+   */
+  onOpenCustomize?: () => void
 }
 
 /**
@@ -175,10 +176,8 @@ function OverflowTabsList({
   variant,
   canCustomize,
   hidden,
-  onCustomize,
-  onReset,
+  onOpenCustomize,
 }: OverflowTabsListProps) {
-  const [customizeDialogOpen, setCustomizeDialogOpen] = React.useState(false)
   const containerRef = React.useRef<HTMLDivElement>(null)
   const tabRefs = React.useRef<Map<string, HTMLElement>>(new Map())
   const dropdownButtonRef = React.useRef<HTMLButtonElement>(null)
@@ -374,6 +373,9 @@ function OverflowTabsList({
     [overflowTabs, value]
   )
 
+  /** Whether to offer the customize affordance at all. */
+  const showCustomize = Boolean(canCustomize && onOpenCustomize)
+
   return (
     <div className={cn('w-full overflow-hidden shrink-0', className)}>
       <TabsList
@@ -413,11 +415,11 @@ function OverflowTabsList({
           )
         })}
 
-        {canCustomize && onCustomize && overflowTabs.length === 0 && (
+        {showCustomize && overflowTabs.length === 0 && (
           <button
             type='button'
             aria-label='Customize tabs'
-            onClick={() => setCustomizeDialogOpen(true)}
+            onClick={onOpenCustomize}
             className='ml-auto shrink-0 size-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors'>
             <Settings size={14} />
           </button>
@@ -460,10 +462,10 @@ function OverflowTabsList({
                   </DropdownMenuItem>
                 )
               })}
-              {canCustomize && onCustomize && (
+              {showCustomize && (
                 <>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onSelect={() => setCustomizeDialogOpen(true)}>
+                  <DropdownMenuItem onSelect={onOpenCustomize}>
                     <Settings size={16} />
                     Customize tabs
                   </DropdownMenuItem>
@@ -473,136 +475,11 @@ function OverflowTabsList({
           </DropdownMenu>
         )}
       </TabsList>
-
-      {canCustomize && onCustomize && (
-        <TabCustomizeDialog
-          open={customizeDialogOpen}
-          onOpenChange={setCustomizeDialogOpen}
-          tabs={tabs}
-          hidden={hidden}
-          onCustomize={onCustomize}
-          onReset={onReset}
-        />
-      )}
     </div>
   )
 }
 
 OverflowTabsList.displayName = 'OverflowTabsList'
-
-/**
- * Dialog for reordering tabs (drag) and showing/hiding them (switch). Both edits
- * stage locally and commit together on Save, so Cancel/Esc discards the whole
- * session and the caller only ever sees one consistent `{order, hidden}` write.
- */
-function TabCustomizeDialog({
-  open,
-  onOpenChange,
-  tabs,
-  hidden,
-  onCustomize,
-  onReset,
-}: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  tabs: TabDefinition[]
-  hidden?: string[]
-  onCustomize: (next: { order: string[]; hidden: string[] }) => void
-  onReset?: () => void
-}) {
-  const [localOrder, setLocalOrder] = React.useState<string[]>([])
-  const [localHidden, setLocalHidden] = React.useState<Set<string>>(new Set())
-  const wasOpenRef = React.useRef(false)
-
-  // Seed on the closed → open transition only. Re-seeding on every `tabs`/`hidden`
-  // identity change would throw away edits the viewer has staged but not saved.
-  React.useEffect(() => {
-    if (open && !wasOpenRef.current) {
-      setLocalOrder(tabs.map((t) => t.value))
-      setLocalHidden(new Set(hidden))
-    }
-    wasOpenRef.current = open
-  }, [open, tabs, hidden])
-
-  const tabMap = React.useMemo(() => {
-    const map = new Map<string, TabDefinition>()
-    for (const t of tabs) map.set(t.value, t)
-    return map
-  }, [tabs])
-
-  // The strip must never empty out, so the last remaining visible tab locks on.
-  const visibleCount = localOrder.filter((v) => !localHidden.has(v)).length
-
-  const toggleHidden = (value: string) => {
-    setLocalHidden((prev) => {
-      const next = new Set(prev)
-      if (!next.delete(value)) next.add(value)
-      return next
-    })
-  }
-
-  const handleConfirm = () => {
-    onCustomize({ order: localOrder, hidden: [...localHidden] })
-    onOpenChange(false)
-  }
-
-  const handleReset = () => {
-    onReset?.()
-    onOpenChange(false)
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size='sm'>
-        <DialogHeader>
-          <DialogTitle>Customize tabs</DialogTitle>
-        </DialogHeader>
-        <SortableList items={localOrder} onReorder={setLocalOrder} className='space-y-0.5'>
-          {localOrder.map((value) => {
-            const tab = tabMap.get(value)
-            if (!tab) return null
-            const Icon = tab.icon
-            const isVisible = !localHidden.has(value)
-            const locked = tab.hideable === false || (isVisible && visibleCount <= 1)
-            return (
-              <SortableTreeRow
-                key={value}
-                id={value}
-                icon={<Icon size={16} />}
-                title={tab.label}
-                secondary={tab.badge !== undefined ? <TabsBadge count={tab.badge} /> : undefined}
-                rowClassName='bg-primary-50 hover:bg-primary-100'
-                // A row click flips its switch. TreeRow's `actions` slot stops
-                // propagation itself, so hitting the switch never double-toggles.
-                onToggleOpen={locked ? undefined : () => toggleHidden(value)}
-                actions={
-                  <Switch
-                    size='xs'
-                    checked={isVisible}
-                    disabled={locked}
-                    aria-label={`Show ${tab.label} tab`}
-                    onCheckedChange={() => toggleHidden(value)}
-                  />
-                }
-              />
-            )
-          })}
-        </SortableList>
-        <DialogFooter>
-          <Button variant='ghost' size='sm' onClick={handleReset} className='mr-auto'>
-            Reset to default
-          </Button>
-          <Button variant='ghost' size='sm' onClick={() => onOpenChange(false)}>
-            Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
-          </Button>
-          <Button variant='outline' size='sm' onClick={handleConfirm}>
-            Save <KbdSubmit variant='outline' size='sm' />
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
 
 export {
   Tabs,

@@ -1,6 +1,12 @@
 // packages/lib/src/resources/registry/drawer-config.ts
 
 import type { DrawerConfig, DrawerConfigRegistry } from './drawer-config-types'
+import {
+  BILLING_TAB_ID,
+  COMPANY_PURCHASING_BLOCKS,
+  CONTACT_BILLING_BLOCKS,
+  PURCHASING_TAB_ID,
+} from './ledger-blocks'
 
 /**
  * Drawer configuration registry
@@ -18,19 +24,41 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
     additionalTabs: [
       { value: 'tickets', label: 'Tickets', icon: 'ticket', recordResource: 'ticket' },
       { value: 'conversations', label: 'Conversations', icon: 'mail' },
+      // The accounts-RECEIVABLE tab. `hasOwnComponent: false` because it IS its
+      // blocks: no component to mount, and its visibility is derived from
+      // whether any of its four sections is visible for this viewer (§7). No
+      // tab-level `recordResource` for the same reason: one gate here would
+      // hide the whole tab from anyone who cannot read that single definition.
+      {
+        value: BILLING_TAB_ID,
+        label: 'Billing',
+        icon: 'credit-card',
+        hasOwnComponent: false,
+      },
     ],
     tabCards: {
       overview: [
         // First/last interaction rows (records/interaction-fields plan Phase 5).
         { value: 'interactions', label: 'Interactions', icon: 'activity', position: 'after' },
+        // "Billing summary", not "Billing": this card is the allocation-backed
+        // BALANCE (what this customer owes), while the contact's `billing` TAB
+        // lists the billing DOCUMENTS (quotes, invoices, work orders, POs).
+        // Two different things, and before the tab existed the bare word was
+        // unambiguous. The `value` stays `billing` because it is the component
+        // registry key.
         {
           value: 'billing',
-          label: 'Billing',
+          label: 'Billing summary',
           icon: 'credit-card',
           position: 'after',
           permissionKey: 'dispatch.board.view',
         },
       ],
+    },
+    // Quotes, invoices, work orders and the purchase orders addressed to this
+    // person. One shared list with the detail page (`ledger-blocks.ts`).
+    tabBlocks: {
+      [BILLING_TAB_ID]: CONTACT_BILLING_BLOCKS,
     },
   },
 
@@ -38,11 +66,25 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
     entityType: 'company',
     additionalTabs: [
       { value: 'parts', label: 'Parts', icon: 'package', recordResource: 'vendor_part' },
+      // The accounts-PAYABLE tab, named for the ledger it shows: a company is
+      // the party we buy from, so "Billing" would have meant the opposite of
+      // what it means on a contact (§11). Blocks only, no component.
+      {
+        value: PURCHASING_TAB_ID,
+        label: 'Purchasing',
+        icon: 'shopping-cart',
+        hasOwnComponent: false,
+      },
     ],
     tabCards: {
       overview: [
         { value: 'interactions', label: 'Interactions', icon: 'activity', position: 'after' },
       ],
+    },
+    // Purchase orders, vendor bills and the jobs raised against this company.
+    // One shared list with the detail page (`ledger-blocks.ts`).
+    tabBlocks: {
+      [PURCHASING_TAB_ID]: COMPANY_PURCHASING_BLOCKS,
     },
   },
 

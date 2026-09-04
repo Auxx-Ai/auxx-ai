@@ -3,7 +3,12 @@
 import { z } from 'zod'
 
 /**
- * Context types for different view contexts
+ * Context types for different view contexts.
+ *
+ * `drawer` and `detail` are not field configs at all: their `TableView.config`
+ * holds a sparse record-layout delta (`@auxx/lib/record-layout`), which is why
+ * they are classified as structural contexts and excluded from the `savedViews`
+ * plan limit. See `plans/drawer/record-layout-system.md` §5 / §5.1.
  */
 export const viewContextTypes = [
   'table',
@@ -11,9 +16,14 @@ export const viewContextTypes = [
   'panel',
   'dialog_create',
   'dialog_edit',
+  'drawer',
+  'detail',
 ] as const
 
-/** View context type: 'table' | 'kanban' | 'panel' | 'dialog_create' | 'dialog_edit' */
+/**
+ * View context type:
+ * 'table' | 'kanban' | 'panel' | 'dialog_create' | 'dialog_edit' | 'drawer' | 'detail'
+ */
 export type ViewContextType = (typeof viewContextTypes)[number]
 
 /** Zod schema for validating view context types */

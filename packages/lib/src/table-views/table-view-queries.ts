@@ -27,12 +27,18 @@ export async function computeUserTableViews(
             eq(schema.TableView.isShared, true)
           )
         ),
+        // `drawer` / `detail` are the record LAYOUT rows
+        // (plans/drawer/record-layout-system.md §5). They ship with the rest so
+        // the drawer resolves its layout from the already-hydrated view store
+        // instead of opening a query per record.
         inArray(schema.TableView.contextType, [
           'table',
           'kanban',
           'panel',
           'dialog_create',
           'dialog_edit',
+          'drawer',
+          'detail',
         ])
       )
     )

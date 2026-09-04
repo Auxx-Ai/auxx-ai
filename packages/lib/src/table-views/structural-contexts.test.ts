@@ -14,15 +14,24 @@ import {
  * create/edit dialog field layouts), which is one row per def per context written
  * by a def admin.
  *
+ * The same is true of the record LAYOUT rows (`drawer` / `detail`), which are one
+ * row per definition per surface holding a sparse layout delta
+ * (plans/drawer/record-layout-system.md §5.1).
+ *
  * The partition test below is the point of this file: every view context type is
  * either structural (excluded from the limit) or billable (counted). Adding a
- * context type — `drawer` and `detail` are coming, see
- * plans/drawer/record-layout-system.md — fails this test until someone classifies
- * it, rather than silently defaulting it into the billing counter.
+ * context type fails this test until someone classifies it, rather than silently
+ * defaulting it into the billing counter.
  */
 describe('structural view contexts', () => {
-  it('classifies the panel and dialog field layouts as structural', () => {
-    expect([...STRUCTURAL_CONTEXT_TYPES]).toEqual(['panel', 'dialog_create', 'dialog_edit'])
+  it('classifies the panel, dialog and record-layout contexts as structural', () => {
+    expect([...STRUCTURAL_CONTEXT_TYPES]).toEqual([
+      'panel',
+      'dialog_create',
+      'dialog_edit',
+      'drawer',
+      'detail',
+    ])
   })
 
   it('leaves the member-authored contexts billable', () => {
@@ -45,6 +54,8 @@ describe('structural view contexts', () => {
     expect(isStructuralContextType('panel')).toBe(true)
     expect(isStructuralContextType('dialog_create')).toBe(true)
     expect(isStructuralContextType('dialog_edit')).toBe(true)
+    expect(isStructuralContextType('drawer')).toBe(true)
+    expect(isStructuralContextType('detail')).toBe(true)
     expect(isStructuralContextType('table')).toBe(false)
     expect(isStructuralContextType('kanban')).toBe(false)
   })
