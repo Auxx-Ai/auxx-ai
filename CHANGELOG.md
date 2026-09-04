@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.1.231](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.230...auxx-v0.1.231) (2026-09-04)
+
+
+### Features
+
+* **accounting:** raise the receivable, book deposits as a liability, and make write-offs repeatable ([#2055](https://github.com/Auxx-Ai/auxx-ai/issues/2055)) ([67aec15](https://github.com/Auxx-Ai/auxx-ai/commit/67aec152109a8c69748abe4051116717520beb90))
+* **accounting:** the books and the bank feed ([#2054](https://github.com/Auxx-Ai/auxx-ai/issues/2054)) ([863c908](https://github.com/Auxx-Ai/auxx-ai/commit/863c908dca8e60ccff552b3ff3c1daea7d4678fa))
+* **builds:** backfill builds in batches from historical order demand ([#2052](https://github.com/Auxx-Ai/auxx-ai/issues/2052)) ([81fe119](https://github.com/Auxx-Ai/auxx-ai/commit/81fe119dfb9cb5ce4a3d2642a54a937e174ae2e8))
+* **data-connectors:** skip records at the door with a per-stream filter ([#2044](https://github.com/Auxx-Ai/auxx-ai/issues/2044)) ([0677b65](https://github.com/Auxx-Ai/auxx-ai/commit/0677b65255fa07c1b4a94430cc04a7701d25bdeb))
+* **records:** delete records in bulk without a loop, and tear connectors down on the worker ([#2046](https://github.com/Auxx-Ai/auxx-ai/issues/2046)) ([f62fc00](https://github.com/Auxx-Ai/auxx-ai/commit/f62fc00a14bd99df52bc8ed18e3ddd1dd8caa01a))
+* **records:** make a record's tabs and sections data instead of code ([#2053](https://github.com/Auxx-Ai/auxx-ai/issues/2053)) ([016d24f](https://github.com/Auxx-Ai/auxx-ai/commit/016d24f546a66a7d5c4801296ea6d37b1d06c38f))
+
+
+### Bug Fixes
+
+* **apps:** uninstalling an app no longer deletes its connector or empties its records ([#2050](https://github.com/Auxx-Ai/auxx-ai/issues/2050)) ([0843a5d](https://github.com/Auxx-Ai/auxx-ai/commit/0843a5d031cf59ec97365067b4a25abb19beddb0))
+* **billing:** panel and dialog field configs no longer count against the saved-view limit ([#2047](https://github.com/Auxx-Ai/auxx-ai/issues/2047)) ([2fc03b0](https://github.com/Auxx-Ai/auxx-ai/commit/2fc03b09729297f949dd300a1a83a1ce118019d0))
+* **dashboards:** put a date axis back in date order ([#2048](https://github.com/Auxx-Ai/auxx-ai/issues/2048)) ([af95132](https://github.com/Auxx-Ai/auxx-ai/commit/af95132e1211d821c25d6117b59718fdd3a398ec))
+* **data-connectors:** refuse a manual sync on a disconnected connector ([#2051](https://github.com/Auxx-Ai/auxx-ai/issues/2051)) ([8c9f043](https://github.com/Auxx-Ai/auxx-ai/commit/8c9f043a22d8fa86bb12916381f7e87216245bbf))
+* **data-connectors:** release the connector when a multi-stream steady run ends ([#2049](https://github.com/Auxx-Ai/auxx-ai/issues/2049)) ([d170ec3](https://github.com/Auxx-Ai/auxx-ai/commit/d170ec37353327c6794d239832c3839ace2dfa1b))
+
 ## [0.1.230](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.229...auxx-v0.1.230) (2026-09-03)
 
 
