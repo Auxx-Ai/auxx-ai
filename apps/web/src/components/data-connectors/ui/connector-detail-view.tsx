@@ -45,6 +45,7 @@ import {
   catalogDeploymentLabel,
 } from './connector-catalog-update-dialog'
 import { ConnectorDetailTabs } from './connector-detail-tabs'
+import { ConnectorDisconnectedBanner } from './connector-disconnected-banner'
 import { ConnectorResyncBanner } from './connector-resync-banner'
 import { ConnectorRunsPanel } from './connector-runs-panel'
 import { asConnectorStatus, asRunStatus } from './connector-status'
@@ -114,6 +115,11 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
   const status = asConnectorStatus(connector.status)
   const isSyncing = status === 'syncing' || status === 'provisioning'
   const isPaused = status === 'paused'
+  // The app behind the connector is gone (plans/money/tasks/44 D-1a). NOT a pause:
+  // the merchant did not stop this and cannot resume it here — reinstalling the app
+  // is what clears it (D-1b: reinstall does not auto-resume either, it re-enables
+  // the Resume click). So the toggle is disabled rather than mislabelled.
+  const isDisconnected = status === 'disconnected'
 
   // Live status for the freshness line + the derived "Action needed" reconnect CTA.
   // The `dataConnector:sync` realtime feed (below) drives the snappy updates; this
@@ -151,14 +157,20 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
   // refetches mid-sync. `action-needed` is the one state that comes from the resolver.
   const actionNeeded = resolved.state === 'action-needed'
   const pillDotClass =
-    isPaused || actionNeeded ? 'bg-red-500' : isSyncing ? 'bg-amber-500' : 'bg-emerald-500'
-  const pillLabel = isPaused
-    ? 'Paused'
-    : actionNeeded
-      ? 'Action needed'
+    isDisconnected || isPaused || actionNeeded
+      ? 'bg-red-500'
       : isSyncing
-        ? 'Syncing'
-        : 'Live'
+        ? 'bg-amber-500'
+        : 'bg-emerald-500'
+  const pillLabel = isDisconnected
+    ? 'Disconnected'
+    : isPaused
+      ? 'Paused'
+      : actionNeeded
+        ? 'Action needed'
+        : isSyncing
+          ? 'Syncing'
+          : 'Live'
 
   const {
     syncNow,
@@ -331,13 +343,21 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
               {/* Pause/resume toggle: the colored dot conveys live status, clicking it
                   flips paused ⇄ live. Decision uses the authoritative `isPaused`; the
                   dot/label follow the live polled status. */}
-              <Tooltip content={isPaused ? 'Click to resume' : 'Click to pause'}>
+              <Tooltip
+                content={
+                  isDisconnected
+                    ? 'The app behind this connector was removed — reinstall it to resume'
+                    : isPaused
+                      ? 'Click to resume'
+                      : 'Click to pause'
+                }>
                 <Button
                   variant='outline'
                   size='xs'
                   className='gap-2 border-r-0'
                   loading={isPausing || isResuming}
                   loadingText=''
+                  disabled={isDisconnected}
                   onClick={() => (isPaused ? resume(connector.id) : pause(connector.id))}>
                   <span className={cn('inline-block size-2 rounded-full', pillDotClass)} />
                   {pillLabel}
@@ -470,6 +490,16 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
         <ConnectorDetailTabs
           connector={connector}
           mobileRunsPanel={!isDocked ? runsPanel : null}
+          disconnectedBanner={
+            // The app behind this connector is gone (plans/money/tasks/44 D-4). Reads
+            // the LIVE status, not the optimistic row value: nothing in this session
+            // moves a connector into `disconnected` — an uninstall elsewhere does.
+            <ConnectorDisconnectedBanner
+              status={liveStatus}
+              error={live?.error}
+              appSlug={connector.type?.startsWith('app:') ? connector.type.slice(4) : null}
+            />
+          }
           sampleReviewBanner={
             // Parked-sample review (trial-sync §5.2): after a sample run pauses the
             // connector, offer to look at the records, then sync everything (resume).

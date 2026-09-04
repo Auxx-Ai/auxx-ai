@@ -19,7 +19,12 @@ vi.mock('../jobs/queues', () => ({
   Queues: { dataConnectorQueue: 'data-connector' },
 }))
 
-import { syncConnectorScheduler, syncConnectorSweepScheduler } from './data-connector-scheduler'
+import {
+  isSuspendedConnectorStatus,
+  SUSPENDED_CONNECTOR_STATUSES,
+  syncConnectorScheduler,
+  syncConnectorSweepScheduler,
+} from './data-connector-scheduler'
 
 function connector(over: Partial<DataConnectorRow> = {}): DataConnectorRow {
   return {
@@ -132,5 +137,70 @@ describe('syncConnectorScheduler — regression: webhook connectors must reach t
     expect(upsertJobScheduler).not.toHaveBeenCalled()
     expect(removeJobScheduler).toHaveBeenCalledWith('data-connector-sync-dc1')
     expect(removeJobScheduler).toHaveBeenCalledWith('data-connector-sweep-dc1')
+  })
+})
+
+// plans/money/tasks/44 D-1a — `'disconnected'` (the app behind the connector was
+// uninstalled, or its connection removed) suspends syncing exactly as `'paused'` does.
+// Before it existed every door hardcoded `!== 'paused'`, so a new suspended status
+// would have left the schedulers registered and the webhook doors ingesting.
+describe('suspended statuses', () => {
+  it('classifies every DataConnectorStatus explicitly — adding one forces a decision', () => {
+    // An exact-set assertion, not a spot check: a new status that nobody classifies
+    // silently defaults to "keeps syncing", which is the failure mode this guards.
+    const ALL: string[] = [
+      'pending',
+      'ready',
+      'provisioning',
+      'syncing',
+      'live',
+      'error',
+      'paused',
+      'deleting',
+      'disconnected',
+    ]
+    expect([...SUSPENDED_CONNECTOR_STATUSES]).toEqual(['paused', 'disconnected'])
+    expect(ALL.filter(isSuspendedConnectorStatus)).toEqual(['paused', 'disconnected'])
+    // `'deleting'` must NOT be here: a teardown removes its schedulers outright rather
+    // than leaning on a status predicate, and listing it would mask that.
+    expect(isSuspendedConnectorStatus('deleting')).toBe(false)
+  })
+
+  it('registers no SYNC scheduler for a disconnected scheduled connector', async () => {
+    await syncConnectorScheduler(
+      connector({
+        syncBehavior: 'scheduled',
+        status: 'disconnected',
+        // A VALID cadence on purpose: with an invalid one the scheduler would be
+        // removed anyway (no cron pattern), and the test would pass without the
+        // suspended-status guard doing any work.
+        scheduleConfig: { triggerInterval: 'days', timeBetweenTriggers: { days: 1 } },
+      })
+    )
+    expect(upsertJobScheduler).not.toHaveBeenCalledWith(
+      'data-connector-sync-dc1',
+      expect.anything(),
+      expect.anything()
+    )
+    expect(removeJobScheduler).toHaveBeenCalledWith('data-connector-sync-dc1')
+  })
+
+  it('registers no SWEEP scheduler for a disconnected webhook connector', async () => {
+    await syncConnectorSweepScheduler(
+      connector({ syncBehavior: 'webhook', status: 'disconnected', scheduleConfig: null })
+    )
+    expect(upsertJobScheduler).not.toHaveBeenCalled()
+    expect(removeJobScheduler).toHaveBeenCalledWith('data-connector-sweep-dc1')
+  })
+
+  it('still registers the sync scheduler for a live connector on the SAME cadence — the guard is not a blanket off switch', async () => {
+    await syncConnectorScheduler(
+      connector({
+        syncBehavior: 'scheduled',
+        status: 'live',
+        scheduleConfig: { triggerInterval: 'days', timeBetweenTriggers: { days: 1 } },
+      })
+    )
+    expect(upsertJobScheduler).toHaveBeenCalled()
   })
 })

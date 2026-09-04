@@ -127,6 +127,10 @@ export const AUDIT_ACTIONS = {
   appInstalled: 'app.installed',
   appUninstalled: 'app.uninstalled',
   appSettingsChanged: 'app.settings_changed',
+  // Removing the columns an UNINSTALLED app left behind (plans/money/tasks/44 D-5).
+  // Audited because it is the one sanctioned path that hard-deletes protected,
+  // app-owned fields AND their values outside a connector teardown.
+  appLeftoverFieldsRemoved: 'app.leftover_fields_removed',
   // platform app-catalog actions (internal)
   appPublished: 'app.published',
   appUnpublished: 'app.unpublished',

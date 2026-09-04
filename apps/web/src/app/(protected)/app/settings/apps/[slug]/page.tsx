@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation'
 import AppAbout from '~/components/apps/ui/app-about'
 import { AppIcon } from '~/components/apps/ui/app-icon'
 import AppInstallButton from '~/components/apps/ui/app-install-button'
+import { AppLeftoverFieldsCard } from '~/components/apps/ui/app-leftover-fields-card'
 import SettingsPage from '~/components/global/settings-page'
 import { api } from '~/trpc/server'
 
@@ -49,6 +50,9 @@ async function AppPage({ params }: Props) {
           availableDeployments={appData.availableDeployments}
         />
       }>
+      {/* Only renders when an UNINSTALLED installation still owns columns; this page
+          is the uninstalled-app page, which is exactly where that is true. */}
+      <AppLeftoverFieldsCard appSlug={slug} appTitle={appData.app.title} />
       <AppAbout app={appData} />
     </SettingsPage>
   )

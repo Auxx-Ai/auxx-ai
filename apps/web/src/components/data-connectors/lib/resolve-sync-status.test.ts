@@ -44,6 +44,30 @@ describe('resolveSyncStatus', () => {
     expect(r).toMatchObject({ state: 'paused', primaryAction: 'resume' })
   })
 
+  it('maps disconnected → disconnected, NOT the live fallthrough', () => {
+    const r = resolveSyncStatus({ status: 'disconnected' }, NOW)
+    expect(r).toMatchObject({ state: 'disconnected', label: 'Disconnected' })
+    // The regression this pins: the resolver has no default arm, so before the
+    // `disconnected` branch existed this status fell through to the `live` return
+    // and rendered "Synced · Up to date · [Sync now]" for a connector whose app is
+    // gone. Assert the two things that made that wrong, not just the new state.
+    expect(r.state).not.toBe('synced')
+    expect(r.primaryAction).not.toBe('sync')
+  })
+
+  it('does not collapse disconnected into paused — it is its own state, not a pause', () => {
+    const disconnected = resolveSyncStatus({ status: 'disconnected' }, NOW)
+    const paused = resolveSyncStatus({ status: 'paused' }, NOW)
+    // Pinned positively, not as an inequality: asserting only `label !== label`
+    // passes vacuously while `disconnected` falls through to the `live` shape, so it
+    // would not have caught the defect it is named for. The regression this guards is
+    // the opposite edit — someone routing `disconnected` through the paused branch,
+    // which would hand the merchant a Resume button that cannot work.
+    expect(disconnected.state).toBe('disconnected')
+    expect(disconnected.primaryAction).not.toBe('resume')
+    expect(paused).toMatchObject({ state: 'paused', primaryAction: 'resume' })
+  })
+
   it('maps a sample-parked connector → positive "Sample ready" with a sync (not resume) action', () => {
     const r = resolveSyncStatus(
       { status: 'paused', latestRun: { status: 'partial', pausedReason: 'sample' } },

@@ -19,6 +19,7 @@ import { useState } from 'react'
 import { useAppsContext } from '~/components/apps/providers/apps-context'
 import { LimitReachedDialog } from '~/components/subscriptions/limit-reached-dialog'
 import { useAnalytics } from '~/hooks/use-analytics'
+import { useConfirm } from '~/hooks/use-confirm'
 import { useDemo } from '~/hooks/use-demo'
 import { api } from '~/trpc/react'
 
@@ -58,6 +59,7 @@ export default function AppInstallButton({
   const posthog = useAnalytics()
   const { isDemo } = useDemo()
   const [demoDialogOpen, setDemoDialogOpen] = useState(false)
+  const [confirm, ConfirmDialog] = useConfirm()
 
   // Install mutation
   const install = api.apps.install.useMutation({
@@ -98,13 +100,63 @@ export default function AppInstallButton({
     router.push(`/app/settings/apps/installed/${appSlug}`)
   }
 
+  // What an uninstall would touch. Only fetched while the app IS installed — the
+  // dialog is the sole consumer and the query is a handful of aggregates.
+  const impact = api.apps.uninstallImpact.useQuery(
+    { appSlug, type: installationType },
+    { enabled: isInstalled }
+  )
+
   /**
-   * Handle uninstall button click
+   * Uninstall, after naming what it destroys (plans/money/tasks/44 D-3).
+   *
+   * 🛑 There was no confirmation here at all — one click uninstalled, deleted every
+   * connector the installation owned, and deleted every column it had registered
+   * along with their values. The three branches below are the same keep/archive/delete
+   * disposition the connector detail view already offers, so the two surfaces read the
+   * same way.
    */
-  const handleUninstall = async () => {
+  const handleUninstall = async (syncedData: 'keep' | 'archive' | 'delete') => {
+    const data = impact.data
+    const connectors = data?.connectors ?? []
+    const records = (data?.mintedTotal ?? 0).toLocaleString()
+    const plural = (data?.mintedTotal ?? 0) === 1
+
+    // Named, not implied. `mintedTotal` counts only records the connectors CREATED —
+    // a pre-existing contact one merely enriched is never touched on any branch.
+    const connectorClause =
+      connectors.length === 0
+        ? ''
+        : syncedData === 'keep'
+          ? ` ${connectors.length} ${connectors.length === 1 ? 'connector is' : 'connectors are'} disconnected and can be resumed after reinstalling.`
+          : ` ${connectors.length} ${connectors.length === 1 ? 'connector is' : 'connectors are'} removed.`
+
+    const copy = {
+      keep: `Synced records are kept.${connectorClause}`,
+      archive: `${records} synced ${plural ? 'record is' : 'records are'} archived.${connectorClause}`,
+      delete: `${records} synced ${plural ? 'record' : 'records'} ${plural ? 'is' : 'are'} permanently deleted.${connectorClause}`,
+    }[syncedData]
+
+    // Removing records runs on the worker, so say so rather than leaving the user
+    // watching an app that has not disappeared yet.
+    const background =
+      syncedData === 'keep' || (data?.mintedTotal ?? 0) === 0
+        ? ''
+        : ' Removing them runs in the background and may take a few minutes.'
+
+    const confirmed = await confirm({
+      title: `Uninstall ${appSlug}?`,
+      description: `${copy}${background}`,
+      confirmText: syncedData === 'keep' ? 'Uninstall' : 'Uninstall and remove',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
+    if (!confirmed) return
+
     await uninstall.mutateAsync({
       appSlug,
       type: installationType,
+      syncedData,
     })
     await utils.apps.getBySlug.invalidate({ appSlug })
     router.refresh()
@@ -113,17 +165,53 @@ export default function AppInstallButton({
 
   const isPending = install.isPending || uninstall.isPending
 
-  // If installed, show uninstall button
+  // If installed, show uninstall split button. The dropdown mirrors
+  // `connector-detail-view`'s delete menu: the keep branch is the plain click, the
+  // destructive branches are a deliberate second choice.
   if (isInstalled) {
+    const hasRecords = (impact.data?.mintedTotal ?? 0) > 0
     return (
-      <Button
-        variant='destructive'
-        size='sm'
-        onClick={handleUninstall}
-        loading={isPending}
-        loadingText='Uninstalling...'>
-        Uninstall
-      </Button>
+      <>
+        <div className='flex'>
+          <Button
+            variant='destructive'
+            size='sm'
+            onClick={() => void handleUninstall('keep')}
+            loading={isPending}
+            loadingText='Uninstalling...'
+            className={hasRecords ? 'rounded-r-none border-r-0' : undefined}>
+            Uninstall
+          </Button>
+          {hasRecords && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant='destructive'
+                  size='icon-sm'
+                  className='rounded-l-none border-l focus:ring-0 focus-visible:ring-offset-0'
+                  disabled={isPending}
+                  aria-label='Uninstall options'>
+                  <ChevronDown className='size-4' />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align='end'>
+                <DropdownMenuItem onClick={() => void handleUninstall('keep')}>
+                  Uninstall, keep synced records
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => void handleUninstall('archive')}>
+                  Uninstall, archive synced records
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  variant='destructive'
+                  onClick={() => void handleUninstall('delete')}>
+                  Uninstall and delete synced records
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
+        <ConfirmDialog />
+      </>
     )
   }
 

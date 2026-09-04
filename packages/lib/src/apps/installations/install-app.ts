@@ -6,6 +6,7 @@ import { fromDatabase } from '@auxx/services/shared/utils'
 import { and, eq, isNotNull } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
 import { onCacheEvent } from '../../cache/invalidate'
+import { reconnectConnectorsForInstallation } from '../../data-connectors/mutations'
 import { applyInstallationCatalog } from './app-field-provisioning'
 
 /**
@@ -228,6 +229,13 @@ export async function installApp(input: InstallAppInput) {
           throw new Error('Failed to reactivate installation')
         }
         installation = reactivated
+        // Bring back the connectors uninstall disconnected (plans/money/tasks/44 D-1b).
+        // `'paused'`, never `'live'`: reinstalling an app is not consent to start a
+        // sync, and the first run after a gap is the one most likely to be large.
+        // Not left `'disconnected'` either — that status means "the app is gone" and
+        // the detail view disables its resume toggle on exactly that basis, so leaving
+        // it would strand the connector with no way back.
+        await reconnectConnectorsForInstallation(tx, organizationId, installation.id)
       } else {
         // Create new installation
         const [created] = await tx

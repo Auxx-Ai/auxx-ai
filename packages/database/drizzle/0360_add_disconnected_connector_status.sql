@@ -1,0 +1,1 @@
+ALTER TYPE "public"."DataConnectorStatus" ADD VALUE 'disconnected';

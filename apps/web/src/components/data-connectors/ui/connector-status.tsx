@@ -9,6 +9,7 @@ import {
   CircleDashed,
   Loader2,
   PauseCircle,
+  PlugZap,
   RefreshCw,
   Wrench,
 } from 'lucide-react'
@@ -23,6 +24,7 @@ export type ConnectorStatus =
   | 'error'
   | 'paused'
   | 'deleting'
+  | 'disconnected'
 
 /** The DataConnectorRun status (mirrors `DataConnectorRun.status`). */
 export type RunStatus = 'running' | 'completed' | 'partial' | 'failed'
@@ -97,6 +99,19 @@ export const CONNECTOR_STATUS_META: Record<ConnectorStatus, StatusMeta> = {
     dot: 'bg-muted-foreground/40',
     icon: PauseCircle,
     pill: 'text-muted-foreground border-border bg-primary-50',
+    active: false,
+  },
+  disconnected: {
+    // The app behind the connector was uninstalled, or its connection removed
+    // (plans/money/tasks/44 D-1a). Distinct from `paused`: the merchant did not
+    // stop this and cannot resume it from here — reinstalling the app does.
+    // `error` tone rather than `muted` so it reads as needing attention; a
+    // silently grey row is how this state becomes invisible debt (D-4).
+    label: 'Disconnected',
+    tone: 'error',
+    dot: 'bg-destructive',
+    icon: PlugZap,
+    pill: 'text-red-600 border-red-200 bg-red-50',
     active: false,
   },
   deleting: {

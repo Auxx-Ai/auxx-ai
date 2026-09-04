@@ -50,6 +50,13 @@ export {
   type UninstallAppOutput,
   uninstallApp,
 } from './installations/uninstall-app'
+export {
+  getLeftoverAppFields,
+  getUninstallImpact,
+  type LeftoverAppFields,
+  type UninstallImpact,
+  type UninstallImpactConnector,
+} from './installations/uninstall-impact'
 export type {
   ConsoleLog,
   LambdaExecutionError,

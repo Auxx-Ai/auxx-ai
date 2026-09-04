@@ -100,6 +100,14 @@ export const dataConnectorStatus = pgEnum('DataConnectorStatus', [
   // A connector stuck here is a crashed teardown — visibly stuck rather than
   // silently half-done, which is the whole reason it is a status.
   'deleting',
+  // The app behind this connector was uninstalled, or its connection was
+  // removed (plans/money/tasks/44 D-1a). Deliberately NOT 'paused': that means
+  // "the merchant paused this" and is resumable from the detail view, while
+  // this is not resumable by the same gesture — reinstalling the app is what
+  // clears it. Collapsing the two makes the badge lie and the Resume button
+  // wrong. Suspends syncing exactly as 'paused' does; see
+  // SUSPENDED_CONNECTOR_STATUSES.
+  'disconnected',
 ])
 export const dataConnectorSyncBehavior = pgEnum('DataConnectorSyncBehavior', [
   'manual',

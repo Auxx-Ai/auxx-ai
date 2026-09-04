@@ -11,9 +11,10 @@
 
 import { database as db, schema } from '@auxx/database'
 import { getRedisClient } from '@auxx/redis'
-import { and, eq, inArray, ne } from 'drizzle-orm'
+import { and, eq, inArray, notInArray } from 'drizzle-orm'
 import { matchesFilter } from '../../agents/agent-trigger-queries'
 import { enqueueConnectorSync } from '../../data-connectors/data-connector-queue'
+import { SUSPENDED_CONNECTOR_STATUSES } from '../../data-connectors/data-connector-scheduler'
 import { markWebhookEventReceived } from '../../data-connectors/service'
 import { isSteerableDelivery, resolveWebhookSteer } from '../../data-connectors/webhook-steer'
 import { createScopedLogger } from '../../logger'
@@ -84,9 +85,11 @@ export async function dispatchAppTriggerToConnectors(
       eq(schema.DataConnector.organizationId, organizationId),
       eq(schema.DataConnector.credentialId, connectionId),
       eq(schema.DataConnector.syncBehavior, 'webhook'),
-      // A paused connector keeps its binding but stops ingesting — an active webhook
-      // connector is `syncBehavior='webhook' ∧ status≠'paused'` (data-connector-scheduler).
-      ne(schema.DataConnector.status, 'paused')
+      // A suspended connector keeps its binding but stops ingesting — an active webhook
+      // connector is `syncBehavior='webhook' ∧ status not suspended`. This door does NOT
+      // go through `syncConnectorScheduler`, so it must read the shared list itself or a
+      // `disconnected` connector would keep ingesting for an uninstalled app.
+      notInArray(schema.DataConnector.status, [...SUSPENDED_CONNECTOR_STATUSES])
     ),
     columns: { id: true, config: true },
   })

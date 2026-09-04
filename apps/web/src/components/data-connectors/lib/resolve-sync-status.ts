@@ -2,8 +2,8 @@
 // The pure, client-safe status resolver (Step 9 §3.2). Maps the raw connector
 // lifecycle status + its latest run onto the freshness-first vocabulary the status
 // line / list card / detail pill all render: Synced · Syncing · Rate-limited ·
-// Paused · Action needed · Error (+ Idle for a not-yet-configured source). Two of
-// the live states are DERIVED, not raw enum values:
+// Paused · Disconnected · Action needed · Error (+ Idle for a not-yet-configured
+// source). Two of the live states are DERIVED, not raw enum values:
 //   • Rate-limited = syncing AND the run's `rateLimited.until` is set + in the future.
 //   • Action needed = error AND the message classifies as an auth/connection failure
 //     (reconnect) vs. a generic retryable Error.
@@ -24,6 +24,7 @@ export type SyncStatusState =
   | 'syncing'
   | 'rate-limited'
   | 'paused'
+  | 'disconnected'
   | 'action-needed'
   | 'error'
   | 'idle'
@@ -33,7 +34,7 @@ export type SyncStatusState =
  * it, but the §10.1 mock shows [Pause] while syncing — the resolver is the source of
  * truth for which action a state offers).
  */
-export type SyncPrimaryAction = 'sync' | 'pause' | 'resume' | 'reconnect' | 'retry'
+export type SyncPrimaryAction = 'sync' | 'pause' | 'resume' | 'reconnect' | 'retry' | 'reinstall'
 
 /** The slice of the latest `DataConnectorRun` the resolver reads (from `getStatus`). */
 export interface SyncStatusRunInfo {
@@ -112,6 +113,19 @@ export function resolveSyncStatus(
       label: 'Ready',
       detail: 'Set up — not synced yet. Sync now, or wait for the schedule.',
       primaryAction: 'sync',
+    }
+  }
+
+  // 🛑 Must stay AHEAD of the final fallthrough, which returns the `live` shape.
+  // This resolver has no default arm: every status it does not name renders as
+  // "Synced · Up to date · [Sync now]". For a connector whose app is gone that is
+  // the worst available answer — green, with a button that cannot work.
+  if (status === 'disconnected') {
+    return {
+      state: 'disconnected',
+      label: 'Disconnected',
+      detail: 'The app behind this connector was removed. Reinstall it to resume syncing.',
+      primaryAction: 'reinstall',
     }
   }
 

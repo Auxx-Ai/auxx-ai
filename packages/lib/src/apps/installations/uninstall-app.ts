@@ -6,7 +6,11 @@ import { and, eq } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
 import { getOrgCache } from '../../cache'
 import { deleteAppFields } from '../../custom-fields/delete-field'
-import { deleteConnector } from '../../data-connectors/mutations'
+import {
+  type DeleteSyncedDataBehavior,
+  deleteConnector,
+  disconnectConnectors,
+} from '../../data-connectors/mutations'
 
 /**
  * Input parameters for uninstallApp
@@ -16,6 +20,16 @@ export interface UninstallAppInput {
   organizationId: string
   uninstalledById: string
   installationType?: 'development' | 'production'
+  /**
+   * What happens to the records this installation's connectors CREATED
+   * (plans/money/tasks/44 D-2/D-3). Defaults to `'keep'`, which is also what every
+   * caller that predates the confirm dialog gets.
+   *
+   * - `'keep'`    → connectors are DISCONNECTED, rows and records untouched.
+   * - `'archive'` → connectors torn down, minted records soft-deleted.
+   * - `'delete'`  → connectors torn down, minted records and owned defs removed.
+   */
+  syncedData?: DeleteSyncedDataBehavior
 }
 
 /**
@@ -38,7 +52,7 @@ export interface UninstallAppOutput {
  * @returns Result with uninstall confirmation
  */
 export async function uninstallApp(input: UninstallAppInput) {
-  const { appId, organizationId, uninstalledById, installationType } = input
+  const { appId, organizationId, uninstalledById, installationType, syncedData = 'keep' } = input
 
   // Find app
   const appResult = await fromDatabase(
@@ -99,15 +113,23 @@ export async function uninstallApp(input: UninstallAppInput) {
     })
   }
 
-  // Delete every DataConnector this installation owns BEFORE tearing down its fields.
-  // `deleteConnector` is otherwise only reachable from the tRPC router, so without this
-  // an uninstalled app's connector survived with its mappings pointing at fields that
-  // `deleteAppFields` is about to remove, and its BullMQ schedule still ticking (failing
-  // auth on every run — the credential is preserved on uninstall, but its owning app is
-  // gone). Always `keep`: an order contributed by the connector can be referenced by
-  // `order_builds` / `order_build_revision`, and archiving it touches build reconciliation
-  // (app-fields-and-entities plan §4.4). `deleteConnector` takes `db: Database`, not a
-  // transaction, so this runs ahead of — not inside — the uninstall transaction below.
+  // The connector disposition the merchant picked in the confirm dialog
+  // (plans/money/tasks/44 D-3). `'keep'` is the default and the safe one.
+  //
+  // On `'keep'` the connectors are DISCONNECTED, not deleted. That loop used to be
+  // `deleteConnector(…, 'keep')`, which kept the synced RECORDS but destroyed the
+  // connector row and, with it, every `DataConnectorItem` binding: the only memory of
+  // which external id maps to which record, plus the per-field sync pins. Those
+  // bindings are connector-scoped, so a reinstall minting a new connector id re-mints
+  // duplicates of everything.
+  //
+  // The real bug that loop was written to fix — a BullMQ schedule still ticking and
+  // failing auth on every run, because uninstall preserves the credential but not the
+  // app behind it — is closed on every branch: `disconnectConnectors` tears the
+  // schedule down, and `deleteConnector` always has.
+  // Read by the field sweep below: an installation that owned no connector has nothing
+  // to defer the sweep to (see the comment there).
+  let ownedConnectorCount = 0
   const connectorCleanupResult = await fromDatabase(
     (async () => {
       const ownedConnectors = await database
@@ -119,15 +141,27 @@ export async function uninstallApp(input: UninstallAppInput) {
             eq(schema.DataConnector.appInstallationId, installation.id)
           )
         )
+      ownedConnectorCount = ownedConnectors.length
+
+      if (syncedData === 'keep') {
+        await disconnectConnectors(
+          database,
+          organizationId,
+          ownedConnectors.map((c) => c.id),
+          `${app.title} was uninstalled`
+        )
+        return
+      }
+
       if (ownedConnectors.length === 0) return
       // No real actor for a lifecycle-triggered teardown; `deleteConnector`'s userId is
-      // only read on the non-'keep' branches, so the org's system user is a safe stand-in.
+      // only read on the non-'keep' branches, which is exactly where we are.
       const systemUserId = await getOrgCache().get(organizationId, 'systemUser')
       for (const connector of ownedConnectors) {
-        await deleteConnector(database, organizationId, systemUserId, connector.id, 'keep')
+        await deleteConnector(database, organizationId, systemUserId, connector.id, syncedData)
       }
     })(),
-    'uninstall-app-delete-connectors'
+    'uninstall-app-connector-disposition'
   )
 
   if (connectorCleanupResult.isErr()) {
@@ -154,15 +188,34 @@ export async function uninstallApp(input: UninstallAppInput) {
         throw new Error('Failed to uninstall app')
       }
 
-      // Hard-delete the app's registered custom fields and their values
-      // (app-registered custom fields §7). This is a DELIBERATE exception to the
-      // "preserve app data on uninstall" behavior above: stale identity links
-      // (e.g. a contact↔Shopify-customer link the chat fence trusts) are a
-      // correctness hazard, so app fields are removed rather than preserved. The
-      // soft-delete keeps the same installationId, so reinstall re-creates the
-      // field *definitions*; their *values* are re-derived from the next
-      // verified boot. FieldValue rows cascade via the existing FK.
-      await deleteAppFields({ appInstallationId: installation.id }, tx)
+      // 🛑 The app's registered custom fields are NOT swept here on the normal path
+      // (plans/money/tasks/44 D-2b). This call used to be unconditional, and it
+      // contradicted the connector disposition above it: `'keep'` promised to keep the
+      // synced records while this deleted every `CustomField` carrying this
+      // installation's id — and `FieldValue.fieldId` cascades. `EntityInstance` stores
+      // no user data at all, so "keep the records" kept the rows and deleted their
+      // contents: 31,737 values on one dev org, 96% of them on records the connector
+      // had minted.
+      //
+      // The original justification was stale identity links (a contact↔Shopify-customer
+      // link the chat fence trusts). Traced end to end, it does not hold:
+      // `find-or-create-from-jwt.ts` short-circuits Shopify identity resolution when the
+      // installation is uninstalled, so the stale link is never read. Deleting the
+      // column closed nothing — and since `RecordIdentity.fieldId` cascades off it,
+      // KEEPING it is what lets a reinstall re-link every contact instantly.
+      //
+      // The sweep now happens when the connector that was part of the app is gone
+      // (`sweepAppFieldsIfLastConnectorGone`, at the tail of the teardown chain).
+      //
+      // ⚠️ EXCEPT when there is no connector to wait for. That is not an edge case:
+      // 4 of the 6 installations owning fields on the dev org own ZERO connectors
+      // (quickbooks, two shopify, stripe). A purely connector-tied rule would leave
+      // their columns unremovable forever, so an installation with no connectors sweeps
+      // here and now.
+      if (ownedConnectorCount === 0) {
+        const swept = await deleteAppFields({ appInstallationId: installation.id }, tx)
+        if (swept.isErr()) throw new Error(swept.error.message)
+      }
 
       // Log event
       await tx.insert(schema.AppEventLog).values({

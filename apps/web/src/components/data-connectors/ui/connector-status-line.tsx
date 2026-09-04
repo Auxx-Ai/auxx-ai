@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   Clock,
   PauseCircle,
+  PlugZap,
   RefreshCw,
   Wrench,
   XCircle,
@@ -30,6 +31,9 @@ const STATE_META: Record<
   syncing: { icon: RefreshCw, className: 'text-amber-600', spin: true },
   'rate-limited': { icon: Clock, className: 'text-amber-600' },
   paused: { icon: PauseCircle, className: 'text-muted-foreground' },
+  // Red, not muted: unlike a pause the merchant did not choose this and cannot undo
+  // it here — reinstalling the app is what clears it (plans/money/tasks/44 D-1a).
+  disconnected: { icon: PlugZap, className: 'text-red-600' },
   'action-needed': { icon: AlertTriangle, className: 'text-amber-600' },
   error: { icon: XCircle, className: 'text-red-600' },
   idle: { icon: Wrench, className: 'text-muted-foreground' },

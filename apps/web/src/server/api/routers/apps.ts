@@ -2,12 +2,14 @@
 
 import { isMasked, splitConnectionValues } from '@auxx/credentials/crypto'
 import { setDefaultCredential } from '@auxx/credentials/store'
-import type { Database } from '@auxx/database'
+import { type Database, schema } from '@auxx/database'
 import {
   deleteAppConnection,
   getAppDeployments,
   getAppWithInstallationStatus,
   getAvailableApps,
+  getLeftoverAppFields,
+  getUninstallImpact,
   installApp,
   saveAppConnection,
   uninstallApp,
@@ -25,6 +27,7 @@ import {
   NO_OWN_CLIENT_GATE,
   resolveOwnClientGateForOrg,
 } from '@auxx/lib/connections'
+import { deleteAppFields } from '@auxx/lib/custom-fields'
 import { resolveConnectorConfigOptions } from '@auxx/lib/data-connectors'
 import {
   FeatureKey,
@@ -49,6 +52,7 @@ import {
   uninstallAppRequestSchema,
 } from '@auxx/services/apps'
 import { TRPCError } from '@trpc/server'
+import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { recordAuditFromCtx } from '~/server/api/audit-context'
 import {
@@ -392,6 +396,127 @@ export const appsRouter = createTRPCRouter({
     }),
 
   /**
+   * The connectors a connection backs, for the disconnect confirm
+   * (plans/money/tasks/44 D-3).
+   *
+   * Disconnecting removes the credential, which suspends every connector using it —
+   * and the dialog said nothing about connectors at all. Fetched lazily by the confirm
+   * callback rather than per row, so a connections list of any length costs nothing.
+   */
+  connectionImpact: protectedProcedure
+    .input(z.object({ credentialId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const connectors = await ctx.db
+        .select({ id: schema.DataConnector.id, name: schema.DataConnector.name })
+        .from(schema.DataConnector)
+        .where(
+          and(
+            eq(schema.DataConnector.organizationId, ctx.session.organizationId),
+            eq(schema.DataConnector.credentialId, input.credentialId)
+          )
+        )
+      return { connectors }
+    }),
+
+  /**
+   * Columns an UNINSTALLED app left behind, and the action to remove them
+   * (plans/money/tasks/44 D-5).
+   *
+   * Why they are left in the first place: the uninstall keeps them so a reinstall
+   * re-adopts them by `(appInstallationId, appFieldKey)` with their values intact — the
+   * alternative is re-fetching everything to rebuild them. But they survive FROZEN
+   * (`isProtectedField` is still true and `isUpdatable` is false), so keep cannot be a
+   * one-way door.
+   */
+  leftoverFields: permissionProcedure(PermissionKey.integrationsManage)
+    .input(z.object({ appSlug: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const cachedApp = await getCachedAppBySlug(input.appSlug)
+      if (!cachedApp) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: `App "${input.appSlug}" not found` })
+      }
+      return getLeftoverAppFields(ctx.db, ctx.session.organizationId, cachedApp.id)
+    }),
+
+  removeLeftoverFields: permissionProcedure(PermissionKey.integrationsManage)
+    .input(z.object({ appSlug: z.string() }))
+    .use(notDemo('remove leftover app fields'))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      const cachedApp = await getCachedAppBySlug(input.appSlug)
+      if (!cachedApp) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: `App "${input.appSlug}" not found` })
+      }
+      // Re-resolve rather than trusting an id from the client: this is the one
+      // sanctioned path that deletes protected, app-owned columns and their values, and
+      // `getLeftoverAppFields` is what proves the installation is actually uninstalled.
+      const leftover = await getLeftoverAppFields(ctx.db, organizationId, cachedApp.id)
+      if (!leftover.appInstallationId) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: `"${cachedApp.title}" has no leftover fields to remove`,
+        })
+      }
+      const removed = await deleteAppFields({ appInstallationId: leftover.appInstallationId })
+      if (removed.isErr()) {
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: removed.error.message })
+      }
+      await onCacheEvent('custom-field.deleted', { orgId: organizationId })
+      await recordAuditFromCtx(ctx, {
+        category: 'apps',
+        action: 'app.leftover_fields_removed',
+        targetType: 'App',
+        targetId: cachedApp.id,
+        metadata: {
+          appSlug: input.appSlug,
+          fields: removed.value.deletedFieldIds.length,
+          values: leftover.values,
+        },
+      })
+      return { removed: removed.value.deletedFieldIds.length }
+    }),
+
+  /**
+   * What an uninstall would actually touch — the connectors this installation owns,
+   * the records they created, and the columns it registered (plans/money/tasks/44 D-3).
+   *
+   * Read-only and gated on the same permission as the uninstall it precedes, so the
+   * dialog can never show a merchant numbers they are not allowed to act on.
+   */
+  uninstallImpact: permissionProcedure(PermissionKey.integrationsManage)
+    .input(
+      z.object({ appSlug: z.string(), type: z.enum(['development', 'production']).optional() })
+    )
+    .query(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      const cachedApp = await getCachedAppBySlug(input.appSlug)
+      if (!cachedApp) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: `App "${input.appSlug}" not found` })
+      }
+      const installation = await ctx.db.query.AppInstallation.findFirst({
+        where: (inst, { and, eq, isNull }) =>
+          and(
+            eq(inst.appId, cachedApp.id),
+            eq(inst.organizationId, organizationId),
+            isNull(inst.uninstalledAt),
+            ...(input.type ? [eq(inst.installationType, input.type)] : [])
+          ),
+        columns: { id: true },
+      })
+      // Not installed is not an error here: the dialog asks before it knows, and an
+      // empty impact is the honest answer.
+      if (!installation) {
+        return {
+          connectors: [],
+          mintedByDef: [],
+          mintedTotal: 0,
+          appFields: { total: 0, visible: 0, valuesAffected: 0 },
+        }
+      }
+      return getUninstallImpact(ctx.db, organizationId, installation.id)
+    }),
+
+  /**
    * Uninstall an app (requires ADMIN or OWNER role)
    */
   uninstall: permissionProcedure(PermissionKey.integrationsManage)
@@ -399,13 +524,18 @@ export const appsRouter = createTRPCRouter({
       z
         .object({
           appSlug: z.string(),
+          // What happens to the records this app's connectors CREATED
+          // (plans/money/tasks/44 D-3). `keep` disconnects the connectors and leaves
+          // everything; the other two tear them down. Defaults to the safe branch so a
+          // caller that predates the dialog cannot destroy anything.
+          syncedData: z.enum(['keep', 'archive', 'delete']).default('keep'),
         })
         .merge(uninstallAppRequestSchema)
     )
     .use(notDemo('uninstall apps'))
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
-      const { appSlug, type } = input
+      const { appSlug, type, syncedData } = input
 
       // Resolve slug from cache
       const cachedApp = await getCachedAppBySlug(appSlug)
@@ -418,6 +548,7 @@ export const appsRouter = createTRPCRouter({
         organizationId,
         uninstalledById: userId,
         installationType: type,
+        syncedData,
       })
 
       if (result.isErr()) {
