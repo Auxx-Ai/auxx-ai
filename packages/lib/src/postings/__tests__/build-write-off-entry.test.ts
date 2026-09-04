@@ -6,7 +6,9 @@ import { ACCOUNT_ROLES } from '../build-entry'
 import {
   type BuildWriteOffEntryInput,
   buildWriteOffEntry,
+  MAX_WRITE_OFF_ATTEMPT,
   WRITE_OFF_SOURCE_TYPE,
+  writeOffPeriodKey,
 } from '../build-write-off-entry'
 import { buildDocNumber } from '../doc-number'
 
@@ -151,5 +153,64 @@ describe('the document-number keyspace', () => {
     expect(() =>
       buildDocNumber({ postingType: 'write_off', periodKey: 'INV-202609-004', revision: 1 })
     ).toThrowError(/over the 21-character cap/)
+  })
+})
+
+// 🛑 The defect this block exists for: `periodKey` was the invoice number and
+// nothing else, so a SECOND partial write-off claimed the same
+// `(organizationId, write_off, periodKey, revision = 0)` tuple, `postEntry`
+// answered `already_posted` - a SUCCESS - and nothing posted. The books were
+// short by the second write-off and the caller reported success.
+describe('writeOffPeriodKey - the attempt counter', () => {
+  it('is the invoice number verbatim at attempt 0, so nothing already in a ledger is re-keyed', () => {
+    expect(writeOffPeriodKey({ invoiceNumber: 'INV-0042' })).toBe('INV-0042')
+    expect(writeOffPeriodKey({ invoiceNumber: 'INV-0042', attempt: 0 })).toBe('INV-0042')
+    expect(buildWriteOffEntry(BASE).periodKey).toBe('INV-0042')
+  })
+
+  it('mints a DISTINCT key for every attempt', () => {
+    const keys = [0, 1, 2, 35].map((attempt) =>
+      writeOffPeriodKey({ invoiceNumber: 'INV-0042', attempt })
+    )
+    expect(new Set(keys).size).toBe(keys.length)
+    expect(keys[1]).toBe('INV-00421')
+    expect(keys[3]).toBe('INV-0042Z')
+  })
+
+  it('keeps every attempt inside the document-number cap, reversal included', () => {
+    for (let attempt = 0; attempt <= MAX_WRITE_OFF_ATTEMPT; attempt++) {
+      const periodKey = writeOffPeriodKey({ invoiceNumber: 'INV-0042', attempt })
+      expect(
+        buildDocNumber({ postingType: 'write_off', periodKey, revision: 9 }).length
+      ).toBeLessThanOrEqual(21)
+    }
+  })
+
+  it('folds an invoice number with no room left for the attempt character', () => {
+    // Nine compacted characters is the whole budget, so a retry cannot append.
+    const key = writeOffPeriodKey({ invoiceNumber: 'INV-123456', attempt: 1 })
+    expect(key).toHaveLength(9)
+    expect(key.endsWith('1')).toBe(true)
+    expect(buildDocNumber({ postingType: 'write_off', periodKey: key, revision: 9 })).toHaveLength(
+      21
+    )
+  })
+
+  it('refuses past the keyspace, naming the manual-journal remedy', () => {
+    const error = expectRefusal(() =>
+      writeOffPeriodKey({ invoiceNumber: 'INV-0042', attempt: MAX_WRITE_OFF_ATTEMPT + 1 })
+    )
+    expect(error.message).toMatch(/manual journal entry/)
+    expect(error.message).toMatch(/INV-0042/)
+  })
+
+  it('refuses a fractional or negative attempt', () => {
+    expectRefusal(() => writeOffPeriodKey({ invoiceNumber: 'INV-0042', attempt: 1.5 }))
+    expectRefusal(() => writeOffPeriodKey({ invoiceNumber: 'INV-0042', attempt: -1 }))
+  })
+
+  it('carries the attempt through buildWriteOffEntry', () => {
+    expect(buildWriteOffEntry({ ...BASE, attempt: 1 }).periodKey).toBe('INV-00421')
+    expect(buildWriteOffEntry({ ...BASE, attempt: 2 }).periodKey).toBe('INV-00422')
   })
 })

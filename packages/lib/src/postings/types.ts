@@ -49,6 +49,19 @@ export const POSTING_TYPES = [
   // `Dr undeposited_funds | cash | clearing` (per `accounting.paymentRoute.*`)
   // / `Cr accounts_receivable`. Added for slot 2G phase B, 2026-09-04.
   'payment',
+  // An invoice ISSUED: `Dr accounts_receivable / Cr revenue_service /
+  // Cr sales_tax_payable`, dated the invoice's own `issuedAt`. The receivable
+  // every payment entry relieves and nothing used to raise
+  // (plans/accounting/tasks/08-invoice-revenue.md).
+  //
+  // 🛑 Prefix `INI`, never `INV` - `month_end_inventory` holds `INV` and
+  // documents already carry it.
+  'invoice_issued',
+  // A held customer deposit reclassed onto an invoice:
+  // `Dr customer_deposits / Cr accounts_receivable`. Neither a payment (no
+  // money moved) nor a manual journal (nobody keyed it)
+  // (plans/accounting/tasks/07-customer-deposits.md).
+  'deposit_application',
 ] as const
 
 export type PostingType = (typeof POSTING_TYPES)[number]

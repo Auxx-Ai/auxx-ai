@@ -4,14 +4,22 @@
  * The writer for `buildPayoutEntry`. Resolves the period lock and hands the
  * entry to `postEntry`; the accounting is all in the builder.
  *
- * ## ⚠️ There is no trigger, and that is the honest state
+ * ## ⚠️ There is still no trigger, and that is the honest state
  *
  * auxx stores no payout: there is no `payout` entity, no Stripe payout ingest,
- * and no balance-transaction row carrying the fee the processor withheld
- * (`money/payments/fees.ts` is the Connect APPLICATION fee, a different number
- * - `implementation-review.md` §1 corrects the brief on this). So the GATHERER
- * for this entry cannot be written yet, and inventing one would mean inventing
- * the fee.
+ * no `payout.*` webhook case in `applyStripeEvent`, and no balance-transaction
+ * row carrying the fee the processor withheld (`money/payments/fees.ts` is the
+ * Connect APPLICATION fee, a different number - `implementation-review.md` §1
+ * corrects the brief on this). So the GATHERER for this entry is still not
+ * written.
+ *
+ * 🛑 The reason is no longer "the data cannot be reached". A 2026-09-04 survey
+ * of the Stripe surface found the credentials already in place - see
+ * `build-payout-entry.ts`'s scope section, which names the three things that
+ * are actually missing and the one that is a product decision rather than code
+ * (charges settled in a payout that auxx never posted to clearing). Do not read
+ * this file as saying a gatherer is impossible; read it as saying nobody has
+ * decided what the clearing account should do about money auxx did not take.
  *
  * What ships is the pure builder and this writer, so the day a payout source
  * lands the only new code is the read that fills

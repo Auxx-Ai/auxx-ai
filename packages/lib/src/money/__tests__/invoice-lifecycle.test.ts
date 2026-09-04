@@ -20,6 +20,10 @@ const h = vi.hoisted(() => ({
   setValuesForEntity: vi.fn(),
   hasSucceededCharges: vi.fn(),
   listInvoiceAllocations: vi.fn(),
+  postInvoiceIssuance: vi.fn(),
+  reverseInvoiceIssuance: vi.fn(),
+  /** Every ledger and status call, in order, so "reversed BEFORE flipped" is assertable. */
+  calls: [] as string[],
   /** Constructor arguments every `FieldValueService` was built with. */
   fieldValueServiceArgs: [] as unknown[][],
   /** `WorkOrderBillingInstallment` rows the update statement claimed to touch. */
@@ -59,7 +63,10 @@ vi.mock('../../field-values/field-value-service', () => ({
     constructor(...args: unknown[]) {
       h.fieldValueServiceArgs.push(args)
     }
-    setValuesForEntity = h.setValuesForEntity
+    setValuesForEntity = (...args: unknown[]) => {
+      h.calls.push('write-status')
+      return h.setValuesForEntity(...args)
+    }
   },
 }))
 vi.mock('../billing-allocations', () => ({
@@ -71,6 +78,10 @@ vi.mock('../billing-projection', () => ({
   syncWorkOrderBillingProjection: vi.fn(),
 }))
 vi.mock('../payments/ledger', () => ({ hasSucceededCharges: h.hasSucceededCharges }))
+vi.mock('../invoices/post-invoice', () => ({
+  postInvoiceIssuance: h.postInvoiceIssuance,
+  reverseInvoiceIssuance: h.reverseInvoiceIssuance,
+}))
 
 const { markInvoiceSent, voidInvoice } = await import('../invoice-lifecycle')
 const { BadRequestError } = await import('../../errors')
@@ -122,6 +133,16 @@ beforeEach(() => {
   vi.clearAllMocks()
   h.fieldValueServiceArgs = []
   h.installmentUpdates = []
+  h.calls = []
+  h.postInvoiceIssuance.mockImplementation(async () => {
+    h.calls.push('post-issuance')
+    return { status: 'posted' }
+  })
+  // `null` is "nothing standing, or the reversal landed".
+  h.reverseInvoiceIssuance.mockImplementation(async () => {
+    h.calls.push('reverse-issuance')
+    return null
+  })
   h.hasSucceededCharges.mockResolvedValue(false)
   h.listInvoiceAllocations.mockResolvedValue({
     lineAllocations: [],
@@ -162,6 +183,37 @@ describe('markInvoiceSent', () => {
     await markInvoiceSent({ organizationId: ORG, userId: USER, invoiceInstanceId: INVOICE })
     expect(h.installmentUpdates).toEqual([{ status: 'invoiced' }])
   })
+
+  // 🛑 Issuance is what raises the receivable every payment entry relieves. Before
+  // this, a service invoice was collected against a receivable nobody had raised
+  // and its revenue reached no account at all - with the trial balance still
+  // tying, because every entry that existed balanced on its own.
+  it('posts the issuance entry to the general ledger', async () => {
+    wireInvoice('draft')
+    await markInvoiceSent({ organizationId: ORG, userId: USER, invoiceInstanceId: INVOICE })
+    expect(h.postInvoiceIssuance).toHaveBeenCalledWith(expect.anything(), {
+      organizationId: ORG,
+      invoiceId: INVOICE,
+      actorUserId: USER,
+    })
+  })
+
+  // The post reads `invoice_issued_at` back on a different connection, so it
+  // cannot see the stamp until the write above has committed.
+  it('posts AFTER the status and issue-date writes, never before', async () => {
+    wireInvoice('draft')
+    await markInvoiceSent({ organizationId: ORG, userId: USER, invoiceInstanceId: INVOICE })
+    expect(h.calls.indexOf('write-status')).toBeLessThan(h.calls.indexOf('post-issuance'))
+  })
+
+  // An invoice must not fail to send because its bookkeeping did: the customer
+  // is waiting on the document and the refusal is recoverable.
+  it('still sends when the ledger refuses the entry', async () => {
+    wireInvoice('draft')
+    h.postInvoiceIssuance.mockResolvedValue({ status: 'period_closed', error: 'August is closed.' })
+    await markInvoiceSent({ organizationId: ORG, userId: USER, invoiceInstanceId: INVOICE })
+    expect(writtenValues()).toContainEqual({ fieldId: 'invoice_status', value: 'sent' })
+  })
 })
 
 describe('voidInvoice', () => {
@@ -177,6 +229,27 @@ describe('voidInvoice', () => {
     await expect(
       voidInvoice({ organizationId: ORG, userId: USER, invoiceInstanceId: INVOICE })
     ).rejects.toThrow(BadRequestError)
+  })
+
+  // 🛑 The reversal goes FIRST. A voided invoice whose revenue stayed in the
+  // books is the same error the issuance entry exists to close, with the sign
+  // flipped - and it is undetectable, because both entries balance.
+  it('reverses the issuance entry BEFORE the status flips', async () => {
+    wireInvoice('sent')
+    await voidInvoice({ organizationId: ORG, userId: USER, invoiceInstanceId: INVOICE })
+    expect(h.calls.indexOf('reverse-issuance')).toBeLessThan(h.calls.indexOf('write-status'))
+  })
+
+  it('refuses the void when the reversal is refused, and writes nothing', async () => {
+    wireInvoice('sent')
+    h.reverseInvoiceIssuance.mockResolvedValue({
+      status: 'period_closed',
+      error: 'August is closed.',
+    })
+    await expect(
+      voidInvoice({ organizationId: ORG, userId: USER, invoiceInstanceId: INVOICE })
+    ).rejects.toThrow(/August is closed/)
+    expect(h.calls).not.toContain('write-status')
   })
 })
 

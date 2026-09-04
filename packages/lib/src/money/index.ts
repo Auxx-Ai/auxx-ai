@@ -98,7 +98,9 @@ export { deleteInvoice, markInvoiceSent, voidInvoice } from './invoice-lifecycle
 export {
   type PreviewWriteOffInput,
   previewWriteOffInvoice,
+  readWriteOffState,
   type WriteOffInvoiceInput,
+  type WriteOffState,
   writeOffInvoice,
 } from './invoices/write-off'
 // ─── Order fulfillment (tasks/01 phase A, HANDOFF slot 2G) ──────────────────

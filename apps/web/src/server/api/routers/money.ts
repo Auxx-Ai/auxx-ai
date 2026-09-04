@@ -40,6 +40,7 @@ import {
   previewInvoiceBatch,
   previewWriteOffInvoice,
   readOrderForFulfillment,
+  readWriteOffState,
   recomputeTotals,
   recordManualPayment,
   refundTransaction,
@@ -984,6 +985,24 @@ export const moneyRouter = createTRPCRouter({
         amountMinor: input.amountMinor,
         reason: input.reason,
         expenseAccountCode: input.expenseAccountCode,
+      })
+    }),
+
+  /**
+   * What is still writable off on one invoice, and what has already gone.
+   *
+   * 🛑 The dialog prefills and bounds on `outstandingMinor`, never on the
+   * invoice's mirrored `invoice_balance`: after a partial write-off the mirror
+   * reads high, because `syncInvoicePaymentState` re-derives it as
+   * `total - amountPaid` and knows nothing about bad debt.
+   */
+  writeOffState: permissionProcedure(PermissionKey.ledgerView)
+    .input(z.object({ invoiceRecordId: recordIdSchema }))
+    .query(async ({ ctx, input }) => {
+      const { entityInstanceId } = parseRecordId(input.invoiceRecordId)
+      return readWriteOffState(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        invoiceId: entityInstanceId,
       })
     }),
 

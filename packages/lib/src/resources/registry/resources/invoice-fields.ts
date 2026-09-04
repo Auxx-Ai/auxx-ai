@@ -431,6 +431,44 @@ export const INVOICE_FIELDS: Record<string, ResourceField> = {
     description: 'The amount still due on this invoice',
   },
 
+  /**
+   * Cumulative bad debt taken off this invoice, in the same minor units
+   * `balance` carries.
+   *
+   * 🛑 **This is what makes a PARTIAL write-off repeatable.** Without it the
+   * only record of a partial write-off was a reduction of `balance`, which
+   * `syncInvoicePaymentState` re-derives as `total - amountPaid` and so undoes;
+   * a second write-off then had no way to know what was left, and no way to be
+   * refused for exceeding it. `money/invoices/write-off.ts` is the only writer,
+   * and it only ever adds.
+   */
+  writtenOff: {
+    id: toFieldId('writtenOff'),
+    key: 'writtenOff',
+    label: 'Written Off',
+    type: BaseType.CURRENCY,
+    fieldType: FieldType.CURRENCY,
+    isSystem: true,
+    systemAttribute: 'invoice_written_off',
+    systemSortOrder: 'aF1',
+    showInPanel: false, // shown on the payments card beside the balance
+    nullable: true,
+    options: {
+      currencyCode: 'USD',
+      decimals: 2,
+      useGrouping: true,
+      currencyDisplay: 'symbol',
+    },
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: false, // the write-off action is the only writer
+      updatable: false,
+      configurable: false,
+    },
+    description: 'The cumulative amount of this invoice written off to bad debt',
+  },
+
   notes: {
     id: toFieldId('notes'),
     key: 'notes',

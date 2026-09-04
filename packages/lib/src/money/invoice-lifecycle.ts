@@ -12,6 +12,7 @@ import { FieldValueService } from '../field-values/field-value-service'
 import { UnifiedCrudHandler } from '../resources/crud'
 import { listInvoiceAllocations, releaseInvoiceAllocations } from './billing-allocations'
 import { syncInvoiceBillingProjection, syncWorkOrderBillingProjection } from './billing-projection'
+import { postInvoiceIssuance, reverseInvoiceIssuance } from './invoices/post-invoice'
 import { hasSucceededCharges } from './payments/ledger'
 import type { InvoiceLifecycleInput } from './types'
 
@@ -87,6 +88,11 @@ const INVOICE_STATUS_BYPASS = new Set<SystemAttribute>(['invoice_status'])
  * the sanctioned-writer path both `invoice_status` guards are built to let through: the
  * system pre-hook (resources/hooks/invoice-hooks.ts) structurally, and the field pre-hook via
  * {@link INVOICE_STATUS_BYPASS}.
+ *
+ * 🛑 **Send is also the ledger door** (plans/accounting/tasks/08). This is the ONE sanctioned
+ * route to `sent`, so the issuance entry hangs off it: `Dr accounts_receivable /
+ * Cr revenue_service / Cr sales_tax_payable`, posted AFTER every write above has committed.
+ * It never throws - an invoice must not fail to send because its bookkeeping did.
  */
 export async function markInvoiceSent(input: InvoiceLifecycleInput): Promise<void> {
   const { organizationId, userId, invoiceInstanceId } = input
@@ -143,6 +149,24 @@ export async function markInvoiceSent(input: InvoiceLifecycleInput): Promise<voi
         eq(schema.WorkOrderBillingInstallment.status, 'drafted')
       )
     )
+
+  // ── The general ledger, after every write above has committed ────────────
+  //
+  // 🛑 LAST, and outside the writes rather than inside them. The post resolves
+  // its source on a different connection and cannot see uncommitted rows - it
+  // reads `invoice_issued_at` back, which the block above may have only just
+  // stamped. Enqueueing it any earlier reads the invoice as it was.
+  //
+  // ⚠️ `postInvoiceIssuance` NEVER throws. Every refusal is a `PostResult`,
+  // logged there with its status and whether the period was claimed, and
+  // surfaced by `listUnpostedPeriods` once a claim exists. An invoice must not
+  // fail to send because its bookkeeping did - the customer is waiting on the
+  // document and the refusal is recoverable.
+  await postInvoiceIssuance(database, {
+    organizationId,
+    invoiceId: invoiceInstanceId,
+    actorUserId: userId,
+  })
 }
 
 /**
@@ -152,6 +176,13 @@ export async function markInvoiceSent(input: InvoiceLifecycleInput): Promise<voi
  * copies stay, so the void document remains readable history. Un-void is the manual `draft`
  * write escape hatch, deliberately unguarded — neither `invoice_status` guard blocks `draft`,
  * only the ledger-derived and send statuses.
+ *
+ * 🛑 **Since plans/accounting/tasks/08, the general ledger comes out FIRST.** `markInvoiceSent`
+ * posts `Dr accounts_receivable / Cr revenue_service / Cr sales_tax_payable`, and a voided
+ * invoice whose revenue stayed in the books is the same error that entry exists to close with
+ * the sign flipped - undetectable, because both entries balance. A reversal the ledger refuses
+ * (a locked period, a chart that moved under the entry) refuses the VOID, naming the reason,
+ * and nothing has been written at that point.
  */
 export async function voidInvoice(input: InvoiceLifecycleInput): Promise<void> {
   const { organizationId, userId, invoiceInstanceId } = input
@@ -164,6 +195,29 @@ export async function voidInvoice(input: InvoiceLifecycleInput): Promise<void> {
 
   if (await hasSucceededCharges(organizationId, invoiceInstanceId)) {
     throw new BadRequestError('Remove recorded payments before voiding this invoice')
+  }
+
+  // ── The general ledger, BEFORE the status flips ──────────────────────────
+  //
+  // 🛑 Order is the whole point. A voided invoice whose revenue stayed in the
+  // books is the same class of error as an issued invoice that never raised its
+  // receivable, with the sign flipped - and it is undetectable, because both
+  // entries balance. So the reversal goes first, and a refused reversal (a
+  // locked period, a chart that moved under the entry) refuses the VOID by
+  // name. Nothing has been written at that point.
+  const reversal = await reverseInvoiceIssuance(database, {
+    organizationId,
+    invoiceId: invoiceInstanceId,
+    actorUserId: userId,
+  })
+  if (reversal) {
+    throw new BadRequestError(
+      'This invoice has a general ledger entry that could not be reversed' +
+        `${reversal.error ? `: ${reversal.error}` : ` (${reversal.status})`}. ` +
+        'Voiding it would leave its revenue and receivable in the books with no document ' +
+        'behind them. Reverse the entry from the ledger first, then void the invoice.',
+      { invoiceInstanceId, status: reversal.status }
+    )
   }
 
   // Resolve the type-slug to the real `entityDefinitionId` UUID before writing — see the

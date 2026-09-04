@@ -1103,8 +1103,18 @@ What landed on top of §9.6, and the rules each piece keeps:
 - **Payouts** (`postings/build-payout-entry.ts`) have a builder and no gatherer: auxx stores no
   payout and no processor fee (`fees.ts` is the Connect application fee).
 - **Write-offs** (`postings/build-write-off-entry.ts`, `money/invoices/write-off.ts`) post
-  `Dr bad_debt_expense / Cr accounts_receivable` keyed on the invoice number, so one write-off
-  per invoice, and flip the invoice to `written_off`.
+  `Dr bad_debt_expense / Cr accounts_receivable` and flip the invoice to `written_off` only when
+  the whole receivable is gone. `writeOffPeriodKey` keys on the invoice number at attempt 0 and
+  appends a base-36 attempt character after that (`INV-0042`, then `INV-00421`), for the same
+  reason the bank line's key does: a PARTIAL write-off used to re-claim the first one's tuple
+  and come back `already_posted`, a SUCCESS, posting nothing while the caller reported it had.
+  `countWriteOffPostings` supplies the attempt from `GlPostingLine`, filtered to the `write_off`
+  posting type because `sourceType` is `invoice` for several entry kinds. What is still writable
+  off is `total − amountPaid − writtenOff`, **derived, never read off `invoice_balance`**:
+  `syncInvoicePaymentState` recomputes that mirror as `total − amountPaid` and knows nothing
+  about bad debt. `invoice_written_off` (entity migration 128, backfilled from the write-off
+  postings already in the ledger) is the durable record, and a write-off over the remainder is
+  refused naming the invoice.
 - **Statements** (`postings/reports/`, `ledgerReports.*`, Reports tab). Trial balance is the
   balance sweep grouped by code; the balance sheet computes retained earnings (prior years
   rolled forward, current period from the P&L) rather than reading a posted balance; aging is
@@ -1161,6 +1171,82 @@ What landed on top of §9.6, and the rules each piece keeps:
   sends any `externalId` to the `text:cuid` resolver, which rejects a real `FITID`; a
   RELATIONSHIP value handed to `UnifiedCrudHandler` must be a `defId:instanceId` record id, and
   a bare instance id fails with a logged warning only.
+
+### 9.11 The two holes wave 2 left in the receivable (2026-09-04, plans/accounting/tasks/08 and /07)
+
+Both were invisible in a trial balance, because every entry involved balanced on its own.
+
+**An invoice's receivable was never raised.** `buildFulfillmentEntry` is sourced on the
+**order** and recognises product revenue on SHIPMENT; nothing was sourced on the **invoice**,
+so a service invoice was collected against a receivable that did not exist and its revenue
+reached no account at all. `postings/build-invoice-entry.ts` closes it with the
+`invoice_issued` type (prefix `INI`; `INV` is `month_end_inventory`'s and cannot be reused):
+
+```
+  Dr accounts_receivable   total
+      Cr revenue_service     total - tax     (4030, new in entity migration 126)
+      Cr sales_tax_payable   tax
+```
+
+Three rules are load-bearing.
+**Revenue is DERIVED as `total - tax`, never recomputed from the discount** - only
+`discountType` and `discountValue` are stored and `computeDocumentTotals` derives the amount,
+so a second implementation here would drift; deriving it makes the entry tie to the stored
+total by construction, which is the same reasoning that makes a vendor bill's totals
+transcribed (§9.4).
+**The period key is the invoice number**, so one entry per invoice falls out of the claim
+index and the `-R9` reversal headroom is checked up front - an entry that posts and cannot be
+reversed is the worst version of this bug.
+**Recognition on issuance is not a contradiction of recognition on shipment.** `invoice` and
+`order` are disjoint document families - no order field on an invoice, no invoice field on an
+order, in either direction - so no code path produces both for one sale. A human hand-keying
+an invoice for a sale that also shipped can still double-count; that is a release note, not
+something a builder can prevent.
+
+The writer is `money/invoices/post-invoice.ts`, called from `markInvoiceSent` **after** its
+writes commit (the post reads `invoice_issued_at` back on another connection). It never
+throws. `voidInvoice` reverses **before** the status flips, so a refused reversal refuses the
+void, and `invoice-delete-guard.ts` refuses to delete an invoice carrying a live entry and
+names voiding as the remedy. **Existing sent invoices are deliberately NOT backfilled**: their
+dates sit in closed periods and the opening trial balance's A/R already includes them.
+
+**An unapplied prepayment was booked as a negative receivable.** `buildPaymentEntry` credited
+`accounts_receivable` unconditionally, so a deposit taken on quote acceptance drove `1100`
+negative and left `2350 Customer Deposits` at zero. The credit now splits on `allocatedMinor`,
+the sum of the transaction's `PaymentAllocation` rows at post time:
+
+```
+  receipt, nothing allocated   Dr route   Cr customer_deposits
+  receipt, part allocated      Dr route   Cr accounts_receivable  allocated
+                                          Cr customer_deposits    the rest
+  applied later                Dr customer_deposits  Cr accounts_receivable   (DPA)
+```
+
+**The receipt entry is never amended.** On the day the money arrived, none of it was owed; a
+later allocation is its own event on its own day and gets its own `deposit_application` entry
+(prefix `DPA`), keyed on a hash of the **allocation** id so one deposit split across two
+invoices cannot swallow itself as `already_posted`. That hash now lives in
+`postings/period-key.ts`, shared with the payment key rather than copied.
+
+Two consequences worth knowing:
+
+- **A refund needs no branch.** `refundCharge` copies the charge's allocations onto the refund
+  row, so the refund resolves the same split and debits whichever account the receipt credited,
+  including the case where a `DPA` had already moved the money to the receivable.
+- **How much is still held is READ FROM THE LEDGER**, never stored:
+  `amount - (what the receipt credited to A/R) - (what posted DPA entries reclassed)`. That is
+  what makes an ordinary invoice payment a no-op with no special case (its allocation was in
+  place when the receipt posted, so nothing is held), and it is why the read counts `reversed`
+  postings as well as `posted` - a reversed original and its reversal cancel, and counting only
+  `posted` would see the reversal's debit without the original's credit and report more held
+  than was received.
+
+⚠️ **A void can never strand a `DPA` entry, and that is a guard rather than a design.**
+`voidInvoice` refuses outright while any succeeded charge is allocated to the invoice
+(`hasSucceededCharges`), and an applied deposit IS such an allocation. Un-applying goes through
+`deleteManualPayment`, whose `reversePaymentPostings` reverses the reclass **before** the
+receipt - the opposite order they were made. If that guard is ever relaxed,
+`reverseInvoiceIssuance` is the function that has to grow a second read.
 
 ## 10. Write Lanes & the Silent Ledger Write
 

@@ -8,6 +8,18 @@
 // (the builders run in a worker), and the directive would turn every export into
 // a client-reference proxy there. See docs/lib-module-guide.md section 7.
 
+// ── plans/accounting/tasks/07: customer deposits are a liability ────────────
+// PURE - reaches nothing but `errors`, `build-entry` and `period-key`, all of
+// which are already on this surface.
+export {
+  type BuildDepositApplicationEntryInput,
+  type BuiltDepositApplicationEntry,
+  buildDepositApplicationEntry,
+  DEPOSIT_APPLICATION_PERIOD_KEY_PREFIX,
+  DEPOSIT_APPLICATION_POSTING_TYPE,
+  DEPOSIT_APPLICATION_SOURCE_TYPE,
+  depositApplicationPeriodKey,
+} from './build-deposit-application-entry'
 export {
   ACCOUNT_ROLE_LABELS,
   ACCOUNT_ROLES,
@@ -37,6 +49,16 @@ export {
   toAmountMinor,
   toChannelKey,
 } from './build-fulfillment-entry'
+// ── plans/accounting/tasks/08: the receivable nothing debits ────────────────
+// PURE. `money/invoices/post-invoice.ts` is the write half and stays
+// server-only - it imports `@auxx/database`.
+export {
+  type BuildInvoiceEntryInput,
+  type BuiltInvoiceEntry,
+  buildInvoiceEntry,
+  INVOICE_ISSUED_POSTING_TYPE,
+  INVOICE_SOURCE_TYPE,
+} from './build-invoice-entry'
 // ── HANDOFF slot 1A: manual journal entries ───────────────────────────────
 // `build-manual-entry.ts` is PURE - it imports only `errors` and `build-entry`,
 // both of which are already on this surface - so the builder and the one
@@ -124,6 +146,11 @@ export {
   rowsToJournalEntryLines,
   sortChartAccountsForStatement,
 } from './opening-trial-balance/client'
+export {
+  assertCompactablePeriodKey,
+  hashedPeriodKey,
+  MAX_COMPACT_PERIOD_KEY,
+} from './period-key'
 export {
   assertPeriodOpen,
   compareMonths,

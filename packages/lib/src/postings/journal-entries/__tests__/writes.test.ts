@@ -30,6 +30,7 @@ const h = vi.hoisted(() => ({
   updates: [] as Array<{ recordId: string; values: Record<string, unknown> }>,
   posted: [] as Array<Record<string, unknown>>,
   reversed: [] as Array<Record<string, unknown>>,
+  archives: [] as string[],
 }))
 
 vi.mock('../../../resources/crud/unified-handler', () => ({
@@ -40,6 +41,15 @@ vi.mock('../../../resources/crud/unified-handler', () => ({
     }
     async update(recordId: string, values: Record<string, unknown>) {
       h.updates.push({ recordId, values })
+    }
+    async archive(recordId: string) {
+      h.archives.push(recordId)
+      // Mirrors what `archivedAt` actually does to every read in this module:
+      // `getJournalEntry` and `listJournalEntries` both filter
+      // `archivedAt IS NULL`, so an archived row is gone as far as `reads.ts` is
+      // concerned. Dropping it here is what lets the second-discard test below
+      // be about the real behaviour rather than about the double.
+      h.record = null
     }
   },
 }))
@@ -87,16 +97,21 @@ vi.mock('../reads', async () => {
       },
     }),
     requireJournalEntry: async () => {
-      if (!h.record) throw new Error('Journal entry not found')
+      // The real one throws `NotFoundError` for an id that does not exist, is
+      // archived, or belongs to another org - all three are deliberately
+      // indistinguishable, because "this id exists but is not yours" is itself
+      // a disclosure.
+      if (!h.record) throw new NotFoundError('Journal entry not found')
       return h.record
     },
   }
 })
 
-import { ConflictError, UnprocessableEntityError } from '../../../errors'
+import { ConflictError, NotFoundError, UnprocessableEntityError } from '../../../errors'
 import type { JournalEntryLine } from '../client'
 import {
   createJournalEntry,
+  discardJournalEntry,
   postJournalEntry,
   previewJournalEntry,
   reverseJournalEntry,
@@ -129,6 +144,7 @@ beforeEach(() => {
   h.updates = []
   h.posted = []
   h.reversed = []
+  h.archives = []
 })
 
 describe('createJournalEntry', () => {
@@ -403,5 +419,90 @@ describe('reverseJournalEntry', () => {
     const result = await reverseJournalEntry(DB, ORG, USER, { journalEntryId: 'je_1' })
     expect(result.isErr()).toBe(true)
     expect(h.reversed).toHaveLength(0)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// discardJournalEntry (plans/accounting/tasks/09-discard-a-draft-entry.md §4)
+//
+// 🛑 ARCHIVE, never delete. `journal_entry_number` is issued by `RecordSequence`
+// on CREATE, so an abandoned `JNL-0006` leaves a permanent hole in a gapless
+// sequence - and a bookkeeper who reads `JNL-0005` then `JNL-0007` has to be
+// able to find out what happened in between. A hard delete makes that
+// unanswerable; `archivedAt` keeps the row and takes it out of every read.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('discardJournalEntry', () => {
+  it('archives the draft rather than deleting it', async () => {
+    const result = await discardJournalEntry(DB, ORG, USER, { journalEntryId: 'je_1' })
+
+    expect(result.isOk()).toBe(true)
+    expect(h.archives).toEqual(['def_je:je_1'])
+    // Nothing was edited on the way out: no `discarded` status, no cleared
+    // fields. The entity layer answers "is this record gone", and a fourth
+    // status would have to be handled by every switch that renders one.
+    expect(h.updates).toHaveLength(0)
+  })
+
+  // `listJournalEntries` and `getJournalEntry` both filter `archivedAt IS NULL`
+  // (`reads.ts`), which the double above mirrors - so the discarded entry has
+  // left every read path, and asking again says so.
+  it('leaves the entry unreadable afterwards, so a second discard is NotFound', async () => {
+    expect((await discardJournalEntry(DB, ORG, USER, { journalEntryId: 'je_1' })).isOk()).toBe(true)
+
+    const second = await discardJournalEntry(DB, ORG, USER, { journalEntryId: 'je_1' })
+    expect(second.isErr()).toBe(true)
+    expect(second._unsafeUnwrapErr()).toBeInstanceOf(NotFoundError)
+    // Once, not twice.
+    expect(h.archives).toHaveLength(1)
+  })
+
+  it('refuses a posted entry, naming it and pointing at reversal', async () => {
+    h.record = { ...DRAFT, status: 'posted', glPostingId: 'post_1' }
+    const result = await discardJournalEntry(DB, ORG, USER, { journalEntryId: 'je_1' })
+
+    expect(result.isErr()).toBe(true)
+    const error = result._unsafeUnwrapErr()
+    expect(error).toBeInstanceOf(ConflictError)
+    expect(error.message).toContain('JNL-0007')
+    expect(error.message).toMatch(/cannot be discarded/)
+    expect(error.message).toMatch(/reversing it/i)
+    expect(h.archives).toHaveLength(0)
+  })
+
+  it('refuses a reversed entry the same way', async () => {
+    h.record = { ...DRAFT, status: 'reversed', glPostingId: 'post_1' }
+    const result = await discardJournalEntry(DB, ORG, USER, { journalEntryId: 'je_1' })
+
+    expect(result.isErr()).toBe(true)
+    expect(result._unsafeUnwrapErr()).toBeInstanceOf(ConflictError)
+    expect(result._unsafeUnwrapErr().message).toMatch(/reversed and cannot be discarded/)
+    expect(h.archives).toHaveLength(0)
+  })
+
+  // 🛑 The dangerous row, and the reason the status check alone is not enough.
+  // `postJournalEntry` claims the posting FIRST and stamps the record SECOND, so
+  // a run that dies in between leaves exactly this: status `draft`, posting id
+  // set. Archiving it would orphan a `GlPosting` whose `sourceId` no read path
+  // resolves, which A/R aging then carries under "Unapplied and adjustments"
+  // forever.
+  it('refuses a draft that already carries a posting id', async () => {
+    h.record = { ...DRAFT, status: 'draft', glPostingId: 'post_1' }
+    const result = await discardJournalEntry(DB, ORG, USER, { journalEntryId: 'je_1' })
+
+    expect(result.isErr()).toBe(true)
+    expect(result._unsafeUnwrapErr()).toBeInstanceOf(ConflictError)
+    expect(result._unsafeUnwrapErr().message).toMatch(/already has a posting/)
+    expect(h.archives).toHaveLength(0)
+  })
+
+  // `requireJournalEntry` is org-scoped, and another org's id is deliberately
+  // indistinguishable from one that never existed.
+  it("is NotFound for another org's entry, and archives nothing", async () => {
+    h.record = null
+    const result = await discardJournalEntry(DB, ORG, USER, { journalEntryId: 'je_other_org' })
+
+    expect(result.isErr()).toBe(true)
+    expect(result._unsafeUnwrapErr()).toBeInstanceOf(NotFoundError)
+    expect(h.archives).toHaveLength(0)
   })
 })

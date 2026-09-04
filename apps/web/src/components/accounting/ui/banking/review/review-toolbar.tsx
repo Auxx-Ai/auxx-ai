@@ -2,18 +2,18 @@
 
 'use client'
 
-import { FieldType } from '@auxx/database/enums'
 import type { BankAccountRow } from '@auxx/lib/banking/client'
 import { REVIEW_STATUS_LABELS, type ReviewQueueState } from '@auxx/lib/banking/review/client'
 import { Button } from '@auxx/ui/components/button'
 import { Combobox } from '@auxx/ui/components/combobox'
+import { type DateRange, DateRangePicker } from '@auxx/ui/components/date-range-picker'
 import { Input } from '@auxx/ui/components/input'
 import { InputSearch } from '@auxx/ui/components/input-search'
 import { ListToolbar, ListToolbarGroup } from '@auxx/ui/components/list-toolbar'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { Separator } from '@auxx/ui/components/separator'
+import { format } from 'date-fns'
 import { CircleX } from 'lucide-react'
-import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 
 /** Every filter the queue narrows on. All of them run in SQL. */
 export interface ReviewFilters {
@@ -57,11 +57,23 @@ interface ReviewToolbarProps {
 }
 
 /**
+ * A calendar day as the filter holds it: `YYYY-MM-DD` in the VIEWER's zone.
+ *
+ * ⚠️ Not `toISOString().slice(0, 10)`. The picker's presets are built from
+ * `startOfDay`/`endOfDay` in local time, so west of UTC the ISO string is
+ * already the next day and every preset landed a day late.
+ */
+const asDay = (date: Date) => format(date, 'yyyy-MM-dd')
+
+/** `YYYY-MM-DD` back to local midnight, the same round trip in reverse. */
+const asDate = (day: string) => new Date(`${day}T00:00:00`)
+
+/**
  * The queue's toolbar: account, state, search, date range, amount range
  * (plans/accounting/ui-plan.md §2.8).
  *
  * TWO `ListToolbar` rows inside one sticky block, not one row: the six-item
- * state `RadioTab` plus an account combobox plus search plus two dates plus two
+ * state `RadioTab` plus an account combobox plus search plus a date range plus two
  * amounts cannot share a line at any width a person actually uses, and
  * `ListToolbar`'s `overflow-x-auto` turns that into a horizontal scroll that
  * hides half the filters. Row one is what you are looking AT (account, then
@@ -84,6 +96,12 @@ export function ReviewToolbar({
 }: ReviewToolbarProps) {
   const set = <K extends keyof ReviewFilters>(key: K, value: ReviewFilters[K]) =>
     onChange({ ...filters, [key]: value })
+
+  // Both ends or neither: `DateRangePicker` only ever hands back a complete
+  // range, and a half-open one would render as a selection the picker cannot
+  // reproduce.
+  const range =
+    filters.from && filters.to ? { from: asDate(filters.from), to: asDate(filters.to) } : undefined
 
   const dirty =
     !!filters.search || !!filters.from || !!filters.to || !!filters.amountMin || !!filters.amountMax
@@ -156,10 +174,20 @@ export function ReviewToolbar({
         </ListToolbarGroup>
 
         <ListToolbarGroup className='shrink-0'>
-          <span className='shrink-0 text-muted-foreground text-xs'>Date</span>
-          <DateFilter label='From' value={filters.from} onChange={(next) => set('from', next)} />
-          <span className='shrink-0 text-muted-foreground text-xs'>to</span>
-          <DateFilter label='To' value={filters.to} onChange={(next) => set('to', next)} />
+          {/* ONE control, not two boxes. A bookkeeper working a backlog reaches
+              for "last 30 days" or "this quarter" far more often than for a
+              specific pair of days, and two date fields cannot offer either -
+              the presets are the point, the custom range is the fallback. */}
+          <DateRangePicker
+            value={range}
+            onChange={(next: DateRange) =>
+              onChange({ ...filters, from: asDay(next.from), to: asDay(next.to) })
+            }
+            showShortLabel
+            placeholder='Any date'
+            triggerVariant='ghost'
+            triggerClassName='h-7 w-48 text-xs'
+          />
         </ListToolbarGroup>
 
         <ListToolbarGroup className='shrink-0'>
@@ -183,36 +211,6 @@ export function ReviewToolbar({
 
         {dirty && <ListToolbarGroup className='shrink-0'>{clear}</ListToolbarGroup>}
       </ListToolbar>
-    </div>
-  )
-}
-
-/**
- * One end of the date range, on the app's own date input rather than a native
- * `<input type='date'>` so it matches every other date in the product.
- *
- * ⚠️ The value contract is the one `journal-entry-drawer.tsx` keeps: a calendar
- * day goes IN as `YYYY-MM-DDT00:00:00.000Z` and comes back OUT sliced to ten
- * characters. Handing the picker a bare `YYYY-MM-DD` reads as an instant and
- * lands a day early for every viewer west of UTC.
- */
-function DateFilter({
-  label,
-  value,
-  onChange,
-}: {
-  label: string
-  value: string
-  onChange: (next: string) => void
-}) {
-  return (
-    <div className='w-40 shrink-0' role='group' aria-label={label}>
-      <FieldInputAdapter
-        fieldType={FieldType.DATE}
-        value={value ? `${value}T00:00:00.000Z` : null}
-        onChange={(next) => onChange(typeof next === 'string' ? next.slice(0, 10) : '')}
-        triggerProps={{ size: 'sm', className: 'h-7 w-40 px-2 text-xs' }}
-      />
     </div>
   )
 }

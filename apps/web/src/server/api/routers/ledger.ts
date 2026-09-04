@@ -9,6 +9,7 @@ import {
   confirmSuggestedIdentities,
   createChartAccount,
   createJournalEntry,
+  discardJournalEntry,
   GL_ACCOUNT_TYPES,
   getJournalEntry,
   getPosting,
@@ -942,6 +943,30 @@ export const ledgerRouter = createTRPCRouter({
         })
         if (result.isErr()) throw result.error
         return result.value
+      }),
+
+    /**
+     * Throw a DRAFT away. Archives the record; the row and its number stay.
+     *
+     * 🛑 `ledgerPost`, not `ledgerView`. Discarding is a write, and the key that
+     * gates creating and editing a draft is the key that gates throwing one
+     * away - handing it to a read-only ledger member would let them clear the
+     * Entries list of somebody else's half-finished adjusting entries.
+     *
+     * The lib error is rethrown UNWRAPPED so `auxxErrorMiddleware` maps its
+     * `ConflictError` to a 409, exactly as `post` and `reverse` do: a posted
+     * entry refuses here and the message points at reversal, and flattening it
+     * into a 500 would throw that sentence away.
+     */
+    discard: permissionProcedure(PermissionKey.ledgerPost)
+      .input(z.object({ id: z.string().min(1) }))
+      .mutation(async ({ ctx, input }) => {
+        const { organizationId, userId } = ctx.session
+        const result = await discardJournalEntry(ctx.db, organizationId, userId, {
+          journalEntryId: input.id,
+        })
+        if (result.isErr()) throw result.error
+        return { id: input.id, discarded: true }
       }),
 
     /**

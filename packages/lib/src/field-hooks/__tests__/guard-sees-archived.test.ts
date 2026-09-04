@@ -64,6 +64,20 @@ const KNOWN_UNFIXED = [
   'work-order-delete-guard.ts',
 ]
 
+/**
+ * Guards that read NO children at all, so neither path is available to get
+ * wrong.
+ *
+ * `journal-entry-delete-guard.ts` decides entirely from the values
+ * `captureEventData` already put on the event - the entry's own status and its
+ * own `glPostingId` - and cascades nothing, because a journal entry owns no
+ * child records (its lines are a JSON column on the row itself). The assertion
+ * below is what keeps this from becoming a loophole: a guard listed here must
+ * call NEITHER reader, so the moment one starts reading children it fails and
+ * has to be moved into `FIXED`.
+ */
+const NO_CHILD_READS = ['journal-entry-delete-guard.ts']
+
 function source(file: string): string {
   return readFileSync(join(PRE_DIR, file), 'utf8')
 }
@@ -73,7 +87,7 @@ describe('delete guards read children through a path that sees archived rows', (
     const onDisk = readdirSync(PRE_DIR)
       .filter((f) => f.endsWith('-delete-guard.ts') && !f.endsWith('.test.ts'))
       .sort()
-    expect(onDisk).toEqual([...FIXED, ...KNOWN_UNFIXED].sort())
+    expect(onDisk).toEqual([...FIXED, ...KNOWN_UNFIXED, ...NO_CHILD_READS].sort())
   })
 
   it.each(FIXED)('%s reads children through findRelatedInstanceIds, not listFiltered', (file) => {
@@ -85,6 +99,12 @@ describe('delete guards read children through a path that sees archived rows', (
 
   it.each(KNOWN_UNFIXED)('%s is still on the old path — pinned, not forgotten', (file) => {
     expect(source(file)).toMatch(/handler\.listFiltered\(/)
+  })
+
+  it.each(NO_CHILD_READS)('%s reads no children through either path', (file) => {
+    const src = source(file)
+    expect(src).not.toMatch(/handler\.listFiltered\(/)
+    expect(src).not.toContain('findRelatedInstanceIds')
   })
 
   it('the shared reader applies no archivedAt predicate', () => {

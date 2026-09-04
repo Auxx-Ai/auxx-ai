@@ -17,6 +17,16 @@ export {
   type SetAccountIdentityOptions,
   setAccountIdentity,
 } from './account-identities'
+// ── plans/accounting/tasks/07: customer deposits are a liability ────────────
+export {
+  type BuildDepositApplicationEntryInput,
+  type BuiltDepositApplicationEntry,
+  buildDepositApplicationEntry,
+  DEPOSIT_APPLICATION_PERIOD_KEY_PREFIX,
+  DEPOSIT_APPLICATION_POSTING_TYPE,
+  DEPOSIT_APPLICATION_SOURCE_TYPE,
+  depositApplicationPeriodKey,
+} from './build-deposit-application-entry'
 export {
   ACCOUNT_ROLE_LABELS,
   ACCOUNT_ROLES,
@@ -43,6 +53,14 @@ export {
   toAmountMinor,
   toChannelKey,
 } from './build-fulfillment-entry'
+// ── plans/accounting/tasks/08: the receivable nothing debits ────────────────
+export {
+  type BuildInvoiceEntryInput,
+  type BuiltInvoiceEntry,
+  buildInvoiceEntry,
+  INVOICE_ISSUED_POSTING_TYPE,
+  INVOICE_SOURCE_TYPE,
+} from './build-invoice-entry'
 // ── HANDOFF slot 1A: manual journal entries ───────────────────────────────
 export {
   type BuildManualEntryInput,
@@ -85,7 +103,13 @@ export {
   PAYOUT_SOURCE_TYPE,
 } from './build-payout-entry'
 // ── HANDOFF slot 2K (accountant profile, 1099/W-9, write-off) ──────────────
-export { type BuildWriteOffEntryInput, buildWriteOffEntry } from './build-write-off-entry'
+export {
+  type BuildWriteOffEntryInput,
+  buildWriteOffEntry,
+  MAX_WRITE_OFF_ATTEMPT,
+  WRITE_OFF_SOURCE_TYPE,
+  writeOffPeriodKey,
+} from './build-write-off-entry'
 export {
   type CreateChartAccountOptions,
   createChartAccount,
@@ -127,6 +151,7 @@ export { gatherMonthEndInventoryInputs } from './gather-month-end-inventory'
 export {
   type CreateJournalEntryInput,
   createJournalEntry,
+  discardJournalEntry,
   getJournalEntry,
   JOURNAL_ENTRY_POSTING_TYPE,
   type JournalEntryKindValue,
@@ -165,6 +190,11 @@ export {
   saveOpeningTrialBalance,
   sortChartAccountsForStatement,
 } from './opening-trial-balance'
+export {
+  assertCompactablePeriodKey,
+  hashedPeriodKey,
+  MAX_COMPACT_PERIOD_KEY,
+} from './period-key'
 export { PERIOD_LOCK_SETTING_KEY, resolvePeriodLock } from './period-lock'
 export {
   assertPeriodOpen,

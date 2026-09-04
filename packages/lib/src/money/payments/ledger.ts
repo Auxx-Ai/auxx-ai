@@ -23,6 +23,7 @@ import type {
   SyncInvoicePaymentStateInput,
 } from '../types'
 import { type DepositForAllocation, planDepositApplication } from './deposit-allocation'
+import { postDepositApplications } from './post-deposit-application'
 import { listPaymentPostings, postPaymentTransaction } from './post-transaction'
 
 const logger = createScopedLogger('money-ledger')
@@ -376,7 +377,33 @@ export async function syncTransaction(params: {
   // logged there with its status and whether the period was claimed, and
   // surfaced by `listUnpostedPeriods` once a claim exists. A payment must not
   // fail because its bookkeeping did.
-  await postPaymentTransaction(db, { organizationId, transaction, actorUserId: userId })
+  const allocatedMinor = allocations.reduce((sum, allocation) => sum + allocation.amount, 0)
+  await postPaymentTransaction(db, {
+    organizationId,
+    transaction,
+    actorUserId: userId,
+    // 🛑 What is NOT allocated is a CUSTOMER DEPOSIT - money held, not a
+    // receivable relieved. The allocations are already loaded at the top of
+    // this function, so the split costs nothing here; crediting the whole
+    // receipt to `accounts_receivable` drives A/R negative by the deposit book
+    // and leaves `2350` at zero, with both entries balancing
+    // (plans/accounting/tasks/07-customer-deposits.md).
+    allocatedMinor,
+  })
+
+  // ── The reclass, after the receipt ───────────────────────────────────────
+  //
+  // 🛑 SECOND, and never an amendment of the entry above. The receipt records
+  // what was true when the money arrived; an allocation made later is its own
+  // event, dated its own day. A held deposit applied to an invoice moves out of
+  // `customer_deposits` and relieves the receivable the invoice raised.
+  //
+  // A no-op for an ordinary invoice payment: its allocation was already in
+  // place when the receipt posted, so the receipt credited the whole amount to
+  // `accounts_receivable` and nothing is left held.
+  //
+  // ⚠️ Never throws, for the same reason `postPaymentTransaction` does not.
+  await postDepositApplications(db, { organizationId, transaction, actorUserId: userId })
 }
 
 /**
@@ -600,8 +627,13 @@ const ACCEPTED_REVERSAL_STATUSES = new Set<string>([
  * the row that produced them is deleted.
  *
  * 🛑 **Ground rule 6: correct by reversal, never by edit or delete.**
- * `syncTransaction` posts `Dr undeposited_funds Cr accounts_receivable` for
- * every succeeded charge. Deleting the `PaymentTransaction` row without this
+ * `syncTransaction` posts `Dr undeposited_funds Cr accounts_receivable |
+ * customer_deposits` for every succeeded charge, plus one
+ * `deposit_application` reclass per allocation made after the money arrived.
+ * Both carry the same `payment_transaction`/`sourceId` pair, so
+ * `listPaymentPostings` finds all of them and this backs all of them out.
+ *
+ * Deleting the `PaymentTransaction` row without this
  * would leave that entry standing forever, pointing at a `sourceId` that no
  * longer resolves: A/R would stay reduced by a payment that no longer exists,
  * and undeposited funds would carry a balance no bank deposit can ever clear,
@@ -628,9 +660,18 @@ async function reversePaymentPostings(
   const postings = await listPaymentPostings(db, { organizationId, transactionId })
   // `reversed` is already backed out and reversing it again would double the
   // correction; `failed` never reached the ledger at all.
-  const live = postings.filter(
-    (posting) => posting.status !== 'reversed' && posting.status !== 'failed'
-  )
+  //
+  // 🛑 The RECLASS comes out before the RECEIPT. A `deposit_application` debits
+  // `customer_deposits` against a liability the receipt entry raised, so backing
+  // the receipt out first leaves the reclass standing on a liability that no
+  // longer exists - `2350` ends negative by the applied amount and the
+  // receivable ends over-relieved, both with balanced entries. Undoing a pair of
+  // entries is undoing them in the opposite order they were made.
+  const live = postings
+    .filter((posting) => posting.status !== 'reversed' && posting.status !== 'failed')
+    .sort((a, b) =>
+      a.postingType === b.postingType ? 0 : a.postingType === 'deposit_application' ? -1 : 1
+    )
   if (live.length === 0) return
 
   const lock = await resolvePeriodLock(organizationId)

@@ -86,6 +86,8 @@ import { migration122OrderShippingAndNote } from './migrations/122-order-shippin
 import { migration123PartSkuOptional } from './migrations/123-part-sku-optional'
 import { migration124BuildBatchSourceAndPeriod } from './migrations/124-build-batch-source-and-period'
 import { migration125AccountingBooks } from './migrations/125-accounting-books'
+import { migration126ServiceRevenueAccount } from './migrations/126-service-revenue-account'
+import { migration128InvoiceWrittenOff } from './migrations/128-invoice-written-off'
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
@@ -242,6 +244,12 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   // the order shipment log and the `accountant` profile. MUST sort after 108 -
   // three of its steps extend what 108 seeds and skip an org without it.
   migration125AccountingBooks,
+  // `4030 Service Revenue` and its `revenue_service` role - the credit leg of
+  // the invoice issuance entry. MUST sort after 108, which owns the chart.
+  migration126ServiceRevenueAccount,
+  // `invoice_written_off`, backfilled from the write_off postings already in the
+  // ledger. MUST sort after 108, which owns the `invoice` def it widens.
+  migration128InvoiceWrittenOff,
 ]
 
 /**

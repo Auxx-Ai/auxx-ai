@@ -401,6 +401,7 @@ export const SYSTEM_ATTRIBUTES = [
   'invoice_total',
   'invoice_amount_paid',
   'invoice_balance',
+  'invoice_written_off',
   'invoice_notes',
   'invoice_terms',
   'invoice_pdf_asset',

@@ -294,6 +294,13 @@ export function LedgerPage({ periodKey }: LedgerPageProps) {
         openPosting(glPostingId)
       }}
       onOpenPosting={openPosting}
+      onDiscarded={() => {
+        // The record is archived, so every read that could still be showing it
+        // is stale - and the drawer itself is now open over a record no read
+        // path returns. Close it.
+        void setJournalEntryParam(null)
+        void utils.ledger.journalEntry.list.invalidate()
+      }}
     />
   )
 
