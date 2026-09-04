@@ -7,4 +7,5 @@ export type {
   HostedProvisionCompleteResult,
   HostedProvisionHandler,
   HostedProvisionStartCtx,
+  HostedProvisionStartResult,
 } from './types'

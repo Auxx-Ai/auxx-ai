@@ -78,6 +78,7 @@ describe('order entity registration wiring', () => {
       'discountValue',
       'financialStatus',
       'fulfillmentStatus',
+      'fulfillments', // added by migration 125 — the shipment log (accounting/tasks/01 §5)
       'id',
       'lineItems',
       'note', // added by migration 122 — money plan 37 §10.1

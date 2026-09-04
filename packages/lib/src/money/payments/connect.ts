@@ -5,6 +5,7 @@ import type {
   HostedProvisionCompleteResult,
   HostedProvisionHandler,
   HostedProvisionStartCtx,
+  HostedProvisionStartResult,
 } from '../../connections/hosted-provision/types'
 import { NotFoundError } from '../../errors'
 import { getPaymentAccount, upsertPaymentAccount } from './account-state'
@@ -22,7 +23,10 @@ import { getStripeConnectClient } from './connect-client'
 export const stripeConnectHandler: HostedProvisionHandler = {
   landingPath: '/app/dispatch/settings/payments',
 
-  async start(ctx: HostedProvisionStartCtx): Promise<{ redirectUrl: string }> {
+  // `redirect` is the branch this handler has always been: Stripe hosts the Account
+  // Links page and sends the user back to the return route. It names no capability and
+  // reads none - the connect surface branches on what came back (decision B13).
+  async start(ctx: HostedProvisionStartCtx): Promise<HostedProvisionStartResult> {
     const stripe = getStripeConnectClient()
 
     const existing = await getPaymentAccount(ctx.organizationId)
@@ -58,7 +62,7 @@ export const stripeConnectHandler: HostedProvisionHandler = {
       type: 'account_onboarding',
     })
 
-    return { redirectUrl: link.url }
+    return { kind: 'redirect', url: link.url }
   },
 
   async complete(ctx: HostedProvisionCompleteCtx): Promise<HostedProvisionCompleteResult> {

@@ -14,6 +14,14 @@ export interface CurrencyDisplayOptions {
    * `$1.5M` / `$1.5B` via Intl's `notation: 'compact'`.
    */
   currencyDisplay?: 'symbol' | 'code' | 'name' | 'compact'
+  /**
+   * How a negative amount renders (default `'minus'`, `Intl`'s own behaviour -
+   * a leading `-$1,234.56`). `'parentheses'` renders `($1,234.56)` instead,
+   * the accounting convention `packages/lib/src/postings/reports/pdf/` uses
+   * for a printed statement - screens keep the minus (`formatSignedMinor`
+   * already matches it), so this is opt-in rather than a default change.
+   */
+  negativeStyle?: 'minus' | 'parentheses'
 }
 
 const exponentCache = new Map<string, number>()
@@ -142,7 +150,20 @@ export function formatCurrency(
 ): string {
   if (minorUnits === null || minorUnits === undefined) return '-'
 
-  const { currencyCode = 'USD', useGrouping = true, currencyDisplay = 'symbol' } = options
+  const {
+    currencyCode = 'USD',
+    useGrouping = true,
+    currencyDisplay = 'symbol',
+    negativeStyle = 'minus',
+  } = options
+
+  // Parentheses format the MAGNITUDE and wrap it, rather than asking Intl for
+  // a negative sign it would otherwise render - so this recurses once, on the
+  // absolute value, with `negativeStyle` reset to the default so it cannot
+  // recurse twice.
+  if (negativeStyle === 'parentheses' && minorUnits < 0) {
+    return `(${formatCurrency(-minorUnits, { ...options, negativeStyle: 'minus' })})`
+  }
 
   const exponent = minorUnitExponent(currencyCode)
   const decimals = options.decimals ?? exponent

@@ -29,11 +29,63 @@ export {
   ROLE_ACCOUNT_TYPES,
   type VendorBillEntryInput,
 } from './build-entry'
+// ── HANDOFF slot 2G: the revenue side (tasks/01 phases A to C) ──────────────
+export {
+  type BuildFulfillmentEntryInput,
+  type BuiltFulfillmentEntry,
+  buildFulfillmentEntry,
+  CHANNEL_REVENUE_ROLE,
+  extendRateToAmount,
+  FULFILLMENT_SOURCE_TYPE,
+  type FulfillmentShippedLine,
+  fulfillmentPeriodKey,
+  type OrderChannelKey,
+  toAmountMinor,
+  toChannelKey,
+} from './build-fulfillment-entry'
+// ── HANDOFF slot 1A: manual journal entries ───────────────────────────────
+export {
+  type BuildManualEntryInput,
+  type BuiltManualEntry,
+  buildManualEntry,
+  MANUAL_ENTRY_SOURCE_TYPE,
+  type ManualEntryLine,
+  type ManualPostingType,
+  toMinorUnits,
+} from './build-manual-entry'
 export {
   type BuiltMonthEndInventoryDraft,
   buildMonthEndInventoryEntry,
   type MonthEndInventoryInputs,
 } from './build-month-end-inventory'
+// ── HANDOFF slot 1C: the opening trial balance ─────────────────────────────
+export {
+  type BuildOpeningBalanceEntryInput,
+  type BuiltOpeningBalanceEntry,
+  buildOpeningBalanceEntry,
+  cutoverDateFor,
+  OPENING_ENTRY_SOURCE_TYPE,
+  type OpeningBalanceLine,
+} from './build-opening-balance-entry'
+export {
+  type BuildPaymentEntryInput,
+  type BuiltPaymentEntry,
+  buildPaymentEntry,
+  PAYMENT_PERIOD_KEY_PREFIX,
+  PAYMENT_ROUTE_ROLE,
+  PAYMENT_SOURCE_TYPE,
+  type PaymentEntryTransaction,
+  paymentPeriodKey,
+} from './build-payment-entry'
+export {
+  type BuildPayoutEntryInput,
+  type BuiltPayoutEntry,
+  buildPayoutEntry,
+  PAYOUT_CLEARING_ROLES,
+  PAYOUT_SOURCE_TYPE,
+} from './build-payout-entry'
+// ── HANDOFF slot 2K (accountant profile, 1099/W-9, write-off) ──────────────
+export { type BuildWriteOffEntryInput, buildWriteOffEntry } from './build-write-off-entry'
 export {
   type CreateChartAccountOptions,
   createChartAccount,
@@ -73,11 +125,46 @@ export {
 } from './draft'
 export { gatherMonthEndInventoryInputs } from './gather-month-end-inventory'
 export {
+  type CreateJournalEntryInput,
+  createJournalEntry,
+  getJournalEntry,
+  JOURNAL_ENTRY_POSTING_TYPE,
+  type JournalEntryKindValue,
+  type JournalEntryLine,
+  type JournalEntryRecord,
+  type JournalEntryStatusValue,
+  type ListJournalEntriesFilters,
+  listJournalEntries,
+  type PostingSummary,
+  type PreviewJournalEntryInput,
+  postJournalEntry,
+  previewJournalEntry,
+  reverseJournalEntry,
+  type UpdateJournalEntryInput,
+  updateJournalEntry,
+} from './journal-entries'
+export { listPostings, listPostingsForSource } from './list-postings'
+export {
   FINALIZED_SETUP_STATE,
   OPENING_BASELINE_SETTING_KEYS,
   type OpeningBaseline,
   readOpeningBaseline,
 } from './opening-baseline'
+export {
+  findOpeningTrialBalanceEntry,
+  OPENING_TRIAL_BALANCE_FREEZE_KEY,
+  OPENING_TRIAL_BALANCE_KIND,
+  type OpeningTrialBalancePosting,
+  type OpeningTrialBalanceRow,
+  type OpeningTrialBalanceView,
+  postOpeningTrialBalance,
+  previewOpeningTrialBalance,
+  readOpeningTrialBalance,
+  rowsToJournalEntryLines,
+  type SaveOpeningTrialBalanceInput,
+  saveOpeningTrialBalance,
+  sortChartAccountsForStatement,
+} from './opening-trial-balance'
 export { PERIOD_LOCK_SETTING_KEY, resolvePeriodLock } from './period-lock'
 export {
   assertPeriodOpen,
@@ -98,6 +185,7 @@ export {
   postEntry,
   previewEntry,
 } from './post-entry'
+export { type PostPayoutEntryOptions, postPayoutEntry } from './post-payout-entry'
 export {
   type AccountingProvider,
   type AccountingProviderFactory,
@@ -110,15 +198,115 @@ export {
   resolveAccountingProvider,
   setConnectedProviderResolver,
 } from './provider'
-export { getPosting } from './read-posting'
+export { getPosting, readPostingLineSourceIds } from './read-posting'
 export {
   ENABLED_POSTING_TYPES,
   findInventoryWriterConflicts,
+  findWriterConflicts,
   INVENTORY_ROLES,
   INVENTORY_ROLES_BY_POSTING_TYPE,
   type InventoryWriterConflict,
+  SINGLE_WRITER_ROLES,
+  SINGLE_WRITER_ROLES_BY_POSTING_TYPE,
+  type WriterConflict,
 } from './regime'
-export { type ResolvedAccount, resolveRoles } from './resolve-roles'
+// ── Statements (HANDOFF slot 1E, wave 1) ────────────────────────────────────
+export {
+  type AccountLineRow,
+  type AccountLines,
+  type ReadAccountLinesOptions,
+  readAccountLines,
+} from './reports/account-lines'
+export {
+  balanceSheetColumns,
+  TRIAL_BALANCE_COLUMNS,
+  toBalanceSheetRows,
+  toProfitAndLossRows,
+  toTrialBalanceRows,
+} from './reports/adapters'
+// ── Aging (HANDOFF slot 2H, wave 2) ─────────────────────────────────────────
+export {
+  AGING_BUCKET_LABELS,
+  AGING_COLUMNS,
+  AGING_UNAPPLIED_GROUP_ID,
+  type Aging,
+  type AgingBucketKey,
+  type AgingDocument,
+  type AgingGroup,
+  type AgingSide,
+  agingBucket,
+  type ReadAgingOptions,
+  readAging,
+  toAgingRows,
+} from './reports/aging'
+export {
+  type BalanceSheet,
+  type BalanceSheetRow,
+  type BalanceSheetSnapshot,
+  type ReadBalanceSheetOptions,
+  readBalanceSheet,
+} from './reports/balance-sheet'
+export {
+  type Completeness,
+  type CompletenessItem,
+  type ReadCompletenessOptions,
+  readCompleteness,
+} from './reports/completeness'
+export { fiscalYearStart, previousCalendarDay } from './reports/fiscal-year'
+export {
+  type RenderStatementPdfOptions,
+  type RenderStatementPdfParamsByKind,
+  type RenderStatementPdfResult,
+  renderStatementPdf,
+  type StatementKind,
+} from './reports/pdf/render-statement-pdf'
+export {
+  type ProfitAndLoss,
+  type ProfitAndLossRow,
+  type ProfitAndLossSnapshot,
+  type ReadProfitAndLossOptions,
+  readProfitAndLoss,
+} from './reports/profit-and-loss'
+export {
+  computedRow,
+  type StatementColumn,
+  type StatementLineInput,
+  type StatementRow,
+  statementSection,
+  toCsvRows,
+  totalRow,
+} from './reports/rows'
+export {
+  NATURAL_BALANCE_DIRECTION,
+  type NetIncomeRow,
+  netIncome,
+  type RetainedEarnings,
+  type RetainedEarningsInput,
+  retainedEarnings,
+  signedBalance,
+} from './reports/statement-math'
+export {
+  type ReadTrialBalanceOptions,
+  readTrialBalance,
+  type TrialBalance,
+  type TrialBalanceRow,
+} from './reports/trial-balance'
+export {
+  type ReadVendor1099SummaryOptions,
+  readVendor1099Summary,
+  toVendor1099CsvRows,
+  toVendor1099Rows,
+  VENDOR_1099_COLUMNS,
+  VENDOR_1099_THRESHOLD_MINOR,
+  type Vendor1099Row,
+  type Vendor1099Summary,
+} from './reports/vendor-1099'
+export {
+  loadRoleAccountCodes,
+  type ResolvedAccount,
+  resolveAccountLines,
+  resolveRoles,
+} from './resolve-roles'
 export { type ReverseEntryOptions, reverseEntry } from './reverse-entry'
 export {
   listChartAccounts,
@@ -127,6 +315,15 @@ export {
   type SetRoleAssignmentOptions,
   setRoleAssignment,
 } from './role-map'
+export { assertAccountingSetupUnfrozen, FROZEN_SETUP_SETTING_KEYS } from './settled-periods'
+export {
+  type OpeningTrialBalanceSummary,
+  openingTrialBalanceDifference,
+  resolveSetupReadiness,
+  type SetupReadiness,
+  type SetupReadinessContext,
+  summariseOpeningTrialBalance,
+} from './setup-readiness'
 export {
   type AccountSuggestion,
   isMappableTo,

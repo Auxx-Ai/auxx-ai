@@ -2,6 +2,10 @@
 
 export { type AgentDraftCleanupStats, agentDraftCleanupJob } from './agent-draft-cleanup-job'
 export { type AppStorageSweepStats, appStorageSweepJob } from './app-storage-sweep-job'
+export {
+  type BankFeedMaintenanceStats,
+  bankFeedMaintenanceJob,
+} from './bank-feed-maintenance-job'
 // Per-request provider deletion / deauthorize teardown (plan §4.4). On-demand,
 // enqueued by the Meta signed_request routes and the Shopify compliance webhook.
 export {

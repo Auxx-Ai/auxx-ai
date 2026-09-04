@@ -1,9 +1,11 @@
 // packages/lib/src/resources/hooks/index.ts
 
+export { BANK_DEPOSIT_HOOKS } from './bank-deposit-hooks'
 export { BUILD_HOOKS } from './build-hooks'
 export { autoSetCreatedBy, COMMON_HOOKS } from './common-hooks'
 export { CONTACT_HOOKS } from './contact-hooks'
 export { INVOICE_HOOKS } from './invoice-hooks'
+export { JOURNAL_ENTRY_HOOKS } from './journal-entry-hooks'
 export { LINE_ITEM_HOOKS } from './line-item-hooks'
 export { ORDER_HOOKS } from './order-hooks'
 export { PAYMENT_HOOKS } from './payment-hooks'

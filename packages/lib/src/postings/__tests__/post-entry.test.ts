@@ -991,3 +991,186 @@ describe('previewEntry', () => {
     expect(preview.lines).toHaveLength(0)
   })
 })
+
+// ── HANDOFF slot 1A: code lines and the inventory refusal ─────────────────
+//
+// A manual entry names accounts by CODE, so it is invisible to
+// `findWriterConflicts` in `regime.ts` by construction - a code line carries no
+// role. That is deliberate for `cash` (an opening bank balance IS a manual cash
+// line) and dangerous for the three inventory accounts, which the L1 month-end
+// entry ASSERTS to a computed balance. Two writers there is not additive: the
+// next close moves the account back and dumps the residual into the COGS plug,
+// where it reads exactly like consumption, and both entries balance.
+
+/** A two-line manual entry, coded by account number. */
+function manualEntry(codes: [string, string]): BuiltEntry {
+  return {
+    postingType: 'manual_journal',
+    periodKey: 'JNL-0007',
+    txnDate: '2026-08-18',
+    lines: [
+      {
+        accountCode: codes[0],
+        direction: 'debit',
+        amount: 50_000,
+        sourceType: 'journal_entry',
+        sourceId: 'je_1',
+        sortOrder: 0,
+      },
+      {
+        accountCode: codes[1],
+        direction: 'credit',
+        amount: 50_000,
+        sourceType: 'journal_entry',
+        sourceId: 'je_1',
+        sortOrder: 1,
+      },
+    ],
+    totalDebit: 50_000,
+    totalCredit: 50_000,
+  }
+}
+
+const RENT: Account = {
+  id: 'acct_rent',
+  code: '6200',
+  name: 'Rent Expense',
+  accountType: 'expense',
+}
+const ACCRUED: Account = {
+  id: 'acct_accrued',
+  code: '2100',
+  name: 'Accrued Liabilities',
+  accountType: 'liability',
+}
+
+/** The full chart plus two role-less accounts a human would code against. */
+const MANUAL_CHART: Chart[] = [
+  ...FULL_CHART,
+  { role: 'unused_rent', account: RENT },
+  { role: 'unused_accrued', account: ACCRUED },
+]
+
+describe('code-based entries', () => {
+  it('posts a manual entry coded by account number, with no role on the lines', async () => {
+    const fake = createFakeDb(MANUAL_CHART)
+    setConnectedProviderResolver(async () => null)
+
+    const result = await postEntry(fake.db, {
+      organizationId: ORG,
+      entry: manualEntry(['6200', '2100']),
+      lock: OPEN,
+    })
+
+    expect(result.status).toBe('not_connected')
+    expect(fake.lines.map((line) => line.accountCode)).toEqual(['6200', '2100'])
+    // 🛑 Null, not the empty string: `GlPostingLine.accountRole` is nullable
+    // precisely so a coded line can say "there was no role", and `reverseEntry`
+    // branches on it to skip the drift check.
+    expect(fake.lines.map((line) => line.accountRole)).toEqual([null, null])
+  })
+
+  it('mints a document number keyed on the entry number', async () => {
+    const fake = createFakeDb(MANUAL_CHART)
+    setConnectedProviderResolver(async () => null)
+
+    const result = await postEntry(fake.db, {
+      organizationId: ORG,
+      entry: manualEntry(['6200', '2100']),
+      lock: OPEN,
+    })
+    expect(result.docNumber).toBe('AUXX-JNL-JNL0007')
+  })
+
+  // `account_invalid`, not `account_unmapped`: "you never mapped this role" and
+  // "there is no such account" send two different people to two different
+  // screens, and the remedy card branches on the status.
+  it('refuses a code the chart does not hold as account_invalid, writing nothing', async () => {
+    const fake = createFakeDb(MANUAL_CHART)
+    setConnectedProviderResolver(async () => null)
+
+    const result = await postEntry(fake.db, {
+      organizationId: ORG,
+      entry: manualEntry(['9999', '2100']),
+      lock: OPEN,
+    })
+
+    expect(result.status).toBe('account_invalid')
+    expect(result.error).toMatch(/9999/)
+    expect(fake.postings).toHaveLength(0)
+    expect(fake.lines).toHaveLength(0)
+  })
+
+  it('refuses an inventory account named by code, naming it and the remedy', async () => {
+    const fake = createFakeDb(MANUAL_CHART)
+    setConnectedProviderResolver(async () => null)
+
+    const result = await postEntry(fake.db, {
+      organizationId: ORG,
+      // 1310 carries `inventory_raw_materials` in this chart.
+      entry: manualEntry(['1310', '2100']),
+      lock: OPEN,
+    })
+
+    expect(result.status).toBe('inventory_role_refused')
+    expect(result.error).toMatch(/1310 Raw Materials Inventory/)
+    expect(result.error).toMatch(/inventory_raw_materials/)
+    expect(result.error).toMatch(/stock movement/i)
+    expect(fake.postings).toHaveLength(0)
+  })
+
+  it('surfaces the inventory refusal on a PREVIEW too, as blockedBy', async () => {
+    const fake = createFakeDb(MANUAL_CHART)
+
+    const preview = await previewEntry(fake.db, {
+      organizationId: ORG,
+      entry: manualEntry(['1310', '2100']),
+      lock: OPEN,
+    })
+
+    expect(preview.blockedBy?.status).toBe('inventory_role_refused')
+    expect(preview.blockedBy?.error).toMatch(/1310/)
+    // The lines still resolve, so the drawer can show what it WOULD have posted
+    // beside the refusal - a preview that refuses should still show its work.
+    expect(preview.lines.map((line) => line.accountCode)).toEqual(['1310', '2100'])
+  })
+
+  // 🛑 An opening trial balance MUST name the bank balance, so `cash` is
+  // deliberately outside this guard even though `SINGLE_WRITER_ROLES` includes
+  // it: `bank_deposit` is the single ROLE-emitting writer of cash, and a
+  // hand-keyed opening line carries no role.
+  it('does NOT refuse an opening entry that names the cash account', async () => {
+    const CASH: Account = { id: 'acct_cash', code: '1000', name: 'Cash', accountType: 'asset' }
+    const fake = createFakeDb([...MANUAL_CHART, { role: 'cash', account: CASH }])
+    setConnectedProviderResolver(async () => null)
+
+    const result = await postEntry(fake.db, {
+      organizationId: ORG,
+      entry: {
+        ...manualEntry(['1000', '2100']),
+        postingType: 'opening_balance',
+        periodKey: '2025-12-31',
+        txnDate: '2025-12-31',
+      },
+      lock: OPEN,
+    })
+
+    expect(result.status).toBe('not_connected')
+    expect(fake.lines.map((line) => line.accountCode)).toEqual(['1000', '2100'])
+  })
+
+  // The guard is scoped to the two types a HUMAN authors. Every other type is
+  // produced by a builder that emits roles, and `regime.ts` governs those -
+  // declared once, by a human, in that file.
+  it('leaves a role-based entry that drives inventory alone', async () => {
+    const fake = createFakeDb(FULL_CHART)
+    setConnectedProviderResolver(async () => null)
+
+    const result = await postEntry(fake.db, {
+      organizationId: ORG,
+      entry: receiptEntry(),
+      lock: OPEN,
+    })
+    expect(result.status).toBe('not_connected')
+  })
+})

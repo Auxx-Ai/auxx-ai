@@ -50,7 +50,7 @@ export function StandardCostSection() {
 
   const [effectiveAt, setEffectiveAt] = useState<string>(() => new Date().toISOString())
 
-  // A fresh effective date whenever the section regains the ability to roll — a
+  // A fresh effective date whenever the section regains the ability to roll, a
   // stale one left over from a tab somebody abandoned yesterday would silently
   // backdate the roll.
   useEffect(() => {

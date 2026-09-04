@@ -6,6 +6,11 @@
 
 import type { FieldType } from '@auxx/database/types'
 import type { FieldOptions } from '../custom-fields/field-options'
+// The option list for the `accounting.paymentRoute.*` keys, owned by the module
+// that reads them (`resolvePaymentRoute`) rather than restated here - a second
+// copy of the three destinations would let a form offer a value the resolver
+// does not recognise, which falls back silently.
+import { PAYMENT_ROUTE_SETTING_OPTIONS } from '../money/bank-deposits/route'
 import type { SettingScope, SettingValue } from './types'
 
 /**
@@ -1103,6 +1108,101 @@ export const SETTINGS_CATALOG = {
     description:
       'The user who finalized the accounting opening baseline. Stamped by the wizard; not a ' +
       'user-facing field.',
+  },
+
+  // ── Where payments land (plans/accounting/tasks/06-deposit-grouping.md §2.3) ──
+  //
+  // 🛑 **Three rails get three treatments, and getting one wrong silently
+  // breaks bank matching for every payment on it.** A cheque is banked in a
+  // batch and arrives at the bank as one line among several, so it must sit in
+  // `undeposited_funds` until a deposit groups it. An ACH arrives alone and
+  // matches its own bank line, so it goes straight to cash. A card settles as a
+  // NET payout days later, so it goes to a clearing account and the payout
+  // entry drains it. Post a cheque straight to cash and the account is right in
+  // total and wrong line by line - which is exactly the state in which nothing
+  // reconciles and nobody can say why.
+  //
+  // Declared once, per METHOD, rather than inferred per payment: the rule is a
+  // property of the rail, and `PaymentMethod` (`money/types.ts`) is the enum
+  // that names it. `resolvePaymentRoute` in `money/bank-deposits/route.ts` is
+  // the single reader.
+  //
+  // ⚠️ `other` defaults to `undeposited_funds` on purpose. It is the unknown
+  // rail, and undeposited funds is the SAFE unknown: money sits visible in a
+  // clearing account until somebody banks it, rather than being asserted into
+  // cash the bank has never seen.
+  'accounting.paymentRoute.cash': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'SINGLE_SELECT',
+    defaultValue: 'undeposited_funds',
+    options: { options: [...PAYMENT_ROUTE_SETTING_OPTIONS] },
+    description:
+      'Where a cash payment lands in the ledger. Cash is banked in a run, so it defaults to ' +
+      'undeposited funds and reaches cash only when a bank deposit groups it.',
+  },
+  'accounting.paymentRoute.check': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'SINGLE_SELECT',
+    defaultValue: 'undeposited_funds',
+    options: { options: [...PAYMENT_ROUTE_SETTING_OPTIONS] },
+    description:
+      'Where a cheque payment lands. Five cheques banked together are ONE bank line, so a ' +
+      'cheque must group through undeposited funds or it can never be matched.',
+  },
+  'accounting.paymentRoute.card': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'SINGLE_SELECT',
+    defaultValue: 'clearing',
+    options: { options: [...PAYMENT_ROUTE_SETTING_OPTIONS] },
+    description:
+      'Where a card payment lands. A card settles as a net payout, so it goes to a clearing ' +
+      'account that the payout entry drains. Never to undeposited funds.',
+  },
+  'accounting.paymentRoute.bank': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'SINGLE_SELECT',
+    defaultValue: 'cash',
+    options: { options: [...PAYMENT_ROUTE_SETTING_OPTIONS] },
+    description:
+      'Where an ACH or wire payment lands. It arrives alone and matches its own bank line, ' +
+      'so it goes straight to cash and is never grouped.',
+  },
+  'accounting.paymentRoute.other': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'SINGLE_SELECT',
+    defaultValue: 'undeposited_funds',
+    options: { options: [...PAYMENT_ROUTE_SETTING_OPTIONS] },
+    description:
+      'Where a payment of any other method lands. Defaults to undeposited funds: the safe ' +
+      'unknown is money visible in a clearing account, not cash the bank has never seen.',
+  },
+
+  // ── Remembered statement-import column mappings ────────────────────────────
+  //
+  // Keyed by the SIGNATURE of a file's header row (`banking/import/
+  // header-signature.ts`), which is what replaces the bank plan's per-bank
+  // `BankCsvProfile`: no CSV standard exists, every bank invents its own
+  // columns, and shipping profiles for two banks would serve two banks. A
+  // mapping remembered against the header row a person already mapped serves
+  // the long tail from the first upload.
+  //
+  // ⚠️ Written by code, never by a form. `banking.importMappings` is a prefill
+  // of the job's own `ImportMappingProperty` rows, not a second authority for
+  // them - the replay goes through `dataImport.saveColumnMapping`, the same
+  // procedure the wizard's mapping step calls.
+  'banking.importMappings': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'JSON',
+    defaultValue: {},
+    description:
+      'Column mappings remembered per statement-file header signature, so the next upload of ' +
+      'the same export prefills instead of asking again.',
   },
 
   // ── Manufacturing absorption rates (plans/products/build/01-build-plan.md §1.4) ─────────

@@ -163,6 +163,24 @@ describe('syncInvoicePaymentState — what it derives', () => {
     expect(h.setValuesForEntity).not.toHaveBeenCalled()
   })
 
+  // 🛑 The bad-debt entry is posted and A/R has already been credited for the
+  // whole balance. This function derives the balance from the payment ledger,
+  // which knows nothing about that entry, so without the guard it would write
+  // `balance = total - amountPaid` and `status = sent` back over `written_off` -
+  // and the invoice would reappear in A/R aging while the write-off still
+  // stands, with every posting balanced.
+  it('never touches a written-off invoice', async () => {
+    wireInvoice({ status: 'written_off', total: 100, amountPaid: 0, charges: [] })
+    await syncInvoicePaymentState({ organizationId: ORG, userId: USER, invoiceInstanceId: INVOICE })
+    expect(h.setValuesForEntity).not.toHaveBeenCalled()
+  })
+
+  it('un-writes-off nothing even when a later payment lands against it', async () => {
+    wireInvoice({ status: 'written_off', total: 100, amountPaid: 0, charges: [40] })
+    await syncInvoicePaymentState({ organizationId: ORG, userId: USER, invoiceInstanceId: INVOICE })
+    expect(h.setValuesForEntity).not.toHaveBeenCalled()
+  })
+
   // No write at all means no service, and therefore no bypass to assert — the guard is only
   // ever consulted for a write that actually changes something.
   it('writes nothing when the projection already agrees', async () => {

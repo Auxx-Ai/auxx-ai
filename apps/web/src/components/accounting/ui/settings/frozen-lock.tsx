@@ -5,7 +5,7 @@
 //
 // Every frozen field previously carried the whole reason as body text under the
 // value. On the cutover snapshot that meant the same three sentences repeated
-// once per account, which read as an alarm rather than as a state — the panel's
+// once per account, which read as an alarm rather than as a state, the panel's
 // own `showLabels` rule ("captions render only on the first pair, so the panel
 // is not repetitive") applies just as well to the explanation.
 //
@@ -27,7 +27,7 @@ interface FrozenLockProps {
  * A lock icon whose tooltip explains the freeze.
  *
  * The trigger is a focusable `span` rather than the bare icon so the reason is
- * reachable by keyboard and named for a screen reader — an `<svg>` with an
+ * reachable by keyboard and named for a screen reader, an `<svg>` with an
  * `aria-label` and no role is announced inconsistently.
  */
 export function FrozenLock({ reason, className }: FrozenLockProps) {

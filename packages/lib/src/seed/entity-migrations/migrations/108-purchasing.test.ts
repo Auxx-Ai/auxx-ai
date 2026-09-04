@@ -1378,6 +1378,31 @@ const INERT_DECLARATION_FILES = [
   'seed/entity-migrations/migrations/108-purchasing.test.ts',
   'seed/entity-seeder/constants.ts',
   'seed/entity-seeder/create-fields.ts',
+  // READERS, not writers. The delete guard refuses a delete that would strand a
+  // vendor payment; the 1099 summary aggregates paid amounts; the accountant
+  // profile grants read access by def. None of them creates or mutates a row
+  // on either inert def, which is the invariant P13 pins.
+  'field-hooks/__tests__/delete-guard-registration.test.ts',
+  'field-hooks/pre/vendor-bill-delete-guard.test.ts',
+  'field-hooks/pre/vendor-bill-delete-guard.ts',
+  'permissions/profiles/system-profiles.ts',
+  'postings/reports/__tests__/vendor-1099.test.ts',
+  'postings/reports/vendor-1099.ts',
+  // The bank review queue (HANDOFF slot 3B). It offers a vendor payment as a
+  // match candidate and, on a match, stamps `vendor_payment_bank_transaction_id`
+  // and `vendor_payment_cleared_at` on a row that already exists. That is an
+  // ANNOTATION, not a write path: nothing here creates a vendor payment, and
+  // the invariant P13 pins is that the def has no creator. A bank line
+  // confirming a payment somebody else recorded is exactly what the column was
+  // added for.
+  'banking/review/client.ts',
+  'banking/review/reads.ts',
+  'banking/review/writes.ts',
+  'banking/review/__tests__/writes.test.ts',
+  // `isLinkableTransferLeg`'s own test, which asserts a leg matched to a VENDOR
+  // PAYMENT is not a transfer counterpart. A pure predicate over a string
+  // union, with no database in reach at all.
+  'banking/review/__tests__/client.test.ts',
 ]
 
 function walkTsFiles(dir: string, out: string[] = []): string[] {

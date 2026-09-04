@@ -59,6 +59,18 @@ export const DOC_NUMBER_PREFIX: Record<PostingType, string> = {
   month_end_inventory: 'INV',
   receipt: 'RCP',
   vendor_bill: 'BIL',
+  // Wave 0 (HANDOFF slot 0B). All five key on a DOCUMENT NUMBER, never a date
+  // and never a cuid - see `DocNumberInput.periodKey`.
+  manual_journal: 'JNL',
+  opening_balance: 'OPB',
+  bank_transaction: 'BNK',
+  bank_deposit: 'DEP',
+  write_off: 'WOF',
+  // `PAY` is the payout's. A payment keys on a short hash of the transaction
+  // id (`PMT-<6 base36>`), never a counted sequence: two concurrent payments
+  // minting one key would converge the loser to `already_posted`, a SUCCESS,
+  // silently merging two payments into one entry.
+  payment: 'PMT',
 }
 
 /** What identifies one entry of one type. See {@link buildDocNumber}. */
@@ -78,6 +90,12 @@ export interface DocNumberInput {
    *   two payouts in a day; a date key merges them into one entry whose total
    *   ties to neither deposit, and the reconciliation of 1200 Shopify Clearing
    *   is exactly the thing that then cannot be done.
+   *
+   * - **`manual_journal`**, **`bank_deposit`**, **`write_off`** and
+   *   **`bank_transaction`** key on the source record's own **number**
+   *   (`'JE-0007'`, `'DEP-0003'`), for the same reason a build does: many can
+   *   post in one day, and a cuid is over the cap. `opening_balance` keys on
+   *   the cutover date, because an org has exactly one.
    *
    * Everything else keys on a real period - `'2026-08-18'` for a day,
    * `'2026-08'` for a month. Hyphens are stripped, so both compact to 8 and 6.

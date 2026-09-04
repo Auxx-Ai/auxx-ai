@@ -31,6 +31,24 @@ export const POSTING_TYPES = [
   'month_end_inventory',
   'receipt',
   'vendor_bill',
+  // Added by plans/accounting/HANDOFF.md wave 0 (slot 0B), 2026-09-04.
+  // A bookkeeper's adjusting entry, coded by account CODE rather than role.
+  'manual_journal',
+  // The opening trial balance, posted once at cutover, dated the day before
+  // `accounting.cutoffPeriod` begins. Names the three inventory accounts by
+  // code, and is NOT an inventory writer: the month-end assertion subtracts
+  // the opening baseline settings rather than reading this entry.
+  'opening_balance',
+  // A coded bank-feed line (bank plan 03). Matched lines post nothing.
+  'bank_transaction',
+  // Undeposited funds moved to cash as one line per bank run (tasks/06).
+  'bank_deposit',
+  // An invoice written off to bad debt.
+  'write_off',
+  // A customer payment or refund, posted from `PaymentTransaction`:
+  // `Dr undeposited_funds | cash | clearing` (per `accounting.paymentRoute.*`)
+  // / `Cr accounts_receivable`. Added for slot 2G phase B, 2026-09-04.
+  'payment',
 ] as const
 
 export type PostingType = (typeof POSTING_TYPES)[number]
@@ -72,13 +90,7 @@ export type PostingDirection = 'debit' | 'credit'
  *    amount there is nothing to disagree about, and `SUM(amount) WHERE direction
  *    = 'debit'` is the balance check.
  */
-export interface GlPostingLineInput {
-  /**
-   * auxx posting ROLE, e.g. `'grni'` - one of `ACCOUNT_ROLES` in
-   * `build-entry.ts`. Never an account number, never a provider account id.
-   * See above.
-   */
-  accountRole: string
+export interface GlPostingLineBase {
   direction: PostingDirection
   /** Integer minor units. Always > 0 - `direction` carries the sign. */
   amount: number
@@ -96,6 +108,51 @@ export interface GlPostingLineInput {
   /** Stable presentation order within the entry. */
   sortOrder: number
 }
+
+/**
+ * One line, in one of exactly TWO shapes, and never both at once.
+ *
+ * ⚠️ Widened from a bare `{ accountRole }` by HANDOFF slot 1A (2026-09-04).
+ * Everything the file header says about roles still holds for a BUILDER, which
+ * is the only thing that emits `{ accountRole }`. The second shape exists
+ * because a human coding an adjusting entry is doing the opposite of what `G8`
+ * describes: they are picking a specific account out of THEIR OWN chart, most
+ * of which carries no role at all (13 roles across 35 accounts). `G8` protects
+ * builders from a renumber; it has nothing to protect here, because the person
+ * choosing the account is looking at the chart as it is right now.
+ *
+ * The precedent is `vendor_bill_line.glAccount`, which faced the identical
+ * question and answered it the same way: it stores a CODE, because it is a
+ * bookkeeper coding a line against their own chart.
+ *
+ * 🛑 **A code line does NOT get a cheaper resolver.** `resolveAccountLines`
+ * validates a code against the org's chart with the same batched refusals it
+ * applies to a role - missing, archived, inactive, ambiguous - so both shapes
+ * fail closed identically and an entry naming six bad accounts fails once
+ * naming six.
+ *
+ * The `?: never` legs are what make this a discriminated union that still reads
+ * as one object: `line.accountRole` is `string | undefined` on the union rather
+ * than a type error, so every existing reader narrows instead of breaking.
+ */
+export type GlPostingLineInput =
+  | (GlPostingLineBase & {
+      /**
+       * auxx posting ROLE, e.g. `'grni'` - one of `ACCOUNT_ROLES` in
+       * `build-entry.ts`. Never an account number, never a provider account id.
+       * See above.
+       */
+      accountRole: string
+      accountCode?: never
+    })
+  | (GlPostingLineBase & {
+      /**
+       * An account CODE out of this org's own chart, e.g. `'6300'`. Only a
+       * human-authored entry (`manual_journal`, `opening_balance`) may use it.
+       */
+      accountCode: string
+      accountRole?: never
+    })
 
 /**
  * A balanced entry, built and validated but not yet persisted or pushed.
@@ -130,7 +187,7 @@ export interface BuiltEntry {
  * read. Renaming `2160` next year must not rewrite last year's ledger, exactly
  * as a movement's frozen cost is not restated by a standard-cost change.
  */
-export interface ResolvedPostingLine extends Omit<GlPostingLineInput, 'accountRole'> {
+export interface ResolvedPostingLine extends GlPostingLineBase {
   /** Account CODE, e.g. `'1310'`, from the org's own chart. Never a provider id. */
   accountCode: string
   /** The account's name as it stood when the entry was posted. A snapshot. */
@@ -269,6 +326,13 @@ export type PostResultStatus =
   | 'unbalanced'
   | 'nothing_to_close'
   | 'setup_incomplete'
+  // Wave 1 (HANDOFF slot 1A). A manual or opening entry named one of the three
+  // inventory accounts by code; the remedy is the close console, which is the
+  // only writer of those balances.
+  | 'inventory_role_refused'
+  // A code-based line names an account the org's chart does not hold, or holds
+  // archived or inactive. The message names the row.
+  | 'account_invalid'
   | 'error'
 
 /**

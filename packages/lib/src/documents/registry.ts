@@ -10,11 +10,13 @@ import type { RecordId } from '@auxx/types/resource'
 import type { ComponentType } from 'react'
 import { DOCUMENT_TYPE_DESCRIPTORS, type DocumentTypeId, type PrintOptionField } from './client'
 import {
+  buildBankDepositPdfPayload,
   buildInvoicePdfPayload,
   buildPurchaseOrderPdfPayload,
   buildQuotePdfPayload,
   type DocumentPdfPayload,
 } from './payload'
+import { BankDepositPdf } from './pdf/bank-deposit-pdf'
 import { InvoicePdf } from './pdf/invoice-pdf'
 import { PurchaseOrderPdf } from './pdf/purchase-order-pdf'
 import { QuotePdf } from './pdf/quote-pdf'
@@ -100,6 +102,22 @@ const RENDER_ENTRIES: Array<
         purchaseOrderRecordId: params.recordId,
       }),
     Pdf: PurchaseOrderPdf as unknown as RegisteredDocumentType['Pdf'],
+  },
+  {
+    // The deposit slip (plans/accounting/ui-plan.md §5.3). `pointerAttr` names a
+    // real field on the `bank_deposit` def: without it `ensure-pdf.ts` cannot
+    // find a cached render, so every download re-renders AND mints a fresh
+    // MediaAsset rather than versioning the existing one - an asset leak with
+    // no error attached.
+    id: 'bank_deposit',
+    pointerAttr: 'bank_deposit_pdf_asset',
+    buildPayload: (params) =>
+      buildBankDepositPdfPayload({
+        organizationId: params.organizationId,
+        userId: params.userId,
+        bankDepositRecordId: params.recordId,
+      }),
+    Pdf: BankDepositPdf as unknown as RegisteredDocumentType['Pdf'],
   },
 ]
 

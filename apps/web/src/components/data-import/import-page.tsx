@@ -12,7 +12,7 @@ import {
 import { toastError } from '@auxx/ui/components/toast'
 import { useRouter } from 'next/navigation'
 import { parseAsStringLiteral, useQueryState } from 'nuqs'
-import { useCallback, useEffect, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useState } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
 import { IMPORT_STEPS } from './constants'
@@ -54,6 +54,36 @@ interface ImportPageProps {
   importTarget?: string
   /** Job ID from URL ('new' or actual job ID) */
   jobId: string
+  /**
+   * Extra query string a HOST importer needs carried on every in-wizard link,
+   * already `&`-prefixed and encoded (e.g. `'&account=abc'`).
+   *
+   * The bank statement importer is the first caller: the target `bank_account`
+   * is chosen on a card BEFORE the file, and it is neither a column in the file
+   * nor derivable from the job, so it has to survive a step navigation. Optional,
+   * and empty for every other importer.
+   */
+  extraQuery?: string
+  /**
+   * Rendered above the plan summary on the confirm step.
+   *
+   * For what a host importer knows that the generic one cannot: the bank
+   * importer puts the coverage effect and the cross-source overlap here, which
+   * is the difference between "62 rows" and "62 rows, 14 of them already here
+   * from the feed, and this closes the gap on ···5381".
+   */
+  confirmExtra?: ReactNode
+  /**
+   * Fired once when the run itself finishes, successfully or not - NOT when the
+   * user leaves the completion card.
+   *
+   * 🛑 This is a different moment from {@link basePath} navigation, and the
+   * difference matters: the bank importer files the rows against an account here
+   * (stamping `source`, `importBatchId`, `bankAccount` and the coverage floor),
+   * and a person who closes the tab on the green tick must not be left with
+   * unfiled statement lines nobody can reverse.
+   */
+  onJobFinished?: (jobId: string) => void
 }
 
 /**
@@ -69,12 +99,19 @@ export function ImportPage({
   importTitle,
   importTarget,
   jobId,
+  extraQuery = '',
+  confirmExtra,
+  onJobFinished,
 }: ImportPageProps) {
   const router = useRouter()
   const isNewImport = jobId === 'new'
   const actualJobId = isNewImport ? null : jobId
-  /** `&target=…` for in-wizard links, empty when this is the host's own import. */
-  const targetQuery = importTarget ? `&target=${encodeURIComponent(importTarget)}` : ''
+  /**
+   * `&target=…` for in-wizard links, empty when this is the host's own import,
+   * plus whatever the host asked to be carried alongside it.
+   */
+  const targetQuery =
+    (importTarget ? `&target=${encodeURIComponent(importTarget)}` : '') + extraQuery
 
   // Step state from URL query param
   const [currentStep, setCurrentStep] = useQueryState('step', stepParser)
@@ -190,7 +227,14 @@ export function ImportPage({
           <StepReviewValues jobId={actualJobId!} onComplete={() => navigateToStep('confirm')} />
         )
       case 'confirm':
-        return <StepConfirmImport jobId={actualJobId!} onComplete={handleImportComplete} />
+        return (
+          <StepConfirmImport
+            jobId={actualJobId!}
+            onComplete={handleImportComplete}
+            extra={confirmExtra}
+            onJobFinished={onJobFinished ? () => onJobFinished(actualJobId!) : undefined}
+          />
+        )
     }
   }
 

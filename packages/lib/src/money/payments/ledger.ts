@@ -9,9 +9,11 @@ import { parseRecordId, toRecordId } from '@auxx/types/resource'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
 import { and, asc, eq, inArray, isNotNull, or, sql } from 'drizzle-orm'
 import { getOrgCache } from '../../cache'
-import { BadRequestError, ForbiddenError, NotFoundError } from '../../errors'
+import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../../errors'
 import { FieldValueService } from '../../field-values/field-value-service'
 import { extractRelationshipRecordIds } from '../../field-values/relationship-field'
+import { resolvePeriodLock } from '../../postings/period-lock'
+import { reverseEntry } from '../../postings/reverse-entry'
 import { UnifiedCrudHandler } from '../../resources/crud'
 import { getOrganizationSetting } from '../../settings/settings-service'
 import type {
@@ -21,6 +23,7 @@ import type {
   SyncInvoicePaymentStateInput,
 } from '../types'
 import { type DepositForAllocation, planDepositApplication } from './deposit-allocation'
+import { listPaymentPostings, postPaymentTransaction } from './post-transaction'
 
 const logger = createScopedLogger('money-ledger')
 
@@ -182,6 +185,31 @@ export async function listWorkOrderPayments(
 const INVOICE_STATUS_BYPASS = new Set<SystemAttribute>(['invoice_status'])
 
 /**
+ * The invoice statuses this projection must leave exactly as it found them.
+ *
+ * `void` is the original member (§E.4 step 4): a voided invoice owes nothing and
+ * a recomputed balance would resurrect it.
+ *
+ * 🛑 `written_off` was added because it has the same shape and a worse failure.
+ * `money/invoices/write-off.ts` posts `Dr bad_debt_expense Cr accounts_receivable`
+ * and only then flips the status, and it flips it ONLY for a full write-off - so
+ * a `written_off` invoice is one whose whole balance has left A/R through a
+ * posted entry. This function derives balance and status from the payment ledger
+ * alone, which knows nothing about that entry: without this guard the next sync
+ * of ANY invoice event would recompute `balance = total - amountPaid`, write
+ * `sent` or `partially_paid` back over `written_off`, and put the invoice back
+ * into A/R aging while the bad-debt entry still stands. The books would then
+ * carry the receivable twice with every posting balanced.
+ *
+ * ⚠️ A PARTIAL write-off is not covered and cannot be, today: it leaves the
+ * status alone (correctly - there is still a balance owed) and reduces
+ * `invoice_balance`, and the next sync recomputes that reduction away. Closing
+ * that needs the written-off amount stored on the invoice, which is an entity
+ * migration. See the handoff report for slot 2K.
+ */
+const TERMINAL_INVOICE_STATUSES = new Set(['void', 'written_off'])
+
+/**
  * Project the ledger onto an invoice's mirrored `amountPaid`/`balance`/`status` fields
  * (money MI1 build spec §E.4) — the one function where ledger truth becomes invoice state.
  * Writes go through `FieldValueService` (the sanctioned-writer path that structurally
@@ -214,7 +242,7 @@ export async function syncInvoicePaymentState(
 
   const statusTyped = cf.invoice_status ? firstTyped(values.get(cf.invoice_status.id)) : undefined
   const status = statusTyped ? (extractValue(statusTyped) as string) : undefined
-  if (status === 'void') return // never touched (§E.4 step 4)
+  if (TERMINAL_INVOICE_STATUSES.has(status ?? '')) return
 
   const totalTyped = cf.invoice_total ? firstTyped(values.get(cf.invoice_total.id)) : undefined
   const total = totalTyped ? (extractValue(totalTyped) as number) : 0
@@ -330,6 +358,25 @@ export async function syncTransaction(params: {
   for (const invoiceInstanceId of invoiceInstanceIds) {
     await syncInvoicePaymentState({ organizationId, userId, invoiceInstanceId, db })
   }
+
+  // ── The general ledger, after everything above has committed ─────────────
+  //
+  // 🛑 THIS is the single post door for a payment, and it is here rather than in
+  // `recordManualPayment` because this function is the ONE seam every writer
+  // converges on: the manual rail, `applyStripeEvent`'s charge and refund
+  // branches, and `applyHeldDepositsToInvoice` all end here (the file header's
+  // "§E.3 seam"). Posting from any one of them would miss the other three.
+  //
+  // 🛑 And it posts from the TRANSACTION, never from the `payment` entity
+  // mirror: refund rows get no mirror at all (see the loop above, which is
+  // charge-only), so an entity-sourced post would silently skip every refund and
+  // leave A/R overstated by the whole refunded amount with a balanced ledger.
+  //
+  // ⚠️ `postPaymentTransaction` NEVER throws - every refusal is a `PostResult`,
+  // logged there with its status and whether the period was claimed, and
+  // surfaced by `listUnpostedPeriods` once a claim exists. A payment must not
+  // fail because its bookkeeping did.
+  await postPaymentTransaction(db, { organizationId, transaction, actorUserId: userId })
 }
 
 /**
@@ -534,6 +581,86 @@ export async function recordManualPayment(
 }
 
 /**
+ * The `reverseEntry` statuses that mean the general ledger took the reversal.
+ *
+ * `not_connected` and `disabled` are successes for the same reason they are in
+ * `post-transaction.ts`: an org with no accounting system connected is a
+ * first-class case, and the entry is still built, balanced and persisted.
+ */
+const ACCEPTED_REVERSAL_STATUSES = new Set<string>([
+  'posted',
+  'already_posted',
+  'healed',
+  'not_connected',
+  'disabled',
+])
+
+/**
+ * Back every general-ledger entry this payment produced out of the books, before
+ * the row that produced them is deleted.
+ *
+ * 🛑 **Ground rule 6: correct by reversal, never by edit or delete.**
+ * `syncTransaction` posts `Dr undeposited_funds Cr accounts_receivable` for
+ * every succeeded charge. Deleting the `PaymentTransaction` row without this
+ * would leave that entry standing forever, pointing at a `sourceId` that no
+ * longer resolves: A/R would stay reduced by a payment that no longer exists,
+ * and undeposited funds would carry a balance no bank deposit can ever clear,
+ * because the cheque it names is gone. Both halves balance, so nothing
+ * downstream could detect it.
+ *
+ * Reversing is preferred over refusing the delete outright because the entry
+ * pair is what makes the correction auditable: the register keeps the original
+ * and its opposite, which is what a bookkeeper expects to see, and the manual
+ * row stays what decision 3 says it is - data entry a member may take back.
+ *
+ * A reversal the ledger will NOT take (a closed period, a chart that moved under
+ * the entry, an entry still `pending` at the provider) refuses the delete with a
+ * `ConflictError` that names the document number and the reason, because the
+ * only honest alternative there is deleting a row whose accounting is still
+ * live. Nothing has been deleted at that point.
+ */
+async function reversePaymentPostings(
+  db: Database,
+  organizationId: string,
+  transactionId: string,
+  actorUserId: string
+): Promise<void> {
+  const postings = await listPaymentPostings(db, { organizationId, transactionId })
+  // `reversed` is already backed out and reversing it again would double the
+  // correction; `failed` never reached the ledger at all.
+  const live = postings.filter(
+    (posting) => posting.status !== 'reversed' && posting.status !== 'failed'
+  )
+  if (live.length === 0) return
+
+  const lock = await resolvePeriodLock(organizationId)
+  for (const posting of live) {
+    const result = await reverseEntry(db, {
+      organizationId,
+      glPostingId: posting.glPostingId,
+      actorUserId,
+      lock,
+      memo: `Reversal of ${posting.docNumber} - payment ${transactionId} deleted`,
+    })
+    if (!ACCEPTED_REVERSAL_STATUSES.has(result.status)) {
+      throw new ConflictError(
+        `Payment ${transactionId} posted general ledger entry ${posting.docNumber}, and that ` +
+          `entry could not be reversed (${result.status}${result.error ? `: ${result.error}` : ''}). ` +
+          'Deleting the payment would leave the entry in the books with nothing behind it. ' +
+          'Reverse the entry from the ledger first, then delete the payment.',
+        { transactionId, docNumber: posting.docNumber, glPostingId: posting.glPostingId }
+      )
+    }
+  }
+
+  logger.info('Reversed the ledger entries of a payment being deleted', {
+    organizationId,
+    transactionId,
+    reversed: live.length,
+  })
+}
+
+/**
  * Hard-delete a manual ledger row + its `payment` entity mirror(s) (money MI1 build spec §E.2,
  * decision 3 — manual rows are data entry, not money movement, so deleting is honest; re-pointed
  * at allocations by 16-deposit-accounting.md §C.6). Stripe rows are refund-only (MP1) —
@@ -544,6 +671,10 @@ export async function recordManualPayment(
  * go with it — and re-projects every invoice the deleted allocations touched (not just
  * `transaction.invoiceInstanceId!`, which was the intent column, not necessarily where the money
  * actually landed). Router-gated admin-only (§I.1) — this function itself does not check roles.
+ *
+ * 🛑 The GENERAL LEDGER is backed out first, by {@link reversePaymentPostings}.
+ * Decision 3 says a manual row is data entry and may be deleted; it does not say
+ * the accounting it produced may be. A refused reversal refuses the delete.
  */
 export async function deleteManualPayment(input: DeleteManualPaymentInput): Promise<void> {
   const { organizationId, userId, transactionId } = input
@@ -564,6 +695,10 @@ export async function deleteManualPayment(input: DeleteManualPaymentInput): Prom
   const allocations = await database.query.PaymentAllocation.findMany({
     where: eq(schema.PaymentAllocation.paymentTransactionId, transactionId),
   })
+
+  // 🛑 BEFORE anything is deleted. A refusal here must leave the payment, its
+  // mirrors and its entry exactly as they were - see `reversePaymentPostings`.
+  await reversePaymentPostings(database, organizationId, transactionId, userId)
 
   const handler = new UnifiedCrudHandler(organizationId, userId)
   for (const allocation of allocations) {

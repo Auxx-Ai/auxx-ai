@@ -201,6 +201,67 @@ export const ACCOUNT_ROLES = {
    * question. Placed at `5095` so it and `5090` read as siblings.
    */
   INVENTORY_COUNT_VARIANCE: 'inventory_count_variance',
+
+  // ── Added 2026-09-04 by plans/accounting/HANDOFF.md wave 0 (slot 0A) ──────
+  // The roles the revenue, payment, deposit, opening-balance and statement work
+  // emits. Each is seeded onto a default account in `default-chart.ts`; the
+  // `default-chart.test.ts` pin refuses a role no account carries.
+
+  /**
+   * Accounts receivable (default `1100`). Debited when an invoice is issued
+   * (fulfillment entry), credited when a payment is received. ONE receivable
+   * account carries the role whatever the channel - decision 6.1 in the handoff.
+   */
+  ACCOUNTS_RECEIVABLE: 'accounts_receivable',
+  /**
+   * Undeposited funds (default `1050`). A clearing account whose job is to be
+   * ZERO once every bank deposit has cleared: cheques and cash land here when
+   * received and leave as one `bank_deposit` entry per bank run, so one ledger
+   * line matches one bank transaction (tasks/06 §1).
+   */
+  UNDEPOSITED_FUNDS: 'undeposited_funds',
+  /**
+   * Shopify clearing (default `1200`). Card revenue lands here gross at the
+   * sale and is relieved net by the payout entry; the residual is the
+   * processing fee. Reconciles to zero per payout.
+   */
+  CLEARING_SHOPIFY: 'clearing_shopify',
+  /** Sales tax payable (default `2200`). A pass-through liability, never revenue. */
+  SALES_TAX_PAYABLE: 'sales_tax_payable',
+  /** Deferred revenue (default `2300`). Month-end deferral and its reversal. */
+  DEFERRED_REVENUE: 'deferred_revenue',
+  /**
+   * Customer deposits (default `2350`). Money taken BEFORE delivery, a
+   * liability. `money/payments/deposit.ts` is this concept; a BANK deposit is
+   * `bank_deposit` and lands on `cash`, never here.
+   */
+  CUSTOMER_DEPOSITS: 'customer_deposits',
+  /**
+   * Retained earnings (default `3100`). Where the balance-sheet reader rolls
+   * prior years' net income; a role because the reader must find it without
+   * knowing the org's numbering.
+   */
+  EQUITY_RETAINED_EARNINGS: 'equity_retained_earnings',
+  /**
+   * Opening balance equity (default `3900`). The balancing leg of the opening
+   * trial balance entry (`opening_balance` posting type), and the only equity
+   * role a builder ever emits.
+   */
+  EQUITY_OPENING_BALANCE: 'equity_opening_balance',
+  /** Product revenue, DTC channel (default `4000`). */
+  REVENUE_DTC: 'revenue_dtc',
+  /** Product revenue, dealer channel (default `4010`). */
+  REVENUE_DEALER: 'revenue_dealer',
+  /** Shipping revenue (default `4020`). Its own account per handoff decision 6.3. */
+  REVENUE_SHIPPING: 'revenue_shipping',
+  /**
+   * Payment processing fees (default `6100`). What the processor withheld from
+   * a payout. NOT `money/payments/fees.ts`, which is the Connect application
+   * fee auxx charges, a different number.
+   */
+  PAYMENT_PROCESSING_FEES: 'payment_processing_fees',
+  /** Bad debt expense (default `6300`). The `write_off` entry's debit leg. */
+  BAD_DEBT_EXPENSE: 'bad_debt_expense',
 } as const
 
 export type AccountRole = (typeof ACCOUNT_ROLES)[keyof typeof ACCOUNT_ROLES]
@@ -237,6 +298,19 @@ export const ROLE_ACCOUNT_TYPES: Record<AccountRole, GlAccountTypeValue> = {
   applied_overhead: 'expense',
   ppv: 'expense',
   inventory_count_variance: 'expense',
+  accounts_receivable: 'asset',
+  undeposited_funds: 'asset',
+  clearing_shopify: 'asset',
+  sales_tax_payable: 'liability',
+  deferred_revenue: 'liability',
+  customer_deposits: 'liability',
+  equity_retained_earnings: 'equity',
+  equity_opening_balance: 'equity',
+  revenue_dtc: 'revenue',
+  revenue_dealer: 'revenue',
+  revenue_shipping: 'revenue',
+  payment_processing_fees: 'expense',
+  bad_debt_expense: 'expense',
 }
 
 /**
@@ -263,6 +337,19 @@ export const ACCOUNT_ROLE_LABELS: Record<AccountRole, string> = {
   applied_overhead: 'COGS — Applied Overhead',
   ppv: 'Purchase Price Variance',
   inventory_count_variance: 'Inventory Count Variance',
+  accounts_receivable: 'Accounts Receivable',
+  undeposited_funds: 'Undeposited Funds',
+  clearing_shopify: 'Shopify Clearing',
+  sales_tax_payable: 'Sales Tax Payable',
+  deferred_revenue: 'Deferred Revenue',
+  customer_deposits: 'Customer Deposits',
+  equity_retained_earnings: 'Retained Earnings',
+  equity_opening_balance: 'Opening Balance Equity',
+  revenue_dtc: 'Product Revenue - DTC',
+  revenue_dealer: 'Product Revenue - Dealer',
+  revenue_shipping: 'Shipping Revenue',
+  payment_processing_fees: 'Payment Processing Fees',
+  bad_debt_expense: 'Bad Debt Expense',
 }
 
 export interface BuildEntryInput {
@@ -333,23 +420,41 @@ export function buildEntry(input: BuildEntryInput): BuiltEntry {
   let totalCredit = 0
 
   for (const line of lines) {
-    if (!line.accountRole || line.accountRole.trim().length === 0) {
-      throw new UnprocessableEntityError('A posting line must carry an account role', {
-        postingType,
-        periodKey,
-      })
+    // A line names an account in exactly ONE of the two ways `GlPostingLineInput`
+    // allows - a builder's ROLE or a human's CODE (HANDOFF slot 1A). Neither is
+    // the refusal below; both at once is the other one, and it is refused rather
+    // than resolved by precedence, because a precedence rule would silently post
+    // to whichever of two named accounts this function happened to prefer.
+    // Read through a widened alias: the union's `?: never` legs make TypeScript
+    // prove the both-at-once case away, and a runtime check is still wanted
+    // because a tRPC caller or a JSON round trip can produce it.
+    const shape = line as { accountRole?: string; accountCode?: string }
+    const role = shape.accountRole?.trim()
+    const code = shape.accountCode?.trim()
+    const named = role || code
+    if (!named) {
+      throw new UnprocessableEntityError(
+        'A posting line must carry an account role or an account code',
+        { postingType, periodKey }
+      )
     }
-    assertMinorUnits(line.amount, `Posting line amount for role ${line.accountRole}`)
+    if (role && code) {
+      throw new UnprocessableEntityError(
+        `A posting line names both role '${role}' and code '${code}'. It must name one.`,
+        { postingType, periodKey }
+      )
+    }
+    assertMinorUnits(line.amount, `Posting line amount for account ${named}`)
     if (line.amount < 0) {
       throw new UnprocessableEntityError(
-        `Posting line amount must be positive - direction carries the sign (role ${line.accountRole}, amount ${line.amount})`,
-        { accountRole: line.accountRole, amount: String(line.amount) }
+        `Posting line amount must be positive - direction carries the sign (account ${named}, amount ${line.amount})`,
+        { account: named, amount: String(line.amount) }
       )
     }
     if (line.amount === 0) {
       throw new UnprocessableEntityError(
-        `Posting line amount must be non-zero (role ${line.accountRole})`,
-        { accountRole: line.accountRole }
+        `Posting line amount must be non-zero (account ${named})`,
+        { account: named }
       )
     }
 

@@ -52,6 +52,15 @@ export const glPostingType = pgEnum('GlPostingType', [
   'month_end_inventory',
   'receipt',
   'vendor_bill',
+  // Added 2026-09-04 (plans/accounting/HANDOFF.md slot 0B). Kept in step with
+  // `POSTING_TYPES` by `lib/postings/__tests__/types.test.ts`.
+  'manual_journal',
+  'opening_balance',
+  'bank_transaction',
+  'bank_deposit',
+  'write_off',
+  // Slot 2G phase B, drizzle 0362.
+  'payment',
 ])
 
 /**

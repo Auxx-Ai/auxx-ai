@@ -798,3 +798,64 @@ export const BuildSource = {
     { value: 'batch', label: 'Batch', color: 'purple' },
   ] satisfies FieldOptionItem[],
 } as const
+
+/**
+ * Journal Entry Status
+ * plans/accounting/tasks/02-manual-journal-entry.md, HANDOFF slot 1A.
+ *
+ * Three values, and the set is deliberately NOT `GlPosting.status`
+ * (`pending | posted | failed | reversed`). They answer different questions:
+ * `GlPosting.status` is what the LEDGER did with an entry, and its `pending`
+ * means claimed-and-mid-push - it holds the period's unique index. This is what
+ * the DRAFT is, and its `draft` means nobody has committed to anything yet,
+ * which the posting table has no way to represent.
+ *
+ * There is no `failed`. A post that the ledger refused leaves the record in
+ * `draft` with nothing stamped, because the remedy is to fix the entry and press
+ * Post again - which is exactly what `draft` already means. A `failed` value
+ * would be a second word for the same state and would have to be cleared by
+ * hand before the retry.
+ *
+ * `reversed` is terminal here as it is there: an entry is corrected by a second,
+ * opposite entry, never by an edit (ground rule 6).
+ */
+export const JournalEntryStatus = {
+  DRAFT: 'draft',
+  POSTED: 'posted',
+  REVERSED: 'reversed',
+
+  values: [
+    { value: 'draft', label: 'Draft', color: 'gray' },
+    { value: 'posted', label: 'Posted', color: 'green' },
+    { value: 'reversed', label: 'Reversed', color: 'orange' },
+  ] satisfies FieldOptionItem[],
+} as const
+
+/**
+ * Journal Entry Kind
+ * plans/accounting/tasks/02-manual-journal-entry.md, HANDOFF decision 6.7.
+ *
+ * What the record IS, which decides the posting type it becomes: `manual` ->
+ * `manual_journal`, `opening_balance` -> `opening_balance`. That mapping is why
+ * `kind` is `updatable: false` - changing it after the fact would post the entry
+ * under a type `doc-number.ts` keys differently and `regime.ts` declares
+ * differently.
+ *
+ * `recurring_template` is RESERVED and posts nothing today (tier 2 item 13). It
+ * is declared now because `RecurrenceRule.subjectId` is `NOT NULL` and
+ * references `EntityInstance`, so the recurring case has always needed this
+ * record to exist - and adding an option to a materialised SINGLE_SELECT later
+ * costs its own migration, which is what `031-documents-field-hidden-in-dialogs`
+ * and `033-external-id-field-hidden-in-dialogs` exist to do.
+ */
+export const JournalEntryKind = {
+  MANUAL: 'manual',
+  OPENING_BALANCE: 'opening_balance',
+  RECURRING_TEMPLATE: 'recurring_template',
+
+  values: [
+    { value: 'manual', label: 'Manual', color: 'gray' },
+    { value: 'opening_balance', label: 'Opening Balance', color: 'blue' },
+    { value: 'recurring_template', label: 'Recurring Template', color: 'purple' },
+  ] satisfies FieldOptionItem[],
+} as const

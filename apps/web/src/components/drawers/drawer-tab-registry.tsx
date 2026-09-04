@@ -244,6 +244,27 @@ export const DRAWER_TAB_CARD_COMPONENTS: Record<
     import('./cards/order-work-orders-card').then((m) => ({ default: m.OrderWorkOrdersCard })),
 
   // ─────────────────────────────────────────────────────────────────
+  // LEDGER CARDS (plans/accounting/HANDOFF.md slot 2J, ui-plan §2.3 / §4.4)
+  // One component, `sourceType` pinned per entity by the wrapper.
+  // ─────────────────────────────────────────────────────────────────
+  'order:ledger': () =>
+    import('../accounting/ui/ledger-card-registrations').then((m) => ({
+      default: m.OrderLedgerCard,
+    })),
+  'invoice:ledger': () =>
+    import('../accounting/ui/ledger-card-registrations').then((m) => ({
+      default: m.InvoiceLedgerCard,
+    })),
+  'payment:ledger': () =>
+    import('../accounting/ui/ledger-card-registrations').then((m) => ({
+      default: m.PaymentLedgerCard,
+    })),
+  'bank_deposit:ledger': () =>
+    import('../accounting/ui/ledger-card-registrations').then((m) => ({
+      default: m.BankDepositLedgerCard,
+    })),
+
+  // ─────────────────────────────────────────────────────────────────
   // PURCHASING CARDS — plans/purchasing/01-build-plan.md §4.4 / §5.1.
   // `vendor_bill:match` is the three-way-match verdict: billed, received and
   // expected side by side per line. Per §6.3 that IS the entire exception UI -

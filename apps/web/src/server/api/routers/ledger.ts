@@ -8,25 +8,34 @@ import {
   buildEntry,
   confirmSuggestedIdentities,
   createChartAccount,
+  createJournalEntry,
   GL_ACCOUNT_TYPES,
+  getJournalEntry,
   getPosting,
   listAccountIdentities,
   listChartAccounts,
   listChartAccountUsage,
   listClosePeriods,
+  listJournalEntries,
+  listPostings,
+  listPostingsForSource,
   listRoleMap,
   listUnpostedPeriods,
   POSTING_TYPES,
   postEntry,
+  postJournalEntry,
   postMonthEnd,
   previewEntry,
+  previewJournalEntry,
   previewMonthEnd,
   removeChartAccount,
   resolvePeriodLock,
   reverseEntry,
+  reverseJournalEntry,
   setAccountIdentity,
   setRoleAssignment,
   updateChartAccount,
+  updateJournalEntry,
   verifyBooksBalance,
 } from '@auxx/lib/postings'
 import { seedDefaultChartOfAccounts } from '@auxx/lib/seed'
@@ -45,18 +54,66 @@ import { createTRPCRouter, permissionProcedure } from '~/server/api/trpc'
  * `buildEntry` says which role the leg belongs to. A bookkeeper reads the
  * second one at 11pm on the 3rd.
  */
-const postingLine = z.object({
-  /** An auxx ROLE (`'grni'`), never an account number. See `postings/types.ts`. */
-  accountRole: z.string().min(1),
+const postingLineBase = {
   direction: z.enum(['debit', 'credit']),
   /** Integer minor units, positive. `direction` carries the sign. */
   amount: z.number(),
   memo: z.string().optional(),
-  /** The kind of row that produced this line - `'stock_movement'`, `'vendor_bill'`. */
+  /** The kind of row that produced this line - `'stock_movement'`, `'journal_entry'`. */
   sourceType: z.string().min(1),
   sourceId: z.string().min(1),
   sortOrder: z.number().int().nonnegative(),
-})
+}
+
+/**
+ * A BUILDER's line: an auxx ROLE, never an account number.
+ *
+ * `.strict()`, and that is load-bearing - see {@link postingLine}.
+ */
+const roleLine = z
+  .object({
+    /** One of `ACCOUNT_ROLES`. See `postings/types.ts` for why a builder emits a role. */
+    accountRole: z.string().min(1),
+    ...postingLineBase,
+  })
+  .strict()
+
+/** A HUMAN's line: a code out of this org's own chart. `.strict()`, see {@link postingLine}. */
+const codeLine = z
+  .object({
+    /** `'6300'`. Validated against the chart with the same refusals a role gets. */
+    accountCode: z.string().min(1),
+    ...postingLineBase,
+  })
+  .strict()
+
+/**
+ * A union rather than two optional keys.
+ *
+ * `{ accountRole?: string; accountCode?: string }` would accept a line naming
+ * both, and every reader downstream would need a precedence rule - which is a
+ * rule about which of two named accounts money silently goes into.
+ * `GlPostingLineInput` is a discriminated union for the same reason, and this is
+ * that shape at the wire.
+ *
+ * 🛑 **Both branches are `.strict()` because a zod object STRIPS unknown keys.**
+ * Non-strict, a line naming BOTH `accountRole` and `accountCode` parses cleanly
+ * against `roleLine` - the union takes the first branch that fits - and the
+ * `accountCode` is silently deleted before anything downstream sees it. That is
+ * precisely the "money goes into one of two named accounts, quietly" case this
+ * union exists to make unrepresentable, and it made `build-entry.ts`'s
+ * both-at-once refusal unreachable from the wire. Strict, the line matches
+ * neither branch and the request is refused.
+ *
+ * The cost is that a caller may send no extra keys at all. That is the intended
+ * contract: `postingLineBase` is the whole of what a line is, and an unknown key
+ * on a general-ledger line is a client that thinks it is writing something the
+ * server does not read.
+ *
+ * Exported for `ledger-posting-line-schema.test.ts` only - nothing else imports
+ * it, and it is not part of any client surface.
+ */
+export const postingLine = z.union([roleLine, codeLine])
 
 /**
  * A draft entry, as a caller hands it in.
@@ -69,8 +126,21 @@ const postingLine = z.object({
  * where an unbalanced entry is refused.
  */
 const draftEntry = z.object({
+  /**
+   * Every declared type, `manual_journal` and `opening_balance` included since
+   * HANDOFF slot 0B. What is ENABLED is a separate question and `regime.ts`
+   * answers it; this enum is the vocabulary, not the permission.
+   */
   postingType: z.enum(POSTING_TYPES),
-  /** `'2026-08'` for a month, `'2026-08-18'` for a day. `parsePeriodKey` owns the keyspace. */
+  /**
+   * `'2026-08'` for a month, `'2026-08-18'` for a day. `parsePeriodKey` owns the
+   * keyspace.
+   *
+   * ⚠️ Not always a period: `manual_journal`, `bank_deposit` and `write_off`
+   * key on the source record's own NUMBER (`'JNL-0007'`), because many can post
+   * in one day and a date key would make the second collide with the first on
+   * the claim's unique index. `doc-number.ts` is the authority.
+   */
   periodKey: z.string().min(1),
   /**
    * `YYYY-MM-DD`. Validated here because nothing downstream does: `buildEntry`
@@ -140,6 +210,47 @@ const draftEntry = z.object({
  */
 const monthKey = z.object({
   periodKey: z.string().regex(/^\d{4}-\d{2}$/, 'periodKey must be a YYYY-MM month'),
+})
+
+/**
+ * The same month, optional.
+ *
+ * Only `listPostings` takes this: an org whose accounting is finalized with a
+ * cutoff in the future resolves NO month, and the ledger page's Entries section
+ * is the only door to a manual journal entry. A required month there hid every
+ * posting on exactly the screen somebody opens to find one. Absent means "the
+ * whole ledger"; a malformed value is still refused.
+ */
+const optionalMonthKey = z.object({
+  periodKey: z
+    .string()
+    .regex(/^\d{4}-\d{2}$/, 'periodKey must be a YYYY-MM month')
+    .optional(),
+})
+
+/**
+ * One line of a journal-entry DRAFT, as the drawer stores it.
+ *
+ * Distinct from {@link postingLine} on purpose. That one is a posting line and
+ * carries the audit pair (`sourceType` / `sourceId`) and a `sortOrder`; this one
+ * is what a person typed, and its source pair is the record itself while its
+ * order is the array's. Making the drawer supply four fields it cannot know
+ * before the entry is saved would be the worse shape.
+ *
+ * 🛑 `amountMinor` is INTEGER MINOR UNITS. Dollars never cross this wire:
+ * `toMinorUnits` from `@auxx/lib/postings/client` is the single conversion and
+ * it runs in the browser, at the `CurrencyInput` boundary. Zod checks that it is
+ * a number and no more, for `postingLine`'s reason - `buildManualEntry` refuses
+ * a zero, a negative and a fraction of a cent, and it names the ROW while doing
+ * it, which a Zod issue cannot.
+ */
+const journalEntryLine = z.object({
+  /** A code out of this org's own chart, e.g. `'6300'`. */
+  accountCode: z.string().min(1),
+  direction: z.enum(['debit', 'credit']),
+  /** Integer minor units, > 0. The debit/credit column carries the sign. */
+  amountMinor: z.number(),
+  memo: z.string().max(1000).optional(),
 })
 
 export const ledgerRouter = createTRPCRouter({
@@ -606,5 +717,252 @@ export const ledgerRouter = createTRPCRouter({
     const result = await verifyBooksBalance(ctx.db, ctx.session.organizationId)
     if (result.isErr()) throw result.error
     return result.value
+  }),
+
+  /**
+   * Every posting in one month EXCEPT the close entry - the ledger page's
+   * entries list.
+   *
+   * `periods` above answers "which months have a close entry", which is a
+   * different question and cannot be made to answer this one. Under L1 a month
+   * held exactly one posting and no list was needed; a manual journal entry is
+   * what makes a month hold N.
+   *
+   * The month-end inventory entry is excluded because the console renders it
+   * INLINE above this list, with its own roll-forward, its own blockers and its
+   * own Post button. Including it here would give the screen two places to post
+   * the same thing.
+   */
+  listPostings: permissionProcedure(PermissionKey.ledgerView)
+    // 🛑 The month is OPTIONAL here and required by `monthKey` elsewhere. The
+    // ledger page resolves no month for a finalized org whose cutoff is in the
+    // future, and its Entries section is the only door to a manual entry, so
+    // demanding one made every posting invisible on the screen a bookkeeper
+    // opens to find them. A MALFORMED month is still refused by the regex.
+    .input(optionalMonthKey)
+    .query(async ({ ctx, input }) => {
+      const result = await listPostings(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        periodKey: input.periodKey,
+      })
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /**
+   * Every posting one record produced - the `ledger` card on an order, an
+   * invoice, a payment or a journal entry.
+   *
+   * Reached through `GlPostingLine.sourceType` / `sourceId`, which every builder
+   * stamps on every line. `sourceType` is a free string rather than an enum on
+   * purpose: it names the KIND of row that produced the line and new kinds
+   * arrive with new builders, so an enum here would have to be edited in
+   * lockstep with a vocabulary this router does not own. There is nothing to
+   * leak - both halves are scoped to the caller's organization in SQL.
+   */
+  listPostingsForSource: permissionProcedure(PermissionKey.ledgerView)
+    .input(z.object({ sourceType: z.string().min(1), sourceId: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      const result = await listPostingsForSource(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        sourceType: input.sourceType,
+        sourceId: input.sourceId,
+      })
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /**
+   * The journal-entry DRAFT - the record a bookkeeper types a posting into, and
+   * the holder of the opening trial balance (HANDOFF decision 6.7).
+   *
+   * ## Why the draft is a record and not a client-side buffer
+   *
+   * The entry's NUMBER is issued on create and becomes the posting's
+   * `periodKey` (`doc-number.ts`), so an entry cannot be posted until it has
+   * one - which means the draft has to exist server-side before Post is
+   * reachable at all. That is also what lets the opening trial balance be a
+   * draft the wizard fills in over several sittings, and what gives the
+   * attachment somewhere to hang.
+   *
+   * ## The gates
+   *
+   * | procedure | gate |
+   * | --- | --- |
+   * | `get`, `list`, `preview` | `ledger.view` |
+   * | `create`, `update`, `post`, `reverse` | `ledger.post` |
+   *
+   * 🛑 `create` and `update` are `ledgerPost`, not `ledgerView`, even though
+   * neither writes a posting. A draft is the thing somebody then presses Post
+   * on, and `setRoleAssignment` above made the same call for the same reason:
+   * this decides where real money lands. `journal_entry` stays
+   * `isVisible: false` so this is its only door - routing it through
+   * `record.create` would hand it to anyone with records-Full and ledger-None.
+   */
+  journalEntry: createTRPCRouter({
+    /**
+     * Raise a draft. Lines may be empty - a person opens the drawer before they
+     * have typed anything, and refusing an empty draft would mean the drawer
+     * could not save until it balanced.
+     */
+    create: permissionProcedure(PermissionKey.ledgerPost)
+      .input(
+        z.object({
+          kind: z.enum(['manual', 'opening_balance', 'recurring_template']).optional(),
+          date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'date must be YYYY-MM-DD'),
+          memo: z.string().max(4000).optional(),
+          lines: z.array(journalEntryLine).max(200).optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { organizationId, userId } = ctx.session
+        const result = await createJournalEntry(ctx.db, organizationId, userId, input)
+        if (result.isErr()) throw result.error
+        return result.value
+      }),
+
+    /**
+     * Edit a draft. `lines` is replaced WHOLESALE when present - a draft's lines
+     * have no identity, and a patch protocol over them would need row ids the
+     * JSON does not carry.
+     *
+     * Refused on a posted entry with a `ConflictError`: the ledger has no update
+     * path, so an edit could only ever mean this record's JSON disagreeing with
+     * the numbers actually posted.
+     */
+    update: permissionProcedure(PermissionKey.ledgerPost)
+      .input(
+        z.object({
+          id: z.string().min(1),
+          date: z
+            .string()
+            .regex(/^\d{4}-\d{2}-\d{2}$/, 'date must be YYYY-MM-DD')
+            .optional(),
+          /** An empty string CLEARS the memo; omitting the key leaves it alone. */
+          memo: z.string().max(4000).optional(),
+          lines: z.array(journalEntryLine).max(200).optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { organizationId, userId } = ctx.session
+        const { id, ...values } = input
+        const result = await updateJournalEntry(ctx.db, organizationId, userId, {
+          journalEntryId: id,
+          ...values,
+        })
+        if (result.isErr()) throw result.error
+        return result.value
+      }),
+
+    /** One draft, or a `NotFoundError` for an id that is not this org's. */
+    get: permissionProcedure(PermissionKey.ledgerView)
+      .input(z.object({ id: z.string().min(1) }))
+      .query(async ({ ctx, input }) => {
+        const result = await getJournalEntry(ctx.db, ctx.session.organizationId, input.id)
+        if (result.isErr()) throw result.error
+        return result.value
+      }),
+
+    /**
+     * Drafts and posted entries, newest first.
+     *
+     * ⚠️ `periodKey` filters on the entry's own accounting DATE, month by
+     * month - not on the posting's `periodKey`, which for a `manual_journal` is
+     * the entry number.
+     */
+    list: permissionProcedure(PermissionKey.ledgerView)
+      .input(
+        z
+          .object({
+            kind: z.enum(['manual', 'opening_balance', 'recurring_template']).optional(),
+            status: z.enum(['draft', 'posted', 'reversed']).optional(),
+            periodKey: z
+              .string()
+              .regex(/^\d{4}-\d{2}$/, 'periodKey must be a YYYY-MM month')
+              .optional(),
+            limit: z.number().int().positive().max(200).optional(),
+            offset: z.number().int().nonnegative().optional(),
+          })
+          .optional()
+      )
+      .query(async ({ ctx, input }) => {
+        const result = await listJournalEntries(ctx.db, ctx.session.organizationId, input ?? {})
+        if (result.isErr()) throw result.error
+        return result.value
+      }),
+
+    /**
+     * What this draft WOULD post. Persists nothing, including the overrides.
+     *
+     * The overrides exist so the drawer can preview what is on screen without
+     * saving first - the totals strip and the blockers card both want an answer
+     * for the entry as it is being typed, and forcing a save to get one would
+     * write a draft on every keystroke.
+     *
+     * A `.mutation()` despite writing nothing, for `preview`'s two reasons: the
+     * lines are a request BODY and do not fit in a URL, and a preview keyed on
+     * the entire draft is not cacheable in any useful sense.
+     */
+    preview: permissionProcedure(PermissionKey.ledgerView)
+      .input(
+        z.object({
+          id: z.string().min(1),
+          date: z
+            .string()
+            .regex(/^\d{4}-\d{2}-\d{2}$/, 'date must be YYYY-MM-DD')
+            .optional(),
+          memo: z.string().max(4000).optional(),
+          lines: z.array(journalEntryLine).max(200).optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { id, ...overrides } = input
+        const result = await previewJournalEntry(ctx.db, ctx.session.organizationId, {
+          journalEntryId: id,
+          ...overrides,
+        })
+        if (result.isErr()) throw result.error
+        return result.value
+      }),
+
+    /**
+     * Post the draft and stamp the record.
+     *
+     * Returns a `PostResult` verbatim, for the reason `post` above does: a
+     * closed period, an account that is not in the chart and an inventory
+     * account named by code all arrive as a status the screen RENDERS.
+     */
+    post: permissionProcedure(PermissionKey.ledgerPost)
+      .input(z.object({ id: z.string().min(1), memo: z.string().max(4000).optional() }))
+      .mutation(async ({ ctx, input }) => {
+        const { organizationId, userId } = ctx.session
+        const result = await postJournalEntry(ctx.db, organizationId, userId, {
+          journalEntryId: input.id,
+          memo: input.memo,
+        })
+        if (result.isErr()) throw result.error
+        return result.value
+      }),
+
+    /**
+     * Back the posted entry out with a second, opposite one, and flip the
+     * record to `reversed`.
+     *
+     * There is no edit and no void. Gated on `ledgerPost` rather than a key of
+     * its own: a reversal IS a post, it lands in the same books, and someone
+     * trusted to write to the ledger is exactly who should be able to correct
+     * it.
+     */
+    reverse: permissionProcedure(PermissionKey.ledgerPost)
+      .input(z.object({ id: z.string().min(1), memo: z.string().max(4000).optional() }))
+      .mutation(async ({ ctx, input }) => {
+        const { organizationId, userId } = ctx.session
+        const result = await reverseJournalEntry(ctx.db, organizationId, userId, {
+          journalEntryId: input.id,
+          memo: input.memo,
+        })
+        if (result.isErr()) throw result.error
+        return result.value
+      }),
   }),
 })

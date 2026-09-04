@@ -196,6 +196,42 @@
       "import": "./dist/availability/client.mjs",
       "default": "./src/availability/client.ts"
     },
+    "./banking": {
+      "types": "./src/banking/index.ts",
+      "source": "./src/banking/index.ts",
+      "import": "./dist/banking/index.mjs",
+      "default": "./src/banking/index.ts"
+    },
+    "./banking/client": {
+      "types": "./src/banking/client.ts",
+      "source": "./src/banking/client.ts",
+      "import": "./dist/banking/client.mjs",
+      "default": "./src/banking/client.ts"
+    },
+    "./banking/review": {
+      "types": "./src/banking/review/index.ts",
+      "source": "./src/banking/review/index.ts",
+      "import": "./dist/banking/review/index.mjs",
+      "default": "./src/banking/review/index.ts"
+    },
+    "./banking/review/client": {
+      "types": "./src/banking/review/client.ts",
+      "source": "./src/banking/review/client.ts",
+      "import": "./dist/banking/review/client.mjs",
+      "default": "./src/banking/review/client.ts"
+    },
+    "./banking/rules": {
+      "types": "./src/banking/rules/index.ts",
+      "source": "./src/banking/rules/index.ts",
+      "import": "./dist/banking/rules/index.mjs",
+      "default": "./src/banking/rules/index.ts"
+    },
+    "./banking/rules/client": {
+      "types": "./src/banking/rules/client.ts",
+      "source": "./src/banking/rules/client.ts",
+      "import": "./dist/banking/rules/client.mjs",
+      "default": "./src/banking/rules/client.ts"
+    },
     "./bom": {
       "types": "./src/bom/index.ts",
       "source": "./src/bom/index.ts",

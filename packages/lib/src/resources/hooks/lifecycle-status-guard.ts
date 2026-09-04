@@ -50,11 +50,23 @@ export const QUOTE_ACTION_STATUS_MESSAGE =
  * `draft` stays editable: both the edit-a-sent-invoice flow and un-voiding write it directly
  * after a confirmation.
  */
-export const INVOICE_ACTION_STATUSES = ['sent', 'partially_paid', 'paid', 'void'] as const
+// `written_off` added by plans/accounting/HANDOFF.md slot 2K: `writeOffInvoice`
+// (`money/invoices/write-off.ts`) is the one sanctioned writer, naming
+// `invoice_status` in `bypassFieldGuards` the same way `voidInvoice` does -
+// without it here, a drawer edit could type "Written off" with none of that
+// action's ledger posting or balance effects, the exact bug this wall exists
+// to close (see the guard's own comment below).
+export const INVOICE_ACTION_STATUSES = [
+  'sent',
+  'partially_paid',
+  'paid',
+  'void',
+  'written_off',
+] as const
 
 /** The one message both invoice lifecycle guards throw. */
 export const INVOICE_ACTION_STATUS_MESSAGE =
-  'Use the invoice actions (Send / Record payment / Void) to set this status'
+  'Use the invoice actions (Send / Record payment / Void / Write off) to set this status'
 
 /**
  * The `build_status` values an ACTION owns. The enum is

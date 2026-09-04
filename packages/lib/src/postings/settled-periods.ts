@@ -1,7 +1,8 @@
 // packages/lib/src/postings/settled-periods.ts
 
 import { database, schema } from '@auxx/database'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
+import { ConflictError } from '../errors'
 import { getOrganizationSetting } from '../settings/settings-service'
 import { resolvePeriodLock } from './period-lock'
 import { compareMonths, isPeriodLocked, periodKeyForDate } from './periods'
@@ -120,4 +121,91 @@ export function describeSettledPeriods(settled: Map<string, number>, noun: strin
   const subject = total === 1 ? noun : `${noun}s`
   const verb = settled.size === 1 ? 'has' : 'have'
   return `${total} ${subject} in ${months}, which ${verb} been closed or posted`
+}
+
+/**
+ * The setup keys that become read-only once the books hold an entry
+ * (plans/accounting/HANDOFF.md slot 0D; plans/money/README.md rank 2b).
+ *
+ * Every `accounting.opening*` key, plus the two that define the period
+ * keyspace. The three inventory openings are what every month-end entry
+ * computes its delta FROM, so rewriting one after a close restates the
+ * baseline under a filed entry with nothing to flag it. The zone and the
+ * cutoff move every period boundary.
+ *
+ * 🛑 **The three `qboOpening*` keys are here BY NAME because the prefix does not
+ * reach them**, and they are the other half of the same fact. `setup-readiness.ts`
+ * and the reconciliation panel compare `accounting.opening<X>` against
+ * `accounting.qboOpening<X>` PAIRWISE - the auxx subledger's opening figure
+ * against what QuickBooks said on the same date - and a readiness check whose
+ * two sides are not equally frozen is not a check: freeze one and leave the
+ * other editable, and anybody can make a settled cutover reconcile by rewriting
+ * the side nobody guards. Both halves freeze together or neither is worth
+ * anything.
+ */
+export const FROZEN_SETUP_SETTING_KEYS = {
+  prefix: 'accounting.opening',
+  exact: [
+    'accounting.bookTimeZone',
+    'accounting.cutoffPeriod',
+    'accounting.qboOpeningRawMaterials',
+    'accounting.qboOpeningWip',
+    'accounting.qboOpeningFinishedGoods',
+  ],
+} as const
+
+/** Whether one setting key is frozen by a standing ledger entry. */
+export function isFrozenSetupSettingKey(key: string): boolean {
+  return (
+    key.startsWith(FROZEN_SETUP_SETTING_KEYS.prefix) ||
+    (FROZEN_SETUP_SETTING_KEYS.exact as readonly string[]).includes(key)
+  )
+}
+
+/**
+ * Refuse a write to any frozen setup key once the organization has an entry
+ * standing in its books.
+ *
+ * "Standing" is `status IN ('posted', 'pending')`: a reversed original has
+ * left the books, a failed claim never entered them, and a pending one is
+ * mid-push and about to. A reversal row is itself `posted`, so a ledger whose
+ * every original has been reversed is STILL frozen - deliberately. The pairs
+ * net to zero, but each half was computed from the baseline these keys hold,
+ * and a bookkeeper who wants the baseline back should see the entries that
+ * used it in the register rather than have them silently disagree with a
+ * rewritten setting.
+ *
+ * The server-side half of the freeze `useAccountingSettingsFreeze` shows in
+ * the browser. A client-only freeze fails open: any caller of
+ * `setting.batchUpdateOrganizationSettings` could rewrite the baseline under a
+ * closed month.
+ *
+ * @throws {ConflictError} naming the offending keys and the reversal path.
+ */
+export async function assertAccountingSetupUnfrozen(
+  organizationId: string,
+  keys: readonly string[]
+): Promise<void> {
+  const frozen = keys.filter(isFrozenSetupSettingKey)
+  if (frozen.length === 0) return
+
+  const [standing] = await database
+    .select({ id: schema.GlPosting.id })
+    .from(schema.GlPosting)
+    .where(
+      and(
+        eq(schema.GlPosting.organizationId, organizationId),
+        inArray(schema.GlPosting.status, ['posted', 'pending'])
+      )
+    )
+    .limit(1)
+  if (!standing) return
+
+  throw new ConflictError(
+    `${frozen.join(', ')} cannot change once the ledger holds an entry. ` +
+      'Every posted entry was computed from this baseline. To change it, reverse the standing ' +
+      'entries from the ledger page first; the reversal keeps the audit trail and the setting ' +
+      'can then be re-entered.',
+    { keys: frozen.join(',') }
+  )
 }

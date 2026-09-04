@@ -1,9 +1,11 @@
 // packages/lib/src/resources/hooks/system-hooks.ts
 
+import { BANK_DEPOSIT_HOOKS } from './bank-deposit-hooks'
 import { BUILD_HOOKS } from './build-hooks'
 import { COMMON_HOOKS } from './common-hooks'
 import { CONTACT_HOOKS } from './contact-hooks'
 import { INVOICE_HOOKS } from './invoice-hooks'
+import { JOURNAL_ENTRY_HOOKS } from './journal-entry-hooks'
 import { LINE_ITEM_HOOKS } from './line-item-hooks'
 import { ORDER_HOOKS } from './order-hooks'
 import { PAYMENT_HOOKS } from './payment-hooks'
@@ -36,6 +38,8 @@ const HOOKS_BY_ENTITY_TYPE: Record<string, SystemHookRegistry> = {
   purchase_order: PURCHASE_ORDER_HOOKS,
   vendor_bill: VENDOR_BILL_HOOKS,
   build: BUILD_HOOKS,
+  journal_entry: JOURNAL_ENTRY_HOOKS,
+  bank_deposit: BANK_DEPOSIT_HOOKS,
 }
 
 /**

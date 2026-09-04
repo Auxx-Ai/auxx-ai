@@ -44,6 +44,10 @@ describe('maintenance worker registrations', () => {
     // bill that never ages out of `awaiting_receipt` — with nothing on screen to
     // say so.
     ['vendor bill aging', 'vendorBillAgingJob'],
+    // The only thing that stops Stripe billing 30c/month for a bank connection
+    // nothing feeds from is this job calling `disconnect`. A missing registration
+    // is invisible until somebody reads an invoice.
+    ['bank feed maintenance', 'bankFeedMaintenanceJob'],
   ])('has a handler for the %s job', (_label, name) => {
     expect(Object.keys(jobMappings)).toContain(name)
   })

@@ -150,6 +150,24 @@ export {
   updateImportStrategy,
   updateMappingTitle,
 } from './mapping'
+// ── OFX / QFX / QBO statement parsing (HANDOFF slot 3D) ───────────────────
+// Pure, no Node built-ins, so the browser parses a dropped statement without a
+// round trip and the router runs the SAME function on the server.
+export {
+  isOfxContent,
+  OFX_COLUMNS,
+  type OfxAccount,
+  type OfxAccountKind,
+  type OfxColumn,
+  type OfxDocument,
+  type OfxImportRows,
+  type OfxLedgerBalance,
+  type OfxTransaction,
+  parseOfx,
+  parseOfxAmountToMinor,
+  parseOfxDate,
+  toOfxImportRows,
+} from './ofx'
 // Planning
 export {
   type AnalyzedRow,
@@ -313,7 +331,6 @@ export {
 } from './resolution'
 // Types
 export * from './types'
-
 // Utilities
 export {
   chunkArray,

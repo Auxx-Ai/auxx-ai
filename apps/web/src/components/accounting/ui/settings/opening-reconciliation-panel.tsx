@@ -108,7 +108,7 @@ export function OpeningPairField({
         {/*
           The reason moved into this lock's tooltip. It used to render as body
           text under every pair, so the same three sentences appeared once per
-          account — the panel's own `showLabels` rule against repetition applies
+          account, the panel's own `showLabels` rule against repetition applies
           to the explanation just as much as to the captions.
         */}
         {readOnly && readOnlyReason && <FrozenLock reason={readOnlyReason} />}
@@ -155,7 +155,7 @@ interface OpeningTotalRowProps {
  * 🛑 The two snapshots must agree before setup can be finalized, and when they
  * do NOT this row says so in as many words rather than leaving a bookkeeper to
  * infer it from a disabled button on another page. Agreement gets the badge
- * alone — see the comment on the paragraph below.
+ * alone, see the comment on the paragraph below.
  */
 export function OpeningTotalRow({ total, incomplete, className }: OpeningTotalRowProps) {
   const agrees = !incomplete && total === 0
@@ -184,7 +184,7 @@ export function OpeningTotalRow({ total, incomplete, className }: OpeningTotalRo
         already carried by the green badge and by this row's own description
         ("The two snapshots must agree before setup can be finalized."), so
         spelling it out a third time made the settled case the loudest row on
-        the page — and pushed its badge out of line with the three above it.
+        the page, and pushed its badge out of line with the three above it.
       */}
       {!agrees && (
         <p className='px-2 text-muted-foreground text-xs'>

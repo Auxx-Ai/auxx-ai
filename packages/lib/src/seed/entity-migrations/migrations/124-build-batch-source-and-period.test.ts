@@ -32,9 +32,9 @@ describe('migration 124 registration', () => {
     expect(migration124BuildBatchSourceAndPeriod.id).toBe(MIGRATION_ID)
   })
 
-  it('is last, so the next migration takes 125', () => {
+  it('sorts before 125, which took the next id', () => {
     const ids = ALL_ENTITY_MIGRATIONS.map((m) => m.id)
-    expect(ids[ids.length - 1]).toBe(MIGRATION_ID)
+    expect(ids.indexOf(MIGRATION_ID)).toBeLessThan(ids.indexOf('125-accounting-books'))
   })
 })
 

@@ -62,8 +62,9 @@ import { and, eq, inArray } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError, UnprocessableEntityError } from '../errors'
 import { type AccountRole, ROLE_ACCOUNT_TYPES } from './build-entry'
-import { loadChartAccountsById } from './chart-accounts'
+import { loadChartAccountFields, loadChartAccountsById } from './chart-accounts'
 import type { GlAccountTypeValue } from './default-chart'
+import type { GlPostingLineInput } from './types'
 
 const logger = createScopedLogger('postings:resolve-roles')
 
@@ -259,4 +260,241 @@ async function loadAccounts(
     })
   }
   return result
+}
+
+/**
+ * Resolve every line of an entry - role lines AND code lines - in one batch.
+ *
+ * Returns one {@link ResolvedAccount} per input line, in the SAME order as the
+ * input, so a caller can zip the two arrays without a key.
+ *
+ * ## The five refusals, applied to both shapes
+ *
+ * {@link resolveRoles} fails closed on five `G19` conditions. A CODE line is
+ * held to the same five, because "the human typed it" is not evidence:
+ *
+ * | Condition | role line | code line |
+ * | --- | --- | --- |
+ * | no such thing | the role is unmapped | the chart holds no account with that code |
+ * | withdrawn | the role is `markedUnused` | (n/a - a code names an account, not a mapping) |
+ * | archived / missing | the mapped account is gone | the account with that code is archived |
+ * | not active | `isActive = false` | `isActive = false` |
+ * | ambiguous | >1 assignment row (impossible, asserted) | >1 live account carries the code |
+ *
+ * 🛑 **The type-compatibility refusal has no code-line counterpart, on purpose.**
+ * A role means something (`grni` IS a liability), so a role pointed at a revenue
+ * account is a mapping mistake. A code means only "this account", and the person
+ * typing it is looking at the chart: `6300` is whatever type the org made it,
+ * and there is no second declaration for it to disagree with. Inventing an
+ * expected type for a code line would have to guess one from the direction or
+ * from the posting type, and both guesses are wrong for ordinary entries (a
+ * credit to an expense account is a legitimate correction).
+ *
+ * Every problem across both shapes is collected and reported in ONE
+ * `UnprocessableEntityError` naming every offending row, for the reason the file
+ * header gives: a bookkeeper fixing an entry needs the list, not a treasure hunt.
+ * Rows are named by their 1-based position so the message lines up with the grid
+ * the person is looking at.
+ */
+export async function resolveAccountLines(
+  db: Database,
+  organizationId: string,
+  lines: readonly GlPostingLineInput[]
+): Promise<Result<ResolvedAccount[], Error>> {
+  if (lines.length === 0) return ok([])
+
+  try {
+    const roles = [
+      ...new Set(lines.map((line) => line.accountRole).filter((r): r is string => !!r)),
+    ]
+    const codes = [
+      ...new Set(lines.map((line) => line.accountCode).filter((c): c is string => !!c)),
+    ]
+
+    const problems: string[] = []
+
+    // Roles go through the existing door unchanged, so the two shapes cannot
+    // drift apart on what a role means. Its message already names every role.
+    let byRole = new Map<string, ResolvedAccount>()
+    if (roles.length > 0) {
+      const resolved = await resolveRoles(db, organizationId, roles)
+      if (resolved.isErr()) problems.push(resolved.error.message)
+      else byRole = resolved.value
+    }
+
+    const byCode =
+      codes.length > 0 ? await loadAccountsByCode(db, organizationId, codes) : new Map()
+
+    for (const [index, line] of lines.entries()) {
+      const row = index + 1
+      if (line.accountCode) {
+        const found = byCode.get(line.accountCode)
+        if (!found) {
+          problems.push(
+            `Row ${row}: this organization's chart has no active account with code '${line.accountCode}'. ` +
+              'It may never have existed, or it may have been archived or deactivated.'
+          )
+          continue
+        }
+        if (found.length > 1) {
+          problems.push(
+            `Row ${row}: code '${line.accountCode}' is carried by ${found.length} accounts in this chart. ` +
+              'Refusing to choose - give one of them a different code first.'
+          )
+          continue
+        }
+        const account = found[0]
+        if (account && !account.isActive) {
+          problems.push(
+            `Row ${row}: ${account.code} ${account.name} is not active. Reactivate it, or code the line to another account.`
+          )
+        }
+        continue
+      }
+      // A line with neither shape is `buildEntry`'s refusal to make, not this
+      // one's - but it must not silently resolve to nothing either.
+      if (!line.accountRole) {
+        problems.push(`Row ${row}: the line names neither an account role nor an account code.`)
+      }
+    }
+
+    if (problems.length > 0) {
+      return err(
+        new UnprocessableEntityError(
+          `Cannot post: ${problems.length} line(s) do not resolve to a usable account. ${problems.join(' ')}`,
+          { organizationId }
+        )
+      )
+    }
+
+    const resolvedLines: ResolvedAccount[] = []
+    for (const [index, line] of lines.entries()) {
+      const account = line.accountCode
+        ? byCode.get(line.accountCode)?.[0]
+        : byRole.get(line.accountRole as string)
+      if (!account) {
+        // Unreachable: every line either resolved above or produced a problem.
+        // Asserted because the alternative is a ledger line with no account.
+        return err(
+          new UnprocessableEntityError(
+            `Row ${index + 1} resolved to nothing. Refusing to post a line with no account.`,
+            { organizationId }
+          )
+        )
+      }
+      resolvedLines.push(account)
+    }
+
+    return ok(resolvedLines)
+  } catch (error) {
+    if (error instanceof AuxxError) return err(error)
+    logger.error('Failed to resolve posting lines', { error, organizationId })
+    return err(new AuxxError('Internal error'))
+  }
+}
+
+/**
+ * The accounts a set of ROLES currently points at, WITHOUT refusing.
+ *
+ * The counterpart to {@link resolveRoles} for a reader that is asking a
+ * question rather than posting: "which account, if any, carries `inventory_wip`
+ * in this org?". An unmapped, unused, archived or inactive role simply has no
+ * entry, because the answer to that question is genuinely "none" and a refusal
+ * would be wrong - the caller is not trying to put money anywhere.
+ *
+ * The one caller today is the manual/opening inventory refusal in
+ * `post-entry.ts`, which has to name the account codes a hand-keyed entry may
+ * not touch. An org that has not mapped `inventory_wip` has nothing to protect,
+ * and refusing every manual entry over it would be absurd.
+ */
+export async function loadRoleAccountCodes(
+  db: Database,
+  organizationId: string,
+  roles: readonly string[]
+): Promise<Map<string, ResolvedAccount>> {
+  const wanted = [...new Set(roles)]
+  if (wanted.length === 0) return new Map()
+
+  const assignments = await db
+    .select({
+      role: schema.GlRoleAssignment.role,
+      glAccountId: schema.GlRoleAssignment.glAccountId,
+      markedUnused: schema.GlRoleAssignment.markedUnused,
+    })
+    .from(schema.GlRoleAssignment)
+    .where(
+      and(
+        eq(schema.GlRoleAssignment.organizationId, organizationId),
+        inArray(schema.GlRoleAssignment.role, wanted)
+      )
+    )
+
+  // Filtered on BOTH the requested set and `markedUnused`, even though the
+  // query already narrows the first: this function's answer is compared against
+  // account CODES by its caller, so a stray role leaking in would attach an
+  // unrelated account's code to the guarded set and refuse an innocent entry.
+  const live = assignments.filter((row) => !row.markedUnused && wanted.includes(row.role))
+  const accounts = await loadAccounts(
+    db,
+    organizationId,
+    live.map((row) => row.glAccountId)
+  )
+
+  const result = new Map<string, ResolvedAccount>()
+  for (const row of live) {
+    const account = accounts.get(row.glAccountId)
+    if (account) result.set(row.role, account)
+  }
+  return result
+}
+
+/**
+ * Live accounts in this org's chart carrying any of the named CODES.
+ *
+ * Keyed by code and valued by an ARRAY rather than a single account, because
+ * "two live accounts share one code" is the ambiguity refusal and collapsing it
+ * to `.get(code)` here would silently pick one - the exact behaviour the role
+ * resolver's "no default and no take-the-first" rule forbids one level up. The
+ * uniqueness of `gl_account_code` is a registry capability, not a database
+ * constraint, so this is reachable through the importer and through two
+ * concurrent creates.
+ *
+ * Archived instances are excluded by `loadChartAccountsById`, which is why an
+ * archived account reads exactly like one that never existed: from a coder's
+ * point of view they are the same fact.
+ */
+async function loadAccountsByCode(
+  db: Database,
+  organizationId: string,
+  codes: string[]
+): Promise<Map<string, ResolvedAccount[]>> {
+  const fields = await loadChartAccountFields(organizationId, NOT_PROVISIONED)
+
+  const rows = await db
+    .select({ entityId: schema.FieldValue.entityId })
+    .from(schema.FieldValue)
+    .where(
+      and(
+        eq(schema.FieldValue.organizationId, organizationId),
+        eq(schema.FieldValue.fieldId, fields.code.id),
+        inArray(schema.FieldValue.valueText, codes)
+      )
+    )
+
+  // Through the shared reader rather than a second decode, so this and the role
+  // resolver cannot come to disagree about what one account says - and so the
+  // archived-excluded-by-the-query rule is applied in exactly one place.
+  const accounts = await loadAccounts(
+    db,
+    organizationId,
+    rows.map((row) => row.entityId)
+  )
+
+  const byCode = new Map<string, ResolvedAccount[]>()
+  for (const account of accounts.values()) {
+    const bucket = byCode.get(account.code)
+    if (bucket) bucket.push(account)
+    else byCode.set(account.code, [account])
+  }
+  return byCode
 }

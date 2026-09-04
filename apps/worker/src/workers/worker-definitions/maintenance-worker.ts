@@ -7,6 +7,7 @@ import {
   applyScheduledSubscriptionChangesJob,
   approvalOrphanSweeperJob,
   appStorageSweepJob,
+  bankFeedMaintenanceJob,
   cleanupExpiredMediaAssetsJob,
   companyEnrichmentSweepJob,
   type DemoSeedJobData,
@@ -242,6 +243,13 @@ export const jobMappings = {
   // RecordIdentity drift backstop (daily; rebuilds the index from
   // FieldValue ⋈ CustomField(isIdentity) for any un-instrumented writer)
   reconcileRecordIdentitiesJob,
+
+  // The bank feed's nightly sweep (HANDOFF slot 3A). Releases Financial Connections
+  // accounts that are still being billed 30c/month with nothing feeding from them, and
+  // stores each bank account's coverage floor. Both failures are SILENT without it: a
+  // churned customer bills forever, and a balance sheet spanning a hole in the data
+  // renders happily and is wrong.
+  bankFeedMaintenanceJob,
 
   // Dispatch recurring engine daily sweep (M2c, 06-recurring-engine.md §4.4/§5.3):
   // extends materialization horizons for active engagements + auto-ends exhausted ones.

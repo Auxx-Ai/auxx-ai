@@ -3,7 +3,7 @@
 'use client'
 
 import { MainPageContent } from '@auxx/ui/components/main-page'
-import { Landmark, Scale, SlidersHorizontal } from 'lucide-react'
+import { Building2, Landmark, Scale, SlidersHorizontal } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import SidebarSecondary from '~/components/global/sidebar-secondary'
 import type { SidebarProps } from '~/constants/menu'
@@ -41,6 +41,14 @@ const ACCOUNTING_SETTINGS: SidebarProps[] = [
         icon: <Landmark />,
         description: 'Map posting roles to accounts, and edit the chart',
         keywords: ['chart of accounts', 'roles', 'gl'],
+      },
+      {
+        id: 'accounting-settings-bank-accounts',
+        label: 'Bank accounts',
+        slug: 'bank-accounts',
+        icon: <Building2 />,
+        description: 'Which chart account each bank account maps to, and its coverage',
+        keywords: ['bank', 'feed', 'statement', 'reconcile'],
       },
     ],
   },

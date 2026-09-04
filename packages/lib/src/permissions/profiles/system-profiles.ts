@@ -11,7 +11,7 @@ import {
 } from '@auxx/database'
 import type { ResourcePermission } from '@auxx/database/enums'
 import type { OrganizationRole, SeatType } from '@auxx/database/types'
-import { type Area, Level } from '../capabilities/registry'
+import { Area, Level } from '../capabilities/registry'
 import { FIELD_TECH_BASELINE_LEVELS, MEMBER_BASELINE_LEVELS } from '../capabilities/seat-policy'
 import type { AgentPermissionPolicy, ProfileAppliesTo, SystemProfileSlug } from './types'
 
@@ -222,6 +222,46 @@ export const SYSTEM_PROFILE_SEEDS: readonly SystemProfileSeed[] = [
       resources: {},
     },
     levels: null,
+  },
+  {
+    slug: 'accountant',
+    name: 'Accountant',
+    description:
+      'Read-only access to the general ledger and the records that feed it, for a bookkeeper ' +
+      'or CPA. No record edits, no org administration.',
+    icon: { iconId: 'calculator', color: 'teal' },
+    seat: 'full',
+    appliesTo: 'member',
+    role: 'USER',
+    baseLevel: null,
+    agentPolicy: null,
+    // plans/accounting/HANDOFF.md slot 2K / implementation-review.md item 12.
+    //
+    // 🛑 DEPARTURE from the brief. The brief (and `ui-plan.md` §3, `gap-analysis.md`
+    // §3 item 12) ask for `records: Read` scoped to invoice / payment / vendor_bill /
+    // vendor_payment / order / company / contact ONLY, with every other record type
+    // `None`. That scoping is not expressible today: `Area.records` is one coarse
+    // area covering every def alike (`capabilities/registry.ts` `PERMISSION_AREAS
+    // [Area.records]`), and per-definition/per-instance grants on a PROFILE grantee
+    // are explicitly refused — `profile-save.ts`'s `savePermissionProfile` throws
+    // `BadRequestError` on any non-empty `defAccess`/`instanceAccess` ("not enabled
+    // yet, see plans/permissions/v2/19-permission-profiles.md step 9"), and
+    // `PermissionGrant.levels` (the only thing a profile grant row stores) is a
+    // sparse `{ areaSlug: Level }` map with no per-def key at all. So this profile
+    // grants `records: Read` BROADLY — every record type, not just the seven named
+    // — which is wider than the brief intended but is the closest correct
+    // expression the current permission model allows. Narrow it to the named seven
+    // once step 9 (per-def grants on a profile) lands.
+    // `files: Read` is what confers `PermissionKey.filesView`, which the file
+    // download route requires unconditionally. Without it an accountant can
+    // render a statement PDF and then be refused the asset it produced, and
+    // cannot open a journal entry's attachment either. It grants nothing a
+    // `records: Read` holder cannot already see.
+    levels: {
+      [Area.ledger]: Level.Read,
+      [Area.records]: Level.Read,
+      [Area.files]: Level.Read,
+    },
   },
 ]
 

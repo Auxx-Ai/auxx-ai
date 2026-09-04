@@ -5,6 +5,10 @@ import { createScopedLogger } from '@auxx/logger'
 import type { FieldOptions } from '../../custom-fields'
 import type { ResourceField } from '../../resources/registry/field-types'
 import { ARTICLE_FIELDS } from '../../resources/registry/resources/article-fields'
+import { BANK_ACCOUNT_FIELDS } from '../../resources/registry/resources/bank-account-fields'
+import { BANK_DEPOSIT_FIELDS } from '../../resources/registry/resources/bank-deposit-fields'
+import { BANK_RULE_FIELDS } from '../../resources/registry/resources/bank-rule-fields'
+import { BANK_TRANSACTION_FIELDS } from '../../resources/registry/resources/bank-transaction-fields'
 import { BUILD_FIELDS } from '../../resources/registry/resources/build-fields'
 import { CATALOG_GROUP_FIELDS } from '../../resources/registry/resources/catalog-group-fields'
 import { CATALOG_ITEM_FIELDS } from '../../resources/registry/resources/catalog-item-fields'
@@ -13,6 +17,7 @@ import { CONTACT_FIELDS } from '../../resources/registry/resources/contact-field
 import { GL_ACCOUNT_FIELDS } from '../../resources/registry/resources/gl-account-fields'
 import { INBOX_FIELDS } from '../../resources/registry/resources/inbox-fields'
 import { INVOICE_FIELDS } from '../../resources/registry/resources/invoice-fields'
+import { JOURNAL_ENTRY_FIELDS } from '../../resources/registry/resources/journal-entry-fields'
 import { LINE_ITEM_FIELDS } from '../../resources/registry/resources/line-item-fields'
 import { MEETING_FIELDS } from '../../resources/registry/resources/meeting-fields'
 import { ORDER_FIELDS } from '../../resources/registry/resources/order-fields'
@@ -84,7 +89,12 @@ export const FIELD_REGISTRY: Record<string, Record<string, ResourceField>> = {
   vendor_payment: VENDOR_PAYMENT_FIELDS,
   vendor_payment_allocation: VENDOR_PAYMENT_ALLOCATION_FIELDS,
   gl_account: GL_ACCOUNT_FIELDS,
+  journal_entry: JOURNAL_ENTRY_FIELDS,
   build: BUILD_FIELDS,
+  bank_deposit: BANK_DEPOSIT_FIELDS,
+  bank_account: BANK_ACCOUNT_FIELDS,
+  bank_transaction: BANK_TRANSACTION_FIELDS,
+  bank_rule: BANK_RULE_FIELDS,
   tariff_code: TARIFF_CODE_FIELDS,
   tariff_rate: TARIFF_RATE_FIELDS,
 }

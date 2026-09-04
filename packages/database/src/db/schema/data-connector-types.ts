@@ -28,7 +28,11 @@ type ResourceFieldId = string & { readonly __brand: 'ResourceFieldId' }
  * (`connectors/registry.ts`) that the connector router accepts, so a union without
  * it is narrower than the column it describes.
  */
-export type DataConnectorType = 'generic-rest' | 'fixture' | `app:${string}`
+export type DataConnectorType =
+  | 'generic-rest'
+  | 'fixture'
+  | 'stripe-financial-connections'
+  | `app:${string}`
 
 /**
  * Pagination contract for a generic-REST endpoint. Refined in sub-plan 05a.

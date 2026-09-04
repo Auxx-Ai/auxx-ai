@@ -7,6 +7,34 @@ import { CREATED_BY_FIELD } from '../common-fields'
 import type { ResourceField } from '../field-types'
 
 /**
+ * IRS Form W-9 tax classification (plans/accounting/HANDOFF.md slot 2K).
+ * The six boxes Form W-9 §3 offers a US vendor - kept as a plain SINGLE_SELECT
+ * rather than an `enum-values.ts` entry because every other company option list
+ * (industry, company size, enrichment status) is declared inline in this file.
+ */
+const COMPANY_TAX_CLASSIFICATION_OPTIONS = [
+  { label: 'Individual / sole proprietor', value: 'individual_sole_proprietor', color: 'gray' },
+  { label: 'C corporation', value: 'c_corporation', color: 'blue' },
+  { label: 'S corporation', value: 's_corporation', color: 'purple' },
+  { label: 'Partnership', value: 'partnership', color: 'orange' },
+  { label: 'LLC', value: 'llc', color: 'teal' },
+  { label: 'Other', value: 'other', color: 'gray' },
+] as const
+
+/**
+ * IRS Form 1099 box a vendor's payments default to when the year-end summary
+ * groups them (`postings/reports/vendor-1099.ts`). `none` is the default so an
+ * eligible-but-unmapped vendor is visibly unmapped rather than silently
+ * defaulting into NEC.
+ */
+const COMPANY_DEFAULT_1099_BOX_OPTIONS = [
+  { label: 'None', value: 'none', color: 'gray' },
+  { label: '1099-NEC Box 1 - Nonemployee compensation', value: 'nec_1', color: 'blue' },
+  { label: '1099-MISC Box 1 - Rents', value: 'misc_1_rents', color: 'purple' },
+  { label: '1099-MISC Box 3 - Other income', value: 'misc_3_other', color: 'orange' },
+] as const
+
+/**
  * Field definitions for the Company resource
  * Defines all fields, their types, capabilities, and validation rules
  */
@@ -717,6 +745,127 @@ export const COMPANY_FIELDS: Record<string, ResourceField> = {
       isInverse: true,
     },
     description: 'Payments made to this supplier',
+  },
+
+  // ── 1099 / W-9 (plans/accounting/HANDOFF.md slot 2K, added by entity
+  // migration 125) ───────────────────────────────────────────────────────
+
+  taxClassification: {
+    id: toFieldId('taxClassification'),
+    key: 'taxClassification',
+    label: 'Tax Classification',
+    type: BaseType.ENUM,
+    fieldType: FieldType.SINGLE_SELECT,
+    isSystem: true,
+    systemAttribute: 'company_tax_classification',
+    systemSortOrder: 'c3',
+    nullable: true,
+    options: { options: [...COMPANY_TAX_CLASSIFICATION_OPTIONS] },
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    placeholder: 'Select tax classification',
+    description: "The vendor's Form W-9 §3 tax classification.",
+  },
+
+  tin: {
+    id: toFieldId('tin'),
+    key: 'tin',
+    label: 'TIN',
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemAttribute: 'company_tin',
+    systemSortOrder: 'c4',
+    nullable: true,
+    capabilities: {
+      filterable: false,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    placeholder: 'XX-XXXXXXX',
+    // 🛑 No masking mechanism exists in the registry today: `ResourceField`'s
+    // `capabilities` carry no `sensitive`/`mask` flag anywhere in this repo
+    // (checked - grep turns up nothing). This is a plain TEXT field; masking
+    // the SSN/EIN in the company drawer is left to the drawer UI, which is not
+    // this slot's file. Flagged in the 2K report rather than left silent.
+    description:
+      "The vendor's taxpayer identification number (SSN or EIN), from Form W-9. " +
+      'Not filterable - a TIN is never a lookup key. Should be masked on display; ' +
+      'no masking capability exists in the field registry yet.',
+  },
+
+  w9OnFile: {
+    id: toFieldId('w9OnFile'),
+    key: 'w9OnFile',
+    label: 'W-9 On File',
+    type: BaseType.BOOLEAN,
+    fieldType: FieldType.CHECKBOX,
+    isSystem: true,
+    systemAttribute: 'company_w9_on_file',
+    systemSortOrder: 'c5',
+    nullable: false,
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    defaultValue: false,
+    description: 'Whether a completed Form W-9 has been collected from this vendor.',
+  },
+
+  is1099Eligible: {
+    id: toFieldId('is1099Eligible'),
+    key: 'is1099Eligible',
+    label: '1099 Eligible',
+    type: BaseType.BOOLEAN,
+    fieldType: FieldType.CHECKBOX,
+    isSystem: true,
+    systemAttribute: 'company_is_1099_eligible',
+    systemSortOrder: 'c6',
+    nullable: false,
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    defaultValue: false,
+    description:
+      'Whether this vendor is a candidate for a 1099 - a US non-corporate contractor paid ' +
+      'for services. The year-end summary further filters on the $600 threshold.',
+  },
+
+  default1099Box: {
+    id: toFieldId('default1099Box'),
+    key: 'default1099Box',
+    label: 'Default 1099 Box',
+    type: BaseType.ENUM,
+    fieldType: FieldType.SINGLE_SELECT,
+    isSystem: true,
+    systemAttribute: 'company_default_1099_box',
+    systemSortOrder: 'c7',
+    nullable: true,
+    options: { options: [...COMPANY_DEFAULT_1099_BOX_OPTIONS] },
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    placeholder: 'Select 1099 box',
+    defaultValue: 'none',
+    description: "Which 1099 box this vendor's payments are reported under by default.",
   },
 
   createdBy: CREATED_BY_FIELD,

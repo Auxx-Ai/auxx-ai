@@ -154,6 +154,12 @@ export {
   type AppStorageSweepStats,
   appStorageSweepJob,
 } from './maintenance/app-storage-sweep-job'
+// The bank feed's nightly sweep (HANDOFF slot 3A): the Stripe billing reaper plus
+// the stored coverage floor. Both fail silently if nobody runs them.
+export {
+  type BankFeedMaintenanceStats,
+  bankFeedMaintenanceJob,
+} from './maintenance/bank-feed-maintenance-job'
 // Money P24 vendor-bill aging daily sweep — `awaiting_receipt` -> `exception`
 export { companyEnrichmentSweepJob } from './maintenance/company-enrichment-sweep-job'
 // Per-request provider deletion / deauthorize teardown

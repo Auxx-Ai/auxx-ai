@@ -17,6 +17,9 @@ import { attachmentRouter } from './routers/attachment'
 import { auditLogRouter } from './routers/audit-log'
 import { authRouter } from './routers/auth'
 import { availabilityRouter } from './routers/availability'
+import { bankingRouter } from './routers/banking'
+import { bankingReviewRouter } from './routers/banking-review'
+import { bankingRulesRouter } from './routers/banking-rules'
 import { billingRouter } from './routers/billing'
 import { buildsRouter } from './routers/builds'
 import { calendarRouter } from './routers/calendar'
@@ -55,6 +58,8 @@ import { knowledgeSourceRouter } from './routers/knowledge-sources'
 import { kopilotRouter } from './routers/kopilot'
 import { labelRouter } from './routers/label'
 import { ledgerRouter } from './routers/ledger'
+import { ledgerOpeningRouter } from './routers/ledger-opening'
+import { ledgerReportsRouter } from './routers/ledger-reports'
 import { mailClassificationRouter } from './routers/mail-classification'
 import { mailFiltersRouter } from './routers/mail-filters'
 import { mailSuggestionsRouter } from './routers/mail-suggestions'
@@ -160,6 +165,11 @@ export const appRouter = createTRPCRouter({
   kopilot: kopilotRouter,
   label: labelRouter,
   ledger: ledgerRouter,
+  ledgerOpening: ledgerOpeningRouter,
+  ledgerReports: ledgerReportsRouter,
+  banking: bankingRouter,
+  bankingReview: bankingReviewRouter,
+  bankingRules: bankingRulesRouter,
   mailDomain: mailDomainsRouter,
   mailClassification: mailClassificationRouter,
   mailFilters: mailFiltersRouter,

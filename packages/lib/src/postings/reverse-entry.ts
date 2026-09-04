@@ -148,21 +148,22 @@ export async function reverseEntry(
       )
     }
 
-    // `accountRole` is nullable: a manual or legacy entry may name a code
-    // directly. Such an entry cannot be expressed as a `BuiltEntry`, which is
-    // role-keyed by construction, so it is refused rather than reversed into
-    // whatever role happens to map to the same code today.
-    const roleless = lines.filter((line) => !line.accountRole).map((line) => line.accountCode)
-    if (roleless.length > 0) {
-      return refuse(
-        `Posting ${original.docNumber} has lines with no account role (${[...new Set(roleless)].join(', ')}). ` +
-          'A role-less entry has to be reversed by hand.',
-        original.id
-      )
-    }
-
-    // ── The drift check ────────────────────────────────────────────────────
-    const roles = [...new Set(lines.map((line) => line.accountRole as string))]
+    // ── The drift check, for ROLE lines only ───────────────────────────────
+    //
+    // 🛑 A CODE line has no drift to check and is deliberately exempt.
+    // `accountRole` is nullable: a manual or opening entry names accounts by
+    // code, and the code IS the authority - there is no mapping between the
+    // entry and the account for the chart to move underneath. Re-resolving one
+    // would be inventing a role the person never chose. So a code line is
+    // reversed to the same code it posted to, verbatim, which is precisely what
+    // the drift check exists to guarantee for a role line.
+    //
+    // (Before slot 1A this function REFUSED a role-less entry outright, which
+    // was correct while `BuiltEntry` was role-keyed by construction. It is not
+    // any more: `GlPostingLineInput` carries both shapes.)
+    const roles = [
+      ...new Set(lines.map((line) => line.accountRole).filter((r): r is string => !!r)),
+    ]
     const resolved = await resolveRoles(db, organizationId, roles)
     if (resolved.isErr()) {
       return {
@@ -176,7 +177,8 @@ export async function reverseEntry(
 
     const drift: string[] = []
     for (const line of lines) {
-      const account = resolved.value.get(line.accountRole as string)
+      if (!line.accountRole) continue
+      const account = resolved.value.get(line.accountRole)
       if (account && account.code !== line.accountCode) {
         drift.push(
           `'${line.accountRole}' posted to ${line.accountCode} but now maps to ${account.code}`
@@ -196,7 +198,9 @@ export async function reverseEntry(
     // through `buildEntry` so the reversal is subject to the same balance and
     // minor-unit assertions as anything else that reaches the ledger.
     const reversedLines: GlPostingLineInput[] = lines.map((line, index) => ({
-      accountRole: line.accountRole as string,
+      // The shape the original carried, kept: a role line reverses as a role
+      // line, a code line as the same code.
+      ...(line.accountRole ? { accountRole: line.accountRole } : { accountCode: line.accountCode }),
       direction: line.direction === 'debit' ? 'credit' : 'debit',
       amount: line.amountMinor,
       memo: line.memo ?? undefined,

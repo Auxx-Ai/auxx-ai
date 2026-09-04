@@ -155,7 +155,7 @@ export function formatAccount(account: ChartAccountRow | null | undefined): stri
  * account, owned by `accounts-settings-page.tsx`.
  *
  * Only enough to render the list's phantom row and to know whether the current
- * selection is a draft — the full field set lives inside the draft form instance
+ * selection is a draft, the full field set lives inside the draft form instance
  * (keyed by `draftId`), exactly as `CatalogDraftHandle` has it.
  */
 export interface ChartDraftHandle {
@@ -167,7 +167,7 @@ export interface ChartDraftHandle {
   /**
    * Set once the draft's `chartAccountCreate` resolves. The draft is KEPT alive
    * after creation (with selection swapped to this id) so the draft form stays
-   * mounted — a remount onto the query-bound form mid-typing would replace the
+   * mounted, a remount onto the query-bound form mid-typing would replace the
    * input's text and cancel the pending debounced commit. The list hides the
    * phantom row once this is set (the real row arrived with the invalidated
    * query); the draft is dropped when the user navigates to another row or tab.

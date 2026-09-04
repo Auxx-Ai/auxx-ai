@@ -52,8 +52,15 @@ export interface PostingDraftV1 {
   revision: number
   memo?: string
   entry: BuiltEntry
-  /** Post-resolution. A provider never sees a role. */
-  resolvedLines: Array<ResolvedPostingLine & { accountRole: string }>
+  /**
+   * Post-resolution. A provider never sees a role.
+   *
+   * `accountRole` is `null` on a CODE line - a manual or opening entry, where
+   * the human named the account itself and there is no role to record. Widened
+   * from `string` by HANDOFF slot 1A; `GlPostingLine.accountRole` has always
+   * been nullable, so the envelope was the narrower of the two.
+   */
+  resolvedLines: Array<ResolvedPostingLine & { accountRole: string | null }>
   /** Present only for posting types that assert a balance. See {@link PostingAssertions}. */
   assertions?: PostingAssertions
 }
@@ -82,7 +89,7 @@ export function buildPostingDraft(input: {
   revision: number
   memo?: string
   entry: BuiltEntry
-  resolvedLines: Array<ResolvedPostingLine & { accountRole: string }>
+  resolvedLines: Array<ResolvedPostingLine & { accountRole: string | null }>
   assertions?: PostingAssertions
 }): PostingDraftV1 {
   return {

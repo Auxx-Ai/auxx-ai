@@ -685,6 +685,58 @@ export const ORDER_FIELDS: Record<string, ResourceField> = {
   },
 
   /**
+   * The shipment log: one entry per fulfillment `money.fulfillOrder` recorded
+   * (plans/accounting/HANDOFF.md slot 2G, tasks/01 §5).
+   *
+   * 🛑 **This is the ONLY thing that makes "how much of this line is still to
+   * ship" answerable.** `order_fulfillment_status` says `partial` and cannot
+   * say partial in WHAT, and the ledger's own copy is the recognised AMOUNT,
+   * not the quantity. Without this field a second fulfillment could re-ship a
+   * line the first one already shipped and re-recognise its revenue - an entry
+   * that balances and overstates the P&L with nothing to detect it.
+   *
+   * JSON on the order rather than a `fulfillment` entity, following
+   * `journal_entry_lines` (`postings/journal-entries/client.ts`) exactly: a
+   * shipment has no independent identity, nothing links to it, and the
+   * normalised accounting copy already lives in `GlPostingLine`. A child entity
+   * would add an EntityInstance and several FieldValues per shipment for rows
+   * nobody addresses.
+   *
+   * ⚠️ The value is an OBJECT wrapping the array (`{ fulfillments: [...] }`),
+   * never the bare array - a `FieldValue` write treats a top-level array as a
+   * MULTI-VALUE write and this field is single-value, which
+   * `UnifiedCrudHandler.setFieldValues` logs and SWALLOWS. See
+   * `money/orders/client.ts`.
+   *
+   * `creatable: false`: a shipment is recorded by fulfilling, never by typing
+   * one into a create form.
+   */
+  fulfillments: {
+    id: toFieldId('fulfillments'),
+    key: 'fulfillments',
+    label: 'Fulfillments',
+    type: BaseType.JSON,
+    fieldType: FieldType.JSON,
+    isSystem: true,
+    systemAttribute: 'order_fulfillments',
+    systemSortOrder: 'aK1',
+    nullable: true,
+    showInPanel: false,
+    showInDialogs: false,
+    showInTable: false,
+    capabilities: {
+      filterable: false,
+      sortable: false,
+      creatable: false,
+      updatable: true,
+      configurable: false,
+    },
+    description:
+      'One entry per shipment - sequence, date, the quantity shipped per line, and the GL ' +
+      'posting it produced. Appended by money.fulfillOrder, never edited',
+  },
+
+  /**
    * The order's CURRENT production-demand fingerprint (plans/products/13 Model A+).
    *
    * Maintained by `builds/drift-reconciler.ts` and compared against a build's
