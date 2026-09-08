@@ -26,6 +26,7 @@ function seedStore(opts: Partial<DashboardSeed> & { id?: string } = {}) {
     draft: opts.draft ?? null,
     versionNumber: opts.versionNumber ?? 1,
     hasUnpublishedChanges: opts.hasUnpublishedChanges ?? false,
+    ...(opts.canEdit !== undefined ? { canEdit: opts.canEdit } : {}),
   })
 }
 
@@ -124,8 +125,34 @@ describe('lifecycle', () => {
 })
 
 describe('view layer (Live/Draft toggle)', () => {
-  it('cold seed lands on the live layer', () => {
+  it('cold seed lands a VIEWER on the live layer, even with a parked draft', () => {
+    // No `canEdit`: the published version is the canonical dashboard, and a
+    // viewer has no Live/Draft toggle to get back with.
     seedStore({ draft: doc(), hasUnpublishedChanges: true })
+    expect(selectViewLayer(store())).toBe('live')
+  })
+
+  it('cold seed lands an EDITOR with unpublished work on the draft layer', () => {
+    // Regression: this used to be unconditionally 'live', so an editor who
+    // moved a widget, hit Done and reloaded saw the published layout snap it
+    // back. Nothing was lost, but it is indistinguishable from data loss.
+    seedStore({ draft: doc(), hasUnpublishedChanges: true, canEdit: true })
+    expect(selectViewLayer(store())).toBe('draft')
+  })
+
+  it('an editor with NOTHING unpublished still lands on live', () => {
+    seedStore({ draft: doc(), hasUnpublishedChanges: false, canEdit: true })
+    expect(selectViewLayer(store())).toBe('live')
+  })
+
+  it('a background refetch does not clobber the layer mid-edit', () => {
+    // `seed` re-runs on every `dashboard.get` settle. It used to reset the
+    // layer every time, which is why this decision cannot live in a one-shot
+    // effect on the page.
+    seedStore({ draft: doc(), hasUnpublishedChanges: true, canEdit: true })
+    store().enterEditMode()
+    store().setViewLayer('live')
+    seedStore({ draft: doc(), hasUnpublishedChanges: true, canEdit: true })
     expect(selectViewLayer(store())).toBe('live')
   })
 

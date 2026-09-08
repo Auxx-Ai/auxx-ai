@@ -116,7 +116,7 @@ export function DashboardDetailView({
   const canAdmin = canAdminInstance(dashboardRecordId)
   const canCreate = can('dashboards.manage')
 
-  const draftQuery = useDashboardDraftSync(dashboard.id)
+  const draftQuery = useDashboardDraftSync(dashboard.id, canEdit)
   // The three server-facing hooks for the open dashboard, mounted once and in
   // this order: the turn lock is what the auto-save suspends on, and the
   // realtime refresh is what feeds the auto-save its next CAS token (its
@@ -174,30 +174,6 @@ export function DashboardDetailView({
   const isDirty = useDashboardStore((s) => s.isDirty)
   const viewLayer = useDashboardStore(selectViewLayer)
   const setViewLayer = useDashboardStore((s) => s.setViewLayer)
-  // A cold load lands on the LIVE layer (`seed` resets `viewLayer: 'live'`), but
-  // `exitEditMode` leaves you on `'draft'`. So an editor who moved a widget, hit
-  // Done, and then reloaded saw the published layout snap the widget back to
-  // where it used to be. Nothing was lost, the draft had the move all along, but
-  // "I moved it, refreshed, and it moved back" is indistinguishable from data
-  // loss from the outside, and the unsaved-changes pill is easy to miss.
-  //
-  // So: an editor with unpublished changes lands on the DRAFT, which is the work
-  // they were last looking at. Viewers are deliberately excluded, and this is not
-  // cosmetic for them: the published version is the canonical dashboard, and a
-  // viewer has no Live/Draft toggle to get back with.
-  //
-  // Once per seeded dashboard, never on later refetches, so the header toggle
-  // stays authoritative the moment the user touches it.
-  const landedOnDraftRef = useRef<string | null>(null)
-  useEffect(() => {
-    if (!canEdit || !draftQuery.data) return
-    if (landedOnDraftRef.current === dashboard.id) return
-    landedOnDraftRef.current = dashboard.id
-    if (draftQuery.data.hasUnpublishedChanges && draftQuery.data.draftLayout) {
-      setViewLayer('draft')
-    }
-  }, [canEdit, draftQuery.data, dashboard.id, setViewLayer])
-
   const saveState = useDashboardStore((s) => s.saveState)
   const hasPersisted = useDashboardStore((s) => s.persisted !== null)
   const enterEditMode = useDashboardStore((s) => s.enterEditMode)
