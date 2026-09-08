@@ -24,10 +24,20 @@ import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { InputSearch } from '@auxx/ui/components/input-search'
 import { EmptySection } from '@auxx/ui/components/section'
+import { Switch } from '@auxx/ui/components/switch'
 import { TREE_SECONDARY_NOTRUNCATE, TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { cn } from '@auxx/ui/lib/utils'
-import { Building2, CreditCard, Landmark, PlugZap, Plus, RefreshCw, Upload } from 'lucide-react'
+import {
+  ArchiveRestore,
+  Building2,
+  CreditCard,
+  Landmark,
+  PlugZap,
+  Plus,
+  RefreshCw,
+  Upload,
+} from 'lucide-react'
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
 import { BankInstitutionIcon } from '~/components/accounting/ui/bank-institution-icon'
@@ -48,9 +58,23 @@ interface BankAccountsListProps {
   onSync: (bankAccountId: string) => void
   /** Re-authenticate a whole LOGIN. Offered on the section, never on a row. */
   onReconnect: (bankAccountId: string) => void
+  /** Bring an archived account back. Offered on the archived row alone. */
+  onRestore: (bankAccountId: string) => void
   connecting: boolean
   /** The account whose sync is in flight, so only its button spins. */
   syncingId: string | null
+  /** The account whose restore is in flight. */
+  restoringId: string | null
+  /**
+   * Whether `accounts` currently carries the archived rows.
+   *
+   * 🛑 The page owns the state and the filtering. This component renders what it
+   * is given; a second filter here would be a second answer to which rows exist.
+   */
+  showArchived: boolean
+  onShowArchivedChange: (next: boolean) => void
+  /** How many archived accounts the org holds, so the toggle can say so. */
+  archivedCount: number
 }
 
 /** Institutions in a stable order, with unnamed ones last under one heading. */
@@ -65,8 +89,13 @@ export function BankAccountsList({
   onAddManually,
   onSync,
   onReconnect,
+  onRestore,
   connecting,
   syncingId,
+  restoringId,
+  showArchived,
+  onShowArchivedChange,
+  archivedCount,
 }: BankAccountsListProps) {
   const [search, setSearch] = useState('')
   /**
@@ -121,6 +150,20 @@ export function BankAccountsList({
         </>
       )}
 
+      {/* Offered only when there is something behind it. An always-present
+          toggle over an empty set advertises a state most orgs never reach, and
+          archiving is meant to be the quiet default rather than a mode. */}
+      {archivedCount > 0 && (
+        <label className='flex cursor-pointer items-center gap-2 px-1 text-muted-foreground text-xs'>
+          <Switch
+            checked={showArchived}
+            onCheckedChange={onShowArchivedChange}
+            aria-label='Show archived accounts'
+          />
+          Show archived ({archivedCount})
+        </label>
+      )}
+
       {isLoading ? (
         <EmptySection loading />
       ) : accounts.length === 0 ? (
@@ -162,9 +205,12 @@ export function BankAccountsList({
                 />
               }
               title={<span className='truncate font-medium text-sm'>{group.institution}</span>}
+              // 🛑 The count is of LIVE accounts. An archived one is not an
+              // account this bank is feeding any more, and counting it would
+              // make "Show archived" appear to add accounts to the login.
               secondary={
                 <span className='text-muted-foreground text-xs'>
-                  {group.accounts.length === 1 ? '1 account' : `${group.accounts.length} accounts`}
+                  {group.liveCount === 1 ? '1 account' : `${group.liveCount} accounts`}
                 </span>
               }
               // 🛑 Reconnect belongs on the LOGIN, not on a row. Two accounts at one
@@ -212,10 +258,26 @@ export function BankAccountsList({
                     onToggleOpen={() => onSelect(account.id)}
                     rowClassName={cn(
                       'bg-primary-100/50 hover:bg-primary-100',
+                      // Dimmed rather than styled apart: an archived account is
+                      // still the same row, and it has to stay legible enough to
+                      // find the one you meant to restore.
+                      account.archivedAt && 'opacity-60',
                       selectedId === account.id && 'bg-primary-100 ring-1 ring-primary-200'
                     )}
                     actions={
-                      account.connectorId ? (
+                      account.archivedAt ? (
+                        // Restore, and nothing else. Sync on an archived account
+                        // would start a feed for a row that is out of every list.
+                        <TreeRowButton
+                          tooltipText='Restore'
+                          disabled={restoringId === account.id}
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            onRestore(account.id)
+                          }}>
+                          <ArchiveRestore />
+                        </TreeRowButton>
+                      ) : account.connectorId ? (
                         <TreeRowButton
                           tooltipText={
                             account.status === 'disconnected'
@@ -238,7 +300,13 @@ export function BankAccountsList({
                     }
                     secondary={
                       <span className='flex flex-wrap items-center gap-1.5 text-muted-foreground text-xs'>
-                        <BankAccountStatusChip account={account} />
+                        {account.archivedAt ? (
+                          <Badge variant='secondary' size='xs'>
+                            Archived
+                          </Badge>
+                        ) : (
+                          <BankAccountStatusChip account={account} />
+                        )}
                         {account.glAccountCode ? (
                           <Badge variant='outline' size='xs' className='font-mono'>
                             {account.glAccountCode}
@@ -340,6 +408,8 @@ export function needsReconnect(accounts: BankAccountRow[]): boolean {
 interface InstitutionGroup {
   institution: string
   accounts: BankAccountRow[]
+  /** Live accounts only. What the heading counts; see the `secondary` above. */
+  liveCount: number
 }
 
 /**
@@ -365,5 +435,9 @@ export function groupByInstitution(accounts: BankAccountRow[], search: string): 
 
   return [...byInstitution.entries()]
     .sort(([a], [b]) => (a === NO_INSTITUTION ? 1 : b === NO_INSTITUTION ? -1 : a.localeCompare(b)))
-    .map(([institution, group]) => ({ institution, accounts: group }))
+    .map(([institution, group]) => ({
+      institution,
+      accounts: group,
+      liveCount: group.filter((account) => !account.archivedAt).length,
+    }))
 }

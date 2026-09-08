@@ -27,6 +27,7 @@ import { NotFoundError, UnprocessableEntityError } from '../errors'
 import { toRecordId } from '../resources/resource-id'
 import {
   type BankAccountCoverage,
+  type BankAccountRemovalFacts,
   type BankAccountRow,
   type BankConnectorHealth,
   type CoverageGap,
@@ -37,6 +38,9 @@ import {
   toDateKey,
 } from './client'
 import { guard } from './guard'
+// The leaf, not `./rules`: the barrel drags the rule evaluator and the
+// suggestion miner in to answer "which rules name this account".
+import { listBankRules } from './rules/reads'
 
 /** Every `bank_account` attribute a {@link BankAccountRow} is assembled from. */
 const BANK_ACCOUNT_ATTRIBUTES = [
@@ -51,12 +55,14 @@ const BANK_ACCOUNT_ATTRIBUTES = [
   'bank_account_coverage_gaps',
   'bank_account_connector_id',
   'bank_account_status',
+  'bank_account_has_posted',
 ] as const
 
 /** The `bank_transaction` attributes the coverage derivation reads. */
 const BANK_TRANSACTION_ATTRIBUTES = [
   'bank_transaction_bank_account',
   'bank_transaction_posted_at',
+  'bank_transaction_review_status',
 ] as const
 
 type BankAccountAttribute = (typeof BANK_ACCOUNT_ATTRIBUTES)[number]
@@ -138,22 +144,30 @@ export async function loadBankTransactionFieldContext(
  */
 export async function listBankAccounts(
   db: Database,
-  params: { organizationId: string }
+  params: { organizationId: string; includeArchived?: boolean }
 ): Promise<Result<BankAccountRow[], Error>> {
-  const { organizationId } = params
+  const { organizationId, includeArchived = false } = params
   return guard(
     async () => {
       const ctx = await loadBankAccountFieldContext(organizationId)
       if (!ctx) return []
 
       const instances = await db
-        .select({ id: schema.EntityInstance.id, createdAt: schema.EntityInstance.createdAt })
+        .select({
+          id: schema.EntityInstance.id,
+          createdAt: schema.EntityInstance.createdAt,
+          archivedAt: schema.EntityInstance.archivedAt,
+        })
         .from(schema.EntityInstance)
         .where(
           and(
             eq(schema.EntityInstance.organizationId, organizationId),
             eq(schema.EntityInstance.entityDefinitionId, ctx.bankAccountDefId),
-            isNull(schema.EntityInstance.archivedAt)
+            // 🛑 Default FALSE, so every existing caller is unchanged. Only the
+            // settings list's "Show archived" toggle and the pickers - which
+            // have to render an archived account that is still a record's
+            // current value - ever ask for the other answer.
+            ...(includeArchived ? [] : [isNull(schema.EntityInstance.archivedAt)])
           )
         )
         .orderBy(asc(schema.EntityInstance.createdAt))
@@ -175,23 +189,29 @@ export async function listBankAccounts(
  */
 export async function getBankAccount(
   db: Database,
-  params: { organizationId: string; bankAccountId: string }
+  params: { organizationId: string; bankAccountId: string; includeArchived?: boolean }
 ): Promise<Result<BankAccountRow | null, Error>> {
-  const { organizationId, bankAccountId } = params
+  const { organizationId, bankAccountId, includeArchived = false } = params
   return guard(
     async () => {
       const ctx = await loadBankAccountFieldContext(organizationId)
       if (!ctx) return null
 
       const [instance] = await db
-        .select({ id: schema.EntityInstance.id, createdAt: schema.EntityInstance.createdAt })
+        .select({
+          id: schema.EntityInstance.id,
+          createdAt: schema.EntityInstance.createdAt,
+          archivedAt: schema.EntityInstance.archivedAt,
+        })
         .from(schema.EntityInstance)
         .where(
           and(
             eq(schema.EntityInstance.id, bankAccountId),
             eq(schema.EntityInstance.organizationId, organizationId),
             eq(schema.EntityInstance.entityDefinitionId, ctx.bankAccountDefId),
-            isNull(schema.EntityInstance.archivedAt)
+            // Default false, as above. `restoreBankAccount` and the removal
+            // preview are the only readers that need an archived row back.
+            ...(includeArchived ? [] : [isNull(schema.EntityInstance.archivedAt)])
           )
         )
         .limit(1)
@@ -274,6 +294,183 @@ export async function readCoverage(
 }
 
 /**
+ * Everything the removal gate and its confirm dialog need, in one pass
+ * (plans/bank-connection/08-removing-a-bank-account.md §7.2).
+ *
+ * 🛑 **`hasEverPosted` is read STRAIGHT OFF THE FIELD and is never derived from
+ * the rows.** That is §5.1's whole point: `undoReview` sets
+ * `bank_transaction_gl_posting_id` back to `null`, so a predicate computed from
+ * the transactions flips back to false - while the `GlPosting` it reversed and
+ * the reversal itself both stay in the books forever with a row on this account
+ * as their source document. An account that permanently changed the ledger would
+ * become deletable again the moment somebody undid the last review.
+ *
+ * Every other fact here is for the dialog and DECIDES NOTHING. The counts say
+ * how much a delete would take with it; the rules are named so a person knows
+ * which configuration a delete leaves inert (`rules/evaluate.ts` skips a rule
+ * whose `bankAccountId` does not match, so a dangling scope makes the rule
+ * silently DEAD, not silently universal - a warning, never a blocker).
+ *
+ * Reads an ARCHIVED account too, because the preview is also what a restore
+ * screen renders.
+ */
+export async function readRemovalFacts(
+  db: Database,
+  params: { organizationId: string; bankAccountId: string }
+): Promise<Result<BankAccountRemovalFacts, Error>> {
+  const { organizationId, bankAccountId } = params
+  return guard(
+    async () => {
+      const account = await getBankAccount(db, {
+        organizationId,
+        bankAccountId,
+        includeArchived: true,
+      })
+      if (account.isErr()) throw account.error
+      if (!account.value) {
+        throw new NotFoundError(`Bank account ${bankAccountId} was not found`)
+      }
+
+      const txCtx = await loadBankTransactionFieldContext(organizationId)
+      const counts = txCtx
+        ? await readTransactionStatusCounts(db, organizationId, txCtx, bankAccountId)
+        : { total: 0, matched: 0, unreviewed: 0 }
+
+      const rules = await listBankRules(db, { organizationId })
+      if (rules.isErr()) throw rules.error
+
+      return {
+        hasEverPosted: account.value.hasEverPosted,
+        transactionCount: counts.total,
+        matchedCount: counts.matched,
+        unreviewedCount: counts.unreviewed,
+        connectorId: account.value.connectorId,
+        rules: rules.value
+          .filter(
+            (rule) =>
+              rule.bankAccountId === bankAccountId ||
+              rule.counterpartBankAccountId === bankAccountId
+          )
+          .map((rule) => ({ id: rule.id, name: rule.name || 'Untitled rule' })),
+      } satisfies BankAccountRemovalFacts
+    },
+    'Failed to read bank account removal facts',
+    { organizationId, bankAccountId }
+  )
+}
+
+/**
+ * Every `bank_transaction` instance id on one account, **archived ones included**.
+ *
+ * 🛑 `listForReview` filters `archivedAt IS NULL`, which is right for a queue and
+ * wrong for a cascade: a reversed import and a duplicate the feed converged away
+ * both leave archived lines behind, and a "real delete" that stepped over them
+ * would leave rows pointing at an `EntityInstance` that no longer exists.
+ * `FieldValue.relatedEntityId` carries no foreign key, so nothing would ever
+ * clean them up.
+ *
+ * Returns the def id alongside, because the caller needs it to build a
+ * `RecordId` and resolving it twice is two cache reads for one answer.
+ */
+export async function readBankTransactionIdsForAccount(
+  db: Database,
+  params: { organizationId: string; bankAccountId: string }
+): Promise<Result<{ bankTransactionDefId: string; ids: string[] }, Error>> {
+  const { organizationId, bankAccountId } = params
+  return guard(
+    async () => {
+      const ctx = await loadBankTransactionFieldContext(organizationId)
+      const linkField = ctx?.fields.bank_transaction_bank_account
+      if (!ctx || !linkField) return { bankTransactionDefId: '', ids: [] }
+
+      const rows = await db
+        .select({ entityId: schema.FieldValue.entityId })
+        .from(schema.FieldValue)
+        .where(
+          and(
+            eq(schema.FieldValue.organizationId, organizationId),
+            eq(schema.FieldValue.fieldId, linkField.id),
+            eq(schema.FieldValue.relatedEntityId, bankAccountId)
+          )
+        )
+
+      return {
+        bankTransactionDefId: ctx.bankTransactionDefId,
+        ids: [...new Set(rows.map((row) => row.entityId))],
+      }
+    },
+    'Failed to read the bank transactions on an account',
+    { organizationId, bankAccountId }
+  )
+}
+
+/**
+ * How many live lines this account holds, and how they are split.
+ *
+ * `matched` is counted on its own because a delete destroys it and the dialog has
+ * to name that: a match is what says a document we already posted really cleared,
+ * and deleting it removes that evidence while the document's own entry stays in
+ * the books. `unreviewed` is `for_review` + `suggested` - the rows an ARCHIVE
+ * bulk-excludes (§6), which is the other sentence the dialog owes a person.
+ *
+ * Both filters run in SQL. A post-read `.filter()` would pull every statement
+ * line in the org into memory to answer a question about one account.
+ */
+async function readTransactionStatusCounts(
+  db: Database,
+  organizationId: string,
+  ctx: BankTransactionFieldContext,
+  bankAccountId: string
+): Promise<{ total: number; matched: number; unreviewed: number }> {
+  const linkField = ctx.fields.bank_transaction_bank_account
+  const statusField = ctx.fields.bank_transaction_review_status
+  if (!linkField) return { total: 0, matched: 0, unreviewed: 0 }
+
+  // Joined to the instance so an ARCHIVED line - a reversed import, a duplicate
+  // the feed converged away - is not counted as something a delete would remove.
+  const linked = await db
+    .select({ entityId: schema.FieldValue.entityId })
+    .from(schema.FieldValue)
+    .innerJoin(schema.EntityInstance, eq(schema.EntityInstance.id, schema.FieldValue.entityId))
+    .where(
+      and(
+        eq(schema.FieldValue.organizationId, organizationId),
+        eq(schema.FieldValue.fieldId, linkField.id),
+        eq(schema.FieldValue.relatedEntityId, bankAccountId),
+        isNull(schema.EntityInstance.archivedAt)
+      )
+    )
+
+  const ids = [...new Set(linked.map((row) => row.entityId))]
+  if (ids.length === 0 || !statusField) {
+    return { total: ids.length, matched: 0, unreviewed: 0 }
+  }
+
+  const statuses = await db
+    .select({ entityId: schema.FieldValue.entityId, optionId: schema.FieldValue.optionId })
+    .from(schema.FieldValue)
+    .where(
+      and(
+        eq(schema.FieldValue.organizationId, organizationId),
+        eq(schema.FieldValue.fieldId, statusField.id),
+        inArray(schema.FieldValue.entityId, ids)
+      )
+    )
+
+  const byInstance = new Map(statuses.map((row) => [row.entityId, row.optionId]))
+  let matched = 0
+  let unreviewed = 0
+  for (const id of ids) {
+    // A line with no status row at all has not been reviewed - the same default
+    // `resolveReviewStatus` applies everywhere else.
+    const status = byInstance.get(id) ?? 'for_review'
+    if (status === 'matched') matched += 1
+    if (status === 'for_review' || status === 'suggested') unreviewed += 1
+  }
+  return { total: ids.length, matched, unreviewed }
+}
+
+/**
  * Every `postedAt` date key on one account, ascending.
  *
  * Two joins on `FieldValue` - the account link and the date - so the filter runs
@@ -333,7 +530,7 @@ async function hydrateBankAccounts(
   db: Database,
   organizationId: string,
   ctx: BankAccountFieldContext,
-  page: { id: string; createdAt: Date | null }[]
+  page: { id: string; createdAt: Date | null; archivedAt: Date | null }[]
 ): Promise<BankAccountRow[]> {
   const ids = page.map((row) => row.id)
   const fieldIds = Object.values(ctx.fields)
@@ -346,6 +543,7 @@ async function hydrateBankAccounts(
           entityId: schema.FieldValue.entityId,
           fieldId: schema.FieldValue.fieldId,
           valueText: schema.FieldValue.valueText,
+          valueBoolean: schema.FieldValue.valueBoolean,
           valueDate: schema.FieldValue.valueDate,
           valueJson: schema.FieldValue.valueJson,
           optionId: schema.FieldValue.optionId,
@@ -402,6 +600,12 @@ async function hydrateBankAccounts(
       coverageGaps: normalizeCoverageGaps(read(row.id, 'bank_account_coverage_gaps')?.valueJson),
       connectorId,
       status: resolveBankAccountStatus(read(row.id, 'bank_account_status')?.optionId),
+      // 🛑 Read STRAIGHT off the field, never derived from the rows. That is the
+      // whole point of the field: `undoReview` nulls a line's posting id, so a
+      // predicate computed off the transactions flips back to false while the
+      // entry and its reversal both stay in the books (08 §5.1).
+      hasEverPosted: read(row.id, 'bank_account_has_posted')?.valueBoolean === true,
+      archivedAt: row.archivedAt,
       createdAt: row.createdAt,
       connector: connectorId ? (connectors.get(connectorId) ?? null) : null,
     } satisfies BankAccountRow

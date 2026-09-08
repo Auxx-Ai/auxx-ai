@@ -68,8 +68,9 @@ export function BankRuleDialog({ open, onClose, rule }: BankRuleDialogProps) {
   }, [open, rule])
 
   // Each page owns its own `BankAccountPicker`; the list is read here only to
-  // name the chosen counterpart in the action summary row.
-  const { accounts: bankAccounts } = useBankAccounts()
+  // name the chosen counterpart in the action summary row - so archived rows
+  // are included, or a rule scoped to an archived account summarises as blank.
+  const { accounts: bankAccounts } = useBankAccounts({ includeArchived: true })
   const { accounts: chartAccounts } = useChartAccounts()
 
   const createRule = api.bankingRules.create.useMutation({

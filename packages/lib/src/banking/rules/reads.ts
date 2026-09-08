@@ -352,7 +352,7 @@ export async function listForReviewTransactionIds(
         const acctIds = new Set(acctRows.map((row) => row.entityId))
         ids = ids.filter((id) => acctIds.has(id))
       }
-      return ids
+      return filterLiveTransactionIds(db, organizationId, ctx.bankTransactionDefId, ids)
     },
     'Failed to list for-review transactions',
     { organizationId, bankAccountId }
@@ -503,6 +503,39 @@ export async function findTransferCandidate(
   )
 }
 
+/**
+ * Keep only the ids that are still live `bank_transaction` instances, in the
+ * order given.
+ *
+ * 🛑 Every transaction read in this file starts from `FieldValue`, and a
+ * `FieldValue` row outlives an archive - archiving a bank account archives its
+ * lines but leaves their values in place. Without this filter a removed
+ * account's lines still arrive as review candidates, history samples and
+ * transfer legs, and `crud.update` then refuses them with `Entity not found`
+ * (it reads through `getEntityInstanceRow`, which is `archivedAt IS NULL`).
+ */
+async function filterLiveTransactionIds(
+  db: Database,
+  organizationId: string,
+  bankTransactionDefId: string,
+  ids: string[]
+): Promise<string[]> {
+  if (ids.length === 0) return []
+  const rows = await db
+    .select({ id: schema.EntityInstance.id })
+    .from(schema.EntityInstance)
+    .where(
+      and(
+        eq(schema.EntityInstance.organizationId, organizationId),
+        eq(schema.EntityInstance.entityDefinitionId, bankTransactionDefId),
+        isNull(schema.EntityInstance.archivedAt),
+        inArray(schema.EntityInstance.id, ids)
+      )
+    )
+  const live = new Set(rows.map((row) => row.id))
+  return ids.filter((id) => live.has(id))
+}
+
 /** Turn a page of `bank_transaction` ids into {@link TransactionMatchRow}s, one query. */
 async function readTxMatchRows(
   db: Database,
@@ -510,7 +543,8 @@ async function readTxMatchRows(
   ctx: RuleTransactionFieldContext,
   ids: string[]
 ): Promise<TransactionMatchRow[]> {
-  if (ids.length === 0) return []
+  const liveIds = await filterLiveTransactionIds(db, organizationId, ctx.bankTransactionDefId, ids)
+  if (liveIds.length === 0) return []
   const fieldIds = Object.values(ctx.fields)
     .filter((field): field is { id: string } => field != null)
     .map((field) => field.id)
@@ -530,7 +564,7 @@ async function readTxMatchRows(
         .where(
           and(
             eq(schema.FieldValue.organizationId, organizationId),
-            inArray(schema.FieldValue.entityId, ids),
+            inArray(schema.FieldValue.entityId, liveIds),
             inArray(schema.FieldValue.fieldId, fieldIds)
           )
         )
@@ -551,7 +585,7 @@ async function readTxMatchRows(
     return fieldId ? (byInstance.get(id)?.get(fieldId) ?? null) : null
   }
 
-  return ids.map((id) => ({
+  return liveIds.map((id) => ({
     id,
     bankAccountId: read(id, 'bank_transaction_bank_account')?.relatedEntityId ?? null,
     postedAt: toDateOrNull(read(id, 'bank_transaction_posted_at')?.valueDate),

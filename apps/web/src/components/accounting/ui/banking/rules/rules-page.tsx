@@ -111,7 +111,10 @@ export function BankingRulesPage() {
   const rulesQuery = api.bankingRules.list.useQuery()
   const rules = useMemo(() => rulesQuery.data ?? [], [rulesQuery.data])
 
-  const accountsQuery = api.banking.bankAccount.list.useQuery()
+  // Archived included, and the same key the pickers use: this only RESOLVES A
+  // NAME for a rule's stored scope, and a rule pointing at an archived account
+  // has to keep saying which account rather than rendering blank.
+  const accountsQuery = api.banking.bankAccount.list.useQuery({ includeArchived: true })
   const resolveAccountName = useCallback(
     (id: string) =>
       (accountsQuery.data ?? []).find((account) => account.id === id)?.name ?? undefined,

@@ -401,6 +401,36 @@ export const BANK_ACCOUNT_FIELDS: Record<string, ResourceField> = {
       'linkNewRelationships skips the pair with a debug line',
   },
 
+  hasPosted: {
+    id: toFieldId('hasPosted'),
+    key: 'hasPosted',
+    label: 'Has Posted',
+    type: BaseType.BOOLEAN,
+    fieldType: FieldType.CHECKBOX,
+    isSystem: true,
+    systemAttribute: 'bank_account_has_posted',
+    systemSortOrder: 'aD',
+    nullable: false,
+    defaultValue: false,
+    showInPanel: false,
+    showInDialogs: false,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: false,
+      updatable: true,
+      configurable: false,
+    },
+    description:
+      'A WRITE-ONCE high-water mark: true once any line on this account has produced a journal ' +
+      'entry. The only term in the removal gate - false deletes, true archives ' +
+      '(plans/bank-connection/08-removing-a-bank-account.md §5.1). Nothing clears it: undoing a ' +
+      'review, reversing an entry and reversing an import all leave the GlPosting and its ' +
+      'reversal in the books, so an account that permanently changed the ledger must never ' +
+      'become deletable again. Reading the question off the transaction rows instead is the ' +
+      'trap this field exists to close - undoReview nulls glPostingId and the answer flips back',
+  },
+
   createdAt: {
     id: toFieldId('createdAt'),
     key: 'createdAt',
