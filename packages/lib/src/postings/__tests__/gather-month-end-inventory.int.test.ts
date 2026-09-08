@@ -558,7 +558,9 @@ describe('the cutover close', () => {
 interface PostingSpec {
   periodKey: string
   revision?: number
-  status?: 'pending' | 'posted' | 'failed' | 'reversed'
+  status?: 'posted' | 'reversed'
+  exportStatus?: 'not_required' | 'pending' | 'exported' | 'failed'
+  failureReason?: string
   docNumber: string
   /** The `assertions.after` this posting claims. Omit for the corrupt-chain case. */
   after?: MonthEndInventorySnapshot | null
@@ -589,6 +591,8 @@ async function insertPosting(spec: PostingSpec): Promise<string> {
       periodKey: spec.periodKey,
       revision: spec.revision ?? 0,
       status: spec.status ?? 'posted',
+      exportStatus: spec.exportStatus ?? 'not_required',
+      failureReason: spec.failureReason ?? null,
       txnDate: `${spec.periodKey}-28`,
       docNumber: spec.docNumber,
       totalMinor: 1_000,
@@ -643,17 +647,23 @@ describe('the prior effective posting, selected from real rows', () => {
     expect(inputs.prior.balances.inventory_raw_materials).toBe(999)
   })
 
-  it('ignores a `pending` or `failed` row', async () => {
+  it('READS a row whose export was refused - it is in the books', async () => {
+    // The regression test for plans/accounting/export-state-split.md. This case
+    // used to assert the opposite: a provider refusal stamped the row `failed`
+    // and every reader skipped it, so the next month's close computed its delta
+    // against a balance that was still on disk and no longer counted. The month
+    // after a QuickBooks outage silently asserted the wrong opening inventory.
     await insertPosting({ periodKey: '2027-01', docNumber: 'JE-1', after: marker(111) })
     await insertPosting({
       periodKey: '2027-02',
       docNumber: 'JE-2',
-      status: 'failed',
+      exportStatus: 'failed',
+      failureReason: '1310 is not mapped to a QuickBooks account.',
       after: marker(222),
     })
 
     const inputs = (await gather('2027-03'))._unsafeUnwrap()
-    expect(inputs.prior.balances.inventory_raw_materials).toBe(111)
+    expect(inputs.prior.balances.inventory_raw_materials).toBe(222)
   })
 
   it('ignores another organization’s postings', async () => {

@@ -15,7 +15,7 @@
 // `postPaymentTransaction` does. An invoice must not fail to SEND because its
 // bookkeeping did: the customer is waiting on the document, the refusal is
 // recoverable, and a claimed-but-unposted period surfaces on the close
-// console's banner through `listUnpostedPeriods` on its own.
+// console's banner through `listFailedExports` on its own.
 //
 // {@link reverseInvoiceIssuance} is the opposite: a refused reversal must
 // REFUSE THE VOID, because a voided invoice whose revenue stayed in the books
@@ -47,7 +47,18 @@ import { getOrganizationSetting } from '../../settings/settings-service'
 
 const logger = createScopedLogger('money-invoice-ledger')
 
-/** The statuses that mean the ledger took the entry. */
+/**
+ * The statuses that mean the LEDGER took the entry.
+ *
+ * 🛑 Since the export split this is the only question a caller here may ask. A
+ * refused push returns `posted` with `exportStatus: 'failed'`, so it lands in
+ * this set on purpose: the entry is in the books and the document that produced
+ * it must stand. Adding an `exportStatus` check to any of these call sites
+ * reintroduces the defect - see plans/accounting/export-state-split.md.
+ *
+ * `not_connected` and `disabled` are in for the older reason: an org with no
+ * accounting system is a first-class case, not a degraded one (decision P1).
+ */
 const ACCEPTED_POST_STATUSES = new Set<string>([
   'posted',
   'already_posted',
@@ -231,7 +242,7 @@ export async function postInvoiceIssuance(
 
     if (!ACCEPTED_POST_STATUSES.has(post.status)) {
       // 🛑 Recorded, never swallowed. A refusal AFTER the claim writes a
-      // `pending`/`failed` `GlPosting` row, which `listUnpostedPeriods` reads,
+      // `pending`/`failed` `GlPosting` row, which `listFailedExports` reads,
       // so it surfaces on the close console on its own. A refusal BEFORE the
       // claim (a locked period, an unmapped `revenue_service` role) writes no
       // row at all, and this log line is the only trace - which is why it names

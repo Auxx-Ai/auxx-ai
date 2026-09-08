@@ -17,7 +17,7 @@ import type { Database } from '@auxx/database'
 import { describe, expect, it } from 'vitest'
 
 import { BadRequestError } from '../../errors'
-import { listUnpostedPeriods, verifyBooksBalance } from '../verify-balance'
+import { listFailedExports, verifyBooksBalance } from '../verify-balance'
 
 const ORG = 'org_1'
 
@@ -263,11 +263,11 @@ describe('verifyBooksBalance', () => {
   })
 })
 
-/** One `GlPosting` row as the unposted read selects it. */
+/** One `GlPosting` row as the owed-export read selects it. */
 function unpostedRow(overrides: {
   glPostingId: string
   periodKey: string
-  status?: 'pending' | 'failed'
+  exportStatus?: 'pending' | 'failed'
   postingType?: string
   docNumber?: string
   attempts?: number
@@ -277,29 +277,30 @@ function unpostedRow(overrides: {
     glPostingId: overrides.glPostingId,
     periodKey: overrides.periodKey,
     postingType: overrides.postingType ?? 'month_end_inventory',
-    status: overrides.status ?? 'pending',
+    exportStatus: overrides.exportStatus ?? 'pending',
     docNumber: overrides.docNumber ?? `GL-ME-${overrides.periodKey}`,
     attempts: overrides.attempts ?? 0,
     failureReason: overrides.failureReason ?? null,
   }
 }
 
-describe('listUnpostedPeriods', () => {
-  it('returns nothing when everything is posted', async () => {
-    const result = await listUnpostedPeriods(stubDb([]), ORG)
+describe('listFailedExports', () => {
+  it('returns nothing when every export has landed', async () => {
+    const result = await listFailedExports(stubDb([]), ORG)
     expect(result._unsafeUnwrap()).toEqual([])
   })
 
   it('keeps pending and failed distinct, with the reason and the attempt count', async () => {
     // They call for different actions. A banner that collapsed them into
-    // "unposted" would send someone to the logs for a string already in the row.
-    const result = await listUnpostedPeriods(
+    // "unposted" would send someone to the logs for a string already in the row
+    // - and would also be lying, since both are IN the books.
+    const result = await listFailedExports(
       stubDb([
-        unpostedRow({ glPostingId: 'gl_p', periodKey: '2026-07', status: 'pending' }),
+        unpostedRow({ glPostingId: 'gl_p', periodKey: '2026-07', exportStatus: 'pending' }),
         unpostedRow({
           glPostingId: 'gl_f',
           periodKey: '2026-08',
-          status: 'failed',
+          exportStatus: 'failed',
           attempts: 3,
           failureReason: 'QuickBooks rate limit',
         }),
@@ -312,7 +313,7 @@ describe('listUnpostedPeriods', () => {
         glPostingId: 'gl_p',
         periodKey: '2026-07',
         postingType: 'month_end_inventory',
-        status: 'pending',
+        exportStatus: 'pending',
         docNumber: 'GL-ME-2026-07',
         attempts: 0,
         failureReason: null,
@@ -321,7 +322,7 @@ describe('listUnpostedPeriods', () => {
         glPostingId: 'gl_f',
         periodKey: '2026-08',
         postingType: 'month_end_inventory',
-        status: 'failed',
+        exportStatus: 'failed',
         docNumber: 'GL-ME-2026-08',
         attempts: 3,
         failureReason: 'QuickBooks rate limit',
@@ -338,8 +339,11 @@ describe('listUnpostedPeriods', () => {
     ]
 
     it('is inclusive of the named month', async () => {
-      const result = await listUnpostedPeriods(stubDb(rows), ORG, { through: '2026-07' })
-      expect(result._unsafeUnwrap().map((r) => r.glPostingId)).toEqual(['gl_jun', 'gl_jul_day'])
+      const result = await listFailedExports(stubDb(rows), ORG, { through: '2026-07' })
+      expect(result._unsafeUnwrap().map((r: { glPostingId: string }) => r.glPostingId)).toEqual([
+        'gl_jun',
+        'gl_jul_day',
+      ])
     })
 
     it('bounds a day key by the month that contains it', async () => {
@@ -347,8 +351,8 @@ describe('listUnpostedPeriods', () => {
       // compare - `'2026-07-18' <= '2026-07'` is false as a string and true as a
       // period, and the string answer would silently drop July's daily entries
       // from a July close.
-      const result = await listUnpostedPeriods(stubDb(rows), ORG, { through: '2026-08' })
-      expect(result._unsafeUnwrap().map((r) => r.glPostingId)).toEqual([
+      const result = await listFailedExports(stubDb(rows), ORG, { through: '2026-08' })
+      expect(result._unsafeUnwrap().map((r: { glPostingId: string }) => r.glPostingId)).toEqual([
         'gl_jun',
         'gl_jul_day',
         'gl_aug',
@@ -356,20 +360,23 @@ describe('listUnpostedPeriods', () => {
     })
 
     it('accepts a day key as the bound and reads it as its month', async () => {
-      const result = await listUnpostedPeriods(stubDb(rows), ORG, { through: '2026-07-02' })
-      expect(result._unsafeUnwrap().map((r) => r.glPostingId)).toEqual(['gl_jun', 'gl_jul_day'])
+      const result = await listFailedExports(stubDb(rows), ORG, { through: '2026-07-02' })
+      expect(result._unsafeUnwrap().map((r: { glPostingId: string }) => r.glPostingId)).toEqual([
+        'gl_jun',
+        'gl_jul_day',
+      ])
     })
 
     it('returns everything when no bound is given', async () => {
-      const result = await listUnpostedPeriods(stubDb(rows), ORG)
+      const result = await listFailedExports(stubDb(rows), ORG)
       expect(result._unsafeUnwrap()).toHaveLength(4)
     })
 
     it('keeps an unparseable period key regardless of the bound', async () => {
       // `GlPosting.periodKey` may hold a payout or build id, which cannot be
-      // placed in a month at all. Under-reporting unposted work is the dangerous
+      // placed in a month at all. Under-reporting owed exports is the dangerous
       // direction: a bookkeeper who is not shown an entry closes without it.
-      const result = await listUnpostedPeriods(
+      const result = await listFailedExports(
         stubDb([
           unpostedRow({ glPostingId: 'gl_payout', periodKey: 'payout_abc123' }),
           unpostedRow({ glPostingId: 'gl_dec', periodKey: '2026-12' }),
@@ -377,18 +384,20 @@ describe('listUnpostedPeriods', () => {
         ORG,
         { through: '2026-07' }
       )
-      expect(result._unsafeUnwrap().map((r) => r.glPostingId)).toEqual(['gl_payout'])
+      expect(result._unsafeUnwrap().map((r: { glPostingId: string }) => r.glPostingId)).toEqual([
+        'gl_payout',
+      ])
     })
 
     it('refuses a malformed bound rather than silently matching nothing', async () => {
-      const result = await listUnpostedPeriods(stubDb(rows), ORG, { through: 'last july' })
+      const result = await listFailedExports(stubDb(rows), ORG, { through: 'last july' })
       expect(result.isErr()).toBe(true)
       expect(result._unsafeUnwrapErr()).toBeInstanceOf(BadRequestError)
     })
   })
 
   it('returns err rather than throwing when the read fails', async () => {
-    const result = await listUnpostedPeriods(throwingDb(new Error('connection reset')), ORG)
+    const result = await listFailedExports(throwingDb(new Error('connection reset')), ORG)
     expect(result.isErr()).toBe(true)
   })
 })

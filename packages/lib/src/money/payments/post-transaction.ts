@@ -55,7 +55,18 @@ const logger = createScopedLogger('money-payments-ledger')
  */
 export const PAYMENT_POSTING_TYPE: PostingType = 'payment'
 
-/** The statuses that mean the ledger took the payment. */
+/**
+ * The statuses that mean the LEDGER took the entry.
+ *
+ * 🛑 Since the export split this is the only question a caller here may ask. A
+ * refused push returns `posted` with `exportStatus: 'failed'`, so it lands in
+ * this set on purpose: the entry is in the books and the document that produced
+ * it must stand. Adding an `exportStatus` check to any of these call sites
+ * reintroduces the defect - see plans/accounting/export-state-split.md.
+ *
+ * `not_connected` and `disabled` are in for the older reason: an org with no
+ * accounting system is a first-class case, not a degraded one (decision P1).
+ */
 const ACCEPTED_POST_STATUSES = new Set<string>([
   'posted',
   'already_posted',
@@ -203,7 +214,7 @@ export async function postPaymentTransaction(
     if (!ACCEPTED_POST_STATUSES.has(post.status)) {
       // 🛑 Recorded, never swallowed. `postEntry` writes a `pending`/`failed`
       // `GlPosting` row once the claim succeeded, which is what
-      // `listUnpostedPeriods` reads - so a refusal AFTER the claim surfaces on
+      // `listFailedExports` reads - so a refusal AFTER the claim surfaces on
       // the close console's banner on its own. A refusal BEFORE the claim
       // (a locked period, an unmapped role, a posting type the enum does not
       // hold) writes no row at all, and this log line is the only trace, which

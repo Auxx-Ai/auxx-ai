@@ -64,7 +64,10 @@ interface PostingRow {
   postingType: string
   periodKey: string
   revision: number
+  /** What the LEDGER did. Only ever `posted` or `reversed`. */
   status: string
+  /** What the EXPORT did. The column a provider's answer may touch. */
+  exportStatus: string
   txnDate: string
   docNumber: string
   currency: string
@@ -851,13 +854,18 @@ describe('the provider outcome', () => {
       lock: OPEN,
     })
 
-    expect(result.status).toBe('error')
+    // 🛑 `posted`, not `error`. The LEDGER took this entry; the provider only
+    // refused a copy of it. Asserting `error` here is what let a caller roll
+    // back a good document - see plans/accounting/export-state-split.md.
+    expect(result.status).toBe('posted')
+    expect(result.exportStatus).toBe('failed')
     expect(result.failureClass).toBe('transport')
     expect(result.retryable).toBe(true)
     expect(result.error).toContain('429')
-    // The claim, the lines and the requestId all survive: a retry reuses them.
+    // The claim, the lines and the requestId all survive: `retryExport` reuses them.
     const row = fake.postings[0]!
-    expect(row.status).toBe('failed')
+    expect(row.status).toBe('posted')
+    expect(row.exportStatus).toBe('failed')
     expect(row.attempts).toBe(1)
     expect(row.failureReason).toContain('Rate limited')
     expect(fake.lines).toHaveLength(2)
@@ -894,7 +902,9 @@ describe('the provider outcome', () => {
     // A human clicking Post again is the cheaper half of the trade.
     expect(result.failureClass).toBe('transport')
     expect(result.retryable).toBe(false)
-    expect(fake.postings[0]!.status).toBe('failed')
+    // The EXPORT is what failed. The entry stays in the books either way.
+    expect(fake.postings[0]!.status).toBe('posted')
+    expect(fake.postings[0]!.exportStatus).toBe('failed')
   })
 
   it('still reports the posting when the outcome stamp itself fails', async () => {
@@ -914,9 +924,11 @@ describe('the provider outcome', () => {
     expect(result.status).toBe('posted')
     expect(result.glPostingId).toBe('post_1')
     expect(result.providerEntryId).toBe('qb_55')
-    // The row stays `pending`: claimed, pushed, unconfirmed - which is exactly
-    // what the adapter's document-number heal repairs on the next attempt.
-    expect(fake.postings[0]!.status).toBe('pending')
+    // The row's EXPORT state stays `pending`: pushed, unconfirmed - which is
+    // exactly what the adapter's document-number heal repairs on the next
+    // attempt. Its LEDGER state was settled by the claim and is never in doubt.
+    expect(fake.postings[0]!.status).toBe('posted')
+    expect(fake.postings[0]!.exportStatus).toBe('pending')
   })
 
   it('never throws, whatever the provider does', async () => {

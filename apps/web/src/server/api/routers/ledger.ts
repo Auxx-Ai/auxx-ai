@@ -17,11 +17,11 @@ import {
   listChartAccounts,
   listChartAccountUsage,
   listClosePeriods,
+  listFailedExports,
   listJournalEntries,
   listPostings,
   listPostingsForSource,
   listRoleMap,
-  listUnpostedPeriods,
   POSTING_TYPES,
   postEntry,
   postJournalEntry,
@@ -31,6 +31,7 @@ import {
   previewMonthEnd,
   removeChartAccount,
   resolvePeriodLock,
+  retryExport,
   reverseEntry,
   reverseJournalEntry,
   setAccountIdentity,
@@ -171,7 +172,8 @@ const draftEntry = z.object({
  * | procedure         | gate         |
  * | ----------------- | ------------ |
  * | `preview`         | `ledger.view` |
- * | `unpostedPeriods` | `ledger.view` |
+ * | `failedExports` | `ledger.view` |
+ * | `retryExport` | `ledger.post` |
  * | `verifyBalance`   | `ledger.view` |
  * | `post`            | `ledger.post` |
  * | `reverse`         | `ledger.post` |
@@ -682,21 +684,47 @@ export const ledgerRouter = createTRPCRouter({
     }),
 
   /**
-   * Every entry that has been claimed but is not in the books - the close
-   * console's "you have 3 unposted periods" banner.
+   * Every entry that IS in the books and is not in the accounting system - the
+   * close console's export queue.
+   *
+   * 🛑 Renamed from `unpostedPeriods` by the export split. The old name and the
+   * old banner both said an entry was missing from the books, which was true
+   * only because a refused push used to take it out of them. Nothing here is
+   * unposted; what is outstanding is the copy.
    *
    * `pending` and `failed` come back distinct rather than collapsed, because
-   * they call for different actions: `pending` is claimed and in flight (or
-   * claimed by a run that died mid-push, which the idempotency ladder heals),
-   * while `failed` was attempted and refused and carries the reason.
+   * they call for different actions: `pending` is owed and has not been refused
+   * (in flight, or claimed by a run that died before the push), while `failed`
+   * was attempted and refused and carries the reason.
    */
-  unpostedPeriods: permissionProcedure(PermissionKey.ledgerView)
+  failedExports: permissionProcedure(PermissionKey.ledgerView)
     .input(z.object({ through: z.string().min(1).optional() }).optional())
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
 
-      const result = await listUnpostedPeriods(ctx.db, organizationId, {
+      const result = await listFailedExports(ctx.db, organizationId, {
         through: input?.through,
+      })
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /**
+   * Push one already-posted entry to the accounting system again.
+   *
+   * 🛑 This never re-posts and never touches `GlPosting.status`. It replays the
+   * entry's own lines under its own `requestId`, so the provider's idempotency
+   * contract fires on exactly the case it exists for. The usual reason it now
+   * succeeds is that somebody mapped the account the first attempt named.
+   */
+  retryExport: permissionProcedure(PermissionKey.ledgerPost)
+    .input(z.object({ glPostingId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+
+      const result = await retryExport(ctx.db, {
+        organizationId,
+        glPostingId: input.glPostingId,
       })
       if (result.isErr()) throw result.error
       return result.value

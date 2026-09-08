@@ -51,6 +51,7 @@ import type {
   BuiltEntry,
   PostEntryInput,
   PostFailureClass,
+  PostingExportStatus,
   PostingType,
   PostResult,
   PostResultStatus,
@@ -665,13 +666,17 @@ export async function postEntry(db: Database, options: PostEntryOptions): Promis
     }
 
     if (claim.kind === 'existing') {
-      // A SUCCESS. Logged at info, never as an error: training everyone to
-      // ignore this channel is how a real double-post would go unnoticed.
+      // A SUCCESS, and since the export split it is a HONEST one: the row that
+      // holds this claim is in the books, whatever its export did. Before the
+      // split this same return could hand back the id of a row that had been
+      // taken out of every report, and the caller would stamp it and move on.
       //
-      // ⚠️ This converges even when the existing row is `failed`. Re-pushing a
-      // failed row is a distinct operation - it must reuse that row's claimed
-      // `requestId` and `docNumber` rather than mint new ones - and it does not
-      // belong on the create path. It is owed.
+      // Logged at info, never as an error: training everyone to ignore this
+      // channel is how a real double-post would go unnoticed.
+      //
+      // A row whose EXPORT is still owed is re-pushed by `retryExport`, which
+      // reuses that row's claimed `requestId` and `docNumber`. It is not this
+      // function's job and never was.
       logger.info('Period already claimed - not posting again', {
         organizationId,
         postingType: entry.postingType,
@@ -679,9 +684,11 @@ export async function postEntry(db: Database, options: PostEntryOptions): Promis
         revision,
         glPostingId: claim.row.id,
         existingStatus: claim.row.status,
+        existingExportStatus: claim.row.exportStatus,
       })
       return {
         status: 'already_posted',
+        exportStatus: claim.row.exportStatus,
         glPostingId: claim.row.id,
         docNumber: claim.row.docNumber,
         providerId: claim.row.providerId ?? undefined,
@@ -713,14 +720,14 @@ export async function postEntry(db: Database, options: PostEntryOptions): Promis
     if (pushed.isErr()) {
       const failure = classifyProviderFailure(pushed.error, provider.id)
       await stampOutcome(organizationId, glPostingId, () =>
-        recordFailure(db, {
+        recordExportFailure(db, {
           organizationId,
           glPostingId,
           providerId: provider.id,
           reason: failure.error,
         })
       )
-      logger.error('Provider refused the entry', {
+      logger.error('The provider refused the EXPORT. The entry is posted', {
         organizationId,
         glPostingId,
         docNumber,
@@ -729,8 +736,18 @@ export async function postEntry(db: Database, options: PostEntryOptions): Promis
         retryable: failure.retryable,
         error: failure.error,
       })
+      // 🛑 `posted`, not `error`. The ledger took this entry - it built,
+      // balanced, resolved its roles, cleared the period lock and committed
+      // with its lines - and a third party declining a COPY of it changes none
+      // of that. Returning `error` here is what made callers roll back a good
+      // document and what took the entry out of every report.
+      //
+      // The export problem is not swallowed: it is on the row, it is on this
+      // result as `exportStatus` plus `error`, it is logged above, and
+      // `listFailedExports` is the queue that surfaces it.
       return {
-        status: 'error',
+        status: 'posted',
+        exportStatus: 'failed',
         glPostingId,
         docNumber,
         providerId: provider.id,
@@ -739,14 +756,18 @@ export async function postEntry(db: Database, options: PostEntryOptions): Promis
     }
 
     const result = pushed.value
+    // `not_connected` and `disabled` pushed nothing and are owed nothing.
+    const exportStatus =
+      result.status === 'not_connected' || result.status === 'disabled'
+        ? ('not_required' as const)
+        : ('exported' as const)
     await stampOutcome(organizationId, glPostingId, () =>
-      markPosted(db, {
+      markExported(db, {
         organizationId,
         glPostingId,
         providerId: result.providerId,
         providerEntryId: result.externalId || null,
-        actorUserId,
-        reversesId,
+        exportStatus,
       })
     )
 
@@ -761,6 +782,7 @@ export async function postEntry(db: Database, options: PostEntryOptions): Promis
 
     return {
       status: result.status,
+      exportStatus,
       glPostingId,
       docNumber,
       providerId: result.providerId,
@@ -854,6 +876,7 @@ type ClaimOutcome =
         id: string
         docNumber: string
         status: string
+        exportStatus: PostingExportStatus
         providerId: string | null
         providerEntryId: string | null
       }
@@ -894,7 +917,21 @@ async function claimPeriod(
         postingType: entry.postingType,
         periodKey: entry.periodKey,
         revision,
-        status: 'pending',
+        // 🛑 `posted` HERE, not after the provider answers. Every ledger-side
+        // question is settled before this INSERT runs - the period lock (step
+        // 1), the roles (2), the balance (3) - and the lines go in below in the
+        // same transaction. There is no moment at which this row legitimately
+        // exists un-posted, and stamping it later is what let an EXPORT fault
+        // take an entry out of the books. See
+        // plans/accounting/export-state-split.md.
+        status: 'posted',
+        // `GlPosting_posted_check` is `status <> 'posted' OR postedAt IS NOT
+        // NULL`, so the timestamp is part of the same INSERT rather than a
+        // later UPDATE.
+        postedAt: new Date(),
+        // The push has not run yet. `markExported` / `recordExportFailure`
+        // move it, and NOTHING they do may touch `status`.
+        exportStatus: 'pending',
         txnDate: entry.txnDate,
         docNumber,
         // Explicit, never the column default - see LEDGER_CURRENCY.
@@ -951,6 +988,7 @@ async function claimPeriod(
           id: schema.GlPosting.id,
           docNumber: schema.GlPosting.docNumber,
           status: schema.GlPosting.status,
+          exportStatus: schema.GlPosting.exportStatus,
           providerId: schema.GlPosting.providerId,
           providerEntryId: schema.GlPosting.providerEntryId,
         })
@@ -999,79 +1037,87 @@ async function claimPeriod(
       )
     }
 
+    // 🛑 The original flips to `reversed` HERE, in the claim transaction, not
+    // when the reversal's export succeeds. The reversal is `posted` the moment
+    // this transaction commits, so an original left `posted` alongside it would
+    // be double-counted by every report until a push that may never succeed
+    // says otherwise. Guarded on `posted` so a second reversal of the same
+    // entry cannot re-flip a row that has already moved.
+    if (reversesId) {
+      await tx
+        .update(schema.GlPosting)
+        .set({ status: 'reversed' })
+        .where(
+          and(
+            eq(schema.GlPosting.id, reversesId),
+            eq(schema.GlPosting.organizationId, organizationId),
+            eq(schema.GlPosting.status, 'posted')
+          )
+        )
+    }
+
     return { kind: 'claimed', row }
   })
 }
 
 /**
- * Stamp the successful outcome.
+ * Stamp the EXPORT's success. Never the ledger's - that was settled in the
+ * claim, and this function must not be able to unsettle it.
  *
- * 🛑 **One `UPDATE`.** `GlPosting_posted_check` is
- * `status <> 'posted' OR postedAt IS NOT NULL`, so setting the status in one
- * statement and the timestamp in another violates the constraint in between.
+ * `not_connected` and `disabled` land here too, as `not_required`: an
+ * organization with no accounting system has nothing in flight and nothing to
+ * heal, and leaving it `pending` would park every entry it ever writes in the
+ * export queue forever. `providerId` is `'none'` and `providerEntryId` stays
+ * NULL, which is also why `GlPosting_org_provider_entry_key` is partial.
  *
- * `not_connected` lands here too, and is marked `posted`. An organization with
- * no accounting system has nothing in flight and nothing to heal, so leaving
- * the row `pending` would park every entry it ever writes in the retry queue
- * and in the close console's work list forever. `providerId` is `'none'` and
- * `providerEntryId` stays NULL, which is also why
- * `GlPosting_org_provider_entry_key` is partial.
+ * ⚠️ `attempts` is NOT reset and `failureReason` is NOT cleared on a later
+ * success. They are the record that this export was hard, which is the thing
+ * worth keeping when somebody asks why a month took three days.
  */
-async function markPosted(
+async function markExported(
   db: Database,
   input: {
     organizationId: string
     glPostingId: string
     providerId: string
     providerEntryId: string | null
-    actorUserId?: string
-    reversesId?: string
+    exportStatus: 'exported' | 'not_required'
   }
 ): Promise<void> {
-  await db.transaction(async (tx) => {
-    await tx
-      .update(schema.GlPosting)
-      .set({
-        status: 'posted',
-        postedAt: new Date(),
-        providerId: input.providerId,
-        providerEntryId: input.providerEntryId,
-        failureReason: null,
-      })
-      .where(
-        and(
-          eq(schema.GlPosting.id, input.glPostingId),
-          eq(schema.GlPosting.organizationId, input.organizationId)
-        )
+  await db
+    .update(schema.GlPosting)
+    .set({
+      exportStatus: input.exportStatus,
+      providerId: input.providerId,
+      providerEntryId: input.providerEntryId,
+    })
+    .where(
+      and(
+        eq(schema.GlPosting.id, input.glPostingId),
+        eq(schema.GlPosting.organizationId, input.organizationId)
       )
-
-    // The original flips to `reversed` in the SAME transaction that marks the
-    // reversal `posted` (decision G4). Guarded on `posted` so a second reversal
-    // of the same entry cannot silently re-flip a row that has already moved.
-    if (input.reversesId) {
-      await tx
-        .update(schema.GlPosting)
-        .set({ status: 'reversed' })
-        .where(
-          and(
-            eq(schema.GlPosting.id, input.reversesId),
-            eq(schema.GlPosting.organizationId, input.organizationId),
-            eq(schema.GlPosting.status, 'posted')
-          )
-        )
-    }
-  })
+    )
 }
 
-/** Stamp a failed push. The row keeps its claim, its lines and its `requestId`. */
-async function recordFailure(
+/**
+ * Stamp a refused push.
+ *
+ * 🛑 **`status` is not in this statement and must never be.** The entry is in
+ * the books; a third party declining a copy of it does not change that. This is
+ * the whole defect `plans/accounting/export-state-split.md` exists to close, and
+ * a `status` write here reopens it.
+ *
+ * The row keeps its claim, its lines and its `requestId`, which is exactly what
+ * `retryExport` replays.
+ */
+async function recordExportFailure(
   db: Database,
   input: { organizationId: string; glPostingId: string; providerId: string; reason: string }
 ): Promise<void> {
   await db
     .update(schema.GlPosting)
     .set({
-      status: 'failed',
+      exportStatus: 'failed',
       failureReason: input.reason,
       providerId: input.providerId,
       attempts: sql`${schema.GlPosting.attempts} + 1`,

@@ -2,10 +2,13 @@
 
 'use client'
 
-import type { BooksBalanceReport, UnpostedPeriod } from '@auxx/lib/postings/client'
+import type { BooksBalanceReport, FailedExport } from '@auxx/lib/postings/client'
 import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
+import { toastError } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
-import { CircleAlert, Loader, Scale } from 'lucide-react'
+import { CircleAlert, Loader, RefreshCw, Scale } from 'lucide-react'
+import { api } from '~/trpc/react'
 import { formatPeriodLabel } from './format'
 
 interface BooksBalanceLineProps {
@@ -60,73 +63,105 @@ export function BooksBalanceLine({ report }: BooksBalanceLineProps) {
   )
 }
 
-interface UnpostedPeriodsBannerProps {
-  periods: UnpostedPeriod[]
+interface FailedExportsBannerProps {
+  exports: FailedExport[]
 }
 
 /**
- * Entries that were claimed but never landed in the books.
+ * Entries that ARE in the books and have not reached the accounting system.
+ *
+ * 🛑 The wording matters and it is the whole point of the export split. This
+ * banner used to say these entries were "claimed but not in the books", which
+ * was true only because a refused push took them out of the books. It no longer
+ * does, so the banner must not imply the statements are short - they are not.
+ * What is outstanding is the COPY. See plans/accounting/export-state-split.md.
  *
  * 🛑 `pending` and `failed` stay visually distinct. They call for different
- * actions: `pending` is claimed and in flight (or claimed by a run that died
- * mid-push, which the idempotency ladder heals), while `failed` was attempted and
- * refused and carries the reason. `attempts` and `failureReason` are on the
- * shipped row precisely so nobody is sent to the logs for a string that is
- * already in the database.
+ * actions: `pending` is owed and has not been refused (in flight, or claimed by
+ * a run that died before the push), while `failed` was attempted and refused and
+ * carries the reason. `attempts` and `failureReason` are on the shipped row
+ * precisely so nobody is sent to the logs for a string already in the database.
  *
  * ⚠️ Nothing is filtered out of this list. `periodMonth` throws on keys
  * `GlPosting` explicitly permits (`build` keys on the build number, `payout` on
- * the payout id), and the answer is to include the row anyway, because
- * under-reporting is the dangerous direction: a bookkeeper who is not shown an
- * entry closes the month without it. `formatPeriodLabel` returns a non-month key
- * unchanged rather than throwing.
+ * the payout id), and the answer is to include the row anyway.
+ * `formatPeriodLabel` returns a non-month key unchanged rather than throwing.
  */
-export function UnpostedPeriodsBanner({ periods }: UnpostedPeriodsBannerProps) {
-  if (periods.length === 0) return null
+export function FailedExportsBanner({ exports: owed }: FailedExportsBannerProps) {
+  const utils = api.useUtils()
+  const retryExport = api.ledger.retryExport.useMutation({
+    onSuccess: (result) => {
+      if (result.exportStatus === 'failed') {
+        toastError({
+          title: 'The accounting system refused it again',
+          description: result.error ?? 'No reason was recorded.',
+        })
+      }
+      void utils.ledger.failedExports.invalidate()
+      void utils.ledger.listPostings.invalidate()
+    },
+    onError: (error) => {
+      toastError({ title: 'Could not retry the export', description: error.message })
+    },
+  })
 
-  const failed = periods.filter((period) => period.status === 'failed')
-  const pending = periods.filter((period) => period.status === 'pending')
+  if (owed.length === 0) return null
+
+  const failed = owed.filter((row) => row.exportStatus === 'failed')
+  const pending = owed.filter((row) => row.exportStatus === 'pending')
 
   return (
     <div
       className={cn(
         'flex flex-col gap-3 rounded-xl border p-4',
-        failed.length > 0 ? 'border-destructive/40 bg-destructive/5' : 'border-border bg-muted/40'
+        failed.length > 0 ? 'border-amber-500/40 bg-amber-500/5' : 'border-border bg-muted/40'
       )}>
       <div className='flex items-center gap-2'>
         {failed.length > 0 ? (
-          <CircleAlert className='size-4 text-destructive' />
+          <CircleAlert className='size-4 text-amber-600' />
         ) : (
           <Loader className='size-4 text-muted-foreground' />
         )}
         <span className='font-medium'>
-          {periods.length} {periods.length === 1 ? 'entry has' : 'entries have'} been claimed but
-          are not in the books
+          {owed.length} {owed.length === 1 ? 'entry is' : 'entries are'} in your books but not in
+          the accounting system
         </span>
       </div>
 
       <div className='flex flex-col gap-2'>
-        {[...failed, ...pending].map((period) => (
+        {[...failed, ...pending].map((row) => (
           <div
-            key={period.glPostingId}
+            key={row.glPostingId}
             className='flex flex-col gap-1 rounded-lg border bg-background p-3'>
             <div className='flex flex-wrap items-center gap-2 text-sm'>
-              <Badge variant={period.status === 'failed' ? 'red' : 'amber'} size='sm'>
-                {period.status === 'failed' ? 'Failed' : 'In flight'}
+              <Badge variant={row.exportStatus === 'failed' ? 'amber' : 'gray'} size='sm'>
+                {row.exportStatus === 'failed' ? 'Export refused' : 'Export pending'}
               </Badge>
-              <span>{formatPeriodLabel(period.periodKey)}</span>
-              <span className='font-mono text-xs text-muted-foreground'>{period.docNumber}</span>
-              <span className='text-xs text-muted-foreground'>{period.postingType}</span>
+              <span>{formatPeriodLabel(row.periodKey)}</span>
+              <span className='font-mono text-xs text-muted-foreground'>{row.docNumber}</span>
+              <span className='text-xs text-muted-foreground'>{row.postingType}</span>
               <span className='text-xs text-muted-foreground'>
-                {period.attempts} {period.attempts === 1 ? 'attempt' : 'attempts'}
+                {row.attempts} {row.attempts === 1 ? 'attempt' : 'attempts'}
               </span>
+              <Button
+                variant='outline'
+                size='sm'
+                className='ml-auto'
+                loading={
+                  retryExport.isPending && retryExport.variables?.glPostingId === row.glPostingId
+                }
+                loadingText='Retrying...'
+                onClick={() => retryExport.mutate({ glPostingId: row.glPostingId })}>
+                <RefreshCw />
+                Retry export
+              </Button>
             </div>
-            {period.failureReason ? (
-              <p className='text-sm text-muted-foreground'>{period.failureReason}</p>
+            {row.failureReason ? (
+              <p className='text-sm text-muted-foreground'>{row.failureReason}</p>
             ) : (
               <p className='text-xs text-muted-foreground'>
-                No failure was recorded. This entry is still in flight, or the run that claimed it
-                died mid-push and the next attempt will heal it.
+                No refusal was recorded. This export is still in flight, or the run that claimed the
+                entry died before pushing it.
               </p>
             )}
           </div>

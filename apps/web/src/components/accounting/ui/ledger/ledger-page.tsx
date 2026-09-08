@@ -38,7 +38,7 @@ import { useSettings } from '~/hooks/use-settings'
 import { useAccess } from '~/providers/capabilities-provider'
 import { useDockStore } from '~/stores/dock-store'
 import { api } from '~/trpc/react'
-import { BooksBalanceLine, UnpostedPeriodsBanner } from './books-health'
+import { BooksBalanceLine, FailedExportsBanner } from './books-health'
 import { type CountAdjustmentRow, CountEvidenceSection } from './count-evidence-section'
 import { EntryBlockers, type LedgerBlocker } from './entry-blockers'
 import { EntryJournal, journalLinesFromDetail } from './entry-journal'
@@ -143,7 +143,7 @@ export function LedgerPage({ periodKey }: LedgerPageProps) {
     { enabled: !!postedDetail?.reversesId }
   )
 
-  const unpostedQuery = api.ledger.unpostedPeriods.useQuery({})
+  const failedExportsQuery = api.ledger.failedExports.useQuery({})
   const balanceQuery = api.ledger.verifyBalance.useQuery()
   const roleMapQuery = api.ledger.roleMap.useQuery()
 
@@ -362,8 +362,8 @@ export function LedgerPage({ periodKey }: LedgerPageProps) {
                 </div>
               )}
 
-              {(unpostedQuery.data?.length ?? 0) > 0 && (
-                <UnpostedPeriodsBanner periods={unpostedQuery.data ?? []} />
+              {(failedExportsQuery.data?.length ?? 0) > 0 && (
+                <FailedExportsBanner exports={failedExportsQuery.data ?? []} />
               )}
 
               {!!activePeriodKey && !period.hasOpenPeriod && (

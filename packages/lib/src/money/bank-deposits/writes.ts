@@ -76,6 +76,15 @@ const logger = createScopedLogger('bank-deposits')
  * accounting system connected is a first-class case, not a degraded one
  * (decision P1). The entry is built, balanced and persisted the same way; it is
  * simply never pushed.
+ *
+ * 🛑 Since the export split, a REFUSED PUSH also lands in this set: `postEntry`
+ * returns `posted` with `exportStatus: 'failed'`, because the entry is in the
+ * books. That is deliberate and it is the whole fix. This used to be the one
+ * path in the codebase that undid a good document because a third party
+ * declined a copy of it - the deposit was archived and its payments released
+ * while its ledger row sat `failed` and holding the period claim. What reaches
+ * `rollbackDeposit` now is only a PRE-CLAIM refusal, which wrote no row at all.
+ * See plans/accounting/export-state-split.md.
  */
 const ACCEPTED_POST_STATUSES = new Set([
   'posted',
@@ -332,7 +341,7 @@ export async function createBankDeposit(
 
       if (!ACCEPTED_POST_STATUSES.has(post.status)) {
         await rollbackDeposit(db, organizationId, actorUserId, deposit)
-        logger.warn('Bank deposit rolled back - the ledger refused the entry', {
+        logger.warn('Bank deposit rolled back - the LEDGER refused the entry', {
           organizationId,
           depositId,
           status: post.status,
@@ -371,6 +380,17 @@ export async function createBankDeposit(
  * are logged and swallowed: the caller is already carrying a refusal, and
  * replacing it with a rollback error would hide the thing that actually went
  * wrong.
+ */
+/**
+ * Undo a deposit whose entry the LEDGER refused.
+ *
+ * 🛑 Only a pre-claim refusal reaches here - a closed period, an unbalanced
+ * entry, an unassigned role, an inventory code. Those write no `GlPosting` row,
+ * so there is nothing on the ledger side to undo and releasing the payments is
+ * the whole job.
+ *
+ * A refused EXPORT must never reach here. The entry is posted, the deposit is
+ * real, and the copy is retried by `retryExport`.
  */
 async function rollbackDeposit(
   db: Database,
