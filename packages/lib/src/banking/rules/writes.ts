@@ -308,7 +308,7 @@ export interface ApplySuggestionsResult {
   suggested: number
   /** How many of those matched a rule, whether or not it is `autoApply`. */
   ruleMatched: number
-  /** Always `0` until 3B's `banking/review/writes.ts` lands. See the file header. */
+  /** How many `autoApply` rules actually coded, transferred or excluded a line. */
   autoApplied: number
   /** How many `for_review` lines had nothing to suggest. */
   skipped: number

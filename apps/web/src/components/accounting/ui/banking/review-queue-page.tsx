@@ -36,23 +36,25 @@
 // range, the signed in/out colouring and the suggestion badge, none of which the
 // registry can express. Reported in HANDOFF §5 for the coordinator.
 
-import type { BankTransactionRow } from '@auxx/lib/banking/review/client'
+import { type BankTransactionRow, REVIEW_QUEUE_STATES } from '@auxx/lib/banking/review/client'
 import { PermissionKey } from '@auxx/lib/permissions/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Checkbox } from '@auxx/ui/components/checkbox'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
+import { toastError } from '@auxx/ui/components/toast'
 import { TREE_SECONDARY_NOTRUNCATE, TreeRow } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { cn } from '@auxx/ui/lib/utils'
-import { Inbox, Landmark } from 'lucide-react'
-import { useQueryState } from 'nuqs'
-import { useCallback, useMemo, useState } from 'react'
+import { Inbox, Landmark, ListChecks } from 'lucide-react'
+import { parseAsStringLiteral, useQueryState } from 'nuqs'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRegisterDockedPanels } from '~/components/global/docked-panels-outlet'
 import { EmptyState } from '~/components/global/empty-state'
 import SettingsPage from '~/components/global/settings-page'
+import { useConfirm } from '~/hooks/use-confirm'
 import { useMedia } from '~/hooks/use-media'
-import { useRequireCapability } from '~/providers/capabilities-provider'
+import { useAccess, useRequireCapability } from '~/providers/capabilities-provider'
 import { useDockStore } from '~/stores/dock-store'
 import { api } from '~/trpc/react'
 import { BankAccountBadge } from '../bank-account-badge'
@@ -76,6 +78,14 @@ const PAGE_DESCRIPTION =
  * display currency is that constant rather than a read.
  */
 const DISPLAY_CURRENCY = 'USD'
+
+/** What one "apply rules" run reports back, as `applySuggestions` returns it. */
+interface RunCounts {
+  suggested: number
+  ruleMatched: number
+  autoApplied: number
+  skipped: number
+}
 
 /** The status dot vocabulary, matching `ledger-toolbar.tsx`'s `STATE_DOT`. */
 const STATUS_DOT: Record<string, string> = {
@@ -103,10 +113,54 @@ function toMinor(value: string): number | undefined {
 
 export function BankingReviewQueuePage() {
   useRequireCapability(PermissionKey.ledgerView)
+  const utils = api.useUtils()
+  const { can } = useAccess()
+  const [confirm, ConfirmDialog] = useConfirm()
 
-  const [filters, setFilters] = useState<ReviewFilters>(EMPTY_REVIEW_FILTERS)
+  /**
+   * The tab and the account are the VIEW; the rest of the toolbar narrows it.
+   *
+   * Only the view goes in the URL (`plans/bank-connection/10-review-queue-url-state.md`
+   * §2). `?txn=` was already linkable, and a link that reopens a drawer inside a
+   * queue that has silently reset to For review / All accounts is the worst of
+   * the two halves. Search and the ranges stay local: a text box in the URL is
+   * either a history entry per keystroke or a throttle to tune, and nobody
+   * shares "amount between 12 and 40".
+   */
+  const [queueState, setQueueState] = useQueryState(
+    's',
+    parseAsStringLiteral(REVIEW_QUEUE_STATES).withDefault('for_review')
+  )
+  const [account, setAccount] = useQueryState('account')
+  const [localFilters, setLocalFilters] = useState<ReviewFilters>(EMPTY_REVIEW_FILTERS)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [txn, setTxn] = useQueryState('txn')
+
+  const filters = useMemo<ReviewFilters>(
+    () => ({ ...localFilters, state: queueState, bankAccountId: account }),
+    [localFilters, queueState, account]
+  )
+
+  const handleFiltersChange = useCallback(
+    (next: ReviewFilters) => {
+      if (next.state !== queueState) void setQueueState(next.state)
+      if (next.bankAccountId !== account) void setAccount(next.bankAccountId)
+      setLocalFilters(next)
+    },
+    [queueState, account, setQueueState, setAccount]
+  )
+
+  /**
+   * ⚠️ Keyed on the URL, not folded into `handleFiltersChange`. Back and forward
+   * change the tab or the account without going through the toolbar at all, and
+   * a bulk bar still holding rows that are no longer listed would act on them.
+   * The last run's counts go with it - they describe a view you have left.
+   */
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the URL is the trigger
+  useEffect(() => {
+    setSelectedIds([])
+    setLastRun(null)
+  }, [queueState, account])
 
   /**
    * ⚠️ `1280px`, not the `1024px` `ledger-page.tsx` docks at. This page sits
@@ -128,6 +182,17 @@ export function BankingReviewQueuePage() {
     () => (accountsQuery.data ?? []).filter((account) => !account.archivedAt),
     [accountsQuery.data]
   )
+
+  /**
+   * A bookmarked `?account=` for an account that has since been archived or
+   * deleted is an ordinary state, not an error - `getBankAccount` takes the same
+   * posture on the read side. Clear it rather than render an empty list under a
+   * filter the picker cannot show.
+   */
+  useEffect(() => {
+    if (!account || accountsQuery.isPending) return
+    if (!accounts.some((row) => row.id === account)) void setAccount(null)
+  }, [account, accounts, accountsQuery.isPending, setAccount])
 
   const listInput = useMemo(
     () => ({
@@ -156,6 +221,81 @@ export function BankingReviewQueuePage() {
   }, [])
 
   const hasAccounts = accounts.length > 0
+
+  // ── Applying rules ──────────────────────────────────────────────────────
+  //
+  // 🛑 This button used to live on the Rules page under the name "Run
+  // suggestions now", where every neighbouring control acts on a rule - so it
+  // read as "propose some rules to me". It does the opposite: it writes
+  // suggestions onto TRANSACTIONS, and an `autoApply` rule posts to the ledger.
+  // It belongs here, where the lines it touches are on screen, and it says so.
+
+  /** Only `for_review` lines can be touched, so only those two tabs offer it. */
+  const canApplyRules =
+    can(PermissionKey.ledgerPost) && (queueState === 'for_review' || queueState === 'suggested')
+
+  // Fetched only when the button is on screen. Its one job is the confirm
+  // below: an auto-apply rule is the difference between suggesting and posting.
+  const rulesQuery = api.bankingRules.list.useQuery(undefined, { enabled: canApplyRules })
+  const autoApplyRules = useMemo(
+    () => (rulesQuery.data ?? []).filter((rule) => rule.enabled && rule.autoApply),
+    [rulesQuery.data]
+  )
+
+  const [lastRun, setLastRun] = useState<RunCounts | null>(null)
+
+  const applyRules = api.bankingRules.runSuggestions.useMutation({
+    onSuccess: async (result) => {
+      setLastRun(result)
+      await Promise.all([
+        utils.bankingReview.list.invalidate(),
+        utils.bankingReview.stats.invalidate(),
+      ])
+    },
+    onError: (error) => {
+      toastError({ title: 'Error applying rules', description: error.message })
+    },
+  })
+
+  const handleApplyRules = async () => {
+    if (autoApplyRules.length > 0) {
+      const names = autoApplyRules.map((rule) => rule.name).join(', ')
+      const confirmed = await confirm({
+        title: 'Apply rules now?',
+        description:
+          `${autoApplyRules.length === 1 ? 'One rule is' : `${autoApplyRules.length} rules are`} ` +
+          `set to auto-apply (${names}). Lines they match are coded and POSTED, not suggested. ` +
+          'Every other line only gets a suggestion for you to accept.',
+        confirmText: 'Apply rules',
+        cancelText: 'Cancel',
+      })
+      if (!confirmed) return
+    }
+    setLastRun(null)
+    // The account the person is looking at, not the whole org.
+    applyRules.mutate({ bankAccountId: filters.bankAccountId ?? undefined })
+  }
+
+  const applyRulesAction = canApplyRules ? (
+    <div className='flex items-center gap-2'>
+      <Button
+        variant='ghost'
+        size='sm'
+        className='h-7'
+        loading={applyRules.isPending}
+        loadingText='Applying...'
+        onClick={() => void handleApplyRules()}>
+        <ListChecks />
+        Apply rules to unreviewed lines
+      </Button>
+      {/* No success toasts by policy, so the counts have nowhere else to go. */}
+      {lastRun && !applyRules.isPending && (
+        <span className='whitespace-nowrap text-muted-foreground text-xs'>
+          {lastRun.suggested} suggested, {lastRun.autoApplied} applied, {lastRun.skipped} skipped
+        </span>
+      )}
+    </div>
+  ) : undefined
 
   /**
    * ⚠️ Built ONCE and memoised. The panel array below is published to the
@@ -210,10 +350,8 @@ export function BankingReviewQueuePage() {
 
         <ReviewToolbar
           filters={filters}
-          onChange={(next) => {
-            setFilters(next)
-            setSelectedIds([])
-          }}
+          onChange={handleFiltersChange}
+          actions={applyRulesAction}
         />
 
         {!list.isPending && rows.length === 0 ? (
@@ -335,6 +473,8 @@ export function BankingReviewQueuePage() {
       {/* Below the dock breakpoint the same drawer renders as a floating
           overlay, the way every other docked panel's fallback does. */}
       {!isDesktop && drawer}
+
+      <ConfirmDialog />
     </SettingsPage>
   )
 }

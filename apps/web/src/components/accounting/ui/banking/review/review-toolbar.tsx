@@ -49,6 +49,13 @@ const STATES: { value: ReviewQueueState; label: string }[] = [
 interface ReviewToolbarProps {
   filters: ReviewFilters
   onChange: (next: ReviewFilters) => void
+  /**
+   * Actions that change the DATA, rendered on row one after the state tabs.
+   *
+   * The page owns them, not this component: whatever runs here has to
+   * invalidate the queries the page holds, so the node arrives built.
+   */
+  actions?: React.ReactNode
 }
 
 /**
@@ -76,6 +83,10 @@ const asDate = (day: string) => new Date(`${day}T00:00:00`)
  * second on its row because the ACCOUNT is what a bookkeeper reconciles against
  * a statement.
  *
+ * Row one also carries `actions` (the page's "apply rules" button), because
+ * that button acts on the pile the tabs are selecting; row two is only ever
+ * about narrowing what is already listed.
+ *
  * Both rows are `sticky={false}` because the wrapper is the sticky element -
  * two sticky rows would pin to the same `top-0` and cover each other.
  *
@@ -83,7 +94,7 @@ const asDate = (day: string) => new Date(`${day}T00:00:00`)
  * that crosses the wire is integer minor units; this is the one boundary where
  * a person's `12.50` becomes `1250`, and it is deliberately not two conventions.
  */
-export function ReviewToolbar({ filters, onChange }: ReviewToolbarProps) {
+export function ReviewToolbar({ filters, onChange, actions }: ReviewToolbarProps) {
   const set = <K extends keyof ReviewFilters>(key: K, value: ReviewFilters[K]) =>
     onChange({ ...filters, [key]: value })
 
@@ -143,6 +154,13 @@ export function ReviewToolbar({ filters, onChange }: ReviewToolbarProps) {
             ))}
           </RadioTab>
         </ListToolbarGroup>
+
+        {actions && (
+          <>
+            <Separator orientation='vertical' className='h-5 shrink-0' />
+            <ListToolbarGroup className='shrink-0'>{actions}</ListToolbarGroup>
+          </>
+        )}
       </ListToolbar>
 
       <ListToolbar sticky={false}>
