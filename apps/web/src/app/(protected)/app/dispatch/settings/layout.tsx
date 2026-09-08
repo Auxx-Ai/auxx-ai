@@ -12,7 +12,6 @@ import {
   Hash,
   Receipt,
   SlidersHorizontal,
-  Tags,
   Users,
 } from 'lucide-react'
 import { usePathname } from 'next/navigation'
@@ -73,12 +72,6 @@ const DISPATCH_SETTINGS: SidebarProps[] = [
     label: 'Money',
     type: 'header',
     items: [
-      {
-        id: 'dispatch-money-products',
-        label: 'Catalog',
-        slug: 'products',
-        icon: <Tags />,
-      },
       {
         id: 'dispatch-money-quotes',
         label: 'Quotes',

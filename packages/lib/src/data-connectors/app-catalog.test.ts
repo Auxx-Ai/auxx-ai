@@ -5,6 +5,7 @@
 // `fields` list (no more stream-wide flat map / matchFieldKeys / fieldBindings).
 
 import type { CatalogConnectorStream } from '@auxx/database'
+import { evaluateCalcExpression } from '@auxx/utils/calc-expression'
 import { describe, expect, it } from 'vitest'
 import { BadRequestError } from '../errors'
 import {
@@ -113,6 +114,27 @@ describe('collectStreamSourceFields', () => {
       ],
     }
     expect(collectStreamSourceFields(stream)).toEqual([{ sourcePath: 'note', type: 'TEXT' }])
+  })
+
+  it('skips a constant field, it reads nothing off the payload', () => {
+    const stream: CatalogConnectorStream = {
+      key: 'product',
+      mappings: [
+        {
+          rootPath: 'variants[]',
+          target: { entityKind: 'catalog_item' },
+          fields: [
+            { sourcePath: 'title', target: 'catalog_item_name' },
+            { constant: 'material', target: 'catalog_item_category' },
+          ],
+        },
+      ],
+    }
+    // Without the skip this also emits the mapping's bare rootPath, inventing a
+    // phantom `variants[]` scalar leaf in the setup mapping tree.
+    expect(collectStreamSourceFields(stream)).toEqual([
+      { sourcePath: 'variants[].title', type: undefined },
+    ])
   })
 })
 
@@ -702,6 +724,81 @@ describe('buildContributingFieldBindings', () => {
       defFields
     )
     expect(bindings).toHaveLength(0)
+  })
+
+  describe('constant bindings', () => {
+    const catalogFields: ContributingTargetField[] = [
+      {
+        id: 'f_category',
+        name: 'Category',
+        systemAttribute: 'catalog_item_category',
+        type: 'SINGLE_SELECT',
+      },
+    ]
+
+    it('binds a constant as a QUOTED literal with no sourceFields', () => {
+      const bindings = buildContributingFieldBindings(
+        'def_catalog',
+        'shopify',
+        [{ constant: 'material', target: 'catalog_item_category' }],
+        catalogFields
+      )
+      expect(bindings).toHaveLength(1)
+      expect(bindings[0]).toMatchObject({
+        targetFieldRef: 'def_catalog:f_category',
+        // Quoting is load-bearing: a bare `material` parses as a FIELD REFERENCE
+        // and resolves to undefined against the empty sourceFields map.
+        expression: '"material"',
+        sourceFields: {},
+      })
+      expect(bindings[0]!.identityRole).toBeUndefined()
+    })
+
+    it('evaluates back to the constant through the real CALC evaluator', () => {
+      const [binding] = buildContributingFieldBindings(
+        'def_catalog',
+        'shopify',
+        [{ constant: 'material', target: 'catalog_item_category' }],
+        catalogFields
+      )
+      expect(evaluateCalcExpression(binding!.expression, binding!.sourceFields)).toBe('material')
+    })
+
+    it('round-trips number and boolean constants', () => {
+      const bindings = buildContributingFieldBindings(
+        'def_catalog',
+        'shopify',
+        [
+          { constant: 42, target: 'catalog_item_category' },
+          { constant: true, target: 'Category' },
+        ],
+        catalogFields
+      )
+      expect(bindings.map((b) => evaluateCalcExpression(b.expression, b.sourceFields))).toEqual([
+        42,
+        true,
+      ])
+    })
+
+    it('carries a declared mergeStrategy', () => {
+      const [binding] = buildContributingFieldBindings(
+        'def_catalog',
+        'shopify',
+        [{ constant: 'material', target: 'catalog_item_category', mergeStrategy: 'fill_blank' }],
+        catalogFields
+      )
+      expect(binding!.mergeStrategy).toBe('fill_blank')
+    })
+
+    it('drops a constant whose target does not resolve', () => {
+      const bindings = buildContributingFieldBindings(
+        'def_catalog',
+        'shopify',
+        [{ constant: 'material', target: 'no_such_field' }],
+        catalogFields
+      )
+      expect(bindings).toHaveLength(0)
+    })
   })
 })
 

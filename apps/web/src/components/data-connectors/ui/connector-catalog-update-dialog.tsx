@@ -39,7 +39,9 @@ function describeBinding(change: Extract<Change, { kind: 'binding' }>): string {
     const parts = [
       after.connectionMetaKey
         ? `new binding from connection ${after.connectionMetaKey}`
-        : `new binding from ${after.sourcePath ?? 'source'}`,
+        : after.constant != null
+          ? `always ${after.constant}`
+          : `new binding from ${after.sourcePath ?? 'source'}`,
     ]
     const role = roleWord(after.role)
     if (role) parts.push(role)
@@ -56,8 +58,17 @@ function describeBinding(change: Extract<Change, { kind: 'binding' }>): string {
   if (before.mergeStrategy !== after.mergeStrategy) {
     parts.push(`${before.mergeStrategy} to ${after.mergeStrategy}`)
   }
+  if (before.constant !== after.constant) {
+    parts.push(after.constant != null ? `now always ${after.constant}` : `no longer a fixed value`)
+  }
   if (before.sourcePath !== after.sourcePath) {
-    parts.push(`from ${before.sourcePath ?? 'connection'} to ${after.sourcePath ?? 'connection'}`)
+    // A binding that gained or lost a constant already said so above; naming a
+    // null sourcePath "connection" here would contradict it.
+    const describe = (s: string | null, constant: string | null) =>
+      s ?? (constant != null ? 'a fixed value' : 'connection')
+    parts.push(
+      `from ${describe(before.sourcePath, before.constant)} to ${describe(after.sourcePath, after.constant)}`
+    )
   }
   if (before.connectionMetaKey !== after.connectionMetaKey) parts.push('connection value changed')
   return `${targetLabel}: ${parts.length > 0 ? parts.join(', ') : 'updated'}`

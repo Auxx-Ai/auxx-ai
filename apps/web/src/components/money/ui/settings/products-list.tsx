@@ -25,7 +25,7 @@ interface ProductsListProps {
   selectedId: string | null
   onSelect: (id: string | null) => void
   currency: string
-  /** Phantom draft, owned by `products-services-page.tsx`. */
+  /** Phantom draft, owned by `catalog-page.tsx`. */
   draft: CatalogDraftHandle | null
   /** "Add item" — creates a fresh draft, or re-selects the existing one. */
   onAddDraft: () => void

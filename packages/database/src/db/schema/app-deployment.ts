@@ -329,7 +329,15 @@ export interface CatalogConnectorOwnedMappingField extends CatalogField {
 /** One field on a connector CONTRIBUTING mapping — a binding, not a full
  *  field declaration (most of its shape resolves against the existing target). */
 export interface CatalogConnectorContributingMappingField {
-  sourcePath: string
+  /** Absent on a CONSTANT binding, that field carries `constant` instead. */
+  sourcePath?: string
+  /**
+   * A fixed value written on every record this mapping projects, instead of a
+   * value read off the payload. Mutually exclusive with `sourcePath`, requires
+   * `target`, and can never be a `match` key (see the SDK's
+   * `ConnectorContributingFieldConstant`).
+   */
+  constant?: string | number | boolean
   /** Resolves against the target def's `systemAttribute` or field name. */
   target?: string
   /** Names a `defineFields` field declared for the same `entityKind`. */

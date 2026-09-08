@@ -12,6 +12,17 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const FIXTURE_DIR = path.resolve(__dirname, '..', '..', '..', '__fixtures__', 'connector-app')
 
+/**
+ * The message from a rejection raised by `defineDataConnector` itself, at app
+ * DECLARE time. Those throw inside the app bundle, so the loader wraps them as
+ * `CATALOG_LOAD_FAILED { error: Error }` rather than producing the
+ * `CATALOG_VALIDATION_FAILED { message }` an extraction-time check returns.
+ */
+function declareTimeMessage(error: unknown): string {
+  const wrapped = (error as { error?: unknown }).error
+  return wrapped instanceof Error ? wrapped.message : String(wrapped ?? error)
+}
+
 describe('compileAndExtractCatalog — entities + data connectors', () => {
   let originalCwd: string
 
@@ -388,6 +399,102 @@ describe('compileAndExtractCatalog — connector/entity hard errors', () => {
     expect((result.error as { message: string }).message).toMatch(
       /target "quote_number" is a reserved system attribute/
     )
+  })
+
+  // A constant binding writes a fixed value the provider has no column for ,
+  // e.g. "a Shopify product variant is always a `material`" onto the closed
+  // `catalog_item_category` enum, which no free-text Shopify field can fill.
+  it('accepts a contributing constant field bound to a target', async () => {
+    const result = await runApp(`
+      import { defineDataConnector } from '@auxx/sdk/data-connectors'
+
+      export const app = {
+        dataConnectors: [defineDataConnector({
+          id: 'test.connector',
+          label: 'Test',
+          requiresConnection: false,
+          streams: [{
+            key: 'thing',
+            mappings: [{ rootPath: 'variants[]', target: { entityKind: 'catalog_item' },
+              fields: [
+                { sourcePath: 'title', target: 'catalog_item_name' },
+                { constant: 'material', target: 'catalog_item_category' },
+              ] }],
+          }],
+          execute: async () => ({ records: [], nextState: {} }),
+        })],
+      }
+    `)
+    expect(isComplete(result)).toBe(true)
+  })
+
+  it('rejects a constant field that also sets a sourcePath', async () => {
+    const result = await runApp(`
+      import { defineDataConnector } from '@auxx/sdk/data-connectors'
+
+      export const app = {
+        dataConnectors: [defineDataConnector({
+          id: 'test.connector',
+          label: 'Test',
+          requiresConnection: false,
+          streams: [{
+            key: 'thing',
+            mappings: [{ rootPath: '', target: { entityKind: 'catalog_item' },
+              fields: [{ constant: 'material', sourcePath: 'kind', target: 'catalog_item_category' }] }],
+          }],
+          execute: async () => ({ records: [], nextState: {} }),
+        })],
+      }
+    `)
+    expect(isErrored(result)).toBe(true)
+    if (!isErrored(result)) throw new Error('expected error')
+    expect(declareTimeMessage(result.error)).toMatch(/cannot also set a sourcePath/)
+  })
+
+  it('rejects a constant field used as a match key', async () => {
+    const result = await runApp(`
+      import { defineDataConnector } from '@auxx/sdk/data-connectors'
+
+      export const app = {
+        dataConnectors: [defineDataConnector({
+          id: 'test.connector',
+          label: 'Test',
+          requiresConnection: false,
+          streams: [{
+            key: 'thing',
+            mappings: [{ rootPath: '', target: { entityKind: 'catalog_item' },
+              fields: [{ constant: 'material', target: 'catalog_item_category', match: true }] }],
+          }],
+          execute: async () => ({ records: [], nextState: {} }),
+        })],
+      }
+    `)
+    expect(isErrored(result)).toBe(true)
+    if (!isErrored(result)) throw new Error('expected error')
+    expect(declareTimeMessage(result.error)).toMatch(/cannot be a match key/)
+  })
+
+  it('rejects a contributing field with neither sourcePath nor constant', async () => {
+    const result = await runApp(`
+      import { defineDataConnector } from '@auxx/sdk/data-connectors'
+
+      export const app = {
+        dataConnectors: [defineDataConnector({
+          id: 'test.connector',
+          label: 'Test',
+          requiresConnection: false,
+          streams: [{
+            key: 'thing',
+            mappings: [{ rootPath: '', target: { entityKind: 'contact' },
+              fields: [{ target: 'first_name' }] }],
+          }],
+          execute: async () => ({ records: [], nextState: {} }),
+        })],
+      }
+    `)
+    expect(isErrored(result)).toBe(true)
+    if (!isErrored(result)) throw new Error('expected error')
+    expect(declareTimeMessage(result.error)).toMatch(/needs a sourcePath or a constant/)
   })
 
   it('rejects connectionFields targeting an identity field', async () => {

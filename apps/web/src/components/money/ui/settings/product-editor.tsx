@@ -46,7 +46,7 @@ function effectiveMarginPct(priceCents: number, costCents: number): number {
 
 interface ProductEditorProps {
   selectedId: string | null
-  /** Phantom draft for the Products tab, owned by `products-services-page.tsx`. */
+  /** Phantom draft for the Catalog items tab, owned by `catalog-page.tsx`. */
   draft: CatalogDraftHandle | null
   /** List phantom-row preview sync — fired per debounced name commit. */
   onDraftNameChange: (name: string) => void

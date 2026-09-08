@@ -208,7 +208,7 @@ export const SIDEBAR_MENU: SidebarProps[] = [
     // Gates match the page's own (`useRequireCapability(settingsManage)` +
     // `FeatureKey.dispatch` in catalog-page.tsx).
     id: 'catalog',
-    label: 'Catalog',
+    label: 'Products and Services',
     slug: 'catalog',
     icon: <Tags />,
     featureKey: 'dispatch',
