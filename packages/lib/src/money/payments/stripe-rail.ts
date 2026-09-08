@@ -872,33 +872,21 @@ export async function applyStripeEvent(event: Stripe.Event): Promise<void> {
       return
     }
 
-    default: {
-      // ── The bank feed (plans/bank-connection/01 §3, HANDOFF slot 3A) ──────────
+    default:
+      // 🛑 The Financial Connections dispatch that used to live here now lives in
+      // `apps/web/src/app/api/banking/webhook/route.ts`. Do not put it back.
       //
-      // 🛑 ONE case, and it names no provider logic of its own: it asks the feed
-      // module whether this event type is one of its four, and hands the event over.
-      // The list and the handler live together in `banking/feed/webhook.ts` so they
-      // cannot drift - a case list here that fell behind the handler would silently
-      // stop routing an event type, and a bank feed that stops and says nothing is
-      // the most expensive bug in this subsystem.
+      // FC sessions are created with no `{ stripeAccount }` (`banking/feed/fc-client.ts`),
+      // so every `fca_...` account belongs to the platform and Stripe emits its events as
+      // PLATFORM events. This reducer is only ever reached from `api/payments/webhook`,
+      // which is registered in Stripe's "connected accounts" delivery mode - so the branch
+      // could not fire in any environment, and did not, for the four days it existed
+      // (plans/bank-connection/06). The bank feed needs its own platform endpoint and its
+      // own signing secret; a case here is not a substitute for either.
       //
-      // The lookup it does (`fca_...` → `Credential.metadata.providerAccountId` →
-      // `DataConnector`) exists nowhere else: both webhook dispatch jobs key on
-      // org-scoped ids that a PLATFORM Stripe event does not carry
-      // (plans/accounting/implementation-review.md §2).
-      //
-      // Lazy-imported so `money/` never statically pulls the connector engine.
-      // A throw propagates: the route 500s and Stripe retries, which is what we want.
-      const { applyFinancialConnectionsEvent, isFinancialConnectionsEvent } = await import(
-        '../../banking/feed/webhook'
-      )
-      if (isFinancialConnectionsEvent(event.type)) {
-        await applyFinancialConnectionsEvent(
-          event as unknown as Parameters<typeof applyFinancialConnectionsEvent>[0]
-        )
-      }
+      // Everything else that lands here is a genuinely unknown event type: ignore it, so
+      // the route answers 200 and Stripe stops redelivering.
       return
-    }
   }
 }
 
