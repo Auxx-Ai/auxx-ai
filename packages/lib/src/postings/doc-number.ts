@@ -99,7 +99,7 @@ export interface DocNumberInput {
    *   which this function refuses outright.
    * - **`payout`** keys on the **payout id**, never a date. Shopify can issue
    *   two payouts in a day; a date key merges them into one entry whose total
-   *   ties to neither deposit, and the reconciliation of 1200 Shopify Clearing
+   *   ties to neither deposit, and the reconciliation of 1200 Card Clearing
    *   is exactly the thing that then cannot be done.
    *
    * - **`manual_journal`**, **`bank_deposit`**, **`write_off`** and

@@ -4,7 +4,7 @@
 // `gross !== net + fees`. Every other builder here computes its own totals; a
 // payout TRANSCRIBES three numbers a gateway reported, and balancing them by
 // deriving one from the other two would silently correct the gateway's
-// arithmetic - which is the one thing that makes `1200 Shopify Clearing`
+// arithmetic - which is the one thing that makes `1200 Card Clearing`
 // impossible to reconcile to zero for reasons nobody can reconstruct.
 
 import { describe, expect, it } from 'vitest'
@@ -19,7 +19,7 @@ const BASE = {
   grossMinor: 500_000,
   feesMinor: 14_800,
   netMinor: 485_200,
-  clearingRole: ACCOUNT_ROLES.CLEARING_SHOPIFY,
+  clearingRole: ACCOUNT_ROLES.CLEARING_CARD,
   paidAt: '2026-09-04',
 }
 
@@ -39,7 +39,7 @@ describe('the entry', () => {
       direction: 'debit',
       amount: 14_800,
     })
-    expect(line(built.entry, ACCOUNT_ROLES.CLEARING_SHOPIFY)).toMatchObject({
+    expect(line(built.entry, ACCOUNT_ROLES.CLEARING_CARD)).toMatchObject({
       direction: 'credit',
       amount: 500_000,
     })

@@ -88,6 +88,7 @@ import { migration124BuildBatchSourceAndPeriod } from './migrations/124-build-ba
 import { migration125AccountingBooks } from './migrations/125-accounting-books'
 import { migration126ServiceRevenueAccount } from './migrations/126-service-revenue-account'
 import { migration128InvoiceWrittenOff } from './migrations/128-invoice-written-off'
+import { migration132CardClearingRename } from './migrations/132-card-clearing-rename'
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
@@ -250,6 +251,11 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   // `invoice_written_off`, backfilled from the write_off postings already in the
   // ledger. MUST sort after 108, which owns the `invoice` def it widens.
   migration128InvoiceWrittenOff,
+  // `1200 Shopify Clearing` becomes `1200 Card Clearing`, and `clearing_shopify`
+  // becomes `clearing_card` - there is no Shopify payment rail in auxx, so the
+  // Stripe money in it sat in an account named for a provider it never touched.
+  // MUST sort after 108, which owns the chart, and after 125.
+  migration132CardClearingRename,
 ]
 
 /**

@@ -142,14 +142,18 @@ export const DEFAULT_CHART_OF_ACCOUNTS: readonly DefaultChartAccount[] = [
     accountType: GlAccountType.ASSET,
   },
   {
+    // Named for the RAIL. Was `Shopify Clearing` / `clearing_shopify` until
+    // entity migration 132 - there is no Shopify payment rail in auxx, so the
+    // Stripe money sitting here was in an account named for a provider it never
+    // touched. The code is unchanged; only the name and the role moved.
     code: '1200',
-    name: 'Shopify Clearing',
+    name: 'Card Clearing',
     accountType: GlAccountType.ASSET,
-    role: 'clearing_shopify',
+    role: 'clearing_card',
   },
   {
     // Must EXCLUDE every Affirm-gateway order or 1200 can never reconcile to
-    // zero: Shopify never touches Affirm money, so those settlements are
+    // zero: an Affirm settlement never lands on the card rail, so it is
     // invisible to the payouts API (accrual plan §3).
     code: '1210',
     name: 'Affirm Clearing',

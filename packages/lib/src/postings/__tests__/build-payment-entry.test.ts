@@ -62,7 +62,7 @@ describe('the route table', () => {
     ])
     expect(PAYMENT_ROUTE_ROLE.undeposited_funds).toBe(ACCOUNT_ROLES.UNDEPOSITED_FUNDS)
     expect(PAYMENT_ROUTE_ROLE.cash).toBe(ACCOUNT_ROLES.CASH)
-    expect(PAYMENT_ROUTE_ROLE.clearing).toBe(ACCOUNT_ROLES.CLEARING_SHOPIFY)
+    expect(PAYMENT_ROUTE_ROLE.clearing).toBe(ACCOUNT_ROLES.CLEARING_CARD)
   })
 
   it.each([

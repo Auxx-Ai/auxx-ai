@@ -9,10 +9,10 @@
  * ```
  *   Dr cash                        net deposited
  *   Dr payment_processing_fees     fees withheld
- *       Cr clearing_shopify              gross
+ *       Cr clearing_card                  gross
  * ```
  *
- * This is the entry that makes `1200 Shopify Clearing` reconcilable. A card
+ * This is the entry that makes `1200 Card Clearing` reconcilable. A card
  * receipt DEBITS the clearing account gross at the sale (`buildPaymentEntry`
  * with route `clearing`), and this entry credits it gross again, net to cash
  * and the difference to fees. A settled batch therefore leaves the clearing
@@ -30,10 +30,10 @@
  *
  * ## ⚠️ And `1210 Affirm Clearing` must be excluded
  *
- * The chart's own note: Shopify never touches Affirm money and those
- * settlements are invisible to the payouts API, so folding Affirm-gateway
- * orders into `1200` means it can never reconcile to zero. `clearingRole` is an
- * input for that reason - one payout drains ONE clearing account.
+ * The chart's own note: an Affirm settlement never lands on the card rail and
+ * is invisible to the payouts API, so folding Affirm-gateway orders into `1200`
+ * means it can never reconcile to zero. `clearingRole` is an input for that
+ * reason - one payout drains ONE clearing account.
  *
  * ## Scope, and what a gatherer would actually need (surveyed 2026-09-04)
  *
@@ -61,14 +61,12 @@
  *    account negative by that amount, permanently. This is a product decision,
  *    not a coding one, and it is the reason a gatherer cannot simply be written.
  *
- * ⚠️ And note what `1200 Shopify Clearing` actually holds. `PaymentTransaction.provider`
- * is `'manual' | 'stripe'` - there is no Shopify payment rail in auxx - while
- * `DEFAULT_PAYMENT_ROUTES.card` is `clearing`, which `PAYMENT_ROUTE_ROLE` maps
- * to `clearing_shopify`. So every STRIPE card receipt is already accumulating in
- * an account named for Shopify, and `PAYOUT_CLEARING_ROLES` admits only that
- * role. A Stripe payout would reconcile against it correctly and read wrongly;
- * fixing the name means a new role in `build-entry.ts` and a new row in
- * `default-chart.ts`.
+ * ✅ The account this drains is `1200 Card Clearing`, named for the RAIL.
+ * It was `Shopify Clearing` / `clearing_shopify` until entity migration 132,
+ * which reconciled perfectly and read as a lie: `PaymentTransaction.provider` is
+ * `'manual' | 'stripe'` and there is no Shopify payment rail in auxx at all, so
+ * every Stripe card receipt was accumulating in an account named for a provider
+ * the money never touched.
  *
  * @see plans/accounting/tasks/01-post-revenue-to-the-ledger.md §1.3
  */
@@ -82,7 +80,7 @@ import type { BuiltEntry, GlPostingLineInput } from './types'
 export const PAYOUT_SOURCE_TYPE = 'payout'
 
 /** The clearing roles a payout may drain. One role exists today. */
-export const PAYOUT_CLEARING_ROLES: readonly AccountRole[] = [ACCOUNT_ROLES.CLEARING_SHOPIFY]
+export const PAYOUT_CLEARING_ROLES: readonly AccountRole[] = [ACCOUNT_ROLES.CLEARING_CARD]
 
 export interface BuildPayoutEntryInput {
   /** The gateway's own payout id. Every line's `sourceId`. */
