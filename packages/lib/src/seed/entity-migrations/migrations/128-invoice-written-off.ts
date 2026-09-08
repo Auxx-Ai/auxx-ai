@@ -22,12 +22,19 @@ const FIELD_KEYS = ['writtenOff'] as const
 const WRITE_OFF_SOURCE_TYPE = 'invoice'
 
 /**
- * The posting statuses that mean the entry is in (or claiming to be in) the
- * books. `failed` never reached them, and `reversed` is the ORIGINAL half of a
- * reversed pair - excluding it and counting only `reversesId IS NULL` rows nets
- * a reversal out on both sides in one predicate.
+ * The posting status that means the entry is in the books and is not the
+ * backed-out half of a pair.
+ *
+ * `reversed` is the ORIGINAL half of a reversed pair - excluding it and
+ * counting only `reversesId IS NULL` rows nets a reversal out on both sides in
+ * one predicate.
+ *
+ * ⚠️ This used to carry `pending` as well, on the theory that a claimed row was
+ * "claiming to be in the books". Since the export split there is no such thing:
+ * a claimed row IS in the books, and `pending` describes an owed EXPORT, not a
+ * provisional entry.
  */
-const LIVE_POSTING_STATUSES = ['posted', 'pending'] as const
+const LIVE_POSTING_STATUSES = ['posted'] as const
 
 /**
  * Migration 128: `invoice_written_off`, the cumulative bad debt taken off one

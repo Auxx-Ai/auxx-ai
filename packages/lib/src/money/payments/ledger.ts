@@ -375,7 +375,7 @@ export async function syncTransaction(params: {
   //
   // ⚠️ `postPaymentTransaction` NEVER throws - every refusal is a `PostResult`,
   // logged there with its status and whether the period was claimed, and
-  // surfaced by `listUnpostedPeriods` once a claim exists. A payment must not
+  // surfaced by `listFailedExports` once a claim exists. A payment must not
   // fail because its bookkeeping did.
   const allocatedMinor = allocations.reduce((sum, allocation) => sum + allocation.amount, 0)
   await postPaymentTransaction(db, {

@@ -2549,6 +2549,13 @@
       "when": 1788547075986,
       "tag": "0363_payment_transaction_bank_match",
       "breakpoints": true
+    },
+    {
+      "idx": 364,
+      "version": "7",
+      "when": 1788894448725,
+      "tag": "0364_split_export_state_off_gl_posting",
+      "breakpoints": true
     }
   ]
 }

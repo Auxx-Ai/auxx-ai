@@ -259,6 +259,20 @@ export interface PostEntryInput {
 export type PostEntryStatus = 'posted' | 'already_posted' | 'healed' | 'not_connected' | 'disabled'
 
 /**
+ * What the export of one entry to the accounting provider did.
+ *
+ * Mirrors the `GlPostingExportStatus` pgEnum. Kept in step with it by
+ * `__tests__/types.test.ts`, the same way `POSTING_TYPES` is.
+ *
+ * 🛑 This is the ONLY place a provider's answer is recorded. `GlPosting.status`
+ * is what the LEDGER did and a provider may never move it - see
+ * `plans/accounting/export-state-split.md`.
+ */
+export const POSTING_EXPORT_STATUSES = ['not_required', 'pending', 'exported', 'failed'] as const
+
+export type PostingExportStatus = (typeof POSTING_EXPORT_STATUSES)[number]
+
+/**
  * Result of handing one entry to a provider.
  *
  * Deliberately wider than build plan 7.4's `{ externalId: string }`: `none` and
@@ -390,6 +404,17 @@ export const NON_FAILURE_REFUSALS = ['nothing_to_close', 'setup_incomplete'] as 
  */
 export interface PostResult {
   status: PostResultStatus
+  /**
+   * What the EXPORT did, when one was attempted. Absent on a pre-claim refusal,
+   * where nothing was ever written to export.
+   *
+   * 🛑 A caller deciding whether the LEDGER took the entry reads `status` (or
+   * simply `glPostingId`), never this. An export that failed leaves
+   * `status: 'posted'` and `exportStatus: 'failed'`, and a caller that rolls
+   * back on the latter reintroduces the exact defect
+   * `plans/accounting/export-state-split.md` closed.
+   */
+  exportStatus?: PostingExportStatus
   /** The `GlPosting` row, once claimed. Absent on a pre-claim refusal. */
   glPostingId?: string
   /** Always set once the entry is built - it is minted before the claim. */
@@ -716,18 +741,22 @@ export interface ClosePeriod {
   revision: number
 }
 
-/** One claimed-but-not-posted entry, as the close console's banner reads it. */
-export interface UnpostedPeriod {
+/**
+ * One entry that IS in the books and is not in the accounting system.
+ *
+ * 🛑 Renamed from `UnpostedPeriod` by the export split, because the old name
+ * described a state that no longer exists: a claimed row is posted, so nothing
+ * is ever "claimed but not posted". What can still be outstanding is the COPY.
+ *
+ * `pending` is owed and has not been refused - in flight, or claimed by a run
+ * that died before the push. `failed` was attempted and refused, and carries
+ * the reason. They call for different actions, so they are not collapsed.
+ */
+export interface FailedExport {
   periodKey: string
   postingType: PostingType
   glPostingId: string
-  /**
-   * Kept distinct rather than collapsed into "unposted": `pending` is claimed
-   * and in flight (or claimed by a run that died mid-push, which the idempotency
-   * ladder heals), `failed` was attempted and refused and carries the reason.
-   * They call for different actions.
-   */
-  status: 'pending' | 'failed'
+  exportStatus: 'pending' | 'failed'
   docNumber: string
   attempts: number
   failureReason: string | null

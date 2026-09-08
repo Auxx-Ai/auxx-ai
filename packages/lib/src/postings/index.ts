@@ -337,6 +337,7 @@ export {
   resolveAccountLines,
   resolveRoles,
 } from './resolve-roles'
+export { retryExport } from './retry-export'
 export { type ReverseEntryOptions, reverseEntry } from './reverse-entry'
 export {
   listChartAccounts,
@@ -389,7 +390,7 @@ export {
 export {
   type BooksBalanceDiscrepancy,
   type BooksBalanceReport,
-  listUnpostedPeriods,
-  type UnpostedPeriod,
+  type FailedExport,
+  listFailedExports,
   verifyBooksBalance,
 } from './verify-balance'

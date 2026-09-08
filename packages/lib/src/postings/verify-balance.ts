@@ -39,8 +39,8 @@ import { compareMonths, periodMonth } from './periods'
 import type {
   BooksBalanceDiscrepancy,
   BooksBalanceReport,
+  FailedExport,
   PostingType,
-  UnpostedPeriod,
 } from './types'
 
 const logger = createScopedLogger('postings:verify-balance')
@@ -53,7 +53,7 @@ const logger = createScopedLogger('postings:verify-balance')
  * between them leaves exactly that shape, and so does any concurrent reader
  * peeking mid-transaction. Reporting those as unbalanced would make the sweep
  * cry wolf on its most common non-event, and a check nobody believes is worse
- * than no check. They are not lost - `listUnpostedPeriods` is where they show up,
+ * than no check. They are not lost - `listFailedExports` is where they show up,
  * which is the report that can actually be acted on.
  *
  * `failed` is excluded because it is not in the books: nothing was posted, the
@@ -171,8 +171,8 @@ export async function verifyBooksBalance(
   }
 }
 
-// `UnpostedPeriod` moved to `types.ts` - see the note there.
-export type { UnpostedPeriod } from './types'
+// `FailedExport` moved to `types.ts` - see the note there.
+export type { FailedExport } from './types'
 
 /**
  * Every entry that has been claimed but is not in the books.
@@ -204,11 +204,11 @@ export type { UnpostedPeriod } from './types'
  * Ordered by `periodKey` then `postingType` so the banner and the console list
  * agree with each other and with themselves between refreshes.
  */
-export async function listUnpostedPeriods(
+export async function listFailedExports(
   db: Database,
   organizationId: string,
   options?: { through?: string }
-): Promise<Result<UnpostedPeriod[], Error>> {
+): Promise<Result<FailedExport[], Error>> {
   try {
     // Normalized through `periodMonth`, which also VALIDATES: a malformed bound
     // throws `BadRequestError` here rather than silently matching nothing, and a
@@ -220,7 +220,7 @@ export async function listUnpostedPeriods(
         glPostingId: schema.GlPosting.id,
         periodKey: schema.GlPosting.periodKey,
         postingType: schema.GlPosting.postingType,
-        status: schema.GlPosting.status,
+        exportStatus: schema.GlPosting.exportStatus,
         docNumber: schema.GlPosting.docNumber,
         attempts: schema.GlPosting.attempts,
         failureReason: schema.GlPosting.failureReason,
@@ -229,29 +229,31 @@ export async function listUnpostedPeriods(
       .where(
         and(
           eq(schema.GlPosting.organizationId, organizationId),
-          inArray(schema.GlPosting.status, ['pending', 'failed'])
+          // The EXPORT's state, never the ledger's. A row whose export failed
+          // is in the books and must stay in them.
+          inArray(schema.GlPosting.exportStatus, ['pending', 'failed'])
         )
       )
       .orderBy(asc(schema.GlPosting.periodKey), asc(schema.GlPosting.postingType))
 
-    const unposted: UnpostedPeriod[] = []
+    const owed: FailedExport[] = []
     for (const row of rows) {
       if (throughMonth && !withinThrough(row.periodKey, throughMonth)) continue
-      unposted.push({
+      owed.push({
         periodKey: row.periodKey,
         postingType: row.postingType as PostingType,
         glPostingId: row.glPostingId,
-        status: row.status as 'pending' | 'failed',
+        exportStatus: row.exportStatus as 'pending' | 'failed',
         docNumber: row.docNumber,
         attempts: row.attempts,
         failureReason: row.failureReason,
       })
     }
 
-    return ok(unposted)
+    return ok(owed)
   } catch (error) {
     if (error instanceof AuxxError) return err(error)
-    logger.error('Failed to list unposted periods', { error, organizationId })
+    logger.error('Failed to list owed exports', { error, organizationId })
     return err(new AuxxError('Internal error'))
   }
 }
@@ -260,7 +262,7 @@ export async function listUnpostedPeriods(
  * Is `periodKey` at or before `throughMonth`?
  *
  * Returns `true` for a key that is not a period at all, for the reason spelled
- * out on `listUnpostedPeriods`: an entry that cannot be placed in a month must
+ * out on `listFailedExports`: an entry that cannot be placed in a month must
  * not vanish from a report about unfinished work.
  */
 function withinThrough(periodKey: string, throughMonth: string): boolean {

@@ -159,7 +159,7 @@ export async function markInvoiceSent(input: InvoiceLifecycleInput): Promise<voi
   //
   // ⚠️ `postInvoiceIssuance` NEVER throws. Every refusal is a `PostResult`,
   // logged there with its status and whether the period was claimed, and
-  // surfaced by `listUnpostedPeriods` once a claim exists. An invoice must not
+  // surfaced by `listFailedExports` once a claim exists. An invoice must not
   // fail to send because its bookkeeping did - the customer is waiting on the
   // document and the refusal is recoverable.
   await postInvoiceIssuance(database, {

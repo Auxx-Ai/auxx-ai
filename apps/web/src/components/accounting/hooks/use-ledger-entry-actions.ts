@@ -112,7 +112,7 @@ export function useLedgerEntryActions({
   /** Everything the books-level reads show changes the moment a month lands. */
   const refreshBooks = useCallback(() => {
     void utils.ledger.periods.invalidate()
-    void utils.ledger.unpostedPeriods.invalidate()
+    void utils.ledger.failedExports.invalidate()
     void utils.ledger.verifyBalance.invalidate()
   }, [utils])
 

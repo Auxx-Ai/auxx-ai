@@ -4,9 +4,9 @@ import type { Database } from '@auxx/database'
 import { err, ok } from 'neverthrow'
 import { describe, expect, it, vi } from 'vitest'
 
-vi.mock('../../verify-balance', () => ({ listUnpostedPeriods: vi.fn() }))
+vi.mock('../../verify-balance', () => ({ listFailedExports: vi.fn() }))
 
-import { listUnpostedPeriods } from '../../verify-balance'
+import { listFailedExports } from '../../verify-balance'
 import { readCompleteness } from '../completeness'
 
 const ORG = 'org_1'
@@ -17,7 +17,7 @@ function stubDb(): Database {
 
 describe('readCompleteness', () => {
   it('names every posting type not in ENABLED_POSTING_TYPES, each with a remedy', async () => {
-    vi.mocked(listUnpostedPeriods).mockResolvedValue(ok([]))
+    vi.mocked(listFailedExports).mockResolvedValue(ok([]))
 
     const result = await readCompleteness(stubDb(), { organizationId: ORG, asOf: '2026-08-31' })
     const completeness = result._unsafeUnwrap()
@@ -33,13 +33,13 @@ describe('readCompleteness', () => {
   })
 
   it('surfaces unposted periods with a remedy that opens that period', async () => {
-    vi.mocked(listUnpostedPeriods).mockResolvedValue(
+    vi.mocked(listFailedExports).mockResolvedValue(
       ok([
         {
           periodKey: '2026-07',
           postingType: 'month_end_inventory',
           glPostingId: 'gl_1',
-          status: 'failed',
+          exportStatus: 'failed',
           docNumber: 'GL-ME-2026-07',
           attempts: 2,
           failureReason: 'QuickBooks rate limit',
@@ -57,7 +57,7 @@ describe('readCompleteness', () => {
   })
 
   it('leaves the bank-feed placeholders empty until the feed exists', async () => {
-    vi.mocked(listUnpostedPeriods).mockResolvedValue(ok([]))
+    vi.mocked(listFailedExports).mockResolvedValue(ok([]))
 
     const result = await readCompleteness(stubDb(), { organizationId: ORG, asOf: '2026-08-31' })
     const completeness = result._unsafeUnwrap()
@@ -67,7 +67,7 @@ describe('readCompleteness', () => {
   })
 
   it('returns err rather than throwing when the unposted-periods read fails', async () => {
-    vi.mocked(listUnpostedPeriods).mockResolvedValue(err(new Error('boom')))
+    vi.mocked(listFailedExports).mockResolvedValue(err(new Error('boom')))
 
     const result = await readCompleteness(stubDb(), { organizationId: ORG, asOf: '2026-08-31' })
     expect(result.isErr()).toBe(true)

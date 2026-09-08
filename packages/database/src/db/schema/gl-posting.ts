@@ -69,17 +69,50 @@ export const glPostingType = pgEnum('GlPostingType', [
 ])
 
 /**
- * Lifecycle of one journal entry.
+ * Lifecycle of one journal entry, in OUR books.
+ *
+ * 🛑 Two values. The pair that used to sit here — `pending` and `failed` — were
+ * never ledger states; they were EXPORT states wearing this column's name, and
+ * a provider refusal that flipped this column to `failed` took the entry out of
+ * every report while the money it described was perfectly real. See
+ * {@link glPostingExportStatus} and plans/accounting/export-state-split.md.
+ *
+ * Every ledger-side question is settled BEFORE the claim: `postEntry` takes the
+ * period lock (step 1), resolves roles (2) and re-asserts balance (3) before it
+ * claims (5), then writes the lines in the SAME transaction as the claim (6).
+ * So a row that exists with lines under it has already passed everything we get
+ * to decide, which is why `posted` is stamped there rather than after a third
+ * party acknowledges it. A pre-claim refusal writes no row at all — that is why
+ * there is no status describing one.
  *
  * `reversed` is terminal, and it belongs to the ORIGINAL of a reversal pair —
  * the reversal itself is an ordinary `posted` entry (decision G4: a reversal is
  * a second, opposite entry; a period that has been posted never changes shape).
  */
-export const glPostingStatus = pgEnum('GlPostingStatus', [
+export const glPostingStatus = pgEnum('GlPostingStatus', ['posted', 'reversed'])
+
+/**
+ * What the EXPORT of this entry to the accounting provider did.
+ *
+ * 🛑 Nothing on this column may change what the books say. Decision P1 makes the
+ * accounting system an EXPORTER and auxx.ai the system of record; that only
+ * holds if a provider's answer lands somewhere the statements do not read.
+ *
+ * - `not_required` — nothing is connected, or pushing is disabled. A supported
+ *   configuration, and deliberately NOT collapsed into `exported`: an org that
+ *   never had an accounting system has not exported anything, and merging the
+ *   two makes "is everything exported?" unanswerable on the one setup P1 calls
+ *   fully supported.
+ * - `pending` — claimed, and the push has not answered yet.
+ * - `exported` — the provider took it. `providerEntryId` is set.
+ * - `failed` — the provider refused. `failureReason` and `attempts` say why and
+ *   how often. Retried by `retryExport`, never by re-posting.
+ */
+export const glPostingExportStatus = pgEnum('GlPostingExportStatus', [
+  'not_required',
   'pending',
-  'posted',
+  'exported',
   'failed',
-  'reversed',
 ])
 
 /** Which side of the entry a line sits on. The ONLY carrier of sign (decision G2). */
@@ -110,7 +143,13 @@ export const GlPosting = pgTable(
      */
     revision: integer().default(0).notNull(),
 
-    status: glPostingStatus().default('pending').notNull(),
+    /**
+     * Defaults to `posted`, not to a draft state: a row exists only once the
+     * claim and its lines have committed, and by then every ledger-side check
+     * has passed. There is no moment at which a GlPosting row is legitimately
+     * un-posted.
+     */
+    status: glPostingStatus().default('posted').notNull(),
     /** The accounting date. Always explicit — providers default to their own server date. */
     txnDate: date().notNull(),
     /** Deterministic. Also the provider's document number. <= 21 chars (QBO `DocNumber`). */
@@ -151,6 +190,16 @@ export const GlPosting = pgTable(
      */
     requestId: text().notNull(),
 
+    /**
+     * What the export did. Never what the ledger did — see
+     * {@link glPostingExportStatus}.
+     *
+     * Defaults to `not_required` so a row written by anything that does not know
+     * about providers (a test factory, a fixture) reads as "nothing to export"
+     * rather than as an export that is owed and will never happen.
+     */
+    exportStatus: glPostingExportStatus().default('not_required').notNull(),
+
     /** `'quickbooks'`, or `'none'` when nothing is connected. Never assumed. */
     providerId: text(),
     /** The provider's own id for the entry. NULL until a successful push. */
@@ -158,7 +207,9 @@ export const GlPosting = pgTable(
 
     postedAt: timestamp({ precision: 3 }),
     postedByUserId: text().references((): AnyPgColumn => User.id, { onDelete: 'set null' }),
+    /** Why the EXPORT was refused. Never why a posting was refused — there is no such row. */
     failureReason: text(),
+    /** How many times the EXPORT has been attempted. Not cleared by a later success. */
     attempts: integer().default(0).notNull(),
 
     /** For a reversal: the posting it reverses. Self-referential, never cascading. */
@@ -203,6 +254,12 @@ export const GlPosting = pgTable(
       'btree',
       table.organizationId.asc().nullsLast(),
       table.status.asc().nullsLast()
+    ),
+    // The export queue: "what is in the books but not in QuickBooks".
+    index('GlPosting_org_exportStatus_idx').using(
+      'btree',
+      table.organizationId.asc().nullsLast(),
+      table.exportStatus.asc().nullsLast()
     ),
     index('GlPosting_org_txnDate_idx').using(
       'btree',

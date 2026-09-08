@@ -1,7 +1,7 @@
 // packages/lib/src/postings/settled-periods.ts
 
 import { database, schema } from '@auxx/database'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { ConflictError } from '../errors'
 import { getOrganizationSetting } from '../settings/settings-service'
 import { resolvePeriodLock } from './period-lock'
@@ -193,10 +193,12 @@ export async function assertAccountingSetupUnfrozen(
     .select({ id: schema.GlPosting.id })
     .from(schema.GlPosting)
     .where(
-      and(
-        eq(schema.GlPosting.organizationId, organizationId),
-        inArray(schema.GlPosting.status, ['posted', 'pending'])
-      )
+      // Any row IS an entry since the export split: a GlPosting row only exists once
+      // the claim and its lines have committed, and nothing a provider answers can
+      // take it back out. The old `[posted, pending]` filter existed to skip rows
+      // that had been stamped `failed` by an EXPORT fault, which is exactly the
+      // freeze this guard must not let slip.
+      eq(schema.GlPosting.organizationId, organizationId)
     )
     .limit(1)
   if (!standing) return

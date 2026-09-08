@@ -22,7 +22,7 @@
  */
 
 import { type Database, schema } from '@auxx/database'
-import { and, eq, inArray } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import { getOrganizationSetting } from '../../settings/settings-service'
 import { ACCOUNT_ROLES } from '../build-entry'
@@ -243,10 +243,8 @@ async function hasStandingPosting(db: Database, organizationId: string): Promise
     .select({ id: schema.GlPosting.id })
     .from(schema.GlPosting)
     .where(
-      and(
-        eq(schema.GlPosting.organizationId, organizationId),
-        inArray(schema.GlPosting.status, ['posted', 'pending'])
-      )
+      // Any row IS an entry. See the note in `settled-periods.ts`.
+      eq(schema.GlPosting.organizationId, organizationId)
     )
     .limit(1)
   return !!row

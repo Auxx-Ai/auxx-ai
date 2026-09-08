@@ -247,7 +247,7 @@ function resolveState(
   }
   // Only a row that actually reached the books counts as posted. A `pending` or
   // `failed` claim is an OPEN month with an unfinished attempt in it, which is
-  // what `listUnpostedPeriods` reports separately and what the console's banner
+  // what `listFailedExports` reports separately and what the console's banner
   // reads. Calling it posted here would hide the one thing the operator has to
   // act on.
   if (posting?.status === 'posted') return 'posted'

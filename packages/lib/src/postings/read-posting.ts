@@ -6,7 +6,7 @@
  * The close console's posting drawer is deep-linked on `?posting=<id>` and needs
  * the header, its lines, the stored draft and the provider result in ONE call.
  * Before this function there was no read surface for a `GlPosting` anywhere -
- * not in the router, not in lib. `listUnpostedPeriods` answers "what is still
+ * not in the router, not in lib. `listFailedExports` answers "what is still
  * claimed but not in the books" and `verifyBooksBalance` answers "does the
  * ledger tie"; neither can show a reader what a single entry actually says.
  *

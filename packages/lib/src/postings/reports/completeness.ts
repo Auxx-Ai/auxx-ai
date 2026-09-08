@@ -15,7 +15,7 @@ import { AuxxError } from '../../errors'
 import { periodMonth } from '../periods'
 import { ENABLED_POSTING_TYPES } from '../regime'
 import { POSTING_TYPES, type PostingType } from '../types'
-import { listUnpostedPeriods, type UnpostedPeriod } from '../verify-balance'
+import { type FailedExport, listFailedExports } from '../verify-balance'
 
 const logger = createScopedLogger('postings:reports:completeness')
 
@@ -29,7 +29,7 @@ export interface CompletenessItem {
 export interface Completeness {
   organizationId: string
   asOf: string
-  unpostedPeriods: UnpostedPeriod[]
+  unpostedPeriods: FailedExport[]
   /** One entry per posting type NOT in `ENABLED_POSTING_TYPES`, in words. */
   disabledPostingTypes: CompletenessItem[]
   /** Placeholder until the bank feed exists (`plans/bank-connection/`) - always empty for now. */
@@ -73,7 +73,7 @@ const DISABLED_POSTING_TYPE_SENTENCES: Partial<Record<PostingType, string>> = {
 
 /**
  * Every completeness item the org's statements currently carry: unposted
- * periods (`listUnpostedPeriods`), the disabled posting types, and the two
+ * periods (`listFailedExports`), the disabled posting types, and the two
  * bank-feed placeholders that stay empty until `plans/bank-connection/`
  * lands.
  */
@@ -84,7 +84,7 @@ export async function readCompleteness(
   const { organizationId, asOf } = options
 
   try {
-    const unpostedResult = await listUnpostedPeriods(db, organizationId, {
+    const unpostedResult = await listFailedExports(db, organizationId, {
       through: periodMonth(asOf),
     })
     if (unpostedResult.isErr()) return err(unpostedResult.error)
@@ -99,12 +99,16 @@ export async function readCompleteness(
       remedy: { label: 'View the ledger', href: '/app/accounting' },
     }))
 
+    // 🛑 These entries ARE in the statements. The completeness banner names them
+    // because a reader comparing this statement against the accounting system
+    // will find them missing THERE, not here. Wording that says an entry is
+    // absent from the books would now be false.
     const unpostedPeriodItems: CompletenessItem[] = unpostedPeriods.map((period) => ({
-      id: `unposted-period:${period.glPostingId}`,
+      id: `owed-export:${period.glPostingId}`,
       label:
-        period.status === 'failed'
-          ? `${period.periodKey} failed to post: ${period.failureReason ?? 'no reason recorded'}.`
-          : `${period.periodKey} is claimed but not yet posted.`,
+        period.exportStatus === 'failed'
+          ? `${period.docNumber} is posted here but was refused by the accounting system: ${period.failureReason ?? 'no reason recorded'}.`
+          : `${period.docNumber} is posted here and has not reached the accounting system yet.`,
       remedy: { label: 'Open the ledger', href: `/app/accounting/${period.periodKey}` },
     }))
 
