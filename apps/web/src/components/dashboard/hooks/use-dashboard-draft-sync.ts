@@ -11,7 +11,7 @@ import { useEffect } from 'react'
 import { api } from '~/trpc/react'
 import { useDashboardStore } from '../stores/dashboard-draft-store'
 
-export function useDashboardDraftSync(dashboardId: string) {
+export function useDashboardDraftSync(dashboardId: string, canEdit: boolean) {
   const query = api.dashboard.get.useQuery({ id: dashboardId })
   const seed = useDashboardStore((s) => s.seed)
   const reset = useDashboardStore((s) => s.reset)
@@ -24,8 +24,9 @@ export function useDashboardDraftSync(dashboardId: string) {
       versionNumber: query.data.versionNumber,
       hasUnpublishedChanges: query.data.hasUnpublishedChanges,
       entityDefinitionId: query.data.entityDefinitionId,
+      canEdit,
     })
-  }, [query.data, dashboardId, seed])
+  }, [query.data, dashboardId, seed, canEdit])
 
   useEffect(() => () => reset(), [reset])
 

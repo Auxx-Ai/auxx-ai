@@ -21,7 +21,7 @@
 import type { LayoutWidget, WidgetKind } from '@auxx/lib/dashboards/client'
 import { Popover, PopoverAnchor, PopoverContent } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
-import { type ReactNode, useRef, useState } from 'react'
+import { type ReactNode, useState } from 'react'
 import {
   type Layout,
   type LayoutItem,
@@ -86,23 +86,27 @@ export function DashboardGrid({
 
   const layouts: ResponsiveLayouts = tabToLayouts(widgets)
 
-  // v2's onLayoutChange fires on MOUNT and whenever the compactor normalizes the
-  // layout — including the moment edit mode enables the grid. Committing there
-  // would auto-save a compaction echo as a "change" the user never made (clicking
-  // Edit would dirty the draft). So onLayoutChange only STASHES the latest desktop
-  // layout; the commit happens strictly on a real drag/resize STOP. Only the
-  // desktop breakpoint is persisted (edit mode is desktop-only, plan 08).
-  const latestDesktopRef = useRef<Layout | null>(null)
-  const handleLayoutChange = (_current: Layout, all: ResponsiveLayouts) => {
-    if (all.desktop) latestDesktopRef.current = all.desktop
-  }
-
-  // Commit the settled desktop layout — only the widgets that actually moved
-  // (grid-convert diffs against stored positions). Called from drag/resize stop.
-  const commitInteraction = () => {
-    const desktop = latestDesktopRef.current
-    if (!desktop) return
-    const changes = applyLayoutToWidgets(widgets, desktop)
+  // Commit the settled layout that the STOP EVENT ITSELF carries, only the
+  // widgets that actually moved (grid-convert diffs against stored positions).
+  //
+  // This used to read a layout stashed by `onLayoutChange`, and that silently
+  // lost every drag. The stash exists because v2's `onLayoutChange` also fires
+  // on MOUNT and whenever the compactor normalizes, so committing there would
+  // auto-save a compaction echo as a "change" the user never made (clicking
+  // Edit alone would dirty the draft). But at `onDragStop` the stashed value is
+  // still the PRE-drag layout, so `applyLayoutToWidgets` diffed the old layout
+  // against the old widgets, found nothing, and returned `[]` - which the
+  // store's `applyGridLayout` no-op guard then dropped on the floor. The widget
+  // stayed where it was dropped because react-grid-layout keeps its own
+  // internal layout, so it LOOKED saved until any store-driven re-render (a tab
+  // switch, or a reload) put it back.
+  //
+  // `EventCallback`'s first argument is the settled layout at the moment of the
+  // stop, which is exactly what we want to persist and has no ordering
+  // dependency on `onLayoutChange` at all. Edit mode is desktop-only (plan 08),
+  // so the active breakpoint's layout IS the desktop layout.
+  const commitInteraction = (layout: Layout) => {
+    const changes = applyLayoutToWidgets(widgets, layout)
     if (changes.length > 0) onLayoutCommit(changes)
   }
 
@@ -112,9 +116,9 @@ export function DashboardGrid({
     newItem: LayoutItem | null
   ) => onDragStateChange?.(newItem?.i ?? null)
 
-  const handleDragStop = () => {
+  const handleDragStop = (layout: Layout) => {
     onDragStateChange?.(null)
-    commitInteraction()
+    commitInteraction(layout)
   }
 
   // The empty-cell overlay (edit mode only). Rows = content bottom + a buffer so
@@ -228,8 +232,7 @@ export function DashboardGrid({
           resizeConfig={{ enabled: isEditMode, handles: ['se', 'e', 's'] }}
           onDragStart={handleDragStart}
           onDragStop={handleDragStop}
-          onResizeStop={commitInteraction}
-          onLayoutChange={handleLayoutChange}>
+          onResizeStop={commitInteraction}>
           {widgets.map((widget) => (
             <div key={widget.id}>{renderWidget(widget)}</div>
           ))}

@@ -55,6 +55,26 @@ export interface DashboardSeed {
   hasUnpublishedChanges: boolean
   /** Set ⇒ THE dashboard for this entity def — new widgets default their source to it (plan 02). */
   entityDefinitionId: string | null
+  /**
+   * May this viewer edit? Decides which LAYER a cold load lands on.
+   *
+   * An editor with unpublished changes lands on the DRAFT, because that is the
+   * work they were last looking at: they moved a widget, hit Done, reloaded,
+   * and the published layout snapped it back to where it used to be. Nothing
+   * was lost, but "I moved it, refreshed, and it moved back" is
+   * indistinguishable from data loss, and the unsaved-changes pill is easy to
+   * miss.
+   *
+   * The decision lives HERE rather than in an effect on the page, because
+   * `seed` re-runs on every `dashboard.get` settle and unconditionally reset
+   * the layer to `'live'`, so a page-level effect was clobbered by the next
+   * refetch.
+   *
+   * Viewers are excluded deliberately, and it is not cosmetic for them: the
+   * published version is the canonical dashboard, and a viewer has no
+   * Live/Draft toggle to get back with.
+   */
+  canEdit?: boolean
 }
 
 interface DashboardDraftState {
@@ -180,8 +200,14 @@ export const useDashboardStore = create<DashboardDraftState>()(
             isEditMode: keep ? s.isEditMode : false,
             isDirty: keep ? s.isDirty : false,
             hasUnpublishedChanges: keep ? s.hasUnpublishedChanges : seed.hasUnpublishedChanges,
-            // Cold loads land on the live version; the toggle/Done opt into the draft.
-            viewLayer: keep ? s.viewLayer : 'live',
+            // Cold loads land on the live version, EXCEPT for an editor with
+            // unpublished work (see `DashboardSeed.canEdit`). The toggle and
+            // Done still opt in and out freely.
+            viewLayer: keep
+              ? s.viewLayer
+              : seed.canEdit && seed.hasUnpublishedChanges && seed.draft
+                ? 'draft'
+                : 'live',
           }
         }),
 
