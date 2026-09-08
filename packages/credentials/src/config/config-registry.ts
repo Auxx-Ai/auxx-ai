@@ -851,6 +851,22 @@ export const CONFIG_VARIABLES = {
     isSensitive: true,
     isEnvOnly: false,
   },
+  // A THIRD Stripe signing secret, because it is a third ENDPOINT. Stripe signs per
+  // endpoint, and an endpoint's delivery mode (platform vs connected accounts) is fixed
+  // when the endpoint is created. Financial Connections accounts belong to the platform
+  // account, so the bank feed's events are platform events and cannot arrive on the
+  // Connect endpoint above (plans/bank-connection/06). Served by /api/banking/webhook.
+  // `group: BILLING` matches its siblings so it lands beside them in the admin config UI,
+  // even though it serves the bank feed rather than billing.
+  STRIPE_BANKING_WEBHOOK_SECRET: {
+    key: 'STRIPE_BANKING_WEBHOOK_SECRET',
+    description:
+      'Stripe platform webhook signing secret for the bank feed (Financial Connections events)',
+    type: ConfigVariableType.STRING,
+    group: ConfigVariableGroup.BILLING,
+    isSensitive: true,
+    isEnvOnly: false,
+  },
   PAYMENTS_APPLICATION_FEE_PERCENT: {
     key: 'PAYMENTS_APPLICATION_FEE_PERCENT',
     description: 'Default application fee percent charged on Stripe Connect payments (money MP1)',
