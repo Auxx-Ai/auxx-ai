@@ -30,6 +30,9 @@ interface ReviewStatsProps {
  */
 export function ReviewStats({ stats, loading, currencyCode, accountSelected }: ReviewStatsProps) {
   const mono = 'font-mono tabular-nums'
+  // A date is wider than a count or an amount, so it gets its own size rather
+  // than the card's default 2xl, which overflows a narrow column.
+  const dateMono = 'font-mono tabular-nums text-lg'
 
   return (
     <StatCards
@@ -38,25 +41,28 @@ export function ReviewStats({ stats, loading, currencyCode, accountSelected }: R
         {
           title: 'For review',
           icon: <Inbox className='size-4' />,
+          color: 'text-accent-500',
           body: <span className={mono}>{stats?.forReviewCount ?? 0}</span>,
           description:
             stats && stats.unreviewedCount > stats.forReviewCount
               ? `${stats.unreviewedCount - stats.forReviewCount} more have a suggestion waiting`
-              : 'Lines with nothing proposed yet',
+              : 'Nothing proposed yet',
         },
         {
           title: 'Oldest unreviewed',
           icon: <CalendarClock className='size-4' />,
-          body: <span className={mono}>{stats?.oldestUnreviewedDate ?? EMPTY_CELL}</span>,
-          description: 'How far back the queue reaches. A backlog is measured in months, not rows',
+          color: 'text-comparison-500',
+          body: <span className={dateMono}>{stats?.oldestUnreviewedDate ?? EMPTY_CELL}</span>,
+          description: 'How far back the queue reaches',
         },
         {
           title: 'Unreviewed in',
           icon: <TrendingUp className='size-4' />,
+          color: 'text-good-500',
           body: (
             <span className={mono}>{formatMinor(stats?.unreviewedInMinor ?? 0, currencyCode)}</span>
           ),
-          description: 'Money that arrived and has not been matched or coded',
+          description: 'Arrived, not yet matched or coded',
         },
         {
           title: accountSelected ? 'Coverage from' : 'Unreviewed out',
@@ -65,8 +71,9 @@ export function ReviewStats({ stats, loading, currencyCode, accountSelected }: R
           ) : (
             <TrendingDown className='size-4' />
           ),
+          color: accountSelected ? 'text-comparison-500' : 'text-bad-500',
           body: (
-            <span className={mono}>
+            <span className={accountSelected ? dateMono : mono}>
               {accountSelected
                 ? (stats?.coverageFrom ?? EMPTY_CELL)
                 : formatMinor(stats?.unreviewedOutMinor ?? 0, currencyCode)}
@@ -75,8 +82,8 @@ export function ReviewStats({ stats, loading, currencyCode, accountSelected }: R
           description: accountSelected
             ? stats && stats.coverageGapCount > 0
               ? `${stats.coverageGapCount} possible gap${stats.coverageGapCount === 1 ? '' : 's'} in this account's data`
-              : 'The earliest date this account holds data for'
-            : 'Money that left and has not been matched or coded',
+              : 'Earliest date this account holds data'
+            : 'Left, not yet matched or coded',
         },
       ]}
     />

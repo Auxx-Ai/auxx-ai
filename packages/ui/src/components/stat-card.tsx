@@ -84,7 +84,11 @@ export function StatCard({
       </div>
       <div className='pt-1 px-3 pb-3'>
         <div className='text-2xl font-bold'>{body}</div>
-        <div className='text-xs text-muted-foreground'>{description}</div>
+        <div
+          className='text-xs text-muted-foreground line-clamp-2'
+          title={typeof description === 'string' ? description : undefined}>
+          {description}
+        </div>
       </div>
     </div>
   )
