@@ -11,7 +11,7 @@
 // key were coded to 6100" is the strongest signal available before a single
 // rule exists. A `bank_rule` is the opt-in, ORDERED layer a reviewer adds once
 // a pattern is confirmed. This page lists them, lets a person add, edit,
-// disable or delete one, and runs suggestions over the queue on demand.
+// disable or delete one.
 //
 // ## ⚠️ Departure: a TreeRowList, not `RecordsView`
 //
@@ -22,6 +22,14 @@
 // the match and the action as one line, so this is a `TreeRowList` over
 // `bankingRules.list`, the same shape the review queue and the journal's
 // entries list use.
+//
+// ## 🛑 Running the rules is NOT on this page
+//
+// It is on the review queue, next to the state tabs
+// (`plans/bank-connection/10-review-queue-url-state.md` §4). A button here read
+// as "suggest some rules to me", because every other control on this page acts
+// on a rule; what it actually does is write suggestions onto TRANSACTIONS and,
+// for an `autoApply` rule, post. It belongs where its results render.
 //
 // 🛑 `autoApply` is off by default and the dialog explains why: a rule that
 // silently posts to the ledger is a rule that silently posts a WRONG entry, and
@@ -35,7 +43,7 @@ import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { toastError } from '@auxx/ui/components/toast'
 import { TREE_SECONDARY_NOTRUNCATE, TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
-import { ListChecks, Pencil, Plus, Power, Sparkles, Trash2 } from 'lucide-react'
+import { ListChecks, Pencil, Plus, Power, Trash2 } from 'lucide-react'
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
 import SettingsPage from '~/components/global/settings-page'
@@ -121,12 +129,6 @@ export function BankingRulesPage() {
     [accountsQuery.data]
   )
 
-  const runSuggestions = api.bankingRules.runSuggestions.useMutation({
-    onError: (error) => {
-      toastError({ title: 'Error running suggestions', description: error.message })
-    },
-  })
-
   const updateRule = api.bankingRules.update.useMutation({
     onSuccess: async () => {
       await utils.bankingRules.list.invalidate()
@@ -175,21 +177,10 @@ export function BankingRulesPage() {
       description={PAGE_DESCRIPTION}
       breadcrumbs={BREADCRUMBS}
       button={
-        <div className='flex items-center gap-2'>
-          <Button
-            variant='outline'
-            size='sm'
-            loading={runSuggestions.isPending}
-            loadingText='Running...'
-            onClick={() => runSuggestions.mutate({})}>
-            <Sparkles />
-            Run suggestions now
-          </Button>
-          <Button size='sm' onClick={openCreate}>
-            <Plus />
-            New rule
-          </Button>
-        </div>
+        <Button size='sm' onClick={openCreate}>
+          <Plus />
+          New rule
+        </Button>
       }>
       <div ref={frameRef} className='p-4' style={{ height: frameHeight }}>
         <div className='flex h-full flex-col overflow-hidden rounded-xl border bg-background'>
