@@ -7,6 +7,9 @@ import { OrganizationRole, type OrganizationType } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
 import { TRPCError } from '@trpc/server'
 import { and, eq, isNull, sql } from 'drizzle-orm'
+// The LEAF, not the `banking` barrel: the barrel drags the org cache and the whole
+// review/rules surface into this module's import graph for two functions.
+import { listBankFeedAccountsForOrganization, reapBankFeedAccount } from '../banking/feed/reaper'
 import { flushOrganization, onCacheEvent } from '../cache'
 import { DehydrationService } from '../dehydration'
 import type { ForwardingIntegrationMetadata } from '../email/inbound'
@@ -525,6 +528,61 @@ export class OrganizationService {
             'Failed to cancel active subscription. Please cancel your subscription first or contact support.',
         })
       }
+    }
+
+    // --- Release Financial Connections accounts at Stripe (does NOT block deletion) ---
+    //
+    // Stripe bills 30c per institution per account holder per month and the only thing
+    // that stops it is calling disconnect on the account. This runs BEFORE the
+    // transaction for the same reason the subscription cancel below does, and for one
+    // more that is specific to it: `DataConnector.organizationId` is `onDelete: 'cascade'`,
+    // so the moment the org row goes the connectors go with it and the nightly reaper
+    // (`banking/feed/reaper.ts`) can never find them. The delete would destroy the
+    // evidence in the same transaction that creates the leak.
+    //
+    // 🛑 This sits AFTER the subscription cancel, not before it, and the order matters.
+    // The cancel is the step that THROWS and aborts the delete, and it is the one with a
+    // history of doing so. Releasing first would mean a failed cancel left a surviving
+    // organization whose bank feeds had already been released at Stripe - recoverable
+    // only by the customer authenticating at their bank again. Everything from here to
+    // COMMIT is either tolerant or the transaction itself.
+    //
+    // 🛑 A failure here is LOGGED AND SWALLOWED, which is the opposite of what the
+    // subscription cancel above does, and the difference is deliberate. That one blocks
+    // because Stripe billing a customer who no longer has an account is unrecoverable.
+    // This one must not block, because a leaked 30c a month is recoverable by a human
+    // reading an invoice while an organization that can never be deleted is not - and an
+    // account already released, or one whose credential Stripe no longer resolves, would
+    // otherwise wedge every retry exactly the way the blind `cancel()` once did.
+    try {
+      const feedAccounts = await listBankFeedAccountsForOrganization(this.db, organizationId)
+      for (const account of feedAccounts) {
+        try {
+          const released = await reapBankFeedAccount(this.db, account)
+          if (released) {
+            logger.info('Released a Financial Connections account before org deletion', {
+              organizationId,
+              connectorId: account.connectorId,
+            })
+          } else {
+            logger.warn(
+              'Stripe would not release a Financial Connections account - continuing deletion',
+              { organizationId, connectorId: account.connectorId }
+            )
+          }
+        } catch (releaseError) {
+          logger.error('Failed to release a Financial Connections account - continuing deletion', {
+            organizationId,
+            connectorId: account.connectorId,
+            error: releaseError instanceof Error ? releaseError.message : String(releaseError),
+          })
+        }
+      }
+    } catch (listError) {
+      logger.error('Could not list Financial Connections accounts - continuing deletion', {
+        organizationId,
+        error: listError instanceof Error ? listError.message : String(listError),
+      })
     }
 
     // --- Begin Transaction ---
