@@ -152,6 +152,29 @@ export interface ResourceField {
   /** Field description for help text */
   description?: string
 
+  /**
+   * The value is SECRET ENOUGH TO HIDE BY DEFAULT — a taxpayer identification
+   * number is the motivating case. A sensitive field renders masked to its last
+   * four characters wherever `DisplayText` draws it, with a per-row reveal.
+   *
+   * 🛑 This is a DISPLAY hint, never an access control. The value is on the
+   * wire, in `fieldValue.batchGet`, in the API and in an export exactly as it
+   * was before; anyone who can read the record can read the number. It exists so
+   * a vendor's SSN is not sitting in plain sight on a shared screen, which is
+   * the actual threat for this class of field. Do not reach for it to keep a
+   * value from somebody — that is what permissions are for.
+   *
+   * ⚠️ Honoured by `DisplayText` (the panel and drawer read display) only. The
+   * dynamic table renders its own non-editing cell content and does NOT mask,
+   * so do not mark a field sensitive and assume the grid followed.
+   *
+   * Registry-only, like {@link ResourceField.naturalKeyPosition}: whether a TIN
+   * is sensitive is a product fact and no `CustomField` column carries one.
+   *
+   * @optional
+   */
+  sensitive?: boolean
+
   // Validation rules
   validation?: FieldValidation
 
