@@ -44,7 +44,12 @@ export interface PublishClusterShellProps {
     /** Renders the publish button disabled, wrapped in a tooltip with this reason. */
     disabledReason?: string
   }
-  discard?: { onClick: () => void; isPending?: boolean }
+  discard?: {
+    onClick: () => void
+    isPending?: boolean
+    /** Renders the discard button disabled, with this reason as its tooltip. */
+    disabledReason?: string
+  }
   /** Extra inline segments rendered before the publish segment (e.g. a diff button). */
   extraSegments?: React.ReactNode
   /** Dropdown menu content (DropdownMenuItem children). */
@@ -159,18 +164,21 @@ export function PublishClusterShell({
             <ButtonGroupSeparator />
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button
-                  size='xs'
-                  variant='outline'
-                  className='border-r-0 px-1.5'
-                  loading={discard.isPending}
-                  loadingText=''
-                  onClick={discard.onClick}
-                  aria-label='Discard changes'>
-                  <Undo2 />
-                </Button>
+                <span className='inline-flex'>
+                  <Button
+                    size='xs'
+                    variant='outline'
+                    className='border-r-0 px-1.5'
+                    loading={discard.isPending}
+                    loadingText=''
+                    disabled={!!discard.disabledReason}
+                    onClick={discard.onClick}
+                    aria-label='Discard changes'>
+                    <Undo2 />
+                  </Button>
+                </span>
               </TooltipTrigger>
-              <TooltipContent>Discard changes</TooltipContent>
+              <TooltipContent>{discard.disabledReason ?? 'Discard changes'}</TooltipContent>
             </Tooltip>
           </>
         ) : null}

@@ -40,6 +40,10 @@ const ARG_TO_REF_KIND: Record<string, SessionRefKind> = {
   // Unlike `record`, a workflow chip has no ambiguity — the builder page has
   // exactly one open workflow — so binding it is always right (04 §2).
   workflowId: 'workflow',
+  // Same reasoning as `workflowId`: a dashboard page has exactly one open
+  // dashboard. The dashboard-builder tools resolve it from `findRef` and take
+  // no argument at all, so this only serves a future tool that does.
+  dashboardId: 'dashboard',
 }
 
 /**

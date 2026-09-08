@@ -149,6 +149,7 @@ vi.mock('@auxx/lib/ai/kopilot', () => ({
   createAgentsBuilderCapabilities: vi.fn(),
   createAppCapabilities: vi.fn(),
   createCapabilityRegistry: vi.fn(),
+  createDashboardBuilderCapabilities: vi.fn(),
   createEntityCapabilities: vi.fn(),
   createKbCapabilities: vi.fn(),
   createKbReadCapabilities: vi.fn(),
@@ -160,6 +161,7 @@ vi.mock('@auxx/lib/ai/kopilot', () => ({
   createSuggestRepliesGlobalCapability: vi.fn(),
   createTaskCapabilities: vi.fn(),
   createWorkflowBuilderCapabilities: vi.fn(),
+  DASHBOARD_BUILDER_PAGE: 'dashboard.builder',
   // Session creation asks these two whether the turn came from the workflow
   // builder (and therefore which workflow to tag the row with). None of these
   // tests do, so the page never matches and no ref is found.

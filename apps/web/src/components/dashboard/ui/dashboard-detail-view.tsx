@@ -38,6 +38,7 @@ import { useFavoriteToggle } from '~/components/favorites/hooks/use-favorite-tog
 import { FavoriteStarButton } from '~/components/favorites/ui/favorite-star-button'
 import { CommandAction, CommandContext } from '~/components/kbar/contextual'
 import { useCommandPaletteStore } from '~/components/kbar/store'
+import { KopilotContext } from '~/components/kopilot/context/kopilot-context'
 import { InstanceShareDialog } from '~/components/permissions/ui/instance-share-dialog'
 import { RecordDrawer } from '~/components/records/record-drawer'
 import { useConfirm } from '~/hooks/use-confirm'
@@ -46,7 +47,9 @@ import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useAccess } from '~/providers/capabilities-provider'
 import { useDockStore } from '~/stores/dock-store'
 import { useDashboardAutosave } from '../hooks/use-dashboard-autosave'
+import { useDashboardDraftRealtime } from '../hooks/use-dashboard-draft-realtime'
 import { useDashboardDraftSync } from '../hooks/use-dashboard-draft-sync'
+import { useDashboardKopilotTurn, useDashboardTurnLock } from '../hooks/use-dashboard-kopilot-turn'
 import { useDashboardPublish } from '../hooks/use-dashboard-publish'
 import {
   selectCurrentTabs,
@@ -57,10 +60,30 @@ import {
 import { AddWidgetMenu } from './config/add-widget-menu'
 import { WidgetConfigPanel } from './config/widget-config-panel'
 import { DashboardGrid } from './dashboard-grid'
+import { DashboardKopilotTurnPill } from './dashboard-kopilot-turn-pill'
+import { DashboardKopilotTurnReview } from './dashboard-kopilot-turn-review'
 import { DashboardPublishCluster } from './dashboard-publish-cluster'
 import { DashboardSwitcherList } from './dashboard-switcher-list'
 import { DashboardTabStrip } from './dashboard-tab-strip'
 import { DashboardWidget } from './widget/dashboard-widget'
+
+/**
+ * `DASHBOARD_BUILDER_PAGE` from `@auxx/lib/ai/kopilot` — hardcoded here for the
+ * same reason every other builder page hardcodes its key (KB's 'kb', the agent
+ * builder's 'agents.builder', the workflow builder's 'workflow.builder'): the
+ * constant only lives on a server-side barrel. The stream route gates the
+ * dashboard-builder tools on this exact value.
+ */
+const DASHBOARD_BUILDER_PAGE = 'dashboard.builder'
+
+/**
+ * Shown on every write in the header cluster while a Kopilot turn holds the
+ * draft. The canvas clamp below rides `isEditMode`, but Edit, Publish, Discard
+ * and the version-history writes all live in VIEW mode and are not downstream
+ * of it, so they need the lock passed to them explicitly.
+ */
+const KOPILOT_TURN_LOCK_REASON =
+  'Kopilot is working on this dashboard. This is available again when it finishes.'
 
 export function DashboardDetailView({
   dashboard,
@@ -77,8 +100,6 @@ export function DashboardDetailView({
   startInEditMode?: boolean
 }) {
   const router = useRouter()
-  const draftQuery = useDashboardDraftSync(dashboard.id)
-  useDashboardAutosave()
 
   // Per-instance tiers for THIS dashboard, derived once (doc 24 §A.2.4's shape,
   // by props rather than a context — the tree is three components deep):
@@ -87,11 +108,26 @@ export function DashboardDetailView({
   //              gating the mode is what gates the whole canvas.
   //   canAdmin → dashboard settings (`dashboard.update`) + archive.
   //   canCreate → the coarse `dashboards.manage` rung behind Duplicate.
+  // Resolved BEFORE the server-facing hooks below, because the realtime
+  // subscriber takes `canEdit`.
   const { can, canEditInstance, canAdminInstance } = useAccess()
   const dashboardRecordId = toRecordId('dashboard', dashboard.id)
   const canEdit = canEditInstance(dashboardRecordId)
   const canAdmin = canAdminInstance(dashboardRecordId)
   const canCreate = can('dashboards.manage')
+
+  const draftQuery = useDashboardDraftSync(dashboard.id)
+  // The three server-facing hooks for the open dashboard, mounted once and in
+  // this order: the turn lock is what the auto-save suspends on, and the
+  // realtime refresh is what feeds the auto-save its next CAS token (its
+  // refetch writes the same query cache `useDashboardDraftSync` reads).
+  useDashboardKopilotTurn(dashboard.id)
+  useDashboardDraftRealtime(dashboard.id, canEdit)
+  useDashboardAutosave({
+    dashboardId: dashboard.id,
+    seedLayoutHash: draftQuery.data?.draftLayoutHash,
+  })
+  const kopilotTurn = useDashboardTurnLock(dashboard.id)
 
   const enteredInitialEditRef = useRef(false)
   const enterEditModeAction = useDashboardStore((s) => s.enterEditMode)
@@ -102,7 +138,15 @@ export function DashboardDetailView({
   }, [canEdit, startInEditMode, draftQuery.data, enterEditModeAction])
 
   const [confirm, ConfirmDialog] = useConfirm()
-  const [tabParam, setTab] = useQueryState('tab')
+  // `dtab`, NOT `tab`. `?tab=` has three owners in this app, and one of them is
+  // a GUEST on this page: `useRecordPeekStack` (records/record-drill-panels.tsx)
+  // declares `tab` among its own params and deliberately CLEARS it on every
+  // push/pop/clear, so that opening a record from a recordList widget wipes the
+  // drawer's stale inner tab. It also wiped ours, and the dashboard silently
+  // fell back to `tabs[0]` (Overview). Namespacing the host's param is the
+  // narrow fix: the drawer legitimately owns `tab` in its own context, and it
+  // can be hosted on any page, so the page is what should get out of its way.
+  const [tabParam, setTab] = useQueryState('dtab')
   const [selectedWidgetId, setSelectedWidgetId] = useQueryState('widget')
   const [shareOpen, setShareOpen] = useState(false)
 
@@ -118,10 +162,42 @@ export function DashboardDetailView({
   // and richText's inline editor all key off `isEditMode`. Clamping it here means
   // a Read member can never render a widget/layout affordance even if the store
   // carries a stale edit flag.
-  const isEditMode = storeIsEditMode && canEdit
+  //
+  // A held Kopilot turn clamps it the same way, at the same single point, so the
+  // canvas goes read-only for the span of the turn without N new checks. The
+  // store's own `isEditMode` is untouched, so the canvas comes straight back
+  // when the lock releases.
+  const isEditMode = storeIsEditMode && canEdit && !kopilotTurn
   const hasUnpublishedChanges = useDashboardStore(selectHasUnpublishedChanges)
+  // Rides the Kopilot `dashboard` chip so a layout mutation refuses against a
+  // draft this page has not flushed yet. Selector, never a destructure.
+  const isDirty = useDashboardStore((s) => s.isDirty)
   const viewLayer = useDashboardStore(selectViewLayer)
   const setViewLayer = useDashboardStore((s) => s.setViewLayer)
+  // A cold load lands on the LIVE layer (`seed` resets `viewLayer: 'live'`), but
+  // `exitEditMode` leaves you on `'draft'`. So an editor who moved a widget, hit
+  // Done, and then reloaded saw the published layout snap the widget back to
+  // where it used to be. Nothing was lost, the draft had the move all along, but
+  // "I moved it, refreshed, and it moved back" is indistinguishable from data
+  // loss from the outside, and the unsaved-changes pill is easy to miss.
+  //
+  // So: an editor with unpublished changes lands on the DRAFT, which is the work
+  // they were last looking at. Viewers are deliberately excluded, and this is not
+  // cosmetic for them: the published version is the canonical dashboard, and a
+  // viewer has no Live/Draft toggle to get back with.
+  //
+  // Once per seeded dashboard, never on later refetches, so the header toggle
+  // stays authoritative the moment the user touches it.
+  const landedOnDraftRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!canEdit || !draftQuery.data) return
+    if (landedOnDraftRef.current === dashboard.id) return
+    landedOnDraftRef.current = dashboard.id
+    if (draftQuery.data.hasUnpublishedChanges && draftQuery.data.draftLayout) {
+      setViewLayer('draft')
+    }
+  }, [canEdit, draftQuery.data, dashboard.id, setViewLayer])
+
   const saveState = useDashboardStore((s) => s.saveState)
   const hasPersisted = useDashboardStore((s) => s.persisted !== null)
   const enterEditMode = useDashboardStore((s) => s.enterEditMode)
@@ -308,6 +384,7 @@ export function DashboardDetailView({
   // route's header action cluster via `MainPageAction`.
   const actionCluster = (
     <div className='flex flex-row items-center gap-2'>
+      <DashboardKopilotTurnPill dashboardId={dashboard.id} />
       <FavoriteStarButton
         targetType='DASHBOARD'
         targetIds={{ dashboardId: dashboard.id }}
@@ -338,6 +415,7 @@ export function DashboardDetailView({
         canEdit={canEdit}
         canAdmin={canAdmin}
         canCreate={canCreate}
+        lockedReason={kopilotTurn ? KOPILOT_TURN_LOCK_REASON : undefined}
         viewLayer={viewLayer}
         onViewLayerChange={setViewLayer}
         onEnterEdit={() => {
@@ -359,6 +437,7 @@ export function DashboardDetailView({
           ? 'flex min-h-0 flex-1 flex-col rounded-lg bg-muted/20'
           : 'flex min-h-0 flex-1 flex-col'
       }>
+      <DashboardKopilotTurnReview dashboardId={dashboard.id} canEdit={canEdit} />
       <DashboardTabStrip
         tabs={tabs}
         activeTabId={activeTabId}
@@ -417,6 +496,22 @@ export function DashboardDetailView({
   return (
     <>
       {commandContext}
+      {/*
+        UNGATED on `canEdit`, deliberately. A read-only member should still get a
+        Kopilot that knows which dashboard is open and can answer questions about
+        it; the stream route's guard tiering is what withholds the write tools,
+        and asserting that twice in two places is how the two answers drift.
+
+        This page does NOT hide the global dock (unlike the workflow builder,
+        which calls `useEmbeddedKopilotSurface()`), so the existing dock serves
+        it and no chat panel component is needed here.
+      */}
+      <KopilotContext
+        page={DASHBOARD_BUILDER_PAGE}
+        activeDashboardId={dashboard.id}
+        activeDashboardLabel={dashboard.name}
+        activeDashboardIsDirty={isDirty}
+      />
       <ConfirmDialog />
 
       <MainPageAction>{actionCluster}</MainPageAction>

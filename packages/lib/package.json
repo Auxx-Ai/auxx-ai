@@ -430,6 +430,18 @@
       "import": "./dist/dashboards/config-schemas.mjs",
       "default": "./src/dashboards/config-schemas.ts"
     },
+    "./dashboards/draft-edit": {
+      "types": "./src/dashboards/draft-edit/index.ts",
+      "source": "./src/dashboards/draft-edit/index.ts",
+      "import": "./dist/dashboards/draft-edit/index.mjs",
+      "default": "./src/dashboards/draft-edit/index.ts"
+    },
+    "./dashboards/layout-ops": {
+      "types": "./src/dashboards/layout-ops.ts",
+      "source": "./src/dashboards/layout-ops.ts",
+      "import": "./dist/dashboards/layout-ops.mjs",
+      "default": "./src/dashboards/layout-ops.ts"
+    },
     "./data-connectors": {
       "types": "./src/data-connectors/index.ts",
       "source": "./src/data-connectors/index.ts",

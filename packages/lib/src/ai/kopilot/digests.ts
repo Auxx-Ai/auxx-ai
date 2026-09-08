@@ -73,3 +73,49 @@ export function buildWorkflowEditDigest(label: string, output: unknown): Workflo
       : {}),
   }
 }
+
+/**
+ * Shared digest shape for the dashboard-builder tools' status pills. The
+ * dashboard twin of {@link WorkflowEditDigest}: `label` is the human line
+ * ("Added KPI: Open tickets", "Deleted 2 widgets"), and the counts let the card
+ * flag a blocked edit or an unconfigured widget without storing the layout doc.
+ *
+ * `unconfiguredCount` has no workflow equivalent and is the one worth having:
+ * a dashboard widget with no source still renders, silently and emptily, so
+ * "applied, but 3 widgets are not configured yet" is the state a reader most
+ * needs to see at a glance.
+ */
+export const DashboardEditDigest = z.object({
+  label: z.string(),
+  /** False when blocking issues rejected the edit and the draft is untouched. */
+  applied: z.boolean().optional(),
+  issueCount: z.number().optional(),
+  widgetCount: z.number().optional(),
+  unconfiguredCount: z.number().optional(),
+})
+export type DashboardEditDigest = z.infer<typeof DashboardEditDigest>
+
+/**
+ * Build a {@link DashboardEditDigest} from a dashboard tool's output. `label`
+ * should name the completed action with the touched widget's title, falling
+ * back to the verb alone when the output carries no widget. Pure +
+ * deterministic (persisted on the tool-call part).
+ */
+export function buildDashboardEditDigest(label: string, output: unknown): DashboardEditDigest {
+  const out = (output ?? {}) as {
+    applied?: boolean
+    issues?: unknown[]
+    layoutSummary?: { widgetCount?: number; unconfiguredCount?: number }
+  }
+  return {
+    label,
+    ...(typeof out.applied === 'boolean' ? { applied: out.applied } : {}),
+    ...(Array.isArray(out.issues) ? { issueCount: out.issues.length } : {}),
+    ...(typeof out.layoutSummary?.widgetCount === 'number'
+      ? { widgetCount: out.layoutSummary.widgetCount }
+      : {}),
+    ...(typeof out.layoutSummary?.unconfiguredCount === 'number'
+      ? { unconfiguredCount: out.layoutSummary.unconfiguredCount }
+      : {}),
+  }
+}

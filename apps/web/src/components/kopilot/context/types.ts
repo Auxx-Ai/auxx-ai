@@ -14,6 +14,7 @@ export type SessionRefKind =
   | 'actor'
   | 'agent'
   | 'workflow'
+  | 'dashboard'
 
 /** Mirror of `SessionRef` from `@auxx/lib/ai/kopilot/types`. */
 export interface SessionRef {
@@ -22,10 +23,11 @@ export interface SessionRef {
   label?: string
   origin: 'surface' | 'mention'
   /**
-   * ADVISORY dirty flag contributed by the `workflow` builder chip: the open
-   * canvas has unsaved changes, so the DB draft the graph-edit tools would
-   * mutate is stale relative to what the user sees. Serialized to the server
-   * (the lib `SessionRef` declares it) — workflow mutations refuse while true.
+   * ADVISORY dirty flag contributed by a builder chip (`workflow`,
+   * `dashboard`): the open canvas has unsaved changes, so the DB draft those
+   * tools would mutate is stale relative to what the user sees. Serialized to
+   * the server (the lib `SessionRef` declares it) — mutations on that surface
+   * refuse while true.
    */
   isDirty?: boolean
   /**

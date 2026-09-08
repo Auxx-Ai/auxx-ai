@@ -16,6 +16,7 @@ export type SessionRefKind =
   | 'actor' // `user:<id>` or `group:<id>`
   | 'agent' // user-authored agent id — present on the builder page
   | 'workflow' // WorkflowApp id — present on the workflow builder page
+  | 'dashboard' // Dashboard id — present on the dashboard page
   | 'intakeDraft' // Purchase-order intake draft id - present on the intake review page
 
 /**
@@ -36,11 +37,12 @@ export interface SessionRef {
    */
   origin: 'surface' | 'mention'
   /**
-   * ADVISORY dirty flag contributed by the `workflow` builder chip: the open
-   * canvas has unsaved changes, so the DB draft the graph-edit tools would
-   * mutate is stale relative to what the user sees. Workflow mutations refuse
-   * while it is true. Tolerate absence — the chip is a courtesy; the hash-CAS
-   * inside graph-edit is the real concurrency guard.
+   * ADVISORY dirty flag contributed by a builder chip (`workflow`, `dashboard`):
+   * the open canvas has unsaved changes, so the DB draft those tools would
+   * mutate is stale relative to what the user sees. Mutations on that surface
+   * refuse while it is true. Tolerate absence — the chip is a courtesy; the
+   * hash-CAS inside the domain's write seam (`graph-edit/persist.ts`,
+   * `dashboards/draft-edit/persist.ts`) is the real concurrency guard.
    */
   isDirty?: boolean
 }

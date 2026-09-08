@@ -16,6 +16,12 @@
  * the slot, the TTL, or a manual draft save clearing it via
  * {@link clearWorkflowTurnSnapshot}.
  *
+ * The Redis mechanics (capture idempotent per turn, every read and write
+ * turn-checked, best-effort where a turn must not break) live in
+ * `turn-scoped/turn-slot.ts`, which states those four invariants and why each
+ * is load-bearing. THIS module names the workflow's key, TTL and payload, and
+ * owns {@link revertWorkflowTurn}.
+ *
  * One slot per workflow app — each new turn overwrites the prior turn's
  * snapshot, and the slot naturally expires via Redis TTL. `readWorkflowTurnSnapshot`
  * returning null for a turn id IS the "did this turn write anything" record:
@@ -43,10 +49,9 @@
  */
 
 import type { Database } from '@auxx/database'
-import { createScopedLogger } from '@auxx/logger'
-import { deleteRedisData, getRedisData, setRedisData } from '@auxx/redis'
 import { err, type Result } from 'neverthrow'
 import { type AuxxError, ConflictError, NotFoundError } from '../../errors'
+import { createTurnSlot } from '../../turn-scoped/turn-slot'
 import { hashGraphSemantics } from '../graph-hash'
 import {
   cleanGraphForSave,
@@ -56,8 +61,6 @@ import {
 } from './persist'
 import { type GraphEditScope, loadDraftContext } from './read'
 import type { DraftGraph } from './types'
-
-const logger = createScopedLogger('workflow-turn-snapshot')
 
 const TTL_SECONDS = 24 * 60 * 60
 
@@ -118,14 +121,17 @@ export interface WorkflowPreTurnSnapshot {
   endedAs?: WorkflowTurnEnding
 }
 
-const snapshotKey = (workflowAppId: string): string => `workflow:graph:${workflowAppId}:preturn`
+const slot = createTurnSlot<WorkflowPreTurnSnapshot>({
+  key: (workflowAppId: string) => `workflow:graph:${workflowAppId}:preturn`,
+  ttlSeconds: TTL_SECONDS,
+  logScope: 'workflow-turn-snapshot',
+})
 
 /**
  * Capture the pre-edit graph for a turn — called from the mutation pipeline
- * BEFORE its write. Idempotent per turn: if the slot already holds THIS
- * turn's snapshot, it is left untouched (a second mutation in the same turn
- * must not bump the snapshot — that would defeat whole-turn revert/Undo). A
- * snapshot from a PRIOR turn is overwritten: the new turn supersedes it.
+ * BEFORE its write. Idempotent per turn (invariant 1 of
+ * `turn-scoped/turn-slot.ts`): a second mutation in the same turn must not bump
+ * the snapshot, or whole-turn revert/Undo degrades to undo-the-last-edit.
  *
  * Returns whether a snapshot was written (false = same-turn no-op).
  */
@@ -139,21 +145,14 @@ export async function captureWorkflowTurnSnapshot(
     description: string | null
   }
 ): Promise<boolean> {
-  const existing = (await getRedisData(
-    snapshotKey(workflowAppId)
-  )) as WorkflowPreTurnSnapshot | null
-  if (existing?.turnId === turnId) return false
-
-  const snapshot: WorkflowPreTurnSnapshot = {
+  return slot.capture(workflowAppId, {
     turnId,
     name: data.name,
     description: data.description,
     graph: data.graph,
     triggerType: data.triggerType ?? null,
     capturedAt: Date.now(),
-  }
-  await setRedisData(snapshotKey(workflowAppId), snapshot, TTL_SECONDS)
-  return true
+  })
 }
 
 /**
@@ -172,10 +171,13 @@ export async function captureWorkflowTurnSnapshot(
  * hook running. Stamping per write cannot go stale: the last write to land is
  * by definition the graph the turn left behind.
  *
- * Turn-checked like {@link finalizeWorkflowTurn} — a stale turn must never
- * re-stamp a fresher turn's snapshot. Best-effort: a failed stamp leaves
- * `postTurnGraphSemanticHash` at its previous (older) value, which makes a later
- * revert refuse rather than clobber — the safe direction.
+ * The turn check, the unchanged-value skip and the TTL refresh are all
+ * `slot.patch`'s (see `turn-scoped/turn-slot.ts`): a stale turn must never
+ * re-stamp a fresher turn's snapshot, and the refresh is bounded by the turn's
+ * own duration because only this turn's writes reach this line. Best-effort: a
+ * failed stamp leaves `postTurnGraphSemanticHash` at its previous (older)
+ * value, which makes a later revert refuse rather than clobber — the safe
+ * direction.
  */
 export async function recordWorkflowTurnPostHash(
   workflowAppId: string,
@@ -183,27 +185,7 @@ export async function recordWorkflowTurnPostHash(
   graphSemanticHash: string | null
 ): Promise<void> {
   if (!graphSemanticHash) return
-  try {
-    const existing = (await getRedisData(
-      snapshotKey(workflowAppId)
-    )) as WorkflowPreTurnSnapshot | null
-    if (existing?.turnId !== turnId) return
-    if (existing.postTurnGraphSemanticHash === graphSemanticHash) return
-    // Re-`setex` refreshes the 24h TTL. Bounded by the turn's own duration
-    // (only this turn's writes reach this line), so the window a snapshot
-    // outlives its turn by never grows meaningfully.
-    await setRedisData(
-      snapshotKey(workflowAppId),
-      { ...existing, postTurnGraphSemanticHash: graphSemanticHash },
-      TTL_SECONDS
-    )
-  } catch (error) {
-    logger.warn('Failed to record post-turn semantic graph hash', {
-      workflowAppId,
-      turnId,
-      error: (error as Error).message,
-    })
-  }
+  await slot.patch(workflowAppId, turnId, { postTurnGraphSemanticHash: graphSemanticHash })
 }
 
 /**
@@ -220,35 +202,21 @@ export async function recordWorkflowTurnPostHash(
  * a turn dying before its hook runs leaves this undefined — which is why every
  * reader fails open (see {@link WorkflowPreTurnSnapshot.endedAs}).
  *
- * Turn-checked like {@link finalizeWorkflowTurn}: a stale turn must never
- * relabel a fresher turn's snapshot with its own ending. Best-effort — a
- * failure leaves the field undefined, i.e. today's generic wording, and the
- * offer itself is untouched. It must never throw: it runs on a turn-end path
- * whose one job is to leave the recovery route intact.
+ * Turn-checked and best-effort, both from `slot.patch`: a stale turn must never
+ * relabel a fresher turn's snapshot with its own ending, and a failure leaves
+ * the field undefined (today's generic wording) with the offer itself
+ * untouched. It must never throw: it runs on a turn-end path whose one job is
+ * to leave the recovery route intact. `slot.patch`'s TTL refresh restarts the
+ * 24h clock from turn end rather than from the turn's first write, which is the
+ * window the user actually gets to decide in, so it is the correct clock rather
+ * than an accidental extension.
  */
 export async function recordWorkflowTurnEnding(
   workflowAppId: string,
   turnId: string,
   endedAs: WorkflowTurnEnding
 ): Promise<void> {
-  try {
-    const existing = (await getRedisData(
-      snapshotKey(workflowAppId)
-    )) as WorkflowPreTurnSnapshot | null
-    if (existing?.turnId !== turnId) return
-    if (existing.endedAs === endedAs) return
-    // Re-`setex` refreshes the 24h TTL from turn end rather than from the
-    // turn's first write — which is the window the user actually gets to
-    // decide in, so this is the correct clock, not an accidental extension.
-    await setRedisData(snapshotKey(workflowAppId), { ...existing, endedAs }, TTL_SECONDS)
-  } catch (error) {
-    logger.warn('Failed to record workflow turn ending', {
-      workflowAppId,
-      turnId,
-      endedAs,
-      error: (error as Error).message,
-    })
-  }
+  await slot.patch(workflowAppId, turnId, { endedAs })
 }
 
 /**
@@ -262,10 +230,7 @@ export async function readWorkflowTurnSnapshot(
   workflowAppId: string,
   expectedTurnId?: string
 ): Promise<WorkflowPreTurnSnapshot | null> {
-  const raw = (await getRedisData(snapshotKey(workflowAppId))) as WorkflowPreTurnSnapshot | null
-  if (!raw) return null
-  if (expectedTurnId && raw.turnId !== expectedTurnId) return null
-  return raw
+  return slot.read(workflowAppId, expectedTurnId)
 }
 
 /**
@@ -278,19 +243,7 @@ export async function readWorkflowTurnSnapshot(
  * path refuses it anyway.
  */
 export async function finalizeWorkflowTurn(workflowAppId: string, turnId: string): Promise<void> {
-  try {
-    const existing = (await getRedisData(
-      snapshotKey(workflowAppId)
-    )) as WorkflowPreTurnSnapshot | null
-    if (existing?.turnId !== turnId) return
-    await deleteRedisData(snapshotKey(workflowAppId))
-  } catch (error) {
-    logger.warn('Failed to finalize workflow turn snapshot', {
-      workflowAppId,
-      turnId,
-      error: (error as Error).message,
-    })
-  }
+  await slot.finalize(workflowAppId, turnId)
 }
 
 /**
@@ -301,14 +254,7 @@ export async function finalizeWorkflowTurn(workflowAppId: string, turnId: string
  * Best-effort: a clear that fails only leaves a snapshot the TTL expires.
  */
 export async function clearWorkflowTurnSnapshot(workflowAppId: string): Promise<void> {
-  try {
-    await deleteRedisData(snapshotKey(workflowAppId))
-  } catch (error) {
-    logger.warn('Failed to clear workflow turn snapshot', {
-      workflowAppId,
-      error: (error as Error).message,
-    })
-  }
+  await slot.clear(workflowAppId)
 }
 
 /**

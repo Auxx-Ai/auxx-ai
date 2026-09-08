@@ -10,6 +10,10 @@ export {
 export { createAppCapabilities } from './apps'
 export { getAppConnectionPresence } from './apps/connection-resolver'
 export { createToolDepsFactory } from './create-deps'
+export {
+  createDashboardBuilderCapabilities,
+  DASHBOARD_BUILDER_PAGE,
+} from './dashboard-builder'
 export { createEntityCapabilities } from './entities'
 export { createKbCapabilities, createKbReadCapabilities, KB_PAGE } from './kb'
 export { createKnowledgeCapabilities } from './knowledge'

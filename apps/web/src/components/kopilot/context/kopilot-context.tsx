@@ -40,6 +40,16 @@ interface KopilotContextProps {
    * Rides the `workflow` ref so graph mutations refuse against a stale draft.
    */
   activeWorkflowIsDirty?: boolean
+
+  /** Dashboard id open on the dashboard page. */
+  activeDashboardId?: string
+  activeDashboardLabel?: string
+  /**
+   * Advisory: the open dashboard has unsaved local edits
+   * (`dashboard-draft-store.isDirty`, i.e. an auto-save flush is pending).
+   * Rides the `dashboard` ref so layout mutations refuse against a stale draft.
+   */
+  activeDashboardIsDirty?: boolean
 }
 
 /**
@@ -79,6 +89,9 @@ export function KopilotContext(props: KopilotContextProps): null {
     activeWorkflowId,
     activeWorkflowLabel,
     activeWorkflowIsDirty,
+    activeDashboardId,
+    activeDashboardLabel,
+    activeDashboardIsDirty,
   } = props
 
   useEffect(() => {
@@ -102,6 +115,13 @@ export function KopilotContext(props: KopilotContextProps): null {
     pushSurfaceRef(references, 'workflow', activeWorkflowId, activeWorkflowLabel, {
       pinned: true,
       isDirty: activeWorkflowIsDirty,
+    })
+    // Pinned for the same reason: the dashboard IS the subject of every
+    // dashboard-builder tool, and dismissing it would leave them with no
+    // target (`NO_DASHBOARD_REF_ERROR`).
+    pushSurfaceRef(references, 'dashboard', activeDashboardId, activeDashboardLabel, {
+      pinned: true,
+      isDirty: activeDashboardIsDirty,
     })
 
     const slice: ContextSlice = { references, ...(page !== undefined ? { page } : {}) }
@@ -127,6 +147,9 @@ export function KopilotContext(props: KopilotContextProps): null {
     activeWorkflowId,
     activeWorkflowLabel,
     activeWorkflowIsDirty,
+    activeDashboardId,
+    activeDashboardLabel,
+    activeDashboardIsDirty,
     setSlice,
     clearSlice,
   ])

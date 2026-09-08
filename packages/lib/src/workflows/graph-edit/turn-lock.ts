@@ -3,6 +3,12 @@
 /**
  * Per-workflow "a Kopilot turn is open" marker — SERVER-ONLY (Redis).
  *
+ * The Redis mechanics (atomic `SET NX EX` acquire, turn-checked release,
+ * fail-open everywhere) live in `turn-scoped/turn-lock.ts`, which states those
+ * three invariants and why each is load-bearing. THIS module names the
+ * workflow's key and TTL, and owns the realtime announcement. Everything below
+ * is the workflow-specific WHY.
+ *
  * WHY THIS EXISTS: while a turn holds the draft, the canvas must not be
  * editable. Kopilot publishes one `workflow:draft-updated` per mutation, and
  * the builder's subscriber **drops** every event that arrives while the canvas
@@ -26,53 +32,39 @@
  * Kopilot drawer being closed (which unmounts the SSE hook) and is visible to a
  * second tab on the same workflow.
  *
- * The stored value doubles as the queryable "is a turn open?" record, so a
- * client that missed the release — socket drop, reconnect after the turn
- * ended — can re-derive instead of trusting a local flag it can no longer
- * verify.
- *
- * FAIL-OPEN is deliberate throughout: an unreachable Redis leaves the canvas
- * EDITABLE. A stranded read-only canvas (recoverable only by reload) is a worse
- * failure than the race this prevents, and the hash-CAS inside `persistDraft`
- * is still the real correctness guard underneath.
+ * Fail-open (invariant 3 of the generic module) matters here specifically
+ * because the hash-CAS inside `persistDraft` is still the real correctness guard
+ * underneath: an unreachable Redis costs the canvas lock, not the draft.
  *
  * No permission checks live here (house rule) — `resolveWorkflowAuthoring` has
  * already run at every call site.
  */
 
-import { createScopedLogger } from '@auxx/logger'
-import { deleteRedisData, getRedisClient, getRedisData } from '@auxx/redis'
-
-const logger = createScopedLogger('workflow-turn-lock')
+import { createTurnLock, type TurnLockRecord } from '../../turn-scoped/turn-lock'
 
 /**
  * Backstop for a server that dies between acquire and release (deploy, crash,
- * OOM) — without it the key would outlive the turn and hold the canvas
- * read-only until someone cleared Redis by hand. Generous relative to a real
- * turn (Attio's observed builder turn was ~90s) because an approval pause keeps
- * a turn legitimately open while the user decides. The client watchdog in
- * `use-workflow-kopilot-turn.ts` is the faster of the two safety nets; this one
- * exists so the SERVER's record can never be permanently wrong.
+ * OOM). Generous relative to a real turn (Attio's observed builder turn was
+ * ~90s) because an approval pause keeps a turn legitimately open while the user
+ * decides. The client watchdog in `use-workflow-kopilot-turn.ts` is the faster
+ * of the two safety nets; see `turn-scoped/turn-lock.ts` for why the server
+ * needs one at all.
  */
 const TTL_SECONDS = 15 * 60
 
 /** A turn currently holding a workflow's draft. */
-export interface WorkflowTurnLock {
-  turnId: string
-  startedAt: number
-}
+export type WorkflowTurnLock = TurnLockRecord
 
-const lockKey = (workflowAppId: string): string => `workflow:kopilot:turn:${workflowAppId}`
+const lock = createTurnLock({
+  key: (workflowAppId: string) => `workflow:kopilot:turn:${workflowAppId}`,
+  ttlSeconds: TTL_SECONDS,
+  logScope: 'workflow-turn-lock',
+})
 
 /**
  * Claim the workflow for `turnId`. Returns **true only on the transition** —
  * the first tool call of a turn — which is what makes this the edge trigger for
- * the `started` publish. Every later tool call in the same turn returns false.
- *
- * Atomic (`SET NX EX`), so two concurrent turns on one workflow cannot both see
- * an empty slot and both announce a start. Returns false when Redis is
- * unavailable: no lock is recorded, nothing is published, and the canvas stays
- * editable (see the fail-open note in the file docblock).
+ * the `started` publish (invariant 1 of `turn-scoped/turn-lock.ts`).
  *
  * A turn that re-enters after its own key expired re-acquires and re-publishes
  * `started`. That is correct rather than a bug: the client's watchdog has by
@@ -82,26 +74,7 @@ export async function acquireWorkflowTurnLock(
   workflowAppId: string,
   turnId: string
 ): Promise<boolean> {
-  try {
-    const client = await getRedisClient(false)
-    if (!client) return false
-    const lock: WorkflowTurnLock = { turnId, startedAt: Date.now() }
-    const claimed = await client.set(
-      lockKey(workflowAppId),
-      JSON.stringify(lock),
-      'EX',
-      TTL_SECONDS,
-      'NX'
-    )
-    return !!claimed
-  } catch (error) {
-    logger.warn('Failed to acquire workflow turn lock', {
-      workflowAppId,
-      turnId,
-      error: (error as Error).message,
-    })
-    return false
-  }
+  return lock.acquire(workflowAppId, turnId)
 }
 
 /**
@@ -112,16 +85,7 @@ export async function acquireWorkflowTurnLock(
 export async function readWorkflowTurnLock(
   workflowAppId: string
 ): Promise<WorkflowTurnLock | null> {
-  try {
-    const raw = (await getRedisData(lockKey(workflowAppId))) as WorkflowTurnLock | null
-    return raw ?? null
-  } catch (error) {
-    logger.warn('Failed to read workflow turn lock', {
-      workflowAppId,
-      error: (error as Error).message,
-    })
-    return null
-  }
+  return lock.read(workflowAppId)
 }
 
 /**
@@ -135,19 +99,7 @@ export async function releaseWorkflowTurnLock(
   workflowAppId: string,
   turnId: string
 ): Promise<boolean> {
-  try {
-    const existing = (await getRedisData(lockKey(workflowAppId))) as WorkflowTurnLock | null
-    if (existing?.turnId !== turnId) return false
-    await deleteRedisData(lockKey(workflowAppId))
-    return true
-  } catch (error) {
-    logger.warn('Failed to release workflow turn lock', {
-      workflowAppId,
-      turnId,
-      error: (error as Error).message,
-    })
-    return false
-  }
+  return lock.release(workflowAppId, turnId)
 }
 
 /**

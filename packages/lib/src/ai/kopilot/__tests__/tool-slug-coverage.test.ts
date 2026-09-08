@@ -70,6 +70,27 @@ const ALWAYS_ON_TOOLS = new Set<string>([
   'apply_template',
   'validate_workflow',
   'run_node',
+  // Dashboard-builder tools - mounted by page context
+  // (`page: 'dashboard.builder'`), never by an org toolset. Same reasoning as
+  // the workflow-builder block above, recorded in
+  // `dashboard-builder/client.ts`.
+  'list_widget_kinds',
+  'describe_widget_kind',
+  'list_dashboard_sources',
+  'get_dashboard',
+  'get_widget',
+  'add_widget',
+  'update_widget',
+  'change_widget_type',
+  'arrange_widgets',
+  'delete_widgets',
+  'add_tab',
+  'update_tab',
+  'delete_tab',
+  'set_global_filters',
+  'replace_layout',
+  'preview_widget',
+  'validate_dashboard',
   // Purchase-order intake tools — mounted by page context
   // (`page: 'purchasing.intake'`), never by an org toolset. Same reasoning as
   // the workflow-builder block above, and plans/money/tasks/38 §8 rejects a
