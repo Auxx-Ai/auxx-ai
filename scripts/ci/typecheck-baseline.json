@@ -4,8 +4,7 @@
       "scripts/check-sync-core-e2e.ts::TS18048": 1,
       "scripts/check-sync-core-e2e.ts::TS2322": 1,
       "scripts/check-sync-core-e2e.ts::TS2532": 1,
-      "scripts/seed-docket-marketing.ts::TS2322": 1,
-      "scripts/seed-docket-marketing.ts::TS2769": 21,
+      "scripts/seed-docket-marketing.ts::TS2769": 20,
       "scripts/verify-learned-kb.ts::TS2339": 3,
       "vitest.integration.config.ts::TS2769": 1
     },
