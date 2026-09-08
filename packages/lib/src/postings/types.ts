@@ -268,6 +268,23 @@ export type PostEntryStatus = 'posted' | 'already_posted' | 'healed' | 'not_conn
  * is what the LEDGER did and a provider may never move it - see
  * `plans/accounting/export-state-split.md`.
  */
+/**
+ * What the LEDGER did with an entry.
+ *
+ * Mirrors the `GlPostingStatus` pgEnum, and pinned to it by
+ * `__tests__/types.test.ts` the same way {@link POSTING_TYPES} is.
+ *
+ * 🛑 Two values. `pending` and `failed` were retired by the export split: they
+ * were never ledger states, they described a push, and a provider refusal that
+ * moved this field took a real entry out of every report. Four hand-written
+ * copies of the old union survived that change because they were string
+ * literals rather than this type - which is why this exists rather than each
+ * interface spelling the union out. See plans/accounting/export-state-split.md.
+ */
+export const POSTING_STATUSES = ['posted', 'reversed'] as const
+
+export type PostingStatus = (typeof POSTING_STATUSES)[number]
+
 export const POSTING_EXPORT_STATUSES = ['not_required', 'pending', 'exported', 'failed'] as const
 
 export type PostingExportStatus = (typeof POSTING_EXPORT_STATUSES)[number]
@@ -562,7 +579,9 @@ export interface PostingDetail {
   periodKey: string
   txnDate: string
   docNumber: string
-  status: 'pending' | 'posted' | 'failed' | 'reversed'
+  status: PostingStatus
+  /** What the EXPORT did. Read this, never `status`, to learn about the provider. */
+  exportStatus: PostingExportStatus
   revision: number
   /** The posting this one reverses, when it is a reversal. */
   reversesId: string | null

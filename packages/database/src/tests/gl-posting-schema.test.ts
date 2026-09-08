@@ -27,11 +27,17 @@ import {
   GlPosting,
   type GlPostingEntity,
   glPostingDirection,
+  glPostingExportStatus,
   glPostingStatus,
   glPostingType,
 } from '../db/schema/gl-posting'
 import type { GlPostingLineEntity } from '../db/schema/gl-posting-line'
-import { GlPostingDirectionValues, GlPostingStatusValues, GlPostingTypeValues } from '../enums'
+import {
+  GlPostingDirectionValues,
+  GlPostingExportStatusValues,
+  GlPostingStatusValues,
+  GlPostingTypeValues,
+} from '../enums'
 
 const postingConfig = getTableConfig(GlPosting)
 const lineConfig = getTableConfig(GlPostingLine)
@@ -209,7 +215,24 @@ describe('the enum vocabularies', () => {
   it('keeps the Drizzle enums and the client-safe value lists in step', () => {
     expect(glPostingType.enumValues).toEqual([...GlPostingTypeValues])
     expect(glPostingStatus.enumValues).toEqual([...GlPostingStatusValues])
+    expect(glPostingExportStatus.enumValues).toEqual([...GlPostingExportStatusValues])
     expect(glPostingDirection.enumValues).toEqual([...GlPostingDirectionValues])
+  })
+
+  // 🛑 `src/enums.ts` says it is generated, and for these four it is NOT.
+  // `scripts/generate-client-enums.ts` reads ONLY `src/db/schema/_shared.ts`,
+  // and every GlPosting enum lives in `src/db/schema/gl-posting.ts`, so running
+  // the generator DELETES these entries rather than refreshing them. They are
+  // maintained by hand, and this assertion is the only thing that notices when
+  // somebody forgets. Do not "fix" a failure here by running the generator.
+  it('holds the ledger and the export status apart', () => {
+    // The export split (#2065). A provider's answer may never land on `status`:
+    // that is what took a real entry out of the books when QuickBooks refused a
+    // copy of it.
+    expect(glPostingStatus.enumValues).not.toContain('failed')
+    expect(glPostingStatus.enumValues).not.toContain('pending')
+    expect(glPostingExportStatus.enumValues).toContain('failed')
+    expect(glPostingExportStatus.enumValues).toContain('not_required')
   })
 
   it('carries `reversed` — the terminal state of the ORIGINAL of a reversal pair', () => {
@@ -221,6 +244,12 @@ describe('the enum vocabularies', () => {
   it('matches POSTING_TYPES in packages/lib/src/postings/types.ts', () => {
     // Kept literal on purpose: @auxx/database must not import @auxx/lib, so this
     // is the tripwire for the two lists drifting apart.
+    //
+    // ⚠️ This list sat at the original eight from #2054 until 2026-09-08, so the
+    // tripwire had been red since wave 0 added `manual_journal` and the seven
+    // after it. A pin nobody runs is not a pin: `packages/database` has no
+    // `typecheck` script and its suite is not reached by a `packages/lib` run,
+    // which is exactly how it stayed red through four accounting PRs.
     expect(glPostingType.enumValues).toEqual([
       'fulfillment',
       'payout',
@@ -230,6 +259,14 @@ describe('the enum vocabularies', () => {
       'month_end_inventory',
       'receipt',
       'vendor_bill',
+      'manual_journal',
+      'opening_balance',
+      'bank_transaction',
+      'bank_deposit',
+      'write_off',
+      'payment',
+      'invoice_issued',
+      'deposit_application',
     ])
   })
 })
