@@ -254,7 +254,7 @@ export function CatalogPicker({
           <div className='p-1'>
             {isAdminOrOwner ? (
               <Link
-                href='/app/dispatch/settings/products'
+                href='/app/catalog'
                 className={cn(
                   'flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-muted-foreground text-xs',
                   'hover:bg-accent hover:text-accent-foreground'

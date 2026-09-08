@@ -2,7 +2,7 @@
 
 /**
  * The minimal "is there a phantom draft, and what's its display name" handle
- * the products-services-page owner keeps for each tab (products/groups).
+ * the catalog-page owner keeps for each record tab (items/groups).
  * The full draft field set (description, category, price, entries, …) lives
  * entirely inside the editor component instance (`ProductDraftEditorForm` /
  * `GroupDraftEditorForm`, keyed by `draftId`) — the page only needs enough to

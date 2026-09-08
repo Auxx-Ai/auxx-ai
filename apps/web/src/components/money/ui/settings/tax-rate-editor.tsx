@@ -17,7 +17,7 @@ interface TaxRateEditorProps {
 /**
  * Right column of the Tax rates tab: name / rate for the selected rate. Every
  * edit rewrites the whole `documents.taxRates` array atomically (see
- * `products-services-page.tsx`) — text fields are debounced locally so typing
+ * `catalog-page.tsx`): text fields are debounced locally so typing
  * doesn't fire a setting write per keystroke. The default rate is toggled from
  * the list row, not here.
  */

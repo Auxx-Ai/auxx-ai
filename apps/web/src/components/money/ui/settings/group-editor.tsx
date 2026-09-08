@@ -59,7 +59,7 @@ import type { TaxRate } from './tax-rate-types'
 interface GroupEditorProps {
   selectedId: string | null
   currency: string
-  /** Phantom draft for the Product groups tab, owned by `products-services-page.tsx`. */
+  /** Phantom draft for the Catalog groups tab, owned by `catalog-page.tsx`. */
   draft: CatalogDraftHandle | null
   /** List phantom-row preview sync — fired per debounced name commit. */
   onDraftNameChange: (name: string) => void

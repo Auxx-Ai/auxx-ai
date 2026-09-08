@@ -35,7 +35,7 @@ const ITEM_ATTRIBUTES = [
 ] as const
 
 /** The catalog surface the compact list links to (has_many case). */
-const CATALOG_SETTINGS_HREF = '/app/dispatch/settings/products'
+const CATALOG_SETTINGS_HREF = '/app/catalog'
 
 /**
  * Sellable toggle / pricing row for the part drawer's overview

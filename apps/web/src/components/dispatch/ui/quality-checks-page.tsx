@@ -203,7 +203,7 @@ export function QualityChecksPage() {
   const handleAdd = () => {
     const current = draftRef.current
     if (current && !current.recordId) {
-      // An uncommitted draft already exists — just re-select it (products-services-page recipe).
+      // An uncommitted draft already exists, just re-select it (catalog-page recipe).
       setSelectedId(current.draftId)
       return
     }

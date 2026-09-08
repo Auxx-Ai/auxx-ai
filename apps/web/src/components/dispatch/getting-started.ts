@@ -42,7 +42,7 @@ const GOALS: Record<DispatchGoalKey, Omit<GettingStartedGoal, 'key'>> = {
     iconId: 'package',
     color: 'orange',
     ctaText: 'Add a product',
-    href: '/app/dispatch/settings/products',
+    href: '/app/catalog',
     docsPath: '/help/dispatch/add-product',
   },
   'set-tax-rate': {
@@ -51,7 +51,7 @@ const GOALS: Record<DispatchGoalKey, Omit<GettingStartedGoal, 'key'>> = {
     iconId: 'percent',
     color: 'pink',
     ctaText: 'Set tax rate',
-    href: '/app/dispatch/settings/products?s=tax-rates',
+    href: '/app/catalog?s=tax-rates',
     docsPath: '/help/dispatch/set-tax-rate',
   },
   'create-request': {

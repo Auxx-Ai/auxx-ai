@@ -13,8 +13,8 @@ import { Tags } from 'lucide-react'
 const BASE_PATH = '/app/catalog'
 
 /**
- * Catalog layout — the products-route recipe: a plain breadcrumb shell around
- * the catalog surface (plans/products/01-product-family.md §6).
+ * Products and Services layout, the products-route recipe: a plain breadcrumb
+ * shell around the catalog surface (plans/products/01-product-family.md §6).
  */
 export default function CatalogLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -22,7 +22,7 @@ export default function CatalogLayout({ children }: { children: React.ReactNode 
       <MainPageHeader>
         <MainPageBreadcrumb>
           <MainPageBreadcrumbItem
-            title='Catalog'
+            title='Products and Services'
             href={BASE_PATH}
             icon={<Tags className='size-4' />}
           />
