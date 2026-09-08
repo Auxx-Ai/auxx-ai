@@ -49,7 +49,8 @@
 import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, isNotNull, sql } from 'drizzle-orm'
-import { STRIPE_FC_CONNECTOR_TYPE } from '../../data-connectors/connectors/stripe-financial-connections'
+import { PROVIDER_ACCOUNT_ID_METADATA_KEY } from '../../connections/hosted-provision/types'
+import { STRIPE_FC_CONNECTOR_TYPE } from '../../data-connectors/connectors/stripe-financial-connections-type'
 import { disconnectAccountAtStripe, FC_PROVIDER_KEY } from './fc-client'
 
 const logger = createScopedLogger('banking-feed-reaper')
@@ -137,6 +138,10 @@ export interface ReapCandidate extends BankFeedAccountRef {
  * The columns every door reads, resolved the same way in all of them.
  *
  * 🛑 `providerAccountId` lives in the CREDENTIAL's jsonb metadata, not on the connector,
+ * under the shared {@link PROVIDER_ACCOUNT_ID_METADATA_KEY} rather than a retyped
+ * string literal - `Credential.metadata` is `Record<string, unknown>`, so a drifted
+ * key would filter out every candidate here and report a healthy sweep releasing
+ * nothing while every account kept billing.
  * so every path that wants to release an account has to make this join. Sharing the
  * projection is what stops door 3 or door 4 inventing its own and quietly reading the
  * wrong key.
@@ -145,7 +150,7 @@ const feedAccountColumns = {
   connectorId: schema.DataConnector.id,
   organizationId: schema.DataConnector.organizationId,
   credentialId: schema.Credential.id,
-  providerAccountId: sql<string>`${schema.Credential.metadata}->>'providerAccountId'`,
+  providerAccountId: sql<string>`${schema.Credential.metadata}->>${PROVIDER_ACCOUNT_ID_METADATA_KEY}`,
 }
 
 /** A Financial Connections connector whose credential still carries an account to release. */
@@ -153,7 +158,7 @@ function releasableBankFeedFilter() {
   return and(
     eq(schema.DataConnector.type, STRIPE_FC_CONNECTOR_TYPE),
     eq(schema.Credential.type, FC_PROVIDER_KEY),
-    isNotNull(sql`${schema.Credential.metadata}->>'providerAccountId'`)
+    isNotNull(sql`${schema.Credential.metadata}->>${PROVIDER_ACCOUNT_ID_METADATA_KEY}`)
   )
 }
 

@@ -55,13 +55,15 @@ vi.mock('./data-connector-queue', async (importOriginal) => ({
 }))
 
 // plans/bank-connection/08-removing-a-bank-account.md §5.4 door 3. The LEAF module, not
-// the `banking` barrel - that is the import production makes, and mocking the barrel
-// would leave the real leaf in the graph.
-const findBankFeedAccountForConnector = vi.fn(async (..._a: unknown[]) => null as unknown)
-const reapBankFeedAccount = vi.fn(async (..._a: unknown[]) => true)
-vi.mock('../banking/feed/reaper', () => ({
-  findBankFeedAccountForConnector: (...a: unknown[]) => findBankFeedAccountForConnector(...a),
-  reapBankFeedAccount: (...a: unknown[]) => reapBankFeedAccount(...a),
+// `connectorFor` is the seam `deleteConnector` releases through. Mocking the REGISTRY
+// (not a feature module) is the point of the capability: the generic delete path never
+// learns which feature a connector belongs to.
+const releaseOnDelete = vi.fn(async (..._a: unknown[]) => {})
+const connectorDefinition = vi.fn(
+  (_type: string) => ({ releaseOnDelete }) as unknown as Record<string, unknown>
+)
+vi.mock('./connectors/registry', () => ({
+  connectorFor: (type: string) => connectorDefinition(type),
 }))
 
 import {
@@ -142,8 +144,6 @@ beforeEach(() => {
     .mockResolvedValue(ok({ success: true, deletedFieldIds: ['field_1'] }))
   notifyCustomFieldChanged.mockReset()
   enqueueConnectorTeardown.mockReset()
-  findBankFeedAccountForConnector.mockReset().mockResolvedValue(null)
-  reapBankFeedAccount.mockReset().mockResolvedValue(true)
 })
 
 describe('finalizeConnectorTeardown — delete behavior stray-field sweep', () => {
@@ -365,20 +365,20 @@ describe('deferred app-field sweep', () => {
   })
 })
 
-// plans/bank-connection/08-removing-a-bank-account.md §5.4 door 3 / §7.6.
+// plans/bank-connection/08-removing-a-bank-account.md §5.4 door 3 / §7.6, and
+// plans/bank-connection/09-data-connector-debt.md D1.
 //
 // 🛑 Stripe bills 30c per institution per account holder per month and the ONLY thing
 // that stops it is calling disconnect on the account. `deleteConnector` never did, and
 // the teardown it enqueues removes the row - so the nightly reaper, which sweeps
 // `DataConnector`, could never clean up after this door either.
-describe('deleteConnector releases a Financial Connections account', () => {
-  const FC_ACCOUNT = {
-    connectorId: 'dc_1',
-    organizationId: 'org_1',
-    credentialId: 'cred_1',
-    providerAccountId: 'fca_1',
-  }
-
+//
+// 🛑 These assert the CAPABILITY, not the bank. The first fix called
+// `banking/feed/reaper` by name from here, which pointed the generic connector engine
+// at a feature built on top of it. `releaseOnDelete` is declared on the connector
+// definition and resolved through `connectorFor`, the same way `asyncExport` and
+// `resolveDelete` are - so nothing below mentions a bank.
+describe('deleteConnector releases at the provider', () => {
   /** Records the release and the `deleting` mark in the order production made them. */
   function tracingDb(trace: string[]) {
     const chain: Record<string, unknown> = {
@@ -394,7 +394,9 @@ describe('deleteConnector releases a Financial Connections account', () => {
       limit: vi.fn(() => Promise.resolve([])),
       query: {
         DataConnector: {
-          findFirst: vi.fn().mockResolvedValue({ id: 'dc_1', organizationId: 'org_1' }),
+          findFirst: vi
+            .fn()
+            .mockResolvedValue({ id: 'dc_1', organizationId: 'org_1', type: 'some-connector' }),
         },
         AppInstallation: { findFirst: vi.fn().mockResolvedValue(undefined) },
       },
@@ -402,58 +404,81 @@ describe('deleteConnector releases a Financial Connections account', () => {
     return chain as unknown as Database
   }
 
-  it('releases at Stripe BEFORE the row is marked `deleting`', async () => {
+  beforeEach(() => {
+    releaseOnDelete.mockReset()
+    releaseOnDelete.mockImplementation(async () => {})
+    connectorDefinition.mockReset()
+    connectorDefinition.mockImplementation(
+      () => ({ releaseOnDelete }) as unknown as Record<string, unknown>
+    )
+  })
+
+  it('releases BEFORE the row is marked `deleting`', async () => {
     const trace: string[] = []
-    findBankFeedAccountForConnector.mockResolvedValue(FC_ACCOUNT)
-    reapBankFeedAccount.mockImplementation(async () => {
+    releaseOnDelete.mockImplementation(async () => {
       trace.push('release')
-      return true
     })
 
     await deleteConnector(tracingDb(trace), 'org_1', 'user_1', 'dc_1', 'archive')
 
-    // The ordering IS the fix: once the teardown starts, the `providerAccountId` is on
-    // its way out with the connector row and there is nothing left to disconnect.
+    // The ordering IS the fix: once the teardown starts, the provider handle is on its
+    // way out with the connector row and there is nothing left to disconnect.
     expect(trace).toEqual(['release', 'mark-deleting'])
-    expect(reapBankFeedAccount).toHaveBeenCalledWith(expect.anything(), FC_ACCOUNT)
-    expect(findBankFeedAccountForConnector).toHaveBeenCalledWith(expect.anything(), 'org_1', 'dc_1')
+    expect(releaseOnDelete).toHaveBeenCalledWith({
+      db: expect.anything(),
+      organizationId: 'org_1',
+      connectorId: 'dc_1',
+    })
+  })
+
+  it("resolves the definition by the ROW's type, never by a hardcoded one", async () => {
+    await deleteConnector(tracingDb([]), 'org_1', 'user_1', 'dc_1', 'archive')
+
+    expect(connectorDefinition).toHaveBeenCalledWith('some-connector')
   })
 
   it('releases on the `keep` path too, which returns before any teardown is enqueued', async () => {
     // `keep` short-circuits into `finalizeConnectorTeardown` and is the overwhelmingly
     // common case, so a release placed after that branch would cover almost nobody.
-    findBankFeedAccountForConnector.mockResolvedValue(FC_ACCOUNT)
     const db = buildDb({
-      connectorRow: { id: 'dc_1', organizationId: 'org_1' },
+      connectorRow: { id: 'dc_1', organizationId: 'org_1', type: 'some-connector' },
       strayFields: [],
       dataConnectorRows: [[], []],
     }) as unknown as Database
 
     await deleteConnector(db, 'org_1', 'user_1', 'dc_1', 'keep')
 
-    expect(reapBankFeedAccount).toHaveBeenCalledTimes(1)
+    expect(releaseOnDelete).toHaveBeenCalledTimes(1)
   })
 
-  it('releases nothing for a connector that is not a Financial Connections feed', async () => {
-    // Every other connector type resolves no account, so Stripe is never called. The
-    // type gate itself lives in `findBankFeedAccountForConnector`'s predicate and is
-    // pinned in `banking/feed/__tests__/reaper.test.ts`.
-    findBankFeedAccountForConnector.mockResolvedValue(null)
+  it('does nothing for a connector type that declares no release', async () => {
+    connectorDefinition.mockImplementation(() => ({}) as unknown as Record<string, unknown>)
 
-    await deleteConnector(tracingDb([]), 'org_1', 'user_1', 'dc_1', 'archive')
+    const result = await deleteConnector(tracingDb([]), 'org_1', 'user_1', 'dc_1', 'archive')
 
-    expect(reapBankFeedAccount).not.toHaveBeenCalled()
+    expect(result).toEqual({ success: true })
+    expect(releaseOnDelete).not.toHaveBeenCalled()
   })
 
   it('deletes the connector anyway when the release throws', async () => {
-    findBankFeedAccountForConnector.mockResolvedValue(FC_ACCOUNT)
-    reapBankFeedAccount.mockRejectedValue(new Error('stripe is down'))
+    releaseOnDelete.mockRejectedValue(new Error('provider is down'))
 
-    // The user asked for the connector to go. A leaked 30c is recoverable by a human
+    // The user asked for the connector to go. A leaked charge is recoverable by a human
     // reading an invoice; a connector that cannot be removed is not.
     const result = await deleteConnector(tracingDb([]), 'org_1', 'user_1', 'dc_1', 'archive')
 
     expect(result).toEqual({ success: true })
     expect(enqueueConnectorTeardown).toHaveBeenCalledTimes(1)
+  })
+
+  it('deletes the connector anyway when the TYPE no longer resolves', async () => {
+    // An app uninstalled out from under its connector: `connectorFor` throws NotFound.
+    connectorDefinition.mockImplementation(() => {
+      throw new Error('Unknown data connector type: some-connector')
+    })
+
+    const result = await deleteConnector(tracingDb([]), 'org_1', 'user_1', 'dc_1', 'archive')
+
+    expect(result).toEqual({ success: true })
   })
 })
