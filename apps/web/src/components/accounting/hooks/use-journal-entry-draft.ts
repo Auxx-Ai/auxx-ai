@@ -215,6 +215,14 @@ export function useJournalEntryDraft({
             // does not overwrite what is being typed with the record it just
             // wrote.
             loadedIdRef.current = record.id
+            // ⚠️ Claiming the id is exactly why the number has to be taken HERE.
+            // `setNumber` otherwise only ever runs in that load effect, which
+            // this line has just disabled for this id, so a freshly minted draft
+            // kept `number: null` for the life of the drawer and its Discard
+            // confirm read "Discard this journal entry?" instead of naming
+            // JNL-0011. The create response is the same record that effect would
+            // have read.
+            setNumber(record.number)
             void utils.ledger.journalEntry.list.invalidate()
             latestRef.current.onCreated(record.id)
           },

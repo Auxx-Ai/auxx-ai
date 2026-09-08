@@ -176,7 +176,7 @@ describe('writeOffInvoice - refusals before the ledger is ever asked', () => {
     ).rejects.toBeInstanceOf(NotFoundError)
   })
 
-  it.each(['void', 'written_off', 'draft', 'paid'])('refuses a %s invoice', async (status) => {
+  it.each(['void', 'draft'])('refuses a %s invoice on its status alone', async (status) => {
     wireInvoice(status)
     await expect(
       writeOffInvoice(stubDb(), {
@@ -187,6 +187,51 @@ describe('writeOffInvoice - refusals before the ledger is ever asked', () => {
       })
     ).rejects.toBeInstanceOf(BadRequestError)
     expect(h.postEntry).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    'written_off',
+    'paid',
+  ])('refuses a %s invoice with nothing outstanding', async (status) => {
+    wireInvoice(status, { balanceMinor: 0, totalMinor: 50_000, amountPaidMinor: 50_000 })
+    await expect(
+      writeOffInvoice(stubDb(), {
+        organizationId: ORG,
+        actorUserId: USER,
+        invoiceId: INVOICE,
+        reason: 'Bankrupt',
+      })
+    ).rejects.toBeInstanceOf(BadRequestError)
+    expect(h.postEntry).not.toHaveBeenCalled()
+  })
+
+  // 🛑 The regression this pins was found in a BROWSER, not here, because both
+  // halves were individually right. `readWriteOffState` derives what is still
+  // outstanding and the dialog opens prefilled with it; the guard refused on the
+  // STATUS, so every preview and post against a `written_off` row that still
+  // carried a receivable failed with "already written off" and the balance was
+  // unreachable by every door at once. A row can reach that state by being
+  // written off before entity migration 128 existed.
+  it('allows a written_off invoice that still carries a receivable', async () => {
+    wireInvoice('written_off', {
+      balanceMinor: 49_583,
+      totalMinor: 72_583,
+      amountPaidMinor: 3_000,
+      writtenOffMinor: 20_000,
+    })
+    h.postEntry.mockResolvedValue({ status: 'posted', glPostingId: 'gl-1' })
+
+    await writeOffInvoice(stubDb(), {
+      organizationId: ORG,
+      actorUserId: USER,
+      invoiceId: INVOICE,
+      reason: 'Bankrupt',
+    })
+
+    // Everything still outstanding, not the whole invoice a second time:
+    // 72,583 total less 3,000 paid less the 20,000 already written off.
+    expect(h.postEntry).toHaveBeenCalledTimes(1)
+    expect(h.postEntry.mock.calls[0]![1].entry.totalDebit).toBe(49_583)
   })
 
   it('refuses an amount over the invoice balance', async () => {
