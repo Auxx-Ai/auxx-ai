@@ -607,6 +607,55 @@ export interface WorkflowKopilotTurnEvent {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+// Dashboard builder events (org channel)
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * A dashboard's DRAFT layout changed server-side outside the page's own
+ * auto-save path (today: the `dashboards/draft-edit` ops, i.e. Kopilot). The
+ * exact analogue of `workflow:draft-updated`, and it obeys the same rule:
+ * refresh SIGNAL only. An open dashboard refetches `dashboard.get` and adopts
+ * it; nothing in the payload is applied directly
+ * (`feedback_builder_ui_refresh_via_realtime`).
+ *
+ * `widgetIds` scopes which widgets the mutation touched (for focus/highlight),
+ * `reason` distinguishes an agent edit from platform machinery such as a turn
+ * revert.
+ *
+ * The page's own auto-save must NOT emit this: it would invalidate the
+ * author's in-flight editing.
+ */
+export interface DashboardDraftUpdatedEvent {
+  event: 'dashboard:draft-updated'
+  data: { dashboardId: string; widgetIds?: string[]; reason: 'kopilot' | 'system' }
+}
+
+/**
+ * A Kopilot turn opened or closed on a dashboard's draft. The page locks its
+ * canvas AND suspends auto-save for the span between the two phases.
+ *
+ * The auto-save suspension is the half the workflow builder does not need. The
+ * dashboard page flushes its WHOLE draft document on an 800ms debounce
+ * (`use-dashboard-autosave.ts`), so a flush landing mid-turn carries a
+ * pre-turn document over everything the agent has written. The hash-CAS in the
+ * draft-edit persist seam turns that into a visible conflict rather than a
+ * silent loss; this event is what stops it happening at all.
+ *
+ * See `packages/lib/src/turn-scoped/turn-lock.ts` for why the boundary is
+ * server-published rather than derived from the chat client's streaming state
+ * (short version: `isStreaming` goes false during an approval pause, which is
+ * still inside the turn).
+ *
+ * `started` fires on a turn's first dashboard tool call of ANY kind, reads
+ * included; `ended` from the capability's `onTurnEnd`, which the engine
+ * guarantees on completion, error, abort and client disconnect alike.
+ */
+export interface DashboardKopilotTurnEvent {
+  event: 'dashboard:kopilot-turn'
+  data: { dashboardId: string; turnId: string; phase: 'started' | 'ended' }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // Workflow approval events (per-assignee user channel)
 // ════════════════════════════════════════════════════════════════════════════
 

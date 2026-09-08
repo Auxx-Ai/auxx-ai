@@ -3,7 +3,8 @@
 
 // The dashboard's tab strip. Unlike connector-detail-tabs (scroll-spy over one
 // page), these are REAL content tabs — each tab is its own widget grid — so the
-// active tab is URL state (`?tab=`) and switching swaps the grid. A thin wrapper
+// active tab is URL state (`?dtab=`, namespaced away from the record
+// drawer's own `tab` param) and switching swaps the grid. A thin wrapper
 // over the shared `<TabStrip>`: edit mode unlocks drag-reorder, inline rename
 // (double-click), a simple "Add tab" button, and a hover-× delete (hidden on the
 // last tab). Persistence is the draft store (autosave carries it to the server).

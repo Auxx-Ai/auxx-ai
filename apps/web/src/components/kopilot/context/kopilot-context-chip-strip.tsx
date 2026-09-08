@@ -10,6 +10,7 @@ import {
   Building2,
   FileText,
   Inbox,
+  LayoutDashboard,
   Mail,
   Table2,
   User,
@@ -33,6 +34,7 @@ const KIND_ICONS: Record<SessionRefKind, typeof Mail> = {
   actor: User,
   agent: Bot,
   workflow: Workflow,
+  dashboard: LayoutDashboard,
 }
 
 /**
@@ -50,6 +52,7 @@ const KIND_FALLBACK_LABELS: Record<SessionRefKind, string> = {
   actor: 'User',
   agent: 'Agent',
   workflow: 'Workflow',
+  dashboard: 'Dashboard',
 }
 
 const SPRING = { type: 'spring', stiffness: 220, damping: 26 } as const

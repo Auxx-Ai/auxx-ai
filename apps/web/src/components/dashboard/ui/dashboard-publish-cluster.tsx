@@ -23,6 +23,7 @@ import type { DashboardWithLayout, WidgetKind } from '@auxx/lib/dashboards/clien
 import { Button } from '@auxx/ui/components/button'
 import { ButtonGroupSeparator } from '@auxx/ui/components/button-group'
 import { DropdownMenuItem, DropdownMenuSeparator } from '@auxx/ui/components/dropdown-menu'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@auxx/ui/components/tooltip'
 import { Archive, Check, ChevronDown, Copy, History, Pencil, Plus, Settings } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
@@ -61,6 +62,23 @@ export interface DashboardPublishClusterProps {
   canAdmin: boolean
   /** Coarse `dashboards.manage` — gates Duplicate (it CREATES a dashboard). */
   canCreate: boolean
+  /**
+   * Set ⇒ a Kopilot turn holds this dashboard's draft, and this sentence says
+   * so. Every WRITE in this cluster is disabled for the span of the turn, and
+   * unlike `canEdit` these are DISABLED rather than hidden: the user has the
+   * rung, they are being asked to wait, and a button that silently vanishes
+   * mid-turn reads as a bug.
+   *
+   * The canvas clamp does not reach these on its own: Edit, Publish, Discard
+   * and the version-history writes all live in view mode, so they are not
+   * downstream of `isEditMode`. Publishing mid-turn snapshots a half-written
+   * dashboard into an immutable version; Discard and version-restore rewrite
+   * the draft under the running agent.
+   *
+   * Read-only affordances (the version-history dialog itself, Duplicate,
+   * Settings, Archive) stay live: none of them touch this draft.
+   */
+  lockedReason?: string
   /** View-mode canvas layer — drives the Live/Draft toggle. */
   viewLayer: ViewLayer
   onViewLayerChange: (layer: ViewLayer) => void
@@ -83,6 +101,7 @@ export function DashboardPublishCluster({
   canEdit,
   canAdmin,
   canCreate,
+  lockedReason,
   viewLayer,
   onViewLayerChange,
   onEnterEdit,
@@ -128,16 +147,30 @@ export function DashboardPublishCluster({
   }
 
   // Read-only members get no Edit entry point at all — hide, don't disable.
-  const editSegment = canEdit ? (
+  // A held Kopilot turn is the opposite case: the member HAS the rung and is
+  // being asked to wait, so the button stays and says why.
+  const editButton = canEdit ? (
     <Button
       size='xs'
       variant='outline'
       className='border-r-0'
-      disabled={!hasPersisted}
+      disabled={!hasPersisted || !!lockedReason}
       onClick={onEnterEdit}>
       <Pencil /> Edit
     </Button>
   ) : null
+
+  const editSegment =
+    editButton && lockedReason ? (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className='inline-flex'>{editButton}</span>
+        </TooltipTrigger>
+        <TooltipContent>{lockedReason}</TooltipContent>
+      </Tooltip>
+    ) : (
+      editButton
+    )
 
   const editModeSegments = (
     <>
@@ -184,9 +217,23 @@ export function DashboardPublishCluster({
         hidePill={isEditMode}
         extraSegments={isEditMode ? editModeSegments : editSegment}
         // Publish/Discard are Edit — omitting the slots drops the segments.
-        publish={canEdit ? { onClick: onPublish, isPending: isPublishing } : undefined}
+        publish={
+          canEdit
+            ? {
+                onClick: onPublish,
+                isPending: isPublishing,
+                ...(lockedReason ? { disabledReason: lockedReason } : {}),
+              }
+            : undefined
+        }
         discard={
-          canEdit ? { onClick: () => void handleDiscard(), isPending: isDiscarding } : undefined
+          canEdit
+            ? {
+                onClick: () => void handleDiscard(),
+                isPending: isDiscarding,
+                ...(lockedReason ? { disabledReason: lockedReason } : {}),
+              }
+            : undefined
         }>
         {/* Version history itself is Read (`listVersions`); the dialog's own
             writes are gated by `canEdit`. */}
@@ -218,7 +265,9 @@ export function DashboardPublishCluster({
         onOpenChange={setVersionsOpen}
         dashboardId={dashboard.id}
         activeVersionNumber={activeVersionNumber}
-        canEdit={canEdit}
+        // Restore / delete / rename all write. A turn holds the draft, so they
+        // wait with everything else.
+        canEdit={canEdit && !lockedReason}
       />
       <DashboardFormDialog
         dashboard={dashboard}

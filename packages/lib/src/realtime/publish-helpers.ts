@@ -8,6 +8,8 @@ import type { Lens } from '../permissions/visibility/lens'
 import type {
   ApprovalPingEvent,
   ApprovalResolvedEvent,
+  DashboardDraftUpdatedEvent,
+  DashboardKopilotTurnEvent,
   DataConnectorSyncEvent,
   DataExportJobEvent,
   FieldValueUpdateEntry,
@@ -890,6 +892,64 @@ export async function publishWorkflowKopilotTurn(
   await realtimeService
     .publish(rooms.orgPresence(organizationId), 'workflow:kopilot-turn', {
       workflowAppId: args.workflowAppId,
+      turnId: args.turnId,
+      phase: args.phase,
+    })
+    .catch(() => {})
+}
+
+/**
+ * Publish `dashboard:draft-updated` on the org channel. Fires AFTER a
+ * successful `dashboards/draft-edit` persist so an open dashboard refetches
+ * and adopts the draft. Signal only: clients never apply the payload directly
+ * (`feedback_builder_ui_refresh_via_realtime`).
+ *
+ * The page's own auto-save must NOT emit this. It flushes the whole document
+ * every 800ms, so echoing it back would fight the author's in-flight editing.
+ *
+ * Fire-and-forget: errors are swallowed so a Pusher hiccup never blocks the
+ * underlying draft write.
+ */
+export async function publishDashboardDraftUpdated(
+  realtimeService: RealtimeService,
+  organizationId: string,
+  args: DashboardDraftUpdatedEvent['data'],
+  options?: { excludeSocketId?: string }
+) {
+  await realtimeService
+    .publish(
+      rooms.orgPresence(organizationId),
+      'dashboard:draft-updated',
+      {
+        dashboardId: args.dashboardId,
+        ...(args.widgetIds ? { widgetIds: args.widgetIds } : {}),
+        reason: args.reason,
+      },
+      options
+    )
+    .catch(() => {})
+}
+
+/**
+ * Publish `dashboard:kopilot-turn` on the org channel. The dashboard page locks
+ * its canvas and suspends auto-save on `started`, and restores both on `ended`.
+ *
+ * Carries no `excludeSocketId` on purpose, exactly like `draft-updated`: the
+ * write comes from the server and the editing user's own page is the primary
+ * audience.
+ *
+ * Fire-and-forget. A dropped publish is survivable in both directions: a lost
+ * `started` leaves the canvas editable (the layout hash-CAS still guards the
+ * write), a lost `ended` is caught by the client watchdog and the Redis TTL.
+ */
+export async function publishDashboardKopilotTurn(
+  realtimeService: RealtimeService,
+  organizationId: string,
+  args: DashboardKopilotTurnEvent['data']
+) {
+  await realtimeService
+    .publish(rooms.orgPresence(organizationId), 'dashboard:kopilot-turn', {
+      dashboardId: args.dashboardId,
       turnId: args.turnId,
       phase: args.phase,
     })

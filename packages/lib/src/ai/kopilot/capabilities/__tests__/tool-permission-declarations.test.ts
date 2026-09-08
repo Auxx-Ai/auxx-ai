@@ -70,6 +70,7 @@ import {
   createAgentsBuilderCapabilities,
   createSuggestRepliesGlobalCapability,
 } from '../agents-builder'
+import { createDashboardBuilderCapabilities } from '../dashboard-builder'
 import { createEntityCapabilities } from '../entities'
 import { createKbCapabilities, createKbReadCapabilities } from '../kb'
 import { createKnowledgeCapabilities } from '../knowledge'
@@ -93,12 +94,14 @@ const ORG = 'org-1'
  */
 const IDEMPOTENT_READ_TOOLS = [
   'describe_node_type',
+  'describe_widget_kind',
   'find_threads',
   'find_workflow_templates',
   'list_app_blocks',
   'list_app_connections',
   'get_article',
   'get_article_section',
+  'get_dashboard',
   'get_entity',
   'get_entity_history',
   'get_eval_case',
@@ -107,8 +110,10 @@ const IDEMPOTENT_READ_TOOLS = [
   'get_suite_diff',
   'get_thread_detail',
   'get_transcript',
+  'get_widget',
   'get_workflow',
   'list_articles',
+  'list_dashboard_sources',
   'list_drafts',
   'list_entities',
   'list_entity_fields',
@@ -122,11 +127,14 @@ const IDEMPOTENT_READ_TOOLS = [
   'list_tags',
   'list_tasks',
   'list_transcripts_for_entity',
+  'list_widget_kinds',
+  'preview_widget',
   'query_records',
   'resolve_block_by_heading',
   'search_docs',
   'search_entities',
   'search_knowledge',
+  'validate_dashboard',
   'validate_workflow',
 ] as const
 
@@ -153,6 +161,7 @@ const getDeps: GetToolDeps = () =>
 async function collectNativeCapabilities(): Promise<PageCapability[]> {
   return [
     createEntityCapabilities(getDeps),
+    createDashboardBuilderCapabilities(getDeps),
     createMailCapabilities(getDeps),
     createKnowledgeCapabilities(getDeps),
     createActorCapabilities(getDeps),

@@ -7,25 +7,40 @@
 // Discard drive versioning. This store keeps the published `persisted` snapshot
 // (view mode), the editable `draft` (edit mode), a local `isDirty` flag (pending
 // autosave flush), and the server-reconciled `hasUnpublishedChanges` (the pill).
-// Widget/tab ids are minted here with `generateId` and are final — the server
-// never rewrites them. Modeled on `connector-draft-store.ts`.
+// Widget/tab ids are minted client-side with `generateId` and are final: the
+// server never rewrites them. Modeled on `connector-draft-store.ts`.
+//
+// The document transforms themselves are NOT here: they live in
+// `@auxx/lib/dashboards/layout-ops`, pure and client-safe, so the server-side
+// Kopilot dashboard builder edits the same doc by exactly the same rules.
 
-import {
-  convertWidgetConfiguration,
-  type DashboardGlobalFilters,
-  type DashboardLayoutDoc,
-  type GridPosition,
-  type LayoutTab,
-  type LayoutWidget,
-  type WidgetConfiguration,
-  type WidgetKind,
+import type {
+  DashboardGlobalFilters,
+  DashboardLayoutDoc,
+  GridPosition,
+  LayoutTab,
+  LayoutWidget,
+  WidgetConfiguration,
+  WidgetKind,
 } from '@auxx/lib/dashboards/client'
-import { generateId } from '@auxx/utils'
+import {
+  addTab as addTabOp,
+  addWidget as addWidgetOp,
+  applyGridLayout as applyGridLayoutOp,
+  changeWidgetType as changeWidgetTypeOp,
+  cloneDoc,
+  duplicateWidget as duplicateWidgetOp,
+  findWidget,
+  patchWidget,
+  removeTab as removeTabOp,
+  removeWidget as removeWidgetOp,
+  reorderTabs as reorderTabsOp,
+  setGlobalFilters as setGlobalFiltersOp,
+  setWidgetConfig,
+  updateTab as updateTabOp,
+} from '@auxx/lib/dashboards/layout-ops'
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
-import { WIDGET_GRID_SIZE } from '../lib/grid-constants'
-import { findNextFreePosition, placeAt } from '../lib/grid-placement'
-import { defaultWidgetConfiguration, defaultWidgetTitle } from '../lib/widget-config-defaults'
 
 export type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 
@@ -116,52 +131,12 @@ interface DashboardDraftState {
   setHasUnpublishedChanges: (value: boolean) => void
 }
 
-// ── immutable draft helpers ──────────────────────────────────────────────────
+// The document transforms themselves live in `@auxx/lib/dashboards/layout-ops`
+// (pure, client-safe) so the server-side Kopilot dashboard-builder edits the
+// same doc by the same rules. This store owns only the UI state around them:
+// edit mode, dirty/unpublished flags, the view layer, and drag state.
 
 const EMPTY_TABS: LayoutTab[] = []
-
-const cloneDoc = (doc: DashboardLayoutDoc): DashboardLayoutDoc =>
-  JSON.parse(JSON.stringify(doc)) as DashboardLayoutDoc
-
-/** Map a draft's tabs; returns a new doc. */
-function editTabs(
-  draft: DashboardLayoutDoc,
-  fn: (tabs: LayoutTab[]) => LayoutTab[]
-): DashboardLayoutDoc {
-  return { ...draft, tabs: fn(draft.tabs) }
-}
-
-/** Map the single widget matching `widgetId` across all tabs. */
-function editWidget(
-  draft: DashboardLayoutDoc,
-  widgetId: string,
-  fn: (w: LayoutWidget) => LayoutWidget
-): DashboardLayoutDoc {
-  return editTabs(draft, (tabs) =>
-    tabs.map((tab) => {
-      if (!tab.widgets.some((w) => w.id === widgetId)) return tab
-      return { ...tab, widgets: tab.widgets.map((w) => (w.id === widgetId ? fn(w) : w)) }
-    })
-  )
-}
-
-function findWidget(
-  tabs: LayoutTab[],
-  widgetId: string
-): { tab: LayoutTab; widget: LayoutWidget } | null {
-  for (const tab of tabs) {
-    const widget = tab.widgets.find((w) => w.id === widgetId)
-    if (widget) return { tab, widget }
-  }
-  return null
-}
-
-function uniqueTitle(base: string, existing: string[]): string {
-  if (!existing.includes(base)) return base
-  let n = 2
-  while (existing.includes(`${base} ${n}`)) n++
-  return `${base} ${n}`
-}
 
 // ── store ────────────────────────────────────────────────────────────────────
 
@@ -257,169 +232,55 @@ export const useDashboardStore = create<DashboardDraftState>()(
       addWidget: (tabId, kind, at) => {
         const { draft, isEditMode, entityDefinitionId } = get()
         if (!isEditMode || !draft) return null
-        const tab = draft.tabs.find((t) => t.id === tabId)
-        if (!tab) return null
-
-        const id = generateId()
-        const span = WIDGET_GRID_SIZE[kind].default
-        const gridPosition = at
-          ? placeAt(at, span)
-          : findNextFreePosition(
-              tab.widgets.map((w) => w.gridPosition),
-              span
-            )
-        const widget: LayoutWidget = {
-          id,
-          title: uniqueTitle(
-            defaultWidgetTitle(kind),
-            tab.widgets.map((w) => w.title)
-          ),
-          type: kind,
-          gridPosition,
-          configuration: defaultWidgetConfiguration(kind, entityDefinitionId),
-        }
-        set({
-          draft: editTabs(draft, (tabs) =>
-            tabs.map((t) => (t.id === tabId ? { ...t, widgets: [...t.widgets, widget] } : t))
-          ),
-          isDirty: true,
-          hasUnpublishedChanges: true,
-        })
-        return id
+        const result = addWidgetOp(draft, { tabId, kind, at, entityDefinitionId })
+        if (!result) return null // unknown tab: nothing edited, stay clean
+        set({ draft: result.doc, isDirty: true, hasUnpublishedChanges: true })
+        return result.id
       },
 
-      updateWidget: (widgetId, patch) =>
-        mutate((draft) => editWidget(draft, widgetId, (w) => ({ ...w, ...patch }))),
+      updateWidget: (widgetId, patch) => mutate((draft) => patchWidget(draft, widgetId, patch)),
 
       updateWidgetConfig: (widgetId, config) =>
-        mutate((draft) => editWidget(draft, widgetId, (w) => ({ ...w, configuration: config }))),
+        mutate((draft) => setWidgetConfig(draft, widgetId, config)),
 
       changeWidgetType: (widgetId, toKind) =>
-        mutate((draft) =>
-          editWidget(draft, widgetId, (w) => {
-            if (w.type === toKind) return w
-            const min = WIDGET_GRID_SIZE[toKind].min
-            // Retitle only if the title was still the source kind's default.
-            const title =
-              w.title === defaultWidgetTitle(w.type) ? defaultWidgetTitle(toKind) : w.title
-            return {
-              ...w,
-              type: toKind,
-              title,
-              configuration: convertWidgetConfiguration(w.configuration, toKind),
-              // Keep position; clamp span UP to the new kind's minimum, never shrink.
-              gridPosition: {
-                ...w.gridPosition,
-                columnSpan: Math.max(w.gridPosition.columnSpan, min.w),
-                rowSpan: Math.max(w.gridPosition.rowSpan, min.h),
-              },
-            }
-          })
-        ),
+        mutate((draft) => changeWidgetTypeOp(draft, widgetId, toKind)),
 
       duplicateWidget: (widgetId) => {
         const { draft, isEditMode } = get()
         if (!isEditMode || !draft) return null
-        const found = findWidget(draft.tabs, widgetId)
-        if (!found) return null
-        const { tab, widget } = found
-
-        const id = generateId()
-        const gridPosition = findNextFreePosition(
-          tab.widgets.map((w) => w.gridPosition),
-          { w: widget.gridPosition.columnSpan, h: widget.gridPosition.rowSpan }
-        )
-        const copy: LayoutWidget = {
-          ...cloneWidget(widget),
-          id,
-          title: uniqueTitle(
-            `${widget.title} copy`,
-            tab.widgets.map((w) => w.title)
-          ),
-          gridPosition,
-        }
-        set({
-          draft: editTabs(draft, (tabs) =>
-            tabs.map((t) => {
-              if (t.id !== tab.id) return t
-              const at = t.widgets.findIndex((w) => w.id === widgetId)
-              const widgets = [...t.widgets]
-              widgets.splice(at + 1, 0, copy)
-              return { ...t, widgets }
-            })
-          ),
-          isDirty: true,
-          hasUnpublishedChanges: true,
-        })
-        return id
+        const result = duplicateWidgetOp(draft, widgetId)
+        if (!result) return null // unknown widget: nothing edited, stay clean
+        set({ draft: result.doc, isDirty: true, hasUnpublishedChanges: true })
+        return result.id
       },
 
-      removeWidget: (widgetId) =>
-        mutate((draft) =>
-          editTabs(draft, (tabs) =>
-            tabs.map((t) => ({ ...t, widgets: t.widgets.filter((w) => w.id !== widgetId) }))
-          )
-        ),
+      removeWidget: (widgetId) => mutate((draft) => removeWidgetOp(draft, widgetId)),
 
       applyGridLayout: (tabId, changes) => {
         if (changes.length === 0) return // no-op guard — don't dirty
-        const byId = new Map(changes.map((c) => [c.id, c.gridPosition]))
-        mutate((draft) =>
-          editTabs(draft, (tabs) =>
-            tabs.map((t) =>
-              t.id === tabId
-                ? {
-                    ...t,
-                    widgets: t.widgets.map((w) =>
-                      byId.has(w.id) ? { ...w, gridPosition: byId.get(w.id) as GridPosition } : w
-                    ),
-                  }
-                : t
-            )
-          )
-        )
+        mutate((draft) => applyGridLayoutOp(draft, tabId, changes))
       },
 
       addTab: (title?: string) => {
         const { draft, isEditMode } = get()
         if (!isEditMode || !draft) return null
-        const id = generateId()
-        const finalTitle = uniqueTitle(
-          title?.trim() || `Tab ${draft.tabs.length + 1}`,
-          draft.tabs.map((t) => t.title)
-        )
-        set({
-          draft: editTabs(draft, (tabs) => [
-            ...tabs,
-            { id, title: finalTitle, icon: null, widgets: [] },
-          ]),
-          isDirty: true,
-          hasUnpublishedChanges: true,
-        })
-        return id
+        const result = addTabOp(draft, title)
+        set({ draft: result.doc, isDirty: true, hasUnpublishedChanges: true })
+        return result.id
       },
 
-      updateTab: (tabId, patch) =>
-        mutate((draft) =>
-          editTabs(draft, (tabs) => tabs.map((t) => (t.id === tabId ? { ...t, ...patch } : t)))
-        ),
+      updateTab: (tabId, patch) => mutate((draft) => updateTabOp(draft, tabId, patch)),
 
       removeTab: (tabId) => {
         const { draft } = get()
-        if (!draft || draft.tabs.length <= 1) return // never remove the last tab
-        mutate((d) => editTabs(d, (tabs) => tabs.filter((t) => t.id !== tabId)))
+        if (!draft || draft.tabs.length <= 1) return // never remove the last tab (don't dirty)
+        mutate((d) => removeTabOp(d, tabId))
       },
 
-      reorderTabs: (orderedIds) =>
-        mutate((draft) => {
-          const byId = new Map(draft.tabs.map((t) => [t.id, t]))
-          const reordered = orderedIds.map((id) => byId.get(id)).filter((t): t is LayoutTab => !!t)
-          // Guard against a partial id list dropping tabs.
-          if (reordered.length !== draft.tabs.length) return draft
-          return { ...draft, tabs: reordered }
-        }),
+      reorderTabs: (orderedIds) => mutate((draft) => reorderTabsOp(draft, orderedIds)),
 
-      setGlobalFilters: (filters) => mutate((draft) => ({ ...draft, globalFilters: filters })),
+      setGlobalFilters: (filters) => mutate((draft) => setGlobalFiltersOp(draft, filters)),
 
       setViewLayer: (viewLayer) => set({ viewLayer }),
       setDraggingWidgetId: (draggingWidgetId) => set({ draggingWidgetId }),
@@ -428,8 +289,6 @@ export const useDashboardStore = create<DashboardDraftState>()(
     }
   })
 )
-
-const cloneWidget = (w: LayoutWidget): LayoutWidget => JSON.parse(JSON.stringify(w)) as LayoutWidget
 
 /** Imperative snapshot for the autosave/publish hooks. */
 export function getDashboardDraftState(): DashboardDraftState {

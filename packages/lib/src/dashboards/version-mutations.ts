@@ -4,11 +4,11 @@ import { type Database, schema } from '@auxx/database'
 import { generateId } from '@auxx/utils'
 import { and, eq, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
-import { NotFoundError, UnprocessableEntityError } from '../errors'
+import { ConflictError, NotFoundError, UnprocessableEntityError } from '../errors'
 import type { DashboardLayoutDoc } from './client'
 import { hashLayoutDoc } from './config-hash'
 import { dashboardLayoutDocSchema, draftLayoutDocSchema } from './config-schemas'
-import { getDashboard } from './dashboard-queries'
+import { getDashboard, parseDraftLayoutDoc } from './dashboard-queries'
 import type { PublishResult } from './types'
 
 /**
@@ -28,16 +28,29 @@ import type { PublishResult } from './types'
 /**
  * THE auto-save path. Validates `doc` with the permissive draft schema, writes it
  * to `Dashboard.draftLayout`, and flags `hasUnpublishedChanges` by comparing the
- * draft's hash to the active version's `configHash`. No version is inserted. A
- * plain row update — no lock needed; last write wins, and the previous state is
- * still one publish/version away.
+ * draft's hash to the active version's `configHash`. No version is inserted.
+ *
+ * OPTIONALLY compare-and-swap. Pass `expectedLayoutHash` (the hash of the draft
+ * you read) and a write that would land on top of someone else's is refused
+ * with a {@link ConflictError} instead of silently winning. This matters here
+ * more than anywhere else in the product: the dashboard page auto-saves the
+ * WHOLE document on an 800ms debounce, so an unguarded second writer does not
+ * merge, it replaces. Omit it and the call behaves exactly as it always has,
+ * last write wins, which is why no existing caller had to migrate.
+ *
+ * TWO HASHES live in this function and they answer different questions. The
+ * dirty check compares the draft against the ACTIVE VERSION's `configHash`
+ * ("does the draft differ from what is published"). The CAS compares the draft
+ * against ITSELF over time ("did the draft move under me"). Both are
+ * {@link hashLayoutDoc}, and confusing them breaks one of the two silently.
  */
 export async function saveDraft(
   db: Database,
   orgId: string,
   dashboardId: string,
-  doc: DashboardLayoutDoc
-): Promise<Result<{ hasUnpublishedChanges: boolean }, Error>> {
+  doc: DashboardLayoutDoc,
+  opts?: { expectedLayoutHash?: string }
+): Promise<Result<{ hasUnpublishedChanges: boolean; layoutHash: string }, Error>> {
   const parsed = draftLayoutDocSchema.safeParse(doc)
   if (!parsed.success) {
     return err(new UnprocessableEntityError(`Invalid dashboard draft: ${parsed.error.message}`))
@@ -49,6 +62,28 @@ export async function saveDraft(
     where: and(eq(schema.Dashboard.id, dashboardId), eq(schema.Dashboard.organizationId, orgId)),
   })
   if (!row || row.archivedAt) return err(new NotFoundError('Dashboard not found'))
+
+  // The CAS, and ONLY when a token was supplied: the whole branch is skipped
+  // otherwise so the un-migrated path stays byte-for-byte what it was.
+  //
+  // Hashed from the PARSED stored draft, not the raw jsonb: the schema strips
+  // unknown keys, so parse is a projection and the token a reader minted from
+  // `parseDraftLayoutDoc` is a hash of the parsed form. Hashing the column
+  // directly would make every comparison a false mismatch.
+  if (opts?.expectedLayoutHash !== undefined) {
+    const stored = parseDraftLayoutDoc(row.draftLayout)
+    if (stored.isErr()) return err(stored.error)
+    const storedHash = stored.value ? hashLayoutDoc(stored.value) : undefined
+    if (storedHash !== opts.expectedLayoutHash) {
+      return err(
+        new ConflictError(
+          'The dashboard draft changed since you read it, so this write was refused rather ' +
+            'than overwriting the newer version. Re-read the dashboard and re-apply the edit.',
+          { reason: 'draft-changed-since-read' }
+        )
+      )
+    }
+  }
 
   // Dirty iff the draft differs from the live version (no active version ⇒ dirty).
   let hasUnpublishedChanges = true
@@ -65,7 +100,9 @@ export async function saveDraft(
     .set({ draftLayout: validDoc as unknown as Record<string, unknown>, hasUnpublishedChanges })
     .where(eq(schema.Dashboard.id, dashboardId))
 
-  return ok({ hasUnpublishedChanges })
+  // Returned so a caller can chain it into the next mutation's CAS token
+  // without a re-read, which is what makes a multi-tool agent turn cheap.
+  return ok({ hasUnpublishedChanges, layoutHash: draftHash })
 }
 
 /**

@@ -14,6 +14,7 @@ const REF_KIND_LABEL: Record<SessionRefKind, string> = {
   actor: 'actor',
   agent: 'agent',
   workflow: 'workflow',
+  dashboard: 'dashboard',
   intakeDraft: 'quote draft',
 }
 

@@ -26,6 +26,7 @@ import {
   createAgentsBuilderCapabilities,
   createAppCapabilities,
   createCapabilityRegistry,
+  createDashboardBuilderCapabilities,
   createEntityCapabilities,
   createKbCapabilities,
   createKbReadCapabilities,
@@ -37,6 +38,7 @@ import {
   createSuggestRepliesGlobalCapability,
   createTaskCapabilities,
   createWorkflowBuilderCapabilities,
+  DASHBOARD_BUILDER_PAGE,
   findRef,
   generateSessionTitle,
   KOPILOT_TURN_BUDGET,
@@ -809,6 +811,18 @@ async function runInProcessPath(params: {
   // page-gated registration above.
   if (page === WORKFLOW_BUILDER_PAGE) {
     registry.register(createWorkflowBuilderCapabilities(getToolDeps))
+  }
+  // Dashboard-builder tools (plans/dashboard/v3/02 §3). Like the workflow
+  // builder and unlike agents-builder there is NO admin gate here: dashboard
+  // authoring is per-instance access, not an org rank, and every tool
+  // re-asserts the full ladder itself (`resolveDashboardAuthoring` -
+  // fail-closed on absent capabilities, `dashboardsView` area rung, org scope +
+  // archived check, per-instance view/edit, dirty gate, canvas turn lock).
+  // `page` therefore only decides whether the tools are built and advertised.
+  // `excludeGlobalTools` is deliberately empty: the builder genuinely needs the
+  // global entity tools (`list_entity_fields`, `query_records`) to pick fields.
+  if (page === DASHBOARD_BUILDER_PAGE) {
+    registry.register(createDashboardBuilderCapabilities(getToolDeps))
   }
   // Explicit "remember this" door into the AI memory (learned KB). The tool is
   // approval-gated in-chat; the flag keeps the whole AI-memory feature per-org.
