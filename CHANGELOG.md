@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.233](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.232...auxx-v0.1.233) (2026-09-08)
+
+
+### Features
+
+* **accounting:** split export state off the ledger ([#2065](https://github.com/Auxx-Ai/auxx-ai/issues/2065)) ([df09e72](https://github.com/Auxx-Ai/auxx-ai/commit/df09e72e03c49f3d5699203aadbca0fc0433008e))
+* **catalog:** constant connector bindings, and one home for products and services ([#2061](https://github.com/Auxx-Ai/auxx-ai/issues/2061)) ([74e4f76](https://github.com/Auxx-Ai/auxx-ai/commit/74e4f7673e538f6db9ed1edc730ebaad55e5fd54))
+* **dashboards:** let Kopilot build and edit dashboards ([#2063](https://github.com/Auxx-Ai/auxx-ai/issues/2063)) ([a1cecc2](https://github.com/Auxx-Ai/auxx-ai/commit/a1cecc2d7ab53d91e503b52f6fc3aa273b07d6b5))
+
+
+### Bug Fixes
+
+* **dashboards:** persist manual widget rearranging ([#2064](https://github.com/Auxx-Ai/auxx-ai/issues/2064)) ([4aaf9ae](https://github.com/Auxx-Ai/auxx-ai/commit/4aaf9aefe1f7cf2b920d03dd7c7e7e2079a6102c))
+
 ## [0.1.232](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.231...auxx-v0.1.232) (2026-09-08)
 
 
