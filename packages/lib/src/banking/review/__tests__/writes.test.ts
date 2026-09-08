@@ -64,6 +64,10 @@ vi.mock('../../reads', () => ({
     isOk: () => true,
     value: { id: params.bankAccountId, name: 'Counterpart', glAccountCode: '1010' },
   }),
+  // The write-once posting high-water mark is stamped on the ACCOUNT beside the
+  // line's own `gl_posting_id`, so the treatments resolve the bank_account def
+  // too. `updateFor('def_ba:acct_1')` is how the tests below read that stamp.
+  requireBankAccountFieldContext: async () => ({ bankAccountDefId: 'def_ba', fields: {} }),
 }))
 vi.mock('../reads', async () => {
   const { NotFoundError } = await import('../../../errors')
@@ -899,5 +903,102 @@ describe('matching a customer payment', () => {
     expect(result.isOk()).toBe(true)
     expect(h.dbUpdates).toHaveLength(1)
     expect(h.dbUpdates[0]).toEqual({ bankTransactionId: null, bankClearedAt: null })
+  })
+})
+
+describe('🛑 bank_account_has_posted - the write-once removal gate', () => {
+  /**
+   * §5.1 of plans/bank-connection/08-removing-a-bank-account.md, and the reason
+   * the fact is STORED rather than computed.
+   *
+   * The gate that decides whether removing a bank account deletes it or archives
+   * it has one term, and it is written here - at the two sites where a bank line
+   * first produces a journal entry. Miss either one and an account whose rows are
+   * a posting's source documents becomes hard-deletable.
+   *
+   * 🛑 The undo tests below are the important half. `undoReview` nulls the line's
+   * `gl_posting_id` and REVERSES the entry, and it must still leave the account's
+   * flag alone: the original posting and its reversal both stay in the books
+   * forever, so the account permanently changed the ledger whatever the queue now
+   * looks like.
+   */
+  it('is stamped on the account when a line is CODED', async () => {
+    row()
+    const result = await codeTransaction(db, {
+      organizationId: ORG,
+      actorUserId: ACTOR,
+      transactionId: 'txn_1',
+      glAccountCode: '6100',
+    })
+    expect(result.isOk()).toBe(true)
+    expect(updateFor('def_ba:acct_1')).toEqual({ bank_account_has_posted: true })
+  })
+
+  it('is stamped on the FILING leg account when a transfer posts', async () => {
+    row({ amountMinor: -50_000 })
+    h.listRows = []
+    const result = await transferTransaction(db, {
+      organizationId: ORG,
+      actorUserId: ACTOR,
+      transactionId: 'txn_1',
+      counterpartBankAccountId: 'acct_2',
+    })
+    expect(result.isOk()).toBe(true)
+    // The entry is filed on the outgoing leg, which is this line's own account.
+    expect(updateFor('def_ba:acct_1')).toEqual({ bank_account_has_posted: true })
+  })
+
+  it('is NOT stamped when the ledger refused the post', async () => {
+    row()
+    h.postEntry.mockResolvedValue({ status: 'period_locked', error: 'September is closed' })
+    await codeTransaction(db, {
+      organizationId: ORG,
+      actorUserId: ACTOR,
+      transactionId: 'txn_1',
+      glAccountCode: '6100',
+    })
+    // Nothing reached the books, so nothing may claim it did.
+    expect(updateFor('def_ba:acct_1')).toBeUndefined()
+  })
+
+  it('survives undoReview on the only coded row', async () => {
+    row({ reviewStatus: 'coded', glAccountCode: '6100', glPostingId: 'post_1' })
+    const result = await undoReview(db, {
+      organizationId: ORG,
+      actorUserId: ACTOR,
+      transactionId: 'txn_1',
+    })
+    expect(result.isOk()).toBe(true)
+    // The line went back to `for_review` and lost its posting id...
+    expect(updateFor('def_bt:txn_1')).toMatchObject({
+      bank_transaction_review_status: 'for_review',
+      bank_transaction_gl_posting_id: null,
+    })
+    // ...and the account was not touched at all. Not cleared, not rewritten.
+    expect(updateFor('def_ba:acct_1')).toBeUndefined()
+    expect(
+      h.crudUpdate.mock.calls.some(([, patch]) =>
+        Object.hasOwn((patch ?? {}) as object, 'bank_account_has_posted')
+      )
+    ).toBe(false)
+  })
+
+  it('survives the posting reversal undoReview performs', async () => {
+    row({ reviewStatus: 'coded', glAccountCode: '6100', glPostingId: 'post_1' })
+    await undoReview(db, { organizationId: ORG, actorUserId: ACTOR, transactionId: 'txn_1' })
+    // The reversal really did run - it is a SECOND GlPosting, so there is more in
+    // the books afterwards, not less - and the flag is still untouched.
+    expect(h.reverseEntry).toHaveBeenCalledTimes(1)
+    expect(updateFor('def_ba:acct_1')).toBeUndefined()
+  })
+
+  it('survives undoing a MATCHED line', async () => {
+    row({
+      reviewStatus: 'matched',
+      matchedRecordId: 'dep_1',
+      matchedRecordType: 'bank_deposit',
+    })
+    await undoReview(db, { organizationId: ORG, actorUserId: ACTOR, transactionId: 'txn_1' })
+    expect(updateFor('def_ba:acct_1')).toBeUndefined()
   })
 })

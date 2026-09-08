@@ -119,8 +119,15 @@ export function BankingReviewQueuePage() {
   const dockedWidth = useDockStore((state) => state.dockedWidth)
   const setDockedWidth = useDockStore((state) => state.setDockedWidth)
 
-  const accountsQuery = api.banking.bankAccount.list.useQuery()
-  const accounts = useMemo(() => accountsQuery.data ?? [], [accountsQuery.data])
+  // The same input `useBankAccounts` sends, so this and the toolbar's picker
+  // share one React Query key rather than issuing two reads of the same list.
+  // Archived rows are filtered out below - this list drives the empty state and
+  // the "which account" copy, and an archived account is not one to work in.
+  const accountsQuery = api.banking.bankAccount.list.useQuery({ includeArchived: true })
+  const accounts = useMemo(
+    () => (accountsQuery.data ?? []).filter((account) => !account.archivedAt),
+    [accountsQuery.data]
+  )
 
   const listInput = useMemo(
     () => ({

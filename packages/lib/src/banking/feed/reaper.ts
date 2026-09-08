@@ -12,13 +12,31 @@
  * inactive account still bills - because the failure is silent and the fix is one API
  * call.
  *
- * Three doors, and this file is the third:
+ * Four doors end a bank feed, numbered as `plans/bank-connection/08-removing-a-bank-account.md`
+ * §5.4 numbers them, and every one of them now releases:
  *   1. **Disconnect in our UI** - `banking.bankAccount.disconnect` calls
  *      {@link reapBankFeedAccount} directly. Immediate, because the user just said so.
- *   2. **Connector delete** - the same call from the delete path.
- *   3. **The nightly sweep** - this file. It catches everything the first two missed: a
+ *   2. **The nightly sweep** - this file. It catches what the others could not: a
  *      connector left `disconnected` by a Stripe event nobody acted on, and an
- *      organization that was deleted out from under its connectors.
+ *      organization that was suspended rather than deleted.
+ *   3. **Connector delete** - `data-connectors/mutations.ts`'s `deleteConnector` resolves
+ *      the account with {@link findBankFeedAccountForConnector} and calls
+ *      {@link reapBankFeedAccount} BEFORE it marks the row `deleting`, because the
+ *      teardown takes the `providerAccountId` with it.
+ *   4. **Organization delete** - `organizations/organization-service.ts` lists the org's
+ *      accounts with {@link listBankFeedAccountsForOrganization} and releases each one
+ *      BEFORE its transaction.
+ *
+ * 🛑 Doors 3 and 4 are NOT backstopped by the sweep, which is why they call the release
+ * themselves rather than leaving it to this file. `DataConnector.organizationId` is
+ * `onDelete: 'cascade'` and the connector teardown removes the row outright, so both of
+ * them destroy the evidence the sweep selects on - in door 4's case in the very
+ * transaction that would otherwise create the leak.
+ *
+ * ⚠️ Both of them tolerate a failed release and carry on. That is deliberate, and it is
+ * the opposite tradeoff from the plan-subscription cancel that sits beside door 4: a
+ * leaked 30c is recoverable by a human reading an invoice, an organization or a
+ * connector that can never be removed is not.
  *
  * ⚠️ The sweep waits {@link REAP_AFTER_DAYS} days. A `disconnected` connector is very
  * often a connection a person is about to REPAIR - `reconnectConnectorsForInstallation`
@@ -95,14 +113,96 @@ export async function clearFeedDisconnectedAt(db: Database, connectorId: string)
     .where(eq(schema.DataConnector.id, connectorId))
 }
 
-/** One connector the sweep decided to release. */
-export interface ReapCandidate {
+/**
+ * One Financial Connections account that can still be released at Stripe.
+ *
+ * The unit every door works in: a connector row, the credential it is bound to, and the
+ * `fca_...` id on that credential's metadata. Without the last of those there is nothing
+ * to call disconnect on.
+ */
+export interface BankFeedAccountRef {
   connectorId: string
   organizationId: string
   credentialId: string
   providerAccountId: string
+}
+
+/** One connector the sweep decided to release. */
+export interface ReapCandidate extends BankFeedAccountRef {
   /** Why it was picked: the connector is stale, or its organization is gone. */
   reason: 'disconnected' | 'organization-gone'
+}
+
+/**
+ * The columns every door reads, resolved the same way in all of them.
+ *
+ * 🛑 `providerAccountId` lives in the CREDENTIAL's jsonb metadata, not on the connector,
+ * so every path that wants to release an account has to make this join. Sharing the
+ * projection is what stops door 3 or door 4 inventing its own and quietly reading the
+ * wrong key.
+ */
+const feedAccountColumns = {
+  connectorId: schema.DataConnector.id,
+  organizationId: schema.DataConnector.organizationId,
+  credentialId: schema.Credential.id,
+  providerAccountId: sql<string>`${schema.Credential.metadata}->>'providerAccountId'`,
+}
+
+/** A Financial Connections connector whose credential still carries an account to release. */
+function releasableBankFeedFilter() {
+  return and(
+    eq(schema.DataConnector.type, STRIPE_FC_CONNECTOR_TYPE),
+    eq(schema.Credential.type, FC_PROVIDER_KEY),
+    isNotNull(sql`${schema.Credential.metadata}->>'providerAccountId'`)
+  )
+}
+
+/**
+ * Every releasable account one organization holds. Door 4 (organization delete).
+ *
+ * 🛑 No status filter. A `disconnected` connector is a connection Stripe or the bank
+ * dropped, NOT an account that was released - it is still billing. The org is going
+ * away, so every account it holds has to go with it.
+ */
+export async function listBankFeedAccountsForOrganization(
+  db: Database,
+  organizationId: string
+): Promise<BankFeedAccountRef[]> {
+  const rows = await db
+    .select(feedAccountColumns)
+    .from(schema.DataConnector)
+    .innerJoin(schema.Credential, eq(schema.DataConnector.credentialId, schema.Credential.id))
+    .where(and(releasableBankFeedFilter(), eq(schema.DataConnector.organizationId, organizationId)))
+
+  return rows.filter((row) => !!row.providerAccountId)
+}
+
+/**
+ * The releasable account behind ONE connector, org-scoped. Door 3 (connector delete).
+ *
+ * Returns null for every non-Financial-Connections connector and for an FC connector
+ * whose credential has no account id left, which is the caller's cue to do nothing.
+ */
+export async function findBankFeedAccountForConnector(
+  db: Database,
+  organizationId: string,
+  connectorId: string
+): Promise<BankFeedAccountRef | null> {
+  const rows = await db
+    .select(feedAccountColumns)
+    .from(schema.DataConnector)
+    .innerJoin(schema.Credential, eq(schema.DataConnector.credentialId, schema.Credential.id))
+    .where(
+      and(
+        releasableBankFeedFilter(),
+        eq(schema.DataConnector.organizationId, organizationId),
+        eq(schema.DataConnector.id, connectorId)
+      )
+    )
+    .limit(1)
+
+  const row = rows[0]
+  return row?.providerAccountId ? row : null
 }
 
 export interface ReapStats {
@@ -127,10 +227,7 @@ export async function findReapableBankFeeds(
 
   const rows = await db
     .select({
-      connectorId: schema.DataConnector.id,
-      organizationId: schema.DataConnector.organizationId,
-      credentialId: schema.Credential.id,
-      providerAccountId: sql<string>`${schema.Credential.metadata}->>'providerAccountId'`,
+      ...feedAccountColumns,
       organizationRowId: schema.Organization.id,
       organizationDisabledAt: schema.Organization.disabledAt,
       connectorUpdatedAt: schema.DataConnector.updatedAt,
@@ -141,9 +238,7 @@ export async function findReapableBankFeeds(
     .leftJoin(schema.Organization, eq(schema.Organization.id, schema.DataConnector.organizationId))
     .where(
       and(
-        eq(schema.DataConnector.type, STRIPE_FC_CONNECTOR_TYPE),
-        eq(schema.Credential.type, FC_PROVIDER_KEY),
-        isNotNull(sql`${schema.Credential.metadata}->>'providerAccountId'`),
+        releasableBankFeedFilter(),
         // Three arms, and only ONE of them skips the waiting period.
         //
         // 🛑 `disabledAt` is ADMIN SUSPENSION, not deletion - a billing dispute,

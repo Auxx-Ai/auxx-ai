@@ -1,8 +1,9 @@
 // apps/web/src/server/api/routers/banking.ts
 //
-// Bank accounts: the list, the editor's writes, the coverage read, and the four
-// feed actions - connect, reconnect, sync now, disconnect
-// (plans/accounting/HANDOFF.md slots 2I and 3A, plans/accounting/ui-plan.md §2.7).
+// Bank accounts: the list, the editor's writes, the coverage read, removal, and
+// the four feed actions - connect, reconnect, sync now, disconnect
+// (plans/accounting/HANDOFF.md slots 2I and 3A, plans/accounting/ui-plan.md §2.7,
+// plans/bank-connection/08-removing-a-bank-account.md §7.3).
 // Mounted as `banking` in `root.ts`.
 //
 // 🛑 Reads are `ledgerView`; every write is `ledgerPost`. Mapping a bank account
@@ -18,13 +19,18 @@
 // do next.
 
 import {
+  archiveBankAccount,
   BANK_ACCOUNT_STATUSES,
   BANK_ACCOUNT_TYPES,
   createBankAccount,
+  deleteBankAccount,
   disconnectBankAccountFeed,
   getBankAccount,
   listBankAccounts,
   readCoverage,
+  readRemovalFacts,
+  resolveRemoval,
+  restoreBankAccount,
   startBankConnection,
   syncBankAccountFeed,
   updateBankAccount,
@@ -69,13 +75,19 @@ export const bankingRouter = createTRPCRouter({
      * round trips to draw a list. The live polling in
      * `use-connector-sync-realtime.ts` takes over for the SELECTED account only.
      */
-    list: permissionProcedure(PermissionKey.ledgerView).query(async ({ ctx }) => {
-      const result = await listBankAccounts(ctx.db, {
-        organizationId: ctx.session.organizationId,
-      })
-      if (result.isErr()) throw result.error
-      return result.value
-    }),
+    list: permissionProcedure(PermissionKey.ledgerView)
+      .input(z.object({ includeArchived: z.boolean().optional() }).optional())
+      .query(async ({ ctx, input }) => {
+        const result = await listBankAccounts(ctx.db, {
+          organizationId: ctx.session.organizationId,
+          // Default false. Only the settings list's "Show archived" toggle and
+          // the picker - which has to keep rendering an archived account that is
+          // still some record's current value - ever ask for the other answer.
+          includeArchived: input?.includeArchived ?? false,
+        })
+        if (result.isErr()) throw result.error
+        return result.value
+      }),
 
     get: permissionProcedure(PermissionKey.ledgerView)
       .input(z.object({ id: z.string().min(1) }))
@@ -158,6 +170,82 @@ export const bankingRouter = createTRPCRouter({
           actorUserId: ctx.session.userId,
           bankAccountId: id,
           ...patch,
+        })
+        if (result.isErr()) throw result.error
+        return result.value
+      }),
+
+    /**
+     * What removing this account would do, for the confirm dialog.
+     *
+     * `ledgerView`, because it reads and decides nothing. It answers the verb,
+     * what a delete would take with it, how many unreviewed lines an archive
+     * would exclude, and which rules a delete would leave inert.
+     */
+    removalPreview: permissionProcedure(PermissionKey.ledgerView)
+      .input(z.object({ id: z.string().min(1) }))
+      .query(async ({ ctx, input }) => {
+        const facts = await readRemovalFacts(ctx.db, {
+          organizationId: ctx.session.organizationId,
+          bankAccountId: input.id,
+        })
+        if (facts.isErr()) throw facts.error
+        return { facts: facts.value, ...resolveRemoval(facts.value) }
+      }),
+
+    /**
+     * Remove a bank account.
+     *
+     * 🛑 **ONE procedure, not two, and the gate runs HERE.** A pristine account
+     * is deleted for real; anything a journal entry has ever come off is
+     * archived. The client must not be the one to decide which verb applies: a
+     * client that decided could race a sync landing a transaction between the
+     * preview it read and the call it made, and would then ask for a hard delete
+     * of an account whose rows are now a posting's source documents.
+     *
+     * The preview above exists only so the button can read "Delete" or "Archive"
+     * and the confirm text can name the right consequences. It is never the
+     * authority.
+     */
+    remove: permissionProcedure(PermissionKey.ledgerPost)
+      .input(z.object({ id: z.string().min(1) }))
+      .mutation(async ({ ctx, input }) => {
+        const facts = await readRemovalFacts(ctx.db, {
+          organizationId: ctx.session.organizationId,
+          bankAccountId: input.id,
+        })
+        if (facts.isErr()) throw facts.error
+
+        const params = {
+          organizationId: ctx.session.organizationId,
+          actorUserId: ctx.session.userId,
+          bankAccountId: input.id,
+        }
+        if (resolveRemoval(facts.value).verb === 'delete') {
+          const result = await deleteBankAccount(ctx.db, params)
+          if (result.isErr()) throw result.error
+          return { verb: 'delete' as const, ...result.value, excluded: 0 }
+        }
+        const result = await archiveBankAccount(ctx.db, params)
+        if (result.isErr()) throw result.error
+        return { verb: 'archive' as const, ...result.value }
+      }),
+
+    /**
+     * Put an archived account back.
+     *
+     * ⚠️ It does not reconnect the feed - the account was released at Stripe, so
+     * the only way back to a live one is a fresh authentication at the bank - and
+     * it does not un-exclude the lines the archive swept, which stay undoable one
+     * at a time in the review queue.
+     */
+    restore: permissionProcedure(PermissionKey.ledgerPost)
+      .input(z.object({ id: z.string().min(1) }))
+      .mutation(async ({ ctx, input }) => {
+        const result = await restoreBankAccount(ctx.db, {
+          organizationId: ctx.session.organizationId,
+          actorUserId: ctx.session.userId,
+          bankAccountId: input.id,
         })
         if (result.isErr()) throw result.error
         return result.value

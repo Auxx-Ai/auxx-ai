@@ -774,6 +774,10 @@ export const SYSTEM_ATTRIBUTES = [
   'bank_account_coverage_gaps', // [{ from, to }]; a balance sheet over a hole is silent and wrong
   'bank_account_connector_id', // a POINTER at DataConnector, never a copy of its health
   'bank_account_status', // manual | connected | disconnected
+  // 🛑 A WRITE-ONCE high-water mark, never cleared. The only term in the
+  // bank-account removal gate: false deletes, true archives
+  // (plans/bank-connection/08-removing-a-bank-account.md §5.1)
+  'bank_account_has_posted',
   'bank_account_transactions', // inverse of bank_transaction_bank_account
 
   // Connector-owned (raw). The feed may correct any of these.

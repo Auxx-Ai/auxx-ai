@@ -117,6 +117,13 @@ export interface MultiSelectPickerProps {
   /** Label for browse button (default: "Browse all") */
   browseLabel?: string
 
+  /**
+   * Icon for the browse row (default: `LayoutGrid`). The label alone is not
+   * always enough to tell two footer actions apart - "Connect a bank" beside
+   * "Add manually" reads as one grid icon and one plus until this is set.
+   */
+  browseIcon?: React.ComponentType<{ className?: string }>
+
   /** Render a per-row secondary action (e.g., a "favorite" star). Rendered before the selection indicator. */
   renderItemAction?: (opt: SelectOption) => React.ReactNode
 
@@ -176,6 +183,7 @@ export function MultiSelectPicker({
   onEdit,
   onBrowse,
   browseLabel = 'Browse all',
+  browseIcon: BrowseIcon = LayoutGrid,
   renderItemAction,
   groupBy,
   groups,
@@ -832,7 +840,7 @@ export function MultiSelectPicker({
             )}
             {onBrowse && (
               <CommandItem onSelect={onBrowse} disabled={disabled} className='cursor-pointer h-7.5'>
-                <LayoutGrid className='text-muted-foreground' />
+                <BrowseIcon className='text-muted-foreground' />
                 <span>{browseLabel}</span>
               </CommandItem>
             )}

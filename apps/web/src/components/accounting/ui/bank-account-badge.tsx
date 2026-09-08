@@ -59,7 +59,11 @@ export function BankAccountBadge({
 }: BankAccountBadgeProps) {
   // Cheap: React Query dedupes this against every other reader on the screen,
   // and the badge never issues a request of its own for a single account.
-  const { accounts } = useBankAccounts()
+  //
+  // ⚠️ Archived included. This badge NAMES a stored id rather than offering a
+  // choice, and an archived account that a record still points at has to keep
+  // rendering as itself instead of falling back to "Unassigned account".
+  const { accounts } = useBankAccounts({ includeArchived: true })
   const resolved = account ?? accounts.find((row) => row.id === bankAccountId) ?? null
 
   if (!resolved) {

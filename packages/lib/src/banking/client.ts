@@ -53,6 +53,29 @@ export const CREDIT_SIGN_WARNING =
   'so nothing downstream will catch it.'
 
 /**
+ * How an exclusion written by an ARCHIVE begins.
+ *
+ * 🛑 Archiving a bank account bulk-sets its `for_review` and `suggested` lines to
+ * `excluded`, because after the archive nobody will ever look at them again and
+ * the two alternatives are worse: refusing until the queue is empty leaves an org
+ * that connected the wrong bank unable to clear 180 days of noise off the screen,
+ * and a silent bulk delete destroys evidence that cash moved with no trace
+ * (plans/bank-connection/08-removing-a-bank-account.md §6).
+ *
+ * The prefix is what lets a later path tell an archive's own bookkeeping from a
+ * person's decision, exactly as `IMPORT_LINK_EXCLUSION_PREFIX` does for the
+ * importer's. An exclusion a HUMAN wrote carries the reason they gave and is the
+ * record of that decision; this one carries the account's name and the fact that
+ * the account went away.
+ */
+export const ARCHIVE_EXCLUSION_PREFIX = 'Excluded when the bank account was archived'
+
+/** Was this exclusion written by an archive, or by a person? */
+export function isArchiveExclusion(reason: string | null | undefined): boolean {
+  return !!reason?.trimStart().startsWith(ARCHIVE_EXCLUSION_PREFIX)
+}
+
+/**
  * A range with no data on an account, as inclusive `YYYY-MM-DD` date keys.
  *
  * Stored on `bank_account.coverageGaps` as an array of exactly this shape.
@@ -232,9 +255,58 @@ export interface BankAccountRow {
   coverageGaps: CoverageGap[]
   connectorId: string | null
   status: BankAccountStatus
+  /**
+   * 🛑 The write-once high-water mark: `true` once any line on this account has
+   * produced a journal entry, and NOTHING ever clears it - not `undoReview`, not
+   * a reversal, not `reverseImport`. It is the ONLY term in the removal gate
+   * (`resolveRemoval`): false deletes, true archives
+   * (plans/bank-connection/08-removing-a-bank-account.md §5.1).
+   */
+  hasEverPosted: boolean
+  /** When this account was archived, or null while it is live. */
+  archivedAt: Date | null
   createdAt: Date | null
   /** Null for a manual account, or when the connector row has gone. */
   connector: BankConnectorHealth | null
+}
+
+/**
+ * What the removal gate and the confirm dialog both read
+ * (plans/bank-connection/08-removing-a-bank-account.md §7.1).
+ *
+ * 🛑 **Only {@link BankAccountRemovalFacts.hasEverPosted} decides.** Everything
+ * else on this shape is there so the dialog can say what a delete would take
+ * with it, and none of it is allowed to change the verb.
+ */
+export interface BankAccountRemovalFacts {
+  /**
+   * 🛑 The write-once high-water mark, read straight off
+   * `bank_account_has_posted`. The ONLY term in the gate.
+   */
+  hasEverPosted: boolean
+  /** For the dialog: how much a delete would take with it. Never decides. */
+  transactionCount: number
+  /** Lines matched to a document. A delete removes them, deliberately (§5.1). */
+  matchedCount: number
+  /** `for_review` + `suggested`. An archive bulk-excludes these (§6). */
+  unreviewedCount: number
+  connectorId: string | null
+  /** Rules naming this account, in either field. A WARNING, never a blocker. */
+  rules: { id: string; name: string }[]
+}
+
+/** What removing a bank account actually does. Never a third option. */
+export type RemovalVerb = 'delete' | 'archive'
+
+/** {@link resolveRemoval}'s answer: the verb, what it costs, and what it breaks. */
+export interface BankAccountRemovalPlan {
+  verb: RemovalVerb
+  /** What a delete would destroy. Zeroed for an archive, which destroys nothing. */
+  cascade: { transactions: number; matched: number; releasesAtStripe: boolean }
+  /** How many unreviewed lines an archive would bulk-exclude (§6). */
+  unreviewed: number
+  /** Rules a delete would leave inert. Never blocks. */
+  warnings: { id: string; name: string }[]
 }
 
 /** The `DataConnector` columns a bank account's settings row renders. */

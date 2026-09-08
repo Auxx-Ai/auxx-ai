@@ -50,7 +50,7 @@
 // touching the inputs.
 
 import { FieldType } from '@auxx/database/enums'
-import type { BankAccountCoverage, BankAccountRow } from '@auxx/lib/banking/client'
+import type { BankAccountCoverage, BankAccountRow, RemovalVerb } from '@auxx/lib/banking/client'
 import {
   BANK_ACCOUNT_GL_TYPES,
   BANK_ACCOUNT_TYPE_LABELS,
@@ -61,7 +61,7 @@ import { Button } from '@auxx/ui/components/button'
 import { LastUpdated } from '@auxx/ui/components/last-updated'
 import { Section } from '@auxx/ui/components/section'
 import { cn } from '@auxx/ui/lib/utils'
-import { PlugZap, RefreshCw, TriangleAlert } from 'lucide-react'
+import { PlugZap, RefreshCw, Trash2, TriangleAlert } from 'lucide-react'
 import Link from 'next/link'
 import { useRef, useState } from 'react'
 import { GlAccountPicker } from '~/components/accounting/ui/gl-account-picker'
@@ -130,12 +130,32 @@ interface BankAccountEditorProps {
   disconnecting?: boolean
   /** True while a manual sync is being queued. */
   syncing?: boolean
+  /**
+   * `banking.bankAccount.removalPreview`, or null while it is loading.
+   *
+   * 🛑 It decides the WORD on the button and nothing else. The server re-runs
+   * the gate on the call, because a sync can land a transaction between this
+   * read and the click that follows it.
+   */
+  removal: BankAccountRemoval | null
+  /** True while the remove is in flight. */
+  removing?: boolean
   onPatch: (patch: BankAccountPatch) => void
   /** Queue a manual sync for this account's feed. */
   onSync?: () => void
   /** Re-authenticate at the bank. Same flow as connecting. */
   onReconnect?: () => void
   onDisconnect: () => void
+  /** Delete or archive, whichever the server's gate says applies. */
+  onRemove: () => void
+}
+
+/** What `banking.bankAccount.removalPreview` answers, as this pane reads it. */
+export interface BankAccountRemoval {
+  verb: RemovalVerb
+  cascade: { transactions: number; matched: number; releasesAtStripe: boolean }
+  unreviewed: number
+  warnings: { id: string; name: string }[]
 }
 
 export function BankAccountEditor({ account, ...rest }: BankAccountEditorProps) {
@@ -168,10 +188,13 @@ function BankAccountForm({
   pending,
   disconnecting = false,
   syncing = false,
+  removal,
+  removing = false,
   onPatch,
   onSync,
   onReconnect,
   onDisconnect,
+  onRemove,
 }: BankAccountEditorProps & { account: BankAccountRow }) {
   const [values, setValues] = useState<TextValues>({
     name: account.name ?? '',
@@ -430,29 +453,76 @@ function BankAccountForm({
         </Section>
       )}
 
-      {isConnected && (
-        <Section title='Danger zone' initialOpen={false}>
-          <div className='flex flex-col gap-2 p-1'>
-            <p className='text-muted-foreground text-xs'>
-              Disconnecting stops the feed and keeps every transaction, including the ones already
-              coded and posted. A posted bank line is the source document of a journal entry, so
-              nothing here is ever deleted.
-            </p>
+      {/* 🛑 The Danger zone is NOT gated on `isConnected` any more, and that gate
+          was the bug: a manual account had no destructive action of any kind, and
+          a manual account is the one you create by typing a name into a form - so
+          the duplicate and the typo, the overwhelmingly common reasons anybody
+          wants an account gone, were exactly the cases with no way out.
+
+          Disconnect stays gated, because the verb genuinely does not apply
+          without a connector - `disconnectBankAccountFeed` opens with
+          `requireConnectorId` and throws. Remove is always here. */}
+      <Section title='Danger zone' initialOpen={false}>
+        <div className='flex flex-col gap-3 p-1'>
+          {isConnected && (
+            <div className='flex flex-col gap-2'>
+              <p className='text-muted-foreground text-xs'>
+                Disconnecting stops the feed and keeps every transaction, including the ones already
+                coded and posted. A posted bank line is the source document of a journal entry, so
+                nothing is deleted.
+              </p>
+              <div>
+                <Button variant='outline' size='sm' loading={disconnecting} onClick={onDisconnect}>
+                  <PlugZap />
+                  Disconnect
+                </Button>
+              </div>
+            </div>
+          )}
+
+          <div className='flex flex-col gap-2'>
+            <p className='text-muted-foreground text-xs'>{removalBlurb(removal)}</p>
             <div>
+              {/* 🛑 Never says "Delete" for something that will archive. The
+                  label waits for the preview rather than guessing, because the
+                  two words promise opposite things about the history. */}
               <Button
                 variant='destructive'
                 size='sm'
-                loading={disconnecting}
-                onClick={onDisconnect}>
-                <PlugZap />
-                Disconnect
+                loading={removing}
+                disabled={!removal}
+                onClick={onRemove}>
+                <Trash2 />
+                {removal?.verb === 'archive' ? 'Archive' : 'Delete'}
               </Button>
             </div>
           </div>
-        </Section>
-      )}
+        </div>
+      </Section>
     </div>
   )
+}
+
+/**
+ * The sentence under the Remove button, which has to differ by verb.
+ *
+ * ⚠️ Archive and delete promise opposite things about the history, so one
+ * paragraph covering both would be wrong for whichever one it is not.
+ */
+function removalBlurb(removal: BankAccountRemoval | null): string {
+  if (!removal) return 'Checking what removing this account would do…'
+  if (removal.verb === 'archive') {
+    return (
+      'Something on this account has been posted to the ledger, so it can only be archived. ' +
+      'It leaves every list and picker; the transactions, the journal entries and the account ' +
+      'you mapped it to are all untouched, and you can restore it from Show archived.'
+    )
+  }
+  const rows =
+    removal.cascade.transactions === 1
+      ? '1 transaction'
+      : `${removal.cascade.transactions} transactions`
+  return `Nothing on this account has ever reached the ledger, so it can be deleted for good, along with its ${rows}. This cannot be undone.`
 }
 
 /**

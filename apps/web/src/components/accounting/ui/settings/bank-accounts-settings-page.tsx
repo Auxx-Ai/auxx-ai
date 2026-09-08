@@ -25,33 +25,20 @@
 // stops being billed 30c a month (open question S4). Every transaction stays - a
 // coded and posted bank line is the source document of a journal entry.
 
-import { FieldType } from '@auxx/database/enums'
 import { FeatureKey, PermissionKey } from '@auxx/lib/permissions/client'
-import { Button } from '@auxx/ui/components/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@auxx/ui/components/dialog'
-import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { toastError } from '@auxx/ui/components/toast'
 import { Lock } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
-import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { EmptyState } from '~/components/global/empty-state'
-import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { MasterDetailSplit } from '~/components/global/master-detail-split'
 import SettingsPage from '~/components/global/settings-page'
-import { BaseType } from '~/components/workflow/types'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useRequireCapability } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
 import { BankAccountConnectDialog } from './bank-account-connect-dialog'
 import { BankAccountEditor, type BankAccountPatch } from './bank-account-editor'
+import { BankAccountManualDialog } from './bank-account-manual-dialog'
 import { BankAccountsList } from './bank-accounts-list'
 
 const BREADCRUMBS = [
@@ -62,28 +49,6 @@ const BREADCRUMBS = [
 
 const PAGE_DESCRIPTION =
   'The accounts your money actually sits in, and which account in your chart each one maps to. Everything the bank feed and the statement importer produce lands against a row here.'
-
-const TYPE_OPTIONS = [
-  { value: 'depository', label: 'Depository', color: 'blue' as const },
-  { value: 'credit', label: 'Credit', color: 'amber' as const },
-]
-
-/** The manual-add dialog's fields, as it holds them before the write. */
-interface ManualDraft {
-  name: string
-  institution: string
-  last4: string
-  type: 'depository' | 'credit'
-  currency: string
-}
-
-const EMPTY_DRAFT: ManualDraft = {
-  name: '',
-  institution: '',
-  last4: '',
-  type: 'depository',
-  currency: 'USD',
-}
 
 export function BankAccountsSettingsPage() {
   // 🛑 `ledgerPost`, not `ledgerView`. Every control on this page is a WRITE -
@@ -96,13 +61,23 @@ export function BankAccountsSettingsPage() {
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [manualOpen, setManualOpen] = useState(false)
-  const [draft, setDraft] = useState<ManualDraft>(EMPTY_DRAFT)
   const [connectOpen, setConnectOpen] = useState(false)
   const [reconnectingId, setReconnectingId] = useState<string | null>(null)
+  const [showArchived, setShowArchived] = useState(false)
   const [confirm, ConfirmDialog] = useConfirm()
 
-  const accounts = api.banking.bankAccount.list.useQuery()
+  // 🛑 Archived rows are FETCHED always and filtered here, on the same query key
+  // `useBankAccounts` uses, so the toggle costs no roundtrip and every picker on
+  // the app shares this cache entry.
+  const accounts = api.banking.bankAccount.list.useQuery({ includeArchived: true })
   const rows = useMemo(() => accounts.data ?? [], [accounts.data])
+  const visibleRows = useMemo(
+    () => (showArchived ? rows : rows.filter((row) => !row.archivedAt)),
+    [rows, showArchived]
+  )
+  // Selected from ALL rows, not the visible ones: archiving the open account
+  // must leave its pane readable long enough to say what happened and offer the
+  // restore, rather than blanking under the person who pressed the button.
   const selected = useMemo(
     () => rows.find((row) => row.id === selectedId) ?? null,
     [rows, selectedId]
@@ -116,29 +91,26 @@ export function BankAccountsSettingsPage() {
     { enabled: !!selectedId }
   )
 
+  // What the Danger zone's button says, and what the confirm dialog counts.
+  // 🛑 Advisory only - `bankAccount.remove` re-runs the gate server side, so a
+  // sync that lands a transaction between this read and the click cannot turn a
+  // delete into something it should not have been.
+  const removal = api.banking.bankAccount.removalPreview.useQuery(
+    { id: selectedId ?? '' },
+    { enabled: !!selectedId && !selected?.archivedAt }
+  )
+
   const invalidate = useCallback(async () => {
     await Promise.all([
       utils.banking.bankAccount.list.invalidate(),
       utils.banking.bankAccount.coverage.invalidate(),
+      utils.banking.bankAccount.removalPreview.invalidate(),
     ])
   }, [utils])
 
   // 🛑 Refusals are surfaced VERBATIM. `updateBankAccount` says which field a
-  // connected account owns and what to do instead; `createBankAccount` says
-  // that the last four is digits only. Replacing either with "Could not save"
-  // throws away the only sentence that says what to do next.
-  const create = api.banking.bankAccount.create.useMutation({
-    onSuccess: async (account) => {
-      await invalidate()
-      setManualOpen(false)
-      setDraft(EMPTY_DRAFT)
-      setSelectedId(account.id)
-    },
-    onError: (error) => {
-      toastError({ title: 'Error adding the account', description: error.message })
-    },
-  })
-
+  // connected account owns and what to do instead. Replacing it with "Could not
+  // save" throws away the only sentence that says what to do next.
   const update = api.banking.bankAccount.update.useMutation({
     onSuccess: invalidate,
     onError: (error) => {
@@ -162,6 +134,26 @@ export function BankAccountsSettingsPage() {
     onSuccess: invalidate,
     onError: (error) => {
       toastError({ title: 'Error disconnecting the account', description: error.message })
+    },
+  })
+
+  const remove = api.banking.bankAccount.remove.useMutation({
+    onSuccess: async (result) => {
+      await invalidate()
+      // A deleted account has no row left to select. An archived one does, and
+      // keeping it selected is what puts Restore in front of the person who has
+      // just realised they did not mean it.
+      if (result.verb === 'delete') setSelectedId(null)
+    },
+    onError: (error) => {
+      toastError({ title: 'Error removing the account', description: error.message })
+    },
+  })
+
+  const restore = api.banking.bankAccount.restore.useMutation({
+    onSuccess: invalidate,
+    onError: (error) => {
+      toastError({ title: 'Error restoring the account', description: error.message })
     },
   })
 
@@ -206,6 +198,57 @@ export function BankAccountsSettingsPage() {
     disconnect.mutate({ id: selected.id })
   }, [selected, confirm, disconnect])
 
+  /**
+   * Delete or archive, whichever the server's gate says applies.
+   *
+   * 🛑 The confirm text NAMES THE COUNTS. "This cannot be undone" over an
+   * unnamed cascade is what people click through; "1,240 transactions, 3 of them
+   * matched to documents" is what makes somebody stop and check.
+   */
+  const handleRemove = useCallback(async () => {
+    if (!selected || !removal.data) return
+    const preview = removal.data
+    const confirmed = await confirm({
+      title:
+        preview.verb === 'delete'
+          ? `Delete ${selected.name?.trim() || 'this bank account'}?`
+          : `Archive ${selected.name?.trim() || 'this bank account'}?`,
+      description:
+        preview.verb === 'delete'
+          ? [
+              `Nothing on this account has ever reached the ledger, so it is removed for good with its ${countLabel(preview.cascade.transactions, 'transaction')}.`,
+              preview.cascade.matched > 0
+                ? `${countLabel(preview.cascade.matched, 'of them is', 'of them are')} matched to a document. The document and its journal entry stay in the books; only the bank line confirming it goes.`
+                : null,
+              preview.cascade.releasesAtStripe
+                ? 'The bank connection is released at your bank, so it stops being billed. Reconnecting later means signing in again.'
+                : null,
+              warningLine(preview.warnings, 'deleting'),
+              'This cannot be undone.',
+            ]
+              .filter(Boolean)
+              .join(' ')
+          : [
+              'Something on this account has been posted to the ledger, so it is archived rather than deleted. It leaves every list and picker; the transactions, the journal entries and the account you mapped it to are all untouched.',
+              preview.unreviewed > 0
+                ? `${countLabel(preview.unreviewed, 'transaction is', 'transactions are')} still waiting for review. Archiving marks them excluded, so they will not reach the books.`
+                : null,
+              preview.cascade.releasesAtStripe
+                ? 'The feed is disconnected and the account is released at your bank first, so it stops being billed.'
+                : null,
+              warningLine(preview.warnings, 'archiving'),
+              'You can restore it from Show archived.',
+            ]
+              .filter(Boolean)
+              .join(' '),
+      confirmText: preview.verb === 'delete' ? 'Delete' : 'Archive',
+      cancelText: 'Cancel',
+      destructive: true,
+    })
+    if (!confirmed) return
+    remove.mutate({ id: selected.id })
+  }, [selected, removal.data, confirm, remove])
+
   const handleReconnect = useCallback((id: string) => {
     setReconnectingId(id)
     setConnectOpen(true)
@@ -241,17 +284,20 @@ export function BankAccountsSettingsPage() {
             pending={update.isPending}
             disconnecting={disconnect.isPending}
             syncing={sync.isPending}
+            removal={removal.data ?? null}
+            removing={remove.isPending}
             onPatch={handlePatch}
             onSync={() => selected && sync.mutate({ id: selected.id })}
             onReconnect={() => selected && handleReconnect(selected.id)}
             onDisconnect={handleDisconnect}
+            onRemove={handleRemove}
           />
         }
         paneTitle='Bank account'
         paneOpen={!!selected}
         onPaneClose={() => setSelectedId(null)}>
         <BankAccountsList
-          accounts={rows}
+          accounts={visibleRows}
           isLoading={accounts.isPending}
           selectedId={selectedId}
           onSelect={setSelectedId}
@@ -259,117 +305,26 @@ export function BankAccountsSettingsPage() {
           onAddManually={() => setManualOpen(true)}
           onSync={(id) => sync.mutate({ id })}
           onReconnect={handleReconnect}
+          onRestore={(id) => restore.mutate({ id })}
           connecting={connect.isPending || reconnect.isPending}
           syncingId={sync.isPending ? (sync.variables?.id ?? null) : null}
+          restoringId={restore.isPending ? (restore.variables?.id ?? null) : null}
+          showArchived={showArchived}
+          onShowArchivedChange={setShowArchived}
+          archivedCount={rows.filter((row) => row.archivedAt).length}
         />
       </MasterDetailSplit>
 
-      <Dialog open={manualOpen} onOpenChange={setManualOpen}>
-        <DialogContent position='tc'>
-          <DialogHeader>
-            <DialogTitle>Add a bank account</DialogTitle>
-            <DialogDescription>
-              For an account you will import statements into, or one at an institution the feed does
-              not cover. Map it to your chart afterwards.
-            </DialogDescription>
-          </DialogHeader>
-
-          <FieldPanel
-            orientation='responsive'
-            breakpoint='md'
-            resizeId='accounting-bank-account-add'
-            defaultLabelWidth={140}
-            className='p-0'>
-            <FieldPanelRow title='Name' type={BaseType.STRING} showIcon isRequired>
-              <FieldInputAdapter
-                fieldType={FieldType.TEXT}
-                value={draft.name}
-                placeholder='Business Adv Relationship'
-                disabled={create.isPending}
-                onChange={(value) => setDraft({ ...draft, name: (value as string) ?? '' })}
-              />
-            </FieldPanelRow>
-            <FieldPanelRow title='Institution' type={BaseType.STRING} showIcon>
-              <FieldInputAdapter
-                fieldType={FieldType.TEXT}
-                value={draft.institution}
-                placeholder='Bank of America'
-                disabled={create.isPending}
-                onChange={(value) => setDraft({ ...draft, institution: (value as string) ?? '' })}
-              />
-            </FieldPanelRow>
-            <FieldPanelRow
-              title='Last four'
-              type={BaseType.STRING}
-              showIcon
-              description='Digits only. Stored as text, so a leading zero survives.'>
-              <FieldInputAdapter
-                fieldType={FieldType.TEXT}
-                value={draft.last4}
-                placeholder='5381'
-                disabled={create.isPending}
-                onChange={(value) => setDraft({ ...draft, last4: (value as string) ?? '' })}
-              />
-            </FieldPanelRow>
-            <FieldPanelRow
-              title='Type'
-              type={BaseType.ENUM}
-              showIcon
-              description='A credit card is a liability and maps to a liability account.'>
-              <FieldInputAdapter
-                fieldType={FieldType.SINGLE_SELECT}
-                fieldOptions={{ options: TYPE_OPTIONS }}
-                value={draft.type}
-                disabled={create.isPending}
-                triggerProps={{ className: 'w-full ps-0 pe-1' }}
-                placeholder='Select type'
-                onChange={(value) => {
-                  const next = Array.isArray(value) ? value[0] : value
-                  if (next === 'depository' || next === 'credit') setDraft({ ...draft, type: next })
-                }}
-              />
-            </FieldPanelRow>
-            <FieldPanelRow title='Currency' type={BaseType.STRING} showIcon>
-              <FieldInputAdapter
-                fieldType={FieldType.TEXT}
-                value={draft.currency}
-                placeholder='USD'
-                disabled={create.isPending}
-                onChange={(value) => setDraft({ ...draft, currency: (value as string) ?? '' })}
-              />
-            </FieldPanelRow>
-          </FieldPanel>
-
-          <DialogFooter>
-            <Button
-              type='button'
-              variant='ghost'
-              size='sm'
-              onClick={() => setManualOpen(false)}
-              disabled={create.isPending}>
-              Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
-            </Button>
-            <Button
-              variant='outline'
-              size='sm'
-              loading={create.isPending}
-              loadingText='Adding...'
-              disabled={!draft.name.trim()}
-              onClick={() =>
-                create.mutate({
-                  name: draft.name.trim(),
-                  institution: draft.institution.trim() || null,
-                  last4: draft.last4.trim() || null,
-                  type: draft.type,
-                  currency: draft.currency.trim() || null,
-                })
-              }
-              data-dialog-submit>
-              Add account <KbdSubmit variant='outline' size='sm' />
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <BankAccountManualDialog
+        open={manualOpen}
+        onOpenChange={setManualOpen}
+        onCreated={async (account) => {
+          // The dialog already invalidated the list; coverage is this page's own
+          // read, and selecting the new row is what makes the editor open on it.
+          await utils.banking.bankAccount.coverage.invalidate()
+          setSelectedId(account.id)
+        }}
+      />
 
       <BankAccountConnectDialog
         open={connectOpen}
@@ -385,4 +340,23 @@ export function BankAccountsSettingsPage() {
       <ConfirmDialog />
     </SettingsPage>
   )
+}
+
+/** `3 transactions` / `1 transaction`, so no sentence reads "1 transactions". */
+function countLabel(count: number, singular: string, plural?: string): string {
+  return `${count} ${count === 1 ? singular : (plural ?? `${singular}s`)}`
+}
+
+/**
+ * The inert-rule warning, or null.
+ *
+ * ⚠️ Named, never a blocker. `evaluateRules` skips a rule whose `bankAccountId`
+ * does not match the line, so a rule left pointing at a removed account is
+ * silently DEAD rather than silently universal - which is worth saying, and not
+ * worth refusing over.
+ */
+function warningLine(rules: { id: string; name: string }[], verb: string): string | null {
+  if (rules.length === 0) return null
+  const names = rules.map((rule) => rule.name).join(', ')
+  return `${rules.length === 1 ? 'One rule' : `${rules.length} rules`} name this account (${names}); ${verb} it leaves ${rules.length === 1 ? 'it' : 'them'} matching nothing.`
 }

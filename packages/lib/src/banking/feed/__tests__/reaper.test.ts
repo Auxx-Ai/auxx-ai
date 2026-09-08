@@ -21,7 +21,9 @@ vi.mock('../fc-client', () => ({
 const {
   clearFeedDisconnectedAt,
   FEED_DISCONNECTED_AT_KEY,
+  findBankFeedAccountForConnector,
   findReapableBankFeeds,
+  listBankFeedAccountsForOrganization,
   REAP_AFTER_DAYS,
   reapBankFeedAccount,
   reapDisconnectedBankFeeds,
@@ -283,5 +285,80 @@ describe('reapDisconnectedBankFeeds', () => {
     const stats = await reapDisconnectedBankFeeds(fakeDb([]), NOW)
     expect(stats).toEqual({ candidates: 0, disconnected: 0, failed: 0 })
     expect(disconnectAccountAtStripe).not.toHaveBeenCalled()
+  })
+})
+
+// plans/bank-connection/08-removing-a-bank-account.md §5.4 doors 3 and 4. The sweep is
+// the LAST line of defence, and for these two doors it is not a line of defence at all:
+// both destroy the `DataConnector` row on the way out, so the account has to be resolved
+// and released before they run. These two readers are how they do it.
+describe('the door lookups', () => {
+  /** The two-table read `listBankFeedAccountsForOrganization` and its per-connector sibling make. */
+  function lookupDb(rows: Array<{ providerAccountId: string | null }>) {
+    const predicates: unknown[] = []
+    const settle = (predicate: unknown) => {
+      predicates.push(predicate)
+      const promise = Promise.resolve(rows) as Promise<unknown> & { limit?: unknown }
+      promise.limit = () => Promise.resolve(rows)
+      return promise
+    }
+    return {
+      predicates,
+      select: () => ({
+        from: () => ({
+          innerJoin: () => ({ where: settle }),
+        }),
+      }),
+    } as never
+  }
+
+  const account = (over: Record<string, unknown> = {}) => ({
+    connectorId: 'conn_1',
+    organizationId: 'org_1',
+    credentialId: 'cred_1',
+    providerAccountId: 'fca_1',
+    ...over,
+  })
+
+  it('lists every account an organization holds, with no status filter', async () => {
+    // 🛑 A `disconnected` connector is a connection Stripe or the bank dropped, NOT an
+    // account that was released - it is still billing. The org is going away, so all of
+    // them go.
+    const db = lookupDb([account(), account({ connectorId: 'conn_2', providerAccountId: 'fca_2' })])
+    const accounts = await listBankFeedAccountsForOrganization(db, 'org_1')
+    expect(accounts.map((a) => a.providerAccountId)).toEqual(['fca_1', 'fca_2'])
+    const { params } = render((db as unknown as { predicates: unknown[] }).predicates[0])
+    expect(params).toContain('org_1')
+    // No `status` value is bound into the predicate at all.
+    expect(params).not.toContain('disconnected')
+  })
+
+  it('drops a row whose credential lost its provider account id', async () => {
+    const db = lookupDb([account({ providerAccountId: null })])
+    expect(await listBankFeedAccountsForOrganization(db, 'org_1')).toEqual([])
+  })
+
+  it('🛑 gates the per-connector lookup on the Financial Connections type', async () => {
+    // This predicate IS the "non-FC connectors are untouched" guarantee for the
+    // connector-delete door: every other connector type resolves no account, so nothing
+    // is ever disconnected at Stripe on its behalf.
+    const db = lookupDb([account()])
+    await findBankFeedAccountForConnector(db, 'org_1', 'conn_1')
+    const { params } = render((db as unknown as { predicates: unknown[] }).predicates[0])
+    expect(params).toContain('stripe-financial-connections')
+    expect(params).toContain('stripeFinancialConnections')
+    expect(params).toContain('org_1')
+    expect(params).toContain('conn_1')
+  })
+
+  it('returns null when the connector has no releasable account', async () => {
+    expect(await findBankFeedAccountForConnector(lookupDb([]), 'org_1', 'conn_1')).toBeNull()
+    expect(
+      await findBankFeedAccountForConnector(
+        lookupDb([account({ providerAccountId: null })]),
+        'org_1',
+        'conn_1'
+      )
+    ).toBeNull()
   })
 })

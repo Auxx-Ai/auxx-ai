@@ -9,13 +9,17 @@
 
 export type {
   BankAccountCoverage,
+  BankAccountRemovalFacts,
+  BankAccountRemovalPlan,
   BankAccountRow,
   BankAccountStatus,
   BankAccountType,
   BankConnectorHealth,
   CoverageGap,
+  RemovalVerb,
 } from './client'
 export {
+  ARCHIVE_EXCLUSION_PREFIX,
   BANK_ACCOUNT_GL_TYPES,
   BANK_ACCOUNT_STATUS_LABELS,
   BANK_ACCOUNT_STATUSES,
@@ -25,6 +29,7 @@ export {
   CREDIT_SIGN_WARNING,
   computeCoverageGaps,
   daysBetween,
+  isArchiveExclusion,
   mergeCoverageGaps,
   resolveBankAccountStatus,
   resolveBankAccountType,
@@ -128,7 +133,23 @@ export {
   loadBankAccountFieldContext,
   loadBankTransactionFieldContext,
   readCoverage,
+  readRemovalFacts,
   requireBankAccountFieldContext,
 } from './reads'
-export type { CreateBankAccountInput, UpdateBankAccountInput } from './writes'
-export { createBankAccount, updateBankAccount } from './writes'
+export type {
+  ArchiveBankAccountInput,
+  ArchiveBankAccountResult,
+  CreateBankAccountInput,
+  DeleteBankAccountInput,
+  DeleteBankAccountResult,
+  RestoreBankAccountInput,
+  UpdateBankAccountInput,
+} from './writes'
+export {
+  archiveBankAccount,
+  createBankAccount,
+  deleteBankAccount,
+  resolveRemoval,
+  restoreBankAccount,
+  updateBankAccount,
+} from './writes'

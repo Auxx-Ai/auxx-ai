@@ -47,7 +47,7 @@ import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
 import { toRecordId } from '../../resources/resource-id'
 import { pinPostedBankTransaction, unpinPostedBankTransaction } from '../feed/pins'
 import { guard } from '../guard'
-import { getBankAccount } from '../reads'
+import { getBankAccount, requireBankAccountFieldContext } from '../reads'
 import { buildCodedBankEntry, buildTransferEntry } from './build-entry'
 import {
   type BankTransactionRow,
@@ -307,6 +307,7 @@ export async function codeTransaction(
         bank_transaction_reviewed_at: new Date().toISOString(),
         bank_transaction_reviewed_by_user_id: actorUserId,
       })
+      await stampAccountHasPosted(db, { organizationId, actorUserId, line })
 
       // 🛑 After the post, never before: a pin on a row whose entry was refused
       // would freeze the feed out of a line it still owns. Slot 3A's function -
@@ -532,6 +533,10 @@ export async function transferTransaction(
         bank_transaction_reviewed_at: now,
         bank_transaction_reviewed_by_user_id: actorUserId,
       })
+      // 🛑 The FILING leg's account, because that is the one the entry was posted
+      // against. The other leg carries no posting id and its account is stamped
+      // by its own treatment if and when one posts from it.
+      await stampAccountHasPosted(db, { organizationId, actorUserId, line: filedOn })
       if (other) {
         // The second leg is `matched` and carries NO posting id: one event, one
         // entry, and the id lives on the leg that filed it.
@@ -890,6 +895,39 @@ async function readCounterpartLeg(
   } catch {
     return null
   }
+}
+
+/**
+ * Record, on the BANK ACCOUNT, that a line on it has produced a journal entry.
+ *
+ * 🛑 **Write-once, and nothing ever clears it.** Not `undoReview`, not a
+ * reversal, not `reverseImport`: the `GlPosting` and its reversal both stay in
+ * the books forever with a row on this account as their source document, so an
+ * account that permanently changed the ledger must never become deletable again.
+ * It is a high-water mark, not a current state, and the one-way-ness IS the
+ * feature (plans/bank-connection/08-removing-a-bank-account.md §5.1).
+ *
+ * 🛑 Called at BOTH sites where a bank line first produces an entry - the code
+ * treatment and the transfer treatment - beside the `gl_posting_id` write.
+ * Missing either one puts a hole in the removal gate, and the hole is a hard
+ * delete of an account whose rows are a posting's source documents.
+ *
+ * ⚠️ Errors propagate rather than being swallowed. A stamp that failed silently
+ * is exactly the hole above; a failed treatment is visible and retryable.
+ */
+async function stampAccountHasPosted(
+  db: Database,
+  params: { organizationId: string; actorUserId: string; line: BankTransactionRow }
+): Promise<void> {
+  const { organizationId, actorUserId, line } = params
+  // A line with no account cannot post - `buildCodedBankEntry` needs the bank
+  // account's GL code - so this is defensive rather than a real branch.
+  if (!line.bankAccountId) return
+  const ctx = await requireBankAccountFieldContext(organizationId)
+  const crud = new UnifiedCrudHandler(organizationId, actorUserId, db)
+  await crud.update(toRecordId(ctx.bankAccountDefId, line.bankAccountId), {
+    bank_account_has_posted: true,
+  })
 }
 
 // ── The document side of a match ────────────────────────────────────────────

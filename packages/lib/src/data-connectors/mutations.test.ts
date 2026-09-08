@@ -54,6 +54,16 @@ vi.mock('./data-connector-queue', async (importOriginal) => ({
   enqueueConnectorTeardown: (arg: unknown) => enqueueConnectorTeardown(arg),
 }))
 
+// plans/bank-connection/08-removing-a-bank-account.md §5.4 door 3. The LEAF module, not
+// the `banking` barrel - that is the import production makes, and mocking the barrel
+// would leave the real leaf in the graph.
+const findBankFeedAccountForConnector = vi.fn(async (..._a: unknown[]) => null as unknown)
+const reapBankFeedAccount = vi.fn(async (..._a: unknown[]) => true)
+vi.mock('../banking/feed/reaper', () => ({
+  findBankFeedAccountForConnector: (...a: unknown[]) => findBankFeedAccountForConnector(...a),
+  reapBankFeedAccount: (...a: unknown[]) => reapBankFeedAccount(...a),
+}))
+
 import {
   deleteConnector,
   disconnectConnectors,
@@ -132,6 +142,8 @@ beforeEach(() => {
     .mockResolvedValue(ok({ success: true, deletedFieldIds: ['field_1'] }))
   notifyCustomFieldChanged.mockReset()
   enqueueConnectorTeardown.mockReset()
+  findBankFeedAccountForConnector.mockReset().mockResolvedValue(null)
+  reapBankFeedAccount.mockReset().mockResolvedValue(true)
 })
 
 describe('finalizeConnectorTeardown — delete behavior stray-field sweep', () => {
@@ -350,5 +362,98 @@ describe('deferred app-field sweep', () => {
     await expect(teardown({ uninstalled: true, survivors: [] })).resolves.toEqual({
       success: true,
     })
+  })
+})
+
+// plans/bank-connection/08-removing-a-bank-account.md §5.4 door 3 / §7.6.
+//
+// 🛑 Stripe bills 30c per institution per account holder per month and the ONLY thing
+// that stops it is calling disconnect on the account. `deleteConnector` never did, and
+// the teardown it enqueues removes the row - so the nightly reaper, which sweeps
+// `DataConnector`, could never clean up after this door either.
+describe('deleteConnector releases a Financial Connections account', () => {
+  const FC_ACCOUNT = {
+    connectorId: 'dc_1',
+    organizationId: 'org_1',
+    credentialId: 'cred_1',
+    providerAccountId: 'fca_1',
+  }
+
+  /** Records the release and the `deleting` mark in the order production made them. */
+  function tracingDb(trace: string[]) {
+    const chain: Record<string, unknown> = {
+      update: vi.fn(() => chain),
+      set: vi.fn((payload: Record<string, unknown>) => {
+        if (payload.status === 'deleting') trace.push('mark-deleting')
+        return chain
+      }),
+      where: vi.fn(() => Promise.resolve(undefined)),
+      select: vi.fn(() => chain),
+      from: vi.fn(() => chain),
+      delete: vi.fn(() => chain),
+      limit: vi.fn(() => Promise.resolve([])),
+      query: {
+        DataConnector: {
+          findFirst: vi.fn().mockResolvedValue({ id: 'dc_1', organizationId: 'org_1' }),
+        },
+        AppInstallation: { findFirst: vi.fn().mockResolvedValue(undefined) },
+      },
+    }
+    return chain as unknown as Database
+  }
+
+  it('releases at Stripe BEFORE the row is marked `deleting`', async () => {
+    const trace: string[] = []
+    findBankFeedAccountForConnector.mockResolvedValue(FC_ACCOUNT)
+    reapBankFeedAccount.mockImplementation(async () => {
+      trace.push('release')
+      return true
+    })
+
+    await deleteConnector(tracingDb(trace), 'org_1', 'user_1', 'dc_1', 'archive')
+
+    // The ordering IS the fix: once the teardown starts, the `providerAccountId` is on
+    // its way out with the connector row and there is nothing left to disconnect.
+    expect(trace).toEqual(['release', 'mark-deleting'])
+    expect(reapBankFeedAccount).toHaveBeenCalledWith(expect.anything(), FC_ACCOUNT)
+    expect(findBankFeedAccountForConnector).toHaveBeenCalledWith(expect.anything(), 'org_1', 'dc_1')
+  })
+
+  it('releases on the `keep` path too, which returns before any teardown is enqueued', async () => {
+    // `keep` short-circuits into `finalizeConnectorTeardown` and is the overwhelmingly
+    // common case, so a release placed after that branch would cover almost nobody.
+    findBankFeedAccountForConnector.mockResolvedValue(FC_ACCOUNT)
+    const db = buildDb({
+      connectorRow: { id: 'dc_1', organizationId: 'org_1' },
+      strayFields: [],
+      dataConnectorRows: [[], []],
+    }) as unknown as Database
+
+    await deleteConnector(db, 'org_1', 'user_1', 'dc_1', 'keep')
+
+    expect(reapBankFeedAccount).toHaveBeenCalledTimes(1)
+  })
+
+  it('releases nothing for a connector that is not a Financial Connections feed', async () => {
+    // Every other connector type resolves no account, so Stripe is never called. The
+    // type gate itself lives in `findBankFeedAccountForConnector`'s predicate and is
+    // pinned in `banking/feed/__tests__/reaper.test.ts`.
+    findBankFeedAccountForConnector.mockResolvedValue(null)
+
+    await deleteConnector(tracingDb([]), 'org_1', 'user_1', 'dc_1', 'archive')
+
+    expect(reapBankFeedAccount).not.toHaveBeenCalled()
+  })
+
+  it('deletes the connector anyway when the release throws', async () => {
+    findBankFeedAccountForConnector.mockResolvedValue(FC_ACCOUNT)
+    reapBankFeedAccount.mockRejectedValue(new Error('stripe is down'))
+
+    // The user asked for the connector to go. A leaked 30c is recoverable by a human
+    // reading an invoice; a connector that cannot be removed is not.
+    const result = await deleteConnector(tracingDb([]), 'org_1', 'user_1', 'dc_1', 'archive')
+
+    expect(result).toEqual({ success: true })
+    expect(enqueueConnectorTeardown).toHaveBeenCalledTimes(1)
   })
 })

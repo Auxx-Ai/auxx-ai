@@ -21,6 +21,9 @@ import { getFieldDefinitionId, isAppFieldRef, toResourceFieldId } from '@auxx/ty
 import { generateId } from '@auxx/utils'
 import { and, asc, eq, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
+// The LEAF, not the `banking` barrel - the barrel pulls the whole banking read/write
+// surface (and the org cache behind it) in for two functions.
+import { findBankFeedAccountForConnector, reapBankFeedAccount } from '../banking/feed/reaper'
 import { getCachedCustomFields, getCachedEntityDefId } from '../cache'
 import { onCacheEvent } from '../cache/invalidate'
 import type { ConditionGroup } from '../conditions/types'
@@ -1151,6 +1154,53 @@ export async function reconnectConnectorsForInstallation(
 export type DeleteSyncedDataBehavior = 'keep' | 'archive' | 'delete'
 
 /**
+ * Release a Stripe Financial Connections account before its connector is torn down.
+ *
+ * 🛑 Stripe bills 30c per institution per account holder per month and the ONLY thing
+ * that stops it is calling disconnect on the account. Deleting the connector row does
+ * not, and once the teardown has run the `providerAccountId` is gone with it - so the
+ * nightly reaper (`banking/feed/reaper.ts`) can never clean up after this door. That is
+ * why the call goes here, ahead of the `deleting` mark and ahead of the `keep`
+ * short-circuit, rather than anywhere in the teardown chain.
+ *
+ * No-op for every connector type but Financial Connections.
+ *
+ * ⚠️ Never throws. A release that fails must not block the delete: the user asked for
+ * the connector to go, a leaked 30c is recoverable by a human reading an invoice, and a
+ * connector that cannot be removed is not. The nightly sweep is not a fallback here
+ * (the row is on its way out), so the log line is the only trace - which is exactly why
+ * it is logged at error.
+ */
+async function releaseBankFeedAccount(
+  db: Database,
+  organizationId: string,
+  connectorId: string
+): Promise<void> {
+  try {
+    const account = await findBankFeedAccountForConnector(db, organizationId, connectorId)
+    if (!account) return
+    const released = await reapBankFeedAccount(db, account)
+    if (released) {
+      logger.info('Released a Financial Connections account before connector delete', {
+        organizationId,
+        connectorId,
+      })
+    } else {
+      logger.warn('Stripe would not release a Financial Connections account - deleting anyway', {
+        organizationId,
+        connectorId,
+      })
+    }
+  } catch (error) {
+    logger.error('Failed to release a Financial Connections account - deleting anyway', {
+      organizationId,
+      connectorId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
+}
+
+/**
  * Delete a connector. The provisioned def/fields and synced entity records are the
  * user's CRM data — we never auto-delete them. `behavior` governs the entity records
  * this connector CREATED, identified by the `integrationSource = connector.id` stamp
@@ -1181,6 +1231,7 @@ export async function deleteConnector(
 ): Promise<{ success: boolean }> {
   // Existence guard (throws NotFound if missing) — no longer need the row itself.
   await loadConnectorRow(db, organizationId, id)
+  await releaseBankFeedAccount(db, organizationId, id)
   await removeConnectorScheduler(id)
 
   if (behavior === 'keep') {
