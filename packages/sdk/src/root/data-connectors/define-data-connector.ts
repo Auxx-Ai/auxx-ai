@@ -50,17 +50,47 @@ function assertValidMapping(
   const contributing = mapping as {
     fields?: Array<{
       sourcePath?: unknown
+      constant?: unknown
       target?: unknown
       appField?: unknown
+      match?: unknown
       type?: unknown
       name?: unknown
     }>
     connectionFields?: Array<{ appField?: unknown; from?: unknown }>
   }
   for (const field of contributing.fields ?? []) {
+    // A constant binding writes a fixed value with no source path, so it is
+    // validated on its own terms and skips every sourcePath rule below.
+    if (field.constant !== undefined) {
+      if (field.sourcePath) {
+        throw new Error(
+          `defineDataConnector: connector "${connectorId}" stream "${streamKey}" mapping "${mapping.rootPath}": field with constant ${JSON.stringify(field.constant)} cannot also set a sourcePath`
+        )
+      }
+      if (!field.target || field.appField) {
+        throw new Error(
+          `defineDataConnector: connector "${connectorId}" stream "${streamKey}" mapping "${mapping.rootPath}": a constant field needs a target and cannot set appField`
+        )
+      }
+      // Matching on a value that is identical for every record would collapse
+      // the whole stream onto one entity.
+      if (field.match) {
+        throw new Error(
+          `defineDataConnector: connector "${connectorId}" stream "${streamKey}" mapping "${mapping.rootPath}": constant field "${String(field.target)}" cannot be a match key`
+        )
+      }
+      const t = typeof field.constant
+      if (t !== 'string' && t !== 'number' && t !== 'boolean') {
+        throw new Error(
+          `defineDataConnector: connector "${connectorId}" stream "${streamKey}" mapping "${mapping.rootPath}": constant field "${String(field.target)}" must be a string, number, or boolean`
+        )
+      }
+      continue
+    }
     if (!field.sourcePath) {
       throw new Error(
-        `defineDataConnector: connector "${connectorId}" stream "${streamKey}" mapping "${mapping.rootPath}": every contributing field needs a sourcePath`
+        `defineDataConnector: connector "${connectorId}" stream "${streamKey}" mapping "${mapping.rootPath}": every contributing field needs a sourcePath or a constant`
       )
     }
     if (field.target && field.appField) {

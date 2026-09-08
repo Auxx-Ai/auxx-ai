@@ -25,6 +25,7 @@ export { defineDataConnector } from './define-data-connector.js'
 export type {
   ConnectorConnection,
   ConnectorConnectionField,
+  ConnectorContributingFieldConstant,
   ConnectorContributingFieldSourceOnly,
   ConnectorContributingFieldToAppField,
   ConnectorContributingFieldToTarget,

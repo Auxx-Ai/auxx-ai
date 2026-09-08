@@ -127,10 +127,17 @@ export interface ConnectorOwnedMappingField {
   readonly sourcePath: string
 }
 
-/** Fields common to every contributing mapping field. */
-interface ConnectorContributingFieldBase {
+/** Fields common to every contributing mapping field, source-bound or constant. */
+interface ConnectorContributingFieldCommon {
+  /** Per-field write behavior once bound. Default `'overwrite'`. */
+  readonly mergeStrategy?: FieldMergeStrategy
+}
+
+/** Fields common to every SOURCE-BOUND contributing mapping field. */
+interface ConnectorContributingFieldBase extends ConnectorContributingFieldCommon {
   /** Provider JSON path, relative to the mapping's `rootPath`. */
   readonly sourcePath: string
+  readonly constant?: never
   /**
    * Secondary identity-match key (today's `matchFieldKeys`) — merges an
    * incoming record into an existing entity on first link. The external id
@@ -144,8 +151,6 @@ interface ConnectorContributingFieldBase {
    * both (a guest checkout and a customer sharing one email are one contact).
    */
   readonly match?: boolean | 'exclusive'
-  /** Per-field write behavior once bound. Default `'overwrite'`. */
-  readonly mergeStrategy?: FieldMergeStrategy
 }
 
 /**
@@ -185,11 +190,39 @@ export interface ConnectorContributingFieldSourceOnly extends ConnectorContribut
   readonly appField?: never
 }
 
+/**
+ * Writes a FIXED value onto the target def's own attribute, no source path,
+ * so the value is the app's own statement about every record this mapping
+ * produces ("a Shopify product variant is always a `material`"), not something
+ * read off the payload.
+ *
+ * Use it for a target the provider has no column for and no free-text column
+ * can safely fill: a closed enum whose options the provider does not speak. The
+ * platform's per-field `defaultValue` is the wrong lever there, because it is
+ * one value shared by every writer of that field, a constant binding is scoped
+ * to this connector's mapping.
+ *
+ * `match` is deliberately absent: a constant is identical on every record, so
+ * matching on it would collapse the whole stream onto one entity.
+ */
+export interface ConnectorContributingFieldConstant extends ConnectorContributingFieldCommon {
+  /** The literal written on every record this mapping projects. */
+  readonly constant: string | number | boolean
+  /** Resolves against the target def's `systemAttribute` or field name. */
+  readonly target: string
+  readonly sourcePath?: never
+  readonly appField?: never
+  readonly match?: never
+  readonly type?: never
+  readonly name?: never
+}
+
 /** One field on a CONTRIBUTING mapping (`target: { entityKind }`). */
 export type ConnectorContributingMappingField =
   | ConnectorContributingFieldToTarget
   | ConnectorContributingFieldToAppField
   | ConnectorContributingFieldSourceOnly
+  | ConnectorContributingFieldConstant
 
 /**
  * Fills a plain (non-identity) `defineFields` field from the connector's

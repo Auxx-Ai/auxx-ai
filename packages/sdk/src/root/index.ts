@@ -27,6 +27,7 @@ export type { App, AppSettings, Permission } from './app.js'
 export type {
   ConnectorConnection,
   ConnectorConnectionField,
+  ConnectorContributingFieldConstant,
   ConnectorContributingFieldSourceOnly,
   ConnectorContributingFieldToAppField,
   ConnectorContributingFieldToTarget,

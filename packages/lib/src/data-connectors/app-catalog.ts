@@ -228,7 +228,10 @@ export function buildContributingMatchBindings(
   const fieldByKey = buildTargetFieldIndex(defFields)
   const bindings: FieldMapping[] = []
   for (const field of fields) {
-    if (!field.match || !field.target) continue
+    // A match key is compared against the incoming payload, so it must read a
+    // source path, a constant is identical on every record and would collapse
+    // the whole stream onto one entity (rejected at extract time; skipped here).
+    if (!field.match || !field.target || !field.sourcePath) continue
     const target = fieldByKey.get(field.target) ?? fieldByKey.get(normalizeFieldKey(field.target))
     if (!target) continue
     assertContributingTargetWritable(field.target, target)
@@ -266,6 +269,25 @@ export function buildContributingFieldBindings(
   for (const field of fields) {
     if (field.match) continue // handled by buildContributingMatchBindings
 
+    // Constant binding: a fixed value, no source path. Checked BEFORE the
+    // `appField`/`target` branches because those both read `field.sourcePath`,
+    // which a constant field does not have.
+    if (field.constant !== undefined) {
+      if (!field.target) continue // extract-time validation rejects this; skip defensively
+      const target = fieldByKey.get(field.target) ?? fieldByKey.get(normalizeFieldKey(field.target))
+      if (!target) continue
+      assertContributingTargetWritable(field.target, target)
+      bindings.push(
+        bindConstantToTarget(entityDefinitionId, field.constant, target, field.mergeStrategy)
+      )
+      continue
+    }
+
+    // Every remaining shape binds a SOURCE value, so a missing path leaves
+    // nothing to bind (extract-time validation already rejects it).
+    const { sourcePath } = field
+    if (!sourcePath) continue
+
     if (field.appField) {
       // App fields are CONNECTION-SCOPED — an org with multiple connections of the same
       // app has one `CustomField` per connection (e.g. a `customerId` per Shopify store),
@@ -289,7 +311,7 @@ export function buildContributingFieldBindings(
           entityDefinitionId,
           appSlug,
           field.appField,
-          field.sourcePath,
+          sourcePath,
           field.mergeStrategy,
           isIdentityField ? { kind: 'externalId' } : undefined
         )
@@ -301,9 +323,7 @@ export function buildContributingFieldBindings(
       const target = fieldByKey.get(field.target) ?? fieldByKey.get(normalizeFieldKey(field.target))
       if (!target) continue
       assertContributingTargetWritable(field.target, target)
-      bindings.push(
-        bindSourceToTarget(entityDefinitionId, field.sourcePath, target, field.mergeStrategy)
-      )
+      bindings.push(bindSourceToTarget(entityDefinitionId, sourcePath, target, field.mergeStrategy))
     }
 
     // A source-only field (no `target`/`appField`) is projection-only — Layer A schema
@@ -444,6 +464,32 @@ function bindSourceToTarget(
     expression: `{${sourcePath}}`,
     sourceFields: { [sourcePath]: sourcePath },
     ...(identityRole ? { identityRole } : {}),
+    ...(mergeStrategy ? { mergeStrategy } : {}),
+  }
+}
+
+/**
+ * Bind a CONSTANT onto a target attribute, no source path, so the value is the
+ * app's own statement about every record the mapping produces.
+ *
+ * The expression is the JSON-encoded literal, which is exactly what the CALC
+ * evaluator parses back: `"material"` (quoted) evaluates to the string
+ * `material`, while a bare `material` would parse as a FIELD REFERENCE and
+ * resolve to `undefined` against the empty `sourceFields` map. Empty
+ * `sourceFields` is also what keeps `hasArrayShapedSource` and the
+ * `'{source}'` whole-subtree special case in `map-record.ts` from claiming it.
+ */
+function bindConstantToTarget(
+  entityDefinitionId: string,
+  constant: string | number | boolean,
+  target: ContributingTargetField,
+  mergeStrategy?: FieldMergeStrategy
+): FieldMapping {
+  return {
+    id: generateId(),
+    targetFieldRef: toResourceFieldId(entityDefinitionId, target.id),
+    expression: JSON.stringify(constant),
+    sourceFields: {},
     ...(mergeStrategy ? { mergeStrategy } : {}),
   }
 }
@@ -606,6 +652,11 @@ export function collectStreamSourceFields(
   const out: Array<{ sourcePath: string; type?: string }> = []
   for (const mapping of stream.mappings) {
     for (const field of mapping.fields ?? []) {
+      // A constant binding reads nothing off the payload, so it contributes no
+      // path to the Layer A schema. Without this skip it would push the
+      // mapping's bare `rootPath` and invent a phantom branch in the setup
+      // mapping tree and the Tier 2 suggester.
+      if (!field.sourcePath) continue
       const sourcePath = joinSourcePath(mapping.rootPath, field.sourcePath)
       out.push({ sourcePath, type: 'type' in field ? field.type : undefined })
     }

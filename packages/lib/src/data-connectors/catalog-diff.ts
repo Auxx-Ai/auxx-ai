@@ -32,8 +32,15 @@ import type { FieldMapping, FieldMergeStrategy, StreamRequestConfig, SyncMode } 
 
 /** What a binding does, in the words the dialog prints. */
 export interface BindingSummary {
-  /** The source path the value comes from (null for a connection-metadata write). */
+  /** The source path the value comes from (null for a connection-metadata or CONSTANT write). */
   sourcePath: string | null
+  /**
+   * The fixed value a CONSTANT binding writes, rendered for display (null for
+   * every source-bound or connection-metadata binding). Kept separate from
+   * `sourcePath` so the update dialog never tells a merchant a literal is a
+   * column on their provider's payload.
+   */
+  constant: string | null
   role: 'match' | 'match-exclusive' | 'externalId' | null
   mergeStrategy: FieldMergeStrategy
   connectionMetaKey: string | null
@@ -165,14 +172,36 @@ export function applyBindingOp(
   )
 }
 
+/**
+ * The literal a CONSTANT binding writes, or null when the expression is not one.
+ * A constant is the only binding with no source placeholders and no connection
+ * metadata key, so its expression is a bare JSON literal
+ * ({@link bindConstantToTarget} writes it with `JSON.stringify`). The degenerate
+ * whole-subtree `'{source}'` binding also has empty `sourceFields`, and fails
+ * the parse, which is exactly the discrimination wanted here.
+ */
+function constantFromExpression(binding: BindingShape): string | null {
+  if (binding.connectionMetaKey != null) return null
+  if (Object.keys(binding.sourceFields).length > 0) return null
+  try {
+    const parsed: unknown = JSON.parse(binding.expression)
+    const t = typeof parsed
+    return t === 'string' || t === 'number' || t === 'boolean' ? String(parsed) : null
+  } catch {
+    return null
+  }
+}
+
 /** Summarize a binding for the dialog. */
 export function summarizeBinding(binding: BindingShape): BindingSummary {
   const role = binding.identityRole
+  const constant = constantFromExpression(binding)
   return {
     sourcePath:
-      binding.connectionMetaKey != null
+      binding.connectionMetaKey != null || constant != null
         ? null
         : (Object.keys(binding.sourceFields)[0] ?? binding.expression.replace(/^\{|\}$/g, '')),
+    constant,
     role:
       role?.kind === 'externalId'
         ? 'externalId'

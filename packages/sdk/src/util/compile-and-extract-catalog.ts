@@ -260,7 +260,11 @@ export interface CatalogConnectorOwnedMappingField extends CatalogField {
 /** One field on a connector CONTRIBUTING mapping — a binding, not a full
  *  field declaration (most of its shape resolves against the existing target). */
 export interface CatalogConnectorContributingMappingField {
-  sourcePath: string
+  /** Absent on a CONSTANT binding, that field carries `constant` instead. */
+  sourcePath?: string
+  /** A fixed value written on every record this mapping projects. Mutually
+   *  exclusive with `sourcePath`; requires `target`. */
+  constant?: string | number | boolean
   /** Resolves against the target def's `systemAttribute` or field name. */
   target?: string
   /** Names a `defineFields` field declared for the same `entityKind`. */
@@ -970,6 +974,34 @@ export async function compileAndExtractCatalog(): Promise<
               message: `${context}: appField "${field.appField}" is not a declared field on "${entityKind}"`,
             })
           }
+          // A constant binding writes a fixed value onto a target attribute with
+          // no source path; every other contributing field must name one, or it
+          // projects nowhere and contributes nothing to the Layer A schema.
+          if (field.constant !== undefined) {
+            if (field.sourcePath) {
+              return errored({
+                code: 'CATALOG_VALIDATION_FAILED',
+                message: `${context}: field with constant ${JSON.stringify(field.constant)} cannot also set a sourcePath`,
+              })
+            }
+            if (!field.target || field.appField) {
+              return errored({
+                code: 'CATALOG_VALIDATION_FAILED',
+                message: `${context}: a constant field needs a target and cannot set appField`,
+              })
+            }
+            if (field.match) {
+              return errored({
+                code: 'CATALOG_VALIDATION_FAILED',
+                message: `${context}: constant field "${field.target}" cannot be a match key, the value is identical on every record`,
+              })
+            }
+          } else if (!field.sourcePath) {
+            return errored({
+              code: 'CATALOG_VALIDATION_FAILED',
+              message: `${context}: every contributing field needs a sourcePath or a constant`,
+            })
+          }
         }
         for (const conn of mapping.connectionFields ?? []) {
           const field = fieldByKey.get(conn.appField)
@@ -1306,7 +1338,8 @@ interface RawConnectorOwnedMappingField {
 }
 
 interface RawConnectorContributingMappingField {
-  sourcePath: string
+  sourcePath?: string
+  constant?: string | number | boolean
   target?: string
   appField?: string
   match?: boolean | 'exclusive'
