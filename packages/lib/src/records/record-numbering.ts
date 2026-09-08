@@ -25,6 +25,7 @@ export const SEQUENCE_SCOPES = [
   'build',
   'bank_deposit',
   'journal_entry',
+  'payout',
 ] as const
 
 /** Which record kind a `RecordSequence` row counts. */
@@ -53,6 +54,10 @@ const SCOPE_DEFAULTS: Record<SequenceScope, { prefix: string }> = {
   // posting's `periodKey`, so it must stay short for the same reason:
   // `AUXX-JNL-JNL0001` is 16 of the 21 characters the cap allows.
   journal_entry: { prefix: 'JNL' },
+  // `PAY-0001`, matching `DOC_NUMBER_PREFIX.payout`. Same constraint again: the
+  // number IS the posting's `periodKey`, and a Stripe `po_…` id is 27 characters
+  // against a 21-character cap. `AUXX-PAY-PAY0001` is 16.
+  payout: { prefix: 'PAY' },
 }
 
 /** Format a record number from a sequence record */

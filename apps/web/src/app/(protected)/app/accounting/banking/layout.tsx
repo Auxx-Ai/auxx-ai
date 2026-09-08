@@ -3,7 +3,7 @@
 'use client'
 
 import { MainPageContent } from '@auxx/ui/components/main-page'
-import { FileUp, Inbox, Landmark, ListChecks } from 'lucide-react'
+import { Banknote, FileUp, Inbox, Landmark, ListChecks } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import {
   DockedPanelsOutletProvider,
@@ -43,6 +43,17 @@ const ACCOUNTING_BANKING: SidebarProps[] = [
         icon: <Landmark />,
         description: 'Group received payments into the one line the bank shows',
         keywords: ['undeposited funds', 'cheques', 'bank run', 'deposit slip'],
+      },
+      {
+        // HANDOFF §11.5 item 1. Sits next to Deposits because they are the two
+        // halves of the same question - how did money get from a sale into the
+        // bank - and the clearing account only reconciles when both are here.
+        id: 'accounting-banking-payouts',
+        label: 'Payouts',
+        slug: 'payouts',
+        icon: <Banknote />,
+        description: 'What the card processor settled, and what it relieved from card clearing',
+        keywords: ['stripe', 'settlement', 'clearing', 'processor fees', 'unidentified'],
       },
       {
         // Slot 3D. The ingest path a vendor cannot switch off: the API reaches

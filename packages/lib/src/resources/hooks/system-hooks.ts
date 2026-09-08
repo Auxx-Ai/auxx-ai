@@ -9,6 +9,7 @@ import { JOURNAL_ENTRY_HOOKS } from './journal-entry-hooks'
 import { LINE_ITEM_HOOKS } from './line-item-hooks'
 import { ORDER_HOOKS } from './order-hooks'
 import { PAYMENT_HOOKS } from './payment-hooks'
+import { PAYOUT_HOOKS } from './payout-hooks'
 import { PURCHASE_ORDER_HOOKS, VENDOR_BILL_HOOKS } from './purchasing-hooks'
 import { QUOTE_HOOKS } from './quote-hooks'
 import { SERVICE_REQUEST_HOOKS } from './service-request-hooks'
@@ -40,6 +41,7 @@ const HOOKS_BY_ENTITY_TYPE: Record<string, SystemHookRegistry> = {
   build: BUILD_HOOKS,
   journal_entry: JOURNAL_ENTRY_HOOKS,
   bank_deposit: BANK_DEPOSIT_HOOKS,
+  payout: PAYOUT_HOOKS,
 }
 
 /**

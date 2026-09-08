@@ -191,6 +191,26 @@ export {
   refundTransaction,
 } from './payments/stripe-rail'
 export {
+  findPayoutByGatewayId,
+  type GatheredPayout,
+  gatherPayout,
+  type ListPayoutsFilters,
+  listPayouts,
+  loadPayoutFieldContext,
+  PAYOUT_STATUSES,
+  type PayoutFieldContext,
+  type PayoutItem,
+  type PayoutRecord,
+  type PayoutSplit,
+  type PayoutStatus,
+  requirePayoutFieldContext,
+  resolvePayoutStatus,
+  reverseFailedPayout,
+  type SyncPayoutsResult,
+  splitPayout,
+  syncPayouts,
+} from './payouts'
+export {
   buildPayUrl,
   cancelAbandonedCheckout,
   ensureInvoicePublicToken,

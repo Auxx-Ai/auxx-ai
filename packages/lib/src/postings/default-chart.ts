@@ -273,6 +273,18 @@ export const DEFAULT_CHART_OF_ACCOUNTS: readonly DefaultChartAccount[] = [
     name: 'Returns Reserve',
     accountType: GlAccountType.LIABILITY,
   },
+  {
+    // Money that arrived and auxx cannot attribute. The payout entry's fourth
+    // leg: a gateway payout settles charges the merchant took OUTSIDE auxx too,
+    // and those were never debited to `1200`. Held as a liability - until it is
+    // attributed, "we hold money we cannot explain" is the true statement, and
+    // recognising it as revenue would book income on the strength of not
+    // knowing what it is.
+    code: '2450',
+    name: 'Unidentified Receipts',
+    accountType: GlAccountType.LIABILITY,
+    role: 'unidentified_receipts',
+  },
 
   // ── Equity ──────────────────────────────────────────────────────────────
   // Added 2026-09-04 (handoff decision 6.4). The opening trial balance needs an

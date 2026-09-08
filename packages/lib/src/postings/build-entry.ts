@@ -233,6 +233,24 @@ export const ACCOUNT_ROLES = {
    * provider the money never touched.
    */
   CLEARING_CARD: 'clearing_card',
+  /**
+   * Unidentified receipts (default `2450`). Money that arrived and auxx cannot
+   * attribute, held as a LIABILITY until somebody codes it.
+   *
+   * 🛑 The payout entry is what fills this. A gateway payout settles every
+   * charge the merchant took, INCLUDING charges taken outside auxx, which were
+   * never debited to `clearing_card`. Crediting the payout's full gross to
+   * clearing would drive that account permanently negative by the amount auxx
+   * never took; posting only the recognised part and leaving cash short of the
+   * bank would break the bank reconciliation instead. So cash takes the whole
+   * deposit, clearing is relieved of exactly what auxx put in it, and the
+   * remainder lands here where it is visible and someone must work it.
+   *
+   * ⚠️ A liability rather than income ON PURPOSE. Until it is attributed,
+   * "we hold money we cannot explain" is the true statement; recognising it as
+   * revenue would book income on the strength of not knowing what it is.
+   */
+  UNIDENTIFIED_RECEIPTS: 'unidentified_receipts',
   /** Sales tax payable (default `2200`). A pass-through liability, never revenue. */
   SALES_TAX_PAYABLE: 'sales_tax_payable',
   /** Deferred revenue (default `2300`). Month-end deferral and its reversal. */
@@ -322,6 +340,7 @@ export const ROLE_ACCOUNT_TYPES: Record<AccountRole, GlAccountTypeValue> = {
   accounts_receivable: 'asset',
   undeposited_funds: 'asset',
   clearing_card: 'asset',
+  unidentified_receipts: 'liability',
   sales_tax_payable: 'liability',
   deferred_revenue: 'liability',
   customer_deposits: 'liability',
@@ -362,6 +381,7 @@ export const ACCOUNT_ROLE_LABELS: Record<AccountRole, string> = {
   accounts_receivable: 'Accounts Receivable',
   undeposited_funds: 'Undeposited Funds',
   clearing_card: 'Card Clearing',
+  unidentified_receipts: 'Unidentified Receipts',
   sales_tax_payable: 'Sales Tax Payable',
   deferred_revenue: 'Deferred Revenue',
   customer_deposits: 'Customer Deposits',

@@ -31,10 +31,12 @@ import {
   getPaymentAccount,
   getWorkOrderBillingState,
   listBankDeposits,
+  listPayouts,
   listUndepositedPayments,
   listWorkOrderPayments,
   markInvoiceSent,
   markQuoteSent,
+  PAYOUT_STATUSES,
   prepareDocumentEmail,
   previewFulfillment,
   previewInvoiceBatch,
@@ -50,6 +52,7 @@ import {
   setInvoiceSchedule,
   syncAccountState,
   syncInvoiceToQuickbooks,
+  syncPayouts,
   updateBankDeposit,
   voidInvoice,
   writeOffInvoice,
@@ -956,6 +959,56 @@ export const moneyRouter = createTRPCRouter({
         if (result.isErr()) throw result.error
         return result.value
       }),
+  }),
+
+  /**
+   * Gateway payouts: the list, and the manual "Sync now" (HANDOFF §11.5 item 1).
+   *
+   * 🛑 Gated on the LEDGER keys for `bankDeposit`'s reason: the sync produces
+   * `GlPosting` rows, so it belongs with the people trusted to write to the
+   * books. There is no create, update or delete procedure at all - a payout is
+   * a transcription of what the gateway did, and the only sanctioned writer is
+   * `syncPayouts`.
+   */
+  payout: createTRPCRouter({
+    /** Recorded payouts, newest first. */
+    list: permissionProcedure(PermissionKey.ledgerView)
+      .input(
+        z
+          .object({
+            status: z.enum(PAYOUT_STATUSES).optional(),
+            /** Only payouts that left something in `2450` - the queue somebody works. */
+            onlyUnidentified: z.boolean().optional(),
+            limit: z.number().int().min(1).max(500).optional(),
+          })
+          .optional()
+      )
+      .query(async ({ ctx, input }) => {
+        const result = await listPayouts(ctx.db, {
+          organizationId: ctx.session.organizationId,
+          ...(input ?? {}),
+        })
+        if (result.isErr()) throw result.error
+        return result.value
+      }),
+
+    /**
+     * Pull the gateway's recent payouts now, rather than waiting for the nightly
+     * sweep or the next `payout.paid` webhook.
+     *
+     * ⚠️ Returns the run's summary INCLUDING its refusals rather than throwing
+     * on them. One payout whose arithmetic the builder refuses must not present
+     * as "the sync failed" when eleven others posted; the screen renders the
+     * refusals as `EntryBlockers` cards naming each payout.
+     */
+    syncNow: permissionProcedure(PermissionKey.ledgerPost).mutation(async ({ ctx }) => {
+      const result = await syncPayouts(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        actorUserId: ctx.session.user.id,
+      })
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
   }),
 
   /**
