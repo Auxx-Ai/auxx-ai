@@ -967,6 +967,10 @@ export class ResourceRegistryService {
           // per-org boolean could ever express it, and `CustomField.isUnique` is
           // the wrong shape anyway — a tuple is not a per-field flag.
           naturalKeyPosition: staticField.naturalKeyPosition,
+          // SENSITIVE is registry-only for the same reason, and with no DB
+          // fallback: whether a TIN is secret enough to hide by default is a
+          // product fact, and `CustomField` has no column that could carry one.
+          sensitive: staticField.sensitive,
           // A NAMED IMPORTER is registry-only for the same reason: whether users
           // import supplier price lists is a product fact, and no `CustomField`
           // column carries one. It rides the relation field so the target def is

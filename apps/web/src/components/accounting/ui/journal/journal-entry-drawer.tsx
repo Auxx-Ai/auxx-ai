@@ -12,16 +12,20 @@ import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { BookOpenCheck, ExternalLink, Trash2 } from 'lucide-react'
+import { useMemo } from 'react'
 import { useDiscardJournalEntry } from '~/components/accounting/hooks/use-discard-journal-entry'
 import { useJournalEntryDraft } from '~/components/accounting/hooks/use-journal-entry-draft'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
+import type { RecordId } from '~/components/resources'
+import { useResourceFields } from '~/components/resources/hooks/use-resource-fields'
 import { BaseType } from '~/components/workflow/types'
 import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import type { LedgerBlocker } from '../ledger/entry-blockers'
 import { EntryBlockers } from '../ledger/entry-blockers'
 import { formatPeriodLabel } from '../ledger/format'
+import { JournalEntryAttachment } from './journal-entry-attachment'
 import { JournalLines, JournalLinesTotals } from './journal-lines'
 import { firstDayOfPeriod, nextOpenPeriodAfter, periodKeyForEntryDate } from './period-helpers'
 
@@ -58,13 +62,16 @@ interface JournalEntryDrawerProps {
  * SAME dock slot `PostingDrawer` uses on the ledger page, opened by `?je=new`
  * or `?je=<id>`.
  *
- * ⚠️ **Attachment: TODO, not wired.** `journal_entry_attachment` (FILE) exists
- * on the entity def (slot 1A), but nothing in this app renders
- * `FieldInputAdapter fieldType={FieldType.FILE}` as a bare value/onChange
- * one-liner anywhere - every FILE field in the app goes through a dedicated
- * uploader wired to `entityInstanceId` + the files pipeline
- * (`docs/files-upload-architecture-guide.md`), which is real work, not a
- * one-liner. Reported in the slot 1B handoff rather than guessed at here.
+ * ⚠️ **The Attachment row is not a `FieldInputAdapter`**, alone among the rows
+ * in this panel. `FieldInputAdapter`'s FILE case renders `FileInputField`,
+ * which reads its field and record off `usePropertyContext()` rather than the
+ * value/onChange pair every other row passes, so the field goes through
+ * {@link JournalEntryAttachment} and the files pipeline instead
+ * (`docs/files-upload-architecture-guide.md`).
+ *
+ * 🛑 That row needs a RECORD, and `useJournalEntryDraft` deliberately raises one
+ * on the first edit rather than on mount. A drawer opened at `?je=new` and not
+ * yet typed into therefore has nowhere to hang a file, and the row says so.
  */
 export function JournalEntryDrawer({
   journalEntryId,
@@ -91,6 +98,16 @@ export function JournalEntryDrawer({
 
   const periodsQuery = api.ledger.periods.useQuery()
   const { can } = useAccess()
+
+  // `journal_entry` is a HIDDEN def (`isVisible: false`), which is fine here:
+  // `resource.list` returns the whole org resources cache unfiltered, and only
+  // the sidebar reads `isVisible`. `null` on an org that has not picked up the
+  // field yet, in which case the row renders a sentence instead of a picker.
+  const { fields: journalEntryFields } = useResourceFields('journal-entries')
+  const attachmentField = useMemo(
+    () => journalEntryFields.find((f) => f.key === 'attachment') ?? null,
+    [journalEntryFields]
+  )
 
   const discard = useDiscardJournalEntry({ onDiscarded })
 
@@ -248,12 +265,21 @@ export function JournalEntryDrawer({
 
                 <FieldPanelRow
                   title='Attachment'
-                  type={BaseType.STRING}
+                  type={BaseType.FILE}
                   showIcon
-                  description='Not wired yet - see this file header. TODO for a follow-up slot.'>
-                  <span className='flex h-8 items-center text-sm text-muted-foreground'>
-                    Not available yet
-                  </span>
+                  description="The evidence behind the entry - the accountant's memo, a statement, a photo of the paper">
+                  {attachmentField && journalEntryId ? (
+                    <JournalEntryAttachment
+                      recordId={journalEntryId as RecordId}
+                      field={attachmentField}
+                    />
+                  ) : (
+                    <span className='flex h-8 items-center text-muted-foreground text-sm'>
+                      {attachmentField
+                        ? 'Type a date, memo or line first - a file needs an entry to hang on'
+                        : 'Not available on this organization yet'}
+                    </span>
+                  )}
                 </FieldPanelRow>
               </FieldPanel>
 

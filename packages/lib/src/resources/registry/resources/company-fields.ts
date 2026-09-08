@@ -790,15 +790,17 @@ export const COMPANY_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     placeholder: 'XX-XXXXXXX',
-    // 🛑 No masking mechanism exists in the registry today: `ResourceField`'s
-    // `capabilities` carry no `sensitive`/`mask` flag anywhere in this repo
-    // (checked - grep turns up nothing). This is a plain TEXT field; masking
-    // the SSN/EIN in the company drawer is left to the drawer UI, which is not
-    // this slot's file. Flagged in the 2K report rather than left silent.
+    // 🛑 The whole reason `ResourceField.sensitive` exists. An SSN or EIN sitting
+    // in plain sight on a vendor drawer is the thing to avoid, so the panel shows
+    // `•••••1234` with a per-row reveal.
+    //
+    // ⚠️ Display only. The number is on the wire and in an export exactly as it
+    // was, and the dynamic table does not mask - see the flag's own doc.
+    sensitive: true,
     description:
       "The vendor's taxpayer identification number (SSN or EIN), from Form W-9. " +
-      'Not filterable - a TIN is never a lookup key. Should be masked on display; ' +
-      'no masking capability exists in the field registry yet.',
+      'Not filterable - a TIN is never a lookup key. Masked to its last four ' +
+      'characters on display, with a reveal.',
   },
 
   w9OnFile: {

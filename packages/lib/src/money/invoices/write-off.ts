@@ -226,16 +226,29 @@ function assertWriteOffAllowed(invoice: InvoiceForWriteOff, invoiceId: string): 
   if (invoice.status === 'void') {
     throw new BadRequestError('Cannot write off a void invoice', { invoiceId })
   }
-  if (invoice.status === 'written_off') {
-    throw new BadRequestError('This invoice is already written off', { invoiceId })
-  }
   if (invoice.status === 'draft') {
     throw new BadRequestError('Cannot write off a draft invoice - send it first', { invoiceId })
   }
-  if (invoice.status === 'paid') {
-    throw new BadRequestError('This invoice has no balance to write off - it is paid in full', {
-      invoiceId,
-    })
+  // 🛑 "Nothing left to write off" is decided by the DERIVED outstanding figure,
+  // never by the status. `written_off` and `paid` are each meant to imply a zero
+  // receivable, but neither is a reliable statement of one:
+  // `syncInvoicePaymentState` rewrites the balance mirror on every payment event
+  // knowing nothing about bad debt, and a row written off before entity
+  // migration 128 can carry `written_off` while a real receivable is still on it.
+  //
+  // ⚠️ Refusing on the status alone is what made {@link readWriteOffState} and
+  // this function disagree: the dialog opened prefilled with the remainder that
+  // read is built to compute, and every preview and post against it then failed
+  // with "already written off". Found in a browser, not by a test, because both
+  // halves are individually correct - only the pair is wrong. Both now key on
+  // `outstandingMinor`, so the screen cannot offer what this will refuse.
+  if (invoice.outstandingMinor <= 0) {
+    throw new BadRequestError(
+      invoice.status === 'written_off'
+        ? 'This invoice has no balance to write off - it is already written off in full'
+        : 'This invoice has no balance to write off - it is paid in full',
+      { invoiceId }
+    )
   }
   if (!invoice.number || invoice.number.trim().length === 0) {
     throw new BadRequestError(
@@ -417,9 +430,12 @@ export interface WriteOffInvoiceInput {
  *    it, the only trace was a reduction of `invoice_balance` that the next
  *    `syncInvoicePaymentState` re-derived away.
  *
- * `assertWriteOffAllowed` still refuses a `written_off` invoice before the
- * ledger is ever asked, with a sentence a person can act on: that status means
- * the whole receivable is gone, and only a full write-off sets it.
+ * `assertWriteOffAllowed` refuses on the DERIVED outstanding figure rather than
+ * on the status, so an invoice a partial write-off left with a receivable is
+ * still writable no matter what its status says. Only a full write-off sets
+ * `written_off`, but rows written off before entity migration 128 can carry that
+ * status with a balance still on them, and refusing those made the dialog offer
+ * an amount every preview and post then rejected.
  *
  * ⚠️ Still owed, in a file this does not own: `syncInvoicePaymentState`
  * computes `balance = total - amountPaid` and knows nothing about
