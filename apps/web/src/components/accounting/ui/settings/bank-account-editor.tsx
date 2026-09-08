@@ -327,7 +327,6 @@ function BankAccountForm({
             value={account.glAccountCode}
             filterTypes={glFilterTypes}
             placeholder='Map to an account…'
-            triggerProps={{ className: 'w-full ps-0 pe-1' }}
             onChange={(code) => onPatch({ glAccountCode: code })}
           />
         </FieldPanelRow>

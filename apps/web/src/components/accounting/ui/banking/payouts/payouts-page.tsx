@@ -192,7 +192,11 @@ export function PayoutsPage() {
         ]}
       />
 
-      <div className='flex flex-col gap-3 p-4'>
+      {/* `flex-1` so the list area fills the room under the header: it is a flex
+          item of the ScrollArea's `min-h-full flex flex-col` content wrapper, which
+          is what lets the empty state center itself. No `min-h-0` - a long list
+          keeps its content height and the page scrolls as it always did. */}
+      <div className='flex flex-1 flex-col gap-3 p-4'>
         {blockers.length > 0 && <EntryBlockers blockers={blockers} />}
 
         {payoutsQuery.isPending ? (

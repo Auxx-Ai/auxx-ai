@@ -199,7 +199,10 @@ export function JournalLines({ rows, onChange, currencyCode, disabled }: Journal
                 onChange={(code) => patchRow(index, { accountCode: code })}
                 disabled={disabled}
                 placeholder='Account…'
-                triggerProps={{ size: 'sm' }}
+                // The one caller that overrides the transparent default: this is a
+                // grid cell sitting beside bordered `Input`s, so a borderless
+                // trigger reads as a gap in the row rather than a field.
+                triggerProps={{ variant: 'outline', size: 'sm' }}
               />
 
               <Input

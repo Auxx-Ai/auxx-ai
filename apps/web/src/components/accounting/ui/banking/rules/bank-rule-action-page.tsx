@@ -4,7 +4,6 @@
 
 import { FieldType } from '@auxx/database/enums'
 import { BANK_RULE_ACTIONS, type BankRuleAction } from '@auxx/lib/banking/rules/client'
-import type { SelectOption } from '@auxx/types/custom-field'
 import { Button } from '@auxx/ui/components/button'
 import { DialogFooter } from '@auxx/ui/components/dialog'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
@@ -12,6 +11,7 @@ import { Section } from '@auxx/ui/components/section'
 import { Zap } from 'lucide-react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
+import { BankAccountPicker } from '../../bank-account-picker'
 import { GlAccountPicker } from '../../gl-account-picker'
 import { ACTION_OPTIONS } from './bank-rule-options'
 
@@ -32,8 +32,6 @@ interface BankRuleActionPageProps {
   onGlAccountChange: (code: string) => void
   counterpartBankAccountId: string
   onCounterpartChange: (id: string) => void
-  /** The org's bank accounts, for the transfer counterpart. */
-  accountOptions: SelectOption[]
   memo: string
   onMemoChange: (value: string) => void
   canSave: boolean
@@ -54,7 +52,6 @@ export function BankRuleActionPage({
   onGlAccountChange,
   counterpartBankAccountId,
   onCounterpartChange,
-  accountOptions,
   memo,
   onMemoChange,
   canSave,
@@ -94,7 +91,6 @@ export function BankRuleActionPage({
                 value={glAccountCode || null}
                 disabled={isPending}
                 placeholder='Select account…'
-                triggerProps={{ variant: 'transparent', className: 'w-full ps-0 pe-1' }}
                 onChange={(code) => onGlAccountChange(code ?? '')}
               />
             </FieldPanelRow>
@@ -105,14 +101,12 @@ export function BankRuleActionPage({
               title='Counterpart account'
               isRequired
               description='The other one of your accounts this money moved to or from.'>
-              <FieldInputAdapter
-                fieldType={FieldType.SINGLE_SELECT}
-                fieldOptions={{ options: accountOptions }}
-                triggerProps={TRIGGER_PROPS}
-                value={counterpartBankAccountId}
+              <BankAccountPicker
+                value={counterpartBankAccountId || null}
+                onChange={(id) => onCounterpartChange(id ?? '')}
                 placeholder='Select account…'
                 disabled={isPending}
-                onChange={(v) => onCounterpartChange(firstValue(v))}
+                triggerProps={TRIGGER_PROPS}
               />
             </FieldPanelRow>
           )}

@@ -36,8 +36,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { toastError } from '@auxx/ui/components/toast'
-import { Building2, Lock } from 'lucide-react'
+import { Lock } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { EmptyState } from '~/components/global/empty-state'
@@ -264,7 +265,7 @@ export function BankAccountsSettingsPage() {
       </MasterDetailSplit>
 
       <Dialog open={manualOpen} onOpenChange={setManualOpen}>
-        <DialogContent>
+        <DialogContent position='tc'>
           <DialogHeader>
             <DialogTitle>Add a bank account</DialogTitle>
             <DialogDescription>
@@ -340,10 +341,17 @@ export function BankAccountsSettingsPage() {
           </FieldPanel>
 
           <DialogFooter>
-            <Button variant='ghost' onClick={() => setManualOpen(false)}>
-              Cancel
+            <Button
+              type='button'
+              variant='ghost'
+              size='sm'
+              onClick={() => setManualOpen(false)}
+              disabled={create.isPending}>
+              Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
             </Button>
             <Button
+              variant='outline'
+              size='sm'
               loading={create.isPending}
               loadingText='Adding...'
               disabled={!draft.name.trim()}
@@ -355,9 +363,9 @@ export function BankAccountsSettingsPage() {
                   type: draft.type,
                   currency: draft.currency.trim() || null,
                 })
-              }>
-              <Building2 />
-              Add account
+              }
+              data-dialog-submit>
+              Add account <KbdSubmit variant='outline' size='sm' />
             </Button>
           </DialogFooter>
         </DialogContent>

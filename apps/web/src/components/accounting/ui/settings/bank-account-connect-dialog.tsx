@@ -30,6 +30,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Building2, Landmark, ShieldCheck, TriangleAlert } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { getStripePromise } from '~/lib/stripe'
@@ -141,7 +142,7 @@ export function BankAccountConnectDialog({
         if (!next) reset()
         onOpenChange(next)
       }}>
-      <DialogContent>
+      <DialogContent position='tc'>
         <DialogHeader>
           <DialogTitle>{reconnecting ? 'Reconnect this bank' : 'Connect a bank'}</DialogTitle>
           <DialogDescription>
@@ -195,12 +196,24 @@ export function BankAccountConnectDialog({
         </div>
 
         <DialogFooter>
-          <Button variant='ghost' disabled={busy} onClick={() => onOpenChange(false)}>
-            {phase === 'empty' || phase === 'error' ? 'Close' : 'Cancel'}
+          <Button
+            type='button'
+            variant='ghost'
+            size='sm'
+            disabled={busy}
+            onClick={() => onOpenChange(false)}>
+            {phase === 'empty' || phase === 'error' ? 'Close' : 'Cancel'}{' '}
+            <Kbd shortcut='esc' variant='ghost' size='sm' />
           </Button>
-          <Button loading={busy} loadingText='Connecting...' onClick={connect}>
-            <Landmark />
-            {phase === 'error' || phase === 'empty' ? 'Try again' : 'Continue'}
+          <Button
+            variant='outline'
+            size='sm'
+            loading={busy}
+            loadingText='Connecting...'
+            onClick={connect}
+            data-dialog-submit>
+            {phase === 'error' || phase === 'empty' ? 'Try again' : 'Continue'}{' '}
+            <KbdSubmit variant='outline' size='sm' />
           </Button>
         </DialogFooter>
       </DialogContent>

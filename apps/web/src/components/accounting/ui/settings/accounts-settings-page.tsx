@@ -101,8 +101,12 @@ export function AccountingAccountsSettingsPage() {
   })
   const provider = useAccountingProviderStatus()
 
-  const [selectedRole, setSelectedRole] = useState<AccountRole | null>(null)
-  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null)
+  // 🛑 The row selection lives in the URL, like the tab above it. A settings
+  // pane that vanishes on refresh cannot be linked to, and this is the screen
+  // people are sent to ("map 1100 to a QuickBooks account") - one param per tab,
+  // so switching tabs and coming back keeps each side's selection.
+  const [roleParam, setSelectedRole] = useQueryState('role')
+  const [accountParam, setSelectedAccountId] = useQueryState('account')
   // The phantom draft for the Chart tab. The full field set lives inside the
   // draft form instance (keyed by `draftId`); this page tracks only enough to
   // render the list's phantom row and to know whether the selection is a draft.
@@ -115,6 +119,29 @@ export function AccountingAccountsSettingsPage() {
   const accounts = useMemo(() => chart.data ?? [], [chart.data])
 
   const rowsByRole = useMemo(() => new Map(roleRows.map((row) => [row.role, row])), [roleRows])
+
+  /**
+   * The selection, validated against what actually loaded.
+   *
+   * 🛑 A param is only REJECTED once its list has arrived. Validating while the
+   * query is pending would drop the selection on every refresh - the URL is read
+   * before the data is, so the row it names does not exist yet.
+   *
+   * A phantom chart draft is the exception on the account side: its id names no
+   * row in `accounts` and is valid for exactly as long as the draft is mounted.
+   */
+  const selectedRole: AccountRole | null =
+    roleParam && (roleMap.isPending || rowsByRole.has(roleParam as AccountRole))
+      ? (roleParam as AccountRole)
+      : null
+
+  const isDraftSelected =
+    !!chartDraft && (accountParam === chartDraft.draftId || accountParam === chartDraft.recordId)
+  const selectedAccountId: string | null =
+    accountParam &&
+    (chart.isPending || isDraftSelected || accounts.some((account) => account.id === accountParam))
+      ? accountParam
+      : null
 
   /**
    * The account map, as the chart tab consumes it.
@@ -289,7 +316,7 @@ export function AccountingAccountsSettingsPage() {
       await invalidateChart()
       if (selectedAccountId === id) setSelectedAccountId(null)
     },
-    [accounts, confirm, removeAccount, invalidateChart, selectedAccountId]
+    [accounts, confirm, removeAccount, invalidateChart, selectedAccountId, setSelectedAccountId]
   )
 
   // ── The account map writes ──────────────────────────────────────────────

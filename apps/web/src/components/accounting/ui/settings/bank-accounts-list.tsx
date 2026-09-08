@@ -2,7 +2,7 @@
 'use client'
 
 // The left column of Accounting > Settings > Bank accounts (ui-plan.md §2.7):
-// one `TreeRow` per `bank_account`, grouped into a `Section` per institution.
+// one `TreeRow` per `bank_account`, nested under one `TreeRow` per institution.
 //
 // 🛑 Grouped by INSTITUTION, not flat, because a reconnect is per LOGIN and not
 // per account. Two Bank of America accounts under one login share a credential;
@@ -23,12 +23,14 @@ import type { BankAccountRow } from '@auxx/lib/banking/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { InputSearch } from '@auxx/ui/components/input-search'
-import { EmptySection, Section } from '@auxx/ui/components/section'
+import { EmptySection } from '@auxx/ui/components/section'
 import { TREE_SECONDARY_NOTRUNCATE, TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
+import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { cn } from '@auxx/ui/lib/utils'
 import { Building2, CreditCard, Landmark, PlugZap, Plus, RefreshCw, Upload } from 'lucide-react'
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
+import { BankInstitutionIcon } from '~/components/accounting/ui/bank-institution-icon'
 import { asConnectorStatus } from '~/components/data-connectors/ui/connector-status'
 import { ConnectorStatusLine } from '~/components/data-connectors/ui/connector-status-line'
 import { EmptyState } from '~/components/global/empty-state'
@@ -67,8 +69,22 @@ export function BankAccountsList({
   syncingId,
 }: BankAccountsListProps) {
   const [search, setSearch] = useState('')
+  /**
+   * Institutions the reader has COLLAPSED, so the default is open and an
+   * institution that appears later - a new connection, or a group revealed by
+   * clearing the search - is open too. Tracking the open ones instead would
+   * hide every group nobody had touched yet.
+   */
+  const [collapsed, setCollapsed] = useState<string[]>([])
 
   const groups = useMemo(() => groupByInstitution(accounts, search), [accounts, search])
+
+  const toggleInstitution = (institution: string) =>
+    setCollapsed((current) =>
+      current.includes(institution)
+        ? current.filter((value) => value !== institution)
+        : [...current, institution]
+    )
 
   const buttons = (
     <div className='flex items-center gap-2'>
@@ -122,100 +138,124 @@ export function BankAccountsList({
       ) : groups.length === 0 ? (
         <EmptySection icon={<Landmark className='size-5' />} title='No matches' />
       ) : (
-        groups.map((group) => (
-          <Section
-            key={group.institution}
-            title={group.institution}
-            // 🛑 Reconnect belongs on the LOGIN, not on a row. Two accounts at one
-            // bank share a credential, so reconnecting either reconnects both - and
-            // offering the action twice would read as two different actions with no
-            // way to tell that it is one. Rendered only when something in the group
-            // actually needs it, so a healthy login carries no spare button.
-            description={
-              group.accounts.length === 1 ? '1 account' : `${group.accounts.length} accounts`
-            }
-            actions={
-              needsReconnect(group.accounts) ? (
-                <Button
-                  variant='outline'
-                  size='xs'
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    const target = group.accounts.find(needsAccountReconnect) ?? group.accounts[0]
-                    if (target) onReconnect(target.id)
-                  }}>
-                  <PlugZap />
-                  Reconnect
-                </Button>
-              ) : undefined
-            }
-            initialOpen>
-            <div className={cn('flex flex-col gap-0.5', TREE_SECONDARY_NOTRUNCATE)}>
-              {group.accounts.map((account) => (
-                <TreeRow
-                  key={account.id}
-                  icon={
-                    account.type === 'credit' ? (
-                      <CreditCard className='size-4 text-muted-foreground' />
-                    ) : (
-                      <Building2 className='size-4 text-muted-foreground' />
-                    )
-                  }
-                  // ⚠️ No `secondaryFill`. It lets the TITLE keep its natural
-                  // width, which is right for a chart row (`1310 Raw
-                  // Materials`) and wrong here: `Bank of America · Business Adv
-                  // Relationship ···5381` is longer than the whole list column,
-                  // so the badges were pushed clean out of the pane. The title
-                  // truncates and the badges size to content instead - the
-                  // status and the mapping are what the row exists to show, and
-                  // the full name is one click away in the editor.
-                  title={<span className='truncate text-sm'>{rowLabel(account)}</span>}
-                  onToggleOpen={() => onSelect(account.id)}
-                  rowClassName={cn(
-                    'bg-primary-100/50 hover:bg-primary-100',
-                    selectedId === account.id && 'bg-primary-100 ring-1 ring-primary-200'
-                  )}
-                  actions={
-                    account.connectorId ? (
-                      <TreeRowButton
-                        tooltipText={
-                          account.status === 'disconnected'
-                            ? 'Reconnect the bank first'
-                            : 'Sync now'
-                        }
-                        // 🛑 Disabled on a disconnected feed rather than hidden. One
-                        // click on a disconnected connector moves it to `error`, which
-                        // discards the Disconnected banner AND puts it outside every
-                        // repair path - so the server refuses it and the button says so
-                        // before the click (#2051).
-                        disabled={account.status === 'disconnected' || syncingId === account.id}
-                        onClick={(event) => {
-                          event.stopPropagation()
-                          onSync(account.id)
-                        }}>
-                        <RefreshCw className={syncingId === account.id ? 'animate-spin' : ''} />
-                      </TreeRowButton>
-                    ) : undefined
-                  }
-                  secondary={
-                    <span className='flex flex-wrap items-center gap-1.5 text-muted-foreground text-xs'>
-                      <BankAccountStatusChip account={account} />
-                      {account.glAccountCode ? (
-                        <Badge variant='outline' size='xs' className='font-mono'>
-                          {account.glAccountCode}
-                        </Badge>
-                      ) : (
-                        <Badge variant='destructive' size='xs'>
-                          Unmapped
-                        </Badge>
-                      )}
-                    </span>
+        <div className={cn('flex flex-col gap-0.5', TREE_SECONDARY_NOTRUNCATE)}>
+          {groups.map((group) => (
+            // One institution is one parent row with its accounts nested at depth
+            // 1, so the connector line does the grouping. Open unless the reader
+            // collapsed it: an account is what this screen is for, and a closed
+            // group hides the Unmapped badge that is the whole reason the badge
+            // sits on the row rather than in the editor.
+            <TreeRow
+              key={group.institution}
+              expandable
+              isOpen={!collapsed.includes(group.institution)}
+              onToggleOpen={() => toggleInstitution(group.institution)}
+              // The institution's brand mark when the feed proved the name, the
+              // generic bank icon otherwise - which is every manually added
+              // account, deliberately.
+              icon={
+                <BankInstitutionIcon
+                  institution={group.institution === NO_INSTITUTION ? null : group.institution}
+                  connectorId={
+                    group.accounts.find((account) => account.connectorId)?.connectorId ?? null
                   }
                 />
-              ))}
-            </div>
-          </Section>
-        ))
+              }
+              title={<span className='truncate font-medium text-sm'>{group.institution}</span>}
+              secondary={
+                <span className='text-muted-foreground text-xs'>
+                  {group.accounts.length === 1 ? '1 account' : `${group.accounts.length} accounts`}
+                </span>
+              }
+              // 🛑 Reconnect belongs on the LOGIN, not on a row. Two accounts at one
+              // bank share a credential, so reconnecting either reconnects both - and
+              // offering the action twice would read as two different actions with no
+              // way to tell that it is one. Rendered only when something in the group
+              // actually needs it, so a healthy login carries no spare button.
+              actions={
+                needsReconnect(group.accounts) ? (
+                  <Button
+                    variant='outline'
+                    size='xs'
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      const target = group.accounts.find(needsAccountReconnect) ?? group.accounts[0]
+                      if (target) onReconnect(target.id)
+                    }}>
+                    <PlugZap />
+                    Reconnect
+                  </Button>
+                ) : undefined
+              }>
+              <TreeRowList
+                items={group.accounts}
+                getKey={(account: BankAccountRow) => account.id}
+                renderRow={(account: BankAccountRow) => (
+                  <TreeRow
+                    depth={1}
+                    icon={
+                      account.type === 'credit' ? (
+                        <CreditCard className='size-4 text-muted-foreground' />
+                      ) : (
+                        <Building2 className='size-4 text-muted-foreground' />
+                      )
+                    }
+                    // ⚠️ No `secondaryFill`. It lets the TITLE keep its natural
+                    // width, which is right for a chart row (`1310 Raw
+                    // Materials`) and wrong here: `Bank of America · Business Adv
+                    // Relationship ···5381` is longer than the whole list column,
+                    // so the badges were pushed clean out of the pane. The title
+                    // truncates and the badges size to content instead - the
+                    // status and the mapping are what the row exists to show, and
+                    // the full name is one click away in the editor.
+                    title={<span className='truncate text-sm'>{rowLabel(account)}</span>}
+                    onToggleOpen={() => onSelect(account.id)}
+                    rowClassName={cn(
+                      'bg-primary-100/50 hover:bg-primary-100',
+                      selectedId === account.id && 'bg-primary-100 ring-1 ring-primary-200'
+                    )}
+                    actions={
+                      account.connectorId ? (
+                        <TreeRowButton
+                          tooltipText={
+                            account.status === 'disconnected'
+                              ? 'Reconnect the bank first'
+                              : 'Sync now'
+                          }
+                          // 🛑 Disabled on a disconnected feed rather than hidden. One
+                          // click on a disconnected connector moves it to `error`, which
+                          // discards the Disconnected banner AND puts it outside every
+                          // repair path - so the server refuses it and the button says so
+                          // before the click (#2051).
+                          disabled={account.status === 'disconnected' || syncingId === account.id}
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            onSync(account.id)
+                          }}>
+                          <RefreshCw className={syncingId === account.id ? 'animate-spin' : ''} />
+                        </TreeRowButton>
+                      ) : undefined
+                    }
+                    secondary={
+                      <span className='flex flex-wrap items-center gap-1.5 text-muted-foreground text-xs'>
+                        <BankAccountStatusChip account={account} />
+                        {account.glAccountCode ? (
+                          <Badge variant='outline' size='xs' className='font-mono'>
+                            {account.glAccountCode}
+                          </Badge>
+                        ) : (
+                          <Badge variant='destructive' size='xs'>
+                            Unmapped
+                          </Badge>
+                        )}
+                      </span>
+                    }
+                  />
+                )}
+              />
+            </TreeRow>
+          ))}
+        </div>
       )}
 
       {accounts.length > 0 && (

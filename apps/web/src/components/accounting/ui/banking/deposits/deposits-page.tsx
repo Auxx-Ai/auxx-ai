@@ -59,7 +59,7 @@ import { RecordsView } from '~/components/records/records-view'
 import { BaseType } from '~/components/workflow/types'
 import { useRequireCapability } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
-import { GlAccountPicker } from '../../gl-account-picker'
+import { BankAccountPicker, bankAccountLabel, useBankAccounts } from '../../bank-account-picker'
 import { EntryBlockers, type LedgerBlocker } from '../../ledger/entry-blockers'
 import { EMPTY_CELL, formatMinor } from '../../ledger/format'
 
@@ -180,7 +180,7 @@ export function DepositsPage() {
   })
 
   const [selectedIds, setSelectedIds] = useState<string[]>([])
-  const [bankAccountCode, setBankAccountCode] = useState<string | null>(null)
+  const [bankAccountId, setBankAccountId] = useState<string | null>(null)
   const [depositDate, setDepositDate] = useState(today)
   const [reference, setReference] = useState('')
   const [blockers, setBlockers] = useState<LedgerBlocker[]>([])
@@ -196,6 +196,53 @@ export function DepositsPage() {
     () => selected.reduce((sum, row) => sum + row.amountMinor, 0),
     [selected]
   )
+
+  // ── The account it is banked INTO ─────────────────────────────────────────
+  //
+  // 🛑 The operator picks a BANK ACCOUNT and the ledger code is read off that
+  // account's own mapping, never chosen from the chart. `createBankDeposit`
+  // debits whatever code it is handed, and the bank feed posts every
+  // transaction on this account against `bank_account.glAccountCode` - so a
+  // free choice from the chart puts the deposit and the statement line it
+  // exists to match into two different accounts. Nothing catches that: match
+  // candidates are found by amount and date, not by account.
+  const { accounts: bankAccounts, isLoading: bankAccountsLoading } = useBankAccounts()
+  const bankAccount = useMemo(
+    () => bankAccounts.find((account) => account.id === bankAccountId) ?? null,
+    [bankAccounts, bankAccountId]
+  )
+  const bankAccountCode = bankAccount?.glAccountCode?.trim() || null
+
+  /**
+   * What is missing before a deposit can name an account at all.
+   *
+   * Kept apart from the posting `blockers` below because these are true before
+   * anything is attempted and are cleared in settings rather than by retrying,
+   * and because a post refusal must not overwrite the sentence explaining why
+   * the field above it is empty.
+   */
+  const setupBlockers = useMemo<LedgerBlocker[]>(() => {
+    if (bankAccountsLoading) return []
+    if (bankAccounts.length === 0) {
+      return [
+        {
+          status: 'no_bank_accounts',
+          error: 'This organization has no bank accounts, so there is nothing to bank into yet.',
+        },
+      ]
+    }
+    // Only once one is CHOSEN. Listing every unmapped account up front would
+    // shout about accounts this deposit was never going to touch.
+    if (bankAccount && !bankAccountCode) {
+      return [
+        {
+          status: 'bank_account_unmapped',
+          error: `${bankAccountLabel(bankAccount)} is not mapped to an account in the chart of accounts.`,
+        },
+      ]
+    }
+    return []
+  }, [bankAccountsLoading, bankAccounts, bankAccount, bankAccountCode])
 
   const createDeposit = api.money.bankDeposit.create.useMutation({
     onSuccess: async (result) => {
@@ -286,8 +333,10 @@ export function DepositsPage() {
                   selectedCount={selected.length}
                   selectedTotal={selectedTotal}
                   selected={selected}
-                  bankAccountCode={bankAccountCode}
-                  onBankAccountChange={setBankAccountCode}
+                  bankAccountId={bankAccountId}
+                  onBankAccountChange={setBankAccountId}
+                  hasBankAccounts={bankAccounts.length > 0}
+                  setupBlockers={setupBlockers}
                   depositDate={depositDate}
                   onDepositDateChange={setDepositDate}
                   reference={reference}
@@ -457,8 +506,12 @@ function DepositPane(props: {
     method: string | null
     amountMinor: number
   }>
-  bankAccountCode: string | null
-  onBankAccountChange: (code: string | null) => void
+  bankAccountId: string | null
+  onBankAccountChange: (id: string | null) => void
+  /** False disables the picker: opening it onto nothing is not an explanation. */
+  hasBankAccounts: boolean
+  /** Why no account can be named yet, rendered against the field it is about. */
+  setupBlockers: LedgerBlocker[]
   depositDate: string
   onDepositDateChange: (date: string) => void
   reference: string
@@ -473,8 +526,10 @@ function DepositPane(props: {
     selectedCount,
     selectedTotal,
     selected,
-    bankAccountCode,
+    bankAccountId,
     onBankAccountChange,
+    hasBankAccounts,
+    setupBlockers,
     depositDate,
     onDepositDateChange,
     reference,
@@ -489,16 +544,23 @@ function DepositPane(props: {
   return (
     <div className='flex flex-col gap-4 p-4'>
       <FieldPanel>
-        <FieldPanelRow title='Bank account' type={BaseType.STRING} showIcon isRequired>
-          {/* Filtered to assets: a deposit debits `cash`, and offering a
-              liability or a revenue account here would produce an entry that
-              balances and means nothing. */}
-          <GlAccountPicker
-            value={bankAccountCode}
+        <FieldPanelRow
+          title='Bank account'
+          type={BaseType.STRING}
+          showIcon
+          isRequired
+          description='Where this run of payments was actually banked. Its ledger account comes from the account itself, so the deposit lands where the feed for it posts.'>
+          {/* 🛑 The org's BANK ACCOUNTS, not the chart of accounts. The field
+              always said "Bank account" but used to list every asset code -
+              A/R, inventory, and 1050 Undeposited Funds itself, which posts
+              `Dr 1050 / Cr 1050`: balanced, clears the payments, moves nothing.
+              This is the same picker the feed, the rules and the transfer leg
+              name an account with. */}
+          <BankAccountPicker
+            value={bankAccountId}
             onChange={onBankAccountChange}
-            filterTypes={['asset']}
+            disabled={!hasBankAccounts}
             placeholder='Select bank account…'
-            triggerProps={{ variant: 'transparent', className: 'w-full ps-0 pe-1' }}
           />
         </FieldPanelRow>
         <FieldPanelRow
@@ -530,6 +592,11 @@ function DepositPane(props: {
           />
         </FieldPanelRow>
       </FieldPanel>
+
+      {/* Directly under the panel, not beside the Record button: this explains
+          why the field above it cannot be filled, and it is the same card a
+          refusal gets so the two never read as different classes of problem. */}
+      <EntryBlockers blockers={setupBlockers} />
 
       <div className='flex flex-col rounded-lg border'>
         <div className='flex items-center justify-between px-3 py-2 text-muted-foreground text-xs uppercase tracking-wide'>

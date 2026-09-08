@@ -2,10 +2,8 @@
 
 'use client'
 
-import type { BankAccountRow } from '@auxx/lib/banking/client'
 import { REVIEW_STATUS_LABELS, type ReviewQueueState } from '@auxx/lib/banking/review/client'
 import { Button } from '@auxx/ui/components/button'
-import { Combobox } from '@auxx/ui/components/combobox'
 import { type DateRange, DateRangePicker } from '@auxx/ui/components/date-range-picker'
 import { Input } from '@auxx/ui/components/input'
 import { InputSearch } from '@auxx/ui/components/input-search'
@@ -14,6 +12,7 @@ import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { Separator } from '@auxx/ui/components/separator'
 import { format } from 'date-fns'
 import { CircleX } from 'lucide-react'
+import { BankAccountPicker } from '~/components/accounting/ui/bank-account-picker'
 
 /** Every filter the queue narrows on. All of them run in SQL. */
 export interface ReviewFilters {
@@ -47,13 +46,9 @@ const STATES: { value: ReviewQueueState; label: string }[] = [
   { value: 'all', label: 'All' },
 ]
 
-const ALL_ACCOUNTS = '__all__'
-
 interface ReviewToolbarProps {
   filters: ReviewFilters
   onChange: (next: ReviewFilters) => void
-  accounts: BankAccountRow[]
-  accountsLoading: boolean
 }
 
 /**
@@ -88,12 +83,7 @@ const asDate = (day: string) => new Date(`${day}T00:00:00`)
  * that crosses the wire is integer minor units; this is the one boundary where
  * a person's `12.50` becomes `1250`, and it is deliberately not two conventions.
  */
-export function ReviewToolbar({
-  filters,
-  onChange,
-  accounts,
-  accountsLoading,
-}: ReviewToolbarProps) {
+export function ReviewToolbar({ filters, onChange }: ReviewToolbarProps) {
   const set = <K extends keyof ReviewFilters>(key: K, value: ReviewFilters[K]) =>
     onChange({ ...filters, [key]: value })
 
@@ -127,23 +117,15 @@ export function ReviewToolbar({
     <div className='sticky top-0 z-10 shrink-0 backdrop-blur-sm'>
       <ListToolbar sticky={false}>
         <ListToolbarGroup className='shrink-0'>
-          <Combobox
-            options={[
-              { value: ALL_ACCOUNTS, label: 'All accounts' },
-              ...accounts.map((account) => ({
-                value: account.id,
-                label: [account.institution, account.name, account.last4 && `···${account.last4}`]
-                  .filter(Boolean)
-                  .join(' · '),
-              })),
-            ]}
-            value={filters.bankAccountId ?? ALL_ACCOUNTS}
-            onChangeValue={(value) => set('bankAccountId', value === ALL_ACCOUNTS ? null : value)}
-            placeholder='Account'
-            emptyText='No bank accounts yet'
-            loading={accountsLoading}
-            size='sm'
-            variant='ghost'
+          {/* The shared picker, so this filter groups by institution like every
+              other bank-account list in the app. `allLabel` is what a filter
+              needs and a form field does not: "no account" is a real choice
+              here, not an empty value. */}
+          <BankAccountPicker
+            value={filters.bankAccountId}
+            onChange={(id) => set('bankAccountId', id)}
+            allLabel='All accounts'
+            triggerProps={{ variant: 'ghost', size: 'sm', className: 'w-auto ps-2 pe-1' }}
           />
         </ListToolbarGroup>
 
