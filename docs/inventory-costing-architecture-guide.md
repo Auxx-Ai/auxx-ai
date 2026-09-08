@@ -1177,7 +1177,7 @@ What landed on top of §9.6, and the rules each piece keeps:
   RELATIONSHIP value handed to `UnifiedCrudHandler` must be a `defId:instanceId` record id, and
   a bare instance id fails with a logged warning only.
 
-### 9.11 The two holes wave 2 left in the receivable (2026-09-04, plans/accounting/tasks/08 and /07)
+### 9.11 The two holes wave 2 left in the receivable (2026-09-04, plans/accounting/tasks/done/08 and /07)
 
 Both were invisible in a trial balance, because every entry involved balanced on its own.
 
@@ -1252,6 +1252,63 @@ Two consequences worth knowing:
 `deleteManualPayment`, whose `reversePaymentPostings` reverses the reclass **before** the
 receipt - the opposite order they were made. If that guard is ever relaxed,
 `reverseInvoiceIssuance` is the function that has to grow a second read.
+
+### 9.12 The ledger and the export are two different questions (2026-09-08, #2065)
+
+`GlPosting.status` used to answer both, and when they disagreed the ledger lost.
+
+The poster commits the claim and its lines, then calls the provider - the network
+call is deliberately outside the transaction, because holding the claim's index
+tuple for an HTTP round trip is how a concurrent loser becomes a timeout instead
+of an `already_posted`. When the provider refused, the row was stamped `failed`,
+and **every statement counts `['posted','reversed']`**. So an unmapped account in
+the EXPORT target removed a real entry from the ORIGINAL, which is the exact
+inversion of decision `P1`.
+
+Nothing detected it, because a failed entry's two sides still tie. Both halves
+left together, so the books balanced with less money in them.
+
+```
+status        posted | reversed                            what the LEDGER did
+exportStatus  not_required | pending | exported | failed   what the EXPORT did
+```
+
+🛑 **`status` is stamped in the CLAIM transaction**, alongside the lines, and
+`postedAt` with it. Every ledger-side question is settled before the claim - the
+period lock, the roles, the balance - and a pre-claim refusal writes no row at
+all, so there is no moment at which a row legitimately exists un-posted. That is
+also why `pending` and `failed` were retired from the enum rather than kept: they
+are states nothing can produce.
+
+Four rules fall out of this and are worth not relitigating:
+
+- **A caller asking "did the ledger take it" reads `status`, never
+  `exportStatus`.** `postEntry` returns `posted` with `exportStatus: 'failed'` on
+  a refusal, which is why every `ACCEPTED_POST_STATUSES` set in `money/` and
+  `banking/` was already correct and none of them changed. Adding an
+  `exportStatus` check to one of those call sites reintroduces the defect.
+- **A reversal's original flips to `reversed` inside the claim transaction**, not
+  when the reversal's export succeeds. The reversal is posted the moment that
+  transaction commits, so an original left `posted` beside it is double-counted
+  by every report until a push that may never succeed says otherwise.
+- **`retryExport` replays from `GlPostingLine`, never by re-resolving roles.**
+  Those rows froze `accountCode` at post time; re-resolving would export an entry
+  under a different mapping than it was booked under, and the two registers would
+  disagree with nothing able to detect it. It reuses the row's own `requestId`,
+  which is the only key a provider's idempotency contract fires on.
+- **`bank_deposit`'s rollback now covers only PRE-CLAIM refusals**, which write no
+  row. It was the one path that undid a good document because a third party
+  declined a copy of it.
+
+⚠️ **`packages/database/src/enums.ts` says it is generated and for these enums it
+is not.** `scripts/generate-client-enums.ts` reads only
+`src/db/schema/_shared.ts`, and every `GlPosting` enum lives in
+`src/db/schema/gl-posting.ts`, so running the generator DELETES those entries
+rather than refreshing them. They are maintained by hand, and
+`src/tests/gl-posting-schema.test.ts` is the only thing that notices when
+somebody forgets. That test had been red since wave 0 for an unrelated list,
+because `packages/database` has no `typecheck` script and its suite is not
+reached by a `packages/lib` run.
 
 ## 10. Write Lanes & the Silent Ledger Write
 

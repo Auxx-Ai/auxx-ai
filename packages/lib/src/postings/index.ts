@@ -370,6 +370,7 @@ export {
   type ClosePeriod,
   type GlPostingLineInput,
   NON_FAILURE_REFUSALS,
+  POSTING_STATUSES,
   POSTING_TYPES,
   type PostEntryInput,
   type PostEntryResult,

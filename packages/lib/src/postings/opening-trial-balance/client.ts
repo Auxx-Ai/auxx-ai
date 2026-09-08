@@ -9,7 +9,7 @@
 
 import { GL_ACCOUNT_TYPES, type GlAccountTypeValue } from '../default-chart'
 import type { JournalEntryLine, JournalEntryRecord } from '../journal-entries/client'
-import type { ChartAccountRow } from '../types'
+import type { ChartAccountRow, PostingStatus } from '../types'
 
 /**
  * The setting key the opening trial balance's FREEZE is asserted against.
@@ -58,7 +58,7 @@ export interface OpeningTrialBalancePosting {
   id: string
   docNumber: string
   txnDate: string
-  status: 'pending' | 'posted' | 'failed' | 'reversed'
+  status: PostingStatus
   totalMinor: number
 }
 

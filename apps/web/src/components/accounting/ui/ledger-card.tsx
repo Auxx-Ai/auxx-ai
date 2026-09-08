@@ -15,7 +15,12 @@
 // Reads `ledger.listPostingsForSource` (slot 1A) for the postings whose lines
 // name this record as their source.
 
-import type { PostingDetail, PostingType } from '@auxx/lib/postings/client'
+import type {
+  PostingDetail,
+  PostingExportStatus,
+  PostingStatus,
+  PostingType,
+} from '@auxx/lib/postings/client'
 import { Badge, type Variant } from '@auxx/ui/components/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@auxx/ui/components/dialog'
 import { Section } from '@auxx/ui/components/section'
@@ -38,7 +43,9 @@ export interface SourcePosting {
   postingType: PostingType
   txnDate: string
   totalMinor: number
-  status: 'pending' | 'posted' | 'failed' | 'reversed'
+  status: PostingStatus
+  exportStatus: PostingExportStatus
+  failureReason: string | null
 }
 
 export interface LedgerCardProps extends DrawerTabProps {
@@ -51,18 +58,33 @@ export interface LedgerCardProps extends DrawerTabProps {
   sourceType: string
 }
 
-const STATUS_VARIANT: Record<SourcePosting['status'], Variant> = {
+const STATUS_VARIANT: Record<PostingStatus, Variant> = {
   posted: 'green',
-  pending: 'outline',
-  failed: 'destructive',
   reversed: 'amber',
 }
 
-const STATUS_LABEL: Record<SourcePosting['status'], string> = {
+const STATUS_LABEL: Record<PostingStatus, string> = {
   posted: 'Posted',
-  pending: 'In flight',
-  failed: 'Failed',
   reversed: 'Reversed',
+}
+
+/**
+ * The EXPORT badge, rendered BESIDE the status and never instead of it.
+ *
+ * 🛑 Both badges are needed and neither substitutes for the other. Before the
+ * export split a refused push flipped `status` to `failed`, so one badge could
+ * carry both facts - at the cost of taking the entry out of the books, which is
+ * the defect that split them (plans/accounting/export-state-split.md). With
+ * `status` now always `Posted` here, a card that showed only `status` would
+ * render an entry QuickBooks refused as straightforwardly fine.
+ *
+ * `exported` and `not_required` deliberately render NOTHING. A badge on the
+ * ordinary case is noise, and `not_required` (nothing connected) is a supported
+ * configuration under decision P1, not a state to nag about.
+ */
+const EXPORT_BADGE: Partial<Record<PostingExportStatus, { label: string; variant: Variant }>> = {
+  failed: { label: 'Export refused', variant: 'amber' },
+  pending: { label: 'Export pending', variant: 'outline' },
 }
 
 /** `'manual_journal'` reads `'Manual journal'`. No hardcoded map: the posting-type union grows across waves 1 and 2. */
@@ -119,6 +141,14 @@ export function LedgerCard({ entityInstanceId, sourceType }: LedgerCardProps) {
                 <Badge variant={STATUS_VARIANT[posting.status]} size='xs'>
                   {STATUS_LABEL[posting.status]}
                 </Badge>
+                {EXPORT_BADGE[posting.exportStatus] ? (
+                  <Badge
+                    variant={EXPORT_BADGE[posting.exportStatus]?.variant}
+                    size='xs'
+                    title={posting.failureReason ?? undefined}>
+                    {EXPORT_BADGE[posting.exportStatus]?.label}
+                  </Badge>
+                ) : null}
               </span>
             }
             onToggleOpen={() => setOpenPostingId(posting.id)}

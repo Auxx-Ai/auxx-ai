@@ -233,9 +233,7 @@ export function PostingDrawer({
 }
 
 const STATUS_LABEL: Record<PostingDetail['status'], string> = {
-  pending: 'In flight',
   posted: 'Posted',
-  failed: 'Failed',
   reversed: 'Reversed',
 }
 
@@ -249,9 +247,15 @@ const STATUS_LABEL: Record<PostingDetail['status'], string> = {
  * keeps `not_connected` and `disabled` apart, which is the distinction decision
  * `P1` cares about: one is a missing integration, the other is a setting
  * somebody can flip, and merging them makes the remedy unguessable.
+ *
+ * 🛑 Reads `exportStatus`, NOT `status`. It used to branch on
+ * `status === 'failed'`, which is now unreachable - `status` says what the
+ * LEDGER did and a provider can no longer move it. Left as it was, this panel
+ * would report every refused export as a clean `posted`
+ * (plans/accounting/export-state-split.md).
  */
 function providerResultFromDetail(detail: {
-  status: string
+  exportStatus: string
   docNumber: string
   providerId: string | null
   providerEntryId: string | null
@@ -260,11 +264,14 @@ function providerResultFromDetail(detail: {
   const providerId = detail.providerId ?? undefined
   const base = { docNumber: detail.docNumber, providerId }
 
-  if (detail.status === 'failed') {
+  if (detail.exportStatus === 'failed') {
     return { ...base, status: 'error', error: detail.failureReason ?? undefined }
   }
   if (detail.providerEntryId) {
     return { ...base, status: 'posted', providerEntryId: detail.providerEntryId }
+  }
+  if (detail.exportStatus === 'not_required' && (!providerId || providerId === 'none')) {
+    return { ...base, status: 'not_connected' }
   }
   if (!providerId || providerId === 'none') {
     return { ...base, status: 'not_connected' }
