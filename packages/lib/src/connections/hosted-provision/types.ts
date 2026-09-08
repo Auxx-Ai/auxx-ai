@@ -64,8 +64,40 @@ export type HostedProvisionCompleteCtx = {
   payload?: Record<string, unknown>
 }
 
+/**
+ * The `Credential.metadata` key that {@link HostedProvisionCompleteResult.providerAccountId}
+ * is persisted under.
+ *
+ * 🛑 **Exported because four independent readers key on it and `Credential.metadata`
+ * is `Record<string, unknown>`, so nothing type-checks the link between them.** The
+ * failure is silent in both directions: the connector's `resolveAccountId` throws a
+ * reconnect message at the user, the bank webhook resolves to no connector and
+ * no-ops, and the billing reaper's `isNotNull(...)` filter drops every candidate -
+ * reporting zero accounts to release while every one of them keeps billing.
+ *
+ * Use {@link readProviderAccountId} to read it from a decoded row, and this constant
+ * in SQL (`metadata->>${'$'}{PROVIDER_ACCOUNT_ID_METADATA_KEY}`). Do not retype the string.
+ */
+export const PROVIDER_ACCOUNT_ID_METADATA_KEY = 'providerAccountId'
+
+/**
+ * Read the durable provider-side handle out of a `Credential.metadata` blob.
+ *
+ * Returns `null` for a missing key, a non-string value and the empty string, so a
+ * caller never has to distinguish "no account" from "account is `''`".
+ */
+export function readProviderAccountId(metadata: unknown): string | null {
+  if (!metadata || typeof metadata !== 'object') return null
+  const value = (metadata as Record<string, unknown>)[PROVIDER_ACCOUNT_ID_METADATA_KEY]
+  return typeof value === 'string' && value.length > 0 ? value : null
+}
+
 export type HostedProvisionCompleteResult = {
-  /** The durable provider-side handle (e.g. a Stripe `acct_…` or `fca_…`). */
+  /**
+   * The durable provider-side handle (e.g. a Stripe `acct_…` or `fca_…`).
+   *
+   * Persisted to `Credential.metadata` under {@link PROVIDER_ACCOUNT_ID_METADATA_KEY}.
+   */
   providerAccountId: string
   /** Non-secret values persisted as Credential connection variables (plaintext metadata). */
   connectionVariables: Record<string, string>

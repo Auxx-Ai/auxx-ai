@@ -13,6 +13,7 @@ import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { eq } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
+import { readProviderAccountId as readAccountIdFromMetadata } from '../../connections/hosted-provision/types'
 import { getProviderByKey } from '../../connections/providers'
 import { enqueueConnectorSync } from '../../data-connectors/data-connector-queue'
 import { getConnectorReadiness, READINESS_REASON } from '../../data-connectors/readiness'
@@ -239,6 +240,5 @@ async function readProviderAccountId(
 ): Promise<string | null> {
   const credential = await getCredential(credentialId, organizationId)
   if (credential.isErr()) return null
-  const id = (credential.value.metadata as Record<string, unknown> | undefined)?.providerAccountId
-  return typeof id === 'string' && id.length > 0 ? id : null
+  return readAccountIdFromMetadata(credential.value.metadata)
 }

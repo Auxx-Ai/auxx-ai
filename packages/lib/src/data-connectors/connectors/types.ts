@@ -11,6 +11,7 @@ export type {
   ConnectorMapping,
   ConnectorOwnedMappingField,
   ConnectorRecord,
+  ConnectorReleaseContext,
   ConnectorStreamDecl,
   ConnectorStreamState,
   ConnectorYield,

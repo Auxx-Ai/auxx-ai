@@ -26,6 +26,7 @@ import { type Database, database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, sql } from 'drizzle-orm'
 import { getOrgCache } from '../../cache'
+import { PROVIDER_ACCOUNT_ID_METADATA_KEY } from '../../connections/hosted-provision/types'
 import { STRIPE_FC_CONNECTOR_TYPE } from '../../data-connectors/connectors/stripe-financial-connections'
 import { enqueueConnectorSync } from '../../data-connectors/data-connector-queue'
 import { isSuspendedConnectorStatus } from '../../data-connectors/data-connector-scheduler'
@@ -99,7 +100,7 @@ export async function resolveFeedConnectorByAccountId(
         eq(schema.Credential.kind, 'connection'),
         eq(schema.Credential.type, FC_PROVIDER_KEY),
         eq(schema.DataConnector.type, STRIPE_FC_CONNECTOR_TYPE),
-        sql`${schema.Credential.metadata}->>'providerAccountId' = ${providerAccountId}`
+        sql`${schema.Credential.metadata}->>${PROVIDER_ACCOUNT_ID_METADATA_KEY} = ${providerAccountId}`
       )
     )
     .limit(1)

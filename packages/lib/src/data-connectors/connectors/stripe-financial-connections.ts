@@ -26,11 +26,15 @@
 
 import { createScopedLogger } from '@auxx/logger'
 import { normalizeMatchKey } from '../../banking/feed/match-key'
+import { findBankFeedAccountForConnector, reapBankFeedAccount } from '../../banking/feed/reaper'
+import { readProviderAccountId } from '../../connections/hosted-provision/types'
 import { getStripeConnectClient } from '../../money/payments/connect-client'
 import { periodKeyForDate } from '../../postings/periods'
 import type { SyncCursor } from '../../sync-core/contracts'
+import { STRIPE_FC_CONNECTOR_TYPE } from './stripe-financial-connections-type'
 import type {
   ConnectorFetchArgs,
+  ConnectorReleaseContext,
   ConnectorYield,
   DataConnectorDefinition,
   FetchResult,
@@ -40,7 +44,7 @@ import { ConnectorRateLimitError } from './types'
 const logger = createScopedLogger('data-connector-stripe-fc')
 
 /** The connector `type` string. One connector row is ONE Financial Connections account. */
-export const STRIPE_FC_CONNECTOR_TYPE = 'stripe-financial-connections'
+export { STRIPE_FC_CONNECTOR_TYPE } from './stripe-financial-connections-type'
 
 /** The account stream: one row, the `bank_account` this connector feeds. */
 export const FC_ACCOUNTS_STREAM = 'accounts'
@@ -309,9 +313,8 @@ export function toAccountFields(
 
 /** Read the `fca_...` id: the credential is authoritative, config is the fallback. */
 function resolveAccountId(args: ConnectorFetchArgs): string {
-  const fromCredential = (args.credential?.metadata as { providerAccountId?: unknown } | undefined)
-    ?.providerAccountId
-  if (typeof fromCredential === 'string' && fromCredential.length > 0) return fromCredential
+  const fromCredential = readProviderAccountId(args.credential?.metadata)
+  if (fromCredential) return fromCredential
   const filters = readFilters(args)
   if (filters.accountId) return filters.accountId
   throw new Error(
@@ -353,6 +356,37 @@ export function createStripeFinancialConnectionsConnector(
   return {
     type: STRIPE_FC_CONNECTOR_TYPE,
     schemaVersion: 1,
+
+    /**
+     * 🛑 Stripe bills 30c per institution per account holder per month, and the ONLY
+     * thing that stops it is disconnecting the account at Stripe. Deleting the
+     * connector row does not, and the teardown takes the `fca_...` handle with it, so
+     * nothing can find the account afterwards to clean up - the nightly reaper sweeps
+     * `DataConnector` rows and this door destroys the row.
+     *
+     * Declared here rather than called by name from `deleteConnector`, so the generic
+     * delete path never learns that a bank feed exists (decision B13). Never throws:
+     * a failed release must not block a delete the user asked for.
+     */
+    async releaseOnDelete({ db, organizationId, connectorId }: ConnectorReleaseContext) {
+      try {
+        const account = await findBankFeedAccountForConnector(db, organizationId, connectorId)
+        if (!account) return
+        const released = await reapBankFeedAccount(db, account)
+        logger.info(
+          released
+            ? 'Released a Financial Connections account before connector delete'
+            : 'Stripe would not release a Financial Connections account - deleting anyway',
+          { organizationId, connectorId }
+        )
+      } catch (error) {
+        logger.error('Failed to release a Financial Connections account - deleting anyway', {
+          organizationId,
+          connectorId,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+    },
     // The request is baked into this code - there is no HTTP request to author, so the
     // detail view must not offer the generic-REST builder over it.
     requestModel: 'fixed',

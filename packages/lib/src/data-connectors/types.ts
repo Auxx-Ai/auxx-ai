@@ -13,6 +13,7 @@ import type {
   CatalogConnectorMapping,
   CatalogConnectorOwnedMappingField,
   CatalogConnectorStream,
+  Database,
 } from '@auxx/database'
 import type { FieldType } from '@auxx/database/types'
 import type { ResourceFieldId } from '@auxx/types/field'
@@ -475,6 +476,32 @@ export interface DataConnectorDefinition {
   asyncExport?: AsyncExportCapability
   /** Map a provider delete event onto a (streamKey, externalId). */
   resolveDelete?(event: unknown): { streamKey: string; externalId: string } | null
+  /**
+   * Release a provider-side resource that would OUTLIVE the connector row.
+   *
+   * 🛑 For a provider that keeps billing after we forget the connection. Stripe
+   * Financial Connections charges per linked account per month and the only thing
+   * that stops it is disconnecting the account at the provider - so a connector
+   * deleted without this call leaks money forever, and the row that carried the
+   * provider handle is gone, so nothing can find it afterwards to clean up.
+   *
+   * Called by `deleteConnector` BEFORE the teardown begins, and by the
+   * organization-delete path before its transaction. Declared here rather than
+   * called by name from the delete path so the generic layer never learns which
+   * feature a connector belongs to (decision B13).
+   *
+   * ⚠️ **Must not throw.** The caller treats a failure as non-fatal: the user asked
+   * for the connector to go, and a leaked charge is recoverable by a human reading
+   * an invoice while a connector that cannot be removed is not. Log and return.
+   */
+  releaseOnDelete?(ctx: ConnectorReleaseContext): Promise<void>
+}
+
+/** What {@link DataConnectorDefinition.releaseOnDelete} is given. */
+export interface ConnectorReleaseContext {
+  db: Database
+  organizationId: string
+  connectorId: string
 }
 
 // ── Policy types — identity / merge / link (02) ───────────────────────────────

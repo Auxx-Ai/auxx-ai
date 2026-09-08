@@ -21,9 +21,6 @@ import { getFieldDefinitionId, isAppFieldRef, toResourceFieldId } from '@auxx/ty
 import { generateId } from '@auxx/utils'
 import { and, asc, eq, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
-// The LEAF, not the `banking` barrel - the barrel pulls the whole banking read/write
-// surface (and the org cache behind it) in for two functions.
-import { findBankFeedAccountForConnector, reapBankFeedAccount } from '../banking/feed/reaper'
 import { getCachedCustomFields, getCachedEntityDefId } from '../cache'
 import { onCacheEvent } from '../cache/invalidate'
 import type { ConditionGroup } from '../conditions/types'
@@ -44,6 +41,7 @@ import {
   storedRootPath,
 } from './catalog-shape'
 import { readCellSyncState } from './cell-sync-read'
+import { connectorFor } from './connectors/registry'
 import { enqueueConnectorTeardown } from './data-connector-queue'
 import { removeConnectorScheduler, syncConnectorScheduler } from './data-connector-scheduler'
 import {
@@ -1154,47 +1152,36 @@ export async function reconnectConnectorsForInstallation(
 export type DeleteSyncedDataBehavior = 'keep' | 'archive' | 'delete'
 
 /**
- * Release a Stripe Financial Connections account before its connector is torn down.
+ * Give the connector a chance to release a provider-side resource that would
+ * outlive its row.
  *
- * 🛑 Stripe bills 30c per institution per account holder per month and the ONLY thing
- * that stops it is calling disconnect on the account. Deleting the connector row does
- * not, and once the teardown has run the `providerAccountId` is gone with it - so the
- * nightly reaper (`banking/feed/reaper.ts`) can never clean up after this door. That is
- * why the call goes here, ahead of the `deleting` mark and ahead of the `keep`
- * short-circuit, rather than anywhere in the teardown chain.
+ * 🛑 **The generic layer must not name the feature.** An earlier version of this
+ * called into `banking/feed/reaper` directly, which put a backwards edge from the
+ * connector engine into a feature built on top of it and made the pair a cycle.
+ * The engine already had the right shape for this: `releaseOnDelete` is a declared
+ * capability on {@link DataConnectorDefinition}, resolved through `connectorFor`
+ * the same way `asyncExport` and `resolveDelete` are (decision B13).
  *
- * No-op for every connector type but Financial Connections.
- *
- * ⚠️ Never throws. A release that fails must not block the delete: the user asked for
- * the connector to go, a leaked 30c is recoverable by a human reading an invoice, and a
- * connector that cannot be removed is not. The nightly sweep is not a fallback here
- * (the row is on its way out), so the log line is the only trace - which is exactly why
- * it is logged at error.
+ * ⚠️ Never throws, on two counts: resolving the definition can throw for a type
+ * that is no longer registered (an app uninstalled out from under its connector),
+ * and the capability itself is contractually best-effort. A connector the user
+ * asked to remove must still go.
  */
-async function releaseBankFeedAccount(
+async function releaseAtProvider(
   db: Database,
   organizationId: string,
-  connectorId: string
+  connectorId: string,
+  type: string
 ): Promise<void> {
   try {
-    const account = await findBankFeedAccountForConnector(db, organizationId, connectorId)
-    if (!account) return
-    const released = await reapBankFeedAccount(db, account)
-    if (released) {
-      logger.info('Released a Financial Connections account before connector delete', {
-        organizationId,
-        connectorId,
-      })
-    } else {
-      logger.warn('Stripe would not release a Financial Connections account - deleting anyway', {
-        organizationId,
-        connectorId,
-      })
-    }
+    const definition = connectorFor(type)
+    if (!definition.releaseOnDelete) return
+    await definition.releaseOnDelete({ db, organizationId, connectorId })
   } catch (error) {
-    logger.error('Failed to release a Financial Connections account - deleting anyway', {
+    logger.error('Provider-side release failed before connector delete - deleting anyway', {
       organizationId,
       connectorId,
+      type,
       error: error instanceof Error ? error.message : String(error),
     })
   }
@@ -1229,9 +1216,12 @@ export async function deleteConnector(
   id: string,
   behavior: DeleteSyncedDataBehavior = 'keep'
 ): Promise<{ success: boolean }> {
-  // Existence guard (throws NotFound if missing) — no longer need the row itself.
-  await loadConnectorRow(db, organizationId, id)
-  await releaseBankFeedAccount(db, organizationId, id)
+  // Existence guard (throws NotFound if missing). The row's `type` is what routes
+  // the provider-side release below.
+  const row = await loadConnectorRow(db, organizationId, id)
+  // 🛑 Before the scheduler removal AND before the `keep` short-circuit, not merely
+  // before the `deleting` mark: `keep` is the default and returns earlier than that.
+  await releaseAtProvider(db, organizationId, id, row.type)
   await removeConnectorScheduler(id)
 
   if (behavior === 'keep') {
