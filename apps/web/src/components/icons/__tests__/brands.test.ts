@@ -11,6 +11,7 @@ import { getAllConnectorTemplates } from '@auxx/lib/data-connectors/templates/co
 import { describe, expect, it } from 'vitest'
 import { APP_ROOT } from '../../../test/app-root'
 import { BRAND_ICONS } from '../brands'
+import { STRIPE_INSTITUTIONS } from '../institution-brands'
 
 const BRANDS_DIR = path.resolve(APP_ROOT, 'public/icons/brands')
 const connectorTemplates = getAllConnectorTemplates()
@@ -85,6 +86,18 @@ describe('brand icon manifest ↔ files ↔ catalog', () => {
         BRAND_ICONS,
         `connector template "${template.id}" references unknown ${iconKey}`
       ).toHaveProperty(slug)
+    }
+  })
+
+  // The institution map's VALUES are `BrandSlug`, so this cannot fail while the
+  // type holds - it is here for the day someone widens the map to
+  // `Record<string, string>` to "just add one quickly". A slug with no file
+  // renders an empty frame and throws nothing (see the openphone note above).
+  it('every institution brand slug exists in the manifest', () => {
+    for (const [name, slug] of Object.entries(STRIPE_INSTITUTIONS)) {
+      expect(BRAND_ICONS, `institution "${name}" maps to unknown brand:${slug}`).toHaveProperty(
+        slug
+      )
     }
   })
 

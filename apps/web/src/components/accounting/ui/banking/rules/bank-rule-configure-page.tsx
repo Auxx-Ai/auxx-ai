@@ -11,12 +11,12 @@ import {
   type BankRuleMatchField,
   type BankRuleMatchOperator,
 } from '@auxx/lib/banking/rules/client'
-import type { SelectOption } from '@auxx/types/custom-field'
 import { Button } from '@auxx/ui/components/button'
 import { DialogFooter } from '@auxx/ui/components/dialog'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { Section } from '@auxx/ui/components/section'
 import { ListChecks } from 'lucide-react'
+import { BankAccountPicker } from '~/components/accounting/ui/bank-account-picker'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { RuleActionsSummaryRow } from '~/components/rules/ui/rule-actions-summary-row'
@@ -44,8 +44,6 @@ interface BankRuleConfigurePageProps {
   onDirectionChange: (value: BankRuleDirection) => void
   bankAccountId: string
   onBankAccountChange: (value: string) => void
-  /** The org's bank accounts, for the "which account" scope row. */
-  accountOptions: SelectOption[]
   autoApply: boolean
   onAutoApplyChange: (value: boolean) => void
   /** One-line summary of the configured action, for the drill-in row. */
@@ -76,7 +74,6 @@ export function BankRuleConfigurePage({
   onDirectionChange,
   bankAccountId,
   onBankAccountChange,
-  accountOptions,
   autoApply,
   onAutoApplyChange,
   actionLabel,
@@ -170,14 +167,12 @@ export function BankRuleConfigurePage({
           </FieldPanelRow>
 
           <FieldPanelRow title='Bank account' description='Leave blank to match any account.'>
-            <FieldInputAdapter
-              fieldType={FieldType.SINGLE_SELECT}
-              fieldOptions={{ options: accountOptions }}
-              triggerProps={TRIGGER_PROPS}
-              value={bankAccountId}
+            <BankAccountPicker
+              value={bankAccountId || null}
+              onChange={(id) => onBankAccountChange(id ?? '')}
               placeholder='Any account'
               disabled={isPending}
-              onChange={(v) => onBankAccountChange(firstValue(v))}
+              triggerProps={TRIGGER_PROPS}
             />
           </FieldPanelRow>
 

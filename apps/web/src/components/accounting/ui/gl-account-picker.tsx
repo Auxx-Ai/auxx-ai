@@ -115,7 +115,12 @@ export function GlAccountPicker({
         <PickerTrigger
           open={open}
           disabled={disabled}
-          variant={triggerProps?.variant ?? 'outline'}
+          // Defaults to the in-panel shape, which is what nearly every caller
+          // wants: this picker almost always sits in a `FieldPanelRow`, where an
+          // outlined trigger draws a second box inside the row's own. A caller
+          // that needs a bordered, content-width trigger passes
+          // `triggerProps={{ variant: 'outline' }}` and its own className.
+          variant={triggerProps?.variant ?? 'transparent'}
           size={triggerProps?.size}
           hasValue={!!selected}
           placeholder={placeholder}
@@ -126,7 +131,7 @@ export function GlAccountPicker({
             onChange(null)
           }}
           asCombobox
-          className={cn('h-auto min-h-8', className, triggerProps?.className)}>
+          className={cn('h-auto min-h-8 w-full ps-0 pe-1', className, triggerProps?.className)}>
           {selected && (
             <span className='flex min-w-0 items-center gap-1.5 truncate text-sm'>
               <span className='shrink-0 font-mono text-muted-foreground text-xs'>

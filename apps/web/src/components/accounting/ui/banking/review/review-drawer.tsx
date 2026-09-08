@@ -2,7 +2,6 @@
 
 'use client'
 
-import type { BankAccountRow } from '@auxx/lib/banking/client'
 import {
   type BankTransactionRow,
   MATCHED_RECORD_TYPE_LABELS,
@@ -19,6 +18,7 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Ban, Landmark, Undo2 } from 'lucide-react'
 import { useState } from 'react'
 import { api } from '~/trpc/react'
+import { BankAccountBadge } from '../../bank-account-badge'
 import { EntryBlockers, type LedgerBlocker } from '../../ledger/entry-blockers'
 import { EMPTY_CELL, formatMinor } from '../../ledger/format'
 import { CodePanel } from './code-panel'
@@ -57,7 +57,6 @@ interface ReviewDrawerProps {
   isDocked: boolean
   width: number
   onWidthChange: (width: number) => void
-  accounts: BankAccountRow[]
   currencyCode: string
   onOpenPosting?: (glPostingId: string) => void
 }
@@ -81,7 +80,6 @@ export function ReviewDrawer({
   isDocked,
   width,
   onWidthChange,
-  accounts,
   currencyCode,
   onOpenPosting,
 }: ReviewDrawerProps) {
@@ -171,9 +169,11 @@ export function ReviewDrawer({
                   <span className='text-muted-foreground text-xs'>
                     {line.postedAt ?? EMPTY_CELL}
                   </span>
-                  <span className='text-muted-foreground text-xs'>
-                    {line.bankAccountName ?? 'Unassigned account'}
-                  </span>
+                  <BankAccountBadge
+                    bankAccountId={line.bankAccountId}
+                    size='sm'
+                    fallbackLabel='Unassigned account'
+                  />
                   <Badge variant='outline' size='xs'>
                     {REVIEW_STATUS_LABELS[line.reviewStatus]}
                   </Badge>
@@ -287,12 +287,7 @@ export function ReviewDrawer({
                         />
                       )}
                       {treatment === 'transfer' && (
-                        <TransferPanel
-                          key={line.id}
-                          line={line}
-                          accounts={accounts}
-                          onDone={() => close(false)}
-                        />
+                        <TransferPanel key={line.id} line={line} onDone={() => close(false)} />
                       )}
                     </>
                   )}

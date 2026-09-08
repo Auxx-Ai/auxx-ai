@@ -9,11 +9,11 @@ import type {
   BankRuleMatchOperator,
   BankRuleRecord,
 } from '@auxx/lib/banking/rules/client'
-import type { SelectOption } from '@auxx/types/custom-field'
 import { toastError } from '@auxx/ui/components/toast'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { RuleDialogShell } from '~/components/rules/ui/rule-dialog-shell'
 import { api } from '~/trpc/react'
+import { bankAccountLabel, useBankAccounts } from '../../bank-account-picker'
 import { useChartAccounts } from '../../gl-account-picker'
 import { BankRuleActionPage } from './bank-rule-action-page'
 import { BankRuleConfigurePage } from './bank-rule-configure-page'
@@ -67,16 +67,9 @@ export function BankRuleDialog({ open, onClose, rule }: BankRuleDialogProps) {
     setMemo(rule?.memo ?? '')
   }, [open, rule])
 
-  const accountsQuery = api.banking.bankAccount.list.useQuery(undefined, { enabled: open })
-  const accountOptions: SelectOption[] = useMemo(
-    () =>
-      (accountsQuery.data ?? []).map((account) => ({
-        value: account.id,
-        label: account.name ?? account.id,
-      })),
-    [accountsQuery.data]
-  )
-
+  // Each page owns its own `BankAccountPicker`; the list is read here only to
+  // name the chosen counterpart in the action summary row.
+  const { accounts: bankAccounts } = useBankAccounts()
   const { accounts: chartAccounts } = useChartAccounts()
 
   const createRule = api.bankingRules.create.useMutation({
@@ -110,11 +103,13 @@ export function BankRuleDialog({ open, onClose, rule }: BankRuleDialogProps) {
         ? counterpartBankAccountId.length > 0
         : true)
 
+  const counterpart = bankAccounts.find((account) => account.id === counterpartBankAccountId)
+
   const actionLabel = describeActionDetail({
     action,
     glAccountCode,
     glAccountName: chartAccounts.find((a) => a.code === glAccountCode)?.name,
-    counterpartName: accountOptions.find((a) => a.value === counterpartBankAccountId)?.label,
+    counterpartName: counterpart ? bankAccountLabel(counterpart) : undefined,
   })
 
   const handleSave = () => {
@@ -168,7 +163,6 @@ export function BankRuleDialog({ open, onClose, rule }: BankRuleDialogProps) {
               onDirectionChange={setDirection}
               bankAccountId={bankAccountId}
               onBankAccountChange={setBankAccountId}
-              accountOptions={accountOptions}
               autoApply={autoApply}
               onAutoApplyChange={setAutoApply}
               actionLabel={actionLabel}
@@ -193,7 +187,6 @@ export function BankRuleDialog({ open, onClose, rule }: BankRuleDialogProps) {
               onGlAccountChange={setGlAccountCode}
               counterpartBankAccountId={counterpartBankAccountId}
               onCounterpartChange={setCounterpartBankAccountId}
-              accountOptions={accountOptions}
               memo={memo}
               onMemoChange={setMemo}
               canSave={canSave}

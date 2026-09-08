@@ -55,6 +55,7 @@ import { useMedia } from '~/hooks/use-media'
 import { useRequireCapability } from '~/providers/capabilities-provider'
 import { useDockStore } from '~/stores/dock-store'
 import { api } from '~/trpc/react'
+import { BankAccountBadge } from '../bank-account-badge'
 import { EMPTY_CELL, formatMinor } from '../ledger/format'
 import { ReviewBulkBar } from './review/review-bulk-bar'
 import { ReviewDrawer } from './review/review-drawer'
@@ -164,11 +165,10 @@ export function BankingReviewQueuePage() {
         isDocked={isDesktop}
         width={dockedWidth}
         onWidthChange={setDockedWidth}
-        accounts={accounts}
         currencyCode={DISPLAY_CURRENCY}
       />
     ),
-    [txn, setTxn, isDesktop, dockedWidth, setDockedWidth, accounts]
+    [txn, setTxn, isDesktop, dockedWidth, setDockedWidth]
   )
 
   // The Banking LAYOUT owns the `MainPageContent`, so the docked panel is
@@ -207,39 +207,37 @@ export function BankingReviewQueuePage() {
             setFilters(next)
             setSelectedIds([])
           }}
-          accounts={accounts}
-          accountsLoading={accountsQuery.isPending}
         />
 
-        <ScrollArea className='min-h-0 flex-1'>
-          <div className='flex flex-col gap-1 p-4 pb-24'>
-            {!list.isPending && rows.length === 0 ? (
-              <EmptyState
-                icon={hasAccounts ? Inbox : Landmark}
-                title={hasAccounts ? 'Nothing in this view' : 'No bank account yet'}
-                description={
-                  hasAccounts ? (
-                    <span>
-                      No bank lines match these filters. An empty For review tab is the healthy
-                      state - it means every line the bank showed has been decided on.
-                    </span>
-                  ) : (
-                    <span>
-                      Add a bank account and map it to a GL account, then import a statement or
-                      connect a feed. Until an account is mapped there is nothing to credit, so
-                      nothing can be coded.
-                    </span>
-                  )
-                }
-                button={
-                  hasAccounts ? undefined : (
-                    <Button asChild variant='outline'>
-                      <a href='/app/accounting/settings/bank-accounts'>Add a bank account</a>
-                    </Button>
-                  )
-                }
-              />
-            ) : (
+        {!list.isPending && rows.length === 0 ? (
+          <EmptyState
+            icon={hasAccounts ? Inbox : Landmark}
+            title={hasAccounts ? 'Nothing in this view' : 'No bank account yet'}
+            description={
+              hasAccounts ? (
+                <span>
+                  No bank lines match these filters. An empty For review tab is the healthy state -
+                  it means every line the bank showed has been decided on.
+                </span>
+              ) : (
+                <span>
+                  Add a bank account and map it to a GL account, then import a statement or connect
+                  a feed. Until an account is mapped there is nothing to credit, so nothing can be
+                  coded.
+                </span>
+              )
+            }
+            button={
+              hasAccounts ? undefined : (
+                <Button asChild variant='outline'>
+                  <a href='/app/accounting/settings/bank-accounts'>Add a bank account</a>
+                </Button>
+              )
+            }
+          />
+        ) : (
+          <ScrollArea className='min-h-0 flex-1'>
+            <div className='flex flex-col gap-1 p-4 pb-24'>
               <TreeRowList
                 items={rows}
                 loading={list.isPending}
@@ -280,11 +278,7 @@ export function BankingReviewQueuePage() {
                         <Badge variant='outline' size='xs'>
                           {row.amountMinor < 0 ? 'Out' : 'In'}
                         </Badge>
-                        {row.bankAccountName && (
-                          <span className='text-muted-foreground text-xs'>
-                            {row.bankAccountName}
-                          </span>
-                        )}
+                        <BankAccountBadge bankAccountId={row.bankAccountId} size='sm' />
                         {row.bankStatus === 'void' && (
                           <Badge variant='outline' size='xs'>
                             Void
@@ -313,12 +307,16 @@ export function BankingReviewQueuePage() {
                       </span>
                     }
                     onToggleOpen={() => void setTxn(row.id)}
+                    rowClassName={cn(
+                      'bg-primary-100/50 hover:bg-primary-100',
+                      txn === row.id && 'bg-primary-100 ring-1 ring-primary-200'
+                    )}
                   />
                 )}
               />
-            )}
-          </div>
-        </ScrollArea>
+            </div>
+          </ScrollArea>
+        )}
       </div>
 
       <ReviewBulkBar

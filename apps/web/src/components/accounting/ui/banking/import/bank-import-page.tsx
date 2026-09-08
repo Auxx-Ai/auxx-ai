@@ -21,14 +21,12 @@
 // column anything can be mapped to. Everything after the upload is the shared
 // import wizard, unchanged, at `import/[jobId]`.
 
-import { FieldType } from '@auxx/database/enums'
 import { PermissionKey } from '@auxx/lib/permissions/client'
 import { Button } from '@auxx/ui/components/button'
 import { Section } from '@auxx/ui/components/section'
 import { Landmark } from 'lucide-react'
 import { useQueryState } from 'nuqs'
-import { useMemo } from 'react'
-import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
+import { BankAccountPicker, useBankAccounts } from '~/components/accounting/ui/bank-account-picker'
 import { EmptyState } from '~/components/global/empty-state'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import SettingsPage from '~/components/global/settings-page'
@@ -57,8 +55,7 @@ export function BankImportPage() {
   // back, and so a coverage gap on the settings page can deep-link to it.
   const [accountId, setAccountId] = useQueryState('account')
 
-  const accountsQuery = api.banking.bankAccount.list.useQuery()
-  const accounts = useMemo(() => accountsQuery.data ?? [], [accountsQuery.data])
+  const { accounts, isLoading: accountsLoading } = useBankAccounts()
   const selected = accounts.find((account) => account.id === accountId) ?? null
 
   const coverage = api.banking.bankAccount.coverage.useQuery(
@@ -66,18 +63,7 @@ export function BankImportPage() {
     { enabled: !!accountId }
   )
 
-  const options = useMemo(
-    () =>
-      accounts.map((account) => ({
-        value: account.id,
-        label: [account.name ?? 'Bank account', account.last4 ? `···${account.last4}` : null]
-          .filter(Boolean)
-          .join(' '),
-      })),
-    [accounts]
-  )
-
-  if (!accountsQuery.isPending && accounts.length === 0) {
+  if (!accountsLoading && accounts.length === 0) {
     return (
       <SettingsPage
         title='Import statements'
@@ -112,19 +98,14 @@ export function BankImportPage() {
         description='Which account this statement is for. Every line in the file lands on it.'>
         <FieldPanel orientation='responsive' breakpoint='md' resizeId='bank-import' className='p-0'>
           <FieldPanelRow title='Bank account' type={BaseType.RELATION} showIcon isRequired>
-            <FieldInputAdapter
-              fieldType={FieldType.SINGLE_SELECT}
-              fieldOptions={{ options }}
-              value={accountId ?? ''}
-              // ⚠️ `FieldInputAdapter` hands a SINGLE_SELECT change back as an
-              // ARRAY of option keys, not a string - the same widget serves
-              // multi-select. Writing it straight into the query param put
-              // `?account=id` on the wire as an array and every read of it 400ed.
-              onChange={(value) =>
-                void setAccountId((Array.isArray(value) ? value[0] : value) || null)
-              }
+            {/* The picker hands back a plain `string | null`, which is what the
+                query param takes. It used to unwrap the adapter's array here,
+                and getting that wrong put `?account=` on the wire as an array
+                and 400ed every read of it. */}
+            <BankAccountPicker
+              value={accountId}
+              onChange={(id) => void setAccountId(id)}
               placeholder='Select a bank account'
-              disabled={accountsQuery.isPending}
             />
           </FieldPanelRow>
           {selected && (

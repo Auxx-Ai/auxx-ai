@@ -136,12 +136,7 @@ export function CodePanel({ line, currencyCode, onDone }: CodePanelProps) {
             'The account this money belongs in. The bank side of the entry comes from the account mapping.'
           }>
           <div className='flex flex-col gap-1.5'>
-            <GlAccountPicker
-              value={code}
-              onChange={setCode}
-              placeholder='Choose an account…'
-              triggerProps={{ variant: 'transparent', className: 'w-full ps-0 pe-1' }}
-            />
+            <GlAccountPicker value={code} onChange={setCode} placeholder='Choose an account…' />
             {line.suggestedGlAccount && line.suggestedGlAccount !== code && (
               <button
                 type='button'

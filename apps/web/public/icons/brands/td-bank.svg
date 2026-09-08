@@ -1,0 +1,26 @@
+<svg version="1.2" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1561 1396">
+	<title>Toronto-Dominion_Bank_logo-svg</title>
+	<defs>
+		<clipPath clipPathUnits="userSpaceOnUse" id="cp1">
+			<path d="m0 1h1560v1394.94h-1560z"/>
+		</clipPath>
+	</defs>
+	<style>
+		.s0 { fill: #54b948 } 
+		.s1 { fill: #ffffff } 
+	</style>
+	<g id="g10">
+		<g id="g3261">
+			<path id="path52" class="s0" d="m0 1h1560v1394.9h-1560z"/>
+			<g id="g54">
+				<g id="Clip-Path: g56" clip-path="url(#cp1)">
+					<g id="g56">
+						<g id="g62">
+							<path id="path64" class="s1" d="m1024.2 1094.2h-363.4v-654.5h182.5v538.5h175.5c121.2 0 172.1-83.9 172.1-300 0-217.5-57.8-280.6-180.8-280.6h-400.4v696.6h-180.7v-696.6h-265.2v-116.2h902.6c217.7 0 321.1 112.6 321.1 395 0 372.2-154.4 417.8-363.3 417.8z"/>
+						</g>
+					</g>
+				</g>
+			</g>
+		</g>
+	</g>
+</svg>

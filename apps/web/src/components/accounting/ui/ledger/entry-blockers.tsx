@@ -10,6 +10,7 @@ import {
   CircleSlash,
   CircleX,
   KeyRound,
+  Landmark,
   Lock,
   Map as MapIcon,
   PackageX,
@@ -17,6 +18,7 @@ import {
   Settings2,
   Trash2,
   TriangleAlert,
+  Unlink,
 } from 'lucide-react'
 import Link from 'next/link'
 import type { ComponentType } from 'react'
@@ -24,14 +26,19 @@ import type { ComponentType } from 'react'
 /**
  * Every status this card can render a remedy for.
  *
- * ⚠️ Wider than `PostResultStatus` on purpose. `discard_refused` is NOT a
- * posting outcome - nothing was built, claimed or pushed - so putting it in the
- * posting union would make every exhaustive `switch` over a `PostResult` have to
- * handle a case that can never appear in one. It is a refusal the SCREEN
- * renders, which is what this card is for (ground rule 9: every refusal is an
- * `EntryBlockers` card, never a toast).
+ * ⚠️ Wider than `PostResultStatus` on purpose. `discard_refused`,
+ * `bank_account_unmapped` and `no_bank_accounts` are NOT posting outcomes -
+ * nothing was built, claimed or pushed - so putting them in the posting union
+ * would make every exhaustive `switch` over a `PostResult` have to handle cases
+ * that can never appear in one. They are refusals the SCREEN renders, which is
+ * what this card is for (ground rule 9: every refusal is an `EntryBlockers`
+ * card, never a toast).
  */
-export type LedgerBlockerStatus = PostResultStatus | 'discard_refused'
+export type LedgerBlockerStatus =
+  | PostResultStatus
+  | 'discard_refused'
+  | 'bank_account_unmapped'
+  | 'no_bank_accounts'
 
 /** One reason a preview, a post or a discard refused, as the console renders it. */
 export interface LedgerBlocker {
@@ -148,6 +155,31 @@ const REMEDIES: Partial<Record<LedgerBlockerStatus, BlockerRemedy>> = {
     title: 'An account on this entry is not valid',
     guidance:
       'The account named on this row does not exist in the chart, or is archived or inactive. The message above names the row - fix it there.',
+  },
+  // ── Banking a deposit: the account it is banked INTO ──────────────────────
+  //
+  // 🛑 Two different missing things with two different sentences. "You have no
+  // bank accounts" on day one is ordinary setup and stays `neutral`; a bank
+  // account that exists but has never been joined to the chart is a real
+  // half-finished mapping, and the deposit it blocks would otherwise post
+  // against whichever asset code the operator guessed at.
+  no_bank_accounts: {
+    tone: 'neutral',
+    icon: Landmark,
+    title: 'No bank account has been set up yet',
+    guidance:
+      'Money is banked INTO an account, so one has to exist before a deposit can name it. Connect a feed or add the account by hand - either is enough, and a manual account never needs a connection.',
+    href: '/app/accounting/settings/bank-accounts',
+    actionLabel: 'Add a bank account',
+  },
+  bank_account_unmapped: {
+    tone: 'failure',
+    icon: Unlink,
+    title: 'That bank account has no ledger account',
+    guidance:
+      'A bank account is the real account at the bank; its ledger account is where that money is counted in the books. Until the two are joined, a deposit into it has nothing to debit - and the bank feed already posts against the mapping, so a guess here would put the deposit and its own statement line in different accounts. It is one field on the account.',
+    href: '/app/accounting/settings/bank-accounts',
+    actionLabel: 'Map the account',
   },
   // ── Task 09: discarding a draft ───────────────────────────────────────────
   //
