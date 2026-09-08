@@ -727,6 +727,34 @@ export const SYSTEM_ATTRIBUTES = [
   'bank_deposit_pdf_asset', // the rendered deposit slip
   'payment_bank_deposit', // owning side — one deposit per payment, enforced on write
 
+  // ─── Payout (HANDOFF §11.5 item 1) ──────────────────────────────
+  // One gateway settlement: the batch of charges it paid out, and the entry it
+  // became. Entity migration 133.
+  //
+  // 🛑 The record exists for `payout_number` before anything else.
+  // `buildPayoutEntry` refuses a bare `po_…` — 27 characters against a
+  // 21-character document-number cap — and cannot key on a date instead,
+  // because two payouts can settle in one day.
+  //
+  // ⚠️ `payout_gross` / `payout_fees` / `payout_net` describe only the charges
+  // auxx RECOGNISED. `payout_deposited` is the whole transfer that reached the
+  // bank, and `payout_unrecognised_net` is the difference — money the gateway
+  // settled that auxx has no payment for, credited to `2450 Unidentified
+  // Receipts`.
+  'payout_number', // RecordSequence `PAY-0001`; the posting's periodKey
+  'payout_gateway_id', // `po_…`; every line's sourceId and THE idempotency key
+  'payout_status', // in_transit | paid | failed | reversed
+  'payout_paid_at', // THE accounting date
+  'payout_currency',
+  'payout_deposited', // integer minor units; the whole transfer, the cash leg
+  'payout_gross', // recognised gross; what is relieved from card clearing
+  'payout_fees', // what the PROCESSOR withheld, not the Connect application fee
+  'payout_net', // recognised gross less recognised fees
+  'payout_unrecognised_net', // settled charges auxx has no payment for, net
+  'payout_unrecognised_count',
+  'payout_gl_posting_id', // denormalized backlink; the posting is the authority
+  'payout_bank_transaction_id', // the bank_deposit / vendor_payment twin, by name and meaning
+
   // ─── Bank feed (plans/bank-connection/02-connection-architecture.md §6) ──
   // Entity migration 125. `bank_account` is where the feed meets the chart of
   // accounts; `bank_transaction` is a CONTRIBUTING-mode target whose fields

@@ -236,6 +236,7 @@ export {
   type OutlookSubscriptionHealthJobData,
   outlookSubscriptionHealthJob,
 } from './maintenance/outlook-subscription-health-job'
+export { payoutSyncJob } from './maintenance/payout-sync-job'
 export { type QuotaResetStats, quotaResetJob } from './maintenance/quota-reset-job'
 export {
   type ReconcileRecordIdentitiesStats,

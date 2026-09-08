@@ -49,7 +49,7 @@ describe('the reclass', () => {
     for (const role of [
       ACCOUNT_ROLES.CASH,
       ACCOUNT_ROLES.UNDEPOSITED_FUNDS,
-      ACCOUNT_ROLES.CLEARING_SHOPIFY,
+      ACCOUNT_ROLES.CLEARING_CARD,
     ]) {
       expect(line(built.entry, role)).toBeUndefined()
     }

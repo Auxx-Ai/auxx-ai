@@ -27,6 +27,7 @@ import { ORDER_FIELDS } from './resources/order-fields'
 import { PART_FIELDS } from './resources/part-fields'
 import { PARTICIPANT_FIELDS } from './resources/participant-fields'
 import { PAYMENT_FIELDS } from './resources/payment-fields'
+import { PAYOUT_FIELDS } from './resources/payout-fields'
 import { PERSONAL_INBOX_FIELDS } from './resources/personal-inbox-fields'
 import { PRODUCT_FIELDS } from './resources/product-fields'
 import { PURCHASE_ORDER_FIELDS } from './resources/purchase-order-fields'
@@ -157,6 +158,7 @@ export const RESOURCE_FIELD_REGISTRY: ResourceFieldRegistry = {
   journal_entry: JOURNAL_ENTRY_FIELDS,
   build: BUILD_FIELDS,
   bank_deposit: BANK_DEPOSIT_FIELDS,
+  payout: PAYOUT_FIELDS,
   bank_account: BANK_ACCOUNT_FIELDS,
   bank_transaction: BANK_TRANSACTION_FIELDS,
   bank_rule: BANK_RULE_FIELDS,

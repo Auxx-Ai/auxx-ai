@@ -23,6 +23,7 @@ import { MEETING_FIELDS } from '../../resources/registry/resources/meeting-field
 import { ORDER_FIELDS } from '../../resources/registry/resources/order-fields'
 import { PART_FIELDS } from '../../resources/registry/resources/part-fields'
 import { PAYMENT_FIELDS } from '../../resources/registry/resources/payment-fields'
+import { PAYOUT_FIELDS } from '../../resources/registry/resources/payout-fields'
 import { PERSONAL_INBOX_FIELDS } from '../../resources/registry/resources/personal-inbox-fields'
 import { PRODUCT_FIELDS } from '../../resources/registry/resources/product-fields'
 import { PURCHASE_ORDER_FIELDS } from '../../resources/registry/resources/purchase-order-fields'
@@ -92,6 +93,7 @@ export const FIELD_REGISTRY: Record<string, Record<string, ResourceField>> = {
   journal_entry: JOURNAL_ENTRY_FIELDS,
   build: BUILD_FIELDS,
   bank_deposit: BANK_DEPOSIT_FIELDS,
+  payout: PAYOUT_FIELDS,
   bank_account: BANK_ACCOUNT_FIELDS,
   bank_transaction: BANK_TRANSACTION_FIELDS,
   bank_rule: BANK_RULE_FIELDS,

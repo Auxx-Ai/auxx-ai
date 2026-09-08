@@ -6,13 +6,13 @@
  * PURE. No database, no clock, no chart.
  *
  * ```
- *   charge:   Dr undeposited_funds | cash | clearing_shopify     amount
+ *   charge:   Dr undeposited_funds | cash | clearing_card     amount
  *                 Cr accounts_receivable                             allocated
  *                 Cr customer_deposits                               the rest
  *
  *   refund:   Dr accounts_receivable                             allocated
  *             Dr customer_deposits                               the rest
- *                 Cr undeposited_funds | cash | clearing_shopify     amount
+ *                 Cr undeposited_funds | cash | clearing_card     amount
  * ```
  *
  * ## 🛑 The credit side SPLITS, and that split is the accounting
@@ -65,7 +65,7 @@
  *    the one that knows what it is posting. See
  *    {@link BuildPaymentEntryInput.postingType}.
  * 2. **Which clearing account.** `ACCOUNT_ROLES` has exactly one clearing role,
- *    `clearing_shopify` (`1200`), so `'clearing'` maps to it. The chart also
+ *    `clearing_card` (`1200`), so `'clearing'` maps to it. The chart also
  *    holds `1210 Affirm Clearing` with no role, and its own warning: Affirm
  *    settlements are invisible to the payouts API, so an Affirm order routed to
  *    `1200` makes that account impossible to reconcile to zero. When a second
@@ -102,7 +102,7 @@ export const PAYMENT_ROUTE_ROLE: Record<PaymentRoute, AccountRole> = {
   undeposited_funds: ACCOUNT_ROLES.UNDEPOSITED_FUNDS,
   cash: ACCOUNT_ROLES.CASH,
   // One clearing role exists today. See the file header on `1210 Affirm Clearing`.
-  clearing: ACCOUNT_ROLES.CLEARING_SHOPIFY,
+  clearing: ACCOUNT_ROLES.CLEARING_CARD,
 }
 
 /** The `PaymentTransaction` fields an entry is built from. Nothing else is read. */

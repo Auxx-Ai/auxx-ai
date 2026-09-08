@@ -977,10 +977,15 @@ reader must now know:
   `bank_transaction`) key `periodKey` on the record's own number, exactly as a build does;
   `opening_balance` keys on the cutover date. A cuid never fits the 21-character cap.
 - **Roles.** `ACCOUNT_ROLES` has thirteen more (`accounts_receivable`, `undeposited_funds`,
-  `clearing_shopify`, `sales_tax_payable`, `deferred_revenue`, `customer_deposits`,
+  `clearing_card`, `sales_tax_payable`, `deferred_revenue`, `customer_deposits`,
   `equity_retained_earnings`, `equity_opening_balance`, `revenue_dtc`, `revenue_dealer`,
   `revenue_shipping`, `payment_processing_fees`, `bad_debt_expense`), every one seeded onto a
-  default account and assigned in existing orgs by entity migration 125. The chart gained
+  default account and assigned in existing orgs by entity migration 125. `clearing_card` was
+  `clearing_shopify` on `1200 Shopify Clearing` until entity migration 132 renamed both: there
+  is no Shopify payment rail in auxx (`PaymentTransaction.provider` is `manual | stripe`), so
+  every Stripe card receipt was accumulating in an account named for a provider it never
+  touched. Posted lines keep the old strings in `accountRole`/`accountName`, which are
+  snapshots by the same rule that freezes a movement's cost. The chart gained
   `1050 Undeposited Funds`, `3000 Owner's Equity`, `3100 Retained Earnings`, `3900 Opening
   Balance Equity`, `4020 Shipping Revenue`, `6300 Bad Debt Expense`, and `1100` is plain
   `Accounts Receivable` (one receivable account, whatever the channel).

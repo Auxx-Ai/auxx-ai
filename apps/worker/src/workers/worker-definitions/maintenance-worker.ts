@@ -33,6 +33,7 @@ import {
   orphanedFileCleanupJob,
   orphanedStorageObjectJob,
   outlookSubscriptionHealthJob,
+  payoutSyncJob,
   quotaResetJob,
   reconcileRecordIdentitiesJob,
   recordUsageEventJob,
@@ -266,6 +267,15 @@ export const jobMappings = {
   // shipped. Re-uses `rematchBill`, so it decides which bills to re-ask about and
   // never what a bill's status is.
   vendorBillAgingJob,
+
+  // Daily Stripe payout sync (HANDOFF §11.5 item 1). `postPayoutEntry` shipped with
+  // no caller at all, so `1200 Card Clearing` was debited gross at every card sale
+  // and never credited - the account grew without bound and the processor's fee was
+  // never expensed. `payout.paid` in `applyStripeEvent` is the fast door; this is
+  // the guarantee behind it, because a webhook can be unsubscribed in the Stripe
+  // dashboard, dropped, or arrive while the worker is down. Idempotent on the
+  // gateway payout id.
+  payoutSyncJob,
 
   // Company enrichment gap-filling sweep (plans/company/v4-enrichment-doors.md §5, Door
   // 5b). Every other enrichment door is event-driven, so this is the only path back for

@@ -521,6 +521,33 @@ export async function setupSchedules() {
     }
   )
 
+  // Stripe payout sync — every day at 04:30 UTC, between the vendor-bill sweep and
+  // the enrichment one so the three large per-org passes never overlap.
+  //
+  // 🛑 `postPayoutEntry` shipped in #2054 with no caller, so `1200 Card Clearing`
+  // was debited gross at every card sale and never credited. `payout.paid` in
+  // `applyStripeEvent` is the fast door; this is the guarantee behind it, because
+  // a webhook can be unsubscribed in the Stripe dashboard, dropped, or arrive while
+  // this worker is down, and a payout that is never ingested leaves clearing
+  // overstated with nothing to say so.
+  //
+  // Daily is right: a payout's accounting date is its arrival date, so a missed
+  // tick costs at worst a day's lag on an entry whose date is already correct.
+  // Idempotent on the gateway payout id, so a re-run posts nothing twice.
+  await maintenanceQueue.upsertJobScheduler(
+    'payoutSyncJob',
+    { pattern: '30 4 * * *', tz: 'UTC' },
+    {
+      opts: {
+        attempts: 2,
+        backoff: { type: 'exponential', delay: 60000 },
+        priority: 8,
+        removeOnComplete: { count: 14 },
+        removeOnFail: { count: 30 },
+      },
+    }
+  )
+
   // Company enrichment gap-filling sweep — every day at 04:45 UTC, half an hour after the
   // vendor-bill sweep so the two large per-org passes do not overlap. Every other
   // enrichment door is event-driven, so this is the only path back for companies created

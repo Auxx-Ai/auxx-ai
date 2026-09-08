@@ -7,17 +7,45 @@
  * PURE. No database, no clock, no chart.
  *
  * ```
- *   Dr cash                        net deposited
- *   Dr payment_processing_fees     fees withheld
- *       Cr clearing_shopify              gross
+ *   Dr cash                        the whole deposit that reached the bank
+ *   Dr payment_processing_fees     fees withheld on the RECOGNISED charges
+ *       Cr clearing_card                 RECOGNISED gross
+ *       Cr unidentified_receipts         the unrecognised remainder, net
  * ```
  *
- * This is the entry that makes `1200 Shopify Clearing` reconcilable. A card
+ * This is the entry that makes `1200 Card Clearing` reconcilable. A card
  * receipt DEBITS the clearing account gross at the sale (`buildPaymentEntry`
  * with route `clearing`), and this entry credits it gross again, net to cash
  * and the difference to fees. A settled batch therefore leaves the clearing
  * account at zero, and a non-zero balance is a list of sales the gateway has
  * not paid out yet - which is a useful control on its own.
+ *
+ * ## 🛑 The fourth leg, and why it is not optional
+ *
+ * A gateway payout settles EVERY charge the merchant took, including charges
+ * taken outside auxx - a payment link sent from the Stripe dashboard, a
+ * subscription on the same account, a terminal. Those were never debited to
+ * `clearing_card`, so crediting the payout's full gross to clearing drives that
+ * account permanently negative by the amount auxx never took. Relieving only
+ * the recognised part and debiting cash to match would keep clearing right and
+ * break the bank instead: the bank feed shows ONE deposit for the whole payout.
+ *
+ * So all three of the following hold at once, and only this shape gets all
+ * three:
+ *
+ * - **cash takes the WHOLE deposit**, so the entry matches the bank line;
+ * - **clearing is relieved of exactly what auxx put in it**, so it still
+ *   reconciles to zero;
+ * - **the remainder is visible in one account somebody must work**
+ *   (`unidentified_receipts`, `2450`) rather than silently distorting either.
+ *
+ * When every charge in the payout is recognised the fourth leg is zero and gets
+ * dropped, which is the ordinary case and the original three-line entry exactly.
+ *
+ * ⚠️ `unrecognisedNetMinor` is a NET figure - gross less the fee withheld on
+ * those same charges. The fee on money auxx never took is not auxx's
+ * `payment_processing_fees`: it is embedded in the remainder and gets sorted out
+ * when the receipt is attributed.
  *
  * ## ⚠️ `money/payments/fees.ts` is the WRONG number
  *
@@ -30,45 +58,24 @@
  *
  * ## ⚠️ And `1210 Affirm Clearing` must be excluded
  *
- * The chart's own note: Shopify never touches Affirm money and those
- * settlements are invisible to the payouts API, so folding Affirm-gateway
- * orders into `1200` means it can never reconcile to zero. `clearingRole` is an
- * input for that reason - one payout drains ONE clearing account.
+ * The chart's own note: an Affirm settlement never lands on the card rail and
+ * is invisible to the payouts API, so folding Affirm-gateway orders into `1200`
+ * means it can never reconcile to zero. `clearingRole` is an input for that
+ * reason - one payout drains ONE clearing account.
  *
- * ## Scope, and what a gatherer would actually need (surveyed 2026-09-04)
+ * ## The gatherer
  *
- * There is still no payout source in auxx: no `payout` entity, no Stripe payout
- * ingest, no `payout.*` webhook case, and no stored balance transaction. So the
- * GATHERER remains out of scope and what ships is the pure builder plus
- * `postPayoutEntry`, with no trigger.
+ * `money/payouts/gather-payout.ts` is the read that fills this input from
+ * Stripe, and `money/payouts/sync-payouts.ts` is what walks an org's payouts and
+ * posts them. Both landed 2026-09-07; the file header used to say no payout
+ * source existed at all.
  *
- * 🛑 **But the DATA is reachable, and the next reader should not conclude
- * otherwise from the paragraph above.** `PaymentAccount.stripeAccountId` is
- * stored per org (`money/payments/account-state.ts`) and every merchant-facing
- * call already runs on the platform key with a per-request `{ stripeAccount }`
- * header, so `stripe.payouts.list` and `stripe.balanceTransactions.list({ payout })`
- * would run today with no new credential storage. The withheld fee is on those
- * balance transactions, exactly where the warning above says it lives. What is
- * missing is the ingest and the bookkeeping around it, not the credentials:
- *
- * 1. a `payout` record to key on - `buildPayoutEntry` refuses a bare `po_…`
- *    (27 characters), so a payout needs a short minted number;
- * 2. a job or a `payout.paid` / `payout.failed` webhook case to pull them, with
- *    a per-org watermark, and a reversal path for a failed payout;
- * 3. **a policy for charges in the payout that auxx never posted.** Anything the
- *    merchant took outside auxx settles in the same payout and was never debited
- *    to clearing, so crediting the payout's full gross drives the clearing
- *    account negative by that amount, permanently. This is a product decision,
- *    not a coding one, and it is the reason a gatherer cannot simply be written.
- *
- * ⚠️ And note what `1200 Shopify Clearing` actually holds. `PaymentTransaction.provider`
- * is `'manual' | 'stripe'` - there is no Shopify payment rail in auxx - while
- * `DEFAULT_PAYMENT_ROUTES.card` is `clearing`, which `PAYMENT_ROUTE_ROLE` maps
- * to `clearing_shopify`. So every STRIPE card receipt is already accumulating in
- * an account named for Shopify, and `PAYOUT_CLEARING_ROLES` admits only that
- * role. A Stripe payout would reconcile against it correctly and read wrongly;
- * fixing the name means a new role in `build-entry.ts` and a new row in
- * `default-chart.ts`.
+ * ✅ The account this drains is `1200 Card Clearing`, named for the RAIL.
+ * It was `Shopify Clearing` / `clearing_shopify` until entity migration 132,
+ * which reconciled perfectly and read as a lie: `PaymentTransaction.provider` is
+ * `'manual' | 'stripe'` and there is no Shopify payment rail in auxx at all, so
+ * every Stripe card receipt was accumulating in an account named for a provider
+ * the money never touched.
  *
  * @see plans/accounting/tasks/01-post-revenue-to-the-ledger.md §1.3
  */
@@ -82,7 +89,7 @@ import type { BuiltEntry, GlPostingLineInput } from './types'
 export const PAYOUT_SOURCE_TYPE = 'payout'
 
 /** The clearing roles a payout may drain. One role exists today. */
-export const PAYOUT_CLEARING_ROLES: readonly AccountRole[] = [ACCOUNT_ROLES.CLEARING_SHOPIFY]
+export const PAYOUT_CLEARING_ROLES: readonly AccountRole[] = [ACCOUNT_ROLES.CLEARING_CARD]
 
 export interface BuildPayoutEntryInput {
   /** The gateway's own payout id. Every line's `sourceId`. */
@@ -103,8 +110,22 @@ export interface BuildPayoutEntryInput {
   grossMinor: number
   /** What the processor withheld, integer minor units. May be zero. */
   feesMinor: number
-  /** What actually reached the bank, integer minor units. */
+  /**
+   * What actually reached the bank, integer minor units. The RECOGNISED net -
+   * `grossMinor - feesMinor` - NOT the payout's total. The whole deposit is
+   * `netMinor + unrecognisedNetMinor`, and that is what lands on cash.
+   */
   netMinor: number
+  /**
+   * The net settled by charges auxx has no `PaymentTransaction` for, integer
+   * minor units, credited to `unidentified_receipts`. See the fourth-leg
+   * section in this file's header.
+   *
+   * Optional and defaulted to `0`: a caller that has already established every
+   * charge is recognised - a test, or a payout whose balance transactions all
+   * matched - says nothing rather than passing a zero.
+   */
+  unrecognisedNetMinor?: number
   /** Which clearing account this payout drains. See the file header on Affirm. */
   clearingRole: AccountRole
   /** `YYYY-MM-DD`. The date the money reached the bank. */
@@ -118,6 +139,9 @@ export interface BuiltPayoutEntry {
   grossMinor: number
   feesMinor: number
   netMinor: number
+  unrecognisedNetMinor: number
+  /** What hit the bank: `netMinor + unrecognisedNetMinor`. The cash leg. */
+  depositedMinor: number
 }
 
 const MAX_COMPACT_PERIOD_KEY = DOC_NUMBER_MAX_LENGTH - 'AUXX-PAY-'.length - '-R9'.length
@@ -177,6 +201,11 @@ export function buildPayoutEntry(input: BuildPayoutEntryInput): BuiltPayoutEntry
   const grossMinor = assertMinor(input.grossMinor, 'gross', number)
   const feesMinor = assertMinor(input.feesMinor, 'fees', number)
   const netMinor = assertMinor(input.netMinor, 'net', number)
+  const unrecognisedNetMinor = assertMinor(
+    input.unrecognisedNetMinor ?? 0,
+    'unrecognised net',
+    number
+  )
 
   if (grossMinor <= 0) {
     throw new UnprocessableEntityError(
@@ -189,6 +218,19 @@ export function buildPayoutEntry(input: BuildPayoutEntryInput): BuiltPayoutEntry
       `Payout ${number} has net ${netMinor} and fees ${feesMinor}. Both are positive amounts - ` +
         'direction carries the sign.',
       { payoutNumber: number, netMinor: String(netMinor), feesMinor: String(feesMinor) }
+    )
+  }
+  // 🛑 Negative is a REFUSAL rather than a clamp. A negative remainder means the
+  // recognised net exceeds the payout - auxx thinks it took more than the
+  // gateway settled - and the only honest answers are a mis-read payout or a
+  // double-posted charge. Clamping to zero would post a plausible entry over
+  // either.
+  if (unrecognisedNetMinor < 0) {
+    throw new UnprocessableEntityError(
+      `Payout ${number} leaves an unrecognised remainder of ${unrecognisedNetMinor}. A negative ` +
+        'remainder means auxx recognised MORE than the gateway settled, which is a mis-read ' +
+        'payout or a double-posted charge, never a rounding difference.',
+      { payoutNumber: number, unrecognisedNetMinor: String(unrecognisedNetMinor) }
     )
   }
   if (netMinor + feesMinor !== grossMinor) {
@@ -206,14 +248,18 @@ export function buildPayoutEntry(input: BuildPayoutEntryInput): BuiltPayoutEntry
     )
   }
 
+  const depositedMinor = netMinor + unrecognisedNetMinor
+
   const source = { sourceType: PAYOUT_SOURCE_TYPE, sourceId: payoutId }
   const lines: GlPostingLineInput[] = [
     {
       ...source,
       accountRole: ACCOUNT_ROLES.CASH,
+      // 🛑 The WHOLE deposit, not the recognised net. This leg is what the bank
+      // line matches against, and the bank shows one figure for the payout.
       direction: 'debit',
-      amount: netMinor,
-      memo: memo ?? `Payout ${number} - net deposited`,
+      amount: depositedMinor,
+      memo: memo ?? `Payout ${number} - deposited`,
       sortOrder: 0,
     },
   ]
@@ -237,6 +283,19 @@ export function buildPayoutEntry(input: BuildPayoutEntryInput): BuiltPayoutEntry
     memo: `Payout ${number} - gross settled`,
     sortOrder: 2,
   })
+  // Dropped when zero, like the fee leg: the ordinary payout recognises
+  // everything in it, and an org that has never taken a charge outside auxx has
+  // no reason to have mapped `unidentified_receipts`.
+  if (unrecognisedNetMinor !== 0) {
+    lines.push({
+      ...source,
+      accountRole: ACCOUNT_ROLES.UNIDENTIFIED_RECEIPTS,
+      direction: 'credit',
+      amount: unrecognisedNetMinor,
+      memo: `Payout ${number} - settled charges auxx has no payment for`,
+      sortOrder: 3,
+    })
+  }
 
   const entry = buildEntry({
     postingType: 'payout',
@@ -245,5 +304,13 @@ export function buildPayoutEntry(input: BuildPayoutEntryInput): BuiltPayoutEntry
     lines,
   })
 
-  return { entry, periodKey: number, grossMinor, feesMinor, netMinor }
+  return {
+    entry,
+    periodKey: number,
+    grossMinor,
+    feesMinor,
+    netMinor,
+    unrecognisedNetMinor,
+    depositedMinor,
+  }
 }

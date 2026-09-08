@@ -4,7 +4,7 @@
 // `gross !== net + fees`. Every other builder here computes its own totals; a
 // payout TRANSCRIBES three numbers a gateway reported, and balancing them by
 // deriving one from the other two would silently correct the gateway's
-// arithmetic - which is the one thing that makes `1200 Shopify Clearing`
+// arithmetic - which is the one thing that makes `1200 Card Clearing`
 // impossible to reconcile to zero for reasons nobody can reconstruct.
 
 import { describe, expect, it } from 'vitest'
@@ -19,7 +19,7 @@ const BASE = {
   grossMinor: 500_000,
   feesMinor: 14_800,
   netMinor: 485_200,
-  clearingRole: ACCOUNT_ROLES.CLEARING_SHOPIFY,
+  clearingRole: ACCOUNT_ROLES.CLEARING_CARD,
   paidAt: '2026-09-04',
 }
 
@@ -39,7 +39,7 @@ describe('the entry', () => {
       direction: 'debit',
       amount: 14_800,
     })
-    expect(line(built.entry, ACCOUNT_ROLES.CLEARING_SHOPIFY)).toMatchObject({
+    expect(line(built.entry, ACCOUNT_ROLES.CLEARING_CARD)).toMatchObject({
       direction: 'credit',
       amount: 500_000,
     })
@@ -116,5 +116,91 @@ describe('refusals', () => {
     expect(() => buildPayoutEntry({ ...BASE, clearingRole: ACCOUNT_ROLES.CASH })).toThrowError(
       /not a clearing account/
     )
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The fourth leg: charges the payout settled that auxx never posted to clearing
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('the unrecognised remainder', () => {
+  it('is absent from an entry that recognises everything', () => {
+    const built = buildPayoutEntry(BASE)
+    expect(line(built.entry, ACCOUNT_ROLES.UNIDENTIFIED_RECEIPTS)).toBeUndefined()
+    expect(built.unrecognisedNetMinor).toBe(0)
+    expect(built.depositedMinor).toBe(485_200)
+  })
+
+  it('is dropped rather than posted at zero when passed explicitly', () => {
+    const built = buildPayoutEntry({ ...BASE, unrecognisedNetMinor: 0 })
+    expect(built.entry.lines).toHaveLength(3)
+  })
+
+  it('credits unidentified receipts and leaves clearing relieved of only what auxx took', () => {
+    // The merchant took $600 outside auxx in the same payout, $580 of it net.
+    const built = buildPayoutEntry({ ...BASE, unrecognisedNetMinor: 58_000 })
+
+    expect(line(built.entry, ACCOUNT_ROLES.CLEARING_CARD)).toMatchObject({
+      direction: 'credit',
+      amount: 500_000,
+    })
+    expect(line(built.entry, ACCOUNT_ROLES.UNIDENTIFIED_RECEIPTS)).toMatchObject({
+      direction: 'credit',
+      amount: 58_000,
+    })
+    expect(line(built.entry, ACCOUNT_ROLES.PAYMENT_PROCESSING_FEES)).toMatchObject({
+      direction: 'debit',
+      amount: 14_800,
+    })
+  })
+
+  it('debits cash the WHOLE deposit, which is what the bank line shows', () => {
+    const built = buildPayoutEntry({ ...BASE, unrecognisedNetMinor: 58_000 })
+
+    expect(line(built.entry, ACCOUNT_ROLES.CASH)).toMatchObject({
+      direction: 'debit',
+      amount: 543_200,
+    })
+    expect(built.depositedMinor).toBe(543_200)
+  })
+
+  it('still balances with the fourth leg', () => {
+    const built = buildPayoutEntry({ ...BASE, unrecognisedNetMinor: 58_000 })
+    expect(built.entry.totalDebit).toBe(built.entry.totalCredit)
+    // 543,200 cash + 14,800 fees = 500,000 clearing + 58,000 unidentified.
+    expect(built.entry.totalDebit).toBe(558_000)
+  })
+
+  it('sources the fourth leg on the payout id like every other line', () => {
+    const built = buildPayoutEntry({ ...BASE, unrecognisedNetMinor: 58_000 })
+    expect(line(built.entry, ACCOUNT_ROLES.UNIDENTIFIED_RECEIPTS)).toMatchObject({
+      sourceType: PAYOUT_SOURCE_TYPE,
+      sourceId: BASE.payoutId,
+    })
+  })
+
+  // 🛑 The refusal that matters. A negative remainder means auxx thinks it took
+  // more than the gateway settled - a mis-read payout or a double-posted charge.
+  // Clamping to zero would post a plausible entry over either.
+  it('refuses a negative remainder rather than clamping it', () => {
+    expect(() => buildPayoutEntry({ ...BASE, unrecognisedNetMinor: -1 })).toThrow(
+      UnprocessableEntityError
+    )
+    expect(() => buildPayoutEntry({ ...BASE, unrecognisedNetMinor: -1 })).toThrow(
+      /recognised MORE than the gateway settled/
+    )
+  })
+
+  it('refuses a fractional remainder', () => {
+    expect(() => buildPayoutEntry({ ...BASE, unrecognisedNetMinor: 12.5 })).toThrow(
+      UnprocessableEntityError
+    )
+  })
+
+  // The gross/net/fees refusal is about the RECOGNISED three, and the remainder
+  // sits outside it - otherwise every payout with an outside charge would be
+  // refused as not adding up.
+  it('does not fold the remainder into the gross = net + fees check', () => {
+    expect(() => buildPayoutEntry({ ...BASE, unrecognisedNetMinor: 58_000 })).not.toThrow()
   })
 })

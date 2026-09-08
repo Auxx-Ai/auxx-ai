@@ -48,6 +48,12 @@ describe('maintenance worker registrations', () => {
     // nothing feeds from is this job calling `disconnect`. A missing registration
     // is invisible until somebody reads an invoice.
     ['bank feed maintenance', 'bankFeedMaintenanceJob'],
+    // The guarantee behind the `payout.paid` webhook. A missing registration
+    // restores the hole it was built to close - `postPayoutEntry` with no caller,
+    // so `1200 Card Clearing` is debited gross at every card sale and never
+    // credited - and nothing on screen says so until somebody reads a balance
+    // sheet months later.
+    ['payout sync', 'payoutSyncJob'],
   ])('has a handler for the %s job', (_label, name) => {
     expect(Object.keys(jobMappings)).toContain(name)
   })

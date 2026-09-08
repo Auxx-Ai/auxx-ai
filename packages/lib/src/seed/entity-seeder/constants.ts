@@ -376,6 +376,34 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     isVisible: false,
   },
   {
+    // One gateway settlement: the batch of charges it paid out, and the entry it
+    // became (HANDOFF §11.5 item 1). Entity migration 133.
+    //
+    // 🛑 The record exists for the NUMBER before anything else. `buildPayoutEntry`
+    // refuses a bare `po_…` - 27 characters against a 21-character document-number
+    // cap - and cannot key on a date instead, because two payouts can settle in
+    // one day. A minted `PAY-0001` needs a row to be minted onto.
+    //
+    // ⚠️ NOT a bank deposit and not a payment. A payout is money leaving the
+    // GATEWAY for the bank; the charges it settles were already booked when they
+    // were taken.
+    //
+    // `isVisible: false` like `bank_deposit` beside it: the door is Accounting >
+    // Banking > Payouts, and a payout is only ever created by the sync - there is
+    // no create dialog to reach, so an auto-linked sidebar entry would offer one
+    // that could not work.
+    //
+    // 🛑 This line reaches FRESH orgs only. `ensureEntityDefinitions` skips an
+    // org that already holds the def.
+    entityType: 'payout',
+    apiSlug: 'payouts',
+    singular: 'Payout',
+    plural: 'Payouts',
+    icon: 'banknote-arrow-down',
+    color: 'teal',
+    isVisible: false,
+  },
+  {
     // Where the bank feed meets the chart of accounts
     // (plans/bank-connection/02-connection-architecture.md §6). Entity
     // migration 125.
@@ -655,6 +683,14 @@ export const DISPLAY_FIELD_CONFIG: Record<string, DisplayFieldConfig> = {
   bank_deposit: {
     primaryDisplayField: 'number',
     secondaryDisplayField: 'depositDate',
+  },
+  // The number is issued by a hook on create and never edited, so it is always
+  // present. `paidAt` is nullable while a payout is still in transit, which is
+  // why it is only the SECONDARY: `computeDisplayValue` has no fallback and a
+  // null PRIMARY renders the row nameless.
+  payout: {
+    primaryDisplayField: 'number',
+    secondaryDisplayField: 'paidAt',
   },
   // `name` is required and `institution` is not, which is the right way round:
   // `computeDisplayValue` has no fallback, so a null PRIMARY renders the row

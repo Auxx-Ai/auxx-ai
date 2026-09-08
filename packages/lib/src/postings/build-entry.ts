@@ -221,11 +221,36 @@ export const ACCOUNT_ROLES = {
    */
   UNDEPOSITED_FUNDS: 'undeposited_funds',
   /**
-   * Shopify clearing (default `1200`). Card revenue lands here gross at the
-   * sale and is relieved net by the payout entry; the residual is the
-   * processing fee. Reconciles to zero per payout.
+   * Card clearing (default `1200`). Card revenue lands here gross at the sale
+   * and is relieved net by the payout entry; the residual is the processing
+   * fee. Reconciles to zero per payout.
+   *
+   * 🛑 Named for the RAIL, not for a provider. It was `clearing_shopify` /
+   * `1200 Shopify Clearing` until entity migration 132, which was wrong in a way
+   * that reconciled perfectly and read as a lie: there is no Shopify payment
+   * rail in auxx at all - `PaymentTransaction.provider` is `manual | stripe` -
+   * so every Stripe card receipt was accumulating in an account named for a
+   * provider the money never touched.
    */
-  CLEARING_SHOPIFY: 'clearing_shopify',
+  CLEARING_CARD: 'clearing_card',
+  /**
+   * Unidentified receipts (default `2450`). Money that arrived and auxx cannot
+   * attribute, held as a LIABILITY until somebody codes it.
+   *
+   * 🛑 The payout entry is what fills this. A gateway payout settles every
+   * charge the merchant took, INCLUDING charges taken outside auxx, which were
+   * never debited to `clearing_card`. Crediting the payout's full gross to
+   * clearing would drive that account permanently negative by the amount auxx
+   * never took; posting only the recognised part and leaving cash short of the
+   * bank would break the bank reconciliation instead. So cash takes the whole
+   * deposit, clearing is relieved of exactly what auxx put in it, and the
+   * remainder lands here where it is visible and someone must work it.
+   *
+   * ⚠️ A liability rather than income ON PURPOSE. Until it is attributed,
+   * "we hold money we cannot explain" is the true statement; recognising it as
+   * revenue would book income on the strength of not knowing what it is.
+   */
+  UNIDENTIFIED_RECEIPTS: 'unidentified_receipts',
   /** Sales tax payable (default `2200`). A pass-through liability, never revenue. */
   SALES_TAX_PAYABLE: 'sales_tax_payable',
   /** Deferred revenue (default `2300`). Month-end deferral and its reversal. */
@@ -314,7 +339,8 @@ export const ROLE_ACCOUNT_TYPES: Record<AccountRole, GlAccountTypeValue> = {
   inventory_count_variance: 'expense',
   accounts_receivable: 'asset',
   undeposited_funds: 'asset',
-  clearing_shopify: 'asset',
+  clearing_card: 'asset',
+  unidentified_receipts: 'liability',
   sales_tax_payable: 'liability',
   deferred_revenue: 'liability',
   customer_deposits: 'liability',
@@ -354,7 +380,8 @@ export const ACCOUNT_ROLE_LABELS: Record<AccountRole, string> = {
   inventory_count_variance: 'Inventory Count Variance',
   accounts_receivable: 'Accounts Receivable',
   undeposited_funds: 'Undeposited Funds',
-  clearing_shopify: 'Shopify Clearing',
+  clearing_card: 'Card Clearing',
+  unidentified_receipts: 'Unidentified Receipts',
   sales_tax_payable: 'Sales Tax Payable',
   deferred_revenue: 'Deferred Revenue',
   customer_deposits: 'Customer Deposits',

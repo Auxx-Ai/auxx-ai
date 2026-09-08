@@ -138,7 +138,7 @@ describe('the two types that key on an id rather than a date', () => {
   })
 
   // Shopify can issue two payouts in a day; a date key merges them into one
-  // entry whose total ties to neither deposit, and 1200 Shopify Clearing then
+  // entry whose total ties to neither deposit, and 1200 Card Clearing then
   // cannot be reconciled.
   it('keys a payout on the payout id, so two in a day stay apart', () => {
     expect(buildDocNumber({ postingType: 'payout', periodKey: '81234567' })).not.toBe(

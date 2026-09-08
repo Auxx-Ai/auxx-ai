@@ -10,6 +10,14 @@
 // uses (money MQ1 build spec §F.1).
 import type { WorkOrderBillingBasis, WorkOrderInvoiceTiming } from './types'
 
+export {
+  PAYOUT_STATUSES,
+  type PayoutItem,
+  type PayoutSplit,
+  type PayoutStatus,
+  resolvePayoutStatus,
+  splitPayout,
+} from './payouts/client'
 export { computeDocumentTotals, computeLineTotal, roundCents } from './totals'
 export type {
   DiscountType,

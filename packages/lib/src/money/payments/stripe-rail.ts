@@ -643,6 +643,25 @@ export async function reconcileStripeDepositCheckoutReturn(
 }
 
 /**
+ * The org behind a connected Stripe account, or `null` when auxx does not hold
+ * one.
+ *
+ * A payout event carries no auxx id at all - no metadata, no transaction - so
+ * `event.account` is the only handle, and `PaymentAccount.stripeAccountId` is
+ * what it maps through. A disconnected account still resolves: a payout that
+ * settled before the disconnect is still real money that needs booking.
+ */
+async function resolveOrgForConnectedAccount(
+  stripeAccountId: string | undefined
+): Promise<string | null> {
+  if (!stripeAccountId) return null
+  const account = await database.query.PaymentAccount.findFirst({
+    where: eq(schema.PaymentAccount.stripeAccountId, stripeAccountId),
+  })
+  return account?.organizationId ?? null
+}
+
+/**
  * The Connect webhook reducer (money MP1 build spec §E bullet 2 — called by the route handler,
  * §F). Every branch guards on the row's current status before writing, so a Stripe retry (or a
  * manually re-sent event) is a safe no-op. Unknown/unhandled event types fall through silently —
@@ -774,6 +793,56 @@ export async function applyStripeEvent(event: Stripe.Event): Promise<void> {
           userId: systemUserId,
           invoiceInstanceId: transaction.invoiceInstanceId,
         })
+      }
+      return
+    }
+
+    // ── Payouts (HANDOFF §11.5 item 1) ───────────────────────────────────
+    //
+    // 🛑 Both cases resolve the ORG from the connected account on the event,
+    // because a payout event carries no auxx id of its own. `event.account` is
+    // the connected account id, which `PaymentAccount` is keyed on.
+    //
+    // Lazy-imported so `money/payments/` never statically pulls the posting
+    // stack into the webhook route's module graph.
+    case 'payout.paid': {
+      const payout = event.data.object as Stripe.Payout
+      const organizationId = await resolveOrgForConnectedAccount(event.account)
+      if (!organizationId) return
+      // ⚠️ The whole sync rather than this one payout. The webhook is a
+      // PROMPT, not the source of truth: it can arrive twice, arrive late, or
+      // not arrive at all, and the sync is idempotent on the gateway id, so
+      // running it is both cheaper to reason about and self-healing for
+      // anything the last run missed.
+      const { syncPayouts } = await import('../payouts')
+      const result = await syncPayouts(database, { organizationId })
+      if (result.isErr()) {
+        logger.error('Payout sync failed from a payout.paid webhook', {
+          organizationId,
+          payoutId: payout.id,
+          error: result.error.message,
+        })
+      }
+      return
+    }
+
+    case 'payout.failed': {
+      const payout = event.data.object as Stripe.Payout
+      const organizationId = await resolveOrgForConnectedAccount(event.account)
+      if (!organizationId) return
+      // 🛑 A payout the gateway announced and then took back. The entry that
+      // said the money arrived is REVERSED, never edited and never deleted -
+      // it was true when it posted, and the correction is a second entry.
+      const { reverseFailedPayout } = await import('../payouts')
+      const result = await reverseFailedPayout(database, {
+        organizationId,
+        gatewayPayoutId: payout.id,
+      })
+      if (result.isErr()) {
+        // Left to a retry rather than swallowed: a failed payout whose entry is
+        // still standing overstates cash, and the route 500ing makes Stripe
+        // send the event again.
+        throw result.error
       }
       return
     }
