@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.232](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.231...auxx-v0.1.232) (2026-09-08)
+
+
+### Bug Fixes
+
+* **banking:** give the bank feed's webhook an endpoint it can actually reach ([#2059](https://github.com/Auxx-Ai/auxx-ai/issues/2059)) ([1ea9237](https://github.com/Auxx-Ai/auxx-ai/commit/1ea92375752fd14aac7f90f9abd4f171efbf3b84))
+
 ## [0.1.231](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.230...auxx-v0.1.231) (2026-09-08)
 
 
