@@ -445,6 +445,7 @@ export {
   type BackfillGrouping,
   type BackfillPartPlan,
   type BackfillPlan,
+  type BackfillPreflight,
   type BackfillRequest,
   type BackfillRunSummary,
   type BackfillStatus,

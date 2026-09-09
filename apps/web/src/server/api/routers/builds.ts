@@ -6,6 +6,7 @@ import {
   buildNow,
   cancelBuild,
   completeBuild,
+  computeBackfillPreflight,
   createBuild,
   executeBackfill,
   explodeBuildComponents,
@@ -16,17 +17,20 @@ import {
   planBackfill,
   previewStandardCostRoll,
   readBackfillPlanReads,
+  readBatchRun,
   readBuildDrift,
   readPartQuantitiesOnHand,
   reverseBuild,
   rollStandardCost,
   startBuild,
+  undoBatchRun,
 } from '@auxx/lib/builds'
 import type {
   BackfillExclusion,
   BackfillGrouping,
   BackfillPartPlan,
   BackfillPlan,
+  BackfillPreflight,
   BackfillStatus,
 } from '@auxx/lib/builds/client'
 import { getCachedEntityDefId } from '@auxx/lib/cache'
@@ -134,9 +138,9 @@ const completionShape = {
  * | procedure                              | gate                                      |
  * | -------------------------------------- | ----------------------------------------- |
  * | `previewRoll`, `roll`                  | edit on `part`                            |
- * | `list`, `get`                          | view on `build`                           |
+ * | `list`, `get`, `getBatchRun`           | view on `build`                           |
  * | `create`, `start`, `cancel`            | edit on `build`                           |
- * | `previewCompletion`, `complete`, `reverse`, `buildNow` | edit on `build` AND edit on `stock_movement` |
+ * | `previewCompletion`, `complete`, `reverse`, `buildNow`, `undoBatchRun` | edit on `build` AND edit on `stock_movement` |
  *
  * Three notes on why those, and not something coarser:
  *
@@ -144,7 +148,7 @@ const completionShape = {
  *    server mirror of the `canEditEntity(defId)` the cards run to decide whether
  *    to render a button, so the button the UI hides and the door the server
  *    closes are the same door.
- * 2. **`complete` and `reverse` assert BOTH.** They are the only two paths in
+ * 2. **`complete`, `reverse` and `undoBatchRun` assert BOTH.** They are paths in
  *    this router that write a `stock_movement`, and `stock_movement` is where
  *    the rest of manufacturing puts that authority — `purchasing.receiveStock`,
  *    `adjustStock` and `reverseMovement` all gate on exactly that def. A person
@@ -542,7 +546,7 @@ export const buildsRouter = createTRPCRouter({
       // The contract carries part IDS; a screen somebody has to judge carries
       // part NAMES. Resolved here rather than in the plan because the plan is
       // the thing the writer executes, and a display name has no business in it.
-      const [partNames, preflight] = await Promise.all([
+      const [partNames, preflightResult] = await Promise.all([
         readEntityNames(ctx.db, organizationId, [
           ...plan.parts.map((part: BackfillPartPlan) => part.partId),
           ...plan.excluded.map((exclusion: BackfillExclusion) => exclusion.partId),
@@ -551,6 +555,15 @@ export const buildsRouter = createTRPCRouter({
           ? computeBackfillPreflight(ctx.db, organizationId, plan)
           : Promise.resolve(null),
       ])
+
+      // The preflight fails as a whole rather than per part: it writes nothing,
+      // and one silently omitted part would under-report the consent it exists
+      // to obtain (44 §7.3).
+      let preflight: BackfillPreflight | null = null
+      if (preflightResult) {
+        if (preflightResult.isErr()) throw preflightResult.error
+        preflight = preflightResult.value
+      }
 
       return { cutoff, refusal: null, plan, partNames, preflight }
     }),
@@ -595,6 +608,64 @@ export const buildsRouter = createTRPCRouter({
         grouping: input.grouping,
         status: input.status,
       })
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  // ─── The batch run (plans/money/tasks/45 §4, §11) ───────────────────
+
+  /**
+   * One batch run's members, counted by status.
+   *
+   * ⚠️ **A run is not a record** (45 §3.1), so there is no def to gate on and no
+   * detail page to open. This read IS the run's detail view, and the build
+   * drawer's `build:batch-run` card is the surface that renders it: every build
+   * carrying `build_batch_run = N` is a sibling, and the counts are what makes
+   * the Undo button able to state its own blast radius before it is pressed.
+   *
+   * VIEW on `build` and nothing else. It counts builds, discloses no cost, and
+   * anybody who may open one member of the run may count the rest.
+   */
+  getBatchRun: capabilityProcedure
+    .input(z.object({ runNumber: z.number().int().positive() }))
+    .query(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      ctx.capabilities.assertViewEntity(await requireDefId(organizationId, 'build'))
+
+      const result = await readBatchRun(ctx.db, organizationId, input.runNumber)
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /**
+   * Cancel or reverse every build a batch run raised (45 §4.1).
+   *
+   * 🛑 **The full ledger gate, because `willReverse` writes movements.** A
+   * `planned` or `in_progress` member is cancelled and moves nothing, but a
+   * `completed` one is REVERSED, and a reversal appends the negation of every
+   * consume and produce row the completion wrote. So this takes exactly the pair
+   * {@link assertCanPostBuildLedger} exists for: EDIT on `build` and EDIT on
+   * `stock_movement`. Gating on `build` alone would let somebody who may raise a
+   * run post a four-figure ledger correction through a button whose only other
+   * arm is a cancellation.
+   *
+   * 🛑 **Never a delete**, and never a time machine. `reverseMovement` dates its
+   * rows `new Date()`, so undoing a run that covered a CLOSED month books the
+   * correction in today's open period and leaves that month as posted (§4.2).
+   * The card says so before it asks.
+   *
+   * Per-build isolation: the lib call never throws for one member's failure, it
+   * returns the four buckets (`cancelled`, `reversed`, `skipped`, `failed`).
+   * A run that aborted on the first refusal would report "failed" about builds
+   * it had already undone.
+   */
+  undoBatchRun: capabilityProcedure
+    .input(z.object({ runNumber: z.number().int().positive() }))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
+      await assertCanPostBuildLedger(ctx)
+
+      const result = await undoBatchRun(ctx.db, organizationId, userId, input.runNumber)
       if (result.isErr()) throw result.error
       return result.value
     }),
@@ -645,110 +716,6 @@ async function readBookTimeZone(organizationId: string): Promise<string | null> 
   // kept in UTC has SET the zone, and collapsing the two would refuse it a
   // completed backfill it is entitled to.
   return typeof value === 'string' && value.trim() ? value : null
-}
-
-/**
- * What a `completed` backfill would write, checked before anything is written.
- *
- * §7.3 gates 2, 3 and 4: the consent for a completed run is *"N builds, M stock
- * movements, on an append-only ledger correctable only by reversing"*, and both
- * numbers have to be real. `completeBuild` also aborts per build when a
- * component has no `part_standard_cost`, and discovering that on build 400 of
- * 900 is the wrong time.
- */
-interface BackfillPreflight {
-  /** Builds the run would raise. */
-  buildCount: number
-  /** `build_consume` + `build_produce` rows those builds would append. */
-  movementCount: number
-  /** Parts with no standard cost, which `completeBuild` refuses outright. */
-  unpricedParts: { partId: string; partName: string | null }[]
-  /**
-   * Where the run leaves each consumed component.
-   *
-   * ⚠️ A WARNING's input, never a gate's (§7.3 gate 4). Negative on hand is a
-   * true statement about a ledger missing its receipts, and refusing would make
-   * the backfill unusable on exactly the org that needs it most. The remedy is
-   * opening stock, which is the person's call to make first.
-   */
-  projectedOnHand: {
-    partId: string
-    partName: string | null
-    onHand: number
-    consumed: number
-    projected: number
-  }[]
-}
-
-/**
- * Explode every part in the plan and total what the run would consume.
- *
- * Exploded once per part at its WHOLE range quantity rather than once per
- * bucket: component quantities are linear in the produced quantity, so the total
- * is identical and a twenty-part plan costs twenty round trips instead of
- * ninety-four.
- */
-async function computeBackfillPreflight(
-  db: Database,
-  organizationId: string,
-  plan: BackfillPlan
-): Promise<BackfillPreflight> {
-  const buildCount = plan.buildCount
-  let movementCount = 0
-  const unpriced = new Set<string>()
-  const consumed = new Map<string, number>()
-
-  const explosions = await Promise.all(
-    plan.parts.map((part) =>
-      explodeBuildComponents(db, organizationId, {
-        partId: part.partId,
-        quantityProduced: part.quantityToBuild,
-      })
-    )
-  )
-
-  for (const [index, explosion] of explosions.entries()) {
-    const part = plan.parts[index]
-    if (!part) continue
-    if (explosion.isErr()) throw explosion.error
-    const components = explosion.value.components
-    // One `build_produce` per build, plus one `build_consume` per component per
-    // build. The component set is the same for every bucket of a part.
-    movementCount += part.buckets.length * (components.length + 1)
-    for (const missing of explosion.value.missingStandardPartIds) unpriced.add(missing)
-    for (const line of components) {
-      consumed.set(line.partId, (consumed.get(line.partId) ?? 0) + line.quantityConsumed)
-    }
-  }
-
-  const componentIds = [...consumed.keys()]
-  const [onHand, names] = await Promise.all([
-    readPartQuantitiesOnHand(db, organizationId, componentIds),
-    readEntityNames(db, organizationId, [...componentIds, ...unpriced]),
-  ])
-
-  return {
-    buildCount,
-    movementCount,
-    unpricedParts: [...unpriced].map((partId) => ({
-      partId,
-      partName: names[partId] ?? null,
-    })),
-    projectedOnHand: componentIds
-      .map((partId) => {
-        const available = onHand.get(partId) ?? 0
-        const used = consumed.get(partId) ?? 0
-        return {
-          partId,
-          partName: names[partId] ?? null,
-          onHand: available,
-          consumed: used,
-          projected: available - used,
-        }
-      })
-      // Worst first: the rows that matter are the ones the run drives negative.
-      .sort((a, b) => a.projected - b.projected),
-  }
 }
 
 /**

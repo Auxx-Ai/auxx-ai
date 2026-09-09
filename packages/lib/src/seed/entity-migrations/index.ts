@@ -97,6 +97,7 @@ import { migration137FulfillmentFacts } from './migrations/137-fulfillment-facts
 import { migration138AccountantPermissions } from './migrations/138-accountant-permissions'
 import { migration139TaxLineOrderWritable } from './migrations/139-tax-line-order-writable'
 import { migration140IntegrationsView } from './migrations/140-integrations-view'
+import { migration141BuildBatchRun } from './migrations/141-build-batch-run'
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
@@ -298,6 +299,10 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   // hiding Settings -> Connections and emptying the connection picker. Touches
   // no entity def, so it has no ordering constraint against any migration above.
   migration140IntegrationsView,
+  // `build_batch_run`, the per-org batch run number every build a batch run
+  // creates carries (plans/money/tasks/45-batch-only-builds.md §3). MUST sort
+  // after 109, which creates the `build` def it widens.
+  migration141BuildBatchRun,
 ]
 
 /**

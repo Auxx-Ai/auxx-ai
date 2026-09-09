@@ -749,6 +749,51 @@ export const BUILD_FIELDS: Record<string, ResourceField> = {
     description: 'End of the demand period this build covers, exclusive',
   },
 
+  /**
+   * Which batch run raised this build (plans/money/tasks/45 §3).
+   *
+   * A scalar and not a `batch_run` entity, because everything such an entity
+   * would hold is already recoverable from the builds themselves: the range and
+   * grouping off `periodStart` / `periodEnd`, the status off `status`, the
+   * timing off `createdAt` (45 §3.1). The number comes from
+   * `records/record-numbering.ts`'s atomic `UPDATE ... RETURNING`, allocated
+   * ONCE per run and passed down, never `MAX(...) + 1`.
+   *
+   * 🛑 **`null` on order-raised, hand-raised AND reversing builds.** The first
+   * two never belonged to a run. The third is the trap 45 §4.1 names:
+   * `reverse-build.ts` copies `build_source` onto a reversal, so a reversal of
+   * a batch build is itself `source: 'batch'` and the shape invites copying the
+   * field beside it. If it were copied, run N would contain its own undo and a
+   * second `undoBatchRun(N)` would try to reverse the reversals.
+   *
+   * Backend-owned like `periodStart`: `updatable: false` says there is no
+   * INTERACTIVE writer, and `createBuild` is the only writer there is.
+   */
+  batchRun: {
+    id: toFieldId('batchRun'),
+    key: 'batchRun',
+    label: 'Batch Run',
+    type: BaseType.NUMBER,
+    fieldType: FieldType.NUMBER,
+    isSystem: true,
+    systemAttribute: 'build_batch_run',
+    systemSortOrder: 'aO',
+    nullable: true,
+    // Filterable is the point: "show me run 2" is a plain filter on this field,
+    // which is what 45 §4.3's first affordance means in practice.
+    showInPanel: true,
+    showInTable: false,
+    showInDialogs: false,
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: true,
+      updatable: false,
+      configurable: false,
+    },
+    description: 'The batch run that raised this build',
+  },
+
   createdAt: {
     id: toFieldId('createdAt'),
     key: 'createdAt',

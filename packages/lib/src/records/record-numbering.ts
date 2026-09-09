@@ -29,10 +29,32 @@ export const SEQUENCE_SCOPES = [
   'credit_memo',
 ] as const
 
-/** Which record kind a `RecordSequence` row counts. */
+/**
+ * Counters that are NOT record kinds, and must never reach the settings UI.
+ *
+ * 🛑 **Deliberately kept out of {@link SEQUENCE_SCOPES}**, because that list is
+ * what `routers/ticketSequence.ts` derives its scope enum from, and that router
+ * exposes `resetCounter` on a bare `protectedProcedure` with no permission
+ * assert. For `ticket` or `invoice` a reset means a duplicate document number,
+ * which is cosmetic. For `build_batch` it means two batch runs SHARE A NUMBER,
+ * and `undoBatchRun(N)` then reverses completed production from a run nobody
+ * asked to undo, writing to the ledger (plans/money/tasks/45 §10.3).
+ *
+ * `recordNumbering.create` accepts these; nothing else does. There is no
+ * configure, no reset and no UI.
+ */
+export const INTERNAL_SEQUENCE_SCOPES = ['build_batch'] as const
+
+/** Which record kind a `RecordSequence` row counts. Configurable by a user. */
 export type SequenceScope = (typeof SEQUENCE_SCOPES)[number]
 
-const SCOPE_DEFAULTS: Record<SequenceScope, { prefix: string }> = {
+/** A counter that is not a record kind. Backend-allocated only. */
+export type InternalSequenceScope = (typeof INTERNAL_SEQUENCE_SCOPES)[number]
+
+/** Anything `recordNumbering.create` will count. */
+export type AnySequenceScope = SequenceScope | InternalSequenceScope
+
+const SCOPE_DEFAULTS: Record<AnySequenceScope, { prefix: string }> = {
   ticket: { prefix: 'TKT' },
   work_order: { prefix: 'WO' },
   service_request: { prefix: 'REQ' },
@@ -63,6 +85,12 @@ const SCOPE_DEFAULTS: Record<SequenceScope, { prefix: string }> = {
   // (`postings/build-credit-memo-entry.ts`), so it stays short for the same
   // reason the three above do (plans/accounting/tasks/10 section 2.1).
   credit_memo: { prefix: 'CM' },
+  // The batch run counter (plans/money/tasks/45 §3.2). The prefix is COSMETIC
+  // here and nothing renders it: the run number is consumed as the raw
+  // `sequenceNumber` integer, because `build_batch_run` is an integer field.
+  // `BR` all the same, so a row somebody stumbles over in the table is legible
+  // and collides with neither `B` (build) nor `BILL` (vendor bill).
+  build_batch: { prefix: 'BR' },
 }
 
 /** Format a record number from a sequence record */
@@ -116,7 +144,7 @@ export const recordNumbering = {
   /** Generate the next number for an org+scope. Atomic — safe under concurrent creates. */
   async create(
     organizationId: string,
-    scope: SequenceScope
+    scope: AnySequenceScope
   ): Promise<{ recordNumber: string; sequenceNumber: number }> {
     // First use: seed the row. onConflictDoNothing keys on the (organizationId, scope) unique.
     await database

@@ -132,10 +132,15 @@ export async function createBuild(
 
       // The demand period a batch build claims (plans/money/tasks/44 §6.2).
       //
-      // 🛑 Written HERE or never: both fields are `updatable: false`, so a
-      // post-create write would be writing a field the schema refuses. That is
-      // deliberate — moving a claimed period restates what the next netting run
-      // believes is already covered.
+      // 🛑 Written HERE or never, and `createBuild` being the ONLY writer is
+      // what actually holds that. This comment used to say the fields being
+      // `updatable: false` made a post-create write impossible. It does not:
+      // `field-hooks/register-hooks.ts:523` states plainly that the write path
+      // NEVER reads `capabilities.updatable`, so the flag is documentation plus
+      // a UI and connector gate, nothing more (plans/money/tasks/45 §10.5). The
+      // invariant is a convention this file keeps, which is why a second writer
+      // would break it in silence: moving a claimed period restates what the
+      // next netting run believes is already covered.
       //
       // Guarded on `source` for the same reason `build_order_revision` is: an
       // order-raised build answers to one order and a hand-raised one to nobody,
@@ -148,6 +153,25 @@ export async function createBuild(
         if (ctx.fields.build_period_start && ctx.fields.build_period_end) {
           values.build_period_start = input.period.start.toISOString()
           values.build_period_end = input.period.end.toISOString()
+        }
+      }
+
+      // Which batch run raised this build (plans/money/tasks/45 §3). Same shape
+      // and the same three rules as the period above: written here or never,
+      // ignored unless the source is `batch`, and skipped when the field is not
+      // provisioned.
+      //
+      // ⚠️ The number is ALLOCATED ONCE PER RUN by `executeBackfill` and passed
+      // down (45 §3.2). Nothing is allocated here, because allocating per build
+      // would burn the sequence and give every build in the run its own run
+      // number, which is exactly the handle undo hangs on.
+      //
+      // 🛑 The provisioning guard is what keeps an org short of entity
+      // migration 141 from a 500. It gets un-numbered builds instead, which
+      // costs it undo and costs the netting read nothing.
+      if (input.batchRun !== undefined && (input.source ?? 'manual') === 'batch') {
+        if (ctx.fields.build_batch_run) {
+          values.build_batch_run = input.batchRun
         }
       }
 
@@ -198,6 +222,7 @@ export async function createBuild(
         partId: input.partId,
         quantityPlanned: input.quantityPlanned,
         source: values.build_source,
+        batchRun: values.build_batch_run ?? null,
       })
 
       return requireBuild(db, organizationId, created.instance.id)

@@ -40,6 +40,9 @@ export { CANCEL_AUTO_BUILDS_ON_ORDER_CANCELLED, registerAutoBuildRules } from '.
 export { type AutoBuildSettings, loadAutoBuildSettings } from './auto-build-settings'
 export { executeBackfill, resolveBackfillCompletedAt } from './backfill-builds'
 export { planBackfill } from './backfill-policy'
+// §7.3's gates 2, 3 and 4. Moved out of `routers/builds.ts` (44 §11.3): a router
+// asserts and calls, it does not compose the arithmetic.
+export { computeBackfillPreflight } from './backfill-preflight'
 export { readBackfillPlanReads } from './backfill-queries'
 export {
   BACKFILL_EXCLUSION_REASONS,
@@ -53,10 +56,21 @@ export {
   type BackfillPartPlan,
   type BackfillPlan,
   type BackfillPlanInput,
+  type BackfillPreflight,
   type BackfillRequest,
   type BackfillRunSummary,
   type BackfillStatus,
 } from './backfill-types'
+// The batch run reads (plans/money/tasks/45 §10.4). `readBatchRun` is what the
+// drawer card and the undo preview render; `readBatchRunBuilds` is the per-build
+// set `undoBatchRun` acts on, exported rather than private because reads and
+// writes live in separate files.
+export {
+  type BatchRunBuild,
+  listBatchRuns,
+  readBatchRun,
+  readBatchRunBuilds,
+} from './batch-run-queries'
 export {
   amendPlannedBuildQuantity,
   cancelBuild,
@@ -161,6 +175,7 @@ export {
 } from './standard-cost-roll'
 export type {
   AbsorptionRates,
+  BatchRunSummary,
   BuildComponentLine,
   BuildComponentOverride,
   BuildComponentPlan,
@@ -182,5 +197,11 @@ export type {
   StandardCostRollPlan,
   StandardCostRollResult,
   StartBuildInput,
+  UndoBatchRunEntry,
+  UndoBatchRunSummary,
 } from './types'
+// Undo a whole batch run (plans/money/tasks/45 §4). Cancels what is `planned`
+// or `in_progress` and REVERSES what is `completed`, never deletes, and never
+// throws: per-build isolation, the same discipline `executeBackfill` keeps.
+export { undoBatchRun } from './undo-batch-run'
 export { BUILD_WRITE_LANE_REASON, buildWriteSession } from './write-lane'

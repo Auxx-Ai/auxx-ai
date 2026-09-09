@@ -253,6 +253,21 @@ export interface BackfillRequest {
 /** What one backfill run did. Never throws; a failure is a row in here. */
 export interface BackfillRunSummary {
   /**
+   * The run number every build this run raised carries
+   * (plans/money/tasks/45 §3), or `null` when the run allocated none.
+   *
+   * 🛑 **It must come back.** A run is not a record (45 §3.1), so this integer
+   * is the ONLY handle undo hangs on: `undoBatchRun(N)` takes it as input, and a
+   * caller that cannot tell the person which run they just created has left them
+   * with no way to name it again.
+   *
+   * `null` means nothing was allocated, which today is one case only: an empty
+   * plan, which must burn no number. A run whose every bucket failed still
+   * carries its number, and `undoBatchRun` answers with an empty summary rather
+   * than a `NotFoundError` (45 §10.8).
+   */
+  batchRun: number | null
+  /**
    * Builds created, in creation order.
    *
    * 🛑 **`created` and {@link leftInProgress} OVERLAP.** A build whose
@@ -272,4 +287,40 @@ export interface BackfillRunSummary {
   leftInProgress: readonly { partId: string; buildId: string; reason: string }[]
   /** Buckets that produced nothing at all, with the reason. Keyed by `bucketId`. */
   failed: readonly { partId: string; bucketId: string; periodKey: string; reason: string }[]
+}
+
+/**
+ * What a `completed` backfill would write, checked before anything is written.
+ *
+ * §7.3 gates 2, 3 and 4: the consent for a completed run is *"N builds, M stock
+ * movements, on an append-only ledger correctable only by reversing"*, and both
+ * numbers have to be real. `completeBuild` also aborts per build when a
+ * component has no `part_standard_cost`, and discovering that on build 400 of
+ * 900 is the wrong time.
+ *
+ * Computed by `backfill-preflight.ts`. It lived in `routers/builds.ts` until
+ * 45's build moved it (44 §11.3, 45 §12.7).
+ */
+export interface BackfillPreflight {
+  /** Builds the run would raise. */
+  buildCount: number
+  /** `build_consume` + `build_produce` rows those builds would append. */
+  movementCount: number
+  /** Parts with no standard cost, which `completeBuild` refuses outright. */
+  unpricedParts: { partId: string; partName: string | null }[]
+  /**
+   * Where the run leaves each consumed component.
+   *
+   * 🛑 A WARNING's input, never a gate's (§7.3 gate 4). Negative on hand is a
+   * true statement about a ledger missing its receipts, and refusing would make
+   * the backfill unusable on exactly the org that needs it most. The remedy is
+   * opening stock, which is the person's call to make first.
+   */
+  projectedOnHand: {
+    partId: string
+    partName: string | null
+    onHand: number
+    consumed: number
+    projected: number
+  }[]
 }
