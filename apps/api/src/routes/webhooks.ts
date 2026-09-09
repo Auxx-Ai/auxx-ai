@@ -3,6 +3,7 @@
 import { decryptValue } from '@auxx/credentials'
 import { database, schema } from '@auxx/database'
 import { invokeLambdaExecutor, prepareLambdaContext } from '@auxx/lib/apps'
+import { resolveConnectionForRuntime } from '@auxx/lib/connections'
 import { getQueue, Queues } from '@auxx/lib/jobs/queues'
 import {
   dedupeWebhookEvent,
@@ -370,7 +371,26 @@ async function handleWebhookRequest(c: any) {
 
     log.info('Invoking Lambda for webhook execution', { handlerId })
 
-    // 5. Build context and invoke Lambda via shared helper
+    // 5. Resolve the connection this handler is bound to, so the handler can read its
+    //    connection variables off `connection.fields`. A webhook verifies its own
+    //    signature, and the secret it verifies with (Slack's signing secret, Meta's app
+    //    secret) is a per-connection value — without this the handler sees no connection
+    //    at all and every delivery fails closed.
+    const connectionResult = await resolveConnectionForRuntime({
+      appId: installation.appId,
+      connectionId: handler.connectionId ?? undefined,
+      organizationId: installation.organizationId,
+      userId: undefined,
+    })
+    if (connectionResult.isErr()) {
+      log.warn('Could not resolve webhook connection', {
+        installationId,
+        handlerId,
+        error: connectionResult.error.message,
+      })
+    }
+
+    // 6. Build context and invoke Lambda via shared helper
     const context = prepareLambdaContext({
       appId: installation.appId,
       installationId,
@@ -379,6 +399,9 @@ async function handleWebhookRequest(c: any) {
       userId: 'system',
       userEmail: null,
       userName: null,
+      organizationConnection: connectionResult.isOk()
+        ? connectionResult.value.organizationConnection
+        : undefined,
     })
 
     const lambdaResult = await invokeLambdaExecutor({
@@ -401,7 +424,7 @@ async function handleWebhookRequest(c: any) {
 
     const result = lambdaResult.value
 
-    // 6. Return handler's response to third-party service
+    // 7. Return handler's response to third-party service
     const handlerExecutionResult = result.execution_result
 
     log.info('Webhook execution completed', {
@@ -410,7 +433,7 @@ async function handleWebhookRequest(c: any) {
       handlerId,
     })
 
-    // 7. If handler returned trigger data and handler has a triggerId, enqueue
+    // 8. If handler returned trigger data and handler has a triggerId, enqueue
     //    dispatch jobs. One emit → two consumers (workflows + agents). Mirrors
     //    the polling-trigger-job side; see plans/kopilot/apps/app-triggers-brainstorm.md §2.
     if (handlerExecutionResult.triggerData && handler.triggerId) {
