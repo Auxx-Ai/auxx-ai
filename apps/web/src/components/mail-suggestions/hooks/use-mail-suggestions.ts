@@ -2,6 +2,7 @@
 
 'use client'
 
+import { useAccess } from '~/providers/capabilities-provider'
 import { api, type RouterOutputs } from '~/trpc/react'
 
 /**
@@ -36,7 +37,12 @@ export function useMailSuggestions(enabled = true) {
  * renders.
  */
 export function useMailSuggestionsCount(): { count: number; isError: boolean } {
+  // Feeds the notification bell, which mounts on every page — so without the
+  // mail key this is a recurring query for a member who has no mail to mine
+  // suggestions from.
+  const { can } = useAccess()
   const { data, error } = api.mailSuggestions.count.useQuery(undefined, {
+    enabled: can('inboxes.view'),
     staleTime: SUGGESTIONS_STALE_TIME,
     refetchOnWindowFocus: true,
   })

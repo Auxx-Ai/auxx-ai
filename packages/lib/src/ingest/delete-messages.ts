@@ -3,6 +3,7 @@
 import { schema } from '@auxx/database'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { getRealtimeService, publishMessageDeleted, publishThreadDeleted } from '../realtime'
+import { sweepResourceAccessForInstances } from '../resource-access/sweep-instances'
 import type { IngestContext } from './context'
 import { updateThreadMetadataEfficient } from './threads/update-metadata'
 
@@ -100,6 +101,15 @@ export async function deleteMessagesByExternalIds(
     // branch so a missing count can never delete a thread.
     if (remaining?.count === 0) {
       await ctx.db.delete(schema.Thread).where(eq(schema.Thread.id, threadId))
+      // Share rows on the thread. `ResourceAccess.entityInstanceId` has no
+      // foreign key, so nothing else reaches them — see
+      // `resource-access/sweep-instances.ts`. Runs on `ctx.db` rather than in a
+      // transaction because the thread delete above is unwrapped too; a failure
+      // between the two leaves the same orphan this path already left.
+      await sweepResourceAccessForInstances(ctx.db, {
+        organizationId: ctx.organizationId,
+        instanceIds: [threadId],
+      })
       ctx.logger.debug('Deleted empty thread after message removal', { threadId })
 
       const inboxId = inboxIdByThread.get(threadId) ?? null

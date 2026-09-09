@@ -105,13 +105,21 @@ async function finalizeHostedProvision(
   // Same gate as the start route, keyed off the same definition, asserted against the
   // state's own userId/organizationId rather than a live session - this leg has none
   // (the provider hits it directly on the redirect leg). The start route already
-  // refuses to mint a state for a bank-feed connect without `ledgerControl`, so this
-  // is a return hit with a forged or replayed state, or a permission that was revoked
-  // between start and return - either way it must be refused before anything is
-  // persisted.
-  if (connDef.providerKey === BANK_FEED_PROVIDER_KEY) {
-    await requirePermission(stateData.userId, stateData.organizationId, PermissionKey.ledgerControl)
-  }
+  // refuses to mint a state without the key, so reaching here unauthorized means a
+  // forged or replayed state, or a permission revoked between start and return -
+  // either way it must be refused before anything is persisted.
+  //
+  // Keep this expression IDENTICAL to the start route's. A definition the start
+  // route gates and this one does not is a persist path with no check on it, and
+  // the embed leg (POST) enters here without ever touching the start route's
+  // session branch at all.
+  await requirePermission(
+    stateData.userId,
+    stateData.organizationId,
+    connDef.providerKey === BANK_FEED_PROVIDER_KEY
+      ? PermissionKey.ledgerControl
+      : PermissionKey.integrationsManage
+  )
 
   const handler = await resolveHostedProvisionHandler(provider.hostedProvisionKey)
 

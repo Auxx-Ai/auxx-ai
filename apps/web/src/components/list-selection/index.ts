@@ -10,4 +10,8 @@ export {
   useSelectionCount,
   useSelectionIds,
 } from './store'
-export { useBulkRunner } from './use-bulk-runner'
+export {
+  type BulkBatchRefusal,
+  type BulkBatchResult,
+  useBulkRunner,
+} from './use-bulk-runner'

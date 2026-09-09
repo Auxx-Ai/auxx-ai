@@ -9,6 +9,7 @@ import { useEffect, useRef } from 'react'
 import { useMailCountsStore } from '~/components/mail/store'
 import { useTaskStore } from '~/components/tasks/stores/task-store'
 import { useUser } from '~/hooks/use-user'
+import { useAccess } from '~/providers/capabilities-provider'
 import { useRealtimeRoom } from '~/realtime/hooks'
 import { api } from '~/trpc/react'
 import type { MessageMeta, ParticipantMeta, ThreadMeta } from '../store'
@@ -91,10 +92,16 @@ export function ThreadDataProvider({ children }: ThreadDataProviderProps) {
   const setCounts = useMailCountsStore((s) => s.setCounts)
   const utils = api.useUtils()
   const { userId } = useUser()
+  const { can } = useAccess()
+  const canViewInboxes = can('inboxes.view')
 
   // Counts are served from a Redis counter hash (one roundtrip), delta-updated
   // server-side and pushed via `counts:changed` — the poll is only a backstop.
+  // Gated: this provider mounts app-wide, so without the key a member with no
+  // mail access polls a counts endpoint that can only ever answer zero — on
+  // every page, every 15 minutes, plus a refetch on each window focus.
   const { data: countsData } = api.thread.getCounts.useQuery(undefined, {
+    enabled: canViewInboxes,
     refetchInterval: 15 * 60 * 1000, // 15 minutes (backstop)
     refetchOnWindowFocus: true,
   })

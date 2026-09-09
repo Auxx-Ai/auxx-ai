@@ -70,7 +70,30 @@ export function useMailSidebar({ scope = 'SIDEBAR' }: UseMailSidebarOptions = {}
 
   // Process shared inboxes: apply saved order and visibility
   const processedInboxes = useMemo((): Inbox[] => {
-    const sharedRawInboxes = (rawInboxes ?? []).filter((inbox) => !inbox.isPersonal)
+    // `myLens` is the SERVER's answer (`inbox.myLenses` -> the composed
+    // `inboxLens` map), and it is the only authority here. Filtering on it is
+    // not belt-and-braces: `record.listAll` deliberately returns every inbox in
+    // the org because the records capability layer was never an inbox's access
+    // authority (`record.ts` `MAIL_READ_EXEMPT_KEYS`), so a caller that does not
+    // apply the lens renders the lot.
+    //
+    // Do NOT substitute `defaultLens` here. That is a CLIENT-side re-derivation
+    // of the org-wide floor (`use-inbox.ts`, `floors[id] ?? 'read'`) and it omits
+    // the area gate the server applies: `compute-user-instance-grants.ts` keeps
+    // the same `read` fallback behind `else if (areaOpen)` precisely because
+    // "`inboxes: None` means none". Reading the floor here instead listed every
+    // shared inbox to a member whose profile grants no inbox access at all —
+    // names and existence, with counts that correctly rendered zero because the
+    // thread queries were gated server-side.
+    //
+    // Presence IS the test, and the type says so: the server omits an entry
+    // entirely when the lens is `none` (`if (lens !== 'none') inboxLens[id] = lens`),
+    // so `ChannelLens` has no `none` member to compare against. An inbox whose
+    // lens has not loaded yet is hidden rather than shown, which is the
+    // fail-closed direction.
+    const sharedRawInboxes = (rawInboxes ?? []).filter(
+      (inbox) => !inbox.isPersonal && !!inbox.myLens
+    )
     if (sharedRawInboxes.length === 0) return []
 
     // 1. Get saved order and visibility settings

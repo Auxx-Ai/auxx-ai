@@ -1,6 +1,7 @@
 // packages/ui/src/components/tree-row.tsx
 'use client'
 
+import { Checkbox } from '@auxx/ui/components/checkbox'
 import { EmptySection, type EmptySectionProps } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { SimpleTooltip, TooltipExplanation } from '@auxx/ui/components/tooltip'
@@ -61,6 +62,32 @@ export interface TreeRowProps {
   /** Click on the title text — useful for "click row to toggle checkbox" UX. */
   onTitleClick?: () => void
 
+  // ---- selection (bulk mode) ----
+  /**
+   * Surface supports selection → reveal a checkbox in the LEADING slot on row
+   * hover, cross-fading with the row's `icon` (the same idiom `chevronOnHover`
+   * and `TreeRowGrip` already use). Same prop name and meaning as `ListCard`.
+   */
+  selectable?: boolean
+  /** Bulk mode active → the checkbox is pinned visible instead of hover-revealed. */
+  selecting?: boolean
+  /**
+   * Controlled checked state. `'indeterminate'` renders the partial (dash) box,
+   * for a parent row whose children are only partly selected.
+   */
+  selected?: boolean | 'indeterminate'
+  /**
+   * Toggle handler; receives the mouse event so callers can read `e.shiftKey`
+   * for range select. `next` is `false` only when the row is fully selected, so
+   * clicking an `'indeterminate'` parent selects the rest rather than clearing.
+   */
+  onSelectChange?: (next: boolean, e: React.MouseEvent) => void
+  /**
+   * Accessible label for the checkbox. Falls back to a string `title`, then to
+   * `'Select row'` — a bare checkbox reads as nothing to a screen reader.
+   */
+  selectLabel?: string
+
   /**
    * Marks the row as drilling into a sub-surface: renders a trailing ChevronRight
    * affordance and makes the whole row clickable (→ `onDrill`). When both this and
@@ -94,7 +121,8 @@ const stopPropagation = (e: React.MouseEvent) => e.stopPropagation()
  * The leading icon slot, shared by both row variants. With `chevronOnHover` +
  * `expandable`, the icon swaps to an expand chevron on row hover (occupying the
  * same `size-7` box, so the connector line still lands on its center); otherwise
- * it's a plain icon. Returns null when there's nothing to show.
+ * it's a plain icon. A `checkbox` (see {@link TreeRowProps.selectable}) takes the
+ * same swap, layered over the icon. Returns null when there's nothing to show.
  */
 function LeadingIcon({
   icon,
@@ -102,26 +130,38 @@ function LeadingIcon({
   isOpen,
   chevronOnHover,
   onToggleOpen,
+  checkbox,
+  selecting = false,
 }: {
   icon?: React.ReactNode
   expandable?: boolean
   isOpen?: boolean
   chevronOnHover?: boolean
   onToggleOpen?: () => void
+  /** Absolutely-positioned selection checkbox, already wired by the variant. */
+  checkbox?: React.ReactNode
+  /** Bulk mode → the checkbox is pinned, so the icon stays hidden. */
+  selecting?: boolean
 }) {
-  const swap = !!chevronOnHover && !!expandable
-  if (icon === undefined && !swap) return null
+  const hasCheckbox = checkbox !== undefined
+  // Only one thing can cross-fade with the icon. A selectable row gives the slot
+  // to its checkbox and keeps the trailing chevron for expansion (a row cannot
+  // fade icon → checkbox → chevron in one box and stay legible).
+  const swap = !hasCheckbox && !!chevronOnHover && !!expandable
+  if (icon === undefined && !swap && !hasCheckbox) return null
   return (
     <span className='relative flex size-7 shrink-0 items-center justify-center px-1 text-muted-foreground'>
       {icon !== undefined && (
         <span
           className={cn(
             'flex items-center justify-center transition-opacity',
-            swap && 'group-hover/tree-row:opacity-0'
+            swap && 'group-hover/tree-row:opacity-0',
+            hasCheckbox && (selecting ? 'opacity-0' : 'group-hover/tree-row:opacity-0')
           )}>
           {icon}
         </span>
       )}
+      {checkbox}
       {swap && (
         <button
           type='button'
@@ -221,6 +261,11 @@ export function TreeRow({
   isOpen,
   onToggleOpen,
   onTitleClick,
+  selectable = false,
+  selecting = false,
+  selected = false,
+  onSelectChange,
+  selectLabel,
   onDrill,
   children,
   className,
@@ -232,6 +277,32 @@ export function TreeRow({
   // A toggle (expand children) wins the row click; the drill chevron owns `onDrill`.
   const rowClick = onToggleOpen ?? onDrill
   const rowClickable = rowClick !== undefined
+
+  // Leading-slot checkbox: pinned while selecting, hover-revealed otherwise (and
+  // revealed by keyboard focus too, or tabbing to it would land on an invisible
+  // control).
+  const showCheckbox = selectable || selecting
+  const checkboxNode = showCheckbox ? (
+    <span
+      data-slot='tree-row-select'
+      className={cn(
+        'absolute inset-0 flex items-center justify-center transition-opacity',
+        !selecting && 'opacity-0 group-hover/tree-row:opacity-100 has-[:focus-visible]:opacity-100'
+      )}>
+      <Checkbox
+        checked={selected}
+        aria-label={selectLabel ?? (typeof title === 'string' ? title : 'Select row')}
+        // The handler sits on the box itself rather than a wrapper, so the
+        // control stays keyboard-reachable. It takes the MouseEvent — callers
+        // read `e.shiftKey` for range select — and stops the bubble so a click
+        // never also fires the row's `onToggleOpen`/`onDrill`.
+        onClick={(e) => {
+          e.stopPropagation()
+          onSelectChange?.(selected !== true, e)
+        }}
+      />
+    </span>
+  ) : undefined
 
   const titleNode = (
     <span
@@ -274,6 +345,8 @@ export function TreeRow({
             isOpen={isOpen}
             chevronOnHover={chevronOnHover}
             onToggleOpen={onToggleOpen}
+            checkbox={checkboxNode}
+            selecting={selecting}
           />
 
           {titleNode}
@@ -291,8 +364,9 @@ export function TreeRow({
             </span>
           )}
 
-          {/* Trailing chevron — omitted when the icon doubles as the hover chevron. */}
-          {expandable && !chevronOnHover && (
+          {/* Trailing chevron — omitted when the icon doubles as the hover
+              chevron, which a checkbox in the leading slot pre-empts. */}
+          {expandable && (!chevronOnHover || showCheckbox) && (
             <button
               type='button'
               onClick={(e) => {

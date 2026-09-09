@@ -798,6 +798,25 @@ through `ResourceAccess` rows plus the `Area.inboxes` fallback like everyone els
 (`Area.inboxes === Full`) confers exactly two things: a `metadata` floor on *others'* personal
 mailboxes, and the residual null-`inboxId` triage threads.
 
+🛑 **Never re-derive the inbox floor on the client.** Fixed 2026-09-09 in
+`hooks/use-mail-sidebar.tsx`. The org-wide default — an inbox with no authored `role:org_member`
+floor row contributes `read` — lives in `compute-user-instance-grants.ts` behind
+`else if (areaOpen)`, because *"`inboxes: None` means none"*. `use-inbox.ts` carries a **client**
+copy of the same fallback (`floors[id] ?? 'read'`) as `InboxItem.defaultLens`, and that copy has
+no area gate: it is the value an admin edits on the inbox settings row, **not** an access answer.
+
+The mail sidebar filtered on `!isPersonal` alone and so rendered every shared inbox in the org to
+a member whose profile grants `inboxes: None` — names and existence leaked, while the counts
+correctly showed zero because the thread queries were gated server-side. That split is the tell:
+**when a list and its counts disagree, the list is not applying the lens.**
+
+The rule for any inbox list path: filter on `myLens` (the server's `inboxLens`, surfaced through
+`inbox.myLenses`), and treat *presence* as the test — the composer omits an entry entirely when
+the lens is `none`, which is why `ChannelLens` has no `none` member. `record.listAll` returns
+every inbox in the org by design (`record.ts` `MAIL_READ_EXEMPT_KEYS` — the records capability
+layer was never an inbox's access authority), so a caller that does not apply the lens gets the
+lot.
+
 ### Derivation
 `effectiveLens(viewer, thread)` is pure and synchronous (0 queries in the common case):
 assignment ⇒ `read` (ungated core collaboration — never gate it), otherwise fold

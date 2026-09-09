@@ -9,6 +9,7 @@ import {
   splitSensitiveFields,
   updateCredential,
 } from '@auxx/credentials/store'
+import type { Database } from '@auxx/database'
 import { getOrgCache } from '@auxx/lib/cache'
 import {
   gateConnectionVariables,
@@ -22,15 +23,71 @@ import {
 } from '@auxx/lib/connections'
 import { getAllProviders, getProviderByKey } from '@auxx/lib/connections/providers'
 import { isAdminOrOwner } from '@auxx/lib/members'
+import { PermissionKey, requirePermission } from '@auxx/lib/permissions'
 import { getChannelProviderIcon } from '@auxx/lib/providers'
 import { CredentialTestingService, isCredentialInUse } from '@auxx/lib/workflow-engine'
 import { parseGrantedScopes } from '@auxx/services/app-connections'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
-import { createTRPCRouter, notDemo, protectedProcedure } from '~/server/api/trpc'
+import {
+  capabilityProcedure,
+  createTRPCRouter,
+  notDemo,
+  protectedProcedure,
+} from '~/server/api/trpc'
 
 /** The credential families (mirrors `CredentialKind` in @auxx/credentials). */
 const credentialKindSchema = z.enum(['app', 'mcp', 'connection'])
+
+/**
+ * Connection-scope gate, one credential at a time — the twin of
+ * `requireConnectionManageAccess` in `routers/apps.ts` and the only place this
+ * router decides who may touch a given row.
+ *
+ * **Ownership first, key second, in both directions.** A user-scoped credential
+ * (`Credential.userId` set) is its owner's regardless of capability, so the
+ * owner short-circuits before either key is consulted; that carve-out is what
+ * lets a member keep their own OAuth accounts on a profile that closes
+ * `Area.integrations` entirely (plan 21 §5.2, and `Area.integrations`'s note in
+ * the capability registry). Org-scoped rows (`userId IS NULL`) gate on the
+ * area's own keys: `integrationsView` to read one, `integrationsManage` to
+ * change one.
+ *
+ * A row that does not exist in this org is a 404 rather than a 403 on purpose —
+ * the caller learns nothing about another org's ids either way, and the
+ * existing surfaces already report a missing connection that way.
+ */
+async function requireConnectionAccess(
+  db: Database,
+  session: { userId: string; organizationId: string },
+  credentialId: string,
+  key: PermissionKey.integrationsView | PermissionKey.integrationsManage
+): Promise<void> {
+  const credential = await db.query.Credential.findFirst({
+    where: (c, { and, eq }) =>
+      and(eq(c.id, credentialId), eq(c.organizationId, session.organizationId)),
+    columns: { userId: true },
+  })
+  if (!credential) {
+    throw new TRPCError({ code: 'NOT_FOUND', message: 'Connection not found' })
+  }
+  if (credential.userId === session.userId) return
+  await requirePermission(session.userId, session.organizationId, key)
+}
+
+/** Read one connection: own it, or hold `integrationsView`. */
+const requireConnectionViewAccess = (
+  db: Database,
+  session: { userId: string; organizationId: string },
+  credentialId: string
+) => requireConnectionAccess(db, session, credentialId, PermissionKey.integrationsView)
+
+/** Change one connection: own it, or hold `integrationsManage`. */
+const requireConnectionManageAccess = (
+  db: Database,
+  session: { userId: string; organizationId: string },
+  credentialId: string
+) => requireConnectionAccess(db, session, credentialId, PermissionKey.integrationsManage)
 
 /**
  * Consecutive refresh failures at which a connection's circuit breaker is "open"
@@ -52,8 +109,33 @@ export const connectionsRouter = createTRPCRouter({
    * (no input) — the Settings → Channels → Connections card grid: admins see all
    * org connections; members see their own + org-scoped ones. With input, the
    * picker narrows by `kind`/`type` and can force org-scoped rows only.
+   *
+   * **`integrationsView` decides the SCOPE, not admission.** This procedure
+   * cannot be a flat `permissionProcedure(integrationsView)`: a member's own
+   * user-scoped connections are theirs by the ownership carve-out
+   * (`requireConnectionAccess` above), and a 403 here would take them away from
+   * a member whose profile closes the area. So the key selects the predicate
+   * instead:
+   *
+   * - holds it (every admin, and every member on the seeded baseline, which
+   *   carries `integrations: Read`) — unchanged behaviour: admins see every
+   *   row, members see their own plus the org-scoped ones.
+   * - lacks it — **own rows only** (`userId = <caller>`), and an
+   *   `orgScopedOnly` request composes to the empty list rather than throwing.
+   *
+   * That last case is the leak this gate closes: before it, `list` was a bare
+   * `protectedProcedure` handing `ownedByOrOrgScoped` to everyone, so a
+   * contractor on a locked-down profile enumerated every OAuth connection the
+   * workspace owns (names, provider types, creators — never secrets, which the
+   * projection has always masked).
+   *
+   * It degrades rather than throws because this one query backs four different
+   * surfaces (the settings grid, the workflow/agent connection picker, the data
+   * connector binding card, the Quo channel form) and a hard refusal would turn
+   * a narrowed profile into an error toast on all of them. An empty picker is
+   * the honest answer for someone who may not see workspace connections.
    */
-  list: protectedProcedure
+  list: capabilityProcedure
     .input(
       z
         .object({
@@ -77,18 +159,27 @@ export const connectionsRouter = createTRPCRouter({
       const { organizationId } = ctx.session
 
       // Scope/visibility selection: determining what credentials to return (plan 21 §5.2).
+      const canSeeOrgScoped = ctx.capabilities.can(PermissionKey.integrationsView)
+      // Without the key the caller is confined to rows they own, so an
+      // `orgScopedOnly` request (which asks for `userId IS NULL`) can only be
+      // the empty set — the two filters are mutually exclusive by construction.
+      if (input?.orgScopedOnly && !canSeeOrgScoped) return []
+
       const isAdmin = await isAdminOrOwner(organizationId, ctx.session.user.id)
       const result = await listCredentials({
         organizationId,
         kind: input?.kind ?? ['app', 'mcp', 'connection'],
         type: input?.type,
         // `orgScopedOnly` forces `userId: null`; otherwise apply member visibility —
-        // admins see everything, members see their own + org-scoped rows.
+        // admins see everything, members with `integrationsView` see their own +
+        // org-scoped rows, and members without it see their own and nothing else.
         ...(input?.orgScopedOnly
           ? { userId: null }
           : isAdmin
             ? {}
-            : { ownedByOrOrgScoped: ctx.session.user.id }),
+            : canSeeOrgScoped
+              ? { ownedByOrOrgScoped: ctx.session.user.id }
+              : { userId: ctx.session.user.id }),
         withCreatedBy: true,
       })
       if (result.isErr()) {
@@ -175,6 +266,18 @@ export const connectionsRouter = createTRPCRouter({
    * for the "+ New connection" dialog. Each entry feeds `useConnectFlow` as a
    * `platform` owner — its `connectionDefinitionId` is the `providerKey` (the
    * OAuth route + `save` resolve a providerKey as the id).
+   *
+   * **Deliberately left ungated when `integrations.view` was added.** It returns
+   * no org data: the catalog is code-native (`providers/defs.ts`), and the only
+   * org-derived values are the three BYO-client gate flags, which say whether
+   * the PLATFORM's OAuth client is configured and approved and whether this org
+   * is entitled to bring its own. Knowing that is not knowing what the workspace
+   * has connected. Gating it would break real callers that hold a different
+   * key: `channel-gallery-dialog.tsx` and `quo-connect-form.tsx` are channel
+   * surfaces reached with `channelsManage`, and an org that runs a mail-admin
+   * profile grants that without `Area.integrations`. The rows this catalog
+   * describes are still unreachable without the manage key — `save` asserts it
+   * for every `global` definition.
    */
   listProviders: protectedProcedure.query(async ({ ctx }) => {
     const { organizationId } = ctx.session
@@ -277,11 +380,25 @@ export const connectionsRouter = createTRPCRouter({
    *
    * Bare API-key connections (no connection variables, definition-backed or not) return only
    * `tokenSet` — whether any secret is stored — so the form can show "saved" without re-prompting.
+   *
+   * 🛑 The masking is NOT the access control, and this procedure used to rely on
+   * it as if it were. `revealSecrets` scopes by org and nothing else, so before
+   * the gate below any member could pass any credential id in the org and read
+   * that row's PLAIN `metadata.connectionVariables` — account ids, client ids,
+   * hosts, regions, tenant ids — including from another member's personal
+   * connection. That is a narrower but strictly worse leak than the listing one,
+   * because it needs no listing to exploit: an id from a workflow node is enough.
    */
   getForEdit: protectedProcedure
     .input(z.object({ connectionId: z.string().min(1) }))
     .query(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
+
+      await requireConnectionViewAccess(
+        ctx.db,
+        { userId: ctx.session.user.id, organizationId },
+        input.connectionId
+      )
 
       const revealed = await revealSecrets<Record<string, unknown>>(
         input.connectionId,
@@ -365,6 +482,27 @@ export const connectionsRouter = createTRPCRouter({
       })
       if (!def?.providerKey) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Connection definition not found' })
+      }
+
+      // Who may mint or rotate this row, decided the same way the app OAuth
+      // authorize route decides it (`api/apps/[slug]/oauth2/authorize/route.ts`):
+      // scope follows the definition's `global` flag, and only the ORG-SCOPED
+      // half needs the key. A reconnect is gated on the target row instead of
+      // the definition, because that row's own `userId` is the authority on
+      // whose credential is being rotated — and a `global` definition's row is
+      // `userId: null`, so the manage key is required there either way.
+      if (input.connectionId) {
+        await requireConnectionManageAccess(
+          ctx.db,
+          { userId: ctx.session.user.id, organizationId },
+          input.connectionId
+        )
+      } else if (def.global) {
+        await requirePermission(
+          ctx.session.user.id,
+          organizationId,
+          PermissionKey.integrationsManage
+        )
       }
 
       // Split the provided values by the definition's secret flags: secret-flagged values
@@ -452,6 +590,13 @@ export const connectionsRouter = createTRPCRouter({
       }
 
       const { organizationId } = ctx.session
+
+      await requireConnectionManageAccess(
+        ctx.db,
+        { userId: ctx.session.user.id, organizationId },
+        input.id
+      )
+
       const split: { secrets: Record<string, unknown>; metadata?: Record<string, unknown> } =
         input.data ? splitSensitiveFields(input.data) : { secrets: {} }
       const { secrets, metadata } = split
@@ -491,6 +636,12 @@ export const connectionsRouter = createTRPCRouter({
     .use(notDemo('delete connection'))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
+
+      await requireConnectionManageAccess(
+        ctx.db,
+        { userId: ctx.session.user.id, organizationId },
+        input.id
+      )
 
       if (await isCredentialInUse(input.id, organizationId)) {
         throw new TRPCError({
@@ -532,6 +683,17 @@ export const connectionsRouter = createTRPCRouter({
    * Test a connection against its external service. Pass `credentialId` to test
    * a saved connection, or `type` + `data` to validate prospective values before
    * saving.
+   *
+   * The `credentialId` form gates on VIEW, not manage: testing spends the stored
+   * secret but changes nothing, and the member who binds an org connection into
+   * a workflow is exactly who needs to press Test. The `type` + `data` form is
+   * ungated because the values are the caller's own, typed into the connect
+   * form, and no stored credential is read.
+   *
+   * 🛑 The assert is deliberately OUTSIDE the `try` below. That block rethrows
+   * only `TRPCError`; an `AuxxError` from `requirePermission` would be caught by
+   * its `catch` and flattened into a generic 500, turning a 403 into an
+   * "internal error" (the `isAuxxError` trap in CLAUDE.md).
    */
   test: protectedProcedure
     .input(
@@ -543,6 +705,14 @@ export const connectionsRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
+
+      if (input.credentialId) {
+        await requireConnectionViewAccess(
+          ctx.db,
+          { userId: ctx.session.user.id, organizationId },
+          input.credentialId
+        )
+      }
 
       try {
         if (input.credentialId) {
@@ -570,12 +740,22 @@ export const connectionsRouter = createTRPCRouter({
 
   /**
    * Refresh OAuth2 tokens for a connection.
+   *
+   * Manage, not view: it rotates the stored token set. Same `try`-placement rule
+   * as `test` above — the assert precedes the block that rethrows only
+   * `TRPCError`.
    */
   refreshTokens: protectedProcedure
     .input(z.object({ credentialId: z.string().min(1, 'Connection ID is required') }))
     .use(notDemo('refresh connection tokens'))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
+
+      await requireConnectionManageAccess(
+        ctx.db,
+        { userId: ctx.session.user.id, organizationId },
+        input.credentialId
+      )
 
       try {
         const result = await refreshCredentialTokens(input.credentialId, organizationId)

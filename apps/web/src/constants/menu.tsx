@@ -489,6 +489,10 @@ export const SETTINGS_MENU: SidebarProps[] = [
         slug: 'inbox',
         icon: <Inbox />,
         description: 'Manage your personal accounts and accessible shared queues',
+        // The only mail entry in this group without one. Its neighbours
+        // (Signatures, Snippets) are genuinely ungated — those areas stand alone
+        // — but "accessible shared queues" is the mail area by definition.
+        permissionKey: 'inboxes.view',
         keywords: ['personal inbox', 'shared inbox', 'routing', 'assignment', 'queue'],
       },
       {
@@ -527,6 +531,14 @@ export const SETTINGS_MENU: SidebarProps[] = [
         label: 'Connections',
         slug: 'connections',
         icon: <Cable />,
+        // `integrations.view`, not `.manage`: this page is where a member also
+        // manages their OWN connections, and the ownership carve-out keeps that
+        // working at any area level (see `connections.ts`). The read rung is
+        // what decides whether the workspace's org-scoped connections are
+        // listed at all, so it is the right gate for the entry. The command
+        // palette's settings actions are DERIVED from this menu
+        // (`kbar/actions/settings.ts`) — one key here covers both surfaces.
+        permissionKey: 'integrations.view',
         description: 'Accounts those apps authenticate against',
         keywords: ['oauth', 'credentials', 'authorize', 'linked accounts', 'reconnect'],
       },
@@ -544,6 +556,10 @@ export const SETTINGS_MENU: SidebarProps[] = [
         label: 'API Keys',
         slug: 'apiKeys',
         icon: <ComponentIcon />,
+        // The only entry in this group that carried a `featureKey` and no
+        // `permissionKey` — so the page was listed for every member while
+        // `apiKey.create`/`delete` require `integrations.manage`.
+        permissionKey: 'integrations.manage',
         featureKey: 'apiAccess',
         keywords: ['token', 'secret', 'sdk', 'rest', 'developer'],
       },

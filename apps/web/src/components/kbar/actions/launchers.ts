@@ -29,7 +29,10 @@ export function useLauncherActions(): PaletteAction[] {
   return useMemo<PaletteAction[]>(() => {
     const actions: PaletteAction[] = []
 
-    if (hasAccess('apiAccess')) {
+    // `integrations.manage` is what `apiKey.create` actually requires
+    // (`routers/apiKey.ts`), so without it this action opened a dialog whose
+    // submit could only fail.
+    if (hasAccess('apiAccess') && can('integrations.manage')) {
       actions.push({
         id: 'create.apiKey',
         label: 'Create API Key',
@@ -62,16 +65,23 @@ export function useLauncherActions(): PaletteAction[] {
       })
     }
 
-    actions.push({
-      id: 'create.mailView',
-      label: 'Create Mail View',
-      subtitle: 'New saved mail view',
-      icon: 'filter',
-      keywords: 'create new mail view saved filter',
-      perform: () => useCommandPaletteStore.getState().openCreateMailView(),
-    })
+    // A saved mail view filters mail. `create.inbox` above is already behind
+    // admin rank; this one had no gate at all.
+    if (can('inboxes.view')) {
+      actions.push({
+        id: 'create.mailView',
+        label: 'Create Mail View',
+        subtitle: 'New saved mail view',
+        icon: 'filter',
+        keywords: 'create new mail view saved filter',
+        perform: () => useCommandPaletteStore.getState().openCreateMailView(),
+      })
+    }
 
-    if (hasAccess('callRecordings')) {
+    // `calls.manage` — scheduling a recorded meeting is a write on the Calls
+    // area (task 12 gave calls their own area; `app/calls/layout.tsx` guards
+    // reads on `calls.view`).
+    if (hasAccess('callRecordings') && can('calls.manage')) {
       actions.push({
         id: 'create.meeting',
         label: 'Create Meeting',
