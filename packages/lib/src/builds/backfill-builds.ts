@@ -30,6 +30,15 @@
  * {@link resolveBackfillCompletedAt}, which derives it in the organization's
  * `accounting.bookTimeZone` for the same reason `postings/periods.ts` does.
  *
+ * ## 🛑 The run number is allocated ONCE, in {@link prepareRun}
+ *
+ * `plans/money/tasks/45-batch-only-builds.md` section 3. Every build a run
+ * raises carries the same `build_batch_run`, which is the only handle
+ * `undoBatchRun` has, so the allocation belongs where everything else for the
+ * run is resolved and nowhere near the bucket loop. Allocating per build would
+ * burn the sequence and turn one four-hundred-build run into four hundred runs.
+ * An empty plan returns before `prepareRun` and therefore burns no number.
+ *
  * ## 🛑 Never throws
  *
  * Three layers, matching `reconcile-order-builds.ts`: every BUCKET inside its
@@ -67,6 +76,7 @@ import { getOrgCache } from '../cache'
 import { UnprocessableEntityError } from '../errors'
 import { periodKeyForDate } from '../postings/periods'
 import { OPENING_BASELINE_SETTING_KEYS } from '../postings/setup-readiness'
+import { recordNumbering } from '../records/record-numbering'
 import { getOrganizationSetting } from '../settings/settings-service'
 import type {
   BackfillBucket,
@@ -91,6 +101,7 @@ const PROGRESS_EVERY = 25
  * thing the helpers below are handed.
  */
 interface MutableRunSummary {
+  batchRun: number | null
   created: { partId: string; buildId: string; quantity: number; periodKey: string }[]
   leftInProgress: { partId: string; buildId: string; reason: string }[]
   failed: { partId: string; bucketId: string; periodKey: string; reason: string }[]
@@ -102,6 +113,17 @@ interface RunContext {
   timeZone: string
   /** Captured once, so every bucket judges "in the future" against the same instant. */
   now: Date
+  /**
+   * This run's number, stamped onto every build it raises
+   * (plans/money/tasks/45 §3).
+   *
+   * 🛑 **Allocated ONCE, here, and passed down.** `recordNumbering.create`
+   * increments a counter, so allocating it inside the bucket loop would burn the
+   * sequence and give every build its own run: a four-hundred-build backfill
+   * would produce four hundred runs, and undo, whose whole input is one run
+   * number, would have nothing to hang on.
+   */
+  batchRun: number
 }
 
 /**
@@ -133,10 +155,21 @@ export async function executeBackfill(
 ): Promise<Result<BackfillRunSummary, Error>> {
   return guard(
     async () => {
-      const summary: MutableRunSummary = { created: [], leftInProgress: [], failed: [] }
+      const summary: MutableRunSummary = {
+        batchRun: null,
+        created: [],
+        leftInProgress: [],
+        failed: [],
+      }
+      // 🛑 BEFORE `prepareRun`, deliberately: an empty plan writes no build, so
+      // it must burn no run number (plans/money/tasks/45 §3.2). A counter that
+      // skips a number every time somebody previews an empty range is the
+      // "run 14 in an org with zero builds" mismatch §10.6 is already about.
+      // Asserted by a test.
       if (plan.parts.length === 0) return summary
 
       const run = await prepareRun(organizationId)
+      summary.batchRun = run.batchRun
       let written = 0
 
       for (const part of plan.parts) {
@@ -179,6 +212,7 @@ export async function executeBackfill(
 
       logger.info('Backfilled builds', {
         organizationId,
+        batchRun: run.batchRun,
         status: request.status,
         grouping: request.grouping,
         planned: plan.buildCount,
@@ -240,22 +274,44 @@ export function resolveBackfillCompletedAt(bucket: BackfillBucket, timeZone: str
  * org would get the whole range built and then get it all built again on the
  * second pass. Refusing here writes nothing; discovering it on build one has
  * already written one.
+ *
+ * ⚠️ **`build_batch_run` is NOT required, and deliberately so.** The asymmetry
+ * with the two fields above is the point: coverage depends on the period, so a
+ * run without it computes the wrong thing; nothing about the netting depends on
+ * the run number, so an org short of entity migration 141 gets un-numbered
+ * builds and a correct backfill. What it loses is undo, which is worth a warning
+ * and not a refusal (plans/money/tasks/45 §3).
  */
 async function prepareRun(organizationId: string): Promise<RunContext> {
-  const [periodFields, timeZone] = await Promise.all([
+  const [fields, timeZone] = await Promise.all([
     getOrgCache()
       .from(organizationId, 'customFields')
-      .bySystemAttributes(['build_period_start', 'build_period_end'] as const),
+      .bySystemAttributes(['build_period_start', 'build_period_end', 'build_batch_run'] as const),
     readBookTimeZone(organizationId),
   ])
 
-  if (!periodFields.build_period_start || !periodFields.build_period_end) {
+  if (!fields.build_period_start || !fields.build_period_end) {
     throw new UnprocessableEntityError(
       'Backfilling builds is not available until the build demand-period fields are provisioned'
     )
   }
 
-  return { timeZone, now: new Date() }
+  if (!fields.build_batch_run) {
+    logger.warn('This organization has no build_batch_run field, so the run will be un-numbered', {
+      organizationId,
+    })
+  }
+
+  // 🛑 ONCE per run, here, which is the single place everything for a run is
+  // resolved (plans/money/tasks/45 §3.2). `recordNumbering.create` is an atomic
+  // `UPDATE ... RETURNING`, so two concurrent runs can never share a number; the
+  // failure this placement prevents is the other one, allocating inside the
+  // bucket loop, which would burn the sequence and give every build its own run.
+  // `sequenceNumber` is the raw integer `build_batch_run` stores. The formatted
+  // `recordNumber` is cosmetic and nothing renders it.
+  const { sequenceNumber } = await recordNumbering.create(organizationId, 'build_batch')
+
+  return { timeZone, now: new Date(), batchRun: sequenceNumber }
 }
 
 /** Raise one bucket's build, and complete it when the run was asked to. */
@@ -281,16 +337,22 @@ async function executeBucket(
     }
   }
 
-  // 🛑 The period goes in HERE or never: `build_period_start` and
-  // `build_period_end` are `updatable: false`, because moving a claimed period
-  // silently restates what the next netting run believes is already covered
-  // (section 6.2). `createBuild` writes them from `period` at create time, and
-  // ignores them unless the source is `batch`.
+  // 🛑 The period and the run number go in HERE or never: `createBuild` is the
+  // only writer of `build_period_start`, `build_period_end` and
+  // `build_batch_run`, because moving a claimed period silently restates what
+  // the next netting run believes is already covered (section 6.2) and moving a
+  // run number silently rewrites what an undo would touch
+  // (plans/money/tasks/45 §3). All three are written at create time and ignored
+  // unless the source is `batch`.
+  //
+  // `run.batchRun` and never a fresh allocation: every bucket in this run passes
+  // the SAME number, which is what makes "the builds run 2 made" a plain filter.
   const created = await createBuild(db, organizationId, userId, {
     partId: bucket.partId,
     quantityPlanned: bucket.quantityToBuild,
     source: 'batch',
     period: { start: bucket.periodStart, end: bucket.periodEnd },
+    batchRun: run.batchRun,
   })
   // A refused raise wrote nothing at all, so it is a `failed` bucket rather than
   // a build somebody has to go and finish. Thrown, not returned, so the bucket

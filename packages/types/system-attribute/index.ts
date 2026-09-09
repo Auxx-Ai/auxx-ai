@@ -774,6 +774,7 @@ export const SYSTEM_ATTRIBUTES = [
   // September.
   'build_period_start',
   'build_period_end',
+  'build_batch_run',
   // The frozen standard, deliberately separate from the live `part_cost`. The
   // three components are split because the fulfillment COGS entry has to land
   // across 5000 / 5010 / 5020, which it can only do if the finished good's

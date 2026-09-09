@@ -114,6 +114,7 @@ function build(overrides: Partial<BuildRecord> & { buildId: string }): BuildReco
     source: 'order',
     reversalOfBuildId: null,
     orderRevision: null,
+    batchRun: null,
     createdAt: new Date('2026-08-27T00:00:00.000Z'),
     ...overrides,
   }

@@ -19,6 +19,10 @@
 //      demand period, in the book timezone, and never from `new Date()`.
 //      Dating eight months of production to today puts all of it in one
 //      month-end entry.
+//   3. 45 §3: the run number is allocated ONCE per run and stamped on every
+//      build the run raises. A run is not a record, so that integer is the only
+//      handle undo has, and allocating it per bucket would quietly turn one
+//      four-hundred-build run into four hundred runs.
 
 import { err, ok } from 'neverthrow'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -37,6 +41,12 @@ const h = vi.hoisted(() => ({
   timeZone: null as string | null,
   /** Which of the two demand-period fields are provisioned. */
   periodFields: { start: true, end: true },
+  /** Whether `build_batch_run` is provisioned (entity migration 141). */
+  batchRunField: true,
+  /** Every `recordNumbering.create` call, as `[organizationId, scope]`. */
+  numberingCalls: [] as [string, string][],
+  /** The counter the `recordNumbering` double increments, per org+scope. */
+  counters: new Map<string, number>(),
   /** Every `createBuild` call, as the `CreateBuildInput` it was handed. */
   createCalls: [] as Record<string, unknown>[],
   startCalls: [] as Record<string, unknown>[],
@@ -60,9 +70,26 @@ vi.mock('../../cache', () => ({
       bySystemAttributes: async () => ({
         build_period_start: h.periodFields.start ? { id: 'f_period_start' } : null,
         build_period_end: h.periodFields.end ? { id: 'f_period_end' } : null,
+        build_batch_run: h.batchRunField ? { id: 'f_batch_run' } : null,
       }),
     }),
   }),
+}))
+
+// The run-number counter, doubled so a test can COUNT the allocations. The real
+// one is an atomic `UPDATE ... RETURNING` against a `RecordSequence` row and
+// needs a database; what this file owns is that it is called ONCE per run
+// (plans/money/tasks/45 §3.2), which a double is the only way to see.
+vi.mock('../../records/record-numbering', () => ({
+  recordNumbering: {
+    create: vi.fn(async (organizationId: string, scope: string) => {
+      h.numberingCalls.push([organizationId, scope])
+      const key = `${organizationId}:${scope}`
+      const next = (h.counters.get(key) ?? 0) + 1
+      h.counters.set(key, next)
+      return { recordNumber: `BR-${String(next).padStart(4, '0')}`, sequenceNumber: next }
+    }),
+  },
 }))
 
 // The three sanctioned writers are doubles: each has its own suite, and what is
@@ -183,6 +210,9 @@ beforeEach(() => {
   vi.useRealTimers()
   h.timeZone = 'UTC'
   h.periodFields = { start: true, end: true }
+  h.batchRunField = true
+  h.numberingCalls = []
+  h.counters = new Map()
   h.createCalls = []
   h.startCalls = []
   h.completeCalls = []
@@ -269,6 +299,7 @@ describe('one bucket, one build', () => {
         start: new Date('2026-01-01T00:00:00.000Z'),
         end: new Date('2026-02-01T00:00:00.000Z'),
       },
+      batchRun: 1,
     })
   })
 
@@ -295,8 +326,91 @@ describe('one bucket, one build', () => {
 
   it('does nothing at all for an empty plan', async () => {
     const summary = (await executeBackfill(db, ORG, USER, planOf(), PLANNED))._unsafeUnwrap()
-    expect(summary).toEqual({ created: [], leftInProgress: [], failed: [] })
+    expect(summary).toEqual({ batchRun: null, created: [], leftInProgress: [], failed: [] })
     expect(h.createCalls).toHaveLength(0)
+  })
+})
+
+// ─── §3: the run number ────────────────────────────────────────────────
+
+// 🛑 A run is not a record (§3.1), so this integer is the only handle
+// `undoBatchRun` has. Two properties make it one: every build a run raised
+// carries the SAME number, and no two runs share one. Both are decided by WHERE
+// the allocation happens, which is why these assert on the call COUNT rather
+// than only on the values that came out.
+describe('🛑 the batch run number is allocated once per run', () => {
+  it('stamps every build in the run with the same number', async () => {
+    const plan = planOf(
+      bucket(),
+      bucket({ periodKey: '2026-02', bucketId: `${LIFT}:2026-02` }),
+      bucket({ partId: HOIST, bucketId: `${HOIST}:2026-01` })
+    )
+
+    const summary = (await executeBackfill(db, ORG, USER, plan, PLANNED))._unsafeUnwrap()
+
+    expect(h.createCalls).toHaveLength(3)
+    expect(h.createCalls.map((call) => call.batchRun)).toEqual([1, 1, 1])
+    expect(summary.batchRun).toBe(1)
+  })
+
+  // The failure this exists to catch: allocating inside the bucket loop. Every
+  // value assertion above still passes when the double hands back a constant,
+  // so the call count is what actually pins the placement down.
+  it('calls the counter once, not once per bucket', async () => {
+    const plan = planOf(
+      bucket(),
+      bucket({ periodKey: '2026-02', bucketId: `${LIFT}:2026-02` }),
+      bucket({ periodKey: '2026-03', bucketId: `${LIFT}:2026-03` })
+    )
+
+    await executeBackfill(db, ORG, USER, plan, PLANNED)
+
+    expect(h.numberingCalls).toEqual([[ORG, 'build_batch']])
+  })
+
+  // 🛑 `prepareRun` is called AFTER the empty-plan return, deliberately. A
+  // counter that skips a number every time somebody runs a range with no demand
+  // in it is the "run 14 in an org with zero builds" mismatch of §10.6.
+  it('burns no number for an empty plan', async () => {
+    const summary = (await executeBackfill(db, ORG, USER, planOf(), PLANNED))._unsafeUnwrap()
+
+    expect(h.numberingCalls).toEqual([])
+    expect(summary.batchRun).toBeNull()
+  })
+
+  it('gives two successive runs two different numbers', async () => {
+    const first = (await executeBackfill(db, ORG, USER, planOf(bucket()), PLANNED))._unsafeUnwrap()
+    const second = (await executeBackfill(db, ORG, USER, planOf(bucket()), PLANNED))._unsafeUnwrap()
+
+    expect(first.batchRun).toBe(1)
+    expect(second.batchRun).toBe(2)
+    expect(h.numberingCalls).toHaveLength(2)
+    // And the second run's build carries the second number, not the first.
+    expect(h.createCalls.map((call) => call.batchRun)).toEqual([1, 2])
+  })
+
+  // Undo takes a run number as INPUT (§4.3) and no read derives it from a
+  // summary that does not carry it, so a caller that cannot tell the person
+  // which run they just made has left them unable to name it again.
+  it('returns the number on the summary', async () => {
+    const result = await executeBackfill(db, ORG, USER, planOf(bucket()), PLANNED)
+
+    expect(result.isOk()).toBe(true)
+    expect(result._unsafeUnwrap().batchRun).toBe(1)
+  })
+
+  // ⚠️ The asymmetry with the two demand-period fields is deliberate: coverage
+  // depends on the period, so a run without it computes the wrong thing, while
+  // nothing about the netting depends on the run number. An org short of entity
+  // migration 141 gets a correct backfill and un-numbered builds, and loses only
+  // undo.
+  it('runs anyway when build_batch_run is not provisioned', async () => {
+    h.batchRunField = false
+
+    const result = await executeBackfill(db, ORG, USER, planOf(bucket()), PLANNED)
+
+    expect(result.isOk()).toBe(true)
+    expect(result._unsafeUnwrap().created).toHaveLength(1)
   })
 })
 

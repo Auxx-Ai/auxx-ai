@@ -76,6 +76,10 @@ const BUILD_ATTRIBUTES = [
   // which is why every reader guards on them rather than assuming.
   'build_period_start',
   'build_period_end',
+  // Which batch run raised this build (45 §3). `updatable: false` like the two
+  // above, so `createBuild` is the only writer, and absent on an org short of
+  // entity migration 141.
+  'build_batch_run',
 ] as const
 
 type BuildAttribute = (typeof BUILD_ATTRIBUTES)[number]
@@ -481,6 +485,7 @@ function toBuildRecord(
     source: read('build_source')?.optionId ?? null,
     reversalOfBuildId: read('build_reversal_of')?.relatedEntityId ?? null,
     orderRevision: read('build_order_revision')?.valueText ?? null,
+    batchRun: read('build_batch_run')?.valueNumber ?? null,
     createdAt: row.createdAt,
   }
 }

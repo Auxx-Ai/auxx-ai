@@ -224,6 +224,11 @@ export interface BuildRecord {
    * row written before the field existed — both mean *unknown*, never *drifted*.
    */
   orderRevision: string | null
+  /**
+   * The batch run that raised this build (plans/money/tasks/45 §3), or `null`
+   * on an order-raised, hand-raised or REVERSING build.
+   */
+  batchRun: number | null
   createdAt: Date
 }
 
@@ -282,6 +287,79 @@ export interface CreateBuildInput {
    * claims no period: it answers to one order, or to nobody.
    */
   period?: { start: Date; end: Date }
+  /**
+   * The batch run raising this build (plans/money/tasks/45 §3).
+   *
+   * ⚠️ **Allocated ONCE per run and passed down**, never per build: the number
+   * comes from `recordNumbering.create`, which increments a counter, so
+   * allocating inside the loop would burn the sequence and give every build its
+   * own run.
+   *
+   * 🛑 Written here or never, exactly like {@link CreateBuildInput.period}, and
+   * ignored unless `source` is `batch`.
+   */
+  batchRun?: number
+}
+
+/**
+ * One build's outcome inside {@link UndoBatchRunSummary}.
+ *
+ * `cancelled` and `reversed` are the two ways a build is undone; `skipped` is a
+ * build that was ALREADY undone and needs nothing, which is deliberately not a
+ * failure (45 §10.8).
+ */
+export interface UndoBatchRunEntry {
+  buildId: string
+  partId: string | null
+  outcome: 'cancelled' | 'reversed' | 'skipped' | 'failed'
+  /** Why it was skipped or how it failed. `null` on a build that was undone. */
+  reason: string | null
+  /** The reversing build, on `reversed` only. */
+  reversalBuildId?: string
+}
+
+/**
+ * What {@link undoBatchRun} did, per build.
+ *
+ * ⚠️ **Never an error channel.** Per-build isolation, the same discipline
+ * `executeBackfill` keeps: one refused reversal must not lose the rest of the
+ * run, and a caller that ignores a `failed` entry is behaving correctly.
+ */
+export interface UndoBatchRunSummary {
+  runNumber: number
+  /** Every build carrying this run number, before anything was done to it. */
+  total: number
+  cancelled: UndoBatchRunEntry[]
+  reversed: UndoBatchRunEntry[]
+  skipped: UndoBatchRunEntry[]
+  failed: UndoBatchRunEntry[]
+}
+
+/**
+ * What one batch run looks like from outside, for the drawer card and the undo
+ * preview (45 §11.3).
+ *
+ * 🛑 `willReverse` is the count that WRITES TO THE LEDGER and it is not the
+ * same as `willCancel`. The confirmation has to lead with both (45 §11.4).
+ */
+export interface BatchRunSummary {
+  runNumber: number
+  /** Builds carrying this run number. */
+  total: number
+  /** Counts by `build_status`, over that same set. */
+  planned: number
+  inProgress: number
+  completed: number
+  canceled: number
+  /** `planned` + `inProgress`: what an undo would cancel. */
+  willCancel: number
+  /** `completed` and not already reversed: what an undo would REVERSE. */
+  willReverse: number
+  /** Earliest and latest `build_period_start` / `build_period_end` in the run. */
+  periodStart: Date | null
+  periodEnd: Date | null
+  /** When the run's first build was written. */
+  ranAt: Date | null
 }
 
 /** Move a `planned` run to `in_progress`. */

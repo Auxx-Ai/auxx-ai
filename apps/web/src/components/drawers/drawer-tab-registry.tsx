@@ -211,6 +211,14 @@ export const DRAWER_TAB_CARD_COMPONENTS: Record<
     import('../manufacturing/builds/build-ledger-card').then((m) => ({
       default: m.BuildLedgerCard,
     })),
+  // The batch run this build belongs to, and the ONE verb whose scope is the
+  // whole run rather than this build (plans/money/tasks/45 §11). Deliberately
+  // NOT part of `build:run`: every verb there acts on one build, Undo acts on
+  // hundreds. It renders nothing at all for a build carrying no run.
+  'build:batch-run': () =>
+    import('../manufacturing/builds/build-batch-run-card').then((m) => ({
+      default: m.BuildBatchRunCard,
+    })),
 
   // ─────────────────────────────────────────────────────────────────
   // INVOICE OVERVIEW CARDS (money MI1 build spec §J.1 — drawer-only entity,

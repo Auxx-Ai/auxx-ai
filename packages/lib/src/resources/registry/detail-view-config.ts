@@ -330,6 +330,11 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
     // `completeBuild` is a procedure, not a status somebody picks.
     // `ledger` is the only surface for `build_movements`, whose field is
     // `showInPanel: false` (section 1.6: "has_many; a card lists them").
+    // `batch-run` is the run this build belongs to, and the only verb in the
+    // build UI whose scope is not this build (plans/money/tasks/45 §11): Undo
+    // cancels or reverses every build the run raised. It is declared here AND in
+    // `drawer-config.ts` because the two surfaces read the same registry and a
+    // card on one only is invisible until somebody opens the other.
     sidebarCards: [
       { value: 'run', label: 'Run', icon: 'hammer' },
       {
@@ -338,6 +343,7 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
         icon: 'arrow-left-right',
         recordResource: 'stock_movement',
       },
+      { value: 'batch-run', label: 'Batch run', icon: 'layers' },
     ],
   },
 

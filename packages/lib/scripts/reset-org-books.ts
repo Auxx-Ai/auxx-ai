@@ -146,6 +146,29 @@ const DELETE_WAVES: readonly (readonly string[])[] = [
 const CLEARED_TYPES = DELETE_WAVES.flat()
 
 /**
+ * Every `RecordSequence.scope` this script puts back to 0.
+ *
+ * Almost all of them are entity types, so `CLEARED_TYPES` covers them: the
+ * scope a document numbers under is its own type, and clearing the type is what
+ * makes resetting the counter correct.
+ *
+ * 🛑 `build_batch` is NOT an entity type, so it can never appear in
+ * `DELETE_WAVES` and would never be reset on its own. It is an INTERNAL scope
+ * (`records/record-numbering.ts`'s `INTERNAL_SEQUENCE_SCOPES`), numbering batch
+ * build RUNS rather than records, and the runs it numbered live entirely on the
+ * `build` rows that wave 2 deletes. Leaving it alone means an org with zero
+ * builds opens its next batch run reading "run 14", and 45 §3's whole argument
+ * is that the run number is the handle undo hangs on. See
+ * plans/money/tasks/45-batch-only-builds.md §11.6.
+ *
+ * Listed by hand rather than spread from `INTERNAL_SEQUENCE_SCOPES`, so a later
+ * internal scope that has nothing to do with the books cannot silently join
+ * this reset. Every wave always runs, so `build` is always cleared and this is
+ * unconditional.
+ */
+const CLEARED_SEQUENCE_SCOPES: readonly string[] = [...CLEARED_TYPES, 'build_batch']
+
+/**
  * Drizzle tables cleared before the instances, all org-scoped.
  *
  * The first two carry ON DELETE RESTRICT columns against `EntityInstance` and
@@ -635,7 +658,7 @@ async function main() {
     .where(
       and(
         eq(schema.RecordSequence.organizationId, org.id),
-        inArray(schema.RecordSequence.scope, [...CLEARED_TYPES])
+        inArray(schema.RecordSequence.scope, [...CLEARED_SEQUENCE_SCOPES])
       )
     )
   console.log(`RecordSequence  ${sequences.length} counter(s) back to 0`)
@@ -761,7 +784,7 @@ async function main() {
     .where(
       and(
         eq(schema.RecordSequence.organizationId, org.id),
-        inArray(schema.RecordSequence.scope, [...CLEARED_TYPES])
+        inArray(schema.RecordSequence.scope, [...CLEARED_SEQUENCE_SCOPES])
       )
     )
   console.log(`reset ${sequences.length} record counter(s) to 0`)

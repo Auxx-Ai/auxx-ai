@@ -9,5 +9,13 @@ export type {
   NameCaseChange,
 } from './name-case/backfill'
 export { backfillContactNameCasing } from './name-case/backfill'
-export type { SequenceScope } from './record-numbering'
-export { recordNumbering, SEQUENCE_SCOPES } from './record-numbering'
+export type {
+  AnySequenceScope,
+  InternalSequenceScope,
+  SequenceScope,
+} from './record-numbering'
+export {
+  INTERNAL_SEQUENCE_SCOPES,
+  recordNumbering,
+  SEQUENCE_SCOPES,
+} from './record-numbering'
