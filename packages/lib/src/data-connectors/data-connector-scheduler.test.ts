@@ -157,13 +157,28 @@ describe('suspended statuses', () => {
       'error',
       'paused',
       'deleting',
+      'delete_failed',
       'disconnected',
     ]
-    expect([...SUSPENDED_CONNECTOR_STATUSES]).toEqual(['paused', 'disconnected'])
-    expect(ALL.filter(isSuspendedConnectorStatus)).toEqual(['paused', 'disconnected'])
-    // `'deleting'` must NOT be here: a teardown removes its schedulers outright rather
-    // than leaning on a status predicate, and listing it would mask that.
-    expect(isSuspendedConnectorStatus('deleting')).toBe(false)
+    expect([...SUSPENDED_CONNECTOR_STATUSES]).toEqual([
+      'paused',
+      'disconnected',
+      'deleting',
+      'delete_failed',
+    ])
+    expect(ALL.filter(isSuspendedConnectorStatus)).toEqual([
+      'paused',
+      'deleting',
+      'delete_failed',
+      'disconnected',
+    ])
+    // 🛑 Both teardown statuses ARE here now. Removing the repeatable job settles
+    // SCHEDULED syncs, but this predicate also gates the webhook + app-trigger
+    // doors, and those ingested straight through a teardown — re-minting rows the
+    // chain had just deleted. `delete_failed` especially: a stopped teardown sits
+    // there indefinitely, so the window is not a race, it is permanent.
+    expect(isSuspendedConnectorStatus('deleting')).toBe(true)
+    expect(isSuspendedConnectorStatus('delete_failed')).toBe(true)
   })
 
   it('registers no SYNC scheduler for a disconnected scheduled connector', async () => {

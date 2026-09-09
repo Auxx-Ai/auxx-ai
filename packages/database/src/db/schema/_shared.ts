@@ -100,6 +100,19 @@ export const dataConnectorStatus = pgEnum('DataConnectorStatus', [
   // A connector stuck here is a crashed teardown — visibly stuck rather than
   // silently half-done, which is the whole reason it is a status.
   'deleting',
+  // A teardown that drained everything it could and STOPPED, because some
+  // records refused to be removed (a pre-delete guard: a posted ledger entry, a
+  // settled period). Terminal and non-blocking, unlike `deleting`: the provider
+  // side is already released and the scheduler already gone, so syncing stays
+  // refused, but every delete behavior is offered again so the operator can
+  // reverse the entries and retry, or fall back to `keep`/`archive`.
+  //
+  // 🛑 It is a status of its own rather than a reuse of `error` or
+  // `disconnected`. `error` is scheduler-eligible and would let a half-torn-down
+  // connector re-mint the records it just removed; `disconnected` is scoped by
+  // `reconnectConnectorsForInstallation`, which would silently repair a
+  // connector the operator asked to destroy.
+  'delete_failed',
   // The app behind this connector was uninstalled, or its connection was
   // removed (plans/money/tasks/44 D-1a). Deliberately NOT 'paused': that means
   // "the merchant paused this" and is resumable from the detail view, while

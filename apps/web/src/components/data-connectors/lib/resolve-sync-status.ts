@@ -129,6 +129,33 @@ export function resolveSyncStatus(
     }
   }
 
+  // 🛑 The teardown pair, and they belong here for exactly the reason the
+  // `disconnected` block above gives — except this one was NOT caught. Neither
+  // status was ever named, so a connector midway through having its records
+  // deleted, and one whose removal had stopped outright, both rendered as
+  // "Synced · Up to date · [Sync now]": a green check and a button that would
+  // re-mint the very rows the teardown had just removed.
+  if (status === 'deleting') {
+    return {
+      state: 'syncing',
+      label: 'Removing',
+      detail: 'Removing this connector and the records it created.',
+    }
+  }
+
+  if (status === 'delete_failed') {
+    // `action-needed` on purpose: the status line renders the connector's `error`
+    // for this state, and that error IS the list of refusal reasons the operator
+    // has to resolve. No `primaryAction` — every route forward (retry, or fall
+    // back to keeping/archiving) is a removal behaviour, and those live in the
+    // Remove menu, not in a one-button CTA.
+    return {
+      state: 'action-needed',
+      label: 'Removal failed',
+      detail: 'Some records could not be removed. Resolve the reason, then remove it again.',
+    }
+  }
+
   if (status === 'paused') {
     // A sample park is a positive, voluntary stop (trial-sync §6) — read it as "ready
     // for review", offering "Sync everything" (a full sync), not a plain Resume.

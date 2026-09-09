@@ -68,6 +68,29 @@ describe('resolveSyncStatus', () => {
     expect(paused).toMatchObject({ state: 'paused', primaryAction: 'resume' })
   })
 
+  it('maps the teardown statuses away from the live fallthrough', () => {
+    // The same defect the `disconnected` test above pins, in the two statuses
+    // nobody added when they were introduced: a connector whose records were
+    // being deleted, and one whose removal had stopped, both rendered
+    // "Synced · Up to date · [Sync now]" — a green check and a button that would
+    // re-mint exactly what the teardown had just removed.
+    for (const status of ['deleting', 'delete_failed'] as const) {
+      const r = resolveSyncStatus({ status }, NOW)
+      expect(r.state).not.toBe('synced')
+      expect(r.label).not.toBe('Synced')
+      expect(r.primaryAction).toBeUndefined()
+    }
+
+    expect(resolveSyncStatus({ status: 'deleting' }, NOW)).toMatchObject({
+      state: 'syncing',
+      label: 'Removing',
+    })
+    expect(resolveSyncStatus({ status: 'delete_failed' }, NOW)).toMatchObject({
+      state: 'action-needed',
+      label: 'Removal failed',
+    })
+  })
+
   it('maps a sample-parked connector → positive "Sample ready" with a sync (not resume) action', () => {
     const r = resolveSyncStatus(
       { status: 'paused', latestRun: { status: 'partial', pausedReason: 'sample' } },

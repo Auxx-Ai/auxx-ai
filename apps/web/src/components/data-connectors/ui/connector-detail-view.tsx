@@ -132,7 +132,11 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
     {
       refetchInterval: (query) => {
         const s = query.state.data?.status ?? connector.status
-        return s === 'syncing' || s === 'provisioning' ? 15000 : false
+        // `deleting` polls for the same reason the sync states do: a teardown is
+        // work in flight with an end the page has to notice. It ends either by
+        // removing this connector or by parking it as `delete_failed`, and both
+        // are edges the realtime frame can drop — this is the safety net.
+        return s === 'syncing' || s === 'provisioning' || s === 'deleting' ? 15000 : false
       },
     }
   )
@@ -223,6 +227,17 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
   // syncing a connector whose records are being deleted would fight the chain.
   const isRemoving = status === 'deleting'
 
+  // 🛑 A teardown that STOPPED is not a teardown in flight, and conflating the
+  // two is what made a refused removal unrecoverable. `deleting` disables the
+  // Remove menu — correctly, while a chain is running — but the chain also
+  // stopped on that status when a guard refused a record, so the only screen
+  // that offers the three removal behaviours disabled all of them and there was
+  // no way forward from here: not a retry, not a fall back to `archive`, not
+  // even giving up. `delete_failed` is terminal, so the menu comes back; syncing
+  // stays refused via `getConnectorReadiness` (the provider side is already
+  // released and an arbitrary prefix of the records is already gone).
+  const isRemoveFailed = status === 'delete_failed'
+
   // Sync / Sample need a COMPLETE config (readiness) AND a SAVED one (not dirty) — §7a.
   // Reason text, or null when the action is allowed.
   //
@@ -233,13 +248,15 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
   // the list (task 44 §7.11).
   const syncBlockReason = isRemoving
     ? READINESS_REASON.removing
-    : isDisconnected
-      ? READINESS_REASON.disconnected
-      : readiness && !readiness.canSync
-        ? READINESS_REASON[readiness.problems[0] ?? 'no-endpoint']
-        : isDirty
-          ? 'Save changes first'
-          : null
+    : isRemoveFailed
+      ? READINESS_REASON['remove-failed']
+      : isDisconnected
+        ? READINESS_REASON.disconnected
+        : readiness && !readiness.canSync
+          ? READINESS_REASON[readiness.problems[0] ?? 'no-endpoint']
+          : isDirty
+            ? 'Save changes first'
+            : null
 
   const handleDelete = async (syncedData: 'keep' | 'archive' | 'delete') => {
     // Owned defs split into those THIS delete tears down (sole owner) vs those it keeps
@@ -446,6 +463,7 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
                     loading={isDeleting || isRemoving}
                     loadingText=''
                     disabled={isRemoving}
+                    title={isRemoveFailed ? 'Removal stopped — choose how to finish it' : undefined}
                     aria-label='Delete connector'>
                     <Trash />
                     <ChevronDown />

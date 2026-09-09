@@ -31,10 +31,20 @@ const sweepSchedulerId = (connectorId: string) => `data-connector-sweep-${connec
  * status added here would have left the webhook doors ingesting for an uninstalled
  * app. One list, four call sites, no drift.
  *
- * `'deleting'` is deliberately absent: a teardown removes its schedulers outright
- * (`removeConnectorScheduler`) rather than relying on a status predicate.
+ * 🛑 The two teardown statuses ARE here, and only the scheduler half of that was
+ * ever handled. `removeConnectorScheduler` deletes the repeatable job, which
+ * settles SCHEDULED syncs — but this list also gates the WEBHOOK doors, and a
+ * push arriving mid-teardown was ingested normally: it re-minted rows the chain
+ * had just deleted, and re-bound them to a connector that was on its way out.
+ * `delete_failed` makes that worse than a race, because a stopped teardown sits
+ * in it indefinitely waiting on a human.
  */
-export const SUSPENDED_CONNECTOR_STATUSES = ['paused', 'disconnected'] as const
+export const SUSPENDED_CONNECTOR_STATUSES = [
+  'paused',
+  'disconnected',
+  'deleting',
+  'delete_failed',
+] as const
 
 /** True when the connector's status suspends automated syncing. */
 export function isSuspendedConnectorStatus(status: string): boolean {
