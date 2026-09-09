@@ -58,7 +58,11 @@ import { z } from 'zod'
 import { toastError } from '~/components/global/toast'
 import { useConfirm } from '~/hooks/use-confirm'
 import { api } from '~/trpc/react'
-import { ConnectionVariableDialog } from './connection-variable-dialog'
+import {
+  ConnectionVariableDialog,
+  type PortalConnectionVariable,
+  toPortalVariables,
+} from './connection-variable-dialog'
 
 /** Slugish method key: lowercase letters/digits/underscore, e.g. 'api_key', 'oauth2'. */
 const KEY_PATTERN = /^[a-z0-9_]+$/
@@ -421,7 +425,7 @@ function MethodEditor({
   } = form
 
   const [showAdvanced, setShowAdvanced] = useState(false)
-  const [connectionVariables, setConnectionVariables] = useState<ConnectionVariable[]>([])
+  const [connectionVariables, setConnectionVariables] = useState<PortalConnectionVariable[]>([])
   const [variableDialogOpen, setVariableDialogOpen] = useState(false)
   const [variablesDirty, setVariablesDirty] = useState(false)
   // Eye toggle flips the input type; it only ever exposes the mask (or what the user typed).
@@ -494,7 +498,9 @@ function MethodEditor({
       })
 
       // Connection variables are a top-level column (shared by oauth2-code and secret)
-      setConnectionVariables((connection.connectionVariables as ConnectionVariable[]) ?? [])
+      setConnectionVariables(
+        toPortalVariables((connection.connectionVariables as ConnectionVariable[]) ?? [])
+      )
 
       // Auto-open advanced section if any advanced field has a value
       if (
@@ -572,7 +578,7 @@ function MethodEditor({
     return keys.filter((k) => !connectionVariables.some((v) => v.key === k))
   }, [mintsToken, authorizeUrl, tokenUrl, clientId, clientSecret, connectionVariables])
 
-  const handleVariablesChange = (vars: ConnectionVariable[]) => {
+  const handleVariablesChange = (vars: PortalConnectionVariable[]) => {
     setConnectionVariables(vars)
     setVariablesDirty(true)
   }

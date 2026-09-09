@@ -46,6 +46,40 @@ const authApplySchema = z.union([
   }),
 ])
 
+/**
+ * One dynamic variable the org supplies at connect time (mirror of the `ConnectionVariable`
+ * column type). `z.object` strips unknown keys, so every authorable field must be declared
+ * here or the portal's edit silently loses it in transit.
+ *
+ * `type` is deliberately narrower than `FieldType`: only these four are meaningful for a
+ * connection variable. Masking is `secret` and multiline is `multiline`, neither is a type.
+ * `default`, `rows` and `displayOptions` are omitted because the portal cannot author them.
+ */
+const connectionVariableSchema = z.object({
+  key: z.string(),
+  label: z.string(),
+  description: z.string().optional(),
+  placeholder: z.string().optional(),
+  required: z.boolean().optional(),
+  secret: z.boolean().optional(),
+  type: z.enum(['TEXT', 'NUMBER', 'CHECKBOX', 'SINGLE_SELECT']).optional(),
+  options: z
+    .array(z.object({ id: z.string().optional(), label: z.string(), value: z.string() }))
+    .optional(),
+  multiline: z.boolean().optional(),
+  validation: z
+    .object({
+      minLength: z.number().optional(),
+      maxLength: z.number().optional(),
+      min: z.number().optional(),
+      max: z.number().optional(),
+      port: z.boolean().optional(),
+      pattern: z.string().optional(),
+      message: z.string().optional(),
+    })
+    .optional(),
+})
+
 /** Fetch the app and assert the caller is a member of its developer account. */
 async function getAppForMember(db: typeof database, appId: string, userId: string) {
   const [app] = await db.select().from(App).where(eq(App.id, appId)).limit(1)
@@ -156,18 +190,7 @@ const methodFields = {
       callbackMetadataParams: z.array(z.string()).optional(),
     })
     .optional(),
-  connectionVariables: z
-    .array(
-      z.object({
-        key: z.string(),
-        label: z.string(),
-        description: z.string().optional(),
-        placeholder: z.string().optional(),
-        required: z.boolean().optional(),
-        secret: z.boolean().optional(),
-      })
-    )
-    .optional(),
+  connectionVariables: z.array(connectionVariableSchema).optional(),
   // How the resolved credential becomes request auth (null for `none`/non-HTTP methods).
   authApply: authApplySchema.nullable().optional(),
   // Base-URL template the connection contributes to a request origin, interpolated from
