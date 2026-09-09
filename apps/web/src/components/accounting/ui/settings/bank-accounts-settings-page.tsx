@@ -28,6 +28,7 @@
 import { FeatureKey, PermissionKey } from '@auxx/lib/permissions/client'
 import { toastError } from '@auxx/ui/components/toast'
 import { Lock } from 'lucide-react'
+import { parseAsBoolean, useQueryState } from 'nuqs'
 import { useCallback, useMemo, useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
 import { MasterDetailSplit } from '~/components/global/master-detail-split'
@@ -59,11 +60,20 @@ export function BankAccountsSettingsPage() {
   const { hasAccess } = useFeatureFlags()
   const utils = api.useUtils()
 
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  // 🛑 The row selection lives in the URL, like the chart's does on
+  // `settings/accounts`. This is the screen people are sent to ("map the
+  // checking account to 1010"), and a pane that vanishes on refresh cannot be
+  // linked to.
+  const [accountParam, setSelectedId] = useQueryState('account')
   const [manualOpen, setManualOpen] = useState(false)
   const [connectOpen, setConnectOpen] = useState(false)
   const [reconnectingId, setReconnectingId] = useState<string | null>(null)
-  const [showArchived, setShowArchived] = useState(false)
+  // In the URL too, for the same reason: "here is the archived one I mean" is a
+  // link somebody sends, and the row it names is not on the list without this.
+  const [showArchived, setShowArchived] = useQueryState(
+    'archived',
+    parseAsBoolean.withDefault(false)
+  )
   const [confirm, ConfirmDialog] = useConfirm()
 
   // 🛑 Archived rows are FETCHED always and filtered here, on the same query key
@@ -75,6 +85,14 @@ export function BankAccountsSettingsPage() {
     () => (showArchived ? rows : rows.filter((row) => !row.archivedAt)),
     [rows, showArchived]
   )
+
+  // 🛑 The param is only REJECTED once the list has arrived. Validating while
+  // the query is pending would drop the selection on every refresh - the URL is
+  // read before the data is, so the row it names does not exist yet.
+  const selectedId =
+    accountParam && (accounts.isPending || rows.some((row) => row.id === accountParam))
+      ? accountParam
+      : null
   // Selected from ALL rows, not the visible ones: archiving the open account
   // must leave its pane readable long enough to say what happened and offer the
   // restore, rather than blanking under the person who pressed the button.
@@ -173,7 +191,7 @@ export function BankAccountsSettingsPage() {
       setReconnectingId(null)
       if (accounts > 0) setSelectedId(null)
     },
-    [invalidate]
+    [invalidate, setSelectedId]
   )
 
   const handlePatch = useCallback(
