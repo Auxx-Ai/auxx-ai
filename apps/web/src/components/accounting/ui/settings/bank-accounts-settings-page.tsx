@@ -291,6 +291,8 @@ export function BankAccountsSettingsPage() {
             onReconnect={() => selected && handleReconnect(selected.id)}
             onDisconnect={handleDisconnect}
             onRemove={handleRemove}
+            onRestore={() => selected && restore.mutate({ id: selected.id })}
+            restoring={restore.isPending && restore.variables?.id === selected?.id}
           />
         }
         paneTitle='Bank account'

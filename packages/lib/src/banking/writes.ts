@@ -591,10 +591,19 @@ export async function archiveBankAccount(
   return guard(
     async () => {
       const ctx = await requireBankAccountFieldContext(organizationId)
-      const account = await getBankAccount(db, { organizationId, bankAccountId })
+      // Read the archived row too, so archiving one twice refuses with a sentence
+      // that says so rather than a 404 on a record the caller is looking at.
+      const account = await getBankAccount(db, {
+        organizationId,
+        bankAccountId,
+        includeArchived: true,
+      })
       if (account.isErr()) throw account.error
       if (!account.value) {
         throw new NotFoundError(`Bank account ${bankAccountId} was not found`)
+      }
+      if (account.value.archivedAt) {
+        throw new ConflictError('That bank account is already archived.')
       }
 
       let disconnected = false

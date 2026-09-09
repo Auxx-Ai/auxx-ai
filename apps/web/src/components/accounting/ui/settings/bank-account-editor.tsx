@@ -61,7 +61,7 @@ import { Button } from '@auxx/ui/components/button'
 import { LastUpdated } from '@auxx/ui/components/last-updated'
 import { Section } from '@auxx/ui/components/section'
 import { cn } from '@auxx/ui/lib/utils'
-import { PlugZap, RefreshCw, Trash2, TriangleAlert } from 'lucide-react'
+import { ArchiveRestore, PlugZap, RefreshCw, Trash2, TriangleAlert } from 'lucide-react'
 import Link from 'next/link'
 import { useRef, useState } from 'react'
 import { GlAccountPicker } from '~/components/accounting/ui/gl-account-picker'
@@ -114,6 +114,19 @@ export interface BankAccountPatch {
   feedStartDate?: string | null
 }
 
+/**
+ * Cancels the scroll container's `p-3` so a `Section` sits FLUSH with the panel.
+ *
+ * `Section` draws its own `p-3` and a full-width `border-b`, which is a divider
+ * meant to run edge to edge. Nested inside a padded container it was inset by
+ * twelve pixels on each side, so the rule stopped short of both edges and the
+ * section read as a floating card rather than a band of the panel.
+ *
+ * `className` lands on the section WRAPPER, so the negative margin takes the
+ * border with it. The inner `p-3` still holds the content off the edge.
+ */
+const SECTION_BLEED = '-mx-3'
+
 interface BankAccountEditorProps {
   account: BankAccountRow | null
   coverage: BankAccountCoverage | null
@@ -138,6 +151,8 @@ interface BankAccountEditorProps {
    * read and the click that follows it.
    */
   removal: BankAccountRemoval | null
+  /** True while this account's restore is in flight. */
+  restoring?: boolean
   /** True while the remove is in flight. */
   removing?: boolean
   onPatch: (patch: BankAccountPatch) => void
@@ -148,6 +163,8 @@ interface BankAccountEditorProps {
   onDisconnect: () => void
   /** Delete or archive, whichever the server's gate says applies. */
   onRemove: () => void
+  /** Put an archived account back. Replaces the Danger zone while it is archived. */
+  onRestore: () => void
 }
 
 /** What `banking.bankAccount.removalPreview` answers, as this pane reads it. */
@@ -190,11 +207,13 @@ function BankAccountForm({
   syncing = false,
   removal,
   removing = false,
+  restoring = false,
   onPatch,
   onSync,
   onReconnect,
   onDisconnect,
   onRemove,
+  onRestore,
 }: BankAccountEditorProps & { account: BankAccountRow }) {
   const [values, setValues] = useState<TextValues>({
     name: account.name ?? '',
@@ -444,7 +463,7 @@ function BankAccountForm({
       )}
 
       {account.connector && (
-        <Section title='Runs' initialOpen={false}>
+        <Section title='Runs' initialOpen={false} className={SECTION_BLEED}>
           <ConnectorRunsPanel
             connectorId={account.connector.id}
             initialStatus={asConnectorStatus(account.connector.status)}
@@ -462,43 +481,71 @@ function BankAccountForm({
           Disconnect stays gated, because the verb genuinely does not apply
           without a connector - `disconnectBankAccountFeed` opens with
           `requireConnectorId` and throws. Remove is always here. */}
-      <Section title='Danger zone' initialOpen={false}>
-        <div className='flex flex-col gap-3 p-1'>
-          {isConnected && (
-            <div className='flex flex-col gap-2'>
-              <p className='text-muted-foreground text-xs'>
-                Disconnecting stops the feed and keeps every transaction, including the ones already
-                coded and posted. A posted bank line is the source document of a journal entry, so
-                nothing is deleted.
-              </p>
-              <div>
-                <Button variant='outline' size='sm' loading={disconnecting} onClick={onDisconnect}>
-                  <PlugZap />
-                  Disconnect
-                </Button>
-              </div>
-            </div>
-          )}
-
-          <div className='flex flex-col gap-2'>
-            <p className='text-muted-foreground text-xs'>{removalBlurb(removal)}</p>
+      {/* 🛑 An ARCHIVED account gets Restore and nothing else. Every action in
+          the Danger zone below refuses on one: `archiveBankAccount` will not
+          archive twice, and a delete cannot apply because only an account that
+          has posted can be archived in the first place. Showing them would offer
+          two buttons that both fail. */}
+      {account.archivedAt ? (
+        <Section title='Archived' initialOpen className={SECTION_BLEED}>
+          <div className='flex flex-col gap-2 p-1'>
+            <p className='text-muted-foreground text-xs'>
+              This account is archived. It is out of the account pickers and its lines are out of
+              the review queue, and nothing about its history changed. Restoring puts it back and
+              re-opens the lines the archive excluded - the ones a person excluded by hand stay
+              excluded. It does not reconnect the feed: that needs signing in at the bank again.
+            </p>
             <div>
-              {/* 🛑 Never says "Delete" for something that will archive. The
-                  label waits for the preview rather than guessing, because the
-                  two words promise opposite things about the history. */}
-              <Button
-                variant='destructive'
-                size='sm'
-                loading={removing}
-                disabled={!removal}
-                onClick={onRemove}>
-                <Trash2 />
-                {removal?.verb === 'archive' ? 'Archive' : 'Delete'}
+              <Button variant='outline' size='sm' loading={restoring} onClick={onRestore}>
+                <ArchiveRestore />
+                Restore
               </Button>
             </div>
           </div>
-        </div>
-      </Section>
+        </Section>
+      ) : (
+        <Section title='Danger zone' initialOpen={false} className={SECTION_BLEED}>
+          <div className='flex flex-col gap-3 p-1'>
+            {isConnected && (
+              <div className='flex flex-col gap-2'>
+                <p className='text-muted-foreground text-xs'>
+                  Disconnecting stops the feed and keeps every transaction, including the ones
+                  already coded and posted. A posted bank line is the source document of a journal
+                  entry, so nothing is deleted.
+                </p>
+                <div>
+                  <Button
+                    variant='outline'
+                    size='sm'
+                    loading={disconnecting}
+                    onClick={onDisconnect}>
+                    <PlugZap />
+                    Disconnect
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            <div className='flex flex-col gap-2'>
+              <p className='text-muted-foreground text-xs'>{removalBlurb(removal)}</p>
+              <div>
+                {/* 🛑 Never says "Delete" for something that will archive. The
+                  label waits for the preview rather than guessing, because the
+                  two words promise opposite things about the history. */}
+                <Button
+                  variant='destructive'
+                  size='sm'
+                  loading={removing}
+                  disabled={!removal}
+                  onClick={onRemove}>
+                  <Trash2 />
+                  {removal?.verb === 'archive' ? 'Archive' : 'Delete'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </Section>
+      )}
     </div>
   )
 }
