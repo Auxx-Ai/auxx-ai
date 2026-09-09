@@ -102,12 +102,41 @@ export function useLedgerEntryActions({
   const previewMutate = previewMonth.mutate
   const requestedRef = useRef<string | null>(null)
 
+  /**
+   * The ONE call site for `previewMonthEnd`, so the fire on arrival and the
+   * Rebuild button fail identically.
+   *
+   * 🛑 `requestedRef` is CLEARED on failure. It is set before the call so the
+   * effect stays at one request per month, which means leaving it latched after
+   * a transport failure would retire that month for the life of the component -
+   * an empty Entries section, forever, with nothing said about why.
+   *
+   * 🛑 And a failure has to be said out loud. Every business refusal arrives on
+   * `EntryPreview.blockedBy` and is rendered by the screen, so `onError` here is
+   * only ever a genuine transport or 500 failure - the one outcome that has no
+   * other way to reach anybody.
+   */
+  const firePreview = useCallback(
+    (month: string) => {
+      requestedRef.current = month
+      previewMutate(
+        { periodKey: month },
+        {
+          onError: (error) => {
+            requestedRef.current = null
+            toastError({ title: 'Could not build the entry', description: error.message })
+          },
+        }
+      )
+    },
+    [previewMutate]
+  )
+
   useEffect(() => {
     if (!enabled || !periodKey) return
     if (requestedRef.current === periodKey) return
-    requestedRef.current = periodKey
-    previewMutate({ periodKey })
-  }, [enabled, periodKey, previewMutate])
+    firePreview(periodKey)
+  }, [enabled, periodKey, firePreview])
 
   /** Everything the books-level reads show changes the moment a month lands. */
   const refreshBooks = useCallback(() => {
@@ -118,15 +147,8 @@ export function useLedgerEntryActions({
 
   const runPreview = useCallback(() => {
     if (!periodKey) return
-    requestedRef.current = periodKey
-    previewMutate(
-      { periodKey },
-      {
-        onError: (error) =>
-          toastError({ title: 'Could not build the entry', description: error.message }),
-      }
-    )
-  }, [periodKey, previewMutate])
+    firePreview(periodKey)
+  }, [firePreview, periodKey])
 
   const postMutate = postMonth.mutate
   const runPost = useCallback(() => {
