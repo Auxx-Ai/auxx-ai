@@ -233,16 +233,29 @@ export async function listForReview(
         )
       }
 
+      // 🛑 The account join is ALWAYS made, not only when filtering by account,
+      // because it carries a second condition: the account must not be ARCHIVED.
+      //
+      // The `archivedAt IS NULL` above is on the bank_transaction row. Without
+      // this one, archiving an ACCOUNT hid it from settings and every picker
+      // while its lines kept appearing here - under an account the reader could
+      // no longer see, select or filter by, and so could not act on
+      // (plans/bank-connection/08-removing-a-bank-account.md §6.1).
+      //
+      // ⚠️ A LEFT join, and the null check is deliberate. A line whose account
+      // link is missing entirely is an orphan, not an archived account's row, and
+      // it still belongs in the queue - an inner join would silently swallow it.
       const accountField = ctx.fields.bank_transaction_bank_account
-      if (filters.bankAccountId && accountField) {
+      if (accountField) {
         const accountValue = alias(schema.FieldValue, 'bt_account_v')
-        query = query.innerJoin(
-          accountValue,
-          and(
-            valueJoin(accountValue, accountField.id),
-            eq(accountValue.relatedEntityId, filters.bankAccountId)
-          )
-        )
+        const accountInstance = alias(schema.EntityInstance, 'bt_account_i')
+        query = query
+          .leftJoin(accountValue, valueJoin(accountValue, accountField.id))
+          .leftJoin(accountInstance, eq(accountInstance.id, accountValue.relatedEntityId))
+        where.push(isNull(accountInstance.archivedAt))
+        if (filters.bankAccountId) {
+          where.push(eq(accountValue.relatedEntityId, filters.bankAccountId))
+        }
       }
 
       const dateField = ctx.fields.bank_transaction_posted_at

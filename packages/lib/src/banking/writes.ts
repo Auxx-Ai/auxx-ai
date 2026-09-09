@@ -83,11 +83,12 @@ import { findBankFeedAccountForConnector, reapBankFeedAccount } from './feed/rea
 import { guard } from './guard'
 import {
   getBankAccount,
+  readAccountLinesByStatus,
   readBankTransactionIdsForAccount,
   readRemovalFacts,
   requireBankAccountFieldContext,
 } from './reads'
-import { listForReview, requireReviewFieldContext } from './review/reads'
+import { requireReviewFieldContext } from './review/reads'
 
 const logger = createScopedLogger('banking')
 
@@ -357,22 +358,6 @@ export function resolveRemoval(facts: BankAccountRemovalFacts): BankAccountRemov
   }
 }
 
-/**
- * The ceiling on one archive's exclusion sweep.
- *
- * `listForReview` caps at 500 per call anyway, and an account somebody is
- * archiving with more than 500 lines still waiting for review is a queue nobody
- * was ever going to clear by hand. A hard cap is better than a paging loop that
- * could write for minutes inside one request; the rest keep their status and can
- * be excluded from the queue.
- *
- * ⚠️ The DELETE cascade has no such cap and does not use this: it reads the
- * account's lines directly (`readBankTransactionIdsForAccount`) so that archived
- * rows go too, and a partial delete would leave exactly the orphans it exists to
- * avoid.
- */
-const MAX_CASCADE_ROWS = 500
-
 /** What `deleteBankAccount` accepts. */
 export interface DeleteBankAccountInput {
   organizationId: string
@@ -509,8 +494,22 @@ export async function deleteBankAccount(
       const crud = new UnifiedCrudHandler(organizationId, actorUserId, db)
       const lines = await readBankTransactionIdsForAccount(db, { organizationId, bankAccountId })
       if (lines.isErr()) throw lines.error
-      for (const lineId of lines.value.ids) {
-        await crud.delete(toRecordId(lines.value.bankTransactionDefId, lineId))
+      // 🛑 `bulkDelete`, not a loop. Every single-record method wraps itself in
+      // `inWriteSession` and runs its own `assertEditRows` + cache warm, so a
+      // per-row loop over a wrongly-connected account's 2,390 lines opened 2,390
+      // write sessions inside one request. The bulk call does all three once.
+      if (lines.value.ids.length > 0) {
+        const result = await crud.bulkDelete(
+          lines.value.ids.map((id) => toRecordId(lines.value.bankTransactionDefId, id))
+        )
+        if (result.errors.length > 0) {
+          // Refusing loudly beats deleting the account over the top of lines that
+          // would not go: the leftovers would point at an `EntityInstance` that no
+          // longer exists, with no foreign key to find them by.
+          throw new ConflictError(
+            `${result.errors.length} of ${lines.value.ids.length} bank transactions could not be deleted, so the account was kept. First: ${result.errors[0]?.message ?? 'unknown'}`
+          )
+        }
       }
 
       // 4. The account. Its `RecordIdentity` rows cascade off `EntityInstance`.
@@ -636,9 +635,16 @@ export async function archiveBankAccount(
  * Sweep `for_review` and `suggested` to `excluded`, and touch nothing else.
  *
  * ⚠️ **`matched`, `coded` and human-`excluded` rows are left alone**, and the
- * narrowing is done by asking `listForReview` for exactly those two states rather
- * than by filtering afterwards. They are already in the books, or they carry a
- * decision somebody made and the reason they were required to give for it.
+ * narrowing is done in the query rather than by filtering afterwards. They are
+ * already in the books, or they carry a decision somebody made and the reason
+ * they were required to give for it.
+ *
+ * 🛑 **Uncapped, and one write.** This used to page `listForReview` (which clamps
+ * at 500) and then `crud.update` per row, so an archive swept at most 1,000 of
+ * however many the account had and opened a write session for each. The rest
+ * stayed in the For Review queue under an account nobody could see any more
+ * (plans/bank-connection/08-removing-a-bank-account.md §6.1). The cap existed to
+ * bound a per-row loop; with `bulkUpdate` there is nothing to bound.
  *
  * The reason is prefixed so a later path can tell an archive's own bookkeeping
  * from a person's - the same job `IMPORT_LINK_EXCLUSION_PREFIX` does for the
@@ -656,30 +662,37 @@ async function excludeUnreviewedLines(
   const { organizationId, actorUserId, bankAccountId, accountLabel } = params
   const ctx = await requireReviewFieldContext(organizationId)
 
-  const pending = await Promise.all(
-    (['for_review', 'suggested'] as const).map((state) =>
-      listForReview(db, { organizationId, bankAccountId, state, limit: MAX_CASCADE_ROWS })
-    )
-  )
+  const pending = await readAccountLinesByStatus(db, {
+    organizationId,
+    bankAccountId,
+    statuses: ['for_review', 'suggested'],
+  })
+  if (pending.isErr()) throw pending.error
+  if (pending.value.lines.length === 0) return 0
 
   const crud = new UnifiedCrudHandler(organizationId, actorUserId, db)
   const reason = `${ARCHIVE_EXCLUSION_PREFIX}: ${accountLabel}`
   const reviewedAt = new Date().toISOString()
 
-  let excluded = 0
-  for (const batch of pending) {
-    if (batch.isErr()) throw batch.error
-    for (const line of batch.value) {
-      await crud.update(toRecordId(ctx.bankTransactionDefId, line.id), {
+  const result = await crud.bulkUpdate(
+    pending.value.lines.map((line) => ({
+      recordId: toRecordId(ctx.bankTransactionDefId, line.id),
+      values: {
         bank_transaction_review_status: 'excluded',
         bank_transaction_exclude_reason: reason,
         bank_transaction_reviewed_at: reviewedAt,
         bank_transaction_reviewed_by_user_id: actorUserId,
-      })
-      excluded += 1
-    }
+      },
+    }))
+  )
+  if (result.errors.length > 0) {
+    logger.warn('Some lines could not be excluded while archiving a bank account', {
+      organizationId,
+      bankAccountId,
+      failed: result.errors.length,
+    })
   }
-  return excluded
+  return result.updated
 }
 
 /**
@@ -697,27 +710,29 @@ async function reopenArchiveExclusions(
   const { organizationId, actorUserId, bankAccountId } = params
   const ctx = await requireReviewFieldContext(organizationId)
 
-  const excluded = await listForReview(db, {
+  const excluded = await readAccountLinesByStatus(db, {
     organizationId,
     bankAccountId,
-    state: 'excluded',
-    limit: MAX_CASCADE_ROWS,
+    statuses: ['excluded'],
   })
   if (excluded.isErr()) throw excluded.error
 
+  const mine = excluded.value.lines.filter((line) => isArchiveExclusion(line.excludeReason))
+  if (mine.length === 0) return 0
+
   const crud = new UnifiedCrudHandler(organizationId, actorUserId, db)
-  let reopened = 0
-  for (const line of excluded.value) {
-    if (!isArchiveExclusion(line.excludeReason)) continue
-    await crud.update(toRecordId(ctx.bankTransactionDefId, line.id), {
-      bank_transaction_review_status: 'for_review',
-      bank_transaction_exclude_reason: null,
-      bank_transaction_reviewed_at: null,
-      bank_transaction_reviewed_by_user_id: null,
-    })
-    reopened += 1
-  }
-  return reopened
+  const result = await crud.bulkUpdate(
+    mine.map((line) => ({
+      recordId: toRecordId(ctx.bankTransactionDefId, line.id),
+      values: {
+        bank_transaction_review_status: 'for_review',
+        bank_transaction_exclude_reason: null,
+        bank_transaction_reviewed_at: null,
+        bank_transaction_reviewed_by_user_id: null,
+      },
+    }))
+  )
+  return result.updated
 }
 
 /** What `restoreBankAccount` accepts. */

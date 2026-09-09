@@ -63,6 +63,9 @@ const BANK_TRANSACTION_ATTRIBUTES = [
   'bank_transaction_bank_account',
   'bank_transaction_posted_at',
   'bank_transaction_review_status',
+  // Read by `readAccountLinesByStatus` so a restore can tell the ARCHIVE's own
+  // exclusions from a person's without a second query per row.
+  'bank_transaction_exclude_reason',
 ] as const
 
 type BankAccountAttribute = (typeof BANK_ACCOUNT_ATTRIBUTES)[number]
@@ -400,6 +403,103 @@ export async function readBankTransactionIdsForAccount(
       }
     },
     'Failed to read the bank transactions on an account',
+    { organizationId, bankAccountId }
+  )
+}
+
+/**
+ * Every live line on one account whose review status is one of `statuses`, with
+ * the exclusion reason attached.
+ *
+ * 🛑 **Uncapped, deliberately.** `listForReview` clamps at `MAX_LIMIT` (500),
+ * which is right for a queue a person is reading and wrong for a sweep that has
+ * to touch every row or leave debris behind. An archive that swept 500 of 2,390
+ * rows left the rest in the queue under an account the user could no longer see
+ * or select (plans/bank-connection/08-removing-a-bank-account.md §6.1).
+ *
+ * 🛑 **A line with NO status row counts as `for_review`**, the same default
+ * `resolveReviewStatus` applies everywhere else. Filtering on an inner join
+ * against the status field would silently skip exactly the rows an archive
+ * sweep exists to catch.
+ *
+ * Three queries, whatever the row count: the account link, the statuses, the
+ * reasons. Nothing here is per-row.
+ */
+export async function readAccountLinesByStatus(
+  db: Database,
+  params: { organizationId: string; bankAccountId: string; statuses: readonly string[] }
+): Promise<
+  Result<
+    { bankTransactionDefId: string; lines: { id: string; excludeReason: string | null }[] },
+    Error
+  >
+> {
+  const { organizationId, bankAccountId, statuses } = params
+  return guard(
+    async () => {
+      const ctx = await loadBankTransactionFieldContext(organizationId)
+      const linkField = ctx?.fields.bank_transaction_bank_account
+      if (!ctx || !linkField) return { bankTransactionDefId: '', lines: [] }
+
+      // Joined to the instance so an ARCHIVED line - a reversed import, a
+      // duplicate the feed converged away - is left alone.
+      const linked = await db
+        .select({ entityId: schema.FieldValue.entityId })
+        .from(schema.FieldValue)
+        .innerJoin(schema.EntityInstance, eq(schema.EntityInstance.id, schema.FieldValue.entityId))
+        .where(
+          and(
+            eq(schema.FieldValue.organizationId, organizationId),
+            eq(schema.FieldValue.fieldId, linkField.id),
+            eq(schema.FieldValue.relatedEntityId, bankAccountId),
+            isNull(schema.EntityInstance.archivedAt)
+          )
+        )
+
+      const ids = [...new Set(linked.map((row) => row.entityId))]
+      if (ids.length === 0) return { bankTransactionDefId: ctx.bankTransactionDefId, lines: [] }
+
+      const statusField = ctx.fields.bank_transaction_review_status
+      const byStatus = new Map<string, string | null>()
+      if (statusField) {
+        const rows = await db
+          .select({ entityId: schema.FieldValue.entityId, optionId: schema.FieldValue.optionId })
+          .from(schema.FieldValue)
+          .where(
+            and(
+              eq(schema.FieldValue.organizationId, organizationId),
+              eq(schema.FieldValue.fieldId, statusField.id),
+              inArray(schema.FieldValue.entityId, ids)
+            )
+          )
+        for (const row of rows) byStatus.set(row.entityId, row.optionId)
+      }
+
+      const wanted = ids.filter((id) => statuses.includes(byStatus.get(id) ?? 'for_review'))
+      if (wanted.length === 0) return { bankTransactionDefId: ctx.bankTransactionDefId, lines: [] }
+
+      const reasonField = ctx.fields.bank_transaction_exclude_reason
+      const byReason = new Map<string, string | null>()
+      if (reasonField) {
+        const rows = await db
+          .select({ entityId: schema.FieldValue.entityId, valueText: schema.FieldValue.valueText })
+          .from(schema.FieldValue)
+          .where(
+            and(
+              eq(schema.FieldValue.organizationId, organizationId),
+              eq(schema.FieldValue.fieldId, reasonField.id),
+              inArray(schema.FieldValue.entityId, wanted)
+            )
+          )
+        for (const row of rows) byReason.set(row.entityId, row.valueText)
+      }
+
+      return {
+        bankTransactionDefId: ctx.bankTransactionDefId,
+        lines: wanted.map((id) => ({ id, excludeReason: byReason.get(id) ?? null })),
+      }
+    },
+    'Failed to read the bank transactions on an account by status',
     { organizationId, bankAccountId }
   )
 }
