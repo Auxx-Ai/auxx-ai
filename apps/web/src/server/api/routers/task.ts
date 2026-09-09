@@ -1,10 +1,11 @@
 // apps/web/src/server/api/routers/task.ts
 
+import { PermissionKey } from '@auxx/lib/permissions'
 import { createTaskService, type TaskPriority, type TaskSource } from '@auxx/lib/tasks'
 import { type ActorId, isActorId } from '@auxx/types/actor'
 import { recordIdSchema } from '@auxx/types/resource'
 import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '../trpc'
+import { createTRPCRouter, permissionProcedure } from '../trpc'
 
 /**
  * Schema for ActorId validation (e.g., "user:abc123" or "group:xyz789")
@@ -53,7 +54,7 @@ export const taskRouter = createTRPCRouter({
   /**
    * Create a new task
    */
-  create: protectedProcedure
+  create: permissionProcedure(PermissionKey.tasksManage)
     .input(
       z.object({
         title: z.string().min(1).max(500),
@@ -77,23 +78,25 @@ export const taskRouter = createTRPCRouter({
   /**
    * Get a task by ID
    */
-  byId: protectedProcedure.input(z.object({ id: z.string() })).query(async ({ ctx, input }) => {
-    const { organizationId } = ctx.session
-    const taskService = createTaskService(ctx.db)
+  byId: permissionProcedure(PermissionKey.tasksView)
+    .input(z.object({ id: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      const taskService = createTaskService(ctx.db)
 
-    const task = await taskService.getTaskById(input.id, organizationId)
-    if (!task) {
-      throw new Error('Task not found')
-    }
+      const task = await taskService.getTaskById(input.id, organizationId)
+      if (!task) {
+        throw new Error('Task not found')
+      }
 
-    return task
-  }),
+      return task
+    }),
 
   /**
    * Batch fetch tasks by ID. Mirrors the api.thread.getByIds / api.message.getByIds
    * pattern used by the kopilot reference-block hydration path.
    */
-  getByIds: protectedProcedure
+  getByIds: permissionProcedure(PermissionKey.tasksView)
     .input(z.object({ ids: z.array(z.string()).max(100) }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
@@ -109,7 +112,7 @@ export const taskRouter = createTRPCRouter({
    * @example Archive: { id: 'x', archivedAt: new Date().toISOString() }
    * @example Unarchive: { id: 'x', archivedAt: null }
    */
-  update: protectedProcedure
+  update: permissionProcedure(PermissionKey.tasksManage)
     .input(
       z.object({
         id: z.string(),
@@ -162,7 +165,7 @@ export const taskRouter = createTRPCRouter({
   /**
    * Permanently delete a task
    */
-  delete: protectedProcedure
+  delete: permissionProcedure(PermissionKey.tasksManage)
     .input(z.object({ taskId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId } = ctx.session
@@ -175,7 +178,7 @@ export const taskRouter = createTRPCRouter({
   /**
    * List tasks with filtering and pagination
    */
-  list: protectedProcedure
+  list: permissionProcedure(PermissionKey.tasksView)
     .input(
       z.object({
         assigneeIds: z.array(z.string()).optional(),
@@ -219,7 +222,7 @@ export const taskRouter = createTRPCRouter({
   /**
    * Get tasks grouped by deadline status (today, this week, upcoming, overdue, completed)
    */
-  grouped: protectedProcedure.query(async ({ ctx }) => {
+  grouped: permissionProcedure(PermissionKey.tasksView).query(async ({ ctx }) => {
     const { organizationId } = ctx.session
     const taskService = createTaskService(ctx.db)
 
@@ -229,7 +232,7 @@ export const taskRouter = createTRPCRouter({
   /**
    * Get org-wide aggregate task counts for the overview header
    */
-  stats: protectedProcedure.query(async ({ ctx }) => {
+  stats: permissionProcedure(PermissionKey.tasksView).query(async ({ ctx }) => {
     const { organizationId } = ctx.session
     const taskService = createTaskService(ctx.db)
 

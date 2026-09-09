@@ -32,14 +32,28 @@ const logger = createScopedLogger('api-settings')
  * here would hand any `settings.manage` holder a one-call "classify
  * everything", which is precisely what per-inbox storage exists to make
  * inexpressible. `mailClassification.setInboxEnabled` is the only door.
+ *
+ * `ledger.lockedThroughMonth` is the accounting period lock
+ * (plans/accounting/tasks/12-accountant-permissions.md §0.4/§4.4). It is
+ * gated on `ledgerControl`, not `settingsManage`. Closing a period is the
+ * single most characteristic act of an accountant, and leaving this door open
+ * would hand a `settings.manage` holder with no ledger access the ability to
+ * close (or reopen) the books. `ledger.setLockedThrough` is the only door.
  */
-const ROUTER_OWNED_ORG_SETTING_KEYS = new Set<string>(['mailClassificationInboxIds'])
+const ROUTER_OWNED_ORG_SETTING_KEYS = new Set<string>([
+  'mailClassificationInboxIds',
+  'ledger.lockedThroughMonth',
+])
+
+const ROUTER_OWNED_ORG_SETTING_MESSAGES: Record<string, string> = {
+  mailClassificationInboxIds: 'managed per inbox and cannot be changed from organization settings',
+  'ledger.lockedThroughMonth': 'managed by the ledger, through ledger.setLockedThrough',
+}
 
 function assertNotRouterOwned(key: string): void {
   if (ROUTER_OWNED_ORG_SETTING_KEYS.has(key)) {
-    throw new BadRequestError(
-      `Setting ${key} is managed per inbox and cannot be changed from organization settings.`
-    )
+    const reason = ROUTER_OWNED_ORG_SETTING_MESSAGES[key] ?? 'managed by a dedicated router'
+    throw new BadRequestError(`Setting ${key} is ${reason}.`)
   }
 }
 

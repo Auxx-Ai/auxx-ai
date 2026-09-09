@@ -20,6 +20,7 @@ import { WorkflowKopilotSuggestions } from '~/components/workflow/panels/kopilot
 import { PanelFrameHeader } from '~/components/workflow/panels/panel-frame-chrome'
 import { usePanelStore } from '~/components/workflow/store/panel-store'
 import { useWorkflowStore } from '~/components/workflow/store/workflow-store'
+import { useAccess } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
 
@@ -141,6 +142,7 @@ function PanelNotice({ children }: { children: React.ReactNode }) {
  */
 function WorkflowKopilotChat({ workflowAppId }: { workflowAppId: string }) {
   const utils = api.useUtils()
+  const { can } = useAccess()
 
   const kopilotSession = usePanelStore((state) => state.kopilotSession)
   const setKopilotSession = usePanelStore((state) => state.setKopilotSession)
@@ -157,7 +159,10 @@ function WorkflowKopilotChat({ workflowAppId }: { workflowAppId: string }) {
   // several seconds with nothing to show for it.
   const sessionsQuery = api.kopilot.listSessions.useQuery(
     { workflowAppId, limit: 1 },
-    { staleTime: 30_000, retry: false }
+    // The toolbar button that opens this panel already gates on `agents.view`
+    // (`kopilot.*` procedures assert it), but this guards a member whose
+    // access changes mid-session while the panel stays mounted.
+    { staleTime: 30_000, retry: false, enabled: can('agents.view') }
   )
   const latestSessionId = sessionsQuery.data?.items[0]?.id ?? null
 

@@ -6,10 +6,13 @@
 // plans/bank-connection/08-removing-a-bank-account.md §7.3).
 // Mounted as `banking` in `root.ts`.
 //
-// 🛑 Reads are `ledgerView`; every write is `ledgerPost`. Mapping a bank account
-// to a GL code decides where cash lands, which is a post-grade act even though
-// it writes no posting - the same reasoning that puts the chart's own writes on
-// `ledgerPost` (`accounts-settings-page.tsx`).
+// 🛑 Reads are `ledgerView`. Writes split by rung
+// (plans/accounting/tasks/12-accountant-permissions.md §4.3): `create` and
+// `update` set the account's GL mapping - which decides where cash lands - and
+// `connect` / `reconnect` mint a bank connection, so all four are
+// `ledgerControl`, the same reasoning that puts the chart's own writes there
+// (`accounts-settings-page.tsx`). `remove`, `restore`, `sync` and `disconnect`
+// stay `ledgerPost`: ordinary bookkeeping against a mapping someone else chose.
 //
 // 🛑 Every refusal reaches the browser as an `AuxxError` verbatim and is
 // rendered as an `EntryBlockers` card, never a toast (HANDOFF ground rule 9).
@@ -119,8 +122,15 @@ export const bankingRouter = createTRPCRouter({
         return result.value
       }),
 
-    /** Add an account by hand. Always `manual`; a connector is never claimed here. */
-    create: permissionProcedure(PermissionKey.ledgerPost)
+    /**
+     * Add an account by hand. Always `manual`; a connector is never claimed here.
+     *
+     * Gated on `ledgerControl`, not `ledgerPost`: this sets the account's GL
+     * mapping, which decides where cash lands on the balance sheet - the same
+     * rung as {@link update} below (plans/accounting/tasks/
+     * 12-accountant-permissions.md §4.3).
+     */
+    create: permissionProcedure(PermissionKey.ledgerControl)
       .input(
         z.object({
           name: bankAccountFields.name,
@@ -148,8 +158,12 @@ export const bankingRouter = createTRPCRouter({
      * `status` is in here because Disconnect is an update, not a delete: it sets
      * `disconnected` and keeps every row, since a coded and posted bank line is
      * the source document of a journal entry.
+     *
+     * Gated on `ledgerControl`: `glAccountCode` decides where cash lands, same
+     * reasoning as {@link create} above. `status` rides along on the same
+     * procedure rather than splitting the write in two.
      */
-    update: permissionProcedure(PermissionKey.ledgerPost)
+    update: permissionProcedure(PermissionKey.ledgerControl)
       .input(
         z.object({
           id: z.string().min(1),
@@ -275,10 +289,13 @@ export const bankingRouter = createTRPCRouter({
    * the same door the redirect providers already use. Two doors onto one flow is
    * how one of them ends up without the guard.
    *
-   * `ledgerPost`, not `ledgerView`: connecting a bank decides where cash comes
-   * from.
+   * `ledgerControl`, not `ledgerPost`: connecting a bank decides where cash
+   * comes from. 🛑 This alone does not gate provisioning - see
+   * `plans/accounting/tasks/12-accountant-permissions.md` §4.7: the URL this
+   * mints is not the door that provisions the feed, so moving this key is
+   * necessary but not sufficient.
    */
-  connect: permissionProcedure(PermissionKey.ledgerPost).mutation(async () => {
+  connect: permissionProcedure(PermissionKey.ledgerControl).mutation(async () => {
     return startBankConnection()
   }),
 
@@ -291,8 +308,11 @@ export const bankingRouter = createTRPCRouter({
    * on the credential, so it re-arms the existing connector and `bank_account`
    * instead of standing a second feed up beside the first - which would double
    * every transaction in the review queue.
+   *
+   * `ledgerControl`, same rung as {@link connect} above and for the same
+   * reason.
    */
-  reconnect: permissionProcedure(PermissionKey.ledgerPost)
+  reconnect: permissionProcedure(PermissionKey.ledgerControl)
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async () => {
       return startBankConnection()

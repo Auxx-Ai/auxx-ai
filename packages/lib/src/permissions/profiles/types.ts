@@ -24,6 +24,7 @@ export const SYSTEM_PROFILE_SLUGS = [
   'support_agent',
   'analyst_agent',
   'accountant',
+  'bookkeeper',
 ] as const
 
 export type SystemProfileSlug = (typeof SYSTEM_PROFILE_SLUGS)[number]

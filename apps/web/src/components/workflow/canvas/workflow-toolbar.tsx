@@ -36,6 +36,7 @@ import { AddNodeTrigger } from '~/components/workflow/ui/add-node-trigger'
 import { WorkflowChecklist } from '~/components/workflow/ui/workflow-checklist'
 import WorkflowVersionsPopover from '~/components/workflow/ui/workflow-versions-popover'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useAccess } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
 import { useWorkflowSave } from '../hooks'
@@ -101,7 +102,11 @@ export function WorkflowToolbar({ className }: WorkflowToolbarProps) {
   // authoring guard finds no `edit` rung, and "what does this workflow do?" is
   // a fair question at `view`.
   const { hasAccess } = useFeatureFlags()
-  const kopilotEnabled = hasAccess(FeatureKey.kopilot)
+  const { can } = useAccess()
+  // `kopilot.*` procedures now assert `agents.view` (Read on agents means "see
+  // the agent and USE it, chat in Kopilot") — without this a member holding
+  // only workflow access would see the button but 403 on every kopilot query.
+  const kopilotEnabled = hasAccess(FeatureKey.kopilot) && can('agents.view')
 
   // Publish mutation
   const publishMutation = api.workflow.publish.useMutation({

@@ -57,6 +57,10 @@ interface RoleMapListProps {
   selectedRole: AccountRole | null
   onSelect: (role: AccountRole) => void
   onToggleUnused: (role: AccountRole) => void
+  /** `PermissionKey.ledgerControl`. False hides the inline "Change account" /
+   *  "Mark unused" / "Mark used again" `TreeRowButton`s - selecting a row to
+   *  read it stays available. */
+  canControl: boolean
 }
 
 export function RoleMapList({
@@ -65,6 +69,7 @@ export function RoleMapList({
   selectedRole,
   onSelect,
   onToggleUnused,
+  canControl,
 }: RoleMapListProps) {
   if (isLoading) {
     // 🛑 A spinner, never thirteen `unmapped` rows. "Not mapped - every preview
@@ -106,6 +111,7 @@ export function RoleMapList({
                   selected={selectedRole === row.role}
                   onSelect={onSelect}
                   onToggleUnused={onToggleUnused}
+                  canControl={canControl}
                 />
               ))}
             </div>
@@ -121,11 +127,13 @@ function RoleRow({
   selected,
   onSelect,
   onToggleUnused,
+  canControl,
 }: {
   row: RoleAssignmentRow
   selected: boolean
   onSelect: (role: AccountRole) => void
   onToggleUnused: (role: AccountRole) => void
+  canControl: boolean
 }) {
   const role = row.role as AccountRole
   const Icon = GROUP_ICONS[ROLE_ACCOUNT_TYPES[role]] ?? Coins
@@ -145,30 +153,34 @@ function RoleRow({
       actions={
         // Always `TreeRowButton`, never a raw icon Button: it owns the
         // hover-fade, the sizing and the tooltip side, and it stops the click
-        // from reaching the row's own `onToggleOpen`.
-        <div className='flex items-center gap-1'>
-          {row.state !== 'unused' && (
-            <TreeRowButton tooltipText='Change account' onClick={() => onSelect(role)}>
-              <Pencil />
-            </TreeRowButton>
-          )}
-          {/* 🛑 No "mark unused" on an UNMAPPED role. `GlRoleAssignment.glAccountId`
-              is `NOT NULL`, so there is no row to flip and the server answers
-              `NotFoundError`. Offering the button and toasting a 404 would read as
-              a bug; the editor pane renders it disabled beside the reason, which
-              is where somebody looking for it will be. */}
-          {row.state !== 'unmapped' && (
-            <TreeRowButton
-              tooltipText={
-                row.state === 'unused'
-                  ? 'Mark used again'
-                  : 'Mark unused. Nothing posts to it, so it stops blocking a preview.'
-              }
-              onClick={() => onToggleUnused(role)}>
-              {row.state === 'unused' ? <RotateCcw /> : <Ban />}
-            </TreeRowButton>
-          )}
-        </div>
+        // from reaching the row's own `onToggleOpen`. Absent entirely for a
+        // viewer without `ledgerControl` - selecting the row to read it still
+        // works through `onToggleOpen` above.
+        canControl && (
+          <div className='flex items-center gap-1'>
+            {row.state !== 'unused' && (
+              <TreeRowButton tooltipText='Change account' onClick={() => onSelect(role)}>
+                <Pencil />
+              </TreeRowButton>
+            )}
+            {/* 🛑 No "mark unused" on an UNMAPPED role. `GlRoleAssignment.glAccountId`
+                is `NOT NULL`, so there is no row to flip and the server answers
+                `NotFoundError`. Offering the button and toasting a 404 would read as
+                a bug; the editor pane renders it disabled beside the reason, which
+                is where somebody looking for it will be. */}
+            {row.state !== 'unmapped' && (
+              <TreeRowButton
+                tooltipText={
+                  row.state === 'unused'
+                    ? 'Mark used again'
+                    : 'Mark unused. Nothing posts to it, so it stops blocking a preview.'
+                }
+                onClick={() => onToggleUnused(role)}>
+                {row.state === 'unused' ? <RotateCcw /> : <Ban />}
+              </TreeRowButton>
+            )}
+          </div>
+        )
       }
     />
   )

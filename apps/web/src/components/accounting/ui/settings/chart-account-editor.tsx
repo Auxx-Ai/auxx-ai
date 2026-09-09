@@ -135,6 +135,11 @@ interface ChartAccountEditorProps {
   map: ChartMapView
   /** Pairs this account with a provider account, or clears it with `null`. */
   onSetIdentity: (glAccountId: string, providerAccountId: string | null) => Promise<void>
+  /** `PermissionKey.ledgerControl`. False renders every field read-only and
+   *  hides Create / Remove / the identity picker / unmap / Confirm suggestion -
+   *  the account's current values, its roles and its provider identity stay
+   *  visible. */
+  canControl: boolean
 }
 
 /**
@@ -168,6 +173,7 @@ export function ChartAccountEditor({
   onRemove,
   map,
   onSetIdentity,
+  canControl,
 }: ChartAccountEditorProps) {
   // The draft stays active while `selectedId` is its COMMITTED id too - swapping
   // to a query-bound instance would remount the inputs mid-typing (replaced text,
@@ -189,6 +195,7 @@ export function ChartAccountEditor({
         onRemove={onRemove}
         map={map}
         onSetIdentity={onSetIdentity}
+        canControl={canControl}
       />
     )
   }
@@ -221,6 +228,7 @@ export function ChartAccountEditor({
       onRemove={onRemove}
       map={map}
       onSetIdentity={onSetIdentity}
+      canControl={canControl}
     />
   )
 }
@@ -251,6 +259,7 @@ function ChartAccountForm({
   onRemove,
   map,
   onSetIdentity,
+  canControl,
 }: {
   account: ChartAccountRow | null
   roles: AccountRole[]
@@ -264,6 +273,7 @@ function ChartAccountForm({
   | 'onRemove'
   | 'map'
   | 'onSetIdentity'
+  | 'canControl'
 >) {
   const valuesRef = useRef<AccountValues>({
     code: account?.code ?? '',
@@ -448,6 +458,7 @@ function ChartAccountForm({
             <FieldInputAdapter
               fieldType={FieldType.TEXT}
               value={values.code}
+              disabled={!canControl}
               onChange={(value) => {
                 valuesRef.current = { ...valuesRef.current, code: value as string }
                 setValues(valuesRef.current)
@@ -462,6 +473,7 @@ function ChartAccountForm({
             <FieldInputAdapter
               fieldType={FieldType.TEXT}
               value={values.name}
+              disabled={!canControl}
               onChange={(value) => {
                 valuesRef.current = { ...valuesRef.current, name: value as string }
                 setValues(valuesRef.current)
@@ -482,6 +494,7 @@ function ChartAccountForm({
               fieldType={FieldType.SINGLE_SELECT}
               fieldOptions={{ options: ACCOUNT_TYPE_OPTIONS }}
               value={values.accountType}
+              disabled={!canControl}
               triggerProps={{ className: 'w-full ps-0 pe-1' }}
               onChange={(value) => {
                 const next = firstSelected(value)
@@ -505,6 +518,7 @@ function ChartAccountForm({
               // the column cannot hold.
               fieldOptions={{ variant: 'switch' }}
               value={values.isActive}
+              disabled={!canControl}
               onChange={(value) => commit('isActive', { isActive: value as boolean })}
             />
             <FieldError message={errors.isActive} />
@@ -524,6 +538,7 @@ function ChartAccountForm({
                 }
                 pending={mapping}
                 onSet={handleSetIdentity}
+                canControl={canControl}
               />
               <FieldError message={errors.mapping} />
             </FieldPanelRow>
@@ -546,44 +561,47 @@ function ChartAccountForm({
           )}
         </FieldPanel>
 
-        <div className='mt-3 flex flex-col gap-2'>
-          {committed ? (
-            <>
-              <Button
-                variant='outline'
-                size='sm'
-                className='self-start text-destructive'
-                loading={removing}
-                loadingText='Removing...'
-                onClick={() => void handleRemove()}>
-                <Trash2 />
-                Remove account
-              </Button>
-              <FieldError message={errors.form} />
-              <p className='text-muted-foreground text-xs'>
-                Changes save as you make them. Removing takes the account out of the chart; entries
-                already posted keep the code and the name they were written with.
-              </p>
-            </>
-          ) : (
-            <>
-              <Button
-                variant='outline'
-                size='sm'
-                className='self-start'
-                disabled={!canCreate}
-                loading={creating}
-                loadingText='Creating...'
-                onClick={() => void handleCreate()}>
-                Create account
-              </Button>
-              <FieldError message={errors.form} />
-              <p className='text-muted-foreground text-xs'>
-                A code, a name and a type are all required. Nothing is written until you create it.
-              </p>
-            </>
-          )}
-        </div>
+        {canControl && (
+          <div className='mt-3 flex flex-col gap-2'>
+            {committed ? (
+              <>
+                <Button
+                  variant='outline'
+                  size='sm'
+                  className='self-start text-destructive'
+                  loading={removing}
+                  loadingText='Removing...'
+                  onClick={() => void handleRemove()}>
+                  <Trash2 />
+                  Remove account
+                </Button>
+                <FieldError message={errors.form} />
+                <p className='text-muted-foreground text-xs'>
+                  Changes save as you make them. Removing takes the account out of the chart;
+                  entries already posted keep the code and the name they were written with.
+                </p>
+              </>
+            ) : (
+              <>
+                <Button
+                  variant='outline'
+                  size='sm'
+                  className='self-start'
+                  disabled={!canCreate}
+                  loading={creating}
+                  loadingText='Creating...'
+                  onClick={() => void handleCreate()}>
+                  Create account
+                </Button>
+                <FieldError message={errors.form} />
+                <p className='text-muted-foreground text-xs'>
+                  A code, a name and a type are all required. Nothing is written until you create
+                  it.
+                </p>
+              </>
+            )}
+          </div>
+        )}
       </ScrollArea>
     </div>
   )
@@ -612,6 +630,7 @@ function ProviderAccountField({
   identity,
   pending,
   onSet,
+  canControl,
 }: {
   map: ChartMapView
   /** The LIVE local value, not the saved one - see the filter below. */
@@ -619,6 +638,10 @@ function ProviderAccountField({
   identity: AccountIdentityRow | undefined
   pending: boolean
   onSet: (providerAccountId: string | null) => Promise<void>
+  /** `PermissionKey.ledgerControl`. False hides the picker, the unmap clear
+   *  affordance and the Confirm-suggestion button - the paired account (or
+   *  lack of one) stays visible as text. */
+  canControl: boolean
 }) {
   // 🛑 LOADING is checked before "nothing connected", not after. `connected` is
   // false for the whole of the provider round trip, so testing it first would
@@ -683,6 +706,22 @@ function ProviderAccountField({
     : identity.providerAccountNumber
       ? `${identity.providerAccountNumber} · ${identity.providerAccountName ?? 'Unknown account'}`
       : (identity.providerAccountName ?? 'Unknown account')
+
+  if (!canControl) {
+    return (
+      <div className='flex min-w-0 flex-col gap-1.5'>
+        <p className='flex min-h-8 items-center truncate text-sm'>
+          {identity.providerAccountId ? selectedLabel : 'Not mapped'}
+        </p>
+        {broken && (
+          <p className='text-destructive text-xs'>
+            The account this points at has been removed, deactivated or moved to a different
+            section. Every close refuses until it is re-mapped.
+          </p>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className='flex min-w-0 flex-col gap-1.5'>

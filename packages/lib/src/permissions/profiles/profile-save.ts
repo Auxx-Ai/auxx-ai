@@ -3,7 +3,7 @@
 import { type Database, database, type PermissionProfileEntity, schema } from '@auxx/database'
 import { generateId } from '@auxx/utils'
 import { and, eq } from 'drizzle-orm'
-import { BadRequestError, ForbiddenError, NotFoundError } from '../../errors'
+import { ForbiddenError, NotFoundError } from '../../errors'
 import { assertGrantableLevels } from '../capabilities/grant-service'
 import { type Area, type Level, parseAreaLevels } from '../capabilities/registry'
 import { FeaturePermissionService } from '../feature-permission-service'
@@ -26,11 +26,12 @@ import { parseProfileCeiling } from './profile-projection'
 import type { AgentPermissionPolicy } from './types'
 
 /**
- * The ONE transactional profile save (§6.1.4). The editor submits metadata,
- * area levels and (once step 9 lands) the per-def / per-instance rows as a
- * **single** mutation — the multi-request variant is deliberately not offered,
- * because a save spanning three requests cannot enforce one atomic "resulting
- * effective state" check.
+ * The ONE transactional profile save (§6.1.4). The editor submits metadata and
+ * area levels as a **single** mutation. The multi-request variant is
+ * deliberately not offered, because a save spanning three requests cannot
+ * enforce one atomic "resulting effective state" check. Per-def / per-instance
+ * `ResourceAccess` rows on a profile grantee are authored separately, through
+ * `resourceAccess` router mutations, not through this save.
  *
  * There is deliberately no `ceiling` field: the profile ceiling lost its
  * authoring surface in plan 20 §2.a.1 and is now unauthored code (see
@@ -54,15 +55,6 @@ export interface SavePermissionProfileInput {
    * `ROLE_DEFAULTS`); omitted leaves it untouched.
    */
   levels?: Partial<Record<Area, Level>> | null
-  /**
-   * Per-def `ResourceAccess` rows on the profile grantee (§1.2). Accepted so the
-   * mutation's shape is the §6.1.4 one, but any non-empty value is refused until
-   * step 9 teaches the remaining resolvers the `profile` grantee — see
-   * `resource-access-service.ts`'s `assertProfileGranteeSupported`.
-   */
-  defAccess?: unknown[]
-  /** Per-instance `ResourceAccess` rows on the profile grantee — see {@link defAccess}. */
-  instanceAccess?: unknown[]
   db?: Database
 }
 
@@ -107,12 +99,6 @@ export async function savePermissionProfile(
 ): Promise<PermissionProfileEntity> {
   const { organizationId, actorUserId, profileId } = input
   const db = input.db ?? database
-
-  if ((input.defAccess?.length ?? 0) > 0 || (input.instanceAccess?.length ?? 0) > 0) {
-    throw new BadRequestError(
-      'Profile-scoped resource grants are not enabled yet. See plans/permissions/v2/19-permission-profiles.md step 9.'
-    )
-  }
 
   const saved = await db.transaction(async (tx) => {
     const profile = await loadProfile(tx, organizationId, profileId)

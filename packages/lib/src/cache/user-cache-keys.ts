@@ -583,5 +583,60 @@ export const USER_CACHE_KEY_CONFIG: Record<
   // Deploy-time flush is mandatory and is NOT a substitute for the bump
   // (`packages/lib/scripts/flush-user-capabilities-cache.ts`), for the same
   // rolling-deploy reason recorded above.
-  userCapabilities: { prefix: 'user:capabilities:v18', ttlSeconds: ONE_DAY },
+  //
+  // v19 (plans/accounting/tasks/12-accountant-permissions.md §4.3, §6): a third
+  // rung on `Area.ledger` with one new `PermissionKey`, `ledger.control`. The
+  // chart of accounts, account roles, the opening trial balance, the period
+  // lock and bank feed provisioning move off `ledger.post` onto it. A `keys`
+  // CONTENT bump, same class as v18.
+  //
+  // ONE cause, not two. The same PR also maps seven ledger defs onto
+  // `Area.ledger` in `ENTITY_BASE_AREAS`, and it is tempting to count that as a
+  // second reason. It is not: `defBaseOverrides` is NOT in this blob. The blob
+  // is `UserCapabilities` (keys, instanceDerivedKeys, defAccess, instanceAccess,
+  // baselineInstanceAccess, grantedDefIds); the def overrides are assembled per
+  // request in `getCapabilities` from the blob's keys and the org `resources`
+  // cache (see the v14 note above: the wire shape is never stored). So the def
+  // mapping is live on the next request with no bump at all.
+  //
+  // WHICH WAY A STALE BLOB FAILS, traced. A v18 blob was composed before
+  // `ledger.control` existed. `areaLevelFromKeys` walks the rungs ascending,
+  // holds `ledger.view` and `ledger.post`, breaks on rung 3, and the area
+  // composes to `Level.Edit`; `requirePermission(ledgerControl)` reads the key
+  // set directly and denies. FAIL-CLOSED: a chart edit, an opening-balance
+  // save or a period close is refused until the blob refreshes. The victim is
+  // again the ADMIN, whose `ALL_FULL` should hold the key but whose key set was
+  // frozen at compose time without it. Nobody GAINS anything from a stale blob:
+  // no v18 holder sits at `ledger: Edit`, and every `Full` holder keeps every
+  // key it had.
+  //
+  // Deploy-time flush is mandatory and is NOT a substitute for the bump
+  // (`packages/lib/scripts/flush-user-capabilities-cache.ts`), for the same
+  // rolling-deploy reason recorded above.
+  //
+  // v19 ALSO adds two new L2 areas, in the SAME bump as `ledger.control` above
+  // (plans/accounting/tasks/12-accountant-permissions.md §10): `Area.tasks`
+  // (`tasks.view`, `tasks.manage`) and `Area.calls` (`calls.view`,
+  // `calls.manage`). Two areas at once, same class of change as the
+  // `ledger.control` rung: no shape change, still a `keys` CONTENT bump.
+  //
+  // WHICH WAY A STALE BLOB FAILS, traced, and this one is worse. A v18 blob
+  // was composed before either area existed, so it holds neither area's keys.
+  // `areaLevelFromKeys` finds no rung whose keys are all held and composes
+  // both areas to `Level.None`; `requirePermission(tasksView)` /
+  // `(tasksManage)` / `(callsView)` / `(callsManage)` read the key set
+  // directly and deny. FAIL-CLOSED: a member loses the Tasks and Calls nav
+  // entries and gets 403 on `task.*` / `recording.*` until the blob
+  // refreshes.
+  //
+  // The victim here is NOT just the admin, unlike `ledger`. Both areas ship
+  // OPEN in `MEMBER_BASELINE_LEVELS` (`tasks: Full`, `calls: Full`), so the
+  // stale-blob failure lands on EVERY MEMBER holding the seeded baseline, not
+  // a narrow admin-only slice - which is exactly why the deploy-time flush is
+  // mandatory here more than usual.
+  //
+  // Deploy-time flush is mandatory and is NOT a substitute for the bump
+  // (`packages/lib/scripts/flush-user-capabilities-cache.ts`), for the same
+  // rolling-deploy reason recorded above.
+  userCapabilities: { prefix: 'user:capabilities:v19', ttlSeconds: ONE_DAY },
 }

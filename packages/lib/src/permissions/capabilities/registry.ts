@@ -34,6 +34,11 @@ export enum PermissionKey {
   commentsView = 'comments.view',
   commentsManage = 'comments.manage',
 
+  // tasks (plans/accounting/tasks/12-accountant-permissions.md §10). Tasks had no
+  // area at all: the nav showed them on no key and the router was protectedProcedure.
+  tasksView = 'tasks.view',
+  tasksManage = 'tasks.manage',
+
   // dispatch
   dispatchBoardView = 'dispatch.board.view',
   dispatchBoardManage = 'dispatch.board.manage',
@@ -92,10 +97,16 @@ export enum PermissionKey {
   snippetsEdit = 'snippets.edit',
   snippetsManage = 'snippets.manage',
 
+  // calls (plans/accounting/tasks/12-accountant-permissions.md §10). Recordings and
+  // meetings had no area: the nav showed Calls on the feature flag alone.
+  callsView = 'calls.view',
+  callsManage = 'calls.manage',
+
   // general ledger (plans/money/tasks/10-the-poster.md §6). NOT an instance-access
   // resource: a posting is org-scoped bookkeeping, not a shareable object.
   ledgerView = 'ledger.view',
   ledgerPost = 'ledger.post',
+  ledgerControl = 'ledger.control',
 }
 
 /** Metadata describing a single capability key. Mirrors `FeatureMetadata`. */
@@ -200,6 +211,20 @@ export const PERMISSION_REGISTRY: PermissionMetadata[] = [
     key: PermissionKey.commentsManage,
     label: 'Manage Comments',
     description: 'Write, edit, and delete comments on records.',
+    group: 'Collaboration',
+  },
+
+  // ── Tasks ──
+  {
+    key: PermissionKey.tasksView,
+    label: 'View Tasks',
+    description: 'Open the task list and read tasks.',
+    group: 'Collaboration',
+  },
+  {
+    key: PermissionKey.tasksManage,
+    label: 'Manage Tasks',
+    description: 'Create, edit, complete, and delete tasks.',
     group: 'Collaboration',
   },
 
@@ -460,6 +485,22 @@ export const PERMISSION_REGISTRY: PermissionMetadata[] = [
     group: 'Channels',
   },
 
+  // ── Calls ──
+  {
+    key: PermissionKey.callsView,
+    label: 'View Calls',
+    description: 'Open Calls and read recordings, transcripts, and meeting sessions.',
+    group: 'Channels',
+    featureKey: FeatureKey.callRecordings,
+  },
+  {
+    key: PermissionKey.callsManage,
+    label: 'Manage Calls',
+    description: 'Create, schedule, and cancel meetings, and edit or delete recordings.',
+    group: 'Channels',
+    featureKey: FeatureKey.callRecordings,
+  },
+
   // ── Accounting ──
   {
     key: PermissionKey.ledgerView,
@@ -471,7 +512,18 @@ export const PERMISSION_REGISTRY: PermissionMetadata[] = [
   {
     key: PermissionKey.ledgerPost,
     label: 'Post to Ledger',
-    description: 'Post and reverse journal entries in the general ledger.',
+    description:
+      'Do the bookkeeping: post, reverse and discard entries, code and match bank lines, ' +
+      'manage bank rules, import statements, and record deposits and write-offs.',
+    group: 'Accounting',
+    featureKey: FeatureKey.accounting,
+  },
+  {
+    key: PermissionKey.ledgerControl,
+    label: 'Control Ledger',
+    description:
+      "Control the ledger's structure: the chart of accounts, account roles, the opening " +
+      'trial balance, the period lock, and bank feed provisioning.',
     group: 'Accounting',
     featureKey: FeatureKey.accounting,
   },
@@ -521,6 +573,9 @@ export enum Area {
   workflows = 'workflows',
   agents = 'agents',
   comments = 'comments',
+  // tasks shares the Collaboration group with `comments`; declared beside it so
+  // `areaGroups()` renders it as the second row under that heading.
+  tasks = 'tasks',
   dispatchBoard = 'dispatchBoard',
   dispatchMySchedule = 'dispatchMySchedule',
   dispatchVisitReports = 'dispatchVisitReports',
@@ -549,6 +604,8 @@ export enum Area {
   // under that heading, but only after every unrelated area had been walked.
   signatures = 'signatures',
   snippets = 'snippets',
+  // calls shares the Channels group; declared beside the other Channels rows.
+  calls = 'calls',
   aiConfig = 'aiConfig',
   automationRules = 'automationRules',
   auditLog = 'auditLog',
@@ -1112,6 +1169,41 @@ export const PERMISSION_AREAS: Record<Area, AreaMetadata> = {
     // The USER-rank floor is `Read` (plan 43 §3.2).
     featureKey: FeatureKey.dashboards,
   },
+  [Area.tasks]: {
+    area: Area.tasks,
+    label: 'Tasks',
+    description: 'See the task list, and create, edit, complete, and delete tasks.',
+    group: 'Collaboration',
+    rungs: [
+      { level: Level.Read, keys: [PermissionKey.tasksView] },
+      { level: Level.Full, keys: [PermissionKey.tasksManage] },
+    ],
+    // Created 2026-09-09 (plans/accounting/tasks/12-accountant-permissions.md
+    // §10). Tasks had no Layer-2 area: the sidebar entry carried no key and
+    // every `task.*` procedure was `protectedProcedure`, so no profile could
+    // close them. Ships OPEN for members (`MEMBER_BASELINE_LEVELS` Full) and
+    // for the worker seat (`WORKER_AREAS`, a field tech's task list is a field
+    // surface), so nobody loses anything; the area exists so a narrow profile
+    // such as `accountant` or `bookkeeper` can say None.
+  },
+  [Area.calls]: {
+    area: Area.calls,
+    label: 'Calls',
+    description: 'Open Calls, read recordings and transcripts, and run meetings.',
+    group: 'Channels',
+    featureKey: FeatureKey.callRecordings,
+    rungs: [
+      { level: Level.Read, keys: [PermissionKey.callsView] },
+      { level: Level.Full, keys: [PermissionKey.callsManage] },
+    ],
+    // Created 2026-09-09 (plans/accounting/tasks/12-accountant-permissions.md
+    // §10). Recordings had no area: the sidebar showed Calls on the
+    // `callRecordings` feature flag alone and the recording router was
+    // `protectedProcedure` except `delete` (`channelsManage`, plan 21 §6).
+    // Ships OPEN for members (`MEMBER_BASELINE_LEVELS` Full), CLOSED for the
+    // worker seat (absent from `WORKER_AREAS`: recordings are not a field
+    // surface). `delete` moves onto `callsManage`; admins hold both.
+  },
   [Area.ledger]: {
     area: Area.ledger,
     label: 'General ledger',
@@ -1119,7 +1211,8 @@ export const PERMISSION_AREAS: Record<Area, AreaMetadata> = {
     group: 'Accounting',
     rungs: [
       { level: Level.Read, keys: [PermissionKey.ledgerView] },
-      { level: Level.Full, keys: [PermissionKey.ledgerPost] },
+      { level: Level.Edit, keys: [PermissionKey.ledgerPost] },
+      { level: Level.Full, keys: [PermissionKey.ledgerControl] },
     ],
     // Created 2026-08-28 (plans/money/tasks/10-the-poster.md §6). Posting is
     // manual for the cutover - a person clicks Post, roughly 30 entries a month
@@ -1136,14 +1229,21 @@ export const PERMISSION_AREAS: Record<Area, AreaMetadata> = {
     // Welding them would mean either handing the card to the bookkeeper or
     // handing the ledger to whoever pays the bill.
     //
-    // TWO RUNGS, no `Edit`. There is no third thing between reading the ledger
-    // and writing to it: an entry is immutable once posted and a mistake is
-    // corrected by REVERSING it (task 10 §5), which is itself a post. So `Edit`
-    // would be dead vocabulary. Partial ladders are established precedent -
-    // `Area.billing` and `Area.files` both jump Read → Full.
-    //   Read = `ledger.preview` (persists nothing), `ledger.unpostedPeriods`,
-    //          `ledger.verifyBalance`.
-    //   Full = `ledger.post` and `ledger.reverse`, the two writes.
+    // THREE RUNGS (plans/accounting/tasks/12-accountant-permissions.md §4.3).
+    // There is still no `Edit` FOR AN ENTRY: an entry is immutable once posted
+    // and a mistake is corrected by REVERSING it (task 10 §5), which is itself a
+    // post. The middle rung is not between reading and writing, it IS writing;
+    // the top rung is ABOVE writing: controlling the ledger's structure and
+    // which periods are shut. "Code this month's bank lines" and "renumber
+    // GRNI" are not the same authority, and the bookkeeper who does the first
+    // every day should not hold the second.
+    //   Read = read the books, statements, drill-down, aging, verify balance.
+    //   Edit = `ledger.post`: post, reverse, discard, code and match bank
+    //          lines, bank rules, statement import, deposits, write-offs,
+    //          payout sync, fulfillment posting, credit memos.
+    //   Full = `ledger.control`: the chart of accounts and account roles, the
+    //          opening trial balance, the period lock, bank feed provisioning.
+    // Rungs are cumulative, so Full holds all three keys.
     //
     // Ships CLOSED, by construction and deliberately: omitted from
     // `MEMBER_BASELINE_LEVELS` and from `ROLE_DEFAULTS.USER`'s three floored

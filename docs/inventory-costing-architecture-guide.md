@@ -1020,7 +1020,10 @@ bookkeeper types into is an `EntityInstance` on the **`journal_entry`** def (ent
 `kind` (`manual | opening_balance | recurring_template`), `lines` (JSON), `attachment` (FILE) and
 `glPostingId`. `postings/journal-entries/` is its module; the router door is
 `ledger.journalEntry.*`, gated on `ledgerPost` for every write including `create`, because a
-draft is the thing somebody then presses Post on.
+draft is the thing somebody then presses Post on. The chart and account roles sit a rung higher:
+`chartAccountCreate` / `Update` / `Remove`, `setRoleAssignment` and `provisionChart` are gated on
+`ledgerControl`, the third rung `Area.ledger` gained for the accountant/bookkeeper split (see
+`plans/accounting/tasks/12-accountant-permissions.md`).
 
 Four things about it that are not obvious and cost a debugging session each:
 
@@ -1134,7 +1137,11 @@ What landed on top of §9.6, and the rules each piece keeps:
 - **Entity migration 125** (`125-accounting-books`) seeds all of it in one pass: the accounts
   and roles, the `journal_entry`, `bank_deposit`, `bank_account`, `bank_transaction` and
   `bank_rule` defs, the 1099 fields on `company`, the `order_fulfillments` log, and the
-  `accountant` permission profile.
+  `accountant` permission profile. Entity migration 138 reshapes that seed to `ledger: Read,
+  files: Read` (dropping `records: Read`, since the seven ledger defs now derive their base from
+  `Area.ledger` instead), and adds a `bookkeeper` seed (`ledger: Edit, files: Read,
+  comments: Full`). Neither seed carries `records` access; an admin who wants either profile to
+  read invoices, vendor bills and the like grants those record types on the profile directly.
 
 ### 9.10 The bank feed (2026-09-04, plans/accounting/HANDOFF.md wave 3)
 

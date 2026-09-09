@@ -80,7 +80,10 @@ export function NavUser({ user }: Prop) {
   // billing entries are dead links into `/access-denied`.
   const canViewBilling = can(PermissionKey.billingView)
   const { hasAccess } = useFeatureFlags()
-  const kopilotEnabled = hasAccess('kopilot')
+  // `agents.view` is the Read rung on agents — "see the agent and USE it, chat in
+  // Kopilot" (registry note). Without this, a member at agents: None could still
+  // open the dock and trip a 403 on `kopilot.listSessions`.
+  const kopilotEnabled = hasAccess('kopilot') && can(PermissionKey.agentsView)
   const toggleKopilot = useKopilotStore((s) => s.togglePanel)
   const hasUnreadNotification = useKopilotStore((s) => s.hasUnreadNotification)
   // The dock hides itself while a page hosts its own Kopilot chat (the workflow

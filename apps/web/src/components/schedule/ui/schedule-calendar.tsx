@@ -39,6 +39,7 @@ import { SourceToggleGroup } from '~/components/calendar/ui/source-toggle-group'
 import { useResource } from '~/components/resources'
 import { useSettings } from '~/hooks/use-settings'
 import { useUser } from '~/hooks/use-user'
+import { useAccess } from '~/providers/capabilities-provider'
 import { ORG_STATIC_STALE_TIME } from '~/trpc/query-client'
 import { api } from '~/trpc/react'
 import { useScheduleSidebarStore } from '../stores/schedule-sidebar-store'
@@ -157,11 +158,21 @@ export function ScheduleCalendar({
     | 'saturday'
   const weekStartsOn = weekStartToIndex(weekStart)
 
+  const { can } = useAccess()
+  // `tasks` gained its own area (task 12 §10) — the Schedule page is gated on
+  // `dispatch.mySchedule`, not `tasks.view`, so a member without it would
+  // otherwise trip a 403 on `task.list` the moment this source's hook fires.
+  const canViewTasks = can('tasks.view')
+
   // Every source's hook runs unconditionally, in the same order, on every render — safe only
   // because `SOURCES` is the module-level static array above, never recomputed per mount.
   // A hidden source still gets `enabled: false` so the shell's own query is skipped.
   const sourceData = SOURCES.map((source) =>
-    source.useEvents(range, !hiddenIds.includes(source.descriptor.id))
+    source.useEvents(
+      range,
+      !hiddenIds.includes(source.descriptor.id) &&
+        (source.descriptor.id !== 'tasks' || canViewTasks)
+    )
   )
 
   // Merge visible sources' events. Filtering here (not just via `enabled`) matters — react

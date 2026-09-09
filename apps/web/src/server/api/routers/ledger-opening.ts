@@ -67,8 +67,13 @@ export const ledgerOpeningRouter = createTRPCRouter({
    * balance is the same baseline as those three scalars, and a freeze with a
    * door in it is not a freeze. `updateJournalEntry` refuses a posted record on
    * top of that, so a finalized setup is covered twice over.
+   *
+   * Gated on `ledgerControl`, not `ledgerPost`: the opening trial balance is
+   * the ledger's own baseline, not an ordinary posting, and correcting it after
+   * finalize means reversing a standing entry - the same rung as the chart
+   * (plans/accounting/tasks/12-accountant-permissions.md §4.3).
    */
-  save: permissionProcedure(PermissionKey.ledgerPost)
+  save: permissionProcedure(PermissionKey.ledgerControl)
     .input(
       z.object({
         lines: z.array(openingLine).max(500),
@@ -117,8 +122,10 @@ export const ledgerOpeningRouter = createTRPCRouter({
    * all statuses the done page RENDERS as an `EntryBlockers` card. Flattening
    * them into an error would throw away `docNumber`, `failureClass` and
    * `retryable` - the whole of what says what to do next.
+   *
+   * Gated on `ledgerControl`, same rung as {@link save} above.
    */
-  post: permissionProcedure(PermissionKey.ledgerPost)
+  post: permissionProcedure(PermissionKey.ledgerControl)
     .input(z.object({ memo: z.string().max(4000).optional() }).optional())
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session

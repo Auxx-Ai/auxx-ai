@@ -7,7 +7,8 @@ bought, received, built, sold and paid for. This module is the layer that turns
 that subledger into books a business can run on: double entry, a chart of
 accounts, period locks, and statements.
 
-**Permissions:** `ledgerView` to read, `ledgerPost` to write.
+**Permissions:** `ledgerView` to read, `ledgerPost` to post and reconcile, `ledgerControl` for the
+chart, the opening trial balance and the period lock.
 **Regime:** L1 (month-end inventory assertion, not per-event costing).
 **As of:** 2026-09-08.
 
@@ -61,7 +62,8 @@ unposted-periods banner.
 | **Reports** | `/app/accounting/reports` | Trial balance, balance sheet, P&L, A/R and A/P aging, vendor 1099. PDF and CSV out. |
 | **Settings** | `/app/accounting/settings` | General (period, payment routing), Chart of accounts, Bank accounts, Opening balances. |
 
-Banking and Settings are hidden without `ledgerPost`.
+Banking is hidden without `ledgerPost`. Inside Settings, General and Bank accounts need
+`ledgerPost`; Chart of accounts and Opening balances need `ledgerControl`.
 
 ---
 
@@ -246,7 +248,8 @@ one month-end entry, so it renders inline rather than as a list.
 4. **Post** — needs `ledgerPost`. The result callout says what was written.
 5. **Check the books balance** — the health line runs the whole-org verification,
    not just this entry's.
-6. **Lock through the month** — sets `ledger.lockedThroughMonth`. Later arrivals
+6. **Lock through the month**: needs `ledgerControl`. `ledger.setLockedThrough` sets
+   `ledger.lockedThroughMonth`; the generic settings route refuses this key. Later arrivals
    into a locked period are offered the next open one.
 
 Got it wrong? **Reverse it.** The revision strip on the entry shows the chain,

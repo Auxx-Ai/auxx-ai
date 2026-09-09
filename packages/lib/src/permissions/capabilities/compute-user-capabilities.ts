@@ -115,9 +115,7 @@ export async function computeUserCapabilities(
   // `governingInstanceIds` are built GRANTEE-AGNOSTICALLY: one profile-grantee
   // type row flips the def to "restricted" org-wide, and `effectiveRecordLevel`
   // then replaces base with the member's own grant. Without reading profile rows
-  // here, the def would go dark for every non-admin. (Writes of profile-grantee
-  // ResourceAccess rows are refused until doc 19 step 9 updates the other three
-  // resolvers — see `assertProfileGranteeSupported`.)
+  // here, the def would go dark for every non-admin.
   //
   // Built locally rather than through `resolveResourceAccessGrantees` because the
   // two inputs it would re-resolve from cache — the group ids and the ONE bound

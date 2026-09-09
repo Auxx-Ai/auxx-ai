@@ -16,9 +16,6 @@ import { z } from 'zod'
  * additive grantee. This is deliberately the FULL `ResourceGranteeType` and not
  * `SharingGranteeType`: that narrower union exists so surfaces which *cannot*
  * resolve a profile never hand one to a router — these routers now can.
- *
- * Writes still fail downstream until `resource-access-service.ts` drops its
- * step-9 profile guard. That ordering is intentional, not a bug.
  */
 export const granteeTypeSchema = z.enum([
   ResourceGranteeType.group,

@@ -109,6 +109,9 @@ export const SIDEBAR_MENU: SidebarProps[] = [
     slug: 'kopilot/new',
     icon: <MessagesSquare />,
     featureKey: 'kopilot',
+    // Kopilot chat is agents.view territory — Read on agents means "see the agent
+    // and USE it, chat in Kopilot" (registry note).
+    permissionKey: 'agents.view',
   },
   {
     id: 'agents',
@@ -128,6 +131,8 @@ export const SIDEBAR_MENU: SidebarProps[] = [
     slug: 'calls',
     icon: <Video />,
     featureKey: 'callRecordings',
+    // Recordings and meetings gained their own area (task 12 §10) — gate on Read.
+    permissionKey: 'calls.view',
   },
   {
     id: 'workflows',
@@ -139,7 +144,14 @@ export const SIDEBAR_MENU: SidebarProps[] = [
     // nav entry on Manage hid it from every legitimate Read/Edit holder.
     permissionKey: 'workflows.view',
   },
-  { id: 'tasks', label: 'Tasks', slug: 'tasks', icon: <CheckSquare /> },
+  {
+    id: 'tasks',
+    label: 'Tasks',
+    slug: 'tasks',
+    icon: <CheckSquare />,
+    // Tasks gained their own area (task 12 §10) — gate on Read.
+    permissionKey: 'tasks.view',
+  },
   {
     id: 'schedule',
     label: 'Schedule',

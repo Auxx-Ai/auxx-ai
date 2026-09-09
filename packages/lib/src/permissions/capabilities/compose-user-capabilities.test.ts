@@ -267,14 +267,15 @@ describe('composeUserCapabilities (leveled model, sparse jsonb)', () => {
     expect(caps.keys).toContain(PermissionKey.recordsDelete) // max = Full wins
   })
 
-  it('seat ceiling dominates a Full group grant (worker keeps exactly the three surfaces)', () => {
+  it('seat ceiling dominates a Full group grant (worker keeps exactly the four surfaces)', () => {
     const caps = composeUserCapabilities({
       role: 'USER',
       seatType: 'worker',
-      // The seeded Field Tech baseline (plan 22 §2.3) supplies the three surfaces.
+      // The seeded Field Tech baseline (plan 22 §2.3, plus tasks per task 12
+      // §10) supplies the four surfaces.
       profileLevels: FIELD_TECH_BASELINE_LEVELS,
       // A group + user grant Full on several OTHER areas — the worker ceiling
-      // zeroes all but the three field-seat surfaces regardless.
+      // zeroes all but the four field-seat surfaces regardless.
       groupLevels: [
         {
           [Area.records]: Level.Full,
@@ -556,9 +557,10 @@ describe('composeUserCapabilities — permission profiles (doc 19 §2.1)', () =>
       seatType: 'worker',
       profileBaseLevel: null,
       profileCeiling: null,
-      // The seeded Field Tech baseline (plan 22 §2.3) supplies the three worker
-      // surfaces; records/settings are ALSO forced Full to prove even an
-      // all-Full profile base cannot escape the billing invariant.
+      // The seeded Field Tech baseline (plan 22 §2.3, plus tasks per task 12
+      // §10) supplies the four worker surfaces; records/settings are ALSO
+      // forced Full to prove even an all-Full profile base cannot escape the
+      // billing invariant.
       profileLevels: {
         ...FIELD_TECH_BASELINE_LEVELS,
         [Area.records]: Level.Full,
@@ -995,6 +997,11 @@ describe('plan 22 (member baseline strip) — §5 verification', () => {
       [Area.workflows]: Level.Full,
       [Area.agents]: Level.Full,
       [Area.comments]: Level.Full,
+      // Added by plans/accounting/tasks/12-accountant-permissions.md §10, and
+      // `Full` - a NEW area, so the plan-22 parity claim is untouched. Tasks
+      // were ungated before this area existed, so `Full` here is today's
+      // behaviour, not a widening.
+      [Area.tasks]: Level.Full,
       [Area.dispatchBoard]: Level.Full,
       [Area.dispatchMySchedule]: Level.Full,
       [Area.dispatchVisitReports]: Level.Full,
@@ -1016,6 +1023,10 @@ describe('plan 22 (member baseline strip) — §5 verification', () => {
       // org-shared mail access under the two-rung ladder (`Read → view` on every
       // row-less shared inbox); `Full` would mean Manager of every inbox.
       [Area.inboxes]: Level.Read,
+      // Added by plans/accounting/tasks/12-accountant-permissions.md §10, and
+      // `Full` - a NEW area, same reasoning as `tasks` above: recordings were
+      // ungated before this area existed, so `Full` here is today's behaviour.
+      [Area.calls]: Level.Full,
       [Area.aiConfig]: Level.None,
       [Area.automationRules]: Level.None,
       [Area.auditLog]: Level.None,
@@ -1042,7 +1053,7 @@ describe('plan 22 (member baseline strip) — §5 verification', () => {
     }
   })
 
-  it('field-seat parity: a worker-seat Field Tech composes exactly the three surfaces Full, the rest None', () => {
+  it('field-seat parity: a worker-seat Field Tech composes exactly the four surfaces Full, the rest None', () => {
     const caps = composeUserCapabilities({
       role: 'USER',
       seatType: 'worker',
@@ -1054,6 +1065,7 @@ describe('plan 22 (member baseline strip) — §5 verification', () => {
       Area.recordsLinked,
       Area.dispatchMySchedule,
       Area.dispatchVisitReports,
+      Area.tasks,
     ])
     for (const area of AREA_ORDER) {
       expect(areaLevelFromKeys(keys, area)).toBe(workerAreas.has(area) ? Level.Full : Level.None)

@@ -63,6 +63,9 @@ interface ChartListProps {
   /** Confirms every suggested mapping at once. */
   onConfirmSuggested: () => void
   confirming: boolean
+  /** `PermissionKey.ledgerControl`. False hides every write affordance this
+   *  list owns (Add account, Accept N) - the read path stays fully usable. */
+  canControl: boolean
 }
 
 export function ChartList({
@@ -76,6 +79,7 @@ export function ChartList({
   map,
   onConfirmSuggested,
   confirming,
+  canControl,
 }: ChartListProps) {
   const [search, setSearch] = useState('')
 
@@ -105,10 +109,12 @@ export function ChartList({
           placeholder='Search accounts...'
           className='flex-1'
         />
-        <Button variant='outline' size='sm' onClick={onAddDraft}>
-          <Plus />
-          Add account
-        </Button>
+        {canControl && (
+          <Button variant='outline' size='sm' onClick={onAddDraft}>
+            <Plus />
+            Add account
+          </Button>
+        )}
       </div>
 
       {/* 🛑 Gate on the PROVIDER, never on an empty map. "Nothing is connected"
@@ -122,7 +128,7 @@ export function ChartList({
           <span className='text-muted-foreground text-xs tabular-nums'>
             {mapped} of {accounts.length} mapped to {map.providerLabel ?? 'your accounting system'}
           </span>
-          {map.suggested > 0 && (
+          {canControl && map.suggested > 0 && (
             <Button
               variant='outline'
               size='xs'

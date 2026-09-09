@@ -9,6 +9,7 @@ import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
 import { Separator } from '@auxx/ui/components/separator'
 import { Skeleton } from '@auxx/ui/components/skeleton'
+import { toastError } from '@auxx/ui/components/toast'
 import {
   BookOpenCheck,
   CalendarCheck2,
@@ -37,6 +38,10 @@ import { useConfirm } from '~/hooks/use-confirm'
 import { useMedia } from '~/hooks/use-media'
 import { useSettings } from '~/hooks/use-settings'
 import { useAccess } from '~/providers/capabilities-provider'
+import {
+  useDehydratedOrganizationId,
+  useDehydratedStateContext,
+} from '~/providers/dehydrated-state-provider'
 import { useDockStore } from '~/stores/dock-store'
 import { api } from '~/trpc/react'
 import { BooksBalanceLine, FailedExportsBanner } from './books-health'
@@ -107,6 +112,7 @@ export function LedgerPage({ periodKey }: LedgerPageProps) {
   const isPostedPeriod = !!activePeriod && activePeriod.state !== 'open'
   const isLocked = activePeriod?.state === 'locked'
   const isChecklistState = period.isSetupDraft
+  const canControlLedger = can('ledger.control')
   const providerLabel = provider.providerLabel ?? 'the accounting system'
 
   // The two drawers share ONE dock slot (ui-plan.md §2.1), so opening one
@@ -234,7 +240,16 @@ export function LedgerPage({ periodKey }: LedgerPageProps) {
   const countAdjustments: CountAdjustmentRow[] | undefined = undefined
   const lateArrivals: LateArrivalRow[] | undefined = undefined
 
-  const { getSetting, updateOrganizationSetting } = useSettings({ scope: 'DOCUMENTS' })
+  const { getSetting } = useSettings({ scope: 'DOCUMENTS' })
+  const organizationId = useDehydratedOrganizationId()
+  const { patchSettings } = useDehydratedStateContext()
+
+  // `ledgerControl`-gated (plans/accounting/tasks/12-accountant-permissions.md
+  // §4.4): the period lock used to write `ledger.lockedThroughMonth` through
+  // the generic `setting.updateOrganizationSetting` door, which asserted
+  // `settingsManage` - handing whoever closes the books every organization
+  // setting in the product. `ledger.setLockedThrough` is now the only door.
+  const setLockedThrough = api.ledger.setLockedThrough.useMutation()
 
   function goToPeriod(next: string) {
     // `?posting=` deliberately does NOT survive: a posting id belongs to one
@@ -263,11 +278,28 @@ export function LedgerPage({ periodKey }: LedgerPageProps) {
     // A THROUGH marker, not a per-month flag: locking March declares everything
     // up to and including March shut, and unlocking it winds the marker back to
     // February. `null` means nothing is closed.
-    updateOrganizationSetting(
-      LOCKED_THROUGH_KEY,
-      isLocked ? period.previousPeriodKey : activePeriodKey
+    const previousLockedThrough = lockedThrough
+    const nextLockedThrough = isLocked ? period.previousPeriodKey : activePeriodKey
+
+    // Optimistic, same as the settings-door write this replaces: the toggle
+    // should feel instant rather than wait on a round trip.
+    if (organizationId) patchSettings(organizationId, { [LOCKED_THROUGH_KEY]: nextLockedThrough })
+
+    setLockedThrough.mutate(
+      { periodKey: nextLockedThrough },
+      {
+        onError: (error) => {
+          if (organizationId) {
+            patchSettings(organizationId, { [LOCKED_THROUGH_KEY]: previousLockedThrough })
+          }
+          toastError({ title: 'Error updating the period lock', description: error.message })
+        },
+        onSettled: () => {
+          void utils.ledger.periods.invalidate()
+          void utils.setting.getOrganizationSettingsWithMetadata.invalidate()
+        },
+      }
     )
-    void utils.ledger.periods.invalidate()
   }
 
   const lockedThrough = (getSetting(LOCKED_THROUGH_KEY) as string | null) ?? null
@@ -571,18 +603,26 @@ export function LedgerPage({ periodKey }: LedgerPageProps) {
                     description='Declaring the month shut is a separate assertion from posting the entry.'
                     collapsible={false}>
                     <div className='flex flex-wrap items-center gap-3'>
-                      <Button
-                        variant={isLocked ? 'outline' : 'default'}
-                        disabled={!isPostedPeriod && !actions.justPosted}
-                        onClick={() => void handleToggleLock()}>
-                        {isLocked ? <LockOpen /> : <Lock />}
-                        {isLocked ? `Unlock ${periodLabel}` : `Lock ${periodLabel}`}
-                      </Button>
-                      <span className='text-sm text-muted-foreground'>
-                        {isLocked
-                          ? 'Locked. Nothing can post into this month until it is unlocked, and unlocking asks first.'
-                          : 'Open. The entry can still be reversed and re-entered.'}
-                      </span>
+                      {canControlLedger ? (
+                        <>
+                          <Button
+                            variant={isLocked ? 'outline' : 'default'}
+                            disabled={!isPostedPeriod && !actions.justPosted}
+                            onClick={() => void handleToggleLock()}>
+                            {isLocked ? <LockOpen /> : <Lock />}
+                            {isLocked ? `Unlock ${periodLabel}` : `Lock ${periodLabel}`}
+                          </Button>
+                          <span className='text-sm text-muted-foreground'>
+                            {isLocked
+                              ? 'Locked. Nothing can post into this month until it is unlocked, and unlocking asks first.'
+                              : 'Open. The entry can still be reversed and re-entered.'}
+                          </span>
+                        </>
+                      ) : (
+                        <span className='text-sm text-muted-foreground'>
+                          {isLocked ? 'Locked' : 'Not locked'}
+                        </span>
+                      )}
                     </div>
                     <p className='mt-2 text-xs text-muted-foreground'>
                       {lockedThrough

@@ -9,6 +9,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { usePathname } from 'next/navigation'
 import { useState } from 'react'
 import { useIsMobile } from '~/hooks/use-mobile'
+import { useAccess } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { useKopilotStore } from '../stores/kopilot-store'
 import { useMergedKopilotContext } from '../stores/select-context'
@@ -21,7 +22,11 @@ import { KopilotPanel } from './kopilot-panel'
  */
 export function KopilotDock() {
   const { hasAccess } = useFeatureFlags()
-  const kopilotEnabled = hasAccess('kopilot')
+  const { can } = useAccess()
+  // `agents.view` is the Read rung on agents — "see the agent and USE it, chat
+  // in Kopilot" (registry note). Without this a member at agents: None could
+  // still hit the Mod+Shift+K hotkey and trip a 403 on `kopilot.listSessions`.
+  const kopilotEnabled = hasAccess('kopilot') && can('agents.view')
   const pathname = usePathname()
   const isOnKopilotPage = pathname.startsWith('/app/kopilot')
 
