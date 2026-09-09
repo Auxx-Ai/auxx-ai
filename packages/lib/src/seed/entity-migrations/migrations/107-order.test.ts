@@ -85,10 +85,12 @@ describe('order entity registration wiring', () => {
       'number',
       'paymentGateways',
       'placedAt',
+      'refunds', // added by migration 136 - inverse of refund_order (money/tasks/47 §2)
       'shippingAddress',
       'shippingTotal', // added by migration 122 — money plan 37 §6/§8
       'subtotal',
       'tags',
+      'taxLines', // added by migration 136 - inverse of tax_line_order (money/tasks/48 §4.1)
       'taxName', // folded into 108 (see the note below) — the LineBuilder writes it with taxRate
       'taxRate',
       'taxTotal',

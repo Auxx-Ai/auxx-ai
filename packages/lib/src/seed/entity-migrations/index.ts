@@ -92,6 +92,7 @@ import { migration132CardClearingRename } from './migrations/132-card-clearing-r
 import { migration133Payout } from './migrations/133-payout'
 import { migration134BankAccountHasPosted } from './migrations/134-bank-account-has-posted'
 import { migration135BankDepositBankAccount } from './migrations/135-bank-deposit-bank-account'
+import { migration136RefundsAndTaxLines } from './migrations/136-refunds-and-tax-lines'
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
@@ -269,6 +270,11 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   // MUST sort after 125, which owns the `bank_account` def it widens.
   migration134BankAccountHasPosted,
   migration135BankDepositBankAccount,
+  // Refunds and channel-computed tax, landed together because they share one
+  // connector field batch and one per-org remap (48 §5). MUST sort after 107,
+  // which creates the `order` and `line_item` defs it widens, and after 108,
+  // which owns the chart `4090 Sales Returns and Allowances` is added to.
+  migration136RefundsAndTaxLines,
 ]
 
 /**

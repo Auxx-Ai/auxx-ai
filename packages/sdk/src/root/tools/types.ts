@@ -119,6 +119,17 @@ export interface ToolActionContext {
  * record" case the union exists for. Note this also widens `ref.entity(kind)`,
  * the app TOOL surface, which is the part of the trade worth revisiting if the
  * rule is ever tightened.
+ *
+ * ✅ `refund`, `refund_line` and `tax_line` were ADDED 2026-09-08 with entity
+ * migration 136 (plans/money/tasks/47-shopify-refunds.md §2,
+ * plans/money/tasks/48-shopify-tax-data.md §4.1). They follow `line_item`'s
+ * precedent rather than the "an entity a user thinks about and could open"
+ * rule: all three are `isVisible: false` and render inside the order, and all
+ * three exist precisely so a channel connector can address them - a refund and
+ * a refund line carry the provider's own ids, and a tax line carries a
+ * SYNTHETIC `${orderId}:${title}` key because Shopify tax lines ship no id at
+ * all. Admitting them satisfies the standing condition: 136 seeds all three
+ * into EXISTING orgs, so these are not union entries that no org resolves.
  */
 export type EntityRefKind =
   | 'contact'
@@ -136,6 +147,9 @@ export type EntityRefKind =
   | 'purchase_order'
   | 'vendor_bill'
   | 'gl_account'
+  | 'refund'
+  | 'refund_line'
+  | 'tax_line'
 
 /**
  * Per-tool configuration. See plans/kopilot/apps/README.md §4.2.

@@ -294,6 +294,27 @@ export const ACCOUNT_ROLES = {
    */
   REVENUE_SERVICE: 'revenue_service',
   /**
+   * Sales returns and allowances (default `4090`). The contra-revenue account a
+   * refund reverses recognised revenue through.
+   *
+   * 🛑 **Not a debit back to `revenue_dtc` / `revenue_dealer` / `revenue_service`.**
+   * QuickBooks defaults to the original income account; auxx does not
+   * (task 47 §6.1), because netting the reversal into the account the sale was
+   * credited to leaves the return rate invisible on the P&L, and a return rate
+   * nobody can see is one nobody manages.
+   *
+   * ⚠️ The role covers ALLOWANCES as well as returns, and the allowance is the
+   * common case: a post-sale price reduction where the customer keeps the goods
+   * (47 §3.1). Nothing comes back and nothing restocks - the transaction price
+   * changed. Reading this role as "returns" would put concessions somewhere
+   * else and split one figure across two accounts.
+   *
+   * ⚠️ A REVENUE account that runs debit-normal. `GlAccountType` has no contra
+   * classification and does not need one, the same reading `1190 Allowance for
+   * Doubtful Accounts` gets: contra is presentation, not a posting rule.
+   */
+  REVENUE_RETURNS_ALLOWANCES: 'revenue_returns_allowances',
+  /**
    * Payment processing fees (default `6100`). What the processor withheld from
    * a payout. NOT `money/payments/fees.ts`, which is the Connect application
    * fee auxx charges, a different number.
@@ -350,6 +371,7 @@ export const ROLE_ACCOUNT_TYPES: Record<AccountRole, GlAccountTypeValue> = {
   revenue_dealer: 'revenue',
   revenue_shipping: 'revenue',
   revenue_service: 'revenue',
+  revenue_returns_allowances: 'revenue',
   payment_processing_fees: 'expense',
   bad_debt_expense: 'expense',
 }
@@ -391,6 +413,7 @@ export const ACCOUNT_ROLE_LABELS: Record<AccountRole, string> = {
   revenue_dealer: 'Product Revenue - Dealer',
   revenue_shipping: 'Shipping Revenue',
   revenue_service: 'Service Revenue',
+  revenue_returns_allowances: 'Sales Returns and Allowances',
   payment_processing_fees: 'Payment Processing Fees',
   bad_debt_expense: 'Bad Debt Expense',
 }

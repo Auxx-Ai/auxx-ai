@@ -192,6 +192,86 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
     defaultValue: true,
   },
 
+  // The provider's per-line tax, as ONE number
+  // (plans/money/tasks/48-shopify-tax-data.md §4.2). Deliberately asymmetric
+  // with the order side, which fans `tax_lines[]` out into `tax_line` records:
+  // per-line-per-jurisdiction detail answers no question anybody has, because
+  // filing needs the breakdown per ORDER and the fulfillment builder needs one
+  // number per LINE. Fanning it out too would multiply roughly 63k records over
+  // the full order history to serve nothing.
+  //
+  // ✅ This is what lets `buildFulfillmentEntry` populate its per-line
+  // `taxMinor` and REPLACE the pro-rata approximation with exact figures on
+  // split shipments. It accepts a per-line tax today and never receives one, so
+  // it always falls back to allocating the order total across shipments
+  // (`build-fulfillment-entry.ts:180`, `:214`).
+  //
+  // 🛑 No default. 48 §8.2: "not supplied" and "supplied as zero" are different
+  // states - a null FieldValue against a row holding 0 - and both post nothing,
+  // which is exactly why they get collapsed if nobody writes it down. Defaulting
+  // this to 0 would tell the ledger the provider said there was no tax, when in
+  // fact it said nothing at all.
+  taxTotal: {
+    id: toFieldId('taxTotal'),
+    key: 'taxTotal',
+    label: 'Tax Total',
+    type: BaseType.CURRENCY,
+    fieldType: FieldType.CURRENCY,
+    isSystem: true,
+    systemAttribute: 'line_item_tax_total',
+    systemSortOrder: 'a7a',
+    nullable: true,
+    options: {
+      currencyCode: 'USD',
+      decimals: 2,
+      useGrouping: true,
+      currencyDisplay: 'symbol',
+    },
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    description:
+      'Integer minor units. The tax the provider computed for THIS line, carried and never ' +
+      'derived. Null means no tax figure was supplied for the line, which is not the same ' +
+      'as a supplied zero',
+  },
+
+  // Reverse relationship: the refund lines that sent part of this line back
+  // (plans/money/tasks/47-shopify-refunds.md §2.2). The counterpart of the
+  // owning `refund_line_line_item`, and declared for the same reason
+  // `part_line_items` is: an inverse a relationship POINTS AT but that does not
+  // exist leaves the edge unlinked, and an unlinked relationship accepts writes
+  // while this side reads empty (the trap entity migration 135 asserts against).
+  refundLines: {
+    id: toFieldId('refundLines'),
+    key: 'refundLines',
+    label: 'Refund Lines',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'line_item_refund_lines',
+    systemSortOrder: 'a7b',
+    showInPanel: false,
+    showInDialogs: false,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'refund_line:lineItem' as ResourceFieldId,
+      relationshipType: 'has_many',
+      isInverse: true,
+    },
+    description: 'Refund lines that returned or cancelled part of this line',
+  },
+
   optional: {
     id: toFieldId('optional'),
     key: 'optional',

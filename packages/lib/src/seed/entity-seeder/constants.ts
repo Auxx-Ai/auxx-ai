@@ -500,6 +500,39 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     color: 'teal',
     isVisible: false,
   },
+  {
+    // A refund that already happened at the sales channel, ingested as a FACT
+    // and never originated here (plans/money/tasks/47-shopify-refunds.md §0.4).
+    entityType: 'refund',
+    apiSlug: 'refunds',
+    singular: 'Refund',
+    plural: 'Refunds',
+    icon: 'rotate-ccw',
+    color: 'red',
+    isVisible: false, // Internal entity, managed from the order
+  },
+  {
+    entityType: 'refund_line',
+    apiSlug: 'refund-lines',
+    singular: 'Refund Line',
+    plural: 'Refund Lines',
+    icon: 'list',
+    color: 'red',
+    isVisible: false, // Internal entity, managed from the refund
+  },
+  {
+    // One jurisdiction's tax on one order, as a ROW rather than a rate: the
+    // question is tax by jurisdiction over a period, and an aggregation wants
+    // rows (plans/money/tasks/48-shopify-tax-data.md §4.1). auxx never computes
+    // these, it carries what the channel already computed.
+    entityType: 'tax_line',
+    apiSlug: 'tax-lines',
+    singular: 'Tax Line',
+    plural: 'Tax Lines',
+    icon: 'percent',
+    color: 'amber',
+    isVisible: false, // Internal entity, managed from the order
+  },
 ]
 
 /**
@@ -660,6 +693,25 @@ export const DISPLAY_FIELD_CONFIG: Record<string, DisplayFieldConfig> = {
   tariff_rate: {
     primaryDisplayField: 'tariffCode',
     secondaryDisplayField: 'effectiveFrom',
+  },
+  // `refundedAt` leads and the amount follows, because `computeDisplayValue`
+  // has no fallback and only `refundedAt` is non-nullable: a refund whose
+  // transaction legs have not settled has no amount to sum yet
+  // (plans/money/tasks/47-shopify-refunds.md §2.1), and would otherwise render
+  // blank. Same reasoning as `journal_entry` putting `memo` second.
+  refund: {
+    primaryDisplayField: 'refundedAt',
+    secondaryDisplayField: 'amountRefunded',
+  },
+  refund_line: {
+    primaryDisplayField: 'qty',
+    secondaryDisplayField: 'subtotal',
+  },
+  // The jurisdiction leads: it is the one field on a tax line that is always
+  // present, and it is what the by-jurisdiction report groups on (§4.1).
+  tax_line: {
+    primaryDisplayField: 'title',
+    secondaryDisplayField: 'price',
   },
   gl_account: {
     primaryDisplayField: 'code',
