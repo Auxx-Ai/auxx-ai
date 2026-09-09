@@ -641,9 +641,10 @@ export async function runBackfillSlice(
           dataConnectorId: connectorId,
           sampleLimit: run.sampleLimit,
           startedAt: run.startedAt,
-          // The last stream links what the sample can link before the run parks
-          // (plans/money/tasks/39 §3.6), so the review shows related records related.
-          beforePark: () => source.resolveRelationshipsAtPark(),
+          // The last stream links what the sample can link and publishes the run's
+          // manifest before the run parks (39 §3.6, 51 §8), so the review shows related
+          // records related AND with their derived values.
+          beforePark: () => source.finalizeAtPark(),
         })
         await publishConnectorSync(db, organizationId, connectorId, 'run-finished')
         return
@@ -663,11 +664,12 @@ export async function runBackfillSlice(
           fetched,
           ceiling: MAX_BACKFILL_RECORDS,
         })
-        // A parked run never reaches the connector-level finalize, so link what this
-        // run can link BEFORE the run is marked partial (plans/money/tasks/39 §3.6).
-        // Edges whose target is still unsynced stay pending; the resumed run's
-        // finalize resolves them. The pass logs its resolved / still-pending counts.
-        await source.resolveRelationshipsAtPark()
+        // A parked run never reaches the connector-level finalize, so it does that
+        // work for itself BEFORE the run is marked partial: link what this run can
+        // link (39 §3.6) and publish its manifest (51 §8). Edges whose target is still
+        // unsynced stay pending; the resumed run's finalize resolves them. The pass
+        // logs its resolved / still-pending counts.
+        await source.finalizeAtPark()
         await parkBackfillAtCeiling(db, {
           runId,
           dataConnectorId: connectorId,

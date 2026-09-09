@@ -80,6 +80,16 @@ const world = {
   linkWrites: [] as LinkWrite[],
   /** Counters handed to the run ledger by the park-time pass and the finalize. */
   ledgerFolds: [] as { runId: string; relationshipWarnings: number }[],
+  /**
+   * Every `sync:records:changed` publish, with the state at the moment it happened:
+   * the run's status (a park must publish BEFORE `partial`) and how many link writes
+   * had landed (the manifest must already hold the pass's writes).
+   */
+  manifestPublishes: [] as {
+    runId: string
+    runStatus: FakeRun['status'] | undefined
+    linkWritesAtPublish: number
+  }[],
 }
 
 const PAGE_SIZE = 500
@@ -98,6 +108,7 @@ function resetWorld() {
   world.items.clear()
   world.linkWrites.length = 0
   world.ledgerFolds.length = 0
+  world.manifestPublishes.length = 0
   world.connector = {
     id: 'dc1',
     organizationId: 'org1',
@@ -296,7 +307,13 @@ vi.mock('./service', async (importOriginal) => {
     foldRunManifest: async () => {},
     markRunManifestDegraded: async () => {},
     getRunManifest: async () => null,
-    publishSyncRecordsChanged: async () => {},
+    publishSyncRecordsChanged: async (_db: unknown, input: { runId: string }) => {
+      world.manifestPublishes.push({
+        runId: input.runId,
+        runStatus: currentRun(input.runId)?.status,
+        linkWritesAtPublish: world.linkWrites.length,
+      })
+    },
     setRunRateLimited: async () => {},
     parkConnectorSampleIfLastStream: async () => {},
     // The relationship pass's reads and writes, over the in-memory items.
@@ -610,5 +627,43 @@ describe('relationship pass at the ingest-ceiling park (§3.6)', () => {
 
     for (const item of world.items.values()) expect(item.pendingRelations).toBeNull()
     expect(await pendingLinks()).toEqual([])
+  })
+})
+
+describe('manifest publish at the ingest-ceiling park (51 §8)', () => {
+  it('publishes the parked run manifest, before the park and after the pass wrote its edges', async () => {
+    await startConnectorSync(DB, 'org1', 'dc1', { trigger: 'manual' })
+    await drainSlices()
+
+    expect(world.parkedAtCeiling).toEqual(['run1'])
+
+    // Exactly one publish, for the run that parked. Before the fix this was zero:
+    // `publishSyncRecordsChanged` fired only at the last stream's finalize, which a
+    // parked run never reaches, so the manifest was persisted and never consumed.
+    expect(world.manifestPublishes).toHaveLength(1)
+    expect(world.manifestPublishes[0]?.runId).toBe('run1')
+
+    // Two orderings the consumer depends on, and neither is observable downstream —
+    // consumption is atomically once-only, so a manifest published too early is
+    // consumed too early and there is no second chance.
+    //
+    // 1. BEFORE the park marks the run `partial`, alongside the relationship pass.
+    expect(world.manifestPublishes[0]?.runStatus).toBe('running')
+    // 2. AFTER the pass folded its 20 link writes, so the manifest the consumer
+    //    claims already holds them.
+    expect(world.manifestPublishes[0]?.linkWritesAtPublish).toBe(20)
+  })
+
+  it('publishes once per run across a park and its resume, never twice for the same run', async () => {
+    await startConnectorSync(DB, 'org1', 'dc1', { trigger: 'manual' })
+    await drainSlices()
+    await startConnectorSync(DB, 'org1', 'dc1', { trigger: 'manual' })
+    await drainSlices()
+
+    // Run 1 parked and published at the park; run 2 completed and published at the
+    // connector-level finalize. A resume mints a NEW run, so the parked run's manifest
+    // is final the moment it parks and nothing re-publishes it.
+    expect(world.runs[1]?.status).toBe('completed')
+    expect(world.manifestPublishes.map((p) => p.runId)).toEqual(['run1', 'run2'])
   })
 })

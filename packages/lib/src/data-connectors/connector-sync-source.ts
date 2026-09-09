@@ -164,16 +164,34 @@ export interface ConnectorSyncSourceDeps {
 export interface ConnectorSyncSource extends SyncSource {
   finalizeSteady(): Promise<void>
   /**
-   * The park-time relationship pass (plans/money/tasks/39 §3.6). A run parked at the
-   * ingest ceiling or a sample cap never reaches the connector-level finalize, so
-   * without this every edge whose target has already synced stays pending while the
-   * stream cards read "done". Same ctx and `relationshipCrud` session as the finalize
-   * (events fire the same way) and the same counter fold; unresolved edges stay
-   * pending and count as relationship warnings. The pass is idempotent, so the later
-   * finalize re-checks the same edges at the cost of one bulk pre-read. Call it BEFORE
-   * the run is marked `partial`.
+   * Everything a PARKED run must do for itself, because it never reaches the
+   * connector-level finalize. Called from all three park sites (the ingest ceiling and
+   * both sample-cap doors), always on the last stream, always BEFORE the run is marked
+   * `partial`.
+   *
+   * Two duties, and they were added for the same reason a year apart:
+   *
+   * 1. **The relationship pass** (plans/money/tasks/39 §3.6). Without it every edge
+   *    whose target has already synced stays pending while the stream cards read
+   *    "done". Same ctx and `relationshipCrud` session as the finalize (events fire the
+   *    same way) and the same counter fold; unresolved edges stay pending and count as
+   *    relationship warnings. Idempotent, so a later finalize re-checks the same edges
+   *    at the cost of one bulk pre-read.
+   * 2. **Publishing the run's manifest** (plans/money/tasks/51 §8). `publishSyncRecordsChanged`
+   *    otherwise fires only at the last stream's finalize, so a parked run's manifest
+   *    was persisted, never consumed, and nothing anywhere would ever consume it —
+   *    `sync:records:changed` is the only door to the finalize integrity passes, so
+   *    EVERY one of them silently skipped for the parked slice: document totals,
+   *    address normalization, phone geo, order demand, interactions and the derived
+   *    fulfillment log. Measured on the first real Shopify sync: eight runs, seven
+   *    parks, seven orphaned manifests, and 2,686 of 13,185 fulfilled orders carrying a
+   *    shipment log — the last run's eighth and nothing else.
+   *
+   * 🛑 Publish LAST. The manifest has to hold duty 1's writes before anything consumes
+   * it, and consumption is atomically once-only (`claimRunManifestConsumed`), so there
+   * is no second chance to include them.
    */
-  resolveRelationshipsAtPark(): Promise<void>
+  finalizeAtPark(): Promise<void>
 }
 
 class ConnectorStreamSyncSource implements ConnectorSyncSource {
@@ -346,14 +364,14 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
         dataConnectorId: this.deps.connector.id,
         sampleLimit: this.deps.sampleLimit,
         startedAt: this.deps.run.startedAt,
-        beforePark: () => this.resolveRelationshipsAtPark(),
+        beforePark: () => this.finalizeAtPark(),
       })
       return
     }
     await this.finalizeConnectorLevel({ closeRun: true, clearResync: true, phase: 'backfill' })
   }
 
-  async resolveRelationshipsAtPark(): Promise<void> {
+  async finalizeAtPark(): Promise<void> {
     const counters = newRunCounters()
     // The pass resolves across ALL streams (an order's contact came from a sibling
     // stream), so warm every target def, exactly as the finalize does.
@@ -371,6 +389,16 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
       errorSample: counters.errorSample,
     })
     await this.persistManifest(syncCtx)
+
+    // The parked run's ONLY door to the finalize integrity passes (51 §8). Strictly
+    // after `persistManifest`, so the manifest the consumer claims already holds the
+    // relationship pass's writes. Best-effort by contract — it never throws, so a
+    // publish failure cannot turn a clean park into a failed run.
+    await publishSyncRecordsChanged(this.deps.db, {
+      organizationId: this.deps.organizationId,
+      dataConnectorId: this.deps.connector.id,
+      runId: this.deps.run.id,
+    })
   }
 
   /**
