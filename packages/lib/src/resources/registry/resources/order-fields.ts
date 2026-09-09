@@ -262,7 +262,9 @@ export const ORDER_FIELDS: Record<string, ResourceField> = {
     placeholder: 'Select channel',
     description:
       'Which route the sale came in through — HUMAN-SET, never derived (08 §4, D18). A ' +
-      'manual sale has no payment gateways and no tags to derive it from.',
+      'manual sale has no payment gateways and no tags to derive it from. The fulfillment ' +
+      'posting books an unset or manual channel as consumer revenue; only "dealer" moves it ' +
+      'to the dealer revenue line.',
     defaultValue: 'manual',
     showInTable: false,
   },

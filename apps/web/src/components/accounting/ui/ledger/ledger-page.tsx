@@ -144,7 +144,12 @@ export function LedgerPage({ periodKey }: LedgerPageProps) {
   )
 
   const failedExportsQuery = api.ledger.failedExports.useQuery({})
-  const balanceQuery = api.ledger.verifyBalance.useQuery()
+  // The month on screen rides along so the sweep can answer the COMPLETENESS
+  // question too - what this month still owes the ledger. Without it the counts
+  // come back `null` and the Books section renders the balance half alone.
+  const balanceQuery = api.ledger.verifyBalance.useQuery({
+    periodKey: activePeriodKey ?? undefined,
+  })
   const roleMapQuery = api.ledger.roleMap.useQuery()
 
   const accountCodeByRole: Partial<Record<AccountRole, string>> = {}

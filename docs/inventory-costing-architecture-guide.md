@@ -1310,6 +1310,39 @@ somebody forgets. That test had been red since wave 0 for an unrelated list,
 because `packages/database` has no `typecheck` script and its suite is not
 reached by a `packages/lib` run.
 
+### 9.13 Bulk fulfillment posting (2026-09-09, plans/money/tasks/49)
+
+Revenue on connector orders is posted **one `fulfillment` entry per ship day**, never per
+order, from `money/fulfillment-posting/` (`reads.ts` is one SQL over the `order_fulfillments`
+JSON log joined to `GlPosting`; `plan.ts` is pure; `run.ts` never throws). Facts worth a line:
+
+- **Unposted means no LIVE stamp.** A log entry whose `glPostingId` is null or names a
+  `reversed` posting re-enters the next preview. Reversing a day's entry is therefore the
+  whole undo; nothing un-stamps.
+- **The period key is the day plus an attempt char** (`2026-07-06`, then `2026-07-061`).
+  The claim index is unique on `(org, type, periodKey, revision)` and a duplicate claim
+  returns `already_posted`, a success that posts nothing, so a late order backfilled into
+  an already-posted day needs its own key. Same trap `writeOffPeriodKey` fixed.
+- **The debit follows the gateway, not the channel**: `shopify_payments` to
+  `clearing_card`, `Affirm` to `clearing_affirm` (1210, excluded from the payout entry by
+  construction), unpaid or `manual` to A/R with one source line per order so aging can
+  name the debtor. Everything else summarises under `sourceType: 'fulfillment_batch'`,
+  which is why the order ledger card and the order delete guard read the **stamp**, not
+  `listPostingsForSource`.
+- `CHANNEL_REVENUE_ROLE` **fails open**: `manual` and an unset channel recognise as
+  consumer revenue. Only `dealer` moves revenue off 4000.
+- **The shipment log for a connector order is derived**, not clicked: finalize pass 6
+  (`events/handlers/passes/fulfillment-log-pass.ts`) reads the native
+  `line_item_fulfilled_at` / `_fulfilled_qty` / `_shipment_count` fields (entity migration
+  137, bound by the Shopify app) and rewrites the log only when it changed, keeping stamped
+  entries verbatim. `fulfillOrder` stays the writer for native orders.
+- `accounting.fulfillmentPosting = manual | auto`; `auto` enqueues the `fulfillment-posting`
+  queue from pass 7. The month close refuses with `revenue_incomplete` while a month holds
+  an unposted shipment or an unissued channel credit memo; the count reuses the dialog's
+  plan, so a `zero-value` shipment does not hold a month open.
+- The inventory relief of a shipment (a `sale` movement) is **still not built**; nothing
+  in the tree writes that kind. Brief 50.
+
 ## 10. Write Lanes & the Silent Ledger Write
 
 🛑 **`skipEvents: true` is INSUFFICIENT, not merely deprecated — there are TWO doors.**

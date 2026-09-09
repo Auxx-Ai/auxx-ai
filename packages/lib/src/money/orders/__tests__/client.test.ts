@@ -39,6 +39,7 @@ function line(overrides: Partial<OrderLineRemaining> = {}): OrderLineRemaining {
     shippedQuantity: 0,
     remainingQuantity: 4,
     unitPriceMinor: 10_000,
+    lineTaxMinor: null,
     sortOrder: 0,
     ...overrides,
   }

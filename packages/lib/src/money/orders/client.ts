@@ -93,6 +93,16 @@ export interface OrderLineRemaining {
   remainingQuantity: number
   /** Minor units per unit. A RATE - it may be fractional. */
   unitPriceMinor: number
+  /**
+   * This line's own tax for the WHOLE line (`line_item_tax_total`), integer
+   * minor units, when the provider supplied it.
+   *
+   * 🛑 **Null is not zero** (48 §8.2). Null means the sales channel said
+   * nothing about this line's tax, and the fulfillment builder then allocates
+   * the ORDER's tax pro rata instead. Reading null as zero would recognise a
+   * taxed order as untaxed and leave `sales_tax_payable` permanently short.
+   */
+  lineTaxMinor: number | null
   sortOrder: number
 }
 

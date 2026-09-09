@@ -33,6 +33,10 @@ interface PosterCall {
 
 const h = vi.hoisted(() => ({
   gather: vi.fn<(db: unknown, organizationId: string, periodKey: string) => Promise<unknown>>(),
+  countUnpostedShipments:
+    vi.fn<(db: unknown, params: { organizationId: string; month: string }) => Promise<unknown>>(),
+  countUnissuedChannelCreditMemos:
+    vi.fn<(db: unknown, params: { organizationId: string; month: string }) => Promise<number>>(),
   resolvePeriodLock: vi.fn<(organizationId: string) => Promise<unknown>>(),
   previewEntry: vi.fn<(db: unknown, options: PosterCall) => Promise<unknown>>(),
   postEntry: vi.fn<(db: unknown, options: PosterCall) => Promise<unknown>>(),
@@ -41,6 +45,15 @@ const h = vi.hoisted(() => ({
 
 vi.mock('../gather-month-end-inventory', () => ({
   gatherMonthEndInventoryInputs: h.gather,
+}))
+// The completeness gate's two counts. Mocked because they are subledger reads
+// over `FieldValue` and this file has no database; what is under test is the
+// CLASSIFICATION, which is this file's whole job.
+vi.mock('../../money/fulfillment-posting/reads', () => ({
+  countUnpostedShipments: h.countUnpostedShipments,
+}))
+vi.mock('../../money/credit-memos/reads', () => ({
+  countUnissuedChannelCreditMemos: h.countUnissuedChannelCreditMemos,
 }))
 vi.mock('../period-lock', () => ({
   PERIOD_LOCK_SETTING_KEY: 'ledger.lockedThroughMonth',
@@ -147,6 +160,10 @@ const POST_OK: PostResult = {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // A complete month by default, so every OTHER test in this file still
+  // exercises the classification it was written for.
+  h.countUnpostedShipments.mockResolvedValue(ok(0))
+  h.countUnissuedChannelCreditMemos.mockResolvedValue(0)
   h.resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: null })
   h.previewEntry.mockResolvedValue(PREVIEW_OK)
   h.postEntry.mockResolvedValue(POST_OK)
@@ -644,4 +661,132 @@ describe('neither function ever throws', () => {
       if (result.status !== 'posted') expect((result.error ?? '').length).toBeGreaterThan(0)
     })
   }
+})
+
+// ── The completeness gate (49 §2.4, §8.4 decision 7; 10 §3.4) ──────────────
+//
+// 🛑 Balance is not completeness. A month whose shipments were never posted, or
+// whose channel credit memos are still drafts, is short of revenue however well
+// its entries tie - and closing it puts that revenue permanently outside a month
+// somebody has certified, because `period-lock.ts` refuses the entry it owes.
+// So this is a refusal, and the tests below are as much about WHICH refusal wins
+// as about the refusal itself.
+
+describe('the completeness gate', () => {
+  it('refuses a month holding unposted shipments, naming the count and the remedy', async () => {
+    h.gather.mockResolvedValue(ok(movingInputs()))
+    h.countUnpostedShipments.mockResolvedValue(ok(3))
+
+    const result = await postMonthEnd(db, { organizationId: ORG, periodKey: PERIOD })
+
+    expect(result.status).toBe('revenue_incomplete')
+    expect(result.error).toContain('3 shipments are not posted')
+    expect(result.error).toContain('Post the fulfillments for August 2026 with the posting dialog')
+    // Refused BEFORE the claim: nothing was written and nothing was pushed.
+    expect(result.glPostingId).toBeUndefined()
+    expect(h.postEntry).not.toHaveBeenCalled()
+  })
+
+  it('refuses a month holding unissued channel credit memos', async () => {
+    h.gather.mockResolvedValue(ok(movingInputs()))
+    h.countUnissuedChannelCreditMemos.mockResolvedValue(2)
+
+    const result = await postMonthEnd(db, { organizationId: ORG, periodKey: PERIOD })
+
+    expect(result.status).toBe('revenue_incomplete')
+    expect(result.error).toContain('2 channel credit memos are still a draft')
+    expect(result.error).toContain('Issue or void the channel credit memos dated in August 2026')
+  })
+
+  it('names BOTH counts when both are outstanding', async () => {
+    // One sentence per count, in one message: a refusal that named only the
+    // shipments would send an operator back a second time for the memos.
+    h.gather.mockResolvedValue(ok(movingInputs()))
+    h.countUnpostedShipments.mockResolvedValue(ok(1))
+    h.countUnissuedChannelCreditMemos.mockResolvedValue(1)
+
+    const result = await postMonthEnd(db, { organizationId: ORG, periodKey: PERIOD })
+
+    expect(result.error).toContain('1 shipment is not posted')
+    expect(result.error).toContain('1 channel credit memo is still a draft')
+  })
+
+  it('renders on a preview as a blockedBy, not a throw', async () => {
+    h.gather.mockResolvedValue(ok(movingInputs()))
+    h.countUnpostedShipments.mockResolvedValue(ok(4))
+
+    const preview = await previewMonthEnd(db, { organizationId: ORG, periodKey: PERIOD })
+
+    expect(preview.blockedBy?.status).toBe('revenue_incomplete')
+    expect(preview.lines).toEqual([])
+    expect(h.previewEntry).not.toHaveBeenCalled()
+  })
+
+  it('asks about the month being closed', async () => {
+    h.gather.mockResolvedValue(ok(movingInputs()))
+    h.countUnpostedShipments.mockResolvedValue(ok(1))
+
+    await postMonthEnd(db, { organizationId: ORG, periodKey: PERIOD })
+
+    expect(h.countUnpostedShipments).toHaveBeenCalledWith(db, {
+      organizationId: ORG,
+      month: PERIOD,
+    })
+    expect(h.countUnissuedChannelCreditMemos).toHaveBeenCalledWith(db, {
+      organizationId: ORG,
+      month: PERIOD,
+    })
+  })
+
+  it('lets a CONFIGURATION refusal win: a draft setup is still setup_incomplete', async () => {
+    // The gate runs AFTER the gather for exactly this. Telling somebody to post
+    // fulfillments for a month that can never be closed by this system would
+    // send them to a dialog that excludes those very shipments.
+    h.gather.mockResolvedValue(
+      err(
+        new UnprocessableEntityError('Finish the accounting setup', {
+          setting: 'accounting.setupState',
+        })
+      )
+    )
+    h.countUnpostedShipments.mockResolvedValue(ok(9))
+
+    const result = await postMonthEnd(db, { organizationId: ORG, periodKey: PERIOD })
+
+    expect(result.status).toBe('setup_incomplete')
+    expect(h.countUnpostedShipments).not.toHaveBeenCalled()
+  })
+
+  it('wins over nothing_to_close: an empty month with unposted shipments is not empty', async () => {
+    // The gate runs BEFORE the build for exactly this, and it is the single most
+    // likely shape of the refusal on a connector-fed org: no inventory movement
+    // at all, and a week of revenue nobody has posted.
+    h.gather.mockResolvedValue(ok(emptyInputs()))
+    h.countUnpostedShipments.mockResolvedValue(ok(6))
+
+    const result = await postMonthEnd(db, { organizationId: ORG, periodKey: PERIOD })
+
+    expect(result.status).toBe('revenue_incomplete')
+  })
+
+  it('does not block the close on its OWN failure', async () => {
+    // ⚠️ Fails OPEN. A broken subledger read must not be able to hold an
+    // organization's books hostage, and the ledger page reports the same two
+    // counts independently.
+    h.gather.mockResolvedValue(ok(movingInputs()))
+    h.countUnpostedShipments.mockResolvedValue(err(new Error('the read is broken')))
+    h.countUnissuedChannelCreditMemos.mockRejectedValue(new Error('the other read is broken too'))
+
+    const result = await postMonthEnd(db, { organizationId: ORG, periodKey: PERIOD })
+
+    expect(result.status).toBe('posted')
+  })
+
+  it('does not refuse a complete month', async () => {
+    h.gather.mockResolvedValue(ok(movingInputs()))
+
+    const result = await postMonthEnd(db, { organizationId: ORG, periodKey: PERIOD })
+
+    expect(result.status).toBe('posted')
+  })
 })

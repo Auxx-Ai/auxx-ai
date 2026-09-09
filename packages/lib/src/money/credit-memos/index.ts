@@ -43,6 +43,7 @@ export {
   type CreditMemoApplicationRecord,
   type CreditMemoLineRecord,
   type CreditMemoRecord,
+  countUnissuedChannelCreditMemos,
   type InvoiceForCredit,
   type InvoiceLineForCredit,
   listCreditMemoApplications,

@@ -93,6 +93,7 @@ import { migration133Payout } from './migrations/133-payout'
 import { migration134BankAccountHasPosted } from './migrations/134-bank-account-has-posted'
 import { migration135BankDepositBankAccount } from './migrations/135-bank-deposit-bank-account'
 import { migration136RefundsAndTaxLines } from './migrations/136-refunds-and-tax-lines'
+import { migration137FulfillmentFacts } from './migrations/137-fulfillment-facts'
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
@@ -275,6 +276,11 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   // which creates the `order` and `line_item` defs it widens, and after 108,
   // which owns the chart `4090 Sales Returns and Allowances` is added to.
   migration136RefundsAndTaxLines,
+  // The sales channel's per-line fulfillment rollup, natively, plus the
+  // clearing_affirm role on 1210 (49 §8.4 decisions 4 and 6). MUST sort after
+  // 107, which creates the `line_item` def it widens, and after 108, which owns
+  // the chart account it stamps.
+  migration137FulfillmentFacts,
 ]
 
 /**

@@ -155,9 +155,16 @@ export const DEFAULT_CHART_OF_ACCOUNTS: readonly DefaultChartAccount[] = [
     // Must EXCLUDE every Affirm-gateway order or 1200 can never reconcile to
     // zero: an Affirm settlement never lands on the card rail, so it is
     // invisible to the payouts API (accrual plan §3).
+    //
+    // The role is what makes that exclusion mechanical rather than a rule
+    // somebody has to remember: the fulfillment debit fork routes an `affirm`
+    // gateway to `clearing_affirm`, and `PAYOUT_CLEARING_ROLES` holds
+    // `clearing_card` alone (49 §3.2, §8.4 decision 6). Entity migration 137
+    // stamps this role onto orgs seeded before it existed.
     code: '1210',
     name: 'Affirm Clearing',
     accountType: GlAccountType.ASSET,
+    role: 'clearing_affirm',
   },
   {
     code: '1310',

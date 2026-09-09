@@ -64,13 +64,16 @@
  *    but the caller still supplies it: the builder is pure and the writer is
  *    the one that knows what it is posting. See
  *    {@link BuildPaymentEntryInput.postingType}.
- * 2. **Which clearing account.** `ACCOUNT_ROLES` has exactly one clearing role,
- *    `clearing_card` (`1200`), so `'clearing'` maps to it. The chart also
- *    holds `1210 Affirm Clearing` with no role, and its own warning: Affirm
- *    settlements are invisible to the payouts API, so an Affirm order routed to
- *    `1200` makes that account impossible to reconcile to zero. When a second
- *    clearing role lands, {@link PAYMENT_ROUTE_ROLE} grows a discriminator on
- *    the gateway rather than on the method.
+ * 2. **Which clearing account.** A `PaymentRoute` is a payment METHOD, and
+ *    `'clearing'` maps to `clearing_card` (`1200`). ⚠️ `ACCOUNT_ROLES` gained a
+ *    second clearing role, `clearing_affirm` (`1210`), for the fulfillment
+ *    debit fork (49 §8.4 decision 6) - and this table still cannot reach it,
+ *    because a method does not say which gateway took the money. Affirm
+ *    settlements are invisible to the payouts API, so an Affirm charge routed to
+ *    `1200` makes that account impossible to reconcile to zero. When a payment
+ *    has to tell the two apart, {@link PAYMENT_ROUTE_ROLE} grows a discriminator
+ *    on the GATEWAY rather than on the method, the way `resolveFulfillmentDebit`
+ *    already does.
  *
  * @see plans/accounting/tasks/01-post-revenue-to-the-ledger.md §1.2
  * @see plans/accounting/tasks/06-deposit-grouping.md §2.3

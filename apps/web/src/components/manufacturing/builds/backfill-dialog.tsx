@@ -202,8 +202,8 @@ export function BackfillDialog({ open, onOpenChange, onCompleted }: BackfillDial
 
         <DialogNavPages value={page}>
           <DialogNavPage value='plan' size='3xl'>
-            <div className='flex max-h-[78vh] flex-col'>
-              <ScrollArea className='min-h-0 flex-1' allowScrollChaining>
+            <div className='flex flex-col'>
+              <ScrollArea viewportClassName='max-h-[70vh]' allowScrollChaining>
                 <div className='flex flex-col gap-4 p-4'>
                   <FieldPanel
                     className='p-0'
@@ -524,8 +524,8 @@ function BackfillResult({
   const failed = result.failed.length
 
   return (
-    <div className='flex max-h-[78vh] flex-col'>
-      <ScrollArea className='min-h-0 flex-1' allowScrollChaining>
+    <div className='flex flex-col'>
+      <ScrollArea viewportClassName='max-h-[70vh]' allowScrollChaining>
         <div className='flex flex-col gap-3 p-4 text-sm'>
           <p>
             <strong className='font-medium'>{created}</strong>{' '}

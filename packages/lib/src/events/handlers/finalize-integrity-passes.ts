@@ -70,7 +70,7 @@ export interface IntegrityPassesInput {
 }
 
 /**
- * Run the four data-integrity batch passes over a sync-change manifest:
+ * Run the seven data-integrity batch passes over a sync-change manifest:
  *
  * 1. Totals — changed line-item records map (via the hook's own parent resolution) to
  *    DISTINCT parent quotes/invoices, each recomputed once; lines whose qty/unitPrice
@@ -85,6 +85,18 @@ export interface IntegrityPassesInput {
  *    This is events/08 R6(c), and it is the same class of bug as pass 1: the inline
  *    seam cannot see a sync write, so without it a Shopify order edited from 3 to 5
  *    keeps a build for 3 forever.
+ * 5. Contact/company interaction resolution: every created or identifier-touched
+ *    contact and company gets the correspondence history it already has.
+ * 6. Fulfillment log: connector orders whose lines carry the channel's per-line
+ *    fulfillment facts get `order_fulfillments` derived from them
+ *    (`passes/fulfillment-log-pass.ts`, money plan 49 §8.4 decision 4). Until this
+ *    pass, nothing NATIVE said an imported order had shipped, so 530 of the dev
+ *    org's 545 orders could never reach the ledger and every channel credit memo
+ *    would skip its revenue leg.
+ * 7. Automatic fulfillment posting: when pass 6 changed at least one log, hand off
+ *    to `autoPostFulfillmentsAfterSync`, which posts only if the org asked for it
+ *    (`accounting.fulfillmentPosting = auto`). Gated on pass 6 having changed
+ *    something so an idle re-sync enqueues nothing.
  *
  * NEVER throws: each pass — and each record inside a pass — is individually guarded and
  * logged, so one bad record or one failing pass cannot starve the others (mirrors
@@ -112,6 +124,30 @@ export async function runIntegrityPasses(db: Database, input: IntegrityPassesInp
     await phoneGeoPass(db, organizationId, manifest, resolveDef)
     await orderDemandPass(organizationId, manifest, resolveDef)
     await interactionPass(db, organizationId, manifest, resolveDef)
+
+    // Pass 6 lives in its own module because it is the only pass with a RETURN
+    // VALUE that another pass reads. Lazy-imported for the same reason
+    // everything else here is (this module's header).
+    const { fulfillmentLogPass } = await import('./passes/fulfillment-log-pass')
+    const changedLogs = await fulfillmentLogPass(db, organizationId, manifest, resolveDef)
+
+    // Pass 7. Its own try/catch, and NOT part of pass 6: enqueuing a posting run
+    // is a ledger decision (`accounting.fulfillmentPosting`), and a failure to
+    // enqueue must never make the derivation that already committed look failed.
+    if (changedLogs.size > 0) {
+      try {
+        await (await import('../../money/fulfillment-posting/auto')).autoPostFulfillmentsAfterSync(
+          db,
+          organizationId
+        )
+      } catch (error) {
+        logger.error('integrity auto-post pass failed', {
+          organizationId,
+          orders: changedLogs.size,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
   } catch (error) {
     logger.error('integrity passes failed', {
       organizationId,

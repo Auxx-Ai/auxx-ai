@@ -14,10 +14,35 @@
 // which a generic chainable spy cannot express.
 
 import type { Database } from '@auxx/database'
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+// The completeness half's two subledger counts. Mocked because they read
+// `FieldValue` through the org cache and this file's stub answers every query
+// with the same rows; what is under test here is that the sweep CARRIES them,
+// not how they are computed. They are only reached when a month is asked for.
+const h = vi.hoisted(() => ({
+  countUnpostedShipments:
+    vi.fn<(db: unknown, params: { organizationId: string; month: string }) => Promise<unknown>>(),
+  countUnissuedChannelCreditMemos:
+    vi.fn<(db: unknown, params: { organizationId: string; month: string }) => Promise<number>>(),
+}))
+
+vi.mock('../../money/fulfillment-posting/reads', () => ({
+  countUnpostedShipments: h.countUnpostedShipments,
+}))
+vi.mock('../../money/credit-memos/reads', () => ({
+  countUnissuedChannelCreditMemos: h.countUnissuedChannelCreditMemos,
+}))
+
+import { err, ok } from 'neverthrow'
 import { BadRequestError } from '../../errors'
 import { listFailedExports, verifyBooksBalance } from '../verify-balance'
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  h.countUnpostedShipments.mockResolvedValue(ok(0))
+  h.countUnissuedChannelCreditMemos.mockResolvedValue(0)
+})
 
 const ORG = 'org_1'
 
@@ -90,6 +115,12 @@ describe('verifyBooksBalance', () => {
       balanced: true,
       postingsChecked: 0,
       discrepancies: [],
+      // ⚠️ `null`, never `0`. No month was asked, so the completeness half was
+      // never computed - and a `0` there would read as "nothing outstanding"
+      // for a question nobody put.
+      month: null,
+      unpostedShipments: null,
+      unissuedChannelCreditMemos: null,
     })
   })
 
@@ -110,6 +141,9 @@ describe('verifyBooksBalance', () => {
       balanced: true,
       postingsChecked: 1,
       discrepancies: [],
+      month: null,
+      unpostedShipments: null,
+      unissuedChannelCreditMemos: null,
     })
   })
 
@@ -399,5 +433,60 @@ describe('listFailedExports', () => {
   it('returns err rather than throwing when the read fails', async () => {
     const result = await listFailedExports(throwingDb(new Error('connection reset')), ORG)
     expect(result.isErr()).toBe(true)
+  })
+})
+
+// ── The completeness half (49 §2.4) ───────────────────────────────────────
+//
+// 🛑 Balance is not completeness, and the whole reason these two counts ride on
+// this report is that a screen showing only the first would report green books
+// that are short a week of revenue.
+
+describe('verifyBooksBalance completeness', () => {
+  it('counts nothing, and asks nothing, without a month', async () => {
+    const report = (await verifyBooksBalance(stubDb([]), ORG))._unsafeUnwrap()
+
+    expect(report.month).toBeNull()
+    expect(report.unpostedShipments).toBeNull()
+    expect(report.unissuedChannelCreditMemos).toBeNull()
+    expect(h.countUnpostedShipments).not.toHaveBeenCalled()
+    expect(h.countUnissuedChannelCreditMemos).not.toHaveBeenCalled()
+  })
+
+  it('carries both counts for the month it was asked about', async () => {
+    h.countUnpostedShipments.mockResolvedValue(ok(7))
+    h.countUnissuedChannelCreditMemos.mockResolvedValue(2)
+
+    const report = (await verifyBooksBalance(stubDb([]), ORG, { month: '2026-08' }))._unsafeUnwrap()
+
+    expect(report.month).toBe('2026-08')
+    expect(report.unpostedShipments).toBe(7)
+    expect(report.unissuedChannelCreditMemos).toBe(2)
+    expect(h.countUnpostedShipments).toHaveBeenCalledWith(expect.anything(), {
+      organizationId: ORG,
+      month: '2026-08',
+    })
+  })
+
+  it('keeps the balance answer when a count fails, and reports the count as null', async () => {
+    // ⚠️ Losing the report that proves the books tie, in order to report the one
+    // that says they might be short, is the wrong trade in both directions.
+    h.countUnpostedShipments.mockResolvedValue(err(new Error('the read is broken')))
+    h.countUnissuedChannelCreditMemos.mockRejectedValue(new Error('so is the other one'))
+
+    const result = await verifyBooksBalance(
+      stubDb([
+        groupedRow({ glPostingId: 'gl_1', debit: 100, credit: 100, recordedTotalMinor: 100 }),
+      ]),
+      ORG,
+      { month: '2026-08' }
+    )
+
+    expect(result.isOk()).toBe(true)
+    const report = result._unsafeUnwrap()
+    expect(report.balanced).toBe(true)
+    expect(report.postingsChecked).toBe(1)
+    expect(report.unpostedShipments).toBeNull()
+    expect(report.unissuedChannelCreditMemos).toBeNull()
   })
 })

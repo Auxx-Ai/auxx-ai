@@ -232,6 +232,27 @@ export function AccountingGeneralSettingsPage() {
                     }
                   />
                 </SettingsFieldRow>
+
+                {/*
+                  🛑 Deliberately NOT frozen, unlike the two rows above it.
+
+                  Those rewrite the arithmetic behind entries that have already
+                  posted, so they lock at the first claim. This one is a MODE: it
+                  decides what happens to the NEXT sync and rewrites nothing that
+                  exists, so an organization that has been posting for a year must
+                  still be able to turn it on - or off, the moment a run surprises
+                  them. It carries no `readOnly` for that reason.
+
+                  Rendered straight from the catalog entry by `SettingsFieldRow`,
+                  so the two modes are declared exactly once, beside the mode
+                  union the runner reads.
+                */}
+                <SettingsFieldRow
+                  settingKey={ACCOUNTING_KEYS.fulfillmentPosting}
+                  title='Post fulfillments'
+                  description='Automatic posts one entry per ship day after every connector sync. Manual waits for the posting dialog, where the preview is the review.'
+                  {...period.controlled(ACCOUNTING_KEYS.fulfillmentPosting)}
+                />
               </FieldPanel>
             </SettingsSection>
 
@@ -370,10 +391,16 @@ export function AccountingGeneralSettingsPage() {
           onSave={() => {
             if (period.dirty) period.save()
             if (absorption.dirty) absorption.save()
+            // 🛑 `routes` counts toward `dirty` and so raises this bar, so it
+            // has to be saved by it too. It was missing here, which made the
+            // payment-route rows the one section on the page whose Save
+            // appeared, did nothing, and left the bar up.
+            if (routes.dirty) routes.save()
           }}
           onDiscard={() => {
             if (period.dirty) period.discard()
             if (absorption.dirty) absorption.discard()
+            if (routes.dirty) routes.discard()
           }}
           saveDisabled={saveDisabled}
         />

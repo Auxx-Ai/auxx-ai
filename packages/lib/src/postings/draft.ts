@@ -51,6 +51,15 @@ export interface PostingDraftV1 {
   docNumber: string
   revision: number
   memo?: string
+  /**
+   * The entry as the builder produced it, whole.
+   *
+   * ⚠️ That includes `BuiltEntry.sources` - the frozen per-source list a
+   * SUMMARISED entry carries, because its lines name a period key rather than
+   * the fifty orders behind them (49 §2.5). Nothing here has to know the shape:
+   * the envelope carries the entry verbatim, so a new optional field on
+   * `BuiltEntry` reaches the audit record with no version bump. `v` stays `1`.
+   */
   entry: BuiltEntry
   /**
    * Post-resolution. A provider never sees a role.

@@ -35,6 +35,8 @@ import { createScopedLogger } from '@auxx/logger'
 import { and, asc, eq, inArray, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError } from '../errors'
+import { countUnissuedChannelCreditMemos } from '../money/credit-memos/reads'
+import { countUnpostedShipments } from '../money/fulfillment-posting/reads'
 import { compareMonths, periodMonth } from './periods'
 import type {
   BooksBalanceDiscrepancy,
@@ -97,10 +99,17 @@ export type { BooksBalanceDiscrepancy, BooksBalanceReport } from './types'
  *
  * Indexes: `GlPostingLine_glPostingId_idx` carries the join and
  * `GlPosting_org_status_idx` carries the filter. Nothing new is needed.
+ *
+ * `options.month` adds the COMPLETENESS half for one month - see
+ * {@link countIncompleteRevenue}. It is optional because balance is answerable
+ * without it, and the two callers genuinely differ: the close console asks about
+ * the month it is showing, while `useAccountingSettingsFreeze` only wants
+ * `postingsChecked` and has no month in hand.
  */
 export async function verifyBooksBalance(
   db: Database,
-  organizationId: string
+  organizationId: string,
+  options?: { month?: string }
 ): Promise<Result<BooksBalanceReport, Error>> {
   try {
     const rows = await db
@@ -159,15 +168,63 @@ export async function verifyBooksBalance(
       })
     }
 
+    const completeness = await countIncompleteRevenue(db, organizationId, options?.month)
+
     return ok({
       balanced: discrepancies.length === 0,
       postingsChecked: rows.length,
       discrepancies,
+      ...completeness,
     })
   } catch (error) {
     if (error instanceof AuxxError) return err(error)
     logger.error('Failed to verify that the books balance', { error, organizationId })
     return err(new AuxxError('Internal error'))
+  }
+}
+
+/**
+ * The completeness half of the report: what one month still owes the ledger
+ * (49 §2.4, §8.4 decision 7).
+ *
+ * 🛑 Balance and completeness are different questions and the sweep above
+ * answers only the first. Every entry can tie while a month is missing a week of
+ * revenue, which is precisely the state a connector-fed organization lands in -
+ * the shipments are logged and nothing has posted them. These two counts are the
+ * same two the close refuses on (`close-month.ts`), read here so the banner
+ * warns before somebody presses Post rather than after.
+ *
+ * ⚠️ Returns `null`s, never zeros, when no month was asked. A `0` in that slot
+ * would read as "nothing outstanding" for a question nobody asked, and the
+ * banner would quietly assert completeness it never checked.
+ *
+ * ⚠️ A failed count is also `null`, and it does NOT fail the sweep. The balance
+ * result is the important half and it has already been computed; losing it
+ * because a subledger read threw would take away the report that proves the
+ * books tie in order to report the one that says they might be short.
+ */
+async function countIncompleteRevenue(
+  db: Database,
+  organizationId: string,
+  month: string | undefined
+): Promise<Pick<BooksBalanceReport, 'month' | 'unpostedShipments' | 'unissuedChannelCreditMemos'>> {
+  if (!month) return { month: null, unpostedShipments: null, unissuedChannelCreditMemos: null }
+
+  try {
+    const shipments = await countUnpostedShipments(db, { organizationId, month })
+    const memos = await countUnissuedChannelCreditMemos(db, { organizationId, month })
+    return {
+      month,
+      unpostedShipments: shipments.isErr() ? null : shipments.value,
+      unissuedChannelCreditMemos: memos,
+    }
+  } catch (error) {
+    logger.error('Failed to count what the month still owes the ledger', {
+      error,
+      organizationId,
+      month,
+    })
+    return { month, unpostedShipments: null, unissuedChannelCreditMemos: null }
   }
 }
 

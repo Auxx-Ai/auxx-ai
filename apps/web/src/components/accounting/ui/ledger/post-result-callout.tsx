@@ -124,6 +124,16 @@ const OUTCOMES: Record<PostResultStatus, OutcomeCopy> = {
     detail: 'Nothing was written. The message names the row; fix the code or restore the account.',
     tone: 'failure',
   },
+  // 🛑 A refusal, and `failure`, but the sentence is about work rather than a
+  // fault: the month is short of revenue somebody still has to post or void.
+  // Nothing was written, and nothing is broken.
+  revenue_incomplete: {
+    icon: TriangleAlert,
+    title: 'Refused: the month still holds revenue that is not in the books',
+    detail:
+      'Nothing was written. Post the shipments and issue or void the channel credit memos dated in this month first - once it is closed, the entries they owe cannot be written into it.',
+    tone: 'failure',
+  },
   nothing_to_close: {
     icon: CircleSlash,
     title: 'Nothing to close',
