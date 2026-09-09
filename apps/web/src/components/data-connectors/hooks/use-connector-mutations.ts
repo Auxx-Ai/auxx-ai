@@ -6,7 +6,7 @@ import { useCallback } from 'react'
 import { api } from '~/trpc/react'
 
 /** Statuses the entity mutations stamp optimistically (subset of `DataConnectorStatus`). */
-type OptimisticStatus = 'paused' | 'live' | 'syncing' | 'ready'
+type OptimisticStatus = 'paused' | 'live' | 'syncing' | 'ready' | 'deleting'
 
 /**
  * Optimistic connector-entity mutations against the `list` + `getById` caches,
@@ -137,16 +137,50 @@ export function useConnectorMutations() {
     [patchStatus, backfillM, utils.dataConnector.getStatus]
   )
 
-  // Optimistically drop from the list; returns true on success so the detail
-  // view only navigates away on a confirmed delete (and restores on failure).
+  // Returns true on success so the detail view only navigates away on a confirmed
+  // delete (and restores on failure).
+  //
+  // 🛑 Only `keep` drops the row optimistically, because only `keep` actually
+  // removes it: it runs `finalizeConnectorTeardown` inline and returns. `archive`
+  // and `delete` hand the work to the teardown chain, and the connector row is
+  // deliberately KEPT as that chain's anchor — `DataConnectorItem` cascades with
+  // it and those rows are the record selection, so it cannot be deleted up front.
+  // Dropping it from the list anyway made the connector vanish and then reappear
+  // on the next refetch, which reads as a failed delete. It stays, showing
+  // `Removing`, until the last slice takes it.
   const remove = useCallback(
     async (id: string, syncedData: 'keep' | 'archive' | 'delete'): Promise<boolean> => {
+      const removesRowNow = syncedData === 'keep'
       const prevList = utils.dataConnector.list.getData()
-      utils.dataConnector.list.setData(undefined, (old) => old?.filter((c) => c.id !== id))
+      const prevById = utils.dataConnector.getById.getData({ id })
+      if (removesRowNow) {
+        utils.dataConnector.list.setData(undefined, (old) => old?.filter((c) => c.id !== id))
+      } else {
+        // 🛑 Patch BOTH caches, exactly as `patchStatus` does. Stamping only the
+        // list left the detail page reading a pre-click `getById`, so opening the
+        // connector you had just asked to delete showed it as though nothing had
+        // happened — no Removing pill, no banner, a live Sync button — until a
+        // manual reload. The value is not a guess: `deleteConnector` writes
+        // `deleting` before it returns.
+        utils.dataConnector.list.setData(undefined, (old) =>
+          old?.map((c) => (c.id === id ? { ...c, status: 'deleting' as const } : c))
+        )
+        utils.dataConnector.getById.setData({ id }, (old) =>
+          old ? { ...old, status: 'deleting' as const } : old
+        )
+      }
       try {
         await deleteM.mutateAsync({ id, syncedData })
+        // `getStatus` is the detail view's other source and it outranks `getById`
+        // (`live?.status ?? connector.status`), so a stale entry there would win
+        // over the patch above.
+        if (!removesRowNow) {
+          void utils.dataConnector.getStatus.invalidate({ id })
+          void utils.dataConnector.list.invalidate()
+        }
         return true
       } catch (err) {
+        utils.dataConnector.getById.setData({ id }, prevById)
         utils.dataConnector.list.setData(undefined, prevList)
         toastError({
           title: 'Could not delete connector',
@@ -155,7 +189,7 @@ export function useConnectorMutations() {
         return false
       }
     },
-    [utils.dataConnector.list, deleteM]
+    [utils.dataConnector.list, utils.dataConnector.getById, utils.dataConnector.getStatus, deleteM]
   )
 
   return {

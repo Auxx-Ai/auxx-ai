@@ -63,6 +63,22 @@ export interface TeardownSliceJobData {
   userId: string
   /** `archive` soft-deletes the minted records; `delete` also tears down the schema. */
   behavior: 'archive' | 'delete'
+  /**
+   * Instance ids a previous slice was REFUSED on, carried forward so the scan
+   * stops re-reading them.
+   *
+   * Without it a permanently-guarded record (a shipped order whose fulfillment
+   * entry is still standing) makes the whole teardown unfinishable: the scan
+   * returns it every slice, the guard refuses it every slice, and the chain
+   * either stops on the spot or spins. Carried in the payload rather than
+   * checkpointed because there is nowhere to checkpoint it — the scan set IS the
+   * cursor (see `mintedInstanceRef`).
+   *
+   * Only DELIBERATE refusals land here (an `AuxxError` with a `statusCode`). An
+   * unexpected failure is left out on purpose so a transient fault is retried by
+   * the next slice instead of being written off.
+   */
+  skipInstanceIds?: string[]
 }
 
 /**

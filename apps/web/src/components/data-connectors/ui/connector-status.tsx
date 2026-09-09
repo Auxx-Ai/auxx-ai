@@ -24,6 +24,7 @@ export type ConnectorStatus =
   | 'error'
   | 'paused'
   | 'deleting'
+  | 'delete_failed'
   | 'disconnected'
 
 /** The DataConnectorRun status (mirrors `DataConnectorRun.status`). */
@@ -124,6 +125,19 @@ export const CONNECTOR_STATUS_META: Record<ConnectorStatus, StatusMeta> = {
     icon: Loader2,
     pill: 'text-amber-600 border-amber-200 bg-amber-50',
     active: true,
+  },
+  delete_failed: {
+    // The teardown removed everything it could and STOPPED on records a guard
+    // refuses (a shipped order whose fulfillment entry is still standing). Not
+    // `active`: nothing is running any more, so polling would never change it.
+    // `error` tone because it needs a decision — reverse the entries and remove
+    // again, or remove keeping/archiving what is left.
+    label: 'Removal failed',
+    tone: 'error',
+    dot: 'bg-destructive',
+    icon: AlertTriangle,
+    pill: 'text-red-600 border-red-200 bg-red-50',
+    active: false,
   },
 }
 

@@ -2570,6 +2570,13 @@
       "when": 1788935656081,
       "tag": "0366_gl_posting_type_credit_memo",
       "breakpoints": true
+    },
+    {
+      "idx": 367,
+      "version": "7",
+      "when": 1788970169345,
+      "tag": "0367_data_connector_delete_failed_status",
+      "breakpoints": true
     }
   ]
 }

@@ -12,6 +12,7 @@ import type { DataConnectorConfig } from './types'
 export type ReadinessProblem =
   | 'disconnected' // the app behind the connector was uninstalled (task 44 D-6)
   | 'removing' // teardown in flight — the row survives only as the chain's anchor
+  | 'remove-failed' // teardown stopped with records it was refused on (delete_failed)
   | 'no-endpoint' // no base URL (generic-rest) / no bound connection (app)
   | 'no-stream' // no enabled stream at all
   | 'stream-no-path' // best stream missing requestConfig.path
@@ -44,6 +45,7 @@ export interface ReadinessStream {
 export const READINESS_REASON = {
   disconnected: 'Reinstall the app to resume syncing',
   removing: 'Removing this connector',
+  'remove-failed': 'Removal stopped — resolve the reason, then remove again',
   'no-endpoint': 'Add a base URL',
   'no-stream': 'Add a stream',
   'stream-no-path': 'Add a request path to the stream',
@@ -125,6 +127,14 @@ export function getConnectorReadiness(
   }
   if (connector.status === 'deleting') {
     return { canSample: false, canSync: false, problems: ['removing'] }
+  }
+  // A stopped teardown already released the provider side and removed the
+  // scheduler, and it has deleted an arbitrary prefix of the connector's
+  // records. Syncing from here would re-mint exactly what was just removed, so
+  // this refuses like `disconnected` rather than falling through to the config
+  // checks (which it would pass — the credential and streams are untouched).
+  if (connector.status === 'delete_failed') {
+    return { canSample: false, canSync: false, problems: ['remove-failed'] }
   }
 
   const isApp = connector.definitionKind === 'app'

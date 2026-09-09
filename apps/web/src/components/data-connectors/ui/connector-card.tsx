@@ -94,7 +94,11 @@ export function ConnectorCard({ connector, streamCount }: ConnectorCardProps) {
   // flight. Both refuse a sync server-side via `getConnectorReadiness`; the menu
   // must not offer it, or the click reads as a broken button. Pause/Resume stay
   // available — those are local state, not a source round-trip.
-  const isSyncBlocked = status === 'disconnected' || status === 'deleting'
+  // `delete_failed` joins these: the teardown already released the provider side
+  // and removed an arbitrary prefix of the records, so a sync from here would
+  // re-mint exactly what was just deleted.
+  const isSyncBlocked =
+    status === 'disconnected' || status === 'deleting' || status === 'delete_failed'
 
   const { syncNow, sampleSync, pause, resume, remove } = useConnectorMutations()
 
