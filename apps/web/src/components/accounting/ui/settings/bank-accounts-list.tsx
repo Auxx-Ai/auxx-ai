@@ -22,9 +22,9 @@
 import type { BankAccountRow } from '@auxx/lib/banking/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
+import { ButtonSwitch } from '@auxx/ui/components/button-switch'
 import { InputSearch } from '@auxx/ui/components/input-search'
 import { EmptySection } from '@auxx/ui/components/section'
-import { Switch } from '@auxx/ui/components/switch'
 import { TREE_SECONDARY_NOTRUNCATE, TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { cn } from '@auxx/ui/lib/utils'
@@ -142,26 +142,32 @@ export function BankAccountsList({
       {accounts.length > 0 && (
         <>
           <div className='flex items-center gap-2'>{buttons}</div>
-          <InputSearch
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder='Search accounts...'
-          />
+          {/* The search and the archived toggle share a row, which is safe where
+              the two BUTTONS above were not: `ButtonSwitch` at `xs` is narrow
+              enough that `InputSearch`'s `flex-1` still has room, and the row
+              never wraps - so the wrapper cannot stretch over a second line and
+              swallow the toggle's clicks. */}
+          <div className='flex items-center gap-2'>
+            <InputSearch
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder='Search accounts...'
+            />
+            {/* Offered only when there is something behind it. An always-present
+                toggle over an empty set advertises a state most orgs never
+                reach, and archiving is meant to be the quiet default rather
+                than a mode. */}
+            {archivedCount > 0 && (
+              <ButtonSwitch
+                label={`Show archived (${archivedCount})`}
+                size='xs'
+                checked={showArchived}
+                onCheckedChange={onShowArchivedChange}
+                className='shrink-0'
+              />
+            )}
+          </div>
         </>
-      )}
-
-      {/* Offered only when there is something behind it. An always-present
-          toggle over an empty set advertises a state most orgs never reach, and
-          archiving is meant to be the quiet default rather than a mode. */}
-      {archivedCount > 0 && (
-        <label className='flex cursor-pointer items-center gap-2 px-1 text-muted-foreground text-xs'>
-          <Switch
-            checked={showArchived}
-            onCheckedChange={onShowArchivedChange}
-            aria-label='Show archived accounts'
-          />
-          Show archived ({archivedCount})
-        </label>
       )}
 
       {isLoading ? (

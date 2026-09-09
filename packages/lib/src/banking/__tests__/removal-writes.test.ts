@@ -413,6 +413,22 @@ describe('archiveBankAccount', () => {
     expect(h.crudDelete).not.toHaveBeenCalled()
   })
 
+  it('refuses an account that is ALREADY archived', async () => {
+    h.account = account({ hasEverPosted: true, archivedAt: new Date('2026-09-08T00:00:00.000Z') })
+
+    const result = await archiveBankAccount(fakeDb(), {
+      organizationId: ORG,
+      actorUserId: USER,
+      bankAccountId: ACCOUNT,
+    })
+
+    // A sentence, not a 404 on a record the caller is looking at: the settings
+    // list can select an archived account, so this is reachable by clicking.
+    expect(result.isErr()).toBe(true)
+    if (result.isErr()) expect(result.error.message).toMatch(/already archived/i)
+    expect(h.crudArchive).not.toHaveBeenCalled()
+  })
+
   it('never clears coverage_from', async () => {
     // A balance sheet spanning the archived account's period still has to know
     // what was covered (§5.3).

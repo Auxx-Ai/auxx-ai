@@ -253,7 +253,15 @@ export async function readCoverage(
   const { organizationId, bankAccountId } = params
   return guard(
     async () => {
-      const account = await getBankAccount(db, { organizationId, bankAccountId })
+      // 🛑 `includeArchived`, because the settings list can SELECT an archived
+      // account (that is what the "Show archived" toggle is for) and the editor
+      // asks for its coverage the moment it is selected. Without this the click
+      // answered 404 on a row the same page had just rendered.
+      const account = await getBankAccount(db, {
+        organizationId,
+        bankAccountId,
+        includeArchived: true,
+      })
       if (account.isErr()) throw account.error
       if (!account.value) {
         throw new NotFoundError(`Bank account ${bankAccountId} was not found`)
