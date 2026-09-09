@@ -95,6 +95,7 @@ import { migration135BankDepositBankAccount } from './migrations/135-bank-deposi
 import { migration136RefundsAndTaxLines } from './migrations/136-refunds-and-tax-lines'
 import { migration137FulfillmentFacts } from './migrations/137-fulfillment-facts'
 import { migration138AccountantPermissions } from './migrations/138-accountant-permissions'
+import { migration139TaxLineOrderWritable } from './migrations/139-tax-line-order-writable'
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
@@ -286,6 +287,11 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   // (plans/accounting/tasks/12-accountant-permissions.md §4.2, §6). Leaves a
   // pre-existing accountant row's grants untouched.
   migration138AccountantPermissions,
+  // Corrects two flags migration 136 shipped on `tax_line_order`: required at
+  // create and not updatable afterwards, which between them rejected every
+  // connector-written tax line (plans/money/tasks/51-first-sync-defects.md §1).
+  // MUST sort after 136, which creates the field it repairs.
+  migration139TaxLineOrderWritable,
 ]
 
 /**
