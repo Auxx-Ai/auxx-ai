@@ -61,9 +61,22 @@ export const BANK_DEPOSIT_STATUS_OPTIONS = [
  * does not exist yet (slot 2I), and a RELATIONSHIP cannot point at a def that
  * is not in the org. A later migration converts BOTH sides together.
  *
- * `bankAccount` is a GL account **CODE** as TEXT, the
- * `vendor_bill_line_gl_account` precedent, and becomes a RELATIONSHIP to
- * `bank_account` when 2I lands.
+ * ⚠️ **`bankAccount` and `bankAccountCode` are two halves of one fact, and the
+ * split is deliberate** (migration 135, `plans/bank-connection/09-data-connector-debt.md`
+ * D5). `bankAccount` is a RELATIONSHIP and is the truth: an operator has always
+ * chosen a bank ACCOUNT, never a code from the chart, and the picker reads the
+ * code off it. `bankAccountCode` is the code that entry actually POSTED to,
+ * frozen at build time the way `GlPostingLine` freezes it.
+ *
+ * 🛑 **The code is not derivable from the relationship after the fact.**
+ * Re-mapping a bank account to a different chart code would otherwise restate
+ * every deposit that already posted to the old one. It is the same rule the
+ * movement ledger keeps about cost.
+ *
+ * ⚠️ Nor is the relationship derivable from the code, which is why migration
+ * 135's backfill leaves rows null rather than guessing: several bank accounts
+ * legitimately map to one code, and in the first org that had deposits at all,
+ * three did.
  *
  * Money is integer minor units ({@link BANK_DEPOSIT_FIELDS.totalMinor}).
  */
@@ -140,10 +153,16 @@ export const BANK_DEPOSIT_FIELDS: Record<string, ResourceField> = {
       'this, not from when the payments were received',
   },
 
-  bankAccount: {
+  bankAccountCode: {
+    // 🛑 `id` stays `bankAccount` while the key became `bankAccountCode`, and the
+    // relationship below takes `bankAccountRecord` rather than the key it wanted.
+    // The id is what `ResourceFieldId` persists into saved views and filters, so
+    // renaming it would orphan them; the key is only how this file reads.
+    // `linkNewRelationships` resolves an inverse by ID, which is why the pair is
+    // declared as `bank_deposit:bankAccountRecord` on the account side.
     id: toFieldId('bankAccount'),
-    key: 'bankAccount',
-    label: 'Bank Account',
+    key: 'bankAccountCode',
+    label: 'Bank Account Code',
     type: BaseType.STRING,
     fieldType: FieldType.TEXT,
     isSystem: true,
@@ -159,9 +178,45 @@ export const BANK_DEPOSIT_FIELDS: Record<string, ResourceField> = {
     },
     placeholder: '1000',
     description:
-      'The GL account CODE the money lands in, from the org own chart. TEXT rather than a ' +
-      'RELATIONSHIP because the bank_account def does not exist yet (HANDOFF slot 2I); a ' +
-      'later migration converts it, alongside the vendor payment side twin',
+      'The GL account CODE this deposit was POSTED to, copied off ' +
+      'bankAccount.glAccountCode when the entry was built and frozen there. Kept beside the ' +
+      'relationship rather than derived from it, because re-mapping a bank account to a ' +
+      'different code must not restate a deposit that already posted to the old one',
+  },
+
+  bankAccount: {
+    id: toFieldId('bankAccountRecord'),
+    key: 'bankAccount',
+    label: 'Bank Account',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'bank_deposit_bank_account_record',
+    systemSortOrder: 'a3a',
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'bank_account:deposits' as ResourceFieldId,
+      relationshipType: 'belongs_to',
+      isInverse: false,
+    },
+    relationshipConfig: {
+      relatedEntityType: 'bank_account',
+      relationshipType: 'belongs_to',
+      inverseName: 'Deposits',
+      inverseSystemAttribute: 'bank_account_deposits',
+    },
+    description:
+      'The bank account the money was banked INTO - the truth, and what the removal gate ' +
+      'reads. The operator has always picked an account rather than a code (the picker reads ' +
+      'the code off it); this records which one, which a code cannot because several accounts ' +
+      'legitimately map to the same one',
   },
 
   reference: {

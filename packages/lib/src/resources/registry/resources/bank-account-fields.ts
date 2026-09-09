@@ -401,6 +401,36 @@ export const BANK_ACCOUNT_FIELDS: Record<string, ResourceField> = {
       'linkNewRelationships skips the pair with a debug line',
   },
 
+  deposits: {
+    id: toFieldId('deposits'),
+    key: 'deposits',
+    label: 'Deposits',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'bank_account_deposits',
+    systemSortOrder: 'aCV',
+    showInPanel: false,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: false,
+      updatable: false,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'bank_deposit:bankAccountRecord' as ResourceFieldId,
+      relationshipType: 'has_many',
+      isInverse: true,
+    },
+    description:
+      'The bank deposits banked into this account. The INVERSE half - the owning side is ' +
+      'bank_deposit.bankAccount (field id bankAccountRecord - the id, not the key, is what ' +
+      'linkNewRelationships looks the inverse up by), and both halves must exist in one ' +
+      'migration or ' +
+      'linkNewRelationships skips the pair with a debug line',
+  },
+
   hasPosted: {
     id: toFieldId('hasPosted'),
     key: 'hasPosted',
@@ -422,7 +452,8 @@ export const BANK_ACCOUNT_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     description:
-      'A WRITE-ONCE high-water mark: true once any line on this account has produced a journal ' +
+      'A WRITE-ONCE high-water mark: true once any line on this account, or any bank deposit ' +
+      'banked into it, has produced a journal ' +
       'entry. The only term in the removal gate - false deletes, true archives ' +
       '(plans/bank-connection/08-removing-a-bank-account.md §5.1). Nothing clears it: undoing a ' +
       'review, reversing an entry and reversing an import all leave the GlPosting and its ' +

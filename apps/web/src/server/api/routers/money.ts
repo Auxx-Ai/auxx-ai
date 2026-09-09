@@ -897,7 +897,11 @@ export const moneyRouter = createTRPCRouter({
         z.object({
           paymentIds: z.array(z.string().min(1)).min(1).max(500),
           depositDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-          bankAccountCode: z.string().min(1).max(32),
+          // 🛑 The ACCOUNT, not a chart code. The code is read off the account's
+          // own mapping, because the feed posts every line on it against that
+          // mapping - a free code puts the deposit and the statement line it
+          // exists to match into two different accounts.
+          bankAccountId: z.string().min(1).max(64),
           reference: z.string().max(120).optional(),
         })
       )
@@ -946,7 +950,7 @@ export const moneyRouter = createTRPCRouter({
             .string()
             .regex(/^\d{4}-\d{2}-\d{2}$/)
             .optional(),
-          bankAccountCode: z.string().min(1).max(32).optional(),
+          bankAccountId: z.string().min(1).max(64).optional(),
           reference: z.string().max(120).optional(),
         })
       )

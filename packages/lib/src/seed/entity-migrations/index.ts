@@ -91,6 +91,7 @@ import { migration128InvoiceWrittenOff } from './migrations/128-invoice-written-
 import { migration132CardClearingRename } from './migrations/132-card-clearing-rename'
 import { migration133Payout } from './migrations/133-payout'
 import { migration134BankAccountHasPosted } from './migrations/134-bank-account-has-posted'
+import { migration135BankDepositBankAccount } from './migrations/135-bank-deposit-bank-account'
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
@@ -267,6 +268,7 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   // removal gate reads: false deletes, true archives, and nothing clears it.
   // MUST sort after 125, which owns the `bank_account` def it widens.
   migration134BankAccountHasPosted,
+  migration135BankDepositBankAccount,
 ]
 
 /**

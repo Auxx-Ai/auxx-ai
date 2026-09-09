@@ -715,7 +715,8 @@ export const SYSTEM_ATTRIBUTES = [
   // together once the `bank_transaction` def exists.
   'bank_deposit_number', // RecordSequence `DEP-0001`; the posting's docNumber keys on it
   'bank_deposit_date', // THE accounting date
-  'bank_deposit_bank_account', // GL account CODE; becomes a relationship with `bank_account`
+  'bank_deposit_bank_account', // the GL account CODE the entry POSTED to, frozen at build time
+  'bank_deposit_bank_account_record', // the bank account it was banked INTO; belongs_to bank_account
   'bank_deposit_reference',
   'bank_deposit_status', // pending | cleared
   'bank_deposit_total', // integer minor units; must equal the sum of the payments
@@ -779,6 +780,7 @@ export const SYSTEM_ATTRIBUTES = [
   // (plans/bank-connection/08-removing-a-bank-account.md §5.1)
   'bank_account_has_posted',
   'bank_account_transactions', // inverse of bank_transaction_bank_account
+  'bank_account_deposits', // inverse of bank_deposit_bank_account_record
 
   // Connector-owned (raw). The feed may correct any of these.
   'bank_transaction_external_id', // the dedupe key, across BOTH the feed and file import

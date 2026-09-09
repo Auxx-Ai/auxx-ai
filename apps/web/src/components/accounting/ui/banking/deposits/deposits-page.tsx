@@ -290,7 +290,20 @@ export function DepositsPage() {
     )
   }, [])
 
-  const canRecord = selectedIds.length > 0 && !!bankAccountCode && !!depositDate
+  // `bankAccountId` as well as its code: the mutation sends the id, and the
+  // code is only what proves the account is mapped well enough to post.
+  const canRecord = selectedIds.length > 0 && !!bankAccountId && !!bankAccountCode && !!depositDate
+
+  /** The selection, once {@link canRecord} has proved every part of it is there. */
+  const recordDeposit = () => {
+    if (!bankAccountId) return
+    createDeposit.mutate({
+      paymentIds: selectedIds,
+      depositDate,
+      bankAccountId,
+      reference: reference.trim() || undefined,
+    })
+  }
 
   const { ref: frameRef, height: frameHeight } = useFillViewportHeight()
 
@@ -345,14 +358,7 @@ export function DepositsPage() {
                   recordedId={recordedId}
                   canRecord={canRecord}
                   isRecording={createDeposit.isPending}
-                  onRecord={() =>
-                    createDeposit.mutate({
-                      paymentIds: selectedIds,
-                      depositDate,
-                      bankAccountCode: bankAccountCode ?? '',
-                      reference: reference.trim() || undefined,
-                    })
-                  }
+                  onRecord={recordDeposit}
                 />
               }>
               {/* The column is a full-height flex stack so the selection strip
@@ -474,14 +480,7 @@ export function DepositsPage() {
                       size='sm'
                       className='ml-auto'
                       disabled={!canRecord || createDeposit.isPending}
-                      onClick={() =>
-                        createDeposit.mutate({
-                          paymentIds: selectedIds,
-                          depositDate,
-                          bankAccountCode: bankAccountCode ?? '',
-                          reference: reference.trim() || undefined,
-                        })
-                      }>
+                      onClick={recordDeposit}>
                       Group into deposit
                     </Button>
                   </div>

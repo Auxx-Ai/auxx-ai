@@ -22,7 +22,7 @@ import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
 import { getCachedEntityDefId, getOrgCache } from '../../cache'
 import { UnprocessableEntityError } from '../../errors'
-import { toRecordId } from '../../resources/resource-id'
+import { type RecordId, toRecordId } from '../../resources/resource-id'
 import { methodsRoutedToUndepositedFunds, resolveBankDepositStatus } from './client'
 import { guard } from './guard'
 import type {
@@ -38,6 +38,7 @@ const DEPOSIT_ATTRIBUTES = [
   'bank_deposit_number',
   'bank_deposit_date',
   'bank_deposit_bank_account',
+  'bank_deposit_bank_account_record',
   'bank_deposit_reference',
   'bank_deposit_status',
   'bank_deposit_total',
@@ -45,6 +46,23 @@ const DEPOSIT_ATTRIBUTES = [
   'bank_deposit_cleared_at',
   'bank_deposit_reconciled_at',
   'bank_deposit_gl_posting_id',
+] as const
+
+/**
+ * The `bank_account` attributes a deposit needs to name the account it is banked
+ * into.
+ *
+ * 🛑 Read through the entity layer rather than by importing `banking/`.
+ * `banking/review/writes.ts` already imports `clearBankDeposit` from this
+ * module, so a `money -> banking` import would close a cycle - the same
+ * backwards edge `plans/bank-connection/09-data-connector-debt.md` D1 was about,
+ * one feature over. A `bank_account` is an `EntityInstance` like any other and
+ * this module already resolves `payment` and `bank_deposit` exactly this way.
+ */
+const BANK_ACCOUNT_ATTRIBUTES = [
+  'bank_account_name',
+  'bank_account_gl_account',
+  'bank_account_has_posted',
 ] as const
 
 /** Every `payment` attribute an {@link UndepositedPaymentRow} is assembled from. */
@@ -64,6 +82,10 @@ type PaymentAttribute = (typeof PAYMENT_ATTRIBUTES)[number]
 type DepositFields = Record<DepositAttribute, { id: string } | null>
 type PaymentFields = Record<PaymentAttribute, { id: string } | null>
 
+type BankAccountAttribute = (typeof BANK_ACCOUNT_ATTRIBUTES)[number]
+
+type BankAccountFields = Record<BankAccountAttribute, { id: string } | null>
+
 const DEFAULT_LIMIT = 100
 
 /** The resolved def and field ids every deposit read needs. */
@@ -76,6 +98,22 @@ export interface BankDepositFieldContext {
 export interface PaymentFieldContext {
   paymentDefId: string
   fields: PaymentFields
+}
+
+/** The resolved `bank_account` def and the fields a deposit reads off it. */
+export interface DepositBankAccountContext {
+  bankAccountDefId: string
+  fields: BankAccountFields
+}
+
+/** The account a deposit is banked into, as this module needs it. */
+export interface DepositBankAccount {
+  id: string
+  recordId: RecordId
+  name: string | null
+  /** Its mapping in the chart, trimmed. Null when the account is unmapped. */
+  glAccountCode: string | null
+  archivedAt: Date | null
 }
 
 /**
@@ -115,6 +153,32 @@ export async function requireBankDepositFieldContext(
   return ctx
 }
 
+/**
+ * {@link requireBankDepositFieldContext} plus the link to the bank account.
+ *
+ * 🛑 Separate from the plain require, and only the CREATE path asks for it. A
+ * deposit written without the link records the GL code alone, and a code cannot
+ * be resolved back to an account (several map to one), so the row would sit
+ * permanently outside the removal gate - the hole entity migration 135 closes.
+ *
+ * ⚠️ Clearing and correcting must NOT go through here. Neither writes the link,
+ * and refusing them on an org that has 125 but not yet 135 would break matching
+ * a bank line to a deposit that already exists - a path this field has nothing
+ * to do with, between a deploy and the migration run.
+ */
+export async function requireBankDepositWriteContext(
+  organizationId: string
+): Promise<BankDepositFieldContext> {
+  const ctx = await requireBankDepositFieldContext(organizationId)
+  if (!ctx.fields.bank_deposit_bank_account_record) {
+    throw new UnprocessableEntityError(
+      'Recording a bank deposit is not available until the deposit bank account link is ' +
+        'provisioned (entity migration 135)'
+    )
+  }
+  return ctx
+}
+
 /** Resolve the `payment` def and the fields a deposit reads and stamps. */
 export async function loadPaymentFieldContext(
   organizationId: string
@@ -126,6 +190,100 @@ export async function loadPaymentFieldContext(
     .bySystemAttributes([...PAYMENT_ATTRIBUTES])) as PaymentFields
   if (!fields.payment_amount || !fields.payment_method) return null
   return { paymentDefId, fields }
+}
+
+/**
+ * Resolve the `bank_account` def and the fields a deposit reads off it.
+ *
+ * `null` when the org has no `bank_account` def, which is every org short of
+ * entity migration 125.
+ */
+export async function loadDepositBankAccountContext(
+  organizationId: string
+): Promise<DepositBankAccountContext | null> {
+  const bankAccountDefId = await getCachedEntityDefId(organizationId, 'bank_account')
+  if (!bankAccountDefId) return null
+  const fields = (await getOrgCache()
+    .from(organizationId, 'customFields')
+    .bySystemAttributes([...BANK_ACCOUNT_ATTRIBUTES])) as BankAccountFields
+  return { bankAccountDefId, fields }
+}
+
+/**
+ * {@link loadDepositBankAccountContext}, as the refusal a write path needs.
+ *
+ * 🛑 The chart mapping is required, not optional. Without
+ * `bank_account_gl_account` there is no account to debit and a deposit could
+ * only be posted by guessing at a code the operator never named.
+ */
+export async function requireDepositBankAccountContext(
+  organizationId: string
+): Promise<DepositBankAccountContext> {
+  const ctx = await loadDepositBankAccountContext(organizationId)
+  if (!ctx?.fields.bank_account_gl_account) {
+    throw new UnprocessableEntityError(
+      'Banking a payment is not available until the bank account entity and its chart mapping ' +
+        'are provisioned (entity migration 125)'
+    )
+  }
+  return ctx
+}
+
+/**
+ * One bank account, by id, org-scoped.
+ *
+ * Archived accounts are INCLUDED so the caller can refuse by name - "that
+ * account is archived" is a better answer than "that account does not exist"
+ * for an account the operator can see in a picker's history.
+ */
+export async function readDepositBankAccount(
+  db: Database,
+  organizationId: string,
+  ctx: DepositBankAccountContext,
+  bankAccountId: string
+): Promise<DepositBankAccount | null> {
+  const [instance] = await db
+    .select({ id: schema.EntityInstance.id, archivedAt: schema.EntityInstance.archivedAt })
+    .from(schema.EntityInstance)
+    .where(
+      and(
+        eq(schema.EntityInstance.organizationId, organizationId),
+        eq(schema.EntityInstance.entityDefinitionId, ctx.bankAccountDefId),
+        eq(schema.EntityInstance.id, bankAccountId)
+      )
+    )
+    .limit(1)
+  if (!instance) return null
+
+  const fieldIds = [
+    ctx.fields.bank_account_name?.id,
+    ctx.fields.bank_account_gl_account?.id,
+  ].filter((id): id is string => !!id)
+  const values = fieldIds.length
+    ? await db
+        .select({ fieldId: schema.FieldValue.fieldId, valueText: schema.FieldValue.valueText })
+        .from(schema.FieldValue)
+        .where(
+          and(
+            eq(schema.FieldValue.organizationId, organizationId),
+            eq(schema.FieldValue.entityId, instance.id),
+            inArray(schema.FieldValue.fieldId, fieldIds)
+          )
+        )
+    : []
+  const byField = new Map(values.map((row) => [row.fieldId, row.valueText]))
+  const read = (attr: BankAccountAttribute) => {
+    const id = ctx.fields[attr]?.id
+    return id ? (byField.get(id) ?? null) : null
+  }
+
+  return {
+    id: instance.id,
+    recordId: toRecordId(ctx.bankAccountDefId, instance.id),
+    name: read('bank_account_name')?.trim() || null,
+    glAccountCode: read('bank_account_gl_account')?.trim() || null,
+    archivedAt: instance.archivedAt,
+  }
 }
 
 /** {@link loadPaymentFieldContext}, as the refusal a write path needs. */
@@ -623,6 +781,7 @@ async function hydrateDeposits(
       valueNumber: schema.FieldValue.valueNumber,
       valueDate: schema.FieldValue.valueDate,
       optionId: schema.FieldValue.optionId,
+      relatedEntityId: schema.FieldValue.relatedEntityId,
     })
     .from(schema.FieldValue)
     .where(
@@ -657,6 +816,7 @@ async function hydrateDeposits(
       recordId: toRecordId(ctx.depositDefId, row.id),
       number: read('bank_deposit_number')?.valueText ?? null,
       depositDate: toIsoDay(read('bank_deposit_date')?.valueDate),
+      bankAccountId: read('bank_deposit_bank_account_record')?.relatedEntityId ?? null,
       bankAccountCode: read('bank_deposit_bank_account')?.valueText ?? null,
       reference: read('bank_deposit_reference')?.valueText ?? null,
       status: resolveBankDepositStatus(read('bank_deposit_status')?.optionId),
