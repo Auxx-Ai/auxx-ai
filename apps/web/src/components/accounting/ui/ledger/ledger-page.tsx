@@ -16,6 +16,7 @@ import {
   ClipboardCheck,
   Clock3,
   Layers,
+  Loader2,
   Lock,
   LockOpen,
   Plus,
@@ -147,8 +148,19 @@ export function LedgerPage({ periodKey }: LedgerPageProps) {
   // The month on screen rides along so the sweep can answer the COMPLETENESS
   // question too - what this month still owes the ledger. Without it the counts
   // come back `null` and the Books section renders the balance half alone.
+  // 🛑 `||`, not `??`. `activePeriodKey` is `''` - not undefined - while
+  // `ledger.periods` is in flight, and PERMANENTLY for a finalized org whose
+  // cutoff is still ahead of the wall clock (the case `optionalMonthKey` exists
+  // for). `??` lets the empty string through and the month regex refuses it, so
+  // the sweep 400s and the Books section skeletons forever.
+  //
+  // ⚠️ Deliberately NOT gated on a month. Balance is a WHOLE-LEDGER fact and the
+  // month only adds the completeness half; `countIncompleteRevenue` answers with
+  // `null`s when none was asked and `CompletenessLines` renders nothing for
+  // them. An `enabled: !!activePeriodKey` here would withhold an answer that is
+  // available, and leave the same permanent skeleton behind.
   const balanceQuery = api.ledger.verifyBalance.useQuery({
-    periodKey: activePeriodKey ?? undefined,
+    periodKey: activePeriodKey || undefined,
   })
   const roleMapQuery = api.ledger.roleMap.useQuery()
 
@@ -434,13 +446,22 @@ export function LedgerPage({ periodKey }: LedgerPageProps) {
                 actions={
                   <div className='flex items-center gap-1'>
                     {!!activePeriodKey && !isPostedPeriod && (
-                      <Button
-                        variant='ghost'
-                        size='sm'
-                        loading={actions.isPreviewing}
-                        loadingText='Building...'
-                        onClick={actions.runPreview}>
-                        Rebuild preview
+                      /* 🛑 The spinner is rendered here rather than through
+                         `loading`, because `Button` DISABLES a loading button -
+                         and a preview that never settles would then leave the
+                         only affordance that can refire it disabled, with a
+                         reload as the sole way out. Refiring is free:
+                         `previewMonthEnd` persists nothing, and the second
+                         answer replaces the first. */
+                      <Button variant='ghost' size='sm' onClick={actions.runPreview}>
+                        {actions.isPreviewing ? (
+                          <>
+                            <Loader2 className='animate-spin' />
+                            Building...
+                          </>
+                        ) : (
+                          'Rebuild preview'
+                        )}
                       </Button>
                     )}
                     {/* 🛑 NOT gated on a period. This is the only door to a
@@ -608,6 +629,15 @@ export function LedgerPage({ periodKey }: LedgerPageProps) {
                 collapsible={false}>
                 {balanceQuery.data ? (
                   <BooksBalanceLine report={balanceQuery.data} />
+                ) : balanceQuery.isError ? (
+                  /* 🛑 A failed sweep and a running one are not the same state.
+                     Rendering both as a skeleton hides the one that never
+                     resolves, which is how a refused sweep read as "still
+                     loading" indefinitely. */
+                  <p className='text-sm text-destructive'>
+                    The balance sweep could not run, so nothing here has been checked.{' '}
+                    {balanceQuery.error.message}
+                  </p>
                 ) : (
                   <Skeleton className='h-6 w-64' />
                 )}
