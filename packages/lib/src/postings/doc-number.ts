@@ -82,6 +82,10 @@ export const DOC_NUMBER_PREFIX: Record<PostingType, string> = {
   // applications mint one key, and the loser converges to `already_posted` - a
   // SUCCESS - with one customer's money folded into another's entry.
   deposit_application: 'DPA',
+  // A credit memo keys on the MEMO NUMBER, compacted, exactly as an invoice
+  // issuance keys on the invoice number: one entry per memo falls out of the
+  // claim index, and a void reverses it at `-R1`.
+  credit_memo: 'CRM',
 }
 
 /** What identifies one entry of one type. See {@link buildDocNumber}. */

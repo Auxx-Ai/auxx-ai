@@ -39,6 +39,9 @@ export type SignalRecordKind =
   // deposit slip never reaches it - the send path refuses first - but the union
   // has to admit it or the shared helper stops compiling.
   | 'bank_deposit'
+  // A credit memo is sent to the customer the way an invoice is, so
+  // `recordDocumentSendSignal` links it (plans/accounting/tasks/10-credit-memos.md §6.3).
+  | 'credit_memo'
 
 /**
  * Compose an `EntitySignalLink.recordKey` — the one place every writer/reader builds this

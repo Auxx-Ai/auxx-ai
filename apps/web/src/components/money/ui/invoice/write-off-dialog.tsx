@@ -2,7 +2,7 @@
 'use client'
 
 // Write-off dialog (plans/accounting/HANDOFF.md slot 2K; ui-plan.md §3
-// "Write-offs") — the `record-payment-dialog.tsx` FieldPanel recipe, widened
+// "Write-offs"): the `record-payment-dialog.tsx` FieldPanel recipe, widened
 // with a live `EntryJournal`/`EntryBlockers` preview the way the JE drawer
 // shows one before Post. Amount defaults to the invoice's whole balance; the
 // expense account defaults to the `bad_debt_expense` role's mapped account but
@@ -20,7 +20,6 @@ import {
   DialogTitle,
 } from '@auxx/ui/components/dialog'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
-import { Textarea } from '@auxx/ui/components/textarea'
 import { toastError } from '@auxx/ui/components/toast'
 import { useEffect, useMemo, useState } from 'react'
 import { GlAccountPicker } from '~/components/accounting/ui/gl-account-picker'
@@ -55,7 +54,7 @@ interface WriteOffDialogProps {
  *
  * The preview (`money.previewWriteOff`) is a plain `useQuery`, not debounced:
  * a write-off is typed once and reviewed, not dragged like a slider, and the
- * lib read is a handful of indexed lookups — the same cost profile
+ * lib read is a handful of indexed lookups, the same cost profile
  * `ledger.preview` already accepts un-debounced elsewhere in this module.
  */
 export function WriteOffDialog({
@@ -94,7 +93,7 @@ export function WriteOffDialog({
     [roleMapQuery.data]
   )
   // The picker shows the explicit override once the bookkeeper makes one;
-  // otherwise it shows the role's own default, purely for display — the
+  // otherwise it shows the role's own default, purely for display; the
   // request itself omits `expenseAccountCode` until there IS an override, so
   // the entry keeps naming the ROLE (decision G8) rather than freezing today's
   // code onto every ordinary write-off.
@@ -140,7 +139,7 @@ export function WriteOffDialog({
       })
       if (!POSTED_STATUSES.has(result.status)) {
         // A refusal `postEntry` returns rather than throws (a period locked
-        // between preview and submit, say) — the invoice was left untouched.
+        // between preview and submit, say): the invoice was left untouched.
         toastError({
           title: 'Write-off refused',
           description: result.error ?? 'The entry was not posted.',
@@ -161,7 +160,7 @@ export function WriteOffDialog({
           <DialogTitle>Write off invoice</DialogTitle>
           <DialogDescription>
             Move some or all of this invoice&apos;s balance to bad debt expense. This posts a
-            journal entry and cannot be undone by editing — only by a reversal.
+            journal entry and cannot be undone by editing, only by a reversal.
           </DialogDescription>
         </DialogHeader>
 
@@ -182,12 +181,13 @@ export function WriteOffDialog({
           </FieldPanelRow>
 
           <FieldPanelRow title='Reason' type={BaseType.STRING} showIcon isRequired>
-            <Textarea
+            <FieldInputAdapter
+              fieldType={FieldType.TEXT}
               value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              placeholder='Customer bankrupt, uncollectible after 180 days, …'
+              onChange={(val) => setReason((val as string) ?? '')}
+              fieldOptions={{ multiline: true }}
+              placeholder='Customer bankrupt, uncollectible after 180 days, ...'
               disabled={writeOff.isPending}
-              rows={2}
             />
           </FieldPanelRow>
 

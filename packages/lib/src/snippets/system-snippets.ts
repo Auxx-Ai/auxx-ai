@@ -169,6 +169,44 @@ Please confirm receipt of this order and your expected ship date.`
   }
 }
 
+function buildCreditMemoEmailTemplate(
+  entityDefs: Record<string, string>
+): SystemSnippetTemplate | null {
+  const creditMemoDefId = entityDefs.credit_memo
+  const contactDefId = entityDefs.contact
+  if (!creditMemoDefId || !contactDefId) return null
+
+  // Same vocabulary as the invoice template: the contact's first name plus the
+  // memo's own `number`, `total` and `issuedAt`, every one a real key on
+  // `credit-memo-fields.ts` (plans/accounting/tasks/10-credit-memos.md).
+  const firstName = fieldToken(contactDefId, 'firstName')
+  const number = fieldToken(creditMemoDefId, 'number')
+  const total = fieldToken(creditMemoDefId, 'total')
+  const issuedAt = fieldToken(creditMemoDefId, 'issuedAt')
+
+  const firstNameSpan = placeholderSpan(firstName, { v: 1, t: 'TEXT', d: 'there' })
+  const numberSpan = placeholderSpan(number)
+  const totalSpan = placeholderSpan(total)
+  const issuedAtSpan = placeholderSpan(issuedAt, { v: 1, t: 'TEXT', d: 'today' })
+
+  // No hard-coded sign-off: the composer appends the sender's email signature
+  // on send (mirrors the templates above).
+  const contentHtml = `<p>Hi ${firstNameSpan},</p><p>We have issued credit memo ${numberSpan} for ${totalSpan}, dated ${issuedAtSpan}. It has been applied to your account and the PDF is attached for your records.</p><p>Let us know if you have any questions.</p>`
+
+  const content = `Hi {{${firstName}}},
+
+We have issued credit memo {{${number}}} for {{${total}}}, dated {{${issuedAt}}}. It has been applied to your account and the PDF is attached for your records.
+
+Let us know if you have any questions.`
+
+  return {
+    systemType: 'credit_memo_email',
+    title: 'Credit memo issued',
+    content,
+    contentHtml,
+  }
+}
+
 /**
  * Build the system-snippet template rows for an org, given its `entityDefs`
  * cache map (entityType → per-org `EntityDefinition.id`). Placeholder tokens
@@ -200,12 +238,15 @@ export function buildSystemSnippetTemplates(
   const purchaseOrderEmail = buildPurchaseOrderEmailTemplate(entityDefs)
   if (purchaseOrderEmail) templates.push(purchaseOrderEmail)
 
+  const creditMemoEmail = buildCreditMemoEmailTemplate(entityDefs)
+  if (creditMemoEmail) templates.push(creditMemoEmail)
+
   return templates
 }
 
 /**
  * Get-or-create the org's system snippet for `systemType` (`quote_email` /
- * `invoice_email` / `purchase_order_email`). Lazily materializes on first call — covers both freshly
+ * `invoice_email` / `purchase_order_email` / `credit_memo_email`). Lazily materializes on first call — covers both freshly
  * seeded orgs (the seeder pre-creates the row) and existing orgs (no data
  * migration needed, per the README decision). Idempotent under concurrent
  * calls via `onConflictDoNothing` against the partial unique

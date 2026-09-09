@@ -26,6 +26,7 @@ export const SEQUENCE_SCOPES = [
   'bank_deposit',
   'journal_entry',
   'payout',
+  'credit_memo',
 ] as const
 
 /** Which record kind a `RecordSequence` row counts. */
@@ -58,6 +59,10 @@ const SCOPE_DEFAULTS: Record<SequenceScope, { prefix: string }> = {
   // number IS the posting's `periodKey`, and a Stripe `po_…` id is 27 characters
   // against a 21-character cap. `AUXX-PAY-PAY0001` is 16.
   payout: { prefix: 'PAY' },
+  // `CM-0001`. The issue entry keys its document number on this string too
+  // (`postings/build-credit-memo-entry.ts`), so it stays short for the same
+  // reason the three above do (plans/accounting/tasks/10 section 2.1).
+  credit_memo: { prefix: 'CM' },
 }
 
 /** Format a record number from a sequence record */

@@ -21,6 +21,7 @@ export type DocumentType =
   | 'order'
   | 'purchase_order'
   | 'vendor_bill'
+  | 'credit_memo'
 
 /**
  * How a document's totals relate to its lines.
@@ -565,6 +566,58 @@ export const LINE_SCHEMAS: Record<DocumentType, LineSchema> = {
     },
     photosAttr: null,
     capabilities: BUY_SIDE_CAPABILITIES,
+  },
+  // The mirror of an invoice (plans/accounting/tasks/10-credit-memos.md §6.2).
+  // A credit memo line hangs off its own entity, like the two purchasing lines,
+  // but it is a SELL-side concession: free text, a quantity, a rate, no part.
+  credit_memo: {
+    slug: 'credit-memo-lines',
+    lineEntityType: 'credit_memo_line',
+    // `credit_memo_line_subtotal` is a WRITABLE field with no engine writer
+    // behind it (the totals hook re-sums the parent from line subtotals; the
+    // channel connector transcribes the line's own). So the amount is `stored`:
+    // the cell is an input, a typed rate cross-fills a blank subtotal, and a
+    // subtotal that disagrees with qty x rate renders the mismatch marker.
+    amountMode: 'stored',
+    matchScopeAttr: null,
+    vendorAttr: null,
+    relKey: 'credit_memo_line_credit_memo',
+    relFieldId: 'credit_memo_line:creditMemo',
+    sortAttr: 'credit_memo_line_sort_order',
+    // The line has no `name`; its one text is the printed description. The
+    // leading cell's free text is the `name` key of `LineValues`, so that key
+    // maps to the description attribute and `description` (the sub-text of a
+    // sell-side row) maps to nothing.
+    primaryTextKey: 'name',
+    primaryColumnLabel: 'Description',
+    // Subtotal, tax and total are mirrors written by the totals hook (§2.5).
+    // Tax is transcribed per line and never derived from a rate, so there is no
+    // rate control to render: the footer displays the three mirrors.
+    totalsMode: 'stored',
+    billingPrefix: 'credit_memo',
+    billingAttrs: ['credit_memo_subtotal', 'credit_memo_tax_total', 'credit_memo_total'],
+    attrs: {
+      ...NO_LINE_ATTRS,
+      name: 'credit_memo_line_description',
+      qty: 'credit_memo_line_qty',
+      unitPriceCents: 'credit_memo_line_unit_price',
+      lineTotal: 'credit_memo_line_subtotal',
+    },
+    photosAttr: null,
+    capabilities: {
+      taxable: false,
+      optional: false,
+      category: false,
+      unit: false,
+      photos: false,
+      catalogPicker: false,
+      partPicker: false,
+      draftRequiresPart: false,
+      paymentMirrors: false,
+      visitScoped: false,
+      excludeWorkOrderSourceLines: false,
+      deleteMode: 'delete',
+    },
   },
 }
 

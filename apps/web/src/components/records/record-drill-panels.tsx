@@ -69,6 +69,11 @@ const InvoiceDetailPanel = dynamic(
   () => import('../money/ui/invoice/invoice-detail-panel').then((m) => m.InvoiceDetailPanel),
   { ssr: false, loading: DRILL_LOADING }
 )
+const CreditMemoDetailPanel = dynamic(
+  () =>
+    import('../money/ui/credit-memo/credit-memo-detail-panel').then((m) => m.CreditMemoDetailPanel),
+  { ssr: false, loading: DRILL_LOADING }
+)
 
 /** Back button + title — the `ProcedureDetailBar`/`agent-detail-tabs.tsx` shared-bar
  * pattern, kept inline (generic `@auxx/ui` primitives only) so this registry stays
@@ -93,7 +98,30 @@ function InvoiceDrillBar({ itemId }: { itemId: string | null }) {
   return <DrillBackBar title={record?.displayName ?? 'Invoice'} />
 }
 
+/** Nav-bar title for the `credit-memos` drill — the memo's own `displayName`
+ * (its CM number) once loaded, falling back to the generic label. */
+function CreditMemoDrillBar({ itemId }: { itemId: string | null }) {
+  const creditMemoRecordId = itemId as RecordId | null
+  const { record } = useRecord({ recordId: creditMemoRecordId, enabled: Boolean(itemId) })
+  return <DrillBackBar title={record?.displayName ?? 'Credit memo'} />
+}
+
+/**
+ * The `credit-memos` drill (plans/accounting/tasks/10-credit-memos.md §6.1):
+ * single-level like `invoices`, so a Credit memos card on a DETAIL PAGE (order,
+ * contact) can `open('credit-memos', recordId)` straight into the memo. Inside a
+ * drawer the same card uses `useOpenRecord` and pushes a peek frame instead.
+ */
+const CREDIT_MEMOS_DRILL: RecordDrillPanel = {
+  value: 'credit-memos',
+  permissionKey: 'dispatch.board.view',
+  bar: (ctx: RecordDrillContext) => <CreditMemoDrillBar itemId={ctx.itemId} />,
+  render: (ctx) => <CreditMemoDetailPanel {...ctx} />,
+}
+
 const RECORD_DRILL_PANELS: Record<string, RecordDrillPanel[]> = {
+  order: [CREDIT_MEMOS_DRILL],
+  contact: [CREDIT_MEMOS_DRILL],
   work_order: [
     {
       value: 'visits',

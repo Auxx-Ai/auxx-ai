@@ -23,9 +23,9 @@ import type { EntityPreDeleteHandler } from '../types'
  * which owns the three predicates and the reason each one is needed, and is the
  * same threshold `parts`, `builds` and `purchase-orders` refuse on.
  *
- * **What is NOT here, and why.** The order's line items, refunds and tax lines
- * are cascaded by the delete engine from the registry declarations
- * (`onDelete: 'cascade'` on `order_line_items`, `order_refunds` and
+ * **What is NOT here, and why.** The order's line items, credit memos and tax
+ * lines are cascaded by the delete engine from the registry declarations
+ * (`onDelete: 'cascade'` on `order_line_items`, `order_credit_memos` and
  * `order_tax_lines`), which is also what runs their lifecycle events and the
  * system record rules hanging off them. This hook used to delete the lines by
  * hand; it no longer touches a child row of any kind.

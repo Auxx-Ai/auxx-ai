@@ -362,9 +362,17 @@ describe('the amount is an input only where the field is writable', () => {
     expect(amountMode === 'stored').toBe(attrs.lineTotal !== null)
   })
 
-  it('only the vendor bill stores its own amount', () => {
-    expect(ALL.filter((d) => lineSchemaFor(d).amountMode === 'stored')).toEqual(['vendor_bill'])
+  // The credit memo joined the vendor bill here because `credit_memo_line_subtotal`
+  // is a writable field with no engine writer of its own (the channel connector
+  // transcribes it; the totals hook only re-sums the parent from it), so the
+  // builder has to be what writes a typed concession line's amount.
+  it('only the vendor bill and the credit memo store their own amount', () => {
+    expect(ALL.filter((d) => lineSchemaFor(d).amountMode === 'stored')).toEqual([
+      'vendor_bill',
+      'credit_memo',
+    ])
     expect(LINE_SCHEMAS.vendor_bill.attrs.lineTotal).toBe('vendor_bill_line_line_total')
+    expect(LINE_SCHEMAS.credit_memo.attrs.lineTotal).toBe('credit_memo_line_subtotal')
   })
 
   // 🛑 `line_item_line_total` and `purchase_order_line_line_total` both EXIST and

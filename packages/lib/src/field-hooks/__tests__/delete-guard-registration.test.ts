@@ -31,6 +31,7 @@
 import { describe, expect, it } from 'vitest'
 import { SYSTEM_ENTITIES } from '../../seed/entity-seeder/constants'
 import { guardBuildDelete } from '../pre/build-delete-guard'
+import { guardCreditMemoDelete } from '../pre/credit-memo-delete-guard'
 import { guardInvoiceDelete } from '../pre/invoice-delete-guard'
 import { guardJournalEntryDelete } from '../pre/journal-entry-delete-guard'
 import { guardOrderDelete } from '../pre/order-delete-guard'
@@ -52,6 +53,10 @@ const GUARDED = [
   // the generic `record.delete` reaches a hidden entity by id all the same,
   // which is exactly the hole task 09 §3.3 closed.
   { slug: 'journal-entries', handler: guardJournalEntryDelete },
+  // `credit-memos` is `isVisible: true` but not a member of the inventory
+  // subsystem's `MONEY_ENTITY_TYPES` below, so it is pinned here by name
+  // (plans/accounting/tasks/10-credit-memos.md section 2.6).
+  { slug: 'credit-memos', handler: guardCreditMemoDelete },
 ] as const
 
 /**

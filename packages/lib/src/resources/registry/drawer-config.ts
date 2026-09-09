@@ -259,8 +259,44 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
           icon: 'credit-card',
           permissionKey: 'dispatch.board.view',
         },
+        // The memos raised against this invoice and the credit applied to it
+        // (plans/accounting/tasks/10-credit-memos.md §6.1).
+        {
+          value: 'credits',
+          label: 'Credits',
+          icon: 'receipt-text',
+          permissionKey: 'dispatch.board.view',
+          recordResource: 'credit_memo',
+        },
         // The postings filed under this invoice (a write-off today; the
         // fulfillment entry names the ORDER). HANDOFF slot 2J.
+        { value: 'ledger', label: 'Ledger', icon: 'book-open-check', permissionKey: 'ledger.view' },
+      ],
+    },
+  },
+
+  // The mirror of an invoice (plans/accounting/tasks/10-credit-memos.md §6.2).
+  // Drawer-only, like the invoice: lines with the Issue / Send / Void / Discard
+  // cluster, the settlement card (apply, hold, refund), and the postings the
+  // issue entry filed under the memo.
+  credit_memo: {
+    entityType: 'credit_memo',
+    additionalTabs: [],
+    tabCards: {
+      overview: [
+        {
+          value: 'lines',
+          label: 'Lines',
+          fullBleed: false,
+          icon: 'file-text',
+          permissionKey: 'dispatch.board.view',
+        },
+        {
+          value: 'settlement',
+          label: 'Settlement',
+          icon: 'arrow-left-right',
+          permissionKey: 'dispatch.board.view',
+        },
         { value: 'ledger', label: 'Ledger', icon: 'book-open-check', permissionKey: 'ledger.view' },
       ],
     },
@@ -294,6 +330,14 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
           label: 'Work orders',
           icon: 'wrench',
           recordResource: 'work_order',
+        },
+        // The credit memos taken against this order, read-only: the card task 47
+        // planned as "refunds inside the order" (accounting/10 §6.1).
+        {
+          value: 'credit-memos',
+          label: 'Credit memos',
+          icon: 'receipt-text',
+          recordResource: 'credit_memo',
         },
         // The fulfillment entries this order produced. HANDOFF slot 2J.
         { value: 'ledger', label: 'Ledger', icon: 'book-open-check', permissionKey: 'ledger.view' },

@@ -75,6 +75,7 @@ export interface DocumentEmailProfile {
     // an internal banking document to whoever happened to be on the invoice.
     // The alternative, pointing this at `invoice_contact`, would send it.
     | 'bank_deposit_contact'
+    | 'credit_memo_contact'
   /** `entityDefs` cache key (the `EntityDefinition.entityType` slug) for the placeholder root. */
   entityDefsKey: string
   /** The org's seeded system snippet used as the email body. */
@@ -163,6 +164,19 @@ export const DOCUMENT_EMAIL_PROFILES: Record<DocumentType, DocumentEmailProfile>
       )
     },
     sentSubjectFallback: 'Deposit slip',
+  },
+  // The mirror of the invoice (plans/accounting/tasks/10-credit-memos.md §6.3), sent
+  // to the same customer the invoice went to. There is no `sent` status on a memo:
+  // it is issued by a click and posted at that moment, so a confirmed send moves
+  // nothing and `markSent` is the idempotent no-op the caller already tolerates.
+  credit_memo: {
+    contactSystemAttribute: 'credit_memo_contact',
+    entityDefsKey: 'credit_memo',
+    snippetSystemType: 'credit_memo_email',
+    noun: 'credit memo',
+    noContactHint: 'add one before sending',
+    markSent: async () => {},
+    sentSubjectFallback: 'Credit memo sent',
   },
 }
 

@@ -26,6 +26,13 @@ export function ContactBillingOverviewCard({ recordId }: DrawerTabProps) {
     { contactRecordId: recordId },
     { enabled: canViewBilling }
   )
+  // Issued credit memos with balance still on them (accounting/10 §6.1): credit the
+  // customer can spend on the next invoice, alongside the held-deposit figure.
+  const creditQuery = api.creditMemo.contactCredit.useQuery(
+    { contactRecordId: recordId },
+    { enabled: canViewBilling }
+  )
+  const creditAvailable = creditQuery.data?.available ?? 0
   const { values } = useSystemValues(recordId, ['contact_billing_revision'], {
     autoFetch: canViewBilling,
   })
@@ -39,6 +46,7 @@ export function ContactBillingOverviewCard({ recordId }: DrawerTabProps) {
     if (revision !== previousRevision.current) {
       previousRevision.current = revision
       void utils.money.getContactBillingOverview.invalidate({ contactRecordId: recordId })
+      void utils.creditMemo.contactCredit.invalidate({ contactRecordId: recordId })
     }
   }, [recordId, revision, utils])
   const billing = useMemo(() => normalizeContactBilling(query.data), [query.data])
@@ -50,7 +58,8 @@ export function ContactBillingOverviewCard({ recordId }: DrawerTabProps) {
     billing.balanceDue === 0 &&
     billing.uninvoicedAmount === 0 &&
     billing.draftCount === 0 &&
-    billing.recentInvoices.length === 0
+    billing.recentInvoices.length === 0 &&
+    creditAvailable === 0
   if (empty)
     return (
       <p className='rounded-xl border border-dashed p-4 text-center text-sm text-muted-foreground'>
@@ -74,6 +83,14 @@ export function ContactBillingOverviewCard({ recordId }: DrawerTabProps) {
           currency={billing.currencyCode}
         />
       </div>
+      {creditAvailable > 0 && (
+        <div className='flex justify-between px-2 text-xs text-muted-foreground'>
+          <span>Credit available</span>
+          <span className='tabular-nums'>
+            {formatCurrency(creditAvailable, billing.currencyCode)}
+          </span>
+        </div>
+      )}
       {billing.draftCount > 0 && (
         <div className='flex justify-between px-2 text-xs text-muted-foreground'>
           <span>

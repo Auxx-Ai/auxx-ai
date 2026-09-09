@@ -1,0 +1,3 @@
+ALTER TABLE "PaymentTransaction" ADD COLUMN "creditMemoInstanceId" text;--> statement-breakpoint
+ALTER TABLE "PaymentTransaction" ADD CONSTRAINT "PaymentTransaction_creditMemoInstanceId_EntityInstance_id_fk" FOREIGN KEY ("creditMemoInstanceId") REFERENCES "public"."EntityInstance"("id") ON DELETE restrict ON UPDATE cascade;--> statement-breakpoint
+CREATE INDEX "PaymentTransaction_organizationId_creditMemoInstanceId_idx" ON "PaymentTransaction" USING btree ("organizationId","creditMemoInstanceId");

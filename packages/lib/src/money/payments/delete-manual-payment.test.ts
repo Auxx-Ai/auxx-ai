@@ -33,6 +33,8 @@ const h = vi.hoisted(() => ({
   calls: [] as string[],
   reversedIds: [] as string[],
   deletedMirrors: [] as string[],
+  /** Every `settleCreditMemo` call, in order. */
+  settled: [] as string[],
 }))
 
 vi.mock('@auxx/database', () => {
@@ -99,6 +101,12 @@ vi.mock('./post-transaction', () => ({
   listPaymentPostings: async () => h.postings,
 }))
 vi.mock('./post-deposit-application', () => ({ postDepositApplications: async () => [] }))
+vi.mock('../credit-memos/settle', () => ({
+  settleCreditMemo: async (_db: unknown, input: { creditMemoInstanceId: string }) => {
+    h.calls.push('settle-memo')
+    h.settled.push(input.creditMemoInstanceId)
+  },
+}))
 
 const { deleteManualPayment } = await import('./ledger')
 const { ConflictError, ForbiddenError } = await import('../../errors')
@@ -121,6 +129,61 @@ beforeEach(() => {
   h.calls = []
   h.reversedIds = []
   h.deletedMirrors = []
+  h.settled = []
+})
+
+// plans/accounting/tasks/10-credit-memos.md §5.3: a manual refund is a manual row too
+// (decision 3, data entry a member may take back). It has no allocation and no mirror; what
+// it touched is the memo it carried, and that is re-derived after the row is gone.
+describe('deleteManualPayment - a manual refund against a credit memo', () => {
+  const memoRefund = () =>
+    manualCharge({ kind: 'refund', creditMemoInstanceId: 'memo-1', invoiceInstanceId: 'inv-1' })
+
+  it('deletes the row and re-derives the memo it settled', async () => {
+    h.transaction = memoRefund()
+    h.allocations = []
+    h.postings = [
+      {
+        glPostingId: 'glp-refund',
+        docNumber: 'AUXX-PMT-REF001',
+        status: 'posted',
+        postingType: 'payment',
+      },
+    ]
+
+    await deleteManualPayment(input)
+
+    expect(h.reversedIds).toEqual(['glp-refund'])
+    expect(h.deletedMirrors).toEqual([])
+    expect(h.settled).toEqual(['memo-1'])
+    expect(h.calls.indexOf('delete-transaction')).toBeLessThan(h.calls.indexOf('settle-memo'))
+  })
+
+  it('leaves the memo alone when the refund carried none', async () => {
+    h.transaction = manualCharge({ kind: 'refund', creditMemoInstanceId: null })
+    h.allocations = []
+    await deleteManualPayment(input)
+    expect(h.calls).toContain('delete-transaction')
+    expect(h.settled).toEqual([])
+  })
+
+  it('does not touch the memo when the ledger refuses the reversal', async () => {
+    h.transaction = memoRefund()
+    h.allocations = []
+    h.postings = [
+      {
+        glPostingId: 'glp-refund',
+        docNumber: 'AUXX-PMT-REF001',
+        status: 'posted',
+        postingType: 'payment',
+      },
+    ]
+    h.reverseResults = [{ status: 'period_closed', error: 'August is closed.' }]
+
+    await expect(deleteManualPayment(input)).rejects.toBeInstanceOf(ConflictError)
+    expect(h.settled).toEqual([])
+    expect(h.calls).not.toContain('delete-transaction')
+  })
 })
 
 describe('deleteManualPayment - the ledger comes out first', () => {

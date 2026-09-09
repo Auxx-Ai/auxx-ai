@@ -120,16 +120,20 @@ export interface ToolActionContext {
  * the app TOOL surface, which is the part of the trade worth revisiting if the
  * rule is ever tightened.
  *
- * ✅ `refund`, `refund_line` and `tax_line` were ADDED 2026-09-08 with entity
- * migration 136 (plans/money/tasks/47-shopify-refunds.md §2,
- * plans/money/tasks/48-shopify-tax-data.md §4.1). They follow `line_item`'s
- * precedent rather than the "an entity a user thinks about and could open"
- * rule: all three are `isVisible: false` and render inside the order, and all
- * three exist precisely so a channel connector can address them - a refund and
- * a refund line carry the provider's own ids, and a tax line carries a
- * SYNTHETIC `${orderId}:${title}` key because Shopify tax lines ship no id at
- * all. Admitting them satisfies the standing condition: 136 seeds all three
- * into EXISTING orgs, so these are not union entries that no org resolves.
+ * `credit_memo`, `credit_memo_line`, `credit_memo_application` and
+ * `tax_line` were ADDED 2026-09-08 with entity migration 136
+ * (plans/accounting/tasks/10-credit-memos.md §2, plans/money/tasks/48 §4.1).
+ * `credit_memo` is a visible business document and qualifies under the rule
+ * outright. The other three follow `line_item`'s precedent: they are
+ * `isVisible: false` and render inside their parent, and the line and the tax
+ * line exist precisely so a channel connector can address them - a channel
+ * credit memo and its lines carry the provider's own refund ids
+ * (`shopifyRefundId` / `shopifyRefundLineId` stay, they are Shopify's names),
+ * and a tax line carries a SYNTHETIC `${orderId}:${title}` key because Shopify
+ * tax lines ship no id at all. Admitting them satisfies the standing
+ * condition: 136 seeds all four into EXISTING orgs, so these are not union
+ * entries that no org resolves. `refund` / `refund_line` were the earlier
+ * names of the first two and were renamed before the SDK ever published them.
  */
 export type EntityRefKind =
   | 'contact'
@@ -147,8 +151,9 @@ export type EntityRefKind =
   | 'purchase_order'
   | 'vendor_bill'
   | 'gl_account'
-  | 'refund'
-  | 'refund_line'
+  | 'credit_memo'
+  | 'credit_memo_line'
+  | 'credit_memo_application'
   | 'tax_line'
 
 /**

@@ -92,6 +92,51 @@ export {
   syncCatalogItemPricing,
 } from './catalog-pricing'
 export { convertQuoteToWorkOrder } from './convert-quote'
+// ─── Credit memos (plans/accounting/tasks/10-credit-memos.md) ──────────────
+// Appended as one block, per HANDOFF section 9a's rule for shared barrels.
+export {
+  type ApplyCreditMemoInput,
+  type ApplyCreditMemoResult,
+  applyCreditMemo,
+  type ContactCredit,
+  type ContactCreditMemo,
+  CREDIT_MEMO_NUMBER_PREFIX,
+  CREDIT_MEMO_STATUS_BYPASS,
+  type CreateCreditMemoFromInvoiceInput,
+  type CreateCreditMemoInput,
+  type CreateCreditMemoResult,
+  type CreditMemoApplicationRow,
+  type CreditMemoForApplication,
+  type CreditMemoLifecycleInput,
+  type CreditMemoLineInput,
+  type CreditMemoReason,
+  type CreditMemoRecord,
+  type CreditMemoRefundRow,
+  type CreditMemoSettlement,
+  type CreditMemoSettlementState,
+  type CreditMemoSource,
+  type CreditMemoStatus,
+  createCreditMemo,
+  createCreditMemoFromInvoice,
+  discardCreditMemo,
+  type IssueCreditMemoInput,
+  type IssueCreditMemoResult,
+  issueCreditMemo,
+  listOpenInvoicesForContact,
+  loadCreditMemo,
+  loadCreditMemoLines,
+  type OpenInvoiceRow,
+  type PlannedCreditApplication,
+  planCreditApplication,
+  previewIssueCreditMemo,
+  readContactCredit,
+  readCreditMemoSettlement,
+  type SettleCreditMemoInput,
+  settleCreditMemo,
+  type UnapplyCreditMemoInput,
+  unapplyCreditMemo,
+  voidCreditMemo,
+} from './credit-memos'
 export { createInvoiceFromWorkOrder, deleteInvoiceLine, listUninvoicedLines } from './gather'
 export { deleteInvoice, markInvoiceSent, voidInvoice } from './invoice-lifecycle'
 // ── HANDOFF slot 2K: writing off an invoice's balance to bad debt ──────────
@@ -157,10 +202,14 @@ export {
   resolveApplicationFee,
 } from './payments/fees'
 export {
+  type CreditMemoForRefund,
   deleteManualPayment,
   hasSucceededCharges,
   listWorkOrderPayments,
+  type RecordManualRefundInput,
+  readCreditMemoForRefund,
   recordManualPayment,
+  recordManualRefund,
   syncInvoicePaymentState,
   syncTransaction,
 } from './payments/ledger'

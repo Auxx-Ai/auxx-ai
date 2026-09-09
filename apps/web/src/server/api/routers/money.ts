@@ -590,12 +590,19 @@ export const moneyRouter = createTRPCRouter({
     }),
 
   refundTransaction: moneyAdminProcedure
-    .input(z.object({ transactionId: z.string() }))
+    .input(
+      z.object({
+        transactionId: z.string(),
+        /** Integer minor units; absent = everything still refundable on the charge. */
+        amount: z.number().int().positive().optional(),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
       return refundTransaction({
         organizationId: ctx.session.organizationId,
         userId: ctx.session.user.id,
         transactionId: input.transactionId,
+        amount: input.amount,
       })
     }),
 

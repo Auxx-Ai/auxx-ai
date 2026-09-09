@@ -267,6 +267,7 @@ describe('the enum vocabularies', () => {
       'payment',
       'invoice_issued',
       'deposit_application',
+      'credit_memo',
     ])
   })
 })

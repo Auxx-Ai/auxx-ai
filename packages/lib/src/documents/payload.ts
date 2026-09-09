@@ -293,6 +293,7 @@ export type DocumentPdfPayload =
   | InvoicePdfPayload
   | PurchaseOrderPdfPayload
   | BankDepositPdfPayload
+  | CreditMemoPdfPayload
 
 /** Unwrap a `getFieldValues()` map entry — takes the first value if array-returned. */
 function firstTyped(
@@ -1466,6 +1467,326 @@ export async function buildBankDepositPdfPayload(params: {
       amount: payment.amountMinor,
     })),
     total: deposit.totalMinor,
+    settings,
+  }
+
+  return { payload, hash: stableHash(payload) }
+}
+
+// ─── Credit memo (plans/accounting/tasks/10-credit-memos.md §6.3) ─────────────
+
+/**
+ * One credited line on the credit memo PDF. Deliberately not {@link QuotePdfLineItem}: a
+ * `credit_memo_line` carries its own transcribed tax share and no unit, taxability flag,
+ * optionality or photos. `null` tax is not zero (the field doc): it prints as a blank cell.
+ */
+export interface CreditMemoPdfLine {
+  /** `credit_memo_line` EntityInstance id. */
+  lineInstanceId: string
+  /** `credit_memo_line_description`, falling back to the linked line item's display name. */
+  name: string
+  qty: number
+  /** Integer minor units. `null` = the whole subtotal (a remainder or concession line). */
+  unitPrice: number | null
+  /** Integer minor units. */
+  subtotal: number
+  /** Integer minor units, transcribed from the invoice line, never recomputed from a rate. */
+  taxTotal: number | null
+  /** Never populated: `credit_memo_line` has no photo field. Declared so `render.ts`'s
+   * shared photo resolver type-checks across every member of {@link DocumentPdfPayload}. */
+  photos?: PdfPhotoRef[]
+}
+
+/**
+ * Everything `<CreditMemoPdf>` needs to render: the invoice layout with the title changed,
+ * the original invoice number printed when the memo was raised against one, and the lines
+ * table with the credited amounts.
+ *
+ * `subtotal`/`taxTotal`/`total` are the STORED totals-hook mirrors, transcribed rather than
+ * recomputed: tax on a memo is transcribed from the lines (never prorated from a rate), and
+ * the issue entry was posted from exactly these three numbers, so the printed document must
+ * agree with the ledger, not with a second arithmetic. `amountApplied`/`amountRefunded`/
+ * `balance` are the settlement writer's mirrors, read the same way `invoice_balance` is.
+ */
+export interface CreditMemoPdfPayload {
+  documentType: 'credit_memo'
+  /** Needed by `render.ts` to load the logo `MediaAsset` bytes server-side. */
+  organizationId: string
+  /** `credit_memo_number`, `CM-0001`. */
+  number: string
+  status: string
+  /** ISO date. `credit_memo_issued_at` when issued, else the instance's `createdAt` (never
+   * `new Date()`, which would defeat the content-hash cache). */
+  issuedAt: string
+  /** The `credit_memo_reason` option label, or `null`. */
+  reason: string | null
+  /** `credit_memo_note`, printed on the document. */
+  note: string | null
+  /** `invoice_number` of the linked `credit_memo_invoice`, or `null` for a memo raised from
+   * scratch or by the channel. */
+  invoiceNumber: string | null
+  contact: QuotePdfContact
+  lines: CreditMemoPdfLine[]
+  /** Integer minor units. */
+  subtotal: number
+  /** Integer minor units. */
+  taxTotal: number
+  /** Integer minor units. */
+  total: number
+  /** Integer minor units. */
+  amountApplied: number
+  /** Integer minor units. */
+  amountRefunded: number
+  /** Integer minor units. */
+  balance: number
+  settings: ResolvedDocumentSettings
+  /** Never populated: `credit_memo` has no photo field. Declared so `render.ts`'s shared
+   * photo resolver type-checks across every member of {@link DocumentPdfPayload}. */
+  photos?: PdfPhotoRef[]
+}
+
+/** Reason value to the label the memo prints (`CREDIT_MEMO_REASON_OPTIONS`, registry). */
+const CREDIT_MEMO_REASON_LABELS: Record<string, string> = {
+  return: 'Return',
+  allowance: 'Allowance',
+  billing_error: 'Billing error',
+  cancellation: 'Cancellation',
+  other: 'Other',
+}
+
+/**
+ * Load a credit memo's lines in `sortOrder`, resolving each line's name fallback from the
+ * linked line item's display name in one batched `EntityInstance` read.
+ */
+async function loadCreditMemoPdfLines(
+  cache: ReturnType<typeof getOrgCache>,
+  handler: UnifiedCrudHandler,
+  organizationId: string,
+  creditMemoRecordId: RecordId
+): Promise<CreditMemoPdfLine[]> {
+  const lineCf = await cache
+    .from(organizationId, 'customFields')
+    .bySystemAttributes([
+      'credit_memo_line_description',
+      'credit_memo_line_qty',
+      'credit_memo_line_unit_price',
+      'credit_memo_line_subtotal',
+      'credit_memo_line_tax_total',
+      'credit_memo_line_line_item',
+    ] as const)
+
+  const { ids: lineInstanceIds } = await handler.listFiltered({
+    entityDefinitionId: 'credit_memo_line',
+    filters: [
+      {
+        id: 'credit-memo-lines',
+        logicalOperator: 'AND',
+        conditions: [
+          {
+            id: 'credit-memo-lines-c1',
+            fieldId: 'credit_memo_line:creditMemo',
+            operator: 'is',
+            value: creditMemoRecordId,
+          },
+        ],
+      },
+    ],
+    sorting: [{ id: 'sortOrder', desc: false }],
+    limit: 1000,
+  })
+
+  const lineFieldIds = [
+    lineCf.credit_memo_line_description,
+    lineCf.credit_memo_line_qty,
+    lineCf.credit_memo_line_unit_price,
+    lineCf.credit_memo_line_subtotal,
+    lineCf.credit_memo_line_tax_total,
+    lineCf.credit_memo_line_line_item,
+  ]
+    .filter(Boolean)
+    .map((f) => f!.id)
+
+  interface RawLine {
+    lineInstanceId: string
+    description: string | null
+    qty: number
+    unitPrice: number | null
+    subtotal: number
+    taxTotal: number | null
+    lineItemRecordId: RecordId | undefined
+  }
+
+  const raw: RawLine[] = []
+  for (const lineInstanceId of lineInstanceIds) {
+    const lineRecordId = toRecordId('credit_memo_line', lineInstanceId)
+    const values = await handler.getFieldValues(lineRecordId, lineFieldIds)
+    const getLine = (f?: { id: string } | null) => (f ? firstTyped(values.get(f.id)) : undefined)
+
+    const descriptionTyped = getLine(lineCf.credit_memo_line_description)
+    const qtyTyped = getLine(lineCf.credit_memo_line_qty)
+    const unitPriceTyped = getLine(lineCf.credit_memo_line_unit_price)
+    const subtotalTyped = getLine(lineCf.credit_memo_line_subtotal)
+    const taxTotalTyped = getLine(lineCf.credit_memo_line_tax_total)
+    const lineItemTyped = getLine(lineCf.credit_memo_line_line_item)
+
+    raw.push({
+      lineInstanceId,
+      description: descriptionTyped ? (extractValue(descriptionTyped) as string) : null,
+      qty: qtyTyped ? (extractValue(qtyTyped) as number) : 0,
+      unitPrice: unitPriceTyped ? (extractValue(unitPriceTyped) as number) : null,
+      subtotal: subtotalTyped ? (extractValue(subtotalTyped) as number) : 0,
+      taxTotal: taxTotalTyped ? (extractValue(taxTotalTyped) as number) : null,
+      lineItemRecordId: lineItemTyped?.type === 'relationship' ? lineItemTyped.recordId : undefined,
+    })
+  }
+
+  const nameByLineItem = await loadPartDisplayNames(raw.map((line) => line.lineItemRecordId))
+
+  return raw.map((line) => ({
+    lineInstanceId: line.lineInstanceId,
+    name:
+      line.description ||
+      (line.lineItemRecordId ? (nameByLineItem.get(line.lineItemRecordId) ?? '') : '') ||
+      '',
+    qty: line.qty,
+    unitPrice: line.unitPrice,
+    subtotal: line.subtotal,
+    taxTotal: line.taxTotal,
+  }))
+}
+
+/**
+ * Load a credit memo + its lines + its contact + the linked invoice's number, embed the
+ * org's resolved document settings, and hash the whole thing with `stableHash` for the
+ * render-or-reuse cache check: the credit-side analog of {@link buildInvoicePdfPayload}
+ * (plans/accounting/tasks/10-credit-memos.md §6.3).
+ *
+ * Totals are transcribed from the stored mirrors, not recomputed (see
+ * {@link CreditMemoPdfPayload}); a draft the totals hook has not written yet falls back to
+ * summing its lines so the preview still shows numbers.
+ */
+export async function buildCreditMemoPdfPayload(params: {
+  organizationId: string
+  userId: string
+  creditMemoRecordId: RecordId
+}): Promise<{ payload: CreditMemoPdfPayload; hash: string }> {
+  const { organizationId, userId, creditMemoRecordId } = params
+  const { entityInstanceId: creditMemoInstanceId } = parseRecordId(creditMemoRecordId)
+  const handler = new UnifiedCrudHandler(organizationId, userId)
+  const cache = getOrgCache()
+
+  // Stable fallback for `issuedAt` while the memo is a draft: `EntityInstance.createdAt`,
+  // never `new Date()` (defeats the content-hash cache).
+  const memoInstance = await database.query.EntityInstance.findFirst({
+    columns: { createdAt: true },
+    where: (t, { eq }) => eq(t.id, creditMemoInstanceId),
+  })
+
+  const cf = await cache
+    .from(organizationId, 'customFields')
+    .bySystemAttributes([
+      'credit_memo_number',
+      'credit_memo_status',
+      'credit_memo_reason',
+      'credit_memo_issued_at',
+      'credit_memo_note',
+      'credit_memo_contact',
+      'credit_memo_invoice',
+      'credit_memo_subtotal',
+      'credit_memo_tax_total',
+      'credit_memo_total',
+      'credit_memo_amount_applied',
+      'credit_memo_amount_refunded',
+      'credit_memo_balance',
+      'invoice_number',
+    ] as const)
+
+  const memoFieldIds = [
+    cf.credit_memo_number,
+    cf.credit_memo_status,
+    cf.credit_memo_reason,
+    cf.credit_memo_issued_at,
+    cf.credit_memo_note,
+    cf.credit_memo_contact,
+    cf.credit_memo_invoice,
+    cf.credit_memo_subtotal,
+    cf.credit_memo_tax_total,
+    cf.credit_memo_total,
+    cf.credit_memo_amount_applied,
+    cf.credit_memo_amount_refunded,
+    cf.credit_memo_balance,
+  ]
+    .filter(Boolean)
+    .map((f) => f!.id)
+  const memoValues = await handler.getFieldValues(creditMemoRecordId, memoFieldIds)
+  const get = (f?: { id: string } | null) => (f ? firstTyped(memoValues.get(f.id)) : undefined)
+  const getNumber = (f?: { id: string } | null): number | null => {
+    const typed = get(f)
+    return typed ? (extractValue(typed) as number) : null
+  }
+
+  const numberTyped = get(cf.credit_memo_number)
+  const statusTyped = get(cf.credit_memo_status)
+  const reasonTyped = get(cf.credit_memo_reason)
+  const issuedAtTyped = get(cf.credit_memo_issued_at)
+  const noteTyped = get(cf.credit_memo_note)
+  const contactTyped = get(cf.credit_memo_contact)
+  const invoiceTyped = get(cf.credit_memo_invoice)
+
+  const number = numberTyped ? (extractValue(numberTyped) as string) : ''
+  const status = statusTyped ? (extractValue(statusTyped) as string) : 'draft'
+  const reasonValue = reasonTyped ? (extractValue(reasonTyped) as string | null) : null
+  const reason = reasonValue ? (CREDIT_MEMO_REASON_LABELS[reasonValue] ?? reasonValue) : null
+  const issuedAt = issuedAtTyped
+    ? (extractValue(issuedAtTyped) as string)
+    : (memoInstance?.createdAt ?? new Date(0)).toISOString()
+  const note = noteTyped ? (extractValue(noteTyped) as string) || null : null
+  const contactRecordId = contactTyped?.type === 'relationship' ? contactTyped.recordId : undefined
+  const invoiceRecordId = invoiceTyped?.type === 'relationship' ? invoiceTyped.recordId : undefined
+
+  // The original invoice's number, when the memo was raised against one. Read directly
+  // rather than through the memo's relationship path so a deleted or unreadable invoice
+  // degrades to "no number" instead of failing the render.
+  let invoiceNumber: string | null = null
+  if (invoiceRecordId && cf.invoice_number) {
+    const invoiceValues = await handler.getFieldValues(invoiceRecordId, [cf.invoice_number.id])
+    const invoiceNumberTyped = firstTyped(invoiceValues.get(cf.invoice_number.id))
+    invoiceNumber = invoiceNumberTyped ? (extractValue(invoiceNumberTyped) as string) || null : null
+  }
+
+  const [contact, lines, settings] = await Promise.all([
+    loadPdfContact(cache, handler, organizationId, contactRecordId),
+    loadCreditMemoPdfLines(cache, handler, organizationId, creditMemoRecordId),
+    resolveDocumentSettings(organizationId),
+  ])
+
+  const linesSubtotal = roundCents(lines.reduce((sum, line) => sum + line.subtotal, 0))
+  const linesTax = roundCents(lines.reduce((sum, line) => sum + (line.taxTotal ?? 0), 0))
+  const subtotal = getNumber(cf.credit_memo_subtotal) ?? linesSubtotal
+  const taxTotal = getNumber(cf.credit_memo_tax_total) ?? linesTax
+  const total = getNumber(cf.credit_memo_total) ?? roundCents(subtotal + taxTotal)
+  const amountApplied = getNumber(cf.credit_memo_amount_applied) ?? 0
+  const amountRefunded = getNumber(cf.credit_memo_amount_refunded) ?? 0
+  const balance =
+    getNumber(cf.credit_memo_balance) ?? roundCents(total - amountApplied - amountRefunded)
+
+  const payload: CreditMemoPdfPayload = {
+    documentType: 'credit_memo',
+    organizationId,
+    number,
+    status,
+    issuedAt,
+    reason,
+    note,
+    invoiceNumber,
+    contact,
+    lines,
+    subtotal,
+    taxTotal,
+    total,
+    amountApplied,
+    amountRefunded,
+    balance,
     settings,
   }
 

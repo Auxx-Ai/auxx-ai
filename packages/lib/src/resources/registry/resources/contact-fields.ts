@@ -680,6 +680,36 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
     description: 'Invoices for this contact',
   },
 
+  // Reverse relationship: creditMemos (from credit_memo.contact). `restrict`,
+  // unlike `invoices`: a credit memo is a posted document that says the
+  // contact is owed something, and deleting the contact under it would orphan
+  // a receivable (plans/accounting/tasks/10-credit-memos.md §2.1).
+  creditMemos: {
+    id: toFieldId('creditMemos'),
+    key: 'creditMemos',
+    label: 'Credit Memos',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'contact_credit_memos',
+    showInPanel: false,
+    systemSortOrder: 'aD1',
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'credit_memo:contact' as ResourceFieldId,
+      relationshipType: 'has_many',
+      onDelete: 'restrict',
+      isInverse: true,
+    },
+    description: 'Credit memos issued to this contact',
+  },
+
   // Reverse relationship: orders (from order.contact)
   orders: {
     id: toFieldId('orders'),

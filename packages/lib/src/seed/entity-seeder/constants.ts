@@ -501,24 +501,41 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     isVisible: false,
   },
   {
-    // A refund that already happened at the sales channel, ingested as a FACT
-    // and never originated here (plans/money/tasks/47-shopify-refunds.md §0.4).
-    entityType: 'refund',
-    apiSlug: 'refunds',
-    singular: 'Refund',
-    plural: 'Refunds',
-    icon: 'rotate-ccw',
+    // The mirror of an invoice: "you owe us less", whoever started it
+    // (plans/accounting/tasks/10-credit-memos.md §1). ONE entity for both a
+    // concession a person issues against an invoice and a refund that already
+    // happened at the sales channel; `credit_memo_source` says which.
+    //
+    // `isVisible: true` like `invoice`: it gets its own records view under
+    // Invoices, and the order and invoice drawers render it as a card too.
+    // Entity migration 136 seeds it into existing orgs.
+    entityType: 'credit_memo',
+    apiSlug: 'credit-memos',
+    singular: 'Credit Memo',
+    plural: 'Credit Memos',
+    icon: 'receipt-text',
     color: 'red',
-    isVisible: false, // Internal entity, managed from the order
+    isVisible: true,
   },
   {
-    entityType: 'refund_line',
-    apiSlug: 'refund-lines',
-    singular: 'Refund Line',
-    plural: 'Refund Lines',
+    entityType: 'credit_memo_line',
+    apiSlug: 'credit-memo-lines',
+    singular: 'Credit Memo Line',
+    plural: 'Credit Memo Lines',
     icon: 'list',
     color: 'red',
-    isVisible: false, // Internal entity, managed from the refund
+    isVisible: false, // Internal entity, rendered only by the line builder
+  },
+  {
+    // One row per "this much of this memo went against this invoice" (10 §2.3).
+    // Not a `PaymentAllocation`: an application is not money and posts nothing.
+    entityType: 'credit_memo_application',
+    apiSlug: 'credit-memo-applications',
+    singular: 'Credit Application',
+    plural: 'Credit Applications',
+    icon: 'arrow-left-right',
+    color: 'red',
+    isVisible: false, // Internal entity, managed from the memo and invoice drawers
   },
   {
     // One jurisdiction's tax on one order, as a ROW rather than a rate: the
@@ -694,18 +711,24 @@ export const DISPLAY_FIELD_CONFIG: Record<string, DisplayFieldConfig> = {
     primaryDisplayField: 'tariffCode',
     secondaryDisplayField: 'effectiveFrom',
   },
-  // `refundedAt` leads and the amount follows, because `computeDisplayValue`
-  // has no fallback and only `refundedAt` is non-nullable: a refund whose
-  // transaction legs have not settled has no amount to sum yet
-  // (plans/money/tasks/47-shopify-refunds.md §2.1), and would otherwise render
-  // blank. Same reasoning as `journal_entry` putting `memo` second.
-  refund: {
-    primaryDisplayField: 'refundedAt',
-    secondaryDisplayField: 'amountRefunded',
+  // The number is issued by a hook on create, so it is always there to read,
+  // and `contact` is required. `computeDisplayValue` has no fallback, which is
+  // why neither leg is one of the nullable dates or derived amounts.
+  credit_memo: {
+    primaryDisplayField: 'number',
+    secondaryDisplayField: 'contact',
   },
-  refund_line: {
-    primaryDisplayField: 'qty',
+  // `description` is nullable but `subtotal` is not, and a line with no
+  // description still needs to read as something in a relation chip - the
+  // remainder line always carries one, and the builder fills it from the line
+  // item's name.
+  credit_memo_line: {
+    primaryDisplayField: 'description',
     secondaryDisplayField: 'subtotal',
+  },
+  credit_memo_application: {
+    primaryDisplayField: 'amount',
+    secondaryDisplayField: 'invoice',
   },
   // The jurisdiction leads: it is the one field on a tax line that is always
   // present, and it is what the by-jurisdiction report groups on (§4.1).

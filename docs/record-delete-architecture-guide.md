@@ -20,7 +20,7 @@ has_many / has_one relationship field in the registry declares, on the
 
 | `onDelete` | meaning | example |
 | --- | --- | --- |
-| `cascade` | the related records die with this one, collected set-based, children first | `order_line_items`, `refund_lines`, `part_subparts` |
+| `cascade` | the related records die with this one, collected set-based, children first | `order_line_items`, `credit_memo_lines`, `part_subparts` |
 | `unlink` | only the mirror rows are swept; the related records survive with an empty cell | `contact_orders`, `part_line_items` |
 | `restrict` | the delete is refused while any related record exists | `invoice_payments`, `purchase_order_bills`, `tag_threads` |
 
@@ -100,8 +100,8 @@ input, rethrowing the original error.
    only: every registered one re-projects the record's parent, and a cascaded
    record's parent is in the closure and dying.
 
-Cost for N orders with their lines, refunds, refund lines and tax lines: four
-closure queries regardless of N, then about four statements per 500 rows per
+Cost for N orders with their lines, credit memos, credit memo lines and tax
+lines: four closure queries regardless of N, then about four statements per 500 rows per
 definition. The quiet lane (connector teardown, seeds) skips capture, events and
 frames entirely. The one remaining per-record read on the event lane is
 `captureEventData`, which feeds the event payload.

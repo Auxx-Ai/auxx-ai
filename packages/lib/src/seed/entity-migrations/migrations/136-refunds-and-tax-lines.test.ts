@@ -5,7 +5,7 @@
 // coverage. What is pinned here is the stamp, because it reconciles two doors
 // that reach the same stored shape: `buildFieldOptions` copies the registry's
 // `onDelete` for a FRESH org, and the stamp copies it for an EXISTING one. If
-// the two disagree, whether deleting an order cascades into its refunds
+// the two disagree, whether deleting an order cascades into its credit memos
 // depends on when the org signed up (plans/relationships/01-delete-semantics.md).
 
 import type { Database } from '@auxx/database'
@@ -15,9 +15,11 @@ import { toResourceFieldId } from '@auxx/types/field'
 import { describe, expect, it } from 'vitest'
 import type { FieldOptions } from '../../../custom-fields'
 import { BUILD_FIELDS } from '../../../resources/registry/resources/build-fields'
+import { CONTACT_FIELDS } from '../../../resources/registry/resources/contact-fields'
+import { CREDIT_MEMO_FIELDS } from '../../../resources/registry/resources/credit-memo-fields'
+import { INVOICE_FIELDS } from '../../../resources/registry/resources/invoice-fields'
 import { LINE_ITEM_FIELDS } from '../../../resources/registry/resources/line-item-fields'
 import { ORDER_FIELDS } from '../../../resources/registry/resources/order-fields'
-import { REFUND_FIELDS } from '../../../resources/registry/resources/refund-fields'
 import { ALL_ENTITY_MIGRATIONS } from '../../entity-migrations'
 import { FIELD_REGISTRY } from '../../entity-seeder/create-fields'
 import { buildFieldOptions } from '../../entity-seeder/utils'
@@ -111,11 +113,15 @@ describe('collectDeleteBehaviorStamps: the registry-derived stamp list', () => {
     }
   })
 
-  it('covers the four owning fields this migration itself creates', () => {
-    expect(stamps.get('order:order_refunds')).toBe('cascade')
+  it('covers the owning fields this migration itself creates', () => {
+    expect(stamps.get('order:order_credit_memos')).toBe('cascade')
     expect(stamps.get('order:order_tax_lines')).toBe('cascade')
-    expect(stamps.get('refund:refund_lines')).toBe('cascade')
-    expect(stamps.get('line_item:line_item_refund_lines')).toBe('unlink')
+    expect(stamps.get('credit_memo:credit_memo_lines')).toBe('cascade')
+    expect(stamps.get('credit_memo:credit_memo_applications')).toBe('cascade')
+    expect(stamps.get('line_item:line_item_credit_memo_lines')).toBe('unlink')
+    expect(stamps.get('contact:contact_credit_memos')).toBe('restrict')
+    expect(stamps.get('invoice:invoice_credit_memos')).toBe('restrict')
+    expect(stamps.get('invoice:invoice_credit_applications')).toBe('restrict')
   })
 
   it('covers the three relationshipConfig-only self-relations', () => {
@@ -131,10 +137,14 @@ describe('the two doors agree: a field created by this run already carries onDel
   // repairs the row a moment later, but the seeder and the migration have
   // started to disagree and the registry test for onDelete will not see it.
   it.each([
-    ['order.refunds', ORDER_FIELDS.refunds],
+    ['order.creditMemos', ORDER_FIELDS.creditMemos],
     ['order.taxLines', ORDER_FIELDS.taxLines],
-    ['refund.lines', REFUND_FIELDS.lines],
-    ['line_item.refundLines', LINE_ITEM_FIELDS.refundLines],
+    ['credit_memo.lines', CREDIT_MEMO_FIELDS.lines],
+    ['credit_memo.applications', CREDIT_MEMO_FIELDS.applications],
+    ['line_item.creditMemoLines', LINE_ITEM_FIELDS.creditMemoLines],
+    ['contact.creditMemos', CONTACT_FIELDS.creditMemos],
+    ['invoice.creditMemos', INVOICE_FIELDS.creditMemos],
+    ['invoice.creditApplications', INVOICE_FIELDS.creditApplications],
   ])('%s', (_label, field) => {
     expect(field).toBeDefined()
     expect(field!.fieldType).toBe(FieldType.RELATIONSHIP)

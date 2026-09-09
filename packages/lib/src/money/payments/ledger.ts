@@ -11,6 +11,7 @@ import { and, asc, eq, inArray, isNotNull, or, sql } from 'drizzle-orm'
 import { getOrgCache } from '../../cache'
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../../errors'
 import { FieldValueService } from '../../field-values/field-value-service'
+import { readFieldScalars } from '../../field-values/read-field-scalars'
 import { extractRelationshipRecordIds } from '../../field-values/relationship-field'
 import { resolvePeriodLock } from '../../postings/period-lock'
 import { reverseEntry } from '../../postings/reverse-entry'
@@ -19,6 +20,8 @@ import { getOrganizationSetting } from '../../settings/settings-service'
 import type {
   DeleteManualPaymentInput,
   ListWorkOrderPaymentsInput,
+  MoneyMutationInput,
+  PaymentMethod,
   RecordManualPaymentInput,
   SyncInvoicePaymentStateInput,
 } from '../types'
@@ -74,6 +77,63 @@ async function computeAmountPaid(
       )
     )
   return rows.reduce((sum, row) => sum + (row.kind === 'refund' ? -row.amount : row.amount), 0)
+}
+
+/**
+ * Sum `credit_memo_application_amount` over every `credit_memo_application` whose
+ * `credit_memo_application_invoice` is this invoice, in integer minor units
+ * (plans/accounting/tasks/10-credit-memos.md §2.3).
+ *
+ * An application is not money and has no `PaymentAllocation`: it is an entity row,
+ * listed here the way every parent lists its children by a belongs_to field
+ * (`listFiltered` on the child def, `is` on the relationship key). It is subledger
+ * truth only, and this is exactly why the invoice balance must subtract it: the memo
+ * entry already credited `1100` for the whole memo, so an invoice that did not
+ * subtract its applied credit would show a balance the ledger no longer carries.
+ *
+ * `0` for an org whose registry has no application field yet, because the def and
+ * its fields arrive together and there is nothing to sum.
+ */
+async function computeAmountCredited(
+  organizationId: string,
+  handler: UnifiedCrudHandler,
+  invoiceInstanceId: string,
+  db: Database
+): Promise<number> {
+  const cf = await getOrgCache()
+    .from(organizationId, 'customFields')
+    .bySystemAttributes(['credit_memo_application_amount'] as const)
+  const amountField = cf.credit_memo_application_amount
+  if (!amountField) return 0
+
+  const invoiceRecordId = toRecordId('invoice', invoiceInstanceId)
+  const { ids } = await handler.listFiltered({
+    entityDefinitionId: 'credit_memo_application',
+    filters: [
+      {
+        id: 'invoice-credit-applications',
+        logicalOperator: 'AND',
+        conditions: [
+          {
+            id: 'invoice-credit-applications-invoice',
+            fieldId: 'credit_memo_application:invoice',
+            operator: 'is',
+            value: invoiceRecordId,
+          },
+        ],
+      },
+    ],
+    limit: 1000,
+  })
+  if (ids.length === 0) return 0
+
+  const scalars = await readFieldScalars(db, organizationId, ids, [amountField.id])
+  let sum = 0
+  for (const values of scalars.values()) {
+    const amount = values.get(amountField.id)
+    if (typeof amount === 'number' && Number.isFinite(amount)) sum += amount
+  }
+  return sum
 }
 
 /**
@@ -179,9 +239,11 @@ export async function listWorkOrderPayments(
  * of `paid` and `partially_paid` and of the payment-reversal `-> sent`, which is exactly why
  * the wall exists and exactly why this call has to be exempt from it.
  *
- * It names `invoice_status` and nothing else. The other two fields written here —
- * `invoice_amount_paid` and `invoice_balance` — need no exemption: `BILLING_PROJECTION_ATTRS`
- * deliberately excludes `invoice_amount_paid`, and neither carries a field pre-hook.
+ * It names `invoice_status` and nothing else. The other three fields written here
+ * (`invoice_amount_paid`, `invoice_amount_credited` and `invoice_balance`) need no exemption:
+ * `BILLING_PROJECTION_ATTRS` deliberately excludes `invoice_amount_paid`, and none of the
+ * three carries a field pre-hook (`invoice_amount_credited` is `creatable: false` in the
+ * registry, which is a creation-form rule, not a write guard).
  */
 const INVOICE_STATUS_BYPASS = new Set<SystemAttribute>(['invoice_status'])
 
@@ -211,12 +273,18 @@ const INVOICE_STATUS_BYPASS = new Set<SystemAttribute>(['invoice_status'])
 const TERMINAL_INVOICE_STATUSES = new Set(['void', 'written_off'])
 
 /**
- * Project the ledger onto an invoice's mirrored `amountPaid`/`balance`/`status` fields
- * (money MI1 build spec §E.4) — the one function where ledger truth becomes invoice state.
- * Writes go through `FieldValueService` (the sanctioned-writer path that structurally
- * bypasses the system pre-hook — the convert-quote.ts:206-210 precedent) plus
+ * Project the ledger onto an invoice's mirrored `amountPaid`/`amountCredited`/`balance`/
+ * `status` fields (money MI1 build spec §E.4), the one function where ledger truth becomes
+ * invoice state. Writes go through `FieldValueService` (the sanctioned-writer path that
+ * structurally bypasses the system pre-hook, the convert-quote.ts:206-210 precedent) plus
  * {@link INVOICE_STATUS_BYPASS} for the field pre-hook, which that path does NOT clear on its
  * own. Only writes fields that actually changed, to avoid no-op event churn.
+ *
+ * `balance = total - amountPaid - amountCredited` (plans/accounting/tasks/10-credit-memos.md
+ * §2.3). Credit applied from a memo settles the invoice the way money does, with the same
+ * status flips: `paid` once the balance reaches zero and anything at all was paid or
+ * credited, `partially_paid` while something was and the balance is still positive, and
+ * back to `sent` when both sums are zero again (a deleted payment, an unapplied credit).
  */
 export async function syncInvoicePaymentState(
   input: SyncInvoicePaymentStateInput & { db?: Database }
@@ -233,10 +301,17 @@ export async function syncInvoicePaymentState(
       'invoice_status',
       'invoice_total',
       'invoice_amount_paid',
+      'invoice_amount_credited',
       'invoice_balance',
     ] as const)
 
-  const fieldIds = [cf.invoice_status, cf.invoice_total, cf.invoice_amount_paid, cf.invoice_balance]
+  const fieldIds = [
+    cf.invoice_status,
+    cf.invoice_total,
+    cf.invoice_amount_paid,
+    cf.invoice_amount_credited,
+    cf.invoice_balance,
+  ]
     .filter(Boolean)
     .map((f) => f!.id)
   const values = await handler.getFieldValues(invoiceRecordId, fieldIds)
@@ -253,26 +328,38 @@ export async function syncInvoicePaymentState(
   const currentAmountPaid = currentAmountPaidTyped
     ? (extractValue(currentAmountPaidTyped) as number)
     : 0
+  const currentAmountCreditedTyped = cf.invoice_amount_credited
+    ? firstTyped(values.get(cf.invoice_amount_credited.id))
+    : undefined
+  const currentAmountCredited = currentAmountCreditedTyped
+    ? (extractValue(currentAmountCreditedTyped) as number)
+    : 0
   const currentBalanceTyped = cf.invoice_balance
     ? firstTyped(values.get(cf.invoice_balance.id))
     : undefined
   const currentBalance = currentBalanceTyped ? (extractValue(currentBalanceTyped) as number) : null
 
-  const amountPaid = await computeAmountPaid(organizationId, invoiceInstanceId, db)
-  const balance = total - amountPaid
+  const [amountPaid, amountCredited] = await Promise.all([
+    computeAmountPaid(organizationId, invoiceInstanceId, db),
+    computeAmountCredited(organizationId, handler, invoiceInstanceId, db),
+  ])
+  const settled = amountPaid + amountCredited
+  const balance = total - settled
 
   let nextStatus = status
-  if (amountPaid >= total && total > 0) {
+  if (settled > 0 && balance <= 0) {
     nextStatus = 'paid'
-  } else if (amountPaid > 0 && amountPaid < total) {
+  } else if (settled > 0) {
     nextStatus = 'partially_paid'
-  } else if (amountPaid <= 0 && (status === 'partially_paid' || status === 'paid')) {
+  } else if (status === 'partially_paid' || status === 'paid') {
     nextStatus = 'sent'
   }
 
   const writes: Array<{ fieldId: string; value: unknown }> = []
   if (amountPaid !== currentAmountPaid)
     writes.push({ fieldId: 'invoice_amount_paid', value: amountPaid })
+  if (cf.invoice_amount_credited && amountCredited !== currentAmountCredited)
+    writes.push({ fieldId: 'invoice_amount_credited', value: amountCredited })
   if (balance !== currentBalance) writes.push({ fieldId: 'invoice_balance', value: balance })
   if (nextStatus !== status) writes.push({ fieldId: 'invoice_status', value: nextStatus })
   if (writes.length === 0) return
@@ -377,7 +464,19 @@ export async function syncTransaction(params: {
   // logged there with its status and whether the period was claimed, and
   // surfaced by `listFailedExports` once a claim exists. A payment must not
   // fail because its bookkeeping did.
-  const allocatedMinor = allocations.reduce((sum, allocation) => sum + allocation.amount, 0)
+  // 🛑 A refund that settles a CREDIT MEMO carries no allocation and lands
+  // wholly on the receivable. `buildPaymentEntry` books the unallocated part of
+  // a refund to `customer_deposits` (the mirror of a held deposit's receipt),
+  // which is right for money that was never owed and wrong here: the memo's
+  // issue entry already credited `1100` for what is being paid back, so the
+  // refund's debit has to land on `1100` too, or `2350` is driven negative by
+  // the refund and A/R stays credited by a memo whose money has already left.
+  // It does not get a `PaymentAllocation` instead, because an allocation is
+  // what `computeAmountPaid` subtracts from the invoice, and the memo, not the
+  // invoice, is what this money settles (10-credit-memos.md §2.3, §8 step 3).
+  const allocatedMinor = transaction.creditMemoInstanceId
+    ? transaction.amount
+    : allocations.reduce((sum, allocation) => sum + allocation.amount, 0)
   await postPaymentTransaction(db, {
     organizationId,
     transaction,
@@ -404,6 +503,39 @@ export async function syncTransaction(params: {
   //
   // ⚠️ Never throws, for the same reason `postPaymentTransaction` does not.
   await postDepositApplications(db, { organizationId, transaction, actorUserId: userId })
+
+  // ── The credit memo, last ────────────────────────────────────────────────
+  //
+  // A refund that carries a memo changes what the memo has left. Here rather
+  // than in the writers for the same reason the post door is: the manual rail
+  // and the Stripe webhook's `charge.refunded` flip both end in this function,
+  // and a resync in only one of them would leave the other memo stale.
+  if (transaction.creditMemoInstanceId && transaction.status === 'succeeded') {
+    await resyncCreditMemo(db, {
+      organizationId,
+      userId,
+      creditMemoInstanceId: transaction.creditMemoInstanceId,
+    })
+  }
+}
+
+/**
+ * Re-derive a credit memo's applied, refunded, balance and status from their
+ * sources after a refund row carrying it was written or removed.
+ *
+ * Lazily imported, the `applyStripeEvent -> ../payouts` precedent, so that
+ * `money/payments` never statically pulls `money/credit-memos` in:
+ * `credit-memos/apply.ts` imports `syncInvoicePaymentState` from this file, and
+ * a static edge back would close the cycle. `settleCreditMemo` is the ONLY
+ * writer of the three derived memo fields (10-credit-memos.md §5.3); this
+ * function never writes them itself.
+ */
+async function resyncCreditMemo(
+  db: Database,
+  params: { organizationId: string; userId: string; creditMemoInstanceId: string }
+): Promise<void> {
+  const { settleCreditMemo } = await import('../credit-memos/settle')
+  await settleCreditMemo(db, params)
 }
 
 /**
@@ -607,6 +739,166 @@ export async function recordManualPayment(
   return { transactionId: transaction!.id }
 }
 
+/** What a refund rail needs to know about the memo it settles. */
+export interface CreditMemoForRefund {
+  status: string
+  /** Integer minor units, `credit_memo_balance` as `settleCreditMemo` last wrote it. */
+  balance: number
+  contactInstanceId: string | null
+  invoiceInstanceId: string | null
+}
+
+/**
+ * Read the memo a refund is about to settle and refuse what neither rail may do
+ * (plans/accounting/tasks/10-credit-memos.md §2.4, §5.3): a memo that is not
+ * `issued` has nothing to give back (`draft` is unposted, `settled` has a zero
+ * balance, `void` was reversed), and a refund may not exceed the balance the
+ * settlement writer last derived. Shared by `recordManualRefund` and the Stripe
+ * rail's `refundTransaction` so the two rails cannot disagree on what a
+ * refundable memo is. Throws `NotFoundError` when the memo does not resolve.
+ */
+export async function readCreditMemoForRefund(params: {
+  organizationId: string
+  userId: string
+  creditMemoInstanceId: string
+  amount: number
+}): Promise<CreditMemoForRefund> {
+  const { organizationId, userId, creditMemoInstanceId, amount } = params
+  if (!Number.isInteger(amount) || amount <= 0) {
+    throw new BadRequestError('Refund amount must be a whole number of minor units above zero')
+  }
+
+  const handler = new UnifiedCrudHandler(organizationId, userId)
+  const memoRecordId = toRecordId('credit_memo', creditMemoInstanceId)
+  const cf = await getOrgCache()
+    .from(organizationId, 'customFields')
+    .bySystemAttributes([
+      'credit_memo_status',
+      'credit_memo_balance',
+      'credit_memo_contact',
+      'credit_memo_invoice',
+    ] as const)
+  const fieldIds = [
+    cf.credit_memo_status,
+    cf.credit_memo_balance,
+    cf.credit_memo_contact,
+    cf.credit_memo_invoice,
+  ]
+    .filter(Boolean)
+    .map((f) => f!.id)
+  const values = await handler.getFieldValues(memoRecordId, fieldIds)
+
+  const statusTyped = cf.credit_memo_status
+    ? firstTyped(values.get(cf.credit_memo_status.id))
+    : undefined
+  const status = statusTyped ? (extractValue(statusTyped) as string) : undefined
+  if (!status) {
+    throw new NotFoundError('Credit memo not found')
+  }
+  if (status !== 'issued') {
+    throw new BadRequestError(`Cannot refund a credit memo in status '${status}'`)
+  }
+
+  const balanceTyped = cf.credit_memo_balance
+    ? firstTyped(values.get(cf.credit_memo_balance.id))
+    : undefined
+  const balance = balanceTyped ? (extractValue(balanceTyped) as number) : 0
+  if (amount > balance) {
+    throw new BadRequestError(`Refund amount exceeds the credit memo balance of ${balance}`)
+  }
+
+  const instanceIdOf = (entry: TypedFieldValue | TypedFieldValue[] | undefined) => {
+    const typed = firstTyped(entry)
+    const recordId = typed?.type === 'relationship' ? typed.recordId : undefined
+    return recordId ? parseRecordId(recordId).entityInstanceId : null
+  }
+
+  return {
+    status,
+    balance,
+    contactInstanceId: cf.credit_memo_contact
+      ? instanceIdOf(values.get(cf.credit_memo_contact.id))
+      : null,
+    invoiceInstanceId: cf.credit_memo_invoice
+      ? instanceIdOf(values.get(cf.credit_memo_invoice.id))
+      : null,
+  }
+}
+
+/** Input for `recordManualRefund` (10-credit-memos.md §5.3, §10.7). */
+export interface RecordManualRefundInput extends MoneyMutationInput {
+  /** EntityInstance id of the `issued` credit memo this refund settles (not the RecordId). */
+  creditMemoInstanceId: string
+  /** Integer minor units, at most the memo's balance. */
+  amount: number
+  /** ISO date string (`yyyy-MM-dd`), the day the money went back (may be backdated). */
+  date: string
+  method: PaymentMethod
+  reference?: string
+  note?: string
+}
+
+/**
+ * Record a manual (cash/check/card/bank/other) refund against an issued credit memo
+ * (plans/accounting/tasks/10-credit-memos.md §5.3): the money leg of a native memo.
+ * Inserts a `succeeded` `manual` `refund` row carrying the memo, the memo's contact and,
+ * when the memo was raised against an invoice, that invoice as the row's intent, then
+ * syncs. Mirrors `recordManualPayment` for validation and for how it reaches the
+ * general ledger: `syncTransaction` posts it through `build-payment-entry.ts`'s refund
+ * branch, `Dr accounts_receivable / Cr <route>`, routed by `method` the way every manual
+ * row is (`resolvePaymentRoute` in `postPaymentTransaction`).
+ *
+ * No `PaymentAllocation` is written, on purpose. An allocation is what
+ * `computeAmountPaid` subtracts from an invoice, and this money settles the memo, not
+ * the invoice: §8 step 3 has an unapplied memo refunded by this rail with the invoice
+ * back at its full balance. The receivable debit is instead carried by the memo link
+ * itself (see the `allocatedMinor` rule in `syncTransaction`), and `settleCreditMemo`
+ * picks the row up by `creditMemoInstanceId` to re-derive `amount_refunded`.
+ */
+export async function recordManualRefund(
+  input: RecordManualRefundInput
+): Promise<{ transactionId: string }> {
+  const { organizationId, userId, creditMemoInstanceId, amount, date, method, reference, note } =
+    input
+
+  const memo = await readCreditMemoForRefund({
+    organizationId,
+    userId,
+    creditMemoInstanceId,
+    amount,
+  })
+
+  const currency = (await getOrganizationSetting({
+    organizationId,
+    key: 'organization.currency',
+  })) as string
+
+  const [transaction] = await database
+    .insert(schema.PaymentTransaction)
+    .values({
+      organizationId,
+      provider: 'manual',
+      kind: 'refund',
+      status: 'succeeded',
+      amount,
+      currency,
+      creditMemoInstanceId,
+      invoiceInstanceId: memo.invoiceInstanceId,
+      contactInstanceId: memo.contactInstanceId,
+      method,
+      reference: reference ?? null,
+      note: note ?? null,
+      createdByUserId: userId,
+      metadata: { date },
+      updatedAt: new Date(),
+    })
+    .returning()
+
+  await syncTransaction({ organizationId, userId, transaction: transaction! })
+
+  return { transactionId: transaction!.id }
+}
+
 /**
  * The `reverseEntry` statuses that mean the general ledger took the reversal.
  *
@@ -713,6 +1005,12 @@ async function reversePaymentPostings(
  * `transaction.invoiceInstanceId!`, which was the intent column, not necessarily where the money
  * actually landed). Router-gated admin-only (§I.1) — this function itself does not check roles.
  *
+ * A manual REFUND (`recordManualRefund`) is deleted by the same door: it has no
+ * allocation and no mirror, so the loop below finds nothing, and what it touched
+ * instead is the credit memo it carried, which is re-derived last. Deleting the
+ * refund is also how a memo the delete guard refuses (rule 3, a refund still
+ * references it) is freed.
+ *
  * 🛑 The GENERAL LEDGER is backed out first, by {@link reversePaymentPostings}.
  * Decision 3 says a manual row is data entry and may be deleted; it does not say
  * the accounting it produced may be. A refused reversal refuses the delete.
@@ -755,5 +1053,15 @@ export async function deleteManualPayment(input: DeleteManualPaymentInput): Prom
   const invoiceInstanceIds = new Set(allocations.map((allocation) => allocation.invoiceInstanceId))
   for (const invoiceInstanceId of invoiceInstanceIds) {
     await syncInvoicePaymentState({ organizationId, userId, invoiceInstanceId })
+  }
+
+  // The memo a deleted refund settled has its money back on its balance, and a
+  // `settled` memo whose only refund is gone goes back to `issued` (§2.4).
+  if (transaction.creditMemoInstanceId) {
+    await resyncCreditMemo(database, {
+      organizationId,
+      userId,
+      creditMemoInstanceId: transaction.creditMemoInstanceId,
+    })
   }
 }

@@ -31,6 +31,7 @@ import { commentRouter } from './routers/comment'
 import { configVariableRouter } from './routers/config-variable'
 import { connectionsRouter } from './routers/connections'
 import { contactRouter } from './routers/contact'
+import { creditMemoRouter } from './routers/credit-memo'
 import { customFieldRouter } from './routers/customField'
 import { dashboardRouter } from './routers/dashboard'
 import { dataConnectorRouter } from './routers/data-connectors'
@@ -139,6 +140,7 @@ export const appRouter = createTRPCRouter({
   configVariable: configVariableRouter,
   connections: connectionsRouter,
   contact: contactRouter,
+  creditMemo: creditMemoRouter,
   customField: customFieldRouter,
   dataset: datasetRouter,
   document: documentRouter,

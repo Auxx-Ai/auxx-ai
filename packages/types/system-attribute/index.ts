@@ -202,6 +202,7 @@ export const SYSTEM_ATTRIBUTES = [
   'contact_invoices', // inverse of invoice_contact
   'contact_orders', // inverse of order_contact
   'contact_purchase_orders', // inverse of purchase_order_contact — the BUY side
+  'contact_credit_memos', // inverse of credit_memo_contact (accounting/10 §2.1)
   'contact_balance_due',
   'contact_uninvoiced_amount',
   'contact_billing_revision',
@@ -351,7 +352,7 @@ export const SYSTEM_ATTRIBUTES = [
   'line_item_order',
   'line_item_part', // stamped from the line's catalog item, not hand-set (08 §6.2)
   'line_item_photos', // scouting/line-level photos (plan 37b §1)
-  'line_item_refund_lines', // inverse of refund_line_line_item (47 §2.2)
+  'line_item_credit_memo_lines', // inverse of credit_memo_line_line_item (accounting/10 §2.2)
 
   // ─── Catalog Item fields ────────────────────────────────────────
   'catalog_item_name',
@@ -409,6 +410,11 @@ export const SYSTEM_ATTRIBUTES = [
   'invoice_tax_total',
   'invoice_total',
   'invoice_amount_paid',
+  // Σ credit memo applications (plans/accounting/tasks/10-credit-memos.md
+  // §2.3). An application posts no entry, so this is the only place the
+  // invoice learns it was reduced: `syncInvoicePaymentState` writes it and
+  // subtracts it from the balance.
+  'invoice_amount_credited',
   'invoice_balance',
   'invoice_written_off',
   'invoice_notes',
@@ -424,6 +430,8 @@ export const SYSTEM_ATTRIBUTES = [
   'invoice_photos', // scouting/invoice photos gallery, parity with quote_photos (plan 37b §1)
   'invoice_line_items', // inverse of line_item_invoice
   'invoice_payments', // inverse of payment_invoice
+  'invoice_credit_memos', // inverse of credit_memo_invoice - memos raised AGAINST this invoice
+  'invoice_credit_applications', // inverse of credit_memo_application_invoice - credit applied TO it
 
   // ─── Payment fields ─────────────────────────────────────────────
   'payment_amount',
@@ -462,7 +470,7 @@ export const SYSTEM_ATTRIBUTES = [
   'order_total',
   'order_line_items', // inverse of line_item_order
   'order_tax_lines', // inverse of tax_line_order
-  'order_refunds', // inverse of refund_order (47 §2)
+  'order_credit_memos', // inverse of credit_memo_order (accounting/10 §2.1)
   'order_work_orders', // inverse of work_order_order
   // Added by migration 125 (plans/accounting/HANDOFF.md slot 2G). The
   // shipment log `money.fulfillOrder` appends to, and the ONLY thing that
@@ -487,32 +495,63 @@ export const SYSTEM_ATTRIBUTES = [
   'tax_line_channel_liable',
   'tax_line_order', // owning side; inverse of order_tax_lines
 
-  // ─── Refund (plans/money/tasks/47-shopify-refunds.md §2) ─────────
-  // A refund that already happened at the sales channel, ingested as a FACT.
-  // Never originated here: `refundTransaction` calls Stripe and the ledger
-  // refuses anything else, which is the opposite direction (§0.4).
-  'refund_created_at', // when it happened AT the channel; the ledger dates from this, never ingest (§5.3)
-  'refund_note', // the ONLY free-text reason the payload carries (§3.2)
-  // 🛑 DERIVED, not transcribed. A Shopify refund object carries no total at
-  // all (§2.1) - the money lives only on the three legs - so this is the sum
-  // of successful refund transactions. Do not rename it to `refund_total`.
-  'refund_amount_refunded',
-  'refund_order', // owning side; inverse of order_refunds
-  'refund_lines', // inverse of refund_line_refund
+  // ─── Credit memo (plans/accounting/tasks/10-credit-memos.md §2.1) ──
+  // The mirror of an invoice: "you owe us less". ONE entity whether a person
+  // issued a concession against an invoice (`native`) or the sales channel
+  // already refunded the money (`channel`); `credit_memo_source` says which.
+  // "Refund" was the wrong name the moment a concession is issued on an unpaid
+  // invoice, because nothing is paid back.
+  'credit_memo_number', // CM- series via keepOrAllocateRecordNumber; the hook is the only writer
+  'credit_memo_status', // draft | issued | settled | void (§2.4)
+  'credit_memo_source', // native | channel; set once on create, never editable
+  'credit_memo_reason', // return | allowance | billing_error | cancellation | other
+  // THE accounting date; the ledger entry is dated from this, never from ingest
+  // or creation. Channel: the refund's own `created_at` at the provider.
+  'credit_memo_issued_at',
+  'credit_memo_note', // printed on the document; channel: the ONLY free text the payload carries
+  'credit_memo_contact', // owning side; inverse of contact_credit_memos. Required
+  'credit_memo_invoice', // owning side; inverse of invoice_credit_memos. Optional
+  'credit_memo_order', // owning side; inverse of order_credit_memos. Optional
+  'credit_memo_subtotal', // Σ line subtotals; totals hook is the only writer
+  'credit_memo_tax_total', // Σ line tax totals, transcribed and never prorated
+  'credit_memo_total', // subtotal + tax
+  'credit_memo_amount_applied', // Σ applications; the settlement writer is the only writer
+  // DERIVED, not transcribed, on the native path: Σ succeeded refund
+  // transactions carrying the memo. On the channel path the connector
+  // transcribes the Σ of successful refund transactions, because a Shopify
+  // refund object carries no total at all. Do not rename it to a total.
+  'credit_memo_amount_refunded',
+  'credit_memo_balance', // total - applied - refunded; zero flips the memo to settled
+  'credit_memo_lines', // inverse of credit_memo_line_credit_memo
+  'credit_memo_applications', // inverse of credit_memo_application_credit_memo
+  'credit_memo_pdf_asset', // the documents registry's pointerAttr, like invoice_pdf_asset
+  'credit_memo_document', // a supporting attachment, like vendor_bill_document
 
-  // ─── Refund line (47 §2.2) ──────────────────────────────────────
-  'refund_line_qty',
-  'refund_line_subtotal', // integer minor units
-  // 🛑 Bind from `total_tax_set.shop_money.amount` (a STRING), never the
-  // sibling `total_tax` (a NUMBER) - §4.1. The payload is inconsistent about
+  // ─── Credit memo line (10 §2.2) ─────────────────────────────────
+  'credit_memo_line_description', // printed; defaults to the line item's name when linked
+  'credit_memo_line_qty',
+  'credit_memo_line_unit_price', // a per-each RATE, like line_item_unit_price
+  'credit_memo_line_subtotal', // integer minor units
+  // Channel: bind from `total_tax_set.shop_money.amount` (a STRING), never
+  // the sibling `total_tax` (a NUMBER). The payload is inconsistent about
   // money types and the numeric path is where a 100x bug lived.
-  'refund_line_tax_total',
-  // Provider-NEUTRAL disposition, never Shopify's `restock_type` token (§9).
-  // The precedent for getting this wrong is migration 132 renaming
-  // `1200 Shopify Clearing`.
-  'refund_line_disposition',
-  'refund_line_refund', // owning side; inverse of refund_lines
-  'refund_line_line_item', // owning side; inverse of line_item_refund_lines
+  'credit_memo_line_tax_total',
+  // Provider-NEUTRAL disposition, never Shopify's `restock_type` token. The
+  // precedent for getting this wrong is migration 132 renaming
+  // `1200 Shopify Clearing`. Null on a concession or remainder line.
+  'credit_memo_line_disposition',
+  'credit_memo_line_credit_memo', // owning side; inverse of credit_memo_lines
+  'credit_memo_line_line_item', // owning side; inverse of line_item_credit_memo_lines. Optional
+  'credit_memo_line_sort_order', // what LINE_SCHEMAS sorts on
+
+  // ─── Credit memo application (10 §2.3) ──────────────────────────
+  // One row per "this much of this memo went against this invoice". NOT a
+  // PaymentAllocation: an application is not money and posts no entry; the
+  // invoice learns of it through `invoice_amount_credited`.
+  'credit_memo_application_credit_memo', // owning side; inverse of credit_memo_applications
+  'credit_memo_application_invoice', // owning side; inverse of invoice_credit_applications
+  'credit_memo_application_amount', // > 0, <= memo balance, <= invoice balance at the time
+  'credit_memo_application_applied_at',
 
   // ─── Receiving: cost, date and provenance on stock_movement ──────
   // plans/purchasing/01-build-plan.md §2. Every one of these is

@@ -12,15 +12,23 @@ import { useCompose } from '~/hooks/use-compose'
 import { api } from '~/trpc/react'
 
 /**
- * Shared send/download flow for money documents (quote + invoice). Both tabs used
- * to duplicate this verbatim (money MQ2 build spec §E.2/§E.4, composed per §H.4):
- * `prepareDocumentEmail` → open the composer with the rendered snippet + PDF
- * attachment, and `ensureDocumentPdf` → open the generated PDF in a new tab. The
- * no-email-channel guard (treat "still loading" as available to avoid a flash) is
- * owned here too. Lifecycle mutations stay per-document — only these two are shared.
+ * Shared send/download flow for money documents (quote, invoice, purchase order,
+ * credit memo). Both tabs used to duplicate this verbatim (money MQ2 build spec
+ * §E.2/§E.4, composed per §H.4): `prepareDocumentEmail` → open the composer with the
+ * rendered snippet + PDF attachment, and `ensureDocumentPdf` → open the generated PDF
+ * in a new tab. The no-email-channel guard (treat "still loading" as available to
+ * avoid a flash) is owned here too. Lifecycle mutations stay per-document — only these
+ * two are shared.
+ *
+ * There is no per-type branch here on purpose: both endpoints resolve the document type
+ * from the RecordId against `DOCUMENT_TYPE_DESCRIPTORS` (`documentTypeOf`), so a type
+ * registered in `documents/client.ts` + `documents/registry.ts` + the send profile
+ * table in `money/send-email.ts` works from this hook without a change. A credit memo
+ * (plans/accounting/tasks/10-credit-memos.md §6.3) is the latest to ride on that.
  *
  * @param recordId - the document's RecordId
- * @param documentLabel - lowercase noun for error toasts, e.g. `'quote'` / `'invoice'`
+ * @param documentLabel - lowercase noun for error toasts, e.g. `'quote'` / `'invoice'` /
+ *   `'credit memo'`
  */
 export function useDocumentSendActions(recordId: RecordId, documentLabel: string) {
   const { openCompose } = useCompose()

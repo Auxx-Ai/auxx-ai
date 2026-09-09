@@ -789,6 +789,7 @@ export const GlPostingTypeValues = [
   'payment',
   'invoice_issued',
   'deposit_application',
+  'credit_memo',
 ] as const
 export type GlPostingType = (typeof GlPostingTypeValues)[number]
 
@@ -1229,6 +1230,7 @@ export const SnippetSystemTypeValues = [
   'quote_email',
   'invoice_email',
   'purchase_order_email',
+  'credit_memo_email',
 ] as const
 export type SnippetSystemType = (typeof SnippetSystemTypeValues)[number]
 
@@ -1236,6 +1238,7 @@ export const SnippetSystemType = {
   quote_email: 'quote_email',
   invoice_email: 'invoice_email',
   purchase_order_email: 'purchase_order_email',
+  credit_memo_email: 'credit_memo_email',
 } as const
 
 /**

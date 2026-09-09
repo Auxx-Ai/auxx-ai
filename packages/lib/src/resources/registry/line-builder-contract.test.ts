@@ -109,6 +109,20 @@ const LINE_BUILDER_CONTRACT: Record<
       'vendor_bill_line_sort_order',
     ],
   },
+  credit_memo: {
+    lineEntityType: 'credit_memo_line',
+    // Mirrors written by the totals hook (10-credit-memos.md §2.5); the footer
+    // displays them and computes nothing, as it does for the vendor bill.
+    header: ['credit_memo_subtotal', 'credit_memo_tax_total', 'credit_memo_total'],
+    line: [
+      'credit_memo_line_credit_memo',
+      'credit_memo_line_description',
+      'credit_memo_line_qty',
+      'credit_memo_line_unit_price',
+      'credit_memo_line_subtotal',
+      'credit_memo_line_sort_order',
+    ],
+  },
 }
 
 /** Every systemAttribute declared on one entity type in the registry. */

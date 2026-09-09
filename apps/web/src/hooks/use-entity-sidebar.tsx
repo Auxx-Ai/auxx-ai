@@ -15,10 +15,17 @@ const ENTITY_FOLDER_ITEMS_SETTING_KEY = 'sidebar.entities.folderItems'
 
 /**
  * Entity types surfaced under the Dispatch workspace menu instead of Records.
- * Sidebar-only exclusion — the defs stay `isVisible: true` so kbar create/search
- * and Kopilot entity tools keep seeing them.
+ * Sidebar-only exclusion: the defs stay `isVisible: true` so kbar create/search
+ * and Kopilot entity tools keep seeing them. `credit_memo` sits directly under
+ * Invoices there (plans/accounting/tasks/10-credit-memos.md section 6.1).
  */
-const DISPATCH_SIDEBAR_ENTITY_TYPES = new Set(['work_order', 'service_request', 'quote', 'invoice'])
+const DISPATCH_SIDEBAR_ENTITY_TYPES = new Set([
+  'work_order',
+  'service_request',
+  'quote',
+  'invoice',
+  'credit_memo',
+])
 
 /** Processed entity with visibility metadata */
 export interface ProcessedEntity {

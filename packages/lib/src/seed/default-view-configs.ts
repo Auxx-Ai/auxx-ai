@@ -1135,4 +1135,146 @@ export const DEFAULT_VIEW_CONFIGS = {
       } satisfies ViewConfig,
     },
   ],
+
+  // plans/accounting/tasks/10-credit-memos.md §6.1. "Needs review" is the
+  // channel path's inbox: a memo the connector drafted from a Shopify refund
+  // that the auto-issue rule did not cover waits here until a person issues or
+  // voids it (§5.4). Native drafts are not in it: nobody is waiting on those.
+  credit_memo: [
+    {
+      name: 'All Credit Memos',
+      description: 'Default view for credit memos',
+      isDefault: true,
+      config: {
+        viewType: 'table' as const,
+        columnVisibility: {
+          field_credit_memo_number: true,
+          field_credit_memo_contact: true,
+          field_credit_memo_status: true,
+          field_credit_memo_source: true,
+          field_credit_memo_reason: true,
+          field_credit_memo_total: true,
+          field_credit_memo_balance: true,
+          field_credit_memo_issued_at: true,
+        },
+        columnOrder: [
+          'field_credit_memo_number',
+          'field_credit_memo_contact',
+          'field_credit_memo_status',
+          'field_credit_memo_source',
+          'field_credit_memo_reason',
+          'field_credit_memo_total',
+          'field_credit_memo_balance',
+          'field_credit_memo_issued_at',
+        ],
+        columnPinning: { left: ['_checkbox', 'field_credit_memo_number'] },
+        sorting: [{ id: 'field_created_at', desc: true }],
+        filters: [],
+        columnSizing: {},
+        columnLabels: {},
+        columnFormatting: {},
+      } satisfies ViewConfig,
+    },
+    {
+      name: 'Needs review',
+      description: 'Channel refunds drafted by the connector, waiting to be issued or voided',
+      isDefault: false,
+      config: {
+        viewType: 'table' as const,
+        columnVisibility: {
+          field_credit_memo_number: true,
+          field_credit_memo_contact: true,
+          field_credit_memo_order: true,
+          field_credit_memo_reason: true,
+          field_credit_memo_total: true,
+          field_credit_memo_amount_refunded: true,
+          field_credit_memo_issued_at: true,
+        },
+        columnOrder: [
+          'field_credit_memo_number',
+          'field_credit_memo_contact',
+          'field_credit_memo_order',
+          'field_credit_memo_reason',
+          'field_credit_memo_total',
+          'field_credit_memo_amount_refunded',
+          'field_credit_memo_issued_at',
+        ],
+        columnPinning: { left: ['_checkbox', 'field_credit_memo_number'] },
+        sorting: [{ id: 'field_credit_memo_issued_at', desc: false }],
+        filters: [
+          {
+            id: 'needs-review-credit-memos-group',
+            logicalOperator: 'AND',
+            conditions: [
+              {
+                id: 'needs-review-credit-memos-status',
+                fieldId: 'field_credit_memo_status',
+                operator: 'in',
+                value: ['draft'],
+                isConstant: true,
+              },
+              {
+                id: 'needs-review-credit-memos-source',
+                fieldId: 'field_credit_memo_source',
+                operator: 'in',
+                value: ['channel'],
+                isConstant: true,
+              },
+            ],
+          },
+        ],
+        columnSizing: {},
+        columnLabels: {},
+        columnFormatting: {},
+      } satisfies ViewConfig,
+    },
+    {
+      name: 'Open credit',
+      description: 'Issued memos with a balance still to apply, hold or refund',
+      isDefault: false,
+      config: {
+        viewType: 'table' as const,
+        columnVisibility: {
+          field_credit_memo_number: true,
+          field_credit_memo_contact: true,
+          field_credit_memo_invoice: true,
+          field_credit_memo_total: true,
+          field_credit_memo_amount_applied: true,
+          field_credit_memo_amount_refunded: true,
+          field_credit_memo_balance: true,
+          field_credit_memo_issued_at: true,
+        },
+        columnOrder: [
+          'field_credit_memo_number',
+          'field_credit_memo_contact',
+          'field_credit_memo_invoice',
+          'field_credit_memo_total',
+          'field_credit_memo_amount_applied',
+          'field_credit_memo_amount_refunded',
+          'field_credit_memo_balance',
+          'field_credit_memo_issued_at',
+        ],
+        columnPinning: { left: ['_checkbox', 'field_credit_memo_number'] },
+        sorting: [{ id: 'field_credit_memo_issued_at', desc: true }],
+        filters: [
+          {
+            id: 'open-credit-memos-group',
+            logicalOperator: 'AND',
+            conditions: [
+              {
+                id: 'open-credit-memos-status',
+                fieldId: 'field_credit_memo_status',
+                operator: 'in',
+                value: ['issued'],
+                isConstant: true,
+              },
+            ],
+          },
+        ],
+        columnSizing: {},
+        columnLabels: {},
+        columnFormatting: {},
+      } satisfies ViewConfig,
+    },
+  ],
 } as const satisfies Record<string, DefaultViewDefinition[]>
