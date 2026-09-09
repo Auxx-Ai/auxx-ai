@@ -75,6 +75,14 @@ function databaseWithDeletedThreads(
           where: vi.fn(() => ({ returning: vi.fn().mockResolvedValue([]) })),
         }
       }
+      // Delete 5 is the `ResourceAccess` sweep — share rows on the dead threads.
+      // That column has no FK either, so nothing else reaches them.
+      if (deleteCount === 5) {
+        operations.push('resource-access')
+        return {
+          where: vi.fn(() => ({ returning: vi.fn().mockResolvedValue([]) })),
+        }
+      }
       throw new Error('Unexpected delete table')
     }),
     execute: vi.fn().mockResolvedValue(undefined),
@@ -130,9 +138,18 @@ describe('thread permanent-delete comment cascade', () => {
       count: 1,
     })
     expect(transaction).toHaveBeenCalledOnce()
-    expect(operations).toEqual(['thread', 'comment', 'fieldvalue-inbound', 'fieldvalue-outbound'])
+    expect(operations).toEqual([
+      'thread',
+      'comment',
+      'fieldvalue-inbound',
+      'fieldvalue-outbound',
+      'resource-access',
+    ])
     expect(inArrayBatches[0]).toEqual(['thread_1', 'thread_missing'])
     expect(inArrayBatches[1]).toEqual(['thread_1'])
+    // The share sweep sees only the threads that actually went, never the
+    // requested set — same rule as the comment cascade above.
+    expect(inArrayBatches.at(-1)).toEqual(['thread_1'])
     expect(publishThreadDeleted).toHaveBeenCalledOnce()
   })
 })

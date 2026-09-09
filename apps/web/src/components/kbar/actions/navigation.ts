@@ -70,7 +70,11 @@ export function useNavigationActions(): PaletteAction[] {
       },
     })
 
-    if (hasAccess('kopilot')) {
+    // `agents.view`, matching `app/kopilot/layout.tsx`'s own
+    // `CapabilityPageGuard`. `hasAccess` alone is the ORG's plan, not the
+    // MEMBER's capability, so it let a member with no agent access walk into the
+    // guard's redirect.
+    if (hasAccess('kopilot') && can('agents.view')) {
       actions.push({
         id: 'nav.chats',
         label: 'Chats',
@@ -94,7 +98,8 @@ export function useNavigationActions(): PaletteAction[] {
       })
     }
 
-    if (hasAccess('callRecordings')) {
+    // `calls.view`, matching `app/calls/layout.tsx`'s `CapabilityPageGuard`.
+    if (hasAccess('callRecordings') && can('calls.view')) {
       actions.push({
         id: 'nav.calls',
         label: 'Calls',
@@ -105,107 +110,114 @@ export function useNavigationActions(): PaletteAction[] {
       })
     }
 
-    // ── Personal inbox + children ────────────────────────────────────────
-    actions.push(
-      {
-        id: 'nav.inbox',
-        label: 'Inbox',
-        subtitle: 'View your inbox',
-        icon: 'inbox',
-        keywords: 'inbox',
-        shortcut: SHORTCUTS['nav.inbox'],
-        perform: () => nav('/mail/inbox/open'),
-      },
-      {
-        id: 'nav.inbox.done',
-        label: 'Done',
-        subtitle: 'Your done folder',
-        icon: 'check-circle',
-        keywords: 'inbox done completed',
-        perform: () => nav('/mail/inbox/done'),
-      },
-      {
-        id: 'nav.inbox.trash',
-        label: 'Trash',
-        subtitle: 'Your trash folder',
-        icon: 'trash',
-        keywords: 'inbox trash deleted',
-        perform: () => nav('/mail/inbox/trash'),
-      },
-      {
-        id: 'nav.inbox.spam',
-        label: 'Spam',
-        subtitle: 'Your spam folder',
-        icon: 'ban',
-        keywords: 'inbox spam junk',
-        perform: () => nav('/mail/inbox/spam'),
-      },
-      {
-        id: 'nav.drafts',
-        label: 'Drafts',
-        subtitle: 'Your drafts folder',
-        icon: 'mail',
-        keywords: 'inbox drafts',
-        perform: () => nav('/mail/drafts'),
-      },
-      {
-        id: 'nav.sent',
-        label: 'Sent',
-        subtitle: 'Your sent folder',
-        icon: 'send',
-        keywords: 'inbox sent',
-        perform: () => nav('/mail/sent'),
-      }
-    )
+    // ── Mail: personal inbox + shared inbox ──────────────────────────────
+    // ONE gate for both blocks, matching the sidebar (`sidebar/index.tsx` renders
+    // `<MailSidebar />` on the same key) and the mail layout's own
+    // `CapabilityPageGuard`. Ungated, these eleven entries walked a member with
+    // no mail access straight into `/access-denied` — the palette's whole job is
+    // to be a faster route to somewhere they can actually go.
+    if (can('inboxes.view')) {
+      actions.push(
+        {
+          id: 'nav.inbox',
+          label: 'Inbox',
+          subtitle: 'View your inbox',
+          icon: 'inbox',
+          keywords: 'inbox',
+          shortcut: SHORTCUTS['nav.inbox'],
+          perform: () => nav('/mail/inbox/open'),
+        },
+        {
+          id: 'nav.inbox.done',
+          label: 'Done',
+          subtitle: 'Your done folder',
+          icon: 'check-circle',
+          keywords: 'inbox done completed',
+          perform: () => nav('/mail/inbox/done'),
+        },
+        {
+          id: 'nav.inbox.trash',
+          label: 'Trash',
+          subtitle: 'Your trash folder',
+          icon: 'trash',
+          keywords: 'inbox trash deleted',
+          perform: () => nav('/mail/inbox/trash'),
+        },
+        {
+          id: 'nav.inbox.spam',
+          label: 'Spam',
+          subtitle: 'Your spam folder',
+          icon: 'ban',
+          keywords: 'inbox spam junk',
+          perform: () => nav('/mail/inbox/spam'),
+        },
+        {
+          id: 'nav.drafts',
+          label: 'Drafts',
+          subtitle: 'Your drafts folder',
+          icon: 'mail',
+          keywords: 'inbox drafts',
+          perform: () => nav('/mail/drafts'),
+        },
+        {
+          id: 'nav.sent',
+          label: 'Sent',
+          subtitle: 'Your sent folder',
+          icon: 'send',
+          keywords: 'inbox sent',
+          perform: () => nav('/mail/sent'),
+        }
+      )
 
-    // ── Shared inbox + children ──────────────────────────────────────────
-    actions.push(
-      {
-        id: 'nav.sharedInbox.unassigned',
-        label: 'Shared Inbox',
-        subtitle: 'Unassigned shared inbox',
-        icon: 'mails',
-        keywords: 'shared inbox unassigned',
-        shortcut: SHORTCUTS['nav.sharedInbox.unassigned'],
-        perform: () => nav('/mail/inboxes/all/unassigned'),
-      },
-      {
-        id: 'nav.sharedInbox.assigned',
-        label: 'Assigned',
-        subtitle: 'Assigned shared inbox',
-        icon: 'user-check',
-        keywords: 'shared inbox assigned',
-        shortcut: SHORTCUTS['nav.sharedInbox.assigned'],
-        perform: () => nav('/mail/inboxes/all/assigned'),
-      },
-      {
-        id: 'nav.sharedInbox.done',
-        label: 'Shared Done',
-        subtitle: 'Done shared inbox',
-        icon: 'check-circle',
-        keywords: 'shared inbox done',
-        shortcut: SHORTCUTS['nav.sharedInbox.done'],
-        perform: () => nav('/mail/inboxes/all/done'),
-      },
-      {
-        id: 'nav.sharedInbox.trash',
-        label: 'Shared Trash',
-        subtitle: 'Trash shared inbox',
-        icon: 'trash',
-        keywords: 'shared inbox trash',
-        shortcut: SHORTCUTS['nav.sharedInbox.trash'],
-        perform: () => nav('/mail/inboxes/all/trash'),
-      },
-      {
-        id: 'nav.sharedInbox.spam',
-        label: 'Shared Spam',
-        subtitle: 'Spam shared inbox',
-        icon: 'ban',
-        keywords: 'shared inbox spam junk',
-        shortcut: SHORTCUTS['nav.sharedInbox.spam'],
-        perform: () => nav('/mail/inboxes/all/spam'),
-      }
-    )
+      // ── Shared inbox + children ──────────────────────────────────────────
+      actions.push(
+        {
+          id: 'nav.sharedInbox.unassigned',
+          label: 'Shared Inbox',
+          subtitle: 'Unassigned shared inbox',
+          icon: 'mails',
+          keywords: 'shared inbox unassigned',
+          shortcut: SHORTCUTS['nav.sharedInbox.unassigned'],
+          perform: () => nav('/mail/inboxes/all/unassigned'),
+        },
+        {
+          id: 'nav.sharedInbox.assigned',
+          label: 'Assigned',
+          subtitle: 'Assigned shared inbox',
+          icon: 'user-check',
+          keywords: 'shared inbox assigned',
+          shortcut: SHORTCUTS['nav.sharedInbox.assigned'],
+          perform: () => nav('/mail/inboxes/all/assigned'),
+        },
+        {
+          id: 'nav.sharedInbox.done',
+          label: 'Shared Done',
+          subtitle: 'Done shared inbox',
+          icon: 'check-circle',
+          keywords: 'shared inbox done',
+          shortcut: SHORTCUTS['nav.sharedInbox.done'],
+          perform: () => nav('/mail/inboxes/all/done'),
+        },
+        {
+          id: 'nav.sharedInbox.trash',
+          label: 'Shared Trash',
+          subtitle: 'Trash shared inbox',
+          icon: 'trash',
+          keywords: 'shared inbox trash',
+          shortcut: SHORTCUTS['nav.sharedInbox.trash'],
+          perform: () => nav('/mail/inboxes/all/trash'),
+        },
+        {
+          id: 'nav.sharedInbox.spam',
+          label: 'Shared Spam',
+          subtitle: 'Spam shared inbox',
+          icon: 'ban',
+          keywords: 'shared inbox spam junk',
+          shortcut: SHORTCUTS['nav.sharedInbox.spam'],
+          perform: () => nav('/mail/inboxes/all/spam'),
+        }
+      )
+    }
 
     // ── Records ──────────────────────────────────────────────────────────
     // Per-def view gate: show a core-record destination only when its def is

@@ -90,6 +90,48 @@ export async function removeMember(
     })
   }
 
+  // Offboarding (plan 46 §7): sweep every `ResourceAccess` row addressed
+  // directly to the removed member. Without it a re-invited member silently
+  // regains every share anyone ever gave them — composition is raise-only, so a
+  // row is a raise that outlives the membership.
+  //
+  // `enforceMailAuthority: false` on purpose: the `OrganizationMember` row is
+  // already gone, so there is no membership to authorize a per-inbox check
+  // against, and a partial sweep is the one outcome that leaves the feature
+  // lying about what was removed. The member's OWN rows — their snippets,
+  // dashboards, signature and, above all, their `personal_inbox` — are excluded
+  // in SQL by `sharedRowPredicate`, and `disconnectPersonalChannelsForUser`
+  // above remains the tool for the mailbox itself.
+  //
+  // Lazy import and wrapped like the block above: a failure here logs and must
+  // never fail the removal.
+  try {
+    const { revokeMemberShares } = await import('../resource-access/member-shares')
+    const swept = await revokeMemberShares(
+      { db, organizationId, userId: removerUserId },
+      { userId: memberToRemoveId, scope: { kind: 'all' }, enforceMailAuthority: false }
+    )
+    if (swept.isErr()) {
+      logger.error('Failed to revoke shared resources for removed member', {
+        organizationId,
+        memberToRemoveId,
+        error: swept.error.message,
+      })
+    } else {
+      logger.info('Swept shared resources for removed member', {
+        organizationId,
+        memberToRemoveId,
+        revoked: swept.value.revoked,
+      })
+    }
+  } catch (error) {
+    logger.error('Failed to revoke shared resources for removed member', {
+      organizationId,
+      memberToRemoveId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
+
   logger.info('Member removed successfully', { organizationId, memberToRemoveId, removerUserId })
   return { success: true }
 }

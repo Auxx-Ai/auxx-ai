@@ -10,3 +10,17 @@ export {
   seatLabel,
   useMemberProfiles,
 } from './use-member-profiles'
+export {
+  MEMBER_SHARES_PAGE_SIZE,
+  type MemberShareGroup,
+  type MemberShareItem,
+  type MemberShareOwned,
+  type MemberShareSummary,
+  type MemberShareTypeGrant,
+  type RevokeSharesResult,
+  type RevokeSharesScope,
+  useGranterNames,
+  useMemberShareGroup,
+  useMemberShares,
+  useRevokeMemberShares,
+} from './use-member-shares'

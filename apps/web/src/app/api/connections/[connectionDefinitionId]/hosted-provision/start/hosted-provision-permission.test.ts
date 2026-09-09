@@ -10,11 +10,22 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  * `/api/connections/stripeFinancialConnections/hosted-provision/start` directly
  * and provision a bank feed with no ledger key at all. The route now asserts
  * `ledgerControl` (Area.ledger's Full rung) before it mints a state token or
- * calls into the provider, but ONLY for the bank feed definition. The other
- * hosted-provision definition on this route, `stripeConnect` (Stripe Connect
- * payment onboarding), asserts nothing here today; its write surface is gated
- * client-side only (`AdminGate` on the connect button). That is a separate,
- * pre-existing finding recorded in plans/accounting/HANDOFF.md, not fixed here.
+ * calls into the provider.
+ *
+ * **AMENDED 2026-09-09 (the Connections permission gate).** That first pass
+ * gated the bank feed definition ONLY, leaving `stripeConnect` (Stripe Connect
+ * payment onboarding) asserting nothing on this shared route — its whole gate
+ * was an `AdminGate` on the payments settings page, so any signed-in member
+ * still took the workspace through Connect onboarding by navigating to a URL.
+ * It was recorded as a known open item (task 12 §11.6) rather than fixed. It is
+ * fixed now: every non-bank-feed hosted-provision definition asserts
+ * `integrationsManage`, because hosted provisioning mints a `Credential` and
+ * both shipped definitions are `global: true`, i.e. always org-scoped — which
+ * is exactly what `Area.integrations`' Full rung governs everywhere else.
+ *
+ * The two keys are alternatives, NOT a floor plus a bump: the bank feed asserts
+ * `ledgerControl` alone, so a controller-shaped profile holding `ledger: Full`
+ * and no integrations key keeps the grant task 12 §4.3 designed for it.
  *
  * Behavioral, modelled on `file-download-permission.test.ts`: `requirePermission`
  * is stubbed only as far as its two collaborators (the plan gate and the
@@ -93,10 +104,15 @@ const USER_ID = 'usr_cuid000000000000000000000'
 const BANK_DEF_ID = 'con_cuid00000000000000000bank'
 const STRIPE_CONNECT_DEF_ID = 'con_cuid0000000000000stripeconn'
 
-/** A real `CapabilitySet` composing the Ledger area at `level`. */
-function capabilitiesAt(level: Level) {
+/**
+ * A real `CapabilitySet` composing the Ledger area at `level` and, separately,
+ * the Integrations area at `integrations` (default `None`). Two axes because the
+ * route now picks a different key per definition and the interesting cases are
+ * the ones where the member holds one and not the other.
+ */
+function capabilitiesAt(level: Level, integrations: Level = Level.None) {
   return new CapabilitySet(
-    new Set(expandLevelsToKeys({ [Area.ledger]: level })),
+    new Set(expandLevelsToKeys({ [Area.ledger]: level, [Area.integrations]: integrations })),
     {},
     'USER',
     'full'
@@ -205,13 +221,77 @@ describe('GET .../hosted-provision/start - bank feed provisioning gate', () => {
     expect(handlerStart).not.toHaveBeenCalled()
   })
 
-  it('does NOT gate the `stripeConnect` definition (a separate, pre-existing finding)', async () => {
-    // Confirms task-1's finding stays true: the routes are shared, and only the
-    // bank feed definition is gated by this change. A member with NO ledger
-    // access at all still reaches the provider for `stripeConnect`.
+  it('403s the bank feed for `ledger: Full` when the org plan gate runs, not on integrations', async () => {
+    // The bank feed asserts `ledgerControl` ALONE. A holder with no integrations
+    // access at all must still get through — a controller-shaped profile is
+    // exactly the grant task 12 §4.3 designed, and turning the two keys into a
+    // floor plus a bump would silently revoke it.
+    findConnectionDefinition.mockResolvedValue(bankFeedDef)
+    signedIn(capabilitiesAt(Level.Full, Level.None))
+
+    const res = await GET(
+      request('http://localhost/api/connections/stripeFinancialConnections/hosted-provision/start'),
+      params('stripeFinancialConnections')
+    )
+
+    expect(res.status).toBe(307)
+    expect(handlerStart).toHaveBeenCalled()
+  })
+})
+
+describe('GET .../hosted-provision/start - every other definition gates on integrationsManage', () => {
+  beforeEach(() => {
     findConnectionDefinition.mockResolvedValue(stripeConnectDef)
     getProviderByKey.mockReturnValue({ hostedProvisionKey: 'stripeConnect' })
-    signedIn(capabilitiesAt(Level.None))
+  })
+
+  it('403s a member with no integrations access (THE regression this closes)', async () => {
+    // Until 2026-09-09 this returned 307 and ran the provider: `stripeConnect`
+    // asserted nothing on this shared route, so any signed-in member took the
+    // workspace through Stripe Connect onboarding by navigating to a URL.
+    signedIn(capabilitiesAt(Level.None, Level.None))
+
+    const res = await GET(
+      request('http://localhost/api/connections/stripeConnect/hosted-provision/start'),
+      params('stripeConnect')
+    )
+
+    expect(res.status).toBe(403)
+    // No state minted, no provider touched: the gate precedes both.
+    expect(redisSetex).not.toHaveBeenCalled()
+    expect(handlerStart).not.toHaveBeenCalled()
+  })
+
+  it('403s a member holding only the READ rung (integrations.view, not manage)', async () => {
+    // Provisioning is a write. The Read rung added for `connections.list` must
+    // not be mistaken for authority to connect anything.
+    signedIn(capabilitiesAt(Level.None, Level.Read))
+
+    const res = await GET(
+      request('http://localhost/api/connections/stripeConnect/hosted-provision/start'),
+      params('stripeConnect')
+    )
+
+    expect(res.status).toBe(403)
+    expect(handlerStart).not.toHaveBeenCalled()
+  })
+
+  it('403s a member holding `ledger: Full` but no integrations key', async () => {
+    // The mirror of the bank-feed case above: the two keys are alternatives, so
+    // the ledger key buys nothing here.
+    signedIn(capabilitiesAt(Level.Full, Level.None))
+
+    const res = await GET(
+      request('http://localhost/api/connections/stripeConnect/hosted-provision/start'),
+      params('stripeConnect')
+    )
+
+    expect(res.status).toBe(403)
+    expect(handlerStart).not.toHaveBeenCalled()
+  })
+
+  it('lets an `integrationsManage` holder through to the provider', async () => {
+    signedIn(capabilitiesAt(Level.None, Level.Full))
 
     const res = await GET(
       request('http://localhost/api/connections/stripeConnect/hosted-provision/start'),
@@ -219,6 +299,7 @@ describe('GET .../hosted-provision/start - bank feed provisioning gate', () => {
     )
 
     expect(res.status).toBe(307)
+    expect(redisSetex).toHaveBeenCalled()
     expect(handlerStart).toHaveBeenCalled()
   })
 })

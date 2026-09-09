@@ -11,6 +11,7 @@ import { GoogleOAuthService } from '../providers/google/google-oauth'
 import { InstagramOAuthService } from '../providers/instagram/instagram-oauth'
 import { OutlookOAuthService } from '../providers/outlook/outlook-oauth'
 import { whereThreadProvider } from '../providers/query-helpers'
+import { sweepResourceAccessForInstances } from '../resource-access/sweep-instances'
 import { Result, type TypedResult } from '../result'
 import { validateChannelOwnership } from './internal/validate'
 import type { ChannelCtx } from './types'
@@ -43,9 +44,11 @@ export async function deleteChannelData(tx: DbHandle, channelId: string, provide
     // `chat` provider specifically. The `integrationId` equality below already pins one
     // Integration, so this was trivially true either way; spelled out by provider to stay
     // correct if that ever changes.
-    await tx
+    const deletedChatThreads = await tx
       .delete(schema.Thread)
       .where(and(eq(schema.Thread.integrationId, channelId), whereThreadProvider('chat')))
+      .returning({ id: schema.Thread.id, organizationId: schema.Thread.organizationId })
+    await sweepThreadShares(tx, deletedChatThreads)
     logger.info(`Deleted CHAT threads for channel ${channelId}`)
     return
   }
@@ -100,8 +103,41 @@ export async function deleteChannelData(tx: DbHandle, channelId: string, provide
   // 🔴 Stays synchronous. `Thread` has no soft-delete column and no mail list path
   // filters on `Integration.deletedAt`, so deferring this leaves disconnected mail
   // sitting in the inbox until the worker catches up.
-  await tx.delete(schema.Thread).where(eq(schema.Thread.integrationId, channelId))
+  const deletedThreads = await tx
+    .delete(schema.Thread)
+    .where(eq(schema.Thread.integrationId, channelId))
+    .returning({ id: schema.Thread.id, organizationId: schema.Thread.organizationId })
+  await sweepThreadShares(tx, deletedThreads)
   logger.info(`Deleted threads for channel ${channelId}, media marked for async purge`)
+}
+
+/**
+ * Share rows on the threads this disconnect just dropped.
+ *
+ * `ResourceAccess.entityInstanceId` has no FK (see
+ * `resource-access/sweep-instances.ts`), so nothing else reaches them and a
+ * disconnected mailbox would leave one row per shared thread behind forever.
+ * This is the BULK door: threads go by `integrationId`, so the ids are read back
+ * off the delete rather than known up front, and the org comes off the rows
+ * themselves — `deleteChannelData` is called from two places and takes no
+ * organization scope of its own. In practice that is always one group.
+ */
+async function sweepThreadShares(
+  tx: DbHandle,
+  threads: Array<{ id: string; organizationId: string }>
+): Promise<void> {
+  if (threads.length === 0) return
+
+  const byOrg = new Map<string, string[]>()
+  for (const thread of threads) {
+    const group = byOrg.get(thread.organizationId) ?? []
+    group.push(thread.id)
+    byOrg.set(thread.organizationId, group)
+  }
+
+  for (const [organizationId, instanceIds] of byOrg) {
+    await sweepResourceAccessForInstances(tx, { organizationId, instanceIds })
+  }
 }
 
 /**

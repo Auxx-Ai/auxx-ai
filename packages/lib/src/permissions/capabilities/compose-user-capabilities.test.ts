@@ -1009,7 +1009,30 @@ describe('plan 22 (member baseline strip) — §5 verification', () => {
       [Area.billing]: Level.None,
       [Area.members]: Level.None,
       [Area.permissions]: Level.None,
-      [Area.integrations]: Level.None,
+      // 🛑 Moved None -> Read on 2026-09-09 (the Connections permission gate),
+      // and this is the ONLY entry in this map that is not either an original
+      // plan-22 value or a brand-new area. Read it before "restoring" it.
+      //
+      // `Area.integrations` was `Full`-only until that date. A member composed
+      // `None` here because there was no rung below `integrationsManage` to
+      // compose to — NOT because the connection surface was closed to them. It
+      // was wide open: `connections.list` was a bare `protectedProcedure`
+      // handing every member `ownedByOrOrgScoped`, so every seat enumerated
+      // every org-scoped OAuth connection in the workspace.
+      //
+      // So the composed LEVEL moves and the member's actual ACCESS does not,
+      // which is the opposite of what this map's other entries record and the
+      // reason the plan-22 parity claim survives: the new `Read` rung expands
+      // to `integrations.view` alone, the gate that now stands in front of a
+      // path that previously had none. `integrationsManage` — install and
+      // uninstall apps, MCP servers and webhooks, connect / rotate / delete
+      // org-scoped connections — is still `None` for a member, which is what
+      // keeps this one of the org-administration areas.
+      //
+      // Every member on an EXISTING org reaches the same place through entity
+      // migration 140, which backfills this level onto their stored `member`
+      // grant row; without it their picker would compose empty.
+      [Area.integrations]: Level.Read,
       [Area.channels]: Level.None,
       // Added by plan 36 §2.3 — members create and own their own signatures and
       // snippets, so both ship at `Full` in the Member baseline. This is a NEW

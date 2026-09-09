@@ -16,6 +16,7 @@ import { buildDefIdToSlug } from '../permissions/capabilities/resolve-capability
 import type { MailViewer } from '../permissions/visibility/context'
 import { getRealtimeService, publishThreadDeleted, publishThreadUpdated } from '../realtime'
 import type { ThreadMeta } from '../realtime/events'
+import { sweepResourceAccessForInstances } from '../resource-access/sweep-instances'
 import { type ThreadActor, threadActorToEventFields } from '../thread-events/client'
 import { assertCanActOnThreads } from './thread-action-access'
 import { ThreadMergeService } from './thread-merge.service'
@@ -1429,6 +1430,13 @@ export class ThreadMutationService {
           entityType: 'thread',
         })
 
+        // Share rows on the thread. `ResourceAccess.entityInstanceId` has no
+        // foreign key either — see `resource-access/sweep-instances.ts`.
+        await sweepResourceAccessForInstances(tx, {
+          organizationId: this.organizationId,
+          instanceIds: [deletedThreads[0]!.id],
+        })
+
         return deletedThreads
       })
 
@@ -1505,6 +1513,12 @@ export class ThreadMutationService {
             organizationId: this.organizationId,
             entityIds: deletedThreads.map((thread) => thread.id),
             entityType: 'thread',
+          })
+
+          // Share rows on those threads — see `deletePermanently`.
+          await sweepResourceAccessForInstances(tx, {
+            organizationId: this.organizationId,
+            instanceIds: deletedThreads.map((thread) => thread.id),
           })
         }
 

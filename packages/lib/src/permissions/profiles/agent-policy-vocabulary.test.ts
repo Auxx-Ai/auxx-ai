@@ -83,6 +83,17 @@ import { SYSTEM_PROFILE_SEEDS } from './system-profiles'
  * instance-access resource and neither has a def, so `defs` and `instances`
  * are untouched in every scenario. Re-derived by the tasks/calls sibling of
  * {@link agentsRungsAreTheOnlyAmendment} below.
+ *
+ * **AMENDED AGAIN 2026-09-09 - `Area.integrations` gains a `Level.Read` rung**
+ * (the Connections permission gate). The first amendment that is NOT a new
+ * area: `integrations` was already in `AREA_ORDER` and every scenario already
+ * recorded a level for it, but the ladder was `Full`-only, so a recorded level
+ * of `Read` expanded to nothing. Adding `integrations.view` at `Read` gave
+ * exactly three scenarios one key each - `legacyFull` and `seed:agent` (both at
+ * `Full`) and `mixed` (at `Read`, previously inert). No `areaLevels` entry
+ * moved, no `defs` or `instances` answer changed, and the whole delta is
+ * re-derived from `PERMISSION_AREAS` by the integrations sibling of
+ * {@link agentsRungsAreTheOnlyAmendment} below.
  */
 
 const RESOURCES: PolicyResourceRef[] = [
@@ -336,6 +347,34 @@ describe('the vocabulary rename changes no authority (plan 26 §2.6 / §4)', () 
         const actual = scenario.composed.keys.filter((key) => key.startsWith(`${area}.`)).sort()
         expect(actual, `${name}/${area}`).toEqual([...expected].sort())
       }
+    }
+  })
+
+  /**
+   * The 2026-09-09 Connections-gate amendment, held to the same standard.
+   *
+   * Unlike every amendment above it, `Area.integrations` is NOT a new area — it
+   * has been in `AREA_ORDER` since the capture, and every scenario already
+   * recorded an `areaLevels.integrations`. What changed is the LADDER: the area
+   * was `Full`-only and gained a `Level.Read` rung (`integrations.view`), so
+   * three scenarios gained exactly one key each and NOTHING else moved. No
+   * `areaLevels` entry may shift here, and a re-derivation that produced one
+   * would mean the amendment did more than add a rung.
+   *
+   * `mixed` is the case worth naming: it records `integrations` at `Level.Read`
+   * with zero keys, because the one-rung ladder had nothing to expand at Read.
+   * That rung was inert; now it confers `integrations.view`. Identical in shape
+   * to what the agents split did to this same scenario in 2026-07-28, and
+   * accepted for the same reason — the rung meaning something is the point of
+   * adding it.
+   */
+  it('carries exactly the integrations keys its recorded area level implies', () => {
+    const rungs = PERMISSION_AREAS[Area.integrations].rungs
+    for (const [name, scenario] of Object.entries(SCENARIOS)) {
+      const level = scenario.composed.areaLevels.integrations ?? 0
+      const expected = rungs.filter((rung) => level >= rung.level).flatMap((rung) => rung.keys)
+      const actual = scenario.composed.keys.filter((key) => key.startsWith('integrations.')).sort()
+      expect(actual, name).toEqual([...expected].sort())
     }
   })
 

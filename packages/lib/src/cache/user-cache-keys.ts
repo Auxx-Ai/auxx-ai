@@ -638,5 +638,38 @@ export const USER_CACHE_KEY_CONFIG: Record<
   // Deploy-time flush is mandatory and is NOT a substitute for the bump
   // (`packages/lib/scripts/flush-user-capabilities-cache.ts`), for the same
   // rolling-deploy reason recorded above.
-  userCapabilities: { prefix: 'user:capabilities:v19', ttlSeconds: ONE_DAY },
+  // v20 (2026-09-09, the Connections permission gate): one new `PermissionKey`,
+  // `integrations.view`, added as the `Level.Read` rung of the EXISTING
+  // `Area.integrations` — the area had a write key and no read key, so
+  // `connections.list` had nothing to gate on and every member enumerated every
+  // org-scoped OAuth connection in the workspace. A `keys` CONTENT bump, same
+  // class as v18 and v19; no shape change.
+  //
+  // ONE cause. The same change also adds `integrations: Read` to
+  // `MEMBER_BASELINE_LEVELS` and an entity migration that backfills it onto
+  // every existing org's `member` grant row, but neither of those is a reason
+  // for a bump: the grant row is data, and a grant write already fans out
+  // `permission-grant.changed` for its own audience.
+  //
+  // WHICH WAY A STALE BLOB FAILS, traced. A v19 blob was composed before
+  // `integrations.view` existed, so it holds `integrations.manage` at most.
+  // `areaLevelFromKeys` walks the rungs ascending and breaks on rung 1, so the
+  // area composes to `Level.None` even for a holder of the manage key, and
+  // `capabilities.can(integrationsView)` is false. FAIL-CLOSED, and the failure
+  // is quiet by design rather than a 403: `connections.list` degrades to the
+  // caller's OWN rows, the Connections entry disappears from the settings nav
+  // and the command palette, and the workflow/agent/data-connector connection
+  // picker (`orgScopedOnly: true`) composes EMPTY. An empty picker with no
+  // error is harder to diagnose than a 403, which is precisely why the
+  // deploy-time flush matters here.
+  //
+  // The victim is EVERY MEMBER, not a narrow admin slice — `integrations: Read`
+  // ships open in `MEMBER_BASELINE_LEVELS` — and the admin too, whose
+  // `ALL_FULL` should hold the key but whose key set was frozen at compose
+  // time without it. Nobody GAINS anything from a stale blob.
+  //
+  // Deploy-time flush is mandatory and is NOT a substitute for the bump
+  // (`packages/lib/scripts/flush-user-capabilities-cache.ts`), for the same
+  // rolling-deploy reason recorded above.
+  userCapabilities: { prefix: 'user:capabilities:v20', ttlSeconds: ONE_DAY },
 }

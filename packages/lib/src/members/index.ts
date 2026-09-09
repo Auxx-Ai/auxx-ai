@@ -9,6 +9,7 @@ export {
   assignMemberProfile,
 } from './assign-profile'
 export { emailEquals, normalizeEmail } from './email-match'
+export { canManageTarget, ROLE_RANK, rankOf, requireMemberManage } from './guards'
 export {
   INVITATION_PROFILE_BOUND_ACTION,
   INVITATION_PROFILE_MISSING_ACTION,

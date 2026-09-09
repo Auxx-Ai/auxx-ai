@@ -51,6 +51,12 @@ export enum PermissionKey {
   billingManage = 'billing.manage',
   membersManage = 'members.manage',
   permissionsManage = 'permissions.manage',
+  // integrations: the connection/app/MCP/webhook surface. The `view` rung was
+  // added 2026-09-09 because the area had a write key and no read key, so
+  // `connections.list` (the Settings -> Connections inventory) had nothing to
+  // gate on and was a bare `protectedProcedure`: every member enumerated every
+  // org-scoped OAuth connection in the workspace. See `PERMISSION_AREAS`.
+  integrationsView = 'integrations.view',
   integrationsManage = 'integrations.manage',
   aiConfigManage = 'aiConfig.manage',
   automationRulesManage = 'automationRules.manage',
@@ -297,6 +303,16 @@ export const PERMISSION_REGISTRY: PermissionMetadata[] = [
   },
 
   // ── Integrations ──
+  {
+    key: PermissionKey.integrationsView,
+    label: 'View Integrations',
+    description: 'See the workspace connections, apps, and MCP servers.',
+    group: 'Integrations',
+    // Deliberately NO `featureKey`: `permissionProcedure` runs the Layer-1 plan
+    // gate off that field, and there is no plan on which a member should be
+    // unable to see the connection their own workflow binds. The write rung
+    // beside this one carries none either.
+  },
   {
     key: PermissionKey.integrationsManage,
     label: 'Manage Integrations',
@@ -925,7 +941,51 @@ export const PERMISSION_AREAS: Record<Area, AreaMetadata> = {
     label: 'Integrations',
     description: 'Install and configure apps, MCP servers, and webhooks.',
     group: 'Integrations',
-    rungs: [{ level: Level.Full, keys: [PermissionKey.integrationsManage] }],
+    rungs: [
+      { level: Level.Read, keys: [PermissionKey.integrationsView] },
+      { level: Level.Full, keys: [PermissionKey.integrationsManage] },
+    ],
+    // READ RUNG ADDED 2026-09-09. Until then this area was `Full`-only, which
+    // meant the whole connection READ path had no key to gate on:
+    // `connections.list` was a bare `protectedProcedure` and handed every
+    // member `ownedByOrOrgScoped`, i.e. their own connections PLUS every
+    // org-scoped one. Names, provider types and creators of the workspace's
+    // OAuth connections were readable by anyone with a seat, including an
+    // outside contractor on a locked-down profile. (Secrets were never in that
+    // projection — `HIDDEN_VALUE` masking predates this — so the leak was the
+    // inventory, not the credentials.) `Area.inboxes` above is the shape this
+    // copies: one area, view + manage.
+    //
+    // NO `Edit` rung, and there is nothing to put in one. A connection is
+    // created, rotated or deleted; there is no third authority between "see
+    // that the workspace has a Stripe connection" and "connect, rotate or
+    // delete one". `Area.channels` directly below and `Area.billing` above are
+    // the same partial shape.
+    //
+    // THE OWNERSHIP CARVE-OUT IS NOT ON THIS LADDER and must not be folded into
+    // it. A user-scoped `Credential` (`Credential.userId` set) belongs to its
+    // creator and is readable and manageable by them at `integrations: None` —
+    // `requireConnectionViewAccess` / `requireConnectionManageAccess` in
+    // `routers/connections.ts` and `routers/apps.ts` short-circuit on ownership
+    // BEFORE they consult either key. Both rungs govern the ORG-SCOPED half
+    // only (`Credential.userId IS NULL`). Gate a read path on `integrationsView`
+    // alone and you take a member's own connections away from them, which is
+    // the one regression this area's design is trying to avoid; the §2.d
+    // resolution below said the same thing about the write half.
+    //
+    // MEMBER DEFAULT is `Read` (`MEMBER_BASELINE_LEVELS`), which IS today's
+    // behaviour: this rung is inert on the seeded Member profile by
+    // construction, exactly the way plan 40 §7 made `inboxes: Read` inert. It
+    // has to be — every member holds `workflows: Full` and `agents: Full` on
+    // that same baseline, and binding an org-scoped connection into a workflow
+    // or an agent reads the org-scoped list through `ConnectionPickerPopover`
+    // (`orgScopedOnly: true`). Shipping this area's Read rung CLOSED would have
+    // emptied that picker for every ordinary member in every org. The rung's
+    // job is to give an admin a LEVER they did not have; a profile that omits
+    // `integrations` (every custom profile, plus the `accountant` and
+    // `bookkeeper` seeds) composes `None` off `ROLE_DEFAULTS.USER` and is
+    // refused.
+    //
     // Binary role gate dropped 2026-07-27 (plan 21 §4.1 + the §2.d
     // classification): the app CONNECTION lifecycle now asserts
     // `integrationsManage` — org-scoped

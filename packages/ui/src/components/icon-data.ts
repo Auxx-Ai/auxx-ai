@@ -38,6 +38,7 @@ import {
   Briefcase,
   Building,
   Building2,
+  Cable,
   Calculator,
   Calendar,
   CalendarClock,
@@ -367,6 +368,10 @@ export const ICON_DATA: IconItem[] = [
   { id: 'shield-check', label: 'Shield Check', icon: ShieldCheck },
   { id: 'zap', label: 'Zap', icon: Zap },
   { id: 'plug', label: 'Plug', icon: Plug },
+  // Settings > Connections renders lucide `Cable` directly; the command
+  // palette resolves the same entry by id through this registry, so an
+  // absent id renders NOTHING rather than falling back.
+  { id: 'cable', label: 'Cable', icon: Cable },
   { id: 'lightbulb', label: 'Lightbulb', icon: Lightbulb },
   // Navigation
   { id: 'compass', label: 'Compass', icon: Compass },

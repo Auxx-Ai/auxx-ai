@@ -436,8 +436,12 @@ async function resolveInvalidationTargets(
  * targeted branch re-walks the invalidation graph, marks mail counts stale and
  * publishes per call, so a per-user loop turned a 20-member group share into 20
  * of each. `userIds` is the field that exists for this.
+ *
+ * Exported (plan 46 §8) so the member-shares bulk revoke can reuse the same
+ * invalidation the single-row revokes fire, rather than growing a second,
+ * subtly-different fan-out.
  */
-async function emitResourceAccessChanged(
+export async function emitResourceAccessChanged(
   organizationId: string,
   grantees: Array<{ granteeType: ResourceGranteeType; granteeId: string }>
 ): Promise<void> {
@@ -467,8 +471,12 @@ async function emitResourceAccessChanged(
  * sessions re-compose def-access on a grant change (phase 4 §10) — the server
  * cache bust alone leaves clients stale until a natural refetch / TTL. Mirrors
  * {@link emitGrantChanged} in grant-service.ts.
+ *
+ * Exported (plan 46 §8) alongside {@link emitResourceAccessChanged} for the same
+ * reason — both are siblings of the already-exported
+ * {@link emitResourceAccessInstanceChanged}.
  */
-async function emitResourceAccessTypeChanged(
+export async function emitResourceAccessTypeChanged(
   organizationId: string,
   grantees: Array<{ granteeType: ResourceGranteeType; granteeId: string }>
 ): Promise<void> {

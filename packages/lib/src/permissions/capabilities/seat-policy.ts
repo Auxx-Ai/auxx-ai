@@ -153,9 +153,11 @@ export const ROLE_DEFAULTS: Record<OrganizationRole, Record<Area, Level>> = {
  * The Member profile's seeded baseline (plan 22 §2.2) — today's positive USER
  * map, unchanged, now written as an explicit `PermissionGrant` row instead of
  * composed from `ROLE_DEFAULTS` at read time: every area at `Full` EXCEPT the
- * ten org-administration areas below (OMITTED entirely — the floor is `None` for
+ * org-administration areas below (OMITTED entirely — the floor is `None` for
  * every one of them, so storing `None` would be dead weight and the editor
  * should show those rows as unset), `datasets: Read`, and `knowledgeBase: Edit`.
+ * `integrations` is the one partial exception and is listed EXPLICITLY at
+ * `Read`; see its entry.
  *
  * **The "omitted ⇒ `None`" shorthand is no longer universal** (plan 43 §3.2):
  * {@link ROLE_DEFAULTS}`.USER` now floors `signatures` / `snippets` /
@@ -171,12 +173,16 @@ export const ROLE_DEFAULTS: Record<OrganizationRole, Record<Area, Level>> = {
  * backfill for existing orgs) to become member-visible, rather than silently
  * inheriting `Full` because it wasn't excluded.
  *
- * - `settings` / `permissions` / `billing` / `members` / `integrations` /
- *   `aiConfig` / `automationRules` / `auditLog` / `connectors` / `channels` —
- *   the ten org-administration areas — are grantable but OFF by default; a
- *   member gets them only via an explicit grant. `channels` (plan 21 §6): the
- *   migrated Tier C sites were all `adminProcedure`, so the member default
- *   stays closed to preserve behavior.
+ * - `settings` / `permissions` / `billing` / `members` / `aiConfig` /
+ *   `automationRules` / `auditLog` / `connectors` / `channels` — nine of the ten
+ *   org-administration areas — are grantable but OFF by default; a member gets
+ *   them only via an explicit grant. `channels` (plan 21 §6): the migrated
+ *   Tier C sites were all `adminProcedure`, so the member default stays closed
+ *   to preserve behavior.
+ * - `integrations: Read` is the tenth and the exception (2026-09-09). Its write
+ *   rung, `integrationsManage`, is still off by default like the other nine;
+ *   only the new READ rung is open, and only because the surface it gates was
+ *   already open to every member before the rung existed. See its entry below.
  * - `datasets: Read` (§0.2): everyone should *see and use* datasets in search
  *   and agents by default, but *contributing files* (Edit) or *changing
  *   settings* (Full) is a deliberate rung bump or per-dataset instance grant.
@@ -220,6 +226,29 @@ export const MEMBER_BASELINE_LEVELS: Partial<Record<Area, Level>> = {
   // tasks and calls (task 12 §10): both were ungated before they had an area,
   // so Full here is today's behaviour, not a widening.
   [Area.calls]: Level.Full,
+  // integrations: `Read`, and ONLY `Read`. `Area.integrations` gained a Read
+  // rung on 2026-09-09 (`registry.ts`); before it, `connections.list` was a
+  // bare `protectedProcedure` and every member already saw every org-scoped
+  // connection. So this entry is TODAY'S BEHAVIOUR written down, the same move
+  // plan 40 §7 made for `inboxes: Read` — it is what keeps the rung inert for
+  // the seeded Member profile instead of taking a surface away from every
+  // member in every org on deploy.
+  //
+  // It is load-bearing beyond the settings page. Members hold `workflows: Full`
+  // and `agents: Full` here, and `ConnectionPickerPopover` binds a connection
+  // by listing the ORG-SCOPED rows (`orgScopedOnly: true`). Omit `integrations`
+  // from this map and every member's workflow, agent and data-connector
+  // connection picker composes empty, with no error to explain it.
+  //
+  // **NOT `Full`.** That is `integrationsManage`: install and uninstall apps,
+  // MCP servers, webhooks, chat signing keys, and connect/rotate/delete
+  // ORG-SCOPED connections. This area stays one of the ten org-administration
+  // areas listed above at its write rung; only the read rung is open.
+  //
+  // The nine surviving org-administration areas above are still OMITTED. This
+  // entry needs a BACKFILL for existing orgs the same way plan 40 §7 did — see
+  // entity migration `140-integrations-view`.
+  [Area.integrations]: Level.Read,
 }
 
 /**

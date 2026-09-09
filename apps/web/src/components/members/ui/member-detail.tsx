@@ -14,7 +14,7 @@ import {
 } from '@auxx/ui/components/empty'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@auxx/ui/components/tabs'
-import { ShieldCheck, User, Users } from 'lucide-react'
+import { Share2, ShieldCheck, User, Users } from 'lucide-react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { UpgradeBanner } from '~/components/banner/upgrade-banner'
 import SettingsPage from '~/components/global/settings-page'
@@ -30,6 +30,7 @@ import { MemberAccessSection } from './member-access-section'
 import { MemberAccountsSection } from './member-accounts-section'
 import { MemberDangerSection } from './member-danger-section'
 import { MemberProfileBadge } from './member-profile-badge'
+import { MemberSharedSection } from './member-shared-section'
 import { MemberTeamsSection } from './member-teams-section'
 
 const BREADCRUMBS_BASE = [
@@ -52,7 +53,8 @@ export function MemberDetail({ userId }: { userId: string }) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
-  const tab = searchParams.get('tab') === 'permissions' ? 'permissions' : 'general'
+  const tabParam = searchParams.get('tab')
+  const tab = tabParam === 'permissions' || tabParam === 'shared' ? tabParam : 'general'
   const { data, isLoading } = api.member.all.useQuery()
   const { resolveMemberProfile } = useMemberProfiles()
   const members = (data?.members ?? []) as unknown as Member[]
@@ -140,6 +142,10 @@ export function MemberDetail({ userId }: { userId: string }) {
               <ShieldCheck />
               Permissions
             </TabsTrigger>
+            <TabsTrigger value='shared' variant='outline'>
+              <Share2 />
+              Shared
+            </TabsTrigger>
           </TabsList>
         }>
         <TabsContent value='general'>
@@ -163,6 +169,11 @@ export function MemberDetail({ userId }: { userId: string }) {
               granteeId={member.userId}
               canEdit={canEditPermissions}
             />
+          </div>
+        </TabsContent>
+        <TabsContent value='shared'>
+          <div className='space-y-8 p-3 sm:p-6'>
+            <MemberSharedSection member={member} viewerId={viewerId} />
           </div>
         </TabsContent>
       </SettingsPage>

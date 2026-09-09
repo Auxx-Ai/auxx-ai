@@ -5,6 +5,7 @@ import { fromDatabase } from '@auxx/services/shared/utils'
 import { and, eq, inArray } from 'drizzle-orm'
 import { err, ok } from 'neverthrow'
 import { sweepEntityFieldValues } from '../field-values/sweep-entity-references'
+import { sweepResourceAccessForInstances } from '../resource-access/sweep-instances'
 
 /** Parameters for deleting an entity instance */
 export interface DeleteEntityInstanceParams {
@@ -74,6 +75,10 @@ const DELETE_CHUNK = 500
  * a `TimelineEvent` are left alone deliberately: they are another, still-living
  * record's history — "this contact once had an order" survives the order.
  *
+ * ⚠️ `ResourceAccess` is matched on `entityInstanceId` ALONE, never on
+ * `entityDefinitionId`, for the same reason and by the same argument. See
+ * `resource-access/sweep-instances.ts`.
+ *
  * Every statement is org-scoped on its own, so an id from another organization
  * deletes nothing rather than deleting the wrong thing.
  */
@@ -140,6 +145,11 @@ export async function deleteEntityInstances(params: DeleteEntityInstancesParams)
             )
           )
 
+        // Share rows addressed at the dead records. Same rule as the timeline
+        // above: matched on the instance id ALONE, never on a definition, since
+        // one record's rows can sit under either keyspace.
+        await sweepResourceAccessForInstances(tx, { organizationId, instanceIds: chunk })
+
         const deleted = await tx
           .delete(schema.EntityInstance)
           .where(
@@ -192,6 +202,22 @@ export async function deleteEntityInstances(params: DeleteEntityInstancesParams)
  * had ever called the `deleteTimelineEvents` service written for exactly this:
  * 83% of the dev table (189,797 of 229,078 rows) points at an `entityId` that
  * no longer resolves.
+ *
+ * The record's instance-level `ResourceAccess` rows go the same way, under the
+ * same rule and for the same reason: `entityInstanceId` is another bare `text()`
+ * column with no FK — it cannot have one, because `entityDefinitionId` carries
+ * two disjoint keyspaces and the row's target therefore lives in a different
+ * table per row — and no delete path had ever swept it. Every such survivor is a
+ * row granting a member access to something that no longer exists; on dev that
+ * was 3 of 705 rows (2 `thread`, 1 `contact`), cosmetic today and unbounded over
+ * time (plan 46 §11). Because this is the single write seam every record delete
+ * reaches — `deleteEntity`, `bulkDeleteEntities`, cascades and the quiet lane
+ * alike (`docs/record-delete-architecture-guide.md` §3 phase 3) — one sweep here
+ * covers records, contacts, inboxes and signatures. Threads are a separate table
+ * and are swept at their own delete sites.
+ *
+ * The sweep never emits: see `resource-access/sweep-instances.ts` for why a
+ * dangling grant needs no cache bust.
  */
 export async function deleteEntityInstance(params: DeleteEntityInstanceParams) {
   const result = await deleteEntityInstances({

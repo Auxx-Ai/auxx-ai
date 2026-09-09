@@ -4,6 +4,7 @@
 
 import type { Lens } from '@auxx/lib/permissions/visibility/client'
 import type { ChannelLens } from '@auxx/lib/realtime/client'
+import { useAccess } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 
 const EMPTY_LENSES: Record<string, ChannelLens> = {}
@@ -23,8 +24,11 @@ const EMPTY_FLOORS: Record<string, Lens> = {}
  * badge in the inbox list. It rides on this query instead.
  */
 export function useMyInboxLenses(enabled = true) {
+  // A member without `inboxes.view` has no lens to fetch — the server composes
+  // an empty map for them — so the call is pure waste on every page they load.
+  const { can } = useAccess()
   const { data, isLoading } = api.inbox.myLenses.useQuery(undefined, {
-    enabled,
+    enabled: enabled && can('inboxes.view'),
     staleTime: 5 * 60 * 1000,
   })
   return {

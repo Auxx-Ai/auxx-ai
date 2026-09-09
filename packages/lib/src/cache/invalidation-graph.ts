@@ -101,8 +101,24 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
 
   // Inbox floors (defaultLens) feed every member's visibility context — emit
   // sites broadcast user keys (org-wide fan-out).
-  'inbox.created': { org: ['inboxes'], user: ['userInstanceGrants'] },
-  'inbox.updated': { org: ['inboxes'], user: ['userInstanceGrants'] },
+  //
+  // `userCapabilities` as well as `userInstanceGrants`, for the same reason
+  // `group.members.changed` above lists both: an inbox instance row SYNTHESIZES a
+  // derived `inboxes.view` key (`INSTANCE_ACCESS_READ_KEYS`, plan 25 §2), which
+  // lives in the capability blob's `instanceDerivedKeys` and nowhere else. So an
+  // inbox appearing or disappearing changes the composed capability set, not just
+  // the mail lens.
+  //
+  // 🛑 Busting only `userInstanceGrants` produced a genuinely confusing failure on
+  // 2026-09-09: a member whose personal inbox had been deleted had a correct,
+  // freshly-computed `inboxLens` of `{}` sitting next to a STALE
+  // `can('inboxes.view') === true`. The sidebar gates the whole Mail section on
+  // that key (`sidebar/index.tsx`), so they kept the entire Mail tree — inboxes,
+  // Compose, the channel-backed From picker — while every list underneath it
+  // correctly rendered empty. Two caches, one fact, and only one of them was
+  // invalidated.
+  'inbox.created': { org: ['inboxes'], user: ['userInstanceGrants', 'userCapabilities'] },
+  'inbox.updated': { org: ['inboxes'], user: ['userInstanceGrants', 'userCapabilities'] },
   // `MailFilter.inboxId` cascades on inbox delete (invariant 18) — the rows are
   // gone from the DB, so the cached array must go with them or the gate keeps
   // evaluating filters whose containment boundary no longer exists.
@@ -110,7 +126,10 @@ export const INVALIDATION_GRAPH: Record<string, InvalidationMapping> = {
   // NOT added to `channel.*`: disconnecting a channel is a SOFT delete of the
   // `Integration` row and leaves the inbox (and therefore its filters) intact.
   // Filters key on the inbox, never on the channel.
-  'inbox.deleted': { org: ['inboxes', 'mailFilters'], user: ['userInstanceGrants'] },
+  'inbox.deleted': {
+    org: ['inboxes', 'mailFilters'],
+    user: ['userInstanceGrants', 'userCapabilities'],
+  },
 
   // Record-rule lifecycle events
   'record-rule.changed': ['recordRules'],

@@ -102,17 +102,45 @@ export async function GET(
         )
       }
 
-      // The gate is keyed off the definition, not the route: the bank feed is the
-      // one hosted-provision definition that touches the ledger, so it alone needs
-      // `ledgerControl` (Area.ledger's Full rung - the chart, the opening balance,
-      // and now bank feed provisioning). Any signed-in member could otherwise mint a
-      // state token and provision a bank feed with no ledger key at all. Other
-      // hosted-provision definitions (e.g. `stripeConnect`) assert nothing here
-      // today - their write surface is gated in the UI only (`AdminGate` on the
-      // connect button) - and that stays as-is; see plans/accounting/HANDOFF.md.
-      if (connDef.providerKey === BANK_FEED_PROVIDER_KEY) {
-        await requirePermission(session.user.id, organizationId, PermissionKey.ledgerControl)
-      }
+      // The gate is keyed off the definition, not the route, and there is now no
+      // definition it lets through unasserted.
+      //
+      // The bank feed is the one hosted-provision definition that touches the
+      // ledger, so it needs `ledgerControl` (Area.ledger's Full rung - the
+      // chart, the opening balance, and bank feed provisioning). Every OTHER
+      // hosted-provision definition asserts `integrationsManage`: hosted
+      // provisioning always mints a `Credential`, both shipped definitions are
+      // `global: true` so that credential is always ORG-SCOPED
+      // (`userId IS NULL`), and org-scoped connection lifecycle is precisely
+      // what `Area.integrations`' Full rung governs everywhere else in the
+      // product (`routers/connections.ts` `save`, `requireConnectionManageAccess`
+      // in `routers/apps.ts`, and the app OAuth authorize route). There is no
+      // ownership carve-out to make here for the same reason: nothing on this
+      // route mints a user-scoped row.
+      //
+      // 🛑 `stripeConnect` was the specific hole. Until 2026-09-09 it asserted
+      // NOTHING on this route - its only gate was an `AdminGate` on the payments
+      // settings page - so any signed-in member could navigate to
+      // `/api/connections/stripeConnect/hosted-provision/start` and take the
+      // workspace through Stripe Connect onboarding. That was recorded as a
+      // known open item (plans/accounting/tasks/12-accountant-permissions.md
+      // §11.6, HANDOFF §21) rather than fixed, on the grounds that the money
+      // plan should pick its key. `integrationsManage` is not that key and does
+      // not pre-empt it: an admin holds it either way, and narrowing it later to
+      // a payments-specific key is a strictly smaller change than opening a
+      // route that is currently open to everyone.
+      //
+      // NOT a floor under `ledgerControl`: the bank feed asserts the ledger key
+      // ALONE, deliberately. Requiring both would refuse a controller-shaped
+      // profile that holds `ledger: Full` and no integrations key, which is
+      // exactly the grant task 12 §4.3 designed for bank feed provisioning.
+      await requirePermission(
+        session.user.id,
+        organizationId,
+        connDef.providerKey === BANK_FEED_PROVIDER_KEY
+          ? PermissionKey.ledgerControl
+          : PermissionKey.integrationsManage
+      )
 
       state = crypto.randomBytes(32).toString('hex')
       stateData = {

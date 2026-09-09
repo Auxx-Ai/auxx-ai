@@ -9,6 +9,7 @@ import {
   CommandList,
 } from '@auxx/ui/components/command'
 import { useMemo, useState } from 'react'
+import { useAccess } from '~/providers/capabilities-provider'
 import { useContextualSections } from '../contextual/select-contextual'
 import { PaletteActionItem } from '../palette-action-item'
 import { useRecentsStore } from '../recents-store'
@@ -49,6 +50,7 @@ export function RootPage({
   recentActions: PaletteAction[]
 }) {
   const [query, setQuery] = useState('')
+  const { can } = useAccess()
   const goTo = useCommandPaletteStore((s) => s.goTo)
   const pushRecent = useRecentsStore((s) => s.push)
 
@@ -60,8 +62,8 @@ export function RootPage({
   const searching = query.trim() !== ''
   const showRecents = !searching && recentActions.length > 0
 
-  const searchActions = useMemo<PaletteAction[]>(
-    () => [
+  const searchActions = useMemo<PaletteAction[]>(() => {
+    const actions: PaletteAction[] = [
       {
         id: 'search-records',
         label: 'Search records',
@@ -70,17 +72,24 @@ export function RootPage({
         keywords: 'search records find lookup',
         perform: () => goTo('search'),
       },
-      {
+    ]
+    // "Read mail across every inbox" is exactly what a member without
+    // `inboxes.view` may not do. Its results are visibility-filtered server-side
+    // so it could only ever come back empty, but an always-visible row promising
+    // mail search is worse than no row: `ALWAYS_VISIBLE_IDS` in `score.ts` pins
+    // this one to the top of an empty palette.
+    if (can('inboxes.view')) {
+      actions.push({
         id: 'search-threads',
         label: 'Search threads',
         subtitle: 'Read mail across every inbox',
         icon: 'mail',
         keywords: 'search threads mail email read inbox conversation',
         perform: () => goTo('search-threads'),
-      },
-    ],
-    [goTo]
-  )
+      })
+    }
+    return actions
+  }, [goTo, can])
 
   // Every row the palette can show, de-duped by id (cmdk requires unique values).
   const flat = useMemo<FlatEntry[]>(() => {

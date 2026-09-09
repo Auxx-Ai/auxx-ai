@@ -96,6 +96,7 @@ import { migration136RefundsAndTaxLines } from './migrations/136-refunds-and-tax
 import { migration137FulfillmentFacts } from './migrations/137-fulfillment-facts'
 import { migration138AccountantPermissions } from './migrations/138-accountant-permissions'
 import { migration139TaxLineOrderWritable } from './migrations/139-tax-line-order-writable'
+import { migration140IntegrationsView } from './migrations/140-integrations-view'
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
@@ -292,6 +293,11 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   // connector-written tax line (plans/money/tasks/51-first-sync-defects.md §1).
   // MUST sort after 136, which creates the field it repairs.
   migration139TaxLineOrderWritable,
+  // Opens Area.integrations at Read on every existing org's `member` baseline
+  // grant, so the new `integrations.view` rung is inert for members instead of
+  // hiding Settings -> Connections and emptying the connection picker. Touches
+  // no entity def, so it has no ordering constraint against any migration above.
+  migration140IntegrationsView,
 ]
 
 /**

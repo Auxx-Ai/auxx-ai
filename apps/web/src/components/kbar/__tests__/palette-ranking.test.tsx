@@ -20,6 +20,10 @@ class NoopIntersectionObserver {
 vi.stubGlobal('IntersectionObserver', NoopIntersectionObserver)
 
 vi.mock('../contextual/select-contextual', () => ({ useContextualSections: () => [] }))
+// `RootPage` gates "Search threads" on `inboxes.view`. Granted here so these
+// ranking cases keep scoring the full row set; the gate itself is covered by
+// `palette-mail-gating.test.tsx`.
+vi.mock('~/providers/capabilities-provider', () => ({ useAccess: () => ({ can: () => true }) }))
 vi.mock('../store', () => ({
   useCommandPaletteStore: Object.assign(
     (selector: (s: { goTo: () => void }) => unknown) => selector({ goTo: () => {} }),
