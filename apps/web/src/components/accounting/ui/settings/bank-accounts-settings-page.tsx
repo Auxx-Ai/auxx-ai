@@ -9,9 +9,10 @@
 // `accounts-settings-page.tsx` shape, minus the tab strip, because there is only
 // one thing on this page.
 //
-// 🛑 Every write here is on `ledgerPost`, the Full rung of the ledger area, and
-// not because it produces a posting. Mapping a bank account to a GL code decides
-// where CASH lands on the balance sheet; routing that through a records-grade
+// 🛑 Every write here is on `ledgerControl`, the Full rung of the ledger area
+// (plans/accounting/tasks/12-accountant-permissions.md §4.3), and not because
+// it produces a posting. Mapping a bank account to a GL code decides where
+// CASH lands on the balance sheet; routing that through a records-grade
 // capability would let records-Full / ledger-None move the org's cash account.
 // Same argument as the chart's own writes in `routers/ledger.ts`.
 //
@@ -52,11 +53,12 @@ const PAGE_DESCRIPTION =
   'The accounts your money actually sits in, and which account in your chart each one maps to. Everything the bank feed and the statement importer produce lands against a row here.'
 
 export function BankAccountsSettingsPage() {
-  // 🛑 `ledgerPost`, not `ledgerView`. Every control on this page is a WRITE -
-  // the mapping, the manual add, connect, sync and disconnect - and the page has
-  // no read-only rendering, so a `ledgerView` gate handed a viewer live controls
-  // the server then refused one by one. Same rung the header above argues for.
-  useRequireCapability(PermissionKey.ledgerPost)
+  // 🛑 `ledgerControl`, not `ledgerView` or `ledgerPost`. Every control on this
+  // page is a WRITE - the mapping, the manual add, connect, sync and disconnect
+  // - and the page has no read-only rendering, so a lower gate handed a viewer
+  // live controls the server then refused one by one. Same rung the header
+  // above argues for.
+  useRequireCapability(PermissionKey.ledgerControl)
   const { hasAccess } = useFeatureFlags()
   const utils = api.useUtils()
 

@@ -37,7 +37,7 @@ export const recordingRouter = createTRPCRouter({
   /**
    * List recordings for the organization with optional filters.
    */
-  list: protectedProcedure
+  list: permissionProcedure(PermissionKey.callsView)
     .input(
       z.object({
         status: z.enum(BOT_STATUSES).optional(),
@@ -55,23 +55,25 @@ export const recordingRouter = createTRPCRouter({
   /**
    * Get a single recording with related data.
    */
-  getById: protectedProcedure.input(z.object({ id: z.string() })).query(async ({ ctx, input }) => {
-    const detail = await getRecordingDetail(input.id, ctx.session.organizationId)
-    if (!detail) {
-      throw new TRPCError({ code: 'NOT_FOUND', message: 'Recording not found' })
-    }
-    return {
-      ...detail.recording,
-      calendarEvent: detail.calendarEvent,
-      participants: detail.participants,
-      hasTranscript: detail.hasTranscript,
-    }
-  }),
+  getById: permissionProcedure(PermissionKey.callsView)
+    .input(z.object({ id: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const detail = await getRecordingDetail(input.id, ctx.session.organizationId)
+      if (!detail) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Recording not found' })
+      }
+      return {
+        ...detail.recording,
+        calendarEvent: detail.calendarEvent,
+        participants: detail.participants,
+        hasTranscript: detail.hasTranscript,
+      }
+    }),
 
   /**
    * Create a meeting — either via Google Meet (auto-creates calendar event) or manual URL.
    */
-  createMeeting: protectedProcedure
+  createMeeting: permissionProcedure(PermissionKey.callsManage)
     .input(
       z.object({
         title: z.string().min(1),
@@ -105,7 +107,7 @@ export const recordingRouter = createTRPCRouter({
   /**
    * Manually schedule a recording bot for a calendar event.
    */
-  schedule: protectedProcedure
+  schedule: permissionProcedure(PermissionKey.callsManage)
     .input(
       z.object({
         calendarEventId: z.string(),
@@ -134,7 +136,7 @@ export const recordingRouter = createTRPCRouter({
   /**
    * Cancel a scheduled or active recording.
    */
-  cancel: protectedProcedure
+  cancel: permissionProcedure(PermissionKey.callsManage)
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const result = await cancelBot({
@@ -154,18 +156,17 @@ export const recordingRouter = createTRPCRouter({
   /**
    * Get a presigned video URL for playback (15-min TTL).
    */
-  getVideoSession: protectedProcedure
+  getVideoSession: permissionProcedure(PermissionKey.callsView)
     .input(z.object({ id: z.string() }))
     .query(({ ctx, input }) => {
       return getRecordingVideoUrl(input.id, ctx.session.organizationId)
     }),
 
   /**
-   * Delete a recording and its associated media files. Gated on `channelsManage`
-   * (plan 21 §6/§4.3 — recordings are communication-capture media, they join
-   * channels).
+   * Delete a recording and its associated media files. Recordings now have
+   * their own area (task 12 §10) — moved off `channelsManage`.
    */
-  delete: permissionProcedure(PermissionKey.channelsManage)
+  delete: permissionProcedure(PermissionKey.callsManage)
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const result = await deleteRecording(
@@ -182,7 +183,7 @@ export const recordingRouter = createTRPCRouter({
   /**
    * Get transcript with speakers for a recording.
    */
-  getTranscript: protectedProcedure
+  getTranscript: permissionProcedure(PermissionKey.callsView)
     .input(z.object({ recordingId: z.string() }))
     .query(({ ctx, input }) => {
       return getTranscript(input.recordingId, ctx.session.organizationId)
@@ -191,7 +192,7 @@ export const recordingRouter = createTRPCRouter({
   /**
    * Get paginated utterances for a transcript, with speaker info.
    */
-  getUtterances: protectedProcedure
+  getUtterances: permissionProcedure(PermissionKey.callsView)
     .input(
       z.object({
         transcriptId: z.string(),
@@ -206,7 +207,7 @@ export const recordingRouter = createTRPCRouter({
   /**
    * Manually assign a speaker to a participant (override auto-matching).
    */
-  updateSpeaker: protectedProcedure
+  updateSpeaker: permissionProcedure(PermissionKey.callsManage)
     .input(
       z.object({
         speakerId: z.string(),
@@ -358,7 +359,7 @@ export const recordingRouter = createTRPCRouter({
   }),
 
   /** Regenerate AI outputs (summary / chapters / insights / all). */
-  regenerate: protectedProcedure
+  regenerate: permissionProcedure(PermissionKey.callsManage)
     .input(
       z.object({
         recordingId: z.string(),
@@ -410,7 +411,7 @@ export const recordingRouter = createTRPCRouter({
     }),
 
   /** Regenerate transcript from the bot provider. Cascades into AI regeneration. */
-  regenerateTranscript: protectedProcedure
+  regenerateTranscript: permissionProcedure(PermissionKey.callsManage)
     .input(z.object({ recordingId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const organizationId = ctx.session.organizationId

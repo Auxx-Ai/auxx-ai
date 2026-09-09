@@ -43,6 +43,11 @@ const { onCacheEvent, getCachedEntityDefId, listAll, crud } = vi.hoisted(() => (
 vi.mock('../cache', () => ({
   onCacheEvent,
   getCachedEntityDefId,
+  // `resolveInbox` translates system attribute to CustomField id through the
+  // org cache; one owner field per def is enough for these reads.
+  getCachedCustomFields: vi.fn(async (_org: string, defId: string) => [
+    { id: `${defId}:owner`, systemAttribute: 'inbox_owner_user_id', entityDefinitionId: defId },
+  ]),
   getUserCache: () => ({ get: async () => ({ isAdmin: false, inboxLens: {} }) }),
 }))
 vi.mock('../resource-access/resource-access-service', () => ({
@@ -301,7 +306,12 @@ describe('per-instance reads resolve the instance’s ACTUAL definition', () => 
     // map — an all-defaults inbox with `isPersonal: false`, nothing thrown.
     const db = makeDb([{ id: PERSONAL_INBOX, entityDefinitionId: PERSONAL_DEF_ID }])
     crud.getById.mockResolvedValue({ id: PERSONAL_INBOX })
-    crud.getFieldValues.mockResolvedValue(new Map([['inbox_owner_user_id', { value: USER_ID }]]))
+    // Keyed by CustomField ID, exactly as `getFieldValues` returns it. The
+    // earlier version of this test keyed the map by attribute name, which is
+    // why it passed while production read every system field as null.
+    crud.getFieldValues.mockResolvedValue(
+      new Map([[`${PERSONAL_DEF_ID}:owner`, { value: USER_ID }]])
+    )
 
     const inbox = await service(db).getInboxById(PERSONAL_INBOX)
 
@@ -309,6 +319,17 @@ describe('per-instance reads resolve the instance’s ACTUAL definition', () => 
     expect(inbox?.entityDefinitionKey).toBe('personal_inbox')
     expect(inbox?.recordId).toBe(`personal_inbox:${PERSONAL_INBOX}`)
     expect(inbox?.isPersonal).toBe(true)
+    expect(inbox?.ownerUserId).toBe(USER_ID)
+  })
+
+  it('reads the owner through the CustomField id, never the attribute name', async () => {
+    const db = makeDb([{ id: PERSONAL_INBOX, entityDefinitionId: PERSONAL_DEF_ID }])
+    crud.getById.mockResolvedValue({ id: PERSONAL_INBOX })
+    crud.getFieldValues.mockResolvedValue(new Map([['inbox_owner_user_id', { value: USER_ID }]]))
+
+    const inbox = await service(db).getInboxById(PERSONAL_INBOX)
+
+    expect(inbox?.ownerUserId).toBeNull()
   })
 
   it('leaves a shared mailbox on `inbox:<id>` — unchanged from today', async () => {

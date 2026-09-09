@@ -172,10 +172,11 @@ export async function createPermissionProfile(
  * `savePermissionProfile` (`profile-save.ts`).
  *
  * There is deliberately **no** standalone `updatePermissionProfile`: §6.1.4
- * requires ONE transactional save carrying metadata, levels and (at step 9) the
- * def/instance rows together, because a save spanning several requests cannot
- * enforce one atomic "resulting effective state" check. A metadata-only side door
- * would be exactly that multi-request variant.
+ * requires ONE transactional save carrying metadata and levels together, because
+ * a save spanning several requests cannot enforce one atomic "resulting
+ * effective state" check. A metadata-only side door would be exactly that
+ * multi-request variant. Profile-grantee def/instance `ResourceAccess` rows are
+ * written separately, through the resourceAccess service, not through this save.
  *
  * `seat`, `appliesTo`, `slug` and `isSystem` stay immutable after creation
  * (§0.18) — changing seat class is "clone the profile and reassign", which

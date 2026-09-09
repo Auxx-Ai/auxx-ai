@@ -53,14 +53,12 @@ export interface ActorPickerContentProps {
    * (default: 'both').
    *
    * There is deliberately **no `'profile'` target.** Permission profiles are a
-   * `ResourceAccess`/`PermissionGrant` grantee kind, not actors: the actor
-   * service cannot resolve a `profile:` id to a name or avatar, and
-   * profile-grantee `ResourceAccess` writes are still refused server-side
-   * (`assertProfileGranteeSupported`, plan 19 step 9). Adding the option before
-   * both land would ship a picker entry whose every selection renders "Unknown"
-   * and then 400s on save. Every "add grantee" surface funnels through here, so
-   * profile grantees are explicitly **unsupported in all pickers** for now; doc
-   * 19 §7's Profiles editor is where profile-scoped access is authored.
+   * `ResourceAccess`/`PermissionGrant` grantee kind, not actors: an actor is a
+   * person or agent acting, and there is no person or agent behind a `profile:`
+   * id for the actor service to resolve to a name or avatar. Every "add
+   * grantee" surface funnels through here, so profile grantees are explicitly
+   * **unsupported in all pickers**; doc 19 §7's Profiles editor is where
+   * profile-scoped access is authored instead.
    */
   target?: 'user' | 'group' | 'agent' | 'worker' | 'both' | 'all'
 

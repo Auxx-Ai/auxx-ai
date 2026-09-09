@@ -13,6 +13,7 @@ import { GETTING_STARTED_GOALS } from '~/components/getting-started/client'
 import { GettingStartedGroup } from '~/components/getting-started/ui/getting-started-group'
 import { MailSidebar } from '~/components/global/sidebar/mail-sidebar'
 import { SIDEBAR_MENU } from '~/constants/menu'
+import { useAccess } from '~/providers/capabilities-provider'
 import AppFooter from './app-footer'
 import { EntitySidebarNav } from './entity-sidebar-nav'
 import { FavoritesSidebar } from './favorites-sidebar'
@@ -39,6 +40,11 @@ type Prop = {
 /** Main application sidebar component with localStorage-persisted open/closed states */
 export default function AppSidebar({ user, ...props }: Prop) {
   const { editItems, dialogs } = useSidebarItemActions()
+  const { can } = useAccess()
+  // The Mail group used to render unconditionally while the /app/mail layout guards
+  // on inboxes.view, so a member at inboxes None saw a section they could not open.
+  // inboxes.view is also synthesised from an individual inbox share, so a member
+  // shared one inbox keeps the group.
 
   return (
     <SidebarStateProvider>
@@ -50,7 +56,7 @@ export default function AppSidebar({ user, ...props }: Prop) {
           </SidebarMenu>
         </SidebarHeader>
         <SidebarContent className='gap-0'>
-          <MailSidebar />
+          {can('inboxes.view') && <MailSidebar />}
           <NavMain menu={navMain} itemActions={editItems} />
           <FavoritesSidebar />
           <EntitySidebarNav />

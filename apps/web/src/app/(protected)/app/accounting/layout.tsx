@@ -65,6 +65,12 @@ function AccountingLayoutHeader() {
             // `/app/accounting` and showing Ledger as active.
             href: '/app/accounting/settings',
             tooltip: 'Settings',
+            // `ledger.post`, not `ledger.control`: the segment holds General
+            // (period, timezone, absorption rates, standard-cost roll), which
+            // is ordinary bookkeeping an Edit holder should still reach. The
+            // chart, opening balances and bank accounts pages inside the
+            // segment gate themselves on `ledger.control`
+            // (plans/accounting/tasks/12-accountant-permissions.md §4.3).
             hidden: !can('ledger.post'),
           },
         ]}
@@ -87,6 +93,12 @@ function AccountingLayoutHeader() {
 export default function AccountingLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const isSettings = pathname.startsWith('/app/accounting/settings')
+  // The segment-level floor stays `ledger.post`: the settings segment holds the
+  // General page (period, timezone, absorption rates, standard cost), which is
+  // ordinary bookkeeping. The chart, opening balances and bank accounts pages
+  // narrow further to `ledger.control` on their own guards
+  // (plans/accounting/tasks/12-accountant-permissions.md §4.3) - a Read-only
+  // ledger member never reaches this segment at all.
   const permissionKey = isSettings ? 'ledger.post' : 'ledger.view'
 
   return (

@@ -1,6 +1,6 @@
 // apps/web/src/server/api/routers/kopilot.ts
 
-import { FeatureKey, FeaturePermissionService } from '@auxx/lib/permissions'
+import { FeatureKey, FeaturePermissionService, PermissionKey } from '@auxx/lib/permissions'
 import {
   deleteSession,
   findSessionsByType,
@@ -11,7 +11,7 @@ import {
 } from '@auxx/services'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
-import { createTRPCRouter, protectedProcedure } from '~/server/api/trpc'
+import { createTRPCRouter, permissionProcedure } from '~/server/api/trpc'
 
 /** Throws FORBIDDEN if the org doesn't have Kopilot access. */
 async function requireKopilotAccess(organizationId: string) {
@@ -22,7 +22,7 @@ export const kopilotRouter = createTRPCRouter({
   /**
    * List Kopilot sessions for the current user (cursor-based pagination)
    */
-  listSessions: protectedProcedure
+  listSessions: permissionProcedure(PermissionKey.agentsView)
     .input(
       z.object({
         type: z.enum(['kopilot', 'builder']).default('kopilot'),
@@ -62,7 +62,7 @@ export const kopilotRouter = createTRPCRouter({
   /**
    * Get a single Kopilot session with messages
    */
-  getSession: protectedProcedure
+  getSession: permissionProcedure(PermissionKey.agentsView)
     .input(z.object({ sessionId: z.string() }))
     .query(async ({ ctx, input }) => {
       await requireKopilotAccess(ctx.session.organizationId)
@@ -82,7 +82,7 @@ export const kopilotRouter = createTRPCRouter({
   /**
    * Delete a Kopilot session
    */
-  deleteSession: protectedProcedure
+  deleteSession: permissionProcedure(PermissionKey.agentsView)
     .input(z.object({ sessionId: z.string() }))
     .mutation(async ({ ctx, input }) => {
       await requireKopilotAccess(ctx.session.organizationId)
@@ -102,7 +102,7 @@ export const kopilotRouter = createTRPCRouter({
   /**
    * Update session title
    */
-  updateTitle: protectedProcedure
+  updateTitle: permissionProcedure(PermissionKey.agentsView)
     .input(
       z.object({
         sessionId: z.string(),
@@ -130,7 +130,7 @@ export const kopilotRouter = createTRPCRouter({
    * - Clicking the same thumb twice removes the feedback
    * - Clicking the other thumb switches it
    */
-  rateMessage: protectedProcedure
+  rateMessage: permissionProcedure(PermissionKey.agentsView)
     .input(
       z.object({
         sessionId: z.string(),
@@ -185,7 +185,7 @@ export const kopilotRouter = createTRPCRouter({
   /**
    * Get all feedback for a session (returns Record<messageId, boolean>)
    */
-  getSessionFeedback: protectedProcedure
+  getSessionFeedback: permissionProcedure(PermissionKey.agentsView)
     .input(z.object({ sessionId: z.string() }))
     .query(async ({ ctx, input }) => {
       await requireKopilotAccess(ctx.session.organizationId)

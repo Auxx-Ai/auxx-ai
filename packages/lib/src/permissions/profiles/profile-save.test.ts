@@ -900,17 +900,4 @@ describe('savePermissionProfile — the other §6.1.5 gates', () => {
     })
     expect(store.PermissionProfile.find((row) => row.id === 'p_support')?.agentPolicy).toBeNull()
   })
-
-  it('refuses profile-scoped resource grants until step 9', async () => {
-    const store = makeStore({})
-    await expect(
-      savePermissionProfile({
-        organizationId: ORG,
-        actorUserId: 'u_actor',
-        profileId: 'p_support',
-        defAccess: [{ entityDefinitionId: HR_DEF, rung: 'read' }],
-        db: fakeRunner(store) as never,
-      })
-    ).rejects.toThrow(/step 9/)
-  })
 })

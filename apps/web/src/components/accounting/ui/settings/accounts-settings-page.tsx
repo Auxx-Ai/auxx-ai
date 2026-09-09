@@ -52,7 +52,7 @@ import { EmptyState } from '~/components/global/empty-state'
 import { MasterDetailSplit } from '~/components/global/master-detail-split'
 import SettingsPage from '~/components/global/settings-page'
 import { useConfirm } from '~/hooks/use-confirm'
-import { useRequireCapability } from '~/providers/capabilities-provider'
+import { useAccess, useRequireCapability } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
 import { useAccountingProviderStatus } from '../../hooks/use-accounting-provider-status'
@@ -80,6 +80,14 @@ const PAGE_DESCRIPTION =
 
 export function AccountingAccountsSettingsPage() {
   useRequireCapability(PermissionKey.ledgerView)
+  const { can } = useAccess()
+  // 🛑 `ledgerView` (above) gets you onto this page at all; `ledgerControl` is
+  // the separate, narrower rung that every chart write is gated on server-side
+  // (`chartAccountCreate/Update/Remove`, `setRoleAssignment`, `setAccountIdentity`,
+  // `confirmSuggestedAccounts`). An accountant with `ledgerView` alone gets a
+  // read-only chart: every write affordance below is hidden rather than left to
+  // 403 on click.
+  const canControl = can(PermissionKey.ledgerControl)
   const { hasAccess } = useFeatureFlags()
   const utils = api.useUtils()
 
@@ -421,6 +429,7 @@ export function AccountingAccountsSettingsPage() {
         pending={setRole.isPending}
         onAssign={handleAssignRole}
         onToggleUnused={handleToggleUnused}
+        canControl={canControl}
       />
     ) : (
       <ChartAccountEditor
@@ -436,6 +445,7 @@ export function AccountingAccountsSettingsPage() {
         onRemove={handleRemoveAccount}
         map={mapView}
         onSetIdentity={handleSetIdentity}
+        canControl={canControl}
       />
     )
 
@@ -471,6 +481,7 @@ export function AccountingAccountsSettingsPage() {
             selectedRole={selectedRole}
             onSelect={setSelectedRole}
             onToggleUnused={handleToggleUnused}
+            canControl={canControl}
           />
         ) : (
           <ChartList
@@ -484,6 +495,7 @@ export function AccountingAccountsSettingsPage() {
             map={mapView}
             onConfirmSuggested={() => confirmSuggested.mutate()}
             confirming={confirmSuggested.isPending}
+            canControl={canControl}
           />
         )}
       </MasterDetailSplit>

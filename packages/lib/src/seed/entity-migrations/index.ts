@@ -94,6 +94,7 @@ import { migration134BankAccountHasPosted } from './migrations/134-bank-account-
 import { migration135BankDepositBankAccount } from './migrations/135-bank-deposit-bank-account'
 import { migration136RefundsAndTaxLines } from './migrations/136-refunds-and-tax-lines'
 import { migration137FulfillmentFacts } from './migrations/137-fulfillment-facts'
+import { migration138AccountantPermissions } from './migrations/138-accountant-permissions'
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
@@ -281,6 +282,10 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   // 107, which creates the `line_item` def it widens, and after 108, which owns
   // the chart account it stamps.
   migration137FulfillmentFacts,
+  // Backfills the bookkeeper system permission profile into every existing org
+  // (plans/accounting/tasks/12-accountant-permissions.md §4.2, §6). Leaves a
+  // pre-existing accountant row's grants untouched.
+  migration138AccountantPermissions,
 ]
 
 /**

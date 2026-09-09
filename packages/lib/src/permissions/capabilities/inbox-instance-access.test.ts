@@ -152,9 +152,17 @@ describe('the registry shape itself (plan 40 §1.1)', () => {
     // that consumes it.
     expect(AREA_ORDER[AREA_ORDER.indexOf(Area.channels) + 1]).toBe(Area.inboxes)
     expect(PERMISSION_AREAS[Area.inboxes].group).toBe(PERMISSION_AREAS[Area.channels].group)
-    // The four Channels-group areas, contiguous and in render order.
+    // The five Channels-group areas, contiguous and in render order. `calls`
+    // (plans/accounting/tasks/12-accountant-permissions.md §10) joined the
+    // group last, after `snippets`.
     const channelsGroup = AREA_ORDER.filter((area) => PERMISSION_AREAS[area].group === 'Channels')
-    expect(channelsGroup).toEqual([Area.channels, Area.inboxes, Area.signatures, Area.snippets])
+    expect(channelsGroup).toEqual([
+      Area.channels,
+      Area.inboxes,
+      Area.signatures,
+      Area.snippets,
+      Area.calls,
+    ])
   })
 
   it('derives the Read-rung key for both mail keys (the plan-25 front-door path)', () => {

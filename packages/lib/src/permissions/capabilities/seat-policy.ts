@@ -44,13 +44,16 @@ const ALL_FULL: Record<Area, Level> = buildAreaLevels(() => Level.Full)
 
 /**
  * The field-seat (worker) surfaces (§4.1): assigned schedule, visit reporting,
- * and read-only linked records. These are the only areas a worker seat's ceiling
- * leaves open — everything else is `min`-clamped to `None`.
+ * read-only linked records, and (task 12 §10) the task list. These are the only
+ * areas a worker seat's ceiling leaves open — everything else is `min`-clamped
+ * to `None`.
  */
 const WORKER_AREAS = new Set<Area>([
   Area.recordsLinked,
   Area.dispatchMySchedule,
   Area.dispatchVisitReports,
+  // A field tech's task list is a field surface (task 12 §10). `calls` is not.
+  Area.tasks,
 ])
 
 /**
@@ -89,13 +92,16 @@ const WORKER_AREAS = new Set<Area>([
  */
 
 /**
- * The field-seat capability keys (§4.1) — the three worker surfaces expanded.
+ * The field-seat capability keys (§4.1) — the four worker surfaces expanded.
  * Kept for callers/tests that assert the worker's effective set directly.
+ * Must stay in step with {@link WORKER_AREAS}.
  */
 export const WORKER_SEAT_KEYS: PermissionKey[] = [
   PermissionKey.dispatchMySchedule,
   PermissionKey.dispatchVisitReports,
   PermissionKey.recordsViewLinked,
+  PermissionKey.tasksView,
+  PermissionKey.tasksManage,
 ]
 
 /**
@@ -200,6 +206,7 @@ export const MEMBER_BASELINE_LEVELS: Partial<Record<Area, Level>> = {
   [Area.workflows]: Level.Full,
   [Area.agents]: Level.Full,
   [Area.comments]: Level.Full,
+  [Area.tasks]: Level.Full,
   [Area.dispatchBoard]: Level.Full,
   [Area.dispatchMySchedule]: Level.Full,
   [Area.dispatchVisitReports]: Level.Full,
@@ -210,25 +217,31 @@ export const MEMBER_BASELINE_LEVELS: Partial<Record<Area, Level>> = {
   [Area.signatures]: Level.Full,
   [Area.snippets]: Level.Full,
   [Area.inboxes]: Level.Read,
+  // tasks and calls (task 12 §10): both were ungated before they had an area,
+  // so Full here is today's behaviour, not a widening.
+  [Area.calls]: Level.Full,
 }
 
 /**
- * The Field Tech profile's seeded baseline (plan 22 §2.3) — the three
- * {@link WORKER_AREAS} at `Full`. With `ROLE_DEFAULTS.USER` now the `None`
- * floor, `field_tech` must say what it grants instead of inheriting the old
- * generous member map and relying on `SEAT_CEILINGS.worker` alone to narrow
- * it — the ceiling still narrows everything else to `None` regardless.
+ * The Field Tech profile's seeded baseline (plan 22 §2.3) — the four
+ * {@link WORKER_AREAS} at `Full` (task 12 §10 added `tasks` as the fourth).
+ * With `ROLE_DEFAULTS.USER` now the `None` floor, `field_tech` must say what it
+ * grants instead of inheriting the old generous member map and relying on
+ * `SEAT_CEILINGS.worker` alone to narrow it — the ceiling still narrows
+ * everything else to `None` regardless.
  */
 export const FIELD_TECH_BASELINE_LEVELS: Partial<Record<Area, Level>> = {
   [Area.recordsLinked]: Level.Full,
   [Area.dispatchMySchedule]: Level.Full,
   [Area.dispatchVisitReports]: Level.Full,
+  [Area.tasks]: Level.Full,
 }
 
 /**
  * The per-area ceiling per seat type — the max rung a seat can ever reach,
  * applied as the LAST `min` clamp (§5/§6). `full` imposes nothing; `worker`
- * leaves only the three field-seat surfaces open, everything else `None`.
+ * leaves only the four field-seat surfaces open ({@link WORKER_AREAS}),
+ * everything else `None`.
  */
 export const SEAT_CEILINGS: Record<SeatType, Record<Area, Level>> = {
   full: ALL_FULL,
@@ -247,6 +260,13 @@ export const ENTITY_WRITE_KEYS: Record<string, PermissionKey> = {
   service_request: PermissionKey.dispatchBoardManage,
   quote: PermissionKey.dispatchBoardManage,
   invoice: PermissionKey.dispatchBoardManage,
+  journal_entry: PermissionKey.ledgerPost,
+  gl_account: PermissionKey.ledgerPost,
+  bank_account: PermissionKey.ledgerPost,
+  bank_transaction: PermissionKey.ledgerPost,
+  bank_deposit: PermissionKey.ledgerPost,
+  bank_rule: PermissionKey.ledgerPost,
+  payout: PermissionKey.ledgerPost,
 }
 
 /**
@@ -263,4 +283,15 @@ export const ENTITY_BASE_AREAS: Record<string, Area> = {
   service_request: Area.dispatchBoard,
   quote: Area.dispatchBoard,
   invoice: Area.dispatchBoard,
+  // The general ledger's own record faces. Absent from this map they derive
+  // their base from Area.records, which is a door around Area.ledger, the
+  // area that exists to be the only thing between a member and the financial
+  // statements (registry.ts, Area.ledger's note).
+  journal_entry: Area.ledger,
+  gl_account: Area.ledger,
+  bank_account: Area.ledger,
+  bank_transaction: Area.ledger,
+  bank_deposit: Area.ledger,
+  bank_rule: Area.ledger,
+  payout: Area.ledger,
 }

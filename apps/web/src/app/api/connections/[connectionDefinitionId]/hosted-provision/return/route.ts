@@ -3,9 +3,11 @@
 import { WEBAPP_URL } from '@auxx/config/urls'
 import { getCredential, listCredentials, updateCredential } from '@auxx/credentials/store'
 import { database as db } from '@auxx/database'
+import { BANK_FEED_PROVIDER_KEY } from '@auxx/lib/banking'
 import type { HostedProvisionCompleteResult } from '@auxx/lib/connections'
 import { resolveHostedProvisionHandler, saveConnection } from '@auxx/lib/connections'
 import { getProviderByKey } from '@auxx/lib/connections/providers'
+import { PermissionKey, requirePermission } from '@auxx/lib/permissions'
 import { createScopedLogger } from '@auxx/logger'
 import { getRedisClient } from '@auxx/redis'
 import { type NextRequest, NextResponse } from 'next/server'
@@ -99,6 +101,18 @@ async function finalizeHostedProvision(
   if (!provider?.hostedProvisionKey) {
     throw new Error(`No hosted-provision handler configured for "${connDef.providerKey}"`)
   }
+
+  // Same gate as the start route, keyed off the same definition, asserted against the
+  // state's own userId/organizationId rather than a live session - this leg has none
+  // (the provider hits it directly on the redirect leg). The start route already
+  // refuses to mint a state for a bank-feed connect without `ledgerControl`, so this
+  // is a return hit with a forged or replayed state, or a permission that was revoked
+  // between start and return - either way it must be refused before anything is
+  // persisted.
+  if (connDef.providerKey === BANK_FEED_PROVIDER_KEY) {
+    await requirePermission(stateData.userId, stateData.organizationId, PermissionKey.ledgerControl)
+  }
+
   const handler = await resolveHostedProvisionHandler(provider.hostedProvisionKey)
 
   const completed = await handler.complete({

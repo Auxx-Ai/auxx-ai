@@ -37,7 +37,9 @@ interface SystemProfileSeed {
    * `ensureSystemProfiles` (plan 22 §2.2/§2.3) — `null` for the profiles that
    * don't need one (owner/admin lean on `baseLevel: Full`; the two agent
    * profiles use `agentPolicy` instead). With `ROLE_DEFAULTS.USER` now the
-   * all-`None` floor, `member`/`field_tech` are the only seeds that carry one.
+   * all-`None` floor, a seed needs an explicit `levels` map to grant anything
+   * at all; `member`, `field_tech`, `accountant` and `bookkeeper` (task 12 §4.2)
+   * are the seeds that carry one.
    */
   levels: Partial<Record<Area, Level>> | null
 }
@@ -227,40 +229,61 @@ export const SYSTEM_PROFILE_SEEDS: readonly SystemProfileSeed[] = [
     slug: 'accountant',
     name: 'Accountant',
     description:
-      'Read-only access to the general ledger and the records that feed it, for a bookkeeper ' +
-      'or CPA. No record edits, no org administration.',
+      'Read-only access to the books for an outside bookkeeper or CPA: the ledger, ' +
+      'statements, banking and the chart. No record edits, no org administration.',
     icon: { iconId: 'calculator', color: 'teal' },
     seat: 'full',
     appliesTo: 'member',
     role: 'USER',
     baseLevel: null,
     agentPolicy: null,
-    // plans/accounting/HANDOFF.md slot 2K / implementation-review.md item 12.
+    // Task 12 §4.1/§4.2 closed the inversion the previous comment here described:
+    // `journal_entry`, `gl_account`, `bank_account`, `bank_transaction`,
+    // `bank_deposit`, `bank_rule` and `payout`, the seven defs with no meaning
+    // outside the books, now route through `Area.ledger` via `ENTITY_BASE_AREAS`
+    // (`capabilities/seat-policy.ts`) instead of `Area.records`. So this profile
+    // no longer needs `records: Read` to reach the general ledger, and OMITS
+    // `Area.records` entirely: an outside CPA sees the ledger and nothing else in
+    // the workspace, not every contact, company, ticket, quote or work order.
     //
-    // 🛑 DEPARTURE from the brief. The brief (and `ui-plan.md` §3, `gap-analysis.md`
-    // §3 item 12) ask for `records: Read` scoped to invoice / payment / vendor_bill /
-    // vendor_payment / order / company / contact ONLY, with every other record type
-    // `None`. That scoping is not expressible today: `Area.records` is one coarse
-    // area covering every def alike (`capabilities/registry.ts` `PERMISSION_AREAS
-    // [Area.records]`), and per-definition/per-instance grants on a PROFILE grantee
-    // are explicitly refused — `profile-save.ts`'s `savePermissionProfile` throws
-    // `BadRequestError` on any non-empty `defAccess`/`instanceAccess` ("not enabled
-    // yet, see plans/permissions/v2/19-permission-profiles.md step 9"), and
-    // `PermissionGrant.levels` (the only thing a profile grant row stores) is a
-    // sparse `{ areaSlug: Level }` map with no per-def key at all. So this profile
-    // grants `records: Read` BROADLY — every record type, not just the seven named
-    // — which is wider than the brief intended but is the closest correct
-    // expression the current permission model allows. Narrow it to the named seven
-    // once step 9 (per-def grants on a profile) lands.
+    // `invoice`, `payment`, `vendor_bill`, `vendor_payment`, `order`, `company`,
+    // `contact` and the rest of Family B (plan §2/§3) are commercial documents
+    // with an accounting consequence, not ledger artifacts, so they stay OFF
+    // `Area.ledger` on purpose: a sales user recording a payment must never
+    // need a ledger key. They can only be scoped per record type: writing a
+    // single type-level `ResourceAccess` row on one of these defs restricts it
+    // org-wide (`restrictedEntityDefIds` is grantee-agnostic), so an admin who
+    // wants the accountant to drill from a GL line into the source invoice
+    // grants those defs to this profile in the profile editor, one org at a
+    // time. Teaching the seeder to do that unattended risks writing the
+    // first-touch baseline wrong for every existing org (§3); that is deferred
+    // work, not shipped here.
+    //
     // `files: Read` is what confers `PermissionKey.filesView`, which the file
     // download route requires unconditionally. Without it an accountant can
     // render a statement PDF and then be refused the asset it produced, and
-    // cannot open a journal entry's attachment either. It grants nothing a
-    // `records: Read` holder cannot already see.
+    // cannot open a journal entry's attachment either.
     levels: {
       [Area.ledger]: Level.Read,
-      [Area.records]: Level.Read,
       [Area.files]: Level.Read,
+    },
+  },
+  {
+    slug: 'bookkeeper',
+    name: 'Bookkeeper',
+    description:
+      'Does the books: posts and reverses entries, codes and reconciles the bank feed, ' +
+      'and records vendor bills and payments. Cannot change the chart or close a period.',
+    icon: { iconId: 'book-open', color: 'teal' },
+    seat: 'full',
+    appliesTo: 'member',
+    role: 'USER',
+    baseLevel: null,
+    agentPolicy: null,
+    levels: {
+      [Area.ledger]: Level.Edit, // post + reverse + bank work, NOT control (§4.3)
+      [Area.files]: Level.Read,
+      [Area.comments]: Level.Full, // Area.comments has Read and Full only; Full is valid
     },
   },
 ]
@@ -279,10 +302,11 @@ export function systemProfileSeed(slug: SystemProfileSlug): SystemProfileSeed | 
  * Conflicts on the `(organizationId, slug)` unique key are ignored, so an
  * existing org's edited system rows are never clobbered. For every profile
  * row that was actually a NEW insert (not a conflict-skipped pre-existing one)
- * and whose seed carries a non-null `levels` (plan 22 §2.2/§2.3 —
- * `member`/`field_tech`), also writes that map as the profile's
- * `PermissionGrant` row: a direct insert, on purpose — the seeding path does
- * not run `assertGrantableLevels` or the escalation guard, both of which exist
+ * and whose seed carries a non-null `levels` (plan 22 §2.2/§2.3, task 12
+ * §4.2: `member`, `field_tech`, `accountant`, `bookkeeper`), also writes
+ * that map as the profile's `PermissionGrant` row: a direct insert, on
+ * purpose, since the seeding path does not run `assertGrantableLevels` or the
+ * escalation guard, both of which exist
  * to police an ADMIN actor authoring a grant, not the system boot-strapping
  * its own baseline. Restricting this to freshly-inserted rows (via `.returning()`
  * on the conflict-ignoring insert, which Postgres populates ONLY with rows it

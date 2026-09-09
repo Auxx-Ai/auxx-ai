@@ -74,6 +74,15 @@ import { SYSTEM_PROFILE_SEEDS } from './system-profiles'
  * not an instance-access resource and has no def, so `defs` and `instances` are
  * untouched in every scenario. Re-derived by the ledger sibling of
  * {@link agentsRungsAreTheOnlyAmendment} below.
+ *
+ * **AMENDED AGAIN 2026-09-09 - `Area.tasks` and `Area.calls`**
+ * (plans/accounting/tasks/12-accountant-permissions.md §10). Two new areas at
+ * once, held to the same rule as `ledger`: no scenario names either one, so
+ * every scenario gained two `areaLevels` entries equal to its policy's
+ * `areas.default` and the keys those levels imply. Neither area is an
+ * instance-access resource and neither has a def, so `defs` and `instances`
+ * are untouched in every scenario. Re-derived by the tasks/calls sibling of
+ * {@link agentsRungsAreTheOnlyAmendment} below.
  */
 
 const RESOURCES: PolicyResourceRef[] = [
@@ -290,9 +299,9 @@ describe('the vocabulary rename changes no authority (plan 26 §2.6 / §4)', () 
    *
    * `Area.ledger` is new, no scenario names it, so every scenario gained one
    * `areaLevels` entry equal to its policy's `areas.default` and the keys that
-   * level implies. Its ladder is PARTIAL in the same way `inboxes` is - Read and
-   * Full only, no `Edit` - so a recorded level of 2 implies `ledger.view` and
-   * nothing else. Derived from `PERMISSION_AREAS` rather than a hardcoded rung
+   * level implies. Task 12 §4.3 gave the area a third rung (`ledger.control` at
+   * `Full`), so its ladder is no longer partial - Read, Edit and Full are all
+   * populated. Derived from `PERMISSION_AREAS` rather than a hardcoded rung
    * list, so a later rung change here needs no edit in this file.
    */
   it('carries exactly the ledger keys its recorded area level implies', () => {
@@ -302,6 +311,31 @@ describe('the vocabulary rename changes no authority (plan 26 §2.6 / §4)', () 
       const expected = rungs.filter((rung) => level >= rung.level).flatMap((rung) => rung.keys)
       const actual = scenario.composed.keys.filter((key) => key.startsWith('ledger.')).sort()
       expect(actual, name).toEqual([...expected].sort())
+    }
+  })
+
+  /**
+   * The 2026-09-09 amendment (plans/accounting/tasks/12-accountant-permissions.md
+   * §10), held to the same standard as the three above.
+   *
+   * `Area.tasks` and `Area.calls` are new, no scenario names either one, so
+   * every scenario gained two `areaLevels` entries equal to its policy's
+   * `areas.default` and the keys those levels imply. Both are plain Read/Full
+   * ladders like `signatures`/`snippets`, so this re-derives from
+   * `PERMISSION_AREAS` rather than hardcoding the two-rung shape.
+   * `AgentPolicyCapabilities` composes `calls` off the ladder alone — it does
+   * not consult `FeatureKey.callRecordings` — so there is no plan-gate branch
+   * to account for here.
+   */
+  it('carries exactly the tasks/calls keys their recorded area levels imply', () => {
+    for (const area of [Area.tasks, Area.calls] as const) {
+      const rungs = PERMISSION_AREAS[area].rungs
+      for (const [name, scenario] of Object.entries(SCENARIOS)) {
+        const level = scenario.composed.areaLevels[area] ?? 0
+        const expected = rungs.filter((rung) => level >= rung.level).flatMap((rung) => rung.keys)
+        const actual = scenario.composed.keys.filter((key) => key.startsWith(`${area}.`)).sort()
+        expect(actual, `${name}/${area}`).toEqual([...expected].sort())
+      }
     }
   })
 

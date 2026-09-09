@@ -5,7 +5,7 @@ import { ResourceGranteeType } from '@auxx/database/enums'
 import { createScopedLogger } from '@auxx/logger'
 import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
 import { and, eq, isNull } from 'drizzle-orm'
-import { getCachedEntityDefId, getUserCache, onCacheEvent } from '../cache'
+import { getCachedCustomFields, getCachedEntityDefId, getUserCache, onCacheEvent } from '../cache'
 import { ConflictError, NotFoundError } from '../errors'
 import type { Lens } from '../permissions/visibility/lens'
 import type { InboxDef } from '../resource-access/mail-sharing-defs'
@@ -799,14 +799,27 @@ export class InboxService {
 
     const defKey = await this.defKeyForDefId(instance.entityDefinitionId)
     const canonicalRecordId = toRecordId(defKey, instanceId)
-    const [values, floors] = await Promise.all([
+    const [values, floors, fields] = await Promise.all([
       this.crudHandler.getFieldValues(canonicalRecordId),
       readInboxFloors(this.db, this.organizationId, [instanceId]),
+      getCachedCustomFields(this.organizationId, instance.entityDefinitionId),
     ])
 
-    // Helper to get text value from field values map
-    const getValue = (fieldId: string): unknown => {
-      const entry = values.get(fieldId)
+    // `getFieldValues` keys its map by CustomField ID, never by system
+    // attribute, so every read below must translate first. Reading the map by
+    // attribute name returned null for EVERY system field (owner, status,
+    // color, description, settings) with nothing thrown: `ownerUserId` came back
+    // null for a live personal mailbox, which made `deleteOwnPersonalInbox`
+    // refuse its own owner and let the admin orphan path treat the mailbox as
+    // ownerless. The list path (`toInbox`) never had this problem because
+    // `listAll` already shapes `fieldValues` by attribute.
+    const fieldIdByAttr = new Map<string, string>()
+    for (const field of fields) {
+      if (field.systemAttribute) fieldIdByAttr.set(field.systemAttribute, field.id)
+    }
+    const getValue = (systemAttribute: string): unknown => {
+      const fieldId = fieldIdByAttr.get(systemAttribute)
+      const entry = fieldId ? values.get(fieldId) : undefined
       // Multi-value reads and ACTOR values carry no scalar `value`; none of the
       // inbox system fields are either, so those read as null.
       if (!entry || Array.isArray(entry) || !('value' in entry)) return null

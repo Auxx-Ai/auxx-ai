@@ -33,7 +33,7 @@ import { Ban, Check, RotateCcw, Sparkles } from 'lucide-react'
 import { useState } from 'react'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { BaseType } from '~/components/workflow/types'
-import { accountTypeLabel, DEFAULT_UNUSED_ROLES } from './accounts-types'
+import { accountTypeLabel, DEFAULT_UNUSED_ROLES, formatAccount } from './accounts-types'
 
 interface RoleMapEditorProps {
   role: AccountRole | null
@@ -45,6 +45,10 @@ interface RoleMapEditorProps {
   pending: boolean
   onAssign: (role: AccountRole, accountId: string) => void
   onToggleUnused: (role: AccountRole) => void
+  /** `PermissionKey.ledgerControl`. False hides the account picker and the
+   *  mark-unused / mark-used-again button - the role's current mapping and
+   *  status stay visible. */
+  canControl: boolean
 }
 
 export function RoleMapEditor({
@@ -55,6 +59,7 @@ export function RoleMapEditor({
   pending,
   onAssign,
   onToggleUnused,
+  canControl,
 }: RoleMapEditorProps) {
   const [search, setSearch] = useState('')
 
@@ -174,14 +179,21 @@ export function RoleMapEditor({
           <p className='text-muted-foreground text-sm'>
             This role is excused. Previews will not ask for it.
           </p>
-          <Button
-            variant='outline'
-            size='sm'
-            loading={pending}
-            onClick={() => onToggleUnused(role)}>
-            <RotateCcw />
-            Mark used again
-          </Button>
+          {canControl && (
+            <Button
+              variant='outline'
+              size='sm'
+              loading={pending}
+              onClick={() => onToggleUnused(role)}>
+              <RotateCcw />
+              Mark used again
+            </Button>
+          )}
+        </div>
+      ) : !canControl ? (
+        <div className='rounded-xl border p-3'>
+          <p className='text-muted-foreground text-xs'>Posts to</p>
+          <p className='text-sm'>{currentId ? formatAccount(assignment?.account) : 'Not mapped'}</p>
         </div>
       ) : (
         <>

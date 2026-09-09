@@ -993,6 +993,13 @@ sweep that has not happened yet.
     upload lands on a real record. Both are one-liners; picking between them is the decision.
   - New code must not assume the sweep is inert: `plans/money/tasks/38` §6.3 calls
     `convertTempAssetToPermanent` explicitly at commit for exactly this reason.
+- **`files.view` is coarse, and the accounting profiles expose the gap.** The accountant and
+  bookkeeper profiles both need it: a statement PDF (`MediaAsset` via `/api/files/download`) and a
+  journal entry's attachment (a FileRef field value) both go through the unconditional `filesView`
+  route, which lets a non-employee browse every file in the workspace. `Attachment`-table files
+  already have parent-scoped visibility through `canViewAttachment`, so the gap is specific to
+  FileRef field values and report assets. See
+  `plans/accounting/tasks/12-accountant-permissions.md` §5.2.
 
 **Multipart, after #1866**
 

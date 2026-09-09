@@ -1,10 +1,11 @@
 // apps/web/src/server/api/routers/ledger.ts
 
-import { getCachedEntityDefId } from '@auxx/lib/cache'
+import { getCachedEntityDefId, onCacheEvent } from '@auxx/lib/cache'
 import { UnprocessableEntityError } from '@auxx/lib/errors'
 import { PermissionKey } from '@auxx/lib/permissions'
 import {
   ACCOUNT_ROLES,
+  assertAccountingSetupUnfrozen,
   buildEntry,
   confirmSuggestedIdentities,
   createChartAccount,
@@ -41,8 +42,10 @@ import {
   verifyBooksBalance,
 } from '@auxx/lib/postings'
 import { seedDefaultChartOfAccounts } from '@auxx/lib/seed'
+import { updateOrganizationSetting } from '@auxx/lib/settings'
 import { z } from 'zod'
-import { createTRPCRouter, permissionProcedure } from '~/server/api/trpc'
+import { recordAuditFromCtx } from '~/server/api/audit-context'
+import { createTRPCRouter, notDemo, permissionProcedure } from '~/server/api/trpc'
 
 /**
  * One draft line, structurally.
@@ -177,6 +180,7 @@ const draftEntry = z.object({
  * | `verifyBalance`   | `ledger.view` |
  * | `post`            | `ledger.post` |
  * | `reverse`         | `ledger.post` |
+ * | `setLockedThrough` | `ledger.control` |
  *
  * `ledger` is its own L2 area rather than a corner of `billing`: `billing`
  * governs what auxx charges this org, this governs what the org's own books say
@@ -364,6 +368,59 @@ export const ledgerRouter = createTRPCRouter({
   }),
 
   /**
+   * Declare the books shut through one month, or reopen back to the month
+   * before it. This is the ONLY door onto `ledger.lockedThroughMonth`.
+   *
+   * Gated on `ledgerControl`, not `settingsManage` (plans/accounting/tasks/
+   * 12-accountant-permissions.md §0.4/§4.4). Closing a period is the single most
+   * characteristic act of an accountant, and the generic settings door would
+   * have handed them every organization setting in the product to get it. See
+   * `setting.ts`'s `ROUTER_OWNED_ORG_SETTING_KEYS`, which refuses this key on
+   * the generic door so this stays the only path.
+   *
+   * `periodKey: null` reopens everything - "nothing is closed" - which is
+   * `resolvePeriodLock`'s own reading of an unset value.
+   */
+  setLockedThrough: permissionProcedure(PermissionKey.ledgerControl)
+    .input(
+      z.object({
+        periodKey: z
+          .string()
+          .regex(/^\d{4}-\d{2}$/)
+          .nullable(),
+      })
+    )
+    .use(notDemo('lock or unlock an accounting period'))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      const key = 'ledger.lockedThroughMonth' as const
+
+      // Mirrors `setting.updateOrganizationSetting`'s guard: harmless today
+      // (this key is not in `FROZEN_SETUP_SETTING_KEYS`), but the same
+      // authority should apply if that ever changes.
+      await assertAccountingSetupUnfrozen(organizationId, [key])
+
+      await updateOrganizationSetting({
+        organizationId,
+        key,
+        value: input.periodKey,
+        db: ctx.db,
+      })
+
+      await onCacheEvent('org.settings.changed', { orgId: organizationId, broadcastUserKeys: true })
+
+      await recordAuditFromCtx(ctx, {
+        category: 'settings',
+        action: 'setting.changed',
+        targetType: 'OrganizationSetting',
+        targetId: key,
+        newState: { value: input.periodKey },
+      })
+
+      return { success: true }
+    }),
+
+  /**
    * What the month-end inventory entry for one PERIOD would look like.
    *
    * The difference from {@link preview} is the input: that one takes a
@@ -443,11 +500,12 @@ export const ledgerRouter = createTRPCRouter({
   /**
    * Point one role at an account, or mark it unused.
    *
-   * Gated on `ledgerPost` rather than `ledgerView`: this decides which account
-   * real money lands in, so it belongs with the people trusted to write to the
-   * books, not with everyone who can read them.
+   * Gated on `ledgerControl` rather than `ledgerPost`: this decides where real
+   * money lands, not merely that it moves, so it belongs with the people
+   * trusted to control the ledger's structure, not everyone trusted to post to
+   * it.
    */
-  setRoleAssignment: permissionProcedure(PermissionKey.ledgerPost)
+  setRoleAssignment: permissionProcedure(PermissionKey.ledgerControl)
     .input(
       z.object({
         role: z.enum(Object.values(ACCOUNT_ROLES) as [string, ...string[]]),
@@ -513,11 +571,12 @@ export const ledgerRouter = createTRPCRouter({
    * Confirm that one of the org's accounts IS one account in the connected
    * system, or withdraw that confirmation by sending a null id.
    *
-   * Gated on `ledgerPost` for `setRoleAssignment`'s reason: this decides which
-   * external account real money lands in, so it belongs with the people trusted
-   * to write to the books rather than everyone who can read them.
+   * Gated on `ledgerControl` for `setRoleAssignment`'s reason: this decides
+   * which external account real money lands in, so it belongs with the people
+   * trusted to control the ledger's structure rather than everyone trusted to
+   * post to it.
    */
-  setAccountIdentity: permissionProcedure(PermissionKey.ledgerPost)
+  setAccountIdentity: permissionProcedure(PermissionKey.ledgerControl)
     .input(
       z.object({
         glAccountId: z.string().min(1),
@@ -546,7 +605,7 @@ export const ledgerRouter = createTRPCRouter({
    * one refusal is a better outcome than none, and the refusals come back named
    * so the screen can show which.
    */
-  confirmSuggestedAccounts: permissionProcedure(PermissionKey.ledgerPost).mutation(
+  confirmSuggestedAccounts: permissionProcedure(PermissionKey.ledgerControl).mutation(
     async ({ ctx }) => {
       const result = await confirmSuggestedIdentities(ctx.db, {
         organizationId: ctx.session.organizationId,
@@ -582,7 +641,7 @@ export const ledgerRouter = createTRPCRouter({
    * That is `seedDefaultChartOfAccounts`' rules 1, 3 and 4, and they are the whole
    * reason this can be offered as a button at all.
    */
-  provisionChart: permissionProcedure(PermissionKey.ledgerPost).mutation(async ({ ctx }) => {
+  provisionChart: permissionProcedure(PermissionKey.ledgerControl).mutation(async ({ ctx }) => {
     const { organizationId } = ctx.session
 
     const glAccountDefId = await getCachedEntityDefId(organizationId, 'gl_account')
@@ -605,9 +664,9 @@ export const ledgerRouter = createTRPCRouter({
    * RECORDS capability for the definition. Routing the chart through them would
    * hand "which account does `grni` resolve to" to anyone with records-Full and
    * ledger-None - and a renumber there is undetectable downstream, because the
-   * resulting entry still balances. The ledger area has exactly two rungs, and
-   * `setRoleAssignment` above already made this call for the same reason: this
-   * decides where real money lands.
+   * resulting entry still balances. Gated on `ledgerControl`, not `ledgerPost`:
+   * `setRoleAssignment` above already made this call for the same reason - this
+   * decides where real money lands, which is a rung above ordinary posting.
    *
    * `gl_account` therefore stays `isVisible: false` and this is its only door.
    *
@@ -615,7 +674,7 @@ export const ledgerRouter = createTRPCRouter({
    * checks structure only, for the reason `postingLine` gives at the top of this
    * file: two authorities over one input, and the worse message wins.
    */
-  chartAccountCreate: permissionProcedure(PermissionKey.ledgerPost)
+  chartAccountCreate: permissionProcedure(PermissionKey.ledgerControl)
     .input(
       z.object({
         code: z.string().min(1),
@@ -641,7 +700,7 @@ export const ledgerRouter = createTRPCRouter({
    * `code` and `name` are unconditional (`G7`); `accountType` and `isActive` are
    * refused when a role still posts to the account, naming it.
    */
-  chartAccountUpdate: permissionProcedure(PermissionKey.ledgerPost)
+  chartAccountUpdate: permissionProcedure(PermissionKey.ledgerControl)
     .input(
       z.object({
         id: z.string().min(1),
@@ -670,7 +729,7 @@ export const ledgerRouter = createTRPCRouter({
    * ARCHIVES - the lib module carries the three reasons there is no hard delete.
    * Refused while a role still posts to the account.
    */
-  chartAccountRemove: permissionProcedure(PermissionKey.ledgerPost)
+  chartAccountRemove: permissionProcedure(PermissionKey.ledgerControl)
     .input(z.object({ id: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
