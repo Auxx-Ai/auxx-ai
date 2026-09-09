@@ -4,6 +4,7 @@ import { BANK_DEPOSIT_HOOKS } from './bank-deposit-hooks'
 import { BUILD_HOOKS } from './build-hooks'
 import { COMMON_HOOKS } from './common-hooks'
 import { CONTACT_HOOKS } from './contact-hooks'
+import { CREDIT_MEMO_HOOKS } from './credit-memo-hooks'
 import { INVOICE_HOOKS } from './invoice-hooks'
 import { JOURNAL_ENTRY_HOOKS } from './journal-entry-hooks'
 import { LINE_ITEM_HOOKS } from './line-item-hooks'
@@ -42,6 +43,7 @@ const HOOKS_BY_ENTITY_TYPE: Record<string, SystemHookRegistry> = {
   journal_entry: JOURNAL_ENTRY_HOOKS,
   bank_deposit: BANK_DEPOSIT_HOOKS,
   payout: PAYOUT_HOOKS,
+  credit_memo: CREDIT_MEMO_HOOKS,
 }
 
 /**

@@ -1,0 +1,1 @@
+ALTER TYPE "public"."GlPostingType" ADD VALUE 'credit_memo';

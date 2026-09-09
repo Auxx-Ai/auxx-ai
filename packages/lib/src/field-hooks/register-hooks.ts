@@ -41,6 +41,8 @@ import {
   syncCatalogCostOnPartChange,
 } from '../money/catalog-pricing'
 import {
+  recomputeCreditMemoAfterLineDelete,
+  recomputeOnCreditMemoLineChange,
   recomputeOnInvoiceBillingChange,
   recomputeOnLineChange,
   recomputeOnOrderBillingChange,
@@ -77,6 +79,7 @@ import {
 } from './post/purchase-order-line-rollups'
 import { guardBuildDelete } from './pre/build-delete-guard'
 import { guardManualBuildLifecycleStatus } from './pre/build-status-guard'
+import { guardCreditMemoDelete } from './pre/credit-memo-delete-guard'
 import { guardInboxOwnerField } from './pre/inbox-owner-guard'
 import { guardInvoiceDelete } from './pre/invoice-delete-guard'
 import { guardJournalEntryDelete } from './pre/journal-entry-delete-guard'
@@ -599,4 +602,25 @@ export function registerAllHooks(): void {
     stampOrderAfterLineDelete,
   ])
   registerEntityPostDeleteHooks('work-orders', [syncContactAfterWorkOrderDelete])
+
+  // ─── Credit memos (plans/accounting/tasks/10-credit-memos.md) ──────────────
+  // Appended as one block, per HANDOFF section 9a's rule for shared registration files.
+  //
+  // The totals engine's memo twin (section 2.5): a line's qty/unit price/subtotal/tax or
+  // its parent rel moved, so the memo's subtotal, tax and total are re-summed - while it is
+  // still `draft`; the engine's `frozenStatus` skips the write once it is issued.
+  // `credit_memo_subtotal`, `_tax_total` and `_total` are all `creatable: false`, so this
+  // registration is their ONLY writer. Keyed by apiSlug: `credit-memo-lines`.
+  registerEntityFieldChangeHooks('credit-memo-lines', [recomputeOnCreditMemoLineChange])
+
+  // The memo's own delete guard (section 2.6): refuses an issued or settled memo (void
+  // first), a memo dated in a settled period, and a memo a refund row still references.
+  // `credit_memo` is `isVisible: true`, so it carries an ordinary records table with an
+  // ordinary delete button, and the drawer's Discard is the generic `record.delete`.
+  registerEntityPreDeleteHooks('credit-memos', [guardCreditMemoDelete])
+
+  // Deletes fire no field-change hooks, so a removed line re-sums its memo here, the way
+  // `syncBillingAfterLineDelete` does for an invoice line. Together with the field-change
+  // registration above this covers create, update and delete of a memo line.
+  registerEntityPostDeleteHooks('credit-memo-lines', [recomputeCreditMemoAfterLineDelete])
 }

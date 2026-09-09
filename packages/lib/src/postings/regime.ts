@@ -69,6 +69,10 @@ export const ENABLED_POSTING_TYPES: readonly PostingType[] = [
   // along.
   'invoice_issued',
   'deposit_application',
+  // plans/accounting/tasks/10-credit-memos.md. The issue entry reverses revenue
+  // through 4090 against the receivable the issuance entry raised. Drives no
+  // single-writer role.
+  'credit_memo',
   // `receipt` and `vendor_bill` are the L3 buy side and wait for the same
   // switch as the COGS leg.
 ]
@@ -155,6 +159,11 @@ export const SINGLE_WRITER_ROLES_BY_POSTING_TYPE: Record<PostingType, readonly A
   // A reclass between two liabilities-and-receivables accounts. No money moves,
   // so nothing here can be a cash or inventory writer.
   deposit_application: [],
+  // Returns and allowances, sales tax and the receivable, plus the card
+  // clearing account on a channel refund. No inventory account (a `returned`
+  // line is recorded, not restocked) and no cash: a native refund is a payment
+  // entry, and a channel refund drains through the payout entry.
+  credit_memo: [],
 }
 
 /**

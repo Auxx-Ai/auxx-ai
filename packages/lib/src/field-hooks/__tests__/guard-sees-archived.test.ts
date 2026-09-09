@@ -73,6 +73,9 @@ const KNOWN_UNFIXED = ['quote-delete-guard.ts']
  * and has to be moved into `FIXED`.
  */
 const NO_CHILD_READS = [
+  // `credit-memo` reads its own status and issue date off the event and the
+  // `PaymentTransaction` table for a refund that names the memo.
+  'credit-memo-delete-guard.ts',
   'invoice-delete-guard.ts',
   'journal-entry-delete-guard.ts',
   'order-delete-guard.ts',

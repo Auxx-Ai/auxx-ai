@@ -2556,6 +2556,20 @@
       "when": 1788894448725,
       "tag": "0364_split_export_state_off_gl_posting",
       "breakpoints": true
+    },
+    {
+      "idx": 365,
+      "version": "7",
+      "when": 1788935467932,
+      "tag": "0365_payment_transaction_credit_memo",
+      "breakpoints": true
+    },
+    {
+      "idx": 366,
+      "version": "7",
+      "when": 1788935656081,
+      "tag": "0366_gl_posting_type_credit_memo",
+      "breakpoints": true
     }
   ]
 }

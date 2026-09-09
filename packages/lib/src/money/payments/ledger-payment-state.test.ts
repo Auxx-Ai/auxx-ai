@@ -20,6 +20,9 @@ const h = vi.hoisted(() => ({
   fieldValueServiceArgs: [] as unknown[][],
   /** Allocation rows `computeAmountPaid` sums — `{ amount, kind }`, kind from the transaction. */
   allocations: [] as Array<{ kind: string; amount: number }>,
+  /** `credit_memo_application_amount` per application row `computeAmountCredited` sums. */
+  applications: [] as number[],
+  listFiltered: vi.fn(),
 }))
 
 /** Chainable drizzle stub — `computeAmountPaid` sums the rows it resolves to. */
@@ -48,7 +51,12 @@ vi.mock('../../cache', () => ({
 vi.mock('../../resources/crud', () => ({
   UnifiedCrudHandler: class {
     getFieldValues = h.getFieldValues
+    listFiltered = h.listFiltered
   },
+}))
+vi.mock('../../field-values/read-field-scalars', () => ({
+  readFieldScalars: async (_db: unknown, _org: string, instanceIds: string[], fieldIds: string[]) =>
+    new Map(instanceIds.map((id, index) => [id, new Map([[fieldIds[0]!, h.applications[index]]])])),
 }))
 vi.mock('../../field-values/field-value-service', () => ({
   FieldValueService: class {
@@ -69,23 +77,34 @@ const FIELDS = {
   invoice_status: { id: 'f-status' },
   invoice_total: { id: 'f-total' },
   invoice_amount_paid: { id: 'f-paid' },
+  invoice_amount_credited: { id: 'f-credited' },
   invoice_balance: { id: 'f-balance' },
+  credit_memo_application_amount: { id: 'f-app-amount' },
 }
 
-/** The invoice as the ledger finds it, plus the succeeded charges held against it. */
+/** The invoice as the ledger finds it, plus the succeeded charges and applied credit against it. */
 function wireInvoice(params: {
   status: string
   total: number
   amountPaid?: number
+  amountCredited?: number
   charges?: number[]
+  /** One `credit_memo_application` row per amount. */
+  credits?: number[]
 }) {
   h.bySystemAttributes.mockResolvedValue(FIELDS)
   const map = new Map<string, unknown>()
   map.set(FIELDS.invoice_status.id, { type: 'option', optionId: params.status })
   map.set(FIELDS.invoice_total.id, { type: 'number', value: params.total })
   map.set(FIELDS.invoice_amount_paid.id, { type: 'number', value: params.amountPaid ?? 0 })
+  map.set(FIELDS.invoice_amount_credited.id, {
+    type: 'number',
+    value: params.amountCredited ?? 0,
+  })
   h.getFieldValues.mockResolvedValue(map)
   h.allocations = (params.charges ?? []).map((amount) => ({ kind: 'charge', amount }))
+  h.applications = params.credits ?? []
+  h.listFiltered.mockResolvedValue({ ids: h.applications.map((_, index) => `app-${index}`) })
 }
 
 function writtenValues(): Array<{ fieldId: string; value: unknown }> {
@@ -104,6 +123,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   h.fieldValueServiceArgs = []
   h.allocations = []
+  h.applications = []
 })
 
 describe('syncInvoicePaymentState — clearing the wall it justifies', () => {
@@ -122,6 +142,7 @@ describe('syncInvoicePaymentState — clearing the wall it justifies', () => {
     await syncInvoicePaymentState({ organizationId: ORG, userId: USER, invoiceInstanceId: INVOICE })
     expect(bypass()?.size).toBe(1)
     expect(bypass()?.has('invoice_amount_paid')).toBe(false)
+    expect(bypass()?.has('invoice_amount_credited')).toBe(false)
     expect(bypass()?.has('invoice_balance')).toBe(false)
   })
 
@@ -195,5 +216,94 @@ describe('syncInvoicePaymentState — what it derives', () => {
     )
     await syncInvoicePaymentState({ organizationId: ORG, userId: USER, invoiceInstanceId: INVOICE })
     expect(h.setValuesForEntity).not.toHaveBeenCalled()
+  })
+})
+
+// plans/accounting/tasks/10-credit-memos.md §2.3: an application is not money and has no
+// `PaymentAllocation`. The memo's issue entry already credited `1100` for it, so an invoice
+// that did not subtract its applied credit would carry a balance the ledger no longer does.
+describe('syncInvoicePaymentState - applied credit', () => {
+  it('lists the applications by the invoice they were applied to', async () => {
+    wireInvoice({ status: 'sent', total: 500, credits: [120] })
+    await syncInvoicePaymentState({ organizationId: ORG, userId: USER, invoiceInstanceId: INVOICE })
+    const listArg = h.listFiltered.mock.calls[0]![0] as {
+      entityDefinitionId: string
+      filters: Array<{ conditions: Array<{ fieldId: string; operator: string; value: unknown }> }>
+    }
+    expect(listArg.entityDefinitionId).toBe('credit_memo_application')
+    expect(listArg.filters[0]!.conditions[0]).toMatchObject({
+      fieldId: 'credit_memo_application:invoice',
+      operator: 'is',
+      value: `invoice:${INVOICE}`,
+    })
+  })
+
+  it('subtracts applied credit from the balance and writes invoice_amount_credited', async () => {
+    wireInvoice({ status: 'sent', total: 500, credits: [120] })
+    await syncInvoicePaymentState({ organizationId: ORG, userId: USER, invoiceInstanceId: INVOICE })
+    expect(writtenValues()).toContainEqual({ fieldId: 'invoice_amount_credited', value: 120 })
+    expect(writtenValues()).toContainEqual({ fieldId: 'invoice_balance', value: 380 })
+    expect(writtenValues()).toContainEqual({ fieldId: 'invoice_status', value: 'partially_paid' })
+  })
+
+  it('sums every application, not just the first', async () => {
+    wireInvoice({ status: 'sent', total: 500, credits: [120, 80] })
+    await syncInvoicePaymentState({ organizationId: ORG, userId: USER, invoiceInstanceId: INVOICE })
+    expect(writtenValues()).toContainEqual({ fieldId: 'invoice_amount_credited', value: 200 })
+    expect(writtenValues()).toContainEqual({ fieldId: 'invoice_balance', value: 300 })
+  })
+
+  it('lands on paid when credit alone settles the invoice', async () => {
+    wireInvoice({ status: 'sent', total: 120, credits: [120] })
+    await syncInvoicePaymentState({ organizationId: ORG, userId: USER, invoiceInstanceId: INVOICE })
+    expect(writtenValues()).toContainEqual({ fieldId: 'invoice_status', value: 'paid' })
+    expect(writtenValues()).toContainEqual({ fieldId: 'invoice_balance', value: 0 })
+    // Nothing was PAID. The paid figure stays honest; only the credit figure moved.
+    expect(writtenValues()).not.toContainEqual(
+      expect.objectContaining({ fieldId: 'invoice_amount_paid' })
+    )
+  })
+
+  it('lands on paid when money and credit together reach the total', async () => {
+    wireInvoice({ status: 'partially_paid', total: 500, amountPaid: 380, charges: [380] })
+    h.applications = [120]
+    h.listFiltered.mockResolvedValue({ ids: ['app-0'] })
+    await syncInvoicePaymentState({ organizationId: ORG, userId: USER, invoiceInstanceId: INVOICE })
+    expect(writtenValues()).toContainEqual({ fieldId: 'invoice_status', value: 'paid' })
+    expect(writtenValues()).toContainEqual({ fieldId: 'invoice_balance', value: 0 })
+  })
+
+  // §8 step 3: unapply, and the invoice is back at its full balance.
+  it('reverses to sent and clears the credit figure when the application is removed', async () => {
+    wireInvoice({ status: 'partially_paid', total: 500, amountCredited: 120, credits: [] })
+    await syncInvoicePaymentState({ organizationId: ORG, userId: USER, invoiceInstanceId: INVOICE })
+    expect(writtenValues()).toContainEqual({ fieldId: 'invoice_amount_credited', value: 0 })
+    expect(writtenValues()).toContainEqual({ fieldId: 'invoice_balance', value: 500 })
+    expect(writtenValues()).toContainEqual({ fieldId: 'invoice_status', value: 'sent' })
+  })
+
+  it('does not rewrite a credit figure that already agrees', async () => {
+    wireInvoice({ status: 'partially_paid', total: 500, amountCredited: 120, credits: [120] })
+    h.getFieldValues.mockResolvedValue(
+      new Map<string, unknown>([
+        [FIELDS.invoice_status.id, { type: 'option', optionId: 'partially_paid' }],
+        [FIELDS.invoice_total.id, { type: 'number', value: 500 }],
+        [FIELDS.invoice_amount_paid.id, { type: 'number', value: 0 }],
+        [FIELDS.invoice_amount_credited.id, { type: 'number', value: 120 }],
+        [FIELDS.invoice_balance.id, { type: 'number', value: 380 }],
+      ])
+    )
+    await syncInvoicePaymentState({ organizationId: ORG, userId: USER, invoiceInstanceId: INVOICE })
+    expect(h.setValuesForEntity).not.toHaveBeenCalled()
+  })
+
+  // An org whose registry has no application field yet has nothing to sum, and must not
+  // be asked to list a def it does not have.
+  it('reads zero credit when the org has no application field', async () => {
+    wireInvoice({ status: 'sent', total: 100, charges: [40] })
+    h.bySystemAttributes.mockResolvedValue({ ...FIELDS, credit_memo_application_amount: null })
+    await syncInvoicePaymentState({ organizationId: ORG, userId: USER, invoiceInstanceId: INVOICE })
+    expect(h.listFiltered).not.toHaveBeenCalled()
+    expect(writtenValues()).toContainEqual({ fieldId: 'invoice_balance', value: 60 })
   })
 })

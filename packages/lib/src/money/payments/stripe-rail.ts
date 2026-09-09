@@ -24,7 +24,7 @@ import { getPaymentAccount, syncAccountState, upsertPaymentAccount } from './acc
 import { getStripeConnectClient } from './connect-client'
 import { resolveQuoteDeposit } from './deposit'
 import { resolveApplicationFee } from './fees'
-import { syncInvoicePaymentState, syncTransaction } from './ledger'
+import { readCreditMemoForRefund, syncInvoicePaymentState, syncTransaction } from './ledger'
 import { sendPaymentReceipt } from './receipt-email'
 
 const logger = createScopedLogger('money-stripe-rail')
@@ -745,6 +745,9 @@ export async function applyStripeEvent(event: Stripe.Event): Promise<void> {
       }
       if (!refundRow || refundRow.status === 'succeeded') return
 
+      // Status only. `amount` is what `refundTransaction` asked Stripe for, and a partial
+      // refund (10-credit-memos.md §5.3) must not be widened to the charge's
+      // `amount_refunded`, which is the running total across every refund of the charge.
       const systemUserId = await getOrgCache().get(refundRow.organizationId, 'systemUser')
       const [updated] = await database
         .update(schema.PaymentTransaction)
@@ -896,6 +899,20 @@ export interface RefundTransactionInput {
   userId: string
   /** `PaymentTransaction.id` of the `succeeded` `stripe` `charge` row to refund. */
   transactionId: string
+  /**
+   * Integer minor units (plans/accounting/tasks/10-credit-memos.md §5.3). Absent = everything
+   * still refundable on the charge, byte-identical to the full-only behaviour every existing
+   * caller relies on. When present it must be above zero and at most the charge amount less
+   * every refund already pending, processing or succeeded against it.
+   */
+  amount?: number
+  /**
+   * The `issued` credit memo this refund settles (§5.3). Stamped on the refund row, validated
+   * against the memo's balance and contact, and it changes what the refund means: no
+   * allocation is copied from the charge, because the memo, not the invoice, is what this
+   * money settles (see the body).
+   */
+  creditMemoInstanceId?: string
 }
 
 /** Result of `refundTransaction`. */
@@ -905,17 +922,24 @@ export interface RefundTransactionResult {
 }
 
 /**
- * Admin full-refund of a succeeded Stripe charge (money MP1 build spec §E bullet 3, decision:
- * full refunds only in v1). Inserts a `pending` `refund` row, then calls `refunds.create` with
- * `refund_application_fee: true` (the platform fee is refunded too) and stamps `stripeRefundId`.
- * The `charge.refunded` webhook (`applyStripeEvent`) is what actually flips the row to
- * `succeeded` and reprojects the invoice — this function only initiates the refund. Router-gated
- * admin-only (§L) — this function itself does not check roles, matching `deleteManualPayment`.
+ * Admin refund of a succeeded Stripe charge (money MP1 build spec §E bullet 3; partial amounts
+ * and the credit memo link from plans/accounting/tasks/10-credit-memos.md §5.3). Inserts a
+ * `pending` `refund` row, then calls `refunds.create` with the amount and
+ * `refund_application_fee: true` (the platform fee is refunded too, pro rata for a partial)
+ * and stamps `stripeRefundId`. The `charge.refunded` webhook (`applyStripeEvent`) is what
+ * actually flips the row to `succeeded` and reprojects the invoice; this function only
+ * initiates the refund. Router-gated admin-only (§L): this function itself does not check
+ * roles, matching `deleteManualPayment`.
+ *
+ * The webhook never touches `amount`: the row is resolved by `stripeRefundId` and only its
+ * status is written, so a partial refund stays partial when Stripe confirms it. A charge can
+ * be refunded more than once now; what stops it is the sum of its live refunds reaching the
+ * charge amount, not the existence of one.
  */
 export async function refundTransaction(
   input: RefundTransactionInput
 ): Promise<RefundTransactionResult> {
-  const { organizationId, userId, transactionId } = input
+  const { organizationId, userId, transactionId, creditMemoInstanceId } = input
 
   const charge = await database.query.PaymentTransaction.findFirst({
     where: and(
@@ -936,15 +960,52 @@ export async function refundTransaction(
     throw new BadRequestError('This payment has no Stripe charge to refund')
   }
 
-  const existingRefund = await database.query.PaymentTransaction.findFirst({
+  // Every refund still in flight or done counts against what is left. A `failed` or
+  // `canceled` refund gave nothing back and frees its amount again.
+  const existingRefunds = await database.query.PaymentTransaction.findMany({
     where: and(
       eq(schema.PaymentTransaction.refundedTransactionId, charge.id),
       eq(schema.PaymentTransaction.kind, 'refund'),
       inArray(schema.PaymentTransaction.status, ['pending', 'processing', 'succeeded'])
     ),
   })
-  if (existingRefund) {
-    throw new BadRequestError('This payment has already been refunded')
+  const refundedSoFar = existingRefunds.reduce((sum, row) => sum + row.amount, 0)
+  const refundable = charge.amount - refundedSoFar
+  if (refundable <= 0) {
+    throw new BadRequestError('This payment has already been refunded in full')
+  }
+
+  const refundAmount = input.amount ?? refundable
+  if (!Number.isInteger(refundAmount) || refundAmount <= 0 || refundAmount > refundable) {
+    throw new BadRequestError(
+      `Refund amount must be a whole number of minor units between 1 and ${refundable}`
+    )
+  }
+  // A deposit charge is refunded whole or not at all. `collectRefundedChargeIds`
+  // (allocation-reads.ts) reads any refund of a deposit charge as the whole deposit
+  // returned, so a partial one would understate what is still held. Widening that read
+  // is its own change; until then the door stays shut here.
+  if (charge.quoteInstanceId && refundAmount !== charge.amount) {
+    throw new BadRequestError('A deposit can only be refunded in full')
+  }
+
+  // The memo side of the same checks the manual rail makes: `issued`, within balance, and
+  // the same customer as the charge (a memo raised on one contact cannot be paid back out of
+  // another's card).
+  if (creditMemoInstanceId) {
+    const memo = await readCreditMemoForRefund({
+      organizationId,
+      userId,
+      creditMemoInstanceId,
+      amount: refundAmount,
+    })
+    if (
+      memo.contactInstanceId &&
+      charge.contactInstanceId &&
+      memo.contactInstanceId !== charge.contactInstanceId
+    ) {
+      throw new BadRequestError('The credit memo belongs to a different contact than this payment')
+    }
   }
 
   const account = await getPaymentAccount(organizationId)
@@ -960,9 +1021,10 @@ export async function refundTransaction(
       provider: 'stripe',
       kind: 'refund',
       status: 'pending',
-      amount: charge.amount,
+      amount: refundAmount,
       currency: charge.currency,
       invoiceInstanceId: charge.invoiceInstanceId,
+      creditMemoInstanceId: creditMemoInstanceId ?? null,
       // MP2 §B.10 — carry a deposit's quote/work-order linkage onto its refund row too, so a
       // refunded deposit stays queryable by the same `listWorkOrderPayments` extension.
       quoteInstanceId: charge.quoteInstanceId,
@@ -977,35 +1039,77 @@ export async function refundTransaction(
     .returning()
 
   // money 16-deposit-accounting.md §C.5 — copy the charge's allocations onto the refund row
-  // (same invoices, same amounts — full-only refunds make this exact) so `computeAmountPaid`
-  // nets to zero per invoice once this refund succeeds. No mirrors for refund allocations
-  // (mirrors stay charge-only — refunds already render from the ledger row). Refunding a held
-  // deposit (zero allocations) copies nothing and touches no invoice — the null-guard behavior
-  // MP2 had, now structural. The refund row is still `pending` here (the `charge.refunded`
-  // webhook is what flips it to `succeeded` and calls `syncTransaction`), so `computeAmountPaid`
-  // won't count these allocations until then — this sync is a harmless, correctly-computed
-  // no-op today, kept for parity with every other allocation-mutating writer in this module.
-  const chargeAllocations = await database.query.PaymentAllocation.findMany({
-    where: eq(schema.PaymentAllocation.paymentTransactionId, charge.id),
-  })
+  // (same invoices, capped at the refund amount, net of what earlier refunds of this charge
+  // already copied) so `computeAmountPaid` nets the refunded part off each invoice once this
+  // refund succeeds. A full refund with no earlier refunds copies the allocations exactly, as
+  // before. No mirrors for refund allocations (mirrors stay charge-only; refunds already
+  // render from the ledger row). Refunding a held deposit (zero allocations) copies nothing
+  // and touches no invoice. The refund row is still `pending` here (the `charge.refunded`
+  // webhook is what flips it to `succeeded` and calls `syncTransaction`), so
+  // `computeAmountPaid` won't count these allocations until then: this sync is a harmless,
+  // correctly-computed no-op today, kept for parity with every other allocation-mutating
+  // writer in this module.
+  //
+  // 🛑 A refund that settles a CREDIT MEMO copies NOTHING. The memo already took its amount
+  // off the customer's debt (its issue entry credited `1100`), and the invoice the charge paid
+  // stays exactly as paid as it was: an allocation here would make `computeAmountPaid` read
+  // the invoice as partly unpaid for money the memo, not the invoice, is giving back. The
+  // receivable debit is carried by the memo link instead (`syncTransaction`'s `allocatedMinor`
+  // rule), and `settleCreditMemo` sums the row into `credit_memo_amount_refunded`.
+  const chargeAllocations = creditMemoInstanceId
+    ? []
+    : await database.query.PaymentAllocation.findMany({
+        where: eq(schema.PaymentAllocation.paymentTransactionId, charge.id),
+      })
   if (chargeAllocations.length > 0) {
-    await database.insert(schema.PaymentAllocation).values(
-      chargeAllocations.map((allocation) => ({
-        organizationId,
-        paymentTransactionId: refundRow!.id,
-        invoiceInstanceId: allocation.invoiceInstanceId,
-        amount: allocation.amount,
-        createdByUserId: userId,
-      }))
-    )
-    for (const invoiceInstanceId of new Set(chargeAllocations.map((a) => a.invoiceInstanceId))) {
-      await syncInvoicePaymentState({ organizationId, userId, invoiceInstanceId })
+    const priorRefundAllocations =
+      existingRefunds.length > 0
+        ? await database.query.PaymentAllocation.findMany({
+            where: inArray(
+              schema.PaymentAllocation.paymentTransactionId,
+              existingRefunds.map((row) => row.id)
+            ),
+          })
+        : []
+    const alreadyCopiedByInvoice = new Map<string, number>()
+    for (const allocation of priorRefundAllocations) {
+      alreadyCopiedByInvoice.set(
+        allocation.invoiceInstanceId,
+        (alreadyCopiedByInvoice.get(allocation.invoiceInstanceId) ?? 0) + allocation.amount
+      )
+    }
+
+    let remaining = refundAmount
+    const copies: Array<{ invoiceInstanceId: string; amount: number }> = []
+    for (const allocation of chargeAllocations) {
+      if (remaining <= 0) break
+      const left =
+        allocation.amount - (alreadyCopiedByInvoice.get(allocation.invoiceInstanceId) ?? 0)
+      if (left <= 0) continue
+      const slice = Math.min(left, remaining)
+      copies.push({ invoiceInstanceId: allocation.invoiceInstanceId, amount: slice })
+      remaining -= slice
+    }
+
+    if (copies.length > 0) {
+      await database.insert(schema.PaymentAllocation).values(
+        copies.map((copy) => ({
+          organizationId,
+          paymentTransactionId: refundRow!.id,
+          invoiceInstanceId: copy.invoiceInstanceId,
+          amount: copy.amount,
+          createdByUserId: userId,
+        }))
+      )
+      for (const invoiceInstanceId of new Set(copies.map((copy) => copy.invoiceInstanceId))) {
+        await syncInvoicePaymentState({ organizationId, userId, invoiceInstanceId })
+      }
     }
   }
 
   const stripe = getStripeConnectClient()
   const refund = await stripe.refunds.create(
-    { charge: charge.stripeChargeId, refund_application_fee: true },
+    { charge: charge.stripeChargeId, amount: refundAmount, refund_application_fee: true },
     { stripeAccount: account.stripeAccountId, idempotencyKey: refundRow!.id }
   )
 

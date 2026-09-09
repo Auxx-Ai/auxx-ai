@@ -189,14 +189,14 @@ const value = (child: string, fieldId: string, parent: string): Value => ({
 })
 
 /**
- * Two orders. Order 1 owns two lines and a refund with two refund lines;
+ * Two orders. Order 1 owns two lines and a credit memo with two memo lines;
  * order 2 owns one line and a tax line. Both belong to a contact, and order 1
  * also names a build through a relationship with no `onDelete` at all.
  */
 function orderFixture() {
   h.fields.set('def_orders', [
     relation('f_lines', 'Line items', 'def_lines', { onDelete: 'cascade' }),
-    relation('f_refunds', 'Refunds', 'def_refunds', { onDelete: 'cascade' }),
+    relation('f_credit_memos', 'Credit memos', 'def_credit_memos', { onDelete: 'cascade' }),
     relation('f_tax', 'Tax lines', 'def_tax', { onDelete: 'cascade' }),
     // Declared on the wrong side: a child cannot cascade its parent.
     relation('f_contact', 'Contact', 'def_contacts', { type: 'belongs_to', onDelete: 'cascade' }),
@@ -204,13 +204,13 @@ function orderFixture() {
     relation('f_builds', 'Builds', 'def_builds'),
     { id: 'f_number', name: 'Number', type: 'TEXT', options: null },
   ])
-  h.fields.set('def_refunds', [
-    inverseOf('f_refunds', 'Order', 'def_orders'),
-    relation('f_refund_lines', 'Refund lines', 'def_refund_lines', { onDelete: 'cascade' }),
+  h.fields.set('def_credit_memos', [
+    inverseOf('f_credit_memos', 'Order', 'def_orders'),
+    relation('f_memo_lines', 'Credit memo lines', 'def_memo_lines', { onDelete: 'cascade' }),
   ])
   h.fields.set('def_lines', [inverseOf('f_lines', 'Order', 'def_orders')])
   h.fields.set('def_tax', [inverseOf('f_tax', 'Order', 'def_orders')])
-  h.fields.set('def_refund_lines', [inverseOf('f_refund_lines', 'Refund', 'def_refunds')])
+  h.fields.set('def_memo_lines', [inverseOf('f_memo_lines', 'Credit memo', 'def_credit_memos')])
   h.fields.set('def_contacts', [
     relation('inv_f_contact', 'Orders', 'def_orders', { inverse: 'f_contact' }),
   ])
@@ -222,9 +222,9 @@ function orderFixture() {
       { id: 'l1', entityDefinitionId: 'def_lines' },
       { id: 'l2', entityDefinitionId: 'def_lines' },
       { id: 'l3', entityDefinitionId: 'def_lines' },
-      { id: 'r1', entityDefinitionId: 'def_refunds' },
-      { id: 'rl1', entityDefinitionId: 'def_refund_lines' },
-      { id: 'rl2', entityDefinitionId: 'def_refund_lines' },
+      { id: 'cm1', entityDefinitionId: 'def_credit_memos' },
+      { id: 'cml1', entityDefinitionId: 'def_memo_lines' },
+      { id: 'cml2', entityDefinitionId: 'def_memo_lines' },
       { id: 't1', entityDefinitionId: 'def_tax' },
       { id: 'c1', entityDefinitionId: 'def_contacts' },
       { id: 'b1', entityDefinitionId: 'def_builds' },
@@ -233,9 +233,9 @@ function orderFixture() {
       value('l1', 'inv_f_lines', 'o1'),
       value('l2', 'inv_f_lines', 'o1'),
       value('l3', 'inv_f_lines', 'o2'),
-      value('r1', 'inv_f_refunds', 'o1'),
-      value('rl1', 'inv_f_refund_lines', 'r1'),
-      value('rl2', 'inv_f_refund_lines', 'r1'),
+      value('cm1', 'inv_f_credit_memos', 'o1'),
+      value('cml1', 'inv_f_memo_lines', 'cm1'),
+      value('cml2', 'inv_f_memo_lines', 'cm1'),
       value('t1', 'inv_f_tax', 'o2'),
       value('c1', 'inv_f_contact', 'o1'),
       value('c1', 'inv_f_contact', 'o2'),
@@ -251,8 +251,12 @@ beforeEach(() => {
   h.resources = [
     { entityDefinitionId: 'def_orders', apiSlug: 'orders', label: 'Order' },
     { entityDefinitionId: 'def_lines', apiSlug: 'line-items', label: 'Line item' },
-    { entityDefinitionId: 'def_refunds', apiSlug: 'refunds', label: 'Refund' },
-    { entityDefinitionId: 'def_refund_lines', apiSlug: 'refund-lines', label: 'Refund line' },
+    { entityDefinitionId: 'def_credit_memos', apiSlug: 'credit-memos', label: 'Credit memo' },
+    {
+      entityDefinitionId: 'def_memo_lines',
+      apiSlug: 'credit-memo-lines',
+      label: 'Credit memo line',
+    },
     { entityDefinitionId: 'def_tax', apiSlug: 'tax-lines', label: 'Tax line' },
     { entityDefinitionId: 'def_moves', apiSlug: 'stock-movements', label: 'Stock movement' },
   ]
@@ -270,9 +274,9 @@ describe('collectDeleteClosure', () => {
     expect(
       groups.map((g) => [g.apiSlug, g.depth, g.records.map((r) => r.entityInstanceId)])
     ).toEqual([
-      ['refund-lines', 2, ['rl1', 'rl2']],
+      ['credit-memo-lines', 2, ['cml1', 'cml2']],
       ['line-items', 1, ['l1', 'l2', 'l3']],
-      ['refunds', 1, ['r1']],
+      ['credit-memos', 1, ['cm1']],
       ['tax-lines', 1, ['t1']],
       ['orders', 0, ['o1', 'o2']],
     ])
@@ -281,15 +285,15 @@ describe('collectDeleteClosure', () => {
     expect(collected).not.toContain('c1')
     expect(collected).not.toContain('b1')
 
-    // 1 resolve + 3 (order fields) at level 1 + 1 (refund field) at level 2,
+    // 1 resolve + 3 (order fields) at level 1 + 1 (credit memo field) at level 2,
     // each read through the CHILD's field. Lines and tax lines have no cascade
     // fields, so level 2 asks nothing of them.
     expect(queries.map((q) => [q.kind, q.fieldId ?? null])).toEqual([
       ['resolve', null],
       ['cascade', 'inv_f_lines'],
-      ['cascade', 'inv_f_refunds'],
+      ['cascade', 'inv_f_credit_memos'],
       ['cascade', 'inv_f_tax'],
-      ['cascade', 'inv_f_refund_lines'],
+      ['cascade', 'inv_f_memo_lines'],
     ])
   })
 
@@ -307,7 +311,7 @@ describe('collectDeleteClosure', () => {
       requestedBy: 'orders:o1',
       depth: 1,
     })
-    expect(byId.get('rl1')).toMatchObject({ requestedBy: 'def_refunds:r1', depth: 2 })
+    expect(byId.get('cml1')).toMatchObject({ requestedBy: 'def_credit_memos:cm1', depth: 2 })
   })
 
   it('a record reached twice appears once and keeps the greater depth, staying a root if requested', async () => {

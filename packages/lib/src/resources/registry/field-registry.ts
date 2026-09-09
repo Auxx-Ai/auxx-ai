@@ -14,6 +14,9 @@ import { CATALOG_GROUP_FIELDS } from './resources/catalog-group-fields'
 import { CATALOG_ITEM_FIELDS } from './resources/catalog-item-fields'
 import { COMPANY_FIELDS } from './resources/company-fields'
 import { CONTACT_FIELDS } from './resources/contact-fields'
+import { CREDIT_MEMO_APPLICATION_FIELDS } from './resources/credit-memo-application-fields'
+import { CREDIT_MEMO_FIELDS } from './resources/credit-memo-fields'
+import { CREDIT_MEMO_LINE_FIELDS } from './resources/credit-memo-line-fields'
 import { DATASET_FIELDS } from './resources/dataset-fields'
 import { GL_ACCOUNT_FIELDS } from './resources/gl-account-fields'
 import { INBOX_FIELDS } from './resources/inbox-fields'
@@ -33,8 +36,6 @@ import { PRODUCT_FIELDS } from './resources/product-fields'
 import { PURCHASE_ORDER_FIELDS } from './resources/purchase-order-fields'
 import { PURCHASE_ORDER_LINE_FIELDS } from './resources/purchase-order-line-fields'
 import { QUOTE_FIELDS } from './resources/quote-fields'
-import { REFUND_FIELDS } from './resources/refund-fields'
-import { REFUND_LINE_FIELDS } from './resources/refund-line-fields'
 import { SERVICE_REQUEST_FIELDS } from './resources/service-request-fields'
 import { SIGNATURE_FIELDS } from './resources/signature-fields'
 import { STOCK_MOVEMENT_FIELDS } from './resources/stock-movement-fields'
@@ -167,8 +168,9 @@ export const RESOURCE_FIELD_REGISTRY: ResourceFieldRegistry = {
   bank_rule: BANK_RULE_FIELDS,
   tariff_code: TARIFF_CODE_FIELDS,
   tariff_rate: TARIFF_RATE_FIELDS,
-  refund: REFUND_FIELDS,
-  refund_line: REFUND_LINE_FIELDS,
+  credit_memo: CREDIT_MEMO_FIELDS,
+  credit_memo_line: CREDIT_MEMO_LINE_FIELDS,
+  credit_memo_application: CREDIT_MEMO_APPLICATION_FIELDS,
   tax_line: TAX_LINE_FIELDS,
 }
 

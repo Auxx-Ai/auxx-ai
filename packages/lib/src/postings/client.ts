@@ -8,6 +8,18 @@
 // (the builders run in a worker), and the directive would turn every export into
 // a client-reference proxy there. See docs/lib-module-guide.md section 7.
 
+// ── plans/accounting/tasks/10: credit memos, one document for "you owe us less" ──
+// PURE - reaches nothing but `errors`, `build-entry`, `build-fulfillment-entry`
+// and `period-key`, all of which are already on this surface. The write half
+// lives in `money/credit-memos/` and stays server-only.
+export {
+  type BuildCreditMemoEntryInput,
+  type BuiltCreditMemoEntry,
+  buildCreditMemoEntry,
+  CREDIT_MEMO_POSTING_TYPE,
+  CREDIT_MEMO_SOURCE_TYPE,
+  type CreditMemoSettlement,
+} from './build-credit-memo-entry'
 // ── plans/accounting/tasks/07: customer deposits are a liability ────────────
 // PURE - reaches nothing but `errors`, `build-entry` and `period-key`, all of
 // which are already on this surface.

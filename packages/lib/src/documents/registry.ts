@@ -11,12 +11,14 @@ import type { ComponentType } from 'react'
 import { DOCUMENT_TYPE_DESCRIPTORS, type DocumentTypeId, type PrintOptionField } from './client'
 import {
   buildBankDepositPdfPayload,
+  buildCreditMemoPdfPayload,
   buildInvoicePdfPayload,
   buildPurchaseOrderPdfPayload,
   buildQuotePdfPayload,
   type DocumentPdfPayload,
 } from './payload'
 import { BankDepositPdf } from './pdf/bank-deposit-pdf'
+import { CreditMemoPdf } from './pdf/credit-memo-pdf'
 import { InvoicePdf } from './pdf/invoice-pdf'
 import { PurchaseOrderPdf } from './pdf/purchase-order-pdf'
 import { QuotePdf } from './pdf/quote-pdf'
@@ -118,6 +120,20 @@ const RENDER_ENTRIES: Array<
         bankDepositRecordId: params.recordId,
       }),
     Pdf: BankDepositPdf as unknown as RegisteredDocumentType['Pdf'],
+  },
+  {
+    // The mirror of the invoice (plans/accounting/tasks/10-credit-memos.md §6.3).
+    // `pointerAttr` names the real `credit_memo_pdf_asset` field, for the same
+    // asset-leak reason as the entries above.
+    id: 'credit_memo',
+    pointerAttr: 'credit_memo_pdf_asset',
+    buildPayload: (params) =>
+      buildCreditMemoPdfPayload({
+        organizationId: params.organizationId,
+        userId: params.userId,
+        creditMemoRecordId: params.recordId,
+      }),
+    Pdf: CreditMemoPdf as unknown as RegisteredDocumentType['Pdf'],
   },
 ]
 

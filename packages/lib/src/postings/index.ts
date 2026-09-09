@@ -17,6 +17,15 @@ export {
   type SetAccountIdentityOptions,
   setAccountIdentity,
 } from './account-identities'
+// ── plans/accounting/tasks/10: credit memos, one document for "you owe us less" ──
+export {
+  type BuildCreditMemoEntryInput,
+  type BuiltCreditMemoEntry,
+  buildCreditMemoEntry,
+  CREDIT_MEMO_POSTING_TYPE,
+  CREDIT_MEMO_SOURCE_TYPE,
+  type CreditMemoSettlement,
+} from './build-credit-memo-entry'
 // ── plans/accounting/tasks/07: customer deposits are a liability ────────────
 export {
   type BuildDepositApplicationEntryInput,

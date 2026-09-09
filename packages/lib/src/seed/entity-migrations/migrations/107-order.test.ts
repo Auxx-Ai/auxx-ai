@@ -73,6 +73,7 @@ describe('order entity registration wiring', () => {
       'contact',
       'createdAt',
       'createdBy',
+      'creditMemos', // added by migration 136 - inverse of credit_memo_order (accounting/tasks/10 §2.1)
       'currency',
       'discountType',
       'discountValue',
@@ -85,7 +86,6 @@ describe('order entity registration wiring', () => {
       'number',
       'paymentGateways',
       'placedAt',
-      'refunds', // added by migration 136 - inverse of refund_order (money/tasks/47 §2)
       'shippingAddress',
       'shippingTotal', // added by migration 122 — money plan 37 §6/§8
       'subtotal',

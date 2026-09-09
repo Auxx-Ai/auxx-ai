@@ -405,6 +405,38 @@ export const INVOICE_FIELDS: Record<string, ResourceField> = {
     description: 'The total amount paid toward this invoice',
   },
 
+  // Sum of the credit memo applications against this invoice
+  // (plans/accounting/tasks/10-credit-memos.md §2.3). An application posts no
+  // ledger entry, so this field is the only place the invoice learns it was
+  // reduced: `syncInvoicePaymentState` writes it and subtracts it from the
+  // balance (`total - paid - credited`) with the same status flips.
+  amountCredited: {
+    id: toFieldId('amountCredited'),
+    key: 'amountCredited',
+    label: 'Amount Credited',
+    type: BaseType.CURRENCY,
+    fieldType: FieldType.CURRENCY,
+    isSystem: true,
+    systemAttribute: 'invoice_amount_credited',
+    systemSortOrder: 'aE1',
+    showInPanel: false, // shown on the payments card beside the balance
+    nullable: true,
+    options: {
+      currencyCode: 'USD',
+      decimals: 2,
+      useGrouping: true,
+      currencyDisplay: 'symbol',
+    },
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: false, // ledger sync is the only writer
+      updatable: false,
+      configurable: false,
+    },
+    description: 'The total credit applied to this invoice from credit memos',
+  },
+
   balance: {
     id: toFieldId('balance'),
     key: 'balance',
@@ -623,6 +655,67 @@ export const INVOICE_FIELDS: Record<string, ResourceField> = {
       isInverse: true,
     },
     description: 'Payments applied to this invoice',
+  },
+
+  // Reverse relationship: creditMemos (from credit_memo.invoice). The memos
+  // raised AGAINST this invoice, as opposed to `creditApplications`, which are
+  // the shares of any memo applied TO it. `restrict` like `payments`: a posted
+  // document hangs off it (plans/accounting/tasks/10-credit-memos.md §2.1).
+  creditMemos: {
+    id: toFieldId('creditMemos'),
+    key: 'creditMemos',
+    label: 'Credit Memos',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'invoice_credit_memos',
+    systemSortOrder: 'aK1',
+    showInPanel: false,
+    showInDialogs: false,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'credit_memo:invoice' as ResourceFieldId,
+      relationshipType: 'has_many',
+      onDelete: 'restrict',
+      isInverse: true,
+    },
+    description: 'Credit memos raised against this invoice',
+  },
+
+  // Reverse relationship: creditApplications (from
+  // credit_memo_application.invoice). `restrict`: an invoice with credit
+  // applied cannot be deleted, the way `payments` refuses (10 §2.3).
+  creditApplications: {
+    id: toFieldId('creditApplications'),
+    key: 'creditApplications',
+    label: 'Credit Applications',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'invoice_credit_applications',
+    systemSortOrder: 'aK2',
+    showInPanel: false,
+    showInDialogs: false,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'credit_memo_application:invoice' as ResourceFieldId,
+      relationshipType: 'has_many',
+      onDelete: 'restrict',
+      isInverse: true,
+    },
+    description: 'Shares of credit memos applied to this invoice',
   },
 
   publicToken: {

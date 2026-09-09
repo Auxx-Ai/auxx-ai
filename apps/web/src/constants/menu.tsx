@@ -27,6 +27,7 @@ import {
   PersonStanding,
   Ratio,
   Receipt,
+  ReceiptText,
   Rows3,
   Settings,
   ShieldCheck,
@@ -182,6 +183,14 @@ export const SIDEBAR_MENU: SidebarProps[] = [
         label: 'Invoices',
         slug: 'invoices',
         icon: <Receipt />,
+      },
+      {
+        // The mirror of an invoice: "you owe us less"
+        // (plans/accounting/tasks/10-credit-memos.md §6.1).
+        id: 'dispatch-credit-memos',
+        label: 'Credit Memos',
+        slug: 'credit-memos',
+        icon: <ReceiptText />,
       },
     ],
   },

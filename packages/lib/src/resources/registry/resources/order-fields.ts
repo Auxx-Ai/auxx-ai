@@ -776,24 +776,26 @@ export const ORDER_FIELDS: Record<string, ResourceField> = {
       "build's own stamp to show that the order changed after the build was raised",
   },
 
-  // Reverse relationship: refunds (from refund.order). The `refund` side lands
-  // with entity migration 136; both halves are created in that one pass, so
-  // `linkNewRelationships` resolves this immediately.
+  // Reverse relationship: creditMemos (from credit_memo.order). The
+  // `credit_memo` side lands with entity migration 136; both halves are created
+  // in that one pass, so `linkNewRelationships` resolves this immediately.
   //
-  // A refund is INGESTED, never originated here - the connector fans
-  // `refunds[]` out of the order payload it already fetches, the same way
-  // `line_items[]` works (plans/money/tasks/47-shopify-refunds.md §2). This is
-  // the relationship that fan-out writes through.
-  refunds: {
-    id: toFieldId('refunds'),
-    key: 'refunds',
-    label: 'Refunds',
+  // A channel credit memo is INGESTED - the connector fans `refunds[]` out of
+  // the order payload it already fetches, the same way `line_items[]` works
+  // (plans/accounting/tasks/10-credit-memos.md §2.1). This is the relationship
+  // that fan-out writes through. `cascade` stays, and the credit memo delete
+  // guard vetoes it: deleting an order with an issued memo is refused naming
+  // the memo (10 §2.6).
+  creditMemos: {
+    id: toFieldId('creditMemos'),
+    key: 'creditMemos',
+    label: 'Credit Memos',
     type: BaseType.RELATION,
     fieldType: FieldType.RELATIONSHIP,
     isSystem: true,
-    systemAttribute: 'order_refunds',
+    systemAttribute: 'order_credit_memos',
     systemSortOrder: 'aM',
-    showInPanel: false, // has_many inverse; surfaced from the refund side
+    showInPanel: false, // has_many inverse; surfaced from the credit memo side
     showInDialogs: false,
     capabilities: {
       filterable: true,
@@ -803,16 +805,16 @@ export const ORDER_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     relationship: {
-      inverseResourceFieldId: 'refund:order' as ResourceFieldId,
+      inverseResourceFieldId: 'credit_memo:order' as ResourceFieldId,
       relationshipType: 'has_many',
       onDelete: 'cascade',
       isInverse: true,
     },
-    description: 'Refunds recorded against this order - money returned, goods returned, or both',
+    description: 'Credit memos raised against this order - money returned, goods returned, or both',
   },
 
   // Reverse relationship: taxLines (from tax_line.order). The `tax_line` side
-  // lands with entity migration 136 alongside `refund`.
+  // lands with entity migration 136 alongside `credit_memo`.
   //
   // Records rather than a JSON blob because the question this exists to answer
   // is tax by jurisdiction over a period, and an aggregation wants rows

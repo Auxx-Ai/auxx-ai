@@ -80,7 +80,38 @@ export {
   resolveBankDepositStatus,
   resolvePaymentRoute,
 } from './bank-deposits/client'
-
+// ─── Credit memos (plans/accounting/tasks/10-credit-memos.md) ──────────────
+// The client-safe half only: the vocabularies, the wire shapes and the pure
+// planner the apply dialog prefills with. Nothing here imports a database.
+export {
+  type ContactCredit,
+  type ContactCreditMemo,
+  CREDIT_MEMO_EDITABLE_STATUSES,
+  CREDIT_MEMO_LINE_DISPOSITION_OPTIONS,
+  CREDIT_MEMO_LINE_DISPOSITIONS,
+  CREDIT_MEMO_NUMBER_PREFIX,
+  CREDIT_MEMO_POSTED_STATUSES,
+  CREDIT_MEMO_REASON_LABELS,
+  CREDIT_MEMO_REASON_OPTIONS,
+  CREDIT_MEMO_REASONS,
+  CREDIT_MEMO_SOURCE_OPTIONS,
+  CREDIT_MEMO_SOURCES,
+  CREDIT_MEMO_STATUS_LABELS,
+  CREDIT_MEMO_STATUS_OPTIONS,
+  CREDIT_MEMO_STATUSES,
+  type CreditMemoApplicationRow,
+  type CreditMemoForApplication,
+  type CreditMemoLineDisposition,
+  type CreditMemoLineInput,
+  type CreditMemoReason,
+  type CreditMemoRefundRow,
+  type CreditMemoSettlement,
+  type CreditMemoSource,
+  type CreditMemoStatus,
+  type OpenInvoiceRow,
+  type PlannedCreditApplication,
+  planCreditApplication,
+} from './credit-memos/client'
 // ─── Order fulfillment (HANDOFF slot 2G) ────────────────────────────────────
 // The client-safe half only: the shipment-log shape and the pure functions over
 // it, which the fulfill dialog reads to prefill remaining quantities.

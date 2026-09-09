@@ -420,12 +420,16 @@ export function TotalsFooter({
               bill's are transcribed with the rest of the vendor's arithmetic. */}
           {totalsMode === 'stored' && (
             <>
-              <div className='flex items-center justify-between'>
-                <span className='text-muted-foreground'>Shipping</span>
-                <span className='tabular-nums'>
-                  {formatCurrency(stored('shipping_total'), currencyCode)}
-                </span>
-              </div>
+              {/* A credit memo is `stored` too and has no shipping field, so the
+                  row is keyed on the attribute being part of the schema. */}
+              {schema.billingAttrs.includes(`${prefix}_shipping_total`) && (
+                <div className='flex items-center justify-between'>
+                  <span className='text-muted-foreground'>Shipping</span>
+                  <span className='tabular-nums'>
+                    {formatCurrency(stored('shipping_total'), currencyCode)}
+                  </span>
+                </div>
+              )}
               <div className='flex items-center justify-between'>
                 <span className='text-muted-foreground'>Tax</span>
                 <span className='tabular-nums'>

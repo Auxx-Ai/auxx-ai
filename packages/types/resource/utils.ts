@@ -172,6 +172,12 @@ export const ENTITY_DEFINITION_TYPES = [
   'tariff_code',
   'tariff_rate',
   'journal_entry',
+  // plans/accounting/tasks/10-credit-memos.md. Listed so a `credit_memo:<id>`
+  // relationship RecordId canonicalizes to the org's def CUID like every other
+  // entity-backed def above.
+  'credit_memo',
+  'credit_memo_line',
+  'credit_memo_application',
 ] as const
 
 /** Type for system entity types stored in EntityDefinition */

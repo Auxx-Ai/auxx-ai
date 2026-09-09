@@ -38,7 +38,13 @@ export const MONEY_TOTALS_PURCHASE_ORDER_LINE = 'money-totals:purchase_order_lin
 export const moneyTotalsDocumentKey = (documentType: TotalledDocumentType): string =>
   `money-totals:${documentType}`
 
-const DOCUMENT_TYPES: TotalledDocumentType[] = ['quote', 'invoice', 'order', 'purchase_order']
+const DOCUMENT_TYPES: TotalledDocumentType[] = [
+  'quote',
+  'invoice',
+  'order',
+  'purchase_order',
+  'credit_memo',
+]
 
 /** A resolved parent, deduped by both halves. */
 interface ParentDocument {

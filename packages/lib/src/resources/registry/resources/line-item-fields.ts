@@ -240,20 +240,20 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
       'as a supplied zero',
   },
 
-  // Reverse relationship: the refund lines that sent part of this line back
-  // (plans/money/tasks/47-shopify-refunds.md §2.2). The counterpart of the
-  // owning `refund_line_line_item`, and declared for the same reason
+  // Reverse relationship: the credit memo lines that credited part of this line
+  // (plans/accounting/tasks/10-credit-memos.md §2.2). The counterpart of the
+  // owning `credit_memo_line_line_item`, and declared for the same reason
   // `part_line_items` is: an inverse a relationship POINTS AT but that does not
   // exist leaves the edge unlinked, and an unlinked relationship accepts writes
   // while this side reads empty (the trap entity migration 135 asserts against).
-  refundLines: {
-    id: toFieldId('refundLines'),
-    key: 'refundLines',
-    label: 'Refund Lines',
+  creditMemoLines: {
+    id: toFieldId('creditMemoLines'),
+    key: 'creditMemoLines',
+    label: 'Credit Memo Lines',
     type: BaseType.RELATION,
     fieldType: FieldType.RELATIONSHIP,
     isSystem: true,
-    systemAttribute: 'line_item_refund_lines',
+    systemAttribute: 'line_item_credit_memo_lines',
     systemSortOrder: 'a7b',
     showInPanel: false,
     showInDialogs: false,
@@ -265,12 +265,12 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     relationship: {
-      inverseResourceFieldId: 'refund_line:lineItem' as ResourceFieldId,
+      inverseResourceFieldId: 'credit_memo_line:lineItem' as ResourceFieldId,
       relationshipType: 'has_many',
       onDelete: 'unlink',
       isInverse: true,
     },
-    description: 'Refund lines that returned or cancelled part of this line',
+    description: 'Credit memo lines that returned, cancelled or credited part of this line',
   },
 
   optional: {

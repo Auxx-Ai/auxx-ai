@@ -228,6 +228,29 @@ export const DRAWER_TAB_CARD_COMPONENTS: Record<
     import('../money/ui/invoice/invoice-billing-context-card').then((m) => ({
       default: m.InvoiceBillingContextCard,
     })),
+  // The credit memos raised against this invoice and the credit applied to it
+  // (plans/accounting/tasks/10-credit-memos.md §6.1).
+  'invoice:credits': () =>
+    import('../money/ui/invoice/invoice-credits-card').then((m) => ({
+      default: m.InvoiceCreditsCard,
+    })),
+
+  // ─────────────────────────────────────────────────────────────────
+  // CREDIT MEMO OVERVIEW CARDS (plans/accounting/tasks/10-credit-memos.md
+  // §6.2) — drawer-only like the invoice, so these are the memo's only surface.
+  // ─────────────────────────────────────────────────────────────────
+  'credit_memo:lines': () =>
+    import('../money/ui/credit-memo/credit-memo-lines-card').then((m) => ({
+      default: m.CreditMemoLinesCard,
+    })),
+  'credit_memo:settlement': () =>
+    import('../money/ui/credit-memo/credit-memo-settlement-card').then((m) => ({
+      default: m.CreditMemoSettlementCard,
+    })),
+  'credit_memo:ledger': () =>
+    import('../money/ui/credit-memo/credit-memo-ledger-card').then((m) => ({
+      default: m.CreditMemoLedgerCard,
+    })),
 
   // ─────────────────────────────────────────────────────────────────
   // ORDER OVERVIEW CARDS (plans/products/08-order-build.md §5.8) — unlike the
@@ -242,6 +265,10 @@ export const DRAWER_TAB_CARD_COMPONENTS: Record<
     import('./cards/order-customer-card').then((m) => ({ default: m.OrderCustomerCard })),
   'order:work-orders': () =>
     import('./cards/order-work-orders-card').then((m) => ({ default: m.OrderWorkOrdersCard })),
+  // The credit memos taken against this order: the card task 47 planned as
+  // "refunds inside the order" (plans/accounting/tasks/10-credit-memos.md §6.1).
+  'order:credit-memos': () =>
+    import('./cards/order-credit-memos-card').then((m) => ({ default: m.OrderCreditMemosCard })),
 
   // ─────────────────────────────────────────────────────────────────
   // LEDGER CARDS (plans/accounting/HANDOFF.md slot 2J, ui-plan §2.3 / §4.4)

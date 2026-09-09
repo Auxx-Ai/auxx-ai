@@ -66,6 +66,9 @@ export const glPostingType = pgEnum('GlPostingType', [
   // customer deposit out of the liability and onto a receivable.
   'invoice_issued',
   'deposit_application',
+  // plans/accounting/tasks/10-credit-memos.md: the issue entry of a credit memo,
+  // Dr 4090 / Dr sales tax payable / Cr A/R.
+  'credit_memo',
 ])
 
 /**

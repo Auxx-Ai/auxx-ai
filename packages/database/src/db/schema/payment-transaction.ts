@@ -56,6 +56,20 @@ export const PaymentTransaction = pgTable(
       onUpdate: 'cascade',
       onDelete: 'restrict',
     }),
+    /**
+     * The credit memo a refund settles (plans/accounting/tasks/10-credit-memos.md §5.3).
+     * Set only on `kind: 'refund'` rows written by `recordManualRefund` or a Stripe
+     * `refundTransaction` that names a memo; null on every charge and on a plain refund.
+     * `credit_memo_amount_refunded` is the sum of succeeded rows carrying this id.
+     *
+     * `restrict` is the delete-safety FK the credit memo delete guard relies on
+     * (rule 3): a memo with a refund against it cannot be deleted while the row
+     * that gave the money back still stands.
+     */
+    creditMemoInstanceId: text().references((): AnyPgColumn => EntityInstance.id, {
+      onUpdate: 'cascade',
+      onDelete: 'restrict',
+    }),
     /** MP2 — set when this row is a quote deposit (`createStripeDepositCheckout`), null for
      * ordinary invoice charges/refunds. `restrict` mirrors `invoiceInstanceId`'s posture. */
     quoteInstanceId: text().references((): AnyPgColumn => EntityInstance.id, {
@@ -133,6 +147,13 @@ export const PaymentTransaction = pgTable(
       'btree',
       table.organizationId.asc().nullsLast(),
       table.invoiceInstanceId.asc().nullsLast()
+    ),
+    // The credit memo settlement read (`settleCreditMemo` sums succeeded refunds
+    // carrying the memo) and the memo delete guard's "any refund references it" check.
+    index('PaymentTransaction_organizationId_creditMemoInstanceId_idx').using(
+      'btree',
+      table.organizationId.asc().nullsLast(),
+      table.creditMemoInstanceId.asc().nullsLast()
     ),
     // MP2 — the WO billing tab's held-deposit lookup (§B.9) filters on this.
     index('PaymentTransaction_organizationId_workOrderInstanceId_idx').using(

@@ -9,17 +9,22 @@ import { getOrgCache } from '../../../cache'
 import type { FieldOptions } from '../../../custom-fields'
 import type { ResourceField } from '../../../resources/registry/field-types'
 import { CONTACT_FIELDS } from '../../../resources/registry/resources/contact-fields'
+import { CREDIT_MEMO_APPLICATION_FIELDS } from '../../../resources/registry/resources/credit-memo-application-fields'
+import { CREDIT_MEMO_FIELDS } from '../../../resources/registry/resources/credit-memo-fields'
+import { CREDIT_MEMO_LINE_FIELDS } from '../../../resources/registry/resources/credit-memo-line-fields'
+import { INVOICE_FIELDS } from '../../../resources/registry/resources/invoice-fields'
 import { LINE_ITEM_FIELDS } from '../../../resources/registry/resources/line-item-fields'
 import { ORDER_FIELDS } from '../../../resources/registry/resources/order-fields'
-import { REFUND_FIELDS } from '../../../resources/registry/resources/refund-fields'
-import { REFUND_LINE_FIELDS } from '../../../resources/registry/resources/refund-line-fields'
 import { TAX_LINE_FIELDS } from '../../../resources/registry/resources/tax-line-fields'
+import { SystemUserService } from '../../../users/system-user-service'
+import { DEFAULT_VIEW_CONFIGS } from '../../default-view-configs'
 import { SYSTEM_ENTITIES } from '../../entity-seeder/constants'
 import { FIELD_REGISTRY } from '../../entity-seeder/create-fields'
 import { buildFieldOptions } from '../../entity-seeder/utils'
 import { seedDefaultChartOfAccounts } from '../../gl-account-chart'
 import {
   ensureCustomFields,
+  ensureDefaultTableViews,
   ensureEntityDefinitions,
   fieldKey,
   linkDisplayFields,
@@ -33,8 +38,16 @@ const logger = createScopedLogger('entity-migrations:136')
 /** What {@link ensureCustomFields} returns, keyed `<entityType>:<field id>`. */
 type EnsuredFieldMap = Awaited<ReturnType<typeof ensureCustomFields>>
 
-/** The three defs this migration creates. All hidden: they render inside the order. */
-const NEW_ENTITY_TYPES = ['refund', 'refund_line', 'tax_line'] as const
+/**
+ * The four defs this migration creates. `credit_memo` is visible and has its
+ * own records view; the other three are hidden and render inside their parent.
+ */
+const NEW_ENTITY_TYPES = [
+  'credit_memo',
+  'credit_memo_line',
+  'credit_memo_application',
+  'tax_line',
+] as const
 
 /** The def the chart addition needs. Absent means the org has no chart at all. */
 const GL_ACCOUNT_ENTITY_TYPE = 'gl_account'
@@ -50,9 +63,25 @@ const GL_ACCOUNT_ENTITY_TYPE = 'gl_account'
  * side reads empty and every consumer of it silently sees nothing.
  */
 const RELATIONSHIP_PAIRS: readonly { owning: string; inverse: string }[] = [
-  { owning: `refund:${REFUND_FIELDS.order?.id}`, inverse: 'order:refunds' },
-  { owning: `refund_line:${REFUND_LINE_FIELDS.refund?.id}`, inverse: 'refund:lines' },
-  { owning: `refund_line:${REFUND_LINE_FIELDS.lineItem?.id}`, inverse: 'line_item:refundLines' },
+  { owning: `credit_memo:${CREDIT_MEMO_FIELDS.contact?.id}`, inverse: 'contact:creditMemos' },
+  { owning: `credit_memo:${CREDIT_MEMO_FIELDS.invoice?.id}`, inverse: 'invoice:creditMemos' },
+  { owning: `credit_memo:${CREDIT_MEMO_FIELDS.order?.id}`, inverse: 'order:creditMemos' },
+  {
+    owning: `credit_memo_line:${CREDIT_MEMO_LINE_FIELDS.creditMemo?.id}`,
+    inverse: 'credit_memo:lines',
+  },
+  {
+    owning: `credit_memo_line:${CREDIT_MEMO_LINE_FIELDS.lineItem?.id}`,
+    inverse: 'line_item:creditMemoLines',
+  },
+  {
+    owning: `credit_memo_application:${CREDIT_MEMO_APPLICATION_FIELDS.creditMemo?.id}`,
+    inverse: 'credit_memo:applications',
+  },
+  {
+    owning: `credit_memo_application:${CREDIT_MEMO_APPLICATION_FIELDS.invoice?.id}`,
+    inverse: 'invoice:creditApplications',
+  },
   { owning: `tax_line:${TAX_LINE_FIELDS.order?.id}`, inverse: 'order:taxLines' },
 ]
 
@@ -62,39 +91,59 @@ const WIDENED: readonly {
   source: Record<string, ResourceField>
   keys: string[]
 }[] = [
-  { entityType: 'order', source: ORDER_FIELDS, keys: ['refunds', 'taxLines'] },
-  { entityType: 'line_item', source: LINE_ITEM_FIELDS, keys: ['taxTotal', 'refundLines'] },
-  { entityType: 'contact', source: CONTACT_FIELDS, keys: ['taxExempt'] },
+  { entityType: 'order', source: ORDER_FIELDS, keys: ['creditMemos', 'taxLines'] },
+  { entityType: 'line_item', source: LINE_ITEM_FIELDS, keys: ['taxTotal', 'creditMemoLines'] },
+  { entityType: 'contact', source: CONTACT_FIELDS, keys: ['taxExempt', 'creditMemos'] },
+  {
+    entityType: 'invoice',
+    source: INVOICE_FIELDS,
+    keys: ['creditMemos', 'creditApplications', 'amountCredited'],
+  },
 ]
 
 /**
- * Migration 136: refunds and channel-computed tax.
+ * Migration 136: credit memos and channel-computed tax.
  *
  * Two plans land together because they share one connector field batch and one
  * per-org remap, and the remap cost is per batch: doing them separately pays it
  * twice (plans/money/tasks/48-shopify-tax-data.md §5).
  *
+ * The first cut of this migration shipped `refund` and `refund_line` as an
+ * ingest-only record of a Shopify refund. It ran on one machine and wrote zero
+ * rows before plans/accounting/tasks/10-credit-memos.md folded that record and
+ * the native "you owe us less" document into ONE entity, so the migration was
+ * edited in place rather than followed by a 137 (10 §4.1). The local database
+ * is repaired by `packages/lib/scripts/fix-local-136-rename.ts` (10 §4.2).
+ *
  * ## What it adds
  *
- * - **`refund` + `refund_line`** (47 §2, §5.1) - a refund that already happened
- *   at the sales channel, ingested as a FACT. Never originated here: the
- *   existing `refundTransaction` calls Stripe's API and the ledger refuses
- *   anything else, which is the opposite direction (47 §0.4).
+ * - **`credit_memo` + `credit_memo_line`** (10 §2.1, §2.2) - the mirror of an
+ *   invoice. Native: a person issues it from an invoice or from scratch, and it
+ *   is settled later by applying, holding or refunding. Channel: the connector
+ *   creates it from a refund that already happened at the sales channel, total
+ *   equal to the amount refunded, so it lands settled the moment it is issued.
+ *   `credit_memo_source` says which.
+ * - **`credit_memo_application`** (10 §2.3) - one row per "this much of this
+ *   memo went against this invoice". Not a `PaymentAllocation`, because an
+ *   application is not money and must never post a payment entry.
  * - **`tax_line`** (48 §4.1) - one jurisdiction's share of one order's tax, as
  *   a ROW. Multi-jurisdiction is the norm, so a single rate on the order can
  *   never represent it, and the question being asked is tax by jurisdiction over
  *   a period, which is an aggregation and wants rows.
- * - **Four relationship pairs**, plus `line_item_tax_total` and
- *   `contact_tax_exempt` on defs that already exist.
+ * - **Eight relationship pairs**, plus `line_item_tax_total`,
+ *   `contact_tax_exempt` and `invoice_amount_credited` on defs that already
+ *   exist. `invoice_amount_credited` is what `syncInvoicePaymentState` subtracts
+ *   so an applied credit reduces the balance without a ledger entry (10 §3.3).
  * - **`4090 Sales Returns and Allowances`** with its
- *   `revenue_returns_allowances` role (47 §6.1).
+ *   `revenue_returns_allowances` role (47 §6.1), which the credit memo issue
+ *   entry debits (10 §3.1).
  * - **The delete-behavior stamp** (plans/relationships/01-delete-semantics.md).
  *   `options.relationship.onDelete` on every stored system relationship field
  *   of the org, copied from the registry, and the retired
  *   `constraints.onDeleteWithChildren` stripped wherever it is still stored.
  *   The seeder copies `onDelete` into stored options for a NEW org only; an
  *   existing org keeps whatever was copied the day it was seeded, which is
- *   nothing. It runs LAST so the four owning fields this migration creates are
+ *   nothing. It runs LAST so the eight owning fields this migration creates are
  *   covered whether this run created them or an earlier one did.
  * - **The three seed-only self-relation pairs, linked.** `build.reversalOf` /
  *   `reversedBy`, `stock_movement.parentMovement` / `childMovements` and
@@ -107,17 +156,18 @@ const WIDENED: readonly {
  *
  * ## What it deliberately does NOT do
  *
- * 🛑 **No backfill, and none is possible.** Every field here is filled by the
- * connector, and the refund and tax data does not exist anywhere in auxx today
- * to backfill FROM - 47 §0.1: the connector carries 25 `order_*` attributes and
- * not one is a refund. The rows arrive on the next sync after the connector
- * bindings and the remap land, which is a separate change in a separate repo.
+ * 🛑 **No backfill, and none is possible.** Nothing in auxx today holds a
+ * credit memo to backfill FROM: the native document did not exist, and the
+ * channel refund data is not carried by the connector yet - 47 §0.1: it carries
+ * 25 `order_*` attributes and not one is a refund. Channel rows arrive on the
+ * next sync after the connector bindings and the remap land, which is a
+ * separate change in a separate repo. Native rows arrive when a person issues
+ * one.
  *
- * ⚠️ **`4090` ships with a role that nothing emits yet.** `build-refund-entry.ts`
- * is 47 §5.3 and waits on decisions still open there. The `ACCOUNT_ROLES` header
- * names this exact state as a hazard - a role nothing emits is a mapping a
- * bookkeeper can make wrongly with no way to find out - so the builder should
- * follow closely rather than eventually.
+ * ⚠️ **`4090` is emitted by `postings/build-credit-memo-entry.ts`** (10 §3.1),
+ * which lands with this rename. The `ACCOUNT_ROLES` header names a role nothing
+ * emits as a hazard - a mapping a bookkeeper can make wrongly with no way to
+ * find out - so if that builder is ever removed, the account and role go with it.
  *
  * ## Ordering
  *
@@ -133,10 +183,11 @@ const WIDENED: readonly {
 export const migration136RefundsAndTaxLines: EntityMigration = {
   id: '136-refunds-and-tax-lines',
   description:
-    'Adds the refund, refund_line and tax_line defs with their relationships to order and ' +
-    'line_item, line_item_tax_total and contact_tax_exempt, and 4090 Sales Returns and ' +
-    'Allowances - the records the channel connector fills for refund and tax posting; ' +
-    'stamps options.relationship.onDelete from the registry onto every stored system ' +
+    'Adds the credit_memo, credit_memo_line, credit_memo_application and tax_line defs with ' +
+    'their relationships to contact, invoice, order and line_item, line_item_tax_total, ' +
+    'contact_tax_exempt and invoice_amount_credited, and 4090 Sales Returns and Allowances ' +
+    '- the credit memo document (native or channel refund) and the tax rows the connector ' +
+    'fills; stamps options.relationship.onDelete from the registry onto every stored system ' +
     'relationship field and strips the retired constraints.onDeleteWithChildren',
 
   async up(db: Database, organizationId: string): Promise<EntityMigrationResult> {
@@ -148,12 +199,15 @@ export const migration136RefundsAndTaxLines: EntityMigration = {
     }
     const existing = await loadExistingState(db, organizationId)
 
-    // Absent rather than failed: an org short of 107 has no order or line_item,
-    // and the seeder creates all of this with the rest of the registry.
+    // Absent rather than failed: an org short of 107 has no order, line_item
+    // or invoice, and the seeder creates all of this with the rest of the registry.
     const orderDef = existing.entityDefs.get('order')
     const lineItemDef = existing.entityDefs.get('line_item')
     const contactDef = existing.entityDefs.get('contact')
-    if (!orderDef || !lineItemDef || !contactDef) return { ...state, alreadyUpToDate: true }
+    const invoiceDef = existing.entityDefs.get('invoice')
+    if (!orderDef || !lineItemDef || !contactDef || !invoiceDef) {
+      return { ...state, alreadyUpToDate: true }
+    }
 
     const entityDefIds = await ensureEntityDefinitions(
       db,
@@ -165,6 +219,7 @@ export const migration136RefundsAndTaxLines: EntityMigration = {
     entityDefIds.set('order', orderDef.id)
     entityDefIds.set('line_item', lineItemDef.id)
     entityDefIds.set('contact', contactDef.id)
+    entityDefIds.set('invoice', invoiceDef.id)
 
     // 🛑 ONE field map spanning EVERY def, new and widened alike.
     // `linkNewRelationships` resolves an inverse out of this map by
@@ -174,8 +229,9 @@ export const migration136RefundsAndTaxLines: EntityMigration = {
     const fieldMap: EnsuredFieldMap = new Map()
 
     const newDefFields: Record<string, Record<string, ResourceField>> = {
-      refund: REFUND_FIELDS,
-      refund_line: REFUND_LINE_FIELDS,
+      credit_memo: CREDIT_MEMO_FIELDS,
+      credit_memo_line: CREDIT_MEMO_LINE_FIELDS,
+      credit_memo_application: CREDIT_MEMO_APPLICATION_FIELDS,
       tax_line: TAX_LINE_FIELDS,
     }
     for (const entityType of NEW_ENTITY_TYPES) {
@@ -213,11 +269,31 @@ export const migration136RefundsAndTaxLines: EntityMigration = {
 
     await linkDisplayFields(db, [...NEW_ENTITY_TYPES], entityDefIds, fieldMap)
 
+    // `credit_memo` is the one VISIBLE def here, so an existing org needs the
+    // default table views a fresh org gets from `createDefaultViews` (All,
+    // Needs review, Open credit). Idempotent: the helper returns once a view
+    // exists for the table. `fieldMap` carries every credit_memo field whether
+    // this run created it or an earlier one did, which is what the view config
+    // resolves its column ids from.
+    const creditMemoDefId = entityDefIds.get('credit_memo')
+    if (creditMemoDefId) {
+      const systemUserId = await SystemUserService.getSystemUserForActions(organizationId)
+      await ensureDefaultTableViews(
+        db,
+        organizationId,
+        systemUserId,
+        'credit_memo',
+        creditMemoDefId,
+        DEFAULT_VIEW_CONFIGS.credit_memo,
+        fieldMap
+      )
+    }
+
     // Read the org's fields FRESH rather than reusing `existing` from the top:
     // `linkNewRelationships` has written `inverseResourceFieldId` into stored
     // options since, and spreading the stale snapshot into an UPDATE would
     // erase that link on the very fields this migration just created. Both
-    // steps below run after every insert and link, so the four owning fields
+    // steps below run after every insert and link, so the eight owning fields
     // this migration adds are stamped in the same run that created them.
     const current = await loadExistingState(db, organizationId)
     await linkSeedOnlyPairs(db, current, state)
@@ -281,7 +357,7 @@ function pick(
  * Verify every pair in {@link RELATIONSHIP_PAIRS} actually resolved its inverse.
  *
  * 🛑 Not a formality. `linkNewRelationships` skips an unresolvable pair with a
- * debug line, so without this the migration reports success having created four
+ * debug line, so without this the migration reports success having created eight
  * relationship fields that accept writes the other side cannot see. Entity
  * migration 135 added the same assertion for one pair after exactly that.
  */

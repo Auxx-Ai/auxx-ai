@@ -62,6 +62,12 @@ export const POSTING_TYPES = [
   // money moved) nor a manual journal (nobody keyed it)
   // (plans/accounting/tasks/07-customer-deposits.md).
   'deposit_application',
+  // A credit memo ISSUED: `Dr revenue_returns_allowances / Dr sales_tax_payable
+  // / Cr accounts_receivable`, dated the memo's own `issuedAt`, plus
+  // `Dr accounts_receivable / Cr clearing_card` when a channel refund already
+  // paid the money back. Keys on the memo's own number, like `invoice_issued`,
+  // and is reversed by void (plans/accounting/tasks/10-credit-memos.md).
+  'credit_memo',
 ] as const
 
 export type PostingType = (typeof POSTING_TYPES)[number]

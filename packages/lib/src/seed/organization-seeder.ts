@@ -314,7 +314,7 @@ export class OrganizationSeeder {
   }
   /**
    * Seed the system snippets — one per sendable document type (`quote_email`,
-   * `invoice_email`, `purchase_order_email`) — for a new organization, keyed to its
+   * `invoice_email`, `purchase_order_email`, `credit_memo_email`) — for a new organization, keyed to its
    * just-seeded `EntityDefinition` cuids. Runs after `seedEntities` so the document and
    * contact defs already exist.
    *
