@@ -240,6 +240,109 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
       'as a supplied zero',
   },
 
+  // ─── The fulfillment rollup the sales channel already computed ──────
+  //
+  // plans/money/tasks/49-bulk-fulfillment-posting.md §8.4 decision 4. Shopify
+  // projects a per-line fulfillment rollup on every order sync, and until entity
+  // migration 137 it landed ONLY in `@app:shopify:*` app fields - so nothing
+  // NATIVE said a connector order had shipped, and the one door into the ledger
+  // (`money.fulfillOrder`) was closed for every imported order (49 §1.2).
+  //
+  // These three are what `deriveFulfillmentLog` reads to reconstruct
+  // `order_fulfillments` for a connector order: lines sharing a fulfilled
+  // calendar day in the book time zone are one shipment. Measured on the dev
+  // org (49 §5): 82 of 538 orders ship in two shipments, no line spans two, and
+  // all 82 reconstruct by grouping lines on their fulfilled date.
+  //
+  // 🛑 No defaults, the `taxTotal` rule above. Null means the channel supplied
+  // nothing, which is NOT "zero units shipped": defaulting `fulfilledQty` to 0
+  // would say the channel reported an unshipped line, and defaulting
+  // `shipmentCount` to 1 would claim a reconstructable single shipment for a
+  // line that may have gone out in three.
+  //
+  // `creatable`/`updatable` because the connector writes them through the
+  // ordinary field path. Hidden from panel, dialogs and table: they are the
+  // channel's bookkeeping, and the shipment log is what a person reads.
+  fulfilledAt: {
+    id: toFieldId('fulfilledAt'),
+    key: 'fulfilledAt',
+    label: 'Fulfilled At',
+    type: BaseType.DATETIME,
+    fieldType: FieldType.DATETIME,
+    isSystem: true,
+    systemAttribute: 'line_item_fulfilled_at',
+    systemSortOrder: 'a7a1',
+    nullable: true,
+    showInPanel: false,
+    showInDialogs: false,
+    showInTable: false,
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    description:
+      'When this line first shipped, carried from the sales channel (Shopify per-line ' +
+      'fulfillment rollup) and never derived. Read by the fulfillment log pass, which groups ' +
+      'lines sharing a calendar day into one shipment. Null means not supplied, which is not ' +
+      'the same as not shipped',
+  },
+
+  fulfilledQty: {
+    id: toFieldId('fulfilledQty'),
+    key: 'fulfilledQty',
+    label: 'Fulfilled Qty',
+    type: BaseType.NUMBER,
+    fieldType: FieldType.NUMBER,
+    isSystem: true,
+    systemAttribute: 'line_item_fulfilled_qty',
+    systemSortOrder: 'a7a2',
+    nullable: true,
+    showInPanel: false,
+    showInDialogs: false,
+    showInTable: false,
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    description:
+      'Units of this line the sales channel reports as shipped, carried and never derived. ' +
+      'Read by the fulfillment log pass, which scales the line tax when it is short of the ' +
+      'ordered quantity. Null means not supplied, which is not the same as a supplied zero',
+  },
+
+  shipmentCount: {
+    id: toFieldId('shipmentCount'),
+    key: 'shipmentCount',
+    label: 'Shipment Count',
+    type: BaseType.NUMBER,
+    fieldType: FieldType.NUMBER,
+    isSystem: true,
+    systemAttribute: 'line_item_shipment_count',
+    systemSortOrder: 'a7a3',
+    nullable: true,
+    showInPanel: false,
+    showInDialogs: false,
+    showInTable: false,
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    description:
+      'How many shipments this ONE line went out in, carried from the sales channel. Read by ' +
+      'the fulfillment log pass: more than one means the single fulfilled date cannot say ' +
+      'what went out when, and the whole order is held out rather than reconstructed wrongly. ' +
+      'Null means not supplied, which is not the same as a supplied one',
+  },
+
   // Reverse relationship: the credit memo lines that credited part of this line
   // (plans/accounting/tasks/10-credit-memos.md §2.2). The counterpart of the
   // owning `credit_memo_line_line_item`, and declared for the same reason

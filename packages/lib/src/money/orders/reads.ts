@@ -21,6 +21,7 @@
  */
 
 import { type Database, schema } from '@auxx/database'
+import type { CustomFieldEntity } from '@auxx/database/types'
 import { readEnvelope } from '@auxx/types/field-value'
 import { and, eq, inArray } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
@@ -36,7 +37,17 @@ import {
 } from './client'
 import { guard } from './guard'
 
-/** Every `order` attribute a fulfillment reads or writes. */
+/**
+ * Every `order` attribute a fulfillment reads or writes.
+ *
+ * The last three are read by the BULK poster
+ * (`money/fulfillment-posting/reads.ts`) rather than by the single-order path:
+ * the debit fork needs the financial status and the gateways
+ * (`postings/build-fulfillment-batch-entry.ts`), and the contact is carried for
+ * a screen. They live here because {@link OrderFieldContext} is the one place
+ * the order def and its field ids are resolved through the org cache, and a
+ * second resolver would be a second thing to keep in step.
+ */
 const ORDER_ATTRIBUTES = [
   'order_number',
   'order_channel',
@@ -48,6 +59,9 @@ const ORDER_ATTRIBUTES = [
   'order_fulfillment_status',
   'order_line_items',
   'order_fulfillments',
+  'order_financial_status',
+  'order_payment_gateways',
+  'order_contact',
 ] as const
 
 /** Every `line_item` attribute a fulfillment reads. */
@@ -55,17 +69,26 @@ const LINE_ATTRIBUTES = [
   'line_item_name',
   'line_item_qty',
   'line_item_unit_price',
+  'line_item_tax_total',
   'line_item_sort_order',
 ] as const
 
 type OrderAttribute = (typeof ORDER_ATTRIBUTES)[number]
 type LineAttribute = (typeof LINE_ATTRIBUTES)[number]
 
-/** The resolved def and field ids every order read needs. */
+/**
+ * The resolved def and fields every order read needs.
+ *
+ * ⚠️ The WHOLE `CustomFieldEntity`, not just its id. `order_payment_gateways`
+ * is a TAGS field whose values are stored as opaque option keys, so the bulk
+ * poster has to resolve them back to gateway NAMES through the field's own
+ * `options` (`resources/registry/option-helpers.ts`). Narrowing this to
+ * `{ id }` would force a second read of the same cached row.
+ */
 export interface OrderFieldContext {
   orderDefId: string
-  order: Record<OrderAttribute, { id: string } | null>
-  line: Record<LineAttribute, { id: string } | null>
+  order: Record<OrderAttribute, CustomFieldEntity | null>
+  line: Record<LineAttribute, CustomFieldEntity | null>
 }
 
 /**
@@ -86,8 +109,8 @@ export async function loadOrderFieldContext(
   const fields = await getOrgCache()
     .from(organizationId, 'customFields')
     .bySystemAttributes([...ORDER_ATTRIBUTES, ...LINE_ATTRIBUTES])
-  const order = fields as unknown as Record<OrderAttribute, { id: string } | null>
-  const line = fields as unknown as Record<LineAttribute, { id: string } | null>
+  const order: Record<OrderAttribute, CustomFieldEntity | null> = fields
+  const line: Record<LineAttribute, CustomFieldEntity | null> = fields
   // Without the number there is no period key, and without the log there is no
   // "how much is still to ship". Both reduce fulfillment to guessing.
   if (!order.order_number || !order.order_fulfillments) return null
@@ -176,6 +199,15 @@ export function parseFulfillments(value: unknown): OrderFulfillment[] {
         if (!Number.isFinite(quantity) || quantity <= 0) return []
         return [{ lineId, quantity }]
       }),
+      // 🛑 Carried through, not dropped. `shippedSubtotalMinor` sums it to give
+      // the builder `priorShipmentsSubtotalMinor`, which is what makes the
+      // cumulative tax allocation true itself up on the shipment that completes
+      // the order. A parser that dropped it made every read report zero prior
+      // subtotal, so the second shipment of a split order allocated as if it
+      // were the first and A/R stayed a cent short forever.
+      ...(typeof candidate.subtotalMinor === 'number'
+        ? { subtotalMinor: candidate.subtotalMinor }
+        : {}),
       totalMinor: typeof candidate.totalMinor === 'number' ? candidate.totalMinor : 0,
       shippingRecognised: candidate.shippingRecognised === true,
       glPostingId: typeof candidate.glPostingId === 'string' ? candidate.glPostingId : null,
@@ -232,7 +264,7 @@ export async function readOrderForFulfillment(
       }
 
       const orderFieldIds = Object.values(ctx.order)
-        .filter((field): field is { id: string } => field != null)
+        .filter((field): field is CustomFieldEntity => field != null)
         .map((field) => field.id)
       const rows = await selectValues(db, organizationId, [orderId], orderFieldIds)
       const bucket = rows.get(orderId)
@@ -294,7 +326,7 @@ async function readOrderLines(
   if (lineIds.length === 0) return []
 
   const fieldIds = Object.values(ctx.line)
-    .filter((field): field is { id: string } => field != null)
+    .filter((field): field is CustomFieldEntity => field != null)
     .map((field) => field.id)
   if (fieldIds.length === 0) return []
 
@@ -315,6 +347,11 @@ async function readOrderLines(
       shippedQuantity,
       remainingQuantity: Math.max(0, quantity - shippedQuantity),
       unitPriceMinor: cell('line_item_unit_price')?.valueNumber ?? 0,
+      // 🛑 `?? null`, never `?? 0`. An absent row and a zero row are different
+      // facts, and the builder branches on the difference: every line carrying
+      // a number switches the entry to per-line tax, one null falls back to
+      // allocating the order's total. See `OrderLineRemaining.lineTaxMinor`.
+      lineTaxMinor: cell('line_item_tax_total')?.valueNumber ?? null,
       sortOrder: cell('line_item_sort_order')?.valueNumber ?? index,
     }
   })

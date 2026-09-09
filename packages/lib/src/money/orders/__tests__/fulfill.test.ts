@@ -28,6 +28,8 @@ const h = vi.hoisted(() => ({
   },
   updated: [] as Array<{ recordId: string; values: Record<string, unknown> }>,
   locks: 0,
+  /** What `buildFulfillmentEntry` was handed, so the per-line tax is assertable. */
+  built: [] as Array<{ shippedLines: Array<{ lineId: string; taxMinor?: number }> }>,
 }))
 
 vi.mock('../reads', async () => {
@@ -47,12 +49,22 @@ vi.mock('../reads', async () => {
 })
 
 vi.mock('../../../postings/build-fulfillment-entry', () => ({
-  buildFulfillmentEntry: () => ({
-    entry: { postingType: 'fulfillment', periodKey: 'ORD0012F1', txnDate: '2026-09-03', lines: [] },
-    totalMinor: 50_00,
-    shippingMinor: 0,
-    revenueRole: 'revenue_dtc',
-  }),
+  buildFulfillmentEntry: (input: {
+    shippedLines: Array<{ lineId: string; taxMinor?: number }>
+  }) => {
+    h.built.push({ shippedLines: input.shippedLines })
+    return {
+      entry: {
+        postingType: 'fulfillment',
+        periodKey: 'ORD0012F1',
+        txnDate: '2026-09-03',
+        lines: [],
+      },
+      totalMinor: 50_00,
+      shippingMinor: 0,
+      revenueRole: 'revenue_dtc',
+    }
+  },
 }))
 
 vi.mock('../../../postings/post-entry', () => ({
@@ -173,6 +185,7 @@ beforeEach(() => {
   h.postResult = { status: 'posted', glPostingId: 'glp_1', docNumber: 'AUXX-FUL-ORD0012F1' }
   h.updated = []
   h.locks = 0
+  h.built = []
 })
 
 describe('the append re-reads the stored log under a lock', () => {
@@ -254,5 +267,38 @@ describe('the rollback removes THIS shipment, not everything since the pre-read'
     const log = lastLog()
     expect(log.map((row) => row.sequence)).toEqual([2])
     expect(h.updated.at(-1)?.values.order_fulfillment_status).toBe('unfulfilled')
+  })
+})
+
+// 48 §4.2's payoff: the order's lines now carry `line_item_tax_total`, so the
+// single-order builder's per-line tax branch is reachable at all. It is
+// all-or-nothing by design - one line with no tax sends the WHOLE entry back to
+// allocating the order's total - which is why the two cases below are what
+// matters rather than the arithmetic.
+describe('the per-line tax reaches the builder', () => {
+  it('passes a full-line shipment its whole stored tax', async () => {
+    ;(h.order.lines as Array<Record<string, unknown>>)[0]!.lineTaxMinor = 875
+    await fulfillOrder(stubDb(), { ...input, shippedLines: [{ lineId: 'li_1', quantity: 5 }] })
+
+    expect(h.built[0]?.shippedLines[0]?.taxMinor).toBe(875)
+  })
+
+  // Pro rata on units, rounded - the same formula `computeShipmentAmounts` uses
+  // in the bulk path, so the two doors cannot disagree about one line's tax.
+  it('scales a partial-line shipment pro rata on units', async () => {
+    ;(h.order.lines as Array<Record<string, unknown>>)[0]!.lineTaxMinor = 875
+    await fulfillOrder(stubDb(), { ...input, shippedLines: [{ lineId: 'li_1', quantity: 3 }] })
+
+    expect(h.built[0]?.shippedLines[0]?.taxMinor).toBe(525)
+  })
+
+  // 🛑 Absent, not zero. Zero would claim the channel said this line is
+  // untaxed, and one such line among taxed ones would still count as "every
+  // line carries tax" - flipping the entry onto the per-line basis and
+  // under-crediting sales tax payable, silently.
+  it('omits the key entirely when the line carries no stored tax', async () => {
+    await fulfillOrder(stubDb(), input)
+
+    expect(h.built[0]?.shippedLines[0]).not.toHaveProperty('taxMinor')
   })
 })

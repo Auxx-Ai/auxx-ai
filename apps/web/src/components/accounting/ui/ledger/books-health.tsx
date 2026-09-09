@@ -44,6 +44,8 @@ export function BooksBalanceLine({ report }: BooksBalanceLineProps) {
         </p>
       )}
 
+      <CompletenessLines report={report} />
+
       {count > 0 && (
         <div className='flex flex-col gap-1.5'>
           {report.discrepancies.map((discrepancy) => (
@@ -58,6 +60,50 @@ export function BooksBalanceLine({ report }: BooksBalanceLineProps) {
             </div>
           ))}
         </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * What the month on screen still owes the ledger: one sentence per count.
+ *
+ * 🛑 This sits under the balance sweep because the two answer different
+ * questions and the first one alone is misleading. Every entry can tie perfectly
+ * while a month is short a week of revenue - shipments logged and never posted,
+ * or a channel refund still sitting as a draft - and a Books section that showed
+ * only "0 discrepancies" would report green books that are incomplete. These are
+ * the same two counts the close refuses on, shown before somebody presses Post
+ * rather than after.
+ *
+ * ⚠️ `null` means the question was not asked (no month on screen), and renders
+ * nothing. It is NOT zero: asserting completeness that was never checked is the
+ * one thing this line must not do. A zero renders nothing either - a clean month
+ * needs no sentence, the way `CompletenessBanner` shows no card for complete
+ * books.
+ */
+function CompletenessLines({ report }: BooksBalanceLineProps) {
+  const shipments = report.unpostedShipments ?? 0
+  const memos = report.unissuedChannelCreditMemos ?? 0
+  if (shipments === 0 && memos === 0) return null
+
+  const month = report.month ? formatPeriodLabel(report.month) : 'this month'
+
+  return (
+    <div className='flex flex-col gap-1'>
+      {shipments > 0 && (
+        <p className='text-xs text-amber-600'>
+          {shipments} {shipments === 1 ? 'shipment in' : 'shipments in'} {month}{' '}
+          {shipments === 1 ? 'has' : 'have'} not been posted, so that revenue is not in the books
+          yet.
+        </p>
+      )}
+      {memos > 0 && (
+        <p className='text-xs text-amber-600'>
+          {memos} channel credit {memos === 1 ? 'memo' : 'memos'} dated in {month}{' '}
+          {memos === 1 ? 'is' : 'are'} still a draft. Issue or void {memos === 1 ? 'it' : 'them'}{' '}
+          before closing.
+        </p>
       )}
     </div>
   )

@@ -464,6 +464,14 @@ export const OrderFulfillmentStatus = {
  * `financialStatus` + `paymentGateways` + tags; that cannot handle the only
  * rows that need it — a manual sale has no payment gateways and no Shopify
  * tags, and `manual` exists in this list precisely for it.
+ *
+ * ⚠️ Because it is human-set and no connector binds it, most imported orders
+ * carry the field's default. The fulfillment builder therefore treats `manual`
+ * and an unset channel as CONSUMER revenue rather than refusing the shipment
+ * (`postings/build-fulfillment-entry.ts`, 49 §8.4 decision 5); `dealer` is the
+ * only value that moves revenue off `4000`. Setting it correctly still matters,
+ * since it is what a P&L by channel reads, but an unset channel no longer keeps
+ * the sale off the books.
  */
 export const OrderChannel = {
   DTC: 'dtc',

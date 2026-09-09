@@ -128,7 +128,11 @@ export {
   syncConnectorSweepScheduler,
 } from './data-connector-scheduler'
 // Connector-managed field check — the totals stand-down (plans/money/tasks/37 §6)
-export { isFieldConnectorManaged } from './managed-fields'
+export {
+  isFieldConnectorManaged,
+  isRecordConnectorManaged,
+  listConnectorManagedRecordIds,
+} from './managed-fields'
 export type { MappedWrite } from './map-record'
 // Mapping layer
 export { mapRecord } from './map-record'

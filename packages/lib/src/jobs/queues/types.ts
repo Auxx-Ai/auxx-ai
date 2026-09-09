@@ -61,6 +61,12 @@ export enum Queues {
   learnedExtractionQueue = 'learned-extraction',
   // QuickBooks invoice sync queue (plans/dispatch/37e-quickbooks-invoice-sync.md §3, P3)
   quickbooksInvoiceSyncQueue = 'quickbooks-invoice-sync',
+  // Bulk fulfillment posting (plans/money/tasks/49-bulk-fulfillment-posting.md §2.4).
+  // Its OWN queue at concurrency 1: one job posts every unposted shipment in an
+  // org as one entry per ship day, and two of them running side by side would
+  // race for the same day's period key. The `auto` lane coalesces on a per-org
+  // `jobId`, which only de-dupes against a job that is still QUEUED.
+  fulfillmentPostingQueue = 'fulfillment-posting',
   // Purchase-order intake: read a vendor's quote into a draft purchase order
   // (plans/money/tasks/38-purchase-order-from-a-document.md §3.3). Its own queue
   // because one job is a multimodal LLM read of a whole document — 10 to 40

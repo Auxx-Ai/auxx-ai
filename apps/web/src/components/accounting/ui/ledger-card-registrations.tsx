@@ -4,7 +4,6 @@
 // `drawer-tab-registry.tsx` (plans/accounting/HANDOFF.md slot 2J, ui-plan §2.3
 // and §4.4). The `sourceType` is what each writer files its lines under:
 //
-//   order         `fulfillOrder` (postings/build-fulfillment-entry.ts)
 //   invoice       `writeOffInvoice` (money/invoices/write-off.ts)
 //   payment       `postPaymentTransaction` (money/payments/ledger.ts)
 //   bank_deposit  `createBankDeposit` (money/bank-deposits/writes.ts)
@@ -16,10 +15,19 @@
 'use client'
 
 import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
+import { OrderFulfillmentLedgerCard } from '~/components/money/ui/order/order-fulfillment-ledger-card'
 import { LedgerCard } from './ledger-card'
 
+/**
+ * 🛑 The ORDER is the exception: it reads its shipment stamps, not its source
+ * lines (plans/money/tasks/49 §2.5). A bulk fulfillment summarises a day into
+ * one entry filed under `fulfillment_batch` and the period key, so the source
+ * lookup finds nothing for the orders inside it. The registration keeps its name
+ * and its slot; only what it reads changed. See
+ * `money/ui/order/order-fulfillment-ledger-card.tsx` for the whole argument.
+ */
 export function OrderLedgerCard(props: DrawerTabProps) {
-  return <LedgerCard {...props} sourceType='order' />
+  return <OrderFulfillmentLedgerCard {...props} />
 }
 
 export function InvoiceLedgerCard(props: DrawerTabProps) {

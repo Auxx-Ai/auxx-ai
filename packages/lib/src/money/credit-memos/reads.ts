@@ -14,6 +14,7 @@
 
 import { type Database, schema } from '@auxx/database'
 import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
+import { alias } from 'drizzle-orm/pg-core'
 import { getOrgCache } from '../../cache'
 import { NotFoundError } from '../../errors'
 import { parseFulfillments } from '../orders/reads'
@@ -889,4 +890,98 @@ export async function listOpenInvoicesForContact(
     })
   }
   return rows.sort((a, b) => (a.issuedAt ?? '').localeCompare(b.issuedAt ?? ''))
+}
+
+// ─── The close gate ─────────────────────────────────────────────────────────
+
+/**
+ * How many `channel` credit memos are still DRAFT with an issue date in one
+ * month (10 §3.4, 49 §8.4 decision 7).
+ *
+ * 🛑 This is the count the month-end close refuses on, and it exists because a
+ * channel draft sitting in a month being closed is revenue still on the P&L. A
+ * connector ingested a refund, nobody issued it, and closing the month declares
+ * a set of books that does not contain it. Rolling it into the next period
+ * instead would post an entry dated inside a locked month, which `period-lock.ts`
+ * exists to refuse - so blocking is the only remedy that neither posts something
+ * nobody looked at nor writes into a closed period.
+ *
+ * ⚠️ NATIVE drafts are deliberately not counted. Nothing was ingested and nobody
+ * is waiting: a half-typed credit memo is a person's scratch pad, not revenue
+ * the books are missing.
+ *
+ * The month is matched by SLICING `credit_memo_issued_at`, never by re-zoning
+ * it - the rule the whole of this file and `money/invoices/post-invoice.ts`
+ * follow for an accounting date. The issue date IS the calendar day the entry
+ * would post on, so the refusal and the posting it prevents read the date
+ * identically; deriving a book-zone month here and a sliced day there would let
+ * the close block a memo that would post into a different month.
+ *
+ * The status and source filters run in SQL over an indexed `(organizationId,
+ * fieldId)` pair, so the rows that reach TypeScript are the org's unissued
+ * channel drafts - a set that is empty in the steady state and is a work queue
+ * when it is not.
+ *
+ * @param db The database handle. Reads only.
+ * @param params The organization and the accounting MONTH, `'2026-07'`.
+ * @returns The count. `0` when the org has not seeded the `credit_memo` def.
+ */
+export async function countUnissuedChannelCreditMemos(
+  db: Database,
+  params: { organizationId: string; month: string }
+): Promise<number> {
+  const { organizationId, month } = params
+
+  const fields = (await getOrgCache()
+    .from(organizationId, 'customFields')
+    .bySystemAttributes([...CREDIT_MEMO_ATTRIBUTES])) as FieldMap<CreditMemoAttribute>
+
+  const statusField = fields.credit_memo_status
+  const sourceField = fields.credit_memo_source
+  const issuedAtField = fields.credit_memo_issued_at
+  if (!statusField || !sourceField || !issuedAtField) return 0
+
+  const source = alias(schema.FieldValue, 'cm_source')
+  const issuedAt = alias(schema.FieldValue, 'cm_issued_at')
+
+  const rows = await db
+    .select({ valueDate: issuedAt.valueDate })
+    .from(schema.FieldValue)
+    .innerJoin(
+      schema.EntityInstance,
+      and(
+        eq(schema.EntityInstance.id, schema.FieldValue.entityId),
+        isNull(schema.EntityInstance.archivedAt)
+      )
+    )
+    .innerJoin(
+      source,
+      and(
+        eq(source.entityId, schema.FieldValue.entityId),
+        eq(source.organizationId, schema.FieldValue.organizationId),
+        eq(source.fieldId, sourceField.id)
+      )
+    )
+    .innerJoin(
+      issuedAt,
+      and(
+        eq(issuedAt.entityId, schema.FieldValue.entityId),
+        eq(issuedAt.organizationId, schema.FieldValue.organizationId),
+        eq(issuedAt.fieldId, issuedAtField.id)
+      )
+    )
+    .where(
+      and(
+        eq(schema.FieldValue.organizationId, organizationId),
+        eq(schema.FieldValue.fieldId, statusField.id),
+        eq(schema.FieldValue.optionId, 'draft'),
+        eq(source.optionId, 'channel')
+      )
+    )
+
+  let count = 0
+  for (const row of rows) {
+    if (toCalendarDay(row.valueDate)?.startsWith(`${month}-`)) count += 1
+  }
+  return count
 }

@@ -14,6 +14,10 @@ export {
   type SendScheduledMessageJobData,
   sendScheduledMessageJob,
 } from '../mail-schedule'
+// Money (bulk fulfillment posting, plans/money/tasks/49-bulk-fulfillment-posting.md §2.4).
+// The job NAME comes from the module that enqueues it, so the worker's job map
+// and the enqueue cannot drift into "Job function not found".
+export { FULFILLMENT_POSTING_JOB_NAME } from '../money/fulfillment-posting/auto'
 // Usage
 export { flushUsageEventsJob, type RecordUsageEventJobData, recordUsageEventJob } from '../usage'
 export {
@@ -310,6 +314,10 @@ export {
   type ThreadProviderStatusSyncJobData,
   threadProviderStatusSyncJob,
 } from './messages/thread-provider-status-sync-job'
+export {
+  type FulfillmentPostingJobData,
+  fulfillmentPostingJob,
+} from './money/fulfillment-posting-job'
 // Money (QuickBooks invoice sync — plans/dispatch/37e-quickbooks-invoice-sync.md §3, P3)
 export {
   type SyncQuickbooksInvoiceJobData,

@@ -58,6 +58,7 @@ export function OrderLineItemsTab({ recordId, variant = 'tab' }: DetailViewTabPr
   const { can } = useAccess()
   const utils = api.useUtils()
   const [fulfillOpen, setFulfillOpen] = useState(false)
+  const orderId = getInstanceId(recordId)
 
   // SINGLE_SELECT values arrive as arrays — take the first (see the
   // `use_system_values_single_select_arrays` convention).
@@ -67,10 +68,28 @@ export function OrderLineItemsTab({ recordId, variant = 'tab' }: DetailViewTabPr
   const financialBadge = financial ? FINANCIAL_BADGE[financial] : undefined
   const fulfillmentBadge = fulfillment ? FULFILLMENT_BADGE[fulfillment] : undefined
 
+  // 🛑 An order bound to a data connector has its shipment log DERIVED at ingest
+  // from the native fulfillment fields the channel sends (plans/money/tasks/49
+  // §8.4 decision 4), and the log is append-only. Fulfilling one by hand writes
+  // a second entry for a shipment the next sync will also describe, so the two
+  // disagree and the order is recognised twice. Nothing in the drawer knew this
+  // before, so it is asked for: `money.isOrderConnectorManaged`.
+  //
+  // ⚠️ Gated on `=== false`, not on `!== true`. While the answer is in flight
+  // the button stays away: a Fulfill that appears for a beat on a connector
+  // order is an irreversible ledger write somebody can reach, and a button that
+  // arrives a moment late is not.
+  const connectorManaged = api.money.isOrderConnectorManaged.useQuery(
+    { orderId },
+    { enabled: !!orderId && can('ledger.post'), staleTime: 60_000 }
+  )
+  const isConnectorManaged = connectorManaged.data === true
+
   // The sanctioned fulfillment action (HANDOFF decision 6.6): it carries what
   // shipped, flips `order_fulfillment_status`, and posts the revenue entry, so
   // it is a ledger write. Hidden once everything has shipped.
-  const canFulfill = can('ledger.post') && fulfillment !== 'fulfilled'
+  const canFulfill =
+    can('ledger.post') && fulfillment !== 'fulfilled' && connectorManaged.data === false
 
   // `variant='section'`: rendered inside a DetailViewSections <Section> on an
   // outer-owned scroll column instead of a `TabsContent` that grants `h-full`, so
@@ -80,7 +99,7 @@ export function OrderLineItemsTab({ recordId, variant = 'tab' }: DetailViewTabPr
 
   return (
     <div className={cn('flex flex-col', isSection ? '' : 'h-full min-h-0')}>
-      {(financialBadge || fulfillmentBadge || canFulfill) && (
+      {(financialBadge || fulfillmentBadge || canFulfill || isConnectorManaged) && (
         <DocumentSectionActions
           badge={
             <div className='flex items-center gap-1.5'>
@@ -101,6 +120,11 @@ export function OrderLineItemsTab({ recordId, variant = 'tab' }: DetailViewTabPr
               Fulfill
             </Button>
           )}
+          {isConnectorManaged && (
+            <span className='text-muted-foreground text-xs'>
+              Shipments arrive from the sales channel and are posted in bulk
+            </span>
+          )}
         </DocumentSectionActions>
       )}
 
@@ -111,9 +135,12 @@ export function OrderLineItemsTab({ recordId, variant = 'tab' }: DetailViewTabPr
       <FulfillOrderDialog
         open={fulfillOpen}
         onOpenChange={setFulfillOpen}
-        orderId={getInstanceId(recordId)}
+        orderId={orderId}
         onFulfilled={() => {
-          void utils.ledger.listPostingsForSource.invalidate()
+          // The order's ledger card reads its shipment STAMPS now, not the
+          // postings whose lines name it (plans/money/tasks/49 §2.5), so this is
+          // the query a fulfillment has just changed.
+          void utils.money.orderFulfillmentPostings.invalidate({ orderId })
           void utils.money.orderForFulfillment.invalidate()
         }}
       />

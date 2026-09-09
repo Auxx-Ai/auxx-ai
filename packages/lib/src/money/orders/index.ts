@@ -21,11 +21,13 @@ export {
   shippingStillOwed,
 } from './client'
 export {
+  type FulfillmentStampPatch,
   type FulfillOrderInput,
   type FulfillOrderLine,
   type FulfillOrderResult,
   fulfillOrder,
   previewFulfillment,
+  stampFulfillment,
 } from './fulfill'
 export {
   loadOrderFieldContext,

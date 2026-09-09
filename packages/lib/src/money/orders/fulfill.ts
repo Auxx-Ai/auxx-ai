@@ -48,11 +48,13 @@ import { resolvePeriodLock } from '../../postings/period-lock'
 import { LEDGER_CURRENCY, postEntry, previewEntry } from '../../postings/post-entry'
 import type { EntryPreview, PostResult } from '../../postings/types'
 import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
+import { toRecordId } from '../../resources/resource-id'
 import {
   fulfillmentStatusFor,
   nextFulfillmentSequence,
   type OrderFulfillment,
   type OrderFulfillmentsEnvelope,
+  type OrderLineRemaining,
   shippedSubtotalMinor,
 } from './client'
 import { guard } from './guard'
@@ -129,6 +131,37 @@ function assertIsoDate(value: string, label: string): void {
 }
 
 /**
+ * This line's tax for the units that actually shipped, or `undefined` when the
+ * sales channel supplied no per-line tax at all.
+ *
+ * 🛑 `undefined` is the honest answer to "we were told nothing", and it is what
+ * makes `buildFulfillmentEntry` fall back to allocating the ORDER's tax. Zero
+ * would claim the channel said this line is untaxed, and one such line among
+ * taxed ones would still count as "every line carries tax", so the entry would
+ * switch to the per-line basis and under-credit `sales_tax_payable` silently.
+ *
+ * A partial shipment scales pro rata on units and rounds, matching
+ * `computeShipmentAmounts` in `postings/build-fulfillment-batch-entry.ts` so
+ * the single-order and bulk paths cannot disagree about one line's tax.
+ */
+function shippedLineTaxMinor(line: OrderLineRemaining, quantity: number): number | undefined {
+  if (line.lineTaxMinor == null) return undefined
+  if (!Number.isFinite(line.quantity) || line.quantity <= 0) return undefined
+  if (quantity >= line.quantity) return line.lineTaxMinor
+  return Math.round((line.lineTaxMinor * quantity) / line.quantity)
+}
+
+/** One validated shipped line, in the shape `buildFulfillmentEntry` takes. */
+interface ResolvedShippedLine {
+  lineId: string
+  quantity: number
+  unitPriceMinor: number
+  /** Present only when the line carries `line_item_tax_total`. */
+  taxMinor?: number
+  name: string
+}
+
+/**
  * Validate what the caller says shipped against what is actually left, and
  * shape it for the builder.
  *
@@ -139,15 +172,10 @@ function assertIsoDate(value: string, label: string): void {
 function resolveShippedLines(
   order: OrderForFulfillment,
   requested: FulfillOrderLine[]
-): Array<{ lineId: string; quantity: number; unitPriceMinor: number; name: string }> {
+): ResolvedShippedLine[] {
   const byId = new Map(order.lines.map((line) => [line.lineId, line]))
   const seen = new Set<string>()
-  const resolved: Array<{
-    lineId: string
-    quantity: number
-    unitPriceMinor: number
-    name: string
-  }> = []
+  const resolved: ResolvedShippedLine[] = []
 
   for (const request of requested) {
     if (seen.has(request.lineId)) {
@@ -180,10 +208,12 @@ function resolveShippedLines(
         }
       )
     }
+    const taxMinor = shippedLineTaxMinor(line, request.quantity)
     resolved.push({
       lineId: line.lineId,
       quantity: request.quantity,
       unitPriceMinor: line.unitPriceMinor,
+      ...(taxMinor === undefined ? {} : { taxMinor }),
       name: line.name,
     })
   }
@@ -390,26 +420,17 @@ export async function fulfillOrder(
 
       // Stamp the posting onto the shipment it belongs to, so the order can
       // name its entry without a join.
-      //
-      // 🛑 Re-read again, and REPLACE the one row by sequence rather than
-      // rebuilding the log from the pre-read copy. Between the commit above and
-      // this write another shipment can land; rebuilding would drop it and put
-      // its units back into "unshipped", where the next fulfillment would
-      // re-ship them and recognise their revenue twice.
       const settled: OrderFulfillment = {
         ...fulfillment,
         glPostingId: post.glPostingId ?? null,
         docNumber: post.docNumber ?? null,
       }
-      await db.transaction(async (tx) => {
-        const txDb = tx as unknown as Database
-        await lockOrder(txDb, organizationId, orderId)
-        const stored = await readStoredFulfillments(txDb, organizationId, orderId)
-        const stamped = stored.map((row) => (row.sequence === settled.sequence ? settled : row))
-        const txCrud = new UnifiedCrudHandler(organizationId, actorUserId, txDb)
-        await txCrud.update(order.recordId, {
-          order_fulfillments: fulfillmentsEnvelope(stamped),
-        })
+      await stampFulfillment(db, {
+        organizationId,
+        actorUserId,
+        orderId,
+        sequence: settled.sequence,
+        patch: { glPostingId: settled.glPostingId, docNumber: settled.docNumber },
       })
 
       logger.info('Fulfilled an order', {
@@ -427,6 +448,78 @@ export async function fulfillOrder(
     'Failed to fulfil an order',
     { organizationId, orderId }
   )
+}
+
+/**
+ * What a stamp may change on one shipment. Everything else on the row is
+ * history and stays exactly as it was written.
+ */
+export interface FulfillmentStampPatch {
+  /** The `GlPosting` this shipment now belongs to. */
+  glPostingId?: string | null
+  docNumber?: string | null
+  /**
+   * The recognised total, when the posting that took the shipment computed a
+   * different one from the row's own. The bulk poster does: a group's builder
+   * re-derives every shipment's amounts, and the log has to name what was
+   * actually posted rather than what a single-order builder once thought.
+   */
+  totalMinor?: number
+  subtotalMinor?: number
+}
+
+/**
+ * Write a posting's identity back onto ONE shipment of an order's log.
+ *
+ * Extracted from {@link fulfillOrder}'s post-commit transaction so the bulk
+ * poster (`money/fulfillment-posting/run.ts`) stamps through exactly the same
+ * three steps. Two writers of one JSON cell that took the lock differently
+ * would be the lost update this whole module is built to avoid, and the bulk
+ * lane stamps DOZENS of orders per run, so it is the writer that would find it.
+ *
+ * 🛑 The log is re-read under a `SELECT ... FOR UPDATE` on the order row and the
+ * named row is PATCHED in place, rather than the caller's copy being written
+ * back. `order_fulfillments` is a single JSON cell and every write of it is a
+ * whole-cell replace: between the caller's read and this write another shipment
+ * can land, and writing the copy back would drop it. A dropped shipment's units
+ * read as UNSHIPPED, so the next fulfillment re-ships them and recognises their
+ * revenue a second time - under a new sequence, so the posting claim's unique
+ * index cannot catch it either.
+ *
+ * A sequence that is not in the stored log writes nothing at all. That is the
+ * right answer for a shipment somebody removed while the posting was in flight:
+ * inventing the row back would resurrect a shipment a person deleted.
+ *
+ * @throws whatever the transaction throws. The callers are inside a `guard` or
+ *   a never-throws run, and a stamp that silently failed would leave a posted
+ *   shipment looking unposted - which the netting read would then post again.
+ */
+export async function stampFulfillment(
+  db: Database,
+  params: {
+    organizationId: string
+    /** Who the write is attributed to. The `systemUser` for an unattended run. */
+    actorUserId: string
+    orderId: string
+    /** The `OrderFulfillment.sequence` to stamp. */
+    sequence: number
+    patch: FulfillmentStampPatch
+  }
+): Promise<void> {
+  const { organizationId, actorUserId, orderId, sequence, patch } = params
+  const ctx = await requireOrderFieldContext(organizationId)
+  const recordId = toRecordId(ctx.orderDefId, orderId)
+
+  await db.transaction(async (tx) => {
+    const txDb = tx as unknown as Database
+    await lockOrder(txDb, organizationId, orderId)
+    const stored = await readStoredFulfillments(txDb, organizationId, orderId)
+    if (!stored.some((row) => row.sequence === sequence)) return
+
+    const stamped = stored.map((row) => (row.sequence === sequence ? { ...row, ...patch } : row))
+    const txCrud = new UnifiedCrudHandler(organizationId, actorUserId, txDb)
+    await txCrud.update(recordId, { order_fulfillments: fulfillmentsEnvelope(stamped) })
+  })
 }
 
 /**

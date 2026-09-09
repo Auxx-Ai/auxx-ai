@@ -223,7 +223,7 @@ export function FulfillOrderDialog({
                       value={shippedAt}
                       onChange={(value) => {
                         setTouched(true)
-                        setShippedAt((value as string) ?? todayKey())
+                        setShippedAt(((value as string | null) ?? todayKey()).slice(0, 10))
                       }}
                       disabled={fulfill.isPending}
                     />

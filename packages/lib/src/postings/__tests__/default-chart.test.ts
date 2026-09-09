@@ -104,7 +104,10 @@ describe('the default chart', () => {
     // that reflexively gives every account a role has to argue with a test.
     const roleless = DEFAULT_CHART_OF_ACCOUNTS.filter((account) => !account.role)
     expect(roleless.length).toBeGreaterThan(0)
-    expect(roleless.map((account) => account.code)).toContain('1210') // Affirm Clearing
+    // `1210 Affirm Clearing` used to be the example here and no longer is: the
+    // fulfillment debit fork gained `clearing_affirm` (49 §8.4 decision 6), so
+    // the account a builder now posts to carries a role like every other.
+    expect(roleless.map((account) => account.code)).toContain('6105') // Merchant Fees - Affirm
     expect(roleless.map((account) => account.code)).toContain('6200') // Fulfillment Labor
   })
 

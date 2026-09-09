@@ -137,6 +137,22 @@ export {
   unapplyCreditMemo,
   voidCreditMemo,
 } from './credit-memos'
+// ─── Bulk fulfillment posting (plans/money/tasks/49-bulk-fulfillment-posting.md) ──
+// Appended as one block, per HANDOFF §9a's rule for shared barrels.
+export {
+  countUnpostedShipments,
+  type FulfillmentPostingPreview,
+  type FulfillmentPostingSettings,
+  groupKeyFor,
+  isoWeekKey,
+  listOrderFulfillmentPostings,
+  planFulfillmentPosting,
+  previewFulfillmentPosting,
+  readFulfillmentPostingSettings,
+  readUnpostedShipments,
+  runFulfillmentPosting,
+  type UnpostedShipmentRange,
+} from './fulfillment-posting'
 export { createInvoiceFromWorkOrder, deleteInvoiceLine, listUninvoicedLines } from './gather'
 export { deleteInvoice, markInvoiceSent, voidInvoice } from './invoice-lifecycle'
 // ── HANDOFF slot 2K: writing off an invoice's balance to bad debt ──────────
@@ -153,6 +169,7 @@ export {
 // shipped, which a status flip cannot, and that is what makes a second
 // fulfillment able to avoid re-recognising the first.
 export {
+  type FulfillmentStampPatch,
   type FulfillOrderInput,
   type FulfillOrderLine,
   type FulfillOrderResult,
@@ -173,6 +190,7 @@ export {
   requireOrderFieldContext,
   shippedByLine,
   shippingStillOwed,
+  stampFulfillment,
 } from './orders'
 export {
   disconnectPaymentAccount,

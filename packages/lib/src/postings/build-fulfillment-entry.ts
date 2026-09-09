@@ -81,23 +81,39 @@ export type OrderChannelKey = 'dtc' | 'dealer' | 'manual' | 'null'
 /**
  * Which revenue role each order channel books to. DECLARED, never derived.
  *
- * 🛑 **It must fail CLOSED, and two of the four rows do.** `4000` and `4010` are
- * two revenue accounts and a default to DTC would put every dealer sale in the
- * consumer line - an entry that balances perfectly and is invisible until
- * somebody reads the P&L by channel. So `manual` and `null` REFUSE, naming the
- * order and the channel (handoff decision 6.2). A manual sale is not a channel;
- * it is a sale whose channel nobody has recorded, and the remedy is to record
- * it on the order.
+ * ## ⤵️ It fails OPEN, and it used to fail closed
+ *
+ * `manual` and `null` used to REFUSE, on the argument that `4000` and `4010` are
+ * two revenue accounts and a default to DTC puts a dealer sale in the consumer
+ * line, where it balances and is invisible until somebody reads the P&L by
+ * channel. The argument is sound and the answer was still wrong, for a reason
+ * the data settled (49 §4.6, §8.1 item 6, §8.4 decision 5):
+ *
+ * - `order_channel` is **human-set, never derived**, and no connector binds it.
+ *   535 of 545 orders on the reference org carry the registry DEFAULT, `manual`.
+ * - So the refusal did not protect a split; it refused **every imported order**,
+ *   and the P&L by channel it was defending held nothing at all.
+ * - Neither dealer signal (`contact_customer_type`, B2B terms) reaches the
+ *   database yet, so nothing can set the value correctly in bulk either.
+ *
+ * A default that recognises consumer revenue is the honest reading of *"nobody
+ * has said"* for a business whose unmarked orders are Shopify checkouts. It is
+ * also **correctable**: an order booked to the wrong revenue line is fixed by
+ * setting the channel and posting a compensating entry, whereas revenue that
+ * was never recognised at all is invisible. When the dealer signal lands, the
+ * `dealer` row is already here and the default stops being reached.
  *
  * Widening this table is a one-line edit here plus a role in `ACCOUNT_ROLES`.
  * Deriving it from `paymentGateways` or tags was tried and cannot work: a manual
  * sale has neither.
  */
-export const CHANNEL_REVENUE_ROLE: Record<OrderChannelKey, AccountRole | 'refuse'> = {
+export const CHANNEL_REVENUE_ROLE: Record<OrderChannelKey, AccountRole> = {
   dtc: ACCOUNT_ROLES.REVENUE_DTC,
   dealer: ACCOUNT_ROLES.REVENUE_DEALER,
-  manual: 'refuse',
-  null: 'refuse',
+  // "Somebody typed manual" and "nobody has said" are still two different facts
+  // - see `OrderChannelKey` - and they simply have the same answer today.
+  manual: ACCOUNT_ROLES.REVENUE_DTC,
+  null: ACCOUNT_ROLES.REVENUE_DTC,
 }
 
 /** Normalise a stored `order_channel` value - anything unrecognised is `'null'`. */
@@ -164,6 +180,152 @@ export function extendRateToAmount(rateMinor: number, quantity: number, label: s
   return Math.round(rateMinor * quantity)
 }
 
+/** One shipped line as {@link computeShipmentTotals} reads it. */
+export interface ShipmentTotalsLine {
+  /** For the refusal message only. Never a lookup key here. */
+  lineId: string
+  /** Units shipped in THIS shipment. */
+  quantity: number
+  /** Minor units per unit. A RATE, so it may be fractional - see {@link extendRateToAmount}. */
+  unitPriceMinor: number
+  /**
+   * This shipment's tax on this line, whole minor units, when it is known per
+   * line. `null` and `undefined` both mean NOT SUPPLIED, which is not zero.
+   *
+   * 🛑 Already SCALED to what shipped. A caller holding the whole line's tax
+   * against a partial shipment scales it first - `computeShipmentAmounts` in
+   * `build-fulfillment-batch-entry.ts` is the one that does.
+   */
+  taxMinor?: number | null
+}
+
+/** What one shipment contributes, all whole minor units. */
+export interface ShipmentTotals {
+  subtotalMinor: number
+  taxMinor: number
+  shippingMinor: number
+  /** `subtotal + tax + shipping`. The debit. */
+  totalMinor: number
+  /** How `taxMinor` was arrived at. A screen says which. */
+  taxBasis: 'per_line' | 'allocated'
+}
+
+export interface ShipmentTotalsInput {
+  /** What the shipment belongs to, for a refusal: `'order ORD-0012'`. */
+  label: string
+  lines: readonly ShipmentTotalsLine[]
+  /** `order_subtotal`, integer minor units. The denominator of the allocation. */
+  orderSubtotalMinor: number
+  /** `order_tax_total`, integer minor units. */
+  orderTaxTotalMinor: number
+  /** Sum of every EARLIER shipment's subtotal. `0` on the first. */
+  priorShipmentsSubtotalMinor?: number
+  /** `order_shipping_total`, integer minor units. */
+  orderShippingTotalMinor: number
+  /** Whether THIS shipment carries the order's shipping revenue. */
+  includeShipping: boolean
+  /** Extra keys on any refusal thrown from here. */
+  context?: Record<string, string>
+}
+
+/**
+ * One shipment's share of its order. **The single implementation of the
+ * proportional rules**, called by both fulfillment builders.
+ *
+ * It was inlined in {@link buildFulfillmentEntry} until the batch builder
+ * needed the same numbers (49 §2.3). Two copies of this arithmetic would be two
+ * keyspaces free to drift, and a drift is undetectable from the outside: the
+ * per-order entry and the summarised one would both balance and disagree about
+ * what a day recognised.
+ *
+ * - **Subtotal** is `Σ round(quantity x unitPriceMinor)` over the lines. From
+ *   the LINES, never sliced off `order_subtotal`, because the lines are what
+ *   actually left the building.
+ * - **Tax** is per line when EVERY line carries `taxMinor`, and otherwise
+ *   allocated pro rata CUMULATIVELY:
+ *   `alloc(prior + this) - alloc(prior)`, where
+ *   `alloc(x) = round(orderTaxTotal x x / orderSubtotal)`. Allocating each
+ *   shipment on its own drops the rounding remainder and leaves the receivable
+ *   permanently short - three equal shipments of a 300 order carrying 100 of
+ *   tax get 33 each and the missing cent can never be cleared. The difference
+ *   of two running allocations hands the remainder to whichever shipment
+ *   carries the subtotal over the line, with no "is this the last one" flag to
+ *   get wrong. An order with a zero subtotal allocates zero rather than
+ *   dividing by it.
+ *
+ *   The all-or-nothing per-line rule is deliberate: mixing a known per-line tax
+ *   with an allocated remainder double-counts the lines that carried one.
+ * - **Shipping** is the order's shipping in FULL when `includeShipping`, and
+ *   zero otherwise. Prorating invents a split the carrier never charged, and
+ *   holding it to the LAST shipment means an order that is never completed
+ *   never books the shipping it collected.
+ *
+ * Does NOT refuse a shipment worth nothing: zero is a REFUSAL for the
+ * single-order builder and an EXCLUSION for the batch plan, and only the caller
+ * knows which.
+ *
+ * @throws {UnprocessableEntityError} on a non-positive or non-finite quantity,
+ *   or a stored amount that is not whole minor units.
+ */
+export function computeShipmentTotals(input: ShipmentTotalsInput): ShipmentTotals {
+  const { label, lines, includeShipping, context } = input
+
+  let subtotalMinor = 0
+  let perLineTaxMinor = 0
+  let linesWithTax = 0
+  for (const [index, line] of lines.entries()) {
+    const row = index + 1
+    if (!Number.isFinite(line.quantity) || line.quantity <= 0) {
+      throw new UnprocessableEntityError(
+        `Row ${row} of ${label} ships ${String(line.quantity)} units. A fulfillment carries what ` +
+          'actually shipped, so a quantity is always above zero - drop the line instead.',
+        { ...context, lineId: line.lineId, row: String(row) }
+      )
+    }
+    subtotalMinor += extendRateToAmount(
+      line.unitPriceMinor,
+      line.quantity,
+      `Row ${row} of ${label}`
+    )
+    if (line.taxMinor != null) {
+      perLineTaxMinor += toAmountMinor(line.taxMinor, `Row ${row} tax on ${label}`)
+      linesWithTax++
+    }
+  }
+
+  const orderSubtotalMinor = toAmountMinor(input.orderSubtotalMinor, `Subtotal of ${label}`)
+  const orderTaxTotalMinor = toAmountMinor(input.orderTaxTotalMinor, `Tax total of ${label}`)
+  const priorSubtotalMinor = toAmountMinor(
+    input.priorShipmentsSubtotalMinor,
+    `Prior shipment subtotal of ${label}`
+  )
+  const orderShippingTotalMinor = toAmountMinor(
+    input.orderShippingTotalMinor,
+    `Shipping total of ${label}`
+  )
+
+  const taxBasis: 'per_line' | 'allocated' =
+    lines.length > 0 && linesWithTax === lines.length ? 'per_line' : 'allocated'
+  const allocateThrough = (cumulativeSubtotalMinor: number): number =>
+    orderSubtotalMinor > 0
+      ? Math.round((orderTaxTotalMinor * cumulativeSubtotalMinor) / orderSubtotalMinor)
+      : 0
+  const taxMinor =
+    taxBasis === 'per_line'
+      ? perLineTaxMinor
+      : allocateThrough(priorSubtotalMinor + subtotalMinor) - allocateThrough(priorSubtotalMinor)
+
+  const shippingMinor = includeShipping ? orderShippingTotalMinor : 0
+
+  return {
+    subtotalMinor,
+    taxMinor,
+    shippingMinor,
+    totalMinor: subtotalMinor + taxMinor + shippingMinor,
+    taxBasis,
+  }
+}
+
 /** One order line, and how much of it went out in THIS shipment. */
 export interface FulfillmentShippedLine {
   /** The `line_item` EntityInstance id. Also what the caller validates remaining against. */
@@ -192,7 +354,10 @@ export interface BuildFulfillmentEntryInput {
   orderNumber: string
   /** 1-based. The first shipment of an order is `1`, and keys `ORD-0012-F1`. */
   sequence: number
-  /** `order_channel`, verbatim. `manual` and absent both REFUSE. */
+  /**
+   * `order_channel`, verbatim. `manual` and absent both recognise as CONSUMER
+   * revenue - the table fails open. See {@link CHANNEL_REVENUE_ROLE}.
+   */
   channel: string | null | undefined
   /** `order_currency`, verbatim. Anything but `ledgerCurrency` REFUSES. */
   currency: string | null | undefined
@@ -356,9 +521,10 @@ export function fulfillmentPeriodKey(orderNumber: string, sequence: number): str
  * that cannot compute its own arithmetic is a bug, and `postEntry` above it
  * converts the throw into a status.
  *
- * @throws {UnprocessableEntityError} on a refused channel, a foreign currency,
- *   no shipped lines, a non-positive quantity, a fractional stored amount, an
- *   over-long order number, or an entry with no value on either side.
+ * @throws {UnprocessableEntityError} on a foreign currency, no shipped lines, a
+ *   non-positive quantity, a fractional stored amount, an over-long order
+ *   number, or an entry with no value on either side. NOT on an unset channel:
+ *   see {@link CHANNEL_REVENUE_ROLE}.
  */
 export function buildFulfillmentEntry(input: BuildFulfillmentEntryInput): BuiltFulfillmentEntry {
   const {
@@ -390,17 +556,10 @@ export function buildFulfillmentEntry(input: BuildFulfillmentEntryInput): BuiltF
   }
 
   // ── The channel, from the DECLARED table ─────────────────────────────────
+  // Fails OPEN: an unset channel recognises as consumer revenue rather than
+  // refusing the shipment. See CHANNEL_REVENUE_ROLE for why that changed.
   const channelKey = toChannelKey(channel)
   const revenueRole = CHANNEL_REVENUE_ROLE[channelKey]
-  if (revenueRole === 'refuse') {
-    throw new UnprocessableEntityError(
-      `Order ${orderNumber} has channel "${channelKey === 'null' ? 'none' : channelKey}", which ` +
-        'has no revenue account. Product revenue is split DTC vs Dealer and defaulting to either ' +
-        'would put the sale in the wrong line of the P&L, where it balances and is invisible. ' +
-        'Set the order channel to Direct to consumer or Dealer and fulfil again.',
-      { orderNumber, channel: channelKey }
-    )
-  }
 
   if (shippedLines.length === 0) {
     throw new UnprocessableEntityError(
@@ -410,66 +569,19 @@ export function buildFulfillmentEntry(input: BuildFulfillmentEntryInput): BuiltF
     )
   }
 
-  // ── This shipment's subtotal, from the lines ─────────────────────────────
-  let subtotalMinor = 0
-  let perLineTaxMinor = 0
-  let linesWithTax = 0
-  for (const [index, line] of shippedLines.entries()) {
-    const row = index + 1
-    if (!Number.isFinite(line.quantity) || line.quantity <= 0) {
-      throw new UnprocessableEntityError(
-        `Row ${row} of order ${orderNumber} ships ${String(line.quantity)} units. A fulfillment ` +
-          'carries what actually shipped, so a quantity is always above zero - drop the line instead.',
-        { orderNumber, lineId: line.lineId, row: String(row) }
-      )
-    }
-    subtotalMinor += extendRateToAmount(
-      line.unitPriceMinor,
-      line.quantity,
-      `Row ${row} of order ${orderNumber}`
-    )
-    if (line.taxMinor != null) {
-      perLineTaxMinor += toAmountMinor(line.taxMinor, `Row ${row} tax on order ${orderNumber}`)
-      linesWithTax++
-    }
-  }
-
-  const orderSubtotalMinor = toAmountMinor(
-    input.orderSubtotalMinor,
-    `Order ${orderNumber} subtotal`
-  )
-  const orderTaxTotalMinor = toAmountMinor(input.orderTaxTotalMinor, `Order ${orderNumber} tax`)
-  const priorSubtotalMinor = toAmountMinor(
-    input.priorShipmentsSubtotalMinor,
-    `Order ${orderNumber} prior shipment subtotal`
-  )
-  const orderShippingTotalMinor = toAmountMinor(
-    input.orderShippingTotalMinor,
-    `Order ${orderNumber} shipping`
-  )
-
-  // ── Tax: per line, or allocated pro rata. Never both ─────────────────────
-  const taxBasis: 'per_line' | 'allocated' =
-    linesWithTax === shippedLines.length ? 'per_line' : 'allocated'
-  // 🛑 CUMULATIVE, not per-shipment. `round(tax x thisSubtotal / orderSubtotal)`
-  // computed independently per shipment loses the remainder - three equal
-  // shipments of a 300 order with 100 of tax allocate 33 each and A/R never
-  // clears. Taking the difference of two running allocations gives the same
-  // answer for a first (or only) shipment and hands the whole remainder to
-  // whichever shipment carries the subtotal over the line, which is exactly the
-  // "two entries sum to the order total when the order completes" claim the
-  // JSDoc makes. See `priorShipmentsSubtotalMinor`.
-  const allocateThrough = (cumulativeSubtotalMinor: number): number =>
-    orderSubtotalMinor > 0
-      ? Math.round((orderTaxTotalMinor * cumulativeSubtotalMinor) / orderSubtotalMinor)
-      : 0
-  const taxMinor =
-    taxBasis === 'per_line'
-      ? perLineTaxMinor
-      : allocateThrough(priorSubtotalMinor + subtotalMinor) - allocateThrough(priorSubtotalMinor)
-
-  const shippingMinor = includeShipping ? orderShippingTotalMinor : 0
-  const totalMinor = subtotalMinor + taxMinor + shippingMinor
+  // ── This shipment's share of the order ───────────────────────────────────
+  // The arithmetic itself lives in `computeShipmentTotals`, which the BATCH
+  // builder calls with the same numbers. One implementation, two callers.
+  const { subtotalMinor, taxMinor, shippingMinor, totalMinor, taxBasis } = computeShipmentTotals({
+    label: `order ${orderNumber}`,
+    lines: shippedLines,
+    orderSubtotalMinor: input.orderSubtotalMinor,
+    orderTaxTotalMinor: input.orderTaxTotalMinor,
+    priorShipmentsSubtotalMinor: input.priorShipmentsSubtotalMinor,
+    orderShippingTotalMinor: input.orderShippingTotalMinor,
+    includeShipping,
+    context: { orderNumber },
+  })
 
   if (totalMinor <= 0) {
     throw new UnprocessableEntityError(

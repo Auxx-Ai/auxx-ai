@@ -169,7 +169,15 @@ export function LedgerCard({ entityInstanceId, sourceType }: LedgerCardProps) {
   )
 }
 
-function PostingLinesDialog({
+/**
+ * The posting's lines, opened from a row.
+ *
+ * Exported because the order's card reads a different list (its shipment
+ * STAMPS, see `money/ui/order/order-fulfillment-ledger-card.tsx`) and would
+ * otherwise be a second copy of this dialog: the journal a row opens must not
+ * depend on which card the row came from.
+ */
+export function PostingLinesDialog({
   postingId,
   onOpenChange,
   currencyCode,

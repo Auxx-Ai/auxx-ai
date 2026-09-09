@@ -3,6 +3,7 @@
 import type { PaymentTransactionEntity } from '@auxx/database'
 import { database, schema } from '@auxx/database'
 import { conditionGroupsSchema } from '@auxx/lib/conditions'
+import { isRecordConnectorManaged } from '@auxx/lib/data-connectors'
 import { renderPreviewQuotePdf } from '@auxx/lib/documents'
 import { NotFoundError } from '@auxx/lib/errors'
 import {
@@ -31,6 +32,7 @@ import {
   getPaymentAccount,
   getWorkOrderBillingState,
   listBankDeposits,
+  listOrderFulfillmentPostings,
   listPayouts,
   listUndepositedPayments,
   listWorkOrderPayments,
@@ -39,6 +41,7 @@ import {
   PAYOUT_STATUSES,
   prepareDocumentEmail,
   previewFulfillment,
+  previewFulfillmentPosting,
   previewInvoiceBatch,
   previewWriteOffInvoice,
   readOrderForFulfillment,
@@ -47,6 +50,7 @@ import {
   recordManualPayment,
   refundTransaction,
   reorderLines,
+  runFulfillmentPosting,
   runInvoiceBatch,
   saveBillingInstallments,
   setInvoiceSchedule,
@@ -57,6 +61,7 @@ import {
   voidInvoice,
   writeOffInvoice,
 } from '@auxx/lib/money'
+import type { FulfillmentPostingGrouping } from '@auxx/lib/money/client'
 import { FeaturePermissionService, getCapabilities, PermissionKey } from '@auxx/lib/permissions'
 import { FeatureKey } from '@auxx/lib/permissions/client'
 import {
@@ -166,6 +171,35 @@ async function mapPaymentRows(organizationId: string, rows: PaymentTransactionEn
     rows.map((row) => row.id)
   )
   return rows.map((row) => mapPaymentRow(row, allocationTotals.get(row.id) ?? 0))
+}
+
+/**
+ * How much the bulk fulfillment posting batches (plans/money/tasks/49 §2.3).
+ *
+ * `as const satisfies` rather than a bare `z.enum`, the way `builds.ts` writes
+ * the backfill's grouping: the vocabulary lives in
+ * `money/fulfillment-posting/types.ts`, and a member renamed there has to break
+ * this file rather than silently narrow what the browser may ask for.
+ */
+const FULFILLMENT_POSTING_GROUPING_VALUES = [
+  'day',
+  'week',
+  'month',
+] as const satisfies readonly FulfillmentPostingGrouping[]
+
+/**
+ * The window and the grouping, shared by the preview and the run so the two can
+ * never disagree about what a range means.
+ *
+ * Half-open on `shippedAt` (`from <= shippedAt < to`), both plain `YYYY-MM-DD`
+ * rather than instants: the bucket boundary is cut in the org's book time zone
+ * server-side, and a `Date` from the browser would carry its own zone into a
+ * decision that is not the browser's to make.
+ */
+const fulfillmentPostingShape = {
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  grouping: z.enum(FULFILLMENT_POSTING_GROUPING_VALUES),
 }
 
 export const moneyRouter = createTRPCRouter({
@@ -813,6 +847,89 @@ export const moneyRouter = createTRPCRouter({
       })
       if (result.isErr()) throw result.error
       return result.value
+    }),
+
+  // ─── Bulk fulfillment posting (plans/money/tasks/49 §2.3) ──────────────────
+
+  /**
+   * What a bulk fulfillment posting WOULD write. Persists nothing.
+   *
+   * 🛑 The plan is recomputed here from the range and the grouping; the browser
+   * never supplies one. The same call backs {@link runFulfillmentPosting}, so
+   * what the dialog shows and what the run posts come from one code path
+   * (`plans/money/tasks/49-bulk-fulfillment-posting.md` §2.3).
+   *
+   * A refusal (`accounting.bookTimeZone` unset, or a draft chart) comes back on
+   * the payload as `refusal` rather than as a thrown error: the dialog renders
+   * it as a card beside the range it applies to, which a toast cannot do.
+   */
+  previewFulfillmentPosting: permissionProcedure(PermissionKey.ledgerView)
+    .input(z.object(fulfillmentPostingShape))
+    .query(async ({ ctx, input }) => {
+      const result = await previewFulfillmentPosting(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        actorUserId: ctx.session.userId,
+        range: { from: input.from, to: input.to },
+        grouping: input.grouping,
+      })
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /**
+   * Post one entry per group and stamp every shipment behind it.
+   *
+   * 🛑 `ledgerPost`, for the same reason {@link fulfillOrder} takes it: this
+   * writes `GlPosting` rows. The run NEVER throws: a group the poster declined
+   * (`already_posted`, a locked period) and a group that failed are both arms of
+   * the summary, so the result page can tell somebody which of their 62 days
+   * landed instead of reporting the whole run as an error.
+   */
+  runFulfillmentPosting: permissionProcedure(PermissionKey.ledgerPost)
+    .input(z.object({ ...fulfillmentPostingShape, memo: z.string().max(4000).optional() }))
+    .mutation(async ({ ctx, input }) => {
+      return runFulfillmentPosting(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        actorUserId: ctx.session.userId,
+        range: { from: input.from, to: input.to },
+        grouping: input.grouping,
+        memo: input.memo,
+      })
+    }),
+
+  /**
+   * The postings this order's shipment log names, for its ledger card (§2.5).
+   *
+   * Reads the per-shipment STAMP rather than the posting's source lines: a bulk
+   * entry summarises many orders, so `listPostingsForSource` finds nothing for
+   * an order whose revenue went out in one (the A/R leg is the exception, and
+   * relying on it would show terms orders a card that card orders do not get).
+   */
+  orderFulfillmentPostings: permissionProcedure(PermissionKey.ledgerView)
+    .input(z.object({ orderId: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      const result = await listOrderFulfillmentPostings(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        orderId: input.orderId,
+      })
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /**
+   * Is this order bound to a data connector?
+   *
+   * The shipment log of a connector-managed order is DERIVED at ingest from the
+   * native fulfillment fields (§8.4 decision 4), so per-order Fulfill would
+   * write a second, conflicting log. The drawer asks this to hide the button.
+   *
+   * `ledgerView`, matching the sibling fulfillment reads: the answer only ever
+   * gates a ledger action, and it discloses nothing but a boolean.
+   */
+  isOrderConnectorManaged: permissionProcedure(PermissionKey.ledgerView)
+    .input(z.object({ orderId: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      return isRecordConnectorManaged(ctx.db, ctx.session.organizationId, input.orderId)
     }),
 
   /**

@@ -48,17 +48,40 @@ export {
   ROLE_ACCOUNT_TYPES,
   type VendorBillEntryInput,
 } from './build-entry'
+// ── plans/money/tasks/49: one fulfillment posting per day, not per shipment ──
+// PURE. Reaches `errors`, `build-entry`, `build-fulfillment-entry`, `doc-number`
+// and `money/fulfillment-posting/types` (types and constants only, no db), all
+// of which are safe in a browser.
+export {
+  type BuildFulfillmentBatchEntryInput,
+  type BuiltFulfillmentBatchEntry,
+  buildFulfillmentBatchEntry,
+  computeShipmentAmounts,
+  FULFILLMENT_DEBIT_ACCOUNT_ROLE,
+  FULFILLMENT_GATEWAY_DEBIT,
+  type FulfillmentBatchSource,
+  type FulfillmentDebitExclusionReason,
+  type FulfillmentDebitResolution,
+  fulfillmentBatchPeriodKey,
+  MAX_COMPACT_FULFILLMENT_BATCH_KEY,
+  MAX_FULFILLMENT_BATCH_ATTEMPT,
+  resolveFulfillmentDebit,
+} from './build-fulfillment-batch-entry'
 // ── HANDOFF slot 2G: the revenue side (tasks/01 phases A to C) ──────────────
 export {
   type BuildFulfillmentEntryInput,
   type BuiltFulfillmentEntry,
   buildFulfillmentEntry,
   CHANNEL_REVENUE_ROLE,
+  computeShipmentTotals,
   extendRateToAmount,
   FULFILLMENT_SOURCE_TYPE,
   type FulfillmentShippedLine,
   fulfillmentPeriodKey,
   type OrderChannelKey,
+  type ShipmentTotals,
+  type ShipmentTotalsInput,
+  type ShipmentTotalsLine,
   toAmountMinor,
   toChannelKey,
 } from './build-fulfillment-entry'

@@ -21,6 +21,7 @@ import { startEmailWorker } from './worker-definitions/email-worker'
 import { startEnrichmentWorker } from './worker-definitions/enrichment-worker'
 import { startEvalRunWorker } from './worker-definitions/eval-run-worker'
 import { startEventHandlersWorker, startEventsWorker } from './worker-definitions/events-worker'
+import { startFulfillmentPostingWorker } from './worker-definitions/fulfillment-posting-worker'
 import { startKBSyncWorker } from './worker-definitions/kb-sync-worker'
 import { startKnowledgeSourceWorker } from './worker-definitions/knowledge-source-worker'
 import { startLearnedExtractionWorker } from './worker-definitions/learned-extraction-worker'
@@ -130,6 +131,11 @@ export async function startWorkers() {
   // QuickBooks invoice sync worker (plans/dispatch/37e-quickbooks-invoice-sync.md §3, P3)
   const quickbooksInvoiceSyncWorker = startQuickbooksInvoiceSyncWorker()
 
+  // Bulk fulfillment posting worker: the `auto` lane of
+  // plans/money/tasks/49-bulk-fulfillment-posting.md §2.4. Concurrency 1 - see
+  // the worker definition for why that is a correctness cap, not a throttle.
+  const fulfillmentPostingWorker = startFulfillmentPostingWorker()
+
   // Inbound-mail AI categorisation worker (mail-classification plan §4)
   const mailClassificationWorker = startMailClassificationWorker()
 
@@ -175,6 +181,7 @@ export async function startWorkers() {
     dataConnectorWorker,
     documentPdfWorker,
     quickbooksInvoiceSyncWorker,
+    fulfillmentPostingWorker,
     mailClassificationWorker,
     purchaseIntakeWorker,
     enrichmentWorker,

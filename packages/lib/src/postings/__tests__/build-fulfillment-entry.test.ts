@@ -7,9 +7,11 @@
 //
 // Three properties carry the file:
 //
-//  1. **The channel table fails CLOSED on two of its four rows.** A default to
-//     DTC would put dealer sales in the consumer line, where the entry balances
-//     and nothing downstream can see it.
+//  1. **The channel table fails OPEN on two of its four rows.** It used to fail
+//     closed, on the argument that a default to DTC hides dealer sales in the
+//     consumer line. 49 §8.4 decision 5 reversed it: `order_channel` is
+//     human-set and unbound, so the refusal recognised no imported revenue at
+//     all, and unrecognised revenue is the less visible of the two errors.
 //  2. **A second shipment must not re-recognise the first.** That is what the
 //     shipped-lines input and the `includeShipping` flag exist for, and it is
 //     asserted by summing two entries against the order total.
@@ -57,10 +59,14 @@ function amountFor(
 }
 
 describe('the channel table', () => {
-  it('has exactly four rows, two of which refuse', () => {
+  it('has exactly four rows and refuses none of them', () => {
     expect(Object.keys(CHANNEL_REVENUE_ROLE).sort()).toEqual(['dealer', 'dtc', 'manual', 'null'])
-    expect(CHANNEL_REVENUE_ROLE.manual).toBe('refuse')
-    expect(CHANNEL_REVENUE_ROLE.null).toBe('refuse')
+    // ⤵️ Both used to be 'refuse'. 49 §8.4 decision 5: `order_channel` is
+    // human-set and no connector binds it, so the refusal did not protect the
+    // DTC/dealer split - it refused every imported order and recognised nothing.
+    expect(CHANNEL_REVENUE_ROLE.manual).toBe(ACCOUNT_ROLES.REVENUE_DTC)
+    expect(CHANNEL_REVENUE_ROLE.null).toBe(ACCOUNT_ROLES.REVENUE_DTC)
+    expect(Object.values(CHANNEL_REVENUE_ROLE)).not.toContain('refuse')
   })
 
   it('normalises an absent or unrecognised channel to the null row', () => {
@@ -83,18 +89,24 @@ describe('the channel table', () => {
   })
 
   it.each([
-    ['manual', 'manual'],
-    [null, 'none'],
-  ])('refuses channel %s, naming the order and the channel', (channel, shown) => {
-    expect(() =>
-      buildFulfillmentEntry({ ...BASE, channel, shippedLines: WHOLE_ORDER })
-    ).toThrowError(UnprocessableEntityError)
-    try {
-      buildFulfillmentEntry({ ...BASE, channel, shippedLines: WHOLE_ORDER })
-    } catch (error) {
-      expect((error as Error).message).toContain('ORD-0012')
-      expect((error as Error).message).toContain(shown)
-    }
+    ['manual'],
+    [null],
+    ['wholesale'],
+    ['  '],
+  ])('books channel %s to consumer revenue rather than refusing it', (channel) => {
+    const built = buildFulfillmentEntry({ ...BASE, channel, shippedLines: WHOLE_ORDER })
+    expect(built.revenueRole).toBe(ACCOUNT_ROLES.REVENUE_DTC)
+    // The whole subtotal reaches 4000. The point of failing open is that the
+    // revenue is ON the books, in a line a person can move, not missing.
+    expect(amountFor(built.entry, ACCOUNT_ROLES.REVENUE_DTC)).toBe(100_000)
+  })
+
+  it('still books an explicit dealer order to the dealer line', () => {
+    // Failing open must not collapse the split it was protecting: the moment a
+    // person says `dealer`, the default stops being reached.
+    const built = buildFulfillmentEntry({ ...BASE, channel: 'dealer', shippedLines: WHOLE_ORDER })
+    expect(built.revenueRole).toBe(ACCOUNT_ROLES.REVENUE_DEALER)
+    expect(amountFor(built.entry, ACCOUNT_ROLES.REVENUE_DTC)).toBeUndefined()
   })
 })
 

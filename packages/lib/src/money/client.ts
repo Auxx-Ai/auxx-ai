@@ -112,6 +112,32 @@ export {
   type PlannedCreditApplication,
   planCreditApplication,
 } from './credit-memos/client'
+// ─── Bulk fulfillment posting (plans/money/tasks/49-bulk-fulfillment-posting.md) ──
+// The client-safe half only: the groupings, the closed exclusion-reason set the
+// dialog renders a total `Record` over, and the plan/summary wire shapes.
+// Appended as one block, per HANDOFF §9a's rule for shared barrels.
+export {
+  FULFILLMENT_BATCH_SOURCE_TYPE,
+  FULFILLMENT_POSTING_EXCLUSION_REASONS,
+  FULFILLMENT_POSTING_GROUPINGS,
+  FULFILLMENT_POSTING_MODES,
+  FULFILLMENT_POSTING_SETTING_KEY,
+  type FulfillmentDebitRole,
+  type FulfillmentPostingExclusion,
+  type FulfillmentPostingExclusionReason,
+  type FulfillmentPostingGroup,
+  type FulfillmentPostingGrouping,
+  type FulfillmentPostingMode,
+  type FulfillmentPostingPlan,
+  type FulfillmentPostingPlanInput,
+  type FulfillmentPostingRequest,
+  type FulfillmentPostingRunSummary,
+  type OrderFulfillmentPostingRef,
+  type PlannedShipment,
+  type ShipmentAmounts,
+  type UnpostedShipment,
+  type UnpostedShipmentLine,
+} from './fulfillment-posting/client'
 // ─── Order fulfillment (HANDOFF slot 2G) ────────────────────────────────────
 // The client-safe half only: the shipment-log shape and the pure functions over
 // it, which the fulfill dialog reads to prefill remaining quantities.

@@ -21,6 +21,7 @@ export const ACCOUNTING_KEYS = {
   setupState: 'accounting.setupState',
   cutoffPeriod: 'accounting.cutoffPeriod',
   bookTimeZone: 'accounting.bookTimeZone',
+  fulfillmentPosting: 'accounting.fulfillmentPosting',
   setupFinalizedAt: 'accounting.setupFinalizedAt',
   setupFinalizedByUserId: 'accounting.setupFinalizedByUserId',
   openingRawMaterials: 'accounting.openingRawMaterials',
@@ -45,6 +46,12 @@ export const ACCOUNTING_KEYS = {
 export const PERIOD_DRAFT_KEYS = [
   ACCOUNTING_KEYS.cutoffPeriod,
   ACCOUNTING_KEYS.bookTimeZone,
+  // 🛑 In this slice but NOT frozen. The two keys above rewrite the arithmetic
+  // behind entries that have already posted, so they lock at the first claim;
+  // `fulfillmentPosting` is a MODE that decides what happens next and rewrites
+  // nothing, so freezing it would strand an organization on whichever answer it
+  // happened to have when it posted for the first time.
+  ACCOUNTING_KEYS.fulfillmentPosting,
 ] as const
 
 export const ABSORPTION_DRAFT_KEYS = [

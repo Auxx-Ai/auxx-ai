@@ -742,11 +742,21 @@ export const ledgerRouter = createTRPCRouter({
    * "0 out of 412" are very different answers and the banner has to be able to
    * tell them apart.
    */
-  verifyBalance: permissionProcedure(PermissionKey.ledgerView).query(async ({ ctx }) => {
-    const result = await verifyBooksBalance(ctx.db, ctx.session.organizationId)
-    if (result.isErr()) throw result.error
-    return result.value
-  }),
+  // `periodKey` is OPTIONAL and adds the COMPLETENESS half - what that month
+  // still owes the ledger (49 §2.4). Optional because the two callers genuinely
+  // differ: the close console asks about the month on screen, while
+  // `useAccountingSettingsFreeze` wants only `postingsChecked` and has no month.
+  // Asked for nothing, the counts come back `null`, never `0`: a zero would read
+  // as "nothing outstanding" for a question that was never put.
+  verifyBalance: permissionProcedure(PermissionKey.ledgerView)
+    .input(optionalMonthKey.optional())
+    .query(async ({ ctx, input }) => {
+      const result = await verifyBooksBalance(ctx.db, ctx.session.organizationId, {
+        month: input?.periodKey,
+      })
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
 
   /**
    * Every posting in one month EXCEPT the close entry - the ledger page's

@@ -16,6 +16,12 @@
 // | `previewEntry`                  | `EntryPreview.blockedBy`          |
 // | `postEntry`                     | `PostResult.status` - never throws |
 //
+// A fourth was added by task 49: the COMPLETENESS gate. Balance is not
+// completeness, and a month whose shipments have never been posted, or whose
+// channel credit memos are still drafts, is short of revenue however well its
+// entries tie. `classifyIncompleteRevenue` refuses it as `revenue_incomplete`
+// between the gather and the build - see that function for why that position.
+//
 // The close console has exactly one treatment for a refusal: `entry-blockers.tsx`
 // renders `preview.blockedBy` as an actionable line. So `previewMonthEnd` folds
 // every idiom into `blockedBy` and `postMonthEnd` folds every idiom into a
@@ -82,6 +88,8 @@
 import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { AuxxError, UnprocessableEntityError } from '../errors'
+import { countUnissuedChannelCreditMemos } from '../money/credit-memos/reads'
+import { countUnpostedShipments } from '../money/fulfillment-posting/reads'
 import {
   type BuiltMonthEndInventoryDraft,
   buildMonthEndInventoryEntry,
@@ -240,6 +248,24 @@ async function prepareClose(
     return { refusal: unexpected(error, organizationId, periodKey) }
   }
 
+  // ── Completeness, between the gather and the build ────────────────────────
+  //
+  // 🛑 Placed HERE, and the position is the whole of the ordering decision.
+  //
+  // AFTER the gather, so every CONFIGURATION refusal still wins: a draft setup
+  // is `setup_incomplete` and a month at or before the cutoff is `period_closed`
+  // whatever revenue it holds - both of those say "this month can never be
+  // closed by this system", and telling somebody to post its fulfillments first
+  // would send them to a dialog that excludes those very shipments.
+  //
+  // BEFORE the build, so it wins over `nothing_to_close`. A month with no
+  // inventory movement and a week of unposted shipments is the single most
+  // likely shape of this refusal on a connector-fed org, and reporting it as
+  // "nothing moved this month" would invite exactly the close the rule exists
+  // to prevent.
+  const incomplete = await classifyIncompleteRevenue(db, organizationId, periodKey)
+  if (incomplete) return { refusal: incomplete }
+
   let draft: BuiltMonthEndInventoryDraft
   try {
     draft = buildMonthEndInventoryEntry(inputs)
@@ -252,6 +278,108 @@ async function prepareClose(
   } catch (error) {
     return { refusal: classifyLockError(error, organizationId, periodKey, draft.entry.txnDate) }
   }
+}
+
+// ── Completeness ───────────────────────────────────────────────────────────
+
+/**
+ * Refuse the close while the month still holds revenue that is not in the books
+ * (49 §2.4 and §8.4 decision 7; 10 §3.4).
+ *
+ * Two things can be outstanding and both are counted, because the remedy is
+ * different for each and a message naming only one sends somebody back twice:
+ *
+ * - **A shipped fulfillment with no live posting.** The goods left and the sale
+ *   is not on the P&L. Fixed in the posting dialog, or automatically if the org
+ *   has set `accounting.fulfillmentPosting` to `auto`.
+ * - **A `channel` credit memo still in draft.** A refund the connector ingested
+ *   that nobody has issued or voided. Fixed on the memo.
+ *
+ * 🛑 A refusal, not a warning. Closing a month declares those books shut, and
+ * the entry that is owed cannot then be written into it: `period-lock.ts` exists
+ * to refuse exactly that. So a warn-only close would leave revenue permanently
+ * off a month somebody has just certified, which is the one outcome neither of
+ * the two plans would accept.
+ *
+ * ⚠️ Never throws, and never blocks the close on its OWN failure. If either
+ * count cannot be read, the close proceeds: a broken read here must not be able
+ * to hold an organization's books hostage, and the completeness banner reports
+ * the same two numbers on the ledger page independently.
+ *
+ * @returns The refusal, or `null` when nothing is outstanding.
+ */
+async function classifyIncompleteRevenue(
+  db: Database,
+  organizationId: string,
+  periodKey: string
+): Promise<CloseRefusal | null> {
+  let shipments = 0
+  let memos = 0
+  try {
+    const counted = await countUnpostedShipments(db, { organizationId, month: periodKey })
+    if (counted.isErr()) {
+      logger.error('Could not count unposted shipments for the close', {
+        organizationId,
+        periodKey,
+        error: counted.error.message,
+      })
+    } else {
+      shipments = counted.value
+    }
+    memos = await countUnissuedChannelCreditMemos(db, { organizationId, month: periodKey })
+  } catch (error) {
+    logger.error('Could not check the month for unposted revenue', {
+      organizationId,
+      periodKey,
+      error,
+    })
+    return null
+  }
+
+  if (shipments === 0 && memos === 0) return null
+
+  const month = monthLabel(periodKey)
+  const sentences: string[] = []
+  if (shipments > 0) {
+    sentences.push(
+      `${shipments} ${shipments === 1 ? 'shipment is' : 'shipments are'} not posted. ` +
+        `Post the fulfillments for ${month} with the posting dialog.`
+    )
+  }
+  if (memos > 0) {
+    sentences.push(
+      `${memos} channel credit ${memos === 1 ? 'memo is' : 'memos are'} still a draft. ` +
+        `Issue or void the channel credit memos dated in ${month}.`
+    )
+  }
+
+  return {
+    status: 'revenue_incomplete',
+    error: `${month} still holds revenue that is not in the books. ${sentences.join(' ')}`,
+    failureClass: 'data',
+  }
+}
+
+/**
+ * `'2026-07'` becomes `'July 2026'`, for the refusal sentence.
+ *
+ * The year is carried deliberately: a close console can be looking at any month
+ * of any year, and "Post the fulfillments for July" is ambiguous the moment an
+ * organization is more than a year old. A key that is not a month is returned
+ * unchanged rather than mangled - `GlPosting` documents keys that are not dates
+ * at all.
+ */
+function monthLabel(periodKey: string): string {
+  const match = /^(\d{4})-(\d{2})$/.exec(periodKey)
+  if (!match) return periodKey
+  const year = Number(match[1])
+  const month = Number(match[2])
+  if (!Number.isFinite(year) || month < 1 || month > 12) return periodKey
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(new Date(Date.UTC(year, month - 1, 1)))
 }
 
 // ── Classification ─────────────────────────────────────────────────────────

@@ -88,7 +88,17 @@ import type { BuiltEntry, GlPostingLineInput } from './types'
 /** The `sourceType` every payout line carries. */
 export const PAYOUT_SOURCE_TYPE = 'payout'
 
-/** The clearing roles a payout may drain. One role exists today. */
+/**
+ * The clearing roles a payout may drain. `clearing_card`, and only ever that.
+ *
+ * 🛑 **`clearing_affirm` is excluded BY CONSTRUCTION, not by omission.** An
+ * Affirm settlement never lands on the card rail, so it is invisible to the
+ * payouts API and no payout can ever relieve `1210` (accrual plan §3, 49 §3.2).
+ * Adding the role here would let a card payout drain an account its deposit
+ * never touched: the entry would balance, `1210` would go negative by the
+ * Affirm sales it was holding, and nothing downstream could detect it. Affirm
+ * clears when an Affirm settlement feed exists, through its own entry.
+ */
 export const PAYOUT_CLEARING_ROLES: readonly AccountRole[] = [ACCOUNT_ROLES.CLEARING_CARD]
 
 export interface BuildPayoutEntryInput {

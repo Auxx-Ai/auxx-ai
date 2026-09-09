@@ -191,6 +191,25 @@ export interface BuiltEntry {
   totalDebit: number
   /** Integer minor units. Equal to `totalDebit`, always. */
   totalCredit: number
+  /**
+   * The FROZEN list of what this entry summarises, when its lines do not name
+   * them one by one. Optional, and absent on every entry built before this
+   * existed.
+   *
+   * 🛑 **This is the audit trail a summarised entry would otherwise not have.**
+   * A batch fulfillment posting carries one credit line per account for a whole
+   * day of shipments (49 §2.5), so `sourceId` names the period key and not the
+   * fifty orders behind it. Without the list there is no way to answer "which
+   * orders are in this number" three years later, and no way to compute the
+   * compensating entry a later correction needs.
+   *
+   * Rides into `GlPosting.draft` verbatim, because `buildPostingDraft` carries
+   * the whole `BuiltEntry` (see `draft.ts`). Typed `unknown` on purpose: the
+   * shape belongs to whichever builder wrote it - `buildFulfillmentBatchEntry`
+   * writes `FulfillmentBatchSource[]` - and `postings/types.ts` must not gain a
+   * dependency on `money/` to say so.
+   */
+  sources?: unknown
 }
 
 /**
@@ -383,6 +402,16 @@ export type PostResultStatus =
   // A code-based line names an account the org's chart does not hold, or holds
   // archived or inactive. The message names the row.
   | 'account_invalid'
+  // 🛑 The month still holds revenue that has not reached the ledger: a shipped
+  // fulfillment with no live posting stamped, or a `channel` credit memo still
+  // in draft (49 §2.4, §8.4 decision 7; 10 §3.4). NOT `error` - nothing is
+  // broken and nothing failed to build - and not one of the
+  // `NON_FAILURE_REFUSALS` either, because unlike an empty month it is a piece
+  // of work somebody has to do before the month is honest. It has its own status
+  // so the console can point at the two places that work is done rather than
+  // rendering "the entry could not be built" over a set of books that is simply
+  // short.
+  | 'revenue_incomplete'
   | 'error'
 
 /**
@@ -809,4 +838,24 @@ export interface BooksBalanceReport {
   balanced: boolean
   postingsChecked: number
   discrepancies: BooksBalanceDiscrepancy[]
+  /**
+   * The COMPLETENESS half, for one month (49 §2.4).
+   *
+   * 🛑 Balance is not completeness. Every entry in the books can tie perfectly
+   * while a month is missing a week of revenue, and that is exactly the state a
+   * connector-fed org lands in: the shipments are logged and nothing has posted
+   * them. The sweep above proves the entries that exist are right; this proves
+   * there are no entries still owed. A screen that showed only the first would
+   * report green books that are short.
+   *
+   * `null` means NOT COUNTED, never zero. The counts are per MONTH and the sweep
+   * is org-wide, so a caller that asked no month gets no answer rather than a
+   * `0` that reads as "nothing outstanding" - the same rule the opening balances
+   * follow, and for the same reason.
+   */
+  month: string | null
+  /** Shipments in `month` with no live posting stamped. `null` when no month was asked. */
+  unpostedShipments: number | null
+  /** `channel` credit memos in `month` still in draft. `null` when no month was asked. */
+  unissuedChannelCreditMemos: number | null
 }

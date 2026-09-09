@@ -13,6 +13,7 @@ import {
   Landmark,
   Lock,
   Map as MapIcon,
+  PackagePlus,
   PackageX,
   Scale,
   Settings2,
@@ -116,6 +117,20 @@ const REMEDIES: Partial<Record<LedgerBlockerStatus, BlockerRemedy>> = {
       'Every inventory balance and activity total is unchanged, so there is no month-end entry to build. This is a skip, not a fault: an organization whose cutoff predates its first movement walks through a run of these.',
     action: 'next-period',
     actionLabel: 'Go to the next month',
+  },
+  // 🛑 `failure`, not `neutral`, and not because anything broke. Unlike an empty
+  // month or a day-one setup, this is a set of books that is genuinely short:
+  // closing on top of it puts revenue permanently outside a month somebody has
+  // certified, because the entry it owes can no longer be written into a locked
+  // period. It is work to do, and the box has to say so.
+  revenue_incomplete: {
+    tone: 'failure',
+    icon: PackagePlus,
+    title: 'This month still holds revenue that is not in the books',
+    guidance:
+      'A shipment that has left with no posting behind it, or a credit memo the sales channel sent that nobody has issued or voided. The message above counts both. Post the fulfillments and settle the drafts first: once the month is closed, the entries they owe cannot be written into it.',
+    href: '/app/orders',
+    actionLabel: 'Open orders',
   },
   error: {
     tone: 'failure',

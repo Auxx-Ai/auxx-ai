@@ -11,6 +11,11 @@ import type { FieldOptions } from '../custom-fields/field-options'
 // copy of the three destinations would let a form offer a value the resolver
 // does not recognise, which falls back silently.
 import { PAYMENT_ROUTE_SETTING_OPTIONS } from '../money/bank-deposits/route'
+// Same rule for `accounting.fulfillmentPosting`: the two modes are declared once,
+// beside the mode union the runner reads, rather than restated here. The list is
+// in its own client-safe file because the READER (`auto.ts`) enqueues a BullMQ
+// job and this catalog is imported by the settings form.
+import { FULFILLMENT_POSTING_SETTING_OPTIONS } from '../money/fulfillment-posting/setting-options'
 import type { SettingScope, SettingValue } from './types'
 
 /**
@@ -966,6 +971,30 @@ export const SETTINGS_CATALOG = {
     description:
       'The IANA timezone the books are kept in, e.g. America/New_York. Period keys are ' +
       'derived in it. Unset refuses to post rather than assuming UTC.',
+  },
+
+  // ── When a shipment reaches the ledger (49 §2.4, §8.4 decision 1) ──────────
+  //
+  // A MODE, not an opening balance: it changes what happens NEXT and rewrites
+  // nothing that has already posted, so it stays editable after the first claim
+  // and is deliberately absent from the freeze the two rows above carry.
+  //
+  // ⚠️ `manual` is the default because `auto` posts without anybody looking. The
+  // preview in the posting dialog is the only review step this feature has
+  // (there is no draft posting - `GlPosting` rows are born posted), so choosing
+  // `auto` is choosing to skip the review, and that has to be a decision
+  // somebody makes rather than one they acquire by upgrading. It is also the
+  // safe direction on a first connector sync, which can carry a year of history.
+  'accounting.fulfillmentPosting': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'SINGLE_SELECT',
+    defaultValue: 'manual',
+    options: { options: [...FULFILLMENT_POSTING_SETTING_OPTIONS] },
+    description:
+      'When a shipment becomes a ledger entry. Automatic posts one fulfillment entry per ship ' +
+      'day after every connector sync; manual waits for the posting dialog, where the preview ' +
+      'is the review.',
   },
 
   // The frozen auxx.ai snapshot: the December 31 physical count valued at

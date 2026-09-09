@@ -234,6 +234,26 @@ export const ACCOUNT_ROLES = {
    */
   CLEARING_CARD: 'clearing_card',
   /**
+   * Affirm clearing (default `1210`). The SECOND clearing rail, and it exists
+   * for one reason: an Affirm settlement never lands on the card rail, so it is
+   * invisible to the payouts API.
+   *
+   * 🛑 **Folding Affirm orders into `clearing_card` makes `1200` impossible to
+   * reconcile to zero.** The payout entry drains `clearing_card` by exactly what
+   * a card payout settled; an Affirm sale debited there would never be drained,
+   * and `1200` would carry a growing residual that balances perfectly and reads
+   * as unsettled card money. So the fulfillment builder's debit fork routes an
+   * `affirm` gateway here (`resolveFulfillmentDebit` in
+   * `build-fulfillment-batch-entry.ts`), and `PAYOUT_CLEARING_ROLES` excludes
+   * this role by construction.
+   *
+   * `6105 Merchant Fees - Affirm` is the matching expense account and stays
+   * role-less until an Affirm settlement feed exists to post against it.
+   *
+   * @see plans/money/tasks/49-bulk-fulfillment-posting.md §3.2, §8.4 decision 6
+   */
+  CLEARING_AFFIRM: 'clearing_affirm',
+  /**
    * Unidentified receipts (default `2450`). Money that arrived and auxx cannot
    * attribute, held as a LIABILITY until somebody codes it.
    *
@@ -361,6 +381,7 @@ export const ROLE_ACCOUNT_TYPES: Record<AccountRole, GlAccountTypeValue> = {
   accounts_receivable: 'asset',
   undeposited_funds: 'asset',
   clearing_card: 'asset',
+  clearing_affirm: 'asset',
   unidentified_receipts: 'liability',
   sales_tax_payable: 'liability',
   deferred_revenue: 'liability',
@@ -403,6 +424,7 @@ export const ACCOUNT_ROLE_LABELS: Record<AccountRole, string> = {
   accounts_receivable: 'Accounts Receivable',
   undeposited_funds: 'Undeposited Funds',
   clearing_card: 'Card Clearing',
+  clearing_affirm: 'Affirm Clearing',
   unidentified_receipts: 'Unidentified Receipts',
   sales_tax_payable: 'Sales Tax Payable',
   deferred_revenue: 'Deferred Revenue',

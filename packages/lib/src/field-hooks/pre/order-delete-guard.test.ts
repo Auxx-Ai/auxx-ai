@@ -1,12 +1,20 @@
 // packages/lib/src/field-hooks/pre/order-delete-guard.test.ts
 // The guard that stops an order being hard-deleted out from under a fulfillment
-// entry standing in a settled month.
+// entry - one that stands in a settled month, and one that is simply still
+// live.
 //
 // Modelled on `part-delete-guard.test.ts`. The settled predicates are the same
 // three (`postings/settled-periods.ts`); what differs is the SUBJECT. A part is
-// judged on its stock movements, an order on the general-ledger entries whose
-// lines name it as `sourceType: 'order'`, and those carry a calendar `txnDate`
-// rather than a timestamp, which is what the timezone case below pins.
+// judged on its stock movements, an order on the general-ledger entries that
+// name it, and those carry a calendar `txnDate` rather than a timestamp, which
+// is what the timezone case below pins.
+//
+// 🛑 Two ways an order names an entry, and BOTH are read. A batch fulfillment
+// entry summarises: only the A/R leg of a terms order carries
+// `sourceType: 'order'`, so `listPostingsForSource` finds nothing at all for a
+// paid Shopify order. The shipment log's stamp is the other half, and the
+// `by the stamp alone` block below is the case a source-line-only guard misses
+// entirely.
 
 import { ok } from 'neverthrow'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -14,8 +22,11 @@ import type { EntityPreDeleteEvent } from '../types'
 
 const h = vi.hoisted(() => ({
   listPostingsForSource: vi.fn(),
+  listOrderFulfillmentPostings: vi.fn(),
   resolvePeriodLock: vi.fn(),
   postedPeriodRows: vi.fn(),
+  /** The `GlPosting` rows the stamped ids resolve to: id + txnDate. */
+  stampedPostingRows: vi.fn(),
   getOrganizationSetting: vi.fn(),
 }))
 
@@ -23,22 +34,32 @@ vi.mock('../../postings/list-postings', () => ({
   listPostingsForSource: h.listPostingsForSource,
 }))
 
+vi.mock('../../money/fulfillment-posting/reads', () => ({
+  listOrderFulfillmentPostings: h.listOrderFulfillmentPostings,
+}))
+
 vi.mock('../../postings/period-lock', () => ({ resolvePeriodLock: h.resolvePeriodLock }))
 vi.mock('../../settings/settings-service', () => ({
   getOrganizationSetting: h.getOrganizationSetting,
 }))
 
-// `selectDistinct()` is the posted-period read inside `settledPeriodsFor`. The
-// terminal `.where()` resolves, so a query that stops ending there fails loudly.
+// `selectDistinct()` is the posted-period read inside `settledPeriodsFor`, and
+// `select()` is the guard's own read of the stamped postings' accounting dates.
+// The terminal `.where()` resolves in both, so a query that stops ending there
+// fails loudly.
 vi.mock('@auxx/database', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('@auxx/database')
   const postedChain: Record<string, unknown> = {}
   postedChain.from = () => postedChain
   postedChain.where = async () => h.postedPeriodRows()
 
+  const stampedChain: Record<string, unknown> = {}
+  stampedChain.from = () => stampedChain
+  stampedChain.where = async () => h.stampedPostingRows()
+
   return {
     ...actual,
-    database: { selectDistinct: () => postedChain },
+    database: { selectDistinct: () => postedChain, select: () => stampedChain },
   }
 })
 
@@ -71,6 +92,34 @@ function postings(...rows: ReturnType<typeof posting>[]): void {
   h.listPostingsForSource.mockResolvedValue(ok(rows))
 }
 
+/** One posting the order's shipment log stamps, as the guard reads it. */
+function stamp(
+  glPostingId: string,
+  txnDate: string,
+  status: 'posted' | 'reversed' = 'posted',
+  docNumber: string | null = `AUXX-FUL-${txnDate.replace(/-/g, '')}`
+) {
+  return { glPostingId, txnDate, status, docNumber }
+}
+
+/** Wire the log's stamps and the `GlPosting` rows they resolve to, together. */
+function stamps(...rows: ReturnType<typeof stamp>[]): void {
+  h.listOrderFulfillmentPostings.mockResolvedValue(
+    ok(
+      rows.map((row, index) => ({
+        sequence: index + 1,
+        shippedAt: row.txnDate,
+        glPostingId: row.glPostingId,
+        docNumber: row.docNumber,
+        status: row.status,
+      }))
+    )
+  )
+  h.stampedPostingRows.mockReturnValue(
+    rows.map((row) => ({ id: row.glPostingId, txnDate: row.txnDate }))
+  )
+}
+
 function settings(values: Record<string, string | null>): void {
   h.getOrganizationSetting.mockImplementation(
     async ({ key }: { key: string }) => values[key] ?? null
@@ -89,6 +138,7 @@ const BOOKS_OPEN = {
 beforeEach(() => {
   vi.clearAllMocks()
   postings()
+  stamps()
   h.postedPeriodRows.mockReturnValue([])
   h.resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: null })
   settings(BOOKS_OPEN)
@@ -143,6 +193,82 @@ describe('guardOrderDelete: refusal', () => {
     })
 
     await expect(guardOrderDelete(event())).rejects.toThrow(/ledger unavailable/)
+  })
+
+  it('fails closed when the shipment log cannot be read', async () => {
+    h.listOrderFulfillmentPostings.mockResolvedValue({
+      isErr: () => true,
+      error: new Error('shipment log unavailable'),
+    })
+
+    await expect(guardOrderDelete(event())).rejects.toThrow(/shipment log unavailable/)
+  })
+})
+
+// 🛑 The whole point of reading the stamp. A paid Shopify order posts through a
+// batch entry whose clearing, revenue, tax and shipping legs summarise under
+// `fulfillment_batch`, so `listPostingsForSource` returns NOTHING for it. Every
+// case in this block has an empty source-line read.
+describe('guardOrderDelete: by the stamp alone', () => {
+  it('refuses a live stamped posting even with the books wide open', async () => {
+    stamps(stamp('gl_1', '2026-08-15'))
+
+    await expect(guardOrderDelete(event())).rejects.toThrow(/AUXX-FUL-20260815/)
+  })
+
+  it('points at reversing the entry rather than at archiving', async () => {
+    stamps(stamp('gl_1', '2026-08-15'))
+
+    await expect(guardOrderDelete(event())).rejects.toThrow(/Reverse the entry first/)
+  })
+
+  it('names every live entry and counts them', async () => {
+    stamps(stamp('gl_1', '2026-08-15'), stamp('gl_2', '2026-08-16'))
+
+    await expect(guardOrderDelete(event())).rejects.toThrow(
+      /2 ledger entries that are still standing: AUXX-FUL-20260815, AUXX-FUL-20260816/
+    )
+  })
+
+  it('falls back to the posting id when the entry has no document number', async () => {
+    stamps(stamp('gl_1', '2026-08-15', 'posted', null))
+
+    await expect(guardOrderDelete(event())).rejects.toThrow(/gl_1/)
+  })
+
+  // Decision 9: reversing a run is what makes its orders deletable again, and
+  // is also what puts their shipments back into the next bulk preview.
+  it('allows a delete once every stamped posting is reversed', async () => {
+    stamps(stamp('gl_1', '2026-08-15', 'reversed'))
+
+    await expect(guardOrderDelete(event())).resolves.toBeUndefined()
+  })
+
+  // 🛑 The `txnDate` of a batch entry is the LATEST ship date in its group, so a
+  // week grouping can date a July shipment into August. Testing the log's own
+  // date instead of the posting's would test the wrong month.
+  it('settles on the POSTING date, so a reversed entry in a closed month still refuses', async () => {
+    stamps(stamp('gl_1', '2026-08-02', 'reversed'))
+    h.postedPeriodRows.mockReturnValue(posted('2026-08'))
+
+    await expect(guardOrderDelete(event())).rejects.toThrow(/1 ledger posting in 2026-08/)
+  })
+
+  it('counts source lines and stamps together when both name entries', async () => {
+    postings(posting('2026-07-02'))
+    stamps(stamp('gl_1', '2026-08-15', 'reversed'))
+    h.postedPeriodRows.mockReturnValue(posted('2026-07', '2026-08'))
+
+    await expect(guardOrderDelete(event())).rejects.toThrow(/2 ledger postings in 2026-07, 2026-08/)
+  })
+
+  it('reads the log by the order instance', async () => {
+    await guardOrderDelete(event())
+
+    expect(h.listOrderFulfillmentPostings).toHaveBeenCalledWith(expect.anything(), {
+      organizationId: ORG,
+      orderId: ORDER_ID,
+    })
   })
 })
 

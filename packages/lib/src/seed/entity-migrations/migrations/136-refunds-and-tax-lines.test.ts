@@ -65,11 +65,16 @@ function storedField(
 const registry = FIELD_REGISTRY
 
 describe('migration 136 registration', () => {
-  it('is registered exactly once, last, with a unique id', () => {
+  it('is registered exactly once, after 135, with a unique id', () => {
+    // Was `ids.at(-1)` until 137 landed behind it. "Last" is a self-invalidating
+    // assertion - every new migration breaks it, and the thing actually worth
+    // asserting is that this one runs after the migration whose defs it widens.
     const ids = ALL_ENTITY_MIGRATIONS.map((m) => m.id)
     expect(ids.filter((id) => id === '136-refunds-and-tax-lines')).toHaveLength(1)
     expect(new Set(ids).size).toBe(ids.length)
-    expect(ids.at(-1)).toBe('136-refunds-and-tax-lines')
+    expect(ids.indexOf('136-refunds-and-tax-lines')).toBeGreaterThan(
+      ids.indexOf('135-bank-deposit-bank-account')
+    )
     expect(migration136RefundsAndTaxLines.id).toBe('136-refunds-and-tax-lines')
   })
 

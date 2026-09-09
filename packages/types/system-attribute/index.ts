@@ -338,6 +338,15 @@ export const SYSTEM_ATTRIBUTES = [
   // not a fan-out: this is what lets `buildFulfillmentEntry` use exact per-line
   // tax instead of allocating the order total pro rata across shipments.
   'line_item_tax_total',
+  // plans/money/tasks/49-bulk-fulfillment-posting.md §8.4 decision 4, entity
+  // migration 137. The sales channel's per-line fulfillment rollup, carried
+  // NATIVE so `deriveFulfillmentLog` can reconstruct `order_fulfillments` for a
+  // connector order without lib knowing a single Shopify field path. Before
+  // this they existed only as `@app:shopify:*` app fields, so nothing native
+  // said an imported order had shipped.
+  'line_item_fulfilled_at',
+  'line_item_fulfilled_qty',
+  'line_item_shipment_count',
   'line_item_optional',
   'line_item_optional_selected',
   'line_item_category',
