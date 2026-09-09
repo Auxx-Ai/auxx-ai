@@ -46,6 +46,11 @@ export const Credential = pgTable(
      * Denormalized providerKey for `connection` rows ('gmail', 'telegram-bot', 'openaiApi').
      * NULL for app/mcp kinds — the owner FK (appId/mcpServerId) identifies the target.
      * Transitional: superseded by the resolved `ConnectionDefinition.providerKey` (Phase 2).
+     *
+     * Phase 2 must sweep the SQL predicates keyed on this column, not just the reads.
+     * `banking/feed/reaper.ts`'s `releasableBankFeedFilter()` is the one that bites:
+     * it only narrows, so a stale match silently releases nothing and every Stripe
+     * Financial Connections account keeps billing.
      */
     type: text(),
 

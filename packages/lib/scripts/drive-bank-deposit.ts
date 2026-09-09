@@ -11,6 +11,7 @@
 
 import { closePools, database, schema } from '@auxx/database'
 import { eq } from 'drizzle-orm'
+import { listBankAccounts } from '../src/banking'
 import { buildBankDepositPdfPayload } from '../src/documents/payload'
 import {
   clearBankDeposit,
@@ -39,12 +40,20 @@ async function main() {
   console.log(`RESULT undeposited=${undeposited.value.length} cheques=${cheques.length}`)
   if (cheques.length === 0) throw new Error('no undeposited cheques to group')
 
+  // The deposit is banked into an ACCOUNT now, not a code (migration 135), so
+  // the drive has to pick a mapped one the way the picker does.
+  const accounts = await listBankAccounts(database, { organizationId })
+  if (accounts.isErr()) throw accounts.error
+  const target = accounts.value.find((account) => !!account.glAccountCode?.trim())
+  if (!target) throw new Error('that organization has no bank account mapped to the chart')
+  console.log(`RESULT bankAccount=${target.name} code=${target.glAccountCode}`)
+
   const created = await createBankDeposit(database, {
     organizationId,
     actorUserId,
     paymentIds: cheques.map((c) => c.paymentId),
     depositDate: new Date().toISOString().slice(0, 10),
-    bankAccountCode: '1000',
+    bankAccountId: target.id,
     reference: 'SLIP-DRIVE',
   })
   if (created.isErr()) throw created.error
@@ -58,7 +67,7 @@ async function main() {
     actorUserId,
     paymentIds: cheques.map((c) => c.paymentId),
     depositDate: deposit.depositDate!,
-    bankAccountCode: '1000',
+    bankAccountId: target.id,
   })
   console.log(`RESULT regroup=${regroup.isErr() ? regroup.error.message : 'NOT REFUSED'}`)
 

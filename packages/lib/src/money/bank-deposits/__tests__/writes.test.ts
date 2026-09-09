@@ -35,6 +35,8 @@ const h = vi.hoisted(() => ({
   calls: [] as string[],
   /** The `db` handle `readPaymentsByIds` was called with - the tx one, or the outer one. */
   readWith: [] as unknown[],
+  /** What `readDepositBankAccount` answers. Null stands in for "no such account". */
+  bankAccount: null as Record<string, unknown> | null,
 }))
 
 vi.mock('../../../cache', () => ({
@@ -44,6 +46,10 @@ vi.mock('../../../cache', () => ({
 
 vi.mock('../reads', () => ({
   requireBankDepositFieldContext: async () => ({ depositDefId: 'def_bank_deposit', fields: {} }),
+  requireBankDepositWriteContext: async () => ({
+    depositDefId: 'def_bank_deposit',
+    fields: { bank_deposit_bank_account_record: { id: 'fld_account' } },
+  }),
   requirePaymentFieldContext: async () => ({
     paymentDefId: 'def_payment',
     fields: { payment_bank_deposit: { id: 'fld_link' } },
@@ -56,6 +62,11 @@ vi.mock('../reads', () => ({
   },
   readBankDepositDetail: async () => h.deposit,
   readDepositPayments: async () => [],
+  requireDepositBankAccountContext: async () => ({
+    bankAccountDefId: 'def_bank_account',
+    fields: { bank_account_gl_account: { id: 'fld_gl' } },
+  }),
+  readDepositBankAccount: async () => h.bankAccount,
 }))
 
 vi.mock('../../../resources/crud/unified-handler', () => ({
@@ -149,6 +160,7 @@ function deposit(overrides: Record<string, unknown> = {}) {
     recordId: 'def_bank_deposit:dep_1',
     number: 'DEP-0001',
     depositDate: '2026-09-03',
+    bankAccountId: 'acct_1',
     bankAccountCode: '1000',
     reference: null,
     status: 'pending',
@@ -168,7 +180,22 @@ const input = {
   actorUserId: USER,
   paymentIds: ['pay_1'],
   depositDate: '2026-09-03',
-  bankAccountCode: '1000',
+  bankAccountId: 'acct_1',
+}
+
+/** The account the deposit is banked into, mapped to `1000` unless a test says otherwise. */
+function bankAccount(overrides: Record<string, unknown> = {}) {
+  const id = (overrides.id as string) ?? 'acct_1'
+  return {
+    name: 'Business Checking',
+    glAccountCode: '1000',
+    archivedAt: null,
+    ...overrides,
+    id,
+    // Derived, so overriding `id` cannot leave the record id pointing at the
+    // account the test was moving away from.
+    recordId: `def_bank_account:${id}`,
+  }
 }
 
 beforeEach(() => {
@@ -182,6 +209,7 @@ beforeEach(() => {
   h.postedEntries = []
   h.calls = []
   h.readWith = []
+  h.bankAccount = bankAccount()
 })
 
 describe('createBankDeposit refusals', () => {
@@ -197,8 +225,32 @@ describe('createBankDeposit refusals', () => {
   })
 
   it('refuses a blank bank account', async () => {
-    const result = await createBankDeposit(db, { ...input, bankAccountCode: '  ' })
+    const result = await createBankDeposit(db, { ...input, bankAccountId: '  ' })
     expect(result._unsafeUnwrapErr().message).toMatch(/bank account/i)
+  })
+
+  it('refuses a bank account that is not in this organization', async () => {
+    h.bankAccount = null
+    const result = await createBankDeposit(db, input)
+    expect(result._unsafeUnwrapErr().message).toMatch(/does not exist/i)
+    expect(h.created).toHaveLength(0)
+  })
+
+  it('refuses an archived bank account by name', async () => {
+    h.bankAccount = bankAccount({ archivedAt: new Date('2026-08-01T00:00:00Z') })
+    const result = await createBankDeposit(db, input)
+    expect(result._unsafeUnwrapErr().message).toMatch(/Business Checking is archived/)
+    expect(h.created).toHaveLength(0)
+  })
+
+  // 🛑 The whole reason the input is an id: an unmapped account has no code to
+  // debit, and the alternative to refusing is posting to one nobody named.
+  it('refuses a bank account with no chart mapping, and posts nothing', async () => {
+    h.bankAccount = bankAccount({ glAccountCode: null })
+    const result = await createBankDeposit(db, input)
+    expect(result._unsafeUnwrapErr().message).toMatch(/not mapped to an account in the chart/i)
+    expect(h.created).toHaveLength(0)
+    expect(h.postedEntries).toHaveLength(0)
   })
 
   it('refuses a payment that is already in a deposit, and writes nothing', async () => {
@@ -288,7 +340,8 @@ describe('createBankDeposit posts one cash line', () => {
   })
 
   it('banks into the SECOND bank account when that is the one named', async () => {
-    await createBankDeposit(db, { ...input, bankAccountCode: ' 1020 ' })
+    h.bankAccount = bankAccount({ id: 'acct_2', glAccountCode: '1020' })
+    await createBankDeposit(db, { ...input, bankAccountId: 'acct_2' })
 
     const entry = h.postedEntries[0] as {
       lines: Array<{ accountCode?: string; accountRole?: string; memo?: string }>
@@ -468,15 +521,19 @@ describe('clearBankDeposit', () => {
 
 describe('updateBankDeposit', () => {
   it('edits reference and account while the deposit is still pending', async () => {
+    h.bankAccount = bankAccount({ id: 'acct_2', glAccountCode: '1010' })
     const result = await updateBankDeposit(db, {
       organizationId: ORG,
       actorUserId: USER,
       depositId: 'dep_1',
       reference: ' slip-77 ',
-      bankAccountCode: '1010',
+      bankAccountId: 'acct_2',
     })
     expect(result.isOk()).toBe(true)
+    // Both halves move together, and only here: after the entry posts the
+    // branch below refuses, so the code can never drift from the relationship.
     expect(h.updated[0]?.values).toEqual({
+      bank_deposit_bank_account_record: 'def_bank_account:acct_2',
       bank_deposit_bank_account: '1010',
       bank_deposit_reference: 'slip-77',
     })
@@ -532,7 +589,7 @@ describe('updateBankDeposit', () => {
       organizationId: ORG,
       actorUserId: USER,
       depositId: 'dep_1',
-      bankAccountCode: '1020',
+      bankAccountId: 'acct_2',
     })
     expect(result._unsafeUnwrapErr().message).toMatch(/already posted/i)
     expect(h.updated).toHaveLength(0)
@@ -541,12 +598,12 @@ describe('updateBankDeposit', () => {
   // The date has always behaved this way; re-sending the SAME account must not
   // become a refusal just because the deposit has posted.
   it('lets a posted deposit re-send the account it already has', async () => {
-    h.deposit = deposit({ glPostingId: 'glp_1', bankAccountCode: '1000' })
+    h.deposit = deposit({ glPostingId: 'glp_1', bankAccountId: 'acct_1' })
     const result = await updateBankDeposit(db, {
       organizationId: ORG,
       actorUserId: USER,
       depositId: 'dep_1',
-      bankAccountCode: '1000',
+      bankAccountId: 'acct_1',
       reference: 'slip-88',
     })
     expect(result.isOk()).toBe(true)

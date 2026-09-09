@@ -53,10 +53,14 @@ import { toRecordId } from '../../resources/resource-id'
 import { BANK_DEPOSIT_SOURCE_TYPE, isBankDepositFrozen, resolvePaymentRoute } from './client'
 import { guard } from './guard'
 import {
+  type DepositBankAccount,
   loadBankDepositFieldContext,
   readBankDepositDetail,
+  readDepositBankAccount,
   readPaymentsByIds,
   requireBankDepositFieldContext,
+  requireBankDepositWriteContext,
+  requireDepositBankAccountContext,
   requirePaymentFieldContext,
 } from './reads'
 import type {
@@ -183,21 +187,22 @@ export async function createBankDeposit(
   db: Database,
   params: { organizationId: string; actorUserId: string } & CreateBankDepositInput
 ): Promise<Result<CreateBankDepositResult, Error>> {
-  const { organizationId, actorUserId, paymentIds, depositDate, bankAccountCode, reference } =
-    params
+  const { organizationId, actorUserId, paymentIds, depositDate, bankAccountId, reference } = params
 
   return guard(
     async () => {
       assertIsoDate(depositDate, 'Deposit date')
-      if (!bankAccountCode.trim()) {
+      if (!bankAccountId.trim()) {
         throw new BadRequestError('A deposit must name the bank account the money lands in')
       }
+      const bankAccount = await requireDepositTarget(db, organizationId, bankAccountId.trim())
+      const bankAccountCode = bankAccount.glAccountCode
       const uniqueIds = [...new Set(paymentIds)]
       if (uniqueIds.length === 0) {
         throw new BadRequestError('Select at least one payment to bank')
       }
 
-      const depositCtx = await requireBankDepositFieldContext(organizationId)
+      const depositCtx = await requireBankDepositWriteContext(organizationId)
       const paymentCtx = await requirePaymentFieldContext(organizationId)
       const settings = await getOrgCache().get(organizationId, 'orgSettings')
 
@@ -271,7 +276,8 @@ export async function createBankDeposit(
         const crud = new UnifiedCrudHandler(organizationId, actorUserId, txDb)
         const created = await crud.create(depositCtx.depositDefId, {
           bank_deposit_date: depositDate,
-          bank_deposit_bank_account: bankAccountCode.trim(),
+          bank_deposit_bank_account: bankAccountCode,
+          bank_deposit_bank_account_record: bankAccount.recordId,
           bank_deposit_reference: reference?.trim() || undefined,
           bank_deposit_status: 'pending',
           bank_deposit_total: total,
@@ -310,10 +316,10 @@ export async function createBankDeposit(
             // `resolveAccountLines` validates the code against this org's own
             // chart and refuses by name when it is missing, inactive or
             // ambiguous, so a bad code is a rolled-back refusal, not a bad post.
-            accountCode: bankAccountCode.trim(),
+            accountCode: bankAccountCode,
             direction: 'debit',
             amount: totalMinor,
-            memo: `Bank deposit ${deposit.number ?? ''} to ${bankAccountCode.trim()}`.trim(),
+            memo: `Bank deposit ${deposit.number ?? ''} to ${bankAccountCode}`.trim(),
             sourceType: BANK_DEPOSIT_SOURCE_TYPE,
             sourceId: depositId,
             sortOrder: 0,
@@ -355,6 +361,8 @@ export async function createBankDeposit(
         await crud.update(deposit.recordId, { bank_deposit_gl_posting_id: post.glPostingId })
       }
 
+      await stampBankAccountHasPosted(db, organizationId, actorUserId, bankAccount)
+
       logger.info('Recorded bank deposit', {
         organizationId,
         depositId,
@@ -370,6 +378,85 @@ export async function createBankDeposit(
     'Failed to create bank deposit',
     { organizationId, paymentIds: paymentIds.length }
   )
+}
+
+/**
+ * The account this deposit is banked into, refused by name when it cannot take one.
+ *
+ * 🛑 **An ACCOUNT is named and the CODE is read off it, never the other way
+ * round.** The bank feed posts every line on an account against that account's
+ * `glAccountCode`, so a code chosen freely from the chart puts the deposit and
+ * the statement line it exists to match into two different accounts. Nothing
+ * downstream catches it - match candidates are found by amount and date, not by
+ * account. The deposit picker has always worked this way; taking the id here is
+ * what stops any other caller working differently.
+ *
+ * ⚠️ Both refusals are `UnprocessableEntityError` and both name the account,
+ * because both are fixed somewhere else in the product rather than by retrying.
+ */
+async function requireDepositTarget(
+  db: Database,
+  organizationId: string,
+  bankAccountId: string
+): Promise<DepositBankAccount & { glAccountCode: string }> {
+  const ctx = await requireDepositBankAccountContext(organizationId)
+  const account = await readDepositBankAccount(db, organizationId, ctx, bankAccountId)
+  if (!account) {
+    throw new UnprocessableEntityError('That bank account does not exist in this organization')
+  }
+  if (account.archivedAt) {
+    throw new UnprocessableEntityError(
+      `${account.name ?? 'That bank account'} is archived, so nothing can be banked into it. ` +
+        'Restore it, or pick another account.'
+    )
+  }
+  if (!account.glAccountCode) {
+    throw new UnprocessableEntityError(
+      `${account.name ?? 'That bank account'} is not mapped to an account in the chart of ` +
+        'accounts, so there is no account to debit. Map it under Banking first.'
+    )
+  }
+  return { ...account, glAccountCode: account.glAccountCode }
+}
+
+/**
+ * Record on the BANK ACCOUNT that something on it has reached the books.
+ *
+ * 🛑 The same write-once high-water mark `banking/review/writes.ts` stamps when a
+ * bank LINE posts, and for the same reason: a posted deposit debits this
+ * account's chart mapping and names this account as where the money went, so the
+ * account has permanently changed the ledger and must never become hard-deletable
+ * again. Feeding the EXISTING term is deliberate -
+ * `plans/bank-connection/08-removing-a-bank-account.md` §5.1 says one term
+ * decides delete versus archive, and a second blocker beside it would be a
+ * second answer to the same question.
+ *
+ * ⚠️ Called only after the ledger ACCEPTED the entry. A refused post rolls the
+ * deposit back, and stamping a high-water mark for an entry that does not exist
+ * would make an account with nothing on it permanently un-deletable.
+ *
+ * ⚠️ Failures are logged, not thrown. The deposit and its entry are already
+ * written, and turning an accepted post into an error would report work that
+ * actually happened as a failure. The cost of a miss is one account that stays
+ * deletable when it should not be, which the operator sees named in the confirm
+ * dialog before anything goes.
+ */
+async function stampBankAccountHasPosted(
+  db: Database,
+  organizationId: string,
+  actorUserId: string,
+  account: DepositBankAccount
+): Promise<void> {
+  try {
+    const crud = new UnifiedCrudHandler(organizationId, actorUserId, db)
+    await crud.update(account.recordId, { bank_account_has_posted: true })
+  } catch (error) {
+    logger.error('Failed to stamp bank_account_has_posted after a bank deposit', {
+      organizationId,
+      bankAccountId: account.id,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
 }
 
 /**
@@ -472,7 +559,7 @@ export async function clearBankDeposit(
  * message is that the reader can go and look at it. Same rule as the movement
  * ledger: correct by reversing, never by editing.
  *
- * 🛑 `depositDate` AND `bankAccountCode` are additionally frozen once the entry
+ * 🛑 `depositDate` AND the bank account are additionally frozen once the entry
  * has posted, even while the deposit is still pending. They are the posting's
  * `txnDate` and its debit account, and a posted entry is immutable, so editing
  * either here would leave the record claiming one thing and the ledger holding
@@ -486,7 +573,7 @@ export async function updateBankDeposit(
   db: Database,
   params: { organizationId: string; actorUserId: string } & UpdateBankDepositInput
 ): Promise<Result<BankDepositDetail, Error>> {
-  const { organizationId, actorUserId, depositId, depositDate, bankAccountCode, reference } = params
+  const { organizationId, actorUserId, depositId, depositDate, bankAccountId, reference } = params
 
   return guard(
     async () => {
@@ -517,8 +604,8 @@ export async function updateBankDeposit(
         }
         values.bank_deposit_date = depositDate
       }
-      if (bankAccountCode !== undefined && bankAccountCode.trim() !== deposit.bankAccountCode) {
-        if (!bankAccountCode.trim()) {
+      if (bankAccountId !== undefined && bankAccountId.trim() !== deposit.bankAccountId) {
+        if (!bankAccountId.trim()) {
           throw new BadRequestError('A deposit must name the bank account the money lands in')
         }
         if (deposit.glPostingId) {
@@ -529,7 +616,12 @@ export async function updateBankDeposit(
             { glPostingId: deposit.glPostingId }
           )
         }
-        values.bank_deposit_bank_account = bankAccountCode.trim()
+        // Only reachable before the entry posts, so the code has nothing frozen
+        // to disagree with yet and both halves move together. After it posts the
+        // branch above refuses, which is what keeps them from ever diverging.
+        const account = await requireDepositTarget(db, organizationId, bankAccountId.trim())
+        values.bank_deposit_bank_account_record = account.recordId
+        values.bank_deposit_bank_account = account.glAccountCode
       }
       if (reference !== undefined) values.bank_deposit_reference = reference.trim() || null
 

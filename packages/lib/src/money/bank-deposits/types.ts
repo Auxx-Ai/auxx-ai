@@ -43,7 +43,19 @@ export interface BankDepositRecord {
   number: string | null
   /** `YYYY-MM-DD`. THE accounting date of the posting. */
   depositDate: string | null
-  /** GL account CODE the money lands in. */
+  /**
+   * `EntityInstance.id` of the `bank_account` the money was banked into.
+   *
+   * Null on a deposit recorded before migration 135, and on one whose code named
+   * more than one account so the backfill refused to guess.
+   */
+  bankAccountId: string | null
+  /**
+   * The GL account CODE the entry POSTED to, frozen when it was built.
+   *
+   * 🛑 Not derived from {@link bankAccountId}: re-mapping a bank account to a
+   * different chart code must not restate a deposit that posted to the old one.
+   */
   bankAccountCode: string | null
   reference: string | null
   status: BankDepositStatus
@@ -88,8 +100,16 @@ export interface CreateBankDepositInput {
   paymentIds: string[]
   /** `YYYY-MM-DD`. The date the deposit hits the bank, and the posting's date. */
   depositDate: string
-  /** GL account CODE from the org's own chart. Resolved by the poster, not here. */
-  bankAccountCode: string
+  /**
+   * `EntityInstance.id` of the `bank_account` the money is banked into.
+   *
+   * 🛑 An ACCOUNT, never a chart code. The code is read off the account's own
+   * mapping, because the bank feed posts every line on that account against the
+   * same mapping - a free choice from the chart puts the deposit and the
+   * statement line it exists to match into two different accounts, and nothing
+   * catches that (match candidates are found by amount and date).
+   */
+  bankAccountId: string
   reference?: string
 }
 
@@ -119,6 +139,7 @@ export interface ClearBankDepositInput {
 export interface UpdateBankDepositInput {
   depositId: string
   depositDate?: string
-  bankAccountCode?: string
+  /** `EntityInstance.id` of the `bank_account`. Frozen once the entry posts. */
+  bankAccountId?: string
   reference?: string
 }

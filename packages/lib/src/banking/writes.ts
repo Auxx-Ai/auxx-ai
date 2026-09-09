@@ -335,6 +335,14 @@ function normalizeLast4(value: string | null | undefined): string | null {
  * rule whose `bankAccountId` does not match the line, so a dangling scope makes
  * the rule INERT rather than universal - silently dead, not silently dangerous.
  *
+ * ⚠️ **A `bank_deposit` needs no term of its own.** A posted deposit debits this
+ * account's chart mapping and names this account as where the money went, so
+ * `createBankDeposit` stamps `bank_account_has_posted` the same way a posted
+ * bank line does (`money/bank-deposits/writes.ts`). It reaches the gate through
+ * the one term rather than beside it, which is why §5.1's "ONE term decides"
+ * still holds after entity migration 135 gave the deposit a real relationship to
+ * the account.
+ *
  * Exported and pure so the gate is tested without a database, exactly the way
  * `import/reverse.ts`'s `refusalReason` is.
  */

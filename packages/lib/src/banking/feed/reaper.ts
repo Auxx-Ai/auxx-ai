@@ -153,7 +153,22 @@ const feedAccountColumns = {
   providerAccountId: sql<string>`${schema.Credential.metadata}->>${PROVIDER_ACCOUNT_ID_METADATA_KEY}`,
 }
 
-/** A Financial Connections connector whose credential still carries an account to release. */
+/**
+ * A Financial Connections connector whose credential still carries an account to release.
+ *
+ * Shared by all three SQL doors - the sweep ({@link findReapableBankFeeds}), door 4
+ * ({@link listBankFeedAccountsForOrganization}) and door 3
+ * ({@link findBankFeedAccountForConnector}).
+ *
+ * ⚠️ **`Credential.type` is transitional.** Its schema comment
+ * (`packages/database/src/db/schema/credential.ts`) marks it a denormalized providerKey
+ * that the resolved `ConnectionDefinition.providerKey` supersedes in Phase 2. Whoever
+ * does that migration has to come through here: these three queries key on it, and
+ * because the predicate only ever NARROWS the candidate set, a stale match does not
+ * fail loudly - the sweep reports zero candidates, looks healthy, and every account
+ * keeps billing at 30c a month. Same silent failure the shared
+ * {@link PROVIDER_ACCOUNT_ID_METADATA_KEY} exists to prevent, one column over.
+ */
 function releasableBankFeedFilter() {
   return and(
     eq(schema.DataConnector.type, STRIPE_FC_CONNECTOR_TYPE),
