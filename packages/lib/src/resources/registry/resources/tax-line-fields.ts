@@ -215,13 +215,21 @@ export const TAX_LINE_FIELDS: Record<string, ResourceField> = {
     systemSortOrder: 'a5',
     showInPanel: false, // tax lines are read in the context of their order
     nullable: false,
-    required: true,
+    // 🛑 NOT `required`, and `updatable` must stay true, even though a tax line with no
+    // order is meaningless. A connector writes its children in TWO passes
+    // (`data-connectors/relationship-pass.ts`): the create carries the leaf values only
+    // and the parent edge is written afterwards from `pendingRelations`. So `required`
+    // refuses the create the connector actually makes - it does not wait for the order,
+    // it never names one - and `updatable: false` would then refuse the second pass that
+    // supplies it. Both were set here and every tax line was rejected with "Missing
+    // required fields: Order" on the first real sync (1599 of them, brief 51 §1). Every
+    // sibling parent edge - `line_item_order`, `credit_memo_order`,
+    // `credit_memo_line_credit_memo` - is optional and updatable for this reason.
     capabilities: {
       filterable: true,
       sortable: false,
       creatable: true,
-      updatable: false,
-      required: true,
+      updatable: true,
       configurable: false,
     },
     relationship: {
