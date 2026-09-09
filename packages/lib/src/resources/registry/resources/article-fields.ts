@@ -312,7 +312,6 @@ export const ARTICLE_FIELDS: Record<string, ResourceField> = {
       constraints: {
         preventCircular: true,
         maxDepth: 10,
-        onDeleteWithChildren: 'prevent',
       },
     },
     description: 'Parent article (self-referential)',
@@ -338,6 +337,7 @@ export const ARTICLE_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'article:parent' as ResourceFieldId,
       relationshipType: 'has_many',
+      // No onDelete: the inverse is a dbColumn, so the delete engine cannot act on it.
       isInverse: true,
     },
     description: 'Child articles (self-referential)',
@@ -407,6 +407,7 @@ export const ARTICLE_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'tag:tag_articles' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'unlink',
       isInverse: false,
     },
     description: 'Tags assigned to this article',

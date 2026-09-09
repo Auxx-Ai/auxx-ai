@@ -593,6 +593,7 @@ export const INVOICE_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'line_item:invoice' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'cascade',
       isInverse: true,
     },
     description: 'Line items on this invoice',
@@ -618,6 +619,7 @@ export const INVOICE_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'payment:invoice' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'restrict',
       isInverse: true,
     },
     description: 'Payments applied to this invoice',

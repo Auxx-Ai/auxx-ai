@@ -1,21 +1,35 @@
 // packages/lib/src/field-hooks/pre/work-order-delete-guard.ts
 
 import { database, schema } from '@auxx/database'
-import { parseRecordId, toRecordId } from '@auxx/types/resource'
+import { parseRecordId } from '@auxx/types/resource'
 import { and, eq } from 'drizzle-orm'
 import { getOrgCache } from '../../cache'
 import { BadRequestError } from '../../errors'
 import { PermissionKey, requirePermission } from '../../permissions'
-import { UnifiedCrudHandler } from '../../resources/crud'
 import type { EntityPreDeleteHandler } from '../types'
 
 /**
- * Pre-delete guard for `work-orders` (plans/dispatch/money/12-delete-safety.md §C). Blocks
- * deleting a job that still has a linked invoice — either the direct `invoice:workOrder`
- * relationship or an allocation-ledger row — and points the
- * user at the invoice(s) first. Visit/QC/recurrence cascade at the DB level by design (it's
- * the job's own data); only WO-owned line items need app-side cleanup here, since the guard
- * below guarantees none of them are invoice-stamped by the time cleanup runs.
+ * Pre-delete guard for `work-orders` (plans/dispatch/money/12-delete-safety.md §C).
+ *
+ * Two refusals the registry cannot express, and one Drizzle-table cleanup:
+ *
+ *   1. **Permission.** Deleting a job is a dispatch-board action, so anyone who
+ *      is not the system user needs `dispatchBoardManage` on top of the per-row
+ *      `record.delete` the mutation already asserted.
+ *   2. **REFUSE while an `InvoiceLineAllocation` names this job.** The
+ *      allocation ledger is a Drizzle table with no registry field behind it, so
+ *      only a hook can see it. The direct `invoice:workOrder` link is the
+ *      registry's concern: `onDelete: 'restrict'` on `work_order_invoices`.
+ *   3. **Purge `WorkOrderBillingInstallment`.** Another Drizzle table, the job's
+ *      own billing schedule, with nothing else to reference it once the job is
+ *      gone.
+ *
+ * **What is NOT here, and why.** The job's own line items are
+ * `onDelete: 'cascade'` on `work_order_line_items`; the delete engine collects
+ * them, runs the line guard (`guardAllocatedLineDelete`) over every one of them
+ * before writing anything, and publishes their lifecycle events. Visits, QC
+ * items and recurrence rules cascade at the DB level by design. This hook used
+ * to delete the lines by hand; it no longer touches a child record.
  */
 export const guardWorkOrderDelete: EntityPreDeleteHandler = async (event) => {
   const { organizationId, userId, recordId } = event
@@ -23,30 +37,6 @@ export const guardWorkOrderDelete: EntityPreDeleteHandler = async (event) => {
   const systemUserId = await getOrgCache().get(organizationId, 'systemUser')
   if (userId !== systemUserId) {
     await requirePermission(userId, organizationId, PermissionKey.dispatchBoardManage)
-  }
-
-  const handler = new UnifiedCrudHandler(organizationId, userId)
-
-  const linkedInvoices = await handler.listFiltered({
-    entityDefinitionId: 'invoice',
-    filters: [
-      {
-        id: 'wo-delete-linked-invoice',
-        logicalOperator: 'AND',
-        conditions: [
-          {
-            id: 'wo-delete-linked-invoice-c1',
-            fieldId: 'invoice:workOrder',
-            operator: 'is',
-            value: recordId,
-          },
-        ],
-      },
-    ],
-    limit: 1,
-  })
-  if (linkedInvoices.ids.length > 0) {
-    throw new BadRequestError("Delete or void this job's invoices first")
   }
 
   const { entityInstanceId: workOrderId } = parseRecordId(recordId)
@@ -59,34 +49,6 @@ export const guardWorkOrderDelete: EntityPreDeleteHandler = async (event) => {
   })
   if (allocation) {
     throw new BadRequestError("Delete or void this job's invoices first")
-  }
-
-  // No linked/stamped invoices — safe to hard-delete every WO-owned line item. Visits, QC
-  // items, and recurrence rules keep their DB cascades, untouched by this hook.
-  const { ids: ownLineIds } = await handler.listFiltered({
-    entityDefinitionId: 'line_item',
-    filters: [
-      {
-        id: 'wo-delete-own-lines',
-        logicalOperator: 'AND',
-        conditions: [
-          {
-            id: 'wo-delete-own-lines-c1',
-            fieldId: 'line_item:workOrder',
-            operator: 'is',
-            value: recordId,
-          },
-        ],
-      },
-    ],
-    limit: 1000,
-  })
-  for (const lineInstanceId of ownLineIds) {
-    // Suppress the line-level billing post-delete hook — it would re-project the very work
-    // order being deleted, once per line; the work-order post-delete hook syncs the contact.
-    await handler.delete(toRecordId('line_item', lineInstanceId), {
-      suppressPostDeleteHooks: true,
-    })
   }
 
   await database

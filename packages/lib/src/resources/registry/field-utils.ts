@@ -12,8 +12,31 @@ import { getOperatorsForType } from '../../workflow-engine/operators/type-operat
 import { createResourceReference } from '../../workflow-engine/types/resource-reference'
 import { BaseType } from '../types'
 import { RESOURCE_FIELD_REGISTRY, type TableId } from './field-registry'
-import { getFieldOutputKey, type ResourceField } from './field-types'
+import {
+  getFieldOutputKey,
+  type RegistryRelationshipConfig,
+  type ResourceField,
+} from './field-types'
 import { isCustomResourceId } from './types'
+
+/**
+ * Narrow a stored `options.relationship` block into the registry's shape. A
+ * stored owning side that never declared `onDelete` (every user-created field)
+ * behaves as `unlink`; a belongs_to side never carries one.
+ */
+export function toRegistryRelationship(
+  rel: RelationshipConfig | null | undefined
+): RegistryRelationshipConfig | undefined {
+  if (!rel) return undefined
+  const base = {
+    inverseResourceFieldId: rel.inverseResourceFieldId,
+    isInverse: rel.isInverse,
+    constraints: rel.constraints,
+  }
+  return rel.relationshipType === 'belongs_to'
+    ? { ...base, relationshipType: rel.relationshipType }
+    : { ...base, relationshipType: rel.relationshipType, onDelete: rel.onDelete ?? 'unlink' }
+}
 
 /** The concrete `${defId}:${fieldId}` ref for a field, preferring its own `resourceFieldId`. */
 function concreteRefOf(

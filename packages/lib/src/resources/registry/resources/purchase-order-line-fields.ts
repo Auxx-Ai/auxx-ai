@@ -369,6 +369,7 @@ export const PURCHASE_ORDER_LINE_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'stock_movement:purchaseOrderLine' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'cascade',
       isInverse: true,
     },
   },
@@ -397,6 +398,7 @@ export const PURCHASE_ORDER_LINE_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'vendor_bill_line:purchaseOrderLine' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'unlink',
       isInverse: true,
     },
   },

@@ -687,6 +687,7 @@ export const PURCHASE_ORDER_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'purchase_order_line:purchaseOrder' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'cascade',
       isInverse: true,
     },
     description: 'Lines on this purchase order',
@@ -715,6 +716,7 @@ export const PURCHASE_ORDER_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'vendor_bill:purchaseOrder' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'restrict',
       isInverse: true,
     },
     description: 'Supplier bills raised against this order — one order can be billed several times',

@@ -33,14 +33,16 @@
  */
 
 import type { TypedFieldValue } from '@auxx/types'
-import type { RelationshipConfig } from '@auxx/types/custom-field'
 import type { FieldId, ResourceFieldId } from '@auxx/types/field'
 import { toRecordId } from '@auxx/types/resource'
 import {
   RESOURCE_FIELD_REGISTRY,
   RESOURCE_TABLE_MAP,
 } from '../../resources/registry/field-registry'
-import type { ResourceField } from '../../resources/registry/field-types'
+import type {
+  RegistryRelationshipConfig,
+  ResourceField,
+} from '../../resources/registry/field-types'
 import type { CustomResource, Resource, SystemResource } from '../../resources/registry/types'
 import { BaseType } from '../core/types'
 
@@ -68,7 +70,7 @@ const fullCapabilities = {
   configurable: true,
 }
 
-const vendorRegionRelationship: RelationshipConfig = {
+const vendorRegionRelationship: RegistryRelationshipConfig = {
   // Points at VendorRegion's inverse field. The inverse field need not exist
   // in this fixture (nothing looks it up — only `has_many` reciprocal lookups
   // would, and neither relation here is `has_many`); only the entityDefinitionId
@@ -78,7 +80,7 @@ const vendorRegionRelationship: RelationshipConfig = {
   isInverse: false,
 }
 
-const regionParentRelationship: RelationshipConfig = {
+const regionParentRelationship: RegistryRelationshipConfig = {
   inverseResourceFieldId: `${REGION_DEF_ID}:childRegions` as ResourceFieldId,
   relationshipType: 'belongs_to',
   isInverse: false,

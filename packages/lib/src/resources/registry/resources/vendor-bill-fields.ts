@@ -661,6 +661,7 @@ export const VENDOR_BILL_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'vendor_bill_line:vendorBill' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'cascade',
       isInverse: true,
     },
     description: 'Lines on this bill',
@@ -691,6 +692,7 @@ export const VENDOR_BILL_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'vendor_payment_allocation:vendorBill' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'restrict',
       isInverse: true,
     },
     description:

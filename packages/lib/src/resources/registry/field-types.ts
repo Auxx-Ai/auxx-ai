@@ -1,10 +1,59 @@
 // packages/lib/src/resources/registry/field-types.ts
 
 import type { FieldType } from '@auxx/database/types'
+import type { RelationDeleteBehavior, RelationshipConstraints } from '@auxx/types/custom-field'
 import type { FieldId, ResourceFieldId } from '@auxx/types/field'
 import type { SystemAttribute } from '@auxx/types/system-attribute'
 import type { FieldOptions } from '../../custom-fields/field-options'
 import type { BaseType } from '../types'
+
+/**
+ * The registry's copy of `RelationshipConfig` (from `@auxx/types/custom-field`)
+ * with the delete-behavior rule attached. A belongs_to side never acts upward,
+ * so it CANNOT declare `onDelete`. A has_many / has_one / many_to_many side
+ * declares it exactly when the delete engine can act on the edge: both ends are
+ * EntityInstance-backed defs (`SYSTEM_ENTITIES` in the seeder constants) and
+ * the relation is stored as FieldValue rows, which means the inverse belongs_to
+ * field has no `dbColumn`. An edge that fails that test (a registry-only def
+ * such as `message` or `kb`, or a Drizzle column like `ticket.parentTicket`)
+ * omits it and its teardown lives with the table that owns the column.
+ * Compile-time cannot see which defs are entity-backed, so the has_many side is
+ * optional here and `__tests__/relationship-on-delete.test.ts` enforces both
+ * directions. Assignable to `RelationshipConfig` everywhere the registry hands
+ * the block to code typed against stored `CustomField.options`.
+ */
+export type RegistryRelationshipConfig =
+  | {
+      inverseResourceFieldId: ResourceFieldId | null
+      relationshipType: 'belongs_to'
+      isInverse: boolean
+      constraints?: RelationshipConstraints
+      onDelete?: never
+    }
+  | {
+      inverseResourceFieldId: ResourceFieldId | null
+      relationshipType: 'has_many' | 'has_one' | 'many_to_many'
+      isInverse: boolean
+      constraints?: RelationshipConstraints
+      onDelete?: RelationDeleteBehavior
+    }
+
+/**
+ * Seeder-only description of a relationship pair. Same rule as
+ * {@link RegistryRelationshipConfig}: the owning side declares `onDelete` when
+ * the edge is actionable, the belongs_to side never does.
+ */
+export type RegistryRelationshipSeedConfig = {
+  /** Target entity type (e.g., 'contact', 'user', 'ticket') */
+  relatedEntityType: string
+  /** Display name for the inverse field (e.g., 'Tickets', 'Assigned Tickets') */
+  inverseName: string
+  /** System attribute for the inverse field (e.g., 'contact_tickets', 'user_assigned_tickets') */
+  inverseSystemAttribute: SystemAttribute
+} & (
+  | { relationshipType: 'belongs_to'; onDelete?: never }
+  | { relationshipType: 'has_many' | 'has_one'; onDelete?: RelationDeleteBehavior }
+)
 
 /**
  * Table-level metadata for a resource
@@ -179,24 +228,19 @@ export interface ResourceField {
   validation?: FieldValidation
 
   // Relationship configuration (REQUIRED for RELATION type)
-  /** Relationship configuration for RELATION type fields - matches database schema */
-  relationship?: FieldOptions['relationship']
+  /**
+   * Relationship configuration for RELATION type fields. Shape-compatible with
+   * the stored `options.relationship` block, plus the compile-time `onDelete`
+   * rule of {@link RegistryRelationshipConfig}.
+   */
+  relationship?: RegistryRelationshipConfig
 
   /**
    * Relationship field configuration for EntitySeeder
    * Used to create relationship field pairs (primary + inverse) during seeding.
    * Only needed for system relationship fields that need to be seeded.
    */
-  relationshipConfig?: {
-    /** Target entity type (e.g., 'contact', 'user', 'ticket') */
-    relatedEntityType: string
-    /** Relationship type ('belongs_to', 'has_many', 'has_one') */
-    relationshipType: 'belongs_to' | 'has_many' | 'has_one'
-    /** Display name for the inverse field (e.g., 'Tickets', 'Assigned Tickets') */
-    inverseName: string
-    /** System attribute for the inverse field (e.g., 'contact_tickets', 'user_assigned_tickets') */
-    inverseSystemAttribute: SystemAttribute
-  }
+  relationshipConfig?: RegistryRelationshipSeedConfig
 
   // Default value configuration
   /**

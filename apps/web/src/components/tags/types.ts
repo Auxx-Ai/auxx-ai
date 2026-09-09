@@ -66,7 +66,8 @@ export interface TagNode {
    * delete. `mail-classification/labels.ts:92` already filters archived tags out
    * of the classifier's label set, so archiving stops a tag being applied to new
    * mail while leaving the historical claim on the threads that have it — which
-   * is what `rejectDeleteIfTagInUse` points callers at when it refuses a delete.
+   * is what the delete engine's `restrict` refusal (declared on `tag_threads` and
+   * `tag_articles` in the registry) points callers at when it refuses a delete.
    */
   isArchived: boolean
   scope: TagScopeValue

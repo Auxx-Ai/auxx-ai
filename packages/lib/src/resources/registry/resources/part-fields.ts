@@ -520,6 +520,7 @@ export const PART_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'stock_movement:part' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'cascade',
       isInverse: true,
     },
     description: 'Stock movements for this part',
@@ -548,6 +549,7 @@ export const PART_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'vendor_part:part' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'cascade',
       isInverse: true,
     },
     // `vendor_part` is hidden, so it has no records page to host an Import button.
@@ -576,6 +578,7 @@ export const PART_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'subpart:parentPart' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'cascade',
       isInverse: true,
     },
     namedImporter: { label: 'Import BOM' },
@@ -602,6 +605,7 @@ export const PART_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'subpart:childPart' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'cascade',
       isInverse: true,
     },
     // 🛑 No `namedImporter`, deliberately (02-design §6.4, O3). This is the same
@@ -632,6 +636,7 @@ export const PART_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'catalog_item:part' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'unlink',
       isInverse: true,
     },
     description: 'Catalog (product/service) entries backed by this part',
@@ -662,6 +667,7 @@ export const PART_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'line_item:part' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'unlink',
       isInverse: true,
     },
     description: 'Sold lines stamped with this part',
@@ -722,6 +728,7 @@ export const PART_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'purchase_order_line:part' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'unlink',
       isInverse: true,
     },
     description:
@@ -749,6 +756,7 @@ export const PART_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'vendor_bill_line:part' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'unlink',
       isInverse: true,
     },
     description: 'Bill lines charging for this part - what we were actually invoiced, per part',
@@ -1049,6 +1057,7 @@ export const PART_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'build:part' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'unlink',
       isInverse: true,
     },
     description: 'Builds that produce this part',

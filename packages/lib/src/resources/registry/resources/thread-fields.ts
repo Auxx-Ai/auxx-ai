@@ -362,6 +362,7 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'message:thread' as ResourceFieldId,
       relationshipType: 'has_many',
+      // No onDelete: `message` is registry-only; the Drizzle Message.threadId column cascades.
       isInverse: true,
     },
     description: 'All messages in this thread',
@@ -414,6 +415,7 @@ export const THREAD_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'tag:tag_threads' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'unlink',
       isInverse: false,
     },
     description: 'Tags assigned to this thread',

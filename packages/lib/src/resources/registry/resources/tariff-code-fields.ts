@@ -243,6 +243,7 @@ export const TARIFF_CODE_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'tariff_rate:tariffCode' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'cascade',
       isInverse: true,
     },
     description: 'The dated rate rows behind this classification',
@@ -269,6 +270,7 @@ export const TARIFF_CODE_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'vendor_part:tariffCode' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'restrict',
       isInverse: true,
     },
     // This is the answer §0 actually wants: when a rate moves, the affected

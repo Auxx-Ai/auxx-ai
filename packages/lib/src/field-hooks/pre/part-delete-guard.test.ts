@@ -1,21 +1,21 @@
 // packages/lib/src/field-hooks/pre/part-delete-guard.test.ts
-// The guard that stops a part being hard-deleted out of a settled period, and
-// stops a deleted part leaving its BOM and supplier rows behind.
+// The guard that stops a part being hard-deleted out of a settled period.
 //
 // plans/money/tasks/20-part-delete-safety.md §4. Dev ground truth the cases are
 // modelled on: DemoOrg1 is locked through `2026-07` and holds 31 movements, every
-// one of them in `2026-08` — a month whose revision 1 stands POSTED at
+// one of them in `2026-08`, a month whose revision 1 stands POSTED at
 // $1,320,563.80 while a later revision 2 sits `failed`, so the close strip
 // correctly reports that month as **`open`**. That is why the posted-entry check
 // reads `GlPosting` directly and why it is tested against an `open` strip.
+//
+// The BOM, supplier-price and movement cascades this guard once ran by hand are
+// now `onDelete: 'cascade'` on the registry fields and belong to the delete
+// engine; nothing here deletes anything.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { EntityPreDeleteEvent } from '../types'
 
 const h = vi.hoisted(() => ({
-  listFiltered: vi.fn(),
-  findRelated: vi.fn(),
-  del: vi.fn(),
   getCachedEntityDefId: vi.fn(),
   bySystemAttributes: vi.fn(),
   resolvePeriodLock: vi.fn(),
@@ -23,15 +23,6 @@ const h = vi.hoisted(() => ({
   getOrganizationSetting: vi.fn(),
   movementRows: vi.fn(),
 }))
-
-vi.mock('../../resources/crud', () => ({
-  UnifiedCrudHandler: class {
-    listFiltered = h.listFiltered
-    delete = h.del
-  },
-}))
-
-vi.mock('./related-rows', () => ({ findRelatedInstanceIds: h.findRelated }))
 
 vi.mock('../../cache', () => ({
   getCachedEntityDefId: h.getCachedEntityDefId,
@@ -112,8 +103,6 @@ const BOOKS_OPEN = {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  h.del.mockResolvedValue(undefined)
-  h.findRelated.mockResolvedValue([])
   h.getCachedEntityDefId.mockResolvedValue('v9xn5fhvb68jja0wcvog5gl4')
   h.bySystemAttributes.mockResolvedValue({
     stock_movement_part: { id: 'fld_part' },
@@ -125,14 +114,12 @@ beforeEach(() => {
   settings(BOOKS_OPEN)
 })
 
-describe('guardPartDelete — refusal', () => {
+describe('guardPartDelete: refusal', () => {
   it('refuses a part whose movement sits in a month with a POSTED entry', async () => {
     h.movementRows.mockReturnValue([movement('mv1', '2026-08-15T00:00:00Z')])
     h.postedPeriodRows.mockReturnValue(posted('2026-08'))
 
     await expect(guardPartDelete(event())).rejects.toThrow(/2026-08/)
-    // Refusal happens BEFORE any cascade: a rejected delete mutates nothing.
-    expect(h.del).not.toHaveBeenCalled()
   })
 
   it('refuses a part whose movement sits in a LOCKED period with no posting at all', async () => {
@@ -142,7 +129,6 @@ describe('guardPartDelete — refusal', () => {
     h.resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: '2026-07' })
 
     await expect(guardPartDelete(event())).rejects.toThrow(/closed or posted/)
-    expect(h.del).not.toHaveBeenCalled()
   })
 
   it('refuses a movement AT OR BEFORE the cutoff, which never appears in the strip', async () => {
@@ -151,7 +137,6 @@ describe('guardPartDelete — refusal', () => {
     h.movementRows.mockReturnValue([movement('mv1', '2025-11-04T00:00:00Z')])
 
     await expect(guardPartDelete(event())).rejects.toThrow(/2025-11/)
-    expect(h.del).not.toHaveBeenCalled()
   })
 
   it('names every settled month and the total, not just the first', async () => {
@@ -173,39 +158,30 @@ describe('guardPartDelete — refusal', () => {
 
     await expect(guardPartDelete(event())).rejects.toThrow(/2026-08/)
   })
+
+  it('points at archiving the part', async () => {
+    h.movementRows.mockReturnValue([movement('mv1', '2026-08-15T00:00:00Z')])
+    h.postedPeriodRows.mockReturnValue(posted('2026-08'))
+
+    await expect(guardPartDelete(event())).rejects.toThrow(/archive the part/i)
+  })
 })
 
-describe('guardPartDelete — open books', () => {
-  it('deletes the movements when every one of them is in an OPEN period', async () => {
+describe('guardPartDelete: open books', () => {
+  it('passes when every movement is in an OPEN period', async () => {
     h.movementRows.mockReturnValue([
       movement('mv1', '2026-08-15T00:00:00Z'),
       movement('mv2', '2026-08-16T00:00:00Z'),
     ])
 
-    await guardPartDelete(event())
-
-    expect(h.del).toHaveBeenCalledWith('stock_movement:mv1')
-    expect(h.del).toHaveBeenCalledWith('stock_movement:mv2')
-  })
-
-  it('does not suppress the post-delete hooks — the roll-up lands on a SURVIVING record', async () => {
-    h.movementRows.mockReturnValue([movement('mv1', '2026-08-15T00:00:00Z')])
-
-    await guardPartDelete(event())
-
-    // One argument only. `suppressPostDeleteHooks` here would strand the
-    // purchase order lines this guard deliberately keeps.
-    expect(h.del).toHaveBeenCalledWith('stock_movement:mv1')
-    for (const call of h.del.mock.calls) expect(call).toHaveLength(1)
+    await expect(guardPartDelete(event())).resolves.toBeUndefined()
   })
 
   it('settles nothing for an org that has not finished accounting setup', async () => {
     settings({ 'accounting.bookTimeZone': 'UTC' }) // no cutoff
     h.movementRows.mockReturnValue([movement('mv1', '2026-08-15T00:00:00Z')])
 
-    await guardPartDelete(event())
-
-    expect(h.del).toHaveBeenCalledWith('stock_movement:mv1')
+    await expect(guardPartDelete(event())).resolves.toBeUndefined()
   })
 
   it('falls back to createdAt when the movement carries no accounting date', async () => {
@@ -216,59 +192,7 @@ describe('guardPartDelete — open books', () => {
   })
 })
 
-describe('guardPartDelete — cascades', () => {
-  it('deletes the BOM rows on BOTH ends, de-duplicated', async () => {
-    h.findRelated.mockImplementation(async (_org: string, childType: string) =>
-      childType === 'subpart' ? ['sub1', 'sub2'] : []
-    )
-
-    await guardPartDelete(event())
-
-    const deleted = h.del.mock.calls.map((c) => c[0])
-    // Both queries return the same two ids; a part that is both a parent and a
-    // component must not be deleted twice.
-    expect(deleted.filter((id) => String(id).startsWith('subpart:'))).toEqual([
-      'subpart:sub1',
-      'subpart:sub2',
-    ])
-  })
-
-  it('queries both subpart relations, not just one', async () => {
-    await guardPartDelete(event())
-
-    const subpartAttributes = h.findRelated.mock.calls
-      .filter((c) => c[1] === 'subpart')
-      .map((c) => c[2])
-    expect(subpartAttributes).toEqual(['subpart_parent_part', 'subpart_child_part'])
-  })
-
-  it('deletes the supplier pricing rows', async () => {
-    h.findRelated.mockImplementation(async (_org: string, childType: string) =>
-      childType === 'vendor_part' ? ['vp1'] : []
-    )
-
-    await guardPartDelete(event())
-
-    expect(h.del).toHaveBeenCalledWith('vendor_part:vp1')
-    const call = h.findRelated.mock.calls.find((c) => c[1] === 'vendor_part')!
-    expect(call[2]).toBe('vendor_part_part')
-    expect(call[3]).toEqual([PART_ID])
-  })
-
-  it('never touches the vendor documents — a bill line is not ours to delete', async () => {
-    h.findRelated.mockResolvedValue(['x1'])
-
-    await guardPartDelete(event())
-
-    const queried = h.findRelated.mock.calls.map((c) => c[1])
-    expect(queried).not.toContain('purchase_order_line')
-    expect(queried).not.toContain('vendor_bill_line')
-    expect(queried).not.toContain('catalog_item')
-    expect(queried).not.toContain('line_item')
-  })
-})
-
-describe('guardPartDelete — provisioning edge cases', () => {
+describe('guardPartDelete: provisioning edge cases', () => {
   it('is a no-op for an org with no stock movement definition', async () => {
     h.getCachedEntityDefId.mockResolvedValue(undefined)
 

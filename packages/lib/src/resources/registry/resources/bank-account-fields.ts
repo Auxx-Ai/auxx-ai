@@ -393,6 +393,9 @@ export const BANK_ACCOUNT_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'bank_transaction:bankAccount' as ResourceFieldId,
       relationshipType: 'has_many',
+      // Declared for completeness. `deleteBankAccount` in banking/writes.ts owns the
+      // actual teardown because it also removes the connector and credential.
+      onDelete: 'cascade',
       isInverse: true,
     },
     description:
@@ -421,6 +424,7 @@ export const BANK_ACCOUNT_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'bank_deposit:bankAccountRecord' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'unlink',
       isInverse: true,
     },
     description:

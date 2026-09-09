@@ -488,6 +488,7 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'ticket:contact' as ResourceFieldId,
       relationshipType: 'has_many',
+      // No onDelete: the inverse is a dbColumn, so the delete engine cannot act on it.
       isInverse: true,
     },
     description: 'All tickets associated with this contact',
@@ -513,6 +514,7 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'company:primaryContact' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'unlink',
       isInverse: true,
     },
     description: 'Companies where this contact is the primary contact',
@@ -538,6 +540,7 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'company:employees' as ResourceFieldId,
       relationshipType: 'has_one',
+      onDelete: 'unlink',
       isInverse: true,
     },
     description: 'The company this contact works for',
@@ -563,6 +566,7 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'meeting:contact' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'unlink',
       isInverse: true,
     },
     description: 'Meetings associated with this contact',
@@ -589,6 +593,7 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'work_order:contact' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'unlink',
       isInverse: true,
     },
     description: 'Work orders for this contact',
@@ -615,6 +620,7 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'service_request:contact' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'unlink',
       isInverse: true,
     },
     description: 'Service requests for this contact',
@@ -641,6 +647,7 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'quote:contact' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'unlink',
       isInverse: true,
     },
     description: 'Quotes for this contact',
@@ -667,6 +674,7 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'invoice:contact' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'unlink',
       isInverse: true,
     },
     description: 'Invoices for this contact',
@@ -693,6 +701,7 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'order:contact' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'unlink',
       isInverse: true,
     },
     description: 'Orders placed by this contact',
@@ -721,6 +730,7 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'purchase_order:contact' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'unlink',
       isInverse: true,
     },
     description: 'Purchase orders addressed to this contact',

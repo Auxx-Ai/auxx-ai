@@ -253,6 +253,7 @@ export const PRODUCT_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'part:product' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'unlink',
       isInverse: true,
     },
     description: 'Parts that belong to this product family',

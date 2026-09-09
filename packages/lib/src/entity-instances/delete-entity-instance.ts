@@ -166,10 +166,11 @@ export async function deleteEntityInstances(params: DeleteEntityInstancesParams)
  * Permanently delete an entity instance, its field values, and every relation
  * pointing AT it. Prefer archiving over deletion.
  *
- * This is the single delete path behind tRPC `record.delete`, and one
- * {@link deleteEntityInstances} call — there is one implementation of the rules,
- * not two that drift. `record.bulkDelete` reaches the set-based function
- * directly for definitions that carry no pre/post-delete hooks.
+ * One {@link deleteEntityInstances} call, so there is one implementation of the
+ * rules, not two that drift. The record delete paths (`record.delete` and
+ * `record.bulkDelete`, both through `bulkDeleteEntities`) reach the set-based
+ * function directly for every definition: the pre-delete hooks run over the
+ * whole closure before any write, so nothing per record is left to do here.
  *
  * Two defects this function used to carry, both fixed by
  * {@link sweepEntityFieldValues}:

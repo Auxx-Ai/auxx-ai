@@ -402,8 +402,10 @@ export const syncBillingAfterInvoiceDelete: EntityPostDeleteHandler = async (eve
  * After a line item is deleted: a work-order source line refreshes the work order's billing
  * projection (generic deletes fire no field-change hooks, so contract value would
  * otherwise go stale); an invoice-owned copy refreshes the invoice's totals and context the
- * same way `deleteInvoiceLine` does, covering deletes that bypass that command. Parent-level
- * cleanup flows suppress this hook (`suppressPostDeleteHooks`) and sync once themselves.
+ * same way `deleteInvoiceLine` does, covering deletes that bypass that command. A line
+ * cascaded by its parent document's delete never reaches this hook: the delete engine skips
+ * post-delete hooks for cascaded records because their parent is dying. `deleteInvoiceLine`
+ * suppresses it explicitly (`suppressPostDeleteHooks`) and syncs once itself.
  */
 export const syncBillingAfterLineDelete: EntityPostDeleteHandler = async (event) => {
   const workOrderInstanceId = capturedRelationInstanceId(event.values.line_item_work_order)

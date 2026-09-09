@@ -563,6 +563,7 @@ export const QUOTE_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'line_item:quote' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'cascade',
       isInverse: true,
     },
     description: 'Line items on this quote',
@@ -588,6 +589,9 @@ export const QUOTE_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'work_order:quote' as ResourceFieldId,
       relationshipType: 'has_many',
+      // The converted-quote refusal is status-conditional and stays in
+      // quote-delete-guard.ts.
+      onDelete: 'unlink',
       isInverse: true,
     },
     description: 'Work orders converted from this quote',

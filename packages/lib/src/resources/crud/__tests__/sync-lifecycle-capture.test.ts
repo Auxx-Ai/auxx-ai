@@ -39,9 +39,37 @@ vi.mock('../../../entity-instances', () => ({
   getEntityInstanceRow: vi.fn(async () => ({ id: 'inst_1', archivedAt: null })),
   updateEntityInstance: vi.fn(async () => ok({ id: 'inst_1' })),
   createEntityInstance: vi.fn(async () => ok({ id: 'inst_1' })),
-  deleteEntityInstance: vi.fn(async () => ok({ id: 'inst_1' })),
+  deleteEntityInstances: vi.fn(async (p: { ids: readonly string[] }) =>
+    ok({ success: true, count: p.ids.length })
+  ),
   archiveEntityInstances: vi.fn(async (p: { ids: readonly string[] }) => ok([...new Set(p.ids)])),
 }))
+// The delete runs through the closure (`delete-closure.ts`), which reads the
+// database; this file is about the doors, so the closure is a pass-through.
+vi.mock('../delete-closure', async () => {
+  const { ok } = await import('neverthrow')
+  return {
+    collectDeleteClosure: vi.fn(async (_db: unknown, p: { recordIds: readonly string[] }) =>
+      ok({
+        groups: [
+          {
+            entityDefinitionId: 'def_1',
+            apiSlug: 'contacts',
+            depth: 0,
+            records: p.recordIds.map((recordId) => ({
+              recordId,
+              entityInstanceId: recordId.split(':')[1],
+              requestedBy: null,
+              depth: 0,
+            })),
+          },
+        ],
+        notFound: [],
+      })
+    ),
+    findRestrictViolations: vi.fn(async () => ok(new Map())),
+  }
+})
 vi.mock('../../../realtime', () => ({
   getRealtimeService: () => ({ publish: h.publish }),
   publishRecordsChanged: vi.fn(async () => {}),
@@ -57,6 +85,7 @@ vi.mock('../../../cache', async (importOriginal) => ({
 vi.mock('../../../comments', () => ({
   CommentService: class {
     deleteCommentsByRecordId = h.deleteCommentsByRecordId
+    deleteCommentsForDefinition = vi.fn(async () => {})
   },
 }))
 

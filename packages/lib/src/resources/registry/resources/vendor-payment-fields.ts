@@ -372,6 +372,7 @@ export const VENDOR_PAYMENT_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'vendor_payment_allocation:payment' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'cascade',
       isInverse: true,
     },
     description: 'One allocation row per bill this payment covers',

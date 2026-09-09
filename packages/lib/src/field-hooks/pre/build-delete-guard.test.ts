@@ -1,21 +1,22 @@
 // packages/lib/src/field-hooks/pre/build-delete-guard.test.ts
 // The guard that stops a build being hard-deleted out of a settled period, and
-// stops either end of a reversal pair being deleted at all.
+// stops a reversal being deleted out from under the build it negates.
 //
 // plans/money/tasks/21-money-parent-delete-safety.md §3. Dev ground truth the
 // cases are modelled on: DemoOrg1 is locked through `2026-07` and every one of
-// its 31 movements sits in `2026-08` — a month whose revision 1 stands POSTED at
+// its 31 movements sits in `2026-08`, a month whose revision 1 stands POSTED at
 // $1,320,563.80 while a later revision 2 sits `failed`, so the close strip
 // correctly reports that month as **`open`**. That is why the posted-entry check
 // reads `GlPosting` directly and why it is tested against an `open` strip.
+//
+// "This build HAS BEEN reversed" and the movement cascade are no longer here:
+// they are `onDelete: 'restrict'` on `build_reversed_by` and `onDelete:
+// 'cascade'` on `build_movements`, run by the delete engine.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { EntityPreDeleteEvent } from '../types'
 
 const h = vi.hoisted(() => ({
-  listFiltered: vi.fn(),
-  findRelated: vi.fn(),
-  del: vi.fn(),
   getCachedEntityDefId: vi.fn(),
   bySystemAttributes: vi.fn(),
   resolvePeriodLock: vi.fn(),
@@ -23,15 +24,6 @@ const h = vi.hoisted(() => ({
   getOrganizationSetting: vi.fn(),
   movementRows: vi.fn(),
 }))
-
-vi.mock('../../resources/crud', () => ({
-  UnifiedCrudHandler: class {
-    listFiltered = h.listFiltered
-    delete = h.del
-  },
-}))
-
-vi.mock('./related-rows', () => ({ findRelatedInstanceIds: h.findRelated }))
 
 vi.mock('../../cache', () => ({
   getCachedEntityDefId: h.getCachedEntityDefId,
@@ -102,17 +94,15 @@ beforeEach(() => {
   h.resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: null })
   h.postedPeriodRows.mockResolvedValue([])
   h.movementRows.mockResolvedValue([])
-  h.findRelated.mockResolvedValue([])
   settings({})
 })
 
-describe('guardBuildDelete — refusals', () => {
+describe('guardBuildDelete: settled period', () => {
   it('refuses when a movement sits in a locked month', async () => {
     h.movementRows.mockResolvedValue([movement('m1', '2026-07-10')])
     h.resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: '2026-07' })
 
     await expect(guardBuildDelete(event())).rejects.toThrow(/2026-07/)
-    expect(h.del).not.toHaveBeenCalled()
   })
 
   it('refuses when a movement sits in a month holding a standing posted entry', async () => {
@@ -122,7 +112,6 @@ describe('guardBuildDelete — refusals', () => {
     h.postedPeriodRows.mockResolvedValue([{ periodKey: '2026-08' }])
 
     await expect(guardBuildDelete(event())).rejects.toThrow(/2026-08/)
-    expect(h.del).not.toHaveBeenCalled()
   })
 
   it('refuses when a movement sits at or before the cutoff', async () => {
@@ -139,7 +128,16 @@ describe('guardBuildDelete — refusals', () => {
     await expect(guardBuildDelete(event())).rejects.toThrow(/reverse the build/i)
   })
 
-  // 🛑 Through `capturedRelation`, NOT a bare string. This case shipped green in
+  it('falls back to createdAt when a movement has no occurredAt', async () => {
+    h.movementRows.mockResolvedValue([movement('m1', null, new Date('2026-07-20'))])
+    h.resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: '2026-07' })
+
+    await expect(guardBuildDelete(event())).rejects.toThrow(/2026-07/)
+  })
+})
+
+describe('guardBuildDelete: reversal', () => {
+  // Through `capturedRelation`, NOT a bare string. This case shipped green in
   // #1995 against `build_reversal_of: 'def:other'` while the guard was inert in
   // production, because the capture chain sends `['def:other']` and the guard
   // tested `typeof === 'string'`. Deleting build B-0007 in dev on 2026-08-31
@@ -150,7 +148,7 @@ describe('guardBuildDelete — refusals', () => {
     ).rejects.toThrow(/reverses another build/i)
   })
 
-  it('refuses on a bare-string relation too — the create chain shape still counts', async () => {
+  it('refuses on a bare-string relation too: the create chain shape still counts', async () => {
     await expect(
       guardBuildDelete(event({ build_reversal_of: `${BUILD_DEF}:other` }))
     ).rejects.toThrow(/reverses another build/i)
@@ -161,66 +159,37 @@ describe('guardBuildDelete — refusals', () => {
     await expect(guardBuildDelete(event({ build_reversal_of: null }))).resolves.toBeUndefined()
   })
 
-  it('refuses when this build HAS BEEN reversed', async () => {
-    h.findRelated.mockResolvedValue(['reversing-build'])
-
-    await expect(guardBuildDelete(event())).rejects.toThrow(/already been reversed/i)
-  })
-
-  it('checks the reversal pair before reading movements, so nothing is deleted', async () => {
-    h.findRelated.mockResolvedValue(['reversing-build'])
+  it('refuses a reversal before reading its movements at all', async () => {
     h.movementRows.mockResolvedValue([movement('m1', '2026-09-01')])
 
-    await expect(guardBuildDelete(event())).rejects.toThrow()
-    expect(h.del).not.toHaveBeenCalled()
+    await expect(
+      guardBuildDelete(event({ build_reversal_of: capturedRelation(`${BUILD_DEF}:other`) }))
+    ).rejects.toThrow(/reverses another build/i)
+    expect(h.movementRows).not.toHaveBeenCalled()
   })
 })
 
-describe('guardBuildDelete — cascade', () => {
-  it('deletes every movement when the period is open', async () => {
+describe('guardBuildDelete: open books', () => {
+  it('passes when every movement is in an open period', async () => {
     h.movementRows.mockResolvedValue([
       movement('consume-1', '2026-09-01'),
       movement('consume-2', '2026-09-01'),
       movement('produce-1', '2026-09-01'),
     ])
 
-    await guardBuildDelete(event())
-
-    expect(h.del).toHaveBeenCalledTimes(3)
-    for (const id of ['consume-1', 'consume-2', 'produce-1']) {
-      expect(h.del).toHaveBeenCalledWith(`stock_movement:${id}`)
-    }
+    await expect(guardBuildDelete(event())).resolves.toBeUndefined()
   })
 
-  it('never suppresses post-delete hooks — the QoH recompute lands on surviving parts', async () => {
-    h.movementRows.mockResolvedValue([movement('consume-1', '2026-09-01')])
-
-    await guardBuildDelete(event())
-
-    // One argument only: no options object, so nothing is suppressed.
-    expect(h.del).toHaveBeenCalledWith('stock_movement:consume-1')
-    expect(h.del.mock.calls[0]).toHaveLength(1)
-  })
-
-  it('falls back to createdAt when a movement has no occurredAt', async () => {
-    h.movementRows.mockResolvedValue([movement('m1', null, new Date('2026-07-20'))])
-    h.resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: '2026-07' })
-
-    await expect(guardBuildDelete(event())).rejects.toThrow(/2026-07/)
-  })
-
-  it('does nothing when the build has no movements', async () => {
-    await guardBuildDelete(event())
-    expect(h.del).not.toHaveBeenCalled()
+  it('skips the settled-period read when the build has no movements', async () => {
+    await expect(guardBuildDelete(event())).resolves.toBeUndefined()
+    expect(h.resolvePeriodLock).not.toHaveBeenCalled()
   })
 
   it('settles nothing for an org with no accounting setup', async () => {
-    // No cutoff, no lock, no postings — the org is not keeping books, so the
+    // No cutoff, no lock, no postings: the org is not keeping books, so the
     // guard must stay out of the way entirely.
     h.movementRows.mockResolvedValue([movement('m1', '2020-01-01')])
 
-    await guardBuildDelete(event())
-
-    expect(h.del).toHaveBeenCalledWith('stock_movement:m1')
+    await expect(guardBuildDelete(event())).resolves.toBeUndefined()
   })
 })

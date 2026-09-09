@@ -84,7 +84,7 @@ import {
   guardManualInvoiceLifecycleStatus,
   guardManualQuoteLifecycleStatus,
 } from './pre/lifecycle-status-guard'
-import { cascadeOrderLinesOnDelete } from './pre/order-delete-guard'
+import { guardOrderDelete } from './pre/order-delete-guard'
 import { guardPartDelete } from './pre/part-delete-guard'
 import { guardPurchaseOrderDelete } from './pre/purchase-order-delete-guard'
 import {
@@ -94,14 +94,12 @@ import {
 import { guardManualPurchaseOrderIssued } from './pre/purchase-order-status-guard'
 import { guardQuoteConvertedDelete } from './pre/quote-delete-guard'
 import { guardQuoteDraftReturnWithPaidDeposit } from './pre/quote-deposit-guard'
-import { rejectDeleteIfTagInUse } from './pre/tag-in-use-guard'
 import {
   dropUnauthorizedSystemFlag,
   rejectDeleteIfSystemTag,
   rejectIfSystemTag,
 } from './pre/tag-system-guard'
 import { dropUnauthorizedTemplateKey, rejectDeleteIfTemplateTag } from './pre/tag-template-guard'
-import { guardTariffCodeDelete } from './pre/tariff-code-delete-guard'
 import { restampTariffCodeLabel, stampTariffCodeLabel } from './pre/tariff-code-label'
 import { guardTariffCodeUniqueness } from './pre/tariff-code-uniqueness-guard'
 import { guardVendorBillDelete } from './pre/vendor-bill-delete-guard'
@@ -521,49 +519,63 @@ export function registerAllHooks(): void {
   // The drop hook is what actually enforces invariant 2 (the field's
   // `capabilities.updatable: false` is not read by the write path).
   registerFieldPreHooks('tags', 'tag_template_key', [dropUnauthorizedTemplateKey])
-  // ⚠️ ORDER IS THE MESSAGE. The two "never, by anyone" guards run first and throw
-  // 403; only then does the in-use check throw 409. A system tag that also carries
-  // 500 threads must be refused as a system tag, not told to untag itself first —
-  // clearing the references would not make it deletable.
-  registerEntityPreDeleteHooks('tags', [
-    rejectDeleteIfSystemTag,
-    rejectDeleteIfTemplateTag,
-    rejectDeleteIfTagInUse,
-  ])
+  // Both are "never, by anyone" refusals and throw 403. "This tag is still on N
+  // records" is not registered here any more: it is `onDelete: 'restrict'` on
+  // `tag_threads`, `tag_articles` and `tag_children`, and the delete engine refuses
+  // it from the declaration.
+  registerEntityPreDeleteHooks('tags', [rejectDeleteIfSystemTag, rejectDeleteIfTemplateTag])
 
-  // Money delete-safety (plans/dispatch/money/12-delete-safety.md §A/§C/§F) — moves the
-  // invoice/work-order guard+cleanup logic out of the client-only drawer branch and into the
-  // sanctioned hook point, so generic `record.delete`/`bulkDelete`, the drawer, and any future
-  // Kopilot/API caller all get the same safety net.
+  // =========================================================================
+  // DELETE SAFETY: the split between the registry and these hooks
+  // =========================================================================
+  //
+  // The delete engine (`resources/crud`) does two things from the registry's
+  // has_many `onDelete` declarations, before any hook runs: it collects the
+  // `cascade` closure set-based (order lines, invoice lines, PO lines and their
+  // receipts, bill lines, BOM rows, supplier prices, movements, tariff rates,
+  // ...), and it refuses on `restrict` while a related row exists (invoice
+  // payments, work-order invoices, PO bills, bill payment allocations, a build's
+  // reversal, a tariff code's offers, a tag's threads/articles/children).
+  // Archived rows count in both. It then runs the pre-delete hooks below over
+  // EVERY record in the closure, still one record per call, before writing
+  // anything, and publishes a lifecycle event per cascaded row, so the system
+  // record rules (`mfg-subparts-deleted`, `mfg-stock-movements-deleted`, ...)
+  // keep recomputing their roll-ups on the surviving parents.
+  //
+  // So a pre-delete hook is now ONLY a refusal the registry cannot express: one
+  // conditional on accounting state, a status, a Drizzle table, or a
+  // permission. None of them cascades anything, and none passes
+  // `suppressPostDeleteHooks`: cascaded records skip post-delete hooks in the
+  // engine itself, and the option survives only for `deleteInvoiceLine`.
+  //
+  // Dispatch money (plans/dispatch/money/12-delete-safety.md §A/§C/§F): the
+  // invoice and work-order guards carry the `dispatchBoardManage` gate and the
+  // Drizzle-table refusals (`PaymentTransaction`, `InvoiceLineAllocation`); the
+  // line guard refuses an allocated source line; the quote guard refuses while a
+  // converted job is still active, a status the registry cannot see.
   registerEntityPreDeleteHooks('invoices', [guardInvoiceDelete])
   registerEntityPreDeleteHooks('line-items', [guardAllocatedLineDelete])
   registerEntityPreDeleteHooks('work-orders', [guardWorkOrderDelete])
   registerEntityPreDeleteHooks('quotes', [guardQuoteConvertedDelete])
-  // Orders own their lines outright (08 §5.4) — no guard, just the cascade.
-  registerEntityPreDeleteHooks('orders', [cascadeOrderLinesOnDelete])
+  // An order's fulfillment entry standing in a settled month. The line cascade
+  // it used to run is `onDelete: 'cascade'` on `order_line_items`.
+  registerEntityPreDeleteHooks('orders', [guardOrderDelete])
 
-  // Inventory delete-safety (plans/money/tasks/20-part-delete-safety.md) — the same pass, six
-  // weeks later, for the subsystem that never inherited it. `parts` is `isVisible: true`, so it
-  // has carried an ordinary row delete and bulk delete since the day it shipped: refuses when a
-  // movement sits in a settled period, cascades the BOM and supplier rows, and leaves the vendor's
-  // own documents alone.
+  // Inventory and purchasing (plans/money/tasks/20-part-delete-safety.md and
+  // 21-money-parent-delete-safety.md). All four refuse on the same threshold,
+  // `settledPeriodsFor`: a stock movement (part, build), a receipt under a line
+  // (purchase order) or the bill's own accounting date (vendor bill) in a month
+  // that is locked, posted or at/before the cutoff. `builds` also refuses a
+  // reversal and `vendor-bills` a posted/part-paid status, both read off the
+  // captured values.
   registerEntityPreDeleteHooks('parts', [guardPartDelete])
-
-  // The other three visible money parents (plans/money/tasks/21-money-parent-delete-safety.md).
-  // Same threshold as `parts` — cascade when the period is open, refuse when it is settled — and
-  // the same shared `settledPeriodsFor` behind all four.
-  // 🛑 The `suppressPostDeleteHooks` answer DIFFERS per guard and is invisible here: `vendor-bills`
-  // suppresses because `rematchAfterBillLineDelete` re-projects the bill being deleted, while
-  // `builds` and `purchase-orders` must NOT, because their recompute lands on a surviving part.
   registerEntityPreDeleteHooks('builds', [guardBuildDelete])
   registerEntityPreDeleteHooks('purchase-orders', [guardPurchaseOrderDelete])
   registerEntityPreDeleteHooks('vendor-bills', [guardVendorBillDelete])
 
-  // The tariff registry (plans/money/tasks/30-tariff-offer-surfaces.md §9.1). Visible, so it
-  // has the same ordinary row delete `parts` had; refuses while any supplier offer is
-  // classified under the code (duty would silently drop to zero on every one of them) and
-  // cascades the code's rate rows through the handler so `mfg-tariff-rates-deleted` fires.
-  registerEntityPreDeleteHooks('tariff-codes', [guardTariffCodeDelete])
+  // `tariff-codes` has no hook any more: both halves of task 30 §9.1 are
+  // declarative, `restrict` on `tariff_code_vendor_parts` and `cascade` on
+  // `tariff_code_rates`.
 
   // The journal-entry draft (plans/accounting/tasks/09-discard-a-draft-entry.md
   // §3.3). `journal_entry` is `isVisible: false`, so it has no records table of

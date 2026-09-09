@@ -224,7 +224,6 @@ export const TAG_FIELDS: Record<string, ResourceField> = {
       constraints: {
         preventCircular: true,
         maxDepth: 10,
-        onDeleteWithChildren: 'prevent',
       },
     },
   },
@@ -250,6 +249,8 @@ export const TAG_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'tag:tag_parent' as ResourceFieldId,
       relationshipType: 'has_many',
+      // No onDelete: the hierarchy is `Tag.parentId`, a column the delete engine
+      // cannot act on (the same rule as ticket.parentTicket and article.parent).
       isInverse: true,
     },
   },
@@ -275,6 +276,7 @@ export const TAG_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'thread:tags' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'restrict',
       isInverse: true,
     },
   },
@@ -321,6 +323,7 @@ export const TAG_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'article:tags' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'restrict',
       isInverse: true,
     },
   },

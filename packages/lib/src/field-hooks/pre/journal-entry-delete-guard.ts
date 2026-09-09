@@ -36,7 +36,7 @@ import type { EntityPreDeleteHandler } from '../types'
  * DISCARDED draft - the common case for a later hard delete - read as "not
  * found" and refuse. `captureEventData` has the values on the event already.
  *
- * No admin gate, following `parts` and `tariff-codes`: the per-row
+ * No admin gate, following `parts`: the per-row
  * `record.delete` rule the mutation already asserts is the whole authorization
  * story, and the accounting rule below is about the record's state, not the
  * caller's rank.

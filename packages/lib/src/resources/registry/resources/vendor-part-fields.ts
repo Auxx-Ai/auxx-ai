@@ -451,6 +451,7 @@ export const VENDOR_PART_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'stock_movement:vendorPart' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'unlink',
       isInverse: true,
     },
     description:
@@ -478,6 +479,7 @@ export const VENDOR_PART_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'purchase_order_line:vendorPart' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'unlink',
       isInverse: true,
     },
     description: 'Ordered lines quoted from this supplier row',

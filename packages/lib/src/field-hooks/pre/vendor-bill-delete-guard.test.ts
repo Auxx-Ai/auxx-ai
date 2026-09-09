@@ -3,31 +3,23 @@
 // part-paid, or dated in a settled month.
 //
 // plans/money/tasks/21-money-parent-delete-safety.md §5. The shape difference
-// from the other three guards: a bill has no movements of its own, so the
-// settled test runs on ONE date — `vendor_bill_billed_at`, which the field's own
+// from the other money guards: a bill has no movements of its own, so the
+// settled test runs on ONE date, `vendor_bill_billed_at`, which the field's own
 // description calls "the ACCOUNTING date".
+//
+// The allocation refusal and the line cascade are no longer here: they are
+// `onDelete: 'restrict'` on `vendor_bill_payment_allocations` and `onDelete:
+// 'cascade'` on `vendor_bill_lines`, run by the delete engine.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { EntityPreDeleteEvent } from '../types'
 
 const h = vi.hoisted(() => ({
-  listFiltered: vi.fn(),
-  findRelated: vi.fn(),
-  del: vi.fn(),
   resolvePeriodLock: vi.fn(),
   postedPeriodRows: vi.fn(),
   getOrganizationSetting: vi.fn(),
   instanceRows: vi.fn(),
 }))
-
-vi.mock('../../resources/crud', () => ({
-  UnifiedCrudHandler: class {
-    listFiltered = h.listFiltered
-    delete = h.del
-  },
-}))
-
-vi.mock('./related-rows', () => ({ findRelatedInstanceIds: h.findRelated }))
 
 vi.mock('../../postings/period-lock', () => ({ resolvePeriodLock: h.resolvePeriodLock }))
 vi.mock('../../settings/settings-service', () => ({
@@ -72,13 +64,6 @@ function event(values: Record<string, unknown> = {}): EntityPreDeleteEvent {
   }
 }
 
-/** `findRelatedInstanceIds` answers per child type, so a test cannot confuse the two reads. */
-function children({ allocations = [], lines = [] }: { allocations?: string[]; lines?: string[] }) {
-  h.findRelated.mockImplementation(async (_org: string, childType: string) =>
-    childType === 'vendor_payment_allocation' ? allocations : lines
-  )
-}
-
 function settings(values: Record<string, string | null>): void {
   h.getOrganizationSetting.mockImplementation(
     async ({ key }: { key: string }) => values[key] ?? null
@@ -90,27 +75,25 @@ beforeEach(() => {
   h.resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: null })
   h.postedPeriodRows.mockResolvedValue([])
   h.instanceRows.mockResolvedValue([{ createdAt: new Date('2026-09-05') }])
-  children({})
   settings({})
 })
 
-describe('guardVendorBillDelete — status', () => {
+describe('guardVendorBillDelete: status', () => {
   for (const status of ['posted', 'partially_paid', 'paid']) {
     it(`refuses a ${status} bill`, async () => {
       await expect(guardVendorBillDelete(event({ vendor_bill_status: status }))).rejects.toThrow(
         /in the books or part-paid/i
       )
-      expect(h.del).not.toHaveBeenCalled()
+      // The status wall reads nothing: a refused bill never reaches the period read.
+      expect(h.resolvePeriodLock).not.toHaveBeenCalled()
     })
   }
 
   for (const status of ['draft', 'awaiting_receipt', 'matched', 'exception']) {
     it(`allows a ${status} bill through the status wall`, async () => {
-      children({ lines: ['line-1'] })
-
-      await guardVendorBillDelete(event({ vendor_bill_status: status }))
-
-      expect(h.del).toHaveBeenCalled()
+      await expect(
+        guardVendorBillDelete(event({ vendor_bill_status: status }))
+      ).resolves.toBeUndefined()
     })
   }
 
@@ -124,14 +107,7 @@ describe('guardVendorBillDelete — status', () => {
   })
 })
 
-describe('guardVendorBillDelete — allocations and period', () => {
-  it('refuses when a vendor payment has been allocated to the bill', async () => {
-    children({ allocations: ['alloc-1'], lines: ['line-1'] })
-
-    await expect(guardVendorBillDelete(event())).rejects.toThrow(/payment allocation/i)
-    expect(h.del).not.toHaveBeenCalled()
-  })
-
+describe('guardVendorBillDelete: period', () => {
   it('refuses when the bill date sits in a locked month', async () => {
     h.resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: '2026-07' })
 
@@ -173,38 +149,18 @@ describe('guardVendorBillDelete — allocations and period', () => {
       guardVendorBillDelete(event({ vendor_bill_billed_at: 'not a date' }))
     ).rejects.toThrow(/2026-07/)
   })
-})
 
-describe('guardVendorBillDelete — cascade', () => {
-  it('deletes the bill lines WITH post-delete hooks suppressed', async () => {
-    // `rematchAfterBillLineDelete` re-projects the bill being deleted, so
-    // leaving it live re-runs the whole match once per line against a document
-    // that is about to vanish. This is the one guard of the four that suppresses.
-    children({ lines: ['line-1', 'line-2'] })
+  it('passes a bill dated in an open month', async () => {
+    h.resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: '2026-07' })
 
-    await guardVendorBillDelete(event())
-
-    expect(h.del).toHaveBeenCalledTimes(2)
-    expect(h.del).toHaveBeenCalledWith('vendor_bill_line:line-1', {
-      suppressPostDeleteHooks: true,
-    })
-    expect(h.del).toHaveBeenCalledWith('vendor_bill_line:line-2', {
-      suppressPostDeleteHooks: true,
-    })
-  })
-
-  it('does nothing for a bill with no lines', async () => {
-    await guardVendorBillDelete(event())
-    expect(h.del).not.toHaveBeenCalled()
+    await expect(
+      guardVendorBillDelete(event({ vendor_bill_billed_at: '2026-09-05' }))
+    ).resolves.toBeUndefined()
   })
 
   it('settles nothing for an org with no accounting setup', async () => {
-    children({ lines: ['line-1'] })
-
-    await guardVendorBillDelete(event({ vendor_bill_billed_at: '2020-01-01' }))
-
-    expect(h.del).toHaveBeenCalledWith('vendor_bill_line:line-1', {
-      suppressPostDeleteHooks: true,
-    })
+    await expect(
+      guardVendorBillDelete(event({ vendor_bill_billed_at: '2020-01-01' }))
+    ).resolves.toBeUndefined()
   })
 })
