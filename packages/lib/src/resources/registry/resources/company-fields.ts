@@ -392,6 +392,7 @@ export const COMPANY_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'contact:employer' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'unlink',
       isInverse: false,
     },
     description: 'Employees associated with this company',
@@ -418,6 +419,8 @@ export const COMPANY_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'vendor_part:contact' as ResourceFieldId,
       relationshipType: 'has_many',
+      // A vendor part is a join row like a subpart: meaningless without its vendor.
+      onDelete: 'cascade',
       isInverse: true,
     },
     description: 'Parts this company supplies',
@@ -444,6 +447,7 @@ export const COMPANY_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'product:vendor' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'unlink',
       isInverse: true,
     },
     description: 'Product families this company is the vendor of',
@@ -469,6 +473,7 @@ export const COMPANY_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'meeting:company' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'unlink',
       isInverse: true,
     },
     description: 'Meetings associated with this company',
@@ -638,6 +643,7 @@ export const COMPANY_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'work_order:company' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'unlink',
       isInverse: true,
     },
     description: 'Work orders for this company',
@@ -664,6 +670,7 @@ export const COMPANY_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'order:company' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'unlink',
       isInverse: true,
     },
     description: 'Orders placed by this company',
@@ -690,6 +697,7 @@ export const COMPANY_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'purchase_order:vendor' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'unlink',
       isInverse: true,
     },
     description: 'Purchase orders raised on this supplier',
@@ -716,6 +724,7 @@ export const COMPANY_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'vendor_bill:vendor' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'unlink',
       isInverse: true,
     },
     description: 'Bills received from this supplier',
@@ -742,6 +751,7 @@ export const COMPANY_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'vendor_payment:vendor' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'unlink',
       isInverse: true,
     },
     description: 'Payments made to this supplier',

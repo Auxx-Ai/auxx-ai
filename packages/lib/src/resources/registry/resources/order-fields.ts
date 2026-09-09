@@ -622,6 +622,7 @@ export const ORDER_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'line_item:order' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'cascade',
       isInverse: true,
     },
     description: 'Line items on this order',
@@ -649,6 +650,7 @@ export const ORDER_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'work_order:order' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'unlink',
       isInverse: true,
     },
     description: 'Work orders raised off this order — linked by hand (D4 defers the conversion)',
@@ -678,6 +680,7 @@ export const ORDER_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'build:order' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'unlink',
       isInverse: true,
     },
     description:
@@ -802,6 +805,7 @@ export const ORDER_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'refund:order' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'cascade',
       isInverse: true,
     },
     description: 'Refunds recorded against this order - money returned, goods returned, or both',
@@ -836,6 +840,7 @@ export const ORDER_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'tax_line:order' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'cascade',
       isInverse: true,
     },
     description:

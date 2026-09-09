@@ -288,6 +288,7 @@ export const TICKET_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'ticket:parentTicket' as ResourceFieldId,
       relationshipType: 'has_many',
+      // No onDelete: the inverse is a dbColumn, so the delete engine cannot act on it.
       isInverse: true,
     },
     description: 'All child tickets of this ticket',
@@ -377,6 +378,7 @@ export const TICKET_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'work_order:ticket' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'unlink',
       isInverse: true,
     },
     description: 'Work orders created from this ticket',
@@ -403,6 +405,7 @@ export const TICKET_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'service_request:ticket' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'unlink',
       isInverse: true,
     },
     description: 'Service requests created from this ticket',

@@ -312,6 +312,7 @@ export const BANK_DEPOSIT_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'payment:bankDeposit' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'unlink',
       isInverse: true,
     },
     description: 'The payments banked together in this deposit',

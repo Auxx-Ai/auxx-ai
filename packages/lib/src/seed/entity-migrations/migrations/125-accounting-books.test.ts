@@ -188,6 +188,8 @@ describe('both relationship pairs resolve in both directions', () => {
       inverseResourceFieldId: 'payment:bankDeposit',
       relationshipType: 'has_many',
       isInverse: true,
+      // Deleting a deposit un-deposits its payments; it never deletes them.
+      onDelete: 'unlink',
     })
   })
 
@@ -205,6 +207,8 @@ describe('both relationship pairs resolve in both directions', () => {
       inverseResourceFieldId: 'bank_transaction:bankAccount',
       relationshipType: 'has_many',
       isInverse: true,
+      // Declared for completeness; `deleteBankAccount` owns the actual teardown.
+      onDelete: 'cascade',
     })
   })
 

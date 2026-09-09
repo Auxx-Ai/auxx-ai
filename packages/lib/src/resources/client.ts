@@ -116,6 +116,7 @@ export {
   setEntityVariables,
   setResourceVariables,
   sortFieldsForDisplay,
+  toRegistryRelationship,
 } from './registry/field-utils'
 // Hover-card field defaults
 export { getHoverCardFieldKeys, HOVER_CARD_FIELDS } from './registry/hover-card-fields'

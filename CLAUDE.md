@@ -282,6 +282,27 @@ gated on inbox write alone (not `automationRules.manage`), treats
 `senderAuthenticated IS NULL` as *not* authenticated, and must never be recorded
 as `contact:unsubscribed`; dismissal is a status write, never a delete.
 
+## Record Deletes & Relationship Ownership
+
+**Before adding a relationship field to the registry, adding an owned child
+def, or touching `deleteEntity` / `bulkDeleteEntities` or a pre-delete hook,
+read `docs/record-delete-architecture-guide.md`.** It documents the
+`onDelete: 'cascade' | 'unlink' | 'restrict'` declaration on the has_many side,
+which edges may not declare it (table-backed defs and `dbColumn` parents), the
+three-phase engine (collect the closure, refuse over the whole closure, write
+survivors deepest first), and the short list of guards that stay imperative.
+
+Short version: a relationship is two mirror `FieldValue` rows and nothing in the
+database cascades, so the has_many field declares the answer and the engine
+executes it set-based; a `belongs_to` never declares anything; the engine reads
+the **stored** `CustomField.options.relationship.onDelete`, so a registry edit
+needs an entity migration stamp to reach existing orgs; a pre-delete hook is
+only for a refusal the enum cannot express (settled period, status, a Drizzle
+table, a permission) and never cascades by hand; post-delete hooks do not fire
+for cascaded records; the coverage test in
+`resources/registry/__tests__/relationship-on-delete.test.ts` fails when a new
+owned child is added without a declaration.
+
 ## Files, Uploads & Storage
 
 **Before touching the upload routes, the upload handler records, `StorageManager`,

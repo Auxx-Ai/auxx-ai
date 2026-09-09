@@ -246,6 +246,7 @@ export const STOCK_MOVEMENT_FIELDS: Record<string, ResourceField> = {
     relationshipConfig: {
       relatedEntityType: 'stock_movement',
       relationshipType: 'has_many',
+      onDelete: 'cascade',
       inverseName: 'Parent Movement',
       inverseSystemAttribute: 'stock_movement_parent_movement',
     },
@@ -540,6 +541,7 @@ export const STOCK_MOVEMENT_FIELDS: Record<string, ResourceField> = {
     relationshipConfig: {
       relatedEntityType: 'stock_movement',
       relationshipType: 'has_many',
+      onDelete: 'restrict',
       inverseName: 'Reverses Movement',
       inverseSystemAttribute: 'stock_movement_reverses_movement',
     },

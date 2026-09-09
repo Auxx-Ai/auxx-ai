@@ -1,32 +1,28 @@
 // packages/lib/src/field-hooks/pre/purchase-order-delete-guard.test.ts
-// The guard that stops a purchase order being hard-deleted out from under its
-// receipts or a vendor's bill.
+// The guard that stops a purchase order being hard-deleted out from under a
+// receipt in a settled month.
 //
 // plans/money/tasks/21-money-parent-delete-safety.md §4. Note the two-hop read
 // the cases exercise: a `stock_movement` names the LINE, never the order, which
 // is why `sweepEntityFieldValues` never touched receipts and why an unguarded
 // delete looked harmless.
+//
+// The vendor-bill refusal and the line/receipt cascades are no longer here: they
+// are `onDelete: 'restrict'` on `purchase_order_bills` and `onDelete: 'cascade'`
+// on `purchase_order_lines` / `purchase_order_line_stock_movements`, run by the
+// delete engine.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { EntityPreDeleteEvent } from '../types'
 
 const h = vi.hoisted(() => ({
-  listFiltered: vi.fn(),
   findRelated: vi.fn(),
-  del: vi.fn(),
   getCachedEntityDefId: vi.fn(),
   bySystemAttributes: vi.fn(),
   resolvePeriodLock: vi.fn(),
   postedPeriodRows: vi.fn(),
   getOrganizationSetting: vi.fn(),
   movementRows: vi.fn(),
-}))
-
-vi.mock('../../resources/crud', () => ({
-  UnifiedCrudHandler: class {
-    listFiltered = h.listFiltered
-    delete = h.del
-  },
 }))
 
 vi.mock('./related-rows', () => ({ findRelatedInstanceIds: h.findRelated }))
@@ -79,11 +75,9 @@ function event(): EntityPreDeleteEvent {
   }
 }
 
-/** `findRelatedInstanceIds` answers per child type, so a test cannot confuse the two reads. */
-function children({ bills = [], lines = [] }: { bills?: string[]; lines?: string[] }): void {
-  h.findRelated.mockImplementation(async (_org: string, childType: string) =>
-    childType === 'vendor_bill' ? bills : lines
-  )
+/** The order's lines, as `findRelatedInstanceIds` answers. */
+function lines(...ids: string[]): void {
+  h.findRelated.mockResolvedValue(ids)
 }
 
 function movement(id: string, occurredAt: string | null, createdAt = new Date('2026-08-15')) {
@@ -106,36 +100,21 @@ beforeEach(() => {
   h.resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: null })
   h.postedPeriodRows.mockResolvedValue([])
   h.movementRows.mockResolvedValue([])
-  children({})
+  lines()
   settings({})
 })
 
-describe('guardPurchaseOrderDelete — refusals', () => {
-  it('refuses when a vendor bill is billed against the order', async () => {
-    children({ bills: ['bill-1'], lines: ['line-1'] })
-
-    await expect(guardPurchaseOrderDelete(event())).rejects.toThrow(/three-way match/i)
-  })
-
-  it('refuses on the bill before deleting anything at all', async () => {
-    children({ bills: ['bill-1'], lines: ['line-1'] })
-    h.movementRows.mockResolvedValue([movement('m1', '2026-09-01')])
-
-    await expect(guardPurchaseOrderDelete(event())).rejects.toThrow()
-    expect(h.del).not.toHaveBeenCalled()
-  })
-
+describe('guardPurchaseOrderDelete: refusals', () => {
   it('refuses when a receipt sits in a locked month', async () => {
-    children({ lines: ['line-1'] })
+    lines('line-1')
     h.movementRows.mockResolvedValue([movement('m1', '2026-07-10')])
     h.resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: '2026-07' })
 
     await expect(guardPurchaseOrderDelete(event())).rejects.toThrow(/2026-07/)
-    expect(h.del).not.toHaveBeenCalled()
   })
 
   it('refuses when a receipt sits in a month holding a standing posted entry', async () => {
-    children({ lines: ['line-1'] })
+    lines('line-1')
     h.movementRows.mockResolvedValue([movement('m1', '2026-08-15')])
     h.postedPeriodRows.mockResolvedValue([{ periodKey: '2026-08' }])
 
@@ -143,56 +122,50 @@ describe('guardPurchaseOrderDelete — refusals', () => {
   })
 
   it('counts receipts, not stock movements, in the message', async () => {
-    children({ lines: ['line-1'] })
+    lines('line-1')
     h.movementRows.mockResolvedValue([movement('m1', '2026-08-15')])
     h.postedPeriodRows.mockResolvedValue([{ periodKey: '2026-08' }])
 
     await expect(guardPurchaseOrderDelete(event())).rejects.toThrow(/1 receipt in 2026-08/)
   })
+
+  it('reads the lines through the archive-aware path, keyed on the order', async () => {
+    await guardPurchaseOrderDelete(event())
+
+    expect(h.findRelated).toHaveBeenCalledExactlyOnceWith(
+      ORG,
+      'purchase_order_line',
+      'purchase_order_line_purchase_order',
+      [PO_ID]
+    )
+  })
 })
 
-describe('guardPurchaseOrderDelete — cascade', () => {
-  it('deletes the receipts BEFORE the lines', async () => {
-    children({ lines: ['line-1', 'line-2'] })
+describe('guardPurchaseOrderDelete: open books', () => {
+  it('passes when every receipt is in an open period', async () => {
+    lines('line-1', 'line-2')
     h.movementRows.mockResolvedValue([movement('m1', '2026-09-01')])
 
-    await guardPurchaseOrderDelete(event())
-
-    expect(h.del.mock.calls.map((call) => call[0])).toEqual([
-      'stock_movement:m1',
-      'purchase_order_line:line-1',
-      'purchase_order_line:line-2',
-    ])
+    await expect(guardPurchaseOrderDelete(event())).resolves.toBeUndefined()
   })
 
-  it('never suppresses the movement delete — QoH lands on a surviving part', async () => {
-    children({ lines: ['line-1'] })
-    h.movementRows.mockResolvedValue([movement('m1', '2026-09-01')])
+  it('passes an order that never received anything', async () => {
+    lines('line-1')
 
-    await guardPurchaseOrderDelete(event())
-
-    expect(h.del.mock.calls[0]).toEqual(['stock_movement:m1'])
+    await expect(guardPurchaseOrderDelete(event())).resolves.toBeUndefined()
+    expect(h.resolvePeriodLock).not.toHaveBeenCalled()
   })
 
-  it('cascades the lines even when the order never received anything', async () => {
-    children({ lines: ['line-1'] })
-
-    await guardPurchaseOrderDelete(event())
-
-    expect(h.del).toHaveBeenCalledExactlyOnceWith('purchase_order_line:line-1')
-  })
-
-  it('does nothing for an order with no lines and no bills', async () => {
-    await guardPurchaseOrderDelete(event())
-    expect(h.del).not.toHaveBeenCalled()
+  it('does not read movements for an order with no lines', async () => {
+    await expect(guardPurchaseOrderDelete(event())).resolves.toBeUndefined()
+    // `readMovementsByRelation` short-circuits on an empty id list.
+    expect(h.movementRows).not.toHaveBeenCalled()
   })
 
   it('settles nothing for an org with no accounting setup', async () => {
-    children({ lines: ['line-1'] })
+    lines('line-1')
     h.movementRows.mockResolvedValue([movement('m1', '2020-01-01')])
 
-    await guardPurchaseOrderDelete(event())
-
-    expect(h.del).toHaveBeenCalledWith('stock_movement:m1')
+    await expect(guardPurchaseOrderDelete(event())).resolves.toBeUndefined()
   })
 })

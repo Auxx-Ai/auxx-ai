@@ -544,6 +544,7 @@ export const BUILD_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'stock_movement:build' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'cascade',
       isInverse: true,
     },
     description: 'Inventory movements created by this build',
@@ -606,6 +607,7 @@ export const BUILD_FIELDS: Record<string, ResourceField> = {
     relationshipConfig: {
       relatedEntityType: 'build',
       relationshipType: 'has_many',
+      onDelete: 'restrict',
       inverseName: 'Reversal Of',
       inverseSystemAttribute: 'build_reversal_of',
     },

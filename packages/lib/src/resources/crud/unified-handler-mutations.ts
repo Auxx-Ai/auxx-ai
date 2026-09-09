@@ -26,6 +26,7 @@ import {
   getEntityPreCreateHooks,
   getEntityPreDeleteHooks,
 } from '../../field-hooks/registry'
+import type { EntityPostDeleteHandler, EntityPreDeleteHandler } from '../../field-hooks/types'
 import type { FieldValueService } from '../../field-values'
 // Leaf path on purpose (not the field-values barrel): the one shared narrowing
 // helper for tier-1 sync capture, so this file's lifecycle seams and the field
@@ -51,10 +52,11 @@ import { EntityMergeService } from '../merge'
 import type { ResourceField } from '../registry/field-types'
 import { parseRecordId, type RecordId, toRecordId } from '../resource-id'
 import {
-  type BulkDeleteGroup,
-  type BulkDeleteLane,
-  orderBulkDeleteGroups,
-} from './bulk-delete-order'
+  collectDeleteClosure,
+  type DeleteClosureGroup,
+  type DeleteClosureRecord,
+  findRestrictViolations,
+} from './delete-closure'
 import { publishRecordLifecycleEvent } from './publish-record-event'
 import {
   getAmbientTxWriteScope,
@@ -91,10 +93,14 @@ export interface CrudOptions {
    */
   skipEvents?: boolean
   /**
-   * Skip post-delete hooks for this delete. Only for cleanup flows that delete child rows on
-   * behalf of a parent operation which guarantees its own projection sync afterward (e.g. the
-   * invoice pre-delete guard removing the invoice's own line copies) — running the child-level
-   * hooks there would recompute a parent that is about to be deleted, once per child.
+   * Skip the post-delete hooks for the REQUESTED records of this delete. For a
+   * command that performs the post-delete follow-up itself (`deleteInvoiceLine`
+   * in `money/gather.ts` runs the recompute and projection sync right after),
+   * so the engine's re-projection would be a second, redundant pass.
+   *
+   * Never needed for a cascade: cascaded records already skip post-delete
+   * hooks in the engine, because their parent is in the closure and dying
+   * with them (see `deleteRecords`, phase 3).
    */
   suppressPostDeleteHooks?: boolean
   /**
@@ -876,7 +882,20 @@ export async function restoreEntity(
 }
 
 /**
- * Permanently delete entity instance
+ * Permanently delete one entity instance.
+ *
+ * A thin wrapper over the same three phases as {@link bulkDeleteEntities}
+ * with a one-element request (plans/records/bulk-delete-followups.md D-A1:
+ * one implementation, so the single-record path cannot drift from the bulk
+ * one). The only difference is how a failure surfaces: this THROWS the
+ * original error object, `AuxxError` instance and `statusCode` intact, so the
+ * router's error formatter and every `instanceof` guard keep working exactly
+ * as they did when this function ran the delete itself.
+ *
+ * A hard delete reaches an archived row, or archive would be a one-way door:
+ * a guard telling the caller to "delete the bills first" would be asking for
+ * something the API refused to do. The closure resolves the request without
+ * an `archivedAt` filter for that reason.
  *
  * @param ctx - Mutation context
  * @param recordId - RecordId in format "entityDefinitionId:instanceId"
@@ -887,149 +906,9 @@ export async function deleteEntity(
   recordId: RecordId,
   options: CrudOptions = {}
 ): Promise<void> {
-  // S3: one derived boolean per call gates the whole per-write fan-out below.
-  const publishEvents = derivePublishEvents(ctx, options)
-  const { entityDefinitionId, entityInstanceId } = parseRecordId(recordId)
-
-  // 🛑 `includeArchived` — a hard delete must reach an archived row. Without it
-  // an archived record could be neither restored nor purged, so archive was a
-  // one-way door, and a guard telling the caller to "delete the bills first"
-  // was asking for something the API refused to do.
-  const instanceResult = await getEntityInstance({
-    id: entityInstanceId,
-    organizationId: ctx.organizationId,
-    includeArchived: true,
-  })
-  const instance = instanceResult.isOk() ? instanceResult.value : null
-  if (!instance) throw new Error(`Entity not found: ${entityInstanceId}`)
-
-  const entityDef = await ctx.resolveEntityDefinition(entityDefinitionId)
-
-  // Capture field values before deletion so:
-  //   1. The deleted event carries relationship data (entity triggers like
-  //      BOM cost recalculation depend on this)
-  //   2. Any registered pre-delete hooks can inspect the record's current
-  //      state to decide whether to reject the delete
-  // Pre-delete hooks are orthogonal to event publishing — capture is
-  // required whenever either consumer is active.
-  const preDeleteHooks = entityDef.apiSlug ? getEntityPreDeleteHooks(entityDef.apiSlug) : []
-  const postDeleteHooks =
-    entityDef.apiSlug && !options.suppressPostDeleteHooks
-      ? getEntityPostDeleteHooks(entityDef.apiSlug)
-      : []
-  const txScope = deriveTxWriteScope(ctx, options)
-  let eventData: Record<string, unknown> = { hardDelete: true }
-  if (publishEvents || txScope || preDeleteHooks.length > 0 || postDeleteHooks.length > 0) {
-    const fields = await ctx.getFields(entityDef.id)
-    const captured = await captureEventData(ctx.fieldValueService, recordId, fields)
-    eventData = { hardDelete: true, ...captured }
-  }
-
-  // Pre-delete hooks: throw to reject the delete (4xx surfaced by caller).
-  if (preDeleteHooks.length > 0 && entityDef.apiSlug) {
-    for (const hook of preDeleteHooks) {
-      await hook({
-        recordId,
-        entityDefinitionId: entityDef.id,
-        entityType: entityDef.entityType,
-        entitySlug: entityDef.apiSlug,
-        values: eventData,
-        organizationId: ctx.organizationId,
-        userId: ctx.userId,
-        bypass: ctx.fieldValueService.ctx.bypassFieldGuards,
-      })
-    }
-  }
-
-  // Delete comments using RecordId
-  const commentService = new CommentService(ctx.organizationId, ctx.userId, ctx.db, null)
-  await commentService.deleteCommentsByRecordId(recordId)
-
-  const deleteResult = await deleteEntityInstance({
-    id: entityInstanceId,
-    organizationId: ctx.organizationId,
-    db: ctx.db,
-  })
-
-  unwrapResult(deleteResult)
-
-  // Duplicate-suggestion cleanup — deliberately OUTSIDE the `publishEvents`
-  // guard, exactly as on `archiveEntity`. The argument there ("pair cleanup is
-  // data hygiene, not an event") applies MORE forcefully here: an archived
-  // record still exists and read paths filter it, while a hard-deleted one
-  // leaves the pair pointing at an id that resolves to nothing. This path never
-  // did the cleanup at all.
-  try {
-    await deleteOpenPairsForRecord(ctx.db, ctx.organizationId, entityInstanceId)
-  } catch (error) {
-    logger.warn('Duplicate-pair cleanup failed on delete', {
-      recordId,
-      error: error instanceof Error ? error.message : String(error),
-    })
-  }
-
-  // Tier-1 sync capture (plan 07 §4): a hard delete is membership too — the
-  // manifest has one archived set for both (`bulkDeleteEntities` delegates
-  // here, so it is covered too).
-  syncCollectorOf(ctx.session)?.recordArchived(recordId)
-
-  // Post-delete hooks: deletes never fire field-change post-hooks, so this is where
-  // projections that depend on the deleted record refresh (log-and-swallow, matching
-  // field-change post-hook semantics — the delete itself has already committed).
-  for (const hook of postDeleteHooks) {
-    try {
-      await hook({
-        recordId,
-        entityDefinitionId: entityDef.id,
-        entityType: entityDef.entityType,
-        entitySlug: entityDef.apiSlug ?? '',
-        values: eventData,
-        organizationId: ctx.organizationId,
-        userId: ctx.userId,
-      })
-    } catch (error) {
-      logger.error('Post-delete hook failed', {
-        recordId,
-        entitySlug: entityDef.apiSlug,
-        error: error instanceof Error ? error.message : String(error),
-      })
-    }
-  }
-
-  if (publishEvents) {
-    publishRecordLifecycleEvent({
-      recordId,
-      entityType: entityDef.entityType,
-      entityDefinitionId: entityDef.id,
-      entitySlug: entityDef.apiSlug,
-      action: 'deleted',
-      organizationId: ctx.organizationId,
-      userId: ctx.userId,
-      eventData,
-    })
-
-    // Publish record:deleted realtime event
-    getRealtimeService()
-      .publish(
-        rooms.orgRecords(ctx.organizationId, entityDef.id),
-        'record:deleted',
-        { recordId, entityDefinitionId: entityDef.id },
-        { excludeSocketId: ctx.socketId }
-      )
-      .catch(() => {})
-  }
-
-  // Buffered lane: replayed post-commit by `flushTxWriteScope`.
-  if (txScope) {
-    recordTxWriteArchive(txScope, {
-      recordId,
-      entityDefinitionId: entityDef.id,
-      entityType: entityDef.entityType,
-      entitySlug: entityDef.apiSlug,
-      realtimeEvent: 'record:deleted',
-      eventData,
-    })
-  }
+  const { errors } = await deleteRecords(ctx, [recordId], options)
+  const failure = errors[0]
+  if (failure) throw failure.error
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1039,7 +918,7 @@ export async function deleteEntity(
 /**
  * How many records one batched bulk transaction covers. Matches the chunking
  * inside `deleteEntityInstances`, so a chunk here is a chunk there. Shared by
- * the batched delete lane and the bulk archive.
+ * the delete's write phase and the bulk archive.
  */
 const BULK_CHUNK = 500
 
@@ -1247,13 +1126,14 @@ export async function bulkArchiveEntities(
 /**
  * One record's failure inside a bulk delete.
  *
- * `statusCode` is the HTTP status of the `AuxxError` the pre-delete hooks threw —
- * 400/409/… for a deliberate guard rejection ("this purchase order has 1 vendor
- * bill billed against it"), `undefined` for anything unexpected. The loop below
- * flattens the error to a string, so this is the ONLY thing left telling the
- * router whether `message` is safe to show the user: `record.bulkDelete`'s
- * errorFormatter masks every `INTERNAL_SERVER_ERROR` message as "Internal server
- * error", which is what a guard rejection used to surface as.
+ * `statusCode` is the HTTP status of the `AuxxError` a restrict relationship
+ * or a pre-delete hook raised: 409 for "this purchase order has 1 vendor bill",
+ * 400/403/… for a hook's own refusal, `undefined` for anything unexpected.
+ * `bulkDeleteEntities` flattens the error to a string, so this is the ONLY
+ * thing left telling the router whether `message` is safe to show the user:
+ * `record.bulkDelete`'s errorFormatter masks every `INTERNAL_SERVER_ERROR`
+ * message as "Internal server error", which is what a guard rejection used to
+ * surface as.
  */
 export type BulkDeleteError = { recordId: RecordId; message: string; statusCode?: number }
 
@@ -1272,7 +1152,27 @@ function auxxStatusCode(error: unknown): number | undefined {
 }
 
 /**
- * Bulk delete entities (hard delete)
+ * Bulk delete entities (hard delete).
+ *
+ * Three phases, and nothing is written before the last one
+ * (plans/records/bulk-delete-followups.md A.2, generalized over the
+ * relationship graph per plans/relationships/01-delete-semantics.md):
+ *
+ *   1. **collect** the closure: every requested record plus everything its
+ *      `onDelete: 'cascade'` relationships own, transitively
+ *      ({@link collectDeleteClosure});
+ *   2. **refuse**, over the whole closure, requested and cascaded alike:
+ *      `onDelete: 'restrict'` relationships, then the per-record pre-delete
+ *      hooks. A refusal keeps the requested root's entire tree and reports
+ *      the root, so a refused child aborts its parent the way the thrown
+ *      error inside the old hook-driven cascade did;
+ *   3. **write**, survivors only, deepest group first, set-based per chunk.
+ *
+ * `count` is the number of REQUESTED records removed. Cascaded records are
+ * not counted, exactly as the hook-driven cascades never were, so it stays
+ * bounded by `recordIds.length`. `errors` is keyed on the caller's ids: a
+ * cascaded record's failure is attributed to the requested root it was
+ * collected under, and a record pruned as collateral is not an error itself.
  *
  * @param ctx - Mutation context
  * @param recordIds - Array of RecordIds to delete
@@ -1285,165 +1185,313 @@ export async function bulkDeleteEntities(
 ): Promise<BulkDeleteResult> {
   if (recordIds.length === 0) return { count: 0, errors: [] }
 
-  const groups = orderBulkDeleteGroups(await groupRecordsForDelete(ctx, recordIds))
+  const { count, errors } = await deleteRecords(ctx, recordIds, options)
+  return {
+    count,
+    errors: errors.map(({ recordId, error }) => ({
+      recordId,
+      message: error instanceof Error ? error.message : 'Unknown error',
+      statusCode: auxxStatusCode(error),
+    })),
+  }
+}
 
-  let count = 0
-  const errors: BulkDeleteError[] = []
+/** One requested record's failure, with the error object intact. */
+interface DeleteFailure {
+  recordId: RecordId
+  error: unknown
+}
 
+/** What phase 2 resolves once per definition in the closure. */
+interface DeleteGroupRuntime {
+  entityDef: ResolvedEntityDefinition
+  fields: CustomFieldEntity[]
+  preDeleteHooks: EntityPreDeleteHandler[]
+  postDeleteHooks: EntityPostDeleteHandler[]
+}
+
+/**
+ * Resolve a closure group's definition, hooks and (when anything will read
+ * them) its fields. Once per definition, not once per record.
+ */
+async function resolveDeleteGroup(
+  ctx: MutationContext,
+  group: DeleteClosureGroup,
+  publishEvents: boolean,
+  txScope: TxWriteScope | undefined
+): Promise<DeleteGroupRuntime> {
+  const entityDef = await ctx.resolveEntityDefinition(group.entityDefinitionId)
+  const preDeleteHooks = getEntityPreDeleteHooks(entityDef.apiSlug)
+  const postDeleteHooks = getEntityPostDeleteHooks(entityDef.apiSlug)
+  const needsFields =
+    publishEvents ||
+    txScope !== undefined ||
+    preDeleteHooks.length > 0 ||
+    postDeleteHooks.length > 0
+  const fields = needsFields ? await ctx.getFields(entityDef.id) : []
+  return { entityDef, fields, preDeleteHooks, postDeleteHooks }
+}
+
+/**
+ * The one delete implementation behind {@link deleteEntity} and
+ * {@link bulkDeleteEntities}.
+ *
+ * The invariant the phase split rests on: **phase 2 reads nothing that phase 3
+ * has already deleted**, because phase 3 has not started. Every pre-delete
+ * hook and every restrict count runs against the intact database, so a hook
+ * asking "does anything still depend on this record" gets a true answer, and
+ * a refused record keeps its comments, its duplicate pairs and its children,
+ * because none of them were touched yet (followups A.2, "survivors only").
+ *
+ * What it deliberately does NOT batch: the per-record `captureEventData`
+ * read, on the lanes that need it. `getValues` composes linked NAME fields
+ * and applies the mail-host gate, so a hand-rolled batched read would change
+ * the payload shape of every `entity:deleted` event (followups A.4). On a
+ * QUIET lane with no hooks nothing is captured at all, and the whole delete
+ * is four statements per 500 records plus the closure reads.
+ */
+async function deleteRecords(
+  ctx: MutationContext,
+  recordIds: readonly RecordId[],
+  options: CrudOptions
+): Promise<{ count: number; errors: DeleteFailure[] }> {
+  const publishEvents = derivePublishEvents(ctx, options)
+  const txScope = deriveTxWriteScope(ctx, options)
+
+  // Keyed on the requested root. The first failure reported for a root wins.
+  const failures = new Map<RecordId, unknown>()
+  const fail = (recordId: RecordId, error: unknown) => {
+    if (!failures.has(recordId)) failures.set(recordId, error)
+  }
+  const errors = () => [...failures].map(([recordId, error]) => ({ recordId, error }))
+
+  // ── Phase 1: collect ──
+  const closure = await collectDeleteClosure(ctx.db, {
+    organizationId: ctx.organizationId,
+    recordIds,
+  })
+  if (closure.isErr()) {
+    for (const recordId of new Set(recordIds)) fail(recordId, closure.error)
+    return { count: 0, errors: errors() }
+  }
+  for (const recordId of closure.value.notFound) {
+    fail(recordId, new Error(`Entity not found: ${parseRecordId(recordId).entityInstanceId}`))
+  }
+  const { groups } = closure.value
+
+  // The tree the closure recorded, inverted: parent -> children, so a refusal
+  // can prune a whole subtree, and child -> root, so it can be attributed.
+  const parentOf = new Map<RecordId, RecordId | null>()
+  const childrenOf = new Map<RecordId, RecordId[]>()
   for (const group of groups) {
-    if (group.lane === 'guarded') {
-      // Per record, exactly as before: the guards answer per record ("does THIS
-      // part have a movement in a settled period") and the cascades are per
-      // parent, so there is nothing here to batch without rewriting eleven
-      // guards to be set-based.
-      for (const recordId of group.items) {
-        try {
-          await deleteEntity(ctx, recordId, { skipEvents: options.skipEvents })
-          count++
-        } catch (error) {
-          errors.push({
-            recordId,
-            message: error instanceof Error ? error.message : 'Unknown error',
-            statusCode: auxxStatusCode(error),
-          })
-        }
+    for (const record of group.records) {
+      parentOf.set(record.recordId, record.requestedBy)
+      if (record.requestedBy === null) continue
+      const siblings = childrenOf.get(record.requestedBy) ?? []
+      siblings.push(record.recordId)
+      childrenOf.set(record.requestedBy, siblings)
+    }
+  }
+  const rootOf = (recordId: RecordId): RecordId => {
+    let current = recordId
+    for (let parent = parentOf.get(current); parent; parent = parentOf.get(current))
+      current = parent
+    return current
+  }
+  const pruned = new Set<RecordId>()
+  // A refusal anywhere in a tree keeps the WHOLE tree: the refused record
+  // survives, so its descendants are still owned by a living record; its
+  // ancestors cannot go without stranding it; and their other descendants
+  // are still owned by those surviving ancestors.
+  const refuse = (record: DeleteClosureRecord, error: unknown) => {
+    const root = rootOf(record.recordId)
+    fail(root, error)
+    const stack = [root]
+    for (let next = stack.pop(); next !== undefined; next = stack.pop()) {
+      if (pruned.has(next)) continue
+      pruned.add(next)
+      stack.push(...(childrenOf.get(next) ?? []))
+    }
+  }
+
+  // ── Phase 2: refuse, before ANY write ──
+  const restrict = await findRestrictViolations(ctx.db, {
+    organizationId: ctx.organizationId,
+    groups,
+  })
+  if (restrict.isErr()) {
+    for (const group of groups) {
+      for (const record of group.records) {
+        if (record.requestedBy === null) fail(record.recordId, restrict.error)
+      }
+    }
+    return { count: 0, errors: errors() }
+  }
+
+  const runtimes = new Map<string, DeleteGroupRuntime>()
+  const captured = new Map<RecordId, Record<string, unknown>>()
+
+  // Shallowest first, so a requested root's own refusal is the one reported
+  // and its subtree is pruned before any hook below it has to run.
+  for (const group of [...groups].reverse()) {
+    let runtime: DeleteGroupRuntime
+    try {
+      runtime = await resolveDeleteGroup(ctx, group, publishEvents, txScope)
+    } catch (error) {
+      for (const record of group.records) {
+        if (!pruned.has(record.recordId)) refuse(record, error)
       }
       continue
     }
+    runtimes.set(group.entityDefinitionId, runtime)
+    const { entityDef, fields, preDeleteHooks, postDeleteHooks } = runtime
 
-    const result = await deleteEntitiesBatched(ctx, group, options)
-    count += result.count
-    errors.push(...result.errors)
-  }
+    for (const record of group.records) {
+      if (pruned.has(record.recordId)) continue
 
-  return { count, errors }
-}
+      const violation = restrict.value.get(record.recordId)
+      if (violation) {
+        refuse(record, violation.error)
+        continue
+      }
 
-/**
- * Split a bulk delete by definition and decide each one's lane.
- *
- * The lane is a REGISTRY question, not a judgment call: a definition whose
- * `apiSlug` has neither pre- nor post-delete hooks registered has nothing per
- * record left to run, so its records can be removed set-based. Anything else
- * keeps the per-record loop.
- *
- * A definition that fails to resolve keeps the guarded lane — the safe answer,
- * since `deleteEntity` will surface the real error per record.
- */
-async function groupRecordsForDelete(
-  ctx: MutationContext,
-  recordIds: readonly RecordId[]
-): Promise<BulkDeleteGroup<RecordId>[]> {
-  const byDef = new Map<string, RecordId[]>()
-  for (const recordId of recordIds) {
-    const { entityDefinitionId } = parseRecordId(recordId)
-    const items = byDef.get(entityDefinitionId) ?? []
-    items.push(recordId)
-    byDef.set(entityDefinitionId, items)
-  }
+      const requested = record.requestedBy === null
+      // Capture field values before deletion so:
+      //   1. the deleted event carries relationship data (entity triggers like
+      //      BOM cost recalculation depend on this);
+      //   2. the pre-delete hooks can inspect the record's current state.
+      // Post-delete hooks read the same capture, but only run for requested
+      // records (see phase 3), so a cascaded record does not pay for them.
+      const needsCapture =
+        publishEvents ||
+        txScope !== undefined ||
+        preDeleteHooks.length > 0 ||
+        (requested && postDeleteHooks.length > 0)
 
-  const groups: BulkDeleteGroup<RecordId>[] = []
-  for (const [entityDefinitionId, items] of byDef) {
-    // Resolved ONCE per definition rather than once per record — the org cache
-    // makes this free after the first call, but a multi-def batch used to warm
-    // only the first record's definition (`unified-handler.ts` `bulkDelete`).
-    let apiSlug: string | null = null
-    let lane: BulkDeleteLane = 'guarded'
-    try {
-      const entityDef = await ctx.resolveEntityDefinition(entityDefinitionId)
-      apiSlug = entityDef.apiSlug ?? null
-      const hooked =
-        !apiSlug ||
-        getEntityPreDeleteHooks(apiSlug).length > 0 ||
-        getEntityPostDeleteHooks(apiSlug).length > 0
-      lane = hooked ? 'guarded' : 'batched'
-    } catch {
-      lane = 'guarded'
+      try {
+        let eventData: Record<string, unknown> = { hardDelete: true }
+        if (needsCapture) {
+          eventData = {
+            hardDelete: true,
+            ...(await captureEventData(ctx.fieldValueService, record.recordId, fields)),
+          }
+        }
+        // Pre-delete hooks: throw to reject the delete (4xx surfaced by caller).
+        for (const hook of preDeleteHooks) {
+          await hook({
+            recordId: record.recordId,
+            entityDefinitionId: entityDef.id,
+            entityType: entityDef.entityType,
+            entitySlug: entityDef.apiSlug,
+            values: eventData,
+            organizationId: ctx.organizationId,
+            userId: ctx.userId,
+            bypass: ctx.fieldValueService.ctx.bypassFieldGuards,
+          })
+        }
+        captured.set(record.recordId, eventData)
+      } catch (error) {
+        refuse(record, error)
+      }
     }
-    groups.push({ entityDefinitionId, apiSlug, lane, items })
   }
 
-  return groups
-}
-
-/**
- * The set-based delete lane: one definition's records, none of which carry
- * pre/post-delete hooks, removed in four statements per chunk instead of ~10
- * per record (plans/records/bulk-delete-at-scale.md §5.3).
- *
- * What it deliberately does NOT batch: the pre-delete `captureEventData` read,
- * on the lane that publishes events. `getValues` composes linked NAME fields
- * and applies the mail-host gate, so a hand-rolled batched read would change
- * the payload shape of every `entity:deleted` event — a separate change from
- * this one. On a QUIET lane (connector teardown, seeds) `publishEvents` is
- * false and no hooks are registered, so the capture is skipped entirely and
- * the whole delete really is four statements per 500 records.
- */
-async function deleteEntitiesBatched(
-  ctx: MutationContext,
-  group: BulkDeleteGroup<RecordId>,
-  options: CrudOptions
-): Promise<BulkDeleteResult> {
-  const publishEvents = derivePublishEvents(ctx, options)
-  const txScope = deriveTxWriteScope(ctx, options)
-  const entityDef = await ctx.resolveEntityDefinition(group.entityDefinitionId)
-  const fields = publishEvents || txScope ? await ctx.getFields(entityDef.id) : []
-
-  const errors: BulkDeleteError[] = []
+  // ── Phase 3: write, survivors only, deepest group first ──
   let count = 0
+  const commentService = new CommentService(ctx.organizationId, ctx.userId, ctx.db, null)
 
-  for (let offset = 0; offset < group.items.length; offset += BULK_CHUNK) {
-    const chunk = group.items.slice(offset, offset + BULK_CHUNK)
-    const instanceIds = chunk.map((recordId) => parseRecordId(recordId).entityInstanceId)
+  for (const group of groups) {
+    const runtime = runtimes.get(group.entityDefinitionId)
+    if (!runtime) continue
+    const { entityDef, postDeleteHooks } = runtime
+    const survivors = group.records.filter((record) => !pruned.has(record.recordId))
 
-    try {
-      // Captured BEFORE the delete, for the same reason the per-record path
-      // captures: the deleted event carries relationship data that entity
-      // triggers depend on. Empty on the quiet lane.
-      const captured = new Map<RecordId, Record<string, unknown>>()
-      for (const recordId of chunk) {
-        if (fields.length === 0) break
-        captured.set(recordId, {
-          hardDelete: true,
-          ...(await captureEventData(ctx.fieldValueService, recordId, fields)),
-        })
+    // One transaction per chunk, not per group (followups D-A3): a group of
+    // 10,000 records would otherwise hold one transaction open across the
+    // whole phase.
+    for (let offset = 0; offset < survivors.length; offset += BULK_CHUNK) {
+      const chunk = survivors.slice(offset, offset + BULK_CHUNK)
+      const instanceIds = chunk.map((record) => record.entityInstanceId)
+
+      try {
+        await commentService.deleteCommentsForDefinition(group.entityDefinitionId, instanceIds)
+
+        unwrapResult(
+          await deleteEntityInstances({
+            ids: instanceIds,
+            organizationId: ctx.organizationId,
+            db: ctx.db,
+          })
+        )
+
+        // Duplicate-suggestion cleanup, matching `archiveEntity` and OUTSIDE
+        // the event guard for the same reason: an open pair pointing at a
+        // record that no longer exists is worse than one pointing at an
+        // archived record.
+        const pairs = await deleteOpenPairsForRecords(ctx.db, ctx.organizationId, instanceIds)
+        if (pairs.isErr()) {
+          logger.warn('Duplicate-pair cleanup failed on delete', {
+            entityDefinitionId: group.entityDefinitionId,
+            error: pairs.error.message,
+          })
+        }
+      } catch (error) {
+        // A chunk fails whole: the transaction inside `deleteEntityInstances`
+        // rolled back, so no record in it was removed. Attribute the failure
+        // to each record's requested root and keep that root's tree, so a
+        // parent is not deleted over children that are still there.
+        for (const record of chunk) refuse(record, error)
+        continue
       }
 
-      const commentService = new CommentService(ctx.organizationId, ctx.userId, ctx.db, null)
-      await commentService.deleteCommentsForDefinition(group.entityDefinitionId, instanceIds)
-
-      const deleteResult = await deleteEntityInstances({
-        ids: instanceIds,
-        organizationId: ctx.organizationId,
-        db: ctx.db,
-      })
-      unwrapResult(deleteResult)
-
-      // Duplicate-suggestion cleanup, matching `archiveEntity` and OUTSIDE the
-      // event guard for the same reason: an open pair pointing at a record that
-      // no longer exists is worse than one pointing at an archived record, and
-      // the per-record delete path never did this at all.
-      const pairs = await deleteOpenPairsForRecords(ctx.db, ctx.organizationId, instanceIds)
-      if (pairs.isErr()) {
-        logger.warn('Duplicate-pair cleanup failed on bulk delete', {
-          entityDefinitionId: group.entityDefinitionId,
-          error: pairs.error.message,
-        })
-      }
-
-      count += chunk.length
-
-      // In-process doors, replayed per record from the ids just removed. No
-      // round trips, so these stay per record — `record:deleted` in particular
-      // must stay tier 1, because the client removes those rows from the record
+      // In-process doors, per record from the ids just removed. No round
+      // trips, so these stay per record: `record:deleted` in particular must
+      // stay tier 1, because the client removes those rows from the record
       // store in place and a tier-2 delta frame would regress that.
-      for (const recordId of chunk) {
-        syncCollectorOf(ctx.session)?.recordArchived(recordId)
-        const eventData = captured.get(recordId) ?? { hardDelete: true }
+      for (const record of chunk) {
+        const requested = record.requestedBy === null
+        if (requested) count++
+
+        // Tier-1 sync capture (plan 07 §4): a hard delete is membership too.
+        syncCollectorOf(ctx.session)?.recordArchived(record.recordId)
+
+        const eventData = captured.get(record.recordId) ?? { hardDelete: true }
+
+        // Post-delete hooks run for REQUESTED records only. Every registered
+        // post-delete hook re-projects the record's parent document (billing
+        // totals on the order or work order, the bill's match state, the
+        // contact's rollups), and a cascaded record's parent is in the closure
+        // and dying with it. Skipping that re-projection once per child is
+        // what the guards used to do by hand with `suppressPostDeleteHooks`
+        // for orders, invoices, work orders and vendor bills; the closure
+        // knows. The option survives for a command that runs the follow-up
+        // itself. Log-and-swallow, matching field-change post-hook semantics:
+        // the delete itself has already committed.
+        if (requested && !options.suppressPostDeleteHooks) {
+          for (const hook of postDeleteHooks) {
+            try {
+              await hook({
+                recordId: record.recordId,
+                entityDefinitionId: entityDef.id,
+                entityType: entityDef.entityType,
+                entitySlug: entityDef.apiSlug,
+                values: eventData,
+                organizationId: ctx.organizationId,
+                userId: ctx.userId,
+              })
+            } catch (error) {
+              logger.error('Post-delete hook failed', {
+                recordId: record.recordId,
+                entitySlug: entityDef.apiSlug,
+                error: error instanceof Error ? error.message : String(error),
+              })
+            }
+          }
+        }
 
         if (publishEvents) {
           publishRecordLifecycleEvent({
-            recordId,
+            recordId: record.recordId,
             entityType: entityDef.entityType,
             entityDefinitionId: entityDef.id,
             entitySlug: entityDef.apiSlug,
@@ -1456,15 +1504,16 @@ async function deleteEntitiesBatched(
             .publish(
               rooms.orgRecords(ctx.organizationId, entityDef.id),
               'record:deleted',
-              { recordId, entityDefinitionId: entityDef.id },
+              { recordId: record.recordId, entityDefinitionId: entityDef.id },
               { excludeSocketId: ctx.socketId }
             )
             .catch(() => {})
         }
 
+        // Buffered lane: replayed post-commit by `flushTxWriteScope`.
         if (txScope) {
           recordTxWriteArchive(txScope, {
-            recordId,
+            recordId: record.recordId,
             entityDefinitionId: entityDef.id,
             entityType: entityDef.entityType,
             entitySlug: entityDef.apiSlug,
@@ -1473,18 +1522,10 @@ async function deleteEntitiesBatched(
           })
         }
       }
-    } catch (error) {
-      // A batched chunk fails whole — the transaction inside
-      // `deleteEntityInstances` rolled back, so no record in it was removed.
-      // Attribute the failure to every record in the chunk rather than
-      // reporting a partial success nobody can act on.
-      const message = error instanceof Error ? error.message : 'Unknown error'
-      const statusCode = auxxStatusCode(error)
-      for (const recordId of chunk) errors.push({ recordId, message, statusCode })
     }
   }
 
-  return { count, errors }
+  return { count, errors: errors() }
 }
 
 /**

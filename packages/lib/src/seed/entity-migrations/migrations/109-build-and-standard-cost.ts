@@ -258,7 +258,9 @@ export const migration109BuildAndStandardCost: EntityMigration = {
     // note above. `build.reversalOf` / `build.reversedBy` are a SELF-relation
     // pair carrying no `relationship.inverseResourceFieldId`, exactly like
     // `stock_movement.parentMovement` / `childMovements`, so the linker skips
-    // them by design and the seeder materialises them from `relationshipConfig`.
+    // them; the seeder's Pass 3 resolves a `relationshipConfig` pair by
+    // systemAttribute, and entity migration 136 links it for an org that has
+    // the rows but no block.
     await linkNewRelationships(db, allFieldMaps, entityDefIds, state)
     await linkDisplayFields(db, [...NEW_TYPES], entityDefIds, allFieldMaps)
 

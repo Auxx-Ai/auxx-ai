@@ -1,101 +1,197 @@
 // packages/lib/src/field-hooks/pre/order-delete-guard.test.ts
-// The cascade that stops a deleted order from leaving its line items behind.
+// The guard that stops an order being hard-deleted out from under a fulfillment
+// entry standing in a settled month.
 //
-// Before this hook existed, deleting an order stripped only the `line_item_order`
-// mirror row (via `sweepEntityFieldValues`) and the lines survived attached to no
-// document at all — invisible in every surface, since each is document-scoped, but
-// still rows every `line_item` query counts. Dev held 5 such orphans.
+// Modelled on `part-delete-guard.test.ts`. The settled predicates are the same
+// three (`postings/settled-periods.ts`); what differs is the SUBJECT. A part is
+// judged on its stock movements, an order on the general-ledger entries whose
+// lines name it as `sourceType: 'order'`, and those carry a calendar `txnDate`
+// rather than a timestamp, which is what the timezone case below pins.
 
+import { ok } from 'neverthrow'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { EntityPreDeleteEvent } from '../types'
 
 const h = vi.hoisted(() => ({
-  listFiltered: vi.fn(),
-  del: vi.fn(),
+  listPostingsForSource: vi.fn(),
+  resolvePeriodLock: vi.fn(),
+  postedPeriodRows: vi.fn(),
+  getOrganizationSetting: vi.fn(),
 }))
 
-vi.mock('../../resources/crud', () => ({
-  UnifiedCrudHandler: class {
-    listFiltered = h.listFiltered
-    delete = h.del
-  },
+vi.mock('../../postings/list-postings', () => ({
+  listPostingsForSource: h.listPostingsForSource,
 }))
 
-import { cascadeOrderLinesOnDelete } from './order-delete-guard'
+vi.mock('../../postings/period-lock', () => ({ resolvePeriodLock: h.resolvePeriodLock }))
+vi.mock('../../settings/settings-service', () => ({
+  getOrganizationSetting: h.getOrganizationSetting,
+}))
 
-const ORDER_RECORD_ID = 'c62a43b54jinj532zfdlytc7:ou1drb01gv321lqe7pjnvkh8'
+// `selectDistinct()` is the posted-period read inside `settledPeriodsFor`. The
+// terminal `.where()` resolves, so a query that stops ending there fails loudly.
+vi.mock('@auxx/database', async () => {
+  const actual = await vi.importActual<Record<string, unknown>>('@auxx/database')
+  const postedChain: Record<string, unknown> = {}
+  postedChain.from = () => postedChain
+  postedChain.where = async () => h.postedPeriodRows()
+
+  return {
+    ...actual,
+    database: { selectDistinct: () => postedChain },
+  }
+})
+
+import { guardOrderDelete } from './order-delete-guard'
+
+const ORDER_DEF = 'c62a43b54jinj532zfdlytc7'
+const ORDER_ID = 'ou1drb01gv321lqe7pjnvkh8'
+const ORDER_RECORD_ID = `${ORDER_DEF}:${ORDER_ID}`
+const ORG = 'abgwpa1l81reht2zmwrcihfu'
 
 function event(): EntityPreDeleteEvent {
   return {
     recordId: ORDER_RECORD_ID as EntityPreDeleteEvent['recordId'],
-    entityDefinitionId: 'c62a43b54jinj532zfdlytc7',
+    entityDefinitionId: ORDER_DEF,
     entityType: 'order',
     entitySlug: 'orders',
     values: {},
-    organizationId: 'org_1',
+    organizationId: ORG,
     userId: 'usr_1',
     bypass: new Set(),
   }
 }
 
+/** A posting as `listPostingsForSource` summarises it, reduced to what the guard reads. */
+function posting(txnDate: string, status: 'posted' | 'reversed' = 'posted') {
+  return { id: `gl-${txnDate}-${status}`, txnDate, status, docNumber: 'FUL-0001' }
+}
+
+function postings(...rows: ReturnType<typeof posting>[]): void {
+  h.listPostingsForSource.mockResolvedValue(ok(rows))
+}
+
+function settings(values: Record<string, string | null>): void {
+  h.getOrganizationSetting.mockImplementation(
+    async ({ key }: { key: string }) => values[key] ?? null
+  )
+}
+
+function posted(...periodKeys: string[]) {
+  return periodKeys.map((periodKey) => ({ periodKey }))
+}
+
+const BOOKS_OPEN = {
+  'accounting.cutoffPeriod': '2025-12',
+  'accounting.bookTimeZone': 'America/Los_Angeles',
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
-  h.del.mockResolvedValue(undefined)
+  postings()
+  h.postedPeriodRows.mockReturnValue([])
+  h.resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: null })
+  settings(BOOKS_OPEN)
 })
 
-describe('cascadeOrderLinesOnDelete', () => {
-  it('deletes every line the order owns', async () => {
-    h.listFiltered.mockResolvedValue({
-      ids: ['o3vn8p2yoi1idx949cgx4fls', 'gm6kggcpgn5o1bg7j9b0n6rg', 'hrdlsqkcrnt2xs1cprrzsz1h'],
+describe('guardOrderDelete: refusal', () => {
+  it('refuses an order whose entry sits in a month with a POSTED entry', async () => {
+    postings(posting('2026-08-15'))
+    h.postedPeriodRows.mockReturnValue(posted('2026-08'))
+
+    await expect(guardOrderDelete(event())).rejects.toThrow(/2026-08/)
+  })
+
+  it('refuses an order whose entry sits in a LOCKED period with no posting at all', async () => {
+    postings(posting('2026-06-15'))
+    h.resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: '2026-07' })
+
+    await expect(guardOrderDelete(event())).rejects.toThrow(/closed or posted/)
+  })
+
+  it('refuses an entry AT OR BEFORE the cutoff, which never appears in the strip', async () => {
+    postings(posting('2025-11-04'))
+
+    await expect(guardOrderDelete(event())).rejects.toThrow(/2025-11/)
+  })
+
+  it('names every settled month and the total, not just the first', async () => {
+    postings(posting('2026-07-02'), posting('2026-08-15'), posting('2026-08-16'))
+    h.postedPeriodRows.mockReturnValue(posted('2026-07', '2026-08'))
+
+    await expect(guardOrderDelete(event())).rejects.toThrow(/3 ledger postings in 2026-07, 2026-08/)
+  })
+
+  it('counts a REVERSED entry: a closed month still holds it and its reversal', async () => {
+    postings(posting('2026-08-15', 'reversed'))
+    h.postedPeriodRows.mockReturnValue(posted('2026-08'))
+
+    await expect(guardOrderDelete(event())).rejects.toThrow(/1 ledger posting in 2026-08/)
+  })
+
+  it('points at archiving the order', async () => {
+    postings(posting('2026-08-15'))
+    h.postedPeriodRows.mockReturnValue(posted('2026-08'))
+
+    await expect(guardOrderDelete(event())).rejects.toThrow(/archive the order/i)
+  })
+
+  it('fails closed when the ledger cannot be read', async () => {
+    h.listPostingsForSource.mockResolvedValue({
+      isErr: () => true,
+      error: new Error('ledger unavailable'),
     })
 
-    await cascadeOrderLinesOnDelete(event())
+    await expect(guardOrderDelete(event())).rejects.toThrow(/ledger unavailable/)
+  })
+})
 
-    expect(h.del).toHaveBeenCalledTimes(3)
-    expect(h.del.mock.calls.map((c) => c[0])).toEqual([
-      'line_item:o3vn8p2yoi1idx949cgx4fls',
-      'line_item:gm6kggcpgn5o1bg7j9b0n6rg',
-      'line_item:hrdlsqkcrnt2xs1cprrzsz1h',
-    ])
+describe('guardOrderDelete: the calendar date', () => {
+  it('reads the first of a month as THAT month in the book zone, not the previous one', async () => {
+    // `2026-08-01` is a calendar day. Parsed as UTC midnight it is still
+    // 2026-07-31 in Los Angeles, and a posted August would not refuse it.
+    postings(posting('2026-08-01'))
+    h.postedPeriodRows.mockReturnValue(posted('2026-08'))
+
+    await expect(guardOrderDelete(event())).rejects.toThrow(/2026-08/)
   })
 
-  it('suppresses the line-level post-delete hook — it would re-project the dying order', async () => {
-    h.listFiltered.mockResolvedValue({ ids: ['o3vn8p2yoi1idx949cgx4fls'] })
+  it('does not drag the first of an open month back into a locked one', async () => {
+    postings(posting('2026-08-01'))
+    h.resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: '2026-07' })
 
-    await cascadeOrderLinesOnDelete(event())
+    await expect(guardOrderDelete(event())).resolves.toBeUndefined()
+  })
+})
 
-    expect(h.del).toHaveBeenCalledWith('line_item:o3vn8p2yoi1idx949cgx4fls', {
-      suppressPostDeleteHooks: true,
+describe('guardOrderDelete: open books', () => {
+  it('passes when every entry is in an OPEN period', async () => {
+    postings(posting('2026-08-15'), posting('2026-08-16'))
+
+    await expect(guardOrderDelete(event())).resolves.toBeUndefined()
+  })
+
+  it('settles nothing for an org that has not finished accounting setup', async () => {
+    settings({ 'accounting.bookTimeZone': 'UTC' }) // no cutoff
+    postings(posting('2026-08-15'))
+
+    await expect(guardOrderDelete(event())).resolves.toBeUndefined()
+  })
+
+  it('skips the settled-period read entirely for an order with no entries', async () => {
+    await guardOrderDelete(event())
+
+    expect(h.getOrganizationSetting).not.toHaveBeenCalled()
+    expect(h.resolvePeriodLock).not.toHaveBeenCalled()
+  })
+
+  it('looks the entries up by the fulfillment source, keyed on the order instance', async () => {
+    await guardOrderDelete(event())
+
+    expect(h.listPostingsForSource).toHaveBeenCalledWith(expect.anything(), {
+      organizationId: ORG,
+      sourceType: 'order',
+      sourceId: ORDER_ID,
     })
-  })
-
-  it('claims only lines with no work order — a WO-sourced line is never the order’s to delete', async () => {
-    h.listFiltered.mockResolvedValue({ ids: [] })
-
-    await cascadeOrderLinesOnDelete(event())
-
-    const [query] = h.listFiltered.mock.calls[0]!
-    expect(query.entityDefinitionId).toBe('line_item')
-    expect(query.filters[0].conditions).toEqual([
-      {
-        id: 'order-own-lines-order',
-        fieldId: 'line_item:order',
-        operator: 'is',
-        value: ORDER_RECORD_ID,
-      },
-      {
-        id: 'order-own-lines-workorder',
-        fieldId: 'line_item:workOrder',
-        operator: 'empty',
-        value: null,
-      },
-    ])
-  })
-
-  it('is a no-op for an order with no lines', async () => {
-    h.listFiltered.mockResolvedValue({ ids: [] })
-
-    await expect(cascadeOrderLinesOnDelete(event())).resolves.toBeUndefined()
-    expect(h.del).not.toHaveBeenCalled()
   })
 })

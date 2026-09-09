@@ -253,6 +253,7 @@ export const REFUND_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'refund_line:refund' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'cascade',
       isInverse: true,
     },
     description:

@@ -588,6 +588,7 @@ export const WORK_ORDER_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'line_item:workOrder' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'cascade',
       isInverse: true,
     },
     description: 'Line items copied onto this job at convert time',
@@ -614,6 +615,7 @@ export const WORK_ORDER_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'invoice:workOrder' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'restrict',
       isInverse: true,
     },
     description: 'Invoices gathered from this job',

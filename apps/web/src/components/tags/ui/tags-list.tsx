@@ -92,7 +92,8 @@ export function TagTreeView() {
       refresh()
     },
     onError: (error) => {
-      // ⚠️ The common failure here is a 409 from `rejectDeleteIfTagInUse`, whose
+      // ⚠️ The common failure here is a 409 from the delete engine's `restrict`
+      // refusal (`tag_threads` / `tag_articles` in the registry), whose
       // message already names the record count and points at archive. Surfacing
       // `error.message` verbatim is the whole remedy — do not replace it with a
       // generic string.

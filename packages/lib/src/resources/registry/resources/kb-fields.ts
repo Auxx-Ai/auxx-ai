@@ -167,6 +167,7 @@ export const KB_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'article:knowledgeBase' as ResourceFieldId,
       relationshipType: 'has_many',
+      // No onDelete: `kb` is registry-only and article.kb is a dbColumn; deleteKnowledgeBase owns it.
       isInverse: true,
     },
     description: 'Articles belonging to this knowledge base',

@@ -188,7 +188,6 @@ export {
   type ValidationContext,
   type ValidationResult,
   validateSelfReferentialChange,
-  validateSelfReferentialDelete,
 } from './relationship-validators'
 // EntityInstance.searchText corpus (field-type policy, bounds, refresh helpers)
 export {

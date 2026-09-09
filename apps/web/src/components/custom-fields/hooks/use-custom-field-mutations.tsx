@@ -6,7 +6,11 @@ import {
   PRIMARY_DISPLAY_ELIGIBLE_TYPES,
   toStoredFieldOptions,
 } from '@auxx/lib/custom-fields/client'
-import type { FieldCapabilities, ResourceField } from '@auxx/lib/resources/client'
+import {
+  type FieldCapabilities,
+  type ResourceField,
+  toRegistryRelationship,
+} from '@auxx/lib/resources/client'
 import { mapFieldTypeToBaseType } from '@auxx/lib/workflow-engine/client'
 import {
   getInverseFieldId,
@@ -204,7 +208,7 @@ export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMu
         showInPanel: true,
         capabilities,
         options: rawOptions ?? undefined,
-        relationship: rawOptions?.relationship,
+        relationship: toRegistryRelationship(rawOptions?.relationship),
       }
 
       // Confirm the optimistic create (replaces temp with server data)
@@ -250,7 +254,7 @@ export function useCustomFieldMutations({ entityDefinitionId }: UseCustomFieldMu
                   unique: field.isUnique,
                 },
                 options: invOptions ?? undefined,
-                relationship: invOptions?.relationship,
+                relationship: toRegistryRelationship(invOptions?.relationship),
               }
 
               store.applyFieldFromServer(

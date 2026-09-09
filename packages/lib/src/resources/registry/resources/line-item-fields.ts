@@ -267,6 +267,7 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'refund_line:lineItem' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'unlink',
       isInverse: true,
     },
     description: 'Refund lines that returned or cancelled part of this line',

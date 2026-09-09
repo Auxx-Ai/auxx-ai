@@ -341,6 +341,7 @@ export const SERVICE_REQUEST_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'work_order:request' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'unlink',
       isInverse: true,
     },
     description: 'Work orders converted from this service request',
@@ -367,6 +368,7 @@ export const SERVICE_REQUEST_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'quote:request' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'unlink',
       isInverse: true,
     },
     description: 'Quotes created from this service request',

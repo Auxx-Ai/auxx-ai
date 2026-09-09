@@ -299,6 +299,7 @@ export const CATALOG_ITEM_FIELDS: Record<string, ResourceField> = {
     relationship: {
       inverseResourceFieldId: 'line_item:catalogItem' as ResourceFieldId,
       relationshipType: 'has_many',
+      onDelete: 'unlink',
       isInverse: true,
     },
     description: 'Lines that were picked from this catalog item',

@@ -41,6 +41,20 @@ export function buildFieldOptions(field: ResourceField): FieldOptions {
       isInverse: field.relationship.isInverse ?? false,
       // Include constraints if defined (for self-referential validation)
       constraints: field.relationship.constraints,
+      // The declared delete behavior travels into stored options so the delete
+      // engine reads one shape for system and user-created fields alike.
+      onDelete: field.relationship.onDelete,
+    }
+  } else if (fieldType === FieldTypeEnum.RELATIONSHIP && field.relationshipConfig) {
+    // A seed-only pair (the self-relations) describes itself through
+    // `relationshipConfig` alone. Same stored shape as above; Pass 3 resolves
+    // the inverse by `(relatedEntityType, inverseSystemAttribute)`.
+    const { relationshipType, onDelete } = field.relationshipConfig
+    options.relationship = {
+      inverseResourceFieldId: null,
+      relationshipType,
+      isInverse: relationshipType !== 'belongs_to',
+      onDelete,
     }
   }
 

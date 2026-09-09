@@ -164,8 +164,9 @@ const INCUMBENT_FIELDS: Record<string, Record<string, ResourceField | undefined>
  *
  * The two self-relations carry `relationshipConfig` but no
  * `relationship.inverseResourceFieldId`, exactly like the existing
- * `parentMovement` / `childMovements` pair, so the linker skips them by design;
- * the seeder materialises them from `relationshipConfig`.
+ * `parentMovement` / `childMovements` pair, so `linkNewRelationships` skips them;
+ * the seeder's Pass 3 resolves a `relationshipConfig` pair by systemAttribute, and
+ * entity migration 136 links the pair for an org that has the rows but no block.
  *
  * The eight new defs, with their full registries, plus the inverse halves on
  * `company` (purchaseOrders / vendorBills / vendorPayments), `contact`

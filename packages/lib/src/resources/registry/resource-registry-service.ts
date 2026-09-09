@@ -17,7 +17,11 @@ import { resolveEntityDefTypeId } from './entity-def-resolver'
 import { getEntityInstanceFields } from './entity-instance-fields'
 import { RESOURCE_FIELD_REGISTRY, RESOURCE_TABLE_REGISTRY, type TableId } from './field-registry'
 import type { ResourceField } from './field-types'
-import { getDefaultIdentifierField, getIdentifierFields } from './field-utils'
+import {
+  getDefaultIdentifierField,
+  getIdentifierFields,
+  toRegistryRelationship,
+} from './field-utils'
 import { isTrailingMetadataField } from './trailing-fields'
 import type {
   CustomResource,
@@ -1064,16 +1068,9 @@ export class ResourceRegistryService {
       let relationship: ResourceField['relationship']
 
       if (field.type === FieldTypeEnum.RELATIONSHIP) {
-        const rel = rawOptions?.relationship
-
-        // Pass through raw RelationshipConfig - no normalization
-        if (rel) {
-          relationship = {
-            inverseResourceFieldId: rel.inverseResourceFieldId,
-            relationshipType: rel.relationshipType,
-            isInverse: rel.isInverse,
-          }
-        }
+        // Pass through raw RelationshipConfig; the only normalization is the
+        // `unlink` default for a stored owning side that never declared onDelete.
+        relationship = toRegistryRelationship(rawOptions?.relationship)
       }
 
       // Build normalized options for UI (uses value key, includes relationship)

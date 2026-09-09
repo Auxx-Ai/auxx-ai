@@ -481,9 +481,9 @@ export type RelationshipType = (typeof RELATIONSHIP_TYPES)[number]
 // =============================================================================
 
 /**
- * Constraints for relationship validation.
- * These constraints are primarily used for self-referential relationships
- * to prevent circular references and enforce hierarchy rules.
+ * Write-time constraints for self-referential relationships: they keep a
+ * parent chain acyclic and bounded. What happens on delete is not a constraint;
+ * it is {@link RelationshipConfig.onDelete}, declared on the has_many side.
  */
 export interface RelationshipConstraints {
   /**
@@ -499,23 +499,22 @@ export interface RelationshipConstraints {
    * Default: undefined (no limit)
    */
   maxDepth?: number
-
-  /**
-   * Behavior when deleting an entity with children.
-   * Only applies to self-referential relationships.
-   * - 'prevent': Block deletion if children exist (default)
-   * - 'cascade': Delete all descendants
-   * - 'nullify': Set children's parent to null (orphan them)
-   */
-  onDeleteWithChildren?: 'prevent' | 'cascade' | 'nullify'
 }
 
 /** Zod schema for RelationshipConstraints */
 export const relationshipConstraintsSchema = z.object({
   preventCircular: z.boolean().optional(),
   maxDepth: z.number().int().positive().optional(),
-  onDeleteWithChildren: z.enum(['prevent', 'cascade', 'nullify']).optional(),
 })
+
+/** What the engine does to the records on the other side when a record holding this field is hard-deleted. */
+export const RELATION_DELETE_BEHAVIORS = ['cascade', 'unlink', 'restrict'] as const
+
+/** Zod schema for {@link RelationDeleteBehavior} */
+export const relationDeleteBehaviorSchema = z.enum(RELATION_DELETE_BEHAVIORS)
+
+/** What the engine does to the records on the other side when a record holding this field is hard-deleted. */
+export type RelationDeleteBehavior = (typeof RELATION_DELETE_BEHAVIORS)[number]
 
 /**
  * Relationship configuration stored in options.relationship
@@ -537,6 +536,23 @@ export interface RelationshipConfig {
   isInverse: boolean
   /** Validation constraints for this relationship */
   constraints?: RelationshipConstraints
+  /**
+   * What the delete engine does to the related records when a record holding
+   * this field is hard-deleted.
+   *
+   * Declared on the has_many / has_one / many_to_many side only. A belongs_to
+   * never acts upward: deleting a line item unlinks its order, always.
+   *
+   * - `cascade`: the related records die with this one. The delete engine
+   *   collects them set-based, children first.
+   * - `unlink`: only the mirror FieldValue rows are swept. This is the
+   *   historical default.
+   * - `restrict`: the delete is refused while any related record exists.
+   *
+   * Stored user-created fields default to `unlink` when the value is absent.
+   * System registry fields must declare it.
+   */
+  onDelete?: RelationDeleteBehavior
 }
 
 /** Zod schema for RelationshipConfig validation */
@@ -545,6 +561,7 @@ export const relationshipConfigSchema = z.object({
   relationshipType: relationshipTypeSchema,
   isInverse: z.boolean(),
   constraints: relationshipConstraintsSchema.optional(),
+  onDelete: relationDeleteBehaviorSchema.optional(),
 })
 
 /**
