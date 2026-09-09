@@ -299,6 +299,41 @@ async function refundShape(shop: string, token: string) {
       )
     }
   }
+
+  // §6.2: does Shopify hand back the tax it charged, per refunded line? auxx
+  // does no tax arithmetic, so the refund's tax leg exists only if this is
+  // populated. Scans EVERY line item — §4 above samples refunds[0], which on
+  // this store carries no lines at all and reads `undefined` for a sampling
+  // reason, not an absence one.
+  console.log('\n=== 7. Per-line tax, transcribable? (task 47 section 6.2) ===')
+  let lineCount = 0
+  let taxPresent = 0
+  let taxNonZero = 0
+  const taxValues: string[] = []
+  for (const order of withRefunds) {
+    for (const r of order.refunds ?? []) {
+      for (const li of r.refund_line_items ?? []) {
+        lineCount++
+        const raw = li.total_tax
+        if (raw !== undefined && raw !== null) {
+          taxPresent++
+          taxValues.push(`${JSON.stringify(raw)} (${typeof raw})`)
+          if (Math.abs(Number(raw)) > 0) taxNonZero++
+        }
+        const set = li.total_tax_set?.shop_money?.amount
+        if (set !== undefined)
+          taxValues.push(`  total_tax_set.shop_money.amount=${JSON.stringify(set)}`)
+      }
+    }
+  }
+  console.log(`  refund line items: ${lineCount}`)
+  console.log(`  carrying total_tax at all: ${taxPresent}`)
+  console.log(`  carrying a NON-ZERO total_tax: ${taxNonZero}`)
+  console.log(`  values: ${taxValues.join(', ') || '(none)'}`)
+  console.log(
+    '  Non-zero => the tax leg is transcribable. All-zero => Shopify says these\n' +
+      '  lines carried no tax, and transcribing correctly reverses nothing.'
+  )
 }
 
 async function main() {

@@ -205,6 +205,10 @@ export const SYSTEM_ATTRIBUTES = [
   'contact_balance_due',
   'contact_uninvoiced_amount',
   'contact_billing_revision',
+  // plans/money/tasks/48-shopify-tax-data.md §4.4. The FLAG only: Shopify's
+  // `tax_exemptions[]` was empty on every order measured, so the exemption
+  // reason and the resale certificate are not available and are not tracked.
+  'contact_tax_exempt',
 
   // ─── Company fields ────────────────────────────────────────────
   'company_name',
@@ -329,6 +333,10 @@ export const SYSTEM_ATTRIBUTES = [
   'line_item_unit_price',
   'line_item_line_total',
   'line_item_taxable',
+  // plans/money/tasks/48-shopify-tax-data.md §4.2. Deliberately a SCALAR and
+  // not a fan-out: this is what lets `buildFulfillmentEntry` use exact per-line
+  // tax instead of allocating the order total pro rata across shipments.
+  'line_item_tax_total',
   'line_item_optional',
   'line_item_optional_selected',
   'line_item_category',
@@ -343,6 +351,7 @@ export const SYSTEM_ATTRIBUTES = [
   'line_item_order',
   'line_item_part', // stamped from the line's catalog item, not hand-set (08 §6.2)
   'line_item_photos', // scouting/line-level photos (plan 37b §1)
+  'line_item_refund_lines', // inverse of refund_line_line_item (47 §2.2)
 
   // ─── Catalog Item fields ────────────────────────────────────────
   'catalog_item_name',
@@ -452,6 +461,8 @@ export const SYSTEM_ATTRIBUTES = [
   'order_shipping_total',
   'order_total',
   'order_line_items', // inverse of line_item_order
+  'order_tax_lines', // inverse of tax_line_order
+  'order_refunds', // inverse of refund_order (47 §2)
   'order_work_orders', // inverse of work_order_order
   // Added by migration 125 (plans/accounting/HANDOFF.md slot 2G). The
   // shipment log `money.fulfillOrder` appends to, and the ONLY thing that
@@ -461,6 +472,47 @@ export const SYSTEM_ATTRIBUTES = [
   // nothing links to it, and the accounting copy is already normalised in
   // `GlPostingLine`.
   'order_fulfillments',
+
+  // ─── Tax line (plans/money/tasks/48-shopify-tax-data.md §4.1) ────
+  // One jurisdiction's share of one order's tax, as the sales channel computed
+  // it. Records rather than a rate on the order because multi-jurisdiction is
+  // the NORM: 104 of the 123 taxed orders measured carried more than one tax
+  // line (§2), so a single `order_tax_rate` can represent 19 of 123.
+  'tax_line_title', // the jurisdiction, e.g. "CA State Tax"
+  'tax_line_rate', // as supplied; never used to compute anything
+  'tax_line_price', // integer minor units, from `price_set.shop_money.amount` (§8.1)
+  // 🛑 A POSTING INPUT, not decoration (§3, answered in §6.4): only a `false`
+  // line credits 2200 Sales Tax Payable. A `true` line means the marketplace
+  // remitted the tax and this business owes nothing.
+  'tax_line_channel_liable',
+  'tax_line_order', // owning side; inverse of order_tax_lines
+
+  // ─── Refund (plans/money/tasks/47-shopify-refunds.md §2) ─────────
+  // A refund that already happened at the sales channel, ingested as a FACT.
+  // Never originated here: `refundTransaction` calls Stripe and the ledger
+  // refuses anything else, which is the opposite direction (§0.4).
+  'refund_created_at', // when it happened AT the channel; the ledger dates from this, never ingest (§5.3)
+  'refund_note', // the ONLY free-text reason the payload carries (§3.2)
+  // 🛑 DERIVED, not transcribed. A Shopify refund object carries no total at
+  // all (§2.1) - the money lives only on the three legs - so this is the sum
+  // of successful refund transactions. Do not rename it to `refund_total`.
+  'refund_amount_refunded',
+  'refund_order', // owning side; inverse of order_refunds
+  'refund_lines', // inverse of refund_line_refund
+
+  // ─── Refund line (47 §2.2) ──────────────────────────────────────
+  'refund_line_qty',
+  'refund_line_subtotal', // integer minor units
+  // 🛑 Bind from `total_tax_set.shop_money.amount` (a STRING), never the
+  // sibling `total_tax` (a NUMBER) - §4.1. The payload is inconsistent about
+  // money types and the numeric path is where a 100x bug lived.
+  'refund_line_tax_total',
+  // Provider-NEUTRAL disposition, never Shopify's `restock_type` token (§9).
+  // The precedent for getting this wrong is migration 132 renaming
+  // `1200 Shopify Clearing`.
+  'refund_line_disposition',
+  'refund_line_refund', // owning side; inverse of refund_lines
+  'refund_line_line_item', // owning side; inverse of line_item_refund_lines
 
   // ─── Receiving: cost, date and provenance on stock_movement ──────
   // plans/purchasing/01-build-plan.md §2. Every one of these is

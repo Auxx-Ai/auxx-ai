@@ -356,6 +356,28 @@ export const DEFAULT_CHART_OF_ACCOUNTS: readonly DefaultChartAccount[] = [
     accountType: GlAccountType.REVENUE,
     role: 'revenue_service',
   },
+  {
+    // A contra-revenue account, and its own account rather than a debit back
+    // to the revenue account the sale was credited to - which is what
+    // QuickBooks defaults to (task 47 §6.1). Netting the reversal into `4000`
+    // leaves a return rate that never appears on the P&L, and a return rate
+    // nobody can see is one nobody manages.
+    //
+    // 🛑 **"and Allowances" is carrying weight, not padding.** The dominant
+    // case by count is a CONCESSION - a post-sale price reduction where the
+    // customer keeps the goods (47 §3.1) - which is an allowance, not a
+    // return. A name that said only "Returns" would misdescribe most of what
+    // lands here.
+    //
+    // `GlAccountType` has no contra classification and does not need one, the
+    // same reading `1190 Allowance for Doubtful Accounts` gets: contra is a
+    // presentation attribute, not a posting rule. The account is REVENUE and
+    // simply runs debit-normal.
+    code: '4090',
+    name: 'Sales Returns and Allowances',
+    accountType: GlAccountType.REVENUE,
+    role: 'revenue_returns_allowances',
+  },
 
   // ── Cost of goods sold ──────────────────────────────────────────────────
   // `GlAccountType` has no COGS classification; all five map to `expense`.

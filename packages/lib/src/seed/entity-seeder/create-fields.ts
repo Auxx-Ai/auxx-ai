@@ -29,6 +29,8 @@ import { PRODUCT_FIELDS } from '../../resources/registry/resources/product-field
 import { PURCHASE_ORDER_FIELDS } from '../../resources/registry/resources/purchase-order-fields'
 import { PURCHASE_ORDER_LINE_FIELDS } from '../../resources/registry/resources/purchase-order-line-fields'
 import { QUOTE_FIELDS } from '../../resources/registry/resources/quote-fields'
+import { REFUND_FIELDS } from '../../resources/registry/resources/refund-fields'
+import { REFUND_LINE_FIELDS } from '../../resources/registry/resources/refund-line-fields'
 import { SERVICE_REQUEST_FIELDS } from '../../resources/registry/resources/service-request-fields'
 import { SIGNATURE_FIELDS } from '../../resources/registry/resources/signature-fields'
 import { STOCK_MOVEMENT_FIELDS } from '../../resources/registry/resources/stock-movement-fields'
@@ -36,6 +38,7 @@ import { SUBPART_FIELDS } from '../../resources/registry/resources/subpart-field
 import { TAG_FIELDS } from '../../resources/registry/resources/tag-fields'
 import { TARIFF_CODE_FIELDS } from '../../resources/registry/resources/tariff-code-fields'
 import { TARIFF_RATE_FIELDS } from '../../resources/registry/resources/tariff-rate-fields'
+import { TAX_LINE_FIELDS } from '../../resources/registry/resources/tax-line-fields'
 import { THREAD_FIELDS } from '../../resources/registry/resources/thread-fields'
 import { TICKET_FIELDS } from '../../resources/registry/resources/ticket-fields'
 import { VENDOR_BILL_FIELDS } from '../../resources/registry/resources/vendor-bill-fields'
@@ -99,6 +102,9 @@ export const FIELD_REGISTRY: Record<string, Record<string, ResourceField>> = {
   bank_rule: BANK_RULE_FIELDS,
   tariff_code: TARIFF_CODE_FIELDS,
   tariff_rate: TARIFF_RATE_FIELDS,
+  refund: REFUND_FIELDS,
+  refund_line: REFUND_LINE_FIELDS,
+  tax_line: TAX_LINE_FIELDS,
 }
 
 /**

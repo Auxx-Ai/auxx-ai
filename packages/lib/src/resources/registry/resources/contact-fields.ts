@@ -795,5 +795,44 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
     description: 'Opaque token used to invalidate the contact billing overview',
   },
 
+  // Whether this customer buys tax exempt
+  // (plans/money/tasks/48-shopify-tax-data.md §4.4). 24 of 250 orders measured
+  // 2026-09-08 were to exempt customers, and until this field existed nothing
+  // in the repo distinguished a resale-exempt dealer from a sale that simply
+  // was never taxed - the two look identical, and for a dealer business the
+  // difference is the whole point.
+  //
+  // 🛑 THE FLAG ONLY. Shopify's `tax_exemptions[]` was EMPTY on every order
+  // measured, so the exemption REASON and the certificate are not available
+  // from the provider. Certificate storage, expiry and validation are a
+  // compliance surface and explicitly out of scope (48 §7); this field records
+  // that the customer is exempt, never why, and never proves it.
+  //
+  // ⚠️ Nullable with no default, unlike `line_item_taxable`. 48 §8.2: "we were
+  // told this customer is not exempt" and "we were told nothing" are different
+  // facts, and defaulting to false silently turns the second into the first.
+  taxExempt: {
+    id: toFieldId('taxExempt'),
+    key: 'taxExempt',
+    label: 'Tax Exempt',
+    type: BaseType.BOOLEAN,
+    fieldType: FieldType.CHECKBOX,
+    isSystem: true,
+    systemAttribute: 'contact_tax_exempt',
+    systemSortOrder: 'aJ',
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    description:
+      'Whether this customer buys tax exempt, as the sales channel reported it. The FLAG ' +
+      'only - the exemption reason and the resale certificate are not supplied by the ' +
+      'provider and are not tracked here',
+  },
+
   createdBy: CREATED_BY_FIELD,
 }
