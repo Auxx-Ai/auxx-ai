@@ -59,8 +59,7 @@ export function EntryJournal({ lines, currencyCode, onDrillDown }: EntryJournalP
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead className='w-[45%]'>Account</TableHead>
-            <TableHead>Memo</TableHead>
+            <TableHead>Account</TableHead>
             <TableHead className='w-32 text-right'>Debit</TableHead>
             <TableHead className='w-32 text-right'>Credit</TableHead>
           </TableRow>
@@ -86,8 +85,8 @@ export function EntryJournal({ lines, currencyCode, onDrillDown }: EntryJournalP
                     </Tooltip>
                   )}
                 </div>
+                {line.memo && <p className='mt-0.5 text-muted-foreground text-xs'>{line.memo}</p>}
               </TableCell>
-              <TableCell className='align-top text-muted-foreground'>{line.memo}</TableCell>
               <TableCell className='text-right font-mono tabular-nums align-top'>
                 {line.direction === 'debit' ? formatMinor(line.amount, currencyCode) : null}
               </TableCell>
@@ -99,7 +98,7 @@ export function EntryJournal({ lines, currencyCode, onDrillDown }: EntryJournalP
         </TableBody>
         <TableFooter>
           <TableRow>
-            <TableCell colSpan={2}>Totals</TableCell>
+            <TableCell>Totals</TableCell>
             <TableCell className='text-right font-mono tabular-nums'>
               {formatMinor(totalDebit, currencyCode)}
             </TableCell>

@@ -23,7 +23,6 @@ import type {
 } from '@auxx/lib/postings/client'
 import { Badge, type Variant } from '@auxx/ui/components/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@auxx/ui/components/dialog'
-import { Section } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { TREE_SECONDARY_NOTRUNCATE, TreeRow } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
@@ -196,15 +195,7 @@ function PostingLinesDialog({
         ) : !detail ? (
           <p className='text-muted-foreground text-sm'>No posting matches this link.</p>
         ) : (
-          <Section
-            title='Journal entry'
-            icon={<BookOpenCheck className='size-4' />}
-            collapsible={false}>
-            <EntryJournal
-              lines={journalLinesFromDetail(detail.lines)}
-              currencyCode={currencyCode}
-            />
-          </Section>
+          <EntryJournal lines={journalLinesFromDetail(detail.lines)} currencyCode={currencyCode} />
         )}
       </DialogContent>
     </Dialog>
