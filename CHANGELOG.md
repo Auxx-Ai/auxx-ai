@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.1.234](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.233...auxx-v0.1.234) (2026-09-09)
+
+
+### Features
+
+* **accounting:** credit memos as one document for native credits and channel refunds ([#2081](https://github.com/Auxx-Ai/auxx-ai/issues/2081)) ([958fbb4](https://github.com/Auxx-Ai/auxx-ai/commit/958fbb4bde86afc6540b7b050fd3c29bb6c20451))
+* **accounting:** post connector fulfillments in bulk, one entry per ship day ([#2082](https://github.com/Auxx-Ai/auxx-ai/issues/2082)) ([fb61db8](https://github.com/Auxx-Ai/auxx-ai/commit/fb61db80d147bf0216cefdd4afabf8e1c764a380))
+* **apps:** author connection variable types in the developer portal ([#2075](https://github.com/Auxx-Ai/auxx-ai/issues/2075)) ([19c3ac9](https://github.com/Auxx-Ai/auxx-ai/commit/19c3ac9c9757f23c0f58a652a9136638658731e0))
+* **banking:** give a bank deposit a real link to its bank account ([#2074](https://github.com/Auxx-Ai/auxx-ai/issues/2074)) ([d0b173a](https://github.com/Auxx-Ai/auxx-ai/commit/d0b173aed9cebfe3ad2675a91f9544737dd7b8b5))
+* **banking:** one bank-account picker, institution brand marks, and a UI pass ([#2068](https://github.com/Auxx-Ai/auxx-ai/issues/2068)) ([71069c9](https://github.com/Auxx-Ai/auxx-ai/commit/71069c98ab384576dfab5965d377da0b8e95a3dc))
+* **banking:** put the bank-account selection and Show archived in the URL ([#2076](https://github.com/Auxx-Ai/auxx-ai/issues/2076)) ([c75e3df](https://github.com/Auxx-Ai/auxx-ai/commit/c75e3dfc7adf52cdb414f4fb251c726cf86157a3))
+* **banking:** put the review queue's view in the URL, and move "apply rules" onto it ([#2070](https://github.com/Auxx-Ai/auxx-ai/issues/2070)) ([58fe4cf](https://github.com/Auxx-Ai/auxx-ai/commit/58fe4cfb201c86681a1bec1bbc64303ea7785de6))
+* **money:** model Shopify refunds and channel-computed tax ([#2077](https://github.com/Auxx-Ai/auxx-ai/issues/2077)) ([954d9d5](https://github.com/Auxx-Ai/auxx-ai/commit/954d9d592b228ca88abe407a59bec73b0789fe3e))
+* **records:** declare relationship delete semantics and cascade set-based in the engine ([#2080](https://github.com/Auxx-Ai/auxx-ai/issues/2080)) ([14d4a61](https://github.com/Auxx-Ai/auxx-ai/commit/14d4a61bfc01fadad338d2761d55e4d390b8bbd4))
+
+
+### Bug Fixes
+
+* **accounting:** narrow the posting-status types and surface the export ([#2066](https://github.com/Auxx-Ai/auxx-ai/issues/2066)) ([afae669](https://github.com/Auxx-Ai/auxx-ai/commit/afae6697022ceca3365727cc6f38a0d8a9f61203))
+* **accounting:** put the journal memo under its account instead of in a narrow column ([#2079](https://github.com/Auxx-Ai/auxx-ai/issues/2079)) ([a64431d](https://github.com/Auxx-Ai/auxx-ai/commit/a64431d53571ea2d32e5924afc8f7a8fee0196d1))
+* **apps:** give a webhook handler the connection it is bound to ([#2078](https://github.com/Auxx-Ai/auxx-ai/issues/2078)) ([8c43bb9](https://github.com/Auxx-Ai/auxx-ai/commit/8c43bb9cfd1276e3f7f1cc9972dc125a553c7926))
+* **banking:** release FC accounts on delete, and let a bank account be removed ([#2069](https://github.com/Auxx-Ai/auxx-ai/issues/2069)) ([6ca444d](https://github.com/Auxx-Ai/auxx-ai/commit/6ca444d023fc94f12d57ff0a532facc5d268180a))
+* **banking:** selecting an archived bank account 404s, and it has no way back ([#2073](https://github.com/Auxx-Ai/auxx-ai/issues/2073)) ([8942c6f](https://github.com/Auxx-Ai/auxx-ai/commit/8942c6fa6b7db0e89675d1cf836cb1a755886c18))
+* **banking:** sweep every line on archive, and drop archived accounts from the review queue ([#2072](https://github.com/Auxx-Ai/auxx-ai/issues/2072)) ([43f8042](https://github.com/Auxx-Ai/auxx-ai/commit/43f8042e59fe8ba1c743072ceb74e6c26077426d))
+* **data-connectors:** make every teardown behaviour terminate and end a refused one recoverably ([#2083](https://github.com/Auxx-Ai/auxx-ai/issues/2083)) ([be75ef6](https://github.com/Auxx-Ai/auxx-ai/commit/be75ef65fb544bce91d5e52080389d4097cf71d2))
+
 ## [0.1.233](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.232...auxx-v0.1.233) (2026-09-08)
 
 
