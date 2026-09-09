@@ -33,6 +33,9 @@ const h = vi.hoisted(() => ({
   deleteCredential: vi.fn(),
   crudUpdate: vi.fn(),
   crudDelete: vi.fn(),
+  /** One call for the whole set - a per-row loop is the defect these pin. */
+  crudBulkUpdate: vi.fn(),
+  crudBulkDelete: vi.fn(),
   crudArchive: vi.fn(),
   crudRestore: vi.fn(),
   /** `bank_transaction` rows `listForReview` answers, keyed by the state asked for. */
@@ -62,6 +65,8 @@ vi.mock('../../resources/crud/unified-handler', () => ({
     delete = h.crudDelete
     archive = h.crudArchive
     restore = h.crudRestore
+    bulkUpdate = h.crudBulkUpdate
+    bulkDelete = h.crudBulkDelete
   },
 }))
 vi.mock('../review/reads', () => ({
@@ -75,6 +80,7 @@ vi.mock('../review/reads', () => ({
     isOk: () => true,
     value: h.linesByState.get(filters.state ?? 'for_review') ?? [],
   }),
+  loadReviewFieldContextWithSuggestions: async () => null,
 }))
 vi.mock('../reads', () => ({
   requireBankAccountFieldContext: async () => ({ bankAccountDefId: 'def_ba', fields: {} }),
@@ -92,6 +98,16 @@ vi.mock('../reads', () => ({
     isErr: () => false,
     isOk: () => true,
     value: { bankTransactionDefId: 'def_bt', ids: h.cascadeLineIds },
+  }),
+  // Uncapped and status-filtered, which is what replaced the capped
+  // `listForReview` paging the sweep used to do.
+  readAccountLinesByStatus: async (_db: unknown, p: { statuses: readonly string[] }) => ({
+    isErr: () => false,
+    isOk: () => true,
+    value: {
+      bankTransactionDefId: 'def_bt',
+      lines: p.statuses.flatMap((state) => h.linesByState.get(state) ?? []),
+    },
   }),
 }))
 
@@ -197,6 +213,18 @@ beforeEach(() => {
   h.crudUpdate.mockImplementation(async (recordId: string) => {
     h.trace.push(`crud-update ${recordId}`)
   })
+  // 🛑 ONE trace entry for the whole set. If a future change goes back to a
+  // per-row loop, the ordering assertions below stop matching.
+  h.crudBulkUpdate.mockImplementation(
+    async (updates: Array<{ recordId: string; values: Record<string, unknown> }>) => {
+      h.trace.push(`crud-bulk-update ${updates.length}`)
+      return { updated: updates.length, errors: [] }
+    }
+  )
+  h.crudBulkDelete.mockImplementation(async (recordIds: string[]) => {
+    h.trace.push(`crud-bulk-delete ${recordIds.length}`)
+    return { count: recordIds.length, errors: [] }
+  })
 })
 
 describe('deleteBankAccount', () => {
@@ -248,12 +276,11 @@ describe('deleteBankAccount', () => {
 
     expect(result.isOk()).toBe(true)
     if (result.isOk()) expect(result.value.transactionsDeleted).toBe(3)
-    expect(h.trace).toEqual([
-      'crud-delete def_bt:txn_1',
-      'crud-delete def_bt:txn_2',
-      'crud-delete def_bt:txn_3',
-      `crud-delete def_ba:${ACCOUNT}`,
-    ])
+    // 🛑 ONE bulk call for the lines, then the account. A per-row loop opened a
+    // write session, an `assertEditRows` and a cache warm for EVERY line, which
+    // on a wrongly-connected account is thousands inside one request.
+    expect(h.trace).toEqual(['crud-bulk-delete 3', `crud-delete def_ba:${ACCOUNT}`])
+    expect(h.crudBulkDelete).toHaveBeenCalledWith(['def_bt:txn_1', 'def_bt:txn_2', 'def_bt:txn_3'])
   })
 
   it('refuses once anything has posted, and names the archive', async () => {
@@ -343,11 +370,16 @@ describe('archiveBankAccount', () => {
     expect(result.isOk()).toBe(true)
     if (result.isOk()) expect(result.value.excluded).toBe(3)
 
-    const touched = h.crudUpdate.mock.calls.map((call) => call[0])
-    expect(touched).toEqual(['def_bt:txn_a', 'def_bt:txn_b', 'def_bt:txn_c'])
-    for (const call of h.crudUpdate.mock.calls) {
-      expect(call[1]).toMatchObject({ bank_transaction_review_status: 'excluded' })
-      expect(String((call[1] as Record<string, unknown>).bank_transaction_exclude_reason)).toMatch(
+    // One call carrying every line, not one call per line.
+    expect(h.crudBulkUpdate).toHaveBeenCalledTimes(1)
+    const updates = h.crudBulkUpdate.mock.calls[0]?.[0] as Array<{
+      recordId: string
+      values: Record<string, unknown>
+    }>
+    expect(updates.map((u) => u.recordId)).toEqual(['def_bt:txn_a', 'def_bt:txn_b', 'def_bt:txn_c'])
+    for (const update of updates) {
+      expect(update.values).toMatchObject({ bank_transaction_review_status: 'excluded' })
+      expect(String(update.values.bank_transaction_exclude_reason)).toMatch(
         /^Excluded when the bank account was archived/
       )
     }
@@ -434,9 +466,13 @@ describe('restoreBankAccount', () => {
     // clean up - so a restore that left them excluded would make archive one-way
     // in practice. But a row a PERSON excluded carries their decision and the
     // reason they had to give for it, and survives untouched.
-    const touched = h.crudUpdate.mock.calls.map((call) => call[0])
-    expect(touched).toEqual(['def_bt:txn_swept'])
-    expect(h.crudUpdate.mock.calls[0]?.[1]).toMatchObject({
+    expect(h.crudBulkUpdate).toHaveBeenCalledTimes(1)
+    const updates = h.crudBulkUpdate.mock.calls[0]?.[0] as Array<{
+      recordId: string
+      values: Record<string, unknown>
+    }>
+    expect(updates.map((u) => u.recordId)).toEqual(['def_bt:txn_swept'])
+    expect(updates[0]?.values).toMatchObject({
       bank_transaction_review_status: 'for_review',
       bank_transaction_exclude_reason: null,
     })
@@ -453,7 +489,7 @@ describe('restoreBankAccount', () => {
     })
 
     expect(result.isOk()).toBe(true)
-    expect(h.crudUpdate).not.toHaveBeenCalled()
+    expect(h.crudBulkUpdate).not.toHaveBeenCalled()
   })
 
   it('refuses an account that is not archived', async () => {
