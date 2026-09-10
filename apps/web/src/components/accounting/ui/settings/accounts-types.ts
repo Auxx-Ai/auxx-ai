@@ -155,6 +155,39 @@ export function isMappingBroken(row: AccountIdentityRow): boolean {
 }
 
 /**
+ * What a chart row's provider link amounts to, in one word.
+ *
+ * 🛑 Derived, never stored. `account-identities.ts` emits only `confirmed` and
+ * `unmapped` (the `suggested` member of `AccountIdentityState` is declared but
+ * nothing produces it), and "is this link still valid" is a THIRD question that
+ * `isMappingBroken` answers separately. Folding all three into one word here is
+ * what lets the list render a single badge per row instead of leaving a reader
+ * to infer state from which badges happen to be absent.
+ *
+ * 🛑 "Linked" is deliberately the Chart tab's word, where the Roles tab says
+ * "mapped". They are different questions - which QuickBooks account THIS account
+ * corresponds to, versus which of our accounts a posting ROLE points at - and
+ * they used to share the string "Not mapped" on two tabs of one page.
+ */
+export type AccountLinkState = 'linked' | 'suggested' | 'broken' | 'unlinked'
+
+/**
+ * Fold one map row onto its {@link AccountLinkState}.
+ *
+ * `undefined` (an account created moments ago, before the invalidated
+ * `accountMap` came back) reads as `unlinked`, which is what it is.
+ *
+ * @param row - The account's map row, if the map has one for it
+ * @returns The single word the row's badge renders
+ */
+export function accountLinkState(row: AccountIdentityRow | undefined): AccountLinkState {
+  if (!row) return 'unlinked'
+  if (isMappingBroken(row)) return 'broken'
+  if (row.state === 'confirmed') return 'linked'
+  return row.suggestion ? 'suggested' : 'unlinked'
+}
+
+/**
  * The two roles nothing emits under the L1 regime, and which are therefore the
  * expected candidates for being marked unused.
  *

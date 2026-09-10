@@ -19,7 +19,7 @@ import {
 } from '@auxx/ui/components/dialog'
 import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import { toastError } from '@auxx/ui/components/toast'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { GlAccountPicker } from '~/components/accounting/ui/gl-account-picker'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
@@ -73,6 +73,20 @@ export function PaymentGatewayAddDialog({
     },
   })
 
+  // 🛑 The option set is DERIVED from the values. `payment_gateway_handles` is an
+  // OPEN, value-keyed TAGS field - the registry declares `options: { options: [] }`
+  // and the write stores the raw string - so a stored handle matches no option row.
+  // Handing the picker a literal `[]` made every handle resolve `unknown`: the
+  // trigger rendered it italic-grey as "not in this field's option set", and it
+  // never appeared in the popover at all, so it could not be unchecked. Nothing is
+  // wrong with what is stored; the input has to be told the values ARE the options.
+  // The `useMemo` is load-bearing too - a fresh `[]` each render re-fired
+  // `MultiSelectPicker`'s options sync and wiped the tag being typed.
+  const handleOptions = useMemo(
+    () => draft.handles.map((handle) => ({ label: handle, value: handle })),
+    [draft.handles]
+  )
+
   const canSubmit = draft.name.trim() && draft.handles.length > 0 && draft.clearingAccountId
 
   return (
@@ -114,9 +128,10 @@ export function PaymentGatewayAddDialog({
             description='Every stored value this rail is seen under.'>
             <FieldInputAdapter
               fieldType={FieldType.TAGS}
-              fieldOptions={{ options: [] }}
+              fieldOptions={{ options: handleOptions }}
               useValueAsLabel
               value={draft.handles}
+              triggerProps={{ className: 'w-full ps-0 pe-1' }}
               placeholder='Add a handle'
               disabled={create.isPending}
               onChange={(value) =>

@@ -776,12 +776,12 @@ function ProviderAccountField({
     return (
       <div className='flex min-w-0 flex-col gap-1.5'>
         <p className='flex min-h-8 items-center truncate text-sm'>
-          {identity.providerAccountId ? selectedLabel : 'Not mapped'}
+          {identity.providerAccountId ? selectedLabel : 'Not linked'}
         </p>
         {broken && (
           <p className='text-destructive text-xs'>
             The account this points at has been removed, deactivated or moved to a different
-            section. Every close refuses until it is re-mapped.
+            section. Every close refuses until it is re-linked.
           </p>
         )}
       </div>
@@ -840,7 +840,7 @@ function ProviderAccountField({
       {broken && (
         <p className='text-destructive text-xs'>
           The account this points at has been removed, deactivated or moved to a different section.
-          Every close refuses until it is re-mapped.
+          Every close refuses until it is re-linked.
         </p>
       )}
     </div>

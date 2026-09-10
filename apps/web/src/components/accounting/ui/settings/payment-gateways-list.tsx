@@ -70,7 +70,7 @@ export function PaymentGatewaysList({
   }, [gateways, search])
 
   const addButton = (
-    <Button variant='outline' size='sm' onClick={onAdd}>
+    <Button variant='outline' size='sm' className='shrink-0' onClick={onAdd}>
       <Plus />
       Add gateway
     </Button>
@@ -78,26 +78,34 @@ export function PaymentGatewaysList({
 
   return (
     <div className='flex flex-col gap-3 p-3'>
+      {/* One row, `chart-list.tsx`'s shape: a SINGLE button beside the search
+          still leaves the box room, which is exactly what stopped
+          `bank-accounts-list.tsx` from doing the same (it carries two, and two
+          squeeze the input to about forty pixels). Never `flex-wrap` either -
+          `InputSearch` wraps its input in a `relative flex flex-1` div, so on a
+          second line that wrapper stretches full width and swallows the
+          button's clicks. */}
       {gateways.length > 0 && (
-        <>
-          <div className='flex items-center gap-2'>{addButton}</div>
-          <div className='flex items-center gap-2'>
-            <InputSearch
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder='Search gateways...'
+        <div className='flex items-center gap-2'>
+          <InputSearch
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder='Search gateways...'
+            className='flex-1'
+          />
+          {/* Offered only when there is something behind it - an always-present
+              toggle over an empty set advertises a state most orgs never reach. */}
+          {closedCount > 0 && (
+            <ButtonSwitch
+              label={`Show closed (${closedCount})`}
+              size='xs'
+              checked={showArchived}
+              onCheckedChange={onShowArchivedChange}
+              className='shrink-0'
             />
-            {closedCount > 0 && (
-              <ButtonSwitch
-                label={`Show closed (${closedCount})`}
-                size='xs'
-                checked={showArchived}
-                onCheckedChange={onShowArchivedChange}
-                className='shrink-0'
-              />
-            )}
-          </div>
-        </>
+          )}
+          {addButton}
+        </div>
       )}
 
       {isLoading ? (
