@@ -906,6 +906,65 @@ describe('matching a customer payment', () => {
   })
 })
 
+// ── Matching a payout posts nothing (brief 18 §1, prevention half) ──────────
+//
+// 🛑 Before this, `listMatchCandidates` offered a Stripe payout's own bank line
+// NOTHING to match, so the only door was Code - which credits clearing a
+// second time (HANDOFF §0.2). Matching a payout has to behave exactly like
+// matching a deposit: link, date, post NOTHING, because the payout's own sync
+// already posted `Dr bank / Cr clearing`.
+describe('matching a payout', () => {
+  it('🛑 posts NOTHING and stamps payout_bank_transaction_id', async () => {
+    row({ amountMinor: 548_300 })
+    h.selectRows = [{ defId: 'def_payout' }]
+    const result = await matchTransaction(db, {
+      organizationId: ORG,
+      actorUserId: ACTOR,
+      transactionId: 'txn_1',
+      recordType: 'payout',
+      recordId: 'payout_1',
+    })
+    expect(result.isOk()).toBe(true)
+    expect(h.postEntry).not.toHaveBeenCalled()
+    if (result.isOk()) expect(result.value.post).toBeNull()
+    expect(updateFor('def_payout:payout_1')).toMatchObject({
+      payout_bank_transaction_id: 'txn_1',
+    })
+  })
+
+  it('refuses a payout already matched to a different bank line, naming it', async () => {
+    row({ amountMinor: 548_300 })
+    h.selectRows = [{ valueText: 'txn_other' }]
+    const result = await matchTransaction(db, {
+      organizationId: ORG,
+      actorUserId: ACTOR,
+      transactionId: 'txn_1',
+      recordType: 'payout',
+      recordId: 'payout_1',
+    })
+    expect(result.isErr()).toBe(true)
+    if (result.isErr()) expect(result.error.message).toMatch(/txn_other/)
+    expect(h.crudUpdate).not.toHaveBeenCalled()
+  })
+
+  it('undo clears payout_bank_transaction_id', async () => {
+    row({
+      reviewStatus: 'matched',
+      matchedRecordId: 'payout_1',
+      matchedRecordType: 'payout',
+    })
+    h.selectRows = [{ defId: 'def_payout' }]
+    const result = await undoReview(db, {
+      organizationId: ORG,
+      actorUserId: ACTOR,
+      transactionId: 'txn_1',
+    })
+    expect(result.isOk()).toBe(true)
+    expect(h.reverseEntry).not.toHaveBeenCalled()
+    expect(updateFor('def_payout:payout_1')).toEqual({ payout_bank_transaction_id: null })
+  })
+})
+
 describe('🛑 bank_account_has_posted - the write-once removal gate', () => {
   /**
    * §5.1 of plans/bank-connection/08-removing-a-bank-account.md, and the reason

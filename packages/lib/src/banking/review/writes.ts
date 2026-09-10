@@ -963,7 +963,9 @@ async function readDocumentLink(
       ? 'vendor_payment_bank_transaction_id'
       : recordType === 'bank_deposit'
         ? 'bank_deposit_bank_transaction_id'
-        : null
+        : recordType === 'payout'
+          ? 'payout_bank_transaction_id'
+          : null
   if (!attribute) {
     // 🛑 `vendor_bill` has no pointer field of its own - `paid_source` records
     // THAT a bank line confirmed it, never WHICH one - so the only record of the
@@ -1080,6 +1082,16 @@ async function stampDocument(
     await crud.update(toRecordId(defId, recordId), {
       vendor_bill_paid_source: 'bank_import',
     })
+    return
+  }
+  if (recordType === 'payout') {
+    // 🛑 Prevention half of the duplicate detector (brief 18 §1). A matched
+    // payout posts nothing of its own - the payout's own sync already posted
+    // `Dr bank / Cr clearing`, and this bank line is confirmation, not a second
+    // event.
+    await crud.update(toRecordId(defId, recordId), {
+      payout_bank_transaction_id: transactionId,
+    })
   }
 }
 
@@ -1139,6 +1151,10 @@ async function unstampDocument(
   }
   if (recordType === 'vendor_bill') {
     await crud.update(toRecordId(defId, recordId), { vendor_bill_paid_source: null })
+    return
+  }
+  if (recordType === 'payout') {
+    await crud.update(toRecordId(defId, recordId), { payout_bank_transaction_id: null })
   }
 }
 

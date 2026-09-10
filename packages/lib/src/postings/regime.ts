@@ -23,9 +23,10 @@
 // role, and every cash-touching builder now names a `bank_account`'s own
 // `gl_account` id directly, which this guard cannot see by construction (it
 // only reads `accountRole` lines). `SINGLE_WRITER_ROLES` is back to exactly the
-// three inventory accounts - the guard it can still make mechanically. A
-// single-writer check over bank-account ids is a real gap this leaves open;
-// see the TODO below `SINGLE_WRITER_ROLES`.
+// three inventory accounts - the guard it can still make mechanically. The gap
+// that leaves over bank-account ids is closed by `duplicate-movements.ts`
+// (brief 18 §1) reading what was actually POSTED instead - see the note below
+// `SINGLE_WRITER_ROLES`.
 //
 // `receipt` and `vendor_bill` are present in `POSTING_TYPES` and in the pgEnum,
 // and `buildReceiptEntry` / `buildVendorBillEntry` are written and tested - they
@@ -97,18 +98,16 @@ export const INVENTORY_ROLES: readonly AccountRole[] = [
  * those three are asserted monthly and a hand-keyed line would be reversed by
  * the next close.
  *
- * 🛑 TODO(brief 13 §2.5): a single-writer guard over bank-account
- * `glAccountId`s is still wanted - "is more than one enabled posting type
- * writing this bank account" is a real question now that `cash` is gone as a
- * role, and nothing here answers it. It is deliberately not added in this
- * pass: it needs a table declared over bank-account ids rather than roles
- * (`payout`, `bank_deposit` and the `cash` payment route all write a
- * `bank_account` by id now), which is more than a small function to add
- * honestly - see the header on why this guard being DECLARED rather than
- * derived is the whole point. A later pass adds
- * `findBankAccountWriterConflicts` beside {@link findWriterConflicts}, over its
- * own declared table, once `13` §3's `bank` subtype makes "these ids are bank
- * accounts" answerable without walking the registry.
+ * Closed by brief 18 §1: {@link findDuplicateBankMovements} in
+ * `duplicate-movements.ts` answers "is more than one door writing this bank
+ * account" over the POSTED LINES themselves - grouped by account, amount,
+ * direction and a two-day window - rather than over a declared table of
+ * posting types. A single-writer table never arrived because nothing here
+ * enumerates every posting type that might touch some bank account the way it
+ * enumerates the three inventory roles; reading what was actually posted
+ * answers the same question without one, and catches a duplicate a
+ * single-writer table could not (two different documents of the same enabled
+ * type colliding on one real event).
  */
 export const SINGLE_WRITER_ROLES: readonly AccountRole[] = INVENTORY_ROLES
 
@@ -143,8 +142,8 @@ export const SINGLE_WRITER_ROLES_BY_POSTING_TYPE: Record<PostingType, readonly A
   // `Dr <the chosen bank account> Cr undeposited_funds`, one line per bank run.
   // Names the bank account by its own `glAccountId`, never a role (brief 13
   // §2), so this guard cannot see it on the wire at all - `[]` is now exactly
-  // what the builder emits, not an exemption. See the header's TODO on the
-  // bank-account guard this leaves open.
+  // what the builder emits, not an exemption. See the header's note on
+  // `duplicate-movements.ts`, which is what watches bank accounts instead.
   bank_deposit: [],
   // A matched bank line posts nothing (B5). A CODED line drives the
   // `bank_account`'s own GL account by code, never a role - the bank feed's

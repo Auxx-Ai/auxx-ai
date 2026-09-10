@@ -50,6 +50,7 @@ export const MATCH_RECORD_TYPES = [
   'payment_transaction',
   'bank_deposit',
   'vendor_bill',
+  'payout',
   'bank_transaction',
 ] as const
 export type MatchRecordType = (typeof MATCH_RECORD_TYPES)[number]
@@ -83,6 +84,7 @@ export const MATCH_RECORD_TYPE_LABELS: Record<MatchRecordType, string> = {
   payment_transaction: 'Customer payment',
   bank_deposit: 'Bank deposit',
   vendor_bill: 'Vendor bill',
+  payout: 'Payout',
   bank_transaction: 'Bank line',
 }
 

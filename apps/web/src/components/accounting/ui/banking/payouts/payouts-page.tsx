@@ -88,6 +88,17 @@ export function PayoutsPage() {
     ...(onlyUnidentified ? { onlyUnidentified: true } : {}),
     limit: 200,
   })
+  // The gateway named on the row's `secondary` (brief 18 §1.1 b). Payout
+  // ingestion is Stripe Connect only today (HANDOFF §0.3), so the settlement
+  // source is what picks the row rather than a field on the payout itself;
+  // 'Stripe' is the fallback for an org with no gateway record yet.
+  const gatewaysQuery = api.paymentGateway.list.useQuery()
+  const stripeGatewayName = useMemo(() => {
+    const stripeGateway = (gatewaysQuery.data ?? []).find(
+      (gateway) => gateway.settlementSource === 'stripe'
+    )
+    return stripeGateway?.name ?? 'Stripe'
+  }, [gatewaysQuery.data])
   const utils = api.useUtils()
   const syncNow = api.money.payout.syncNow.useMutation({
     onSuccess: () => {
@@ -223,7 +234,7 @@ export function PayoutsPage() {
               <div className='flex flex-col gap-1.5'>
                 <TreeRow
                   title={payout.number ?? EMPTY_CELL}
-                  secondary={payout.paidAt ?? 'Not settled yet'}
+                  secondary={`${stripeGatewayName} · ${payout.paidAt ?? 'Not settled yet'}`}
                   icon={<Landmark />}
                   trailing={
                     <div className='flex items-center gap-3'>
@@ -239,6 +250,20 @@ export function PayoutsPage() {
                       <Badge variant={STATUS_TONE[payout.status] ?? 'secondary'} size='sm'>
                         {STATUS_LABEL[payout.status] ?? payout.status}
                       </Badge>
+                      {/* 🛑 Brief 18 §1: a `paid` payout with no bank line is a
+                          real signal - either the deposit has not landed or
+                          somebody coded it by hand instead of matching it. */}
+                      {payout.bankTransactionId ? (
+                        <Badge variant='green' size='sm'>
+                          matched
+                        </Badge>
+                      ) : (
+                        payout.status === 'paid' && (
+                          <Badge variant='outline' size='sm'>
+                            unmatched
+                          </Badge>
+                        )
+                      )}
                     </div>
                   }
                 />

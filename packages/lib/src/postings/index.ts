@@ -185,6 +185,13 @@ export {
   requiresAssertions,
   reverseAssertions,
 } from './draft'
+// ── plans/accounting/tasks/18: two feeds, one author, unit 1 ───────────────
+export {
+  type DuplicateMovementEntry,
+  type DuplicateMovementFinding,
+  type FindDuplicateBankMovementsOptions,
+  findDuplicateBankMovements,
+} from './duplicate-movements'
 export { gatherMonthEndInventoryInputs } from './gather-month-end-inventory'
 export {
   type CreateJournalEntryInput,
