@@ -22,7 +22,7 @@
  * **It is a BATCH.** `resolveRoles` takes the whole set of roles an entry
  * names and answers once. A month-end entry touching six roles on an org that
  * has mapped none of them must fail ONCE, naming all six, not six times naming
- * one — a bookkeeper fixing a close needs the list, not a treasure hunt. The
+ * one - a bookkeeper fixing a close needs the list, not a treasure hunt. The
  * `G19` setup wizard needs exactly the same batch answer.
  *
  * **It fails CLOSED, on five distinct conditions, with five distinct messages.**
@@ -38,18 +38,18 @@
  * `(organizationId, role)` makes `>1 match` unreachable; §"the impossible case"
  * below asserts it anyway.
  *
- * ## Not cached, deliberately — read this before adding a cache key
+ * ## Not cached, deliberately - read this before adding a cache key
  *
  * The obvious move is an `OrgCacheDataMap` key. It was considered and rejected
  * for now, because the invalidation doors this would need do not exist:
  * `gl_account` is an `EntityInstance`, and there is no per-entity-type record
- * event in `INVALIDATION_GRAPH` — only `entity-def.*` and `custom-field.*`,
+ * event in `INVALIDATION_GRAPH` - only `entity-def.*` and `custom-field.*`,
  * neither of which fires when a bookkeeper renames or archives an ACCOUNT. A
  * cached key wired to the doors that DO exist is correct for an hour and then
  * posts to the account somebody renamed, and it fails OPEN: the entry balances.
  *
  * The cost of not caching is two indexed reads on a path that runs at a close or
- * per posted event — not a hot request path. When the `G19` wizard lands and
+ * per posted event - not a hot request path. When the `G19` wizard lands and
  * gives assignment writes an explicit event of their own, cache it then, and
  * wire `gl_account` create/update/archive at the same time or not at all.
  *
@@ -62,9 +62,9 @@ import { and, eq, inArray } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError, UnprocessableEntityError } from '../errors'
 import { accountLabel } from './account-label'
-import { type AccountRole, ROLE_ACCOUNT_TYPES } from './build-entry'
+import { ACCOUNT_ROLE_LABELS, type AccountRole, ROLE_ACCOUNT_TYPES } from './build-entry'
 import { loadChartAccountFields, loadChartAccountsById } from './chart-accounts'
-import type { GlAccountTypeValue } from './default-chart'
+import { CHART_PACKS, type GlAccountTypeValue, packForRole } from './default-chart'
 import type { GlPostingLineInput } from './types'
 
 const logger = createScopedLogger('postings:resolve-roles')
@@ -93,7 +93,7 @@ export interface ResolvedAccount {
   /** The account's name as it stands NOW. Snapshot it; renaming must not restate the ledger. */
   name: string
   accountType: GlAccountTypeValue
-  /** Always `true` on a successful resolution — an inactive account is a refusal. */
+  /** Always `true` on a successful resolution - an inactive account is a refusal. */
   isActive: boolean
 }
 
@@ -101,14 +101,14 @@ export interface ResolvedAccount {
  * Resolve every role in one call, or refuse naming all of them.
  *
  * Duplicate roles in `roles` are collapsed; the returned map is keyed by role.
- * An empty input resolves to an empty map rather than an error — an entry with
+ * An empty input resolves to an empty map rather than an error - an entry with
  * no lines is `buildEntry`'s refusal to make, not this function's.
  *
  * Fails closed on all five `G19` conditions, each with its own message:
  *
  * | Condition | What the reader has to do about it |
  * | --- | --- |
- * | no assignment row | map the role — nobody ever has |
+ * | no assignment row | map the role - nobody ever has |
  * | `markedUnused` | somebody said "we don't use this" and a builder emitted it anyway |
  * | account missing or archived | the chart moved under the mapping; repoint it |
  * | `isActive = false` | reactivate the account, or repoint the role |
@@ -147,7 +147,7 @@ export async function resolveRoles(
       if (byRole.has(row.role)) {
         throw new UnprocessableEntityError(
           `Organization ${organizationId} has more than one account mapped to role '${row.role}'. ` +
-            'Refusing to choose. This should be impossible — GlRoleAssignment_org_role_key is a unique index.',
+            'Refusing to choose. This should be impossible - GlRoleAssignment_org_role_key is a unique index.',
           { organizationId, role: row.role }
         )
       }
@@ -164,8 +164,15 @@ export async function resolveRoles(
       const assignment = byRole.get(role)
 
       if (!assignment) {
+        // A DECLARED role gets the rich sentence naming its label and the pack
+        // that would provision it (16 §3.2). An invented role (caught properly
+        // below as "not a declared posting role") has neither, so it falls back
+        // to the plain sentence rather than indexing `CHART_PACKS` with nothing.
+        const label = ACCOUNT_ROLE_LABELS[role as AccountRole]
         problems.push(
-          `'${role}' is not mapped to any account. Map it in the chart of accounts before posting.`
+          label
+            ? `'${role}' (${label}) is not mapped to any account. Add the ${CHART_PACKS[packForRole(role as AccountRole)].label} accounts under Accounting > Settings > Accounts > Roles, or map it to an account of your own there.`
+            : `'${role}' is not mapped to any account. Map it in the chart of accounts before posting.`
         )
         continue
       }
@@ -199,7 +206,7 @@ export async function resolveRoles(
       // sentence rather than being folded into the type mismatch below.
       if (!expectedType) {
         problems.push(
-          `'${role}' is not a declared posting role. The role vocabulary is closed — see ACCOUNT_ROLES.`
+          `'${role}' is not a declared posting role. The role vocabulary is closed - see ACCOUNT_ROLES.`
         )
         continue
       }

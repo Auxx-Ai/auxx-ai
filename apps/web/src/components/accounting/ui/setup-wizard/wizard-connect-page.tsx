@@ -12,9 +12,13 @@
 // same reason, and `getting-started.ts` records that `connect-quickbooks` is
 // deliberately not a checklist goal.
 //
-// What the step DOES earn its place with is ordering. The next page cannot show
-// a single row until a provider chart exists to map against, so connecting has
-// to happen before it rather than in a settings page somebody visits later.
+// What the step DOES earn its place with is ordering, and brief 16 §2.3 doubled
+// the reason for it: the very next page ("accounts") can now offer "Import from
+// QuickBooks" as the source of the org's chart, which needs a connection to say
+// anything about, so connecting has to come first. The account map two pages
+// later still cannot show a single row until a provider chart exists to map
+// against, so it keeps following `connect` too - the pair just has "accounts"
+// between them now instead of sitting back to back.
 //
 // 🛑 CONNECT AND MANAGE OPEN `AppSettingsDialog`, they do not navigate - the
 // same call `quickbooks-section.tsx` makes. Sending somebody to
@@ -71,8 +75,8 @@ export function WizardConnectPage() {
           {status.connected ? (
             <>
               <p className='text-muted-foreground text-xs'>
-                {status.connection?.label ?? 'Connected'}. On the next page you will say which
-                account in QuickBooks each of your accounts corresponds to.
+                {status.connection?.label ?? 'Connected'}. On the next page you can import your
+                QuickBooks chart, or start from the default one.
               </p>
               <div>
                 <Button variant='outline' size='sm' onClick={() => setDialogOpen(true)}>

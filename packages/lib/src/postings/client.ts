@@ -149,11 +149,24 @@ export {
   PAYOUT_CLEARING_ROLES,
   PAYOUT_SOURCE_TYPE,
 } from './build-payout-entry'
+// ── plans/accounting/tasks/16: the chart import, pure half ─────────────────
+// PURE. The two declared tables and the planner reach nothing but types.
 export {
+  PROVIDER_ACCOUNT_TYPE_SUBTYPE,
+  planChartImport,
+  ROLE_IMPORT_MATCH,
+} from './chart-import-plan'
+export {
+  CHART_PACK_KEYS,
+  CHART_PACKS,
+  type ChartPack,
+  type ChartPackKey,
   DEFAULT_CHART_OF_ACCOUNTS,
   type DefaultChartAccount,
   GL_ACCOUNT_TYPES,
   type GlAccountTypeValue,
+  packForRole,
+  packState,
 } from './default-chart'
 export {
   buildDocNumber,
@@ -308,6 +321,8 @@ export {
   type BooksBalanceReport,
   type BuiltEntry,
   type ChartAccountRow,
+  type ChartImportPlan,
+  type ChartImportResult,
   type ClosePeriod,
   type CounterpartyType,
   type EntryPreview,
