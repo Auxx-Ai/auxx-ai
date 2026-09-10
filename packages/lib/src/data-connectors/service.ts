@@ -295,6 +295,12 @@ export interface RunCounters {
    * nothing was removed, so counting it there would overstate the run.
    */
   markedDeleted: number
+  /**
+   * A record this connector archived on an earlier reconcile came back in the crawl
+   * and the sink un-archived it (v12.1 Phase 1). Keyed on the binding's own
+   * `archivedAt`, so a record a human archived is never counted (or restored) here.
+   */
+  restored: number
   failed: number
   relationshipWarnings: number
   // `tier` classifies the failure for the two-tier error UI (Step 9 §1.1):
@@ -314,6 +320,7 @@ export function newRunCounters(): RunCounters {
     archived: 0,
     deleted: 0,
     markedDeleted: 0,
+    restored: 0,
     failed: 0,
     relationshipWarnings: 0,
     errorSample: [],
@@ -378,6 +385,7 @@ export async function finalizeRun(
       archived: c.archived,
       deleted: c.deleted,
       markedDeleted: c.markedDeleted,
+      restored: c.restored,
       failed: c.failed,
       relationshipWarnings: c.relationshipWarnings,
       errorSample: c.errorSample.length > 0 ? c.errorSample.slice(0, 50) : null,
@@ -977,6 +985,12 @@ export async function upsertItem(
  * `upstreamUpdatedAt` is supplied it is advanced too, so the stored value stays a
  * true high-watermark even on a no-op content update — the out-of-order guard
  * (sync-bridge §9 Q7) needs the freshest version it has seen, not the last it wrote.
+ *
+ * Every call site is a "seen alive" event: the unchanged-content fast path and the
+ * out-of-order guard both had the record in the upstream payload. So, like
+ * `upsertItem`, this unconditionally clears `removedUpstreamAt` and `archivedAt`.
+ * Without that, a `mark_deleted` flag or a connector archive only healed when the
+ * record's content also changed (v12.1 Phase 1).
  */
 export async function touchItem(
   db: Database,
@@ -989,6 +1003,8 @@ export async function touchItem(
     .set({
       lastSeenRunId,
       lastSyncedAt: new Date(),
+      removedUpstreamAt: null,
+      archivedAt: null,
       ...(upstreamUpdatedAt ? { upstreamUpdatedAt } : {}),
     })
     .where(eq(schema.DataConnectorItem.id, itemId))

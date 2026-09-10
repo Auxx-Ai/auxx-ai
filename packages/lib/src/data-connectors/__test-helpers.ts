@@ -39,6 +39,7 @@ export function zeroRunCounters(): SyncCtx['counters'] {
     archived: 0,
     deleted: 0,
     markedDeleted: 0,
+    restored: 0,
     failed: 0,
     relationshipWarnings: 0,
     errorSample: [],

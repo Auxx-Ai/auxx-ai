@@ -1,0 +1,1 @@
+ALTER TABLE "DataConnectorRun" ADD COLUMN "restored" integer DEFAULT 0 NOT NULL;

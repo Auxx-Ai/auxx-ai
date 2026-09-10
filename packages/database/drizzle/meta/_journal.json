@@ -2584,6 +2584,13 @@
       "when": 1789001218423,
       "tag": "0368_crawl_delete_reconciliation",
       "breakpoints": true
+    },
+    {
+      "idx": 369,
+      "version": "7",
+      "when": 1789006257230,
+      "tag": "0369_crawl_delete_restore_counter",
+      "breakpoints": true
     }
   ]
 }

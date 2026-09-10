@@ -54,6 +54,10 @@ interface ConnectorDetailTabsProps {
   sampleReviewBanner?: React.ReactNode
   /** Pending mapping-edit re-sync banner — pinned directly under the tabs strip. */
   resyncBanner?: React.ReactNode
+  /** The archive cap refused the last reconcile pass (v12.1 Phase 3d) — beside the resync banner. */
+  archiveCapBanner?: React.ReactNode
+  /** "Gone upstream" (v12.1 Phase 5b) — after the Schedule section; renders itself only when non-empty. */
+  removedUpstreamSection?: React.ReactNode
 }
 
 /**
@@ -71,6 +75,8 @@ export function ConnectorDetailTabs({
   disconnectedBanner,
   sampleReviewBanner,
   resyncBanner,
+  archiveCapBanner,
+  removedUpstreamSection,
 }: ConnectorDetailTabsProps) {
   const [tab, setTab] = useQueryState('tab', { defaultValue: 'connection' })
   const [selectedStreamId, setSelectedStreamId] = useQueryState('stream')
@@ -179,6 +185,7 @@ export function ConnectorDetailTabs({
               {disconnectedBanner}
               {sampleReviewBanner}
               {resyncBanner}
+              {archiveCapBanner}
               <div className='relative min-h-0 flex-1'>
                 <ScrollArea
                   viewportRef={scrollContainerRef}
@@ -197,6 +204,7 @@ export function ConnectorDetailTabs({
                   <div ref={assignRef('schedule')}>
                     <ScheduleSection connector={connector} />
                   </div>
+                  {removedUpstreamSection}
 
                   {mobileRunsPanel && <div className='h-[60vh]'>{mobileRunsPanel}</div>}
 

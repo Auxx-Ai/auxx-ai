@@ -33,6 +33,13 @@ export interface InstanceConnectorBinding {
   pinnedFields: string[]
   /** The mapping's field bindings. */
   bindings: SyncBinding[]
+  /**
+   * ISO timestamp of the crawl that found the upstream record gone
+   * (`orphanBehavior: 'mark_deleted'`, or a degraded `archive`), else null. The
+   * record is still live; a human decides. Optional so the pure rule's callers
+   * that predate v12.1 (and its test fixtures) need not spell out `null`.
+   */
+  removedUpstreamAt?: string | null
 }
 
 export type CellSyncState = 'synced' | 'edited' | 'paused'
@@ -47,6 +54,13 @@ export interface CellSyncInfo {
    * strategies, where "resume" restores nothing until the cell is cleared.
    */
   willOverwrite: boolean
+  /**
+   * Present only when the connector's binding on this record is flagged gone upstream
+   * (v12.1 Phase 5a): the ISO timestamp of the flag. Record-grained, carried per cell
+   * because the batch read has no record-level channel; the badge reads it off any
+   * bound cell.
+   */
+  removedUpstreamAt?: string
 }
 
 /** `<defId>:<fieldId>` names the field; a bare id (legacy rows, tests) is accepted too. */
@@ -97,12 +111,23 @@ export function resolveCellSyncState(input: {
       return !!binding && wouldHealField(binding, field)
     })
 
+  // The flag is a property of the record's binding, not of the cell, so it rides
+  // along whatever state the cell resolves to. Only set when flagged: the key is
+  // absent otherwise, so an unflagged cell's shape is unchanged on the wire.
+  const removedOn = (connectorId: string): { removedUpstreamAt?: string } => {
+    const flagged = bindings.find(
+      (item) => item.connectorId === connectorId && item.removedUpstreamAt
+    )?.removedUpstreamAt
+    return flagged ? { removedUpstreamAt: flagged } : {}
+  }
+
   const pinned = bindings.find((item) => item.pinnedFields.includes(fieldId))
   if (pinned) {
     return {
       connectorId: pinned.connectorId,
       state: 'paused',
       willOverwrite: healsOn(pinned.connectorId),
+      ...removedOn(pinned.connectorId),
     }
   }
 
@@ -111,6 +136,7 @@ export function resolveCellSyncState(input: {
       connectorId: markerConnectorId,
       state: 'synced',
       willOverwrite: healsOn(markerConnectorId),
+      ...removedOn(markerConnectorId),
     }
   }
 
@@ -119,7 +145,14 @@ export function resolveCellSyncState(input: {
     const binding = bindingFor(item)
     return !!binding && wouldHealField(binding, field)
   })
-  if (edited) return { connectorId: edited.connectorId, state: 'edited', willOverwrite: true }
+  if (edited) {
+    return {
+      connectorId: edited.connectorId,
+      state: 'edited',
+      willOverwrite: true,
+      ...removedOn(edited.connectorId),
+    }
+  }
 
   return null
 }
