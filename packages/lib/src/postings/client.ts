@@ -77,7 +77,7 @@ export {
   type BuildFulfillmentEntryInput,
   type BuiltFulfillmentEntry,
   buildFulfillmentEntry,
-  CHANNEL_REVENUE_ROLE,
+  CHANNEL_KEYS,
   computeShipmentTotals,
   extendRateToAmount,
   FULFILLMENT_SOURCE_TYPE,
@@ -292,6 +292,7 @@ export {
 export {
   type AccountSuggestion,
   isMappableTo,
+  SUBTYPE_PROVIDER_ACCOUNT_TYPES,
   suggestAccountIdentities,
   validateProviderMapping,
 } from './suggest-account-identities'

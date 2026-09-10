@@ -76,6 +76,16 @@ const LINE_ATTRIBUTES = [
 type OrderAttribute = (typeof ORDER_ATTRIBUTES)[number]
 type LineAttribute = (typeof LINE_ATTRIBUTES)[number]
 
+/** Every `tax_line` attribute the jurisdiction split reads (brief 13 §5). */
+const TAX_LINE_ATTRIBUTES = ['tax_line_title', 'tax_line_price', 'tax_line_order'] as const
+type TaxLineAttribute = (typeof TAX_LINE_ATTRIBUTES)[number]
+
+/** One order's jurisdiction, as `splitTaxByJurisdiction` wants it. */
+export interface OrderTaxLine {
+  title: string
+  priceMinor: number
+}
+
 /**
  * The resolved def and fields every order read needs.
  *
@@ -157,6 +167,103 @@ export interface OrderForFulfillment {
    * the fulfillment entry's `accounts_receivable` line (brief 13 §1.2).
    */
   contactInstanceId: string | null
+  /**
+   * The order's own `tax_line` rows - one per jurisdiction (brief 13 §5).
+   * Empty when the org has none, or predates entity migration 136. Splits the
+   * `sales_tax_payable` credit across jurisdictions when they tie to
+   * `taxTotalMinor` - see `postings/split-tax-by-jurisdiction.ts`.
+   */
+  taxLines: OrderTaxLine[]
+}
+
+/**
+ * Every named order's own tax lines, in ONE bulk read - never one query per
+ * order (brief 13 §5).
+ *
+ * Two statements regardless of how many orders are asked for: the first finds
+ * which `tax_line` instances belong to these orders (the `tax_line_order`
+ * edge), the second reads `title` and `price` for exactly those instances.
+ * Both are empty reads, not refusals, when the org has no `tax_line` def yet
+ * (pre-migration-136) - the caller then falls back to the single undimensioned
+ * tax line, which is `splitTaxByJurisdiction`'s documented behaviour for "no
+ * tax lines at all".
+ */
+export async function readOrderTaxLines(
+  db: Database,
+  organizationId: string,
+  orderIds: readonly string[]
+): Promise<Map<string, OrderTaxLine[]>> {
+  const byOrder = new Map<string, OrderTaxLine[]>()
+  if (orderIds.length === 0) return byOrder
+
+  const fields = await getOrgCache()
+    .from(organizationId, 'customFields')
+    .bySystemAttributes([...TAX_LINE_ATTRIBUTES])
+  const attrs = fields as Record<TaxLineAttribute, CustomFieldEntity | null>
+  const titleField = attrs.tax_line_title
+  const priceField = attrs.tax_line_price
+  const orderField = attrs.tax_line_order
+  if (!titleField || !priceField || !orderField) return byOrder
+
+  // Hop 1: which tax_line instances belong to these orders.
+  const edgeRows = await db
+    .select({
+      taxLineId: schema.FieldValue.entityId,
+      orderId: schema.FieldValue.relatedEntityId,
+    })
+    .from(schema.FieldValue)
+    .where(
+      and(
+        eq(schema.FieldValue.organizationId, organizationId),
+        eq(schema.FieldValue.fieldId, orderField.id),
+        inArray(schema.FieldValue.relatedEntityId, [...orderIds])
+      )
+    )
+  if (edgeRows.length === 0) return byOrder
+
+  const orderIdByTaxLine = new Map<string, string>()
+  for (const row of edgeRows) {
+    if (row.orderId) orderIdByTaxLine.set(row.taxLineId, row.orderId)
+  }
+  const taxLineIds = [...orderIdByTaxLine.keys()]
+  if (taxLineIds.length === 0) return byOrder
+
+  // Hop 2: title and price for exactly those tax lines, in one query.
+  const valueRows = await db
+    .select({
+      entityId: schema.FieldValue.entityId,
+      fieldId: schema.FieldValue.fieldId,
+      valueText: schema.FieldValue.valueText,
+      valueNumber: schema.FieldValue.valueNumber,
+    })
+    .from(schema.FieldValue)
+    .where(
+      and(
+        eq(schema.FieldValue.organizationId, organizationId),
+        inArray(schema.FieldValue.entityId, taxLineIds),
+        inArray(schema.FieldValue.fieldId, [titleField.id, priceField.id])
+      )
+    )
+
+  const byTaxLine = new Map<string, { title?: string; priceMinor?: number }>()
+  for (const row of valueRows) {
+    const entry = byTaxLine.get(row.entityId) ?? {}
+    if (row.fieldId === titleField.id) entry.title = row.valueText ?? undefined
+    if (row.fieldId === priceField.id) entry.priceMinor = row.valueNumber ?? undefined
+    byTaxLine.set(row.entityId, entry)
+  }
+
+  for (const [taxLineId, orderId] of orderIdByTaxLine) {
+    const values = byTaxLine.get(taxLineId)
+    // A tax line missing either value cannot enter the split - it would
+    // silently understate the total it has to tie to.
+    if (!values?.title?.trim() || values.priceMinor == null) continue
+    const line: OrderTaxLine = { title: values.title, priceMinor: values.priceMinor }
+    const list = byOrder.get(orderId)
+    if (list) list.push(line)
+    else byOrder.set(orderId, [line])
+  }
+  return byOrder
 }
 
 /**
@@ -290,6 +397,7 @@ export async function readOrderForFulfillment(
         .map((row) => row.relatedEntityId)
         .filter((id): id is string => !!id)
       const lines = await readOrderLines(db, organizationId, ctx, lineIds, shipped)
+      const taxLines = (await readOrderTaxLines(db, organizationId, [orderId])).get(orderId) ?? []
 
       return {
         orderId,
@@ -308,6 +416,7 @@ export async function readOrderForFulfillment(
         nextSequence: nextFulfillmentSequence(fulfillments),
         shippingOwed: shippingStillOwed(fulfillments),
         contactInstanceId: cell('order_contact')?.relatedEntityId ?? null,
+        taxLines,
       }
     },
     'Failed to read an order for fulfillment',

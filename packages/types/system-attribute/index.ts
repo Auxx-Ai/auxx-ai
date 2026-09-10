@@ -861,6 +861,11 @@ export const SYSTEM_ATTRIBUTES = [
   'payout_unrecognised_count',
   'payout_gl_posting_id', // denormalized backlink; the posting is the authority
   'payout_bank_transaction_id', // the bank_deposit / vendor_payment twin, by name and meaning
+  'payout_destination', // the gateway's own external-account id (brief 13 §2.3), never last4
+  // 🛑 Set only when the payout could not be posted for lack of a confirmed
+  // bank-account identity. Never a role; naming the payout, the destination and
+  // the remedy (brief 13 §2.3).
+  'payout_blocked_reason',
 
   // ─── Bank feed (plans/bank-connection/02-connection-architecture.md §6) ──
   // Entity migration 125. `bank_account` is where the feed meets the chart of
@@ -885,8 +890,26 @@ export const SYSTEM_ATTRIBUTES = [
   // bank-account removal gate: false deletes, true archives
   // (plans/bank-connection/08-removing-a-bank-account.md §5.1)
   'bank_account_has_posted',
+  // 🛑 The Stripe `ba_…` / `card_…` destination id, confirmed once by a person.
+  // Never matched on last4 (brief 13 §2.3): a four-digit string is strong
+  // evidence and not proof, and two accounts at one bank can share it.
+  'bank_account_stripe_external_account_id',
   'bank_account_transactions', // inverse of bank_transaction_bank_account
   'bank_account_deposits', // inverse of bank_deposit_bank_account_record
+
+  // ─── Payment gateway (task 13 §5.3) ──────────────────────────────
+  // A record carrying its clearing account, never a role. Entity migration
+  // 146. `payment_gateway_handles` is a SET (TAGS): two rails arrive under
+  // two spellings each (`authorize_net`/`authorize.net`, `Affirm`/`affirm`).
+  'payment_gateway_name',
+  'payment_gateway_handles',
+  // 🛑 The `gl_account` id this gateway settles into, TEXT with no foreign
+  // key - the same call `bank_account_gl_account` makes.
+  'payment_gateway_clearing_account',
+  'payment_gateway_fee_account',
+  'payment_gateway_settlement_source', // stripe | shopify_payments | manual
+  'payment_gateway_status', // active | closed
+  'payment_gateway_last_settlement_at',
 
   // Connector-owned (raw). The feed may correct any of these.
   'bank_transaction_external_id', // the dedupe key, across BOTH the feed and file import

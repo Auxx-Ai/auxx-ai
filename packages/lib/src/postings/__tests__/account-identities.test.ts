@@ -164,6 +164,35 @@ describe('listAccountIdentities - the checklist', () => {
     expect(map.providerAccounts).toEqual([])
     expect(map.rows.every((row) => row.suggestion === null)).toBe(true)
   })
+
+  // Task 13 §3: the broken sweep goes through the same `isMappableTo` as the
+  // confirm - a mapping that was valid by classification alone and is now
+  // invalid by subtype must show as broken, the same as any other lapsed one.
+  it('reports a bank account mapped to a same-section, wrong-subtype account as broken', async () => {
+    const bankAccount: ChartAccountRow = {
+      id: 'gl1010',
+      code: '1010',
+      name: 'Wells Fargo Checking',
+      accountType: 'asset',
+      isActive: true,
+      subtype: 'bank',
+    }
+    listChartAccounts.mockResolvedValue(ok([bankAccount]))
+    const arProviderAccount = providerAccount({
+      id: '50',
+      accountType: 'Accounts Receivable',
+      fullyQualifiedName: 'Accounts Receivable (A/R)',
+      classification: 'asset', // same classification - only the subtype disagrees
+    })
+    stubProvider({
+      accounts: [arProviderAccount],
+      mappings: new Map([['gl1010', '50']]),
+    })
+
+    const map = (await listAccountIdentities(db, ORG))._unsafeUnwrap()
+
+    expect(map.broken).toEqual(['1010 Wells Fargo Checking'])
+  })
 })
 
 describe('setAccountIdentity - the confirmation', () => {
@@ -211,7 +240,9 @@ describe('setAccountIdentity - the confirmation', () => {
     })
 
     expect(result.isErr()).toBe(true)
-    expect(result._unsafeUnwrapErr().message).toContain('not active')
+    // `validateProviderMapping`'s wording, task 13 §3 - the same sentence
+    // `resolveProviderAccountIds` already uses for the identical fact.
+    expect(result._unsafeUnwrapErr().message).toContain('deactivated')
     expect(set).not.toHaveBeenCalled()
   })
 
@@ -240,6 +271,65 @@ describe('setAccountIdentity - the confirmation', () => {
 
     expect(result.isErr()).toBe(true)
     expect(set).not.toHaveBeenCalled()
+  })
+
+  // Task 13 §3: a bank account may only map to a bank account, even when the
+  // classification agrees.
+  it('refuses a bank account mapped to Accounts Receivable, naming both in the sentence', async () => {
+    const bankAccount: ChartAccountRow = {
+      id: 'gl1010',
+      code: '1010',
+      name: 'Wells Fargo Checking',
+      accountType: 'asset',
+      isActive: true,
+      subtype: 'bank',
+    }
+    listChartAccounts.mockResolvedValue(ok([bankAccount]))
+    const arProviderAccount = providerAccount({
+      id: '50',
+      accountType: 'Accounts Receivable',
+      fullyQualifiedName: 'Accounts Receivable (A/R)',
+      classification: 'asset',
+    })
+    const { set } = stubProvider({ accounts: [arProviderAccount] })
+
+    const result = await setAccountIdentity(db, {
+      organizationId: ORG,
+      glAccountId: 'gl1010',
+      providerAccountId: '50',
+    })
+
+    expect(result.isErr()).toBe(true)
+    const message = result._unsafeUnwrapErr().message
+    expect(message).toContain('1010 Wells Fargo Checking')
+    expect(message).toContain('bank account')
+    expect(message).toContain('Accounts Receivable (A/R)')
+    expect(set).not.toHaveBeenCalled()
+  })
+
+  it('confirms a bank account mapped to a Bank provider account', async () => {
+    const bankAccount: ChartAccountRow = {
+      id: 'gl1010',
+      code: '1010',
+      name: 'Wells Fargo Checking',
+      accountType: 'asset',
+      isActive: true,
+      subtype: 'bank',
+    }
+    listChartAccounts.mockResolvedValue(ok([bankAccount]))
+    const bankProviderAccount = providerAccount({ id: '50', accountType: 'Bank' })
+    const { set } = stubProvider({ accounts: [bankProviderAccount] })
+
+    const result = await setAccountIdentity(db, {
+      organizationId: ORG,
+      glAccountId: 'gl1010',
+      providerAccountId: '50',
+    })
+
+    expect(result.isOk()).toBe(true)
+    expect(set).toHaveBeenCalledWith(
+      expect.objectContaining({ glAccountId: 'gl1010', providerAccountId: '50' })
+    )
   })
 
   it('clears the mapping when the provider account id is null', async () => {

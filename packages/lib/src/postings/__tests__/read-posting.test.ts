@@ -68,6 +68,7 @@ interface LineRow {
   sourceId: string
   counterpartyType: string | null
   counterpartyId: string | null
+  dimensions: Record<string, string> | null
 }
 
 /**
@@ -196,6 +197,7 @@ function line(overrides: Partial<LineRow> & { lineNumber: number }): LineRow {
     sourceId: 'sm_1',
     counterpartyType: null,
     counterpartyId: null,
+    dimensions: null,
     ...overrides,
   }
 }
@@ -368,6 +370,24 @@ describe('getPosting - the lines', () => {
     expect(detail.lines[0]?.counterpartyId).toBeNull()
   })
 
+  // Brief 13 §5: the reporting dimensions frozen on the line at post time.
+  it('returns the dimensions stored on a line', async () => {
+    const stub = stubDb({
+      postings: [POSTING],
+      lines: [line({ lineNumber: 1, dimensions: { channel: 'dealer' } })],
+    })
+    const detail = (await getPosting(stub.db, ORG, 'gp_1'))._unsafeUnwrap()
+
+    expect(detail.lines[0]?.dimensions).toEqual({ channel: 'dealer' })
+  })
+
+  it('returns null, not undefined, on a line with no dimensions', async () => {
+    const stub = stubDb({ postings: [POSTING], lines: [line({ lineNumber: 1 })] })
+    const detail = (await getPosting(stub.db, ORG, 'gp_1'))._unsafeUnwrap()
+
+    expect(detail.lines[0]?.dimensions).toBeNull()
+  })
+
   // Two reads: the header, then all of its lines. A third would mean either an
   // N+1 over the lines or a join to the live chart, and both are forbidden.
   it('issues exactly two reads, whatever the line count', async () => {
@@ -507,6 +527,7 @@ function paymentLine(sourceId: string, lineNumber: number): LineRow {
     memo: null,
     sourceType: 'payment_transaction',
     sourceId,
+    dimensions: null,
     counterpartyType: null,
     counterpartyId: null,
   }

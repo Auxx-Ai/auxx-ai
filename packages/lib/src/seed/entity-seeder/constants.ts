@@ -441,6 +441,22 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     isVisible: false,
   },
   {
+    // A record carrying its clearing account, never a role
+    // (`plans/accounting/tasks/13-cash-accounts-and-the-qbo-seam.md` §5.3,
+    // HANDOFF step 5). Entity migration 146.
+    //
+    // `isVisible: false`: the door is Accounting > Settings > Payment
+    // gateways, a master-detail settings page - the same shape `bank_account`
+    // uses and for the same reason.
+    entityType: 'payment_gateway',
+    apiSlug: 'payment-gateways',
+    singular: 'Payment Gateway',
+    plural: 'Payment Gateways',
+    icon: 'credit-card',
+    color: 'indigo',
+    isVisible: false,
+  },
+  {
     // Suggest-from-history is the PRIMARY categorisation mechanism (bank plan
     // 03 §4 - Stripe FC has no merchant enrichment and no categories); a
     // bank_rule is the opt-in, ordered layer on top of it. Entity migration
@@ -770,6 +786,10 @@ export const DISPLAY_FIELD_CONFIG: Record<string, DisplayFieldConfig> = {
   // `name` is required and `institution` is not, which is the right way round:
   // `computeDisplayValue` has no fallback, so a null PRIMARY renders the row
   // nameless while a null secondary just renders nothing.
+  payment_gateway: {
+    primaryDisplayField: 'name',
+    secondaryDisplayField: 'settlementSource',
+  },
   bank_account: {
     primaryDisplayField: 'name',
     secondaryDisplayField: 'institution',

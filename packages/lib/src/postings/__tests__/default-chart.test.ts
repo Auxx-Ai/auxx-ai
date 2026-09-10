@@ -129,13 +129,20 @@ describe('the default chart', () => {
     expect(byCode.get('5030')?.role).toBeUndefined()
   })
 
-  it('carries the five accounts the accrual plan does not list but a builder needs', () => {
+  it('carries the four accounts the accrual plan does not list but a builder needs', () => {
     const byCode = new Map(DEFAULT_CHART_OF_ACCOUNTS.map((a) => [a.code, a]))
-    expect(byCode.get('1000')?.role).toBe(ACCOUNT_ROLES.CASH)
     expect(byCode.get('2000')?.role).toBe(ACCOUNT_ROLES.ACCOUNTS_PAYABLE)
     expect(byCode.get('2160')?.role).toBe(ACCOUNT_ROLES.GRNI)
     expect(byCode.get('2170')?.role).toBe(ACCOUNT_ROLES.DUTIES_ACCRUAL)
     expect(byCode.get('5095')?.role).toBe(ACCOUNT_ROLES.INVENTORY_COUNT_VARIANCE)
+  })
+
+  // `cash` retired as a posting role (brief 13 §2): `1000 Cash` is kept as an
+  // ordinary bank account, mappable like any other, and carries no role at all.
+  it('keeps 1000 Cash as a plain bank account, with no role', () => {
+    const byCode = new Map(DEFAULT_CHART_OF_ACCOUNTS.map((a) => [a.code, a]))
+    expect(byCode.get('1000')?.role).toBeUndefined()
+    expect(byCode.get('1000')?.subtype).toBe('bank')
   })
 
   // `G12`: count/shrinkage value must land somewhere OTHER than purchase price

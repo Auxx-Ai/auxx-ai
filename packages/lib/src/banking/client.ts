@@ -251,6 +251,12 @@ export interface BankAccountRow {
   currency: string | null
   /** The `gl_account` instance id this account maps to (task 15 §4). No foreign key. */
   glAccountId: string | null
+  /**
+   * The Stripe `ba_…` / `card_…` destination id, confirmed once by a person
+   * (brief 13 §2.3). Null until confirmed - a payout settling here refuses to
+   * post rather than matching on `last4`.
+   */
+  stripeExternalAccountId: string | null
   feedStartDate: string | null
   coverageFrom: string | null
   coverageGaps: CoverageGap[]

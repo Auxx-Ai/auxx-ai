@@ -119,6 +119,7 @@ export async function retryExport(
         lineNumber: schema.GlPostingLine.lineNumber,
         counterpartyType: schema.GlPostingLine.counterpartyType,
         counterpartyId: schema.GlPostingLine.counterpartyId,
+        dimensions: schema.GlPostingLine.dimensions,
       })
       .from(schema.GlPostingLine)
       .where(
@@ -157,6 +158,10 @@ export async function retryExport(
       // posted, not whatever the record has since been renamed or merged to.
       counterpartyType: (line.counterpartyType as CounterpartyType | null) ?? undefined,
       counterpartyId: line.counterpartyId ?? undefined,
+      // Replayed too (brief 13 §5). QuickBooks has no seam for it yet - the
+      // adapter simply ignores a field it does not read - so this is inert
+      // until the ClassRef/DepartmentRef hop exists, which is not this unit.
+      dimensions: (line.dimensions as Record<string, string> | null) ?? undefined,
     }))
 
     const draft = (row.draft ?? {}) as { memo?: unknown }

@@ -101,6 +101,8 @@ import { migration141BuildBatchRun } from './migrations/141-build-batch-run'
 import { migration142WipeSeededCharts } from './migrations/142-wipe-seeded-charts'
 import { migration143GlPointersHoldIds } from './migrations/143-gl-pointers-hold-ids'
 import { migration144GlAccountCodeOptionalAndSubtype } from './migrations/144-gl-account-code-optional-and-subtype'
+import { migration145RetireInstanceRoles } from './migrations/145-retire-instance-roles'
+import { migration146PaymentGateway } from './migrations/146-payment-gateway'
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
@@ -326,6 +328,16 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   // ordering constraint against 143: it reads whatever gl_account rows exist
   // regardless of what shape their pointer fields are in.
   migration144GlAccountCodeOptionalAndSubtype,
+  // Deletes the cash and revenue_dealer role assignments, moves revenue_dtc
+  // onto revenue_product, renames "Payroll Clearing (ADP)" to "Payroll
+  // Clearing", and provisions bank_account.stripeExternalAccountId /
+  // payout.destination / payout.blockedReason (brief 13 §2, §5). No ordering
+  // constraint against 143/144: it reads whatever gl_account and
+  // GlRoleAssignment rows exist regardless of their pointer shape.
+  migration145RetireInstanceRoles,
+  // No ordering constraint against it or against 108/133/142/143/144/145 - it
+  // only creates the payment_gateway def and its fields (task 13 §5.3).
+  migration146PaymentGateway,
 ]
 
 /**

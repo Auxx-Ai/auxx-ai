@@ -4,26 +4,12 @@
  * The writer for `buildPayoutEntry`. Resolves the period lock and hands the
  * entry to `postEntry`; the accounting is all in the builder.
  *
- * ## ⚠️ There is still no trigger, and that is the honest state
- *
- * auxx stores no payout: there is no `payout` entity, no Stripe payout ingest,
- * no `payout.*` webhook case in `applyStripeEvent`, and no balance-transaction
- * row carrying the fee the processor withheld (`money/payments/fees.ts` is the
- * Connect APPLICATION fee, a different number - `implementation-review.md` §1
- * corrects the brief on this). So the GATHERER for this entry is still not
- * written.
- *
- * 🛑 The reason is no longer "the data cannot be reached". A 2026-09-04 survey
- * of the Stripe surface found the credentials already in place - see
- * `build-payout-entry.ts`'s scope section, which names the three things that
- * are actually missing and the one that is a product decision rather than code
- * (charges settled in a payout that auxx never posted to clearing). Do not read
- * this file as saying a gatherer is impossible; read it as saying nobody has
- * decided what the clearing account should do about money auxx did not take.
- *
- * What ships is the pure builder and this writer, so the day a payout source
- * lands the only new code is the read that fills
- * `{ payoutId, payoutNumber, gross, fees, net }`.
+ * `money/payouts/sync.ts` is the gatherer and the trigger: it lists an org's
+ * Stripe payouts, resolves each payout's destination to a confirmed
+ * `bank_account` (brief 13 §2.3), and calls this function once it has a
+ * `bankAccountGlAccountId` to pass in. See {@link payoutAccountUnmappedResult}
+ * for the shape it returns INSTEAD of calling this function when that
+ * resolution fails - no entry is built and nothing is claimed.
  */
 
 import type { Database } from '@auxx/database'
@@ -39,6 +25,22 @@ const logger = createScopedLogger('postings:payout')
 export interface PostPayoutEntryOptions extends BuildPayoutEntryInput {
   organizationId: string
   actorUserId?: string
+}
+
+/**
+ * The `PostResult` a payout carries when its Stripe destination cannot be
+ * resolved to a confirmed bank account (brief 13 §2.3).
+ *
+ * 🛑 Never reached through {@link postPayoutEntry} - the caller (`money/payouts/
+ * sync.ts`) constructs this DIRECTLY and skips the call, because there is no
+ * `bankAccountGlAccountId` to build with. `account_unmapped` is the same
+ * status `postEntry` returns for an unresolved ROLE (`post-entry.ts`); this is
+ * the closest existing status for an unresolved bank-account IDENTITY, and
+ * brief 13 §2.4's DECIDED block says not to add a new one. Pre-claim, like
+ * every `account_unmapped`: nothing is built, nothing is written.
+ */
+export function payoutAccountUnmappedResult(message: string): PostResult {
+  return { status: 'account_unmapped', failureClass: 'configuration', error: message }
 }
 
 /**

@@ -20,6 +20,8 @@ const h = vi.hoisted(() => ({
   executeRows: [] as unknown[],
   selects: [] as unknown[][],
   contextMissing: false,
+  // brief 13 §5: per-order tax lines the mocked `readOrderTaxLines` returns.
+  taxLinesByOrder: new Map<string, Array<{ title: string; priceMinor: number }>>(),
 }))
 
 const FIELD_IDS = {
@@ -64,6 +66,10 @@ vi.mock('../../orders/reads', async () => {
       const all = Object.fromEntries(entries)
       return { orderDefId: 'def_order', order: all, line: all }
     },
+    // Empty by default (brief 13 §5) - no test in this file is about the
+    // jurisdiction split, which `split-tax-by-jurisdiction.test.ts` owns. A
+    // test that cares sets `h.taxLinesByOrder`.
+    readOrderTaxLines: async () => h.taxLinesByOrder,
   }
 })
 
@@ -191,6 +197,7 @@ beforeEach(() => {
   h.executeRows = []
   h.selects = []
   h.contextMissing = false
+  h.taxLinesByOrder = new Map()
 })
 
 describe('the netting statement', () => {
@@ -288,7 +295,33 @@ describe('readUnpostedShipments', () => {
         priorShipmentsSubtotalMinor: 0,
         includeShipping: false,
         contactId: 'ct_1',
+        // Empty: the mocked `readOrderTaxLines` returns nothing (brief 13 §5).
+        taxLines: [],
       },
+    ])
+  })
+
+  // brief 13 §5: the bulk tax-line read is threaded onto the shipment it
+  // belongs to, verbatim - the split itself is `splitTaxByJurisdiction`'s job.
+  it('carries the order own tax lines onto its shipment', async () => {
+    h.taxLinesByOrder = new Map([
+      [
+        'ord_1',
+        [
+          { title: 'CA State Tax', priceMinor: 600 },
+          { title: 'CA District Tax', priceMinor: 200 },
+        ],
+      ],
+    ])
+
+    const result = await readUnpostedShipments(stubDb(), {
+      organizationId: ORG,
+      range: { from: '2026-07-01', to: '2026-08-01' },
+    })
+
+    expect(result._unsafeUnwrap()[0]?.taxLines).toEqual([
+      { title: 'CA State Tax', priceMinor: 600 },
+      { title: 'CA District Tax', priceMinor: 200 },
     ])
   })
 

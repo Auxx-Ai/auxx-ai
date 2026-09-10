@@ -31,6 +31,9 @@ export const ACCOUNTING_KEYS = {
   qboOpeningWip: 'accounting.qboOpeningWip',
   qboOpeningFinishedGoods: 'accounting.qboOpeningFinishedGoods',
   qboOpeningJournalRef: 'accounting.qboOpeningJournalRef',
+  // The bank_account a `cash`-routed payment banks into (brief 13 §2.4). `cash`
+  // stopped being a posting ROLE, so this is the one setting that names it.
+  cashBankAccountId: 'accounting.cashBankAccountId',
   assemblyLaborCostPerUnit: 'manufacturing.assemblyLaborCostPerUnit',
   overheadCostPerUnit: 'manufacturing.overheadCostPerUnit',
   autoRollFirstStandard: 'manufacturing.autoRollFirstStandard',

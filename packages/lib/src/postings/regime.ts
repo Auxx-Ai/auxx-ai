@@ -5,7 +5,9 @@
 // This file exists for one assertion, and the assertion is the only mechanical
 // guard that two writers are not driving one balance-asserted account
 // (plans/money/04-books.md §2.2, gap-e risk E5; generalised to `cash` by
-// plans/bank-connection/README.md §2.1 and plans/accounting/HANDOFF.md slot 0C).
+// plans/bank-connection/README.md §2.1 and plans/accounting/HANDOFF.md slot 0C,
+// and narrowed back to the three inventory accounts by brief 13 §2.5 when
+// `cash` retired as a role).
 //
 // ── The failure it prevents ─────────────────────────────────────────────────
 //
@@ -17,12 +19,13 @@
 // it reads exactly like consumption. Both entries balance. Both claim cleanly.
 // Nothing in the engine can tell the difference.
 //
-// `cash` has the same shape one level over. A bank deposit that posts
-// `Dr cash Cr undeposited_funds` and a bank-feed line that posts the SAME
-// deposit again as `Dr cash Cr something` both balance, and the cash account is
-// overstated by the deposit with nothing to flag it. So `cash` has ONE
-// role-emitting writer, `bank_deposit`; a matched bank line links and posts
-// nothing (bank plan decision B5).
+// 🛑 `cash` retired as a posting role (brief 13 §2): a bank account is not a
+// role, and every cash-touching builder now names a `bank_account`'s own
+// `gl_account` id directly, which this guard cannot see by construction (it
+// only reads `accountRole` lines). `SINGLE_WRITER_ROLES` is back to exactly the
+// three inventory accounts - the guard it can still make mechanically. A
+// single-writer check over bank-account ids is a real gap this leaves open;
+// see the TODO below `SINGLE_WRITER_ROLES`.
 //
 // `receipt` and `vendor_bill` are present in `POSTING_TYPES` and in the pgEnum,
 // and `buildReceiptEntry` / `buildVendorBillEntry` are written and tested - they
@@ -86,16 +89,28 @@ export const INVENTORY_ROLES: readonly AccountRole[] = [
 
 /**
  * Every role that may have at most ONE enabled role-emitting writer: the three
- * inventory accounts, and `cash`.
+ * inventory accounts.
  *
  * A manual journal or an opening entry names accounts by CODE and carries no
- * role, so it is invisible to this guard by construction. That is deliberate
- * for `cash` (an opening bank balance IS a manual cash line) and is why the
+ * role, so it is invisible to this guard by construction - which is why the
  * manual builder refuses the {@link INVENTORY_ROLES} accounts by name instead:
  * those three are asserted monthly and a hand-keyed line would be reversed by
  * the next close.
+ *
+ * 🛑 TODO(brief 13 §2.5): a single-writer guard over bank-account
+ * `glAccountId`s is still wanted - "is more than one enabled posting type
+ * writing this bank account" is a real question now that `cash` is gone as a
+ * role, and nothing here answers it. It is deliberately not added in this
+ * pass: it needs a table declared over bank-account ids rather than roles
+ * (`payout`, `bank_deposit` and the `cash` payment route all write a
+ * `bank_account` by id now), which is more than a small function to add
+ * honestly - see the header on why this guard being DECLARED rather than
+ * derived is the whole point. A later pass adds
+ * `findBankAccountWriterConflicts` beside {@link findWriterConflicts}, over its
+ * own declared table, once `13` §3's `bank` subtype makes "these ids are bank
+ * accounts" answerable without walking the registry.
  */
-export const SINGLE_WRITER_ROLES: readonly AccountRole[] = [...INVENTORY_ROLES, ACCOUNT_ROLES.CASH]
+export const SINGLE_WRITER_ROLES: readonly AccountRole[] = INVENTORY_ROLES
 
 /**
  * Which single-writer roles each posting type can put on a line.
@@ -125,32 +140,19 @@ export const SINGLE_WRITER_ROLES_BY_POSTING_TYPE: Record<PostingType, readonly A
   // inventory refusal for these two lives in the manual builder, by name.
   manual_journal: [],
   opening_balance: [],
-  // The ONE cash writer: `Dr <the chosen bank account> Cr undeposited_funds`,
-  // one line per bank run.
-  //
-  // ⚠️ Since the deposit learned to bank into a NAMED account, its debit is a
-  // CODE line carrying the `bank_account`'s own GL code, not the `cash` role,
-  // so `findWriterConflicts` cannot see it on the wire. `[CASH]` stays anyway,
-  // and is not vacuous: this map is DECLARED, never derived (see its header).
-  // The declaration is a human saying "this type drives cash", which is what
-  // makes the guard bite the day a SECOND type says the same thing. Emptying it
-  // to match what the builder now emits would turn the check tautological in
-  // exactly the way the header warns against, and would silently drop cash's
-  // only protection.
-  bank_deposit: [ACCOUNT_ROLES.CASH],
+  // `Dr <the chosen bank account> Cr undeposited_funds`, one line per bank run.
+  // Names the bank account by its own `glAccountId`, never a role (brief 13
+  // §2), so this guard cannot see it on the wire at all - `[]` is now exactly
+  // what the builder emits, not an exemption. See the header's TODO on the
+  // bank-account guard this leaves open.
+  bank_deposit: [],
   // A matched bank line posts nothing (B5). A CODED line drives the
-  // `bank_account`'s own GL account by code, never the `cash` role - the bank
-  // feed's wave re-plans this entry if that changes.
+  // `bank_account`'s own GL account by code, never a role - the bank feed's
+  // wave re-plans this entry if that changes.
   bank_transaction: [],
   write_off: [],
-  // Drives cash ONLY on the `cash` payment route (an ACH or wire that arrives
-  // at the bank alone), chosen per method in `accounting.paymentRoute.*`. The
-  // same money never also passes through `bank_deposit` (that is the
-  // `undeposited_funds` route), and a bank-feed line that matches a payment
-  // posts nothing (bank plan B5), so there is no second writer of the same
-  // event. Declared `[]` because this guard is per TYPE, not per route, and
-  // `[CASH]` here beside `bank_deposit` would flag a conflict that is not one.
-  // If the guard ever becomes route-aware, this is the entry to revisit.
+  // The `cash` route names a bank account by id (brief 13 §2.4), never a role,
+  // so this stays `[]` for the same reason `bank_deposit` above does.
   payment: [],
   // Revenue, receivables and sales tax. No inventory account and no cash: an
   // invoice is issued long before its money arrives, and the payment entry is

@@ -41,6 +41,7 @@ import {
   classificationArticle,
   isMappableTo,
   suggestAccountIdentities,
+  validateProviderMapping,
 } from './suggest-account-identities'
 import type { AccountIdentityRow, ChartAccountRow, ProviderAccount } from './types'
 
@@ -130,8 +131,12 @@ export async function listAccountIdentities(
       // A populated mapping IS a confirmation - the suggester never writes, so
       // the only thing that could have put this here is a person. See
       // `money/quickbooks/account-map.ts` on why there is no stored flag.
+      //
+      // `isMappableTo`, not a hand-rolled check: a mapping that was valid by
+      // classification alone and is now invalid by subtype (`13` §3.2) must
+      // show as broken here, the same as any other lapsed mapping.
       const live = byProviderId.get(providerAccountId) ?? null
-      if (!live || !live.active || live.classification !== account.accountType) {
+      if (!live || !isMappableTo(account, live)) {
         broken.push(accountLabel(account))
       }
 
@@ -229,13 +234,20 @@ export async function setAccountIdentity(
       )
     }
 
+    // `validateProviderMapping`, not a hand-rolled sentence: it is the one place
+    // that knows how to word each way a pairing can fail - inactive, wrong
+    // section, or (task 13 §3) wrong subtype - and `isMappableTo` is the same
+    // check as a boolean, so the two can never disagree about what "mappable"
+    // means.
     if (!isMappableTo(account, target)) {
-      throw new UnprocessableEntityError(
-        target.active
-          ? `${accountLabel(account)} is ${classificationArticle(account.accountType)} account, but '${target.fullyQualifiedName}' is ${target.classification}. Posting to it would balance and still be wrong.`
-          : `'${target.fullyQualifiedName}' is not active in the connected accounting system. Reactivate it there, or choose another account.`,
-        { organizationId, glAccountId, providerAccountId }
-      )
+      const message =
+        validateProviderMapping(account, target, providerAccountId) ??
+        `${accountLabel(account)} cannot be mapped to '${target.fullyQualifiedName}'.`
+      throw new UnprocessableEntityError(message, {
+        organizationId,
+        glAccountId,
+        providerAccountId,
+      })
     }
 
     const written = await provider.setAccountMapping({

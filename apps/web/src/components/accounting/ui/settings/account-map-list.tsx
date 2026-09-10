@@ -47,6 +47,7 @@
 // person from being offered a choice that would be refused; it does not replace
 // the refusal.
 
+import { isMappableTo } from '@auxx/lib/postings/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Combobox } from '@auxx/ui/components/combobox'
@@ -218,9 +219,7 @@ export function AccountMapList({ compact = false }: AccountMapListProps) {
           {visible.map((row) => {
             const brokenRow = isMappingBroken(row)
             const options = providerAccounts
-              .filter(
-                (account) => account.active && account.classification === row.account.accountType
-              )
+              .filter((account) => isMappableTo(row.account, account))
               .map((account) => ({ value: account.id, label: formatProviderAccount(account) }))
 
             return (

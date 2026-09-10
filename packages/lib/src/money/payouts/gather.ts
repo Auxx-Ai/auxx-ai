@@ -54,6 +54,14 @@ export interface GatheredPayout {
   depositedMinor: number
   /** Stripe's own status: `paid`, `in_transit`, `failed`, `canceled`. */
   gatewayStatus: string
+  /**
+   * The Stripe external-account id this payout settled to (brief 13 §2.3),
+   * or `null` when Stripe reports none. `payout.destination` is a string when
+   * not expanded (the ordinary case here - this gatherer never expands it)
+   * and an object with its own `id` when it is; either shape resolves to the
+   * bare id. Never Stripe's `last4` - see `sync.ts` on why.
+   */
+  destination: string | null
   split: PayoutSplit
 }
 
@@ -91,8 +99,19 @@ export async function gatherPayout(
     currency: payout.currency,
     depositedMinor: payout.amount,
     gatewayStatus: payout.status,
+    destination: resolveDestinationId(payout.destination),
     split,
   }
+}
+
+/**
+ * The bare external-account id off `payout.destination`, whatever shape it
+ * arrived in. A string when unexpanded (this gatherer never expands it); an
+ * object carrying its own `id` when a future caller does.
+ */
+function resolveDestinationId(destination: Stripe.Payout['destination']): string | null {
+  if (!destination) return null
+  return typeof destination === 'string' ? destination : destination.id
 }
 
 /**

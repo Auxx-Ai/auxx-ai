@@ -3,7 +3,7 @@
 'use client'
 
 import { MainPageContent } from '@auxx/ui/components/main-page'
-import { Building2, Landmark, Scale, SlidersHorizontal } from 'lucide-react'
+import { Building2, CreditCard, Landmark, Scale, SlidersHorizontal } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import SidebarSecondary from '~/components/global/sidebar-secondary'
 import type { SidebarProps } from '~/constants/menu'
@@ -49,6 +49,14 @@ const ACCOUNTING_SETTINGS: SidebarProps[] = [
         icon: <Building2 />,
         description: 'Which chart account each bank account maps to, and its coverage',
         keywords: ['bank', 'feed', 'statement', 'reconcile'],
+      },
+      {
+        id: 'accounting-settings-payment-gateways',
+        label: 'Payment gateways',
+        slug: 'payment-gateways',
+        icon: <CreditCard />,
+        description: 'Which chart account each payment rail clears into',
+        keywords: ['gateway', 'stripe', 'affirm', 'shopify payments', 'clearing'],
       },
     ],
   },

@@ -397,6 +397,10 @@ async function prepareEntry(
           // one re-resolved after a merge or a rename.
           counterpartyType: line.counterpartyType,
           counterpartyId: line.counterpartyId,
+          // Carried from the input verbatim (brief 13 §5) - a reporting
+          // dimension is never resolved against the chart, it just rides
+          // along to the stored line.
+          dimensions: line.dimensions,
         },
       })
     }
@@ -1056,6 +1060,9 @@ async function claimPeriod(
           // it even if the record is later merged or renamed.
           counterpartyType: line.resolved.counterpartyType ?? null,
           counterpartyId: line.resolved.counterpartyId ?? null,
+          // Reporting dimensions (brief 13 §5) - `{ channel: 'dealer' }` and
+          // the like. Never a lookup key, never resolved, just stored.
+          dimensions: line.resolved.dimensions ?? null,
         }))
       )
     }

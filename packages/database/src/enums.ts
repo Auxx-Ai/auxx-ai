@@ -172,6 +172,10 @@ export const ModelTypeValues = [
   // The draft of a hand-authored posting, and the holder of the opening trial
   // balance (plans/accounting/tasks/02-manual-journal-entry.md).
   'journal_entry',
+  // A record carrying its clearing account, never a role
+  // (plans/accounting/tasks/13-cash-accounts-and-the-qbo-seam.md §5.3). Entity
+  // migration 146.
+  'payment_gateway',
 ] as const
 
 /**
@@ -230,6 +234,7 @@ export const ModelTypes = {
   TARIFF_CODE: 'tariff_code',
   TARIFF_RATE: 'tariff_rate',
   JOURNAL_ENTRY: 'journal_entry',
+  PAYMENT_GATEWAY: 'payment_gateway',
 } as const
 
 /**
@@ -686,6 +691,18 @@ export const ModelTypeMeta: Record<
     // The drawer on the ledger page is the door (`?je=`), not a hand-authored
     // `/app/journal-entries/[id]` route. There is none, and claiming one here
     // puts a fullscreen button on the drawer that 404s.
+    hasDetailPage: false,
+  },
+  payment_gateway: {
+    label: 'Payment Gateway',
+    plural: 'Payment Gateways',
+    icon: 'credit-card',
+    color: 'indigo',
+    apiSlug: 'payment-gateways',
+    dbTable: 'EntityInstance',
+    // The door is Accounting > Settings > Payment gateways (task 13 §5.3), a
+    // master-detail settings page. There is no `/app/payment-gateways/[id]`
+    // route, same reasoning as `bank_account`.
     hasDetailPage: false,
   },
 }

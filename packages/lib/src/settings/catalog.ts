@@ -1195,6 +1195,19 @@ export const SETTINGS_CATALOG = {
       'Where a payment of any other method lands. Defaults to undeposited funds: the safe ' +
       'unknown is money visible in a clearing account, not cash the bank has never seen.',
   },
+  // 🛑 `cash` retired as a posting ROLE (brief 13 §2): a payment routed to
+  // `cash` now names a specific `bank_account` id, the same as a payout's
+  // settlement destination. Null until a person picks one, and a `cash`-routed
+  // payment refuses to post rather than guessing which account.
+  'accounting.cashBankAccountId': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'TEXT',
+    defaultValue: null,
+    description:
+      'The bank_account a payment routed to `cash` is banked into. Shown only when one of the ' +
+      'payment routes above is set to cash.',
+  },
 
   // ── Remembered statement-import column mappings ────────────────────────────
   //

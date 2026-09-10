@@ -16,6 +16,7 @@ import { buildDocNumber } from '../doc-number'
 const BASE = {
   payoutId: 'po_1AbCdEfGhIjKlMnOpQrStUvW',
   payoutNumber: 'PO-0007',
+  bankAccountGlAccountId: 'gl-1000',
   grossMinor: 500_000,
   feesMinor: 14_800,
   netMinor: 485_200,
@@ -27,11 +28,16 @@ function line(entry: ReturnType<typeof buildPayoutEntry>['entry'], role: string)
   return entry.lines.find((row) => row.accountRole === role)
 }
 
+/** The bank-account debit leg, named by `glAccountId` - never a role (brief 13 §2). */
+function bankLine(entry: ReturnType<typeof buildPayoutEntry>['entry']) {
+  return entry.lines.find((row) => row.glAccountId === BASE.bankAccountGlAccountId)
+}
+
 describe('the entry', () => {
-  it('debits cash net, debits fees, and credits clearing gross', () => {
+  it('debits the settlement bank account net, debits fees, and credits clearing gross', () => {
     const built = buildPayoutEntry(BASE)
 
-    expect(line(built.entry, ACCOUNT_ROLES.CASH)).toMatchObject({
+    expect(bankLine(built.entry)).toMatchObject({
       direction: 'debit',
       amount: 485_200,
     })
@@ -45,6 +51,14 @@ describe('the entry', () => {
     })
     expect(built.entry.totalDebit).toBe(built.entry.totalCredit)
     expect(built.entry.postingType).toBe('payout')
+  })
+
+  it('names the bank account by id, never by the retired cash role', () => {
+    const built = buildPayoutEntry(BASE)
+    expect(bankLine(built.entry)?.accountRole).toBeUndefined()
+    for (const row of built.entry.lines) {
+      expect(row.accountRole).not.toBe('cash')
+    }
   })
 
   it('keys the period on the payout number, never on a date', () => {
@@ -109,13 +123,25 @@ describe('refusals', () => {
     )
   })
 
+  it('refuses a missing bank account, naming the remedy', () => {
+    expect(() => buildPayoutEntry({ ...BASE, bankAccountGlAccountId: '' })).toThrowError(
+      /no bank account to debit/
+    )
+  })
+
+  it('refuses a blank bank account id', () => {
+    expect(() => buildPayoutEntry({ ...BASE, bankAccountGlAccountId: '   ' })).toThrowError(
+      UnprocessableEntityError
+    )
+  })
+
   it('refuses a role that is not a clearing account', () => {
     // Affirm-gateway settlements are invisible to the payouts API, so `1200`
     // can never reconcile if they are folded into it - one payout drains ONE
     // clearing account, and this is the guard that says which.
-    expect(() => buildPayoutEntry({ ...BASE, clearingRole: ACCOUNT_ROLES.CASH })).toThrowError(
-      /not a clearing account/
-    )
+    expect(() =>
+      buildPayoutEntry({ ...BASE, clearingRole: ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE })
+    ).toThrowError(/not a clearing account/)
   })
 })
 
@@ -154,10 +180,10 @@ describe('the unrecognised remainder', () => {
     })
   })
 
-  it('debits cash the WHOLE deposit, which is what the bank line shows', () => {
+  it('debits the bank account the WHOLE deposit, which is what the bank line shows', () => {
     const built = buildPayoutEntry({ ...BASE, unrecognisedNetMinor: 58_000 })
 
-    expect(line(built.entry, ACCOUNT_ROLES.CASH)).toMatchObject({
+    expect(bankLine(built.entry)).toMatchObject({
       direction: 'debit',
       amount: 543_200,
     })
@@ -167,7 +193,7 @@ describe('the unrecognised remainder', () => {
   it('still balances with the fourth leg', () => {
     const built = buildPayoutEntry({ ...BASE, unrecognisedNetMinor: 58_000 })
     expect(built.entry.totalDebit).toBe(built.entry.totalCredit)
-    // 543,200 cash + 14,800 fees = 500,000 clearing + 58,000 unidentified.
+    // 543,200 bank account + 14,800 fees = 500,000 clearing + 58,000 unidentified.
     expect(built.entry.totalDebit).toBe(558_000)
   })
 

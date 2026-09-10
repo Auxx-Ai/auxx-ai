@@ -1,0 +1,130 @@
+// packages/lib/src/payment-gateways/client.ts
+
+/**
+ * The client-safe half of `payment-gateways/`: the vocabularies, the read
+ * model and the pure handle/route arithmetic (`docs/lib-module-guide.md` §7).
+ *
+ * `plans/accounting/tasks/13-cash-accounts-and-the-qbo-seam.md` §5.3: a
+ * gateway is a RECORD carrying its own clearing account, never a role.
+ * §5.1's census is why: `authorize_net`/`authorize.net` and `Affirm`/`affirm`
+ * are each one rail arriving under two spellings, a rail is not permanent
+ * (Authorize.Net closed May 2026 mid-book), and role-per-gateway costs a role,
+ * an account and a chart migration per rail.
+ *
+ * Imports nothing server-only, and carries no `'use client'` directive -
+ * server code (the fulfillment planner, the chart seeder) imports this file
+ * too, and the directive would turn every export into a client-reference
+ * proxy there.
+ *
+ * ⚠️ Browser code must import `@auxx/lib/payment-gateways/client`, never
+ * `@auxx/lib/payment-gateways`. The barrel reaches Drizzle and the org cache.
+ */
+
+/** How a gateway drains. Mirrors `PaymentGatewaySettlementSource` (enum-values.ts). */
+export const PAYMENT_GATEWAY_SETTLEMENT_SOURCES = ['stripe', 'shopify_payments', 'manual'] as const
+export type PaymentGatewaySettlementSourceValue =
+  (typeof PAYMENT_GATEWAY_SETTLEMENT_SOURCES)[number]
+
+/** Whether a rail is still taking charges. Mirrors `PaymentGatewayStatus` (enum-values.ts). */
+export const PAYMENT_GATEWAY_STATUSES = ['active', 'closed'] as const
+export type PaymentGatewayStatusValue = (typeof PAYMENT_GATEWAY_STATUSES)[number]
+
+/** Human labels, so the picker and the badge agree without a second table. */
+export const PAYMENT_GATEWAY_SETTLEMENT_SOURCE_LABELS: Record<
+  PaymentGatewaySettlementSourceValue,
+  string
+> = {
+  stripe: 'Stripe',
+  shopify_payments: 'Shopify Payments',
+  manual: 'By hand',
+}
+
+export const PAYMENT_GATEWAY_STATUS_LABELS: Record<PaymentGatewayStatusValue, string> = {
+  active: 'Active',
+  closed: 'Closed',
+}
+
+/** Narrow an unknown option value to a {@link PaymentGatewaySettlementSourceValue}. */
+export function resolvePaymentGatewaySettlementSource(
+  value: string | null | undefined
+): PaymentGatewaySettlementSourceValue {
+  return value === 'stripe' || value === 'shopify_payments' ? value : 'manual'
+}
+
+/** Narrow an unknown option value to a {@link PaymentGatewayStatusValue}. */
+export function resolvePaymentGatewayStatus(
+  value: string | null | undefined
+): PaymentGatewayStatusValue {
+  return value === 'closed' ? 'closed' : 'active'
+}
+
+/**
+ * Trim and lower-case one gateway handle, so `'Affirm'` and `' affirm '`
+ * compare equal.
+ *
+ * Mirrors `normaliseGateways` in `postings/build-fulfillment-batch-entry.ts`
+ * exactly - two normalisers that disagreed by a stripped character would let
+ * a `payment_gateway` record silently stop matching the handle posting
+ * actually sees.
+ */
+export function normaliseGatewayHandle(handle: string): string {
+  return handle.trim().toLowerCase()
+}
+
+/**
+ * One `payment_gateway` record, as the settings screen and the fulfillment
+ * planner both read it.
+ */
+export interface PaymentGatewayRow {
+  id: string
+  recordId: string
+  name: string
+  /** Every stored `order_payment_gateways` value this rail answers to. Raw, not normalised. */
+  handles: string[]
+  /** The `gl_account` id this gateway settles into (task 15 §4 shape). No foreign key. */
+  clearingGlAccountId: string
+  /** The `gl_account` id the processor withholds its fee into, or null (`6100` is the fallback). */
+  feeGlAccountId: string | null
+  settlementSource: PaymentGatewaySettlementSourceValue
+  status: PaymentGatewayStatusValue
+  /** `YYYY-MM-DD`, or null. Informational only - nothing in posting reads it. */
+  lastSettlementAt: string | null
+  createdAt: Date | null
+  updatedAt: Date | null
+}
+
+/**
+ * What `resolveFulfillmentDebit` reads to answer a gateway with an id instead
+ * of a role (HANDOFF step 5 / task 13 §5.3's replacement for
+ * `FULFILLMENT_GATEWAY_DEBIT`).
+ *
+ * `handles` are RAW (not normalised) - the caller normalises both sides at
+ * match time with {@link normaliseGatewayHandle}, the same way
+ * `normaliseGateways` already does for the order's own gateway list.
+ */
+export interface GatewayRoute {
+  handles: readonly string[]
+  clearingGlAccountId: string
+  /** False for a closed rail. A closed rail still routes its OWN history - see below. */
+  active: boolean
+}
+
+/**
+ * Every route `resolveFulfillmentDebit` can match a normalised gateway
+ * against, from ACTIVE and CLOSED rows alike.
+ *
+ * 🛑 **Closed rows are included on purpose.** Authorize.Net is closed as of
+ * May 2026 but its orders are still in the ledger; excluding a closed
+ * gateway's route would silently fall the fulfillment debit fork back to its
+ * `clearing_card` default the moment somebody marks the rail closed, which is
+ * a posting change disguised as a settings edit. `active` rides along on the
+ * route so a caller that wants to treat closed differently (a report, a
+ * warning) can, without a second query.
+ */
+export function toGatewayRoutes(rows: readonly PaymentGatewayRow[]): GatewayRoute[] {
+  return rows.map((row) => ({
+    handles: row.handles,
+    clearingGlAccountId: row.clearingGlAccountId,
+    active: row.status === 'active',
+  }))
+}

@@ -1036,6 +1036,18 @@
       "import": "./dist/participants/search/index.mjs",
       "default": "./src/participants/search/index.ts"
     },
+    "./payment-gateways": {
+      "types": "./src/payment-gateways/index.ts",
+      "source": "./src/payment-gateways/index.ts",
+      "import": "./dist/payment-gateways/index.mjs",
+      "default": "./src/payment-gateways/index.ts"
+    },
+    "./payment-gateways/client": {
+      "types": "./src/payment-gateways/client.ts",
+      "source": "./src/payment-gateways/client.ts",
+      "import": "./dist/payment-gateways/client.mjs",
+      "default": "./src/payment-gateways/client.ts"
+    },
     "./permissions": {
       "types": "./src/permissions/index.ts",
       "source": "./src/permissions/index.ts",

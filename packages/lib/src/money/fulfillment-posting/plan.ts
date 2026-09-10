@@ -42,11 +42,15 @@
  * local is how a shipment moves a day and lands in the wrong month.
  */
 
+import type { Database } from '@auxx/database'
+import { listPaymentGateways, toGatewayRoutes } from '../../payment-gateways'
+import type { GatewayRoute } from '../../payment-gateways/client'
 import {
   computeShipmentAmounts,
   resolveFulfillmentDebit,
 } from '../../postings/build-fulfillment-batch-entry'
 import type {
+  FulfillmentDebit,
   FulfillmentDebitRole,
   FulfillmentPostingExclusion,
   FulfillmentPostingGroup,
@@ -56,6 +60,31 @@ import type {
   PlannedShipment,
   UnpostedShipment,
 } from './types'
+
+/**
+ * Load the org's `payment_gateway` routing table, for
+ * {@link planFulfillmentPosting}'s `gatewayRoutes` input (brief 13 §5.3).
+ *
+ * 🛑 **Not part of the pure planner.** `planFulfillmentPosting` stays PURE -
+ * no db, no clock, no settings read (this file's own header) - so the ONE
+ * database read this contract needs lives here, in a function a caller awaits
+ * ONCE PER PLAN and passes the result into the pure call, never inside a loop
+ * over shipments. `reads.ts`'s `previewFulfillmentPosting` and `run.ts`'s
+ * runner are the two callers; both already load `readFulfillmentPostingSettings`
+ * the same way beside this.
+ *
+ * Empty on any read failure or on an org that has not provisioned
+ * `payment_gateway` yet (entity migration 146) - `resolveFulfillmentDebit`'s
+ * `gatewayRoutes` is optional and an empty table falls every gateway back to
+ * its role default, which is exactly today's behaviour.
+ */
+export async function loadGatewayRoutesForPlan(
+  db: Database,
+  organizationId: string
+): Promise<readonly GatewayRoute[]> {
+  const result = await listPaymentGateways(db, organizationId)
+  return result.isOk() ? toGatewayRoutes(result.value) : []
+}
 
 /**
  * Decide what the run would post.
@@ -69,9 +98,17 @@ import type {
  * or an unparseable date: an amount the builder refuses to compute is reported
  * as an exclusion rather than taken out on the rest of the range. That matters
  * more here than in the single-order door, where one refusal costs one order.
+ *
+ * `gatewayRoutes` (brief 13 §5.3) is optional and not part of
+ * `FulfillmentPostingPlanInput` itself - it is threaded straight through to
+ * {@link resolveFulfillmentDebit} unchanged, so a caller that omits it (or
+ * whose `payment_gateway` def is not provisioned yet) gets exactly today's
+ * role-only behaviour. Load it once per plan with {@link loadGatewayRoutesForPlan}.
  */
-export function planFulfillmentPosting(input: FulfillmentPostingPlanInput): FulfillmentPostingPlan {
-  const { grouping, cutoffPeriod, lockedThroughMonth, ledgerCurrency } = input
+export function planFulfillmentPosting(
+  input: FulfillmentPostingPlanInput & { gatewayRoutes?: readonly GatewayRoute[] }
+): FulfillmentPostingPlan {
+  const { grouping, cutoffPeriod, lockedThroughMonth, ledgerCurrency, gatewayRoutes } = input
 
   const exclusions: FulfillmentPostingExclusion[] = []
   const byGroupKey = new Map<string, PlannedShipment[]>()
@@ -98,13 +135,18 @@ export function planFulfillmentPosting(input: FulfillmentPostingPlanInput): Fulf
     const debit = resolveFulfillmentDebit({
       financialStatus: shipment.financialStatus,
       gateways: shipment.gateways,
+      gatewayRoutes,
     })
     if (debit.kind === 'exclude') {
       exclusions.push(exclude(shipment, debit.reason, debit.detail))
       continue
     }
 
-    const computed = computeAmounts(shipment, debit.role)
+    // Strip the `kind` discriminant `resolveFulfillmentDebit` adds -
+    // `computeShipmentAmounts` takes the bare `FulfillmentDebit` union.
+    const debitInput: FulfillmentDebit =
+      'glAccountId' in debit ? { glAccountId: debit.glAccountId } : { role: debit.role }
+    const computed = computeAmounts(shipment, debitInput)
     if (!computed.ok) {
       // 🛑 Classified as `zero-value` on purpose. The reason set is CLOSED
       // (types.ts), and a shipment whose amounts cannot be computed contributes
@@ -202,6 +244,10 @@ function toGroup(groupKey: string, shipments: PlannedShipment[]): FulfillmentPos
     clearing_card: 0,
     clearing_affirm: 0,
     accounts_receivable: 0,
+    // Every id-based (`payment_gateway` route) debit lands here, whichever
+    // account it named - the account id itself rides on the shipment's own
+    // `amounts.debitGlAccountId` (brief 13 §5.3, types.ts's header).
+    gateway: 0,
   }
   let subtotalMinor = 0
   let taxMinor = 0
@@ -246,10 +292,10 @@ function toGroup(groupKey: string, shipments: PlannedShipment[]): FulfillmentPos
  */
 function computeAmounts(
   shipment: UnpostedShipment,
-  role: FulfillmentDebitRole
+  debit: FulfillmentDebit
 ): { ok: true; amounts: PlannedShipment['amounts'] } | { ok: false; reason: string } {
   try {
-    return { ok: true, amounts: computeShipmentAmounts(shipment, role) }
+    return { ok: true, amounts: computeShipmentAmounts(shipment, debit) }
   } catch (error) {
     return { ok: false, reason: error instanceof Error ? error.message : String(error) }
   }

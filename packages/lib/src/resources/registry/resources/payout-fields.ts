@@ -364,6 +364,54 @@ export const PAYOUT_FIELDS: Record<string, ResourceField> = {
       'Drizzle table with no EntityDefinition to point at - the journal_entry precedent',
   },
 
+  destination: {
+    id: toFieldId('destination'),
+    key: 'destination',
+    label: 'Destination',
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemAttribute: 'payout_destination',
+    systemSortOrder: 'aE',
+    showInPanel: false,
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: false,
+      configurable: false,
+    },
+    placeholder: 'ba_1AbCdEf...',
+    description:
+      "The gateway's own external-account id this payout settled to (brief 13 §2.3). Resolved " +
+      "against a bank account's confirmed stripeExternalAccountId to find which gl_account to " +
+      'debit - never last4',
+  },
+
+  blockedReason: {
+    id: toFieldId('blockedReason'),
+    key: 'blockedReason',
+    label: 'Blocked Reason',
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemAttribute: 'payout_blocked_reason',
+    systemSortOrder: 'aF',
+    showInPanel: false,
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    description:
+      'Set when this payout could not be posted for lack of a confirmed bank-account identity ' +
+      '(brief 13 §2.3). Names the payout, the destination id and the remedy. Null once posted',
+  },
+
   bankTransactionId: {
     id: toFieldId('bankTransactionId'),
     key: 'bankTransactionId',

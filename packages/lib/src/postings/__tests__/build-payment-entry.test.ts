@@ -53,29 +53,67 @@ function line(entry: ReturnType<typeof buildPaymentEntry>['entry'], role: string
   return entry.lines.find((row) => row.accountRole === role)
 }
 
+/** The `cash` route's leg, named by `glAccountId` - never a role (brief 13 §2.4). */
+function bankLine(entry: ReturnType<typeof buildPaymentEntry>['entry'], glAccountId: string) {
+  return entry.lines.find((row) => row.glAccountId === glAccountId)
+}
+
+const BANK_ACCOUNT_GL_ID = 'gl-1000'
+
 describe('the route table', () => {
-  it('maps all three routes and sends clearing to the one clearing role', () => {
+  it('maps all three routes, cash to a bank account and the rest to roles', () => {
     expect(Object.keys(PAYMENT_ROUTE_ROLE).sort()).toEqual([
       'cash',
       'clearing',
       'undeposited_funds',
     ])
-    expect(PAYMENT_ROUTE_ROLE.undeposited_funds).toBe(ACCOUNT_ROLES.UNDEPOSITED_FUNDS)
-    expect(PAYMENT_ROUTE_ROLE.cash).toBe(ACCOUNT_ROLES.CASH)
-    expect(PAYMENT_ROUTE_ROLE.clearing).toBe(ACCOUNT_ROLES.CLEARING_CARD)
+    expect(PAYMENT_ROUTE_ROLE.undeposited_funds).toEqual({
+      kind: 'role',
+      role: ACCOUNT_ROLES.UNDEPOSITED_FUNDS,
+    })
+    expect(PAYMENT_ROUTE_ROLE.cash).toEqual({ kind: 'bank_account' })
+    expect(PAYMENT_ROUTE_ROLE.clearing).toEqual({ kind: 'role', role: ACCOUNT_ROLES.CLEARING_CARD })
   })
 
   it.each([
     'undeposited_funds',
-    'cash',
     'clearing',
-  ] as const)('debits the %s account and credits A/R for a charge', (route) => {
+  ] as const)('debits the %s role and credits A/R for a charge', (route) => {
     const built = buildPaymentEntry({ ...BASE, route })
-    expect(built.routeRole).toBe(PAYMENT_ROUTE_ROLE[route])
-    expect(line(built.entry, PAYMENT_ROUTE_ROLE[route])?.direction).toBe('debit')
+    const expectedRole = PAYMENT_ROUTE_ROLE[route]
+    if (expectedRole.kind !== 'role') throw new Error('test setup error')
+    expect(built.routeRole).toBe(expectedRole.role)
+    expect(built.routeGlAccountId).toBeNull()
+    expect(line(built.entry, expectedRole.role)?.direction).toBe('debit')
     expect(line(built.entry, ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE)?.direction).toBe('credit')
     expect(built.entry.totalDebit).toBe(55_500)
     expect(built.entry.totalDebit).toBe(built.entry.totalCredit)
+  })
+
+  it('debits the named bank account for the cash route, not a role', () => {
+    const built = buildPaymentEntry({
+      ...BASE,
+      route: 'cash',
+      bankAccountGlAccountId: BANK_ACCOUNT_GL_ID,
+    })
+    expect(built.routeRole).toBeNull()
+    expect(built.routeGlAccountId).toBe(BANK_ACCOUNT_GL_ID)
+    expect(bankLine(built.entry, BANK_ACCOUNT_GL_ID)).toMatchObject({
+      direction: 'debit',
+      amount: 55_500,
+    })
+    for (const row of built.entry.lines) expect(row.accountRole).not.toBe('cash')
+    expect(line(built.entry, ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE)?.direction).toBe('credit')
+    expect(built.entry.totalDebit).toBe(built.entry.totalCredit)
+  })
+
+  it('refuses the cash route with no bank account, naming the remedy', () => {
+    expect(() => buildPaymentEntry({ ...BASE, route: 'cash' })).toThrowError(
+      /routes to a bank account/
+    )
+    expect(() =>
+      buildPaymentEntry({ ...BASE, route: 'cash', bankAccountGlAccountId: '  ' })
+    ).toThrowError(UnprocessableEntityError)
   })
 })
 

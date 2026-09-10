@@ -78,7 +78,7 @@ export {
   type BuildFulfillmentEntryInput,
   type BuiltFulfillmentEntry,
   buildFulfillmentEntry,
-  CHANNEL_REVENUE_ROLE,
+  CHANNEL_KEYS,
   computeShipmentTotals,
   extendRateToAmount,
   FULFILLMENT_SOURCE_TYPE,
@@ -322,6 +322,11 @@ export {
   type ReadCompletenessOptions,
   readCompleteness,
 } from './reports/completeness'
+export {
+  type DimensionBreakdownRow,
+  type ReadDimensionBreakdownOptions,
+  readDimensionBreakdown,
+} from './reports/dimension-breakdown'
 export { fiscalYearStart, previousCalendarDay } from './reports/fiscal-year'
 export {
   type RenderStatementPdfOptions,
@@ -398,6 +403,7 @@ export {
 export {
   type AccountSuggestion,
   isMappableTo,
+  SUBTYPE_PROVIDER_ACCOUNT_TYPES,
   suggestAccountIdentities,
   validateProviderMapping,
 } from './suggest-account-identities'

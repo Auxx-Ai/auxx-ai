@@ -125,6 +125,19 @@ export function PostFulfillmentsDialog({
   )
 
   const plan = preview.data?.plan ?? null
+
+  // Gateway names keyed by clearing account id, so a shipment routed through a
+  // `payment_gateway` record reads as "Affirm" rather than "Gateway clearing"
+  // (brief 13 §5.3). Two rails may share one clearing account; the last one
+  // listed wins the label, which is a display choice and never a posting one.
+  const gatewaysQuery = api.paymentGateway.list.useQuery(undefined, { enabled: open })
+  const gatewayNames = useMemo(() => {
+    const names: Record<string, string> = {}
+    for (const gateway of gatewaysQuery.data ?? []) {
+      names[gateway.clearingGlAccountId] = gateway.name
+    }
+    return names
+  }, [gatewaysQuery.data])
   const refusal = preview.data?.refusal ?? null
 
   const post = api.money.runFulfillmentPosting.useMutation({
@@ -245,7 +258,11 @@ export function PostFulfillmentsDialog({
                           ? 'flex flex-col gap-4 opacity-60 transition-opacity'
                           : 'flex flex-col gap-4 transition-opacity'
                       }>
-                      <FulfillmentPlanTable plan={plan} currencyCode={currencyCode} />
+                      <FulfillmentPlanTable
+                        plan={plan}
+                        currencyCode={currencyCode}
+                        gatewayNames={gatewayNames}
+                      />
 
                       <FulfillmentExclusions exclusions={plan.exclusions} />
 

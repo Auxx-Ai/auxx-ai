@@ -27,12 +27,23 @@
  * Nothing here throws. Every outcome is a `PostResult`, so `syncTransaction`
  * can call it without a try/catch of its own and a failed post can never fail
  * the payment that produced it.
+ *
+ * ## 🛑 The `cash` route names a bank account, never a role (brief 13 §2.4)
+ *
+ * `accounting.cashBankAccountId` names the `bank_account` a `cash`-routed
+ * payment banks into; {@link resolveCashBankAccountGlAccountId} reads its
+ * `bank_account_gl_account` id directly off the entity layer, mirroring
+ * `money/bank-deposits/reads.ts`'s `readDepositBankAccount` rather than
+ * importing `banking/` - the same anti-cycle reason that file gives. Unset or
+ * unmapped refuses with `account_unmapped` before the entry is even built,
+ * the same configuration-class refusal `createBankDeposit` gives for a
+ * deposit's own unmapped bank account.
  */
 
 import { type Database, type PaymentTransactionEntity, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
-import { getOrgCache } from '../../cache'
+import { getCachedEntityDefId, getOrgCache } from '../../cache'
 import { isAccountingEnabled } from '../../postings/accounting-enabled'
 import {
   buildPaymentEntry,
@@ -93,6 +104,65 @@ const ACCEPTED_POST_STATUSES = new Set<string>([
 const POSTABLE_STATUSES = new Set(['succeeded', 'disputed'])
 
 /**
+ * The `gl_account` id `accounting.cashBankAccountId` resolves to, or `null`
+ * when it is unset or the account it names has none.
+ *
+ * Read through the entity layer directly rather than by importing `banking/` -
+ * `money/bank-deposits/reads.ts` gives the same reason for its own
+ * `readDepositBankAccount`: a `bank_account` is an `EntityInstance` like any
+ * other, and a `money -> banking` import risks a cycle back through
+ * `banking/`'s own writers.
+ */
+async function resolveCashBankAccountGlAccountId(
+  db: Database,
+  organizationId: string,
+  settings: Record<string, unknown>
+): Promise<{ glAccountId: string | null; bankAccountId: string | null }> {
+  const raw = settings['accounting.cashBankAccountId']
+  const bankAccountId = typeof raw === 'string' ? raw.trim() : ''
+  if (!bankAccountId) return { glAccountId: null, bankAccountId: null }
+
+  const bankAccountDefId = await getCachedEntityDefId(organizationId, 'bank_account')
+  if (!bankAccountDefId) return { glAccountId: null, bankAccountId }
+
+  const glAccountField = await getOrgCache()
+    .from(organizationId, 'customFields')
+    .bySystemAttributes(['bank_account_gl_account'])
+  const fieldId = glAccountField.bank_account_gl_account?.id
+  if (!fieldId) return { glAccountId: null, bankAccountId }
+
+  const [instance] = await db
+    .select({ id: schema.EntityInstance.id, archivedAt: schema.EntityInstance.archivedAt })
+    .from(schema.EntityInstance)
+    .where(
+      and(
+        eq(schema.EntityInstance.organizationId, organizationId),
+        eq(schema.EntityInstance.entityDefinitionId, bankAccountDefId),
+        eq(schema.EntityInstance.id, bankAccountId)
+      )
+    )
+    .limit(1)
+  // Archived is treated as unmapped: nothing can be banked into an archived
+  // account (`money/bank-deposits/writes.ts`'s `requireDepositTarget` refuses
+  // the same way).
+  if (!instance || instance.archivedAt) return { glAccountId: null, bankAccountId }
+
+  const [value] = await db
+    .select({ valueText: schema.FieldValue.valueText })
+    .from(schema.FieldValue)
+    .where(
+      and(
+        eq(schema.FieldValue.organizationId, organizationId),
+        eq(schema.FieldValue.entityId, instance.id),
+        eq(schema.FieldValue.fieldId, fieldId)
+      )
+    )
+    .limit(1)
+
+  return { glAccountId: value?.valueText?.trim() || null, bankAccountId }
+}
+
+/**
  * Post one `PaymentTransaction` to the ledger, or explain why it was not.
  *
  * **Never throws.** Every refusal is a {@link PostResult} status:
@@ -144,6 +214,29 @@ export async function postPaymentTransaction(
     const settings = await getOrgCache().get(organizationId, 'orgSettings')
     const route = resolvePaymentRoute(transaction.method, settings)
 
+    // 🛑 `cash` names a bank account, never a role (brief 13 §2.4). Resolved
+    // and refused BEFORE the build, the same shape as the account-role refusal
+    // `postEntry` returns for a role - no entry is built and nothing is claimed.
+    let bankAccountGlAccountId: string | null = null
+    if (route === 'cash') {
+      const resolved = await resolveCashBankAccountGlAccountId(db, organizationId, settings)
+      if (!resolved.glAccountId) {
+        const message = resolved.bankAccountId
+          ? `Payment ${transaction.id} routes to cash, but the bank account it is configured to ` +
+            'bank into is not mapped to a chart account. Map it under Accounting > Settings > ' +
+            'Bank accounts.'
+          : `Payment ${transaction.id} routes to cash, but no bank account is configured for ` +
+            'cash payments. Set one under Accounting > Settings > General.'
+        logger.warn('Payment refused: the cash route has no mapped bank account', {
+          organizationId,
+          transactionId: transaction.id,
+          bankAccountId: resolved.bankAccountId,
+        })
+        return { status: 'account_unmapped', failureClass: 'configuration', error: message }
+      }
+      bankAccountGlAccountId = resolved.glAccountId
+    }
+
     // The user-picked (possibly backdated) date rides in `metadata.date`; the
     // row's own `createdAt` is when it was KEYED, which is not the accounting
     // date. `recordManualPayment` is the writer of that metadata.
@@ -155,6 +248,7 @@ export async function postPaymentTransaction(
 
     const built = buildPaymentEntry({
       postingType: PAYMENT_POSTING_TYPE,
+      bankAccountGlAccountId,
       transaction: {
         id: transaction.id,
         kind: transaction.kind === 'refund' ? 'refund' : 'charge',

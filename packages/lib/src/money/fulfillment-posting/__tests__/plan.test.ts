@@ -13,6 +13,7 @@
 // Amounts are integer minor units: 12_000 = $120.00.
 
 import { describe, expect, it } from 'vitest'
+import type { GatewayRoute } from '../../../payment-gateways/client'
 import { groupKeyFor, isoWeekKey, planFulfillmentPosting } from '../plan'
 import type {
   FulfillmentPostingGrouping,
@@ -48,13 +49,16 @@ function shipment(overrides: Partial<UnpostedShipment> = {}): UnpostedShipment {
     priorShipmentsSubtotalMinor: 0,
     includeShipping: false,
     contactId: 'ct_1',
+    taxLines: [],
     ...overrides,
   }
 }
 
 function plan(
   shipments: UnpostedShipment[],
-  overrides: Partial<Omit<FulfillmentPostingPlanInput, 'shipments'>> = {}
+  overrides: Partial<
+    Omit<FulfillmentPostingPlanInput, 'shipments'> & { gatewayRoutes: readonly GatewayRoute[] }
+  > = {}
 ) {
   return planFulfillmentPosting({
     shipments,
@@ -358,6 +362,7 @@ describe('totals and the debit split', () => {
       clearing_card: 10_000,
       clearing_affirm: 10_000,
       accounts_receivable: 10_000,
+      gateway: 0,
     })
   })
 
@@ -515,5 +520,54 @@ describe('what the plan does NOT know', () => {
     const reoffered = plan([shipment({ orderId: 'a', orderNumber: '#1' })])
 
     expect(reoffered).toEqual(fresh)
+  })
+})
+
+describe('gatewayRoutes (brief 13 §5.3)', () => {
+  const authNetRoute: GatewayRoute = {
+    handles: ['authorize_net', 'authorize.net'],
+    clearingGlAccountId: 'acct_authnet_clearing',
+    active: false,
+  }
+
+  it('debits a payment_gateway route instead of the role default when exactly one route matches', () => {
+    const result = plan(
+      [shipment({ orderId: 'a', orderNumber: '#1', gateways: ['Authorize.Net'] })],
+      { gatewayRoutes: [authNetRoute] }
+    )
+
+    const posted = result.groups[0]?.shipments[0]
+    expect(posted?.amounts.debitRole).toBe('gateway')
+    expect(posted?.amounts.debitGlAccountId).toBe('acct_authnet_clearing')
+    // The role buckets stay zero; the id-based debit is counted under `gateway`.
+    expect(result.groups[0]?.totals.byDebitRole).toEqual({
+      clearing_card: 0,
+      clearing_affirm: 0,
+      accounts_receivable: 0,
+      gateway: 10_000,
+    })
+  })
+
+  it('a closed route still routes its own history (active does not gate the match)', () => {
+    const result = plan(
+      [shipment({ orderId: 'a', orderNumber: '#1', gateways: ['authorize_net'] })],
+      { gatewayRoutes: [authNetRoute] }
+    )
+    expect(result.groups[0]?.shipments[0]?.amounts.debitGlAccountId).toBe('acct_authnet_clearing')
+  })
+
+  it('falls back to the role default when no route names the gateway', () => {
+    const result = plan([shipment({ orderId: 'a', orderNumber: '#1' })], {
+      gatewayRoutes: [authNetRoute],
+    })
+    const posted = result.groups[0]?.shipments[0]
+    expect(posted?.amounts.debitRole).toBe('clearing_card')
+    expect(posted?.amounts.debitGlAccountId).toBeUndefined()
+  })
+
+  it('omitting gatewayRoutes entirely reproduces the role-only plan', () => {
+    const withRoutes = plan([shipment({ orderId: 'a', orderNumber: '#1' })], { gatewayRoutes: [] })
+    const withoutRoutes = plan([shipment({ orderId: 'a', orderNumber: '#1' })])
+    expect(withRoutes).toEqual(withoutRoutes)
   })
 })

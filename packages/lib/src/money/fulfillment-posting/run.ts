@@ -60,7 +60,7 @@ import {
 import { getOrganizationSetting } from '../../settings/settings-service'
 import { stampFulfillment } from '../orders/fulfill'
 import { guard } from './guard'
-import { planFulfillmentPosting } from './plan'
+import { loadGatewayRoutesForPlan, planFulfillmentPosting } from './plan'
 import { readFulfillmentPostingSettings, readUnpostedShipments } from './reads'
 import type {
   FulfillmentPostingGroup,
@@ -270,11 +270,15 @@ async function prepare(db: Database, request: FulfillmentPostingRequest): Promis
 
   const refusal = resolveRefusal(setupState, settings.timeZone)
 
-  const shipmentsResult = await readUnpostedShipments(db, { organizationId, range })
+  const [shipmentsResult, gatewayRoutes] = await Promise.all([
+    readUnpostedShipments(db, { organizationId, range }),
+    loadGatewayRoutesForPlan(db, organizationId),
+  ])
   if (shipmentsResult.isErr()) throw shipmentsResult.error
 
   const plan = planFulfillmentPosting({
     shipments: shipmentsResult.value,
+    gatewayRoutes,
     grouping,
     cutoffPeriod: settings.cutoffPeriod,
     lockedThroughMonth: settings.lockedThroughMonth,

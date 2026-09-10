@@ -900,3 +900,38 @@ export const JournalEntryKind = {
     { value: 'recurring_template', label: 'Recurring Template', color: 'purple' },
   ] satisfies FieldOptionItem[],
 } as const
+
+/**
+ * How a `payment_gateway` drains (`plans/accounting/tasks/13-cash-accounts-and-the-qbo-seam.md`
+ * §5.3). The three answers that exist: `stripe` and `shopify_payments` read a
+ * real payout feed, `manual` is worked by hand. `manual` is not a gap - it is
+ * what Affirm and every historical rail correctly are.
+ */
+export const PaymentGatewaySettlementSource = {
+  STRIPE: 'stripe',
+  SHOPIFY_PAYMENTS: 'shopify_payments',
+  MANUAL: 'manual',
+
+  values: [
+    { value: 'stripe', label: 'Stripe', color: 'purple' },
+    { value: 'shopify_payments', label: 'Shopify Payments', color: 'green' },
+    { value: 'manual', label: 'By hand', color: 'gray' },
+  ] satisfies FieldOptionItem[],
+} as const
+
+/**
+ * Whether a `payment_gateway` rail is still taking charges
+ * (`plans/accounting/tasks/13-cash-accounts-and-the-qbo-seam.md` §5.1). A rail
+ * is not permanent - Authorize.Net closed May 2026 with a clearing balance
+ * still winding down to zero - so `closed` marks a gateway retired without
+ * deleting it: `toGatewayRoutes` still routes a closed rail's history.
+ */
+export const PaymentGatewayStatus = {
+  ACTIVE: 'active',
+  CLOSED: 'closed',
+
+  values: [
+    { value: 'active', label: 'Active', color: 'green' },
+    { value: 'closed', label: 'Closed', color: 'gray' },
+  ] satisfies FieldOptionItem[],
+} as const

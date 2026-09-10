@@ -30,6 +30,7 @@ import { ORDER_FIELDS } from './resources/order-fields'
 import { PART_FIELDS } from './resources/part-fields'
 import { PARTICIPANT_FIELDS } from './resources/participant-fields'
 import { PAYMENT_FIELDS } from './resources/payment-fields'
+import { PAYMENT_GATEWAY_FIELDS } from './resources/payment-gateway-fields'
 import { PAYOUT_FIELDS } from './resources/payout-fields'
 import { PERSONAL_INBOX_FIELDS } from './resources/personal-inbox-fields'
 import { PRODUCT_FIELDS } from './resources/product-fields'
@@ -166,6 +167,7 @@ export const RESOURCE_FIELD_REGISTRY: ResourceFieldRegistry = {
   bank_account: BANK_ACCOUNT_FIELDS,
   bank_transaction: BANK_TRANSACTION_FIELDS,
   bank_rule: BANK_RULE_FIELDS,
+  payment_gateway: PAYMENT_GATEWAY_FIELDS,
   tariff_code: TARIFF_CODE_FIELDS,
   tariff_rate: TARIFF_RATE_FIELDS,
   credit_memo: CREDIT_MEMO_FIELDS,

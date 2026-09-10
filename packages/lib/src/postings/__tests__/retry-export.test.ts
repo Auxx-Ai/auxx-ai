@@ -222,6 +222,17 @@ describe('retryExport', () => {
     })
   })
 
+  it('replays the dimensions frozen on the line (brief 13 §5)', async () => {
+    const fake = createFakeDb(postingRow(), [line({ dimensions: { channel: 'dealer' } })])
+    const seen = stubProvider(() =>
+      ok({ status: 'posted', externalId: 'qb_9', providerId: 'stub' })
+    )
+
+    await retryExport(fake.db, { organizationId: ORG, glPostingId: POSTING })
+
+    expect(seen[0]?.lines[0]?.dimensions).toEqual({ channel: 'dealer' })
+  })
+
   it('replays the stored glAccountId - the identity, alongside the code snapshot', async () => {
     // Task 15 §2: `glAccountId` is what a `gl_posting_line` row stores as its
     // identity now. The replay must carry it through unchanged, the same way it

@@ -50,10 +50,13 @@
  * every wrong answer still balances:
  *
  * - **Cheque and cash** are banked in a RUN. Five cheques arrive at the bank as
- *   ONE line, so five separate cash postings can never match it. They wait in
- *   `undeposited_funds` until a `bank_deposit` posts the single cash line.
+ *   ONE line, so five separate postings can never match it. They wait in
+ *   `undeposited_funds` until a `bank_deposit` posts the single line.
  * - **ACH and wire** arrive alone and match their own bank line, so they go
- *   straight to cash.
+ *   straight to a NAMED bank account - the `cash` route, resolved to a
+ *   `bank_account` id (brief 13 §2.4), never to a role. An org with two bank
+ *   accounts banks an ACH into whichever one it names, and the account is
+ *   {@link BuildPaymentEntryInput.bankAccountGlAccountId}.
  * - **Card** settles as a NET payout days later. It goes to a clearing account
  *   which `buildPayoutEntry` drains; routing it through undeposited funds would
  *   assert a gross deposit the bank never credited.
@@ -74,6 +77,10 @@
  *    has to tell the two apart, {@link PAYMENT_ROUTE_ROLE} grows a discriminator
  *    on the GATEWAY rather than on the method, the way `resolveFulfillmentDebit`
  *    already does.
+ * 3. **Which bank account.** A bank account is not a role (brief 13 §2), so the
+ *    `cash` row of {@link PAYMENT_ROUTE_ROLE} carries no role to look up - the
+ *    caller resolves `accounting.cashBankAccountId` to a `gl_account` id and
+ *    passes it in, and this file refuses to post the route with none.
  *
  * @see plans/accounting/tasks/01-post-revenue-to-the-ledger.md §1.2
  * @see plans/accounting/tasks/06-deposit-grouping.md §2.3
@@ -95,17 +102,30 @@ import type { BuiltEntry, GlPostingLineInput, PostingType } from './types'
 export const PAYMENT_SOURCE_TYPE = 'payment_transaction'
 
 /**
+ * What a route resolves to: either a ROLE (an accounting function, one account
+ * org-wide) or a specific BANK ACCOUNT (an instance, resolved by the caller).
+ *
+ * A bank account is not a role (brief 13 §2.4) - an org has several, and the
+ * `cash` route is the one place a payment names one directly rather than
+ * through a function like `clearing_card`.
+ */
+export type PaymentRouteAccount = { kind: 'role'; role: AccountRole } | { kind: 'bank_account' }
+
+/**
  * Where each route's money sits in the chart. DECLARED, one row per route.
  *
  * Type-only import of `PaymentRoute` so `postings/` gains no runtime edge into
  * `money/` - the dependency runs the other way and a second copy of the union
  * would be free to drift.
  */
-export const PAYMENT_ROUTE_ROLE: Record<PaymentRoute, AccountRole> = {
-  undeposited_funds: ACCOUNT_ROLES.UNDEPOSITED_FUNDS,
-  cash: ACCOUNT_ROLES.CASH,
+export const PAYMENT_ROUTE_ROLE: Record<PaymentRoute, PaymentRouteAccount> = {
+  undeposited_funds: { kind: 'role', role: ACCOUNT_ROLES.UNDEPOSITED_FUNDS },
+  // 🛑 No role. The caller resolves `accounting.cashBankAccountId` to a
+  // `bank_account`'s `glAccountId` and passes it as
+  // {@link BuildPaymentEntryInput.bankAccountGlAccountId} - see the file header.
+  cash: { kind: 'bank_account' },
   // One clearing role exists today. See the file header on `1210 Affirm Clearing`.
-  clearing: ACCOUNT_ROLES.CLEARING_CARD,
+  clearing: { kind: 'role', role: ACCOUNT_ROLES.CLEARING_CARD },
 }
 
 /** The `PaymentTransaction` fields an entry is built from. Nothing else is read. */
@@ -148,6 +168,13 @@ export interface BuildPaymentEntryInput {
   /** From `resolvePaymentRoute(method, settings)`. Never inferred here. */
   route: PaymentRoute
   /**
+   * The `gl_account` id of the `bank_account` the caller resolved from
+   * `accounting.cashBankAccountId`, required exactly when `route` is `cash`
+   * (brief 13 §2.4). Ignored for every other route. `null`/absent on a `cash`
+   * route is a refusal, never a guess at which account.
+   */
+  bankAccountGlAccountId?: string | null
+  /**
    * `PaymentTransaction.id` is a cuid and blows the 21-character document-number
    * cap outright, so the key is minted - {@link paymentPeriodKey}.
    */
@@ -174,8 +201,14 @@ export interface BuildPaymentEntryInput {
 export interface BuiltPaymentEntry {
   entry: BuiltEntry
   periodKey: string
-  /** The account the money landed in (a charge) or came back out of (a refund). */
-  routeRole: AccountRole
+  /**
+   * The role the money landed in or out of, when the route resolves to a role.
+   * `null` for the `cash` route, which names a `bank_account` id instead - see
+   * {@link routeGlAccountId}.
+   */
+  routeRole: AccountRole | null
+  /** The `gl_account` id the money landed in or out of, when the route is `cash`. `null` otherwise. */
+  routeGlAccountId: string | null
   /** Integer minor units, always positive - `direction` carries the sign. */
   amountMinor: number
   /** The part of {@link amountMinor} that relieved a receivable. */
@@ -219,8 +252,9 @@ export function paymentPeriodKey(transactionId: string): string {
  * account the money left from.
  *
  * @throws {UnprocessableEntityError} on a foreign currency, an amount that is
- *   not a positive whole number of minor units, or an `allocatedMinor` that is
- *   negative, fractional or larger than the amount received.
+ *   not a positive whole number of minor units, an `allocatedMinor` that is
+ *   negative, fractional or larger than the amount received, or a `cash` route
+ *   with no `bankAccountGlAccountId`.
  */
 export function buildPaymentEntry(input: BuildPaymentEntryInput): BuiltPaymentEntry {
   const { postingType, transaction, route, periodKey, ledgerCurrency, allocatedMinor, memo } = input
@@ -263,7 +297,16 @@ export function buildPaymentEntry(input: BuildPaymentEntryInput): BuiltPaymentEn
     )
   }
 
-  const routeRole = PAYMENT_ROUTE_ROLE[route]
+  const routeAccount = PAYMENT_ROUTE_ROLE[route]
+  const bankAccountGlAccountId = input.bankAccountGlAccountId?.trim() || null
+  if (routeAccount.kind === 'bank_account' && !bankAccountGlAccountId) {
+    throw new UnprocessableEntityError(
+      `Payment ${id} routes to a bank account (the ${route} route) but names none. Set ` +
+        'accounting.cashBankAccountId to a mapped bank account before posting to it.',
+      { transactionId: id, route }
+    )
+  }
+
   const source = { sourceType: PAYMENT_SOURCE_TYPE, sourceId: id }
   const label = `${kind === 'refund' ? 'Refund' : 'Payment'}${method ? ` (${method})` : ''}${
     reference ? ` ${reference}` : ''
@@ -286,16 +329,29 @@ export function buildPaymentEntry(input: BuildPaymentEntryInput): BuiltPaymentEn
   // Route, receivable, deposits. A zero leg is omitted rather than posted:
   // `buildEntry` refuses a line that moves nothing, and a two-line entry is
   // what a fully applied payment and a wholly held deposit each are.
-  const lines: GlPostingLineInput[] = [
-    {
-      ...source,
-      accountRole: routeRole,
-      direction: routeDirection,
-      amount: amountMinor,
-      memo: memo ?? label,
-      sortOrder: 0,
-    },
-  ]
+  //
+  // 🛑 The route leg names its account in ONE of two ways, never both: a ROLE
+  // for `undeposited_funds`/`clearing`, or the `bank_account`'s own `glAccountId`
+  // for `cash` (brief 13 §2.4). A bank account is not a role.
+  const routeLine: GlPostingLineInput =
+    routeAccount.kind === 'bank_account'
+      ? {
+          ...source,
+          glAccountId: bankAccountGlAccountId as string,
+          direction: routeDirection,
+          amount: amountMinor,
+          memo: memo ?? label,
+          sortOrder: 0,
+        }
+      : {
+          ...source,
+          accountRole: routeAccount.role,
+          direction: routeDirection,
+          amount: amountMinor,
+          memo: memo ?? label,
+          sortOrder: 0,
+        }
+  const lines: GlPostingLineInput[] = [routeLine]
 
   if (receivableMinor > 0) {
     lines.push({
@@ -323,5 +379,16 @@ export function buildPaymentEntry(input: BuildPaymentEntryInput): BuiltPaymentEn
 
   const entry = buildEntry({ postingType, periodKey, txnDate: receivedAt, lines })
 
-  return { entry, periodKey, routeRole, amountMinor, receivableMinor, depositMinor }
+  const routeRole = routeAccount.kind === 'role' ? routeAccount.role : null
+  const routeGlAccountId = routeAccount.kind === 'bank_account' ? bankAccountGlAccountId : null
+
+  return {
+    entry,
+    periodKey,
+    routeRole,
+    routeGlAccountId,
+    amountMinor,
+    receivableMinor,
+    depositMinor,
+  }
 }

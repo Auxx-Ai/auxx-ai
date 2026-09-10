@@ -7,18 +7,31 @@
  * PURE. No database, no clock, no chart.
  *
  * ```
- *   Dr cash                        the whole deposit that reached the bank
- *   Dr payment_processing_fees     fees withheld on the RECOGNISED charges
- *       Cr clearing_card                 RECOGNISED gross
- *       Cr unidentified_receipts         the unrecognised remainder, net
+ *   Dr <the settlement's own bank account>   the whole deposit that reached the bank
+ *   Dr payment_processing_fees               fees withheld on the RECOGNISED charges
+ *       Cr clearing_card                           RECOGNISED gross
+ *       Cr unidentified_receipts                   the unrecognised remainder, net
  * ```
  *
  * This is the entry that makes `1200 Card Clearing` reconcilable. A card
  * receipt DEBITS the clearing account gross at the sale (`buildPaymentEntry`
- * with route `clearing`), and this entry credits it gross again, net to cash
- * and the difference to fees. A settled batch therefore leaves the clearing
- * account at zero, and a non-zero balance is a list of sales the gateway has
- * not paid out yet - which is a useful control on its own.
+ * with route `clearing`), and this entry credits it gross again, net to the
+ * bank account the payout settled into and the difference to fees. A settled
+ * batch therefore leaves the clearing account at zero, and a non-zero balance
+ * is a list of sales the gateway has not paid out yet - which is a useful
+ * control on its own.
+ *
+ * ## 🛑 A bank account is not a role (brief 13 §2)
+ *
+ * The debit used to be `ACCOUNT_ROLES.CASH`, which resolved to whichever
+ * single account held the role - so a payout settling into Wells Fargo
+ * Checking and the bank feed's own line for the same money could land in two
+ * different accounts and still balance, with nothing comparing them. The debit
+ * is now the SETTLEMENT'S OWN bank account, resolved by the caller from the
+ * payout's Stripe destination (`money/payouts/sync.ts`) and passed in as
+ * {@link BuildPayoutEntryInput.bankAccountGlAccountId}. This file never reads a
+ * `bank_account` itself - it stays PURE - it only takes the id the caller
+ * already resolved and confirmed.
  *
  * ## 🛑 The fourth leg, and why it is not optional
  *
@@ -27,13 +40,15 @@
  * subscription on the same account, a terminal. Those were never debited to
  * `clearing_card`, so crediting the payout's full gross to clearing drives that
  * account permanently negative by the amount auxx never took. Relieving only
- * the recognised part and debiting cash to match would keep clearing right and
- * break the bank instead: the bank feed shows ONE deposit for the whole payout.
+ * the recognised part and debiting the bank account to match would keep
+ * clearing right and break the bank instead: the bank feed shows ONE deposit
+ * for the whole payout.
  *
  * So all three of the following hold at once, and only this shape gets all
  * three:
  *
- * - **cash takes the WHOLE deposit**, so the entry matches the bank line;
+ * - **the bank account takes the WHOLE deposit**, so the entry matches the
+ *   bank line;
  * - **clearing is relieved of exactly what auxx put in it**, so it still
  *   reconciles to zero;
  * - **the remainder is visible in one account somebody must work**
@@ -105,6 +120,16 @@ export interface BuildPayoutEntryInput {
   /** The gateway's own payout id. Every line's `sourceId`. */
   payoutId: string
   /**
+   * The `gl_account` id of the `bank_account` this payout settled into,
+   * resolved by the caller from the payout's Stripe destination against a
+   * CONFIRMED `bank_account.stripeExternalAccountId` (brief 13 §2.3). Never a
+   * role: an org has several bank accounts and the payout settles into exactly
+   * one of them, so a role would send every payout to whichever single account
+   * happened to hold it. The caller refuses to call this function at all when
+   * the destination cannot be resolved - see `money/payouts/sync.ts`.
+   */
+  bankAccountGlAccountId: string
+  /**
    * The short, human key the document number is built on.
    *
    * 🛑 **`doc-number.ts` says `payout` keys on the payout id, and that rule
@@ -123,7 +148,8 @@ export interface BuildPayoutEntryInput {
   /**
    * What actually reached the bank, integer minor units. The RECOGNISED net -
    * `grossMinor - feesMinor` - NOT the payout's total. The whole deposit is
-   * `netMinor + unrecognisedNetMinor`, and that is what lands on cash.
+   * `netMinor + unrecognisedNetMinor`, and that is what lands on
+   * {@link bankAccountGlAccountId}.
    */
   netMinor: number
   /**
@@ -150,7 +176,7 @@ export interface BuiltPayoutEntry {
   feesMinor: number
   netMinor: number
   unrecognisedNetMinor: number
-  /** What hit the bank: `netMinor + unrecognisedNetMinor`. The cash leg. */
+  /** What hit the bank: `netMinor + unrecognisedNetMinor`. The bank-account debit leg. */
   depositedMinor: number
 }
 
@@ -176,11 +202,13 @@ function assertMinor(value: number, label: string, payoutNumber: string): number
  * account that can never reach zero for reasons nobody can reconstruct.
  *
  * @throws {UnprocessableEntityError} on a fractional or negative amount, an
- *   arithmetic disagreement, an over-long payout number, or a `clearingRole`
- *   that is not a clearing account.
+ *   arithmetic disagreement, an over-long payout number, a missing
+ *   `bankAccountGlAccountId`, or a `clearingRole` that is not a clearing
+ *   account.
  */
 export function buildPayoutEntry(input: BuildPayoutEntryInput): BuiltPayoutEntry {
   const { payoutId, payoutNumber, clearingRole, paidAt, memo } = input
+  const bankAccountGlAccountId = input.bankAccountGlAccountId?.trim()
 
   const number = payoutNumber.trim()
   if (!number) {
@@ -189,6 +217,14 @@ export function buildPayoutEntry(input: BuildPayoutEntryInput): BuiltPayoutEntry
         'gateway id, which is over the 21-character cap, and never a date, because two payouts ' +
         'can settle on one day.',
       { payoutId }
+    )
+  }
+  if (!bankAccountGlAccountId) {
+    throw new UnprocessableEntityError(
+      `Payout ${number} has no bank account to debit. A payout settles into a specific bank ` +
+        "account, never a role - resolve the payout's Stripe destination to a confirmed " +
+        'bank_account first.',
+      { payoutId, payoutNumber: number }
     )
   }
   const compact = number.replace(/-/g, '')
@@ -264,7 +300,9 @@ export function buildPayoutEntry(input: BuildPayoutEntryInput): BuiltPayoutEntry
   const lines: GlPostingLineInput[] = [
     {
       ...source,
-      accountRole: ACCOUNT_ROLES.CASH,
+      // 🛑 The settlement's OWN bank account, by id - never the `cash` role
+      // (brief 13 §2). The caller resolved and confirmed it before calling in.
+      glAccountId: bankAccountGlAccountId,
       // 🛑 The WHOLE deposit, not the recognised net. This leg is what the bank
       // line matches against, and the bank shows one figure for the payout.
       direction: 'debit',

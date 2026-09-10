@@ -32,6 +32,15 @@
  * `SYNC_LOOKBACK_DAYS` bounds an ordinary run; {@link syncPayouts} refuses to
  * reach further back than the org's first sync, recorded as the earliest payout
  * record it holds.
+ *
+ * 🛑 **A payout debits a bank account, never a role (brief 13 §2.3).**
+ * `ingestOne` resolves the payout's own Stripe `destination` against the org's
+ * `bank_account` rows through a CONFIRMED `stripeExternalAccountId` identity -
+ * never `last4`, which is strong evidence and not proof. Until a person
+ * confirms that identity on exactly one bank account, the payout is raised
+ * (so its number is minted and it is visible) but its entry refuses to post:
+ * `payout_blocked_reason` names the payout, the destination and the remedy,
+ * and `postPayoutEntry` is never even called - see `resolvePayoutBankAccount`.
  */
 
 import { type Database, schema } from '@auxx/database'
@@ -43,8 +52,9 @@ import { UnprocessableEntityError } from '../../errors'
 import { isAccountingEnabled } from '../../postings/accounting-enabled'
 import { ACCOUNT_ROLES } from '../../postings/build-entry'
 import { resolvePeriodLock } from '../../postings/period-lock'
-import { postPayoutEntry } from '../../postings/post-payout-entry'
+import { payoutAccountUnmappedResult, postPayoutEntry } from '../../postings/post-payout-entry'
 import { reverseEntry } from '../../postings/reverse-entry'
+import type { PostResult } from '../../postings/types'
 import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
 import { toRecordId } from '../../resources/resource-id'
 import { SystemUserService } from '../../users/system-user-service'
@@ -52,7 +62,12 @@ import { getPaymentAccount } from '../payments/account-state'
 import { getStripeConnectClient } from '../payments/connect-client'
 import { type GatheredPayout, gatherPayout } from './gather'
 import { guard } from './guard'
-import { findPayoutByGatewayId, type PayoutFieldContext, requirePayoutFieldContext } from './reads'
+import {
+  findBankAccountByStripeExternalAccountId,
+  findPayoutByGatewayId,
+  type PayoutFieldContext,
+  requirePayoutFieldContext,
+} from './reads'
 import type { SyncPayoutsResult } from './types'
 
 const logger = createScopedLogger('payouts:sync')
@@ -218,19 +233,40 @@ async function ingestOne(
     }
   }
 
-  const post = await postPayoutEntry(db, {
-    organizationId,
-    actorUserId,
-    payoutId: payout.id,
-    payoutNumber: number,
-    grossMinor: gathered.split.grossMinor,
-    feesMinor: gathered.split.feesMinor,
-    netMinor: gathered.split.netMinor,
-    unrecognisedNetMinor: gathered.split.unrecognisedNetMinor,
-    clearingRole: ACCOUNT_ROLES.CLEARING_CARD,
-    paidAt: gathered.paidAt,
-    memo: `Payout ${number}`,
-  })
+  // 🛑 Resolved and refused BEFORE the build (brief 13 §2.3): a bank account is
+  // not a role, so the payout's own Stripe destination has to name one of the
+  // org's `bank_account` rows through a CONFIRMED `stripeExternalAccountId`
+  // identity - never `last4`. No entry is built and nothing is claimed when it
+  // cannot.
+  const resolved = await resolvePayoutBankAccount(db, organizationId, gathered.destination, number)
+
+  let post: PostResult
+  if (resolved.blockedReason !== null) {
+    logger.warn('Payout blocked: its destination is not a confirmed bank account', {
+      organizationId,
+      payoutId: payout.id,
+      destination: gathered.destination,
+    })
+    await crud.update(toRecordId(ctx.payoutDefId, instanceId), {
+      payout_blocked_reason: resolved.blockedReason,
+    })
+    post = payoutAccountUnmappedResult(resolved.blockedReason)
+  } else {
+    post = await postPayoutEntry(db, {
+      organizationId,
+      actorUserId,
+      payoutId: payout.id,
+      payoutNumber: number,
+      bankAccountGlAccountId: resolved.glAccountId,
+      grossMinor: gathered.split.grossMinor,
+      feesMinor: gathered.split.feesMinor,
+      netMinor: gathered.split.netMinor,
+      unrecognisedNetMinor: gathered.split.unrecognisedNetMinor,
+      clearingRole: ACCOUNT_ROLES.CLEARING_CARD,
+      paidAt: gathered.paidAt,
+      memo: `Payout ${number}`,
+    })
+  }
 
   if (post.status !== 'posted' && post.status !== 'already_posted') {
     return {
@@ -243,6 +279,9 @@ async function ingestOne(
 
   await crud.update(toRecordId(ctx.payoutDefId, instanceId), {
     payout_status: 'paid',
+    // Cleared on success: a payout that was blocked on a prior run and has
+    // since been confirmed must not keep showing the blocker banner.
+    payout_blocked_reason: null,
     ...(post.glPostingId ? { payout_gl_posting_id: post.glPostingId } : {}),
   })
 
@@ -253,12 +292,50 @@ async function ingestOne(
   }
 }
 
+/** Either the resolved `gl_account` id, or the sentence a blocked payout carries. Never both. */
+export type ResolvedPayoutBankAccount =
+  | { blockedReason: null; glAccountId: string }
+  | { blockedReason: string; glAccountId?: never }
+
+/**
+ * Resolve a payout's Stripe `destination` to the org's own `bank_account`, or
+ * name why it cannot be posted.
+ *
+ * Exported for direct testing - `ingestOne` is not, because reaching it
+ * exercises the whole Stripe-backed gatherer this function is deliberately
+ * factored out of.
+ */
+export async function resolvePayoutBankAccount(
+  db: Database,
+  organizationId: string,
+  destination: string | null,
+  payoutNumber: string
+): Promise<ResolvedPayoutBankAccount> {
+  if (!destination) {
+    return {
+      blockedReason:
+        `Payout ${payoutNumber} settled with no destination reported by Stripe, so there is no ` +
+        'bank account to debit. Confirm its bank account on Accounting > Settings > Bank accounts.',
+    }
+  }
+  const match = await findBankAccountByStripeExternalAccountId(db, organizationId, destination)
+  if (!match?.glAccountId) {
+    return {
+      blockedReason:
+        `Payout ${payoutNumber} settled to ${destination}, which is not confirmed on any bank ` +
+        'account. Confirm it on Accounting > Settings > Bank accounts.',
+    }
+  }
+  return { blockedReason: null, glAccountId: match.glAccountId }
+}
+
 /** The field payload a payout record carries, from one gathered payout. */
 function payoutValues(gathered: GatheredPayout): Record<string, unknown> {
   return {
     payout_gateway_id: gathered.payoutId,
     payout_status: gathered.gatewayStatus === 'paid' ? 'paid' : 'in_transit',
     payout_paid_at: gathered.paidAt,
+    payout_destination: gathered.destination ?? undefined,
     payout_currency: gathered.currency,
     payout_deposited: gathered.depositedMinor,
     payout_gross: gathered.split.grossMinor,

@@ -103,6 +103,8 @@ export interface CreateBankAccountInput {
   currency?: string | null
   /** The `gl_account` instance id this account maps to (task 15 §4). Never a code. */
   glAccountId?: string | null
+  /** The Stripe destination id, confirmed once by a person (brief 13 §2.3). */
+  stripeExternalAccountId?: string | null
   feedStartDate?: string | null
 }
 
@@ -118,6 +120,8 @@ export interface UpdateBankAccountInput {
   currency?: string | null
   /** The `gl_account` instance id this account maps to (task 15 §4). Never a code. */
   glAccountId?: string | null
+  /** The Stripe destination id, confirmed once by a person (brief 13 §2.3). */
+  stripeExternalAccountId?: string | null
   feedStartDate?: string | null
   status?: BankAccountStatus
 }
@@ -165,6 +169,7 @@ export async function createBankAccount(
         bank_account_type: type,
         bank_account_currency: input.currency?.trim().toUpperCase() || 'USD',
         bank_account_gl_account: input.glAccountId?.trim() || undefined,
+        bank_account_stripe_external_account_id: input.stripeExternalAccountId?.trim() || undefined,
         bank_account_feed_start_date: input.feedStartDate || undefined,
         bank_account_status: 'manual',
       })
@@ -257,6 +262,10 @@ export async function updateBankAccount(
 
       if (input.glAccountId !== undefined) {
         patch.bank_account_gl_account = input.glAccountId?.trim() || null
+      }
+      if (input.stripeExternalAccountId !== undefined) {
+        patch.bank_account_stripe_external_account_id =
+          input.stripeExternalAccountId?.trim() || null
       }
       if (input.feedStartDate !== undefined) {
         patch.bank_account_feed_start_date = input.feedStartDate || null

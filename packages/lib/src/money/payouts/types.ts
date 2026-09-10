@@ -28,6 +28,12 @@ export interface PayoutRecord {
   unrecognisedCount: number
   /** The posting this payout became, or null while it has none. */
   glPostingId: string | null
+  /**
+   * Set when this payout could not be posted for lack of a confirmed
+   * bank-account identity (brief 13 §2.3). Names the payout, the destination
+   * and the remedy. Null once posted, or if it never blocked.
+   */
+  blockedReason: string | null
   createdAt: Date
 }
 

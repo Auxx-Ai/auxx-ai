@@ -42,7 +42,7 @@ import {
   updateJournalEntry,
   verifyBooksBalance,
 } from '@auxx/lib/postings'
-import { seedDefaultChartOfAccounts } from '@auxx/lib/seed'
+import { seedDefaultChartOfAccounts, seedDefaultPaymentGateways } from '@auxx/lib/seed'
 import { updateOrganizationSetting } from '@auxx/lib/settings'
 import { z } from 'zod'
 import { recordAuditFromCtx } from '~/server/api/audit-context'
@@ -664,7 +664,15 @@ export const ledgerRouter = createTRPCRouter({
       )
     }
 
-    return await seedDefaultChartOfAccounts(ctx.db, organizationId, glAccountDefId)
+    const chart = await seedDefaultChartOfAccounts(ctx.db, organizationId, glAccountDefId)
+
+    // Task 13 §5.3: the two default `payment_gateway` records the census
+    // names. Runs AFTER the chart on purpose - the clearing accounts these
+    // defaults point at (`clearing_card` / `clearing_affirm`) only exist once
+    // the chart above has just created or confirmed them.
+    const paymentGateways = await seedDefaultPaymentGateways(ctx.db, organizationId)
+
+    return { ...chart, paymentGateways }
   }),
 
   /**

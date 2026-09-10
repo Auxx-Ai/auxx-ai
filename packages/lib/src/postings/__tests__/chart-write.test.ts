@@ -713,7 +713,7 @@ describe('I1: a type change may not break a role that posts here', () => {
       accountType: 'asset',
       isActive: true,
     }
-    const db = stubDb([cash], [{ role: 'cash', glAccountId: cash.id }])
+    const db = stubDb([cash], [{ role: 'undeposited_funds', glAccountId: cash.id }])
 
     const error = (
       await updateChartAccount(db, {
@@ -729,7 +729,7 @@ describe('I1: a type change may not break a role that posts here', () => {
   })
 
   it('allows a type change the role still accepts', async () => {
-    // `cash` wants an asset; 1000 is an asset and stays one.
+    // `undeposited_funds` wants an asset; 1050 is an asset and stays one.
     const cash: Account = {
       id: 'acct_cash',
       code: '1000',
@@ -737,7 +737,7 @@ describe('I1: a type change may not break a role that posts here', () => {
       accountType: 'asset',
       isActive: true,
     }
-    const db = stubDb([cash], [{ role: 'cash', glAccountId: cash.id }])
+    const db = stubDb([cash], [{ role: 'undeposited_funds', glAccountId: cash.id }])
 
     const result = await updateChartAccount(db, {
       organizationId: ORG,
