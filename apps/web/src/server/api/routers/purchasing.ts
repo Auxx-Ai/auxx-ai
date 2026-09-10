@@ -30,9 +30,12 @@ import {
 import { INTAKE_TIERS } from '@auxx/lib/purchasing/intake/client'
 import {
   adjustStock,
+  bulkOpenStockBalance,
+  bulkSetPartKind,
   computeExtendedCost,
   getLastReceiptCost,
   getPartReceiptHistory,
+  listOpeningStockCandidates,
   listReceipts,
   openStockBalance,
   receivePurchaseOrder,
@@ -498,6 +501,130 @@ export const purchasingRouter = createTRPCRouter({
       ctx.capabilities.assertEditEntity(movementDefId)
 
       const result = await openStockBalance(ctx.db, organizationId, userId, input)
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /**
+   * Every part in the org, with what the opening-stock checklist needs to decide
+   * its row state and its `finished_good` suggestion.
+   *
+   * plans/money/tasks/52-parts-costing-page.md §5. One bulk read, never a loop:
+   * the org this exists for has 495 parts, and asking the single-part door's
+   * five questions of each of them is roughly 2,500 queries.
+   *
+   * 🛑 Read-gated on `stock_movement`, not on `part`, and deliberately the same
+   * def the RUN writes. The answer is a preview of what `runOpeningStock` will
+   * do; showing it to somebody the mutation then refuses is the affordance-that-
+   * fails pattern the Costing page's gate exists to avoid.
+   *
+   * ⚠️ What comes back is a PREVIEW. `hasMovements` is re-read inside the run
+   * itself, because a candidate list the browser has been holding for a minute
+   * is not an authority on an append-only ledger.
+   */
+  listOpeningStockCandidates: capabilityProcedure.query(async ({ ctx }) => {
+    const { organizationId } = ctx.session
+    const movementDefId = await requireDefId(organizationId, 'stock_movement')
+    ctx.capabilities.assertViewEntity(movementDefId)
+
+    const result = await listOpeningStockCandidates(ctx.db, organizationId)
+    if (result.isErr()) throw result.error
+    return result.value
+  }),
+
+  /**
+   * Open a balance for many parts at once, on ONE date.
+   *
+   * plans/money/tasks/52-parts-costing-page.md §5. Not a loop over
+   * `openStockBalance` — one pass, with the five ordered steps of the
+   * single-part contract each asked of the whole set.
+   *
+   * 🛑 **It never throws for a part.** A part that already has a movement is
+   * EXCLUDED (opening is once), an invalid entry FAILS, and the run returns a
+   * summary naming both with the reason per part. One refused part must not lose
+   * the other 494.
+   *
+   * 🛑 **One `occurredAt` for the whole run.** An opening balance is one event on
+   * one date; a date per row invites 495 dates for it. The date is load-bearing
+   * for the close — an `initial` movement at or before `accounting.cutoffPeriod`
+   * is covered by the frozen opening baseline, one after it is summed into
+   * inventory.
+   *
+   * Gated on edit for `stock_movement`, the same door `openStockBalance` goes
+   * through, because this writes the ledger.
+   */
+  runOpeningStock: capabilityProcedure
+    .input(
+      z.object({
+        /** The ACCOUNTING date stamped on every movement in the run. */
+        occurredAt: z.coerce.date(),
+        entries: z
+          .array(
+            z.object({
+              partId: z.string().min(1),
+              /** Units on hand at the opening date. Strictly positive. */
+              quantity: receiptQuantity,
+              /** What a unit cost. A RATE - at most RATE_DECIMALS places, strictly positive. */
+              unitCost: rateMinorUnits,
+            })
+          )
+          .min(1),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
+      const movementDefId = await requireDefId(organizationId, 'stock_movement')
+      ctx.capabilities.assertEditEntity(movementDefId)
+
+      const result = await bulkOpenStockBalance(ctx.db, organizationId, userId, input)
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /**
+   * Set `part_kind` across a selection — the confirm that must precede the run.
+   *
+   * 🛑 **Gated on `part`, not on `stock_movement`.** The two definitions carry
+   * their own per-def grants, and this writes a part field; borrowing the
+   * ledger's gate would let somebody who may move stock reclassify parts they
+   * have no rights to.
+   *
+   * ⚠️ The kind decides the inventory account, and the account is frozen onto an
+   * `updatable: false` movement (§6.3) — which is why the confirm is a write of
+   * a human's choice on the same screen as the run, and never a derivation.
+   */
+  bulkSetPartKind: capabilityProcedure
+    .input(
+      z.object({
+        partIds: z.array(z.string().min(1)).min(1),
+        /**
+         * A `PartKind` value: `component`, `subassembly` or `finished_good`.
+         *
+         * Not narrowed to an enum here on purpose. `bulkSetPartKind` validates
+         * against the registry's own `PartKind.values`, so the rule holds for
+         * the worker and the seeder too, and a fourth kind becomes legal in one
+         * place rather than two.
+         *
+         * ⚠️ `PartKind.values` is `FieldOptionItem[]` (objects with `value` /
+         * `label` / `color`), not a string tuple, so `z.enum` cannot consume it
+         * and hand-listing the three names here would be the second place this
+         * comment exists to avoid.
+         */
+        kind: z.string().min(1),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
+      const partDefId = await requireDefId(organizationId, 'part')
+      ctx.capabilities.assertEditEntity(partDefId)
+
+      const result = await bulkSetPartKind(
+        ctx.db,
+        organizationId,
+        userId,
+        input.partIds,
+        input.kind
+      )
       if (result.isErr()) throw result.error
       return result.value
     }),

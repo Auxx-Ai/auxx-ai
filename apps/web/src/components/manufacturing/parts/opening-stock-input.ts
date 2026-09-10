@@ -78,24 +78,66 @@ export function validateOpeningStock(values: OpeningStockFormValues): Record<str
 }
 
 /**
- * The inventory account an opening balance for this part kind will be stamped
- * with — `1310 Raw Materials / Parts`.
+ * The ONE resolution of a part kind to an inventory account, shared by
+ * {@link openingStockAccountLabel} and {@link openingStockAccountCode}.
  *
- * 🛑 **Resolved through `resolveInventoryRoleForPartKind`, never a second
- * mapping.** That function is what the write path uses, so the only way this
- * line can be wrong about the account is if the write is wrong about it too.
- * A kind-to-account table maintained here would drift silently, and the
- * movement it disagreed with is append-only.
+ * 🛑 **Through `resolveInventoryRoleForPartKind`, never a second mapping.**
+ * That function is what the write path uses, so the only way either rendering
+ * can be wrong about the account is if the write is wrong about it too. A
+ * kind-to-account table maintained here would drift silently, and the movement
+ * it disagreed with is append-only. One resolution, two renderings: a caller
+ * that wants the number and a caller that wants the name must never be able to
+ * disagree about which account they are naming.
  *
  * The code and name come from `DEFAULT_CHART_OF_ACCOUNTS`, which is the chart
  * every org is seeded with. An org that has RENUMBERED its raw materials
  * account will see the seeded number here rather than its own — the role is
  * still right, and reading the org's chart would need `ledgerView`, which
- * somebody creating a part is not required to hold.
+ * somebody creating a part is not required to hold. When no chart entry carries
+ * the role, both renderings fall back to the role string itself.
  */
-export function openingStockAccountLabel(partKind: string | null | undefined): string {
+function resolveOpeningStockAccount(partKind: string | null | undefined): {
+  role: string
+  account: (typeof DEFAULT_CHART_OF_ACCOUNTS)[number] | undefined
+} {
   const role = resolveInventoryRoleForPartKind(partKind)
+  return { role, account: DEFAULT_CHART_OF_ACCOUNTS.find((entry) => entry.role === role) }
+}
+
+/**
+ * One inventory ROLE, spelled out as `1310 Raw Materials / Parts`.
+ *
+ * The entry point for callers that already hold a role rather than a part kind —
+ * the reconciliation panel, which groups by role because that is what
+ * `accounting.opening*` is keyed on and what a movement freezes. Falls back to
+ * the role string when no chart entry carries it, exactly like
+ * {@link openingStockAccountLabel}, which delegates here so the two renderings
+ * cannot drift.
+ */
+export function inventoryAccountLabelForRole(role: string): string {
   const account = DEFAULT_CHART_OF_ACCOUNTS.find((entry) => entry.role === role)
   if (!account) return role
   return `${account.code} ${account.name}`
+}
+
+/**
+ * The inventory account an opening balance for this part kind will be stamped
+ * with, spelled out — `1310 Raw Materials / Parts`.
+ *
+ * See {@link resolveOpeningStockAccount} for why this is the only mapping.
+ */
+export function openingStockAccountLabel(partKind: string | null | undefined): string {
+  return inventoryAccountLabelForRole(resolveOpeningStockAccount(partKind).role)
+}
+
+/**
+ * The same account as {@link openingStockAccountLabel}, as just its number —
+ * `1310`. For a column narrow enough that the name would repeat on every row;
+ * pair it with the full label in a tooltip.
+ *
+ * See {@link resolveOpeningStockAccount} for why this is the only mapping.
+ */
+export function openingStockAccountCode(partKind: string | null | undefined): string {
+  const { role, account } = resolveOpeningStockAccount(partKind)
+  return account?.code ?? role
 }

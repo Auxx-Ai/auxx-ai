@@ -1,6 +1,7 @@
 // packages/lib/src/receiving/index.ts
 
 export { adjustStock } from './adjust-stock'
+export { bulkOpenStockBalance, bulkSetPartKind } from './bulk-opening-stock'
 export {
   computeExtendedCost,
   computeReceiptLandedBreakdown,
@@ -14,6 +15,16 @@ export {
   roundMinorUnits,
 } from './client'
 export { openStockBalance } from './open-stock-balance'
+export { listOpeningStockCandidates } from './opening-stock-queries'
+export {
+  DERIVABLE_OPENING_STOCK_ROLES,
+  findOpeningStockDivergences,
+  OPENING_STOCK_INVENTORY_ROLES,
+  type OpeningStockDivergence,
+  type OpeningStockInventoryRole,
+  type OpeningStockSubledgerTotals,
+  readOpeningStockSubledgerTotals,
+} from './opening-stock-subledger'
 export {
   getLastReceiptCost,
   getPartReceiptHistory,
@@ -28,8 +39,15 @@ export type { ReverseMovementInput } from './reverse-movement'
 export { reverseMovement } from './reverse-movement'
 export type {
   AdjustStockInput,
+  BulkOpeningStockInput,
+  BulkOpeningStockSummary,
   ListReceiptsFilters,
   MovementRecord,
+  OpenedOpeningStockRow,
+  OpeningStockCandidate,
+  OpeningStockEntry,
+  OpeningStockSkip,
+  OpeningStockSkipReason,
   OpenStockBalanceInput,
   ReceiptRow,
   ReceivePurchaseOrderInput,

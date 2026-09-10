@@ -24,7 +24,8 @@ import { FeatureKey, PermissionKey } from '@auxx/lib/permissions/client'
 import { isValidTimeZone, resolveSetupReadiness } from '@auxx/lib/postings/client'
 import type { SettingValue } from '@auxx/lib/settings/client'
 import { Badge } from '@auxx/ui/components/badge'
-import { Banknote, CalendarRange, Lock, Scale } from 'lucide-react'
+import { Banknote, CalendarRange, ExternalLink, Lock, Scale } from 'lucide-react'
+import Link from 'next/link'
 import { useMemo } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { EmptyState } from '~/components/global/empty-state'
@@ -55,7 +56,6 @@ import {
 import { FrozenLock } from './frozen-lock'
 import { QuickbooksSettingsSection } from './quickbooks-section'
 import { SetupStatusSection } from './setup-status-section'
-import { StandardCostSection } from './standard-cost-section'
 
 const MONTH_KEY = /^\d{4}-(0[1-9]|1[0-2])$/
 
@@ -182,22 +182,30 @@ export function AccountingGeneralSettingsPage() {
           TWO INDEPENDENT COLUMNS, not a grid of rows.
 
           Each column is its own flex stack, so a tall section on one side does
-          not push the next section down on the other. The previous shape was
+          not push the next section down on the other. The original shape was
           three stacked `lg:grid-cols-2` rows, which forces every row to wait for
-          its tallest cell: `Setup status` and `Standard cost` are both tall
-          action panels and `Accounting period` is two fields, so the left side
-          grew a large hole under it before `Absorption rates` could start.
+          its tallest cell: `Setup status` was a tall action panel and
+          `Accounting period` is two fields, so the left side grew a large hole
+          under it before `Absorption rates` could start.
 
-          Left is what you FILL IN - the two draft-backed forms feeding the one
-          save bar - plus the provider, which is short and would otherwise be
-          stranded below the right column's very tall `Standard cost`. Right is
-          what the page DOES or REPORTS: both own their own actions and neither
-          writes the drafts.
+          Left is what you FILL IN - the three draft-backed forms feeding the one
+          save bar. Right is what the page DOES or REPORTS: both sections own
+          their own actions and neither writes the drafts.
 
-          ⚠️ On mobile the columns stack, so the reading order becomes
-          period -> absorption -> provider -> setup -> standard rather than the
-          previous interleave. That is the trade for column-major flow, and it is
-          the right way round: what you type comes before what you press.
+          ⚠️ The split was rebalanced when the org-wide standard-cost ROLL moved
+          to Parts > Settings > Costing (money 52 §2.2). That section rendered
+          every part it would revalue - roughly 2000px on a real chart - and was
+          the whole reason the right column was the tall one, and the reason the
+          provider had to sit on the left to avoid being stranded a screen below
+          it. With the roll gone the right column is short, so the provider moved
+          across: it owns no settings values, stays out of all three draft slices
+          and adds nothing to `DRAFT_KEYS`, which makes it a "what the page does"
+          section, not a "what you fill in" one.
+
+          ⚠️ On mobile the columns stack, so the reading order is
+          period -> routes -> absorption -> setup -> provider. That is the trade
+          for column-major flow, and it is the right way round: what you type
+          comes before what you press.
         */}
         <div className='grid grid-cols-1 items-start gap-8 lg:grid-cols-2'>
           <div className='flex flex-col gap-8'>
@@ -342,26 +350,25 @@ export function AccountingGeneralSettingsPage() {
                 rates to a purchased component would capitalize labor that was never spent and
                 overstate raw materials. Setting a first standard never overwrites one that already
                 exists, so a supplier raising a price moves the part&apos;s cost and leaves its
-                standard where it is. Re-valuing is what the roll below is for.
+                standard where it is. Re-valuing is what the roll is for, and the roll lives with
+                the parts:{' '}
+                {/*
+                  🛑 The RATES are set here and the ROLL is run there, and that
+                  split is deliberate (money 52 §2.2, decision 3). The rates are
+                  policy the accountant sets and are draft-backed by the save bar
+                  below; the roll asserts edit on the `part` def, so it belongs on
+                  a page gated the same way. This sentence is the only thing that
+                  connects the two, so it is a link rather than a mention.
+                */}
+                <Link
+                  href='/app/parts/settings/costing'
+                  className='inline-flex items-center gap-1 text-primary-600 hover:underline'>
+                  Parts, Settings, Costing
+                  <ExternalLink className='size-3' />
+                </Link>
+                .
               </p>
             </SettingsSection>
-
-            {/*
-              The export target, last in this column: the books are kept here
-              whether or not anything is connected (decision `P1`), so the
-              provider follows the period and the rates rather than leading them.
-              It owns no settings values, stays out of both draft slices, adds
-              nothing to `DRAFT_KEYS`, and must never read as a readiness gate.
-
-              🛑 It lives in the LEFT column, not below both, and that is load
-              bearing. `Standard cost` on the right renders every part it would
-              revalue - roughly 2000px on a real chart - so a section placed
-              after both columns is pushed a full screen below anything the left
-              column shows, and reads as missing. Observed 2026-08-28 on
-              `abgwpa1l81reht2zmwrcihfu`: the left column ended after ~400px and
-              the provider sat alone off the bottom.
-            */}
-            <QuickbooksSettingsSection />
           </div>
 
           <div className='flex flex-col gap-8'>
@@ -374,7 +381,19 @@ export function AccountingGeneralSettingsPage() {
               onFinalize={handleFinalize}
             />
 
-            <StandardCostSection />
+            {/*
+              The export target, last: the books are kept here whether or not
+              anything is connected (decision `P1`), so the provider follows the
+              period and the rates rather than leading them. It owns no settings
+              values, stays out of all three draft slices, adds nothing to
+              `DRAFT_KEYS`, and must never read as a readiness gate.
+
+              ⚠️ It sits in the RIGHT column now, and it must still not be placed
+              after both columns. Observed 2026-08-28 on `abgwpa1l81reht2zmwrcihfu`
+              while it was below both: it sat alone off the bottom of the page and
+              read as missing.
+            */}
+            <QuickbooksSettingsSection />
           </div>
         </div>
 

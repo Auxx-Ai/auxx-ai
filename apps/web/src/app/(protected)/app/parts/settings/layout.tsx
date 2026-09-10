@@ -3,7 +3,7 @@
 'use client'
 
 import { MainPageContent } from '@auxx/ui/components/main-page'
-import { Globe, SlidersHorizontal } from 'lucide-react'
+import { Calculator, Globe, SlidersHorizontal } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import SidebarSecondary from '~/components/global/sidebar-secondary'
 import type { SidebarProps } from '~/constants/menu'
@@ -18,6 +18,13 @@ import type { SidebarProps } from '~/constants/menu'
  * Tariffs is not a settings catalog page at all - it edits `tariff_code` and
  * `tariff_rate` records (29-tariff-schedule.md §6.1), which is why it gates on
  * the record capability rather than on `settingsManage` like its neighbour.
+ *
+ * Costing is the same kind of page for the same reason (52-parts-costing-page.md
+ * §2.1): it rolls `part_standard_*` and writes `stock_movement` rows through
+ * `assertEditEntity`, so it gates on edit of the `part` def. The absorption
+ * RATES it rolls with stay on Accounting > General - the org rates are policy
+ * the accountant sets, the per-part overrides already live on the part drawer's
+ * Costing card, and running the roll is an operation the parts person performs.
  */
 const PARTS_SETTINGS: SidebarProps[] = [
   {
@@ -40,6 +47,21 @@ const PARTS_SETTINGS: SidebarProps[] = [
         icon: <Globe />,
         description: 'Harmonized codes by country of origin, and the rates behind them',
         keywords: ['hs code', 'hts', 'duty', 'customs', 'harmonized', 'section 301'],
+      },
+      {
+        id: 'parts-settings-costing',
+        label: 'Costing',
+        slug: 'costing',
+        icon: <Calculator />,
+        description: 'What a part is valued at, and what was on the shelf on day one',
+        keywords: [
+          'standard cost',
+          'roll',
+          'opening stock',
+          'opening balance',
+          'revaluation',
+          'part kind',
+        ],
       },
     ],
   },

@@ -262,3 +262,172 @@ export interface ListReceiptsFilters {
   limit?: number
   offset?: number
 }
+
+/**
+ * One part on the Parts > Settings > Costing opening-stock checklist
+ * (plans/money/tasks/52-parts-costing-page.md §4).
+ *
+ * Every one of the five row states is derivable from these fields, and no state
+ * needs a second read to render. The two suggestion inputs travel with the row
+ * for the same reason: `shouldSuggestFinishedGood` needs `hasProduct` and
+ * `isSubpartOfAssembly` together, and a row that had one and not the other would
+ * flash the wrong suggestion while the second read landed.
+ */
+export interface OpeningStockCandidate {
+  /** `EntityInstance.id` of the `part`. */
+  partId: string
+  /**
+   * The part's display name, empty rather than null.
+   *
+   * `EntityInstance.displayName` is nullable in the column, but a checklist row
+   * with no name is still a row somebody has to look at, so the absence is
+   * flattened here rather than pushed onto every renderer.
+   */
+  title: string
+  sku: string | null
+  /**
+   * The raw stored `part_kind`: `component`, `subassembly`, `finished_good` or
+   * `null`.
+   *
+   * 🛑 Gate the suggestion on `isPartKindUnclassified`, NOT a null check. The
+   * field carries `defaultValue: 'component'`, so a stored `component` no longer
+   * proves a human chose it.
+   */
+  partKind: string | null
+  /**
+   * The frozen `part_standard_cost`, minor units at `RATE_DECIMALS`.
+   *
+   * 🛑 This, and never `part_cost`, is what an opening cost defaults from.
+   * `part_cost` is LIVE replacement cost, rewritten on every vendor-price
+   * change; seeding a movement's frozen value from it would seed the ledger
+   * from the one field that must never value a movement (HANDOFF rule 2).
+   */
+  standardCost: number | null
+  /**
+   * The part has at least one `stock_movement`, archived ones included, so
+   * `bulkOpenStockBalance` will EXCLUDE it. Opening is once.
+   */
+  hasMovements: boolean
+  /** One of those movements is `initial`: the part is already opened. */
+  hasInitialMovement: boolean
+  /** Condition (a) of `shouldSuggestFinishedGood`: the part has a `product`. */
+  hasProduct: boolean
+  /** Condition (b), inverted: some `subpart` row names this part as its CHILD. */
+  isSubpartOfAssembly: boolean
+}
+
+/** One line of a bulk opening balance: this many of this part, at this cost. */
+export interface OpeningStockEntry {
+  /** `EntityInstance.id` of the `part`. */
+  partId: string
+  /** Units on hand at the opening date. Strictly positive. */
+  quantity: number
+  /**
+   * What a unit cost, minor units at `RATE_DECIMALS`. Strictly positive.
+   *
+   * 🛑 NOT rounded into a legal value if it is finer than that. See
+   * `bulk-opening-stock.ts`.
+   */
+  unitCost: number
+}
+
+/**
+ * A whole org's opening balance, as one run.
+ *
+ * 🛑 **One date for the whole run, not one per row.** `openStockBalance` takes
+ * `occurredAt` per part because it opens one part, but an opening balance is one
+ * event on one date, and exposing it per row invites 495 dates for it.
+ */
+export interface BulkOpeningStockInput {
+  /**
+   * The ACCOUNTING date stamped on every movement in the run.
+   *
+   * 🛑 Load-bearing for the close: an `initial` movement dated at or before
+   * `accounting.cutoffPeriod` falls outside the month-end window and is covered
+   * by the frozen `accounting.opening*` baseline; one dated after it is summed
+   * into inventory. Both are correct and the date is what chooses.
+   */
+  occurredAt?: Date
+  entries: OpeningStockEntry[]
+}
+
+/**
+ * Why one part of a bulk opening run produced no movement.
+ *
+ * The split between EXCLUDED and FAILED is the difference between "this is
+ * correct and expected" and "somebody needs to look at this":
+ *
+ * | reason | bucket | meaning |
+ * | --- | --- | --- |
+ * | `already_has_movements` | excluded | opening is once; this part's ledger already started |
+ * | `duplicate_entry` | excluded | named twice in one run; the first entry was used |
+ * | `invalid_quantity` | failed | not finite, or not above zero |
+ * | `invalid_unit_cost` | failed | not finite, not above zero, or finer than `RATE_DECIMALS` |
+ * | `unknown_part` | failed | no such part in this org, or it is archived |
+ * | `no_standard_cost` | failed | the part would have been left holding stock nothing can value |
+ * | `write_failed` | failed | the movement itself was refused |
+ */
+export type OpeningStockSkipReason =
+  | 'already_has_movements'
+  | 'duplicate_entry'
+  | 'invalid_quantity'
+  | 'invalid_unit_cost'
+  | 'unknown_part'
+  | 'no_standard_cost'
+  | 'write_failed'
+
+/**
+ * One part that produced no movement, carrying the reason that proves it.
+ *
+ * ⚠️ Every excluded row carries its own explanation rather than a count at the
+ * top, which is 44 §7.2b's rule and what the backfill and post-fulfillments
+ * dialogs both already do.
+ */
+export interface OpeningStockSkip {
+  partId: string
+  reason: OpeningStockSkipReason
+  /** Human-readable, and specific to this part. Safe to render as-is. */
+  detail: string
+}
+
+/** One part that WAS opened, and the ledger row it produced. */
+export interface OpenedOpeningStockRow {
+  partId: string
+  /** `EntityInstance.id` of the created `stock_movement`. */
+  movementId: string
+  /** `<entityDefinitionId>:<instanceId>`, ready for a drawer or a picker. */
+  recordId: string
+  quantity: number
+  /** The TYPED cost, minor units, exactly as stored. */
+  unitCost: number
+  /** `round(unitCost x quantity)`, exactly as stored. */
+  extendedCost: number
+  /**
+   * The inventory account ROLE ('inventory_raw_materials'), never an account
+   * code and never a provider id (decision `G8`).
+   */
+  glAccount: string
+}
+
+/**
+ * What a bulk opening run did, and what it did not do.
+ *
+ * `opened.length + excluded.length + failed.length === requested`: every entry
+ * the caller sent is accounted for by exactly one row.
+ */
+export interface BulkOpeningStockSummary {
+  /** The single date every movement in the run was stamped with. */
+  occurredAt: Date
+  /** How many entries the caller sent, duplicates included. */
+  requested: number
+  opened: OpenedOpeningStockRow[]
+  excluded: OpeningStockSkip[]
+  failed: OpeningStockSkip[]
+  /**
+   * The opening journal entry, by inventory account role.
+   *
+   * The sum of every opening balance IS the opening inventory on the balance
+   * sheet, and nobody can check the run without the per-account split.
+   */
+  totalsByGlAccount: Array<{ glAccount: string; partCount: number; extendedCost: number }>
+}

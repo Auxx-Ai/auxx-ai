@@ -240,7 +240,6 @@ function ActionBar({
         break
       }
     }
-    console.log(totalWidth, count)
 
     if (count !== visibleCount) {
       setVisibleCount(count)
@@ -343,16 +342,9 @@ function ActionBar({
                         key={action.id}
                         disabled={action.disabled}
                         onSelect={() => {
-                          console.log(
-                            'Dropdown item selected:',
-                            action.id,
-                            'picker:',
-                            !!action.picker
-                          )
                           if (action.picker) {
                             // Delay to let dropdown fully close and animations finish
                             setTimeout(() => {
-                              console.log('Setting openPickerId to:', action.id)
                               setOpenPickerId(action.id)
                             }, 150)
                           } else {
@@ -375,7 +367,6 @@ function ActionBar({
               {/* Overflow picker - rendered when open, anchored to the button */}
               {openPickerId &&
                 (() => {
-                  console.log('Rendering overflow picker for:', openPickerId)
                   const action = overflowActions.find((a) => a.id === openPickerId && a.picker)
                   if (!action?.picker) return null
                   const PickerComponent = action.picker.component
@@ -384,7 +375,6 @@ function ActionBar({
                       key={action.id}
                       open={true}
                       onOpenChange={(pickerOpen: boolean) => {
-                        console.log('Picker onOpenChange:', pickerOpen)
                         if (!pickerOpen) setOpenPickerId(null)
                       }}
                       anchorRef={overflowButtonRef}
