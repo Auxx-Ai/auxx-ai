@@ -40,6 +40,7 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
+import { AccountLabel } from '~/components/accounting/ui/account-label'
 import { BankInstitutionIcon } from '~/components/accounting/ui/bank-institution-icon'
 import { useChartAccounts } from '~/components/accounting/ui/gl-account-picker'
 import { asConnectorStatus } from '~/components/data-connectors/ui/connector-status'
@@ -330,7 +331,7 @@ export function BankAccountsList({
                           if (mapped) {
                             return (
                               <Badge variant='outline' size='xs' className='font-mono'>
-                                {mapped.code}
+                                <AccountLabel account={mapped} density='chip' />
                               </Badge>
                             )
                           }

@@ -18,28 +18,16 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@auxx/ui/components/popover'
 import { cn } from '@auxx/ui/lib/utils'
 import { useMemo, useState } from 'react'
+import { AccountLabel } from '~/components/accounting/ui/account-label'
+import {
+  accountMatchesSearch,
+  formatAccountLabel,
+} from '~/components/accounting/ui/account-label-format'
 import { accountTypeLabel } from '~/components/accounting/ui/settings/accounts-types'
 import { PickerTrigger, type PickerTriggerOptions } from '~/components/ui/picker-trigger'
-import { api } from '~/trpc/react'
+import { useChartAccounts } from './use-chart-accounts'
 
-/**
- * Reads the org's chart of accounts through `ledger.chartAccounts`.
- *
- * ⚠️ `listChartAccounts` (the lib read behind this procedure) filters
- * `archivedAt IS NULL` server-side, so an archived `gl_account` never reaches
- * this hook at all: there is no per-row flag to check for it. The only
- * "disabled for a reason" case this data can express is `isActive: false`
- * (deactivated but not archived), which is what {@link GlAccountPicker}
- * renders disabled below.
- */
-export function useChartAccounts() {
-  const query = api.ledger.chartAccounts.useQuery()
-  return {
-    accounts: (query.data ?? []) as ChartAccountRow[],
-    isLoading: query.isLoading,
-    isError: query.isError,
-  }
-}
+export { useChartAccounts }
 
 export interface GlAccountPickerProps {
   /** The selected account's CODE or id, depending on {@link selectBy}. */
@@ -70,7 +58,8 @@ export interface GlAccountPickerProps {
  * A single-select combobox over the org's chart of accounts
  * (`ledger.chartAccounts`), grouped by statement classification in the
  * standard order ({@link GL_ACCOUNT_TYPES}: asset, liability, equity,
- * revenue, expense). Option label is `code · name`. Value in and out is the
+ * revenue, expense). The option label comes from `formatAccountLabel` and
+ * reads name-only when the account has no code. Value in and out is the
  * account CODE by default - what `resolveRoles` and the manual entry builder
  * take (decision `P2`: a posting line names an account by code with no
  * foreign key) - or the account ID when `selectBy="id"` is passed, for the
@@ -145,14 +134,7 @@ export function GlAccountPicker({
           }}
           asCombobox
           className={cn('h-auto min-h-8 w-full ps-0 pe-1', className, triggerProps?.className)}>
-          {selected && (
-            <span className='flex min-w-0 items-center gap-1.5 truncate text-sm'>
-              <span className='shrink-0 font-mono text-muted-foreground text-xs'>
-                {selected.code}
-              </span>
-              <span className='truncate'>{selected.name}</span>
-            </span>
-          )}
+          {selected && <AccountLabel account={selected} className='text-sm' />}
         </PickerTrigger>
       </PopoverTrigger>
       <PopoverContent
@@ -175,7 +157,7 @@ export function GlAccountPicker({
                     <CommandDetailItem
                       key={account.id}
                       value={account.id}
-                      title={`${account.code} · ${account.name}`}
+                      title={formatAccountLabel(account)}
                       description={
                         account.isActive
                           ? undefined
@@ -222,16 +204,13 @@ export function groupAccountsByType(
   search: string
 ): AccountGroup[] {
   const allowed = filterTypes ? new Set(filterTypes) : null
-  const needle = search.trim().toLowerCase()
-  const matches = (account: ChartAccountRow) =>
-    !needle ||
-    account.code.toLowerCase().includes(needle) ||
-    account.name.toLowerCase().includes(needle)
 
   return GL_ACCOUNT_TYPES.filter((type) => !allowed || allowed.has(type))
     .map((type) => ({
       type,
-      accounts: accounts.filter((account) => account.accountType === type && matches(account)),
+      accounts: accounts.filter(
+        (account) => account.accountType === type && accountMatchesSearch(account, search)
+      ),
     }))
     .filter((group) => group.accounts.length > 0)
 }

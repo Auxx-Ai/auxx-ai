@@ -15,6 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from '@auxx/ui/components/table'
+import { AccountLabel } from '../account-label'
 import { EMPTY_CELL, formatMinor, formatSignedMinor } from './format'
 
 /** The three balances a `month_end_inventory` snapshot asserts, in statement order. */
@@ -34,8 +35,8 @@ const ACTIVITY_ROWS = [
 interface EntryRollForwardProps {
   assertions: PostingAssertions
   currencyCode: string
-  /** Account code per role, from the org's own chart. Optional: labels stand alone. */
-  accountCodeByRole?: Partial<Record<AccountRole, string>>
+  /** Account per role, from the org's own chart. Optional: labels stand alone. */
+  accountByRole?: Partial<Record<AccountRole, { code: string | null; name: string }>>
 }
 
 /**
@@ -59,7 +60,7 @@ interface EntryRollForwardProps {
 export function EntryRollForward({
   assertions,
   currencyCode,
-  accountCodeByRole,
+  accountByRole,
 }: EntryRollForwardProps) {
   const { before, after } = assertions
 
@@ -78,14 +79,12 @@ export function EntryRollForward({
           {BALANCE_ROLES.map((role) => {
             const opening = before.balances[role]
             const closing = after.balances[role]
-            const code = accountCodeByRole?.[role]
+            const account = accountByRole?.[role]
             return (
               <TableRow key={role}>
                 <TableCell>
                   <div className='flex items-center gap-2'>
-                    {code && (
-                      <span className='font-mono text-xs text-muted-foreground'>{code}</span>
-                    )}
+                    {account && <AccountLabel account={account} />}
                     <span>{ACCOUNT_ROLE_LABELS[role]}</span>
                   </div>
                 </TableCell>

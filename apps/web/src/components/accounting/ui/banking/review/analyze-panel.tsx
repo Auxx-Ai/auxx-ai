@@ -22,6 +22,7 @@ import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapte
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { BaseType } from '~/components/workflow/types'
 import { api } from '~/trpc/react'
+import { formatAccountLabel } from '../../account-label'
 import { useChartAccounts } from '../../gl-account-picker'
 import { EMPTY_CELL, formatSignedMinor } from '../../ledger/format'
 import { BankRuleDialog } from '../rules/bank-rule-dialog'
@@ -104,7 +105,7 @@ export function AnalyzePanel({ line, currencyCode }: AnalyzePanelProps) {
 
   const accountLabel = (glAccountId: string) => {
     const account = accounts.find((item) => item.id === glAccountId)
-    return account ? `${account.code} ${account.name}` : glAccountId
+    return account ? formatAccountLabel(account) : glAccountId
   }
 
   const searchFor = (value: string, field: BankRuleMatchField) => {

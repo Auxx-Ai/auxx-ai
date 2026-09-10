@@ -22,6 +22,7 @@
 
 import type { GlAccountTypeValue, OpeningTrialBalanceRow } from '@auxx/lib/postings/client'
 import { GL_ACCOUNT_TYPES } from '@auxx/lib/postings/client'
+import { formatAccountLabel } from '../account-label-format'
 import { formatMinor } from '../ledger/format'
 import type { StatementColumn, StatementRow } from '../reports/statement-table'
 import { StatementTable } from '../reports/statement-table'
@@ -250,7 +251,7 @@ function toStatementRows(
       sectionCredit += row.creditMinor ?? 0
       out.push({
         id: `${ACCOUNT_ROW_PREFIX}${row.accountCode}`,
-        label: `${row.accountCode} ${row.accountName}`,
+        label: formatAccountLabel({ code: row.accountCode, name: row.accountName }),
         depth: 1,
         // 🛑 `computed`, not `line`, is what makes a locked row read-only:
         // `StatementTable`'s edit mode puts a `CurrencyInput` in a `line` and

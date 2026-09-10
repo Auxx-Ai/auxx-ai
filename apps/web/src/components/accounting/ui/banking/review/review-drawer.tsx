@@ -20,6 +20,7 @@ import { Ban, Landmark, Undo2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import DrawerComments from '~/components/global/comments/drawer-comments'
 import { api } from '~/trpc/react'
+import { formatAccountLabel } from '../../account-label'
 import { BankAccountBadge } from '../../bank-account-badge'
 import { useChartAccounts } from '../../gl-account-picker'
 import { EntryBlockers, type LedgerBlocker } from '../../ledger/entry-blockers'
@@ -252,7 +253,7 @@ export function ReviewDrawer({
                         </span>
                         <span className='truncate text-muted-foreground text-xs'>
                           {line.reviewStatus === 'coded'
-                            ? `Coded to ${codedAccount ? `${codedAccount.code} ${codedAccount.name}` : (line.glAccountId ?? '')}`
+                            ? `Coded to ${codedAccount ? formatAccountLabel(codedAccount) : (line.glAccountId ?? '')}`
                             : line.reviewStatus === 'excluded'
                               ? (line.excludeReason ?? '')
                               : matchedLabel(line)}

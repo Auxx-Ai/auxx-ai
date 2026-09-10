@@ -39,6 +39,7 @@ export interface StatementRow {
     /** The `gl_account` `EntityInstance` id (task 15) - the drill-down key. `accountCode` is display only. */
     glAccountId?: string
     accountCode?: string
+    accountName?: string
     recordId?: string
     badge?: string
     note?: string
@@ -54,6 +55,7 @@ export interface StatementLineInput {
   /** Minor units, one per column, in column order. */
   values: Array<number | null>
   accountCode?: string
+  accountName?: string
   note?: string
 }
 
@@ -86,8 +88,8 @@ export function statementSection(
     kind: 'line',
     values: line.values,
     meta:
-      line.accountCode || line.note
-        ? { accountCode: line.accountCode, note: line.note }
+      line.accountCode || line.accountName || line.note
+        ? { accountCode: line.accountCode, accountName: line.accountName, note: line.note }
         : undefined,
   }))
 

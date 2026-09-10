@@ -58,8 +58,8 @@ import { useViewportFill } from '~/hooks/use-viewport-fill'
 import { useAccess, useRequireCapability } from '~/providers/capabilities-provider'
 import { useDockStore } from '~/stores/dock-store'
 import { api } from '~/trpc/react'
+import { AccountLabel } from '../account-label'
 import { BankAccountBadge } from '../bank-account-badge'
-import { useChartAccounts } from '../gl-account-picker'
 import { EMPTY_CELL, formatMinor } from '../ledger/format'
 import { ReviewBulkBar } from './review/review-bulk-bar'
 import { ReviewDrawer } from './review/review-drawer'
@@ -200,13 +200,8 @@ export function BankingReviewQueuePage() {
   )
 
   // `glAccountId`/`suggestedGlAccountId` on a row are `gl_account` ids (task 15
-  // §4), never codes - resolved once here against the one chart fetch, never
-  // per row.
-  const { accounts: chartAccounts } = useChartAccounts()
-  const chartAccountById = useMemo(
-    () => new Map(chartAccounts.map((chartAccount) => [chartAccount.id, chartAccount])),
-    [chartAccounts]
-  )
+  // §4), never codes - rendered through `AccountLabel`, which resolves each one
+  // against the one chart fetch every picker on this page shares.
 
   /**
    * A bookmarked `?account=` for an account that has since been archived or
@@ -523,14 +518,13 @@ export function BankingReviewQueuePage() {
                         )}
                         {row.suggestedGlAccountId && row.reviewStatus !== 'coded' && (
                           <Badge variant='blue' size='xs'>
-                            Code:{' '}
-                            {chartAccountById.get(row.suggestedGlAccountId)?.code ??
-                              row.suggestedGlAccountId}
+                            Suggested{' '}
+                            <AccountLabel glAccountId={row.suggestedGlAccountId} density='chip' />
                           </Badge>
                         )}
                         {row.glAccountId && (
                           <Badge variant='outline' size='xs' className='font-mono'>
-                            {chartAccountById.get(row.glAccountId)?.code ?? row.glAccountId}
+                            <AccountLabel glAccountId={row.glAccountId} density='chip' />
                           </Badge>
                         )}
                         <span className='flex items-center gap-1 text-muted-foreground text-xs'>

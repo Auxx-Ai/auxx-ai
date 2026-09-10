@@ -19,6 +19,7 @@ import type {
   BankRuleRecord,
 } from '@auxx/lib/banking/rules/client'
 import type { SelectOption } from '@auxx/types/custom-field'
+import { formatAccountLabel, type LabelAccount } from '../../account-label-format'
 
 /** Flush-in-a-FieldPanelRow trigger sizing, the same one the rule editors share. */
 export const TRIGGER_PROPS = { className: 'w-full ps-0 pe-1' } as const
@@ -78,7 +79,7 @@ export function describeRuleAction(
   rule: Pick<BankRuleRecord, 'action' | 'glAccountId' | 'counterpartBankAccountId'>,
   resolveAccountName: (id: string) => string | undefined,
   /** `rule.glAccountId` (task 15 §4) resolved against the chart, for display. */
-  resolveGlAccountCode: (id: string) => string | undefined
+  resolveGlAccountLabel: (id: string) => string | undefined
 ): string {
   if (rule.action === 'exclude') return 'Exclude'
   if (rule.action === 'transfer') {
@@ -88,7 +89,7 @@ export function describeRuleAction(
     return name ? `Transfer to ${name}` : 'Transfer'
   }
   if (!rule.glAccountId) return 'Code'
-  return `Code ${resolveGlAccountCode(rule.glAccountId) ?? rule.glAccountId}`
+  return `Code ${resolveGlAccountLabel(rule.glAccountId) ?? rule.glAccountId}`
 }
 
 /**
@@ -99,8 +100,7 @@ export function describeActionDetail(input: {
   action: BankRuleAction
   /** The `gl_account` id a `code` action proposes (task 15 §4). Never a code. */
   glAccountId: string
-  glAccountCode?: string
-  glAccountName?: string
+  glAccount?: LabelAccount | null
   counterpartName?: string
 }): string {
   if (input.action === 'exclude') return 'Exclude'
@@ -108,8 +108,8 @@ export function describeActionDetail(input: {
     return input.counterpartName ? `Transfer to ${input.counterpartName}` : 'Transfer'
   }
   if (!input.glAccountId) return 'Code to an account'
-  const label = input.glAccountCode ?? input.glAccountId
-  return input.glAccountName ? `Code to ${label} · ${input.glAccountName}` : `Code to ${label}`
+  const label = input.glAccount ? formatAccountLabel(input.glAccount) : input.glAccountId
+  return `Code to ${label}`
 }
 
 /**
@@ -119,7 +119,7 @@ export function describeActionDetail(input: {
 export function describeRule(
   rule: BankRuleRecord,
   resolveAccountName: (id: string) => string | undefined,
-  resolveGlAccountCode: (id: string) => string | undefined
+  resolveGlAccountLabel: (id: string) => string | undefined
 ): string {
   const parts = [
     `${MATCH_FIELD_LABELS[rule.matchField]} ${MATCH_OPERATOR_LABELS[rule.matchOperator]} "${rule.matchValue}"`,
@@ -129,6 +129,6 @@ export function describeRule(
     const name = resolveAccountName(rule.bankAccountId)
     if (name) parts.push(name)
   }
-  parts.push(describeRuleAction(rule, resolveAccountName, resolveGlAccountCode))
+  parts.push(describeRuleAction(rule, resolveAccountName, resolveGlAccountLabel))
   return parts.join(' · ')
 }

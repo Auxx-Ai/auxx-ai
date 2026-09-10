@@ -71,7 +71,12 @@ import {
   X,
 } from 'lucide-react'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
-import { GlAccountPicker, useChartAccounts } from '~/components/accounting/ui/gl-account-picker'
+import {
+  AccountLabel,
+  formatAccountLabel,
+  useChartAccount,
+} from '~/components/accounting/ui/account-label'
+import { GlAccountPicker } from '~/components/accounting/ui/gl-account-picker'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import type { CatalogGroup } from '~/components/money/hooks/use-catalog-groups'
 import type { CatalogItem } from '~/components/money/hooks/use-catalog-items'
@@ -2039,17 +2044,19 @@ function WeightChip({ weight, onClick }: { weight: number | null; onClick?: () =
  * renders as itself, the same posture `EntryJournal`'s snapshot rows take).
  */
 function GlAccountChip({ glAccountId, onClick }: { glAccountId: string; onClick?: () => void }) {
-  const { accounts } = useChartAccounts()
-  const account = accounts.find((candidate) => candidate.id === glAccountId)
-  const label = account ? account.code : glAccountId
+  const { account } = useChartAccount(glAccountId)
   const content = (
     <span className='shrink-0 rounded-sm bg-primary-100 px-1.5 py-0.5 text-[10px] text-muted-foreground leading-none tabular-nums dark:bg-primary-100/60'>
-      {label}
+      <AccountLabel account={account} glAccountId={glAccountId} density='chip' />
     </span>
   )
-  if (!onClick) return <SimpleTooltip content='GL account'>{content}</SimpleTooltip>
+  if (!onClick) {
+    return (
+      <SimpleTooltip content={formatAccountLabel(account) || 'GL account'}>{content}</SimpleTooltip>
+    )
+  }
   return (
-    <SimpleTooltip content='GL account — click to change'>
+    <SimpleTooltip content={`${formatAccountLabel(account) || 'GL account'} - click to change`}>
       <button
         type='button'
         tabIndex={-1}

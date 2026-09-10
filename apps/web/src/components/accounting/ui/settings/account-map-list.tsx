@@ -58,6 +58,8 @@ import { cn } from '@auxx/ui/lib/utils'
 import { Check, Landmark, Link2, Sparkles, TriangleAlert, X } from 'lucide-react'
 import { useState } from 'react'
 import { api } from '~/trpc/react'
+import { AccountLabel } from '../account-label'
+import { accountMatchesSearch } from '../account-label-format'
 import {
   ACCOUNT_SUGGESTION_REASON_COPY,
   accountTypeColor,
@@ -153,12 +155,7 @@ export function AccountMapList({ compact = false }: AccountMapListProps) {
 
   const visible = (
     compact ? rows.filter((row) => row.state !== 'confirmed' || isMappingBroken(row)) : rows
-  ).filter(
-    (row) =>
-      !search ||
-      row.account.name.toLowerCase().includes(search.toLowerCase()) ||
-      row.account.code.includes(search)
-  )
+  ).filter((row) => accountMatchesSearch(row.account, search))
 
   return (
     <div className='flex flex-col gap-3 p-3'>
@@ -230,14 +227,7 @@ export function AccountMapList({ compact = false }: AccountMapListProps) {
               <TreeRow
                 key={row.account.id}
                 icon={<Landmark className='size-4 text-muted-foreground' />}
-                title={
-                  <span className='flex items-baseline gap-2'>
-                    <span className='text-muted-foreground text-xs tabular-nums'>
-                      {row.account.code}
-                    </span>
-                    <span className='text-sm'>{row.account.name}</span>
-                  </span>
-                }
+                title={<AccountLabel account={row.account} className='text-sm' />}
                 secondaryFill
                 rowClassName={cn(
                   'bg-primary-100/50 hover:bg-primary-100',

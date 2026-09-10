@@ -120,8 +120,7 @@ export function BankRuleDialog({ open, onClose, rule, seed }: BankRuleDialogProp
   const actionLabel = describeActionDetail({
     action,
     glAccountId,
-    glAccountCode: selectedGlAccount?.code,
-    glAccountName: selectedGlAccount?.name,
+    glAccount: selectedGlAccount,
     counterpartName: counterpart ? bankAccountLabel(counterpart) : undefined,
   })
 

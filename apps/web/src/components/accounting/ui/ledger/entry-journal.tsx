@@ -16,6 +16,7 @@ import {
 import { cn } from '@auxx/ui/lib/utils'
 import { CheckCircle2, Search, TriangleAlert } from 'lucide-react'
 import { Tooltip } from '~/components/global/tooltip'
+import { AccountLabel, formatAccountLabel } from '../account-label'
 import { formatMinor } from './format'
 
 interface EntryJournalProps {
@@ -66,19 +67,18 @@ export function EntryJournal({ lines, currencyCode, onDrillDown }: EntryJournalP
         </TableHeader>
         <TableBody>
           {[...debits, ...credits].map((line) => (
-            <TableRow key={`${line.direction}-${line.accountCode}-${line.sortOrder}`}>
+            <TableRow key={`${line.direction}-${line.glAccountId}-${line.sortOrder}`}>
               <TableCell className={cn('align-top', line.direction === 'credit' && 'ps-8')}>
                 <div className='flex items-center gap-2'>
-                  <span className='font-mono text-xs text-muted-foreground'>
-                    {line.accountCode}
-                  </span>
-                  <span>{line.accountName ?? line.accountCode}</span>
+                  <AccountLabel
+                    account={{ code: line.accountCode, name: line.accountName ?? '' }}
+                  />
                   {onDrillDown && (
                     <Tooltip content='What is behind this number'>
                       <Button
                         variant='ghost'
                         size='icon-xs'
-                        aria-label={`What is behind account ${line.accountCode}`}
+                        aria-label={`What is behind account ${formatAccountLabel({ code: line.accountCode, name: line.accountName ?? '' })}`}
                         onClick={() => onDrillDown(line.accountCode, line.accountName)}>
                         <Search />
                       </Button>

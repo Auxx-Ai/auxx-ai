@@ -38,6 +38,8 @@ import { TREE_SECONDARY_NOTRUNCATE, TreeRow } from '@auxx/ui/components/tree-row
 import { cn } from '@auxx/ui/lib/utils'
 import { Landmark, Plus, Sparkles, TriangleAlert } from 'lucide-react'
 import { useState } from 'react'
+import { AccountLabel } from '../account-label'
+import { accountMatchesSearch } from '../account-label-format'
 import {
   accountTypeColor,
   accountTypeLabel,
@@ -90,10 +92,7 @@ export function ChartList({
   ).length
 
   const filtered = search
-    ? accounts.filter(
-        (account) =>
-          account.name.toLowerCase().includes(search.toLowerCase()) || account.code.includes(search)
-      )
+    ? accounts.filter((account) => accountMatchesSearch(account, search))
     : accounts
 
   // Hidden once `recordId` is stamped: the real row arrived with the invalidated
@@ -193,12 +192,10 @@ export function ChartList({
               key={phantom.draftId}
               icon={<Landmark className='size-4 text-muted-foreground' />}
               title={
-                <span className='flex items-baseline gap-2'>
-                  <span className='text-muted-foreground text-xs tabular-nums'>
-                    {phantom.code || '—'}
-                  </span>
-                  <span className='text-sm'>{phantom.name || 'New account'}</span>
-                </span>
+                <AccountLabel
+                  account={{ code: phantom.code || null, name: phantom.name || 'New account' }}
+                  className='text-sm'
+                />
               }
               secondaryFill
               onToggleOpen={() => onSelect(phantom.draftId)}
@@ -219,14 +216,7 @@ export function ChartList({
               <TreeRow
                 key={account.id}
                 icon={<Landmark className='size-4 text-muted-foreground' />}
-                title={
-                  <span className='flex items-baseline gap-2'>
-                    <span className='text-muted-foreground text-xs tabular-nums'>
-                      {account.code}
-                    </span>
-                    <span className='text-sm'>{account.name}</span>
-                  </span>
-                }
+                title={<AccountLabel account={account} className='text-sm' />}
                 secondaryFill
                 onToggleOpen={() => onSelect(account.id)}
                 rowClassName={cn(

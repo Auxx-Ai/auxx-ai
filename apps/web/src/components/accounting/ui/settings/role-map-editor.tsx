@@ -33,6 +33,8 @@ import { Ban, Check, RotateCcw, Sparkles } from 'lucide-react'
 import { useState } from 'react'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { BaseType } from '~/components/workflow/types'
+import { AccountLabel } from '../account-label'
+import { accountMatchesSearch } from '../account-label-format'
 import { accountTypeLabel, DEFAULT_UNUSED_ROLES, formatAccount } from './accounts-types'
 
 interface RoleMapEditorProps {
@@ -77,10 +79,7 @@ export function RoleMapEditor({
 
   const eligible = accounts.filter((account) => account.accountType === expectedType)
   const filtered = search
-    ? eligible.filter(
-        (account) =>
-          account.name.toLowerCase().includes(search.toLowerCase()) || account.code.includes(search)
-      )
+    ? eligible.filter((account) => accountMatchesSearch(account, search))
     : eligible
 
   const isDefaultUnused = DEFAULT_UNUSED_ROLES.includes(role)
@@ -232,10 +231,7 @@ export function RoleMapEditor({
                       'hover:bg-primary-100 disabled:opacity-60',
                       currentId === account.id && 'bg-primary-100 ring-1 ring-primary-200'
                     )}>
-                    <span className='w-14 shrink-0 text-muted-foreground tabular-nums'>
-                      {account.code}
-                    </span>
-                    <span className='min-w-0 flex-1 truncate'>{account.name}</span>
+                    <AccountLabel account={account} className='min-w-0 flex-1' />
                     {!account.isActive && (
                       <Badge variant='outline' size='xs' className='shrink-0'>
                         Inactive
