@@ -11,7 +11,7 @@ import { ListToolbar, ListToolbarGroup } from '@auxx/ui/components/list-toolbar'
 import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { Separator } from '@auxx/ui/components/separator'
 import { format } from 'date-fns'
-import { CircleX } from 'lucide-react'
+import { Ban, CircleX, Inbox, Link2, List, type LucideIcon, Sparkles, Tag } from 'lucide-react'
 import { BankAccountPicker } from '~/components/accounting/ui/bank-account-picker'
 
 /** Every filter the queue narrows on. All of them run in SQL. */
@@ -36,14 +36,20 @@ export const EMPTY_REVIEW_FILTERS: ReviewFilters = {
   amountMax: '',
 }
 
-/** The five statuses plus "everything", in the order a reviewer works through them. */
-const STATES: { value: ReviewQueueState; label: string }[] = [
-  { value: 'for_review', label: REVIEW_STATUS_LABELS.for_review },
-  { value: 'suggested', label: REVIEW_STATUS_LABELS.suggested },
-  { value: 'matched', label: REVIEW_STATUS_LABELS.matched },
-  { value: 'coded', label: REVIEW_STATUS_LABELS.coded },
-  { value: 'excluded', label: REVIEW_STATUS_LABELS.excluded },
-  { value: 'all', label: 'All' },
+/**
+ * The five statuses plus "everything", in the order a reviewer works through
+ * them. The icons pair with the drawer's treatment tabs on purpose - `Link2`
+ * is "matched to a document" and `Tag` is "coded to an account" in both
+ * places, so the pile you filtered to and the decision that fills it read as
+ * the same word.
+ */
+const STATES: { value: ReviewQueueState; label: string; icon: LucideIcon }[] = [
+  { value: 'for_review', label: REVIEW_STATUS_LABELS.for_review, icon: Inbox },
+  { value: 'suggested', label: REVIEW_STATUS_LABELS.suggested, icon: Sparkles },
+  { value: 'matched', label: REVIEW_STATUS_LABELS.matched, icon: Link2 },
+  { value: 'coded', label: REVIEW_STATUS_LABELS.coded, icon: Tag },
+  { value: 'excluded', label: REVIEW_STATUS_LABELS.excluded, icon: Ban },
+  { value: 'all', label: 'All', icon: List },
 ]
 
 interface ReviewToolbarProps {
@@ -149,6 +155,7 @@ export function ReviewToolbar({ filters, onChange, actions }: ReviewToolbarProps
             size='sm'>
             {STATES.map((state) => (
               <RadioTabItem key={state.value} value={state.value}>
+                <state.icon />
                 {state.label}
               </RadioTabItem>
             ))}

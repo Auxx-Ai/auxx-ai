@@ -12,6 +12,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@auxx/ui/components/dialog'
+import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
+import { Label } from '@auxx/ui/components/label'
 import { Textarea } from '@auxx/ui/components/textarea'
 import { Ban, Sparkles, Tags } from 'lucide-react'
 import { useState } from 'react'
@@ -143,7 +145,7 @@ export function ReviewBulkBar({ selectedIds, onClear, onDone }: ReviewBulkBarPro
       />
 
       <Dialog open={dialog === 'exclude'} onOpenChange={(open) => !open && setDialog(null)}>
-        <DialogContent>
+        <DialogContent position='tc' size='sm'>
           <DialogHeader>
             <DialogTitle>Exclude {count} bank lines</DialogTitle>
             <DialogDescription>
@@ -151,31 +153,48 @@ export function ReviewBulkBar({ selectedIds, onClear, onDone }: ReviewBulkBarPro
               like an unreviewed line to the next person.
             </DialogDescription>
           </DialogHeader>
-          <Textarea
-            value={reason}
-            rows={3}
-            placeholder='Personal charges on the company card'
-            onChange={(event) => setReason(event.target.value)}
-          />
+
+          <div className='flex flex-col gap-2'>
+            <Label htmlFor='bulk-exclude-reason'>Reason</Label>
+            <Textarea
+              id='bulk-exclude-reason'
+              value={reason}
+              rows={3}
+              autoFocus
+              placeholder='Personal charges on the company card'
+              onChange={(event) => setReason(event.target.value)}
+            />
+          </div>
+
           <EntryBlockers blockers={blockers} />
+
           <DialogFooter>
-            <Button variant='outline' onClick={() => setDialog(null)}>
-              Cancel
+            <Button
+              type='button'
+              variant='ghost'
+              size='sm'
+              onClick={() => setDialog(null)}
+              disabled={busy}>
+              Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
             </Button>
             <Button
+              variant='outline'
+              size='sm'
               disabled={!reason.trim() || busy}
               loading={bulkExclude.isPending}
+              loadingText='Excluding...'
               onClick={() =>
                 bulkExclude.mutate({ ids: selectedIds.slice(0, 200), reason: reason.trim() })
-              }>
-              Exclude
+              }
+              data-dialog-submit>
+              Exclude <KbdSubmit variant='outline' size='sm' />
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <Dialog open={dialog === 'assign'} onOpenChange={(open) => !open && setDialog(null)}>
-        <DialogContent>
+        <DialogContent position='tc' size='sm'>
           <DialogHeader>
             <DialogTitle>Code {count} bank lines</DialogTitle>
             <DialogDescription>
@@ -183,24 +202,41 @@ export function ReviewBulkBar({ selectedIds, onClear, onDone }: ReviewBulkBarPro
               other. Money out debits the account; money in credits it.
             </DialogDescription>
           </DialogHeader>
-          <GlAccountPicker
-            value={accountId}
-            selectBy='id'
-            onChange={setAccountId}
-            placeholder='Choose an account…'
-          />
+
+          <div className='flex flex-col gap-2'>
+            {/* No `htmlFor`: the picker is a combobox button, not a control
+                with an id to point at. */}
+            <Label>Account</Label>
+            <GlAccountPicker
+              value={accountId}
+              selectBy='id'
+              onChange={setAccountId}
+              placeholder='Choose an account…'
+            />
+          </div>
+
           <EntryBlockers blockers={blockers} />
+
           <DialogFooter>
-            <Button variant='outline' onClick={() => setDialog(null)}>
-              Cancel
+            <Button
+              type='button'
+              variant='ghost'
+              size='sm'
+              onClick={() => setDialog(null)}
+              disabled={busy}>
+              Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
             </Button>
             <Button
+              variant='outline'
+              size='sm'
               disabled={!accountId || busy}
               loading={bulkAssign.isPending}
+              loadingText='Posting...'
               onClick={() =>
                 bulkAssign.mutate({ ids: selectedIds.slice(0, 100), glAccountId: accountId ?? '' })
-              }>
-              Post
+              }
+              data-dialog-submit>
+              Post <KbdSubmit variant='outline' size='sm' />
             </Button>
           </DialogFooter>
         </DialogContent>
