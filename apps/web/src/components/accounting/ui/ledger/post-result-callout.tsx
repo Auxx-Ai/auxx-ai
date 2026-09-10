@@ -86,6 +86,13 @@ const OUTCOMES: Record<PostResultStatus, OutcomeCopy> = {
       'The entry is built, balanced and recorded here exactly as it would be with a provider. There is simply nowhere to push it.',
     tone: 'success',
   },
+  not_enabled: {
+    icon: PlugZap,
+    title: 'Nothing posted. Accounting is not enabled for this organization',
+    detail:
+      'The ledger is off for this organization, so no entry was built or recorded. Enable the accounting module and run its setup to start posting.',
+    tone: 'neutral',
+  },
   disabled: {
     icon: CircleSlash,
     title: 'Posted. Export is switched off',

@@ -4,10 +4,13 @@
 // QuickBooks' and nobody else's.
 //
 // The provider-agnostic core (`postings/post-entry.ts`) owns resolve, claim,
-// persist and record. It hands this adapter a balanced entry whose lines already
-// carry account CODES from the org's own chart, and it writes back whatever id
-// comes out. This file owns three things the core cannot: turning a code into a
-// QuickBooks account id, QuickBooks' `DocNumber`, and QuickBooks' `requestid`.
+// persist and record. It hands this adapter a balanced entry whose lines carry
+// the org's own account CODE, name and `glAccountId` - task 15's IDENTITY, and
+// the key this file resolves by (`resolveMappedAccounts`) so a replay
+// (`retry-export.ts`) cannot be tripped up by a renumber that happened since -
+// and it writes back whatever provider id comes out. This file owns three
+// things the core cannot: turning an account into a QuickBooks account id,
+// QuickBooks' `DocNumber`, and QuickBooks' `requestid`.
 //
 // Registered from the APP layer via `registerAccountingProvider`, never imported
 // by `packages/lib` itself. That direction is decision P1: the ledger is ours
@@ -285,8 +288,8 @@ async function fetchChart(ctx: QuickbooksToolContext): Promise<ProviderAccount[]
 }
 
 /**
- * Resolve every account CODE an entry names to a QuickBooks account id, through
- * the `G19` account map.
+ * Resolve every account an entry names, by `glAccountId`, to a QuickBooks
+ * account id, through the `G19` account map.
  *
  * 🛑 **There is no matching here, and that is the point.** This used to compare
  * our code against `Account.AcctNum` and take the single hit. That looked like a
@@ -296,6 +299,13 @@ async function fetchChart(ctx: QuickbooksToolContext): Promise<ProviderAccount[]
  * silently moved where a role posted. `G19` replaced it with a confirmation a
  * person makes once - "this account IS that account" - which is what the map
  * below reads.
+ *
+ * 🛑 **Keyed on `glAccountId` (task 15 §2.3), not on the account code.** A
+ * replayed line (`retry-export.ts`) carries the id it was posted with; looking
+ * it up by the FROZEN code used to miss the moment the account was renumbered
+ * in our own chart, refusing a retry with "no account has the code X" for an
+ * account that plainly exists. The id is exactly what the line already carries
+ * for this reason - see `ResolvedPostingLine.glAccountId`.
  *
  * Every mapping is revalidated on every entry against the chart just fetched:
  * the target must still exist, still be active, and still sit in the same
@@ -307,7 +317,7 @@ async function fetchChart(ctx: QuickbooksToolContext): Promise<ProviderAccount[]
  */
 async function resolveMappedAccounts(
   ctx: QuickbooksToolContext,
-  codes: readonly string[]
+  glAccountIds: readonly string[]
 ): Promise<Result<Map<string, ProviderAccount>, Error>> {
   const [chart, ourChart] = await Promise.all([
     fetchChart(ctx),
@@ -321,16 +331,16 @@ async function resolveMappedAccounts(
     connectionId: ctx.connectionId,
   })
 
-  const byCode = new Map(ourChart.value.map((row) => [norm(row.code), row]))
+  const byId = new Map(ourChart.value.map((row) => [row.id, row]))
   const byProviderId = new Map(chart.map((account) => [account.id, account]))
 
   const resolved = new Map<string, ProviderAccount>()
   const problems: string[] = []
 
-  for (const code of new Set(codes)) {
-    const account = byCode.get(norm(code))
+  for (const glAccountId of new Set(glAccountIds)) {
+    const account = byId.get(glAccountId)
     if (!account) {
-      problems.push(`No account in this organization's chart has the code '${code}'.`)
+      problems.push(`No account in this organization's chart has the id '${glAccountId}'.`)
       continue
     }
 
@@ -350,7 +360,7 @@ async function resolveMappedAccounts(
     }
 
     // `validateProviderMapping` returns null only when `live` is present.
-    resolved.set(code, live as ProviderAccount)
+    resolved.set(glAccountId, live as ProviderAccount)
   }
 
   if (problems.length > 0) {
@@ -404,6 +414,12 @@ export class QuickbooksAccountingProvider implements AccountingProvider {
    * a `ResolvedPostingLine` - may hold one, because that is what would make the
    * ledger un-replayable against a different provider three years later.
    *
+   * The code is our own caller's vocabulary (a human keying a manual entry
+   * looks at the chart, not at ids), so it is translated to the account's
+   * `glAccountId` here, then handed to {@link resolveMappedAccounts} - the same
+   * by-id door `postEntry` below uses, so the two paths cannot disagree about
+   * what one account resolves to.
+   *
    * NOT cached across calls. The provider instance is a process-lifetime
    * singleton, so an instance-level cache would keep serving an account id after
    * the mapping was changed or its target deactivated in QuickBooks, with no
@@ -423,18 +439,24 @@ export class QuickbooksAccountingProvider implements AccountingProvider {
       )
     }
 
+    const notResolved = () =>
+      err(
+        new UnprocessableEntityError(
+          `Account code '${code}' could not be resolved to a QuickBooks account.`,
+          { accountCode: code }
+        )
+      )
+
     try {
-      const accounts = await resolveMappedAccounts(resolved.context, [code])
+      const ourChart = await listChartAccounts(database, orgId)
+      if (ourChart.isErr()) return err(ourChart.error)
+      const ourAccount = ourChart.value.find((row) => norm(row.code) === norm(code))
+      if (!ourAccount) return notResolved()
+
+      const accounts = await resolveMappedAccounts(resolved.context, [ourAccount.id])
       if (accounts.isErr()) return err(accounts.error)
-      const account = accounts.value.get(code)
-      return account
-        ? ok(account.id)
-        : err(
-            new UnprocessableEntityError(
-              `Account code '${code}' could not be resolved to a QuickBooks account.`,
-              { accountCode: code }
-            )
-          )
+      const account = accounts.value.get(ourAccount.id)
+      return account ? ok(account.id) : notResolved()
     } catch (error) {
       return err(
         new UnprocessableEntityError(
@@ -605,13 +627,14 @@ export class QuickbooksAccountingProvider implements AccountingProvider {
       }
       const ctx = resolved.context
 
-      // ── Resolve every account code before anything is written ────────────
-      // One call for the whole entry, and it collects every problem rather than
-      // stopping at the first: naming all the offending codes at once matters,
-      // because fixing them one failed post at a time is how a close slips a day.
+      // ── Resolve every account before anything is written ─────────────────
+      // By `glAccountId` (task 15 §2.3), not by the frozen code: one call for
+      // the whole entry, collecting every problem rather than stopping at the
+      // first, and immune to a renumber that happened after this line posted -
+      // exactly what a `retry-export.ts` replay needs.
       const accounts = await resolveMappedAccounts(
         ctx,
-        input.lines.map((line) => line.accountCode)
+        input.lines.map((line) => line.glAccountId)
       )
       if (accounts.isErr()) {
         return err(
@@ -624,9 +647,9 @@ export class QuickbooksAccountingProvider implements AccountingProvider {
 
       const lines: QboJournalLine[] = []
       for (const line of [...input.lines].sort((a, b) => a.sortOrder - b.sortOrder)) {
-        // `resolveMappedAccounts` refuses unless every code resolved, so a miss
+        // `resolveMappedAccounts` refuses unless every id resolved, so a miss
         // here is unreachable rather than merely unlikely.
-        const account = accounts.value.get(line.accountCode)
+        const account = accounts.value.get(line.glAccountId)
         if (!account) continue
         lines.push({
           amountMinor: line.amount,

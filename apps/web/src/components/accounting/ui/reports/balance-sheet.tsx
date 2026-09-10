@@ -140,8 +140,8 @@ export function BalanceSheetReportPage() {
                   : undefined
               }
               onRowClick={(row) =>
-                row.meta?.accountCode
-                  ? setDrillDown({ accountCode: row.meta.accountCode, to: asOf })
+                row.meta?.glAccountId
+                  ? setDrillDown({ glAccountId: row.meta.glAccountId, to: asOf })
                   : undefined
               }
             />

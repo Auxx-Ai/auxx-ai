@@ -160,9 +160,15 @@ export const BANK_DEPOSIT_FIELDS: Record<string, ResourceField> = {
     // renaming it would orphan them; the key is only how this file reads.
     // `linkNewRelationships` resolves an inverse by ID, which is why the pair is
     // declared as `bank_deposit:bankAccountRecord` on the account side.
+    //
+    // 🛑 Corrected by task 15 §4 (2026-09-10): this field still holds the
+    // FROZEN pointer a deposit posted to, but that pointer is now the
+    // `gl_account` instance id, not a code - the id and key stay exactly as
+    // they were (a materialised field cannot be renamed without reshaping
+    // every org's stored rows), only what the stored TEXT value MEANS changed.
     id: toFieldId('bankAccount'),
     key: 'bankAccountCode',
-    label: 'Bank Account Code',
+    label: 'Bank Account GL Account',
     type: BaseType.STRING,
     fieldType: FieldType.TEXT,
     isSystem: true,
@@ -176,12 +182,12 @@ export const BANK_DEPOSIT_FIELDS: Record<string, ResourceField> = {
       updatable: true,
       configurable: false,
     },
-    placeholder: '1000',
+    placeholder: 'Select account',
     description:
-      'The GL account CODE this deposit was POSTED to, copied off ' +
-      'bankAccount.glAccountCode when the entry was built and frozen there. Kept beside the ' +
+      'The gl_account id this deposit was POSTED to, copied off ' +
+      'bankAccount.glAccount when the entry was built and frozen there. Kept beside the ' +
       'relationship rather than derived from it, because re-mapping a bank account to a ' +
-      'different code must not restate a deposit that already posted to the old one',
+      'different account must not restate a deposit that already posted to the old one',
   },
 
   bankAccount: {

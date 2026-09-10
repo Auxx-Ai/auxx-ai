@@ -48,7 +48,7 @@ import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { cn } from '@auxx/ui/lib/utils'
 import { Banknote, FileDown, Landmark } from 'lucide-react'
 import { useQueryState } from 'nuqs'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { EmptyState } from '~/components/global/empty-state'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
@@ -57,6 +57,7 @@ import SettingsPage from '~/components/global/settings-page'
 import { useDocumentSendActions } from '~/components/money/ui/use-document-send-actions'
 import { RecordsView } from '~/components/records/records-view'
 import { BaseType } from '~/components/workflow/types'
+import { useViewportFill } from '~/hooks/use-viewport-fill'
 import { useRequireCapability } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
 import { BankAccountPicker, bankAccountLabel, useBankAccounts } from '../../bank-account-picker'
@@ -116,50 +117,6 @@ function formatDay(day: string): string {
 /** Below this the framed split is not worth filling - it just scrolls with the page. */
 const MIN_FRAME_HEIGHT = 320
 
-/**
- * The height that makes this element end exactly where `SettingsPage`'s scroll
- * viewport does, so the split fills the page without adding a scrollbar.
- *
- * ⚠️ `--settings-sticky-top` is NOT the whole story. It measures the sticky
- * title/tabs block only; the breadcrumb bar above it is a separate, non-sticky
- * sibling, so `viewport - stickyTop` overshoots by the breadcrumb's height and
- * the page gains a scrollbar exactly that tall. What is honest is the element's
- * own offset inside the scroll content: everything above it, sticky or not, has
- * already been laid out, so `viewportHeight - offsetTop` is the room that is
- * actually left. Re-measured when the viewport or anything above it resizes -
- * the header grows a line when the description wraps at narrow widths.
- */
-function useFillViewportHeight() {
-  const ref = useRef<HTMLDivElement>(null)
-  const [height, setHeight] = useState<number | null>(null)
-
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    const viewport = el.closest('[data-slot="scroll-area-viewport"]')
-    if (!(viewport instanceof HTMLElement)) return
-
-    const measure = () => {
-      const offsetTop =
-        el.getBoundingClientRect().top - viewport.getBoundingClientRect().top + viewport.scrollTop
-      setHeight(Math.max(MIN_FRAME_HEIGHT, viewport.clientHeight - offsetTop))
-    }
-
-    measure()
-    const observer = new ResizeObserver(measure)
-    observer.observe(viewport)
-    // Everything above this element inside the scroll content - the breadcrumb
-    // bar and the sticky header. Not `el` itself: observing what this effect
-    // resizes is a loop.
-    for (const sibling of viewport.children) {
-      if (sibling !== el) observer.observe(sibling)
-    }
-    return () => observer.disconnect()
-  }, [])
-
-  return { ref, height }
-}
-
 const METHOD_LABELS: Record<string, string> = {
   cash: 'Cash',
   check: 'Check',
@@ -199,19 +156,20 @@ export function DepositsPage() {
 
   // ── The account it is banked INTO ─────────────────────────────────────────
   //
-  // 🛑 The operator picks a BANK ACCOUNT and the ledger code is read off that
+  // 🛑 The operator picks a BANK ACCOUNT and the ledger id is read off that
   // account's own mapping, never chosen from the chart. `createBankDeposit`
-  // debits whatever code it is handed, and the bank feed posts every
-  // transaction on this account against `bank_account.glAccountCode` - so a
-  // free choice from the chart puts the deposit and the statement line it
-  // exists to match into two different accounts. Nothing catches that: match
-  // candidates are found by amount and date, not by account.
+  // debits whatever id it is handed, and the bank feed posts every
+  // transaction on this account against `bank_account.glAccount` (task 15
+  // §4, a `gl_account` id) - so a free choice from the chart puts the deposit
+  // and the statement line it exists to match into two different accounts.
+  // Nothing catches that: match candidates are found by amount and date, not
+  // by account.
   const { accounts: bankAccounts, isLoading: bankAccountsLoading } = useBankAccounts()
   const bankAccount = useMemo(
     () => bankAccounts.find((account) => account.id === bankAccountId) ?? null,
     [bankAccounts, bankAccountId]
   )
-  const bankAccountCode = bankAccount?.glAccountCode?.trim() || null
+  const bankAccountGlAccountId = bankAccount?.glAccountId?.trim() || null
 
   /**
    * What is missing before a deposit can name an account at all.
@@ -233,7 +191,7 @@ export function DepositsPage() {
     }
     // Only once one is CHOSEN. Listing every unmapped account up front would
     // shout about accounts this deposit was never going to touch.
-    if (bankAccount && !bankAccountCode) {
+    if (bankAccount && !bankAccountGlAccountId) {
       return [
         {
           status: 'bank_account_unmapped',
@@ -242,7 +200,7 @@ export function DepositsPage() {
       ]
     }
     return []
-  }, [bankAccountsLoading, bankAccounts, bankAccount, bankAccountCode])
+  }, [bankAccountsLoading, bankAccounts, bankAccount, bankAccountGlAccountId])
 
   const createDeposit = api.money.bankDeposit.create.useMutation({
     onSuccess: async (result) => {
@@ -290,9 +248,11 @@ export function DepositsPage() {
     )
   }, [])
 
-  // `bankAccountId` as well as its code: the mutation sends the id, and the
-  // code is only what proves the account is mapped well enough to post.
-  const canRecord = selectedIds.length > 0 && !!bankAccountId && !!bankAccountCode && !!depositDate
+  // `bankAccountId` as well as its `gl_account` id: the mutation sends the
+  // bank account id, and the mapping is only what proves the account is
+  // mapped well enough to post.
+  const canRecord =
+    selectedIds.length > 0 && !!bankAccountId && !!bankAccountGlAccountId && !!depositDate
 
   /** The selection, once {@link canRecord} has proved every part of it is there. */
   const recordDeposit = () => {
@@ -305,7 +265,8 @@ export function DepositsPage() {
     })
   }
 
-  const { ref: frameRef, height: frameHeight } = useFillViewportHeight()
+  const frameRef = useRef<HTMLDivElement>(null)
+  const frameHeight = useViewportFill(frameRef, MIN_FRAME_HEIGHT)
 
   return (
     <SettingsPage

@@ -248,21 +248,23 @@ export async function listChartAccounts(
 }
 
 /**
- * How many posted lines name each account CODE.
+ * How many posted lines landed on each account, by `glAccountId`.
  *
  * The one number the chart's renumber warning needs. A posting line stores the
- * account code with **no foreign key** (`P2`), deliberately, so the ledger
- * outlives the chart - which means renumbering an account leaves every line
- * already posted holding the old code. That is a feature, and it is also the
- * kind of feature a person should be told about with a NUMBER rather than a
- * caution: "142 posted lines carry 1310" is what makes the trade concrete.
+ * account id with **no foreign key** (task 15: the IDENTITY), so a line
+ * outlives the chart row it was posted against - which means a deleted account
+ * can still carry posted history. That is a feature, and it is also the kind
+ * of feature a person should be told about with a NUMBER rather than a
+ * caution: "142 posted lines carry this account" is what makes the trade
+ * concrete.
  *
- * ⚠️ **Keyed on CODE, not on account id**, because a code is what a posted line
- * actually stores. Two consequences, both correct: an account never posted to
- * reports nothing, and an account whose code was PREVIOUSLY carried by a
- * different account reports that history too. The question the number answers is
- * "how many posted lines say `1310`", which is exactly the question somebody
- * about to renumber is asking.
+ * ⚠️ **Keyed on `glAccountId`, not on code**, because renumbering no longer
+ * fragments an account's history (task 15 §3) - "how many posted lines landed
+ * on THIS account" is exactly the question a renumber warning has to answer,
+ * and the id answers it precisely where a code answer used to undercount an
+ * account renumbered since some of its lines posted. An account never posted
+ * to reports nothing; a deleted account whose id is no longer in the live
+ * chart still reports its true count, findable by whoever kept the id.
  *
  * 🛑 Deliberately NOT folded into {@link listChartAccounts}. `ChartAccountRow` is
  * shared with `resolveRoles`' path and decoded by every reader of this chart; a
@@ -275,16 +277,16 @@ export async function listChartAccountUsage(
   try {
     const rows = await db
       .select({
-        accountCode: schema.GlPostingLine.accountCode,
+        glAccountId: schema.GlPostingLine.glAccountId,
         lines: count(),
       })
       .from(schema.GlPostingLine)
       .where(eq(schema.GlPostingLine.organizationId, organizationId))
-      .groupBy(schema.GlPostingLine.accountCode)
+      .groupBy(schema.GlPostingLine.glAccountId)
 
     const usage: Record<string, number> = {}
     for (const row of rows) {
-      if (row.accountCode) usage[row.accountCode] = Number(row.lines) || 0
+      if (row.glAccountId) usage[row.glAccountId] = Number(row.lines) || 0
     }
     return ok(usage)
   } catch (error) {

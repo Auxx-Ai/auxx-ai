@@ -62,7 +62,7 @@ vi.mock('../../reads', () => ({
   getBankAccount: async (_db: unknown, params: { bankAccountId: string }) => ({
     isErr: () => false,
     isOk: () => true,
-    value: { id: params.bankAccountId, name: 'Counterpart', glAccountCode: '1010' },
+    value: { id: params.bankAccountId, name: 'Counterpart', glAccountId: '1010' },
   }),
   // The write-once posting high-water mark is stamped on the ACCOUNT beside the
   // line's own `gl_posting_id`, so the treatments resolve the bank_account def
@@ -137,7 +137,7 @@ function row(over: Partial<BankTransactionRow> = {}): BankTransactionRow {
     externalId: 'bt-0001',
     bankAccountId: 'acct_1',
     bankAccountName: 'BoA ···5381',
-    bankAccountCode: '1000',
+    bankAccountGlAccountId: '1000',
     bankAccountConnectorId: null,
     postedAt: '2026-09-10',
     description: 'WIRE FEE',
@@ -147,7 +147,7 @@ function row(over: Partial<BankTransactionRow> = {}): BankTransactionRow {
     source: 'import',
     importBatchId: null,
     reviewStatus: 'for_review',
-    glAccountCode: null,
+    glAccountId: null,
     matchedRecordId: null,
     matchedRecordType: null,
     excludeReason: null,
@@ -155,7 +155,7 @@ function row(over: Partial<BankTransactionRow> = {}): BankTransactionRow {
     reviewedByUserId: null,
     glPostingId: null,
     ruleId: null,
-    suggestedGlAccount: null,
+    suggestedGlAccountId: null,
     suggestionReason: null,
     createdAt: new Date('2026-09-10T00:00:00Z'),
     ...over,
@@ -320,7 +320,7 @@ describe('codeTransaction', () => {
       organizationId: ORG,
       actorUserId: ACTOR,
       transactionId: 'txn_1',
-      glAccountCode: '6100',
+      glAccountId: '6100',
     })
     expect(result.isOk()).toBe(true)
     expect(h.postEntry).toHaveBeenCalledTimes(1)
@@ -337,7 +337,7 @@ describe('codeTransaction', () => {
       organizationId: ORG,
       actorUserId: ACTOR,
       transactionId: 'txn_1',
-      glAccountCode: '6100',
+      glAccountId: '6100',
     })
     const entry = h.postEntry.mock.calls[0]?.[1].entry
     expect(entry.txnDate).toBe('2026-07-31')
@@ -350,10 +350,10 @@ describe('codeTransaction', () => {
       organizationId: ORG,
       actorUserId: ACTOR,
       transactionId: 'txn_1',
-      glAccountCode: '6100',
+      glAccountId: '6100',
     })
     const out = h.postEntry.mock.calls[0]?.[1].entry.lines
-    expect(out.find((l: { direction: string }) => l.direction === 'debit').accountCode).toBe('6100')
+    expect(out.find((l: { direction: string }) => l.direction === 'debit').glAccountId).toBe('6100')
 
     vi.clearAllMocks()
     h.postEntry.mockResolvedValue({ status: 'posted', glPostingId: 'post_3' })
@@ -362,10 +362,10 @@ describe('codeTransaction', () => {
       organizationId: ORG,
       actorUserId: ACTOR,
       transactionId: 'txn_2',
-      glAccountCode: '4000',
+      glAccountId: '4000',
     })
     const inbound = h.postEntry.mock.calls[0]?.[1].entry.lines
-    expect(inbound.find((l: { direction: string }) => l.direction === 'credit').accountCode).toBe(
+    expect(inbound.find((l: { direction: string }) => l.direction === 'credit').glAccountId).toBe(
       '4000'
     )
   })
@@ -377,7 +377,7 @@ describe('codeTransaction', () => {
       organizationId: ORG,
       actorUserId: ACTOR,
       transactionId: 'txn_1',
-      glAccountCode: '6100',
+      glAccountId: '6100',
     })
     expect(result.isOk()).toBe(true)
     if (result.isOk()) expect(result.value.post?.status).toBe('period_closed')
@@ -393,7 +393,7 @@ describe('codeTransaction', () => {
       organizationId: ORG,
       actorUserId: ACTOR,
       transactionId: 'txn_1',
-      glAccountCode: '6100',
+      glAccountId: '6100',
     })
     expect(h.pin).toHaveBeenCalledWith(
       expect.anything(),
@@ -407,7 +407,7 @@ describe('codeTransaction', () => {
       organizationId: ORG,
       actorUserId: ACTOR,
       transactionId: 'txn_manual',
-      glAccountCode: '6100',
+      glAccountId: '6100',
     })
     expect(h.pin).not.toHaveBeenCalled()
   })
@@ -418,7 +418,7 @@ describe('codeTransaction', () => {
       organizationId: ORG,
       actorUserId: ACTOR,
       transactionId: 'txn_1',
-      glAccountCode: '6100',
+      glAccountId: '6100',
     })
     expect(result.isErr()).toBe(true)
     expect(h.postEntry).not.toHaveBeenCalled()
@@ -430,7 +430,7 @@ describe('codeTransaction', () => {
       organizationId: ORG,
       actorUserId: ACTOR,
       transactionId: 'txn_1',
-      glAccountCode: '6100',
+      glAccountId: '6100',
     })
     expect(result.isErr()).toBe(true)
     if (result.isErr()) expect(result.error.message).toMatch(/post_0/)
@@ -443,7 +443,7 @@ describe('codeTransaction', () => {
       organizationId: ORG,
       actorUserId: ACTOR,
       transactionId: 'txn_1',
-      glAccountCode: '6100',
+      glAccountId: '6100',
     })
     expect(result.isErr()).toBe(true)
     expect(h.postEntry).not.toHaveBeenCalled()
@@ -458,7 +458,7 @@ describe('transferTransaction', () => {
         id: 'txn_in',
         recordId: 'def_bt:txn_in',
         bankAccountId: 'acct_2',
-        bankAccountCode: '1010',
+        bankAccountGlAccountId: '1010',
         amountMinor: 250_000,
       }),
     ]
@@ -496,10 +496,10 @@ describe('transferTransaction', () => {
       counterpartBankAccountId: 'acct_2',
     })
     const lines = h.postEntry.mock.calls[0]?.[1].entry.lines
-    expect(lines.find((l: { direction: string }) => l.direction === 'debit').accountCode).toBe(
+    expect(lines.find((l: { direction: string }) => l.direction === 'debit').glAccountId).toBe(
       '1010'
     )
-    expect(lines.find((l: { direction: string }) => l.direction === 'credit').accountCode).toBe(
+    expect(lines.find((l: { direction: string }) => l.direction === 'credit').glAccountId).toBe(
       '1000'
     )
   })
@@ -532,7 +532,7 @@ describe('transferTransaction', () => {
         id: 'txn_first',
         recordId: 'def_bt:txn_first',
         bankAccountId: 'acct_2',
-        bankAccountCode: '1010',
+        bankAccountGlAccountId: '1010',
         amountMinor: -250_000,
         reviewStatus: 'coded',
         matchedRecordId: 'acct_1',
@@ -578,7 +578,7 @@ describe('transferTransaction', () => {
         id: 'txn_other',
         recordId: 'def_bt:txn_other',
         bankAccountId: 'acct_2',
-        bankAccountCode: '1010',
+        bankAccountGlAccountId: '1010',
         amountMinor: -250_000,
         reviewStatus: 'coded',
         matchedRecordId: 'acct_9',
@@ -653,7 +653,7 @@ describe('excludeTransaction', () => {
 
 describe('undoReview', () => {
   it('reverses a coded line and puts it back in the queue', async () => {
-    row({ reviewStatus: 'coded', glAccountCode: '6100', glPostingId: 'post_1' })
+    row({ reviewStatus: 'coded', glAccountId: '6100', glPostingId: 'post_1' })
     const result = await undoReview(db, {
       organizationId: ORG,
       actorUserId: ACTOR,
@@ -928,7 +928,7 @@ describe('🛑 bank_account_has_posted - the write-once removal gate', () => {
       organizationId: ORG,
       actorUserId: ACTOR,
       transactionId: 'txn_1',
-      glAccountCode: '6100',
+      glAccountId: '6100',
     })
     expect(result.isOk()).toBe(true)
     expect(updateFor('def_ba:acct_1')).toEqual({ bank_account_has_posted: true })
@@ -955,14 +955,14 @@ describe('🛑 bank_account_has_posted - the write-once removal gate', () => {
       organizationId: ORG,
       actorUserId: ACTOR,
       transactionId: 'txn_1',
-      glAccountCode: '6100',
+      glAccountId: '6100',
     })
     // Nothing reached the books, so nothing may claim it did.
     expect(updateFor('def_ba:acct_1')).toBeUndefined()
   })
 
   it('survives undoReview on the only coded row', async () => {
-    row({ reviewStatus: 'coded', glAccountCode: '6100', glPostingId: 'post_1' })
+    row({ reviewStatus: 'coded', glAccountId: '6100', glPostingId: 'post_1' })
     const result = await undoReview(db, {
       organizationId: ORG,
       actorUserId: ACTOR,
@@ -984,7 +984,7 @@ describe('🛑 bank_account_has_posted - the write-once removal gate', () => {
   })
 
   it('survives the posting reversal undoReview performs', async () => {
-    row({ reviewStatus: 'coded', glAccountCode: '6100', glPostingId: 'post_1' })
+    row({ reviewStatus: 'coded', glAccountId: '6100', glPostingId: 'post_1' })
     await undoReview(db, { organizationId: ORG, actorUserId: ACTOR, transactionId: 'txn_1' })
     // The reversal really did run - it is a SECOND GlPosting, so there is more in
     // the books afterwards, not less - and the flag is still untouched.

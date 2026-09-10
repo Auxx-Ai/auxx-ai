@@ -415,10 +415,12 @@ export const BANK_TRANSACTION_FIELDS: Record<string, ResourceField> = {
       updatable: true,
       configurable: false,
     },
-    placeholder: '6100',
+    placeholder: 'Select account',
     description:
-      'The account CODE a coded line posts to, from the org own chart. The bank_account ' +
-      'side of the entry comes from the account mapping, not from here',
+      'The gl_account id a coded line posts to, from the org own chart. TEXT with no ' +
+      'foreign key, not a RELATIONSHIP - written in bulk by the review queue over ' +
+      'thousands of rows and validated on read. The bank_account side of the entry comes ' +
+      'from the account mapping, not from here',
   },
 
   matchedRecordId: {
@@ -602,9 +604,9 @@ export const BANK_TRANSACTION_FIELDS: Record<string, ResourceField> = {
       updatable: true,
       configurable: false,
     },
-    placeholder: '6100',
+    placeholder: 'Select account',
     description:
-      'The account CODE a "code" suggestion proposes, from the org own chart. Set by a ' +
+      'The gl_account id a "code" suggestion proposes, from the org own chart. Set by a ' +
       'matching bank_rule or by suggestFromHistory; null for a transfer suggestion',
   },
 

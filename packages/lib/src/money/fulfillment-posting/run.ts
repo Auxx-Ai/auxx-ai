@@ -49,6 +49,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { and, eq, like, ne, or } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import { getOrgCache } from '../../cache'
+import { isAccountingEnabled } from '../../postings/accounting-enabled'
 import { buildFulfillmentBatchEntry } from '../../postings/build-fulfillment-batch-entry'
 import { resolvePeriodLock } from '../../postings/period-lock'
 import { postEntry } from '../../postings/post-entry'
@@ -78,8 +79,19 @@ const logger = createScopedLogger('money-fulfillment-posting')
  * accounting provider connected is a first-class case (decision P1) - the entry
  * is built, balanced and persisted identically and simply never pushed, so its
  * shipments are posted and must be stamped.
+ *
+ * `not_enabled` is in for completeness (task 17 section 3): in practice this
+ * run never reaches {@link executeGroup} for an org that has never turned
+ * accounting on - {@link runFulfillmentPosting} checks it once, before the
+ * plan is even read.
  */
-const POSTED_STATUSES = new Set<string>(['posted', 'healed', 'not_connected', 'disabled'])
+const POSTED_STATUSES = new Set<string>([
+  'posted',
+  'healed',
+  'not_connected',
+  'disabled',
+  'not_enabled',
+])
 
 /** One progress line per this many groups, so a long run is observable. */
 const PROGRESS_EVERY = 10
@@ -140,6 +152,16 @@ export async function runFulfillmentPosting(
   }
 
   try {
+    // 🛑 Checked ONCE per org, before the settings read, the shipment netting
+    // read and the plan - none of which this run has any use for when the org
+    // has never turned accounting on (task 17 section 3). A first-class silent
+    // case, like an org whose Stripe account is not connected: nothing is
+    // read, nothing is built, nothing is logged, and the summary comes back
+    // exactly as empty as "nothing to post".
+    if (!(await isAccountingEnabled(db, organizationId))) {
+      return summary
+    }
+
     const prepared = await prepare(db, request)
     if (prepared.refusal) {
       // 🛑 A run-level refusal has no group to hang on, and the summary type is

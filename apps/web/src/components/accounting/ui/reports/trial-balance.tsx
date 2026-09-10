@@ -128,8 +128,8 @@ export function TrialBalanceReportPage() {
                 query.data ? { label: 'Debits = Credits', ok: query.data.balanced } : undefined
               }
               onRowClick={(row) =>
-                row.meta?.accountCode
-                  ? setDrillDown({ accountCode: row.meta.accountCode, to: asOf })
+                row.meta?.glAccountId
+                  ? setDrillDown({ glAccountId: row.meta.glAccountId, to: asOf })
                   : undefined
               }
             />

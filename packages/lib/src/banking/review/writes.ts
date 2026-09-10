@@ -204,8 +204,8 @@ export async function matchTransaction(
 // ── Code ────────────────────────────────────────────────────────────────────
 
 export interface CodeTransactionInput extends ActorParams {
-  /** An account CODE from the org's own chart, e.g. `'6100'`. */
-  glAccountCode: string
+  /** A `gl_account` id from the org's own chart (task 15 §4). */
+  glAccountId: string
   /**
    * The vendor or customer this line is with.
    *
@@ -240,7 +240,7 @@ export async function codeTransaction(
   db: Database,
   input: CodeTransactionInput
 ): Promise<Result<ReviewOutcome, Error>> {
-  const { organizationId, actorUserId, transactionId, glAccountCode, memo } = input
+  const { organizationId, actorUserId, transactionId, glAccountId, memo } = input
   return guard(
     async () => {
       const ctx = await requireReviewFieldContext(organizationId)
@@ -266,8 +266,8 @@ export async function codeTransaction(
         }),
         txnDate,
         amountMinor: line.amountMinor,
-        glAccountCode,
-        bankAccountCode: line.bankAccountCode ?? '',
+        glAccountId,
+        bankAccountGlAccountId: line.bankAccountGlAccountId ?? '',
         memo: memo ?? line.description ?? undefined,
       })
       if (input.contactRecordId) {
@@ -302,7 +302,7 @@ export async function codeTransaction(
       const crud = new UnifiedCrudHandler(organizationId, actorUserId, db)
       await crud.update(toRecordId(ctx.bankTransactionDefId, transactionId), {
         bank_transaction_review_status: 'coded',
-        bank_transaction_gl_account: glAccountCode.trim(),
+        bank_transaction_gl_account: glAccountId.trim(),
         bank_transaction_gl_posting_id: post.glPostingId ?? undefined,
         bank_transaction_reviewed_at: new Date().toISOString(),
         bank_transaction_reviewed_by_user_id: actorUserId,
@@ -324,7 +324,7 @@ export async function codeTransaction(
       logger.info('Coded a bank line', {
         organizationId,
         transactionId,
-        glAccountCode,
+        glAccountId,
         docNumber: post.docNumber,
         pinnedCells: pinned,
       })
@@ -335,7 +335,7 @@ export async function codeTransaction(
       } satisfies ReviewOutcome
     },
     'Failed to code a bank line',
-    { organizationId, transactionId, glAccountCode }
+    { organizationId, transactionId, glAccountId }
   )
 }
 
@@ -479,12 +479,12 @@ export async function transferTransaction(
       // `undoReview` always knows where to look for the posting.
       const filedOn = opposite && !outgoing ? opposite : line
       const other = filedOn === line ? opposite : line
-      const fromAccountCode = outgoing
-        ? line.bankAccountCode
-        : (opposite?.bankAccountCode ?? counterpart.value.glAccountCode)
-      const toAccountCode = outgoing
-        ? (opposite?.bankAccountCode ?? counterpart.value.glAccountCode)
-        : line.bankAccountCode
+      const fromAccountId = outgoing
+        ? line.bankAccountGlAccountId
+        : (opposite?.bankAccountGlAccountId ?? counterpart.value.glAccountId)
+      const toAccountId = outgoing
+        ? (opposite?.bankAccountGlAccountId ?? counterpart.value.glAccountId)
+        : line.bankAccountGlAccountId
 
       const attempt = await countBankTransactionPostings(db, {
         organizationId,
@@ -500,8 +500,8 @@ export async function transferTransaction(
         }),
         txnDate: filedOn.postedAt ?? txnDate,
         amountMinor: filedOn.amountMinor,
-        fromAccountCode: fromAccountCode ?? '',
-        toAccountCode: toAccountCode ?? '',
+        fromAccountId: fromAccountId ?? '',
+        toAccountId: toAccountId ?? '',
         memo: memo ?? `Transfer ${line.description ?? ''}`.trim(),
       })
 
@@ -528,7 +528,7 @@ export async function transferTransaction(
         bank_transaction_review_status: other ? 'matched' : 'coded',
         bank_transaction_matched_record_id: other?.id ?? counterpartBankAccountId,
         bank_transaction_matched_record_type: other ? 'bank_transaction' : 'bank_account',
-        bank_transaction_gl_account: other ? undefined : (toAccountCode ?? undefined),
+        bank_transaction_gl_account: other ? undefined : (toAccountId ?? undefined),
         bank_transaction_gl_posting_id: post.glPostingId ?? undefined,
         bank_transaction_reviewed_at: now,
         bank_transaction_reviewed_by_user_id: actorUserId,

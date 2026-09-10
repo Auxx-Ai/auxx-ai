@@ -234,17 +234,18 @@ export const VENDOR_BILL_LINE_FIELDS: Record<string, ResourceField> = {
     },
   },
 
-  // An account CODE — '2160', '5090' — never a provider account id (P2). The
-  // ledger is ours and the accounting system is an exporter; the provider's id
-  // for an account lives on `gl_account`, where it can change without touching
-  // a single line.
+  // The `gl_account` instance id (task 15 §4) - a text id with no foreign
+  // key, never a provider account id (P2). The ledger is ours and the
+  // accounting system is an exporter; the provider's id for an account lives
+  // on `gl_account`, where it can change without touching a single line.
   /**
-   * The account this bill line is coded to, as a **CODE** (`'2160'`).
+   * The account this bill line is coded to, as an **ID**, not a code and not
+   * a role.
    *
    * 🛑 Deliberately NOT a role, and this is the one place in the purchasing
-   * subsystem where a code is the right answer — so the difference from
-   * `stock_movement.glAccount` (which stores a `G8` ROLE) is stated here rather
-   * than left to be rediscovered.
+   * subsystem where a bookkeeper's own pick is the right answer - so the
+   * difference from `stock_movement.glAccount` (which stores a `G8` ROLE) is
+   * stated here rather than left to be rediscovered.
    *
    * Two things separate them:
    *
@@ -257,11 +258,15 @@ export const VENDOR_BILL_LINE_FIELDS: Record<string, ResourceField> = {
    *     transcription of a document that a human corrects. The movement's role
    *     is frozen precisely because it can never be corrected.
    *
+   * `id as TEXT, no FK, validated on read` is the decision
+   * (`plans/accounting/tasks/15-the-account-id-is-the-identity.md` §4) - the
+   * same shape `GlRoleAssignment.glAccountId` already uses.
+   *
    * ⚠️ What is still wrong: `bill-lines-from-purchase-order.ts` hardcodes
    * `GRNI_ACCOUNT_CODE = '2160'` to prefill a PO-matched line. That IS a `G8`
    * violation — the prefill should resolve the `grni` role through the org's
-   * own `gl_account` chart and use whatever code it finds. It is a prefill and
-   * a human can overtype it, which is why it is a defect rather than a
+   * own `gl_account` chart and use whatever account it finds. It is a prefill
+   * and a human can overtype it, which is why it is a defect rather than a
    * corruption, but it breaks for any org that renumbers GRNI.
    */
   glAccount: {
@@ -281,9 +286,9 @@ export const VENDOR_BILL_LINE_FIELDS: Record<string, ResourceField> = {
       updatable: true,
       configurable: false,
     },
-    placeholder: '2160',
+    placeholder: 'Select account',
     description:
-      "The account code this line is coded to, in the organization's own chart of accounts. A code, not an auxx posting role: most of a chart plays no part in an auxx posting.",
+      "The gl_account id this line is coded to, in the organization's own chart of accounts. TEXT with no foreign key, not a code and not an auxx posting role: most of a chart plays no part in an auxx posting.",
   },
 
   sortOrder: {

@@ -48,16 +48,18 @@ import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { cn } from '@auxx/ui/lib/utils'
 import { Inbox, Landmark, ListChecks } from 'lucide-react'
 import { parseAsStringLiteral, useQueryState } from 'nuqs'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRegisterDockedPanels } from '~/components/global/docked-panels-outlet'
 import { EmptyState } from '~/components/global/empty-state'
 import SettingsPage from '~/components/global/settings-page'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useMedia } from '~/hooks/use-media'
+import { useViewportFill } from '~/hooks/use-viewport-fill'
 import { useAccess, useRequireCapability } from '~/providers/capabilities-provider'
 import { useDockStore } from '~/stores/dock-store'
 import { api } from '~/trpc/react'
 import { BankAccountBadge } from '../bank-account-badge'
+import { useChartAccounts } from '../gl-account-picker'
 import { EMPTY_CELL, formatMinor } from '../ledger/format'
 import { ReviewBulkBar } from './review/review-bulk-bar'
 import { ReviewDrawer } from './review/review-drawer'
@@ -78,6 +80,20 @@ const PAGE_DESCRIPTION =
  * display currency is that constant rather than a read.
  */
 const DISPLAY_CURRENCY = 'USD'
+
+/** The queue never collapses below this, however short the window is. */
+const MIN_FRAME_HEIGHT = 260
+
+/**
+ * Consecutive pages the sentinel may pull without the reviewer scrolling again.
+ *
+ * The sentinel sits at the end of the list, so a page that does not fill the
+ * viewport leaves it still on screen and it fires straight away. That is
+ * correct once or twice - it is how a short first page catches up to a tall
+ * window - but unbounded it walks the whole queue on mount. Reset on scroll,
+ * the same guard `mail-thread-list.tsx` uses.
+ */
+const MAX_AUTO_FETCHES = 5
 
 /** What one "apply rules" run reports back, as `applySuggestions` returns it. */
 interface RunCounts {
@@ -183,6 +199,15 @@ export function BankingReviewQueuePage() {
     [accountsQuery.data]
   )
 
+  // `glAccountId`/`suggestedGlAccountId` on a row are `gl_account` ids (task 15
+  // §4), never codes - resolved once here against the one chart fetch, never
+  // per row.
+  const { accounts: chartAccounts } = useChartAccounts()
+  const chartAccountById = useMemo(
+    () => new Map(chartAccounts.map((chartAccount) => [chartAccount.id, chartAccount])),
+    [chartAccounts]
+  )
+
   /**
    * A bookmarked `?account=` for an account that has since been archived or
    * deleted is an ordinary state, not an error - `getBankAccount` takes the same
@@ -207,12 +232,17 @@ export function BankingReviewQueuePage() {
     [filters]
   )
 
-  const list = api.bankingReview.list.useQuery(listInput)
+  const list = api.bankingReview.list.useInfiniteQuery(listInput, {
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
+  })
   const stats = api.bankingReview.stats.useQuery({
     bankAccountId: filters.bankAccountId ?? undefined,
   })
 
-  const rows = list.data ?? []
+  const rows = useMemo(
+    () => list.data?.pages.flatMap((page) => page.items) ?? [],
+    [list.data?.pages]
+  )
 
   const toggle = useCallback((id: string) => {
     setSelectedIds((current) =>
@@ -338,9 +368,71 @@ export function BankingReviewQueuePage() {
   )
   useRegisterDockedPanels(dockedPanels)
 
+  /**
+   * 🛑 The frame needs a DEFINITE height, and `flex-1` is not one here.
+   *
+   * `SettingsPage` is itself a `ScrollArea` whose content wrapper is
+   * `min-h-full` with an auto height, and a grow item of an auto-height flex
+   * column is sized by its own content, not by the container. Left on `flex-1`
+   * this frame grew to the full list, the `ScrollArea` below it became as tall
+   * as its contents and never scrolled, and the settings viewport scrolled the
+   * whole page instead - the stat strip and the toolbar scrolled away with it.
+   * `rules-page.tsx` and `deposits-page.tsx` measure the same way.
+   */
+  const frameRef = useRef<HTMLDivElement>(null)
+  const frameHeight = useViewportFill(frameRef, MIN_FRAME_HEIGHT)
+
+  // ── Infinite scroll ─────────────────────────────────────────────────────
+  //
+  // The queue pages 50 at a time. Refs rather than deps so the observer is
+  // built once per viewport instead of being torn down on every fetch.
+  const [listViewport, setListViewport] = useState<HTMLDivElement | null>(null)
+  const sentinelRef = useRef<HTMLDivElement>(null)
+  const nextPage = useRef({ fetch: list.fetchNextPage, has: false, fetching: false })
+  nextPage.current = {
+    fetch: list.fetchNextPage,
+    has: list.hasNextPage,
+    fetching: list.isFetchingNextPage,
+  }
+  const autoFetches = useRef(0)
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current
+    if (!listViewport || !sentinel) return
+
+    const reset = () => {
+      autoFetches.current = 0
+    }
+    listViewport.addEventListener('scroll', reset, { passive: true })
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        const { has, fetching, fetch } = nextPage.current
+        if (!entry?.isIntersecting || !has || fetching) return
+        if (autoFetches.current >= MAX_AUTO_FETCHES) return
+        autoFetches.current++
+        void fetch()
+      },
+      { root: listViewport, threshold: 0 }
+    )
+    observer.observe(sentinel)
+
+    return () => {
+      listViewport.removeEventListener('scroll', reset)
+      observer.disconnect()
+    }
+  }, [listViewport])
+
+  /** A new view is a new pile - the auto-fetch budget starts over with it. */
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the filters are the trigger
+  useEffect(() => {
+    autoFetches.current = 0
+    listViewport?.scrollTo({ top: 0 })
+  }, [listInput])
+
   return (
     <SettingsPage title='Review queue' description={PAGE_DESCRIPTION} breadcrumbs={BREADCRUMBS}>
-      <div className='flex min-h-0 flex-1 flex-col'>
+      <div ref={frameRef} className='flex min-h-0 flex-col' style={{ height: frameHeight }}>
         <ReviewStats
           stats={stats.data}
           loading={stats.isPending}
@@ -381,7 +473,7 @@ export function BankingReviewQueuePage() {
             }
           />
         ) : (
-          <ScrollArea className='min-h-0 flex-1'>
+          <ScrollArea className='min-h-0 flex-1' viewportRef={setListViewport}>
             <div className='flex flex-col gap-1 p-4 pb-24'>
               <TreeRowList
                 items={rows}
@@ -429,14 +521,16 @@ export function BankingReviewQueuePage() {
                             Void
                           </Badge>
                         )}
-                        {row.suggestedGlAccount && row.reviewStatus !== 'coded' && (
+                        {row.suggestedGlAccountId && row.reviewStatus !== 'coded' && (
                           <Badge variant='blue' size='xs'>
-                            Code: {row.suggestedGlAccount}
+                            Code:{' '}
+                            {chartAccountById.get(row.suggestedGlAccountId)?.code ??
+                              row.suggestedGlAccountId}
                           </Badge>
                         )}
-                        {row.glAccountCode && (
+                        {row.glAccountId && (
                           <Badge variant='outline' size='xs' className='font-mono'>
-                            {row.glAccountCode}
+                            {chartAccountById.get(row.glAccountId)?.code ?? row.glAccountId}
                           </Badge>
                         )}
                         <span className='flex items-center gap-1 text-muted-foreground text-xs'>
@@ -459,6 +553,31 @@ export function BankingReviewQueuePage() {
                   />
                 )}
               />
+
+              {/* The trigger for the next page. It sits INSIDE the padded
+                  wrapper so `pb-24` keeps it clear of the bulk bar; the
+                  observer's root is the viewport above, not the window. */}
+              <div ref={sentinelRef} className='h-px shrink-0' aria-hidden />
+              {list.isFetchingNextPage && (
+                <div className='py-3 text-center text-muted-foreground text-xs'>
+                  Loading more lines...
+                </div>
+              )}
+              {/* The budget only runs out on a viewport the pages do not fill,
+                  which is exactly when there is nothing to scroll to reset it. */}
+              {list.hasNextPage && !list.isFetchingNextPage && (
+                <div className='flex justify-center py-3'>
+                  <Button
+                    variant='outline'
+                    size='sm'
+                    onClick={() => {
+                      autoFetches.current = 0
+                      void list.fetchNextPage()
+                    }}>
+                    Load more
+                  </Button>
+                </div>
+              )}
             </div>
           </ScrollArea>
         )}

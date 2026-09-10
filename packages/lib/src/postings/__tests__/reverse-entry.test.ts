@@ -11,10 +11,15 @@
 //  2. **`revision`, never a `':rev'` suffix on `periodKey`.** gap-e §9 asked for
 //     the suffix and `parsePeriodKey` throws `BadRequestError` on it - the
 //     module that owns the keyspace rejects the key the design specified.
-//  3. **The reversal lands on the accounts the ORIGINAL posted to.** If the org
-//     repointed a role since, re-resolving would credit a different account and
-//     leave the first one overstated forever - and both entries would still
-//     balance, so nothing downstream could detect it.
+//  3. **The reversal lands on the accounts the ORIGINAL posted to, by
+//     `glAccountId` (task 15).** Before task 15 this rebuilt a role line as
+//     `{ accountRole }` and re-resolved it against the CURRENT chart, so a role
+//     repointed since the original posted credited a different account and left
+//     the first one overstated forever - and both entries would still balance,
+//     so nothing downstream could detect it. Reversing by the line's own stored
+//     id closes that: a role remap or a renumber cannot move a reversal off the
+//     account it is backing out of. The original's `accountRole` rides along
+//     as a snapshot, so the pair reads the same way in the journal.
 
 import { schema } from '@auxx/database'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -289,6 +294,7 @@ function originalLines(overrides: Partial<LineRow>[] = [{}, {}]): LineRow[] {
       organizationId: ORG,
       glPostingId: 'post_1',
       lineNumber: 1,
+      glAccountId: RAW.id,
       accountCode: '1310',
       accountRole: 'inventory_raw_materials',
       accountName: 'Raw Materials Inventory',
@@ -302,6 +308,7 @@ function originalLines(overrides: Partial<LineRow>[] = [{}, {}]): LineRow[] {
       organizationId: ORG,
       glPostingId: 'post_1',
       lineNumber: 2,
+      glAccountId: GRNI.id,
       accountCode: '2160',
       accountRole: 'grni',
       accountName: 'Goods Received Not Invoiced',
@@ -376,6 +383,9 @@ describe('the reversal pair', () => {
     expect(written[0]).toMatchObject({
       lineNumber: 1,
       accountCode: '1310',
+      // The role SNAPSHOT is carried over: the reversal says which account it
+      // was supposed to be, exactly as the original did. The id decided where
+      // it landed.
       accountRole: 'inventory_raw_materials',
       direction: 'credit',
       amountMinor: 125_000,
@@ -384,13 +394,18 @@ describe('the reversal pair', () => {
       sourceType: 'stock_movement',
       sourceId: 'mv_1',
     })
-    expect(written[1]).toMatchObject({ accountCode: '2160', direction: 'debit' })
+    expect(written[1]).toMatchObject({
+      accountCode: '2160',
+      accountRole: 'grni',
+      direction: 'debit',
+    })
   })
 
   it('writes the resolved account id on the reversal, same as any other entry', async () => {
-    // Task 15 §2: the reversal is posted through the same `resolveAccountLines`
-    // path as any other entry (the role names are unchanged, so this re-resolves
-    // to the SAME accounts) - it does not need its own propagation of the id.
+    // Task 15 §3: the reversal is built straight from each line's stored
+    // `glAccountId` and posted through the same `resolveAccountLines` path as
+    // any other entry, which re-confirms the id against the live chart rather
+    // than trusting it blindly.
     const fake = createFakeDb({ postings: [original()], lines: originalLines(), chart: CHART })
     await reverseEntry(fake.db, { organizationId: ORG, glPostingId: 'post_1', lock: OPEN })
 
@@ -434,6 +449,99 @@ describe('the reversal pair', () => {
     expect(second.error).toContain('reversed')
     expect(fake.postings).toHaveLength(2)
   })
+
+  // Before task 15 this was a REFUSAL: a renumber rebuilt the role line as
+  // `{ accountRole }`, re-resolved it against the CURRENT chart, and refused on
+  // the drift between the frozen code and today's. Reversing by `glAccountId`
+  // never re-resolves the role at all, so a renumber cannot be seen from here -
+  // it lands on the same account, and the code snapshot simply reads the
+  // account's CURRENT code, exactly as any other post would.
+  it('does not refuse when the chart renumbered the account - it reverses by id', async () => {
+    const fake = createFakeDb({
+      postings: [original()],
+      lines: originalLines(),
+      // The org renumbered GRNI after the original posted. Same id, new code.
+      chart: [{ role: 'grni', account: { ...GRNI, code: '2155' } }, CHART[1]!],
+    })
+
+    const result = await reverseEntry(fake.db, {
+      organizationId: ORG,
+      glPostingId: 'post_1',
+      lock: OPEN,
+    })
+
+    expect(result.status).toBe('not_connected')
+    const reversalId = fake.postings[1]!.id
+    const written = fake.lines.filter((line) => line.glPostingId === reversalId)
+    expect(written.map((line) => line.glAccountId)).toEqual([RAW.id, GRNI.id])
+    expect(written.find((line) => line.glAccountId === GRNI.id)?.accountCode).toBe('2155')
+  })
+
+  // The finding task 15 §2 recorded for this lane: a role remap between the
+  // post and the reversal used to credit whatever the role points at TODAY.
+  // Reversing by id never asks what the role means today at all, so the
+  // reversal lands on the ORIGINAL account even though `grni` now points
+  // somewhere else entirely.
+  it('reverses to the ORIGINAL account id, not wherever the role points today', async () => {
+    const REPOINTED: Account = {
+      id: 'acct_grni_v2',
+      code: '2170',
+      name: 'GRNI (repointed)',
+      accountType: 'liability',
+    }
+    const fake = createFakeDb({
+      postings: [original()],
+      lines: originalLines(),
+      chart: [
+        // The org repointed `grni` to a brand new account...
+        { role: 'grni', account: REPOINTED },
+        // ...but the account the original entry actually posted to is still
+        // live in the chart, simply no longer mapped to any role.
+        { role: 'grni_retired', account: GRNI },
+        CHART[1]!,
+      ],
+    })
+
+    const result = await reverseEntry(fake.db, {
+      organizationId: ORG,
+      glPostingId: 'post_1',
+      lock: OPEN,
+    })
+
+    expect(result.status).toBe('not_connected')
+    const reversalId = fake.postings[1]!.id
+    const written = fake.lines.filter((line) => line.glPostingId === reversalId)
+    expect(written.map((line) => line.glAccountId)).toEqual([RAW.id, GRNI.id])
+    expect(written.map((line) => line.glAccountId)).not.toContain(REPOINTED.id)
+  })
+
+  // Before HANDOFF slot 1A this was a REFUSAL: a role-less line could not be
+  // expressed as a `BuiltEntry`, which was role-keyed by construction, so
+  // reversing one was impossible and refusing was the only honest answer.
+  // `GlPostingLineInput` now carries both shapes, and since task 15 EVERY line
+  // (role-coded or code-coded) reverses by the same `glAccountId` door, so the
+  // two shapes cannot even drift apart at reversal time.
+  it('reverses every line by id, whether it posted by role or by code', async () => {
+    const fake = createFakeDb({
+      postings: [original()],
+      lines: originalLines([{ accountRole: null }, {}]),
+      chart: CHART,
+    })
+    const result = await reverseEntry(fake.db, {
+      organizationId: ORG,
+      glPostingId: 'post_1',
+      lock: OPEN,
+    })
+
+    expect(result.status).toBe('not_connected')
+    expect(fake.postings).toHaveLength(2)
+    const reversalId = fake.postings[1]!.id
+    const reversalLines = fake.lines.filter((line) => line.glPostingId === reversalId)
+    expect(reversalLines.map((line) => line.accountCode)).toEqual(['1310', '2160'])
+    // Each half keeps the snapshot it posted with: the code-coded line had
+    // none, the role-coded line keeps its role. Neither decided the account.
+    expect(reversalLines.map((line) => line.accountRole)).toEqual([null, 'grni'])
+  })
 })
 
 describe('refusals', () => {
@@ -466,55 +574,6 @@ describe('refusals', () => {
     expect(fake.postings).toHaveLength(1)
   })
 
-  it('refuses when the chart moved under the entry', async () => {
-    const fake = createFakeDb({
-      postings: [original()],
-      lines: originalLines(),
-      // The org renumbered GRNI after the original posted.
-      chart: [{ role: 'grni', account: { ...GRNI, code: '2155' } }, CHART[1]!],
-    })
-
-    const result = await reverseEntry(fake.db, {
-      organizationId: ORG,
-      glPostingId: 'post_1',
-      lock: OPEN,
-    })
-
-    // Reversing into 2155 would leave 2160 overstated forever, and the entry
-    // would still balance - so nothing downstream could detect it.
-    expect(result.status).toBe('error')
-    expect(result.error).toContain('2160')
-    expect(result.error).toContain('2155')
-    expect(result.glPostingId).toBe('post_1')
-    expect(fake.postings).toHaveLength(1)
-  })
-
-  // Before HANDOFF slot 1A this was a REFUSAL: a role-less line could not be
-  // expressed as a `BuiltEntry`, which was role-keyed by construction, so
-  // reversing one was impossible and refusing was the only honest answer. Since
-  // `GlPostingLineInput` carries both shapes, a code line reverses to the SAME
-  // code it posted to - which is what the drift check gives a role line, arrived
-  // at without a mapping to drift.
-  it('reverses a code line to the same code, with no drift check', async () => {
-    const fake = createFakeDb({
-      postings: [original()],
-      lines: originalLines([{ accountRole: null }, {}]),
-      chart: CHART,
-    })
-    const result = await reverseEntry(fake.db, {
-      organizationId: ORG,
-      glPostingId: 'post_1',
-      lock: OPEN,
-    })
-
-    expect(result.status).toBe('not_connected')
-    expect(fake.postings).toHaveLength(2)
-    const reversalLines = fake.lines.filter((line) => line.glPostingId === 'post_2')
-    expect(reversalLines.map((line) => line.accountCode)).toEqual(['1310', '2160'])
-    // The role-less half stays role-less; the other half keeps its role.
-    expect(reversalLines.map((line) => line.accountRole)).toEqual([null, 'grni'])
-  })
-
   it('refuses an entry with no lines', async () => {
     const fake = createFakeDb({ postings: [original()], lines: [], chart: CHART })
     const result = await reverseEntry(fake.db, {
@@ -540,7 +599,10 @@ describe('refusals', () => {
     expect(fake.postings[0]!.status).toBe('posted')
   })
 
-  it('reports an unmapped role rather than reversing into nothing', async () => {
+  it('reports the account gone rather than reversing into nothing', async () => {
+    // Not a role lookup any more - this is `resolveAccountLines`' by-id door
+    // refusing because the id the original line stored ('acct_grni') decodes to
+    // no live account, the same as it would for a deleted or archived one.
     const fake = createFakeDb({
       postings: [original()],
       lines: originalLines(),
@@ -554,7 +616,7 @@ describe('refusals', () => {
 
     expect(result.status).toBe('account_unmapped')
     expect(result.failureClass).toBe('configuration')
-    expect(result.error).toContain('grni')
+    expect(result.error).toContain(GRNI.id)
     expect(fake.postings).toHaveLength(1)
   })
 })

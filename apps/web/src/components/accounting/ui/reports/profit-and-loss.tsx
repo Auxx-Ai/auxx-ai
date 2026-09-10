@@ -146,8 +146,8 @@ export function ProfitAndLossReportPage() {
               rows={rows}
               currency={period.currencyCode}
               onRowClick={(row) =>
-                row.meta?.accountCode
-                  ? setDrillDown({ accountCode: row.meta.accountCode, from, to })
+                row.meta?.glAccountId
+                  ? setDrillDown({ glAccountId: row.meta.glAccountId, from, to })
                   : undefined
               }
             />

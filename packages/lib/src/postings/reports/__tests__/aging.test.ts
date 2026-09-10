@@ -340,6 +340,7 @@ describe('readAging', () => {
         to: '2026-08-31',
         rows: [
           {
+            glAccountId: 'a1',
             accountCode: '1100',
             accountName: 'A/R',
             accountType: 'asset',
@@ -406,6 +407,7 @@ describe('readAging', () => {
         to: '2026-08-31',
         rows: [
           {
+            glAccountId: 'a1',
             accountCode: '1100',
             accountName: 'A/R',
             accountType: 'asset',
@@ -505,6 +507,7 @@ describe('readAging', () => {
         to: '2026-08-31',
         rows: [
           {
+            glAccountId: 'a2',
             accountCode: '2000',
             accountName: 'A/P',
             accountType: 'liability',
@@ -559,6 +562,7 @@ describe('readAging', () => {
         to: '2026-08-31',
         rows: [
           {
+            glAccountId: 'a1',
             accountCode: '1100',
             accountName: 'A/R',
             accountType: 'asset',
@@ -618,6 +622,7 @@ describe('readAging', () => {
         to: '2026-08-31',
         rows: [
           {
+            glAccountId: 'a1',
             accountCode: '1100',
             accountName: 'A/R',
             accountType: 'asset',

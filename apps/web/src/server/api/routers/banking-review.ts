@@ -58,20 +58,39 @@ const listInput = z.object({
   amountMin: z.number().int().optional(),
   amountMax: z.number().int().optional(),
   limit: z.number().int().min(1).max(500).optional(),
-  offset: z.number().int().min(0).optional(),
+  /**
+   * The row offset the next page starts at, as `useInfiniteQuery` hands it
+   * back. Offset paging rather than a keyset cursor because the queue is
+   * ordered on `postedAt` with a `createdAt` tiebreak and both are hydrated
+   * from `FieldValue` joins, so there is no single indexed column to seek on.
+   */
+  cursor: z.number().int().min(0).optional(),
 })
+
+/** Rows per page. The real book reaches 2,390 lines, so the queue must page. */
+const PAGE_SIZE = 50
 
 export const bankingReviewRouter = createTRPCRouter({
   /** The queue itself, newest bank date first. */
   list: permissionProcedure(PermissionKey.ledgerView)
     .input(listInput)
     .query(async ({ ctx, input }) => {
+      const { cursor, limit, ...filters } = input
+      const pageSize = limit ?? PAGE_SIZE
+      const offset = cursor ?? 0
       const result = await listForReview(ctx.db, {
         organizationId: ctx.session.organizationId,
-        ...input,
+        ...filters,
+        limit: pageSize,
+        offset,
       })
       if (result.isErr()) throw result.error
-      return result.value
+      // A full page means there MAY be more; a short one is the end. One extra
+      // empty round trip at an exact multiple beats counting the whole queue.
+      return {
+        items: result.value,
+        nextCursor: result.value.length === pageSize ? offset + pageSize : undefined,
+      }
     }),
 
   /** The stat strip. Scoped to one account when the toolbar has one selected. */
@@ -150,12 +169,12 @@ export const bankingReviewRouter = createTRPCRouter({
       return result.value
     }),
 
-  /** Post `Dr <code> / Cr <bank account>` and stamp the line `coded`. */
+  /** Post `Dr <the coded account> / Cr <bank account>` and stamp the line `coded`. */
   code: permissionProcedure(PermissionKey.ledgerPost)
     .input(
       z.object({
         id: transactionId,
-        glAccountCode: z.string().min(1).max(64),
+        glAccountId: z.string().min(1).max(64),
         contactRecordId: z.string().min(1).optional(),
         memo: z.string().max(1000).optional(),
       })
@@ -165,7 +184,7 @@ export const bankingReviewRouter = createTRPCRouter({
         organizationId: ctx.session.organizationId,
         actorUserId: ctx.session.user.id,
         transactionId: input.id,
-        glAccountCode: input.glAccountCode,
+        glAccountId: input.glAccountId,
         contactRecordId: input.contactRecordId,
         memo: input.memo,
       })
@@ -246,7 +265,7 @@ export const bankingReviewRouter = createTRPCRouter({
           results.push({ id, ok: false, message: line.error.message })
           continue
         }
-        const suggested = line.value?.suggestedGlAccount
+        const suggested = line.value?.suggestedGlAccountId
         if (!suggested) {
           results.push({
             id,
@@ -259,7 +278,7 @@ export const bankingReviewRouter = createTRPCRouter({
           organizationId,
           actorUserId,
           transactionId: id,
-          glAccountCode: suggested,
+          glAccountId: suggested,
           memo: line.value?.suggestionReason ?? undefined,
         })
         results.push(toBulkOutcome(id, coded))
@@ -298,7 +317,7 @@ export const bankingReviewRouter = createTRPCRouter({
     .input(
       z.object({
         ids: z.array(transactionId).min(1).max(100),
-        glAccountCode: z.string().min(1).max(64),
+        glAccountId: z.string().min(1).max(64),
         memo: z.string().max(1000).optional(),
       })
     )
@@ -309,7 +328,7 @@ export const bankingReviewRouter = createTRPCRouter({
           organizationId: ctx.session.organizationId,
           actorUserId: ctx.session.user.id,
           transactionId: id,
-          glAccountCode: input.glAccountCode,
+          glAccountId: input.glAccountId,
           memo: input.memo,
         })
         results.push(toBulkOutcome(id, result))

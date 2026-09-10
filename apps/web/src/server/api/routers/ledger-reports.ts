@@ -125,14 +125,15 @@ export const ledgerReportsRouter = createTRPCRouter({
     }),
 
   /**
-   * The drill-down behind one account code - every posted line in the range,
+   * The drill-down behind one account - every posted line in the range,
    * oldest first, with a running natural-sign balance. What a row click on
-   * any statement opens.
+   * any statement opens. Keyed on `glAccountId` (task 15), not a code, so a
+   * renumbered account's history still opens as one drill-down.
    */
   accountLines: permissionProcedure(PermissionKey.ledgerView)
     .input(
       z.object({
-        accountCode: z.string().min(1),
+        glAccountId: z.string().min(1),
         from: dateKey.optional(),
         to: dateKey.optional(),
       })
@@ -140,7 +141,7 @@ export const ledgerReportsRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       const result = await readAccountLines(ctx.db, {
         organizationId: ctx.session.organizationId,
-        accountCode: input.accountCode,
+        glAccountId: input.glAccountId,
         from: input.from,
         to: input.to,
       })

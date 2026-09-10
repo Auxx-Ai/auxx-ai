@@ -22,7 +22,7 @@ function rule(overrides: Partial<BankRuleRecord> = {}): BankRuleRecord {
     direction: 'any',
     bankAccountId: null,
     action: 'code',
-    glAccountCode: '6100',
+    glAccountId: '6100',
     counterpartBankAccountId: null,
     contactId: null,
     memo: null,
@@ -175,8 +175,8 @@ describe('evaluateRules', () => {
   describe('priority', () => {
     it('runs lower priority first, and the first match wins', () => {
       const rules = [
-        rule({ id: 'low_priority', priority: 10, glAccountCode: '6200' }),
-        rule({ id: 'high_priority', priority: 1, glAccountCode: '6100' }),
+        rule({ id: 'low_priority', priority: 10, glAccountId: '6200' }),
+        rule({ id: 'high_priority', priority: 1, glAccountId: '6100' }),
       ]
       expect(evaluateRules(rules, txn())?.id).toBe('high_priority')
     })

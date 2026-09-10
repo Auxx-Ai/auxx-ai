@@ -55,8 +55,9 @@ const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
  * Deliberately thin. `last4` is a plain string here and the lib refuses
  * anything but up to four digits with a sentence saying so, because a Zod issue
  * reads `last4: invalid` where the writer explains that `**5381` was pasted with
- * its mask still on. Same for `glAccountCode`: `resolveRoles` refuses an unknown
- * or wrongly-typed code at POST time, naming the account.
+ * its mask still on. Same for `glAccountId`: it names a `gl_account` instance id
+ * (task 15 §4), and the review-queue and posting readers refuse an unknown,
+ * archived or wrongly-typed one at read time, naming the account.
  */
 const bankAccountFields = {
   name: z.string().min(1).max(200),
@@ -64,7 +65,7 @@ const bankAccountFields = {
   last4: z.string().max(8).nullish(),
   type: z.enum(BANK_ACCOUNT_TYPES),
   currency: z.string().max(8).nullish(),
-  glAccountCode: z.string().max(64).nullish(),
+  glAccountId: z.string().max(64).nullish(),
   feedStartDate: dateKey.nullish(),
 }
 
@@ -138,7 +139,7 @@ export const bankingRouter = createTRPCRouter({
           last4: bankAccountFields.last4,
           type: bankAccountFields.type.optional(),
           currency: bankAccountFields.currency,
-          glAccountCode: bankAccountFields.glAccountCode,
+          glAccountId: bankAccountFields.glAccountId,
           feedStartDate: bankAccountFields.feedStartDate,
         })
       )
@@ -159,7 +160,7 @@ export const bankingRouter = createTRPCRouter({
      * `disconnected` and keeps every row, since a coded and posted bank line is
      * the source document of a journal entry.
      *
-     * Gated on `ledgerControl`: `glAccountCode` decides where cash lands, same
+     * Gated on `ledgerControl`: `glAccountId` decides where cash lands, same
      * reasoning as {@link create} above. `status` rides along on the same
      * procedure rather than splitting the write in two.
      */
@@ -172,7 +173,7 @@ export const bankingRouter = createTRPCRouter({
           last4: bankAccountFields.last4,
           type: bankAccountFields.type.optional(),
           currency: bankAccountFields.currency,
-          glAccountCode: bankAccountFields.glAccountCode,
+          glAccountId: bankAccountFields.glAccountId,
           feedStartDate: bankAccountFields.feedStartDate,
           status: z.enum(BANK_ACCOUNT_STATUSES).optional(),
         })

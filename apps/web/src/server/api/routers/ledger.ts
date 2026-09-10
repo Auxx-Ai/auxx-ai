@@ -535,11 +535,11 @@ export const ledgerRouter = createTRPCRouter({
   }),
 
   /**
-   * How many posted lines carry each account CODE.
+   * How many posted lines landed on each account, keyed on `glAccountId` (task 15).
    *
-   * Read by the Chart of accounts tab alone, to turn the renumber caution into a
-   * number: a posting line names an account by code with no foreign key (`P2`),
-   * so renumbering leaves every line already posted holding the old one.
+   * Read by the Chart of accounts tab alone. A posting line stores the
+   * account's id with no foreign key, so a deleted account still reports its
+   * true count - renumbering an account no longer affects this number at all.
    */
   chartAccountUsage: permissionProcedure(PermissionKey.ledgerView).query(async ({ ctx }) => {
     const result = await listChartAccountUsage(ctx.db, ctx.session.organizationId)

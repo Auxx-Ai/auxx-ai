@@ -111,8 +111,8 @@ export interface DepositBankAccount {
   id: string
   recordId: RecordId
   name: string | null
-  /** Its mapping in the chart, trimmed. Null when the account is unmapped. */
-  glAccountCode: string | null
+  /** Its `gl_account` mapping, trimmed. Null when the account is unmapped. Never a code. */
+  glAccountId: string | null
   archivedAt: Date | null
 }
 
@@ -281,7 +281,7 @@ export async function readDepositBankAccount(
     id: instance.id,
     recordId: toRecordId(ctx.bankAccountDefId, instance.id),
     name: read('bank_account_name')?.trim() || null,
-    glAccountCode: read('bank_account_gl_account')?.trim() || null,
+    glAccountId: read('bank_account_gl_account')?.trim() || null,
     archivedAt: instance.archivedAt,
   }
 }
@@ -817,7 +817,7 @@ async function hydrateDeposits(
       number: read('bank_deposit_number')?.valueText ?? null,
       depositDate: toIsoDay(read('bank_deposit_date')?.valueDate),
       bankAccountId: read('bank_deposit_bank_account_record')?.relatedEntityId ?? null,
-      bankAccountCode: read('bank_deposit_bank_account')?.valueText ?? null,
+      bankAccountGlAccountId: read('bank_deposit_bank_account')?.valueText ?? null,
       reference: read('bank_deposit_reference')?.valueText ?? null,
       status: resolveBankDepositStatus(read('bank_deposit_status')?.optionId),
       totalMinor: Math.round(read('bank_deposit_total')?.valueNumber ?? 0),

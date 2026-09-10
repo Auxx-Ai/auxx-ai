@@ -61,7 +61,8 @@ export interface BankRuleRecord {
   /** A `bank_account` entity-instance id, or `null` to match any account. */
   bankAccountId: string | null
   action: BankRuleAction
-  glAccountCode: string | null
+  /** The `gl_account` id a `code` action proposes (task 15 §4). Never a code. */
+  glAccountId: string | null
   /** A `bank_account` entity-instance id, required when `action` is `transfer`. */
   counterpartBankAccountId: string | null
   /** A `contact` entity-instance id, optional context for a `code` action. */
@@ -124,7 +125,8 @@ export function compileSafeRegex(pattern: string): RegExp | null {
 /** What `suggestFromHistory` and a matching rule both produce, before it is written. */
 export interface SuggestionResult {
   source: SuggestionSource
-  glAccountCode: string | null
+  /** The `gl_account` id a "code" suggestion proposes (task 15 §4). Never a code. */
+  glAccountId: string | null
   recordId: string | null
   recordType: string | null
   reason: string

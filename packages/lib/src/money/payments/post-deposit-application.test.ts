@@ -31,6 +31,11 @@ const h = vi.hoisted(() => ({
   }>,
   postResults: [] as Array<{ status: string; error?: string }>,
   posted: [] as Array<{ periodKey: string; txnDate: string; totalMinor: number }>,
+  isAccountingEnabled: vi.fn(async () => true),
+}))
+
+vi.mock('../../postings/accounting-enabled', () => ({
+  isAccountingEnabled: h.isAccountingEnabled,
 }))
 
 function tableProxy(name: string) {
@@ -113,6 +118,43 @@ beforeEach(() => {
   h.allocations = []
   h.postResults = []
   h.posted = []
+  h.isAccountingEnabled.mockResolvedValue(true)
+})
+
+// plans/accounting/tasks/17-accounting-is-opt-in.md section 3.
+describe('accounting not enabled', () => {
+  it('returns [{status: not_enabled}] without reading allocations or posting', async () => {
+    const { database } = await import('@auxx/database')
+    h.isAccountingEnabled.mockResolvedValue(false)
+    h.allocations = [
+      {
+        id: 'alloc-1',
+        amount: 300_000,
+        appliedAt: '2026-09-04T15:00:00.000Z',
+        invoiceInstanceId: 'inv-1',
+      },
+    ]
+
+    const results = await postDepositApplications(database, {
+      organizationId: ORG,
+      transaction: charge(),
+    })
+
+    expect(results).toEqual([{ status: 'not_enabled' }])
+    expect(h.posted).toEqual([])
+  })
+
+  it('still returns [] for a refund, before the gate matters', async () => {
+    const { database } = await import('@auxx/database')
+    h.isAccountingEnabled.mockResolvedValue(false)
+
+    const results = await postDepositApplications(database, {
+      organizationId: ORG,
+      transaction: charge({ kind: 'refund' }),
+    })
+
+    expect(results).toEqual([])
+  })
 })
 
 describe('a held deposit later applied to an invoice', () => {

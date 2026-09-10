@@ -16,14 +16,14 @@ const BASE = {
   transactionId: 'txn_1',
   periodKey: 'BNK-00A1B2',
   txnDate: '2026-09-10',
-  glAccountCode: '6100',
-  bankAccountCode: '1000',
+  glAccountId: 'gla_6100',
+  bankAccountGlAccountId: 'gla_1000',
 }
 
 function side(entry: ReturnType<typeof buildCodedBankEntry>, direction: 'debit' | 'credit') {
   const line = entry.lines.find((candidate) => candidate.direction === direction)
   if (!line) throw new Error(`no ${direction} line`)
-  return line as { accountCode: string; amount: number; memo?: string; sortOrder: number }
+  return line as { glAccountId: string; amount: number; memo?: string; sortOrder: number }
 }
 
 describe('buildCodedBankEntry', () => {
@@ -31,8 +31,8 @@ describe('buildCodedBankEntry', () => {
     const entry = buildCodedBankEntry({ ...BASE, amountMinor: -12_345 })
 
     it('debits the coded account and credits the bank account', () => {
-      expect(side(entry, 'debit').accountCode).toBe('6100')
-      expect(side(entry, 'credit').accountCode).toBe('1000')
+      expect(side(entry, 'debit').glAccountId).toBe('gla_6100')
+      expect(side(entry, 'credit').glAccountId).toBe('gla_1000')
     })
 
     it('discards the sign - the amount is positive and direction carries it', () => {
@@ -48,17 +48,21 @@ describe('buildCodedBankEntry', () => {
   })
 
   describe('money IN', () => {
-    const entry = buildCodedBankEntry({ ...BASE, glAccountCode: '4000', amountMinor: 12_345 })
+    const entry = buildCodedBankEntry({ ...BASE, glAccountId: 'gla_4000', amountMinor: 12_345 })
 
     it('debits the bank account and credits the coded account', () => {
-      expect(side(entry, 'debit').accountCode).toBe('1000')
-      expect(side(entry, 'credit').accountCode).toBe('4000')
+      expect(side(entry, 'debit').glAccountId).toBe('gla_1000')
+      expect(side(entry, 'credit').glAccountId).toBe('gla_4000')
     })
 
     it('is the exact mirror of the outbound entry', () => {
-      const outbound = buildCodedBankEntry({ ...BASE, glAccountCode: '4000', amountMinor: -12_345 })
-      expect(side(entry, 'debit').accountCode).toBe(side(outbound, 'credit').accountCode)
-      expect(side(entry, 'credit').accountCode).toBe(side(outbound, 'debit').accountCode)
+      const outbound = buildCodedBankEntry({
+        ...BASE,
+        glAccountId: 'gla_4000',
+        amountMinor: -12_345,
+      })
+      expect(side(entry, 'debit').glAccountId).toBe(side(outbound, 'credit').glAccountId)
+      expect(side(entry, 'credit').glAccountId).toBe(side(outbound, 'debit').glAccountId)
     })
   })
 
@@ -93,13 +97,13 @@ describe('buildCodedBankEntry', () => {
   })
 
   it('refuses an unmapped bank account, naming the remedy', () => {
-    expect(() => buildCodedBankEntry({ ...BASE, bankAccountCode: '', amountMinor: -100 })).toThrow(
-      /not mapped to a GL account/
-    )
+    expect(() =>
+      buildCodedBankEntry({ ...BASE, bankAccountGlAccountId: '', amountMinor: -100 })
+    ).toThrow(/not mapped to a GL account/)
   })
 
   it('refuses a blank coded account', () => {
-    expect(() => buildCodedBankEntry({ ...BASE, glAccountCode: '  ', amountMinor: -100 })).toThrow(
+    expect(() => buildCodedBankEntry({ ...BASE, glAccountId: '  ', amountMinor: -100 })).toThrow(
       /name the account/
     )
   })
@@ -108,19 +112,19 @@ describe('buildCodedBankEntry', () => {
     // Debiting and crediting one account nets to nothing and hides which side
     // was meant to be different.
     expect(() =>
-      buildCodedBankEntry({ ...BASE, glAccountCode: '1000', amountMinor: -100 })
+      buildCodedBankEntry({ ...BASE, glAccountId: 'gla_1000', amountMinor: -100 })
     ).toThrow(/nets to nothing/)
   })
 
-  it('trims the codes it is handed', () => {
+  it('trims the ids it is handed', () => {
     const entry = buildCodedBankEntry({
       ...BASE,
-      glAccountCode: ' 6100 ',
-      bankAccountCode: ' 1000 ',
+      glAccountId: ' gla_6100 ',
+      bankAccountGlAccountId: ' gla_1000 ',
       amountMinor: -100,
     })
-    expect(side(entry, 'debit').accountCode).toBe('6100')
-    expect(side(entry, 'credit').accountCode).toBe('1000')
+    expect(side(entry, 'debit').glAccountId).toBe('gla_6100')
+    expect(side(entry, 'credit').glAccountId).toBe('gla_1000')
   })
 })
 
@@ -130,20 +134,20 @@ describe('buildTransferEntry', () => {
     periodKey: 'BNK-00C3D4',
     txnDate: '2026-09-10',
     amountMinor: -250_000,
-    fromAccountCode: '1000',
-    toAccountCode: '1010',
+    fromAccountId: 'gla_1000',
+    toAccountId: 'gla_1010',
   }
 
   it('debits the destination and credits the source', () => {
     const entry = buildTransferEntry(TRANSFER)
-    expect(side(entry, 'debit').accountCode).toBe('1010')
-    expect(side(entry, 'credit').accountCode).toBe('1000')
+    expect(side(entry, 'debit').glAccountId).toBe('gla_1010')
+    expect(side(entry, 'credit').glAccountId).toBe('gla_1000')
   })
 
-  it('never touches a revenue or expense account - only the two named codes appear', () => {
+  it('never touches a revenue or expense account - only the two named ids appear', () => {
     const entry = buildTransferEntry(TRANSFER)
-    expect(entry.lines.map((line) => (line as { accountCode: string }).accountCode).sort()).toEqual(
-      ['1000', '1010']
+    expect(entry.lines.map((line) => (line as { glAccountId: string }).glAccountId).sort()).toEqual(
+      ['gla_1000', 'gla_1010']
     )
   })
 
@@ -156,18 +160,18 @@ describe('buildTransferEntry', () => {
     const fromIncoming = buildTransferEntry({ ...TRANSFER, amountMinor: 250_000 })
     expect(fromOutgoing.totalDebit).toBe(250_000)
     expect(fromIncoming.totalDebit).toBe(250_000)
-    expect(side(fromIncoming, 'debit').accountCode).toBe('1010')
+    expect(side(fromIncoming, 'debit').glAccountId).toBe('gla_1010')
   })
 
-  it('refuses two accounts mapped to one GL code', () => {
-    expect(() => buildTransferEntry({ ...TRANSFER, toAccountCode: '1000' })).toThrow(
+  it('refuses two accounts mapped to one GL account', () => {
+    expect(() => buildTransferEntry({ ...TRANSFER, toAccountId: 'gla_1000' })).toThrow(
       /cannot be reconciled apart/
     )
   })
 
   it('refuses when either account is unmapped', () => {
-    expect(() => buildTransferEntry({ ...TRANSFER, fromAccountCode: '' })).toThrow(/both accounts/)
-    expect(() => buildTransferEntry({ ...TRANSFER, toAccountCode: '' })).toThrow(/both accounts/)
+    expect(() => buildTransferEntry({ ...TRANSFER, fromAccountId: '' })).toThrow(/both accounts/)
+    expect(() => buildTransferEntry({ ...TRANSFER, toAccountId: '' })).toThrow(/both accounts/)
   })
 
   it('refuses a zero transfer', () => {

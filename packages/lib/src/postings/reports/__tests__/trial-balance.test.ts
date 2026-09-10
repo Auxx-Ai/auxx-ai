@@ -32,8 +32,14 @@ function stubDb(rows: unknown[]) {
   return { select: () => chain } as unknown as Database
 }
 
-function groupedRow(accountCode: string, debit: number, credit: number) {
-  return { accountCode, debitMinor: String(debit), creditMinor: String(credit) }
+/** `glAccountId` defaults to `id_<accountCode>`, matching the `account()` helper below. */
+function groupedRow(
+  accountCode: string,
+  debit: number,
+  credit: number,
+  glAccountId = `id_${accountCode}`
+) {
+  return { glAccountId, accountCode, debitMinor: String(debit), creditMinor: String(credit) }
 }
 
 function account(overrides: Partial<ChartAccountRow> & { code: string }): ChartAccountRow {
@@ -63,6 +69,7 @@ describe('readTrialBalance', () => {
     const tb = result._unsafeUnwrap()
     expect(tb.rows).toEqual([
       {
+        glAccountId: 'id_1000',
         accountCode: '1000',
         accountName: 'Cash',
         accountType: 'asset',
@@ -72,6 +79,7 @@ describe('readTrialBalance', () => {
         inChart: true,
       },
       {
+        glAccountId: 'id_2000',
         accountCode: '2000',
         accountName: 'Accounts Payable',
         accountType: 'liability',
@@ -102,7 +110,7 @@ describe('readTrialBalance', () => {
     expect(result._unsafeUnwrap().balanced).toBe(true)
   })
 
-  it('flags an account code with posted lines but no live chart row', async () => {
+  it('flags an id with posted lines but no live chart row (the account was deleted)', async () => {
     vi.mocked(listChartAccounts).mockResolvedValue(ok([]))
 
     const result = await readTrialBalance(stubDb([groupedRow('9999', 100, 0)]), {
@@ -112,10 +120,59 @@ describe('readTrialBalance', () => {
 
     const row = result._unsafeUnwrap().rows[0]
     expect(row).toMatchObject({
+      glAccountId: 'id_9999',
+      // Falls back to the line's own snapshot code - the only identifying
+      // label left once the account is gone from the chart.
       accountCode: '9999',
       accountType: null,
       inChart: false,
       balanceMinor: 0,
+    })
+  })
+
+  // The regression task 15 names: a renumber must not split one account's
+  // history into two trial-balance rows.
+  it('reads as ONE row with the CURRENT code when the account has been renumbered', async () => {
+    // The account posted to as '1100'; it has since been renumbered to '1150'.
+    vi.mocked(listChartAccounts).mockResolvedValue(
+      ok([
+        account({ id: 'id_1100', code: '1150', name: 'Cash (renumbered)', accountType: 'asset' }),
+      ])
+    )
+
+    const result = await readTrialBalance(stubDb([groupedRow('1100', 125_000, 0, 'id_1100')]), {
+      organizationId: ORG,
+      to: '2026-08-31',
+    })
+
+    const tb = result._unsafeUnwrap()
+    expect(tb.rows).toHaveLength(1)
+    expect(tb.rows[0]).toMatchObject({
+      glAccountId: 'id_1100',
+      // The CURRENT code and name, not the '1100' snapshot the line carries.
+      accountCode: '1150',
+      accountName: 'Cash (renumbered)',
+      balanceMinor: 125_000,
+      inChart: true,
+    })
+  })
+
+  // Same rule for a RENAME: a statement reads the chart, never the snapshot -
+  // §3's exception is the journal view of one entry (out of this lane's scope),
+  // which keeps showing the name it was posted under.
+  it('shows the CURRENT name when the account has been renamed', async () => {
+    vi.mocked(listChartAccounts).mockResolvedValue(
+      ok([account({ id: 'id_1000', code: '1000', name: 'Operating Cash', accountType: 'asset' })])
+    )
+
+    const result = await readTrialBalance(stubDb([groupedRow('1000', 100_000, 0, 'id_1000')]), {
+      organizationId: ORG,
+      to: '2026-08-31',
+    })
+
+    expect(result._unsafeUnwrap().rows[0]).toMatchObject({
+      glAccountId: 'id_1000',
+      accountName: 'Operating Cash',
     })
   })
 

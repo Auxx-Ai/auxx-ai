@@ -51,12 +51,14 @@ export interface BankDepositRecord {
    */
   bankAccountId: string | null
   /**
-   * The GL account CODE the entry POSTED to, frozen when it was built.
+   * The `gl_account` id the entry POSTED to, frozen when it was built (task 15
+   * §4). Never a code.
    *
    * 🛑 Not derived from {@link bankAccountId}: re-mapping a bank account to a
-   * different chart code must not restate a deposit that posted to the old one.
+   * different chart account must not restate a deposit that posted to the old
+   * one.
    */
-  bankAccountCode: string | null
+  bankAccountGlAccountId: string | null
   reference: string | null
   status: BankDepositStatus
   /** Integer minor units. Equals the sum of {@link BankDepositDetail.payments}. */

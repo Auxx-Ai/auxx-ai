@@ -38,7 +38,12 @@ vi.mock('../../cache', () => ({
   }),
 }))
 
-import { listChartAccounts, listRoleMap, setRoleAssignment } from '../role-map'
+import {
+  listChartAccounts,
+  listChartAccountUsage,
+  listRoleMap,
+  setRoleAssignment,
+} from '../role-map'
 
 const ORG = 'org_1'
 const OTHER_ORG = 'org_2'
@@ -719,5 +724,50 @@ describe('setRoleAssignment - marking a role unused', () => {
       setRoleAssignment(stub.db, { organizationId: ORG, role: 'grni', markedUnused: true })
     )
     expect(error).toBeInstanceOf(NotFoundError)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// listChartAccountUsage - task 15 §3: keyed on glAccountId, not on code
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('listChartAccountUsage', () => {
+  /** A minimal thenable, the way `trial-balance.test.ts` stubs its own grouped read. */
+  function stubUsageDb(rows: { glAccountId: string | null; lines: number }[]): Database {
+    const chain: Record<string, unknown> = {}
+    const passthrough = () => chain
+    chain.from = passthrough
+    chain.where = passthrough
+    chain.groupBy = passthrough
+    // biome-ignore lint/suspicious/noThenProperty: the stub must be awaitable
+    chain.then = (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) =>
+      Promise.resolve(rows).then(resolve, reject)
+    return { select: () => chain } as unknown as Database
+  }
+
+  // The number this brief exists to correct: before task 15 this was keyed on
+  // the code a line snapshot carried, which undercounted an account renumbered
+  // partway through its posted history. Grouping on the id it always posted to
+  // reports the true count regardless of how many times the code moved.
+  it('counts posted lines per glAccountId, not per code', async () => {
+    const result = await listChartAccountUsage(
+      stubUsageDb([
+        { glAccountId: 'acct_1310', lines: 142 },
+        { glAccountId: 'acct_2160', lines: 3 },
+      ]),
+      ORG
+    )
+
+    expect(result._unsafeUnwrap()).toEqual({ acct_1310: 142, acct_2160: 3 })
+  })
+
+  it('is empty over a ledger with no posted lines', async () => {
+    const result = await listChartAccountUsage(stubUsageDb([]), ORG)
+    expect(result._unsafeUnwrap()).toEqual({})
+  })
+
+  it('skips a row with no id rather than writing an "undefined" key', async () => {
+    const result = await listChartAccountUsage(stubUsageDb([{ glAccountId: null, lines: 5 }]), ORG)
+    expect(result._unsafeUnwrap()).toEqual({})
   })
 })

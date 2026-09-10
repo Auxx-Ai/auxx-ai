@@ -20,20 +20,24 @@
  * both ours and where the alternative is recording an expense and an income
  * that never happened (03 §3.3).
  *
- * ## Why this names accounts by CODE and not by role
+ * ## Why this names accounts by ID and not by role
  *
  * `G8` makes a builder emit a ROLE because a builder cannot know what number
  * this org gave an account. A person coding a bank line is doing the opposite:
  * they are picking a specific account out of THEIR OWN chart, looking at it as
- * it stands right now. That is the same act as a manual journal entry, and it
- * gets the same shape - `build-manual-entry.ts`'s reasoning applies verbatim.
- * The bank side of the entry is the `bank_account` record's mapped code, which
- * a person also chose, on the settings page.
+ * it stands right now. That is the same act as a manual journal entry, except
+ * this one is written in bulk by the review queue over thousands of rows
+ * (`plans/accounting/tasks/15-the-account-id-is-the-identity.md` §4), which is
+ * why the coded account and the bank account's own mapping are both carried as
+ * `gl_account` instance ids rather than codes - a text id with no foreign key,
+ * the same shape `GlRoleAssignment.glAccountId` already uses. The bank side of
+ * the entry is the `bank_account` record's mapped id, which a person also
+ * chose, on the settings page.
  *
- * 🛑 **The resolver is not cheaper for being a code.** `resolveAccountLines`
- * validates both codes against the org's chart with the same five refusals, so
- * an unmapped bank account or a typo'd expense code fails closed at
- * `previewEntry` time with a sentence naming the account.
+ * 🛑 **The resolver is not cheaper for being an id.** `resolveAccountLines`
+ * validates both ids against the org's chart with the same five refusals, so
+ * an unmapped bank account or a coded account that has since been archived
+ * fails closed at `previewEntry` time with a sentence naming the account.
  */
 
 import { UnprocessableEntityError } from '../../errors'
@@ -53,10 +57,10 @@ export interface BuildCodedBankEntryInput {
   txnDate: string
   /** Integer minor units, SIGNED, exactly as the bank said it. */
   amountMinor: number
-  /** The account a person coded this line to, from the org's own chart. */
-  glAccountCode: string
-  /** The `bank_account` record's mapped GL code. The cash side. */
-  bankAccountCode: string
+  /** The `gl_account` id a person coded this line to, from the org's own chart. */
+  glAccountId: string
+  /** The `bank_account` record's mapped `gl_account` id. The cash side. */
+  bankAccountGlAccountId: string
   memo?: string
 }
 
@@ -83,38 +87,38 @@ export interface BuildCodedBankEntryInput {
  * still debits the expense and credits the card, which is what this produces.
  *
  * @throws {UnprocessableEntityError} on a zero, non-integer or non-finite
- *   amount, on a blank account code either side, or when the two codes are the
- *   same account (an entry that nets to nothing and hides which side was wrong).
+ *   amount, a blank account id either side, or when the two ids are the same
+ *   account (an entry that nets to nothing and hides which side was wrong).
  */
 export function buildCodedBankEntry(input: BuildCodedBankEntryInput): BuiltEntry {
   const { transactionId, periodKey, txnDate, amountMinor, memo } = input
-  const glAccountCode = input.glAccountCode?.trim()
-  const bankAccountCode = input.bankAccountCode?.trim()
+  const glAccountId = input.glAccountId?.trim()
+  const bankAccountGlAccountId = input.bankAccountGlAccountId?.trim()
 
   assertPostableAmount(amountMinor)
-  if (!glAccountCode) {
+  if (!glAccountId) {
     throw new UnprocessableEntityError(
       'Coding a bank line has to name the account it belongs in. Pick one from the chart.'
     )
   }
-  if (!bankAccountCode) {
+  if (!bankAccountGlAccountId) {
     throw new UnprocessableEntityError(
       'This bank account is not mapped to a GL account, so there is nothing to credit. ' +
         'Map it on Accounting > Settings > Bank accounts first.'
     )
   }
-  if (glAccountCode === bankAccountCode) {
+  if (glAccountId === bankAccountGlAccountId) {
     throw new UnprocessableEntityError(
-      `Coding this line to ${glAccountCode} would debit and credit the same account, which ` +
-        'nets to nothing. Pick the expense or income account the money actually belongs in.'
+      'Coding this line to the same account it would credit or debit nets to nothing. Pick ' +
+        'the expense or income account the money actually belongs in.'
     )
   }
 
   const amount = Math.abs(amountMinor)
   const outbound = bankLineFlow(amountMinor) === 'out'
   const lines: GlPostingLineInput[] = [
-    line(outbound ? glAccountCode : bankAccountCode, 'debit', amount, transactionId, memo, 0),
-    line(outbound ? bankAccountCode : glAccountCode, 'credit', amount, transactionId, memo, 1),
+    line(outbound ? glAccountId : bankAccountGlAccountId, 'debit', amount, transactionId, memo, 0),
+    line(outbound ? bankAccountGlAccountId : glAccountId, 'credit', amount, transactionId, memo, 1),
   ]
 
   return buildEntry({
@@ -132,10 +136,10 @@ export interface BuildTransferEntryInput {
   txnDate: string
   /** Integer minor units, signed, off the leg the entry is filed on. */
   amountMinor: number
-  /** The GL code of the account the money LEFT. */
-  fromAccountCode: string
-  /** The GL code of the account the money ARRIVED in. */
-  toAccountCode: string
+  /** The `gl_account` id of the account the money LEFT. */
+  fromAccountId: string
+  /** The `gl_account` id of the account the money ARRIVED in. */
+  toAccountId: string
   memo?: string
 }
 
@@ -154,24 +158,24 @@ export interface BuildTransferEntryInput {
  * every month.
  *
  * @throws {UnprocessableEntityError} on a zero or non-integer amount, a blank
- *   code either side, or the same account on both sides.
+ *   id either side, or the same account on both sides.
  */
 export function buildTransferEntry(input: BuildTransferEntryInput): BuiltEntry {
   const { transactionId, periodKey, txnDate, amountMinor, memo } = input
-  const fromAccountCode = input.fromAccountCode?.trim()
-  const toAccountCode = input.toAccountCode?.trim()
+  const fromAccountId = input.fromAccountId?.trim()
+  const toAccountId = input.toAccountId?.trim()
 
   assertPostableAmount(amountMinor)
-  if (!fromAccountCode || !toAccountCode) {
+  if (!fromAccountId || !toAccountId) {
     throw new UnprocessableEntityError(
       'A transfer needs both accounts mapped to a GL account. Map them on ' +
         'Accounting > Settings > Bank accounts first.'
     )
   }
-  if (fromAccountCode === toAccountCode) {
+  if (fromAccountId === toAccountId) {
     throw new UnprocessableEntityError(
-      `Both sides of this transfer resolve to ${fromAccountCode}. Two bank accounts mapped to ` +
-        'one GL code cannot be reconciled apart - map them to separate accounts.'
+      'Both sides of this transfer resolve to the same account. Two bank accounts mapped to ' +
+        'one GL account cannot be reconciled apart - map them to separate accounts.'
     )
   }
 
@@ -181,15 +185,15 @@ export function buildTransferEntry(input: BuildTransferEntryInput): BuiltEntry {
     periodKey,
     txnDate,
     lines: [
-      line(toAccountCode, 'debit', amount, transactionId, memo, 0),
-      line(fromAccountCode, 'credit', amount, transactionId, memo, 1),
+      line(toAccountId, 'debit', amount, transactionId, memo, 0),
+      line(fromAccountId, 'credit', amount, transactionId, memo, 1),
     ],
   })
 }
 
-/** One code line, in the shape `GlPostingLineInput`'s code leg takes. */
+/** One line, in the shape `GlPostingLineInput`'s id leg takes (task 15 §4). */
 function line(
-  accountCode: string,
+  glAccountId: string,
   direction: 'debit' | 'credit',
   amount: number,
   sourceId: string,
@@ -197,7 +201,7 @@ function line(
   sortOrder: number
 ): GlPostingLineInput {
   return {
-    accountCode,
+    glAccountId,
     direction,
     amount,
     memo,

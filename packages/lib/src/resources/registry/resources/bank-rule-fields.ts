@@ -81,9 +81,9 @@ export const BANK_RULE_ACTION_OPTIONS = [
  * departure `bank_transaction.matchedRecordId` already takes for exactly this
  * reason, and it costs nothing at read time: `banking/rules/` resolves the id
  * directly, and the Rules UI builds its own picker against `bank_account`/
- * `contact` records rather than the generic RELATIONSHIP input. One later
- * migration can convert all of these together, the `bank_account.glAccount`
- * precedent (decision `P2`).
+ * `contact` records rather than the generic RELATIONSHIP input. It is also
+ * what `glAccount` below became: an id, TEXT, no relationship
+ * (`plans/accounting/tasks/15-the-account-id-is-the-identity.md` §4).
  *
  * `contact` is chosen over a second `company` field per this slot's "pick one
  * or document": a coded line's payee is a vendor or a customer, and both are
@@ -428,8 +428,8 @@ export const BANK_RULE_FIELDS: Record<string, ResourceField> = {
       updatable: true,
       configurable: false,
     },
-    placeholder: '6100',
-    description: 'The account CODE a code action proposes, from the org own chart',
+    placeholder: 'Select account',
+    description: 'The gl_account id a code action proposes, from the org own chart',
   },
 
   counterpartBankAccount: {

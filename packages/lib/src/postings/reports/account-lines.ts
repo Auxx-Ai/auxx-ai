@@ -1,8 +1,13 @@
 // packages/lib/src/postings/reports/account-lines.ts
 //
-// The drill-down behind one account code: every posted line, in date order,
-// with a running natural-sign balance. What a click on a trial-balance,
-// balance-sheet or P&L row opens.
+// The drill-down behind one account: every posted line, in date order, with a
+// running natural-sign balance. What a click on a trial-balance, balance-sheet
+// or P&L row opens.
+//
+// Keyed on `glAccountId`, not `accountCode` (task 15 §3): a statement row's
+// `id` is now the account's IDENTITY, so its drill-down must open by the same
+// key or a renumbered account's history would split across two drill-downs
+// exactly the way it used to split across two trial-balance rows.
 //
 // No permission checks here. The router asserts (`docs/lib-module-guide.md` §6).
 
@@ -36,10 +41,13 @@ export interface AccountLineRow {
 
 export interface AccountLines {
   organizationId: string
+  /** The `gl_account` `EntityInstance` id this drill-down is keyed on. The IDENTITY (task 15). */
+  glAccountId: string
+  /** The account's CURRENT code, read from the live chart by id. `''` when the account has been deleted. */
   accountCode: string
-  /** `''` when the code names no live account in this org's chart. */
+  /** `''` when the account has been deleted from this org's chart. */
   accountName: string
-  /** `null` when the code names no live account - the running balance is then unsigned (raw debit). */
+  /** `null` when the account has been deleted - the running balance is then unsigned (raw debit). */
   accountType: GlAccountTypeValue | null
   /** `null` when the read is unbounded on the start - the balance sheet's own cumulative range. */
   from: string | null
@@ -53,7 +61,8 @@ export interface AccountLines {
 
 export interface ReadAccountLinesOptions {
   organizationId: string
-  accountCode: string
+  /** The `gl_account` `EntityInstance` id - task 15's identity, not a code. */
+  glAccountId: string
   /** `YYYY-MM-DD`. Omit for a cumulative-from-the-beginning read. */
   from?: string
   /** `YYYY-MM-DD`, inclusive. Omit for open-ended. */
@@ -61,7 +70,7 @@ export interface ReadAccountLinesOptions {
 }
 
 /**
- * Every posted line against `accountCode`, oldest first, with a running
+ * Every posted line against `glAccountId`, oldest first, with a running
  * natural-sign balance - `signedBalance` applied line by line rather than
  * once over a sum, so a reader can see the balance AT any line, not just at
  * the end.
@@ -74,17 +83,17 @@ export async function readAccountLines(
   db: Database,
   options: ReadAccountLinesOptions
 ): Promise<Result<AccountLines, Error>> {
-  const { organizationId, accountCode, from, to } = options
+  const { organizationId, glAccountId, from, to } = options
 
   try {
     const chartResult = await listChartAccounts(db, organizationId)
     if (chartResult.isErr()) return err(chartResult.error)
-    const account = chartResult.value.find((row) => row.code === accountCode) ?? null
+    const account = chartResult.value.find((row) => row.id === glAccountId) ?? null
     const naturalDirection = account ? NATURAL_BALANCE_DIRECTION[account.accountType] : 'debit'
 
     let openingBalanceMinor = 0
     if (from) {
-      const before = await sumDebitCredit(db, organizationId, accountCode, {
+      const before = await sumDebitCredit(db, organizationId, glAccountId, {
         to: previousCalendarDay(from),
       })
       openingBalanceMinor = account
@@ -95,7 +104,7 @@ export async function readAccountLines(
     const bounds = [
       eq(schema.GlPosting.organizationId, organizationId),
       inArray(schema.GlPosting.status, [...POSTED_STATUSES]),
-      eq(schema.GlPostingLine.accountCode, accountCode),
+      eq(schema.GlPostingLine.glAccountId, glAccountId),
     ]
     if (from) bounds.push(gte(schema.GlPosting.txnDate, from))
     if (to) bounds.push(lte(schema.GlPosting.txnDate, to))
@@ -137,7 +146,8 @@ export async function readAccountLines(
 
     return ok({
       organizationId,
-      accountCode,
+      glAccountId,
+      accountCode: account?.code ?? '',
       accountName: account?.name ?? '',
       accountType: account?.accountType ?? null,
       from: from ?? null,
@@ -151,16 +161,16 @@ export async function readAccountLines(
     })
   } catch (error) {
     if (error instanceof AuxxError) return err(error)
-    logger.error('Failed to read account lines', { error, organizationId, accountCode, from, to })
+    logger.error('Failed to read account lines', { error, organizationId, glAccountId, from, to })
     return err(new AuxxError('Internal error'))
   }
 }
 
-/** `SUM(debit)` / `SUM(credit)` for one account code, bounded only by `to` - the opening-balance query. */
+/** `SUM(debit)` / `SUM(credit)` for one account id, bounded only by `to` - the opening-balance query. */
 async function sumDebitCredit(
   db: Database,
   organizationId: string,
-  accountCode: string,
+  glAccountId: string,
   bounds: { to: string }
 ): Promise<{ debitMinor: number; creditMinor: number }> {
   const [row] = await db
@@ -174,7 +184,7 @@ async function sumDebitCredit(
       and(
         eq(schema.GlPosting.organizationId, organizationId),
         inArray(schema.GlPosting.status, [...POSTED_STATUSES]),
-        eq(schema.GlPostingLine.accountCode, accountCode),
+        eq(schema.GlPostingLine.glAccountId, glAccountId),
         lte(schema.GlPosting.txnDate, bounds.to)
       )
     )

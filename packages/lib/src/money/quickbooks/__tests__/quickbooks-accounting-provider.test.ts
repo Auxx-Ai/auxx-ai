@@ -82,11 +82,13 @@ const CHART = [
 ]
 
 /** The org's OWN chart - what a posting line's `accountCode` names. */
+// Ids match what `baseInput`'s lines carry (`glAccountId`) - task 15's
+// identity is what `resolveMappedAccounts` now keys on, not the code.
 const OUR_CHART = [
-  { id: 'gl1310', code: '1310', name: 'Inventory', accountType: 'asset', isActive: true },
-  { id: 'gl2160', code: '2160', name: 'GRNI', accountType: 'liability', isActive: true },
-  { id: 'gl5090', code: '5090', name: 'PPV', accountType: 'expense', isActive: true },
-  { id: 'gl9999', code: '9999', name: 'Retired', accountType: 'asset', isActive: true },
+  { id: 'acct_1310', code: '1310', name: 'Inventory', accountType: 'asset', isActive: true },
+  { id: 'acct_2160', code: '2160', name: 'GRNI', accountType: 'liability', isActive: true },
+  { id: 'acct_5090', code: '5090', name: 'PPV', accountType: 'expense', isActive: true },
+  { id: 'acct_9999', code: '9999', name: 'Retired', accountType: 'asset', isActive: true },
 ]
 
 /**
@@ -95,9 +97,9 @@ const OUR_CHART = [
  * ONLY reason a code fails to resolve. There is no matching left to miss.
  */
 const ACCOUNT_MAP = new Map([
-  ['gl1310', '92'],
-  ['gl2160', '79'],
-  ['gl9999', '11'],
+  ['acct_1310', '92'],
+  ['acct_2160', '79'],
+  ['acct_9999', '11'],
 ])
 
 function baseInput(over: Partial<PostEntryInput> = {}): PostEntryInput {
@@ -327,6 +329,38 @@ describe('the happy path', () => {
 
     const chartCalls = callTool.mock.calls.filter(([id]) => id === 'list_quickbooks_accounts')
     expect(chartCalls).toHaveLength(1)
+  })
+
+  // Task 15 §2.3: a replay (`retry-export.ts`) hands `postEntry` the ORIGINAL
+  // `ResolvedPostingLine`s straight off `GlPostingLine`, whose `accountCode`
+  // is the FROZEN snapshot from when it posted - '1310' here, even though the
+  // account was renumbered to '1150' in our own chart since. Resolution goes
+  // by `glAccountId`, which the renumber never touched, so the replay resolves
+  // and exports rather than refusing with "no account has the code 1310".
+  it('resolves a replayed line by id, even though its frozen code no longer matches the chart', async () => {
+    const callTool = connect({
+      create_quickbooks_journal_entry: () => ({ journalEntry: { journalEntryId: '201' } }),
+    })
+    // `connect()` stubs `listChartAccounts` to `OUR_CHART` - override it with
+    // the renumbered chart AFTER `connect()`, same id, different code.
+    listChartAccounts.mockResolvedValue(
+      ok([
+        { id: 'acct_1310', code: '1150', name: 'Inventory', accountType: 'asset', isActive: true },
+        OUR_CHART[1],
+        OUR_CHART[2],
+        OUR_CHART[3],
+      ])
+    )
+
+    const result = await provider.postEntry(baseInput())
+
+    expect(result._unsafeUnwrap()).toMatchObject({ status: 'posted', externalId: '201' })
+    expect(createCallOf(callTool)?.lines).toContainEqual({
+      amountMinor: 124999,
+      postingType: 'Debit',
+      accountId: '92',
+      accountName: 'Inventory',
+    })
   })
 })
 
@@ -604,7 +638,7 @@ describe('resolveAccount - the only place a code becomes a provider id', () => {
 
   it('refuses a mapping whose target has vanished from the provider chart', async () => {
     connect()
-    readQuickbooksAccountMap.mockResolvedValue(new Map([['gl1310', 'deleted-99']]))
+    readQuickbooksAccountMap.mockResolvedValue(new Map([['acct_1310', 'deleted-99']]))
 
     const result = await provider.resolveAccount(ORG_ID, '1310')
 
@@ -616,7 +650,7 @@ describe('resolveAccount - the only place a code becomes a provider id', () => {
     // The one failure no downstream reader can catch: an entry posted to a
     // revenue account instead of an asset one still BALANCES.
     connect()
-    readQuickbooksAccountMap.mockResolvedValue(new Map([['gl1310', '79']]))
+    readQuickbooksAccountMap.mockResolvedValue(new Map([['acct_1310', '79']]))
 
     const result = await provider.resolveAccount(ORG_ID, '1310')
 

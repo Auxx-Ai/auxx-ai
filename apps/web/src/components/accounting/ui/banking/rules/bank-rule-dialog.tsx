@@ -46,7 +46,7 @@ export function BankRuleDialog({ open, onClose, rule }: BankRuleDialogProps) {
   const [bankAccountId, setBankAccountId] = useState('')
   const [autoApply, setAutoApply] = useState(false)
   const [action, setAction] = useState<BankRuleAction>('code')
-  const [glAccountCode, setGlAccountCode] = useState('')
+  const [glAccountId, setGlAccountId] = useState('')
   const [counterpartBankAccountId, setCounterpartBankAccountId] = useState('')
   const [memo, setMemo] = useState('')
 
@@ -62,7 +62,7 @@ export function BankRuleDialog({ open, onClose, rule }: BankRuleDialogProps) {
     setBankAccountId(rule?.bankAccountId ?? '')
     setAutoApply(rule?.autoApply ?? false)
     setAction(rule?.action ?? 'code')
-    setGlAccountCode(rule?.glAccountCode ?? '')
+    setGlAccountId(rule?.glAccountId ?? '')
     setCounterpartBankAccountId(rule?.counterpartBankAccountId ?? '')
     setMemo(rule?.memo ?? '')
   }, [open, rule])
@@ -99,17 +99,19 @@ export function BankRuleDialog({ open, onClose, rule }: BankRuleDialogProps) {
     name.trim().length > 0 &&
     matchValue.trim().length > 0 &&
     (action === 'code'
-      ? glAccountCode.length > 0
+      ? glAccountId.length > 0
       : action === 'transfer'
         ? counterpartBankAccountId.length > 0
         : true)
 
   const counterpart = bankAccounts.find((account) => account.id === counterpartBankAccountId)
 
+  const selectedGlAccount = chartAccounts.find((a) => a.id === glAccountId)
   const actionLabel = describeActionDetail({
     action,
-    glAccountCode,
-    glAccountName: chartAccounts.find((a) => a.code === glAccountCode)?.name,
+    glAccountId,
+    glAccountCode: selectedGlAccount?.code,
+    glAccountName: selectedGlAccount?.name,
     counterpartName: counterpart ? bankAccountLabel(counterpart) : undefined,
   })
 
@@ -122,7 +124,7 @@ export function BankRuleDialog({ open, onClose, rule }: BankRuleDialogProps) {
       direction,
       bankAccountId: bankAccountId || null,
       action,
-      glAccountCode: action === 'code' ? glAccountCode : null,
+      glAccountId: action === 'code' ? glAccountId : null,
       counterpartBankAccountId: action === 'transfer' ? counterpartBankAccountId : null,
       memo: memo.trim() || null,
       autoApply,
@@ -184,8 +186,8 @@ export function BankRuleDialog({ open, onClose, rule }: BankRuleDialogProps) {
             <BankRuleActionPage
               action={action}
               onActionChange={setAction}
-              glAccountCode={glAccountCode}
-              onGlAccountChange={setGlAccountCode}
+              glAccountId={glAccountId}
+              onGlAccountChange={setGlAccountId}
               counterpartBankAccountId={counterpartBankAccountId}
               onCounterpartChange={setCounterpartBankAccountId}
               memo={memo}

@@ -42,12 +42,22 @@ export function useChartAccounts() {
 }
 
 export interface GlAccountPickerProps {
-  /** The selected account's CODE, or null. Never an id. */
+  /** The selected account's CODE or id, depending on {@link selectBy}. */
   value: string | null
-  /** Fires with the chosen account's CODE, or null on clear. */
-  onChange: (code: string | null) => void
+  /** Fires with the chosen account's CODE or id (per {@link selectBy}), or null on clear. */
+  onChange: (value: string | null) => void
   /** Restrict the list to these statement classifications. */
   filterTypes?: GlAccountTypeValue[]
+  /**
+   * What `value`/`onChange` carry. Defaults to `'code'`, which is every caller
+   * that still names an account the `P2` way (a manual journal line, a
+   * write-off). Pass `'id'` for the six registry pointers converted by
+   * `plans/accounting/tasks/15-the-account-id-is-the-identity.md` §4
+   * (`bank_account.glAccount`, `bank_rule.glAccount`,
+   * `bank_transaction.glAccount`/`suggestedGlAccount`,
+   * `vendor_bill_line.glAccount`), which store the `gl_account` instance id.
+   */
+  selectBy?: 'code' | 'id'
   disabled?: boolean
   placeholder?: string
   className?: string
@@ -61,9 +71,10 @@ export interface GlAccountPickerProps {
  * (`ledger.chartAccounts`), grouped by statement classification in the
  * standard order ({@link GL_ACCOUNT_TYPES}: asset, liability, equity,
  * revenue, expense). Option label is `code · name`. Value in and out is the
- * account CODE, never an id - that is what `resolveRoles` and the manual
- * entry builder take (decision `P2`: a posting line names an account by code
- * with no foreign key).
+ * account CODE by default - what `resolveRoles` and the manual entry builder
+ * take (decision `P2`: a posting line names an account by code with no
+ * foreign key) - or the account ID when `selectBy="id"` is passed, for the
+ * six registry pointers task 15 §4 converted to hold an id instead.
  *
  * 🛑 A deactivated account renders in its group, disabled, with the reason
  * as a visible tooltip, never simply dropped from the list. This is the
@@ -85,6 +96,7 @@ export function GlAccountPicker({
   value,
   onChange,
   filterTypes,
+  selectBy = 'code',
   disabled = false,
   placeholder = 'Select account…',
   className,
@@ -100,8 +112,9 @@ export function GlAccountPicker({
   )
 
   const selected = useMemo(
-    () => accounts.find((account) => account.code === value) ?? null,
-    [accounts, value]
+    () =>
+      accounts.find((account) => (selectBy === 'id' ? account.id : account.code) === value) ?? null,
+    [accounts, value, selectBy]
   )
 
   function handleOpenChange(next: boolean) {
@@ -156,27 +169,30 @@ export function GlAccountPicker({
             <CommandEmpty>{isLoading ? 'Loading…' : 'No accounts match.'}</CommandEmpty>
             {groups.map((group) => (
               <CommandGroup key={group.type} heading={accountTypeLabel(group.type)}>
-                {group.accounts.map((account) => (
-                  <CommandDetailItem
-                    key={account.code}
-                    value={account.code}
-                    title={`${account.code} · ${account.name}`}
-                    description={
-                      account.isActive
-                        ? undefined
-                        : 'This account is inactive and cannot be posted to.'
-                    }
-                    disabled={!account.isActive}
-                    selected={account.code === value}
-                    selectionMode='check'
-                    className={cn(!account.isActive && 'opacity-60')}
-                    onSelect={() => {
-                      if (!account.isActive) return
-                      onChange(account.code)
-                      handleOpenChange(false)
-                    }}
-                  />
-                ))}
+                {group.accounts.map((account) => {
+                  const optionValue = selectBy === 'id' ? account.id : account.code
+                  return (
+                    <CommandDetailItem
+                      key={account.id}
+                      value={account.id}
+                      title={`${account.code} · ${account.name}`}
+                      description={
+                        account.isActive
+                          ? undefined
+                          : 'This account is inactive and cannot be posted to.'
+                      }
+                      disabled={!account.isActive}
+                      selected={optionValue === value}
+                      selectionMode='check'
+                      className={cn(!account.isActive && 'opacity-60')}
+                      onSelect={() => {
+                        if (!account.isActive) return
+                        onChange(optionValue)
+                        handleOpenChange(false)
+                      }}
+                    />
+                  )
+                })}
               </CommandGroup>
             ))}
           </CommandList>

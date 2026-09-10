@@ -26,7 +26,8 @@ import { formatAccountingDate, formatMinor, formatSignedMinor } from '../ledger/
 import { periodKeyFromDate } from './report-helpers'
 
 export interface AccountLinesDialogTarget {
-  accountCode: string
+  /** The `gl_account` `EntityInstance` id - task 15's identity, not a code. */
+  glAccountId: string
   /** `YYYY-MM-DD`, both optional - an omitted bound reads cumulative-from-the-beginning. */
   from?: string
   to?: string
@@ -57,7 +58,7 @@ export function AccountLinesDialog({
   bookTimeZone,
 }: AccountLinesDialogProps) {
   const { data, isPending } = api.ledgerReports.accountLines.useQuery(
-    { accountCode: target?.accountCode ?? '', from: target?.from, to: target?.to },
+    { glAccountId: target?.glAccountId ?? '', from: target?.from, to: target?.to },
     { enabled: !!target }
   )
 
@@ -65,9 +66,7 @@ export function AccountLinesDialog({
     <Dialog open={!!target} onOpenChange={onOpenChange}>
       <DialogContent size='xl'>
         <DialogHeader>
-          <DialogTitle>
-            {data ? `${data.accountCode} ${data.accountName}`.trim() : target?.accountCode}
-          </DialogTitle>
+          <DialogTitle>{data ? `${data.accountCode} ${data.accountName}`.trim() : ''}</DialogTitle>
           <DialogDescription>
             Every posted line against this account in the range, oldest first, with a running
             balance.

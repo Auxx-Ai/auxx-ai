@@ -64,8 +64,10 @@ const DIRECTION_LABELS: Record<Exclude<BankRuleDirection, 'any'>, string> = {
 
 /** The action half of a rule, as it appears in the list: `Code 6100`. */
 export function describeRuleAction(
-  rule: Pick<BankRuleRecord, 'action' | 'glAccountCode' | 'counterpartBankAccountId'>,
-  resolveAccountName: (id: string) => string | undefined
+  rule: Pick<BankRuleRecord, 'action' | 'glAccountId' | 'counterpartBankAccountId'>,
+  resolveAccountName: (id: string) => string | undefined,
+  /** `rule.glAccountId` (task 15 §4) resolved against the chart, for display. */
+  resolveGlAccountCode: (id: string) => string | undefined
 ): string {
   if (rule.action === 'exclude') return 'Exclude'
   if (rule.action === 'transfer') {
@@ -74,7 +76,8 @@ export function describeRuleAction(
       : undefined
     return name ? `Transfer to ${name}` : 'Transfer'
   }
-  return rule.glAccountCode ? `Code ${rule.glAccountCode}` : 'Code'
+  if (!rule.glAccountId) return 'Code'
+  return `Code ${resolveGlAccountCode(rule.glAccountId) ?? rule.glAccountId}`
 }
 
 /**
@@ -83,7 +86,9 @@ export function describeRuleAction(
  */
 export function describeActionDetail(input: {
   action: BankRuleAction
-  glAccountCode: string
+  /** The `gl_account` id a `code` action proposes (task 15 §4). Never a code. */
+  glAccountId: string
+  glAccountCode?: string
   glAccountName?: string
   counterpartName?: string
 }): string {
@@ -91,10 +96,9 @@ export function describeActionDetail(input: {
   if (input.action === 'transfer') {
     return input.counterpartName ? `Transfer to ${input.counterpartName}` : 'Transfer'
   }
-  if (!input.glAccountCode) return 'Code to an account'
-  return input.glAccountName
-    ? `Code to ${input.glAccountCode} · ${input.glAccountName}`
-    : `Code to ${input.glAccountCode}`
+  if (!input.glAccountId) return 'Code to an account'
+  const label = input.glAccountCode ?? input.glAccountId
+  return input.glAccountName ? `Code to ${label} · ${input.glAccountName}` : `Code to ${label}`
 }
 
 /**
@@ -103,7 +107,8 @@ export function describeActionDetail(input: {
  */
 export function describeRule(
   rule: BankRuleRecord,
-  resolveAccountName: (id: string) => string | undefined
+  resolveAccountName: (id: string) => string | undefined,
+  resolveGlAccountCode: (id: string) => string | undefined
 ): string {
   const parts = [
     `${MATCH_FIELD_LABELS[rule.matchField]} ${MATCH_OPERATOR_LABELS[rule.matchOperator]} "${rule.matchValue}"`,
@@ -113,6 +118,6 @@ export function describeRule(
     const name = resolveAccountName(rule.bankAccountId)
     if (name) parts.push(name)
   }
-  parts.push(describeRuleAction(rule, resolveAccountName))
+  parts.push(describeRuleAction(rule, resolveAccountName, resolveGlAccountCode))
   return parts.join(' · ')
 }

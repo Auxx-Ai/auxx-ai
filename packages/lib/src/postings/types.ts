@@ -163,6 +163,7 @@ export type GlPostingLineInput =
        */
       accountRole: string
       accountCode?: never
+      glAccountId?: never
     })
   | (GlPostingLineBase & {
       /**
@@ -171,6 +172,25 @@ export type GlPostingLineInput =
        */
       accountCode: string
       accountRole?: never
+      glAccountId?: never
+    })
+  | (GlPostingLineBase & {
+      /**
+       * A `gl_account` instance ID out of this org's own chart. The IDENTITY
+       * (task 15): a line that must land on exactly the account another line
+       * landed on, whatever the chart has since been renamed or renumbered to.
+       * A reversal uses it, so the original is backed out of the account it
+       * went into rather than out of whatever its role resolves to today.
+       */
+      glAccountId: string
+      /**
+       * The role SNAPSHOT to stamp on the stored line, carried verbatim from
+       * the line being reversed. Never resolved: the id decides the account,
+       * this only records which account the line was SUPPOSED to be, so a
+       * reversal reads the same way in the journal as the entry it backs out.
+       */
+      accountRole?: string
+      accountCode?: never
     })
 
 /**
@@ -405,6 +425,12 @@ export type PostResultStatus =
   | 'unbalanced'
   | 'nothing_to_close'
   | 'setup_incomplete'
+  // The org has never enabled the accounting module (`FeatureKey.accounting`
+  // is off). A first-class silent case like `not_connected`, never a warning:
+  // nothing is built, nothing is claimed, nothing is logged (task 17 section 3).
+  // Distinct from `setup_incomplete`, which means the module is on and the
+  // wizard was not finished, and from `disabled`, which is a provider switch.
+  | 'not_enabled'
   // Wave 1 (HANDOFF slot 1A). A manual or opening entry named one of the three
   // inventory accounts by code; the remedy is the close console, which is the
   // only writer of those balances.

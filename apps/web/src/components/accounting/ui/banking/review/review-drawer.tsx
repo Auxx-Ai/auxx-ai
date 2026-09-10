@@ -16,9 +16,10 @@ import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Ban, Landmark, Undo2 } from 'lucide-react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { api } from '~/trpc/react'
 import { BankAccountBadge } from '../../bank-account-badge'
+import { useChartAccounts } from '../../gl-account-picker'
 import { EntryBlockers, type LedgerBlocker } from '../../ledger/entry-blockers'
 import { EMPTY_CELL, formatMinor } from '../../ledger/format'
 import { CodePanel } from './code-panel'
@@ -142,6 +143,17 @@ export function ReviewDrawer({
       line.reviewStatus === 'coded' ||
       line.reviewStatus === 'excluded')
 
+  // `glAccountId` is the `gl_account` id (task 15 §4), never a code - resolve
+  // it against the one chart fetch every picker on this page already shares.
+  const { accounts: chartAccounts } = useChartAccounts()
+  const codedAccount = useMemo(
+    () =>
+      line?.glAccountId
+        ? (chartAccounts.find((account) => account.id === line.glAccountId) ?? null)
+        : null,
+    [chartAccounts, line?.glAccountId]
+  )
+
   return (
     <DockableDrawer
       open={!!transactionId}
@@ -237,7 +249,7 @@ export function ReviewDrawer({
                         </span>
                         <span className='truncate text-muted-foreground text-xs'>
                           {line.reviewStatus === 'coded'
-                            ? `Coded to ${line.glAccountCode ?? ''}`
+                            ? `Coded to ${codedAccount ? `${codedAccount.code} ${codedAccount.name}` : (line.glAccountId ?? '')}`
                             : line.reviewStatus === 'excluded'
                               ? (line.excludeReason ?? '')
                               : matchedLabel(line)}

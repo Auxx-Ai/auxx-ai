@@ -62,17 +62,20 @@ export const BANK_ACCOUNT_STATUS_OPTIONS = [
  * two accounts under one login share a credential and hold two connector ids
  * (plans/accounting/implementation-review.md §2).
  *
- * ## `glAccount` is a CODE as TEXT, not a relationship
+ * ## `glAccount` is the `gl_account` EntityInstance id, as TEXT, no relationship
  *
- * 🛑 The bank plan (02 §6) asks for a RELATIONSHIP to `gl_account`, on the
- * argument that an org that renumbers Cash from `1000` to `1010` must not break
- * the feed. That argument is right and this field still departs from it, for the
- * reason `bank_deposit.bankAccount` and `vendor_bill_line.glAccount` already
- * departed: **there is no `gl_account` relationship precedent anywhere in the
- * registry** - every GL pointer in the money subsystem is a code as TEXT, and
- * `resolveRoles` takes a code with no foreign key (decision `P2`). One
- * inconsistent field would be worse than one consistent departure. A single
- * later migration converts every one of them together.
+ * (`plans/accounting/tasks/15-the-account-id-is-the-identity.md` §4, DECIDED
+ * 2026-09-09.) Renumbering Cash from `1000` to `1010` must not break the feed,
+ * which is the argument for an identity rather than a mutable label - but the
+ * identity is stored as plain `text()` with no `references()`, the shape
+ * `GlRoleAssignment.glAccountId` already uses: no foreign key, validated for
+ * existence, active status and type on every read, fail closed. A registry
+ * relationship was considered and rejected here on purpose - it buys nothing a
+ * read-time check does not already have to do, and this field is written in
+ * bulk by the review queue over thousands of rows. Migration
+ * `143-gl-pointers-hold-ids` converted every stored value from a code to the
+ * matching account's id, together with the other five pointers this brief
+ * names.
  *
  * ## Coverage
  *
@@ -246,11 +249,11 @@ export const BANK_ACCOUNT_FIELDS: Record<string, ResourceField> = {
       updatable: true,
       configurable: false,
     },
-    placeholder: '1000',
+    placeholder: 'Select account',
     description:
-      'The GL account CODE this account maps to, from the org own chart. THE point of this ' +
-      'entity. TEXT rather than a RELATIONSHIP because every GL pointer in the money ' +
-      'subsystem is a code (decision P2); one later migration converts them all together',
+      'The gl_account id this account maps to, from the org own chart. THE point of this ' +
+      'entity. TEXT with no foreign key, not a RELATIONSHIP - validated for existence, ' +
+      'active status and type on every read, fail closed',
   },
 
   feedStartDate: {

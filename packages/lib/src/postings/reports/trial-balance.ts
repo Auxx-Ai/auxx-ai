@@ -34,21 +34,36 @@ const POSTED_STATUSES = ['posted', 'reversed'] as const
 
 /** One account's balance over the requested range. */
 export interface TrialBalanceRow {
+  /**
+   * The `gl_account` `EntityInstance` id this row groups on. The IDENTITY
+   * (task 15) - what makes one account read as one row no matter how many
+   * times it has been renumbered since something posted to it.
+   */
+  glAccountId: string
+  /**
+   * The account's CURRENT code, read from the live chart by `glAccountId` -
+   * never the snapshot a line happened to carry. Renumbering `1100` to `1150`
+   * no longer splits its history into two rows; this is simply `1150` for
+   * every line ever posted to that account. Falls back to the most recent
+   * snapshot on the lines themselves only when `inChart` is `false` (the
+   * account has been deleted), so a dropped account is still identifiable.
+   */
   accountCode: string
-  /** `''` when the code names no live account in this org's chart - see `inChart`. */
+  /** `''` when the account is not in the org's current chart - see `inChart`. */
   accountName: string
-  /** `null` when the code names no live account - there is no natural side to sign against. */
+  /** `null` when the account is not in the org's current chart - there is no natural side to sign against. */
   accountType: GlAccountTypeValue | null
   debitMinor: number
   creditMinor: number
   /** Natural-sign balance via `signedBalance`. `0` when `accountType` is `null`. */
   balanceMinor: number
   /**
-   * `false` when posted lines name a code the org's chart does not currently
-   * hold live - the account was renumbered, archived, or deleted after
-   * something posted to it (decision P2: a line stores a code with no foreign
-   * key, deliberately, so the ledger outlives the chart). The row still
-   * appears, flagged, rather than being silently dropped.
+   * `false` when `glAccountId` names no account the org's chart currently
+   * holds live - the account was DELETED (archived or removed) after
+   * something posted to it (decision P2: a line stores an id with no foreign
+   * key, deliberately, so the ledger outlives the chart). Renumbering no
+   * longer produces `false` here - see the note on `accountCode`. The row
+   * still appears, flagged, rather than being silently dropped.
    */
   inChart: boolean
 }
@@ -85,13 +100,15 @@ export interface ReadTrialBalanceOptions {
 
 /**
  * `SUM(amountMinor) FILTER (WHERE direction = 'debit')` / `'credit'`, grouped by
- * `accountCode`, over posted `GlPostingLine`s in `[from, to]` - `verifyBooksBalance`'s
- * own query with `GROUP BY accountCode` in place of `GROUP BY postingId`.
+ * `glAccountId`, over posted `GlPostingLine`s in `[from, to]` - `verifyBooksBalance`'s
+ * own query with `GROUP BY glAccountId` in place of `GROUP BY postingId`.
  *
  * Joined to the org's live chart (`listChartAccounts`, the same read
- * `resolveRoles` and the role map share) for name and `accountType`. A code
- * with posted lines but no live chart row still appears, with `inChart: false`
- * and `accountType: null` - see {@link TrialBalanceRow}.
+ * `resolveRoles` and the role map share) BY ID for name, `accountType` and the
+ * CURRENT code - task 15 §3. An id with posted lines but no live chart row
+ * still appears, with `inChart: false`, `accountType: null`, and `accountCode`
+ * falling back to the most recent snapshot on its own lines - see
+ * {@link TrialBalanceRow}.
  */
 export async function readTrialBalance(
   db: Database,
@@ -106,7 +123,7 @@ export async function readTrialBalance(
       if (chartResult.isErr()) return err(chartResult.error)
       chart = chartResult.value
     }
-    const chartByCode = new Map(chart.map((account) => [account.code, account]))
+    const chartById = new Map(chart.map((account) => [account.id, account]))
 
     const bounds = [
       eq(schema.GlPosting.organizationId, organizationId),
@@ -117,22 +134,29 @@ export async function readTrialBalance(
 
     const grouped = await db
       .select({
-        accountCode: schema.GlPostingLine.accountCode,
+        glAccountId: schema.GlPostingLine.glAccountId,
+        // The most recent snapshot on the group's own lines - used only as the
+        // `inChart: false` fallback below, never when the id still resolves.
+        accountCode: sql<string>`max(${schema.GlPostingLine.accountCode})`,
         debitMinor: sql<string>`coalesce(sum(${schema.GlPostingLine.amountMinor}) filter (where ${schema.GlPostingLine.direction} = 'debit'), 0)`,
         creditMinor: sql<string>`coalesce(sum(${schema.GlPostingLine.amountMinor}) filter (where ${schema.GlPostingLine.direction} = 'credit'), 0)`,
       })
       .from(schema.GlPostingLine)
       .innerJoin(schema.GlPosting, eq(schema.GlPosting.id, schema.GlPostingLine.glPostingId))
       .where(and(...bounds))
-      .groupBy(schema.GlPostingLine.accountCode)
+      .groupBy(schema.GlPostingLine.glAccountId)
 
     const rows: TrialBalanceRow[] = grouped
       .map((row) => {
-        const account = chartByCode.get(row.accountCode)
+        const account = chartById.get(row.glAccountId)
         const debitMinor = toMinor(row.debitMinor)
         const creditMinor = toMinor(row.creditMinor)
         return {
-          accountCode: row.accountCode,
+          glAccountId: row.glAccountId,
+          // The CURRENT code and name when the account is still live - a
+          // statement reads the chart, not the snapshot (§3's rule). Falls back
+          // to the snapshot only for a deleted account, so it stays identifiable.
+          accountCode: account?.code ?? row.accountCode,
           accountName: account?.name ?? '',
           accountType: account?.accountType ?? null,
           debitMinor,
@@ -141,7 +165,8 @@ export async function readTrialBalance(
           inChart: Boolean(account),
         }
       })
-      .sort((a, b) => a.accountCode.localeCompare(b.accountCode))
+      // Null-safe ahead of task 15 §5, where `accountCode` becomes optional.
+      .sort((a, b) => (a.accountCode ?? '').localeCompare(b.accountCode ?? ''))
 
     const totalDebitMinor = rows.reduce((sum, row) => sum + row.debitMinor, 0)
     const totalCreditMinor = rows.reduce((sum, row) => sum + row.creditMinor, 0)

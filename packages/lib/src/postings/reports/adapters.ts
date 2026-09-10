@@ -23,24 +23,27 @@ export const TRIAL_BALANCE_COLUMNS: StatementColumn[] = [
 ]
 
 /**
- * One `'line'` row per account code, in the trial balance's own order, plus a
+ * One `'line'` row per account, in the trial balance's own order, plus a
  * `'total'` row. Flat rather than sectioned by `accountType`, matching the
- * read itself (`GROUP BY accountCode`, no statement grouping) - a screen that
+ * read itself (`GROUP BY glAccountId`, no statement grouping) - a screen that
  * wants sections filters by `accountType` on the underlying `TrialBalance`
  * rather than on this shape.
  */
 export function toTrialBalanceRows(tb: TrialBalance): StatementRow[] {
   const lines: StatementRow[] = tb.rows.map((row) => ({
-    id: row.accountCode,
+    // The IDENTITY (task 15), not the code: two rows can no longer collide
+    // because an account was renumbered mid-history.
+    id: row.glAccountId,
     label: row.inChart ? `${row.accountCode} ${row.accountName}` : `${row.accountCode}`,
     depth: 0,
     kind: 'line',
     values: [row.debitMinor, row.creditMinor, row.balanceMinor],
     meta: {
+      glAccountId: row.glAccountId,
       accountCode: row.accountCode,
       note: row.inChart
         ? undefined
-        : 'This code has posted lines but is not in the current chart of accounts.',
+        : 'This account has posted lines but has been deleted from the current chart of accounts.',
     },
   }))
 
@@ -60,11 +63,12 @@ export function balanceSheetColumns(bs: {
   return columns
 }
 
+/** Match the compare snapshot's row by `glAccountId` (task 15), never by code - a renumber between the two reads must not miss. */
 function findCompare(
-  rows: readonly { accountCode: string; balanceMinor: number }[],
-  code: string
+  rows: readonly { glAccountId: string; balanceMinor: number }[],
+  glAccountId: string
 ): number | null {
-  return rows.find((row) => row.accountCode === code)?.balanceMinor ?? null
+  return rows.find((row) => row.glAccountId === glAccountId)?.balanceMinor ?? null
 }
 
 /**
@@ -80,9 +84,9 @@ export function toBalanceSheetRows(
 ): StatementRow[] {
   const two = (
     value: number,
-    rows: readonly { accountCode: string; balanceMinor: number }[],
-    code: string
-  ) => (compare ? [value, findCompare(rows, code)] : [value])
+    rows: readonly { glAccountId: string; balanceMinor: number }[],
+    glAccountId: string
+  ) => (compare ? [value, findCompare(rows, glAccountId)] : [value])
 
   const section = (
     id: string,
@@ -95,16 +99,18 @@ export function toBalanceSheetRows(
     extraChildren: StatementRow[] = []
   ): StatementRow => {
     const children: StatementRow[] = rows.map((row) => ({
-      id: row.accountCode,
+      // The IDENTITY (task 15), not the code - see `toTrialBalanceRows`.
+      id: row.glAccountId,
       label: row.inChart ? `${row.accountCode} ${row.accountName}` : row.accountCode,
       depth: 1,
       kind: 'line',
-      values: two(row.balanceMinor, compareRows, row.accountCode),
+      values: two(row.balanceMinor, compareRows, row.glAccountId),
       meta: {
+        glAccountId: row.glAccountId,
         accountCode: row.accountCode,
         note: row.inChart
           ? undefined
-          : 'This code has posted lines but is not in the current chart of accounts.',
+          : 'This account has posted lines but has been deleted from the current chart of accounts.',
       },
     }))
     children.push(...extraChildren)
@@ -210,25 +216,27 @@ export function toProfitAndLossRows(
 ): StatementRow[] {
   const two = (
     value: number,
-    rows: readonly { accountCode: string; balanceMinor: number }[],
-    code: string
-  ) => (compare ? [value, findCompare(rows, code)] : [value])
+    rows: readonly { glAccountId: string; balanceMinor: number }[],
+    glAccountId: string
+  ) => (compare ? [value, findCompare(rows, glAccountId)] : [value])
 
   const lines = (
     rows: readonly ProfitAndLossRow[],
     compareRows: readonly ProfitAndLossRow[]
   ): StatementRow[] =>
     rows.map((row) => ({
-      id: row.accountCode,
+      // The IDENTITY (task 15), not the code - see `toTrialBalanceRows`.
+      id: row.glAccountId,
       label: row.inChart ? `${row.accountCode} ${row.accountName}` : row.accountCode,
       depth: 1,
       kind: 'line' as const,
-      values: two(row.balanceMinor, compareRows, row.accountCode),
+      values: two(row.balanceMinor, compareRows, row.glAccountId),
       meta: {
+        glAccountId: row.glAccountId,
         accountCode: row.accountCode,
         note: row.inChart
           ? undefined
-          : 'This code has posted lines but is not in the current chart of accounts.',
+          : 'This account has posted lines but has been deleted from the current chart of accounts.',
       },
     }))
 

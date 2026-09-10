@@ -10,7 +10,7 @@
 
 import { closePools, database, schema } from '@auxx/database'
 import { eq } from 'drizzle-orm'
-import { createBankAccount, getBankAccount } from '../src/banking'
+import { createBankAccount } from '../src/banking'
 import { codeTransaction } from '../src/banking/review/writes'
 import {
   applySuggestions,
@@ -20,6 +20,7 @@ import {
   suggestFromHistory,
 } from '../src/banking/rules'
 import { getCachedEntityDefId } from '../src/cache'
+import { listChartAccounts } from '../src/postings/role-map'
 import { UnifiedCrudHandler } from '../src/resources/crud/unified-handler'
 import { toRecordId } from '../src/resources/resource-id'
 
@@ -35,15 +36,27 @@ async function main() {
   if (!member) throw new Error('DemoOrg1 has no members')
   const actorUserId = member.userId
 
+  // The registry pointers hold the gl_account instance id now, not a code
+  // (task 15 §4) - resolve the org's own chart codes to ids before using them.
+  const chart = await listChartAccounts(database, ORGANIZATION_ID)
+  if (chart.isErr()) throw chart.error
+  const findByCode = (code: string) => {
+    const found = chart.value.find((a) => a.code === code)
+    if (!found) throw new Error(`DemoOrg1's chart has no account coded ${code}`)
+    return found.id
+  }
+  const cashAccountId = findByCode('1000')
+  const expenseAccountId = findByCode('6100')
+
   // ── 1. A manual bank account, mapped to cash ─────────────────────────
   const account = await createBankAccount(database, {
     organizationId: ORGANIZATION_ID,
     actorUserId,
     name: 'Drive Test Checking (3C)',
-    glAccountCode: '1000',
+    glAccountId: cashAccountId,
   })
   if (account.isErr()) throw account.error
-  console.log(`RESULT account=${account.value.id} gl=${account.value.glAccountCode}`)
+  console.log(`RESULT account=${account.value.id} gl=${account.value.glAccountId}`)
 
   // ── 2. Four bank_transaction lines sharing a matchKey ────────────────
   const bankTransactionDefId = await getCachedEntityDefId(ORGANIZATION_ID, 'bank_transaction')
@@ -77,7 +90,7 @@ async function main() {
       organizationId: ORGANIZATION_ID,
       actorUserId,
       transactionId,
-      glAccountCode: '6100',
+      glAccountId: expenseAccountId,
     })
     if (outcome.isErr()) throw outcome.error
     console.log(
@@ -104,7 +117,7 @@ async function main() {
     matchValue: MATCH_KEY,
     direction: 'any',
     action: 'code',
-    glAccountCode: '6100',
+    glAccountId: expenseAccountId,
     autoApply: false,
   })
   if (rule.isErr()) throw rule.error
@@ -138,7 +151,7 @@ async function main() {
   })
   if (after.isErr() || !after.value) throw new Error('fourth row missing after apply')
   console.log(
-    `RESULT afterApply=reviewStatus:${after.value.reviewStatus} glAccount:${after.value.glAccountCode}`
+    `RESULT afterApply=reviewStatus:${after.value.reviewStatus} glAccount:${after.value.glAccountId}`
   )
 
   // Confirm the standalone suggestion fields on the record, not just the

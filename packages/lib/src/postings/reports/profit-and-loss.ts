@@ -26,6 +26,9 @@ const logger = createScopedLogger('postings:reports:profit-and-loss')
 
 /** One revenue or expense account's activity over the requested period. */
 export interface ProfitAndLossRow {
+  /** The `gl_account` `EntityInstance` id this row groups on. The IDENTITY (task 15). */
+  glAccountId: string
+  /** The account's CURRENT code - a snapshot only when `inChart` is `false`. See `TrialBalanceRow`. */
   accountCode: string
   accountName: string
   accountType: 'revenue' | 'expense'
@@ -70,6 +73,7 @@ const COGS_PREFIX = '5'
 
 function toRow(row: TrialBalanceRow): ProfitAndLossRow {
   return {
+    glAccountId: row.glAccountId,
     accountCode: row.accountCode,
     accountName: row.accountName,
     accountType: row.accountType as 'revenue' | 'expense',

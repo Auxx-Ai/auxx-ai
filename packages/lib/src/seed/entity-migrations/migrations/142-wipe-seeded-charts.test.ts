@@ -130,11 +130,15 @@ function stubDb(rows: {
 }
 
 describe('migration 142 registration', () => {
-  it('is registered exactly once, with a unique id, last in the list', () => {
+  // No longer asserted "last in the list": migration 143
+  // (gl-pointers-hold-ids) reads whatever gl_account rows exist regardless of
+  // which migration wrote them and has no ordering constraint against this
+  // one, so it registers after 142 without disturbing anything this file
+  // pins about 142 itself.
+  it('is registered exactly once, with a unique id', () => {
     const ids = ALL_ENTITY_MIGRATIONS.map((m) => m.id)
     expect(ids.filter((id) => id === MIGRATION_ID)).toHaveLength(1)
     expect(new Set(ids).size).toBe(ids.length)
-    expect(ids.at(-1)).toBe(MIGRATION_ID)
     expect(migration142WipeSeededCharts.id).toBe(MIGRATION_ID)
   })
 })

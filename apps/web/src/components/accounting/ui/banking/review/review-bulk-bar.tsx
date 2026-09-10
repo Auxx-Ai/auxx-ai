@@ -43,7 +43,7 @@ export function ReviewBulkBar({ selectedIds, onClear, onDone }: ReviewBulkBarPro
   const utils = api.useUtils()
   const [dialog, setDialog] = useState<'exclude' | 'assign' | null>(null)
   const [reason, setReason] = useState('')
-  const [code, setCode] = useState<string | null>(null)
+  const [accountId, setAccountId] = useState<string | null>(null)
   const [blockers, setBlockers] = useState<LedgerBlocker[]>([])
 
   const count = selectedIds.length
@@ -183,17 +183,22 @@ export function ReviewBulkBar({ selectedIds, onClear, onDone }: ReviewBulkBarPro
               other. Money out debits the account; money in credits it.
             </DialogDescription>
           </DialogHeader>
-          <GlAccountPicker value={code} onChange={setCode} placeholder='Choose an account…' />
+          <GlAccountPicker
+            value={accountId}
+            selectBy='id'
+            onChange={setAccountId}
+            placeholder='Choose an account…'
+          />
           <EntryBlockers blockers={blockers} />
           <DialogFooter>
             <Button variant='outline' onClick={() => setDialog(null)}>
               Cancel
             </Button>
             <Button
-              disabled={!code || busy}
+              disabled={!accountId || busy}
               loading={bulkAssign.isPending}
               onClick={() =>
-                bulkAssign.mutate({ ids: selectedIds.slice(0, 100), glAccountCode: code ?? '' })
+                bulkAssign.mutate({ ids: selectedIds.slice(0, 100), glAccountId: accountId ?? '' })
               }>
               Post
             </Button>

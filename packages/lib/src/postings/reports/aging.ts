@@ -271,7 +271,9 @@ export async function readAging(
         and(
           eq(schema.GlPosting.organizationId, organizationId),
           inArray(schema.GlPosting.status, [...POSTED_STATUSES]),
-          eq(schema.GlPostingLine.accountCode, account.code),
+          // By id (task 15), not by code: a renumber of the A/R or A/P account
+          // between two postings must not split its open documents in two.
+          eq(schema.GlPostingLine.glAccountId, account.glAccountId),
           lte(schema.GlPosting.txnDate, asOf)
         )
       )
@@ -536,7 +538,7 @@ export async function readAging(
     const tbResult = await readTrialBalance(db, { organizationId, to: asOf })
     if (tbResult.isErr()) return err(tbResult.error)
     const balanceSheetMinor =
-      tbResult.value.rows.find((row) => row.accountCode === account.code)?.balanceMinor ?? 0
+      tbResult.value.rows.find((row) => row.glAccountId === account.glAccountId)?.balanceMinor ?? 0
     const differenceMinor = totalMinor - balanceSheetMinor
 
     return ok({

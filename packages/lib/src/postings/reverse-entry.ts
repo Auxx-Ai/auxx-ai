@@ -30,7 +30,6 @@ import { buildEntry } from './build-entry'
 import { parsePostingDraft, requiresAssertions, reverseAssertions } from './draft'
 import type { PeriodLock } from './periods'
 import { postEntry } from './post-entry'
-import { resolveRoles } from './resolve-roles'
 import type { GlPostingLineInput, PostingType, PostResult } from './types'
 
 const logger = createScopedLogger('postings:reverse-entry')
@@ -63,19 +62,24 @@ function refuse(error: string, glPostingId?: string): PostResult {
  * is updated. The provider's register ends up holding both halves, which is
  * what a bookkeeper expects to see and what makes the pair auditable.
  *
- * ## Why this re-resolves the roles and then checks them against the original
+ * ## Why this reverses by `glAccountId`, not by role or code
  *
- * A reversal must land on the SAME accounts as the entry it backs out. If the
- * org repointed `grni` from `2160` to `2155` since the original posted, blindly
- * re-resolving would credit `2155` and leave `2160` overstated forever - and
- * both entries would still balance, so nothing downstream could detect it.
+ * A reversal must land on the SAME account as the entry it backs out. Before
+ * task 15, this rebuilt a role line as `{ accountRole }` and re-resolved it
+ * against the CURRENT chart, so a role remapped between the post and the
+ * reversal (`grni` from `2160` to `2155`, say) credited `2155` and left `2160`
+ * overstated forever - and both entries still balanced, so nothing downstream
+ * could detect it.
  *
- * The frozen `accountCode` on the original's lines is therefore the authority,
- * and the re-resolution exists only to compare against it. On any drift this
- * refuses and names the role, the code the entry posted to, and the code the
- * role means today. That is a decision for a person: repointing the role back
- * and reversing, or posting a manual correcting entry, are different answers to
- * different questions.
+ * `glAccountId` is the IDENTITY (`GlPostingLineInput`'s third variant,
+ * plans/accounting/tasks/15-the-account-id-is-the-identity.md), and every
+ * reversed line is built from the original's stored id rather than its role or
+ * code. `resolveAccountLines` still validates the id against the org's chart -
+ * archived reads as missing, inactive refuses - so a reversal fails closed the
+ * same way a post does; it simply can no longer drift to a DIFFERENT account
+ * than the one it is backing out. The original's `accountRole` is copied onto
+ * the reversed line as the snapshot it is, so the pair reads the same way in
+ * the journal.
  */
 export async function reverseEntry(
   db: Database,
@@ -124,7 +128,8 @@ export async function reverseEntry(
     const lines = await db
       .select({
         lineNumber: schema.GlPostingLine.lineNumber,
-        accountCode: schema.GlPostingLine.accountCode,
+        glAccountId: schema.GlPostingLine.glAccountId,
+        // The role SNAPSHOT, copied onto the reversed line; the id decides the account.
         accountRole: schema.GlPostingLine.accountRole,
         direction: schema.GlPostingLine.direction,
         amountMinor: schema.GlPostingLine.amountMinor,
@@ -148,59 +153,24 @@ export async function reverseEntry(
       )
     }
 
-    // ── The drift check, for ROLE lines only ───────────────────────────────
-    //
-    // 🛑 A CODE line has no drift to check and is deliberately exempt.
-    // `accountRole` is nullable: a manual or opening entry names accounts by
-    // code, and the code IS the authority - there is no mapping between the
-    // entry and the account for the chart to move underneath. Re-resolving one
-    // would be inventing a role the person never chose. So a code line is
-    // reversed to the same code it posted to, verbatim, which is precisely what
-    // the drift check exists to guarantee for a role line.
-    //
-    // (Before slot 1A this function REFUSED a role-less entry outright, which
-    // was correct while `BuiltEntry` was role-keyed by construction. It is not
-    // any more: `GlPostingLineInput` carries both shapes.)
-    const roles = [
-      ...new Set(lines.map((line) => line.accountRole).filter((r): r is string => !!r)),
-    ]
-    const resolved = await resolveRoles(db, organizationId, roles)
-    if (resolved.isErr()) {
-      return {
-        status: 'account_unmapped',
-        failureClass: 'configuration',
-        retryable: false,
-        error: resolved.error.message,
-        glPostingId: original.id,
-      }
-    }
-
-    const drift: string[] = []
-    for (const line of lines) {
-      if (!line.accountRole) continue
-      const account = resolved.value.get(line.accountRole)
-      if (account && account.code !== line.accountCode) {
-        drift.push(
-          `'${line.accountRole}' posted to ${line.accountCode} but now maps to ${account.code}`
-        )
-      }
-    }
-    if (drift.length > 0) {
-      return refuse(
-        `Cannot reverse ${original.docNumber}: the chart moved under it. ${drift.join('; ')}. ` +
-          'Reversing would credit an account the entry never touched. Repoint the role, or post a manual correcting entry.',
-        original.id
-      )
-    }
-
     // ── The opposite entry ─────────────────────────────────────────────────
     // Same accounts, same amounts, same audit pair, flipped direction. Built
     // through `buildEntry` so the reversal is subject to the same balance and
     // minor-unit assertions as anything else that reaches the ledger.
+    //
+    // Every line reverses by `glAccountId` - the IDENTITY - not by the role or
+    // code it was originally coded with. `resolveAccountLines` still validates
+    // the id against the org's live chart (archived reads as missing, inactive
+    // refuses), so this fails closed exactly as a role or code line would; it
+    // just cannot land on a DIFFERENT account than the one it is backing out.
+    //
+    // The role rides along as a SNAPSHOT only (the id variant allows it for
+    // exactly this): the reversal's stored line says which account it was
+    // SUPPOSED to be, the same way the original's does, while the id alone
+    // decides where it lands.
     const reversedLines: GlPostingLineInput[] = lines.map((line, index) => ({
-      // The shape the original carried, kept: a role line reverses as a role
-      // line, a code line as the same code.
-      ...(line.accountRole ? { accountRole: line.accountRole } : { accountCode: line.accountCode }),
+      glAccountId: line.glAccountId,
+      accountRole: line.accountRole ?? undefined,
       direction: line.direction === 'debit' ? 'credit' : 'debit',
       amount: line.amountMinor,
       memo: line.memo ?? undefined,

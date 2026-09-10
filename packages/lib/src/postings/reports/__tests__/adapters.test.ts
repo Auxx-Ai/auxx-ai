@@ -17,6 +17,7 @@ const trialBalance: TrialBalance = {
   to: '2026-08-31',
   rows: [
     {
+      glAccountId: 'acct_1000',
       accountCode: '1000',
       accountName: 'Cash',
       accountType: 'asset',
@@ -35,7 +36,9 @@ describe('toTrialBalanceRows', () => {
   it('one line per account, plus a total row', () => {
     const rows = toTrialBalanceRows(trialBalance)
     expect(rows).toHaveLength(2)
-    expect(rows[0]).toMatchObject({ id: '1000', kind: 'line', values: [100_000, 0, 100_000] })
+    // The row id is the account's IDENTITY (task 15), not its code.
+    expect(rows[0]).toMatchObject({ id: 'acct_1000', kind: 'line', values: [100_000, 0, 100_000] })
+    expect(rows[0]?.meta).toMatchObject({ glAccountId: 'acct_1000', accountCode: '1000' })
     expect(rows[1]).toMatchObject({ id: 'total', kind: 'total', values: [100_000, 100_000, null] })
   })
 })
@@ -44,6 +47,7 @@ const balanceSheet: BalanceSheetSnapshot = {
   asOf: '2026-08-31',
   assets: [
     {
+      glAccountId: 'acct_1000',
       accountCode: '1000',
       accountName: 'Cash',
       accountType: 'asset',
@@ -53,6 +57,7 @@ const balanceSheet: BalanceSheetSnapshot = {
   ],
   liabilities: [
     {
+      glAccountId: 'acct_2000',
       accountCode: '2000',
       accountName: 'A/P',
       accountType: 'liability',
@@ -62,6 +67,7 @@ const balanceSheet: BalanceSheetSnapshot = {
   ],
   equity: [
     {
+      glAccountId: 'acct_3000',
       accountCode: '3000',
       accountName: "Owner's Equity",
       accountType: 'equity',
@@ -164,6 +170,7 @@ const profitAndLoss: ProfitAndLossSnapshot = {
   to: '2026-08-31',
   revenue: [
     {
+      glAccountId: 'acct_4000',
       accountCode: '4000',
       accountName: 'Product Revenue',
       accountType: 'revenue',
@@ -174,6 +181,7 @@ const profitAndLoss: ProfitAndLossSnapshot = {
   totalRevenueMinor: 500_000,
   cogs: [
     {
+      glAccountId: 'acct_5000',
       accountCode: '5000',
       accountName: 'COGS',
       accountType: 'expense',
@@ -185,6 +193,7 @@ const profitAndLoss: ProfitAndLossSnapshot = {
   grossProfitMinor: 300_000,
   operatingExpenses: [
     {
+      glAccountId: 'acct_6100',
       accountCode: '6100',
       accountName: 'Merchant Fees',
       accountType: 'expense',

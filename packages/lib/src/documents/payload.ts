@@ -1378,7 +1378,11 @@ export interface BankDepositPdfPayload {
   /** ISO date the deposit hits the bank. THE accounting date. */
   issuedAt: string
   status: string
-  /** GL account CODE the money lands in. */
+  /**
+   * The GL account CODE the money lands in, resolved for display from the
+   * `gl_account` id frozen on the deposit (task 15 §4). Falls back to the raw
+   * id when the account cannot be resolved.
+   */
   bankAccountCode: string
   /** The account's name from the org's chart, when it resolves. */
   bankAccountName: string | null
@@ -1417,10 +1421,11 @@ const DEPOSIT_METHOD_LABELS: Record<string, string> = {
  * the one place that knows a payment's link is the OWNING side - reading the
  * `bank_deposit_payments` inverse here would be a second, staler answer.
  *
- * The bank account's NAME is resolved from the org's chart for legibility only;
- * the CODE is what identifies it, and a code with no matching account still
- * prints (an account can be archived after a deposit was banked, and the slip
- * must still render what actually happened).
+ * The bank account's CODE and NAME are resolved from the org's chart by the
+ * `gl_account` id frozen on the deposit (task 15 §4) - the id is what
+ * identifies it, and an id with no matching account still prints as itself
+ * (an account can be archived after a deposit was banked, and the slip must
+ * still render what actually happened).
  */
 export async function buildBankDepositPdfPayload(params: {
   organizationId: string
@@ -1440,12 +1445,13 @@ export async function buildBankDepositPdfPayload(params: {
     listChartAccounts(database, organizationId),
   ])
 
-  // A chart that will not read is not a reason to refuse a slip: the CODE is
-  // what identifies the account and it is already on the record. The name is
-  // legibility only.
-  const bankAccountName = accounts.isOk()
-    ? (accounts.value.find((account) => account.code === deposit.bankAccountCode)?.name ?? null)
-    : null
+  // A chart that will not read is not a reason to refuse a slip: the ID is
+  // what identifies the account and it is already on the record. The code and
+  // name are legibility only, resolved by id - never derived from a code.
+  const matchedAccount =
+    accounts.isOk() && deposit.bankAccountGlAccountId
+      ? (accounts.value.find((account) => account.id === deposit.bankAccountGlAccountId) ?? null)
+      : null
 
   const payload: BankDepositPdfPayload = {
     documentType: 'bank_deposit',
@@ -1455,8 +1461,8 @@ export async function buildBankDepositPdfPayload(params: {
     // slip on every open (the MQ2 lesson).
     issuedAt: deposit.depositDate ?? deposit.createdAt.toISOString().slice(0, 10),
     status: deposit.status,
-    bankAccountCode: deposit.bankAccountCode ?? '',
-    bankAccountName,
+    bankAccountCode: matchedAccount?.code ?? deposit.bankAccountGlAccountId ?? '',
+    bankAccountName: matchedAccount?.name ?? null,
     reference: deposit.reference,
     contact: { name: '', email: null, phone: null, city: null, region: null, country: null },
     lines: deposit.payments.map((payment) => ({

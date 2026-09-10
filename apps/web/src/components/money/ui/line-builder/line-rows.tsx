@@ -71,6 +71,7 @@ import {
   X,
 } from 'lucide-react'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
+import { GlAccountPicker, useChartAccounts } from '~/components/accounting/ui/gl-account-picker'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import type { CatalogGroup } from '~/components/money/hooks/use-catalog-groups'
 import type { CatalogItem } from '~/components/money/hooks/use-catalog-items'
@@ -1773,36 +1774,27 @@ function LinePartCellView({
     )
   }
 
-  // GL account edit mode — an account CODE ('2160', '5090'), free text by
-  // registry (`vendor_bill_line.glAccount` is TEXT with a `2160` placeholder),
-  // so a plain input rather than the options menu the category badge uses.
+  // GL account edit mode - `vendor_bill_line.glAccount` holds the `gl_account`
+  // instance id now, not a code (task 15 §4), so a picker replaces the plain
+  // input a code could once be typed into. Writes through on select, the same
+  // "nothing to cancel" rule the match-key editor below already follows -
+  // there is no free text to lose by picking the wrong option twice.
   if (edit?.field === 'glAccount') {
     return (
       <div ref={rootRef} className='flex min-w-0 flex-1 items-center gap-1 py-1'>
-        <input
-          aria-label='GL account'
-          value={edit.value}
-          onChange={(e) => setEdit({ field: 'glAccount', value: e.target.value })}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault()
-              confirmText()
-            }
-            if (e.key === 'Escape') setEdit(null)
-          }}
-          autoFocus
-          placeholder='2160'
-          className='h-7 min-w-0 flex-1 rounded-sm border border-primary-200/60 bg-transparent px-2 text-sm tabular-nums outline-none'
-        />
-        <TreeRowButton persistent tooltipText='Save GL account' onClick={confirmText}>
+        <div className='min-w-0 flex-1'>
+          <GlAccountPicker
+            value={edit.value || null}
+            selectBy='id'
+            onChange={(id) => {
+              setEdit(null)
+              onCommitGlAccount(id)
+            }}
+            placeholder='Choose an account…'
+          />
+        </div>
+        <TreeRowButton persistent tooltipText='Done' onClick={() => setEdit(null)}>
           <Check />
-        </TreeRowButton>
-        <TreeRowButton
-          persistent
-          variant='destructive'
-          tooltipText='Cancel'
-          onClick={() => setEdit(null)}>
-          <X />
         </TreeRowButton>
       </div>
     )
@@ -1879,7 +1871,7 @@ function LinePartCellView({
             <Link2 className='size-3.5 shrink-0 text-muted-foreground' />
           </SimpleTooltip>
         )}
-        {glAccount && <GlAccountChip code={glAccount} />}
+        {glAccount && <GlAccountChip glAccountId={glAccount} />}
         {weight !== null && <WeightChip weight={weight} />}
         {chips}
       </div>
@@ -1940,7 +1932,7 @@ function LinePartCellView({
 
       {showGlAccount && glAccount && (
         <GlAccountChip
-          code={glAccount}
+          glAccountId={glAccount}
           onClick={() => setEdit({ field: 'glAccount', value: glAccount })}
         />
       )}
@@ -2037,11 +2029,22 @@ function WeightChip({ weight, onClick }: { weight: number | null; onClick?: () =
   )
 }
 
-/** The account code as a standing chip — set-only, like the category badge. */
-function GlAccountChip({ code, onClick }: { code: string; onClick?: () => void }) {
+/**
+ * The account as a standing chip - set-only, like the category badge.
+ *
+ * `glAccountId` is the `gl_account` instance id (task 15 §4), never a code -
+ * resolved for display against the one chart fetch every picker on this page
+ * shares, and rendered as the raw id only when the chart has not answered yet
+ * or the account cannot be found (an id with no matching account still
+ * renders as itself, the same posture `EntryJournal`'s snapshot rows take).
+ */
+function GlAccountChip({ glAccountId, onClick }: { glAccountId: string; onClick?: () => void }) {
+  const { accounts } = useChartAccounts()
+  const account = accounts.find((candidate) => candidate.id === glAccountId)
+  const label = account ? account.code : glAccountId
   const content = (
     <span className='shrink-0 rounded-sm bg-primary-100 px-1.5 py-0.5 text-[10px] text-muted-foreground leading-none tabular-nums dark:bg-primary-100/60'>
-      {code}
+      {label}
     </span>
   )
   if (!onClick) return <SimpleTooltip content='GL account'>{content}</SimpleTooltip>

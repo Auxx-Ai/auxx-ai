@@ -78,22 +78,37 @@ async function main() {
     console.log(`RESULT chart 6100=${created.isErr() ? created.error.message : 'created'}`)
   }
 
+  // The registry pointers hold the gl_account instance id now, not a code
+  // (task 15 §4) - re-read the chart so any account just created above is in
+  // the map, and resolve every code this drive uses to an id up front.
+  const refreshedChart = await listChartAccounts(database, organizationId)
+  if (refreshedChart.isErr()) throw refreshedChart.error
+  const chartByCode = new Map(refreshedChart.value.map((account) => [account.code, account.id]))
+  const idForCode = (code: string) => {
+    const id = chartByCode.get(code)
+    if (!id) throw new Error(`This organization's chart has no account coded ${code}`)
+    return id
+  }
+  const cashAccountId = idForCode('1000')
+  const savingsAccountId = idForCode('1010')
+  const feesAccountId = idForCode('6100')
+
   const existing = await listBankAccounts(database, { organizationId })
   if (existing.isErr()) throw existing.error
   let accounts = existing.value
 
-  const ensureAccount = async (name: string, last4: string, glAccountCode: string) => {
+  const ensureAccount = async (name: string, last4: string, glAccountId: string) => {
     const found = accounts.find((account) => account.last4 === last4)
     if (found) {
       // An account another slot's script created may carry no mapping, and an
       // unmapped account is exactly what refuses every code with "there is
       // nothing to credit". Map it rather than leaving the drive half-run.
-      if (found.glAccountCode) return found
+      if (found.glAccountId) return found
       const mapped = await updateBankAccount(database, {
         organizationId,
         actorUserId,
         bankAccountId: found.id,
-        glAccountCode,
+        glAccountId,
       })
       if (mapped.isErr()) throw mapped.error
       accounts = accounts.map((account) => (account.id === found.id ? mapped.value : account))
@@ -106,7 +121,7 @@ async function main() {
       institution: name.split(' ')[0],
       last4,
       type: 'depository',
-      glAccountCode,
+      glAccountId,
       feedStartDate: day(-30),
     })
     if (created.isErr()) throw created.error
@@ -114,10 +129,10 @@ async function main() {
     return created.value
   }
 
-  const primary = await ensureAccount('Bank of America Business Adv', '5381', '1000')
-  const savings = await ensureAccount('Wells Fargo Savings', '6670', '1010')
+  const primary = await ensureAccount('Bank of America Business Adv', '5381', cashAccountId)
+  const savings = await ensureAccount('Wells Fargo Savings', '6670', savingsAccountId)
   console.log(
-    `RESULT accounts primary=${primary.id}(${primary.glAccountCode}) savings=${savings.id}(${savings.glAccountCode})`
+    `RESULT accounts primary=${primary.id}(${primary.glAccountId}) savings=${savings.id}(${savings.glAccountId})`
   )
 
   // ── 2. Statement lines ───────────────────────────────────────────────────
@@ -286,7 +301,7 @@ async function main() {
       organizationId,
       actorUserId,
       transactionId: feeLineId,
-      glAccountCode: '6100',
+      glAccountId: feesAccountId,
       memo: 'Monthly maintenance fee',
     })
     console.log(
@@ -300,7 +315,7 @@ async function main() {
       organizationId,
       actorUserId,
       transactionId: feeLineId,
-      glAccountCode: '6100',
+      glAccountId: feesAccountId,
     })
     console.log(`RESULT recode=${again.isErr() ? again.error.message : 'NOT REFUSED'}`)
   }
@@ -373,14 +388,14 @@ async function main() {
     console.log(
       undone.isErr()
         ? `RESULT undo=REFUSED ${undone.error.message}`
-        : `RESULT undo=${undone.value.transaction.reviewStatus} reversal=${undone.value.post?.status} account=${undone.value.transaction.glAccountCode ?? 'cleared'}`
+        : `RESULT undo=${undone.value.transaction.reviewStatus} reversal=${undone.value.post?.status} account=${undone.value.transaction.glAccountId ?? 'cleared'}`
     )
     // Re-code it, so the org is left with a coded line to look at in the browser.
     const recoded = await codeTransaction(database, {
       organizationId,
       actorUserId,
       transactionId: feeLineId,
-      glAccountCode: '6100',
+      glAccountId: feesAccountId,
       memo: 'Monthly maintenance fee',
     })
     console.log(

@@ -21,10 +21,14 @@ const h = vi.hoisted(() => ({
   getOrganizationSetting: vi.fn(),
   setValuesForEntity: vi.fn(),
   fieldValueServiceArgs: [] as unknown[][],
+  isAccountingEnabled: vi.fn(),
 }))
 
 vi.mock('../../../cache', () => ({
   getOrgCache: () => ({ from: () => ({ bySystemAttributes: h.bySystemAttributes }) }),
+}))
+vi.mock('../../../postings/accounting-enabled', () => ({
+  isAccountingEnabled: h.isAccountingEnabled,
 }))
 vi.mock('../../../postings/period-lock', () => ({
   resolvePeriodLock: h.resolvePeriodLock,
@@ -148,6 +152,7 @@ beforeEach(() => {
   writeOffPostings = []
   h.resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: null })
   h.getOrganizationSetting.mockResolvedValue('UTC')
+  h.isAccountingEnabled.mockResolvedValue(true)
 })
 
 describe('writeOffInvoice - refusals before the ledger is ever asked', () => {
@@ -510,6 +515,55 @@ describe('writeOffInvoice - a partial write-off can be topped up', () => {
 
     const write = h.setValuesForEntity.mock.calls[0]![0]
     expect(write.values).toEqual([{ fieldId: 'invoice_balance', value: 30_000 }])
+  })
+})
+
+// task 17 section 3: accounting is opt-in, and a write-off must land on the
+// invoice's balance whether or not the org has ever turned it on.
+describe('writeOffInvoice - accounting not enabled', () => {
+  it('returns not_enabled, never reads the period lock or posts, and still writes off the invoice', async () => {
+    wireInvoice('sent', { balanceMinor: 50_000 })
+    h.isAccountingEnabled.mockResolvedValue(false)
+
+    const result = await writeOffInvoice(stubDb(), {
+      organizationId: ORG,
+      actorUserId: USER,
+      invoiceId: INVOICE,
+      reason: 'Customer bankrupt',
+    })
+
+    expect(result).toEqual({ status: 'not_enabled' })
+    expect(h.resolvePeriodLock).not.toHaveBeenCalled()
+    expect(h.postEntry).not.toHaveBeenCalled()
+
+    expect(h.setValuesForEntity).toHaveBeenCalledTimes(1)
+    const write = h.setValuesForEntity.mock.calls[0]![0]
+    expect(write.values).toEqual(
+      expect.arrayContaining([
+        { fieldId: 'invoice_status', value: 'written_off' },
+        { fieldId: 'invoice_balance', value: 0 },
+      ])
+    )
+  })
+
+  it('writes off part of the balance exactly as it would with accounting on', async () => {
+    wireInvoice('partially_paid', { balanceMinor: 50_000 })
+    h.isAccountingEnabled.mockResolvedValue(false)
+
+    await writeOffInvoice(stubDb(), {
+      organizationId: ORG,
+      actorUserId: USER,
+      invoiceId: INVOICE,
+      amountMinor: 20_000,
+      reason: 'Partial settlement',
+    })
+
+    expect(h.postEntry).not.toHaveBeenCalled()
+    const write = h.setValuesForEntity.mock.calls[0]![0]
+    expect(write.values).toEqual([
+      { fieldId: 'invoice_balance', value: 30_000 },
+      { fieldId: 'invoice_written_off', value: 20_000 },
+    ])
   })
 })
 

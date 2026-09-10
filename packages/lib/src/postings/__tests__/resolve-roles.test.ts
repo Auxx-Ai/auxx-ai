@@ -413,6 +413,78 @@ function codeLine(accountCode: string, sortOrder = 0): GlPostingLineInput {
   }
 }
 
+function idLine(glAccountId: string, sortOrder = 0): GlPostingLineInput {
+  return {
+    glAccountId,
+    direction: sortOrder === 0 ? 'debit' : 'credit',
+    amount: 1000,
+    sourceType: 'gl_posting',
+    sourceId: 'gp_1',
+    sortOrder,
+  }
+}
+
+// ── Task 15: id lines ─────────────────────────────────────────────────────
+//
+// A reversal names the account the original LANDED on, by id, so a role that
+// was remapped in between cannot send the reversal somewhere else.
+
+describe('resolveAccountLines - id lines', () => {
+  it('resolves an id to the account the chart holds under it', async () => {
+    const db = stubLineDb([], [EXPENSE])
+    const result = await resolveAccountLines(db, ORG, [idLine('acct_bad_debt')])
+
+    expect(result.isOk()).toBe(true)
+    expect(result._unsafeUnwrap()).toEqual([
+      {
+        glAccountId: 'acct_bad_debt',
+        code: '6300',
+        name: 'Bad Debt Expense',
+        accountType: 'expense',
+        isActive: true,
+      },
+    ])
+  })
+
+  it('refuses an id the chart does not hold, naming the row', async () => {
+    const db = stubLineDb([], [])
+    const result = await resolveAccountLines(db, ORG, [idLine('acct_gone')])
+
+    expect(result.isErr()).toBe(true)
+    expect(result._unsafeUnwrapErr().message).toContain(
+      "Row 1: this organization's chart has no active account with id 'acct_gone'"
+    )
+  })
+
+  it('refuses an inactive account, naming it', async () => {
+    const db = stubLineDb([], [{ ...EXPENSE, isActive: false }])
+    const result = await resolveAccountLines(db, ORG, [idLine('acct_bad_debt')])
+
+    expect(result.isErr()).toBe(true)
+    expect(result._unsafeUnwrapErr().message).toContain('6300 Bad Debt Expense is not active')
+  })
+
+  it('mixes id, code and role lines and keeps the input order', async () => {
+    const db = stubLineDb([{ role: 'bad_debt_expense', glAccountId: 'acct_bad_debt' }], [EXPENSE])
+    const result = await resolveAccountLines(db, ORG, [
+      idLine('acct_bad_debt', 0),
+      codeLine('6300', 1),
+      {
+        ...codeLine('6300', 2),
+        accountCode: undefined,
+        accountRole: 'bad_debt_expense',
+      } as GlPostingLineInput,
+    ])
+
+    expect(result.isOk()).toBe(true)
+    expect(result._unsafeUnwrap().map((a) => a.glAccountId)).toEqual([
+      'acct_bad_debt',
+      'acct_bad_debt',
+      'acct_bad_debt',
+    ])
+  })
+})
+
 describe('resolveAccountLines - code lines', () => {
   it('resolves a code to the account the chart holds under it', async () => {
     const db = stubLineDb([], [EXPENSE])
@@ -502,7 +574,7 @@ describe('resolveAccountLines - code lines', () => {
     const error = await expectErr(
       resolveAccountLines(db, ORG, [bare as unknown as GlPostingLineInput])
     )
-    expect(error.message).toMatch(/neither an account role nor an account code/i)
+    expect(error.message).toMatch(/neither an account role, an account code nor an account id/i)
   })
 })
 
