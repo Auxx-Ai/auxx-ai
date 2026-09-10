@@ -12,7 +12,7 @@
 import type { OpeningTrialBalanceRow } from '@auxx/lib/postings/client'
 import { describe, expect, it } from 'vitest'
 import {
-  accountCodeFromRowId,
+  accountIdFromRowId,
   applyOpeningCellChange,
   openingVerdict,
   overlayInventorySettings,
@@ -34,12 +34,12 @@ function row(
   }
 }
 
-describe('accountCodeFromRowId', () => {
+describe('accountIdFromRowId', () => {
   it('reads an account row id and rejects every other kind', () => {
-    expect(accountCodeFromRowId('account:1310')).toBe('1310')
-    expect(accountCodeFromRowId('section:asset')).toBeNull()
-    expect(accountCodeFromRowId('subtotal:asset')).toBeNull()
-    expect(accountCodeFromRowId('total:trial-balance')).toBeNull()
+    expect(accountIdFromRowId('account:acct_1310')).toBe('acct_1310')
+    expect(accountIdFromRowId('section:asset')).toBeNull()
+    expect(accountIdFromRowId('subtotal:asset')).toBeNull()
+    expect(accountIdFromRowId('total:trial-balance')).toBeNull()
   })
 })
 
@@ -48,7 +48,7 @@ describe('applyOpeningCellChange', () => {
     // The journal-entry drawer's rule: an account carrying both would post two
     // lines that net to nothing, which the builder can only warn about after.
     const rows = [row('1000', { creditMinor: 500_00 })]
-    expect(applyOpeningCellChange(rows, '1000', 'debit', 250_00)[0]).toMatchObject({
+    expect(applyOpeningCellChange(rows, 'acct_1000', 'debit', 250_00)[0]).toMatchObject({
       debitMinor: 250_00,
       creditMinor: null,
     })
@@ -56,7 +56,7 @@ describe('applyOpeningCellChange', () => {
 
   it('sets a credit and clears the debit', () => {
     const rows = [row('3900', { debitMinor: 500_00 })]
-    expect(applyOpeningCellChange(rows, '3900', 'credit', 500_00)[0]).toMatchObject({
+    expect(applyOpeningCellChange(rows, 'acct_3900', 'credit', 500_00)[0]).toMatchObject({
       debitMinor: null,
       creditMinor: 500_00,
     })
@@ -64,20 +64,20 @@ describe('applyOpeningCellChange', () => {
 
   it('clears a cell when handed null', () => {
     const rows = [row('1000', { debitMinor: 500_00 })]
-    expect(applyOpeningCellChange(rows, '1000', 'debit', null)[0]?.debitMinor).toBeNull()
+    expect(applyOpeningCellChange(rows, 'acct_1000', 'debit', null)[0]?.debitMinor).toBeNull()
   })
 
   it('never changes a LOCKED row, whatever it is handed', () => {
     // The lock is the whole reason the inventory numbers cannot drift from the
     // settings the first close reads.
     const rows = [row('1310', { lockedByRole: 'inventory_wip', debitMinor: 100_00 })]
-    expect(applyOpeningCellChange(rows, '1310', 'credit', 999)[0]).toEqual(rows[0])
+    expect(applyOpeningCellChange(rows, 'acct_1310', 'credit', 999)[0]).toEqual(rows[0])
   })
 
   it('leaves every other row untouched and does not mutate the input', () => {
     const rows = [row('1000'), row('2000'), row('3900')]
     const snapshot = JSON.parse(JSON.stringify(rows))
-    const next = applyOpeningCellChange(rows, '2000', 'credit', 42)
+    const next = applyOpeningCellChange(rows, 'acct_2000', 'credit', 42)
     expect(rows).toEqual(snapshot)
     expect(next[0]).toBe(rows[0])
     expect(next[2]).toBe(rows[2])

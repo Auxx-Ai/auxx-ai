@@ -65,6 +65,7 @@ import { database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { err, ok, type Result } from 'neverthrow'
 import { UnprocessableEntityError } from '../../errors'
+import { accountLabel } from '../../postings/account-label'
 import type {
   AccountingProvider,
   ClearAccountMappingInput,
@@ -347,7 +348,7 @@ async function resolveMappedAccounts(
     const providerAccountId = map.get(account.id)
     if (!providerAccountId) {
       problems.push(
-        `${account.code} ${account.name} is not mapped to a QuickBooks account. Map it under Accounting > Settings > Accounts.`
+        `${accountLabel(account)} is not mapped to a QuickBooks account. Map it under Accounting > Settings > Accounts.`
       )
       continue
     }

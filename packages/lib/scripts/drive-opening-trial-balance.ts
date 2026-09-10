@@ -69,33 +69,34 @@ async function main() {
     chartRows: before.value.rows.length,
     lockedRows: before.value.rows
       .filter((r) => r.lockedByRole)
-      .map((r) => [r.accountCode, r.debitMinor]),
+      .map((r) => [r.accountId, r.debitMinor]),
     summary: before.value.summary,
     entry: before.value.entry?.id ?? null,
   })
 
   const chart = await listChartAccounts(database, orgId)
   if (chart.isErr()) throw chart.error
-  const codes = new Set(chart.value.map((a) => a.code))
-  for (const code of ['1000', '3900']) {
-    if (!codes.has(code)) throw new Error(`chart is missing ${code}`)
-  }
+  const byCode = new Map(chart.value.map((a) => [a.code, a]))
+  const cashId = byCode.get('1000')?.id
+  const equityId = byCode.get('3900')?.id
+  if (!cashId) throw new Error('chart is missing 1000')
+  if (!equityId) throw new Error('chart is missing 3900')
 
   // The three locked inventory rows, verbatim from what the read resolved, plus
   // cash against opening balance equity so the whole thing balances.
   const inventory = before.value.rows
     .filter((row) => row.lockedByRole && row.debitMinor)
     .map((row) => ({
-      accountCode: row.accountCode,
+      glAccountId: row.accountId,
       direction: 'debit' as const,
       amountMinor: row.debitMinor as number,
     }))
   const inventoryTotal = inventory.reduce((sum, line) => sum + line.amountMinor, 0)
 
   const lines = [
-    { accountCode: '1000', direction: 'debit' as const, amountMinor: 500_000 },
+    { glAccountId: cashId, direction: 'debit' as const, amountMinor: 500_000 },
     ...inventory,
-    { accountCode: '3900', direction: 'credit' as const, amountMinor: 500_000 + inventoryTotal },
+    { glAccountId: equityId, direction: 'credit' as const, amountMinor: 500_000 + inventoryTotal },
   ]
 
   const saved = await saveOpeningTrialBalance(database, orgId, userId, { lines })

@@ -31,9 +31,30 @@ const ORG = 'org1'
 const db = {} as Database
 
 const OUR_CHART: ChartAccountRow[] = [
-  { id: 'gl1310', code: '1310', name: 'Raw Materials', accountType: 'asset', isActive: true },
-  { id: 'gl2160', code: '2160', name: 'GRNI', accountType: 'liability', isActive: true },
-  { id: 'gl5090', code: '5090', name: 'PPV', accountType: 'expense', isActive: true },
+  {
+    id: 'gl1310',
+    code: '1310',
+    name: 'Raw Materials',
+    accountType: 'asset',
+    isActive: true,
+    subtype: null,
+  },
+  {
+    id: 'gl2160',
+    code: '2160',
+    name: 'GRNI',
+    accountType: 'liability',
+    isActive: true,
+    subtype: null,
+  },
+  {
+    id: 'gl5090',
+    code: '5090',
+    name: 'PPV',
+    accountType: 'expense',
+    isActive: true,
+    subtype: null,
+  },
 ]
 
 function providerAccount(over: Partial<ProviderAccount> = {}): ProviderAccount {
@@ -119,14 +140,17 @@ describe('listAccountIdentities - the checklist', () => {
 
     const map = (await listAccountIdentities(db, ORG))._unsafeUnwrap()
 
-    expect(map.broken).toEqual(['1310'])
+    // `accountLabel` - `${code} ${name}` - not the bare code, since it may be null.
+    expect(map.broken).toEqual(['1310 Raw Materials'])
     expect(map.rows[0]?.liveProviderAccount).toBeNull()
   })
 
   it('reports a mapping that has drifted into another section as broken', async () => {
     stubProvider({ mappings: new Map([['gl1310', '79']]) })
 
-    expect((await listAccountIdentities(db, ORG))._unsafeUnwrap().broken).toEqual(['1310'])
+    expect((await listAccountIdentities(db, ORG))._unsafeUnwrap().broken).toEqual([
+      '1310 Raw Materials',
+    ])
   })
 
   it('gives an org with nothing connected its own chart, unmapped', async () => {

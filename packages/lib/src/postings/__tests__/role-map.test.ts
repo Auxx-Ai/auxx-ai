@@ -288,6 +288,7 @@ describe('listRoleMap - the four derived states', () => {
       name: 'Goods Received Not Invoiced',
       accountType: 'liability',
       isActive: true,
+      subtype: null,
     })
   })
 
@@ -395,6 +396,7 @@ describe('listChartAccounts', () => {
       name: 'PPV',
       accountType: 'expense',
       isActive: false,
+      subtype: null,
     })
   })
 
@@ -410,9 +412,10 @@ describe('listChartAccounts', () => {
     expect(rows.map((r) => r.id)).toEqual(['a1'])
   })
 
-  // Guessing a type would defeat the compatibility check that is the only reason
-  // the type is read, and a blank code on a ledger line is unauditable (P2).
-  it('skips an account with no code or no type rather than defaulting one', async () => {
+  // Guessing a type would defeat the compatibility check that is the only
+  // reason it is read. A missing code is no longer a reason to skip (task 15
+  // §5) - the account id is the identity, and it decodes as `code: null`.
+  it('skips an account with no type, but keeps one with no code', async () => {
     const stub = stubDb(
       [],
       [
@@ -422,7 +425,9 @@ describe('listChartAccounts', () => {
       ]
     )
     const rows = (await listChartAccounts(stub.db, ORG))._unsafeUnwrap()
-    expect(rows.map((r) => r.id)).toEqual(['a1'])
+    // A coded account sorts before an uncoded one - `compareAccountsByCodeThenName`.
+    expect(rows.map((r) => r.id)).toEqual(['a1', 'a2'])
+    expect(rows.find((r) => r.id === 'a2')?.code).toBeNull()
   })
 
   // `gl_account_is_active` declares `defaultValue: true`, and an account written

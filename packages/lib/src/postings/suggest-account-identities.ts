@@ -29,6 +29,7 @@
  * know that the number they recognised belonged to the wrong section.
  */
 
+import { accountLabel } from './account-label'
 import type { AccountSuggestionReason, ChartAccountRow, ProviderAccount } from './types'
 
 /** One proposal: our account, their account, and the evidence for the pairing. */
@@ -124,10 +125,11 @@ export function suggestAccountIdentities(
     const compatible = candidates.filter((c) => c.classification === account.accountType)
     if (compatible.length === 0) continue
 
-    const byNumber = pickOne(
-      compatible,
-      (c) => norm(c.number) !== '' && norm(c.number) === norm(account.code)
-    )
+    // An uncoded account (task 15 §5) has nothing for a NUMBER to match - fall
+    // straight to the name rank rather than let two empty strings compare equal.
+    const byNumber = account.code
+      ? pickOne(compatible, (c) => norm(c.number) !== '' && norm(c.number) === norm(account.code))
+      : null
     if (byNumber) {
       suggestions.push({ glAccountId: account.id, account: byNumber, reason: 'number' })
       continue
@@ -186,13 +188,13 @@ export function validateProviderMapping(
   providerAccountId: string
 ): string | null {
   if (!providerAccount) {
-    return `${account.code} ${account.name} is mapped to an account that no longer exists in the connected accounting system (id ${providerAccountId}). Re-map it.`
+    return `${accountLabel(account)} is mapped to an account that no longer exists in the connected accounting system (id ${providerAccountId}). Re-map it.`
   }
   if (!providerAccount.active) {
-    return `${account.code} ${account.name} is mapped to '${providerAccount.fullyQualifiedName}', which has been deactivated. Reactivate it or map ${account.code} to another account.`
+    return `${accountLabel(account)} is mapped to '${providerAccount.fullyQualifiedName}', which has been deactivated. Reactivate it or map ${accountLabel(account)} to another account.`
   }
   if (providerAccount.classification !== account.accountType) {
-    return `${account.code} ${account.name} is ${classificationArticle(account.accountType)} account but is mapped to '${providerAccount.fullyQualifiedName}', which is ${providerAccount.classification}. Posting to it would balance and still be wrong.`
+    return `${accountLabel(account)} is ${classificationArticle(account.accountType)} account but is mapped to '${providerAccount.fullyQualifiedName}', which is ${providerAccount.classification}. Posting to it would balance and still be wrong.`
   }
   return null
 }

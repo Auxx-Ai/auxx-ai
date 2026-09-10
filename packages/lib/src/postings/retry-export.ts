@@ -40,9 +40,10 @@ const logger = createScopedLogger('postings-retry-export')
  * able to detect it. Export what was booked.
  *
  * ⚠️ Re-mapping an account and retrying still works, because the adapter
- * resolves account CODES to provider ids at push time
- * (`quickbooks-accounting-provider.ts`'s `resolveMappedAccounts`). The fix for
- * the usual failure is upstream of this replay, not inside it.
+ * resolves the line's `glAccountId` to a provider id at push time through the
+ * account map (`quickbooks-accounting-provider.ts`'s `resolveMappedAccounts`),
+ * not by re-reading `accountCode` - which may be null (task 15 §5). The fix
+ * for the usual failure is upstream of this replay, not inside it.
  *
  * The row's own `requestId` and `docNumber` are reused verbatim. That is the
  * entire point: the provider's idempotency contract only fires when the key is

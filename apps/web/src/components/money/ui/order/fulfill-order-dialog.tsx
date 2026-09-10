@@ -42,6 +42,7 @@ import { toastError } from '@auxx/ui/components/toast'
 import { formatCurrency } from '@auxx/utils/currency'
 import { keepPreviousData } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
+import { AccountLabel } from '~/components/accounting/ui/account-label'
 import { EntryBlockers } from '~/components/accounting/ui/ledger/entry-blockers'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
@@ -278,11 +279,16 @@ export function FulfillOrderDialog({
                     </div>
                     {preview.data.lines.map((entryLine) => (
                       <div
-                        key={`${entryLine.accountCode}-${entryLine.sortOrder}`}
+                        key={`${entryLine.glAccountId}-${entryLine.sortOrder}`}
                         className='flex items-baseline justify-between gap-2'>
-                        <span className='text-muted-foreground'>
-                          {entryLine.direction === 'debit' ? 'Dr' : '   Cr'} {entryLine.accountCode}{' '}
-                          {entryLine.accountName ?? ''}
+                        <span className='flex items-baseline gap-1 text-muted-foreground'>
+                          {entryLine.direction === 'debit' ? 'Dr' : '   Cr'}
+                          <AccountLabel
+                            account={{
+                              code: entryLine.accountCode,
+                              name: entryLine.accountName ?? '',
+                            }}
+                          />
                         </span>
                         <span>{formatCurrency(entryLine.amount, { currencyCode })}</span>
                       </div>

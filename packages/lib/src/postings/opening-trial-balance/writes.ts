@@ -43,6 +43,7 @@ import type { Result } from 'neverthrow'
 import { ConflictError, UnprocessableEntityError } from '../../errors'
 import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
 import { type RecordId, toRecordId } from '../../resources/resource-id'
+import { accountLabel } from '../account-label'
 import { buildOpeningBalanceEntry } from '../build-opening-balance-entry'
 import type { JournalEntryLine, JournalEntryRecord } from '../journal-entries/client'
 import { requireJournalEntryFieldContext } from '../journal-entries/reads'
@@ -305,7 +306,7 @@ function assertLockedRowsMatchSettings(
   const named = divergences
     .map(
       (d) =>
-        `${d.accountCode}${d.accountName ? ` ${d.accountName}` : ''} (${d.role}): the draft holds ` +
+        `${accountLabel({ code: d.accountCode, name: d.accountName })} (${d.role}): the draft holds ` +
         `${d.storedMinor} and the setting says ${d.settingMinor}`
     )
     .join('; ')
@@ -315,7 +316,7 @@ function assertLockedRowsMatchSettings(
       'month-end close measures its delta from - so posting this draft would put a number in the ' +
       'ledger that the next close contradicts. Re-open the opening balances page so the locked ' +
       'rows are rewritten from the settings, then post again.',
-    { organizationId, accounts: divergences.map((d) => d.accountCode).join(',') }
+    { organizationId, accounts: divergences.map((d) => d.accountId).join(',') }
   )
 }
 

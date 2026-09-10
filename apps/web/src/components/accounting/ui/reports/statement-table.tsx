@@ -40,7 +40,7 @@ export interface StatementRow {
   meta?: {
     /** The `gl_account` `EntityInstance` id (task 15) - the drill-down key. `accountCode` is display only. */
     glAccountId?: string
-    accountCode?: string
+    accountCode?: string | null
     accountName?: string
     recordId?: RecordId
     badge?: ReactNode

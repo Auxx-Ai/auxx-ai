@@ -34,11 +34,12 @@ function sequentialDb(rowSets: unknown[][]): Database {
   } as unknown as Database
 }
 
-function account(overrides: Partial<ChartAccountRow> & { code: string }): ChartAccountRow {
+function account(overrides: Partial<ChartAccountRow> & { code: string | null }): ChartAccountRow {
   return {
     id: `id_${overrides.code}`,
     name: '',
     accountType: 'asset',
+    subtype: null,
     isActive: true,
     ...overrides,
   }
@@ -153,5 +154,37 @@ describe('readAccountLines', () => {
 
     expect(lines.accountType).toBeNull()
     expect(lines.accountName).toBe('')
+  })
+
+  // Task 15 §5: a live account with no code is a normal account, not an
+  // orphan - the drill-down reads by `glAccountId` and renders the name, and
+  // `accountCode` comes back null rather than the empty string a DELETED
+  // account renders (see the test above).
+  it('reads by id and reports a null accountCode for an account with no code', async () => {
+    vi.mocked(listChartAccounts).mockResolvedValue(
+      ok([
+        account({ code: null, id: 'id_nocode', name: 'Imported Checking', accountType: 'asset' }),
+      ])
+    )
+
+    const result = await readAccountLines(
+      sequentialDb([
+        [
+          line({
+            glPostingId: 'gl_1',
+            docNumber: 'JNL-0001',
+            txnDate: '2026-08-01',
+            direction: 'debit',
+            amountMinor: 2_500,
+          }),
+        ],
+      ]),
+      { organizationId: ORG, glAccountId: 'id_nocode' }
+    )
+    const lines = result._unsafeUnwrap()
+
+    expect(lines.accountCode).toBeNull()
+    expect(lines.accountName).toBe('Imported Checking')
+    expect(lines.lines[0]?.runningBalanceMinor).toBe(2_500)
   })
 })

@@ -50,8 +50,8 @@ async function main() {
   const updated = await updateJournalEntry(database, orgId, userId, {
     journalEntryId: created.value.id,
     lines: [
-      { accountCode: debit.code, direction: 'debit', amountMinor: 12_345, memo: 'the debit' },
-      { accountCode: credit.code, direction: 'credit', amountMinor: 12_345 },
+      { glAccountId: debit.id, direction: 'debit', amountMinor: 12_345, memo: 'the debit' },
+      { glAccountId: credit.id, direction: 'credit', amountMinor: 12_345 },
     ],
   })
   if (updated.isErr()) throw updated.error
@@ -69,8 +69,8 @@ async function main() {
     const refused = await previewJournalEntry(database, orgId, {
       journalEntryId: created.value.id,
       lines: [
-        { accountCode: inventory.code, direction: 'debit', amountMinor: 100 },
-        { accountCode: credit.code, direction: 'credit', amountMinor: 100 },
+        { glAccountId: inventory.id, direction: 'debit', amountMinor: 100 },
+        { glAccountId: credit.id, direction: 'credit', amountMinor: 100 },
       ],
     })
     if (refused.isErr()) throw refused.error
@@ -81,8 +81,8 @@ async function main() {
   const unbalanced = await previewJournalEntry(database, orgId, {
     journalEntryId: created.value.id,
     lines: [
-      { accountCode: debit.code, direction: 'debit', amountMinor: 100 },
-      { accountCode: credit.code, direction: 'credit', amountMinor: 90 },
+      { glAccountId: debit.id, direction: 'debit', amountMinor: 100 },
+      { glAccountId: credit.id, direction: 'credit', amountMinor: 90 },
     ],
   })
   show('unbalanced refusal', unbalanced.isErr() ? unbalanced.error.message : 'NOT REFUSED')

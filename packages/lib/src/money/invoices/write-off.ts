@@ -357,7 +357,7 @@ export interface PreviewWriteOffInput {
   organizationId: string
   invoiceId: string
   amountMinor?: number
-  expenseAccountCode?: string
+  expenseGlAccountId?: string
 }
 
 /**
@@ -368,7 +368,7 @@ export async function previewWriteOffInvoice(
   db: Database,
   input: PreviewWriteOffInput
 ): Promise<EntryPreview> {
-  const { organizationId, invoiceId, amountMinor, expenseAccountCode } = input
+  const { organizationId, invoiceId, amountMinor, expenseGlAccountId } = input
 
   const invoice = await loadInvoiceForWriteOff(db, organizationId, invoiceId)
   if (!invoice) throw new NotFoundError('Invoice not found', { invoiceId })
@@ -385,7 +385,7 @@ export async function previewWriteOffInvoice(
     attempt,
     amountMinor: amount,
     txnDate,
-    expenseAccountCode,
+    expenseGlAccountId,
   } satisfies BuildWriteOffEntryInput)
 
   const lock = await resolvePeriodLock(organizationId)
@@ -399,13 +399,13 @@ export interface WriteOffInvoiceInput {
   /** Integer minor units. Defaults to everything still outstanding. */
   amountMinor?: number
   reason: string
-  expenseAccountCode?: string
+  expenseGlAccountId?: string
 }
 
 /**
  * Write off an invoice's balance (or part of it) to bad debt.
  *
- * Posts `Dr bad_debt_expense (or expenseAccountCode) Cr accounts_receivable`
+ * Posts `Dr bad_debt_expense (or expenseGlAccountId) Cr accounts_receivable`
  * through the ordinary ledger door (`postEntry` - never throws, resolves to a
  * typed refusal the dialog renders as `EntryBlockers`), and only once the post
  * actually lands does it flip `invoice_status` to `written_off`. A refused post
@@ -449,7 +449,7 @@ export async function writeOffInvoice(
   db: Database,
   input: WriteOffInvoiceInput
 ): Promise<PostResult> {
-  const { organizationId, actorUserId, invoiceId, amountMinor, reason, expenseAccountCode } = input
+  const { organizationId, actorUserId, invoiceId, amountMinor, reason, expenseGlAccountId } = input
 
   if (!reason || reason.trim().length === 0) {
     throw new BadRequestError('A write-off needs a reason', { invoiceId })
@@ -478,7 +478,7 @@ export async function writeOffInvoice(
       attempt,
       amountMinor: amount,
       txnDate,
-      expenseAccountCode,
+      expenseGlAccountId,
       memo: reason,
     } satisfies BuildWriteOffEntryInput)
 

@@ -40,9 +40,13 @@ export const JOURNAL_ENTRY_POSTING_TYPE = {
  * the only carrier of sign. Dollars never reach this shape - `toMinorUnits` in
  * `build-manual-entry.ts` is the single conversion and it is called at the
  * input boundary, in the browser.
+ *
+ * `glAccountId` (task 15: the id is the identity, the code is a label) - a
+ * person picks a specific `gl_account` `EntityInstance` out of their own chart
+ * by id, never by its code, which may not exist at all once it is optional.
  */
 export interface JournalEntryLine {
-  accountCode: string
+  glAccountId: string
   direction: PostingDirection
   amountMinor: number
   memo?: string

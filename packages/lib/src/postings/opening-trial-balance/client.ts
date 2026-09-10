@@ -7,6 +7,7 @@
 // directive would turn every export into a client-reference proxy there. See
 // docs/lib-module-guide.md section 7.
 
+import { compareAccountsByCodeThenName } from '../account-label'
 import { GL_ACCOUNT_TYPES, type GlAccountTypeValue } from '../default-chart'
 import type { JournalEntryLine, JournalEntryRecord } from '../journal-entries/client'
 import type { ChartAccountRow, PostingStatus } from '../types'
@@ -33,7 +34,8 @@ export const OPENING_TRIAL_BALANCE_KIND = 'opening_balance' as const
 /** One chart account, paired with what the draft says it opened at. */
 export interface OpeningTrialBalanceRow {
   accountId: string
-  accountCode: string
+  /** A label only (task 15 §5). The row's identity is `accountId`. */
+  accountCode: string | null
   accountName: string
   accountType: GlAccountTypeValue
   isActive: boolean
@@ -100,14 +102,15 @@ const TYPE_ORDER = new Map<string, number>(GL_ACCOUNT_TYPES.map((type, index) =>
  * it is the same tuple the balance sheet and the trial balance group by, and a
  * private copy would put equity above liabilities on exactly one screen.
  *
- * Within a type, by CODE as a string. Numeric-looking codes sort correctly
- * because a chart's codes are fixed-width by convention (`1000`, `1050`), and a
- * code that is not numeric at all still sorts stably rather than becoming `NaN`.
+ * Within a type: by code when both rows have one, a coded row before an
+ * uncoded one, then by name (task 15 §5.2's default, so a partly-numbered
+ * chart still reads as a statement). {@link compareAccountsByCodeThenName} is
+ * the one place that tiebreak is written.
  */
 export function sortChartAccountsForStatement(accounts: readonly ChartAccountRow[]) {
   return [...accounts].sort((a, b) => {
     const typeDelta = (TYPE_ORDER.get(a.accountType) ?? 99) - (TYPE_ORDER.get(b.accountType) ?? 99)
-    return typeDelta !== 0 ? typeDelta : a.code.localeCompare(b.code)
+    return typeDelta !== 0 ? typeDelta : compareAccountsByCodeThenName(a, b)
   })
 }
 
@@ -131,11 +134,11 @@ export function rowsToJournalEntryLines(
   const lines: JournalEntryLine[] = []
   for (const row of rows) {
     if (row.debitMinor) {
-      lines.push({ accountCode: row.accountCode, direction: 'debit', amountMinor: row.debitMinor })
+      lines.push({ glAccountId: row.accountId, direction: 'debit', amountMinor: row.debitMinor })
     }
     if (row.creditMinor) {
       lines.push({
-        accountCode: row.accountCode,
+        glAccountId: row.accountId,
         direction: 'credit',
         amountMinor: row.creditMinor,
       })
@@ -146,7 +149,9 @@ export function rowsToJournalEntryLines(
 
 /** One locked row whose stored draft amount disagrees with its setting. */
 export interface LockedRowDivergence {
-  accountCode: string
+  accountId: string
+  /** A label only (task 15 §5) - may be null. `accountId` is what is keyed on. */
+  accountCode: string | null
   accountName: string
   role: string
   /** What the `accounting.opening*` setting says, in integer minor units. */
@@ -184,19 +189,20 @@ export function findLockedRowDivergences(
   rows: readonly OpeningTrialBalanceRow[],
   lines: readonly JournalEntryLine[]
 ): LockedRowDivergence[] {
-  const storedByCode = new Map<string, number>()
+  const storedById = new Map<string, number>()
   for (const line of lines) {
     const signed = line.direction === 'debit' ? line.amountMinor : -line.amountMinor
-    storedByCode.set(line.accountCode, (storedByCode.get(line.accountCode) ?? 0) + signed)
+    storedById.set(line.glAccountId, (storedById.get(line.glAccountId) ?? 0) + signed)
   }
 
   const divergences: LockedRowDivergence[] = []
   for (const row of rows) {
     if (!row.lockedByRole) continue
     const settingMinor = (row.debitMinor ?? 0) - (row.creditMinor ?? 0)
-    const storedMinor = storedByCode.get(row.accountCode) ?? 0
+    const storedMinor = storedById.get(row.accountId) ?? 0
     if (settingMinor === storedMinor) continue
     divergences.push({
+      accountId: row.accountId,
       accountCode: row.accountCode,
       accountName: row.accountName,
       role: row.lockedByRole,

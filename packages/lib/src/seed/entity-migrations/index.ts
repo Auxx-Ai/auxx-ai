@@ -100,6 +100,7 @@ import { migration140IntegrationsView } from './migrations/140-integrations-view
 import { migration141BuildBatchRun } from './migrations/141-build-batch-run'
 import { migration142WipeSeededCharts } from './migrations/142-wipe-seeded-charts'
 import { migration143GlPointersHoldIds } from './migrations/143-gl-pointers-hold-ids'
+import { migration144GlAccountCodeOptionalAndSubtype } from './migrations/144-gl-account-code-optional-and-subtype'
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
@@ -319,6 +320,12 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   // exist today, and 142 having just wiped them all is exactly the case its
   // own docblock plans for (every stored value nulls out).
   migration143GlPointersHoldIds,
+  // gl_account_code becomes optional and gl_account gains subtype, backfilled
+  // as cost_of_goods_sold onto every 5xxx expense account
+  // (plans/accounting/tasks/15-the-account-id-is-the-identity.md §5). No
+  // ordering constraint against 143: it reads whatever gl_account rows exist
+  // regardless of what shape their pointer fields are in.
+  migration144GlAccountCodeOptionalAndSubtype,
 ]
 
 /**

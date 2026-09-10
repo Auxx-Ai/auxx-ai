@@ -34,6 +34,7 @@ import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError, UnprocessableEntityError } from '../errors'
+import { accountLabel } from './account-label'
 import { resolveAccountingProvider } from './provider'
 import { listChartAccounts } from './role-map'
 import {
@@ -131,7 +132,7 @@ export async function listAccountIdentities(
       // `money/quickbooks/account-map.ts` on why there is no stored flag.
       const live = byProviderId.get(providerAccountId) ?? null
       if (!live || !live.active || live.classification !== account.accountType) {
-        broken.push(account.code)
+        broken.push(accountLabel(account))
       }
 
       return {
@@ -231,7 +232,7 @@ export async function setAccountIdentity(
     if (!isMappableTo(account, target)) {
       throw new UnprocessableEntityError(
         target.active
-          ? `${account.code} ${account.name} is ${classificationArticle(account.accountType)} account, but '${target.fullyQualifiedName}' is ${target.classification}. Posting to it would balance and still be wrong.`
+          ? `${accountLabel(account)} is ${classificationArticle(account.accountType)} account, but '${target.fullyQualifiedName}' is ${target.classification}. Posting to it would balance and still be wrong.`
           : `'${target.fullyQualifiedName}' is not active in the connected accounting system. Reactivate it there, or choose another account.`,
         { organizationId, glAccountId, providerAccountId }
       )
@@ -293,7 +294,7 @@ export async function confirmSuggestedIdentities(
       providerAccountId: row.suggestion.account.id,
       actorUserId: options.actorUserId,
     })
-    if (result.isErr()) failures.push(`${row.account.code}: ${result.error.message}`)
+    if (result.isErr()) failures.push(`${accountLabel(row.account)}: ${result.error.message}`)
     else confirmed++
   }
 
@@ -318,7 +319,12 @@ export async function resolveProviderAccountIds(
   const listed = await listAccountIdentities(db, organizationId)
   if (listed.isErr()) return err(listed.error)
 
-  const byCode = new Map(listed.value.rows.map((row) => [row.account.code, row]))
+  // Only a CODED account can ever be the target of a code lookup - an account
+  // with no code (task 15 §5) cannot collide here, and including it would let
+  // several null-coded accounts overwrite one another in the map.
+  const byCode = new Map(
+    listed.value.rows.filter((row) => row.account.code).map((row) => [row.account.code, row])
+  )
   const resolved = new Map<string, string>()
   const problems: string[] = []
 
@@ -330,26 +336,26 @@ export async function resolveProviderAccountIds(
     }
     if (!row.providerAccountId) {
       problems.push(
-        `${code} ${row.account.name} is not mapped to an account in the connected accounting system. Map it under Accounting > Settings > Accounts.`
+        `${accountLabel(row.account)} is not mapped to an account in the connected accounting system. Map it under Accounting > Settings > Accounts.`
       )
       continue
     }
     const live = row.liveProviderAccount
     if (!live) {
       problems.push(
-        `${code} ${row.account.name} is mapped to an account that no longer exists in the connected accounting system. Re-map it.`
+        `${accountLabel(row.account)} is mapped to an account that no longer exists in the connected accounting system. Re-map it.`
       )
       continue
     }
     if (!live.active) {
       problems.push(
-        `${code} ${row.account.name} is mapped to '${live.fullyQualifiedName}', which has been deactivated. Reactivate it or map ${code} elsewhere.`
+        `${accountLabel(row.account)} is mapped to '${live.fullyQualifiedName}', which has been deactivated. Reactivate it or map ${code} elsewhere.`
       )
       continue
     }
     if (live.classification !== row.account.accountType) {
       problems.push(
-        `${code} ${row.account.name} is ${classificationArticle(row.account.accountType)} account but is mapped to '${live.fullyQualifiedName}', which is ${live.classification}.`
+        `${accountLabel(row.account)} is ${classificationArticle(row.account.accountType)} account but is mapped to '${live.fullyQualifiedName}', which is ${live.classification}.`
       )
       continue
     }

@@ -41,6 +41,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { formatCurrency } from '@auxx/utils'
 import { and, eq, sql } from 'drizzle-orm'
 import { databaseErrorCodes, UnprocessableEntityError } from '../errors'
+import { accountLabel } from './account-label'
 import { buildDocNumber } from './doc-number'
 import { buildPostingDraft, type PostingAssertions, requiresAssertions } from './draft'
 import { assertPeriodOpen, type PeriodLock, parsePeriodKey } from './periods'
@@ -207,17 +208,25 @@ const CODE_ENTRY_TYPES = new Set<PostingType>(['manual_journal', 'bank_transacti
 /**
  * Refuse a hand-keyed entry that names one of the three inventory accounts.
  *
- * Resolves the org's OWN codes for `INVENTORY_ROLES` and compares them against
- * the codes the entry actually resolved to, so it catches the account whatever
- * number this org gave it - which is the whole point of `G8` read backwards.
- * An org that has not mapped a given inventory role has nothing to protect for
- * it and contributes no code, rather than refusing everything.
+ * Resolves the org's OWN accounts for `INVENTORY_ROLES` and compares them
+ * against the ACCOUNT ID the entry actually resolved to (task 15), never the
+ * code - the code is a label the owner may rename or clear entirely (task 15
+ * §5), and keying this guard on it would let a renumbered or uncoded
+ * inventory account slip a hand-keyed line straight past it. `glAccountId` is
+ * what `G8` protects, read backwards. An org that has not mapped a given
+ * inventory role has nothing to protect for it and contributes no id, rather
+ * than refusing everything.
+ *
+ * 🛑 `loadRoleAccountCodes` is misnamed for what it does here - it has always
+ * returned full accounts, never bare codes - but is left as-is because it is
+ * imported by name from files outside this lane (`opening-trial-balance/reads.ts`,
+ * `reports/aging.ts`, `reports/balance-sheet.ts`, `postings/index.ts`).
  *
  * The message names the account AND the remedy, because "you may not touch
  * 1320" with no next step is how a bookkeeper ends up creating a duplicate
  * account called "WIP adjustment" and posting there instead.
  */
-async function findInventoryCodeRefusal(
+async function findInventoryAccountRefusal(
   db: Database,
   organizationId: string,
   lines: PreparedLine[]
@@ -225,15 +234,16 @@ async function findInventoryCodeRefusal(
   const guarded = await loadRoleAccountCodes(db, organizationId, [...INVENTORY_ROLES])
   if (guarded.size === 0) return undefined
 
-  const byCode = new Map<string, string>()
-  for (const [role, account] of guarded) byCode.set(account.code, role)
+  const byAccountId = new Map<string, string>()
+  for (const [role, account] of guarded) byAccountId.set(account.glAccountId, role)
 
   const offending: string[] = []
   for (const line of lines) {
-    const role = byCode.get(line.resolved.accountCode)
+    const role = byAccountId.get(line.resolved.glAccountId)
     if (!role) continue
-    const name = line.resolved.accountName ?? ''
-    offending.push(`${line.resolved.accountCode}${name ? ` ${name}` : ''} (${role})`)
+    offending.push(
+      `${accountLabel({ code: line.resolved.accountCode, name: line.resolved.accountName ?? '' })} (${role})`
+    )
   }
   if (offending.length === 0) return undefined
 
@@ -406,7 +416,7 @@ async function prepareEntry(
     // assertion measures from the `accounting.opening*` settings rather than
     // from this entry. See `CODE_ENTRY_TYPES`.
     if (!refusal && CODE_ENTRY_TYPES.has(entry.postingType)) {
-      refusal = await findInventoryCodeRefusal(db, organizationId, lines)
+      refusal = await findInventoryAccountRefusal(db, organizationId, lines)
     }
   }
 

@@ -32,7 +32,7 @@ import { createTRPCRouter, permissionProcedure } from '~/server/api/trpc'
  * row belongs to.
  */
 const openingLine = z.object({
-  accountCode: z.string().min(1),
+  glAccountId: z.string().min(1),
   direction: z.enum(['debit', 'credit']),
   /** Integer minor units, > 0. `direction` is the only carrier of sign. */
   amountMinor: z.number(),

@@ -3,7 +3,7 @@
 import { FieldType } from '@auxx/database/enums'
 import { toFieldId } from '@auxx/types/field'
 import { BaseType } from '../../types'
-import { GlAccountType } from '../enum-values'
+import { GlAccountSubtype, GlAccountType } from '../enum-values'
 import type { ResourceField } from '../field-types'
 
 /**
@@ -78,29 +78,34 @@ export const GL_ACCOUNT_FIELDS: Record<string, ResourceField> = {
     isSystem: true,
     systemAttribute: 'gl_account_code',
     systemSortOrder: 'a1',
-    nullable: false,
-    required: true,
-    // The account code IS the identity, unique per org: it is the value every
-    // posting line, every seeded chart entry and every provider resolver
-    // actually carries, and a cuid appears in none of them.
+    // OPTIONAL (task 15 §5). The code is a LABEL the owner may leave blank -
+    // a chart imported from a provider that ships with account numbers off,
+    // or one a person keeps by name alone. `glAccountId` is the identity now
+    // (task 15 §2); a null code renders as the account name alone
+    // (`accountLabel`). `unique: true` still applies among non-null codes
+    // only - two accounts with no code are not a collision.
     //
-    // `isIdentifier` and NOT `naturalKeyPosition: 1`. A natural key is a
-    // COMPOSITE - `vendor_part` is keyed on (part, supplier), `subpart` on
+    // `isIdentifier` stays true and NOT `naturalKeyPosition: 1`: a natural key
+    // is a COMPOSITE - `vendor_part` is keyed on (part, supplier), `subpart` on
     // (parentPart, childPart). A lone position-1 leg is the single-field case
     // wearing the composite's clothes, and `identifier-fields.test.ts` rejects
-    // it by name.
+    // it by name. `identifier-fields.test.ts` also requires `unique` to imply
+    // `isIdentifier`, so both stay set even though the field is no longer
+    // required.
+    nullable: true,
+    required: false,
     isIdentifier: true,
     capabilities: {
       filterable: true,
       sortable: true,
       creatable: true,
       updatable: true,
-      required: true,
+      required: false,
       unique: true,
       configurable: false,
     },
     placeholder: '1310',
-    description: 'The unique code used to identify this account',
+    description: 'The unique code used to identify this account, if it has one',
   },
 
   name: {
@@ -147,6 +152,32 @@ export const GL_ACCOUNT_FIELDS: Record<string, ResourceField> = {
     },
     placeholder: 'Select account type',
     description: 'The financial category for this account',
+  },
+
+  subtype: {
+    id: toFieldId('subtype'),
+    key: 'subtype',
+    label: 'Subtype',
+    type: BaseType.ENUM,
+    fieldType: FieldType.SINGLE_SELECT,
+    isSystem: true,
+    systemAttribute: 'gl_account_subtype',
+    systemSortOrder: 'a3V',
+    nullable: true,
+    options: { options: GlAccountSubtype.values },
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: true,
+      updatable: true,
+      required: false,
+      configurable: false,
+    },
+    placeholder: 'Select subtype',
+    description:
+      'The second fact about this account beyond its statement type (asset, liability, ...) - ' +
+      'whether it is the bank, receivable, payable, inventory or cost-of-goods-sold account. ' +
+      'The P&L groups cost of goods sold by this, never by a code prefix.',
   },
 
   isActive: {

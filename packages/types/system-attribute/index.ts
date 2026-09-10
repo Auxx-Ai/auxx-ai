@@ -734,6 +734,11 @@ export const SYSTEM_ATTRIBUTES = [
   'gl_account_code',
   'gl_account_name',
   'gl_account_type',
+  // The second fact about an account beyond its statement classification
+  // (task 13 §3, pulled forward by task 15 §5): bank | accounts_receivable |
+  // accounts_payable | credit_card | inventory | fixed_asset |
+  // cost_of_goods_sold | other. Optional; null means nothing to say.
+  'gl_account_subtype',
   // 🛑 There is NO `gl_account_role` here. Decision `G19` replaced that field
   // with the `GlRoleAssignment` table: a role must resolve to exactly one
   // account (enforced), but an account may serve many roles (permitted), and a

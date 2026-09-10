@@ -22,7 +22,9 @@ import { createScopedLogger } from '@auxx/logger'
 import { and, eq, gte, inArray, lte, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError } from '../../errors'
-import type { GlAccountTypeValue } from '../default-chart'
+import { compareAccountsByCodeThenName } from '../account-label'
+import type { GlAccountSubtypeValue } from '../account-subtype'
+import { GL_ACCOUNT_TYPES, type GlAccountTypeValue } from '../default-chart'
 import { listChartAccounts } from '../role-map'
 import type { ChartAccountRow } from '../types'
 import { signedBalance } from './statement-math'
@@ -31,6 +33,12 @@ const logger = createScopedLogger('postings:reports:trial-balance')
 
 /** Only a posted entry counts - see `verify-balance.ts` for why `pending`/`failed` do not. */
 const POSTED_STATUSES = ['posted', 'reversed'] as const
+
+/**
+ * Statement order (asset, liability, equity, revenue, expense) as a rank map,
+ * for the 15.2 sort. `GL_ACCOUNT_TYPES` is already declared in this order.
+ */
+const STATEMENT_ORDER = new Map(GL_ACCOUNT_TYPES.map((type, index) => [type, index]))
 
 /** One account's balance over the requested range. */
 export interface TrialBalanceRow {
@@ -47,12 +55,19 @@ export interface TrialBalanceRow {
    * every line ever posted to that account. Falls back to the most recent
    * snapshot on the lines themselves only when `inChart` is `false` (the
    * account has been deleted), so a dropped account is still identifiable.
+   * Null when the account carries no code at all (task 15 §5), or when a
+   * deleted account's own most recent snapshot had none.
    */
-  accountCode: string
+  accountCode: string | null
   /** `''` when the account is not in the org's current chart - see `inChart`. */
   accountName: string
   /** `null` when the account is not in the org's current chart - there is no natural side to sign against. */
   accountType: GlAccountTypeValue | null
+  /**
+   * The second fact about the account (task 13 §3), read from the live chart.
+   * `null` when the account is not in the org's current chart, or has none.
+   */
+  subtype: GlAccountSubtypeValue | null
   debitMinor: number
   creditMinor: number
   /** Natural-sign balance via `signedBalance`. `0` when `accountType` is `null`. */
@@ -137,7 +152,9 @@ export async function readTrialBalance(
         glAccountId: schema.GlPostingLine.glAccountId,
         // The most recent snapshot on the group's own lines - used only as the
         // `inChart: false` fallback below, never when the id still resolves.
-        accountCode: sql<string>`max(${schema.GlPostingLine.accountCode})`,
+        // `accountCode` is nullable on the line itself (task 15 §5), so the
+        // aggregate is too - `max` of an all-null group is null, not `''`.
+        accountCode: sql<string | null>`max(${schema.GlPostingLine.accountCode})`,
         debitMinor: sql<string>`coalesce(sum(${schema.GlPostingLine.amountMinor}) filter (where ${schema.GlPostingLine.direction} = 'debit'), 0)`,
         creditMinor: sql<string>`coalesce(sum(${schema.GlPostingLine.amountMinor}) filter (where ${schema.GlPostingLine.direction} = 'credit'), 0)`,
       })
@@ -155,18 +172,33 @@ export async function readTrialBalance(
           glAccountId: row.glAccountId,
           // The CURRENT code and name when the account is still live - a
           // statement reads the chart, not the snapshot (§3's rule). Falls back
-          // to the snapshot only for a deleted account, so it stays identifiable.
-          accountCode: account?.code ?? row.accountCode,
+          // to the snapshot only for a deleted account (`account` absent), so it
+          // stays identifiable. 🛑 NOT `account?.code ?? row.accountCode` - a
+          // LIVE account with no code must render `null`, never fall through to
+          // a stale snapshot just because its own code happens to be null too.
+          accountCode: account ? account.code : row.accountCode,
           accountName: account?.name ?? '',
           accountType: account?.accountType ?? null,
+          subtype: account?.subtype ?? null,
           debitMinor,
           creditMinor,
           balanceMinor: account ? signedBalance(debitMinor, creditMinor, account.accountType) : 0,
           inChart: Boolean(account),
         }
       })
-      // Null-safe ahead of task 15 §5, where `accountCode` becomes optional.
-      .sort((a, b) => (a.accountCode ?? '').localeCompare(b.accountCode ?? ''))
+      // 15.2 default: statement type order first (asset, liability, equity,
+      // revenue, expense; a deleted account's `null` type sorts last), then
+      // code-then-name within a type - `compareAccountsByCodeThenName` is
+      // null-safe over `accountCode` since task 15 §5.
+      .sort((a, b) => {
+        const orderA = a.accountType ? STATEMENT_ORDER.get(a.accountType)! : STATEMENT_ORDER.size
+        const orderB = b.accountType ? STATEMENT_ORDER.get(b.accountType)! : STATEMENT_ORDER.size
+        if (orderA !== orderB) return orderA - orderB
+        return compareAccountsByCodeThenName(
+          { code: a.accountCode, name: a.accountName },
+          { code: b.accountCode, name: b.accountName }
+        )
+      })
 
     const totalDebitMinor = rows.reduce((sum, row) => sum + row.debitMinor, 0)
     const totalCreditMinor = rows.reduce((sum, row) => sum + row.creditMinor, 0)

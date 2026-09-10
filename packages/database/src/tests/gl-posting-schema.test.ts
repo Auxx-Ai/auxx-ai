@@ -144,10 +144,15 @@ describe('GlPostingLine', () => {
     expect(columnNames(lineConfig)).not.toContain('updatedAt')
   })
 
-  it('names an account by CODE with no foreign key (decision P2)', () => {
+  // plans/accounting/tasks/15-the-account-id-is-the-identity.md §5. `accountCode`
+  // is a SNAPSHOT, nullable like `accountName`: a chart imported with account
+  // numbers off, or kept by name alone, has no code to snapshot. Its own
+  // `length(trim()) > 0` check goes with it - a null needs no such guard.
+  it('names an account by CODE with no foreign key (decision P2), nullable (task 15 §5)', () => {
     const code = lineConfig.columns.find((c) => c.name === 'accountCode')
     expect(code?.getSQLType()).toBe('text')
-    expect(code?.notNull).toBe(true)
+    expect(code?.notNull).toBe(false)
+    expect(lineConfig.checks.map((c) => c.name)).not.toContain('GlPostingLine_accountCode_check')
     // The ledger must outlive the chart: an FK to the gl_account EntityInstance
     // would either block deleting a posted-to account or cascade and destroy
     // history. The only FKs on a line are its org and its header.

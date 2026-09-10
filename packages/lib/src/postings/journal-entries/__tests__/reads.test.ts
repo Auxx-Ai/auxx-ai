@@ -23,12 +23,12 @@ describe('parseLines', () => {
   it('reads a well-formed line array back verbatim', () => {
     expect(
       parseLines([
-        { accountCode: '6200', direction: 'debit', amountMinor: 50_000, memo: 'Rent' },
-        { accountCode: '2100', direction: 'credit', amountMinor: 50_000 },
+        { glAccountId: 'acct_6200', direction: 'debit', amountMinor: 50_000, memo: 'Rent' },
+        { glAccountId: 'acct_2100', direction: 'credit', amountMinor: 50_000 },
       ])
     ).toEqual([
-      { accountCode: '6200', direction: 'debit', amountMinor: 50_000, memo: 'Rent' },
-      { accountCode: '2100', direction: 'credit', amountMinor: 50_000 },
+      { glAccountId: 'acct_6200', direction: 'debit', amountMinor: 50_000, memo: 'Rent' },
+      { glAccountId: 'acct_2100', direction: 'credit', amountMinor: 50_000 },
     ])
   })
 
@@ -42,40 +42,59 @@ describe('parseLines', () => {
     expect(parseLines('[]')).toEqual([])
   })
 
-  it('drops a row with no account code', () => {
+  it('drops a row with no account id', () => {
     expect(parseLines([{ direction: 'debit', amountMinor: 1 }])).toEqual([])
   })
 
+  // 🛑 Task 15: the id is the identity now, and there is no backfill. A row
+  // written under the OLD shape (`accountCode`, no `glAccountId`) is dropped
+  // rather than accepted, never re-keyed onto the code - accepting a legacy
+  // shape here would let a pre-migration row silently reappear with no
+  // account at all.
+  it('drops a row that only carries the legacy accountCode, no glAccountId', () => {
+    expect(parseLines([{ accountCode: '6200', direction: 'debit', amountMinor: 50_000 }])).toEqual(
+      []
+    )
+  })
+
+  it('drops a row whose glAccountId is blank', () => {
+    expect(parseLines([{ glAccountId: '   ', direction: 'debit', amountMinor: 1 }])).toEqual([])
+  })
+
   it('drops a row whose direction is not one of the two sides', () => {
-    expect(parseLines([{ accountCode: '6200', direction: 'left', amountMinor: 1 }])).toEqual([])
+    expect(parseLines([{ glAccountId: 'acct_6200', direction: 'left', amountMinor: 1 }])).toEqual(
+      []
+    )
   })
 
   it('drops a row with a non-numeric amount', () => {
-    expect(parseLines([{ accountCode: '6200', direction: 'debit', amountMinor: '50' }])).toEqual([])
+    expect(
+      parseLines([{ glAccountId: 'acct_6200', direction: 'debit', amountMinor: '50' }])
+    ).toEqual([])
   })
 
   it('keeps the readable rows and drops only the broken ones', () => {
     const lines = parseLines([
-      { accountCode: '6200', direction: 'debit', amountMinor: 50_000 },
-      { accountCode: '2100', direction: 'sideways', amountMinor: 50_000 },
+      { glAccountId: 'acct_6200', direction: 'debit', amountMinor: 50_000 },
+      { glAccountId: 'acct_2100', direction: 'sideways', amountMinor: 50_000 },
       null,
-      { accountCode: '2100', direction: 'credit', amountMinor: 50_000 },
+      { glAccountId: 'acct_2100', direction: 'credit', amountMinor: 50_000 },
     ])
-    expect(lines.map((line) => line.accountCode)).toEqual(['6200', '2100'])
+    expect(lines.map((line) => line.glAccountId)).toEqual(['acct_6200', 'acct_2100'])
   })
 
   // 🛑 A zero amount survives the READ and is refused by `buildManualEntry` at
   // post time, naming the row. Dropping it here would make the entry silently
   // shorter than the person typed, and the imbalance would name the wrong side.
   it('keeps a zero amount so the builder can refuse it by row number', () => {
-    expect(parseLines([{ accountCode: '6200', direction: 'debit', amountMinor: 0 }])).toEqual([
-      { accountCode: '6200', direction: 'debit', amountMinor: 0 },
+    expect(parseLines([{ glAccountId: 'acct_6200', direction: 'debit', amountMinor: 0 }])).toEqual([
+      { glAccountId: 'acct_6200', direction: 'debit', amountMinor: 0 },
     ])
   })
 
   it('omits an empty memo rather than storing a blank string', () => {
     const [line] = parseLines([
-      { accountCode: '6200', direction: 'debit', amountMinor: 1, memo: '' },
+      { glAccountId: 'acct_6200', direction: 'debit', amountMinor: 1, memo: '' },
     ])
     expect(line).not.toHaveProperty('memo')
   })
@@ -90,8 +109,8 @@ describe('parseLines', () => {
 describe('parseLines - the stored envelope', () => {
   it('unwraps the { lines } object the column holds', () => {
     expect(
-      parseLines({ lines: [{ accountCode: '6200', direction: 'debit', amountMinor: 50_000 }] })
-    ).toEqual([{ accountCode: '6200', direction: 'debit', amountMinor: 50_000 }])
+      parseLines({ lines: [{ glAccountId: 'acct_6200', direction: 'debit', amountMinor: 50_000 }] })
+    ).toEqual([{ glAccountId: 'acct_6200', direction: 'debit', amountMinor: 50_000 }])
   })
 
   // The field-value layer wraps every stored JSON in its own `{ v, meta }`
@@ -99,16 +118,16 @@ describe('parseLines - the stored envelope', () => {
   it('unwraps the field-value layer envelope as well as ours', () => {
     expect(
       parseLines({
-        v: { lines: [{ accountCode: '6200', direction: 'debit', amountMinor: 50_000 }] },
+        v: { lines: [{ glAccountId: 'acct_6200', direction: 'debit', amountMinor: 50_000 }] },
         meta: {},
       })
-    ).toEqual([{ accountCode: '6200', direction: 'debit', amountMinor: 50_000 }])
+    ).toEqual([{ glAccountId: 'acct_6200', direction: 'debit', amountMinor: 50_000 }])
   })
 
   it('still reads a bare array, for a hand-written or older row', () => {
-    expect(parseLines([{ accountCode: '6200', direction: 'debit', amountMinor: 1 }])).toHaveLength(
-      1
-    )
+    expect(
+      parseLines([{ glAccountId: 'acct_6200', direction: 'debit', amountMinor: 1 }])
+    ).toHaveLength(1)
   })
 
   it('reads an envelope whose lines key is not an array as no lines', () => {

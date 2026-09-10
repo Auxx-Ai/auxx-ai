@@ -56,6 +56,7 @@ import {
   useAccountingSettingsFreeze,
 } from '../../hooks/use-accounting-settings-freeze'
 import { useAccountingSetupDraft } from '../../hooks/use-accounting-setup-draft'
+import { formatAccountLabel } from '../account-label-format'
 import {
   ACCOUNTING_KEYS,
   everyMinorUnitValid,
@@ -223,7 +224,7 @@ export function AccountingOpeningSettingsPage() {
                 <SettingsFieldRow
                   key={pair.role}
                   settingKey={pair.auxxKey}
-                  title={`${pair.accountCode} ${pair.label}`}>
+                  title={formatAccountLabel({ code: pair.accountCode, name: pair.label })}>
                   <OpeningPairField
                     auxx={row?.auxx ?? null}
                     qbo={row?.qbo ?? null}
@@ -289,9 +290,9 @@ export function AccountingOpeningSettingsPage() {
                 currency={currency}
                 readOnly={readOnly}
                 lockReason={GRID_LOCK_REASON}
-                onCellChange={(accountCode, column, minor) => {
+                onCellChange={(accountId, column, minor) => {
                   setEdited((prev) =>
-                    applyOpeningCellChange(prev ?? serverRows ?? [], accountCode, column, minor)
+                    applyOpeningCellChange(prev ?? serverRows ?? [], accountId, column, minor)
                   )
                   setGridDirty(true)
                 }}
@@ -324,7 +325,7 @@ export function AccountingOpeningSettingsPage() {
                         ...(row.debitMinor
                           ? [
                               {
-                                accountCode: row.accountCode,
+                                glAccountId: row.accountId,
                                 direction: 'debit' as const,
                                 amountMinor: row.debitMinor,
                               },
@@ -333,7 +334,7 @@ export function AccountingOpeningSettingsPage() {
                         ...(row.creditMinor
                           ? [
                               {
-                                accountCode: row.accountCode,
+                                glAccountId: row.accountId,
                                 direction: 'credit' as const,
                                 amountMinor: row.creditMinor,
                               },

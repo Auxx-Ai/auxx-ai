@@ -149,7 +149,7 @@ export const WizardOpeningTbPage = forwardRef<WizardStepHandle>(
           ...(row.debitMinor
             ? [
                 {
-                  accountCode: row.accountCode,
+                  glAccountId: row.accountId,
                   direction: 'debit' as const,
                   amountMinor: row.debitMinor,
                 },
@@ -158,7 +158,7 @@ export const WizardOpeningTbPage = forwardRef<WizardStepHandle>(
           ...(row.creditMinor
             ? [
                 {
-                  accountCode: row.accountCode,
+                  glAccountId: row.accountId,
                   direction: 'credit' as const,
                   amountMinor: row.creditMinor,
                 },
@@ -239,9 +239,9 @@ export const WizardOpeningTbPage = forwardRef<WizardStepHandle>(
             currency={currency}
             readOnly={frozen}
             lockReason={LOCK_REASON}
-            onCellChange={(accountCode, column, minor) => {
+            onCellChange={(accountId, column, minor) => {
               setEdited((prev) =>
-                applyOpeningCellChange(prev ?? serverRows ?? [], accountCode, column, minor)
+                applyOpeningCellChange(prev ?? serverRows ?? [], accountId, column, minor)
               )
               setDirty(true)
             }}

@@ -20,7 +20,7 @@ const h = vi.hoisted(() => ({
   settings: new Map<string, unknown>(),
   entries: [] as unknown[],
   chart: [] as unknown[],
-  roleAccounts: new Map<string, { id: string; code: string; name: string }>(),
+  roleAccounts: new Map<string, { glAccountId: string; code: string | null; name: string }>(),
   standingPostings: 0,
   postResult: { status: 'posted', glPostingId: 'glp_1' } as Record<string, unknown>,
   crudUpdate: vi.fn(),
@@ -178,7 +178,7 @@ beforeEach(() => {
     account('a4', '3900', 'Opening Balance Equity', 'equity'),
   ]
   h.roleAccounts = new Map([
-    ['inventory_raw_materials', { id: 'a3', code: '1310', name: 'Raw Materials' }],
+    ['inventory_raw_materials', { glAccountId: 'a3', code: '1310', name: 'Raw Materials' }],
   ])
   h.standingPostings = 0
   h.postResult = { status: 'posted', glPostingId: 'glp_1' }
@@ -227,7 +227,7 @@ describe('readOpeningTrialBalance', () => {
     // 🛑 Even when the stored draft disagrees. `readOpeningBaseline` hands the
     // first close the settings figure, so a draft that won here would post a
     // ledger the close then contradicts.
-    h.entries = [draft([{ accountCode: '1310', direction: 'debit', amountMinor: 999_99 }])]
+    h.entries = [draft([{ glAccountId: 'a3', direction: 'debit', amountMinor: 999_99 }])]
     const { rows } = (await readOpeningTrialBalance(db, ORG))._unsafeUnwrap()
     const inventory = rows.find((r) => r.accountCode === '1310')
     expect(inventory?.lockedByRole).toBe('inventory_raw_materials')
@@ -237,7 +237,7 @@ describe('readOpeningTrialBalance', () => {
 
   it('resolves the lock by ROLE, so a renumbered chart still locks the right row', async () => {
     h.roleAccounts = new Map([
-      ['inventory_raw_materials', { id: 'a1', code: '1000', name: 'Renumbered RM' }],
+      ['inventory_raw_materials', { glAccountId: 'a1', code: '1000', name: 'Renumbered RM' }],
     ])
     const { rows } = (await readOpeningTrialBalance(db, ORG))._unsafeUnwrap()
     expect(rows.find((r) => r.accountCode === '1000')?.lockedByRole).toBe('inventory_raw_materials')
@@ -259,8 +259,8 @@ describe('readOpeningTrialBalance', () => {
   it('fills unlocked rows from the stored draft, both sides', async () => {
     h.entries = [
       draft([
-        { accountCode: '1000', direction: 'debit', amountMinor: 500_00 },
-        { accountCode: '3900', direction: 'credit', amountMinor: 600_00 },
+        { glAccountId: 'a1', direction: 'debit', amountMinor: 500_00 },
+        { glAccountId: 'a4', direction: 'credit', amountMinor: 600_00 },
       ]),
     ]
     const { rows, summary } = (await readOpeningTrialBalance(db, ORG))._unsafeUnwrap()
@@ -312,7 +312,7 @@ describe('readOpeningTrialBalance', () => {
 describe('saveOpeningTrialBalance', () => {
   it('creates the draft dated the cutover date when there is none', async () => {
     const result = await saveOpeningTrialBalance(db, ORG, USER, {
-      lines: [{ accountCode: '1000', direction: 'debit', amountMinor: 500_00 }],
+      lines: [{ glAccountId: 'a1', direction: 'debit', amountMinor: 500_00 }],
     })
     expect(result.isErr()).toBe(false)
     expect(h.created).toEqual([
@@ -320,13 +320,13 @@ describe('saveOpeningTrialBalance', () => {
         kind: 'opening_balance',
         date: '2026-12-31',
         memo: undefined,
-        lines: [{ accountCode: '1000', direction: 'debit', amountMinor: 500_00 }],
+        lines: [{ glAccountId: 'a1', direction: 'debit', amountMinor: 500_00 }],
       },
     ])
   })
 
   it('replaces an existing draft wholesale, re-deriving the date', async () => {
-    h.entries = [draft([{ accountCode: '1000', direction: 'debit', amountMinor: 1 }])]
+    h.entries = [draft([{ glAccountId: 'a1', direction: 'debit', amountMinor: 1 }])]
     await saveOpeningTrialBalance(db, ORG, USER, { lines: [] })
     expect(h.created).toEqual([])
     expect(h.updated).toEqual([{ journalEntryId: 'je_1', date: '2026-12-31', lines: [] }])
@@ -363,12 +363,12 @@ describe('previewOpeningTrialBalance', () => {
   it('previews the STORED lines, keyed and dated on the cutover date', async () => {
     h.entries = [
       draft([
-        { accountCode: '1000', direction: 'debit', amountMinor: 500_00 },
+        { glAccountId: 'a1', direction: 'debit', amountMinor: 500_00 },
         // The locked inventory row, carrying exactly what
         // `accounting.openingRawMaterials` says. A draft that disagreed is
         // refused - see the divergence test below.
-        { accountCode: '1310', direction: 'debit', amountMinor: 100_00 },
-        { accountCode: '3900', direction: 'credit', amountMinor: 600_00 },
+        { glAccountId: 'a3', direction: 'debit', amountMinor: 100_00 },
+        { glAccountId: 'a4', direction: 'credit', amountMinor: 600_00 },
       ]),
     ]
     const preview = (await previewOpeningTrialBalance(db, ORG))._unsafeUnwrap()
@@ -380,9 +380,9 @@ describe('previewOpeningTrialBalance', () => {
     h.entries = [draft([])]
     const preview = await previewOpeningTrialBalance(db, ORG, {
       lines: [
-        { accountCode: '1000', direction: 'debit', amountMinor: 1 },
-        { accountCode: '1310', direction: 'debit', amountMinor: 100_00 },
-        { accountCode: '3900', direction: 'credit', amountMinor: 100_01 },
+        { glAccountId: 'a1', direction: 'debit', amountMinor: 1 },
+        { glAccountId: 'a3', direction: 'debit', amountMinor: 100_00 },
+        { glAccountId: 'a4', direction: 'credit', amountMinor: 100_01 },
       ],
     })
     expect(preview.isErr()).toBe(false)
@@ -405,12 +405,12 @@ describe('previewOpeningTrialBalance', () => {
 
 describe('postOpeningTrialBalance', () => {
   const balanced = [
-    { accountCode: '1000', direction: 'debit' as const, amountMinor: 500_00 },
-    // 1310 is LOCKED to `accounting.openingRawMaterials` (100_00 in the
+    { glAccountId: 'a1', direction: 'debit' as const, amountMinor: 500_00 },
+    // 1310 (a3) is LOCKED to `accounting.openingRawMaterials` (100_00 in the
     // fixture). A draft that carries a different number for it is refused
     // before anything is claimed - see the last case in this block.
-    { accountCode: '1310', direction: 'debit' as const, amountMinor: 100_00 },
-    { accountCode: '3900', direction: 'credit' as const, amountMinor: 600_00 },
+    { glAccountId: 'a3', direction: 'debit' as const, amountMinor: 100_00 },
+    { glAccountId: 'a4', direction: 'credit' as const, amountMinor: 600_00 },
   ]
 
   it('posts an entry keyed on the CUTOVER DATE, not on the record number', async () => {
@@ -464,9 +464,9 @@ describe('postOpeningTrialBalance', () => {
   it('refuses an unbalanced trial balance before anything is claimed', async () => {
     h.entries = [
       draft([
-        { accountCode: '1000', direction: 'debit', amountMinor: 500_00 },
-        { accountCode: '1310', direction: 'debit', amountMinor: 100_00 },
-        { accountCode: '3900', direction: 'credit', amountMinor: 500_00 },
+        { glAccountId: 'a1', direction: 'debit', amountMinor: 500_00 },
+        { glAccountId: 'a3', direction: 'debit', amountMinor: 100_00 },
+        { glAccountId: 'a4', direction: 'credit', amountMinor: 500_00 },
       ]),
     ]
     expect((await postOpeningTrialBalance(db, ORG, USER))._unsafeUnwrapErr().message).toMatch(
@@ -483,9 +483,9 @@ describe('postOpeningTrialBalance', () => {
     // the very next month-end assertion would contradict the ledger.
     h.entries = [
       draft([
-        { accountCode: '1000', direction: 'debit', amountMinor: 500_00 },
-        { accountCode: '1310', direction: 'debit', amountMinor: 999_99 },
-        { accountCode: '3900', direction: 'credit', amountMinor: 1499_99 },
+        { glAccountId: 'a1', direction: 'debit', amountMinor: 500_00 },
+        { glAccountId: 'a3', direction: 'debit', amountMinor: 999_99 },
+        { glAccountId: 'a4', direction: 'credit', amountMinor: 1499_99 },
       ]),
     ]
     const error = (await postOpeningTrialBalance(db, ORG, USER))._unsafeUnwrapErr()
@@ -498,8 +498,8 @@ describe('postOpeningTrialBalance', () => {
   it('refuses a draft that OMITS a locked row the settings give a balance to', async () => {
     h.entries = [
       draft([
-        { accountCode: '1000', direction: 'debit', amountMinor: 500_00 },
-        { accountCode: '3900', direction: 'credit', amountMinor: 500_00 },
+        { glAccountId: 'a1', direction: 'debit', amountMinor: 500_00 },
+        { glAccountId: 'a4', direction: 'credit', amountMinor: 500_00 },
       ]),
     ]
     expect((await postOpeningTrialBalance(db, ORG, USER))._unsafeUnwrapErr().message).toMatch(
@@ -512,8 +512,8 @@ describe('postOpeningTrialBalance', () => {
     h.settings.delete('accounting.openingRawMaterials')
     h.entries = [
       draft([
-        { accountCode: '1000', direction: 'debit', amountMinor: 500_00 },
-        { accountCode: '3900', direction: 'credit', amountMinor: 500_00 },
+        { glAccountId: 'a1', direction: 'debit', amountMinor: 500_00 },
+        { glAccountId: 'a4', direction: 'credit', amountMinor: 500_00 },
       ]),
     ]
     expect((await postOpeningTrialBalance(db, ORG, USER)).isErr()).toBe(false)
@@ -547,7 +547,7 @@ describe('findLockedRowDivergences', () => {
     expect(
       findLockedRowDivergences(
         [lockedRow()],
-        [{ accountCode: '1310', direction: 'debit', amountMinor: 100_00 }]
+        [{ glAccountId: 'a3', direction: 'debit', amountMinor: 100_00 }]
       )
     ).toEqual([])
   })
@@ -565,10 +565,11 @@ describe('findLockedRowDivergences', () => {
     expect(
       findLockedRowDivergences(
         [lockedRow()],
-        [{ accountCode: '1310', direction: 'debit', amountMinor: 999_99 }]
+        [{ glAccountId: 'a3', direction: 'debit', amountMinor: 999_99 }]
       )
     ).toEqual([
       {
+        accountId: 'a3',
         accountCode: '1310',
         accountName: 'Raw Materials',
         role: 'inventory_raw_materials',
@@ -583,7 +584,7 @@ describe('findLockedRowDivergences', () => {
     // a 20,000-minor-unit disagreement rather than a match on magnitude.
     const [divergence] = findLockedRowDivergences(
       [lockedRow()],
-      [{ accountCode: '1310', direction: 'credit', amountMinor: 100_00 }]
+      [{ glAccountId: 'a3', direction: 'credit', amountMinor: 100_00 }]
     )
     expect(divergence?.storedMinor).toBe(-100_00)
   })
@@ -593,8 +594,8 @@ describe('findLockedRowDivergences', () => {
       findLockedRowDivergences(
         [lockedRow()],
         [
-          { accountCode: '1310', direction: 'debit', amountMinor: 150_00 },
-          { accountCode: '1310', direction: 'credit', amountMinor: 50_00 },
+          { glAccountId: 'a3', direction: 'debit', amountMinor: 150_00 },
+          { glAccountId: 'a3', direction: 'credit', amountMinor: 50_00 },
         ]
       )
     ).toEqual([])

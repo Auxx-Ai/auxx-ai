@@ -155,6 +155,11 @@ export async function seedDefaultChartOfAccounts(
         gl_account_name: account.name,
         gl_account_type: account.accountType,
         gl_account_is_active: true,
+        // Same SINGLE_SELECT-by-value contract as `gl_account_type` above.
+        // Absent (not `null`) when the default chart names no subtype for this
+        // account - most of it, same as `role` - so a stub or a snapshot test
+        // asserting the exact key set on a subtype-less row is unaffected.
+        ...(account.subtype ? { gl_account_subtype: account.subtype } : {}),
       })
       byCode.set(account.code, result.instance.id)
       created++

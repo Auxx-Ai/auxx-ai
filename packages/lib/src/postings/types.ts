@@ -20,6 +20,7 @@
  * entity migration 114 retired the def (task 11) - so there are two, and there
  * must never be a third. See plans/money/tasks/done/07-align-gl-foundation.md section 6.
  */
+import type { GlAccountSubtypeValue } from './account-subtype'
 import type { GlAccountTypeValue } from './default-chart'
 
 export const POSTING_TYPES = [
@@ -256,8 +257,10 @@ export interface ResolvedPostingLine extends GlPostingLineBase {
    * Account CODE, e.g. `'1310'`, from the org's own chart. Never a provider id.
    * A SNAPSHOT beside `glAccountId` - the code is a label the owner may rename
    * or renumber, and `glAccountId` above is what a report should group by.
+   * Null when the account carries no code (task 15 §5): a snapshot of nothing
+   * is null, exactly as `accountName` already is.
    */
-  accountCode: string
+  accountCode: string | null
   /** The account's name as it stood when the entry was posted. A snapshot. */
   accountName?: string
 }
@@ -623,8 +626,8 @@ export interface PostingDetailLine {
   lineNumber: number
   /** The `gl_account` instance id this line posted to. The identity (task 15). */
   glAccountId: string
-  /** The account code as it stood when this was posted. A snapshot, never re-read. */
-  accountCode: string
+  /** The account code as it stood when this was posted. A snapshot, never re-read. Null when the account had none. */
+  accountCode: string | null
   /** The role the builder emitted. Null on a manual or legacy entry. */
   accountRole: string | null
   /** The account name as it stood when this was posted. A snapshot, never re-read. */
@@ -687,12 +690,26 @@ export interface PostingDetail {
  */
 export type RoleAssignmentState = 'confirmed' | 'suggested' | 'unmapped' | 'unused'
 
-/** One row of the org's editable chart. Mirrors the `gl_account` EntityInstance. */
+/**
+ * One row of the org's editable chart. Mirrors the `gl_account` EntityInstance.
+ *
+ * `code` is OPTIONAL (task 15 §5). A chart imported from QuickBooks ships with
+ * account numbers off, and a person may keep a chart by name alone. The id is
+ * the identity everywhere; the code is a label, and a null one is rendered as
+ * the name alone (`accountLabel`).
+ */
 export interface ChartAccountRow {
   id: string
-  code: string
+  code: string | null
   name: string
   accountType: GlAccountTypeValue
+  /**
+   * The second fact about an account beyond its statement classification
+   * (`plans/accounting/tasks/13-cash-accounts-and-the-qbo-seam.md` §3), pulled
+   * forward for `cost_of_goods_sold`: the P&L groups COGS by this, never by a
+   * code prefix, because a chart without codes has no prefix to test.
+   */
+  subtype: GlAccountSubtypeValue | null
   isActive: boolean
 }
 

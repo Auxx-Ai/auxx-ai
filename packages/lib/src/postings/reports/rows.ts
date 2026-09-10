@@ -38,7 +38,8 @@ export interface StatementRow {
   meta?: {
     /** The `gl_account` `EntityInstance` id (task 15) - the drill-down key. `accountCode` is display only. */
     glAccountId?: string
-    accountCode?: string
+    /** Null when the account has no code (task 15 §5), not merely absent. */
+    accountCode?: string | null
     accountName?: string
     recordId?: string
     badge?: string
@@ -54,7 +55,7 @@ export interface StatementLineInput {
   label: string
   /** Minor units, one per column, in column order. */
   values: Array<number | null>
-  accountCode?: string
+  accountCode?: string | null
   accountName?: string
   note?: string
 }

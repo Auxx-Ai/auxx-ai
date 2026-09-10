@@ -31,17 +31,12 @@
 //
 // The chart tab keeps a phantom draft (`ChartDraftHandle`) exactly as the
 // products-services page does, with one difference: the create fires on an
-// explicit button, not on a commit. `gl_account` has three required fields to
-// `catalog_item`'s one, and a unique-code conflict belongs on an act somebody
-// knowingly performed.
+// explicit button, not on a commit. `gl_account` needs a name and a type to
+// `catalog_item`'s one required field (task 15 §5 made the code optional), and
+// a validation refusal belongs on an act somebody knowingly performed.
 
 import { FeatureKey, PermissionKey } from '@auxx/lib/permissions/client'
-import type {
-  AccountRole,
-  ChartAccountRow,
-  GlAccountTypeValue,
-  RoleAssignmentRow,
-} from '@auxx/lib/postings/client'
+import type { AccountRole, ChartAccountRow, RoleAssignmentRow } from '@auxx/lib/postings/client'
 import { ResponsiveTabs } from '@auxx/ui/components/responsive-tabs'
 import { toastError } from '@auxx/ui/components/toast'
 import { generateId } from '@auxx/utils'
@@ -58,7 +53,11 @@ import { api } from '~/trpc/react'
 import { useAccountingProviderStatus } from '../../hooks/use-accounting-provider-status'
 import { formatAccountLabel } from '../account-label-format'
 import type { ChartDraftHandle, ChartMapView } from './accounts-types'
-import { ChartAccountEditor } from './chart-account-editor'
+import {
+  ChartAccountEditor,
+  type ChartAccountPatch,
+  type NewChartAccount,
+} from './chart-account-editor'
 import { ChartList } from './chart-list'
 import { RoleMapEditor } from './role-map-editor'
 import { RoleMapList } from './role-map-list'
@@ -265,12 +264,7 @@ export function AccountingAccountsSettingsPage() {
   }, [utils])
 
   const handleCreateAccount = useCallback(
-    async (values: {
-      code: string
-      name: string
-      accountType: GlAccountTypeValue
-      isActive: boolean
-    }): Promise<ChartAccountRow> => {
+    async (values: NewChartAccount): Promise<ChartAccountRow> => {
       const created = await createAccount.mutateAsync(values)
       await invalidateChart()
       return created
@@ -279,22 +273,16 @@ export function AccountingAccountsSettingsPage() {
   )
 
   const handleUpdateAccount = useCallback(
-    async (
-      id: string,
-      patch: {
-        code?: string
-        name?: string
-        accountType?: GlAccountTypeValue | null
-        isActive?: boolean
-      }
-    ): Promise<ChartAccountRow> => {
+    async (id: string, patch: ChartAccountPatch): Promise<ChartAccountRow> => {
       const updated = await updateAccount.mutateAsync({
         id,
         code: patch.code,
         name: patch.name,
-        // `null` is the draft form's "not chosen yet"; it never reaches a write.
+        // `undefined` here means the draft's "not chosen yet"; it never reaches
+        // a write, distinct from `null` on `code`, which explicitly clears it.
         accountType: patch.accountType ?? undefined,
         isActive: patch.isActive,
+        subtype: patch.subtype,
       })
       await invalidateChart()
       return updated

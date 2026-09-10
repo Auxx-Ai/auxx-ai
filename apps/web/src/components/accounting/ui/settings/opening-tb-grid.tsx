@@ -66,8 +66,8 @@ function sectionLabels(accountType: GlAccountTypeValue) {
   )
 }
 
-/** The account code behind a `StatementTable` row id, or null for a non-account row. */
-export function accountCodeFromRowId(rowId: string): string | null {
+/** The account id behind a `StatementTable` row id, or null for a non-account row. */
+export function accountIdFromRowId(rowId: string): string | null {
   return rowId.startsWith(ACCOUNT_ROW_PREFIX) ? rowId.slice(ACCOUNT_ROW_PREFIX.length) : null
 }
 
@@ -88,12 +88,12 @@ export function accountCodeFromRowId(rowId: string): string | null {
  */
 export function applyOpeningCellChange(
   rows: readonly OpeningTrialBalanceRow[],
-  accountCode: string,
+  accountId: string,
   column: OpeningColumnKey,
   minor: number | null
 ): OpeningTrialBalanceRow[] {
   return rows.map((row) => {
-    if (row.accountCode !== accountCode || row.lockedByRole) return row
+    if (row.accountId !== accountId || row.lockedByRole) return row
     return column === 'debit'
       ? { ...row, debitMinor: minor, creditMinor: null }
       : { ...row, debitMinor: null, creditMinor: minor }
@@ -152,7 +152,7 @@ export function overlayInventorySettings(
  * therefore treat a difference from `serverRows` as dirty, whether a person
  * typed it or the overlay produced it.
  *
- * PURE. Compares by account code and by both money columns; row ORDER is the
+ * PURE. Compares by account id and by both money columns; row ORDER is the
  * server's in both lists, so a positional walk is enough.
  */
 export function openingRowsDifferFromServer(
@@ -165,7 +165,7 @@ export function openingRowsDifferFromServer(
     const server = serverRows[index]
     return (
       !server ||
-      server.accountCode !== row.accountCode ||
+      server.accountId !== row.accountId ||
       (server.debitMinor ?? null) !== (row.debitMinor ?? null) ||
       (server.creditMinor ?? null) !== (row.creditMinor ?? null)
     )
@@ -179,7 +179,7 @@ interface OpeningTbGridProps {
   readOnly?: boolean
   /** Why a locked inventory row cannot be typed in. Rendered in its tooltip. */
   lockReason: string
-  onCellChange?: (accountCode: string, column: OpeningColumnKey, minor: number | null) => void
+  onCellChange?: (accountId: string, column: OpeningColumnKey, minor: number | null) => void
   /** The `entry-journal.tsx` strip: Debits / Credits / Difference. */
   verdict?: { label: string; ok: boolean; detail?: string }
 }
@@ -199,8 +199,8 @@ export function OpeningTbGrid({
       currency={currency}
       mode={readOnly ? 'read' : 'edit'}
       onCellChange={(rowId, colKey, minor) => {
-        const accountCode = accountCodeFromRowId(rowId)
-        if (accountCode) onCellChange?.(accountCode, colKey as OpeningColumnKey, minor)
+        const accountId = accountIdFromRowId(rowId)
+        if (accountId) onCellChange?.(accountId, colKey as OpeningColumnKey, minor)
       }}
       verdict={verdict}
     />
@@ -250,7 +250,7 @@ function toStatementRows(
       sectionDebit += row.debitMinor ?? 0
       sectionCredit += row.creditMinor ?? 0
       out.push({
-        id: `${ACCOUNT_ROW_PREFIX}${row.accountCode}`,
+        id: `${ACCOUNT_ROW_PREFIX}${row.accountId}`,
         label: formatAccountLabel({ code: row.accountCode, name: row.accountName }),
         depth: 1,
         // 🛑 `computed`, not `line`, is what makes a locked row read-only:

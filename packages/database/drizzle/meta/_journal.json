@@ -2598,6 +2598,13 @@
       "when": 1789006932533,
       "tag": "0370_gl_posting_line_gl_account_id",
       "breakpoints": true
+    },
+    {
+      "idx": 371,
+      "version": "7",
+      "when": 1789017340953,
+      "tag": "0371_gl_posting_line_account_code_optional",
+      "breakpoints": true
     }
   ]
 }

@@ -17,11 +17,14 @@ import { readTrialBalance } from '../trial-balance'
 const ORG = 'org_1'
 
 /** `glAccountId` defaults to `id_<accountCode>`. */
-function row(overrides: Partial<TrialBalanceRow> & { accountCode: string }): TrialBalanceRow {
+function row(
+  overrides: Partial<TrialBalanceRow> & { accountCode: string | null }
+): TrialBalanceRow {
   return {
     glAccountId: `id_${overrides.accountCode}`,
     accountName: '',
     accountType: 'revenue',
+    subtype: null,
     debitMinor: 0,
     creditMinor: 0,
     balanceMinor: 0,
@@ -41,7 +44,7 @@ function stubDb(): Database {
 }
 
 describe('readProfitAndLoss', () => {
-  it('groups 5xxx expense codes under cost of goods sold and everything else under operating expense', async () => {
+  it('groups the cost_of_goods_sold-subtyped expense under COGS and everything else under operating expense', async () => {
     vi.mocked(readTrialBalance).mockResolvedValue(
       ok(
         tb(
@@ -55,6 +58,7 @@ describe('readProfitAndLoss', () => {
             row({
               accountCode: '5000',
               accountType: 'expense',
+              subtype: 'cost_of_goods_sold',
               debitMinor: 200_000,
               balanceMinor: 200_000,
             }),
@@ -86,6 +90,49 @@ describe('readProfitAndLoss', () => {
     expect(pl.totalOperatingExpensesMinor).toBe(50_000)
     expect(pl.totalExpenseMinor).toBe(250_000)
     expect(pl.netIncomeMinor).toBe(250_000)
+  })
+
+  // 🛑 Task 15 §5's own regression: COGS is the chart ATTRIBUTE, never a code
+  // prefix. An uncoded account with the subtype lands in COGS; a `5xxx`-coded
+  // account WITHOUT the subtype does not - the prefix heuristic this replaced
+  // would have gotten both of these backwards (or thrown on the null code).
+  it('classifies COGS by subtype, never by a code prefix', async () => {
+    vi.mocked(readTrialBalance).mockResolvedValue(
+      ok(
+        tb(
+          [
+            row({
+              accountCode: null,
+              accountType: 'expense',
+              subtype: 'cost_of_goods_sold',
+              debitMinor: 75_000,
+              balanceMinor: 75_000,
+            }),
+            row({
+              accountCode: '5090',
+              accountType: 'expense',
+              subtype: null,
+              debitMinor: 40_000,
+              balanceMinor: 40_000,
+            }),
+          ],
+          '2026-08-01',
+          '2026-08-31'
+        )
+      )
+    )
+
+    const result = await readProfitAndLoss(stubDb(), {
+      organizationId: ORG,
+      from: '2026-08-01',
+      to: '2026-08-31',
+    })
+    const pl = result._unsafeUnwrap()
+
+    expect(pl.cogs.map((r) => r.accountCode)).toEqual([null])
+    expect(pl.totalCogsMinor).toBe(75_000)
+    expect(pl.operatingExpenses.map((r) => r.accountCode)).toEqual(['5090'])
+    expect(pl.totalOperatingExpensesMinor).toBe(40_000)
   })
 
   it('net income equals revenue minus total expense, matching netIncome() over the same rows', async () => {
