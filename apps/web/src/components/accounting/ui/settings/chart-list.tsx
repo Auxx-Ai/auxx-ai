@@ -151,7 +151,7 @@ export function ChartList({
               the signal that this chart was either imported or hand-mapped, so a
               refresh has something to add to rather than nothing to compare
               against (brief 16 §2.3). */}
-          {canControl && mapped > 0 && <ImportChartButton mode='chart' connected={map.connected} />}
+          {canControl && linked > 0 && <ImportChartButton mode='chart' connected={map.connected} />}
         </div>
       )}
 
@@ -263,8 +263,8 @@ export function ChartList({
                 // 🛑 `persistent`, and ONLY on a row that has a suggestion.
                 // `TreeRowButton` is hover-revealed by default, which is right for
                 // an action every row carries and wrong for one that exists on
-                // three rows out of twenty-nine - the reader would have to hover
-                // each row in turn to find them. The other rows get no button at
+                // the handful that the matcher happened to propose - the reader
+                // would have to hover each row in turn to find them. The other rows get no button at
                 // all rather than a disabled one: there is nothing to accept.
                 //
                 // 🛑 The tooltip NAMES the account and says how it was matched.
