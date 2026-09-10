@@ -34,18 +34,21 @@ import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { InputSearch } from '@auxx/ui/components/input-search'
 import { EmptySection } from '@auxx/ui/components/section'
-import { TREE_SECONDARY_NOTRUNCATE, TreeRow } from '@auxx/ui/components/tree-row'
+import { TREE_SECONDARY_NOTRUNCATE, TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
-import { Landmark, Plus, Sparkles, TriangleAlert } from 'lucide-react'
+import { Landmark, Link2, Plus, Sparkles, TriangleAlert } from 'lucide-react'
 import { useState } from 'react'
 import { AccountLabel } from '../account-label'
 import { accountMatchesSearch } from '../account-label-format'
 import {
+  ACCOUNT_SUGGESTION_REASON_COPY,
+  type AccountLinkState,
+  accountLinkState,
   accountTypeColor,
   accountTypeLabel,
   type ChartDraftHandle,
   type ChartMapView,
-  isMappingBroken,
+  formatProviderAccount,
 } from './accounts-types'
 
 interface ChartListProps {
@@ -65,6 +68,10 @@ interface ChartListProps {
   /** Confirms every suggested mapping at once. */
   onConfirmSuggested: () => void
   confirming: boolean
+  /** Confirms ONE row's suggestion, from the row itself. */
+  onAcceptSuggestion: (glAccountId: string, providerAccountId: string) => void
+  /** The account id whose single-row accept is in flight, if any. */
+  acceptingAccountId: string | null
   /** `PermissionKey.ledgerControl`. False hides every write affordance this
    *  list owns (Add account, Accept N) - the read path stays fully usable. */
   canControl: boolean
@@ -81,13 +88,15 @@ export function ChartList({
   map,
   onConfirmSuggested,
   confirming,
+  onAcceptSuggestion,
+  acceptingAccountId,
   canControl,
 }: ChartListProps) {
   const [search, setSearch] = useState('')
 
   // 29 rows, recomputed per keystroke of the search box. A `useMemo` here would
   // cost more to read than the loop costs to run.
-  const mapped = accounts.filter(
+  const linked = accounts.filter(
     (account) => map.byAccountId.get(account.id)?.state === 'confirmed'
   ).length
 
@@ -117,15 +126,14 @@ export function ChartList({
       </div>
 
       {/* 🛑 Gate on the PROVIDER, never on an empty map. "Nothing is connected"
-          and "connected but nothing mapped" are different answers needing
-          different actions, and collapsing them would tell somebody to map a
-          chart with nothing to map it against. With nothing connected this whole
-          strip is absent and the chart is unchanged - the explanation lives in
-          the detail pane, on the row it is about. */}
+          and "connected but nothing linked" are different answers needing
+          different actions, and collapsing them would tell somebody to link a
+          chart with nothing to link it to. With nothing connected this counter is
+          absent and the chart is unchanged; the line directly below says why. */}
       {map.connected && (
         <div className='flex flex-wrap items-center gap-2'>
           <span className='text-muted-foreground text-xs tabular-nums'>
-            {mapped} of {accounts.length} mapped to {map.providerLabel ?? 'your accounting system'}
+            {linked} of {accounts.length} linked to {map.providerLabel ?? 'your accounting system'}
           </span>
           {canControl && map.suggested > 0 && (
             <Button
@@ -141,6 +149,24 @@ export function ChartList({
         </div>
       )}
 
+      {/* 🛑 LOADING is tested before "nothing connected", the same order
+          `chart-account-editor.tsx`'s map block argues for: `connected` is false
+          for the whole of the provider round trip, so testing it first would tell
+          every reader their accounting system is disconnected for as long as it
+          takes to answer.
+
+          This line exists because every row now wears a link badge when
+          connected. With nothing connected there are no badges at all, and
+          without a sentence "no accounting system", "still loading" and
+          "connected but nothing linked" would all render as the same silence. */}
+      {!map.isPending && (map.isError || !map.connected) && (
+        <span className='text-muted-foreground text-xs'>
+          {map.isError
+            ? 'Could not read the account map. Everything below is unaffected.'
+            : 'No accounting system connected, so nothing here is linked. Entries are still built, balanced and stored in Auxx.'}
+        </span>
+      )}
+
       {/* A dangling mapping is a REPAIR, not a mapping, and `G19` requires every
           close to refuse on exactly these - so it leads the tab rather than
           waiting to be found by selecting the right row. */}
@@ -149,7 +175,7 @@ export function ChartList({
           <TriangleAlert className='mt-0.5 size-4 shrink-0 text-destructive' />
           <div className='min-w-0'>
             <p className='font-medium text-sm'>
-              {map.broken.length} mapping{map.broken.length === 1 ? '' : 's'} no longer valid
+              {map.broken.length} link{map.broken.length === 1 ? '' : 's'} no longer valid
             </p>
             <p className='text-muted-foreground text-xs'>
               {map.broken.join(', ')}{' '}
@@ -157,7 +183,7 @@ export function ChartList({
                 ? 'points at an account that has'
                 : 'point at accounts that have'}{' '}
               been removed, deactivated or moved to a different section. Every close refuses until{' '}
-              {map.broken.length === 1 ? 'it is' : 'they are'} re-mapped.
+              {map.broken.length === 1 ? 'it is' : 'they are'} re-linked.
             </p>
           </div>
         </div>
@@ -212,6 +238,10 @@ export function ChartList({
           {filtered.map((account) => {
             const roles = rolesByAccountId.get(account.id) ?? []
             const identity = map.byAccountId.get(account.id)
+            // Gated on the LOADED map for the same reason the badge is: a row
+            // action derived from a round trip that has not answered yet is an
+            // offer the server may be about to refuse.
+            const suggestion = map.connected && !map.isPending ? identity?.suggestion : undefined
             return (
               <TreeRow
                 key={account.id}
@@ -224,6 +254,29 @@ export function ChartList({
                   selectedId === account.id && 'bg-primary-100 ring-1 ring-primary-200',
                   !account.isActive && 'opacity-60'
                 )}
+                // 🛑 `persistent`, and ONLY on a row that has a suggestion.
+                // `TreeRowButton` is hover-revealed by default, which is right for
+                // an action every row carries and wrong for one that exists on
+                // three rows out of twenty-nine - the reader would have to hover
+                // each row in turn to find them. The other rows get no button at
+                // all rather than a disabled one: there is nothing to accept.
+                //
+                // 🛑 The tooltip NAMES the account and says how it was matched.
+                // `G19` makes the confirming person the last line of defence (a
+                // wrong account id still balances, so nothing downstream catches
+                // it), and a bare check mark would ask them to agree to something
+                // they cannot see. Same pairing the editor's Confirm button makes.
+                actions={
+                  suggestion && canControl ? (
+                    <TreeRowButton
+                      persistent
+                      tooltipText={`Link ${formatProviderAccount(suggestion.account)} - ${ACCOUNT_SUGGESTION_REASON_COPY[suggestion.reason]}`}
+                      disabled={acceptingAccountId === account.id}
+                      onClick={() => onAcceptSuggestion(account.id, suggestion.account.id)}>
+                      <Link2 />
+                    </TreeRowButton>
+                  ) : undefined
+                }
                 secondary={
                   <span className='flex items-center gap-1.5 text-muted-foreground text-xs'>
                     <Badge variant={accountTypeColor(account.accountType)} size='xs'>
@@ -234,23 +287,19 @@ export function ChartList({
                         Inactive
                       </Badge>
                     )}
-                    {/* Only ever rendered against a LOADED map. An unmapped
-                        badge on rows the provider round trip has not answered
-                        for yet is a claim about the org, and rendering it
-                        mid-load makes it a false one. */}
-                    {map.connected && !map.isPending && identity && isMappingBroken(identity) && (
-                      <Badge variant='destructive' size='xs'>
-                        Re-map
-                      </Badge>
+                    {/* Only ever rendered against a LOADED map. A link badge on
+                        rows the provider round trip has not answered for yet is
+                        a claim about the org, and rendering it mid-load makes it
+                        a false one.
+
+                        🛑 One badge, ALWAYS present once the map has loaded -
+                        never a set of conditional badges whose absence has to be
+                        interpreted. This used to render only two of the four
+                        states, so a row with a pending suggestion looked exactly
+                        like a linked one: silence. */}
+                    {map.connected && !map.isPending && (
+                      <AccountLinkBadge state={accountLinkState(identity)} />
                     )}
-                    {map.connected &&
-                      !map.isPending &&
-                      identity?.state === 'unmapped' &&
-                      !identity.suggestion && (
-                        <Badge variant='outline' size='xs'>
-                          Not mapped
-                        </Badge>
-                      )}
                     {roles.length > 0 && (
                       <span>
                         {roles.length} {roles.length === 1 ? 'role' : 'roles'}
@@ -265,4 +314,48 @@ export function ChartList({
       )}
     </div>
   )
+}
+
+/**
+ * The one badge that answers "is this account linked to the accounting system?".
+ *
+ * 🛑 Every state renders something. A reader must never have to work out that
+ * "no badge" meant linked - which is what the previous two-conditional-badges
+ * shape asked of them, and it could not distinguish a linked account from one
+ * with an unconfirmed suggestion at all.
+ *
+ * 🛑 `Suggested` is amber and wears the `Sparkles` mark, the same pair
+ * `role-map-editor.tsx` already uses for a proposed role assignment. `G19`
+ * requires a suggestion to read visibly differently from a confirmed mapping,
+ * and the page should not have two vocabularies for one distinction.
+ */
+function AccountLinkBadge({ state }: { state: AccountLinkState }) {
+  switch (state) {
+    case 'broken':
+      return (
+        <Badge variant='destructive' size='xs'>
+          Re-link
+        </Badge>
+      )
+    case 'suggested':
+      return (
+        <Badge variant='amber' size='xs'>
+          <Sparkles />
+          Suggested
+        </Badge>
+      )
+    case 'linked':
+      return (
+        <Badge variant='secondary' size='xs'>
+          <Link2 />
+          Linked
+        </Badge>
+      )
+    default:
+      return (
+        <Badge variant='outline' size='xs'>
+          Not linked
+        </Badge>
+      )
+  }
 }

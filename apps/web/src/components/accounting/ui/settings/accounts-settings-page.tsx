@@ -337,6 +337,34 @@ export function AccountingAccountsSettingsPage() {
     [setIdentity, utils]
   )
 
+  /**
+   * Accept ONE row's suggestion, from the list.
+   *
+   * 🛑 Toasts rather than surfacing the refusal on a field, which is the
+   * opposite of what `handleSetIdentity`'s caller in the editor does. The rule is
+   * the same one the bulk confirm follows: a message goes where the reader can
+   * act on it, and a list row has no field to hold a sentence. The row is on
+   * screen, so the toast names the account.
+   */
+  const [acceptingAccountId, setAcceptingAccountId] = useState<string | null>(null)
+
+  const handleAcceptSuggestion = useCallback(
+    async (glAccountId: string, providerAccountId: string) => {
+      setAcceptingAccountId(glAccountId)
+      try {
+        await handleSetIdentity(glAccountId, providerAccountId)
+      } catch (error) {
+        toastError({
+          title: 'Error linking the account',
+          description: error instanceof Error ? error.message : 'Could not save the mapping.',
+        })
+      } finally {
+        setAcceptingAccountId(null)
+      }
+    },
+    [handleSetIdentity]
+  )
+
   const confirmSuggested = api.ledger.confirmSuggestedAccounts.useMutation({
     onSuccess: async (result) => {
       await utils.ledger.accountMap.invalidate()
@@ -477,6 +505,10 @@ export function AccountingAccountsSettingsPage() {
             accounts={accounts}
             isLoading={chart.isPending}
             selectedId={selectedAccountId}
+            onAcceptSuggestion={(glAccountId, providerAccountId) => {
+              void handleAcceptSuggestion(glAccountId, providerAccountId)
+            }}
+            acceptingAccountId={acceptingAccountId}
             onSelect={handleSelectAccount}
             rolesByAccountId={rolesByAccountId}
             draft={chartDraft}

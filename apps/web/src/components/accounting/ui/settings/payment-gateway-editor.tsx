@@ -27,7 +27,7 @@ import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Section } from '@auxx/ui/components/section'
 import { CreditCard } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { GlAccountPicker } from '~/components/accounting/ui/gl-account-picker'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
@@ -98,6 +98,20 @@ function PaymentGatewayForm({
     if (value.trim()) onPatch({ name: value })
   }, TEXT_COMMIT_DELAY_MS)
 
+  // 🛑 The option set is DERIVED from the values. `payment_gateway_handles` is an
+  // OPEN, value-keyed TAGS field - the registry declares `options: { options: [] }`
+  // and the write stores the raw string - so a stored handle matches no option row.
+  // Handing the picker a literal `[]` made every handle resolve `unknown`: the
+  // trigger rendered it italic-grey as "not in this field's option set", and it
+  // never appeared in the popover at all, so it could not be unchecked. Nothing is
+  // wrong with what is stored; the input has to be told the values ARE the options.
+  // The `useMemo` is load-bearing too - a fresh `[]` each render re-fired
+  // `MultiSelectPicker`'s options sync and wiped the tag being typed.
+  const handleOptions = useMemo(
+    () => gateway.handles.map((handle) => ({ label: handle, value: handle })),
+    [gateway.handles]
+  )
+
   const isClosed = gateway.status === 'closed'
 
   return (
@@ -140,9 +154,16 @@ function PaymentGatewayForm({
           description='Every stored value this rail is seen under. Two spellings of the same rail (authorize_net / authorize.net) both belong here.'>
           <FieldInputAdapter
             fieldType={FieldType.TAGS}
-            fieldOptions={{ options: [] }}
+            fieldOptions={{ options: handleOptions }}
             useValueAsLabel
             value={gateway.handles}
+            // 🛑 `showClear: false` - the trigger's X is a CLEAR ALL, and a
+            // gateway with no handle is refused by `updatePaymentGateway`
+            // ("at least one handle"), so the button could only ever be a
+            // silent no-op: the guard below drops the write and the next
+            // render puts every tag straight back. A control that cannot
+            // succeed does not belong on the row.
+            triggerProps={{ className: 'w-full ps-0 pe-1', showClear: false }}
             placeholder='Add a handle'
             onChange={(value) => {
               const handles = Array.isArray(value) ? (value as string[]) : []
@@ -157,11 +178,18 @@ function PaymentGatewayForm({
           showIcon
           isRequired
           description='Where this gateway settles. Two gateways sharing one account is fine - this only says which account, it never mints a new one.'>
+          {/* 🛑 `showClear: false`, same argument as Gateway handles above: the
+              clearing account is REQUIRED - it is where this rail's money lands
+              on the balance sheet - so `onChange(null)` is dropped by the guard
+              and the X could only ever be a no-op. The fee account below keeps
+              its X, because null there is a real answer (fall back to the
+              default merchant-fees account). */}
           <GlAccountPicker
             value={gateway.clearingGlAccountId}
             selectBy='id'
             filterTypes={['asset']}
             placeholder='Select account…'
+            triggerProps={{ showClear: false }}
             onChange={(id) => id && onPatch({ clearingAccountId: id })}
           />
         </FieldPanelRow>
