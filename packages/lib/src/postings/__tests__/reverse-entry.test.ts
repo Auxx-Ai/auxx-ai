@@ -65,6 +65,7 @@ interface LineRow {
   organizationId: string
   glPostingId: string
   lineNumber: number
+  glAccountId?: string
   accountCode: string
   accountRole: string | null
   accountName?: string | null
@@ -384,6 +385,18 @@ describe('the reversal pair', () => {
       sourceId: 'mv_1',
     })
     expect(written[1]).toMatchObject({ accountCode: '2160', direction: 'debit' })
+  })
+
+  it('writes the resolved account id on the reversal, same as any other entry', async () => {
+    // Task 15 §2: the reversal is posted through the same `resolveAccountLines`
+    // path as any other entry (the role names are unchanged, so this re-resolves
+    // to the SAME accounts) - it does not need its own propagation of the id.
+    const fake = createFakeDb({ postings: [original()], lines: originalLines(), chart: CHART })
+    await reverseEntry(fake.db, { organizationId: ORG, glPostingId: 'post_1', lock: OPEN })
+
+    const reversalId = fake.postings[1]!.id
+    const written = fake.lines.filter((line) => line.glPostingId === reversalId)
+    expect(written.map((line) => line.glAccountId)).toEqual([RAW.id, GRNI.id])
   })
 
   it('leaves the original provider entry alone', async () => {

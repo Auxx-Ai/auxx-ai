@@ -87,6 +87,7 @@ interface LineRow {
   organizationId: string
   glPostingId: string
   lineNumber: number
+  glAccountId: string
   accountCode: string
   accountRole: string | null
   accountName: string | null
@@ -511,6 +512,16 @@ describe('an organization with no accounting provider', () => {
       accountRole: 'grni',
       direction: 'credit',
     })
+  })
+
+  it('writes the resolved account id as the identity, beside the code snapshot', async () => {
+    // Task 15 §2: `glAccountId` is the IDENTITY the resolver resolved through
+    // `GlRoleAssignment`, not a value this test invents - it must be exactly the
+    // `gl_account` id each role was mapped to in FULL_CHART.
+    const fake = createFakeDb(FULL_CHART)
+    await postEntry(fake.db, { organizationId: ORG, entry: receiptEntry(), lock: OPEN })
+
+    expect(fake.lines.map((line) => line.glAccountId)).toEqual([RAW.id, GRNI.id])
   })
 
   it('stores the built entry AND the resolved lines as the draft audit record', async () => {

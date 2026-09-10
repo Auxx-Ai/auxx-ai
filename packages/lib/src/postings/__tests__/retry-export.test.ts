@@ -74,6 +74,7 @@ function createFakeDb(row: FakeRow | null, lines: Record<string, unknown>[]) {
 
 function line(overrides: Partial<Record<string, unknown>> = {}) {
   return {
+    glAccountId: 'acct_ar',
     accountCode: '1100',
     accountName: 'Accounts Receivable',
     direction: 'debit',
@@ -181,8 +182,9 @@ describe('retryExport', () => {
     // under one mapping could be exported under another and the two registers
     // would disagree with nothing able to detect it.
     const fake = createFakeDb(postingRow(), [
-      line({ accountCode: '1100', lineNumber: 1 }),
+      line({ glAccountId: 'acct_ar', accountCode: '1100', lineNumber: 1 }),
       line({
+        glAccountId: 'acct_revenue',
         accountCode: '4030',
         direction: 'credit',
         lineNumber: 2,
@@ -197,6 +199,20 @@ describe('retryExport', () => {
 
     expect(seen[0]?.lines.map((l) => l.accountCode)).toEqual(['1100', '4030'])
     expect(seen[0]?.lines[1]?.direction).toBe('credit')
+  })
+
+  it('replays the stored glAccountId - the identity, alongside the code snapshot', async () => {
+    // Task 15 §2: `glAccountId` is what a `gl_posting_line` row stores as its
+    // identity now. The replay must carry it through unchanged, the same way it
+    // already carries the code and name snapshots.
+    const fake = createFakeDb(postingRow(), [line({ glAccountId: 'acct_ar' })])
+    const seen = stubProvider(() =>
+      ok({ status: 'posted', externalId: 'qb_9', providerId: 'stub' })
+    )
+
+    await retryExport(fake.db, { organizationId: ORG, glPostingId: POSTING })
+
+    expect(seen[0]?.lines[0]?.glAccountId).toBe('acct_ar')
   })
 
   it('treats an already exported row as a no-op success, not an error', async () => {

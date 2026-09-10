@@ -112,6 +112,7 @@ function baseInput(over: Partial<PostEntryInput> = {}): PostEntryInput {
     idempotencyKey: IDEMPOTENCY_KEY,
     lines: [
       {
+        glAccountId: 'acct_1310',
         accountCode: '1310',
         direction: 'debit',
         amount: 124999,
@@ -120,6 +121,7 @@ function baseInput(over: Partial<PostEntryInput> = {}): PostEntryInput {
         sortOrder: 0,
       },
       {
+        glAccountId: 'acct_2160',
         accountCode: '2160',
         direction: 'credit',
         amount: 124999,
@@ -643,6 +645,7 @@ describe('resolveAccount - the only place a code becomes a provider id', () => {
       baseInput({
         lines: [
           {
+            glAccountId: 'acct_1310',
             accountCode: '1310',
             direction: 'debit',
             amount: 100,
@@ -651,6 +654,7 @@ describe('resolveAccount - the only place a code becomes a provider id', () => {
             sortOrder: 0,
           },
           {
+            glAccountId: 'acct_5090',
             accountCode: '5090',
             direction: 'credit',
             amount: 100,

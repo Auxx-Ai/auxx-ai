@@ -3,7 +3,6 @@
 import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { getOrgCache } from '../../../cache'
-import { seedDefaultChartOfAccounts } from '../../gl-account-chart'
 import { loadExistingState } from '../helpers'
 import type { EntityMigration, EntityMigrationResult } from '../types'
 
@@ -34,16 +33,13 @@ const CACHE_KEYS = ['resources'] as const
  * shipment and no order, so service revenue reached the profit and loss
  * through no account at all.
  *
- * ## Why this is one call to `seedDefaultChartOfAccounts` and nothing else
+ * ## NO-OP now
  *
- * That function is idempotent on `code` and its role insert is
- * `ON CONFLICT (organizationId, role) DO NOTHING`, and it assigns roles to
- * accounts it FINDS as well as accounts it creates. So once `default-chart.ts`
- * declares `4030`, one call does the whole job on a settled org: it creates the
- * account where it is missing, assigns `revenue_service` where it is
- * unassigned, and touches nothing a bookkeeper has edited. Writing the insert a
- * second way here would be the second source of truth the chart module exists
- * to avoid.
+ * This used to be one call to `seedDefaultChartOfAccounts`, idempotent on
+ * `code`, that created `4030` where it was missing and assigned
+ * `revenue_service` where it was unassigned. Accounting is opt-in now
+ * (plans/accounting/tasks/17-accounting-is-opt-in.md §2), so this migration no
+ * longer touches the chart and is permanently inert.
  *
  * ## Self-sufficient, with no companion data migration
  *
@@ -70,7 +66,10 @@ export const migration126ServiceRevenueAccount: EntityMigration = {
     const def = existing.entityDefs.get(GL_ACCOUNT_ENTITY_TYPE)
     if (!def) return { ...state, alreadyUpToDate: true }
 
-    const chart = await seedDefaultChartOfAccounts(db, organizationId, def.id)
+    // NO-OP (plans/accounting/tasks/17-accounting-is-opt-in.md §2): this used
+    // to call `seedDefaultChartOfAccounts`. Accounting is opt-in now, so 126
+    // no longer adds 4030 to the chart.
+    const chart = { created: 0, skipped: 0, rolesAssigned: 0 }
     const changed = chart.created > 0 || chart.rolesAssigned > 0
 
     // A new chart account is invisible to every read path that serves the chart

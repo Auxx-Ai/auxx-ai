@@ -23,7 +23,6 @@ import { VENDOR_PAYMENT_FIELDS } from '../../../resources/registry/resources/ven
 import { SystemUserService } from '../../../users/system-user-service'
 import { DEFAULT_VIEW_CONFIGS } from '../../default-view-configs'
 import { SYSTEM_ENTITIES } from '../../entity-seeder/constants'
-import { seedDefaultChartOfAccounts } from '../../gl-account-chart'
 import {
   ensureCustomFields,
   ensureDefaultTableViews,
@@ -547,13 +546,11 @@ export const migration108Purchasing: EntityMigration = {
     //
     // ✅ That specific field is gone now (decision `G19` — roles live in the
     // `GlRoleAssignment` table), so the exact 2026-08 incident cannot recur. The
-    // ORDERING rule is unchanged and still load-bearing: the chart seed below
-    // writes `gl_account_code` / `_name` / `_type` / `_is_active` through the
-    // same handler, and on a fresh org those four are created moments earlier in
-    // this very pass.
-    //
-    // So: definitions and fields first, then the flush, then anything that
-    // writes a RECORD. Nothing that creates a field may run below this line.
+    // chart seed that used to run below this flush is now a no-op (17 §2), so
+    // the hazard it created is retired too, but the ORDERING rule stays: `108`
+    // still remaps stock-movement account codes and rematches bills below, both
+    // of which write records, so definitions and fields go first, then the
+    // flush, then anything that writes a RECORD.
     const structureChanged =
       state.entityDefsCreated > 0 ||
       state.fieldsCreated > 0 ||
@@ -569,16 +566,14 @@ export const migration108Purchasing: EntityMigration = {
       ])
     }
 
-    // ── The default chart of accounts ──────────────────────────────────
+    // ── The default chart of accounts: NO-OP ────────────────────────────
     //
-    // Seeded after the flush, for the reason above. Its own idempotency is on
-    // `code`, and its role assignments are `ON CONFLICT DO NOTHING` on
-    // `(organizationId, role)`, so both halves are safe to repeat.
-    const chart = await seedDefaultChartOfAccounts(
-      db,
-      organizationId,
-      entityDefIds.get('gl_account')
-    )
+    // 108 used to seed the default chart into every org here. Accounting is
+    // opt-in now (plans/accounting/tasks/17-accounting-is-opt-in.md §2): the
+    // wizard's Provision chart button is the only door onto a chart, so this
+    // step writes nothing. `chart` keeps its shape so the `alreadyUpToDate`
+    // and logging code below it are unchanged.
+    const chart = { created: 0, skipped: 0, rolesAssigned: 0 }
 
     // ── stock_movement.glAccount: the code -> role remap ───────────────
     const rolesRemapped = await remapMovementAccountCodesToRoles(db, organizationId, allFieldMaps)

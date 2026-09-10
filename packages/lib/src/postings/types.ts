@@ -226,7 +226,17 @@ export interface BuiltEntry {
  * as a movement's frozen cost is not restated by a standard-cost change.
  */
 export interface ResolvedPostingLine extends GlPostingLineBase {
-  /** Account CODE, e.g. `'1310'`, from the org's own chart. Never a provider id. */
+  /**
+   * The `gl_account` `EntityInstance` id this line resolved to. The IDENTITY
+   * (plans/accounting/tasks/15-the-account-id-is-the-identity.md §2). No
+   * foreign key anywhere it lands - a ledger line outlives the chart row.
+   */
+  glAccountId: string
+  /**
+   * Account CODE, e.g. `'1310'`, from the org's own chart. Never a provider id.
+   * A SNAPSHOT beside `glAccountId` - the code is a label the owner may rename
+   * or renumber, and `glAccountId` above is what a report should group by.
+   */
   accountCode: string
   /** The account's name as it stood when the entry was posted. A snapshot. */
   accountName?: string
@@ -585,6 +595,9 @@ export interface EntryPreview {
 export interface PostingDetailLine {
   id: string
   lineNumber: number
+  /** The `gl_account` instance id this line posted to. The identity (task 15). */
+  glAccountId: string
+  /** The account code as it stood when this was posted. A snapshot, never re-read. */
   accountCode: string
   /** The role the builder emitted. Null on a manual or legacy entry. */
   accountRole: string | null

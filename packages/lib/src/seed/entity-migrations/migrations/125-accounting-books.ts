@@ -20,7 +20,6 @@ import { ORDER_FIELDS } from '../../../resources/registry/resources/order-fields
 import { PAYMENT_FIELDS } from '../../../resources/registry/resources/payment-fields'
 import { SystemUserService } from '../../../users/system-user-service'
 import { SYSTEM_ENTITIES } from '../../entity-seeder/constants'
-import { seedDefaultChartOfAccounts } from '../../gl-account-chart'
 import {
   ensureCustomFields,
   ensureEntityDefinitions,
@@ -209,15 +208,13 @@ export const migration125AccountingBooks: EntityMigration = {
 // ─── Step 1: the chart of accounts ───────────────────────────────────
 
 /**
- * Seed the six new accounts, assign the thirteen roles and rename the seeded
- * `1100`. Returns whether anything changed.
+ * Rename the seeded `1100` where its name is still verbatim what 108 wrote.
+ * Returns whether anything changed.
  *
- * One call to `seedDefaultChartOfAccounts` rather than a second write path:
- * it is idempotent on `code` and its role insert is `ON CONFLICT
- * (organizationId, role) DO NOTHING`, written for role-carrying accounts
- * whether this pass created them or found them. Both halves are exactly what
- * an existing org needs, and writing them a second way would be the second
- * source of truth the chart module exists to avoid.
+ * Used to also seed six new accounts and assign the thirteen roles via
+ * `seedDefaultChartOfAccounts`. Accounting is opt-in now
+ * (plans/accounting/tasks/17-accounting-is-opt-in.md §2), so that call is
+ * retired: only the rename, guarded on rows existing, still runs.
  */
 async function extendChart(db: Database, organizationId: string): Promise<boolean> {
   const existing = await loadExistingState(db, organizationId)
@@ -229,7 +226,11 @@ async function extendChart(db: Database, organizationId: string): Promise<boolea
   if (!def) return false
 
   const renamed = await renameSeededReceivable(db, organizationId, def.id)
-  const chart = await seedDefaultChartOfAccounts(db, organizationId, def.id)
+  // NO-OP (plans/accounting/tasks/17-accounting-is-opt-in.md §2): this used to
+  // call `seedDefaultChartOfAccounts`. Accounting is opt-in now, so 125 no
+  // longer extends the chart; only `renameSeededReceivable` above still runs,
+  // guarded on rows existing.
+  const chart = { created: 0, skipped: 0, rolesAssigned: 0 }
 
   return renamed || chart.created > 0 || chart.rolesAssigned > 0
 }

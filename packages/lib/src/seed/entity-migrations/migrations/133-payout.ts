@@ -5,7 +5,6 @@ import { createScopedLogger } from '@auxx/logger'
 import { getOrgCache } from '../../../cache'
 import { PAYOUT_FIELDS } from '../../../resources/registry/resources/payout-fields'
 import { SYSTEM_ENTITIES } from '../../entity-seeder/constants'
-import { seedDefaultChartOfAccounts } from '../../gl-account-chart'
 import {
   ensureCustomFields,
   ensureEntityDefinitions,
@@ -106,17 +105,11 @@ export const migration133Payout: EntityMigration = {
       await linkDisplayFields(db, [PAYOUT_ENTITY_TYPE], entityDefIds, fieldMap)
     }
 
-    // Idempotent on `code`, and its role insert is
-    // `ON CONFLICT (organizationId, role) DO NOTHING`, so this one call creates
-    // `2450` where it is missing, assigns `unidentified_receipts` where it is
-    // unassigned, and touches nothing a bookkeeper has edited. Writing the
-    // insert a second way here would be the second source of truth the chart
-    // module exists to avoid.
-    const chart = await seedDefaultChartOfAccounts(
-      db,
-      organizationId,
-      existing.entityDefs.get(GL_ACCOUNT_ENTITY_TYPE)?.id
-    )
+    // NO-OP (plans/accounting/tasks/17-accounting-is-opt-in.md §2): this used
+    // to call `seedDefaultChartOfAccounts` to add `2450 Unidentified Receipts`.
+    // Accounting is opt-in now, so 133 still creates the `payout` def above but
+    // no longer touches the chart.
+    const chart = { created: 0, skipped: 0, rolesAssigned: 0 }
 
     const changed =
       state.entityDefsCreated > 0 ||

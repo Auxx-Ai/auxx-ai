@@ -57,6 +57,7 @@ interface LineRow {
   organizationId: string
   glPostingId: string
   lineNumber: number
+  glAccountId: string
   accountCode: string
   accountRole: string | null
   accountName: string | null
@@ -182,6 +183,7 @@ function line(overrides: Partial<LineRow> & { lineNumber: number }): LineRow {
     id: `gpl_${overrides.lineNumber}`,
     organizationId: ORG,
     glPostingId: 'gp_1',
+    glAccountId: 'gla_1310',
     accountCode: '1310',
     accountRole: 'inventory_raw_materials',
     accountName: 'Inventory - Raw Materials',
@@ -456,6 +458,7 @@ function paymentLine(sourceId: string, lineNumber: number): LineRow {
     organizationId: ORG,
     glPostingId: 'gp_1',
     lineNumber,
+    glAccountId: 'gla_1050',
     accountCode: '1050',
     accountRole: 'undeposited_funds',
     accountName: 'Undeposited Funds',

@@ -98,6 +98,7 @@ import { migration138AccountantPermissions } from './migrations/138-accountant-p
 import { migration139TaxLineOrderWritable } from './migrations/139-tax-line-order-writable'
 import { migration140IntegrationsView } from './migrations/140-integrations-view'
 import { migration141BuildBatchRun } from './migrations/141-build-batch-run'
+import { migration142WipeSeededCharts } from './migrations/142-wipe-seeded-charts'
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
@@ -303,6 +304,14 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   // creates carries (plans/money/tasks/45-batch-only-builds.md §3). MUST sort
   // after 109, which creates the `build` def it widens.
   migration141BuildBatchRun,
+  // Wipes every seeded chart of accounts, GlRoleAssignment row, journal entry,
+  // the QuickBooks account map and the wizard's setup settings: accounting is
+  // opt-in and Provision chart is the only way back
+  // (plans/accounting/tasks/17-accounting-is-opt-in.md §1). Lands first, and
+  // only once (see the migration's own docblock). No ordering constraint: it
+  // reads whatever `gl_account` / `journal_entry` rows exist regardless of
+  // which migration wrote them.
+  migration142WipeSeededCharts,
 ]
 
 /**
