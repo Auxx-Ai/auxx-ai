@@ -19,7 +19,7 @@ const badgeVariants = cva(
         secondary:
           'ring-1 ring-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80',
         destructive:
-          'ring-1 ring-transparent bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/80',
+          'ring-1 ring-destructive/20 bg-destructive/10 text-destructive shadow-sm hover:bg-destructive/80 hover:text-destructive-foreground',
         outline: 'ring-1 ring-border text-foreground',
         pill: 'ring-1 ring-neutral-300 bg-neutral-100 text-neutral-600 dark:text-neutral-100 dark:bg-primary-100 dark:ring-primary-100 px-2  py-0 data-selected:bg-neutral-700 data-selected:ring-neutral-700 dark:data-selected:bg-neutral-200 dark:data-selected:text-neutral-900 dark:data-selected:ring-neutral-200',
         user: 'ring-1 ring-info/20 bg-[#f2f4f7] shadow-xs gap-1 text-foreground/80 dark:bg-[#204684] cursor-pointer py-0',

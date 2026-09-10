@@ -11,6 +11,7 @@
 
 export type {
   GatewayRoute,
+  ObservedGatewayHandle,
   PaymentGatewayRow,
   PaymentGatewaySettlementSourceValue,
   PaymentGatewayStatusValue,
@@ -21,6 +22,7 @@ export {
   PAYMENT_GATEWAY_SETTLEMENT_SOURCES,
   PAYMENT_GATEWAY_STATUS_LABELS,
   PAYMENT_GATEWAY_STATUSES,
+  RESERVED_GATEWAY_HANDLES,
   resolvePaymentGatewaySettlementSource,
   resolvePaymentGatewayStatus,
   toGatewayRoutes,
@@ -28,6 +30,7 @@ export {
 export type { PaymentGatewayFieldContext } from './reads'
 export {
   getPaymentGateway,
+  listObservedGatewayHandles,
   listPaymentGateways,
   loadPaymentGatewayFieldContext,
   requirePaymentGatewayFieldContext,
