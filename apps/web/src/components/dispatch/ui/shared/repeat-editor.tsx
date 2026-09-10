@@ -13,8 +13,8 @@ import {
 import {
   RecurrenceEndFields,
   RecurrencePatternFields,
-} from '../recurrence/recurrence-pattern-fields'
-import type { RecurrencePreset } from '../recurrence/recurrence-utils'
+} from '~/components/global/recurrence/recurrence-pattern-fields'
+import type { RecurrencePreset } from '~/components/global/recurrence/recurrence-utils'
 import type { RecurrenceEditor } from './use-recurrence-editor'
 
 export interface RepeatEditorProps {

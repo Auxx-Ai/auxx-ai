@@ -99,6 +99,30 @@ export const DOC_NUMBER_PREFIX: Record<PostingType, string> = {
   // has vanished from the provider's ledger, so that refusal is reachable - see
   // `__tests__/doc-number.test.ts`.
   provider_sync: 'SYN',
+  // brief 21 §1.4. Keys on `hashedPeriodKey({ prefix: 'RJE', sourceId:
+  // `${ruleId}:${occurrenceDate}` })`, NEVER a counted sequence: two sweeps
+  // racing on the March occurrence must converge on ONE key and let the loser
+  // read `already_posted`, which is the correct answer here.
+  //
+  // 🛑 `hashedPeriodKey`'s collision caveat is inherited: the caller owes a
+  // check on the winning posting's line `sourceId` before trusting
+  // `already_posted`, exactly as `postPaymentTransaction` does. Skip it and a
+  // one-in-2.2e9 fold silently swallows a real entry.
+  recurring_journal: 'RJE',
+  // brief 21 §3.2. `BIL` is `vendor_bill`'s and cannot be reused.
+  //
+  // 🛑 Keys on `vendor_bill_internal_number`, OURS, and never on
+  // `vendor_bill_number`, THEIRS. The vendor's number is not unique in our org
+  // and its own registry note says two vendors may legitimately use the same
+  // string. Two bills on one period key contend for one
+  // `(org, expense_bill, key, 0)` tuple and the loser converges to
+  // `already_posted` - a SUCCESS - with its payable never recorded. That is
+  // `build-payment-entry.ts`'s warning wearing a different hat.
+  //
+  // `vendor_bill_internal_number` is `RecordSequence`-issued on create and
+  // unique in the org, so `BILL-0007` mints `AUXX-EXB-BILL0007` (17 of 21) and
+  // survives `-R1` at 20.
+  expense_bill: 'EXB',
 }
 
 /** What identifies one entry of one type. See {@link buildDocNumber}. */

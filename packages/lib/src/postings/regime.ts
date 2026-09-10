@@ -79,6 +79,15 @@ export const ENABLED_POSTING_TYPES: readonly PostingType[] = [
   'credit_memo',
   // `receipt` and `vendor_bill` are the L3 buy side and wait for the same
   // switch as the COGS leg.
+  //
+  // brief 21 §3.2. `Dr <expense> / Cr A/P` for rent, insurance, a legal
+  // invoice: a DIFFERENT story from `vendor_bill`, which is L3 purchasing and
+  // stays off. Enabled because our own writer emits it on a bill's Post, the
+  // way `invoice_issued` is emitted on an invoice's Send - and because
+  // `completeness.ts` renders every unlisted type as "posting is off" on every
+  // statement, which would be false the moment this shipped. Drives no
+  // single-writer role, so it cannot conflict with `month_end_inventory`.
+  'expense_bill',
 ]
 
 /** The three inventory accounts that may only ever have one writer. */
@@ -171,6 +180,10 @@ export const SINGLE_WRITER_ROLES_BY_POSTING_TYPE: Record<PostingType, readonly A
   // an exemption. And it is not in `ENABLED_POSTING_TYPES` either: that list is
   // what a production CLOSE emits, and nothing about a close writes this type.
   provider_sync: [],
+  // Both name accounts by ID, the way a manual journal does, so neither drives
+  // a single-writer role and neither can conflict with `month_end_inventory`.
+  recurring_journal: [],
+  expense_bill: [],
 }
 
 /**
@@ -244,6 +257,9 @@ export const EXPORT_ROUTE_BY_POSTING_TYPE: Record<PostingType, ExportRoute> = {
   // on every row is a rule nobody reads, and this one may never quietly become
   // `journal`. `__tests__/regime.test.ts` pins it (brief 20 §6).
   provider_sync: 'none',
+  // Both are real entries the firm should see in their register. brief 21.
+  recurring_journal: 'journal',
+  expense_bill: 'journal',
 }
 
 /** One posting type paired with the single-writer roles it would drive. */

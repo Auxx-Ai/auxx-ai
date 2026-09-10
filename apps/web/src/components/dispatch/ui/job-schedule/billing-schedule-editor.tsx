@@ -7,12 +7,15 @@ import { type RecurrencePattern, recurrencePatternSchema } from '@auxx/lib/recur
 import { Button } from '@auxx/ui/components/button'
 import { toastError } from '@auxx/ui/components/toast'
 import { useState } from 'react'
+import { RecurrencePatternFields } from '~/components/global/recurrence/recurrence-pattern-fields'
+import {
+  defaultCustomPattern,
+  scalarSetting,
+} from '~/components/global/recurrence/recurrence-utils'
 import type { RecordId } from '~/components/resources'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useSettings } from '~/hooks/use-settings'
 import { api } from '~/trpc/react'
-import { RecurrencePatternFields } from '../recurrence/recurrence-pattern-fields'
-import { defaultCustomPattern, scalarSetting } from '../recurrence/recurrence-utils'
 
 export interface BillingScheduleEditorProps {
   workOrderRecordId: RecordId

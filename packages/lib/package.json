@@ -1174,6 +1174,12 @@
       "import": "./dist/postings/client.mjs",
       "default": "./src/postings/client.ts"
     },
+    "./postings/recurring-journals": {
+      "types": "./src/postings/recurring-journals/index.ts",
+      "source": "./src/postings/recurring-journals/index.ts",
+      "import": "./dist/postings/recurring-journals/index.mjs",
+      "default": "./src/postings/recurring-journals/index.ts"
+    },
     "./presence": {
       "types": "./src/presence/index.ts",
       "source": "./src/presence/index.ts",

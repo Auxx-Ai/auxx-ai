@@ -17,6 +17,7 @@ import { EmptyState } from '~/components/global/empty-state'
 import { downloadCsv } from '~/lib/csv'
 import { api } from '~/trpc/react'
 import { CompletenessBanner } from './completeness-banner'
+import { ProviderSyncMarker } from './provider-sync-marker'
 import { ReportErrorCard } from './report-error-card'
 import {
   periodEndDate,
@@ -138,6 +139,7 @@ export function GeneralLedgerReportPage() {
         <div className='mx-auto flex w-full max-w-5xl flex-1 flex-col gap-3 p-4'>
           {truncated && <TruncatedBanner maxLines={query.data?.maxLines} />}
           <CompletenessBanner asOf={to} />
+          <ProviderSyncMarker through={to} />
           {period.isLoading ? (
             <Skeleton className='h-64 w-full' />
           ) : !from || !to ? (

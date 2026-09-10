@@ -55,6 +55,12 @@ import {
 // leaf beside the other planners and is imported from there rather than being
 // re-exported through the server barrel for one call site.
 import { planProviderAgreement } from '@auxx/lib/postings/client'
+import {
+  clearRecurringJournalSchedule,
+  listRecurringJournalTemplates,
+  setRecurringJournalSchedule,
+} from '@auxx/lib/postings/recurring-journals'
+import { recurrencePatternSchema } from '@auxx/lib/recurrence'
 import { seedChartAccounts, seedChartPacks, seedDefaultPaymentGateways } from '@auxx/lib/seed'
 import { updateOrganizationSetting } from '@auxx/lib/settings'
 import { z } from 'zod'
@@ -1196,6 +1202,11 @@ export const ledgerRouter = createTRPCRouter({
     create: permissionProcedure(PermissionKey.ledgerPost)
       .input(
         z.object({
+          // 🛑 No `recurring` here, deliberately. A generated entry is raised
+          // by the daily sweep and by nothing else: it has to carry the rule
+          // and the slot its posting is keyed on, and a person typing one by
+          // hand would either omit them (refused) or claim a slot the sweep
+          // would then raise a second entry for.
           kind: z.enum(['manual', 'opening_balance', 'recurring_template']).optional(),
           date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'date must be YYYY-MM-DD'),
           memo: z.string().max(4000).optional(),
@@ -1262,7 +1273,14 @@ export const ledgerRouter = createTRPCRouter({
       .input(
         z
           .object({
-            kind: z.enum(['manual', 'opening_balance', 'recurring_template']).optional(),
+            // A LIST, because the drafts list wants the two kinds a person
+            // reviews and posts - hand-authored and sweep-generated - and not
+            // the stencil, which one value cannot express.
+            kinds: z
+              .array(z.enum(['manual', 'opening_balance', 'recurring_template', 'recurring']))
+              .min(1)
+              .max(4)
+              .optional(),
             status: z.enum(['draft', 'posted', 'reversed']).optional(),
             periodKey: z
               .string()
@@ -1375,6 +1393,87 @@ export const ledgerRouter = createTRPCRouter({
         })
         if (result.isErr()) throw result.error
         return result.value
+      }),
+  }),
+
+  /**
+   * The SCHEDULE on a recurring journal template
+   * (`plans/accounting/tasks/21-the-books-stand-alone.md` §1).
+   *
+   * The template itself is an ordinary `journalEntry` record with
+   * `kind: 'recurring_template'` - it is created, edited and discarded through
+   * the procedures above, because it holds exactly the same lines, memo and
+   * date every other draft does. What is new is the rule that says how often
+   * it repeats, and that is all this sub-router owns.
+   *
+   * ## The gates
+   *
+   * | procedure | gate |
+   * | --- | --- |
+   * | `list` | `ledger.view` |
+   * | `setSchedule`, `clearSchedule` | `ledger.control` |
+   *
+   * 🛑 `ledgerControl` on the writes, not `ledgerPost`. A schedule decides what
+   * lands in the books every month without anybody pressing anything, which is
+   * the same authority `setLockedThrough` takes. A bookkeeper with
+   * `ledgerPost` still reviews and posts each generated draft; what they may
+   * not do is change what generates.
+   */
+  recurringTemplate: createTRPCRouter({
+    /**
+     * Every template, its schedule, and what the next sweep owes.
+     *
+     * The plan comes from the same pure planner the sweep runs, so the screen
+     * cannot disagree with the job about which month is being held.
+     */
+    list: permissionProcedure(PermissionKey.ledgerView).query(async ({ ctx }) => {
+      const result = await listRecurringJournalTemplates(ctx.db, ctx.session.organizationId)
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+    /**
+     * Attach or replace a template's schedule.
+     *
+     * No `timezone` input: the rule stores the org's `accounting.bookTimeZone`
+     * and nothing reads a zone from anywhere else. A browser-detected zone
+     * would make two authorities out of the month boundary, and a December 31
+     * entry would land in January for a template saved one zone east.
+     */
+    setSchedule: permissionProcedure(PermissionKey.ledgerControl)
+      .use(notDemo('change a recurring journal schedule'))
+      .input(
+        z.object({
+          templateId: z.string().min(1),
+          pattern: recurrencePatternSchema,
+          anchor: z
+            .string()
+            .regex(/^\d{4}-\d{2}-\d{2}$/, 'anchor must be YYYY-MM-DD')
+            .optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const result = await setRecurringJournalSchedule(ctx.db, ctx.session.organizationId, input)
+        if (result.isErr()) throw result.error
+        return result.value
+      }),
+
+    /**
+     * Stop a template repeating. Entries it has already generated are
+     * untouched - a schedule is configuration and the entries are what
+     * happened.
+     */
+    clearSchedule: permissionProcedure(PermissionKey.ledgerControl)
+      .use(notDemo('remove a recurring journal schedule'))
+      .input(z.object({ templateId: z.string().min(1) }))
+      .mutation(async ({ ctx, input }) => {
+        const result = await clearRecurringJournalSchedule(
+          ctx.db,
+          ctx.session.organizationId,
+          input.templateId
+        )
+        if (result.isErr()) throw result.error
+        return { ok: true }
       }),
   }),
 })

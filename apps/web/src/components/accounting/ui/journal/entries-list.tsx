@@ -72,10 +72,17 @@ const STATUS_LABEL: Record<EntryStatus, string> = {
  *   started but not posted. `GlPosting` has no draft status (traps §8), so this
  *   is the only door to them.
  *
- * 🛑 The draft read is filtered to `kind: 'manual'`. An `opening_balance`
- * draft belongs to the setup wizard and the opening-balances settings page, and
- * a `recurring_template` is a template - neither can be posted from this row,
- * and rendering them here offered a Post the server then refused.
+ * 🛑 The draft read is filtered to the two POSTABLE, hand-reviewed kinds:
+ * `manual` and `recurring` (the entries the nightly sweep copied out of a
+ * template, task 21 §1). An `opening_balance` draft belongs to the setup wizard
+ * and the opening-balances settings page, and a `recurring_template` is the
+ * stencil itself - neither can be posted from this row, and rendering them here
+ * offered a Post the server then refused by name.
+ *
+ * ⚠️ `recurring` MUST be here. A generated draft that nobody can see is a
+ * scheduler that silently does nothing: the whole point of decision A (draft,
+ * not auto-post) is that a bookkeeper looks at the accrual before it lands, and
+ * this list is the only place they would.
  *
  * ⚠️ With no `periodKey` BOTH reads widen to the whole ledger rather than being
  * skipped. An org whose accounting is finalized with a cutoff in the future
@@ -92,7 +99,7 @@ export function EntriesList({
   const postingsQuery = api.ledger.listPostings.useQuery(periodKey ? { periodKey } : {})
   const draftsQuery = api.ledger.journalEntry.list.useQuery({
     ...(periodKey ? { periodKey } : {}),
-    kind: 'manual',
+    kinds: ['manual', 'recurring'],
     status: 'draft',
   })
 

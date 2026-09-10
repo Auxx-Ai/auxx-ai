@@ -22,6 +22,7 @@ import { EmptyState } from '~/components/global/empty-state'
 import { downloadCsv } from '~/lib/csv'
 import { api } from '~/trpc/react'
 import { CompletenessBanner } from './completeness-banner'
+import { ProviderSyncMarker } from './provider-sync-marker'
 import { ReportErrorCard } from './report-error-card'
 import { toStatementTableRows } from './report-helpers'
 import { StatementTable } from './statement-table'
@@ -109,6 +110,7 @@ export function Vendor1099ReportPage() {
       <ScrollArea className='min-h-0 flex-1' scrollbarClassName='w-1.5'>
         <div className='mx-auto flex w-full max-w-5xl flex-1 flex-col gap-3 p-4'>
           <CompletenessBanner asOf={`${year}-12-31`} />
+          <ProviderSyncMarker through={`${year}-12-31`} />
           {query.isPending ? (
             <Skeleton className='h-64 w-full' />
           ) : query.error ? (

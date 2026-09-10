@@ -3,7 +3,14 @@
 'use client'
 
 import { MainPageContent } from '@auxx/ui/components/main-page'
-import { Building2, CreditCard, Landmark, Scale, SlidersHorizontal } from 'lucide-react'
+import {
+  Building2,
+  CalendarClock,
+  CreditCard,
+  Landmark,
+  Scale,
+  SlidersHorizontal,
+} from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import SidebarSecondary from '~/components/global/sidebar-secondary'
 import type { SidebarProps } from '~/constants/menu'
@@ -49,6 +56,14 @@ const ACCOUNTING_SETTINGS: SidebarProps[] = [
         icon: <Building2 />,
         description: 'Which chart account each bank account maps to, and its coverage',
         keywords: ['bank', 'feed', 'statement', 'reconcile'],
+      },
+      {
+        id: 'accounting-settings-recurring',
+        label: 'Recurring templates',
+        slug: 'recurring',
+        icon: <CalendarClock />,
+        description: 'Entries that repeat, and the months they are still owed',
+        keywords: ['depreciation', 'accrual', 'prepaid', 'schedule', 'template'],
       },
       {
         id: 'accounting-settings-payment-gateways',

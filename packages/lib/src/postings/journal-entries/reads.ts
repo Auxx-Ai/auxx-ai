@@ -43,6 +43,8 @@ const JOURNAL_ENTRY_ATTRIBUTES = [
   'journal_entry_kind',
   'journal_entry_lines',
   'journal_entry_gl_posting_id',
+  'journal_entry_recurrence_rule_id',
+  'journal_entry_occurrence_date',
 ] as const
 
 type JournalEntryAttribute = (typeof JOURNAL_ENTRY_ATTRIBUTES)[number]
@@ -217,15 +219,27 @@ export async function listJournalEntries(
         }
       }
 
-      if (filters.kind && ctx.fields.journal_entry_kind) {
+      if (filters.kinds?.length && ctx.fields.journal_entry_kind) {
         const kindValue = alias(schema.FieldValue, 'je_kind_v')
-        query = query.innerJoin(
-          kindValue,
-          and(
-            valueJoin(kindValue, ctx.fields.journal_entry_kind.id),
-            eq(kindValue.optionId, filters.kind)
+        // 🛑 `manual` needs the same LEFT-join-plus-null branch `draft` needs
+        // above, and for the same reason: the field carries
+        // `defaultValue: 'manual'` and `toRecord` reads a MISSING kind row as
+        // `manual`, so an inner join would hide an entry the drawer opens.
+        // Every other kind is written explicitly at create time.
+        if (filters.kinds.includes('manual')) {
+          query = query.leftJoin(kindValue, valueJoin(kindValue, ctx.fields.journal_entry_kind.id))
+          where.push(
+            or(inArray(kindValue.optionId, filters.kinds), isNull(kindValue.optionId)) as SQL
           )
-        )
+        } else {
+          query = query.innerJoin(
+            kindValue,
+            and(
+              valueJoin(kindValue, ctx.fields.journal_entry_kind.id),
+              inArray(kindValue.optionId, filters.kinds)
+            )
+          )
+        }
       }
 
       if (filters.periodKey && ctx.fields.journal_entry_date) {
@@ -265,6 +279,85 @@ export async function listJournalEntries(
     'Failed to list journal entries',
     { organizationId, filters }
   )
+}
+
+/** What a generated entry says it is: the rule that made it and the slot it fills. */
+export interface RecurrenceIdentity {
+  recurrenceRuleId: string
+  occurrenceDate: string
+}
+
+/**
+ * The recurrence identity of each of `journalEntryIds` that has one.
+ *
+ * 🛑 **This is how the poster tells a converged re-post from a HASH
+ * COLLISION**, and the indirection through the record is deliberate. A
+ * `recurring` posting's `periodKey` is a six-base-36-digit fold of
+ * `<ruleId>:<occurrenceDate>` (`period-key.ts`), so two DIFFERENT occurrences
+ * can mint one key; the loser gets `already_posted`, a success status, and its
+ * entry never reaches the books.
+ *
+ * The obvious check - "does the winning posting's line `sourceId` equal my
+ * record id" - is WRONG here and would fire on the ordinary case. The record
+ * layer is check-then-write (§0.10: `FieldValue` has one unique index and it is
+ * not `(ruleId, occurrenceDate)`), so a race can leave two DRAFTS of one
+ * occurrence with two different record ids and one shared key. That is a
+ * convergence, not a collision. What tells them apart is whether the winner
+ * fills the same SLOT, which is what this reads.
+ *
+ * An id with no identity rows is simply absent from the map - a hand-authored
+ * entry that somehow shares the key is a collision, and the caller treats a
+ * missing entry as "not mine".
+ */
+export async function readRecurrenceIdentities(
+  db: Database,
+  organizationId: string,
+  journalEntryIds: string[]
+): Promise<Map<string, RecurrenceIdentity>> {
+  const identities = new Map<string, RecurrenceIdentity>()
+  if (journalEntryIds.length === 0) return identities
+
+  const ctx = await loadJournalEntryFieldContext(organizationId)
+  const ruleField = ctx?.fields.journal_entry_recurrence_rule_id
+  const slotField = ctx?.fields.journal_entry_occurrence_date
+  if (!ruleField || !slotField) return identities
+
+  const rows = await db
+    .select({
+      entityId: schema.FieldValue.entityId,
+      fieldId: schema.FieldValue.fieldId,
+      valueText: schema.FieldValue.valueText,
+    })
+    .from(schema.FieldValue)
+    .where(
+      and(
+        eq(schema.FieldValue.organizationId, organizationId),
+        inArray(schema.FieldValue.entityId, journalEntryIds),
+        inArray(schema.FieldValue.fieldId, [ruleField.id, slotField.id])
+      )
+    )
+
+  const partial = new Map<string, Partial<RecurrenceIdentity>>()
+  for (const row of rows) {
+    const value = row.valueText?.trim()
+    if (!value) continue
+    const bucket = partial.get(row.entityId) ?? {}
+    if (row.fieldId === ruleField.id) bucket.recurrenceRuleId = value
+    else bucket.occurrenceDate = value
+    partial.set(row.entityId, bucket)
+  }
+
+  // Only a COMPLETE pair is an identity. Half of one names no slot, so it can
+  // neither confirm nor deny ownership of the key.
+  for (const [entityId, bucket] of partial) {
+    if (bucket.recurrenceRuleId && bucket.occurrenceDate) {
+      identities.set(entityId, {
+        recurrenceRuleId: bucket.recurrenceRuleId,
+        occurrenceDate: bucket.occurrenceDate,
+      })
+    }
+  }
+  return identities
 }
 
 /**
@@ -376,6 +469,8 @@ function toRecord(
     kind: (read('journal_entry_kind')?.optionId ?? 'manual') as JournalEntryKindValue,
     lines: parseLines(read('journal_entry_lines')?.valueJson),
     glPostingId: read('journal_entry_gl_posting_id')?.valueText ?? null,
+    recurrenceRuleId: read('journal_entry_recurrence_rule_id')?.valueText ?? null,
+    occurrenceDate: read('journal_entry_occurrence_date')?.valueText ?? null,
     createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : null,
   }
 }

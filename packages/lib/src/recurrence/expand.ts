@@ -15,6 +15,7 @@ import {
   getDaysInMonth,
 } from 'date-fns'
 import { fromZonedTime, toZonedTime } from 'date-fns-tz'
+import { BadRequestError } from '../errors'
 import type { RecurrencePattern } from './types'
 
 /**
@@ -64,6 +65,25 @@ function parseLocalDate(iso: string): Date {
 
 function localDateKey(local: Date): string {
   return format(local, 'yyyy-MM-dd')
+}
+
+/**
+ * A local ISO date (`YYYY-MM-DD`) as the UTC instant of its local midnight in
+ * `timezone` — the same local-date/UTC-instant convention this module uses
+ * internally, exported because every CONSUMER needs it to turn a rule's
+ * `anchor` into an expansion window bound.
+ *
+ * ⚠️ Three consumers predate this export and still carry private copies
+ * (`dispatch/recurring/materialize.ts`, `dispatch/recurring/rule-mutations.ts`,
+ * `money/auto-invoice.ts`). They are identical; new consumers use this one so
+ * a fifth copy does not appear.
+ */
+export function localDateStartUtc(dateIso: string, timezone: string): Date {
+  const [year, month, day] = dateIso.split('-').map(Number)
+  if (year === undefined || month === undefined || day === undefined) {
+    throw new BadRequestError(`Malformed local date: ${dateIso} (expected YYYY-MM-DD)`)
+  }
+  return fromZonedTime(new Date(year, month - 1, day), timezone)
 }
 
 /** Local calendar date + wall-clock minutes → the UTC instant, DST-safe. */

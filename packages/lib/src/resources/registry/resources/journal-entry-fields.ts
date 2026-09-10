@@ -295,6 +295,66 @@ export const JOURNAL_ENTRY_FIELDS: Record<string, ResourceField> = {
     description: 'The GlPosting row this entry became once it was posted',
   },
 
+  recurrenceRuleId: {
+    id: toFieldId('recurrenceRuleId'),
+    key: 'recurrenceRuleId',
+    label: 'Recurrence Rule',
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemAttribute: 'journal_entry_recurrence_rule_id',
+    systemSortOrder: 'aB',
+    nullable: true,
+    // TEXT for the same reason `glPostingId` is: `RecurrenceRule` is a Drizzle
+    // table, so there is no `EntityDefinition` a relationship could point at.
+    //
+    // 🛑 Written only on an entry the sweep GENERATED (`kind: 'recurring'`),
+    // never on the template itself - the template is the rule's `subjectId`,
+    // and pointing back would make a cycle out of a one-way edge.
+    showInPanel: false,
+    showInDialogs: false,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      // Set once by the materializer. Together with `occurrenceDate` it is what
+      // the posting's `periodKey` is hashed from, so an edit would re-key the
+      // entry and defeat the claim index that stops a double post.
+      updatable: false,
+      configurable: false,
+    },
+    description: 'The RecurrenceRule that generated this entry - null on a hand-authored one',
+  },
+
+  occurrenceDate: {
+    id: toFieldId('occurrenceDate'),
+    key: 'occurrenceDate',
+    label: 'Occurrence',
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemAttribute: 'journal_entry_occurrence_date',
+    systemSortOrder: 'aC',
+    nullable: true,
+    // 🛑 TEXT and not DATE, unlike `journal_entry_date` beside it, and the two
+    // are different facts. `date` is the ACCOUNTING date - it moves if somebody
+    // re-dates the draft, and the period lock reads it. This is the SLOT
+    // IDENTITY the expander produced (`WorkOrderVisit.occurrenceDate` is the
+    // same idea), and it must never move, because it is half of the hash the
+    // claim index keys on. A `timestamptz` would also make the check-then-write
+    // dedupe an instant comparison across zones instead of a string equality.
+    showInPanel: false,
+    showInDialogs: false,
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: true,
+      updatable: false,
+      configurable: false,
+    },
+    description: 'The recurrence slot this entry fills, YYYY-MM-DD - never the accounting date',
+  },
+
   createdAt: {
     id: toFieldId('createdAt'),
     key: 'createdAt',

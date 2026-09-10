@@ -104,6 +104,7 @@ import { migration144GlAccountCodeOptionalAndSubtype } from './migrations/144-gl
 import { migration145RetireInstanceRoles } from './migrations/145-retire-instance-roles'
 import { migration146PaymentGateway } from './migrations/146-payment-gateway'
 import { migration147BackfillBankMatchKeys } from './migrations/147-backfill-bank-match-keys'
+import { migration148RecurringJournalEntries } from './migrations/148-recurring-journal-entries'
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
@@ -345,6 +346,7 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   // follow-ups 1 and 2). No ordering constraint against anything above: it
   // reads only bank_transaction.description and rewrites only matchKey.
   migration147BackfillBankMatchKeys,
+  migration148RecurringJournalEntries,
 ]
 
 /**

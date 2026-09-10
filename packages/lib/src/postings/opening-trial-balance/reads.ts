@@ -61,7 +61,7 @@ export async function findOpeningTrialBalanceEntry(
   organizationId: string
 ): Promise<JournalEntryRecord | null> {
   const result = await listJournalEntries(db, organizationId, {
-    kind: OPENING_TRIAL_BALANCE_KIND,
+    kinds: [OPENING_TRIAL_BALANCE_KIND],
     limit: 50,
   })
   if (result.isErr()) throw result.error

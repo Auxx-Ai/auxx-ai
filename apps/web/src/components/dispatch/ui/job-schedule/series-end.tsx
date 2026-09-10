@@ -16,12 +16,12 @@ import { TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { format, parseISO } from 'date-fns'
 import { CalendarOff, CalendarPlus, Repeat } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
+import { scalarSetting } from '~/components/global/recurrence/recurrence-utils'
 import { DateTimePickerContent } from '~/components/pickers/date-time-picker'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useSettings } from '~/hooks/use-settings'
 import { ORG_STATIC_STALE_TIME } from '~/trpc/query-client'
 import { api } from '~/trpc/react'
-import { scalarSetting } from '../recurrence/recurrence-utils'
 import type { JobVisit } from './use-job-visits'
 
 /**

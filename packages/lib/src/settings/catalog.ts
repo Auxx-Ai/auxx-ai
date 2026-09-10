@@ -1155,6 +1155,44 @@ export const SETTINGS_CATALOG = {
       'user-facing field.',
   },
 
+  // ── How far the inbound provider sync has genuinely read (20 §7.3) ─────────
+  //
+  // The accounting firm posts December's depreciation in February. auxx's
+  // December balance sheet is INCOMPLETE until the sync runs and restates it,
+  // and then it silently changes. A statement that changes two months after the
+  // reader last looked at it, with nothing on the page saying so, is the whole
+  // trust problem brief 20 §7.3 names, so every statement of an org with a
+  // connected provider renders this date, and says outright when its own range
+  // ends after it.
+  //
+  // 🛑 **Written by `syncProviderLedger` ONLY, and only for a chunk that
+  // actually succeeded.** It is not a preference and there is no truthful hand
+  // edit of it: the value is a claim about what was read off another system,
+  // and a person typing a later date makes every statement understate its own
+  // incompleteness in the one direction that matters. That is why it is in
+  // `setting.ts`'s `ROUTER_OWNED_ORG_SETTING_KEYS`. Unlike
+  // `accounting.setupFinalizedAt`, which is also code-stamped but is read by
+  // nothing that renders a number.
+  //
+  // ⚠️ **Deliberately NOT frozen.** `FROZEN_SETUP_SETTING_KEYS` freezes the
+  // `accounting.opening` PREFIX plus five named keys, and this key is caught by
+  // neither, and correctly so. Every other accounting setup key freezes once the
+  // ledger holds an entry because a posted entry was computed from it; this one
+  // is computed FROM the ledger, changes on every sync forever, and only ever
+  // moves on an org that by definition holds postings. Freezing it would stop
+  // the first sync after the first entry and leave the marker permanently
+  // stale, which is the failure it exists to prevent.
+  'accounting.providerSyncedThrough': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'TEXT',
+    defaultValue: null,
+    description:
+      "The last date the connected accounting provider's general ledger was read through " +
+      'without a refusal, YYYY-MM-DD. Stamped by the provider sync; a statement whose range ' +
+      'ends after it is incomplete. Not a user-facing field.',
+  },
+
   // ── Where payments land (plans/accounting/tasks/06-deposit-grouping.md §2.3) ──
   //
   // 🛑 **Three rails get three treatments, and getting one wrong silently

@@ -16,7 +16,11 @@ import type {
 } from '../types'
 
 /** What the record IS, which decides the posting type it becomes. */
-export type JournalEntryKindValue = 'manual' | 'opening_balance' | 'recurring_template'
+export type JournalEntryKindValue =
+  | 'manual'
+  | 'opening_balance'
+  | 'recurring_template'
+  | 'recurring'
 
 /** Where the draft is in its one-way life. See `enum-values.ts` for why there is no `failed`. */
 export type JournalEntryStatusValue = 'draft' | 'posted' | 'reversed'
@@ -26,17 +30,25 @@ export type JournalEntryStatusValue = 'draft' | 'posted' | 'reversed'
  *
  * DECLARED here, in the client-safe leaf, because both the drawer and the
  * router need it and neither should have to know the mapping by heart.
- * `recurring_template` posts NOTHING - it is a stencil a future scheduler
- * copies, and `postJournalEntry` refuses it by name rather than by a missing
- * map entry, so the refusal carries a sentence.
+ * `recurring_template` posts NOTHING - it is the stencil the sweep copies, and
+ * `postJournalEntry` refuses it by name rather than by a missing map entry, so
+ * the refusal carries a sentence.
+ *
+ * 🛑 `recurring` -> `recurring_journal` is the row that makes the scheduler
+ * safe (task 21 §1.4). A generated entry keys its posting on
+ * `hashedPeriodKey('RJE', '<ruleId>:<occurrenceDate>')` rather than on this
+ * record's number, so two drafts of one occurrence contend on the SAME claim
+ * and the second converges to `already_posted`. Mapping it to `manual_journal`
+ * instead would key each draft on its own number and post the month twice.
  */
 export const JOURNAL_ENTRY_POSTING_TYPE = {
   manual: 'manual_journal',
   opening_balance: 'opening_balance',
+  recurring: 'recurring_journal',
   // `as const satisfies` rather than a plain annotation: the annotation would
-  // widen both values to `PostingType`, and the caller needs the two LITERALS -
-  // `buildManualEntry` accepts only the two types a human authors, and widening
-  // here would push that check to a cast at the call site.
+  // widen every value to `PostingType`, and the caller needs the LITERALS -
+  // `buildManualEntry` accepts only the types a person authors line by line,
+  // and widening here would push that check to a cast at the call site.
 } as const satisfies Record<Exclude<JournalEntryKindValue, 'recurring_template'>, PostingType>
 
 /**
@@ -107,12 +119,36 @@ export interface JournalEntryRecord {
   lines: JournalEntryLine[]
   /** The `GlPosting` row this became. Null while `draft`. */
   glPostingId: string | null
+  /**
+   * The `RecurrenceRule` that generated this entry. Null on every
+   * hand-authored one, and null on the TEMPLATE itself - a template is the
+   * rule's `subjectId`, so pointing back would close a cycle.
+   */
+  recurrenceRuleId: string | null
+  /**
+   * The recurrence SLOT this entry fills, `YYYY-MM-DD`.
+   *
+   * 🛑 Not the accounting date. {@link JournalEntryRecord.date} is what the
+   * period lock reads and a person may re-date; this is what the expander
+   * produced and it never moves, because it is half of what the posting's
+   * `periodKey` is hashed from.
+   */
+  occurrenceDate: string | null
   createdAt: string | null
 }
 
 /** Filters `listJournalEntries` applies IN SQL. */
 export interface ListJournalEntriesFilters {
-  kind?: JournalEntryKindValue
+  /**
+   * Match any of these kinds. An empty array and an absent value both mean
+   * "every kind".
+   *
+   * A LIST rather than one value because the drafts list wants the two
+   * postable hand-reviewed kinds (`manual` and the sweep's `recurring`) and
+   * not the stencil - which one value cannot express without an
+   * `excludeKind` twin that would then have to be reconciled with it.
+   */
+  kinds?: JournalEntryKindValue[]
   status?: JournalEntryStatusValue
   /**
    * An accounting MONTH, `'2026-08'`, matched against the entry's `date`.

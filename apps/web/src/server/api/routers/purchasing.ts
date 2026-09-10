@@ -14,6 +14,7 @@ import {
 import { getCachedEntityDefId } from '@auxx/lib/cache'
 import { NotFoundError } from '@auxx/lib/errors'
 import { markPurchaseOrderSent } from '@auxx/lib/money'
+import { PermissionKey } from '@auxx/lib/permissions'
 import {
   allocateLandedCost,
   checkIntakeModelCapability,
@@ -25,7 +26,10 @@ import {
   findVendorPartsForParts,
   getIntakeDraft,
   matchBill,
+  postExpenseBill,
+  previewExpenseBill,
   updateIntakeDraftPayload,
+  voidExpenseBill,
 } from '@auxx/lib/purchasing'
 import { INTAKE_TIERS } from '@auxx/lib/purchasing/intake/client'
 import {
@@ -45,10 +49,13 @@ import {
 import { recordIdSchema } from '@auxx/types/resource'
 import { isAtPrecision, RATE_DECIMALS } from '@auxx/utils/currency'
 import { z } from 'zod'
-import { capabilityProcedure, createTRPCRouter } from '~/server/api/trpc'
+import { capabilityProcedure, createTRPCRouter, permissionProcedure } from '~/server/api/trpc'
 
 /** An AMOUNT - money owed, paid or booked - is an integer minor unit everywhere in this subsystem. */
 const minorUnits = z.number().int()
+
+/** A calendar day, the shape every accounting date crosses the wire in. */
+const calendarDaySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD')
 
 /**
  * A RATE - money per one of something (`unitCost`, `vendorUnitPrice`, a line's
@@ -335,6 +342,74 @@ export const purchasingRouter = createTRPCRouter({
         organizationId,
         userId,
         purchaseOrderInstanceId: input.purchaseOrderId,
+      })
+    }),
+
+  /**
+   * Post an expense-coded vendor bill to the general ledger and mark it
+   * `posted` - the standalone company's A/P
+   * (plans/accounting/tasks/21-the-books-stand-alone.md §3.2).
+   *
+   * ```
+   *   Dr <the account each line is coded to>   line total
+   *       Cr accounts_payable                    bill total
+   * ```
+   *
+   * The same door shape `creditMemo.issue` and `markInvoiceSent` use: the ledger
+   * goes FIRST and a refused post refuses the transition, naming the reason, so
+   * `posted` never claims a bill is in the books that is not.
+   *
+   * 🛑 `ledgerPost`, not the entity EDIT capability the receipts above assert.
+   * This writes to the books; who may edit a bill and who may put money in the
+   * general ledger are different questions, and `money.writeOffInvoice` and
+   * `creditMemo.issue` already answer it this way.
+   */
+  postExpenseBill: permissionProcedure(PermissionKey.ledgerPost)
+    .input(
+      z.object({
+        vendorBillId: z.string().min(1),
+        /** `YYYY-MM-DD`. Overrides the bill's own date for this post. */
+        billedAt: calendarDaySchema.optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      return postExpenseBill(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.userId,
+        vendorBillInstanceId: input.vendorBillId,
+        billedAt: input.billedAt,
+      })
+    }),
+
+  /** What posting WOULD write. Persists nothing; `blockedBy` carries a refusal. */
+  previewExpenseBill: permissionProcedure(PermissionKey.ledgerView)
+    .input(
+      z.object({
+        vendorBillId: z.string().min(1),
+        billedAt: calendarDaySchema.optional(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      return previewExpenseBill(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.userId,
+        vendorBillInstanceId: input.vendorBillId,
+        billedAt: input.billedAt,
+      })
+    }),
+
+  /**
+   * Void a bill: reverse its entry at `-R1`, then set `void`. A refused
+   * reversal refuses the void, so a voided bill can never leave its expense and
+   * its payable standing in the books.
+   */
+  voidExpenseBill: permissionProcedure(PermissionKey.ledgerPost)
+    .input(z.object({ vendorBillId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      await voidExpenseBill(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        userId: ctx.session.userId,
+        vendorBillInstanceId: input.vendorBillId,
       })
     }),
 

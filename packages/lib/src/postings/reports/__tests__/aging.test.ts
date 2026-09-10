@@ -21,6 +21,7 @@ vi.mock('../../../field-values/read-field-scalars', () => ({
 
 import { getCachedEntityDefId, getOrgCache } from '../../../cache'
 import { readFieldRelations, readFieldScalars } from '../../../field-values/read-field-scalars'
+import { buildExpenseBillEntry } from '../../build-expense-bill-entry'
 import { loadRoleAccountCodes } from '../../resolve-roles'
 import {
   AGING_UNAPPLIED_GROUP_ID,
@@ -545,6 +546,117 @@ describe('readAging', () => {
     expect(document?.badge).toBe('awaiting_receipt')
     expect(document?.label).toBe('BILL-0009')
     expect(value.totalMinor).toBe(4_000)
+    expect(value.verdict).toBe(true)
+  })
+
+  it('picks up a posted expense bill entry, because the builder sources it on the bill', async () => {
+    // 🛑 The link this test exists for: `buildExpenseBillEntry` stamps
+    // `sourceType: 'vendor_bill'` (brief 21 §3.2), and that string is the only
+    // reason this read can find the number, the due date, the vendor and the
+    // drawer link for an expense bill. A private source type would land every
+    // one of them in "Unapplied and adjustments" with no due date at all.
+    const built = buildExpenseBillEntry({
+      vendorBillId: 'bill_2',
+      internalNumber: 'BILL-0011',
+      billedAt: '2026-07-01',
+      currency: 'USD',
+      ledgerCurrency: 'USD',
+      total: 250_000,
+      vendorCompanyInstanceId: 'company_2',
+      lines: [{ lineId: 'l1', glAccountId: 'ei_acct_rent', amount: 250_000, description: 'Rent' }],
+    })
+    const payableLine = built.entry.lines.find((row) => row.direction === 'credit')
+
+    vi.mocked(loadRoleAccountCodes).mockResolvedValue(
+      new Map([
+        [
+          'accounts_payable',
+          {
+            glAccountId: 'a2',
+            code: '2000',
+            name: 'A/P',
+            accountType: 'liability',
+            isActive: true,
+          },
+        ],
+      ])
+    )
+    vi.mocked(getOrgCache).mockReturnValue({
+      from: () => ({
+        bySystemAttributes: async () => ({
+          vendor_bill_due_at: { id: 'f_due' },
+          vendor_bill_number: { id: 'f_number' },
+          vendor_bill_status: { id: 'f_status' },
+          vendor_bill_vendor: { id: 'f_vendor' },
+        }),
+      }),
+    } as never)
+    vi.mocked(readFieldScalars).mockResolvedValue(
+      new Map([
+        [
+          'bill_2',
+          new Map<string, unknown>([
+            ['f_due', '2026-07-31T00:00:00.000Z'],
+            ['f_number', 'RENT-SEP'],
+            ['f_status', 'posted'],
+          ]),
+        ],
+      ])
+    )
+    vi.mocked(readFieldRelations).mockResolvedValue(
+      new Map([['bill_2', new Map([['f_vendor', 'company_2']])]])
+    )
+    vi.mocked(getCachedEntityDefId).mockResolvedValue('def_vendor_bill')
+    vi.mocked(readTrialBalance).mockResolvedValue(
+      ok({
+        organizationId: ORG,
+        from: null,
+        to: '2026-08-31',
+        rows: [
+          {
+            glAccountId: 'a2',
+            accountCode: '2000',
+            accountName: 'A/P',
+            accountType: 'liability',
+            subtype: null,
+            debitMinor: 0,
+            creditMinor: 250_000,
+            balanceMinor: 250_000,
+            inChart: true,
+          },
+        ],
+        totalDebitMinor: 250_000,
+        totalCreditMinor: 250_000,
+        balanced: true,
+      })
+    )
+
+    const db = stubDb([
+      [
+        glLine({
+          sourceType: payableLine!.sourceType,
+          sourceId: payableLine!.sourceId,
+          direction: 'credit',
+          amountMinor: payableLine!.amount,
+          docNumber: 'AUXX-EXB-BILL0011',
+        }),
+      ],
+      [{ id: 'company_2', displayName: 'Landlord LLC' }],
+    ])
+
+    const result = await readAging(db, { organizationId: ORG, side: 'payable', asOf: '2026-08-31' })
+    const value = result._unsafeUnwrap()
+
+    expect(value.groups).toHaveLength(1)
+    expect(value.groups[0]?.groupName).toBe('Landlord LLC')
+    expect(value.groups[0]?.documents[0]).toMatchObject({
+      label: 'RENT-SEP',
+      dueDate: '2026-07-31',
+      bucket: '31_60', // 2026-08-31 is 31 days after the 2026-07-31 due date
+      openMinor: 250_000,
+      recordId: 'def_vendor_bill:bill_2',
+    })
+    expect(value.totalMinor).toBe(250_000)
     expect(value.verdict).toBe(true)
   })
 

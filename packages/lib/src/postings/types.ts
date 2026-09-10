@@ -81,6 +81,16 @@ export const POSTING_TYPES = [
   // declaration is the loop guard: pushing their own entries back at them would
   // double every one of them, and both copies would balance.
   'provider_sync',
+  // brief 21 §1.4. The generated occurrence of a recurring template:
+  // depreciation, an accrual, a prepaid amortization. Its OWN type rather than
+  // `manual_journal` because the claim index is the only exact idempotency
+  // layer available - `FieldValue` has no unique index that could carry
+  // `(ruleId, occurrenceDate)`, so the record layer races and this does not.
+  'recurring_journal',
+  // brief 21 §3.2. `Dr <expense> / Cr A/P` for rent, insurance, a legal
+  // invoice. Distinct from `vendor_bill`, which is the L3 purchasing story
+  // (`Dr GRNI / PPV`) and cannot express an expense-coded line.
+  'expense_bill',
 ] as const
 
 export type PostingType = (typeof POSTING_TYPES)[number]

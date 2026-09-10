@@ -253,3 +253,119 @@ export const PROVIDER_SYNC_POSTING_TYPE = 'provider_sync'
  * provider's API - the same contract every other builder's lines hold.
  */
 export const PROVIDER_SYNC_SOURCE_TYPE = 'provider_ledger'
+
+// ─── §7.3: the "synced through" marker ──────────────────────────────────────
+//
+// The firm posts December's depreciation in February. auxx's December balance
+// sheet is INCOMPLETE until the sync runs and restates it, and then it changes.
+// A statement that silently changes two months after a reader last looked at it
+// is a trust problem rather than a correctness one, and the only thing that
+// fixes it is the statement saying so on its own face.
+//
+// Everything below is PURE, so the statement pages can turn a stored date into
+// a sentence without a second round trip and without the wording living in six
+// components.
+
+/**
+ * The setting key holding the end of the last range the inbound sync read
+ * without a refusal.
+ *
+ * Named here rather than spelled in `sync.ts` and the reader independently, for
+ * the same reason {@link PROVIDER_SYNC_POSTING_TYPE} is: two string literals
+ * that must agree is one rename away from a marker that never moves.
+ */
+export const PROVIDER_SYNCED_THROUGH_SETTING_KEY = 'accounting.providerSyncedThrough'
+
+/** How far the inbound sync has genuinely read, for one organization. */
+export interface ProviderSyncMarker {
+  /**
+   * 🛑 `false` when nothing is connected, and the statement then renders NO
+   * marker at all - not "synced through: never", not an empty one. A marker on
+   * an unconnected org is meaningless and implies a connection exists.
+   */
+  connected: boolean
+  /** The connected provider's id, or `'none'`. Never assumed. */
+  providerId: string
+  /** `YYYY-MM-DD`, or null when the sync has never completed a chunk. */
+  syncedThrough: string | null
+}
+
+/**
+ * What one statement should say about its own completeness.
+ *
+ * `behind` is the case §7.3 is about and the most useful thing this feature can
+ * say: a balance sheet as of 31 December, read on an org synced through
+ * 30 November, is missing every entry the accountant has authored in between
+ * and will change once the sync passes over it.
+ */
+export type ProviderSyncCoverage = 'not_connected' | 'never_synced' | 'behind' | 'current'
+
+/** One rendered reading of the marker. `headline === null` means render nothing. */
+export interface ProviderSyncReading {
+  coverage: ProviderSyncCoverage
+  /** Null only for `not_connected`. */
+  headline: string | null
+  /** The consequence, in the reader's terms. Null when there is nothing to add. */
+  detail: string | null
+}
+
+/** `quickbooks` reads as QuickBooks. Anything unregistered reads as itself. */
+const PROVIDER_LABELS: Record<string, string> = { quickbooks: 'QuickBooks' }
+
+/** The connected provider's name as a person writes it. */
+export function providerDisplayName(providerId: string): string {
+  return PROVIDER_LABELS[providerId] ?? providerId
+}
+
+/**
+ * Turn the stored marker and one statement's own end date into the sentence the
+ * statement renders.
+ *
+ * 🛑 The comparison is a plain string compare and that is deliberate: both sides
+ * are `YYYY-MM-DD`, which sorts lexically as it sorts chronologically, and
+ * parsing either into a `Date` here would re-introduce the timezone bug that
+ * puts 31 December into November for half the world.
+ *
+ * @param marker what {@link ProviderSyncMarker} the org holds
+ * @param statementThrough the LAST date this statement covers - `asOf` for a
+ *   balance sheet or an aging, `to` for a P&L or a general ledger. An empty
+ *   string (no period resolved yet) reads as `current`, because a statement
+ *   with no range cannot be behind one.
+ */
+export function describeProviderSyncCoverage(
+  marker: ProviderSyncMarker,
+  statementThrough: string
+): ProviderSyncReading {
+  const provider = providerDisplayName(marker.providerId)
+
+  if (!marker.connected) {
+    return { coverage: 'not_connected', headline: null, detail: null }
+  }
+
+  if (!marker.syncedThrough) {
+    return {
+      coverage: 'never_synced',
+      headline: `Nothing has been read from ${provider} yet`,
+      detail:
+        `Entries your accountant authored in ${provider} are not in this statement. It will ` +
+        'change once the first sync runs.',
+    }
+  }
+
+  if (statementThrough && statementThrough > marker.syncedThrough) {
+    return {
+      coverage: 'behind',
+      headline: `Incomplete after ${marker.syncedThrough}`,
+      detail:
+        `This statement runs to ${statementThrough}, but ${provider} has only been read through ` +
+        `${marker.syncedThrough}. Anything your accountant authored in between is missing, and ` +
+        'these figures will change when the sync catches up.',
+    }
+  }
+
+  return {
+    coverage: 'current',
+    headline: `Synced through ${marker.syncedThrough}`,
+    detail: null,
+  }
+}

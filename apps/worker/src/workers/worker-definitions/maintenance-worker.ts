@@ -37,6 +37,7 @@ import {
   quotaResetJob,
   reconcileRecordIdentitiesJob,
   recordUsageEventJob,
+  recurringJournalsJob,
   recurringVisitsJob,
   reseedConnectionProvidersJob,
   sendGettingStartedEmailsJob,
@@ -259,6 +260,12 @@ export const jobMappings = {
   // Money MI2 invoice-draft daily sweep (08-mi2-build.md §G): materializes `custom_schedule`
   // invoice-draft recurrence rules whose horizon has fallen behind.
   invoiceDraftsJob,
+
+  // Recurring journal templates, daily (accounting task 21 §1.2): copies every
+  // `journal_entries` recurrence rule's due occurrences into DRAFT entries. The third
+  // consumer of `RecurrenceRule`, and the only one that reads `materializedUntil`
+  // BACKWARD on purpose - a depreciation entry for March may not exist in January.
+  recurringJournalsJob,
 
   // Money P24 vendor-bill aging daily sweep. THE ONLY time-driven trigger in the
   // three-way match: every other one is an edit or a receipt. Without it a prepaid

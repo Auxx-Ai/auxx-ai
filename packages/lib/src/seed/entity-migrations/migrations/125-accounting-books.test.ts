@@ -24,6 +24,7 @@ import { describe, expect, it } from 'vitest'
 import { getIdentifierEligibility } from '../../../import/fields/identifier-eligibility'
 import { ACCOUNT_ROLES } from '../../../postings/build-entry'
 import { DEFAULT_CHART_OF_ACCOUNTS } from '../../../postings/default-chart'
+import { JOURNAL_ENTRY_POSTING_TYPE } from '../../../postings/journal-entries/client'
 import { getHooksForAttribute } from '../../../resources/hooks'
 import {
   INVOICE_ACTION_STATUS_MESSAGE,
@@ -284,16 +285,44 @@ describe('the journal_entry fields the ledger depends on', () => {
     expect(JOURNAL_ENTRY_FIELDS.status?.defaultValue).toBe(JournalEntryStatus.DRAFT)
   })
 
-  // Reserved now because adding an option to a MATERIALISED SINGLE_SELECT later
-  // costs its own migration - `031-` and `033-` are two that exist only to fix
-  // a field's stored options after the fact.
-  it('reserves recurring_template alongside the two kinds that post', () => {
+  // 🛑 Four kinds, and the ORDER is the history: `recurring_template` was
+  // reserved by 125 because adding an option to a MATERIALISED SINGLE_SELECT
+  // later costs its own migration (`031-` and `033-` exist only to fix a
+  // field's stored options after the fact), and `recurring` was appended by
+  // 148 when the sweep that copies a template arrived - which is exactly that
+  // cost being paid.
+  it('carries the stencil and the entry the sweep copies it into', () => {
     expect(JournalEntryKind.values.map((o) => o.value)).toEqual([
       'manual',
       'opening_balance',
       'recurring_template',
+      'recurring',
     ])
     expect(JOURNAL_ENTRY_FIELDS.kind?.defaultValue).toBe(JournalEntryKind.MANUAL)
+  })
+
+  // 🛑 `recurring` may NOT map to `manual_journal`. A generated entry keys its
+  // posting on a fold of `<ruleId>:<occurrenceDate>` rather than on the record
+  // number, and that substitution is the whole of the idempotency: two drafts
+  // of one occurrence contend on one claim tuple and the second converges to
+  // `already_posted`. Two `manual` drafts would post the month twice.
+  it('maps the generated kind to its own posting type', () => {
+    expect(JOURNAL_ENTRY_POSTING_TYPE.recurring).toBe('recurring_journal')
+    expect(JOURNAL_ENTRY_POSTING_TYPE.manual).toBe('manual_journal')
+    expect(JOURNAL_ENTRY_POSTING_TYPE).not.toHaveProperty('recurring_template')
+  })
+
+  // Set once, both of them: together they are what the posting is keyed on, so
+  // an edit would re-key an entry that is already in the books.
+  it('freezes the recurrence pointers a generated entry carries', () => {
+    for (const key of ['recurrenceRuleId', 'occurrenceDate'] as const) {
+      expect(JOURNAL_ENTRY_FIELDS[key]?.capabilities?.creatable).toBe(true)
+      expect(JOURNAL_ENTRY_FIELDS[key]?.capabilities?.updatable).toBe(false)
+    }
+    // 🛑 TEXT, not DATE. The occurrence date is a SLOT IDENTITY that never
+    // moves; `journal_entry_date` beside it is the accounting date, which a
+    // person may change.
+    expect(JOURNAL_ENTRY_FIELDS.occurrenceDate?.fieldType).toBe('TEXT')
   })
 
   it('gives every option a distinct colour, in both lists', () => {

@@ -42,6 +42,7 @@ import type {
   ProviderSyncRange,
 } from './client'
 import { guard } from './guard'
+import { recordProviderSyncedThrough } from './marker-writes'
 import { invertAccountMap, planProviderSync } from './plan'
 import { planSyncChunks } from './range'
 import { readOurPostedEntries, readOurProviderEntryIds, readSyncedEntriesInRange } from './reads'
@@ -123,11 +124,21 @@ export interface ProviderSyncOutcome {
   deferredToClosedMonths: DeferredEntry[]
   refusals: string[]
   /**
-   * The end of the last range read WITHOUT a refusal - §7.3's "synced through"
-   * marker. A statement of an org with a connected provider is incomplete until
-   * the sync has passed over its month, and a statement that silently changes
-   * two months after a reader last looked at it is a trust problem. 🔴 Nothing
-   * persists this yet; the caller stores it.
+   * The end of the last range read CLEANLY - §7.3's "synced through" marker,
+   * and what `accounting.providerSyncedThrough` now holds. A statement of an org
+   * with a connected provider is incomplete until the sync has passed over its
+   * month, and a statement that silently changes two months after a reader last
+   * looked at it is a trust problem.
+   *
+   * 🛑 **It stops at the FIRST unclean chunk and does not resume past it.** A
+   * marker that skipped over a failed month and carried on would claim that
+   * month had been read, which is the one direction in which this value must
+   * never be wrong. It is persisted chunk by chunk as the walk proceeds, so a
+   * provider fault on month six keeps the five months already brought across.
+   *
+   * Null when not one chunk was clean; the stored value is then left exactly as
+   * it was, because "this run read nothing new" is not "nothing has ever been
+   * read".
    */
   syncedThrough: string | null
 }
@@ -180,6 +191,10 @@ export async function syncProviderLedger(
       const outcomes: ProviderSyncChunkOutcome[] = []
       let currency: string | null = null
       let syncedThrough: string | null = null
+      // §7.3. Once one chunk comes back unclean the marker stops for the whole
+      // run: a later clean month cannot vouch for an earlier broken one, and a
+      // marker that hopped over it would claim it had been read.
+      let blocked = false
 
       for (const chunk of chunks.value) {
         const read = await provider.readProviderLedger(organizationId, chunk)
@@ -204,7 +219,30 @@ export async function syncProviderLedger(
           actorUserId: input.actorUserId,
         })
         outcomes.push(outcome)
-        if (outcome.refusals.length === 0) syncedThrough = outcome.to
+
+        // 🛑 §7.3, and the whole point of the marker. It advances ONLY over a
+        // chunk that actually succeeded, and the write happens here rather than
+        // after the walk so that a provider fault on a later month keeps every
+        // month already brought across.
+        if (blocked || !isChunkClean(outcome)) {
+          blocked = true
+          continue
+        }
+        const marked = await recordProviderSyncedThrough(organizationId, outcome.to)
+        if (marked.isErr()) {
+          // Not a refusal of the sync: the entries are written and the ledger is
+          // right. The marker is left where it was, which UNDERSTATES coverage -
+          // the safe direction for a value whose job is to stop a statement
+          // overstating its own completeness. `syncedThrough` is left behind too,
+          // so the returned outcome matches what is actually stored.
+          logger.warn('Synced a chunk but could not advance the marker', {
+            organizationId,
+            to: outcome.to,
+            error: marked.error.message,
+          })
+          continue
+        }
+        syncedThrough = outcome.to
       }
 
       const result: ProviderSyncOutcome = {
@@ -389,6 +427,28 @@ function assertRangeEcho(requested: ProviderSyncRange, ledger: ProviderLedger): 
       'a hole in the ledger that nothing downstream can see.',
     { requestedFrom: requested.from, requestedTo: requested.to, from: ledger.from, to: ledger.to }
   )
+}
+
+/**
+ * Did this chunk bring everything across that it found?
+ *
+ * Two things say no, and both mean an entry that exists on their side did not
+ * reach our books: a `refusal` (a write that was declined, or an id collision)
+ * and an `unbalanced` entry (never written, because an unbalanced entry breaks
+ * every statement that ties).
+ *
+ * 🛑 `deferredToClosedMonths` deliberately does NOT block, and the reason is
+ * that it is the ONE incompleteness a person already knows about. §7.2 makes a
+ * deferral a reported decision waiting on someone with `ledgerControl`, and it
+ * persists until they reopen the month - so blocking on it would pin the marker
+ * to the month before the deferral forever, on the exact org the feature was
+ * built for. The deferral list is its own surface; this flag is about faults.
+ *
+ * `hasData: false` is not a fault either - an empty company is a real answer,
+ * and a month in which the accountant posted nothing is the ordinary case.
+ */
+function isChunkClean(outcome: ProviderSyncChunkOutcome): boolean {
+  return outcome.refusals.length === 0 && outcome.unbalanced.length === 0
 }
 
 function deferred(entry: ProviderLedgerEntry, action: DeferredEntry['action']): DeferredEntry {
