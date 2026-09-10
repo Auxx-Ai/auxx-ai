@@ -79,6 +79,8 @@ export const glPostingType = pgEnum('GlPostingType', [
   // transaction id, so the claim index gives per-transaction idempotency for
   // free; `exportStatus` stays `not_required` because we never pushed it.
   'provider_sync',
+  'recurring_journal',
+  'expense_bill',
 ])
 
 /**

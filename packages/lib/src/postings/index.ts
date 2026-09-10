@@ -59,6 +59,15 @@ export {
   ROLE_ACCOUNT_TYPES,
   type VendorBillEntryInput,
 } from './build-entry'
+// ── plans/accounting/tasks/21 §3.2: the standalone company's A/P bill ───────
+export {
+  type BuildExpenseBillEntryInput,
+  type BuiltExpenseBillEntry,
+  buildExpenseBillEntry,
+  EXPENSE_BILL_POSTING_TYPE,
+  EXPENSE_BILL_SOURCE_TYPE,
+  type ExpenseBillLineInput,
+} from './build-expense-bill-entry'
 // ── plans/money/tasks/49: one fulfillment posting per day, not per shipment ──
 // PURE. Reaches `errors`, `build-entry`, `build-fulfillment-entry`, `doc-number`
 // and `money/fulfillment-posting/types` (types and constants only, no db), all
@@ -314,6 +323,7 @@ export {
 // our own copies, and write the remainder as our own rows.
 export {
   type DeferredEntry,
+  describeProviderSyncCoverage,
   groupProviderLedgerEntries,
   invertAccountMap,
   isOurs,
@@ -327,22 +337,29 @@ export {
   type PostProviderSyncEntryInput,
   PROVIDER_SYNC_POSTING_TYPE,
   PROVIDER_SYNC_SOURCE_TYPE,
+  PROVIDER_SYNCED_THROUGH_SETTING_KEY,
   type ProviderLedger,
   type ProviderLedgerEntry,
   type ProviderLedgerLine,
   type ProviderSyncChunkOutcome,
+  type ProviderSyncCoverage,
   type ProviderSyncEntryOutcome,
+  type ProviderSyncMarker,
   type ProviderSyncOutcome,
   type ProviderSyncPlan,
   type ProviderSyncRange,
+  type ProviderSyncReading,
   planProviderSync,
   planSyncChunks,
   postProviderSyncEntry,
+  providerDisplayName,
   providerSyncFloor,
   type ReadOurPostedEntriesInput,
   readOurPostedEntries,
   readOurProviderEntryIds,
+  readProviderSyncMarker,
   readSyncedEntriesInRange,
+  recordProviderSyncedThrough,
   resolveProviderSyncLines,
   reverseSyncedEntry,
   type SyncedEntryRef,

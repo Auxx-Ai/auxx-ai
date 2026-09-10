@@ -610,6 +610,24 @@ export async function setupSchedules() {
     }
   )
 
+  // Recurring journal templates, daily at 03:45 UTC (accounting task 21 §1.2), fifteen
+  // minutes after the invoice-draft sweep and forty-five after the visit one so the three
+  // `RecurrenceRule` consumers never contend. Generates DRAFTS only; a template whose next
+  // occurrence falls in a CLOSED month is reported and its cursor HELD, never advanced.
+  await maintenanceQueue.upsertJobScheduler(
+    'recurringJournalsJob',
+    { pattern: '45 3 * * *', tz: 'UTC' },
+    {
+      opts: {
+        attempts: 2,
+        backoff: { type: 'exponential', delay: 60000 },
+        priority: 8,
+        removeOnComplete: { count: 14 },
+        removeOnFail: { count: 30 },
+      },
+    }
+  )
+
   // Dispatch worker-facing daily schedule digest — every hour on the hour
   // (plans/dispatch/19-client-notifications.md §4.9, opt-in). The job itself only actually
   // sends for orgs whose local time is currently at the digest hour (default 06:00); the

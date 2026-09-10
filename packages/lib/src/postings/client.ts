@@ -55,6 +55,17 @@ export {
   ROLE_ACCOUNT_TYPES,
   type VendorBillEntryInput,
 } from './build-entry'
+// ── plans/accounting/tasks/21 §3.2: the standalone company's A/P bill ───────
+// PURE - reaches nothing but `errors`, `build-entry`, `build-fulfillment-entry`
+// and `period-key`, all of which are already on this surface.
+export {
+  type BuildExpenseBillEntryInput,
+  type BuiltExpenseBillEntry,
+  buildExpenseBillEntry,
+  EXPENSE_BILL_POSTING_TYPE,
+  EXPENSE_BILL_SOURCE_TYPE,
+  type ExpenseBillLineInput,
+} from './build-expense-bill-entry'
 // ── plans/money/tasks/49: one fulfillment posting per day, not per shipment ──
 // PURE. Reaches `errors`, `build-entry`, `build-fulfillment-entry`, `doc-number`
 // and `money/fulfillment-posting/types` (types and constants only, no db), all
@@ -253,6 +264,7 @@ export {
 // an import that gets it wrong re-reads our own ledger and doubles every posted
 // entry in it, with both copies balancing.
 export {
+  describeProviderSyncCoverage,
   isOurs,
   OUR_PROVIDER_TXN_TYPE,
   type OurEntryCheck,
@@ -261,11 +273,16 @@ export {
   type OurPostedLine,
   PROVIDER_SYNC_POSTING_TYPE,
   PROVIDER_SYNC_SOURCE_TYPE,
+  PROVIDER_SYNCED_THROUGH_SETTING_KEY,
   type ProviderLedger,
   type ProviderLedgerEntry,
   type ProviderLedgerLine,
+  type ProviderSyncCoverage,
+  type ProviderSyncMarker,
   type ProviderSyncPlan,
   type ProviderSyncRange,
+  type ProviderSyncReading,
+  providerDisplayName,
 } from './provider-sync/client'
 export {
   groupProviderLedgerEntries,

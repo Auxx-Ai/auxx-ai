@@ -57,15 +57,25 @@ import type {
 } from './types'
 
 /**
- * The two posting types a human authors by hand, line by line.
+ * The posting types a person authors line by line.
  *
- * Both name accounts by ID - a person picks a specific account out of their
- * own chart rather than driving a role - which is why
- * `SINGLE_WRITER_ROLES_BY_POSTING_TYPE` declares `[]` for both and why the
+ * All three name accounts by ID - a person picks a specific account out of
+ * their own chart rather than driving a role - which is why
+ * `SINGLE_WRITER_ROLES_BY_POSTING_TYPE` declares `[]` for each and why the
  * inventory guard for them is by NAME (resolved by id, task 15) rather than by
  * role.
+ *
+ * `recurring_journal` is here because a generated entry is still hand-authored
+ * - the lines were typed once, into the template - and it takes exactly the
+ * same refusals: two lines minimum, whole positive cents, `Σ Dr = Σ Cr`. What
+ * differs is only the `number` the caller passes, which for a recurring entry
+ * is `hashedPeriodKey('RJE', '<ruleId>:<occurrenceDate>')` rather than the
+ * record's own `JNL-` number (task 21 §1.4).
  */
-export type ManualPostingType = Extract<PostingType, 'manual_journal' | 'opening_balance'>
+export type ManualPostingType = Extract<
+  PostingType,
+  'manual_journal' | 'opening_balance' | 'recurring_journal'
+>
 
 /** One line as a person entered it: an account, a side, and an amount. */
 export interface ManualEntryLine {

@@ -25,9 +25,15 @@ import type { Result } from 'neverthrow'
 import { ConflictError, UnprocessableEntityError } from '../../errors'
 import { UnifiedCrudHandler } from '../../resources/crud/unified-handler'
 import { type RecordId, toRecordId } from '../../resources/resource-id'
-import { buildManualEntry, type ManualPostingType } from '../build-manual-entry'
+import {
+  buildManualEntry,
+  MANUAL_ENTRY_SOURCE_TYPE,
+  type ManualPostingType,
+} from '../build-manual-entry'
 import { resolvePeriodLock } from '../period-lock'
 import { postEntry, previewEntry } from '../post-entry'
+import { readPostingLineSourceIds } from '../read-posting'
+import { recurringJournalPeriodKey } from '../recurring-journals/client'
 import { reverseEntry } from '../reverse-entry'
 import type { EntryPreview, PostResult } from '../types'
 import {
@@ -38,7 +44,11 @@ import {
   type JournalEntryRecord,
 } from './client'
 import { guard } from './guard'
-import { requireJournalEntry, requireJournalEntryFieldContext } from './reads'
+import {
+  readRecurrenceIdentities,
+  requireJournalEntry,
+  requireJournalEntryFieldContext,
+} from './reads'
 import { assertJournalEntryHasNoPosting, assertJournalEntryIsDraft } from './refusals'
 
 const logger = createScopedLogger('postings:journal-entries')
@@ -51,6 +61,15 @@ export interface CreateJournalEntryInput {
   memo?: string
   /** May be empty: a person opens the drawer before they have typed anything. */
   lines?: JournalEntryLine[]
+  /**
+   * Only the recurring-journal materializer passes these, and it passes BOTH.
+   * Together they are what the posting's `periodKey` is hashed from, so a
+   * half-set pair would produce an entry that posts under a key naming a rule
+   * or a slot that does not exist - which is the one shape the claim index
+   * cannot catch. {@link assertRecurrenceIdentity} refuses it.
+   */
+  recurrenceRuleId?: string
+  occurrenceDate?: string
 }
 
 export interface UpdateJournalEntryInput {
@@ -92,6 +111,7 @@ export async function createJournalEntry(
     async () => {
       const ctx = await requireJournalEntryFieldContext(organizationId)
       const kind = input.kind ?? 'manual'
+      assertRecurrenceIdentity(kind, input)
 
       const values: Record<string, unknown> = {
         journal_entry_status: 'draft',
@@ -100,6 +120,10 @@ export async function createJournalEntry(
         journal_entry_lines: linesEnvelope(input.lines ?? []),
       }
       if (input.memo) values.journal_entry_memo = input.memo
+      if (input.recurrenceRuleId && input.occurrenceDate) {
+        values.journal_entry_recurrence_rule_id = input.recurrenceRuleId
+        values.journal_entry_occurrence_date = input.occurrenceDate
+      }
 
       const crud = new UnifiedCrudHandler(organizationId, userId, db)
       const created = await crud.create(ctx.journalEntryDefId, values)
@@ -236,6 +260,12 @@ export async function postJournalEntry(
         lock,
       })
 
+      // 🛑 Before the record is stamped, not after: a collision means nothing
+      // was written for THIS entry, so stamping it `posted` against somebody
+      // else's posting is the exact misstatement the check exists to stop.
+      const collision = await findRecurringKeyCollision(db, organizationId, entry, result)
+      if (collision) return collision
+
       if (result.glPostingId) {
         const crud = new UnifiedCrudHandler(organizationId, userId, db)
         await crud.update(toRecordId(ctx.journalEntryDefId, entry.id) as RecordId, {
@@ -258,6 +288,79 @@ export async function postJournalEntry(
     'Failed to post journal entry',
     { organizationId, journalEntryId: input.journalEntryId }
   )
+}
+
+/**
+ * Turn an `already_posted` on a generated entry into a refusal when the
+ * posting that holds the key belongs to a DIFFERENT occurrence.
+ *
+ * 🛑 `hashedPeriodKey` folds into 36^6 = 2.2e9 (`period-key.ts:33-39`), so two
+ * distinct `<ruleId>:<occurrenceDate>` pairs can mint one key. `already_posted`
+ * is a SUCCESS status, so without this the loser's entry silently never reaches
+ * the books - a whole month's depreciation missing, with a clean outcome
+ * recorded. `postPaymentTransaction` is the reference implementation and this
+ * differs from it in exactly one way, described in
+ * {@link readRecurrenceIdentities}: ownership is by SLOT, not by record id,
+ * because two drafts of one occurrence are a convergence rather than a clash.
+ *
+ * Returns `undefined` for every status but `already_posted`, and for a winner
+ * that fills the same slot.
+ */
+async function findRecurringKeyCollision(
+  db: Database,
+  organizationId: string,
+  entry: JournalEntryRecord,
+  result: PostResult
+): Promise<PostResult | undefined> {
+  if (entry.kind !== 'recurring') return undefined
+  if (result.status !== 'already_posted' || !result.glPostingId) return undefined
+
+  const mine = requireRecurrenceIdentity(entry)
+  const sources = await readPostingLineSourceIds(db, organizationId, {
+    glPostingId: result.glPostingId,
+    sourceType: MANUAL_ENTRY_SOURCE_TYPE,
+  })
+  // A read that FAILED leaves the status alone, and so does a posting with no
+  // journal-entry lines at all. Turning an unreadable posting into an error
+  // would refuse an ordinary converged re-post on a transient database fault,
+  // which is the opposite of the trade this check is making.
+  if (sources.isErr()) return undefined
+  const ownerIds = sources.value
+  if (ownerIds.length === 0) return undefined
+
+  const identities = await readRecurrenceIdentities(db, organizationId, ownerIds)
+  const sameSlot = [...identities.values()].some(
+    (owner) =>
+      owner.recurrenceRuleId === mine.recurrenceRuleId &&
+      owner.occurrenceDate === mine.occurrenceDate
+  )
+  if (sameSlot) return undefined
+
+  const heldBy =
+    [...identities.values()]
+      .map((owner) => `${owner.recurrenceRuleId}:${owner.occurrenceDate}`)
+      .join(', ') || ownerIds.join(', ')
+
+  logger.error('A recurring journal period key collided with another occurrence', {
+    organizationId,
+    journalEntryId: entry.id,
+    recurrenceRuleId: mine.recurrenceRuleId,
+    occurrenceDate: mine.occurrenceDate,
+    glPostingId: result.glPostingId,
+    docNumber: result.docNumber,
+    heldBy,
+  })
+
+  return {
+    status: 'error',
+    failureClass: 'data',
+    retryable: false,
+    error:
+      `This entry for ${mine.occurrenceDate} minted the document number ` +
+      `${result.docNumber ?? '(unknown)'}, which is already held by a different occurrence ` +
+      `(${heldBy}). That is a period-key hash collision, not a re-post: nothing was written ` +
+      'for this entry. Re-date the occurrence or post it as a manual journal entry instead.',
+  }
 }
 
 /**
@@ -438,13 +541,6 @@ function buildDraftEntry(entry: JournalEntryRecord) {
       { journalEntryId: entry.id, kind: entry.kind }
     )
   }
-  if (!entry.number) {
-    throw new UnprocessableEntityError(
-      'This journal entry has no number, so it cannot be posted - the number is what the ' +
-        "posting's document number is keyed on. Re-create the entry.",
-      { journalEntryId: entry.id }
-    )
-  }
   if (!entry.date) {
     throw new UnprocessableEntityError(
       'This journal entry has no date. An entry has to name the day it posts on.',
@@ -454,14 +550,95 @@ function buildDraftEntry(entry: JournalEntryRecord) {
 
   const postingType: ManualPostingType = JOURNAL_ENTRY_POSTING_TYPE[entry.kind]
 
+  // 🛑 A generated entry keys on the RULE and the SLOT, never on its own
+  // number, and that substitution IS the idempotency (task 21 §1.4). Two
+  // drafts of March's depreciation carry two `JNL-` numbers and one
+  // `RJE-<fold>` key, so the second one to reach `postEntry` loses the claim
+  // and converges to `already_posted` instead of booking March twice. Keying
+  // it on `entry.number` here would look identical in every test that posts
+  // one entry and would double the books the first time the sweep raced.
+  const number =
+    entry.kind === 'recurring'
+      ? recurringJournalPeriodKey(requireRecurrenceIdentity(entry))
+      : entry.number
+
+  if (!number) {
+    throw new UnprocessableEntityError(
+      'This journal entry has no number, so it cannot be posted - the number is what the ' +
+        "posting's document number is keyed on. Re-create the entry.",
+      { journalEntryId: entry.id }
+    )
+  }
+
   return buildManualEntry({
     postingType,
-    number: entry.number,
+    number,
     txnDate: entry.date,
     memo: entry.memo ?? undefined,
     lines: entry.lines,
     sourceId: entry.id,
   })
+}
+
+/**
+ * Both halves of the recurrence identity, or a refusal naming the record.
+ *
+ * A `recurring` entry with half a pointer is not postable at all: the key
+ * would name a rule or a slot that is not there, and every later occurrence of
+ * the real one would fold to a different key. The materializer writes both in
+ * one `create`, so reaching this means the row was hand-edited or written by
+ * something that is not the materializer.
+ */
+function requireRecurrenceIdentity(entry: JournalEntryRecord): {
+  recurrenceRuleId: string
+  occurrenceDate: string
+} {
+  if (!entry.recurrenceRuleId || !entry.occurrenceDate) {
+    throw new UnprocessableEntityError(
+      'This entry says it was generated from a recurring template but does not name both the ' +
+        'rule and the occurrence it fills, so there is nothing to key its posting on. Discard ' +
+        'it and let the next sweep generate the occurrence again.',
+      { journalEntryId: entry.id }
+    )
+  }
+  return { recurrenceRuleId: entry.recurrenceRuleId, occurrenceDate: entry.occurrenceDate }
+}
+
+/**
+ * Refuse a recurrence identity that does not match the kind.
+ *
+ * Both directions are refused, because both are silent otherwise: a
+ * `recurring` entry with no pointer cannot key its posting (above), and a
+ * `manual` entry carrying one would key on its own number while claiming to
+ * own a slot the sweep would then generate a second entry for.
+ */
+function assertRecurrenceIdentity(
+  kind: JournalEntryKindValue,
+  input: Pick<CreateJournalEntryInput, 'recurrenceRuleId' | 'occurrenceDate'>
+): void {
+  const hasRule = Boolean(input.recurrenceRuleId)
+  const hasSlot = Boolean(input.occurrenceDate)
+  if (hasRule !== hasSlot) {
+    throw new UnprocessableEntityError(
+      'A generated journal entry names both the recurrence rule and the occurrence date, or ' +
+        'neither. One without the other has nothing to key its posting on.',
+      { kind }
+    )
+  }
+  if (hasRule && kind !== 'recurring') {
+    throw new UnprocessableEntityError(
+      `A ${kind} journal entry may not carry a recurrence rule. Only a generated entry ` +
+        "(kind 'recurring') does, because the kind is what decides the posting type.",
+      { kind }
+    )
+  }
+  if (!hasRule && kind === 'recurring') {
+    throw new UnprocessableEntityError(
+      "A generated journal entry (kind 'recurring') has to name the rule and the occurrence " +
+        'date it fills - they are what its posting is keyed on.',
+      { kind }
+    )
+  }
 }
 
 /** The override keys a preview may supply, with `undefined` meaning "use what is stored". */

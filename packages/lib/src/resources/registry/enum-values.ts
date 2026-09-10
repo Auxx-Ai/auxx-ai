@@ -891,22 +891,32 @@ export const JournalEntryStatus = {
  * under a type `doc-number.ts` keys differently and `regime.ts` declares
  * differently.
  *
- * `recurring_template` is RESERVED and posts nothing today (tier 2 item 13). It
- * is declared now because `RecurrenceRule.subjectId` is `NOT NULL` and
+ * `recurring_template` is the STENCIL and posts nothing, ever
+ * (`postJournalEntry` refuses it by name). It is the subject a
+ * `RecurrenceRule` points at: `RecurrenceRule.subjectId` is `NOT NULL` and
  * references `EntityInstance`, so the recurring case has always needed this
- * record to exist - and adding an option to a materialised SINGLE_SELECT later
- * costs its own migration, which is what `031-documents-field-hidden-in-dialogs`
- * and `033-external-id-field-hidden-in-dialogs` exist to do.
+ * record to exist.
+ *
+ * `recurring` is what the daily sweep COPIES a template into, once per due
+ * occurrence (task 21 §1). It is a separate value rather than a `manual` entry
+ * with a rule pointer because the kind is the single authority for the posting
+ * type: a `recurring` entry posts as `recurring_journal`, whose `periodKey` is
+ * `hashedPeriodKey('RJE', '<ruleId>:<occurrenceDate>')` rather than this
+ * record's number - which is the whole of the idempotency (§1.4). Two drafts
+ * of one occurrence mint one key and the second converges to `already_posted`;
+ * two `manual` drafts would key on their own numbers and post twice.
  */
 export const JournalEntryKind = {
   MANUAL: 'manual',
   OPENING_BALANCE: 'opening_balance',
   RECURRING_TEMPLATE: 'recurring_template',
+  RECURRING: 'recurring',
 
   values: [
     { value: 'manual', label: 'Manual', color: 'gray' },
     { value: 'opening_balance', label: 'Opening Balance', color: 'blue' },
     { value: 'recurring_template', label: 'Recurring Template', color: 'purple' },
+    { value: 'recurring', label: 'Recurring', color: 'indigo' },
   ] satisfies FieldOptionItem[],
 } as const
 

@@ -32,6 +32,17 @@ export interface UseJournalEntryDraftOptions {
   onCreated: (id: string) => void
   /** Fires when Post (or Reverse) actually lands a `GlPosting`. */
   onPosted: (glPostingId: string) => void
+  /**
+   * What the record IS. Defaults to `manual`.
+   *
+   * 🛑 Set on CREATE and never afterwards - `journal_entry_kind` is
+   * `updatable: false`, because the kind decides the posting type and
+   * `doc-number.ts` keys each one differently. `recurring_template` is the
+   * stencil the daily sweep copies; it posts nothing, so the drawer that
+   * carries this hides Preview and Post rather than offering buttons the
+   * server refuses by name.
+   */
+  kind?: 'manual' | 'recurring_template'
 }
 
 export interface JournalEntryDraftState {
@@ -110,6 +121,7 @@ export function useJournalEntryDraft({
   defaultDate,
   onCreated,
   onPosted,
+  kind = 'manual',
 }: UseJournalEntryDraftOptions): JournalEntryDraftState {
   const utils = api.useUtils()
   const createMutation = api.ledger.journalEntry.create.useMutation()
@@ -143,6 +155,12 @@ export function useJournalEntryDraft({
   // taking `date`/`memo`/`lines` as dependencies - they change on every
   // keystroke, and a callback re-created per keystroke re-creates every setter
   // under it.
+  // The kind rides its own ref rather than `latestRef`: `ensureDraft` spreads
+  // `latestRef.current` into its own argument shape, and a fourth key there
+  // would have to be threaded through all three setters that call it.
+  const kindRef = useRef(kind)
+  kindRef.current = kind
+
   const latestRef = useRef({ date, memo, lines, defaultDate, isNew, journalEntryId, onCreated })
   latestRef.current = { date, memo, lines, defaultDate, isNew, journalEntryId, onCreated }
 
@@ -208,6 +226,9 @@ export function useJournalEntryDraft({
           date: next.date,
           ...(next.memo ? { memo: next.memo } : {}),
           lines: linesFromDraftRows(next.lines),
+          // Only when it is not the default, so an ordinary drawer's create
+          // payload is byte-for-byte what it always was.
+          ...(kindRef.current === 'manual' ? {} : { kind: kindRef.current }),
         },
         {
           onSuccess: (record) => {

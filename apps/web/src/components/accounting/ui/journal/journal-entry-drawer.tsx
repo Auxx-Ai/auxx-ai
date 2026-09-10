@@ -55,6 +55,17 @@ interface JournalEntryDrawerProps {
    * over it would show a record no read path returns any more.
    */
   onDiscarded: () => void
+  /**
+   * What the record IS. Defaults to `manual`.
+   *
+   * 🛑 `recurring_template` is a STENCIL, not an entry: `postJournalEntry`
+   * refuses it by name with a sentence, so this drawer hides Preview and Post
+   * rather than offering two buttons the server will not honour. Its schedule
+   * is edited on Accounting > Settings > Recurring templates, because the rule
+   * needs a saved record to hang off and the drawer defers the create to the
+   * first edit.
+   */
+  kind?: 'manual' | 'recurring_template'
 }
 
 /**
@@ -87,6 +98,7 @@ export function JournalEntryDrawer({
   onPosted,
   onOpenPosting,
   onDiscarded,
+  kind = 'manual',
 }: JournalEntryDrawerProps) {
   const draft = useJournalEntryDraft({
     journalEntryId,
@@ -94,7 +106,10 @@ export function JournalEntryDrawer({
     defaultDate,
     onCreated,
     onPosted,
+    kind,
   })
+
+  const isTemplate = kind === 'recurring_template'
 
   const periodsQuery = api.ledger.periods.useQuery()
   const { can } = useAccess()
@@ -162,16 +177,28 @@ export function JournalEntryDrawer({
       onWidthChange={onWidthChange}
       minWidth={420}
       maxWidth={800}
-      title='Journal entry'>
+      title={isTemplate ? 'Recurring template' : 'Journal entry'}>
       <div className='flex min-h-0 flex-1 flex-col rounded-t-xl'>
         <DrawerHeader
           icon={<BookOpenCheck className='size-5 text-muted-foreground' />}
           title={
             <div className='flex flex-wrap items-center gap-2'>
               <span className='font-medium'>
-                {isNew && !journalEntryId ? 'New journal entry' : 'Journal entry'}
+                {isTemplate
+                  ? isNew && !journalEntryId
+                    ? 'New recurring template'
+                    : 'Recurring template'
+                  : isNew && !journalEntryId
+                    ? 'New journal entry'
+                    : 'Journal entry'}
               </span>
-              <StatusBadge status={draft.status} />
+              {isTemplate ? (
+                <Badge variant='outline' size='sm'>
+                  Template
+                </Badge>
+              ) : (
+                <StatusBadge status={draft.status} />
+              )}
             </div>
           }
           actions={
@@ -229,7 +256,16 @@ export function JournalEntryDrawer({
                 resizeId='journal-entry-form'
                 defaultLabelWidth={110}
                 className='p-0'>
-                <FieldPanelRow title='Date' type={BaseType.DATE} showIcon isRequired>
+                <FieldPanelRow
+                  title={isTemplate ? 'Starts' : 'Date'}
+                  type={BaseType.DATE}
+                  showIcon
+                  isRequired
+                  description={
+                    isTemplate
+                      ? 'The first occurrence. The schedule expands from here, and every generated entry takes its own occurrence date.'
+                      : undefined
+                  }>
                   <FieldInputAdapter
                     fieldType={FieldType.DATE}
                     value={draft.date ? `${draft.date}T00:00:00.000Z` : null}
@@ -241,17 +277,21 @@ export function JournalEntryDrawer({
                   />
                 </FieldPanelRow>
 
-                <FieldPanelRow
-                  title='Period'
-                  type={BaseType.STRING}
-                  showIcon
-                  description='The calendar month of the date above. Changing the date can move it.'>
-                  <div className='flex h-8 items-center'>
-                    <Badge variant='outline' size='sm'>
-                      {entryPeriodKey ? formatPeriodLabel(entryPeriodKey) : 'Unknown'}
-                    </Badge>
-                  </div>
-                </FieldPanelRow>
+                {/* A template belongs to no period: it posts nothing, and each
+                    occurrence it generates lands in its own month. */}
+                {!isTemplate && (
+                  <FieldPanelRow
+                    title='Period'
+                    type={BaseType.STRING}
+                    showIcon
+                    description='The calendar month of the date above. Changing the date can move it.'>
+                    <div className='flex h-8 items-center'>
+                      <Badge variant='outline' size='sm'>
+                        {entryPeriodKey ? formatPeriodLabel(entryPeriodKey) : 'Unknown'}
+                      </Badge>
+                    </div>
+                  </FieldPanelRow>
+                )}
 
                 <FieldPanelRow title='Memo' type={BaseType.STRING} showIcon>
                   <FieldInputAdapter
@@ -320,25 +360,33 @@ export function JournalEntryDrawer({
                 onClick={draft.saveDraft}>
                 Save draft
               </Button>
-              <Button
-                variant='outline'
-                size='sm'
-                loading={draft.isPreviewing}
-                loadingText='Building...'
-                disabled={!journalEntryId}
-                onClick={draft.runPreview}>
-                Preview
-              </Button>
-              <Button
-                variant='outline'
-                size='sm'
-                loading={draft.isPosting}
-                loadingText='Posting...'
-                disabled={!canPost}
-                onClick={draft.runPost}
-                data-dialog-submit>
-                Post <KbdSubmit variant='outline' size='sm' />
-              </Button>
+              {/* 🛑 Neither button exists for a template. `postJournalEntry`
+                  refuses `recurring_template` by name - "a stencil for future
+                  entries, not an entry" - and `previewJournalEntry` builds
+                  through the same function, so both would refuse. */}
+              {!isTemplate && (
+                <>
+                  <Button
+                    variant='outline'
+                    size='sm'
+                    loading={draft.isPreviewing}
+                    loadingText='Building...'
+                    disabled={!journalEntryId}
+                    onClick={draft.runPreview}>
+                    Preview
+                  </Button>
+                  <Button
+                    variant='outline'
+                    size='sm'
+                    loading={draft.isPosting}
+                    loadingText='Posting...'
+                    disabled={!canPost}
+                    onClick={draft.runPost}
+                    data-dialog-submit>
+                    Post <KbdSubmit variant='outline' size='sm' />
+                  </Button>
+                </>
+              )}
             </>
           )}
         </DrawerFooter>

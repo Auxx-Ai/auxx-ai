@@ -9,10 +9,6 @@ import {
 } from '@auxx/lib/recurrence/client'
 import { differenceInMinutes, format } from 'date-fns'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { RecordId } from '~/components/resources'
-import { useSettings } from '~/hooks/use-settings'
-import { ORG_STATIC_STALE_TIME } from '~/trpc/query-client'
-import { api } from '~/trpc/react'
 import {
   buildPresetPattern,
   classifyRecurrencePreset as classifyPreset,
@@ -20,7 +16,11 @@ import {
   type RecurrencePreset,
   recurrencePresetLabel,
   scalarSetting,
-} from '../recurrence/recurrence-utils'
+} from '~/components/global/recurrence/recurrence-utils'
+import type { RecordId } from '~/components/resources'
+import { useSettings } from '~/hooks/use-settings'
+import { ORG_STATIC_STALE_TIME } from '~/trpc/query-client'
+import { api } from '~/trpc/react'
 
 export interface UseRecurrenceEditorParams {
   workOrderRecordId?: RecordId

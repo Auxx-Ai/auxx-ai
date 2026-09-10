@@ -9,6 +9,7 @@
 // reads and writes pull `@auxx/database` and the poster behind it.
 
 export {
+  describeProviderSyncCoverage,
   isOurs,
   OUR_PROVIDER_TXN_TYPE,
   type OurEntryCheck,
@@ -17,12 +18,19 @@ export {
   type OurPostedLine,
   PROVIDER_SYNC_POSTING_TYPE,
   PROVIDER_SYNC_SOURCE_TYPE,
+  PROVIDER_SYNCED_THROUGH_SETTING_KEY,
   type ProviderLedger,
   type ProviderLedgerEntry,
   type ProviderLedgerLine,
+  type ProviderSyncCoverage,
+  type ProviderSyncMarker,
   type ProviderSyncPlan,
   type ProviderSyncRange,
+  type ProviderSyncReading,
+  providerDisplayName,
 } from './client'
+export { readProviderSyncMarker } from './marker-reads'
+export { recordProviderSyncedThrough } from './marker-writes'
 export {
   groupProviderLedgerEntries,
   invertAccountMap,

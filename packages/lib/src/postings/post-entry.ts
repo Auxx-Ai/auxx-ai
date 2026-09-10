@@ -197,12 +197,33 @@ interface Refusal {
  * nothing anywhere stops a reviewer coding a bank line straight into `1310`,
  * and the next month-end assertion absorbs it into the COGS plug silently.
  *
+ * `expense_bill` keeps it for exactly the reason `bank_transaction` does
+ * (brief 21 §3.2). Its debit legs are `vendor_bill_line.glAccount`, a picker
+ * over the WHOLE chart, and `SINGLE_WRITER_ROLES_BY_POSTING_TYPE.expense_bill`
+ * is `[]` - correctly, because only its A/P credit carries a role. Without this
+ * line nothing stops a bill line being coded straight into `1310`, and the next
+ * month-end assertion absorbs it into the COGS plug silently. (Inventory
+ * bought on a purchase order is the L3 `vendor_bill`/`receipt` story, which is
+ * governed by `findWriterConflicts` and is not this type.)
+ *
+ * `recurring_journal` keeps it because it IS a `manual_journal` that a
+ * scheduler re-types every month (brief 21 §1). More urgently, in fact: a
+ * hand-keyed line against `1310` is one mistake a bookkeeper can be shown,
+ * while a monthly template against it is twelve of them, found at the year's
+ * close.
+ *
  * Every other ENABLED type emits ROLES (`fulfillment`, `payment`, `payout`,
  * `bank_deposit`, `month_end_inventory`) and is governed by
  * `findWriterConflicts`. `write_off` is the one hybrid - its DEBIT leg takes an
  * optional account code - and it is in this set for that leg.
  */
-const CODE_ENTRY_TYPES = new Set<PostingType>(['manual_journal', 'bank_transaction', 'write_off'])
+const CODE_ENTRY_TYPES = new Set<PostingType>([
+  'manual_journal',
+  'bank_transaction',
+  'write_off',
+  'expense_bill',
+  'recurring_journal',
+])
 
 /**
  * Refuse a hand-keyed entry that names one of the three inventory accounts.

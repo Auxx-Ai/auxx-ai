@@ -1022,7 +1022,9 @@ export const SYSTEM_ATTRIBUTES = [
   'journal_entry_date', // a DATE - no time, no zone. The accounting date.
   'journal_entry_memo',
   'journal_entry_status', // draft | posted | reversed. Written by the post/reverse path only
-  'journal_entry_kind', // manual | opening_balance | recurring_template. Set once.
+  // manual | opening_balance | recurring_template | recurring. Set once, and it
+  // is the single authority for the posting type the entry becomes.
+  'journal_entry_kind',
   // The DRAFT lines as JSON, the `inbox_settings` shape. The POSTED lines are
   // normalised in `GlPostingLine`, which is what every report reads; a second
   // normalised copy would be two sources of truth for what the entry says.
@@ -1032,6 +1034,13 @@ export const SYSTEM_ATTRIBUTES = [
   // there is no `EntityDefinition` to point at. The audit direction that matters
   // runs the other way - every line carries `sourceType: 'journal_entry'`.
   'journal_entry_gl_posting_id',
+  // The `RecurrenceRule` that generated this entry, and the slot it fills
+  // (task 21 §1.4). TEXT on both: the rule is a Drizzle table, and the
+  // occurrence date is a SLOT IDENTITY rather than the accounting date - the
+  // two are hashed together into the posting's `periodKey`, so neither may move
+  // once written.
+  'journal_entry_recurrence_rule_id',
+  'journal_entry_occurrence_date',
 
   // ─── Inbox fields ───────────────────────────────────────────────
   'inbox_name',

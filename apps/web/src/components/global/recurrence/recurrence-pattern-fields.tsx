@@ -1,4 +1,4 @@
-// apps/web/src/components/dispatch/ui/recurrence/recurrence-pattern-fields.tsx
+// apps/web/src/components/global/recurrence/recurrence-pattern-fields.tsx
 'use client'
 
 import type { NthWeekdayOrdinal, RecurrencePattern, Weekday } from '@auxx/lib/recurrence/client'

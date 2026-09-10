@@ -167,12 +167,22 @@ const POSTING_FAMILIES: Record<string, readonly PostingType[]> = {
     'month_end_deferral',
     'month_end_reversal',
   ],
-  manual: ['manual_journal'],
+  // A generated occurrence of a recurring template is a manual journal a
+  // scheduler wrote rather than a person, so it sits beside one. It gets its
+  // OWN posting type only because the claim index is the exact idempotency
+  // layer and `manual_journal`'s key shape cannot carry a `(rule, occurrence)`
+  // pair (brief 21 §1.4).
+  manual: ['manual_journal', 'recurring_journal'],
   opening: ['opening_balance'],
   banking: ['bank_deposit', 'bank_transaction', 'payout'],
   // Its own family, because it is the only one auxx did not author: the
   // accountant's entry, read back off the provider's ledger (brief 20 §6).
   sync: ['provider_sync'],
+  // `Dr <expense> / Cr A/P` for rent, insurance, a legal invoice. NOT in the
+  // `inventory` family beside `vendor_bill`: that one is the L3 purchasing
+  // story and this one touches no inventory account, no GRNI and no three-way
+  // match (brief 21 §3.2).
+  payables: ['expense_bill'],
 }
 
 describe('the export route is declared, total, and per family', () => {

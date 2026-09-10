@@ -1,4 +1,4 @@
-// apps/web/src/components/dispatch/ui/recurrence/recurrence-utils.ts
+// apps/web/src/components/global/recurrence/recurrence-utils.ts
 
 import type { RecurrencePattern, Weekday } from '@auxx/lib/recurrence/client'
 

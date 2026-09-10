@@ -17,6 +17,7 @@ import { downloadCsv } from '~/lib/csv'
 import { api } from '~/trpc/react'
 import { formatMinor } from '../ledger/format'
 import { CompletenessBanner } from './completeness-banner'
+import { ProviderSyncMarker } from './provider-sync-marker'
 import { ReportErrorCard } from './report-error-card'
 import { periodEndDate, periodKeyFromDate, toStatementTableRows } from './report-helpers'
 import { ReportToolbar } from './report-toolbar'
@@ -102,6 +103,7 @@ export function AgingReportPage({ side }: AgingReportPageProps) {
       <ScrollArea className='min-h-0 flex-1' scrollbarClassName='w-1.5'>
         <div className='mx-auto flex w-full max-w-5xl flex-1 flex-col gap-3 p-4'>
           <CompletenessBanner asOf={asOf} />
+          <ProviderSyncMarker through={asOf} />
           {period.isLoading ? (
             <Skeleton className='h-64 w-full' />
           ) : !asOf ? (

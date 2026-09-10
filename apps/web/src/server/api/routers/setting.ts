@@ -39,15 +39,27 @@ const logger = createScopedLogger('api-settings')
  * single most characteristic act of an accountant, and leaving this door open
  * would hand a `settings.manage` holder with no ledger access the ability to
  * close (or reopen) the books. `ledger.setLockedThrough` is the only door.
+ *
+ * `accounting.providerSyncedThrough` is the inbound sync's high-water mark
+ * (plans/accounting/tasks/20-two-authors-one-ledger.md §7.3). It has NO door at
+ * all: `syncProviderLedger` stamps it, and only for a chunk that actually
+ * succeeded. It is not a preference: it is a claim about what was read off
+ * another system, and every statement renders it to say how complete it is. A
+ * person typing a later date here would make every statement understate its own
+ * incompleteness, which is the exact failure §7.3 exists to prevent, so there is
+ * no truthful hand edit of it to allow.
  */
 const ROUTER_OWNED_ORG_SETTING_KEYS = new Set<string>([
   'mailClassificationInboxIds',
   'ledger.lockedThroughMonth',
+  'accounting.providerSyncedThrough',
 ])
 
 const ROUTER_OWNED_ORG_SETTING_MESSAGES: Record<string, string> = {
   mailClassificationInboxIds: 'managed per inbox and cannot be changed from organization settings',
   'ledger.lockedThroughMonth': 'managed by the ledger, through ledger.setLockedThrough',
+  'accounting.providerSyncedThrough':
+    'stamped by the provider sync from what it actually read, and cannot be set by hand. Run the sync instead',
 }
 
 function assertNotRouterOwned(key: string): void {

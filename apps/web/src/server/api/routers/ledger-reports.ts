@@ -26,6 +26,7 @@ import {
   readCompleteness,
   readGeneralLedger,
   readProfitAndLoss,
+  readProviderSyncMarker,
   readTrialBalance,
   readVendor1099Summary,
   renderStatementPdf,
@@ -128,6 +129,25 @@ export const ledgerReportsRouter = createTRPCRouter({
       if (result.isErr()) throw result.error
       return result.value
     }),
+
+  /**
+   * How far the inbound provider sync has genuinely read - what every statement
+   * view's `ProviderSyncMarker` renders (task 20 §7.3).
+   *
+   * Takes NO input on purpose. The reading is pure
+   * (`describeProviderSyncCoverage`) and the statement's own end date lives in
+   * the browser, so one input-free query serves every statement page and every
+   * period the reader flips through, instead of a cache entry per as-of date.
+   *
+   * Answers `{ connected: false }` for an org with nothing connected, and the
+   * component then renders nothing at all - the marker is meaningless there and
+   * would imply a connection exists.
+   */
+  providerSyncMarker: permissionProcedure(PermissionKey.ledgerView).query(async ({ ctx }) => {
+    const result = await readProviderSyncMarker(ctx.session.organizationId)
+    if (result.isErr()) throw result.error
+    return result.value
+  }),
 
   /**
    * The drill-down behind one account - every posted line in the range,

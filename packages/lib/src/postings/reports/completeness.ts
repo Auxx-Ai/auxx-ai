@@ -75,6 +75,16 @@ const DISABLED_POSTING_TYPE_SENTENCES: Partial<Record<PostingType, string>> = {
     'Per-event receipt posting is off, so inventory moves only through the monthly assertion.',
   vendor_bill:
     'Per-event vendor bill posting is off, so goods received not invoiced is not relieved per bill.',
+  // 🛑 Deliberately NOT in `NEVER_CLOSE_EMITTED`. `expense_bill` is written by
+  // auxx's own writer on a bill's Post action, exactly as `invoice_issued` is
+  // written on an invoice's Send - so it belongs in `ENABLED_POSTING_TYPES`
+  // (a one-line edit in `regime.ts`), not exempted from the subtraction here.
+  // `provider_sync` is exempt because NOTHING in auxx ever emits it; that is
+  // not true of this one, and exempting it would hide a real "the payable side
+  // of the books is switched off" from every statement the day it is.
+  expense_bill:
+    'Expense bill posting is off, so a vendor bill for rent, insurance or a subscription raises ' +
+    'no payable and its expense never reaches the profit and loss.',
   build: 'Build posting is off.',
   month_end_deferral: 'Month-end deferral posting is off.',
   month_end_reversal: 'Month-end reversal posting is off.',

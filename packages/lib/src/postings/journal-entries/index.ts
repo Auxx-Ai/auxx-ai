@@ -22,6 +22,8 @@ export {
   listJournalEntries,
   loadJournalEntryFieldContext,
   parseLines,
+  type RecurrenceIdentity,
+  readRecurrenceIdentities,
   requireJournalEntry,
   requireJournalEntryFieldContext,
 } from './reads'

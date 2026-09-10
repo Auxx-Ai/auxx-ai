@@ -8,6 +8,20 @@ export {
   capitalisableAmount,
 } from './allocate-landed-cost'
 export {
+  type ExpenseBillPostInput,
+  listVendorBillPostings,
+  loadVendorBill,
+  loadVendorBillLines,
+  type PostExpenseBillResult,
+  postExpenseBill,
+  previewExpenseBill,
+  requireVendorBill,
+  type VendorBillLineRecord,
+  type VendorBillRecord,
+  type VoidExpenseBillInput,
+  voidExpenseBill,
+} from './expense-bill'
+export {
   checkIntakeModelCapability,
   commitIntakeDraft,
   createIntakeDraft,
