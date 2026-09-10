@@ -81,6 +81,7 @@ interface LineRow {
   sourceId: string
   counterpartyType?: string | null
   counterpartyId?: string | null
+  dimensions?: Record<string, string> | null
 }
 
 interface Account {
@@ -442,6 +443,24 @@ describe('the reversal pair', () => {
     const written = fake.lines.filter((line) => line.glPostingId === reversalId)
     expect(written[0]).toMatchObject({ counterpartyType: 'customer', counterpartyId: 'contact_1' })
     expect(written[1]).toMatchObject({ counterpartyType: null, counterpartyId: null })
+  })
+
+  // Brief 13 §5: a reversal carries the original's dimensions - reporting-wise
+  // the same line, backwards.
+  it('carries the dimensions onto the reversed line', async () => {
+    const fake = createFakeDb({
+      postings: [original()],
+      lines: originalLines([{ dimensions: { channel: 'dealer' } }, {}]),
+      chart: CHART,
+    })
+    await reverseEntry(fake.db, { organizationId: ORG, glPostingId: 'post_1', lock: OPEN })
+
+    const reversalId = fake.postings[1]!.id
+    const written = fake.lines.filter((line) => line.glPostingId === reversalId)
+    expect(written[0]).toMatchObject({ dimensions: { channel: 'dealer' } })
+    // Normalised to null at the storage layer (`post-entry.ts`'s claim), same
+    // as every other absent-on-input column.
+    expect(written[1]?.dimensions).toBeNull()
   })
 
   // Task 15 §5: a line whose account carries no code reverses exactly like

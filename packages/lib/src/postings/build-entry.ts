@@ -85,9 +85,21 @@ import type { BuiltEntry, CounterpartyType, GlPostingLineInput, PostingType } fr
  * design only, which account each leg lands on is still open, and a role nothing
  * emits is a mapping a bookkeeper can make wrongly with no way to find out.
  */
+/*
+ * Two rules about what a role is NOT (brief 13 §2 and §5, 2026-09-10):
+ *
+ * - **A bank account is not a role.** A role answers which account fulfils an
+ *   accounting FUNCTION; an org has several bank accounts and they are
+ *   instances. `cash` was retired for this reason. A builder that moves money
+ *   into or out of a bank account takes the `bank_account`'s own
+ *   `glAccountId` and emits a `{ glAccountId }` line, the way the deposit does.
+ * - **A gateway does not get a role, and a channel does not get an account.**
+ *   `clearing_affirm` is the one exception and it is grandfathered; the third
+ *   gateway is a `payment_gateway` record carrying its clearing account, and a
+ *   channel is a `dimensions` entry on the revenue line, never a second
+ *   revenue role.
+ */
 export const ACCOUNT_ROLES = {
-  /** Cash (default `1000`). Credited when a bill is paid in ledger mode (decision P12). */
-  CASH: 'cash',
   /**
    * Raw materials inventory (default `1310`). Debited at LANDED cost when a
    * component or a subassembly is received - `partKind` maps BOTH to this role
@@ -293,10 +305,13 @@ export const ACCOUNT_ROLES = {
    * role a builder ever emits.
    */
   EQUITY_OPENING_BALANCE: 'equity_opening_balance',
-  /** Product revenue, DTC channel (default `4000`). */
-  REVENUE_DTC: 'revenue_dtc',
-  /** Product revenue, dealer channel (default `4010`). */
-  REVENUE_DEALER: 'revenue_dealer',
+  /**
+   * Product revenue (default `4000`), every channel. The channel is a
+   * `dimensions.channel` value on the line (brief 13 §5), never a second
+   * role or a second account: `revenue_dtc` and `revenue_dealer` were retired
+   * into this one on 2026-09-10.
+   */
+  REVENUE_PRODUCT: 'revenue_product',
   /** Shipping revenue (default `4020`). Its own account per handoff decision 6.3. */
   REVENUE_SHIPPING: 'revenue_shipping',
   /**
@@ -365,7 +380,6 @@ export type AccountRole = (typeof ACCOUNT_ROLES)[keyof typeof ACCOUNT_ROLES]
  * declared type would otherwise pass validation unchecked.
  */
 export const ROLE_ACCOUNT_TYPES: Record<AccountRole, GlAccountTypeValue> = {
-  cash: 'asset',
   inventory_raw_materials: 'asset',
   inventory_wip: 'asset',
   inventory_finished_goods: 'asset',
@@ -388,8 +402,7 @@ export const ROLE_ACCOUNT_TYPES: Record<AccountRole, GlAccountTypeValue> = {
   customer_deposits: 'liability',
   equity_retained_earnings: 'equity',
   equity_opening_balance: 'equity',
-  revenue_dtc: 'revenue',
-  revenue_dealer: 'revenue',
+  revenue_product: 'revenue',
   revenue_shipping: 'revenue',
   revenue_service: 'revenue',
   revenue_returns_allowances: 'revenue',
@@ -408,7 +421,6 @@ export const ROLE_ACCOUNT_TYPES: Record<AccountRole, GlAccountTypeValue> = {
  * this file has no db, no logger and no io.
  */
 export const ACCOUNT_ROLE_LABELS: Record<AccountRole, string> = {
-  cash: 'Cash',
   inventory_raw_materials: 'Inventory — Raw Materials',
   inventory_wip: 'Inventory — Work in Process',
   inventory_finished_goods: 'Inventory — Finished Goods',
@@ -431,8 +443,7 @@ export const ACCOUNT_ROLE_LABELS: Record<AccountRole, string> = {
   customer_deposits: 'Customer Deposits',
   equity_retained_earnings: 'Retained Earnings',
   equity_opening_balance: 'Opening Balance Equity',
-  revenue_dtc: 'Product Revenue - DTC',
-  revenue_dealer: 'Product Revenue - Dealer',
+  revenue_product: 'Product Revenue',
   revenue_shipping: 'Shipping Revenue',
   revenue_service: 'Service Revenue',
   revenue_returns_allowances: 'Sales Returns and Allowances',

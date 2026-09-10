@@ -608,6 +608,32 @@ describe('the counterparty column', () => {
   })
 })
 
+// ── The dimensions column (brief 13 §5) ─────────────────────────────────────
+
+describe('the dimensions column', () => {
+  it('stores the dimensions carried on the input line', async () => {
+    const fake = createFakeDb(FULL_CHART)
+    const entry = receiptEntry()
+    entry.lines[0]!.dimensions = { channel: 'dealer' }
+
+    await postEntry(fake.db, { organizationId: ORG, entry, lock: OPEN })
+
+    expect(fake.lines[0]).toMatchObject({ dimensions: { channel: 'dealer' } })
+    // Absent on the input line becomes null on the stored row, never undefined.
+    expect(fake.lines[1]).toMatchObject({ dimensions: null })
+  })
+
+  it('leaves the column null when no line carries a dimension', async () => {
+    const fake = createFakeDb(FULL_CHART)
+    await postEntry(fake.db, { organizationId: ORG, entry: receiptEntry(), lock: OPEN })
+
+    expect(fake.lines.map((line) => (line as { dimensions?: unknown }).dimensions)).toEqual([
+      null,
+      null,
+    ])
+  })
+})
+
 // ── Convergence ────────────────────────────────────────────────────────────
 
 describe('the claim', () => {

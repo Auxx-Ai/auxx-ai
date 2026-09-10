@@ -58,6 +58,7 @@ import {
   type ChartAccountRow,
   type GlAccountSubtypeValue,
   type GlAccountTypeValue,
+  isMappableTo,
 } from '@auxx/lib/postings/client'
 import { Button } from '@auxx/ui/components/button'
 import { Combobox } from '@auxx/ui/components/combobox'
@@ -588,6 +589,7 @@ function ChartAccountForm({
               <ProviderAccountField
                 map={map}
                 accountType={values.accountType}
+                subtype={values.subtype}
                 identity={
                   recordIdRef.current ? map.byAccountId.get(recordIdRef.current) : undefined
                 }
@@ -682,6 +684,7 @@ const PROVIDER_ROW_DESCRIPTION =
 function ProviderAccountField({
   map,
   accountType,
+  subtype,
   identity,
   pending,
   onSet,
@@ -690,6 +693,8 @@ function ProviderAccountField({
   map: ChartMapView
   /** The LIVE local value, not the saved one - see the filter below. */
   accountType: GlAccountTypeValue | null
+  /** The LIVE local value too, for the same reason (task 13 §3). */
+  subtype: GlAccountSubtypeValue | null
   identity: AccountIdentityRow | undefined
   pending: boolean
   onSet: (providerAccountId: string | null) => Promise<void>
@@ -736,18 +741,23 @@ function ProviderAccountField({
     )
   }
 
-  // 🛑 Filtered by the LIVE `accountType`, not by `identity.account.accountType`.
-  // Somebody who has just changed this account's type is picking for what it is
-  // NOW; offering candidates for the type it used to be would hand them a
-  // mapping the server is about to refuse.
+  // 🛑 Filtered by the LIVE `accountType` and `subtype`, not by
+  // `identity.account`'s saved values. Somebody who has just changed this
+  // account's type or subtype is picking for what it is NOW; offering
+  // candidates for what it used to be would hand them a mapping the server is
+  // about to refuse.
   //
   // ⚠️ Type compatibility is a FILTER, not a tiebreak. A candidate in the wrong
   // statement section is never offered at any confidence: mapping a liability to
   // a revenue account balances AND misstates the P&L, and the number somebody
-  // recognises gives them no way to tell.
-  const options = map.providerAccounts
-    .filter((account) => account.active && account.classification === accountType)
-    .map((account) => ({ value: account.id, label: formatProviderAccount(account) }))
+  // recognises gives them no way to tell. `isMappableTo` (task 13 §3) adds the
+  // same rule for subtype: a `bank` account is never offered a candidate whose
+  // provider `accountType` is not `Bank`, even one in the right section.
+  const options = accountType
+    ? map.providerAccounts
+        .filter((account) => isMappableTo({ accountType, subtype }, account))
+        .map((account) => ({ value: account.id, label: formatProviderAccount(account) }))
+    : []
 
   const suggestion = identity.suggestion
   const broken = isMappingBroken(identity)

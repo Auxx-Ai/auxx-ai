@@ -178,6 +178,9 @@ export const ENTITY_DEFINITION_TYPES = [
   'credit_memo',
   'credit_memo_line',
   'credit_memo_application',
+  // A record carrying its clearing account, never a role
+  // (plans/accounting/tasks/13-cash-accounts-and-the-qbo-seam.md §5.3).
+  'payment_gateway',
 ] as const
 
 /** Type for system entity types stored in EntityDefinition */

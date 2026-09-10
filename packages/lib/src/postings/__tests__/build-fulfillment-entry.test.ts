@@ -12,6 +12,8 @@
 //     consumer line. 49 §8.4 decision 5 reversed it: `order_channel` is
 //     human-set and unbound, so the refusal recognised no imported revenue at
 //     all, and unrecognised revenue is the less visible of the two errors.
+//     Since brief 13 §5, the channel is a `dimensions.channel` value on the
+//     ONE `revenue_product` line, never a second account.
 //  2. **A second shipment must not re-recognise the first.** That is what the
 //     shipped-lines input and the `includeShipping` flag exist for, and it is
 //     asserted by summing two entries against the order total.
@@ -22,7 +24,7 @@ import { UnprocessableEntityError } from '../../errors'
 import { ACCOUNT_ROLES } from '../build-entry'
 import {
   buildFulfillmentEntry,
-  CHANNEL_REVENUE_ROLE,
+  CHANNEL_KEYS,
   extendRateToAmount,
   FULFILLMENT_SOURCE_TYPE,
   fulfillmentPeriodKey,
@@ -58,15 +60,35 @@ function amountFor(
   return entry.lines.find((line) => line.accountRole === role)?.amount
 }
 
-describe('the channel table', () => {
-  it('has exactly four rows and refuses none of them', () => {
-    expect(Object.keys(CHANNEL_REVENUE_ROLE).sort()).toEqual(['dealer', 'dtc', 'manual', 'null'])
+/** The amount on the revenue_product line carrying `{ channel: value }`. */
+function channelAmountFor(
+  entry: ReturnType<typeof buildFulfillmentEntry>['entry'],
+  value: string
+): number | undefined {
+  return entry.lines.find(
+    (line) =>
+      line.accountRole === ACCOUNT_ROLES.REVENUE_PRODUCT && line.dimensions?.channel === value
+  )?.amount
+}
+
+/** Every jurisdiction dimension the sales_tax_payable lines carry, in order. */
+function jurisdictionLines(
+  entry: ReturnType<typeof buildFulfillmentEntry>['entry']
+): Array<{ jurisdiction: string | undefined; amount: number }> {
+  return entry.lines
+    .filter((line) => line.accountRole === ACCOUNT_ROLES.SALES_TAX_PAYABLE)
+    .map((line) => ({ jurisdiction: line.dimensions?.jurisdiction, amount: line.amount }))
+}
+
+describe('the channel keyspace', () => {
+  it('has exactly four rows and every dimension value is dtc or dealer', () => {
+    expect(Object.keys(CHANNEL_KEYS).sort()).toEqual(['dealer', 'dtc', 'manual', 'null'])
     // ⤵️ Both used to be 'refuse'. 49 §8.4 decision 5: `order_channel` is
     // human-set and no connector binds it, so the refusal did not protect the
     // DTC/dealer split - it refused every imported order and recognised nothing.
-    expect(CHANNEL_REVENUE_ROLE.manual).toBe(ACCOUNT_ROLES.REVENUE_DTC)
-    expect(CHANNEL_REVENUE_ROLE.null).toBe(ACCOUNT_ROLES.REVENUE_DTC)
-    expect(Object.values(CHANNEL_REVENUE_ROLE)).not.toContain('refuse')
+    expect(CHANNEL_KEYS.manual).toBe('dtc')
+    expect(CHANNEL_KEYS.null).toBe('dtc')
+    expect(Object.values(CHANNEL_KEYS)).not.toContain('refuse')
   })
 
   it('normalises an absent or unrecognised channel to the null row', () => {
@@ -77,15 +99,21 @@ describe('the channel table', () => {
     expect(toChannelKey('dealer')).toBe('dealer')
   })
 
-  it('books dtc to revenue_dtc and dealer to revenue_dealer', () => {
+  it('books dtc and dealer onto the SAME revenue_product role, dimensioned by channel', () => {
     const dtc = buildFulfillmentEntry({ ...BASE, shippedLines: WHOLE_ORDER })
-    expect(dtc.revenueRole).toBe(ACCOUNT_ROLES.REVENUE_DTC)
+    expect(dtc.revenueRole).toBe(ACCOUNT_ROLES.REVENUE_PRODUCT)
+    expect(dtc.channelDimension).toBe('dtc')
     const dealer = buildFulfillmentEntry({
       ...BASE,
       channel: 'dealer',
       shippedLines: WHOLE_ORDER,
     })
-    expect(dealer.revenueRole).toBe(ACCOUNT_ROLES.REVENUE_DEALER)
+    expect(dealer.revenueRole).toBe(ACCOUNT_ROLES.REVENUE_PRODUCT)
+    expect(dealer.channelDimension).toBe('dealer')
+    // One role total, exactly two accounts is what this unit set out to undo.
+    expect(
+      dtc.entry.lines.filter((l) => l.accountRole === ACCOUNT_ROLES.REVENUE_PRODUCT)
+    ).toHaveLength(1)
   })
 
   it.each([
@@ -95,18 +123,19 @@ describe('the channel table', () => {
     ['  '],
   ])('books channel %s to consumer revenue rather than refusing it', (channel) => {
     const built = buildFulfillmentEntry({ ...BASE, channel, shippedLines: WHOLE_ORDER })
-    expect(built.revenueRole).toBe(ACCOUNT_ROLES.REVENUE_DTC)
+    expect(built.channelDimension).toBe('dtc')
     // The whole subtotal reaches 4000. The point of failing open is that the
     // revenue is ON the books, in a line a person can move, not missing.
-    expect(amountFor(built.entry, ACCOUNT_ROLES.REVENUE_DTC)).toBe(100_000)
+    expect(channelAmountFor(built.entry, 'dtc')).toBe(100_000)
   })
 
-  it('still books an explicit dealer order to the dealer line', () => {
+  it('still books an explicit dealer order to the dealer dimension', () => {
     // Failing open must not collapse the split it was protecting: the moment a
     // person says `dealer`, the default stops being reached.
     const built = buildFulfillmentEntry({ ...BASE, channel: 'dealer', shippedLines: WHOLE_ORDER })
-    expect(built.revenueRole).toBe(ACCOUNT_ROLES.REVENUE_DEALER)
-    expect(amountFor(built.entry, ACCOUNT_ROLES.REVENUE_DTC)).toBeUndefined()
+    expect(built.channelDimension).toBe('dealer')
+    expect(channelAmountFor(built.entry, 'dtc')).toBeUndefined()
+    expect(channelAmountFor(built.entry, 'dealer')).toBe(100_000)
   })
 })
 
@@ -120,7 +149,7 @@ describe('the entry', () => {
     expect(built.totalMinor).toBe(109_500)
 
     expect(amountFor(built.entry, ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE)).toBe(109_500)
-    expect(amountFor(built.entry, ACCOUNT_ROLES.REVENUE_DTC)).toBe(100_000)
+    expect(amountFor(built.entry, ACCOUNT_ROLES.REVENUE_PRODUCT)).toBe(100_000)
     expect(amountFor(built.entry, ACCOUNT_ROLES.SALES_TAX_PAYABLE)).toBe(8_000)
     expect(amountFor(built.entry, ACCOUNT_ROLES.REVENUE_SHIPPING)).toBe(1_500)
     expect(built.entry.totalDebit).toBe(built.entry.totalCredit)
@@ -196,7 +225,9 @@ describe('the counterparty (brief 13 §1.2)', () => {
       counterpartyType: 'customer',
       counterpartyId: 'ei_contact_1',
     })
-    const revenue = built.entry.lines.find((line) => line.accountRole === ACCOUNT_ROLES.REVENUE_DTC)
+    const revenue = built.entry.lines.find(
+      (line) => line.accountRole === ACCOUNT_ROLES.REVENUE_PRODUCT
+    )
     expect(revenue?.counterpartyId).toBeUndefined()
   })
 
@@ -206,6 +237,65 @@ describe('the counterparty (brief 13 §1.2)', () => {
       (line) => line.accountRole === ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE
     )
     expect(receivable?.counterpartyId).toBeUndefined()
+  })
+})
+
+describe('the jurisdiction split (brief 13 §5)', () => {
+  const TAX_LINES = [
+    { title: 'CA State Tax', priceMinor: 6_000 },
+    { title: 'CA District Tax', priceMinor: 2_000 },
+  ]
+
+  it('splits the tax credit across jurisdictions when the tax lines tie to the order total', () => {
+    const built = buildFulfillmentEntry({ ...BASE, shippedLines: WHOLE_ORDER, taxLines: TAX_LINES })
+    const lines = jurisdictionLines(built.entry)
+    expect(lines).toEqual(
+      expect.arrayContaining([
+        { jurisdiction: 'CA State Tax', amount: 6_000 },
+        { jurisdiction: 'CA District Tax', amount: 2_000 },
+      ])
+    )
+    expect(lines).toHaveLength(2)
+    expect(lines.reduce((sum, line) => sum + line.amount, 0)).toBe(8_000)
+  })
+
+  it('falls back to one undimensioned line when the tax lines do not tie to the order total', () => {
+    // A partial breakdown reads as a complete one - see split-tax-by-jurisdiction.ts.
+    const built = buildFulfillmentEntry({
+      ...BASE,
+      shippedLines: WHOLE_ORDER,
+      taxLines: [{ title: 'CA State Tax', priceMinor: 5_000 }],
+    })
+    expect(jurisdictionLines(built.entry)).toEqual([{ jurisdiction: undefined, amount: 8_000 }])
+  })
+
+  it('falls back to one undimensioned line when there are no tax lines at all', () => {
+    const built = buildFulfillmentEntry({ ...BASE, shippedLines: WHOLE_ORDER })
+    expect(jurisdictionLines(built.entry)).toEqual([{ jurisdiction: undefined, amount: 8_000 }])
+  })
+
+  it('splits THIS shipment tax pro rata to the tax lines, with largest-remainder rounding', () => {
+    // Order-level weights (A:B = 77:154 = 1:2) applied to this shipment's own
+    // $0.77 of tax, not to the order's $2.31 - a `tax_line` has no per-shipment
+    // granularity of its own (brief 13 §5.3).
+    const built = buildFulfillmentEntry({
+      ...BASE,
+      orderSubtotalMinor: 3_000,
+      orderTaxTotalMinor: 231,
+      orderShippingTotalMinor: 0,
+      shippedLines: [{ lineId: 'l1', quantity: 1, unitPriceMinor: 1_000 }],
+      taxLines: [
+        { title: 'A', priceMinor: 77 },
+        { title: 'B', priceMinor: 154 },
+      ],
+    })
+    expect(built.taxMinor).toBe(77)
+    expect(jurisdictionLines(built.entry)).toEqual(
+      expect.arrayContaining([
+        { jurisdiction: 'A', amount: 26 },
+        { jurisdiction: 'B', amount: 51 },
+      ])
+    )
   })
 })
 

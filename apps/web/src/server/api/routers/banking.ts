@@ -66,6 +66,8 @@ const bankAccountFields = {
   type: z.enum(BANK_ACCOUNT_TYPES),
   currency: z.string().max(8).nullish(),
   glAccountId: z.string().max(64).nullish(),
+  /** The Stripe `ba_…` / `card_…` destination id a person confirms once (brief 13 §2.3). */
+  stripeExternalAccountId: z.string().max(64).nullish(),
   feedStartDate: dateKey.nullish(),
 }
 
@@ -140,6 +142,7 @@ export const bankingRouter = createTRPCRouter({
           type: bankAccountFields.type.optional(),
           currency: bankAccountFields.currency,
           glAccountId: bankAccountFields.glAccountId,
+          stripeExternalAccountId: bankAccountFields.stripeExternalAccountId,
           feedStartDate: bankAccountFields.feedStartDate,
         })
       )
@@ -174,6 +177,7 @@ export const bankingRouter = createTRPCRouter({
           type: bankAccountFields.type.optional(),
           currency: bankAccountFields.currency,
           glAccountId: bankAccountFields.glAccountId,
+          stripeExternalAccountId: bankAccountFields.stripeExternalAccountId,
           feedStartDate: bankAccountFields.feedStartDate,
           status: z.enum(BANK_ACCOUNT_STATUSES).optional(),
         })

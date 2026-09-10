@@ -256,6 +256,31 @@ export const BANK_ACCOUNT_FIELDS: Record<string, ResourceField> = {
       'active status and type on every read, fail closed',
   },
 
+  stripeExternalAccountId: {
+    id: toFieldId('stripeExternalAccountId'),
+    key: 'stripeExternalAccountId',
+    label: 'Stripe external account',
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemAttribute: 'bank_account_stripe_external_account_id',
+    systemSortOrder: 'a6a',
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    placeholder: 'ba_1AbCdEf...',
+    description:
+      "The Stripe ba_… or card_… destination id a person confirms once, so a payout's " +
+      'settlement can be attributed to this account. Brief 13 §2.3: never matched on last4 - ' +
+      'a four-digit string is strong evidence and not proof, and two accounts at one bank can ' +
+      'share it',
+  },
+
   feedStartDate: {
     id: toFieldId('feedStartDate'),
     key: 'feedStartDate',

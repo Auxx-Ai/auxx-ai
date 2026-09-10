@@ -12,6 +12,9 @@ const h = vi.hoisted(() => ({
   isAccountingEnabled: vi.fn(async () => true),
   requirePayoutFieldContext: vi.fn(async () => ({}) as never),
   getPaymentAccount: vi.fn(async () => null as { stripeAccountId: string } | null),
+  findBankAccountByStripeExternalAccountId: vi.fn(
+    async () => null as { bankAccountId: string; glAccountId: string | null } | null
+  ),
 }))
 
 vi.mock('../../../postings/accounting-enabled', () => ({
@@ -20,13 +23,14 @@ vi.mock('../../../postings/accounting-enabled', () => ({
 vi.mock('../reads', () => ({
   requirePayoutFieldContext: h.requirePayoutFieldContext,
   findPayoutByGatewayId: vi.fn(),
+  findBankAccountByStripeExternalAccountId: h.findBankAccountByStripeExternalAccountId,
 }))
 vi.mock('../../payments/account-state', () => ({
   getPaymentAccount: h.getPaymentAccount,
 }))
 
 import type { Database } from '@auxx/database'
-import { syncPayouts } from '../sync'
+import { resolvePayoutBankAccount, syncPayouts } from '../sync'
 
 const ORG = 'org_1'
 const db = {} as Database
@@ -70,5 +74,52 @@ describe('accounting enabled', () => {
     })
     expect(h.requirePayoutFieldContext).toHaveBeenCalledTimes(1)
     expect(h.getPaymentAccount).toHaveBeenCalledTimes(1)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// brief 13 §2.3: a payout debits a bank account, resolved through a CONFIRMED
+// Stripe identity, never a role and never `last4`.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('resolvePayoutBankAccount', () => {
+  it('blocks with no build when Stripe reported no destination at all', async () => {
+    const result = await resolvePayoutBankAccount(db, ORG, null, 'PAY-0001')
+
+    expect(result.blockedReason).toMatch(/no destination reported by Stripe/)
+    expect(result.glAccountId).toBeUndefined()
+    expect(h.findBankAccountByStripeExternalAccountId).not.toHaveBeenCalled()
+  })
+
+  it('blocks, naming the payout and the destination, when no bank account carries that identity', async () => {
+    h.findBankAccountByStripeExternalAccountId.mockResolvedValue(null)
+
+    const result = await resolvePayoutBankAccount(db, ORG, 'ba_unknown', 'PAY-0001')
+
+    expect(result.blockedReason).toContain('PAY-0001')
+    expect(result.blockedReason).toContain('ba_unknown')
+    expect(result.blockedReason).toMatch(/not confirmed on any bank account/)
+  })
+
+  it('blocks when the matched bank account has no chart mapping', async () => {
+    h.findBankAccountByStripeExternalAccountId.mockResolvedValue({
+      bankAccountId: 'ba_row_1',
+      glAccountId: null,
+    })
+
+    const result = await resolvePayoutBankAccount(db, ORG, 'ba_confirmed', 'PAY-0001')
+
+    expect(result.blockedReason).toBeTruthy()
+  })
+
+  it('resolves the gl_account id of a confirmed bank account, and blocks nothing', async () => {
+    h.findBankAccountByStripeExternalAccountId.mockResolvedValue({
+      bankAccountId: 'ba_row_1',
+      glAccountId: 'gl_1000',
+    })
+
+    const result = await resolvePayoutBankAccount(db, ORG, 'ba_confirmed', 'PAY-0001')
+
+    expect(result).toEqual({ blockedReason: null, glAccountId: 'gl_1000' })
   })
 })

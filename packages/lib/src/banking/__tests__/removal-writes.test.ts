@@ -127,6 +127,7 @@ function account(partial: Partial<BankAccountRow> = {}): BankAccountRow {
     type: 'depository',
     currency: 'USD',
     glAccountId: '1010',
+    stripeExternalAccountId: null,
     feedStartDate: null,
     coverageFrom: '2026-01-01',
     coverageGaps: [],

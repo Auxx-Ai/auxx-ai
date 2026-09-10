@@ -11,9 +11,9 @@
  *   Dr accounts_receivable   ONE LINE PER ORDER   that order's terms shipments
  *   Dr clearing_card         summarised           every card shipment's total
  *   Dr clearing_affirm       summarised           every Affirm shipment's total
- *       Cr revenue_dtc       summarised             Σ subtotal, consumer channel
- *       Cr revenue_dealer    summarised             Σ subtotal, dealer channel
- *       Cr sales_tax_payable summarised             Σ tax
+ *   Dr <gateway's own account>  summarised, per id  every routed-gateway shipment's total
+ *       Cr revenue_product   summarised, per channel dimension  Σ subtotal
+ *       Cr sales_tax_payable summarised, per jurisdiction dimension (when it ties)  Σ tax
  *       Cr revenue_shipping  summarised             Σ shipping
  * ```
  *
@@ -53,6 +53,7 @@
 
 import { UnprocessableEntityError } from '../errors'
 import type {
+  FulfillmentDebit,
   FulfillmentDebitRole,
   FulfillmentPostingExclusionReason,
   FulfillmentPostingGroup,
@@ -63,13 +64,14 @@ import type {
 import { FULFILLMENT_BATCH_SOURCE_TYPE } from '../money/fulfillment-posting/types'
 import { ACCOUNT_ROLES, type AccountRole, buildEntry } from './build-entry'
 import {
-  CHANNEL_REVENUE_ROLE,
+  CHANNEL_KEYS,
   computeShipmentTotals,
   FULFILLMENT_SOURCE_TYPE,
   toAmountMinor,
   toChannelKey,
 } from './build-fulfillment-entry'
 import { DOC_NUMBER_MAX_LENGTH, DOC_NUMBER_PREFIX } from './doc-number'
+import { splitTaxByJurisdiction } from './split-tax-by-jurisdiction'
 import type { BuiltEntry, GlPostingLineInput } from './types'
 
 // ── The debit fork ──────────────────────────────────────────────────────────
@@ -121,9 +123,29 @@ const MANUAL_GATEWAY = 'manual'
  * `clearing_card` leaves that account with a residual no payout can ever
  * relieve - it balances, and `1200` simply stops reconciling to zero.
  */
-export const FULFILLMENT_GATEWAY_DEBIT: Readonly<Record<string, FulfillmentDebitRole>> = {
+export const FULFILLMENT_GATEWAY_DEBIT: Readonly<
+  Record<string, Exclude<FulfillmentDebitRole, 'gateway'>>
+> = {
   shopify_payments: 'clearing_card',
   affirm: 'clearing_affirm',
+}
+
+/**
+ * A `payment_gateway` record's own clearing route, as far as this pure builder
+ * needs to see it (brief 13 §5.3, lane 4's `money/fulfillment-posting/`).
+ *
+ * `handles` is a SET, never one string - the census that motivated this found
+ * two rails arriving under two spellings each (`authorize_net` /
+ * `authorize.net`, `Affirm` / `affirm`), so the record's key has to be a set to
+ * describe one rail. `active` rides along but is NOT read here: a closed
+ * gateway's past shipments still post to its own clearing account so it keeps
+ * reconciling, and "should this route still be offered" is lane 4's plan.ts
+ * concern, not this match's.
+ */
+export interface FulfillmentGatewayRoute {
+  handles: readonly string[]
+  clearingGlAccountId: string
+  active: boolean
 }
 
 /** The exclusions the debit fork itself can produce. A subset of lane B's closed set. */
@@ -132,9 +154,17 @@ export type FulfillmentDebitExclusionReason = Extract<
   'gateway-ambiguous' | 'test-gateway'
 >
 
-/** What {@link resolveFulfillmentDebit} answers: an account, or a reason not to post. */
+/**
+ * What {@link resolveFulfillmentDebit} answers: an account, or a reason not to
+ * post.
+ *
+ * The `debit` branch is {@link FulfillmentDebit} widened with the `kind`
+ * discriminant every posting-plan answer in this file carries - a role for the
+ * three declared accounts, or a `payment_gateway` record's own id when exactly
+ * one route named the gateway (brief 13 §5.3).
+ */
 export type FulfillmentDebitResolution =
-  | { kind: 'debit'; role: FulfillmentDebitRole }
+  | ({ kind: 'debit' } & FulfillmentDebit)
   | { kind: 'exclude'; reason: FulfillmentDebitExclusionReason; detail: string }
 
 /** Trim, lower-case and de-duplicate a gateway list, preserving first-seen order. */
@@ -151,7 +181,28 @@ function normaliseGateways(gateways: readonly string[]): string[] {
 }
 
 /**
- * Which account a shipment DEBITS: a clearing account, or the receivable.
+ * Which `payment_gateway` record's clearing account a normalised gateway
+ * names, when EXACTLY ONE route's `handles` matches it case-insensitively.
+ *
+ * Zero matches falls back to {@link FULFILLMENT_GATEWAY_DEBIT}'s role table -
+ * the record has nothing to say about this gateway yet. More than one match
+ * (two routes both claiming the same handle, which the record's own write
+ * path should never allow) falls back the same way rather than guessing which
+ * route is right.
+ */
+function matchGatewayRoute(
+  gateway: string,
+  routes: readonly FulfillmentGatewayRoute[] = []
+): string | undefined {
+  const matches = routes.filter((route) =>
+    route.handles.some((handle) => handle.trim().toLowerCase() === gateway)
+  )
+  return matches.length === 1 ? matches[0]?.clearingGlAccountId : undefined
+}
+
+/**
+ * Which account a shipment DEBITS: a `payment_gateway` route, a clearing role,
+ * or the receivable.
  *
  * PURE and total. Gateway names are compared case-insensitively after trim, so
  * `'Affirm'` and `' affirm '` are one gateway.
@@ -164,7 +215,8 @@ function normaliseGateways(gateways: readonly string[]): string[] {
  * | financial status is not `paid`, `partially_refunded` or `refunded` | `accounts_receivable` |
  * | any gateway is `manual` | `accounts_receivable` |
  * | no gateways at all | `accounts_receivable` |
- * | exactly one gateway | {@link FULFILLMENT_GATEWAY_DEBIT}, defaulting to `clearing_card` |
+ * | exactly one gateway, and exactly one `gatewayRoutes` entry names it | that route's `clearingGlAccountId` |
+ * | exactly one gateway, otherwise | {@link FULFILLMENT_GATEWAY_DEBIT}, defaulting to `clearing_card` |
  * | two or more distinct gateways | exclude, `gateway-ambiguous`, detail is the list |
  *
  * ⚠️ **`bogus` is checked before the status, and the build contract listed it
@@ -182,11 +234,20 @@ function normaliseGateways(gateways: readonly string[]): string[] {
  * TWO gateways is different in kind - the money split, and no single line can
  * describe it - so that one refuses.
  *
+ * ## `gatewayRoutes` (brief 13 §5.3, the contract with lane 4)
+ *
+ * Optional and empty by default, so every existing caller (and every test in
+ * this file) is unaffected. `money/fulfillment-posting/plan.ts` reads the
+ * org's `payment_gateway` records and passes them in; this function stays
+ * pure and does not read them itself.
+ *
  * @see plans/money/tasks/49-bulk-fulfillment-posting.md §3.2, §8.4 decision 6
+ * @see plans/accounting/tasks/13-cash-accounts-and-the-qbo-seam.md §5.3
  */
 export function resolveFulfillmentDebit(input: {
   financialStatus: string | null
   gateways: readonly string[]
+  gatewayRoutes?: readonly FulfillmentGatewayRoute[]
 }): FulfillmentDebitResolution {
   const gateways = normaliseGateways(input.gateways)
   const listed = gateways.join(', ')
@@ -207,6 +268,8 @@ export function resolveFulfillmentDebit(input: {
 
   if (gateways.length === 1) {
     const gateway = gateways[0] as string
+    const glAccountId = matchGatewayRoute(gateway, input.gatewayRoutes)
+    if (glAccountId) return { kind: 'debit', glAccountId }
     return { kind: 'debit', role: FULFILLMENT_GATEWAY_DEBIT[gateway] ?? 'clearing_card' }
   }
 
@@ -240,16 +303,27 @@ function scaleLineTax(line: UnpostedShipmentLine, label: string): number | null 
  * `build-fulfillment-entry.ts` - subtotal from the lines, tax per line when
  * EVERY line carries one and cumulatively allocated otherwise, shipping in full
  * exactly once - so the batch entry and a single order's entry cannot drift.
- * The only thing added here is {@link scaleLineTax}, because an
- * `UnpostedShipmentLine` carries the whole LINE's tax while
- * `computeShipmentTotals` wants THIS shipment's.
+ * Two things are added here:
+ *
+ * - {@link scaleLineTax}, because an `UnpostedShipmentLine` carries the whole
+ *   LINE's tax while `computeShipmentTotals` wants THIS shipment's.
+ * - The jurisdiction split (brief 13 §5), from `shipment.taxLines` - see
+ *   `splitTaxByJurisdiction`.
+ *
+ * `debit` is {@link FulfillmentDebit} (a role, or a `payment_gateway` route's
+ * own account id from `resolveFulfillmentDebit`) - or a bare
+ * {@link FulfillmentDebitRole} string, accepted for
+ * `money/fulfillment-posting/plan.ts`'s own current call until it is updated
+ * to pass the route-aware answer through (brief 13 §5.3). An id-based debit
+ * becomes `debitRole: 'gateway'` plus `debitGlAccountId`, so `byDebitRole`
+ * summaries keep working unchanged.
  *
  * @throws {UnprocessableEntityError} on a non-positive quantity or a stored
  *   amount that is not whole minor units.
  */
 export function computeShipmentAmounts(
   shipment: UnpostedShipment,
-  debitRole: FulfillmentDebitRole
+  debit: FulfillmentDebit | FulfillmentDebitRole
 ): ShipmentAmounts {
   const label = `order ${shipment.orderNumber}`
   const totals = computeShipmentTotals({
@@ -267,7 +341,30 @@ export function computeShipmentAmounts(
     includeShipping: shipment.includeShipping,
     context: { orderId: shipment.orderId, sequence: String(shipment.sequence) },
   })
-  return { debitRole, ...totals }
+  const taxByJurisdiction =
+    totals.taxMinor !== 0
+      ? (splitTaxByJurisdiction({
+          taxMinor: totals.taxMinor,
+          taxLines: shipment.taxLines ?? [],
+          orderTaxTotalMinor: shipment.orderTaxTotalMinor,
+        }) ?? undefined)
+      : undefined
+
+  // 🛑 Accepts a bare ROLE STRING too, not only `FulfillmentDebit` - back
+  // compat with `money/fulfillment-posting/plan.ts`'s current call
+  // (`computeAmounts(shipment, debit.role)`), which still passes a plain
+  // string until lane 4 updates it to pass the full `resolveFulfillmentDebit`
+  // answer through (brief 13 §5.3's contract). Widening the parameter rather
+  // than requiring the wrapped shape means plan.ts's RUNTIME behaviour is
+  // unchanged even though its TYPECHECK is red until that update lands.
+  const debitFields: { debitRole: FulfillmentDebitRole; debitGlAccountId?: string } =
+    typeof debit === 'string'
+      ? { debitRole: debit }
+      : 'glAccountId' in debit
+        ? { debitRole: 'gateway', debitGlAccountId: debit.glAccountId }
+        : { debitRole: debit.role }
+
+  return { ...debitFields, ...totals, taxByJurisdiction }
 }
 
 // ── The period key ──────────────────────────────────────────────────────────
@@ -391,8 +488,17 @@ export interface FulfillmentBatchSource {
   amounts: ShipmentAmounts
 }
 
-/** Which posting role each debit answer resolves to. DECLARED, one row each. */
-export const FULFILLMENT_DEBIT_ACCOUNT_ROLE: Readonly<Record<FulfillmentDebitRole, AccountRole>> = {
+/**
+ * Which posting role each ROLE-based debit answer resolves to. DECLARED, one
+ * row each.
+ *
+ * 🛑 **`'gateway'` is deliberately absent.** An id-based debit (brief 13 §5.3)
+ * names a `payment_gateway` record's own account directly - there is no role
+ * to look up, which is the whole point of the record existing.
+ */
+export const FULFILLMENT_DEBIT_ACCOUNT_ROLE: Readonly<
+  Record<Exclude<FulfillmentDebitRole, 'gateway'>, AccountRole>
+> = {
   clearing_card: ACCOUNT_ROLES.CLEARING_CARD,
   clearing_affirm: ACCOUNT_ROLES.CLEARING_AFFIRM,
   accounts_receivable: ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE,
@@ -454,10 +560,15 @@ function assertWholeMinor(value: number, label: string, context: Record<string, 
  * 1. `Dr accounts_receivable`, **one line per order**, `sourceType: 'order'`,
  *    `sourceId: <orderId>`, memo `<orderNumber>`. Aging has to name the debtor,
  *    and `listPostingsForSource` on an order still finds this one.
- * 2. `Dr clearing_card`, `Dr clearing_affirm` - summarised.
- * 3. `Cr revenue_dtc`, `Cr revenue_dealer` - summarised, split on the order's
- *    channel through the fail-open {@link CHANNEL_REVENUE_ROLE} table.
- * 4. `Cr sales_tax_payable` - summarised. 5. `Cr revenue_shipping` - summarised.
+ * 2. `Dr clearing_card`, `Dr clearing_affirm`, `Dr <gateway route's account>` -
+ *    summarised, the last one per distinct account id (brief 13 §5.3).
+ * 3. `Cr revenue_product` - summarised PER CHANNEL, one line per
+ *    `dimensions.channel` value, through the fail-open {@link CHANNEL_KEYS}
+ *    table (brief 13 §5).
+ * 4. `Cr sales_tax_payable` - summarised PER JURISDICTION when a shipment's
+ *    tax lines tie to its order's total, plus one undimensioned line for
+ *    whatever does not (brief 13 §5, `splitTaxByJurisdiction`).
+ * 5. `Cr revenue_shipping` - summarised.
  *
  * Every summarised line carries `sourceType: 'fulfillment_batch'` and
  * `sourceId: <periodKey>`, which is what keeps aging free of a branch: an A/R
@@ -491,8 +602,16 @@ export function buildFulfillmentBatchEntry(
     clearing_card: 0,
     clearing_affirm: 0,
     accounts_receivable: 0,
+    gateway: 0,
   }
-  const revenueByRole = new Map<AccountRole, number>()
+  /** A `payment_gateway` route's own clearing account id -> its summarised debit. */
+  const byGatewayAccount = new Map<string, number>()
+  /** `dimensions.channel` value -> summarised revenue_product credit. */
+  const revenueByChannel = new Map<string, number>()
+  /** `dimensions.jurisdiction` value -> summarised sales_tax_payable credit. */
+  const taxByJurisdiction = new Map<string, number>()
+  /** Tax that could not be tied to a jurisdiction - one undimensioned line. */
+  let taxWithoutJurisdictionMinor = 0
   const sources: FulfillmentBatchSource[] = []
   let subtotalMinor = 0
   let taxMinor = 0
@@ -544,9 +663,40 @@ export function buildFulfillmentBatchEntry(
       })
     }
     byDebitRole[amounts.debitRole] += amounts.totalMinor
+    if (amounts.debitRole === 'gateway') {
+      const glAccountId = amounts.debitGlAccountId
+      if (!glAccountId) {
+        // Unreachable through `computeShipmentAmounts`, which always sets one
+        // alongside `debitRole: 'gateway'` - asserted so a hand-built
+        // `ShipmentAmounts` cannot silently drop the debit's destination.
+        throw new UnprocessableEntityError(
+          `Shipment ${shipment.sequence} of order ${shipment.orderNumber} resolved to a gateway ` +
+            'debit with no account id.',
+          context
+        )
+      }
+      byGatewayAccount.set(
+        glAccountId,
+        (byGatewayAccount.get(glAccountId) ?? 0) + amounts.totalMinor
+      )
+    }
 
-    const revenueRole = CHANNEL_REVENUE_ROLE[toChannelKey(shipment.channel)]
-    revenueByRole.set(revenueRole, (revenueByRole.get(revenueRole) ?? 0) + amounts.subtotalMinor)
+    const channelDimension = CHANNEL_KEYS[toChannelKey(shipment.channel)]
+    revenueByChannel.set(
+      channelDimension,
+      (revenueByChannel.get(channelDimension) ?? 0) + amounts.subtotalMinor
+    )
+
+    if (amounts.taxByJurisdiction && amounts.taxByJurisdiction.length > 0) {
+      for (const { jurisdiction, amountMinor } of amounts.taxByJurisdiction) {
+        taxByJurisdiction.set(
+          jurisdiction,
+          (taxByJurisdiction.get(jurisdiction) ?? 0) + amountMinor
+        )
+      }
+    } else {
+      taxWithoutJurisdictionMinor += amounts.taxMinor
+    }
 
     subtotalMinor += amounts.subtotalMinor
     taxMinor += amounts.taxMinor
@@ -587,7 +737,8 @@ export function buildFulfillmentBatchEntry(
     })
   }
 
-  // 2. The clearing accounts, summarised.
+  // 2. The clearing accounts, summarised - by ROLE, or by a gateway route's
+  //    own account id (brief 13 §5.3).
   if (byDebitRole.clearing_card !== 0) {
     push({
       ...summarised,
@@ -606,39 +757,56 @@ export function buildFulfillmentBatchEntry(
       memo: describe('Affirm clearing'),
     })
   }
-
-  // 3. Revenue, summarised per channel.
-  const dtcMinor = revenueByRole.get(ACCOUNT_ROLES.REVENUE_DTC) ?? 0
-  const dealerMinor = revenueByRole.get(ACCOUNT_ROLES.REVENUE_DEALER) ?? 0
-  if (dtcMinor !== 0) {
+  for (const [glAccountId, amount] of byGatewayAccount) {
+    if (amount === 0) continue
     push({
       ...summarised,
-      accountRole: ACCOUNT_ROLES.REVENUE_DTC,
-      direction: 'credit',
-      amount: dtcMinor,
-      memo: describe('product revenue, direct to consumer'),
-    })
-  }
-  if (dealerMinor !== 0) {
-    push({
-      ...summarised,
-      accountRole: ACCOUNT_ROLES.REVENUE_DEALER,
-      direction: 'credit',
-      amount: dealerMinor,
-      memo: describe('product revenue, dealer'),
+      glAccountId,
+      direction: 'debit',
+      amount,
+      memo: describe('gateway clearing'),
     })
   }
 
-  // 4 and 5. Tax and shipping, summarised.
-  if (taxMinor !== 0) {
+  // 3. Revenue, summarised PER CHANNEL - the channel is a dimension on one
+  //    `revenue_product` account, never a second account (brief 13 §5).
+  for (const [channel, amount] of revenueByChannel) {
+    if (amount === 0) continue
+    push({
+      ...summarised,
+      accountRole: ACCOUNT_ROLES.REVENUE_PRODUCT,
+      direction: 'credit',
+      amount,
+      memo: describe(`product revenue, ${channel === 'dealer' ? 'dealer' : 'direct to consumer'}`),
+      dimensions: { channel },
+    })
+  }
+
+  // 4. Tax, summarised PER JURISDICTION when it ties, plus one undimensioned
+  //    line for whatever does not (brief 13 §5 - a partial breakdown would
+  //    read as a complete one).
+  for (const [jurisdiction, amount] of taxByJurisdiction) {
+    if (amount === 0) continue
     push({
       ...summarised,
       accountRole: ACCOUNT_ROLES.SALES_TAX_PAYABLE,
       direction: 'credit',
-      amount: taxMinor,
+      amount,
+      memo: describe(`sales tax, ${jurisdiction}`),
+      dimensions: { jurisdiction },
+    })
+  }
+  if (taxWithoutJurisdictionMinor !== 0) {
+    push({
+      ...summarised,
+      accountRole: ACCOUNT_ROLES.SALES_TAX_PAYABLE,
+      direction: 'credit',
+      amount: taxWithoutJurisdictionMinor,
       memo: describe('sales tax'),
     })
   }
+
+  // 5. Shipping, summarised.
   if (shippingMinor !== 0) {
     push({
       ...summarised,

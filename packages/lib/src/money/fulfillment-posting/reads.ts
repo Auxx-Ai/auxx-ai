@@ -48,10 +48,11 @@ import { getOrganizationSetting } from '../../settings/settings-service'
 import {
   type OrderFieldContext,
   parseFulfillments,
+  readOrderTaxLines,
   requireOrderFieldContext,
 } from '../orders/reads'
 import { guard } from './guard'
-import { planFulfillmentPosting } from './plan'
+import { loadGatewayRoutesForPlan, planFulfillmentPosting } from './plan'
 import type {
   FulfillmentPostingExclusionReason,
   FulfillmentPostingPlan,
@@ -229,9 +230,11 @@ export async function readUnpostedShipments(
       const logLines = rows.map((row) => parseLogLines(row.lines))
       const lineIds = [...new Set(logLines.flatMap((lines) => lines.map((line) => line.lineId)))]
 
-      const [orders, lines] = await Promise.all([
+      const [orders, lines, taxLinesByOrder] = await Promise.all([
         readOrderFacts(db, organizationId, ctx, orderIds),
         readLineFacts(db, organizationId, ctx, lineIds),
+        // ONE bulk read for the whole batch, never per order (brief 13 §5).
+        readOrderTaxLines(db, organizationId, orderIds),
       ])
 
       const shipments: UnpostedShipment[] = []
@@ -261,6 +264,7 @@ export async function readUnpostedShipments(
           priorShipmentsSubtotalMinor: finite(row.prior_subtotal_minor),
           includeShipping: row.shipping_recognised === true,
           contactId: order.contactId,
+          taxLines: taxLinesByOrder.get(row.order_id) ?? [],
         })
       }
       return shipments
@@ -316,10 +320,14 @@ export async function countUnpostedShipments(
       })
       if (shipments.isErr()) throw shipments.error
       if (shipments.value.length === 0) return 0
-      const settings = await readFulfillmentPostingSettings(db, organizationId)
+      const [settings, gatewayRoutes] = await Promise.all([
+        readFulfillmentPostingSettings(db, organizationId),
+        loadGatewayRoutesForPlan(db, organizationId),
+      ])
       if (settings.isErr()) throw settings.error
       const plan = planFulfillmentPosting({
         shipments: shipments.value,
+        gatewayRoutes,
         grouping: 'day',
         cutoffPeriod: settings.value.cutoffPeriod,
         lockedThroughMonth: settings.value.lockedThroughMonth,

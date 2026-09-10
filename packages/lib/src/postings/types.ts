@@ -148,6 +148,15 @@ export interface GlPostingLineBase {
    */
   counterpartyType?: CounterpartyType
   counterpartyId?: string
+  /**
+   * Reporting dimensions on the line, `{ channel: 'dealer' }` or
+   * `{ jurisdiction: 'CO' }`, written to `GlPostingLine.dimensions` (brief 13
+   * §5). A dimension is an attribute of a line, never a reason to split an
+   * account: revenue by channel is one account with this key on each line.
+   * Ours, and reportable from our own statements; the QuickBooks class hop is
+   * a separate piece of work and is not done here. Absent on most lines.
+   */
+  dimensions?: Record<string, string>
 }
 
 /**
@@ -662,6 +671,8 @@ export interface PostingDetailLine {
   /** The counterparty frozen on the line at post time (brief 13 §1.1). Null on most lines. */
   counterpartyType: CounterpartyType | null
   counterpartyId: string | null
+  /** The line's reporting dimensions as stored, `{ channel: 'dealer' }`. Null on most lines. */
+  dimensions: Record<string, string> | null
 }
 
 /**

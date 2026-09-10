@@ -287,7 +287,14 @@ describe('resolveRoles — it answers for the whole set at once', () => {
   // the night of a close.
   it('names every failing role in a single error', async () => {
     const db = stubDb([], [])
-    const roles = ['grni', 'ppv', 'cash', 'inventory_wip', 'cogs_product_cost', 'applied_overhead']
+    const roles = [
+      'grni',
+      'ppv',
+      'undeposited_funds',
+      'inventory_wip',
+      'cogs_product_cost',
+      'applied_overhead',
+    ]
     const error = await expectErr(resolveRoles(db, ORG, roles))
 
     for (const role of roles) expect(error.message, role).toContain(`'${role}'`)
@@ -307,15 +314,15 @@ describe('resolveRoles — it answers for the whole set at once', () => {
     const db = stubDb(
       [
         { role: 'ppv', glAccountId: 'acct_ppv', markedUnused: true },
-        { role: 'cash', glAccountId: 'acct_cash' },
+        { role: 'undeposited_funds', glAccountId: 'acct_cash' },
       ],
       [{ id: 'acct_cash', code: '1000', name: 'Cash', accountType: 'liability', isActive: true }]
     )
-    const error = await expectErr(resolveRoles(db, ORG, ['grni', 'ppv', 'cash']))
+    const error = await expectErr(resolveRoles(db, ORG, ['grni', 'ppv', 'undeposited_funds']))
 
     expect(error.message).toMatch(/'grni' is not mapped/i)
     expect(error.message).toMatch(/'ppv' is marked as unused/i)
-    expect(error.message).toMatch(/'cash' must be mapped to a asset account/i)
+    expect(error.message).toMatch(/'undeposited_funds' must be mapped to a asset account/i)
   })
 })
 

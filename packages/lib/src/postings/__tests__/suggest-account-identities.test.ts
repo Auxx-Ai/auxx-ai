@@ -210,3 +210,85 @@ describe('isMappableTo - what a picker may offer', () => {
     expect(isMappableTo(ours(), theirs({ classification: 'expense' }))).toBe(false)
   })
 })
+
+// Task 13 §3: a bank account may only map to a bank account. This is the
+// filter on the CONFIRM, not a rank on the propose - see the ranking pin
+// below.
+describe('isMappableTo - subtype (task 13 §3)', () => {
+  it('confirms a bank account to a provider account QuickBooks types as Bank', () => {
+    const bankAccount = ours({ subtype: 'bank' })
+    const bankProviderAccount = theirs({ accountType: 'Bank' })
+    expect(isMappableTo(bankAccount, bankProviderAccount)).toBe(true)
+  })
+
+  it('refuses a bank account mapped to Accounts Receivable, same classification and all', () => {
+    const bankAccount = ours({ subtype: 'bank' })
+    // Same `classification` ('asset') as the default `theirs()` - only the
+    // provider's own `accountType` distinguishes them.
+    const arProviderAccount = theirs({
+      accountType: 'Accounts Receivable',
+      fullyQualifiedName: 'Accounts Receivable (A/R)',
+    })
+    expect(isMappableTo(bankAccount, arProviderAccount)).toBe(false)
+  })
+
+  it('compares case- and whitespace-insensitively', () => {
+    const bankAccount = ours({ subtype: 'bank' })
+    expect(isMappableTo(bankAccount, theirs({ accountType: ' bank ' }))).toBe(true)
+  })
+
+  it('keeps a null subtype on classification alone, so no existing mapping breaks', () => {
+    const noSubtype = ours({ subtype: null })
+    const arProviderAccount = theirs({ accountType: 'Accounts Receivable' })
+    expect(isMappableTo(noSubtype, arProviderAccount)).toBe(true)
+  })
+
+  it('imposes nothing for subtype "other"', () => {
+    const otherAccount = ours({ subtype: 'other' })
+    const arProviderAccount = theirs({ accountType: 'Accounts Receivable' })
+    expect(isMappableTo(otherAccount, arProviderAccount)).toBe(true)
+  })
+})
+
+describe('validateProviderMapping - subtype (task 13 §3)', () => {
+  it('names the account, the subtype and the provider type in the register', () => {
+    const wellsFargo = ours({
+      code: '1010',
+      name: 'Wells Fargo Checking',
+      subtype: 'bank',
+    })
+    const arProviderAccount = theirs({
+      accountType: 'Accounts Receivable',
+      fullyQualifiedName: 'Accounts Receivable (A/R)',
+    })
+    const message = validateProviderMapping(wellsFargo, arProviderAccount, '92')
+    expect(message).toContain('1010 Wells Fargo Checking')
+    expect(message).toContain('bank account')
+    expect(message).toContain('Accounts Receivable (A/R)')
+    expect(message).toContain('Accounts Receivable')
+    expect(message).toContain('balance')
+  })
+
+  it('passes a bank account mapped to a Bank provider account', () => {
+    const wellsFargo = ours({ code: '1010', name: 'Wells Fargo Checking', subtype: 'bank' })
+    expect(validateProviderMapping(wellsFargo, theirs({ accountType: 'Bank' }), '92')).toBeNull()
+  })
+
+  it('keeps a null subtype on classification alone', () => {
+    expect(
+      validateProviderMapping(ours(), theirs({ accountType: 'Accounts Receivable' }), '92')
+    ).toBeNull()
+  })
+})
+
+// 13 §3.3: subtype is a filter on the confirm, never a rank on the propose.
+describe('suggestAccountIdentities is unaffected by subtype', () => {
+  it('still suggests by number when a subtype is set on our side', () => {
+    const [suggestion] = suggestAccountIdentities(
+      [ours({ subtype: 'bank' })],
+      [theirs({ number: '1310', accountType: 'Other Current Asset' })]
+    )
+    expect(suggestion?.glAccountId).toBe('gl1')
+    expect(suggestion?.reason).toBe('number')
+  })
+})

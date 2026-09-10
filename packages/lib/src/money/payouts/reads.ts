@@ -36,6 +36,7 @@ const PAYOUT_ATTRIBUTES = [
   'payout_unrecognised_net',
   'payout_unrecognised_count',
   'payout_gl_posting_id',
+  'payout_blocked_reason',
 ] as const
 
 type PayoutAttribute = (typeof PAYOUT_ATTRIBUTES)[number]
@@ -128,6 +129,89 @@ export async function findPayoutByGatewayId(
   if (!row) return null
   const [record] = await hydrate(db, organizationId, ctx, [row])
   return record ?? null
+}
+
+/**
+ * The `bank_account` attributes {@link findBankAccountByStripeExternalAccountId}
+ * reads. Read through the entity layer directly rather than by importing
+ * `banking/` - the same anti-cycle reason `money/bank-deposits/reads.ts` gives
+ * for its own `readDepositBankAccount`: a `bank_account` is an `EntityInstance`
+ * like any other, and `banking/` may in principle reach back into `money/`.
+ */
+const PAYOUT_BANK_ACCOUNT_ATTRIBUTES = [
+  'bank_account_stripe_external_account_id',
+  'bank_account_gl_account',
+] as const
+
+type PayoutBankAccountAttribute = (typeof PAYOUT_BANK_ACCOUNT_ATTRIBUTES)[number]
+type PayoutBankAccountFields = Record<PayoutBankAccountAttribute, { id: string } | null>
+
+/** What a payout's Stripe destination resolves to. */
+export interface PayoutBankAccountMatch {
+  bankAccountId: string
+  /** Null when the matched account carries no chart mapping. */
+  glAccountId: string | null
+}
+
+/**
+ * Resolve a Stripe payout's `destination` to the org's own `bank_account`,
+ * through its CONFIRMED `stripeExternalAccountId` identity (brief 13 §2.3).
+ *
+ * 🛑 Never matched on `last4` - a four-digit string is strong evidence and not
+ * proof, and two accounts at one bank can share one (the same argument
+ * `resolveMappedAccounts:291-298` makes about QuickBooks' `AcctNum`).
+ *
+ * `null` when no LIVE (non-archived) bank account in this org carries that
+ * identity - the caller refuses to post rather than guessing which account.
+ */
+export async function findBankAccountByStripeExternalAccountId(
+  db: Database,
+  organizationId: string,
+  destination: string
+): Promise<PayoutBankAccountMatch | null> {
+  const bankAccountDefId = await getCachedEntityDefId(organizationId, 'bank_account')
+  if (!bankAccountDefId) return null
+
+  const fields = (await getOrgCache()
+    .from(organizationId, 'customFields')
+    .bySystemAttributes([...PAYOUT_BANK_ACCOUNT_ATTRIBUTES])) as PayoutBankAccountFields
+  const stripeField = fields.bank_account_stripe_external_account_id
+  if (!stripeField) return null
+
+  const [match] = await db
+    .select({ entityId: schema.FieldValue.entityId })
+    .from(schema.FieldValue)
+    .innerJoin(schema.EntityInstance, eq(schema.EntityInstance.id, schema.FieldValue.entityId))
+    .where(
+      and(
+        eq(schema.FieldValue.organizationId, organizationId),
+        eq(schema.FieldValue.fieldId, stripeField.id),
+        eq(schema.FieldValue.valueText, destination),
+        eq(schema.EntityInstance.entityDefinitionId, bankAccountDefId),
+        isNull(schema.EntityInstance.archivedAt)
+      )
+    )
+    .limit(1)
+  if (!match) return null
+
+  const glField = fields.bank_account_gl_account
+  let glAccountId: string | null = null
+  if (glField) {
+    const [value] = await db
+      .select({ valueText: schema.FieldValue.valueText })
+      .from(schema.FieldValue)
+      .where(
+        and(
+          eq(schema.FieldValue.organizationId, organizationId),
+          eq(schema.FieldValue.entityId, match.entityId),
+          eq(schema.FieldValue.fieldId, glField.id)
+        )
+      )
+      .limit(1)
+    glAccountId = value?.valueText?.trim() || null
+  }
+
+  return { bankAccountId: match.entityId, glAccountId }
 }
 
 /** One page of payouts, newest first. */
@@ -258,6 +342,7 @@ async function hydrate(
       unrecognisedNetMinor: money('payout_unrecognised_net'),
       unrecognisedCount: money('payout_unrecognised_count'),
       glPostingId: read('payout_gl_posting_id')?.valueText ?? null,
+      blockedReason: read('payout_blocked_reason')?.valueText ?? null,
       createdAt: row.createdAt,
     }
   })

@@ -146,6 +146,7 @@ function shipment(overrides: Partial<UnpostedShipment> = {}): UnpostedShipment {
     priorShipmentsSubtotalMinor: 0,
     includeShipping: false,
     contactId: null,
+    taxLines: [],
     ...overrides,
   }
 }

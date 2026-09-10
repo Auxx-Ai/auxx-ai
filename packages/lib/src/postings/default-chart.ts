@@ -129,7 +129,9 @@ export const DEFAULT_CHART_OF_ACCOUNTS: readonly DefaultChartAccount[] = [
     code: '1000',
     name: 'Cash',
     accountType: GlAccountType.ASSET,
-    role: 'cash',
+    // No role since brief 13 §2: a bank account is an instance, not a
+    // function. An org maps this as a bank account like any other, or `16`
+    // stops seeding it.
     subtype: GlAccountSubtype.BANK,
   },
   {
@@ -231,7 +233,7 @@ export const DEFAULT_CHART_OF_ACCOUNTS: readonly DefaultChartAccount[] = [
   },
   {
     code: '2110',
-    name: 'Payroll Clearing (ADP)',
+    name: 'Payroll Clearing',
     accountType: GlAccountType.LIABILITY,
     role: 'payroll_clearing',
   },
@@ -350,15 +352,9 @@ export const DEFAULT_CHART_OF_ACCOUNTS: readonly DefaultChartAccount[] = [
     // shift in channel mix looks like a margin problem with no visible cause
     // (accrual plan §3).
     code: '4000',
-    name: 'Product Revenue - DTC',
+    name: 'Product Revenue',
     accountType: GlAccountType.REVENUE,
-    role: 'revenue_dtc',
-  },
-  {
-    code: '4010',
-    name: 'Product Revenue - Dealer',
-    accountType: GlAccountType.REVENUE,
-    role: 'revenue_dealer',
+    role: 'revenue_product',
   },
   {
     // Its own account rather than folded into product revenue (handoff

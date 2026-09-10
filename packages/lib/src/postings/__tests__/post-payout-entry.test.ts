@@ -19,7 +19,7 @@ vi.mock('../post-entry', () => ({ postEntry: h.postEntry }))
 
 import type { Database } from '@auxx/database'
 import { ACCOUNT_ROLES } from '../build-entry'
-import { postPayoutEntry } from '../post-payout-entry'
+import { payoutAccountUnmappedResult, postPayoutEntry } from '../post-payout-entry'
 
 const ORG = 'org_1'
 const db = {} as Database
@@ -29,6 +29,7 @@ const OPTIONS = {
   actorUserId: 'user_1',
   payoutId: 'po_1',
   payoutNumber: 'PO-0007',
+  bankAccountGlAccountId: 'gl-1000',
   grossMinor: 500_000,
   feesMinor: 14_800,
   netMinor: 485_200,
@@ -74,6 +75,25 @@ describe('accounting not enabled', () => {
     expect(result).toEqual({ status: 'not_enabled' })
     expect(h.buildPayoutEntry).not.toHaveBeenCalled()
     expect(h.resolvePeriodLock).not.toHaveBeenCalled()
+    expect(h.postEntry).not.toHaveBeenCalled()
+  })
+})
+
+// brief 13 §2.3: the caller (`money/payouts/sync.ts`) constructs this directly
+// and never calls `postPayoutEntry` at all when a payout's destination cannot
+// be resolved to a confirmed bank account.
+describe('payoutAccountUnmappedResult', () => {
+  it('is a pre-claim account_unmapped refusal, never built or posted', () => {
+    const result = payoutAccountUnmappedResult(
+      'Payout PO-0007 names ba_unknown, which is not confirmed on any bank account.'
+    )
+
+    expect(result).toEqual({
+      status: 'account_unmapped',
+      failureClass: 'configuration',
+      error: 'Payout PO-0007 names ba_unknown, which is not confirmed on any bank account.',
+    })
+    expect(h.buildPayoutEntry).not.toHaveBeenCalled()
     expect(h.postEntry).not.toHaveBeenCalled()
   })
 })

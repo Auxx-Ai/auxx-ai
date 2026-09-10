@@ -127,6 +127,7 @@ export async function getPosting(
         sourceId: schema.GlPostingLine.sourceId,
         counterpartyType: schema.GlPostingLine.counterpartyType,
         counterpartyId: schema.GlPostingLine.counterpartyId,
+        dimensions: schema.GlPostingLine.dimensions,
       })
       .from(schema.GlPostingLine)
       .where(
@@ -154,6 +155,9 @@ export async function getPosting(
       // Never re-resolved here, for the same reason `accountName` is not.
       counterpartyType: (row.counterpartyType as PostingDetailLine['counterpartyType']) ?? null,
       counterpartyId: row.counterpartyId ?? null,
+      // The reporting dimensions as stored (brief 13 §5) - `{ channel: 'dealer' }`
+      // and the like. Null on most lines.
+      dimensions: (row.dimensions as Record<string, string> | null) ?? null,
     }))
 
     return ok({

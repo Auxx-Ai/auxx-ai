@@ -42,6 +42,12 @@ vi.mock('@auxx/lib/seed', async () => {
   return {
     ...actual,
     seedDefaultChartOfAccounts: vi.fn(async () => ({ created: 0, assigned: 0 })),
+    // Task 13 §5.3: `provisionChart` seeds the two default payment gateways
+    // right after the chart. Mocked the same way its neighbour above is - the
+    // "admit" case only needs `provisionChart` to resolve, not to exercise
+    // `seedDefaultPaymentGateways`'s own `GlRoleAssignment` read against a db
+    // double this file does not otherwise stub.
+    seedDefaultPaymentGateways: vi.fn(async () => ({ created: 0, skipped: 0 })),
   }
 })
 

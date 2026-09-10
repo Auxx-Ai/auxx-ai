@@ -26,6 +26,7 @@ import { MEETING_FIELDS } from '../../resources/registry/resources/meeting-field
 import { ORDER_FIELDS } from '../../resources/registry/resources/order-fields'
 import { PART_FIELDS } from '../../resources/registry/resources/part-fields'
 import { PAYMENT_FIELDS } from '../../resources/registry/resources/payment-fields'
+import { PAYMENT_GATEWAY_FIELDS } from '../../resources/registry/resources/payment-gateway-fields'
 import { PAYOUT_FIELDS } from '../../resources/registry/resources/payout-fields'
 import { PERSONAL_INBOX_FIELDS } from '../../resources/registry/resources/personal-inbox-fields'
 import { PRODUCT_FIELDS } from '../../resources/registry/resources/product-fields'
@@ -101,6 +102,7 @@ export const FIELD_REGISTRY: Record<string, Record<string, ResourceField>> = {
   bank_account: BANK_ACCOUNT_FIELDS,
   bank_transaction: BANK_TRANSACTION_FIELDS,
   bank_rule: BANK_RULE_FIELDS,
+  payment_gateway: PAYMENT_GATEWAY_FIELDS,
   tariff_code: TARIFF_CODE_FIELDS,
   tariff_rate: TARIFF_RATE_FIELDS,
   credit_memo: CREDIT_MEMO_FIELDS,

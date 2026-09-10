@@ -7,7 +7,6 @@
 import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_PAYMENT_ROUTES,
-  type PaymentRoute,
   type PaymentRouteMethod,
   resolvePaymentRoute,
 } from '../../money/bank-deposits/route'
@@ -105,89 +104,42 @@ describe('the declaration cannot drift from the vocabulary', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// `cash`, and the hole the guard deliberately does not see
-//
-// `SINGLE_WRITER_ROLES_BY_POSTING_TYPE.payment` is `[]` even though the `cash`
-// payment ROUTE emits the `CASH` role and `bank_deposit` declares `[CASH]`. The
-// guard is per TYPE, not per route, so `[CASH]` there would flag a conflict that
-// is not one. These tests pin the reasoning mechanically instead of leaving it
-// to the comment.
-//
-// ⚠️ "No payment method routes to `cash` while `bank_deposit` is enabled" is NOT
-// the invariant, and asserting it would fail on a stock install:
-// `DEFAULT_PAYMENT_ROUTES.bank` is `cash` by design (an ACH or wire arrives at
-// the bank as its own line). What actually keeps `cash` single-writer is that
-// the routes are DISJOINT destinations for one payment - money that goes to
-// `cash` never also passes through `undeposited_funds`, which is the only money
-// `bank_deposit` ever banks.
+// `cash` retired as a posting role (brief 13 §2). It named a bank account by
+// its own `glAccountId` from the start of this pass, so there is no role for
+// this guard to see and no exemption left to reason about: `bank_deposit` and
+// `payment` are genuinely `[]` now, not `[]` standing in for `[CASH]`.
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('cash has exactly one enabled writer', () => {
-  it('declares `cash` a single-writer role at all', () => {
-    expect(SINGLE_WRITER_ROLES).toContain(ACCOUNT_ROLES.CASH)
+describe('cash is gone as a role, and the guard is narrowed back to inventory', () => {
+  it('SINGLE_WRITER_ROLES is exactly the three inventory roles', () => {
+    expect([...SINGLE_WRITER_ROLES].sort()).toEqual([...INVENTORY_ROLES].sort())
   })
 
-  it('is `bank_deposit`, and only `bank_deposit`, among the ENABLED types', () => {
-    const cashWriters = ENABLED_POSTING_TYPES.filter((type) =>
-      SINGLE_WRITER_ROLES_BY_POSTING_TYPE[type].includes(ACCOUNT_ROLES.CASH)
-    )
-    expect(cashWriters).toEqual(['bank_deposit'])
+  it('no posting type declares a non-inventory single-writer role', () => {
+    const valid = new Set<string>(INVENTORY_ROLES)
+    for (const roles of Object.values(SINGLE_WRITER_ROLES_BY_POSTING_TYPE)) {
+      for (const role of roles) expect(valid.has(role)).toBe(true)
+    }
+  })
+
+  it('`bank_deposit` and `payment` declare no single-writer role at all', () => {
+    expect(SINGLE_WRITER_ROLES_BY_POSTING_TYPE.bank_deposit).toEqual([])
+    expect(SINGLE_WRITER_ROLES_BY_POSTING_TYPE.payment).toEqual([])
+  })
+
+  it('the enabled regime still has no writer conflict', () => {
     expect(findWriterConflicts()).toEqual([])
   })
 
-  it('the detector WOULD bite if `payment` were ever declared a cash writer', () => {
-    // The `[]` on `payment` is an exemption, not a broken detector. Declaring it
-    // a cash writer is a one-line edit in `regime.ts`, and this is what would
-    // happen if somebody made it: the guard is looking, it is simply being told
-    // there is nothing to see.
-    const asIfPaymentDrovecash = {
-      ...SINGLE_WRITER_ROLES_BY_POSTING_TYPE,
-      payment: [ACCOUNT_ROLES.CASH],
-    }
-    const writers = ['bank_deposit', 'payment'].filter((type) =>
-      asIfPaymentDrovecash[type as keyof typeof asIfPaymentDrovecash].includes(ACCOUNT_ROLES.CASH)
-    )
-    expect(writers).toEqual(['bank_deposit', 'payment'])
-  })
-})
-
-describe('the payment routes are disjoint destinations, which is what makes the exemption safe', () => {
-  const methods = Object.keys(DEFAULT_PAYMENT_ROUTES) as PaymentRouteMethod[]
-
-  it('maps each route to a DIFFERENT account role - one payment cannot land in two', () => {
-    const roles = Object.values(PAYMENT_ROUTE_ROLE)
-    expect(new Set(roles).size).toBe(roles.length)
-    expect(PAYMENT_ROUTE_ROLE.cash).toBe(ACCOUNT_ROLES.CASH)
-    expect(PAYMENT_ROUTE_ROLE.undeposited_funds).toBe(ACCOUNT_ROLES.UNDEPOSITED_FUNDS)
-    expect(PAYMENT_ROUTE_ROLE.undeposited_funds).not.toBe(PAYMENT_ROUTE_ROLE.cash)
+  it('the `cash` payment route resolves to a bank account, not a role', () => {
+    expect(PAYMENT_ROUTE_ROLE.cash).toEqual({ kind: 'bank_account' })
   })
 
-  it('routes every method to exactly one of the three destinations, on defaults and on settings', () => {
+  it('every default payment route still resolves to exactly one destination', () => {
+    const methods = Object.keys(DEFAULT_PAYMENT_ROUTES) as PaymentRouteMethod[]
     for (const method of methods) {
       expect(resolvePaymentRoute(method, null)).toBe(DEFAULT_PAYMENT_ROUTES[method])
     }
-    // And an org that has routed EVERYTHING to cash still has one cash writer
-    // per payment: `bank_deposit` banks undeposited funds, and there are none.
-    const allCash = Object.fromEntries(
-      methods.map((method) => [`accounting.paymentRoute.${method}`, 'cash'])
-    )
-    for (const method of methods) {
-      expect(resolvePaymentRoute(method, allCash)).toBe('cash' satisfies PaymentRoute)
-    }
-  })
-
-  it('a method routed to `cash` is never also banked by a deposit, because a deposit only drains undeposited funds', () => {
-    // The `bank_deposit` entry is `Dr cash Cr undeposited_funds`, so the money
-    // it moves is exactly the money the `undeposited_funds` route parked. A
-    // `cash`-routed payment never enters that account, so the two writers never
-    // touch the same money even though both name `cash`.
-    expect(SINGLE_WRITER_ROLES_BY_POSTING_TYPE.bank_deposit).toEqual([ACCOUNT_ROLES.CASH])
-    const cashRouted = methods.filter((method) => resolvePaymentRoute(method, null) === 'cash')
-    const undeposited = methods.filter(
-      (method) => resolvePaymentRoute(method, null) === 'undeposited_funds'
-    )
-    expect(cashRouted.length).toBeGreaterThan(0)
-    for (const method of cashRouted) expect(undeposited).not.toContain(method)
   })
 })
 

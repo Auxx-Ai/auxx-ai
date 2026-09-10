@@ -50,6 +50,7 @@ const BANK_ACCOUNT_ATTRIBUTES = [
   'bank_account_type',
   'bank_account_currency',
   'bank_account_gl_account',
+  'bank_account_stripe_external_account_id',
   'bank_account_feed_start_date',
   'bank_account_coverage_from',
   'bank_account_coverage_gaps',
@@ -703,6 +704,8 @@ async function hydrateBankAccounts(
       type: resolveBankAccountType(read(row.id, 'bank_account_type')?.optionId),
       currency: read(row.id, 'bank_account_currency')?.valueText ?? null,
       glAccountId: read(row.id, 'bank_account_gl_account')?.valueText ?? null,
+      stripeExternalAccountId:
+        read(row.id, 'bank_account_stripe_external_account_id')?.valueText ?? null,
       feedStartDate: feedStartDate ? toDateKey(feedStartDate) : null,
       coverageFrom: coverageFrom ? toDateKey(coverageFrom) : null,
       coverageGaps: normalizeCoverageGaps(read(row.id, 'bank_account_coverage_gaps')?.valueJson),

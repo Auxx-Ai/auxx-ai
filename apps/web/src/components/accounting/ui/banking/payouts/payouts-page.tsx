@@ -220,27 +220,38 @@ export function PayoutsPage() {
             items={payouts}
             getKey={(payout) => payout.payoutId}
             renderRow={(payout) => (
-              <TreeRow
-                title={payout.number ?? EMPTY_CELL}
-                secondary={payout.paidAt ?? 'Not settled yet'}
-                icon={<Landmark />}
-                trailing={
-                  <div className='flex items-center gap-3'>
-                    {payout.unrecognisedNetMinor > 0 && (
-                      <Badge variant='outline' size='sm'>
-                        {formatMinor(payout.unrecognisedNetMinor, DISPLAY_CURRENCY)} unidentified
-                        {payout.unrecognisedCount > 0 ? ` (${payout.unrecognisedCount})` : ''}
+              <div className='flex flex-col gap-1.5'>
+                <TreeRow
+                  title={payout.number ?? EMPTY_CELL}
+                  secondary={payout.paidAt ?? 'Not settled yet'}
+                  icon={<Landmark />}
+                  trailing={
+                    <div className='flex items-center gap-3'>
+                      {payout.unrecognisedNetMinor > 0 && (
+                        <Badge variant='outline' size='sm'>
+                          {formatMinor(payout.unrecognisedNetMinor, DISPLAY_CURRENCY)} unidentified
+                          {payout.unrecognisedCount > 0 ? ` (${payout.unrecognisedCount})` : ''}
+                        </Badge>
+                      )}
+                      <span className='font-mono text-sm tabular-nums'>
+                        {formatMinor(payout.depositedMinor, DISPLAY_CURRENCY)}
+                      </span>
+                      <Badge variant={STATUS_TONE[payout.status] ?? 'secondary'} size='sm'>
+                        {STATUS_LABEL[payout.status] ?? payout.status}
                       </Badge>
-                    )}
-                    <span className='font-mono text-sm tabular-nums'>
-                      {formatMinor(payout.depositedMinor, DISPLAY_CURRENCY)}
-                    </span>
-                    <Badge variant={STATUS_TONE[payout.status] ?? 'secondary'} size='sm'>
-                      {STATUS_LABEL[payout.status] ?? payout.status}
-                    </Badge>
-                  </div>
-                }
-              />
+                    </div>
+                  }
+                />
+                {/* 🛑 Brief 13 §2.3: a payout debits a bank account, not a role, and
+                    refuses to post until its Stripe destination is confirmed on
+                    one. `bank_account_unmapped` is the same shape the deposit's
+                    own unmapped-account refusal uses (`deposits-page.tsx`). */}
+                {payout.blockedReason && (
+                  <EntryBlockers
+                    blockers={[{ status: 'bank_account_unmapped', error: payout.blockedReason }]}
+                  />
+                )}
+              </div>
             )}
           />
         )}

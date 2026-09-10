@@ -30,7 +30,50 @@
  */
 
 import { accountLabel } from './account-label'
+import { accountSubtypeLabel, type GlAccountSubtypeValue } from './account-subtype'
 import type { AccountSuggestionReason, ChartAccountRow, ProviderAccount } from './types'
+
+/**
+ * Which provider `accountType` strings a subtype may map to (`13` §3.2).
+ *
+ * This is our second fact about an account, `subtype`, compared against the
+ * provider's own detail-type string - QuickBooks' `Bank`, `Accounts
+ * Receivable`, and so on - not against `classification`, which is the
+ * five-way statement section already checked separately. `other` and a null
+ * subtype impose nothing here; every account still passes the
+ * classification-only check above.
+ *
+ * Compared case-insensitively after trim (`norm`), so a provider sending
+ * `' bank '` still matches `'Bank'`.
+ */
+export const SUBTYPE_PROVIDER_ACCOUNT_TYPES: Partial<
+  Record<GlAccountSubtypeValue, readonly string[]>
+> = {
+  bank: ['Bank'],
+  accounts_receivable: ['Accounts Receivable'],
+  accounts_payable: ['Accounts Payable'],
+  credit_card: ['Credit Card'],
+  inventory: ['Other Current Asset'],
+  fixed_asset: ['Fixed Asset'],
+  cost_of_goods_sold: ['Cost of Goods Sold'],
+}
+
+/**
+ * Does `providerAccount.accountType` satisfy `subtype`'s allowed list?
+ *
+ * A null or `other` subtype (no entry in the table) imposes nothing - the
+ * classification-only check is all that applies.
+ */
+function subtypeAllows(
+  subtype: GlAccountSubtypeValue | null | undefined,
+  providerAccountType: string
+): boolean {
+  if (!subtype) return true
+  const allowed = SUBTYPE_PROVIDER_ACCOUNT_TYPES[subtype]
+  if (!allowed) return true
+  const wanted = norm(providerAccountType)
+  return allowed.some((type) => norm(type) === wanted)
+}
 
 /** One proposal: our account, their account, and the evidence for the pairing. */
 export interface AccountSuggestion {
@@ -196,13 +239,21 @@ export function validateProviderMapping(
   if (providerAccount.classification !== account.accountType) {
     return `${accountLabel(account)} is ${classificationArticle(account.accountType)} account but is mapped to '${providerAccount.fullyQualifiedName}', which is ${providerAccount.classification}. Posting to it would balance and still be wrong.`
   }
+  if (!subtypeAllows(account.subtype, providerAccount.accountType)) {
+    const subtypeLabel = accountSubtypeLabel(account.subtype as GlAccountSubtypeValue).toLowerCase()
+    return `${accountLabel(account)} is ${classificationArticle(subtypeLabel)} account but is mapped to '${providerAccount.fullyQualifiedName}', which QuickBooks types as ${providerAccount.accountType}. Posting to it would balance and still be wrong.`
+  }
   return null
 }
 
 /** Type-compatible, active, and therefore offerable in a picker for `account`. */
 export function isMappableTo(
-  account: Pick<ChartAccountRow, 'accountType'>,
+  account: Pick<ChartAccountRow, 'accountType' | 'subtype'>,
   providerAccount: ProviderAccount
 ): boolean {
-  return providerAccount.active && providerAccount.classification === account.accountType
+  return (
+    providerAccount.active &&
+    providerAccount.classification === account.accountType &&
+    subtypeAllows(account.subtype, providerAccount.accountType)
+  )
 }

@@ -10,8 +10,9 @@
  *
  * ```
  *   Dr accounts_receivable                     this shipment's total
- *       Cr revenue_dtc | revenue_dealer          this shipment's subtotal
- *       Cr sales_tax_payable                     this shipment's tax
+ *       Cr revenue_product   (channel dimension)  this shipment's subtotal
+ *       Cr sales_tax_payable (jurisdiction dimension, when it ties)
+ *                                                  this shipment's tax
  *       Cr revenue_shipping                      the order's shipping, ONCE
  *
  *   Dr cogs_product_cost      extended cost of what shipped   <- DARK, see below
@@ -52,7 +53,7 @@
  * builders are one policy read on two document families, and they cannot
  * double-count, because `invoice` and `order` are disjoint - no order field on
  * an invoice, no invoice field on an order, in either direction. Product
- * revenue lands on `4000`/`4010` from here; service revenue lands on `4030`
+ * revenue lands on `4000` from here; service revenue lands on `4030`
  * from there.
  *
  * @see plans/accounting/tasks/01-post-revenue-to-the-ledger.md
@@ -61,6 +62,8 @@
 import { UnprocessableEntityError } from '../errors'
 import { ACCOUNT_ROLES, type AccountRole, buildEntry } from './build-entry'
 import { DOC_NUMBER_MAX_LENGTH } from './doc-number'
+import type { JurisdictionTaxLine } from './split-tax-by-jurisdiction'
+import { splitTaxByJurisdiction } from './split-tax-by-jurisdiction'
 import type { BuiltEntry, GlPostingLineInput } from './types'
 
 /** The `sourceType` every fulfillment line carries: the `order` record. */
@@ -79,15 +82,22 @@ export const FULFILLMENT_SOURCE_TYPE = 'order'
 export type OrderChannelKey = 'dtc' | 'dealer' | 'manual' | 'null'
 
 /**
- * Which revenue role each order channel books to. DECLARED, never derived.
+ * Which `dimensions.channel` value each order channel writes onto the
+ * `revenue_product` line. DECLARED, never derived.
+ *
+ * 🛑 **This used to be a role map** (`revenue_dtc` | `revenue_dealer`) and it
+ * is a keyspace now (brief 13 §5): channel is a reporting DIMENSION on one
+ * `revenue_product` account, never a second account. The P&L still splits
+ * revenue by channel - now by grouping on `dimensions.channel` instead of by
+ * account - which is exactly the acceptance this table exists to keep true.
  *
  * ## ⤵️ It fails OPEN, and it used to fail closed
  *
- * `manual` and `null` used to REFUSE, on the argument that `4000` and `4010` are
- * two revenue accounts and a default to DTC puts a dealer sale in the consumer
- * line, where it balances and is invisible until somebody reads the P&L by
- * channel. The argument is sound and the answer was still wrong, for a reason
- * the data settled (49 §4.6, §8.1 item 6, §8.4 decision 5):
+ * `manual` and `null` used to REFUSE, on the argument that `4000` and `4010`
+ * (now retired) were two revenue accounts and a default to `dtc` puts a dealer
+ * sale in the consumer line, where it balances and is invisible until somebody
+ * reads the P&L by channel. The argument is sound and the answer was still
+ * wrong, for a reason the data settled (49 §4.6, §8.1 item 6, §8.4 decision 5):
  *
  * - `order_channel` is **human-set, never derived**, and no connector binds it.
  *   535 of 545 orders on the reference org carry the registry DEFAULT, `manual`.
@@ -98,22 +108,23 @@ export type OrderChannelKey = 'dtc' | 'dealer' | 'manual' | 'null'
  *
  * A default that recognises consumer revenue is the honest reading of *"nobody
  * has said"* for a business whose unmarked orders are Shopify checkouts. It is
- * also **correctable**: an order booked to the wrong revenue line is fixed by
+ * also **correctable**: an order booked to the wrong dimension is fixed by
  * setting the channel and posting a compensating entry, whereas revenue that
  * was never recognised at all is invisible. When the dealer signal lands, the
  * `dealer` row is already here and the default stops being reached.
  *
- * Widening this table is a one-line edit here plus a role in `ACCOUNT_ROLES`.
- * Deriving it from `paymentGateways` or tags was tried and cannot work: a manual
- * sale has neither.
+ * Widening this table is a one-line edit here - no role, no chart migration,
+ * no builder change beyond the value written. Deriving it from
+ * `paymentGateways` or tags was tried and cannot work: a manual sale has
+ * neither.
  */
-export const CHANNEL_REVENUE_ROLE: Record<OrderChannelKey, AccountRole> = {
-  dtc: ACCOUNT_ROLES.REVENUE_DTC,
-  dealer: ACCOUNT_ROLES.REVENUE_DEALER,
+export const CHANNEL_KEYS: Record<OrderChannelKey, string> = {
+  dtc: 'dtc',
+  dealer: 'dealer',
   // "Somebody typed manual" and "nobody has said" are still two different facts
   // - see `OrderChannelKey` - and they simply have the same answer today.
-  manual: ACCOUNT_ROLES.REVENUE_DTC,
-  null: ACCOUNT_ROLES.REVENUE_DTC,
+  manual: 'dtc',
+  null: 'dtc',
 }
 
 /** Normalise a stored `order_channel` value - anything unrecognised is `'null'`. */
@@ -356,7 +367,7 @@ export interface BuildFulfillmentEntryInput {
   sequence: number
   /**
    * `order_channel`, verbatim. `manual` and absent both recognise as CONSUMER
-   * revenue - the table fails open. See {@link CHANNEL_REVENUE_ROLE}.
+   * revenue - the table fails open. See {@link CHANNEL_KEYS}.
    */
   channel: string | null | undefined
   /** `order_currency`, verbatim. Anything but `ledgerCurrency` REFUSES. */
@@ -427,6 +438,16 @@ export interface BuildFulfillmentEntryInput {
    * still posts; the export is what refuses a receivable line with none.
    */
   contactInstanceId?: string | null
+  /**
+   * The order's own tax lines - one row per jurisdiction (brief 13 §5,
+   * `tax_line` EntityInstances). When present and they SUM to
+   * `orderTaxTotalMinor`, the `sales_tax_payable` credit is split pro rata
+   * across them with a `jurisdiction` dimension per line - see
+   * {@link splitTaxByJurisdiction}. Absent, empty, or not tying to the order's
+   * own tax total falls back to today's single undimensioned line: a partial
+   * breakdown would read as a complete one.
+   */
+  taxLines?: readonly JurisdictionTaxLine[]
   /** The entry memo, carried onto every line with none of its own. */
   memo?: string
 }
@@ -436,8 +457,15 @@ export interface BuiltFulfillmentEntry {
   entry: BuiltEntry
   /** `ORD-0012-F1`. Also `BuiltEntry.periodKey`. */
   periodKey: string
-  /** Which revenue account the channel resolved to. */
+  /**
+   * `ACCOUNT_ROLES.REVENUE_PRODUCT`, always, now that channel is a dimension
+   * rather than a second role (brief 13 §5). Kept as a field, rather than
+   * removed, so `money/orders/fulfill.ts` keeps a stable shape to log; the
+   * channel itself is on {@link channelDimension}.
+   */
   revenueRole: AccountRole
+  /** The `dimensions.channel` value the revenue line carries - see {@link CHANNEL_KEYS}. */
+  channelDimension: string
   /** This shipment's share of the order, all in integer minor units. */
   subtotalMinor: number
   taxMinor: number
@@ -530,7 +558,7 @@ export function fulfillmentPeriodKey(orderNumber: string, sequence: number): str
  * @throws {UnprocessableEntityError} on a foreign currency, no shipped lines, a
  *   non-positive quantity, a fractional stored amount, an over-long order
  *   number, or an entry with no value on either side. NOT on an unset channel:
- *   see {@link CHANNEL_REVENUE_ROLE}.
+ *   see {@link CHANNEL_KEYS}.
  */
 export function buildFulfillmentEntry(input: BuildFulfillmentEntryInput): BuiltFulfillmentEntry {
   const {
@@ -546,6 +574,7 @@ export function buildFulfillmentEntry(input: BuildFulfillmentEntryInput): BuiltF
     includeCogs = false,
     cogsMinor,
     contactInstanceId,
+    taxLines,
     memo,
   } = input
 
@@ -564,9 +593,9 @@ export function buildFulfillmentEntry(input: BuildFulfillmentEntryInput): BuiltF
 
   // ── The channel, from the DECLARED table ─────────────────────────────────
   // Fails OPEN: an unset channel recognises as consumer revenue rather than
-  // refusing the shipment. See CHANNEL_REVENUE_ROLE for why that changed.
+  // refusing the shipment. See CHANNEL_KEYS for why that changed.
   const channelKey = toChannelKey(channel)
-  const revenueRole = CHANNEL_REVENUE_ROLE[channelKey]
+  const channelDimension = CHANNEL_KEYS[channelKey]
 
   if (shippedLines.length === 0) {
     throw new UnprocessableEntityError(
@@ -602,50 +631,72 @@ export function buildFulfillmentEntry(input: BuildFulfillmentEntryInput): BuiltF
   const source = { sourceType: FULFILLMENT_SOURCE_TYPE, sourceId: orderId }
   const shipmentLabel = `${orderNumber} shipment ${sequence}`
 
-  const lines: GlPostingLineInput[] = [
-    {
-      ...source,
-      accountRole: ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE,
-      direction: 'debit',
-      amount: totalMinor,
-      memo: memo ?? shipmentLabel,
-      sortOrder: 0,
-      ...(contactInstanceId
-        ? { counterpartyType: 'customer' as const, counterpartyId: contactInstanceId }
-        : {}),
-    },
-    {
-      ...source,
-      accountRole: revenueRole,
-      direction: 'credit',
-      amount: subtotalMinor,
-      memo: `${shipmentLabel} - ${shippedLines.length} line${shippedLines.length === 1 ? '' : 's'}`,
-      sortOrder: 1,
-    },
-  ]
+  const lines: GlPostingLineInput[] = []
+  let sortOrder = 0
+  const push = (line: Omit<GlPostingLineInput, 'sortOrder'>): void => {
+    lines.push({ ...line, sortOrder: sortOrder++ } as GlPostingLineInput)
+  }
+
+  push({
+    ...source,
+    accountRole: ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE,
+    direction: 'debit',
+    amount: totalMinor,
+    memo: memo ?? shipmentLabel,
+    ...(contactInstanceId
+      ? { counterpartyType: 'customer' as const, counterpartyId: contactInstanceId }
+      : {}),
+  })
+  push({
+    ...source,
+    accountRole: ACCOUNT_ROLES.REVENUE_PRODUCT,
+    direction: 'credit',
+    amount: subtotalMinor,
+    memo: `${shipmentLabel} - ${shippedLines.length} line${shippedLines.length === 1 ? '' : 's'}`,
+    dimensions: { channel: channelDimension },
+  })
 
   // Zero legs are DROPPED rather than posted at zero. An org that charges no
   // tax has no reason to have mapped `sales_tax_payable`, and a zero line
   // against an unmapped role fails the resolver for no information at all -
   // the same rule `materialize` follows in `build-entry.ts`.
   if (taxMinor !== 0) {
-    lines.push({
-      ...source,
-      accountRole: ACCOUNT_ROLES.SALES_TAX_PAYABLE,
-      direction: 'credit',
-      amount: taxMinor,
-      memo: `${shipmentLabel} - sales tax (${taxBasis === 'per_line' ? 'per line' : 'allocated'})`,
-      sortOrder: 2,
+    const taxLabel = taxBasis === 'per_line' ? 'per line' : 'allocated'
+    // Split by jurisdiction when the order's own tax lines tie to its total
+    // (brief 13 §5) - otherwise the single undimensioned line, unchanged.
+    const split = splitTaxByJurisdiction({
+      taxMinor,
+      taxLines: taxLines ?? [],
+      orderTaxTotalMinor: input.orderTaxTotalMinor,
     })
+    if (split) {
+      for (const { jurisdiction, amountMinor } of split) {
+        push({
+          ...source,
+          accountRole: ACCOUNT_ROLES.SALES_TAX_PAYABLE,
+          direction: 'credit',
+          amount: amountMinor,
+          memo: `${shipmentLabel} - sales tax, ${jurisdiction} (${taxLabel})`,
+          dimensions: { jurisdiction },
+        })
+      }
+    } else {
+      push({
+        ...source,
+        accountRole: ACCOUNT_ROLES.SALES_TAX_PAYABLE,
+        direction: 'credit',
+        amount: taxMinor,
+        memo: `${shipmentLabel} - sales tax (${taxLabel})`,
+      })
+    }
   }
   if (shippingMinor !== 0) {
-    lines.push({
+    push({
       ...source,
       accountRole: ACCOUNT_ROLES.REVENUE_SHIPPING,
       direction: 'credit',
       amount: shippingMinor,
       memo: `${orderNumber} - shipping, recognised once on the first fulfillment`,
-      sortOrder: 3,
     })
   }
 
@@ -659,24 +710,20 @@ export function buildFulfillmentEntry(input: BuildFulfillmentEntryInput): BuiltF
         { orderNumber, cogsMinor: String(cost) }
       )
     }
-    lines.push(
-      {
-        ...source,
-        accountRole: ACCOUNT_ROLES.COGS_PRODUCT_COST,
-        direction: 'debit',
-        amount: cost,
-        memo: `${shipmentLabel} - cost of goods shipped`,
-        sortOrder: 4,
-      },
-      {
-        ...source,
-        accountRole: ACCOUNT_ROLES.INVENTORY_FINISHED_GOODS,
-        direction: 'credit',
-        amount: cost,
-        memo: `${shipmentLabel} - relieved from finished goods`,
-        sortOrder: 5,
-      }
-    )
+    push({
+      ...source,
+      accountRole: ACCOUNT_ROLES.COGS_PRODUCT_COST,
+      direction: 'debit',
+      amount: cost,
+      memo: `${shipmentLabel} - cost of goods shipped`,
+    })
+    push({
+      ...source,
+      accountRole: ACCOUNT_ROLES.INVENTORY_FINISHED_GOODS,
+      direction: 'credit',
+      amount: cost,
+      memo: `${shipmentLabel} - relieved from finished goods`,
+    })
   }
 
   const entry = buildEntry({ postingType: 'fulfillment', periodKey, txnDate, lines })
@@ -684,7 +731,8 @@ export function buildFulfillmentEntry(input: BuildFulfillmentEntryInput): BuiltF
   return {
     entry,
     periodKey,
-    revenueRole,
+    revenueRole: ACCOUNT_ROLES.REVENUE_PRODUCT,
+    channelDimension,
     subtotalMinor,
     taxMinor,
     shippingMinor,

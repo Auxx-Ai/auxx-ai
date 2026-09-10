@@ -27,6 +27,7 @@ import { Badge } from '@auxx/ui/components/badge'
 import { Banknote, CalendarRange, ExternalLink, Lock, Scale } from 'lucide-react'
 import Link from 'next/link'
 import { useMemo } from 'react'
+import { BankAccountPicker } from '~/components/accounting/ui/bank-account-picker'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { EmptyState } from '~/components/global/empty-state'
 import { FieldPanel } from '~/components/global/forms/field-panel'
@@ -94,8 +95,17 @@ const PAYMENT_ROUTE_ROWS = [
   },
 ] as const
 
-/** The five keys this page's route slice owns. Derived, never retyped. */
-const PAYMENT_ROUTE_DRAFT_KEYS = PAYMENT_ROUTE_ROWS.map((row) => row.key)
+/**
+ * The five route keys, plus the one bank account a `cash` route needs.
+ *
+ * `cashBankAccountId` rides in the same draft slice as the routes it depends
+ * on: they save and discard together, and a row shown only while a route
+ * above reads `cash` has nothing sensible to save on its own.
+ */
+const PAYMENT_ROUTE_DRAFT_KEYS = [
+  ...PAYMENT_ROUTE_ROWS.map((row) => row.key),
+  ACCOUNTING_KEYS.cashBankAccountId,
+]
 
 const BREADCRUMBS = [
   { title: 'Accounting', href: '/app/accounting' },
@@ -141,6 +151,10 @@ export function AccountingGeneralSettingsPage() {
   // Its own slice, like every other section on this page: the route table
   // validates nothing and could later save through a different mutation.
   const routes = useAccountingSetupDraft(PAYMENT_ROUTE_DRAFT_KEYS)
+  // Shown only while at least one route reads `cash` (brief 13 §2.4): `cash`
+  // is no longer a role, so the bank account it lands in has to be named
+  // somewhere, and there is nothing to name while nothing routes there.
+  const anyRouteIsCash = PAYMENT_ROUTE_ROWS.some((row) => routes.draft[row.key] === 'cash')
 
   // ── Section 3: absorption rates ──────────────────────────────────────────
   const absorption = useAccountingSetupDraft(ABSORPTION_DRAFT_KEYS)
@@ -281,6 +295,22 @@ export function AccountingGeneralSettingsPage() {
                     {...routes.controlled(row.key)}
                   />
                 ))}
+
+                {anyRouteIsCash && (
+                  <SettingsFieldRow
+                    settingKey={ACCOUNTING_KEYS.cashBankAccountId}
+                    title='Cash bank account'
+                    description='Where a payment routed to cash is banked. A cash-routed payment refuses to post until this is set.'>
+                    <BankAccountPicker
+                      value={readText(routes.draft[ACCOUNTING_KEYS.cashBankAccountId])}
+                      onChange={(id) =>
+                        routes.patch({
+                          [ACCOUNTING_KEYS.cashBankAccountId]: id as SettingValue,
+                        })
+                      }
+                    />
+                  </SettingsFieldRow>
+                )}
               </FieldPanel>
 
               <p className='text-muted-foreground text-xs'>

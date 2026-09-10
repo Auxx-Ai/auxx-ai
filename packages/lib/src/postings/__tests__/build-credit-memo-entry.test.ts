@@ -67,7 +67,7 @@ describe('a native credit memo (reverseRevenue, no settlement)', () => {
     const [debit] = lines(built, ACCOUNT_ROLES.REVENUE_RETURNS_ALLOWANCES)
     expect(debit).toMatchObject({ direction: 'debit', amount: 12_000 })
     expect(lines(built, ACCOUNT_ROLES.REVENUE_SERVICE)).toHaveLength(0)
-    expect(lines(built, ACCOUNT_ROLES.REVENUE_DTC)).toHaveLength(0)
+    expect(lines(built, ACCOUNT_ROLES.REVENUE_PRODUCT)).toHaveLength(0)
   })
 
   it('debits sales tax payable for the transcribed tax', () => {

@@ -112,6 +112,8 @@ export interface BankAccountPatch {
   currency?: string | null
   /** The `gl_account` instance id this account maps to (task 15 §4). Never a code. */
   glAccountId?: string | null
+  /** The Stripe destination id, confirmed once by a person (brief 13 §2.3). */
+  stripeExternalAccountId?: string | null
   feedStartDate?: string | null
 }
 
@@ -197,6 +199,7 @@ interface TextValues {
   institution: string
   last4: string
   currency: string
+  stripeExternalAccountId: string
 }
 
 function BankAccountForm({
@@ -221,6 +224,7 @@ function BankAccountForm({
     institution: account.institution ?? '',
     last4: account.last4 ?? '',
     currency: account.currency ?? '',
+    stripeExternalAccountId: account.stripeExternalAccountId ?? '',
   })
 
   // The debounced writer reads the merged values through a ref: two rows edited
@@ -248,6 +252,10 @@ function BankAccountForm({
   )
   const commitCurrency = useDebouncedCallback(
     (value: string) => onPatch({ currency: value || null }),
+    TEXT_COMMIT_DELAY_MS
+  )
+  const commitStripeExternalAccountId = useDebouncedCallback(
+    (value: string) => onPatch({ stripeExternalAccountId: value || null }),
     TEXT_COMMIT_DELAY_MS
   )
 
@@ -372,6 +380,23 @@ function BankAccountForm({
             filterTypes={glFilterTypes}
             placeholder='Map to an account…'
             onChange={(id) => onPatch({ glAccountId: id })}
+          />
+        </FieldPanelRow>
+
+        <FieldPanelRow
+          title='Stripe external account'
+          type={BaseType.STRING}
+          showIcon
+          description='The Stripe destination id (ba_… or card_…) this account settles payouts to, confirmed once so a payout can be attributed here. Never matched on last four.'>
+          <FieldInputAdapter
+            fieldType={FieldType.TEXT}
+            value={values.stripeExternalAccountId}
+            placeholder='ba_1AbCdEf...'
+            onChange={(value) => {
+              const next = (value as string) ?? ''
+              bufferText('stripeExternalAccountId', next)
+              commitStripeExternalAccountId(next)
+            }}
           />
         </FieldPanelRow>
 

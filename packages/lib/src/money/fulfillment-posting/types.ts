@@ -34,8 +34,30 @@ export const FULFILLMENT_POSTING_GROUPINGS: readonly FulfillmentPostingGrouping[
  * Decided per shipment from the order's financial status and gateways, never
  * from the channel. A card order was paid at checkout and the payout entry
  * drains clearing; a terms order owes, and aging names the debtor.
+ *
+ * 🛑 **`'gateway'`, added by brief 13 §5.3, is not a fourth account.** It is
+ * the bucket a shipment falls into when its gateway resolved to a
+ * `payment_gateway` record's own clearing account id rather than to one of the
+ * three roles below - see {@link FulfillmentDebit}. `byDebitRole` summaries
+ * (this file's own `FulfillmentPostingGroup.totals.byDebitRole` and the
+ * builder's `BuiltFulfillmentBatchEntry.totals.byDebitRole`) keep working
+ * unchanged by counting every id-based debit under this one key; the actual
+ * account id rides on `ShipmentAmounts.debitGlAccountId`.
  */
-export type FulfillmentDebitRole = 'clearing_card' | 'clearing_affirm' | 'accounts_receivable'
+export type FulfillmentDebitRole =
+  | 'clearing_card'
+  | 'clearing_affirm'
+  | 'accounts_receivable'
+  | 'gateway'
+
+/**
+ * What a shipment debits: a declared ROLE, or a `payment_gateway` record's own
+ * clearing account id (brief 13 §5.3's contract - `build-entry.ts`'s header:
+ * "a gateway does not get a role").
+ */
+export type FulfillmentDebit =
+  | { role: Exclude<FulfillmentDebitRole, 'gateway'> }
+  | { glAccountId: string }
 
 /**
  * Why a shipment in the range produces no posting.
@@ -117,6 +139,14 @@ export interface UnpostedShipment {
    * `accounts_receivable` line - never onto a summarised line.
    */
   contactId: string | null
+  /**
+   * The order's own `tax_line` rows - one per jurisdiction (brief 13 §5).
+   * Empty when the org has none, or the org predates entity migration for
+   * `tax_line`. Used to split this shipment's `sales_tax_payable` credit
+   * across jurisdictions when they tie to `orderTaxTotalMinor` - see
+   * `postings/split-tax-by-jurisdiction.ts`.
+   */
+  taxLines: readonly { title: string; priceMinor: number }[]
 }
 
 /** Everything the pure plan is allowed to see. No db, no clock, no settings. */
@@ -136,8 +166,21 @@ export interface FulfillmentPostingPlanInput {
 /** The amounts one shipment contributes, all integer minor units. */
 export interface ShipmentAmounts {
   debitRole: FulfillmentDebitRole
+  /**
+   * The `payment_gateway` record's own clearing account id, set only when
+   * `debitRole` is `'gateway'` (brief 13 §5.3). Absent for the three declared
+   * roles.
+   */
+  debitGlAccountId?: string
   subtotalMinor: number
   taxMinor: number
+  /**
+   * `taxMinor` split across jurisdictions, when the order's own `tax_line`
+   * rows tie to its total (brief 13 §5). Absent when there is nothing to
+   * split or the split does not tie - the caller then credits `taxMinor` as
+   * one undimensioned line, same as before this existed.
+   */
+  taxByJurisdiction?: Array<{ jurisdiction: string; amountMinor: number }>
   shippingMinor: number
   totalMinor: number
   taxBasis: 'per_line' | 'allocated'

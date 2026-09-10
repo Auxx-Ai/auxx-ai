@@ -142,6 +142,9 @@ export async function reverseEntry(
         // original did, not one re-resolved today.
         counterpartyType: schema.GlPostingLine.counterpartyType,
         counterpartyId: schema.GlPostingLine.counterpartyId,
+        // Carried onto the reversed line unchanged too (brief 13 §5): the
+        // reversal is reporting-wise the same line as the original, backwards.
+        dimensions: schema.GlPostingLine.dimensions,
       })
       .from(schema.GlPostingLine)
       .where(
@@ -190,6 +193,9 @@ export async function reverseEntry(
       // customer or vendor's balance.
       counterpartyType: (line.counterpartyType as CounterpartyType | null) ?? undefined,
       counterpartyId: line.counterpartyId ?? undefined,
+      // And the dimensions ride along too (brief 13 §5): the reversal is
+      // reporting-wise the same line as the original, backwards.
+      dimensions: (line.dimensions as Record<string, string> | null) ?? undefined,
     }))
 
     const entry = buildEntry({

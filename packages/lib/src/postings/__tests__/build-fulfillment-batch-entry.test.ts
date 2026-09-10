@@ -65,6 +65,7 @@ function shipment(overrides: Partial<UnpostedShipment> = {}): UnpostedShipment {
     priorShipmentsSubtotalMinor: 0,
     includeShipping: true,
     contactId: 'contact-1',
+    taxLines: [],
     ...overrides,
   }
 }
@@ -74,7 +75,8 @@ function planned(overrides: Partial<UnpostedShipment> = {}): PlannedShipment {
   const base = shipment(overrides)
   const debit = resolveFulfillmentDebit(base)
   if (debit.kind !== 'debit') throw new Error(`fixture excluded: ${debit.reason}`)
-  return { ...base, amounts: computeShipmentAmounts(base, debit.role) }
+  const { kind: _kind, ...rest } = debit
+  return { ...base, amounts: computeShipmentAmounts(base, rest) }
 }
 
 /** Total a group the way the plan does, so the builder gets a realistic input. */
@@ -83,6 +85,7 @@ function group(shipments: PlannedShipment[], groupKey = '2026-07-06'): Fulfillme
     clearing_card: 0,
     clearing_affirm: 0,
     accounts_receivable: 0,
+    gateway: 0,
   }
   let subtotalMinor = 0
   let taxMinor = 0
@@ -116,6 +119,16 @@ function linesFor(entry: Entry, role: string) {
 function amountFor(entry: Entry, role: string): number | undefined {
   const found = linesFor(entry, role)
   return found.length === 0 ? undefined : found.reduce((sum, line) => sum + line.amount, 0)
+}
+
+/** The amount on the one `role` line carrying `{ [dimension]: value }` - brief 13 §5. */
+function dimensionAmountFor(
+  entry: Entry,
+  role: string,
+  dimension: string,
+  value: string
+): number | undefined {
+  return linesFor(entry, role).find((line) => line.dimensions?.[dimension] === value)?.amount
 }
 
 // ── 1. The debit fork ───────────────────────────────────────────────────────
@@ -223,7 +236,7 @@ describe('computeShipmentAmounts', () => {
         orderTaxTotalMinor: 1_650,
         orderShippingTotalMinor: 0,
       }),
-      'clearing_card'
+      { role: 'clearing_card' }
     )
     expect(amounts).toMatchObject({
       debitRole: 'clearing_card',
@@ -260,7 +273,7 @@ describe('computeShipmentAmounts', () => {
         orderTaxTotalMinor: 1_650,
         orderShippingTotalMinor: 0,
       }),
-      'clearing_card'
+      { role: 'clearing_card' }
     )
     expect(amounts.taxBasis).toBe('allocated')
     expect(amounts.taxMinor).toBe(1_650)
@@ -283,7 +296,7 @@ describe('computeShipmentAmounts', () => {
         orderTaxTotalMinor: 400,
         orderShippingTotalMinor: 0,
       }),
-      'clearing_card'
+      { role: 'clearing_card' }
     )
     expect(amounts).toMatchObject({ subtotalMinor: 3_000, taxMinor: 300, taxBasis: 'per_line' })
   })
@@ -304,7 +317,7 @@ describe('computeShipmentAmounts', () => {
         orderTaxTotalMinor: 400,
         orderShippingTotalMinor: 0,
       }),
-      'clearing_card'
+      { role: 'clearing_card' }
     )
     expect(amounts.taxMinor).toBe(400)
   })
@@ -326,7 +339,7 @@ describe('computeShipmentAmounts', () => {
         orderShippingTotalMinor: 0,
         priorShipmentsSubtotalMinor: 0,
       }),
-      'clearing_card'
+      { role: 'clearing_card' }
     )
     const second = computeShipmentAmounts(
       shipment({
@@ -344,7 +357,7 @@ describe('computeShipmentAmounts', () => {
         orderShippingTotalMinor: 0,
         priorShipmentsSubtotalMinor: 10_000,
       }),
-      'clearing_card'
+      { role: 'clearing_card' }
     )
     expect(first.taxMinor).toBe(770)
     expect(second.taxMinor).toBe(1_540)
@@ -354,11 +367,11 @@ describe('computeShipmentAmounts', () => {
   it('recognises shipping once, on the shipment that carries the flag', () => {
     const carries = computeShipmentAmounts(
       shipment({ orderShippingTotalMinor: 1_500, includeShipping: true }),
-      'clearing_card'
+      { role: 'clearing_card' }
     )
     const does_not = computeShipmentAmounts(
       shipment({ orderShippingTotalMinor: 1_500, includeShipping: false }),
-      'clearing_card'
+      { role: 'clearing_card' }
     )
     expect(carries.shippingMinor).toBe(1_500)
     expect(does_not.shippingMinor).toBe(0)
@@ -378,7 +391,7 @@ describe('computeShipmentAmounts', () => {
             },
           ],
         }),
-        'clearing_card'
+        { role: 'clearing_card' }
       )
     ).toThrowError(UnprocessableEntityError)
   })
@@ -478,7 +491,11 @@ describe('buildFulfillmentBatchEntry', () => {
       card.amounts.totalMinor + exempt.amounts.totalMinor
     )
     expect(amountFor(entry, ACCOUNT_ROLES.CLEARING_AFFIRM)).toBe(affirm.amounts.totalMinor)
-    expect(amountFor(entry, ACCOUNT_ROLES.REVENUE_DEALER)).toBe(termsOther.amounts.subtotalMinor)
+    // Channel is a dimension on ONE revenue_product account now (brief 13 §5),
+    // never a second account - the dealer order's share is the dealer-dimensioned line.
+    expect(dimensionAmountFor(entry, ACCOUNT_ROLES.REVENUE_PRODUCT, 'channel', 'dealer')).toBe(
+      termsOther.amounts.subtotalMinor
+    )
   })
 
   it('emits ONE receivable line per order, sourced on the order', () => {
@@ -596,7 +613,7 @@ describe('buildFulfillmentBatchEntry', () => {
     expect(entry.lines.map((line) => line.accountRole)).toEqual([
       ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE,
       ACCOUNT_ROLES.CLEARING_CARD,
-      ACCOUNT_ROLES.REVENUE_DTC,
+      ACCOUNT_ROLES.REVENUE_PRODUCT,
     ])
     expect(entry.lines.map((line) => line.sortOrder)).toEqual([0, 1, 2])
   })
@@ -646,8 +663,14 @@ describe('buildFulfillmentBatchEntry', () => {
       ledgerCurrency: 'USD',
       attempt: 0,
     })
-    expect(amountFor(built.entry, ACCOUNT_ROLES.REVENUE_DTC)).toBe(built.totals.subtotalMinor)
-    expect(amountFor(built.entry, ACCOUNT_ROLES.REVENUE_DEALER)).toBeUndefined()
+    // One revenue_product line, dimensioned `dtc` - never a dealer line.
+    expect(amountFor(built.entry, ACCOUNT_ROLES.REVENUE_PRODUCT)).toBe(built.totals.subtotalMinor)
+    expect(dimensionAmountFor(built.entry, ACCOUNT_ROLES.REVENUE_PRODUCT, 'channel', 'dtc')).toBe(
+      built.totals.subtotalMinor
+    )
+    expect(
+      dimensionAmountFor(built.entry, ACCOUNT_ROLES.REVENUE_PRODUCT, 'channel', 'dealer')
+    ).toBeUndefined()
   })
 
   it('carries the memo onto the summarised lines and the order number onto the A/R ones', () => {
