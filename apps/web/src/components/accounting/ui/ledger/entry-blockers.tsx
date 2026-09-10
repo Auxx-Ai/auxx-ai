@@ -40,6 +40,7 @@ export type LedgerBlockerStatus =
   | 'discard_refused'
   | 'bank_account_unmapped'
   | 'no_bank_accounts'
+  | 'suggestion_incomplete'
 
 /** One reason a preview, a post or a discard refused, as the console renders it. */
 export interface LedgerBlocker {
@@ -207,6 +208,18 @@ const REMEDIES: Partial<Record<LedgerBlockerStatus, BlockerRemedy>> = {
     title: 'This entry cannot be discarded',
     guidance:
       'Only a draft can be thrown away, and only one that has not reached the ledger. An entry that has been posted is corrected by reversing it and posting a new one, so what it did to the books stays on the record. Nothing was changed.',
+  },
+  // Brief 19 section 4.4: a provider suggestion that does not balance is not
+  // a refusal. Nothing was built, claimed or posted, and every cell stays
+  // editable. `neutral`, because the two reasons it happens (an account
+  // QuickBooks has that the chart does not, and an inventory count not yet
+  // entered) are ordinary setup work, not faults.
+  suggestion_incomplete: {
+    tone: 'neutral',
+    icon: Scale,
+    title: 'The suggestion does not balance yet',
+    guidance:
+      'What is still missing is below, with its amount. Nothing has been posted and every cell in the grid can be edited.',
   },
 }
 

@@ -11,6 +11,7 @@
 
 import { PermissionKey } from '@auxx/lib/permissions'
 import {
+  fillOpeningTrialBalanceFromProvider,
   postOpeningTrialBalance,
   previewOpeningTrialBalance,
   readOpeningTrialBalance,
@@ -133,4 +134,24 @@ export const ledgerOpeningRouter = createTRPCRouter({
       if (result.isErr()) throw result.error
       return result.value
     }),
+
+  /**
+   * Suggest the opening trial balance from the connected accounting provider's
+   * balance sheet (plans/accounting/tasks/19-opening-balances-from-the-provider.md
+   * section 4.5), and save it through the same write path {@link save} uses.
+   *
+   * Gated on `ledgerControl`, not `ledgerPost` and not `ledgerView`: this
+   * writes the same draft `save` does. It only ever suggests - nothing here
+   * posts, and the person still presses Continue.
+   *
+   * Refuses `UnprocessableEntityError` / `ConflictError`; both reach the
+   * browser as `AuxxError`s and render as `EntryBlockers` cards, never a
+   * toast.
+   */
+  fillFromProvider: permissionProcedure(PermissionKey.ledgerControl).mutation(async ({ ctx }) => {
+    const { organizationId, userId } = ctx.session
+    const result = await fillOpeningTrialBalanceFromProvider(ctx.db, organizationId, userId)
+    if (result.isErr()) throw result.error
+    return result.value
+  }),
 })

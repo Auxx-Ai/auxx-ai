@@ -17,25 +17,40 @@ import { WizardPeriodPage } from './wizard-period-page'
 import type { WizardLeaveDirection, WizardStepHandle } from './wizard-step-handle'
 import { WizardWelcomePage } from './wizard-welcome-page'
 
-// 🛑 `connect` moved ahead of `accounts` (brief 16 §1.5, §2.3): the provider's
-// chart can now be the SOURCE of ours (`ImportChartButton mode='wizard'` on the
-// accounts page), so connecting has to happen before the accounts page can
-// offer it. `connect` still sits immediately before `accountMap`, and that pair
-// is unchanged - the mapping page cannot render a single row until a provider
-// chart exists to map against.
+// This list has been reordered twice, for two different reasons.
+//
+// 🛑 First (brief 16 §1.5, §2.3): `connect` moved ahead of `accounts`. The
+// provider's chart can now be the SOURCE of ours (`ImportChartButton
+// mode='wizard'` on the accounts page), so connecting has to happen before
+// the accounts page can offer it. `connect` still sits immediately before
+// `accountMap`, and that pair is unchanged - the mapping page cannot render a
+// single row until a provider chart exists to map against.
+//
+// 🛑 Second (brief 19 §2): `opening` and `openingTrialBalance` moved from
+// right after `period` to right before `done`. The opening trial balance is a
+// grid over `listChartAccounts`, and the only door onto a chart is
+// `ledger.provisionChart` on the `accounts` page, four pages later in the old
+// order - so on a fresh org the grid was empty, `summary.rows === 0`, and
+// Continue refused over a table with nothing in it and nothing the person
+// could do about it. The reorder puts the chart-provisioning pages ahead of
+// the grid that reads them. It also means QuickBooks is connected before the
+// opening pages, which is what lets a later "Suggest from QuickBooks" fill
+// have a chart and an account map to hang itself on.
+//
+// Nine pages either way.
 const PAGES = [
   'welcome',
   'period',
+  'costing',
+  'connect',
+  'accounts',
+  'accountMap',
   'opening',
   // 🛑 The trial balance sits AFTER the inventory snapshot and the order is
   // load-bearing: its three inventory rows are prefilled from the
   // `accounting.opening*` keys the previous page writes, and locked. Put it
   // first and those rows would be blank with no way to fill them.
   'openingTrialBalance',
-  'costing',
-  'connect',
-  'accounts',
-  'accountMap',
   'done',
 ] as const
 type WizardPage = (typeof PAGES)[number]

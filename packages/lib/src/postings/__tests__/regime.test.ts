@@ -148,12 +148,14 @@ describe('cash is gone as a role, and the guard is narrowed back to inventory', 
 // write-paths.md) §3 and §3.2. A per-type table cannot express "a family goes
 // one way", so this declares the families directly and asserts every member of
 // a family shares a route. Retired 2026-09-10 on MK's decision (brief 14's
-// DECIDED block): the invoice document mirror is gone, every family routes
-// `journal`, and this guard is what keeps a `document` value from arriving
-// quietly for one type in a family while its siblings stay `journal`.
+// DECIDED block): the invoice document mirror is gone. Every family routes
+// `journal` except `opening` (brief 19 §5.1), which routes `none` - an opening
+// balance is one entry per org, keyed on the cutover date, and is never
+// exported to the provider it may have been sourced from, so pushing it back
+// would double every balance in it.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** The document families brief 14 §2.3 named, kept as the guard even though every route is `journal` today. */
+/** The document families brief 14 §2.3 named, kept as the guard even though every family routes uniformly. */
 const POSTING_FAMILIES: Record<string, readonly PostingType[]> = {
   documents: ['invoice_issued', 'credit_memo', 'payment', 'deposit_application', 'write_off'],
   inventory: [
@@ -165,7 +167,8 @@ const POSTING_FAMILIES: Record<string, readonly PostingType[]> = {
     'month_end_deferral',
     'month_end_reversal',
   ],
-  manual: ['manual_journal', 'opening_balance'],
+  manual: ['manual_journal'],
+  opening: ['opening_balance'],
   banking: ['bank_deposit', 'bank_transaction', 'payout'],
 }
 
@@ -187,9 +190,13 @@ describe('the export route is declared, total, and per family', () => {
     }
   })
 
-  it('every route is `journal` today - the invoice document mirror is retired, not paused', () => {
-    for (const route of Object.values(EXPORT_ROUTE_BY_POSTING_TYPE)) {
-      expect(route).toBe('journal')
+  it('`opening_balance` routes `none`, and every other type routes `journal`', () => {
+    for (const [type, route] of Object.entries(EXPORT_ROUTE_BY_POSTING_TYPE)) {
+      if (type === 'opening_balance') {
+        expect(route).toBe('none')
+      } else {
+        expect(route).toBe('journal')
+      }
     }
   })
 })

@@ -141,6 +141,42 @@ export function overlayInventorySettings(
 }
 
 /**
+ * The evidence-rule sentence that tells a person what number belongs in the
+ * grid, branched on where the grid's numbers came from
+ * (plans/accounting/tasks/19-opening-balances-from-the-provider.md section
+ * 4.8).
+ *
+ * 🛑 Both strings live here, not inlined at either call site. The wizard page
+ * and the settings twin already share this module for exactly this reason: a
+ * wizard and a settings page giving different accounting advice about the
+ * same grid is worse than either string being wrong on its own.
+ *
+ * `'manual'` is the original, unconditional instruction - a statement balance
+ * is the right evidence when nobody has typed anything yet.
+ *
+ * ⚠️ The `'provider'` string is honest only while `accounting.openingSource`
+ * means "seeded from" rather than "equal to" - a person may have edited every
+ * row since the fill ran, which is why it ends by telling them to check
+ * rather than telling them they are done.
+ */
+export function openingEvidenceInstruction(
+  source: 'manual' | 'provider',
+  cutoverDate: string
+): string {
+  if (source === 'provider') {
+    return (
+      `These are book balances from QuickBooks as of ${cutoverDate}. They already account for ` +
+      'payments that had not cleared at the cutover, which a statement balance does not, so do ' +
+      'not replace them with the statement figure. Check them against what you expect.'
+    )
+  }
+  return (
+    `Use the ${cutoverDate.slice(5).replace('-', '/')} statement balance for every bank and card ` +
+    'account. Do not use the tax return.'
+  )
+}
+
+/**
  * Whether the rows ON SCREEN say something different from the rows the server
  * last handed back.
  *

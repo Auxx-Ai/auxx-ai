@@ -85,6 +85,7 @@ import {
   type PostEntryResult,
   type PostFailureClass,
   type ProviderAccount,
+  type ProviderBalanceSheet,
   ProviderPostError,
 } from '../../postings/types'
 import { UnifiedCrudHandler } from '../../resources/crud'
@@ -106,6 +107,8 @@ export const QUICKBOOKS_PROVIDER_ID = 'quickbooks'
 const TOOL_LIST_ACCOUNTS = 'list_quickbooks_accounts'
 const TOOL_FIND_JOURNAL_ENTRY = 'find_quickbooks_journal_entry'
 const TOOL_CREATE_JOURNAL_ENTRY = 'create_quickbooks_journal_entry'
+/** Brief 19 section 3: the opening-balance suggestion's one report read. */
+const TOOL_GET_BALANCE_SHEET = 'get_quickbooks_balance_sheet'
 
 /** QuickBooks caps `PrivateNote` at 4000 characters and rejects a longer one. */
 const PRIVATE_NOTE_MAX_LENGTH = 4000
@@ -635,6 +638,37 @@ export class QuickbooksAccountingProvider implements AccountingProvider {
       return err(
         new UnprocessableEntityError(
           `Could not read the QuickBooks chart of accounts: ${errorMessage(error)}`
+        )
+      )
+    }
+  }
+
+  /**
+   * The connected company's balance sheet as of `asOf`, for the
+   * opening-balance suggestion (brief 19).
+   *
+   * The tool has already normalized sign to debit-positive, parsed money into
+   * integer minor units and asserted `Header.EndPeriod === asOf` (brief 19
+   * section 3.3) - this adapter does not touch the rows, only the call.
+   */
+  async readProviderOpeningBalances(
+    orgId: string,
+    asOf: string
+  ): Promise<Result<ProviderBalanceSheet | null, Error>> {
+    const resolved = await resolveQuickbooksContext({ organizationId: orgId })
+    if (!resolved.connected) return ok(null)
+
+    try {
+      return ok(
+        (await resolved.context.callTool(TOOL_GET_BALANCE_SHEET, {
+          asOf,
+          accountingMethod: 'Accrual',
+        })) as ProviderBalanceSheet
+      )
+    } catch (error) {
+      return err(
+        new UnprocessableEntityError(
+          `Could not read the QuickBooks balance sheet: ${errorMessage(error)}`
         )
       )
     }

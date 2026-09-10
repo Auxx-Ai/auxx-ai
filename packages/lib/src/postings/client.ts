@@ -195,6 +195,13 @@ export {
   type ListJournalEntriesFilters,
   type PostingSummary,
 } from './journal-entries/client'
+// ── plans/accounting/tasks/19: opening balances from the provider, pure half ──
+// PURE. No database, no io - see opening-fill-plan.ts's own header.
+export {
+  type ProviderOpeningFillInput,
+  type ProviderOpeningFillPlan,
+  planProviderOpeningFill,
+} from './opening-fill-plan'
 export {
   OPENING_TRIAL_BALANCE_FREEZE_KEY,
   OPENING_TRIAL_BALANCE_KIND,
@@ -345,6 +352,8 @@ export {
   type PostResult,
   type PostResultStatus,
   type ProviderAccount,
+  type ProviderBalanceRow,
+  type ProviderBalanceSheet,
   ProviderPostError,
   type ResolvedPostingLine,
   type RoleAssignmentRow,

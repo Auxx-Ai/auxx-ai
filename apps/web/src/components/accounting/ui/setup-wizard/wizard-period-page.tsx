@@ -39,7 +39,9 @@ function text(value: unknown): string | null {
  * uncorrectable once the period is locked. Unset refuses to post rather than guessing.
  *
  * Edits are held in a local draft and written on leave through the {@link WizardStepHandle}, so
- * Back, Continue and "Set up later" all save. A dirty-but-invalid draft blocks Continue only.
+ * Back, Continue and "Set up later" all save. An invalid draft blocks Continue whether or not it
+ * was touched: an untouched page with no cutoff used to advance silently and meet its refusal two
+ * pages later, on a different screen, phrased as a note about a page the person had already left.
  */
 export const WizardPeriodPage = forwardRef<WizardStepHandle>(
   function WizardPeriodPage(_props, ref) {
@@ -60,7 +62,6 @@ export const WizardPeriodPage = forwardRef<WizardStepHandle>(
 
     useImperativeHandle(ref, () => ({
       tryAdvance: (direction) => {
-        if (!dirty) return true
         if (invalidReason) {
           // Back and "Set up later" are never refusable - the user keeps their typing and the
           // wizard keeps its escape hatch. Only Continue is held.
@@ -68,6 +69,7 @@ export const WizardPeriodPage = forwardRef<WizardStepHandle>(
           toastError({ title: 'Fix the accounting period', description: invalidReason })
           return false
         }
+        if (!dirty) return true
         save()
         return true
       },
@@ -79,7 +81,7 @@ export const WizardPeriodPage = forwardRef<WizardStepHandle>(
       <div className='flex flex-col gap-4 p-4'>
         <p className='text-muted-foreground text-sm'>
           Everything dated after the cutoff is valued by Auxx. Everything before it is covered by
-          the opening balances on the next page.
+          the opening balances later in this setup.
         </p>
 
         <FieldPanel

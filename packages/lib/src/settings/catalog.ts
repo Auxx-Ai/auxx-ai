@@ -1089,6 +1089,37 @@ export const SETTINGS_CATALOG = {
       "The accounting provider's opening finished-goods balance at the cutoff, integer minor " +
       'units. Reconciled against the auxx.ai snapshot before setup can be finalized.',
   },
+  // Brief 19 section 4.6: provenance for the opening trial balance fill. Both
+  // keys start with `accounting.opening`, so `isFrozenSetupSettingKey` freezes
+  // them by PREFIX with no edit to `FROZEN_SETUP_SETTING_KEYS` - not a
+  // coincidence to rely on quietly, which is why it is said here too.
+  'accounting.openingSource': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'SINGLE_SELECT',
+    defaultValue: 'manual',
+    description:
+      'Whether the opening trial balance was typed by hand or suggested from a connected ' +
+      'accounting provider. "Provider" means seeded from, not equal to: a person may edit ' +
+      'every row afterward and this value does not change. Starts with accounting.opening, so ' +
+      'it freezes by prefix once the ledger holds a standing entry.',
+    options: {
+      options: [
+        { value: 'manual', label: 'Manual' },
+        { value: 'provider', label: 'Provider' },
+      ],
+    },
+  },
+  'accounting.openingSourceAsOf': {
+    scope: 'GENERAL',
+    access: 'org',
+    fieldType: 'TEXT',
+    defaultValue: null,
+    description:
+      "The date the connected accounting provider's balance sheet was read at, when the " +
+      'opening trial balance was seeded from one (YYYY-MM-DD, the cutover date). Starts with ' +
+      'accounting.opening, so it freezes by prefix the same way accounting.openingSource does.',
+  },
   // Not a `GlPosting`. The opening entry was built and booked in the provider,
   // its retained-earnings leg uses an account the default chart deliberately
   // does not seed, and `month_end_inventory` would be a false posting type for a

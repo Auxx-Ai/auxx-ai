@@ -15,9 +15,11 @@ import { useSettings } from '~/hooks/use-settings'
 import { api } from '~/trpc/react'
 import type { LedgerBlocker } from '../ledger/entry-blockers'
 import { EntryBlockers } from '../ledger/entry-blockers'
+import { OpeningFillButton } from '../settings/opening-fill-button'
 import {
   applyOpeningCellChange,
   OpeningTbGrid,
+  openingEvidenceInstruction,
   openingRowsDifferFromServer,
   openingVerdict,
   overlayInventorySettings,
@@ -58,9 +60,12 @@ export const WizardOpeningTbPage = forwardRef<WizardStepHandle>(
   function WizardOpeningTbPage(_props, ref) {
     const utils = api.useUtils()
     const opening = api.ledgerOpening.get.useQuery()
-    // The browser's copy of the three inventory figures. Fresher than the
-    // server read - see `overlayInventorySettings`.
+    // The browser's copy of the three inventory figures, and of where the
+    // grid's numbers came from. Fresher than the server read - see
+    // `overlayInventorySettings`.
     const { getSetting } = useSettings({ scope: 'GENERAL' })
+    const openingSource =
+      getSetting('accounting.openingSource') === 'provider' ? 'provider' : 'manual'
     const save = api.ledgerOpening.save.useMutation({
       onSuccess: () => utils.ledgerOpening.get.invalidate(),
     })
@@ -174,6 +179,11 @@ export const WizardOpeningTbPage = forwardRef<WizardStepHandle>(
         // A frozen page has nothing to save and nothing to refuse: the entry it
         // would have written is already in the books.
         if (frozen) return true
+        // No cutover date yet: the component renders the "go back and set a
+        // cutoff" note instead of a grid, so there is nothing here to save or
+        // refuse beyond that note. Continue stays held so the person reads it;
+        // Back and "Set up later" still work.
+        if (!cutoverDate) return direction !== 'next'
         if (direction === 'next' && unbalanced) {
           setRefusal({
             status: 'unbalanced',
@@ -221,16 +231,21 @@ export const WizardOpeningTbPage = forwardRef<WizardStepHandle>(
             valuing your books.
           </p>
           {/*
-            The evidence rule, verbatim from the brief. It is here rather than in
-            a tooltip because it is the instruction that decides whether the
-            numbers are right: the tax return's figure is not usable, and the
-            restart this module was built for is blocked on collecting bank
-            statements instead.
+            The evidence rule. It is here rather than in a tooltip because it is
+            the instruction that decides whether the numbers are right - the tax
+            return's figure is not usable, and the restart this module was built
+            for is blocked on collecting bank statements instead. Shared with the
+            settings twin and conditional on where the grid's numbers came from
+            (`openingEvidenceInstruction`), so a fill from QuickBooks and this
+            paragraph never give two different pieces of accounting advice.
           */}
           <p className='font-medium text-foreground text-sm'>
-            Use the {cutoverDate.slice(5).replace('-', '/')} statement balance for every bank and
-            card account. Do not use the tax return.
+            {openingEvidenceInstruction(openingSource, cutoverDate)}
           </p>
+        </div>
+
+        <div className='flex justify-end'>
+          <OpeningFillButton frozen={frozen} cutoverDate={cutoverDate} />
         </div>
 
         <div className='max-h-[26rem] overflow-y-auto rounded-xl border'>
