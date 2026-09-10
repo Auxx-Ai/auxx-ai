@@ -69,6 +69,16 @@ export const glPostingType = pgEnum('GlPostingType', [
   // plans/accounting/tasks/10-credit-memos.md: the issue entry of a credit memo,
   // Dr 4090 / Dr sales tax payable / Cr A/R.
   'credit_memo',
+  // plans/accounting/tasks/20-two-authors-one-ledger.md §6: an entry the
+  // ACCOUNTANT authored in the connected provider, read back off their general
+  // ledger and written as one of our rows.
+  //
+  // 🛑 It is the one posting type auxx does not author, and
+  // `EXPORT_ROUTE_BY_POSTING_TYPE.provider_sync = 'none'` is what stops us
+  // pushing their own entries back at them. `periodKey` is the provider's
+  // transaction id, so the claim index gives per-transaction idempotency for
+  // free; `exportStatus` stays `not_required` because we never pushed it.
+  'provider_sync',
 ])
 
 /**

@@ -47,6 +47,20 @@ export interface ReadCompletenessOptions {
 }
 
 /**
+ * Posting types that are absent from {@link ENABLED_POSTING_TYPES} because a
+ * CLOSE does not emit them, not because anything is switched off.
+ *
+ * 🛑 The disabled list below is `POSTING_TYPES - ENABLED_POSTING_TYPES`, and
+ * that subtraction reads every absence as "somebody turned this off". For
+ * `provider_sync` that is simply false: it is written by the inbound sync on the
+ * accountant's schedule (brief 20 §6), never by a close, so it can never be in
+ * `ENABLED_POSTING_TYPES` and a banner saying "provider sync posting is off"
+ * would be a permanent, unfixable item on every org's statements. Subtracted
+ * here rather than given a sentence, because there is nothing to say.
+ */
+const NEVER_CLOSE_EMITTED = new Set<PostingType>(['provider_sync'])
+
+/**
  * One sentence per disabled posting type, naming what is consequently missing
  * from a statement - the brief's own example ("fulfillment posting is off, so
  * COGS is the monthly assertion"), generalised to every type in the union so a
@@ -92,7 +106,7 @@ export async function readCompleteness(
 
     const enabled = new Set(ENABLED_POSTING_TYPES)
     const disabledPostingTypes: CompletenessItem[] = POSTING_TYPES.filter(
-      (type) => !enabled.has(type)
+      (type) => !enabled.has(type) && !NEVER_CLOSE_EMITTED.has(type)
     ).map((type) => ({
       id: `disabled-posting-type:${type}`,
       label: DISABLED_POSTING_TYPE_SENTENCES[type] ?? `"${type}" posting is off.`,

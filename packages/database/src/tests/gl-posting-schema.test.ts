@@ -323,6 +323,9 @@ describe('the enum vocabularies', () => {
       'invoice_issued',
       'deposit_application',
       'credit_memo',
+      // brief 20 §6. The one type auxx does not author: the accountant's own
+      // entry, read back off the provider's general ledger.
+      'provider_sync',
     ])
   })
 })

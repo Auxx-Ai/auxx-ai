@@ -2612,6 +2612,13 @@
       "when": 1789020622840,
       "tag": "0372_gl_posting_line_counterparty",
       "breakpoints": true
+    },
+    {
+      "idx": 373,
+      "version": "7",
+      "when": 1789080453511,
+      "tag": "0373_provider_sync_posting_type",
+      "breakpoints": true
     }
   ]
 }

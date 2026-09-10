@@ -239,6 +239,9 @@ function codedEntry(
 const NO_ACCOUNT_MAP = {
   listProviderAccounts: async () => ok([]),
   readProviderBalances: async () => ok(null),
+  // The inbound half (brief 20 §5.1). `null`, never an empty chunk - see
+  // `NoneAccountingProvider.readProviderLedger`.
+  readProviderLedger: async () => ok(null),
   listAccountMappings: async () => ok(new Map<string, string>()),
   setAccountMapping: async () => ok(undefined),
   clearAccountMapping: async () => ok(undefined),

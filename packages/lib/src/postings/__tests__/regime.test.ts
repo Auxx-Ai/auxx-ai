@@ -170,6 +170,9 @@ const POSTING_FAMILIES: Record<string, readonly PostingType[]> = {
   manual: ['manual_journal'],
   opening: ['opening_balance'],
   banking: ['bank_deposit', 'bank_transaction', 'payout'],
+  // Its own family, because it is the only one auxx did not author: the
+  // accountant's entry, read back off the provider's ledger (brief 20 §6).
+  sync: ['provider_sync'],
 }
 
 describe('the export route is declared, total, and per family', () => {
@@ -190,13 +193,48 @@ describe('the export route is declared, total, and per family', () => {
     }
   })
 
-  it('`opening_balance` routes `none`, and every other type routes `journal`', () => {
+  it('`opening_balance` and `provider_sync` route `none`, and every other type routes `journal`', () => {
+    const inbound = new Set<string>(['opening_balance', 'provider_sync'])
     for (const [type, route] of Object.entries(EXPORT_ROUTE_BY_POSTING_TYPE)) {
-      if (type === 'opening_balance') {
-        expect(route).toBe('none')
+      if (inbound.has(type)) {
+        expect(route, `"${type}" came FROM the provider and may never be pushed back`).toBe('none')
       } else {
         expect(route).toBe('journal')
       }
     }
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Brief 20 §6, and this is the load-bearing block of the file for the inbound
+// half. Everything else in `provider-sync/` can be rebuilt from the report; a
+// `provider_sync` entry that acquires a `journal` route cannot be undone,
+// because the second copy balances, every statement still ties, and nothing
+// downstream can tell the two apart.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('the loop guard', () => {
+  it('never pushes a synced entry back at the provider that authored it', () => {
+    expect(EXPORT_ROUTE_BY_POSTING_TYPE.provider_sync).toBe('none')
+  })
+
+  it('holds `provider_sync` to the same rule as `opening_balance`', () => {
+    // Same class of reason (brief 19 §5.1, brief 20 §6): both are OUR record of
+    // something the provider already holds, so exporting either doubles it.
+    expect(EXPORT_ROUTE_BY_POSTING_TYPE.provider_sync).toBe(
+      EXPORT_ROUTE_BY_POSTING_TYPE.opening_balance
+    )
+  })
+
+  it('is not something a production close emits', () => {
+    // `ENABLED_POSTING_TYPES` is what a CLOSE emits. A synced entry is written
+    // by the sync, on the accountant's schedule, not by any close - so it does
+    // NOT belong here, and adding it would be a claim that a close produces it.
+    expect(ENABLED_POSTING_TYPES).not.toContain('provider_sync')
+  })
+
+  it('drives no single-writer role, because the accountant codes their own accounts', () => {
+    expect(SINGLE_WRITER_ROLES_BY_POSTING_TYPE.provider_sync).toEqual([])
+    expect(findWriterConflicts([...ENABLED_POSTING_TYPES, 'provider_sync'])).toEqual([])
   })
 })

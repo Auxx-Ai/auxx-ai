@@ -165,6 +165,12 @@ export const SINGLE_WRITER_ROLES_BY_POSTING_TYPE: Record<PostingType, readonly A
   // line is recorded, not restocked) and no cash: a native refund is a payment
   // entry, and a channel refund drains through the payout entry.
   credit_memo: [],
+  // A synced entry names accounts by the `gl_account` its `providerAccountId`
+  // maps to, never a role - it is the accountant's line, not a builder's, so
+  // there is no role for this guard to see. `[]` is what the writer emits, not
+  // an exemption. And it is not in `ENABLED_POSTING_TYPES` either: that list is
+  // what a production CLOSE emits, and nothing about a close writes this type.
+  provider_sync: [],
 }
 
 /**
@@ -196,10 +202,12 @@ export type ExportRoute = 'journal' | 'none'
  * invoice document mirror (plan 37e) is gone.
  *
  * `postEntry` reads this table (brief 19 §5.1, since 2026-09-10).
- * `opening_balance` is the one `'none'` route today; every other type still
- * routes `journal`. It exists so a future second accounting provider (one
- * with no invoice API, say) has a named place to declare the split it would
- * force, rather than that split arriving quietly through a derived check.
+ * `opening_balance` and `provider_sync` are the two `'none'` routes today, and
+ * both for the same class of reason: an entry that CAME FROM the provider must
+ * never be pushed back at it. Every other type still routes `journal`. The table
+ * exists so a future second accounting provider (one with no invoice API, say)
+ * has a named place to declare the split it would force, rather than that split
+ * arriving quietly through a derived check.
  */
 export const EXPORT_ROUTE_BY_POSTING_TYPE: Record<PostingType, ExportRoute> = {
   fulfillment: 'journal',
@@ -224,6 +232,18 @@ export const EXPORT_ROUTE_BY_POSTING_TYPE: Record<PostingType, ExportRoute> = {
   invoice_issued: 'journal',
   deposit_application: 'journal',
   credit_memo: 'journal',
+  // 🛑🛑 THE LOOP GUARD. A `provider_sync` entry was authored by the accountant
+  // IN the provider and read back off their general ledger; pushing it back is
+  // handing them their own entry a second time. Both copies would balance, every
+  // statement would still tie, and nothing downstream could detect it - brief 19
+  // §5.1's failure with the arrows reversed, which is the same reason
+  // `opening_balance` above is `'none'`.
+  //
+  // It is declared HERE, in the table a person has to come to and edit, rather
+  // than implied by `providerEntryId` being non-null on the row: a column value
+  // on every row is a rule nobody reads, and this one may never quietly become
+  // `journal`. `__tests__/regime.test.ts` pins it (brief 20 §6).
+  provider_sync: 'none',
 }
 
 /** One posting type paired with the single-writer roles it would drive. */

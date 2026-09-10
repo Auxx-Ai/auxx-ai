@@ -32,6 +32,22 @@ describe('readCompleteness', () => {
     expect(ids.some((id) => id.includes('fulfillment'))).toBe(false)
   })
 
+  // 🛑 `provider_sync` is absent from `ENABLED_POSTING_TYPES` because a CLOSE
+  // does not emit it - the inbound sync does (brief 20 §6). Reading that absence
+  // as "switched off" would put a permanent, unfixable item on every org's
+  // statements naming something nobody can turn on.
+  it('does not report the synced posting type as switched off', async () => {
+    vi.mocked(listFailedExports).mockResolvedValue(ok([]))
+
+    const result = await readCompleteness(stubDb(), { organizationId: ORG, asOf: '2026-08-31' })
+    const completeness = result._unsafeUnwrap()
+
+    expect(completeness.disabledPostingTypes.map((item) => item.id)).not.toContain(
+      'disabled-posting-type:provider_sync'
+    )
+    expect(completeness.items.some((item) => item.label.includes('provider_sync'))).toBe(false)
+  })
+
   it('surfaces unposted periods with a remedy that opens that period', async () => {
     vi.mocked(listFailedExports).mockResolvedValue(
       ok([
