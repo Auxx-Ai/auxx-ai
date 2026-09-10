@@ -55,7 +55,6 @@ import {
   saveBillingInstallments,
   setInvoiceSchedule,
   syncAccountState,
-  syncInvoiceToQuickbooks,
   syncPayouts,
   updateBankDeposit,
   voidInvoice,
@@ -479,20 +478,11 @@ export const moneyRouter = createTRPCRouter({
       })
     }),
 
-  // Manual "Sync to QuickBooks" action (plans/dispatch/37e-quickbooks-invoice-sync.md §3, P3) —
-  // calls the orchestrator directly (not via the queue) so the UI gets the result inline; the
-  // draft→sent field-change hook (`enqueueQuickbooksInvoiceSyncOnSent`) uses the same
-  // orchestrator through the queue for the automatic path.
-  syncInvoiceToQuickbooks: moneyProcedure
-    .input(z.object({ invoiceRecordId: recordIdSchema }))
-    .mutation(async ({ ctx, input }) => {
-      const { entityInstanceId } = parseRecordId(input.invoiceRecordId)
-      return syncInvoiceToQuickbooks({
-        organizationId: ctx.session.organizationId,
-        invoiceInstanceId: entityInstanceId,
-        actorUserId: ctx.session.user.id,
-      })
-    }),
+  // The manual "push this invoice to QuickBooks" mutation (plan 37e §3, P3) was an orphan, no
+  // screen ever called it, and it is gone as of 2026-09-10: the invoice document mirror was
+  // retired on MK's decision (accounting brief 14's DECIDED block). QuickBooks now receives
+  // journal entries only, through `quickbooks-accounting-provider.ts`; `LedgerCard`'s retry
+  // action is the export surface.
 
   voidInvoice: moneyProcedure
     .input(z.object({ invoiceRecordId: recordIdSchema }))

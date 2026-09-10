@@ -14,6 +14,12 @@
 //
 // Reads `ledger.listPostingsForSource` (slot 1A) for the postings whose lines
 // name this record as their source.
+//
+// Gained a `Retry export` action 2026-09-10 (plans/accounting/tasks/14-one-
+// quickbooks-two-write-paths.md §4.4): with the invoice document mirror
+// retired on MK's decision, this card is the ONLY QuickBooks export surface an
+// invoice has, so a failed export needs a retry here rather than a second
+// affordance elsewhere.
 
 import type {
   PostingDetail,
@@ -24,9 +30,10 @@ import type {
 import { Badge, type Variant } from '@auxx/ui/components/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@auxx/ui/components/dialog'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import { TREE_SECONDARY_NOTRUNCATE, TreeRow } from '@auxx/ui/components/tree-row'
+import { toastError } from '@auxx/ui/components/toast'
+import { TREE_SECONDARY_NOTRUNCATE, TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
-import { BookOpenCheck } from 'lucide-react'
+import { BookOpenCheck, RefreshCw } from 'lucide-react'
 import { useState } from 'react'
 import { EmptyRow } from '~/components/drawers/cards/related-record-row'
 import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
@@ -108,12 +115,28 @@ export function LedgerCard({ entityInstanceId, sourceType }: LedgerCardProps) {
 
   const [openPostingId, setOpenPostingId] = useState<string | null>(null)
 
+  const utils = api.useUtils()
   const postingsQuery = api.ledger.listPostingsForSource.useQuery(
     { sourceType, sourceId: entityInstanceId },
     { enabled: !!entityInstanceId }
   )
   const postings = (postingsQuery.data ?? []) as SourcePosting[]
   const loading = postingsQuery.isPending
+
+  const retryExport = api.ledger.retryExport.useMutation({
+    onSuccess: (result) => {
+      if (result.exportStatus === 'failed') {
+        toastError({
+          title: 'The accounting system refused it again',
+          description: result.error ?? 'No reason was recorded.',
+        })
+      }
+      void utils.ledger.listPostingsForSource.invalidate({ sourceType, sourceId: entityInstanceId })
+    },
+    onError: (error) => {
+      toastError({ title: 'Could not retry the export', description: error.message })
+    },
+  })
 
   if (!loading && postings.length === 0) {
     return <EmptyRow label='Nothing posted yet' />
@@ -152,8 +175,27 @@ export function LedgerCard({ entityInstanceId, sourceType }: LedgerCardProps) {
             }
             onToggleOpen={() => setOpenPostingId(posting.id)}
             actions={
-              <span className='shrink-0 pr-1 font-mono text-sm tabular-nums'>
-                {formatMinor(posting.totalMinor, currencyCode)}
+              <span className='flex shrink-0 items-center gap-1 pr-1'>
+                {posting.exportStatus === 'failed' ? (
+                  <TreeRowButton
+                    persistent
+                    tooltipText='Retry export'
+                    disabled={
+                      retryExport.isPending && retryExport.variables?.glPostingId === posting.id
+                    }
+                    onClick={() => retryExport.mutate({ glPostingId: posting.id })}>
+                    <RefreshCw
+                      className={
+                        retryExport.isPending && retryExport.variables?.glPostingId === posting.id
+                          ? 'animate-spin'
+                          : ''
+                      }
+                    />
+                  </TreeRowButton>
+                ) : null}
+                <span className='font-mono text-sm tabular-nums'>
+                  {formatMinor(posting.totalMinor, currencyCode)}
+                </span>
               </span>
             }
           />

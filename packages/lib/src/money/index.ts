@@ -289,11 +289,6 @@ export {
 export type { PurchaseOrderLifecycleInput } from './purchase-order-lifecycle'
 export { markPurchaseOrderSent } from './purchase-order-lifecycle'
 export {
-  type SyncInvoiceResult,
-  type SyncInvoiceToQuickbooksInput,
-  syncInvoiceToQuickbooks,
-} from './quickbooks/sync-invoice'
-export {
   type AcceptQuoteByTokenInput,
   type AcceptQuoteByTokenResult,
   acceptQuoteByToken,

@@ -23,7 +23,7 @@ import { and, asc, eq, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { ConflictError, NotFoundError } from '../errors'
 import { resolveAccountingProvider } from './provider'
-import type { PostEntryInput, PostResult, ResolvedPostingLine } from './types'
+import type { CounterpartyType, PostEntryInput, PostResult, ResolvedPostingLine } from './types'
 
 const logger = createScopedLogger('postings-retry-export')
 
@@ -117,6 +117,8 @@ export async function retryExport(
         sourceType: schema.GlPostingLine.sourceType,
         sourceId: schema.GlPostingLine.sourceId,
         lineNumber: schema.GlPostingLine.lineNumber,
+        counterpartyType: schema.GlPostingLine.counterpartyType,
+        counterpartyId: schema.GlPostingLine.counterpartyId,
       })
       .from(schema.GlPostingLine)
       .where(
@@ -150,6 +152,11 @@ export async function retryExport(
       sourceType: line.sourceType,
       sourceId: line.sourceId,
       sortOrder: line.lineNumber,
+      // Replayed FROZEN (brief 13 §1.1 third bullet), never re-resolved: a
+      // retry exports under the attribution the ledger asserted when it
+      // posted, not whatever the record has since been renamed or merged to.
+      counterpartyType: (line.counterpartyType as CounterpartyType | null) ?? undefined,
+      counterpartyId: line.counterpartyId ?? undefined,
     }))
 
     const draft = (row.draft ?? {}) as { memo?: unknown }

@@ -16,11 +16,11 @@ export interface FulfillmentPostingJobData {
  * The `auto` lane's worker job: post every unposted shipment in one
  * organization, one entry per ship day (49 §2.4).
  *
- * A thin wrapper around {@link runFulfillmentPosting}, exactly as
- * `sync-quickbooks-invoice-job.ts` is around `syncInvoiceToQuickbooks`. Every
- * decision - the cutoff, the locked period, the debit fork, the exclusions - is
- * the runner's, so this lane and the dialog cannot disagree about what a
- * shipment posts to.
+ * A thin wrapper around {@link runFulfillmentPosting}, the same shape a retired QuickBooks
+ * invoice-mirror job used to take around its orchestrator (the mirror was retired 2026-09-10,
+ * accounting brief 14's DECIDED block). Every decision - the cutoff, the locked period, the
+ * debit fork, the exclusions - is the runner's, so this lane and the dialog cannot disagree
+ * about what a shipment posts to.
  *
  * 🛑 The range is the WHOLE history (`2000-01-01` to tomorrow), not the sync's
  * own window, and that is deliberate. The read returns shipments with no LIVE

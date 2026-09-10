@@ -79,6 +79,8 @@ interface LineRow {
   memo?: string | null
   sourceType: string
   sourceId: string
+  counterpartyType?: string | null
+  counterpartyId?: string | null
 }
 
 interface Account {
@@ -424,6 +426,22 @@ describe('the reversal pair', () => {
     const reversalId = fake.postings[1]!.id
     const written = fake.lines.filter((line) => line.glPostingId === reversalId)
     expect(written.map((line) => line.glAccountId)).toEqual([RAW.id, GRNI.id])
+  })
+
+  // Brief 13 §1.1: the reversal backs the SAME receivable out of the SAME
+  // customer's balance, so it must carry the counterparty the original did.
+  it('carries the counterparty onto the reversed line', async () => {
+    const fake = createFakeDb({
+      postings: [original()],
+      lines: originalLines([{ counterpartyType: 'customer', counterpartyId: 'contact_1' }, {}]),
+      chart: CHART,
+    })
+    await reverseEntry(fake.db, { organizationId: ORG, glPostingId: 'post_1', lock: OPEN })
+
+    const reversalId = fake.postings[1]!.id
+    const written = fake.lines.filter((line) => line.glPostingId === reversalId)
+    expect(written[0]).toMatchObject({ counterpartyType: 'customer', counterpartyId: 'contact_1' })
+    expect(written[1]).toMatchObject({ counterpartyType: null, counterpartyId: null })
   })
 
   // Task 15 §5: a line whose account carries no code reverses exactly like

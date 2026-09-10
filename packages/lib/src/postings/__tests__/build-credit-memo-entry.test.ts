@@ -220,6 +220,32 @@ describe('a channel credit memo with a settlement', () => {
   })
 })
 
+describe('the counterparty (brief 13 §1.2)', () => {
+  it('carries the contact on every accounts_receivable line, never on revenue, tax or clearing', () => {
+    const built = buildCreditMemoEntry({
+      ...BASE,
+      settlement: SETTLEMENT,
+      contactInstanceId: 'ei_contact_1',
+    })
+    for (const receivable of lines(built, ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE)) {
+      expect(receivable).toMatchObject({
+        counterpartyType: 'customer',
+        counterpartyId: 'ei_contact_1',
+      })
+    }
+    expect(
+      lines(built, ACCOUNT_ROLES.REVENUE_RETURNS_ALLOWANCES)[0]?.counterpartyId
+    ).toBeUndefined()
+    expect(lines(built, ACCOUNT_ROLES.SALES_TAX_PAYABLE)[0]?.counterpartyId).toBeUndefined()
+    expect(lines(built, ACCOUNT_ROLES.CLEARING_CARD)[0]?.counterpartyId).toBeUndefined()
+  })
+
+  it('posts fine with no contact - the export refuses, not the ledger', () => {
+    const built = buildCreditMemoEntry(BASE)
+    expect(lines(built, ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE)[0]?.counterpartyId).toBeUndefined()
+  })
+})
+
 describe('refusals', () => {
   it('refuses a memo with neither a revenue leg nor a settlement, naming why', () => {
     const error = expectRefusal(() => buildCreditMemoEntry({ ...BASE, reverseRevenue: false }))

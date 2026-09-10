@@ -421,6 +421,12 @@ export interface BuildFulfillmentEntryInput {
   includeCogs?: boolean
   /** Extended standard cost of what shipped, minor units. Required when `includeCogs`. */
   cogsMinor?: number
+  /**
+   * The order's own contact, for the counterparty on the `accounts_receivable`
+   * line (brief 13 §1.2) - never on revenue, tax or shipping. Null or absent
+   * still posts; the export is what refuses a receivable line with none.
+   */
+  contactInstanceId?: string | null
   /** The entry memo, carried onto every line with none of its own. */
   memo?: string
 }
@@ -539,6 +545,7 @@ export function buildFulfillmentEntry(input: BuildFulfillmentEntryInput): BuiltF
     includeShipping,
     includeCogs = false,
     cogsMinor,
+    contactInstanceId,
     memo,
   } = input
 
@@ -603,6 +610,9 @@ export function buildFulfillmentEntry(input: BuildFulfillmentEntryInput): BuiltF
       amount: totalMinor,
       memo: memo ?? shipmentLabel,
       sortOrder: 0,
+      ...(contactInstanceId
+        ? { counterpartyType: 'customer' as const, counterpartyId: contactInstanceId }
+        : {}),
     },
     {
       ...source,

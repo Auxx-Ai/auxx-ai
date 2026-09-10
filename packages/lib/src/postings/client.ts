@@ -205,6 +205,8 @@ export {
 } from './periods'
 export {
   ENABLED_POSTING_TYPES,
+  EXPORT_ROUTE_BY_POSTING_TYPE,
+  type ExportRoute,
   INVENTORY_ROLES,
   INVENTORY_ROLES_BY_POSTING_TYPE,
   SINGLE_WRITER_ROLES,
@@ -302,6 +304,7 @@ export {
   type BuiltEntry,
   type ChartAccountRow,
   type ClosePeriod,
+  type CounterpartyType,
   type EntryPreview,
   type FailedExport,
   type GlPostingLineInput,

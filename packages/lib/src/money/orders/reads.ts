@@ -152,6 +152,11 @@ export interface OrderForFulfillment {
   nextSequence: number
   /** Whether the next posting carries the order's shipping revenue. */
   shippingOwed: boolean
+  /**
+   * `order_contact`'s related `contact` instance id, for the counterparty on
+   * the fulfillment entry's `accounts_receivable` line (brief 13 §1.2).
+   */
+  contactInstanceId: string | null
 }
 
 /**
@@ -302,6 +307,7 @@ export async function readOrderForFulfillment(
         lines,
         nextSequence: nextFulfillmentSequence(fulfillments),
         shippingOwed: shippingStillOwed(fulfillments),
+        contactInstanceId: cell('order_contact')?.relatedEntityId ?? null,
       }
     },
     'Failed to read an order for fulfillment',

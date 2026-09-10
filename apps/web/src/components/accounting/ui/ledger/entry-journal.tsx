@@ -3,6 +3,7 @@
 'use client'
 
 import type { PostingDetailLine, ResolvedPostingLine } from '@auxx/lib/postings/client'
+import { toRecordId } from '@auxx/lib/resources/client'
 import { Button } from '@auxx/ui/components/button'
 import {
   Table,
@@ -16,6 +17,8 @@ import {
 import { cn } from '@auxx/ui/lib/utils'
 import { CheckCircle2, Search, TriangleAlert } from 'lucide-react'
 import { Tooltip } from '~/components/global/tooltip'
+import { useResource } from '~/components/resources'
+import { RecordBadge } from '~/components/resources/ui/record-badge'
 import { AccountLabel, formatAccountLabel } from '../account-label'
 import { formatMinor } from './format'
 
@@ -47,6 +50,12 @@ interface EntryJournalProps {
  * the one mental step this section exists to remove.
  */
 export function EntryJournal({ lines, currencyCode, onDrillDown }: EntryJournalProps) {
+  // Resolved once for the whole table: brief 13 §1's counterparty is either a
+  // `contact` (customer) or a `company` (vendor) instance, and the def id is
+  // what turns the stored plain id into a `RecordId` `RecordBadge` can render.
+  const { resource: contactResource } = useResource('contact')
+  const { resource: companyResource } = useResource('company')
+
   const debits = lines
     .filter((line) => line.direction === 'debit')
     .sort((a, b) => a.sortOrder - b.sortOrder)
@@ -96,6 +105,20 @@ export function EntryJournal({ lines, currencyCode, onDrillDown }: EntryJournalP
                   )}
                 </div>
                 {line.memo && <p className='mt-0.5 text-muted-foreground text-xs'>{line.memo}</p>}
+                {line.counterpartyType &&
+                  line.counterpartyId &&
+                  (() => {
+                    const defId =
+                      line.counterpartyType === 'customer'
+                        ? contactResource?.id
+                        : companyResource?.id
+                    if (!defId) return null
+                    return (
+                      <div className='mt-0.5'>
+                        <RecordBadge recordId={toRecordId(defId, line.counterpartyId)} size='sm' />
+                      </div>
+                    )
+                  })()}
               </TableCell>
               <TableCell className='text-right font-mono tabular-nums align-top'>
                 {line.direction === 'debit' ? formatMinor(line.amount, currencyCode) : null}
@@ -161,5 +184,7 @@ export function journalLinesFromDetail(lines: PostingDetailLine[]): ResolvedPost
     sourceType: line.sourceType,
     sourceId: line.sourceId,
     sortOrder: line.lineNumber,
+    counterpartyType: line.counterpartyType ?? undefined,
+    counterpartyId: line.counterpartyId ?? undefined,
   }))
 }

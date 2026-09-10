@@ -59,8 +59,6 @@ export enum Queues {
   dataConnectorQueue = 'data-connector',
   // Learned-KB extraction (AI memory from resolved threads) queue
   learnedExtractionQueue = 'learned-extraction',
-  // QuickBooks invoice sync queue (plans/dispatch/37e-quickbooks-invoice-sync.md §3, P3)
-  quickbooksInvoiceSyncQueue = 'quickbooks-invoice-sync',
   // Bulk fulfillment posting (plans/money/tasks/49-bulk-fulfillment-posting.md §2.4).
   // Its OWN queue at concurrency 1: one job posts every unposted shipment in an
   // org as one entry per ship day, and two of them running side by side would

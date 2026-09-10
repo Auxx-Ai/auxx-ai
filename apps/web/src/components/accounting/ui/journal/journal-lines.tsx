@@ -2,16 +2,20 @@
 
 'use client'
 
-import type { JournalEntryLine } from '@auxx/lib/postings/client'
+import type { ChartAccountRow, CounterpartyType, JournalEntryLine } from '@auxx/lib/postings/client'
+import { parseRecordId, toRecordId } from '@auxx/lib/resources/client'
 import { Input } from '@auxx/ui/components/input'
 import { CurrencyInput, CurrencyInputField } from '@auxx/ui/components/input-currency'
 import { InputGroup } from '@auxx/ui/components/input-group'
 import { cn } from '@auxx/ui/lib/utils'
 import { generateId } from '@auxx/utils'
-import { CheckCircle2, Trash2, TriangleAlert } from 'lucide-react'
+import { CheckCircle2, Trash2, TriangleAlert, X } from 'lucide-react'
 import { useState } from 'react'
-import { GlAccountPicker } from '~/components/accounting/ui/gl-account-picker'
+import { GlAccountPicker, useChartAccounts } from '~/components/accounting/ui/gl-account-picker'
 import { formatMinor } from '~/components/accounting/ui/ledger/format'
+import { RecordPicker } from '~/components/pickers/record-picker/record-picker'
+import { useResource } from '~/components/resources'
+import { RecordBadge } from '~/components/resources/ui/record-badge'
 
 /**
  * A DEPARTURE from the ui-plan's default shape (§2.1: `LINE_SCHEMAS.journal_entry`
@@ -42,6 +46,14 @@ export interface JournalLineDraft {
   memo: string
   debitMinor: number | null
   creditMinor: number | null
+  /**
+   * Who this line is attributable to, when its account is receivable- or
+   * payable-backed (brief 13 §1.4). Nullable rather than optional: the grid
+   * always has an opinion (there is or is not a counterparty), unlike the
+   * wire shape where the key is simply absent.
+   */
+  counterpartyType: CounterpartyType | null
+  counterpartyId: string | null
 }
 
 export function emptyDraftRow(): JournalLineDraft {
@@ -51,6 +63,8 @@ export function emptyDraftRow(): JournalLineDraft {
     memo: '',
     debitMinor: null,
     creditMinor: null,
+    counterpartyType: null,
+    counterpartyId: null,
   }
 }
 
@@ -75,6 +89,9 @@ export function linesFromDraftRows(rows: JournalLineDraft[]): JournalEntryLine[]
       direction,
       amountMinor,
       ...(row.memo.trim() ? { memo: row.memo.trim() } : {}),
+      ...(row.counterpartyType && row.counterpartyId
+        ? { counterpartyType: row.counterpartyType, counterpartyId: row.counterpartyId }
+        : {}),
     })
   }
   return lines
@@ -88,6 +105,8 @@ export function draftRowsFromLines(lines: JournalEntryLine[]): JournalLineDraft[
     memo: line.memo ?? '',
     debitMinor: line.direction === 'debit' ? line.amountMinor : null,
     creditMinor: line.direction === 'credit' ? line.amountMinor : null,
+    counterpartyType: line.counterpartyType ?? null,
+    counterpartyId: line.counterpartyId ?? null,
   }))
 }
 
@@ -117,6 +136,76 @@ export function computeJournalLineTotals(rows: JournalLineDraft[]): JournalLineT
 
 /** `minmax(14rem,1fr) minmax(10rem,1fr) 7rem 7rem` from ui-plan.md §2.1, plus a delete column. */
 const GRID_COLS = 'minmax(14rem,1fr) minmax(10rem,1fr) 7rem 7rem 2rem'
+
+/**
+ * Which counterparty kind an account's subtype demands, per brief 13 §1.4 -
+ * `null` for every other subtype, which is most of the chart.
+ */
+function requiredCounterpartyKind(subtype: ChartAccountRow['subtype']): CounterpartyType | null {
+  if (subtype === 'accounts_receivable') return 'customer'
+  if (subtype === 'accounts_payable') return 'vendor'
+  return null
+}
+
+/**
+ * The counterparty control for one row's Account cell: a chosen record shows
+ * as a compact `RecordBadge` with a clear button, and an empty slot is a small
+ * text trigger that opens a single-select `RecordPicker` scoped to the
+ * required entity type. Never a refusal here - brief 13 §1.4 leaves the field
+ * empty until the QuickBooks export needs it.
+ */
+function CounterpartyCell({
+  kind,
+  entityDefinitionId,
+  recordInstanceId,
+  disabled,
+  onSelect,
+  onClear,
+}: {
+  kind: CounterpartyType
+  /** Null while the `contact`/`company` resource has not hydrated yet. */
+  entityDefinitionId: string | null
+  recordInstanceId: string | null
+  disabled?: boolean
+  onSelect: (instanceId: string) => void
+  onClear: () => void
+}) {
+  const label = kind === 'customer' ? 'Customer' : 'Vendor'
+
+  if (recordInstanceId && entityDefinitionId) {
+    return (
+      <div className='flex items-center gap-1'>
+        <RecordBadge recordId={toRecordId(entityDefinitionId, recordInstanceId)} size='sm' />
+        <button
+          type='button'
+          aria-label={`Remove ${label.toLowerCase()}`}
+          disabled={disabled}
+          onClick={onClear}
+          className='flex size-4 items-center justify-center rounded text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-50'>
+          <X className='size-3' />
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <RecordPicker
+      value={[]}
+      onChange={() => {}}
+      multi={false}
+      entityDefinitionId={entityDefinitionId ?? undefined}
+      disabled={disabled || !entityDefinitionId}
+      onSelectSingle={(recordId) => onSelect(parseRecordId(recordId).entityInstanceId)}
+      placeholder={`Search ${label.toLowerCase()}s…`}>
+      <button
+        type='button'
+        disabled={disabled || !entityDefinitionId}
+        className='w-fit text-left text-muted-foreground text-xs underline-offset-2 hover:text-foreground hover:underline disabled:opacity-50'>
+        + {label}
+      </button>
+    </RecordPicker>
+  )
+}
 
 interface JournalLinesProps {
   /** Real (materialized) rows only - never includes the trailing phantom. */
@@ -149,8 +238,14 @@ export function JournalLines({ rows, onChange, currencyCode, disabled }: Journal
     memo: '',
     debitMinor: null,
     creditMinor: null,
+    counterpartyType: null,
+    counterpartyId: null,
   }
   const displayRows = [...rows, phantom]
+
+  const { accounts } = useChartAccounts()
+  const { resource: contactResource } = useResource('contact')
+  const { resource: companyResource } = useResource('company')
 
   function patchRow(index: number, patch: Partial<JournalLineDraft>) {
     if (index === rows.length) {
@@ -161,6 +256,24 @@ export function JournalLines({ rows, onChange, currencyCode, disabled }: Journal
       return
     }
     onChange(rows.map((row, i) => (i === index ? { ...row, ...patch } : row)))
+  }
+
+  /**
+   * Brief 13 §1.4: a row's account decides whether it may carry a
+   * counterparty at all, and which kind. Picking a new account that does not
+   * require the kind already on the row clears it - switching straight from
+   * an A/R account to an A/P one must not leave a customer id sitting under
+   * `counterpartyType: 'vendor'`.
+   */
+  function handleAccountChange(index: number, glAccountId: string | null) {
+    const account = glAccountId ? accounts.find((a: ChartAccountRow) => a.id === glAccountId) : null
+    const requiredKind = requiredCounterpartyKind(account?.subtype ?? null)
+    const row = index === rows.length ? phantom : rows[index]
+    const keepsCounterparty = row && requiredKind === row.counterpartyType
+    patchRow(index, {
+      glAccountId,
+      ...(keepsCounterparty ? {} : { counterpartyType: null, counterpartyId: null }),
+    })
   }
 
   function removeRow(index: number) {
@@ -189,22 +302,45 @@ export function JournalLines({ rows, onChange, currencyCode, disabled }: Journal
       <div className='flex flex-col divide-y'>
         {displayRows.map((row, index) => {
           const isPhantom = index === rows.length
+          const account = row.glAccountId
+            ? accounts.find((a: ChartAccountRow) => a.id === row.glAccountId)
+            : undefined
+          const requiredKind = requiredCounterpartyKind(account?.subtype ?? null)
           return (
             <div
               key={row.key}
-              className='grid items-center gap-2 px-2 py-1.5'
+              className='grid items-start gap-2 px-2 py-1.5'
               style={{ gridTemplateColumns: GRID_COLS }}>
-              <GlAccountPicker
-                value={row.glAccountId}
-                onChange={(id) => patchRow(index, { glAccountId: id })}
-                selectBy='id'
-                disabled={disabled}
-                placeholder='Account…'
-                // The one caller that overrides the transparent default: this is a
-                // grid cell sitting beside bordered `Input`s, so a borderless
-                // trigger reads as a gap in the row rather than a field.
-                triggerProps={{ variant: 'outline', size: 'sm' }}
-              />
+              <div className='flex flex-col gap-1'>
+                <GlAccountPicker
+                  value={row.glAccountId}
+                  onChange={(id) => handleAccountChange(index, id)}
+                  selectBy='id'
+                  disabled={disabled}
+                  placeholder='Account…'
+                  // The one caller that overrides the transparent default: this is a
+                  // grid cell sitting beside bordered `Input`s, so a borderless
+                  // trigger reads as a gap in the row rather than a field.
+                  triggerProps={{ variant: 'outline', size: 'sm' }}
+                />
+                {requiredKind && (
+                  <CounterpartyCell
+                    kind={requiredKind}
+                    entityDefinitionId={
+                      (requiredKind === 'customer' ? contactResource?.id : companyResource?.id) ??
+                      null
+                    }
+                    recordInstanceId={row.counterpartyId}
+                    disabled={disabled}
+                    onSelect={(id) =>
+                      patchRow(index, { counterpartyType: requiredKind, counterpartyId: id })
+                    }
+                    onClear={() =>
+                      patchRow(index, { counterpartyType: null, counterpartyId: null })
+                    }
+                  />
+                )}
+              </div>
 
               <Input
                 data-je-row={index}

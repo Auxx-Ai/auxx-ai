@@ -98,6 +98,114 @@ describe('parseLines', () => {
     ])
     expect(line).not.toHaveProperty('memo')
   })
+
+  // Brief 13 §1.4: a manual line coded to a receivable or payable account may
+  // carry an optional counterparty. Well-formed means BOTH fields present and
+  // valid - a type that is one of the two literals, an id that is a non-empty
+  // string.
+  it('reads a well-formed counterparty back verbatim', () => {
+    expect(
+      parseLines([
+        {
+          glAccountId: 'acct_1100',
+          direction: 'debit',
+          amountMinor: 5_000,
+          counterpartyType: 'customer',
+          counterpartyId: 'contact_1',
+        },
+      ])
+    ).toEqual([
+      {
+        glAccountId: 'acct_1100',
+        direction: 'debit',
+        amountMinor: 5_000,
+        counterpartyType: 'customer',
+        counterpartyId: 'contact_1',
+      },
+    ])
+  })
+
+  it('reads a vendor counterparty back verbatim', () => {
+    expect(
+      parseLines([
+        {
+          glAccountId: 'acct_2000',
+          direction: 'credit',
+          amountMinor: 5_000,
+          counterpartyType: 'vendor',
+          counterpartyId: 'company_1',
+        },
+      ])
+    ).toEqual([
+      {
+        glAccountId: 'acct_2000',
+        direction: 'credit',
+        amountMinor: 5_000,
+        counterpartyType: 'vendor',
+        counterpartyId: 'company_1',
+      },
+    ])
+  })
+
+  it('drops both counterparty fields when the type is not customer or vendor', () => {
+    const [line] = parseLines([
+      {
+        glAccountId: 'acct_1100',
+        direction: 'debit',
+        amountMinor: 5_000,
+        counterpartyType: 'employee',
+        counterpartyId: 'contact_1',
+      },
+    ])
+    expect(line).not.toHaveProperty('counterpartyType')
+    expect(line).not.toHaveProperty('counterpartyId')
+  })
+
+  it('drops both counterparty fields when the id is blank', () => {
+    const [line] = parseLines([
+      {
+        glAccountId: 'acct_1100',
+        direction: 'debit',
+        amountMinor: 5_000,
+        counterpartyType: 'customer',
+        counterpartyId: '   ',
+      },
+    ])
+    expect(line).not.toHaveProperty('counterpartyType')
+    expect(line).not.toHaveProperty('counterpartyId')
+  })
+
+  it('drops a lone counterpartyType with no id', () => {
+    const [line] = parseLines([
+      {
+        glAccountId: 'acct_1100',
+        direction: 'debit',
+        amountMinor: 5_000,
+        counterpartyType: 'customer',
+      },
+    ])
+    expect(line).not.toHaveProperty('counterpartyType')
+    expect(line).not.toHaveProperty('counterpartyId')
+  })
+
+  it('drops a lone counterpartyId with no type', () => {
+    const [line] = parseLines([
+      {
+        glAccountId: 'acct_1100',
+        direction: 'debit',
+        amountMinor: 5_000,
+        counterpartyId: 'contact_1',
+      },
+    ])
+    expect(line).not.toHaveProperty('counterpartyType')
+    expect(line).not.toHaveProperty('counterpartyId')
+  })
+
+  it('reads a line with no counterparty as having neither field', () => {
+    const [line] = parseLines([{ glAccountId: 'acct_6200', direction: 'debit', amountMinor: 1 }])
+    expect(line).not.toHaveProperty('counterpartyType')
+    expect(line).not.toHaveProperty('counterpartyId')
+  })
 })
 
 // 🛑 The column holds `{ v, lines }`, not the bare array - a `FieldValue` write

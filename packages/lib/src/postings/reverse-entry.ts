@@ -30,7 +30,7 @@ import { buildEntry } from './build-entry'
 import { parsePostingDraft, requiresAssertions, reverseAssertions } from './draft'
 import type { PeriodLock } from './periods'
 import { postEntry } from './post-entry'
-import type { GlPostingLineInput, PostingType, PostResult } from './types'
+import type { CounterpartyType, GlPostingLineInput, PostingType, PostResult } from './types'
 
 const logger = createScopedLogger('postings:reverse-entry')
 
@@ -136,6 +136,12 @@ export async function reverseEntry(
         memo: schema.GlPostingLine.memo,
         sourceType: schema.GlPostingLine.sourceType,
         sourceId: schema.GlPostingLine.sourceId,
+        // Carried onto the reversed line unchanged (brief 13 §1.1): the
+        // reversal backs the SAME receivable or payable out of the SAME
+        // counterparty's balance, so it must name the counterparty the
+        // original did, not one re-resolved today.
+        counterpartyType: schema.GlPostingLine.counterpartyType,
+        counterpartyId: schema.GlPostingLine.counterpartyId,
       })
       .from(schema.GlPostingLine)
       .where(
@@ -179,6 +185,11 @@ export async function reverseEntry(
       sourceType: line.sourceType,
       sourceId: line.sourceId,
       sortOrder: index,
+      // The counterparty rides along unchanged too (brief 13 §1.1): the
+      // reversal is the SAME receivable or payable, backed out of the SAME
+      // customer or vendor's balance.
+      counterpartyType: (line.counterpartyType as CounterpartyType | null) ?? undefined,
+      counterpartyId: line.counterpartyId ?? undefined,
     }))
 
     const entry = buildEntry({

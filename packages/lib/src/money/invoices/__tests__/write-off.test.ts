@@ -63,6 +63,7 @@ const BALANCE_FIELD = { id: 'f-balance' }
 const TOTAL_FIELD = { id: 'f-total' }
 const AMOUNT_PAID_FIELD = { id: 'f-amount-paid' }
 const WRITTEN_OFF_FIELD = { id: 'f-written-off' }
+const CONTACT_FIELD = { id: 'f-contact' }
 
 interface WireInvoiceOptions {
   number?: string
@@ -72,6 +73,8 @@ interface WireInvoiceOptions {
   writtenOffMinor?: number
   /** Simulate an org short of entity migration 128. */
   hasWrittenOffField?: boolean
+  /** `invoice_contact`'s related contact instance id (brief 13 §1.2). `null` omits the row. */
+  contactInstanceId?: string | null
 }
 
 /**
@@ -90,6 +93,7 @@ function wireInvoice(status: string | null, options: WireInvoiceOptions = {}) {
     amountPaidMinor = 0,
     writtenOffMinor = 0,
     hasWrittenOffField = true,
+    contactInstanceId = 'ei_contact_1',
   } = options
   const totalMinor = options.totalMinor ?? balanceMinor + amountPaidMinor
 
@@ -100,6 +104,7 @@ function wireInvoice(status: string | null, options: WireInvoiceOptions = {}) {
     invoice_total: TOTAL_FIELD,
     invoice_amount_paid: AMOUNT_PAID_FIELD,
     invoice_written_off: hasWrittenOffField ? WRITTEN_OFF_FIELD : null,
+    invoice_contact: CONTACT_FIELD,
   })
   h.selectRows = status
     ? [
@@ -119,6 +124,17 @@ function wireInvoice(status: string | null, options: WireInvoiceOptions = {}) {
           valueText: null,
           valueNumber: writtenOffMinor,
         },
+        ...(contactInstanceId
+          ? [
+              {
+                fieldId: CONTACT_FIELD.id,
+                optionId: null,
+                valueText: null,
+                valueNumber: null,
+                relatedEntityId: contactInstanceId,
+              },
+            ]
+          : []),
       ]
     : []
 }
@@ -304,6 +320,38 @@ describe('writeOffInvoice - the happy path', () => {
     expect(h.fieldValueServiceArgs[0]?.[4]).toEqual({
       bypassFieldGuards: new Set(['invoice_status']),
     })
+  })
+
+  // brief 13 §1.2: the receivable credit leg carries the invoice's own contact.
+  it('carries the invoice contact on the accounts_receivable credit leg only', async () => {
+    wireInvoice('sent', { balanceMinor: 50_000 })
+    h.postEntry.mockResolvedValue({ status: 'posted', glPostingId: 'gp_1' })
+
+    await writeOffInvoice(stubDb(), {
+      organizationId: ORG,
+      actorUserId: USER,
+      invoiceId: INVOICE,
+      reason: 'Customer bankrupt',
+    })
+
+    const [debit, credit] = h.postEntry.mock.calls[0]![1].entry.lines
+    expect(debit.counterpartyId).toBeUndefined()
+    expect(credit).toMatchObject({ counterpartyType: 'customer', counterpartyId: 'ei_contact_1' })
+  })
+
+  it('posts fine with no contact on the invoice', async () => {
+    wireInvoice('sent', { balanceMinor: 50_000, contactInstanceId: null })
+    h.postEntry.mockResolvedValue({ status: 'posted', glPostingId: 'gp_1' })
+
+    await writeOffInvoice(stubDb(), {
+      organizationId: ORG,
+      actorUserId: USER,
+      invoiceId: INVOICE,
+      reason: 'Customer bankrupt',
+    })
+
+    const [, credit] = h.postEntry.mock.calls[0]![1].entry.lines
+    expect(credit.counterpartyId).toBeUndefined()
   })
 
   // 🛑 A partial write-off must NOT stamp `written_off`. That status is a

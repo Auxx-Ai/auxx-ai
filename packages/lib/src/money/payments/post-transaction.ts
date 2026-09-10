@@ -163,6 +163,7 @@ export async function postPaymentTransaction(
         currency: transaction.currency,
         receivedAt,
         reference: transaction.reference,
+        contactInstanceId: transaction.contactInstanceId,
       },
       route,
       periodKey: paymentPeriodKey(transaction.id),

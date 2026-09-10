@@ -483,7 +483,10 @@ export function buildFulfillmentBatchEntry(
   const periodKey = fulfillmentBatchPeriodKey(group.groupKey, attempt)
 
   // ── Accumulate ───────────────────────────────────────────────────────────
-  const receivableByOrder = new Map<string, { orderNumber: string; amountMinor: number }>()
+  const receivableByOrder = new Map<
+    string,
+    { orderNumber: string; amountMinor: number; contactId: string | null }
+  >()
   const byDebitRole: Record<FulfillmentDebitRole, number> = {
     clearing_card: 0,
     clearing_affirm: 0,
@@ -536,6 +539,8 @@ export function buildFulfillmentBatchEntry(
       receivableByOrder.set(shipment.orderId, {
         orderNumber: shipment.orderNumber,
         amountMinor: (existing?.amountMinor ?? 0) + amounts.totalMinor,
+        // One order, one contact - every shipment of it carries the same id.
+        contactId: existing?.contactId ?? shipment.contactId,
       })
     }
     byDebitRole[amounts.debitRole] += amounts.totalMinor
@@ -576,6 +581,9 @@ export function buildFulfillmentBatchEntry(
       direction: 'debit',
       amount: receivable.amountMinor,
       memo: receivable.orderNumber,
+      ...(receivable.contactId
+        ? { counterpartyType: 'customer' as const, counterpartyId: receivable.contactId }
+        : {}),
     })
   }
 

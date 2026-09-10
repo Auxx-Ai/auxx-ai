@@ -182,6 +182,33 @@ describe('the entry', () => {
   })
 })
 
+describe('the counterparty (brief 13 §1.2)', () => {
+  it('carries the order contact on the receivable line only', () => {
+    const built = buildFulfillmentEntry({
+      ...BASE,
+      shippedLines: WHOLE_ORDER,
+      contactInstanceId: 'ei_contact_1',
+    })
+    const receivable = built.entry.lines.find(
+      (line) => line.accountRole === ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE
+    )
+    expect(receivable).toMatchObject({
+      counterpartyType: 'customer',
+      counterpartyId: 'ei_contact_1',
+    })
+    const revenue = built.entry.lines.find((line) => line.accountRole === ACCOUNT_ROLES.REVENUE_DTC)
+    expect(revenue?.counterpartyId).toBeUndefined()
+  })
+
+  it('posts fine with no contact - the export refuses, not the ledger', () => {
+    const built = buildFulfillmentEntry({ ...BASE, shippedLines: WHOLE_ORDER })
+    const receivable = built.entry.lines.find(
+      (line) => line.accountRole === ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE
+    )
+    expect(receivable?.counterpartyId).toBeUndefined()
+  })
+})
+
 describe('partial fulfillment', () => {
   // $500 + $500, 8% tax, $15 shipping. Ship one line, then the other.
   const first = { lineId: 'l1', quantity: 1, unitPriceMinor: 50_000 }

@@ -96,6 +96,8 @@ interface LineRow {
   memo: string | null
   sourceType: string
   sourceId: string
+  counterpartyType: string | null
+  counterpartyId: string | null
 }
 
 interface Account {
@@ -574,6 +576,35 @@ describe('an organization with no accounting provider', () => {
     // answer once the subledger moves, which is the property a ledger must not
     // have. So they are stored, not hinted at.
     expect(draft.resolvedLines.map((line) => line.accountCode).sort()).toEqual(['1310', '2160'])
+  })
+})
+
+// ── The counterparty (brief 13 §1.1) ────────────────────────────────────────
+
+describe('the counterparty column', () => {
+  it('stores the counterparty on the line that carries one, and null on the one that does not', async () => {
+    const fake = createFakeDb(FULL_CHART)
+    const entry = receiptEntry()
+    entry.lines[0]!.counterpartyType = 'customer'
+    entry.lines[0]!.counterpartyId = 'contact_1'
+
+    await postEntry(fake.db, { organizationId: ORG, entry, lock: OPEN })
+
+    expect(fake.lines[0]).toMatchObject({
+      counterpartyType: 'customer',
+      counterpartyId: 'contact_1',
+    })
+    // Absent on the input line becomes NULL on the stored row, not undefined -
+    // this is what the adapter and every reader select back.
+    expect(fake.lines[1]).toMatchObject({ counterpartyType: null, counterpartyId: null })
+  })
+
+  it('leaves both columns null when no line carries a counterparty', async () => {
+    const fake = createFakeDb(FULL_CHART)
+    await postEntry(fake.db, { organizationId: ORG, entry: receiptEntry(), lock: OPEN })
+
+    expect(fake.lines.map((line) => line.counterpartyType)).toEqual([null, null])
+    expect(fake.lines.map((line) => line.counterpartyId)).toEqual([null, null])
   })
 })
 

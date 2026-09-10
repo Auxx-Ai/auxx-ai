@@ -111,7 +111,11 @@ export interface UnpostedShipment {
   priorShipmentsSubtotalMinor: number
   /** The log entry's `shippingRecognised`. Exactly one shipment per order carries it. */
   includeShipping: boolean
-  /** The order's contact, for a screen. Never a posting key. */
+  /**
+   * The order's contact. Screen-only until brief 13 §1.2, which made it the
+   * counterparty `build-fulfillment-batch-entry.ts` freezes onto the per-order
+   * `accounts_receivable` line - never onto a summarised line.
+   */
   contactId: string | null
 }
 

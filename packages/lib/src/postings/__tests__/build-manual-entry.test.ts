@@ -39,6 +39,8 @@ function lines(...rows: Array<Partial<ManualEntryLine>>): ManualEntryLine[] {
     direction: row.direction ?? (index === 0 ? 'debit' : 'credit'),
     amountMinor: row.amountMinor ?? 5000,
     ...(row.memo ? { memo: row.memo } : {}),
+    ...(row.counterpartyType ? { counterpartyType: row.counterpartyType } : {}),
+    ...(row.counterpartyId ? { counterpartyId: row.counterpartyId } : {}),
   }))
 }
 
@@ -101,6 +103,30 @@ describe('buildManualEntry - the happy path', () => {
     })
     expect(withLineMemo.entry.lines[0]?.memo).toBe('Line memo')
     expect(withLineMemo.entry.lines[1]?.memo).toBe('Entry memo')
+  })
+
+  // Brief 13 §1.4: optional everywhere, never a refusal here. The export
+  // refusal for an empty counterparty on an A/R or A/P line lives in the
+  // QuickBooks adapter, not in this pure builder.
+  it('carries a counterparty through to the emitted line when supplied', () => {
+    const withCounterparty = buildManualEntry({
+      ...BASE,
+      lines: lines(
+        { glAccountId: 'acct_1100', counterpartyType: 'customer', counterpartyId: 'contact_1' },
+        {}
+      ),
+    })
+    expect(withCounterparty.entry.lines[0]?.counterpartyType).toBe('customer')
+    expect(withCounterparty.entry.lines[0]?.counterpartyId).toBe('contact_1')
+    expect(withCounterparty.entry.lines[1]?.counterpartyType).toBeUndefined()
+    expect(withCounterparty.entry.lines[1]?.counterpartyId).toBeUndefined()
+  })
+
+  it('leaves the counterparty undefined on an ordinary line, never posting a refusal for it', () => {
+    for (const line of built.entry.lines) {
+      expect(line.counterpartyType).toBeUndefined()
+      expect(line.counterpartyId).toBeUndefined()
+    }
   })
 
   it('builds an opening balance the same way, keyed on the cutover date', () => {

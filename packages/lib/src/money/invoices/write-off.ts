@@ -51,6 +51,7 @@ const INVOICE_ATTRIBUTES = [
   'invoice_total',
   'invoice_amount_paid',
   'invoice_written_off',
+  'invoice_contact',
 ] as const
 
 interface InvoiceForWriteOff {
@@ -80,6 +81,8 @@ interface InvoiceForWriteOff {
    * most that may still be written off. See {@link resolveOutstandingMinor}.
    */
   outstandingMinor: number
+  /** `invoice_contact`'s related `contact` instance id, for the receivable's counterparty. */
+  contactInstanceId: string | null
 }
 
 /**
@@ -134,6 +137,7 @@ async function loadInvoiceForWriteOff(
     cf.invoice_total,
     cf.invoice_amount_paid,
     cf.invoice_written_off,
+    cf.invoice_contact,
   ]
     .filter((f) => f !== null)
     .map((f) => f.id)
@@ -145,6 +149,7 @@ async function loadInvoiceForWriteOff(
       valueText: schema.FieldValue.valueText,
       valueNumber: schema.FieldValue.valueNumber,
       optionId: schema.FieldValue.optionId,
+      relatedEntityId: schema.FieldValue.relatedEntityId,
     })
     .from(schema.FieldValue)
     .where(
@@ -182,6 +187,8 @@ async function loadInvoiceForWriteOff(
       writtenOffMinor,
       balanceMinor,
     }),
+    contactInstanceId:
+      (cf.invoice_contact ? byField.get(cf.invoice_contact.id)?.relatedEntityId : null) ?? null,
   }
 }
 
@@ -386,6 +393,7 @@ export async function previewWriteOffInvoice(
     amountMinor: amount,
     txnDate,
     expenseGlAccountId,
+    contactInstanceId: invoice.contactInstanceId,
   } satisfies BuildWriteOffEntryInput)
 
   const lock = await resolvePeriodLock(organizationId)
@@ -480,6 +488,7 @@ export async function writeOffInvoice(
       txnDate,
       expenseGlAccountId,
       memo: reason,
+      contactInstanceId: invoice.contactInstanceId,
     } satisfies BuildWriteOffEntryInput)
 
     const lock = await resolvePeriodLock(organizationId)

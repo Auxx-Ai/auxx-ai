@@ -6,9 +6,10 @@
 // `writeShopifyCustomerIdField` established (`packages/lib/src/chat/shopify-identity-field.ts`):
 // `FieldValueService.setValue` writes the cell, `upsertRecordIdentity` mirrors it into
 // `RecordIdentity` so the reverse lookup (`findByIntegrationId`) and future reverse-sync
-// converge on the same cell. Shared across upsert-customer/upsert-item/sync-invoice so the
-// (appInstallationId, connectionId, appFieldKey) → CustomField resolution isn't repeated
-// three times.
+// converge on the same cell. Shared by `upsert-customer.ts` and the accounting provider's
+// counterparty resolution so the (appInstallationId, connectionId, appFieldKey) to
+// CustomField resolution is written once. The invoice mirror that also used it
+// (`sync-invoice.ts`, `upsert-item.ts`) was retired on 2026-09-10 (brief 14).
 
 import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'

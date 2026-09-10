@@ -337,6 +337,22 @@ describe('buildVendorBillEntry', () => {
     )
   })
 
+  it('carries the vendor counterparty on the A/P line only, and posts fine with none (13 §1.2)', () => {
+    const withVendor = buildVendorBillEntry({ ...BILL, vendorCompanyInstanceId: 'ei_company_1' })
+    expect(
+      withVendor.lines.find((l) => l.accountRole === ACCOUNT_ROLES.ACCOUNTS_PAYABLE)
+    ).toMatchObject({ counterpartyType: 'vendor', counterpartyId: 'ei_company_1' })
+    expect(
+      withVendor.lines.find((l) => l.accountRole === ACCOUNT_ROLES.GRNI)?.counterpartyType
+    ).toBe(undefined)
+
+    const withoutVendor = buildVendorBillEntry(BILL)
+    expect(
+      withoutVendor.lines.find((l) => l.accountRole === ACCOUNT_ROLES.ACCOUNTS_PAYABLE)
+        ?.counterpartyId
+    ).toBeUndefined()
+  })
+
   it('emits no PPV line when the bill matches exactly', () => {
     const entry = buildVendorBillEntry(BILL)
     expect(entry.lines.map((l) => l.accountRole)).not.toContain(ACCOUNT_ROLES.PPV)

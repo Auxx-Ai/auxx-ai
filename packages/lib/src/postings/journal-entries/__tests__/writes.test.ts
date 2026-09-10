@@ -195,6 +195,52 @@ describe('createJournalEntry', () => {
     })
   })
 
+  // Brief 13 §1.4: a receivable or payable line may carry a counterparty. Both
+  // fields ride through together, and dropping one when the other is present
+  // is `parseLines`'s job on the way back out, not this normaliser's.
+  it('carries a well-formed counterparty through to the stored line', async () => {
+    await createJournalEntry(DB, ORG, USER, {
+      date: '2026-08-31',
+      lines: [
+        {
+          glAccountId: 'acct_1100',
+          direction: 'debit',
+          amountMinor: 5_000,
+          counterpartyType: 'customer',
+          counterpartyId: 'contact_1',
+        },
+      ],
+    })
+    expect(h.creates[0]?.values.journal_entry_lines).toEqual({
+      lines: [
+        {
+          glAccountId: 'acct_1100',
+          direction: 'debit',
+          amountMinor: 5_000,
+          counterpartyType: 'customer',
+          counterpartyId: 'contact_1',
+        },
+      ],
+    })
+  })
+
+  it('omits both counterparty fields when only one is supplied', async () => {
+    await createJournalEntry(DB, ORG, USER, {
+      date: '2026-08-31',
+      lines: [
+        {
+          glAccountId: 'acct_1100',
+          direction: 'debit',
+          amountMinor: 5_000,
+          counterpartyType: 'customer',
+        } as unknown as JournalEntryLine,
+      ],
+    })
+    expect(h.creates[0]?.values.journal_entry_lines).toEqual({
+      lines: [{ glAccountId: 'acct_1100', direction: 'debit', amountMinor: 5_000 }],
+    })
+  })
+
   it('refuses a date that is not YYYY-MM-DD', async () => {
     const result = await createJournalEntry(DB, ORG, USER, { date: '31/08/2026' })
     expect(result.isErr()).toBe(true)
