@@ -125,7 +125,17 @@ export async function readOpeningTrialBalance(
       // role -> the id THIS org gave the account, and the settings value that
       // owns that row. `G8` read backwards: the account differs per org, so the
       // lock has to be resolved rather than hardcoded to three fixed accounts.
-      const inventoryById = new Map<string, { role: string; minor: number | null }>()
+      // 🛑 COLLECTED, never overwritten. Keyed by account, and more than one
+      // role lands on one account in the COMMON case: QuickBooks ships a single
+      // `Inventory Asset`, so every chart imported from it has all three roles
+      // pointing there. A `Map.set` per role kept only the last one, the row
+      // rendered that role's figure instead of the sum, and the trial balance
+      // was short by the other two - so Finalize could not be reached on any
+      // imported chart at all. Found by driving on 2026-09-10; brief 19's
+      // DRIVEN block has the reproduction. This is the same collect-not-
+      // overwrite rule §0.6 already demanded of the PROVIDER map, one layer
+      // over in the ROLE map.
+      const inventoryById = new Map<string, { roles: string[]; minor: number | null }>()
       // Keyed off `ACCOUNT_ROLES`, never off `INVENTORY_ROLES`'s ordering: the
       // three settings and the three roles are paired by NAME in
       // `OPENING_BASELINE_SETTING_KEYS`, and pairing them by array index would
@@ -136,7 +146,21 @@ export async function readOpeningTrialBalance(
         [ACCOUNT_ROLES.INVENTORY_FINISHED_GOODS]: minor(finishedGoods),
       }
       for (const [role, account] of inventoryAccounts) {
-        inventoryById.set(account.glAccountId, { role, minor: settingsByRole[role] ?? null })
+        const existing = inventoryById.get(account.glAccountId)
+        const roleMinor = settingsByRole[role] ?? null
+        if (!existing) {
+          inventoryById.set(account.glAccountId, { roles: [role], minor: roleMinor })
+          continue
+        }
+        existing.roles.push(role)
+        // ⚠️ `null` is "nobody entered this", NOT zero - the distinction this
+        // whole module is built on. So a sum is only a claim about money once
+        // EVERY contributing role has a number; until then the row stays empty
+        // and `resolveSetupReadiness`'s `set-opening-balances` requirement is
+        // what names the gap, in its own words, rather than this row showing a
+        // partial total nobody supplied.
+        existing.minor =
+          existing.minor === null || roleMinor === null ? null : existing.minor + roleMinor
       }
 
       const byId = collectLinesById(entry?.lines ?? [])
@@ -158,7 +182,7 @@ export async function readOpeningTrialBalance(
           accountName: account.name,
           accountType: account.accountType,
           isActive: account.isActive,
-          ...(locked ? { lockedByRole: locked.role } : {}),
+          ...(locked ? { lockedByRole: locked.roles[0], lockedRoles: locked.roles } : {}),
           debitMinor,
           creditMinor,
         }

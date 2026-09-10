@@ -131,12 +131,24 @@ export function overlayInventorySettings(
 ): OpeningTrialBalanceRow[] {
   return rows.map((row) => {
     if (!row.lockedByRole) return row
-    const minor = minorByRole[row.lockedByRole]
-    // `undefined` is a role this caller knows nothing about; `null` is a store
-    // that may simply not have loaded the key. Neither may overwrite.
-    if (minor === undefined || minor === null) return row
+    // 🛑 SUM every role on this account, not just one. All three roles share one
+    // account on any chart imported from QuickBooks, and reading a single role
+    // here left the grid short by the other two - the browser half of the same
+    // defect `reads.ts` had (brief 19's DRIVEN block). `lockedRoles` is the
+    // authority; `lockedByRole` is only the badge's label.
+    const roles = row.lockedRoles ?? [row.lockedByRole]
+    let total = 0
+    for (const role of roles) {
+      const minor = minorByRole[role]
+      // `undefined` is a role this caller knows nothing about; `null` is a store
+      // that may simply not have loaded the key. Neither may overwrite - and one
+      // unknown role poisons the whole sum, because a partial total would claim
+      // a number nobody supplied.
+      if (minor === undefined || minor === null) return row
+      total += minor
+    }
     // An inventory account is an asset: its opening balance is a debit.
-    return { ...row, debitMinor: minor, creditMinor: null }
+    return { ...row, debitMinor: total, creditMinor: null }
   })
 }
 

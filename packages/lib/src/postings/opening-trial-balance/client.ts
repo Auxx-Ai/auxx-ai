@@ -50,6 +50,20 @@ export interface OpeningTrialBalanceRow {
    * onto one number is how the ledger and the subledger start disagreeing.
    */
   lockedByRole?: string
+  /**
+   * EVERY inventory role that lands on this account, in `INVENTORY_ROLES`
+   * order. Present whenever {@link lockedByRole} is.
+   *
+   * 🛑 More than one role on one account is the COMMON case, not the exotic
+   * one: QuickBooks ships a single `Inventory Asset`, so every chart imported
+   * from it has all three roles pointing at the same account. The row's amount
+   * is then the SUM of the three settings, and a reader that took one role's
+   * figure would leave the trial balance short by the other two - which it did,
+   * found by driving on 2026-09-10 (brief 19's DRIVEN block). `lockedByRole`
+   * survives as the representative role for the lock badge and the divergence
+   * label; anything computing an AMOUNT must read this instead.
+   */
+  lockedRoles?: readonly string[]
   /** Integer minor units, or null for a row with no opening balance. */
   debitMinor: number | null
   creditMinor: number | null

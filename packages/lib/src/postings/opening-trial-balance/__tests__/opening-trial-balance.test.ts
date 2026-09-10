@@ -250,6 +250,44 @@ describe('readOpeningTrialBalance', () => {
     expect(rows.find((r) => r.accountCode === '1310')?.debitMinor).toBeNull()
   })
 
+  it('SUMS every role that lands on one account, which is the QuickBooks-imported case', async () => {
+    // 🛑 The regression this exists for. QuickBooks ships a single `Inventory
+    // Asset`, so an imported chart puts all three roles on one account. Keying
+    // the lock map by account and `set`ting per role kept only the last one, the
+    // row rendered 250_00 instead of 350_00, and the trial balance was short by
+    // the other two - so Finalize could not be reached on any imported chart.
+    // Found by driving on 2026-09-10, not by a test; brief 19's DRIVEN block.
+    h.roleAccounts = new Map([
+      ['inventory_raw_materials', { glAccountId: 'a3', code: '1310', name: 'Inventory Asset' }],
+      ['inventory_wip', { glAccountId: 'a3', code: '1310', name: 'Inventory Asset' }],
+      ['inventory_finished_goods', { glAccountId: 'a3', code: '1310', name: 'Inventory Asset' }],
+    ])
+    const { rows } = (await readOpeningTrialBalance(db, ORG))._unsafeUnwrap()
+    const inventory = rows.find((r) => r.accountCode === '1310')
+    expect(inventory?.debitMinor).toBe(350_00) // 100_00 + 0 + 250_00
+    expect(inventory?.lockedRoles).toEqual([
+      'inventory_raw_materials',
+      'inventory_wip',
+      'inventory_finished_goods',
+    ])
+    // The representative role survives for the badge and the divergence label.
+    expect(inventory?.lockedByRole).toBe('inventory_raw_materials')
+  })
+
+  it('leaves a shared account NULL while any contributing role is unset', async () => {
+    // ⚠️ `null` is "nobody entered this", never zero. A partial sum would claim
+    // a number nobody supplied; `set-opening-balances` is the requirement that
+    // names the gap instead.
+    h.roleAccounts = new Map([
+      ['inventory_raw_materials', { glAccountId: 'a3', code: '1310', name: 'Inventory Asset' }],
+      ['inventory_wip', { glAccountId: 'a3', code: '1310', name: 'Inventory Asset' }],
+      ['inventory_finished_goods', { glAccountId: 'a3', code: '1310', name: 'Inventory Asset' }],
+    ])
+    h.settings.delete('accounting.openingFinishedGoods')
+    const { rows } = (await readOpeningTrialBalance(db, ORG))._unsafeUnwrap()
+    expect(rows.find((r) => r.accountCode === '1310')?.debitMinor).toBeNull()
+  })
+
   it('reads a FRACTIONAL inventory setting as null - the close would refuse it anyway', async () => {
     h.settings.set('accounting.openingRawMaterials', 12.5)
     const { rows } = (await readOpeningTrialBalance(db, ORG))._unsafeUnwrap()
