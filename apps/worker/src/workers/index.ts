@@ -33,7 +33,6 @@ import { startOAuth2RefreshWorker } from './worker-definitions/oauth2-refresh-wo
 import { startPollingSyncWorker } from './worker-definitions/polling-sync-worker'
 import { startPollingTriggerWorker } from './worker-definitions/polling-trigger-worker'
 import { startPurchaseIntakeWorker } from './worker-definitions/purchase-intake-worker'
-import { startQuickbooksInvoiceSyncWorker } from './worker-definitions/quickbooks-invoice-sync-worker'
 import { startRecordingBotWorker } from './worker-definitions/recording-bot-worker'
 import { startRecordingProcessingWorker } from './worker-definitions/recording-processing-worker'
 import { startScheduledTriggerWorker } from './worker-definitions/scheduled-trigger-worker'
@@ -128,8 +127,8 @@ export async function startWorkers() {
   // Quote/invoice PDF render worker (money MQ2)
   const documentPdfWorker = startDocumentPdfWorker()
 
-  // QuickBooks invoice sync worker (plans/dispatch/37e-quickbooks-invoice-sync.md §3, P3)
-  const quickbooksInvoiceSyncWorker = startQuickbooksInvoiceSyncWorker()
+  // The QuickBooks invoice sync worker was retired 2026-09-10: the invoice document mirror is
+  // gone on MK's decision (brief 14's DECIDED block) in favor of journal-only export.
 
   // Bulk fulfillment posting worker: the `auto` lane of
   // plans/money/tasks/49-bulk-fulfillment-posting.md §2.4. Concurrency 1 - see
@@ -180,7 +179,6 @@ export async function startWorkers() {
     knowledgeSourceWorker,
     dataConnectorWorker,
     documentPdfWorker,
-    quickbooksInvoiceSyncWorker,
     fulfillmentPostingWorker,
     mailClassificationWorker,
     purchaseIntakeWorker,

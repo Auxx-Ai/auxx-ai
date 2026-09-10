@@ -51,8 +51,9 @@ export type ResolveQuickbooksContextResult =
  *
  * `connected: false` covers every reason a sync can't proceed — the app isn't installed, has
  * no active deployment, or has neither an org- nor user-scoped connection — so the caller
- * (`syncInvoiceToQuickbooks`) can collapse all of them into `status: 'not_connected'` without
- * branching on why.
+ * (`quickbooks-accounting-provider.ts`, which pushes journal entries only, the invoice
+ * document mirror was retired 2026-09-10 per brief 14's DECIDED block) can collapse all of
+ * them into `status: 'not_connected'` without branching on why.
  */
 export async function resolveQuickbooksContext(input: {
   organizationId: string

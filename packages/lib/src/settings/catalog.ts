@@ -817,33 +817,18 @@ export const SETTINGS_CATALOG = {
     description: 'Show payment history on invoice PDFs (MI1 consumes)',
   },
 
-  // ── QuickBooks invoice sync (plans/dispatch/37e-quickbooks-invoice-sync.md P1) ──────────
-  'quickbooks.syncInvoices': {
-    scope: 'DOCUMENTS',
-    access: 'org',
-    fieldType: 'CHECKBOX',
-    options: { variant: 'switch' },
-    defaultValue: false,
-    description: 'When on, sending an Auxx invoice mirrors it into QuickBooks Online.',
-  },
-  'quickbooks.defaultIncomeAccountId': {
-    scope: 'DOCUMENTS',
-    access: 'org',
-    fieldType: 'TEXT',
-    defaultValue: null,
-    description: 'QBO income account id used when auto-creating service items.',
-  },
-
   // ── QuickBooks general-ledger posting (plans/auxx-lift/gap-b-execution-plan.md) ─────────
+  //
+  // The two settings keys that used to configure the invoice document mirror (plan
+  // 37e, "P1") were deleted 2026-09-10: the mirror was retired on MK's decision
+  // (accounting brief 14's DECIDED block), not as cleanup. This is now the only
+  // QuickBooks export switch, and auxx composes journal entries and this is what
+  // pushes them.
   'quickbooks.postJournalEntries': {
     scope: 'DOCUMENTS',
     access: 'org',
     fieldType: 'CHECKBOX',
     options: { variant: 'switch' },
-    // Off by default, and deliberately a separate switch from `syncInvoices`:
-    // a journal entry hits the financial statements directly, with no invoice or
-    // payment to reconcile it against. Turning on invoice sync must never turn
-    // this on as a side effect.
     defaultValue: false,
     description:
       'When on, accrual summaries are posted to the QuickBooks general ledger as journal entries.',

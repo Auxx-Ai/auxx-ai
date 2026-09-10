@@ -243,6 +243,27 @@ describe('GlPostingLine', () => {
     )
     expect(uniq?.config.unique).toBe(true)
   })
+
+  // plans/accounting/tasks/13-cash-accounts-and-the-qbo-seam.md §1.1. Frozen at
+  // post time, never a provider id (P2), plain `text` rather than a `pgEnum` for
+  // the reason `accountRole` gives - the vocabulary is `CounterpartyType` in
+  // packages/lib/src/postings/types.ts, not here.
+  it('carries a nullable, unenumerated counterparty (task 13 §1.1)', () => {
+    const type = lineConfig.columns.find((c) => c.name === 'counterpartyType')
+    expect(type?.getSQLType()).toBe('text')
+    expect(type?.notNull).toBe(false)
+
+    const id = lineConfig.columns.find((c) => c.name === 'counterpartyId')
+    expect(id?.getSQLType()).toBe('text')
+    expect(id?.notNull).toBe(false)
+
+    // No FK, for the same reason `glAccountId` has none: a ledger line must
+    // outlive the contact or company row it names.
+    const fkColumns = lineConfig.foreignKeys.flatMap((fk) =>
+      fk.reference().columns.map((c) => c.name)
+    )
+    expect(fkColumns).not.toContain('counterpartyId')
+  })
 })
 
 describe('the enum vocabularies', () => {

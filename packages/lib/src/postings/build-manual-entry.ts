@@ -48,7 +48,13 @@
 
 import { UnprocessableEntityError } from '../errors'
 import { buildEntry } from './build-entry'
-import type { BuiltEntry, GlPostingLineInput, PostingDirection, PostingType } from './types'
+import type {
+  BuiltEntry,
+  CounterpartyType,
+  GlPostingLineInput,
+  PostingDirection,
+  PostingType,
+} from './types'
 
 /**
  * The two posting types a human authors by hand, line by line.
@@ -70,6 +76,13 @@ export interface ManualEntryLine {
   amountMinor: number
   /** The line's own memo. Optional; the entry's memo covers the common case. */
   memo?: string
+  /**
+   * Who this line is attributable to, when it names a receivable or payable
+   * account (brief 13 §1.4). Optional everywhere; the only refusal on an
+   * empty counterparty happens later, at QuickBooks export time, never here.
+   */
+  counterpartyType?: CounterpartyType
+  counterpartyId?: string
 }
 
 export interface BuildManualEntryInput {
@@ -230,6 +243,8 @@ export function buildManualEntry(input: BuildManualEntryInput): BuiltManualEntry
     sourceType: MANUAL_ENTRY_SOURCE_TYPE,
     sourceId,
     sortOrder: index,
+    counterpartyType: line.counterpartyType,
+    counterpartyId: line.counterpartyId,
   }))
 
   // Through `buildEntry` on purpose, not around it: the balance check, the

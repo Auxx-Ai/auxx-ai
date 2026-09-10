@@ -493,6 +493,9 @@ function normaliseLines(lines: JournalEntryLine[]): JournalEntryLine[] {
     direction: line.direction,
     amountMinor: line.amountMinor,
     ...(line.memo ? { memo: line.memo } : {}),
+    ...(line.counterpartyType && line.counterpartyId
+      ? { counterpartyType: line.counterpartyType, counterpartyId: line.counterpartyId }
+      : {}),
   }))
 }
 

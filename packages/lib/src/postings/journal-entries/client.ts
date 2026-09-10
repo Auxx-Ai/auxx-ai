@@ -7,7 +7,13 @@
 // directive would turn every export into a client-reference proxy there. See
 // docs/lib-module-guide.md section 7.
 
-import type { PostingDirection, PostingExportStatus, PostingStatus, PostingType } from '../types'
+import type {
+  CounterpartyType,
+  PostingDirection,
+  PostingExportStatus,
+  PostingStatus,
+  PostingType,
+} from '../types'
 
 /** What the record IS, which decides the posting type it becomes. */
 export type JournalEntryKindValue = 'manual' | 'opening_balance' | 'recurring_template'
@@ -50,6 +56,13 @@ export interface JournalEntryLine {
   direction: PostingDirection
   amountMinor: number
   memo?: string
+  /**
+   * Who this line is attributable to, when it names a receivable or payable
+   * account (brief 13 §1.4). Optional everywhere; the only refusal on an
+   * empty counterparty happens at QuickBooks export time, never on save.
+   */
+  counterpartyType?: CounterpartyType
+  counterpartyId?: string
 }
 
 /**

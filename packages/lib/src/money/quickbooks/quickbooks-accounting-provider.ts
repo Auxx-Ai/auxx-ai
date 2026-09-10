@@ -8,9 +8,13 @@
 // the org's own account CODE, name and `glAccountId` - task 15's IDENTITY, and
 // the key this file resolves by (`resolveMappedAccounts`) so a replay
 // (`retry-export.ts`) cannot be tripped up by a renumber that happened since -
-// and it writes back whatever provider id comes out. This file owns three
-// things the core cannot: turning an account into a QuickBooks account id,
-// QuickBooks' `DocNumber`, and QuickBooks' `requestid`.
+// plus, on a receivable or payable line, a FROZEN `counterpartyType` /
+// `counterpartyId` (brief 13 §1.1) - and it writes back whatever provider id
+// comes out. This file owns four things the core cannot: turning an account
+// into a QuickBooks account id, turning a counterparty into a QuickBooks
+// `Customer` or `Vendor` id (`resolveCounterparties`, beside
+// `resolveMappedAccounts`), QuickBooks' `DocNumber`, and QuickBooks'
+// `requestid`.
 //
 // Registered from the APP layer via `registerAccountingProvider`, never imported
 // by `packages/lib` itself. That direction is decision P1: the ledger is ours
@@ -63,6 +67,7 @@
 
 import { database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { toRecordId } from '@auxx/types/resource'
 import { err, ok, type Result } from 'neverthrow'
 import { UnprocessableEntityError } from '../../errors'
 import { accountLabel } from '../../postings/account-label'
@@ -75,12 +80,14 @@ import { listChartAccounts } from '../../postings/role-map'
 import { validateProviderMapping } from '../../postings/suggest-account-identities'
 import {
   type ChartAccountRow,
+  type CounterpartyType,
   type PostEntryInput,
   type PostEntryResult,
   type PostFailureClass,
   type ProviderAccount,
   ProviderPostError,
 } from '../../postings/types'
+import { UnifiedCrudHandler } from '../../resources/crud'
 import { getOrganizationSetting } from '../../settings/settings-service'
 import {
   clearQuickbooksAccountMapping,
@@ -88,6 +95,7 @@ import {
   readQuickbooksAccountMap,
   setQuickbooksAccountMapping,
 } from './account-map'
+import { readQuickbooksIdField } from './identity-field'
 import { type QuickbooksToolContext, resolveQuickbooksContext } from './invoke-quickbooks-tool'
 
 const logger = createScopedLogger('quickbooks-accounting-provider')
@@ -101,6 +109,32 @@ const TOOL_CREATE_JOURNAL_ENTRY = 'create_quickbooks_journal_entry'
 
 /** QuickBooks caps `PrivateNote` at 4000 characters and rejects a longer one. */
 const PRIVATE_NOTE_MAX_LENGTH = 4000
+
+/** The QuickBooks id-map field for a `contact` synced as a `Customer`. */
+const QBO_CUSTOMER_ID_FIELD_KEY = 'qboCustomerId'
+
+/**
+ * The QuickBooks id-map field for a `company` synced as a `Vendor`.
+ *
+ * 🛑 Not provisioned by the app until the first vendor bill entry ships
+ * (brief 13 DECIDED, unit 1). Until then `readQuickbooksIdField` returns
+ * `undefined` for the field itself rather than for any one vendor, so every
+ * payable line refuses with the "not synced" sentence below - intended
+ * behaviour, not a bug in this file.
+ */
+const QBO_VENDOR_ID_FIELD_KEY = 'qboVendorId'
+
+/** What `resolveCounterparties` resolves one line's counterparty TO. */
+interface QuickbooksEntity {
+  type: 'Customer' | 'Vendor'
+  id: string
+  name?: string
+}
+
+/** `'customer:contact_1'` / `'vendor:company_1'` - a map key, never persisted. */
+function counterpartyKey(type: CounterpartyType, id: string): string {
+  return `${type}:${id}`
+}
 
 /**
  * One journal entry line in the shape `create_quickbooks_journal_entry` takes.
@@ -118,6 +152,16 @@ interface QboJournalLine {
   accountId: string
   accountName?: string
   description?: string
+  /**
+   * Required on a line posting to Accounts Receivable or Accounts Payable -
+   * QuickBooks cannot age a receivable it cannot attribute (brief 13 §1).
+   * `resolveCounterparties` is the only place this gets set. Typed with the
+   * app's whole vocabulary (`build-journal-lines.ts`'s `JournalLineInput`),
+   * not a narrower one - auxx never emits `'Employee'` today, but the two
+   * schemas must match exactly, and a narrower local type would drift the
+   * moment it did not.
+   */
+  entity?: { type: 'Customer' | 'Vendor' | 'Employee'; id: string; name?: string }
 }
 
 /**
@@ -173,6 +217,14 @@ function errorMessage(error: unknown): string {
  *
  * Duplicate-document-number is handled separately and by re-query, never by
  * code - see {@link DUPLICATE_DOC_NUMBER_FAULT_CODES}.
+ *
+ * 🛑 **No entry here for "a receivable or payable line named no `Entity`".**
+ * `resolveCounterparties` refuses that case BEFORE the push (brief 13 §1.5),
+ * so this file has never actually sent QuickBooks that shape and does not
+ * know what fault code comes back. Do not guess one in: observe it against a
+ * sandbox first (13 §1.5's own warning), then add it here as `configuration`
+ * - it would be fixable and a retry would then succeed, which is exactly what
+ * `configuration` means for this table.
  */
 const FAULT_CODE_CLASS: Record<string, PostFailureClass> = {
   '2300': 'data',
@@ -366,6 +418,103 @@ async function resolveMappedAccounts(
 
   if (problems.length > 0) {
     return err(new UnprocessableEntityError(problems.join(' ')))
+  }
+  return ok(resolved)
+}
+
+/**
+ * Resolve every counterparty a receivable or payable line names to a
+ * QuickBooks `entity` reference, and refuse a receivable or payable line that
+ * carries none at all (brief 13 §1.3, §1.4).
+ *
+ * 🛑 **No provider id above the seam (P2).** A posting line carries OUR
+ * `counterpartyType` / `counterpartyId` - a `contact` or `company` instance
+ * id - and this is the one place that becomes a QuickBooks `Customer` or
+ * `Vendor` id, the same hop `resolveMappedAccounts` makes for an account.
+ *
+ * Takes the whole {@link PostEntryInput} rather than a bare line array so a
+ * refusal can name the document (`input.docNumber`), matching
+ * `resolveMappedAccounts`'s account-naming register.
+ *
+ * ⚠️ Every failure is collected, never thrown on the first - fixing an export
+ * one refused line at a time is how a close slips a day (13 §1.3), and it is
+ * the same rule `resolveMappedAccounts` follows at `:305-307`.
+ *
+ * Which line needs a counterparty is read from the CHART, not from a
+ * hardcoded role list: `subtype: 'accounts_receivable' | 'accounts_payable'`
+ * on `ourChart` (task 13 §3, pulled forward), so a manual journal entry coded
+ * to a receivable by hand is caught exactly like a builder's own A/R line.
+ */
+async function resolveCounterparties(
+  ctx: QuickbooksToolContext,
+  input: PostEntryInput,
+  ourChart: readonly ChartAccountRow[]
+): Promise<Result<Map<string, QuickbooksEntity>, Error>> {
+  const byId = new Map(ourChart.map((row) => [row.id, row]))
+  const handler = new UnifiedCrudHandler(ctx.organizationId, ctx.userId)
+
+  // Every distinct counterparty actually named on the entry, resolved ONCE
+  // each rather than once per line.
+  const distinct = new Map<string, { type: CounterpartyType; id: string }>()
+  for (const line of input.lines) {
+    if (line.counterpartyType && line.counterpartyId) {
+      distinct.set(counterpartyKey(line.counterpartyType, line.counterpartyId), {
+        type: line.counterpartyType,
+        id: line.counterpartyId,
+      })
+    }
+  }
+
+  const resolved = new Map<string, QuickbooksEntity>()
+  const unsynced = new Set<string>()
+
+  for (const { type, id } of distinct.values()) {
+    const isCustomer = type === 'customer'
+    const externalId = await readQuickbooksIdField({
+      organizationId: ctx.organizationId,
+      installationId: ctx.installationId,
+      connectionId: ctx.connectionId,
+      appFieldKey: isCustomer ? QBO_CUSTOMER_ID_FIELD_KEY : QBO_VENDOR_ID_FIELD_KEY,
+      recordId: toRecordId(isCustomer ? 'contact' : 'company', id),
+      handler,
+    })
+    const key = counterpartyKey(type, id)
+    if (externalId) {
+      resolved.set(key, { type: isCustomer ? 'Customer' : 'Vendor', id: externalId })
+    } else {
+      unsynced.add(key)
+    }
+  }
+
+  // Every receivable or payable line, checked against what resolved above.
+  const problems = new Set<string>()
+  for (const line of input.lines) {
+    const account = byId.get(line.glAccountId)
+    const subtype = account?.subtype
+    if (subtype !== 'accounts_receivable' && subtype !== 'accounts_payable') continue
+
+    const kind = subtype === 'accounts_receivable' ? 'receivable' : 'payable'
+    const qbNoun = subtype === 'accounts_receivable' ? 'customer' : 'vendor'
+    const ourNoun = subtype === 'accounts_receivable' ? 'contact' : 'company'
+    const label = account ? accountLabel(account) : (line.accountCode ?? line.glAccountId)
+
+    if (!line.counterpartyType || !line.counterpartyId) {
+      problems.add(
+        `${input.docNumber} posts to ${label}, and QuickBooks cannot accept a ${kind} line ` +
+          `without a ${qbNoun}. This line carries no ${ourNoun}.`
+      )
+      continue
+    }
+    if (unsynced.has(counterpartyKey(line.counterpartyType, line.counterpartyId))) {
+      problems.add(
+        `${input.docNumber} posts to ${label}, and QuickBooks cannot accept a ${kind} line ` +
+          `without a ${qbNoun}. The ${ourNoun} on this line has not been synced to QuickBooks yet.`
+      )
+    }
+  }
+
+  if (problems.size > 0) {
+    return err(new UnprocessableEntityError([...problems].join(' ')))
   }
   return ok(resolved)
 }
@@ -646,18 +795,47 @@ export class QuickbooksAccountingProvider implements AccountingProvider {
         )
       }
 
+      // ── Resolve every counterparty a receivable or payable line names ────
+      // Brief 13 §1.3: the same "resolve the whole entry, collect every
+      // problem" shape as the accounts above, over OUR chart rather than
+      // QuickBooks' - `resolveCounterparties` reads `subtype` off it to know
+      // which lines even need one.
+      const ourChart = await listChartAccounts(database, organizationId)
+      if (ourChart.isErr()) {
+        return err(
+          new ProviderPostError(ourChart.error.message, {
+            failureClass: 'configuration',
+            providerId: QUICKBOOKS_PROVIDER_ID,
+          })
+        )
+      }
+      const counterparties = await resolveCounterparties(ctx, input, ourChart.value)
+      if (counterparties.isErr()) {
+        return err(
+          new ProviderPostError(counterparties.error.message, {
+            failureClass: 'configuration',
+            providerId: QUICKBOOKS_PROVIDER_ID,
+          })
+        )
+      }
+
       const lines: QboJournalLine[] = []
       for (const line of [...input.lines].sort((a, b) => a.sortOrder - b.sortOrder)) {
         // `resolveMappedAccounts` refuses unless every id resolved, so a miss
         // here is unreachable rather than merely unlikely.
         const account = accounts.value.get(line.glAccountId)
         if (!account) continue
+        const entity =
+          line.counterpartyType && line.counterpartyId
+            ? counterparties.value.get(counterpartyKey(line.counterpartyType, line.counterpartyId))
+            : undefined
         lines.push({
           amountMinor: line.amount,
           postingType: line.direction === 'debit' ? 'Debit' : 'Credit',
           accountId: account.id,
           accountName: account.fullyQualifiedName,
           ...(line.memo && { description: line.memo }),
+          ...(entity && { entity }),
         })
       }
 

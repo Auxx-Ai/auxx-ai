@@ -161,6 +161,30 @@ describe('the credit side splits on what is allocated', () => {
   })
 })
 
+describe('the counterparty (brief 13 §1.2)', () => {
+  it('carries the contact on receivable and deposit legs, never on the route leg', () => {
+    const built = buildPaymentEntry({
+      ...BASE,
+      allocatedMinor: 20_000,
+      transaction: { ...TRANSACTION, contactInstanceId: 'ei_contact_1' },
+    })
+    expect(line(built.entry, ACCOUNT_ROLES.UNDEPOSITED_FUNDS)?.counterpartyId).toBeUndefined()
+    expect(line(built.entry, ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE)).toMatchObject({
+      counterpartyType: 'customer',
+      counterpartyId: 'ei_contact_1',
+    })
+    expect(line(built.entry, ACCOUNT_ROLES.CUSTOMER_DEPOSITS)).toMatchObject({
+      counterpartyType: 'customer',
+      counterpartyId: 'ei_contact_1',
+    })
+  })
+
+  it('posts fine with no contact - the export refuses, not the ledger', () => {
+    const built = buildPaymentEntry(BASE)
+    expect(line(built.entry, ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE)?.counterpartyId).toBeUndefined()
+  })
+})
+
 describe('refusals', () => {
   it('refuses a currency other than the ledger currency, naming it', () => {
     expect(() =>

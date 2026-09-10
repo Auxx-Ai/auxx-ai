@@ -66,6 +66,8 @@ interface LineRow {
   memo: string | null
   sourceType: string
   sourceId: string
+  counterpartyType: string | null
+  counterpartyId: string | null
 }
 
 /**
@@ -192,6 +194,8 @@ function line(overrides: Partial<LineRow> & { lineNumber: number }): LineRow {
     memo: null,
     sourceType: 'stock_movement',
     sourceId: 'sm_1',
+    counterpartyType: null,
+    counterpartyId: null,
     ...overrides,
   }
 }
@@ -341,6 +345,29 @@ describe('getPosting - the lines', () => {
     expect(detail.lines[0]).toMatchObject({ sourceType: 'vendor_bill', sourceId: 'vb_9' })
   })
 
+  // Brief 13 §1.1: the counterparty FROZEN on the line at post time, read back
+  // verbatim - never re-resolved, for the same reason `accountName` is not.
+  it('returns the counterparty frozen on a receivable line', async () => {
+    const stub = stubDb({
+      postings: [POSTING],
+      lines: [line({ lineNumber: 1, counterpartyType: 'customer', counterpartyId: 'contact_1' })],
+    })
+    const detail = (await getPosting(stub.db, ORG, 'gp_1'))._unsafeUnwrap()
+
+    expect(detail.lines[0]).toMatchObject({
+      counterpartyType: 'customer',
+      counterpartyId: 'contact_1',
+    })
+  })
+
+  it('returns null, not undefined, on a line with no counterparty', async () => {
+    const stub = stubDb({ postings: [POSTING], lines: [line({ lineNumber: 1 })] })
+    const detail = (await getPosting(stub.db, ORG, 'gp_1'))._unsafeUnwrap()
+
+    expect(detail.lines[0]?.counterpartyType).toBeNull()
+    expect(detail.lines[0]?.counterpartyId).toBeNull()
+  })
+
   // Two reads: the header, then all of its lines. A third would mean either an
   // N+1 over the lines or a join to the live chart, and both are forbidden.
   it('issues exactly two reads, whatever the line count', async () => {
@@ -480,6 +507,8 @@ function paymentLine(sourceId: string, lineNumber: number): LineRow {
     memo: null,
     sourceType: 'payment_transaction',
     sourceId,
+    counterpartyType: null,
+    counterpartyId: null,
   }
 }
 

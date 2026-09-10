@@ -428,11 +428,23 @@ export function parseLines(value: unknown): JournalEntryLine[] {
       line.direction === 'debit' || line.direction === 'credit' ? line.direction : null
     const amountMinor = typeof line.amountMinor === 'number' ? line.amountMinor : null
     if (!glAccountId || !direction || amountMinor === null) continue
+    // Both fields or neither: a type with no id (or vice versa) is a malformed
+    // row, and dropping both silently is the same tolerant-read rule the rest
+    // of this function follows rather than surfacing a half-attributed line.
+    const counterpartyType =
+      line.counterpartyType === 'customer' || line.counterpartyType === 'vendor'
+        ? line.counterpartyType
+        : null
+    const counterpartyId =
+      typeof line.counterpartyId === 'string' && line.counterpartyId.trim().length > 0
+        ? line.counterpartyId
+        : null
     lines.push({
       glAccountId,
       direction,
       amountMinor,
       ...(typeof line.memo === 'string' && line.memo ? { memo: line.memo } : {}),
+      ...(counterpartyType && counterpartyId ? { counterpartyType, counterpartyId } : {}),
     })
   }
   return lines

@@ -2605,6 +2605,13 @@
       "when": 1789017340953,
       "tag": "0371_gl_posting_line_account_code_optional",
       "breakpoints": true
+    },
+    {
+      "idx": 372,
+      "version": "7",
+      "when": 1789020622840,
+      "tag": "0372_gl_posting_line_counterparty",
+      "breakpoints": true
     }
   ]
 }

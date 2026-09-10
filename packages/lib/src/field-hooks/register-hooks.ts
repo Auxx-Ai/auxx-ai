@@ -65,7 +65,6 @@ import {
 import { handleRecordRulesOnFieldChange } from '../record-rules/hook-handler'
 import { repairNameCasing } from '../records/name-case/hook'
 import {
-  enqueueQuickbooksInvoiceSyncOnSent,
   enrollInvoiceReminderOnSent,
   enrollJobFollowUpOnCompletion,
   reanchorInvoiceOnDueDateChange,
@@ -301,14 +300,14 @@ export function registerAllHooks(): void {
   // parked reminder wait when `invoice_due_date` changes (`reanchorInvoiceOnDueDateChange` —
   // required, not just an accelerator: it's the only path that can move an already-parked wait).
   //
-  // QuickBooks invoice sync (plans/dispatch/37e-quickbooks-invoice-sync.md §3, P3):
-  // `enqueueQuickbooksInvoiceSyncOnSent` rides the same draft→sent door, enqueuing the mirror
-  // job (gated by `quickbooks.syncInvoices`) rather than syncing inline.
+  // QuickBooks invoice sync (plans/dispatch/37e-quickbooks-invoice-sync.md §3, P3) used to ride
+  // this same draft→sent door via `enqueueQuickbooksInvoiceSyncOnSent`. Removed 2026-09-10: the
+  // invoice document mirror was retired on MK's decision (brief 14's DECIDED block). auxx
+  // composes journal entries instead, and this door no longer has a second listener.
   registerEntityFieldChangeHooks('invoices', [
     recomputeOnInvoiceBillingChange,
     enrollInvoiceReminderOnSent,
     reanchorInvoiceOnDueDateChange,
-    enqueueQuickbooksInvoiceSyncOnSent,
     syncBillingOnInvoiceChange,
   ])
 

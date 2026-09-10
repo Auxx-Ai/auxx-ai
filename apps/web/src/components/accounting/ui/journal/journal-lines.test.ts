@@ -57,6 +57,32 @@ describe('linesFromDraftRows', () => {
     expect(lines[0]?.memo).toBe('shipping')
     expect(lines[1]?.memo).toBeUndefined()
   })
+
+  // Brief 13 §1.4: the grid's counterparty is nullable, the wire shape's is
+  // optional - the two must not disagree on an empty row.
+  it('carries a well-formed counterparty through, and omits it when absent', () => {
+    const lines = linesFromDraftRows([
+      row({
+        glAccountId: 'acc_1100',
+        debitMinor: 500,
+        counterpartyType: 'customer',
+        counterpartyId: 'contact_1',
+      }),
+      row({ glAccountId: 'acc_2000', creditMinor: 500 }),
+    ])
+    expect(lines[0]).toMatchObject({ counterpartyType: 'customer', counterpartyId: 'contact_1' })
+    expect(lines[1]).not.toHaveProperty('counterpartyType')
+    expect(lines[1]).not.toHaveProperty('counterpartyId')
+  })
+
+  it('drops a counterparty type with no id, and vice versa', () => {
+    const lines = linesFromDraftRows([
+      row({ glAccountId: 'acc_1100', debitMinor: 500, counterpartyType: 'customer' }),
+      row({ glAccountId: 'acc_2000', creditMinor: 500, counterpartyId: 'contact_1' }),
+    ])
+    expect(lines[0]).not.toHaveProperty('counterpartyType')
+    expect(lines[1]).not.toHaveProperty('counterpartyId')
+  })
 })
 
 describe('draftRowsFromLines / linesFromDraftRows round-trip', () => {
@@ -69,6 +95,23 @@ describe('draftRowsFromLines / linesFromDraftRows round-trip', () => {
     expect(rows).toHaveLength(2)
     expect(rows[0]).toMatchObject({ glAccountId: 'acc_6300', debitMinor: 2500, creditMinor: null })
     expect(rows[1]).toMatchObject({ glAccountId: 'acc_1000', creditMinor: 2500, debitMinor: null })
+    expect(linesFromDraftRows(rows)).toEqual(lines)
+  })
+
+  it('preserves a counterparty, and reads its absence as null rather than undefined', () => {
+    const lines: JournalEntryLine[] = [
+      {
+        glAccountId: 'acc_1100',
+        direction: 'debit',
+        amountMinor: 2500,
+        counterpartyType: 'vendor',
+        counterpartyId: 'company_1',
+      },
+      { glAccountId: 'acc_1000', direction: 'credit', amountMinor: 2500 },
+    ]
+    const rows = draftRowsFromLines(lines)
+    expect(rows[0]).toMatchObject({ counterpartyType: 'vendor', counterpartyId: 'company_1' })
+    expect(rows[1]).toMatchObject({ counterpartyType: null, counterpartyId: null })
     expect(linesFromDraftRows(rows)).toEqual(lines)
   })
 })

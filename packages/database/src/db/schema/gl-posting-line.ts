@@ -116,6 +116,28 @@ export const GlPostingLine = pgTable(
     sourceId: text().notNull(),
 
     /**
+     * Who this line is attributable to, when the account requires it - `'customer'`
+     * or `'vendor'` (`plans/accounting/tasks/13-cash-accounts-and-the-qbo-seam.md`
+     * §1.1). Set ONLY on a receivable or payable line, and FROZEN here at post
+     * time so a retry exports under the attribution the ledger asserted, never
+     * one re-resolved after a merge or a rename - the same reason `accountCode`
+     * is a snapshot rather than a live read.
+     *
+     * Plain `text` rather than a `pgEnum`, for the reason `accountRole` gives:
+     * the vocabulary is `CounterpartyType` in `packages/lib/src/postings/types.ts`,
+     * not here, and a second copy here is the thing that would drift.
+     */
+    counterpartyType: text(),
+    /**
+     * OUR record id (P2, never a provider id) - a `contact` instance id when
+     * `counterpartyType` is `'customer'`, a `company` instance id when it is
+     * `'vendor'`. No foreign key, for the same reason `glAccountId` has none: a
+     * ledger line must outlive the contact or company row it names. Null on
+     * every line that names no receivable or payable, which is most of them.
+     */
+    counterpartyId: text(),
+
+    /**
      * Reporting dimensions on the line - `{ channel: 'dtc', class: '...' }` -
      * as an open JSON object. NULLABLE and, as of 2026-09-04, WRITTEN BY
      * NOTHING (plans/accounting/HANDOFF.md decision 6.5): the column exists so

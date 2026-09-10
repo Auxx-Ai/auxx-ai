@@ -529,6 +529,7 @@ async function resolveIssue(
     total,
     reverseRevenue,
     settlement,
+    contactInstanceId: memo.contactInstanceId,
     memo: `Credit memo ${memo.number} issued`,
   })
 

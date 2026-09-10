@@ -318,11 +318,6 @@ export {
   type FulfillmentPostingJobData,
   fulfillmentPostingJob,
 } from './money/fulfillment-posting-job'
-// Money (QuickBooks invoice sync — plans/dispatch/37e-quickbooks-invoice-sync.md §3, P3)
-export {
-  type SyncQuickbooksInvoiceJobData,
-  syncQuickbooksInvoiceJob,
-} from './money/sync-quickbooks-invoice-job'
 // OAuth2
 export { oauth2TokenRefreshJob } from './oauth2-refresh'
 // Polling

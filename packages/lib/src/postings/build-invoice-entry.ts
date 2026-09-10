@@ -106,6 +106,13 @@ export interface BuildInvoiceEntryInput {
   taxTotalMinor: number | null | undefined
   /** `invoice_total`, integer minor units. The receivable, and the tie point. */
   totalMinor: number | null | undefined
+  /**
+   * The invoice's own contact (`invoice_contact`), for the counterparty on the
+   * `accounts_receivable` line (brief 13 §1.2) - never on the revenue or tax
+   * lines. Null or absent still posts: the ledger is not the door that refuses,
+   * the QuickBooks export is (brief 13 §1.3).
+   */
+  contactInstanceId?: string | null
   memo?: string
 }
 
@@ -138,7 +145,7 @@ export interface BuiltInvoiceEntry {
  *   (an invoice that is all tax).
  */
 export function buildInvoiceEntry(input: BuildInvoiceEntryInput): BuiltInvoiceEntry {
-  const { invoiceId, issuedAt, memo } = input
+  const { invoiceId, issuedAt, memo, contactInstanceId } = input
 
   const invoiceNumber = assertCompactablePeriodKey({
     value: input.invoiceNumber,
@@ -211,6 +218,9 @@ export function buildInvoiceEntry(input: BuildInvoiceEntryInput): BuiltInvoiceEn
       amount: totalMinor,
       memo: lineMemo,
       sortOrder: 0,
+      ...(contactInstanceId
+        ? { counterpartyType: 'customer' as const, counterpartyId: contactInstanceId }
+        : {}),
     },
     {
       ...source,

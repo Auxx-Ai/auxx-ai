@@ -112,6 +112,12 @@ export interface BuildDepositApplicationEntryInput {
   appliedAt: string
   /** The invoice number the deposit was applied to. Memo only. */
   invoiceNumber?: string | null
+  /**
+   * The transaction's own contact, for the counterparty on BOTH legs (brief 13
+   * §1.2): `customer_deposits` and `accounts_receivable` are both per-customer
+   * balances. Null or absent still posts.
+   */
+  contactInstanceId?: string | null
   memo?: string
 }
 
@@ -130,7 +136,7 @@ export interface BuiltDepositApplicationEntry {
 export function buildDepositApplicationEntry(
   input: BuildDepositApplicationEntryInput
 ): BuiltDepositApplicationEntry {
-  const { allocationId, amountMinor, appliedAt, invoiceNumber, memo } = input
+  const { allocationId, amountMinor, appliedAt, invoiceNumber, memo, contactInstanceId } = input
   const transactionId = input.transactionId.trim()
 
   if (!transactionId) {
@@ -154,6 +160,9 @@ export function buildDepositApplicationEntry(
       ? `Customer deposit applied to ${invoiceNumber}`
       : 'Customer deposit applied to an invoice')
   const source = { sourceType: DEPOSIT_APPLICATION_SOURCE_TYPE, sourceId: transactionId }
+  const counterparty = contactInstanceId
+    ? { counterpartyType: 'customer' as const, counterpartyId: contactInstanceId }
+    : {}
 
   const lines: GlPostingLineInput[] = [
     {
@@ -163,6 +172,7 @@ export function buildDepositApplicationEntry(
       amount: amountMinor,
       memo: lineMemo,
       sortOrder: 0,
+      ...counterparty,
     },
     {
       ...source,
@@ -171,6 +181,7 @@ export function buildDepositApplicationEntry(
       amount: amountMinor,
       memo: lineMemo,
       sortOrder: 1,
+      ...counterparty,
     },
   ]
 

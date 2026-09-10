@@ -93,6 +93,7 @@ const INVOICE_ATTRIBUTES = [
   'invoice_subtotal',
   'invoice_tax_total',
   'invoice_total',
+  'invoice_contact',
 ] as const
 
 /** The invoice values an issuance entry is built from. Nothing else is read. */
@@ -103,6 +104,8 @@ interface InvoiceForIssuance {
   subtotalMinor: number | null
   taxTotalMinor: number | null
   totalMinor: number | null
+  /** `invoice_contact`'s related `contact` instance id, for the receivable's counterparty. */
+  contactInstanceId: string | null
 }
 
 /**
@@ -126,6 +129,7 @@ async function loadInvoiceForIssuance(
     cf.invoice_subtotal,
     cf.invoice_tax_total,
     cf.invoice_total,
+    cf.invoice_contact,
   ].filter((field) => field !== null)
   if (fields.length === 0) return null
 
@@ -135,6 +139,7 @@ async function loadInvoiceForIssuance(
       valueText: schema.FieldValue.valueText,
       valueNumber: schema.FieldValue.valueNumber,
       valueDate: schema.FieldValue.valueDate,
+      relatedEntityId: schema.FieldValue.relatedEntityId,
     })
     .from(schema.FieldValue)
     .where(
@@ -164,6 +169,8 @@ async function loadInvoiceForIssuance(
     taxTotalMinor:
       (cf.invoice_tax_total ? byField.get(cf.invoice_tax_total.id)?.valueNumber : null) ?? null,
     totalMinor: (cf.invoice_total ? byField.get(cf.invoice_total.id)?.valueNumber : null) ?? null,
+    contactInstanceId:
+      (cf.invoice_contact ? byField.get(cf.invoice_contact.id)?.relatedEntityId : null) ?? null,
   }
 }
 
@@ -238,6 +245,7 @@ export async function postInvoiceIssuance(
       subtotalMinor: invoice.subtotalMinor,
       taxTotalMinor: invoice.taxTotalMinor,
       totalMinor: invoice.totalMinor,
+      contactInstanceId: invoice.contactInstanceId,
     })
 
     const lock = await resolvePeriodLock(organizationId)

@@ -263,6 +263,13 @@ const journalEntryLine = z.object({
   /** Integer minor units, > 0. The debit/credit column carries the sign. */
   amountMinor: z.number(),
   memo: z.string().max(1000).optional(),
+  /**
+   * Who this line is attributable to, when it names a receivable or payable
+   * account (brief 13 §1.4). Optional everywhere; the only refusal on an
+   * empty counterparty happens at QuickBooks export time, never on save.
+   */
+  counterpartyType: z.enum(['customer', 'vendor']).optional(),
+  counterpartyId: z.string().min(1).optional(),
 })
 
 export const ledgerRouter = createTRPCRouter({

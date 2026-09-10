@@ -77,6 +77,15 @@ export type PostingType = (typeof POSTING_TYPES)[number]
 export type PostingDirection = 'debit' | 'credit'
 
 /**
+ * Who a receivable or payable line is attributable to
+ * (`plans/accounting/tasks/13-cash-accounts-and-the-qbo-seam.md` §1).
+ * `'customer'` carries a `contact` instance id, `'vendor'` a `company`
+ * instance id. Named `counterparty`, not `entity`: `entity` already means
+ * three things in this codebase and QuickBooks' own line field is a fourth.
+ */
+export type CounterpartyType = 'customer' | 'vendor'
+
+/**
  * One line of a double-entry posting, before it is persisted as a
  * `gl_posting_line` row.
  *
@@ -127,6 +136,18 @@ export interface GlPostingLineBase {
   sourceId: string
   /** Stable presentation order within the entry. */
   sortOrder: number
+  /**
+   * Who this line is attributable to, when the account requires it
+   * (brief 13 §1.1). OURS, never a provider id (P2): the adapter resolves it
+   * to the provider's Customer or Vendor through the identity field, the same
+   * hop `resolveMappedAccounts` makes for an account. Set ONLY on the
+   * receivable or payable line, and FROZEN onto `GlPostingLine` at post time
+   * so a retry exports under the attribution the ledger asserted, never one
+   * re-resolved after a merge or a rename. Absent on every other line, which
+   * is most of them.
+   */
+  counterpartyType?: CounterpartyType
+  counterpartyId?: string
 }
 
 /**
@@ -486,7 +507,7 @@ export const NON_FAILURE_REFUSALS = ['nothing_to_close', 'setup_incomplete'] as 
  *
  * Disabled, not-connected, a closed period, an unmapped role and every mid-chain
  * failure all resolve to a status here, so a BullMQ job or a tRPC mutation can
- * persist the outcome without its own try/catch. `sync-invoice.ts` is the shape.
+ * persist the outcome without its own try/catch.
  *
  * `glPostingId` is set whenever the claim succeeded or found an existing row -
  * so it is present on `already_posted`, and absent on the pre-claim refusals
@@ -638,6 +659,9 @@ export interface PostingDetailLine {
   memo: string | null
   sourceType: string
   sourceId: string
+  /** The counterparty frozen on the line at post time (brief 13 §1.1). Null on most lines. */
+  counterpartyType: CounterpartyType | null
+  counterpartyId: string | null
 }
 
 /**

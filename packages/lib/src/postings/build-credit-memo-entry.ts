@@ -126,6 +126,12 @@ export interface BuildCreditMemoEntryInput {
   reverseRevenue: boolean
   /** The channel money leg. Absent for a native memo. */
   settlement?: CreditMemoSettlement
+  /**
+   * The memo's own contact (`credit_memo_contact`), for the counterparty on
+   * every `accounts_receivable` line this entry carries (brief 13 §1.2) - never
+   * on the revenue, tax or clearing legs. Null or absent still posts.
+   */
+  contactInstanceId?: string | null
   memo?: string
 }
 
@@ -153,7 +159,7 @@ export interface BuiltCreditMemoEntry {
  *   revenue leg nor a settlement, which has no entry to build.
  */
 export function buildCreditMemoEntry(input: BuildCreditMemoEntryInput): BuiltCreditMemoEntry {
-  const { creditMemoId, issuedAt, reverseRevenue, settlement, memo } = input
+  const { creditMemoId, issuedAt, reverseRevenue, settlement, memo, contactInstanceId } = input
 
   const number = assertCompactablePeriodKey({
     value: input.number,
@@ -245,6 +251,10 @@ export function buildCreditMemoEntry(input: BuildCreditMemoEntryInput): BuiltCre
   const lineMemo = memo ?? `Credit memo ${number}`
   const source = { sourceType: CREDIT_MEMO_SOURCE_TYPE, sourceId: creditMemoId }
   const lines: GlPostingLineInput[] = []
+  // Every `accounts_receivable` leg carries it - never revenue, tax or clearing.
+  const counterparty = contactInstanceId
+    ? { counterpartyType: 'customer' as const, counterpartyId: contactInstanceId }
+    : {}
 
   // A zero leg is omitted rather than posted: `buildEntry` refuses a line that
   // moves nothing. A memo that is all tax therefore reverses only the tax; a
@@ -277,6 +287,7 @@ export function buildCreditMemoEntry(input: BuildCreditMemoEntryInput): BuiltCre
       amount: totalMinor,
       memo: lineMemo,
       sortOrder: lines.length,
+      ...counterparty,
     })
   }
 
@@ -288,6 +299,7 @@ export function buildCreditMemoEntry(input: BuildCreditMemoEntryInput): BuiltCre
       amount: settlementMinor,
       memo: `${lineMemo} refunded`,
       sortOrder: lines.length,
+      ...counterparty,
     })
     lines.push({
       ...source,

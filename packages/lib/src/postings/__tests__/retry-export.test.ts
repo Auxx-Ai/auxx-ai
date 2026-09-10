@@ -83,6 +83,8 @@ function line(overrides: Partial<Record<string, unknown>> = {}) {
     sourceType: 'invoice',
     sourceId: 'inv_1',
     lineNumber: 1,
+    counterpartyType: null,
+    counterpartyId: null,
     ...overrides,
   }
 }
@@ -199,6 +201,25 @@ describe('retryExport', () => {
 
     expect(seen[0]?.lines.map((l) => l.accountCode)).toEqual(['1100', '4030'])
     expect(seen[0]?.lines[1]?.direction).toBe('credit')
+  })
+
+  it('replays the counterparty FROZEN on the line at post time (brief 13 §1.1)', async () => {
+    // Re-resolving would export whoever the record names TODAY, so a retry
+    // after a merge or a rename would export under an attribution the ledger
+    // never asserted.
+    const fake = createFakeDb(postingRow(), [
+      line({ counterpartyType: 'customer', counterpartyId: 'contact_1' }),
+    ])
+    const seen = stubProvider(() =>
+      ok({ status: 'posted', externalId: 'qb_9', providerId: 'stub' })
+    )
+
+    await retryExport(fake.db, { organizationId: ORG, glPostingId: POSTING })
+
+    expect(seen[0]?.lines[0]).toMatchObject({
+      counterpartyType: 'customer',
+      counterpartyId: 'contact_1',
+    })
   })
 
   it('replays the stored glAccountId - the identity, alongside the code snapshot', async () => {

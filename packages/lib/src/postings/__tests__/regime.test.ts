@@ -15,6 +15,7 @@ import { ACCOUNT_ROLES } from '../build-entry'
 import { PAYMENT_ROUTE_ROLE } from '../build-payment-entry'
 import {
   ENABLED_POSTING_TYPES,
+  EXPORT_ROUTE_BY_POSTING_TYPE,
   findInventoryWriterConflicts,
   findWriterConflicts,
   INVENTORY_ROLES,
@@ -22,7 +23,7 @@ import {
   SINGLE_WRITER_ROLES,
   SINGLE_WRITER_ROLES_BY_POSTING_TYPE,
 } from '../regime'
-import { POSTING_TYPES } from '../types'
+import { POSTING_TYPES, type PostingType } from '../types'
 
 describe('the enabled regime', () => {
   it('has NO inventory account with two writers', () => {
@@ -187,5 +188,56 @@ describe('the payment routes are disjoint destinations, which is what makes the 
     )
     expect(cashRouted.length).toBeGreaterThan(0)
     for (const method of cashRouted) expect(undeposited).not.toContain(method)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The export route, brief 14 (plans/accounting/tasks/14-one-quickbooks-two-
+// write-paths.md) §3 and §3.2. A per-type table cannot express "a family goes
+// one way", so this declares the families directly and asserts every member of
+// a family shares a route. Retired 2026-09-10 on MK's decision (brief 14's
+// DECIDED block): the invoice document mirror is gone, every family routes
+// `journal`, and this guard is what keeps a `document` value from arriving
+// quietly for one type in a family while its siblings stay `journal`.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The document families brief 14 §2.3 named, kept as the guard even though every route is `journal` today. */
+const POSTING_FAMILIES: Record<string, readonly PostingType[]> = {
+  documents: ['invoice_issued', 'credit_memo', 'payment', 'deposit_application', 'write_off'],
+  inventory: [
+    'month_end_inventory',
+    'receipt',
+    'vendor_bill',
+    'fulfillment',
+    'build',
+    'month_end_deferral',
+    'month_end_reversal',
+  ],
+  manual: ['manual_journal', 'opening_balance'],
+  banking: ['bank_deposit', 'bank_transaction', 'payout'],
+}
+
+describe('the export route is declared, total, and per family', () => {
+  it('declares an entry for every posting type', () => {
+    expect(Object.keys(EXPORT_ROUTE_BY_POSTING_TYPE).sort()).toEqual([...POSTING_TYPES].sort())
+  })
+
+  it('the families cover exactly the posting-type vocabulary, with no type in two families', () => {
+    const familyTypes = Object.values(POSTING_FAMILIES).flat()
+    expect([...familyTypes].sort()).toEqual([...POSTING_TYPES].sort())
+    expect(new Set(familyTypes).size).toBe(familyTypes.length)
+  })
+
+  it('every posting type in a family shares that family route', () => {
+    for (const [family, types] of Object.entries(POSTING_FAMILIES)) {
+      const routes = new Set(types.map((type) => EXPORT_ROUTE_BY_POSTING_TYPE[type]))
+      expect(routes.size, `family "${family}" has more than one route: ${[...routes]}`).toBe(1)
+    }
+  })
+
+  it('every route is `journal` today - the invoice document mirror is retired, not paused', () => {
+    for (const route of Object.values(EXPORT_ROUTE_BY_POSTING_TYPE)) {
+      expect(route).toBe('journal')
+    }
   })
 })

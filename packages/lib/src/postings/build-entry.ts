@@ -14,7 +14,7 @@ import { UnprocessableEntityError } from '../errors'
 // Type-only, so this file stays pure: `default-chart.ts` imports the statement
 // classifications from the registry at runtime, and nothing of that reaches here.
 import type { GlAccountTypeValue } from './default-chart'
-import type { BuiltEntry, GlPostingLineInput, PostingType } from './types'
+import type { BuiltEntry, CounterpartyType, GlPostingLineInput, PostingType } from './types'
 
 /**
  * The posting ROLES this module emits, in one place.
@@ -454,6 +454,9 @@ interface DraftLine {
   direction: 'debit' | 'credit'
   amount: number
   memo?: string
+  /** Set only on a receivable or payable draft (brief 13 §1.2). */
+  counterpartyType?: CounterpartyType
+  counterpartyId?: string
 }
 
 function assertMinorUnits(amount: number, label: string): void {
@@ -606,6 +609,8 @@ function materialize(
       sourceType: source.sourceType,
       sourceId: source.sourceId,
       sortOrder: index,
+      counterpartyType: draft.counterpartyType,
+      counterpartyId: draft.counterpartyId,
     }))
 }
 
@@ -743,6 +748,12 @@ export interface VendorBillEntryInput {
   matchedMinor: number
   /** What the vendor is actually charging, in minor units. */
   billTotalMinor: number
+  /**
+   * The bill's own vendor - a `company` EntityInstance id - for the
+   * counterparty on the `accounts_payable` line (brief 13 §1.2). Null or
+   * absent still posts; the export is what refuses a payable line with none.
+   */
+  vendorCompanyInstanceId?: string | null
   memo?: string
 }
 
@@ -806,6 +817,9 @@ export function buildVendorBillEntry(input: VendorBillEntryInput): BuiltEntry {
       accountRole: ACCOUNT_ROLES.ACCOUNTS_PAYABLE,
       direction: 'credit',
       amount: billTotalMinor,
+      ...(input.vendorCompanyInstanceId
+        ? { counterpartyType: 'vendor' as const, counterpartyId: input.vendorCompanyInstanceId }
+        : {}),
     },
   ]
 

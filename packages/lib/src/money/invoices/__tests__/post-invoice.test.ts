@@ -42,11 +42,11 @@ import { postInvoiceIssuance } from '../post-invoice'
 const ORG = 'org_1'
 const INVOICE = 'inv_1'
 
-function stubDb(): Database {
+function stubDb(rows: unknown[] = []): Database {
   const chain: Record<string, unknown> = {}
   for (const method of ['from', 'where']) chain[method] = () => chain
   // biome-ignore lint/suspicious/noThenProperty: the stub must be awaitable
-  chain.then = (resolve: (v: unknown) => unknown) => Promise.resolve([]).then(resolve)
+  chain.then = (resolve: (v: unknown) => unknown) => Promise.resolve(rows).then(resolve)
   return { select: () => chain } as never
 }
 
@@ -59,6 +59,7 @@ beforeEach(() => {
     invoice_subtotal: { id: 'f-subtotal' },
     invoice_tax_total: { id: 'f-tax' },
     invoice_total: { id: 'f-total' },
+    invoice_contact: { id: 'f-contact' },
   })
   h.buildInvoiceEntry.mockReturnValue({
     entry: {
@@ -99,5 +100,23 @@ describe('accounting enabled', () => {
     expect(h.buildInvoiceEntry).toHaveBeenCalledTimes(1)
     expect(h.postEntry).toHaveBeenCalledTimes(1)
     expect(result.status).toBe('posted')
+  })
+
+  // brief 13 §1.2: the receivable's counterparty is the invoice's own contact.
+  it('reads the invoice contact and passes it to the builder', async () => {
+    await postInvoiceIssuance(stubDb([{ fieldId: 'f-contact', relatedEntityId: 'ei_contact_1' }]), {
+      organizationId: ORG,
+      invoiceId: INVOICE,
+    })
+    expect(h.buildInvoiceEntry).toHaveBeenCalledWith(
+      expect.objectContaining({ contactInstanceId: 'ei_contact_1' })
+    )
+  })
+
+  it('passes null when the invoice has no contact', async () => {
+    await postInvoiceIssuance(stubDb(), { organizationId: ORG, invoiceId: INVOICE })
+    expect(h.buildInvoiceEntry).toHaveBeenCalledWith(
+      expect.objectContaining({ contactInstanceId: null })
+    )
   })
 })

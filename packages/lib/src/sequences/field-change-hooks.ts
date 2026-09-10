@@ -2,14 +2,17 @@
 // `EntityFieldChangeHandler` implementations that enroll/re-anchor sequences off record field
 // writes (client-notifications plan §4.3) — the `generateDraftOnCompletion` precedent
 // (`money/auto-invoice.ts`). Registered in `field-hooks/register-hooks.ts`.
+//
+// `enqueueQuickbooksInvoiceSyncOnSent` used to ride the invoice draft→sent door here too
+// (plans/dispatch/37e-quickbooks-invoice-sync.md §3, P3). Removed 2026-09-10: the invoice
+// document mirror was retired on MK's decision (brief 14's DECIDED block) in favor of
+// journal-only export, and this is not cleanup.
 
 import { createScopedLogger } from '@auxx/logger'
 import type { TypedFieldValue } from '@auxx/types'
 import { extractValue } from '@auxx/types'
 import { parseRecordId } from '@auxx/types/resource'
 import type { EntityFieldChangeHandler } from '../field-hooks/types'
-import { getQueue, Queues } from '../jobs/queues'
-import { getOrganizationSetting } from '../settings/settings-service'
 import { enrollInvoiceSentSequences, enrollWorkOrderCompletedSequences } from './hooks'
 import { reanchorSequenceRuns } from './reanchor'
 
@@ -65,51 +68,6 @@ export const enrollInvoiceReminderOnSent: EntityFieldChangeHandler = async (even
     await enrollInvoiceSentSequences(event.organizationId, entityInstanceId)
   } catch (error) {
     logger.error('Failed to enroll invoice:sent sequences', {
-      organizationId: event.organizationId,
-      invoiceInstanceId: entityInstanceId,
-      error: error instanceof Error ? error.message : String(error),
-    })
-  }
-}
-
-/**
- * `invoice:sent` — QuickBooks mirror (plans/dispatch/37e-quickbooks-invoice-sync.md §3, P3).
- * Same draft→sent door as {@link enrollInvoiceReminderOnSent}, enqueued rather than run inline
- * (D8 — the queue route also covers the actor-less Stripe `paid` path elsewhere, and keeps this
- * hook from blocking the field write on an outbound QBO API call). Gated by
- * `quickbooks.syncInvoices` up front so the queue sees no churn when the org has the feature
- * off. Deterministic `jobId` de-dupes rapid re-sends of the same invoice.
- */
-export const enqueueQuickbooksInvoiceSyncOnSent: EntityFieldChangeHandler = async (event) => {
-  if (event.field.systemAttribute !== 'invoice_status') return
-  const oldStatus = extractStringValue(event.oldValue)
-  const newStatus = extractStringValue(event.newValue)
-  if (oldStatus !== 'draft' || newStatus !== 'sent') return
-
-  const { entityInstanceId } = parseRecordId(event.recordId)
-  try {
-    const syncEnabled = await getOrganizationSetting({
-      organizationId: event.organizationId,
-      key: 'quickbooks.syncInvoices',
-    })
-    if (!syncEnabled) return
-
-    await getQueue(Queues.quickbooksInvoiceSyncQueue).add(
-      'syncQuickbooksInvoice',
-      {
-        organizationId: event.organizationId,
-        invoiceInstanceId: entityInstanceId,
-        actorUserId: event.userId,
-      },
-      // ⚠️ Hyphens, not colons. BullMQ rejects a custom `jobId` containing `:`
-      // unless it splits into exactly THREE parts (`job.js` — a compat carve-out
-      // for old repeatable jobs), so a two-part `qb-invoice-sync:<id>` threw
-      // `Custom Id cannot contain :` on every enqueue and the catch below
-      // swallowed it.
-      { jobId: `qb-invoice-sync-${entityInstanceId}` }
-    )
-  } catch (error) {
-    logger.error('Failed to enqueue QuickBooks invoice sync on invoice:sent', {
       organizationId: event.organizationId,
       invoiceInstanceId: entityInstanceId,
       error: error instanceof Error ? error.message : String(error),

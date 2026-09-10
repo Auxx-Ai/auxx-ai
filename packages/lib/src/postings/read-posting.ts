@@ -125,6 +125,8 @@ export async function getPosting(
         memo: schema.GlPostingLine.memo,
         sourceType: schema.GlPostingLine.sourceType,
         sourceId: schema.GlPostingLine.sourceId,
+        counterpartyType: schema.GlPostingLine.counterpartyType,
+        counterpartyId: schema.GlPostingLine.counterpartyId,
       })
       .from(schema.GlPostingLine)
       .where(
@@ -148,6 +150,10 @@ export async function getPosting(
       memo: row.memo ?? null,
       sourceType: row.sourceType,
       sourceId: row.sourceId,
+      // The counterparty FROZEN on the line at post time (brief 13 §1.1).
+      // Never re-resolved here, for the same reason `accountName` is not.
+      counterpartyType: (row.counterpartyType as PostingDetailLine['counterpartyType']) ?? null,
+      counterpartyId: row.counterpartyId ?? null,
     }))
 
     return ok({

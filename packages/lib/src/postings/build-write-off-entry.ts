@@ -164,6 +164,12 @@ export interface BuildWriteOffEntryInput {
    * the debit leg. Omit to use the `bad_debt_expense` role (the ordinary case).
    */
   expenseGlAccountId?: string
+  /**
+   * The invoice's own contact, for the counterparty on the `accounts_receivable`
+   * credit leg (brief 13 §1.2) - never on the `bad_debt_expense` debit leg. Null
+   * or absent still posts.
+   */
+  contactInstanceId?: string | null
   memo?: string
 }
 
@@ -182,8 +188,16 @@ export interface BuildWriteOffEntryInput {
  *   file-header rule every builder in this folder follows.
  */
 export function buildWriteOffEntry(input: BuildWriteOffEntryInput): BuiltEntry {
-  const { invoiceId, invoiceNumber, attempt, amountMinor, txnDate, expenseGlAccountId, memo } =
-    input
+  const {
+    invoiceId,
+    invoiceNumber,
+    attempt,
+    amountMinor,
+    txnDate,
+    expenseGlAccountId,
+    memo,
+    contactInstanceId,
+  } = input
 
   const periodKey = writeOffPeriodKey({ invoiceNumber, invoiceId, attempt })
 
@@ -228,6 +242,9 @@ export function buildWriteOffEntry(input: BuildWriteOffEntryInput): BuiltEntry {
     memo: lineMemo,
     sortOrder: 1,
     ...source,
+    ...(contactInstanceId
+      ? { counterpartyType: 'customer' as const, counterpartyId: contactInstanceId }
+      : {}),
   }
 
   return buildEntry({

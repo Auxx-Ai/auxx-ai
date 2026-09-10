@@ -36,7 +36,15 @@ vi.mock('../account-map', async (importOriginal) => ({
   readQuickbooksAccountMap: (...a: unknown[]) => readQuickbooksAccountMap(...a),
 }))
 
-import type { PostEntryInput } from '../../../postings/types'
+// The counterparty seam (brief 13 §1). Mocked the same way `upsert-customer.test.ts`
+// mocks it - `resolveCounterparties` never touches a real `UnifiedCrudHandler` method,
+// it only threads one through to this call.
+const readQuickbooksIdField = vi.fn()
+vi.mock('../identity-field', () => ({
+  readQuickbooksIdField: (...a: unknown[]) => readQuickbooksIdField(...a),
+}))
+
+import type { PostEntryInput, ResolvedPostingLine } from '../../../postings/types'
 import { ProviderPostError } from '../../../postings/types'
 import {
   createQuickbooksAccountingProvider,
@@ -79,6 +87,24 @@ const CHART = [
     classification: 'Asset',
     active: false,
   },
+  {
+    id: '50',
+    name: 'Accounts Receivable (A/R)',
+    fullyQualifiedName: 'Accounts Receivable (A/R)',
+    acctNum: '1100',
+    accountType: 'Accounts Receivable',
+    classification: 'Asset',
+    active: true,
+  },
+  {
+    id: '60',
+    name: 'Accounts Payable (A/P)',
+    fullyQualifiedName: 'Accounts Payable (A/P)',
+    acctNum: '2000',
+    accountType: 'Accounts Payable',
+    classification: 'Liability',
+    active: true,
+  },
 ]
 
 /** The org's OWN chart - what a posting line's `accountCode` names. */
@@ -89,6 +115,22 @@ const OUR_CHART = [
   { id: 'acct_2160', code: '2160', name: 'GRNI', accountType: 'liability', isActive: true },
   { id: 'acct_5090', code: '5090', name: 'PPV', accountType: 'expense', isActive: true },
   { id: 'acct_9999', code: '9999', name: 'Retired', accountType: 'asset', isActive: true },
+  {
+    id: 'acct_1100',
+    code: '1100',
+    name: 'Accounts Receivable',
+    accountType: 'asset',
+    subtype: 'accounts_receivable',
+    isActive: true,
+  },
+  {
+    id: 'acct_2000',
+    code: '2000',
+    name: 'Accounts Payable',
+    accountType: 'liability',
+    subtype: 'accounts_payable',
+    isActive: true,
+  },
 ]
 
 /**
@@ -100,6 +142,8 @@ const ACCOUNT_MAP = new Map([
   ['acct_1310', '92'],
   ['acct_2160', '79'],
   ['acct_9999', '11'],
+  ['acct_1100', '50'],
+  ['acct_2000', '60'],
 ])
 
 function baseInput(over: Partial<PostEntryInput> = {}): PostEntryInput {
@@ -173,6 +217,8 @@ const provider = new QuickbooksAccountingProvider()
 beforeEach(() => {
   vi.clearAllMocks()
   getOrganizationSetting.mockResolvedValue(true)
+  // Default: nothing synced. Tests that need a resolved counterparty override this.
+  readQuickbooksIdField.mockResolvedValue(undefined)
 })
 
 describe('the exported surface', () => {
@@ -361,6 +407,174 @@ describe('the happy path', () => {
       accountId: '92',
       accountName: 'Inventory',
     })
+  })
+})
+
+// ── The counterparty (brief 13 §1) ──────────────────────────────────────────
+//
+// `resolveCounterparties` reads `subtype` off OUR chart, so only `acct_1100`
+// (accounts_receivable) and `acct_2000` (accounts_payable) ever need one -
+// every other line in this file, including the happy-path fixtures above,
+// carries no counterparty and must stay unaffected.
+
+/** A balanced two-line entry: one A/R or A/P leg, one plain offsetting leg. */
+function counterpartyInput(
+  over: Partial<PostEntryInput>,
+  receivableLine: ResolvedPostingLine
+): PostEntryInput {
+  return baseInput({
+    lines: [
+      receivableLine,
+      {
+        glAccountId: 'acct_2160',
+        accountCode: '2160',
+        direction: receivableLine.direction === 'debit' ? 'credit' : 'debit',
+        amount: receivableLine.amount,
+        sourceType: receivableLine.sourceType,
+        sourceId: receivableLine.sourceId,
+        sortOrder: 1,
+      },
+    ],
+    ...over,
+  })
+}
+
+describe('the counterparty (brief 13 §1)', () => {
+  it('an A/R line with a synced contact exports with entity: Customer', async () => {
+    const callTool = connect({
+      create_quickbooks_journal_entry: () => ({ journalEntry: { journalEntryId: '301' } }),
+    })
+    readQuickbooksIdField.mockResolvedValue('qbo_cust_1')
+
+    const input = counterpartyInput(
+      {},
+      {
+        glAccountId: 'acct_1100',
+        accountCode: '1100',
+        direction: 'debit',
+        amount: 50_000,
+        sourceType: 'invoice',
+        sourceId: 'inv_1',
+        sortOrder: 0,
+        counterpartyType: 'customer',
+        counterpartyId: 'contact_1',
+      }
+    )
+
+    const result = await provider.postEntry(input)
+
+    expect(result._unsafeUnwrap()).toMatchObject({ status: 'posted', externalId: '301' })
+    expect(readQuickbooksIdField).toHaveBeenCalledWith(
+      expect.objectContaining({ appFieldKey: 'qboCustomerId', recordId: 'contact:contact_1' })
+    )
+    expect(createCallOf(callTool)?.lines).toContainEqual(
+      expect.objectContaining({
+        accountId: '50',
+        entity: { type: 'Customer', id: 'qbo_cust_1' },
+      })
+    )
+  })
+
+  it('an A/R line with an unsynced contact refuses with the sentence and configuration', async () => {
+    connect()
+    readQuickbooksIdField.mockResolvedValue(undefined)
+
+    const input = counterpartyInput(
+      {},
+      {
+        glAccountId: 'acct_1100',
+        accountCode: '1100',
+        direction: 'debit',
+        amount: 50_000,
+        sourceType: 'invoice',
+        sourceId: 'inv_1',
+        sortOrder: 0,
+        counterpartyType: 'customer',
+        counterpartyId: 'contact_1',
+      }
+    )
+
+    const result = await provider.postEntry(input)
+    const error = result._unsafeUnwrapErr() as ProviderPostError
+
+    expect(error.failureClass).toBe('configuration')
+    expect(error.message).toContain(DOC_NUMBER)
+    expect(error.message).toContain('1100 Accounts Receivable')
+    expect(error.message).toContain('has not been synced to QuickBooks yet')
+  })
+
+  it('an A/R line with NO counterparty at all refuses', async () => {
+    connect()
+
+    const input = counterpartyInput(
+      {},
+      {
+        glAccountId: 'acct_1100',
+        accountCode: '1100',
+        direction: 'debit',
+        amount: 50_000,
+        sourceType: 'invoice',
+        sourceId: 'inv_1',
+        sortOrder: 0,
+      }
+    )
+
+    const result = await provider.postEntry(input)
+    const error = result._unsafeUnwrapErr() as ProviderPostError
+
+    expect(error.failureClass).toBe('configuration')
+    expect(error.message).toContain('1100 Accounts Receivable')
+    expect(error.message).toContain('carries no contact')
+    expect(readQuickbooksIdField).not.toHaveBeenCalled()
+  })
+
+  it('a revenue line with no counterparty is fine - only a receivable or payable subtype needs one', async () => {
+    const callTool = connect({
+      create_quickbooks_journal_entry: () => ({ journalEntry: { journalEntryId: '302' } }),
+    })
+
+    // The ordinary happy-path fixture: neither `acct_1310` nor `acct_2160`
+    // carries a receivable or payable subtype.
+    const result = await provider.postEntry(baseInput())
+
+    expect(result._unsafeUnwrap()).toMatchObject({ status: 'posted', externalId: '302' })
+    expect(readQuickbooksIdField).not.toHaveBeenCalled()
+    expect(
+      createCallOf(callTool)?.lines.every((l: { entity?: unknown }) => l.entity === undefined)
+    ).toBe(true)
+  })
+
+  it('a vendor line with no qboVendorId field provisioned refuses', async () => {
+    connect()
+    // The app has not provisioned `qboVendorId` yet (brief 13 DECIDED, unit
+    // 1) - `readQuickbooksIdField` returns undefined for the FIELD, which
+    // reads identically to "this vendor is unsynced".
+    readQuickbooksIdField.mockResolvedValue(undefined)
+
+    const input = counterpartyInput(
+      {},
+      {
+        glAccountId: 'acct_2000',
+        accountCode: '2000',
+        direction: 'credit',
+        amount: 50_000,
+        sourceType: 'vendor_bill',
+        sourceId: 'vb_1',
+        sortOrder: 0,
+        counterpartyType: 'vendor',
+        counterpartyId: 'company_1',
+      }
+    )
+
+    const result = await provider.postEntry(input)
+    const error = result._unsafeUnwrapErr() as ProviderPostError
+
+    expect(error.failureClass).toBe('configuration')
+    expect(readQuickbooksIdField).toHaveBeenCalledWith(
+      expect.objectContaining({ appFieldKey: 'qboVendorId', recordId: 'company:company_1' })
+    )
+    expect(error.message).toContain('2000 Accounts Payable')
+    expect(error.message).toContain('has not been synced to QuickBooks yet')
   })
 })
 

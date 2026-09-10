@@ -64,6 +64,23 @@ describe('a plain invoice', () => {
   })
 })
 
+describe('the counterparty (brief 13 §1.2)', () => {
+  it('carries the contact on the receivable line only', () => {
+    const built = buildInvoiceEntry({ ...BASE, contactInstanceId: 'ei_contact_1' })
+    expect(line(built.entry, ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE)).toMatchObject({
+      counterpartyType: 'customer',
+      counterpartyId: 'ei_contact_1',
+    })
+    expect(line(built.entry, ACCOUNT_ROLES.REVENUE_SERVICE)?.counterpartyId).toBeUndefined()
+    expect(line(built.entry, ACCOUNT_ROLES.SALES_TAX_PAYABLE)?.counterpartyId).toBeUndefined()
+  })
+
+  it('posts fine with no contact - the export refuses, not the ledger', () => {
+    const built = buildInvoiceEntry(BASE)
+    expect(line(built.entry, ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE)?.counterpartyId).toBeUndefined()
+  })
+})
+
 describe('a discounted invoice', () => {
   it('ties to the STORED total rather than to a recomputed discount', () => {
     // Subtotal 200,000, a 10% discount nobody stored the amount of, then tax on

@@ -124,6 +124,13 @@ export interface PaymentEntryTransaction {
   receivedAt: string
   /** `PaymentTransaction.reference` - a cheque number. Memo only. */
   reference?: string | null
+  /**
+   * `PaymentTransaction.contactInstanceId`, for the counterparty on the
+   * `accounts_receivable` line and the `customer_deposits` line (brief 13
+   * §1.2) - both are per-customer balances. Never on the route leg. Null or
+   * absent still posts: the export is what refuses a receivable with none.
+   */
+  contactInstanceId?: string | null
 }
 
 export interface BuildPaymentEntryInput {
@@ -217,7 +224,8 @@ export function paymentPeriodKey(transactionId: string): string {
  */
 export function buildPaymentEntry(input: BuildPaymentEntryInput): BuiltPaymentEntry {
   const { postingType, transaction, route, periodKey, ledgerCurrency, allocatedMinor, memo } = input
-  const { id, kind, amountMinor, method, currency, receivedAt, reference } = transaction
+  const { id, kind, amountMinor, method, currency, receivedAt, reference, contactInstanceId } =
+    transaction
 
   const paymentCurrency = currency?.trim() || ledgerCurrency
   if (paymentCurrency !== ledgerCurrency) {
@@ -269,6 +277,12 @@ export function buildPaymentEntry(input: BuildPaymentEntryInput): BuiltPaymentEn
   const receivableMinor = allocatedMinor
   const depositMinor = amountMinor - allocatedMinor
 
+  // Never on the route leg (`undeposited_funds` | `cash` | `clearing_card`) -
+  // only the two per-customer legs below carry it (brief 13 §1.2).
+  const counterparty = contactInstanceId
+    ? { counterpartyType: 'customer' as const, counterpartyId: contactInstanceId }
+    : {}
+
   // Route, receivable, deposits. A zero leg is omitted rather than posted:
   // `buildEntry` refuses a line that moves nothing, and a two-line entry is
   // what a fully applied payment and a wholly held deposit each are.
@@ -291,6 +305,7 @@ export function buildPaymentEntry(input: BuildPaymentEntryInput): BuiltPaymentEn
       amount: receivableMinor,
       memo: memo ?? label,
       sortOrder: 1,
+      ...counterparty,
     })
   }
 
@@ -302,6 +317,7 @@ export function buildPaymentEntry(input: BuildPaymentEntryInput): BuiltPaymentEn
       amount: depositMinor,
       memo: memo ?? `${label} (customer deposit)`,
       sortOrder: 2,
+      ...counterparty,
     })
   }
 

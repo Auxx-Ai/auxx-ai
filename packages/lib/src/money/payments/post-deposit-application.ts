@@ -268,6 +268,7 @@ export async function postDepositApplications(
         amountMinor,
         appliedAt,
         invoiceNumber: invoiceNumbers?.get(allocation.invoiceInstanceId) ?? null,
+        contactInstanceId: transaction.contactInstanceId,
       })
 
       const post = await postEntry(db, {

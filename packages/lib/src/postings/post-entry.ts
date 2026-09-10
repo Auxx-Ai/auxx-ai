@@ -30,8 +30,7 @@
 // ── This function never throws ──────────────────────────────────────────────
 // Every refusal - a closed period, an unmapped role, an imbalance, a provider
 // fault - resolves to a typed `PostResult`, so a tRPC mutation or a BullMQ job
-// can persist the outcome without a try/catch of its own. `sync-invoice.ts` is
-// the shape.
+// can persist the outcome without a try/catch of its own.
 //
 // No permission checks here. The router asserts (docs/lib-module-guide.md §6).
 
@@ -392,6 +391,12 @@ async function prepareEntry(
           glAccountId: account.glAccountId,
           accountCode: account.code,
           accountName: account.name || undefined,
+          // Carried from the input, unresolved: the builder already named it
+          // (brief 13 §1.1), and it is FROZEN onto the stored line below so a
+          // retry exports under the attribution the ledger asserted rather than
+          // one re-resolved after a merge or a rename.
+          counterpartyType: line.counterpartyType,
+          counterpartyId: line.counterpartyId,
         },
       })
     }
@@ -1046,6 +1051,11 @@ async function claimPeriod(
           memo: line.resolved.memo ?? null,
           sourceType: line.resolved.sourceType,
           sourceId: line.resolved.sourceId,
+          // FROZEN here (brief 13 §1.1): a retry replays this column, never a
+          // re-resolve, so an entry booked under one counterparty stays under
+          // it even if the record is later merged or renamed.
+          counterpartyType: line.resolved.counterpartyType ?? null,
+          counterpartyId: line.resolved.counterpartyId ?? null,
         }))
       )
     }

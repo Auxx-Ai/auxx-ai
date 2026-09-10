@@ -172,6 +172,52 @@ export const SINGLE_WRITER_ROLES_BY_POSTING_TYPE: Record<PostingType, readonly A
  */
 export const INVENTORY_ROLES_BY_POSTING_TYPE = SINGLE_WRITER_ROLES_BY_POSTING_TYPE
 
+/**
+ * `journal`  auxx composes the entry and pushes it.
+ * `none`     nothing is exported for this type at all.
+ */
+export type ExportRoute = 'journal' | 'none'
+
+/**
+ * How each posting type reaches the connected accounting system.
+ *
+ * DECLARED, never derived from "does a mirror exist for this type". Deriving it
+ * would mean that adding a document mirror silently switched a posting type's
+ * route, which is the change most likely to double-book, and the check that
+ * should have caught it would move with it. A human comes here and says so.
+ *
+ * plans/accounting/tasks/14-one-quickbooks-two-write-paths.md originally scoped
+ * a third value, `document` (a document mirror owns the transaction; the entry
+ * is built, balanced and persisted, and NOT pushed) for the INVOICE family:
+ * `invoice_issued`, `payment`, `credit_memo`, `deposit_application`,
+ * `write_off`. **Retired 2026-09-10 on MK's decision (brief 14's DECIDED
+ * block), not as cleanup**: QuickBooks receives journal entries only, and the
+ * invoice document mirror (plan 37e) is gone. Every type routes `journal`
+ * today, so there is nothing to branch on, and `postEntry` does not read this
+ * table. It exists so a future second accounting provider (one with no invoice
+ * API, say) has a named place to declare the split it would force, rather than
+ * that split arriving quietly through a derived check.
+ */
+export const EXPORT_ROUTE_BY_POSTING_TYPE: Record<PostingType, ExportRoute> = {
+  fulfillment: 'journal',
+  payout: 'journal',
+  build: 'journal',
+  month_end_deferral: 'journal',
+  month_end_reversal: 'journal',
+  month_end_inventory: 'journal',
+  receipt: 'journal',
+  vendor_bill: 'journal',
+  manual_journal: 'journal',
+  opening_balance: 'journal',
+  bank_transaction: 'journal',
+  bank_deposit: 'journal',
+  write_off: 'journal',
+  payment: 'journal',
+  invoice_issued: 'journal',
+  deposit_application: 'journal',
+  credit_memo: 'journal',
+}
+
 /** One posting type paired with the single-writer roles it would drive. */
 export interface WriterConflict {
   role: AccountRole

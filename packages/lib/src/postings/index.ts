@@ -269,6 +269,8 @@ export {
 export { getPosting, readPostingLineSourceIds } from './read-posting'
 export {
   ENABLED_POSTING_TYPES,
+  EXPORT_ROUTE_BY_POSTING_TYPE,
+  type ExportRoute,
   findInventoryWriterConflicts,
   findWriterConflicts,
   INVENTORY_ROLES,
@@ -406,6 +408,7 @@ export {
   type BuiltEntry,
   type ChartAccountRow,
   type ClosePeriod,
+  type CounterpartyType,
   type GlPostingLineInput,
   NON_FAILURE_REFUSALS,
   POSTING_STATUSES,

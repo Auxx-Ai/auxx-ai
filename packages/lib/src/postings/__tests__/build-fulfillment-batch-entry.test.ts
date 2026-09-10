@@ -522,6 +522,41 @@ describe('buildFulfillmentBatchEntry', () => {
     expect(receivables[0]?.amount).toBe(first.amounts.totalMinor + second.amounts.totalMinor)
   })
 
+  it('carries the order contact on its receivable line only (brief 13 §1.2)', () => {
+    const terms = planned({
+      orderId: 'o-terms',
+      orderNumber: '#5001',
+      financialStatus: 'pending',
+      gateways: [],
+      contactId: 'contact-terms',
+    })
+    const noContact = planned({
+      orderId: 'o-terms-2',
+      orderNumber: '#5002',
+      financialStatus: 'pending',
+      gateways: [],
+      contactId: null,
+    })
+    const card = planned({ orderId: 'o-card', orderNumber: '#5003', contactId: 'contact-card' })
+
+    const { entry } = buildFulfillmentBatchEntry({
+      group: group([terms, noContact, card]),
+      ledgerCurrency: 'USD',
+      attempt: 0,
+    })
+    const receivables = linesFor(entry, ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE)
+    expect(receivables.find((line) => line.sourceId === 'o-terms')).toMatchObject({
+      counterpartyType: 'customer',
+      counterpartyId: 'contact-terms',
+    })
+    expect(
+      receivables.find((line) => line.sourceId === 'o-terms-2')?.counterpartyId
+    ).toBeUndefined()
+    // The card order's clearing debit is summarised, and never carries a
+    // counterparty even though the shipment itself has a contact.
+    expect(linesFor(entry, ACCOUNT_ROLES.CLEARING_CARD)[0]?.counterpartyId).toBeUndefined()
+  })
+
   it('sources every summarised line on the period key, never on an order', () => {
     const built = buildFulfillmentBatchEntry({
       group: group([planned(), planned({ channel: 'dealer' })]),

@@ -95,6 +95,20 @@ describe('buildWriteOffEntry - the expenseGlAccountId override', () => {
   })
 })
 
+describe('the counterparty (brief 13 §1.2)', () => {
+  it('carries the contact on the receivable credit leg only', () => {
+    const built = buildWriteOffEntry({ ...BASE, contactInstanceId: 'ei_contact_1' })
+    const [debit, credit] = built.lines
+    expect(debit?.counterpartyId).toBeUndefined()
+    expect(credit).toMatchObject({ counterpartyType: 'customer', counterpartyId: 'ei_contact_1' })
+  })
+
+  it('posts fine with no contact - the export refuses, not the ledger', () => {
+    const [, credit] = buildWriteOffEntry(BASE).lines
+    expect(credit?.counterpartyId).toBeUndefined()
+  })
+})
+
 describe('buildWriteOffEntry - refusals', () => {
   it('refuses a blank invoice number', () => {
     const error = expectRefusal(() => buildWriteOffEntry({ ...BASE, invoiceNumber: '' }))

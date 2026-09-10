@@ -76,6 +76,25 @@ describe('the reclass', () => {
   })
 })
 
+describe('the counterparty (brief 13 §1.2)', () => {
+  it('carries the contact on both legs - both are per-customer balances', () => {
+    const built = buildDepositApplicationEntry({ ...BASE, contactInstanceId: 'ei_contact_1' })
+    expect(line(built.entry, ACCOUNT_ROLES.CUSTOMER_DEPOSITS)).toMatchObject({
+      counterpartyType: 'customer',
+      counterpartyId: 'ei_contact_1',
+    })
+    expect(line(built.entry, ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE)).toMatchObject({
+      counterpartyType: 'customer',
+      counterpartyId: 'ei_contact_1',
+    })
+  })
+
+  it('posts fine with no contact - the export refuses, not the ledger', () => {
+    const built = buildDepositApplicationEntry(BASE)
+    expect(line(built.entry, ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE)?.counterpartyId).toBeUndefined()
+  })
+})
+
 describe('refusals', () => {
   it('refuses a zero, negative or fractional amount', () => {
     for (const amountMinor of [0, -1, 12.5]) {
