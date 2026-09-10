@@ -107,6 +107,7 @@ export async function retryExport(
 
     const lineRows = await db
       .select({
+        glAccountId: schema.GlPostingLine.glAccountId,
         accountCode: schema.GlPostingLine.accountCode,
         accountName: schema.GlPostingLine.accountName,
         direction: schema.GlPostingLine.direction,
@@ -139,6 +140,7 @@ export async function retryExport(
     }
 
     const lines: ResolvedPostingLine[] = lineRows.map((line) => ({
+      glAccountId: line.glAccountId,
       accountCode: line.accountCode,
       accountName: line.accountName ?? undefined,
       direction: line.direction,

@@ -91,16 +91,23 @@ export function CodePanel({ line, currencyCode, onDone }: CodePanelProps) {
 
   const preview = useMemo<ResolvedPostingLine[]>(() => {
     if (!code || !line.bankAccountCode || line.amountMinor === 0) return []
-    const name = (accountCode: string) =>
-      accounts.find((account) => account.code === accountCode)?.name
+    const find = (accountCode: string) => accounts.find((account) => account.code === accountCode)
     const amount = Math.abs(line.amountMinor)
     const outbound = line.amountMinor < 0
     const debitCode = outbound ? code : line.bankAccountCode
     const creditCode = outbound ? line.bankAccountCode : code
+    // A browser-composed preview, not a server resolution - see the file
+    // header. Both accounts come from the same chart the picker offered, so
+    // a miss means the chart is still loading; render nothing rather than a
+    // line whose identity is a guess.
+    const debit = find(debitCode)
+    const credit = find(creditCode)
+    if (!debit || !credit) return []
     return [
       {
+        glAccountId: debit.id,
         accountCode: debitCode,
-        accountName: name(debitCode),
+        accountName: debit.name,
         direction: 'debit',
         amount,
         memo: memo || (line.description ?? undefined),
@@ -109,8 +116,9 @@ export function CodePanel({ line, currencyCode, onDone }: CodePanelProps) {
         sortOrder: 0,
       },
       {
+        glAccountId: credit.id,
         accountCode: creditCode,
-        accountName: name(creditCode),
+        accountName: credit.name,
         direction: 'credit',
         amount,
         memo: memo || (line.description ?? undefined),

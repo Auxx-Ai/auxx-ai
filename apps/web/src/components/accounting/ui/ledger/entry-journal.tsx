@@ -142,6 +142,7 @@ export function EntryJournal({ lines, currencyCode, onDrillDown }: EntryJournalP
  */
 export function journalLinesFromDetail(lines: PostingDetailLine[]): ResolvedPostingLine[] {
   return lines.map((line) => ({
+    glAccountId: line.glAccountId,
     accountCode: line.accountCode,
     accountName: line.accountName ?? undefined,
     direction: line.direction,

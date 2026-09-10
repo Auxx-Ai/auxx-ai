@@ -375,9 +375,11 @@ async function prepareEntry(
           sourceType: line.sourceType,
           sourceId: line.sourceId,
           sortOrder: line.sortOrder,
-          // Both are SNAPSHOTS. Renaming 2160 next year must not rewrite last
-          // year's ledger, exactly as a standard-cost change does not restate a
+          // The IDENTITY (task 15 §2). `accountCode` and `accountName` beside it
+          // are SNAPSHOTS. Renaming 2160 next year must not rewrite last year's
+          // ledger, exactly as a standard-cost change does not restate a
           // movement's frozen cost.
+          glAccountId: account.glAccountId,
           accountCode: account.code,
           accountName: account.name || undefined,
         },
@@ -1025,6 +1027,7 @@ async function claimPeriod(
           // sorted by `sortOrder`. Unique per posting
           // (`GlPostingLine_posting_lineNumber_key`).
           lineNumber: index + 1,
+          glAccountId: line.resolved.glAccountId,
           accountCode: line.resolved.accountCode,
           accountRole: line.accountRole,
           accountName: line.resolved.accountName ?? null,

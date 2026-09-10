@@ -70,6 +70,7 @@ import { createAllFields } from '../../seed/entity-seeder/create-fields'
 import type { EntityDefMap } from '../../seed/entity-seeder/types'
 import { seedDefaultChartOfAccounts } from '../../seed/gl-account-chart'
 import { postEntry } from '../post-entry'
+import { loadRoleAccountCodes } from '../resolve-roles'
 import { reverseEntry } from '../reverse-entry'
 import type { BuiltEntry } from '../types'
 import { verifyBooksBalance } from '../verify-balance'
@@ -564,6 +565,17 @@ describe('an organization with no accounting provider', () => {
       amountMinor: 125_000,
     })
     expect(written[0]!.accountName).toBeTruthy()
+
+    // Task 15 §2: `glAccountId` is the IDENTITY the resolver resolved, not the
+    // code. Cross-checked against the same role map `resolveRoles` reads, so
+    // this cannot pass by coincidentally matching a placeholder.
+    const roleAccounts = await loadRoleAccountCodes(db(), f.organizationId, [
+      'inventory_raw_materials',
+      'grni',
+    ])
+    expect(written[0]!.glAccountId).toBe(roleAccounts.get('inventory_raw_materials')?.glAccountId)
+    expect(written[1]!.glAccountId).toBe(roleAccounts.get('grni')?.glAccountId)
+    expect(written[0]!.glAccountId).not.toBe(written[1]!.glAccountId)
 
     const report = await verifyBooksBalance(db(), f.organizationId)
     expect(report._unsafeUnwrap().balanced).toBe(true)

@@ -1,40 +1,29 @@
 // packages/lib/scripts/reset-gl-chart.ts
 //
-// 🛑 DEV-ONLY. Deletes every organization's chart of accounts and rebuilds it
-// from `DEFAULT_CHART_OF_ACCOUNTS`, with `GlRoleAssignment` rows in place of the
-// retired `gl_account_role` field (decision `G19`).
+// 🛑 DEV-ONLY. Deletes every organization's chart of accounts, its
+// `GlRoleAssignment` rows and the retired `gl_account_role` field, if it is
+// still there. Does NOT re-seed: accounting is opt-in now
+// (plans/accounting/tasks/17-accounting-is-opt-in.md §1, §2), and this script
+// is the dev-side twin of entity migration 142
+// (`seed/entity-migrations/migrations/142-wipe-seeded-charts.ts`), which does
+// the same wipe (plus journal entries, the QuickBooks account map and the
+// wizard's setup settings) against every other database. **Provision chart in
+// the setup wizard is the way back onto a chart**, the same door a fresh org
+// has always used.
 //
 //   npx dotenv -- npx tsx packages/lib/scripts/reset-gl-chart.ts
 //
-// ── Why this is a script and NOT an entity migration ────────────────────────
+// ── Why this is a script and NOT the entity migration itself ────────────────
 //
-// `gl_account` has never existed anywhere but this machine. Entity migration
-// 108, which creates the def and seeds the chart, has only ever run against
-// local dev — it is `applied` in the local `DataMigration` ledger and nowhere
-// else, and there is no deployed environment, no teammate checkout and no
-// persistent CI database holding the old shape (confirmed 2026-08-28).
-//
-// The house rule for exactly that situation: **a migration that is `applied` in
-// the LOCAL dev ledger is not frozen.** The "a change needs a new migration id"
-// rule protects migrations that have run somewhere other than this machine. So
-// 108 was edited in place to emit the final shape directly — no `role` field, 29
-// accounts, `2150` broadened, `5095` added, `GlRoleAssignment` rows written by
-// `seedDefaultChartOfAccounts` — and a fresh database gets all of it from 108
-// alone, with no follow-up migration in existence. Minting a new id would have
-// produced two migrations where one does, and an id is permanent.
-//
-// This script is the door for the ONE database that already ran the old 108.
-// It consumes no migration id and ships nothing. **Production needs no
-// equivalent, because production has never had the old shape.**
-//
-// ── Why a WIPE rather than a migration in place ─────────────────────────────
-//
-// Nothing in the general-ledger track ships until the whole engine is done, so
-// there is no release in which anyone observes an intermediate shape. That fact
-// deletes a rename migration for `2150`, an options migration for
-// `gl_account_role`, and a backfill of the field into the table — every one of
-// which existed only to carry one shape forward into another. Wipe and re-seed
-// from the corrected constant instead.
+// `gl_account` has never existed anywhere but this machine in the exact shape
+// this script corrects (no `role` field, 29 accounts, `2150` broadened, `5095`
+// added); entity migration 108, which created the def in that shape, has only
+// ever run against local dev and is `applied` in the local `DataMigration`
+// ledger and nowhere else (confirmed 2026-08-28). Migration 142 wipes the
+// chart everywhere, including here; this script exists for the same reason it
+// always has: a door to re-run the wipe locally by hand, without touching the
+// `DataMigration` ledger, and now wipes without the re-seed step 142 also
+// omits.
 //
 // Verified before this was written (2026-08-28):
 //
@@ -51,27 +40,21 @@
 // chart row would be a connected provider's account mapping, and wiping that is
 // unrecoverable.
 //
-// ── Safe to re-run ──────────────────────────────────────────────────────────
+// ── Safe to re-run ───────────────────────────────────────────────────────────
 //
-// The second pass finds no `gl_account_role` field, deletes and re-seeds the
-// same 29 accounts, and re-writes the same 13 assignments. Idempotent in effect.
-// `seedDefaultChartOfAccounts` is `ON CONFLICT (organizationId, role) DO
-// NOTHING`, so a mapping somebody repointed by hand survives — but on this
-// script's path the assignments are cleared first, because the accounts they
-// point at are about to stop existing.
+// The second pass finds no `gl_account_role` field and no chart rows left to
+// delete. Idempotent in effect.
 
 import { database, schema } from '@auxx/database'
 import { and, eq, inArray } from 'drizzle-orm'
 import { getOrgCache } from '../src/cache'
-import { seedDefaultChartOfAccounts } from '../src/seed/gl-account-chart'
 
 const RETIRED_ROLE_ATTRIBUTE = 'gl_account_role'
 
 interface OrgResult {
   organizationId: string
   accountsRemoved: number
-  accountsSeeded: number
-  rolesAssigned: number
+  roleAssignmentsRemoved: number
   roleFieldsRemoved: number
 }
 
@@ -161,31 +144,29 @@ async function resetOrg(organizationId: string): Promise<OrgResult | null> {
       .where(inArray(schema.EntityInstance.id, accountIds))
   }
 
-  // Any assignment written by an earlier pass points at an instance id that no
-  // longer exists. Clear them so the re-seed writes a live mapping rather than
-  // being swallowed by `ON CONFLICT (organizationId, role) DO NOTHING` against a
-  // dead one.
+  // Any assignment points at an instance id that no longer exists once the
+  // chart above is gone, so it goes too: the account it names cannot be
+  // re-mapped by a bookkeeper who can no longer see it.
+  const roleAssignments = await database
+    .select({ id: schema.GlRoleAssignment.id })
+    .from(schema.GlRoleAssignment)
+    .where(eq(schema.GlRoleAssignment.organizationId, organizationId))
   await database
     .delete(schema.GlRoleAssignment)
     .where(eq(schema.GlRoleAssignment.organizationId, organizationId))
 
-  // ── 3. The org cache, dropped BEFORE anything writes a record ────────────
+  // ── 3. The org cache ──────────────────────────────────────────────────────
   //
-  // 🛑 Position, not tidying — the lesson migration 108 paid for.
-  // `UnifiedCrudHandler` resolves an entity's fields from the ORG CACHE and
-  // silently DROPS a value whose field it cannot resolve. The seed below writes
-  // through that handler, and the cache still holds the `gl_account_role` field
-  // this pass just deleted.
+  // `UnifiedCrudHandler` resolves an entity's fields from the ORG CACHE, so a
+  // stale `customFields` / `resources` entry would keep serving the chart this
+  // pass just deleted. No re-seed follows this flush anymore (17 §1, §2):
+  // Provision chart in the setup wizard is the only door back onto a chart.
   await getOrgCache().invalidateAndRecompute(organizationId, ['customFields', 'resources'])
-
-  // ── 4. Re-seed the corrected chart, and its role assignments ─────────────
-  const chart = await seedDefaultChartOfAccounts(database, organizationId, def.id)
 
   return {
     organizationId,
     accountsRemoved: accountIds.length,
-    accountsSeeded: chart.created,
-    rolesAssigned: chart.rolesAssigned,
+    roleAssignmentsRemoved: roleAssignments.length,
     roleFieldsRemoved: roleFieldIds.length,
   }
 }
@@ -194,28 +175,29 @@ async function main() {
   const orgs = await database.select({ id: schema.Organization.id }).from(schema.Organization)
 
   let touched = 0
-  let accountsSeeded = 0
-  let rolesAssigned = 0
+  let accountsRemoved = 0
+  let roleAssignmentsRemoved = 0
   let roleFieldsRemoved = 0
 
   for (const org of orgs) {
     const result = await resetOrg(org.id)
     if (!result) continue
     touched++
-    accountsSeeded += result.accountsSeeded
-    rolesAssigned += result.rolesAssigned
+    accountsRemoved += result.accountsRemoved
+    roleAssignmentsRemoved += result.roleAssignmentsRemoved
     roleFieldsRemoved += result.roleFieldsRemoved
   }
 
   console.log(
     `reset-gl-chart: ${touched} of ${orgs.length} orgs have a gl_account def; ` +
-      `seeded ${accountsSeeded} accounts, wrote ${rolesAssigned} role assignments, ` +
-      `removed ${roleFieldsRemoved} gl_account_role field(s)`
+      `removed ${accountsRemoved} account(s), ${roleAssignmentsRemoved} role assignment(s), ` +
+      `${roleFieldsRemoved} gl_account_role field(s). No re-seed; Provision chart in the ` +
+      'setup wizard is the way back.'
   )
   console.log(
     "Verify in Postgres — this script's own counts are not the witness:\n" +
       '  SELECT count(*) FROM "CustomField" WHERE "systemAttribute" = \'gl_account_role\';  -- 0\n' +
-      '  SELECT count(*) FROM "GlRoleAssignment";                                          -- 13 per org'
+      '  SELECT count(*) FROM "GlRoleAssignment";                                          -- 0 per org'
   )
   process.exit(0)
 }

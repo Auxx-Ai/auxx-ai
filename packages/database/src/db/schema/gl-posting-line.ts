@@ -45,15 +45,30 @@ export const GlPostingLine = pgTable(
     lineNumber: integer().notNull(),
 
     /**
-     * Account CODE — `'1310'` — never a provider account id, and never a foreign
-     * key.
+     * The `gl_account` `EntityInstance` id this line posted to. The IDENTITY
+     * (plans/accounting/tasks/15-the-account-id-is-the-identity.md §2.1).
      *
-     * Decision P2. A ledger line must outlive the chart row: an FK to the
-     * `gl_account` `EntityInstance` would either block deleting an account that
-     * has ever been posted to, or cascade and destroy history. Neither is
-     * acceptable in a general ledger, and P2's whole cash value is that a code is
-     * ours — it means the same thing in every provider and in none, and it makes
-     * an entry auditable three years later with no API call.
+     * No foreign key, deliberately - the call `GlRoleAssignment.glAccountId`
+     * already makes, for its reasons. A ledger line must outlive the chart row,
+     * so `cascade` would destroy history and `restrict` would block an archive.
+     * Readers validate and fail closed, which they have to do anyway.
+     *
+     * `accountCode` and `accountName` beside it are SNAPSHOTS of how the account
+     * read at post time. This is what it WAS; those are what it was CALLED.
+     */
+    glAccountId: text().notNull(),
+    /**
+     * Account CODE, e.g. `'1310'`, a SNAPSHOT of the code the account carried
+     * at post time, beside `accountName`. `glAccountId` above is the identity
+     * now; a report should group by it rather than by this column, because a
+     * code is a label the owner may rename or renumber and the ledger must not
+     * re-partition when they do (task 15 §0.4). This stays `notNull` with its
+     * check constraint for now, since task 15 §5 is what makes the code optional.
+     *
+     * Never a provider account id, and never a foreign key (decision P2): a
+     * ledger line must outlive the chart row, so an FK to the `gl_account`
+     * `EntityInstance` would either block deleting an account that has ever been
+     * posted to, or cascade and destroy history.
      */
     accountCode: text().notNull(),
     /**
@@ -114,11 +129,20 @@ export const GlPostingLine = pgTable(
       table.glPostingId.asc().nullsLast(),
       table.lineNumber.asc().nullsLast()
     ),
-    // The trial balance: SUM(amountMinor) FILTER (WHERE direction='debit') GROUP BY accountCode.
+    // The trial balance still groups by the code as of this migration (task 15
+    // §3 is the follow-up that moves it to `glAccountId`). Kept regardless: a
+    // historical-code lookup stays a legitimate read - `account-lines.ts` drills
+    // into a code from a statement row.
     index('GlPostingLine_org_accountCode_idx').using(
       'btree',
       table.organizationId.asc().nullsLast(),
       table.accountCode.asc().nullsLast()
+    ),
+    // The identity read: every line posted to one account, current chart or not.
+    index('GlPostingLine_org_glAccountId_idx').using(
+      'btree',
+      table.organizationId.asc().nullsLast(),
+      table.glAccountId.asc().nullsLast()
     ),
     // "What did this movement post to?" — the reverse audit read.
     index('GlPostingLine_org_source_idx').using(

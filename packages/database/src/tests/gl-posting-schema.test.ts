@@ -157,6 +157,35 @@ describe('GlPostingLine', () => {
     expect(fkTargets.sort()).toEqual(['GlPosting', 'Organization'])
   })
 
+  // plans/accounting/tasks/15-the-account-id-is-the-identity.md §2. `glAccountId`
+  // is the IDENTITY now, and `accountCode` is demoted to a snapshot - it makes
+  // the same no-FK call `GlRoleAssignment.glAccountId` already does, for the same
+  // reason: a ledger line must outlive the chart row, so `cascade` would destroy
+  // history and `restrict` would block an archive.
+  it('names an account by ID with no foreign key (task 15)', () => {
+    const glAccountId = lineConfig.columns.find((c) => c.name === 'glAccountId')
+    expect(glAccountId?.getSQLType()).toBe('text')
+    expect(glAccountId?.notNull).toBe(true)
+
+    const fkColumns = lineConfig.foreignKeys.flatMap((fk) =>
+      fk.reference().columns.map((c) => c.name)
+    )
+    expect(fkColumns).not.toContain('glAccountId')
+    // Only the org and the header are keyed, unchanged by this column.
+    expect(fkColumns.sort()).toEqual(['glPostingId', 'organizationId'])
+  })
+
+  it('indexes the identity read (task 15 §2.2)', () => {
+    const byAccount = lineConfig.indexes.find(
+      (i) => i.config.name === 'GlPostingLine_org_glAccountId_idx'
+    )
+    expect(byAccount).toBeDefined()
+    expect(byAccount?.config.columns.map((c) => (c as { name: string }).name)).toEqual([
+      'organizationId',
+      'glAccountId',
+    ])
+  })
+
   it('records the role the code was resolved from, without redefining the vocabulary', () => {
     const role = lineConfig.columns.find((c) => c.name === 'accountRole')
     expect(role?.getSQLType()).toBe('text')

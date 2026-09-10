@@ -82,19 +82,6 @@ vi.mock('../../../cache', async (importOriginal) => ({
   getOrgCache: () => ({ invalidateAndRecompute: async () => {} }),
 }))
 
-// The chart-of-accounts seed writes 28 `gl_account` records through
-// `UnifiedCrudHandler`, which wants the org cache, `db.query.*` and a write
-// session — none of which the stub `Database` below has, and none of which this
-// file is about. Its own contract (idempotent on `code`, roles omitted rather
-// than nulled) is tested in `seed/gl-account-chart.test.ts`. What is pinned HERE
-// is that 108 calls it and that BOTH halves of its result — accounts created and
-// `GlRoleAssignment` rows written — feed `alreadyUpToDate`. A pass that seeded
-// only the assignments still changed the org.
-const chartSeed = vi.hoisted(() => ({
-  created: 0,
-  rolesAssigned: 0,
-  calls: [] as (string | undefined)[],
-}))
 // `rematchBill` re-runs the three-way match through `UnifiedCrudHandler` and the
 // org cache — the same reason the chart seed is stubbed. Its own behaviour is
 // tested in `purchasing/__tests__/match-hook.test.ts`; what is pinned HERE is
@@ -120,17 +107,6 @@ vi.mock('../../../purchasing/match-hook', async (importOriginal) => ({
     if (!rematch.verdict) return
     const row = rematch.rows.find((r) => r.entityId === params.vendorBillInstanceId)
     if (row) row.optionId = rematch.verdict
-  },
-}))
-
-vi.mock('../../gl-account-chart', () => ({
-  seedDefaultChartOfAccounts: async (
-    _db: unknown,
-    _organizationId: string,
-    defId: string | undefined
-  ) => {
-    chartSeed.calls.push(defId)
-    return { created: chartSeed.created, skipped: 0, rolesAssigned: chartSeed.rolesAssigned }
   },
 }))
 
@@ -1524,50 +1500,28 @@ describe('migration 108 idempotency', () => {
   // "applied". A chart with no roles makes the posting resolver fail closed on
   // every entry.
   //
-  // ✅ That exact field is gone (decision `G19`), so the 2026-08 incident cannot
-  // recur — but the ORDERING rule is unchanged and still load-bearing: the chart
-  // seed writes `gl_account_code` / `_name` / `_type` / `_is_active` through the
-  // same handler, and on a fresh org all four are created moments earlier in
-  // this very pass.
+  // ✅ That exact field is gone (decision `G19`), and the chart seed itself is
+  // retired (plans/accounting/tasks/17-accounting-is-opt-in.md §2: 108 no
+  // longer calls `seedDefaultChartOfAccounts` at all), so neither the 2026-08
+  // incident nor an ordering assertion about it applies anymore. What is still
+  // worth pinning is that the flush happens before this migration's other
+  // record-writing steps (the option refresh and the stock-movement remap).
   it('flushes the org cache BEFORE anything that writes a record', () => {
     const here = fileURLToPath(new URL('.', import.meta.url))
     const source = readFileSync(join(here, '108-purchasing.ts'), 'utf8')
     expect(source.indexOf('invalidateAndRecompute')).toBeGreaterThan(0)
     expect(source.indexOf('invalidateAndRecompute')).toBeLessThan(
-      source.indexOf('await seedDefaultChartOfAccounts')
+      source.indexOf('remapMovementAccountCodesToRoles')
     )
   })
 
-  // The chart of accounts is seeded per org, and it is the reason the posting
-  // role resolver has anything to resolve against. A pass that created accounts
-  // must NOT report `alreadyUpToDate`, or the org cache keeps serving a
-  // `gl_account` list with nothing in it.
-  it('reports work when the chart of accounts was seeded', async () => {
-    const db = migratedOrgDb([])
-    chartSeed.created = 29
-    try {
-      const result = await migration108Purchasing.up(db, 'org-chart')
-      expect(result.alreadyUpToDate).toBe(false)
-      // Handed the org's own `gl_account` def, never a bare entity type.
-      expect(chartSeed.calls.at(-1)).toBe('def-gl_account')
-    } finally {
-      chartSeed.created = 0
-    }
-  })
-
-  // The other half of the seed, and the half that is easy to forget: an org
-  // whose 29 accounts already exist but whose `GlRoleAssignment` rows do not
-  // still changed. Reporting `alreadyUpToDate` there would skip the org-cache
-  // flush and leave the role resolver failing closed on every posting.
-  it('reports work when only the role assignments were written', async () => {
-    const db = migratedOrgDb([])
-    chartSeed.rolesAssigned = 13
-    try {
-      const result = await migration108Purchasing.up(db, 'org-roles')
-      expect(result.alreadyUpToDate).toBe(false)
-    } finally {
-      chartSeed.rolesAssigned = 0
-    }
+  // Negative: 17 §2 turned the seed call into a no-op. Regressing to a real
+  // call would re-seed the chart this brief's wipe migration deletes, on every
+  // fresh database from migration 108 alone.
+  it('never calls seedDefaultChartOfAccounts', () => {
+    const here = fileURLToPath(new URL('.', import.meta.url))
+    const source = readFileSync(join(here, '108-purchasing.ts'), 'utf8')
+    expect(source).not.toContain('seedDefaultChartOfAccounts')
   })
 
   // 🛑 decision `G8`. `stock_movement_gl_account` was written with account CODES

@@ -116,6 +116,7 @@ export async function getPosting(
       .select({
         id: schema.GlPostingLine.id,
         lineNumber: schema.GlPostingLine.lineNumber,
+        glAccountId: schema.GlPostingLine.glAccountId,
         accountCode: schema.GlPostingLine.accountCode,
         accountRole: schema.GlPostingLine.accountRole,
         accountName: schema.GlPostingLine.accountName,
@@ -137,6 +138,7 @@ export async function getPosting(
     const lines: PostingDetailLine[] = lineRows.map((row) => ({
       id: row.id,
       lineNumber: row.lineNumber,
+      glAccountId: row.glAccountId,
       accountCode: row.accountCode,
       accountRole: row.accountRole ?? null,
       // The SNAPSHOT. Never the live chart. See the file header.

@@ -21,7 +21,6 @@ import { DEFAULT_VIEW_CONFIGS } from '../../default-view-configs'
 import { SYSTEM_ENTITIES } from '../../entity-seeder/constants'
 import { FIELD_REGISTRY } from '../../entity-seeder/create-fields'
 import { buildFieldOptions } from '../../entity-seeder/utils'
-import { seedDefaultChartOfAccounts } from '../../gl-account-chart'
 import {
   ensureCustomFields,
   ensureDefaultTableViews,
@@ -48,9 +47,6 @@ const NEW_ENTITY_TYPES = [
   'credit_memo_application',
   'tax_line',
 ] as const
-
-/** The def the chart addition needs. Absent means the org has no chart at all. */
-const GL_ACCOUNT_ENTITY_TYPE = 'gl_account'
 
 /**
  * Every relationship pair this migration must LINK, as
@@ -175,10 +171,10 @@ const WIDENED: readonly {
  * (which owns the chart). An org short of either is a skip, not a failure.
  *
  * Idempotent: `ensureCustomFields` is INSERT-only and skips a field that exists,
- * `linkNewRelationships` only writes an unset inverse,
- * `seedDefaultChartOfAccounts` is idempotent on `code` with its role insert
- * `ON CONFLICT DO NOTHING`, and the stamp writes a row only when its stored
- * options differ from what the registry says.
+ * `linkNewRelationships` only writes an unset inverse, and the stamp writes a
+ * row only when its stored options differ from what the registry says. The
+ * chart addition this migration used to make is retired (17 §2) and is now a
+ * literal no-op.
  */
 export const migration136RefundsAndTaxLines: EntityMigration = {
   id: '136-refunds-and-tax-lines',
@@ -299,12 +295,11 @@ export const migration136RefundsAndTaxLines: EntityMigration = {
     await linkSeedOnlyPairs(db, current, state)
     state.deleteBehaviorsStamped = await stampDeleteBehaviors(db, current)
 
-    // Idempotent on `code`; its role insert is ON CONFLICT DO NOTHING. An org
-    // short of 108 has no chart def and gets no chart work, the way 133 skips.
-    const glAccountDefId = existing.entityDefs.get(GL_ACCOUNT_ENTITY_TYPE)?.id
-    const chart = glAccountDefId
-      ? await seedDefaultChartOfAccounts(db, organizationId, glAccountDefId)
-      : { created: 0, rolesAssigned: 0 }
+    // NO-OP (plans/accounting/tasks/17-accounting-is-opt-in.md §2): this used
+    // to call `seedDefaultChartOfAccounts` to add `4090 Sales Returns and
+    // Allowances`. Accounting is opt-in now, so 136 no longer touches the
+    // chart.
+    const chart = { created: 0, rolesAssigned: 0 }
 
     const changed =
       state.entityDefsCreated > 0 ||
