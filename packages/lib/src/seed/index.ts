@@ -7,6 +7,7 @@ export { deletePristineSeededDashboards } from './entity-seeder/create-default-d
 export {
   type ChartSeedResult,
   type PaymentGatewaySeedResult,
+  seedChartPacks,
   seedDefaultChartOfAccounts,
   seedDefaultPaymentGateways,
 } from './gl-account-chart'

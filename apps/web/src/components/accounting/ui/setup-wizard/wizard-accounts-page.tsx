@@ -4,16 +4,24 @@
 import {
   ACCOUNT_ROLE_LABELS,
   type AccountRole,
+  CHART_PACK_KEYS,
+  CHART_PACKS,
+  type ChartPackKey,
   type RoleAssignmentState,
 } from '@auxx/lib/postings/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
+import { Checkbox } from '@auxx/ui/components/checkbox'
 import { EmptySection } from '@auxx/ui/components/section'
 import { toastError } from '@auxx/ui/components/toast'
 import { ArrowUpRight } from 'lucide-react'
 import Link from 'next/link'
+import { useEffect, useState } from 'react'
 import { AccountLabel } from '~/components/accounting/ui/account-label'
 import { api } from '~/trpc/react'
+import { useAccountingProviderStatus } from '../../hooks/use-accounting-provider-status'
+import { defaultSelectedPacks, forcedPacks, resolveSelectedPacks } from '../settings/accounts-types'
+import { ImportChartButton } from '../settings/import-chart-button'
 
 const ROLES_HREF = '/app/accounting/settings/accounts?s=roles'
 const CHART_HREF = '/app/accounting/settings/accounts?s=chart'
@@ -45,19 +53,49 @@ const STATE_ORDER: Record<RoleAssignmentState, number> = {
  *
  * ⚠️ Two roles typically ship excused rather than unmapped, and that is a decision. Nothing emits
  * `ppv` under L1 (purchase price variance is a report, not a posting) and `inventory_wip` is
- * structurally unreachable, so a map that demanded all thirteen would block every Preview on two
+ * structurally unreachable, so a map that demanded every role would block every Preview on two
  * roles nothing can ever post to.
  *
  * 🛑 `ledger.roleMap` returns a row for EVERY role, mapped or not, so the counts below are a
  * checklist rather than a tally of the rows that happen to exist. The list is not rendered until
- * the query answers: "0 of 13 confirmed" is a claim about the organization, and showing it during
+ * the query answers: "0 confirmed" is a claim about the organization, and showing it during
  * the load would be a false one on the one screen whose whole job is telling somebody what is left
  * to do.
+ *
+ * Over an EMPTY chart (`chartIsEmpty` below), this renders two cards instead: import the org's
+ * real QuickBooks chart (`ImportChartButton mode='wizard'`), or provision a picked set of chart
+ * packs (brief 16 §3.2) - `core` always, `card_rail` pre-checked when a card rail already exists.
  */
 export function WizardAccountsPage() {
   const roleMap = api.ledger.roleMap.useQuery()
   const chart = api.ledger.chartAccounts.useQuery()
   const utils = api.useUtils()
+  const provider = useAccountingProviderStatus()
+  const paymentRailsPresent = api.ledger.paymentRailsPresent.useQuery()
+
+  // The pack picker's selection. `core` is always in it (checked and disabled
+  // below); `card_rail` is added once, the moment `paymentRailsPresent`
+  // answers, so unchecking it afterwards is never fought by this effect.
+  const [selectedPacks, setSelectedPacks] = useState<Set<ChartPackKey>>(() => new Set(['core']))
+  const [railsChecked, setRailsChecked] = useState(false)
+  useEffect(() => {
+    if (railsChecked || !paymentRailsPresent.data) return
+    setRailsChecked(true)
+    setSelectedPacks((prev) => {
+      const next = new Set(prev)
+      for (const key of defaultSelectedPacks(paymentRailsPresent.data)) next.add(key)
+      return next
+    })
+  }, [railsChecked, paymentRailsPresent.data])
+
+  function togglePack(key: ChartPackKey, checked: boolean) {
+    setSelectedPacks((prev) => {
+      const next = new Set(prev)
+      if (checked) next.add(key)
+      else next.delete(key)
+      return next
+    })
+  }
 
   const provisionChart = api.ledger.provisionChart.useMutation({
     onSuccess: async () => {
@@ -70,6 +108,10 @@ export function WizardAccountsPage() {
       toastError({ title: 'Error creating the chart', description: error.message })
     },
   })
+
+  async function handleImported() {
+    await Promise.all([utils.ledger.chartAccounts.invalidate(), utils.ledger.roleMap.invalidate()])
+  }
 
   const rows = [...(roleMap.data ?? [])].sort(
     (a, b) =>
@@ -90,6 +132,9 @@ export function WizardAccountsPage() {
   const chartIsEmpty = !chart.isPending && !chart.isError && (chart.data?.length ?? 0) === 0
 
   if (chartIsEmpty) {
+    const forced = forcedPacks(selectedPacks)
+    const packsToSubmit = resolveSelectedPacks(selectedPacks)
+
     return (
       <div className='flex flex-col gap-4 p-4'>
         <p className='text-muted-foreground text-sm'>
@@ -97,22 +142,63 @@ export function WizardAccountsPage() {
           real account in your chart. This organization has no chart yet.
         </p>
 
-        <div className='flex flex-col gap-2 rounded-xl border p-3'>
-          <p className='font-medium text-sm'>Create the default chart of accounts</p>
-          <p className='text-muted-foreground text-xs'>
-            29 accounts, with each posting role pointed at the one that fulfils it. It is a starting
-            template, not a standard - rename, renumber and add your own afterwards, and nothing
-            here is overwritten if you run this again.
-          </p>
-          <div>
-            <Button
-              variant='outline'
-              size='sm'
-              loading={provisionChart.isPending}
-              loadingText='Creating...'
-              onClick={() => provisionChart.mutate()}>
-              Create the default chart
-            </Button>
+        <div className='flex flex-col gap-4 sm:flex-row'>
+          <div className='flex-1'>
+            <ImportChartButton
+              mode='wizard'
+              connected={provider.connected}
+              chartIsEmpty
+              onImported={() => void handleImported()}
+            />
+          </div>
+
+          <div className='flex flex-1 flex-col gap-2 rounded-xl border p-3'>
+            <p className='font-medium text-sm'>Create the default chart of accounts</p>
+            <p className='text-muted-foreground text-xs'>
+              A starting template, not a standard - rename, renumber and add your own afterwards,
+              and nothing here is overwritten if you run this again.
+            </p>
+
+            <div className='flex flex-col gap-1'>
+              {CHART_PACK_KEYS.map((key) => {
+                const pack = CHART_PACKS[key]
+                const isCore = key === 'core'
+                const checked = isCore || selectedPacks.has(key) || forced.has(key)
+                const disabled = isCore || forced.has(key)
+                return (
+                  <label
+                    key={key}
+                    className='flex items-start gap-2 rounded-md p-1 hover:bg-muted/50'>
+                    <Checkbox
+                      className='mt-0.5'
+                      checked={checked}
+                      disabled={disabled}
+                      onCheckedChange={(value) => togglePack(key, value === true)}
+                    />
+                    <span className='flex min-w-0 flex-col'>
+                      <span className='text-sm'>
+                        {pack.label}{' '}
+                        <span className='text-muted-foreground text-xs'>
+                          · {pack.accounts.length} accounts
+                        </span>
+                      </span>
+                      <span className='text-muted-foreground text-xs'>{pack.description}</span>
+                    </span>
+                  </label>
+                )
+              })}
+            </div>
+
+            <div>
+              <Button
+                variant='outline'
+                size='sm'
+                loading={provisionChart.isPending}
+                loadingText='Creating...'
+                onClick={() => provisionChart.mutate({ packs: packsToSubmit })}>
+                Create the default chart
+              </Button>
+            </div>
           </div>
         </div>
 

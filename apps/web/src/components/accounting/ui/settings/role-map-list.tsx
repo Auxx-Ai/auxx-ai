@@ -1,7 +1,8 @@
 // apps/web/src/components/accounting/ui/settings/role-map-list.tsx
 'use client'
 
-// The `G19` role map: the thirteen posting roles, grouped by the statement
+// The `G19` role map: every posting role (`Object.values(ACCOUNT_ROLES).length`
+// of them, across five chart packs - brief 16 §1), grouped by the statement
 // classification each one's account must carry (13-accounting-ui.md §5.4).
 //
 // 🛑 A `Section` per group with a FLAT `TreeRow` list, not nested `TreeRow`
@@ -14,9 +15,11 @@
 // roles, so only three of the five groups render. The loop is written over all
 // five anyway, so the day a revenue role is added it appears on its own.
 //
-// 🛑 There are NO phantom drafts on this tab. The thirteen roles are a fixed
-// vocabulary and a person cannot create one; adding a role is a code change to
-// `ACCOUNT_ROLES`.
+// 🛑 There are NO phantom drafts on this tab. The roles are a fixed vocabulary
+// and a person cannot create one; adding a role is a code change to
+// `ACCOUNT_ROLES`. What a person CAN do is provision the accounts a role's pack
+// needs - the "Add accounts" button above the list, opening
+// `chart-packs-dialog.tsx` (brief 16 §3.2).
 //
 // 🛑 The rows come from `ledger.roleMap`, which returns one row for EVERY role
 // whether or not an assignment exists. That is what makes this a checklist, so
@@ -35,10 +38,11 @@ import {
   type RoleAssignmentRow,
 } from '@auxx/lib/postings/client'
 import { Badge } from '@auxx/ui/components/badge'
+import { Button } from '@auxx/ui/components/button'
 import { EmptySection, Section } from '@auxx/ui/components/section'
 import { TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
-import { Ban, Coins, CreditCard, Pencil, Receipt, RotateCcw, Sparkles } from 'lucide-react'
+import { Ban, Coins, CreditCard, Pencil, Plus, Receipt, RotateCcw, Sparkles } from 'lucide-react'
 import { AccountLabel } from '../account-label'
 import { ACCOUNT_TYPE_OPTIONS } from './accounts-types'
 
@@ -58,9 +62,11 @@ interface RoleMapListProps {
   selectedRole: AccountRole | null
   onSelect: (role: AccountRole) => void
   onToggleUnused: (role: AccountRole) => void
+  /** Opens `chart-packs-dialog.tsx` (brief 16 §3.2). */
+  onAddAccounts: () => void
   /** `PermissionKey.ledgerControl`. False hides the inline "Change account" /
-   *  "Mark unused" / "Mark used again" `TreeRowButton`s - selecting a row to
-   *  read it stays available. */
+   *  "Mark unused" / "Mark used again" `TreeRowButton`s, and the "Add accounts"
+   *  toolbar button - selecting a row to read it stays available. */
   canControl: boolean
 }
 
@@ -70,10 +76,11 @@ export function RoleMapList({
   selectedRole,
   onSelect,
   onToggleUnused,
+  onAddAccounts,
   canControl,
 }: RoleMapListProps) {
   if (isLoading) {
-    // 🛑 A spinner, never thirteen `unmapped` rows. "Not mapped - every preview
+    // 🛑 A spinner, never every role rendered `unmapped`. "Not mapped - every preview
     // refuses until this is set" is an assertion about the organization, and
     // rendering it before the answer arrives makes it a false one.
     return (
@@ -85,6 +92,14 @@ export function RoleMapList({
 
   return (
     <div className='flex flex-col gap-4 p-3'>
+      {canControl && (
+        <div className='flex items-center justify-end'>
+          <Button variant='outline' size='sm' onClick={onAddAccounts}>
+            <Plus />
+            Add accounts
+          </Button>
+        </div>
+      )}
       {ACCOUNT_TYPE_OPTIONS.map(({ value: type, label }) => {
         const group = rows.filter((row) => ROLE_ACCOUNT_TYPES[row.role as AccountRole] === type)
         // Equity and revenue have no roles today, and an empty section headed
