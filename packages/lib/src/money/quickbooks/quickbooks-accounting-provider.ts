@@ -104,7 +104,9 @@ const logger = createScopedLogger('quickbooks-accounting-provider')
 /** The id this adapter registers under. Must match the connected-provider resolver. */
 export const QUICKBOOKS_PROVIDER_ID = 'quickbooks'
 
-const TOOL_LIST_ACCOUNTS = 'list_quickbooks_accounts'
+// `list_quickbooks_accounts` is NOT declared here: the only caller is
+// `account-map.ts:99`, which owns the string and documents the response shape
+// beside it. A second copy in this file was dead and could only drift.
 const TOOL_FIND_JOURNAL_ENTRY = 'find_quickbooks_journal_entry'
 const TOOL_CREATE_JOURNAL_ENTRY = 'create_quickbooks_journal_entry'
 /** Brief 19 section 3: the opening-balance suggestion's one report read. */
@@ -644,14 +646,15 @@ export class QuickbooksAccountingProvider implements AccountingProvider {
   }
 
   /**
-   * The connected company's balance sheet as of `asOf`, for the
-   * opening-balance suggestion (brief 19).
+   * The connected company's balance sheet as of `asOf` - any date, not just a
+   * cutover. The opening-balance fill (brief 19) is one caller; the agreement
+   * view (brief 20 §8) is another, asking as of a period end.
    *
    * The tool has already normalized sign to debit-positive, parsed money into
    * integer minor units and asserted `Header.EndPeriod === asOf` (brief 19
    * section 3.3) - this adapter does not touch the rows, only the call.
    */
-  async readProviderOpeningBalances(
+  async readProviderBalances(
     orgId: string,
     asOf: string
   ): Promise<Result<ProviderBalanceSheet | null, Error>> {

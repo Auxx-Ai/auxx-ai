@@ -37,7 +37,9 @@ import {
   previewEntry,
   previewJournalEntry,
   previewMonthEnd,
+  readTrialBalance,
   removeChartAccount,
+  resolveAccountingProvider,
   resolvePeriodLock,
   restoreChartAccount,
   retryExport,
@@ -49,6 +51,10 @@ import {
   updateJournalEntry,
   verifyBooksBalance,
 } from '@auxx/lib/postings'
+// The comparison itself is PURE (brief 20 §8.2), so it lives on the client-safe
+// leaf beside the other planners and is imported from there rather than being
+// re-exported through the server barrel for one call site.
+import { planProviderAgreement } from '@auxx/lib/postings/client'
 import { seedChartAccounts, seedChartPacks, seedDefaultPaymentGateways } from '@auxx/lib/seed'
 import { updateOrganizationSetting } from '@auxx/lib/settings'
 import { z } from 'zod'
@@ -1017,6 +1023,88 @@ export const ledgerRouter = createTRPCRouter({
       })
       if (result.isErr()) throw result.error
       return result.value
+    }),
+
+  /**
+   * Do our books and theirs agree as of one date, and if not, where
+   * (plans/accounting/tasks/20-two-authors-one-ledger.md §8).
+   *
+   * Reads the provider's balance sheet and OUR trial balance as of the same
+   * date, joins them through the `qboAccountId` links `chart-import.ts` stamps,
+   * and hands both sides to the pure `planProviderAgreement`. Writes nothing,
+   * posts nothing, and never becomes a statement source - §0.7 holds, this is a
+   * COMPARISON beside the statements and the sync is what will make the
+   * statements complete.
+   *
+   * ⚠️ **This one reaches the provider**, the same caveat {@link accountMap}
+   * carries: it fetches a balance sheet over the app Lambda, so it is slow
+   * relative to its neighbours. Cadence is at close and on demand, never
+   * continuous (§8.3) - do not put it behind a component that runs on mount.
+   *
+   * 🛑 Three outcomes a screen has to be able to tell apart, and only one of
+   * them is an error:
+   *
+   *   1. `not_connected` - nothing is authorized. A complete answer to a read
+   *      (`P1`), not a failure and not an empty agreement.
+   *   2. `ok` with `agreement.providerHasData: false` - connected, and the
+   *      provider answered with an empty company. Distinct from agreement.
+   *   3. `ok` with `agreement.totalDifferenceMinor === 0` - the books agree.
+   *
+   * The only refusal is a provider id claimed by more than one of our accounts,
+   * which `planProviderAgreement` returns as an `err` naming BOTH accounts
+   * (§8.2). It is thrown straight through - there is deliberately no `try/catch`
+   * here, because catching and rethrowing is the only way an `AuxxError` gets
+   * flattened into a generic 500 on its way to `auxxErrorMiddleware`.
+   */
+  providerAgreement: permissionProcedure(PermissionKey.ledgerView)
+    .input(
+      z.object({
+        /** `YYYY-MM-DD`. Both sides are read as of this same day. */
+        asOf: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'asOf must be YYYY-MM-DD'),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      const provider = await resolveAccountingProvider(organizationId)
+
+      // Asked FIRST, and on its own: an org with nothing connected has nothing
+      // to compare against, so there is no reason to read our own trial balance
+      // or the account map for it.
+      const sheetResult = await provider.readProviderBalances(organizationId, input.asOf)
+      if (sheetResult.isErr()) throw sheetResult.error
+      const sheet = sheetResult.value
+      if (!sheet) return { status: 'not_connected' as const, asOf: input.asOf }
+
+      const [ours, mappings] = await Promise.all([
+        // Cumulative from the beginning of time - `from` is deliberately
+        // omitted. A balance as of a date is what the provider's balance sheet
+        // reports, and an activity-only window would compare a period's
+        // movement against a running balance.
+        readTrialBalance(ctx.db, { organizationId, to: input.asOf }),
+        provider.listAccountMappings(organizationId),
+      ])
+      if (ours.isErr()) throw ours.error
+      if (mappings.isErr()) throw mappings.error
+
+      const planned = planProviderAgreement({
+        provider: sheet.rows,
+        ours: ours.value.rows,
+        accountMap: mappings.value,
+        // The provider's own `Header.EndPeriod`, already asserted equal to the
+        // `asOf` that was asked for. Echoing the request instead would let a
+        // report the provider silently re-dated render under the wrong day.
+        asOf: sheet.asOf,
+        providerHasData: sheet.hasData,
+      })
+      if (planned.isErr()) throw planned.error
+
+      return {
+        status: 'ok' as const,
+        providerId: provider.id,
+        /** Their reporting currency. Compared against ours by the screen, never converted. */
+        providerCurrency: sheet.currency,
+        agreement: planned.value,
+      }
     }),
 
   /**

@@ -45,7 +45,7 @@ vi.mock('../../../cache/invalidate', () => ({
 vi.mock('../../provider', () => ({
   resolveAccountingProvider: async () => ({
     id: 'quickbooks',
-    readProviderOpeningBalances: async () => ({ isErr: () => false, value: h.sheet }),
+    readProviderBalances: async () => ({ isErr: () => false, value: h.sheet }),
     listAccountMappings: async () => ({ isErr: () => false, value: h.accountMap }),
   }),
 }))
@@ -241,7 +241,9 @@ describe('fillOpeningTrialBalanceFromProvider', () => {
         ]),
       })
     )
-    expect(h.cacheEvents).toEqual([['org.settings.changed', { orgId: ORG }]])
+    expect(h.cacheEvents).toEqual([
+      ['org.settings.changed', { orgId: ORG, broadcastUserKeys: true }],
+    ])
   })
 
   it('refuses when nothing is connected', async () => {

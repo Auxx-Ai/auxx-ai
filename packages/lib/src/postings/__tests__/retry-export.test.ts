@@ -110,7 +110,7 @@ function stubProvider(answer: (input: PostEntryInput) => Result<PostEntryResult,
   registerAccountingProvider('stub', async () => ({
     id: 'stub',
     listProviderAccounts: async () => ok([]),
-    readProviderOpeningBalances: async () => ok(null),
+    readProviderBalances: async () => ok(null),
     listAccountMappings: async () => ok(new Map<string, string>()),
     setAccountMapping: async () => ok(undefined),
     clearAccountMapping: async () => ok(undefined),

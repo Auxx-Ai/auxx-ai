@@ -11,6 +11,7 @@ import { Separator } from '@auxx/ui/components/separator'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
 import {
+  ArrowLeftRight,
   BookOpenCheck,
   CalendarCheck2,
   CircleSlash,
@@ -34,6 +35,7 @@ import { AccountingChecklistPanel } from '~/components/accounting/ui/checklist/a
 import { EntriesList } from '~/components/accounting/ui/journal/entries-list'
 import { JournalEntryDrawer } from '~/components/accounting/ui/journal/journal-entry-drawer'
 import { lastDayOfPeriod, today } from '~/components/accounting/ui/journal/period-helpers'
+import { ProviderAgreementPanel } from '~/components/accounting/ui/provider-agreement/provider-agreement-panel'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useMedia } from '~/hooks/use-media'
 import { useSettings } from '~/hooks/use-settings'
@@ -703,6 +705,22 @@ export function LedgerPage({ periodKey }: LedgerPageProps) {
                   </div>
                 )}
               </Section>
+
+              {/* The OTHER sweep (brief 20 §8.3): the one above proves our own
+                  rows balance, this one asks whether the connected system
+                  agrees with them. On the period already on screen, as of its
+                  last day, and only when somebody presses the button - the read
+                  costs a round trip to QuickBooks and the drift it finds is
+                  made at close, not on a Tuesday. */}
+              {!!activePeriodKey && (
+                <Section
+                  title={`Does ${providerLabel} agree?`}
+                  icon={<ArrowLeftRight className='size-4' />}
+                  description='Our balances and theirs as of the last day of this month, account by account. A comparison only - nothing here posts, and no statement reads it.'
+                  collapsible={false}>
+                  <ProviderAgreementPanel asOf={lastDayOfPeriod(activePeriodKey)} />
+                </Section>
+              )}
             </>
           )}
         </div>

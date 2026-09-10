@@ -41,6 +41,7 @@ export type LedgerBlockerStatus =
   | 'bank_account_unmapped'
   | 'no_bank_accounts'
   | 'suggestion_incomplete'
+  | 'agreement_refused'
 
 /** One reason a preview, a post or a discard refused, as the console renders it. */
 export interface LedgerBlocker {
@@ -220,6 +221,20 @@ const REMEDIES: Partial<Record<LedgerBlockerStatus, BlockerRemedy>> = {
     title: 'The suggestion does not balance yet',
     guidance:
       'What is still missing is below, with its amount. Nothing has been posted and every cell in the grid can be edited.',
+  },
+  // plans/accounting/tasks/20-two-authors-one-ledger.md §8.2. Nothing in the
+  // schema enforces that the provider link is one-to-one, so two of our accounts
+  // can claim the same QuickBooks account - and there is then no single figure
+  // to compare that account against. A refusal naming both, never a guess about
+  // which one the money belongs to.
+  agreement_refused: {
+    tone: 'failure',
+    icon: Unlink,
+    title: 'The two charts cannot be lined up',
+    guidance:
+      'One account in the connected system is claimed by more than one account in this chart, so its balance has no single counterpart here. Withdraw one of the two mappings on the account map and check again. Nothing was changed.',
+    href: '/app/accounting/settings/accounts',
+    actionLabel: 'Open the account map',
   },
 }
 

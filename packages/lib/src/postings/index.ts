@@ -301,6 +301,14 @@ export {
   resolveAccountingProvider,
   setConnectedProviderResolver,
 } from './provider'
+// ── plans/accounting/tasks/20 §8: do our books and theirs agree, pure ───────
+export {
+  type PlanProviderAgreementInput,
+  type ProviderAgreement,
+  type ProviderAgreementRow,
+  type ProviderAgreementStatus,
+  planProviderAgreement,
+} from './provider-agreement'
 export { getPosting, readPostingLineSourceIds } from './read-posting'
 export {
   ENABLED_POSTING_TYPES,

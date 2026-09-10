@@ -55,6 +55,7 @@ import {
   readText,
 } from './accounting-settings-keys'
 import { FrozenLock } from './frozen-lock'
+import { ProviderAgreementSettingsSection } from './provider-agreement-section'
 import { QuickbooksSettingsSection } from './quickbooks-section'
 import { SetupStatusSection } from './setup-status-section'
 
@@ -424,6 +425,15 @@ export function AccountingGeneralSettingsPage() {
               read as missing.
             */}
             <QuickbooksSettingsSection />
+
+            {/*
+              Directly under the provider it asks about, and after it: there is
+              nothing to compare until something is connected, and the section
+              itself says so rather than disappearing (brief 20 §8.3). It owns no
+              settings values either, so it stays out of all three draft slices
+              and adds nothing to `DRAFT_KEYS`, exactly like the section above.
+            */}
+            <ProviderAgreementSettingsSection />
           </div>
         </div>
 
