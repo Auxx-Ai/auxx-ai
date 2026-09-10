@@ -86,7 +86,7 @@ export async function fillOpeningTrialBalanceFromProvider(
       if (view.isErr()) throw view.error
 
       const provider = await resolveAccountingProvider(organizationId)
-      const sheetResult = await provider.readProviderOpeningBalances(organizationId, cutoverDate)
+      const sheetResult = await provider.readProviderBalances(organizationId, cutoverDate)
       if (sheetResult.isErr()) throw sheetResult.error
       const sheet = sheetResult.value
 

@@ -443,7 +443,7 @@ beforeEach(() => {
  */
 const NO_ACCOUNT_MAP = {
   listProviderAccounts: async () => ok([]),
-  readProviderOpeningBalances: async () => ok(null),
+  readProviderBalances: async () => ok(null),
   listAccountMappings: async () => ok(new Map<string, string>()),
   setAccountMapping: async () => ok(undefined),
   clearAccountMapping: async () => ok(undefined),

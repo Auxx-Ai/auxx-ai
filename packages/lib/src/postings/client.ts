@@ -232,6 +232,16 @@ export {
   periodKeyForDate,
   periodMonth,
 } from './periods'
+// ── plans/accounting/tasks/20 §8: do our books and theirs agree ─────────────
+// PURE. No database, no io, no clock - reaches only `errors`, `account-label`
+// and two type-only imports. See provider-agreement.ts's own header.
+export {
+  type PlanProviderAgreementInput,
+  type ProviderAgreement,
+  type ProviderAgreementRow,
+  type ProviderAgreementStatus,
+  planProviderAgreement,
+} from './provider-agreement'
 export {
   ENABLED_POSTING_TYPES,
   EXPORT_ROUTE_BY_POSTING_TYPE,

@@ -839,9 +839,9 @@ export interface ProviderBalanceRow {
 
 /**
  * A connected provider's balance sheet as of one date - the source for the
- * opening-balance suggestion (plans/accounting/tasks/19 section 3.3), and what
- * `AccountingProvider.readProviderOpeningBalances` returns unchanged from the
- * tool.
+ * opening-balance suggestion (plans/accounting/tasks/19 section 3.3) and for
+ * the agreement view (plans/accounting/tasks/20 section 8), and what
+ * `AccountingProvider.readProviderBalances` returns unchanged from the tool.
  */
 export interface ProviderBalanceSheet {
   /** `Header.EndPeriod`, asserted equal to the `asOf` that was asked for. */

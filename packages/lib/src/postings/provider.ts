@@ -36,8 +36,8 @@ export const NONE_PROVIDER_ID = 'none'
  * methods" this docblock used to claim went stale when `G19`'s account-mapping
  * and identity work grew the interface, and brief 19 adds one more on top:
  * resolve a code, post an entry, read the provider's own chart, read and write
- * its account map, and read its balance sheet for the opening-balance
- * suggestion. Everything else an accounting integration does - customers,
+ * its account map, and read its balance sheet as of a date. Everything else an
+ * accounting integration does - customers,
  * invoices, payments - still belongs to the app that owns that integration;
  * this interface is only the posting and chart-mapping seam.
  */
@@ -86,12 +86,19 @@ export interface AccountingProvider {
   listProviderAccounts(orgId: string): Promise<Result<ProviderAccount[], Error>>
 
   /**
-   * The connected system's balance sheet as of one date, for the
-   * opening-balance suggestion (brief 19). Null means nothing is connected,
-   * which is a complete answer to a read - the same argument
-   * {@link listProviderAccounts} makes.
+   * The connected system's balance sheet as of ANY date.
+   *
+   * 🛑 Not opening-specific, which is why the name no longer says so. The
+   * opening-balance fill (brief 19) is one caller, asking as of the cutover
+   * date; the agreement view (brief 20 §8) is another, asking as of a period
+   * end or an arbitrary date a person picked. Two provider methods differing
+   * only in what the caller intends to do with the answer is the duplication
+   * that gets one of them fixed and not the other.
+   *
+   * Null means nothing is connected, which is a complete answer to a read -
+   * the same argument {@link listProviderAccounts} makes.
    */
-  readProviderOpeningBalances(
+  readProviderBalances(
     orgId: string,
     asOf: string
   ): Promise<Result<ProviderBalanceSheet | null, Error>>
@@ -183,7 +190,7 @@ class NoneAccountingProvider implements AccountingProvider {
    * connected" is a complete answer to a read, not a setup step somebody has
    * skipped.
    */
-  async readProviderOpeningBalances(): Promise<Result<ProviderBalanceSheet | null, Error>> {
+  async readProviderBalances(): Promise<Result<ProviderBalanceSheet | null, Error>> {
     return ok(null)
   }
 
