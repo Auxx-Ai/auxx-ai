@@ -167,7 +167,7 @@ export function RoleMapEditor({
                 'during the year, so no builder ever emits this role.'
               : 'Work in process is structurally zero. A received part maps to raw materials or ' +
                 'to finished goods and never to work in process, so no movement can reach it.'}{' '}
-            Marking it unused is the expected choice. A map that demanded all thirteen would block
+            Marking it unused is the expected choice. A map that demanded every role would block
             every preview on two roles nothing can post to.
           </p>
         </div>

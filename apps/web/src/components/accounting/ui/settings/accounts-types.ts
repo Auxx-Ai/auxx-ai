@@ -15,7 +15,10 @@ import {
   type AccountRole,
   type AccountSuggestionReason,
   accountSubtypeLabel,
+  CHART_PACK_KEYS,
+  CHART_PACKS,
   type ChartAccountRow,
+  type ChartPackKey,
   GL_ACCOUNT_SUBTYPES,
   type GlAccountSubtypeValue,
   type GlAccountTypeValue,
@@ -158,7 +161,7 @@ export function isMappingBroken(row: AccountIdentityRow): boolean {
  * `ppv` is a report rather than a posting (nothing accumulates in 5090 during
  * the year), and `inventory_wip` is structurally unreachable because
  * `resolveInventoryRoleForPartKind`'s range is raw materials and finished goods
- * only. A map that demanded all thirteen would block Preview on two roles
+ * only. A map that demanded every role would block Preview on two roles
  * nothing can ever post to.
  *
  * ⚠️ Advisory only. The server decides what a role's state IS - this list only
@@ -173,6 +176,54 @@ export const DEFAULT_UNUSED_ROLES: AccountRole[] = ['ppv', 'inventory_wip']
  */
 export function formatAccount(account: ChartAccountRow | null | undefined): string {
   return formatAccountLabel(account)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The pack picker (brief 16 §3.2) - pure, shared by the wizard's checkbox card
+// and the Roles tab's `chart-packs-dialog.tsx`. `CHART_PACKS.requires` is the
+// one declared table (16 §1.6: never derived from the builders), so both
+// pickers read it through these two functions rather than each hand-rolling
+// the cascade.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Which packs a chosen set forces on via `requires` - choosing `purchasing`
+ * forces `inventory` (16 §1.4). Never includes a key already in `selected`
+ * itself; a picker checks AND disables a row that comes back here, because
+ * the person did not choose it directly and cannot un-choose it directly
+ * either.
+ */
+export function forcedPacks(selected: ReadonlySet<ChartPackKey>): Set<ChartPackKey> {
+  const forced = new Set<ChartPackKey>()
+  for (const key of selected) {
+    for (const req of CHART_PACKS[key].requires ?? []) forced.add(req)
+  }
+  return forced
+}
+
+/**
+ * `selected` plus everything it forces on, in `CHART_PACK_KEYS` order - what a
+ * picker actually sends to `provisionChart`. `seedChartPacks` walks `requires`
+ * itself and is idempotent, so sending the forced packs explicitly costs
+ * nothing extra; it is done here so the picker's own "this also adds
+ * Inventory" copy and the packs it submits can never disagree.
+ */
+export function resolveSelectedPacks(selected: ReadonlySet<ChartPackKey>): ChartPackKey[] {
+  const forced = forcedPacks(selected)
+  return CHART_PACK_KEYS.filter((key) => selected.has(key) || forced.has(key))
+}
+
+/**
+ * The wizard picker's initial selection: `core` always, `card_rail`
+ * pre-checked when either card-rail signal is present (16 §3.2,
+ * `ledger.paymentRailsPresent`). Pure so the pre-check rule is one function,
+ * tested without mounting the query that feeds it.
+ */
+export function defaultSelectedPacks(railsPresent: {
+  stripeConnect: boolean
+  shopify: boolean
+}): ChartPackKey[] {
+  return railsPresent.stripeConnect || railsPresent.shopify ? ['core', 'card_rail'] : ['core']
 }
 
 /**

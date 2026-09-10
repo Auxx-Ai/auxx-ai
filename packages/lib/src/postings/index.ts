@@ -148,6 +148,13 @@ export {
   WRITE_OFF_SOURCE_TYPE,
   writeOffPeriodKey,
 } from './build-write-off-entry'
+// ── plans/accounting/tasks/16: the chart import ─────────────────────────────
+export { type ImportChartOptions, importChartFromProvider } from './chart-import'
+export {
+  PROVIDER_ACCOUNT_TYPE_SUBTYPE,
+  planChartImport,
+  ROLE_IMPORT_MATCH,
+} from './chart-import-plan'
 export {
   type CreateChartAccountOptions,
   createChartAccount,
@@ -164,10 +171,16 @@ export {
 } from './close-month'
 export { listClosePeriods } from './close-periods'
 export {
+  CHART_PACK_KEYS,
+  CHART_PACKS,
+  type ChartPack,
+  type ChartPackKey,
   DEFAULT_CHART_OF_ACCOUNTS,
   type DefaultChartAccount,
   GL_ACCOUNT_TYPES,
   type GlAccountTypeValue,
+  packForRole,
+  packState,
 } from './default-chart'
 export {
   buildDocNumber,
@@ -420,6 +433,8 @@ export {
   type AccountSuggestionReason,
   type BuiltEntry,
   type ChartAccountRow,
+  type ChartImportPlan,
+  type ChartImportResult,
   type ClosePeriod,
   type CounterpartyType,
   type GlPostingLineInput,

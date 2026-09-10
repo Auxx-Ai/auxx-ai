@@ -1,12 +1,37 @@
 // packages/lib/src/postings/default-chart.ts
 //
-// The default chart of accounts auxx.ai seeds into an organization.
+// The default chart of accounts auxx.ai seeds into an organization, declared
+// as PACKS (plans/accounting/tasks/16-the-chart-of-accounts.md §1 and §3.2).
 //
 // PURE DATA. No database, no io - `postings/` already owns the account
 // vocabulary (`ACCOUNT_ROLES` in build-entry.ts), the period keyspace and the
 // provider seam, so the chart that vocabulary maps onto belongs here rather
-// than in `seed/`. The entity migration that writes these rows imports this
-// constant; `seed -> lib` is the sanctioned direction and `lib -> seed` is not.
+// than in `seed/`. The seeder that writes these rows imports this module;
+// `seed -> lib` is the sanctioned direction and `lib -> seed` is not.
+//
+// ## Why packs
+//
+// The flat 37-account list this file used to export was one company's chart:
+// nine accounts carried no role at all and sixteen carried roles only a
+// manufacturer, a purchaser or a card merchant ever drives. Brief 16 §1 splits
+// the same table by WHO reaches it: a `core` every org gets (the eleven roles an
+// enabled posting type can put on a line for any org that sends an invoice,
+// takes a payment, ships an order, issues a credit memo or writes something
+// off), and four packs an org adds when it starts doing the thing that needs
+// them: `card_rail`, `prepayments`, `inventory`, `purchasing`. Every one of the
+// 28 roles lives in exactly one pack; `packForRole` is the lookup and the union
+// test in `__tests__/default-chart.test.ts` is the proof.
+//
+// Four accounts that were in the old list are in NO pack (`1190 Allowance for
+// Doubtful Accounts`, `2100 Accrued Payroll`, `2400 Returns Reserve`, `6200
+// Fulfillment Labor`): role-less, one company's bookkeeping, added by hand in
+// the chart editor where wanted (16 DECIDED, 16.3). An org provisioned before
+// packs existed keeps them; nothing here renumbers, renames or deletes.
+//
+// Packs are DECLARED, not derived from the builders or from
+// `SINGLE_WRITER_ROLES_BY_POSTING_TYPE` (16 §1.6): a declared table is what a
+// human comes to and says so; a derived one follows whatever a builder started
+// emitting.
 //
 // The account CODE is optional on a `gl_account` now (task 15 §5) - a chart
 // imported from a provider that ships with account numbers off has none, and
@@ -17,6 +42,7 @@
 import { GlAccountSubtype, GlAccountType } from '../resources/registry/enum-values'
 import type { GlAccountSubtypeValue } from './account-subtype'
 import type { AccountRole } from './build-entry'
+import type { RoleAssignmentRow } from './types'
 
 /**
  * The five statement classifications, as a literal union.
@@ -74,53 +100,48 @@ export interface DefaultChartAccount {
 }
 
 /**
- * The default chart of accounts, seeded into every organization.
- *
- * ## What this is, and what it is NOT
- *
- * **It is a DEFAULT, not a standard** (decision `G7`). Charts of accounts are
- * not standardised: US GAAP mandates no numbering at all, QuickBooks' own
- * default chart varies by country and by industry and is routinely edited on
- * day one, and some jurisdictions mandate an entirely different one - France's
- * PCG, Germany's SKR03/04. So auxx seeds this, and a person changes it: renames
- * an account, renumbers one, deactivates one at year end, adds twenty of their
- * own.
- *
- * **That editability is exactly why nothing in the code may name a number.**
- * The `role` column is the load-bearing part of every row here (decision `G8`).
- * A builder emits `ACCOUNT_ROLES.GRNI`; the resolver reads THIS org's chart to
- * learn that GRNI is `2160` here and `2155` at the customer who renumbered it.
- * Change a `code` below and posting still works. Change a `role` and it stops -
- * which is why the role field is where the care goes.
- *
- * **It is not a complete chart.** The source (`plans/money/accrual-accounting-plan.html`
- * §2) is titled *"Accounts to add in QuickBooks"* - it presumes an existing
- * book with bank accounts, equity, retained earnings, operating expenses and the
- * rest already in place. Five accounts the posting builders need are added on
- * top of it (`1000`, `2000`, `2160`, `2170`, `5095`), because the accrual plan's
- * table does not list them. Three equity accounts (`3000`, `3100`, `3900`) were
- * added 2026-09-04 once the opening trial balance and the balance sheet needed
- * somewhere to land (plans/accounting/HANDOFF.md decision 6.4), with `1050`,
- * `4020` and `6300` in the same pass.
- *
- * ## The two things to check before this is seeded
- *
- * 1. **The numbering.** It is the accrual plan's, which was written against one
- *    company's QuickBooks. A new org gets it as a starting point.
- * 2. **The type mapping.** The accrual plan's *Type* column carries QuickBooks
- *    DETAIL types (`Other Current Asset`, `Cost of Goods Sold`, `Income`,
- *    `Accounts Receivable`, `contra-asset`). `GlAccountType` is the five-way
- *    statement classification, so they are collapsed: Income -> `revenue`, Cost
- *    of Goods Sold and Expense -> `expense`, every asset flavour -> `asset`,
- *    Other Current Liability -> `liability`. The
- *    collapse loses the current/non-current split and the contra-asset marking
- *    on `1190`; that is a presentation concern for the provider's own chart,
- *    not something a posting reads.
- *
- * @see ACCOUNT_ROLES in `build-entry.ts` for what each role means
- * @see plans/money/accrual-accounting-plan.html §2 for the accounting argument
+ * The five packs, by key. `core` is always provisioned; the other four are
+ * chosen by a person in the wizard's pack picker or the Roles tab's Add
+ * accounts action (16 §3). Never provisioned silently off a plan event, an app
+ * install or a payout sync (16 §3.3).
  */
-export const DEFAULT_CHART_OF_ACCOUNTS: readonly DefaultChartAccount[] = [
+export type ChartPackKey = 'core' | 'card_rail' | 'prepayments' | 'inventory' | 'purchasing'
+
+/** One provisionable slice of the default chart. */
+export interface ChartPack {
+  key: ChartPackKey
+  /** Rendered in the picker: 'Card payments and payouts'. */
+  label: string
+  /** One sentence, rendered in the picker under the label. */
+  description: string
+  /** A pack whose roles this one's builders also drive. Provisioned first. */
+  requires?: readonly ChartPackKey[]
+  accounts: readonly DefaultChartAccount[]
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The core: thirteen accounts, eleven roles (16 §1.3)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Every role here is reachable by an ENABLED posting type on any org that sends
+// an invoice, takes a payment, ships an order, issues a credit memo or writes
+// something off (16 §0.2). Why each of the arguable ones is here:
+//
+// - `2000 Accounts Payable`: `vendor_bill` is not enabled, but A/P aging reads
+//   the role, a manual journal to a payable by id is ordinary bookkeeping, and
+//   every business owes somebody. Its subtype is what the QuickBooks seam uses
+//   to demand a vendor on the line (13 §1).
+// - `3900 Opening Balance Equity`: no builder emits the role and nothing reads
+//   it, but the opening trial-balance grid needs the account to balance
+//   against and QuickBooks has the account of the same name. The role stays
+//   because the vocabulary is closed and a role no pack carried would fail the
+//   union test.
+// - `4000`, `4020`: `fulfillment` is enabled for every org and drops a zero
+//   shipping leg, so an org that never ships simply never posts to them.
+// - `6300`, `4090`, `4020`: one account each, driven by enabled types every org
+//   reaches; an unmapped `bad_debt_expense` would turn a forty-dollar write-off
+//   into a refusal that names a pack (16 DECIDED).
+const CORE_ACCOUNTS: readonly DefaultChartAccount[] = [
   // ── Assets ──────────────────────────────────────────────────────────────
   {
     // Not in the accrual plan's table - added because `buildBillPaymentEntry`
@@ -132,6 +153,12 @@ export const DEFAULT_CHART_OF_ACCOUNTS: readonly DefaultChartAccount[] = [
     // No role since brief 13 §2: a bank account is an instance, not a
     // function. An org maps this as a bank account like any other, or `16`
     // stops seeding it.
+    //
+    // 16.1 kept it seeded: a `bank_account` must point at a `gl_account` id,
+    // the `cash` payment route needs `accounting.cashBankAccountId` to name
+    // one, and the opening trial balance needs somewhere for cash to land. An
+    // org that imports from QuickBooks gets its real bank accounts instead and
+    // never sees `1000`.
     subtype: GlAccountSubtype.BANK,
   },
   {
@@ -154,63 +181,6 @@ export const DEFAULT_CHART_OF_ACCOUNTS: readonly DefaultChartAccount[] = [
     role: 'accounts_receivable',
     subtype: GlAccountSubtype.ACCOUNTS_RECEIVABLE,
   },
-  {
-    code: '1190',
-    name: 'Allowance for Doubtful Accounts',
-    // A contra-asset. `GlAccountType` has no contra classification and does not
-    // need one - it is a presentation attribute, not a posting rule.
-    accountType: GlAccountType.ASSET,
-  },
-  {
-    // Named for the RAIL. Was `Shopify Clearing` / `clearing_shopify` until
-    // entity migration 132 - there is no Shopify payment rail in auxx, so the
-    // Stripe money sitting here was in an account named for a provider it never
-    // touched. The code is unchanged; only the name and the role moved.
-    code: '1200',
-    name: 'Card Clearing',
-    accountType: GlAccountType.ASSET,
-    role: 'clearing_card',
-  },
-  {
-    // Must EXCLUDE every Affirm-gateway order or 1200 can never reconcile to
-    // zero: an Affirm settlement never lands on the card rail, so it is
-    // invisible to the payouts API (accrual plan §3).
-    //
-    // The role is what makes that exclusion mechanical rather than a rule
-    // somebody has to remember: the fulfillment debit fork routes an `affirm`
-    // gateway to `clearing_affirm`, and `PAYOUT_CLEARING_ROLES` holds
-    // `clearing_card` alone (49 §3.2, §8.4 decision 6). Entity migration 137
-    // stamps this role onto orgs seeded before it existed.
-    code: '1210',
-    name: 'Affirm Clearing',
-    accountType: GlAccountType.ASSET,
-    role: 'clearing_affirm',
-  },
-  {
-    code: '1310',
-    name: 'Raw Materials / Parts',
-    accountType: GlAccountType.ASSET,
-    role: 'inventory_raw_materials',
-    subtype: GlAccountSubtype.INVENTORY,
-  },
-  {
-    // Receipts never touch this - nothing in the `partKind` table maps to WIP.
-    // It is here because the L1 month-end inventory entry moves all THREE
-    // inventory accounts to the balance the subledger computes (04-books §2.1),
-    // and that entry is the January 1 deliverable.
-    code: '1320',
-    name: 'Work in Process',
-    accountType: GlAccountType.ASSET,
-    role: 'inventory_wip',
-    subtype: GlAccountSubtype.INVENTORY,
-  },
-  {
-    code: '1330',
-    name: 'Finished Goods',
-    accountType: GlAccountType.ASSET,
-    role: 'inventory_finished_goods',
-    subtype: GlAccountSubtype.INVENTORY,
-  },
 
   // ── Liabilities ─────────────────────────────────────────────────────────
   {
@@ -225,96 +195,12 @@ export const DEFAULT_CHART_OF_ACCOUNTS: readonly DefaultChartAccount[] = [
     subtype: GlAccountSubtype.ACCOUNTS_PAYABLE,
   },
   {
-    code: '2100',
-    name: 'Accrued Payroll',
-    accountType: GlAccountType.LIABILITY,
-    // Straddling pay periods. Distinct from 2110 - this one is an accrual, that
-    // one is a clearing pool. Not a role: no builder writes it.
-  },
-  {
-    code: '2110',
-    name: 'Payroll Clearing',
-    accountType: GlAccountType.LIABILITY,
-    role: 'payroll_clearing',
-  },
-  {
-    // BROADER than "carrier freight", deliberately (`G17`). A customs broker's
-    // service charge is attributable to a shipment, so it is landed cost and it
-    // clears here — NOT through 2170, which is duty owed to the government. The
-    // internal role stays `freight_accrual`: `G17` explicitly permits the name
-    // and the role to differ, and renaming a role is a vocabulary migration
-    // across the ledger for no behavioural gain.
-    code: '2150',
-    name: 'Inbound Freight & Brokerage Accrual',
-    accountType: GlAccountType.LIABILITY,
-    role: 'freight_accrual',
-  },
-  {
-    // Not in the accrual plan's table. The single most load-bearing account in
-    // the purchasing subledger: credited on receipt at the VENDOR unit price,
-    // debited when the vendor's bill arrives.
-    code: '2160',
-    name: 'Goods Received Not Invoiced',
-    accountType: GlAccountType.LIABILITY,
-    role: 'grni',
-  },
-  {
-    // Not in the accrual plan's table. Tariffs and customs duties owed
-    // SEPARATELY TO THE U.S. GOVERNMENT.
-    //
-    // 🛑 NOT the customs broker's share. This file, `build-entry.ts` and the
-    // (now deleted) registry enum all used to say it held "the customs broker's
-    // share"; all three were wrong. A broker sells a service on a shipment, so
-    // their charge is inbound freight's problem and clears through 2150.
-    //
-    // Only ever carries a balance when a receipt had a non-zero tariff portion;
-    // build plan phase 0.1 asks whether `tariffRate` is ever non-zero at all. An
-    // org that never imports can deactivate it and no posting will ever
-    // reference it.
-    code: '2170',
-    name: 'Duties Accrual',
-    accountType: GlAccountType.LIABILITY,
-    role: 'duties_accrual',
-  },
-  {
     // Sales tax is NEVER revenue and never an expense - a pass-through
     // liability from the moment Shopify collects it (accrual plan §1).
     code: '2200',
     name: 'Sales Tax Payable',
     accountType: GlAccountType.LIABILITY,
     role: 'sales_tax_payable',
-  },
-  {
-    code: '2300',
-    name: 'Deferred Revenue',
-    accountType: GlAccountType.LIABILITY,
-    // Month-end only, reversed on day one of the next month.
-    role: 'deferred_revenue',
-  },
-  {
-    // Money taken BEFORE delivery - `money/payments/deposit.ts`. A BANK deposit
-    // is a different thing entirely and lands on `cash`.
-    code: '2350',
-    name: 'Customer Deposits',
-    accountType: GlAccountType.LIABILITY,
-    role: 'customer_deposits',
-  },
-  {
-    code: '2400',
-    name: 'Returns Reserve',
-    accountType: GlAccountType.LIABILITY,
-  },
-  {
-    // Money that arrived and auxx cannot attribute. The payout entry's fourth
-    // leg: a gateway payout settles charges the merchant took OUTSIDE auxx too,
-    // and those were never debited to `1200`. Held as a liability - until it is
-    // attributed, "we hold money we cannot explain" is the true statement, and
-    // recognising it as revenue would book income on the strength of not
-    // knowing what it is.
-    code: '2450',
-    name: 'Unidentified Receipts',
-    accountType: GlAccountType.LIABILITY,
-    role: 'unidentified_receipts',
   },
 
   // ── Equity ──────────────────────────────────────────────────────────────
@@ -404,6 +290,149 @@ export const DEFAULT_CHART_OF_ACCOUNTS: readonly DefaultChartAccount[] = [
     role: 'revenue_returns_allowances',
   },
 
+  // ── Operating expenses ──────────────────────────────────────────────────
+  {
+    // The `write_off` entry's debit leg. `1190 Allowance for Doubtful Accounts`
+    // is the contra-asset the reserve method would credit; the direct
+    // write-off posts here and credits receivables.
+    code: '6300',
+    name: 'Bad Debt Expense',
+    accountType: GlAccountType.EXPENSE,
+    role: 'bad_debt_expense',
+  },
+]
+
+// ─────────────────────────────────────────────────────────────────────────────
+// card_rail: Stripe Connect, Shopify Payments, Affirm (16 §1.4)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// `seedDefaultPaymentGateways` runs after this pack, never after the core: the
+// two default gateway records point at `clearing_card` / `clearing_affirm`,
+// which only exist once this pack has landed (13 §5.3, 16 §1.5). `6105` rides
+// with the rail because Affirm's fees clear `1210` (16 §1.6).
+const CARD_RAIL_ACCOUNTS: readonly DefaultChartAccount[] = [
+  {
+    // Named for the RAIL. Was `Shopify Clearing` / `clearing_shopify` until
+    // entity migration 132 - there is no Shopify payment rail in auxx, so the
+    // Stripe money sitting here was in an account named for a provider it never
+    // touched. The code is unchanged; only the name and the role moved.
+    code: '1200',
+    name: 'Card Clearing',
+    accountType: GlAccountType.ASSET,
+    role: 'clearing_card',
+  },
+  {
+    // Must EXCLUDE every Affirm-gateway order or 1200 can never reconcile to
+    // zero: an Affirm settlement never lands on the card rail, so it is
+    // invisible to the payouts API (accrual plan §3).
+    //
+    // The role is what makes that exclusion mechanical rather than a rule
+    // somebody has to remember: the fulfillment debit fork routes an `affirm`
+    // gateway to `clearing_affirm`, and `PAYOUT_CLEARING_ROLES` holds
+    // `clearing_card` alone (49 §3.2, §8.4 decision 6). Entity migration 137
+    // stamps this role onto orgs seeded before it existed.
+    code: '1210',
+    name: 'Affirm Clearing',
+    accountType: GlAccountType.ASSET,
+    role: 'clearing_affirm',
+  },
+  {
+    // Money that arrived and auxx cannot attribute. The payout entry's fourth
+    // leg: a gateway payout settles charges the merchant took OUTSIDE auxx too,
+    // and those were never debited to `1200`. Held as a liability - until it is
+    // attributed, "we hold money we cannot explain" is the true statement, and
+    // recognising it as revenue would book income on the strength of not
+    // knowing what it is.
+    code: '2450',
+    name: 'Unidentified Receipts',
+    accountType: GlAccountType.LIABILITY,
+    role: 'unidentified_receipts',
+  },
+  {
+    // What the processor withheld from a payout. The payout entry's expense
+    // leg. NOT the Connect application fee in `money/payments/fees.ts`.
+    code: '6100',
+    name: 'Merchant Fees - Cards',
+    accountType: GlAccountType.EXPENSE,
+    role: 'payment_processing_fees',
+  },
+  {
+    // Kept separate from 6100 for RECONCILIATION, not optimisation: Affirm
+    // settles in its own deposit, so its fees have to be separable to clear
+    // 1210 (accrual plan §3).
+    code: '6105',
+    name: 'Merchant Fees - Affirm',
+    accountType: GlAccountType.EXPENSE,
+  },
+]
+
+// ─────────────────────────────────────────────────────────────────────────────
+// prepayments: deposits and deferred revenue (16 §1.4)
+// ─────────────────────────────────────────────────────────────────────────────
+const PREPAYMENTS_ACCOUNTS: readonly DefaultChartAccount[] = [
+  {
+    code: '2300',
+    name: 'Deferred Revenue',
+    accountType: GlAccountType.LIABILITY,
+    // Month-end only, reversed on day one of the next month.
+    role: 'deferred_revenue',
+  },
+  {
+    // Money taken BEFORE delivery - `money/payments/deposit.ts`. A BANK deposit
+    // is a different thing entirely and lands on `cash`.
+    code: '2350',
+    name: 'Customer Deposits',
+    accountType: GlAccountType.LIABILITY,
+    role: 'customer_deposits',
+  },
+]
+
+// ─────────────────────────────────────────────────────────────────────────────
+// inventory: the L1 month-end close (16 §1.4)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// `month_end_inventory` IS an enabled posting type, but on an org with no parts
+// it refuses with "Nothing moved" before any role is resolved (16 §0.2), so
+// its seven roles cost a knowledge-base org nothing except seven rows on the
+// Roles tab and seven accounts in the chart. That is why they are a pack.
+// `5010` and `5030` ride along because they are COGS and the P&L groups them by
+// subtype (16 §1.6).
+const INVENTORY_ACCOUNTS: readonly DefaultChartAccount[] = [
+  // ── Assets ──────────────────────────────────────────────────────────────
+  {
+    code: '1310',
+    name: 'Raw Materials / Parts',
+    accountType: GlAccountType.ASSET,
+    role: 'inventory_raw_materials',
+    subtype: GlAccountSubtype.INVENTORY,
+  },
+  {
+    // Receipts never touch this - nothing in the `partKind` table maps to WIP.
+    // It is here because the L1 month-end inventory entry moves all THREE
+    // inventory accounts to the balance the subledger computes (04-books §2.1),
+    // and that entry is the January 1 deliverable.
+    code: '1320',
+    name: 'Work in Process',
+    accountType: GlAccountType.ASSET,
+    role: 'inventory_wip',
+    subtype: GlAccountSubtype.INVENTORY,
+  },
+  {
+    code: '1330',
+    name: 'Finished Goods',
+    accountType: GlAccountType.ASSET,
+    role: 'inventory_finished_goods',
+    subtype: GlAccountSubtype.INVENTORY,
+  },
+
+  // ── Liabilities ─────────────────────────────────────────────────────────
+  {
+    code: '2110',
+    name: 'Payroll Clearing',
+    accountType: GlAccountType.LIABILITY,
+    role: 'payroll_clearing',
+  },
+
   // ── Cost of goods sold ──────────────────────────────────────────────────
   // `GlAccountType` has no COGS classification; all five map to `expense`.
   {
@@ -445,17 +474,10 @@ export const DEFAULT_CHART_OF_ACCOUNTS: readonly DefaultChartAccount[] = [
     // landed cost. Two different freights; do not point one role at both.
   },
   {
-    code: '5090',
-    name: 'Inventory / Purchase Price Variance',
-    accountType: GlAccountType.EXPENSE,
-    role: 'ppv',
-    subtype: GlAccountSubtype.COST_OF_GOODS_SOLD,
-  },
-  {
     // 🛑 A SIBLING of 5090, not a merge with it (`G12`). 5090 answers "the
     // vendor billed something other than what we accrued"; this one answers
     // "the shelf disagrees with the ledger". Different owner, different remedy,
-    // different trend — one account holding both answers neither, and the L1
+    // different trend - one account holding both answers neither, and the L1
     // month-end assertion would absorb count variance into the COGS plug, which
     // is precisely the separation `G12` exists to get.
     //
@@ -466,37 +488,204 @@ export const DEFAULT_CHART_OF_ACCOUNTS: readonly DefaultChartAccount[] = [
     role: 'inventory_count_variance',
     subtype: GlAccountSubtype.COST_OF_GOODS_SOLD,
   },
+]
 
-  // ── Operating expenses ──────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// purchasing: purchase orders, receiving and vendor bills (16 §1.4)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Requires `inventory`: a receipt debits an inventory role (`build-entry.ts`,
+// the receipt builder), so provisioning this pack alone walks `inventory`
+// first. `5090` sits HERE and `5095` in `inventory` because `G12` gives them
+// different owners and different remedies.
+const PURCHASING_ACCOUNTS: readonly DefaultChartAccount[] = [
+  // ── Liabilities ─────────────────────────────────────────────────────────
   {
-    // What the processor withheld from a payout. The payout entry's expense
-    // leg. NOT the Connect application fee in `money/payments/fees.ts`.
-    code: '6100',
-    name: 'Merchant Fees - Cards',
-    accountType: GlAccountType.EXPENSE,
-    role: 'payment_processing_fees',
+    // BROADER than "carrier freight", deliberately (`G17`). A customs broker's
+    // service charge is attributable to a shipment, so it is landed cost and it
+    // clears here - NOT through 2170, which is duty owed to the government. The
+    // internal role stays `freight_accrual`: `G17` explicitly permits the name
+    // and the role to differ, and renaming a role is a vocabulary migration
+    // across the ledger for no behavioural gain.
+    code: '2150',
+    name: 'Inbound Freight & Brokerage Accrual',
+    accountType: GlAccountType.LIABILITY,
+    role: 'freight_accrual',
   },
   {
-    // Kept separate from 6100 for RECONCILIATION, not optimisation: Affirm
-    // settles in its own deposit, so its fees have to be separable to clear
-    // 1210 (accrual plan §3).
-    code: '6105',
-    name: 'Merchant Fees - Affirm',
-    accountType: GlAccountType.EXPENSE,
+    // Not in the accrual plan's table. The single most load-bearing account in
+    // the purchasing subledger: credited on receipt at the VENDOR unit price,
+    // debited when the vendor's bill arrives.
+    code: '2160',
+    name: 'Goods Received Not Invoiced',
+    accountType: GlAccountType.LIABILITY,
+    role: 'grni',
   },
   {
-    // Pick/pack/receive labour - explicitly NOT inventory (accrual plan §2).
-    code: '6200',
-    name: 'Fulfillment Labor',
-    accountType: GlAccountType.EXPENSE,
+    // Not in the accrual plan's table. Tariffs and customs duties owed
+    // SEPARATELY TO THE U.S. GOVERNMENT.
+    //
+    // 🛑 NOT the customs broker's share. This file, `build-entry.ts` and the
+    // (now deleted) registry enum all used to say it held "the customs broker's
+    // share"; all three were wrong. A broker sells a service on a shipment, so
+    // their charge is inbound freight's problem and clears through 2150.
+    //
+    // Only ever carries a balance when a receipt had a non-zero tariff portion;
+    // build plan phase 0.1 asks whether `tariffRate` is ever non-zero at all. An
+    // org that never imports can deactivate it and no posting will ever
+    // reference it.
+    code: '2170',
+    name: 'Duties Accrual',
+    accountType: GlAccountType.LIABILITY,
+    role: 'duties_accrual',
   },
+
+  // ── Cost of goods sold ──────────────────────────────────────────────────
   {
-    // The `write_off` entry's debit leg. `1190 Allowance for Doubtful Accounts`
-    // is the contra-asset the reserve method would credit; the direct
-    // write-off posts here and credits receivables.
-    code: '6300',
-    name: 'Bad Debt Expense',
+    code: '5090',
+    name: 'Inventory / Purchase Price Variance',
     accountType: GlAccountType.EXPENSE,
-    role: 'bad_debt_expense',
+    role: 'ppv',
+    subtype: GlAccountSubtype.COST_OF_GOODS_SOLD,
   },
 ]
+
+/**
+ * The default chart of accounts, as five packs.
+ *
+ * ## What this is, and what it is NOT
+ *
+ * **It is a DEFAULT, not a standard** (decision `G7`). Charts of accounts are
+ * not standardised: US GAAP mandates no numbering at all, QuickBooks' own
+ * default chart varies by country and by industry and is routinely edited on
+ * day one, and some jurisdictions mandate an entirely different one - France's
+ * PCG, Germany's SKR03/04. So auxx seeds this, and a person changes it: renames
+ * an account, renumbers one, deactivates one at year end, adds twenty of their
+ * own. A pack is still data a person edits afterwards.
+ *
+ * **That editability is exactly why nothing in the code may name a number.**
+ * The `role` column is the load-bearing part of every row here (decision `G8`).
+ * A builder emits `ACCOUNT_ROLES.GRNI`; the resolver reads THIS org's chart to
+ * learn that GRNI is `2160` here and `2155` at the customer who renumbered it.
+ * Change a `code` below and posting still works. Change a `role` and it stops -
+ * which is why the role field is where the care goes.
+ *
+ * **It is not a complete chart.** The source (`plans/money/accrual-accounting-plan.html`
+ * §2) is titled *"Accounts to add in QuickBooks"* - it presumes an existing
+ * book with bank accounts, equity, retained earnings, operating expenses and the
+ * rest already in place. Five accounts the posting builders need are added on
+ * top of it (`1000`, `2000`, `2160`, `2170`, `5095`), because the accrual plan's
+ * table does not list them. Three equity accounts (`3000`, `3100`, `3900`) were
+ * added 2026-09-04 once the opening trial balance and the balance sheet needed
+ * somewhere to land (plans/accounting/HANDOFF.md decision 6.4), with `1050`,
+ * `4020` and `6300` in the same pass.
+ *
+ * ## The two things to check before this is seeded
+ *
+ * 1. **The numbering.** It is the accrual plan's, which was written against one
+ *    company's QuickBooks. A new org gets it as a starting point.
+ * 2. **The type mapping.** The accrual plan's *Type* column carries QuickBooks
+ *    DETAIL types (`Other Current Asset`, `Cost of Goods Sold`, `Income`,
+ *    `Accounts Receivable`, `contra-asset`). `GlAccountType` is the five-way
+ *    statement classification, so they are collapsed: Income -> `revenue`, Cost
+ *    of Goods Sold and Expense -> `expense`, every asset flavour -> `asset`,
+ *    Other Current Liability -> `liability`. The collapse loses the
+ *    current/non-current split and any contra marking; that is a presentation
+ *    concern for the provider's own chart, not something a posting reads.
+ *
+ * @see ACCOUNT_ROLES in `build-entry.ts` for what each role means
+ * @see plans/money/accrual-accounting-plan.html §2 for the accounting argument
+ * @see plans/accounting/tasks/16-the-chart-of-accounts.md §1 for the packs
+ */
+export const CHART_PACKS: Record<ChartPackKey, ChartPack> = {
+  core: {
+    key: 'core',
+    label: 'Core',
+    description:
+      'Receivables, payables, sales tax, equity, revenue and bad debt. Every organization gets these.',
+    accounts: CORE_ACCOUNTS,
+  },
+  card_rail: {
+    key: 'card_rail',
+    label: 'Card payments and payouts',
+    description:
+      'Clearing and fee accounts for Stripe Connect, Shopify Payments and Affirm settlements.',
+    accounts: CARD_RAIL_ACCOUNTS,
+  },
+  prepayments: {
+    key: 'prepayments',
+    label: 'Deposits and deferred revenue',
+    description: 'Customer deposits taken before delivery, and revenue deferred at month end.',
+    accounts: PREPAYMENTS_ACCOUNTS,
+  },
+  inventory: {
+    key: 'inventory',
+    label: 'Inventory and manufacturing',
+    description:
+      'Raw materials, work in process, finished goods, payroll clearing and cost of goods sold.',
+    accounts: INVENTORY_ACCOUNTS,
+  },
+  purchasing: {
+    key: 'purchasing',
+    label: 'Purchase orders, receiving and vendor bills',
+    description:
+      'Goods received not invoiced, inbound freight and duties accruals, and purchase price variance.',
+    requires: ['inventory'],
+    accounts: PURCHASING_ACCOUNTS,
+  },
+}
+
+/**
+ * Every pack key in declaration order, `core` first. A tuple rather than
+ * `Object.keys(CHART_PACKS)` so a `z.enum` can be built from it.
+ */
+export const CHART_PACK_KEYS = [
+  'core',
+  'card_rail',
+  'prepayments',
+  'inventory',
+  'purchasing',
+] as const satisfies readonly ChartPackKey[]
+
+/**
+ * Every pack flattened, in pack order. What the union tests and the old
+ * importers read; the seeder walks packs instead (16 §1.5).
+ */
+export const DEFAULT_CHART_OF_ACCOUNTS: readonly DefaultChartAccount[] = CHART_PACK_KEYS.flatMap(
+  (key) => CHART_PACKS[key].accounts
+)
+
+/** `role -> pack`, built once from the tables. The union test proves it total. */
+const PACK_BY_ROLE = Object.fromEntries(
+  CHART_PACK_KEYS.flatMap((key) =>
+    CHART_PACKS[key].accounts.flatMap((account) => (account.role ? [[account.role, key]] : []))
+  )
+) as Record<AccountRole, ChartPackKey>
+
+/** The pack whose accounts carry this role. Every role is in exactly one. */
+export function packForRole(role: AccountRole): ChartPackKey {
+  return PACK_BY_ROLE[role]
+}
+
+/**
+ * A pack is provisioned when none of its roles is `unmapped`.
+ *
+ * Derived on the client from `ledger.roleMap` and `CHART_PACKS`; no new query.
+ * `unused` and `suggested` both count as present: a person has looked at the
+ * role, which is the thing an absent row says nobody has. A role missing from
+ * `roleMap` altogether is read as `unmapped`, though `listRoleMap` returns
+ * every role.
+ */
+export function packState(
+  pack: ChartPackKey,
+  roleMap: readonly Pick<RoleAssignmentRow, 'role' | 'state'>[]
+): 'provisioned' | 'partial' | 'absent' {
+  const roles = CHART_PACKS[pack].accounts.flatMap((account) =>
+    account.role ? [account.role] : []
+  )
+  const stateByRole = new Map(roleMap.map((row) => [row.role, row.state]))
+  const unmapped = roles.filter((role) => (stateByRole.get(role) ?? 'unmapped') === 'unmapped')
+  if (unmapped.length === 0) return 'provisioned'
+  if (unmapped.length === roles.length) return 'absent'
+  return 'partial'
+}

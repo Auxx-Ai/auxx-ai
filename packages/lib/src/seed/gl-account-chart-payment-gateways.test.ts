@@ -6,6 +6,18 @@
 // `../resources/crud` directly, while this exercises the boundary one layer
 // up - `../payment-gateways` itself - so a change to the write path's
 // internals cannot silently desync the two doubles.
+//
+// This function is NOT called from `seedChartPacks`'s core walk (brief 16
+// §1.5) - it is a separate export the router calls only when the walked packs
+// include `card_rail`. That gate is a ROUTER decision, not something this
+// function or `seedChartPacks` can see (neither takes a `packs` argument the
+// other reads), so "gateways seed after `card_rail`, never after `['core']`"
+// is pinned at the router level instead:
+// `apps/web/src/server/api/routers/ledger-permissions.test.ts`'s "never seeds
+// payment gateways after provisioning only core" / "seeds payment gateways
+// after provisioning card_rail" cases. What THIS file still pins is what it
+// always pinned: given a chart whose roles are (or are not) mapped, which
+// gateways get created.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 

@@ -21,7 +21,8 @@
  * must never be a third. See plans/money/tasks/done/07-align-gl-foundation.md section 6.
  */
 import type { GlAccountSubtypeValue } from './account-subtype'
-import type { GlAccountTypeValue } from './default-chart'
+import type { AccountRole } from './build-entry'
+import type { DefaultChartAccount, GlAccountTypeValue } from './default-chart'
 
 export const POSTING_TYPES = [
   'fulfillment',
@@ -762,7 +763,14 @@ export interface RoleAssignmentRow {
   accountId: string | null
   /** Resolved for display. Null when unmapped, or when the account has vanished. */
   account: ChartAccountRow | null
-  /** `'seed'` | `'human'` | `'suggested'`, or null with no row. */
+  /**
+   * `'seed'` | `'human'` | `'suggested'` | `'import'`, or null with no row.
+   *
+   * `'import'` is written by `importChartFromProvider` for a role it matched
+   * unambiguously on the provider's chart (brief 16 §2.2). It renders as
+   * `suggested` like `'seed'` does, because `state` is derived from
+   * `confirmedAt` alone: the import chose it, nobody has agreed yet.
+   */
   source: string | null
   confirmedAt: string | null
 }
@@ -857,6 +865,48 @@ export interface AccountIdentityRow {
    * something is mapped, and null when nothing plausible matched.
    */
   suggestion: { account: ProviderAccount; reason: AccountSuggestionReason } | null
+}
+
+/**
+ * What an import of the provider's chart would do, before it does it
+ * (brief 16 §2.2). Produced by the pure `planChartImport`, executed by
+ * `importChartFromProvider`.
+ *
+ * `create` carries the code (the provider's `number`, or null), the name, the
+ * five-way type and the subtype the declared inverse table stamps, or null
+ * where the provider type is ambiguous (`Other Current Asset` is deliberately
+ * unmapped: Undeposited Funds, prepaids and Inventory Asset all arrive under
+ * it). `alreadyImported` is every provider account some `gl_account` already
+ * carries as its identity, renamed or not.
+ */
+export interface ChartImportPlan {
+  create: Array<{
+    providerAccount: ProviderAccount
+    code: string | null
+    name: string
+    accountType: GlAccountTypeValue
+    subtype: GlAccountSubtypeValue | null
+  }>
+  skippedInactive: ProviderAccount[]
+  alreadyImported: Array<{ providerAccount: ProviderAccount; glAccountId: string }>
+  /** Roles with exactly one unambiguous candidate, resolved AFTER creation. */
+  roleCandidates: Array<{ role: AccountRole; match: 'subtype' | 'name'; providerAccountId: string }>
+  /** Core role-bearing accounts the provider chart cannot satisfy. */
+  missingCore: DefaultChartAccount[]
+}
+
+/**
+ * What `importChartFromProvider` did (brief 16 §2.2). Counts, never rows: the
+ * screen reports "12 added, 41 already here" and re-reads the chart itself.
+ */
+export interface ChartImportResult {
+  created: number
+  alreadyImported: number
+  skippedInactive: number
+  /** Written with `source: 'import'`, only for roles that were `unmapped`. */
+  rolesAssigned: AccountRole[]
+  /** The uncoded, unmapped core accounts added because the provider lacks them. */
+  coreCreated: DefaultChartAccount[]
 }
 
 /**

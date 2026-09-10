@@ -59,6 +59,7 @@ import {
   type NewChartAccount,
 } from './chart-account-editor'
 import { ChartList } from './chart-list'
+import { ChartPacksDialog } from './chart-packs-dialog'
 import { RoleMapEditor } from './role-map-editor'
 import { RoleMapList } from './role-map-list'
 
@@ -122,6 +123,9 @@ export function AccountingAccountsSettingsPage() {
   // draft, or on switching tabs - never on a mere re-render.
   const [chartDraft, setChartDraft] = useState<ChartDraftHandle | null>(null)
   const [confirm, ConfirmDialog] = useConfirm()
+  // The Roles tab's "Add accounts" action (brief 16 §3.2) - provisions a named
+  // chart pack without going back through the wizard.
+  const [addAccountsOpen, setAddAccountsOpen] = useState(false)
 
   const roleRows = useMemo<RoleAssignmentRow[]>(() => roleMap.data ?? [], [roleMap.data])
   const accounts = useMemo(() => chart.data ?? [], [chart.data])
@@ -462,7 +466,7 @@ export function AccountingAccountsSettingsPage() {
         {activeTab === 'roles' ? (
           <RoleMapList
             rows={roleRows}
-            // 🛑 Gate on the query, never on an empty array. Thirteen rows
+            // 🛑 Gate on the query, never on an empty array. Every role
             // reading "Not mapped - every preview refuses until this is set"
             // is a CLAIM about the org, and rendering it mid-load makes it a
             // false one.
@@ -470,6 +474,7 @@ export function AccountingAccountsSettingsPage() {
             selectedRole={selectedRole}
             onSelect={setSelectedRole}
             onToggleUnused={handleToggleUnused}
+            onAddAccounts={() => setAddAccountsOpen(true)}
             canControl={canControl}
           />
         ) : (
@@ -490,6 +495,11 @@ export function AccountingAccountsSettingsPage() {
       </MasterDetailSplit>
 
       <ConfirmDialog />
+      <ChartPacksDialog
+        open={addAccountsOpen}
+        onOpenChange={setAddAccountsOpen}
+        roleMap={roleRows}
+      />
     </SettingsPage>
   )
 }

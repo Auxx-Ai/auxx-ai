@@ -292,6 +292,22 @@ describe('listRoleMap - the four derived states', () => {
     })
   })
 
+  it('derives suggested from a source: import row with no confirmation (16 §2.4)', async () => {
+    // The import writes `source: 'import'` deliberately, never `confirmedAt`
+    // (16 §2.4, G19): state is derived from `confirmedAt` alone, so an
+    // import-assigned role renders exactly like a seed-assigned one until a
+    // person confirms it.
+    const stub = stubDb(
+      [{ role: 'grni', glAccountId: 'acct_grni', source: 'import' }],
+      [GRNI_ACCOUNT]
+    )
+    const row = (await listRoleMap(stub.db, ORG))._unsafeUnwrap().find((r) => r.role === 'grni')
+
+    expect(row?.state).toBe('suggested')
+    expect(row?.source).toBe('import')
+    expect(row?.confirmedAt).toBeNull()
+  })
+
   it('derives confirmed from a confirmedAt stamp, serialised as ISO', async () => {
     const stub = stubDb(
       [
