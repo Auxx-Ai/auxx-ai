@@ -332,8 +332,10 @@ export {
 } from './reports/account-lines'
 export {
   balanceSheetColumns,
+  GENERAL_LEDGER_COLUMNS,
   TRIAL_BALANCE_COLUMNS,
   toBalanceSheetRows,
+  toGeneralLedgerRows,
   toProfitAndLossRows,
   toTrialBalanceRows,
 } from './reports/adapters'
@@ -371,6 +373,14 @@ export {
   readDimensionBreakdown,
 } from './reports/dimension-breakdown'
 export { fiscalYearStart, previousCalendarDay } from './reports/fiscal-year'
+// ── The general ledger (task 21 §5): the sixth statement ────────────────────
+export {
+  GENERAL_LEDGER_MAX_LINES,
+  type GeneralLedger,
+  type GeneralLedgerAccount,
+  type ReadGeneralLedgerOptions,
+  readGeneralLedger,
+} from './reports/general-ledger'
 export {
   type RenderStatementPdfOptions,
   type RenderStatementPdfParamsByKind,

@@ -22,6 +22,27 @@
 // 28 roles lives in exactly one pack; `packForRole` is the lookup and the union
 // test in `__tests__/default-chart.test.ts` is the proof.
 //
+// ## Why the core then grew, and three more packs arrived
+//
+// Brief 21 §0.4 read the same table back and found the other half of the
+// problem: the ONLY expense accounts in the whole catalogue were two merchant
+// fee lines, bad debt and six COGS accounts. `bank_transaction` is a live
+// posting type and a coded bank line posts against an account the operator
+// PICKS, so no org could code a rent payment, a utility bill or an insurance
+// premium without hand-creating the account first - one at a time, through
+// `chartAccountCreate`, because the catalogue picker validates against this
+// same table. A chart that cannot express rent is not a chart.
+//
+// So the ordinary operating expenses, `1400 Prepaid Expenses` and the two
+// owner-equity movement accounts are CORE (21 DECIDED E): every org has them,
+// and none of them carries a role, because no builder emits them. `payroll`,
+// `fixed_assets` and `debt` are packs for the same reason `inventory` is - an
+// org with no employees should not carry withholding accounts.
+//
+// 🟢 The accounting subsystem is not live (21 DECIDED 2): `GlPosting` is empty
+// and entity migration 142 wiped every seeded chart, so all of that grew with
+// no migration, no backfill and no compatibility path.
+//
 // Four accounts that were in the old list are in NO pack (`1190 Allowance for
 // Doubtful Accounts`, `2100 Accrued Payroll`, `2400 Returns Reserve`, `6200
 // Fulfillment Labor`): role-less, one company's bookkeeping, added by hand in
@@ -100,12 +121,20 @@ export interface DefaultChartAccount {
 }
 
 /**
- * The five packs, by key. `core` is always provisioned; the other four are
+ * The eight packs, by key. `core` is always provisioned; the other seven are
  * chosen by a person in the wizard's pack picker or the Roles tab's Add
  * accounts action (16 §3). Never provisioned silently off a plan event, an app
  * install or a payout sync (16 §3.3).
  */
-export type ChartPackKey = 'core' | 'card_rail' | 'prepayments' | 'inventory' | 'purchasing'
+export type ChartPackKey =
+  | 'core'
+  | 'card_rail'
+  | 'prepayments'
+  | 'inventory'
+  | 'purchasing'
+  | 'payroll'
+  | 'fixed_assets'
+  | 'debt'
 
 /** One provisionable slice of the default chart. */
 export interface ChartPack {
@@ -120,12 +149,17 @@ export interface ChartPack {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// The core: thirteen accounts, eleven roles (16 §1.3)
+// The core: twenty-seven accounts, eleven roles (16 §1.3, 21 §4.2)
 // ─────────────────────────────────────────────────────────────────────────────
 //
-// Every role here is reachable by an ENABLED posting type on any org that sends
-// an invoice, takes a payment, ships an order, issues a credit memo or writes
-// something off (16 §0.2). Why each of the arguable ones is here:
+// Two different arguments put an account here, and only the FIRST is about
+// roles. Every role here is reachable by an ENABLED posting type on any org
+// that sends an invoice, takes a payment, ships an order, issues a credit memo
+// or writes something off (16 §0.2). The other fourteen accounts carry no role
+// at all: they are here because a coded bank line, an owner's deposit or a
+// prepaid insurance premium has nowhere else to go, and hand-creating an
+// account per bank line is not a chart (21 DECIDED E). Why each of the arguable
+// role-bearing ones is here:
 //
 // - `2000 Accounts Payable`: `vendor_bill` is not enabled, but A/P aging reads
 //   the role, a manual journal to a payable by id is ordinary bookkeeping, and
@@ -181,6 +215,22 @@ const CORE_ACCOUNTS: readonly DefaultChartAccount[] = [
     role: 'accounts_receivable',
     subtype: GlAccountSubtype.ACCOUNTS_RECEIVABLE,
   },
+  {
+    // The company's OWN prepayments: insurance billed annually, a year of
+    // software paid up front, a deposit lodged with a landlord. Held as an
+    // asset and amortised into expense monthly, which is a recurring journal
+    // template's exact shape (21 §1.7).
+    //
+    // 🛑 NOT the `prepayments` pack, and not a variant of it. That pack is
+    // `2300 Deferred Revenue` and `2350 Customer Deposits` - money a CUSTOMER
+    // paid us before we delivered, so we owe them either goods or the money
+    // back. This is money WE paid a vendor before they delivered, so THEY owe
+    // US. Opposite party, opposite side of the balance sheet; the only thing
+    // the two share is the English word "prepaid".
+    code: '1400',
+    name: 'Prepaid Expenses',
+    accountType: GlAccountType.ASSET,
+  },
 
   // ── Liabilities ─────────────────────────────────────────────────────────
   {
@@ -212,6 +262,30 @@ const CORE_ACCOUNTS: readonly DefaultChartAccount[] = [
     // statement reader groups it by type.
     code: '3000',
     name: "Owner's Equity",
+    accountType: GlAccountType.EQUITY,
+  },
+  // 3010 and 3020 added by 21 §4.2, and CORE rather than the `debt` pack or one
+  // of their own. An owner putting personal money into the business is one of
+  // the first bank lines a new company ever has, and a founder's deposit with
+  // nowhere to land is the same gap as rent with nowhere to land - the argument
+  // that made the operating expenses core (21 DECIDED E). A loan is not: a
+  // company may never take one, which is why the debt accounts are a pack and
+  // these are not. 3000 is already core, so the equity story stays in one place.
+  {
+    // Money the owner put IN. Its own account rather than a credit straight to
+    // 3000 so the year's movement is visible; a bookkeeper closes it to 3000 at
+    // year end if they want to, exactly as they clear 3900.
+    code: '3010',
+    name: 'Owner Contributions',
+    accountType: GlAccountType.EQUITY,
+  },
+  {
+    // Money the owner took OUT. 🛑 A draw is a return of capital and never
+    // appears on the P&L - coding one to an expense account is the single most
+    // common small-company bookkeeping error, and the account existing by name
+    // is the cheapest thing that prevents it.
+    code: '3020',
+    name: 'Owner Draws',
     accountType: GlAccountType.EQUITY,
   },
   {
@@ -291,6 +365,78 @@ const CORE_ACCOUNTS: readonly DefaultChartAccount[] = [
   },
 
   // ── Operating expenses ──────────────────────────────────────────────────
+  // 6000 to 6090 and 6900 added by 21 §4.2. The smallest set that lets a real
+  // small company code a bank feed from end to end without inventing an
+  // account; an org that wants a finer breakdown adds its own, which is what a
+  // default chart is for (`G7`). None of them carries a role and that is the
+  // ordinary case, not a gap: no builder emits any of them, the statement
+  // reader groups them by type, and `ACCOUNT_ROLES` is a closed vocabulary tied
+  // to builders (16 §4.2), so a role invented here would name nothing.
+  {
+    // Its own line rather than folded into 6900. For most orgs auxx serves this
+    // is the largest operating expense there is, and an expense nobody can see
+    // is one nobody manages - the argument 4090 makes about return rates.
+    code: '6000',
+    name: 'Advertising and Marketing',
+    accountType: GlAccountType.EXPENSE,
+  },
+  {
+    code: '6010',
+    name: 'Rent',
+    accountType: GlAccountType.EXPENSE,
+  },
+  {
+    code: '6020',
+    name: 'Utilities',
+    accountType: GlAccountType.EXPENSE,
+  },
+  {
+    // The company's own general cover. Employee health cover is a cost of
+    // employing somebody and belongs to `6420` in the payroll pack.
+    code: '6030',
+    name: 'Insurance',
+    accountType: GlAccountType.EXPENSE,
+  },
+  {
+    code: '6040',
+    name: 'Software and Subscriptions',
+    accountType: GlAccountType.EXPENSE,
+  },
+  {
+    // Accountants, lawyers, outside consultants. A contractor doing the work of
+    // an employee is still a professional fee and never payroll: no
+    // withholding, no employer tax, nothing for the payroll pack to clear.
+    code: '6050',
+    name: 'Professional Fees',
+    accountType: GlAccountType.EXPENSE,
+  },
+  {
+    code: '6060',
+    name: 'Office Supplies',
+    accountType: GlAccountType.EXPENSE,
+  },
+  {
+    // ONE account, not travel and meals apart. The meals deduction split is a
+    // tax-return question the firm answers at year end off a memo, and asking
+    // an operator to route a card line correctly for it buys nothing.
+    code: '6070',
+    name: 'Travel and Meals',
+    accountType: GlAccountType.EXPENSE,
+  },
+  {
+    code: '6080',
+    name: 'Repairs and Maintenance',
+    accountType: GlAccountType.EXPENSE,
+  },
+  {
+    // What the BANK charges: account fees, wires, returned items. Numbered
+    // beside `6100 Merchant Fees - Cards` so the two read as a pair in a sorted
+    // chart, but core rather than `card_rail` - every org has a bank account
+    // and only a card merchant has 6100.
+    code: '6090',
+    name: 'Bank Charges',
+    accountType: GlAccountType.EXPENSE,
+  },
   {
     // The `write_off` entry's debit leg. `1190 Allowance for Doubtful Accounts`
     // is the contra-asset the reserve method would credit; the direct
@@ -299,6 +445,15 @@ const CORE_ACCOUNTS: readonly DefaultChartAccount[] = [
     name: 'Bad Debt Expense',
     accountType: GlAccountType.EXPENSE,
     role: 'bad_debt_expense',
+  },
+  {
+    // The catch-all, numbered at the end of the band so it sorts last. A coded
+    // bank line must always have somewhere to go; the alternative to this
+    // account is an operator inventing one per unfamiliar charge, which is how
+    // a chart becomes forty accounts nobody agreed to.
+    code: '6900',
+    name: 'Other Operating Expense',
+    accountType: GlAccountType.EXPENSE,
   },
 ]
 
@@ -550,8 +705,187 @@ const PURCHASING_ACCOUNTS: readonly DefaultChartAccount[] = [
   },
 ]
 
+// ─────────────────────────────────────────────────────────────────────────────
+// payroll: the gross-up entry and what it owes (21 §2, §4.2)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// ⚠️ A BOOKKEEPING CONVENTION, not a payroll integration. Nothing in auxx reads
+// ADP or Gusto and nothing here should - a person types the figures off the
+// payroll provider's own report as a journal entry (21 §2.4). This pack exists
+// so those figures have named accounts to land on.
+//
+// The reconciliation it is shaped for (21 §2.1). The cash leg is already
+// correct and already single-writer: the bank feed owns it, and a journal that
+// names no bank account cannot double-count it.
+//
+//   Bank feed, coded:  Dr 2120 Net Pay Clearing            (net cash)
+//                          Cr <bank account>               (net cash)
+//   Gross-up entry:    Dr 6400 Wages and Salaries          (gross)
+//                      Dr 6410 Employer Payroll Taxes
+//                          Cr 2130 Payroll Withholdings Payable
+//                          Cr 2120 Net Pay Clearing        (net cash)
+//
+// 2120 nets to zero once both halves are in, and 2130 nets to zero when the
+// remittance clears the bank. The account BALANCE is the reconciliation, and
+// the trial balance already reports it.
+//
+// ⚠️ `2100 Accrued Payroll` is deliberately not revived here. It is one of the
+// four accounts brief 16 dropped from every pack (see the file header), and
+// `default-chart.test.ts` pins its absence; an org that wants a period-end
+// payroll accrual adds it in the chart editor.
+//
+// No role on any of these: no builder emits a payroll entry, so a role would
+// name nothing and would have to be added to the closed `ACCOUNT_ROLES`
+// vocabulary to compile at all.
+const PAYROLL_ACCOUNTS: readonly DefaultChartAccount[] = [
+  // ── Liabilities ─────────────────────────────────────────────────────────
+  {
+    // 🛑 NOT `2110 Payroll Clearing`, which is a different account answering a
+    // different question. 2110 is the manufacturing labour absorption pool in
+    // the `inventory` pack: `build-month-end-inventory.ts:277` only ever
+    // CREDITS it, by the labour absorbed into inventory. This one holds NET PAY
+    // between the gross-up entry and the bank line that paid it.
+    //
+    // Pointing both stories at one balance means neither can be read - the
+    // residual would be unabsorbed labour plus unpaid net pay with nothing able
+    // to separate them, which is the shape of the defect 21 §0.5 already
+    // describes on 2110 alone (21 §2.3, reversible per 21 §7.6).
+    code: '2120',
+    name: 'Net Pay Clearing',
+    accountType: GlAccountType.LIABILITY,
+  },
+  {
+    // Employee withholdings and the employer's own share, from the run until
+    // the remittance clears the bank. ONE account, not one per authority: the
+    // split lives on the payroll provider's report, and an org that wants
+    // federal and state apart adds two of its own.
+    code: '2130',
+    name: 'Payroll Withholdings Payable',
+    accountType: GlAccountType.LIABILITY,
+  },
+
+  // ── Operating expenses ──────────────────────────────────────────────────
+  {
+    // GROSS, not net. The net figure is a cash fact and belongs to 2120.
+    code: '6400',
+    name: 'Wages and Salaries',
+    accountType: GlAccountType.EXPENSE,
+  },
+  {
+    // The EMPLOYER's share only. The employee's share was withheld out of gross
+    // pay, so it is already inside 6400; posting it here as well would overstate
+    // the cost of employing somebody by the whole withholding.
+    code: '6410',
+    name: 'Employer Payroll Taxes',
+    accountType: GlAccountType.EXPENSE,
+  },
+  {
+    // Health cover, retirement match, the rest. Separate from `6030 Insurance`,
+    // which is the company's own general cover and is not a cost of employing
+    // anyone.
+    code: '6420',
+    name: 'Employee Benefits',
+    accountType: GlAccountType.EXPENSE,
+  },
+]
+
+// ─────────────────────────────────────────────────────────────────────────────
+// fixed_assets: assets at cost, what has depreciated off them, the expense
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Three accounts and no register (21 DECIDED B, §1.7). Straight-line
+// depreciation is `Dr 6500 / Cr 1590`, the same figure every month for a known
+// number of months, which is a recurring journal template's exact shape. What a
+// register would add is the arithmetic and the year-end schedule a firm asks
+// for, and there is no fixed-asset entity anywhere in the repo; until a
+// customer asks, a person types the monthly figure the way they already type
+// the opening trial balance.
+const FIXED_ASSET_ACCOUNTS: readonly DefaultChartAccount[] = [
+  // ── Assets ──────────────────────────────────────────────────────────────
+  {
+    // ONE account at cost, not one per class. A chart that splits vehicles,
+    // equipment and leasehold improvements on day one is three rows an org has
+    // to route to correctly for a purchase it makes twice a year; an org that
+    // needs the split adds it, and 15.2's sort keeps the numbers together.
+    code: '1500',
+    name: 'Fixed Assets at Cost',
+    accountType: GlAccountType.ASSET,
+    subtype: GlAccountSubtype.FIXED_ASSET,
+  },
+  {
+    // A contra-asset: an ASSET that runs credit-normal, the same reading `4090`
+    // gets as a contra-revenue and `1190` got before it was dropped.
+    // `GlAccountType` has no contra classification and does not need one -
+    // contra is a presentation attribute, not a posting rule. Numbered 1590 so
+    // it sorts directly under the cost account it reduces.
+    code: '1590',
+    name: 'Accumulated Depreciation',
+    accountType: GlAccountType.ASSET,
+    subtype: GlAccountSubtype.FIXED_ASSET,
+  },
+
+  // ── Operating expenses ──────────────────────────────────────────────────
+  {
+    // No subtype, deliberately: depreciation is an operating expense, and
+    // `profit-and-loss.ts` puts everything that is not `cost_of_goods_sold`
+    // below gross profit. A manufacturer that depreciates production equipment
+    // into overhead absorbs it through `5020` instead and leaves this alone.
+    code: '6500',
+    name: 'Depreciation Expense',
+    accountType: GlAccountType.EXPENSE,
+  },
+]
+
+// ─────────────────────────────────────────────────────────────────────────────
+// debt: money the company borrowed, and what it costs (21 §4.2)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// A pack rather than core because a company may simply never borrow, and two
+// payable accounts it can never use are two rows on a screen for nothing - the
+// same test `inventory` and `payroll` pass.
+//
+// ⚠️ The owner side of "where did the money come from" is NOT here. `3010
+// Owner Contributions` and `3020 Owner Draws` are core, because a founder's
+// deposit is a first-week bank line for every company and a loan drawdown is
+// not. Named `debt` rather than `equity_and_debt` for exactly that reason.
+const DEBT_ACCOUNTS: readonly DefaultChartAccount[] = [
+  // ── Liabilities ─────────────────────────────────────────────────────────
+  {
+    // The principal falling due inside twelve months. TWO accounts rather than
+    // one because `GlAccountType`'s five-way collapse loses the current /
+    // non-current split (see this file's note 2 below), and that split is most
+    // of the difference between a balance sheet a lender will read and one it
+    // will not. A person moves the current portion at year end with a journal.
+    code: '2500',
+    name: 'Loans Payable - Current',
+    accountType: GlAccountType.LIABILITY,
+  },
+  {
+    // Everything falling due after twelve months. Numbered clear of the 2xxx
+    // current block so a sorted chart reads current, then long term.
+    code: '2800',
+    name: 'Loans Payable - Long Term',
+    accountType: GlAccountType.LIABILITY,
+  },
+
+  // ── Operating expenses ──────────────────────────────────────────────────
+  {
+    // Interest only. 🛑 The principal half of a loan payment is a debit to 2500
+    // and touches no expense account at all; coding a whole payment here is the
+    // error this account's existence has to survive.
+    //
+    // 21 §4.2 sketched this in the operating list. It rides with the debt it
+    // comes from instead, so an org that never borrows does not carry it.
+    // `6090 Bank Charges` is what the bank charges for the account itself and
+    // is a different thing.
+    code: '6600',
+    name: 'Interest Expense',
+    accountType: GlAccountType.EXPENSE,
+  },
+]
+
 /**
- * The default chart of accounts, as five packs.
+ * The default chart of accounts, as eight packs.
  *
  * ## What this is, and what it is NOT
  *
@@ -579,6 +913,14 @@ const PURCHASING_ACCOUNTS: readonly DefaultChartAccount[] = [
  * added 2026-09-04 once the opening trial balance and the balance sheet needed
  * somewhere to land (plans/accounting/HANDOFF.md decision 6.4), with `1050`,
  * `4020` and `6300` in the same pass.
+ *
+ * Brief 21 §4.2 closed the largest remaining gap in that presumption: the
+ * ordinary operating expenses, `1400 Prepaid Expenses` and the two owner-equity
+ * movement accounts are now core, and `payroll`, `fixed_assets` and `debt` are
+ * packs. It is still not a complete chart - there is no credit-card liability,
+ * no per-class asset breakdown and no jurisdiction split on withholdings -
+ * because each of those is an account a person adds once, in the editor, when
+ * they know the answer.
  *
  * ## The two things to check before this is seeded
  *
@@ -633,6 +975,26 @@ export const CHART_PACKS: Record<ChartPackKey, ChartPack> = {
     requires: ['inventory'],
     accounts: PURCHASING_ACCOUNTS,
   },
+  payroll: {
+    key: 'payroll',
+    label: 'Payroll',
+    description:
+      'Wages, employer taxes and benefits, with the withholding and net-pay accounts a payroll run clears through.',
+    accounts: PAYROLL_ACCOUNTS,
+  },
+  fixed_assets: {
+    key: 'fixed_assets',
+    label: 'Fixed assets and depreciation',
+    description:
+      'Assets held at cost, the depreciation taken off them, and the monthly depreciation expense.',
+    accounts: FIXED_ASSET_ACCOUNTS,
+  },
+  debt: {
+    key: 'debt',
+    label: 'Loans and interest',
+    description: 'Loans payable, split current and long term, and the interest they cost.',
+    accounts: DEBT_ACCOUNTS,
+  },
 }
 
 /**
@@ -645,6 +1007,9 @@ export const CHART_PACK_KEYS = [
   'prepayments',
   'inventory',
   'purchasing',
+  'payroll',
+  'fixed_assets',
+  'debt',
 ] as const satisfies readonly ChartPackKey[]
 
 /**
@@ -675,6 +1040,17 @@ export function packForRole(role: AccountRole): ChartPackKey {
  * role, which is the thing an absent row says nobody has. A role missing from
  * `roleMap` altogether is read as `unmapped`, though `listRoleMap` returns
  * every role.
+ *
+ * 🛑 **A pack with NO roles always reads `absent`, and that is a deliberate
+ * lie in the safe direction.** `payroll`, `fixed_assets` and `debt` (21 §4.2)
+ * carry no role at all - no builder emits rent, wages, depreciation or
+ * interest - so the role map cannot see whether their accounts exist, and the
+ * empty filter below would otherwise report `provisioned`. That answer is the
+ * expensive one: `chart-packs-dialog.tsx` disables a `provisioned` row, so a
+ * pack nobody had ever added could never be added. `absent` costs at worst one
+ * re-walk of an idempotent seed. Answering it properly means asking the CHART
+ * for the codes rather than the role map for the roles, which is a query the
+ * dialog does not make today.
  */
 export function packState(
   pack: ChartPackKey,
@@ -683,6 +1059,7 @@ export function packState(
   const roles = CHART_PACKS[pack].accounts.flatMap((account) =>
     account.role ? [account.role] : []
   )
+  if (roles.length === 0) return 'absent'
   const stateByRole = new Map(roleMap.map((row) => [row.role, row.state]))
   const unmapped = roles.filter((role) => (stateByRole.get(role) ?? 'unmapped') === 'unmapped')
   if (unmapped.length === 0) return 'provisioned'

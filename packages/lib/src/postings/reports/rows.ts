@@ -48,6 +48,16 @@ export interface StatementRow {
      */
     accountType?: string
     recordId?: string
+    /**
+     * The `GlPosting` this row came from, when the row IS one posting's line -
+     * the general ledger's drill-down key.
+     *
+     * A `GlPosting` is neither a `gl_account` nor an `EntityInstance`, so it
+     * fits neither `glAccountId` nor `recordId`. Without it the only way to
+     * route a general-ledger line to its entry is to re-parse the row `id`,
+     * which silently stops working the day an adapter changes its id shape.
+     */
+    glPostingId?: string
     badge?: string
     note?: string
   }
@@ -63,6 +73,8 @@ export interface StatementLineInput {
   values: Array<number | null>
   accountCode?: string | null
   accountName?: string
+  /** Carried onto the row's `meta`. See {@link StatementRow.meta.glPostingId}. */
+  glPostingId?: string
   note?: string
 }
 
@@ -95,8 +107,13 @@ export function statementSection(
     kind: 'line',
     values: line.values,
     meta:
-      line.accountCode || line.accountName || line.note
-        ? { accountCode: line.accountCode, accountName: line.accountName, note: line.note }
+      line.accountCode || line.accountName || line.note || line.glPostingId
+        ? {
+            accountCode: line.accountCode,
+            accountName: line.accountName,
+            glPostingId: line.glPostingId,
+            note: line.note,
+          }
         : undefined,
   }))
 

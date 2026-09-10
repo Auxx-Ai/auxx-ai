@@ -3,7 +3,7 @@
 'use client'
 
 import { MainPageContent } from '@auxx/ui/components/main-page'
-import { Building2, FileText, ListChecks, Scale, TrendingUp, Users } from 'lucide-react'
+import { BookOpen, Building2, FileText, ListChecks, Scale, TrendingUp, Users } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import SidebarSecondary from '~/components/global/sidebar-secondary'
 import type { SidebarProps } from '~/constants/menu'
@@ -12,7 +12,8 @@ import type { SidebarProps } from '~/constants/menu'
  * Reports navigation (`plans/accounting/ui-plan.md` §1.2, §2.4): a
  * `SidebarSecondary`, the same idiom `accounting/settings/layout.tsx` uses.
  * Wave 1E shipped the three financial statements; wave 2H (this pass) adds
- * A/R aging, A/P aging and the 1099 summary on the same parts. Clearing
+ * A/R aging, A/P aging and the 1099 summary on the same parts; tasks/21 §5
+ * adds the general ledger, the sixth statement. Clearing
  * (2G phase C's payout report) stays a commented placeholder - left as code,
  * not a wired route, so the next agent finds the slot rather than
  * reinventing it.
@@ -43,6 +44,13 @@ const REPORTS_NAV: SidebarProps[] = [
         slug: 'profit-and-loss',
         icon: <TrendingUp />,
         description: 'Revenue and expense over a range',
+      },
+      {
+        id: 'accounting-reports-general-ledger',
+        label: 'General ledger',
+        slug: 'general-ledger',
+        icon: <BookOpen />,
+        description: 'Every posted line over a range, grouped by account',
       },
       {
         id: 'accounting-reports-ar-aging',

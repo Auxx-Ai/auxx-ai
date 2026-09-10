@@ -258,14 +258,24 @@ export type { AccountLineRow, AccountLines } from './reports/account-lines'
 // or react-pdf/S3 and stay server-only, exported from `./index` only. ────────
 export {
   balanceSheetColumns,
+  GENERAL_LEDGER_COLUMNS,
   TRIAL_BALANCE_COLUMNS,
   toBalanceSheetRows,
+  toGeneralLedgerRows,
   toProfitAndLossRows,
   toTrialBalanceRows,
 } from './reports/adapters'
 export type { BalanceSheet, BalanceSheetRow, BalanceSheetSnapshot } from './reports/balance-sheet'
 export type { Completeness, CompletenessItem } from './reports/completeness'
 export { fiscalYearStart, previousCalendarDay } from './reports/fiscal-year'
+// The general ledger (task 21 §5). Types only: `readGeneralLedger` and its
+// `GENERAL_LEDGER_MAX_LINES` guard are a db read and a server policy, and stay
+// on `./index`. `toGeneralLedgerRows`/`GENERAL_LEDGER_COLUMNS` are pure and
+// come through the adapters block above, like every other statement's.
+export type {
+  GeneralLedger,
+  GeneralLedgerAccount,
+} from './reports/general-ledger'
 export type {
   RenderStatementPdfOptions,
   RenderStatementPdfParamsByKind,

@@ -11,8 +11,16 @@
 // `rows: StatementRow[]`" means in practice - see `ledger-reports.ts`.
 
 import type { BalanceSheetRow, BalanceSheetSnapshot } from './balance-sheet'
+import type { GeneralLedger } from './general-ledger'
 import type { ProfitAndLossRow, ProfitAndLossSnapshot } from './profit-and-loss'
-import { computedRow, type StatementColumn, type StatementRow, totalRow } from './rows'
+import {
+  computedRow,
+  type StatementColumn,
+  type StatementLineInput,
+  type StatementRow,
+  statementSection,
+  totalRow,
+} from './rows'
 import type { TrialBalance } from './trial-balance'
 
 /** The trial balance's own columns, in the order `toTrialBalanceRows` fills them. */
@@ -333,4 +341,116 @@ export function toProfitAndLossRows(
   )
 
   return [revenueSection, cogsSection, grossProfit, opexSection, netIncome]
+}
+
+/**
+ * The general ledger's own columns.
+ *
+ * 🛑 Three columns, not the six ("date, document, memo, debit, credit,
+ * balance") a firm's printed ledger has, because **`StatementRow.values` is
+ * `Array<number | null>`** - every renderer this shape feeds
+ * (`StatementTable`, `GroupedRowsTable`, `toCsvRows`) formats a cell as
+ * CURRENCY. There is no text column to put a date, a document number or a memo
+ * in, and faking one with a number would print `$2,026.08`.
+ *
+ * So the three text facts ride the row instead, exactly as `toAgingRows`
+ * carries a due date: the DATE and DOCUMENT NUMBER are the line's `label`, and
+ * the MEMO is `meta.note`, which the table renders as the row's description and
+ * `toCsvRows` folds into nothing - a CSV reader gets `2026-08-04  JNL-0002` in
+ * the Label column, which is what a spreadsheet needs to sort and filter on.
+ *
+ * Adding real text columns is a change to `StatementRow` and to all three
+ * renderers; it is not something this adapter can do on its own.
+ */
+export const GENERAL_LEDGER_COLUMNS: StatementColumn[] = [
+  { key: 'debit', label: 'Debit', align: 'right' },
+  { key: 'credit', label: 'Credit', align: 'right' },
+  { key: 'balance', label: 'Balance', align: 'right', signed: true },
+]
+
+/** Where the running-balance column sits, for the two cells `statementSection` cannot compute. */
+const BALANCE_COLUMN = 2
+
+/**
+ * One section per account - `statementSection`'s parent-plus-children shape -
+ * with a brought-forward opening row, one line per posted line, and a closing
+ * "Ending balance" row.
+ *
+ * 🛑 Two cells are overwritten after `statementSection` builds the section, and
+ * both are the same cell: the Balance column. `statementSection` SUMS every
+ * column across its lines, which is right for debit and credit and meaningless
+ * for a running balance - a running balance is a POSITION at a moment, and the
+ * sum of an account's positions is not a number. Both the section header and
+ * its own total row therefore carry `endingBalanceMinor` instead.
+ *
+ * When {@link GeneralLedger.truncated} is set, a `'computed'` row goes FIRST,
+ * ahead of every account, saying so in the label - so it survives into the CSV
+ * and the PDF, where a `truncated: true` field on a JSON response does not
+ * reach the person actually reading the ledger.
+ */
+export function toGeneralLedgerRows(gl: GeneralLedger): StatementRow[] {
+  const sections = gl.accounts.map((account) => {
+    const label = account.accountName
+      ? [account.accountCode, account.accountName].filter(Boolean).join(' ')
+      : (account.accountCode ?? account.glAccountId)
+
+    const lines: StatementLineInput[] = [
+      {
+        id: `${account.glAccountId}:opening`,
+        label: 'Opening balance',
+        // Null, not zero, in Debit and Credit: the brought-forward figure is
+        // not activity, and a zero here would print `$0.00` under a column the
+        // section header totals.
+        values: [null, null, account.openingBalanceMinor],
+      },
+      ...account.lines.map((line) => ({
+        id: `${account.glAccountId}:${line.glPostingId}:${line.txnDate}:${line.docNumber}`,
+        // The drill-down key, carried as DATA rather than left to be parsed
+        // back out of `id` above. A GL line's destination is its posting.
+        glPostingId: line.glPostingId,
+        // The date and the document number, because there is no column for
+        // either - see `GENERAL_LEDGER_COLUMNS`.
+        label: `${line.txnDate}  ${line.docNumber}`,
+        values: [
+          line.direction === 'debit' ? line.amountMinor : null,
+          line.direction === 'credit' ? line.amountMinor : null,
+          line.runningBalanceMinor,
+        ],
+        note: line.memo ?? undefined,
+      })),
+    ]
+
+    const section = statementSection(account.glAccountId, label, lines, {
+      totalLabel: 'Ending balance',
+    })
+    section.values[BALANCE_COLUMN] = account.endingBalanceMinor
+    const closing = section.children?.[section.children.length - 1]
+    if (closing) closing.values[BALANCE_COLUMN] = account.endingBalanceMinor
+    section.meta = {
+      glAccountId: account.glAccountId,
+      accountCode: account.accountCode,
+      accountName: account.accountName,
+      accountType: account.accountType ?? undefined,
+      note: account.accountType
+        ? undefined
+        : 'This account has posted lines but has been deleted from the current chart of accounts.',
+    }
+    return section
+  })
+
+  const rows: StatementRow[] = []
+  if (gl.truncated) {
+    const shown = gl.accounts.reduce((count, account) => count + account.lines.length, 0)
+    rows.push(
+      computedRow(
+        'truncated',
+        `INCOMPLETE - stopped at ${shown.toLocaleString('en-US')} lines. This ledger does not tie to the trial balance; run a shorter date range.`,
+        [null, null, null],
+        'The size guard fired. Everything below is a partial ledger.'
+      )
+    )
+  }
+  rows.push(...sections)
+  rows.push(totalRow('total', 'Total', [gl.totalDebitMinor, gl.totalCreditMinor, null]))
+  return rows
 }
