@@ -1,21 +1,26 @@
 // packages/lib/src/seed/gl-account-chart.ts
 //
-// Seeds `DEFAULT_CHART_OF_ACCOUNTS` into one organization as `gl_account`
-// EntityInstances, and points each posting ROLE at the account that fulfils it
-// via a `GlRoleAssignment` row (decision `G19`).
+// Seeds one or more chart PACKS (`postings/default-chart.ts`'s `CHART_PACKS`,
+// plans/accounting/tasks/16-the-chart-of-accounts.md §1.5) into one
+// organization as `gl_account` EntityInstances, and points each posting ROLE
+// at the account that fulfils it via a `GlRoleAssignment` row (decision
+// `G19`). `seedChartPacks` always walks `core` first and expands a pack's
+// `requires` transitively - `['purchasing']` walks `core`, `inventory`, then
+// `purchasing` - before flattening the walked packs' accounts and running the
+// rules below over that list.
 //
 // WHY THE CHART LIVES IN `lib/postings/` AND THE WRITER LIVES HERE
 //
-// `postings/default-chart.ts` is pure data — no database, no io — because
+// `postings/default-chart.ts` is pure data - no database, no io - because
 // `postings/` already owns the account vocabulary (`ACCOUNT_ROLES`) that the
 // chart's `role` column maps onto. `seed -> lib` is the sanctioned dependency
-// direction and `lib -> seed` is forbidden, so the writer imports the constant
+// direction and `lib -> seed` is forbidden, so the writer imports the packs
 // and never the reverse.
 //
 // ✅ THE HAZARD THIS FILE USED TO CARRY IS GONE
 //
 // Rule 5 used to be `assertRolesLanded`, and it existed because roles were
-// written as a `gl_account_role` FIELD through `UnifiedCrudHandler` — which
+// written as a `gl_account_role` FIELD through `UnifiedCrudHandler` - which
 // resolves fields from the ORG CACHE and SILENTLY DROPS a value whose field it
 // cannot resolve. A field created moments earlier in the same migration pass is
 // invisible to it, so the first run of this seed wrote 784 accounts across 28
@@ -25,12 +30,12 @@
 // `G19` moved the mapping to the `GlRoleAssignment` TABLE, and the assignment
 // insert below is a plain Drizzle write: no field resolution, no org cache, no
 // handler, nothing to drop. The failure mode is structurally unavailable now
-// rather than merely guarded against — which is a real, and easy to miss,
+// rather than merely guarded against - which is a real, and easy to miss,
 // secondary win of the table route.
 //
 // THE FOUR RULES THIS FILE EXISTS TO KEEP
 //
-//  1. **Idempotent on `code`.** A code the org already holds is skipped whole —
+//  1. **Idempotent on `code`.** A code the org already holds is skipped whole  -
 //     never updated, never inserted a second time. `gl_account_code` is unique,
 //     but its gate is a check-then-write `SELECT ... LIMIT 1` with no lock and
 //     no index behind it, and it excludes archived rows. A duplicate `1310`
@@ -40,7 +45,7 @@
 //     parallel fan-out over orgs for the same code: a concurrent race is the
 //     one case the check-then-write gate does not cover.
 //  3. **Never touch an account the org already has.** Not the name, not the
-//     type. A chart is a bookkeeper's document (decision `G7`) — they renumber,
+//     type. A chart is a bookkeeper's document (decision `G7`) - they renumber,
 //     rename and deactivate, and re-running the seed must be a no-op over their
 //     edits.
 //  4. **Never repoint a role the org has already mapped.** The assignment
@@ -64,7 +69,12 @@ import {
   listPaymentGateways,
   normaliseGatewayHandle,
 } from '../payment-gateways'
-import { DEFAULT_CHART_OF_ACCOUNTS } from '../postings/default-chart'
+import {
+  CHART_PACK_KEYS,
+  CHART_PACKS,
+  type ChartPackKey,
+  type DefaultChartAccount,
+} from '../postings/default-chart'
 import { seedSession, UnifiedCrudHandler } from '../resources/crud'
 import { SystemUserService } from '../users/system-user-service'
 
@@ -78,26 +88,65 @@ export interface ChartSeedResult {
   skipped: number
   /** `GlRoleAssignment` rows inserted by this pass. Zero on a settled org. */
   rolesAssigned: number
+  /**
+   * Every pack actually walked, `core` first, in `CHART_PACK_KEYS` order  -
+   * the packs asked for plus every `requires` they pulled in (16 §1.5).
+   */
+  packs: ChartPackKey[]
 }
 
 /**
- * Seed the default chart of accounts, and its role assignments, into one org.
+ * Every pack `packs` needs: `core` always, plus each pack's `requires`
+ * expanded transitively, in `CHART_PACK_KEYS` declaration order.
  *
- * Idempotent: a second pass over the same org creates nothing and reports
- * `created: 0, rolesAssigned: 0`, which is what lets migration 108 keep
- * reporting `alreadyUpToDate` (and therefore skip its org-cache flush) on a
- * re-run.
+ * `['purchasing']` walks `core`, then `inventory` (`purchasing`'s
+ * `requires`), then `purchasing` itself - a receipt debits an inventory role,
+ * so provisioning purchasing alone without inventory would leave that role
+ * unmapped on day one.
+ */
+function walkPacks(packs: readonly ChartPackKey[]): ChartPackKey[] {
+  const wanted = new Set<ChartPackKey>(['core', ...packs])
+
+  let changed = true
+  while (changed) {
+    changed = false
+    for (const key of [...wanted]) {
+      for (const required of CHART_PACKS[key].requires ?? []) {
+        if (!wanted.has(required)) {
+          wanted.add(required)
+          changed = true
+        }
+      }
+    }
+  }
+
+  return CHART_PACK_KEYS.filter((key) => wanted.has(key))
+}
+
+/**
+ * Seed one or more chart packs, and their role assignments, into one org.
+ *
+ * Idempotent: a second pass over the same set of packs creates nothing and
+ * reports `created: 0, rolesAssigned: 0`, which is what lets migration 108
+ * keep reporting `alreadyUpToDate` (and therefore skip its org-cache flush) on
+ * a re-run, and what lets the Roles tab's Add accounts action re-walk a
+ * `partial` pack and land only the rows still missing (16 §3.2).
  *
  * @param glAccountDefId the org's `gl_account` EntityDefinition, or undefined
- * when it has none — in which case this is a no-op rather than an error, the
+ * when it has none - in which case this is a no-op rather than an error, the
  * same tolerance every other step of 108 has for a def that is not there yet.
+ * @param packs the packs to provision. `core` is walked whether or not it is
+ * named, and every pack's `requires` is expanded transitively before the walk
+ * runs (16 §1.5); the packs actually walked come back on the result.
  */
-export async function seedDefaultChartOfAccounts(
+export async function seedChartPacks(
   db: Database,
   organizationId: string,
-  glAccountDefId: string | undefined
+  glAccountDefId: string | undefined,
+  packs: readonly ChartPackKey[]
 ): Promise<ChartSeedResult> {
-  const empty: ChartSeedResult = { created: 0, skipped: 0, rolesAssigned: 0 }
+  const walked = walkPacks(packs)
+  const empty: ChartSeedResult = { created: 0, skipped: 0, rolesAssigned: 0, packs: walked }
   if (!glAccountDefId) return empty
 
   // The `code` field has to exist before its values can be read or written. On
@@ -121,7 +170,7 @@ export async function seedDefaultChartOfAccounts(
   //
   // 🛑 Deliberate, and the opposite of what the unique gate does. The gate
   // ignores archived rows, so re-seeding `1310` over an archived `1310` would
-  // pass validation and leave two — and un-archiving the old one later is a
+  // pass validation and leave two - and un-archiving the old one later is a
   // click. Someone who archived an account did not ask for it back.
   const existing = await db
     .select({ code: schema.FieldValue.valueText, entityId: schema.FieldValue.entityId })
@@ -139,20 +188,23 @@ export async function seedDefaultChartOfAccounts(
     if (row.code) byCode.set(row.code, row.entityId)
   }
 
-  const missing = DEFAULT_CHART_OF_ACCOUNTS.filter((account) => !byCode.has(account.code))
+  const accounts: readonly DefaultChartAccount[] = walked.flatMap(
+    (key) => CHART_PACKS[key].accounts
+  )
+  const missing = accounts.filter((account) => !byCode.has(account.code))
 
   let created = 0
   if (missing.length > 0) {
     const systemUserId = await SystemUserService.getSystemUserForActions(organizationId)
 
-    // The seed session's silent lane suppresses events — there is nobody to
-    // notify while an org is being migrated, and 29 accounts x 28 orgs of
+    // The seed session's silent lane suppresses events - there is nobody to
+    // notify while an org is being migrated, and a full pack walk x N orgs of
     // invalidations is real time on a cold Redis.
     const handler = new UnifiedCrudHandler(organizationId, systemUserId, db, undefined, {
       session: seedSession('gl account chart seeding'),
     })
 
-    // Sequential on purpose — see rule 2. `code` is guarded by a
+    // Sequential on purpose - see rule 2. `code` is guarded by a
     // check-then-write uniqueness gate, which two concurrent creates would both
     // pass.
     for (const account of missing) {
@@ -172,18 +224,33 @@ export async function seedDefaultChartOfAccounts(
     }
   }
 
-  const rolesAssigned = await assignSeededRoles(db, organizationId, byCode)
+  const rolesAssigned = await assignSeededRoles(db, organizationId, byCode, accounts)
 
   if (created > 0 || rolesAssigned > 0) {
-    logger.info('Seeded default chart of accounts', {
+    logger.info('Seeded chart packs', {
       organizationId,
+      packs: walked,
       created,
-      skipped: DEFAULT_CHART_OF_ACCOUNTS.length - created,
+      skipped: accounts.length - created,
       rolesAssigned,
     })
   }
 
-  return { created, skipped: DEFAULT_CHART_OF_ACCOUNTS.length - created, rolesAssigned }
+  return { created, skipped: accounts.length - created, rolesAssigned, packs: walked }
+}
+
+/**
+ * Seed the core chart pack, and its role assignments, into one org. Kept as
+ * its own name for the one caller that means exactly the core (entity
+ * migration 108); every other caller names its packs explicitly through
+ * {@link seedChartPacks}.
+ */
+export async function seedDefaultChartOfAccounts(
+  db: Database,
+  organizationId: string,
+  glAccountDefId: string | undefined
+): Promise<ChartSeedResult> {
+  return seedChartPacks(db, organizationId, glAccountDefId, ['core'])
 }
 
 /**
@@ -202,16 +269,17 @@ export async function seedDefaultChartOfAccounts(
  * distinction on day one for every org.
  *
  * A role whose account is missing from `byCode` is skipped rather than written
- * as a dangling id — that can only happen if the chart constant and this org's
+ * as a dangling id - that can only happen if the walked packs and this org's
  * chart disagree, and a mapping pointing at nothing would fail the resolver
  * with a message about an archived account rather than about a broken seed.
  */
 async function assignSeededRoles(
   db: Database,
   organizationId: string,
-  byCode: Map<string, string>
+  byCode: Map<string, string>,
+  accounts: readonly DefaultChartAccount[]
 ): Promise<number> {
-  const rows = DEFAULT_CHART_OF_ACCOUNTS.flatMap((account) => {
+  const rows = accounts.flatMap((account) => {
     if (!account.role) return []
     const glAccountId = byCode.get(account.code)
     if (!glAccountId) return []
@@ -244,11 +312,12 @@ export interface PaymentGatewaySeedResult {
  * by handle.
  *
  * ⚠️ **Runs AFTER the chart**, not alongside it - the clearing accounts these
- * defaults point at only exist once the chart is provisioned, and
+ * defaults point at only exist once the `card_rail` pack is provisioned, and
  * `payment_gateway.clearingAccount` is required and validated (`writes.ts`'s
  * `assertClearingAccount`). Call this from wherever the chart is seeded
- * (`ledger.provisionChart`), never before {@link seedDefaultChartOfAccounts}
- * has run.
+ * (`ledger.provisionChart`), never before {@link seedChartPacks} has walked
+ * `card_rail`, and never from {@link seedChartPacks} itself - the core walk
+ * never seeds a gateway (16 §1.5).
  *
  * 🛑 **Does not mint `clearing_authnet`.** Authorize.Net is a rail a merchant
  * ADDS (§5.1); auxx does not know a store ran it until they say so. The two
@@ -264,8 +333,8 @@ export interface PaymentGatewaySeedResult {
  *
  * A missing role assignment (`clearing_card` / `clearing_affirm` unmapped)
  * skips that default rather than guessing an account - the same tolerance
- * {@link assignSeededRoles} has for a chart that does not match
- * `DEFAULT_CHART_OF_ACCOUNTS`.
+ * {@link assignSeededRoles} has for a chart that does not match the packs
+ * walked.
  */
 export async function seedDefaultPaymentGateways(
   db: Database,
