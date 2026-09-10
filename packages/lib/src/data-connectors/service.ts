@@ -288,6 +288,13 @@ export interface RunCounters {
   skipped: number
   archived: number
   deleted: number
+  /**
+   * Crawl reconciliation found the record gone upstream but left it LIVE and flagged
+   * it (`mark_deleted`, or an `archive` declaration degraded because this connector
+   * did not mint the record). Deliberately not folded into `archived`/`deleted`:
+   * nothing was removed, so counting it there would overstate the run.
+   */
+  markedDeleted: number
   failed: number
   relationshipWarnings: number
   // `tier` classifies the failure for the two-tier error UI (Step 9 §1.1):
@@ -306,6 +313,7 @@ export function newRunCounters(): RunCounters {
     skipped: 0,
     archived: 0,
     deleted: 0,
+    markedDeleted: 0,
     failed: 0,
     relationshipWarnings: 0,
     errorSample: [],
@@ -369,6 +377,7 @@ export async function finalizeRun(
       skipped: c.skipped,
       archived: c.archived,
       deleted: c.deleted,
+      markedDeleted: c.markedDeleted,
       failed: c.failed,
       relationshipWarnings: c.relationshipWarnings,
       errorSample: c.errorSample.length > 0 ? c.errorSample.slice(0, 50) : null,
@@ -932,6 +941,9 @@ export async function upsertItem(
         // Sticky: once this connector minted the instance it stays minted.
         mintedInstance: input.mintedInstance || existing.mintedInstance,
         archivedAt: null,
+        // Seen again ⇒ it is not gone upstream after all. Clearing this is what makes
+        // `mark_deleted` self-healing: a product that comes back un-flags itself.
+        removedUpstreamAt: null,
         error: null,
       })
       .where(eq(schema.DataConnectorItem.id, existing.id))
@@ -1147,6 +1159,25 @@ export async function countPendingRelationsByTarget(
   } catch (error) {
     return err(error instanceof Error ? error : new Error(String(error)))
   }
+}
+
+/**
+ * Flag an item's upstream record as GONE without archiving the bound record
+ * (`orphanBehavior: 'mark_deleted'`, or a degraded `archive`). The record stays live
+ * and queryable; a human decides. `upsertItem` clears this when the record reappears.
+ */
+export async function markItemRemovedUpstream(
+  db: Database,
+  itemId: string,
+  lastSeenRunId?: string
+): Promise<void> {
+  await db
+    .update(schema.DataConnectorItem)
+    .set({
+      removedUpstreamAt: new Date(),
+      ...(lastSeenRunId ? { lastSeenRunId } : {}),
+    })
+    .where(eq(schema.DataConnectorItem.id, itemId))
 }
 
 /** Mark an item archived (set archivedAt). */

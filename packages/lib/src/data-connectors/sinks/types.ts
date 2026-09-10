@@ -93,10 +93,18 @@ export interface SyncCtx {
    */
   connectionMeta?: Record<string, unknown> | null
   /**
-   * Reconciliation sweep run (Step 8C). A sweep is a full id-crawl whose purpose is
-   * to catch deletes the watermark poll/webhooks missed. When set, `reconcileOrphans`
-   * archives unseen orphans even for `incremental` streams (absence IS deletion,
-   * because the crawl is complete-by-construction) — still gated on the FINAL slice.
+   * Reconciliation sweep run (Step 8C). Its purpose is to catch deletes the webhooks
+   * missed, and it is scheduled nightly (`data-connector-scheduler.ts`).
+   *
+   * ⚠️ CORRECTED (v12): this field does NOT make `reconcileOrphans` archive on an
+   * `incremental` stream, and never has since v9 §3. A sweep is a full RECORD
+   * re-crawl for `snapshot` streams and a cheap watermark catch-up for `incremental`
+   * ones — the latter did not see every record, so absence there still is not
+   * deletion. `reconcileOrphans` gates on `syncMode === 'snapshot'` unconditionally
+   * and ignores this flag entirely; it is read only for logging and diagnostics.
+   *
+   * There is no id-only crawl in the engine today. That is what would let an
+   * incremental stream reconcile deletes cheaply, and it is deferred (v12 Phase 9).
    */
   sweep?: boolean
   /**
@@ -137,6 +145,21 @@ export interface EntitySink {
       entityInstanceId: string | null
       entityDefinitionId: string
       lastSeenRunId: string | null
+      /**
+       * True when THIS connector created the bound record. Crawl reconciliation reads
+       * it to refuse archiving a record the connector merely matched and enriched (a
+       * contact the mail ingest or a human made): absence upstream is not authority to
+       * archive someone else's record, so that degrades to `mark_deleted`.
+       */
+      mintedInstance: boolean
+      /** Already flagged gone upstream by an earlier reconcile — don't re-count it. */
+      removedUpstreamAt: Date | null
+      /**
+       * Already archived by an earlier reconcile. Read so a handled orphan is not
+       * re-archived on every subsequent crawl (it stays absent forever, so without
+       * this it would re-enter the candidate set and the cap's arithmetic every run).
+       */
+      archivedAt: Date | null
     }>
   >
 }

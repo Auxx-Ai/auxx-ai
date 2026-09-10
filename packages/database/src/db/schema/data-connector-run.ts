@@ -43,6 +43,11 @@ export const DataConnectorRun = pgTable(
     skipped: integer().default(0).notNull(),
     archived: integer().default(0).notNull(),
     deleted: integer().default(0).notNull(),
+    // Crawl reconciliation found the upstream record gone but left it live and flagged
+    // it instead of archiving (`mark_deleted`, or a degraded `archive`). Distinct from
+    // `archived`/`deleted` on purpose: this run changed nothing a user would notice
+    // unless they look, so folding it into either would overstate what happened.
+    markedDeleted: integer().default(0).notNull(),
     failed: integer().default(0).notNull(),
     relationshipWarnings: integer().default(0).notNull(),
     // Pages fetched across the whole continuation chain (progress UI + slice budget).

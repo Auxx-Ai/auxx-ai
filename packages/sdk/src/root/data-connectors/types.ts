@@ -262,6 +262,24 @@ interface ConnectorMappingBase {
    * for it.
    */
   readonly relationshipFieldKey?: string
+  /**
+   * What crawl reconciliation does with a record this stream's crawl did NOT see.
+   * Absent ⇒ `'ignore'`, which is the safe default: nothing happens, and a record
+   * deleted upstream simply stays as it was.
+   *
+   * ⚠️ Only consulted for a `syncMode: 'snapshot'` stream, where the fetch saw
+   * everything and absence therefore means deletion. On an `incremental` stream
+   * absence means "unchanged", so this is ignored there no matter what it says.
+   *
+   * - `'mark_deleted'` flags the record as gone upstream and leaves it LIVE for a
+   *   person to act on. Declare this when the record has a life of its own beyond
+   *   the sync (inventory movements, ledger history, hand-entered edits).
+   * - `'archive'` archives it. Declare this ONLY when the crawl is UNFILTERED, since
+   *   a filtered crawl makes "not returned" mean "filtered out", not "deleted". The
+   *   platform still refuses to archive a record this connector did not create, and
+   *   refuses the whole pass when an implausible number of records vanish at once.
+   */
+  readonly orphanBehavior?: 'archive' | 'mark_deleted' | 'ignore'
 }
 
 /**

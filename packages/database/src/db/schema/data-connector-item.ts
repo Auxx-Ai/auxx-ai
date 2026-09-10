@@ -135,6 +135,16 @@ export const DataConnectorItem = pgTable(
     lastSeenRunId: text(), // orphan diff: not seen this run ⇒ candidate
     lastSyncedAt: timestamp({ precision: 3 }),
     archivedAt: timestamp({ precision: 3, withTimezone: true }),
+    /**
+     * Set when crawl reconciliation decided this binding's upstream record is GONE
+     * but declined to archive it (`orphanBehavior: 'mark_deleted'`, or an `archive`
+     * declaration degraded because the connector did not mint the record).
+     *
+     * Unlike `archivedAt` this leaves the record fully live: it is a flag a human
+     * acts on, not a decision the engine took. Cleared by `upsertItem` the moment the
+     * record is seen again, so a product that comes back un-flags itself.
+     */
+    removedUpstreamAt: timestamp({ precision: 3, withTimezone: true }),
     error: text(),
 
     createdAt: timestamp({ precision: 3 }).defaultNow().notNull(),

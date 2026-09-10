@@ -1,0 +1,2 @@
+ALTER TABLE "DataConnectorItem" ADD COLUMN "removedUpstreamAt" timestamp (3) with time zone;--> statement-breakpoint
+ALTER TABLE "DataConnectorRun" ADD COLUMN "markedDeleted" integer DEFAULT 0 NOT NULL;

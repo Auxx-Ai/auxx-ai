@@ -374,6 +374,9 @@ export interface CatalogConnectorMapping {
    *  a pre-existing system edge on a contributing parent. */
   relationshipFieldKey?: string
   target: { entityKey: string } | { entityKind: string }
+  /** Crawl-reconciliation policy for a record the crawl did not see. Mirrors the SDK
+   *  type; absent ⇒ `'ignore'`. Only consulted on a `snapshot` stream. */
+  orphanBehavior?: 'archive' | 'mark_deleted' | 'ignore'
   fields?: Array<CatalogConnectorOwnedMappingField | CatalogConnectorContributingMappingField>
   connectionFields?: CatalogConnectorConnectionField[]
 }

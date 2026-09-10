@@ -293,6 +293,9 @@ export interface CatalogConnectorMapping {
   /** Bare field key on the parent entity, or `'system:<systemAttribute>'` for
    *  a pre-existing system edge. */
   relationshipFieldKey?: string
+  /** Crawl-reconciliation policy for a record the crawl did not see; absent ⇒
+   *  `'ignore'`. Only consulted on a `snapshot` stream. */
+  orphanBehavior?: 'archive' | 'mark_deleted' | 'ignore'
   /** `{ entityKey }` for an entity this app owns, `{ entityKind }` for a
    *  platform kind the app merely contributes to. */
   target: { entityKey: string } | { entityKind: string }
@@ -947,6 +950,7 @@ export async function compileAndExtractCatalog(): Promise<
             parentRootPath: mapping.parentRootPath,
             linkMode: mapping.linkMode,
             relationshipFieldKey: mapping.relationshipFieldKey,
+            orphanBehavior: mapping.orphanBehavior,
             target: { entityKey },
             ...(mapping.fields ? { fields: normalizedFields } : {}),
           })
@@ -1023,6 +1027,7 @@ export async function compileAndExtractCatalog(): Promise<
           parentRootPath: mapping.parentRootPath,
           linkMode: mapping.linkMode,
           relationshipFieldKey: mapping.relationshipFieldKey,
+          orphanBehavior: mapping.orphanBehavior,
           target: { entityKind },
           fields: mapping.fields,
           connectionFields: mapping.connectionFields,
@@ -1353,6 +1358,7 @@ interface RawConnectorMapping {
   parentRootPath?: string
   linkMode?: 'upsert' | 'reference'
   relationshipFieldKey?: string
+  orphanBehavior?: 'archive' | 'mark_deleted' | 'ignore'
   target: { entityKey: string } | { entityKind: string }
   fields?: Array<RawConnectorOwnedMappingField | RawConnectorContributingMappingField>
   connectionFields?: Array<{ appField: string; from: string }>

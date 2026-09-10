@@ -48,6 +48,13 @@ export interface BindingSummary {
 
 export type StreamShapeField = 'syncMode' | 'webhookTrigger' | 'sourceSchema'
 
+/**
+ * Mapping columns that can change WITHOUT a rebind: the manifest's policy choices,
+ * as opposed to identity/target structure (a rebind) or a binding (its own step).
+ * `catalog-update.ts` patches all of them together on a `mapping-change`.
+ */
+export type MappingPolicyField = 'relationshipFieldKey' | 'orphanBehavior'
+
 export type CatalogChange =
   | { kind: 'stream'; op: 'add'; streamKey: string; mappingCount: number }
   | { kind: 'stream'; op: 'remove'; streamKey: string }
@@ -75,7 +82,7 @@ export type CatalogChange =
       mappingKey: string
       target: string
       rootPath: string
-      fields: Array<'relationshipFieldKey'>
+      fields: Array<MappingPolicyField>
     }
   | {
       kind: 'binding'
@@ -390,11 +397,32 @@ export function diffConnectorCatalog(
 
       const rowEdited = editedWithoutOld(hashMappingShape(PM.shape), PM.row.catalogHash)
 
+      // Mapping-level POLICY columns — the ones that are neither identity/target
+      // structure (those are a rebind) nor a binding. One `mapping-change` step covers
+      // all of them, because they share a step id and the apply patches them together.
+      const changedPolicyFields: MappingPolicyField[] = []
+
       // The relationship edge (cosmetic per the classifier, but part of the app default).
       const edgeAppChanged = oByKey
         ? OM != null && !eq(OM.relationshipFieldKey, M.relationshipFieldKey)
         : !eq(PM.shape.relationshipFieldKey, M.relationshipFieldKey)
       if (edgeAppChanged && !eq(PM.shape.relationshipFieldKey, M.relationshipFieldKey)) {
+        changedPolicyFields.push('relationshipFieldKey')
+      }
+
+      // The crawl-reconciliation policy (v12 Phase 6). This was in `hashMappingShape`
+      // from the start but emitted NO step and was patched by NO writer, so a manifest
+      // that started declaring `orphanBehavior: 'archive'` silently kept `'ignore'`
+      // forever on every existing installation — while the changed hash read as a user
+      // edit. Both halves are fixed: emitted here, applied in `catalog-update.ts`.
+      const orphanAppChanged = oByKey
+        ? OM != null && !eq(OM.orphanBehavior, M.orphanBehavior)
+        : !eq(PM.shape.orphanBehavior, M.orphanBehavior)
+      if (orphanAppChanged && !eq(PM.shape.orphanBehavior, M.orphanBehavior)) {
+        changedPolicyFields.push('orphanBehavior')
+      }
+
+      if (changedPolicyFields.length > 0) {
         push(
           {
             id: `mapping:${N.key}:${M.key}`,
@@ -405,12 +433,16 @@ export function diffConnectorCatalog(
               mappingKey: M.key,
               target: M.targetLabel,
               rootPath: M.rootPath,
-              fields: ['relationshipFieldKey'],
+              fields: changedPolicyFields,
             },
             impact: classifyMappingChange(PM.row, {
               relationshipFieldKey: M.storedRelationshipFieldKey,
+              orphanBehavior: M.orphanBehavior,
             }),
-            conflict: OM ? !eq(PM.shape.relationshipFieldKey, OM.relationshipFieldKey) : rowEdited,
+            conflict: OM
+              ? !eq(PM.shape.relationshipFieldKey, OM.relationshipFieldKey) ||
+                !eq(PM.shape.orphanBehavior, OM.orphanBehavior)
+              : rowEdited,
           },
           { kind: 'mapping-change', persisted: PM, derived: M }
         )

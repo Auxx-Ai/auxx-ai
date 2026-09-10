@@ -14,7 +14,16 @@ import { TreeRow } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { cn } from '@auxx/ui/lib/utils'
 import { pluralize } from '@auxx/utils/strings'
-import { ArchiveX, History, Plus, RefreshCw, SkipForward, Trash2, XCircle } from 'lucide-react'
+import {
+  ArchiveX,
+  History,
+  Plus,
+  RefreshCw,
+  SkipForward,
+  Trash2,
+  TriangleAlert,
+  XCircle,
+} from 'lucide-react'
 import { Fragment, useState } from 'react'
 import { VisualIcon } from '~/components/icons/ui/visual-icon'
 import { api, type RouterOutputs } from '~/trpc/react'
@@ -41,6 +50,15 @@ const COUNT_FIELDS = [
   { key: 'skipped', icon: SkipForward, label: 'Skipped', className: 'text-muted-foreground' },
   { key: 'archived', icon: ArchiveX, label: 'Archived', className: 'text-amber-600' },
   { key: 'deleted', icon: Trash2, label: 'Deleted', className: 'text-red-600' },
+  // Gone upstream but left live and flagged (`mark_deleted`, or an `archive` the
+  // engine declined because the connector did not create the record). Nothing was
+  // removed, which is why it reads as a warning rather than as Archived or Deleted.
+  {
+    key: 'markedDeleted',
+    icon: TriangleAlert,
+    label: 'Gone upstream',
+    className: 'text-amber-600',
+  },
   { key: 'failed', icon: XCircle, label: 'Failed', className: 'text-red-600' },
 ] as const
 
@@ -160,6 +178,7 @@ function mockRun(partial: Partial<ConnectorRun> & { id: string }): ConnectorRun 
     skipped: 0,
     archived: 0,
     deleted: 0,
+    markedDeleted: 0,
     failed: 0,
     relationshipWarnings: 0,
     pagesProcessed: 1,
@@ -400,7 +419,7 @@ const VISIBLE_RUN_LIMIT = 7
 /**
  * Docked Runs panel: live sync status (polls `getStatus` every 4s while syncing,
  * matching the Knowledge-Sources cadence) + the `DataConnectorRun` history with
- * per-run created/updated/skipped/archived/deleted/failed counts, relationship
+ * per-run created/updated/skipped/archived/deleted/gone-upstream/failed counts, relationship
  * warnings, durations, cursor + error samples. Reuses execution-progress styling.
  * See plans/data-connectors/claude/05-frontend.md §6.
  */
