@@ -13,7 +13,7 @@
  * ```
  *
  * The QUERIES differ and should - a filter list is not a whole definition. What
- * must not differ is the part below the queries: which four attributes make an
+ * must not differ is the part below the queries: which attributes make an
  * account, how a `CustomField` id is found for each, what an unprovisioned chart
  * refuses with, and how a pile of `FieldValue` rows becomes a typed account.
  *
@@ -38,25 +38,30 @@ import { type Database, schema } from '@auxx/database'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { getOrgCache } from '../cache'
 import { UnprocessableEntityError } from '../errors'
+import type { GlAccountSubtypeValue } from './account-subtype'
 import type { GlAccountTypeValue } from './default-chart'
 import type { ChartAccountRow } from './types'
 
 /**
- * The `gl_account` attributes an account is made of. All four, one list.
+ * The `gl_account` attributes an account is made of. Five, one list.
  *
- * `gl_account_code` and `gl_account_type` are hard requirements - without a code
- * there is no auditable ledger line (`P2`) and without a type there is nothing to
- * check a role against. `gl_account_name` and `gl_account_is_active` are
- * tolerated absent; see {@link decodeChartAccounts} for what absence means.
+ * `gl_account_type` is the one hard requirement - without a type there is
+ * nothing to check a role against (see {@link decodeChartAccounts}). `code`
+ * used to be a second requirement; task 15 §5 made it optional, since the
+ * account id is the identity and a code is a label an account may not carry.
+ * `gl_account_name`, `gl_account_is_active` and `gl_account_subtype` are all
+ * tolerated absent - an org migrated before one of them exists has no field id
+ * to match on, and the two older ones already decode without it.
  */
 export const ACCOUNT_ATTRIBUTES = [
   'gl_account_code',
   'gl_account_name',
   'gl_account_type',
   'gl_account_is_active',
+  'gl_account_subtype',
 ] as const
 
-/** The four `CustomField` rows a `gl_account` is read through. */
+/** The five `CustomField` rows a `gl_account` is read through. */
 export interface ChartAccountFields {
   /**
    * `entityDefinitionId` is carried because the field is also how the
@@ -67,6 +72,12 @@ export interface ChartAccountFields {
   name: { id: string } | null
   type: { id: string }
   active: { id: string } | null
+  /**
+   * Absent for every org that has not been stamped by entity migration 144
+   * (task 15 §5's registry lane). Reads decode `subtype: null` for such an org,
+   * exactly like an unprovisioned `name` or `active`.
+   */
+  subtype: { id: string } | null
 }
 
 /**
@@ -114,6 +125,7 @@ export async function loadChartAccountFields(
     name: fields.gl_account_name ? { id: fields.gl_account_name.id } : null,
     type: { id: type.id },
     active: fields.gl_account_is_active ? { id: fields.gl_account_is_active.id } : null,
+    subtype: fields.gl_account_subtype ? { id: fields.gl_account_subtype.id } : null,
   }
 }
 
@@ -138,6 +150,7 @@ export async function readChartAccountValues(
   const fieldIds = [fields.code.id, fields.type.id]
   if (fields.name) fieldIds.push(fields.name.id)
   if (fields.active) fieldIds.push(fields.active.id)
+  if (fields.subtype) fieldIds.push(fields.subtype.id)
 
   const values = await db
     .select({
@@ -171,10 +184,15 @@ export interface ChartAccountValueRow {
 /**
  * Turn `FieldValue` rows into typed accounts. Pure - no db, no cache, no log.
  *
- * 🛑 An account missing `code` or `accountType` is ABSENT, never defaulted. A
- * blank code on a ledger line is unauditable (`P2`), and guessing a type would
- * defeat the compatibility check that is the only reason the type is read at all.
- * Its id goes to `malformed` so the caller can decide whether to say so.
+ * 🛑 An account missing `accountType` is ABSENT, never defaulted (task 15 §5:
+ * guessing a type would defeat the compatibility check that is the only reason
+ * the type is read at all). Its id goes to `malformed` so the caller can decide
+ * whether to say so.
+ *
+ * A missing or blank `code` is no longer malformed - the account id is the
+ * identity (task 15 §2) and the code is a label an account may not carry. A
+ * blank string decodes the same as an absent row: `code: null`, exactly as a
+ * missing `name` already decodes to `''`.
  */
 export function decodeChartAccounts(
   values: readonly ChartAccountValueRow[],
@@ -182,7 +200,7 @@ export function decodeChartAccounts(
 ): ChartAccountsRead {
   const draft = new Map<
     string,
-    { code?: string; name?: string; accountType?: string; isActive?: boolean }
+    { code?: string; name?: string; accountType?: string; isActive?: boolean; subtype?: string }
   >()
   for (const row of values) {
     const entry = draft.get(row.entityId) ?? {}
@@ -193,19 +211,22 @@ export function decodeChartAccounts(
     else if (fields.name && row.fieldId === fields.name.id) entry.name = row.valueText ?? undefined
     else if (fields.active && row.fieldId === fields.active.id)
       entry.isActive = row.valueBoolean ?? undefined
+    else if (fields.subtype && row.fieldId === fields.subtype.id)
+      entry.subtype = row.optionId ?? undefined
     draft.set(row.entityId, entry)
   }
 
   const accounts = new Map<string, ChartAccountRow>()
   const malformed: string[] = []
   for (const [id, entry] of draft) {
-    if (!entry.code || !entry.accountType) {
+    if (!entry.accountType) {
       malformed.push(id)
       continue
     }
+    const code = entry.code && entry.code.trim() !== '' ? entry.code : null
     accounts.set(id, {
       id,
-      code: entry.code,
+      code,
       name: entry.name ?? '',
       accountType: entry.accountType as GlAccountTypeValue,
       // `gl_account_is_active` declares `defaultValue: true`, and an account
@@ -213,6 +234,9 @@ export function decodeChartAccounts(
       // means active - the opposite reading would refuse to post to, and would
       // hide, a chart nobody has ever deactivated anything in.
       isActive: entry.isActive ?? true,
+      // Null when the org has no `gl_account_subtype` field yet (unstamped by
+      // entity migration 144) or the account itself carries no value.
+      subtype: (entry.subtype as GlAccountSubtypeValue | undefined) ?? null,
     })
   }
 

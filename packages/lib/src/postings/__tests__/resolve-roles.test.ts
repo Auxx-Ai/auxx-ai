@@ -254,12 +254,23 @@ describe('resolveRoles — the five refusals, each with its own message', () => 
     expect(error.message).toMatch(/not a declared posting role/i)
   })
 
-  // An account with no code cannot produce a ledger line at all — `P2` stores
-  // the code — so absence is a refusal rather than a blank.
-  it('refuses an account carrying no code', async () => {
+  // Task 15 §5: the account id is the identity and the code is a label an
+  // account may not carry. A role mapped to an account with no code resolves
+  // exactly as one with a code does - `ResolvedAccount.code` is null, not a
+  // refusal, and the line it produces is a snapshot of nothing (§5, matching
+  // `accountName`).
+  it('resolves a role mapped to an account with no code', async () => {
     const db = stubDb([GRNI_ASSIGNMENT], [{ ...GRNI_ACCOUNT, code: undefined }])
-    const error = await expectErr(resolveRoles(db, ORG, ['grni']))
-    expect(error.message).toMatch(/no longer exists or has been archived/i)
+    const result = await resolveRoles(db, ORG, ['grni'])
+
+    expect(result.isOk()).toBe(true)
+    expect(result._unsafeUnwrap().get('grni')).toEqual({
+      glAccountId: 'acct_grni',
+      code: null,
+      name: 'Goods Received Not Invoiced',
+      accountType: 'liability',
+      isActive: true,
+    })
   })
 
   it('refuses when the chart is not provisioned for the org at all', async () => {
@@ -648,5 +659,33 @@ describe('loadRoleAccountCodes', () => {
     const db = stubLineDb([{ ...GRNI_ASSIGNMENT, markedUnused: true }], [GRNI_ACCOUNT])
     const found = await loadRoleAccountCodes(db, ORG, ['grni'])
     expect(found.size).toBe(0)
+  })
+})
+
+// Task 15 §5, the negative test from brief 15 §10: nothing under `postings/`
+// treats a blank/empty code as a database miss except `buildEntry`'s own
+// refusal, which reads it as "nothing named" rather than "no such account" -
+// a distinct message from every refusal this file otherwise tests. Pinned
+// here, against the real `buildEntry`, rather than assumed.
+describe("an empty code line is buildEntry's refusal, not a chart miss", () => {
+  it('refuses "nothing named" for a code line whose code is empty', async () => {
+    const { buildEntry } = await import('../build-entry')
+    expect(() =>
+      buildEntry({
+        postingType: 'manual_journal',
+        periodKey: '2026-08-18',
+        txnDate: '2026-08-18',
+        lines: [
+          {
+            accountCode: '',
+            direction: 'debit',
+            amount: 1000,
+            sourceType: 'manual_journal',
+            sourceId: 'mj_1',
+            sortOrder: 0,
+          },
+        ],
+      })
+    ).toThrowError(/must carry an account role, an account code or an account id/i)
   })
 })

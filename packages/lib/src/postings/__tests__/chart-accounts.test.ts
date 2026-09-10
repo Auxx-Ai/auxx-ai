@@ -56,12 +56,14 @@ const CODE_FIELD = 'fld_code'
 const NAME_FIELD = 'fld_name'
 const TYPE_FIELD = 'fld_type'
 const ACTIVE_FIELD = 'fld_active'
+const SUBTYPE_FIELD = 'fld_subtype'
 
 const FIELDS: ChartAccountFields = {
   code: { id: CODE_FIELD, entityDefinitionId: DEF },
   name: { id: NAME_FIELD },
   type: { id: TYPE_FIELD },
   active: { id: ACTIVE_FIELD },
+  subtype: { id: SUBTYPE_FIELD },
 }
 
 /** A `FieldValue` row with only the column under test populated. */
@@ -79,6 +81,7 @@ beforeEach(() => {
     ['gl_account_name', { id: NAME_FIELD, entityDefinitionId: DEF }],
     ['gl_account_type', { id: TYPE_FIELD, entityDefinitionId: DEF }],
     ['gl_account_is_active', { id: ACTIVE_FIELD, entityDefinitionId: DEF }],
+    ['gl_account_subtype', { id: SUBTYPE_FIELD, entityDefinitionId: DEF }],
   ])
 })
 
@@ -87,18 +90,19 @@ beforeEach(() => {
 describe('ACCOUNT_ATTRIBUTES', () => {
   // The list both readers share. If one of these disappears, a caller silently
   // stops reading an attribute rather than failing.
-  it('is the four attributes an account is made of', () => {
+  it('is the five attributes an account is made of', () => {
     expect([...ACCOUNT_ATTRIBUTES]).toEqual([
       'gl_account_code',
       'gl_account_name',
       'gl_account_type',
       'gl_account_is_active',
+      'gl_account_subtype',
     ])
   })
 })
 
 describe('decodeChartAccounts', () => {
-  it('assembles one account from its four field values', () => {
+  it('assembles one account from its field values', () => {
     const { accounts, malformed } = decodeChartAccounts(
       [
         value('a1', CODE_FIELD, { valueText: '2160' }),
@@ -116,7 +120,36 @@ describe('decodeChartAccounts', () => {
       name: 'Goods Received Not Invoiced',
       accountType: 'liability',
       isActive: true,
+      subtype: null,
     })
+  })
+
+  // Task 13 §3 / 15 §5: the second fact about an account, read the same way the
+  // type is - a SINGLE_SELECT's chosen value lives in `optionId`.
+  it('reads the subtype from optionId when the org has the field', () => {
+    const { accounts } = decodeChartAccounts(
+      [
+        value('a1', CODE_FIELD, { valueText: '5100' }),
+        value('a1', TYPE_FIELD, { optionId: 'expense' }),
+        value('a1', SUBTYPE_FIELD, { optionId: 'cost_of_goods_sold' }),
+      ],
+      FIELDS
+    )
+    expect(accounts.get('a1')?.subtype).toBe('cost_of_goods_sold')
+  })
+
+  // An org not yet stamped by entity migration 144 has no `gl_account_subtype`
+  // field at all - not merely a blank value on the account.
+  it('decodes subtype: null when the org has no gl_account_subtype field', () => {
+    const fields: ChartAccountFields = { ...FIELDS, subtype: null }
+    const { accounts } = decodeChartAccounts(
+      [
+        value('a1', CODE_FIELD, { valueText: '5100' }),
+        value('a1', TYPE_FIELD, { optionId: 'expense' }),
+      ],
+      fields
+    )
+    expect(accounts.get('a1')?.subtype).toBeNull()
   })
 
   // ⚠️ A SINGLE_SELECT carries its chosen value in `optionId`; for a
@@ -135,17 +168,30 @@ describe('decodeChartAccounts', () => {
     expect(malformed).toEqual(['a1'])
   })
 
-  // 🛑 The rule the whole module is for. A blank code on a ledger line is
-  // unauditable, and a guessed type defeats the compatibility check.
+  // 🛑 The rule the whole module is for. A guessed type would defeat the
+  // compatibility check that is the only reason it is read at all.
   it.each([
-    ['no code', [value('a1', TYPE_FIELD, { optionId: 'asset' })]],
     ['no type', [value('a1', CODE_FIELD, { valueText: '1310' })]],
-    ['neither', [value('a1', NAME_FIELD, { valueText: 'Orphan' })]],
-    ['an empty code', [value('a1', CODE_FIELD, { valueText: '' })]],
+    ['neither code nor type', [value('a1', NAME_FIELD, { valueText: 'Orphan' })]],
   ])('treats an account with %s as absent rather than defaulting one', (_label, rows) => {
     const { accounts, malformed } = decodeChartAccounts(rows, FIELDS)
     expect(accounts.has('a1')).toBe(false)
     expect(malformed).toEqual(['a1'])
+  })
+
+  // 🛑 Task 15 §5's own regression: a missing or blank code is no longer
+  // malformed. The account id is the identity; the code is a label an account
+  // may not carry.
+  it.each([
+    ['no code at all', [value('a1', TYPE_FIELD, { optionId: 'asset' })]],
+    [
+      'an empty-string code',
+      [value('a1', CODE_FIELD, { valueText: '' }), value('a1', TYPE_FIELD, { optionId: 'asset' })],
+    ],
+  ])('decodes an account with %s as code: null rather than malformed', (_label, rows) => {
+    const { accounts, malformed } = decodeChartAccounts(rows, FIELDS)
+    expect(malformed).toEqual([])
+    expect(accounts.get('a1')?.code).toBeNull()
   })
 
   // `gl_account_is_active` declares `defaultValue: true`, and an account written
@@ -186,9 +232,9 @@ describe('decodeChartAccounts', () => {
   })
 
   // An org whose chart predates `gl_account_name` / `_is_active` has no field id
-  // to match on. The two required attributes still decode.
-  it('decodes with the two optional fields unprovisioned', () => {
-    const fields: ChartAccountFields = { ...FIELDS, name: null, active: null }
+  // to match on. The required attribute still decodes.
+  it('decodes with the optional fields unprovisioned', () => {
+    const fields: ChartAccountFields = { ...FIELDS, name: null, active: null, subtype: null }
     const { accounts } = decodeChartAccounts(
       [
         value('a1', CODE_FIELD, { valueText: '1310' }),
@@ -205,6 +251,7 @@ describe('decodeChartAccounts', () => {
       name: '',
       accountType: 'asset',
       isActive: true,
+      subtype: null,
     })
   })
 
@@ -233,22 +280,35 @@ describe('decodeChartAccounts', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('loadChartAccountFields', () => {
-  it('resolves the four field ids and carries the definition id', async () => {
+  it('resolves the field ids and carries the definition id', async () => {
     const fields = await loadChartAccountFields(ORG, 'nope')
     expect(fields).toEqual({
       code: { id: CODE_FIELD, entityDefinitionId: DEF },
       name: { id: NAME_FIELD },
       type: { id: TYPE_FIELD },
       active: { id: ACTIVE_FIELD },
+      subtype: { id: SUBTYPE_FIELD },
     })
   })
 
-  it('tolerates the two optional fields being absent', async () => {
+  it('tolerates the three optional fields being absent', async () => {
     h.fields.delete('gl_account_name')
     h.fields.delete('gl_account_is_active')
+    h.fields.delete('gl_account_subtype')
     const fields = await loadChartAccountFields(ORG, 'nope')
     expect(fields.name).toBeNull()
     expect(fields.active).toBeNull()
+    expect(fields.subtype).toBeNull()
+  })
+
+  // Task 15 §5's own concern: an org not yet stamped by entity migration 144
+  // must not refuse to provision because it lacks a field neither `code` nor
+  // `type` ever required.
+  it('tolerates gl_account_subtype absent on its own, unrelated to provisioning', async () => {
+    h.fields.delete('gl_account_subtype')
+    const fields = await loadChartAccountFields(ORG, 'nope')
+    expect(fields.subtype).toBeNull()
+    expect(fields.code).toEqual({ id: CODE_FIELD, entityDefinitionId: DEF })
   })
 
   // 🛑 The message belongs to the CALLER. `resolveRoles` says "before posting",
@@ -321,6 +381,7 @@ describe('loadChartAccountsById', () => {
       name: 'Raw Materials',
       accountType: 'asset',
       isActive: true,
+      subtype: null,
     })
   })
 

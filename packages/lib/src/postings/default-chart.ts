@@ -7,8 +7,15 @@
 // provider seam, so the chart that vocabulary maps onto belongs here rather
 // than in `seed/`. The entity migration that writes these rows imports this
 // constant; `seed -> lib` is the sanctioned direction and `lib -> seed` is not.
+//
+// The account CODE is optional on a `gl_account` now (task 15 §5) - a chart
+// imported from a provider that ships with account numbers off has none, and
+// a person may keep a chart by name alone. This default chart keeps ITS codes
+// regardless (15.1 default): a numbered default is what every mandated chart
+// does, and optional means importable, not absent.
 
-import { GlAccountType } from '../resources/registry/enum-values'
+import { GlAccountSubtype, GlAccountType } from '../resources/registry/enum-values'
+import type { GlAccountSubtypeValue } from './account-subtype'
 import type { AccountRole } from './build-entry'
 
 /**
@@ -55,6 +62,15 @@ export interface DefaultChartAccount {
    * chart is the org's own bookkeeping and auxx posts to none of it.
    */
   role?: AccountRole
+  /**
+   * The second fact beyond `accountType` (task 13 §3, pulled forward by task
+   * 15 §5). Stamped where it replaces something a code prefix used to carry -
+   * the bank, receivable, payable and inventory accounts, and every COGS
+   * account under `5xxx` - so `profit-and-loss.ts` can group COGS by this
+   * instead of testing `code.startsWith('5')`, which throws the moment a chart
+   * has no codes at all.
+   */
+  subtype?: GlAccountSubtypeValue
 }
 
 /**
@@ -114,6 +130,7 @@ export const DEFAULT_CHART_OF_ACCOUNTS: readonly DefaultChartAccount[] = [
     name: 'Cash',
     accountType: GlAccountType.ASSET,
     role: 'cash',
+    subtype: GlAccountSubtype.BANK,
   },
   {
     // A clearing account whose job is to be ZERO once every bank deposit has
@@ -133,6 +150,7 @@ export const DEFAULT_CHART_OF_ACCOUNTS: readonly DefaultChartAccount[] = [
     name: 'Accounts Receivable',
     accountType: GlAccountType.ASSET,
     role: 'accounts_receivable',
+    subtype: GlAccountSubtype.ACCOUNTS_RECEIVABLE,
   },
   {
     code: '1190',
@@ -171,6 +189,7 @@ export const DEFAULT_CHART_OF_ACCOUNTS: readonly DefaultChartAccount[] = [
     name: 'Raw Materials / Parts',
     accountType: GlAccountType.ASSET,
     role: 'inventory_raw_materials',
+    subtype: GlAccountSubtype.INVENTORY,
   },
   {
     // Receipts never touch this - nothing in the `partKind` table maps to WIP.
@@ -181,12 +200,14 @@ export const DEFAULT_CHART_OF_ACCOUNTS: readonly DefaultChartAccount[] = [
     name: 'Work in Process',
     accountType: GlAccountType.ASSET,
     role: 'inventory_wip',
+    subtype: GlAccountSubtype.INVENTORY,
   },
   {
     code: '1330',
     name: 'Finished Goods',
     accountType: GlAccountType.ASSET,
     role: 'inventory_finished_goods',
+    subtype: GlAccountSubtype.INVENTORY,
   },
 
   // ── Liabilities ─────────────────────────────────────────────────────────
@@ -199,6 +220,7 @@ export const DEFAULT_CHART_OF_ACCOUNTS: readonly DefaultChartAccount[] = [
     name: 'Accounts Payable',
     accountType: GlAccountType.LIABILITY,
     role: 'accounts_payable',
+    subtype: GlAccountSubtype.ACCOUNTS_PAYABLE,
   },
   {
     code: '2100',
@@ -396,11 +418,13 @@ export const DEFAULT_CHART_OF_ACCOUNTS: readonly DefaultChartAccount[] = [
     name: 'COGS - Product Cost',
     accountType: GlAccountType.EXPENSE,
     role: 'cogs_product_cost',
+    subtype: GlAccountSubtype.COST_OF_GOODS_SOLD,
   },
   {
     code: '5010',
     name: 'COGS - Direct Labor',
     accountType: GlAccountType.EXPENSE,
+    subtype: GlAccountSubtype.COST_OF_GOODS_SOLD,
     // No role, and it stays empty under L1. The labour that went into inventory
     // is relieved from 2110 Payroll Clearing by the month-end entry, and the
     // labour that then LEFT inventory on a shipment lands in 5000's plug - a
@@ -413,11 +437,13 @@ export const DEFAULT_CHART_OF_ACCOUNTS: readonly DefaultChartAccount[] = [
     name: 'COGS - Applied Overhead',
     accountType: GlAccountType.EXPENSE,
     role: 'applied_overhead',
+    subtype: GlAccountSubtype.COST_OF_GOODS_SOLD,
   },
   {
     code: '5030',
     name: 'COGS - Freight-Out',
     accountType: GlAccountType.EXPENSE,
+    subtype: GlAccountSubtype.COST_OF_GOODS_SOLD,
     // Above gross profit, deliberately (accrual plan §4). Distinct from the
     // `freight_accrual` LIABILITY, which is inbound freight capitalised into
     // landed cost. Two different freights; do not point one role at both.
@@ -427,6 +453,7 @@ export const DEFAULT_CHART_OF_ACCOUNTS: readonly DefaultChartAccount[] = [
     name: 'Inventory / Purchase Price Variance',
     accountType: GlAccountType.EXPENSE,
     role: 'ppv',
+    subtype: GlAccountSubtype.COST_OF_GOODS_SOLD,
   },
   {
     // 🛑 A SIBLING of 5090, not a merge with it (`G12`). 5090 answers "the
@@ -441,6 +468,7 @@ export const DEFAULT_CHART_OF_ACCOUNTS: readonly DefaultChartAccount[] = [
     name: 'Inventory Count Variance',
     accountType: GlAccountType.EXPENSE,
     role: 'inventory_count_variance',
+    subtype: GlAccountSubtype.COST_OF_GOODS_SOLD,
   },
 
   // ── Operating expenses ──────────────────────────────────────────────────

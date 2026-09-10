@@ -60,6 +60,8 @@ import {
 } from '../errors'
 import { UnifiedCrudHandler } from '../resources/crud/unified-handler'
 import { toRecordId } from '../resources/resource-id'
+import { accountLabel } from './account-label'
+import type { GlAccountSubtypeValue } from './account-subtype'
 import { ACCOUNT_ROLE_LABELS, type AccountRole, ROLE_ACCOUNT_TYPES } from './build-entry'
 import {
   type ChartAccountFields,
@@ -82,16 +84,17 @@ const NOT_PROVISIONED =
   'The chart of accounts is not provisioned for this organization - gl_account_code / gl_account_type are missing. Run the entity migrations.'
 
 /**
- * The four `gl_account` attributes, as the crud handler wants them keyed.
+ * The `gl_account` attributes, as the crud handler wants them keyed.
  *
  * A `type` and not an `interface`: the handler takes `Record<string, unknown>`,
  * and only a type alias carries the implicit index signature that satisfies it.
  */
 type AccountValues = {
-  gl_account_code?: string
+  gl_account_code?: string | null
   gl_account_name?: string
   gl_account_type?: GlAccountTypeValue
   gl_account_is_active?: boolean
+  gl_account_subtype?: GlAccountSubtypeValue | null
 }
 
 /** A role that still posts to an account, and the account row it points at. */
@@ -102,12 +105,19 @@ interface LiveRole {
 
 export interface CreateChartAccountOptions {
   organizationId: string
-  /** The account number. Unique per org; `UniqueValueConflictError` if taken. */
-  code: string
+  /**
+   * The account number. Optional (task 15 §5): a chart imported from a
+   * provider that ships with numbering off, or one a person keeps by name
+   * alone, has no code at all. Blank and `null` mean the same thing. Unique
+   * per org among non-null codes; `UniqueValueConflictError` if taken.
+   */
+  code?: string | null
   name: string
   accountType: GlAccountTypeValue
   /** Defaults to `true`, matching the field's registry default. */
   isActive?: boolean
+  /** The second fact about the account (task 13 §3), e.g. `cost_of_goods_sold`. */
+  subtype?: GlAccountSubtypeValue | null
   /** Who is doing this. Attributed on the write - never a system session. */
   actorUserId: string
 }
@@ -115,10 +125,12 @@ export interface CreateChartAccountOptions {
 export interface UpdateChartAccountOptions {
   organizationId: string
   accountId: string
-  code?: string
+  /** `null` or a blank string clears the code. Omit to leave it unchanged. */
+  code?: string | null
   name?: string
   accountType?: GlAccountTypeValue
   isActive?: boolean
+  subtype?: GlAccountSubtypeValue | null
   actorUserId: string
 }
 
@@ -131,11 +143,12 @@ export interface RemoveChartAccountOptions {
 /**
  * Add one account to the org's chart.
  *
- * All three of `code`, `name` and `accountType` are required - the field
- * registry declares them so and `assertRequiredFieldsPresent` enforces it. There
- * is no default for `accountType` and this module invents none: a statement
- * classification is what every role compatibility check is made against, and
- * guessing one would defeat the only reason the type is read.
+ * Only `name` and `accountType` are required (task 15 §5 - `code` used to be a
+ * third, and is no longer: the account id is the identity and a code is a
+ * label the account may not carry). There is no default for `accountType` and
+ * this module invents none: a statement classification is what every role
+ * compatibility check is made against, and guessing one would defeat the only
+ * reason the type is read.
  *
  * @returns the account exactly as `listChartAccounts` would render it.
  */
@@ -146,13 +159,12 @@ export async function createChartAccount(
   const { organizationId, actorUserId } = options
 
   try {
-    const code = options.code.trim()
+    const code = options.code?.trim() || null
     const name = options.name.trim()
-    if (!code) throw new BadRequestError('An account needs a code.', { organizationId })
     if (!name) throw new BadRequestError('An account needs a name.', { organizationId })
 
     const { fields, defId } = await loadChartTarget(organizationId)
-    await assertCodeIsFree(db, organizationId, code, fields)
+    if (code) await assertCodeIsFree(db, organizationId, code, fields)
 
     const handler = crudHandler(db, organizationId, actorUserId)
     const created = await namingTheCode(code, () =>
@@ -161,6 +173,7 @@ export async function createChartAccount(
         gl_account_name: name,
         gl_account_type: options.accountType,
         gl_account_is_active: options.isActive ?? true,
+        gl_account_subtype: options.subtype ?? null,
       } satisfies AccountValues)
     )
 
@@ -191,12 +204,14 @@ export async function updateChartAccount(
     const values: AccountValues = {}
 
     if (options.code !== undefined) {
-      const code = options.code.trim()
-      if (!code) throw new BadRequestError('An account needs a code.', { organizationId })
+      // `null` or a blank string clears the code (task 15 §5) - the account id
+      // is the identity, so removing the label leaves a perfectly postable
+      // account.
+      const code = options.code?.trim() || null
       // Only when it actually moves: re-asserting an account's own code is a
       // no-op the person cannot tell apart from any other save, and checking it
       // would make the account collide with itself.
-      if (code !== account.code) {
+      if (code && code !== account.code) {
         await assertCodeIsFree(db, organizationId, code, fields, accountId)
       }
       values.gl_account_code = code
@@ -220,7 +235,7 @@ export async function updateChartAccount(
         const expected = ROLE_ACCOUNT_TYPES[role]
         if (expected !== options.accountType) {
           throw new UnprocessableEntityError(
-            `Cannot make ${account.code} ${account.name} ${article(options.accountType)} account: '${role}' (${ACCOUNT_ROLE_LABELS[role]}) posts here and must be mapped to ${article(expected)} account. Repoint the role first, or mark it unused.`,
+            `Cannot make ${accountLabel(account)} ${article(options.accountType)} account: '${role}' (${ACCOUNT_ROLE_LABELS[role]}) posts here and must be mapped to ${article(expected)} account. Repoint the role first, or mark it unused.`,
             { organizationId, accountId, role }
           )
         }
@@ -245,6 +260,10 @@ export async function updateChartAccount(
         )
       }
       values.gl_account_is_active = options.isActive
+    }
+
+    if (options.subtype !== undefined) {
+      values.gl_account_subtype = options.subtype
     }
 
     if (Object.keys(values).length > 0) {
@@ -361,11 +380,13 @@ function crudHandler(db: Database, organizationId: string, actorUserId: string) 
  * pre-check knowingly does not close. Do not delete it as dead code without
  * reading both.
  */
-async function namingTheCode<T>(code: string, write: () => Promise<T>): Promise<T> {
+async function namingTheCode<T>(code: string | null, write: () => Promise<T>): Promise<T> {
   try {
     return await write()
   } catch (error) {
-    if (error instanceof UniqueValueConflictError) {
+    // No code to name a collision with (task 15 §5): a write with no code can
+    // never trip the uniqueness gate below, so the original error is exact.
+    if (code && error instanceof UniqueValueConflictError) {
       throw new UniqueValueConflictError({
         message: `${code} is already in use by another account in this chart.`,
         conflictingValue: code,
@@ -453,6 +474,10 @@ function article(accountType: string): string {
 
 /**
  * Refuse a code another live account in this chart already holds.
+ *
+ * Called only for a non-empty `code` (task 15 §5): uniqueness applies among
+ * non-null codes, and a blank or absent code is never a collision - every
+ * account without one shares that, by design.
  *
  * 🛑 **This is THE uniqueness guard for the chart, and it has to live here.**
  * The two gates below it both fail to stop a duplicate, which is why a
@@ -609,7 +634,7 @@ async function assertNoLiveRole(
 
   const named = live.map(({ role }) => `'${role}' (${ACCOUNT_ROLE_LABELS[role]})`).join(', ')
   throw new UnprocessableEntityError(
-    `Cannot ${verb} ${account.code} ${account.name}: ${named} ${live.length === 1 ? 'posts' : 'post'} here. Repoint ${live.length === 1 ? 'the role' : 'those roles'} on the Roles tab first, or mark ${live.length === 1 ? 'it' : 'them'} unused. ${consequence}`,
+    `Cannot ${verb} ${accountLabel(account)}: ${named} ${live.length === 1 ? 'posts' : 'post'} here. Repoint ${live.length === 1 ? 'the role' : 'those roles'} on the Roles tab first, or mark ${live.length === 1 ? 'it' : 'them'} unused. ${consequence}`,
     { organizationId, accountId, roles: live.map((row) => row.role).join(',') }
   )
 }

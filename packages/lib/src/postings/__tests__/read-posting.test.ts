@@ -58,7 +58,7 @@ interface LineRow {
   glPostingId: string
   lineNumber: number
   glAccountId: string
-  accountCode: string
+  accountCode: string | null
   accountRole: string | null
   accountName: string | null
   direction: string
@@ -283,6 +283,19 @@ describe('getPosting - the lines', () => {
 
     expect(detail.lines.map((l) => l.lineNumber)).toEqual([1, 2, 3])
     expect(detail.lines.map((l) => l.accountCode)).toEqual(['1310', '5000', '2160'])
+  })
+
+  // Task 15 §5: a stored line's `accountCode` snapshot is null when the
+  // account carried no code at posting time - never coerced to `''` on the
+  // way back out.
+  it('reads a null accountCode snapshot back as null, not as an empty string', async () => {
+    const stub = stubDb({
+      postings: [POSTING],
+      lines: [line({ lineNumber: 1, accountCode: null })],
+    })
+    const detail = (await getPosting(stub.db, ORG, 'gp_1'))._unsafeUnwrap()
+
+    expect(detail.lines[0]?.accountCode).toBeNull()
   })
 
   // 🛑 `accountName` is frozen at posting time. Joining the live chart to

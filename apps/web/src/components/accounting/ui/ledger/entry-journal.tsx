@@ -23,7 +23,11 @@ interface EntryJournalProps {
   lines: ResolvedPostingLine[]
   currencyCode: string
   /** Opens the "what is behind this number" report for an account code. */
-  onDrillDown?: (accountCode: string, accountName?: string) => void
+  onDrillDown?: (target: {
+    glAccountId: string
+    accountCode: string | null
+    accountName?: string
+  }) => void
 }
 
 /**
@@ -79,7 +83,13 @@ export function EntryJournal({ lines, currencyCode, onDrillDown }: EntryJournalP
                         variant='ghost'
                         size='icon-xs'
                         aria-label={`What is behind account ${formatAccountLabel({ code: line.accountCode, name: line.accountName ?? '' })}`}
-                        onClick={() => onDrillDown(line.accountCode, line.accountName)}>
+                        onClick={() =>
+                          onDrillDown({
+                            glAccountId: line.glAccountId,
+                            accountCode: line.accountCode,
+                            accountName: line.accountName,
+                          })
+                        }>
                         <Search />
                       </Button>
                     </Tooltip>

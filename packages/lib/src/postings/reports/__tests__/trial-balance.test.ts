@@ -42,12 +42,13 @@ function groupedRow(
   return { glAccountId, accountCode, debitMinor: String(debit), creditMinor: String(credit) }
 }
 
-function account(overrides: Partial<ChartAccountRow> & { code: string }): ChartAccountRow {
+function account(overrides: Partial<ChartAccountRow> & { code: string | null }): ChartAccountRow {
   return {
     id: `id_${overrides.code}`,
     name: '',
     accountType: 'asset',
     isActive: true,
+    subtype: null,
     ...overrides,
   }
 }
@@ -73,6 +74,7 @@ describe('readTrialBalance', () => {
         accountCode: '1000',
         accountName: 'Cash',
         accountType: 'asset',
+        subtype: null,
         debitMinor: 125_000,
         creditMinor: 0,
         balanceMinor: 125_000,
@@ -83,6 +85,7 @@ describe('readTrialBalance', () => {
         accountCode: '2000',
         accountName: 'Accounts Payable',
         accountType: 'liability',
+        subtype: null,
         debitMinor: 0,
         creditMinor: 125_000,
         balanceMinor: 125_000,
@@ -229,5 +232,84 @@ describe('readTrialBalance', () => {
 
     const result = await readTrialBalance(stubDb([]), { organizationId: ORG, to: '2026-08-31' })
     expect(result.isErr()).toBe(true)
+  })
+
+  // Task 15 §5's own regression: a live account with NO code must render
+  // `null`, never fall back to the line's snapshot just because both happen
+  // to be absent-shaped.
+  it('reports a null accountCode for a live, uncoded account rather than the line snapshot', async () => {
+    vi.mocked(listChartAccounts).mockResolvedValue(
+      ok([
+        account({
+          id: 'id_x',
+          code: null,
+          name: 'Imported: Product Income',
+          accountType: 'revenue',
+        }),
+      ])
+    )
+
+    const result = await readTrialBalance(
+      stubDb([{ glAccountId: 'id_x', accountCode: null, debitMinor: '0', creditMinor: '5000' }]),
+      { organizationId: ORG, to: '2026-08-31' }
+    )
+
+    const row = result._unsafeUnwrap().rows[0]
+    expect(row).toMatchObject({ glAccountId: 'id_x', accountCode: null, inChart: true })
+  })
+
+  // 15.2: statement type order first (asset, liability, equity, revenue,
+  // expense), then code-then-name within a type - never a bare code sort,
+  // which would put a `4...` revenue account ahead of a `2...` liability.
+  it('sorts by statement type in order, then by code, then by name', async () => {
+    vi.mocked(listChartAccounts).mockResolvedValue(
+      ok([
+        account({ code: '4000', name: 'Sales', accountType: 'revenue' }),
+        account({ code: '1000', name: 'Cash', accountType: 'asset' }),
+        account({ code: '2000', name: 'Accounts Payable', accountType: 'liability' }),
+      ])
+    )
+
+    const result = await readTrialBalance(
+      stubDb([groupedRow('4000', 0, 100), groupedRow('1000', 100, 0), groupedRow('2000', 0, 100)]),
+      { organizationId: ORG, to: '2026-08-31' }
+    )
+
+    expect(result._unsafeUnwrap().rows.map((r) => r.accountCode)).toEqual(['1000', '2000', '4000'])
+  })
+
+  // A coded account sorts before an uncoded one of the SAME type, per
+  // `compareAccountsByCodeThenName` - never the other way, and never by
+  // treating a null code as an empty string that could sort first.
+  it('sorts a coded account before an uncoded one of the same statement type', async () => {
+    vi.mocked(listChartAccounts).mockResolvedValue(
+      ok([
+        account({
+          id: 'id_uncoded',
+          code: null,
+          name: 'Zzz Imported Expense',
+          accountType: 'expense',
+        }),
+        account({
+          id: 'id_coded',
+          code: '6000',
+          name: 'Aaa Office Supplies',
+          accountType: 'expense',
+        }),
+      ])
+    )
+
+    const result = await readTrialBalance(
+      stubDb([
+        { glAccountId: 'id_uncoded', accountCode: null, debitMinor: '100', creditMinor: '0' },
+        { glAccountId: 'id_coded', accountCode: '6000', debitMinor: '100', creditMinor: '0' },
+      ]),
+      { organizationId: ORG, to: '2026-08-31' }
+    )
+
+    expect(result._unsafeUnwrap().rows.map((r) => r.glAccountId)).toEqual([
+      'id_coded',
+      'id_uncoded',
+    ])
   })
 })

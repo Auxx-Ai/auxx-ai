@@ -11,6 +11,7 @@ import {
   createChartAccount,
   createJournalEntry,
   discardJournalEntry,
+  GL_ACCOUNT_SUBTYPES,
   GL_ACCOUNT_TYPES,
   getJournalEntry,
   getPosting,
@@ -252,8 +253,12 @@ const optionalMonthKey = z.object({
  * it, which a Zod issue cannot.
  */
 const journalEntryLine = z.object({
-  /** A code out of this org's own chart, e.g. `'6300'`. */
-  accountCode: z.string().min(1),
+  /**
+   * The `gl_account` instance id out of this org's own chart (task 15: the id
+   * is the identity, the code is a label - one that may not exist at all once
+   * it is optional). A person picks a specific account by id, never by code.
+   */
+  glAccountId: z.string().min(1),
   direction: z.enum(['debit', 'credit']),
   /** Integer minor units, > 0. The debit/credit column carries the sign. */
   amountMinor: z.number(),
@@ -677,10 +682,16 @@ export const ledgerRouter = createTRPCRouter({
   chartAccountCreate: permissionProcedure(PermissionKey.ledgerControl)
     .input(
       z.object({
-        code: z.string().min(1),
+        /**
+         * Optional (task 15 §5): a chart imported from a provider that ships
+         * with numbering off, or one a person keeps by name alone, has no
+         * code at all. The lib refuses a blank code the same as an absent one.
+         */
+        code: z.string().max(32).optional(),
         name: z.string().min(1),
         accountType: z.enum(GL_ACCOUNT_TYPES),
         isActive: z.boolean().optional(),
+        subtype: z.enum(GL_ACCOUNT_SUBTYPES).nullable().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -698,16 +709,19 @@ export const ledgerRouter = createTRPCRouter({
    * Change one account. Only the keys sent are written.
    *
    * `code` and `name` are unconditional (`G7`); `accountType` and `isActive` are
-   * refused when a role still posts to the account, naming it.
+   * refused when a role still posts to the account, naming it. `code: null` or
+   * a blank string clears it (task 15 §5) - the account id is the identity, so
+   * removing the label leaves a perfectly postable account.
    */
   chartAccountUpdate: permissionProcedure(PermissionKey.ledgerControl)
     .input(
       z.object({
         id: z.string().min(1),
-        code: z.string().optional(),
+        code: z.string().max(32).nullable().optional(),
         name: z.string().optional(),
         accountType: z.enum(GL_ACCOUNT_TYPES).optional(),
         isActive: z.boolean().optional(),
+        subtype: z.enum(GL_ACCOUNT_SUBTYPES).nullable().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {

@@ -737,6 +737,39 @@ export const GlAccountType = {
   ] satisfies FieldOptionItem[],
 } as const
 
+/**
+ * The second fact about a `gl_account` beyond its statement classification
+ * (`plans/accounting/tasks/13-cash-accounts-and-the-qbo-seam.md` §3.1), kept
+ * short and ours rather than QuickBooks' eighty detail types: every value
+ * either changes a validation or changes a statement. Optional on every
+ * account; null means "nothing to say".
+ *
+ * `cost_of_goods_sold` is the one pulled forward by task 15 §5: the P&L used
+ * to group COGS by a `5xxx` code prefix, and a chart without codes has no
+ * prefix to test.
+ */
+export const GlAccountSubtype = {
+  BANK: 'bank',
+  ACCOUNTS_RECEIVABLE: 'accounts_receivable',
+  ACCOUNTS_PAYABLE: 'accounts_payable',
+  CREDIT_CARD: 'credit_card',
+  INVENTORY: 'inventory',
+  FIXED_ASSET: 'fixed_asset',
+  COST_OF_GOODS_SOLD: 'cost_of_goods_sold',
+  OTHER: 'other',
+
+  values: [
+    { value: 'bank', label: 'Bank', color: 'blue' },
+    { value: 'accounts_receivable', label: 'Accounts receivable', color: 'blue' },
+    { value: 'accounts_payable', label: 'Accounts payable', color: 'amber' },
+    { value: 'credit_card', label: 'Credit card', color: 'amber' },
+    { value: 'inventory', label: 'Inventory', color: 'purple' },
+    { value: 'fixed_asset', label: 'Fixed asset', color: 'purple' },
+    { value: 'cost_of_goods_sold', label: 'Cost of goods sold', color: 'red' },
+    { value: 'other', label: 'Other', color: 'gray' },
+  ] satisfies FieldOptionItem[],
+} as const
+
 // `GlAccountRole` used to live here. It is GONE (decision `G19`): it existed
 // only to supply the options of a `gl_account.role` SINGLE_SELECT, and that
 // field was replaced by the `GlRoleAssignment` table, whose `role` column is

@@ -25,8 +25,11 @@ const logger = createScopedLogger('postings:reports:balance-sheet')
 export interface BalanceSheetRow {
   /** The `gl_account` `EntityInstance` id this row groups on. The IDENTITY (task 15). */
   glAccountId: string
-  /** The account's CURRENT code - a snapshot only when `inChart` is `false`. See `TrialBalanceRow`. */
-  accountCode: string
+  /**
+   * The account's CURRENT code - a snapshot only when `inChart` is `false`.
+   * See `TrialBalanceRow`. Null when the account has no code (task 15 §5).
+   */
+  accountCode: string | null
   accountName: string
   accountType: 'asset' | 'liability' | 'equity'
   balanceMinor: number

@@ -8,6 +8,12 @@
 // (the builders run in a worker), and the directive would turn every export into
 // a client-reference proxy there. See docs/lib-module-guide.md section 7.
 
+export { accountLabel, compareAccountsByCodeThenName, type NamedAccount } from './account-label'
+export {
+  accountSubtypeLabel,
+  GL_ACCOUNT_SUBTYPES,
+  type GlAccountSubtypeValue,
+} from './account-subtype'
 // ── plans/accounting/tasks/10: credit memos, one document for "you owe us less" ──
 // PURE - reaches nothing but `errors`, `build-entry`, `build-fulfillment-entry`
 // and `period-key`, all of which are already on this surface. The write half

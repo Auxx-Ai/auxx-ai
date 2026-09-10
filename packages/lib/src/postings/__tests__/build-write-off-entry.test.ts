@@ -56,13 +56,13 @@ describe('buildWriteOffEntry - the happy path', () => {
       direction: 'debit',
       amount: 12_345,
     })
-    expect(debit?.accountCode).toBeUndefined()
+    expect(debit?.glAccountId).toBeUndefined()
     expect(credit).toMatchObject({
       accountRole: ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE,
       direction: 'credit',
       amount: 12_345,
     })
-    expect(credit?.accountCode).toBeUndefined()
+    expect(credit?.glAccountId).toBeUndefined()
   })
 
   it('carries the invoice as sourceType/sourceId on every line', () => {
@@ -83,11 +83,11 @@ describe('buildWriteOffEntry - the happy path', () => {
   })
 })
 
-describe('buildWriteOffEntry - the expenseAccountCode override', () => {
-  it('names a CODE on the debit leg instead of the bad_debt_expense role', () => {
-    const built = buildWriteOffEntry({ ...BASE, expenseAccountCode: '6301' })
+describe('buildWriteOffEntry - the expenseGlAccountId override', () => {
+  it('names an ID on the debit leg instead of the bad_debt_expense role', () => {
+    const built = buildWriteOffEntry({ ...BASE, expenseGlAccountId: 'acct_6301' })
     const [debit, credit] = built.lines
-    expect(debit).toMatchObject({ accountCode: '6301', direction: 'debit', amount: 12_345 })
+    expect(debit).toMatchObject({ glAccountId: 'acct_6301', direction: 'debit', amount: 12_345 })
     expect(debit?.accountRole).toBeUndefined()
     // The credit leg is NEVER overridable - accounts_receivable is the one
     // receivable role (handoff decision 6.1), always by role.

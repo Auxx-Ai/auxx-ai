@@ -130,8 +130,8 @@ const DRAFT = {
   status: 'draft',
   kind: 'manual',
   lines: [
-    { accountCode: '6200', direction: 'debit', amountMinor: 50_000 },
-    { accountCode: '2100', direction: 'credit', amountMinor: 50_000 },
+    { glAccountId: 'acct_6200', direction: 'debit', amountMinor: 50_000 },
+    { glAccountId: 'acct_2100', direction: 'credit', amountMinor: 50_000 },
   ],
   glPostingId: null,
   createdAt: '2026-08-31T00:00:00.000Z',
@@ -182,7 +182,7 @@ describe('createJournalEntry', () => {
         // A React row id and a stray dollar `amount` beside `amountMinor`:
         // what a sloppy client actually sends.
         {
-          accountCode: '6200',
+          glAccountId: 'acct_6200',
           direction: 'debit',
           amountMinor: 50_000,
           rowId: 'react-key-3',
@@ -191,7 +191,7 @@ describe('createJournalEntry', () => {
       ],
     })
     expect(h.creates[0]?.values.journal_entry_lines).toEqual({
-      lines: [{ accountCode: '6200', direction: 'debit', amountMinor: 50_000 }],
+      lines: [{ glAccountId: 'acct_6200', direction: 'debit', amountMinor: 50_000 }],
     })
   })
 
@@ -206,10 +206,10 @@ describe('updateJournalEntry', () => {
   it('replaces the lines wholesale', async () => {
     await updateJournalEntry(DB, ORG, USER, {
       journalEntryId: 'je_1',
-      lines: [{ accountCode: '6300', direction: 'debit', amountMinor: 1 }],
+      lines: [{ glAccountId: 'acct_6300', direction: 'debit', amountMinor: 1 }],
     })
     expect(h.updates[0]?.values.journal_entry_lines).toEqual({
-      lines: [{ accountCode: '6300', direction: 'debit', amountMinor: 1 }],
+      lines: [{ glAccountId: 'acct_6300', direction: 'debit', amountMinor: 1 }],
     })
   })
 
@@ -262,8 +262,8 @@ describe('previewJournalEntry', () => {
     const result = await previewJournalEntry(DB, ORG, {
       journalEntryId: 'je_1',
       lines: [
-        { accountCode: '6300', direction: 'debit', amountMinor: 100 },
-        { accountCode: '2100', direction: 'credit', amountMinor: 100 },
+        { glAccountId: 'acct_6300', direction: 'debit', amountMinor: 100 },
+        { glAccountId: 'acct_2100', direction: 'credit', amountMinor: 100 },
       ],
     })
     expect(result.isOk()).toBe(true)
@@ -276,8 +276,8 @@ describe('previewJournalEntry', () => {
     h.record = {
       ...DRAFT,
       lines: [
-        { accountCode: '6200', direction: 'debit', amountMinor: 50_000 },
-        { accountCode: '2100', direction: 'credit', amountMinor: 40_000 },
+        { glAccountId: 'acct_6200', direction: 'debit', amountMinor: 50_000 },
+        { glAccountId: 'acct_2100', direction: 'credit', amountMinor: 40_000 },
       ],
     }
     const result = await previewJournalEntry(DB, ORG, { journalEntryId: 'je_1' })

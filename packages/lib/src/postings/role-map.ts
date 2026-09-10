@@ -45,6 +45,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { and, count, eq, isNull } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError, BadRequestError, NotFoundError, UnprocessableEntityError } from '../errors'
+import { accountLabel, compareAccountsByCodeThenName } from './account-label'
 import { ACCOUNT_ROLES, type AccountRole, ROLE_ACCOUNT_TYPES } from './build-entry'
 import {
   type ChartAccountsRead,
@@ -191,14 +192,15 @@ export async function listRoleMap(
  * an account somebody archived must not reappear in the picker that assigns
  * roles.
  *
- * An account missing `gl_account_code` or `gl_account_type` is SKIPPED and
- * logged rather than defaulted. Guessing a type would defeat the compatibility
- * check that is the only reason the type is read, and a blank code on a ledger
- * line is unauditable (decision `P2`). The log line names the ids so a malformed
- * account is findable rather than merely invisible.
+ * An account missing `gl_account_type` is SKIPPED and logged rather than
+ * defaulted - guessing a type would defeat the compatibility check that is the
+ * only reason the type is read. A missing or blank `gl_account_code` is no
+ * longer a reason to skip (task 15 §5): the account id is the identity, and a
+ * code is a label the account may not carry. The log line names the ids so a
+ * malformed account is findable rather than merely invisible.
  *
- * Ordered by `code`, which is the order a chart of accounts is read in
- * everywhere else in the world.
+ * Ordered by code then name (task 15 §5's 15.2 default): a coded account
+ * before an uncoded one, then alphabetically within each.
  */
 export async function listChartAccounts(
   db: Database,
@@ -239,7 +241,7 @@ export async function listChartAccounts(
       )
     )
 
-    return ok([...accounts.values()].sort((a, b) => a.code.localeCompare(b.code)))
+    return ok([...accounts.values()].sort(compareAccountsByCodeThenName))
   } catch (error) {
     if (error instanceof AuxxError) return err(error)
     logger.error('Failed to list the chart of accounts', { error, organizationId })
@@ -422,7 +424,7 @@ async function mapRole(
 
   if (!account.isActive) {
     throw new UnprocessableEntityError(
-      `Cannot map '${role}' to ${account.code} ${account.name}, which is not active. Reactivate the account or choose another.`,
+      `Cannot map '${role}' to ${accountLabel(account)}, which is not active. Reactivate the account or choose another.`,
       { organizationId, role, glAccountId }
     )
   }
@@ -432,7 +434,7 @@ async function mapRole(
   const expectedType = ROLE_ACCOUNT_TYPES[role]
   if (account.accountType !== expectedType) {
     throw new UnprocessableEntityError(
-      `'${role}' must be mapped to a ${expectedType} account, but ${account.code} ${account.name} is a ${account.accountType} account.`,
+      `'${role}' must be mapped to a ${expectedType} account, but ${accountLabel(account)} is a ${account.accountType} account.`,
       { organizationId, role, glAccountId }
     )
   }
@@ -567,13 +569,13 @@ async function loadChartAccountsById(
   )
 }
 
-/** Log the accounts that carried no code or no type, then hand back the rest. */
+/** Log the accounts that carried no type, then hand back the rest. */
 function warnMalformed(
   organizationId: string,
   read: ChartAccountsRead
 ): Map<string, ChartAccountRow> {
   if (read.malformed.length > 0) {
-    logger.warn('Skipped gl_account rows with no code or no type', {
+    logger.warn('Skipped gl_account rows with no type', {
       organizationId,
       glAccountIds: read.malformed.join(','),
     })

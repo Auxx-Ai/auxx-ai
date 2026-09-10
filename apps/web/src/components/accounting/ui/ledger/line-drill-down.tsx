@@ -24,7 +24,9 @@ import { formatAccountLabel } from '../account-label'
 import { formatAccountingDate, formatMinor, formatSignedMinor } from './format'
 
 export interface LineDrillDownTarget {
-  accountCode: string
+  /** The `gl_account` id (task 15). The key; the two below are display snapshots. */
+  glAccountId: string
+  accountCode: string | null
   accountName?: string
 }
 

@@ -61,6 +61,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { and, eq, inArray } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError, UnprocessableEntityError } from '../errors'
+import { accountLabel } from './account-label'
 import { type AccountRole, ROLE_ACCOUNT_TYPES } from './build-entry'
 import { loadChartAccountFields, loadChartAccountsById } from './chart-accounts'
 import type { GlAccountTypeValue } from './default-chart'
@@ -83,8 +84,12 @@ const NOT_PROVISIONED =
 export interface ResolvedAccount {
   /** The `gl_account` `EntityInstance` id. `RecordIdentity` hangs the provider's id here (`P2`). */
   glAccountId: string
-  /** The account CODE — `'1310'`. What a `gl_posting_line` stores (`P2`). */
-  code: string
+  /**
+   * The account CODE - `'1310'`. What a `gl_posting_line` stores (`P2`).
+   * Null when the account carries no code (task 15 §5) - a snapshot of
+   * nothing is null, exactly as `accountName` already is.
+   */
+  code: string | null
   /** The account's name as it stands NOW. Snapshot it; renaming must not restate the ledger. */
   name: string
   accountType: GlAccountTypeValue
@@ -183,7 +188,7 @@ export async function resolveRoles(
 
       if (!account.isActive) {
         problems.push(
-          `'${role}' is mapped to ${account.code} ${account.name}, which is not active. Reactivate the account or repoint the role.`
+          `'${role}' is mapped to ${accountLabel(account)}, which is not active. Reactivate the account or repoint the role.`
         )
         continue
       }
@@ -201,7 +206,7 @@ export async function resolveRoles(
 
       if (account.accountType !== expectedType) {
         problems.push(
-          `'${role}' must be mapped to a ${expectedType} account, but ${account.code} ${account.name} is a ${account.accountType} account.`
+          `'${role}' must be mapped to a ${expectedType} account, but ${accountLabel(account)} is a ${account.accountType} account.`
         )
         continue
       }
@@ -347,7 +352,7 @@ export async function resolveAccountLines(
         }
         if (!account.isActive) {
           problems.push(
-            `Row ${row}: ${account.code} ${account.name} is not active. Reactivate it before posting to it again.`
+            `Row ${row}: ${accountLabel(account)} is not active. Reactivate it before posting to it again.`
           )
         }
         continue
@@ -371,7 +376,7 @@ export async function resolveAccountLines(
         const account = found[0]
         if (account && !account.isActive) {
           problems.push(
-            `Row ${row}: ${account.code} ${account.name} is not active. Reactivate it, or code the line to another account.`
+            `Row ${row}: ${accountLabel(account)} is not active. Reactivate it, or code the line to another account.`
           )
         }
         continue
@@ -431,9 +436,16 @@ export async function resolveAccountLines(
  * entry, because the answer to that question is genuinely "none" and a refusal
  * would be wrong - the caller is not trying to put money anywhere.
  *
+ * 🛑 The name is a holdover - it has always returned {@link ResolvedAccount}
+ * rows, never bare codes - and `post-entry.ts`'s caller now keys its guard on
+ * `glAccountId` rather than `code` (task 15 §5, a code is optional). Left
+ * unrenamed here because `opening-trial-balance/reads.ts`, `reports/aging.ts`,
+ * `reports/balance-sheet.ts` and `postings/index.ts` all import it by this
+ * name and only some of those are this lane's files.
+ *
  * The one caller today is the manual/opening inventory refusal in
- * `post-entry.ts`, which has to name the account codes a hand-keyed entry may
- * not touch. An org that has not mapped `inventory_wip` has nothing to protect,
+ * `post-entry.ts`, which has to name the accounts a hand-keyed entry may not
+ * touch. An org that has not mapped `inventory_wip` has nothing to protect,
  * and refusing every manual entry over it would be absurd.
  */
 export async function loadRoleAccountCodes(
@@ -460,8 +472,8 @@ export async function loadRoleAccountCodes(
 
   // Filtered on BOTH the requested set and `markedUnused`, even though the
   // query already narrows the first: this function's answer is compared against
-  // account CODES by its caller, so a stray role leaking in would attach an
-  // unrelated account's code to the guarded set and refuse an innocent entry.
+  // account IDS by its caller, so a stray role leaking in would attach an
+  // unrelated account to the guarded set and refuse an innocent entry.
   const live = assignments.filter((row) => !row.markedUnused && wanted.includes(row.role))
   const accounts = await loadAccounts(
     db,
@@ -491,6 +503,11 @@ export async function loadRoleAccountCodes(
  * Archived instances are excluded by `loadChartAccountsById`, which is why an
  * archived account reads exactly like one that never existed: from a coder's
  * point of view they are the same fact.
+ *
+ * A code line always names a non-empty code (`GlPostingLineInput`'s code
+ * variant keeps `accountCode: string`), so an account with a null code (task
+ * 15 §5) can never be what a code line is looking for and is skipped here
+ * rather than bucketed under a key nothing will ever ask for.
  */
 async function loadAccountsByCode(
   db: Database,
@@ -521,6 +538,7 @@ async function loadAccountsByCode(
 
   const byCode = new Map<string, ResolvedAccount[]>()
   for (const account of accounts.values()) {
+    if (!account.code) continue
     const bucket = byCode.get(account.code)
     if (bucket) bucket.push(account)
     else byCode.set(account.code, [account])

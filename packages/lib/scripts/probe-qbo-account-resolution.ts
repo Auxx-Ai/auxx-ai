@@ -61,7 +61,7 @@ async function main() {
   let unmapped = 0
 
   for (const row of rows) {
-    const label = `${row.account.code.padEnd(8)} ${row.account.name}`
+    const label = `${(row.account.code ?? '').padEnd(8)} ${row.account.name}`
     if (row.state === 'confirmed') {
       mapped++
       const live = row.liveProviderAccount

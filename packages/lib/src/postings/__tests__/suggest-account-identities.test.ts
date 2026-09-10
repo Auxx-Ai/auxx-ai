@@ -23,6 +23,7 @@ function ours(over: Partial<ChartAccountRow> = {}): ChartAccountRow {
     name: 'Raw Materials',
     accountType: 'asset',
     isActive: true,
+    subtype: null,
     ...over,
   }
 }
@@ -75,6 +76,17 @@ describe('matching by account number', () => {
       [theirs({ number: null }), theirs({ id: '93', number: null })]
     )
     expect(suggestions).toHaveLength(0)
+  })
+
+  // Task 15 §5: an account may carry no code at all, not merely a blank one.
+  // There is nothing for a NUMBER to match, so it must fall straight to the
+  // name rank rather than let two nulls compare equal.
+  it('skips the number rank for an account with no code, and falls to name', () => {
+    const suggestion = suggestAccountIdentities(
+      [ours({ code: null, name: 'Inventory Asset' })],
+      [theirs({ number: null, name: 'Inventory Asset', fullyQualifiedName: 'Inventory Asset' })]
+    )[0]
+    expect(suggestion?.reason).toBe('name')
   })
 })
 

@@ -43,8 +43,12 @@ export interface AccountLines {
   organizationId: string
   /** The `gl_account` `EntityInstance` id this drill-down is keyed on. The IDENTITY (task 15). */
   glAccountId: string
-  /** The account's CURRENT code, read from the live chart by id. `''` when the account has been deleted. */
-  accountCode: string
+  /**
+   * The account's CURRENT code, read from the live chart by id. `null` when
+   * the account has been deleted, or when it is live but carries no code
+   * (task 15 §5) - `accountName` is the field that distinguishes the two.
+   */
+  accountCode: string | null
   /** `''` when the account has been deleted from this org's chart. */
   accountName: string
   /** `null` when the account has been deleted - the running balance is then unsigned (raw debit). */
@@ -147,7 +151,7 @@ export async function readAccountLines(
     return ok({
       organizationId,
       glAccountId,
-      accountCode: account?.code ?? '',
+      accountCode: account?.code ?? null,
       accountName: account?.name ?? '',
       accountType: account?.accountType ?? null,
       from: from ?? null,

@@ -26,11 +26,14 @@ import { readTrialBalance } from '../trial-balance'
 const ORG = 'org_1'
 
 /** `glAccountId` defaults to `id_<accountCode>` - see `balance-sheet.test.ts`'s own helper. */
-function row(overrides: Partial<TrialBalanceRow> & { accountCode: string }): TrialBalanceRow {
+function row(
+  overrides: Partial<TrialBalanceRow> & { accountCode: string | null }
+): TrialBalanceRow {
   return {
     glAccountId: `id_${overrides.accountCode}`,
     accountName: '',
     accountType: 'asset',
+    subtype: null,
     debitMinor: 0,
     creditMinor: 0,
     balanceMinor: 0,

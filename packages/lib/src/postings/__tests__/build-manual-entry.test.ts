@@ -35,7 +35,7 @@ const BASE = {
 
 function lines(...rows: Array<Partial<ManualEntryLine>>): ManualEntryLine[] {
   return rows.map((row, index) => ({
-    accountCode: row.accountCode ?? `600${index}`,
+    glAccountId: row.glAccountId ?? `acct_600${index}`,
     direction: row.direction ?? (index === 0 ? 'debit' : 'credit'),
     amountMinor: row.amountMinor ?? 5000,
     ...(row.memo ? { memo: row.memo } : {}),
@@ -69,9 +69,9 @@ describe('buildManualEntry - the happy path', () => {
     expect(built.entry.txnDate).toBe('2026-08-31')
   })
 
-  it('emits CODE lines, never roles', () => {
+  it('emits ID lines, never roles', () => {
     for (const line of built.entry.lines) {
-      expect(line.accountCode).toBeTruthy()
+      expect(line.glAccountId).toBeTruthy()
       expect(line.accountRole).toBeUndefined()
     }
   })
@@ -155,12 +155,14 @@ describe('buildManualEntry - the refusals', () => {
     expect(error.message).toMatch(/to the debit side/)
   })
 
-  it('refuses a zero amount, naming the row and the account', () => {
+  it('refuses a zero amount, naming the row', () => {
     const error = expectRefusal(() =>
       buildManualEntry({ ...BASE, lines: lines({}, { amountMinor: 0 }) })
     )
     expect(error.message).toMatch(/Row 2/)
-    expect(error.message).toMatch(/6001/)
+    // 🛑 No code and no id in the message any more - the refusal names the
+    // ROW, not the account, once the account is no longer necessarily a code.
+    expect(error.message).not.toMatch(/acct_6001/)
   })
 
   it('refuses a negative amount, saying where the sign lives', () => {
@@ -188,7 +190,7 @@ describe('buildManualEntry - the refusals', () => {
 
   it('refuses a row with no account', () => {
     const error = expectRefusal(() =>
-      buildManualEntry({ ...BASE, lines: lines({ accountCode: '  ' }, {}) })
+      buildManualEntry({ ...BASE, lines: lines({ glAccountId: '  ' }, {}) })
     )
     expect(error.message).toMatch(/Row 1 has no account/i)
   })
@@ -201,11 +203,11 @@ describe('buildManualEntry - the same-account warning', () => {
   it('warns, and still builds, when one account is on both sides', () => {
     const built = buildManualEntry({
       ...BASE,
-      lines: lines({ accountCode: '6000' }, { accountCode: '6000' }),
+      lines: lines({ glAccountId: 'acct_6000' }, { glAccountId: 'acct_6000' }),
     })
     expect(built.entry.lines).toHaveLength(2)
     expect(built.warnings).toHaveLength(1)
-    expect(built.warnings[0]).toMatch(/6000/)
+    expect(built.warnings[0]).toMatch(/acct_6000/)
     expect(built.warnings[0]).toMatch(/both sides/i)
   })
 
@@ -213,22 +215,22 @@ describe('buildManualEntry - the same-account warning', () => {
     const built = buildManualEntry({
       ...BASE,
       lines: [
-        { accountCode: '6000', direction: 'debit', amountMinor: 1000 },
-        { accountCode: '6000', direction: 'credit', amountMinor: 400 },
-        { accountCode: '6000', direction: 'credit', amountMinor: 600 },
+        { glAccountId: 'acct_6000', direction: 'debit', amountMinor: 1000 },
+        { glAccountId: 'acct_6000', direction: 'credit', amountMinor: 400 },
+        { glAccountId: 'acct_6000', direction: 'credit', amountMinor: 600 },
       ],
     })
     expect(built.warnings).toHaveLength(1)
-    expect(built.warnings[0]?.match(/6000/g)).toHaveLength(1)
+    expect(built.warnings[0]?.match(/acct_6000/g)).toHaveLength(1)
   })
 
   it('does not warn when an account appears twice on the SAME side', () => {
     const built = buildManualEntry({
       ...BASE,
       lines: [
-        { accountCode: '6000', direction: 'debit', amountMinor: 1000 },
-        { accountCode: '6000', direction: 'debit', amountMinor: 500 },
-        { accountCode: '2000', direction: 'credit', amountMinor: 1500 },
+        { glAccountId: 'acct_6000', direction: 'debit', amountMinor: 1000 },
+        { glAccountId: 'acct_6000', direction: 'debit', amountMinor: 500 },
+        { glAccountId: 'acct_2000', direction: 'credit', amountMinor: 1500 },
       ],
     })
     expect(built.warnings).toEqual([])

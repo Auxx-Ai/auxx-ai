@@ -4,12 +4,13 @@
 // no clock, no chart - the property every other builder in this folder has.
 //
 // `Dr bad_debt_expense  Cr accounts_receivable`, both by ROLE (decision G8) -
-// unless the bookkeeper overrides the debit leg with an account CODE out of
+// unless the bookkeeper overrides the debit leg with an account ID out of
 // their own chart, the same escape hatch `build-manual-entry.ts` gives a
-// hand-authored line. `accounts_receivable` is never overridable: the credit
-// leg is always the ONE receivable role (handoff decision 6.1), because a
-// write-off that named a different receivable account would leave the
-// invoice's own A/R balance untouched.
+// hand-authored line (task 15: the id is the identity, and it is what a human
+// picking a specific account emits). `accounts_receivable` is never
+// overridable: the credit leg is always the ONE receivable role (handoff
+// decision 6.1), because a write-off that named a different receivable
+// account would leave the invoice's own A/R balance untouched.
 //
 // plans/accounting/HANDOFF.md slot 2K; gap-analysis.md §3 item 9.
 
@@ -159,10 +160,10 @@ export interface BuildWriteOffEntryInput {
   /** `YYYY-MM-DD`. The accounting date. */
   txnDate: string
   /**
-   * An account CODE out of the org's own chart, overriding the debit leg.
-   * Omit to use the `bad_debt_expense` role (the ordinary case).
+   * A `gl_account` `EntityInstance` id out of the org's own chart, overriding
+   * the debit leg. Omit to use the `bad_debt_expense` role (the ordinary case).
    */
-  expenseAccountCode?: string
+  expenseGlAccountId?: string
   memo?: string
 }
 
@@ -170,7 +171,7 @@ export interface BuildWriteOffEntryInput {
  * Build the write-off entry for one invoice.
  *
  * ```
- * Dr <bad_debt_expense role, or expenseAccountCode>   amountMinor
+ * Dr <bad_debt_expense role, or expenseGlAccountId>   amountMinor
  *   Cr accounts_receivable                             amountMinor
  * ```
  *
@@ -181,7 +182,7 @@ export interface BuildWriteOffEntryInput {
  *   file-header rule every builder in this folder follows.
  */
 export function buildWriteOffEntry(input: BuildWriteOffEntryInput): BuiltEntry {
-  const { invoiceId, invoiceNumber, attempt, amountMinor, txnDate, expenseAccountCode, memo } =
+  const { invoiceId, invoiceNumber, attempt, amountMinor, txnDate, expenseGlAccountId, memo } =
     input
 
   const periodKey = writeOffPeriodKey({ invoiceNumber, invoiceId, attempt })
@@ -202,9 +203,9 @@ export function buildWriteOffEntry(input: BuildWriteOffEntryInput): BuiltEntry {
   const lineMemo = memo ?? `Write off ${invoiceNumber}`
   const source = { sourceType: WRITE_OFF_SOURCE_TYPE, sourceId: invoiceId }
 
-  const debitLine: GlPostingLineInput = expenseAccountCode
+  const debitLine: GlPostingLineInput = expenseGlAccountId
     ? {
-        accountCode: expenseAccountCode,
+        glAccountId: expenseGlAccountId,
         direction: 'debit',
         amount: amountMinor,
         memo: lineMemo,

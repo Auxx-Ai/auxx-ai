@@ -5,13 +5,14 @@
 // `balance-sheet.ts`'s `currentPeriodNetIncome` computes for the same range -
 // see `__tests__/profit-and-loss.test.ts` for the cross-check.
 //
-// COGS PRESENTATION. `GlAccountType` collapses "Cost of Goods Sold" into
-// `expense` (`default-chart.ts` §2) - there is no COGS classification on the
-// row. So grouping 5xxx-coded expense accounts under a "Cost of goods sold"
-// subsection here is a PRESENTATION heuristic over the account CODE, not a
-// posting rule and not a chart attribute: an org that renumbers a COGS account
-// out of the 5xxx range changes which section it prints under, and that is the
-// accepted cost of not adding a chart-level COGS flag for a v1 report.
+// COGS PRESENTATION. Grouping expense accounts under a "Cost of goods sold"
+// subsection is driven by `subtype === 'cost_of_goods_sold'`
+// (`account-subtype.ts`, task 13 §3 / task 15 §5), a chart ATTRIBUTE set on
+// the account itself - never a code prefix. A chart with no codes at all (an
+// imported QuickBooks chart, or a person who never numbers anything) still
+// gets a COGS section, and renumbering an account never moves it between
+// sections. This replaced a `code.startsWith('5')` heuristic that threw on a
+// null code and gave a codeless chart no COGS section at all.
 //
 // No permission checks here. The router asserts (`docs/lib-module-guide.md` §6).
 
@@ -19,6 +20,7 @@ import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError } from '../../errors'
+import type { GlAccountSubtypeValue } from '../account-subtype'
 import { netIncome } from './statement-math'
 import { readTrialBalance, type TrialBalanceRow } from './trial-balance'
 
@@ -28,10 +30,15 @@ const logger = createScopedLogger('postings:reports:profit-and-loss')
 export interface ProfitAndLossRow {
   /** The `gl_account` `EntityInstance` id this row groups on. The IDENTITY (task 15). */
   glAccountId: string
-  /** The account's CURRENT code - a snapshot only when `inChart` is `false`. See `TrialBalanceRow`. */
-  accountCode: string
+  /**
+   * The account's CURRENT code - a snapshot only when `inChart` is `false`.
+   * Null when the account carries no code (task 15 §5). See `TrialBalanceRow`.
+   */
+  accountCode: string | null
   accountName: string
   accountType: 'revenue' | 'expense'
+  /** What puts a row in the COGS subsection below - see the file header. */
+  subtype: GlAccountSubtypeValue | null
   balanceMinor: number
   inChart: boolean
 }
@@ -41,12 +48,12 @@ export interface ProfitAndLossSnapshot {
   to: string
   revenue: ProfitAndLossRow[]
   totalRevenueMinor: number
-  /** Expense rows whose code starts with `'5'` - the COGS presentation grouping. */
+  /** Expense rows whose `subtype` is `cost_of_goods_sold` - see the file header. */
   cogs: ProfitAndLossRow[]
   totalCogsMinor: number
   /** `totalRevenueMinor - totalCogsMinor`. */
   grossProfitMinor: number
-  /** Expense rows NOT coded `5xxx`. */
+  /** Expense rows whose `subtype` is NOT `cost_of_goods_sold`. */
   operatingExpenses: ProfitAndLossRow[]
   totalOperatingExpensesMinor: number
   /** `totalCogsMinor + totalOperatingExpensesMinor`. */
@@ -69,22 +76,22 @@ export interface ReadProfitAndLossOptions {
   compare?: { from: string; to: string }
 }
 
-const COGS_PREFIX = '5'
-
 function toRow(row: TrialBalanceRow): ProfitAndLossRow {
   return {
     glAccountId: row.glAccountId,
     accountCode: row.accountCode,
     accountName: row.accountName,
     accountType: row.accountType as 'revenue' | 'expense',
+    subtype: row.subtype,
     balanceMinor: row.balanceMinor,
     inChart: row.inChart,
   }
 }
 
 /**
- * One profit and loss statement over `[from, to]`: revenue, COGS (the 5xxx
- * subsection of expense), gross profit, operating expense, net income.
+ * One profit and loss statement over `[from, to]`: revenue, COGS (the
+ * `cost_of_goods_sold`-subtyped subsection of expense), gross profit,
+ * operating expense, net income.
  */
 export async function readProfitAndLoss(
   db: Database,
@@ -127,8 +134,11 @@ async function computeSnapshot(
 
   const revenue = tb.value.rows.filter((row) => row.accountType === 'revenue').map(toRow)
   const expense = tb.value.rows.filter((row) => row.accountType === 'expense').map(toRow)
-  const cogs = expense.filter((row) => row.accountCode.startsWith(COGS_PREFIX))
-  const operatingExpenses = expense.filter((row) => !row.accountCode.startsWith(COGS_PREFIX))
+  // Task 15 §5: COGS is a chart ATTRIBUTE, never a code prefix - a null or
+  // unnumbered code must not throw, and a `5xxx` account with no subtype set
+  // is simply an ordinary operating expense.
+  const cogs = expense.filter((row) => row.subtype === 'cost_of_goods_sold')
+  const operatingExpenses = expense.filter((row) => row.subtype !== 'cost_of_goods_sold')
 
   const totalRevenueMinor = revenue.reduce((sum, row) => sum + row.balanceMinor, 0)
   const totalCogsMinor = cogs.reduce((sum, row) => sum + row.balanceMinor, 0)

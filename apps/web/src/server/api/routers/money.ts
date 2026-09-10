@@ -1154,7 +1154,7 @@ export const moneyRouter = createTRPCRouter({
         invoiceRecordId: recordIdSchema,
         amountMinor: z.number().int().positive().optional(),
         reason: z.string().min(1).max(2000),
-        expenseAccountCode: z.string().min(1).max(32).optional(),
+        expenseGlAccountId: z.string().min(1).max(64).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -1165,7 +1165,7 @@ export const moneyRouter = createTRPCRouter({
         invoiceId: entityInstanceId,
         amountMinor: input.amountMinor,
         reason: input.reason,
-        expenseAccountCode: input.expenseAccountCode,
+        expenseGlAccountId: input.expenseGlAccountId,
       })
     }),
 
@@ -1193,7 +1193,7 @@ export const moneyRouter = createTRPCRouter({
       z.object({
         invoiceRecordId: recordIdSchema,
         amountMinor: z.number().int().positive().optional(),
-        expenseAccountCode: z.string().min(1).max(32).optional(),
+        expenseGlAccountId: z.string().min(1).max(64).optional(),
       })
     )
     .query(async ({ ctx, input }) => {
@@ -1202,7 +1202,7 @@ export const moneyRouter = createTRPCRouter({
         organizationId: ctx.session.organizationId,
         invoiceId: entityInstanceId,
         amountMinor: input.amountMinor,
-        expenseAccountCode: input.expenseAccountCode,
+        expenseGlAccountId: input.expenseGlAccountId,
       })
     }),
 })

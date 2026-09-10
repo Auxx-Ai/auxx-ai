@@ -20,12 +20,12 @@ import {
 const ZONE = 'America/New_York'
 const SOURCE = 'je_opening_1'
 
-function line(accountCode: string, direction: 'debit' | 'credit', amountMinor: number) {
-  return { accountCode, direction, amountMinor }
+function line(glAccountId: string, direction: 'debit' | 'credit', amountMinor: number) {
+  return { glAccountId, direction, amountMinor }
 }
 
 /** A minimal balanced trial balance: cash against opening balance equity. */
-const BALANCED = [line('1000', 'debit', 500_00), line('3900', 'credit', 500_00)]
+const BALANCED = [line('acct_1000', 'debit', 500_00), line('acct_3900', 'credit', 500_00)]
 
 function build(overrides: Partial<Parameters<typeof buildOpeningBalanceEntry>[0]> = {}) {
   return buildOpeningBalanceEntry({
@@ -83,11 +83,11 @@ describe('buildOpeningBalanceEntry', () => {
     expect(entry.postingType).toBe('opening_balance')
   })
 
-  it('carries the account CODES straight through, never a role', () => {
+  it('carries the account IDS straight through, never a role', () => {
     const { entry } = build()
-    expect(entry.lines.map((l) => ('accountCode' in l ? l.accountCode : null))).toEqual([
-      '1000',
-      '3900',
+    expect(entry.lines.map((l) => ('glAccountId' in l ? l.glAccountId : null))).toEqual([
+      'acct_1000',
+      'acct_3900',
     ])
     expect(entry.lines.every((l) => !('accountRole' in l && l.accountRole))).toBe(true)
   })
@@ -115,7 +115,10 @@ describe('buildOpeningBalanceEntry', () => {
   it('carries a supplied memo onto every line that has none of its own', () => {
     const { entry } = build({
       memo: 'Cutover from QuickBooks',
-      lines: [line('1000', 'debit', 100), { ...line('3900', 'credit', 100), memo: 'Equity leg' }],
+      lines: [
+        line('acct_1000', 'debit', 100),
+        { ...line('acct_3900', 'credit', 100), memo: 'Equity leg' },
+      ],
     })
     expect(entry.lines[0]?.memo).toBe('Cutover from QuickBooks')
     expect(entry.lines[1]?.memo).toBe('Equity leg')
@@ -130,10 +133,10 @@ describe('buildOpeningBalanceEntry', () => {
     // for exactly this reason.
     const { entry } = build({
       lines: [
-        line('1310', 'debit', 100_00),
-        line('1320', 'debit', 50_00),
-        line('1330', 'debit', 250_00),
-        line('3900', 'credit', 400_00),
+        line('acct_1310', 'debit', 100_00),
+        line('acct_1320', 'debit', 50_00),
+        line('acct_1330', 'debit', 250_00),
+        line('acct_3900', 'credit', 400_00),
       ],
     })
     expect(entry.lines).toHaveLength(4)
@@ -145,25 +148,25 @@ describe('buildOpeningBalanceEntry', () => {
   it('drops zero rows - the grid is the whole chart, and most of it is zero', () => {
     const { entry } = build({
       lines: [
-        line('1000', 'debit', 500_00),
-        line('1050', 'debit', 0),
-        line('2000', 'credit', 0),
-        line('3900', 'credit', 500_00),
+        line('acct_1000', 'debit', 500_00),
+        line('acct_1050', 'debit', 0),
+        line('acct_2000', 'credit', 0),
+        line('acct_3900', 'credit', 500_00),
       ],
     })
     expect(entry.lines).toHaveLength(2)
-    expect(entry.lines.map((l) => ('accountCode' in l ? l.accountCode : null))).toEqual([
-      '1000',
-      '3900',
+    expect(entry.lines.map((l) => ('glAccountId' in l ? l.glAccountId : null))).toEqual([
+      'acct_1000',
+      'acct_3900',
     ])
   })
 
   it('renumbers sortOrder over the surviving rows, with no gap where a zero was', () => {
     const { entry } = build({
       lines: [
-        line('1000', 'debit', 500_00),
-        line('1050', 'debit', 0),
-        line('3900', 'credit', 500_00),
+        line('acct_1000', 'debit', 500_00),
+        line('acct_1050', 'debit', 0),
+        line('acct_3900', 'credit', 500_00),
       ],
     })
     expect(entry.lines.map((l) => l.sortOrder)).toEqual([0, 1])
@@ -179,30 +182,32 @@ describe('buildOpeningBalanceEntry', () => {
   it('refuses an all-zero trial balance separately from an empty one', () => {
     // Different mistake, different repair: "you typed nothing" vs "you typed
     // zeroes". Both would otherwise arrive as `buildEntry`'s "at least one line".
-    expect(() => build({ lines: [line('1000', 'debit', 0), line('3900', 'credit', 0)] })).toThrow(
-      /Every row of the opening trial balance is zero/
-    )
+    expect(() =>
+      build({ lines: [line('acct_1000', 'debit', 0), line('acct_3900', 'credit', 0)] })
+    ).toThrow(/Every row of the opening trial balance is zero/)
   })
 
   it('refuses a one-sided trial balance through the two-line minimum', () => {
-    expect(() => build({ lines: [line('1000', 'debit', 500_00)] })).toThrow(/at least two lines/)
+    expect(() => build({ lines: [line('acct_1000', 'debit', 500_00)] })).toThrow(
+      /at least two lines/
+    )
   })
 
   it('refuses an imbalance and names the difference in cents', () => {
     expect(() =>
-      build({ lines: [line('1000', 'debit', 500_00), line('3900', 'credit', 400_00)] })
+      build({ lines: [line('acct_1000', 'debit', 500_00), line('acct_3900', 'credit', 400_00)] })
     ).toThrow(/off by 10000/)
   })
 
   it('names the row of a negative amount rather than flipping its direction', () => {
     expect(() =>
-      build({ lines: [line('1000', 'debit', -500_00), line('3900', 'credit', 500_00)] })
-    ).toThrow(/Row 1 \(1000\)/)
+      build({ lines: [line('acct_1000', 'debit', -500_00), line('acct_3900', 'credit', 500_00)] })
+    ).toThrow(/^Row 1 has amount -50000/)
   })
 
   it('names the row of a fractional amount - a ledger line is whole cents', () => {
     expect(() =>
-      build({ lines: [line('1000', 'debit', 500.5), line('3900', 'credit', 500.5)] })
+      build({ lines: [line('acct_1000', 'debit', 500.5), line('acct_3900', 'credit', 500.5)] })
     ).toThrow(/not a whole number of cents/)
   })
 
@@ -226,14 +231,14 @@ describe('buildOpeningBalanceEntry', () => {
   it('passes buildManualEntry warnings through without blocking', () => {
     const { entry, warnings } = build({
       lines: [
-        line('1000', 'debit', 500_00),
-        line('1000', 'credit', 100_00),
-        line('3900', 'credit', 400_00),
+        line('acct_1000', 'debit', 500_00),
+        line('acct_1000', 'credit', 100_00),
+        line('acct_3900', 'credit', 400_00),
       ],
     })
     expect(entry.lines).toHaveLength(3)
     expect(warnings).toHaveLength(1)
-    expect(warnings[0]).toMatch(/1000 appears on both sides/)
+    expect(warnings[0]).toMatch(/acct_1000 appears on both sides/)
   })
 
   it('is quiet on an ordinary trial balance', () => {
@@ -244,9 +249,9 @@ describe('buildOpeningBalanceEntry', () => {
 
   it('does not mutate the lines it was handed', () => {
     const lines = [
-      line('1000', 'debit', 500_00),
-      line('1050', 'debit', 0),
-      line('3900', 'credit', 500_00),
+      line('acct_1000', 'debit', 500_00),
+      line('acct_1050', 'debit', 0),
+      line('acct_3900', 'credit', 500_00),
     ]
     const snapshot = JSON.parse(JSON.stringify(lines))
     build({ lines })

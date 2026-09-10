@@ -38,7 +38,7 @@ import { formatMinor } from '~/components/accounting/ui/ledger/format'
 export interface JournalLineDraft {
   /** Client-only identity for React keys and keyboard nav. Never sent to the server. */
   key: string
-  accountCode: string | null
+  glAccountId: string | null
   memo: string
   debitMinor: number | null
   creditMinor: number | null
@@ -47,7 +47,7 @@ export interface JournalLineDraft {
 export function emptyDraftRow(): JournalLineDraft {
   return {
     key: generateId('jel'),
-    accountCode: null,
+    glAccountId: null,
     memo: '',
     debitMinor: null,
     creditMinor: null,
@@ -64,14 +64,14 @@ export function emptyDraftRow(): JournalLineDraft {
 export function linesFromDraftRows(rows: JournalLineDraft[]): JournalEntryLine[] {
   const lines: JournalEntryLine[] = []
   for (const row of rows) {
-    if (!row.accountCode) continue
+    if (!row.glAccountId) continue
     const hasDebit = row.debitMinor !== null && row.debitMinor > 0
     const hasCredit = row.creditMinor !== null && row.creditMinor > 0
     if (!hasDebit && !hasCredit) continue
     const direction = hasDebit ? 'debit' : 'credit'
     const amountMinor = (hasDebit ? row.debitMinor : row.creditMinor) as number
     lines.push({
-      accountCode: row.accountCode,
+      glAccountId: row.glAccountId,
       direction,
       amountMinor,
       ...(row.memo.trim() ? { memo: row.memo.trim() } : {}),
@@ -84,7 +84,7 @@ export function linesFromDraftRows(rows: JournalLineDraft[]): JournalEntryLine[]
 export function draftRowsFromLines(lines: JournalEntryLine[]): JournalLineDraft[] {
   return lines.map((line) => ({
     key: generateId('jel'),
-    accountCode: line.accountCode,
+    glAccountId: line.glAccountId,
     memo: line.memo ?? '',
     debitMinor: line.direction === 'debit' ? line.amountMinor : null,
     creditMinor: line.direction === 'credit' ? line.amountMinor : null,
@@ -145,7 +145,7 @@ export function JournalLines({ rows, onChange, currencyCode, disabled }: Journal
   const [phantomKey, setPhantomKey] = useState(() => generateId('jel'))
   const phantom: JournalLineDraft = {
     key: phantomKey,
-    accountCode: null,
+    glAccountId: null,
     memo: '',
     debitMinor: null,
     creditMinor: null,
@@ -195,8 +195,9 @@ export function JournalLines({ rows, onChange, currencyCode, disabled }: Journal
               className='grid items-center gap-2 px-2 py-1.5'
               style={{ gridTemplateColumns: GRID_COLS }}>
               <GlAccountPicker
-                value={row.accountCode}
-                onChange={(code) => patchRow(index, { accountCode: code })}
+                value={row.glAccountId}
+                onChange={(id) => patchRow(index, { glAccountId: id })}
+                selectBy='id'
                 disabled={disabled}
                 placeholder='Account…'
                 // The one caller that overrides the transparent default: this is a

@@ -67,7 +67,7 @@ export function WriteOffDialog({
 }: WriteOffDialogProps) {
   const [amountMinor, setAmountMinor] = useState<number | null>(balanceMinor)
   const [reason, setReason] = useState('')
-  const [expenseAccountCode, setExpenseAccountCode] = useState<string | null>(null)
+  const [expenseGlAccountId, setExpenseGlAccountId] = useState<string | null>(null)
 
   // 🛑 The bound is what is still OUTSTANDING, never the invoice's mirrored
   // balance. A partial write-off leaves that mirror reading high, because
@@ -83,27 +83,26 @@ export function WriteOffDialog({
     if (!open) return
     setAmountMinor(outstandingMinor)
     setReason('')
-    setExpenseAccountCode(null)
+    setExpenseGlAccountId(null)
   }, [open, outstandingMinor])
 
   const roleMapQuery = api.ledger.roleMap.useQuery(undefined, { enabled: open })
-  const badDebtDefaultCode = useMemo(
-    () =>
-      roleMapQuery.data?.find((row) => row.role === BAD_DEBT_EXPENSE_ROLE)?.account?.code ?? null,
+  const badDebtDefaultId = useMemo(
+    () => roleMapQuery.data?.find((row) => row.role === BAD_DEBT_EXPENSE_ROLE)?.account?.id ?? null,
     [roleMapQuery.data]
   )
   // The picker shows the explicit override once the bookkeeper makes one;
   // otherwise it shows the role's own default, purely for display; the
-  // request itself omits `expenseAccountCode` until there IS an override, so
+  // request itself omits `expenseGlAccountId` until there IS an override, so
   // the entry keeps naming the ROLE (decision G8) rather than freezing today's
-  // code onto every ordinary write-off.
-  const displayedAccountCode = expenseAccountCode ?? badDebtDefaultCode
+  // account onto every ordinary write-off.
+  const displayedGlAccountId = expenseGlAccountId ?? badDebtDefaultId
 
   const previewQuery = api.money.previewWriteOff.useQuery(
     {
       invoiceRecordId,
       amountMinor: amountMinor ?? undefined,
-      expenseAccountCode: expenseAccountCode ?? undefined,
+      expenseGlAccountId: expenseGlAccountId ?? undefined,
     },
     {
       enabled: open && !!amountMinor && amountMinor > 0 && amountMinor <= outstandingMinor,
@@ -135,7 +134,7 @@ export function WriteOffDialog({
         invoiceRecordId,
         amountMinor,
         reason: reason.trim(),
-        expenseAccountCode: expenseAccountCode ?? undefined,
+        expenseGlAccountId: expenseGlAccountId ?? undefined,
       })
       if (!POSTED_STATUSES.has(result.status)) {
         // A refusal `postEntry` returns rather than throws (a period locked
@@ -193,8 +192,9 @@ export function WriteOffDialog({
 
           <FieldPanelRow title='Expense account' type={BaseType.STRING} showIcon>
             <GlAccountPicker
-              value={displayedAccountCode}
-              onChange={(code) => setExpenseAccountCode(code)}
+              value={displayedGlAccountId}
+              onChange={(id) => setExpenseGlAccountId(id)}
+              selectBy='id'
               filterTypes={['expense']}
               placeholder={roleMapQuery.isLoading ? 'Loading…' : 'Bad Debt Expense (default)'}
               disabled={writeOff.isPending}

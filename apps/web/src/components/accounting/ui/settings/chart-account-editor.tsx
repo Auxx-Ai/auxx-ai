@@ -20,11 +20,12 @@
 // argument on `chartAccountCreate` in `routers/ledger.ts`.
 //
 // 🛑 CREATE FIRES ON A BUTTON, not on a commit. `ProductDraftEditorForm` creates
-// implicitly the moment its ONE required field is non-empty. `gl_account` has
-// THREE required fields and `accountType` has no honest default, so an implicit
-// create would put a unique-code conflict on an act the person did not knowingly
-// perform - they picked a type, and back comes "4000 is already in use". The
-// button makes the create the thing they just did.
+// implicitly the moment its ONE required field is non-empty. `gl_account` needs
+// a name AND a type (task 15 §5 made the code optional, so it no longer counts)
+// and `accountType` has no honest default, so an implicit create would put a
+// validation refusal on an act the person did not knowingly perform - they
+// typed a name, and back comes a type refusal. The button makes the create the
+// thing they just did.
 //
 // This file was a READ-ONLY pane between #1982 and this change, and before #1982
 // it was an autosaving form whose every commit wrote LOCAL REACT STATE. The
@@ -55,6 +56,7 @@ import {
   type AccountIdentityRow,
   type AccountRole,
   type ChartAccountRow,
+  type GlAccountSubtypeValue,
   type GlAccountTypeValue,
 } from '@auxx/lib/postings/client'
 import { Button } from '@auxx/ui/components/button'
@@ -69,6 +71,7 @@ import { PickerTrigger } from '~/components/ui/picker-trigger'
 import { BaseType } from '~/components/workflow/types'
 import { useDebouncedCallback } from '~/hooks/use-debounced-value'
 import {
+  ACCOUNT_SUBTYPE_OPTIONS,
   ACCOUNT_SUGGESTION_REASON_COPY,
   ACCOUNT_TYPE_OPTIONS,
   type ChartDraftHandle,
@@ -93,23 +96,41 @@ function firstSelected(value: unknown): string | null {
 }
 
 /** Which field a refusal belongs to. Routed from the patch key that caused it. */
-type FieldKey = 'code' | 'name' | 'accountType' | 'isActive' | 'mapping' | 'form'
+type FieldKey = 'code' | 'name' | 'accountType' | 'isActive' | 'subtype' | 'mapping' | 'form'
 
-/** The four writable attributes, as the form holds them. */
+/** The writable attributes, as the form holds them. */
 interface AccountValues {
+  /** Optional (task 15 §5) - the id is the identity, the code is a label. */
   code: string
   name: string
   /** `null` only in draft mode - "not chosen yet" never reaches a write. */
   accountType: GlAccountTypeValue | null
   isActive: boolean
+  /** What puts this account under COGS on the P&L (task 13 §3). Rarely set. */
+  subtype: GlAccountSubtypeValue | null
 }
 
 /** One create's payload. Every field is settled by the time this is built. */
 export interface NewChartAccount {
-  code: string
+  /** Sent only when non-blank (task 15 §5) - a blank code means no code at all. */
+  code?: string
   name: string
   accountType: GlAccountTypeValue
   isActive: boolean
+  subtype?: GlAccountSubtypeValue | null
+}
+
+/**
+ * One update's payload, as it crosses to the server. `code: null` clears it
+ * (task 15 §5) - distinct from the form's own `AccountValues.code`, which is
+ * always a plain string so the text input has something to bind to.
+ */
+export interface ChartAccountPatch {
+  code?: string | null
+  name?: string
+  accountType?: GlAccountTypeValue
+  isActive?: boolean
+  subtype?: GlAccountSubtypeValue | null
 }
 
 interface ChartAccountEditorProps {
@@ -128,7 +149,7 @@ interface ChartAccountEditorProps {
   /** First create resolved: swap `selectedId` to the real id, KEEPING the draft. */
   onDraftCommitted: (recordId: string) => void
   /** Writes one attribute. Rejects with the server's message. */
-  onUpdate: (id: string, patch: Partial<AccountValues>) => Promise<ChartAccountRow>
+  onUpdate: (id: string, patch: ChartAccountPatch) => Promise<ChartAccountRow>
   /** Confirms, then archives. Rejects with the server's message. */
   onRemove: (id: string) => Promise<void>
   /** The account map. Decorates this pane; never gates the rest of it. */
@@ -145,7 +166,9 @@ interface ChartAccountEditorProps {
 /**
  * A posting line stores the account's ID, not its code (task 15) - renumbering
  * no longer detaches history from this account at all, so this pane can say
- * exactly that rather than caution about it.
+ * exactly that rather than caution about it. Also why the code is optional
+ * (task 15 §5): a chart imported with numbering off, or kept by name alone,
+ * needs no number to be postable.
  *
  * Stated with a COUNT (`ledger.chartAccountUsage`, keyed on `glAccountId`):
  * "142 posted lines carry this account" is a fact about this account, where a
@@ -153,9 +176,9 @@ interface ChartAccountEditorProps {
  */
 function codeDescription(postedLines: number): string {
   if (postedLines === 0) {
-    return 'The account number. Unique across the chart, and yours to change. Nothing has posted to this account yet.'
+    return 'The account number, if this chart uses one. Unique across the chart when set, and yours to change. Nothing has posted to this account yet.'
   }
-  return `${postedLines} posted ${postedLines === 1 ? 'line carries' : 'lines carry'} this account. A posted line stores the account's id, not its code, so renumbering it - unlike deleting it - never affects the ledger.`
+  return `${postedLines} posted ${postedLines === 1 ? 'line carries' : 'lines carry'} this account. A posted line stores the account's id, not its code, so renumbering it - or removing the code entirely - never affects the ledger.`
 }
 
 export function ChartAccountEditor({
@@ -278,6 +301,7 @@ function ChartAccountForm({
     name: account?.name ?? '',
     accountType: account?.accountType ?? null,
     isActive: account?.isActive ?? true,
+    subtype: account?.subtype ?? null,
   })
   const [values, setValues] = useState<AccountValues>(valuesRef.current)
   const [errors, setErrors] = useState<Partial<Record<FieldKey, string>>>({})
@@ -322,7 +346,18 @@ function ChartAccountForm({
       }
 
       setErrors((prev) => ({ ...prev, [key]: undefined }))
-      void onUpdate(recordId, patch).catch((error: unknown) => {
+      // A blank code CLEARS it (task 15 §5) - sent as `null`, distinct from the
+      // form's own `AccountValues.code`, which stays a plain string for the
+      // text input to bind to. `accountType` never crosses as `null` - the
+      // draft's "not chosen yet" reading of it never reaches a write.
+      const wire: ChartAccountPatch = {
+        name: patch.name,
+        accountType: patch.accountType ?? undefined,
+        isActive: patch.isActive,
+        subtype: patch.subtype,
+      }
+      if (patch.code !== undefined) wire.code = patch.code.trim() || null
+      void onUpdate(recordId, wire).catch((error: unknown) => {
         setErrors((prev) => ({
           ...prev,
           [key]: error instanceof Error ? error.message : 'Could not save the change.',
@@ -335,13 +370,13 @@ function ChartAccountForm({
   const commitCode = useDebouncedCallback((value: string) => commit('code', { code: value }), 500)
   const commitName = useDebouncedCallback((value: string) => commit('name', { name: value }), 500)
 
-  const canCreate =
-    values.code.trim().length > 0 && values.name.trim().length > 0 && values.accountType !== null
+  // Code is optional (task 15 §5) - only name and type gate Create.
+  const canCreate = values.name.trim().length > 0 && values.accountType !== null
 
   const handleCreate = useCallback(async () => {
     if (creatingRef.current || recordIdRef.current) return
     const snapshot = valuesRef.current
-    if (!snapshot.code.trim() || !snapshot.name.trim() || !snapshot.accountType) return
+    if (!snapshot.name.trim() || !snapshot.accountType) return
 
     creatingRef.current = true
     setCreating(true)
@@ -349,10 +384,12 @@ function ChartAccountForm({
 
     try {
       const created = await onCreate({
-        code: snapshot.code.trim(),
+        // Sent only when non-blank - a blank code means no code at all.
+        code: snapshot.code.trim() || undefined,
         name: snapshot.name.trim(),
         accountType: snapshot.accountType,
         isActive: snapshot.isActive,
+        subtype: snapshot.subtype,
       })
 
       // Flip the commit target FIRST - a keystroke landing while we settle below
@@ -363,13 +400,14 @@ function ChartAccountForm({
       // Whatever was typed while the create was in flight, against the now-real
       // account. One call, because a create carries the whole snapshot.
       const latest = valuesRef.current
-      const changed: Partial<AccountValues> = {}
-      if (latest.code.trim() !== snapshot.code.trim()) changed.code = latest.code.trim()
+      const changed: ChartAccountPatch = {}
+      if (latest.code.trim() !== snapshot.code.trim()) changed.code = latest.code.trim() || null
       if (latest.name.trim() !== snapshot.name.trim()) changed.name = latest.name.trim()
       if (latest.accountType && latest.accountType !== snapshot.accountType) {
         changed.accountType = latest.accountType
       }
       if (latest.isActive !== snapshot.isActive) changed.isActive = latest.isActive
+      if (latest.subtype !== snapshot.subtype) changed.subtype = latest.subtype
       if (Object.keys(changed).length > 0) await onUpdate(created.id, changed)
 
       onDraftCommitted(created.id)
@@ -451,7 +489,6 @@ function ChartAccountForm({
             title='Code'
             type={BaseType.STRING}
             showIcon
-            isRequired
             description={codeDescription(postedLines)}>
             <FieldInputAdapter
               fieldType={FieldType.TEXT}
@@ -462,7 +499,7 @@ function ChartAccountForm({
                 setValues(valuesRef.current)
                 commitCode(value as string)
               }}
-              placeholder='1310'
+              placeholder='Optional'
             />
             <FieldError message={errors.code} />
           </FieldPanelRow>
@@ -520,6 +557,26 @@ function ChartAccountForm({
               onChange={(value) => commit('isActive', { isActive: value as boolean })}
             />
             <FieldError message={errors.isActive} />
+          </FieldPanelRow>
+
+          <FieldPanelRow
+            title='Subtype'
+            type={BaseType.ENUM}
+            showIcon
+            description='The second fact about this account (task 13 §3) - what puts it under Cost of goods sold on the P&L, never the code. Most accounts carry none.'>
+            <FieldInputAdapter
+              fieldType={FieldType.SINGLE_SELECT}
+              fieldOptions={{ options: ACCOUNT_SUBTYPE_OPTIONS }}
+              value={values.subtype}
+              disabled={!canControl}
+              triggerProps={{ className: 'w-full ps-0 pe-1' }}
+              onChange={(value) => {
+                const next = firstSelected(value)
+                commit('subtype', { subtype: next as GlAccountSubtypeValue | null })
+              }}
+              placeholder='None'
+            />
+            <FieldError message={errors.subtype} />
           </FieldPanelRow>
 
           {committed && (
@@ -593,8 +650,8 @@ function ChartAccountForm({
                 </Button>
                 <FieldError message={errors.form} />
                 <p className='text-muted-foreground text-xs'>
-                  A code, a name and a type are all required. Nothing is written until you create
-                  it.
+                  A name and a type are required; the code is optional. Nothing is written until you
+                  create it.
                 </p>
               </>
             )}

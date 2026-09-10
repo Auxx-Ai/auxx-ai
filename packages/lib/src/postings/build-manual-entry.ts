@@ -29,14 +29,16 @@
  *
  * ## What is deliberately NOT here
  *
- * **The inventory refusal.** A line names `1310` by CODE, and this function has
- * no chart, so it cannot know which code carries `inventory_raw_materials` in
- * THIS org - and the whole point of `G8` is that the number differs per org.
- * The refusal therefore lives in `post-entry.ts`'s `prepareEntry`, which has
- * already resolved every line against the chart, and it fires for `preview` and
- * `post` alike as `blockedBy: { status: 'inventory_role_refused' }`. Putting a
- * hardcoded `['1310','1320','1330']` here would be correct for exactly the orgs
- * that never renumbered.
+ * **The inventory refusal.** A person NAMES an account by picking it out of
+ * their own chart - a `gl_account` `EntityInstance` id, which is what crosses
+ * the wire (task 15: the id is the identity, the code is just a label the
+ * chart may or may not carry). This function has no chart, so it cannot know
+ * which id carries `inventory_raw_materials` in THIS org. The refusal
+ * therefore lives in `post-entry.ts`'s `prepareEntry`, which has already
+ * resolved every line against the chart, and it fires for `preview` and `post`
+ * alike as `blockedBy: { status: 'inventory_role_refused' }`. It still applies
+ * unchanged here: it resolves by id too, so naming the inventory account by id
+ * rather than by code closes no door.
  *
  * **Anything about periods being open.** `resolvePeriodLock` and
  * `assertPeriodOpen` own that, and the poster surfaces it as `period_closed`.
@@ -51,16 +53,18 @@ import type { BuiltEntry, GlPostingLineInput, PostingDirection, PostingType } fr
 /**
  * The two posting types a human authors by hand, line by line.
  *
- * Both name accounts by CODE and neither drives a role, which is why
+ * Both name accounts by ID - a person picks a specific account out of their
+ * own chart rather than driving a role - which is why
  * `SINGLE_WRITER_ROLES_BY_POSTING_TYPE` declares `[]` for both and why the
- * inventory guard for them is by NAME rather than by role.
+ * inventory guard for them is by NAME (resolved by id, task 15) rather than by
+ * role.
  */
 export type ManualPostingType = Extract<PostingType, 'manual_journal' | 'opening_balance'>
 
-/** One line as a person entered it: an account code, a side, and an amount. */
+/** One line as a person entered it: an account, a side, and an amount. */
 export interface ManualEntryLine {
-  /** An account CODE out of this org's own chart, e.g. `'6300'`. */
-  accountCode: string
+  /** The `gl_account` `EntityInstance` id out of this org's own chart. */
+  glAccountId: string
   direction: PostingDirection
   /** Integer minor units, > 0. `direction` is the only carrier of sign. */
   amountMinor: number
@@ -180,7 +184,7 @@ export function buildManualEntry(input: BuildManualEntryInput): BuiltManualEntry
 
   for (const [index, line] of lines.entries()) {
     const row = index + 1
-    if (!line.accountCode || line.accountCode.trim().length === 0) {
+    if (!line.glAccountId || line.glAccountId.trim().length === 0) {
       throw new UnprocessableEntityError(`Row ${row} has no account. Choose one from the chart.`, {
         postingType,
         number,
@@ -188,13 +192,13 @@ export function buildManualEntry(input: BuildManualEntryInput): BuiltManualEntry
     }
     if (!Number.isFinite(line.amountMinor) || !Number.isInteger(line.amountMinor)) {
       throw new UnprocessableEntityError(
-        `Row ${row} (${line.accountCode}) has amount ${String(line.amountMinor)}, which is not a whole number of cents.`,
+        `Row ${row} has amount ${String(line.amountMinor)}, which is not a whole number of cents.`,
         { postingType, number, row: String(row) }
       )
     }
     if (line.amountMinor <= 0) {
       throw new UnprocessableEntityError(
-        `Row ${row} (${line.accountCode}) has amount ${line.amountMinor}. An amount is always positive - the debit/credit column carries the sign.`,
+        `Row ${row} has amount ${line.amountMinor}. An amount is always positive - the debit/credit column carries the sign.`,
         { postingType, number, row: String(row) }
       )
     }
@@ -219,7 +223,7 @@ export function buildManualEntry(input: BuildManualEntryInput): BuiltManualEntry
   }
 
   const postingLines: GlPostingLineInput[] = lines.map((line, index) => ({
-    accountCode: line.accountCode.trim(),
+    glAccountId: line.glAccountId.trim(),
     direction: line.direction,
     amount: line.amountMinor,
     memo: line.memo ?? memo,
@@ -255,11 +259,11 @@ function findWarnings(lines: ManualEntryLine[]): string[] {
 
   const bothSides = new Set<string>()
   const debited = new Set(
-    lines.filter((l) => l.direction === 'debit').map((l) => l.accountCode.trim())
+    lines.filter((l) => l.direction === 'debit').map((l) => l.glAccountId.trim())
   )
   for (const line of lines) {
-    if (line.direction === 'credit' && debited.has(line.accountCode.trim())) {
-      bothSides.add(line.accountCode.trim())
+    if (line.direction === 'credit' && debited.has(line.glAccountId.trim())) {
+      bothSides.add(line.glAccountId.trim())
     }
   }
   if (bothSides.size > 0) {

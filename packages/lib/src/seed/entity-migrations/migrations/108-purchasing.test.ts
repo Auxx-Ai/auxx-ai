@@ -1037,8 +1037,14 @@ describe('the chart of accounts is ours', () => {
   // `vendor_part` is keyed on (part, supplier), `subpart` on (parentPart,
   // childPart). A lone position-1 leg is the single-field case wearing the
   // composite's clothes, and `identifier-fields.test.ts` rejects it by name.
-  it('the code is the row identity, unique per org and never null', () => {
-    expect(GL_ACCOUNT_FIELDS.code?.nullable).toBe(false)
+  //
+  // Task 15 §5: the code is OPTIONAL now - `glAccountId` is the identity, the
+  // code is a label the owner may leave blank. `isIdentifier` and `unique`
+  // stay set (uniqueness applies among non-null codes;
+  // `identifier-fields.test.ts` requires `unique` to imply `isIdentifier`).
+  it('the code is a label the owner may leave blank, unique among the codes that exist', () => {
+    expect(GL_ACCOUNT_FIELDS.code?.nullable).toBe(true)
+    expect(GL_ACCOUNT_FIELDS.code?.capabilities?.required).toBe(false)
     expect(GL_ACCOUNT_FIELDS.code?.isIdentifier).toBe(true)
     expect(GL_ACCOUNT_FIELDS.code?.naturalKeyPosition).toBeUndefined()
     expect(GL_ACCOUNT_FIELDS.code?.capabilities?.unique).toBe(true)

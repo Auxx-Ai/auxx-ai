@@ -122,10 +122,10 @@ export async function readOpeningTrialBalance(
         }
       }
 
-      // role -> the code THIS org gave the account, and the settings value that
-      // owns that row. `G8` read backwards: the number differs per org, so the
-      // lock has to be resolved rather than hardcoded to 1310/1320/1330.
-      const inventoryByCode = new Map<string, { role: string; minor: number | null }>()
+      // role -> the id THIS org gave the account, and the settings value that
+      // owns that row. `G8` read backwards: the account differs per org, so the
+      // lock has to be resolved rather than hardcoded to three fixed accounts.
+      const inventoryById = new Map<string, { role: string; minor: number | null }>()
       // Keyed off `ACCOUNT_ROLES`, never off `INVENTORY_ROLES`'s ordering: the
       // three settings and the three roles are paired by NAME in
       // `OPENING_BASELINE_SETTING_KEYS`, and pairing them by array index would
@@ -136,14 +136,14 @@ export async function readOpeningTrialBalance(
         [ACCOUNT_ROLES.INVENTORY_FINISHED_GOODS]: minor(finishedGoods),
       }
       for (const [role, account] of inventoryAccounts) {
-        inventoryByCode.set(account.code, { role, minor: settingsByRole[role] ?? null })
+        inventoryById.set(account.glAccountId, { role, minor: settingsByRole[role] ?? null })
       }
 
-      const byCode = collectLinesByCode(entry?.lines ?? [])
+      const byId = collectLinesById(entry?.lines ?? [])
 
       const rows: OpeningTrialBalanceRow[] = sortChartAccountsForStatement(chart).map((account) => {
-        const locked = inventoryByCode.get(account.code)
-        const stored = byCode.get(account.code)
+        const locked = inventoryById.get(account.id)
+        const stored = byId.get(account.id)
         // 🛑 A locked row reads its amount from the SETTINGS, never from the
         // stored draft, even when the draft holds a different number. The
         // settings are what `readOpeningBaseline` hands the first close, so a
@@ -192,16 +192,16 @@ export async function readOpeningTrialBalance(
   )
 }
 
-/** Both sides of every stored line, summed per account code. */
-function collectLinesByCode(lines: readonly JournalEntryLine[]) {
-  const byCode = new Map<string, { debitMinor: number; creditMinor: number }>()
+/** Both sides of every stored line, summed per `gl_account` id. */
+function collectLinesById(lines: readonly JournalEntryLine[]) {
+  const byId = new Map<string, { debitMinor: number; creditMinor: number }>()
   for (const line of lines) {
-    const row = byCode.get(line.accountCode) ?? { debitMinor: 0, creditMinor: 0 }
+    const row = byId.get(line.glAccountId) ?? { debitMinor: 0, creditMinor: 0 }
     if (line.direction === 'debit') row.debitMinor += line.amountMinor
     else row.creditMinor += line.amountMinor
-    byCode.set(line.accountCode, row)
+    byId.set(line.glAccountId, row)
   }
-  return byCode
+  return byId
 }
 
 /**

@@ -71,7 +71,7 @@ interface LineRow {
   glPostingId: string
   lineNumber: number
   glAccountId?: string
-  accountCode: string
+  accountCode: string | null
   accountRole: string | null
   accountName?: string | null
   direction: string
@@ -83,7 +83,8 @@ interface LineRow {
 
 interface Account {
   id: string
-  code: string
+  /** Null models an account with no code (task 15 §5). */
+  code: string | null
   name: string
   accountType: string
 }
@@ -270,6 +271,17 @@ const CHART = [
   { role: 'grni', account: GRNI },
   { role: 'inventory_raw_materials', account: RAW },
 ]
+/** An imported account carrying no code (task 15 §5). */
+const NO_CODE_RAW: Account = {
+  id: 'acct_raw_nocode',
+  code: null,
+  name: 'Raw Materials Inventory',
+  accountType: 'asset',
+}
+const NO_CODE_CHART = [
+  { role: 'grni', account: GRNI },
+  { role: 'inventory_raw_materials', account: NO_CODE_RAW },
+]
 
 function original(overrides: Partial<PostingRow> = {}): PostingRow {
   return {
@@ -412,6 +424,32 @@ describe('the reversal pair', () => {
     const reversalId = fake.postings[1]!.id
     const written = fake.lines.filter((line) => line.glPostingId === reversalId)
     expect(written.map((line) => line.glAccountId)).toEqual([RAW.id, GRNI.id])
+  })
+
+  // Task 15 §5: a line whose account carries no code reverses exactly like
+  // any other - by `glAccountId`, never by the (absent) code - and the
+  // reversal's own stored snapshot is null too, not a refusal.
+  it('reverses a line whose account has no code', async () => {
+    const fake = createFakeDb({
+      postings: [original()],
+      lines: originalLines([{ glAccountId: NO_CODE_RAW.id, accountCode: null }, {}]),
+      chart: NO_CODE_CHART,
+    })
+    const result = await reverseEntry(fake.db, {
+      organizationId: ORG,
+      glPostingId: 'post_1',
+      lock: OPEN,
+    })
+
+    expect(result.status).not.toBe('error')
+    const reversalId = fake.postings[1]!.id
+    const written = fake.lines.filter((line) => line.glPostingId === reversalId)
+    expect(written[0]).toMatchObject({
+      glAccountId: NO_CODE_RAW.id,
+      accountCode: null,
+      accountRole: 'inventory_raw_materials',
+      direction: 'credit',
+    })
   })
 
   it('leaves the original provider entry alone', async () => {

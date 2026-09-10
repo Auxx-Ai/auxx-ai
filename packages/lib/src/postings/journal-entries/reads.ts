@@ -416,13 +416,20 @@ export function parseLines(value: unknown): JournalEntryLine[] {
   for (const raw of array) {
     if (typeof raw !== 'object' || raw === null) continue
     const line = raw as Record<string, unknown>
-    const accountCode = typeof line.accountCode === 'string' ? line.accountCode : null
+    // 🛑 `glAccountId` only. A row is dropped, not tolerated, when it carries a
+    // legacy `accountCode` and no id: task 15's expiry means there is no
+    // stored entry to preserve, and accepting the old shape here would let a
+    // hand-written or pre-migration row silently reappear with no account.
+    const glAccountId =
+      typeof line.glAccountId === 'string' && line.glAccountId.trim().length > 0
+        ? line.glAccountId
+        : null
     const direction =
       line.direction === 'debit' || line.direction === 'credit' ? line.direction : null
     const amountMinor = typeof line.amountMinor === 'number' ? line.amountMinor : null
-    if (!accountCode || !direction || amountMinor === null) continue
+    if (!glAccountId || !direction || amountMinor === null) continue
     lines.push({
-      accountCode,
+      glAccountId,
       direction,
       amountMinor,
       ...(typeof line.memo === 'string' && line.memo ? { memo: line.memo } : {}),

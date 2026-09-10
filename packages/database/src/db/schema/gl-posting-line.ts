@@ -62,15 +62,19 @@ export const GlPostingLine = pgTable(
      * at post time, beside `accountName`. `glAccountId` above is the identity
      * now; a report should group by it rather than by this column, because a
      * code is a label the owner may rename or renumber and the ledger must not
-     * re-partition when they do (task 15 §0.4). This stays `notNull` with its
-     * check constraint for now, since task 15 §5 is what makes the code optional.
+     * re-partition when they do (task 15 §0.4).
+     *
+     * NULLABLE (task 15 §5): the account may carry no code at all - a chart
+     * imported from a provider that ships with account numbers off, or one a
+     * person keeps by name alone. A snapshot of nothing is null, exactly as
+     * `accountName` already is.
      *
      * Never a provider account id, and never a foreign key (decision P2): a
      * ledger line must outlive the chart row, so an FK to the `gl_account`
      * `EntityInstance` would either block deleting an account that has ever been
      * posted to, or cascade and destroy history.
      */
-    accountCode: text().notNull(),
+    accountCode: text(),
     /**
      * The logical account ROLE the builder emitted — `'grni'`,
      * `'inventory_raw_materials'`, `'ppv'` — which `accountCode` was resolved
@@ -154,7 +158,6 @@ export const GlPostingLine = pgTable(
     index('GlPostingLine_glPostingId_idx').using('btree', table.glPostingId.asc().nullsLast()),
 
     check('GlPostingLine_amount_check', sql`${table.amountMinor} > 0`),
-    check('GlPostingLine_accountCode_check', sql`length(trim(${table.accountCode})) > 0`),
     check('GlPostingLine_lineNumber_check', sql`${table.lineNumber} > 0`),
   ]
 )

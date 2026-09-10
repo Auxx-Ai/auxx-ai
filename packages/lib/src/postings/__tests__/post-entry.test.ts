@@ -88,7 +88,7 @@ interface LineRow {
   glPostingId: string
   lineNumber: number
   glAccountId: string
-  accountCode: string
+  accountCode: string | null
   accountRole: string | null
   accountName: string | null
   direction: string
@@ -100,7 +100,8 @@ interface LineRow {
 
 interface Account {
   id: string
-  code: string
+  /** Null models an account with no code (task 15 §5). */
+  code: string | null
   name: string
   accountType: string
   isActive?: boolean
@@ -371,10 +372,22 @@ const RAW: Account = {
   name: 'Raw Materials Inventory',
   accountType: 'asset',
 }
+/** An imported account carrying no code (task 15 §5) - QuickBooks ships numbering off. */
+const NO_CODE_RAW: Account = {
+  id: 'acct_raw_nocode',
+  code: null,
+  name: 'Raw Materials Inventory',
+  accountType: 'asset',
+}
 
 const FULL_CHART: Chart[] = [
   { role: 'grni', account: GRNI },
   { role: 'inventory_raw_materials', account: RAW },
+]
+
+const NO_CODE_CHART: Chart[] = [
+  { role: 'grni', account: GRNI },
+  { role: 'inventory_raw_materials', account: NO_CODE_RAW },
 ]
 
 function receiptEntry(overrides: Partial<BuiltEntry> = {}): BuiltEntry {
@@ -522,6 +535,28 @@ describe('an organization with no accounting provider', () => {
     await postEntry(fake.db, { organizationId: ORG, entry: receiptEntry(), lock: OPEN })
 
     expect(fake.lines.map((line) => line.glAccountId)).toEqual([RAW.id, GRNI.id])
+  })
+
+  // Task 15 §5: a live account with no code posts exactly like one with a
+  // code - `accountCode` on the stored line is null, a snapshot of nothing,
+  // never a refusal.
+  it('posts to an account with no code and stores a null accountCode snapshot', async () => {
+    const fake = createFakeDb(NO_CODE_CHART)
+    const result = await postEntry(fake.db, {
+      organizationId: ORG,
+      entry: receiptEntry(),
+      lock: OPEN,
+    })
+
+    expect(result.status).toBe('not_connected')
+    expect(fake.lines).toHaveLength(2)
+    expect(fake.lines[0]).toMatchObject({
+      glAccountId: NO_CODE_RAW.id,
+      accountCode: null,
+      accountRole: 'inventory_raw_materials',
+      accountName: 'Raw Materials Inventory',
+    })
+    expect(fake.lines[1]).toMatchObject({ glAccountId: GRNI.id, accountCode: '2160' })
   })
 
   it('stores the built entry AND the resolved lines as the draft audit record', async () => {

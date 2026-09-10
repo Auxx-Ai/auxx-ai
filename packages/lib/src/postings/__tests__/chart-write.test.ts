@@ -230,7 +230,7 @@ beforeEach(() => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('createChartAccount', () => {
-  it('writes all four attributes and returns the row as the list renders it', async () => {
+  it('writes every attribute and returns the row as the list renders it', async () => {
     h.createdId = 'acct_6410'
     const db = stubDb([
       {
@@ -261,6 +261,8 @@ describe('createChartAccount', () => {
         gl_account_type: 'expense',
         // Defaulted, matching the field's registry default.
         gl_account_is_active: true,
+        // Defaulted when no subtype is given.
+        gl_account_subtype: null,
       },
     })
     expect(row).toEqual({
@@ -269,7 +271,78 @@ describe('createChartAccount', () => {
       name: 'Office Supplies',
       accountType: 'expense',
       isActive: true,
+      subtype: null,
     })
+  })
+
+  // 🛑 Task 15 §5's own regression: `code` used to be a third requirement and
+  // is not one any longer. A chart imported from a provider that ships with
+  // numbering off, or a person who keeps a chart by name alone, needs this.
+  it('creates an account with no code at all', async () => {
+    h.createdId = 'acct_imported'
+    const db = stubDb([
+      { id: 'acct_imported', name: 'Sales:Product Income', accountType: 'revenue' },
+    ])
+
+    const row = (
+      await createChartAccount(db, {
+        organizationId: ORG,
+        name: 'Sales:Product Income',
+        accountType: 'revenue',
+        actorUserId: USER,
+      })
+    )._unsafeUnwrap()
+
+    expect(h.creates[0]?.values.gl_account_code).toBeNull()
+    expect(row.code).toBeNull()
+  })
+
+  // A blank string means the same thing as omitting `code` entirely.
+  it('treats a whitespace-only code the same as no code, rather than refusing', async () => {
+    h.createdId = 'acct_blank_code'
+    const db = stubDb([{ id: 'acct_blank_code', name: 'Office Supplies', accountType: 'expense' }])
+
+    const result = await createChartAccount(db, {
+      organizationId: ORG,
+      code: '   ',
+      name: 'Office Supplies',
+      accountType: 'expense',
+      actorUserId: USER,
+    })
+
+    expect(result.isOk()).toBe(true)
+    expect(h.creates[0]?.values.gl_account_code).toBeNull()
+  })
+
+  it('writes a subtype when one is given', async () => {
+    h.createdId = 'acct_cogs'
+    const db = stubDb([
+      { id: 'acct_cogs', code: '5100', name: 'Product Cost', accountType: 'expense' },
+    ])
+
+    await createChartAccount(db, {
+      organizationId: ORG,
+      code: '5100',
+      name: 'Product Cost',
+      accountType: 'expense',
+      subtype: 'cost_of_goods_sold',
+      actorUserId: USER,
+    })
+
+    expect(h.creates[0]?.values.gl_account_subtype).toBe('cost_of_goods_sold')
+  })
+
+  it('refuses a blank name without touching the handler', async () => {
+    const result = await createChartAccount(stubDb([]), {
+      organizationId: ORG,
+      code: '6410',
+      name: '   ',
+      accountType: 'expense',
+      actorUserId: USER,
+    })
+
+    expect(result._unsafeUnwrapErr().message).toBe('An account needs a name.')
+    expect(h.creates).toHaveLength(0)
   })
 
   it('trims the code and the name before writing', async () => {
@@ -294,19 +367,6 @@ describe('createChartAccount', () => {
 
     expect(h.creates[0]?.values.gl_account_code).toBe('6410')
     expect(h.creates[0]?.values.gl_account_name).toBe('Office Supplies')
-  })
-
-  it('refuses a whitespace-only code without touching the handler', async () => {
-    const result = await createChartAccount(stubDb([]), {
-      organizationId: ORG,
-      code: '   ',
-      name: 'Office Supplies',
-      accountType: 'expense',
-      actorUserId: USER,
-    })
-
-    expect(result._unsafeUnwrapErr().message).toBe('An account needs a code.')
-    expect(h.creates).toHaveLength(0)
   })
 
   // 🛑 I4. `validateUniqueFields` says "Code must be unique: value already
@@ -534,6 +594,38 @@ describe('updateChartAccount', () => {
 
     expect(result.isOk()).toBe(true)
     expect(h.updates[0]?.values).toEqual({ gl_account_code: '2155' })
+  })
+
+  // Task 15 §5: the account id is the identity, so removing the label leaves
+  // a perfectly postable account. `null` and a blank string mean the same thing.
+  it.each([
+    ['null', null],
+    ['a blank string', '   '],
+  ])('clears the code when sent %s', async (_label, sent) => {
+    const db = stubDb([GRNI_ACCOUNT])
+
+    const result = await updateChartAccount(db, {
+      organizationId: ORG,
+      accountId: GRNI_ACCOUNT.id,
+      code: sent,
+      actorUserId: USER,
+    })
+
+    expect(result.isOk()).toBe(true)
+    expect(h.updates[0]?.values).toEqual({ gl_account_code: null })
+  })
+
+  it('writes a subtype', async () => {
+    const db = stubDb([GRNI_ACCOUNT])
+
+    await updateChartAccount(db, {
+      organizationId: ORG,
+      accountId: GRNI_ACCOUNT.id,
+      subtype: 'accounts_payable',
+      actorUserId: USER,
+    })
+
+    expect(h.updates[0]?.values).toEqual({ gl_account_subtype: 'accounts_payable' })
   })
 
   it('makes no call at all when nothing actually changes', async () => {

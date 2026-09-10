@@ -10,13 +10,16 @@
 // statement classifications, the two roles the L1 regime never emits, and how an
 // account reads inside a row.
 
-import type {
-  AccountIdentityRow,
-  AccountRole,
-  AccountSuggestionReason,
-  ChartAccountRow,
-  GlAccountTypeValue,
-  ProviderAccount,
+import {
+  type AccountIdentityRow,
+  type AccountRole,
+  type AccountSuggestionReason,
+  accountSubtypeLabel,
+  type ChartAccountRow,
+  GL_ACCOUNT_SUBTYPES,
+  type GlAccountSubtypeValue,
+  type GlAccountTypeValue,
+  type ProviderAccount,
 } from '@auxx/lib/postings/client'
 import type { SelectOptionColor } from '@auxx/types/custom-field'
 import { formatAccountLabel } from '../account-label-format'
@@ -57,6 +60,24 @@ export function accountTypeLabel(type: GlAccountTypeValue): string {
 export function accountTypeColor(type: GlAccountTypeValue): SelectOptionColor {
   return ACCOUNT_TYPE_OPTIONS.find((option) => option.value === type)?.color ?? 'blue'
 }
+
+/**
+ * The eight subtypes (task 13 §3 / task 15 §5) - what puts an account under
+ * COGS on the P&L, never a code prefix. Optional: most accounts carry none.
+ *
+ * Derived from `GL_ACCOUNT_SUBTYPES` and `accountSubtypeLabel`, both
+ * client-exported from `@auxx/lib/postings/client`, rather than reaching into
+ * the registry's `GlAccountSubtype.values` (server-only).
+ */
+export const ACCOUNT_SUBTYPE_OPTIONS: Array<{
+  value: GlAccountSubtypeValue
+  label: string
+  color: SelectOptionColor
+}> = GL_ACCOUNT_SUBTYPES.map((value) => ({
+  value,
+  label: accountSubtypeLabel(value),
+  color: 'gray',
+}))
 
 /**
  * The account map, as the Chart of accounts tab consumes it.

@@ -190,7 +190,7 @@ async function main() {
   )
   for (const row of tb.value.rows) {
     console.log(
-      `TB ${row.accountCode.padEnd(6)} ${row.accountName.padEnd(34)} ` +
+      `TB ${(row.accountCode ?? '').padEnd(6)} ${row.accountName.padEnd(34)} ` +
         `Dr ${String(row.debitMinor).padStart(12)}  Cr ${String(row.creditMinor).padStart(12)}`
     )
   }

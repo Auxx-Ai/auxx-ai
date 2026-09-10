@@ -489,7 +489,7 @@ function pickOverrides(input: PreviewJournalEntryInput): Partial<JournalEntryRec
  */
 function normaliseLines(lines: JournalEntryLine[]): JournalEntryLine[] {
   return lines.map((line) => ({
-    accountCode: line.accountCode,
+    glAccountId: line.glAccountId,
     direction: line.direction,
     amountMinor: line.amountMinor,
     ...(line.memo ? { memo: line.memo } : {}),

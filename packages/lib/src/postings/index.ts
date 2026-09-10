@@ -17,6 +17,12 @@ export {
   type SetAccountIdentityOptions,
   setAccountIdentity,
 } from './account-identities'
+export { accountLabel, compareAccountsByCodeThenName, type NamedAccount } from './account-label'
+export {
+  accountSubtypeLabel,
+  GL_ACCOUNT_SUBTYPES,
+  type GlAccountSubtypeValue,
+} from './account-subtype'
 // ── plans/accounting/tasks/10: credit memos, one document for "you owe us less" ──
 export {
   type BuildCreditMemoEntryInput,
