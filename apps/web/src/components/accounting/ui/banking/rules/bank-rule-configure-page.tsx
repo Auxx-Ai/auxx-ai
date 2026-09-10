@@ -20,16 +20,13 @@ import { BankAccountPicker } from '~/components/accounting/ui/bank-account-picke
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { RuleActionsSummaryRow } from '~/components/rules/ui/rule-actions-summary-row'
-import { DIRECTION_OPTIONS, MATCH_FIELD_OPTIONS, MATCH_OPERATOR_OPTIONS } from './bank-rule-options'
-
-/** Flush-in-a-FieldPanelRow trigger sizing, the same one the rule editors share. */
-const TRIGGER_PROPS = { className: 'w-full ps-0 pe-1' } as const
-
-/** SINGLE_SELECT adapters emit arrays; take the first value. */
-function firstValue(value: unknown): string {
-  const v = Array.isArray(value) ? value[0] : value
-  return typeof v === 'string' ? v : ''
-}
+import {
+  DIRECTION_OPTIONS,
+  firstValue,
+  MATCH_FIELD_OPTIONS,
+  MATCH_OPERATOR_OPTIONS,
+  TRIGGER_PROPS,
+} from './bank-rule-options'
 
 interface BankRuleConfigurePageProps {
   name: string

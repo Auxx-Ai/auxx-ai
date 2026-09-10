@@ -346,6 +346,16 @@ export interface BankAccountCoverage {
  * browser bundle even though `feed/actions.ts` reaches Drizzle and the Stripe SDK.
  */
 export type { BankConnectionStart } from './feed/actions'
+// `descriptor.ts` is pure and dependency-free for the same reason, and the analyze
+// panel needs it in the browser: dissecting the line a reviewer is looking at is a
+// rendering concern, and a roundtrip per keystroke to learn where `CO ID:` starts
+// would be absurd. 🛑 Nothing it produces is ever stored - see its own header.
+export type {
+  BankDescriptorKind,
+  BankDescriptorTag,
+  ParsedBankDescriptor,
+} from './feed/descriptor'
+export { displayDescription, findDescriptorTag, parseBankDescriptor } from './feed/descriptor'
 // ── The Stripe Financial Connections feed (HANDOFF slot 3A) ───────────────────
 //
 // `normalizeMatchKey` is pure and dependency-free, and the review queue's browser code

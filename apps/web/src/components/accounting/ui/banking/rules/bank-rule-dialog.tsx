@@ -24,6 +24,16 @@ interface BankRuleDialogProps {
   onClose: () => void
   /** Null ⇒ create. */
   rule?: BankRuleRecord | null
+  /**
+   * Opening values for a CREATE, from the analyze panel's previewed pattern.
+   *
+   * ⚠️ Ignored when `rule` is set. A seed is where a new rule starts; an edit
+   * starts from the rule, and letting a seed override stored values would let a
+   * drawer quietly rewrite a rule somebody opened to read.
+   */
+  seed?: Partial<
+    Pick<BankRuleRecord, 'name' | 'matchField' | 'matchOperator' | 'matchValue' | 'direction'>
+  >
 }
 
 /**
@@ -34,7 +44,7 @@ interface BankRuleDialogProps {
  * This dialog owns all form state; the shell owns navigation only, exactly like
  * `RecordRuleDialog` and `MailFilterDialog`.
  */
-export function BankRuleDialog({ open, onClose, rule }: BankRuleDialogProps) {
+export function BankRuleDialog({ open, onClose, rule, seed }: BankRuleDialogProps) {
   const utils = api.useUtils()
 
   const [page, setPage] = useState<'configure' | 'action'>('configure')
@@ -54,18 +64,18 @@ export function BankRuleDialog({ open, onClose, rule }: BankRuleDialogProps) {
   useEffect(() => {
     if (!open) return
     setPage('configure')
-    setName(rule?.name ?? '')
-    setMatchField(rule?.matchField ?? 'matchKey')
-    setMatchOperator(rule?.matchOperator ?? 'contains')
-    setMatchValue(rule?.matchValue ?? '')
-    setDirection(rule?.direction ?? 'any')
+    setName(rule?.name ?? seed?.name ?? '')
+    setMatchField(rule?.matchField ?? seed?.matchField ?? 'matchKey')
+    setMatchOperator(rule?.matchOperator ?? seed?.matchOperator ?? 'contains')
+    setMatchValue(rule?.matchValue ?? seed?.matchValue ?? '')
+    setDirection(rule?.direction ?? seed?.direction ?? 'any')
     setBankAccountId(rule?.bankAccountId ?? '')
     setAutoApply(rule?.autoApply ?? false)
     setAction(rule?.action ?? 'code')
     setGlAccountId(rule?.glAccountId ?? '')
     setCounterpartBankAccountId(rule?.counterpartBankAccountId ?? '')
     setMemo(rule?.memo ?? '')
-  }, [open, rule])
+  }, [open, rule, seed])
 
   // Each page owns its own `BankAccountPicker`; the list is read here only to
   // name the chosen counterpart in the action summary row - so archived rows

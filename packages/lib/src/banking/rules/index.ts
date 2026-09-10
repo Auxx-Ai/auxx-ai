@@ -9,6 +9,7 @@
 
 export type {
   BankRuleAction,
+  BankRuleConditions,
   BankRuleDirection,
   BankRuleMatchField,
   BankRuleMatchOperator,
@@ -30,9 +31,11 @@ export {
   SUGGESTION_SOURCES,
   TRANSFER_MATCH_WINDOW_DAYS,
 } from './client'
-export { evaluateRules } from './evaluate'
+export { evaluateRules, matchesRuleConditions } from './evaluate'
 export type {
   BankRuleFieldContext,
+  RulePatternPreview,
+  RulePatternPreviewLine,
   RuleTransactionFieldContext,
   TransactionMatchRow,
 } from './reads'
@@ -45,6 +48,7 @@ export {
   listHistoryMatches,
   loadBankRuleFieldContext,
   loadRuleTransactionFieldContext,
+  previewRulePattern,
   requireBankRuleFieldContext,
   requireRuleTransactionFieldContext,
 } from './reads'

@@ -21,6 +21,7 @@ import {
   deleteRule,
   getBankRule,
   listBankRules,
+  previewRulePattern,
   runSuggestionsForAccount,
   updateRule,
 } from '@auxx/lib/banking/rules'
@@ -59,6 +60,45 @@ export const bankingRulesRouter = createTRPCRouter({
     if (result.isErr()) throw result.error
     return result.value
   }),
+
+  /**
+   * Count and sample the lines a pattern WOULD match, without creating a rule.
+   *
+   * 🛑 `ledgerView`, not `ledgerPost`. It creates nothing and changes nothing;
+   * it answers "how many lines look like this one", which is the same question
+   * the queue itself answers and is gated the same way.
+   *
+   * The conditions mirror `ruleFields`' matching half exactly, so whatever the
+   * analyze panel previewed is what `create` accepts a moment later.
+   */
+  previewPattern: permissionProcedure(PermissionKey.ledgerView)
+    .input(
+      z.object({
+        matchField: z.enum(BANK_RULE_MATCH_FIELDS),
+        matchOperator: z.enum(BANK_RULE_MATCH_OPERATORS),
+        matchValue: z.string().max(400),
+        amountMinMinor: z.number().int().nonnegative().nullish(),
+        amountMaxMinor: z.number().int().nonnegative().nullish(),
+        direction: z.enum(BANK_RULE_DIRECTIONS).optional(),
+        bankAccountId: z.string().nullish(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const result = await previewRulePattern(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        conditions: {
+          matchField: input.matchField,
+          matchOperator: input.matchOperator,
+          matchValue: input.matchValue,
+          amountMinMinor: input.amountMinMinor ?? null,
+          amountMaxMinor: input.amountMaxMinor ?? null,
+          direction: input.direction ?? 'any',
+          bankAccountId: input.bankAccountId ?? null,
+        },
+      })
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
 
   get: permissionProcedure(PermissionKey.ledgerView)
     .input(z.object({ id: z.string().min(1) }))
