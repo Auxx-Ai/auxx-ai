@@ -17,7 +17,12 @@
 import { createScopedLogger } from '@auxx/logger'
 import { err, ok, type Result } from 'neverthrow'
 import { NotFoundError, UnprocessableEntityError } from '../errors'
-import type { PostEntryInput, PostEntryResult, ProviderAccount } from './types'
+import type {
+  PostEntryInput,
+  PostEntryResult,
+  ProviderAccount,
+  ProviderBalanceSheet,
+} from './types'
 
 const logger = createScopedLogger('postings-provider')
 
@@ -27,9 +32,14 @@ export const NONE_PROVIDER_ID = 'none'
 /**
  * One accounting system auxx.ai can export postings to.
  *
- * Deliberately two methods. Everything else an accounting integration does -
- * customers, invoices, payments, the chart itself - belongs to the app that owns
- * that integration; this interface is only the posting seam.
+ * Seven methods now (plus an optional `init`) - the "deliberately two
+ * methods" this docblock used to claim went stale when `G19`'s account-mapping
+ * and identity work grew the interface, and brief 19 adds one more on top:
+ * resolve a code, post an entry, read the provider's own chart, read and write
+ * its account map, and read its balance sheet for the opening-balance
+ * suggestion. Everything else an accounting integration does - customers,
+ * invoices, payments - still belongs to the app that owns that integration;
+ * this interface is only the posting and chart-mapping seam.
  */
 export interface AccountingProvider {
   readonly id: string
@@ -74,6 +84,17 @@ export interface AccountingProvider {
    * never received.
    */
   listProviderAccounts(orgId: string): Promise<Result<ProviderAccount[], Error>>
+
+  /**
+   * The connected system's balance sheet as of one date, for the
+   * opening-balance suggestion (brief 19). Null means nothing is connected,
+   * which is a complete answer to a read - the same argument
+   * {@link listProviderAccounts} makes.
+   */
+  readProviderOpeningBalances(
+    orgId: string,
+    asOf: string
+  ): Promise<Result<ProviderBalanceSheet | null, Error>>
 
   /**
    * Which provider account each of the org's own accounts is mapped to, as
@@ -154,6 +175,16 @@ class NoneAccountingProvider implements AccountingProvider {
    */
   async listProviderAccounts(): Promise<Result<ProviderAccount[], Error>> {
     return ok([])
+  }
+
+  /**
+   * No external balance sheet to read, and that is an ANSWER rather than a
+   * failure - the same argument as {@link listProviderAccounts}: "nothing
+   * connected" is a complete answer to a read, not a setup step somebody has
+   * skipped.
+   */
+  async readProviderOpeningBalances(): Promise<Result<ProviderBalanceSheet | null, Error>> {
+    return ok(null)
   }
 
   async listAccountMappings(): Promise<Result<Map<string, string>, Error>> {

@@ -65,10 +65,12 @@ import {
   OPENING_PAIRS,
   readMinorUnits,
 } from './accounting-settings-keys'
+import { OpeningFillButton } from './opening-fill-button'
 import { OpeningPairField, OpeningTotalRow } from './opening-reconciliation-panel'
 import {
   applyOpeningCellChange,
   OpeningTbGrid,
+  openingEvidenceInstruction,
   openingRowsDifferFromServer,
   openingVerdict,
   overlayInventorySettings,
@@ -101,8 +103,10 @@ export function AccountingOpeningSettingsPage() {
   useRequireCapability(PermissionKey.ledgerControl)
   const { hasAccess } = useFeatureFlags()
   const { frozen } = useAccountingSettingsFreeze()
-  const { draft, patch, dirty, save, discard, controlled, isSaving } =
+  const { draft, patch, dirty, save, discard, controlled, isSaving, getSetting } =
     useAccountingSetupDraft(OPENING_DRAFT_KEYS)
+  const openingSource =
+    getSetting('accounting.openingSource') === 'provider' ? 'provider' : 'manual'
 
   const utils = api.useUtils()
   const opening = api.ledgerOpening.get.useQuery()
@@ -262,24 +266,35 @@ export function AccountingOpeningSettingsPage() {
 
           {/* ── The whole chart ────────────────────────────────────────────── */}
           <div className='mt-6 flex flex-col gap-2'>
-            <div className='flex flex-wrap items-baseline justify-between gap-2'>
+            <div className='flex flex-wrap items-center justify-between gap-2'>
               <span className='font-medium text-foreground text-sm'>Opening trial balance</span>
-              {posting && (
-                <span className='flex items-center gap-2 text-muted-foreground text-xs'>
-                  Posted as
-                  <Link
-                    href={`/app/accounting?posting=${posting.id}`}
-                    className='inline-flex items-center gap-1 font-mono text-primary-600 hover:underline'>
-                    {posting.docNumber}
-                    <ExternalLink className='size-3' />
-                  </Link>
-                </span>
-              )}
+              <div className='flex items-center gap-3'>
+                {posting && (
+                  <span className='flex items-center gap-2 text-muted-foreground text-xs'>
+                    Posted as
+                    <Link
+                      href={`/app/accounting?posting=${posting.id}`}
+                      className='inline-flex items-center gap-1 font-mono text-primary-600 hover:underline'>
+                      {posting.docNumber}
+                      <ExternalLink className='size-3' />
+                    </Link>
+                  </span>
+                )}
+                <OpeningFillButton
+                  frozen={readOnly}
+                  cutoverDate={opening.data?.cutoverDate ?? null}
+                  onFilled={() => {
+                    setEdited(null)
+                    setGridDirty(false)
+                  }}
+                />
+              </div>
             </div>
 
             <p className='text-muted-foreground text-sm'>
-              Use the 12/31 statement balance for every bank and card account. Do not use the tax
-              return.
+              {opening.data?.cutoverDate
+                ? openingEvidenceInstruction(openingSource, opening.data.cutoverDate)
+                : 'Use the statement balance for every bank and card account. Do not use the tax return.'}
             </p>
 
             {opening.isPending ? (

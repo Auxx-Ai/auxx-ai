@@ -234,16 +234,25 @@ export {
   type OpeningBaseline,
   readOpeningBaseline,
 } from './opening-baseline'
+// ── plans/accounting/tasks/19: opening balances from the provider, pure half ──
 export {
+  type ProviderOpeningFillInput,
+  type ProviderOpeningFillPlan,
+  planProviderOpeningFill,
+} from './opening-fill-plan'
+export {
+  fillOpeningTrialBalanceFromProvider,
   findOpeningTrialBalanceEntry,
   OPENING_TRIAL_BALANCE_FREEZE_KEY,
   OPENING_TRIAL_BALANCE_KIND,
   type OpeningTrialBalancePosting,
   type OpeningTrialBalanceRow,
   type OpeningTrialBalanceView,
+  type ProviderOpeningFillOutcome,
   postOpeningTrialBalance,
   previewOpeningTrialBalance,
   readOpeningTrialBalance,
+  requireCutoverDate,
   rowsToJournalEntryLines,
   type SaveOpeningTrialBalanceInput,
   saveOpeningTrialBalance,
@@ -453,6 +462,8 @@ export {
   type PostResult,
   type PostResultStatus,
   type ProviderAccount,
+  type ProviderBalanceRow,
+  type ProviderBalanceSheet,
   ProviderPostError,
   type ResolvedPostingLine,
   type RoleAssignmentRow,

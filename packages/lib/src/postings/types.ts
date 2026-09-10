@@ -815,6 +815,48 @@ export interface ProviderAccount {
 }
 
 /**
+ * One row of a connected provider's balance sheet, at the granularity the
+ * opening-balance suggestion (plans/accounting/tasks/19) can act on.
+ *
+ * Provider-neutral by construction, like {@link ProviderAccount} - the shape a
+ * future second provider's own report tool would emit too, not QuickBooks'
+ * report JSON verbatim. Produced by the apps-repo report tool
+ * (`get_quickbooks_balance_sheet`), which has already walked the report's
+ * section/summary tree, dropped every `Summary` and `Section` row, parsed
+ * money into integer minor units and normalised sign to debit-positive -
+ * brief 19 section 3.3 is the full contract.
+ */
+export interface ProviderBalanceRow {
+  /** QuickBooks Account.Id. Null only for a computed row (see below). */
+  providerAccountId: string | null
+  /** As rendered, for the unmatched list. Not used to join. */
+  name: string
+  /** 'account' | 'net_income'. Nothing else is emitted. */
+  kind: 'account' | 'net_income'
+  /** Integer minor units, DEBIT-POSITIVE. See below. */
+  minorSigned: number
+}
+
+/**
+ * A connected provider's balance sheet as of one date - the source for the
+ * opening-balance suggestion (plans/accounting/tasks/19 section 3.3), and what
+ * `AccountingProvider.readProviderOpeningBalances` returns unchanged from the
+ * tool.
+ */
+export interface ProviderBalanceSheet {
+  /** `Header.EndPeriod`, asserted equal to the `asOf` that was asked for. */
+  asOf: string
+  /** `Header.Currency`, the company's home currency. Section 5.5 compares it. */
+  currency: string
+  /** `Header.ReportBasis`. Always `'Accrual'` from this tool; carried so a reader can check. */
+  reportBasis: string
+  /** `Header.Option[NoReportData] === 'false'`. False is the empty-import refusal of section 4.5. */
+  hasData: boolean
+  /** Non-zero rows only, in report order. */
+  rows: ProviderBalanceRow[]
+}
+
+/**
  * Whether an account's provider mapping was chosen by a person or merely proposed.
  *
  * The same three-way distinction {@link RoleAssignmentState} draws one level up,

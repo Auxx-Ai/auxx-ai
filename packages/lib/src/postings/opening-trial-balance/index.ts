@@ -18,10 +18,15 @@ export {
   rowsToJournalEntryLines,
   sortChartAccountsForStatement,
 } from './client'
+export {
+  fillOpeningTrialBalanceFromProvider,
+  type ProviderOpeningFillOutcome,
+} from './fill-from-provider'
 export { findOpeningTrialBalanceEntry, readOpeningTrialBalance } from './reads'
 export {
   postOpeningTrialBalance,
   previewOpeningTrialBalance,
+  requireCutoverDate,
   type SaveOpeningTrialBalanceInput,
   saveOpeningTrialBalance,
 } from './writes'

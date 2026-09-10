@@ -14,6 +14,7 @@ import { describe, expect, it } from 'vitest'
 import {
   accountIdFromRowId,
   applyOpeningCellChange,
+  openingEvidenceInstruction,
   openingVerdict,
   overlayInventorySettings,
 } from '../opening-tb-grid'
@@ -155,5 +156,40 @@ describe('openingVerdict', () => {
 
   it('reports an imbalance the other way round with the same words', () => {
     expect(openingVerdict(400_00, 500_00, 3, 'USD').label).toMatch(/Out of balance by \$100\.00/)
+  })
+})
+
+describe('openingEvidenceInstruction', () => {
+  it('gives the statement-balance instruction, verbatim, for a manual grid', () => {
+    // Including the cutoverDate.slice(5).replace('-', '/') substitution the
+    // page already did before this helper existed.
+    expect(openingEvidenceInstruction('manual', '2025-12-31')).toBe(
+      'Use the 12/31 statement balance for every bank and card account. Do not use the tax return.'
+    )
+  })
+
+  it('treats anything but the literal provider source as manual', () => {
+    // The callers do this coercion themselves, but the two strings living
+    // here rather than at the call sites is the whole point of section 4.8 -
+    // pin the fallback here too.
+    expect(openingEvidenceInstruction('manual', '2026-06-30')).toMatch(/statement balance/)
+  })
+
+  it('gives the book-balance instruction for a provider-seeded grid', () => {
+    // 🛑 This string must never tell a person the numbers are still
+    // QuickBooks' - they may have edited every row since the fill ran - which
+    // is why it ends by telling them to check rather than that they are done.
+    const instruction = openingEvidenceInstruction('provider', '2025-12-31')
+    expect(instruction).toBe(
+      'These are book balances from QuickBooks as of 2025-12-31. They already account for ' +
+        'payments that had not cleared at the cutover, which a statement balance does not, so do ' +
+        'not replace them with the statement figure. Check them against what you expect.'
+    )
+  })
+
+  it('never gives the two sources the same advice', () => {
+    expect(openingEvidenceInstruction('manual', '2025-12-31')).not.toBe(
+      openingEvidenceInstruction('provider', '2025-12-31')
+    )
   })
 })

@@ -320,8 +320,15 @@ function assertLockedRowsMatchSettings(
   )
 }
 
-/** The date the draft carries, derived rather than supplied. See {@link saveOpeningTrialBalance}. */
-async function requireCutoverDate(db: Database, organizationId: string): Promise<string> {
+/**
+ * The date the draft carries, derived rather than supplied. See
+ * {@link saveOpeningTrialBalance}.
+ *
+ * Exported for `fill-from-provider.ts` (brief 19 section 4.5), which needs the
+ * same validated cutover date as the `asOf` it asks the provider for, and the
+ * same refusal wording when the cutoff or the book timezone is unset.
+ */
+export async function requireCutoverDate(db: Database, organizationId: string): Promise<string> {
   const view = await readOpeningTrialBalance(db, organizationId)
   if (view.isErr()) throw view.error
   const { cutoverDate, cutoffPeriod, bookTimeZone } = view.value

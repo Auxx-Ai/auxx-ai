@@ -193,11 +193,13 @@ export type ExportRoute = 'journal' | 'none'
  * `invoice_issued`, `payment`, `credit_memo`, `deposit_application`,
  * `write_off`. **Retired 2026-09-10 on MK's decision (brief 14's DECIDED
  * block), not as cleanup**: QuickBooks receives journal entries only, and the
- * invoice document mirror (plan 37e) is gone. Every type routes `journal`
- * today, so there is nothing to branch on, and `postEntry` does not read this
- * table. It exists so a future second accounting provider (one with no invoice
- * API, say) has a named place to declare the split it would force, rather than
- * that split arriving quietly through a derived check.
+ * invoice document mirror (plan 37e) is gone.
+ *
+ * `postEntry` reads this table (brief 19 §5.1, since 2026-09-10).
+ * `opening_balance` is the one `'none'` route today; every other type still
+ * routes `journal`. It exists so a future second accounting provider (one
+ * with no invoice API, say) has a named place to declare the split it would
+ * force, rather than that split arriving quietly through a derived check.
  */
 export const EXPORT_ROUTE_BY_POSTING_TYPE: Record<PostingType, ExportRoute> = {
   fulfillment: 'journal',
@@ -209,7 +211,12 @@ export const EXPORT_ROUTE_BY_POSTING_TYPE: Record<PostingType, ExportRoute> = {
   receipt: 'journal',
   vendor_bill: 'journal',
   manual_journal: 'journal',
-  opening_balance: 'journal',
+  // An opening balance IS the position the books were in before auxx started
+  // posting. If an accounting provider is connected, it is either where those
+  // balances came from or the system the firm has been running, and neither
+  // case wants them pushed back - a fill sourced from the provider and pushed
+  // back would double every balance in it. Brief 19 §5.1, MK's decision (a).
+  opening_balance: 'none',
   bank_transaction: 'journal',
   bank_deposit: 'journal',
   write_off: 'journal',

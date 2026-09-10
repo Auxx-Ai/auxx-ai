@@ -44,8 +44,8 @@ import { accountLabel } from './account-label'
 import { buildDocNumber } from './doc-number'
 import { buildPostingDraft, type PostingAssertions, requiresAssertions } from './draft'
 import { assertPeriodOpen, type PeriodLock, parsePeriodKey } from './periods'
-import { resolveAccountingProvider } from './provider'
-import { INVENTORY_ROLES } from './regime'
+import { NONE_ACCOUNTING_PROVIDER, resolveAccountingProvider } from './provider'
+import { EXPORT_ROUTE_BY_POSTING_TYPE, INVENTORY_ROLES } from './regime'
 import { loadRoleAccountCodes, resolveAccountLines } from './resolve-roles'
 import type {
   BuiltEntry,
@@ -720,7 +720,15 @@ export async function postEntry(db: Database, options: PostEntryOptions): Promis
     const glPostingId = claim.row.id
 
     // ── The provider, after the claim has committed ────────────────────────
-    const provider = await resolveAccountingProvider(organizationId)
+    // This is the first and only reader of `EXPORT_ROUTE_BY_POSTING_TYPE`.
+    // `'none'` short-circuits to `NONE_ACCOUNTING_PROVIDER` instead of the
+    // org's connected one, so a route never reaches this file's own provider
+    // call. Do not branch other posting types here - the route table is the
+    // one place that decides this.
+    const provider =
+      EXPORT_ROUTE_BY_POSTING_TYPE[entry.postingType] === 'none'
+        ? NONE_ACCOUNTING_PROVIDER
+        : await resolveAccountingProvider(organizationId)
     const input: PostEntryInput = {
       organizationId,
       glPostingId,
