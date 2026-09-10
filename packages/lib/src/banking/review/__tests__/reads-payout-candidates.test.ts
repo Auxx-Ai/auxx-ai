@@ -8,7 +8,7 @@
 // second time (HANDOFF §0.2).
 //
 // 🛑 The property that matters most: a payout already matched to a DIFFERENT
-// bank line is not offered again, unlike `bank_deposit`/`vendor_payment`
+// bank line is not offered again, unlike deposit and vendor payment
 // candidates, which stay visible-but-disabled. A payout confirms exactly one
 // bank line; relisting it invites a second line to claim money that only
 // arrived once.
