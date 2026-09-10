@@ -48,20 +48,11 @@ import { EmptySection } from '@auxx/ui/components/section'
 import { TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { cn } from '@auxx/ui/lib/utils'
-import { Ban, Coins, CreditCard, Pencil, Plus, Receipt, RotateCcw, Sparkles } from 'lucide-react'
+import { Ban, Coins, Pencil, Plus, RotateCcw, Sparkles } from 'lucide-react'
 import { useState } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
 import { AccountLabel } from '../account-label'
-import { ACCOUNT_TYPE_OPTIONS, formatAccount } from './accounts-types'
-
-/** Statement-section icon, one per group. */
-const GROUP_ICONS: Record<string, typeof Coins> = {
-  asset: Coins,
-  liability: CreditCard,
-  equity: Coins,
-  revenue: Receipt,
-  expense: Receipt,
-}
+import { ACCOUNT_TYPE_OPTIONS, accountTypeIcon, formatAccount } from './accounts-types'
 
 interface RoleMapListProps {
   rows: RoleAssignmentRow[]
@@ -165,7 +156,7 @@ export function RoleMapList({
           // "no roles here" would be noise rather than information.
           if (group.length === 0) return null
 
-          const Icon = GROUP_ICONS[type] ?? Coins
+          const Icon = accountTypeIcon(type)
           const needed = group.filter((row) => row.state !== 'unused')
           const mapped = needed.filter(
             (row) => row.state === 'confirmed' || row.state === 'suggested'
@@ -223,7 +214,7 @@ function RoleRow({
   canControl: boolean
 }) {
   const role = row.role as AccountRole
-  const Icon = GROUP_ICONS[ROLE_ACCOUNT_TYPES[role]] ?? Coins
+  const Icon = accountTypeIcon(ROLE_ACCOUNT_TYPES[role])
 
   return (
     <TreeRow

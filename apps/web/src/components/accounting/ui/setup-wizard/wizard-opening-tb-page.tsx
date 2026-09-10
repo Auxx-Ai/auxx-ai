@@ -248,7 +248,11 @@ export const WizardOpeningTbPage = forwardRef<WizardStepHandle>(
           <OpeningFillButton frozen={frozen} cutoverDate={cutoverDate} />
         </div>
 
-        <div className='max-h-[26rem] overflow-y-auto rounded-xl border'>
+        {/* The scroller, and no border of its own any more: `StatementTable`
+            brings its own frame, and two nested rounded borders read as a box
+            inside a box. `top-0` is right for the sticky header here - THIS div
+            is the scroll container, not the page. */}
+        <div className='max-h-[26rem] overflow-y-auto'>
           <OpeningTbGrid
             rows={rows}
             currency={currency}

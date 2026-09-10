@@ -20,48 +20,70 @@ import {
   type ChartAccountRow,
   type ChartPackKey,
   GL_ACCOUNT_SUBTYPES,
+  GL_ACCOUNT_TYPE_META,
   type GlAccountSubtypeValue,
   type GlAccountTypeValue,
+  glAccountTypeMeta,
   type ProviderAccount,
 } from '@auxx/lib/postings/client'
 import type { SelectOptionColor } from '@auxx/types/custom-field'
+import { getIcon } from '@auxx/ui/components/icon-data'
+import { Landmark, type LucideIcon } from 'lucide-react'
 import { formatAccountLabel } from '../account-label-format'
 
 /**
- * The five statement classifications.
+ * The five statement classifications, for the type dropdown.
  *
- * ⚠️ Mirrored from `GlAccountType` in
- * `packages/lib/src/resources/registry/enum-values.ts`, which is NOT among
- * `@auxx/lib/resources/client`'s re-exports. The literal union
- * (`GlAccountTypeValue`) IS client-exported from `@auxx/lib/postings/client`
- * and every value below is typed against it, so a divergence is a compile
- * error rather than a silently wrong dropdown.
+ * 🛑 DERIVED from `GL_ACCOUNT_TYPE_META`, not mirrored from it. This used to be
+ * a hand-written copy of `GlAccountType.values` carrying a "⚠️ Mirrored from"
+ * comment and a promise that a divergence would be a compile error - which
+ * covered the VALUES but never the labels or the colours, and said nothing at
+ * all about the icons, which lived in a third place with only three glyphs for
+ * five types. One table now feeds the dropdown, the badge and the icon.
  */
 export const ACCOUNT_TYPE_OPTIONS: Array<{
   value: GlAccountTypeValue
   label: string
   color: SelectOptionColor
-}> = [
-  { value: 'asset', label: 'Asset', color: 'blue' },
-  { value: 'liability', label: 'Liability', color: 'amber' },
-  { value: 'equity', label: 'Equity', color: 'purple' },
-  { value: 'revenue', label: 'Revenue', color: 'green' },
-  { value: 'expense', label: 'Expense', color: 'red' },
-]
+}> = GL_ACCOUNT_TYPE_META.map((meta) => ({
+  value: meta.value as GlAccountTypeValue,
+  label: meta.label,
+  color: meta.color as SelectOptionColor,
+}))
 
 export function accountTypeLabel(type: GlAccountTypeValue): string {
-  return ACCOUNT_TYPE_OPTIONS.find((option) => option.value === type)?.label ?? type
+  return glAccountTypeMeta(type).label
 }
 
 /**
  * The badge colour for a statement classification.
  *
- * Declared once, in {@link ACCOUNT_TYPE_OPTIONS}, so the chart list, the role
- * map and the editor cannot drift into three different palettes for the same
- * five words. Every value is a real `Badge` colour variant.
+ * One id doing three jobs - an `ICON_COLORS` id, a `Badge` variant and a
+ * `SelectOptionColor` - so the chart list, the role map, the role editor and
+ * the statement table cannot drift into four palettes for the same five words.
  */
 export function accountTypeColor(type: GlAccountTypeValue): SelectOptionColor {
-  return ACCOUNT_TYPE_OPTIONS.find((option) => option.value === type)?.color ?? 'blue'
+  return glAccountTypeMeta(type).color as SelectOptionColor
+}
+
+/**
+ * The `ICON_DATA` id for a statement classification, for `EntityIcon` or any
+ * other surface that takes an icon id rather than a component.
+ */
+export function accountTypeIconId(type: string): string {
+  return glAccountTypeMeta(type).iconId
+}
+
+/**
+ * The Lucide component for a statement classification, resolved through the
+ * shared catalog.
+ *
+ * ⚠️ `getIcon` answers `undefined` for an id that is not in `ICON_DATA`, and a
+ * row still has to draw something, so this falls back to `Landmark` - the glyph
+ * the chart list drew for every account before any of this was shared.
+ */
+export function accountTypeIcon(type: string): LucideIcon {
+  return getIcon(accountTypeIconId(type))?.icon ?? Landmark
 }
 
 /**

@@ -44,6 +44,21 @@ interface AccountLabelProps {
    * caller supplies the chrome.
    */
   density?: AccountLabelDensity
+  /**
+   * `full` density only: pin the code to this many characters so every NAME in
+   * a column starts at the same x, including on the accounts that have no code.
+   *
+   * 🛑 A number of characters, never a hardcoded four. Four digits is the
+   * common small-business default, but Xero's stock chart is three, ERPs run
+   * five to eight, and QuickBooks Online ships numbering OFF - so a real chart
+   * mixes lengths and blanks. The caller measures its own longest code
+   * (`maxAccountCodeLength`) and passes that; `ch` on a `font-mono` span makes
+   * it exact.
+   *
+   * Omit outside a column: a badge or a picker trigger has no siblings to line
+   * up with, and a fixed track there is just dead space.
+   */
+  codeWidthCh?: number
   /** Rendered when nothing resolves. Defaults to the raw id, then nothing. */
   fallback?: string
   className?: string
@@ -68,6 +83,7 @@ export function AccountLabel({
   account,
   glAccountId,
   density = 'full',
+  codeWidthCh,
   fallback,
   className,
 }: AccountLabelProps) {
@@ -99,10 +115,17 @@ export function AccountLabel({
     )
   }
 
+  // With a track, the span renders even when the account has no code - an empty
+  // box of the same width is the whole point, and dropping it is what let a
+  // codeless account's name slide left into the code column.
+  const showCodeTrack = codeWidthCh !== undefined && codeWidthCh > 0
+
   return (
     <span className={cn('flex min-w-0 items-baseline gap-1.5', className)} title={full}>
-      {code && (
-        <span className='shrink-0 font-mono text-muted-foreground text-xs tabular-nums'>
+      {(code || showCodeTrack) && (
+        <span
+          className='shrink-0 font-mono text-muted-foreground text-xs tabular-nums'
+          style={showCodeTrack ? { width: `${codeWidthCh}ch` } : undefined}>
           {code}
         </span>
       )}

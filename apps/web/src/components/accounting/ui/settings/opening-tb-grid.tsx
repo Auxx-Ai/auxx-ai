@@ -234,6 +234,11 @@ export function OpeningTbGrid({
       rows={toStatementRows(rows, currency, lockReason)}
       currency={currency}
       mode={readOnly ? 'read' : 'edit'}
+      // 🛑 Open. The reports open collapsed because a statement is something you
+      // drill into; this is the screen a person TYPES the trial balance on, and
+      // collapsed sections would hide every input behind a chevron.
+      expandAllByDefault
+      searchable
       onCellChange={(rowId, colKey, minor) => {
         const accountId = accountIdFromRowId(rowId)
         if (accountId) onCellChange?.(accountId, colKey as OpeningColumnKey, minor)
@@ -271,34 +276,32 @@ function toStatementRows(
 
     const labels = sectionLabels(accountType as GlAccountTypeValue)
 
-    out.push({
-      id: `section:${accountType}`,
-      label: labels.heading,
-      depth: 0,
-      kind: 'section',
-      values: [],
-    })
-
     let sectionDebit = 0
     let sectionCredit = 0
+    const children: StatementRow[] = []
 
     for (const row of inType) {
       sectionDebit += row.debitMinor ?? 0
       sectionCredit += row.creditMinor ?? 0
-      out.push({
+      children.push({
         id: `${ACCOUNT_ROW_PREFIX}${row.accountId}`,
         label: formatAccountLabel({ code: row.accountCode, name: row.accountName }),
         depth: 1,
         // 🛑 `computed`, not `line`, is what makes a locked row read-only:
         // `StatementTable`'s edit mode puts a `CurrencyInput` in a `line` and
         // nowhere else. A `disabled` prop on the input would have been a second
-        // mechanism for the same fact, and the italic-muted rendering
-        // `computed` already carries says "this number came from somewhere
-        // else", which is exactly what is true here.
+        // mechanism for the same fact.
         kind: row.lockedByRole ? 'computed' : 'line',
         values: [row.debitMinor ?? null, row.creditMinor ?? null],
         meta: {
           accountCode: row.accountCode,
+          // 🛑 `accountName` is what routes the label through `AccountLabel`
+          // rather than `StatementTable`'s plain-span fallback. Without it this
+          // grid printed a pre-formatted `code · name` string while the chart
+          // list two tabs away rendered the same account with the code as a
+          // muted prefix - one screen's accounts not looking like another's.
+          accountName: row.accountName,
+          accountType: row.accountType,
           ...(row.lockedByRole ? { badge: <FrozenLock reason={lockReason} /> } : {}),
           ...(row.isActive ? {} : { note: 'This account is inactive in the chart.' }),
         },
@@ -308,12 +311,29 @@ function toStatementRows(
     totalDebit += sectionDebit
     totalCredit += sectionCredit
 
-    out.push({
+    // The closing subtotal is a CHILD of its section, and the section carries
+    // the same two figures. That is the shape lib's `statementSection`
+    // (`postings/reports/rows.ts`) already builds for every report, and this
+    // grid was the one consumer emitting a flat list instead - which is the
+    // whole reason its sections could not be collapsed. Nested, they collapse
+    // to one line showing the section's own total, exactly like a balance
+    // sheet's.
+    children.push({
       id: `subtotal:${accountType}`,
       label: labels.subtotal,
-      depth: 0,
+      depth: 1,
       kind: 'subtotal',
       values: [sectionDebit, sectionCredit],
+    })
+
+    out.push({
+      id: `section:${accountType}`,
+      label: labels.heading,
+      depth: 0,
+      kind: 'section',
+      values: [sectionDebit, sectionCredit],
+      meta: { accountType },
+      children,
     })
   }
 

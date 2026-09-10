@@ -41,6 +41,12 @@ export interface StatementRow {
     /** Null when the account has no code (task 15 §5), not merely absent. */
     accountCode?: string | null
     accountName?: string
+    /**
+     * The statement classification, for the ICON a row draws
+     * (`GL_ACCOUNT_TYPE_META`). Presentation only - nothing computes from it,
+     * and `pdf/statement-parts.tsx` renders the same rows and ignores it.
+     */
+    accountType?: string
     recordId?: string
     badge?: string
     note?: string

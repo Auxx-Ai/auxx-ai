@@ -8,6 +8,11 @@
 // (the builders run in a worker), and the directive would turn every export into
 // a client-reference proxy there. See docs/lib-module-guide.md section 7.
 
+export {
+  GL_ACCOUNT_TYPE_META,
+  type GlAccountTypeMeta,
+  glAccountTypeMeta,
+} from '../resources/registry/gl-account-type-meta'
 export { accountLabel, compareAccountsByCodeThenName, type NamedAccount } from './account-label'
 export {
   accountSubtypeLabel,
