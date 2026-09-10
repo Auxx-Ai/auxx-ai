@@ -171,6 +171,13 @@ export {
   updateMapping,
   updateStream,
 } from './mutations'
+// v12.1 lane A: archive-cap bookkeeping on `DataConnector.state` + the minted read
+export {
+  clearArchiveCapTripped,
+  listMintedInstanceIds,
+  setArchiveCapTripped,
+  takeArchiveCapOverride,
+} from './orphan-state'
 // Duplicate-SKU adoption pre-flight, read-only core (plans/money/design/duplicate-sku-preflight.md)
 export {
   type AdoptionPreflightReport,
@@ -220,11 +227,12 @@ export {
 } from './recommended-app-connectors'
 export {
   ARCHIVE_CAP,
-  archiveCapReason,
   archiveExternalId,
+  capReason,
   effectiveOrphanBehavior,
   handleConnectorDelete,
   reconcileOrphans,
+  wipeReason,
 } from './reconciliation'
 // Per-stream record filter (v11) — evaluated on the RAW source record before mapping.
 export {
@@ -233,6 +241,15 @@ export {
   recordMatchesFilter,
 } from './record-filter'
 export { type RelationshipPassSummary, resolveRelationships } from './relationship-pass'
+// v12.1 Phases 3c + 5 (removed-upstream): the "Gone upstream" reads, the archive-cap
+// override, and the "Keep record" unbind.
+export {
+  archiveCapTrippedOf,
+  findRemovedUpstreamItem,
+  listRemovedUpstreamItems,
+  type RemovedUpstreamItem,
+} from './removed-upstream'
+export { requestArchiveCapOverride, unbindItem } from './removed-upstream-mutations'
 // Orchestrator + passes
 export type { ResolveConnectorConfigOptionsInput } from './resolve-config-options'
 export { resolveConnectorConfigOptions } from './resolve-config-options'
@@ -337,6 +354,9 @@ export type {
 export { getAllConnectorTemplates, getConnectorTemplateById } from './templates'
 // Canonical engine types
 export type {
+  ArchiveCapOverride,
+  ArchiveCapTripped,
+  ConnectorReconcileState,
   ConnectorRequestModel,
   DataConnectorType,
   FieldMapping,

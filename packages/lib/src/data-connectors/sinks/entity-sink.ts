@@ -861,6 +861,42 @@ async function findSiblingBinding(
 }
 
 /**
+ * Un-archive a record this connector archived on an earlier reconcile, now that its
+ * upstream record reappeared (v12.1 Phase 1). The instance's own `archivedAt` is read
+ * first: under the def-keyed sharing guard `archiveRecord` stamps the binding but
+ * leaves the record live, and `restoreEntity` on a live record is not a no-op (it
+ * rewrites `updatedAt`) and would count a restore that never happened. Failure is
+ * logged and swallowed, like `archiveRecord`: one bad row must not fail the record.
+ */
+async function restoreArchivedRecord(
+  ctx: SyncCtx,
+  mapping: DecodedMapping,
+  itemId: string,
+  entityInstanceId: string
+): Promise<void> {
+  try {
+    const instance = await ctx.db.query.EntityInstance.findFirst({
+      where: and(
+        eq(schema.EntityInstance.id, entityInstanceId),
+        eq(schema.EntityInstance.organizationId, ctx.orgId)
+      ),
+      columns: { archivedAt: true },
+    })
+    if (!instance?.archivedAt) return
+    const handler = mapping.targetMode === 'owned' ? ctx.ownedCrud : ctx.crud
+    await handler.restore(toRecordId(mapping.entityDefinitionId, entityInstanceId))
+    ctx.touchedDefs.add(mapping.entityDefinitionId)
+    ctx.counters.restored += 1
+  } catch (error) {
+    logger.warn('restore of a reappeared record failed', {
+      itemId,
+      entityInstanceId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
+}
+
+/**
  * Human label for the field a secondary-key match hit on, for the skip reason
  * (`SKU 177A already belongs to 45678`). Falls back to the field id: the reason
  * must never be the thing that fails a record.
@@ -1018,6 +1054,14 @@ export const entitySink: EntitySink = {
       const winner = winners.get(winnerKey)
       if (winner === undefined) winners.set(winnerKey, record.externalId)
       else if (winner !== record.externalId) lostSliceDedupe = true
+    }
+
+    // 1d. A binding THIS connector archived (item.archivedAt set) whose record is back
+    //     in the crawl: restore the record, then let the normal path (touchItem or
+    //     upsertItem) clear the item stamps. Only the connector's own archive is
+    //     undone: a human archive leaves item.archivedAt null and is never touched.
+    if (bound?.entityInstanceId && bound.archivedAt) {
+      await restoreArchivedRecord(ctx, mapping, bound.id, bound.entityInstanceId)
     }
 
     // 2. Content hash — skip unchanged + already bound, UNLESS an overwrite cell

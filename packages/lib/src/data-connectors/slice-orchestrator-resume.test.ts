@@ -284,6 +284,15 @@ vi.mock('./data-connector-queue', () => ({
 }))
 
 vi.mock('./realtime', () => ({ publishConnectorSync: async () => {} }))
+// v12.1: the real `reconcileOrphans` reads the archive-cap keys and the minted set
+// through these; the query double here has no `select`, and this test is about
+// resume, not reconciliation.
+vi.mock('./orphan-state', () => ({
+  setArchiveCapTripped: async () => {},
+  clearArchiveCapTripped: async () => {},
+  takeArchiveCapOverride: async () => null,
+  listMintedInstanceIds: async () => new Set(),
+}))
 vi.mock('../realtime', () => ({
   getRealtimeService: () => ({}),
   publishRecordsInvalidated: async () => {},

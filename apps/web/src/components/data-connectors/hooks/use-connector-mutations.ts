@@ -24,6 +24,7 @@ export function useConnectorMutations() {
   const syncNowM = api.dataConnector.syncNow.useMutation()
   const finishSetupM = api.dataConnector.finishSetup.useMutation()
   const backfillM = api.dataConnector.backfillPendingChange.useMutation()
+  const confirmOrphanArchivalM = api.dataConnector.confirmOrphanArchival.useMutation()
   // Pause/resume are a `status` patch through the shared `update` route.
   const updateM = api.dataConnector.update.useMutation()
   const deleteM = api.dataConnector.delete.useMutation()
@@ -137,6 +138,23 @@ export function useConnectorMutations() {
     [patchStatus, backfillM, utils.dataConnector.getStatus]
   )
 
+  // "Archive N records anyway" (v12.1 Phase 3c) — the archive-cap banner's action. Same
+  // cosmetic bridge as syncNow: the override is written and a sync enqueued, so stamp
+  // 'syncing' and nudge the poll. The run's clean pass clears `archiveCapTripped`,
+  // which removes the banner.
+  const confirmOrphanArchival = useCallback(
+    async (id: string) => {
+      await patchStatus(
+        id,
+        'syncing',
+        () => confirmOrphanArchivalM.mutateAsync({ id }),
+        'Could not archive the removed records'
+      )
+      void utils.dataConnector.getStatus.invalidate({ id })
+    },
+    [patchStatus, confirmOrphanArchivalM, utils.dataConnector.getStatus]
+  )
+
   // Returns true on success so the detail view only navigates away on a confirmed
   // delete (and restores on failure).
   //
@@ -199,10 +217,12 @@ export function useConnectorMutations() {
     sampleSync,
     finishSetup,
     backfillPending,
+    confirmOrphanArchival,
     remove,
     isSyncing: syncNowM.isPending,
     isFinishing: finishSetupM.isPending,
     isBackfilling: backfillM.isPending,
+    isConfirmingOrphanArchival: confirmOrphanArchivalM.isPending,
     isPausing: updateM.isPending,
     isResuming: updateM.isPending,
     isDeleting: deleteM.isPending,

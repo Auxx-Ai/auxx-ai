@@ -13,7 +13,8 @@ import {
 } from '@auxx/ui/components/dropdown-menu'
 import { toastError } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
-import { Lock, PauseCircle, RefreshCw } from 'lucide-react'
+import { format } from 'date-fns'
+import { Lock, PauseCircle, RefreshCw, Unplug } from 'lucide-react'
 import type { MouseEvent, PointerEvent } from 'react'
 import { Tooltip } from '~/components/global/tooltip'
 import { useConnectorName } from '~/components/resources/hooks/use-connector-name'
@@ -29,6 +30,12 @@ interface OwnedBadgeProps {
   mode: 'owned'
   /** Owning DataConnector id. */
   connectorId: string
+  /**
+   * The record's binding is flagged gone upstream (v12.1 Phase 5a): ISO of the flag,
+   * read off the row's cell sync state. Owned columns carry no per-cell state of their
+   * own, so the row passes it in. Omitted on a column header (no record).
+   */
+  removedUpstreamAt?: string | null
   className?: string
 }
 
@@ -66,12 +73,23 @@ type ConnectorLockBadgeProps = OwnedBadgeProps | ContributingBadgeProps
  *   sync state (synced, edited, paused), opening a menu that pauses or resumes
  *   the connector for this field on this record. The cell stays editable.
  *
+ * In either mode, a record whose upstream copy the last crawl could not find
+ * (`removedUpstreamAt`, v12.1 Phase 5a) swaps the icon for a red unplug and leads
+ * the copy with "Removed upstream <date>": the record is still live and a human
+ * decides on the connector page.
+ *
  * The connector name resolves from the org-scoped connector list (deduped).
  * Renders a generic label until the name loads / if it can't be resolved.
  */
 export function ConnectorLockBadge(props: ConnectorLockBadgeProps) {
   if (props.mode === 'owned') {
-    return <OwnedBadge connectorId={props.connectorId} className={props.className} />
+    return (
+      <OwnedBadge
+        connectorId={props.connectorId}
+        removedUpstreamAt={props.removedUpstreamAt}
+        className={props.className}
+      />
+    )
   }
   return (
     <ContributingBadge
@@ -84,9 +102,23 @@ export function ConnectorLockBadge(props: ConnectorLockBadgeProps) {
   )
 }
 
-function OwnedBadge({ connectorId, className }: Omit<OwnedBadgeProps, 'mode'>) {
+/** "Removed upstream Sep 9, 2026" — the lead of every flagged badge's copy. */
+function removedUpstreamLabel(iso: string): string {
+  return `Removed upstream ${format(new Date(iso), 'PP')}`
+}
+
+function OwnedBadge({ connectorId, removedUpstreamAt, className }: Omit<OwnedBadgeProps, 'mode'>) {
   const name = useConnectorName(connectorId)
-  const content = `Managed by ${name ?? 'a data connector'}`
+  const who = name ?? 'a data connector'
+  if (removedUpstreamAt) {
+    const content = `${removedUpstreamLabel(removedUpstreamAt)}, ${who} no longer has this record`
+    return (
+      <Tooltip content={content} side='top'>
+        <Unplug className={cn('size-3 shrink-0 text-red-500', className)} aria-label={content} />
+      </Tooltip>
+    )
+  }
+  const content = `Managed by ${who}`
   return (
     <Tooltip content={content} side='top'>
       <Lock className={cn('size-3 shrink-0 text-neutral-400', className)} aria-label={content} />
@@ -124,8 +156,9 @@ function ContributingBadge({
   const setManagedState = useFieldValueStore((s) => s.setManagedState)
   const setFieldPin = api.dataConnector.setFieldPin.useMutation()
 
-  const Icon = STATE_ICON[sync.state]
-  const content =
+  const removed = sync.removedUpstreamAt ?? null
+  const Icon = removed ? Unplug : STATE_ICON[sync.state]
+  const stateCopy =
     sync.state === 'paused'
       ? `Sync paused for this field, ${who} will not change it`
       : sync.state === 'edited'
@@ -133,10 +166,17 @@ function ContributingBadge({
         : multi
           ? `Some values synced by ${who}, other values are kept`
           : `Synced by ${who}, may be overwritten on the next sync`
+  const content = removed
+    ? `${removedUpstreamLabel(removed)}, ${who} no longer has this record. ${stateCopy}`
+    : stateCopy
 
   const icon = (
     <Icon
-      className={cn('size-3 shrink-0', STATE_COLOR[sync.state], className)}
+      className={cn(
+        'size-3 shrink-0',
+        removed ? 'text-red-500' : STATE_COLOR[sync.state],
+        className
+      )}
       aria-label={content}
     />
   )

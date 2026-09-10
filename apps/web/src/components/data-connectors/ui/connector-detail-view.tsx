@@ -39,6 +39,7 @@ import {
   useConnectorDraftStore,
   visibleMappings,
 } from '../stores/connector-draft-store'
+import { ConnectorArchiveCapBanner } from './connector-archive-cap-banner'
 import { ConnectorBreadcrumbSwitcher } from './connector-breadcrumb-switcher'
 import {
   ConnectorCatalogUpdateDialog,
@@ -46,6 +47,7 @@ import {
 } from './connector-catalog-update-dialog'
 import { ConnectorDetailTabs } from './connector-detail-tabs'
 import { ConnectorDisconnectedBanner } from './connector-disconnected-banner'
+import { ConnectorRemovedUpstreamSection } from './connector-removed-upstream-list'
 import { ConnectorResyncBanner } from './connector-resync-banner'
 import { ConnectorRunsPanel } from './connector-runs-panel'
 import { asConnectorStatus, asRunStatus } from './connector-status'
@@ -183,7 +185,9 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
     resume,
     remove,
     backfillPending,
+    confirmOrphanArchival,
     isBackfilling,
+    isConfirmingOrphanArchival,
     isSyncing: isSyncPending,
     isPausing,
     isResuming,
@@ -543,6 +547,22 @@ export function ConnectorDetailView({ connector }: ConnectorDetailViewProps) {
               pending={live?.resyncPending}
               onBackfill={() => backfillPending(connector.id)}
               isBackfilling={isBackfilling}
+            />
+          }
+          archiveCapBanner={
+            // The archive cap refused the last reconcile pass (v12.1 Phase 3d). Reads
+            // the LIVE status: the stamp is written by the worker and cleared by the
+            // next clean pass, and the realtime feed + poll are what notice both.
+            <ConnectorArchiveCapBanner
+              tripped={live?.archiveCapTripped}
+              onConfirm={() => void confirmOrphanArchival(connector.id)}
+              isConfirming={isConfirmingOrphanArchival}
+            />
+          }
+          removedUpstreamSection={
+            <ConnectorRemovedUpstreamSection
+              connectorId={connector.id}
+              connectorName={connector.name}
             />
           }
         />

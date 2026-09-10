@@ -14,16 +14,19 @@ import {
   addMapping,
   addStream,
   applyConnectorCatalogUpdate,
+  archiveCapTrippedOf,
   backfillPendingChange,
   countMintedRecords,
   countPendingRelationsByTarget,
   createConnector,
   createConnectorFromAppCatalog,
   createConnectorFromTemplate,
+  type DataConnectorRow,
   type DataConnectorType,
   deleteConnector,
   deriveConnectorScheduleInfo,
   enqueueConnectorSync,
+  findRemovedUpstreamItem,
   finishConnectorSetup,
   getAllConnectorTemplates,
   getConnector,
@@ -32,35 +35,67 @@ import {
   getConnectorTemplateById,
   listConnectors,
   listRecommendedAppConnectors,
+  listRemovedUpstreamItems,
   listRuns,
   listSharedOwnedDefIds,
   listStreams,
+  markItemArchived,
   projectConnectorOwnedTargets,
   READINESS_REASON,
   removeMapping,
   removeStream,
+  requestArchiveCapOverride,
   sampleConnectorFetch,
   setConnectorFieldPin,
   setStreamRequestConfig,
   setStreamSchema,
   suggestFieldMappings,
+  unbindItem,
   updateConnector,
   updateMapping,
   updateStream,
 } from '@auxx/lib/data-connectors'
 import { inferJsonSchema } from '@auxx/lib/json-schema/client'
 import { PermissionKey } from '@auxx/lib/permissions'
+import { UnifiedCrudHandler } from '@auxx/lib/resources'
 import { fieldIdSchema, resourceFieldIdSchema } from '@auxx/types/field'
-import { parseRecordId, type RecordId } from '@auxx/types/resource'
+import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
 import { TRPCError } from '@trpc/server'
 import { z } from 'zod'
 import {
   capabilityProcedure,
   createTRPCRouter,
+  isAuxxError,
   permissionProcedure,
   protectedProcedure,
 } from '~/server/api/trpc'
 import { assertFieldValueHostsWritable } from '~/server/lib/field-value-host-access'
+import { assertNotInstanceAccessDefForWrite } from '~/server/lib/instance-access-def-guard'
+
+/** Extract socket ID from tRPC context headers for realtime self-event exclusion. */
+function getSocketId(ctx: { headers: Headers }): string | undefined {
+  return ctx.headers.get('x-realtime-socket-id') ?? undefined
+}
+
+/**
+ * The manual-sync door shared by `syncNow`, `backfillPendingChange` and
+ * `confirmOrphanArchival`: a run that would quietly do nothing (the worker's silent
+ * no-op on a half-built config) is refused HERE, authoritatively, not by the client.
+ */
+async function assertConnectorCanSync(
+  db: Parameters<typeof listStreams>[0],
+  organizationId: string,
+  connector: DataConnectorRow
+): Promise<void> {
+  const streams = await listStreams(db, organizationId, connector.id)
+  const readiness = getConnectorReadiness(connector, streams)
+  if (!readiness.canSync) {
+    throw new TRPCError({
+      code: 'BAD_REQUEST',
+      message: READINESS_REASON[readiness.problems[0] ?? 'no-endpoint'],
+    })
+  }
+}
 
 // ── Shared zod shapes ─────────────────────────────────────────────────────────
 
@@ -460,6 +495,9 @@ export const dataConnectorRouter = createTRPCRouter({
         // Pending mapping-edit re-sync marker (Layer 2) — drives the page banner.
         // Null once a full backfill of the affected streams clears it.
         resyncPending: c.resyncPending,
+        // The archive cap refused the last reconcile pass (v12.1 Phase 3): why, and
+        // how many. Drives the archive-cap banner; the next clean pass clears it.
+        archiveCapTripped: archiveCapTrippedOf(c.state),
         nextSyncAt,
         cadenceLabel,
         latestRun,
@@ -715,20 +753,126 @@ export const dataConnectorRouter = createTRPCRouter({
       }
       // Readiness backstop — block a half-built config from enqueuing a run that
       // would quietly do nothing (the worker's silent no-op). Authoritative gate.
-      const streams = await listStreams(ctx.db, ctx.session.organizationId, input.id)
-      const readiness = getConnectorReadiness(result.value, streams)
-      if (!readiness.canSync) {
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: READINESS_REASON[readiness.problems[0] ?? 'no-endpoint'],
-        })
-      }
+      await assertConnectorCanSync(ctx.db, ctx.session.organizationId, result.value)
       await enqueueConnectorSync({
         connectorId: input.id,
         organizationId: ctx.session.organizationId,
         trigger: 'manual',
         sampleLimit: input.sampleLimit,
       })
+      return { success: true }
+    }),
+
+  /**
+   * "Archive N records anyway" (v12.1 Phase 3c). The archive cap refused the last
+   * reconcile pass and stamped `archiveCapTripped`; a human has read the reason and
+   * confirms the deletions are real. Writes the one-shot `archiveCapOverride` and
+   * enqueues a sync exactly as `syncNow` does; the next reconcile pass consumes the
+   * override, skips the cap once, and clears it whether or not anything was archived.
+   * The readiness gate runs BEFORE the override is written, so a refused enqueue never
+   * leaves an override waiting for some later, unrelated crawl. 400 when nothing
+   * tripped: there is nothing to confirm.
+   */
+  confirmOrphanArchival: permissionProcedure(PermissionKey.connectorsManage)
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const result = await getConnector(ctx.db, ctx.session.organizationId, input.id)
+      if (result.isErr()) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: result.error.message })
+      }
+      await assertConnectorCanSync(ctx.db, ctx.session.organizationId, result.value)
+      const override = await requestArchiveCapOverride(
+        ctx.db,
+        ctx.session.organizationId,
+        input.id,
+        ctx.session.userId
+      )
+      if (override.isErr()) throw override.error
+      await enqueueConnectorSync({
+        connectorId: input.id,
+        organizationId: ctx.session.organizationId,
+        trigger: 'manual',
+      })
+      return { success: true }
+    }),
+
+  // ── Gone upstream (v12.1 Phase 5) ──────────────────────────────────────────
+
+  /**
+   * Every binding of this connector whose upstream record the last crawl could not
+   * find and whose record is still live (`mark_deleted`, or an `archive` the mint
+   * degrade softened). Archived items are excluded: they are decided. Scoped by org
+   * AND connector in SQL.
+   */
+  listRemovedUpstream: permissionProcedure(PermissionKey.connectorsManage)
+    .input(z.object({ id: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const result = await getConnector(ctx.db, ctx.session.organizationId, input.id)
+      if (result.isErr()) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: result.error.message })
+      }
+      return listRemovedUpstreamItems(ctx.db, ctx.session.organizationId, input.id)
+    }),
+
+  /**
+   * "Keep record": the upstream record is gone and this record now lives on its own.
+   * Deletes the ONE `DataConnectorItem` row rather than clearing its flag: the next
+   * crawl would not see the record either and would flag it again, forever. Without a
+   * binding the record keeps every value and simply stops being synced, updated or
+   * archived by the connector.
+   */
+  keepRemovedUpstream: permissionProcedure(PermissionKey.connectorsManage)
+    .input(z.object({ id: z.string(), itemId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const found = await findRemovedUpstreamItem(
+        ctx.db,
+        ctx.session.organizationId,
+        input.id,
+        input.itemId
+      )
+      if (found.isErr()) throw found.error
+      const result = await unbindItem(ctx.db, ctx.session.organizationId, input.itemId)
+      if (result.isErr()) throw result.error
+      return { success: true }
+    }),
+
+  /**
+   * "Archive record": a human read the flag and decided the record is really gone.
+   * Archives through `UnifiedCrudHandler` built exactly as `record.archive` builds
+   * it, so the member's capabilities and the record's instance-access checks apply,
+   * then stamps the item archived so the list and the next reconcile pass both treat
+   * it as decided.
+   *
+   * This bypasses the sink's def-keyed sharing guard ON PURPOSE. The sink refuses to
+   * archive a record while another live binding of the connector still references
+   * it, because a crawl's absence is not authority; a human's decision is. It also
+   * bypasses the mint degrade for the same reason: the person confirming is choosing
+   * to archive a record the connector did not create.
+   */
+  archiveRemovedUpstream: permissionProcedure(PermissionKey.connectorsManage)
+    .input(z.object({ id: z.string(), itemId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, user } = ctx.session
+      const found = await findRemovedUpstreamItem(ctx.db, organizationId, input.id, input.itemId)
+      if (found.isErr()) throw found.error
+      const item = found.value
+      await assertNotInstanceAccessDefForWrite(organizationId, [item.entityDefinitionId])
+
+      try {
+        const handler = new UnifiedCrudHandler(organizationId, user.id, ctx.db, getSocketId(ctx), {
+          capabilities: ctx.capabilities,
+          requestPath: true,
+        })
+        await handler.archive(toRecordId(item.entityDefinitionId, item.entityInstanceId))
+      } catch (error) {
+        if (isAuxxError(error)) throw error
+        const message = error instanceof Error ? error.message : String(error)
+        throw new TRPCError({
+          code: message.includes('not found') ? 'NOT_FOUND' : 'INTERNAL_SERVER_ERROR',
+          message: `Failed to archive record: ${message}`,
+        })
+      }
+      await markItemArchived(ctx.db, input.itemId)
       return { success: true }
     }),
 
@@ -760,14 +904,7 @@ export const dataConnectorRouter = createTRPCRouter({
       // Same gate as `syncNow` — this is the OTHER manual door onto
       // `enqueueConnectorSync` (task 44 §7.11), and it had no readiness check at all.
       // A re-crawl is a sync, so it needs `canSync`, not just a connector that exists.
-      const streams = await listStreams(ctx.db, ctx.session.organizationId, input.id)
-      const readiness = getConnectorReadiness(result.value, streams)
-      if (!readiness.canSync) {
-        throw new TRPCError({
-          code: 'BAD_REQUEST',
-          message: READINESS_REASON[readiness.problems[0] ?? 'no-endpoint'],
-        })
-      }
+      await assertConnectorCanSync(ctx.db, ctx.session.organizationId, result.value)
       await backfillPendingChange(ctx.db, ctx.session.organizationId, input.id)
       return { success: true }
     }),

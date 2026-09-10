@@ -43,9 +43,15 @@ import { and, eq, gte, notInArray } from 'drizzle-orm'
 import { resolveConnectorFieldRef } from '../agents/bindings/resolve'
 import { connectorFor } from './connectors'
 import { buildWriteKeyToFieldId } from './field-id-resolver'
+import {
+  clearArchiveCapTripped,
+  listMintedInstanceIds,
+  setArchiveCapTripped,
+  takeArchiveCapOverride,
+} from './orphan-state'
 import { type DecodedMapping, findItem, type StreamWithMappings } from './service'
 import { entitySink } from './sinks/entity-sink'
-import type { SyncCtx } from './sinks/types'
+import type { EntitySink, SyncCtx } from './sinks/types'
 import type { ConnectorStreamState, OrphanBehavior, SyncMode } from './types'
 
 const logger = createScopedLogger('data-connector-reconciliation')
@@ -54,11 +60,15 @@ const logger = createScopedLogger('data-connector-reconciliation')
  * The slice of a stream reconciliation needs: its sync mode + decoded mappings, plus
  * the run ids that count as "seen this backfill" (`listBackfillRunIds`). Absent ⇒
  * only the finalizing run counts, which is right for a crawl that ran in one run.
+ * `streamKey` (pinned snapshot shape) or `stream.streamKey` (full row) names the stream
+ * in a wipe refusal, which is judged per stream.
  */
 type ReconcilableStream = {
   syncMode: SyncMode
   mappings: DecodedMapping[]
   seenRunIds?: ReadonlySet<string>
+  streamKey?: string
+  stream?: { streamKey: string }
 }
 
 /**
@@ -106,12 +116,21 @@ export async function listBackfillRunIds(
  *    something. Below the floor the blast radius is at most `floor - 1` records and
  *    un-archiving is possible, whereas tripping on every ordinary deletion would
  *    train people to ignore the alarm — which costs more than it saves.
- *  • `wipeFloor` — "the crawl returned NOTHING for this mapping" is a stronger smell
+ *  • `wipeFloor` — "the crawl returned NOTHING for this stream" is a stronger smell
  *    than any proportion, and it is what a revoked auth scope or a silently filtered
- *    query actually looks like, so it trips below the floor too. It needs at least
- *    two bound records: with exactly one there is nothing that distinguishes a real
- *    deletion from an empty crawl, and refusing forever would mean a single-record
- *    mapping could never be reconciled at all.
+ *    query actually looks like, so it trips below the floor too. It is judged PER
+ *    STREAM and floored on the stream's ROOT mappings (v12.1 Phase 2): one upstream
+ *    record fans out to several bindings (a Shopify product is a product, a part
+ *    and its variants), so a connector-wide sum would read one deleted product as
+ *    "every bound record vanished". It needs at least two root records gone: with
+ *    exactly one there is nothing that distinguishes a real deletion from an empty
+ *    crawl, and refusing forever would mean a single-record store could never be
+ *    reconciled at all.
+ *
+ * `absolute` and `fraction` are judged CONNECTOR-WIDE, with `bound` counted over
+ * every eligible mapping including the ones with no orphans; a crawl that returned
+ * nothing must trip once for everything, not archive the first mapping and then think
+ * better of the second.
  */
 export const ARCHIVE_CAP = {
   absolute: 500,
@@ -120,18 +139,37 @@ export const ARCHIVE_CAP = {
   wipeFloor: 2,
 } as const
 
-/** Would archiving this orphan set be implausible? Returns the reason, or null. */
-export function archiveCapReason(orphans: number, bound: number): string | null {
+/**
+ * Connector-wide rules: would archiving this many orphans out of this many bound
+ * records be implausible? Returns the reason, or null.
+ */
+export function capReason(counts: { orphans: number; bound: number }): string | null {
+  const { orphans, bound } = counts
   if (orphans === 0) return null
   if (orphans > ARCHIVE_CAP.absolute) {
     return `${orphans} records vanished from the crawl (cap ${ARCHIVE_CAP.absolute})`
   }
-  if (bound >= ARCHIVE_CAP.wipeFloor && orphans === bound) {
-    return `every bound record (${bound}) vanished from the crawl at once`
-  }
   if (orphans >= ARCHIVE_CAP.floor && bound > 0 && orphans / bound > ARCHIVE_CAP.fraction) {
     const pct = Math.round((orphans / bound) * 100)
     return `${orphans} of ${bound} bound records (${pct}%) vanished from the crawl`
+  }
+  return null
+}
+
+/**
+ * Per-stream wipe rule: did EVERY actionable record of the stream vanish at once, with
+ * at least `wipeFloor` of them on the stream's root mappings? Returns the reason, or
+ * null. `rootOrphans` is the orphan count over mappings with no `parentMappingId`.
+ */
+export function wipeReason(counts: {
+  bound: number
+  orphans: number
+  rootOrphans: number
+}): string | null {
+  const { bound, orphans, rootOrphans } = counts
+  if (orphans === 0) return null
+  if (orphans === bound && rootOrphans >= ARCHIVE_CAP.wipeFloor) {
+    return `every bound record (${bound}) vanished from the crawl at once`
   }
   return null
 }
@@ -154,94 +192,190 @@ export function effectiveOrphanBehavior(
   return item.mintedInstance ? 'archive' : 'mark_deleted'
 }
 
-/** One mapping's collected orphan set, resolved but not yet written. */
+type ExistingItem = Awaited<ReturnType<EntitySink['listExistingItems']>>[number]
+
+/**
+ * One mapping's collected orphan set, resolved but not yet written. `orphans` are the
+ * fresh disappearances the cap is judged on; `flagged` are orphans an earlier pass
+ * already stamped `removedUpstreamAt`, kept out of the arithmetic and never re-flagged,
+ * but archived after the cap when their behavior now resolves to `archive` (a policy
+ * flip from `mark_deleted`, or a mint answer that changed).
+ */
 type OrphanPlan = {
   mapping: DecodedMapping
+  orphans: ExistingItem[]
+  flagged: ExistingItem[]
+}
+
+/** One stream's plan, with the counts the per-stream wipe rule is judged on. */
+type StreamPlan = {
+  label: string
   bound: number
-  orphans: Array<Parameters<typeof entitySink.archiveRecord>[1] & { mintedInstance: boolean }>
+  orphans: number
+  rootOrphans: number
+  plans: OrphanPlan[]
 }
 
 /**
  * Archive (or flag) orphans for eligible mappings. `streams` carries each stream's
  * syncMode so we can gate snapshot-only. Accepts both the full `StreamWithMappings`
  * (single-shot) and the pinned snapshot shape (sliced chain); it reads only
- * `syncMode` + `mappings` (+ `seenRunIds`). An item is seen when its `lastSeenRunId`
- * is the finalizing run or any run in the stream's `seenRunIds`.
+ * `syncMode` + `mappings` (+ `seenRunIds`, + the stream key for messages). An item is
+ * seen when its `lastSeenRunId` is the finalizing run or any run in the stream's
+ * `seenRunIds`.
  *
- * Collects the whole plan BEFORE writing anything, because the cap is judged
- * connector-wide: a crawl that returned nothing must trip once for every mapping at
- * once, not archive the first mapping and then think better of the second.
+ * Collects the whole plan BEFORE writing anything, because any trip refuses the whole
+ * pass: a crawl that returned nothing must trip once for every mapping at once, not
+ * archive the first mapping and then think better of the second. A trip stamps
+ * `archiveCapTripped` on the connector; a pass that did not trip clears it (Phase 3a).
+ * A one-shot `archiveCapOverride` lifts the cap for exactly this pass and is consumed
+ * whether or not anything is archived; it does NOT lift the mint degrade, because a
+ * human confirming a deletion is not authority to archive a record the connector did
+ * not create (Phase 3b).
  */
 export async function reconcileOrphans(ctx: SyncCtx, streams: ReconcilableStream[]): Promise<void> {
-  const plans: OrphanPlan[] = []
+  // Consumed by THIS pass, even one that finds nothing: it never lingers across runs.
+  const override = await takeArchiveCapOverride(ctx.db, ctx.connector.id)
+
+  const streamPlans: StreamPlan[] = []
   let totalBound = 0
   let totalOrphans = 0
 
-  for (const { syncMode, mappings, seenRunIds } of streams) {
+  for (const [index, stream] of streams.entries()) {
     // Incremental: absence ≠ deletion — ALWAYS. Since v9 §3 a sweep runs incremental
     // streams as a watermark catch-up (they did NOT see every record), so the old
     // sweep override would mass-archive them. Deletes on incremental streams are
     // carried by delete webhooks; a stream that needs crawl-based delete detection
     // must be syncMode='snapshot'.
-    if (syncMode !== 'snapshot') continue
-    for (const mapping of mappings) {
+    if (stream.syncMode !== 'snapshot') continue
+    const plan: StreamPlan = {
+      label: stream.streamKey ?? stream.stream?.streamKey ?? `#${index + 1}`,
+      bound: 0,
+      orphans: 0,
+      rootOrphans: 0,
+      plans: [],
+    }
+    for (const mapping of stream.mappings) {
       if (mapping.linkMode !== 'upsert') continue // reference mappings write nothing
       if (mapping.orphanBehavior === 'ignore') continue // the mapping has to ask (v12 D2)
 
       const items = await entitySink.listExistingItems(ctx, mapping)
       // Bindings that are still live and could actually be acted on. An item already
-      // archived or already flagged has been dealt with; it stays absent forever, so
-      // leaving it in would re-archive it on every crawl and permanently skew the cap.
-      const actionable = items.filter(
-        (i) => i.entityInstanceId != null && i.archivedAt == null && i.removedUpstreamAt == null
-      )
-      const orphans = actionable.filter((item) => {
+      // archived has been dealt with for good; it stays absent forever, so leaving it
+      // in would re-archive it on every crawl and permanently skew the cap.
+      const actionable = items.filter((i) => i.entityInstanceId != null && i.archivedAt == null)
+      const unseen = actionable.filter((item) => {
         // Seen this run, or in an earlier run of the same (resumed) backfill.
         if (item.lastSeenRunId === ctx.runId) return false
-        if (item.lastSeenRunId != null && seenRunIds?.has(item.lastSeenRunId)) return false
+        if (item.lastSeenRunId != null && stream.seenRunIds?.has(item.lastSeenRunId)) return false
         return true
       })
-      if (orphans.length === 0) continue
-      totalBound += actionable.length
-      totalOrphans += orphans.length
-      plans.push({ mapping, bound: actionable.length, orphans })
+      // An item already flagged gone upstream is outside the cap arithmetic on both
+      // sides: it is not a fresh disappearance, and it must not pad `bound` either.
+      const orphans = unseen.filter((i) => i.removedUpstreamAt == null)
+      const flagged = unseen.filter((i) => i.removedUpstreamAt != null)
+      // `bound` counts every eligible mapping, including one with no orphans at all:
+      // the proportion rule is "of everything this connector holds", not "of the
+      // mappings that happened to lose something".
+      plan.bound += actionable.filter((i) => i.removedUpstreamAt == null).length
+      plan.orphans += orphans.length
+      if (mapping.parentMappingId == null) plan.rootOrphans += orphans.length
+      if (orphans.length === 0 && flagged.length === 0) continue
+      plan.plans.push({ mapping, orphans, flagged })
     }
+    totalBound += plan.bound
+    totalOrphans += plan.orphans
+    if (plan.plans.length > 0) streamPlans.push(plan)
   }
-
-  if (plans.length === 0) return
 
   // 🛑 The cap. Refuse the entire pass rather than archive an implausible set, and make
   // the run PARTIAL so it cannot read as a clean sync: an `errorSample` entry with no
   // `tier` is the engine-level error bucket, which is exactly what this is.
-  const capped = archiveCapReason(totalOrphans, totalBound)
-  if (capped) {
+  const refused =
+    capReason({ orphans: totalOrphans, bound: totalBound }) ?? wipeRefusal(streamPlans)
+  if (override) {
+    logger.info('orphan reconciliation running under a one-shot archive-cap override', {
+      connectorId: ctx.connector.id,
+      runId: ctx.runId,
+      orphans: totalOrphans,
+      bound: totalBound,
+      lifted: refused,
+      byUserId: override.byUserId,
+      confirmedAt: override.at,
+    })
+  }
+  if (refused && !override) {
     logger.warn('orphan reconciliation refused by the archive cap — nothing archived', {
       connectorId: ctx.connector.id,
       runId: ctx.runId,
       orphans: totalOrphans,
       bound: totalBound,
-      mappings: plans.length,
+      mappings: streamPlans.reduce((n, s) => n + s.plans.length, 0),
     })
     ctx.counters.errorSample.push({
       externalId: `connector:${ctx.connector.id}`,
       error:
-        `Delete reconciliation refused: ${capped}. Nothing was archived. ` +
+        `Delete reconciliation refused: ${refused}. Nothing was archived. ` +
         'This usually means the crawl saw the wrong set of records (a narrowed auth ' +
         'scope, a filtered query, or an empty page reported as complete) rather than ' +
         'that the records were really deleted. Verify the source, then re-sync.',
     })
+    await setArchiveCapTripped(ctx.db, ctx.connector.id, {
+      at: new Date().toISOString(),
+      runId: ctx.runId,
+      orphans: totalOrphans,
+      bound: totalBound,
+      reason: refused,
+    })
     return
   }
+  await clearArchiveCapTripped(ctx.db, ctx.connector.id)
 
-  for (const { mapping, orphans } of plans) {
-    for (const item of orphans) {
-      await entitySink.archiveRecord(
-        ctx,
-        item,
-        effectiveOrphanBehavior(mapping.orphanBehavior, item)
-      )
+  // "Minted" is a property of the record, not the binding (Phase 4): a def-keyed
+  // sibling that did not create the instance still resolves to `archive` when another
+  // binding of this connector did. One query for every unminted candidate at once.
+  const candidateIds = new Set<string>()
+  for (const { plans } of streamPlans) {
+    for (const { mapping, orphans, flagged } of plans) {
+      if (mapping.orphanBehavior !== 'archive') continue
+      for (const item of [...orphans, ...flagged]) {
+        if (!item.mintedInstance && item.entityInstanceId) candidateIds.add(item.entityInstanceId)
+      }
     }
   }
+  const minted =
+    candidateIds.size > 0
+      ? await listMintedInstanceIds(ctx.db, ctx.connector.id, [...candidateIds])
+      : new Set<string>()
+
+  for (const { plans } of streamPlans) {
+    for (const { mapping, orphans, flagged } of plans) {
+      const resolve = (item: ExistingItem) =>
+        effectiveOrphanBehavior(mapping.orphanBehavior, {
+          mintedInstance:
+            item.mintedInstance ||
+            (item.entityInstanceId != null && minted.has(item.entityInstanceId)),
+        })
+      for (const item of orphans) {
+        await entitySink.archiveRecord(ctx, item, resolve(item))
+      }
+      // Already flagged: never re-flag, but a behavior that now resolves to `archive`
+      // finishes the job the flag deferred (Phase 6b).
+      for (const item of flagged) {
+        const behavior = resolve(item)
+        if (behavior === 'archive') await entitySink.archiveRecord(ctx, item, behavior)
+      }
+    }
+  }
+}
+
+/** The first stream whose wipe rule trips, named, or null. */
+function wipeRefusal(streamPlans: StreamPlan[]): string | null {
+  for (const plan of streamPlans) {
+    const reason = wipeReason(plan)
+    if (reason) return `stream "${plan.label}": ${reason}`
+  }
+  return null
 }
 
 /**
@@ -364,9 +498,11 @@ export async function handleConnectorDelete(
 /**
  * Archive every item bound to one external id across a stream's mappings — the
  * shared core of an explicit upstream delete (webhook resolveDelete, Step 8A, or a
- * provider delete event). Archives regardless of target mode (the upstream said so);
- * `ignore` orphan behavior is upgraded to `archive`. Increments `counters.deleted`
- * per archived binding.
+ * provider delete event). The upstream said so outright, so this bypasses the mint
+ * degrade and the archive cap; `ignore` orphan behavior is upgraded to `archive`, while
+ * a `mark_deleted` mapping still only flags. Increments `counters.deleted` per archived
+ * binding; a flag is already counted by `archiveRecord` under `markedDeleted`, so it is
+ * not counted twice here.
  */
 export async function archiveExternalId(
   ctx: SyncCtx,
@@ -376,6 +512,7 @@ export async function archiveExternalId(
   for (const mapping of mappings) {
     const item = await findItem(ctx.db, ctx.connector.id, mapping.row.id, externalId)
     if (!item) continue
+    const behavior = mapping.orphanBehavior === 'ignore' ? 'archive' : mapping.orphanBehavior
     await entitySink.archiveRecord(
       ctx,
       {
@@ -383,8 +520,8 @@ export async function archiveExternalId(
         entityInstanceId: item.entityInstanceId,
         entityDefinitionId: item.entityDefinitionId,
       },
-      mapping.orphanBehavior === 'ignore' ? 'archive' : mapping.orphanBehavior
+      behavior
     )
-    ctx.counters.deleted += 1
+    if (behavior !== 'mark_deleted') ctx.counters.deleted += 1
   }
 }

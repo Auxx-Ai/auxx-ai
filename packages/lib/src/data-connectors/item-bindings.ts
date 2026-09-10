@@ -30,6 +30,7 @@ export async function listItemBindingsForInstances(
       connectorId: schema.DataConnectorItem.dataConnectorId,
       managedFields: schema.DataConnectorItem.managedFields,
       pinnedFields: schema.DataConnectorItem.pinnedFields,
+      removedUpstreamAt: schema.DataConnectorItem.removedUpstreamAt,
       fieldMappings: schema.DataConnectorMapping.fieldMappings,
     })
     .from(schema.DataConnectorItem)
@@ -52,6 +53,9 @@ export async function listItemBindingsForInstances(
       connectorId: row.connectorId,
       managedFields: row.managedFields ?? [],
       pinnedFields: row.pinnedFields ?? [],
+      // ISO, not Date: the binding shape is browser-safe and rides the wire inside
+      // `CellSyncInfo` (v12.1 Phase 5a, the "Removed upstream" badge).
+      removedUpstreamAt: row.removedUpstreamAt?.toISOString() ?? null,
       bindings: (row.fieldMappings ?? []).map((fm) => ({
         targetFieldRef: fm.targetFieldRef,
         mergeStrategy: fm.mergeStrategy,

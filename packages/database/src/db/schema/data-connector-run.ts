@@ -48,6 +48,10 @@ export const DataConnectorRun = pgTable(
     // `archived`/`deleted` on purpose: this run changed nothing a user would notice
     // unless they look, so folding it into either would overstate what happened.
     markedDeleted: integer().default(0).notNull(),
+    // A record this connector archived on an earlier reconcile reappeared upstream and
+    // the sink un-archived it (v12.1 Phase 1). Only the connector's own archives count:
+    // a human archive leaves the binding's `archivedAt` null and is never restored.
+    restored: integer().default(0).notNull(),
     failed: integer().default(0).notNull(),
     relationshipWarnings: integer().default(0).notNull(),
     // Pages fetched across the whole continuation chain (progress UI + slice budget).

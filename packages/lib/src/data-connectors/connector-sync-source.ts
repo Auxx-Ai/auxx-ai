@@ -104,6 +104,7 @@ function toSyncCounters(rc: RunCounters): Partial<SyncRunCounters> {
     archived: rc.archived,
     deleted: rc.deleted,
     markedDeleted: rc.markedDeleted,
+    restored: rc.restored,
     failed: rc.failed,
     relationshipWarnings: rc.relationshipWarnings,
   }

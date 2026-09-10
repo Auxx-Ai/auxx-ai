@@ -200,4 +200,70 @@ describe('resolveCellSyncState', () => {
       willOverwrite: true,
     })
   })
+
+  // v12.1 Phase 5a: the flag is record-grained and rides on every bound cell.
+  describe('removedUpstreamAt', () => {
+    const FLAGGED = '2026-09-09T02:00:00.000Z'
+
+    it('is absent, not null, on an unflagged cell so the wire shape is unchanged', () => {
+      const state = resolveCellSyncState({
+        fieldId: FIELD,
+        field: scalar,
+        markerConnectorId: 'dc_shopify',
+        bindings: [item({ removedUpstreamAt: null })],
+      })
+      expect(state).toEqual({ connectorId: 'dc_shopify', state: 'synced', willOverwrite: true })
+      expect(state).not.toHaveProperty('removedUpstreamAt')
+    })
+
+    it('rides along synced, edited and paused alike', () => {
+      const flagged = item({ removedUpstreamAt: FLAGGED })
+      const synced = resolveCellSyncState({
+        fieldId: FIELD,
+        field: scalar,
+        markerConnectorId: 'dc_shopify',
+        bindings: [flagged],
+      })
+      expect(synced).toMatchObject({ state: 'synced', removedUpstreamAt: FLAGGED })
+
+      const edited = resolveCellSyncState({
+        fieldId: FIELD,
+        field: scalar,
+        markerConnectorId: null,
+        bindings: [flagged],
+      })
+      expect(edited).toMatchObject({ state: 'edited', removedUpstreamAt: FLAGGED })
+
+      const paused = resolveCellSyncState({
+        fieldId: FIELD,
+        field: scalar,
+        markerConnectorId: null,
+        bindings: [item({ removedUpstreamAt: FLAGGED, pinnedFields: [FIELD] })],
+      })
+      expect(paused).toMatchObject({ state: 'paused', removedUpstreamAt: FLAGGED })
+    })
+
+    it('only reports the flag of the connector the cell resolved to', () => {
+      const state = resolveCellSyncState({
+        fieldId: FIELD,
+        field: scalar,
+        markerConnectorId: 'dc_shopify',
+        bindings: [
+          item(),
+          item({ connectorId: 'dc_other', managedFields: [], removedUpstreamAt: FLAGGED }),
+        ],
+      })
+      expect(state).toEqual({ connectorId: 'dc_shopify', state: 'synced', willOverwrite: true })
+    })
+
+    it('any flagged item of the connector on the record is enough', () => {
+      const state = resolveCellSyncState({
+        fieldId: FIELD,
+        field: scalar,
+        markerConnectorId: 'dc_shopify',
+        bindings: [item(), item({ managedFields: [], bindings: [], removedUpstreamAt: FLAGGED })],
+      })
+      expect(state?.removedUpstreamAt).toBe(FLAGGED)
+    })
+  })
 })

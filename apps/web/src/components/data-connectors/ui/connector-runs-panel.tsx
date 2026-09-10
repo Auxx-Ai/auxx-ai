@@ -15,6 +15,7 @@ import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { cn } from '@auxx/ui/lib/utils'
 import { pluralize } from '@auxx/utils/strings'
 import {
+  ArchiveRestore,
   ArchiveX,
   History,
   Plus,
@@ -59,6 +60,8 @@ const COUNT_FIELDS = [
     label: 'Gone upstream',
     className: 'text-amber-600',
   },
+  // A record this connector archived earlier came back upstream and was un-archived.
+  { key: 'restored', icon: ArchiveRestore, label: 'Restored', className: 'text-green-600' },
   { key: 'failed', icon: XCircle, label: 'Failed', className: 'text-red-600' },
 ] as const
 
@@ -179,6 +182,7 @@ function mockRun(partial: Partial<ConnectorRun> & { id: string }): ConnectorRun 
     archived: 0,
     deleted: 0,
     markedDeleted: 0,
+    restored: 0,
     failed: 0,
     relationshipWarnings: 0,
     pagesProcessed: 1,

@@ -123,7 +123,14 @@ function PropertyRow({
               </Badge>
             )}
             {ownedConnectorId ? (
-              <ConnectorLockBadge connectorId={ownedConnectorId} mode='owned' className='ms-1' />
+              <ConnectorLockBadge
+                connectorId={ownedConnectorId}
+                mode='owned'
+                // Record-grained "Removed upstream" (v12.1 Phase 5a) rides the cell's
+                // sync state; the owned lock has no per-cell state of its own.
+                removedUpstreamAt={sync?.removedUpstreamAt}
+                className='ms-1'
+              />
             ) : (
               sync && (
                 <ConnectorLockBadge

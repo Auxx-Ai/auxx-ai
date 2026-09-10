@@ -623,6 +623,32 @@ export type TargetMode = 'owned' | 'contributing'
 export type SyncMode = 'snapshot' | 'incremental'
 export type OrphanBehavior = 'archive' | 'mark_deleted' | 'ignore'
 
+// ── Crawl-reconciliation bookkeeping on `DataConnector.state` (v12.1 Phase 3) ──
+//
+// `state` is a shared jsonb (the sync cursor lives there too), so every writer MUST
+// merge keys with jsonb operators and never replace the column.
+
+/** Stamped when the archive cap refused a reconcile pass; cleared by the next clean pass. */
+export interface ArchiveCapTripped {
+  at: string
+  runId: string
+  orphans: number
+  bound: number
+  reason: string
+}
+
+/** One-shot human confirmation: the next reconcile pass skips the cap, then clears this. */
+export interface ArchiveCapOverride {
+  at: string
+  byUserId: string
+}
+
+/** The keys crawl reconciliation reads and writes on `DataConnector.state`. */
+export interface ConnectorReconcileState {
+  archiveCapTripped?: ArchiveCapTripped
+  archiveCapOverride?: ArchiveCapOverride
+}
+
 // ── Scheduled-trigger config (jsonb on DataConnector) ─────────────────────────
 
 export interface ScheduledTriggerConfig {
