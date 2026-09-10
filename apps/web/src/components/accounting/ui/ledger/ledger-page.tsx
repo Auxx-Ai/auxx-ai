@@ -170,9 +170,10 @@ export function LedgerPage({ periodKey }: LedgerPageProps) {
   })
   const roleMapQuery = api.ledger.roleMap.useQuery()
 
-  const accountCodeByRole: Partial<Record<AccountRole, string>> = {}
+  const accountByRole: Partial<Record<AccountRole, { code: string | null; name: string }>> = {}
   for (const row of roleMapQuery.data ?? []) {
-    if (row.account) accountCodeByRole[row.role as AccountRole] = row.account.code
+    if (row.account)
+      accountByRole[row.role as AccountRole] = { code: row.account.code, name: row.account.name }
   }
 
   const revisionEntries = [postedDetail, reversedQuery.data]
@@ -587,7 +588,7 @@ export function LedgerPage({ periodKey }: LedgerPageProps) {
                   <EntryRollForward
                     assertions={assertions}
                     currencyCode={currencyCode}
-                    accountCodeByRole={accountCodeByRole}
+                    accountByRole={accountByRole}
                   />
                 </Section>
               )}

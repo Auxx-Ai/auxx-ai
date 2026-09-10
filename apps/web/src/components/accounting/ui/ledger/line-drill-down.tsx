@@ -20,6 +20,7 @@ import {
   TableRow,
 } from '@auxx/ui/components/table'
 import { FileSearch } from 'lucide-react'
+import { formatAccountLabel } from '../account-label'
 import { formatAccountingDate, formatMinor, formatSignedMinor } from './format'
 
 export interface LineDrillDownTarget {
@@ -87,7 +88,8 @@ export function LineDrillDown({
       <DialogContent size='xl'>
         <DialogHeader>
           <DialogTitle>
-            {target?.accountCode} {target?.accountName ?? ''}
+            {target &&
+              formatAccountLabel({ code: target.accountCode, name: target.accountName ?? '' })}
           </DialogTitle>
           <DialogDescription>
             The subledger rows behind this line for {periodLabel}. The posting line itself records

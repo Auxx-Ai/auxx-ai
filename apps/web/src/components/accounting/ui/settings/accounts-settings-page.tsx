@@ -56,6 +56,7 @@ import { useAccess, useRequireCapability } from '~/providers/capabilities-provid
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
 import { api } from '~/trpc/react'
 import { useAccountingProviderStatus } from '../../hooks/use-accounting-provider-status'
+import { formatAccountLabel } from '../account-label-format'
 import type { ChartDraftHandle, ChartMapView } from './accounts-types'
 import { ChartAccountEditor } from './chart-account-editor'
 import { ChartList } from './chart-list'
@@ -313,7 +314,7 @@ export function AccountingAccountsSettingsPage() {
       const account = accounts.find((row) => row.id === id)
       const confirmed = await confirm({
         title: 'Remove account?',
-        description: `${account ? `${account.code} ${account.name} ` : 'This account '}comes out of the chart. Entries already posted keep the code and the name they were written with, and a re-seed will not bring it back.`,
+        description: `${account ? `${formatAccountLabel(account)} ` : 'This account '}comes out of the chart. Entries already posted keep the code and the name they were written with, and a re-seed will not bring it back.`,
         confirmText: 'Remove',
         cancelText: 'Cancel',
         destructive: true,

@@ -51,6 +51,7 @@ import { useConfirm } from '~/hooks/use-confirm'
 import { useViewportFill } from '~/hooks/use-viewport-fill'
 import { useRequireCapability } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
+import { formatAccountLabel } from '../../account-label'
 import { useChartAccounts } from '../../gl-account-picker'
 import { BankRuleDialog } from './bank-rule-dialog'
 import { describeRule } from './bank-rule-options'
@@ -94,8 +95,11 @@ export function BankingRulesPage() {
   // `rule.glAccountId` is the `gl_account` id (task 15 §4), never a code -
   // resolved once here against the one chart fetch every picker shares.
   const { accounts: chartAccounts } = useChartAccounts()
-  const resolveGlAccountCode = useCallback(
-    (id: string) => chartAccounts.find((account) => account.id === id)?.code ?? undefined,
+  const resolveGlAccountLabel = useCallback(
+    (id: string) => {
+      const account = chartAccounts.find((candidate) => candidate.id === id)
+      return account ? formatAccountLabel(account) : undefined
+    },
     [chartAccounts]
   )
 
@@ -182,7 +186,7 @@ export function BankingRulesPage() {
                       secondary={
                         <span className='flex flex-wrap items-center gap-1.5'>
                           <span className='text-muted-foreground text-xs'>
-                            {describeRule(rule, resolveAccountName, resolveGlAccountCode)}
+                            {describeRule(rule, resolveAccountName, resolveGlAccountLabel)}
                           </span>
                           {rule.autoApply && (
                             <Badge variant='amber' size='xs'>

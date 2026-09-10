@@ -480,7 +480,9 @@ const OpeningStockRowLine = memo(function OpeningStockRowLine({
         <Tooltip
           key='account'
           content={`${row.accountLabel}. The inventory account this opening balance will be stamped with, frozen on the movement, which is append-only.`}>
-          <span className='cursor-default text-xs tabular-nums'>{row.accountCode}</span>
+          <span className='cursor-default truncate text-xs tabular-nums'>
+            {row.accountCode || row.accountLabel}
+          </span>
         </Tooltip>,
 
         <EditableCell key='quantity' className='w-full'>

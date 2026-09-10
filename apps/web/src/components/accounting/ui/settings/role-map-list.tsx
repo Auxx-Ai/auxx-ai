@@ -39,7 +39,8 @@ import { EmptySection, Section } from '@auxx/ui/components/section'
 import { TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
 import { Ban, Coins, CreditCard, Pencil, Receipt, RotateCcw, Sparkles } from 'lucide-react'
-import { ACCOUNT_TYPE_OPTIONS, formatAccount } from './accounts-types'
+import { AccountLabel } from '../account-label'
+import { ACCOUNT_TYPE_OPTIONS } from './accounts-types'
 
 /** Statement-section icon, one per group. */
 const GROUP_ICONS: Record<string, typeof Coins> = {
@@ -241,14 +242,20 @@ function AssignmentSecondary({ row }: { row: RoleAssignmentRow }) {
           <Sparkles className='size-3' />
           Suggested
         </Badge>
-        <span className='truncate text-amber-700 dark:text-amber-400'>
-          {formatAccount(row.account)}
-        </span>
+        <AccountLabel
+          account={row.account}
+          density='compact'
+          className='text-amber-700 dark:text-amber-400'
+        />
       </span>
     )
   }
 
   return (
-    <span className='truncate text-muted-foreground text-xs'>{formatAccount(row.account)}</span>
+    <AccountLabel
+      account={row.account}
+      density='compact'
+      className='text-muted-foreground text-xs'
+    />
   )
 }

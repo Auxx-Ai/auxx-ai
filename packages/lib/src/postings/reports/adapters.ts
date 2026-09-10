@@ -34,13 +34,16 @@ export function toTrialBalanceRows(tb: TrialBalance): StatementRow[] {
     // The IDENTITY (task 15), not the code: two rows can no longer collide
     // because an account was renumbered mid-history.
     id: row.glAccountId,
-    label: row.inChart ? `${row.accountCode} ${row.accountName}` : `${row.accountCode}`,
+    label: row.inChart
+      ? [row.accountCode, row.accountName].filter(Boolean).join(' ')
+      : row.accountCode || row.accountName || row.glAccountId,
     depth: 0,
     kind: 'line',
     values: [row.debitMinor, row.creditMinor, row.balanceMinor],
     meta: {
       glAccountId: row.glAccountId,
       accountCode: row.accountCode,
+      accountName: row.accountName,
       note: row.inChart
         ? undefined
         : 'This account has posted lines but has been deleted from the current chart of accounts.',
@@ -101,13 +104,16 @@ export function toBalanceSheetRows(
     const children: StatementRow[] = rows.map((row) => ({
       // The IDENTITY (task 15), not the code - see `toTrialBalanceRows`.
       id: row.glAccountId,
-      label: row.inChart ? `${row.accountCode} ${row.accountName}` : row.accountCode,
+      label: row.inChart
+        ? [row.accountCode, row.accountName].filter(Boolean).join(' ')
+        : row.accountCode || row.accountName || row.glAccountId,
       depth: 1,
       kind: 'line',
       values: two(row.balanceMinor, compareRows, row.glAccountId),
       meta: {
         glAccountId: row.glAccountId,
         accountCode: row.accountCode,
+        accountName: row.accountName,
         note: row.inChart
           ? undefined
           : 'This account has posted lines but has been deleted from the current chart of accounts.',
@@ -227,13 +233,16 @@ export function toProfitAndLossRows(
     rows.map((row) => ({
       // The IDENTITY (task 15), not the code - see `toTrialBalanceRows`.
       id: row.glAccountId,
-      label: row.inChart ? `${row.accountCode} ${row.accountName}` : row.accountCode,
+      label: row.inChart
+        ? [row.accountCode, row.accountName].filter(Boolean).join(' ')
+        : row.accountCode || row.accountName || row.glAccountId,
       depth: 1,
       kind: 'line' as const,
       values: two(row.balanceMinor, compareRows, row.glAccountId),
       meta: {
         glAccountId: row.glAccountId,
         accountCode: row.accountCode,
+        accountName: row.accountName,
         note: row.inChart
           ? undefined
           : 'This account has posted lines but has been deleted from the current chart of accounts.',

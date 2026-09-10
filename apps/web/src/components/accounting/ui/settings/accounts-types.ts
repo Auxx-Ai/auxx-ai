@@ -19,6 +19,7 @@ import type {
   ProviderAccount,
 } from '@auxx/lib/postings/client'
 import type { SelectOptionColor } from '@auxx/types/custom-field'
+import { formatAccountLabel } from '../account-label-format'
 
 /**
  * The five statement classifications.
@@ -144,10 +145,13 @@ export function isMappingBroken(row: AccountIdentityRow): boolean {
  */
 export const DEFAULT_UNUSED_ROLES: AccountRole[] = ['ppv', 'inventory_wip']
 
-/** `1310 · Inventory Raw Materials`, the way an account reads in a row. */
+/**
+ * `1310 · Inventory Raw Materials`, the way an account reads in a row, or the
+ * name alone when the account has no code. Delegates to `formatAccountLabel`
+ * in `../account-label.tsx`, the one string form every screen shares.
+ */
 export function formatAccount(account: ChartAccountRow | null | undefined): string {
-  if (!account) return ''
-  return `${account.code} · ${account.name}`
+  return formatAccountLabel(account)
 }
 
 /**

@@ -22,6 +22,7 @@ import {
 import { FileSearch } from 'lucide-react'
 import Link from 'next/link'
 import { api } from '~/trpc/react'
+import { formatAccountLabel } from '../account-label'
 import { formatAccountingDate, formatMinor, formatSignedMinor } from '../ledger/format'
 import { periodKeyFromDate } from './report-helpers'
 
@@ -66,7 +67,9 @@ export function AccountLinesDialog({
     <Dialog open={!!target} onOpenChange={onOpenChange}>
       <DialogContent size='xl'>
         <DialogHeader>
-          <DialogTitle>{data ? `${data.accountCode} ${data.accountName}`.trim() : ''}</DialogTitle>
+          <DialogTitle>
+            {data ? formatAccountLabel({ code: data.accountCode, name: data.accountName }) : ''}
+          </DialogTitle>
           <DialogDescription>
             Every posted line against this account in the range, oldest first, with a running
             balance.

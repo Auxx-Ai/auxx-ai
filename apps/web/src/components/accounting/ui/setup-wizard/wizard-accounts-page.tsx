@@ -12,7 +12,7 @@ import { EmptySection } from '@auxx/ui/components/section'
 import { toastError } from '@auxx/ui/components/toast'
 import { ArrowUpRight } from 'lucide-react'
 import Link from 'next/link'
-import { formatAccount } from '~/components/accounting/ui/settings/accounts-types'
+import { AccountLabel } from '~/components/accounting/ui/account-label'
 import { api } from '~/trpc/react'
 
 const ROLES_HREF = '/app/accounting/settings/accounts?s=roles'
@@ -163,8 +163,13 @@ export function WizardAccountsPage() {
                   <span className='min-w-0 flex-1 truncate'>
                     {ACCOUNT_ROLE_LABELS[row.role as AccountRole] ?? row.role}
                   </span>
-                  <span className='hidden min-w-0 flex-1 truncate text-muted-foreground sm:block'>
-                    {formatAccount(row.account) || '-'}
+                  <span className='hidden min-w-0 flex-1 sm:block'>
+                    <AccountLabel
+                      account={row.account}
+                      density='compact'
+                      fallback='-'
+                      className='text-muted-foreground'
+                    />
                   </span>
                   <Badge variant={STATE_BADGE[row.state].variant} size='sm' className='shrink-0'>
                     {STATE_BADGE[row.state].label}

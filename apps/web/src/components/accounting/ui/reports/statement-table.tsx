@@ -18,6 +18,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import { CheckCircle2, ChevronRight, TriangleAlert } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
+import { AccountLabel } from '../account-label'
 import { EMPTY_CELL, formatMinor, formatSignedMinor } from '../ledger/format'
 
 /**
@@ -40,6 +41,7 @@ export interface StatementRow {
     /** The `gl_account` `EntityInstance` id (task 15) - the drill-down key. `accountCode` is display only. */
     glAccountId?: string
     accountCode?: string
+    accountName?: string
     recordId?: RecordId
     badge?: ReactNode
     note?: string
@@ -272,7 +274,14 @@ function RowLabel({
       ) : (
         <span className='size-4 shrink-0' />
       )}
-      <span className='min-w-0 truncate'>{row.label}</span>
+      {row.meta?.accountName ? (
+        <AccountLabel
+          account={{ code: row.meta.accountCode ?? null, name: row.meta.accountName }}
+          className='min-w-0'
+        />
+      ) : (
+        <span className='min-w-0 truncate'>{row.label}</span>
+      )}
       {row.meta?.badge}
       {row.meta?.note && <TooltipExplanation text={row.meta.note} />}
     </div>

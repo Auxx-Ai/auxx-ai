@@ -14,6 +14,7 @@ import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapte
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { BaseType } from '~/components/workflow/types'
 import { api } from '~/trpc/react'
+import { formatAccountLabel } from '../../account-label'
 import { GlAccountPicker, useChartAccounts } from '../../gl-account-picker'
 import { EntryBlockers, type LedgerBlocker } from '../../ledger/entry-blockers'
 import { EntryJournal } from '../../ledger/entry-journal'
@@ -169,7 +170,8 @@ export function CodePanel({ line, currencyCode, onDone }: CodePanelProps) {
                 className='flex w-fit items-center gap-1.5 text-muted-foreground text-xs hover:text-foreground'
                 onClick={() => setAccountId(line.suggestedGlAccountId)}>
                 <Lightbulb className='size-3' />
-                Use the suggestion{suggestedAccount ? `, ${suggestedAccount.code}` : ''}
+                Use the suggestion
+                {suggestedAccount ? `, ${formatAccountLabel(suggestedAccount)}` : ''}
               </button>
             )}
             {canCreateRule && (
