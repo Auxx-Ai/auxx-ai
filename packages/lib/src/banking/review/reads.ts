@@ -540,6 +540,7 @@ export async function listMatchCandidates(
             ]
           : [
               readBankDepositCandidates(db, organizationId, dateKey, absMinor, search),
+              readPayoutCandidates(db, organizationId, dateKey, absMinor, transactionId, search),
               readTransactionCandidates(db, organizationId, dateKey, absMinor, 'charge', search),
             ]
       )
@@ -740,7 +741,7 @@ function windowDates(dateKey: string, days = CANDIDATE_DAY_WINDOW) {
 async function readEntityCandidates(params: {
   db: Database
   organizationId: string
-  entityType: 'vendor_payment' | 'vendor_bill' | 'bank_deposit'
+  entityType: 'vendor_payment' | 'vendor_bill' | 'bank_deposit' | 'payout'
   recordType: MatchRecordType
   amountAttribute: string
   dateAttribute: string
@@ -749,6 +750,13 @@ async function readEntityCandidates(params: {
   dateKey: string
   absMinor: number
   search?: string
+  /**
+   * A single-select attribute the candidate must carry an allowed option for,
+   * or the row is skipped. Read in memory, same as the amount tolerance below
+   * - the day window has already cut the set to a handful of rows.
+   */
+  statusAttribute?: string | null
+  allowedStatuses?: readonly string[]
 }): Promise<MatchCandidate[]> {
   const { db, organizationId, entityType, dateKey, absMinor, search } = params
   const defId = await getCachedEntityDefId(organizationId, entityType)
@@ -759,6 +767,7 @@ async function readEntityCandidates(params: {
     params.dateAttribute,
     params.linkAttribute,
     params.secondaryAttribute,
+    params.statusAttribute,
   ].filter((attr): attr is string => !!attr)
 
   const fieldRows = await db
@@ -834,6 +843,7 @@ async function readEntityCandidates(params: {
       valueNumber: schema.FieldValue.valueNumber,
       valueDate: schema.FieldValue.valueDate,
       relatedEntityId: schema.FieldValue.relatedEntityId,
+      optionId: schema.FieldValue.optionId,
     })
     .from(schema.FieldValue)
     .where(
@@ -860,6 +870,10 @@ async function readEntityCandidates(params: {
       if (!attr) return null
       const fieldId = fieldIdByAttr.get(attr)
       return fieldId ? (perInstance.get(id)?.get(fieldId) ?? null) : null
+    }
+    if (params.statusAttribute && params.allowedStatuses) {
+      const status = read(params.statusAttribute)?.optionId
+      if (!status || !params.allowedStatuses.includes(status)) continue
     }
     const amountMinor = Math.round(read(params.amountAttribute)?.valueNumber ?? 0)
     if (amountMinor === 0) continue
@@ -960,6 +974,53 @@ function readBankDepositCandidates(
     absMinor,
     search,
   })
+}
+
+/**
+ * Payouts as match candidates for an INBOUND line (brief 18 §1, the half of the
+ * duplicate detector that ships as prevention).
+ *
+ * 🛑 **Restricted to `paid` and `in_transit`.** A `failed` or `reversed` payout
+ * never reached the bank, or was clawed back after arriving - offering it here
+ * would let a reviewer match a real deposit to money that is not actually
+ * sitting in the account.
+ *
+ * ⚠️ **Excluded once matched to a DIFFERENT bank line**, not merely greyed out
+ * the way `bank_deposit` and `vendor_payment` candidates are. A payout has
+ * exactly one bank line that confirms it, and it has already been offered once;
+ * relisting it invites a second reviewer to match a second line to money that
+ * only arrived once. Still offered for THIS line, so re-opening the drawer on a
+ * line already matched to this payout does not read as "nothing here".
+ */
+function readPayoutCandidates(
+  db: Database,
+  organizationId: string,
+  dateKey: string,
+  absMinor: number,
+  transactionId: string,
+  search?: string
+): Promise<MatchCandidate[]> {
+  return readEntityCandidates({
+    db,
+    organizationId,
+    entityType: 'payout',
+    recordType: 'payout',
+    amountAttribute: 'payout_deposited',
+    dateAttribute: 'payout_paid_at',
+    linkAttribute: 'payout_bank_transaction_id',
+    secondaryAttribute: null,
+    statusAttribute: 'payout_status',
+    allowedStatuses: ['paid', 'in_transit'],
+    dateKey,
+    absMinor,
+    search,
+  }).then((candidates) =>
+    candidates.filter(
+      (candidate) =>
+        !candidate.matchedToBankTransactionId ||
+        candidate.matchedToBankTransactionId === transactionId
+    )
+  )
 }
 
 /**
@@ -1199,6 +1260,7 @@ function narrowMatchRecordType(value: string | null | undefined): MatchedRecordT
     case 'payment_transaction':
     case 'bank_deposit':
     case 'vendor_bill':
+    case 'payout':
     case 'bank_transaction':
     // 🛑 `bank_account` belongs here. It is what a transfer with no counterpart
     // yet stamps, and narrowing it away made every stranded first leg read as

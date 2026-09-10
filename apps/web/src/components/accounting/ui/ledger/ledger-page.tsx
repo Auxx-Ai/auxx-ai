@@ -44,7 +44,7 @@ import {
 } from '~/providers/dehydrated-state-provider'
 import { useDockStore } from '~/stores/dock-store'
 import { api } from '~/trpc/react'
-import { BooksBalanceLine, FailedExportsBanner } from './books-health'
+import { BooksBalanceLine, DuplicateMovementsCard, FailedExportsBanner } from './books-health'
 import { type CountAdjustmentRow, CountEvidenceSection } from './count-evidence-section'
 import { EntryBlockers, type LedgerBlocker } from './entry-blockers'
 import { EntryJournal, journalLinesFromDetail } from './entry-journal'
@@ -166,6 +166,13 @@ export function LedgerPage({ periodKey }: LedgerPageProps) {
   // them. An `enabled: !!activePeriodKey` here would withhold an answer that is
   // available, and leave the same permanent skeleton behind.
   const balanceQuery = api.ledger.verifyBalance.useQuery({
+    periodKey: activePeriodKey || undefined,
+  })
+  // The duplicate detector (plans/accounting/tasks/18-two-feeds-one-author.md
+  // §1). Same month, same `||` (not `??`) reasoning as `balanceQuery` above -
+  // `activePeriodKey` is `''` while periods are loading and permanently for a
+  // finalized org whose cutoff is still ahead of the wall clock.
+  const duplicateMovementsQuery = api.ledger.duplicateMovements.useQuery({
     periodKey: activePeriodKey || undefined,
   })
   const roleMapQuery = api.ledger.roleMap.useQuery()
@@ -681,6 +688,19 @@ export function LedgerPage({ periodKey }: LedgerPageProps) {
                   </p>
                 ) : (
                   <Skeleton className='h-6 w-64' />
+                )}
+
+                {/* The duplicate detector (brief 18 §1). Renders nothing while
+                    loading or clean - unlike the balance sweep above, a
+                    running or empty read here is not itself news. */}
+                {!!duplicateMovementsQuery.data?.length && (
+                  <div className='mt-3'>
+                    <DuplicateMovementsCard
+                      findings={duplicateMovementsQuery.data}
+                      currencyCode={currencyCode}
+                      bookTimeZone={bookTimeZone}
+                    />
+                  </div>
                 )}
               </Section>
             </>

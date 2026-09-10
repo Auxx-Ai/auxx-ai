@@ -37,6 +37,7 @@ const PAYOUT_ATTRIBUTES = [
   'payout_unrecognised_count',
   'payout_gl_posting_id',
   'payout_blocked_reason',
+  'payout_bank_transaction_id',
 ] as const
 
 type PayoutAttribute = (typeof PAYOUT_ATTRIBUTES)[number]
@@ -343,6 +344,7 @@ async function hydrate(
       unrecognisedCount: money('payout_unrecognised_count'),
       glPostingId: read('payout_gl_posting_id')?.valueText ?? null,
       blockedReason: read('payout_blocked_reason')?.valueText ?? null,
+      bankTransactionId: read('payout_bank_transaction_id')?.valueText ?? null,
       createdAt: row.createdAt,
     }
   })

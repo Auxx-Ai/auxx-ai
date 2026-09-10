@@ -6,17 +6,32 @@ import {
   type BankTransactionRow,
   MATCH_RECORD_TYPE_LABELS,
   type MatchCandidate,
+  type MatchRecordType,
 } from '@auxx/lib/banking/review/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { InputSearch } from '@auxx/ui/components/input-search'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { TREE_SECONDARY_NOTRUNCATE, TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
-import { FileCheck2, Link2 } from 'lucide-react'
+import { FileCheck2, Landmark, Link2, type LucideIcon } from 'lucide-react'
 import { useState } from 'react'
 import { api } from '~/trpc/react'
 import { EntryBlockers, type LedgerBlocker } from '../../ledger/entry-blockers'
 import { formatMinor } from '../../ledger/format'
+
+/**
+ * Every other candidate is a document; a payout is the gateway settlement
+ * itself, so it gets the bank icon rather than the generic document check
+ * (brief 18 §1.1 a).
+ */
+const RECORD_TYPE_ICONS: Record<MatchRecordType, LucideIcon> = {
+  vendor_payment: FileCheck2,
+  payment_transaction: FileCheck2,
+  bank_deposit: FileCheck2,
+  vendor_bill: FileCheck2,
+  payout: Landmark,
+  bank_transaction: FileCheck2,
+}
 
 interface MatchPanelProps {
   line: BankTransactionRow
@@ -90,10 +105,11 @@ export function MatchPanel({ line, currencyCode, onDone }: MatchPanelProps) {
           renderRow={(row: MatchCandidate) => {
             const takenBy = row.matchedToBankTransactionId
             const taken = !!takenBy && takenBy !== line.id
+            const Icon = RECORD_TYPE_ICONS[row.recordType]
             return (
               <TreeRow
                 className={TREE_SECONDARY_NOTRUNCATE}
-                icon={<FileCheck2 className='size-4' />}
+                icon={<Icon className='size-4' />}
                 title={<span className='truncate text-sm'>{row.label}</span>}
                 secondary={
                   <span className='flex flex-wrap items-center gap-1.5'>
@@ -132,7 +148,8 @@ export function MatchPanel({ line, currencyCode, onDone }: MatchPanelProps) {
                           | 'vendor_payment'
                           | 'payment_transaction'
                           | 'bank_deposit'
-                          | 'vendor_bill',
+                          | 'vendor_bill'
+                          | 'payout',
                         recordId: row.recordId,
                       })
                     }>

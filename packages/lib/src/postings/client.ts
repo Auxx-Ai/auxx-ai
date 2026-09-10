@@ -169,6 +169,10 @@ export {
   requiresAssertions,
   reverseAssertions,
 } from './draft'
+// ── plans/accounting/tasks/18: two feeds, one author, unit 1 ───────────────
+// Types only - the read touches `@auxx/database` and stays server-only,
+// exported from `./index`. The close console's card renders this shape.
+export type { DuplicateMovementEntry, DuplicateMovementFinding } from './duplicate-movements'
 export {
   JOURNAL_ENTRY_POSTING_TYPE,
   type JournalEntryKindValue,

@@ -34,6 +34,15 @@ export interface PayoutRecord {
    * and the remedy. Null once posted, or if it never blocked.
    */
   blockedReason: string | null
+  /**
+   * The bank line that confirmed this payout (brief 18 §1, the duplicate
+   * detector's prevention half). Set only by `matchTransaction`
+   * (`banking/review/writes.ts`) when a reviewer matches the payout to its
+   * bank line; cleared by `undoReview`. A `paid` payout with no bank line yet
+   * is a real signal on the payouts page - either the deposit has not landed
+   * or somebody coded it by hand instead of matching it.
+   */
+  bankTransactionId: string | null
   createdAt: Date
 }
 

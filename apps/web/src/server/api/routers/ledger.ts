@@ -11,6 +11,7 @@ import {
   createChartAccount,
   createJournalEntry,
   discardJournalEntry,
+  findDuplicateBankMovements,
   GL_ACCOUNT_SUBTYPES,
   GL_ACCOUNT_TYPES,
   getJournalEntry,
@@ -840,6 +841,30 @@ export const ledgerRouter = createTRPCRouter({
     .input(optionalMonthKey.optional())
     .query(async ({ ctx, input }) => {
       const result = await verifyBooksBalance(ctx.db, ctx.session.organizationId, {
+        month: input?.periodKey,
+      })
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /**
+   * The duplicate detector (plans/accounting/tasks/18-two-feeds-one-author.md
+   * §1, DECIDED "no matter what"): two or more posted lines that moved one
+   * bank account by the same amount, in the same direction, from more than one
+   * `sourceType`, within a couple of days of each other - a payout and a bank
+   * line coded to it, most commonly. Rendered as a card beside
+   * `BooksBalanceLine`, never auto-fixed - the remedy is a person reversing one
+   * entry or deleting one in QuickBooks.
+   *
+   * Same optional month input as {@link verifyBalance}, for the same reason:
+   * the close console asks about the month on screen, and a malformed value is
+   * still refused by the regex.
+   */
+  duplicateMovements: permissionProcedure(PermissionKey.ledgerView)
+    .input(optionalMonthKey.optional())
+    .query(async ({ ctx, input }) => {
+      const result = await findDuplicateBankMovements(ctx.db, {
+        organizationId: ctx.session.organizationId,
         month: input?.periodKey,
       })
       if (result.isErr()) throw result.error

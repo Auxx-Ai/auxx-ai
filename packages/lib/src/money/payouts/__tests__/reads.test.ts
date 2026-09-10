@@ -26,7 +26,8 @@ vi.mock('../../../cache', () => ({
 }))
 
 import type { Database } from '@auxx/database'
-import { findBankAccountByStripeExternalAccountId } from '../reads'
+import { schema } from '@auxx/database'
+import { findBankAccountByStripeExternalAccountId, listPayouts } from '../reads'
 
 const ORG = 'org_1'
 const BANK_ACCOUNT_DEF = 'def_bank_account'
@@ -123,5 +124,73 @@ describe('findBankAccountByStripeExternalAccountId', () => {
 
     const result = await findBankAccountByStripeExternalAccountId(db, ORG, 'ba_confirmed')
     expect(result).toEqual({ bankAccountId: 'ba_row_1', glAccountId: null })
+  })
+})
+
+// ── `bankTransactionId` (brief 18 §1: payouts become match candidates) ──────
+//
+// Set only by `matchTransaction` (`banking/review/writes.ts`) once a reviewer
+// matches this payout to its bank line. A `paid` payout carrying null here is
+// the payouts page's own `unmatched` signal.
+describe('listPayouts', () => {
+  const PAYOUT_DEF = 'def_payout'
+  const FIELD_IDS: Record<string, string> = {
+    payout_gateway_id: 'f_gateway',
+    payout_status: 'f_status',
+    payout_bank_transaction_id: 'f_bank_txn',
+  }
+
+  /** Every `select().from(<table>)` resolves to a fixed row set by table identity. */
+  function stubPayoutsDb(rows: { entityInstance: unknown[]; fieldValue: unknown[] }): Database {
+    const chain = (data: unknown[]): Record<string, unknown> => {
+      const c: Record<string, unknown> = {}
+      for (const method of ['innerJoin', 'where', 'orderBy', 'limit', 'offset', '$dynamic']) {
+        c[method] = () => chain(data)
+      }
+      // biome-ignore lint/suspicious/noThenProperty: chainable drizzle query-builder stub
+      c.then = (resolve: (value: unknown) => unknown, reject?: (error: unknown) => unknown) =>
+        Promise.resolve(data).then(resolve, reject)
+      return c
+    }
+    return {
+      select: () => ({
+        from: (target: unknown) =>
+          target === schema.EntityInstance ? chain(rows.entityInstance) : chain(rows.fieldValue),
+      }),
+    } as unknown as Database
+  }
+
+  beforeEach(() => {
+    h.getCachedEntityDefId.mockResolvedValue(PAYOUT_DEF)
+    h.bySystemAttributes.mockResolvedValue(
+      Object.fromEntries(Object.entries(FIELD_IDS).map(([attr, id]) => [attr, { id }]))
+    )
+  })
+
+  it('carries bankTransactionId through from payout_bank_transaction_id', async () => {
+    const db = stubPayoutsDb({
+      entityInstance: [{ id: 'payout_1', createdAt: new Date('2026-09-10') }],
+      fieldValue: [
+        { entityId: 'payout_1', fieldId: FIELD_IDS.payout_gateway_id, valueText: 'po_1' },
+        { entityId: 'payout_1', fieldId: FIELD_IDS.payout_status, optionId: 'paid' },
+        { entityId: 'payout_1', fieldId: FIELD_IDS.payout_bank_transaction_id, valueText: 'txn_1' },
+      ],
+    })
+    const result = await listPayouts(db, { organizationId: ORG })
+    expect(result.isOk()).toBe(true)
+    if (result.isOk()) expect(result.value[0]?.bankTransactionId).toBe('txn_1')
+  })
+
+  it('is null - the payouts page unmatched signal - until a reviewer matches it', async () => {
+    const db = stubPayoutsDb({
+      entityInstance: [{ id: 'payout_1', createdAt: new Date('2026-09-10') }],
+      fieldValue: [
+        { entityId: 'payout_1', fieldId: FIELD_IDS.payout_gateway_id, valueText: 'po_1' },
+        { entityId: 'payout_1', fieldId: FIELD_IDS.payout_status, optionId: 'paid' },
+      ],
+    })
+    const result = await listPayouts(db, { organizationId: ORG })
+    expect(result.isOk()).toBe(true)
+    if (result.isOk()) expect(result.value[0]?.bankTransactionId).toBeNull()
   })
 })

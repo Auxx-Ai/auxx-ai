@@ -2,14 +2,21 @@
 
 'use client'
 
-import type { BooksBalanceReport, FailedExport } from '@auxx/lib/postings/client'
+import type {
+  BooksBalanceReport,
+  DuplicateMovementFinding,
+  FailedExport,
+} from '@auxx/lib/postings/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { toastError } from '@auxx/ui/components/toast'
 import { cn } from '@auxx/ui/lib/utils'
-import { CircleAlert, Loader, RefreshCw, Scale } from 'lucide-react'
+import { CircleAlert, Loader, RefreshCw, Scale, TriangleAlert } from 'lucide-react'
+import { useState } from 'react'
+import { AccountLabel } from '~/components/accounting/ui/account-label'
+import { PostingLinesDialog } from '~/components/accounting/ui/ledger-card'
 import { api } from '~/trpc/react'
-import { formatPeriodLabel } from './format'
+import { formatAccountingDate, formatMinor, formatPeriodLabel } from './format'
 
 interface BooksBalanceLineProps {
   report: BooksBalanceReport
@@ -213,6 +220,106 @@ export function FailedExportsBanner({ exports: owed }: FailedExportsBannerProps)
           </div>
         ))}
       </div>
+    </div>
+  )
+}
+
+/** `'bank_transaction'` reads `'bank coding'` - what a person did, not the enum. */
+const SOURCE_TYPE_LABELS: Record<string, string> = {
+  payout: 'payout',
+  bank_transaction: 'bank coding',
+  bank_deposit: 'bank deposit',
+}
+
+function sourceTypeLabel(sourceType: string): string {
+  return SOURCE_TYPE_LABELS[sourceType] ?? sourceType.replace(/_/g, ' ')
+}
+
+interface DuplicateMovementsCardProps {
+  findings: DuplicateMovementFinding[]
+  currencyCode: string
+  bookTimeZone: string
+}
+
+/**
+ * The duplicate detector's card (plans/accounting/tasks/18-two-feeds-one-
+ * author.md §1, DECIDED "no matter what"): two or more posted lines that moved
+ * one bank account by the same amount, in the same direction, from more than
+ * one source, within a couple of days of each other.
+ *
+ * 🛑 **Never auto-fixed, and there is no action button beyond opening a
+ * posting.** A detector that "resolved" a duplicate would have guessed which
+ * entry was real; the remedy is a person choosing to reverse one in auxx or
+ * delete one in QuickBooks (§1.1 c's mockup, verbatim in the closing sentence
+ * below). A CARD, never a toast - `FailedExportsBanner` above follows the same
+ * rule and for the same reason: this is a finding on ledger surfaces, not a
+ * transient notice.
+ */
+export function DuplicateMovementsCard({
+  findings,
+  currencyCode,
+  bookTimeZone,
+}: DuplicateMovementsCardProps) {
+  const [openPostingId, setOpenPostingId] = useState<string | null>(null)
+
+  if (findings.length === 0) return null
+
+  return (
+    <div className='flex flex-col gap-3'>
+      {findings.map((finding) => {
+        const key = `${finding.glAccountId}-${finding.amountMinor}-${finding.direction}-${finding.entries[0]?.glPostingId ?? ''}`
+        return (
+          <div
+            key={key}
+            className='flex flex-col gap-3 rounded-xl border border-amber-500/40 bg-amber-500/5 p-4'>
+            <div className='flex items-start gap-2'>
+              <TriangleAlert className='mt-0.5 size-4 shrink-0 text-amber-600' />
+              <div className='flex min-w-0 flex-col gap-1'>
+                <span className='flex flex-wrap items-baseline gap-1 font-medium'>
+                  Possible duplicate
+                  <span className='text-muted-foreground'>-</span>
+                  <AccountLabel
+                    account={{ code: finding.accountCode, name: finding.accountName }}
+                    density='compact'
+                  />
+                </span>
+                <p className='text-sm text-muted-foreground'>
+                  {finding.entries.length} entries move this account by{' '}
+                  {formatMinor(finding.amountMinor, currencyCode)} from different sources.
+                </p>
+              </div>
+            </div>
+
+            <div className='flex flex-col gap-1.5'>
+              {finding.entries.map((entry) => (
+                <button
+                  key={entry.glPostingId}
+                  type='button'
+                  className='flex flex-wrap items-center gap-2 rounded-lg border bg-background px-3 py-2 text-left text-sm hover:bg-muted/40'
+                  onClick={() => setOpenPostingId(entry.glPostingId)}>
+                  <span className='font-mono'>{entry.docNumber}</span>
+                  <span className='text-xs text-muted-foreground'>
+                    {sourceTypeLabel(entry.sourceType)}
+                  </span>
+                  <span className='ml-auto text-xs text-muted-foreground'>
+                    posted {formatAccountingDate(entry.txnDate, bookTimeZone)}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            <p className='text-xs text-muted-foreground'>
+              Nothing was changed. Reverse one, or delete it in QuickBooks.
+            </p>
+          </div>
+        )
+      })}
+
+      <PostingLinesDialog
+        postingId={openPostingId}
+        onOpenChange={(open) => !open && setOpenPostingId(null)}
+        currencyCode={currencyCode}
+      />
     </div>
   )
 }
