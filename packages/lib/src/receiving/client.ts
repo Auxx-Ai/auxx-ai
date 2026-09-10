@@ -283,3 +283,20 @@ export function roundMinorUnits(value: number): number {
 export function computeExtendedCost(unitCost: number, quantity: number): number {
   return Math.round(unitCost * quantity)
 }
+
+/**
+ * The opening-stock shapes, re-exported for the browser.
+ *
+ * Type-only, and `types.ts` has no imports at all, so nothing server-side is
+ * pulled across by this. The Costing page's pure half (row states, chip counts,
+ * the excluded block) is written against these without reaching for the barrel.
+ */
+export type {
+  BulkOpeningStockInput,
+  BulkOpeningStockSummary,
+  OpenedOpeningStockRow,
+  OpeningStockCandidate,
+  OpeningStockEntry,
+  OpeningStockSkip,
+  OpeningStockSkipReason,
+} from './types'
