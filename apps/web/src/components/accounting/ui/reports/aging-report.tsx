@@ -100,7 +100,7 @@ export function AgingReportPage({ side }: AgingReportPageProps) {
         disabled={!asOf}
       />
       <ScrollArea className='min-h-0 flex-1' scrollbarClassName='w-1.5'>
-        <div className='mx-auto flex w-full max-w-5xl flex-col gap-3 p-4'>
+        <div className='mx-auto flex w-full max-w-5xl flex-1 flex-col gap-3 p-4'>
           <CompletenessBanner asOf={asOf} />
           {period.isLoading ? (
             <Skeleton className='h-64 w-full' />

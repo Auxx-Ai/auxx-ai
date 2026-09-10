@@ -16,7 +16,7 @@ import { RadioTab, RadioTabItem } from '@auxx/ui/components/radio-tab'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
-import { Ban, Landmark, Undo2 } from 'lucide-react'
+import { ArrowLeftRight, Ban, Landmark, Link2, type LucideIcon, Tag, Undo2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import DrawerComments from '~/components/global/comments/drawer-comments'
 import { api } from '~/trpc/react'
@@ -35,10 +35,10 @@ import { TransferPanel } from './transfer-panel'
 /** The reviewer's FIRST decision, per bank plan 03 §3. */
 type Treatment = 'match' | 'code' | 'transfer'
 
-const TREATMENTS: { value: Treatment; label: string }[] = [
-  { value: 'match', label: 'Match' },
-  { value: 'code', label: 'Code' },
-  { value: 'transfer', label: 'Transfer' },
+const TREATMENTS: { value: Treatment; label: string; icon: LucideIcon }[] = [
+  { value: 'match', label: 'Match', icon: Link2 },
+  { value: 'code', label: 'Code', icon: Tag },
+  { value: 'transfer', label: 'Transfer', icon: ArrowLeftRight },
 ]
 
 /**
@@ -276,6 +276,7 @@ export function ReviewDrawer({
                         size='sm'>
                         {TREATMENTS.map((item) => (
                           <RadioTabItem key={item.value} value={item.value}>
+                            <item.icon />
                             {item.label}
                           </RadioTabItem>
                         ))}

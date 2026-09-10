@@ -40,13 +40,12 @@ import { type BankTransactionRow, REVIEW_QUEUE_STATES } from '@auxx/lib/banking/
 import { PermissionKey } from '@auxx/lib/permissions/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
-import { Checkbox } from '@auxx/ui/components/checkbox'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { toastError } from '@auxx/ui/components/toast'
-import { TREE_SECONDARY_NOTRUNCATE, TreeRow } from '@auxx/ui/components/tree-row'
+import { TREE_SECONDARY_NOTRUNCATE, TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { cn } from '@auxx/ui/lib/utils'
-import { Inbox, Landmark, ListChecks } from 'lucide-react'
+import { Inbox, Landmark, ListChecks, PanelRight } from 'lucide-react'
 import { parseAsStringLiteral, useQueryState } from 'nuqs'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRegisterDockedPanels } from '~/components/global/docked-panels-outlet'
@@ -244,6 +243,13 @@ export function BankingReviewQueuePage() {
       current.includes(id) ? current.filter((value) => value !== id) : [...current, id]
     )
   }, [])
+
+  /**
+   * Anything selected → the list is in SELECTING mode: the checkboxes are
+   * pinned and a row click picks that row rather than opening it. Clearing the
+   * selection hands the row click back to the drawer.
+   */
+  const selecting = selectedIds.length > 0
 
   const hasAccounts = accounts.length > 0
 
@@ -474,42 +480,51 @@ export function BankingReviewQueuePage() {
                 items={rows}
                 loading={list.isPending}
                 skeletonCount={6}
+                /* A hairline between rows. The selected row draws a `ring-1`,
+                   which paints OUTSIDE its border box - flush against the next
+                   row, whose background paints later and clips the ring's
+                   bottom edge. One pixel of gap is enough to keep it whole. */
+                className='gap-px'
                 getKey={(row: BankTransactionRow) => row.id}
                 renderRow={(row: BankTransactionRow) => (
                   <TreeRow
                     className={TREE_SECONDARY_NOTRUNCATE}
-                    icon={
-                      <Checkbox
-                        checked={selectedIds.includes(row.id)}
-                        onClick={(event) => event.stopPropagation()}
-                        onCheckedChange={() => toggle(row.id)}
-                        aria-label={`Select ${row.description ?? row.id}`}
-                      />
-                    }
+                    icon={<Landmark className='size-4 text-muted-foreground' />}
+                    /* 🛑 Selection is always AVAILABLE and only PINNED once
+                       something is selected - the same idiom the chart list
+                       uses. A pinned column of empty boxes is what a list of
+                       270 lines looks like before anyone has decided anything;
+                       the box belongs on the row you are pointing at, and on
+                       every row only once you are actually picking. */
+                    selectable
+                    selecting={selecting}
+                    selected={selectedIds.includes(row.id)}
+                    onSelectChange={() => toggle(row.id)}
+                    selectLabel={`Select ${row.description ?? row.id}`}
+                    /* Direction, then date, then the description - all three
+                       inside `title`, so every row starts on the same two
+                       fixed-width columns and the eye reads straight down them.
+                       The In/Out badge is width-pinned for exactly that reason:
+                       left to its content, "Out" and "In" differ by ~8px and
+                       every date after them sits at a different x. */
                     title={
-                      <span className='truncate text-sm' title={row.matchKey ?? undefined}>
-                        {row.description || EMPTY_CELL}
+                      <span className='flex min-w-0 items-center gap-1.5'>
+                        <Badge
+                          variant={row.amountMinor < 0 ? 'outline' : 'green'}
+                          size='xs'
+                          className='w-9 shrink-0 justify-center'>
+                          {row.amountMinor < 0 ? 'Out' : 'In'}
+                        </Badge>
+                        <span className='shrink-0 font-mono text-xs tabular-nums text-muted-foreground'>
+                          {row.postedAt ?? EMPTY_CELL}
+                        </span>
+                        <span className='truncate text-sm' title={row.matchKey ?? undefined}>
+                          {row.description || EMPTY_CELL}
+                        </span>
                       </span>
                     }
                     secondary={
                       <span className='flex flex-wrap items-center gap-1.5'>
-                        <span className='font-mono text-xs tabular-nums text-muted-foreground'>
-                          {row.postedAt ?? EMPTY_CELL}
-                        </span>
-                        {/* Amounts are unsigned with the direction in its own
-                            badge, the same rule the ledger's own tables keep. */}
-                        <span
-                          className={cn(
-                            'font-mono text-xs tabular-nums',
-                            row.amountMinor < 0
-                              ? 'text-foreground'
-                              : 'text-green-700 dark:text-green-400'
-                          )}>
-                          {formatMinor(Math.abs(row.amountMinor), DISPLAY_CURRENCY)}
-                        </span>
-                        <Badge variant='outline' size='xs'>
-                          {row.amountMinor < 0 ? 'Out' : 'In'}
-                        </Badge>
                         <BankAccountBadge bankAccountId={row.bankAccountId} size='sm' />
                         {row.bankStatus === 'void' && (
                           <Badge variant='outline' size='xs'>
@@ -527,6 +542,27 @@ export function BankingReviewQueuePage() {
                             <AccountLabel glAccountId={row.glAccountId} density='chip' />
                           </Badge>
                         )}
+                      </span>
+                    }
+                    /* The status is where a row ENDS, not another chip in the
+                       middle of it: right-aligned it lands at the same x on
+                       every row, so a column of "for review" reads as one thing
+                       to clear rather than six labels at six positions. */
+                    actions={
+                      <div className='flex items-center gap-2'>
+                        {/* Amounts are unsigned with the direction in its own
+                            badge, the same rule the ledger's own tables keep.
+                            It leads the trailing cluster because the money is
+                            what a reviewer scans a queue for. */}
+                        <span
+                          className={cn(
+                            'font-mono text-xs tabular-nums',
+                            row.amountMinor < 0
+                              ? 'text-foreground'
+                              : 'text-green-700 dark:text-green-400'
+                          )}>
+                          {formatMinor(Math.abs(row.amountMinor), DISPLAY_CURRENCY)}
+                        </span>
                         <span className='flex items-center gap-1 text-muted-foreground text-xs'>
                           <span
                             className={cn(
@@ -537,12 +573,44 @@ export function BankingReviewQueuePage() {
                           />
                           {row.reviewStatus.replace('_', ' ')}
                         </span>
-                      </span>
+                        {/* 🛑 `persistent`, not the hover-revealed default. Once
+                            anything is selected a row click extends the
+                            selection, so this button is the ONLY way into a
+                            line's detail - an affordance you have to discover by
+                            hovering is not one at that point. */}
+                        <TreeRowButton
+                          persistent
+                          tooltipText='Open details'
+                          onClick={() => void setTxn(row.id)}>
+                          <PanelRight />
+                        </TreeRowButton>
+                      </div>
                     }
-                    onToggleOpen={() => void setTxn(row.id)}
+                    /* 🛑 Mid-selection, a row click EXTENDS the selection - it
+                       does not open the drawer. Picking the next of forty lines
+                       is a click on the row, not a click on a 16px box, and a
+                       drawer thrown open over the list every time somebody
+                       missed the box is how a bulk pass gets abandoned. The
+                       drawer comes back the moment the selection clears. */
+                    onToggleOpen={() => (selecting ? toggle(row.id) : void setTxn(row.id))}
                     rowClassName={cn(
                       'bg-primary-100/50 hover:bg-primary-100',
-                      txn === row.id && 'bg-primary-100 ring-1 ring-primary-200'
+                      txn === row.id && 'bg-primary-100 ring-1 ring-primary-200',
+                      // Picked for a bulk action - a DIFFERENT state from "open
+                      // in the drawer", and the app already separates the two by
+                      // hue: `info` is what a multi-selection wears on
+                      // `ListCard` and in the mail list, while `primary-*` stays
+                      // the row you are looking AT. Last in the merge, so a row
+                      // that is both keeps the drawer's ring and takes the
+                      // selection's tint.
+                      selectedIds.includes(row.id) &&
+                        cn(
+                          'bg-info/10 hover:bg-info/15 dark:bg-info/20 dark:hover:bg-info/25',
+                          // Open AND picked: the ring turns info too, so the two
+                          // states read as one row rather than a blue fill
+                          // wearing a grey outline from the other palette.
+                          txn === row.id && 'ring-info/40'
+                        )
                     )}
                   />
                 )}
