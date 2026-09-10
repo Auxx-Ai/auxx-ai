@@ -44,6 +44,13 @@ export function toTrialBalanceRows(tb: TrialBalance): StatementRow[] {
       glAccountId: row.glAccountId,
       accountCode: row.accountCode,
       accountName: row.accountName,
+      // 🛑 The trial balance is FLAT - no sections, by design (see above) - so
+      // the row's icon is the only thing on the screen saying which statement
+      // an account belongs to. Without this every row wore the same fallback
+      // glyph while the chart of accounts two clicks away grouped the same
+      // accounts under five different ones. Null for an account whose type the
+      // chart no longer holds, which `glAccountTypeMeta` handles.
+      accountType: row.accountType ?? undefined,
       note: row.inChart
         ? undefined
         : 'This account has posted lines but has been deleted from the current chart of accounts.',
