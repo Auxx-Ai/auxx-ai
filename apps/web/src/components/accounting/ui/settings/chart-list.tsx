@@ -47,6 +47,7 @@ import {
   type ChartMapView,
   isMappingBroken,
 } from './accounts-types'
+import { ImportChartButton } from './import-chart-button'
 
 interface ChartListProps {
   accounts: ChartAccountRow[]
@@ -138,6 +139,11 @@ export function ChartList({
               Accept {map.suggested}
             </Button>
           )}
+          {/* Refresh only once the chart holds at least one CONFIRMED mapping -
+              the signal that this chart was either imported or hand-mapped, so a
+              refresh has something to add to rather than nothing to compare
+              against (brief 16 §2.3). */}
+          {canControl && mapped > 0 && <ImportChartButton mode='chart' connected={map.connected} />}
         </div>
       )}
 
@@ -176,7 +182,7 @@ export function ChartList({
           description={
             search
               ? undefined
-              : 'Add accounts here, or let the accounting setup create the 29-account default chart for you.'
+              : 'Add accounts here, or let the accounting setup create the default chart for you.'
           }
         />
       ) : (

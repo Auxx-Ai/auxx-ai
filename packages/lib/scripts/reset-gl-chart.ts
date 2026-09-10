@@ -16,8 +16,9 @@
 // ── Why this is a script and NOT the entity migration itself ────────────────
 //
 // `gl_account` has never existed anywhere but this machine in the exact shape
-// this script corrects (no `role` field, 29 accounts, `2150` broadened, `5095`
-// added); entity migration 108, which created the def in that shape, has only
+// this script corrects (no `role` field, the pre-packs 37-account flat chart,
+// `2150` broadened, `5095` added); entity migration 108, which created the def
+// in that shape, has only
 // ever run against local dev and is `applied` in the local `DataMigration`
 // ledger and nowhere else (confirmed 2026-08-28). Migration 142 wipes the
 // chart everywhere, including here; this script exists for the same reason it
@@ -29,7 +30,7 @@
 //
 //   - 784 `gl_account` rows, 28 accounts x 28 orgs.
 //   - 0 `FieldValue` rows pointing AT a `gl_account` instance.
-//   - 0 `RecordIdentity` rows on a `gl_account` instance — no provider's own
+//   - 0 `RecordIdentity` rows on a `gl_account` instance - no provider's own
 //     account id is lost.
 //   - 0 `GlPosting` / `GlPostingLine` rows.
 //   - No human edits: the 336 rows with `updatedAt > createdAt` were all touched
@@ -119,7 +120,7 @@ async function resetOrg(organizationId: string): Promise<OrgResult | null> {
 
     if (identities.length > 0) {
       throw new Error(
-        `Organization ${organizationId} has ${identities.length}+ RecordIdentity row(s) on a gl_account instance; refusing to wipe the chart. Those carry a connected provider's own account id (decision P2) and cascade away with the instance — wiping them is unrecoverable. Re-import the chart from the provider instead.`
+        `Organization ${organizationId} has ${identities.length}+ RecordIdentity row(s) on a gl_account instance; refusing to wipe the chart. Those carry a connected provider's own account id (decision P2) and cascade away with the instance - wiping them is unrecoverable. Re-import the chart from the provider instead.`
       )
     }
   }
@@ -134,7 +135,7 @@ async function resetOrg(organizationId: string): Promise<OrgResult | null> {
   // ── 2. The chart itself ──────────────────────────────────────────────────
   //
   // `FieldValue` has no foreign key to `EntityInstance`, so its rows are deleted
-  // explicitly and FIRST — bottom-up, the order entity migration 114 uses. An
+  // explicitly and FIRST - bottom-up, the order entity migration 114 uses. An
   // orphaned value row would otherwise outlive its instance and become
   // unreachable rather than merely wrong.
   if (accountIds.length > 0) {
@@ -195,7 +196,7 @@ async function main() {
       'setup wizard is the way back.'
   )
   console.log(
-    "Verify in Postgres — this script's own counts are not the witness:\n" +
+    "Verify in Postgres - this script's own counts are not the witness:\n" +
       '  SELECT count(*) FROM "CustomField" WHERE "systemAttribute" = \'gl_account_role\';  -- 0\n' +
       '  SELECT count(*) FROM "GlRoleAssignment";                                          -- 0 per org'
   )

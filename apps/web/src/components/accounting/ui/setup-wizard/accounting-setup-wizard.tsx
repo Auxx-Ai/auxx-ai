@@ -17,11 +17,12 @@ import { WizardPeriodPage } from './wizard-period-page'
 import type { WizardLeaveDirection, WizardStepHandle } from './wizard-step-handle'
 import { WizardWelcomePage } from './wizard-welcome-page'
 
-// 🛑 `connect` sits immediately before `accountMap`, and the order is the whole
-// point of the pair: the mapping page cannot render a single row until a
-// provider chart exists to map against. `accounts` (the role map) stays BEFORE
-// both, because a role has to point at one of our accounts before that account
-// has anything to be paired with.
+// 🛑 `connect` moved ahead of `accounts` (brief 16 §1.5, §2.3): the provider's
+// chart can now be the SOURCE of ours (`ImportChartButton mode='wizard'` on the
+// accounts page), so connecting has to happen before the accounts page can
+// offer it. `connect` still sits immediately before `accountMap`, and that pair
+// is unchanged - the mapping page cannot render a single row until a provider
+// chart exists to map against.
 const PAGES = [
   'welcome',
   'period',
@@ -32,8 +33,8 @@ const PAGES = [
   // first and those rows would be blank with no way to fill them.
   'openingTrialBalance',
   'costing',
-  'accounts',
   'connect',
+  'accounts',
   'accountMap',
   'done',
 ] as const
@@ -163,11 +164,11 @@ export function AccountingSetupWizard({ open, onOpenChange }: AccountingSetupWiz
           <DialogNavPage value='costing' size='lg'>
             <WizardCostingPage ref={costingRef} />
           </DialogNavPage>
-          <DialogNavPage value='accounts' size='lg'>
-            <WizardAccountsPage />
-          </DialogNavPage>
           <DialogNavPage value='connect' size='lg'>
             <WizardConnectPage />
+          </DialogNavPage>
+          <DialogNavPage value='accounts' size='lg'>
+            <WizardAccountsPage />
           </DialogNavPage>
           <DialogNavPage value='accountMap' size='xl'>
             <WizardAccountMapPage />

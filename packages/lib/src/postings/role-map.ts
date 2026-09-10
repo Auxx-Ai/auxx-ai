@@ -71,7 +71,7 @@ const NOT_PROVISIONED =
 /** Every declared role, in declaration order. The checklist `listRoleMap` walks. */
 const ALL_ROLES: readonly AccountRole[] = Object.values(ACCOUNT_ROLES)
 
-/** Is `role` one of the thirteen declared roles? The vocabulary is CLOSED. */
+/** Is `role` one of the declared roles - every role in `ACCOUNT_ROLES`, across five chart packs (16 §1)? The vocabulary is CLOSED. */
 function isAccountRole(role: string): role is AccountRole {
   return (ALL_ROLES as readonly string[]).includes(role)
 }
@@ -128,7 +128,7 @@ export async function listRoleMap(
 
     // Only the accounts a mapping actually names. An org with no assignments
     // reads no chart at all, which is what keeps a fresh org's role map a list
-    // of thirteen `unmapped` rows rather than a provisioning error.
+    // of every role `unmapped` rather than a provisioning error.
     const accountIds = [...new Set(assignments.map((row) => row.glAccountId))]
     const accounts = await loadChartAccountsById(db, organizationId, accountIds)
 

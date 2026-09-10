@@ -41,9 +41,22 @@ vi.mock('@auxx/lib/seed', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('@auxx/lib/seed')
   return {
     ...actual,
-    seedDefaultChartOfAccounts: vi.fn(async () => ({ created: 0, assigned: 0 })),
-    // Task 13 §5.3: `provisionChart` seeds the two default payment gateways
-    // right after the chart. Mocked the same way its neighbour above is - the
+    // Echoes `packs` back as the walked set rather than actually expanding
+    // `requires` - none of the packs this file provisions in a test need a
+    // dependency walked in, and `chart-import-plan.test.ts` / the lib-side
+    // `gl-account-chart.test.ts` are where `requires` expansion itself is
+    // pinned. Brief 16 §1.5.
+    seedChartPacks: vi.fn(
+      async (_db: unknown, _orgId: string, _defId: string, packs: string[]) => ({
+        created: 0,
+        skipped: 0,
+        rolesAssigned: 0,
+        packs,
+      })
+    ),
+    // Task 13 §5.3 / brief 16 §1.5: `provisionChart` seeds the two default
+    // payment gateways right after the chart, gated on the walked packs
+    // including `card_rail`. Mocked the same way its neighbour above is - the
     // "admit" case only needs `provisionChart` to resolve, not to exercise
     // `seedDefaultPaymentGateways`'s own `GlRoleAssignment` read against a db
     // double this file does not otherwise stub.
@@ -115,6 +128,7 @@ const { bankingRouter } = await import('./banking')
 const { settingsRouter } = await import('./setting')
 const { GL_ACCOUNT_TYPES, ACCOUNT_ROLES } = await import('@auxx/lib/postings')
 const { BANK_ACCOUNT_TYPES } = await import('@auxx/lib/banking')
+const { seedDefaultPaymentGateways } = await import('@auxx/lib/seed')
 
 type Capabilities = InstanceType<typeof CapabilitySet>
 
@@ -228,6 +242,21 @@ describe('ledger chart-structure writes: Edit refused, Full admitted', () => {
 
   it('provisionChart admits ledger: Full', async () => {
     await expect(ledgerCaller(ledgerFull()).provisionChart()).resolves.toBeDefined()
+  })
+
+  // Brief 16 §1.5: `seedDefaultPaymentGateways` is gated on the WALKED packs
+  // including `card_rail`, never called from the core walk alone. This is a
+  // router-level gate (`ledger.ts`'s `provisionChart`), not something
+  // `seedChartPacks` itself decides, so it is pinned here rather than in
+  // `seed/gl-account-chart-payment-gateways.test.ts`.
+  it('never seeds payment gateways after provisioning only core', async () => {
+    await ledgerCaller(ledgerFull()).provisionChart({ packs: ['core'] })
+    expect(seedDefaultPaymentGateways).not.toHaveBeenCalled()
+  })
+
+  it('seeds payment gateways after provisioning card_rail', async () => {
+    await ledgerCaller(ledgerFull()).provisionChart({ packs: ['card_rail'] })
+    expect(seedDefaultPaymentGateways).toHaveBeenCalledTimes(1)
   })
 })
 

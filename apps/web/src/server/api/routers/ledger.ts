@@ -1,12 +1,14 @@
 // apps/web/src/server/api/routers/ledger.ts
 
-import { getCachedEntityDefId, onCacheEvent } from '@auxx/lib/cache'
+import { getCachedEntityDefId, getCachedInstalledApps, onCacheEvent } from '@auxx/lib/cache'
 import { UnprocessableEntityError } from '@auxx/lib/errors'
+import { getPaymentAccount } from '@auxx/lib/money'
 import { PermissionKey } from '@auxx/lib/permissions'
 import {
   ACCOUNT_ROLES,
   assertAccountingSetupUnfrozen,
   buildEntry,
+  CHART_PACK_KEYS,
   confirmSuggestedIdentities,
   createChartAccount,
   createJournalEntry,
@@ -16,6 +18,7 @@ import {
   GL_ACCOUNT_TYPES,
   getJournalEntry,
   getPosting,
+  importChartFromProvider,
   listAccountIdentities,
   listChartAccounts,
   listChartAccountUsage,
@@ -43,7 +46,7 @@ import {
   updateJournalEntry,
   verifyBooksBalance,
 } from '@auxx/lib/postings'
-import { seedDefaultChartOfAccounts, seedDefaultPaymentGateways } from '@auxx/lib/seed'
+import { seedChartPacks, seedDefaultPaymentGateways } from '@auxx/lib/seed'
 import { updateOrganizationSetting } from '@auxx/lib/settings'
 import { z } from 'zod'
 import { recordAuditFromCtx } from '~/server/api/audit-context'
@@ -630,50 +633,114 @@ export const ledgerRouter = createTRPCRouter({
   ),
 
   /**
-   * Write the 29-account default chart, and point each role at the account that
-   * fulfils it.
+   * Write the requested chart PACKS, and point each role at the account that
+   * fulfils it (brief 16 §1.5).
+   *
+   * `packs` defaults to `['core']`, and `core` is walked whether or not it is
+   * named: a bare `provisionChart()` - what the wizard's button sent before
+   * the pack picker existed - still means the core, and the picker and the
+   * Roles tab's Add accounts action both name their packs explicitly. A
+   * pack's own `requires` is expanded transitively before the walk runs, so
+   * `{ packs: ['purchasing'] }` also lands `inventory`.
    *
    * ── Why this is a BUTTON and not part of creating an organization ──
    *
    * `gl_account`'s DEFINITION ships with every org (`SYSTEM_ENTITIES`), but its
-   * ROWS do not, deliberately: most orgs never open the accounting module, and 29
-   * `EntityInstance`s plus 13 `GlRoleAssignment`s each is a chart nobody asked for
-   * in a table everybody has to scan. Provisioning is the first step of setting
-   * accounting up, so it lives where somebody has said they want accounting.
+   * ROWS do not, deliberately: most orgs never open the accounting module, and
+   * a chart nobody asked for is a table everybody has to scan. Provisioning is
+   * the first step of setting accounting up, so it lives where somebody has
+   * said they want accounting.
    *
-   * 🛑 It also closes a real hole. `seedDefaultChartOfAccounts`' only other caller
-   * is entity migration 108, which reaches production through the DataMigration
+   * 🛑 It also closes a real hole. `seedChartPacks`' only other caller is
+   * entity migration 108, which reaches production through the DataMigration
    * ledger - and `DataMigration.id` is the PRIMARY KEY, one global row, no
    * `organizationId`. Once 108 is `applied` it never runs again, so **every org
-   * created after that deploy would have had a def, no accounts, thirteen
-   * unmapped roles and no way to fix it.** This is that way.
+   * created after that deploy would have had a def, no accounts, and every core
+   * role unmapped with no way to fix it.** This is that way.
    *
-   * Safe to press twice: the seed is idempotent on `code` and its assignments are
-   * `ON CONFLICT (organizationId, role) DO NOTHING`, so a second press reports
-   * `created: 0` and cannot disturb an account or a mapping somebody has edited.
-   * That is `seedDefaultChartOfAccounts`' rules 1, 3 and 4, and they are the whole
-   * reason this can be offered as a button at all.
+   * Safe to press twice, for any set of packs: the seed is idempotent on `code`
+   * and its assignments are `ON CONFLICT (organizationId, role) DO NOTHING`, so
+   * a second press over an already-provisioned pack reports `created: 0` and
+   * cannot disturb an account or a mapping somebody has edited. That is
+   * `seedChartPacks`' rules 1, 3 and 4, and they are the whole reason this can
+   * be offered as a button at all - and the whole reason the Roles tab's Add
+   * accounts action can re-walk a `partial` pack without asking which rows are
+   * already there.
    */
-  provisionChart: permissionProcedure(PermissionKey.ledgerControl).mutation(async ({ ctx }) => {
+  provisionChart: permissionProcedure(PermissionKey.ledgerControl)
+    .input(
+      // Brief 16 §1.5. The outer `.default` keeps a bare `provisionChart()`
+      // meaning the core, which is what the wizard's button sent before the
+      // pack picker existed; the picker and the Roles tab's Add accounts both
+      // name their packs explicitly.
+      z
+        .object({ packs: z.array(z.enum(CHART_PACK_KEYS)).default(['core']) })
+        .default({ packs: ['core'] })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+
+      const glAccountDefId = await getCachedEntityDefId(organizationId, 'gl_account')
+      if (!glAccountDefId) {
+        throw new UnprocessableEntityError(
+          'This organization has no gl_account definition, so there is nothing to seed a chart into. Run the entity migrations.',
+          { organizationId }
+        )
+      }
+
+      const chart = await seedChartPacks(ctx.db, organizationId, glAccountDefId, input.packs)
+
+      // Task 13 §5.3: the two default `payment_gateway` records the census
+      // names. Runs AFTER the chart on purpose - the clearing accounts these
+      // defaults point at (`clearing_card` / `clearing_affirm`) only exist once
+      // the chart above has just created or confirmed them. Brief 16 §1.5 ties
+      // them to the `card_rail` pack; gated on the WALKED packs, not the
+      // requested ones, so `requires` expansion is honoured (though nothing
+      // requires `card_rail` today, so the two currently agree).
+      const paymentGateways = chart.packs.includes('card_rail')
+        ? await seedDefaultPaymentGateways(ctx.db, organizationId)
+        : null
+
+      return { ...chart, paymentGateways }
+    }),
+
+  /**
+   * Import the connected provider's chart of accounts as the org's own
+   * (brief 16 §2). Creates only what the org lacks, sets each new account's
+   * identity, assigns the unambiguous roles as `suggested`, and adds the
+   * role-bearing core accounts the provider has no counterpart for.
+   *
+   * Same rung as `provisionChart`: this decides where money lands.
+   * `refreshOnly` is the Chart tab's door and never creates the missing core.
+   */
+  importChartFromProvider: permissionProcedure(PermissionKey.ledgerControl)
+    .input(z.object({ refreshOnly: z.boolean().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      const result = await importChartFromProvider(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        actorUserId: ctx.session.userId,
+        refreshOnly: input.refreshOnly,
+      })
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /**
+   * Which card rails this org already has, so the wizard can pre-check the
+   * `card_rail` pack (brief 16 §3.2). Facts about the org, not switches: a
+   * Stripe Connect account is the read the payouts sync makes, and the Shopify
+   * app is the `installedApps` cache. Nothing provisions off either (16 §3.3).
+   */
+  paymentRailsPresent: permissionProcedure(PermissionKey.ledgerView).query(async ({ ctx }) => {
     const { organizationId } = ctx.session
-
-    const glAccountDefId = await getCachedEntityDefId(organizationId, 'gl_account')
-    if (!glAccountDefId) {
-      throw new UnprocessableEntityError(
-        'This organization has no gl_account definition, so there is nothing to seed a chart into. Run the entity migrations.',
-        { organizationId }
-      )
+    const [account, installedApps] = await Promise.all([
+      getPaymentAccount(organizationId),
+      getCachedInstalledApps(organizationId),
+    ])
+    return {
+      stripeConnect: Boolean(account?.stripeAccountId),
+      shopify: installedApps.some((installed) => installed.app.slug === 'shopify'),
     }
-
-    const chart = await seedDefaultChartOfAccounts(ctx.db, organizationId, glAccountDefId)
-
-    // Task 13 §5.3: the two default `payment_gateway` records the census
-    // names. Runs AFTER the chart on purpose - the clearing accounts these
-    // defaults point at (`clearing_card` / `clearing_affirm`) only exist once
-    // the chart above has just created or confirmed them.
-    const paymentGateways = await seedDefaultPaymentGateways(ctx.db, organizationId)
-
-    return { ...chart, paymentGateways }
   }),
 
   /**

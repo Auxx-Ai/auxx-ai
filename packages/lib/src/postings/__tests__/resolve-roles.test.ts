@@ -3,7 +3,7 @@
 // The resolver is the single door from a builder's ROLE to an org's own account,
 // and it is the last thing standing between an entry and the wrong account. The
 // entry would still BALANCE if it resolved wrongly, so nothing downstream could
-// detect it — which is why every one of these is a refusal test.
+// detect it - which is why every one of these is a refusal test.
 //
 // Two properties carry the file:
 //
@@ -14,7 +14,7 @@
 //     three different actions by three different people. Collapsing them into
 //     "not mapped" is the cheap version and it is wrong.
 //  2. **It is a BATCH.** Six unmapped roles must fail ONCE naming six, not six
-//     times naming one — a bookkeeper fixing a close needs the list.
+//     times naming one - a bookkeeper fixing a close needs the list.
 //
 // The database is a hand-written stub rather than a mock chain: this module
 // issues three distinct reads and each has to answer differently, which a
@@ -37,6 +37,7 @@ vi.mock('../../cache', () => ({
   }),
 }))
 
+import { CHART_PACKS, packForRole } from '../default-chart'
 import { loadRoleAccountCodes, resolveAccountLines, resolveRoles } from '../resolve-roles'
 import type { GlPostingLineInput } from '../types'
 
@@ -67,8 +68,8 @@ interface Account {
  * A stub `Database` answering this module's three reads in the order it makes
  * them: assignments, live instances, then field values.
  *
- * `assignmentsOverride` exists for the one case Postgres makes unreachable — two
- * rows for one role — which the module asserts anyway.
+ * `assignmentsOverride` exists for the one case Postgres makes unreachable - two
+ * rows for one role - which the module asserts anyway.
  */
 function stubDb(assignments: Assignment[], accounts: Account[]) {
   let call = 0
@@ -146,7 +147,7 @@ async function expectErr(
   return result._unsafeUnwrapErr()
 }
 
-describe('resolveRoles — the happy path', () => {
+describe('resolveRoles - the happy path', () => {
   it('resolves a mapped role to its code, name and type', async () => {
     const db = stubDb([GRNI_ASSIGNMENT], [GRNI_ACCOUNT])
     const result = await resolveRoles(db, ORG, ['grni'])
@@ -175,7 +176,7 @@ describe('resolveRoles — the happy path', () => {
 
   // 🛑 The exact case `G19` names, and the reason this is a table rather than a
   // `unique: true` SINGLE_SELECT on `gl_account`: a role resolves to ONE account
-  // (enforced) but an account may serve MANY roles (permitted, ordinary — an org
+  // (enforced) but an account may serve MANY roles (permitted, ordinary - an org
   // that runs DTC and dealer revenue through one account).
   it('lets two roles share one account', async () => {
     const db = stubDb(
@@ -202,19 +203,34 @@ describe('resolveRoles — the happy path', () => {
   })
 })
 
-describe('resolveRoles — the five refusals, each with its own message', () => {
-  it('1. refuses a role nobody ever mapped', async () => {
+describe('resolveRoles - the five refusals, each with its own message', () => {
+  it('1. refuses a role nobody ever mapped, naming the role and its pack (16 §3.2)', async () => {
     const db = stubDb([], [])
     const error = await expectErr(resolveRoles(db, ORG, ['grni']))
     expect(error.message).toContain("'grni'")
     expect(error.message).toMatch(/not mapped to any account/i)
+    // The refusal names the role's label and the pack that would provision
+    // it, so the person reading it knows what to add and where.
+    expect(error.message).toContain('(Goods Received Not Invoiced)')
+    expect(error.message).toContain(CHART_PACKS[packForRole('grni')].label)
+    expect(error.message).toMatch(/Accounting > Settings > Accounts > Roles/)
+  })
+
+  it('falls back to the plain sentence for an undeclared role with no assignment', async () => {
+    // An invented role has no ACCOUNT_ROLE_LABELS entry and no pack, so the
+    // rich sentence cannot be built - it must not throw indexing CHART_PACKS
+    // with `undefined`.
+    const db = stubDb([], [])
+    const error = await expectErr(resolveRoles(db, ORG, ['invented']))
+    expect(error.message).toContain("'invented'")
+    expect(error.message).toMatch(/not mapped to any account\. Map it in the chart of accounts/i)
   })
 
   it('2. refuses a role the org marked unused, and says the books disagree', async () => {
     const db = stubDb([{ ...GRNI_ASSIGNMENT, markedUnused: true }], [GRNI_ACCOUNT])
     const error = await expectErr(resolveRoles(db, ORG, ['grni']))
     expect(error.message).toMatch(/marked as unused/i)
-    // NOT the "never mapped" sentence — the two call for different actions.
+    // NOT the "never mapped" sentence - the two call for different actions.
     expect(error.message).not.toMatch(/not mapped to any account/i)
   })
 
@@ -281,7 +297,7 @@ describe('resolveRoles — the five refusals, each with its own message', () => 
   })
 })
 
-describe('resolveRoles — it answers for the whole set at once', () => {
+describe('resolveRoles - it answers for the whole set at once', () => {
   // 🛑 A month-end entry naming six roles on an org that mapped none must fail
   // ONCE, naming all six. Six failures naming one each is a treasure hunt on
   // the night of a close.
@@ -320,13 +336,14 @@ describe('resolveRoles — it answers for the whole set at once', () => {
     )
     const error = await expectErr(resolveRoles(db, ORG, ['grni', 'ppv', 'undeposited_funds']))
 
-    expect(error.message).toMatch(/'grni' is not mapped/i)
+    expect(error.message).toContain("'grni'")
+    expect(error.message).toMatch(/is not mapped to any account/i)
     expect(error.message).toMatch(/'ppv' is marked as unused/i)
     expect(error.message).toMatch(/'undeposited_funds' must be mapped to a asset account/i)
   })
 })
 
-describe('resolveRoles — the impossible case, asserted anyway', () => {
+describe('resolveRoles - the impossible case, asserted anyway', () => {
   // `GlRoleAssignment_org_role_key` makes this unreachable. It is asserted
   // because the ONE failure this module must never have is picking arbitrarily
   // between two accounts: the entry would balance, and nothing downstream could
@@ -642,7 +659,8 @@ describe('resolveAccountLines - role lines and mixed entries', () => {
         },
       ])
     )
-    expect(error.message).toMatch(/'grni' is not mapped to any account/i)
+    expect(error.message).toContain("'grni'")
+    expect(error.message).toMatch(/is not mapped to any account/i)
   })
 })
 
