@@ -121,6 +121,7 @@ class ConnectorRunLedger implements RunLedger {
       skipped: sql`${T.skipped} + ${c.skipped ?? 0}`,
       archived: sql`${T.archived} + ${c.archived ?? 0}`,
       deleted: sql`${T.deleted} + ${c.deleted ?? 0}`,
+      markedDeleted: sql`${T.markedDeleted} + ${c.markedDeleted ?? 0}`,
       failed: sql`${T.failed} + ${c.failed ?? 0}`,
       // Finalize and park-time relationship passes count unresolved edges here; without
       // this fold every chained run reports 0 warnings however many edges stay pending.

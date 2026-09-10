@@ -218,7 +218,14 @@ export {
   listRecommendedAppConnectors,
   type RecommendedAppConnector,
 } from './recommended-app-connectors'
-export { archiveExternalId, handleConnectorDelete, reconcileOrphans } from './reconciliation'
+export {
+  ARCHIVE_CAP,
+  archiveCapReason,
+  archiveExternalId,
+  effectiveOrphanBehavior,
+  handleConnectorDelete,
+  reconcileOrphans,
+} from './reconciliation'
 // Per-stream record filter (v11) — evaluated on the RAW source record before mapping.
 export {
   assertRecordFilterCompiles,
@@ -274,6 +281,7 @@ export {
   listStreams,
   loadConnector,
   markItemArchived,
+  markItemRemovedUpstream,
   markWebhookEventReceived,
   newRunCounters,
   openRun,

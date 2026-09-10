@@ -190,6 +190,11 @@ export async function applyConnectorCatalogUpdate(
         case 'mapping-change': {
           const entry = mappingPatches.get(step.persisted.row.id) ?? { patch: {} }
           entry.patch.relationshipFieldKey = step.derived.storedRelationshipFieldKey
+          // The crawl-reconciliation policy travels with the manifest (v12 Phase 6).
+          // Writing both policy columns unconditionally is safe and idempotent: the
+          // diff only emits this step when at least one of them changed, and setting
+          // the other to the value it already holds is a no-op.
+          entry.patch.orphanBehavior = step.derived.orphanBehavior
           mappingPatches.set(step.persisted.row.id, entry)
           break
         }

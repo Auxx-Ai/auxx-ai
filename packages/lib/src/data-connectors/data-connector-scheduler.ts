@@ -53,10 +53,16 @@ export function isSuspendedConnectorStatus(status: string): boolean {
 
 /**
  * Nightly cron for the delete-reconciliation sweep (Step 8C). Fixed 03:00 — a sweep
- * is a full id-crawl, so we run it off-peak. Webhook connectors are the ones that
- * need it: they rely on push (at-least-once, can be late) and otherwise never do a
- * full reconciling crawl, so a missed delete event would linger. Snapshot connectors
- * already reconcile on every run; this is the safety net for the rest.
+ * re-crawls full RECORDS for every `snapshot` stream, so we run it off-peak. Webhook
+ * connectors are the ones that need it: they rely on push (at-least-once, can be
+ * late, and a Shopify delivery is dropped for good after 48h of retries), so a missed
+ * delete event would otherwise linger forever.
+ *
+ * ⚠️ It is NOT an id-only crawl, despite what this comment said before v12. There is
+ * no id-only fetch mode in the engine, which is exactly why an `incremental` stream
+ * gets a watermark catch-up here and reconciles no deletes at all (v9 §3). Building
+ * that mode is what would give orders/customers delete accuracy without a full
+ * re-crawl, and it is deferred — v12 Phase 9.
  */
 const SWEEP_CRON = '0 3 * * *'
 

@@ -148,6 +148,11 @@ export function classifyMappingChange(
     reasons.push('target-mode')
   if (patch.linkMode !== undefined && patch.linkMode !== prev.linkMode) reasons.push('link-mode')
 
+  // `orphanBehavior` is deliberately absent from the structural reasons below. It
+  // changes no identity, no target and no binding — only what a later crawl does with
+  // a record that vanished — so it must never force a rebind or a re-backfill. It is
+  // still surfaced as a change (see `catalog-diff.ts`) because it is consequential.
+
   if (patch.fieldMappings !== undefined) {
     reasons.push(...diffFieldMappings(prev.fieldMappings ?? [], patch.fieldMappings))
   }

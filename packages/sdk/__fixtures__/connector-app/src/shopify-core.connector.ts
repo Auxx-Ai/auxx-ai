@@ -49,6 +49,9 @@ export const shopifyCoreDataConnector = defineDataConnector({
           // inherited from there.
           rootPath: '',
           target: { entityKey: 'orders' },
+          // Crawl reconciliation policy. Only consulted on a `snapshot` stream, and
+          // the platform still refuses to archive a record it did not create.
+          orphanBehavior: 'archive',
           fields: [
             { key: 'shopifyId', sourcePath: 'id' },
             { key: 'name', sourcePath: 'name' },
@@ -63,6 +66,9 @@ export const shopifyCoreDataConnector = defineDataConnector({
           rootPath: 'customer',
           relationshipFieldKey: 'customer',
           target: { entityKind: 'contact' },
+          // A contact has a life beyond this sync (mail ingest and people also write
+          // it), so a vanished customer is flagged for review, never archived.
+          orphanBehavior: 'mark_deleted',
           fields: [
             {
               sourcePath: 'email',

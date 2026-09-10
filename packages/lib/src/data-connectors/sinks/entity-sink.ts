@@ -27,6 +27,7 @@ import {
   findItemByDef,
   listItemsForMapping,
   markItemArchived,
+  markItemRemovedUpstream,
   type PendingRelation,
   setItemPendingRelations,
   touchItem,
@@ -1238,34 +1239,41 @@ export const entitySink: EntitySink = {
 
   async archiveRecord(ctx, item, behavior) {
     if (behavior === 'ignore' || !item.entityInstanceId) return
-    if (behavior === 'archive') {
-      // Def-keyed sharing guard (relationship-linking v3 §9.6 step 5): the SAME
-      // instance may be bound by more than one mapping (an embedded child + a
-      // sibling stream). Archive the instance only when NO other live binding of
-      // this connector still references it — else just stamp this binding archived
-      // and leave the record (a sibling still owns it). This chokepoint catches both
-      // owned orphan reconcile and the explicit-delete path.
-      const otherLive = await findOtherLiveBinding(ctx, item.id, item.entityInstanceId)
-      if (otherLive) {
-        await markItemArchived(ctx.db, item.id, ctx.runId)
-        return
-      }
-      const recordId = toRecordId(item.entityDefinitionId, item.entityInstanceId)
-      try {
-        // Archived membership is captured at the engine's archive seam,
-        // unconditionally (plan 07 PR 2) — no producer-side capture here.
-        await ctx.ownedCrud.archive(recordId)
-        ctx.touchedDefs.add(item.entityDefinitionId)
-        ctx.counters.archived += 1
-      } catch (error) {
-        logger.warn('archiveRecord failed', {
-          itemId: item.id,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      }
+
+    // `mark_deleted` leaves the record LIVE and flags the binding instead. This is the
+    // safe answer whenever "gone upstream" is not authority to remove the record: a
+    // record this connector did not mint, a part carrying stock movements, or any
+    // crawl whose completeness we don't fully trust yet. A human acts on the flag.
+    if (behavior === 'mark_deleted') {
+      await markItemRemovedUpstream(ctx.db, item.id, ctx.runId)
+      ctx.counters.markedDeleted += 1
+      return
     }
-    // mark_deleted: set a connector status field — left as a no-op stub for v1
-    // (no canonical status field is provisioned yet); the item is still stamped.
+
+    // Def-keyed sharing guard (relationship-linking v3 §9.6 step 5): the SAME
+    // instance may be bound by more than one mapping (an embedded child + a
+    // sibling stream). Archive the instance only when NO other live binding of
+    // this connector still references it — else just stamp this binding archived
+    // and leave the record (a sibling still owns it). This chokepoint catches both
+    // owned orphan reconcile and the explicit-delete path.
+    const otherLive = await findOtherLiveBinding(ctx, item.id, item.entityInstanceId)
+    if (otherLive) {
+      await markItemArchived(ctx.db, item.id, ctx.runId)
+      return
+    }
+    const recordId = toRecordId(item.entityDefinitionId, item.entityInstanceId)
+    try {
+      // Archived membership is captured at the engine's archive seam,
+      // unconditionally (plan 07 PR 2) — no producer-side capture here.
+      await ctx.ownedCrud.archive(recordId)
+      ctx.touchedDefs.add(item.entityDefinitionId)
+      ctx.counters.archived += 1
+    } catch (error) {
+      logger.warn('archiveRecord failed', {
+        itemId: item.id,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
     await markItemArchived(ctx.db, item.id, ctx.runId)
   },
 
@@ -1276,6 +1284,9 @@ export const entitySink: EntitySink = {
       entityInstanceId: i.entityInstanceId,
       entityDefinitionId: i.entityDefinitionId,
       lastSeenRunId: i.lastSeenRunId,
+      mintedInstance: i.mintedInstance,
+      removedUpstreamAt: i.removedUpstreamAt,
+      archivedAt: i.archivedAt,
     }))
   },
 }

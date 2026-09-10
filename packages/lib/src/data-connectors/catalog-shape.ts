@@ -603,9 +603,10 @@ function deriveOwnedMappings(
           linkMode === 'reference'
             ? [buildReferenceAnchor()]
             : buildAppOwnedFieldMappings(mapping.fields ?? [], appSlug, entity.apiSlug),
-        // Incremental connectors only see the delta each run, so unseen is not deleted:
-        // never archive owned orphans automatically.
-        orphanBehavior: 'ignore',
+        // Declared by the app, defaulting to `'ignore'` (v12 D2). It only has an effect
+        // on a `snapshot` stream: `reconcileOrphans` gates on syncMode first, because
+        // an incremental fetch sees a delta and absence there is not deletion.
+        orphanBehavior: mapping.orphanBehavior ?? 'ignore',
         apiSlug: entity.apiSlug,
       },
       resolver
@@ -755,7 +756,10 @@ function deriveContributingMappings(
             : []
         ),
         fieldMappings,
-        orphanBehavior: 'ignore',
+        // Declared by the app, defaulting to `'ignore'`. A contributing mapping CAN now
+        // opt in (Shopify's products/parts are contributing), which is why the archive
+        // path additionally refuses any record this connector did not mint.
+        orphanBehavior: mapping.orphanBehavior ?? 'ignore',
         apiSlug: null,
       },
       resolver

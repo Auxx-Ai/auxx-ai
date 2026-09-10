@@ -198,6 +198,14 @@ describe('compileAndExtractCatalog — entities + data connectors', () => {
     })
     expect(mappings[3]).not.toHaveProperty('fields')
 
+    // Crawl-reconciliation policy rides through per mapping, and stays UNDEFINED when
+    // the manifest is silent — the platform's own default is what fills it in, so a
+    // stray `'ignore'` here would be indistinguishable from a deliberate declaration.
+    expect(mappings[0]).toMatchObject({ orphanBehavior: 'archive' })
+    expect(mappings[1]).toMatchObject({ orphanBehavior: 'mark_deleted' })
+    expect(mappings[2]?.orphanBehavior).toBeUndefined()
+    expect(mappings[3]?.orphanBehavior).toBeUndefined()
+
     // exampleRecord rides the catalog verbatim.
     expect(stream?.exampleRecord).toMatchObject({
       name: '#1001',
