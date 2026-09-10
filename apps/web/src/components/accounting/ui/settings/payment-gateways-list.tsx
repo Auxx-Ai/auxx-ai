@@ -10,21 +10,23 @@
 // into is the one thing this screen exists to answer, and a state that can
 // only be discovered by selecting each row in turn stays unfinished.
 
-import type { PaymentGatewayRow } from '@auxx/lib/payment-gateways/client'
+import type { ObservedGatewayHandle, PaymentGatewayRow } from '@auxx/lib/payment-gateways/client'
 import { PAYMENT_GATEWAY_SETTLEMENT_SOURCE_LABELS } from '@auxx/lib/payment-gateways/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { ButtonSwitch } from '@auxx/ui/components/button-switch'
 import { InputSearch } from '@auxx/ui/components/input-search'
 import { EmptySection } from '@auxx/ui/components/section'
+import { Skeleton } from '@auxx/ui/components/skeleton'
 import { TREE_SECONDARY_NOTRUNCATE, TreeRow } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { cn } from '@auxx/ui/lib/utils'
-import { CreditCard, Plus } from 'lucide-react'
+import { CreditCard, Plus, TriangleAlert } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { AccountLabel } from '~/components/accounting/ui/account-label'
 import { useChartAccounts } from '~/components/accounting/ui/gl-account-picker'
 import { EmptyState } from '~/components/global/empty-state'
+import { api } from '~/trpc/react'
 
 interface PaymentGatewaysListProps {
   gateways: PaymentGatewayRow[]
@@ -49,6 +51,7 @@ export function PaymentGatewaysList({
   closedCount,
 }: PaymentGatewaysListProps) {
   const [search, setSearch] = useState('')
+  const [handlesOpen, setHandlesOpen] = useState(false)
 
   // `clearingGlAccountId` is stored as the `gl_account` id (task 15 §4 shape),
   // so the badge below has to resolve it. One `ledger.chartAccounts` fetch for
@@ -57,6 +60,17 @@ export function PaymentGatewaysList({
   const chartAccountById = useMemo(
     () => new Map(chartAccounts.map((account) => [account.id, account])),
     [chartAccounts]
+  )
+
+  // The handles actually on this org's orders (`listObservedGatewayHandles`).
+  // 🛑 The point of this line is the UNROUTED ones: a handle no record claims
+  // falls back to `clearing_card` inside `resolveFulfillmentDebit` and posts a
+  // balanced entry, so nothing else on this screen - or anywhere downstream -
+  // would ever say it is unrouted.
+  const observed = api.paymentGateway.observedHandles.useQuery()
+  const unrouted = useMemo(
+    () => (observed.data ?? []).filter((row) => !row.claimedBy),
+    [observed.data]
   )
 
   const visible = useMemo(() => {
@@ -76,8 +90,68 @@ export function PaymentGatewaysList({
     </Button>
   )
 
+  const observedCount = observed.data?.length ?? 0
+  const routedCount = observedCount - unrouted.length
+
   return (
     <div className='flex flex-col gap-3 p-3'>
+      {/* The handles census, as a collapsible group - `role-map-list.tsx`'s
+          "{mapped} of {needed} mapped" group, same shape and same reason.
+          🛑 A row renders in EVERY state, including pending and empty. This
+          block resolves on its own query, and letting it disappear or size from
+          its content pushes the whole list down the moment the answer lands. */}
+      {observed.isPending ? (
+        <div className='flex h-8 items-center px-1'>
+          <Skeleton className='h-4 w-56' />
+        </div>
+      ) : observed.isError ? (
+        <div className='flex h-8 items-center px-1'>
+          <span className='truncate text-muted-foreground text-xs'>
+            Could not read the handles on your orders. Everything below is unaffected.
+          </span>
+        </div>
+      ) : (
+        <TreeRow
+          // Nothing to open when every handle is already routed - the count is
+          // the whole answer, and a chevron over an empty list is a dead end.
+          expandable={unrouted.length > 0}
+          isOpen={handlesOpen}
+          onToggleOpen={() => setHandlesOpen((open) => !open)}
+          icon={
+            unrouted.length > 0 ? (
+              <TriangleAlert className='size-4 text-muted-foreground' />
+            ) : (
+              <CreditCard className='size-4 text-muted-foreground' />
+            )
+          }
+          title={<span className='truncate font-medium text-sm'>Gateway handles</span>}
+          secondary={
+            <span className='text-muted-foreground text-xs tabular-nums'>
+              {observedCount === 0
+                ? 'None on your orders yet'
+                : `${routedCount} of ${observedCount} routed`}
+            </span>
+          }>
+          <TreeRowList
+            items={unrouted}
+            getKey={(row: ObservedGatewayHandle) => row.handle}
+            renderRow={(row: ObservedGatewayHandle) => (
+              <TreeRow
+                depth={1}
+                icon={<CreditCard className='size-4 text-muted-foreground' />}
+                title={<span className='truncate font-mono text-sm'>{row.handle}</span>}
+                secondaryFill
+                secondary={
+                  <span className='truncate text-muted-foreground text-xs'>
+                    No gateway routes this, so it clears to the default card account
+                  </span>
+                }
+              />
+            )}
+          />
+        </TreeRow>
+      )}
+
       {/* One row, `chart-list.tsx`'s shape: a SINGLE button beside the search
           still leaves the box room, which is exactly what stopped
           `bank-accounts-list.tsx` from doing the same (it carries two, and two

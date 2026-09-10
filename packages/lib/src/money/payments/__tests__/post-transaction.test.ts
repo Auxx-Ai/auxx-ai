@@ -85,10 +85,17 @@ function transaction(overrides: Partial<PaymentTransactionEntity> = {}): Payment
 function makeDb(opts: {
   instance?: { id: string; archivedAt: Date | null } | null
   fieldValue?: { valueText: string | null } | null
+  /**
+   * What the sole-mapped-bank-account join answers when the setting is unset.
+   * `resolveSoleMappedBankAccount` awaits `.where()` directly and takes no
+   * `.limit()` - counting the rows exactly is the whole point of it.
+   */
+  mapped?: { bankAccountId: string; glAccountId: string | null }[]
 }): Database {
   return {
     select: () => ({
       from: (table: unknown) => ({
+        innerJoin: () => ({ where: () => Promise.resolve(opts.mapped ?? []) }),
         where: () => ({
           limit: () => {
             if (table === schema.EntityInstance) {
@@ -177,8 +184,75 @@ describe('accounting enabled, the cash route', () => {
     h.resolvePaymentRoute.mockReturnValue('cash')
   })
 
-  it('refuses with account_unmapped when no bank account is configured, and never builds', async () => {
+  // ───────────────────────────────────────────────────────────────────────────
+  // The setting is UNSET. Nothing seeds `accounting.cashBankAccountId` and
+  // `DEFAULT_PAYMENT_ROUTES.bank` is `cash`, so this is the path every org that
+  // never opened the settings page takes - see the file header.
+  // ───────────────────────────────────────────────────────────────────────────
+
+  it("falls back to the org's SOLE mapped bank account when the setting is unset", async () => {
     h.getOrgCache.mockResolvedValue({})
+    h.getCachedEntityDefId.mockResolvedValue('def_bank_account')
+    h.bySystemAttributes.mockResolvedValue({ bank_account_gl_account: { id: 'fld_gl' } })
+
+    const db = makeDb({ mapped: [{ bankAccountId: 'ba_1', glAccountId: 'gl_1000' }] })
+    const result = await postPaymentTransaction(db, {
+      organizationId: ORG,
+      transaction: transaction(),
+      allocatedMinor: 5_000,
+    })
+
+    expect(h.buildPaymentEntry).toHaveBeenCalledWith(
+      expect.objectContaining({ bankAccountGlAccountId: 'gl_1000' })
+    )
+    expect(result.status).toBe('posted')
+  })
+
+  it('refuses as ambiguous when the setting is unset and TWO bank accounts are mapped', async () => {
+    h.getOrgCache.mockResolvedValue({})
+    h.getCachedEntityDefId.mockResolvedValue('def_bank_account')
+    h.bySystemAttributes.mockResolvedValue({ bank_account_gl_account: { id: 'fld_gl' } })
+
+    const db = makeDb({
+      mapped: [
+        { bankAccountId: 'ba_1', glAccountId: 'gl_1000' },
+        { bankAccountId: 'ba_2', glAccountId: 'gl_1001' },
+      ],
+    })
+    const result = await postPaymentTransaction(db, {
+      organizationId: ORG,
+      transaction: transaction(),
+      allocatedMinor: 5_000,
+    })
+
+    expect(result).toMatchObject({ status: 'account_unmapped', failureClass: 'configuration' })
+    expect(result.error).toMatch(/no unambiguous answer/)
+    // 🛑 Two mapped accounts is the case the fallback must NOT guess at.
+    expect(h.buildPaymentEntry).not.toHaveBeenCalled()
+    expect(h.postEntry).not.toHaveBeenCalled()
+  })
+
+  it('refuses when the setting is unset and NO bank account is mapped, and never builds', async () => {
+    h.getOrgCache.mockResolvedValue({})
+    h.getCachedEntityDefId.mockResolvedValue('def_bank_account')
+    h.bySystemAttributes.mockResolvedValue({ bank_account_gl_account: { id: 'fld_gl' } })
+
+    const db = makeDb({ mapped: [] })
+    const result = await postPaymentTransaction(db, {
+      organizationId: ORG,
+      transaction: transaction(),
+      allocatedMinor: 5_000,
+    })
+
+    expect(result).toMatchObject({ status: 'account_unmapped', failureClass: 'configuration' })
+    expect(result.error).toMatch(/none is mapped to a chart account/)
+    expect(h.buildPaymentEntry).not.toHaveBeenCalled()
+    expect(h.postEntry).not.toHaveBeenCalled()
+  })
+
+  it('refuses when the org has no bank_account definition at all', async () => {
+    h.getOrgCache.mockResolvedValue({})
+    h.getCachedEntityDefId.mockResolvedValue(null)
 
     const result = await postPaymentTransaction(NO_DB, {
       organizationId: ORG,
@@ -187,11 +261,7 @@ describe('accounting enabled, the cash route', () => {
     })
 
     expect(result).toMatchObject({ status: 'account_unmapped', failureClass: 'configuration' })
-    expect(result.error).toMatch(/no bank account is configured/)
     expect(h.buildPaymentEntry).not.toHaveBeenCalled()
-    expect(h.postEntry).not.toHaveBeenCalled()
-    // The short-circuit is before any cache or db read for the bank account.
-    expect(h.getCachedEntityDefId).not.toHaveBeenCalled()
   })
 
   it('refuses with account_unmapped when the configured bank account has no gl_account mapping', async () => {

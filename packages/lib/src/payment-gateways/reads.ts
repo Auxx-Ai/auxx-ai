@@ -17,9 +17,14 @@ import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import { getCachedEntityDefId, getOrgCache } from '../cache'
 import { UnprocessableEntityError } from '../errors'
+import type { FieldOptions } from '../field-values/converters'
+import { buildOptionIndex, resolveOptionId } from '../resources/registry/option-helpers'
 import { toRecordId } from '../resources/resource-id'
 import {
+  normaliseGatewayHandle,
+  type ObservedGatewayHandle,
   type PaymentGatewayRow,
+  RESERVED_GATEWAY_HANDLES,
   resolvePaymentGatewaySettlementSource,
   resolvePaymentGatewayStatus,
 } from './client'
@@ -163,6 +168,100 @@ export async function getPaymentGateway(
     },
     'Failed to read payment gateway',
     { organizationId, paymentGatewayId }
+  )
+}
+
+/**
+ * Every gateway handle that actually appears on this org's orders, and whether
+ * a `payment_gateway` record already routes it.
+ *
+ * ## Why this read exists
+ *
+ * `handles` is a free-text field, and a handle that does not match what
+ * Shopify wrote on the order is INVISIBLE: `resolveFulfillmentDebit` finds no
+ * route, falls back to `clearing_card`, and the entry balances. Nothing
+ * downstream can tell a typo from a rail that legitimately has no record yet.
+ * Before this, the only way to learn the real strings was to query
+ * `order_payment_gateways` by hand - so the "add a gateway" screen asked a
+ * person to type a value they had no way to look up. This is that lookup.
+ *
+ * ## The stored shape
+ *
+ * ⚠️ `order_payment_gateways` is an OPEN, value-keyed TAGS field: one
+ * `FieldValue` row per gateway per order, and a free-text tag is written with
+ * its own text AS the `optionId`. `valueText` is the defensive fallback, and
+ * the connector-provisioned case puts a real option key there instead - which
+ * is why every value goes through {@link resolveOptionId} against the field's
+ * own option list, exactly as `readOrderFacts`
+ * (`money/fulfillment-posting/reads.ts`) does. Grouping on `valueText` alone
+ * silently misses every order whose handle resolved to an option row.
+ *
+ * De-duplicated case-insensitively with {@link normaliseGatewayHandle} - the
+ * same normaliser the matcher uses, so a handle this read offers always
+ * matches. The RAW spelling is what comes back, because that is what a person
+ * should see and what the option list stores.
+ *
+ * {@link RESERVED_GATEWAY_HANDLES} are dropped: `manual` and `bogus` are
+ * answered by the debit fork before any route is consulted, so reporting them
+ * as unclaimed would be noise that never goes away.
+ *
+ * Sorted by handle. No order counts - see {@link ObservedGatewayHandle}.
+ */
+export async function listObservedGatewayHandles(
+  db: Database,
+  organizationId: string
+): Promise<Result<ObservedGatewayHandle[], Error>> {
+  return guard(
+    async () => {
+      const fields = await getOrgCache()
+        .from(organizationId, 'customFields')
+        .bySystemAttributes(['order_payment_gateways'])
+      const field = fields.order_payment_gateways
+      if (!field) return []
+
+      const rows = await db
+        .selectDistinct({
+          optionId: schema.FieldValue.optionId,
+          valueText: schema.FieldValue.valueText,
+        })
+        .from(schema.FieldValue)
+        .where(
+          and(
+            eq(schema.FieldValue.organizationId, organizationId),
+            eq(schema.FieldValue.fieldId, field.id)
+          )
+        )
+      if (rows.length === 0) return []
+
+      // Closed rails included: a closed gateway still routes its own history
+      // (`toGatewayRoutes`), so its handles are claimed, not orphaned.
+      const gateways = await listPaymentGateways(db, organizationId, { includeArchived: true })
+      if (gateways.isErr()) throw gateways.error
+      const claimedBy = new Map<string, string>()
+      for (const gateway of gateways.value) {
+        for (const handle of gateway.handles) {
+          const key = normaliseGatewayHandle(handle)
+          if (key && !claimedBy.has(key)) claimedBy.set(key, gateway.id)
+        }
+      }
+
+      const options = buildOptionIndex(((field.options ?? {}) as FieldOptions).options ?? [])
+      const reserved = new Set(RESERVED_GATEWAY_HANDLES)
+      const seen = new Map<string, ObservedGatewayHandle>()
+      for (const row of rows) {
+        const stored = row.optionId ?? row.valueText
+        if (!stored) continue
+        const resolved = resolveOptionId(stored, options)
+        const handle = (resolved.status === 'known' ? resolved.label : resolved.raw).trim()
+        const key = normaliseGatewayHandle(handle)
+        if (!key || reserved.has(key) || seen.has(key)) continue
+        seen.set(key, { handle, claimedBy: claimedBy.get(key) ?? null })
+      }
+
+      return [...seen.values()].sort((a, b) => a.handle.localeCompare(b.handle))
+    },
+    "Failed to read the gateway handles on this organization's orders",
+    { organizationId }
   )
 }
 

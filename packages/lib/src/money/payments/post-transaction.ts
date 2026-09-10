@@ -34,15 +34,20 @@
  * payment banks into; {@link resolveCashBankAccountGlAccountId} reads its
  * `bank_account_gl_account` id directly off the entity layer, mirroring
  * `money/bank-deposits/reads.ts`'s `readDepositBankAccount` rather than
- * importing `banking/` - the same anti-cycle reason that file gives. Unset or
- * unmapped refuses with `account_unmapped` before the entry is even built,
- * the same configuration-class refusal `createBankDeposit` gives for a
- * deposit's own unmapped bank account.
+ * importing `banking/` - the same anti-cycle reason that file gives.
+ *
+ * Nothing seeds that setting, and `DEFAULT_PAYMENT_ROUTES.bank` is `cash`, so
+ * an org that never opened the settings page falls back to its SOLE mapped
+ * bank account - see {@link resolveSoleMappedBankAccount} for why one is an
+ * answer and two is not. Zero, two-or-more, and a configured-but-unmapped
+ * account each refuse with `account_unmapped` and their own sentence before
+ * the entry is even built, the same configuration-class refusal
+ * `createBankDeposit` gives for a deposit's own unmapped bank account.
  */
 
 import { type Database, type PaymentTransactionEntity, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, isNull, ne } from 'drizzle-orm'
 import { getCachedEntityDefId, getOrgCache } from '../../cache'
 import { isAccountingEnabled } from '../../postings/accounting-enabled'
 import {
@@ -103,9 +108,49 @@ const ACCEPTED_POST_STATUSES = new Set<string>([
  */
 const POSTABLE_STATUSES = new Set(['succeeded', 'disputed'])
 
+/** Why a `cash`-routed payment could not name a bank account to bank into. */
+type CashBankAccountRefusal = 'configured_unmapped' | 'unset_none_mapped' | 'unset_ambiguous'
+
+/** What {@link resolveCashBankAccountGlAccountId} answers. */
+interface CashBankAccountResolution {
+  glAccountId: string | null
+  /** The `bank_account` the answer came from, when there is one. */
+  bankAccountId: string | null
+  /** Why {@link glAccountId} is `null`; `null` when it is not. */
+  refusal: CashBankAccountRefusal | null
+}
+
+/** The refusal sentence for each {@link CashBankAccountRefusal}, minus its subject. */
+const CASH_REFUSAL_MESSAGE: Record<CashBankAccountRefusal, string> = {
+  configured_unmapped:
+    'the bank account it is configured to bank into is not mapped to a chart account. Map it ' +
+    'under Accounting > Settings > Bank accounts.',
+  unset_none_mapped:
+    'no bank account is configured for cash payments and none is mapped to a chart account. ' +
+    'Map one under Accounting > Settings > Bank accounts.',
+  unset_ambiguous:
+    'no bank account is configured for cash payments and more than one is mapped to a chart ' +
+    'account, so there is no unambiguous answer. Name one under Accounting > Settings > General.',
+}
+
 /**
- * The `gl_account` id `accounting.cashBankAccountId` resolves to, or `null`
- * when it is unset or the account it names has none.
+ * The `gl_account` id a `cash`-routed payment banks into.
+ *
+ * `accounting.cashBankAccountId` names it when a person has set it. When they
+ * have NOT, the org's sole mapped `bank_account` is the answer.
+ *
+ * 🛑 **The fallback is not a guess, and it is load-bearing.** The setting has
+ * `defaultValue: null` (`settings/catalog.ts`) and nothing seeds it - not chart
+ * provisioning, not the setup wizard, not entity migration 145, which retired
+ * the `cash` role outright. But `DEFAULT_PAYMENT_ROUTES.bank` is `cash`
+ * (`money/bank-deposits/route.ts`), so ACH and wire route here for every org
+ * that has never opened the settings page. Without the fallback every such org
+ * - including every org that enables accounting from here on - refuses its ACH
+ * receipts with `account_unmapped` and no on-screen signal until somebody
+ * happens to find the picker. Falling back only when EXACTLY ONE bank account
+ * carries a chart mapping keeps that from being a guess: one mapped account is
+ * the only account the money could be banked into. Two is ambiguous and still
+ * refuses, with its own sentence.
  *
  * Read through the entity layer directly rather than by importing `banking/` -
  * `money/bank-deposits/reads.ts` gives the same reason for its own
@@ -117,19 +162,28 @@ async function resolveCashBankAccountGlAccountId(
   db: Database,
   organizationId: string,
   settings: Record<string, unknown>
-): Promise<{ glAccountId: string | null; bankAccountId: string | null }> {
+): Promise<CashBankAccountResolution> {
   const raw = settings['accounting.cashBankAccountId']
-  const bankAccountId = typeof raw === 'string' ? raw.trim() : ''
-  if (!bankAccountId) return { glAccountId: null, bankAccountId: null }
+  const configuredId = typeof raw === 'string' ? raw.trim() : ''
+
+  const unresolvable = (): CashBankAccountResolution => ({
+    glAccountId: null,
+    bankAccountId: configuredId || null,
+    refusal: configuredId ? 'configured_unmapped' : 'unset_none_mapped',
+  })
 
   const bankAccountDefId = await getCachedEntityDefId(organizationId, 'bank_account')
-  if (!bankAccountDefId) return { glAccountId: null, bankAccountId }
+  if (!bankAccountDefId) return unresolvable()
 
   const glAccountField = await getOrgCache()
     .from(organizationId, 'customFields')
     .bySystemAttributes(['bank_account_gl_account'])
   const fieldId = glAccountField.bank_account_gl_account?.id
-  if (!fieldId) return { glAccountId: null, bankAccountId }
+  if (!fieldId) return unresolvable()
+
+  if (!configuredId) {
+    return await resolveSoleMappedBankAccount(db, organizationId, bankAccountDefId, fieldId)
+  }
 
   const [instance] = await db
     .select({ id: schema.EntityInstance.id, archivedAt: schema.EntityInstance.archivedAt })
@@ -138,14 +192,16 @@ async function resolveCashBankAccountGlAccountId(
       and(
         eq(schema.EntityInstance.organizationId, organizationId),
         eq(schema.EntityInstance.entityDefinitionId, bankAccountDefId),
-        eq(schema.EntityInstance.id, bankAccountId)
+        eq(schema.EntityInstance.id, configuredId)
       )
     )
     .limit(1)
   // Archived is treated as unmapped: nothing can be banked into an archived
   // account (`money/bank-deposits/writes.ts`'s `requireDepositTarget` refuses
   // the same way).
-  if (!instance || instance.archivedAt) return { glAccountId: null, bankAccountId }
+  if (!instance || instance.archivedAt) {
+    return { glAccountId: null, bankAccountId: configuredId, refusal: 'configured_unmapped' }
+  }
 
   const [value] = await db
     .select({ valueText: schema.FieldValue.valueText })
@@ -159,7 +215,62 @@ async function resolveCashBankAccountGlAccountId(
     )
     .limit(1)
 
-  return { glAccountId: value?.valueText?.trim() || null, bankAccountId }
+  const glAccountId = value?.valueText?.trim() || null
+  return {
+    glAccountId,
+    bankAccountId: configuredId,
+    refusal: glAccountId ? null : 'configured_unmapped',
+  }
+}
+
+/**
+ * The org's sole non-archived `bank_account` carrying a chart mapping, when
+ * there is exactly one. Zero and two-or-more each refuse with their own reason.
+ *
+ * Deliberately unlimited: an org has a handful of bank accounts, and counting
+ * them exactly is what separates "the only possible answer" from "a guess".
+ */
+async function resolveSoleMappedBankAccount(
+  db: Database,
+  organizationId: string,
+  bankAccountDefId: string,
+  fieldId: string
+): Promise<CashBankAccountResolution> {
+  const rows = await db
+    .select({
+      bankAccountId: schema.EntityInstance.id,
+      glAccountId: schema.FieldValue.valueText,
+    })
+    .from(schema.EntityInstance)
+    .innerJoin(
+      schema.FieldValue,
+      and(
+        eq(schema.FieldValue.organizationId, organizationId),
+        eq(schema.FieldValue.entityId, schema.EntityInstance.id),
+        eq(schema.FieldValue.fieldId, fieldId)
+      )
+    )
+    .where(
+      and(
+        eq(schema.EntityInstance.organizationId, organizationId),
+        eq(schema.EntityInstance.entityDefinitionId, bankAccountDefId),
+        isNull(schema.EntityInstance.archivedAt),
+        ne(schema.FieldValue.valueText, '')
+      )
+    )
+
+  const mapped = rows.flatMap((row) => {
+    const glAccountId = row.glAccountId?.trim()
+    return glAccountId ? [{ bankAccountId: row.bankAccountId, glAccountId }] : []
+  })
+  if (mapped.length > 1) {
+    return { glAccountId: null, bankAccountId: null, refusal: 'unset_ambiguous' }
+  }
+  const [only] = mapped
+  if (!only) {
+    return { glAccountId: null, bankAccountId: null, refusal: 'unset_none_mapped' }
+  }
+  return { glAccountId: only.glAccountId, bankAccountId: only.bankAccountId, refusal: null }
 }
 
 /**
@@ -221,12 +332,8 @@ export async function postPaymentTransaction(
     if (route === 'cash') {
       const resolved = await resolveCashBankAccountGlAccountId(db, organizationId, settings)
       if (!resolved.glAccountId) {
-        const message = resolved.bankAccountId
-          ? `Payment ${transaction.id} routes to cash, but the bank account it is configured to ` +
-            'bank into is not mapped to a chart account. Map it under Accounting > Settings > ' +
-            'Bank accounts.'
-          : `Payment ${transaction.id} routes to cash, but no bank account is configured for ` +
-            'cash payments. Set one under Accounting > Settings > General.'
+        const reason = CASH_REFUSAL_MESSAGE[resolved.refusal ?? 'unset_none_mapped']
+        const message = `Payment ${transaction.id} routes to cash, but ${reason}`
         logger.warn('Payment refused: the cash route has no mapped bank account', {
           organizationId,
           transactionId: transaction.id,

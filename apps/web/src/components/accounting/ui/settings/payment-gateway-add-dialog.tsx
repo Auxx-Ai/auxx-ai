@@ -73,19 +73,37 @@ export function PaymentGatewayAddDialog({
     },
   })
 
-  // 🛑 The option set is DERIVED from the values. `payment_gateway_handles` is an
-  // OPEN, value-keyed TAGS field - the registry declares `options: { options: [] }`
-  // and the write stores the raw string - so a stored handle matches no option row.
-  // Handing the picker a literal `[]` made every handle resolve `unknown`: the
-  // trigger rendered it italic-grey as "not in this field's option set", and it
-  // never appeared in the popover at all, so it could not be unchecked. Nothing is
-  // wrong with what is stored; the input has to be told the values ARE the options.
-  // The `useMemo` is load-bearing too - a fresh `[]` each render re-fired
-  // `MultiSelectPicker`'s options sync and wiped the tag being typed.
-  const handleOptions = useMemo(
-    () => draft.handles.map((handle) => ({ label: handle, value: handle })),
-    [draft.handles]
+  // The handles actually seen on this org's orders. Only the UNCLAIMED ones are
+  // offered: a handle another gateway already holds would be refused by
+  // `assertHandlesAvailable` at write time, so suggesting it is an invitation
+  // to a guaranteed error. Typing it by hand still gets that refusal, verbatim.
+  const observed = api.paymentGateway.observedHandles.useQuery(undefined, { enabled: open })
+  const suggestions = useMemo(
+    () => (observed.data ?? []).filter((row) => !row.claimedBy).map((row) => row.handle),
+    [observed.data]
   )
+
+  // 🛑 The option set is DERIVED from the values, plus the suggestions above.
+  // `payment_gateway_handles` is an OPEN, value-keyed TAGS field - the registry
+  // declares `options: { options: [] }` and the write stores the raw string - so a
+  // stored handle matches no option row. Handing the picker a literal `[]` made
+  // every handle resolve `unknown`: the trigger rendered it italic-grey as "not in
+  // this field's option set", and it never appeared in the popover at all, so it
+  // could not be unchecked. Nothing is wrong with what is stored; the input has to
+  // be told the values ARE the options. The `useMemo` is load-bearing too - a fresh
+  // `[]` each render re-fired `MultiSelectPicker`'s options sync and wiped the tag
+  // being typed.
+  const handleOptions = useMemo(() => {
+    const seen = new Set<string>()
+    const options: { label: string; value: string }[] = []
+    for (const handle of [...suggestions, ...draft.handles]) {
+      const key = handle.trim().toLowerCase()
+      if (!key || seen.has(key)) continue
+      seen.add(key)
+      options.push({ label: handle, value: handle })
+    }
+    return options
+  }, [suggestions, draft.handles])
 
   const canSubmit = draft.name.trim() && draft.handles.length > 0 && draft.clearingAccountId
 
@@ -125,7 +143,13 @@ export function PaymentGatewayAddDialog({
             type={BaseType.STRING}
             showIcon
             isRequired
-            description='Every stored value this rail is seen under.'>
+            description={
+              observed.isPending
+                ? 'Every stored value this rail is seen under.'
+                : suggestions.length > 0
+                  ? 'Every stored value this rail is seen under. The list offers the handles on your orders that no gateway routes yet.'
+                  : 'Every stored value this rail is seen under, exactly as it appears on the order.'
+            }>
             <FieldInputAdapter
               fieldType={FieldType.TAGS}
               fieldOptions={{ options: handleOptions }}

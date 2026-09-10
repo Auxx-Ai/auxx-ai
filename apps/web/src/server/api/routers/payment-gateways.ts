@@ -17,6 +17,7 @@
 import {
   archivePaymentGateway,
   createPaymentGateway,
+  listObservedGatewayHandles,
   listPaymentGateways,
   PAYMENT_GATEWAY_SETTLEMENT_SOURCES,
   updatePaymentGateway,
@@ -54,6 +55,20 @@ export const paymentGatewaysRouter = createTRPCRouter({
       if (result.isErr()) throw result.error
       return result.value
     }),
+
+  /**
+   * Every gateway handle seen on the org's own orders, with whether a record
+   * already routes it.
+   *
+   * The lookup behind the add dialog's suggestions and the list page's
+   * "routed" line. `ledgerView` like {@link list}: it reads which rails the
+   * store has run, which is bookkeeping context, not a control.
+   */
+  observedHandles: permissionProcedure(PermissionKey.ledgerView).query(async ({ ctx }) => {
+    const result = await listObservedGatewayHandles(ctx.db, ctx.session.organizationId)
+    if (result.isErr()) throw result.error
+    return result.value
+  }),
 
   /**
    * Add a gateway by hand.

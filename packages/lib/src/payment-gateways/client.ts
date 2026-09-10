@@ -72,6 +72,39 @@ export function normaliseGatewayHandle(handle: string): string {
 }
 
 /**
+ * The two handles that never belong to a `payment_gateway` record.
+ *
+ * `resolveFulfillmentDebit` (`postings/build-fulfillment-batch-entry.ts`)
+ * answers both from its own fork, before any route is consulted: `manual` is
+ * money that did not come through a rail at all and debits
+ * `accounts_receivable`, and `bogus` is Shopify's test gateway and excludes the
+ * shipment outright. Neither can ever be "claimed", so the census
+ * ({@link listObservedGatewayHandles}) drops them rather than reporting two
+ * permanently unroutable handles at every org forever.
+ *
+ * 🛑 A deliberate mirror of that file's private `MANUAL_GATEWAY` /
+ * `TEST_GATEWAY`, not an import - `build-fulfillment-batch-entry.ts` imports
+ * THIS file for `GatewayRoute`, and an import back would be a cycle. Same call
+ * {@link normaliseGatewayHandle} makes about `normaliseGateways`.
+ */
+export const RESERVED_GATEWAY_HANDLES: readonly string[] = ['manual', 'bogus']
+
+/**
+ * One gateway handle seen on the org's own orders, and whether a
+ * `payment_gateway` record already claims it.
+ *
+ * Deliberately carries NO order count. The question this answers is "is this
+ * handle routed", which is a yes or a no; a count invites reading the list as
+ * a revenue report, and the number would be stale the moment an order syncs.
+ */
+export interface ObservedGatewayHandle {
+  /** As stored on the order, not normalised - what a person should type. */
+  handle: string
+  /** The `payment_gateway` id claiming it, or `null` when nothing routes it. */
+  claimedBy: string | null
+}
+
+/**
  * One `payment_gateway` record, as the settings screen and the fulfillment
  * planner both read it.
  */
