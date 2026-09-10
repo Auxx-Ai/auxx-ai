@@ -73,14 +73,86 @@ const STRIP_RULES: readonly RegExp[] = [
 ]
 
 /**
+ * A token that mixes letters and digits and is therefore a per-payment reference:
+ * `ST-F1K0R8X3L3D5`, `5Q9S115H0`, `avnwsy251`. Applied by
+ * {@link stripReferenceTokens} after {@link STRIP_RULES}.
+ *
+ * 🛑 **This is the single highest-value rule in the function.** Measured against the
+ * Auxx Ai feed of 2026-09-09 (489 lines, three accounts), the rules above alone put
+ * only 65.2% of lines in a group of two or more - 210 keys, 170 of them singletons.
+ * The cause is one gap: banks put their per-payment reference in a token that mixes
+ * letters with digits, so the digit-run rule above never sees a run long enough to
+ * strip. **Shopify payouts were 68 lines, $2.29M, and 68 distinct keys** - the
+ * largest revenue stream in the book, unable to reach `MIN_HISTORY_MATCHES` even
+ * once. With this rule the same feed yields 127 keys, 81 singletons, 83.4% of lines
+ * in a group of 2+ (plans/accounting/tasks/11-clearing-the-review-queue.md, the
+ * LANDED block).
+ *
+ * ⚠️ **It runs AFTER the `\d{4,}` rule, not before**, which is the opposite of what
+ * the brief's follow-up (1) says. The brief's reasoning - "once the digits are gone
+ * there is no mixed token left to recognise" - is true only of tokens whose digits
+ * form a run of four or more, and those are exactly the ones that must NOT be
+ * stripped whole: `PPD1234567` is a NACHA class code plus a trace number, and
+ * `GOOGLE *ADS3197812385` an advertiser id, and both group correctly once the digits
+ * alone are gone (`ppd`, `google ads`). The tokens this rule exists for -
+ * `F1K0R8X3L3D5`, `5Q9S115H0`, `avnwsy251` - carry no run of four, so they reach it
+ * untouched. Running it first would strip both kinds and lose the stable letter
+ * stem of the first.
+ */
+const REFERENCE_TOKEN = /[a-z0-9]{6,}/g
+
+/** Below this, a mixed token is a name (`WD40`, `1STDIBS`), not a reference. */
+const REFERENCE_MIN_LENGTH = 6
+/** Two of each: one digit is a brand (`LEVEL3`), two is a number. */
+const REFERENCE_MIN_DIGITS = 2
+const REFERENCE_MIN_LETTERS = 2
+
+/**
+ * The whole key names no counterparty and must not group. Anchored at both ends, so
+ * `check card purchase shell oil` is untouched.
+ *
+ * 🛑 `Check 1660` reduces to `check` once the number is stripped, which fused all
+ * eleven checks in the measured feed - **to eleven different payees** - into one key.
+ * At eleven lines that reads as the `strong` confidence band and is default-selected
+ * for bulk accept, so the first coded check would propose its account for ten
+ * unrelated ones. A bare check number identifies nothing; `''` (no key) is the honest
+ * answer and §0.1 above says it is a legitimate one.
+ *
+ * ⚠️ The optional trailing number is what keeps `Check 220` and `Check 1660` the same
+ * answer. The digit-run rule strips four digits and keeps three, so without it a
+ * short check number survives into the key and one door of this fix stays open on
+ * every check numbered under 1000.
+ */
+const NO_COUNTERPARTY_KEY = /^checks?(?: \d{1,3})?$/
+
+/** Is this run of letters and digits a per-payment reference rather than a name? */
+function isReferenceToken(token: string): boolean {
+  if (token.length < REFERENCE_MIN_LENGTH) return false
+  let digits = 0
+  let letters = 0
+  for (const char of token) {
+    if (char >= '0' && char <= '9') digits++
+    else letters++
+  }
+  return digits >= REFERENCE_MIN_DIGITS && letters >= REFERENCE_MIN_LETTERS
+}
+
+/** Replace every {@link isReferenceToken} run with a space. Pure. */
+function stripReferenceTokens(value: string): string {
+  return value.replace(REFERENCE_TOKEN, (token) => (isReferenceToken(token) ? ' ' : token))
+}
+
+/**
  * Normalise a bank `description` into a stable grouping key.
  *
- * Lowercases, strips card suffixes, dates, times and long digit runs, folds every
- * remaining non-alphanumeric character to a single space, and trims.
+ * Lowercases, strips card suffixes, dates, times, long digit runs and mixed
+ * letter-and-digit reference tokens, folds every remaining non-alphanumeric
+ * character to a single space, and trims.
  *
- * Returns `''` for input that is empty or reduces to nothing (a line whose whole
- * description was a trace number). 🛑 The empty string is a legitimate answer and the
- * callers must treat it as "no key", never as a key that groups: matching every
+ * Returns `''` for input that is empty, reduces to nothing (a line whose whole
+ * description was a trace number), or reduces to a {@link NO_COUNTERPARTY_KEY} word
+ * such as `check`. 🛑 The empty string is a legitimate answer and the callers must
+ * treat it as "no key", never as a key that groups: matching every
  * reference-number-only line together would suggest one merchant's coding for all of
  * them.
  */
@@ -90,9 +162,11 @@ export function normalizeMatchKey(description: string | null | undefined): strin
   for (const rule of STRIP_RULES) {
     value = value.replace(rule, ' ')
   }
+  value = stripReferenceTokens(value)
   // Everything that is not a letter, a digit or a space becomes a space. Punctuation
   // varies between two occurrences of the same merchant (`sq *coffee` vs `sq*coffee`)
   // far more often than it distinguishes two merchants.
   value = value.replace(/[^a-z0-9]+/g, ' ')
-  return value.trim().replace(/\s+/g, ' ')
+  const key = value.trim().replace(/\s+/g, ' ')
+  return NO_COUNTERPARTY_KEY.test(key) ? '' : key
 }
