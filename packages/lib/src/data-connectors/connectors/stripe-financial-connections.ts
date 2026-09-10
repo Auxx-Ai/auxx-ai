@@ -285,7 +285,12 @@ export function toTransactionFields(
     // into a positive amount plus a direction happens once, at the builder boundary.
     amountMinor: txn.amount,
     bankStatus: toBankStatus(txn.status),
-    matchKey: normalizeMatchKey(description),
+    // `|| null` because '' is "no key", and the import door already stores it that
+    // way (`banking/import/finalize.ts`). Two doors that disagreed would leave the
+    // empty key groupable through one of them: `readHistoryForMatchKey` matches on
+    // `valueText` equality, so a stored '' would sample every unreadable line in the
+    // account as though they shared a payee.
+    matchKey: normalizeMatchKey(description) || null,
     source: 'feed',
   }
 }

@@ -103,6 +103,7 @@ import { migration143GlPointersHoldIds } from './migrations/143-gl-pointers-hold
 import { migration144GlAccountCodeOptionalAndSubtype } from './migrations/144-gl-account-code-optional-and-subtype'
 import { migration145RetireInstanceRoles } from './migrations/145-retire-instance-roles'
 import { migration146PaymentGateway } from './migrations/146-payment-gateway'
+import { migration147BackfillBankMatchKeys } from './migrations/147-backfill-bank-match-keys'
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
@@ -338,6 +339,12 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   // No ordering constraint against it or against 108/133/142/143/144/145 - it
   // only creates the payment_gateway def and its fields (task 13 §5.3).
   migration146PaymentGateway,
+  // Recomputes every stored bank_transaction.matchKey from its own description
+  // with the current normalizeMatchKey, so rows ingested before the mixed-token
+  // and bare-check rules landed group the way new ones do (task 11's LANDED
+  // follow-ups 1 and 2). No ordering constraint against anything above: it
+  // reads only bank_transaction.description and rewrites only matchKey.
+  migration147BackfillBankMatchKeys,
 ]
 
 /**

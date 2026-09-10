@@ -80,6 +80,62 @@ describe('normalizeMatchKey', () => {
     expect(normalizeMatchKey('7 ELEVEN 22')).toBe('7 eleven 22')
   })
 
+  it('strips the mixed letter-and-digit token banks use as a per-payment reference', () => {
+    // The single highest-value rule in the normaliser. Every shape below was a
+    // SINGLETON key on the measured feed (task 11's LANDED block), which is why the
+    // suggestion engine had never fired: 68 Shopify payouts worth $2.29M were 68
+    // separate decisions, none of them able to reach MIN_HISTORY_MATCHES.
+    expect(
+      normalizeMatchKey(
+        'SHOPIFY DES:TRANSFER ID:ST-F1K0R8X3L3D5 INDN:LFK ENGINEERING CO ID:XXXXX48598 CCD'
+      )
+    ).toBe('shopify des transfer id st indn lfk engineering co id ccd')
+    expect(normalizeMatchKey('AMAZON MKTPL*5Q9S115H0')).toBe('amazon mktpl')
+    expect(normalizeMatchKey('ZELLE PAYMENT TO JOHN DOE Conf# avnwsy251')).toBe(
+      'zelle payment to john doe conf'
+    )
+  })
+
+  it('collapses two payouts that differ only in their reference onto one key', () => {
+    // The property the rule was added for, stated as the function's own contract.
+    const a = normalizeMatchKey('SHOPIFY DES:TRANSFER ID:ST-F1K0R8X3L3D5 INDN:LFK ENG CCD')
+    const b = normalizeMatchKey('SHOPIFY DES:TRANSFER ID:ST-Q7M2W9B4N1H8 INDN:LFK ENG CCD')
+    expect(a).toBe(b)
+  })
+
+  it('KEEPS a mixed token that is a name rather than a reference', () => {
+    // Under six characters, or fewer than two digits, or fewer than two letters. A
+    // brand with a number in it identifies the merchant exactly as a word would.
+    expect(normalizeMatchKey('WD40 COMPANY')).toBe('wd40 company')
+    expect(normalizeMatchKey('LEVEL3 COMMUNICATIONS')).toBe('level3 communications')
+    expect(normalizeMatchKey('1STDIBS')).toBe('1stdibs')
+  })
+
+  it('leaves the letter stem of a token whose digits are a run of four or more', () => {
+    // ⚠️ This is why the reference rule runs AFTER the digit-run rule and not before,
+    // against the brief's follow-up (1). `PPD` is a NACHA class code and `ADS` an
+    // advertiser stream; both group correctly once only the digits are gone, and
+    // stripping the whole token would throw away the stable part.
+    expect(normalizeMatchKey('ACH CREDIT PPD1234567')).toBe('ach credit ppd')
+    expect(normalizeMatchKey('GOOGLE *ADS3197812385')).toBe('google ads')
+  })
+
+  it('answers no key for a bare check number', () => {
+    // 🛑 All eleven checks in the measured feed shared the key `check`, to eleven
+    // different payees. At eleven lines that is task 11 §4's `strong` band, default
+    // selected for bulk accept, so the first coded check would propose its account for
+    // ten unrelated ones. A check number identifies nothing.
+    expect(normalizeMatchKey('Check 1660')).toBe('')
+    expect(normalizeMatchKey('CHECK 1660')).toBe('')
+    // ⚠️ Three digits survive the digit-run rule, so a short check number reaches the
+    // key intact. It has to answer the same as a long one or the fix is half a fix.
+    expect(normalizeMatchKey('Check 220')).toBe('')
+    expect(normalizeMatchKey('CHECKS 220')).toBe('')
+    // Only as the WHOLE key. A descriptor that says more than "a check happened" keeps
+    // everything it says.
+    expect(normalizeMatchKey('CHECK CARD PURCHASE SHELL OIL')).toBe('check card purchase shell oil')
+  })
+
   it('is idempotent - normalising a key again changes nothing', () => {
     // The review queue groups on stored keys, so a re-run over already-normalised
     // values (a backfill, a reprocess) must not drift them into a second bucket.
