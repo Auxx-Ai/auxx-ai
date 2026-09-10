@@ -70,6 +70,17 @@ export const POSTING_TYPES = [
   // paid the money back. Keys on the memo's own number, like `invoice_issued`,
   // and is reversed by void (plans/accounting/tasks/10-credit-memos.md).
   'credit_memo',
+  // 🛑 The one posting type auxx does not author. An entry the ACCOUNTANT wrote
+  // in the connected provider, read back off their general ledger and written as
+  // one of our rows (plans/accounting/tasks/20-two-authors-one-ledger.md §6).
+  //
+  // `periodKey` is the provider's own transaction id - the claim index gives
+  // per-transaction idempotency for free, exactly as `payout` keys on a payout
+  // id - and `exportStatus` stays `not_required` because we never pushed it.
+  // `EXPORT_ROUTE_BY_POSTING_TYPE.provider_sync` is `'none'`, and that
+  // declaration is the loop guard: pushing their own entries back at them would
+  // double every one of them, and both copies would balance.
+  'provider_sync',
 ] as const
 
 export type PostingType = (typeof POSTING_TYPES)[number]

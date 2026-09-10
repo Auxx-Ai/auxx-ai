@@ -49,6 +49,15 @@ describe('the posting-type vocabulary is one vocabulary', () => {
     expect(POSTING_TYPES).toContain('receipt')
     expect(POSTING_TYPES).toContain('vendor_bill')
   })
+
+  // Brief 20 §6. The one type auxx does not author: the accountant writes it in
+  // QuickBooks and the inbound sync reads it back as one of our rows. It is a
+  // real pgEnum value, not a code-only union member - a `provider_sync` INSERT
+  // against a column that cannot store it would fail at the sync rather than at
+  // a close, which is a different night and the same enum.
+  it('carries the type the ACCOUNTANT authors, synced back in', () => {
+    expect(POSTING_TYPES).toContain('provider_sync')
+  })
 })
 
 describe('the posting-status vocabulary is two vocabularies, held apart', () => {

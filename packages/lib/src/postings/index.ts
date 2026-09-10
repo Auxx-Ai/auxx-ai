@@ -309,6 +309,46 @@ export {
   type ProviderAgreementStatus,
   planProviderAgreement,
 } from './provider-agreement'
+// ── plans/accounting/tasks/20 §5-§7: the inbound half of the seam ───────────
+// Read their general ledger, drop everything auxx authored, check those against
+// our own copies, and write the remainder as our own rows.
+export {
+  type DeferredEntry,
+  groupProviderLedgerEntries,
+  invertAccountMap,
+  isOurs,
+  OUR_PROVIDER_TXN_TYPE,
+  type OurEntryCheck,
+  type OurEntryVerdict,
+  type OurPostedEntry,
+  type OurPostedLine,
+  type PlanProviderSyncInput,
+  type PlanSyncChunksInput,
+  type PostProviderSyncEntryInput,
+  PROVIDER_SYNC_POSTING_TYPE,
+  PROVIDER_SYNC_SOURCE_TYPE,
+  type ProviderLedger,
+  type ProviderLedgerEntry,
+  type ProviderLedgerLine,
+  type ProviderSyncChunkOutcome,
+  type ProviderSyncEntryOutcome,
+  type ProviderSyncOutcome,
+  type ProviderSyncPlan,
+  type ProviderSyncRange,
+  planProviderSync,
+  planSyncChunks,
+  postProviderSyncEntry,
+  providerSyncFloor,
+  type ReadOurPostedEntriesInput,
+  readOurPostedEntries,
+  readOurProviderEntryIds,
+  readSyncedEntriesInRange,
+  resolveProviderSyncLines,
+  reverseSyncedEntry,
+  type SyncedEntryRef,
+  type SyncProviderLedgerInput,
+  syncProviderLedger,
+} from './provider-sync'
 export { getPosting, readPostingLineSourceIds } from './read-posting'
 export {
   ENABLED_POSTING_TYPES,

@@ -807,6 +807,7 @@ export const GlPostingTypeValues = [
   'invoice_issued',
   'deposit_application',
   'credit_memo',
+  'provider_sync',
 ] as const
 export type GlPostingType = (typeof GlPostingTypeValues)[number]
 

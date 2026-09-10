@@ -147,6 +147,57 @@ describe('the two types that key on an id rather than a date', () => {
   })
 })
 
+// ─────────────────────────────────────────────────────────────────────────────
+// `provider_sync` (brief 20 §6) is the only key whose LENGTH a third party
+// chooses: it is the provider's own transaction id. `AUXX-SYN-` is 9 of the 21
+// characters, so the budget is 12 at revision 0 and 9 once `-R<n>` is on it, and
+// QuickBooks' `Id` is numeric and capped at 11. The original therefore always
+// fits and a reversal of a long id does not - which matters because §7.1
+// reverses a synced entry whose id has vanished from the provider's ledger.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('the synced key, whose length somebody else chooses', () => {
+  it('keys on the provider transaction id verbatim', () => {
+    expect(buildDocNumber({ postingType: 'provider_sync', periodKey: '139' })).toBe('AUXX-SYN-139')
+  })
+
+  it('gives two provider transactions two different numbers', () => {
+    expect(buildDocNumber({ postingType: 'provider_sync', periodKey: '139' })).not.toBe(
+      buildDocNumber({ postingType: 'provider_sync', periodKey: '140' })
+    )
+  })
+
+  it('fits the longest id QuickBooks can mint - 11 characters - at revision 0', () => {
+    const longest = '9'.repeat(11)
+    expect(buildDocNumber({ postingType: 'provider_sync', periodKey: longest })).toHaveLength(20)
+    expect(
+      buildDocNumber({ postingType: 'provider_sync', periodKey: longest }).length
+    ).toBeLessThanOrEqual(DOC_NUMBER_MAX_LENGTH)
+  })
+
+  it('fits exactly 12 characters and REFUSES 13', () => {
+    // The arithmetic, pinned: 'AUXX-' (5) + 'SYN' (3) + '-' (1) = 9, leaving 12.
+    expect(
+      buildDocNumber({ postingType: 'provider_sync', periodKey: '9'.repeat(12) })
+    ).toHaveLength(DOC_NUMBER_MAX_LENGTH)
+    expect(() =>
+      buildDocNumber({ postingType: 'provider_sync', periodKey: '9'.repeat(13) })
+    ).toThrow(UnprocessableEntityError)
+  })
+
+  // 🛑 The asymmetry to know about: the original posts and its REVERSAL cannot
+  // be minted. A reversal is how §7.1 backs out a synced entry the accountant
+  // has deleted, so this refusal is reachable on a real company file.
+  it('takes only 9 characters once a reversal suffix is on it', () => {
+    expect(
+      buildDocNumber({ postingType: 'provider_sync', periodKey: '9'.repeat(9), revision: 1 })
+    ).toHaveLength(DOC_NUMBER_MAX_LENGTH)
+    expect(() =>
+      buildDocNumber({ postingType: 'provider_sync', periodKey: '9'.repeat(10), revision: 1 })
+    ).toThrow(UnprocessableEntityError)
+  })
+})
+
 describe('refusals', () => {
   it('refuses a blank period key rather than minting AUXX-RCP-', () => {
     expect(() => buildDocNumber({ postingType: 'receipt', periodKey: '' })).toThrow(

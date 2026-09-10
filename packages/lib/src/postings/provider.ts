@@ -17,6 +17,7 @@
 import { createScopedLogger } from '@auxx/logger'
 import { err, ok, type Result } from 'neverthrow'
 import { NotFoundError, UnprocessableEntityError } from '../errors'
+import type { ProviderLedger } from './provider-sync/client'
 import type {
   PostEntryInput,
   PostEntryResult,
@@ -32,14 +33,18 @@ export const NONE_PROVIDER_ID = 'none'
 /**
  * One accounting system auxx.ai can export postings to.
  *
- * Seven methods now (plus an optional `init`) - the "deliberately two
+ * Eight methods now (plus an optional `init`) - the "deliberately two
  * methods" this docblock used to claim went stale when `G19`'s account-mapping
- * and identity work grew the interface, and brief 19 adds one more on top:
- * resolve a code, post an entry, read the provider's own chart, read and write
- * its account map, and read its balance sheet as of a date. Everything else an
- * accounting integration does - customers,
- * invoices, payments - still belongs to the app that owns that integration;
- * this interface is only the posting and chart-mapping seam.
+ * and identity work grew the interface, and briefs 19 and 20 each added one on
+ * top: resolve a code, post an entry, read the provider's own chart, read and
+ * write its account map, read its balance sheet as of a date, and read its
+ * general ledger over a range. Everything else an accounting integration does -
+ * customers, invoices, payments - still belongs to the app that owns that
+ * integration; this interface is only the posting and chart-mapping seam.
+ *
+ * 🛑 Seven of the eight are write-or-map, and the two `readProvider*` reads are
+ * the whole INBOUND half: they are the only way anything the accountant
+ * authored reaches auxx at all (brief 20 decision 1).
  */
 export interface AccountingProvider {
   readonly id: string
@@ -102,6 +107,37 @@ export interface AccountingProvider {
     orgId: string,
     asOf: string
   ): Promise<Result<ProviderBalanceSheet | null, Error>>
+
+  /**
+   * The connected system's general ledger over one date range - the INBOUND
+   * half of the seam (brief 20 §5.1).
+   *
+   * Where {@link readProviderBalances} answers "what do they say the position
+   * is", this answers "what did they POST, line by line, and who authored it".
+   * Everything in the answer that auxx did not author is, by definition,
+   * something the provider holds and our books do not, and it is what
+   * `provider_sync` postings are written from.
+   *
+   * 🛑 **One returned line is one journal LINE, not one entry.** The lines are
+   * grouped into entries by `(txnType, txnId)` before anything is written - a
+   * writer that took one row as one posting would produce single-sided
+   * postings. The grouping, the exclusion and the comparison all live in
+   * `postings/provider-sync/`; an adapter's whole job is to return the range it
+   * was asked for, flattened.
+   *
+   * `range` is inclusive on both ends and the RETURNED `from`/`to` are the
+   * range the provider echoed back, not the one asked for - Intuit silently
+   * ignores some date parameters, so the caller asserts the echo. An adapter
+   * must never relabel a range it did not get.
+   *
+   * Null means nothing is connected, exactly as {@link readProviderBalances}
+   * answers it: a complete answer to a read, never an empty `lines` array,
+   * which would be indistinguishable from a quiet month.
+   */
+  readProviderLedger(
+    orgId: string,
+    range: { from: string; to: string }
+  ): Promise<Result<ProviderLedger | null, Error>>
 
   /**
    * Which provider account each of the org's own accounts is mapped to, as
@@ -191,6 +227,19 @@ class NoneAccountingProvider implements AccountingProvider {
    * skipped.
    */
   async readProviderBalances(): Promise<Result<ProviderBalanceSheet | null, Error>> {
+    return ok(null)
+  }
+
+  /**
+   * No external ledger to read, and `null` is the answer rather than an empty
+   * chunk - the same convention {@link readProviderBalances} established.
+   *
+   * 🛑 `ok({ lines: [] })` would be the dangerous shape here: an empty range
+   * reads as "the accountant posted nothing that month", which is a real and
+   * ordinary state, so a sync could not tell it apart from "there is nothing to
+   * sync from". Null says which.
+   */
+  async readProviderLedger(): Promise<Result<ProviderLedger | null, Error>> {
     return ok(null)
   }
 

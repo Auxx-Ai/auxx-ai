@@ -86,6 +86,19 @@ export const DOC_NUMBER_PREFIX: Record<PostingType, string> = {
   // issuance keys on the invoice number: one entry per memo falls out of the
   // claim index, and a void reverses it at `-R1`.
   credit_memo: 'CRM',
+  // The accountant's own entry, synced in (brief 20 §6). Keys on the PROVIDER'S
+  // transaction id, which is the only identity it has - the claim index then
+  // gives per-transaction idempotency for free.
+  //
+  // ⚠️ The cap is the thing to watch here, because this is the one key whose
+  // length a third party chooses. `AUXX-SYN-` is 9 characters, so a transaction
+  // id may be 12 characters at revision 0 and only 9 once a `-R<n>` suffix is
+  // on it. QuickBooks' `Id` is numeric and capped at 11 characters, so an
+  // ORIGINAL always fits and a REVERSAL of a long id does not: `buildDocNumber`
+  // refuses at 10 digits with `-R1`. Brief 20 §7.1 reverses a synced entry that
+  // has vanished from the provider's ledger, so that refusal is reachable - see
+  // `__tests__/doc-number.test.ts`.
+  provider_sync: 'SYN',
 }
 
 /** What identifies one entry of one type. See {@link buildDocNumber}. */
@@ -111,6 +124,9 @@ export interface DocNumberInput {
    *   (`'JE-0007'`, `'DEP-0003'`), for the same reason a build does: many can
    *   post in one day, and a cuid is over the cap. `opening_balance` keys on
    *   the cutover date, because an org has exactly one.
+   * - **`provider_sync`** keys on the PROVIDER'S transaction id - the only
+   *   identity an entry we did not author has. It is the one key whose length
+   *   somebody else chooses; see {@link DOC_NUMBER_PREFIX}'s note on it.
    *
    * Everything else keys on a real period - `'2026-08-18'` for a day,
    * `'2026-08'` for a month. Hyphens are stripped, so both compact to 8 and 6.

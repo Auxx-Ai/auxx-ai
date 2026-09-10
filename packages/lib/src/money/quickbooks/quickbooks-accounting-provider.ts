@@ -76,6 +76,7 @@ import type {
   ClearAccountMappingInput,
   SetAccountMappingInput,
 } from '../../postings/provider'
+import type { ProviderLedger } from '../../postings/provider-sync/client'
 import { listChartAccounts } from '../../postings/role-map'
 import { validateProviderMapping } from '../../postings/suggest-account-identities'
 import {
@@ -111,6 +112,8 @@ const TOOL_FIND_JOURNAL_ENTRY = 'find_quickbooks_journal_entry'
 const TOOL_CREATE_JOURNAL_ENTRY = 'create_quickbooks_journal_entry'
 /** Brief 19 section 3: the opening-balance suggestion's one report read. */
 const TOOL_GET_BALANCE_SHEET = 'get_quickbooks_balance_sheet'
+/** Brief 20 section 5.1: the inbound half's one report read. */
+const TOOL_GET_GENERAL_LEDGER = 'get_quickbooks_general_ledger'
 
 /** QuickBooks caps `PrivateNote` at 4000 characters and rejects a longer one. */
 const PRIVATE_NOTE_MAX_LENGTH = 4000
@@ -672,6 +675,49 @@ export class QuickbooksAccountingProvider implements AccountingProvider {
       return err(
         new UnprocessableEntityError(
           `Could not read the QuickBooks balance sheet: ${errorMessage(error)}`
+        )
+      )
+    }
+  }
+
+  /**
+   * The connected company's general ledger over one date range - the INBOUND
+   * half of the seam (brief 20 §5.1), and the only way the accountant's own
+   * entries ever reach auxx.
+   *
+   * The tool has already done every part of this that is QuickBooks' and not
+   * ours: it carried each `Section` header's account id down the recursion (a
+   * `Data` row does not name its own account), lifted the transaction id off
+   * `ColData[1]`, asked for `debt_amt` / `credit_amt` rather than the
+   * natural-direction `subt_nat_amount` a mapper would have to un-sign, parsed
+   * money into integer minor units, and asserted `Header.StartPeriod` /
+   * `EndPeriod` against the range it was given. This adapter does not touch the
+   * lines, only the call - exactly as {@link readProviderBalances} does.
+   *
+   * `Accrual` is stated rather than defaulted: our own books are accrual, and a
+   * cash-basis read compared against them would disagree everywhere for a
+   * reason that has nothing to do with either side being wrong.
+   */
+  async readProviderLedger(
+    orgId: string,
+    range: { from: string; to: string }
+  ): Promise<Result<ProviderLedger | null, Error>> {
+    const resolved = await resolveQuickbooksContext({ organizationId: orgId })
+    if (!resolved.connected) return ok(null)
+
+    try {
+      return ok(
+        (await resolved.context.callTool(TOOL_GET_GENERAL_LEDGER, {
+          from: range.from,
+          to: range.to,
+          accountingMethod: 'Accrual',
+        })) as ProviderLedger
+      )
+    } catch (error) {
+      return err(
+        new UnprocessableEntityError(
+          `Could not read the QuickBooks general ledger for ${range.from}..${range.to}: ${errorMessage(error)}`,
+          { organizationId: orgId, from: range.from, to: range.to }
         )
       )
     }

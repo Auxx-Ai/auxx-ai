@@ -242,6 +242,43 @@ export {
   type ProviderAgreementStatus,
   planProviderAgreement,
 } from './provider-agreement'
+// ── plans/accounting/tasks/20 §5-§7: the inbound half of the seam ───────────
+// The CLIENT-SAFE surface only: the contract in `provider-sync/client.ts`, the
+// pure planner and the pure range walker. Everything that touches a database or
+// the provider (`reads.ts`, `writes.ts`, `sync.ts`) is exported from `./index`
+// alone.
+//
+// 🛑 `isOurs` is on this surface because a screen has to be able to say WHY an
+// entry was not imported, and it is the most dangerous function in the module:
+// an import that gets it wrong re-reads our own ledger and doubles every posted
+// entry in it, with both copies balancing.
+export {
+  isOurs,
+  OUR_PROVIDER_TXN_TYPE,
+  type OurEntryCheck,
+  type OurEntryVerdict,
+  type OurPostedEntry,
+  type OurPostedLine,
+  PROVIDER_SYNC_POSTING_TYPE,
+  PROVIDER_SYNC_SOURCE_TYPE,
+  type ProviderLedger,
+  type ProviderLedgerEntry,
+  type ProviderLedgerLine,
+  type ProviderSyncPlan,
+  type ProviderSyncRange,
+} from './provider-sync/client'
+export {
+  groupProviderLedgerEntries,
+  invertAccountMap,
+  type PlanProviderSyncInput,
+  planProviderSync,
+  resolveProviderSyncLines,
+} from './provider-sync/plan'
+export {
+  type PlanSyncChunksInput,
+  planSyncChunks,
+  providerSyncFloor,
+} from './provider-sync/range'
 export {
   ENABLED_POSTING_TYPES,
   EXPORT_ROUTE_BY_POSTING_TYPE,
