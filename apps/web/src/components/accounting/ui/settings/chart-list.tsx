@@ -29,23 +29,47 @@
 // from `accounts` and stays fully usable while `map.isPending`, while
 // `map.isError`, and with no provider connected at all.
 
-import type { AccountRole, ChartAccountRow } from '@auxx/lib/postings/client'
+import type { AccountRole, ChartAccountRow, GlAccountTypeValue } from '@auxx/lib/postings/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
+import { ButtonSwitch } from '@auxx/ui/components/button-switch'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@auxx/ui/components/dropdown-menu'
 import { InputSearch } from '@auxx/ui/components/input-search'
 import { EmptySection } from '@auxx/ui/components/section'
+import { Skeleton } from '@auxx/ui/components/skeleton'
 import { TREE_SECONDARY_NOTRUNCATE, TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
+import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { cn } from '@auxx/ui/lib/utils'
-import { Landmark, Link2, Plus, Sparkles, TriangleAlert } from 'lucide-react'
-import { useState } from 'react'
+import {
+  BookOpen,
+  ChevronDown,
+  Landmark,
+  Link2,
+  Plus,
+  RotateCcw,
+  Sparkles,
+  Trash2,
+  TriangleAlert,
+} from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import {
+  useBulkMode,
+  useIsPending,
+  useIsSelected,
+  useListSelection,
+} from '~/components/list-selection'
 import { AccountLabel } from '../account-label'
 import { accountMatchesSearch } from '../account-label-format'
 import {
   ACCOUNT_SUGGESTION_REASON_COPY,
+  ACCOUNT_TYPE_OPTIONS,
   type AccountLinkState,
   accountLinkState,
-  accountTypeColor,
-  accountTypeLabel,
   type ChartDraftHandle,
   type ChartMapView,
   formatProviderAccount,
@@ -64,6 +88,14 @@ interface ChartListProps {
   /** The uncommitted draft, if any. Rendered as a phantom row at the top. */
   draft: ChartDraftHandle | null
   onAddDraft: () => void
+  /** Opens the catalogue picker (`chart-packs-dialog.tsx`). */
+  onAddFromCatalogue: () => void
+  /** Archives one account. Confirms and reports its own refusal. */
+  onRemoveAccount: (id: string) => void
+  /** Puts a removed account back. */
+  onRestoreAccount: (id: string) => void
+  showArchived: boolean
+  onShowArchivedChange: (next: boolean) => void
   /** The account map, decorating the rows. Never the source of them. */
   map: ChartMapView
   /** Confirms every suggested mapping at once. */
@@ -86,6 +118,11 @@ export function ChartList({
   rolesByAccountId,
   draft,
   onAddDraft,
+  onAddFromCatalogue,
+  onRemoveAccount,
+  onRestoreAccount,
+  showArchived,
+  onShowArchivedChange,
   map,
   onConfirmSuggested,
   confirming,
@@ -94,16 +131,48 @@ export function ChartList({
   canControl,
 }: ChartListProps) {
   const [search, setSearch] = useState('')
+  // Collapsed groups by statement type. Open is the default - the chart is what
+  // this tab is for, and a group that starts shut hides the link badges the
+  // rows exist to carry.
+  const [collapsed, setCollapsed] = useState<GlAccountTypeValue[]>([])
+
+  const toggleGroup = (type: GlAccountTypeValue) =>
+    setCollapsed((prev) => (prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]))
 
   // 29 rows, recomputed per keystroke of the search box. A `useMemo` here would
   // cost more to read than the loop costs to run.
-  const linked = accounts.filter(
+  // 🛑 `accounts` arrives WITH archived rows (the query always asks), so every
+  // count below has to say which set it means. `live` is the chart; archived
+  // rows are removed accounts kept for their history and their provider
+  // identity, and counting them as chart would overstate it on every line.
+  const live = accounts.filter((account) => !account.isArchived)
+  const archivedCount = accounts.length - live.length
+
+  const linked = live.filter(
     (account) => map.byAccountId.get(account.id)?.state === 'confirmed'
   ).length
 
+  const visible = showArchived ? accounts : live
   const filtered = search
-    ? accounts.filter((account) => accountMatchesSearch(account, search))
-    : accounts
+    ? visible.filter((account) => accountMatchesSearch(account, search))
+    : visible
+
+  // 🛑 The selection store's idea of "every item" is what shift-range and Cmd+A
+  // read, so it tracks what is actually ON SCREEN - filtered by the search and
+  // by the archived toggle, in render order. Feeding it the whole chart would
+  // let Cmd+A select rows the reader cannot see.
+  //
+  // 🛑 `pruneSelection: false` because this list HIDES rows rather than losing
+  // them. Typing in the search narrows the visible set, and the default pruning
+  // would read that as "those rows are gone" and silently drop them from the
+  // selection - so picking two accounts, searching for a third and picking it
+  // left one selected. A row that a bulk action really does remove leaves the
+  // selection when the bar calls `exit()` on done.
+  const setItemIds = useListSelection((state) => state.setItemIds)
+  const visibleIds = useMemo(() => filtered.map((account) => account.id), [filtered])
+  useEffect(() => {
+    setItemIds(visibleIds, { pruneSelection: false })
+  }, [visibleIds, setItemIds])
 
   // Hidden once `recordId` is stamped: the real row arrived with the invalidated
   // query, and rendering both would show the same account twice.
@@ -118,60 +187,116 @@ export function ChartList({
           placeholder='Search accounts...'
           className='flex-1'
         />
+        {/* Offered only when there is something behind it. An always-present
+            toggle over an empty set advertises a state most orgs never reach,
+            and removal is meant to be quiet rather than a mode. */}
+        {archivedCount > 0 && (
+          <ButtonSwitch
+            label={`Show archived (${archivedCount})`}
+            size='xs'
+            checked={showArchived}
+            onCheckedChange={onShowArchivedChange}
+            className='shrink-0'
+          />
+        )}
+        {/* 🛑 ONE control, two answers. Two sibling buttons is exactly what
+            forced `bank-accounts-list.tsx` to split its toolbar across two rows
+            (a second button squeezes `InputSearch` to about forty pixels), and
+            "add an account" is one intent with two routes rather than two
+            intents.
+            🛑 The catalogue is listed FIRST. Most of what a person reaches for
+            here is a standard account that already exists in the catalogue, and
+            leading with the blank row sends them off to type a code and a type
+            that were written down already. Same order `tariff-codes-list.tsx`
+            puts From catalogue in front of Add code. */}
         {canControl && (
-          <Button variant='outline' size='sm' onClick={onAddDraft}>
-            <Plus />
-            Add account
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant='outline' size='sm' className='shrink-0'>
+                <Plus />
+                Add account
+                <ChevronDown />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align='end' className='min-w-[15rem]'>
+              <DropdownMenuItem onSelect={onAddFromCatalogue}>
+                <BookOpen />
+                <span className='flex min-w-0 flex-col'>
+                  <span>From catalogue</span>
+                  <span className='text-muted-foreground text-xs'>
+                    Pick from the standard chart
+                  </span>
+                </span>
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={onAddDraft}>
+                <Plus />
+                <span className='flex min-w-0 flex-col'>
+                  <span>Blank account</span>
+                  <span className='text-muted-foreground text-xs'>Name and number it yourself</span>
+                </span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
       </div>
 
-      {/* 🛑 Gate on the PROVIDER, never on an empty map. "Nothing is connected"
+      {/* 🛑 ONE row, and its height is CONSTANT - `h-7`, the tallest thing it can
+          hold (a `size='sm'` Button). This strip used to be two blocks that each
+          rendered or did not, so the provider round trip landing shoved the whole
+          chart down the page under the reader's cursor. A fixed box that holds a
+          skeleton while pending cannot shift, whatever it resolves to.
+
+          🛑 LOADING is tested before "nothing connected", the order
+          `chart-account-editor.tsx`'s map block argues for: `connected` is false
+          for the whole of the round trip, so testing it first would tell every
+          reader their accounting system is disconnected for as long as it takes
+          to answer - a claim about the org, made false by the render order.
+
+          🛑 Gate on the PROVIDER, never on an empty map. "Nothing is connected"
           and "connected but nothing linked" are different answers needing
           different actions, and collapsing them would tell somebody to link a
-          chart with nothing to link it to. With nothing connected this counter is
-          absent and the chart is unchanged; the line directly below says why. */}
-      {map.connected && (
-        <div className='flex flex-wrap items-center gap-2'>
-          <span className='text-muted-foreground text-xs tabular-nums'>
-            {linked} of {accounts.length} linked to {map.providerLabel ?? 'your accounting system'}
+          chart with nothing to link it to. */}
+      <div className='flex h-7 shrink-0 items-center gap-2'>
+        {map.isPending ? (
+          <Skeleton className='h-4 w-52' />
+        ) : map.isError ? (
+          <span className='truncate text-muted-foreground text-xs'>
+            Could not read the account map. Everything below is unaffected.
           </span>
-          {canControl && map.suggested > 0 && (
-            <Button
-              variant='outline'
-              size='xs'
-              loading={confirming}
-              loadingText='Confirming...'
-              onClick={onConfirmSuggested}>
-              <Sparkles />
-              Accept {map.suggested}
-            </Button>
-          )}
-          {/* Refresh only once the chart holds at least one CONFIRMED mapping -
-              the signal that this chart was either imported or hand-mapped, so a
-              refresh has something to add to rather than nothing to compare
-              against (brief 16 §2.3). */}
-          {canControl && linked > 0 && <ImportChartButton mode='chart' connected={map.connected} />}
-        </div>
-      )}
-
-      {/* 🛑 LOADING is tested before "nothing connected", the same order
-          `chart-account-editor.tsx`'s map block argues for: `connected` is false
-          for the whole of the provider round trip, so testing it first would tell
-          every reader their accounting system is disconnected for as long as it
-          takes to answer.
-
-          This line exists because every row now wears a link badge when
-          connected. With nothing connected there are no badges at all, and
-          without a sentence "no accounting system", "still loading" and
-          "connected but nothing linked" would all render as the same silence. */}
-      {!map.isPending && (map.isError || !map.connected) && (
-        <span className='text-muted-foreground text-xs'>
-          {map.isError
-            ? 'Could not read the account map. Everything below is unaffected.'
-            : 'No accounting system connected, so nothing here is linked. Entries are still built, balanced and stored in Auxx.'}
-        </span>
-      )}
+        ) : !map.connected ? (
+          // ⚠️ The reassurance that used to follow this ("entries are still
+          // built, balanced and stored") is deliberately not here: it does not
+          // fit one line, and the detail pane already says it on the row it is
+          // about (`chart-account-editor.tsx`'s not-connected branch).
+          <span className='truncate text-muted-foreground text-xs'>
+            No accounting system connected, so nothing here is linked.
+          </span>
+        ) : (
+          <>
+            <span className='shrink-0 text-muted-foreground text-xs tabular-nums'>
+              {linked} of {live.length} linked to {map.providerLabel ?? 'your accounting system'}
+            </span>
+            {canControl && map.suggested > 0 && (
+              <Button
+                variant='outline'
+                size='xs'
+                loading={confirming}
+                loadingText='Confirming...'
+                onClick={onConfirmSuggested}>
+                <Sparkles />
+                Accept {map.suggested}
+              </Button>
+            )}
+            {/* Refresh only once the chart holds at least one CONFIRMED mapping -
+                the signal that this chart was either imported or hand-mapped, so
+                a refresh has something to add to rather than nothing to compare
+                against (brief 16 §2.3). */}
+            {canControl && linked > 0 && (
+              <ImportChartButton mode='chart' connected={map.connected} />
+            )}
+          </>
+        )}
+      </div>
 
       {/* A dangling mapping is a REPAIR, not a mapping, and `G19` requires every
           close to refuse on exactly these - so it leads the tab rather than
@@ -241,79 +366,66 @@ export function ChartList({
             />
           )}
 
-          {filtered.map((account) => {
-            const roles = rolesByAccountId.get(account.id) ?? []
-            const identity = map.byAccountId.get(account.id)
-            // Gated on the LOADED map for the same reason the badge is: a row
-            // action derived from a round trip that has not answered yet is an
-            // offer the server may be about to refuse.
-            const suggestion = map.connected && !map.isPending ? identity?.suggestion : undefined
+          {/* 🛑 Grouped by STATEMENT TYPE, which is how QuickBooks sections its
+              own chart and how `gl-account-picker.tsx` has always rendered this
+              same list. Flat, the only ordering was
+              `compareAccountsByCodeThenName` - whose own docstring says it is
+              "applied AFTER the caller has ordered by statement type", which no
+              caller did. An imported chart makes that visible: accounts with no
+              number sort into one alphabetical run with liabilities between
+              expenses.
+
+              🛑 A `TreeRow` parent, not a `Section`, for the reason
+              `role-map-list.tsx` gives: both levels are then the same primitive
+              and the connector draws the nesting. */}
+          {ACCOUNT_TYPE_OPTIONS.map(({ value: type, label }) => {
+            const group = filtered.filter((account) => account.accountType === type)
+            // An empty group headed "no accounts here" is noise. A chart that
+            // has no equity accounts should read as four groups, not five.
+            if (group.length === 0) return null
+
+            const groupLinked = group.filter(
+              (account) => map.byAccountId.get(account.id)?.state === 'confirmed'
+            ).length
+
             return (
               <TreeRow
-                key={account.id}
+                key={type}
+                expandable
+                // 🛑 A search FORCES every group open, for the reason the Roles
+                // tab gives: `filtered` has already dropped what does not match,
+                // so a collapsed group would hide the hits and read as nothing
+                // found while holding some.
+                isOpen={!!search || !collapsed.includes(type)}
+                onToggleOpen={() => toggleGroup(type)}
                 icon={<Landmark className='size-4 text-muted-foreground' />}
-                title={<AccountLabel account={account} className='text-sm' />}
-                secondaryFill
-                onToggleOpen={() => onSelect(account.id)}
-                rowClassName={cn(
-                  'bg-primary-100/50 hover:bg-primary-100',
-                  selectedId === account.id && 'bg-primary-100 ring-1 ring-primary-200',
-                  !account.isActive && 'opacity-60'
-                )}
-                // 🛑 `persistent`, and ONLY on a row that has a suggestion.
-                // `TreeRowButton` is hover-revealed by default, which is right for
-                // an action every row carries and wrong for one that exists on
-                // the handful that the matcher happened to propose - the reader
-                // would have to hover each row in turn to find them. The other rows get no button at
-                // all rather than a disabled one: there is nothing to accept.
-                //
-                // 🛑 The tooltip NAMES the account and says how it was matched.
-                // `G19` makes the confirming person the last line of defence (a
-                // wrong account id still balances, so nothing downstream catches
-                // it), and a bare check mark would ask them to agree to something
-                // they cannot see. Same pairing the editor's Confirm button makes.
-                actions={
-                  suggestion && canControl ? (
-                    <TreeRowButton
-                      persistent
-                      tooltipText={`Link ${formatProviderAccount(suggestion.account)} - ${ACCOUNT_SUGGESTION_REASON_COPY[suggestion.reason]}`}
-                      disabled={acceptingAccountId === account.id}
-                      onClick={() => onAcceptSuggestion(account.id, suggestion.account.id)}>
-                      <Link2 />
-                    </TreeRowButton>
-                  ) : undefined
-                }
+                title={<span className='truncate font-medium text-sm'>{label}</span>}
                 secondary={
-                  <span className='flex items-center gap-1.5 text-muted-foreground text-xs'>
-                    <Badge variant={accountTypeColor(account.accountType)} size='xs'>
-                      {accountTypeLabel(account.accountType)}
-                    </Badge>
-                    {!account.isActive && (
-                      <Badge variant='outline' size='xs'>
-                        Inactive
-                      </Badge>
-                    )}
-                    {/* Only ever rendered against a LOADED map. A link badge on
-                        rows the provider round trip has not answered for yet is
-                        a claim about the org, and rendering it mid-load makes it
-                        a false one.
-
-                        🛑 One badge, ALWAYS present once the map has loaded -
-                        never a set of conditional badges whose absence has to be
-                        interpreted. This used to render only two of the four
-                        states, so a row with a pending suggestion looked exactly
-                        like a linked one: silence. */}
-                    {map.connected && !map.isPending && (
-                      <AccountLinkBadge state={accountLinkState(identity)} />
-                    )}
-                    {roles.length > 0 && (
-                      <span>
-                        {roles.length} {roles.length === 1 ? 'role' : 'roles'}
-                      </span>
-                    )}
+                  <span className='text-muted-foreground text-xs tabular-nums'>
+                    {group.length} {group.length === 1 ? 'account' : 'accounts'}
+                    {map.connected && !map.isPending ? ` · ${groupLinked} linked` : ''}
                   </span>
-                }
-              />
+                }>
+                <TreeRowList
+                  items={group}
+                  getKey={(account: ChartAccountRow) => account.id}
+                  renderRow={(account: ChartAccountRow) => (
+                    <ChartAccountListRow
+                      key={account.id}
+                      account={account}
+                      roles={rolesByAccountId.get(account.id) ?? []}
+                      map={map}
+                      selectedId={selectedId}
+                      onSelect={onSelect}
+                      onAcceptSuggestion={onAcceptSuggestion}
+                      acceptingAccountId={acceptingAccountId}
+                      onRemoveAccount={onRemoveAccount}
+                      onRestoreAccount={onRestoreAccount}
+                      canControl={canControl}
+                    />
+                  )}
+                />
+              </TreeRow>
             )
           })}
         </div>
@@ -364,4 +476,180 @@ function AccountLinkBadge({ state }: { state: AccountLinkState }) {
         </Badge>
       )
   }
+}
+
+interface ChartAccountListRowProps {
+  account: ChartAccountRow
+  roles: AccountRole[]
+  map: ChartMapView
+  selectedId: string | null
+  onSelect: (id: string | null) => void
+  onAcceptSuggestion: (glAccountId: string, providerAccountId: string) => void
+  acceptingAccountId: string | null
+  onRemoveAccount: (id: string) => void
+  onRestoreAccount: (id: string) => void
+  canControl: boolean
+}
+
+/**
+ * One account in the chart list.
+ *
+ * 🛑 A COMPONENT, not a `renderRow` closure, because it calls `useIsSelected`.
+ * A hook inside a render callback runs in the PARENT's hook order, and this list
+ * filters - so the hook count would change between renders the moment somebody
+ * typed in the search box.
+ */
+function ChartAccountListRow({
+  account,
+  roles,
+  map,
+  selectedId,
+  onSelect,
+  onAcceptSuggestion,
+  acceptingAccountId,
+  onRemoveAccount,
+  onRestoreAccount,
+  canControl,
+}: ChartAccountListRowProps) {
+  const selecting = useBulkMode()
+  const isSelected = useIsSelected(account.id)
+  const toggle = useListSelection((state) => state.toggle)
+  const isPending = useIsPending(account.id)
+
+  const identity = map.byAccountId.get(account.id)
+  // Gated on the LOADED map for the same reason the badge is: a
+  // row action derived from a round trip that has not answered
+  // yet is an offer the server may be about to refuse.
+  const suggestion = map.connected && !map.isPending ? identity?.suggestion : undefined
+  return (
+    <TreeRow
+      depth={1}
+      icon={<Landmark className='size-4 text-muted-foreground' />}
+      title={<AccountLabel account={account} className='text-sm' />}
+      // 🛑 Selection is always AVAILABLE and only PINNED in bulk mode: the
+      // checkbox cross-fades with the row's icon on hover, so an ordinary reader
+      // never sees one and a person mid-selection sees them all.
+      selectable
+      selecting={selecting}
+      selected={isSelected}
+      onSelectChange={(_next, event) => toggle(account.id, { shiftKey: event.shiftKey })}
+      selectLabel={`Select ${account.code ? `${account.code} ` : ''}${account.name}`}
+      secondaryFill
+      onToggleOpen={() => onSelect(account.id)}
+      rowClassName={cn(
+        'bg-primary-100/50 hover:bg-primary-100',
+        selectedId === account.id && 'bg-primary-100 ring-1 ring-primary-200',
+        (!account.isActive || account.isArchived) && 'opacity-60',
+        // The bulk runner is working on this row. Without it a long batch reads
+        // as a frozen list.
+        isPending && 'pointer-events-none animate-pulse opacity-50'
+      )}
+      // 🛑 `persistent`, and ONLY on a row that has a
+      // suggestion. `TreeRowButton` is hover-revealed by
+      // default, which is right for an action every row carries
+      // and wrong for one that exists on the handful the matcher
+      // happened to propose - the reader would have to hover
+      // each row in turn to find them. The other rows get no
+      // button rather than a disabled one: nothing to accept.
+      //
+      // 🛑 The tooltip NAMES the account and says how it was
+      // matched. `G19` makes the confirming person the last line
+      // of defence (a wrong account id still balances, so
+      // nothing downstream catches it), and a bare check mark
+      // would ask them to agree to something they cannot see.
+      actions={
+        canControl ? (
+          <>
+            {/* 🛑 An archived row offers RESTORE and nothing
+                  else. Removing what is already removed does
+                  nothing, and accepting a suggestion for it
+                  would map a provider account onto a row the
+                  chart does not contain. */}
+            {account.isArchived ? (
+              <TreeRowButton
+                persistent
+                tooltipText='Put this account back in the chart'
+                onClick={() => onRestoreAccount(account.id)}>
+                <RotateCcw />
+              </TreeRowButton>
+            ) : (
+              <>
+                {suggestion && (
+                  <TreeRowButton
+                    persistent
+                    tooltipText={`Link ${formatProviderAccount(suggestion.account)} - ${ACCOUNT_SUGGESTION_REASON_COPY[suggestion.reason]}`}
+                    disabled={acceptingAccountId === account.id}
+                    onClick={() => onAcceptSuggestion(account.id, suggestion.account.id)}>
+                    <Link2 />
+                  </TreeRowButton>
+                )}
+                {/* 🛑 NOT `persistent`, unlike the accept button
+                  beside it. Remove is destructive and belongs to
+                  every row, so pinning it visible would put a
+                  hundred delete buttons on screen; hover-reveal
+                  is exactly what the default variant is for. The
+                  accept button is pinned because it exists on
+                  only the handful of rows the matcher proposed,
+                  and hover-hunting those is the thing to avoid.
+                  🛑 The confirm and the refusal both live in
+                  `accounts-settings-page.tsx`. A role still
+                  posting here is the server's answer, and a
+                  client-side copy of that check would be a second
+                  authority over the one question this page must
+                  not get wrong. */}
+                <TreeRowButton
+                  variant='destructive'
+                  tooltipText='Remove from the chart'
+                  onClick={() => onRemoveAccount(account.id)}>
+                  <Trash2 />
+                </TreeRowButton>
+              </>
+            )}
+          </>
+        ) : undefined
+      }
+      secondary={
+        <span className='flex items-center gap-1.5 text-muted-foreground text-xs'>
+          {/* ⚠️ NO type badge. The group header this row sits
+                under already says the statement type, and
+                repeating it on every row under it is the badge
+                saying what the heading just said. */}
+          {/* ⚠️ Archived and inactive are different states and
+                must not read the same. Inactive is an account
+                the org keeps but will not post to; archived is
+                one it took out of the chart entirely. */}
+          {account.isArchived ? (
+            <Badge variant='secondary' size='xs'>
+              Removed
+            </Badge>
+          ) : (
+            !account.isActive && (
+              <Badge variant='outline' size='xs'>
+                Inactive
+              </Badge>
+            )
+          )}
+          {/* Only ever rendered against a LOADED map. A link
+                badge on rows the provider round trip has not
+                answered for yet is a claim about the org, and
+                rendering it mid-load makes it a false one.
+
+                🛑 One badge, ALWAYS present once the map has
+                loaded - never a set of conditional badges whose
+                absence has to be interpreted. This used to render
+                only two of the four states, so a row with a
+                pending suggestion looked exactly like a linked
+                one: silence. */}
+          {map.connected && !map.isPending && (
+            <AccountLinkBadge state={accountLinkState(identity)} />
+          )}
+          {roles.length > 0 && (
+            <span>
+              {roles.length} {roles.length === 1 ? 'role' : 'roles'}
+            </span>
+          )}
+        </span>
+      }
+    />
+  )
 }

@@ -5,15 +5,18 @@
 // of them, across five chart packs - brief 16 §1), grouped by the statement
 // classification each one's account must carry (13-accounting-ui.md §5.4).
 //
-// 🛑 A `Section` per group with a FLAT `TreeRow` list, not nested `TreeRow`
-// depth. The tree is two levels and a parent row would add a chevron that
-// answers nothing.
+// 🛑 A `TreeRow` PARENT per group with its rows nested inside it, not a
+// `Section` wrapping a flat list. Both levels are then the same primitive, so
+// the connector line draws the nesting instead of leaving it to be inferred
+// from padding - and the group collapses, which a fixed `Section` header could
+// not. The Chart tab is built the same way, for the same reason.
 //
 // ⚠️ Grouping is derived from `ROLE_ACCOUNT_TYPES`, which already declares the
-// expected type per role, so no new constant is needed. Note what it yields
-// today: asset 4, liability 5, expense 4. There are no revenue and no equity
-// roles, so only three of the five groups render. The loop is written over all
-// five anyway, so the day a revenue role is added it appears on its own.
+// expected type per role, so no new constant is needed. The loop is written
+// over all five statement types and drops the empty ones, so a type that has
+// no roles today appears on its own the day one is added - which is why this
+// comment does not name a count per group. It used to, and the counts were
+// wrong within a release.
 //
 // 🛑 There are NO phantom drafts on this tab. The roles are a fixed vocabulary
 // and a person cannot create one; adding a role is a code change to
@@ -26,25 +29,30 @@
 // this component renders whatever it is handed rather than filtering.
 //
 // ⚠️ No `TREE_SECONDARY_NOTRUNCATE` here, unlike the chart list. This list's
-// `secondary` slot carries a SENTENCE ("Every preview refuses until this is
-// set"), and the class turns the slot's truncation off - which would let the
+// `secondary` slot carries SENTENCES ("The account this role names is archived
+// or gone"), and the class turns the slot's truncation off - which would let a
 // sentence push the row wide instead of ellipsing. It belongs on a badge-shaped
 // secondary only.
 
 import {
   ACCOUNT_ROLE_LABELS,
   type AccountRole,
+  type GlAccountTypeValue,
   ROLE_ACCOUNT_TYPES,
   type RoleAssignmentRow,
 } from '@auxx/lib/postings/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
-import { EmptySection, Section } from '@auxx/ui/components/section'
+import { InputSearch } from '@auxx/ui/components/input-search'
+import { EmptySection } from '@auxx/ui/components/section'
 import { TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
+import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { cn } from '@auxx/ui/lib/utils'
 import { Ban, Coins, CreditCard, Pencil, Plus, Receipt, RotateCcw, Sparkles } from 'lucide-react'
+import { useState } from 'react'
+import { Tooltip } from '~/components/global/tooltip'
 import { AccountLabel } from '../account-label'
-import { ACCOUNT_TYPE_OPTIONS } from './accounts-types'
+import { ACCOUNT_TYPE_OPTIONS, formatAccount } from './accounts-types'
 
 /** Statement-section icon, one per group. */
 const GROUP_ICONS: Record<string, typeof Coins> = {
@@ -79,6 +87,15 @@ export function RoleMapList({
   onAddAccounts,
   canControl,
 }: RoleMapListProps) {
+  const [search, setSearch] = useState('')
+  // Collapsed groups by statement type. Open is the default: a role that needs
+  // an account is the whole point of this screen, and a group that starts shut
+  // hides the "Not mapped" badge the list exists to surface.
+  const [collapsed, setCollapsed] = useState<GlAccountTypeValue[]>([])
+
+  const toggleGroup = (type: GlAccountTypeValue) =>
+    setCollapsed((prev) => (prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]))
+
   if (isLoading) {
     // 🛑 A spinner, never every role rendered `unmapped`. "Not mapped - every preview
     // refuses until this is set" is an assertion about the organization, and
@@ -90,50 +107,104 @@ export function RoleMapList({
     )
   }
 
+  // One row per role, recomputed per keystroke. A `useMemo` here would cost
+  // more to read than the loop costs to run - same call `chart-list.tsx` makes.
+  const needle = search.trim().toLowerCase()
+  const filtered = needle
+    ? rows.filter((row) => {
+        const label = ACCOUNT_ROLE_LABELS[row.role as AccountRole] ?? row.role
+        // The ACCOUNT is searchable too, not just the role. "which role posts
+        // to 1100" is the question this list is read backwards to answer, and
+        // matching the role name alone cannot answer it.
+        return (
+          label.toLowerCase().includes(needle) ||
+          row.role.toLowerCase().includes(needle) ||
+          formatAccount(row.account).toLowerCase().includes(needle)
+        )
+      })
+    : rows
+
   return (
     <div className='flex flex-col gap-4 p-3'>
-      {canControl && (
-        <div className='flex items-center justify-end'>
-          <Button variant='outline' size='sm' onClick={onAddAccounts}>
+      {/* The Chart tab's toolbar exactly: search fills the row, the one button
+          sits beside it. Two tabs of one page reading differently is what this
+          screen kept doing. */}
+      <div className='flex items-center gap-2'>
+        <InputSearch
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder='Search roles and accounts...'
+          className='flex-1'
+        />
+        {canControl && (
+          <Button variant='outline' size='sm' className='shrink-0' onClick={onAddAccounts}>
             <Plus />
             Add accounts
           </Button>
-        </div>
+        )}
+      </div>
+
+      {/* 🛑 Gate on the SEARCH, not on the row count. An empty result from a
+          search and an org with no roles are different answers, and the second
+          cannot happen - `ledger.roleMap` returns a row per role always. */}
+      {needle && filtered.length === 0 && (
+        <EmptySection icon={<Coins className='size-5' />} title='No matches' />
       )}
-      {ACCOUNT_TYPE_OPTIONS.map(({ value: type, label }) => {
-        const group = rows.filter((row) => ROLE_ACCOUNT_TYPES[row.role as AccountRole] === type)
-        // Equity and revenue have no roles today, and an empty section headed
-        // "no roles here" would be noise rather than information.
-        if (group.length === 0) return null
 
-        const Icon = GROUP_ICONS[type] ?? Coins
-        const needed = group.filter((row) => row.state !== 'unused')
-        const mapped = needed.filter(
-          (row) => row.state === 'confirmed' || row.state === 'suggested'
-        )
+      {/* 🛑 A `TreeRow` parent per statement type, not a `Section`. The rows
+          under it are `TreeRow`s, so a `Section` wrapping them made the group
+          header and its children two different primitives with two different
+          indents and no connector between them - the nesting had to be inferred
+          from the padding. A parent row draws the line to its own children. */}
+      <div className='flex flex-col gap-0.5'>
+        {ACCOUNT_TYPE_OPTIONS.map(({ value: type, label }) => {
+          const group = filtered.filter(
+            (row) => ROLE_ACCOUNT_TYPES[row.role as AccountRole] === type
+          )
+          // Equity and revenue have no roles today, and an empty group headed
+          // "no roles here" would be noise rather than information.
+          if (group.length === 0) return null
 
-        return (
-          <Section
-            key={type}
-            collapsible={false}
-            icon={<Icon className='size-4' />}
-            title={label}
-            secondary={`${mapped.length} of ${needed.length} mapped`}>
-            <div className='flex flex-col gap-0.5'>
-              {group.map((row) => (
-                <RoleRow
-                  key={row.role}
-                  row={row}
-                  selected={selectedRole === row.role}
-                  onSelect={onSelect}
-                  onToggleUnused={onToggleUnused}
-                  canControl={canControl}
-                />
-              ))}
-            </div>
-          </Section>
-        )
-      })}
+          const Icon = GROUP_ICONS[type] ?? Coins
+          const needed = group.filter((row) => row.state !== 'unused')
+          const mapped = needed.filter(
+            (row) => row.state === 'confirmed' || row.state === 'suggested'
+          )
+
+          return (
+            <TreeRow
+              key={type}
+              expandable
+              // 🛑 A search FORCES every group open. `filtered` has already
+              // dropped the rows that do not match, so a collapsed group would
+              // hide the very hits the search just found and read as "no
+              // results" while holding some.
+              isOpen={!!needle || !collapsed.includes(type)}
+              onToggleOpen={() => toggleGroup(type)}
+              icon={<Icon className='size-4 text-muted-foreground' />}
+              title={<span className='truncate font-medium text-sm'>{label}</span>}
+              secondary={
+                <span className='text-muted-foreground text-xs tabular-nums'>
+                  {mapped.length} of {needed.length} mapped
+                </span>
+              }>
+              <TreeRowList
+                items={group}
+                getKey={(row: RoleAssignmentRow) => row.role}
+                renderRow={(row: RoleAssignmentRow) => (
+                  <RoleRow
+                    row={row}
+                    selected={selectedRole === row.role}
+                    onSelect={onSelect}
+                    onToggleUnused={onToggleUnused}
+                    canControl={canControl}
+                  />
+                )}
+              />
+            </TreeRow>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -156,6 +227,7 @@ function RoleRow({
 
   return (
     <TreeRow
+      depth={1}
       icon={<Icon className='size-4 text-muted-foreground' />}
       title={ACCOUNT_ROLE_LABELS[role] ?? row.role}
       secondaryFill
@@ -215,13 +287,28 @@ function RoleRow({
  * is the repair `resolveRoles` would otherwise refuse a close over.
  */
 function AssignmentSecondary({ row }: { row: RoleAssignmentRow }) {
+  // 🛑 EVERY state's consequence lives in its badge's tooltip, never beside it.
+  // The badge already says the state and its colour already says the severity;
+  // what a badge cannot carry is WHY, which is what a tooltip is for. Spelling
+  // the consequence out on each row turned the sentences that matter into
+  // wallpaper - on a fresh org most of this list said "every preview refuses
+  // until this is set", one row after another.
+  //
+  // ⚠️ The `p-[1px]` wrapper is load-bearing, not spacing. `Badge` draws its
+  // edge as `ring-1 ring-current/35`, and a ring renders OUTSIDE the box; this
+  // secondary slot is `overflow-hidden` because it truncates, so a badge flush
+  // against the slot loses the ring on whichever side it touches. One pixel
+  // gives the ring somewhere to land.
   if (row.state === 'unused') {
     return (
-      <span className='flex items-center gap-1.5 text-muted-foreground text-xs'>
-        <Badge variant='outline' size='xs'>
-          Unused
-        </Badge>
-        Nothing posts to this role
+      <span className='flex items-center gap-1.5 text-xs'>
+        <Tooltip content='Nothing posts to this role'>
+          <div className='p-[1px]'>
+            <Badge variant='outline' size='xs'>
+              Unused
+            </Badge>
+          </div>
+        </Tooltip>
       </span>
     )
   }
@@ -229,10 +316,13 @@ function AssignmentSecondary({ row }: { row: RoleAssignmentRow }) {
   if (row.state === 'unmapped') {
     return (
       <span className='flex items-center gap-1.5 text-xs'>
-        <Badge variant='destructive' size='xs'>
-          Not mapped
-        </Badge>
-        <span className='text-muted-foreground'>Every preview refuses until this is set</span>
+        <Tooltip content='Every preview refuses until this is set'>
+          <div className='p-[1px]'>
+            <Badge variant='destructive' size='xs'>
+              Not mapped
+            </Badge>
+          </div>
+        </Tooltip>
       </span>
     )
   }
@@ -240,12 +330,13 @@ function AssignmentSecondary({ row }: { row: RoleAssignmentRow }) {
   if (!row.account) {
     return (
       <span className='flex items-center gap-1.5 text-xs'>
-        <Badge variant='destructive' size='xs'>
-          Account missing
-        </Badge>
-        <span className='text-muted-foreground'>
-          The account this role names is archived or gone. Pick another.
-        </span>
+        <Tooltip content='The account this role names is archived or gone. Pick another.'>
+          <div className='p-[1px]'>
+            <Badge variant='destructive' size='xs'>
+              Account missing
+            </Badge>
+          </div>
+        </Tooltip>
       </span>
     )
   }

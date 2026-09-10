@@ -5,8 +5,10 @@ export { EntitySeeder } from './entity-seeder'
 // Entity Seeder (multi-pass implementation)
 export { deletePristineSeededDashboards } from './entity-seeder/create-default-dashboards'
 export {
+  type ChartAccountSeedResult,
   type ChartSeedResult,
   type PaymentGatewaySeedResult,
+  seedChartAccounts,
   seedChartPacks,
   seedDefaultChartOfAccounts,
   seedDefaultPaymentGateways,

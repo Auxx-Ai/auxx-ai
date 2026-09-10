@@ -31,7 +31,16 @@ export interface ListSelectionState {
   pendingLabel: string
 
   setBulkMode: (on: boolean) => void
-  setItemIds: (ids: string[]) => void
+  /**
+   * Tell the store which items are on screen, in display order - what shift-range
+   * and Cmd+A read.
+   *
+   * By default this also PRUNES the selection to what it was handed. Pass
+   * `pruneSelection: false` on a list whose visible set narrows for reasons that
+   * are not "the row is gone" - a search box, a filter toggle - or picking three
+   * rows, searching again and picking two more silently drops the first three.
+   */
+  setItemIds: (ids: string[], options?: { pruneSelection?: boolean }) => void
   /** Toggle one item. Pass `{ shiftKey }` to select the range from the anchor. */
   toggle: (id: string, opts?: { shiftKey?: boolean }) => void
   /** Select every visible item (Cmd/Ctrl+A). */
@@ -65,7 +74,7 @@ function createListSelectionStore() {
           : { bulkMode: false, sticky: false, selectedIds: [], anchorId: null }
       ),
 
-    setItemIds: (ids) => {
+    setItemIds: (ids, options) => {
       // Empty list (e.g. loading) → don't prune selection. Otherwise drop any
       // selected/pending IDs no longer visible (filtered out, or removed by a
       // completed delete), so bulk state only tracks what's on screen.
@@ -77,7 +86,18 @@ function createListSelectionStore() {
       const { selectedIds, pendingIds } = get()
       set({
         itemIds: ids,
-        selectedIds: selectedIds.filter((id) => allow.has(id)),
+        // 🛑 Two different reasons an id leaves `ids`, and only one of them
+        // justifies forgetting it was selected: the row is GONE (a completed
+        // delete), or the row is merely HIDDEN (a search, a filter toggle). A
+        // list that can hide rows opts out, because pruning there destroys the
+        // pick-a-few-per-search flow the selection exists for.
+        selectedIds:
+          options?.pruneSelection === false
+            ? selectedIds
+            : selectedIds.filter((id) => allow.has(id)),
+        // Pending is always pruned. It marks an operation in flight on a row on
+        // screen; a hidden row has no overlay to keep, and the runner clears its
+        // own marker on settle either way.
         pendingIds: pendingIds.filter((id) => allow.has(id)),
       })
     },

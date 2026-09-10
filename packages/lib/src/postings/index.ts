@@ -160,6 +160,7 @@ export {
   createChartAccount,
   type RemoveChartAccountOptions,
   removeChartAccount,
+  restoreChartAccount,
   type UpdateChartAccountOptions,
   updateChartAccount,
 } from './chart-write'
