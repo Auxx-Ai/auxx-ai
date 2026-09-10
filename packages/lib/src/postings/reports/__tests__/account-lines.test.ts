@@ -81,7 +81,7 @@ describe('readAccountLines', () => {
           }),
         ],
       ]),
-      { organizationId: ORG, accountCode: '1000' }
+      { organizationId: ORG, glAccountId: 'id_1000' }
     )
 
     const lines = result._unsafeUnwrap()
@@ -110,7 +110,7 @@ describe('readAccountLines', () => {
           }),
         ],
       ]),
-      { organizationId: ORG, accountCode: '1000', from: '2026-08-01', to: '2026-08-31' }
+      { organizationId: ORG, glAccountId: 'id_1000', from: '2026-08-01', to: '2026-08-31' }
     )
 
     const lines = result._unsafeUnwrap()
@@ -136,18 +136,18 @@ describe('readAccountLines', () => {
           }),
         ],
       ]),
-      { organizationId: ORG, accountCode: '2000' }
+      { organizationId: ORG, glAccountId: 'id_2000' }
     )
 
     expect(result._unsafeUnwrap().lines[0]?.runningBalanceMinor).toBe(1_000)
   })
 
-  it('reports accountType null and an empty name when the code is not in the chart', async () => {
+  it('reports accountType null and an empty name when the id is not in the chart', async () => {
     vi.mocked(listChartAccounts).mockResolvedValue(ok([]))
 
     const result = await readAccountLines(sequentialDb([[]]), {
       organizationId: ORG,
-      accountCode: '9999',
+      glAccountId: 'id_9999',
     })
     const lines = result._unsafeUnwrap()
 

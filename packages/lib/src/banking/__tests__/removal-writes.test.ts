@@ -126,7 +126,7 @@ function account(partial: Partial<BankAccountRow> = {}): BankAccountRow {
     last4: '5381',
     type: 'depository',
     currency: 'USD',
-    glAccountCode: '1010',
+    glAccountId: '1010',
     feedStartDate: null,
     coverageFrom: '2026-01-01',
     coverageGaps: [],
@@ -390,7 +390,7 @@ describe('archiveBankAccount', () => {
     // GL code and `GlPostingLine` snapshots the code with no foreign key back
     // here, so archiving cannot move the trial balance by a cent. The only way it
     // could is if this path started writing to the chart or the ledger.
-    h.account = account({ hasEverPosted: true, glAccountCode: '1010' })
+    h.account = account({ hasEverPosted: true, glAccountId: '1010' })
     h.linesByState.set('for_review', [{ id: 'txn_a' }])
 
     await archiveBankAccount(fakeDb(), {

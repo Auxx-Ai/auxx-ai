@@ -74,7 +74,7 @@ export interface CreateRuleInput {
   direction?: BankRuleDirection
   bankAccountId?: string | null
   action: BankRuleAction
-  glAccountCode?: string | null
+  glAccountId?: string | null
   counterpartBankAccountId?: string | null
   contactId?: string | null
   memo?: string | null
@@ -96,7 +96,7 @@ export interface UpdateRuleInput {
   direction?: BankRuleDirection
   bankAccountId?: string | null
   action?: BankRuleAction
-  glAccountCode?: string | null
+  glAccountId?: string | null
   counterpartBankAccountId?: string | null
   contactId?: string | null
   memo?: string | null
@@ -116,7 +116,7 @@ export async function createRule(
       assertVocabulary('match field', BANK_RULE_MATCH_FIELDS, input.matchField)
       assertVocabulary('direction', BANK_RULE_DIRECTIONS, input.direction ?? 'any')
       assertMatchValue(input.matchOperator, input.matchValue)
-      assertActionPayload(input.action, input.glAccountCode, input.counterpartBankAccountId)
+      assertActionPayload(input.action, input.glAccountId, input.counterpartBankAccountId)
 
       const crud = new UnifiedCrudHandler(organizationId, actorUserId, db)
       const created = await crud.create(ctx.bankRuleDefId, {
@@ -132,7 +132,7 @@ export async function createRule(
         bank_rule_direction: input.direction ?? 'any',
         bank_rule_bank_account: input.bankAccountId || undefined,
         bank_rule_action: input.action,
-        bank_rule_gl_account: input.glAccountCode?.trim() || undefined,
+        bank_rule_gl_account: input.glAccountId?.trim() || undefined,
         bank_rule_counterpart_bank_account: input.counterpartBankAccountId || undefined,
         bank_rule_contact: input.contactId || undefined,
         bank_rule_memo: input.memo?.trim() || undefined,
@@ -175,13 +175,13 @@ export async function updateRule(
       assertMatchValue(matchOperator, matchValue)
 
       const action = input.action ?? existing.value.action
-      const glAccountCode =
-        input.glAccountCode !== undefined ? input.glAccountCode : existing.value.glAccountCode
+      const glAccountId =
+        input.glAccountId !== undefined ? input.glAccountId : existing.value.glAccountId
       const counterpart =
         input.counterpartBankAccountId !== undefined
           ? input.counterpartBankAccountId
           : existing.value.counterpartBankAccountId
-      assertActionPayload(action, glAccountCode, counterpart)
+      assertActionPayload(action, glAccountId, counterpart)
 
       const patch: Record<string, unknown> = {}
       if (input.name !== undefined) {
@@ -200,8 +200,8 @@ export async function updateRule(
       if (input.direction !== undefined) patch.bank_rule_direction = input.direction
       if (input.bankAccountId !== undefined) patch.bank_rule_bank_account = input.bankAccountId
       if (input.action !== undefined) patch.bank_rule_action = input.action
-      if (input.glAccountCode !== undefined) {
-        patch.bank_rule_gl_account = input.glAccountCode?.trim() || null
+      if (input.glAccountId !== undefined) {
+        patch.bank_rule_gl_account = input.glAccountId?.trim() || null
       }
       if (input.counterpartBankAccountId !== undefined) {
         patch.bank_rule_counterpart_bank_account = input.counterpartBankAccountId
@@ -264,11 +264,11 @@ export async function createRuleFromTransaction(
     organizationId: string
     actorUserId: string
     transactionId: string
-    glAccountCode: string
+    glAccountId: string
     name?: string
   }
 ): Promise<Result<BankRuleRecord, Error>> {
-  const { organizationId, actorUserId, transactionId, glAccountCode } = params
+  const { organizationId, actorUserId, transactionId, glAccountId } = params
   return guard(
     async () => {
       const rowResult = await getTransactionMatchRow(db, { organizationId, transactionId })
@@ -278,8 +278,8 @@ export async function createRuleFromTransaction(
       if (!row.matchKey) {
         throw new BadRequestError('This line has no match key to build a rule from')
       }
-      const code = glAccountCode.trim()
-      if (!code) throw new BadRequestError('A code rule needs a GL account')
+      const accountId = glAccountId.trim()
+      if (!accountId) throw new BadRequestError('A code rule needs a GL account')
 
       const created = await createRule(db, {
         organizationId,
@@ -291,7 +291,7 @@ export async function createRuleFromTransaction(
         direction: 'any',
         bankAccountId: row.bankAccountId ?? undefined,
         action: 'code',
-        glAccountCode: code,
+        glAccountId: accountId,
       })
       if (created.isErr()) throw created.error
       return created.value
@@ -397,7 +397,7 @@ export async function applySuggestions(
         }
 
         await crud.update(toRecordId(txCtx.bankTransactionDefId, transactionId), {
-          bank_transaction_suggested_gl_account: suggestion.glAccountCode ?? null,
+          bank_transaction_suggested_gl_account: suggestion.glAccountId ?? null,
           bank_transaction_suggested_record_id: suggestion.recordId ?? null,
           bank_transaction_suggested_record_type: suggestion.recordType ?? null,
           bank_transaction_suggestion_reason: suggestion.reason,
@@ -449,12 +449,12 @@ async function tryAutoApplyAction(
   const { organizationId, actorUserId, transactionId, rule } = params
 
   if (rule.action === 'code') {
-    if (!rule.glAccountCode) return false
+    if (!rule.glAccountId) return false
     const outcome = await codeTransaction(db, {
       organizationId,
       actorUserId,
       transactionId,
-      glAccountCode: rule.glAccountCode,
+      glAccountId: rule.glAccountId,
       memo: rule.memo ?? undefined,
     })
     if (outcome.isErr() || outcome.value.transaction.reviewStatus !== 'coded') return false
@@ -510,10 +510,10 @@ async function bumpRuleApplied(
 
 function ruleToSuggestion(rule: BankRuleRecord): SuggestionResult | null {
   if (rule.action === 'code') {
-    if (!rule.glAccountCode) return null
+    if (!rule.glAccountId) return null
     return {
       source: 'rule',
-      glAccountCode: rule.glAccountCode,
+      glAccountId: rule.glAccountId,
       recordId: null,
       recordType: null,
       reason: `Rule "${rule.name}" matched.`,
@@ -524,7 +524,7 @@ function ruleToSuggestion(rule: BankRuleRecord): SuggestionResult | null {
     if (!rule.counterpartBankAccountId) return null
     return {
       source: 'rule',
-      glAccountCode: null,
+      glAccountId: null,
       recordId: rule.counterpartBankAccountId,
       recordType: 'bank_account',
       reason: `Rule "${rule.name}" matched.`,
@@ -534,7 +534,7 @@ function ruleToSuggestion(rule: BankRuleRecord): SuggestionResult | null {
   // exclude
   return {
     source: 'rule',
-    glAccountCode: null,
+    glAccountId: null,
     recordId: null,
     recordType: null,
     reason: `Rule "${rule.name}" matched.`,
@@ -565,13 +565,13 @@ function assertMatchValue(operator: BankRuleMatchOperator, value: string): void 
 
 function assertActionPayload(
   action: BankRuleAction,
-  glAccountCode: string | null | undefined,
+  glAccountId: string | null | undefined,
   counterpartBankAccountId: string | null | undefined
 ): void {
   if (!BANK_RULE_ACTIONS.includes(action)) {
     throw new BadRequestError(`"${action}" is not an action. Use ${BANK_RULE_ACTIONS.join(', ')}`)
   }
-  if (action === 'code' && !glAccountCode?.trim()) {
+  if (action === 'code' && !glAccountId?.trim()) {
     throw new BadRequestError('A code rule needs a GL account')
   }
   if (action === 'transfer' && !counterpartBankAccountId) {

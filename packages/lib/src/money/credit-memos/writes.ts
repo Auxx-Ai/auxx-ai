@@ -16,6 +16,7 @@ import { toRecordId } from '@auxx/types/resource'
 import { getEntityDefIdResolver } from '../../cache'
 import { BadRequestError, NotFoundError, UnprocessableEntityError } from '../../errors'
 import { FieldValueService } from '../../field-values/field-value-service'
+import { isAccountingEnabled } from '../../postings/accounting-enabled'
 import {
   type BuiltCreditMemoEntry,
   buildCreditMemoEntry,
@@ -29,7 +30,7 @@ import { periodKeyForDate } from '../../postings/periods'
 import { LEDGER_CURRENCY, postEntry, previewEntry } from '../../postings/post-entry'
 import { reverseEntry } from '../../postings/reverse-entry'
 import { OPENING_BASELINE_SETTING_KEYS } from '../../postings/setup-readiness'
-import type { EntryPreview } from '../../postings/types'
+import type { EntryPreview, PostResult } from '../../postings/types'
 import { UnifiedCrudHandler } from '../../resources/crud'
 import { getOrganizationSetting } from '../../settings/settings-service'
 import { roundCents } from '../totals'
@@ -53,6 +54,12 @@ import { CREDIT_MEMO_STATUS_BYPASS, settleCreditMemo } from './settle'
  * The statuses that mean the LEDGER took the entry. The same set
  * `postInvoiceIssuance` accepts, for the same reasons: a refused EXPORT still
  * returns `posted`, and an org with no accounting system is a first-class case.
+ *
+ * `not_enabled` is in for the newest reason: an org that has never turned the
+ * accounting module on is a first-class case too (task 17 section 3). In
+ * practice {@link issueCreditMemo} never reaches this set with `not_enabled` -
+ * it short-circuits before the ledger is ever asked - but the value is here so
+ * this set stays the complete list decision P1 and task 17 promise.
  */
 const ACCEPTED_POST_STATUSES = new Set<string>([
   'posted',
@@ -60,6 +67,7 @@ const ACCEPTED_POST_STATUSES = new Set<string>([
   'healed',
   'not_connected',
   'disabled',
+  'not_enabled',
 ])
 
 /** The statuses that mean a reversal landed. Same set as `reverseInvoiceIssuance`. */
@@ -398,21 +406,37 @@ interface ResolvedIssue {
   memo: CreditMemoRecord
   lines: CreditMemoLineRecord[]
   issuedAt: string
-  built: BuiltCreditMemoEntry
+  /**
+   * Absent when the caller asked to skip it (`resolveIssue`'s `buildEntry: false`)
+   * because the org has never enabled accounting - see the call site in
+   * {@link issueCreditMemo}. {@link previewIssueCreditMemo} always asks for it.
+   */
+  built: BuiltCreditMemoEntry | undefined
 }
 
 /**
- * Refuse an issue that cannot be made, resolve its date and both legs, and
- * build the entry. Shared by {@link issueCreditMemo} and
- * {@link previewIssueCreditMemo} so the two can never disagree about what is
- * refusable before the ledger is asked.
+ * Refuse an issue that cannot be made, resolve its date and both legs, and -
+ * unless the caller says otherwise - build the entry. Shared by
+ * {@link issueCreditMemo} and {@link previewIssueCreditMemo} so the two can
+ * never disagree about what is refusable before the ledger is asked.
  *
  * The totals the entry carries are summed from the LINES here, not read off
  * the memo's mirrors, so a preview of a draft whose reconciler drain has not
  * run yet still shows the right numbers; `issueCreditMemo` recomputes the
  * mirrors before calling this so the stored totals match what posts.
+ *
+ * `buildEntry: false` skips `orderHadFulfillmentBefore` (a read that exists
+ * only to decide the builder's `reverseRevenue`) and the builder call itself -
+ * {@link issueCreditMemo} passes it when the org has never turned accounting
+ * on (task 17 section 3), so a credit memo can still issue with none of that
+ * work done and no ledger-specific refusal (a foreign currency, say) reachable
+ * for an org this module does nothing for.
  */
-async function resolveIssue(db: Database, input: IssueCreditMemoInput): Promise<ResolvedIssue> {
+async function resolveIssue(
+  db: Database,
+  input: IssueCreditMemoInput,
+  options: { buildEntry: boolean } = { buildEntry: true }
+): Promise<ResolvedIssue> {
   const { organizationId, creditMemoInstanceId } = input
   const memo = await requireCreditMemo(db, organizationId, creditMemoInstanceId)
 
@@ -471,6 +495,10 @@ async function resolveIssue(db: Database, input: IssueCreditMemoInput): Promise<
     })
   }
 
+  if (!options.buildEntry) {
+    return { memo, lines, issuedAt, built: undefined }
+  }
+
   // Native: always reverses revenue, because it exists only where an invoice
   // was issued. Channel: only when the order shipped before the memo's date,
   // because `build-fulfillment-entry.ts` recognised nothing otherwise.
@@ -517,9 +545,11 @@ export async function previewIssueCreditMemo(
   input: IssueCreditMemoInput
 ): Promise<EntryPreview> {
   const { organizationId } = input
-  const { built } = await resolveIssue(db, input)
+  // Always asks for the entry - a preview with nothing to preview is not a
+  // preview - so `built` is always present here.
+  const { built } = await resolveIssue(db, input, { buildEntry: true })
   const lock = await resolvePeriodLock(organizationId)
-  return previewEntry(db, { organizationId, entry: built.entry, lock })
+  return previewEntry(db, { organizationId, entry: built!.entry, lock })
 }
 
 /**
@@ -555,16 +585,26 @@ export async function issueCreditMemo(
     db,
   })
 
-  const { memo, issuedAt, built } = await resolveIssue(db, input)
+  // The org's own accounting-off case is checked FIRST, and passed into
+  // `resolveIssue` so it skips the read and the build that exist only to post
+  // an entry (task 17 section 3) - a credit memo issues on an org that has
+  // never turned accounting on exactly as it would on one that has.
+  const accountingEnabled = await isAccountingEnabled(db, organizationId)
+  const { memo, issuedAt, built } = await resolveIssue(db, input, { buildEntry: accountingEnabled })
 
-  const lock = await resolvePeriodLock(organizationId)
-  const post = await postEntry(db, {
-    organizationId,
-    entry: built.entry,
-    actorUserId: userId,
-    lock,
-    memo: `Credit memo ${memo.number} issued`,
-  })
+  let post: PostResult
+  if (accountingEnabled) {
+    const lock = await resolvePeriodLock(organizationId)
+    post = await postEntry(db, {
+      organizationId,
+      entry: built!.entry,
+      actorUserId: userId,
+      lock,
+      memo: `Credit memo ${memo.number} issued`,
+    })
+  } else {
+    post = { status: 'not_enabled' }
+  }
   if (!ACCEPTED_POST_STATUSES.has(post.status)) {
     throw new BadRequestError(
       `This credit memo could not be posted to the general ledger` +

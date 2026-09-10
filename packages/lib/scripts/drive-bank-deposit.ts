@@ -44,9 +44,9 @@ async function main() {
   // the drive has to pick a mapped one the way the picker does.
   const accounts = await listBankAccounts(database, { organizationId })
   if (accounts.isErr()) throw accounts.error
-  const target = accounts.value.find((account) => !!account.glAccountCode?.trim())
+  const target = accounts.value.find((account) => !!account.glAccountId?.trim())
   if (!target) throw new Error('that organization has no bank account mapped to the chart')
-  console.log(`RESULT bankAccount=${target.name} code=${target.glAccountCode}`)
+  console.log(`RESULT bankAccount=${target.name} glAccountId=${target.glAccountId}`)
 
   const created = await createBankDeposit(database, {
     organizationId,

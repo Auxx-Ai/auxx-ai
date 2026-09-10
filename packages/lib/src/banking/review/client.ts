@@ -330,8 +330,11 @@ export interface BankTransactionRow {
   externalId: string | null
   bankAccountId: string | null
   bankAccountName: string | null
-  /** The bank account's mapped GL code. The other half of every coded entry. */
-  bankAccountCode: string | null
+  /**
+   * The bank account's mapped `gl_account` id (task 15 §4). The other half of
+   * every coded entry. Never a code - resolve through the chart for display.
+   */
+  bankAccountGlAccountId: string | null
   /**
    * The `DataConnector` behind the account, or null for a manual one.
    *
@@ -350,7 +353,8 @@ export interface BankTransactionRow {
   source: string | null
   importBatchId: string | null
   reviewStatus: ReviewStatus
-  glAccountCode: string | null
+  /** The `gl_account` id a coded line posted to (task 15 §4). Never a code. */
+  glAccountId: string | null
   matchedRecordId: string | null
   /** Includes `bank_account` - see {@link MATCHED_RECORD_TYPES}. */
   matchedRecordType: MatchedRecordType | null
@@ -359,8 +363,11 @@ export interface BankTransactionRow {
   reviewedByUserId: string | null
   glPostingId: string | null
   ruleId: string | null
-  /** 3C's stored suggestion, or null when 3C has not landed its fields. */
-  suggestedGlAccount: string | null
+  /**
+   * 3C's stored suggestion, or null when 3C has not landed its fields. The
+   * `gl_account` id a "code" suggestion proposes (task 15 §4).
+   */
+  suggestedGlAccountId: string | null
   suggestionReason: string | null
   createdAt: Date | null
 }

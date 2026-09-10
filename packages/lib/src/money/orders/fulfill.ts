@@ -40,9 +40,12 @@ import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import { BadRequestError, ConflictError, UnprocessableEntityError } from '../../errors'
+import { isAccountingEnabled } from '../../postings/accounting-enabled'
 import {
   type BuiltFulfillmentEntry,
   buildFulfillmentEntry,
+  computeShipmentTotals,
+  type ShipmentTotals,
 } from '../../postings/build-fulfillment-entry'
 import { resolvePeriodLock } from '../../postings/period-lock'
 import { LEDGER_CURRENCY, postEntry, previewEntry } from '../../postings/post-entry'
@@ -74,6 +77,10 @@ const logger = createScopedLogger('money-orders')
  * accounting system connected is a first-class case, not a degraded one
  * (decision P1). The entry is built, balanced and persisted the same way; it is
  * simply never pushed.
+ *
+ * `not_enabled` is in for the newest reason: an org that has never turned the
+ * accounting module on is a first-class case too, and a shipment must never be
+ * rolled back for it (task 17 section 3).
  */
 const ACCEPTED_POST_STATUSES = new Set<string>([
   'posted',
@@ -81,6 +88,7 @@ const ACCEPTED_POST_STATUSES = new Set<string>([
   'healed',
   'not_connected',
   'disabled',
+  'not_enabled',
 ])
 
 /** One line, and how much of it the caller says went out. */
@@ -327,18 +335,56 @@ export async function fulfillOrder(
       if (read.isErr()) throw read.error
       const order = read.value
 
-      // Everything that can refuse, refused BEFORE anything is written: the
-      // channel, the currency, the quantities and the document-number keyspace
-      // all throw out of here, and none of them can be fixed by retrying.
-      const { built, lines: shipped } = buildForOrder(order, shippedLines, shippedAt)
+      // The quantities are validated regardless of accounting: shipping more
+      // than remains is a business error, not a ledger one.
+      const shipped = resolveShippedLines(order, shippedLines)
+
+      // 🛑 The org's own accounting-off case is checked FIRST, before the
+      // ledger entry is built (task 17 section 3): `buildFulfillmentEntry`
+      // refuses a foreign-currency order and resolves a revenue role, both of
+      // which are ledger-only concerns that must not block a shipment for an
+      // org this module does nothing for. `computeShipmentTotals` is the same
+      // arithmetic with none of that - the shared implementation the batch
+      // builder also calls - so the shipment log still carries real amounts.
+      const accountingEnabled = await isAccountingEnabled(db, organizationId)
+      const built = accountingEnabled
+        ? buildFulfillmentEntry({
+            orderId: order.orderId,
+            orderNumber: order.number ?? '',
+            sequence: order.nextSequence,
+            channel: order.channel,
+            currency: order.currency,
+            ledgerCurrency: LEDGER_CURRENCY,
+            txnDate: shippedAt,
+            shippedLines: shipped,
+            orderSubtotalMinor: order.subtotalMinor,
+            orderTaxTotalMinor: order.taxTotalMinor,
+            orderShippingTotalMinor: order.shippingTotalMinor,
+            priorShipmentsSubtotalMinor: shippedSubtotalMinor(order.fulfillments),
+            includeShipping: order.shippingOwed,
+            includeCogs: false,
+          })
+        : undefined
+      const amounts: ShipmentTotals =
+        built ??
+        computeShipmentTotals({
+          label: `order ${order.number ?? order.orderId}`,
+          lines: shipped,
+          orderSubtotalMinor: order.subtotalMinor,
+          orderTaxTotalMinor: order.taxTotalMinor,
+          priorShipmentsSubtotalMinor: shippedSubtotalMinor(order.fulfillments),
+          orderShippingTotalMinor: order.shippingTotalMinor,
+          includeShipping: order.shippingOwed,
+          context: { orderId: order.orderId },
+        })
 
       const fulfillment: OrderFulfillment = {
         sequence: order.nextSequence,
         shippedAt,
         lines: shipped.map((line) => ({ lineId: line.lineId, quantity: line.quantity })),
-        subtotalMinor: built.subtotalMinor,
-        totalMinor: built.totalMinor,
-        shippingRecognised: built.shippingMinor > 0,
+        subtotalMinor: amounts.subtotalMinor,
+        totalMinor: amounts.totalMinor,
+        shippingRecognised: amounts.shippingMinor > 0,
         glPostingId: null,
         docNumber: null,
         recordedAt: new Date().toISOString(),
@@ -392,14 +438,19 @@ export async function fulfillOrder(
       })
 
       // ── The posting, after the commit ──────────────────────────────────
-      const lock = await resolvePeriodLock(organizationId)
-      const post = await postEntry(db, {
-        organizationId,
-        entry: built.entry,
-        actorUserId,
-        lock,
-        memo: memo ?? `Fulfilled ${order.number ?? orderId} shipment ${order.nextSequence}`,
-      })
+      let post: PostResult
+      if (accountingEnabled && built) {
+        const lock = await resolvePeriodLock(organizationId)
+        post = await postEntry(db, {
+          organizationId,
+          entry: built.entry,
+          actorUserId,
+          lock,
+          memo: memo ?? `Fulfilled ${order.number ?? orderId} shipment ${order.nextSequence}`,
+        })
+      } else {
+        post = { status: 'not_enabled' }
+      }
 
       if (!ACCEPTED_POST_STATUSES.has(post.status)) {
         await rollbackFulfillment(db, organizationId, actorUserId, order, order.nextSequence)
@@ -439,7 +490,7 @@ export async function fulfillOrder(
         number: order.number,
         sequence: settled.sequence,
         totalMinor: settled.totalMinor,
-        revenueRole: built.revenueRole,
+        revenueRole: built?.revenueRole ?? null,
         status: post.status,
       })
 

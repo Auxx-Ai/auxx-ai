@@ -36,7 +36,14 @@ export interface StatementRow {
   kind: 'section' | 'line' | 'subtotal' | 'total' | 'computed'
   /** Minor units, one per column. `null` renders {@link EMPTY_CELL}. */
   values: (number | null)[]
-  meta?: { accountCode?: string; recordId?: RecordId; badge?: ReactNode; note?: string }
+  meta?: {
+    /** The `gl_account` `EntityInstance` id (task 15) - the drill-down key. `accountCode` is display only. */
+    glAccountId?: string
+    accountCode?: string
+    recordId?: RecordId
+    badge?: ReactNode
+    note?: string
+  }
   /** Aging drill-down: documents behind a contact, revealed on expand. */
   children?: StatementRow[]
 }

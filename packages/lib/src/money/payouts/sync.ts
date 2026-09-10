@@ -40,6 +40,7 @@ import { and, asc, eq } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import type Stripe from 'stripe'
 import { UnprocessableEntityError } from '../../errors'
+import { isAccountingEnabled } from '../../postings/accounting-enabled'
 import { ACCOUNT_ROLES } from '../../postings/build-entry'
 import { resolvePeriodLock } from '../../postings/period-lock'
 import { postPayoutEntry } from '../../postings/post-payout-entry'
@@ -82,6 +83,19 @@ export async function syncPayouts(
 
   return guard(
     async () => {
+      // 🛑 Checked ONCE per org, before the Stripe account lookup, the payout
+      // list and the payout record writes - none of which this sync has any
+      // use for when the org has never turned accounting on (task 17 section
+      // 3): a payout record exists to reconcile a clearing account this org
+      // does not have. The gate lives here rather than only in
+      // `postPayoutEntry` because `payoutSyncJob` runs this nightly for every
+      // org with a live Stripe connection, and that is the loop the brief
+      // means by "where it costs least" - skipping here also skips the Stripe
+      // API call and the `payout` entity write, not just the posting.
+      if (!(await isAccountingEnabled(db, organizationId))) {
+        return { seen: 0, created: 0, posted: 0, alreadyPosted: 0, refused: [] }
+      }
+
       const ctx = await requirePayoutFieldContext(organizationId)
 
       const account = await getPaymentAccount(organizationId)

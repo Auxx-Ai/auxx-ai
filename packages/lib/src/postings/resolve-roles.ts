@@ -310,6 +310,7 @@ export async function resolveAccountLines(
     const codes = [
       ...new Set(lines.map((line) => line.accountCode).filter((c): c is string => !!c)),
     ]
+    const ids = [...new Set(lines.map((line) => line.glAccountId).filter((i): i is string => !!i))]
 
     const problems: string[] = []
 
@@ -325,8 +326,32 @@ export async function resolveAccountLines(
     const byCode =
       codes.length > 0 ? await loadAccountsByCode(db, organizationId, codes) : new Map()
 
+    // ID lines go through the same by-id door a role's assignment does, so an
+    // id and the role that points at it cannot disagree about what the account
+    // says. Archived reads as missing, exactly as it does for a code (task 15).
+    const byId =
+      ids.length > 0
+        ? await loadAccounts(db, organizationId, ids)
+        : new Map<string, ResolvedAccount>()
+
     for (const [index, line] of lines.entries()) {
       const row = index + 1
+      if (line.glAccountId) {
+        const account = byId.get(line.glAccountId)
+        if (!account) {
+          problems.push(
+            `Row ${row}: this organization's chart has no active account with id '${line.glAccountId}'. ` +
+              'It may have been archived or deleted since the line it reverses was posted.'
+          )
+          continue
+        }
+        if (!account.isActive) {
+          problems.push(
+            `Row ${row}: ${account.code} ${account.name} is not active. Reactivate it before posting to it again.`
+          )
+        }
+        continue
+      }
       if (line.accountCode) {
         const found = byCode.get(line.accountCode)
         if (!found) {
@@ -354,7 +379,9 @@ export async function resolveAccountLines(
       // A line with neither shape is `buildEntry`'s refusal to make, not this
       // one's - but it must not silently resolve to nothing either.
       if (!line.accountRole) {
-        problems.push(`Row ${row}: the line names neither an account role nor an account code.`)
+        problems.push(
+          `Row ${row}: the line names neither an account role, an account code nor an account id.`
+        )
       }
     }
 
@@ -369,9 +396,11 @@ export async function resolveAccountLines(
 
     const resolvedLines: ResolvedAccount[] = []
     for (const [index, line] of lines.entries()) {
-      const account = line.accountCode
-        ? byCode.get(line.accountCode)?.[0]
-        : byRole.get(line.accountRole as string)
+      const account = line.glAccountId
+        ? byId.get(line.glAccountId)
+        : line.accountCode
+          ? byCode.get(line.accountCode)?.[0]
+          : byRole.get(line.accountRole as string)
       if (!account) {
         // Unreachable: every line either resolved above or produced a problem.
         // Asserted because the alternative is a ledger line with no account.

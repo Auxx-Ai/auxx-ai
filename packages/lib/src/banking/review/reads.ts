@@ -24,6 +24,7 @@ import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
 import { getCachedEntityDefId, getOrgCache } from '../../cache'
 import { NotFoundError, UnprocessableEntityError } from '../../errors'
+import { loadChartAccountsById } from '../../postings/chart-accounts'
 import { toRecordId } from '../../resources/resource-id'
 import { type BankAccountRow, toDateKey } from '../client'
 import { guard } from '../guard'
@@ -666,7 +667,7 @@ async function describeReview(
   line: BankTransactionRow
 ): Promise<string | null> {
   if (line.reviewStatus === 'excluded') return line.excludeReason
-  if (line.reviewStatus === 'coded') return line.glAccountCode
+  if (line.reviewStatus === 'coded') return describeGlAccount(db, organizationId, line.glAccountId)
   if (line.reviewStatus === 'matched' && line.matchedRecordId) {
     const [instance] = await db
       .select({ displayName: schema.EntityInstance.displayName })
@@ -681,6 +682,34 @@ async function describeReview(
     return instance?.displayName ?? line.matchedRecordId
   }
   return null
+}
+
+/**
+ * `code name` for one `gl_account` id, for a single history row.
+ *
+ * One id, not a list: a resolver called for a WHOLE queue page belongs in
+ * `hydrateTransactions` below, batched, never here. Swallows a missing chart -
+ * an org whose accounting was never provisioned still has bank history to read
+ * - and falls back to the raw id rather than throwing.
+ */
+async function describeGlAccount(
+  db: Database,
+  organizationId: string,
+  glAccountId: string | null
+): Promise<string | null> {
+  if (!glAccountId) return null
+  try {
+    const { accounts } = await loadChartAccountsById(
+      db,
+      organizationId,
+      [glAccountId],
+      'This organization has no chart of accounts provisioned'
+    )
+    const account = accounts.get(glAccountId)
+    return account ? `${account.code} ${account.name}`.trim() : glAccountId
+  } catch {
+    return glAccountId
+  }
 }
 
 // ── Candidate sources ───────────────────────────────────────────────────────
@@ -1099,7 +1128,7 @@ async function hydrateTransactions(
       externalId: read(row.id, 'bank_transaction_external_id')?.valueText ?? null,
       bankAccountId,
       bankAccountName: account?.name ?? null,
-      bankAccountCode: account?.glAccountCode ?? null,
+      bankAccountGlAccountId: account?.glAccountId ?? null,
       bankAccountConnectorId: account?.connectorId ?? null,
       postedAt: postedAt ? toDateKey(postedAt) : null,
       description: read(row.id, 'bank_transaction_description')?.valueText ?? null,
@@ -1111,7 +1140,7 @@ async function hydrateTransactions(
       source: read(row.id, 'bank_transaction_source')?.optionId ?? null,
       importBatchId: read(row.id, 'bank_transaction_import_batch_id')?.valueText ?? null,
       reviewStatus: narrowReviewStatus(read(row.id, 'bank_transaction_review_status')?.optionId),
-      glAccountCode: read(row.id, 'bank_transaction_gl_account')?.valueText ?? null,
+      glAccountId: read(row.id, 'bank_transaction_gl_account')?.valueText ?? null,
       matchedRecordId: read(row.id, 'bank_transaction_matched_record_id')?.valueText ?? null,
       matchedRecordType: narrowMatchRecordType(
         read(row.id, 'bank_transaction_matched_record_type')?.valueText
@@ -1121,7 +1150,7 @@ async function hydrateTransactions(
       reviewedByUserId: read(row.id, 'bank_transaction_reviewed_by_user_id')?.valueText ?? null,
       glPostingId: read(row.id, 'bank_transaction_gl_posting_id')?.valueText ?? null,
       ruleId: read(row.id, 'bank_transaction_rule_id')?.valueText ?? null,
-      suggestedGlAccount:
+      suggestedGlAccountId:
         readSuggestion(row.id, 'bank_transaction_suggested_gl_account')?.valueText ?? null,
       suggestionReason:
         readSuggestion(row.id, 'bank_transaction_suggestion_reason')?.valueText ?? null,

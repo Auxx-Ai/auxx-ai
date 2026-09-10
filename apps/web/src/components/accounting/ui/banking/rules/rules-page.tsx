@@ -44,12 +44,14 @@ import { toastError } from '@auxx/ui/components/toast'
 import { TREE_SECONDARY_NOTRUNCATE, TreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { ListChecks, Pencil, Plus, Power, Trash2 } from 'lucide-react'
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
 import SettingsPage from '~/components/global/settings-page'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useViewportFill } from '~/hooks/use-viewport-fill'
 import { useRequireCapability } from '~/providers/capabilities-provider'
 import { api } from '~/trpc/react'
+import { useChartAccounts } from '../../gl-account-picker'
 import { BankRuleDialog } from './bank-rule-dialog'
 import { describeRule } from './bank-rule-options'
 
@@ -65,46 +67,6 @@ const PAGE_DESCRIPTION =
 /** The list frame never collapses below this, however short the viewport is. */
 const MIN_FRAME_HEIGHT = 200
 
-/**
- * The exact room left under `SettingsPage`'s sticky header, in px.
- *
- * `SettingsPage` publishes `--settings-viewport-h` and `--settings-sticky-top`
- * on its scroll viewport, but the breadcrumb bar sits ABOVE the sticky block and
- * is in neither number - subtracting only the sticky top overshoots by the
- * breadcrumb's height and the page grows a scrollbar it should not have. So the
- * offset is measured from the element itself: its distance from the viewport's
- * scrolled top is breadcrumbs + header, whatever they happen to be on this page.
- */
-function useViewportFill(ref: React.RefObject<HTMLDivElement | null>): number | undefined {
-  const [height, setHeight] = useState<number | undefined>(undefined)
-
-  useLayoutEffect(() => {
-    const el = ref.current
-    if (!el) return
-    const viewport = el.closest<HTMLElement>('[data-slot="scroll-area-viewport"]')
-    if (!viewport) return
-
-    const measure = () => {
-      const offset =
-        el.getBoundingClientRect().top - viewport.getBoundingClientRect().top + viewport.scrollTop
-      setHeight(Math.max(MIN_FRAME_HEIGHT, viewport.clientHeight - offset))
-    }
-
-    measure()
-    const observer = new ResizeObserver(measure)
-    observer.observe(viewport)
-    // The breadcrumb bar and the sticky header both shift the offset when they
-    // reflow (a wrapped description, a narrower window), and neither resizes the
-    // viewport when it happens. Observing this element itself would loop.
-    for (const sibling of Array.from(viewport.children)) {
-      if (!sibling.contains(el)) observer.observe(sibling)
-    }
-    return () => observer.disconnect()
-  }, [ref])
-
-  return height
-}
-
 export function BankingRulesPage() {
   useRequireCapability(PermissionKey.ledgerView)
   const utils = api.useUtils()
@@ -114,7 +76,7 @@ export function BankingRulesPage() {
   const [editing, setEditing] = useState<BankRuleRecord | null>(null)
 
   const frameRef = useRef<HTMLDivElement>(null)
-  const frameHeight = useViewportFill(frameRef)
+  const frameHeight = useViewportFill(frameRef, MIN_FRAME_HEIGHT)
 
   const rulesQuery = api.bankingRules.list.useQuery()
   const rules = useMemo(() => rulesQuery.data ?? [], [rulesQuery.data])
@@ -127,6 +89,14 @@ export function BankingRulesPage() {
     (id: string) =>
       (accountsQuery.data ?? []).find((account) => account.id === id)?.name ?? undefined,
     [accountsQuery.data]
+  )
+
+  // `rule.glAccountId` is the `gl_account` id (task 15 §4), never a code -
+  // resolved once here against the one chart fetch every picker shares.
+  const { accounts: chartAccounts } = useChartAccounts()
+  const resolveGlAccountCode = useCallback(
+    (id: string) => chartAccounts.find((account) => account.id === id)?.code ?? undefined,
+    [chartAccounts]
   )
 
   const updateRule = api.bankingRules.update.useMutation({
@@ -212,7 +182,7 @@ export function BankingRulesPage() {
                       secondary={
                         <span className='flex flex-wrap items-center gap-1.5'>
                           <span className='text-muted-foreground text-xs'>
-                            {describeRule(rule, resolveAccountName)}
+                            {describeRule(rule, resolveAccountName, resolveGlAccountCode)}
                           </span>
                           {rule.autoApply && (
                             <Badge variant='amber' size='xs'>

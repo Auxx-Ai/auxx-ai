@@ -22,6 +22,7 @@ import { and, eq, inArray } from 'drizzle-orm'
 import { getOrgCache } from '../../cache'
 import { BadRequestError, NotFoundError } from '../../errors'
 import { FieldValueService } from '../../field-values/field-value-service'
+import { isAccountingEnabled } from '../../postings/accounting-enabled'
 import {
   type BuildWriteOffEntryInput,
   buildWriteOffEntry,
@@ -459,34 +460,44 @@ export async function writeOffInvoice(
   assertWriteOffAllowed(invoice, invoiceId)
   const amount = resolveWriteOffAmount(invoice, invoiceId, amountMinor)
 
-  const [txnDate, attempt] = await Promise.all([
-    todayInBookTimeZone(organizationId),
-    countWriteOffPostings(db, organizationId, invoiceId),
-  ])
-  const entry = buildWriteOffEntry({
-    invoiceId,
-    invoiceNumber: invoice.number,
-    attempt,
-    amountMinor: amount,
-    txnDate,
-    expenseAccountCode,
-    memo: reason,
-  } satisfies BuildWriteOffEntryInput)
+  // 🛑 The org's own accounting-off case is checked FIRST, before the reads and
+  // the build below that exist only to post an entry (task 17 section 3): a
+  // write-off must land on the invoice's balance whether or not the org has
+  // ever turned accounting on.
+  let result: PostResult
+  if (!(await isAccountingEnabled(db, organizationId))) {
+    result = { status: 'not_enabled' }
+  } else {
+    const [txnDate, attempt] = await Promise.all([
+      todayInBookTimeZone(organizationId),
+      countWriteOffPostings(db, organizationId, invoiceId),
+    ])
+    const entry = buildWriteOffEntry({
+      invoiceId,
+      invoiceNumber: invoice.number,
+      attempt,
+      amountMinor: amount,
+      txnDate,
+      expenseAccountCode,
+      memo: reason,
+    } satisfies BuildWriteOffEntryInput)
 
-  const lock = await resolvePeriodLock(organizationId)
-  const result = await postEntry(db, {
-    organizationId,
-    entry,
-    actorUserId,
-    memo: reason,
-    lock,
-  })
+    const lock = await resolvePeriodLock(organizationId)
+    result = await postEntry(db, {
+      organizationId,
+      entry,
+      actorUserId,
+      memo: reason,
+      lock,
+    })
+  }
 
   const posted =
     result.status === 'posted' ||
     result.status === 'already_posted' ||
     result.status === 'not_connected' ||
-    result.status === 'disabled'
+    result.status === 'disabled' ||
+    result.status === 'not_enabled'
   if (!posted) return result
 
   const remainingBalanceMinor = invoice.outstandingMinor - amount

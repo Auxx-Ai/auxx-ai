@@ -31,6 +31,7 @@ import { type Database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq, inArray } from 'drizzle-orm'
 import { getOrgCache } from '../../cache'
+import { isAccountingEnabled } from '../../postings/accounting-enabled'
 import {
   buildInvoiceEntry,
   INVOICE_ISSUED_POSTING_TYPE,
@@ -58,6 +59,9 @@ const logger = createScopedLogger('money-invoice-ledger')
  *
  * `not_connected` and `disabled` are in for the older reason: an org with no
  * accounting system is a first-class case, not a degraded one (decision P1).
+ *
+ * `not_enabled` is in for the newest reason: an org that has never turned the
+ * accounting module on is a first-class case too (task 17 section 3).
  */
 const ACCEPTED_POST_STATUSES = new Set<string>([
   'posted',
@@ -65,6 +69,7 @@ const ACCEPTED_POST_STATUSES = new Set<string>([
   'healed',
   'not_connected',
   'disabled',
+  'not_enabled',
 ])
 
 /**
@@ -207,6 +212,10 @@ export async function postInvoiceIssuance(
   input: PostInvoiceIssuanceInput
 ): Promise<PostResult> {
   const { organizationId, invoiceId, actorUserId } = input
+
+  if (!(await isAccountingEnabled(db, organizationId))) {
+    return { status: 'not_enabled' }
+  }
 
   try {
     const invoice = await loadInvoiceForIssuance(db, organizationId, invoiceId)

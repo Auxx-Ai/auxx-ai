@@ -28,6 +28,7 @@
 
 import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
+import { isAccountingEnabled } from './accounting-enabled'
 import { type BuildPayoutEntryInput, buildPayoutEntry } from './build-payout-entry'
 import { resolvePeriodLock } from './period-lock'
 import { postEntry } from './post-entry'
@@ -48,12 +49,24 @@ export interface PostPayoutEntryOptions extends BuildPayoutEntryInput {
  * comes back as `{ status: 'error' }` with the builder's own message, which is
  * what `EntryBlockers` renders. Everything `postEntry` can answer passes
  * through unchanged.
+ *
+ * Checked FIRST, before the builder: an org that has never turned accounting on
+ * gets `{ status: 'not_enabled' }` with no build, no period-lock read and no
+ * log line (task 17 section 3) - the same first-class silent case as
+ * `not_connected`. `money/payouts/sync.ts` also short-circuits per org before
+ * it ever calls this, which is where the real saving is (it skips the Stripe
+ * payout list and the record write too); the check is repeated here so this
+ * function is correct on its own for any future caller.
  */
 export async function postPayoutEntry(
   db: Database,
   options: PostPayoutEntryOptions
 ): Promise<PostResult> {
   const { organizationId, actorUserId, ...input } = options
+
+  if (!(await isAccountingEnabled(db, organizationId))) {
+    return { status: 'not_enabled' }
+  }
 
   try {
     const built = buildPayoutEntry(input)

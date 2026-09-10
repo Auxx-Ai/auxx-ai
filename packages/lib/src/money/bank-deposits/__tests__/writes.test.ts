@@ -37,11 +37,15 @@ const h = vi.hoisted(() => ({
   readWith: [] as unknown[],
   /** What `readDepositBankAccount` answers. Null stands in for "no such account". */
   bankAccount: null as Record<string, unknown> | null,
+  isAccountingEnabled: vi.fn(),
 }))
 
 vi.mock('../../../cache', () => ({
   getOrgCache: () => ({ get: async () => h.settings }),
   getCachedEntityDefId: async () => 'def_bank_deposit',
+}))
+vi.mock('../../../postings/accounting-enabled', () => ({
+  isAccountingEnabled: h.isAccountingEnabled,
 }))
 
 vi.mock('../reads', () => ({
@@ -161,7 +165,7 @@ function deposit(overrides: Record<string, unknown> = {}) {
     number: 'DEP-0001',
     depositDate: '2026-09-03',
     bankAccountId: 'acct_1',
-    bankAccountCode: '1000',
+    bankAccountGlAccountId: '1000',
     reference: null,
     status: 'pending',
     totalMinor: 100_00,
@@ -188,7 +192,7 @@ function bankAccount(overrides: Record<string, unknown> = {}) {
   const id = (overrides.id as string) ?? 'acct_1'
   return {
     name: 'Business Checking',
-    glAccountCode: '1000',
+    glAccountId: '1000',
     archivedAt: null,
     ...overrides,
     id,
@@ -210,6 +214,8 @@ beforeEach(() => {
   h.calls = []
   h.readWith = []
   h.bankAccount = bankAccount()
+  h.isAccountingEnabled.mockReset()
+  h.isAccountingEnabled.mockResolvedValue(true)
 })
 
 describe('createBankDeposit refusals', () => {
@@ -246,7 +252,7 @@ describe('createBankDeposit refusals', () => {
   // 🛑 The whole reason the input is an id: an unmapped account has no code to
   // debit, and the alternative to refusing is posting to one nobody named.
   it('refuses a bank account with no chart mapping, and posts nothing', async () => {
-    h.bankAccount = bankAccount({ glAccountCode: null })
+    h.bankAccount = bankAccount({ glAccountId: null })
     const result = await createBankDeposit(db, input)
     expect(result._unsafeUnwrapErr().message).toMatch(/not mapped to an account in the chart/i)
     expect(h.created).toHaveLength(0)
@@ -298,7 +304,7 @@ describe('createBankDeposit refusals', () => {
 })
 
 describe('createBankDeposit posts one cash line', () => {
-  it('posts Dr <the chosen bank account, by code> Cr undeposited_funds for the summed total', async () => {
+  it('posts Dr <the chosen bank account, by id> Cr undeposited_funds for the summed total', async () => {
     h.payments = [
       payment({ paymentId: 'pay_1', amountMinor: 100_00 }),
       payment({ paymentId: 'pay_2', recordId: 'def_payment:pay_2', amountMinor: 250_00 }),
@@ -320,13 +326,13 @@ describe('createBankDeposit posts one cash line', () => {
     expect(entry.periodKey).toBe('DEP-0001')
     expect(entry.txnDate).toBe('2026-09-03')
     expect(entry.lines).toHaveLength(2)
-    // 🛑 A CODE line, not the `cash` role. The role resolves to exactly one
-    // account, so an org with `1000 Checking` and `1020 Savings` would post
-    // every deposit into whichever one the role names and never move the other,
-    // with the entry balancing either way and the field the operator filled in
-    // surviving only in the memo.
+    // 🛑 An ID line, not the `cash` role (task 15 §4). The role resolves to
+    // exactly one account, so an org with `1000 Checking` and `1020 Savings`
+    // would post every deposit into whichever one the role names and never
+    // move the other, with the entry balancing either way and the field the
+    // operator filled in surviving only in the memo.
     expect(entry.lines[0]).toMatchObject({
-      accountCode: '1000',
+      glAccountId: '1000',
       direction: 'debit',
       amount: 350_00,
       sourceId: 'dep_1',
@@ -340,13 +346,13 @@ describe('createBankDeposit posts one cash line', () => {
   })
 
   it('banks into the SECOND bank account when that is the one named', async () => {
-    h.bankAccount = bankAccount({ id: 'acct_2', glAccountCode: '1020' })
+    h.bankAccount = bankAccount({ id: 'acct_2', glAccountId: '1020' })
     await createBankDeposit(db, { ...input, bankAccountId: 'acct_2' })
 
     const entry = h.postedEntries[0] as {
-      lines: Array<{ accountCode?: string; accountRole?: string; memo?: string }>
+      lines: Array<{ glAccountId?: string; accountRole?: string; memo?: string }>
     }
-    expect(entry.lines[0]?.accountCode).toBe('1020')
+    expect(entry.lines[0]?.glAccountId).toBe('1020')
     expect(entry.lines[0]?.memo).toContain('1020')
     expect(h.created[0]?.values.bank_deposit_bank_account).toBe('1020')
   })
@@ -381,6 +387,20 @@ describe('createBankDeposit posts one cash line', () => {
     const result = await createBankDeposit(db, input)
     expect(result.isOk()).toBe(true)
     expect(h.archived).toHaveLength(0)
+  })
+
+  // 🛑 task 17 §3: an org that has never turned accounting on still banks its
+  // payments - the deposit is real whether or not the ledger exists.
+  it('groups the deposit and answers not_enabled without building or posting an entry', async () => {
+    h.isAccountingEnabled.mockResolvedValue(false)
+    const result = await createBankDeposit(db, input)
+    expect(result.isOk()).toBe(true)
+    expect(result._unsafeUnwrap().post).toEqual({ status: 'not_enabled' })
+    expect(h.postedEntries).toHaveLength(0)
+    expect(h.created).toHaveLength(1)
+    expect(h.archived).toHaveLength(0)
+    // Nothing posted, so the write-once high-water mark must not be stamped.
+    expect(h.updated.some((u) => 'bank_account_has_posted' in u.values)).toBe(false)
   })
 
   it('rolls the deposit back when the ledger refuses the entry', async () => {
@@ -521,7 +541,7 @@ describe('clearBankDeposit', () => {
 
 describe('updateBankDeposit', () => {
   it('edits reference and account while the deposit is still pending', async () => {
-    h.bankAccount = bankAccount({ id: 'acct_2', glAccountCode: '1010' })
+    h.bankAccount = bankAccount({ id: 'acct_2', glAccountId: '1010' })
     const result = await updateBankDeposit(db, {
       organizationId: ORG,
       actorUserId: USER,

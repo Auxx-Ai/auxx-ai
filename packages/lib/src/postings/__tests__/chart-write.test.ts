@@ -518,9 +518,10 @@ describe('updateChartAccount', () => {
     expect(h.updates[0]?.recordId).toBe(`${DEF}:${GRNI_ACCOUNT.id}`)
   })
 
-  // ⚠️ `G7`: the chart is the org's document. A renumber detaches posted lines
-  // from the row on screen, which is `P2` working as designed, and refusing it
-  // would be this module deciding it knows better.
+  // ⚠️ `G7`: the chart is the org's document. Since task 15 a renumber no
+  // longer detaches anything at all - `GlPostingLine.glAccountId` is the
+  // identity - and refusing it anyway would be this module deciding it knows
+  // better than the org about its own numbering.
   it('renumbers without complaint, even with a role pointing at the account', async () => {
     const db = stubDb([GRNI_ACCOUNT], [{ role: 'grni', glAccountId: GRNI_ACCOUNT.id }])
 

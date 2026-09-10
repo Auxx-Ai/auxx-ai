@@ -508,27 +508,35 @@ export function buildEntry(input: BuildEntryInput): BuiltEntry {
   let totalCredit = 0
 
   for (const line of lines) {
-    // A line names an account in exactly ONE of the two ways `GlPostingLineInput`
-    // allows - a builder's ROLE or a human's CODE (HANDOFF slot 1A). Neither is
-    // the refusal below; both at once is the other one, and it is refused rather
-    // than resolved by precedence, because a precedence rule would silently post
-    // to whichever of two named accounts this function happened to prefer.
-    // Read through a widened alias: the union's `?: never` legs make TypeScript
-    // prove the both-at-once case away, and a runtime check is still wanted
-    // because a tRPC caller or a JSON round trip can produce it.
-    const shape = line as { accountRole?: string; accountCode?: string }
-    const role = shape.accountRole?.trim()
+    // A line names an account in exactly ONE of the three ways `GlPostingLineInput`
+    // allows - a builder's ROLE, a human's CODE (HANDOFF slot 1A), or the
+    // account's own ID (task 15: what a reversal carries so it lands where the
+    // original did). None is the refusal below; more than one at once is the
+    // other one, and it is refused rather than resolved by precedence, because a
+    // precedence rule would silently post to whichever of two named accounts
+    // this function happened to prefer. Read through a widened alias: the
+    // union's `?: never` legs make TypeScript prove the several-at-once case
+    // away, and a runtime check is still wanted because a tRPC caller or a JSON
+    // round trip can produce it.
+    const shape = line as { accountRole?: string; accountCode?: string; glAccountId?: string }
     const code = shape.accountCode?.trim()
-    const named = role || code
+    const id = shape.glAccountId?.trim()
+    // Beside an id, a role is the SNAPSHOT the id variant lets a reversal carry
+    // (see `GlPostingLineInput`), not a second naming; the id alone resolves.
+    const role = id ? undefined : shape.accountRole?.trim()
+    const named = role || code || id
     if (!named) {
       throw new UnprocessableEntityError(
-        'A posting line must carry an account role or an account code',
+        'A posting line must carry an account role, an account code or an account id',
         { postingType, periodKey }
       )
     }
-    if (role && code) {
+    const namings = [role && `role '${role}'`, code && `code '${code}'`, id && `id '${id}'`].filter(
+      Boolean
+    )
+    if (namings.length > 1) {
       throw new UnprocessableEntityError(
-        `A posting line names both role '${role}' and code '${code}'. It must name one.`,
+        `A posting line names both ${namings.join(' and ')}. It must name one.`,
         { postingType, periodKey }
       )
     }

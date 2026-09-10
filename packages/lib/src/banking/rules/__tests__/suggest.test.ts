@@ -27,7 +27,7 @@ function baseRow(overrides: Partial<TransactionMatchRow> = {}): TransactionMatch
     matchKey: 'MONTHLY SVC FEE',
     amountMinor: -1500,
     reviewStatus: 'for_review',
-    glAccountCode: null,
+    glAccountId: null,
     ...overrides,
   }
 }
@@ -66,7 +66,7 @@ describe('suggestFromHistory', () => {
     expect(result.isOk()).toBe(true)
     expect(result._unsafeUnwrap()).toEqual({
       source: 'transfer',
-      glAccountCode: null,
+      glAccountId: null,
       recordId: 'acct_2',
       recordType: 'bank_account',
       reason: expect.stringContaining('opposite-sign'),
@@ -89,7 +89,7 @@ describe('suggestFromHistory', () => {
     vi.mocked(reads.getTransactionMatchRow).mockResolvedValue(ok(baseRow()))
     vi.mocked(reads.findTransferCandidate).mockResolvedValue(ok(null))
     vi.mocked(reads.listHistoryMatches).mockResolvedValue(
-      ok([{ glAccountCode: '6100', postedAt: '2026-08-01' }])
+      ok([{ glAccountId: '6100', postedAt: '2026-08-01' }])
     )
 
     const result = await suggestFromHistory(db, { organizationId: 'org_1', transactionId: 'txn_1' })
@@ -101,17 +101,17 @@ describe('suggestFromHistory', () => {
     vi.mocked(reads.findTransferCandidate).mockResolvedValue(ok(null))
     vi.mocked(reads.listHistoryMatches).mockResolvedValue(
       ok([
-        { glAccountCode: '6100', postedAt: '2026-08-01' },
-        { glAccountCode: '6100', postedAt: '2026-07-01' },
-        { glAccountCode: '6100', postedAt: '2026-06-01' },
-        { glAccountCode: '6200', postedAt: '2026-05-01' },
+        { glAccountId: '6100', postedAt: '2026-08-01' },
+        { glAccountId: '6100', postedAt: '2026-07-01' },
+        { glAccountId: '6100', postedAt: '2026-06-01' },
+        { glAccountId: '6200', postedAt: '2026-05-01' },
       ])
     )
 
     const result = await suggestFromHistory(db, { organizationId: 'org_1', transactionId: 'txn_1' })
     expect(result._unsafeUnwrap()).toEqual({
       source: 'history',
-      glAccountCode: '6100',
+      glAccountId: '6100',
       recordId: null,
       recordType: null,
       reason: 'The last 3 lines matching this key were coded to 6100.',
@@ -124,14 +124,14 @@ describe('suggestFromHistory', () => {
     vi.mocked(reads.findTransferCandidate).mockResolvedValue(ok(null))
     vi.mocked(reads.listHistoryMatches).mockResolvedValue(
       ok([
-        { glAccountCode: null, postedAt: '2026-08-10' },
-        { glAccountCode: '6100', postedAt: '2026-08-01' },
-        { glAccountCode: '6100', postedAt: '2026-07-01' },
+        { glAccountId: null, postedAt: '2026-08-10' },
+        { glAccountId: '6100', postedAt: '2026-08-01' },
+        { glAccountId: '6100', postedAt: '2026-07-01' },
       ])
     )
 
     const result = await suggestFromHistory(db, { organizationId: 'org_1', transactionId: 'txn_1' })
-    expect(result._unsafeUnwrap()?.glAccountCode).toBe('6100')
+    expect(result._unsafeUnwrap()?.glAccountId).toBe('6100')
     expect(result._unsafeUnwrap()?.reason).toContain('2 lines')
   })
 

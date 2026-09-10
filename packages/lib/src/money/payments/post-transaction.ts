@@ -33,6 +33,7 @@ import { type Database, type PaymentTransactionEntity, schema } from '@auxx/data
 import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
 import { getOrgCache } from '../../cache'
+import { isAccountingEnabled } from '../../postings/accounting-enabled'
 import {
   buildPaymentEntry,
   PAYMENT_SOURCE_TYPE,
@@ -66,6 +67,9 @@ export const PAYMENT_POSTING_TYPE: PostingType = 'payment'
  *
  * `not_connected` and `disabled` are in for the older reason: an org with no
  * accounting system is a first-class case, not a degraded one (decision P1).
+ *
+ * `not_enabled` is in for the newest reason: an org that has never turned the
+ * accounting module on is a first-class case too (task 17 section 3).
  */
 const ACCEPTED_POST_STATUSES = new Set<string>([
   'posted',
@@ -73,6 +77,7 @@ const ACCEPTED_POST_STATUSES = new Set<string>([
   'healed',
   'not_connected',
   'disabled',
+  'not_enabled',
 ])
 
 /**
@@ -129,6 +134,10 @@ export async function postPaymentTransaction(
       status: 'nothing_to_close',
       error: `Payment ${transaction.id} is ${transaction.status}, which moved no money.`,
     }
+  }
+
+  if (!(await isAccountingEnabled(db, organizationId))) {
+    return { status: 'not_enabled' }
   }
 
   try {

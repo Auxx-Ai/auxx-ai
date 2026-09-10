@@ -30,6 +30,11 @@ const h = vi.hoisted(() => ({
   locks: 0,
   /** What `buildFulfillmentEntry` was handed, so the per-line tax is assertable. */
   built: [] as Array<{ shippedLines: Array<{ lineId: string; taxMinor?: number }> }>,
+  isAccountingEnabled: vi.fn(async () => true),
+}))
+
+vi.mock('../../../postings/accounting-enabled', () => ({
+  isAccountingEnabled: h.isAccountingEnabled,
 }))
 
 vi.mock('../reads', async () => {
@@ -48,24 +53,31 @@ vi.mock('../reads', async () => {
   }
 })
 
-vi.mock('../../../postings/build-fulfillment-entry', () => ({
-  buildFulfillmentEntry: (input: {
-    shippedLines: Array<{ lineId: string; taxMinor?: number }>
-  }) => {
-    h.built.push({ shippedLines: input.shippedLines })
-    return {
-      entry: {
-        postingType: 'fulfillment',
-        periodKey: 'ORD0012F1',
-        txnDate: '2026-09-03',
-        lines: [],
-      },
-      totalMinor: 50_00,
-      shippingMinor: 0,
-      revenueRole: 'revenue_dtc',
-    }
-  },
-}))
+vi.mock('../../../postings/build-fulfillment-entry', async (importOriginal) => {
+  // `computeShipmentTotals` stays REAL: the not-enabled path calls it directly
+  // (never the mocked builder below), and its arithmetic is what the
+  // "accounting not enabled" tests below assert against.
+  const actual = await importOriginal<typeof import('../../../postings/build-fulfillment-entry')>()
+  return {
+    computeShipmentTotals: actual.computeShipmentTotals,
+    buildFulfillmentEntry: (input: {
+      shippedLines: Array<{ lineId: string; taxMinor?: number }>
+    }) => {
+      h.built.push({ shippedLines: input.shippedLines })
+      return {
+        entry: {
+          postingType: 'fulfillment',
+          periodKey: 'ORD0012F1',
+          txnDate: '2026-09-03',
+          lines: [],
+        },
+        totalMinor: 50_00,
+        shippingMinor: 0,
+        revenueRole: 'revenue_dtc',
+      }
+    },
+  }
+})
 
 vi.mock('../../../postings/post-entry', () => ({
   LEDGER_CURRENCY: 'USD',
@@ -186,6 +198,7 @@ beforeEach(() => {
   h.updated = []
   h.locks = 0
   h.built = []
+  h.isAccountingEnabled.mockResolvedValue(true)
 })
 
 describe('the append re-reads the stored log under a lock', () => {
@@ -275,6 +288,54 @@ describe('the rollback removes THIS shipment, not everything since the pre-read'
 // all-or-nothing by design - one line with no tax sends the WHOLE entry back to
 // allocating the order's total - which is why the two cases below are what
 // matters rather than the arithmetic.
+// task 17 section 3: an org that has never turned accounting on is a
+// first-class silent case, exactly like `not_connected` - the shipment must
+// stand, and the ledger-only builder (which resolves a revenue role and
+// refuses a foreign currency) must never run for it.
+describe('accounting not enabled', () => {
+  beforeEach(() => {
+    h.isAccountingEnabled.mockResolvedValue(false)
+  })
+
+  it('records the shipment, does not roll it back, and reports not_enabled', async () => {
+    h.storedReads = [stored([]), stored([shipment({ sequence: 1, glPostingId: null })])]
+
+    const result = await fulfillOrder(stubDb(), input)
+
+    expect(result.isOk()).toBe(true)
+    const value = result._unsafeUnwrap()
+    expect(value.post).toEqual({ status: 'not_enabled' })
+    expect(value.fulfillmentStatus).not.toBe('unfulfilled')
+
+    const log = lastLog()
+    expect(log).toHaveLength(1)
+    expect(log[0]?.glPostingId).toBeNull()
+    expect(log[0]?.docNumber).toBeNull()
+  })
+
+  it('never calls the ledger entry builder', async () => {
+    h.storedReads = [stored([]), stored([shipment({ sequence: 1, glPostingId: null })])]
+
+    await fulfillOrder(stubDb(), input)
+
+    expect(h.built).toHaveLength(0)
+  })
+
+  it('still computes real amounts for the shipment log, via the shared arithmetic', async () => {
+    h.storedReads = [stored([]), stored([shipment({ sequence: 1, glPostingId: null })])]
+
+    await fulfillOrder(stubDb(), input)
+
+    // 3 units of a 10_00 line, per `input.shippedLines` - the APPEND write,
+    // which carries the amounts this attempt computed (the stamp that follows
+    // only patches `glPostingId`/`docNumber` onto the stored row).
+    const appended = h.updated[0]?.values.order_fulfillments as {
+      fulfillments: OrderFulfillment[]
+    }
+    expect(appended.fulfillments[0]?.totalMinor).toBe(30_00)
+  })
+})
+
 describe('the per-line tax reaches the builder', () => {
   it('passes a full-line shipment its whole stored tax', async () => {
     ;(h.order.lines as Array<Record<string, unknown>>)[0]!.lineTaxMinor = 875

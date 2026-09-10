@@ -216,7 +216,7 @@ async function hydrateRules(
     direction: (read(row.id, 'bank_rule_direction')?.optionId ?? 'any') as BankRuleDirection,
     bankAccountId: read(row.id, 'bank_rule_bank_account')?.valueText ?? null,
     action: (read(row.id, 'bank_rule_action')?.optionId ?? 'code') as BankRuleAction,
-    glAccountCode: read(row.id, 'bank_rule_gl_account')?.valueText ?? null,
+    glAccountId: read(row.id, 'bank_rule_gl_account')?.valueText ?? null,
     counterpartBankAccountId: read(row.id, 'bank_rule_counterpart_bank_account')?.valueText ?? null,
     contactId: read(row.id, 'bank_rule_contact')?.valueText ?? null,
     memo: read(row.id, 'bank_rule_memo')?.valueText ?? null,
@@ -290,7 +290,7 @@ export interface TransactionMatchRow {
   /** Integer minor units, signed. */
   amountMinor: number
   reviewStatus: string | null
-  glAccountCode: string | null
+  glAccountId: string | null
 }
 
 /** One transaction's matching-relevant fields, or `null` when it does not exist. */
@@ -376,7 +376,7 @@ export async function listHistoryMatches(
     matchKey: string
     excludeTransactionId: string
   }
-): Promise<Result<{ glAccountCode: string | null; postedAt: string | null }[], Error>> {
+): Promise<Result<{ glAccountId: string | null; postedAt: string | null }[], Error>> {
   const { organizationId, bankAccountId, matchKey, excludeTransactionId } = params
   return guard(
     async () => {
@@ -431,7 +431,7 @@ export async function listHistoryMatches(
         .filter((row): row is TransactionMatchRow & { postedAt: string } => row.postedAt != null)
         .sort((a, b) => (a.postedAt < b.postedAt ? 1 : a.postedAt > b.postedAt ? -1 : 0))
         .slice(0, HISTORY_SAMPLE_SIZE)
-        .map((row) => ({ glAccountCode: row.glAccountCode, postedAt: row.postedAt }))
+        .map((row) => ({ glAccountId: row.glAccountId, postedAt: row.postedAt }))
     },
     'Failed to read bank transaction history',
     { organizationId, bankAccountId, matchKey }
@@ -593,6 +593,6 @@ async function readTxMatchRows(
     matchKey: read(id, 'bank_transaction_match_key')?.valueText ?? null,
     amountMinor: Math.round(read(id, 'bank_transaction_amount')?.valueNumber ?? 0),
     reviewStatus: read(id, 'bank_transaction_review_status')?.optionId ?? null,
-    glAccountCode: read(id, 'bank_transaction_gl_account')?.valueText ?? null,
+    glAccountId: read(id, 'bank_transaction_gl_account')?.valueText ?? null,
   }))
 }

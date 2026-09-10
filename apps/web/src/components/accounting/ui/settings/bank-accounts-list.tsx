@@ -41,6 +41,7 @@ import {
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
 import { BankInstitutionIcon } from '~/components/accounting/ui/bank-institution-icon'
+import { useChartAccounts } from '~/components/accounting/ui/gl-account-picker'
 import { asConnectorStatus } from '~/components/data-connectors/ui/connector-status'
 import { ConnectorStatusLine } from '~/components/data-connectors/ui/connector-status-line'
 import { EmptyState } from '~/components/global/empty-state'
@@ -107,6 +108,15 @@ export function BankAccountsList({
   const [collapsed, setCollapsed] = useState<string[]>([])
 
   const groups = useMemo(() => groupByInstitution(accounts, search), [accounts, search])
+
+  // 🛑 `glAccount` is stored as the `gl_account` id, not a code (task 15 §4), so
+  // the badge below has to resolve it. One `ledger.chartAccounts` fetch for the
+  // whole list, React-Query cached - never a lookup per row.
+  const { accounts: chartAccounts } = useChartAccounts()
+  const chartAccountById = useMemo(
+    () => new Map(chartAccounts.map((account) => [account.id, account])),
+    [chartAccounts]
+  )
 
   const toggleInstitution = (institution: string) =>
     setCollapsed((current) =>
@@ -313,15 +323,30 @@ export function BankAccountsList({
                         ) : (
                           <BankAccountStatusChip account={account} />
                         )}
-                        {account.glAccountCode ? (
-                          <Badge variant='outline' size='xs' className='font-mono'>
-                            {account.glAccountCode}
-                          </Badge>
-                        ) : (
-                          <Badge variant='destructive' size='xs'>
-                            Unmapped
-                          </Badge>
-                        )}
+                        {(() => {
+                          const mapped = account.glAccountId
+                            ? chartAccountById.get(account.glAccountId)
+                            : null
+                          if (mapped) {
+                            return (
+                              <Badge variant='outline' size='xs' className='font-mono'>
+                                {mapped.code}
+                              </Badge>
+                            )
+                          }
+                          if (account.glAccountId) {
+                            return (
+                              <Badge variant='destructive' size='xs'>
+                                Account not found
+                              </Badge>
+                            )
+                          }
+                          return (
+                            <Badge variant='destructive' size='xs'>
+                              Unmapped
+                            </Badge>
+                          )
+                        })()}
                       </span>
                     }
                   />

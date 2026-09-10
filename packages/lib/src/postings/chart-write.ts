@@ -5,7 +5,7 @@
  *
  * `G7` has said the chart is the org's own document since it was seeded, and
  * every piece of machinery downstream is built on that premise - `G8` exists
- * only because the chart is editable, and `GlPostingLine.accountCode` has no
+ * only because the chart is editable, and `GlPostingLine.glAccountId` has no
  * foreign key only because the chart is editable. Until this file there was no
  * writer but `seedDefaultChartOfAccounts`, which runs once at migration time.
  *
@@ -32,11 +32,12 @@
  * - a RENUMBER cannot touch role resolution - `GlRoleAssignment.glAccountId`
  *   names the INSTANCE, not the code, which is `G8` doing its job
  *
- * What a renumber does do is detach every line already posted from the row on
- * screen, because a posted line stores the code with no foreign key. That is
- * decision `P2` working as designed - the ledger outlives the chart - and it is
- * not this module's business to refuse it. It is the UI's business to say so,
- * with a count (`listChartAccountUsage` in `role-map.ts`).
+ * 🛑 **Since task 15, a RENUMBER no longer detaches anything either.** A posted
+ * line stores `glAccountId` - the account's IDENTITY - with no foreign key, so
+ * every line ever posted to this account keeps reading as one row on every
+ * statement no matter what its code becomes. Only ARCHIVING or deleting the
+ * account detaches its history (`listChartAccountUsage` in `role-map.ts` is the
+ * count for THAT caution, not for a renumber - see `Remove` below).
  *
  * ## Removal is ARCHIVE, never delete
  *

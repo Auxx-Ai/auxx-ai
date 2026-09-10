@@ -15,7 +15,6 @@ import type { PurchaseOrderLineRow } from '../purchase-order/use-purchase-order-
 import {
   billLinesFromPurchaseOrder,
   billLineValuesFromPurchaseOrderLine,
-  GRNI_ACCOUNT_CODE,
   selectBillableLines,
 } from './bill-lines-from-purchase-order'
 
@@ -91,9 +90,12 @@ describe('what a created line carries', () => {
     expect(values.vendor_bill_line_description).toBe('M6 hex bolt')
   })
 
-  it('codes a PO-matched line to GRNI', () => {
-    expect(values.vendor_bill_line_gl_account).toBe(GRNI_ACCOUNT_CODE)
-    expect(GRNI_ACCOUNT_CODE).toBe('2160')
+  // 🛑 task 15 §4: `glAccount` holds a `gl_account` id now, and this function
+  // is pure - it has no org to resolve the `grni` role's account against. A
+  // hardcoded code here would write a value that can never resolve, which is
+  // worse than leaving the field for a human to pick.
+  it('leaves the GL account for a human to pick, rather than write an unresolvable value', () => {
+    expect(values).not.toHaveProperty('vendor_bill_line_gl_account')
   })
 
   // 🛑 THE assertion in this file. Both arms of the three-way match must arrive

@@ -13,13 +13,14 @@
  * ```
  *   payment received                 ->  Dr undeposited_funds  Cr accounts_receivable
  *   payments grouped into a deposit  ->  (no posting - grouping only)
- *   deposit hits the bank            ->  Dr <the chosen bank account, by CODE>
+ *   deposit hits the bank            ->  Dr <the chosen bank account, by gl_account ID>
  *                                             Cr undeposited_funds
  *                                             ^ ONE line, matches ONE bank line
  * ```
  *
- * 🛑 **The debit is the bank account the operator picked, by CODE, not the
- * `cash` role.** An org with two bank accounts (`1000 Checking`, `1020 Savings`)
+ * 🛑 **The debit is the bank account the operator picked, by `gl_account` id
+ * (task 15 §4), not the `cash` role.** An org with two bank accounts (`1000
+ * Checking`, `1020 Savings`)
  * banks into whichever one it names on the slip, and the role resolves to
  * exactly one of them; posting the role would put every deposit into `1000` and
  * `1020` would never move, while the entry balanced and the field the operator
@@ -44,7 +45,9 @@ import { and, asc, eq, inArray } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import { getOrgCache } from '../../cache'
 import { BadRequestError, ConflictError, UnprocessableEntityError } from '../../errors'
+import { isAccountingEnabled } from '../../postings/accounting-enabled'
 import { ACCOUNT_ROLES, buildEntry } from '../../postings/build-entry'
+import { loadChartAccountsById } from '../../postings/chart-accounts'
 import { resolvePeriodLock } from '../../postings/period-lock'
 import { LEDGER_CURRENCY, postEntry } from '../../postings/post-entry'
 import type { PostResult } from '../../postings/types'
@@ -96,6 +99,11 @@ const ACCEPTED_POST_STATUSES = new Set([
   'healed',
   'not_connected',
   'disabled',
+  // The org has never turned accounting on (task 17 §3). The deposit itself is
+  // real - grouping payments and banking them happens whether or not the org
+  // ever enables the ledger - so this is a success like `not_connected`, not a
+  // refusal to roll back.
+  'not_enabled',
 ])
 
 /** `YYYY-MM-DD`, and nothing else. A posting's date is a contract, not a hint. */
@@ -141,7 +149,7 @@ async function lockPayments(
 
 /**
  * Group N received payments into one bank deposit and post
- * `Dr <bank account code> Cr undeposited_funds`.
+ * `Dr <bank account's gl_account id> Cr undeposited_funds`.
  *
  * ## What it refuses, and why each refusal exists
  *
@@ -177,11 +185,11 @@ async function lockPayments(
  * the link the first one wrote.
  *
  * 🛑 **A refused post is rolled back.** If the ledger will not take the entry -
- * a locked period, a bank account code that is not in this chart - the deposit is
- * archived and the payments are unlinked, so the refusal leaves no half-state and
- * the same cheques can be grouped again once the operator has fixed what the
- * message names. That is NOT a correct-by-editing exception: nothing was posted,
- * so there is nothing to reverse.
+ * a locked period, a bank account mapped to an id that is not in this chart -
+ * the deposit is archived and the payments are unlinked, so the refusal leaves
+ * no half-state and the same cheques can be grouped again once the operator
+ * has fixed what the message names. That is NOT a correct-by-editing
+ * exception: nothing was posted, so there is nothing to reverse.
  */
 export async function createBankDeposit(
   db: Database,
@@ -196,7 +204,7 @@ export async function createBankDeposit(
         throw new BadRequestError('A deposit must name the bank account the money lands in')
       }
       const bankAccount = await requireDepositTarget(db, organizationId, bankAccountId.trim())
-      const bankAccountCode = bankAccount.glAccountCode
+      const bankAccountGlAccountId = bankAccount.glAccountId
       const uniqueIds = [...new Set(paymentIds)]
       if (uniqueIds.length === 0) {
         throw new BadRequestError('Select at least one payment to bank')
@@ -276,7 +284,7 @@ export async function createBankDeposit(
         const crud = new UnifiedCrudHandler(organizationId, actorUserId, txDb)
         const created = await crud.create(depositCtx.depositDefId, {
           bank_deposit_date: depositDate,
-          bank_deposit_bank_account: bankAccountCode,
+          bank_deposit_bank_account: bankAccountGlAccountId,
           bank_deposit_bank_account_record: bankAccount.recordId,
           bank_deposit_reference: reference?.trim() || undefined,
           bank_deposit_status: 'pending',
@@ -298,52 +306,67 @@ export async function createBankDeposit(
         throw new UnprocessableEntityError('The bank deposit could not be read back after writing')
       }
 
-      // ── The posting, after the commit ──────────────────────────────────
-      //
-      // `periodKey` is the deposit's own NUMBER, not a date: two deposits can be
-      // banked on one day, and a date key would collide them into one entry
-      // whose total ties to neither bank line (`postings/doc-number.ts`).
-      const entry = buildEntry({
-        postingType: 'bank_deposit',
-        periodKey: deposit.number ?? depositId,
-        txnDate: depositDate,
-        lines: [
-          {
-            // 🛑 The account the operator NAMED, by code, not the `cash` role.
-            // An org with `1000 Checking` and `1020 Savings` maps the role to
-            // one of them; the role would send every deposit there and leave
-            // the other account dead, with the entry balancing either way.
-            // `resolveAccountLines` validates the code against this org's own
-            // chart and refuses by name when it is missing, inactive or
-            // ambiguous, so a bad code is a rolled-back refusal, not a bad post.
-            accountCode: bankAccountCode,
-            direction: 'debit',
-            amount: totalMinor,
-            memo: `Bank deposit ${deposit.number ?? ''} to ${bankAccountCode}`.trim(),
-            sourceType: BANK_DEPOSIT_SOURCE_TYPE,
-            sourceId: depositId,
-            sortOrder: 0,
-          },
-          {
-            accountRole: ACCOUNT_ROLES.UNDEPOSITED_FUNDS,
-            direction: 'credit',
-            amount: totalMinor,
-            memo: `${paymentCount} payment${paymentCount === 1 ? '' : 's'} banked`,
-            sourceType: BANK_DEPOSIT_SOURCE_TYPE,
-            sourceId: depositId,
-            sortOrder: 1,
-          },
-        ],
-      })
+      // 🛑 The org's own accounting-off case is checked FIRST, before the build
+      // and the post below that exist only to reach the ledger (task 17 §3):
+      // grouping payments into a deposit and banking them is real whether or
+      // not the org has ever turned accounting on.
+      let post: PostResult
+      if (!(await isAccountingEnabled(db, organizationId))) {
+        post = { status: 'not_enabled' }
+      } else {
+        // Resolved once, for the memo only - never posted as a label. A miss
+        // (the account was deleted between the read above and here) falls back
+        // to the id rather than blocking the entry; `resolveAccountLines`
+        // still validates the id itself before anything is claimed.
+        const debitLabel = await describeDebitAccount(db, organizationId, bankAccountGlAccountId)
 
-      const lock = await resolvePeriodLock(organizationId)
-      const post = await postEntry(db, {
-        organizationId,
-        entry,
-        actorUserId,
-        lock,
-        memo: reference ? `Deposit slip ${reference}` : undefined,
-      })
+        // ── The posting, after the commit ────────────────────────────────
+        //
+        // `periodKey` is the deposit's own NUMBER, not a date: two deposits can
+        // be banked on one day, and a date key would collide them into one
+        // entry whose total ties to neither bank line (`postings/doc-number.ts`).
+        const entry = buildEntry({
+          postingType: 'bank_deposit',
+          periodKey: deposit.number ?? depositId,
+          txnDate: depositDate,
+          lines: [
+            {
+              // 🛑 The account the operator NAMED, by id, not the `cash` role.
+              // An org with `1000 Checking` and `1020 Savings` maps the role to
+              // one of them; the role would send every deposit there and leave
+              // the other account dead, with the entry balancing either way.
+              // `resolveAccountLines` validates the id against this org's own
+              // chart and refuses by name when it is missing, inactive or
+              // archived, so a bad id is a rolled-back refusal, not a bad post.
+              glAccountId: bankAccountGlAccountId,
+              direction: 'debit',
+              amount: totalMinor,
+              memo: `Bank deposit ${deposit.number ?? ''} to ${debitLabel}`.trim(),
+              sourceType: BANK_DEPOSIT_SOURCE_TYPE,
+              sourceId: depositId,
+              sortOrder: 0,
+            },
+            {
+              accountRole: ACCOUNT_ROLES.UNDEPOSITED_FUNDS,
+              direction: 'credit',
+              amount: totalMinor,
+              memo: `${paymentCount} payment${paymentCount === 1 ? '' : 's'} banked`,
+              sourceType: BANK_DEPOSIT_SOURCE_TYPE,
+              sourceId: depositId,
+              sortOrder: 1,
+            },
+          ],
+        })
+
+        const lock = await resolvePeriodLock(organizationId)
+        post = await postEntry(db, {
+          organizationId,
+          entry,
+          actorUserId,
+          lock,
+          memo: reference ? `Deposit slip ${reference}` : undefined,
+        })
+      }
 
       if (!ACCEPTED_POST_STATUSES.has(post.status)) {
         await rollbackDeposit(db, organizationId, actorUserId, deposit)
@@ -361,7 +384,13 @@ export async function createBankDeposit(
         await crud.update(deposit.recordId, { bank_deposit_gl_posting_id: post.glPostingId })
       }
 
-      await stampBankAccountHasPosted(db, organizationId, actorUserId, bankAccount)
+      // 🛑 Only when the entry actually posted. `not_enabled`/`not_connected`
+      // leave nothing on the ledger for this account, so stamping the
+      // write-once high-water mark for either would make an account with
+      // nothing on it permanently un-deletable.
+      if (post.glPostingId) {
+        await stampBankAccountHasPosted(db, organizationId, actorUserId, bankAccount)
+      }
 
       logger.info('Recorded bank deposit', {
         organizationId,
@@ -383,13 +412,13 @@ export async function createBankDeposit(
 /**
  * The account this deposit is banked into, refused by name when it cannot take one.
  *
- * 🛑 **An ACCOUNT is named and the CODE is read off it, never the other way
- * round.** The bank feed posts every line on an account against that account's
- * `glAccountCode`, so a code chosen freely from the chart puts the deposit and
- * the statement line it exists to match into two different accounts. Nothing
- * downstream catches it - match candidates are found by amount and date, not by
- * account. The deposit picker has always worked this way; taking the id here is
- * what stops any other caller working differently.
+ * 🛑 **An ACCOUNT is named and the `gl_account` id is read off it, never the
+ * other way round.** The bank feed posts every line on an account against that
+ * account's `glAccountId`, so an id chosen freely from the chart puts the
+ * deposit and the statement line it exists to match into two different
+ * accounts. Nothing downstream catches it - match candidates are found by
+ * amount and date, not by account. The deposit picker has always worked this
+ * way; taking the id here is what stops any other caller working differently.
  *
  * ⚠️ Both refusals are `UnprocessableEntityError` and both name the account,
  * because both are fixed somewhere else in the product rather than by retrying.
@@ -398,7 +427,7 @@ async function requireDepositTarget(
   db: Database,
   organizationId: string,
   bankAccountId: string
-): Promise<DepositBankAccount & { glAccountCode: string }> {
+): Promise<DepositBankAccount & { glAccountId: string }> {
   const ctx = await requireDepositBankAccountContext(organizationId)
   const account = await readDepositBankAccount(db, organizationId, ctx, bankAccountId)
   if (!account) {
@@ -410,13 +439,40 @@ async function requireDepositTarget(
         'Restore it, or pick another account.'
     )
   }
-  if (!account.glAccountCode) {
+  if (!account.glAccountId) {
     throw new UnprocessableEntityError(
       `${account.name ?? 'That bank account'} is not mapped to an account in the chart of ` +
         'accounts, so there is no account to debit. Map it under Banking first.'
     )
   }
-  return { ...account, glAccountCode: account.glAccountCode }
+  return { ...account, glAccountId: account.glAccountId }
+}
+
+/**
+ * `code name` for one `gl_account` id, for a memo or a refusal sentence.
+ *
+ * One id, never a list - this runs once per deposit write, not per row of a
+ * list. Falls back to the raw id rather than throwing: the id itself is what
+ * `resolveAccountLines` validates before anything is claimed, so a display
+ * miss here must never block the write.
+ */
+async function describeDebitAccount(
+  db: Database,
+  organizationId: string,
+  glAccountId: string
+): Promise<string> {
+  try {
+    const { accounts } = await loadChartAccountsById(
+      db,
+      organizationId,
+      [glAccountId],
+      'This organization has no chart of accounts provisioned'
+    )
+    const account = accounts.get(glAccountId)
+    return account ? `${account.code} ${account.name}`.trim() : glAccountId
+  } catch {
+    return glAccountId
+  }
 }
 
 /**
@@ -609,19 +665,22 @@ export async function updateBankDeposit(
           throw new BadRequestError('A deposit must name the bank account the money lands in')
         }
         if (deposit.glPostingId) {
+          const label = deposit.bankAccountGlAccountId
+            ? await describeDebitAccount(db, organizationId, deposit.bankAccountGlAccountId)
+            : 'its bank account'
           throw new ConflictError(
-            `Deposit ${deposit.number ?? depositId} has already posted to ` +
-              `${deposit.bankAccountCode ?? 'its bank account'}, and that account is the debit ` +
-              'leg of an immutable entry. Reverse the posting and regroup to bank it elsewhere.',
+            `Deposit ${deposit.number ?? depositId} has already posted to ${label}, and that ` +
+              'account is the debit leg of an immutable entry. Reverse the posting and regroup ' +
+              'to bank it elsewhere.',
             { glPostingId: deposit.glPostingId }
           )
         }
-        // Only reachable before the entry posts, so the code has nothing frozen
+        // Only reachable before the entry posts, so the id has nothing frozen
         // to disagree with yet and both halves move together. After it posts the
         // branch above refuses, which is what keeps them from ever diverging.
         const account = await requireDepositTarget(db, organizationId, bankAccountId.trim())
         values.bank_deposit_bank_account_record = account.recordId
-        values.bank_deposit_bank_account = account.glAccountCode
+        values.bank_deposit_bank_account = account.glAccountId
       }
       if (reference !== undefined) values.bank_deposit_reference = reference.trim() || null
 

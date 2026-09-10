@@ -117,7 +117,7 @@ interface ChartAccountEditorProps {
   accounts: ChartAccountRow[]
   /** Posting roles currently pointed at the selected account. */
   roles: AccountRole[]
-  /** Posted lines per account CODE, from `ledger.chartAccountUsage`. */
+  /** Posted lines per account id (task 15), from `ledger.chartAccountUsage`. */
   usage: Record<string, number>
   /** Phantom draft for this tab, owned by `accounts-settings-page.tsx`. */
   draft: ChartDraftHandle | null
@@ -143,21 +143,19 @@ interface ChartAccountEditorProps {
 }
 
 /**
- * ⚠️ Renumbering does NOT rewrite history, and this pane says so because a person
- * reading a code here is the person who would go and change it. A posting line
- * names an account by CODE with no foreign key, deliberately, so the ledger
- * outlives the chart - which means a renumber leaves every line already posted
- * holding the old code.
+ * A posting line stores the account's ID, not its code (task 15) - renumbering
+ * no longer detaches history from this account at all, so this pane can say
+ * exactly that rather than caution about it.
  *
- * Stated with a COUNT (`ledger.chartAccountUsage`): "142 posted lines carry 1310"
- * is a fact about this account, where a general caution is something to scroll
- * past.
+ * Stated with a COUNT (`ledger.chartAccountUsage`, keyed on `glAccountId`):
+ * "142 posted lines carry this account" is a fact about this account, where a
+ * general caution is something to scroll past.
  */
-function codeDescription(code: string, postedLines: number): string {
+function codeDescription(postedLines: number): string {
   if (postedLines === 0) {
-    return 'The account number. Unique across the chart, and yours to change. Nothing has posted to this code yet, so renumbering costs nothing today.'
+    return 'The account number. Unique across the chart, and yours to change. Nothing has posted to this account yet.'
   }
-  return `${postedLines} posted ${postedLines === 1 ? 'line carries' : 'lines carry'} ${code}. A posted line stores the account code with no foreign key, on purpose, so the ledger outlives the chart - renumbering leaves every one of them holding the old code.`
+  return `${postedLines} posted ${postedLines === 1 ? 'line carries' : 'lines carry'} this account. A posted line stores the account's id, not its code, so renumbering it - unlike deleting it - never affects the ledger.`
 }
 
 export function ChartAccountEditor({
@@ -220,7 +218,7 @@ export function ChartAccountEditor({
       key={account.id}
       account={account}
       roles={roles}
-      postedLines={usage[account.code] ?? 0}
+      postedLines={usage[account.id] ?? 0}
       onDraftChange={onDraftChange}
       onCreate={onCreate}
       onDraftCommitted={onDraftCommitted}
@@ -454,7 +452,7 @@ function ChartAccountForm({
             type={BaseType.STRING}
             showIcon
             isRequired
-            description={codeDescription(values.code, postedLines)}>
+            description={codeDescription(postedLines)}>
             <FieldInputAdapter
               fieldType={FieldType.TEXT}
               value={values.code}

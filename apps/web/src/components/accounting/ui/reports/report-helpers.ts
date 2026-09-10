@@ -166,6 +166,7 @@ export function toStatementTableRows(rows: readonly LibStatementRow[]): Statemen
     values: row.values,
     meta: row.meta
       ? {
+          glAccountId: row.meta.glAccountId,
           accountCode: row.meta.accountCode,
           recordId:
             row.meta.recordId && isRecordId(row.meta.recordId) ? row.meta.recordId : undefined,

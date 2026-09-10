@@ -249,7 +249,8 @@ export interface BankAccountRow {
   last4: string | null
   type: BankAccountType
   currency: string | null
-  glAccountCode: string | null
+  /** The `gl_account` instance id this account maps to (task 15 §4). No foreign key. */
+  glAccountId: string | null
   feedStartDate: string | null
   coverageFrom: string | null
   coverageGaps: CoverageGap[]

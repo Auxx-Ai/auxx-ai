@@ -27,9 +27,9 @@ function firstValue(value: unknown): string {
 interface BankRuleActionPageProps {
   action: BankRuleAction
   onActionChange: (value: BankRuleAction) => void
-  /** GL account CODE, never an id - what a posting line names an account by. */
-  glAccountCode: string
-  onGlAccountChange: (code: string) => void
+  /** The `gl_account` id a "code" action proposes (task 15 §4). Never a code. */
+  glAccountId: string
+  onGlAccountChange: (id: string) => void
   counterpartBankAccountId: string
   onCounterpartChange: (id: string) => void
   memo: string
@@ -48,7 +48,7 @@ interface BankRuleActionPageProps {
 export function BankRuleActionPage({
   action,
   onActionChange,
-  glAccountCode,
+  glAccountId,
   onGlAccountChange,
   counterpartBankAccountId,
   onCounterpartChange,
@@ -88,10 +88,11 @@ export function BankRuleActionPage({
           {action === 'code' && (
             <FieldPanelRow title='GL account' isRequired>
               <GlAccountPicker
-                value={glAccountCode || null}
+                value={glAccountId || null}
+                selectBy='id'
                 disabled={isPending}
                 placeholder='Select account…'
-                onChange={(code) => onGlAccountChange(code ?? '')}
+                onChange={(id) => onGlAccountChange(id ?? '')}
               />
             </FieldPanelRow>
           )}

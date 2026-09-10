@@ -22,7 +22,12 @@
 //   prefilled  part               the registry already says "STAMPED from the PO
 //                                 line at write, not hand-set"
 //   prefilled  description        not a match input
-//   prefilled  glAccount          `2160` GRNI for a PO-matched line (01 §5.2)
+//   BLANK      glAccount          GRNI for a PO-matched line (01 §5.2), by a
+//                                 `gl_account` id now (task 15 §4) - this
+//                                 pure function has no org to resolve the
+//                                 `grni` role's account against, so it leaves
+//                                 the field for a human to pick rather than
+//                                 write a value that can never resolve
 //   BLANK      quantityBilled     compared against `quantityReceived`
 //   BLANK      unitPrice          compared against `expectedUnitPrice`
 //   BLANK      lineTotal          derived from the two above
@@ -47,8 +52,14 @@
 import type { RecordId } from '@auxx/types/resource'
 import type { PurchaseOrderLineRow } from '../purchase-order/use-purchase-order-lines'
 
-/** GRNI. A PO-matched bill line relieves the accrual the receipt raised (01 §5.2). */
-export const GRNI_ACCOUNT_CODE = '2160'
+// GRNI. A PO-matched bill line relieves the accrual the receipt raised
+// (01 §5.2). `vendor_bill_line.glAccount` holds the `gl_account` instance id
+// now, not a code (task 15 §4), and this file is pure - no db, no org - so it
+// cannot resolve the `grni` role to an account here. A hardcoded code (this
+// used to be `GRNI_ACCOUNT_CODE = '2160'`) would now write a value that can
+// never resolve to any account, which is worse than the renumbering defect it
+// already carried. Left BLANK for a human to pick until a caller with org
+// access resolves the role and passes an id in.
 
 /**
  * The purchase order lines this bill can still be filled from.
@@ -119,7 +130,6 @@ export function billLineValuesFromPurchaseOrderLine(
   const values: Record<string, unknown> = {
     vendor_bill_line_vendor_bill: billRecordId,
     vendor_bill_line_purchase_order_line: line.lineRecordId,
-    vendor_bill_line_gl_account: GRNI_ACCOUNT_CODE,
     vendor_bill_line_sort_order: sortOrder,
   }
   if (line.partRecordId) values.vendor_bill_line_part = line.partRecordId

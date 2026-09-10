@@ -40,19 +40,31 @@ const h = vi.hoisted(() => ({
   }>,
   stampThrowsFor: null as string | null,
   systemUserId: 'usr_system',
+  isAccountingEnabled: vi.fn(async () => true),
+  readUnpostedShipmentsCalls: 0,
+  readSettingsCalls: 0,
+}))
+
+vi.mock('../../../postings/accounting-enabled', () => ({
+  isAccountingEnabled: h.isAccountingEnabled,
 }))
 
 vi.mock('../reads', async () => {
   const { ok, err } = await import('neverthrow')
   return {
-    readUnpostedShipments: async () => (h.shipmentsError ? err(h.shipmentsError) : ok(h.shipments)),
-    readFulfillmentPostingSettings: async () =>
-      ok({
+    readUnpostedShipments: async () => {
+      h.readUnpostedShipmentsCalls++
+      return h.shipmentsError ? err(h.shipmentsError) : ok(h.shipments)
+    },
+    readFulfillmentPostingSettings: async () => {
+      h.readSettingsCalls++
+      return ok({
         cutoffPeriod: (h.settings['accounting.cutoffPeriod'] as string | null) ?? null,
         lockedThroughMonth: null,
         timeZone: (h.settings['accounting.bookTimeZone'] as string | null) ?? null,
         ledgerCurrency: 'USD',
-      }),
+      })
+    },
   }
 })
 
@@ -172,6 +184,25 @@ beforeEach(() => {
   h.postCalls = []
   h.stamps = []
   h.stampThrowsFor = null
+  h.isAccountingEnabled.mockResolvedValue(true)
+  h.readUnpostedShipmentsCalls = 0
+  h.readSettingsCalls = 0
+})
+
+// task 17 section 3: checked ONCE per org, before the settings read and the
+// shipment netting read - this run has no use for either when the org has
+// never turned accounting on.
+describe('accounting not enabled', () => {
+  it('reads nothing, builds nothing, posts nothing, and returns an empty summary', async () => {
+    h.isAccountingEnabled.mockResolvedValue(false)
+
+    const summary = await runFulfillmentPosting(stubDb(), REQUEST)
+
+    expect(summary).toEqual({ posted: [], skipped: [], failed: [], exclusions: [] })
+    expect(h.readSettingsCalls).toBe(0)
+    expect(h.readUnpostedShipmentsCalls).toBe(0)
+    expect(h.postCalls).toEqual([])
+  })
 })
 
 describe('the refusals', () => {

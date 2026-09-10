@@ -48,7 +48,9 @@ interface CodePanelProps {
 export function CodePanel({ line, currencyCode, onDone }: CodePanelProps) {
   const utils = api.useUtils()
   const { accounts } = useChartAccounts()
-  const [code, setCode] = useState<string | null>(line.glAccountCode ?? line.suggestedGlAccount)
+  const [accountId, setAccountId] = useState<string | null>(
+    line.glAccountId ?? line.suggestedGlAccountId
+  )
   const [memo, setMemo] = useState('')
   const [createRule, setCreateRule] = useState(false)
   const [blockers, setBlockers] = useState<LedgerBlocker[]>([])
@@ -90,23 +92,23 @@ export function CodePanel({ line, currencyCode, onDone }: CodePanelProps) {
   })
 
   const preview = useMemo<ResolvedPostingLine[]>(() => {
-    if (!code || !line.bankAccountCode || line.amountMinor === 0) return []
-    const find = (accountCode: string) => accounts.find((account) => account.code === accountCode)
+    if (!accountId || !line.bankAccountGlAccountId || line.amountMinor === 0) return []
+    const find = (id: string) => accounts.find((account) => account.id === id)
     const amount = Math.abs(line.amountMinor)
     const outbound = line.amountMinor < 0
-    const debitCode = outbound ? code : line.bankAccountCode
-    const creditCode = outbound ? line.bankAccountCode : code
+    const debitId = outbound ? accountId : line.bankAccountGlAccountId
+    const creditId = outbound ? line.bankAccountGlAccountId : accountId
     // A browser-composed preview, not a server resolution - see the file
     // header. Both accounts come from the same chart the picker offered, so
     // a miss means the chart is still loading; render nothing rather than a
     // line whose identity is a guess.
-    const debit = find(debitCode)
-    const credit = find(creditCode)
+    const debit = find(debitId)
+    const credit = find(creditId)
     if (!debit || !credit) return []
     return [
       {
         glAccountId: debit.id,
-        accountCode: debitCode,
+        accountCode: debit.code,
         accountName: debit.name,
         direction: 'debit',
         amount,
@@ -117,7 +119,7 @@ export function CodePanel({ line, currencyCode, onDone }: CodePanelProps) {
       },
       {
         glAccountId: credit.id,
-        accountCode: creditCode,
+        accountCode: credit.code,
         accountName: credit.name,
         direction: 'credit',
         amount,
@@ -127,9 +129,20 @@ export function CodePanel({ line, currencyCode, onDone }: CodePanelProps) {
         sortOrder: 1,
       },
     ]
-  }, [accounts, code, line.amountMinor, line.bankAccountCode, line.description, line.id, memo])
+  }, [
+    accounts,
+    accountId,
+    line.amountMinor,
+    line.bankAccountGlAccountId,
+    line.description,
+    line.id,
+    memo,
+  ])
 
-  const unmapped = !line.bankAccountCode
+  const unmapped = !line.bankAccountGlAccountId
+  const suggestedAccount = line.suggestedGlAccountId
+    ? accounts.find((account) => account.id === line.suggestedGlAccountId)
+    : null
 
   return (
     <div className='flex flex-col gap-4'>
@@ -144,14 +157,19 @@ export function CodePanel({ line, currencyCode, onDone }: CodePanelProps) {
             'The account this money belongs in. The bank side of the entry comes from the account mapping.'
           }>
           <div className='flex flex-col gap-1.5'>
-            <GlAccountPicker value={code} onChange={setCode} placeholder='Choose an account…' />
-            {line.suggestedGlAccount && line.suggestedGlAccount !== code && (
+            <GlAccountPicker
+              value={accountId}
+              selectBy='id'
+              onChange={setAccountId}
+              placeholder='Choose an account…'
+            />
+            {line.suggestedGlAccountId && line.suggestedGlAccountId !== accountId && (
               <button
                 type='button'
                 className='flex w-fit items-center gap-1.5 text-muted-foreground text-xs hover:text-foreground'
-                onClick={() => setCode(line.suggestedGlAccount)}>
+                onClick={() => setAccountId(line.suggestedGlAccountId)}>
                 <Lightbulb className='size-3' />
-                Use the suggestion, {line.suggestedGlAccount}
+                Use the suggestion{suggestedAccount ? `, ${suggestedAccount.code}` : ''}
               </button>
             )}
             {canCreateRule && (
@@ -193,12 +211,12 @@ export function CodePanel({ line, currencyCode, onDone }: CodePanelProps) {
       <EntryBlockers blockers={blockers} />
 
       <Button
-        disabled={!code || unmapped || codeTransaction.isPending}
+        disabled={!accountId || unmapped || codeTransaction.isPending}
         loading={codeTransaction.isPending}
         onClick={() =>
           codeTransaction.mutate({
             id: line.id,
-            glAccountCode: code ?? '',
+            glAccountId: accountId ?? '',
             memo: memo.trim() || undefined,
           })
         }>

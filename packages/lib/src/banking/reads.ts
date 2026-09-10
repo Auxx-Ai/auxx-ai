@@ -702,7 +702,7 @@ async function hydrateBankAccounts(
       last4: read(row.id, 'bank_account_last4')?.valueText ?? null,
       type: resolveBankAccountType(read(row.id, 'bank_account_type')?.optionId),
       currency: read(row.id, 'bank_account_currency')?.valueText ?? null,
-      glAccountCode: read(row.id, 'bank_account_gl_account')?.valueText ?? null,
+      glAccountId: read(row.id, 'bank_account_gl_account')?.valueText ?? null,
       feedStartDate: feedStartDate ? toDateKey(feedStartDate) : null,
       coverageFrom: coverageFrom ? toDateKey(coverageFrom) : null,
       coverageGaps: normalizeCoverageGaps(read(row.id, 'bank_account_coverage_gaps')?.valueJson),

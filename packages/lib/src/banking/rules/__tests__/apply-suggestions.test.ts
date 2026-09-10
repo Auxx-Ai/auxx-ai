@@ -65,7 +65,7 @@ beforeEach(() => {
     id: 'rule_1',
     name: 'Wire fees',
     action: 'code',
-    glAccountCode: '6100',
+    glAccountId: '6100',
     autoApply: true,
     memo: null,
     counterpartBankAccountId: null,

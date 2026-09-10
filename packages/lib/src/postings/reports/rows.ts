@@ -35,7 +35,14 @@ export interface StatementRow {
   kind: 'section' | 'line' | 'subtotal' | 'total' | 'computed'
   /** Minor units, one per column. `null` renders `EMPTY_CELL`. */
   values: Array<number | null>
-  meta?: { accountCode?: string; recordId?: string; badge?: string; note?: string }
+  meta?: {
+    /** The `gl_account` `EntityInstance` id (task 15) - the drill-down key. `accountCode` is display only. */
+    glAccountId?: string
+    accountCode?: string
+    recordId?: string
+    badge?: string
+    note?: string
+  }
   /** Aging's drill-down; empty for the three financial statements. */
   children?: StatementRow[]
 }

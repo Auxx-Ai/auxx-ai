@@ -99,6 +99,7 @@ import { migration139TaxLineOrderWritable } from './migrations/139-tax-line-orde
 import { migration140IntegrationsView } from './migrations/140-integrations-view'
 import { migration141BuildBatchRun } from './migrations/141-build-batch-run'
 import { migration142WipeSeededCharts } from './migrations/142-wipe-seeded-charts'
+import { migration143GlPointersHoldIds } from './migrations/143-gl-pointers-hold-ids'
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
@@ -312,6 +313,12 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   // reads whatever `gl_account` / `journal_entry` rows exist regardless of
   // which migration wrote them.
   migration142WipeSeededCharts,
+  // The six registry GL pointers hold the gl_account instance id instead of a
+  // code (plans/accounting/tasks/15-the-account-id-is-the-identity.md §4).
+  // No ordering constraint against 142: it reads whatever gl_account rows
+  // exist today, and 142 having just wiped them all is exactly the case its
+  // own docblock plans for (every stored value nulls out).
+  migration143GlPointersHoldIds,
 ]
 
 /**

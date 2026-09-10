@@ -16,8 +16,10 @@ import { readTrialBalance } from '../trial-balance'
 
 const ORG = 'org_1'
 
+/** `glAccountId` defaults to `id_<accountCode>`. */
 function row(overrides: Partial<TrialBalanceRow> & { accountCode: string }): TrialBalanceRow {
   return {
+    glAccountId: `id_${overrides.accountCode}`,
     accountName: '',
     accountType: 'revenue',
     debitMinor: 0,

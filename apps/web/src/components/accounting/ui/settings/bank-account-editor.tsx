@@ -110,7 +110,8 @@ export interface BankAccountPatch {
   last4?: string | null
   type?: 'depository' | 'credit'
   currency?: string | null
-  glAccountCode?: string | null
+  /** The `gl_account` instance id this account maps to (task 15 §4). Never a code. */
+  glAccountId?: string | null
   feedStartDate?: string | null
 }
 
@@ -366,10 +367,11 @@ function BankAccountForm({
               : 'Where this account’s money lives in your chart. Every reconciliation and the cash figure on your balance sheet read this.'
           }>
           <GlAccountPicker
-            value={account.glAccountCode}
+            value={account.glAccountId}
+            selectBy='id'
             filterTypes={glFilterTypes}
             placeholder='Map to an account…'
-            onChange={(code) => onPatch({ glAccountCode: code })}
+            onChange={(id) => onPatch({ glAccountId: id })}
           />
         </FieldPanelRow>
 

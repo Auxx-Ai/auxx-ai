@@ -23,6 +23,9 @@ const logger = createScopedLogger('postings:reports:balance-sheet')
 
 /** One balance-sheet account line - a `TrialBalanceRow` narrowed to the three balance-sheet types. */
 export interface BalanceSheetRow {
+  /** The `gl_account` `EntityInstance` id this row groups on. The IDENTITY (task 15). */
+  glAccountId: string
+  /** The account's CURRENT code - a snapshot only when `inChart` is `false`. See `TrialBalanceRow`. */
   accountCode: string
   accountName: string
   accountType: 'asset' | 'liability' | 'equity'
@@ -77,6 +80,7 @@ function toBalanceSheetRow(row: TrialBalanceRow): BalanceSheetRow {
   // Only ever called on a row whose accountType is already known to be one of
   // the three balance-sheet types - see the filter above every call site.
   return {
+    glAccountId: row.glAccountId,
     accountCode: row.accountCode,
     accountName: row.accountName,
     accountType: row.accountType as BalanceSheetRow['accountType'],
@@ -172,11 +176,17 @@ async function computeSnapshot(
   if (priorYearsResult.isErr()) return err(priorYearsResult.error)
   if (currentFyResult.isErr()) return err(currentFyResult.error)
 
-  const retainedEarningsCode =
-    retainedEarningsAccounts.get(ACCOUNT_ROLES.EQUITY_RETAINED_EARNINGS)?.code ?? null
+  const retainedEarningsAccount = retainedEarningsAccounts.get(
+    ACCOUNT_ROLES.EQUITY_RETAINED_EARNINGS
+  )
+  const retainedEarningsGlAccountId = retainedEarningsAccount?.glAccountId ?? null
+  const retainedEarningsCode = retainedEarningsAccount?.code ?? null
 
-  const priorPostedRow = retainedEarningsCode
-    ? priorYearsResult.value.rows.find((row) => row.accountCode === retainedEarningsCode)
+  // Matched by id, not by code (task 15): the role could have been repointed,
+  // or the account renumbered, between the two trial-balance reads this
+  // function makes over one call, and the id is the only fact both agree on.
+  const priorPostedRow = retainedEarningsGlAccountId
+    ? priorYearsResult.value.rows.find((row) => row.glAccountId === retainedEarningsGlAccountId)
     : undefined
   const postedRetainedEarningsBalance =
     priorPostedRow && priorPostedRow.balanceMinor !== 0 ? priorPostedRow.balanceMinor : null

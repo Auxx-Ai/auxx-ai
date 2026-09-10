@@ -47,7 +47,7 @@ const ruleFields = {
   direction: z.enum(BANK_RULE_DIRECTIONS).optional(),
   bankAccountId: z.string().nullish(),
   action: z.enum(BANK_RULE_ACTIONS),
-  glAccountCode: z.string().max(64).nullish(),
+  glAccountId: z.string().max(64).nullish(),
   counterpartBankAccountId: z.string().nullish(),
   contactId: z.string().nullish(),
   memo: z.string().max(4000).nullish(),
@@ -99,7 +99,7 @@ export const bankingRulesRouter = createTRPCRouter({
         direction: ruleFields.direction,
         bankAccountId: ruleFields.bankAccountId,
         action: ruleFields.action.optional(),
-        glAccountCode: ruleFields.glAccountCode,
+        glAccountId: ruleFields.glAccountId,
         counterpartBankAccountId: ruleFields.counterpartBankAccountId,
         contactId: ruleFields.contactId,
         memo: ruleFields.memo,
@@ -134,7 +134,7 @@ export const bankingRulesRouter = createTRPCRouter({
     .input(
       z.object({
         transactionId: z.string().min(1),
-        glAccountCode: z.string().min(1).max(64),
+        glAccountId: z.string().min(1).max(64),
         name: z.string().max(200).optional(),
       })
     )

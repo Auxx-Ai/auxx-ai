@@ -101,7 +101,8 @@ export interface CreateBankAccountInput {
   last4?: string | null
   type?: BankAccountType
   currency?: string | null
-  glAccountCode?: string | null
+  /** The `gl_account` instance id this account maps to (task 15 §4). Never a code. */
+  glAccountId?: string | null
   feedStartDate?: string | null
 }
 
@@ -115,7 +116,8 @@ export interface UpdateBankAccountInput {
   last4?: string | null
   type?: BankAccountType
   currency?: string | null
-  glAccountCode?: string | null
+  /** The `gl_account` instance id this account maps to (task 15 §4). Never a code. */
+  glAccountId?: string | null
   feedStartDate?: string | null
   status?: BankAccountStatus
 }
@@ -162,7 +164,7 @@ export async function createBankAccount(
         bank_account_last4: last4 ?? undefined,
         bank_account_type: type,
         bank_account_currency: input.currency?.trim().toUpperCase() || 'USD',
-        bank_account_gl_account: input.glAccountCode?.trim() || undefined,
+        bank_account_gl_account: input.glAccountId?.trim() || undefined,
         bank_account_feed_start_date: input.feedStartDate || undefined,
         bank_account_status: 'manual',
       })
@@ -198,14 +200,14 @@ export async function createBankAccount(
  * account they are the only source there is, so they are editable.
  *
  * `glAccount`, `feedStartDate` and `status` are always auxx's and always
- * editable. Mapping an account to a code is the whole point of the entity, and
- * a connected account is exactly the one that most needs mapping.
+ * editable. Mapping an account to a `gl_account` is the whole point of the
+ * entity, and a connected account is exactly the one that most needs mapping.
  *
- * ⚠️ `glAccountCode` is NOT validated against the org's chart here. The router
- * hands down a code the `GlAccountPicker` sourced from `ledger.chartAccounts`,
- * and `resolveRoles` refuses an unknown or wrongly-typed code at POST time with
- * a sentence naming the account - which is the message worth surfacing. A second
- * authority here would drift from it.
+ * ⚠️ `glAccountId` is NOT validated against the org's chart here. The router
+ * hands down an id the `GlAccountPicker` sourced from `ledger.chartAccounts`,
+ * and `resolveAccountLines`/the review-queue readers refuse an unknown, archived
+ * or wrongly-typed id at read time with a sentence naming the account - which is
+ * the message worth surfacing. A second authority here would drift from it.
  */
 export async function updateBankAccount(
   db: Database,
@@ -253,8 +255,8 @@ export async function updateBankAccount(
         patch.bank_account_currency = input.currency?.trim().toUpperCase() || null
       }
 
-      if (input.glAccountCode !== undefined) {
-        patch.bank_account_gl_account = input.glAccountCode?.trim() || null
+      if (input.glAccountId !== undefined) {
+        patch.bank_account_gl_account = input.glAccountId?.trim() || null
       }
       if (input.feedStartDate !== undefined) {
         patch.bank_account_feed_start_date = input.feedStartDate || null
