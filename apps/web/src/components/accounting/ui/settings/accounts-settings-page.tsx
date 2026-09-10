@@ -41,11 +41,12 @@ import { ResponsiveTabs } from '@auxx/ui/components/responsive-tabs'
 import { toastError } from '@auxx/ui/components/toast'
 import { generateId } from '@auxx/utils'
 import { Landmark, Lock, Waypoints } from 'lucide-react'
-import { useQueryState } from 'nuqs'
+import { parseAsBoolean, useQueryState } from 'nuqs'
 import { useCallback, useMemo, useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
 import { MasterDetailSplit } from '~/components/global/master-detail-split'
 import SettingsPage from '~/components/global/settings-page'
+import { ListSelectionProvider } from '~/components/list-selection'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useAccess, useRequireCapability } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
@@ -58,6 +59,7 @@ import {
   type ChartAccountPatch,
   type NewChartAccount,
 } from './chart-account-editor'
+import { ChartAccountsBulkBar } from './chart-accounts-bulk-bar'
 import { ChartList } from './chart-list'
 import { ChartPacksDialog } from './chart-packs-dialog'
 import { RoleMapEditor } from './role-map-editor'
@@ -96,7 +98,10 @@ export function AccountingAccountsSettingsPage() {
   const activeTab: AccountsTab = tab === 'chart' ? 'chart' : 'roles'
 
   const roleMap = api.ledger.roleMap.useQuery()
-  const chart = api.ledger.chartAccounts.useQuery()
+  // 🛑 Always asks for archived rows, and the LIST decides what to show. Making
+  // the query follow the toggle would refetch the whole chart on every flip and
+  // leave the count with nothing to count while it was off.
+  const chart = api.ledger.chartAccounts.useQuery({ includeArchived: true })
   // Chart tab only: how many posted lines carry each CODE, for the renumber
   // note. A separate read rather than a field on `ChartAccountRow`, which is
   // shared with the resolver's path and decoded by every reader of this chart.
@@ -122,6 +127,12 @@ export function AccountingAccountsSettingsPage() {
   // An untouched draft is dropped on selecting another row, on adding another
   // draft, or on switching tabs - never on a mere re-render.
   const [chartDraft, setChartDraft] = useState<ChartDraftHandle | null>(null)
+  // 🛑 In the URL, like every other selection on this page. "Where did 1310 go"
+  // is a question somebody sends a link about.
+  const [showArchived, setShowArchived] = useQueryState(
+    'archived',
+    parseAsBoolean.withDefault(false)
+  )
   const [confirm, ConfirmDialog] = useConfirm()
   // The Roles tab's "Add accounts" action (brief 16 §3.2) - provisions a named
   // chart pack without going back through the wizard.
@@ -320,6 +331,49 @@ export function AccountingAccountsSettingsPage() {
     [accounts, confirm, removeAccount, invalidateChart, selectedAccountId, setSelectedAccountId]
   )
 
+  /**
+   * Remove, from the LIST row rather than from the editor.
+   *
+   * 🛑 Toasts the refusal, where the editor's call surfaces it on the form.
+   * Same rule `handleAcceptSuggestion` follows: a message goes where the reader
+   * can act on it, and a list row has no field to hold a sentence. The refusal
+   * that matters here - a role still posts to this account - names the role, so
+   * it is surfaced verbatim rather than collapsed into "Could not remove".
+   *
+   * The confirm, the write, the invalidate and the deselect are all
+   * `handleRemoveAccount`'s already; this only decides where the failure lands.
+   */
+  const handleRemoveAccountFromRow = useCallback(
+    async (id: string) => {
+      try {
+        await handleRemoveAccount(id)
+      } catch (error) {
+        toastError({
+          title: 'Error removing the account',
+          description: error instanceof Error ? error.message : 'Could not remove the account.',
+        })
+      }
+    },
+    [handleRemoveAccount]
+  )
+
+  const restoreAccount = api.ledger.chartAccountRestore.useMutation()
+
+  const handleRestoreAccount = useCallback(
+    async (id: string) => {
+      try {
+        await restoreAccount.mutateAsync({ id })
+        await invalidateChart()
+      } catch (error) {
+        toastError({
+          title: 'Error restoring the account',
+          description: error instanceof Error ? error.message : 'Could not restore the account.',
+        })
+      }
+    },
+    [restoreAccount, invalidateChart]
+  )
+
   // ── The account map writes ──────────────────────────────────────────────
   //
   // 🛑 Both are on `ledgerPost`, the same rung as the chart's own writes and for
@@ -506,23 +560,38 @@ export function AccountingAccountsSettingsPage() {
             canControl={canControl}
           />
         ) : (
-          <ChartList
-            accounts={accounts}
-            isLoading={chart.isPending}
-            selectedId={selectedAccountId}
-            onAcceptSuggestion={(glAccountId, providerAccountId) => {
-              void handleAcceptSuggestion(glAccountId, providerAccountId)
-            }}
-            acceptingAccountId={acceptingAccountId}
-            onSelect={handleSelectAccount}
-            rolesByAccountId={rolesByAccountId}
-            draft={chartDraft}
-            onAddDraft={handleAddChartDraft}
-            map={mapView}
-            onConfirmSuggested={() => confirmSuggested.mutate()}
-            confirming={confirmSuggested.isPending}
-            canControl={canControl}
-          />
+          // 🛑 The provider wraps ONLY the chart list, not the page: the store
+          // is per-list by design, and a selection that survived a tab switch
+          // would let the Roles tab's bulk bar act on chart rows nobody can see.
+          <ListSelectionProvider>
+            <ChartAccountsBulkBar />
+            <ChartList
+              accounts={accounts}
+              isLoading={chart.isPending}
+              selectedId={selectedAccountId}
+              onAddFromCatalogue={() => setAddAccountsOpen(true)}
+              onRemoveAccount={(id) => {
+                void handleRemoveAccountFromRow(id)
+              }}
+              onRestoreAccount={(id) => {
+                void handleRestoreAccount(id)
+              }}
+              showArchived={showArchived}
+              onShowArchivedChange={setShowArchived}
+              onAcceptSuggestion={(glAccountId, providerAccountId) => {
+                void handleAcceptSuggestion(glAccountId, providerAccountId)
+              }}
+              acceptingAccountId={acceptingAccountId}
+              onSelect={handleSelectAccount}
+              rolesByAccountId={rolesByAccountId}
+              draft={chartDraft}
+              onAddDraft={handleAddChartDraft}
+              map={mapView}
+              onConfirmSuggested={() => confirmSuggested.mutate()}
+              confirming={confirmSuggested.isPending}
+              canControl={canControl}
+            />
+          </ListSelectionProvider>
         )}
       </MasterDetailSplit>
 
@@ -530,7 +599,7 @@ export function AccountingAccountsSettingsPage() {
       <ChartPacksDialog
         open={addAccountsOpen}
         onOpenChange={setAddAccountsOpen}
-        roleMap={roleRows}
+        accounts={accounts}
       />
     </SettingsPage>
   )

@@ -202,9 +202,23 @@ export async function listRoleMap(
  * Ordered by code then name (task 15 §5's 15.2 default): a coded account
  * before an uncoded one, then alphabetically within each.
  */
+/** Options for {@link listChartAccounts}. */
+export interface ListChartAccountsOptions {
+  /**
+   * Include accounts that have been removed (archived). Default false.
+   *
+   * 🛑 The settings list is the ONLY caller that may pass true. An archived
+   * account is removed as far as posting is concerned, and handing one to the
+   * resolver, the role picker or a preview would put money into an account
+   * somebody deliberately took out of the chart.
+   */
+  includeArchived?: boolean
+}
+
 export async function listChartAccounts(
   db: Database,
-  organizationId: string
+  organizationId: string,
+  options: ListChartAccountsOptions = {}
 ): Promise<Result<ChartAccountRow[], Error>> {
   try {
     const fields = await loadChartAccountFields(organizationId, NOT_PROVISIONED)
@@ -220,14 +234,18 @@ export async function listChartAccounts(
       )
     }
 
+    // 🛑 The archived filter is in the QUERY and stays there by default. Every
+    // reader but the settings list depends on it - `resolveRoles` picking a
+    // removed account would post real money into it - so `includeArchived` widens
+    // this one call rather than the readers filtering afterwards.
     const instances = await db
-      .select({ id: schema.EntityInstance.id })
+      .select({ id: schema.EntityInstance.id, archivedAt: schema.EntityInstance.archivedAt })
       .from(schema.EntityInstance)
       .where(
         and(
           eq(schema.EntityInstance.organizationId, organizationId),
           eq(schema.EntityInstance.entityDefinitionId, glAccountDefId),
-          isNull(schema.EntityInstance.archivedAt)
+          ...(options.includeArchived ? [] : [isNull(schema.EntityInstance.archivedAt)])
         )
       )
 
@@ -240,6 +258,16 @@ export async function listChartAccounts(
         fields
       )
     )
+
+    // `archivedAt` lives on the instance, not among the account's attributes, so
+    // the decoder cannot know it. Stamped here, and only when it can be true.
+    if (options.includeArchived) {
+      for (const row of instances) {
+        if (!row.archivedAt) continue
+        const account = accounts.get(row.id)
+        if (account) account.isArchived = true
+      }
+    }
 
     return ok([...accounts.values()].sort(compareAccountsByCodeThenName))
   } catch (error) {

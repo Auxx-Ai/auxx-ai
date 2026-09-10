@@ -333,6 +333,44 @@ export async function removeChartAccount(
   }
 }
 
+/**
+ * Put a removed account back into the chart.
+ *
+ * The counterpart to {@link removeChartAccount}, and the reason that one
+ * archives rather than deletes: the row, its code, its provider identity and its
+ * posted history are all still there, so coming back is a flag flip rather than
+ * a re-creation.
+ *
+ * 🛑 No role is reassigned. `removeChartAccount` refuses while a live role still
+ * points here, so a restored account arrives role-less by construction, and
+ * quietly re-pointing a role at it would decide where money lands on somebody's
+ * behalf.
+ *
+ * ⚠️ The code uniqueness gate excludes archived rows, so an org that created a
+ * NEW `1310` after removing the old one now holds two - and this restore is what
+ * would surface that. It is allowed on purpose: refusing here would leave the
+ * account unreachable with no way to rename either row. The chart list shows
+ * both, and renaming one is a click.
+ */
+export async function restoreChartAccount(
+  db: Database,
+  options: RemoveChartAccountOptions
+): Promise<Result<{ id: string }, Error>> {
+  const { organizationId, accountId, actorUserId } = options
+
+  try {
+    const { defId } = await loadChartTarget(organizationId)
+    const handler = crudHandler(db, organizationId, actorUserId)
+    await handler.restore(toRecordId(defId, accountId))
+
+    return ok({ id: accountId })
+  } catch (error) {
+    if (error instanceof AuxxError) return err(error)
+    logger.error('Failed to restore a chart account', { error, organizationId, accountId })
+    return err(new AuxxError('Internal error'))
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Internals
 // ─────────────────────────────────────────────────────────────────────────────

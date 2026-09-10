@@ -80,6 +80,19 @@ import { SystemUserService } from '../users/system-user-service'
 
 const logger = createScopedLogger('seed:gl-account-chart')
 
+/**
+ * What one pass over one org did, for a caller that named ACCOUNTS rather than
+ * packs. {@link ChartSeedResult} is this plus the packs that were walked.
+ */
+export interface ChartAccountSeedResult {
+  /** Accounts inserted by this pass. */
+  created: number
+  /** Codes the org already held, left exactly as they were. */
+  skipped: number
+  /** `GlRoleAssignment` rows inserted by this pass. Zero on a settled org. */
+  rolesAssigned: number
+}
+
 /** What one pass over one org did. */
 export interface ChartSeedResult {
   /** Accounts inserted by this pass. */
@@ -146,8 +159,50 @@ export async function seedChartPacks(
   packs: readonly ChartPackKey[]
 ): Promise<ChartSeedResult> {
   const walked = walkPacks(packs)
-  const empty: ChartSeedResult = { created: 0, skipped: 0, rolesAssigned: 0, packs: walked }
-  if (!glAccountDefId) return empty
+  const accounts: readonly DefaultChartAccount[] = walked.flatMap(
+    (key) => CHART_PACKS[key].accounts
+  )
+  const result = await seedChartAccounts(db, organizationId, glAccountDefId, accounts, {
+    packs: walked,
+  })
+  return { ...result, packs: walked }
+}
+
+/**
+ * Seed a named set of catalogue accounts, and their role assignments, into one
+ * org.
+ *
+ * The writer {@link seedChartPacks} is built on, exposed on its own for the
+ * catalogue picker, which selects ACCOUNTS rather than whole packs - "just give
+ * me Deferred Revenue" is not expressible as a pack, and provisioning the pack
+ * that carries it would land the other one too.
+ *
+ * 🛑 Every rule in this file's header is a property of THIS function, not of
+ * the pack walk above it: idempotent on `code` (rule 1), sequential (rule 2),
+ * never touches an account the org already has (rule 3), never repoints a
+ * mapped role (rule 4). A caller that hands over a subset gets all four
+ * unchanged, which is what makes a per-account picker safe to press twice.
+ *
+ * 🛑 It does NOT expand `requires`. That is a statement about PACKS, and a
+ * caller naming accounts one at a time has already decided what it wants. The
+ * picker resolves a checked pack to its accounts on the client and sends those.
+ *
+ * @param glAccountDefId the org's `gl_account` EntityDefinition, or undefined
+ * when it has none - a no-op rather than an error, the same tolerance every
+ * other step of 108 has for a def that is not there yet
+ * @param accounts the catalogue accounts to land, already resolved by the caller
+ * @param meta extra fields for the one log line this writes, so a pack walk can
+ * still say which packs it was
+ */
+export async function seedChartAccounts(
+  db: Database,
+  organizationId: string,
+  glAccountDefId: string | undefined,
+  accounts: readonly DefaultChartAccount[],
+  meta: Record<string, unknown> = {}
+): Promise<ChartAccountSeedResult> {
+  const empty: ChartAccountSeedResult = { created: 0, skipped: 0, rolesAssigned: 0 }
+  if (!glAccountDefId || accounts.length === 0) return empty
 
   // The `code` field has to exist before its values can be read or written. On
   // the very first pass `ensureCustomFields` has just created it; on an org
@@ -188,9 +243,6 @@ export async function seedChartPacks(
     if (row.code) byCode.set(row.code, row.entityId)
   }
 
-  const accounts: readonly DefaultChartAccount[] = walked.flatMap(
-    (key) => CHART_PACKS[key].accounts
-  )
   const missing = accounts.filter((account) => !byCode.has(account.code))
 
   let created = 0
@@ -227,16 +279,16 @@ export async function seedChartPacks(
   const rolesAssigned = await assignSeededRoles(db, organizationId, byCode, accounts)
 
   if (created > 0 || rolesAssigned > 0) {
-    logger.info('Seeded chart packs', {
+    logger.info('Seeded chart accounts', {
       organizationId,
-      packs: walked,
+      ...meta,
       created,
       skipped: accounts.length - created,
       rolesAssigned,
     })
   }
 
-  return { created, skipped: accounts.length - created, rolesAssigned, packs: walked }
+  return { created, skipped: accounts.length - created, rolesAssigned }
 }
 
 /**

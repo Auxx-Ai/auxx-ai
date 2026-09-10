@@ -747,6 +747,19 @@ export interface ChartAccountRow {
    */
   subtype: GlAccountSubtypeValue | null
   isActive: boolean
+  /**
+   * The account has been removed from the chart (archived - `removeChartAccount`
+   * never deletes). **Absent means not archived**, the same reading `isActive`
+   * gives an absent value, and the same reason: nearly every row is neither.
+   *
+   * 🛑 Only ever set when the caller ASKED for archived rows. Every reader but
+   * the settings list excludes them IN THE QUERY, which is what makes archiving
+   * removal as far as the resolver, the role picker and the close are concerned
+   * (`removeChartAccount`'s reason 1). This field exists so the one screen that
+   * may show them can say which is which - never so a reader can start filtering
+   * archived rows out in memory.
+   */
+  isArchived?: boolean
 }
 
 /**

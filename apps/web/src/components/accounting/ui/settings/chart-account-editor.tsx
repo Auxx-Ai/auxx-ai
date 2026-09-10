@@ -58,17 +58,15 @@ import {
   type ChartAccountRow,
   type GlAccountSubtypeValue,
   type GlAccountTypeValue,
-  isMappableTo,
 } from '@auxx/lib/postings/client'
 import { Button } from '@auxx/ui/components/button'
-import { Combobox } from '@auxx/ui/components/combobox'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { EmptySection } from '@auxx/ui/components/section'
 import { Check, Landmark, Trash2 } from 'lucide-react'
 import { useCallback, useRef, useState } from 'react'
+import { ProviderAccountPicker } from '~/components/accounting/ui/provider-account-picker'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
-import { PickerTrigger } from '~/components/ui/picker-trigger'
 import { BaseType } from '~/components/workflow/types'
 import { useDebouncedCallback } from '~/hooks/use-debounced-value'
 import {
@@ -741,24 +739,6 @@ function ProviderAccountField({
     )
   }
 
-  // 🛑 Filtered by the LIVE `accountType` and `subtype`, not by
-  // `identity.account`'s saved values. Somebody who has just changed this
-  // account's type or subtype is picking for what it is NOW; offering
-  // candidates for what it used to be would hand them a mapping the server is
-  // about to refuse.
-  //
-  // ⚠️ Type compatibility is a FILTER, not a tiebreak. A candidate in the wrong
-  // statement section is never offered at any confidence: mapping a liability to
-  // a revenue account balances AND misstates the P&L, and the number somebody
-  // recognises gives them no way to tell. `isMappableTo` (task 13 §3) adds the
-  // same rule for subtype: a `bank` account is never offered a candidate whose
-  // provider `accountType` is not `Bank`, even one in the right section.
-  const options = accountType
-    ? map.providerAccounts
-        .filter((account) => isMappableTo({ accountType, subtype }, account))
-        .map((account) => ({ value: account.id, label: formatProviderAccount(account) }))
-    : []
-
   const suggestion = identity.suggestion
   const broken = isMappingBroken(identity)
 
@@ -790,34 +770,24 @@ function ProviderAccountField({
 
   return (
     <div className='flex min-w-0 flex-col gap-1.5'>
-      {/* 🛑 `PickerTrigger`, not the Combobox's own default button. Every other
-          picker in a `FieldPanelRow` is a transparent full-width trigger with the
-          chevron at the end - the Type row directly above this one included - and
-          an outline button here would read as the one control on the pane that
-          came from somewhere else.
+      {/* 🛑 `ProviderAccountPicker`, the sibling of the `GlAccountPicker` two
+          rows up this same pane. Both name an account; a plain `CommandItem`
+          list on one and a headed `CommandDetailItem` list on the other made one
+          screen read as two, and the flat list could not say WHY an account it
+          had silently dropped was missing.
 
           Its clear affordance IS the unmap: `onClear` writes `null`, which is
           what `setAccountIdentity` takes to mean "this pairing is off". A
           separate Unmap button would be a second control for one act. */}
-      <Combobox
-        placeholder='Select account'
-        emptyText='No compatible account'
-        value={identity.providerAccountId ?? undefined}
-        options={options}
+      <ProviderAccountPicker
+        value={identity.providerAccountId}
+        accounts={map.providerAccounts}
+        // 🛑 The LIVE local values, not `identity.account`'s saved ones - see
+        // the note on `options` below, which this replaced.
+        target={{ accountType, subtype }}
         disabled={pending}
-        onChangeValue={(value) => void onSet(value)}
-        trigger={
-          <PickerTrigger
-            asCombobox
-            disabled={pending}
-            className='w-full ps-0 pe-1'
-            hasValue={!!identity.providerAccountId}
-            placeholder='Select account'
-            showClear
-            onClear={() => void onSet(null)}>
-            <span className='truncate text-sm'>{selectedLabel}</span>
-          </PickerTrigger>
-        }
+        placeholder='Select account'
+        onChange={(next) => void onSet(next)}
       />
 
       {suggestion && (

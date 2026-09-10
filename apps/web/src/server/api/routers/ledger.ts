@@ -1,7 +1,7 @@
 // apps/web/src/server/api/routers/ledger.ts
 
 import { getCachedEntityDefId, getCachedInstalledApps, onCacheEvent } from '@auxx/lib/cache'
-import { UnprocessableEntityError } from '@auxx/lib/errors'
+import { BadRequestError, UnprocessableEntityError } from '@auxx/lib/errors'
 import { getPaymentAccount } from '@auxx/lib/money'
 import { PermissionKey } from '@auxx/lib/permissions'
 import {
@@ -12,6 +12,8 @@ import {
   confirmSuggestedIdentities,
   createChartAccount,
   createJournalEntry,
+  DEFAULT_CHART_OF_ACCOUNTS,
+  type DefaultChartAccount,
   discardJournalEntry,
   findDuplicateBankMovements,
   GL_ACCOUNT_SUBTYPES,
@@ -37,6 +39,7 @@ import {
   previewMonthEnd,
   removeChartAccount,
   resolvePeriodLock,
+  restoreChartAccount,
   retryExport,
   reverseEntry,
   reverseJournalEntry,
@@ -46,7 +49,7 @@ import {
   updateJournalEntry,
   verifyBooksBalance,
 } from '@auxx/lib/postings'
-import { seedChartPacks, seedDefaultPaymentGateways } from '@auxx/lib/seed'
+import { seedChartAccounts, seedChartPacks, seedDefaultPaymentGateways } from '@auxx/lib/seed'
 import { updateOrganizationSetting } from '@auxx/lib/settings'
 import { z } from 'zod'
 import { recordAuditFromCtx } from '~/server/api/audit-context'
@@ -544,11 +547,18 @@ export const ledgerRouter = createTRPCRouter({
     }),
 
   /** The organization's chart of accounts - every non-archived `gl_account`. */
-  chartAccounts: permissionProcedure(PermissionKey.ledgerView).query(async ({ ctx }) => {
-    const result = await listChartAccounts(ctx.db, ctx.session.organizationId)
-    if (result.isErr()) throw result.error
-    return result.value
-  }),
+  chartAccounts: permissionProcedure(PermissionKey.ledgerView)
+    .input(z.object({ includeArchived: z.boolean().optional() }).optional())
+    .query(async ({ ctx, input }) => {
+      // 🛑 Archived rows are opt-IN, and only the settings list opts in. Every
+      // other caller of this query feeds a picker or a preview, where a removed
+      // account is an account money must not land in.
+      const result = await listChartAccounts(ctx.db, ctx.session.organizationId, {
+        includeArchived: input?.includeArchived,
+      })
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
 
   /**
    * How many posted lines landed on each account, keyed on `glAccountId` (task 15).
@@ -705,6 +715,60 @@ export const ledgerRouter = createTRPCRouter({
     }),
 
   /**
+   * Adopt named accounts from the catalogue - the Chart tab's From catalogue
+   * picker (brief 16 §3.2), which selects ACCOUNTS where `provisionChart`
+   * selects packs.
+   *
+   * 🛑 A pack is not a fine enough unit for this door. "Add Deferred Revenue"
+   * is a reasonable thing to want, and `provisionChart(['prepayments'])` would
+   * land Customer Deposits alongside it - an account nobody asked for, on a
+   * screen whose whole job is showing what the chart contains.
+   *
+   * 🛑 Codes are validated against the catalogue and an unknown one is
+   * REFUSED, naming itself. The picker only ever sends codes it rendered, so an
+   * unknown code means the client and this deploy disagree about what the
+   * catalogue is; creating an account from a code with no catalogue row behind
+   * it would invent a name, a type and a role out of nothing.
+   *
+   * Same `ledgerControl` rung as `provisionChart`, for the same reason: an
+   * account carrying a role decides where real money lands. And safe to press
+   * twice for the same reason - `seedChartAccounts` keeps all four rules.
+   */
+  adoptChartAccounts: permissionProcedure(PermissionKey.ledgerControl)
+    .input(z.object({ codes: z.array(z.string().min(1)).min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+
+      const glAccountDefId = await getCachedEntityDefId(organizationId, 'gl_account')
+      if (!glAccountDefId) {
+        throw new UnprocessableEntityError(
+          'This organization has no gl_account definition, so there is nothing to seed a chart into. Run the entity migrations.',
+          { organizationId }
+        )
+      }
+
+      const byCode = new Map(DEFAULT_CHART_OF_ACCOUNTS.map((account) => [account.code, account]))
+      const unknown = input.codes.filter((code) => !byCode.has(code))
+      if (unknown.length > 0) {
+        throw new BadRequestError(
+          `${unknown.join(', ')} ${unknown.length === 1 ? 'is not an account' : 'are not accounts'} in the catalogue.`,
+          { organizationId, unknown }
+        )
+      }
+
+      // De-duplicated: a code sent twice would be filtered to one `missing` row
+      // anyway, but `skipped` is reported to the reader and double-counting it
+      // would say a code was already there when it was merely named twice.
+      const accounts = [...new Set(input.codes)].map(
+        (code) => byCode.get(code) as DefaultChartAccount
+      )
+
+      return seedChartAccounts(ctx.db, organizationId, glAccountDefId, accounts, {
+        source: 'catalogue',
+      })
+    }),
+
+  /**
    * Import the connected provider's chart of accounts as the org's own
    * (brief 16 §2). Creates only what the org lacks, sets each new account's
    * identity, assigns the unambiguous roles as `suggested`, and adds the
@@ -831,6 +895,23 @@ export const ledgerRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { organizationId, userId } = ctx.session
       const result = await removeChartAccount(ctx.db, {
+        organizationId,
+        accountId: input.id,
+        actorUserId: userId,
+      })
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /**
+   * Put a removed account back. Same `ledgerControl` rung as the removal - a
+   * restored account becomes postable again the moment a role names it.
+   */
+  chartAccountRestore: permissionProcedure(PermissionKey.ledgerControl)
+    .input(z.object({ id: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
+      const result = await restoreChartAccount(ctx.db, {
         organizationId,
         accountId: input.id,
         actorUserId: userId,
