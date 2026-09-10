@@ -70,6 +70,7 @@ import {
   ACCOUNT_TYPE_OPTIONS,
   type AccountLinkState,
   accountLinkState,
+  accountTypeIcon,
   type ChartDraftHandle,
   type ChartMapView,
   formatProviderAccount,
@@ -347,6 +348,9 @@ export function ChartList({
           {phantom && (
             <TreeRow
               key={phantom.draftId}
+              // Not `accountTypeIcon`: `ChartDraftHandle` carries the code and
+              // the name being typed but no type, so there is nothing to key an
+              // icon on until the row is saved and re-renders as a real one.
               icon={<Landmark className='size-4 text-muted-foreground' />}
               title={
                 <AccountLabel
@@ -379,6 +383,7 @@ export function ChartList({
               `role-map-list.tsx` gives: both levels are then the same primitive
               and the connector draws the nesting. */}
           {ACCOUNT_TYPE_OPTIONS.map(({ value: type, label }) => {
+            const GroupIcon = accountTypeIcon(type)
             const group = filtered.filter((account) => account.accountType === type)
             // An empty group headed "no accounts here" is noise. A chart that
             // has no equity accounts should read as four groups, not five.
@@ -398,7 +403,11 @@ export function ChartList({
                 // found while holding some.
                 isOpen={!!search || !collapsed.includes(type)}
                 onToggleOpen={() => toggleGroup(type)}
-                icon={<Landmark className='size-4 text-muted-foreground' />}
+                // 🛑 The group's OWN glyph, from `GL_ACCOUNT_TYPE_META`, not a
+                // blanket `Landmark`. Five groups wearing one icon told the
+                // reader nothing the heading did not already say, and it did not
+                // match the roles tab, which drew its own three-for-five set.
+                icon={<GroupIcon className='size-4 text-muted-foreground' />}
                 title={<span className='truncate font-medium text-sm'>{label}</span>}
                 secondary={
                   <span className='text-muted-foreground text-xs tabular-nums'>
@@ -521,10 +530,11 @@ function ChartAccountListRow({
   // row action derived from a round trip that has not answered
   // yet is an offer the server may be about to refuse.
   const suggestion = map.connected && !map.isPending ? identity?.suggestion : undefined
+  const AccountIcon = accountTypeIcon(account.accountType)
   return (
     <TreeRow
       depth={1}
-      icon={<Landmark className='size-4 text-muted-foreground' />}
+      icon={<AccountIcon className='size-4 text-muted-foreground' />}
       title={<AccountLabel account={account} className='text-sm' />}
       // 🛑 Selection is always AVAILABLE and only PINNED in bulk mode: the
       // checkbox cross-fades with the row's icon on hover, so an ordinary reader

@@ -35,7 +35,12 @@ import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel
 import { BaseType } from '~/components/workflow/types'
 import { AccountLabel } from '../account-label'
 import { accountMatchesSearch } from '../account-label-format'
-import { accountTypeLabel, DEFAULT_UNUSED_ROLES, formatAccount } from './accounts-types'
+import {
+  accountTypeColor,
+  accountTypeLabel,
+  DEFAULT_UNUSED_ROLES,
+  formatAccount,
+} from './accounts-types'
 
 interface RoleMapEditorProps {
   role: AccountRole | null
@@ -102,7 +107,11 @@ export function RoleMapEditor({
           showIcon
           description='Declared per role and revalidated on every close, so only accounts of this type can be chosen.'>
           <div className='flex min-h-8 items-center'>
-            <Badge variant='outline' size='xs'>
+            {/* 🛑 The classification's own colour, not `outline`. This badge
+                names the same five words the chart list and the roles tab
+                colour from `GL_ACCOUNT_TYPE_META`, and rendering it grey here
+                made "Equity" purple in one pane and colourless in the next. */}
+            <Badge variant={accountTypeColor(expectedType)} size='xs'>
               {accountTypeLabel(expectedType)}
             </Badge>
           </div>

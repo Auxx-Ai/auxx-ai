@@ -42,7 +42,7 @@ import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
 import { ExternalLink, Lock, Scale } from 'lucide-react'
 import Link from 'next/link'
-import { useEffect, useMemo, useState } from 'react'
+import { type CSSProperties, useEffect, useMemo, useState } from 'react'
 import { EmptyState } from '~/components/global/empty-state'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { FormSaveBar } from '~/components/global/forms/form-save-bar'
@@ -300,24 +300,37 @@ export function AccountingOpeningSettingsPage() {
             {opening.isPending ? (
               <Skeleton className='h-64 w-full' />
             ) : (
-              <OpeningTbGrid
-                rows={rows}
-                currency={currency}
-                readOnly={readOnly}
-                lockReason={GRID_LOCK_REASON}
-                onCellChange={(accountId, column, minor) => {
-                  setEdited((prev) =>
-                    applyOpeningCellChange(prev ?? serverRows ?? [], accountId, column, minor)
-                  )
-                  setGridDirty(true)
-                }}
-                verdict={openingVerdict(
-                  summary.debitMinor,
-                  summary.creditMinor,
-                  summary.rows,
-                  currency
-                )}
-              />
+              // ⚠️ The grid's sticky header pins to `--statement-sticky-top`,
+              // which defaults to 0 - right for the reports, wrong here.
+              // `SettingsPage` pins its own title + tab strip at the viewport
+              // top and publishes that block's measured height as
+              // `--settings-sticky-top`; without this hand-off the header pins
+              // underneath it and is invisible for the whole scroll.
+              <div
+                style={
+                  {
+                    '--statement-sticky-top': 'var(--settings-sticky-top, 0px)',
+                  } as CSSProperties
+                }>
+                <OpeningTbGrid
+                  rows={rows}
+                  currency={currency}
+                  readOnly={readOnly}
+                  lockReason={GRID_LOCK_REASON}
+                  onCellChange={(accountId, column, minor) => {
+                    setEdited((prev) =>
+                      applyOpeningCellChange(prev ?? serverRows ?? [], accountId, column, minor)
+                    )
+                    setGridDirty(true)
+                  }}
+                  verdict={openingVerdict(
+                    summary.debitMinor,
+                    summary.creditMinor,
+                    summary.rows,
+                    currency
+                  )}
+                />
+              </div>
             )}
 
             {readOnly ? (

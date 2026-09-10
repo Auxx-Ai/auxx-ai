@@ -94,6 +94,8 @@ export function toBalanceSheetRows(
   const section = (
     id: string,
     label: string,
+    /** The statement classification, for the icon every row in the section draws. */
+    accountType: string,
     rows: readonly BalanceSheetRow[],
     compareRows: readonly BalanceSheetRow[],
     totalLabel: string,
@@ -114,6 +116,7 @@ export function toBalanceSheetRows(
         glAccountId: row.glAccountId,
         accountCode: row.accountCode,
         accountName: row.accountName,
+        accountType,
         note: row.inChart
           ? undefined
           : 'This account has posted lines but has been deleted from the current chart of accounts.',
@@ -133,6 +136,7 @@ export function toBalanceSheetRows(
       depth: 0,
       kind: 'section',
       values: compare ? [totalValue, compareTotal ?? null] : [totalValue],
+      meta: { accountType },
       children,
     }
   }
@@ -172,6 +176,7 @@ export function toBalanceSheetRows(
   const assets = section(
     'assets',
     'Assets',
+    'asset',
     bs.assets,
     compare?.assets ?? [],
     'Total assets',
@@ -181,6 +186,7 @@ export function toBalanceSheetRows(
   const liabilities = section(
     'liabilities',
     'Liabilities',
+    'liability',
     bs.liabilities,
     compare?.liabilities ?? [],
     'Total liabilities',
@@ -190,6 +196,7 @@ export function toBalanceSheetRows(
   const equity = section(
     'equity',
     'Equity',
+    'equity',
     bs.equity,
     compare?.equity ?? [],
     'Total equity',
@@ -254,6 +261,7 @@ export function toProfitAndLossRows(
     label: 'Revenue',
     depth: 0,
     kind: 'section',
+    meta: { accountType: 'revenue' },
     values: compare ? [pl.totalRevenueMinor, compare.totalRevenueMinor] : [pl.totalRevenueMinor],
     children: [
       ...lines(pl.revenue, compare?.revenue ?? []),
@@ -270,6 +278,7 @@ export function toProfitAndLossRows(
     label: 'Cost of goods sold',
     depth: 0,
     kind: 'section',
+    meta: { accountType: 'expense' },
     values: compare ? [pl.totalCogsMinor, compare.totalCogsMinor] : [pl.totalCogsMinor],
     children: [
       ...lines(pl.cogs, compare?.cogs ?? []),
@@ -294,6 +303,7 @@ export function toProfitAndLossRows(
     label: 'Operating expenses',
     depth: 0,
     kind: 'section',
+    meta: { accountType: 'expense' },
     values: compare
       ? [pl.totalOperatingExpensesMinor, compare.totalOperatingExpensesMinor]
       : [pl.totalOperatingExpensesMinor],

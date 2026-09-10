@@ -1,5 +1,6 @@
 // packages/lib/src/resources/registry/enum-values.ts
 
+import { GL_ACCOUNT_TYPE_META } from './gl-account-type-meta'
 import type { FieldOptionItem } from './option-helpers'
 
 /**
@@ -728,13 +729,21 @@ export const GlAccountType = {
   REVENUE: 'revenue',
   EXPENSE: 'expense',
 
-  values: [
-    { value: 'asset', label: 'Asset', color: 'blue' },
-    { value: 'liability', label: 'Liability', color: 'amber' },
-    { value: 'equity', label: 'Equity', color: 'purple' },
-    { value: 'revenue', label: 'Revenue', color: 'green' },
-    { value: 'expense', label: 'Expense', color: 'red' },
-  ] satisfies FieldOptionItem[],
+  // 🛑 DERIVED from `GL_ACCOUNT_TYPE_META`, which is the one table the icons,
+  // the badge palette and the type dropdown all read (see its header for the
+  // four copies this replaced). Label and colour are unchanged from the literal
+  // that stood here, deliberately: these values are PERSISTED onto every org's
+  // entity def, so changing one would need an entity migration stamp to reach
+  // existing orgs, while deriving the same strings needs nothing.
+  //
+  // `iconId` is dropped rather than passed through: `FieldOptionItem` is the
+  // stored option shape, and widening it would change what is written to every
+  // org's def for a fact only the app draws.
+  values: GL_ACCOUNT_TYPE_META.map(({ value, label, color }) => ({
+    value,
+    label,
+    color,
+  })) satisfies FieldOptionItem[],
 } as const
 
 /**

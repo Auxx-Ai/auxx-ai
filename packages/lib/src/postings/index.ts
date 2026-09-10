@@ -10,6 +10,11 @@
 // Client code must import `@auxx/lib/postings/client`, never this barrel.
 
 export {
+  GL_ACCOUNT_TYPE_META,
+  type GlAccountTypeMeta,
+  glAccountTypeMeta,
+} from '../resources/registry/gl-account-type-meta'
+export {
   type AccountIdentityMap,
   confirmSuggestedIdentities,
   listAccountIdentities,
