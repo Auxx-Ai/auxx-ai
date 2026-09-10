@@ -5,8 +5,10 @@
  * screen needs: the compact one under a rule's name in the list, and the
  * action-only one on the dialog's drill-in row.
  *
- * Shared by `rules-page.tsx`, `bank-rule-configure-page.tsx` and
- * `bank-rule-action-page.tsx` so a rule reads the same wherever it is shown.
+ * Shared by `rules-page.tsx`, `bank-rule-configure-page.tsx`,
+ * `bank-rule-action-page.tsx` and the review drawer's `analyze-panel.tsx` so a
+ * rule reads the same wherever it is shown - including where one is being
+ * drafted out of a bank line that has not become a rule yet.
  */
 
 import type {
@@ -17,6 +19,15 @@ import type {
   BankRuleRecord,
 } from '@auxx/lib/banking/rules/client'
 import type { SelectOption } from '@auxx/types/custom-field'
+
+/** Flush-in-a-FieldPanelRow trigger sizing, the same one the rule editors share. */
+export const TRIGGER_PROPS = { className: 'w-full ps-0 pe-1' } as const
+
+/** SINGLE_SELECT adapters emit arrays; take the first value. */
+export function firstValue(value: unknown): string {
+  const v = Array.isArray(value) ? value[0] : value
+  return typeof v === 'string' ? v : ''
+}
 
 export const MATCH_FIELD_OPTIONS: SelectOption[] = [
   { value: 'matchKey', label: 'Match key (normalised)', color: 'blue' },

@@ -10,7 +10,7 @@
  */
 
 import { type Database, schema } from '@auxx/database'
-import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
+import { and, asc, eq, ilike, inArray, isNull } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import { getCachedEntityDefId, getOrgCache } from '../../cache'
 import { UnprocessableEntityError } from '../../errors'
@@ -18,6 +18,7 @@ import { toRecordId } from '../../resources/resource-id'
 import { daysBetween, toDateKey } from '../client'
 import {
   type BankRuleAction,
+  type BankRuleConditions,
   type BankRuleDirection,
   type BankRuleMatchField,
   type BankRuleMatchOperator,
@@ -25,6 +26,7 @@ import {
   HISTORY_SAMPLE_SIZE,
   TRANSFER_MATCH_WINDOW_DAYS,
 } from './client'
+import { matchesRuleConditions } from './evaluate'
 import { guard } from './guard'
 
 // ─── bank_rule field context ─────────────────────────────────────────────
@@ -595,4 +597,178 @@ async function readTxMatchRows(
     reviewStatus: read(id, 'bank_transaction_review_status')?.optionId ?? null,
     glAccountId: read(id, 'bank_transaction_gl_account')?.valueText ?? null,
   }))
+}
+
+// ─── pattern preview ─────────────────────────────────────────────────────
+
+/**
+ * The most `bank_transaction` rows one preview will hydrate.
+ *
+ * A preview is a person typing into a box, so it has to answer fast and it has
+ * to answer honestly when it cannot see the whole book. The cap is on the
+ * CANDIDATE set, and {@link RulePatternPreview.truncated} says when it bit -
+ * silently counting 5,000 of 12,000 would be a confident wrong number, which is
+ * the one thing this feature must not produce.
+ */
+const MAX_PREVIEW_CANDIDATES = 5_000
+
+/** How many example lines a preview returns. Enough to recognise a mistake. */
+const PREVIEW_SAMPLE_SIZE = 12
+
+/** One line in a preview's sample. */
+export interface RulePatternPreviewLine {
+  id: string
+  postedAt: string | null
+  description: string | null
+  matchKey: string | null
+  amountMinor: number
+  reviewStatus: string | null
+  glAccountId: string | null
+}
+
+export interface RulePatternPreview {
+  /** How many lines in the org the conditions match. */
+  matchCount: number
+  /** Of those, how many are already `coded`. */
+  codedCount: number
+  /**
+   * How the already-coded matches were coded, commonest first. This is the
+   * rule-mining signal: "31 lines match, 27 of them are already 6100" is the
+   * evidence that the rule is worth writing.
+   */
+  codedByAccount: { glAccountId: string; count: number }[]
+  /** Newest first, capped at {@link PREVIEW_SAMPLE_SIZE}. */
+  sample: RulePatternPreviewLine[]
+  /** `true` when the candidate set hit {@link MAX_PREVIEW_CANDIDATES}. */
+  truncated: boolean
+}
+
+/**
+ * Count and sample the lines a set of rule conditions would match, without
+ * creating a rule.
+ *
+ * 🛑 **The final filter is {@link matchesRuleConditions}, in JavaScript, for
+ * every operator** - the same function `evaluateRules` runs at ingest. SQL is
+ * used only to NARROW, and only where it can do so as a strict superset:
+ *
+ * - `contains` / `equals` / `starts_with` narrow with `ILIKE` on the matched
+ *   field, with the user's `%` and `_` escaped so a pasted pattern cannot turn
+ *   itself into a wildcard.
+ * - `regex` cannot narrow at all. Postgres `~*` is POSIX - no lookarounds, and
+ *   different escaping - so a `~*` pre-filter would drop rows the JavaScript
+ *   pattern matches. It scans the def instead, bounded by
+ *   {@link MAX_PREVIEW_CANDIDATES}.
+ *
+ * ⚠️ This is a deliberate exception to the review queue's "every filter runs in
+ * SQL" rule, and the reason is that agreeing with ingest matters more here than
+ * the roundtrip does. Do not "optimise" the regex branch into `~*`.
+ */
+export async function previewRulePattern(
+  db: Database,
+  params: { organizationId: string; conditions: BankRuleConditions }
+): Promise<Result<RulePatternPreview, Error>> {
+  const { organizationId, conditions } = params
+  return guard(
+    async () => {
+      const empty: RulePatternPreview = {
+        matchCount: 0,
+        codedCount: 0,
+        codedByAccount: [],
+        sample: [],
+        truncated: false,
+      }
+      if (!conditions.matchValue.trim()) return empty
+
+      const ctx = await loadRuleTransactionFieldContext(organizationId)
+      if (!ctx) return empty
+      const fieldAttribute =
+        conditions.matchField === 'description'
+          ? 'bank_transaction_description'
+          : 'bank_transaction_match_key'
+      const matchedField = ctx.fields[fieldAttribute]
+      if (!matchedField) return empty
+
+      const candidateRows = await db
+        .select({ entityId: schema.FieldValue.entityId })
+        .from(schema.FieldValue)
+        .where(
+          and(
+            eq(schema.FieldValue.organizationId, organizationId),
+            eq(schema.FieldValue.fieldId, matchedField.id),
+            ...narrowByOperator(conditions)
+          )
+        )
+        .limit(MAX_PREVIEW_CANDIDATES + 1)
+
+      const truncated = candidateRows.length > MAX_PREVIEW_CANDIDATES
+      const candidateIds = candidateRows.slice(0, MAX_PREVIEW_CANDIDATES).map((row) => row.entityId)
+      if (candidateIds.length === 0) return empty
+
+      const rows = await readTxMatchRows(db, organizationId, ctx, candidateIds)
+      const matched = rows.filter((row) => matchesRuleConditions(conditions, row))
+
+      const byAccount = new Map<string, number>()
+      for (const row of matched) {
+        if (row.reviewStatus !== 'coded' || !row.glAccountId) continue
+        byAccount.set(row.glAccountId, (byAccount.get(row.glAccountId) ?? 0) + 1)
+      }
+
+      // `postedAt` is a `YYYY-MM-DD` day key, so a string compare IS the date
+      // order. A line the bank never dated sorts last rather than first.
+      const sample = [...matched]
+        .sort((a, b) => (b.postedAt ?? '').localeCompare(a.postedAt ?? ''))
+        .slice(0, PREVIEW_SAMPLE_SIZE)
+        .map((row) => ({
+          id: row.id,
+          postedAt: row.postedAt,
+          description: row.description,
+          matchKey: row.matchKey,
+          amountMinor: row.amountMinor,
+          reviewStatus: row.reviewStatus,
+          glAccountId: row.glAccountId,
+        }))
+
+      return {
+        matchCount: matched.length,
+        codedCount: [...byAccount.values()].reduce((total, count) => total + count, 0),
+        codedByAccount: [...byAccount.entries()]
+          .map(([glAccountId, count]) => ({ glAccountId, count }))
+          .sort((a, b) => b.count - a.count),
+        sample,
+        truncated,
+      }
+    },
+    'Failed to preview a bank rule pattern',
+    { organizationId, matchField: conditions.matchField, matchOperator: conditions.matchOperator }
+  )
+}
+
+/**
+ * The SQL half of the preview: a strict SUPERSET of what
+ * {@link matchesRuleConditions} will accept, or nothing at all for `regex`.
+ */
+function narrowByOperator(conditions: BankRuleConditions) {
+  const escaped = escapeLikePattern(conditions.matchValue)
+  switch (conditions.matchOperator) {
+    case 'contains':
+      return [ilike(schema.FieldValue.valueText, `%${escaped}%`)]
+    case 'equals':
+      return [ilike(schema.FieldValue.valueText, escaped)]
+    case 'starts_with':
+      return [ilike(schema.FieldValue.valueText, `${escaped}%`)]
+    default:
+      return []
+  }
+}
+
+/**
+ * Neutralise `LIKE`'s own metacharacters in a user-typed value.
+ *
+ * Without this, a pattern containing `%` matches far more than the person meant
+ * and the preview's count is larger than what the rule will ever do - the exact
+ * shape of lie this feature exists to avoid. The backslash is doubled first, or
+ * escaping `%` would leave a dangling escape of its own.
+ */
+function escapeLikePattern(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/[%_]/g, (char) => `\\${char}`)
 }

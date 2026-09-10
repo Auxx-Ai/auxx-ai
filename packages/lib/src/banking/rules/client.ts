@@ -42,15 +42,17 @@ export const TRANSFER_MATCH_WINDOW_DAYS = 3
 /** A safety limit on a hand-typed regex rule. See {@link isSafeRegexPattern}. */
 export const MAX_REGEX_PATTERN_LENGTH = 200
 
-/** A `bank_rule` record, as the UI and `evaluateRules` see it. */
-export interface BankRuleRecord {
-  id: string
-  recordId: string
-  name: string
-  enabled: boolean
-  autoApply: boolean
-  /** Lower runs first. `evaluateRules` treats a missing priority as `0`. */
-  priority: number
+/**
+ * The conditions half of a rule: everything that decides WHETHER a rule fires,
+ * with nothing about what it then does.
+ *
+ * Split out so that the review drawer's analyze panel can preview a pattern
+ * against the book before any rule exists. 🛑 One predicate
+ * (`matchesRuleConditions`) serves both the preview and ingest, because a
+ * preview that counted differently from `evaluateRules` would be worse than no
+ * preview: it would be a confident wrong number a person creates a rule from.
+ */
+export interface BankRuleConditions {
   matchField: BankRuleMatchField
   matchOperator: BankRuleMatchOperator
   matchValue: string
@@ -60,6 +62,17 @@ export interface BankRuleRecord {
   direction: BankRuleDirection
   /** A `bank_account` entity-instance id, or `null` to match any account. */
   bankAccountId: string | null
+}
+
+/** A `bank_rule` record, as the UI and `evaluateRules` see it. */
+export interface BankRuleRecord extends BankRuleConditions {
+  id: string
+  recordId: string
+  name: string
+  enabled: boolean
+  autoApply: boolean
+  /** Lower runs first. `evaluateRules` treats a missing priority as `0`. */
+  priority: number
   action: BankRuleAction
   /** The `gl_account` id a `code` action proposes (task 15 §4). Never a code. */
   glAccountId: string | null

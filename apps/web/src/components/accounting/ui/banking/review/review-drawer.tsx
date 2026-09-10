@@ -7,6 +7,7 @@ import {
   MATCHED_RECORD_TYPE_LABELS,
   REVIEW_STATUS_LABELS,
 } from '@auxx/lib/banking/review/client'
+import { isRecordId } from '@auxx/lib/resources/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'
@@ -17,11 +18,13 @@ import { Section } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Ban, Landmark, Undo2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import DrawerComments from '~/components/global/comments/drawer-comments'
 import { api } from '~/trpc/react'
 import { BankAccountBadge } from '../../bank-account-badge'
 import { useChartAccounts } from '../../gl-account-picker'
 import { EntryBlockers, type LedgerBlocker } from '../../ledger/entry-blockers'
 import { EMPTY_CELL, formatMinor } from '../../ledger/format'
+import { AnalyzePanel } from './analyze-panel'
 import { CodePanel } from './code-panel'
 import { ExcludePanel } from './exclude-panel'
 import { HistoryPanel } from './history-panel'
@@ -314,6 +317,32 @@ export function ReviewDrawer({
                 {!settled && (
                   <Section title='Exclude' collapsible initialOpen={false}>
                     <ExcludePanel key={line.id} line={line} onDone={() => close(false)} />
+                  </Section>
+                )}
+                {/* Reading the line, and finding every other line like it. Below
+                    the treatment because it answers "what IS this", which is the
+                    question you have when the treatment is not obvious - not a
+                    step on the way to a decision you have already made. */}
+                <Section title='Analyze' collapsible initialOpen={false}>
+                  <AnalyzePanel key={line.id} line={line} currencyCode={currencyCode} />
+                </Section>
+                {/* 🛑 Notes on a bank line are COMMENTS, not a field. A bank
+                    transaction is an `EntityInstance` and already carries a
+                    `recordId`, so the org's one comment thread works here with
+                    no new column - and unlike a field it keeps who wrote it and
+                    when, which is the whole point of "remind ourselves what this
+                    was" eighteen months later.
+                    ⚠️ A note here is about THIS line. Knowledge about the payee
+                    belongs in a rule, or it gets retyped on all 42 of them. */}
+                {isRecordId(line.recordId) && (
+                  <Section title='Notes' collapsible initialOpen={false}>
+                    <DrawerComments
+                      recordId={line.recordId}
+                      emptyTitle='No notes on this line'
+                      emptyDescription='Leave a note about what this transaction was.'
+                      headerTitle='Notes'
+                      composerPlaceholder='What was this?'
+                    />
                   </Section>
                 )}
                 <Section title='History' collapsible initialOpen={false}>

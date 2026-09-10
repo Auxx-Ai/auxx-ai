@@ -10,6 +10,7 @@
  */
 
 import {
+  type BankRuleConditions,
   type BankRuleRecord,
   compileSafeRegex,
   type RuleMatchInput,
@@ -39,32 +40,47 @@ export function evaluateRules(
     .sort((a, b) => (a.rule.priority || 0) - (b.rule.priority || 0) || a.index - b.index)
 
   for (const { rule } of ordered) {
-    if (ruleMatches(rule, transaction)) return rule
+    if (matchesRuleConditions(rule, transaction)) return rule
   }
   return null
 }
 
-/** Whether one rule matches one transaction. Every condition must pass. */
-function ruleMatches(rule: BankRuleRecord, transaction: RuleMatchInput): boolean {
+/**
+ * Whether one set of conditions matches one transaction. Every condition must
+ * pass.
+ *
+ * 🛑 **This is the only place a rule's match is decided**, and it is exported so
+ * that the analyze panel's preview counts the same rows ingest will act on. A
+ * second implementation - a `~*` in SQL, say - would disagree the first time a
+ * pattern used a lookahead, and the person creating the rule would never find
+ * out until it silently coded the wrong lines.
+ */
+export function matchesRuleConditions(
+  rule: BankRuleConditions,
+  transaction: RuleMatchInput
+): boolean {
   if (rule.bankAccountId && rule.bankAccountId !== transaction.bankAccountId) return false
   if (!directionMatches(rule.direction, transaction.amountMinor)) return false
   if (!amountMatches(rule, transaction.amountMinor)) return false
   return fieldMatches(rule, transaction)
 }
 
-function directionMatches(direction: BankRuleRecord['direction'], amountMinor: number): boolean {
+function directionMatches(
+  direction: BankRuleConditions['direction'],
+  amountMinor: number
+): boolean {
   if (direction === 'any') return true
   return direction === resolveDirection(amountMinor)
 }
 
-function amountMatches(rule: BankRuleRecord, amountMinor: number): boolean {
+function amountMatches(rule: BankRuleConditions, amountMinor: number): boolean {
   const magnitude = Math.abs(amountMinor)
   if (rule.amountMinMinor != null && magnitude < rule.amountMinMinor) return false
   if (rule.amountMaxMinor != null && magnitude > rule.amountMaxMinor) return false
   return true
 }
 
-function fieldMatches(rule: BankRuleRecord, transaction: RuleMatchInput): boolean {
+function fieldMatches(rule: BankRuleConditions, transaction: RuleMatchInput): boolean {
   const value = rule.matchField === 'description' ? transaction.description : transaction.matchKey
   if (!value) return false
 
