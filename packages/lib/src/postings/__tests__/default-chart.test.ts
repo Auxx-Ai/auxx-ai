@@ -14,6 +14,13 @@
 // `DEFAULT_CHART_OF_ACCOUNTS` (every pack flattened); the per-pack pins are
 // what stop a role drifting from the pack whose builders drive it.
 //
+// Brief 21 §4.2 then grew the core and added three ROLE-LESS packs (`payroll`,
+// `fixed_assets`, `debt`). That flipped the majority of the chart to role-less,
+// so the pins about roles say less than they used to and the pins about WHICH
+// PACK and WHICH SIDE OF THE BALANCE SHEET carry the weight instead - the two
+// mistakes those accounts invite are merging `2120` into `2110` and filing
+// `1400` with the customer-side `prepayments` pack.
+//
 // Only an EXACT-set assertion catches a removal; a subset assertion passes
 // forever.
 
@@ -127,13 +134,21 @@ describe('the union of every pack', () => {
     }
   })
 
-  it('totals thirty-three accounts: thirteen core, five, two, nine and four', () => {
-    expect(codesOf('core')).toHaveLength(13)
+  // The per-pack sizes, so an account cannot be added to a pack without
+  // somebody saying which pack. The core grew from 13 to 27 in brief 21 §4.2 -
+  // fourteen role-less accounts (prepaid, two owner-equity, eleven operating
+  // expenses) - and `payroll`, `fixed_assets` and `debt` arrived in the same
+  // pass. The number itself is not the point; being made to state it is.
+  it('totals fifty-eight accounts: twenty-seven core, then five, two, nine, four, five, three and three', () => {
+    expect(codesOf('core')).toHaveLength(27)
     expect(codesOf('card_rail')).toHaveLength(5)
     expect(codesOf('prepayments')).toHaveLength(2)
     expect(codesOf('inventory')).toHaveLength(9)
     expect(codesOf('purchasing')).toHaveLength(4)
-    expect(DEFAULT_CHART_OF_ACCOUNTS).toHaveLength(33)
+    expect(codesOf('payroll')).toHaveLength(5)
+    expect(codesOf('fixed_assets')).toHaveLength(3)
+    expect(codesOf('debt')).toHaveLength(3)
+    expect(DEFAULT_CHART_OF_ACCOUNTS).toHaveLength(58)
   })
 })
 
@@ -160,22 +175,63 @@ describe('the core', () => {
     )
   })
 
-  it('is exactly the thirteen accounts §1.3 names', () => {
+  // 16 §1.3's thirteen, plus the fourteen role-less accounts 21 §4.2 added so
+  // that a coded bank line, an owner's deposit and a prepaid premium have
+  // somewhere to go. Exact list, in code order.
+  it('is 16 §1.3s thirteen plus the operating, prepaid and owner accounts of 21 §4.2', () => {
     expect(codesOf('core')).toEqual([
       '1000',
       '1050',
       '1100',
+      '1400',
       '2000',
       '2200',
       '3000',
+      '3010',
+      '3020',
       '3100',
       '3900',
       '4000',
       '4020',
       '4030',
       '4090',
+      '6000',
+      '6010',
+      '6020',
+      '6030',
+      '6040',
+      '6050',
+      '6060',
+      '6070',
+      '6080',
+      '6090',
       '6300',
+      '6900',
     ])
+  })
+
+  // 🛑 `1400` is the company's OWN prepayment - an asset, money we paid a
+  // vendor early. The `prepayments` PACK is `2300`/`2350`, money a customer
+  // paid US early, which is a liability. Same word, opposite side of the
+  // balance sheet; pinned so a later edit cannot tidy the two together.
+  it('keeps 1400 Prepaid Expenses an asset in the core, not in the prepayments pack', () => {
+    expect(byCode.get('1400')?.accountType).toBe(GlAccountType.ASSET)
+    expect(codesOf('core')).toContain('1400')
+    expect(codesOf('prepayments')).toEqual(['2300', '2350'])
+    for (const code of codesOf('prepayments')) {
+      expect(byCode.get(code)?.accountType, code).toBe(GlAccountType.LIABILITY)
+    }
+  })
+
+  // Owner contributions and draws are CORE, not the `debt` pack: a founder's
+  // deposit is a first-week bank line for every company and a loan drawdown is
+  // not (21 §4.2). A draw is a return of capital, so it is equity and never an
+  // expense - the most common small-company coding error there is.
+  it('puts owner contributions and draws in the core, as equity', () => {
+    for (const code of ['3010', '3020']) {
+      expect(codesOf('core'), code).toContain(code)
+      expect(byCode.get(code)?.accountType, code).toBe(GlAccountType.EQUITY)
+    }
   })
 
   // `cash` retired as a posting role (brief 13 §2): `1000 Cash` is kept as an
@@ -228,6 +284,11 @@ describe('the other packs', () => {
         ACCOUNT_ROLES.PPV,
       ].sort()
     )
+    // And the three packs brief 21 added drive no role at all - they exist so a
+    // person has an account to name in a journal, not so a builder does.
+    expect(rolesOf('payroll')).toEqual([])
+    expect(rolesOf('fixed_assets')).toEqual([])
+    expect(rolesOf('debt')).toEqual([])
   })
 
   // `G12`: count/shrinkage value must land somewhere OTHER than purchase price
@@ -278,10 +339,13 @@ describe('the other packs', () => {
   // account a role, or parks every role-less one in the core, has to argue
   // with a test.
   it('leaves role-less accounts in more than one pack', () => {
-    const roleless = DEFAULT_CHART_OF_ACCOUNTS.filter((account) => !account.role)
-    expect(roleless.map((account) => account.code).sort()).toEqual(
-      ['1000', '3000', '5010', '5030', '6105'].sort()
-    )
+    // Was an exact list of five. Brief 21 §4.2 made role-less the MAJORITY of
+    // the chart - thirty of fifty-eight - so listing them all would pin nothing
+    // but arithmetic. The five that were arguable when the packs were declared
+    // are still pinned by code; the "no new roles" half is the test below.
+    for (const code of ['1000', '3000', '5010', '5030', '6105']) {
+      expect(byCode.get(code)?.role, code).toBeUndefined()
+    }
     const packsWithRoleless = new Set(
       CHART_PACK_KEYS.filter((key) => CHART_PACKS[key].accounts.some((a) => !a.role))
     )
@@ -289,6 +353,73 @@ describe('the other packs', () => {
     expect(packsWithRoleless).toContain('core')
     expect(packsWithRoleless).toContain('inventory')
     expect(packsWithRoleless).toContain('card_rail')
+  })
+
+  // 🛑 21 §9. `ACCOUNT_ROLES` is a closed vocabulary tied to builders: a role
+  // is what lets a builder name an account without knowing the org's numbering,
+  // and no builder emits rent, payroll, depreciation or interest. So every
+  // account brief 21 added carries NO role, and one acquiring one by reflex has
+  // to argue with this test - it would also have to widen `ACCOUNT_ROLES`,
+  // `ROLE_ACCOUNT_TYPES` and `ACCOUNT_ROLE_LABELS` together.
+  it('gives no role to a single account brief 21 added', () => {
+    const added = [
+      '1400',
+      '3010',
+      '3020',
+      '6000',
+      '6010',
+      '6020',
+      '6030',
+      '6040',
+      '6050',
+      '6060',
+      '6070',
+      '6080',
+      '6090',
+      '6900',
+      ...codesOf('payroll'),
+      ...codesOf('fixed_assets'),
+      ...codesOf('debt'),
+    ]
+    for (const code of added) {
+      expect(byCode.get(code), code).toBeDefined()
+      expect(byCode.get(code)?.role, code).toBeUndefined()
+    }
+  })
+
+  // 🛑 21 §2.3 and §0.5. `2110 Payroll Clearing` is the manufacturing labour
+  // absorption pool and `build-month-end-inventory.ts` only ever CREDITS it;
+  // `2120 Net Pay Clearing` holds net pay between the gross-up entry and the
+  // bank line. Merging them gives one balance two meanings and no report can
+  // separate unabsorbed labour from unpaid net pay again.
+  it('keeps the payroll pack clear of 2110, the inventory labour pool', () => {
+    expect(codesOf('payroll')).not.toContain('2110')
+    expect(codesOf('inventory')).toContain('2110')
+    expect(byCode.get('2120')?.name).toBe('Net Pay Clearing')
+    expect(byCode.get('2110')?.name).toBe('Payroll Clearing')
+  })
+
+  // Accumulated depreciation is a contra-ASSET: it runs credit-normal but it is
+  // filed with the assets it reduces, the same reading `4090` gets as a
+  // contra-revenue. `GlAccountType` has no contra classification on purpose.
+  it('files accumulated depreciation as an asset beside the cost account', () => {
+    for (const code of ['1500', '1590']) {
+      expect(byCode.get(code)?.accountType, code).toBe(GlAccountType.ASSET)
+      expect(byCode.get(code)?.subtype, code).toBe('fixed_asset')
+    }
+    expect(byCode.get('6500')?.accountType).toBe(GlAccountType.EXPENSE)
+    // Not COGS: the P&L puts anything that is not `cost_of_goods_sold` below
+    // gross profit, which is where depreciation belongs.
+    expect(byCode.get('6500')?.subtype).toBeUndefined()
+  })
+
+  // The current / non-current split is what `GlAccountType`'s five-way collapse
+  // loses, so the chart carries it as two accounts rather than one.
+  it('splits loans payable current from long term, and keeps interest with them', () => {
+    expect(codesOf('debt')).toEqual(['2500', '2800', '6600'])
+    expect(byCode.get('2500')?.accountType).toBe(GlAccountType.LIABILITY)
+    expect(byCode.get('2800')?.accountType).toBe(GlAccountType.LIABILITY)
+    expect(byCode.get('6600')?.accountType).toBe(GlAccountType.EXPENSE)
   })
 })
 
@@ -345,6 +476,18 @@ describe('packState', () => {
     const roles = rolesOf('card_rail')
     const map = roles.map((role, i) => row(role, i === 0 ? 'unmapped' : 'suggested'))
     expect(packState('card_rail', map)).toBe('partial')
+  })
+
+  // 🛑 A role-less pack is invisible to the role map, so it reads `absent`
+  // however full the map is. `provisioned` would be the expensive answer: the
+  // dialog disables a provisioned row, and a pack that carries no role could
+  // then never be added at all. Re-walking an idempotent seed costs nothing.
+  it('reads a pack with no roles at all as absent, never provisioned', () => {
+    for (const pack of ['payroll', 'fixed_assets', 'debt'] as const) {
+      expect(rolesOf(pack), pack).toEqual([])
+      expect(packState(pack, allAs('confirmed')), pack).toBe('absent')
+      expect(packState(pack, []), pack).toBe('absent')
+    }
   })
 
   it('reads only its own roles', () => {

@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation'
 import type { ComponentType } from 'react'
 import { AgingReportPage } from '~/components/accounting/ui/reports/aging-report'
 import { BalanceSheetReportPage } from '~/components/accounting/ui/reports/balance-sheet'
+import { GeneralLedgerReportPage } from '~/components/accounting/ui/reports/general-ledger'
 import { ProfitAndLossReportPage } from '~/components/accounting/ui/reports/profit-and-loss'
 import { TrialBalanceReportPage } from '~/components/accounting/ui/reports/trial-balance'
 import { Vendor1099ReportPage } from '~/components/accounting/ui/reports/vendor-1099-report'
@@ -12,6 +13,9 @@ const REPORT_PAGES: Record<string, ComponentType> = {
   'trial-balance': TrialBalanceReportPage,
   'balance-sheet': BalanceSheetReportPage,
   'profit-and-loss': ProfitAndLossReportPage,
+  // tasks/21 §5: the sixth statement, and the one a filing accountant asks
+  // for first.
+  'general-ledger': GeneralLedgerReportPage,
   // HANDOFF slot 2H
   'ar-aging': () => <AgingReportPage side='receivable' />,
   'ap-aging': () => <AgingReportPage side='payable' />,

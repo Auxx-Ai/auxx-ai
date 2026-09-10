@@ -50,6 +50,12 @@ export interface StatementRow {
     /** Statement classification - the row's icon, via `GL_ACCOUNT_TYPE_META`. */
     accountType?: string
     recordId?: RecordId
+    /**
+     * The `GlPosting` behind this row, when the row IS one posting's line.
+     * The general ledger's drill-down key; see `rows.ts` in lib for why a
+     * posting fits neither `glAccountId` nor `recordId`.
+     */
+    glPostingId?: string
     badge?: ReactNode
     note?: string
   }

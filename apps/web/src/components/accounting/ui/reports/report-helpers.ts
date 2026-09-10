@@ -172,6 +172,7 @@ export function toStatementTableRows(rows: readonly LibStatementRow[]): Statemen
           accountType: row.meta.accountType,
           recordId:
             row.meta.recordId && isRecordId(row.meta.recordId) ? row.meta.recordId : undefined,
+          glPostingId: row.meta.glPostingId,
           badge: row.meta.badge,
           note: row.meta.note,
         }

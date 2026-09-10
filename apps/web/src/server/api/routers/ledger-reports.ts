@@ -1,8 +1,9 @@
 // apps/web/src/server/api/routers/ledger-reports.ts
 //
 // Statements: trial balance, balance sheet, profit and loss, completeness,
-// account drill-down and the statement PDF (plans/accounting/HANDOFF.md slot
-// 1E; aging in 2H). Mounted as `ledgerReports` in `root.ts` by wave 0.
+// account drill-down, the general ledger and the statement PDF
+// (plans/accounting/HANDOFF.md slot 1E; aging in 2H; the general ledger is
+// task 21 §5). Mounted as `ledgerReports` in `root.ts` by wave 0.
 //
 // Every procedure is `ledgerView` - even `renderStatementPdf`, which writes a
 // file but writes nothing to the LEDGER. Zod here checks SHAPE only
@@ -17,10 +18,13 @@ import { PermissionKey } from '@auxx/lib/permissions'
 import {
   AGING_COLUMNS,
   balanceSheetColumns,
+  GENERAL_LEDGER_COLUMNS,
+  GENERAL_LEDGER_MAX_LINES,
   readAccountLines,
   readAging,
   readBalanceSheet,
   readCompleteness,
+  readGeneralLedger,
   readProfitAndLoss,
   readTrialBalance,
   readVendor1099Summary,
@@ -28,6 +32,7 @@ import {
   TRIAL_BALANCE_COLUMNS,
   toAgingRows,
   toBalanceSheetRows,
+  toGeneralLedgerRows,
   toProfitAndLossRows,
   toTrialBalanceRows,
   toVendor1099Rows,
@@ -150,6 +155,39 @@ export const ledgerReportsRouter = createTRPCRouter({
     }),
 
   /**
+   * The general ledger over `[from, to]`: every posted line, grouped by
+   * account, with each account's brought-forward opening balance and a running
+   * natural-sign balance. The report a filing accountant asks for FIRST, and
+   * until now the only one that existed in no form at all.
+   *
+   * 🛑 **`truncated` is load-bearing.** Unlike every other statement on this
+   * router - all of which are bounded by the CHART - this one is bounded by
+   * TRANSACTION VOLUME, so it is read under a server-side line cap. The cap is
+   * deliberately NOT an input: a limit the caller chooses is not a limit. When
+   * it fires, `truncated` comes back `true`, `maxLines` says where it stopped,
+   * and `rows[0]` is an INCOMPLETE banner that survives into the CSV and the
+   * PDF. A truncated ledger does not tie to `trialBalance` for the same range,
+   * and `balanced` must not be read as a tie-out unless `truncated` is false.
+   */
+  generalLedger: permissionProcedure(PermissionKey.ledgerView)
+    .input(z.object({ from: dateKey, to: dateKey }))
+    .query(async ({ ctx, input }) => {
+      const result = await readGeneralLedger(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        from: input.from,
+        to: input.to,
+        maxLines: GENERAL_LEDGER_MAX_LINES,
+      })
+      if (result.isErr()) throw result.error
+      return {
+        ...result.value,
+        maxLines: GENERAL_LEDGER_MAX_LINES,
+        columns: GENERAL_LEDGER_COLUMNS,
+        rows: toGeneralLedgerRows(result.value),
+      }
+    }),
+
+  /**
    * Render one statement to PDF and store it as a 24-hour `MediaAsset`
    * (`postings/reports/pdf/render-statement-pdf.ts`, modelled on
    * `documents/preview-pdf.ts`). The `StatementRow[]` payload is computed by
@@ -176,6 +214,10 @@ export const ledgerReportsRouter = createTRPCRouter({
         z.object({ kind: z.literal('ar-aging'), asOf: dateKey }),
         z.object({ kind: z.literal('ap-aging'), asOf: dateKey }),
         z.object({ kind: z.literal('vendor-1099'), year: z.number().int() }),
+        // Task 21 §5: the general ledger, under the same server-side line cap
+        // the `generalLedger` query above applies - so the printed copy and the
+        // page stop in the same place.
+        z.object({ kind: z.literal('general-ledger'), from: dateKey, to: dateKey }),
       ])
     )
     .mutation(async ({ ctx, input }) => {
@@ -206,6 +248,14 @@ export const ledgerReportsRouter = createTRPCRouter({
           actorId: userId,
           kind: input.kind,
           params: { from: input.from, to: input.to, compare: input.compare },
+        })
+      }
+      if (input.kind === 'general-ledger') {
+        return renderStatementPdf({
+          organizationId,
+          actorId: userId,
+          kind: input.kind,
+          params: { from: input.from, to: input.to },
         })
       }
       if (input.kind === 'ar-aging' || input.kind === 'ap-aging') {
