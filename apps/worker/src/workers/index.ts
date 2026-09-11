@@ -2,7 +2,6 @@ import { constants } from '@auxx/config'
 import { database } from '@auxx/database'
 import { isSelfHosted } from '@auxx/deployment'
 import { reconcileConnectorSchedulers } from '@auxx/lib/data-connectors'
-import { enqueueDataMigrationsRun } from '@auxx/lib/jobs'
 import { getQueue, Queues } from '@auxx/lib/jobs/queues'
 import { reconcileSourceSchedulers } from '@auxx/lib/knowledge-sources'
 import { startAiAgentWorker } from './worker-definitions/ai-agent-worker'
@@ -1254,11 +1253,19 @@ export async function setupSchedules() {
   await reconcileConnectorSchedulers(database)
 
   // ── Data Migrations ──────────────────────────────────────────
-  // Enqueue a one-shot pending-data-migrations run at boot (NOT a repeatable
-  // scheduler). Boot never blocks on it; exactly-once across replicas/services is
-  // enforced by the advisory lock + ledger inside the runner. Replaces the local
-  // "Run Entity Migrations" button habit in dev too.
-  await enqueueDataMigrationsRun()
+  // Hourly safety net, NOT the primary trigger. The primary trigger is the
+  // in-process call in `server.ts` right after this process's workers start —
+  // see `runPendingMigrationsInProcess` there for why it may not be a queue job.
+  //
+  // This scheduler catches what that call cannot: a container that died mid-run,
+  // a boot that raced a Redis outage, or a panel click delivered to a draining
+  // container. An idle tick is one advisory-lock acquire plus one SELECT over the
+  // ledger, so the cadence is free.
+  await maintenanceQueue.upsertJobScheduler(
+    'dataMigrationsJob',
+    { pattern: '0 * * * *' },
+    { data: {}, opts: { attempts: 1, priority: 5 } }
+  )
 }
 
 //   // Every 10 minutes

@@ -13,6 +13,7 @@ import { serve } from '@hono/node-server'
 import type { Worker } from 'bullmq'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
+import { runPendingMigrationsInProcess } from './boot/run-pending-migrations'
 import { type InboundEmailPoller, startInboundEmailPoller } from './inbound-email'
 import { devInboundEmailRoutes } from './inbound-email/dev-inbound-email'
 /**
@@ -44,6 +45,10 @@ async function initializeApp() {
   // Assign the result to the outer scope variable
   workersInstance = await startWorkers()
   console.log('Workers started.')
+
+  // AFTER the workers are up, so a migration that enqueues follow-up work has a
+  // consumer, and never before — see `runPendingMigrationsInProcess`.
+  runPendingMigrationsInProcess()
 
   inboundEmailPoller = startInboundEmailPoller()
   console.log(`Inbound email poller ${inboundEmailPoller ? 'started' : 'disabled'}.`)
