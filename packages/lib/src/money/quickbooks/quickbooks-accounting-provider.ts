@@ -12,9 +12,17 @@
 // `counterpartyId` (brief 13 §1.1) - and it writes back whatever provider id
 // comes out. This file owns four things the core cannot: turning an account
 // into a QuickBooks account id, turning a counterparty into a QuickBooks
-// `Customer` or `Vendor` id (`resolveCounterparties`, beside
+// `Customer` or `Vendor` id (`resolveOrCreateCounterparties`, beside
 // `resolveMappedAccounts`), QuickBooks' `DocNumber`, and QuickBooks'
 // `requestid`.
+//
+// 🛑 Since task 23 the counterparty hop CREATES the customer when there is not
+// one, rather than refusing. It has to: QuickBooks will not accept an A/R line
+// without a `Customer`, and nothing else in production has written
+// `qboCustomerId` since the invoice mirror took its only writer with it in
+// #2100. That made every receivable entry permanently unexportable. The create
+// is bounded to contacts that actually carry a receivable, and the whole
+// argument is in `upsert-customer.ts` and task 23 §1.
 //
 // Registered from the APP layer via `registerAccountingProvider`, never imported
 // by `packages/lib` itself. That direction is decision P1: the ledger is ours
@@ -104,6 +112,7 @@ import {
 import { quickbooksAccountType } from './account-types'
 import { readQuickbooksIdField } from './identity-field'
 import { type QuickbooksToolContext, resolveQuickbooksContext } from './invoke-quickbooks-tool'
+import { readQuickbooksCustomerFields, upsertQuickbooksCustomer } from './upsert-customer'
 
 const logger = createScopedLogger('quickbooks-accounting-provider')
 
@@ -439,8 +448,28 @@ async function resolveMappedAccounts(
 
 /**
  * Resolve every counterparty a receivable or payable line names to a
- * QuickBooks `entity` reference, and refuse a receivable or payable line that
- * carries none at all (brief 13 §1.3, §1.4).
+ * QuickBooks `entity` reference, **creating the customer when there is not one
+ * yet**, and refuse a line that carries no counterparty at all (brief 13 §1.3,
+ * §1.4; task 23 §1).
+ *
+ * 🛑 **This WRITES, which is why the name says so.** It was a pure resolver
+ * until task 23: it read `qboCustomerId` and refused when the cell was empty,
+ * and since the only thing that ever wrote that cell (`sync-invoice.ts`) was
+ * deleted with the invoice mirror in #2100, the cell was empty for every org
+ * and every receivable entry was permanently blocked.
+ *
+ * Creating the customer HERE, rather than from a contact hook or a button, is
+ * task 23 §1's decision and rests on two things. It is bounded - only a contact
+ * that actually appears on a receivable line reaches QuickBooks, where a hook
+ * would push an entire address book into somebody's customer list. And it is
+ * not really a side effect - the export already posts a journal entry, and
+ * QuickBooks cannot accept the A/R line at all without a `Customer`, so the
+ * customer is a prerequisite of the entry rather than an extra act.
+ *
+ * ⚠️ Customers only. The `company` -> `Vendor` twin needs a `qboVendorId` field
+ * that does not exist yet, so a payable line still refuses exactly as before
+ * (task 23 §4.9). Mirror this once a vendor bill actually posts; do not build
+ * it blind.
  *
  * 🛑 **No provider id above the seam (P2).** A posting line carries OUR
  * `counterpartyType` / `counterpartyId` - a `contact` or `company` instance
@@ -453,14 +482,16 @@ async function resolveMappedAccounts(
  *
  * ⚠️ Every failure is collected, never thrown on the first - fixing an export
  * one refused line at a time is how a close slips a day (13 §1.3), and it is
- * the same rule `resolveMappedAccounts` follows at `:305-307`.
+ * the same rule `resolveMappedAccounts` follows at `:305-307`. That now covers
+ * the upsert's own refusals too: one contact that cannot be resolved must not
+ * hide the other nine.
  *
  * Which line needs a counterparty is read from the CHART, not from a
  * hardcoded role list: `subtype: 'accounts_receivable' | 'accounts_payable'`
  * on `ourChart` (task 13 §3, pulled forward), so a manual journal entry coded
  * to a receivable by hand is caught exactly like a builder's own A/R line.
  */
-async function resolveCounterparties(
+async function resolveOrCreateCounterparties(
   ctx: QuickbooksToolContext,
   input: PostEntryInput,
   ourChart: readonly ChartAccountRow[]
@@ -483,8 +514,14 @@ async function resolveCounterparties(
   const resolved = new Map<string, QuickbooksEntity>()
   const unsynced = new Set<string>()
 
+  // Collected here and merged into `problems` below, so an upsert refusal reads
+  // in the same register as a missing counterparty rather than aborting the run.
+  const upsertRefusals = new Map<string, string>()
+
   for (const { type, id } of distinct.values()) {
     const isCustomer = type === 'customer'
+    const key = counterpartyKey(type, id)
+
     const externalId = await readQuickbooksIdField({
       organizationId: ctx.organizationId,
       installationId: ctx.installationId,
@@ -493,11 +530,39 @@ async function resolveCounterparties(
       recordId: toRecordId(isCustomer ? 'contact' : 'company', id),
       handler,
     })
-    const key = counterpartyKey(type, id)
     if (externalId) {
       resolved.set(key, { type: isCustomer ? 'Customer' : 'Vendor', id: externalId })
-    } else {
+      continue
+    }
+
+    // A company has no `qboVendorId` field to write, so there is nothing to
+    // create into. It refuses below exactly as it did before task 23.
+    if (!isCustomer) {
       unsynced.add(key)
+      continue
+    }
+
+    try {
+      const contactFields = await readQuickbooksCustomerFields(ctx.organizationId, id)
+      const customerId = await upsertQuickbooksCustomer(ctx, {
+        organizationId: ctx.organizationId,
+        contactInstanceId: id,
+        contactFields,
+        handler,
+      })
+      resolved.set(key, { type: 'Customer', id: customerId })
+    } catch (error) {
+      // The upsert's refusals already name the contact and the remedy
+      // (`upsert-customer.ts`), so they are carried through verbatim. Anything
+      // else is a transport or Intuit failure and is reported as itself.
+      upsertRefusals.set(key, errorMessage(error))
+      unsynced.add(key)
+      logger.warn('Could not resolve or create a QuickBooks customer for a receivable line', {
+        organizationId: ctx.organizationId,
+        contactInstanceId: id,
+        docNumber: input.docNumber,
+        error: errorMessage(error),
+      })
     }
   }
 
@@ -520,10 +585,19 @@ async function resolveCounterparties(
       )
       continue
     }
-    if (unsynced.has(counterpartyKey(line.counterpartyType, line.counterpartyId))) {
+    const key = counterpartyKey(line.counterpartyType, line.counterpartyId)
+    if (unsynced.has(key)) {
+      // 🛑 The upsert's own sentence wins when there is one. It names the
+      // contact and what to do; the generic "has not been synced yet" below
+      // implies a sync is pending somewhere, which since task 23 is never true -
+      // the sync is this function, and it has already tried and refused.
+      const refusal = upsertRefusals.get(key)
       problems.add(
-        `${input.docNumber} posts to ${label}, and QuickBooks cannot accept a ${kind} line ` +
-          `without a ${qbNoun}. The ${ourNoun} on this line has not been synced to QuickBooks yet.`
+        refusal
+          ? `${input.docNumber} posts to ${label}. ${refusal}`
+          : `${input.docNumber} posts to ${label}, and QuickBooks cannot accept a ${kind} line ` +
+              `without a ${qbNoun}. The ${ourNoun} on this line has no ${qbNoun} in QuickBooks ` +
+              'and auxx cannot create one for it.'
       )
     }
   }
@@ -994,7 +1068,7 @@ export class QuickbooksAccountingProvider implements AccountingProvider {
           })
         )
       }
-      const counterparties = await resolveCounterparties(ctx, input, ourChart.value)
+      const counterparties = await resolveOrCreateCounterparties(ctx, input, ourChart.value)
       if (counterparties.isErr()) {
         return err(
           new ProviderPostError(counterparties.error.message, {

@@ -44,6 +44,17 @@ vi.mock('../identity-field', () => ({
   readQuickbooksIdField: (...a: unknown[]) => readQuickbooksIdField(...a),
 }))
 
+// The customer find-or-create (task 23). Stubbed here for the same reason
+// `readQuickbooksIdField` is: what this file tests is how the ADAPTER routes a
+// counterparty, not how a customer is resolved - that has its own test file,
+// and reaching the real one would need a `UnifiedCrudHandler` and a database.
+const upsertQuickbooksCustomer = vi.fn()
+const readQuickbooksCustomerFields = vi.fn()
+vi.mock('../upsert-customer', () => ({
+  upsertQuickbooksCustomer: (...a: unknown[]) => upsertQuickbooksCustomer(...a),
+  readQuickbooksCustomerFields: (...a: unknown[]) => readQuickbooksCustomerFields(...a),
+}))
+
 import type { PostEntryInput, ResolvedPostingLine } from '../../../postings/types'
 import { ProviderPostError } from '../../../postings/types'
 import {
@@ -219,6 +230,8 @@ beforeEach(() => {
   getOrganizationSetting.mockResolvedValue(true)
   // Default: nothing synced. Tests that need a resolved counterparty override this.
   readQuickbooksIdField.mockResolvedValue(undefined)
+  readQuickbooksCustomerFields.mockResolvedValue({ firstName: 'Tawni', lastName: 'Donahue' })
+  upsertQuickbooksCustomer.mockResolvedValue('qbo-cust-new')
 })
 
 describe('the exported surface', () => {
@@ -475,9 +488,54 @@ describe('the counterparty (brief 13 §1)', () => {
     )
   })
 
-  it('an A/R line with an unsynced contact refuses with the sentence and configuration', async () => {
+  it('an A/R line with an unsynced contact CREATES the customer and exports (task 23)', async () => {
+    // 🛑 The behaviour task 23 exists to change. This used to refuse with "has
+    // not been synced to QuickBooks yet", which was permanent: nothing in
+    // production had written `qboCustomerId` since the invoice mirror took its
+    // only writer with it in #2100, so every receivable entry was stuck.
+    const callTool = connect({
+      create_quickbooks_journal_entry: () => ({ journalEntry: { journalEntryId: '410' } }),
+    })
+    readQuickbooksIdField.mockResolvedValue(undefined)
+    upsertQuickbooksCustomer.mockResolvedValue('qbo-cust-77')
+
+    const input = counterpartyInput(
+      {},
+      {
+        glAccountId: 'acct_1100',
+        accountCode: '1100',
+        direction: 'debit',
+        amount: 50_000,
+        sourceType: 'invoice',
+        sourceId: 'inv_1',
+        sortOrder: 0,
+        counterpartyType: 'customer',
+        counterpartyId: 'contact_1',
+      }
+    )
+
+    const result = await provider.postEntry(input)
+
+    expect(result._unsafeUnwrap()).toMatchObject({ status: 'posted', externalId: '410' })
+    expect(upsertQuickbooksCustomer).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ contactInstanceId: 'contact_1' })
+    )
+    const arLine = createCallOf(callTool)?.lines.find(
+      (l: { accountId?: string }) => l.accountId === '50'
+    )
+    expect(arLine?.entity).toEqual({ type: 'Customer', id: 'qbo-cust-77' })
+  })
+
+  it("carries the upsert's OWN refusal into the export error, not a generic one", async () => {
+    // The upsert's sentences name the contact and the remedy. The old generic
+    // wording implied a sync was pending somewhere, which is never true now:
+    // the sync IS this path, and it has already tried and refused.
     connect()
     readQuickbooksIdField.mockResolvedValue(undefined)
+    upsertQuickbooksCustomer.mockRejectedValue(
+      new Error('The contact on this line (contact_1) has no name and no email')
+    )
 
     const input = counterpartyInput(
       {},
@@ -500,7 +558,63 @@ describe('the counterparty (brief 13 §1)', () => {
     expect(error.failureClass).toBe('configuration')
     expect(error.message).toContain(DOC_NUMBER)
     expect(error.message).toContain('1100 Accounts Receivable')
-    expect(error.message).toContain('has not been synced to QuickBooks yet')
+    expect(error.message).toContain('has no name and no email')
+    expect(error.message).not.toContain('has not been synced to QuickBooks yet')
+  })
+
+  it('collects a refusal per contact rather than failing on the first', async () => {
+    // The rule `resolveMappedAccounts` follows, now covering the upsert too:
+    // one contact that cannot be resolved must not hide the other.
+    connect()
+    readQuickbooksIdField.mockResolvedValue(undefined)
+    upsertQuickbooksCustomer.mockImplementation(
+      async (_ctx: unknown, input: { contactInstanceId: string }) => {
+        throw new Error(`cannot resolve ${input.contactInstanceId}`)
+      }
+    )
+
+    const input = baseInput({
+      lines: [
+        {
+          glAccountId: 'acct_1100',
+          accountCode: '1100',
+          direction: 'debit',
+          amount: 30_000,
+          sourceType: 'invoice',
+          sourceId: 'inv_1',
+          sortOrder: 0,
+          counterpartyType: 'customer',
+          counterpartyId: 'contact_1',
+        },
+        {
+          glAccountId: 'acct_1100',
+          accountCode: '1100',
+          direction: 'debit',
+          amount: 20_000,
+          sourceType: 'invoice',
+          sourceId: 'inv_2',
+          sortOrder: 1,
+          counterpartyType: 'customer',
+          counterpartyId: 'contact_2',
+        },
+        {
+          glAccountId: 'acct_2160',
+          accountCode: '2160',
+          direction: 'credit',
+          amount: 50_000,
+          sourceType: 'invoice',
+          sourceId: 'inv_1',
+          sortOrder: 2,
+        },
+      ],
+    })
+
+    const result = await provider.postEntry(input)
+    const error = result._unsafeUnwrapErr() as ProviderPostError
+
+    expect(error.message).toContain('cannot resolve contact_1')
+    expect(error.message).toContain('cannot resolve contact_2')
+    expect(upsertQuickbooksCustomer).toHaveBeenCalledTimes(2)
   })
 
   it('an A/R line with NO counterparty at all refuses', async () => {
@@ -574,7 +688,12 @@ describe('the counterparty (brief 13 §1)', () => {
       expect.objectContaining({ appFieldKey: 'qboVendorId', recordId: 'company:company_1' })
     )
     expect(error.message).toContain('2000 Accounts Payable')
-    expect(error.message).toContain('has not been synced to QuickBooks yet')
+    expect(error.message).toContain('auxx cannot create one for it')
+    // 🛑 The A/P twin is NOT built (task 23 §4.9). There is no `qboVendorId`
+    // field to write, so there is nothing to create into, and a vendor line
+    // still refuses exactly as it did before. Mirror the customer ladder only
+    // once a vendor bill actually posts; do not build it blind.
+    expect(upsertQuickbooksCustomer).not.toHaveBeenCalled()
   })
 })
 
