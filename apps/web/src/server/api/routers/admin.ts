@@ -1550,54 +1550,6 @@ export const adminRouter = createTRPCRouter({
     }),
 
   /**
-   * Run entity migrations for all organizations (or a specific one).
-   * Adds missing EntityDefinitions, CustomFields, and relationships.
-   * Each migration is idempotent — safe to re-run.
-   */
-  runEntityMigrations: superAdminProcedure
-    .input(
-      z
-        .object({
-          organizationId: z.string().optional(),
-        })
-        .optional()
-    )
-    .mutation(async ({ ctx, input }) => {
-      const { listEntityMigrations, runAllEntityMigrations, runEntityMigrationsForOrg } =
-        await import('@auxx/lib/seed/entity-migrations')
-
-      const migrations = listEntityMigrations()
-
-      if (input?.organizationId) {
-        const result = await runEntityMigrationsForOrg(ctx.db, input.organizationId)
-        await recordAuditFromCtx(ctx, {
-          organizationId: input.organizationId,
-          category: 'settings',
-          action: 'org.migrations_run',
-          actorType: 'admin',
-          visibility: 'internal',
-          targetType: 'Organization',
-          targetId: input.organizationId,
-          metadata: { scope: 'single' },
-        })
-        return { migrations, results: [result] }
-      }
-
-      const results = await runAllEntityMigrations(ctx.db)
-      await recordAuditFromCtx(ctx, {
-        organizationId: null,
-        category: 'settings',
-        action: 'org.migrations_run',
-        actorType: 'admin',
-        visibility: 'internal',
-        targetType: 'Organization',
-        targetId: null,
-        metadata: { scope: 'all', orgCount: results.length },
-      })
-      return { migrations, results }
-    }),
-
-  /**
    * List all data migrations (the code registry joined with the ledger) plus the
    * current run state of the boot/panel job. Powers the Data Migrations panel.
    */

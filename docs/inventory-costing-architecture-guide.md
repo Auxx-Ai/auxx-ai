@@ -1552,7 +1552,7 @@ Recorded because both documents still exist and a reader will otherwise trust th
 - `packages/lib/src/resources/registry/resources/` — `purchase-order-fields.ts`,
   `vendor-bill-fields.ts`, `stock-movement-fields.ts`, `build-fields.ts`, `gl-*-fields.ts`,
   `vendor-payment*-fields.ts`
-- `packages/lib/src/seed/entity-migrations/migrations/` — 108 purchasing, 109 build (inert),
+- `packages/lib/src/data-migrations/migrations/` — 108 purchasing, 109 build (inert),
   110 build-visible, 111 build drift, 112 record-documents
 
 **Surfaces**

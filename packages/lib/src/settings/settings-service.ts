@@ -33,7 +33,7 @@ const INVOICE_TIMING_SYSTEM_ATTRIBUTES = ['quote_invoice_timing', 'work_order_in
  * guard (`packages/services/src/custom-fields/ownership.ts`) unconditionally
  * rejects user edits to system fields; there's no `defaultValue`-only escape
  * hatch (only `deleteField` has one, via `allowProtectedDeletion`). This
- * mirrors the entity-migration pattern (`seed/entity-migrations/helpers.ts`),
+ * mirrors the entity-migration pattern (`seed/entity-helpers.ts`),
  * which also writes `CustomField` columns directly for system fields.
  */
 async function writeInvoiceDefaultTimingCustomFields(params: {

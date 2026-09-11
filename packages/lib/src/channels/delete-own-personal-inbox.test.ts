@@ -73,7 +73,7 @@ vi.mock('../inboxes/inbox-def-move', () => ({
   rekeyInboxGrants: vi.fn(),
   buildDefFieldIdMap: vi.fn(),
 }))
-vi.mock('../seed/entity-migrations/helpers', () => ({ loadExistingState: vi.fn() }))
+vi.mock('../seed/entity-helpers', () => ({ loadExistingState: vi.fn() }))
 vi.mock('../inboxes/inbox-service', () => ({
   InboxService: class {
     getInboxById = hoisted.getInboxById

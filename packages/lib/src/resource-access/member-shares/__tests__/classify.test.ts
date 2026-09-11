@@ -173,11 +173,6 @@ const RESOURCE_ACCESS_WRITE_SITES: Record<string, { selfGrantsDefs: string[] }> 
   'inboxes/inbox-floor.ts': { selfGrantsDefs: [] },
   'approval-requests/access-request-mutations.ts': { selfGrantsDefs: [] },
   'approval-requests/record-access-request-mutations.ts': { selfGrantsDefs: [] },
-  // Backfills. They reconstruct historical self-grants rather than create new
-  // resources, so they add no new def to the set.
-  'data-migrations/migrations/040-backfill-dashboard-instance-access.ts': { selfGrantsDefs: [] },
-  'data-migrations/migrations/056-signatures-snippets-instance-access.ts': { selfGrantsDefs: [] },
-  'data-migrations/migrations/060-personal-inbox-move.ts': { selfGrantsDefs: [] },
 }
 
 const SRC = path.resolve(__dirname, '../../..')
