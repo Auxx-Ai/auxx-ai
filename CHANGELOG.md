@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.236](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.235...auxx-v0.1.236) (2026-09-11)
+
+
+### Features
+
+* **shipstation:** transit status, Shopify order linking, cost and label PDF ([#2136](https://github.com/Auxx-Ai/auxx-ai/issues/2136)) ([d178513](https://github.com/Auxx-Ai/auxx-ai/commit/d178513fd1f912ddeb58bb3c1aa5484d9421a173))
+
+
+### Bug Fixes
+
+* **accounting:** one answer to "did the ledger take it", and the wizard stops crying wolf ([#2135](https://github.com/Auxx-Ai/auxx-ai/issues/2135)) ([e9a557c](https://github.com/Auxx-Ai/auxx-ai/commit/e9a557c281ec201314c2cdbba890b3d057622b6a))
+* **accounting:** say why Lock is refused, and give the ledger drawers one shape ([#2137](https://github.com/Auxx-Ai/auxx-ai/issues/2137)) ([3ad13f2](https://github.com/Auxx-Ai/auxx-ai/commit/3ad13f222d60108ae74247f03d632505a79913f0))
+* **worker:** run pending migrations in-process, not through the queue ([#2133](https://github.com/Auxx-Ai/auxx-ai/issues/2133)) ([b6814b7](https://github.com/Auxx-Ai/auxx-ai/commit/b6814b7025f00517809c2ac3242a68047e7fe77c))
+
 ## [0.1.235](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.234...auxx-v0.1.235) (2026-09-11)
 
 
