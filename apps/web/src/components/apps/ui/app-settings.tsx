@@ -11,6 +11,7 @@ import {
 } from '@auxx/ui/components/empty'
 import { toastError, toastSuccess } from '@auxx/ui/components/toast'
 import { SlidersHorizontal } from 'lucide-react'
+import { useOptionalMessageClient } from '~/components/apps/runtime/hooks/use-optional-message-client'
 import { api } from '~/trpc/react'
 import { SettingsFormRenderer } from './settings-form-renderer'
 
@@ -34,9 +35,35 @@ export default function AppSettings({
   currentSettings,
   schema,
 }: AppSettingsProps) {
+  // The app's runtime iframe, if one is already up. Pooled per installation in
+  // `AppStore`, so it commonly outlives the page the user is on.
+  const { messageClient } = useOptionalMessageClient({
+    appId: app?.app?.id,
+    appInstallationId: app?.installation?.id,
+  })
+
   const saveSettings = api.apps.saveSettings.useMutation({
     onSuccess: () => {
       toastSuccess({ title: 'Settings saved successfully' })
+
+      // Tell the app its settings moved, so anything it derived from them can be
+      // re-read. The app runtime iframe is long-lived and pooled per
+      // installation, so module state inside an app survives navigation around
+      // the host: without this an app caching anything settings-derived serves a
+      // stale answer until a full page reload. That shipped once already, as a
+      // workflow panel still offering read-only operations after writes were
+      // enabled.
+      //
+      // Fire-and-forget on purpose. No iframe running means nothing to
+      // invalidate, because the app will read settings fresh when it next
+      // starts, and a failed notification must never fail a save that already
+      // committed.
+      void messageClient
+        ?.sendRequest('host-event', {
+          name: 'settings-changed',
+          payload: { installationType },
+        })
+        .catch(() => {})
     },
     onError: (error) => {
       toastError({

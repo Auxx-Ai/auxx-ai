@@ -16,6 +16,10 @@ export * from './dialogs.js'
 export * from './forms/index.js'
 // Hooks
 export * from './hooks/index.js'
+export type { SettingsChangedEvent } from './host-events.js'
+// Host notifications. Only `onSettingsChanged` is public: `dispatchHostEvent`
+// is the runtime's entry point and must not become app-facing surface.
+export { onSettingsChanged } from './host-events.js'
 export * from './navigation.js'
 export * from './record-actions.js'
 export * from './toasts.js'

@@ -152,8 +152,28 @@ export async function getAppWithInstallationStatus(
     orderBy: (d, { desc }) => [desc(d.createdAt)],
   })
 
-  // Query installation status
-  const installation = await db.query.AppInstallation.findFirst({
+  // Query installation status.
+  //
+  // 🛑 `findMany` + an explicit pick, NOT `findFirst`. An org can hold TWO live
+  // installations of one app at once — `auxx dev` / `pnpm sync-dev` creates a
+  // `development` one and `auxx version create --publish` a `production` one —
+  // and an unordered `findFirst` returns whichever row the database happens to
+  // hand back. That is not merely arbitrary, it is unstable: the same org could
+  // get a different answer between two queries.
+  //
+  // It matters because callers act on `installation.installationType`. The app
+  // settings page saves to it, so with both installations present an admin
+  // could toggle a setting, see it saved, and watch the running app ignore it,
+  // because the save landed on the other installation. That is what happened on
+  // 2026-09-11.
+  //
+  // `production` wins because that is what actually RUNS. The workflow layer
+  // already encodes the same preference in four places
+  // (`app-workflow-node.tsx`, `app-workflow-panel.tsx`, and twice in
+  // `workflow-block-registry.tsx`): production first, any installation as the
+  // fallback. This makes the read path agree with the execution path instead of
+  // silently disagreeing with it.
+  const installations = await db.query.AppInstallation.findMany({
     where: (inst, { and, eq, isNull }) =>
       and(
         eq(inst.organizationId, organizationId),
@@ -161,6 +181,8 @@ export async function getAppWithInstallationStatus(
         isNull(inst.uninstalledAt)
       ),
   })
+  const installation =
+    installations.find((inst) => inst.installationType === 'production') ?? installations[0]
 
   // Access check
   const hasDevDeployments = deployments.some(

@@ -124,3 +124,80 @@ describe('AddressInput fieldType branching', () => {
     expect(structProps).not.toHaveBeenCalled()
   })
 })
+
+/**
+ * The options tests above all render with an EMPTY value, which is how a real
+ * bug shipped green: `parseAddressValue` rebuilds the struct from scratch on
+ * every render, and it listed only the original six keys. `name` and
+ * `residential` were therefore deleted on the render following any edit.
+ *
+ * It presented to the user as "the residential picker will not move off
+ * unknown" rather than as data loss, because the select falls back to
+ * `'unknown'` when the key is missing. Nothing about it was visible to a
+ * typecheck, and no options test could have caught it.
+ */
+describe('the stored value survives the round trip', () => {
+  function renderWithValue(value: Record<string, unknown>, inputMode = 'structured') {
+    const { fieldOptions } = mapFieldToVarEditorProps({ type: 'address', inputMode })
+    const specificProps = getSpecificPropsForType(BaseType.ADDRESS, { fieldOptions })
+    const onChange = vi.fn()
+    const view = render(
+      <AddressInput
+        inputs={{ _value: value }}
+        errors={{}}
+        onChange={onChange}
+        onError={vi.fn()}
+        name='_value'
+        {...specificProps}
+      />
+    )
+    return { onChange, view, specificProps }
+  }
+
+  it('carries name and residential into the structured editor', () => {
+    renderWithValue({ street1: '1 Example St', name: 'Jane Roe', residential: 'yes' })
+
+    const { value } = structProps.mock.calls[0]![0] as { value: Record<string, unknown> }
+    expect(value.name).toBe('Jane Roe')
+    expect(value.residential).toBe('yes')
+    expect(value.street1).toBe('1 Example St')
+  })
+
+  it('carries them into the single-input editor too', () => {
+    renderWithValue({ city: 'Austin', name: 'Jane Roe', residential: 'no' }, 'single')
+
+    const { value } = singleProps.mock.calls[0]![0] as { value: Record<string, unknown> }
+    expect(value.name).toBe('Jane Roe')
+    expect(value.residential).toBe('no')
+  })
+
+  it('keeps residential across a re-render, which is the bug that shipped', () => {
+    const { onChange, view, specificProps } = renderWithValue({ street1: '1 Example St' })
+
+    // What the child does when the picker moves off "unknown".
+    const stored = { street1: '1 Example St', residential: 'yes' }
+    onChange('_value', stored)
+
+    view.rerender(
+      <AddressInput
+        inputs={{ _value: stored }}
+        errors={{}}
+        onChange={onChange}
+        onError={vi.fn()}
+        name='_value'
+        {...specificProps}
+      />
+    )
+
+    const last = structProps.mock.calls.at(-1)![0] as { value: Record<string, unknown> }
+    expect(last.value.residential).toBe('yes')
+  })
+
+  it('treats an unrecognised residential as unanswered, never as commercial', () => {
+    // `'no'` suppresses a carrier surcharge, so a junk value must not become one.
+    renderWithValue({ street1: '1 Example St', residential: 'Residential' })
+
+    const { value } = structProps.mock.calls[0]![0] as { value: Record<string, unknown> }
+    expect(value.residential).toBeUndefined()
+  })
+})
