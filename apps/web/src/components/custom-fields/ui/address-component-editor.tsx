@@ -11,32 +11,62 @@ import {
   SelectValue,
 } from '@auxx/ui/components/select'
 
-/** Available address component definitions */
+/**
+ * Available address component definitions, in render order.
+ *
+ * `name` and `residential` are opt-in additions
+ * (plans/apps/shipstation/shipstation-workflow-expansion-plan.md §5) — they are deliberately
+ * NOT in {@link DEFAULT_ADDRESS_COMPONENTS}, so an existing field keeps its current shape
+ * until an admin checks them.
+ */
 const ADDRESS_COMPONENTS = [
+  { id: 'name', label: 'Name' },
   { id: 'street1', label: 'Street Address' },
   { id: 'street2', label: 'Apartment/Suite' },
   { id: 'city', label: 'City' },
   { id: 'state', label: 'State/Province' },
   { id: 'zipCode', label: 'ZIP/Postal Code' },
   { id: 'country', label: 'Country' },
+  { id: 'residential', label: 'Residential' },
 ]
 
-/** Default address components (all enabled) */
+/** Default address components — the original six, all enabled. */
 const DEFAULT_ADDRESS_COMPONENTS = ['street1', 'street2', 'city', 'state', 'zipCode', 'country']
 
 /**
- * Parse stored field options into editor state.
- * Extracts address components from options.addressComponents.
+ * A component id no editor has ever produced.
+ *
+ * Five registry address fields (order/work_order/service_request/purchase_order/company) ship
+ * `addressComponents: ['street', 'city', 'state', 'country']` — written before the editor's id
+ * set existed, so it names `street` rather than `street1` and omits `street2`/`zipCode`
+ * entirely. Nothing read the option until now, so those literals were inert. Honoring them
+ * literally would delete the ZIP line from every order, work order and company address in
+ * every org, which no admin ever asked for, so a list carrying this id is treated as
+ * un-configured and falls back to the defaults. The editor cannot emit `street`, so this can
+ * never swallow a real admin choice.
+ */
+const LEGACY_UNCONFIGURED_ID = 'street'
+
+/**
+ * Parse stored field options into editor state, and the single source of truth for which
+ * sub-fields the three renderers show (`AddressStructFields`, `AddressSingleFields`,
+ * `DisplayAddressStruct`).
+ *
+ * Returns {@link DEFAULT_ADDRESS_COMPONENTS} when the option is absent, empty, or a
+ * pre-editor registry literal (see {@link LEGACY_UNCONFIGURED_ID}).
  */
 export function parseAddressComponents(fieldOptions?: FieldOptions): string[] {
-  if (
+  const stored =
     fieldOptions &&
     'addressComponents' in fieldOptions &&
     Array.isArray(fieldOptions.addressComponents)
-  ) {
-    return fieldOptions.addressComponents
+      ? fieldOptions.addressComponents
+      : undefined
+
+  if (!stored || stored.length === 0 || stored.includes(LEGACY_UNCONFIGURED_ID)) {
+    return [...DEFAULT_ADDRESS_COMPONENTS]
   }
-  return [...DEFAULT_ADDRESS_COMPONENTS]
+  return stored
 }
 
 /**

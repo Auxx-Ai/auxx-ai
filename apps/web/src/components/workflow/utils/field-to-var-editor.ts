@@ -40,6 +40,9 @@ function normalizeOption(opt: string | { label: string; value: string }): {
  * @param params.options - Enum options for select fields
  * @param params.acceptsVariables - Whether the field accepts variable references
  * @param params.variableTypes - Allowed variable types for filtering
+ * @param params.addressComponents - Address sub-fields to show, for address fields
+ * @param params.inputMode - Address edit mode for address fields; anything other than
+ *   'structured' (absent included) resolves to 'single'
  */
 export function mapFieldToVarEditorProps(params: {
   type: string
@@ -52,6 +55,8 @@ export function mapFieldToVarEditorProps(params: {
   multi?: boolean
   canAdd?: boolean
   canManage?: boolean
+  addressComponents?: readonly string[]
+  inputMode?: string
 }): VarEditorMappedProps {
   const { type, format, options, acceptsVariables, variableTypes, variant, loading } = params
 
@@ -177,6 +182,22 @@ export function mapFieldToVarEditorProps(params: {
       }
     }
 
+    case 'address':
+      return {
+        varType: BaseType.ADDRESS,
+        mode: VAR_MODE.PICKER,
+        allowConstant,
+        allowedTypes,
+        fieldOptions: {
+          // Copied, not aliased: the SDK schema hands us a `readonly` array and the
+          // address components prop downstream is mutable.
+          addressComponents: params.addressComponents ? [...params.addressComponents] : undefined,
+          // Matches `parseAddressInputMode`: anything other than 'structured',
+          // absent included, resolves to 'single' (the paste-and-parse editor).
+          inputMode: params.inputMode === 'structured' ? 'structured' : 'single',
+        },
+      }
+
     case 'array': {
       if (options && options.length > 0) {
         const normalizedOptions = (options as any[]).map(normalizeOption)
@@ -253,6 +274,8 @@ export function mapFieldType(type?: string, format?: string): BaseType {
       return BaseType.ENUM
     case 'array':
       return BaseType.ARRAY
+    case 'address':
+      return BaseType.ADDRESS
     case 'object':
     case 'struct':
       return BaseType.OBJECT
@@ -278,6 +301,7 @@ function mapStringToBaseType(typeStr: string): BaseType | null {
     url: BaseType.URL,
     phone: BaseType.PHONE,
     currency: BaseType.CURRENCY,
+    address: BaseType.ADDRESS,
     file: BaseType.FILE,
     json: BaseType.JSON,
     any: BaseType.ANY,

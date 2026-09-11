@@ -189,7 +189,13 @@ export type CustomFieldRecord = CustomField
 
 /**
  * AddressStruct interface
- * Structured address data matching ADDRESS_COMPONENTS in address-component-editor.tsx
+ * Structured address data matching ADDRESS_COMPONENTS in address-component-editor.tsx.
+ *
+ * `name` and `residential` are opt-in per field (they are NOT in
+ * `DEFAULT_ADDRESS_COMPONENTS`) and must be mirrored on `AddressStructValue`
+ * (`packages/utils/src/address.ts`) and on `addressStructJson`
+ * (`packages/lib/src/field-values/field-value-validator.ts`) — that schema is closed, so a
+ * key missing there is dropped before it reaches storage.
  */
 export interface AddressStruct {
   street1: string
@@ -198,6 +204,10 @@ export interface AddressStruct {
   state: string
   zipCode: string
   country: string
+  /** Recipient line — a person, or the company where there is no contact person. */
+  name?: string
+  /** Carrier residential indicator; `'unknown'` is a real, distinct state. */
+  residential?: 'unknown' | 'yes' | 'no'
 }
 
 /**

@@ -134,6 +134,127 @@ describe('formatAddressForGeocode', () => {
       '123 Main St, Austin, US'
     )
   })
+
+  // A person's name in a MapTiler query degrades the result, and `residential` is not a place.
+  // See plans/apps/shipstation/shipstation-workflow-expansion-plan.md §4.
+  it('never includes name or residential', () => {
+    expect(
+      formatAddressForGeocode({
+        name: 'Jane Smith',
+        street1: '123 Main St',
+        city: 'Austin',
+        state: 'TX',
+        zipCode: '78701',
+        country: 'US',
+        residential: 'yes',
+      })
+    ).toBe('123 Main St, Austin, TX, 78701, US')
+  })
+})
+
+// plans/apps/shipstation/shipstation-workflow-expansion-plan.md §4: `name` and `residential`
+// are additive keys, and `formatAddress`'s DEFAULT output must stay byte-identical because it
+// renders in dispatch notifications, digests, the route planner, timeline chips and the field
+// display.
+describe('formatAddress — name/residential are opt-in only', () => {
+  const FIXTURES: { label: string; address: Partial<AddressStructValue>; expected: string }[] = [
+    {
+      label: 'US with unit',
+      address: {
+        street1: '123 Main St',
+        street2: 'Apt 4',
+        city: 'Austin',
+        state: 'TX',
+        zipCode: '78701',
+        country: 'US',
+      },
+      expected: '123 Main St, Apt 4, Austin, TX 78701, United States',
+    },
+    {
+      label: 'DE profile',
+      address: { street1: 'Musterstraße 1', city: 'Berlin', zipCode: '12345', country: 'DE' },
+      expected: 'Musterstraße 1, 12345 Berlin, Germany',
+    },
+    {
+      label: 'UK, no state',
+      address: {
+        street1: '10 Downing Street',
+        city: 'London',
+        state: '',
+        zipCode: 'SW1A 2AA',
+        country: 'GB',
+      },
+      expected: '10 Downing Street, London, SW1A 2AA, United Kingdom',
+    },
+    {
+      label: 'street only',
+      address: { street1: '1 Foo St' },
+      expected: '1 Foo St',
+    },
+  ]
+
+  it.each(FIXTURES)('default output is unchanged by name/residential — $label', ({
+    address,
+    expected,
+  }) => {
+    expect(formatAddress(address)).toBe(expected)
+    expect(formatAddress({ ...address, name: 'Jane Smith', residential: 'yes' })).toBe(expected)
+    expect(formatAddress({ ...address, name: 'Acme Corp', residential: 'no' })).toBe(expected)
+  })
+
+  it('default output is unchanged with domesticCountry and country overrides too', () => {
+    const a: Partial<AddressStructValue> = {
+      street1: '123 Main St',
+      city: 'Austin',
+      state: 'TX',
+      zipCode: '78701',
+      country: 'US',
+    }
+    const withExtras = { ...a, name: 'Jane Smith', residential: 'unknown' as const }
+    for (const opts of [
+      { domesticCountry: 'US' },
+      { domesticCountry: 'GB' },
+      { country: 'code' as const },
+      { country: 'omit' as const },
+      { country: 'name' as const },
+    ]) {
+      expect(formatAddress(withExtras, opts)).toBe(formatAddress(a, opts))
+    }
+  })
+
+  it("include: ['name'] prepends the recipient line", () => {
+    expect(
+      formatAddress(
+        {
+          name: 'Jane Smith',
+          street1: '123 Main St',
+          city: 'Austin',
+          state: 'TX',
+          zipCode: '78701',
+          country: 'US',
+        },
+        { domesticCountry: 'US', include: ['name'] }
+      )
+    ).toBe('Jane Smith, 123 Main St, Austin, TX 78701')
+  })
+
+  it("include: ['name'] on an address with no name adds no empty segment", () => {
+    expect(
+      formatAddress(
+        { street1: '123 Main St', city: 'Austin', state: 'TX', zipCode: '78701', country: 'US' },
+        { domesticCountry: 'US', include: ['name'] }
+      )
+    ).toBe('123 Main St, Austin, TX 78701')
+  })
+
+  it('residential never renders, even when name is included', () => {
+    expect(
+      formatAddress(
+        { street1: '1 Foo St', residential: 'yes' },
+        { country: 'omit', include: ['name'] }
+      )
+    ).toBe('1 Foo St')
+  })
 })
 
 describe('parseAddress — US fixtures', () => {
