@@ -34,6 +34,26 @@ vi.mock('@auxx/lib/postings', async () => {
     assertAccountingSetupUnfrozen: vi.fn(async () => undefined),
     createChartAccount: vi.fn(async () => okResult({ id: 'acc_cuid000000000000000000000' })),
     setRoleAssignment: vi.fn(async () => okResult({ role: 'cash', glAccountId: 'acc_1' })),
+    // Brief 20 §7.4. The inbound sync RESTATES prior months - it writes into
+    // closed periods and reverses entries that have vanished from the provider
+    // - so it sits on `ledgerControl` beside `setLockedThrough` rather than on
+    // `ledgerPost`. Mocked to an `ok`, because the only thing under test here
+    // is which rung reaches the resolver body at all.
+    syncProviderLedger: vi.fn(async () =>
+      okResult({
+        from: '2026-01-01',
+        to: '2026-01-31',
+        providerId: 'quickbooks',
+        currency: 'USD',
+        chunks: [],
+        written: 0,
+        alreadyPosted: 0,
+        reversed: 0,
+        deferredToClosedMonths: [],
+        refusals: [],
+        syncedThrough: '2026-01-31',
+      })
+    ),
   }
 })
 
@@ -194,6 +214,31 @@ describe('ledger.setLockedThrough', () => {
     await expect(
       ledgerCaller(ledgerFull()).setLockedThrough({ periodKey: '2026-08' })
     ).resolves.toMatchObject({ success: true })
+  })
+})
+
+describe('ledger.syncProviderLedger', () => {
+  // 🛑 Not `ledgerPost`. A bookkeeper holding `ledgerPost` posts what is in
+  // front of them; this walks from the cutover forward and decides that last
+  // December is now different. Deleting the `ledgerControl` assert from the
+  // router makes this case reach the mocked lib call and pass, which is what
+  // makes it behavioral rather than a mock-call count.
+  it('refuses ledger: Edit', async () => {
+    await expect(
+      ledgerCaller(ledgerEdit()).syncProviderLedger({ to: '2026-01-31' })
+    ).rejects.toMatchObject(FORBIDDEN)
+  })
+
+  it('admits ledger: Full', async () => {
+    await expect(
+      ledgerCaller(ledgerFull()).syncProviderLedger({ to: '2026-01-31' })
+    ).resolves.toMatchObject({ syncedThrough: '2026-01-31' })
+  })
+
+  it('refuses a caller with settingsManage but not ledgerControl', async () => {
+    await expect(
+      ledgerCaller(settingsManageOnly()).syncProviderLedger({ to: '2026-01-31' })
+    ).rejects.toMatchObject(FORBIDDEN)
   })
 })
 
