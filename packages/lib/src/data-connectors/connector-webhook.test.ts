@@ -21,6 +21,7 @@ const {
   fetchFn,
   deleteWhere,
   resolveRelationships,
+  resolveCrossConnectorLinks,
   foldRunManifest,
   publishSyncRecordsChanged,
 } = vi.hoisted(() => {
@@ -46,6 +47,10 @@ const {
     fetchFn: vi.fn(),
     deleteWhere: vi.fn(),
     resolveRelationships: vi.fn(),
+    // Faked for the same reason as `resolveRelationships`: the real module reaches the
+    // org cache, whose provider graph touches Drizzle column refs at import time.
+    // `isErr` is all the caller reads.
+    resolveCrossConnectorLinks: vi.fn(async (..._a: unknown[]) => ({ isErr: () => false })),
     // Both are called with the real arity (`(db, runId, fragment)` /
     // `(db, args)`) — declare a rest param so the pass-through mock factory
     // below can forward whatever it receives.
@@ -80,6 +85,9 @@ vi.mock('./reconciliation', () => ({
 }))
 vi.mock('./relationship-pass', () => ({
   resolveRelationships: (...a: unknown[]) => resolveRelationships(...a),
+}))
+vi.mock('./cross-connector-links', () => ({
+  resolveCrossConnectorLinks: (...a: unknown[]) => resolveCrossConnectorLinks(...a),
 }))
 vi.mock('./service', () => ({
   loadConnector: (...a: unknown[]) => loadConnector(...a),

@@ -1099,6 +1099,18 @@ export const SYSTEM_ATTRIBUTES = [
   'shipment_parcel_count',
   'shipment_parcels', // inverse of parcel_shipment, has_many, onDelete cascade
   'shipment_order', // inverse of order_shipments
+  // Label-level money and documents, added by entity migration 151
+  // (plans/apps/shipstation/shipstation-status-and-linking-plan.md §7). Both
+  // amounts are CURRENCY, which is an INTEGER MINOR-UNIT amount; the provider
+  // sends a decimal and the connector multiplies, because the mapping layer has
+  // no transform hook. Only the live (non-voided) label's values arrive, since
+  // voiding refunds the label.
+  'shipment_cost',
+  'shipment_insurance_cost',
+  'shipment_insurance_claim',
+  // A capability URL: it fetches unauthenticated and carries the customer's
+  // name and address, so treat the value as a bearer secret.
+  'shipment_label_url',
 
   // Parcel. `parcel_tracking_number` is the cross-app match key: the carrier
   // apps find the box by it, so it is treated as unique (§8b).

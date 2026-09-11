@@ -395,6 +395,151 @@ export const SHIPMENT_FIELDS: Record<string, ResourceField> = {
       'matched.',
   },
 
+  /**
+   * What the merchant paid the carrier for this label.
+   *
+   * ## Integer minor units, and why the connector does the multiplying
+   *
+   * `field-value-helpers.ts` is explicit that CURRENCY is NUMBER's shape
+   * exactly: an integer minor-unit amount. ShipStation sends a DECIMAL
+   * (`{"currency":"usd","amount":16.54}`), so writing it through unconverted
+   * stores 12 cents for a $12.34 label. The mapping layer has no transform
+   * hook, so the connector server must emit the already-multiplied integer.
+   * That is what the `Minor` suffix on the key is for, the same signal
+   * `bank_deposit_total`'s `totalMinor` carries.
+   */
+  costMinor: {
+    id: toFieldId('costMinor'),
+    key: 'costMinor',
+    label: 'Shipping Cost',
+    type: BaseType.CURRENCY,
+    fieldType: FieldType.CURRENCY,
+    isSystem: true,
+    systemAttribute: 'shipment_cost',
+    systemSortOrder: 'a9',
+    nullable: true,
+    options: {
+      currencyCode: 'USD',
+      decimals: 2,
+      useGrouping: true,
+      currencyDisplay: 'symbol',
+    },
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    description:
+      'What the merchant paid for this label, in INTEGER MINOR UNITS (1654 is $16.54). The ' +
+      'provider sends a decimal amount with its own currency, so the connector multiplies ' +
+      'before it emits: the mapping layer has no transform hook to do it later. Populated on ' +
+      'all 50 labels in the 2026-09-11 probe. Defaults to USD because every shipment observed ' +
+      'is US domestic. Only the LIVE (non-voided) label reaches this field, which is correct, ' +
+      'because voiding refunds the label and the reprint is what was actually paid for.',
+  },
+
+  insuranceCostMinor: {
+    id: toFieldId('insuranceCostMinor'),
+    key: 'insuranceCostMinor',
+    label: 'Insurance Cost',
+    type: BaseType.CURRENCY,
+    fieldType: FieldType.CURRENCY,
+    isSystem: true,
+    systemAttribute: 'shipment_insurance_cost',
+    systemSortOrder: 'aA',
+    nullable: true,
+    options: {
+      currencyCode: 'USD',
+      decimals: 2,
+      useGrouping: true,
+      currencyDisplay: 'symbol',
+    },
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    description:
+      'What insuring this shipment cost, integer minor units, converted by the connector for ' +
+      'the same reason as the shipping cost. The provider supplied it on all 50 labels in the ' +
+      '2026-09-11 probe and the amount was 0 on every one: this merchant does not insure. A ' +
+      'zero here is therefore a real reading rather than a missing value. Live label only.',
+  },
+
+  insuranceClaim: {
+    id: toFieldId('insuranceClaim'),
+    key: 'insuranceClaim',
+    label: 'Insurance Claim',
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemAttribute: 'shipment_insurance_claim',
+    systemSortOrder: 'aB',
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    description:
+      'Any insurance claim the provider reports against this label. FORWARD-LOOKING, added by ' +
+      'owner decision on 2026-09-11 rather than because a value was seen: it was null on all ' +
+      '50 probed labels, which follows from the insurance cost being 0 everywhere, since ' +
+      'nothing uninsured can be claimed. The wire shape is consequently UNKNOWN, so the ' +
+      'connector writes this only when the provider sends a string. If a later label returns a ' +
+      'structure, whoever finds it picks the one scalar that belongs in a text column and ' +
+      'records which, instead of serializing the whole object into the field.',
+  },
+
+  /**
+   * The printable PDF of this shipment's live label.
+   *
+   * ## A bearer secret, stored as plain text
+   *
+   * Verified 2026-09-11: the href is on the provider's public API host and an
+   * UNAUTHENTICATED GET returns `200 application/pdf`, so a plain link in the UI
+   * works with no proxying. The flip side is that the opaque path segment is the
+   * ONLY thing protecting a document carrying a customer's name and address.
+   * Anyone holding the string can fetch the label. Treat the column the way a
+   * token is treated: never in an export, a log line, a webhook payload, or
+   * anything an agent can read out to a third party.
+   *
+   * Stored as a URL rather than fetched into a `MediaAsset` by owner decision.
+   * Expiry is unmeasured, so if these eventually 404 the column becomes dead
+   * strings, which is the argument for revisiting that decision.
+   */
+  labelUrl: {
+    id: toFieldId('labelUrl'),
+    key: 'labelUrl',
+    label: 'Label PDF',
+    type: BaseType.URL,
+    fieldType: FieldType.URL,
+    isSystem: true,
+    systemAttribute: 'shipment_label_url',
+    systemSortOrder: 'aC',
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    description:
+      "The PDF of the label a person would actually print, read off the provider's " +
+      '`label_download` object (which also carries png and zpl). Present on all 50 labels in ' +
+      'the 2026-09-11 probe. BEARER SECRET: the URL fetches unauthenticated and the document ' +
+      "carries the customer's name and address, so it must never be exported, logged, or " +
+      'handed to a third party. Live label only, so a void and reprint replaces this and the ' +
+      'superseded PDF becomes unreachable. Expiry is unmeasured.',
+  },
+
   createdAt: {
     id: toFieldId('createdAt'),
     key: 'createdAt',
