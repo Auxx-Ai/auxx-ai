@@ -315,9 +315,6 @@ export const COMPANY_FIELDS: Record<string, ResourceField> = {
     systemAttribute: 'company_headquarters',
     systemSortOrder: 'a8',
     nullable: true,
-    options: {
-      addressComponents: ['street', 'city', 'state', 'country'],
-    },
     capabilities: {
       filterable: false,
       sortable: false,

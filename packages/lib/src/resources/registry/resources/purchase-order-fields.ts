@@ -358,7 +358,6 @@ export const PURCHASE_ORDER_FIELDS: Record<string, ResourceField> = {
     systemSortOrder: 'a9',
     showInTable: false,
     nullable: true,
-    options: { addressComponents: ['street', 'city', 'state', 'country'] },
     capabilities: {
       filterable: false,
       sortable: false,

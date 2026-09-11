@@ -297,7 +297,6 @@ export const WORK_ORDER_FIELDS: Record<string, ResourceField> = {
     systemAttribute: 'work_order_address',
     systemSortOrder: 'a9',
     nullable: true,
-    options: { addressComponents: ['street', 'city', 'state', 'country'] },
     capabilities: {
       filterable: false,
       sortable: false,

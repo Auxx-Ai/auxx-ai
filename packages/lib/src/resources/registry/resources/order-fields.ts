@@ -326,7 +326,6 @@ export const ORDER_FIELDS: Record<string, ResourceField> = {
     systemAttribute: 'order_shipping_address',
     systemSortOrder: 'aA',
     nullable: true,
-    options: { addressComponents: ['street', 'city', 'state', 'country'] },
     capabilities: {
       filterable: false,
       sortable: false,

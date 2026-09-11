@@ -36,14 +36,19 @@ const DEFAULT_ADDRESS_COMPONENTS = ['street1', 'street2', 'city', 'state', 'zipC
 /**
  * A component id no editor has ever produced.
  *
- * Five registry address fields (order/work_order/service_request/purchase_order/company) ship
- * `addressComponents: ['street', 'city', 'state', 'country']` — written before the editor's id
- * set existed, so it names `street` rather than `street1` and omits `street2`/`zipCode`
- * entirely. Nothing read the option until now, so those literals were inert. Honoring them
- * literally would delete the ZIP line from every order, work order and company address in
- * every org, which no admin ever asked for, so a list carrying this id is treated as
- * un-configured and falls back to the defaults. The editor cannot emit `street`, so this can
- * never swallow a real admin choice.
+ * Five registry address fields (order/work_order/service_request/purchase_order/company) used
+ * to ship `addressComponents: ['street', 'city', 'state', 'country']` — written before the
+ * editor's id set existed, so it named `street` rather than `street1` and omitted
+ * `street2`/`zipCode` entirely. Nothing read the option until Step 0c, so those literals were
+ * inert. Honoring them literally would delete the ZIP line from every order, work order and
+ * company address in every org, which no admin ever asked for, so a list carrying this id is
+ * treated as un-configured and falls back to the defaults. The editor cannot emit `street`, so
+ * this can never swallow a real admin choice.
+ *
+ * The registry literals are gone and entity migration
+ * `150-strip-legacy-address-components` removes the stored lists per org, but this guard is
+ * what keeps an org that has NOT yet run that migration rendering correctly. Remove it only
+ * once 150 has run everywhere.
  */
 const LEGACY_UNCONFIGURED_ID = 'street'
 
