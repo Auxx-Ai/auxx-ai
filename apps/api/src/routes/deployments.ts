@@ -9,7 +9,7 @@ import { calculateNextVersion } from '@auxx/services/app-versions'
 import { verifyAppAccess } from '@auxx/services/developer-accounts'
 import { verifyOrgMembership } from '@auxx/services/organization-members'
 import { stableStringify } from '@auxx/utils/json'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, isNotNull, isNull } from 'drizzle-orm'
 import { Hono } from 'hono'
 import { type ErrorStatusCode, errorResponse } from '../lib/response'
 import { authMiddleware } from '../middleware/auth'
@@ -235,31 +235,77 @@ deployments.post('/:appId/deployments', requireScope(['developer', 'apps:write']
         throw new Error('Failed to create deployment')
       }
 
-      // 3. Update or create installation
-      const existing = await tx.query.AppInstallation.findFirst({
+      // 3. Repoint, reactivate, or create the ONE live installation.
+      //
+      // 🛑 Do NOT filter this lookup by `installationType`. Migration 0376 replaced
+      // the unique over (appId, organizationId, installationType) with a PARTIAL
+      // unique over (appId, organizationId) WHERE `uninstalledAt IS NULL`, so an org
+      // may hold exactly one live installation of an app whatever its type. A lookup
+      // scoped to 'development' cannot see a live PRODUCTION row, concludes nothing is
+      // installed, and inserts - which the index rejects with an unhandled constraint
+      // error, surfacing to the CLI as a bare 500. That made `auxx dev --once` fail for
+      // every app already installed from a publish, which is exactly when you want to
+      // dev-deploy: to test a change before publishing it.
+      //
+      // `installationType` is mutable by design now (0376's comment says so), so
+      // switching an app between a published and a development deployment is a
+      // REPOINT of the single row. This mirrors `installApp` in
+      // `@auxx/lib/apps/installations/install-app.ts`, which was updated for the new
+      // invariant while this route was missed.
+      const liveInstallation = await tx.query.AppInstallation.findFirst({
         where: and(
           eq(schema.AppInstallation.appId, appId),
           eq(schema.AppInstallation.organizationId, targetOrganizationId),
-          eq(schema.AppInstallation.installationType, 'development')
+          isNull(schema.AppInstallation.uninstalledAt)
         ),
       })
 
-      if (existing && !existing.uninstalledAt) {
+      if (liveInstallation) {
+        // Stamped, not assumed: the live row may be a production install being
+        // switched to this dev deployment.
         await tx
           .update(schema.AppInstallation)
-          .set({ currentDeploymentId: deployment.id, updatedAt: new Date() })
-          .where(eq(schema.AppInstallation.id, existing.id))
+          .set({
+            installationType: 'development',
+            currentDeploymentId: deployment.id,
+            updatedAt: new Date(),
+          })
+          .where(eq(schema.AppInstallation.id, liveInstallation.id))
       } else {
-        if (existing?.uninstalledAt) {
-          await tx.delete(schema.AppInstallation).where(eq(schema.AppInstallation.id, existing.id))
-        }
-        await tx.insert(schema.AppInstallation).values({
-          appId,
-          organizationId: targetOrganizationId,
-          installationType: 'development',
-          currentDeploymentId: deployment.id,
-          installedAt: new Date(),
+        // Nothing live. Reactivate the most recently uninstalled row rather than
+        // DELETEing it and inserting a fresh one: a soft-deleted installation keeps
+        // its AppSetting and Credential rows, which `uninstallApp` preserves on
+        // purpose, and a hard delete discards them along with the id every other
+        // table references.
+        const softDeleted = await tx.query.AppInstallation.findFirst({
+          where: and(
+            eq(schema.AppInstallation.appId, appId),
+            eq(schema.AppInstallation.organizationId, targetOrganizationId),
+            isNotNull(schema.AppInstallation.uninstalledAt)
+          ),
+          orderBy: (installations, { desc }) => [desc(installations.uninstalledAt)],
         })
+
+        if (softDeleted) {
+          await tx
+            .update(schema.AppInstallation)
+            .set({
+              uninstalledAt: null,
+              installationType: 'development',
+              currentDeploymentId: deployment.id,
+              installedAt: new Date(),
+              updatedAt: new Date(),
+            })
+            .where(eq(schema.AppInstallation.id, softDeleted.id))
+        } else {
+          await tx.insert(schema.AppInstallation).values({
+            appId,
+            organizationId: targetOrganizationId,
+            installationType: 'development',
+            currentDeploymentId: deployment.id,
+            installedAt: new Date(),
+          })
+        }
       }
 
       return deployment
