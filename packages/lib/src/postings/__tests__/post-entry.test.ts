@@ -1274,7 +1274,13 @@ describe('code-based entries', () => {
       lock: OPEN,
     })
 
-    expect(result.status).toBe('not_connected')
+    // `not_exported`, not `not_connected`, even though the resolver above
+    // answers `null`: both reasons apply here and the ROUTE short-circuits
+    // first. That is the right precedence - the type-level fact is the durable
+    // one, and connecting a provider tomorrow would not make this entry export.
+    // What this test is actually about is the line below: the cash-account
+    // guard does not refuse the entry (brief 22 §5).
+    expect(result.status).toBe('not_exported')
     expect(fake.lines.map((line) => line.accountCode)).toEqual(['1000', '2100'])
   })
 

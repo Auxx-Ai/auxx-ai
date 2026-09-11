@@ -50,6 +50,7 @@ import { loadRoleAccountCodes, resolveAccountLines } from './resolve-roles'
 import type {
   BuiltEntry,
   PostEntryInput,
+  PostEntryStatus,
   PostFailureClass,
   PostingExportStatus,
   PostingType,
@@ -746,10 +747,10 @@ export async function postEntry(db: Database, options: PostEntryOptions): Promis
     // org's connected one, so a route never reaches this file's own provider
     // call. Do not branch other posting types here - the route table is the
     // one place that decides this.
-    const provider =
-      EXPORT_ROUTE_BY_POSTING_TYPE[entry.postingType] === 'none'
-        ? NONE_ACCOUNTING_PROVIDER
-        : await resolveAccountingProvider(organizationId)
+    const routedToNone = EXPORT_ROUTE_BY_POSTING_TYPE[entry.postingType] === 'none'
+    const provider = routedToNone
+      ? NONE_ACCOUNTING_PROVIDER
+      : await resolveAccountingProvider(organizationId)
     const input: PostEntryInput = {
       organizationId,
       glPostingId,
@@ -806,9 +807,27 @@ export async function postEntry(db: Database, options: PostEntryOptions): Promis
     }
 
     const result = pushed.value
-    // `not_connected` and `disabled` pushed nothing and are owed nothing.
+
+    // 🛑 A `'none'` ROUTE is not a missing integration, and must not say it is.
+    //
+    // `NONE_ACCOUNTING_PROVIDER` answers `not_connected` because from its own
+    // point of view that is true - it has nothing to push to. But it was handed
+    // this entry by the route table, not by the org's lack of a provider, and
+    // the org may well have QuickBooks connected. Reporting `not_connected`
+    // there made the close console tell a connected org it had no accounting
+    // system, sending a reader to debug a healthy connection (brief 22 §5).
+    //
+    // The translation lives HERE because this is the only place that knows
+    // which of the two reasons applied: the provider cannot tell, and the row
+    // records the same `exportStatus` either way.
+    const status: PostEntryStatus =
+      routedToNone && result.status === 'not_connected' ? 'not_exported' : result.status
+
+    // Nothing was pushed and nothing is owed. `not_exported` joins the set for
+    // the same reason it exists - it pushed nothing BY DESIGN, so an export is
+    // not merely absent, it is never coming.
     const exportStatus =
-      result.status === 'not_connected' || result.status === 'disabled'
+      status === 'not_connected' || status === 'disabled' || status === 'not_exported'
         ? ('not_required' as const)
         : ('exported' as const)
     await stampOutcome(organizationId, glPostingId, () =>
@@ -831,7 +850,7 @@ export async function postEntry(db: Database, options: PostEntryOptions): Promis
     })
 
     return {
-      status: result.status,
+      status,
       exportStatus,
       glPostingId,
       docNumber,

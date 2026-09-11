@@ -29,7 +29,17 @@ import { JournalEntryAttachment } from './journal-entry-attachment'
 import { JournalLines, JournalLinesTotals } from './journal-lines'
 import { firstDayOfPeriod, nextOpenPeriodAfter, periodKeyForEntryDate } from './period-helpers'
 
-const POSTED_STATUSES = new Set(['posted', 'already_posted', 'healed', 'not_connected', 'disabled'])
+// `not_exported` is here for the opening entry and its reversal: both are
+// `journal_entry` records whose posting type routes to `'none'`, so they never
+// push and always land on it. The set means "a GlPosting row now exists".
+const POSTED_STATUSES = new Set([
+  'posted',
+  'already_posted',
+  'healed',
+  'not_connected',
+  'disabled',
+  'not_exported',
+])
 
 interface JournalEntryDrawerProps {
   /** The record id, or `null` while `isNew` and the empty draft has not landed yet. */

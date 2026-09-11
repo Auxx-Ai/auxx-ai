@@ -17,6 +17,7 @@ import {
   getCachedMembers,
   getOrgCache,
 } from '../cache'
+import { NONE_PROVIDER_ID, resolveAccountingProvider } from '../postings/provider'
 import { ENABLED_POSTING_TYPES, INVENTORY_ROLES_BY_POSTING_TYPE } from '../postings/regime'
 import { resolveSetupReadiness } from '../postings/setup-readiness'
 import type { ChecklistId, GoalKey } from './client'
@@ -175,10 +176,33 @@ async function hasScheduledVisit(ctx: GettingStartedContext): Promise<boolean> {
 // ⚠️ None of these gate Post. `previewMonthEnd`'s `blockedBy` does. A checklist
 // says "set up costing"; a refusal names the part with no standard cost.
 
+/**
+ * Is an accounting system connected?
+ *
+ * ⚠️ Resolved rather than defaulted. `SetupReadinessContext.providerConnected`
+ * treats absent as NOT connected, so passing nothing here would tell a
+ * QuickBooks-connected org that its provider snapshot is not required while the
+ * wizard - which does know - still demanded it. That is exactly the checklist /
+ * wizard disagreement the comment above says this module exists to prevent.
+ *
+ * Fails safe: `resolveAccountingProvider` answers `NONE_ACCOUNTING_PROVIDER`
+ * when no resolver is installed, when the org has connected nothing, and when
+ * it names a provider that is not registered.
+ */
+async function isAccountingProviderConnected(ctx: GettingStartedContext): Promise<boolean> {
+  const provider = await resolveAccountingProvider(ctx.organizationId)
+  return provider.id !== NONE_PROVIDER_ID
+}
+
 /** One settings-derived requirement from the shared predicate. */
 async function settingsRequirementMet(ctx: GettingStartedContext, key: string): Promise<boolean> {
-  const settings = await getOrgCache().get(ctx.organizationId, 'orgSettings')
-  const readiness = resolveSetupReadiness(settings as Record<string, unknown>)
+  const [settings, providerConnected] = await Promise.all([
+    getOrgCache().get(ctx.organizationId, 'orgSettings'),
+    isAccountingProviderConnected(ctx),
+  ])
+  const readiness = resolveSetupReadiness(settings as Record<string, unknown>, {
+    providerConnected,
+  })
   return readiness.requirements.find((r) => r.key === key)?.met ?? false
 }
 

@@ -19,6 +19,7 @@ const POSTED_STATUSES = new Set<PostResultStatus>([
   'healed',
   'not_connected',
   'disabled',
+  'not_exported',
 ])
 
 export interface UseJournalEntryDraftOptions {

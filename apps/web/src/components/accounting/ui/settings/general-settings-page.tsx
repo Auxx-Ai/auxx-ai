@@ -39,6 +39,7 @@ import { useSettings } from '~/hooks/use-settings'
 import { useUser } from '~/hooks/use-user'
 import { useRequireCapability } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
+import { useAccountingProviderStatus } from '../../hooks/use-accounting-provider-status'
 import {
   FREEZE_REASON,
   useAccountingSettingsFreeze,
@@ -128,9 +129,17 @@ export function AccountingGeneralSettingsPage() {
   const { frozen } = useAccountingSettingsFreeze()
 
   // The shared predicate, over the settings record. No query.
+  //
+  // ⚠️ This is the SECOND Finalize door (see `wizard-done-page`), so it has to
+  // answer `providerConnected` the same way the wizard does or the two doors
+  // disagree about the same org. A load reads as connected for the reason given
+  // there: erring toward one requirement briefly unmet beats enabling Finalize
+  // against a baseline nobody reconciled (brief 22 §2.5).
+  const providerStatus = useAccountingProviderStatus()
+  const providerConnected = providerStatus.loading || providerStatus.connected
   const readiness = useMemo(
-    () => resolveSetupReadiness(buildReadinessRecord(getSetting)),
-    [getSetting]
+    () => resolveSetupReadiness(buildReadinessRecord(getSetting), { providerConnected }),
+    [getSetting, providerConnected]
   )
 
   // ── Section 1: accounting period ─────────────────────────────────────────
