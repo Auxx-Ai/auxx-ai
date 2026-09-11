@@ -186,6 +186,11 @@ export {
 } from './close-month'
 export { listClosePeriods } from './close-periods'
 export {
+  type CreateAndLinkOptions,
+  type CreateAndLinkResult,
+  createAndLinkProviderAccount,
+} from './create-provider-account'
+export {
   CHART_PACK_KEYS,
   CHART_PACKS,
   type ChartPack,
@@ -302,6 +307,8 @@ export {
   type AccountingProvider,
   type AccountingProviderFactory,
   type ConnectedProviderResolver,
+  type CreateProviderAccountInput,
+  type CreateProviderAccountResult,
   getAccountingProvider,
   listAccountingProviderIds,
   NONE_ACCOUNTING_PROVIDER,
@@ -309,6 +316,7 @@ export {
   registerAccountingProvider,
   resolveAccountingProvider,
   setConnectedProviderResolver,
+  supportsCreatingProviderAccounts,
 } from './provider'
 // ── plans/accounting/tasks/20 §8: do our books and theirs agree, pure ───────
 export {

@@ -185,6 +185,7 @@ export function AccountingAccountsSettingsPage() {
       providerAccounts: accountMap.data?.providerAccounts ?? [],
       broken: accountMap.data?.broken ?? [],
       suggested: rows.filter((row) => row.suggestion).length,
+      canCreate: accountMap.data?.canCreateProviderAccounts ?? false,
       providerLabel: provider.providerLabel,
       isPending: accountMap.isPending,
       isError: accountMap.isError,
@@ -423,6 +424,66 @@ export function AccountingAccountsSettingsPage() {
     [handleSetIdentity]
   )
 
+  /**
+   * Create ONE row's account in the connected system and link it.
+   *
+   * 🛑 Confirms first, and the confirm is not a formality: every other write on
+   * this page changes something of ours, and this one adds an account to
+   * somebody's real books. QuickBooks cannot delete an account - the most anyone
+   * can do afterwards is deactivate it - so "are you sure" is the last point at
+   * which a misclick is free.
+   *
+   * Toasts its refusal, like `handleAcceptSuggestion` and for the same reason: a
+   * list row has no field for a sentence to land on, and the row is on screen so
+   * the message can name the account.
+   */
+  const [creatingAccountId, setCreatingAccountId] = useState<string | null>(null)
+  const createInProvider = api.ledger.createProviderAccount.useMutation()
+
+  const handleCreateInProvider = useCallback(
+    async (glAccountId: string) => {
+      const account = accounts.find((row) => row.id === glAccountId)
+      const where = mapView.providerLabel ?? 'the connected accounting system'
+      const confirmed = await confirm({
+        title: `Create this account in ${where}?`,
+        description: `${formatAccountLabel(account)} will be added to ${where}'s chart of accounts and linked to this one. ${where} cannot delete an account once it exists - it can only be made inactive.`,
+        confirmText: 'Create and link',
+        cancelText: 'Cancel',
+      })
+      if (!confirmed) return
+
+      setCreatingAccountId(glAccountId)
+      try {
+        const result = await createInProvider.mutateAsync({ glAccountId })
+        await utils.ledger.accountMap.invalidate()
+        // ⚠️ Not a success toast - the page has none, and the link badge flipping
+        // to Linked is the confirmation. These are the two outcomes that are NOT
+        // what the button said it would do, so they are worth a sentence: the
+        // account already existed and nothing was created, or the code did not
+        // survive because the company keeps no account numbers.
+        if (result.outcome === 'existing') {
+          toastError({
+            title: `${where} already had this account`,
+            description: `Linked to '${result.row.providerAccountName}'. Nothing was created.`,
+          })
+        } else if (result.numberDropped) {
+          toastError({
+            title: 'Linked, but without the account number',
+            description: `${where} has account numbers turned off, so '${formatAccountLabel(account)}' was created by name only.`,
+          })
+        }
+      } catch (error) {
+        toastError({
+          title: `Error creating the account in ${where}`,
+          description: error instanceof Error ? error.message : 'Could not create the account.',
+        })
+      } finally {
+        setCreatingAccountId(null)
+      }
+    },
+    [accounts, confirm, createInProvider, mapView.providerLabel, utils]
+  )
+
   const confirmSuggested = api.ledger.confirmSuggestedAccounts.useMutation({
     onSuccess: async (result) => {
       await utils.ledger.accountMap.invalidate()
@@ -582,6 +643,10 @@ export function AccountingAccountsSettingsPage() {
                 void handleAcceptSuggestion(glAccountId, providerAccountId)
               }}
               acceptingAccountId={acceptingAccountId}
+              onCreateInProvider={(glAccountId) => {
+                void handleCreateInProvider(glAccountId)
+              }}
+              creatingAccountId={creatingAccountId}
               onSelect={handleSelectAccount}
               rolesByAccountId={rolesByAccountId}
               draft={chartDraft}

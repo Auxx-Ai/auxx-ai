@@ -10,6 +10,7 @@ import {
   buildEntry,
   CHART_PACK_KEYS,
   confirmSuggestedIdentities,
+  createAndLinkProviderAccount,
   createChartAccount,
   createJournalEntry,
   DEFAULT_CHART_OF_ACCOUNTS,
@@ -628,6 +629,33 @@ export const ledgerRouter = createTRPCRouter({
         organizationId: ctx.session.organizationId,
         glAccountId: input.glAccountId,
         providerAccountId: input.providerAccountId,
+        actorUserId: ctx.session.userId,
+      })
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /**
+   * Create the counterpart of one of our accounts in the connected system, then
+   * link the two - the seam run BACKWARDS.
+   *
+   * The accounts auxx creates itself (a clearing account per card rail, the
+   * role-bearing core) exist on one side only, so the matcher has nothing to
+   * offer for them and {@link setAccountIdentity} has nothing to point at. This
+   * is how they stop blocking the export without somebody retyping each one
+   * into QuickBooks by hand.
+   *
+   * Same rung as `setAccountIdentity` and for a stronger version of its reason:
+   * this does not only decide which external account real money lands in, it
+   * ADDS that account to somebody's books. `accountMap.canCreateProviderAccounts`
+   * says whether the connected system can be asked at all.
+   */
+  createProviderAccount: permissionProcedure(PermissionKey.ledgerControl)
+    .input(z.object({ glAccountId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const result = await createAndLinkProviderAccount(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        glAccountId: input.glAccountId,
         actorUserId: ctx.session.userId,
       })
       if (result.isErr()) throw result.error

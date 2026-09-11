@@ -48,6 +48,7 @@ import { cn } from '@auxx/ui/lib/utils'
 import {
   BookOpen,
   ChevronDown,
+  CloudUpload,
   Landmark,
   Link2,
   Plus,
@@ -106,6 +107,10 @@ interface ChartListProps {
   onAcceptSuggestion: (glAccountId: string, providerAccountId: string) => void
   /** The account id whose single-row accept is in flight, if any. */
   acceptingAccountId: string | null
+  /** Creates ONE row's account in the connected system and links it. */
+  onCreateInProvider: (glAccountId: string) => void
+  /** The account id whose create-and-link is in flight, if any. */
+  creatingAccountId: string | null
   /** `PermissionKey.ledgerControl`. False hides every write affordance this
    *  list owns (Add account, Accept N) - the read path stays fully usable. */
   canControl: boolean
@@ -129,6 +134,8 @@ export function ChartList({
   confirming,
   onAcceptSuggestion,
   acceptingAccountId,
+  onCreateInProvider,
+  creatingAccountId,
   canControl,
 }: ChartListProps) {
   const [search, setSearch] = useState('')
@@ -428,6 +435,8 @@ export function ChartList({
                       onSelect={onSelect}
                       onAcceptSuggestion={onAcceptSuggestion}
                       acceptingAccountId={acceptingAccountId}
+                      onCreateInProvider={onCreateInProvider}
+                      creatingAccountId={creatingAccountId}
                       onRemoveAccount={onRemoveAccount}
                       onRestoreAccount={onRestoreAccount}
                       canControl={canControl}
@@ -495,6 +504,8 @@ interface ChartAccountListRowProps {
   onSelect: (id: string | null) => void
   onAcceptSuggestion: (glAccountId: string, providerAccountId: string) => void
   acceptingAccountId: string | null
+  onCreateInProvider: (glAccountId: string) => void
+  creatingAccountId: string | null
   onRemoveAccount: (id: string) => void
   onRestoreAccount: (id: string) => void
   canControl: boolean
@@ -516,6 +527,8 @@ function ChartAccountListRow({
   onSelect,
   onAcceptSuggestion,
   acceptingAccountId,
+  onCreateInProvider,
+  creatingAccountId,
   onRemoveAccount,
   onRestoreAccount,
   canControl,
@@ -530,6 +543,13 @@ function ChartAccountListRow({
   // row action derived from a round trip that has not answered
   // yet is an offer the server may be about to refuse.
   const suggestion = map.connected && !map.isPending ? identity?.suggestion : undefined
+  // 🛑 Offered ONLY where there is no candidate to link. A row the matcher found
+  // something for should link the account that already exists - creating a
+  // second one beside it is how a chart ends up with two "Card Clearing"s, which
+  // split a balance in half with no error anywhere. The two buttons are never
+  // both on a row, and which one appears is this line.
+  const canCreateHere =
+    map.connected && !map.isPending && map.canCreate && !suggestion && !identity?.providerAccountId
   const AccountIcon = accountTypeIcon(account.accountType)
   return (
     <TreeRow
@@ -591,6 +611,28 @@ function ChartAccountListRow({
                     disabled={acceptingAccountId === account.id}
                     onClick={() => onAcceptSuggestion(account.id, suggestion.account.id)}>
                     <Link2 />
+                  </TreeRowButton>
+                )}
+                {/* 🛑 A DIFFERENT action from the one above, not a
+                  variant of it, which is why it wears a different
+                  glyph. That one agrees to a pairing the matcher
+                  proposed; this one ADDS an account to somebody's
+                  real books. They are mutually exclusive by
+                  `canCreateHere`, so no row ever shows both and
+                  nobody has to work out which is which.
+                  🛑 `persistent`, like the accept button and for
+                  the same reason: it exists on a subset of rows,
+                  and hover-hunting to find which ones is exactly
+                  what pinning avoids. The tooltip NAMES the
+                  provider - "create it in QuickBooks" is a
+                  sentence somebody can decline; "create" is not. */}
+                {canCreateHere && (
+                  <TreeRowButton
+                    persistent
+                    tooltipText={`Create this account in ${map.providerLabel ?? 'the accounting system'} and link it`}
+                    disabled={creatingAccountId === account.id}
+                    onClick={() => onCreateInProvider(account.id)}>
+                    <CloudUpload />
                   </TreeRowButton>
                 )}
                 {/* 🛑 NOT `persistent`, unlike the accept button

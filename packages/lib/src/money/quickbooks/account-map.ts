@@ -53,8 +53,8 @@ export const QBO_ACCOUNT_ID_FIELD = 'qboAccountId'
 /** The system entity type slug the map hangs on. Not the definition's UUID. */
 const GL_ACCOUNT_ENTITY_TYPE = 'gl_account'
 
-/** `list_quickbooks_accounts`, as this module consumes it. */
-interface MappedAccount {
+/** `list_quickbooks_accounts` and `create_quickbooks_account`, as this module consumes them. */
+export interface MappedAccount {
   id: string
   name: string
   fullyQualifiedName: string
@@ -101,25 +101,45 @@ export async function listQuickbooksProviderAccounts(
 
   const accounts: ProviderAccount[] = []
   for (const account of raw) {
-    const classification = CLASSIFICATION[account.classification]
-    if (!classification) {
+    const mapped = toProviderAccount(account)
+    if (!mapped) {
       logger.warn('Skipping a QuickBooks account with an unreadable classification', {
         providerAccountId: account.id,
         classification: account.classification,
       })
       continue
     }
-    accounts.push({
-      id: String(account.id),
-      name: account.name,
-      fullyQualifiedName: account.fullyQualifiedName || account.name,
-      number: account.acctNum?.trim() || null,
-      accountType: account.accountType,
-      classification,
-      active: account.active !== false,
-    })
+    accounts.push(mapped)
   }
   return accounts
+}
+
+/**
+ * One tool-shaped account as the provider-neutral {@link ProviderAccount}, or
+ * null when its classification is not one of the five sections.
+ *
+ * 🛑 ONE conversion, two callers - the chart read above and
+ * `createProviderAccount`'s answer, which comes back in the same shape from a
+ * different tool. They used to be the same six lines written twice, which is
+ * the arrangement where one of them learns about a field and the other does
+ * not.
+ *
+ * Null rather than a default, for the reason {@link CLASSIFICATION} gives: an
+ * account whose statement section we cannot read must never be offered as a
+ * candidate for one of ours.
+ */
+export function toProviderAccount(account: MappedAccount): ProviderAccount | null {
+  const classification = CLASSIFICATION[account.classification]
+  if (!classification) return null
+  return {
+    id: String(account.id),
+    name: account.name,
+    fullyQualifiedName: account.fullyQualifiedName || account.name,
+    number: account.acctNum?.trim() || null,
+    accountType: account.accountType,
+    classification,
+    active: account.active !== false,
+  }
 }
 
 /**
