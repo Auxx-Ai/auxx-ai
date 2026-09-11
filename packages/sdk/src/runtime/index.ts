@@ -35,6 +35,7 @@
  */
 
 import React from 'react'
+import { dispatchHostEvent } from '../client/host-events.js'
 import * as ClientSDK from '../client/index.js'
 import * as RootSDK from '../root/index.js'
 import { ExtensionInitError, ExtensionLoadError } from '../shared/errors.js'
@@ -465,6 +466,20 @@ async function main() {
  * @see eventBus - Event handler lookup and invocation
  */
 function setupHostHandlers() {
+  /**
+   * Host notifications pushed INTO the app. One wire type carries all of them;
+   * `dispatchHostEvent` fans out to whichever narrow subscriber API the app
+   * used. See `client/host-events.ts` for why the wire is generic and the
+   * exported surface is not.
+   *
+   * Returns `{ received: true }` rather than nothing so the host can tell a
+   * delivered notification from a runtime that predates this handler.
+   */
+  Host.onRequest('host-event', async ({ name, payload }: { name: string; payload?: unknown }) => {
+    dispatchHostEvent(name, payload)
+    return { received: true }
+  })
+
   // Handle component render requests
   Host.onRequest('render-component', async ({ id }: { id: string }) => {
     try {

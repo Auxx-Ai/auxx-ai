@@ -31,22 +31,49 @@ interface AddressInputProps extends NodeInputProps {
   fieldType?: string
 }
 
+/** The residential indicator's three real states. Anything else is not an answer. */
+const RESIDENTIAL_VALUES = new Set(['unknown', 'yes', 'no'])
+
 /**
- * Parse raw value to AddressStruct
+ * Parse raw value to AddressStruct.
+ *
+ * 🛑 Every key the struct carries must be listed here. This rebuilds the object
+ * from scratch on EVERY render, so a key that is missing is not merely absent
+ * from the parse, it is actively deleted from the value the editor round-trips:
+ * the child writes it, `onChange` stores it, the next render strips it, and the
+ * control snaps back to its default. `name` and `residential` were dropped that
+ * way, which presented as a residential picker that could not be moved off
+ * "unknown" rather than as anything that looked like data loss.
+ *
+ * `street2` is the reason the six are spread rather than defaulted to `''`
+ * individually: the child components treat `undefined` and `''` alike, but the
+ * enum cannot, so `residential` is validated instead of coerced. An unrecognised
+ * stored value becomes `undefined` (ask again), never `'no'` (a commercial
+ * claim that suppresses a carrier surcharge).
  */
 function parseAddressValue(value: unknown): AddressStruct {
   const initial = (typeof value === 'object' && value !== null ? value : {}) as Record<
     string,
-    string
+    unknown
   >
+  const residential = initial.residential
   return {
-    street1: initial.street1 ?? '',
-    street2: initial.street2 ?? '',
-    city: initial.city ?? '',
-    state: initial.state ?? '',
-    zipCode: initial.zipCode ?? '',
-    country: initial.country ?? '',
+    street1: asText(initial.street1),
+    street2: asText(initial.street2),
+    city: asText(initial.city),
+    state: asText(initial.state),
+    zipCode: asText(initial.zipCode),
+    country: asText(initial.country),
+    name: asText(initial.name),
+    residential:
+      typeof residential === 'string' && RESIDENTIAL_VALUES.has(residential)
+        ? (residential as AddressStruct['residential'])
+        : undefined,
   }
+}
+
+function asText(value: unknown): string {
+  return typeof value === 'string' ? value : ''
 }
 
 /**
