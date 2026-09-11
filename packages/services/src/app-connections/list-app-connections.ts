@@ -149,6 +149,15 @@ export async function listAppConnections(organizationId: string, userId?: string
       connectionVariables: (cred.metadata?.connectionVariables ?? undefined) as
         | Record<string, string>
         | undefined,
+      // The provider instance this connection is authorized against, under the
+      // key that provider's own callback stored it - `realmId` is QuickBooks'
+      // word for it and today the only one written. Deliberately NOT normalized
+      // into a guess for other providers: an absent tenant is a complete answer,
+      // and inventing one from another metadata key would make two unrelated
+      // connections compare equal. Read by the accounting UI only, never
+      // rendered - see `AppConnection.providerTenantId`.
+      providerTenantId:
+        typeof cred.metadata?.realmId === 'string' ? cred.metadata.realmId : undefined,
       // What the provider actually GRANTED (stamped by `resolveGrantedScopes` at every
       // callback). Reconnect re-requests this ∩ the definition's optional list so a full
       // re-auth cannot silently downgrade a connection that holds an optional scope —

@@ -247,6 +247,16 @@ export async function retryExport(
         exportStatus,
         providerId: result.providerId,
         providerEntryId: result.externalId || null,
+        // 🛑 The same stamp `post-entry.ts`'s `markExported` writes, and it has
+        // to be written HERE too or the retry path silently produces an
+        // exported row whose company can never be reconstructed (task 24 §2.2).
+        // A row that reaches the books through a retry is the ordinary case for
+        // anything that failed once; it is not an edge.
+        providerTenantId: result.tenantId || null,
+        // Cleared for `markExported`'s reason: the refusal recorded here names
+        // an attempt this success has superseded, and every reader takes it as
+        // current. `attempts` stays (task 24 §6.2).
+        failureReason: null,
       })
       .where(
         and(
@@ -270,6 +280,7 @@ export async function retryExport(
       docNumber: row.docNumber,
       providerId: result.providerId,
       providerEntryId: result.externalId || undefined,
+      providerTenantId: result.tenantId || undefined,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)

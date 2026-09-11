@@ -166,6 +166,44 @@ describe('retryExport', () => {
     expect(fake.updates[0]).toMatchObject({ exportStatus: 'failed' })
   })
 
+  it('stamps the TENANT on the retry path too, not only on the first attempt', async () => {
+    // 🛑 The two write sites move together or this one silently produces an
+    // exported row whose company can never be reconstructed - and a row that
+    // reaches the books through a retry is the ORDINARY case for anything that
+    // failed once, not an edge. Task 24 §2.2.
+    const fake = createFakeDb(postingRow(), [line()])
+    stubProvider(() =>
+      ok({ status: 'posted', externalId: 'qb_9', providerId: 'stub', tenantId: 'realm_1' })
+    )
+
+    await retryExport(fake.db, { organizationId: ORG, glPostingId: POSTING })
+
+    expect(fake.updates[0]).toMatchObject({ providerTenantId: 'realm_1' })
+  })
+
+  it('stamps a NULL tenant for a provider that has none', async () => {
+    const fake = createFakeDb(postingRow(), [line()])
+    stubProvider(() => ok({ status: 'posted', externalId: 'qb_9', providerId: 'stub' }))
+
+    await retryExport(fake.db, { organizationId: ORG, glPostingId: POSTING })
+
+    expect(fake.updates[0]).toMatchObject({ providerTenantId: null })
+  })
+
+  it('clears the refusal text a retry supersedes, and leaves attempts alone', async () => {
+    // Every row this function touches carries the reason its LAST attempt was
+    // refused - that is what `exportStatus: 'failed'` means. Leaving it behind
+    // makes an exported row describe itself as broken (task 24 §6.2), while
+    // `attempts` stays because the count is still true.
+    const fake = createFakeDb(postingRow(), [line()])
+    stubProvider(() => ok({ status: 'posted', externalId: 'qb_9', providerId: 'stub' }))
+
+    await retryExport(fake.db, { organizationId: ORG, glPostingId: POSTING })
+
+    expect(fake.updates[0]).toMatchObject({ exportStatus: 'exported', failureReason: null })
+    expect(fake.updates[0]).not.toHaveProperty('attempts')
+  })
+
   it('replays the row own requestId and docNumber rather than minting new ones', async () => {
     // The provider's idempotency contract only fires on the key the first
     // attempt used. A fresh key guarantees nothing, because the retry carries a

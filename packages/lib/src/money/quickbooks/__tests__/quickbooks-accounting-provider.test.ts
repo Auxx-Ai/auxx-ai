@@ -196,7 +196,10 @@ function baseInput(over: Partial<PostEntryInput> = {}): PostEntryInput {
  * the find/create pair. Everything unhandled returns an empty result set, which
  * is the "QuickBooks does not hold this entry" answer.
  */
-function connect(handlers: Record<string, (inputs: any) => unknown> = {}) {
+function connect(
+  handlers: Record<string, (inputs: any) => unknown> = {},
+  options: { realmId?: string } = {}
+) {
   const callTool = vi.fn(async (toolId: string, inputs: any) => {
     if (toolId === 'list_quickbooks_accounts') return { accounts: CHART }
     const handler = handlers[toolId]
@@ -211,6 +214,9 @@ function connect(handlers: Record<string, (inputs: any) => unknown> = {}) {
       installationId: 'install1',
       connectionId: 'conn1',
       userId: 'user1',
+      // Absent by default, which is what `resolveQuickbooksContext` answers for
+      // a connection whose metadata carries no realm.
+      ...(options.realmId ? { realmId: options.realmId } : {}),
       callTool,
     },
   })
@@ -291,6 +297,18 @@ describe('layer 2 - heal rather than re-post', () => {
     expect(callTool).not.toHaveBeenCalledWith('create_quickbooks_journal_entry', expect.anything())
   })
 
+  it('carries the realm onto a healed entry - the id alone does not name a company', async () => {
+    const callTool = connect(
+      { find_quickbooks_journal_entry: () => ({ journalEntries: [{ journalEntryId: '184' }] }) },
+      { realmId: '9341453857213446' }
+    )
+
+    const result = await provider.postEntry(baseInput())
+
+    expect(result._unsafeUnwrap()).toMatchObject({ tenantId: '9341453857213446' })
+    expect(callTool).not.toHaveBeenCalledWith('create_quickbooks_journal_entry', expect.anything())
+  })
+
   it('queries by the docNumber the core minted, not one of its own', async () => {
     const callTool = connect()
     await provider.postEntry(baseInput({ docNumber: 'AUXX-REV-202607-R1' }))
@@ -302,6 +320,37 @@ describe('layer 2 - heal rather than re-post', () => {
 })
 
 describe('the happy path', () => {
+  // 🛑 Task 24 §2: a QuickBooks entry id is a per-COMPANY sequence, so `201`
+  // means something different in every company and the id alone is a pointer
+  // with no address space. The realm is already on the resolved context - there
+  // is no lookup here - and it is stamped beside the id at export time or never,
+  // because the company connected later cannot answer for the one it went to.
+  it('reports the realm the entry went to, beside its id', async () => {
+    connect(
+      { create_quickbooks_journal_entry: () => ({ journalEntry: { journalEntryId: '201' } }) },
+      { realmId: '9341453857213446' }
+    )
+
+    const result = await provider.postEntry(baseInput())
+
+    expect(result._unsafeUnwrap()).toEqual({
+      status: 'posted',
+      externalId: '201',
+      providerId: 'quickbooks',
+      tenantId: '9341453857213446',
+    })
+  })
+
+  it('omits the tenant when the connection carries no realm, rather than inventing one', async () => {
+    connect({
+      create_quickbooks_journal_entry: () => ({ journalEntry: { journalEntryId: '201' } }),
+    })
+
+    const result = await provider.postEntry(baseInput())
+
+    expect(result._unsafeUnwrap()).not.toHaveProperty('tenantId')
+  })
+
   it('posts and reports the provider id', async () => {
     const callTool = connect({
       create_quickbooks_journal_entry: () => ({ journalEntry: { journalEntryId: '201' } }),

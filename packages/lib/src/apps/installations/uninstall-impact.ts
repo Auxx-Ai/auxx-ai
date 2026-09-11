@@ -20,6 +20,25 @@ export interface UninstallImpactConnector {
   itemCount: number
 }
 
+/** What a delete would take with it, for one set of app-registered columns. */
+export interface AppFieldImpact {
+  /** Columns in scope. */
+  total: number
+  /** Of those, how many the merchant can actually see (`isHidden: false`). */
+  visible: number
+  /** FieldValue rows behind them — the number that decides whether to press the button. */
+  valuesAffected: number
+}
+
+/**
+ * Which columns to count: the ones an INSTALLATION registered, or the ones scoped to a single
+ * CONNECTION. The two are different cascades reached by different buttons — uninstalling an app
+ * sweeps by `appInstallationId`, disconnecting one account sweeps by `connectionId` (that FK is
+ * `ON DELETE CASCADE`, so the connection-scoped columns and every value under them go with the
+ * credential).
+ */
+export type AppFieldScope = { appInstallationId: string } | { connectionId: string }
+
 /** Everything the uninstall confirm needs to state plainly. */
 export interface UninstallImpact {
   connectors: UninstallImpactConnector[]
@@ -27,13 +46,50 @@ export interface UninstallImpact {
   mintedByDef: Array<{ entityDefinitionId: string; count: number }>
   /** Total of {@link mintedByDef}, precomputed so the dialog does not re-reduce it. */
   mintedTotal: number
-  appFields: {
-    /** Columns this installation registered. */
-    total: number
-    /** Of those, how many the merchant can actually see (`isHidden: false`). */
-    visible: number
-    /** FieldValue rows behind them — the number that decides whether to press the button. */
-    valuesAffected: number
+  appFields: AppFieldImpact
+}
+
+/**
+ * Count the app-registered columns in `scope` and the `FieldValue` rows behind them.
+ *
+ * 🛑 The three numbers are what makes a confirm dialog a confirmation rather than a speed
+ * bump, so state them for exactly what they count and nothing more: `total` is columns,
+ * `visible` is the subset a person would notice going blank, `valuesAffected` is the rows
+ * whose contents the cascade deletes. It does NOT count records — the records survive with
+ * empty cells, which is precisely the outcome a dialog saying "records are kept" gets wrong.
+ */
+export async function countAppFieldImpact(
+  db: Database,
+  organizationId: string,
+  scope: AppFieldScope
+): Promise<AppFieldImpact> {
+  const inScope =
+    'appInstallationId' in scope
+      ? eq(schema.CustomField.appInstallationId, scope.appInstallationId)
+      : eq(schema.CustomField.connectionId, scope.connectionId)
+
+  const owned = and(eq(schema.CustomField.organizationId, organizationId), inScope)
+
+  const [fieldRow] = await db
+    .select({ total: count(schema.CustomField.id) })
+    .from(schema.CustomField)
+    .where(owned)
+
+  const [visibleRow] = await db
+    .select({ visible: count(schema.CustomField.id) })
+    .from(schema.CustomField)
+    .where(and(owned, eq(schema.CustomField.isHidden, false)))
+
+  const [valueRow] = await db
+    .select({ values: count(schema.FieldValue.id) })
+    .from(schema.FieldValue)
+    .innerJoin(schema.CustomField, eq(schema.CustomField.id, schema.FieldValue.fieldId))
+    .where(owned)
+
+  return {
+    total: fieldRow?.total ?? 0,
+    visible: visibleRow?.visible ?? 0,
+    valuesAffected: valueRow?.values ?? 0,
   }
 }
 
@@ -82,47 +138,11 @@ export async function getUninstallImpact(
     count,
   }))
 
-  const [fieldRow] = await db
-    .select({ total: count(schema.CustomField.id) })
-    .from(schema.CustomField)
-    .where(
-      and(
-        eq(schema.CustomField.organizationId, organizationId),
-        eq(schema.CustomField.appInstallationId, appInstallationId)
-      )
-    )
-
-  const [visibleRow] = await db
-    .select({ visible: count(schema.CustomField.id) })
-    .from(schema.CustomField)
-    .where(
-      and(
-        eq(schema.CustomField.organizationId, organizationId),
-        eq(schema.CustomField.appInstallationId, appInstallationId),
-        eq(schema.CustomField.isHidden, false)
-      )
-    )
-
-  const [valueRow] = await db
-    .select({ values: count(schema.FieldValue.id) })
-    .from(schema.FieldValue)
-    .innerJoin(schema.CustomField, eq(schema.CustomField.id, schema.FieldValue.fieldId))
-    .where(
-      and(
-        eq(schema.CustomField.organizationId, organizationId),
-        eq(schema.CustomField.appInstallationId, appInstallationId)
-      )
-    )
-
   return {
     connectors,
     mintedByDef,
     mintedTotal: mintedByDef.reduce((sum, row) => sum + row.count, 0),
-    appFields: {
-      total: fieldRow?.total ?? 0,
-      visible: visibleRow?.visible ?? 0,
-      valuesAffected: valueRow?.values ?? 0,
-    },
+    appFields: await countAppFieldImpact(db, organizationId, { appInstallationId }),
   }
 }
 

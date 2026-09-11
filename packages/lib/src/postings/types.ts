@@ -432,6 +432,16 @@ export interface PostEntryResult {
   externalId: string
   /** Which provider answered - `'quickbooks'`, or `'none'`. */
   providerId: string
+  /**
+   * WHICH instance of that provider answered - a QuickBooks realm, a Xero
+   * tenant. Stamped onto `GlPosting.providerTenantId`; the core never parses it.
+   *
+   * 🛑 OPTIONAL, and it has to be: `NoneAccountingProvider` has no tenant and
+   * must not be forced to invent one. An `externalId` without one of these is a
+   * pointer with no address space - entry `147` exists in every QuickBooks
+   * company - so an adapter that HAS a tenant must always return it (task 24 §2).
+   */
+  tenantId?: string
 }
 
 /**
@@ -585,6 +595,17 @@ export interface PostResult {
   providerId?: string
   /** The provider's own id for the entry, once pushed. */
   providerEntryId?: string
+  /**
+   * WHICH instance of the provider `providerEntryId` belongs to. Absent when
+   * nothing was pushed.
+   *
+   * 🛑 Carried out to the UI rather than kept on the row alone, because the
+   * one thing a reader does with `providerEntryId` is follow it, and a deep
+   * link resolved against the wrong company reports a live entry as deleted
+   * (task 24 §4). The callout compares this against the connected tenant and
+   * renders no link at all when they differ.
+   */
+  providerTenantId?: string
   /** Human-readable. On `account_unmapped` it names EVERY offending role. */
   error?: string
   failureClass?: PostFailureClass
@@ -745,6 +766,12 @@ export interface PostingDetail {
   draft: unknown
   providerId: string | null
   providerEntryId: string | null
+  /**
+   * Which instance of the provider the entry went to. NULL means no export ever
+   * reached one - see `GlPosting.providerTenantId`, which this reads back
+   * verbatim and never reconstructs.
+   */
+  providerTenantId: string | null
   postedAt: string | null
   postedByUserId: string | null
   failureReason: string | null

@@ -2,6 +2,7 @@
 
 import { BYO_CLIENT_KEYS } from '@auxx/credentials/connections'
 import {
+  getCredential,
   insertCredential,
   listCredentials,
   recordRefreshSuccess,
@@ -17,6 +18,7 @@ import {
 } from '@auxx/services/app-connections'
 import { err, ok } from 'neverthrow'
 import { mergeManualConnectionEdit } from '../../connections/merge-manual-edit'
+import { ConflictError } from '../../errors'
 import { triggerAppEvent } from '../events'
 import { reconcileInstallationAppFields } from '../installations/app-field-provisioning'
 import { resolveActiveInstallationId } from '../installations/resolve-active-installation'
@@ -47,7 +49,10 @@ function pickSecrets(data: {
  *
  * 1. **Explicit reconnect** (`options.connectionId` given) — rotates the tokens/secrets of that
  *    specific credential and resets its refresh circuit breaker. No new row, no
- *    `connection-added` event.
+ *    `connection-added` event. Guarded: if the app declares a `connection-identify` handler
+ *    and the account behind the new token is not the one stored on the row, the reconnect is
+ *    REFUSED rather than silently repointing every connection-scoped mapping at a different
+ *    account (see the branch's own comment, and task 24 §3).
  * 2. **Identity dedup** (fresh connect, app declares a `connection-identify` handler) — the
  *    handler returns a stable provider identity (realm id, workspace id, account email). If an
  *    existing connection in the same visibility scope already carries that identity
@@ -99,7 +104,9 @@ function pickSecrets(data: {
  *            created/updated connection, and whether it matched an existing connection by
  *            provider identity (`true`) rather than being freshly inserted (`false`). An
  *            explicit reconnect returns `matchedExisting: false` (it is not a silent dedup).
- *          - Error: Database error or CONNECTION_CREATE_FAILED if creation fails
+ *          - Error: Database error, CONNECTION_CREATE_FAILED if creation fails, or a
+ *            `ConflictError` when an explicit reconnect authorized a different provider
+ *            account than the one the connection is linked to (nothing is written).
  *
  * @example
  * // Save OAuth2 connection after callback
@@ -221,6 +228,75 @@ export async function saveAppConnection(
   if (options?.connectionId) {
     logger.info('Reconnecting existing app connection:', { credentialId: options.connectionId })
 
+    // 🛑 A reconnect keeps the credential ID, so it must not be allowed to repoint the row
+    // at a DIFFERENT provider account. Connection-scoped `CustomField` rows are keyed on
+    // this id, and every value under them is a correspondence between one of our records
+    // and one of THAT account's ids. Swap the account underneath and nothing is deleted or
+    // flagged - the whole map is silently reinterpreted against a stranger. On QuickBooks
+    // that is 96 stored account ids read against a different company; ids there are
+    // per-company sequences, so the entry still balances and posts to the wrong accounts.
+    //
+    // So ask the app who it just connected to, before anything is written. The machinery is
+    // the same generic `connection-identify` handler the fresh-connect path below uses to
+    // dedupe - no provider knowledge here, and the guard covers Shopify stores and Stripe
+    // accounts on the same terms.
+    // See plans/accounting/tasks/24-the-company-on-the-entry.md §3.
+    const identifier = await resolveConnectionIdentity(appInstallationId, connectionData, metadata)
+    if (identifier) {
+      const existingResult = await getCredential(options.connectionId, organizationId)
+      const storedIdentity = existingResult.isOk()
+        ? String(
+            (existingResult.value.metadata as Record<string, unknown> | null | undefined)
+              ?.__identity ?? ''
+          ).trim()
+        : ''
+      // What to CALL the connected account in the refusal. The label is the app's own
+      // name for it - the QuickBooks `connection-added` handler writes the company name,
+      // Shopify writes the store domain - and it is what the row already reads as on the
+      // connections list. The raw identity is a realm id or a numeric account id: fine in
+      // a log, not a thing to put in front of a person. Falls back to it only when an app
+      // left the label empty.
+      const storedLabel =
+        (existingResult.isOk() ? existingResult.value.label?.trim() : '') || storedIdentity
+
+      if (storedIdentity && storedIdentity !== identifier) {
+        // Refuse rather than cascade. A menu item called "Reconnect" is not a place a
+        // person can be expected to anticipate losing the mapping, and there is no confirm
+        // on this path. The correct migration is already visible: Disconnect, then Add
+        // Connection - every mapped row reads "not linked" and refuses until re-linked,
+        // which is a state somebody can act on. A refusal can also name both accounts;
+        // a cascade cannot explain itself afterwards (§3.2).
+        logger.warn('Refusing reconnect - the authorized account is not the connected one', {
+          credentialId: options.connectionId,
+          appInstallationId,
+          storedIdentity,
+          identifier,
+        })
+        // ⚠️ Names the connected account and NOT the one just authorized. We hold no
+        // label for the new account (identify returns a bare identifier), and printing a
+        // raw realm id at somebody tells them nothing they can act on. Both ids are in
+        // the warn above for whoever is actually debugging.
+        return err(
+          new ConflictError(
+            `This connection is linked to ${storedLabel}, and you just authorized a ` +
+              `different account. Reconnecting cannot move a connection to another ` +
+              `account - everything mapped through it is keyed to the original. ` +
+              `Disconnect this connection first, then add the new one.`
+          )
+        )
+      }
+
+      // ⚠️ Re-stamp the identity onto the metadata this reconnect is about to persist.
+      // A reconnect is an OAuth mint, so `updateExistingConnection` takes the rotate branch
+      // and `updateCredential(…, { metadata })` REPLACES metadata wholesale with what the
+      // callback built. Without this line `__identity` is not merely stale, it is deleted -
+      // and a later fresh connect to the SAME account then matches nothing and mints a
+      // duplicate row (§3.3). Mutating `metadata` and relinking it to `connectionData` is
+      // the same handoff the fresh-connect path uses below.
+      metadata.__identity = identifier
+      connectionData.metadata = metadata
+    }
+
     const updated = await updateExistingConnection(
       options.connectionId,
       organizationId,
@@ -244,85 +320,43 @@ export async function saveAppConnection(
   // Identity dedup (fresh connect): if this app declares a `connection-identify` handler,
   // ask it for the freshly minted connection's stable provider identity BEFORE inserting.
   // A pre-insert match updates the existing row in place instead of minting a duplicate —
-  // no new row, no `connection-added` re-fire (setup already ran for that account). The gate
-  // reads the active deployment's catalog (same source triggerAppEvent uses); a missing
-  // catalog or list means today's behavior — a plain insert.
-  const declaredEvents = await loadDeclaredEvents(appInstallationId)
-  if (declaredEvents.includes('connection-identify')) {
-    const identifyType: 'oauth2-code' | 'secret' = connectionData.accessToken
-      ? 'oauth2-code'
-      : 'secret'
-    // Token is already in hand — no persistence yet, so no `id` is sent to identify.
-    const identifyValue = connectionData.accessToken || connectionData.secret || ''
-    const identifyFields = appVisibleFields(
-      mergeConnectionVariables(metadata, {
-        fields: connectionData.secretFields,
-      })
-    )
+  // no new row, no `connection-added` re-fire (setup already ran for that account).
+  const identifier = await resolveConnectionIdentity(appInstallationId, connectionData, metadata)
 
-    const identifyResult = await triggerAppEvent({
+  // Empty identifier → no handler, a failed handler, or an app opting out → plain insert.
+  if (identifier) {
+    // Persist the identity on plaintext metadata so future connects (and this insert)
+    // can match it. Mutating `metadata` here also updates `connectionData.metadata`
+    // when the caller supplied one; otherwise link them so the update path below (which
+    // recomputes metadata from connectionData) persists `__identity` too.
+    metadata.__identity = identifier
+    connectionData.metadata = metadata
+
+    // Same visibility scope as dedupeLabel — (appId, appInstallationId, userId). Org- and
+    // user-scoped rows are disjoint, so a personal and a workspace connection with the same
+    // identity stay two distinct rows.
+    const existing = await listCredentials({
+      organizationId,
+      kind: 'app',
+      appId,
       appInstallationId,
-      eventType: 'connection-identify',
-      payload: {
-        connection: {
-          type: identifyType,
-          value: identifyValue,
-          ...(Object.keys(identifyFields).length > 0 && { fields: identifyFields }),
-          metadata: safeSerializeMetadata(connectionData.metadata),
-        },
-      },
+      userId,
     })
+    const match = existing.isOk()
+      ? existing.value.find((row) => row.metadata?.__identity === identifier)
+      : undefined
 
-    if (identifyResult.isErr()) {
-      // A failing/absent identify handler must never block the connect — fall through to
-      // a plain insert (store nothing to match on).
-      logger.error('connection-identify handler failed; proceeding without dedup', {
-        appInstallationId,
-        error: identifyResult.error.message,
-      })
-    } else {
-      const handlerResult = identifyResult.value.result
-      const identifier =
-        handlerResult && typeof handlerResult === 'object' && 'identifier' in handlerResult
-          ? String((handlerResult as { identifier?: unknown }).identifier ?? '').trim()
-          : ''
-
-      // Empty identifier → app opted out of dedup for this connect → plain insert.
-      if (identifier) {
-        // Persist the identity on plaintext metadata so future connects (and this insert)
-        // can match it. Mutating `metadata` here also updates `connectionData.metadata`
-        // when the caller supplied one; otherwise link them so the update path below (which
-        // recomputes metadata from connectionData) persists `__identity` too.
-        metadata.__identity = identifier
-        connectionData.metadata = metadata
-
-        // Same visibility scope as dedupeLabel — (appId, appInstallationId, userId). Org- and
-        // user-scoped rows are disjoint, so a personal and a workspace connection with the same
-        // identity stay two distinct rows.
-        const existing = await listCredentials({
-          organizationId,
-          kind: 'app',
-          appId,
-          appInstallationId,
-          userId,
-        })
-        const match = existing.isOk()
-          ? existing.value.find((row) => row.metadata?.__identity === identifier)
-          : undefined
-
-        if (match) {
-          const updated = await updateExistingConnection(match.id, organizationId, connectionData)
-          if (updated.isErr()) {
-            return err(updated.error)
-          }
-          logger.info('Matched existing connection by identity — updated in place', {
-            credentialId: match.id,
-            appInstallationId,
-          })
-          // Keep the matched row's isDefault flag; no new row, no connection-added.
-          return ok({ credentialId: match.id, matchedExisting: true })
-        }
+    if (match) {
+      const updated = await updateExistingConnection(match.id, organizationId, connectionData)
+      if (updated.isErr()) {
+        return err(updated.error)
       }
+      logger.info('Matched existing connection by identity — updated in place', {
+        credentialId: match.id,
+        appInstallationId,
+      })
+      // Keep the matched row's isDefault flag; no new row, no connection-added.
+      return ok({ credentialId: match.id, matchedExisting: true })
     }
   }
 
@@ -522,6 +556,83 @@ async function updateExistingConnection(
   }
 
   return ok(undefined)
+}
+
+/**
+ * Ask the app which provider account a freshly minted token belongs to.
+ *
+ * Returns the app's stable identifier for that account (a QuickBooks realm, a Shopify shop
+ * domain, a workspace id), or `''` when there is no usable answer. Both callers treat `''`
+ * the same way — carry on — so the four "no answer" cases collapse into one return value:
+ * the app declares no `connection-identify` handler, the handler failed, the handler threw,
+ * or the handler deliberately returned nothing to opt out of dedup for this connect.
+ *
+ * ⚠️ That tolerance is the accepted hole in the reconnect guard above, and it is deliberate.
+ * Refusing on a handler failure would break every reconnect while an app's Lambda is down -
+ * and reconnect is *the repair path for an expired token*. Blocking repair to catch a rare
+ * misconfiguration is the worse trade (§3.5).
+ *
+ * The declared-events gate reads the active deployment's catalog, the same source
+ * `triggerAppEvent` uses, so a missing installation/deployment/catalog means today's
+ * behavior rather than an error.
+ */
+async function resolveConnectionIdentity(
+  appInstallationId: string,
+  connectionData: {
+    accessToken?: string
+    secret?: string
+    secretFields?: Record<string, string>
+    metadata?: Record<string, any>
+  },
+  metadata: Record<string, unknown>
+): Promise<string> {
+  try {
+    const declaredEvents = await loadDeclaredEvents(appInstallationId)
+    if (!declaredEvents.includes('connection-identify')) return ''
+
+    const identifyType: 'oauth2-code' | 'secret' = connectionData.accessToken
+      ? 'oauth2-code'
+      : 'secret'
+    // Token is already in hand — the row may not exist yet, so no `id` is sent to identify.
+    const identifyValue = connectionData.accessToken || connectionData.secret || ''
+    const identifyFields = appVisibleFields(
+      mergeConnectionVariables(metadata, {
+        fields: connectionData.secretFields,
+      })
+    )
+
+    const identifyResult = await triggerAppEvent({
+      appInstallationId,
+      eventType: 'connection-identify',
+      payload: {
+        connection: {
+          type: identifyType,
+          value: identifyValue,
+          ...(Object.keys(identifyFields).length > 0 && { fields: identifyFields }),
+          metadata: safeSerializeMetadata(connectionData.metadata),
+        },
+      },
+    })
+
+    if (identifyResult.isErr()) {
+      logger.error('connection-identify handler failed; proceeding without an identity', {
+        appInstallationId,
+        error: identifyResult.error.message,
+      })
+      return ''
+    }
+
+    const handlerResult = identifyResult.value.result
+    return handlerResult && typeof handlerResult === 'object' && 'identifier' in handlerResult
+      ? String((handlerResult as { identifier?: unknown }).identifier ?? '').trim()
+      : ''
+  } catch (error) {
+    logger.error('connection-identify threw; proceeding without an identity', {
+      appInstallationId,
+      error: error instanceof Error ? error.message : String(error),
+    })
+    return ''
+  }
 }
 
 /**

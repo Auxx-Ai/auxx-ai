@@ -98,6 +98,7 @@ export async function getPosting(
         draft: schema.GlPosting.draft,
         providerId: schema.GlPosting.providerId,
         providerEntryId: schema.GlPosting.providerEntryId,
+        providerTenantId: schema.GlPosting.providerTenantId,
         postedAt: schema.GlPosting.postedAt,
         postedByUserId: schema.GlPosting.postedByUserId,
         failureReason: schema.GlPosting.failureReason,
@@ -178,6 +179,10 @@ export async function getPosting(
       draft: posting.draft,
       providerId: posting.providerId ?? null,
       providerEntryId: posting.providerEntryId ?? null,
+      // Which company that id belongs to. NULL means no export ever reached a
+      // provider - never "reconstruct it from whatever is connected now", which
+      // is the one answer `GlPosting.providerTenantId` exists to refuse.
+      providerTenantId: posting.providerTenantId ?? null,
       postedAt: toIso(posting.postedAt),
       postedByUserId: posting.postedByUserId ?? null,
       failureReason: posting.failureReason ?? null,

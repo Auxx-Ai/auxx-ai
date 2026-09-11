@@ -629,7 +629,12 @@ export const connectionsRouter = createTRPCRouter({
     }),
 
   /**
-   * Delete a connection (errors if it's in use in workflows).
+   * Delete a connection.
+   *
+   * Refuses while anything still depends on the credential: a workflow using it, a channel
+   * bound to it, or a data connector borrowing it. The last two are FK `set null` edges, so
+   * the delete would not fail — it would quietly leave a dependent with no token source and,
+   * for a bank feed, no way to stop the recurring charge (see the guard's comment below).
    */
   delete: protectedProcedure
     .input(z.object({ id: z.string().min(1, 'Connection ID is required') }))
@@ -668,6 +673,37 @@ export const connectionsRouter = createTRPCRouter({
             dependents.length === 1
               ? 'Cannot delete connection: 1 channel depends on it. Disconnect that channel first.'
               : `Cannot delete connection: ${dependents.length} channels depend on it. Disconnect them first.`,
+        })
+      }
+
+      // 🛑 A data connector bound to this credential would be orphaned the same way
+      // (`DataConnector.credentialId` is `onDelete: 'set null'`) — and for a bank feed that
+      // orphaning costs money forever. `Credential.metadata.providerAccountId` is the ONLY
+      // place a Stripe Financial Connections `fca_…` account id lives, and all three release
+      // doors in `banking/feed/reaper.ts` reach it by
+      // `innerJoin Credential ON DataConnector.credentialId = Credential.id`. Delete the
+      // credential from here and the connector survives with a null FK, the account id is
+      // gone, no door can ever release the account, and Stripe keeps billing 30c per
+      // institution per month, invisibly. That is verbatim the failure `reaper.ts`'s own
+      // docblock says the file exists to prevent.
+      //
+      // Refuse rather than route through the banking teardown: `banking/writes.ts` already
+      // owns the correct order — reap at Stripe, then the connector, then the credential only
+      // when no sibling connector shares that bank login — and a second implementation of
+      // "release, then delete" is how the two come to disagree about which happens first.
+      // See plans/accounting/tasks/24-the-company-on-the-entry.md §5.
+      const connectors = await ctx.db.query.DataConnector.findMany({
+        where: (connector, { and, eq }) =>
+          and(eq(connector.organizationId, organizationId), eq(connector.credentialId, input.id)),
+        columns: { id: true },
+      })
+      if (connectors.length > 0) {
+        throw new TRPCError({
+          code: 'CONFLICT',
+          message:
+            connectors.length === 1
+              ? 'Cannot delete connection: 1 connector depends on it. Remove that connector first.'
+              : `Cannot delete connection: ${connectors.length} connectors depend on it. Remove them first.`,
         })
       }
 

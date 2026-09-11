@@ -219,10 +219,43 @@ export const GlPosting = pgTable(
     providerId: text(),
     /** The provider's own id for the entry. NULL until a successful push. */
     providerEntryId: text(),
+    /**
+     * WHICH instance of the provider the entry went to - a QuickBooks realm, a
+     * Xero tenant, a NetSuite account. Supplied by the adapter; the core never
+     * parses it.
+     *
+     * 🛑 `providerId` says WHAT system answered and `providerEntryId` is that
+     * system's id for the entry, but a provider id is a per-COMPANY sequence:
+     * entry `147` exists in every QuickBooks company and means something
+     * different in each. Without this column a company switch silently
+     * reinterprets every exported row and nothing downstream can tell.
+     *
+     * NULL means NO EXPORT REACHED A PROVIDER - a `none`-provider posting, or
+     * one that was never pushed. A normal, permanent state under decision P1,
+     * not a migration artefact.
+     *
+     * 🛑 **Written at export time or not at all.** An exported row's tenant can
+     * never be reconstructed afterwards: stamping one from the org's CURRENTLY
+     * connected realm is right only for an org that never switched - which is
+     * exactly the org this column does nothing for - and wrong for the one it
+     * exists to catch. That is why both write sites (`postings/post-entry.ts`
+     * and `postings/retry-export.ts`) stamp it, and why they have to move
+     * together: a retry path that stops stamping produces the unreconstructable
+     * row silently. See plans/accounting/tasks/24-the-company-on-the-entry.md §2.
+     */
+    providerTenantId: text(),
 
     postedAt: timestamp({ precision: 3 }),
     postedByUserId: text().references((): AnyPgColumn => User.id, { onDelete: 'set null' }),
-    /** Why the EXPORT was refused. Never why a posting was refused — there is no such row. */
+    /**
+     * Why the EXPORT was refused. Never why a posting was refused — there is no
+     * such row.
+     *
+     * Cleared by a later success, unlike `attempts`: the count stays true
+     * afterwards, the reason does not. Every screen reads this as current, so a
+     * row that exported on its third attempt while still carrying attempt two's
+     * refusal describes itself as broken (task 24 §6.2).
+     */
     failureReason: text(),
     /** How many times the EXPORT has been attempted. Not cleared by a later success. */
     attempts: integer().default(0).notNull(),
