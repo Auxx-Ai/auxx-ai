@@ -382,6 +382,12 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         error: result.error,
         appId,
         slug,
+        // A reconnect that authorized a DIFFERENT provider account is refused by
+        // `saveAppConnection` and lands here (task 24 §3). Rethrowing is the right
+        // termination: the catch below carries `error.message` into the popup page and
+        // into `oauth_error_message` on the redirect, and that message is the whole
+        // instruction — it names both accounts and says to disconnect first.
+        connectionId: metadata.connectionId ?? null,
       })
       throw result.error
     }

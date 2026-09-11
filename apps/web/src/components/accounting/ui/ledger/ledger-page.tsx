@@ -327,6 +327,7 @@ export function LedgerPage({ periodKey }: LedgerPageProps) {
       currencyCode={currencyCode}
       bookTimeZone={bookTimeZone}
       providerLabel={providerLabel}
+      connectedTenantId={provider.connectedTenantId}
       onReverse={actions.runReverse}
       isReversing={actions.isReversing}
     />
@@ -539,6 +540,7 @@ export function LedgerPage({ periodKey }: LedgerPageProps) {
                       <PostResultCallout
                         result={actions.postResult}
                         providerLabel={providerLabel}
+                        connectedTenantId={provider.connectedTenantId}
                       />
                     )}
 

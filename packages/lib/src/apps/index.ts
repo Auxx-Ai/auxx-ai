@@ -51,6 +51,9 @@ export {
   uninstallApp,
 } from './installations/uninstall-app'
 export {
+  type AppFieldImpact,
+  type AppFieldScope,
+  countAppFieldImpact,
   getLeftoverAppFields,
   getUninstallImpact,
   type LeftoverAppFields,

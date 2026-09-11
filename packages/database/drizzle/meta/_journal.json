@@ -2626,6 +2626,13 @@
       "when": 1789081531760,
       "tag": "0374_recurring_journal_and_expense_bill",
       "breakpoints": true
+    },
+    {
+      "idx": 375,
+      "version": "7",
+      "when": 1789144434935,
+      "tag": "0375_gl_posting_provider_tenant_id",
+      "breakpoints": true
     }
   ]
 }

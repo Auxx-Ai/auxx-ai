@@ -61,23 +61,46 @@ export function useConnectionRowActions(): UseConnectionRowActions {
 
   const disconnect = useCallback(
     async (connectionId: string, currentLabel: string | null) => {
-      // Name the connectors this will suspend (plans/money/tasks/44 D-3). The dialog
-      // used to mention workflows and nothing else, while the mutation behind it
-      // silently disconnected every connector on this credential — the thing a
-      // merchant would most want to know before pressing it. Fetched here rather than
-      // per row so a long connections list costs nothing.
-      let connectorClause = ''
+      // Name what this actually destroys (plans/money/tasks/44 D-3, task 24 §6.3). The
+      // dialog used to mention workflows and nothing else, while the mutation behind it
+      // disconnected every connector on the credential AND cascaded every column scoped to
+      // it. Fetched here rather than per row so a long connections list costs nothing.
+      let impactClause = ''
       try {
-        const { connectors } = await utils.apps.connectionImpact.fetch({
+        const { connectors, appFields } = await utils.apps.connectionImpact.fetch({
           credentialId: connectionId,
         })
+
         if (connectors.length > 0) {
           // ⚠️ Deliberately does NOT promise that reconnecting restores them. Reinstalling
           // an APP re-links its connectors automatically; re-adding a CONNECTION does
           // not — `deleteCredential` nulls `DataConnector.credentialId` via the FK and
           // nothing rebinds it, so recovery is re-picking the connection on the
           // connector itself. Saying "reconnecting restores them" here would be false.
-          connectorClause = ` ${connectors.length === 1 ? 'The connector' : `${connectors.length} connectors`} ${connectors.map((c) => `"${c.name}"`).join(', ')} ${connectors.length === 1 ? 'is' : 'are'} disconnected. Synced records are kept; to resume, pick a connection again on the connector.`
+          impactClause += ` ${connectors.length === 1 ? 'The connector' : `${connectors.length} connectors`} ${connectors.map((c) => `"${c.name}"`).join(', ')} ${connectors.length === 1 ? 'is' : 'are'} disconnected.`
+        }
+
+        // 🛑 This clause replaces "Synced records are kept; to resume, pick a connection
+        // again on the connector.", which was false in the way that matters most:
+        // `CustomField.connectionId` is `ON DELETE CASCADE` and the disconnect is a hard
+        // delete, so the records ARE kept and their contents are deleted. On one dev org a
+        // Shopify disconnect cascades 23 columns and 268,621 values — including the store
+        // domain on 20,873 contacts and the order name on 13,523 orders, both visible. Same
+        // defect `uninstall-app.ts`'s comment records fixing on the uninstall path.
+        //
+        // State exactly what the numbers count (columns and values, never records), per
+        // `getUninstallImpact`'s docblock.
+        if (appFields.total > 0) {
+          const one = appFields.total === 1
+          const columns = one ? 'the column' : `the ${appFields.total} columns`
+          const visible =
+            appFields.visible > 0
+              ? one
+                ? ' (visible on records)'
+                : ` (${appFields.visible} of them visible on records)`
+              : ''
+          const values = `${appFields.valuesAffected.toLocaleString()} ${appFields.valuesAffected === 1 ? 'value' : 'values'}`
+          impactClause += ` Disconnecting also deletes ${columns} this connection added${visible} and the ${values} stored in ${one ? 'it' : 'them'}. The records themselves stay; those cells go blank.`
         }
       } catch {
         // A failed impact read must not block the disconnect: the merchant gets the
@@ -86,7 +109,7 @@ export function useConnectionRowActions(): UseConnectionRowActions {
 
       const confirmed = await confirm({
         title: 'Disconnect?',
-        description: `Are you sure you want to disconnect "${currentLabel || 'Connection'}"? This may affect workflows using this connection.${connectorClause}`,
+        description: `Are you sure you want to disconnect "${currentLabel || 'Connection'}"? This may affect workflows using this connection.${impactClause}`,
         confirmText: 'Disconnect',
         cancelText: 'Cancel',
         destructive: true,

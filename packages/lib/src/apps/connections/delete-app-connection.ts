@@ -117,11 +117,20 @@ export async function deleteAppConnection(credentialId: string, organizationId: 
     return err(error instanceof Error ? error : new Error('Failed to disconnect data connector'))
   }
 
-  // Delete the connection. Connection-scoped app-registered custom fields
-  // (CustomField.connectionId → this credential, ON DELETE CASCADE) and their
-  // FieldValue rows are removed automatically by the FK cascade — disconnecting
-  // one store drops only that store's identity fields (app-registered custom
-  // fields §5/§7). No explicit cleanup needed here.
+  // Delete the connection.
+  //
+  // 🛑 Connection-scoped app-registered custom fields (CustomField.connectionId → this
+  // credential, ON DELETE CASCADE) and every FieldValue under them go with it, and that is
+  // a far bigger blast radius than "that store's identity fields" — the phrasing this
+  // comment used to carry, which understated it by two orders of magnitude. On one dev org
+  // disconnecting Shopify cascades 23 columns and 268,621 values, including the store domain
+  // on 20,873 contacts and the order name on 13,523 orders, both VISIBLE. It keeps the
+  // records and deletes their contents (app-registered custom fields §5/§7).
+  //
+  // No explicit cleanup is needed here — the cascade is correct and deliberate. What needed
+  // fixing was the confirm dialog in front of it (task 24 §6.3): `apps.connectionImpact` now
+  // counts exactly this, and the dialog states it before the button is pressed. Same defect
+  // `uninstall-app.ts`'s long comment records fixing on the uninstall path.
   const deleteResult = await deleteCredential(credentialId, organizationId)
 
   if (deleteResult.isErr()) {

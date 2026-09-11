@@ -1,0 +1,1 @@
+ALTER TABLE "GlPosting" ADD COLUMN "providerTenantId" text;

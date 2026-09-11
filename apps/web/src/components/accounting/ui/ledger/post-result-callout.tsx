@@ -19,12 +19,31 @@ import type { ComponentType } from 'react'
  * guessed link that 404s is worse than no link: it reads as "the entry is not
  * there", which is the one conclusion this button exists to prevent. `none` is
  * the id `postEntry` records when nothing was pushed, so it never gets a link.
+ *
+ * 🛑 **And a link into the wrong COMPANY is the same guess one dimension over.**
+ * A QuickBooks entry id is a per-company sequence - entry `147` exists in every
+ * company and means something different in each - and the URL cannot carry a
+ * company: `&companyId=` is ignored and `/app/switchcompany` 404s, verified
+ * against the sandbox. So the browser resolves this against whatever company its
+ * QuickBooks session happens to be in, and from the wrong one it reports a live
+ * entry as deleted. There is no honest link to build, so the caller passes the
+ * tenants and this returns `null` unless they are the same one (task 24 §4).
+ *
+ * @param providerId which system holds the entry, from the posting.
+ * @param entryId that system's own id for the entry.
+ * @param entryTenantId which instance of it the entry was exported to. NULL on a
+ *   row no export ever reached a provider for, which is also no link.
+ * @param connectedTenantId which instance this workspace is connected to now.
  */
-function providerEntryUrl(providerId: string | undefined, entryId: string): string | null {
-  if (providerId === 'quickbooks') {
-    return `https://app.qbo.intuit.com/app/journal?txnId=${encodeURIComponent(entryId)}`
-  }
-  return null
+function providerEntryUrl(
+  providerId: string | undefined,
+  entryId: string,
+  entryTenantId: string | null,
+  connectedTenantId: string | null
+): string | null {
+  if (providerId !== 'quickbooks') return null
+  if (!entryTenantId || entryTenantId !== connectedTenantId) return null
+  return `https://app.qbo.intuit.com/app/journal?txnId=${encodeURIComponent(entryId)}`
 }
 
 interface OutcomeCopy {
@@ -191,6 +210,13 @@ const TONE_ICON_CLASS: Record<OutcomeCopy['tone'], string> = {
 interface PostResultCalloutProps {
   result: PostResult
   providerLabel: string
+  /**
+   * Which company this workspace is connected to now, from
+   * `useAccountingProviderStatus`. Null when nothing is connected.
+   *
+   * 🛑 Compared, never rendered. See {@link providerEntryUrl}.
+   */
+  connectedTenantId: string | null
 }
 
 /**
@@ -198,13 +224,30 @@ interface PostResultCalloutProps {
  *
  * Two systems that never link to each other is how reconciliation becomes
  * copy-paste, so a posted entry carries a deep link straight into the
- * provider's own register (gap-g §3).
+ * provider's own register (gap-g §3) - when, and only when, it went to the
+ * company this workspace is connected to.
+ *
+ * 🛑 **An absent button is the complete answer**, and there is deliberately no
+ * copy in its place (task 24 §4). Naming the company on the button, explaining
+ * that the entry went to one this workspace no longer holds, or saying that a
+ * row predates a column are all narrating our internals at somebody who did not
+ * ask. The company is named in one place, the connection's label in app
+ * settings, and the realm id is named nowhere at all.
  */
-export function PostResultCallout({ result, providerLabel }: PostResultCalloutProps) {
+export function PostResultCallout({
+  result,
+  providerLabel,
+  connectedTenantId,
+}: PostResultCalloutProps) {
   const copy = OUTCOMES[result.status]
   const Icon = copy.icon
   const entryUrl = result.providerEntryId
-    ? providerEntryUrl(result.providerId, result.providerEntryId)
+    ? providerEntryUrl(
+        result.providerId,
+        result.providerEntryId,
+        result.providerTenantId ?? null,
+        connectedTenantId
+      )
     : null
 
   return (

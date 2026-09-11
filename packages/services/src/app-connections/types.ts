@@ -111,6 +111,22 @@ export interface AppConnection {
   isDefault?: boolean
   connectionVariables?: Record<string, string>
   /**
+   * WHICH instance of the provider this connection is authorized against - the
+   * QuickBooks realm, and in time a Xero tenant or a NetSuite account. Read
+   * straight off the credential metadata the OAuth callback wrote; `undefined`
+   * for every connection whose provider has no such notion.
+   *
+   * 🛑 An IDENTITY, never a label, and nothing may render it. `label` is what a
+   * person reads (`Sandbox Company_US_1`), and it is frozen at connect time, so
+   * it cannot answer "is this still the same company". This can, which is the
+   * one job it has: `GlPosting.providerTenantId` records the instance an entry
+   * was exported to, and the accounting UI compares the two before offering a
+   * deep link - a QuickBooks entry id is a per-company sequence, so a link
+   * followed into the wrong company reports a live entry as deleted
+   * (plans/accounting/tasks/24-the-company-on-the-entry.md §4).
+   */
+  providerTenantId?: string
+  /**
    * The scopes the provider actually granted, parsed from `Credential.metadata.scope`.
    * Always an array — `[]` when nothing is stored — so the client never branches on absence.
    * Reconnect seeds `scope_add` from this so a re-auth cannot downgrade the grant (§4.4).

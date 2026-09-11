@@ -1114,6 +1114,7 @@ export class QuickbooksAccountingProvider implements AccountingProvider {
           status: 'healed',
           externalId: existingId,
           providerId: QUICKBOOKS_PROVIDER_ID,
+          ...(ctx.realmId && { tenantId: ctx.realmId }),
         })
       }
 
@@ -1151,6 +1152,13 @@ export class QuickbooksAccountingProvider implements AccountingProvider {
         status: 'posted',
         externalId: String(providerEntryId),
         providerId: QUICKBOOKS_PROVIDER_ID,
+        // 🛑 The REALM the entry actually went to, stamped on the row beside its
+        // id (task 24 §2). A QuickBooks entry id is a per-company sequence, so
+        // recording `147` without the company it belongs to is a pointer with no
+        // address space - and it can never be reconstructed later, because the
+        // realm connected TODAY is right only for an org that never switched.
+        // `resolveQuickbooksContext` already resolved it; there is no lookup here.
+        ...(ctx.realmId && { tenantId: ctx.realmId }),
       })
     } catch (error) {
       return this.recoverOrClassify(input, error)
@@ -1200,6 +1208,7 @@ export class QuickbooksAccountingProvider implements AccountingProvider {
               status: 'already_posted',
               externalId: adopted,
               providerId: QUICKBOOKS_PROVIDER_ID,
+              ...(resolved.context.realmId && { tenantId: resolved.context.realmId }),
             })
           }
         }

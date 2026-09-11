@@ -63,6 +63,7 @@ const {
   orgCacheGet,
   findCredential,
   findConnectionDefinition,
+  findDataConnectors,
 } = vi.hoisted(() => ({
   listCredentials: vi.fn(),
   revealSecrets: vi.fn(),
@@ -79,6 +80,7 @@ const {
   orgCacheGet: vi.fn(),
   findCredential: vi.fn(),
   findConnectionDefinition: vi.fn(),
+  findDataConnectors: vi.fn(),
 }))
 
 vi.mock('@auxx/credentials/store', () => ({
@@ -178,6 +180,7 @@ const db = {
   query: {
     Credential: { findFirst: findCredential },
     ConnectionDefinition: { findFirst: findConnectionDefinition },
+    DataConnector: { findMany: findDataConnectors },
   },
 }
 
@@ -223,6 +226,7 @@ beforeEach(() => {
   // credential, so the row is set per case instead.
   findCredential.mockResolvedValue(undefined)
   findConnectionDefinition.mockResolvedValue(undefined)
+  findDataConnectors.mockResolvedValue([])
 })
 
 /** Point `Credential.findFirst` at one row for the duration of a case. */
@@ -481,5 +485,49 @@ describe('connections.test', () => {
       caller(noKeys()).test({ type: 'openaiApi', data: { apiKey: 'k' } })
     ).resolves.toBeDefined()
     expect(findCredential).not.toHaveBeenCalled()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// delete — the dependency guards, which are about damage rather than authorization
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * A bank feed is a `stripeFinancialConnections` credential with its own `DataConnector`,
+ * and it shows up in this generic Connections list with a Remove action. Deleting the
+ * credential here orphans the connector (`credentialId` is `onDelete: 'set null'`) and takes
+ * `metadata.providerAccountId` — the only copy of the `fca_…` account id — with it, so no
+ * release door in `banking/feed/reaper.ts` can ever find the account again and Stripe bills
+ * 30c per institution per month forever.
+ *
+ * See plans/accounting/tasks/24-the-company-on-the-entry.md §5.
+ */
+describe('connections.delete — connector dependency', () => {
+  it('refuses a credential that backs a connector, and deletes nothing', async () => {
+    credentialIs({ userId: null })
+    findDataConnectors.mockResolvedValue([{ id: 'dc_1' }])
+
+    await expect(caller(manage()).delete({ id: ORG_CRED })).rejects.toMatchObject({
+      code: 'CONFLICT',
+    })
+    expect(deleteCredential).not.toHaveBeenCalled()
+  })
+
+  it('names the count, the way the channel guard does', async () => {
+    credentialIs({ userId: null })
+    findDataConnectors.mockResolvedValue([{ id: 'dc_1' }, { id: 'dc_2' }])
+
+    const error = await caller(manage())
+      .delete({ id: ORG_CRED })
+      .catch((e: { message?: string }) => e)
+    expect(error.message).toContain('2 connectors')
+  })
+
+  it('still deletes a credential that backs none', async () => {
+    credentialIs({ userId: null })
+    findDataConnectors.mockResolvedValue([])
+
+    await expect(caller(manage()).delete({ id: ORG_CRED })).resolves.toEqual({ success: true })
+    expect(deleteCredential).toHaveBeenCalledWith(ORG_CRED, ORG_ID)
   })
 })

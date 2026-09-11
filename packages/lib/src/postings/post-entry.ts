@@ -836,6 +836,9 @@ export async function postEntry(db: Database, options: PostEntryOptions): Promis
         glPostingId,
         providerId: result.providerId,
         providerEntryId: result.externalId || null,
+        // The company the id above belongs to. `null` for `none` and for every
+        // adapter that has no tenant - see `markExported`.
+        providerTenantId: result.tenantId || null,
         exportStatus,
       })
     )
@@ -856,6 +859,7 @@ export async function postEntry(db: Database, options: PostEntryOptions): Promis
       docNumber,
       providerId: result.providerId,
       providerEntryId: result.externalId || undefined,
+      providerTenantId: result.tenantId || undefined,
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
@@ -1145,12 +1149,19 @@ async function claimPeriod(
  * `not_connected` and `disabled` land here too, as `not_required`: an
  * organization with no accounting system has nothing in flight and nothing to
  * heal, and leaving it `pending` would park every entry it ever writes in the
- * export queue forever. `providerId` is `'none'` and `providerEntryId` stays
- * NULL, which is also why `GlPosting_org_provider_entry_key` is partial.
+ * export queue forever. `providerId` is `'none'`, `providerEntryId` stays NULL -
+ * which is also why `GlPosting_org_provider_entry_key` is partial - and so does
+ * `providerTenantId`, because nothing reached a provider to have a tenant at.
  *
- * ⚠️ `attempts` is NOT reset and `failureReason` is NOT cleared on a later
- * success. They are the record that this export was hard, which is the thing
- * worth keeping when somebody asks why a month took three days.
+ * ⚠️ `attempts` is NOT reset. It is the record that this export was hard, which
+ * is the thing worth keeping when somebody asks why a month took three days.
+ *
+ * 🛑 `failureReason` IS cleared, and the asymmetry with `attempts` is deliberate
+ * (task 24 §6.2). A count of attempts stays true after a success; the REASON the
+ * last attempt failed does not - it names a refusal that no longer applies to a
+ * row that is now exported, and every screen that reads the column reads it as
+ * current. `retry-export.ts` clears it in the same breath, and the two must stay
+ * in step.
  */
 async function markExported(
   db: Database,
@@ -1159,6 +1170,7 @@ async function markExported(
     glPostingId: string
     providerId: string
     providerEntryId: string | null
+    providerTenantId: string | null
     exportStatus: 'exported' | 'not_required'
   }
 ): Promise<void> {
@@ -1168,6 +1180,8 @@ async function markExported(
       exportStatus: input.exportStatus,
       providerId: input.providerId,
       providerEntryId: input.providerEntryId,
+      providerTenantId: input.providerTenantId,
+      failureReason: null,
     })
     .where(
       and(

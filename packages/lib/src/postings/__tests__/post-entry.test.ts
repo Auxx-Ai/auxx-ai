@@ -76,6 +76,8 @@ interface PostingRow {
   requestId: string
   providerId: string | null
   providerEntryId: string | null
+  /** WHICH instance of the provider took it. Null until an export reaches one. */
+  providerTenantId: string | null
   postedAt: Date | null
   postedByUserId: string | null
   failureReason: string | null
@@ -161,6 +163,13 @@ function createFakeDb(chart: Chart[]) {
   let beforeClaimCommit: (() => Promise<void>) | null = null
   /** Makes the outcome-stamping UPDATE fail, to model a crash after the push. */
   let updateThrows = false
+  /**
+   * Every `set()` this module issues, verbatim.
+   *
+   * The rows alone cannot answer "was this column WRITTEN": a stamp that clears
+   * `failureReason` and a row that never carried one look identical afterwards.
+   */
+  const updates: Record<string, unknown>[] = []
 
   // One mutex, standing in for the index tuple two concurrent claims contend
   // on. Without it the second run's key check reads a table the first has not
@@ -234,6 +243,7 @@ function createFakeDb(chart: Chart[]) {
         attempts: claimed.attempts ?? 0,
         providerEntryId: claimed.providerEntryId ?? null,
         providerId: claimed.providerId ?? null,
+        providerTenantId: claimed.providerTenantId ?? null,
       }
       postings.push(row)
       return [{ id: row.id, docNumber: row.docNumber, requestId: row.requestId }]
@@ -325,6 +335,7 @@ function createFakeDb(chart: Chart[]) {
           .then(() => {
             if (table !== schema.GlPosting) return
             if (updateThrows) throw new Error('connection terminated')
+            updates.push(values)
             const named = boundValues(condition)
             for (const row of postings) {
               if (!named.includes(row.id)) continue
@@ -351,6 +362,7 @@ function createFakeDb(chart: Chart[]) {
     db: db as never,
     postings,
     lines,
+    updates,
     setBeforeClaimCommit: (fn: (() => Promise<void>) | null) => {
       beforeClaimCommit = fn
     },
@@ -924,6 +936,56 @@ describe('the provider outcome', () => {
     // so these two cannot be separate statements.
     expect(row.postedAt).toBeInstanceOf(Date)
     expect(row.providerEntryId).toBe('qb_77')
+  })
+
+  it('stamps the TENANT the adapter answered with, beside the entry id', async () => {
+    // 🛑 A provider entry id is a per-company sequence, so `qb_77` without the
+    // company it lives in is a pointer with no address space - and it can never
+    // be reconstructed afterwards, because the company connected TODAY is right
+    // only for an org that never switched. Task 24 §2.
+    const fake = createFakeDb(FULL_CHART)
+    stubProvider(() =>
+      ok({ status: 'posted', externalId: 'qb_77', providerId: 'stub', tenantId: 'realm_1' })
+    )
+
+    const result = await postEntry(fake.db, {
+      organizationId: ORG,
+      entry: receiptEntry(),
+      lock: OPEN,
+    })
+
+    expect(result.providerTenantId).toBe('realm_1')
+    expect(fake.postings[0]!.providerTenantId).toBe('realm_1')
+  })
+
+  it('stamps a NULL tenant for a provider that has none, rather than refusing', async () => {
+    // `NoneAccountingProvider` has no tenant and must not be forced to invent
+    // one. NULL here means "no export reached a provider", which is a normal
+    // permanent state under P1 - not a missing value to be filled in later.
+    const fake = createFakeDb(FULL_CHART)
+
+    const result = await postEntry(fake.db, {
+      organizationId: ORG,
+      entry: receiptEntry(),
+      lock: OPEN,
+    })
+
+    expect(result.status).toBe('not_connected')
+    expect(result.providerTenantId).toBeUndefined()
+    expect(fake.postings[0]!.providerTenantId).toBeNull()
+  })
+
+  it('clears the refusal text on a successful export, and keeps the attempt count', async () => {
+    // Task 24 §6.2. `attempts` is the record that this export was hard and stays
+    // true after a success; `failureReason` names a refusal that no longer
+    // applies, and every screen reads the column as current.
+    const fake = createFakeDb(FULL_CHART)
+    stubProvider(() => ok({ status: 'posted', externalId: 'qb_77', providerId: 'stub' }))
+
+    await postEntry(fake.db, { organizationId: ORG, entry: receiptEntry(), lock: OPEN })
+
+    expect(fake.updates[0]).toMatchObject({ exportStatus: 'exported', failureReason: null })
+    expect(fake.updates[0]).not.toHaveProperty('attempts')
   })
 
   it('passes healed and already_posted through untouched - both are successes', async () => {

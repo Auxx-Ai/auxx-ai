@@ -4,6 +4,7 @@ import { isMasked, splitConnectionValues } from '@auxx/credentials/crypto'
 import { setDefaultCredential } from '@auxx/credentials/store'
 import { type Database, schema } from '@auxx/database'
 import {
+  countAppFieldImpact,
   deleteAppConnection,
   getAppDeployments,
   getAppWithInstallationStatus,
@@ -396,12 +397,20 @@ export const appsRouter = createTRPCRouter({
     }),
 
   /**
-   * The connectors a connection backs, for the disconnect confirm
-   * (plans/money/tasks/44 D-3).
+   * What disconnecting a connection would actually take with it, for the confirm
+   * (plans/money/tasks/44 D-3, and task 24 §6.3).
    *
-   * Disconnecting removes the credential, which suspends every connector using it —
-   * and the dialog said nothing about connectors at all. Fetched lazily by the confirm
-   * callback rather than per row, so a connections list of any length costs nothing.
+   * Two halves, both invisible from the connections list:
+   *  - the **connectors** the credential backs, which the disconnect suspends;
+   *  - the **connection-scoped columns** the app registered for this account.
+   *    `CustomField.connectionId` is `ON DELETE CASCADE` and the disconnect is a hard
+   *    delete, so those columns and every `FieldValue` under them go with the credential.
+   *    On one dev org a Shopify disconnect cascades 23 columns and 268,621 values, two of
+   *    the columns visible on records — which is why the dialog used to say "synced records
+   *    are kept" and be wrong: it keeps the rows and deletes their contents.
+   *
+   * Fetched lazily by the confirm callback rather than per row, so a connections list of any
+   * length costs nothing.
    */
   connectionImpact: protectedProcedure
     .input(z.object({ credentialId: z.string() }))
@@ -415,7 +424,13 @@ export const appsRouter = createTRPCRouter({
             eq(schema.DataConnector.credentialId, input.credentialId)
           )
         )
-      return { connectors }
+      // Same counting query the uninstall confirm runs, scoped by connection instead of by
+      // installation — one implementation, so the two dialogs can never disagree about what
+      // the number means.
+      const appFields = await countAppFieldImpact(ctx.db, ctx.session.organizationId, {
+        connectionId: input.credentialId,
+      })
+      return { connectors, appFields }
     }),
 
   /**

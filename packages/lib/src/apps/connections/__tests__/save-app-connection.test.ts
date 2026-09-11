@@ -4,7 +4,7 @@
 // plain ones ride in plaintext metadata — on create, reconnect rotation, and in the
 // `connection-added` event payload.
 
-import { ok } from 'neverthrow'
+import { err, ok } from 'neverthrow'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const insertCredential = vi.fn()
@@ -192,24 +192,32 @@ describe('saveAppConnection — secret/plain split', () => {
   })
 })
 
-describe('saveAppConnection — connection-identify dedup', () => {
-  // Gate on: active deployment declares the connection-identify handler.
-  const withIdentifyHook = () =>
-    findFirstAppInstallation.mockResolvedValue({
-      currentDeployment: { catalog: { events: ['connection-identify'] } },
-    })
+/** Gate on: the active deployment declares the connection-identify handler. */
+const withIdentifyHook = () =>
+  findFirstAppInstallation.mockResolvedValue({
+    currentDeployment: { catalog: { events: ['connection-identify'] } },
+  })
 
-  // triggerAppEvent serves the identify call with `identifier`; every other event
-  // (connection-added) resolves to the neutral `{ result: undefined }`.
-  const identifyReturns = (identifier: string | undefined) =>
-    triggerAppEvent.mockImplementation((input: { eventType: string }) =>
-      Promise.resolve(
-        input.eventType === 'connection-identify'
-          ? ok({ result: identifier === undefined ? {} : { identifier } })
-          : ok({ result: undefined })
-      )
+/**
+ * triggerAppEvent serves the identify call with `identifier`; every other event
+ * (connection-added) resolves to the neutral `{ result: undefined }`.
+ */
+const identifyReturns = (identifier: string | undefined) =>
+  triggerAppEvent.mockImplementation((input: { eventType: string }) =>
+    Promise.resolve(
+      input.eventType === 'connection-identify'
+        ? ok({ result: identifier === undefined ? {} : { identifier } })
+        : ok({ result: undefined })
     )
+  )
 
+/** The identify events fired during a case. */
+const identifyCalls = () =>
+  triggerAppEvent.mock.calls.filter(
+    (c) => (c[0] as { eventType: string }).eventType === 'connection-identify'
+  )
+
+describe('saveAppConnection — connection-identify dedup', () => {
   it('app WITHOUT the hook inserts on every connect (no dedup)', async () => {
     // Default findFirst → no catalog events → gate off.
     await saveAppConnection(...ARGS, { accessToken: 'tok-a', metadata: { realmId: 'r1' } })
@@ -219,10 +227,7 @@ describe('saveAppConnection — connection-identify dedup', () => {
     // No identify hook → no in-place update.
     expect(rotateSecrets).not.toHaveBeenCalled()
     // No connection-identify event was ever fired.
-    const identifyCalls = triggerAppEvent.mock.calls.filter(
-      (c) => (c[0] as { eventType: string }).eventType === 'connection-identify'
-    )
-    expect(identifyCalls).toHaveLength(0)
+    expect(identifyCalls()).toHaveLength(0)
   })
 
   it('same identifier updates the existing row in place (no insert, no connection-added)', async () => {
@@ -320,5 +325,157 @@ describe('saveAppConnection — connection-identify dedup', () => {
 
     expect(res._unsafeUnwrap()).toEqual({ credentialId: 'cred-1', matchedExisting: false })
     expect(insertCredential).toHaveBeenCalledTimes(1)
+  })
+})
+
+/**
+ * The reconnect guard (plans/accounting/tasks/24-the-company-on-the-entry.md §3).
+ *
+ * A reconnect keeps the credential id, and connection-scoped `CustomField` rows are keyed
+ * on that id. So a reconnect that lands on a DIFFERENT provider account leaves every stored
+ * mapping in place and silently reinterprets it against a stranger - on QuickBooks, 96
+ * account ids read against another company, where ids are per-company sequences and the
+ * misposted entry still balances. These cases pin the four outcomes: refuse on a mismatch
+ * WITHOUT writing anything, proceed on a match while re-stamping `__identity`, and proceed
+ * whenever the app cannot answer.
+ */
+describe('saveAppConnection — reconnect identity guard', () => {
+  const RECONNECT = { connectionId: 'cred-1' } as const
+  const FRESH_TOKENS = { accessToken: 'fresh-access', refreshToken: 'fresh-refresh' }
+
+  /** Point the stored row's `metadata.__identity` at one account for the duration of a case. */
+  const storedIdentityIs = (identity: string | undefined, label?: string) =>
+    getCredential.mockResolvedValue(
+      ok({ label: label ?? null, metadata: identity === undefined ? {} : { __identity: identity } })
+    )
+
+  /** Every write door `saveAppConnection` could reach. A refusal must touch none of them. */
+  const expectNothingWritten = () => {
+    expect(rotateSecrets).not.toHaveBeenCalled()
+    expect(mergeSecretFields).not.toHaveBeenCalled()
+    expect(mergeSecrets).not.toHaveBeenCalled()
+    expect(updateCredential).not.toHaveBeenCalled()
+    expect(recordRefreshSuccess).not.toHaveBeenCalled()
+    expect(insertCredential).not.toHaveBeenCalled()
+  }
+
+  it('a matching identity proceeds and re-stamps __identity onto the replaced metadata', async () => {
+    withIdentifyHook()
+    identifyReturns('realm-1')
+    storedIdentityIs('realm-1')
+
+    const res = await saveAppConnection(
+      ...ARGS,
+      { ...FRESH_TOKENS, metadata: { scope: 'read' } },
+      RECONNECT
+    )
+
+    expect(res._unsafeUnwrap()).toEqual({ credentialId: 'cred-1', matchedExisting: false })
+    expect(rotateSecrets).toHaveBeenCalledWith(
+      'cred-1',
+      'org-1',
+      expect.objectContaining({ accessToken: 'fresh-access' }),
+      { expiresAt: null }
+    )
+    // An OAuth mint REPLACES metadata wholesale, so without the re-stamp `__identity` is
+    // deleted here - and a later fresh connect to the same account mints a duplicate row.
+    expect(updateCredential).toHaveBeenCalledWith('cred-1', 'org-1', {
+      metadata: { scope: 'read', __identity: 'realm-1' },
+    })
+  })
+
+  it('a row with no stored identity proceeds and gains one', async () => {
+    withIdentifyHook()
+    identifyReturns('realm-1')
+    storedIdentityIs(undefined)
+
+    const res = await saveAppConnection(...ARGS, { ...FRESH_TOKENS }, RECONNECT)
+
+    expect(res._unsafeUnwrap()).toEqual({ credentialId: 'cred-1', matchedExisting: false })
+    expect(updateCredential).toHaveBeenCalledWith('cred-1', 'org-1', {
+      metadata: { __identity: 'realm-1' },
+    })
+  })
+
+  it('a DIFFERENT identity refuses, names the connected account, and rotates nothing', async () => {
+    withIdentifyHook()
+    identifyReturns('realm-2')
+    storedIdentityIs('realm-1', 'Sandbox Company_US_1')
+
+    const res = await saveAppConnection(...ARGS, { ...FRESH_TOKENS }, RECONNECT)
+
+    expect(res.isErr()).toBe(true)
+    // An AuxxError subclass, so `auxxErrorMiddleware` maps it to a 409 rather than a 500.
+    const error = res._unsafeUnwrapErr() as { name?: string; statusCode?: number; message: string }
+    expect(error.name).toBe('ConflictError')
+    expect(error.statusCode).toBe(409)
+    // The LABEL, which is the app's own name for the account and what the row already
+    // reads as on the connections list.
+    expect(error.message).toContain('Sandbox Company_US_1')
+    // 🛑 Neither raw identity reaches the person. They are realm ids and numeric account
+    // ids: fine in the warn log, nothing anybody can act on. Task 24 §4 draws the same
+    // line for the ledger's deep link.
+    expect(error.message).not.toContain('realm-1')
+    expect(error.message).not.toContain('realm-2')
+    // The message has to be the whole instruction - the OAuth callback surfaces it verbatim.
+    expect(error.message).toContain('Disconnect this connection first')
+    expectNothingWritten()
+  })
+
+  it('falls back to the raw identity when the app left the label empty', async () => {
+    withIdentifyHook()
+    identifyReturns('realm-2')
+    storedIdentityIs('realm-1')
+
+    const res = await saveAppConnection(...ARGS, { ...FRESH_TOKENS }, RECONNECT)
+
+    // Naming something beats naming nothing; only the connected side is ever named.
+    expect((res._unsafeUnwrapErr() as { message: string }).message).toContain('realm-1')
+    expectNothingWritten()
+  })
+
+  it('an app that declares no identify handler reconnects unguarded', async () => {
+    // Default findFirst → no catalog events → gate off. This is the pre-existing behavior
+    // and it stays: most apps declare no handler and reconnect must keep working for them.
+    storedIdentityIs('realm-1')
+
+    const res = await saveAppConnection(...ARGS, { ...FRESH_TOKENS }, RECONNECT)
+
+    expect(res._unsafeUnwrap()).toEqual({ credentialId: 'cred-1', matchedExisting: false })
+    expect(identifyCalls()).toHaveLength(0)
+    expect(rotateSecrets).toHaveBeenCalled()
+  })
+
+  it('a THROWING identify handler proceeds - reconnect is the repair path for a dead token', async () => {
+    withIdentifyHook()
+    triggerAppEvent.mockRejectedValue(new Error('app Lambda is down'))
+    storedIdentityIs('realm-1')
+
+    const res = await saveAppConnection(...ARGS, { ...FRESH_TOKENS }, RECONNECT)
+
+    expect(res._unsafeUnwrap()).toEqual({ credentialId: 'cred-1', matchedExisting: false })
+    expect(rotateSecrets).toHaveBeenCalled()
+  })
+
+  it('an identify handler returning an ERROR result proceeds', async () => {
+    withIdentifyHook()
+    triggerAppEvent.mockResolvedValue(err(new Error('handler returned 500')))
+    storedIdentityIs('realm-1')
+
+    const res = await saveAppConnection(...ARGS, { ...FRESH_TOKENS }, RECONNECT)
+
+    expect(res._unsafeUnwrap()).toEqual({ credentialId: 'cred-1', matchedExisting: false })
+    expect(rotateSecrets).toHaveBeenCalled()
+  })
+
+  it('an EMPTY identifier proceeds without stamping anything', async () => {
+    withIdentifyHook()
+    identifyReturns('') // the app opted out of identity for this connect
+    storedIdentityIs('realm-1')
+
+    const res = await saveAppConnection(...ARGS, { ...FRESH_TOKENS }, RECONNECT)
+
+    expect(res._unsafeUnwrap()).toEqual({ credentialId: 'cred-1', matchedExisting: false })
+    expect(updateCredential).toHaveBeenCalledWith('cred-1', 'org-1', { metadata: {} })
   })
 })

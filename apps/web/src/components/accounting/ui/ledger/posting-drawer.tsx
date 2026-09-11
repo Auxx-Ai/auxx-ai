@@ -34,6 +34,12 @@ interface PostingDrawerProps {
   currencyCode: string
   bookTimeZone: string
   providerLabel: string
+  /**
+   * Which company this workspace is connected to now. Compared against the
+   * posting's own tenant before a deep link is offered, and never rendered -
+   * see `post-result-callout.tsx`.
+   */
+  connectedTenantId: string | null
   /** Reverse this posting with a memo. Owned by the caller's actions hook. */
   onReverse: (memo: string) => void
   isReversing: boolean
@@ -69,6 +75,7 @@ export function PostingDrawer({
   currencyCode,
   bookTimeZone,
   providerLabel,
+  connectedTenantId,
   onReverse,
   isReversing,
 }: PostingDrawerProps) {
@@ -188,6 +195,7 @@ export function PostingDrawer({
                 <PostResultCallout
                   result={providerResultFromDetail(detail)}
                   providerLabel={providerLabel}
+                  connectedTenantId={connectedTenantId}
                 />
               </div>
 
@@ -267,6 +275,7 @@ function providerResultFromDetail(detail: {
   postingType: string
   providerId: string | null
   providerEntryId: string | null
+  providerTenantId: string | null
   failureReason: string | null
 }): PostResult {
   const providerId = detail.providerId ?? undefined
@@ -276,7 +285,15 @@ function providerResultFromDetail(detail: {
     return { ...base, status: 'error', error: detail.failureReason ?? undefined }
   }
   if (detail.providerEntryId) {
-    return { ...base, status: 'posted', providerEntryId: detail.providerEntryId }
+    // The tenant travels WITH the id, always. An id handed on without the
+    // company it belongs to is what the callout cannot tell apart from an id
+    // belonging to the company that happens to be open.
+    return {
+      ...base,
+      status: 'posted',
+      providerEntryId: detail.providerEntryId,
+      providerTenantId: detail.providerTenantId ?? undefined,
+    }
   }
   if (EXPORT_ROUTE_BY_POSTING_TYPE[detail.postingType as PostingType] === 'none') {
     return { ...base, status: 'not_exported' }
