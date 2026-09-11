@@ -13,11 +13,8 @@
  */
 
 import { database } from '@auxx/database'
+import { PER_ORG_MIGRATIONS, perOrgMigration } from '@auxx/lib/data-migrations'
 import { deletePristineSeededDashboards } from '@auxx/lib/seed'
-import {
-  ALL_ENTITY_MIGRATIONS,
-  runEntityMigrationForAllOrgs,
-} from '@auxx/lib/seed/entity-migrations'
 
 async function main() {
   const entityType = process.argv[2]
@@ -26,9 +23,9 @@ async function main() {
   const deleted = await deletePristineSeededDashboards(database, entityType)
   console.log(`Deleted ${deleted} pristine seeded '${entityType}' dashboard(s)`)
 
-  const migration = ALL_ENTITY_MIGRATIONS.find((m) => m.id === '045-default-entity-dashboards')
+  const migration = PER_ORG_MIGRATIONS.find((m) => m.id === '045-default-entity-dashboards')
   if (!migration) throw new Error('Migration 045 not found in registry')
-  await runEntityMigrationForAllOrgs(database, migration)
+  await perOrgMigration(migration).run(database)
   console.log('done')
   process.exit(0)
 }

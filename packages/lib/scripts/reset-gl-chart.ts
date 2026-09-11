@@ -5,7 +5,7 @@
 // still there. Does NOT re-seed: accounting is opt-in now
 // (plans/accounting/tasks/17-accounting-is-opt-in.md §1, §2), and this script
 // is the dev-side twin of entity migration 142
-// (`seed/entity-migrations/migrations/142-wipe-seeded-charts.ts`), which does
+// (`data-migrations/migrations/142-wipe-seeded-charts.ts`), which does
 // the same wipe (plus journal entries, the QuickBooks account map and the
 // wizard's setup settings) against every other database. **Provision chart in
 // the setup wizard is the way back onto a chart**, the same door a fresh org

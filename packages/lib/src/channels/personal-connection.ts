@@ -17,7 +17,7 @@ import { GoogleOAuthService } from '../providers/google/google-oauth'
 import { OutlookOAuthService } from '../providers/outlook/outlook-oauth'
 import { PROVIDER_CAPABILITIES } from '../providers/provider-capabilities'
 import { setInstanceAccess } from '../resource-access/resource-access-service'
-import { loadExistingState } from '../seed/entity-migrations/helpers'
+import { loadExistingState } from '../seed/entity-helpers'
 import { CHANNEL_PROVIDER_TO_KEY } from './channel-connection-def'
 import { deleteChannelData, disconnect } from './disconnect'
 

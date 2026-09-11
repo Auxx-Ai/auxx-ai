@@ -6,8 +6,8 @@
 // now that the chart is packs, not a flat list - this pins it so a copy-pasted
 // sentence cannot bring either back.
 //
-// `walkTsFiles` follows the pattern in
-// `packages/lib/src/seed/entity-migrations/migrations/108-purchasing.test.ts`.
+// `walkTsFiles` walks the source tree itself because the invariant is about what
+// the codebase does NOT contain, which no unit test of a single module can assert.
 
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join, relative, sep } from 'node:path'

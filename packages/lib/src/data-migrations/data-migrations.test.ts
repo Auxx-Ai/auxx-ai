@@ -1,10 +1,10 @@
 // packages/lib/src/data-migrations/data-migrations.test.ts
 
 import { describe, expect, it } from 'vitest'
+import { perOrgMigration } from './per-org'
 import { assertUniqueMigrationIds, deriveDataMigrationStatuses, planDataMigrations } from './plan'
 import { ALL_DATA_MIGRATIONS } from './registry'
 import type { DataMigrationDef } from './types'
-import { wrapEntityMigration } from './wrap-entity-migration'
 
 /** Build a throwaway registry of bare migration defs for plan/status tests. */
 function defs(...ids: string[]): DataMigrationDef[] {
@@ -34,10 +34,22 @@ describe('registry', () => {
     expect([...ids]).toEqual([...ids].sort((a, b) => a.localeCompare(b)))
   })
 
-  it('includes the carried-over entity migration ids', () => {
+  it('holds both authoring shapes on one id sequence', () => {
     const ids = ALL_DATA_MIGRATIONS.map((m) => m.id)
-    expect(ids).toContain('001-vendor-part-subpart')
-    expect(ids).toContain('023-contact-visitor-geo-fields')
+    // A per-org migration (adapted via `perOrgMigration`) and a whole-database one
+    // sit in the same sorted list — that single sequence is the point of the registry.
+    expect(ids).toContain('149-shipment-parcel')
+    expect(ids).toContain('099-imap-backfill-stamps')
+    expect(ids.indexOf('099-imap-backfill-stamps')).toBeLessThan(ids.indexOf('149-shipment-parcel'))
+  })
+
+  it('refuses to reuse a retired id', async () => {
+    // Ids 001 to 150 are retired ledger keys. Reusing one would make every database
+    // that already ran the old migration skip the new one, silently.
+    const { assertUniqueMigrationIds } = await import('./plan')
+    const ids = ALL_DATA_MIGRATIONS.map((m) => m.id)
+    expect(() => assertUniqueMigrationIds(ALL_DATA_MIGRATIONS)).not.toThrow()
+    expect(new Set(ids).size).toBe(ids.length)
   })
 })
 
@@ -120,9 +132,9 @@ describe('deriveDataMigrationStatuses', () => {
   })
 })
 
-describe('wrapEntityMigration', () => {
+describe('perOrgMigration', () => {
   it('carries over id and description and exposes a run()', () => {
-    const wrapped = wrapEntityMigration({
+    const wrapped = perOrgMigration({
       id: '042-test',
       description: 'a test entity migration',
       up: async () => ({

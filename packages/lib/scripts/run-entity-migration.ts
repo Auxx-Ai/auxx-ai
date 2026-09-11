@@ -15,7 +15,7 @@
 //   ... --id 136-refunds-and-tax-lines --org <organizationId>
 
 import { database } from '@auxx/database'
-import { ALL_ENTITY_MIGRATIONS, runEntityMigrationForAllOrgs } from '../src/seed/entity-migrations'
+import { PER_ORG_MIGRATIONS, perOrgMigration } from '../src/data-migrations'
 
 const argv = process.argv.slice(2)
 
@@ -30,11 +30,11 @@ const ORG = flag('--org')
 async function main(): Promise<void> {
   if (!ID) {
     console.error('--id <migration id> is required. Known ids:')
-    for (const m of ALL_ENTITY_MIGRATIONS) console.error(`  ${m.id}`)
+    for (const m of PER_ORG_MIGRATIONS) console.error(`  ${m.id}`)
     process.exitCode = 1
     return
   }
-  const migration = ALL_ENTITY_MIGRATIONS.find((m) => m.id === ID)
+  const migration = PER_ORG_MIGRATIONS.find((m) => m.id === ID)
   if (!migration) {
     console.error(`No entity migration with id ${ID}`)
     process.exitCode = 1
@@ -48,7 +48,7 @@ async function main(): Promise<void> {
   }
 
   // Logs one line per org that changed and throws an aggregate if any org failed.
-  await runEntityMigrationForAllOrgs(database, migration)
+  await perOrgMigration(migration).run(database)
   console.log(`${ID}: ran for every org`)
 }
 

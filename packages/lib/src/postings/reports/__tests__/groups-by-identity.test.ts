@@ -10,7 +10,7 @@
 // longer does.
 //
 // `walkTsFiles` borrows the house style from
-// `seed/entity-migrations/migrations/108-purchasing.test.ts`'s own source
+// `data-migrations/migrations/108-purchasing.test.ts`'s own source
 // scan (the "inert payment entities stay inert" pin).
 
 import { readdirSync, readFileSync, statSync } from 'node:fs'

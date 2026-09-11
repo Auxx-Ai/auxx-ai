@@ -1432,18 +1432,6 @@
       "import": "./dist/seed/ai-category-tags.mjs",
       "default": "./src/seed/ai-category-tags.ts"
     },
-    "./seed/entity-migrations": {
-      "types": "./src/seed/entity-migrations/index.ts",
-      "source": "./src/seed/entity-migrations/index.ts",
-      "import": "./dist/seed/entity-migrations/index.mjs",
-      "default": "./src/seed/entity-migrations/index.ts"
-    },
-    "./seed/entity-migrations/migrations/039-work-order-tags": {
-      "types": "./src/seed/entity-migrations/migrations/039-work-order-tags.ts",
-      "source": "./src/seed/entity-migrations/migrations/039-work-order-tags.ts",
-      "import": "./dist/seed/entity-migrations/migrations/039-work-order-tags.mjs",
-      "default": "./src/seed/entity-migrations/migrations/039-work-order-tags.ts"
-    },
     "./sequences": {
       "types": "./src/sequences/index.ts",
       "source": "./src/sequences/index.ts",
