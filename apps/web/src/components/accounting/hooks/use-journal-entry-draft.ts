@@ -3,6 +3,7 @@
 'use client'
 
 import type { EntryPreview, PostResult, PostResultStatus } from '@auxx/lib/postings/client'
+import { didLedgerAccept } from '@auxx/lib/postings/client'
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
@@ -11,16 +12,6 @@ import {
   linesFromDraftRows,
 } from '~/components/accounting/ui/journal/journal-lines'
 import { api } from '~/trpc/react'
-
-/** Same set `use-ledger-entry-actions.ts` uses: a `GlPosting` row now exists. */
-const POSTED_STATUSES = new Set<PostResultStatus>([
-  'posted',
-  'already_posted',
-  'healed',
-  'not_connected',
-  'disabled',
-  'not_exported',
-])
 
 export interface UseJournalEntryDraftOptions {
   /** The record id once it exists server-side; `null` only before that. */
@@ -345,7 +336,7 @@ export function useJournalEntryDraft({
               onSuccess: (result) => {
                 setIsPostFlowPending(false)
                 setPostResult(result)
-                if (POSTED_STATUSES.has(result.status) && result.glPostingId) {
+                if (didLedgerAccept(result) && result.glPostingId) {
                   setStatus('posted')
                   setGlPostingId(result.glPostingId)
                   void utils.ledger.listPostings.invalidate()

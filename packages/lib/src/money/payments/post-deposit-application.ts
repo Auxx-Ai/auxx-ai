@@ -57,6 +57,7 @@ import {
   depositApplicationPeriodKey,
 } from '../../postings/build-deposit-application-entry'
 import { ACCOUNT_ROLES } from '../../postings/build-entry'
+import { isExpectedPostOutcome } from '../../postings/ledger-accepted'
 import { resolvePeriodLock } from '../../postings/period-lock'
 import { periodKeyForDate } from '../../postings/periods'
 import { postEntry } from '../../postings/post-entry'
@@ -65,30 +66,6 @@ import type { PostResult } from '../../postings/types'
 import { getOrganizationSetting } from '../../settings/settings-service'
 
 const logger = createScopedLogger('money-payments-ledger')
-
-/**
- * The statuses that mean the LEDGER took the entry.
- *
- * 🛑 Since the export split this is the only question a caller here may ask. A
- * refused push returns `posted` with `exportStatus: 'failed'`, so it lands in
- * this set on purpose: the entry is in the books and the document that produced
- * it must stand. Adding an `exportStatus` check to any of these call sites
- * reintroduces the defect - see plans/accounting/export-state-split.md.
- *
- * `not_connected` and `disabled` are in for the older reason: an org with no
- * accounting system is a first-class case, not a degraded one (decision P1).
- *
- * `not_enabled` is in for the newest reason: an org that has never turned the
- * accounting module on is a first-class case too (task 17 section 3).
- */
-const ACCEPTED_POST_STATUSES = new Set<string>([
-  'posted',
-  'already_posted',
-  'healed',
-  'not_connected',
-  'disabled',
-  'not_enabled',
-])
 
 /**
  * The `GlPosting` statuses whose lines count as having reached the books.
@@ -280,7 +257,7 @@ export async function postDepositApplications(
       })
       results.push(post)
 
-      if (ACCEPTED_POST_STATUSES.has(post.status)) {
+      if (isExpectedPostOutcome(post)) {
         heldMinor -= amountMinor
       } else {
         logger.warn('A customer deposit application was not posted to the ledger', {

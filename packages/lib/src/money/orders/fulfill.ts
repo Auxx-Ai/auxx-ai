@@ -47,6 +47,7 @@ import {
   computeShipmentTotals,
   type ShipmentTotals,
 } from '../../postings/build-fulfillment-entry'
+import { isExpectedPostOutcome } from '../../postings/ledger-accepted'
 import { resolvePeriodLock } from '../../postings/period-lock'
 import { LEDGER_CURRENCY, postEntry, previewEntry } from '../../postings/post-entry'
 import type { EntryPreview, PostResult } from '../../postings/types'
@@ -69,27 +70,6 @@ import {
 } from './reads'
 
 const logger = createScopedLogger('money-orders')
-
-/**
- * The `postEntry` statuses that mean the ledger accepted the shipment.
- *
- * `not_connected` and `disabled` are in the set on purpose: an org with no
- * accounting system connected is a first-class case, not a degraded one
- * (decision P1). The entry is built, balanced and persisted the same way; it is
- * simply never pushed.
- *
- * `not_enabled` is in for the newest reason: an org that has never turned the
- * accounting module on is a first-class case too, and a shipment must never be
- * rolled back for it (task 17 section 3).
- */
-const ACCEPTED_POST_STATUSES = new Set<string>([
-  'posted',
-  'already_posted',
-  'healed',
-  'not_connected',
-  'disabled',
-  'not_enabled',
-])
 
 /** One line, and how much of it the caller says went out. */
 export interface FulfillOrderLine {
@@ -456,7 +436,7 @@ export async function fulfillOrder(
         post = { status: 'not_enabled' }
       }
 
-      if (!ACCEPTED_POST_STATUSES.has(post.status)) {
+      if (!isExpectedPostOutcome(post)) {
         await rollbackFulfillment(db, organizationId, actorUserId, order, order.nextSequence)
         logger.warn('Fulfillment rolled back - the ledger refused the entry', {
           organizationId,

@@ -27,6 +27,7 @@
 // task. Only an unexpected mutation failure gets `toastError`.
 
 import { FieldType } from '@auxx/database/enums'
+import { didLedgerAccept } from '@auxx/lib/postings/client'
 import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
@@ -156,7 +157,7 @@ export function FulfillOrderDialog({
       // arrives here as a status, and the shipment has already been rolled back,
       // so the dialog stays open with the refusal on it rather than closing over
       // a fulfillment that did not happen.
-      if (!ACCEPTED_POST_STATUSES.has(result.post.status)) {
+      if (!didLedgerAccept(result.post)) {
         await utils.money.previewFulfillment.invalidate({ orderId })
         return
       }
@@ -176,7 +177,7 @@ export function FulfillOrderDialog({
     if (preview.data?.blockedBy) rows.push(preview.data.blockedBy)
     // A refusal returned by the mutation - the ledger would not take the entry
     // and the shipment was rolled back.
-    if (fulfill.data && !ACCEPTED_POST_STATUSES.has(fulfill.data.post.status)) {
+    if (fulfill.data && !didLedgerAccept(fulfill.data.post)) {
       rows.push({
         status: fulfill.data.post.status,
         error: fulfill.data.post.error ?? 'The ledger refused this fulfillment.',
@@ -323,21 +324,6 @@ export function FulfillOrderDialog({
     </Dialog>
   )
 }
-
-/**
- * The `postEntry` statuses that mean the ledger took the shipment.
- *
- * `not_connected` and `disabled` are successes: an org with no accounting system
- * connected is a first-class case, not a degraded one - the entry is built,
- * balanced and persisted, it is simply never pushed.
- */
-const ACCEPTED_POST_STATUSES = new Set<string>([
-  'posted',
-  'already_posted',
-  'healed',
-  'not_connected',
-  'disabled',
-])
 
 /** `YYYY-MM-DD` for today, in the browser's own zone. */
 function todayKey(): string {

@@ -3,6 +3,7 @@
 'use client'
 
 import { FieldType } from '@auxx/database/enums'
+import { didLedgerAccept } from '@auxx/lib/postings/client'
 import { Alert, AlertDescription } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
@@ -36,18 +37,6 @@ import { firstDayOfPeriod, nextOpenPeriodAfter, periodKeyForEntryDate } from './
  * to run edge to edge (see `bank-account-editor.tsx`'s own copy of this).
  */
 const SECTION_BLEED = '-mx-3'
-
-// `not_exported` is here for the opening entry and its reversal: both are
-// `journal_entry` records whose posting type routes to `'none'`, so they never
-// push and always land on it. The set means "a GlPosting row now exists".
-const POSTED_STATUSES = new Set([
-  'posted',
-  'already_posted',
-  'healed',
-  'not_connected',
-  'disabled',
-  'not_exported',
-])
 
 interface JournalEntryDrawerProps {
   /** The record id, or `null` while `isNew` and the empty draft has not landed yet. */
@@ -159,7 +148,7 @@ export function JournalEntryDrawer({
   }
   if (draft.preview?.blockedBy) {
     blockers.push(draft.preview.blockedBy)
-  } else if (draft.postResult && !POSTED_STATUSES.has(draft.postResult.status)) {
+  } else if (draft.postResult && !didLedgerAccept(draft.postResult)) {
     blockers.push({
       status: draft.postResult.status,
       error: draft.postResult.error ?? 'The post was refused.',

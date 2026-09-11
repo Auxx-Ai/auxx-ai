@@ -3,35 +3,10 @@
 'use client'
 
 import type { EntryPreview, PostResult, PostResultStatus } from '@auxx/lib/postings/client'
+import { didLedgerAccept } from '@auxx/lib/postings/client'
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '~/trpc/react'
-
-/**
- * The statuses that mean a `GlPosting` row now exists for the month.
- *
- * 🛑 Six of them, not one. `not_connected`, `disabled` and `not_exported` are
- * first-class successes under decision `P1` - the entry is built, balanced and
- * persisted identically, there is simply nowhere to push it - and
- * `already_posted` and `healed` are converged re-runs. Treating any of the six
- * as a failure is the single most common way this screen could be got wrong.
- *
- * `not_exported` is the newest and the narrowest: the posting TYPE routes to
- * `'none'`, so it never pushes whatever the org has connected. It reaches this
- * screen through a reversal, which inherits its original's posting type.
- *
- * Everything else (`period_closed`, `account_unmapped`, `unbalanced`,
- * `nothing_to_close`, `setup_incomplete`, `error`) wrote nothing, and all six
- * arrive as an ordinary result the callout renders. Only `error` is a fault.
- */
-const POSTED_STATUSES = new Set<PostResultStatus>([
-  'posted',
-  'already_posted',
-  'healed',
-  'not_connected',
-  'disabled',
-  'not_exported',
-])
 
 interface UseLedgerEntryActionsOptions {
   periodKey: string
@@ -165,7 +140,7 @@ export function useLedgerEntryActions({
         // rendered by the callout. Nothing in this branch is an error.
         onSuccess: (result) => {
           setPostResult(result)
-          if (POSTED_STATUSES.has(result.status)) {
+          if (didLedgerAccept(result)) {
             setJustPosted(true)
             refreshBooks()
           }
@@ -185,7 +160,7 @@ export function useLedgerEntryActions({
         {
           onSuccess: (result) => {
             setPostResult(result)
-            if (POSTED_STATUSES.has(result.status)) {
+            if (didLedgerAccept(result)) {
               setJustPosted(false)
               requestedRef.current = null
               refreshBooks()

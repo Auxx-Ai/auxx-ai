@@ -13,6 +13,7 @@ import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '.
 import { FieldValueService } from '../../field-values/field-value-service'
 import { readFieldScalars } from '../../field-values/read-field-scalars'
 import { extractRelationshipRecordIds } from '../../field-values/relationship-field'
+import { didLedgerAccept } from '../../postings/ledger-accepted'
 import { resolvePeriodLock } from '../../postings/period-lock'
 import { reverseEntry } from '../../postings/reverse-entry'
 import { UnifiedCrudHandler } from '../../resources/crud'
@@ -900,21 +901,6 @@ export async function recordManualRefund(
 }
 
 /**
- * The `reverseEntry` statuses that mean the general ledger took the reversal.
- *
- * `not_connected` and `disabled` are successes for the same reason they are in
- * `post-transaction.ts`: an org with no accounting system connected is a
- * first-class case, and the entry is still built, balanced and persisted.
- */
-const ACCEPTED_REVERSAL_STATUSES = new Set<string>([
-  'posted',
-  'already_posted',
-  'healed',
-  'not_connected',
-  'disabled',
-])
-
-/**
  * Back every general-ledger entry this payment produced out of the books, before
  * the row that produced them is deleted.
  *
@@ -975,7 +961,7 @@ async function reversePaymentPostings(
       lock,
       memo: `Reversal of ${posting.docNumber} - payment ${transactionId} deleted`,
     })
-    if (!ACCEPTED_REVERSAL_STATUSES.has(result.status)) {
+    if (!didLedgerAccept(result)) {
       throw new ConflictError(
         `Payment ${transactionId} posted general ledger entry ${posting.docNumber}, and that ` +
           `entry could not be reversed (${result.status}${result.error ? `: ${result.error}` : ''}). ` +

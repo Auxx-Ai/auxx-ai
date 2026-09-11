@@ -2,7 +2,11 @@
 'use client'
 
 import type { PostResultStatus } from '@auxx/lib/postings/client'
-import { resolveSetupReadiness, SETUP_READINESS_SETTING_KEYS } from '@auxx/lib/postings/client'
+import {
+  didLedgerAccept,
+  resolveSetupReadiness,
+  SETUP_READINESS_SETTING_KEYS,
+} from '@auxx/lib/postings/client'
 import type { SettingKey } from '@auxx/lib/settings/client'
 import { Button } from '@auxx/ui/components/button'
 import { AlertTriangle, Check, PartyPopper } from 'lucide-react'
@@ -130,7 +134,17 @@ export function WizardDonePage({ onFinish }: WizardDonePageProps) {
       const result = await post.mutateAsync({})
       // `postEntry` never throws: a closed period, an account that has left the
       // chart and a provider refusal all arrive as a status the card renders.
-      if (result.status !== 'posted' && result.status !== 'already_posted') {
+      //
+      // 🛑 This MUST be `didLedgerAccept`, not `posted || already_posted`. The
+      // opening entry is `opening_balance`, which `EXPORT_ROUTE_BY_POSTING_TYPE`
+      // routes to `'none'`, so a perfectly good one comes back `not_exported` -
+      // and `EntryBlockers` has no remedy for it, so it fell through to
+      // `FALLBACK` and rendered the red "The entry could not be built" box over
+      // an entry that had posted. Before brief 22 §5 the same entry came back
+      // `not_connected` and rendered "No accounting system is connected" at an
+      // org with QuickBooks connected, which is the bug §5 was written about;
+      // fixing the status moved the lie rather than removing it.
+      if (!didLedgerAccept(result)) {
         setBlockers([
           {
             status: result.status as PostResultStatus,

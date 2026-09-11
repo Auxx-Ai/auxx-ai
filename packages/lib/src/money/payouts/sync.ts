@@ -51,6 +51,7 @@ import type Stripe from 'stripe'
 import { UnprocessableEntityError } from '../../errors'
 import { isAccountingEnabled } from '../../postings/accounting-enabled'
 import { ACCOUNT_ROLES } from '../../postings/build-entry'
+import { didLedgerAccept } from '../../postings/ledger-accepted'
 import { resolvePeriodLock } from '../../postings/period-lock'
 import { payoutAccountUnmappedResult, postPayoutEntry } from '../../postings/post-payout-entry'
 import { reverseEntry } from '../../postings/reverse-entry'
@@ -268,7 +269,13 @@ async function ingestOne(
     })
   }
 
-  if (post.status !== 'posted' && post.status !== 'already_posted') {
+  // ⚠️ Widened from `posted || already_posted` by the shared predicate. An org
+  // with no provider connected, or one whose provider switch is off, still has a
+  // real, balanced, persisted entry - refusing there left the payout un-`paid`
+  // and its `glPostingId` unstamped over a ledger that held the entry.
+  // `not_enabled` is unreachable here: the sync returns early for an org that
+  // never turned accounting on.
+  if (!didLedgerAccept(post)) {
     return {
       created,
       posted: false,
@@ -462,7 +469,7 @@ export async function reverseFailedPayout(
         memo: `Payout ${record.number ?? gatewayPayoutId} failed - reversing the settlement`,
       })
 
-      if (reversal.status !== 'posted' && reversal.status !== 'already_posted') {
+      if (!didLedgerAccept(reversal)) {
         // 🛑 The record is NOT flipped to `reversed` when the reversal did not
         // land. A row saying reversed over a posting that is still `posted`
         // would hide a real overstatement of cash behind a status nobody

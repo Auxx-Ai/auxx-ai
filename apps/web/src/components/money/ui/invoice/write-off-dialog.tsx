@@ -9,6 +9,7 @@
 // can be overridden to any expense account in the chart.
 
 import { FieldType } from '@auxx/database/enums'
+import { didLedgerAccept } from '@auxx/lib/postings/client'
 import type { RecordId } from '@auxx/lib/resources/client'
 import { Button } from '@auxx/ui/components/button'
 import {
@@ -33,8 +34,6 @@ import { api } from '~/trpc/react'
 
 /** The one role a write-off's debit leg defaults to. See `build-write-off-entry.ts`. */
 const BAD_DEBT_EXPENSE_ROLE = 'bad_debt_expense'
-
-const POSTED_STATUSES = new Set(['posted', 'already_posted', 'not_connected', 'disabled'])
 
 interface WriteOffDialogProps {
   open: boolean
@@ -136,7 +135,7 @@ export function WriteOffDialog({
         reason: reason.trim(),
         expenseGlAccountId: expenseGlAccountId ?? undefined,
       })
-      if (!POSTED_STATUSES.has(result.status)) {
+      if (!didLedgerAccept(result)) {
         // A refusal `postEntry` returns rather than throws (a period locked
         // between preview and submit, say): the invoice was left untouched.
         toastError({

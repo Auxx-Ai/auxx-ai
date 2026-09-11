@@ -18,6 +18,7 @@ import { and, eq } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { UnprocessableEntityError } from '../../errors'
 import { buildEntry } from '../build-entry'
+import { didLedgerAccept } from '../ledger-accepted'
 import type { PeriodLock } from '../periods'
 import { postEntry } from '../post-entry'
 import { reverseEntry } from '../reverse-entry'
@@ -250,17 +251,13 @@ async function stampProvenance(
  * `plans/accounting/export-state-split.md` closed.
  */
 function isPosted(result: PostResult): result is PostResult & { glPostingId: string } {
-  return (
-    (result.status === 'posted' ||
-      result.status === 'already_posted' ||
-      result.status === 'healed' ||
-      result.status === 'not_connected' ||
-      result.status === 'disabled' ||
-      // 🛑 The status EVERY entry on this path now gets. `provider_sync` is one
-      // of the two `'none'` routes in `EXPORT_ROUTE_BY_POSTING_TYPE` - that is
-      // this module's loop guard - so a synced entry never pushes and always
-      // lands here. Omitting it would make the sync record nothing at all.
-      result.status === 'not_exported') &&
-    Boolean(result.glPostingId)
-  )
+  // 🛑 `not_exported` is the status EVERY entry on this path gets, and the
+  // reason this predicate is shared rather than spelled out here. `provider_sync`
+  // is one of the two `'none'` routes in `EXPORT_ROUTE_BY_POSTING_TYPE` - this
+  // module's own loop guard - so a synced entry never pushes and always lands on
+  // it. When `not_exported` was added, the hand-written list this replaced did
+  // not gain it, and the whole inbound sync would have recorded NOTHING while
+  // reporting success. `didLedgerAccept` cannot miss a status: it fails to
+  // compile until every member of the union is classified.
+  return didLedgerAccept(result) && Boolean(result.glPostingId)
 }

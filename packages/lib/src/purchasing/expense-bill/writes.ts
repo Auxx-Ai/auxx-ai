@@ -43,6 +43,7 @@ import {
   EXPENSE_BILL_POSTING_TYPE,
   EXPENSE_BILL_SOURCE_TYPE,
 } from '../../postings/build-expense-bill-entry'
+import { isExpectedPostOutcome } from '../../postings/ledger-accepted'
 import { listPostingsForSource } from '../../postings/list-postings'
 import { resolvePeriodLock } from '../../postings/period-lock'
 import { periodKeyForDate } from '../../postings/periods'
@@ -59,26 +60,6 @@ import {
 } from './reads'
 
 const logger = createScopedLogger('purchasing:expense-bill')
-
-/**
- * The statuses that mean the LEDGER took the entry. The same set
- * `postInvoiceIssuance` and `issueCreditMemo` accept, for the same reasons: a
- * refused EXPORT still returns `posted` (see
- * `plans/accounting/export-state-split.md`), an org with no accounting system is
- * a first-class case (decision P1), and an org that never enabled the module is
- * another (task 17 §3).
- */
-const ACCEPTED_POST_STATUSES = new Set<string>([
-  'posted',
-  'already_posted',
-  'healed',
-  'not_connected',
-  'disabled',
-  'not_enabled',
-])
-
-/** The statuses that mean a reversal landed. Same set as `reverseInvoiceIssuance`. */
-const ACCEPTED_REVERSAL_STATUSES = ACCEPTED_POST_STATUSES
 
 /**
  * The bill statuses a Post action may start from.
@@ -311,7 +292,7 @@ export async function postExpenseBill(
     post = { status: 'not_enabled' }
   }
 
-  if (!ACCEPTED_POST_STATUSES.has(post.status)) {
+  if (!isExpectedPostOutcome(post)) {
     throw new BadRequestError(
       'This vendor bill could not be posted to the general ledger' +
         `${post.error ? `: ${post.error}` : ` (${post.status})`}`,
@@ -419,7 +400,7 @@ export async function voidExpenseBill(db: Database, input: VoidExpenseBillInput)
           memo ??
           `Reversal of ${posting.docNumber} - bill ${bill.number || bill.internalNumber} voided`,
       })
-      if (!ACCEPTED_REVERSAL_STATUSES.has(result.status)) {
+      if (!isExpectedPostOutcome(result)) {
         throw new BadRequestError(
           `This vendor bill has a general ledger entry (${posting.docNumber}) that could not be ` +
             `reversed${result.error ? `: ${result.error}` : ` (${result.status})`}. Voiding it ` +

@@ -39,6 +39,7 @@ import { and, eq, isNull } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import { BadRequestError, ConflictError, UnprocessableEntityError } from '../../errors'
 import { clearBankDeposit } from '../../money/bank-deposits'
+import { didLedgerAccept } from '../../postings/ledger-accepted'
 import { resolvePeriodLock } from '../../postings/period-lock'
 import { postEntry } from '../../postings/post-entry'
 import { reverseEntry } from '../../postings/reverse-entry'
@@ -75,26 +76,6 @@ interface ActorParams {
   actorUserId: string
   transactionId: string
 }
-
-/**
- * The statuses that mean the LEDGER took the entry.
- *
- * 🛑 Since the export split this is the only question a caller here may ask. A
- * refused push returns `posted` with `exportStatus: 'failed'`, so it lands in
- * this set on purpose: the entry is in the books and the document that produced
- * it must stand. Adding an `exportStatus` check to any of these call sites
- * reintroduces the defect - see plans/accounting/export-state-split.md.
- *
- * `not_connected` and `disabled` are in for the older reason: an org with no
- * accounting system is a first-class case, not a degraded one (decision P1).
- */
-const ACCEPTED_POST_STATUSES = new Set<string>([
-  'posted',
-  'already_posted',
-  'healed',
-  'not_connected',
-  'disabled',
-])
 
 // ── Match ───────────────────────────────────────────────────────────────────
 
@@ -285,7 +266,7 @@ export async function codeTransaction(
         memo: memo ?? line.description ?? `Bank line ${line.externalId ?? transactionId}`,
       })
 
-      if (!ACCEPTED_POST_STATUSES.has(post.status)) {
+      if (!didLedgerAccept(post)) {
         logger.warn('A coded bank line was refused by the ledger', {
           organizationId,
           transactionId,
@@ -514,7 +495,7 @@ export async function transferTransaction(
         memo: memo ?? `Transfer between bank accounts`,
       })
 
-      if (!ACCEPTED_POST_STATUSES.has(post.status)) {
+      if (!didLedgerAccept(post)) {
         return {
           transaction: line,
           post: toPostSummary(post),
@@ -802,7 +783,7 @@ export async function undoReview(
             lock,
             memo: memo ?? `Undo bank review ${line.externalId ?? transactionId}`,
           })
-          if (!ACCEPTED_POST_STATUSES.has(post.status)) {
+          if (!didLedgerAccept(post)) {
             // 🛑 Nothing is unlinked when the reversal was refused. A line back
             // in the queue with a live posting behind it would be coded twice.
             return {
