@@ -22,7 +22,14 @@ export default function AppsInstalledListPage() {
     },
     { staleTime: ORG_STATIC_STALE_TIME }
   )
-  const { data: results } = api.apps.list.useQuery({}, { staleTime: ORG_STATIC_STALE_TIME })
+  // Every installation is joined against this list below, and an installation whose app is
+  // missing from it is dropped entirely. The default limit is 20 and `getAvailableApps`
+  // appends unpublished dev apps AFTER all published ones, so without an explicit limit a
+  // freshly deployed dev app is installed, returned by `listInstalled`, and still invisible.
+  const { data: results } = api.apps.list.useQuery(
+    { limit: 100 },
+    { staleTime: ORG_STATIC_STALE_TIME }
+  )
   const { uninstallApp, ConfirmDialog } = useUninstallApp()
 
   // Collapse dev+production installs of the same app to one entry (see helper).

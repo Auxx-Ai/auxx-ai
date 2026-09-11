@@ -60,8 +60,12 @@ export default function IntegrationList() {
   const { hasAccess } = useFeatureFlags()
   const hasMcpAccess = hasAccess(FeatureKey.mcp)
   const { uninstallApp, ConfirmDialog } = useUninstallApp()
+  // This screen groups every app by category and has no pagination control, so it must
+  // ask for the whole list. The default limit is 20, and `getAvailableApps` appends
+  // unpublished dev apps AFTER all published ones before slicing — so on an org with 20
+  // published apps, a dev app the developer just deployed silently never renders.
   const { data: results } = api.apps.list.useQuery(
-    {},
+    { limit: 100 },
     { enabled: isAdminOrOwner, staleTime: ORG_STATIC_STALE_TIME }
   )
   const { data: installedResult } = api.apps.listInstalled.useQuery(
