@@ -103,3 +103,38 @@ export function formatAuditTimestamp(iso: string, timeZone: string): string {
     timeZone,
   }).format(date)
 }
+
+/**
+ * Why Lock is refused for a month, or `null` when it is offered.
+ *
+ * 🛑 A month stays `open` until a MONTH-END entry is posted into it, and
+ * `listClosePeriods` counts ONLY `month_end_inventory` rows
+ * (`postings/close-periods.ts`). Every other posting in the month - the
+ * fulfillment days, credit memos, manual entries - leaves it open however much
+ * money they moved. So a month showing $1.3m of posted fulfillment can still
+ * refuse to lock, and with no reason on screen that reads as a broken button
+ * rather than an unmet precondition.
+ *
+ * ⚠️ The two refusals need DIFFERENT sentences, and giving the second one the
+ * first one's remedy is worse than saying nothing. A `nothing_to_close` month
+ * has no month-end entry to post and never will - the Post control above it
+ * reads "There is nothing to post" and is itself disabled - so "post it, then
+ * lock" points at a dead button. That was the first draft of this copy, and
+ * only opening the screen caught it.
+ */
+export function lockRefusalReason(params: {
+  periodLabel: string
+  /** `ClosePeriod.state !== 'open'`. */
+  isPostedPeriod: boolean
+  /** A post that landed in this session, before the period query has caught up. */
+  justPosted: boolean
+  /** The preview refused with `nothing_to_close`. */
+  isNothingToClose: boolean
+}): string | null {
+  const { periodLabel, isPostedPeriod, justPosted, isNothingToClose } = params
+  if (isPostedPeriod || justPosted) return null
+  if (isNothingToClose) {
+    return `Nothing moved in ${periodLabel}, so there is no month-end entry to post and locking is gated on one. Move to the next month.`
+  }
+  return `${periodLabel} has no month-end entry yet. Post it under Entries above, then lock the month. The other entries this month do not close it.`
+}
