@@ -1,6 +1,7 @@
 // apps/web/src/components/resources/hooks/use-entity-definition-mutations.ts
 
 import type { CustomResource, DisplayFieldConfig } from '@auxx/lib/resources/client'
+import { resolveSystemEntityBehavior } from '@auxx/lib/resources/client'
 import { toastError } from '@auxx/ui/components/toast'
 import type { ResourceOptimisticUpdate } from '~/components/resources/store/resource-store'
 import { getResourceStoreState } from '~/components/resources/store/resource-store'
@@ -48,6 +49,11 @@ export function useEntityDefinitionMutations() {
           orgScopingStrategy: 'direct',
         },
         fields: [],
+        // A user-authored def has no `entityType`, so it resolves to the
+        // permissive defaults: visible, searchable, creatable, AI-reachable.
+        // Resolved rather than hand-written so this optimistic row cannot
+        // drift from what the server will send back on invalidate.
+        ...resolveSystemEntityBehavior(undefined),
         isVisible: true,
       }
 

@@ -25,7 +25,7 @@ export function useCreateActions(): PaletteAction[] {
     // Creating a record is a write — gate on the per-def Edit rung, not just
     // viewability (a Read-only member sees the def but can't create in it).
     return resources
-      .filter((r) => r.isVisible && canEditEntity(r.entityDefinitionId))
+      .filter((r) => r.creatable && canEditEntity(r.entityDefinitionId))
       .map((r) => ({
         id: `create.${r.id}`,
         label: `Create ${r.label}`,

@@ -13,6 +13,7 @@ import {
   getCachedResources,
 } from '../../../cache/org-cache-helpers'
 import type { CapabilityView } from '../../../permissions/capabilities/capability-view'
+import { isAiVisibleResource } from '../../../resources/registry/resource-visibility'
 import type {
   AgentDefinition,
   AgentDeps,
@@ -22,7 +23,6 @@ import type {
 import { sessionMessagesToWire } from '../../agent-framework/utils'
 import type { Message, ToolCall } from '../../clients/base/types'
 import { transformAssistantContentForLLM } from '../blocks/transform-for-llm'
-import { isAiVisibleResource } from '../capabilities/entities/shared/ai-entity-visibility'
 import { buildKopilotPromptSerialized } from '../prompts/build-kopilot-prompt'
 import { buildInstructionReferenceResolver } from '../prompts/resolve-instruction-references'
 import type { Audience, ProcedureStepInput } from '../prompts/sections/types'
@@ -137,14 +137,16 @@ export function createKopilotAgent(
       // catalog must not advertise defs the tools would deny — the twin of the
       // client's `useViewableResources`. No `recordAccess` ⇒ unfiltered, as today.
       //
-      // The first filter is the curated AI-visible set, NOT the Records-nav flag
-      // it replaced: `isVisible` means "show in the sidebar", and reusing it here
-      // hid inboxes, tags and catalog items from the model while leaving them
-      // fully queryable by hand-typed slug. See `entities/shared/ai-entity-visibility`.
+      // Two axes from the system-entity behavior map (plans/entity/system-entity-behavior-map.md
+      // §4.1b), composed in this order and no other: `isAiVisibleResource(r)` MUST run
+      // before `r.inPromptCatalog` — reading `r.aiVisible` directly (or checking
+      // `inPromptCatalog` first) would preload a mail-lens-blocked def into every
+      // prompt, since `inPromptCatalog` says nothing about the block (§4.4).
       const entityCatalog = resources
         .filter(
           (r) =>
             isAiVisibleResource(r) &&
+            r.inPromptCatalog &&
             (!recordAccess || recordAccess.canViewEntity(r.entityDefinitionId ?? r.id))
         )
         .map((r) => ({

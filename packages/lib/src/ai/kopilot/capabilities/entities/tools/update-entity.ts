@@ -3,11 +3,12 @@
 import { z } from 'zod'
 import { findCachedResource } from '../../../../../cache/org-cache-helpers'
 import { UnifiedCrudHandler } from '../../../../../resources/crud'
+import { isAiBlockedDefKey } from '../../../../../resources/registry/resource-visibility'
 import { getDefinitionId, isRecordId } from '../../../../../resources/resource-id'
 import { getKnownDefIds, normalizeRecordIdArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import type { GetToolDeps } from '../../types'
-import { blockedEntityError, isAiBlockedDefKey } from '../shared/ai-entity-visibility'
+import { blockedEntityError } from '../shared/ai-entity-refusals'
 
 /** Full success output of `update_entity` — the updated record and human-readable field labels. */
 const UpdateEntityOutput = z.object({

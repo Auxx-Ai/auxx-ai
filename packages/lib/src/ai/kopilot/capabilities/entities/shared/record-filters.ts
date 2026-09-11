@@ -13,8 +13,8 @@ import {
 import { UnprocessableEntityError } from '../../../../../errors'
 import type { CountFilteredResult } from '../../../../../resources/crud'
 import { getFieldOptions } from '../../../../../resources/registry/option-helpers'
+import { isAiBlockedResource } from '../../../../../resources/registry/resource-visibility'
 import type { Resource } from '../../../../../resources/registry/types'
-import { isAiBlockedResource } from './ai-entity-visibility'
 
 /**
  * Shared entity-filter grammar for Kopilot record tools.

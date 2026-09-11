@@ -22,6 +22,7 @@ import {
   getIdentifierFields,
   toRegistryRelationship,
 } from './field-utils'
+import { resolveSystemEntityBehavior, resolveTableBackedBehavior } from './system-entity-behavior'
 import { isTrailingMetadataField } from './trailing-fields'
 import type {
   CustomResource,
@@ -156,6 +157,7 @@ function toCustomResourceBase(
     organizationId: def.organizationId,
     isVisible: def.isVisible,
     dataConnectorId: def.dataConnectorId ?? undefined,
+    ...resolveSystemEntityBehavior(def.entityType),
     display: {
       primaryDisplayField: toDisplayFieldConfig(def.primaryDisplayField),
       secondaryDisplayField: toDisplayFieldConfig(def.secondaryDisplayField),
@@ -205,6 +207,10 @@ function toSystemResourceBase(tableId: TableId): Omit<SystemResource, 'fields'> 
     apiSlug: entry.apiSlug,
     dbName: entry.dbName,
     isVisible: false, // System resources from registry are hidden from sidebar
+    // Restrictive base, NOT `resolveSystemEntityBehavior`: these rows have no
+    // def-level gate (`NON_RECORD_DEF_SLUGS`), so a permissive default would
+    // advertise datasets, dashboards, workflows and kbs to the model.
+    ...resolveTableBackedBehavior(tableId),
     display: {
       identifierField: displayConfig.identifierField,
       primaryDisplayField: getDisplayFieldConfig(displayConfig.primaryDisplayFieldId),

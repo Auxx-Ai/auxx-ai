@@ -4,10 +4,11 @@ import { z } from 'zod'
 import { getCachedResources } from '../../../../../cache/org-cache-helpers'
 import { UnprocessableEntityError } from '../../../../../errors'
 import { UnifiedCrudHandler } from '../../../../../resources/crud'
+import { isAiVisibleResource } from '../../../../../resources/registry/resource-visibility'
 import { parseStringArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import type { GetToolDeps } from '../../types'
-import { blockedEntityError, isAiVisibleResource } from '../shared/ai-entity-visibility'
+import { blockedEntityError } from '../shared/ai-entity-refusals'
 import { resolveEntity } from '../shared/record-filters'
 
 /** Full success output of `create_entity` — the new record's id. */

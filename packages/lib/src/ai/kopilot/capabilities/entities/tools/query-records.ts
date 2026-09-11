@@ -14,7 +14,7 @@ import { toRecordId } from '../../../../../resources/resource-id'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import { takeSample } from '../../../digests'
 import type { GetToolDeps } from '../../types'
-import { blockedEntityError } from '../shared/ai-entity-visibility'
+import { blockedEntityError } from '../shared/ai-entity-refusals'
 import {
   assertCountFiltersApplied,
   convertToConditionGroup,

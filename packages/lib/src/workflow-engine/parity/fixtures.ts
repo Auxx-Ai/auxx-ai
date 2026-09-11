@@ -43,6 +43,7 @@ import type {
   RegistryRelationshipConfig,
   ResourceField,
 } from '../../resources/registry/field-types'
+import { resolveSystemEntityBehavior } from '../../resources/registry/system-entity-behavior'
 import type { CustomResource, Resource, SystemResource } from '../../resources/registry/types'
 import { BaseType } from '../core/types'
 
@@ -174,6 +175,8 @@ export const VENDOR_RESOURCE: CustomResource = {
   icon: 'truck',
   color: 'blue',
   fields: VENDOR_FIELDS,
+  // A user-authored def resolves to pure DEFAULTS (no `entityType`).
+  ...resolveSystemEntityBehavior(undefined),
   isVisible: true,
   type: 'custom',
   apiSlug: 'vendors',
@@ -189,6 +192,8 @@ export const REGION_RESOURCE: CustomResource = {
   icon: 'globe',
   color: 'green',
   fields: REGION_FIELDS,
+  // A user-authored def resolves to pure DEFAULTS (no `entityType`).
+  ...resolveSystemEntityBehavior(undefined),
   isVisible: true,
   type: 'custom',
   apiSlug: 'vendor-regions',
@@ -208,6 +213,7 @@ export const THREAD_RESOURCE: SystemResource = {
   color: RESOURCE_TABLE_MAP.thread.color,
   fields: THREAD_FIELDS,
   entityType: 'thread',
+  ...resolveSystemEntityBehavior('thread'),
   isVisible: true,
   type: 'system',
   apiSlug: RESOURCE_TABLE_MAP.thread.apiSlug,
@@ -245,6 +251,8 @@ export const EMPTY_FIELDS_RESOURCE: CustomResource = {
   icon: 'circle',
   color: 'gray',
   fields: [],
+  // A user-authored def resolves to pure DEFAULTS (no `entityType`).
+  ...resolveSystemEntityBehavior(undefined),
   isVisible: true,
   type: 'custom',
   apiSlug: 'empties',
