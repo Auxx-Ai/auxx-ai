@@ -354,6 +354,49 @@ export interface FileInputOptions
 }
 
 /**
+ * How an address field is edited in the workflow panel.
+ *
+ * - `single`: one paste-and-parse line (the platform default when this is absent)
+ * - `structured`: one input per address component
+ */
+export type WorkflowAddressInputMode = 'single' | 'structured'
+
+/**
+ * The value an address input field produces.
+ *
+ * Structurally identical to the platform's canonical address struct. Typed here rather than
+ * imported because the SDK must not depend on `@auxx/lib`.
+ */
+export interface WorkflowAddressValue {
+  street1: string
+  street2?: string
+  city: string
+  state: string
+  zipCode: string
+  country: string
+  /** Contact or company name printed on the address line */
+  name?: string
+  /** Residential delivery indicator, drives carrier surcharges */
+  residential?: 'unknown' | 'yes' | 'no'
+}
+
+/**
+ * Options for address input fields
+ */
+export interface AddressInputOptions extends BaseWorkflowFieldOptions<WorkflowAddressValue> {
+  /**
+   * Which address components the panel shows. Omit to show all of them.
+   * Values are keys of {@link WorkflowAddressValue}, e.g. `['street1', 'city', 'country']`.
+   */
+  addressComponents?: readonly string[]
+  /**
+   * How the field is edited. Leave absent to take the platform default: the host resolves
+   * anything other than `'structured'`, absent included, to `'single'`.
+   */
+  inputMode?: WorkflowAddressInputMode
+}
+
+/**
  * Structured file data in workflow context
  */
 export interface WorkflowFileData {
@@ -453,6 +496,35 @@ export class WorkflowFileNode extends WorkflowFieldNode<
     if (this._options.maxFiles !== undefined) base._metadata.maxFiles = this._options.maxFiles
     if (this._options.allowedFileTypes)
       base._metadata.allowedFileTypes = this._options.allowedFileTypes
+    return base
+  }
+}
+
+/**
+ * Address input field node
+ *
+ * Resolves to the platform's existing address render path, so the panel gets the real
+ * address editor rather than a plain text box.
+ */
+export class WorkflowAddressNode extends WorkflowFieldNode<
+  'address',
+  WorkflowAddressValue,
+  AddressInputOptions
+> {
+  get type(): 'address' {
+    return 'address'
+  }
+
+  optional(): WorkflowAddressNode {
+    return new WorkflowAddressNode({ ...this._options, isOptional: true })
+  }
+
+  toJSON() {
+    const base = super.toJSON()
+    if (!base._metadata) base._metadata = {}
+    if (this._options.addressComponents)
+      base._metadata.addressComponents = this._options.addressComponents as string[]
+    if (this._options.inputMode) base._metadata.inputMode = this._options.inputMode
     return base
   }
 }
@@ -671,4 +743,24 @@ export function secret(options?: SecretInputOptions): WorkflowSecretNode {
  */
 export function file(options?: FileInputOptions): WorkflowFileNode {
   return new WorkflowFileNode(options)
+}
+
+/**
+ * Create an address input field
+ *
+ * One field per address, rather than a pile of flat string inputs.
+ *
+ * @example
+ * ```typescript
+ * Workflow.address({
+ *   label: 'Ship To',
+ *   required: true,
+ *   acceptsVariables: true,
+ *   inputMode: 'structured',
+ *   addressComponents: ['name', 'street1', 'street2', 'city', 'state', 'zipCode', 'country'],
+ * })
+ * ```
+ */
+export function address(options?: AddressInputOptions): WorkflowAddressNode {
+  return new WorkflowAddressNode(options)
 }

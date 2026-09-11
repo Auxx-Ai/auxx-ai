@@ -235,6 +235,10 @@ function serializeFields(
       canAdd: metadata.canAdd,
       canManage: metadata.canManage,
 
+      // Address
+      addressComponents: metadata.addressComponents,
+      inputMode: metadata.inputMode,
+
       // Debug marker
       _fieldKind: kind,
     }
@@ -343,6 +347,10 @@ function serializeFieldsFromJSON(
       multi: metadata.multi,
       canAdd: metadata.canAdd,
       canManage: metadata.canManage,
+
+      // Address
+      addressComponents: metadata.addressComponents,
+      inputMode: metadata.inputMode,
       _fieldKind: kind,
     }
 
@@ -395,6 +403,11 @@ function serializeNestedField(fieldJson: any, kind: 'input' | 'output'): any {
     multi: metadata.multi,
     canAdd: metadata.canAdd,
     canManage: metadata.canManage,
+
+    // Address
+    addressComponents: metadata.addressComponents,
+    inputMode: metadata.inputMode,
+
     _fieldKind: kind,
   }
 

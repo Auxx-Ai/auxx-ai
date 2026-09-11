@@ -80,8 +80,19 @@ interface ScalarFieldDecl extends BaseFieldDecl {
 /** Address field — `addressComponents` is optional, everything else forbidden. */
 interface AddressStructFieldDecl extends BaseFieldDecl {
   readonly type: 'ADDRESS_STRUCT'
-  /** Sub-field set surfaced on the field, e.g. `['street', 'city', 'state', 'country']`.
-   *  The synced/set value must be shaped `{ street1, street2, city, state, zipCode, country }`. */
+  /**
+   * Sub-field set surfaced on the field. Valid ids are exactly the struct's keys:
+   * `name`, `street1`, `street2`, `city`, `state`, `zipCode`, `country`, `residential`.
+   * Omit it for the default six (`street1`, `street2`, `city`, `state`, `zipCode`,
+   * `country`) — `name` and `residential` are opt-in.
+   *
+   * An id outside that set is ignored by the renderers, so `'street'` (which no editor has
+   * ever produced) hides nothing; it marks the whole list as un-configured.
+   *
+   * The synced/set value is shaped
+   * `{ street1, street2, city, state, zipCode, country, name?, residential? }`, where
+   * `residential` is `'unknown' | 'yes' | 'no'`.
+   */
   readonly addressComponents?: readonly string[]
   readonly options?: never
   readonly relationship?: never

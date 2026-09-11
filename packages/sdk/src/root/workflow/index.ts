@@ -15,6 +15,8 @@ export type { SelectOption } from '../schema/select-node.js'
 
 // Import input field classes (needed for type utilities below)
 import {
+  WorkflowAddressNode,
+  type WorkflowAddressValue,
   WorkflowArrayNode,
   WorkflowBooleanNode,
   WorkflowCurrencyNode,
@@ -30,6 +32,7 @@ import {
 
 // Export input field types
 export type {
+  AddressInputOptions,
   ArrayInputOptions,
   BooleanInputOptions,
   CurrencyInputOptions,
@@ -40,6 +43,8 @@ export type {
   SelectInputOptions,
   StringInputOptions,
   StructInputOptions,
+  WorkflowAddressInputMode,
+  WorkflowAddressValue,
   WorkflowFileData,
   WorkflowStringFormat,
 } from './input-nodes.js'
@@ -56,6 +61,7 @@ export {
   WorkflowCurrencyNode,
   WorkflowSecretNode,
   WorkflowFileNode,
+  WorkflowAddressNode,
 }
 
 // Re-export StringFormat from schema for backwards compatibility
@@ -64,6 +70,7 @@ import type { StringFormat } from '../schema/index.js'
 import { AuxxRuleReference, auxxRule, WorkflowAuxxRuleNode } from './auxx-rule-node.js'
 // Import input factories (not exported directly - only via Workflow namespace)
 import {
+  address,
   array,
   boolean,
   currency,
@@ -140,6 +147,7 @@ export const Workflow = {
   currency,
   secret,
   file,
+  address,
 } as const
 
 // Export StringFormat type for use in workflow definitions
@@ -163,6 +171,7 @@ export type WorkflowNode =
   | WorkflowCurrencyNode
   | WorkflowSecretNode
   | WorkflowFileNode
+  | WorkflowAddressNode
   | WorkflowAuxxRuleNode
 
 /**
@@ -182,21 +191,23 @@ export type InferFieldType<T> = T extends WorkflowStringNode
             ? string
             : T extends WorkflowFileNode
               ? WorkflowFileData | WorkflowFileData[]
-              : T extends WorkflowSelectNode<infer TOptions>
-                ? TOptions extends readonly (infer U)[]
-                  ? U extends string
-                    ? U
-                    : U extends { value: infer V }
-                      ? V
-                      : string
-                  : string
-                : T extends WorkflowArrayNode<infer TItem>
-                  ? InferFieldType<TItem>[]
-                  : T extends WorkflowStructNode<infer TFields>
-                    ? { [K in keyof TFields]: InferFieldType<TFields[K]> }
-                    : T extends WorkflowFieldNode<any, infer TValue, any>
-                      ? TValue
-                      : never
+              : T extends WorkflowAddressNode
+                ? WorkflowAddressValue
+                : T extends WorkflowSelectNode<infer TOptions>
+                  ? TOptions extends readonly (infer U)[]
+                    ? U extends string
+                      ? U
+                      : U extends { value: infer V }
+                        ? V
+                        : string
+                    : string
+                  : T extends WorkflowArrayNode<infer TItem>
+                    ? InferFieldType<TItem>[]
+                    : T extends WorkflowStructNode<infer TFields>
+                      ? { [K in keyof TFields]: InferFieldType<TFields[K]> }
+                      : T extends WorkflowFieldNode<any, infer TValue, any>
+                        ? TValue
+                        : never
 
 /**
  * Infer the input type from a workflow schema

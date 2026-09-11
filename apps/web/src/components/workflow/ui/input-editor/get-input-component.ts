@@ -113,6 +113,12 @@ export interface FieldOptions {
   selectVariant?: 'transparent' | 'outline'
   /** For ENUM/SELECT type — show loading skeleton while options are being fetched */
   loading?: boolean
+  /** For ADDRESS type — which address components the editor shows (all when omitted).
+   *  Mutable to match `AddressStructFields`/`AddressSingleFields`' `components` prop and
+   *  `@auxx/lib`'s own `FieldOptions.addressComponents`. */
+  addressComponents?: string[]
+  /** For ADDRESS type — 'single' paste-and-parse line vs one input per component */
+  inputMode?: 'single' | 'structured'
   /** For NUMBER type */
   number?: {
     min?: number
@@ -204,7 +210,15 @@ export function getSpecificPropsForType(
     }
 
     case BaseType.ADDRESS:
-      return {}
+      // A narrow projection, not the raw `fieldOptions`: `AddressInput` already declares a
+      // `fieldOptions` prop and reads exactly these two keys off it. Widening the adapter to
+      // spread raw options for every type would be a much bigger contract change.
+      return {
+        fieldOptions: {
+          addressComponents: fieldOptions?.addressComponents,
+          inputMode: fieldOptions?.inputMode,
+        },
+      }
 
     case BaseType.ARRAY:
       if (fieldOptions?.multiSelect) {

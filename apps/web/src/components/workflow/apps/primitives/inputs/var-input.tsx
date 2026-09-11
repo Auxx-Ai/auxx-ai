@@ -72,6 +72,12 @@ export const VarInputInternal = ({
   const resolvedCanAdd = schemaField?.canAdd
   const resolvedCanManage = schemaField?.canManage
 
+  // Resolve address props from schema. Without these an app's declared
+  // `Workflow.address({ addressComponents, inputMode })` reaches the editor stripped, which is
+  // the silent-no-op this whole path exists to avoid.
+  const resolvedAddressComponents = schemaField?.addressComponents
+  const resolvedInputMode = schemaField?.inputMode
+
   const { varType, mode, allowConstant, allowedTypes, fieldOptions } = mapFieldToVarEditorProps({
     type: resolvedType,
     format: resolvedFormat,
@@ -83,6 +89,8 @@ export const VarInputInternal = ({
     multi: resolvedMulti,
     canAdd: resolvedCanAdd,
     canManage: resolvedCanManage,
+    addressComponents: resolvedAddressComponents,
+    inputMode: resolvedInputMode,
   })
 
   // Dot-path access for nested fields

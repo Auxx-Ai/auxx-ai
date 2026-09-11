@@ -70,6 +70,8 @@ function catalogFieldToBlockField(name: string, fieldJson: any): WorkflowBlockFi
     multi: metadata.multi,
     canAdd: metadata.canAdd,
     canManage: metadata.canManage,
+    addressComponents: metadata.addressComponents,
+    inputMode: metadata.inputMode,
     _fieldKind: 'input',
   }
 

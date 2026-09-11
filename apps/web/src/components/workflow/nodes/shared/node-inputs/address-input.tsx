@@ -22,11 +22,12 @@ interface AddressInputProps extends NodeInputProps {
   name: string
   /** Placeholder text */
   placeholder?: string
-  /** Field-specific options (used for address inputVariant / inputMode) */
+  /** Field-specific options (address inputVariant / inputMode / addressComponents) */
   fieldOptions?: FieldOptions
   /** The underlying FieldType — `ADDRESS_STRUCT` branches on `fieldOptions.inputMode`
    *  (decision #4); legacy `ADDRESS` (plain text) stays on the structured fields, untouched
-   *  (decision #9). Absent (e.g. the workflow variable/constant editor) also stays untouched. */
+   *  (decision #9). Absent is the workflow variable/constant editor, which has no `FieldType`
+   *  at all and branches on `inputMode` like `ADDRESS_STRUCT` does. */
   fieldType?: string
 }
 
@@ -83,7 +84,13 @@ export const AddressInput = createNodeInput<AddressInputProps>(
       [name, onChange, onError]
     )
 
-    const isSingleMode = isAddressStruct && fieldOptions?.inputMode !== 'structured'
+    // Who gets to honour `inputMode`: real `ADDRESS_STRUCT` fields, and the workflow
+    // variable/constant editor, which carries no `FieldType` at all. Legacy plain-text
+    // `ADDRESS` is deliberately excluded and stays on the structured fields (decision #9).
+    const honoursInputMode = fieldType === undefined || isAddressStruct
+
+    // Absent resolves to 'single', matching `parseAddressInputMode`.
+    const isSingleMode = honoursInputMode && fieldOptions?.inputMode !== 'structured'
 
     if (isSingleMode) {
       return (
@@ -95,6 +102,7 @@ export const AddressInput = createNodeInput<AddressInputProps>(
           disabled={isLoading}
           className='flex w-full flex-col gap-1 pe-2 py-1'
           inputVariant={fieldOptions?.address?.inputVariant}
+          components={fieldOptions?.addressComponents}
         />
       )
     }
@@ -106,6 +114,7 @@ export const AddressInput = createNodeInput<AddressInputProps>(
         disabled={isLoading}
         className='flex w-full flex-col gap-1 pe-2 py-1'
         inputVariant={fieldOptions?.address?.inputVariant}
+        components={fieldOptions?.addressComponents}
       />
     )
   }

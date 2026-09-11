@@ -165,6 +165,17 @@ export interface WorkflowBlockField {
   canManage?: boolean
 
   // ========================================
+  // Address Fields
+  // ========================================
+
+  /** Address sub-fields to render (for `address` fields). All of them when absent. */
+  addressComponents?: readonly string[]
+
+  /** How an `address` field is edited. Anything other than 'structured', absent included,
+   *  resolves to 'single' — see `parseAddressInputMode`. */
+  inputMode?: 'single' | 'structured'
+
+  // ========================================
   // Nested Structures
   // ========================================
 

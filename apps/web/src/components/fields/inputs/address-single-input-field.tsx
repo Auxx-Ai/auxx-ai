@@ -2,12 +2,20 @@
 'use client'
 
 import { Badge } from '@auxx/ui/components/badge'
+import { Input } from '@auxx/ui/components/input'
 import {
   InputGroup,
   InputGroupAddon,
   InputGroupButton,
   InputGroupInput,
 } from '@auxx/ui/components/input-group'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@auxx/ui/components/select'
 import { cn } from '@auxx/ui/lib/utils'
 import {
   type AddressParseCandidate,
@@ -17,6 +25,7 @@ import {
 } from '@auxx/utils/address'
 import { Maximize2, Minimize2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { parseAddressComponents } from '~/components/custom-fields/ui/address-component-editor'
 import { useDebouncedValue } from '~/hooks/use-debounced-value'
 import { useFieldNavigationOptional } from '../field-navigation-context'
 import { usePropertyContext } from '../property-provider'
@@ -55,6 +64,8 @@ function normalizeStructValue(value: unknown): AddressStructValue {
     state: v.state ?? '',
     zipCode: v.zipCode ?? '',
     country: v.country ?? '',
+    name: v.name,
+    residential: v.residential,
     raw: v.raw,
     lat: v.lat,
     lng: v.lng,
@@ -70,7 +81,9 @@ function hasVisibleChange(a: AddressStructValue, b: AddressStructValue): boolean
     a.city !== b.city ||
     a.state !== b.state ||
     a.zipCode !== b.zipCode ||
-    a.country !== b.country
+    a.country !== b.country ||
+    (a.name || '') !== (b.name || '') ||
+    a.residential !== b.residential
   )
 }
 
@@ -82,6 +95,8 @@ function toAddressStruct(v: Partial<AddressStructValue>): AddressStruct {
     state: v.state ?? '',
     zipCode: v.zipCode ?? '',
     country: v.country ?? '',
+    name: v.name ?? '',
+    residential: v.residential,
   }
 }
 
@@ -118,6 +133,12 @@ interface AddressSingleFieldsProps {
   autoFocus?: boolean
   className?: string
   inputVariant?: 'default' | 'transparent'
+  /**
+   * Sub-fields to render, from the field's `addressComponents` option
+   * (see `parseAddressComponents`). Omitted ⇒ the default six, so a caller with no field
+   * options renders exactly as before.
+   */
+  components?: string[]
 }
 
 /**
@@ -132,6 +153,9 @@ interface AddressSingleFieldsProps {
  *   two views: compact single line ⇄ the existing `AddressStructFields` detail view
  *   (pre-filled from the top candidate, for corrections without retyping). In the detail
  *   view the same button sits inside the street-address input and collapses back.
+ * - `name`/`residential`, when the field enables them, render as their own controls around
+ *   the single line rather than inside it: the line's text is round-tripped through
+ *   `parseAddress`, and a recipient name in it would be parsed as a street.
  */
 export function AddressSingleFields({
   value,
@@ -142,8 +166,10 @@ export function AddressSingleFields({
   autoFocus,
   className,
   inputVariant,
+  components,
 }: AddressSingleFieldsProps) {
   const structValue = useMemo(() => normalizeStructValue(value), [value])
+  const shown = useMemo(() => new Set(components ?? parseAddressComponents()), [components])
 
   const [mode, setMode] = useState<'idle' | 'editing'>('idle')
   const [text, setText] = useState('')
@@ -178,13 +204,18 @@ export function AddressSingleFields({
     return () => nav?.setPopoverCapturing(false)
   }, [candidates.length, nav])
 
+  // `name`/`residential` are carried over from the committed value: the parser cannot produce
+  // them (they are not in the typed line), so spreading the candidate alone would silently
+  // clear a recipient name every time a postal line is re-accepted.
   const buildAccepted = useCallback(
     (candidate: AddressParseCandidate, rawText: string): AddressStructWithSource => ({
       ...candidate.struct,
+      name: structValue.name,
+      residential: structValue.residential,
       raw: candidate.confidence < LOW_CONFIDENCE_THRESHOLD ? rawText : undefined,
       _source: 'single',
     }),
-    []
+    [structValue.name, structValue.residential]
   )
 
   const revertToIdle = useCallback(() => {
@@ -257,7 +288,11 @@ export function AddressSingleFields({
 
   const openDetails = useCallback(() => {
     const candidate = candidates[0]
-    const seed = candidate?.struct ?? structValue
+    // A candidate carries only the postal line, so the committed `name`/`residential` are
+    // merged back in rather than dropped when the detail view opens over a parse.
+    const seed: Partial<AddressStructValue> = candidate
+      ? { ...candidate.struct, name: structValue.name, residential: structValue.residential }
+      : structValue
     const draft = toAddressStruct({ ...seed, country: seed.country || defaultCountry })
     setDetailsDraft(draft)
     // Typed-but-unaccepted text seeded this draft — propagate it immediately so toggling
@@ -288,10 +323,20 @@ export function AddressSingleFields({
         state: next.state,
         zipCode: next.zipCode,
         country: next.country,
+        name: next.name || undefined,
+        residential: next.residential,
         _source: 'structured',
       })
     },
     [onDraftChange]
+  )
+
+  /** Edits `name`/`residential` without touching the postal line the single input owns. */
+  const handleSidecarChange = useCallback(
+    (patch: Pick<AddressStructValue, 'name' | 'residential'>) => {
+      onDraftChange({ ...structValue, ...patch, _source: 'structured' })
+    },
+    [onDraftChange, structValue]
   )
 
   const handleKeyDown = useCallback(
@@ -346,6 +391,19 @@ export function AddressSingleFields({
 
   return (
     <div className={cn('flex flex-col gap-1', className)}>
+      {/* `name`/`residential` sit outside the parsed line; in the detail view
+          `AddressStructFields` renders them instead, so they are not doubled. */}
+      {!detailsOpen && shown.has('name') && (
+        <Input
+          size='sm'
+          variant={inputVariant}
+          placeholder='Name'
+          value={structValue.name ?? ''}
+          onChange={(e) => handleSidecarChange({ name: e.target.value })}
+          disabled={disabled}
+        />
+      )}
+
       {!detailsOpen && (
         <InputGroup
           size='sm'
@@ -391,6 +449,27 @@ export function AddressSingleFields({
         </div>
       )}
 
+      {!detailsOpen && shown.has('residential') && (
+        <Select
+          value={structValue.residential ?? 'unknown'}
+          onValueChange={(v) =>
+            handleSidecarChange({ residential: v as AddressStructValue['residential'] })
+          }
+          disabled={disabled}>
+          <SelectTrigger
+            size='sm'
+            variant={inputVariant === 'transparent' ? 'transparent' : 'default'}
+            aria-label='Residential'>
+            <SelectValue placeholder='Residential' />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value='unknown'>Unknown</SelectItem>
+            <SelectItem value='yes'>Residential</SelectItem>
+            <SelectItem value='no'>Commercial</SelectItem>
+          </SelectContent>
+        </Select>
+      )}
+
       {detailsOpen && (
         <AddressStructFields
           value={detailsDraft}
@@ -398,6 +477,7 @@ export function AddressSingleFields({
           disabled={disabled}
           inputVariant={inputVariant}
           className='flex flex-col gap-2'
+          components={components}
           autoFocus
           street1Addon={detailsToggleButton}
         />
@@ -416,10 +496,11 @@ export function AddressSingleFields({
  *   fire-and-forget on popover close via `onBeforeClose`, same as the structured editor.
  */
 export function AddressSingleInputField() {
-  const { value, commitValue, commitValueAndClose, onBeforeClose } = usePropertyContext()
+  const { field, value, commitValue, commitValueAndClose, onBeforeClose } = usePropertyContext()
   const initial = useMemo(() => normalizeStructValue(value), [value])
   const [pending, setPending] = useState<AddressStructValue>(initial)
   const defaultCountry = useOrgBusinessCountry()
+  const components = useMemo(() => parseAddressComponents(field?.options), [field?.options])
 
   const handleAccept = useCallback(
     (next: AddressStructWithSource) => {
@@ -448,6 +529,7 @@ export function AddressSingleInputField() {
       defaultCountry={defaultCountry}
       onAccept={handleAccept}
       onDraftChange={handleDraftChange}
+      components={components}
       autoFocus
       className='w-[350px] p-2'
     />

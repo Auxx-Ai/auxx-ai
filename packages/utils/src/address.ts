@@ -13,6 +13,19 @@ export interface AddressStructValue {
   state: string
   zipCode: string
   country: string // ISO alpha-2
+  /**
+   * Recipient line — a person, or the company where there is no contact person. Opt-in per
+   * field via `addressComponents` and never part of the geocoder query
+   * (plans/apps/shipstation/shipstation-workflow-expansion-plan.md §4). Converters must
+   * PICK a person or a company, never concatenate: a merged "Acme Corp - Jane Smith" cannot
+   * be split back out.
+   */
+  name?: string
+  /**
+   * Carrier residential indicator. `'unknown'` is a real, distinct state (it is what
+   * `POST /v2/addresses/validate` resolves), so it is never collapsed to a boolean.
+   */
+  residential?: 'unknown' | 'yes' | 'no'
   raw?: string
   lat?: number
   lng?: number
@@ -242,10 +255,19 @@ function countryNameFor(codeOrName: string): string {
  * `opts.country: 'name' | 'code' | 'omit'` overrides that behavior. Profile-aware ordering:
  * DE renders `"Straße Nr, PLZ Stadt"` (zip before city, no state). Returns `''` when every
  * part is empty — callers can `|| null`.
+ *
+ * `opts.include` is strictly opt-in and the ONLY way to render a key outside the six postal
+ * components. The default output is byte-identical to what dispatch notifications, digests,
+ * the route planner, timeline chips and the field display already send, so it must stay that
+ * way; `include: ['name']` prepends the recipient line for callers that want it.
  */
 export function formatAddress(
   a: Partial<AddressStructValue>,
-  opts?: { domesticCountry?: string; country?: 'name' | 'code' | 'omit' }
+  opts?: {
+    domesticCountry?: string
+    country?: 'name' | 'code' | 'omit'
+    include?: readonly 'name'[]
+  }
 ): string {
   const street1 = (a.street1 ?? '').trim()
   const street2 = (a.street2 ?? '').trim()
@@ -255,12 +277,14 @@ export function formatAddress(
   const countryCode = (a.country ?? '').trim()
   const isDE = countryCode.toUpperCase() === 'DE'
 
+  const nameLine = opts?.include?.includes('name') ? (a.name ?? '').trim() : ''
+
   const segments = isDE
     ? [street1, street2, [zipCode, city].filter(Boolean).join(' ')]
     : [street1, street2, city, [state, zipCode].filter(Boolean).join(' ')]
 
   const countryText = resolveCountryDisplay(countryCode, opts)
-  const parts = [...segments, countryText].filter((p) => p.trim().length > 0)
+  const parts = [nameLine, ...segments, countryText].filter((p) => p.trim().length > 0)
   return parts.length > 0 ? parts.join(', ') : ''
 }
 
@@ -280,7 +304,12 @@ function resolveCountryDisplay(
   return countryNameFor(countryCode)
 }
 
-/** Flat comma-join of all components — geocoder input, NOT a display formatter. */
+/**
+ * Flat comma-join of the six postal components — geocoder input, NOT a display formatter.
+ *
+ * `name` and `residential` are deliberately excluded and must stay excluded: a person's name
+ * in a MapTiler query degrades the result, and `residential` is not a place.
+ */
 export function formatAddressForGeocode(a: Partial<AddressStructValue>): string {
   return [a.street1, a.street2, a.city, a.state, a.zipCode, a.country]
     .map((p) => (p ?? '').trim())
