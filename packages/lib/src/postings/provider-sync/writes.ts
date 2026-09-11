@@ -255,7 +255,12 @@ function isPosted(result: PostResult): result is PostResult & { glPostingId: str
       result.status === 'already_posted' ||
       result.status === 'healed' ||
       result.status === 'not_connected' ||
-      result.status === 'disabled') &&
+      result.status === 'disabled' ||
+      // 🛑 The status EVERY entry on this path now gets. `provider_sync` is one
+      // of the two `'none'` routes in `EXPORT_ROUTE_BY_POSTING_TYPE` - that is
+      // this module's loop guard - so a synced entry never pushes and always
+      // lands here. Omitting it would make the sync record nothing at all.
+      result.status === 'not_exported') &&
     Boolean(result.glPostingId)
   )
 }

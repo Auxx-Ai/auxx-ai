@@ -411,7 +411,13 @@ export async function reverseJournalEntry(
         result.status === 'already_posted' ||
         result.status === 'healed' ||
         result.status === 'not_connected' ||
-        result.status === 'disabled'
+        result.status === 'disabled' ||
+        // A reversal inherits the original's posting type (`reverse-entry.ts`),
+        // so reversing the opening entry - a `journal_entry` record of kind
+        // `opening_balance`, posted, with a `glPostingId`, and nothing here
+        // refuses it - produces a `'none'`-routed reversal. Without this the
+        // ledger would hold the reversal while the record still read `posted`.
+        result.status === 'not_exported'
 
       if (landed) {
         const crud = new UnifiedCrudHandler(organizationId, userId, db)

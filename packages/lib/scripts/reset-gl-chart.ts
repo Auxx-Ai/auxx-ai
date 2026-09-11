@@ -172,8 +172,39 @@ async function resetOrg(organizationId: string): Promise<OrgResult | null> {
   }
 }
 
+/**
+ * Optional organization filter (id or name). Without it this stays what it has
+ * always been: every org in the database. With it, one org - because a dev
+ * machine now holds charts belonging to more than one demo org, and wiping a
+ * neighbour's to reset your own is a surprise, not a reset.
+ */
+const ORG_ARG = process.argv.slice(2).find((a) => !a.startsWith('--'))
+
+async function selectOrgs(): Promise<{ id: string }[]> {
+  if (!ORG_ARG) {
+    return database.select({ id: schema.Organization.id }).from(schema.Organization)
+  }
+  const [byId] = await database
+    .select({ id: schema.Organization.id })
+    .from(schema.Organization)
+    .where(eq(schema.Organization.id, ORG_ARG))
+    .limit(1)
+  if (byId) return [byId]
+
+  const [byName] = await database
+    .select({ id: schema.Organization.id })
+    .from(schema.Organization)
+    .where(eq(schema.Organization.name, ORG_ARG))
+    .limit(1)
+  if (byName) return [byName]
+
+  console.error(`no organization matched "${ORG_ARG}"`)
+  process.exit(1)
+}
+
 async function main() {
-  const orgs = await database.select({ id: schema.Organization.id }).from(schema.Organization)
+  const orgs = await selectOrgs()
+  console.log(ORG_ARG ? `scope: ${ORG_ARG}` : 'scope: EVERY organization')
 
   let touched = 0
   let accountsRemoved = 0

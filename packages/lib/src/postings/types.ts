@@ -365,8 +365,27 @@ export interface PostEntryInput {
  *   other is a missing integration, and the close console has to tell a reader
  *   which of the two it is looking at. Leaving them merged would make the remedy
  *   unguessable from the record.
+ * - `not_exported` - this POSTING TYPE is never pushed, whatever the org has
+ *   connected. `EXPORT_ROUTE_BY_POSTING_TYPE` routes `opening_balance` and
+ *   `provider_sync` to `'none'`, both because an entry that came FROM the
+ *   provider must never be handed back at it.
+ *
+ *   🛑 It exists for the same reason `disabled` does, and it was found the same
+ *   way `disabled` would have been. Before it, a `'none'`-routed entry borrowed
+ *   `not_connected` and the close console told an org with QuickBooks connected
+ *   that **no accounting system is connected** - observed on DemoOrg1's first
+ *   wizard drive, two pages after the wizard itself displayed the company name.
+ *   The remedy for `not_connected` is "connect one"; the remedy for this is
+ *   nothing at all, because it is working. A reader cannot guess which they are
+ *   looking at if the two share a value (brief 22 §5).
  */
-export type PostEntryStatus = 'posted' | 'already_posted' | 'healed' | 'not_connected' | 'disabled'
+export type PostEntryStatus =
+  | 'posted'
+  | 'already_posted'
+  | 'healed'
+  | 'not_connected'
+  | 'disabled'
+  | 'not_exported'
 
 /**
  * What the export of one entry to the accounting provider did.

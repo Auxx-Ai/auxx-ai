@@ -10,11 +10,15 @@ import { api } from '~/trpc/react'
 /**
  * The statuses that mean a `GlPosting` row now exists for the month.
  *
- * 🛑 Five of them, not one. `not_connected` and `disabled` are first-class
- * successes under decision `P1` - the entry is built, balanced and persisted
- * identically, there is simply nowhere to push it - and `already_posted` and
- * `healed` are converged re-runs. Treating any of the five as a failure is the
- * single most common way this screen could be got wrong.
+ * 🛑 Six of them, not one. `not_connected`, `disabled` and `not_exported` are
+ * first-class successes under decision `P1` - the entry is built, balanced and
+ * persisted identically, there is simply nowhere to push it - and
+ * `already_posted` and `healed` are converged re-runs. Treating any of the six
+ * as a failure is the single most common way this screen could be got wrong.
+ *
+ * `not_exported` is the newest and the narrowest: the posting TYPE routes to
+ * `'none'`, so it never pushes whatever the org has connected. It reaches this
+ * screen through a reversal, which inherits its original's posting type.
  *
  * Everything else (`period_closed`, `account_unmapped`, `unbalanced`,
  * `nothing_to_close`, `setup_incomplete`, `error`) wrote nothing, and all six
@@ -26,6 +30,7 @@ const POSTED_STATUSES = new Set<PostResultStatus>([
   'healed',
   'not_connected',
   'disabled',
+  'not_exported',
 ])
 
 interface UseLedgerEntryActionsOptions {

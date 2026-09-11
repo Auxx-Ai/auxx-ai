@@ -86,6 +86,19 @@ const OUTCOMES: Record<PostResultStatus, OutcomeCopy> = {
       'The entry is built, balanced and recorded here exactly as it would be with a provider. There is simply nowhere to push it.',
     tone: 'success',
   },
+  // 🛑 NOT `not_connected`, and the difference is the whole point of the value.
+  // This entry's posting type is never exported - an opening balance or an
+  // entry read back off the provider's own ledger - so the org's connection is
+  // irrelevant and may well be healthy. Saying "no accounting system is
+  // connected" here sent a reader to debug a working QuickBooks link on
+  // DemoOrg1's first wizard drive. Brief 22 §5.
+  not_exported: {
+    icon: CheckCircle2,
+    title: 'Posted. This entry is not exported',
+    detail:
+      'An opening balance and an entry synced from your accounting system are both kept here only. Pushing either back would hand the provider a second copy of a figure it already has.',
+    tone: 'success',
+  },
   not_enabled: {
     icon: PlugZap,
     title: 'Nothing posted. Accounting is not enabled for this organization',

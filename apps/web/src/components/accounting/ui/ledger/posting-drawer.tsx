@@ -2,7 +2,8 @@
 
 'use client'
 
-import type { PostingDetail, PostResult } from '@auxx/lib/postings/client'
+import type { PostingDetail, PostingType, PostResult } from '@auxx/lib/postings/client'
+import { EXPORT_ROUTE_BY_POSTING_TYPE } from '@auxx/lib/postings/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'
@@ -244,9 +245,15 @@ const STATUS_LABEL: Record<PostingDetail['status'], string> = {
  * produced it: `posted`, `already_posted` and `healed` all leave the same row
  * behind, so this reports `posted` for all three. It never invents a failure -
  * `failureReason` is rendered verbatim when the row actually failed - and it
- * keeps `not_connected` and `disabled` apart, which is the distinction decision
- * `P1` cares about: one is a missing integration, the other is a setting
- * somebody can flip, and merging them makes the remedy unguessable.
+ * keeps `not_connected`, `disabled` and `not_exported` apart, which is the
+ * distinction decision `P1` cares about: a missing integration, a setting
+ * somebody can flip, and a posting type that is never exported at all have
+ * three different remedies, and merging them makes the remedy unguessable.
+ *
+ * 🛑 `not_exported` is checked FIRST among the three, because a `'none'`-routed
+ * row is indistinguishable from a disconnected org by `providerId` alone: both
+ * store `'none'`. Only the posting type separates them, which is why this reads
+ * the route table rather than guessing from the row (brief 22 §5).
  *
  * 🛑 Reads `exportStatus`, NOT `status`. It used to branch on
  * `status === 'failed'`, which is now unreachable - `status` says what the
@@ -257,6 +264,7 @@ const STATUS_LABEL: Record<PostingDetail['status'], string> = {
 function providerResultFromDetail(detail: {
   exportStatus: string
   docNumber: string
+  postingType: string
   providerId: string | null
   providerEntryId: string | null
   failureReason: string | null
@@ -269,6 +277,9 @@ function providerResultFromDetail(detail: {
   }
   if (detail.providerEntryId) {
     return { ...base, status: 'posted', providerEntryId: detail.providerEntryId }
+  }
+  if (EXPORT_ROUTE_BY_POSTING_TYPE[detail.postingType as PostingType] === 'none') {
+    return { ...base, status: 'not_exported' }
   }
   if (detail.exportStatus === 'not_required' && (!providerId || providerId === 'none')) {
     return { ...base, status: 'not_connected' }

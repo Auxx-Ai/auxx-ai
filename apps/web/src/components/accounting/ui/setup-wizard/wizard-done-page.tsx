@@ -15,6 +15,7 @@ import {
   useDehydratedStateContext,
 } from '~/providers/dehydrated-state-provider'
 import { api } from '~/trpc/react'
+import { useAccountingProviderStatus } from '../../hooks/use-accounting-provider-status'
 import { EntryBlockers, type LedgerBlocker } from '../ledger/entry-blockers'
 import { EntryJournal } from '../ledger/entry-journal'
 
@@ -66,6 +67,7 @@ export function WizardDonePage({ onFinish }: WizardDonePageProps) {
   // ordering to be had from a fire-and-forget call. The local settings store is
   // patched by hand afterwards, which is exactly what `useSettings` does.
   const finalizeSettings = api.setting.batchUpdateOrganizationSettings.useMutation()
+  const providerStatus = useAccountingProviderStatus()
   const opening = api.ledgerOpening.get.useQuery()
   const preview = api.ledgerOpening.preview.useMutation()
   const post = api.ledgerOpening.post.useMutation()
@@ -78,10 +80,19 @@ export function WizardDonePage({ onFinish }: WizardDonePageProps) {
   // The trial balance is the one requirement that is not a setting, so it is
   // passed in. An absent summary reads as met - see `SetupReadinessContext` -
   // which is why the query's own loading state is not a blocker here.
-  const readiness = resolveSetupReadiness(
-    record,
-    opening.data ? { openingTrialBalance: opening.data.summary } : {}
-  )
+  //
+  // ⚠️ `providerConnected` takes the opposite treatment while loading, and the
+  // asymmetry is the point. `useAccountingProviderStatus` reports
+  // `connected: false` for a beat after `installed` turns true, so passing it
+  // raw would drop the provider snapshot from the requirements and ENABLE
+  // Finalize on a connected org for that beat. Reading a load as connected
+  // errs toward one extra requirement briefly showing unmet, which resolves
+  // itself; the other direction posts an opening entry against a baseline
+  // nobody reconciled (brief 22 §2.5).
+  const readiness = resolveSetupReadiness(record, {
+    ...(opening.data ? { openingTrialBalance: opening.data.summary } : {}),
+    providerConnected: providerStatus.loading || providerStatus.connected,
+  })
   const unmet = readiness.requirements.filter((requirement) => !requirement.met)
 
   // Preview once the query has an entry, so the journal below shows the lines

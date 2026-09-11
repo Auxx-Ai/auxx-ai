@@ -68,13 +68,23 @@ export const ABSORPTION_RATE_SETTING_KEYS = {
   overhead: 'manufacturing.overheadCostPerUnit',
 } as const
 
-/** Every setting key this predicate reads. Handy for scoping a settings draft. */
+/**
+ * Every setting key this predicate reads. Handy for scoping a settings draft.
+ *
+ * 🛑 `accounting.qboOpeningJournalRef` is deliberately NOT here. It is written
+ * by the wizard and read by nothing: `opening-baseline.ts` names it under
+ * "What this reader deliberately does NOT read", and
+ * `settled-periods.ts`'s `FROZEN_SETUP_SETTING_KEYS` excludes it because - in
+ * that file's own test name - it "feeds no comparison". A value not worth
+ * protecting after finalize is not worth refusing to finalize over, so it is
+ * optional provenance on the settings page and not a requirement here
+ * (brief 22 §1).
+ */
 export const SETUP_READINESS_SETTING_KEYS = [
   ...Object.values(OPENING_BASELINE_SETTING_KEYS),
   'accounting.qboOpeningRawMaterials',
   'accounting.qboOpeningWip',
   'accounting.qboOpeningFinishedGoods',
-  'accounting.qboOpeningJournalRef',
   ...Object.values(ABSORPTION_RATE_SETTING_KEYS),
 ] as const
 
@@ -137,6 +147,22 @@ export interface OpeningTrialBalanceSummary {
  */
 export interface SetupReadinessContext {
   openingTrialBalance?: OpeningTrialBalanceSummary
+  /**
+   * Whether an accounting system is connected.
+   *
+   * 🛑 **Absent reads as NOT connected**, which is the opposite default to
+   * `openingTrialBalance` above, and deliberately so. That field defaults to
+   * met because reporting a failure on a fact the caller never looked up is
+   * worse than being permissive. The same instinct points the other way here:
+   * demanding a QuickBooks figure from an organization whose connection nobody
+   * looked up is precisely the defect this flag exists to fix (brief 22 §2.4).
+   *
+   * ⚠️ Both callers answer it truthfully, so the checklist and the wizard
+   * cannot drift the way `:169` warns about: the wizard and `settings/opening`
+   * pass `useAccountingProviderStatus().connected`, and
+   * `getting-started/signals.ts` resolves the provider for the org.
+   */
+  providerConnected?: boolean
 }
 
 /**
@@ -266,24 +292,33 @@ export function resolveSetupReadiness(
     'accounting.qboOpeningWip',
     'accounting.qboOpeningFinishedGoods',
   ]
-  const missingBalance = [...auxxKeys, ...qboKeys].some(
-    (k) => readSettingMinorUnits(settings[k]) === null
-  )
-  const fractional = [...auxxKeys, ...qboKeys].some(
+
+  // 🛑 The provider's snapshot is asked for ONLY when there is a provider.
+  //
+  // `21` DECIDED 1: a company must never be forced to connect QuickBooks to get
+  // a correct balance sheet. Requiring `qboOpening*` unconditionally forced a
+  // standalone organization to fill in three QuickBooks balances for a system
+  // it does not have, and Finalize stayed disabled until it did.
+  //
+  // The comparison those keys exist for is also vacuous without a provider:
+  // `openingDifference` skips a pair whose either side is null, so it returns 0
+  // regardless. The old gate made a standalone org type its own figures into a
+  // second column so a subtraction of a number against a copy of itself could
+  // come out zero. It proved nothing and refused until it was done (brief 22 §2).
+  const compared = context.providerConnected ? [...auxxKeys, ...qboKeys] : auxxKeys
+  const missingBalance = compared.some((k) => readSettingMinorUnits(settings[k]) === null)
+  const fractional = compared.some(
     (k) => readSettingMinorUnits(settings[k]) !== null && !isWholeMinorUnits(settings[k])
   )
-  const journalRef = readSettingText(settings['accounting.qboOpeningJournalRef'])
   const difference = openingDifference(settings)
 
   const openingReason = missingBalance
     ? 'Some opening balances are not set. Zero is a real balance; unset is not.'
     : fractional
       ? 'An opening balance is not a whole number of cents.'
-      : !journalRef
-        ? 'No QuickBooks opening journal reference.'
-        : difference !== 0
-          ? 'The auxx and QuickBooks opening snapshots do not agree.'
-          : undefined
+      : context.providerConnected && difference !== 0
+        ? 'The auxx and QuickBooks opening snapshots do not agree.'
+        : undefined
 
   const labor = readSettingMinorUnits(settings[R.assemblyLabor])
   const overhead = readSettingMinorUnits(settings[R.overhead])

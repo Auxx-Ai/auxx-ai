@@ -23,7 +23,14 @@ import { and, asc, eq, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { ConflictError, NotFoundError } from '../errors'
 import { resolveAccountingProvider } from './provider'
-import type { CounterpartyType, PostEntryInput, PostResult, ResolvedPostingLine } from './types'
+import { EXPORT_ROUTE_BY_POSTING_TYPE } from './regime'
+import type {
+  CounterpartyType,
+  PostEntryInput,
+  PostingType,
+  PostResult,
+  ResolvedPostingLine,
+} from './types'
 
 const logger = createScopedLogger('postings-retry-export')
 
@@ -97,10 +104,20 @@ export async function retryExport(
     // would resolve the `none` provider and stamp `not_required` again, which
     // reads to the operator as "I tried and it worked" when nothing was tried.
     if (row.exportStatus === 'not_required') {
+      // ⚠️ Three reasons produce `not_required` and only two of them are about
+      // the organization. A `'none'`-routed posting type is never exported at
+      // all, so telling the operator to check a connection they may well have
+      // sends them to debug something healthy - the same defect as the close
+      // console's `not_connected` copy (brief 22 §5).
+      const routedToNone = EXPORT_ROUTE_BY_POSTING_TYPE[row.postingType as PostingType] === 'none'
       return err(
         new ConflictError(
-          `${row.docNumber} has no export to retry: this organization has no accounting ` +
-            'system connected, or posting journal entries to it is switched off.',
+          routedToNone
+            ? `${row.docNumber} is never exported. An opening balance and an entry synced ` +
+                'from your accounting system are both kept here only, because pushing either ' +
+                'back would hand the provider a second copy of a figure it already has.'
+            : `${row.docNumber} has no export to retry: this organization has no accounting ` +
+                'system connected, or posting journal entries to it is switched off.',
           { glPostingId }
         )
       )

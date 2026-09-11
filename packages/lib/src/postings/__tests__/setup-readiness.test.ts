@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest'
 import {
   openingTrialBalanceDifference,
   resolveSetupReadiness,
+  SETUP_READINESS_SETTING_KEYS,
   type SettingsRecord,
   summariseOpeningTrialBalance,
 } from '../setup-readiness'
@@ -178,5 +179,109 @@ describe('resolveSetupReadiness: the three requirements that already existed', (
       openingTrialBalance: { debitMinor: 1, creditMinor: 0, rows: 1 },
     })
     expect(readiness.settingsReady).toBe(false)
+  })
+})
+
+// ── brief 22: the provider snapshot is asked for only when there is a provider ──
+//
+// 🛑 Every case below was reachable before and none was covered: the `qbo*`
+// keys and the journal reference appeared only in the happy fixture above, so
+// the two gates that blocked DemoOrg1's first wizard drive had no test of their
+// own. That is why a live drive found them and 960 test files did not.
+
+/** A standalone org: every auxx key set, every provider key absent. */
+function standalone(overrides: SettingsRecord = {}): SettingsRecord {
+  return settings({
+    'accounting.qboOpeningRawMaterials': null,
+    'accounting.qboOpeningWip': null,
+    'accounting.qboOpeningFinishedGoods': null,
+    'accounting.qboOpeningJournalRef': null,
+    ...overrides,
+  })
+}
+
+describe('resolveSetupReadiness: opening balances are provider-conditional', () => {
+  it('an org with nothing connected is READY on its own three balances alone', () => {
+    // `21` DECIDED 1: a company must never be forced to connect QuickBooks to
+    // get a correct balance sheet. Before this, Finalize stayed disabled until
+    // somebody typed three QuickBooks balances for a system they do not have.
+    const readiness = resolveSetupReadiness(standalone())
+    expect(requirement(readiness, 'set-opening-balances').met).toBe(true)
+    expect(readiness.settingsReady).toBe(true)
+  })
+
+  it('the SAME settings are not ready once a provider is connected', () => {
+    const readiness = resolveSetupReadiness(standalone(), { providerConnected: true })
+    const row = requirement(readiness, 'set-opening-balances')
+    expect(row.met).toBe(false)
+    expect(row.reason).toMatch(/Some opening balances are not set/)
+    expect(readiness.settingsReady).toBe(false)
+  })
+
+  it('absent providerConnected reads as NOT connected', () => {
+    // The opposite default to `openingTrialBalance`, deliberately: demanding a
+    // QuickBooks figure on the strength of a connection nobody looked up is the
+    // defect, not the safeguard.
+    expect(resolveSetupReadiness(standalone()).settingsReady).toBe(true)
+    expect(resolveSetupReadiness(standalone(), {}).settingsReady).toBe(true)
+  })
+
+  it('still refuses a connected org whose two snapshots disagree', () => {
+    const readiness = resolveSetupReadiness(
+      settings({ 'accounting.qboOpeningRawMaterials': 999_00 }),
+      { providerConnected: true }
+    )
+    const row = requirement(readiness, 'set-opening-balances')
+    expect(row.met).toBe(false)
+    expect(row.reason).toMatch(/do not agree/)
+  })
+
+  it('never reports a disagreement for a standalone org, because there is none to have', () => {
+    // `openingDifference` skips a pair whose either side is null, so it returns
+    // 0 regardless - the old gate made a standalone org type its own figures
+    // into a second column so a subtraction against a copy of itself could come
+    // out zero. It proved nothing and refused until it was done.
+    const readiness = resolveSetupReadiness(standalone())
+    expect(requirement(readiness, 'set-opening-balances').reason).toBeUndefined()
+  })
+
+  it('still refuses a fractional provider balance, but only when connected', () => {
+    const fractional = settings({ 'accounting.qboOpeningWip': 12.5 })
+    expect(
+      requirement(
+        resolveSetupReadiness(fractional, { providerConnected: true }),
+        'set-opening-balances'
+      ).reason
+    ).toMatch(/whole number of cents/)
+    expect(requirement(resolveSetupReadiness(fractional), 'set-opening-balances').met).toBe(true)
+  })
+
+  it('still refuses an org missing one of its OWN balances, connected or not', () => {
+    const missing = standalone({ 'accounting.openingWip': null })
+    for (const context of [{}, { providerConnected: true }]) {
+      expect(requirement(resolveSetupReadiness(missing, context), 'set-opening-balances').met).toBe(
+        false
+      )
+    }
+  })
+})
+
+describe('resolveSetupReadiness: the journal reference is not a gate', () => {
+  it('is ready with no QuickBooks opening journal reference, even when connected', () => {
+    // Nothing reads it. `opening-baseline.ts` lists it under "What this reader
+    // deliberately does NOT read", and `settled-periods.ts` excludes it from
+    // the frozen keys because it "feeds no comparison". A value not worth
+    // protecting after finalize is not worth refusing to finalize over.
+    const readiness = resolveSetupReadiness(settings({ 'accounting.qboOpeningJournalRef': null }), {
+      providerConnected: true,
+    })
+    expect(requirement(readiness, 'set-opening-balances').met).toBe(true)
+    expect(readiness.settingsReady).toBe(true)
+  })
+
+  it('is not one of the keys the predicate declares it reads', () => {
+    // `buildReadinessRecord` feeds the predicate from this array, so a key left
+    // here would keep being collected for a rule that no longer exists.
+    expect(SETUP_READINESS_SETTING_KEYS).not.toContain('accounting.qboOpeningJournalRef')
   })
 })

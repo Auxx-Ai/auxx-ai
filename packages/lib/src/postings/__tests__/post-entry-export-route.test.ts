@@ -285,11 +285,43 @@ describe('opening_balance never reaches the connected provider', () => {
     })
 
     expect(fakePostEntry).not.toHaveBeenCalled()
-    expect(result.status).toBe('not_connected')
+    // 🛑 `not_exported`, NOT `not_connected`. A provider IS connected here -
+    // `registerFakeProvider` above - and this entry is skipped because of its
+    // posting TYPE. Reporting `not_connected` made the close console tell a
+    // connected org it had no accounting system (brief 22 §5).
+    expect(result.status).toBe('not_exported')
     expect(result.providerId).toBe('none')
     // The ledger still took the entry - only the export is skipped.
     expect(fake.postings).toHaveLength(1)
     expect(fake.lines).toHaveLength(2)
+  })
+
+  it('distinguishes a none ROUTE from an org with nothing connected', async () => {
+    // The pair that gives the value its meaning. Same posting type is not
+    // enough: what separates them is whether a provider exists at all, and a
+    // reader has to be able to tell, because one has a remedy and the other
+    // does not.
+    const routed = createFakeDb(CHART)
+    registerFakeProvider('stub', async (_input: PostEntryInput) =>
+      ok({ status: 'posted' as const, externalId: 'qb_3', providerId: 'stub' })
+    )
+    const withProvider = await postEntry(routed.db, {
+      organizationId: ORG,
+      entry: codedEntry('opening_balance', ['1000', '3900']),
+      lock: OPEN,
+    })
+    expect(withProvider.status).toBe('not_exported')
+
+    __resetAccountingProvidersForTests()
+
+    const bare = createFakeDb(CHART)
+    const nothingConnected = await postEntry(bare.db, {
+      organizationId: ORG,
+      entry: codedEntry('manual_journal', ['6200', '2100'], { periodKey: 'JNL-0002' }),
+      lock: OPEN,
+    })
+    expect(nothingConnected.status).toBe('not_connected')
+    expect(nothingConnected.exportStatus).toBe('not_required')
   })
 
   it('proves the branch: a manual_journal through the SAME fake provider IS called once', async () => {
