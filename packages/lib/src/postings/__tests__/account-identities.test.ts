@@ -15,6 +15,11 @@ vi.mock('../role-map', () => ({
 const resolveAccountingProvider = vi.fn()
 vi.mock('../provider', () => ({
   resolveAccountingProvider: (...a: unknown[]) => resolveAccountingProvider(...a),
+  // The real one, not a stub: it is three characters of logic over the provider
+  // the test already supplies, and a `vi.fn()` here would let the capability
+  // flag agree with whatever the test wanted rather than with the double.
+  supportsCreatingProviderAccounts: (provider: { createProviderAccount?: unknown }) =>
+    typeof provider.createProviderAccount === 'function',
 }))
 
 import type { Database } from '@auxx/database'

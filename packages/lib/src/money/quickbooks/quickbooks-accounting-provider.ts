@@ -74,6 +74,8 @@ import { accountLabel } from '../../postings/account-label'
 import type {
   AccountingProvider,
   ClearAccountMappingInput,
+  CreateProviderAccountInput,
+  CreateProviderAccountResult,
   SetAccountMappingInput,
 } from '../../postings/provider'
 import type { ProviderLedger } from '../../postings/provider-sync/client'
@@ -94,9 +96,12 @@ import { getOrganizationSetting } from '../../settings/settings-service'
 import {
   clearQuickbooksAccountMapping,
   listQuickbooksProviderAccounts,
+  type MappedAccount,
   readQuickbooksAccountMap,
   setQuickbooksAccountMapping,
+  toProviderAccount,
 } from './account-map'
+import { quickbooksAccountType } from './account-types'
 import { readQuickbooksIdField } from './identity-field'
 import { type QuickbooksToolContext, resolveQuickbooksContext } from './invoke-quickbooks-tool'
 
@@ -114,6 +119,8 @@ const TOOL_CREATE_JOURNAL_ENTRY = 'create_quickbooks_journal_entry'
 const TOOL_GET_BALANCE_SHEET = 'get_quickbooks_balance_sheet'
 /** Brief 20 section 5.1: the inbound half's one report read. */
 const TOOL_GET_GENERAL_LEDGER = 'get_quickbooks_general_ledger'
+/** The one call that runs the seam BACKWARDS - see `createProviderAccount`. */
+const TOOL_CREATE_ACCOUNT = 'create_quickbooks_account'
 
 /** QuickBooks caps `PrivateNote` at 4000 characters and rejects a longer one. */
 const PRIVATE_NOTE_MAX_LENGTH = 4000
@@ -811,6 +818,101 @@ export class QuickbooksAccountingProvider implements AccountingProvider {
             organizationId: input.orgId,
             glAccountId: input.glAccountId,
           }
+        )
+      )
+    }
+  }
+
+  /**
+   * Create the QuickBooks counterpart of one of our accounts.
+   *
+   * The only method here that WRITES to QuickBooks outside a journal entry, and
+   * the reason it exists is §8.5 of the 2026-09-10 handoff: the accounts auxx
+   * creates itself - a clearing account per card rail, the role-bearing core -
+   * have no counterpart to match, so no suggestion is ever produced for them and
+   * the export refuses on every one. Linking them meant retyping each into
+   * QuickBooks by hand.
+   *
+   * ## Both type columns, always
+   *
+   * `quickbooksAccountType` returns a complete pair and this sends both.
+   * QuickBooks will accept an `AccountType` alone and then invent a subtype -
+   * probed on 2026-09-10, an `Other Current Asset` came back filed under
+   * `EmployeeCashAdvances` - and the subtype is what their reports group by.
+   * See `account-types.ts`.
+   *
+   * ## The tool refuses a duplicate; this does not re-decide that
+   *
+   * `create_quickbooks_account` looks by number then by name before writing and
+   * answers `outcome: 'existing'` rather than creating a second account, which
+   * is the guarantee the interface asks for. Its ambiguity refusal arrives here
+   * as a thrown `INVALID_INPUT` and becomes an `UnprocessableEntityError`
+   * carrying Intuit's own sentence - a person has to settle a duplicate in
+   * QuickBooks, and there is nothing useful this layer could add to that.
+   *
+   * 🛑 The mapping is NOT written here. `createAndLinkProviderAccount` re-checks
+   * that what came back is actually mappable before confirming it, so a
+   * surprising answer from the tool cannot become a silent pairing.
+   */
+  async createProviderAccount(
+    input: CreateProviderAccountInput
+  ): Promise<Result<CreateProviderAccountResult, Error>> {
+    const resolved = await resolveQuickbooksContext({
+      organizationId: input.orgId,
+      actorUserId: input.actorUserId,
+    })
+    if (!resolved.connected) {
+      return err(
+        new UnprocessableEntityError(
+          'QuickBooks is not connected, so an account cannot be created in it.',
+          { organizationId: input.orgId, glAccountId: input.glAccountId }
+        )
+      )
+    }
+
+    const { accountType, accountSubType } = quickbooksAccountType(
+      input.classification,
+      input.subtype
+    )
+
+    try {
+      const result = (await resolved.context.callTool(TOOL_CREATE_ACCOUNT, {
+        name: input.name,
+        ...(input.code ? { acctNum: input.code } : {}),
+        accountType,
+        accountSubType,
+      })) as {
+        account: MappedAccount
+        outcome: 'created' | 'existing'
+        acctNumDropped: boolean
+      }
+
+      // The same conversion `listProviderAccounts` uses, so an account read back
+      // from the chart and one just created cannot come out differently shaped.
+      const account = toProviderAccount(result.account)
+      if (!account) {
+        // Unreadable rather than wrong: we asked for a section and got back an
+        // account whose section we cannot parse, so we cannot say the pairing is
+        // safe. Refusing leaves an account in their chart with no mapping, which
+        // a person can link by hand; guessing would post money through it.
+        return err(
+          new UnprocessableEntityError(
+            `QuickBooks returned account '${result.account.fullyQualifiedName}' with an unreadable classification '${result.account.classification}'. Link it by hand.`,
+            { organizationId: input.orgId, glAccountId: input.glAccountId }
+          )
+        )
+      }
+
+      return ok({
+        account,
+        outcome: result.outcome,
+        numberDropped: Boolean(result.acctNumDropped),
+      })
+    } catch (error) {
+      return err(
+        new UnprocessableEntityError(
+          `Could not create '${input.name}' in QuickBooks: ${errorMessage(error)}`,
+          { organizationId: input.orgId, glAccountId: input.glAccountId, accountType }
         )
       )
     }

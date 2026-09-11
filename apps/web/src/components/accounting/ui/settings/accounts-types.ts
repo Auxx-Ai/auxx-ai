@@ -135,6 +135,17 @@ export interface ChartMapView {
   suggested: number
   /** `'QuickBooks Online'`, or null with nothing connected. Never hardcode it. */
   providerLabel: string | null
+  /**
+   * The connected system will accept accounts CREATED in it, so an unlinked row
+   * can offer create-and-link and not only a picker.
+   *
+   * 🛑 The server's answer, never this screen's guess. It is the presence of the
+   * adapter's optional `createProviderAccount`, so a provider that cannot do it
+   * makes the button ABSENT rather than present-and-failing. False while the map
+   * is still loading and false with nothing connected, both of which are the
+   * honest answer to "can we?" at that moment.
+   */
+  canCreate: boolean
   /** The provider round trip is in flight. The chart does not wait on it. */
   isPending: boolean
   /** The provider round trip failed. One muted line, not a page-level error. */

@@ -923,3 +923,130 @@ describe('resolveAccount - the only place a code becomes a provider id', () => {
     expect(callTool).not.toHaveBeenCalledWith('find_quickbooks_journal_entry', expect.anything())
   })
 })
+
+describe('createProviderAccount - the seam run backwards', () => {
+  /** What `create_quickbooks_account` came back with, in the tool's own shape. */
+  const CREATED = {
+    id: '104',
+    name: 'Card Clearing',
+    fullyQualifiedName: 'Card Clearing',
+    acctNum: '1200',
+    accountType: 'Other Current Asset',
+    accountSubType: 'OtherCurrentAssets',
+    classification: 'Asset',
+    active: true,
+  }
+
+  function connectCreate(over: Record<string, unknown> = {}) {
+    return connect({
+      create_quickbooks_account: () => ({
+        account: CREATED,
+        outcome: 'created',
+        acctNumDropped: false,
+        ...over,
+      }),
+    })
+  }
+
+  function createCall(callTool: ReturnType<typeof vi.fn>) {
+    return callTool.mock.calls.find(([toolId]) => toolId === 'create_quickbooks_account')?.[1]
+  }
+
+  const input = {
+    orgId: ORG_ID,
+    glAccountId: 'acct_1200',
+    name: 'Card Clearing',
+    code: '1200',
+    classification: 'asset' as const,
+    subtype: null,
+  }
+
+  it('sends BOTH type columns, never a bare AccountType', () => {
+    // 🛑 The one thing this method must not get wrong. QuickBooks accepts a type
+    // alone and then files the account under a subtype of its own choosing -
+    // probed 2026-09-10, an `Other Current Asset` came back as
+    // `EmployeeCashAdvances` - and the subtype is what their reports group by.
+    const callTool = connectCreate()
+    return provider.createProviderAccount(input).then(() => {
+      expect(createCall(callTool)).toMatchObject({
+        name: 'Card Clearing',
+        acctNum: '1200',
+        accountType: 'Other Current Asset',
+        accountSubType: 'OtherCurrentAssets',
+      })
+    })
+  })
+
+  it('translates OUR subtype into the provider type pair', async () => {
+    const callTool = connectCreate()
+    await provider.createProviderAccount({
+      ...input,
+      classification: 'liability',
+      subtype: 'accounts_payable',
+    })
+    expect(createCall(callTool)).toMatchObject({
+      accountType: 'Accounts Payable',
+      accountSubType: 'AccountsPayable',
+    })
+  })
+
+  it('omits acctNum entirely for an uncoded account rather than sending an empty one', async () => {
+    const callTool = connectCreate()
+    await provider.createProviderAccount({ ...input, code: null })
+    expect(createCall(callTool)).not.toHaveProperty('acctNum')
+  })
+
+  it('returns the account in the same shape the chart read speaks', async () => {
+    connectCreate()
+    const result = await provider.createProviderAccount(input)
+    expect(result._unsafeUnwrap().account).toEqual({
+      id: '104',
+      name: 'Card Clearing',
+      fullyQualifiedName: 'Card Clearing',
+      number: '1200',
+      accountType: 'Other Current Asset',
+      classification: 'asset',
+      active: true,
+    })
+    expect(result._unsafeUnwrap().outcome).toBe('created')
+    expect(result._unsafeUnwrap().numberDropped).toBe(false)
+  })
+
+  it('carries the tool `existing` / `acctNumDropped` answers through unchanged', async () => {
+    connectCreate({
+      account: { ...CREATED, acctNum: null },
+      outcome: 'existing',
+      acctNumDropped: true,
+    })
+    const result = await provider.createProviderAccount(input)
+    expect(result._unsafeUnwrap().outcome).toBe('existing')
+    expect(result._unsafeUnwrap().numberDropped).toBe(true)
+    expect(result._unsafeUnwrap().account.number).toBeNull()
+  })
+
+  it('refuses an account whose classification it cannot read, rather than defaulting it', async () => {
+    connectCreate({ account: { ...CREATED, classification: 'Nonsense' } })
+    const result = await provider.createProviderAccount(input)
+    expect(result.isErr()).toBe(true)
+    expect(result._unsafeUnwrapErr().message).toContain('unreadable classification')
+  })
+
+  it("turns the tool's refusal into an error naming the account", async () => {
+    connect({
+      create_quickbooks_account: () => {
+        throw new Error('The name supplied already exists.')
+      },
+    })
+    const result = await provider.createProviderAccount(input)
+    expect(result.isErr()).toBe(true)
+    expect(result._unsafeUnwrapErr().message).toContain('Card Clearing')
+    expect(result._unsafeUnwrapErr().message).toContain('already exists')
+  })
+
+  it('refuses with nothing connected instead of reporting a silent success', async () => {
+    resolveQuickbooksContext.mockResolvedValue({ connected: false })
+    const result = await provider.createProviderAccount(input)
+    expect(result.isErr()).toBe(true)
+    expect(result._unsafeUnwrapErr().message).toContain('not connected')
+  })
+})

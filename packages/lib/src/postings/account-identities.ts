@@ -35,7 +35,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError, UnprocessableEntityError } from '../errors'
 import { accountLabel } from './account-label'
-import { resolveAccountingProvider } from './provider'
+import { resolveAccountingProvider, supportsCreatingProviderAccounts } from './provider'
 import { listChartAccounts } from './role-map'
 import {
   classificationArticle,
@@ -51,6 +51,16 @@ const logger = createScopedLogger('postings:account-identities')
 export interface AccountIdentityMap {
   /** The connected provider's id, or `'none'`. */
   providerId: string
+  /**
+   * The provider can be asked to ADD an account to its own chart, so an unlinked
+   * row may offer create-and-link rather than only a picker.
+   *
+   * 🛑 A capability, not a permission - it says what the connected system is
+   * able to do, and says nothing about whether this person may do it. The router
+   * still asserts `ledgerControl`. Always false with nothing connected, which is
+   * what keeps the button off a screen with no provider at all.
+   */
+  canCreateProviderAccounts: boolean
   /** One row per live `gl_account`, mapped or not. */
   rows: AccountIdentityRow[]
   /** The provider's own chart, for a picker. Empty when nothing is connected. */
@@ -153,7 +163,13 @@ export async function listAccountIdentities(
       }
     })
 
-    return ok({ providerId: provider.id, rows, providerAccounts, broken })
+    return ok({
+      providerId: provider.id,
+      canCreateProviderAccounts: supportsCreatingProviderAccounts(provider),
+      rows,
+      providerAccounts,
+      broken,
+    })
   } catch (error) {
     if (error instanceof AuxxError) return err(error)
     logger.error('Failed to list the account map', { error, organizationId })

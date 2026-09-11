@@ -17,6 +17,8 @@
 import { createScopedLogger } from '@auxx/logger'
 import { err, ok, type Result } from 'neverthrow'
 import { NotFoundError, UnprocessableEntityError } from '../errors'
+import type { GlAccountSubtypeValue } from './account-subtype'
+import type { GlAccountTypeValue } from './default-chart'
 import type { ProviderLedger } from './provider-sync/client'
 import type {
   PostEntryInput,
@@ -162,6 +164,111 @@ export interface AccountingProvider {
 
   /** Withdraw a confirmation. The account goes back to unmapped. */
   clearAccountMapping(input: ClearAccountMappingInput): Promise<Result<void, Error>>
+
+  /**
+   * Create the counterpart of one of OUR accounts in the provider's own chart -
+   * the only method on this interface that runs the seam backwards.
+   *
+   * ## Why this exists
+   *
+   * Every other method assumes both charts already contain the account and only
+   * the correspondence is missing. That assumption does not hold for the
+   * accounts auxx itself creates: a clearing account per card rail, the
+   * role-bearing core `chart-import.ts` adds because the provider had no
+   * counterpart for it. Those exist on exactly one side, so
+   * {@link listProviderAccounts} has nothing to offer the matcher, no suggestion
+   * is ever produced, and the only way to link them was for a person to retype
+   * each one into QuickBooks by hand.
+   *
+   * ## 🛑 OPTIONAL, and its absence is the capability flag
+   *
+   * Not every accounting system lets an API add to the chart, and some that do
+   * should not be asked to. An adapter that cannot simply does not implement
+   * this, and `supportsCreatingProviderAccounts` is how a screen asks - so the
+   * button is absent rather than present-and-failing. Do NOT add a stub that
+   * returns an error; that is the same outcome one round trip later and after
+   * the person has already been told the feature is there.
+   *
+   * ## What an implementation must guarantee
+   *
+   * REUSE BEFORE CREATE. A duplicate account in somebody's real books is worse
+   * than a refusal: two accounts with one name split a balance in half with no
+   * error anywhere, and nothing notices until a reconciliation does not tie out.
+   * An adapter looks for an existing counterpart first and reports
+   * `outcome: 'existing'` rather than writing. Ambiguity - several plausible
+   * matches - is a REFUSAL, never a create: the chart already holds a question
+   * only a person can settle, and a third account settles nothing.
+   *
+   * The input is provider-NEUTRAL, which is the whole of `P2` applied to this
+   * direction. It says what the account IS - name, our code, its statement
+   * classification, our subtype - and never what the provider should call any of
+   * that. Translating those into one system's own type vocabulary is the
+   * adapter's job and nobody else's.
+   *
+   * 🛑 This does NOT write the mapping. Creating the counterpart and recording
+   * the correspondence are separate acts, and `createAndLinkProviderAccount`
+   * does the second through {@link setAccountMapping} after re-checking the
+   * result is mappable - so an adapter that returned a surprising account
+   * cannot quietly become a confirmed pairing.
+   */
+  createProviderAccount?(
+    input: CreateProviderAccountInput
+  ): Promise<Result<CreateProviderAccountResult, Error>>
+}
+
+/**
+ * One account to create in the provider's chart, described in OUR vocabulary.
+ *
+ * Deliberately the same four facts a `gl_account` carries and not one more: a
+ * provider's own type strings, its nesting, its detail types are the adapter's
+ * business. See {@link AccountingProvider.createProviderAccount}.
+ */
+export interface CreateProviderAccountInput {
+  orgId: string
+  /** The `gl_account` this will be the counterpart of. Carried for logs and errors. */
+  glAccountId: string
+  name: string
+  /** Our account code, or null - an uncoded account is ordinary (task 15 §5). */
+  code: string | null
+  /** One of the five statement sections. */
+  classification: GlAccountTypeValue
+  /** Our second fact about the account, when it has one. */
+  subtype: GlAccountSubtypeValue | null
+  actorUserId?: string
+}
+
+/** What came back from one create. */
+export interface CreateProviderAccountResult {
+  /** The counterpart, in the same shape {@link AccountingProvider.listProviderAccounts} speaks. */
+  account: ProviderAccount
+  /**
+   * `existing` means the provider already had this account and NOTHING was
+   * written. Reported rather than hidden because it changes what the screen
+   * should say - "linked to the account already in QuickBooks" is a different
+   * sentence from "created it", and a person who believes they just created an
+   * account that was already there will go looking for a duplicate.
+   */
+  outcome: 'created' | 'existing'
+  /**
+   * True when our `code` was sent and the provider kept no number for it.
+   *
+   * 🛑 Reported, never inferred, and never silently tolerated by a caller.
+   * QuickBooks stores account numbers only when the company has them switched
+   * on; with them off it accepts the create and drops the number with no fault
+   * at all. A caller that assumed the code landed would be matching forever
+   * after on a field that is permanently null.
+   */
+  numberDropped: boolean
+}
+
+/**
+ * Can this provider be asked to add to its own chart?
+ *
+ * The presence of the optional method IS the answer - there is no capability
+ * table to keep in step with what the adapters actually implement.
+ */
+export function supportsCreatingProviderAccounts(provider: AccountingProvider): boolean {
+  return typeof provider.createProviderAccount === 'function'
 }
 
 /** One confirmed pairing, as {@link AccountingProvider.setAccountMapping} takes it. */
