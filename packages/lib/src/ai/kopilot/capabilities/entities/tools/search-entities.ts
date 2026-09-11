@@ -4,6 +4,10 @@ import type { RecordId } from '@auxx/types/resource'
 import { z } from 'zod'
 import { findCachedResource, getCachedResources } from '../../../../../cache/org-cache-helpers'
 import { RecordPickerService } from '../../../../../resources/picker'
+import {
+  isAiBlockedResource,
+  isAiVisibleResource,
+} from '../../../../../resources/registry/resource-visibility'
 import { parseRecordId } from '../../../../../resources/resource-id'
 import { parseStringArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
@@ -11,11 +15,7 @@ import { takeSample } from '../../../digests'
 import type { GetToolDeps } from '../../types'
 import { enrichEntitiesWithFieldValues } from '../enrich-entity-fields'
 import { FormattedFieldSchema, formatEnrichedFields } from '../format-enriched-fields'
-import {
-  blockedEntityError,
-  isAiBlockedResource,
-  isAiVisibleResource,
-} from '../shared/ai-entity-visibility'
+import { blockedEntityError } from '../shared/ai-entity-refusals'
 
 const MAX_RESULTS = 25
 

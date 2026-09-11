@@ -6,6 +6,7 @@ import { toFieldId } from '@auxx/types/field'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CachedGroup, OrgMemberInfo } from '../../../../../../cache/org-cache-keys'
 import type { ResourceField } from '../../../../../../resources/registry/field-types'
+import { resolveSystemEntityBehavior } from '../../../../../../resources/registry/system-entity-behavior'
 import type { SystemResource } from '../../../../../../resources/registry/types'
 import { BaseType } from '../../../../../../workflow-engine/core/types'
 
@@ -160,6 +161,7 @@ function makeResource(fields: ResourceField[]): SystemResource {
     entityDefinitionId: 'ticket',
     entityType: 'ticket',
     isVisible: true,
+    ...resolveSystemEntityBehavior('ticket'),
     dbName: 'ticket',
     fields,
     display: {

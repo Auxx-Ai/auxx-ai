@@ -9,11 +9,12 @@ import { buildDefIdToSlug } from '../../../../../permissions/capabilities/resolv
 // only `errors`, the RecordId parser and types; the picker sits behind a lazy
 // `import()` inside it and is only paid for on the def-denied path.
 import { assertRecordRowsEditableWithDb } from '../../../../../resources/crud/record-row-access'
+import { isAiBlockedDefKey } from '../../../../../resources/registry/resource-visibility'
 import { getDefinitionId, isRecordId } from '../../../../../resources/resource-id'
 import { getKnownDefIds, normalizeRecordIdArrayArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import type { GetToolDeps } from '../../types'
-import { blockedEntityError, isAiBlockedDefKey } from '../shared/ai-entity-visibility'
+import { blockedEntityError } from '../shared/ai-entity-refusals'
 
 /** Full success output of `bulk_update_entity` — record counts and updated field labels. */
 const BulkUpdateEntityOutput = z.object({

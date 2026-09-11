@@ -8,6 +8,7 @@
 // one that does not exist — including in the "valid apiSlugs" hint.
 
 import { describe, expect, it, vi } from 'vitest'
+import { resolveSystemEntityBehavior } from '../../../../../../resources/registry/system-entity-behavior'
 
 const RESOURCES = [
   {
@@ -26,6 +27,7 @@ const RESOURCES = [
         isRequired: true,
       },
     ],
+    ...resolveSystemEntityBehavior('contact'),
   },
   {
     id: 'def_invoice',
@@ -42,6 +44,7 @@ const RESOURCES = [
         systemAttribute: 'total',
       },
     ],
+    ...resolveSystemEntityBehavior('invoice'),
   },
 ]
 

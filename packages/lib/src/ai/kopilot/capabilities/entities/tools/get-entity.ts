@@ -5,13 +5,14 @@ import { createScopedLogger } from '@auxx/logger'
 import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { RecordPickerService } from '../../../../../resources/picker'
+import { isAiBlockedDefKey } from '../../../../../resources/registry/resource-visibility'
 import { isRecordId, parseRecordId } from '../../../../../resources/resource-id'
 import { getKnownDefIds, normalizeRecordIdArg } from '../../../../agent-framework/tool-inputs'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import type { GetToolDeps } from '../../types'
 import { enrichEntitiesWithFieldValues } from '../enrich-entity-fields'
 import { FormattedFieldSchema, formatEnrichedFields } from '../format-enriched-fields'
-import { blockedEntityError, isAiBlockedDefKey } from '../shared/ai-entity-visibility'
+import { blockedEntityError } from '../shared/ai-entity-refusals'
 
 const logger = createScopedLogger('kopilot-get-entity')
 

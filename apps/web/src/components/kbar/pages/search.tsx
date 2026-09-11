@@ -56,9 +56,13 @@ export function SearchPage() {
   const setSearchActive = useCommandPaletteStore((s) => s.setSearchActive)
   const close = useCommandPaletteStore((s) => s.close)
 
-  // All visible entity definitions — the search scope.
+  // The searchable entity definitions — the search scope. This is its own
+  // axis, not the sidebar's: a parcel's displayName IS its tracking number
+  // and `searchTextExpressionSql` always concatenates displayName, so
+  // thousands of tracking numbers would flood the corpus and the `ILIKE
+  // '%q%'` fallback arm would match any numeric query (plan §6).
   const entityDefinitionIds = useMemo(
-    () => resources.filter((r) => r.isVisible).map((r) => r.id),
+    () => resources.filter((r) => r.searchable).map((r) => r.id),
     [resources]
   )
 

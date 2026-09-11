@@ -1114,7 +1114,12 @@ export function RecordsView({ slug, basePath, pageActions }: RecordsViewProps) {
 
       <MainPageAction>
         {pageActions}
-        {canEdit && (
+        {/* `resource.creatable` composes WITH `canEdit`, never instead of it: a
+            hand-created `parcel` has no ShipStation external id so the connector
+            can never bind it, and the carrier apps match on tracking number
+            under `onAmbiguous: 'first'`, so a typed number can absorb status
+            meant for the real parcel (plan §6b). */}
+        {canEdit && resource.creatable && (
           <Button size='sm' className='h-7 rounded-lg' onClick={() => setIsCreateDialogOpen(true)}>
             <Plus className='size-4' />
             Create {resource.label}

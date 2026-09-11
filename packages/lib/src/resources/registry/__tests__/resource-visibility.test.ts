@@ -1,7 +1,9 @@
-// packages/lib/src/ai/kopilot/capabilities/entities/shared/__tests__/ai-entity-visibility.test.ts
+// packages/lib/src/resources/registry/__tests__/resource-visibility.test.ts
 //
 // Retrieval sequence step 0.1 (the generic-record half) and step 4.1 / Kopilot
-// plan §D3.
+// plan §D3. Moved here from `ai/kopilot/capabilities/entities/shared/` per
+// plans/entity/system-entity-behavior-map.md §4.5: these predicates are facts
+// about a `Resource`, not facts about Kopilot.
 //
 // 0.1: `thread` / `message` carry a per-member lens that exists only in
 // `mail-query/` — the generic record path applies none, and `canViewEntity` is an
@@ -9,13 +11,18 @@
 // `query_records({"entity":"threads"})`, PLURAL, so the block has to be keyed on
 // the resolved def rather than on the string the model typed.
 //
-// 4.1: `isVisible` means "show in the Records nav" and was doubling as the AI's
+// 4.1: `isVisible` meant "show in the Records nav" and was doubling as the AI's
 // capability boundary, which hid 14 of 23 defs in the dev org. The replacement is
-// a curated allowlist — dropping the filter outright would advertise the ten
-// `NON_RECORD_DEF_SLUGS` through a gate that always returns true.
+// the system-entity behavior map's `aiVisible` / `inPromptCatalog` axes (§4.1b) —
+// dropping the old filter outright would have advertised the `NON_RECORD_DEF_SLUGS`
+// through a gate that always returns true.
 
+import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import type { Resource } from '../../../../../../resources/registry/types'
+import { blockedEntityError } from '../../../ai/kopilot/capabilities/entities/shared/ai-entity-refusals'
+import { resolveSystemEntityBehavior } from '../system-entity-behavior'
+import type { Resource } from '../types'
 
 /** System resources have no EntityDefinition row: `entityType === id`, never nav-visible. */
 function systemResource(id: string, apiSlug: string, label: string, plural: string): Resource {
@@ -27,8 +34,8 @@ function systemResource(id: string, apiSlug: string, label: string, plural: stri
     label,
     plural,
     type: 'system',
-    isVisible: false,
     fields: [],
+    ...resolveSystemEntityBehavior(id),
   } as unknown as Resource
 }
 
@@ -39,7 +46,6 @@ function defResource(opts: {
   apiSlug: string
   label: string
   plural: string
-  isVisible: boolean
 }): Resource {
   return {
     id: opts.id,
@@ -49,8 +55,8 @@ function defResource(opts: {
     label: opts.label,
     plural: opts.plural,
     type: 'custom',
-    isVisible: opts.isVisible,
     fields: [],
+    ...resolveSystemEntityBehavior(opts.entityType),
   } as unknown as Resource
 }
 
@@ -63,7 +69,6 @@ const CONTACT = defResource({
   apiSlug: 'contacts',
   label: 'Contact',
   plural: 'Contacts',
-  isVisible: true,
 })
 const INBOX = defResource({
   id: 'def_inbox',
@@ -71,7 +76,6 @@ const INBOX = defResource({
   apiSlug: 'inboxes',
   label: 'Inbox',
   plural: 'Inboxes',
-  isVisible: false,
 })
 const PAYMENT = defResource({
   id: 'def_payment',
@@ -79,7 +83,6 @@ const PAYMENT = defResource({
   apiSlug: 'payments',
   label: 'Payment',
   plural: 'Payments',
-  isVisible: false,
 })
 const LINE_ITEM = defResource({
   id: 'def_line_item',
@@ -87,7 +90,6 @@ const LINE_ITEM = defResource({
   apiSlug: 'line-items',
   label: 'Line item',
   plural: 'Line items',
-  isVisible: false,
 })
 const SIGNATURE = defResource({
   id: 'def_signature',
@@ -95,19 +97,18 @@ const SIGNATURE = defResource({
   apiSlug: 'signatures',
   label: 'Signature',
   plural: 'Signatures',
-  isVisible: false,
 })
+// A user-authored def: no `entityType`, keys on its own CUID, resolves to pure DEFAULTS.
 const PROJECT = defResource({
   id: 'def_project',
   apiSlug: 'projects',
   label: 'Project',
   plural: 'Projects',
-  isVisible: false,
 })
 
 const RESOURCES = [THREAD, MESSAGE, ARTICLE, CONTACT, INBOX, PAYMENT, LINE_ITEM, SIGNATURE, PROJECT]
 
-vi.mock('../../../../../../cache/org-cache-helpers', () => ({
+vi.mock('../../../cache/org-cache-helpers', () => ({
   findCachedResource: vi.fn(
     async (_orgId: string, key: string) =>
       RESOURCES.find((r) => r.id === key || r.entityType === key || r.apiSlug === key) ?? null
@@ -115,15 +116,13 @@ vi.mock('../../../../../../cache/org-cache-helpers', () => ({
   getCachedResources: vi.fn(async () => RESOURCES),
 }))
 
+import { resolveEntity } from '../../../ai/kopilot/capabilities/entities/shared/record-filters'
 import {
-  AI_VISIBLE_INFRA_DEFS,
-  blockedEntityError,
   isAiBlockedDefKey,
   isAiBlockedResource,
   isAiVisibleResource,
   resourceDefKey,
-} from '../ai-entity-visibility'
-import { resolveEntity } from '../record-filters'
+} from '../resource-visibility'
 
 describe('resourceDefKey', () => {
   it('keys a system resource on its table id', () => {
@@ -157,6 +156,11 @@ describe('the mail-lens block', () => {
     expect(error).toContain('find_threads')
     expect(error).toContain('get_thread_detail')
   })
+
+  it('isAiBlockedDefKey reads a RecordId prefix directly', () => {
+    expect(isAiBlockedDefKey('thread')).toBe(true)
+    expect(isAiBlockedDefKey('def_contact')).toBe(false)
+  })
 })
 
 describe('resolveEntity — normalization-proof blocking', () => {
@@ -189,12 +193,12 @@ describe('resolveEntity — normalization-proof blocking', () => {
   })
 })
 
-describe('the curated AI-visible allowlist', () => {
+describe('isAiVisibleResource — resolved from the system-entity behavior map', () => {
   it('keeps every nav-visible def visible', () => {
     expect(isAiVisibleResource(CONTACT)).toBe(true)
   })
 
-  it('un-hides the curated infra defs the Records nav hides', () => {
+  it('un-hides the infra defs the Records nav hides but that carry no aiVisible override', () => {
     expect(isAiVisibleResource(INBOX)).toBe(true)
   })
 
@@ -214,38 +218,74 @@ describe('the curated AI-visible allowlist', () => {
     expect(isAiVisibleResource(ARTICLE)).toBe(false)
   })
 
-  it('leaves a nav-hidden user-authored def hidden', () => {
-    expect(isAiVisibleResource(PROJECT)).toBe(false)
+  // Changed from the old isVisible-derived allowlist (§5.5): DEFAULTS is
+  // permissive on purpose, so a custom entity with no rule written down for it
+  // is AI-visible even when it is nav-hidden. PROJECT has `entityType: undefined`
+  // and no SYSTEM_ENTITY_BEHAVIOR entry, so it falls straight through to
+  // `aiVisible: true` — this is the intended behavior change, not a regression.
+  it('now shows a nav-hidden user-authored def — DEFAULTS is permissive absent a written rule', () => {
+    expect(isAiVisibleResource(PROJECT)).toBe(true)
   })
 
-  it('never reports a blocked def as visible, whatever the allowlist says', () => {
+  it('never reports a blocked def as visible, whatever `aiVisible` says', () => {
     expect(isAiVisibleResource(THREAD)).toBe(false)
     expect(isAiVisibleResource(MESSAGE)).toBe(false)
-    expect(AI_VISIBLE_INFRA_DEFS.has('thread')).toBe(false)
-    expect(AI_VISIBLE_INFRA_DEFS.has('message')).toBe(false)
   })
 
-  it('excludes the defs that own a pass-through gate and their own tools', () => {
-    for (const key of ['article', 'kb', 'dataset', 'dashboard', 'workflow', 'personal_inbox']) {
-      expect(AI_VISIBLE_INFRA_DEFS.has(key)).toBe(false)
+  // Plan §9 test 5: the block composes FIRST (§4.4) — forcing `aiVisible: true`
+  // onto a blocked def must not flip the answer, or the mail-lens hole reopens.
+  it('the block still wins even with aiVisible forced true on a blocked def', () => {
+    const forcedVisibleThread: Resource = { ...THREAD, aiVisible: true }
+    expect(isAiVisibleResource(forcedVisibleThread)).toBe(false)
+  })
+})
+
+// Plan §9 test 6: asserts the `&&` order in agents/agent.ts's catalog filter
+// rather than trusting it, since a flipped order fails silently (§4.4).
+describe('the two AI tiers compose in one direction (§9 test 6)', () => {
+  it('a def with aiVisible: false, inPromptCatalog: true is absent from a catalog-style filter', () => {
+    const wronglyCataloged: Resource = { ...CONTACT, aiVisible: false, inPromptCatalog: true }
+    const catalog = [wronglyCataloged].filter((r) => isAiVisibleResource(r) && r.inPromptCatalog)
+    expect(catalog).toHaveLength(0)
+  })
+})
+
+// Plan §9 test 7: the one §4.5 mistake that reopens the mail-lens hole
+// silently is a call site reading `r.aiVisible` directly instead of going
+// through `isAiVisibleResource`. Grep the source rather than trust review.
+describe('no ai/kopilot call site reads `.aiVisible` directly (§9 test 7)', () => {
+  const KOPILOT_ROOT = join(__dirname, '../../../ai/kopilot')
+
+  function listTsFiles(dir: string): string[] {
+    const entries = readdirSync(dir)
+    const files: string[] = []
+    for (const entry of entries) {
+      if (entry === '__tests__' || entry === 'node_modules') continue
+      const full = join(dir, entry)
+      const stat = statSync(full)
+      if (stat.isDirectory()) {
+        files.push(...listTsFiles(full))
+      } else if (entry.endsWith('.ts') || entry.endsWith('.tsx')) {
+        files.push(full)
+      }
     }
-  })
+    return files
+  }
 
-  // One settled array, no provisional half — the allowlist is what ships.
-  it('the shipped allowlist is exactly the curated set', () => {
-    expect([...AI_VISIBLE_INFRA_DEFS].sort()).toEqual([
-      'catalog_group',
-      'catalog_item',
-      'inbox',
-      'line_item',
-      'meeting',
-      'payment',
-      'tag',
-    ])
-  })
-
-  it('isAiBlockedDefKey reads a RecordId prefix directly', () => {
-    expect(isAiBlockedDefKey('thread')).toBe(true)
-    expect(isAiBlockedDefKey('def_contact')).toBe(false)
+  it('every `.aiVisible` occurrence under ai/kopilot is inside a comment, not code', () => {
+    const offenders: string[] = []
+    for (const file of listTsFiles(KOPILOT_ROOT)) {
+      const lines = readFileSync(file, 'utf8').split('\n')
+      lines.forEach((line, i) => {
+        if (!/\.aiVisible\b/.test(line)) return
+        // Drop anything after a `//` before re-testing — a reference inside
+        // prose (explaining the invariant) is fine, only real code is not.
+        const codePart = line.split('//')[0] ?? ''
+        if (/\.aiVisible\b/.test(codePart)) {
+          offenders.push(`${file}:${i + 1}: ${line.trim()}`)
+        }
+      })
+    }
+    expect(offenders).toEqual([])
   })
 })

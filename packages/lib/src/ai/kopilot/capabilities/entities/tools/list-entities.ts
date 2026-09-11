@@ -2,9 +2,9 @@
 
 import { z } from 'zod'
 import { getCachedResources } from '../../../../../cache/org-cache-helpers'
+import { isAiVisibleResource } from '../../../../../resources/registry/resource-visibility'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import type { GetToolDeps } from '../../types'
-import { isAiVisibleResource } from '../shared/ai-entity-visibility'
 
 /** Full success output of `list_entities` — discovered entity TYPES (not records). */
 const ListEntitiesOutput = z.object({
@@ -100,10 +100,10 @@ export function createListEntitiesTool(getDeps: GetToolDeps): AgentToolDefinitio
 
       let resources = await getCachedResources(agentDeps.organizationId)
 
-      // Two independent filters. `isAiVisibleResource` is the curated AI-visible
-      // set — the Records-nav flag plus the infra defs the AI is allowed to know
-      // about, minus the mail defs it must never reach this way. On top of that,
-      // and separately, defs the member can't view (per-user type grant, §3).
+      // Two independent filters. `isAiVisibleResource` reads the behavior map's
+      // `aiVisible` flag (plans/entity/system-entity-behavior-map.md §4), minus
+      // the mail defs it must never reach this way. On top of that, and
+      // separately, defs the member can't view (per-user type grant, §3).
       // AI-visible ≠ `defAccess`.
       resources = resources.filter(
         (r) =>

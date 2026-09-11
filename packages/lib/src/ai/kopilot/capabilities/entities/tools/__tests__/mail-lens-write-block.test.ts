@@ -20,6 +20,7 @@
 // that wanted to set a status is not helped by being told to go and search.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { resolveSystemEntityBehavior } from '../../../../../../resources/registry/system-entity-behavior'
 
 const RESOURCES = [
   {
@@ -29,8 +30,8 @@ const RESOURCES = [
     apiSlug: 'threads',
     label: 'Thread',
     plural: 'Threads',
-    isVisible: false,
     fields: [],
+    ...resolveSystemEntityBehavior('thread'),
   },
   {
     id: 'message',
@@ -39,8 +40,8 @@ const RESOURCES = [
     apiSlug: 'messages',
     label: 'Message',
     plural: 'Messages',
-    isVisible: false,
     fields: [],
+    ...resolveSystemEntityBehavior('message'),
   },
   {
     id: 'def_contact',
@@ -49,8 +50,8 @@ const RESOURCES = [
     apiSlug: 'contacts',
     label: 'Contact',
     plural: 'Contacts',
-    isVisible: true,
     fields: [{ id: 'contact_name', key: 'name', label: 'Name', fieldType: 'NAME' }],
+    ...resolveSystemEntityBehavior('contact'),
   },
 ]
 

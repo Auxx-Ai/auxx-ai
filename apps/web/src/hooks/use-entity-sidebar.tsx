@@ -15,7 +15,7 @@ const ENTITY_FOLDER_ITEMS_SETTING_KEY = 'sidebar.entities.folderItems'
 
 /**
  * Entity types surfaced under the Dispatch workspace menu instead of Records.
- * Sidebar-only exclusion: the defs stay `isVisible: true` so kbar create/search
+ * Sidebar-only exclusion: the defs stay `sidebar: 'on'` so kbar create/search
  * and Kopilot entity tools keep seeing them. `credit_memo` sits directly under
  * Invoices there (plans/accounting/tasks/10-credit-memos.md section 6.1).
  */
@@ -119,7 +119,7 @@ export function useEntitySidebar({ scope = 'SIDEBAR' }: UseEntitySidebarOptions 
     const folderItemsRaw = readFolderItems()
 
     const baseEntities: ProcessedEntity[] = (customResources || [])
-      .filter((resource) => resource.isVisible !== false)
+      .filter((resource) => resource.sidebar !== 'never')
       .filter((resource) => !DISPATCH_SIDEBAR_ENTITY_TYPES.has(resource.entityType ?? ''))
       .map((resource) => ({
         id: resource.id,
@@ -130,7 +130,14 @@ export function useEntitySidebar({ scope = 'SIDEBAR' }: UseEntitySidebarOptions 
         color: resource.color,
         entityType: resource.entityType ?? null,
         isLocked: false,
-        isVisible: visibility[resource.id] !== false,
+        // 🔴 `??`, not `!== false`, is load-bearing here (plan §7, §2.3). An
+        // explicit `true` or `false` the user has toggled always wins; only an
+        // ABSENT key falls through to the seeded default (`sidebar === 'on'`).
+        // `!== false` would make `sidebar: 'off'` unreachable the moment a user
+        // toggled anything, because an unset key and an explicit `false` both
+        // read as `false` under `!== false` — there would be no way to seed a
+        // def as off-but-listed.
+        isVisible: visibility[resource.id] ?? resource.sidebar === 'on',
         href: resource.entityType ? `/app/${resource.apiSlug}` : `/app/custom/${resource.apiSlug}`,
         dataConnectorId: resource.dataConnectorId,
       }))

@@ -2,13 +2,13 @@
 
 import { z } from 'zod'
 import { findCachedResource, getCachedResources } from '../../../../../cache/org-cache-helpers'
-import type { AgentToolDefinition } from '../../../../agent-framework/types'
-import type { GetToolDeps } from '../../types'
 import {
-  blockedEntityError,
   isAiBlockedResource,
   isAiVisibleResource,
-} from '../shared/ai-entity-visibility'
+} from '../../../../../resources/registry/resource-visibility'
+import type { AgentToolDefinition } from '../../../../agent-framework/types'
+import type { GetToolDeps } from '../../types'
+import { blockedEntityError } from '../shared/ai-entity-refusals'
 import { buildListEntityFieldsOutput } from './list-entity-fields-output'
 
 /** Full success output of `list_entity_fields` — field definitions + create-time summaries. */

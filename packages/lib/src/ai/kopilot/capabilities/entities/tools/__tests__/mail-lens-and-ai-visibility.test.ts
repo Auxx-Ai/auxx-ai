@@ -14,6 +14,7 @@
 // immediately below it was written for.
 
 import { describe, expect, it, vi } from 'vitest'
+import { resolveSystemEntityBehavior } from '../../../../../../resources/registry/system-entity-behavior'
 
 const RESOURCES = [
   {
@@ -23,8 +24,8 @@ const RESOURCES = [
     apiSlug: 'threads',
     label: 'Thread',
     plural: 'Threads',
-    isVisible: false,
     fields: [{ id: 'thread_subject', key: 'subject', label: 'Subject', fieldType: 'TEXT' }],
+    ...resolveSystemEntityBehavior('thread'),
   },
   {
     id: 'message',
@@ -33,8 +34,8 @@ const RESOURCES = [
     apiSlug: 'messages',
     label: 'Message',
     plural: 'Messages',
-    isVisible: false,
     fields: [{ id: 'message_body', key: 'textPlain', label: 'Body', fieldType: 'TEXT' }],
+    ...resolveSystemEntityBehavior('message'),
   },
   {
     id: 'def_contact',
@@ -43,8 +44,8 @@ const RESOURCES = [
     apiSlug: 'contacts',
     label: 'Contact',
     plural: 'Contacts',
-    isVisible: true,
     fields: [{ id: 'contact_name', key: 'name', label: 'Name', fieldType: 'NAME' }],
+    ...resolveSystemEntityBehavior('contact'),
   },
   {
     id: 'def_inbox',
@@ -53,8 +54,8 @@ const RESOURCES = [
     apiSlug: 'inboxes',
     label: 'Inbox',
     plural: 'Inboxes',
-    isVisible: false,
     fields: [{ id: 'inbox_name', key: 'name', label: 'Name', fieldType: 'TEXT' }],
+    ...resolveSystemEntityBehavior('inbox'),
   },
   {
     id: 'def_signature',
@@ -63,19 +64,22 @@ const RESOURCES = [
     apiSlug: 'signatures',
     label: 'Signature',
     plural: 'Signatures',
-    isVisible: false,
     fields: [],
+    ...resolveSystemEntityBehavior('signature'),
   },
   // Nav-hidden, user-authored: invisible to the catalog, but findable by anyone
-  // holding a per-record grant on it.
+  // holding a per-record grant on it. `entityType: undefined` also means
+  // DEFAULTS, so this is aiVisible on its own now (§5.5) — the grant test
+  // below still holds since it only asserts the def ends up in scope.
   {
     id: 'def_project',
     entityDefinitionId: 'def_project',
+    entityType: undefined as string | undefined,
     apiSlug: 'projects',
     label: 'Project',
     plural: 'Projects',
-    isVisible: false,
     fields: [],
+    ...resolveSystemEntityBehavior(undefined),
   },
 ]
 

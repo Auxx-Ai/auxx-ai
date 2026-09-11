@@ -3,6 +3,7 @@
 import type { JoinScopingConfig } from './display-config'
 import { RESOURCE_TABLE_REGISTRY, type TableId } from './field-registry'
 import type { ResourceField } from './field-types'
+import type { SystemEntityBehavior } from './system-entity-behavior'
 
 /**
  * Entity definition UUID (custom resource ID, e.g., 'cm1234abc567def890...')
@@ -17,7 +18,7 @@ export type CustomResourceId = EntityDefinitionId
 export type ResourceId = TableId | CustomResourceId
 
 /** Base resource fields shared by both types */
-interface BaseResource {
+interface BaseResource extends SystemEntityBehavior {
   id: string
   label: string
   plural: string
@@ -26,7 +27,10 @@ interface BaseResource {
   /** Field definitions for this resource */
   fields: ResourceField[]
   entityType?: string
-  /** Whether this entity should appear in the sidebar (default: true) */
+  /**
+   * @deprecated Read `sidebar` instead. Populated from the row for one
+   * release; see plans/entity/system-entity-behavior-map.md §4.2.
+   */
   isVisible: boolean
 }
 
