@@ -16,6 +16,8 @@ import { toRecordId } from '@auxx/types/resource'
 import { getEntityDefIdResolver } from '../../cache'
 import { BadRequestError, NotFoundError, UnprocessableEntityError } from '../../errors'
 import { FieldValueService } from '../../field-values/field-value-service'
+import { matchGatewayRoute, toGatewayRoutes } from '../../payment-gateways/client'
+import { listPaymentGateways } from '../../payment-gateways/reads'
 import { isAccountingEnabled } from '../../postings/accounting-enabled'
 import {
   type BuiltCreditMemoEntry,
@@ -44,6 +46,7 @@ import {
   loadInvoiceForCredit,
   loadInvoiceLinesForCredit,
   orderHadFulfillmentBefore,
+  readOrderGateways,
   requireCreditMemo,
   sumCreditMemoApplications,
   sumSucceededCreditMemoRefunds,
@@ -512,9 +515,18 @@ async function resolveIssue(
   // The channel money leg: what Shopify already paid back, mirrored out of
   // clearing (section 3.2). A native memo's money moves as a
   // `PaymentTransaction` and posts through the payment builder instead.
+  //
+  // 🛑 It must come out of the account the SALE debited. A `payment_gateway`
+  // record routes a non-card rail to its own clearing account by id, so an
+  // Affirm sale debits `1210` while `clearing_card` is `1200`; crediting the
+  // role here would leave `1210` overstated forever in an entry that balances.
+  // Same matcher the fulfillment debit fork uses, so the two cannot drift.
   const settlement: CreditMemoSettlementLeg | undefined =
     memo.source === 'channel' && memo.amountRefundedMinor > 0
-      ? { role: 'clearing_card', amount: Math.round(memo.amountRefundedMinor) }
+      ? {
+          ...(await resolveSettlementAccount(db, organizationId, memo.orderInstanceId)),
+          amount: Math.round(memo.amountRefundedMinor),
+        }
       : undefined
 
   const currency = await organizationCurrency(organizationId)
@@ -534,6 +546,42 @@ async function resolveIssue(
   })
 
   return { memo, lines, issuedAt, built }
+}
+
+/**
+ * Where a channel refund comes back out of: a `payment_gateway` record's own
+ * clearing account, or `clearing_card`.
+ *
+ * The mirror of `resolveFulfillmentDebit`'s gateway branch, and deliberately
+ * only that branch - a refund asks "which account did this order's money land
+ * in", never "is this order paid", so the financial-status fork has no part in
+ * it. `matchGatewayRoute` is shared with the sale side so one gateway cannot
+ * resolve two ways.
+ *
+ * Falls back to the role on every uncertainty - no order, no gateway, no
+ * matching record, two records claiming one handle - because `clearing_card` is
+ * where a wrong answer fails to reconcile visibly rather than quietly.
+ *
+ * ⚠️ An order with TWO gateways takes the role too. The fulfillment fork
+ * excludes that shipment outright as `gateway-ambiguous`; a refund cannot
+ * refuse (the money has already moved), so it lands in the account a person
+ * reconciling the rail is looking at anyway.
+ */
+async function resolveSettlementAccount(
+  db: Database,
+  organizationId: string,
+  orderInstanceId: string | null
+): Promise<{ role: 'clearing_card' } | { glAccountId: string }> {
+  const fallback = { role: 'clearing_card' } as const
+  if (!orderInstanceId) return fallback
+
+  const gateways = await readOrderGateways(db, organizationId, orderInstanceId)
+  if (gateways.length !== 1) return fallback
+
+  const result = await listPaymentGateways(db, organizationId)
+  const routes = result.isOk() ? toGatewayRoutes(result.value) : []
+  const glAccountId = matchGatewayRoute(gateways[0] as string, routes)
+  return glAccountId ? { glAccountId } : fallback
 }
 
 /**

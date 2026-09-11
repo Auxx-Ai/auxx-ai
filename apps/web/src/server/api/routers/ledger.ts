@@ -173,7 +173,7 @@ const draftEntry = z.object({
    * passes it through untouched and a provider handed a malformed date falls
    * back to its own server date, which silently books the entry on the wrong day.
    */
-  txnDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'txnDate must be YYYY-MM-DD'),
+  txnDate: z.iso.date({ error: 'txnDate must be YYYY-MM-DD' }),
   /**
    * Bounded rather than merely non-empty. The cap is far above any entry this
    * poster produces - a month-end inventory entry is one line per account role -
@@ -1067,7 +1067,7 @@ export const ledgerRouter = createTRPCRouter({
     .input(
       z.object({
         /** `YYYY-MM-DD`. Both sides are read as of this same day. */
-        asOf: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'asOf must be YYYY-MM-DD'),
+        asOf: z.iso.date({ error: 'asOf must be YYYY-MM-DD' }),
       })
     )
     .query(async ({ ctx, input }) => {
@@ -1152,12 +1152,9 @@ export const ledgerRouter = createTRPCRouter({
     .input(
       z.object({
         /** `YYYY-MM-DD`. Omitted means the cutover floor - see above. */
-        from: z
-          .string()
-          .regex(/^\d{4}-\d{2}-\d{2}$/, 'from must be YYYY-MM-DD')
-          .optional(),
+        from: z.iso.date({ error: 'from must be YYYY-MM-DD' }).optional(),
         /** `YYYY-MM-DD`, inclusive. Usually today in the book timezone. */
-        to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'to must be YYYY-MM-DD'),
+        to: z.iso.date({ error: 'to must be YYYY-MM-DD' }),
       })
     )
     .use(notDemo('sync the accounting provider ledger'))
@@ -1266,7 +1263,7 @@ export const ledgerRouter = createTRPCRouter({
           // hand would either omit them (refused) or claim a slot the sweep
           // would then raise a second entry for.
           kind: z.enum(['manual', 'opening_balance', 'recurring_template']).optional(),
-          date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'date must be YYYY-MM-DD'),
+          date: z.iso.date({ error: 'date must be YYYY-MM-DD' }),
           memo: z.string().max(4000).optional(),
           lines: z.array(journalEntryLine).max(200).optional(),
         })
@@ -1291,10 +1288,7 @@ export const ledgerRouter = createTRPCRouter({
       .input(
         z.object({
           id: z.string().min(1),
-          date: z
-            .string()
-            .regex(/^\d{4}-\d{2}-\d{2}$/, 'date must be YYYY-MM-DD')
-            .optional(),
+          date: z.iso.date({ error: 'date must be YYYY-MM-DD' }).optional(),
           /** An empty string CLEARS the memo; omitting the key leaves it alone. */
           memo: z.string().max(4000).optional(),
           lines: z.array(journalEntryLine).max(200).optional(),
@@ -1371,10 +1365,7 @@ export const ledgerRouter = createTRPCRouter({
       .input(
         z.object({
           id: z.string().min(1),
-          date: z
-            .string()
-            .regex(/^\d{4}-\d{2}-\d{2}$/, 'date must be YYYY-MM-DD')
-            .optional(),
+          date: z.iso.date({ error: 'date must be YYYY-MM-DD' }).optional(),
           memo: z.string().max(4000).optional(),
           lines: z.array(journalEntryLine).max(200).optional(),
         })
@@ -1504,10 +1495,7 @@ export const ledgerRouter = createTRPCRouter({
         z.object({
           templateId: z.string().min(1),
           pattern: recurrencePatternSchema,
-          anchor: z
-            .string()
-            .regex(/^\d{4}-\d{2}-\d{2}$/, 'anchor must be YYYY-MM-DD')
-            .optional(),
+          anchor: z.iso.date({ error: 'anchor must be YYYY-MM-DD' }).optional(),
         })
       )
       .mutation(async ({ ctx, input }) => {

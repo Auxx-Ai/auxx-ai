@@ -689,6 +689,53 @@ export async function loadInvoiceLinesForCredit(
 // ─── The order ──────────────────────────────────────────────────────────────
 
 /**
+ * Every gateway `order_payment_gateways` holds for one order, raw.
+ *
+ * 🛑 Read for the REFUND's account, not the sale's. `issueCreditMemo` matches
+ * these against the org's `payment_gateway` records so a channel refund credits
+ * the account its sale debited - see `CreditMemoSettlement`. Before 2026-09-11
+ * the refund was hardcoded to `clearing_card`, which was correct only while
+ * every rail shared one clearing account.
+ *
+ * ⚠️ **TAGS, so the value is in `optionId`**, not `valueText` - one row per
+ * gateway, each an option KEY that for a connector-provisioned option set IS
+ * the gateway's name (`readOrderFacts` says the same). Reading `valueText`
+ * here returns nothing at all and every refund falls back to the role, which
+ * is the silent version of the bug this read exists to fix.
+ *
+ * Empty when the field is unprovisioned or the order names no gateway: the
+ * caller then takes the `clearing_card` default, which is what the fulfillment
+ * debit fork does with the same input.
+ */
+export async function readOrderGateways(
+  db: Database,
+  organizationId: string,
+  orderId: string
+): Promise<string[]> {
+  const fields = (await getOrgCache()
+    .from(organizationId, 'customFields')
+    .bySystemAttributes(['order_payment_gateways'])) as FieldMap<'order_payment_gateways'>
+  const field = fields.order_payment_gateways
+  if (!field) return []
+
+  const rows = await db
+    .select({ optionId: schema.FieldValue.optionId, valueText: schema.FieldValue.valueText })
+    .from(schema.FieldValue)
+    .where(
+      and(
+        eq(schema.FieldValue.organizationId, organizationId),
+        eq(schema.FieldValue.entityId, orderId),
+        eq(schema.FieldValue.fieldId, field.id)
+      )
+    )
+
+  return rows.flatMap((row) => {
+    const value = row.optionId ?? row.valueText
+    return value ? [value] : []
+  })
+}
+
+/**
  * Whether the order had a fulfillment shipped on or before `issuedAt`.
  *
  * Read from the order's shipment log (`order_fulfillments`, the same JSON

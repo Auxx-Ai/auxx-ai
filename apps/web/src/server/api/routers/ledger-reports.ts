@@ -43,7 +43,7 @@ import { z } from 'zod'
 import { createTRPCRouter, permissionProcedure } from '~/server/api/trpc'
 
 /** `YYYY-MM-DD`. Every date bound on this router is this shape - the lib reads own the range validity. */
-const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD')
+const dateKey = z.iso.date({ error: 'Expected YYYY-MM-DD' })
 
 export const ledgerReportsRouter = createTRPCRouter({
   /**

@@ -27,7 +27,7 @@ import { z } from 'zod'
 import { createTRPCRouter, permissionProcedure } from '~/server/api/trpc'
 
 /** `YYYY-MM-DD`. Shape only; the lib decides what is a sensible date. */
-const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
+const dateKey = z.iso.date()
 
 /**
  * The fields a person may set on a payment gateway. Deliberately thin -

@@ -407,7 +407,7 @@ export const dispatchRouter = createTRPCRouter({
       z.object({
         from: z.date(),
         to: z.date(),
-        dateKey: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        dateKey: z.iso.date(),
         workerIds: z.array(z.string()).optional(),
       })
     )
@@ -422,7 +422,7 @@ export const dispatchRouter = createTRPCRouter({
       z.object({
         from: z.date(),
         to: z.date(),
-        dateKey: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        dateKey: z.iso.date(),
         assigneeWorkerId: z.string(),
       })
     )
@@ -438,7 +438,7 @@ export const dispatchRouter = createTRPCRouter({
         assigneeWorkerId: z.string(),
         from: z.date(),
         to: z.date(),
-        dateKey: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        dateKey: z.iso.date(),
         visitIds: z.array(z.string()),
       })
     )
@@ -460,7 +460,7 @@ export const dispatchRouter = createTRPCRouter({
     .input(
       z.object({
         assigneeWorkerId: z.string(),
-        dateKey: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        dateKey: z.iso.date(),
         firstDeparture: z.date(),
         visitIds: z.array(z.string()).min(1),
       })
@@ -896,10 +896,7 @@ export const dispatchRouter = createTRPCRouter({
     .input(
       z.object({
         workOrderRecordId: recordIdSchema,
-        until: z
-          .string()
-          .regex(/^\d{4}-\d{2}-\d{2}$/)
-          .nullable(),
+        until: z.iso.date().nullable(),
       })
     )
     .mutation(async ({ ctx, input }) => {

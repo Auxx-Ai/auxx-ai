@@ -35,9 +35,6 @@ import { PermissionKey } from '@auxx/lib/permissions'
 import { z } from 'zod'
 import { createTRPCRouter, permissionProcedure } from '~/server/api/trpc'
 
-/** `YYYY-MM-DD`. Shape only; the lib decides what is a sensible date. */
-const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
-
 const transactionId = z.string().min(1)
 
 /**
@@ -53,8 +50,8 @@ const listInput = z.object({
   bankAccountId: z.string().min(1).optional(),
   state: z.enum(REVIEW_QUEUE_STATES).optional(),
   search: z.string().max(200).optional(),
-  from: dateKey.optional(),
-  to: dateKey.optional(),
+  from: z.iso.date().optional(),
+  to: z.iso.date().optional(),
   amountMin: z.number().int().optional(),
   amountMax: z.number().int().optional(),
   limit: z.number().int().min(1).max(500).optional(),

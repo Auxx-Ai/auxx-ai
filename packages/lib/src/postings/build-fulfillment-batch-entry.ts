@@ -61,6 +61,7 @@ import type {
   UnpostedShipmentLine,
 } from '../money/fulfillment-posting/types'
 import { FULFILLMENT_BATCH_SOURCE_TYPE } from '../money/fulfillment-posting/types'
+import { matchGatewayRoute } from '../payment-gateways/client'
 import { ACCOUNT_ROLES, type AccountRole, buildEntry } from './build-entry'
 import {
   CHANNEL_KEYS,
@@ -156,6 +157,10 @@ export const FULFILLMENT_GATEWAY_DEBIT: Readonly<
  * gateway's past shipments still post to its own clearing account so it keeps
  * reconciling, and "should this route still be offered" is lane 4's plan.ts
  * concern, not this match's.
+ *
+ * Structurally `GatewayRoute` from `payment-gateways/client.ts`, which is where
+ * the matcher lives - see {@link matchGatewayRoute}. Kept as a named type here
+ * because this builder's signature is the contract lane 4 was written against.
  */
 export interface FulfillmentGatewayRoute {
   handles: readonly string[]
@@ -193,26 +198,6 @@ function normaliseGateways(gateways: readonly string[]): string[] {
     out.push(value)
   }
   return out
-}
-
-/**
- * Which `payment_gateway` record's clearing account a normalised gateway
- * names, when EXACTLY ONE route's `handles` matches it case-insensitively.
- *
- * Zero matches falls back to {@link FULFILLMENT_GATEWAY_DEBIT}'s role table -
- * the record has nothing to say about this gateway yet. More than one match
- * (two routes both claiming the same handle, which the record's own write
- * path should never allow) falls back the same way rather than guessing which
- * route is right.
- */
-function matchGatewayRoute(
-  gateway: string,
-  routes: readonly FulfillmentGatewayRoute[] = []
-): string | undefined {
-  const matches = routes.filter((route) =>
-    route.handles.some((handle) => handle.trim().toLowerCase() === gateway)
-  )
-  return matches.length === 1 ? matches[0]?.clearingGlAccountId : undefined
 }
 
 /**

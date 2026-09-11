@@ -161,3 +161,42 @@ export function toGatewayRoutes(rows: readonly PaymentGatewayRow[]): GatewayRout
     active: row.status === 'active',
   }))
 }
+
+/**
+ * Which route's clearing account one gateway names, when EXACTLY ONE claims it.
+ *
+ * 🛑 **The single matcher.** Every posting path that turns a gateway into an
+ * account goes through this one function, because two copies that disagree put
+ * a sale and its refund in different accounts - which balances, and is
+ * therefore undetectable downstream. `build-fulfillment-batch-entry.ts`
+ * (the sale) and `money/credit-memos/writes.ts` (the refund) are the two
+ * callers; they used to be a private copy and a hardcoded `clearing_card`
+ * respectively.
+ *
+ * Both sides are normalised with {@link normaliseGatewayHandle}, so `'Affirm'`,
+ * `' affirm '` and `'AFFIRM'` are one gateway.
+ *
+ * Returns undefined - meaning *fall back to the role default* - on:
+ *
+ * - **zero matches.** The record has nothing to say about this gateway yet.
+ * - **more than one match.** Two routes claiming one handle is a state the
+ *   record's own write path should never allow, and guessing which is right
+ *   would put real money in one of two accounts. Refusing to choose leaves it
+ *   in `clearing_card`, where a wrong answer fails to reconcile visibly.
+ *
+ * ⚠️ A CLOSED route still matches. Its past orders are still in the ledger and
+ * must keep reconciling; treating `active: false` as absent would silently move
+ * a rail's money the moment somebody marked it closed, which is a posting
+ * change disguised as a settings edit.
+ */
+export function matchGatewayRoute(
+  gateway: string,
+  routes: readonly GatewayRoute[] = []
+): string | undefined {
+  const wanted = normaliseGatewayHandle(gateway)
+  if (!wanted) return undefined
+  const matches = routes.filter((route) =>
+    route.handles.some((handle) => normaliseGatewayHandle(handle) === wanted)
+  )
+  return matches.length === 1 ? matches[0]?.clearingGlAccountId : undefined
+}

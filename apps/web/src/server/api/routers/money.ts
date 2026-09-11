@@ -196,8 +196,8 @@ const FULFILLMENT_POSTING_GROUPING_VALUES = [
  * decision that is not the browser's to make.
  */
 const fulfillmentPostingShape = {
-  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  from: z.iso.date(),
+  to: z.iso.date(),
   grouping: z.enum(FULFILLMENT_POSTING_GROUPING_VALUES),
 }
 
@@ -784,10 +784,7 @@ export const moneyRouter = createTRPCRouter({
           .array(z.object({ lineId: z.string().min(1), quantity: z.number().positive() }))
           .min(1)
           .max(200),
-        shippedAt: z
-          .string()
-          .regex(/^\d{4}-\d{2}-\d{2}$/)
-          .optional(),
+        shippedAt: z.iso.date().optional(),
       })
     )
     .query(async ({ ctx, input }) => {
@@ -822,10 +819,7 @@ export const moneyRouter = createTRPCRouter({
           .array(z.object({ lineId: z.string().min(1), quantity: z.number().positive() }))
           .min(1)
           .max(200),
-        shippedAt: z
-          .string()
-          .regex(/^\d{4}-\d{2}-\d{2}$/)
-          .optional(),
+        shippedAt: z.iso.date().optional(),
         memo: z.string().max(4000).optional(),
       })
     )
@@ -945,14 +939,8 @@ export const moneyRouter = createTRPCRouter({
         z
           .object({
             method: z.string().min(1).optional(),
-            from: z
-              .string()
-              .regex(/^\d{4}-\d{2}-\d{2}$/)
-              .optional(),
-            to: z
-              .string()
-              .regex(/^\d{4}-\d{2}-\d{2}$/)
-              .optional(),
+            from: z.iso.date().optional(),
+            to: z.iso.date().optional(),
             limit: z.number().int().min(1).max(500).optional(),
           })
           .optional()
@@ -1010,7 +998,7 @@ export const moneyRouter = createTRPCRouter({
       .input(
         z.object({
           paymentIds: z.array(z.string().min(1)).min(1).max(500),
-          depositDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+          depositDate: z.iso.date(),
           // 🛑 The ACCOUNT, not a chart code. The code is read off the account's
           // own mapping, because the feed posts every line on it against that
           // mapping - a free code puts the deposit and the statement line it
@@ -1060,10 +1048,7 @@ export const moneyRouter = createTRPCRouter({
       .input(
         z.object({
           depositId: z.string().min(1),
-          depositDate: z
-            .string()
-            .regex(/^\d{4}-\d{2}-\d{2}$/)
-            .optional(),
+          depositDate: z.iso.date().optional(),
           bankAccountId: z.string().min(1).max(64).optional(),
           reference: z.string().max(120).optional(),
         })
