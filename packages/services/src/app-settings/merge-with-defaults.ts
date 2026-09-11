@@ -35,18 +35,54 @@ export interface SettingsSchemaField {
 export type FormSchema = Record<string, SettingsSchemaField>
 
 /**
- * Merge saved settings with schema defaults
+ * A stored setting the current schema cannot read.
+ *
+ * The value is left in the database untouched — this reports that the READ
+ * substituted a default for it.
+ */
+export interface SettingsTypeMismatch {
+  /** Dotted path, so a struct's inner field is identifiable. */
+  path: string
+  /** The type the current schema declares. */
+  expected: string
+  /** What is actually stored. */
+  received: string
+  /** For `select`, the options the stored value is not among. */
+  options?: string[]
+}
+
+/**
+ * Merge saved settings with schema defaults.
  *
  * Rules:
  * 1. Saved values override defaults
  * 2. New fields get their default values
  * 3. Removed fields are ignored
- * 4. Type mismatches are handled gracefully
+ * 4. Type mismatches fall back to the default AND are reported
  * 5. Nested structs are merged recursively
+ *
+ * ## Why this is non-destructive, and where it is not
+ *
+ * This is a read-time projection: it iterates the CURRENT schema, so a key the
+ * schema no longer mentions is simply not returned while its `AppSetting` row
+ * stays in the database and reappears if the key comes back. Adding, removing and
+ * renaming keys across deployments is therefore safe in both directions, which
+ * matters because one installation's settings are reinterpreted under every
+ * deployment it is repointed at (`switchInstallationDeployment`, and the ordinary
+ * production roll-forward before it).
+ *
+ * The exception is a key whose TYPE or `select` options changed between two
+ * deployments. The stored value fails {@link validateType}, the default is
+ * substituted, and a subsequent save persists that default OVER the original —
+ * which the return trip cannot recover. That path used to be a bare
+ * `console.warn`; it now reports through `onMismatch` so callers can log it with
+ * the installation and deployment in hand, or show it to whoever is editing.
  */
 export function mergeSettingsWithDefaults(
   savedSettings: Record<string, any>,
-  schema: FormSchema
+  schema: FormSchema,
+  onMismatch?: (mismatch: SettingsTypeMismatch) => void,
+  pathPrefix = ''
 ): Record<string, any> {
   const result: Record<string, any> = {}
 
@@ -54,7 +90,12 @@ export function mergeSettingsWithDefaults(
     // Handle struct (nested object) - recursively merge
     if (field.type === 'struct' && field.fields) {
       const savedNested = savedSettings[key] || {}
-      result[key] = mergeSettingsWithDefaults(savedNested, field.fields)
+      result[key] = mergeSettingsWithDefaults(
+        savedNested,
+        field.fields,
+        onMismatch,
+        `${pathPrefix}${key}.`
+      )
       continue
     }
 
@@ -80,9 +121,13 @@ export function mergeSettingsWithDefaults(
       if (validateType(field.type, savedValue, field._metadata?.options)) {
         result[key] = savedValue
       } else {
-        console.warn(
-          `[mergeSettingsWithDefaults] Type mismatch for "${key}": expected ${field.type}, got ${typeof savedValue}. Using default.`
-        )
+        onMismatch?.({
+          path: `${pathPrefix}${key}`,
+          expected: field.type,
+          received:
+            field.type === 'select' ? `${typeof savedValue}(${savedValue})` : typeof savedValue,
+          options: field.type === 'select' ? field._metadata?.options : undefined,
+        })
         result[key] = defaultValue
       }
     } else {

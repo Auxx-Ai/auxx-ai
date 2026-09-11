@@ -2633,6 +2633,13 @@
       "when": 1789144434935,
       "tag": "0375_gl_posting_provider_tenant_id",
       "breakpoints": true
+    },
+    {
+      "idx": 376,
+      "version": "7",
+      "when": 1789153242642,
+      "tag": "0376_one_live_app_installation_per_org",
+      "breakpoints": true
     }
   ]
 }

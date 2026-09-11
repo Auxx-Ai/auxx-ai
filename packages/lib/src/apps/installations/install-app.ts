@@ -162,14 +162,19 @@ export async function installApp(input: InstallAppInput) {
     }
   }
 
-  // Check if already installed
+  // Is this app already installed for this org?
+  //
+  // Scoped to (app, org), NOT (app, org, installationType). An organization holds
+  // ONE live installation of an app — see the partial unique index on
+  // `AppInstallation`. A second row is a second copy of the app's state, because
+  // `AppSetting`, `Credential`, `DataConnector`, `CustomField` and `RecordIdentity`
+  // are all keyed by `appInstallationId`.
   const existingInstallationResult = await fromDatabase(
     database.query.AppInstallation.findFirst({
       where: (installations, { and, eq, isNull }) =>
         and(
           eq(installations.appId, app.id),
           eq(installations.organizationId, organizationId),
-          eq(installations.installationType, installationType),
           isNull(installations.uninstalledAt)
         ),
     }),
@@ -186,13 +191,30 @@ export async function installApp(input: InstallAppInput) {
 
   const existingInstallation = existingInstallationResult.value
 
-  if (existingInstallation) {
+  // Already pointed at exactly this deployment: genuinely nothing to do.
+  if (existingInstallation?.currentDeploymentId === selectedDeployment.id) {
     return err({
       code: 'APP_ALREADY_INSTALLED' as const,
-      message: `App "${app.slug}" is already installed as ${installationType}`,
+      message: `App "${app.slug}" is already installed as ${existingInstallation.installationType}`,
       appId,
       organizationId,
       installationType,
+    })
+  }
+
+  // Installed, but on a different deployment: REPOINT the one installation rather
+  // than adding a second. This is what makes `pnpm sync-dev` work on an app that is
+  // already installed from a publish — it switches the installation to the dev
+  // deployment instead of creating a parallel one whose settings then disagree.
+  // `rollForwardInstallations` already repoints production installs this way.
+  if (existingInstallation) {
+    return switchInstallationDeployment({
+      installation: existingInstallation,
+      app,
+      organizationId,
+      installationType: installationType!,
+      deployment: selectedDeployment,
+      installedById,
     })
   }
 
@@ -201,13 +223,17 @@ export async function installApp(input: InstallAppInput) {
     database.transaction(async (tx: Transaction) => {
       // Reactivate soft-deleted installation if one exists (preserves stable installationId
       // so workflow nodes, webhook handlers, and credentials remain valid across reinstall)
+      // Matched on (app, org) only — `installationType` is no longer part of an
+      // installation's identity, so a row soft-deleted as `development` is the
+      // same installation coming back as `production`. Most recently uninstalled
+      // first, since several historical rows may exist for one app.
       const softDeleted = await tx.query.AppInstallation.findFirst({
         where: and(
           eq(schema.AppInstallation.appId, app.id),
           eq(schema.AppInstallation.organizationId, organizationId),
-          eq(schema.AppInstallation.installationType, installationType!),
           isNotNull(schema.AppInstallation.uninstalledAt)
         ),
+        orderBy: (installations, { desc }) => [desc(installations.uninstalledAt)],
       })
 
       let installation: NonNullable<typeof softDeleted>
@@ -218,6 +244,9 @@ export async function installApp(input: InstallAppInput) {
           .update(schema.AppInstallation)
           .set({
             uninstalledAt: null,
+            // Stamped, not assumed: the row may have been soft-deleted as the
+            // other type, and it records which deployment the app now runs.
+            installationType: installationType!,
             currentDeploymentId: selectedDeployment!.id,
             installedAt: new Date(),
             updatedAt: new Date(),
@@ -323,5 +352,113 @@ export async function installApp(input: InstallAppInput) {
           version: deployment.version,
         }
       : null,
+  })
+}
+
+/**
+ * Repoint an organization's single installation of an app at a different
+ * deployment.
+ *
+ * This is what `pnpm sync-dev` does to an app that is already installed from a
+ * publish, and what accepting a new published version does to an app currently
+ * running a dev build. Before the one-installation rule it created a second
+ * installation instead, and the two rows then owned separate `AppSetting`,
+ * `Credential` and `DataConnector` state while appearing to be the same app.
+ *
+ * Everything keyed by `appInstallationId` survives untouched, which is the
+ * point: the credential, the connector, the app's custom fields and its synced
+ * records all stay put, and only the pointer moves.
+ *
+ * Settings survive too, and are reinterpreted under the incoming deployment's
+ * schema by `mergeSettingsWithDefaults` — a read-time projection that returns
+ * only current-schema keys and leaves rows for absent keys in place, so
+ * switching back restores them. The one value that does not survive a round trip
+ * is a key whose TYPE or `select` options changed between the two deployments;
+ * that read is logged by `app-settings` rather than passing silently.
+ */
+async function switchInstallationDeployment(params: {
+  installation: typeof schema.AppInstallation.$inferSelect
+  app: { id: string; slug: string; title: string }
+  organizationId: string
+  installationType: 'development' | 'production'
+  deployment: { id: string; version: string | null; catalog: unknown }
+  installedById?: string
+}) {
+  const { installation, app, organizationId, installationType, deployment, installedById } = params
+
+  const transactionResult = await fromDatabase(
+    database.transaction(async (tx: Transaction) => {
+      const [updated] = await tx
+        .update(schema.AppInstallation)
+        .set({
+          installationType,
+          currentDeploymentId: deployment.id,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.AppInstallation.id, installation.id))
+        .returning()
+
+      if (!updated) {
+        throw new Error('Failed to switch installation deployment')
+      }
+
+      // Reconcile against the INCOMING catalog: a deployment switch can add or
+      // change app fields exactly as a roll-forward can. Best-effort warm-up,
+      // same as the install path — the authoritative reconcile runs at connector
+      // sync setup and parks visibly on any error.
+      await applyInstallationCatalog(
+        {
+          appInstallationId: updated.id,
+          organizationId,
+          appSlug: app.slug,
+          catalog: deployment.catalog as CatalogPayload | null,
+        },
+        tx
+      )
+
+      await tx.insert(schema.AppEventLog).values({
+        appId: app.id,
+        organizationId,
+        appDeploymentId: deployment.id,
+        userId: installedById,
+        eventType: 'app.installed',
+        eventData: {
+          installationType,
+          deploymentId: deployment.id,
+          version: deployment.version,
+          // Distinguishes a repoint from a first install in the event log, and
+          // records what it moved off.
+          switchedFromDeploymentId: installation.currentDeploymentId,
+        },
+      })
+
+      return updated
+    }),
+    'switch-installation-deployment'
+  )
+
+  if (transactionResult.isErr()) {
+    return err({
+      code: 'DATABASE_ERROR' as const,
+      message: transactionResult.error.message,
+      cause: transactionResult.error.cause,
+    })
+  }
+
+  const updated = transactionResult.value
+
+  await onCacheEvent('custom-field.created', { orgId: organizationId })
+
+  return ok({
+    installation: {
+      id: updated.id,
+      appId: updated.appId,
+      organizationId: updated.organizationId,
+      installationType: updated.installationType as 'development' | 'production',
+      currentDeploymentId: updated.currentDeploymentId,
+      installedAt: updated.installedAt,
+    },
+    app: { id: app.id, slug: app.slug, title: app.title },
+    deployment: { id: deployment.id, version: deployment.version },
   })
 }

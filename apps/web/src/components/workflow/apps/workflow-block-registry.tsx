@@ -1,5 +1,6 @@
 // apps/web/src/components/workflow/apps/workflow-block-registry.tsx
 
+import { pickPreferredInstallation } from '@auxx/lib/apps/client'
 import { WorkflowTriggerType } from '@auxx/lib/workflow-engine/client'
 import type { ComponentType } from 'react'
 import { useMemo } from 'react'
@@ -400,9 +401,7 @@ export class WorkflowBlockRegistry {
     const PanelWrapper = ({ nodeId, data }: NodePanelProps) => {
       const { appInstallations } = useAppsContext()
       const resolvedInstallationId = useMemo(() => {
-        const inst =
-          appInstallations.find((i) => i.app.id === appId && i.installationType === 'production') ||
-          appInstallations.find((i) => i.app.id === appId)
+        const inst = pickPreferredInstallation(appInstallations.filter((i) => i.app.id === appId))
         return inst?.installationId ?? installationId // fallback to captured
       }, [appInstallations])
 
@@ -431,9 +430,7 @@ export class WorkflowBlockRegistry {
     const TriggerPanelWrapper = ({ nodeId, data }: NodePanelProps) => {
       const { appInstallations } = useAppsContext()
       const resolvedInstallationId = useMemo(() => {
-        const inst =
-          appInstallations.find((i) => i.app.id === appId && i.installationType === 'production') ||
-          appInstallations.find((i) => i.app.id === appId)
+        const inst = pickPreferredInstallation(appInstallations.filter((i) => i.app.id === appId))
         return inst?.installationId ?? installationId // fallback to captured
       }, [appInstallations])
 

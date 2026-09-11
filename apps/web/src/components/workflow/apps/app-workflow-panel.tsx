@@ -2,6 +2,7 @@
 
 'use client'
 
+import { pickPreferredInstallation } from '@auxx/lib/apps/client'
 import { stableStringify } from '@auxx/utils/json'
 import { deepEqual } from '@auxx/utils/objects'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -55,9 +56,7 @@ export const AppWorkflowPanel = memo<AppWorkflowPanelProps>(
       )
       // Fallback: resolve from appId (Approach B — installationId may be missing or stale)
       if (!inst && appId) {
-        inst =
-          appInstallations.find((i) => i.app.id === appId && i.installationType === 'production') ||
-          appInstallations.find((i) => i.app.id === appId)
+        inst = pickPreferredInstallation(appInstallations.filter((i) => i.app.id === appId))
       }
       if (!inst) return undefined
       return {
