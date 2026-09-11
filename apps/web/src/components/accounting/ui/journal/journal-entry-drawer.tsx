@@ -29,6 +29,13 @@ import { JournalEntryAttachment } from './journal-entry-attachment'
 import { JournalLines, JournalLinesTotals } from './journal-lines'
 import { firstDayOfPeriod, nextOpenPeriodAfter, periodKeyForEntryDate } from './period-helpers'
 
+/**
+ * Cancels the scroll content's `p-3` so `Section` sits FLUSH with the drawer.
+ * `Section` draws its own `p-3` and a full-width `border-b`, a divider meant
+ * to run edge to edge (see `bank-account-editor.tsx`'s own copy of this).
+ */
+const SECTION_BLEED = '-mx-3'
+
 // `not_exported` is here for the opening entry and its reversal: both are
 // `journal_entry` records whose posting type routes to `'none'`, so they never
 // push and always land on it. The set means "a GlPosting row now exists".
@@ -336,7 +343,8 @@ export function JournalEntryDrawer({
               <Section
                 title='Lines'
                 icon={<BookOpenCheck className='size-4' />}
-                collapsible={false}>
+                collapsible={false}
+                className={SECTION_BLEED}>
                 <div className='flex flex-col gap-3'>
                   <JournalLines
                     rows={draft.lines}

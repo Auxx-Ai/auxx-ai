@@ -29,6 +29,153 @@ import { useChartAccounts } from './use-chart-accounts'
 
 export { useChartAccounts }
 
+/** What a caller's `value`/`onChange`/`onSelect` carries - see {@link GlAccountPickerProps.selectBy}. */
+export type GlAccountSelectBy = 'code' | 'id'
+
+/**
+ * Props shared by every account list/body variant below - everything
+ * `GlAccountList` needs to render one filtered, grouped, disabled-aware list.
+ */
+export interface GlAccountListProps {
+  accounts: ChartAccountRow[]
+  isLoading: boolean
+  /** Search text - the caller owns the input (`CommandInput` in {@link GlAccountPickerBody}, or an external one in a spreadsheet-cell caller). */
+  search: string
+  filterTypes?: GlAccountTypeValue[]
+  selectBy?: GlAccountSelectBy
+  /** The selected account's code or id, per {@link selectBy}. */
+  value: string | null
+  /** Fires with the picked account's code or id, per {@link selectBy}. Never called for an inactive account. */
+  onSelect: (value: string) => void
+}
+
+/**
+ * The list portion alone - grouped `CommandGroup`s of `CommandDetailItem`s,
+ * no `CommandInput` and no `<Command>` shell. Exposed so a caller with its
+ * OWN search surface (an external `<input>`, not cmdk's) can drop this
+ * straight into whatever `<Command>` it already owns - `journal-lines.tsx`'s
+ * spreadsheet-cell account picker does exactly this.
+ */
+export function GlAccountList({
+  accounts,
+  isLoading,
+  search,
+  filterTypes,
+  selectBy = 'code',
+  value,
+  onSelect,
+}: GlAccountListProps) {
+  const groups = useMemo(
+    () => groupAccountsByType(accounts, filterTypes, search),
+    [accounts, filterTypes, search]
+  )
+
+  return (
+    <CommandList>
+      <CommandEmpty>{isLoading ? 'Loading…' : 'No accounts match.'}</CommandEmpty>
+      {groups.map((group) => (
+        <CommandGroup key={group.type} heading={accountTypeLabel(group.type)}>
+          {group.accounts.map((account) => {
+            const optionValue = selectBy === 'id' ? account.id : account.code
+            return (
+              <CommandDetailItem
+                key={account.id}
+                value={account.id}
+                title={formatAccountLabel(account)}
+                description={
+                  account.isActive ? undefined : 'This account is inactive and cannot be posted to.'
+                }
+                disabled={!account.isActive}
+                selected={optionValue === value}
+                selectionMode='check'
+                className={cn(!account.isActive && 'opacity-60')}
+                onSelect={() => {
+                  // `optionValue` is null only for a `selectBy='code'` caller
+                  // hitting an account with no code - nothing to select by.
+                  if (!account.isActive || !optionValue) return
+                  onSelect(optionValue)
+                }}
+              />
+            )
+          })}
+        </CommandGroup>
+      ))}
+    </CommandList>
+  )
+}
+
+/**
+ * Search input + {@link GlAccountList} - WITHOUT a surrounding `<Command>`
+ * shell. Exposed (the `ResourceCommandBody` idiom) so a caller that already
+ * owns a `<Command>` can embed the input-plus-list pair without nesting two
+ * `Command`s. {@link GlAccountPickerContent} is the standalone wrapper around
+ * this for the ordinary popover-trigger case.
+ */
+export function GlAccountPickerBody({
+  accounts,
+  isLoading,
+  search,
+  onSearchChange,
+  filterTypes,
+  selectBy,
+  value,
+  onSelect,
+  autoFocus,
+}: Omit<GlAccountListProps, 'search'> & {
+  search: string
+  onSearchChange: (search: string) => void
+  autoFocus?: boolean
+}) {
+  return (
+    <>
+      <CommandInput
+        autoFocus={autoFocus}
+        placeholder='Search accounts…'
+        value={search}
+        onValueChange={onSearchChange}
+        loading={isLoading}
+      />
+      <GlAccountList
+        accounts={accounts}
+        isLoading={isLoading}
+        search={search}
+        filterTypes={filterTypes}
+        selectBy={selectBy}
+        value={value}
+        onSelect={onSelect}
+      />
+    </>
+  )
+}
+
+/**
+ * {@link GlAccountPickerBody} wrapped in its own `<Command>` shell - a
+ * complete, standalone "search + pick" surface for a caller that isn't
+ * threading it into a popover (or wants its own positioning around it).
+ * {@link GlAccountPicker} is this behind a `PickerTrigger` popover, which is
+ * what nearly every caller actually wants.
+ */
+export function GlAccountPickerContent({
+  className,
+  ...props
+}: Omit<GlAccountListProps, 'search'> & {
+  className?: string
+  search?: string
+  onSearchChange?: (search: string) => void
+  autoFocus?: boolean
+}) {
+  const [internalSearch, setInternalSearch] = useState('')
+  return (
+    <Command shouldFilter={false} className={className}>
+      <GlAccountPickerBody
+        {...props}
+        search={props.search ?? internalSearch}
+        onSearchChange={props.onSearchChange ?? setInternalSearch}
+      />
+    </Command>
+  )
+}
+
 export interface GlAccountPickerProps {
   /** The selected account's CODE or id, depending on {@link selectBy}. */
   value: string | null
@@ -45,7 +192,7 @@ export interface GlAccountPickerProps {
    * `bank_transaction.glAccount`/`suggestedGlAccount`,
    * `vendor_bill_line.glAccount`), which store the `gl_account` instance id.
    */
-  selectBy?: 'code' | 'id'
+  selectBy?: GlAccountSelectBy
   disabled?: boolean
   placeholder?: string
   className?: string
@@ -80,6 +227,12 @@ export interface GlAccountPickerProps {
  * shared picker for one caller. Composed directly from the same `Command` +
  * `PickerTrigger asCombobox` primitives those pickers already use, so the
  * trigger and popover chrome still match every other picker in the app.
+ *
+ * `GlAccountPickerContent`/`GlAccountPickerBody`/`GlAccountList` above are
+ * this picker's own `ResourcePickerContent`/`ResourceCommandBody` split -
+ * peel one back whenever a caller needs the search+list without this
+ * particular button-and-popover shell (`journal-lines.tsx`'s spreadsheet
+ * cell uses `GlAccountList` directly, behind its own inline `<input>`).
  */
 export function GlAccountPicker({
   value,
@@ -93,12 +246,6 @@ export function GlAccountPicker({
 }: GlAccountPickerProps) {
   const { accounts, isLoading } = useChartAccounts()
   const [open, setOpen] = useState(false)
-  const [search, setSearch] = useState('')
-
-  const groups = useMemo(
-    () => groupAccountsByType(accounts, filterTypes, search),
-    [accounts, filterTypes, search]
-  )
 
   const selected = useMemo(
     () =>
@@ -108,7 +255,6 @@ export function GlAccountPicker({
 
   function handleOpenChange(next: boolean) {
     setOpen(next)
-    if (!next) setSearch('')
   }
 
   return (
@@ -140,45 +286,17 @@ export function GlAccountPicker({
       <PopoverContent
         className='min-w-[max(var(--radix-popover-trigger-width),18rem)] p-0'
         align='start'>
-        <Command shouldFilter={false}>
-          <CommandInput
-            placeholder='Search accounts…'
-            value={search}
-            onValueChange={setSearch}
-            loading={isLoading}
-          />
-          <CommandList>
-            <CommandEmpty>{isLoading ? 'Loading…' : 'No accounts match.'}</CommandEmpty>
-            {groups.map((group) => (
-              <CommandGroup key={group.type} heading={accountTypeLabel(group.type)}>
-                {group.accounts.map((account) => {
-                  const optionValue = selectBy === 'id' ? account.id : account.code
-                  return (
-                    <CommandDetailItem
-                      key={account.id}
-                      value={account.id}
-                      title={formatAccountLabel(account)}
-                      description={
-                        account.isActive
-                          ? undefined
-                          : 'This account is inactive and cannot be posted to.'
-                      }
-                      disabled={!account.isActive}
-                      selected={optionValue === value}
-                      selectionMode='check'
-                      className={cn(!account.isActive && 'opacity-60')}
-                      onSelect={() => {
-                        if (!account.isActive) return
-                        onChange(optionValue)
-                        handleOpenChange(false)
-                      }}
-                    />
-                  )
-                })}
-              </CommandGroup>
-            ))}
-          </CommandList>
-        </Command>
+        <GlAccountPickerContent
+          accounts={accounts}
+          isLoading={isLoading}
+          filterTypes={filterTypes}
+          selectBy={selectBy}
+          value={value}
+          onSelect={(next) => {
+            onChange(next)
+            handleOpenChange(false)
+          }}
+        />
       </PopoverContent>
     </Popover>
   )
