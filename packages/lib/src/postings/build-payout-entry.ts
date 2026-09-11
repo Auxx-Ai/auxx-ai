@@ -106,13 +106,20 @@ export const PAYOUT_SOURCE_TYPE = 'payout'
 /**
  * The clearing roles a payout may drain. `clearing_card`, and only ever that.
  *
- * 🛑 **`clearing_affirm` is excluded BY CONSTRUCTION, not by omission.** An
+ * 🛑 **Every non-card rail is excluded BY CONSTRUCTION, not by omission.** An
  * Affirm settlement never lands on the card rail, so it is invisible to the
- * payouts API and no payout can ever relieve `1210` (accrual plan §3, 49 §3.2).
- * Adding the role here would let a card payout drain an account its deposit
- * never touched: the entry would balance, `1210` would go negative by the
- * Affirm sales it was holding, and nothing downstream could detect it. Affirm
- * clears when an Affirm settlement feed exists, through its own entry.
+ * payouts API and no payout can ever relieve the account holding it (accrual
+ * plan §3, 49 §3.2). Widening this list would let a card payout drain an
+ * account its deposit never touched: the entry would balance, that account
+ * would go negative by the sales it was holding, and nothing downstream could
+ * detect it.
+ *
+ * This list is roles, and a non-card rail no longer HAS a role - it is a
+ * `payment_gateway` record whose clearing account the fulfillment entry debits
+ * by id (`clearing_affirm` was deleted on 2026-09-10). So the exclusion is now
+ * structural rather than a name left off a list: an id-routed debit is not
+ * `clearing_card`, and `clearing_card` is the only thing here. Each such rail
+ * clears when a settlement feed for it exists, through its own entry.
  */
 export const PAYOUT_CLEARING_ROLES: readonly AccountRole[] = [ACCOUNT_ROLES.CLEARING_CARD]
 

@@ -714,13 +714,12 @@ export const ledgerRouter = createTRPCRouter({
 
       const chart = await seedChartPacks(ctx.db, organizationId, glAccountDefId, input.packs)
 
-      // Task 13 §5.3: the two default `payment_gateway` records the census
-      // names. Runs AFTER the chart on purpose - the clearing accounts these
-      // defaults point at (`clearing_card` / `clearing_affirm`) only exist once
-      // the chart above has just created or confirmed them. Brief 16 §1.5 ties
-      // them to the `card_rail` pack; gated on the WALKED packs, not the
-      // requested ones, so `requires` expansion is honoured (though nothing
-      // requires `card_rail` today, so the two currently agree).
+      // Task 13 §5.3: the one default `payment_gateway` record. Runs AFTER the
+      // chart on purpose - the clearing account it points at (`clearing_card`)
+      // only exists once the chart above has just created or confirmed it.
+      // Brief 16 §1.5 ties it to the `card_rail` pack; gated on the WALKED
+      // packs, not the requested ones, so `requires` expansion is honoured
+      // (though nothing requires `card_rail` today, so the two currently agree).
       const paymentGateways = chart.packs.includes('card_rail')
         ? await seedDefaultPaymentGateways(ctx.db, organizationId)
         : null

@@ -25,9 +25,13 @@ describe('migration 137 registration', () => {
     expect(migration137FulfillmentFacts.id).toBe('137-fulfillment-facts')
   })
 
-  it('names both halves of what it does in its description', () => {
+  it('names what it does in its description, and no longer a role it dropped', () => {
     expect(migration137FulfillmentFacts.description).toContain('line_item_fulfilled_at')
-    expect(migration137FulfillmentFacts.description).toContain('clearing_affirm')
+    // It stamped a `clearing_affirm` role onto 1210 until 2026-09-10. The role
+    // was deleted (a role may not name a vendor) and that half went with it;
+    // the migration was edited in place rather than compensated, which is only
+    // safe because accounting has never been deployed.
+    expect(migration137FulfillmentFacts.description).not.toContain('clearing_affirm')
   })
 })
 

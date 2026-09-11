@@ -30,7 +30,9 @@ import {
   buildFulfillmentBatchEntry,
   computeShipmentAmounts,
   FULFILLMENT_DEBIT_ACCOUNT_ROLE,
+  FULFILLMENT_GATEWAY_DEBIT,
   type FulfillmentBatchSource,
+  type FulfillmentGatewayRoute,
   fulfillmentBatchPeriodKey,
   MAX_COMPACT_FULFILLMENT_BATCH_KEY,
   MAX_FULFILLMENT_BATCH_ATTEMPT,
@@ -71,9 +73,12 @@ function shipment(overrides: Partial<UnpostedShipment> = {}): UnpostedShipment {
 }
 
 /** What `plan.ts` hands the builder: a shipment with its amounts already on it. */
-function planned(overrides: Partial<UnpostedShipment> = {}): PlannedShipment {
+function planned(
+  overrides: Partial<UnpostedShipment> = {},
+  gatewayRoutes: readonly FulfillmentGatewayRoute[] = []
+): PlannedShipment {
   const base = shipment(overrides)
-  const debit = resolveFulfillmentDebit(base)
+  const debit = resolveFulfillmentDebit({ ...base, gatewayRoutes })
   if (debit.kind !== 'debit') throw new Error(`fixture excluded: ${debit.reason}`)
   const { kind: _kind, ...rest } = debit
   return { ...base, amounts: computeShipmentAmounts(base, rest) }
@@ -83,7 +88,6 @@ function planned(overrides: Partial<UnpostedShipment> = {}): PlannedShipment {
 function group(shipments: PlannedShipment[], groupKey = '2026-07-06'): FulfillmentPostingGroup {
   const byDebitRole: Record<FulfillmentDebitRole, number> = {
     clearing_card: 0,
-    clearing_affirm: 0,
     accounts_receivable: 0,
     gateway: 0,
   }
@@ -121,6 +125,12 @@ function amountFor(entry: Entry, role: string): number | undefined {
   return found.length === 0 ? undefined : found.reduce((sum, line) => sum + line.amount, 0)
 }
 
+/** Σ of the lines debiting one `gl_account` id directly - a `payment_gateway` route. */
+function amountForAccount(entry: Entry, glAccountId: string): number | undefined {
+  const found = entry.lines.filter((line) => line.glAccountId === glAccountId)
+  return found.length === 0 ? undefined : found.reduce((sum, line) => sum + line.amount, 0)
+}
+
 /** The amount on the one `role` line carrying `{ [dimension]: value }` - brief 13 §5. */
 function dimensionAmountFor(
   entry: Entry,
@@ -131,15 +141,24 @@ function dimensionAmountFor(
   return linesFor(entry, role).find((line) => line.dimensions?.[dimension] === value)?.amount
 }
 
+/** A `payment_gateway` record's clearing account, as an id the fixtures share. */
+const AFFIRM_ACCOUNT = 'acct_gw_affirm'
+
 // ── 1. The debit fork ───────────────────────────────────────────────────────
 
 describe('resolveFulfillmentDebit', () => {
   it.each([
     // [financialStatus, gateways, expected role]
     ['paid', ['shopify_payments'], 'clearing_card'],
-    ['paid', ['affirm'], 'clearing_affirm'],
+    // 🛑 `affirm` with NO `payment_gateway` route is card money now. It had a
+    // role of its own until 2026-09-10; a role may not name a vendor, so the
+    // answer moved to a record and the fallback is the ordinary one. This is
+    // the residual `1200` carries when an Affirm store never adds the record -
+    // see `resolves a routed gateway to the record's own account` below for
+    // the path that prevents it.
+    ['paid', ['affirm'], 'clearing_card'],
     // Casing and whitespace are the provider's, not a second gateway.
-    ['paid', ['  Affirm '], 'clearing_affirm'],
+    ['paid', ['  Affirm '], 'clearing_card'],
     ['PAID', ['SHOPIFY_PAYMENTS'], 'clearing_card'],
     // A rail nobody has named is still card money: one processor took it, and
     // `clearing_card` is where a wrong guess fails to reconcile visibly.
@@ -156,7 +175,7 @@ describe('resolveFulfillmentDebit', () => {
     [null, ['shopify_payments'], 'accounts_receivable'],
     // A refund is its OWN later event (a credit memo). The money was taken.
     ['refunded', ['shopify_payments'], 'clearing_card'],
-    ['partially_refunded', ['affirm'], 'clearing_affirm'],
+    ['partially_refunded', ['affirm'], 'clearing_card'],
     // One gateway repeated is one gateway.
     ['paid', ['shopify_payments', 'Shopify_Payments'], 'clearing_card'],
   ])('%s through %j debits %s', (financialStatus, gateways, role) => {
@@ -204,9 +223,97 @@ describe('resolveFulfillmentDebit', () => {
   it('maps every debit answer to a declared posting role', () => {
     expect(FULFILLMENT_DEBIT_ACCOUNT_ROLE).toEqual({
       clearing_card: ACCOUNT_ROLES.CLEARING_CARD,
-      clearing_affirm: ACCOUNT_ROLES.CLEARING_AFFIRM,
       accounts_receivable: ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE,
     })
+  })
+
+  it('names no gateway in the role table - a role must not name a vendor', () => {
+    // `build-entry.ts`'s second rule. `affirm` was the one exception and it was
+    // retired on 2026-09-10; the card RAIL is not a vendor, so it stays.
+    expect(Object.keys(FULFILLMENT_GATEWAY_DEBIT)).toEqual(['shopify_payments'])
+  })
+
+  // ── The `payment_gateway` record path (brief 13 §5.3) ─────────────────────
+  //
+  // 🛑 Load-bearing since `clearing_affirm` was deleted. This is now the ONLY
+  // mechanism keeping a non-card rail out of `clearing_card`, and a rail that
+  // lands there can never be drained: `PAYOUT_CLEARING_ROLES` relieves
+  // `clearing_card` by exactly what a card payout settled, so an Affirm sale
+  // sitting in `1200` is a residual that balances and never clears.
+
+  it("resolves a routed gateway to the record's own account, not to a role", () => {
+    expect(
+      resolveFulfillmentDebit({
+        financialStatus: 'paid',
+        gateways: ['affirm'],
+        gatewayRoutes: [
+          { handles: ['Affirm', 'affirm'], clearingGlAccountId: 'acct_affirm', active: true },
+        ],
+      })
+    ).toEqual({ kind: 'debit', glAccountId: 'acct_affirm' })
+  })
+
+  it('matches a route handle case- and whitespace-insensitively', () => {
+    expect(
+      resolveFulfillmentDebit({
+        financialStatus: 'paid',
+        gateways: ['  AFFIRM '],
+        gatewayRoutes: [
+          { handles: ['  Affirm  '], clearingGlAccountId: 'acct_affirm', active: true },
+        ],
+      })
+    ).toEqual({ kind: 'debit', glAccountId: 'acct_affirm' })
+  })
+
+  it('routes a CLOSED gateway too - its past shipments still have to reconcile', () => {
+    expect(
+      resolveFulfillmentDebit({
+        financialStatus: 'paid',
+        gateways: ['authorize_net'],
+        gatewayRoutes: [
+          { handles: ['authorize_net'], clearingGlAccountId: 'acct_authnet', active: false },
+        ],
+      })
+    ).toEqual({ kind: 'debit', glAccountId: 'acct_authnet' })
+  })
+
+  it('falls back to the role table when no route names the gateway', () => {
+    expect(
+      resolveFulfillmentDebit({
+        financialStatus: 'paid',
+        gateways: ['affirm'],
+        gatewayRoutes: [
+          { handles: ['authorize_net'], clearingGlAccountId: 'acct_authnet', active: true },
+        ],
+      })
+    ).toEqual({ kind: 'debit', role: 'clearing_card' })
+  })
+
+  it('refuses to choose when two routes claim the same handle', () => {
+    // The record's own write path should never allow this. Guessing which of
+    // two accounts is right would put real money in one of them.
+    expect(
+      resolveFulfillmentDebit({
+        financialStatus: 'paid',
+        gateways: ['affirm'],
+        gatewayRoutes: [
+          { handles: ['affirm'], clearingGlAccountId: 'acct_a', active: true },
+          { handles: ['Affirm'], clearingGlAccountId: 'acct_b', active: true },
+        ],
+      })
+    ).toEqual({ kind: 'debit', role: 'clearing_card' })
+  })
+
+  it('never routes an unpaid order, however well its gateway matches', () => {
+    // The status fork runs first: a terms order owes whoever it owes, and
+    // aging has to name the debtor.
+    expect(
+      resolveFulfillmentDebit({
+        financialStatus: 'pending',
+        gateways: ['affirm'],
+        gatewayRoutes: [{ handles: ['affirm'], clearingGlAccountId: 'acct_affirm', active: true }],
+      })
+    ).toEqual({ kind: 'debit', role: 'accounts_receivable' })
   })
 })
 
@@ -402,12 +509,19 @@ describe('computeShipmentAmounts', () => {
 describe('buildFulfillmentBatchEntry', () => {
   it('balances a mixed group and decomposes the same numbers', () => {
     const card = planned({ orderId: 'o-card', orderNumber: '#2001' })
-    const affirm = planned({
-      orderId: 'o-affirm',
-      orderNumber: '#2002',
-      gateways: ['Affirm'],
-      orderShippingTotalMinor: 0,
-    })
+    // A non-card rail, routed by a `payment_gateway` record to its OWN clearing
+    // account. This used to be the `clearing_affirm` role; since 2026-09-10 the
+    // record is the only way a rail stays out of `1200`, so the mixed group
+    // exercises it end to end.
+    const affirm = planned(
+      {
+        orderId: 'o-affirm',
+        orderNumber: '#2002',
+        gateways: ['Affirm'],
+        orderShippingTotalMinor: 0,
+      },
+      [{ handles: ['affirm'], clearingGlAccountId: AFFIRM_ACCOUNT, active: true }]
+    )
     // One terms order shipping twice on the same day: two lines in, ONE A/R line out.
     const termsFirst = planned({
       orderId: 'o-terms',
@@ -490,7 +604,11 @@ describe('buildFulfillmentBatchEntry', () => {
     expect(amountFor(entry, ACCOUNT_ROLES.CLEARING_CARD)).toBe(
       card.amounts.totalMinor + exempt.amounts.totalMinor
     )
-    expect(amountFor(entry, ACCOUNT_ROLES.CLEARING_AFFIRM)).toBe(affirm.amounts.totalMinor)
+    // 🛑 By ACCOUNT ID, not by role, and NOT folded into `clearing_card` - a
+    // rail that lands in `1200` can never be drained, because a payout relieves
+    // that account by exactly what a CARD payout settled.
+    expect(amountForAccount(entry, AFFIRM_ACCOUNT)).toBe(affirm.amounts.totalMinor)
+    expect(built.totals.byDebitRole.gateway).toBe(affirm.amounts.totalMinor)
     // Channel is a dimension on ONE revenue_product account now (brief 13 §5),
     // never a second account - the dealer order's share is the dealer-dimensioned line.
     expect(dimensionAmountFor(entry, ACCOUNT_ROLES.REVENUE_PRODUCT, 'channel', 'dealer')).toBe(

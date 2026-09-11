@@ -1,8 +1,7 @@
 // packages/lib/src/seed/entity-migrations/migrations/137-fulfillment-facts.ts
 
-import { type Database, schema } from '@auxx/database'
+import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
-import { and, eq } from 'drizzle-orm'
 import { getOrgCache } from '../../../cache'
 import type { ResourceField } from '../../../resources/registry/field-types'
 import { LINE_ITEM_FIELDS } from '../../../resources/registry/resources/line-item-fields'
@@ -14,32 +13,13 @@ const logger = createScopedLogger('entity-migrations:137')
 /** The def the three fulfillment facts land on. Created by migration 107. */
 const LINE_ITEM_ENTITY_TYPE = 'line_item'
 
-/** The def the chart lives on. Created by migration 108. */
-const GL_ACCOUNT_ENTITY_TYPE = 'gl_account'
-
 /** The registry keys this migration adds. Their attributes are in the JSDoc below. */
 const LINE_ITEM_KEYS = ['fulfilledAt', 'fulfilledQty', 'shipmentCount'] as const
 
-/** The Affirm clearing account. `1210` is what a person recognises, not the name. */
-const AFFIRM_CLEARING_CODE = '1210'
-
 /**
- * `ACCOUNT_ROLES.CLEARING_AFFIRM`, as a literal.
+ * Migration 137: the sales channel's per-line fulfillment rollup, natively.
  *
- * The constant is being added to `postings/build-entry.ts` in the same batch of
- * work, and a migration that imports a constant it landed alongside stops being
- * self-sufficient the moment somebody edits that constant: the STRING is what is
- * stored in `GlRoleAssignment.role`, and a stored string must never move because
- * an unrelated rename happened years later. `132-card-clearing-rename.ts` holds
- * its two role names the same way and for the same reason.
- */
-const CLEARING_AFFIRM_ROLE = 'clearing_affirm'
-
-/**
- * Migration 137: the sales channel's per-line fulfillment rollup, natively, and
- * the Affirm clearing role.
- *
- * `plans/money/tasks/49-bulk-fulfillment-posting.md` §8.4 decisions 4 and 6.
+ * `plans/money/tasks/49-bulk-fulfillment-posting.md` §8.4 decision 4.
  *
  * ## What it adds
  *
@@ -57,14 +37,6 @@ const CLEARING_AFFIRM_ROLE = 'clearing_affirm'
  *   (49 §5): 82 of 538 imported orders ship in two shipments, no line spans two,
  *   and all 82 reconstruct by grouping lines on their fulfilled date.
  *
- * - **The `clearing_affirm` role on `1210 Affirm Clearing`**, whose role has
- *   been null since migration 108 created it. 11 of the dev org's orders pay
- *   through Affirm (49 §5), and an Affirm settlement never lands on the card
- *   rail - it is invisible to the payouts API - so folding those into `1200`
- *   would mean `1200` could never reconcile to zero (`default-chart.ts` says so
- *   at the account itself). One chart line, and the fulfillment builder's debit
- *   fork needs the role to exist before it can emit it.
- *
  * ## What it deliberately does NOT do
  *
  * 🛑 **No backfill of the three fields, and none is possible.** The values come
@@ -74,29 +46,31 @@ const CLEARING_AFFIRM_ROLE = 'clearing_affirm'
  * inventing one from `order_fulfillment_status` would date every shipment wrong
  * and post a year of revenue into one day.
  *
- * ⚠️ **It never repoints a role the org has already mapped**, and never touches
- * `1210` when some other role already resolves to it. That is chart rule 4
- * (`seed/gl-account-chart.ts`): a bookkeeper who mapped their own account keeps
- * it through every re-run. An org whose `clearing_affirm` is already assigned is
- * left exactly as it is.
+ * 🛑 **It no longer stamps a `clearing_affirm` role onto `1210`.** It did when
+ * it landed, and that half was removed on 2026-09-10 along with the role and
+ * both Affirm accounts: a role may not name a vendor, so Affirm became a
+ * `payment_gateway` record the merchant adds (see `build-entry.ts`'s two rules
+ * and `default-chart.ts`'s `card_rail` header). Editing this migration in place
+ * rather than writing a compensating one is only safe because accounting has
+ * never been deployed - an org that already ran the old 137 keeps an inert
+ * `clearing_affirm` assignment row, which `listRoleMap` no longer lists and
+ * `resolveRoles` is never asked for.
  *
  * ## Ordering
  *
- * MUST sort after 107 (which creates `line_item`) and after 108 (which owns the
- * chart `1210` belongs to). An org short of either is a skip, not a failure -
- * it picks both up from the seeder with the rest of the registry.
+ * MUST sort after 107, which creates `line_item`. An org without it is a skip,
+ * not a failure - it picks the def up from the seeder with the rest of the
+ * registry.
  *
  * Idempotent: `ensureCustomFields` is INSERT-only and skips a field that
- * exists, and the role insert is guarded by a read and an
- * `ON CONFLICT DO NOTHING` on `(organizationId, role)`.
+ * exists.
  */
 export const migration137FulfillmentFacts: EntityMigration = {
   id: '137-fulfillment-facts',
   description:
     'Adds line_item_fulfilled_at, line_item_fulfilled_qty and line_item_shipment_count - the ' +
     "sales channel's per-line fulfillment rollup, carried natively so the fulfillment log " +
-    'pass can reconstruct order_fulfillments for a connector order - and stamps the ' +
-    'clearing_affirm role onto 1210 Affirm Clearing, whose role was null',
+    'pass can reconstruct order_fulfillments for a connector order',
 
   async up(db: Database, organizationId: string): Promise<EntityMigrationResult> {
     const state = { entityDefsCreated: 0, fieldsCreated: 0, relationshipsLinked: 0 }
@@ -115,25 +89,20 @@ export const migration137FulfillmentFacts: EntityMigration = {
       )
     }
 
-    const glAccountDefId = existing.entityDefs.get(GL_ACCOUNT_ENTITY_TYPE)?.id
-    const roleAssigned = glAccountDefId
-      ? await assignAffirmClearingRole(db, organizationId, glAccountDefId)
-      : false
-
-    const changed = state.fieldsCreated > 0 || roleAssigned
+    const changed = state.fieldsCreated > 0
 
     if (changed) {
       // A new field is invisible to every read path that serves it until the
-      // per-org caches are dropped, and the role resolver reads `resources`.
-      // `runEntityMigrationsForOrg` does this after the whole batch, but `up()`
-      // can also be called directly (`scripts/run-entity-migration.ts`).
+      // per-org caches are dropped. `runEntityMigrationsForOrg` does this after
+      // the whole batch, but `up()` can also be called directly
+      // (`scripts/run-entity-migration.ts`).
       await getOrgCache().invalidateAndRecompute(organizationId, [
         'entityDefs',
         'entityDefSlugs',
         'customFields',
         'resources',
       ])
-      logger.info('Migration 137 applied', { organizationId, ...state, roleAssigned })
+      logger.info('Migration 137 applied', { organizationId, ...state })
     }
 
     return { ...state, alreadyUpToDate: !changed }
@@ -158,98 +127,4 @@ function pickLineItemFields(): Record<string, ResourceField> {
     picked[key] = field
   }
   return picked
-}
-
-/**
- * Point `clearing_affirm` at the org's `1210`, and only when nothing has claimed
- * either side yet.
- *
- * Three guards, in order, each answering a different "leave it alone":
- *
- *  1. the org already has a `clearing_affirm` assignment - somebody, or a later
- *     re-seed, mapped it; this migration is done,
- *  2. the org has no `1210` - it renumbered its chart, and guessing which
- *     account is the Affirm one would post real money into it,
- *  3. `1210` already serves another role - "where its role is currently null"
- *     is the condition this migration was written under, and a second role on
- *     one account is legal but never something a migration should decide.
- *
- * @returns whether a row was written.
- */
-async function assignAffirmClearingRole(
-  db: Database,
-  organizationId: string,
-  glAccountDefId: string
-): Promise<boolean> {
-  const [alreadyAssigned] = await db
-    .select({ id: schema.GlRoleAssignment.id })
-    .from(schema.GlRoleAssignment)
-    .where(
-      and(
-        eq(schema.GlRoleAssignment.organizationId, organizationId),
-        eq(schema.GlRoleAssignment.role, CLEARING_AFFIRM_ROLE)
-      )
-    )
-    .limit(1)
-  if (alreadyAssigned) return false
-
-  const [codeField] = await db
-    .select({ id: schema.CustomField.id })
-    .from(schema.CustomField)
-    .where(
-      and(
-        eq(schema.CustomField.entityDefinitionId, glAccountDefId),
-        eq(schema.CustomField.systemAttribute, 'gl_account_code')
-      )
-    )
-    .limit(1)
-  if (!codeField) return false
-
-  const [account] = await db
-    .select({ entityId: schema.FieldValue.entityId })
-    .from(schema.FieldValue)
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        eq(schema.FieldValue.fieldId, codeField.id),
-        eq(schema.FieldValue.valueText, AFFIRM_CLEARING_CODE)
-      )
-    )
-    .limit(1)
-  if (!account) return false
-
-  const [otherRole] = await db
-    .select({ role: schema.GlRoleAssignment.role })
-    .from(schema.GlRoleAssignment)
-    .where(
-      and(
-        eq(schema.GlRoleAssignment.organizationId, organizationId),
-        eq(schema.GlRoleAssignment.glAccountId, account.entityId)
-      )
-    )
-    .limit(1)
-  if (otherRole) {
-    logger.warn('Migration 137 left 1210 alone - it already serves a role', {
-      organizationId,
-      role: otherRole.role,
-    })
-    return false
-  }
-
-  // `source: 'seed'` and NOT `confirmedAt`: auxx chose this, the bookkeeper has
-  // not confirmed it, and the setup wizard renders the two differently (`G19`).
-  const inserted = await db
-    .insert(schema.GlRoleAssignment)
-    .values({
-      organizationId,
-      role: CLEARING_AFFIRM_ROLE,
-      glAccountId: account.entityId,
-      source: 'seed',
-    })
-    .onConflictDoNothing({
-      target: [schema.GlRoleAssignment.organizationId, schema.GlRoleAssignment.role],
-    })
-    .returning({ id: schema.GlRoleAssignment.id })
-
-  return inserted.length > 0
 }

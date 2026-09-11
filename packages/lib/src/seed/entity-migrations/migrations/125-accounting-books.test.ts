@@ -95,11 +95,16 @@ describe('the chart carries what step 1 seeds', () => {
     expect(byCode.get(RECEIVABLE_CODE)?.role).toBe(ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE)
   })
 
-  it('puts the two equity roles on equity accounts and leaves 3000 role-less', () => {
+  it('puts the one equity role on an equity account and leaves 3000 and 3900 role-less', () => {
     expect(byCode.get('3100')?.role).toBe(ACCOUNT_ROLES.EQUITY_RETAINED_EARNINGS)
-    expect(byCode.get('3900')?.role).toBe(ACCOUNT_ROLES.EQUITY_OPENING_BALANCE)
     expect(byCode.get('3000')?.accountType).toBe('equity')
     expect(byCode.get('3000')?.role).toBeUndefined()
+    // `3900` carried `equity_opening_balance` until 2026-09-10. The ACCOUNT is
+    // what the opening trial-balance grid balances against and it stays;
+    // `buildOpeningBalanceEntry` takes the ids a person typed, so it never
+    // emitted the role and nothing ever read it.
+    expect(byCode.get('3900')?.accountType).toBe('equity')
+    expect(byCode.get('3900')?.role).toBeUndefined()
   })
 
   it('routes cheques through undeposited funds and fees through 6100', () => {

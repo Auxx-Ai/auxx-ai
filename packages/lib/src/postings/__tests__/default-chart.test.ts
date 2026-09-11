@@ -138,17 +138,20 @@ describe('the union of every pack', () => {
   // somebody saying which pack. The core grew from 13 to 27 in brief 21 §4.2 -
   // fourteen role-less accounts (prepaid, two owner-equity, eleven operating
   // expenses) - and `payroll`, `fixed_assets` and `debt` arrived in the same
-  // pass. The number itself is not the point; being made to state it is.
-  it('totals fifty-eight accounts: twenty-seven core, then five, two, nine, four, five, three and three', () => {
+  // pass. `card_rail` then shrank from five to three on 2026-09-10, when
+  // `1210 Affirm Clearing` and `6105 Merchant Fees - Affirm` left with the
+  // `clearing_affirm` role: a default chart must not name a vendor.
+  // The number itself is not the point; being made to state it is.
+  it('totals fifty-six accounts: twenty-seven core, then three, two, nine, four, five, three and three', () => {
     expect(codesOf('core')).toHaveLength(27)
-    expect(codesOf('card_rail')).toHaveLength(5)
+    expect(codesOf('card_rail')).toHaveLength(3)
     expect(codesOf('prepayments')).toHaveLength(2)
     expect(codesOf('inventory')).toHaveLength(9)
     expect(codesOf('purchasing')).toHaveLength(4)
     expect(codesOf('payroll')).toHaveLength(5)
     expect(codesOf('fixed_assets')).toHaveLength(3)
     expect(codesOf('debt')).toHaveLength(3)
-    expect(DEFAULT_CHART_OF_ACCOUNTS).toHaveLength(58)
+    expect(DEFAULT_CHART_OF_ACCOUNTS).toHaveLength(56)
   })
 })
 
@@ -157,7 +160,7 @@ describe('the core', () => {
   // every one of these is reachable by an ENABLED posting type on any org that
   // sends an invoice, takes a payment, ships an order, issues a credit memo or
   // writes something off. Exact set.
-  it('carries exactly the eleven roles every org can reach', () => {
+  it('carries exactly the ten roles every org can reach', () => {
     expect([...rolesOf('core')].sort()).toEqual(
       [
         ACCOUNT_ROLES.UNDEPOSITED_FUNDS,
@@ -165,7 +168,6 @@ describe('the core', () => {
         ACCOUNT_ROLES.ACCOUNTS_PAYABLE,
         ACCOUNT_ROLES.SALES_TAX_PAYABLE,
         ACCOUNT_ROLES.EQUITY_RETAINED_EARNINGS,
-        ACCOUNT_ROLES.EQUITY_OPENING_BALANCE,
         ACCOUNT_ROLES.REVENUE_PRODUCT,
         ACCOUNT_ROLES.REVENUE_SHIPPING,
         ACCOUNT_ROLES.REVENUE_SERVICE,
@@ -257,14 +259,14 @@ describe('the other packs', () => {
     expect([...rolesOf('card_rail')].sort()).toEqual(
       [
         ACCOUNT_ROLES.CLEARING_CARD,
-        ACCOUNT_ROLES.CLEARING_AFFIRM,
         ACCOUNT_ROLES.UNIDENTIFIED_RECEIPTS,
         ACCOUNT_ROLES.PAYMENT_PROCESSING_FEES,
       ].sort()
     )
-    expect([...rolesOf('prepayments')].sort()).toEqual(
-      [ACCOUNT_ROLES.DEFERRED_REVENUE, ACCOUNT_ROLES.CUSTOMER_DEPOSITS].sort()
-    )
+    // `2300 Deferred Revenue` is in this pack and carries no role: the
+    // month-end deferral builder that would emit one was never written, so
+    // `deferred_revenue` was deleted on 2026-09-10.
+    expect([...rolesOf('prepayments')].sort()).toEqual([ACCOUNT_ROLES.CUSTOMER_DEPOSITS].sort())
     expect([...rolesOf('inventory')].sort()).toEqual(
       [
         ACCOUNT_ROLES.INVENTORY_RAW_MATERIALS,
@@ -334,16 +336,18 @@ describe('the other packs', () => {
 
   // Role-less is the ORDINARY case, not a gap, and it is not a core-only case
   // either: `5010`/`5030` ride with inventory because the P&L groups COGS by
-  // subtype, `6105` with the card rail because Affirm's fees clear `1210`
-  // (16 §1.6). Pinned so that a future edit that reflexively gives every
-  // account a role, or parks every role-less one in the core, has to argue
-  // with a test.
+  // subtype, and `2300`/`3900` are role-less in packs full of roles. Pinned so
+  // that a future edit that reflexively gives every account a role, or parks
+  // every role-less one in the core, has to argue with a test.
   it('leaves role-less accounts in more than one pack', () => {
     // Was an exact list of five. Brief 21 §4.2 made role-less the MAJORITY of
     // the chart - thirty of fifty-eight - so listing them all would pin nothing
     // but arithmetic. The five that were arguable when the packs were declared
     // are still pinned by code; the "no new roles" half is the test below.
-    for (const code of ['1000', '3000', '5010', '5030', '6105']) {
+    // `6105 Merchant Fees - Affirm` was in this list until 2026-09-10, when it
+    // left the chart with `1210` and the `clearing_affirm` role. `2300` and
+    // `3900` took its place: both kept their ACCOUNT and lost their role.
+    for (const code of ['1000', '3000', '5010', '5030', '2300', '3900']) {
       expect(byCode.get(code)?.role, code).toBeUndefined()
     }
     const packsWithRoleless = new Set(
@@ -352,7 +356,10 @@ describe('the other packs', () => {
     expect(packsWithRoleless.size).toBeGreaterThan(1)
     expect(packsWithRoleless).toContain('core')
     expect(packsWithRoleless).toContain('inventory')
-    expect(packsWithRoleless).toContain('card_rail')
+    // `card_rail` was here until 2026-09-10: its only role-less account was
+    // `6105`, which left the chart with `1210`. Every account it still carries
+    // bears a role. `prepayments` took its place, via role-less `2300`.
+    expect(packsWithRoleless).toContain('prepayments')
   })
 
   // 🛑 21 §9. `ACCOUNT_ROLES` is a closed vocabulary tied to builders: a role

@@ -30,6 +30,14 @@
 //
 //   - 784 `gl_account` rows, 28 accounts x 28 orgs.
 //   - 0 `FieldValue` rows pointing AT a `gl_account` instance.
+//     ⚠️ That survey, and the guard below, originally looked at
+//     `relatedEntityId` ALONE - the relationship column. Task 15's pointers are
+//     plain TEXT (`bank_account.glAccount`, `payment_gateway.clearingAccount`
+//     and six more), so they live in `valueText` and were invisible to both.
+//     On 2026-09-11 this script wiped a chart that a `payment_gateway` was
+//     pointing at, reported success, and left a REQUIRED field naming an id
+//     that existed nowhere; the next fulfillment post refused. The guard now
+//     asks `findGlAccountPointers`, which checks both columns.
 //   - 0 `RecordIdentity` rows on a `gl_account` instance - no provider's own
 //     account id is lost.
 //   - 0 `GlPosting` / `GlPostingLine` rows.
@@ -49,6 +57,7 @@
 import { database, schema } from '@auxx/database'
 import { and, eq, inArray } from 'drizzle-orm'
 import { getOrgCache } from '../src/cache'
+import { findGlAccountPointers } from '../src/postings/gl-account-pointers'
 
 const RETIRED_ROLE_ATTRIBUTE = 'gl_account_role'
 
@@ -108,6 +117,17 @@ async function resetOrg(organizationId: string): Promise<OrgResult | null> {
       throw new Error(
         `Organization ${organizationId} has ${referencing.length}+ FieldValue row(s) pointing at a gl_account instance; refusing to wipe the chart. It was expected to be unreferenced (verified 2026-08-28). Repoint or clear these values first. Fields: ${referencing
           .map((r) => r.fieldId)
+          .join(', ')}`
+      )
+    }
+
+    // 🛑 The same question asked of the TEXT pointers, which the query above
+    // cannot see. See the header note: this is the half that was missing.
+    const textPointers = await findGlAccountPointers(database, organizationId, accountIds)
+    if (textPointers.length > 0) {
+      throw new Error(
+        `Organization ${organizationId} has ${textPointers.length}+ record(s) holding a gl_account id in a TEXT field; refusing to wipe the chart. These carry no foreign key, so wiping leaves them naming an account that does not exist and the next posting that needs one refuses. Repoint them first: ${textPointers
+          .map((pointer) => `${pointer.attribute} on ${pointer.entityId}`)
           .join(', ')}`
       )
     }

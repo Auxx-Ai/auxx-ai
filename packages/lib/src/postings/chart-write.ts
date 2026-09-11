@@ -69,6 +69,7 @@ import {
   readChartAccountValues,
 } from './chart-accounts'
 import type { GlAccountTypeValue } from './default-chart'
+import { describeGlAccountPointers, findGlAccountPointers } from './gl-account-pointers'
 import type { ChartAccountRow } from './types'
 
 const logger = createScopedLogger('postings:chart-write')
@@ -258,6 +259,7 @@ export async function updateChartAccount(
           'deactivate',
           'Reactivating it later is a click; a refused close is not.'
         )
+        await assertNoPointer(db, organizationId, accountId, account, 'deactivate')
       }
       values.gl_account_is_active = options.isActive
     }
@@ -321,6 +323,9 @@ export async function removeChartAccount(
       'remove',
       'A role pointing at a removed account fails the close closed, naming the role.'
     )
+
+    // ── I4: removing an account a TEXT pointer still names ───────────────────
+    await assertNoPointer(db, organizationId, accountId, account, 'remove')
 
     const handler = crudHandler(db, organizationId, actorUserId)
     await handler.archive(toRecordId(defId, accountId))
@@ -659,6 +664,54 @@ async function liveRolesFor(
  * standard the role map's refusals already set - "Could not save" throws away the
  * only sentence that says what to do.
  */
+/**
+ * Refuse while a `payment_gateway`, bank account, rule or line still NAMES this
+ * account (I4).
+ *
+ * 🛑 **The sibling of {@link assertNoLiveRole}, and it exists because that one
+ * is not enough.** `assertNoLiveRole` reads `GlRoleAssignment`, which is the
+ * only pointer the chart used to have. Since brief 13 §5.3 a `payment_gateway`
+ * carries its own clearing account, and task 15 gave bank accounts, rules,
+ * transactions, stock movements and vendor bill lines the same shape - eight
+ * fields holding a `gl_account` id, none of them a role and none of them a
+ * relationship.
+ *
+ * Removing here is an ARCHIVE, and every reader of the chart excludes archived
+ * rows in the query, so an archived account reads to `loadChartAccountsById` as
+ * *missing*. A gateway left naming one therefore fails at POST time with
+ * "the chart has no active account with id ...", which is a refused close
+ * standing in for a refused click - the trade `assertNoLiveRole`'s own comment
+ * describes, made once more.
+ *
+ * ⚠️ This became reachable for `1210 Affirm Clearing` on 2026-09-10, when
+ * `clearing_affirm` was deleted: the role had been doing double duty, routing
+ * Affirm money AND protecting its account from removal. Moving the routing to a
+ * `payment_gateway` record moved the first and silently dropped the second.
+ * That is the bug this guard closes.
+ */
+async function assertNoPointer(
+  db: Database,
+  organizationId: string,
+  accountId: string,
+  account: ChartAccountRow,
+  verb: 'deactivate' | 'remove'
+): Promise<void> {
+  const pointers = await findGlAccountPointers(db, organizationId, [accountId])
+  const named = describeGlAccountPointers(pointers)
+  if (!named) return
+
+  throw new UnprocessableEntityError(
+    `Cannot ${verb} ${accountLabel(account)}: ${named} still points at it. ` +
+      `Repoint it first - an account that is ${verb === 'remove' ? 'removed' : 'inactive'} reads as missing to ` +
+      'every chart reader, so the next posting that needs it refuses.',
+    {
+      organizationId,
+      accountId,
+      pointers: pointers.map((pointer) => `${pointer.attribute}:${pointer.entityId}`).join(','),
+    }
+  )
+}
+
 async function assertNoLiveRole(
   db: Database,
   organizationId: string,

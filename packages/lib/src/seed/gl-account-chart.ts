@@ -360,33 +360,38 @@ export interface PaymentGatewaySeedResult {
 }
 
 /**
- * Seed the two default `payment_gateway` records the census names, idempotent
- * by handle.
+ * Seed the ONE default `payment_gateway` record, idempotent by handle.
  *
- * ⚠️ **Runs AFTER the chart**, not alongside it - the clearing accounts these
- * defaults point at only exist once the `card_rail` pack is provisioned, and
+ * ⚠️ **Runs AFTER the chart**, not alongside it - the clearing account this
+ * default points at only exists once the `card_rail` pack is provisioned, and
  * `payment_gateway.clearingAccount` is required and validated (`writes.ts`'s
  * `assertClearingAccount`). Call this from wherever the chart is seeded
  * (`ledger.provisionChart`), never before {@link seedChartPacks} has walked
  * `card_rail`, and never from {@link seedChartPacks} itself - the core walk
  * never seeds a gateway (16 §1.5).
  *
- * 🛑 **Does not mint `clearing_authnet`.** Authorize.Net is a rail a merchant
- * ADDS (§5.1); auxx does not know a store ran it until they say so. The two
- * seeded here are the only ones every org's default chart actually names a
- * role for: `shopify_payments` (settlement source `shopify_payments`, fee
- * account = whichever account carries `payment_processing_fees`, `6100` by
- * default) and `affirm` (settlement source `manual` - `18` §2.1 codes its
- * relief by hand, because no payout API sees an Affirm settlement).
+ * 🛑 **Mints `shopify_payments` and nothing else.** A rail auxx seeds is one
+ * every org's default chart already names a role for, and after 2026-09-10
+ * `clearing_card` is the only clearing role there is. So `shopify_payments`
+ * (settlement source `shopify_payments`, fee account = whichever account
+ * carries `payment_processing_fees`, `6100` by default) is the whole list.
+ *
+ * ⚠️ **Affirm is no longer seeded**, and joins Authorize.Net on the same
+ * footing (§5.1): a rail the merchant ADDS, because auxx does not know a store
+ * ran it until they say so. Seeding it meant `1210 Affirm Clearing`, `6105
+ * Merchant Fees - Affirm` and a `clearing_affirm` role in every org's chart,
+ * naming a vendor most of them have never taken a payment through. A store that
+ * does run Affirm creates its clearing account and adds the gateway record
+ * pointing at it - two steps, once, on the settings page, and the fulfillment
+ * debit fork routes to it by id from then on.
  *
  * Idempotent by HANDLE, not by name: a re-provision (or a second org whose
  * chart already exists) skips a default whose handle some record - seeded or
- * hand-added - already claims, rather than creating a second `Affirm` row.
+ * hand-added - already claims, rather than creating a second row.
  *
- * A missing role assignment (`clearing_card` / `clearing_affirm` unmapped)
- * skips that default rather than guessing an account - the same tolerance
- * {@link assignSeededRoles} has for a chart that does not match the packs
- * walked.
+ * A missing `clearing_card` assignment skips the default rather than guessing
+ * an account - the same tolerance {@link assignSeededRoles} has for a chart that
+ * does not match the packs walked.
  */
 export async function seedDefaultPaymentGateways(
   db: Database,
@@ -413,11 +418,7 @@ export async function seedDefaultPaymentGateways(
     .where(
       and(
         eq(schema.GlRoleAssignment.organizationId, organizationId),
-        inArray(schema.GlRoleAssignment.role, [
-          'clearing_card',
-          'clearing_affirm',
-          'payment_processing_fees',
-        ])
+        inArray(schema.GlRoleAssignment.role, ['clearing_card', 'payment_processing_fees'])
       )
     )
   const byRole = new Map(roleRows.map((row) => [row.role, row.glAccountId]))
@@ -445,25 +446,8 @@ export async function seedDefaultPaymentGateways(
     skipped++
   }
 
-  const clearingAffirm = byRole.get('clearing_affirm')
-  if (!existingHandles.has('affirm') && clearingAffirm) {
-    const result = await createPaymentGateway(db, {
-      organizationId,
-      actorUserId: systemUserId,
-      name: 'Affirm',
-      handles: ['affirm'],
-      clearingAccountId: clearingAffirm,
-      settlementSource: 'manual',
-      status: 'active',
-    })
-    if (result.isOk()) created++
-    else skipped++
-  } else {
-    skipped++
-  }
-
   if (created > 0) {
-    logger.info('Seeded default payment gateways', { organizationId, created, skipped })
+    logger.info('Seeded the default payment gateway', { organizationId, created, skipped })
   }
 
   return { created, skipped }

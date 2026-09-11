@@ -35,20 +35,17 @@ export const FULFILLMENT_POSTING_GROUPINGS: readonly FulfillmentPostingGrouping[
  * from the channel. A card order was paid at checkout and the payout entry
  * drains clearing; a terms order owes, and aging names the debtor.
  *
- * 🛑 **`'gateway'`, added by brief 13 §5.3, is not a fourth account.** It is
+ * 🛑 **`'gateway'`, added by brief 13 §5.3, is not a third account.** It is
  * the bucket a shipment falls into when its gateway resolved to a
  * `payment_gateway` record's own clearing account id rather than to one of the
- * three roles below - see {@link FulfillmentDebit}. `byDebitRole` summaries
+ * two roles below - see {@link FulfillmentDebit}. Every non-card rail lands
+ * here since `clearing_affirm` was deleted on 2026-09-10. `byDebitRole` summaries
  * (this file's own `FulfillmentPostingGroup.totals.byDebitRole` and the
  * builder's `BuiltFulfillmentBatchEntry.totals.byDebitRole`) keep working
  * unchanged by counting every id-based debit under this one key; the actual
  * account id rides on `ShipmentAmounts.debitGlAccountId`.
  */
-export type FulfillmentDebitRole =
-  | 'clearing_card'
-  | 'clearing_affirm'
-  | 'accounts_receivable'
-  | 'gateway'
+export type FulfillmentDebitRole = 'clearing_card' | 'accounts_receivable' | 'gateway'
 
 /**
  * What a shipment debits: a declared ROLE, or a `payment_gateway` record's own
