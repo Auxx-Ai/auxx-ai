@@ -23,6 +23,7 @@ import {
   ROLE_ACCOUNT_TYPES,
   type RoleAssignmentRow,
 } from '@auxx/lib/postings/client'
+import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { InputSearch } from '@auxx/ui/components/input-search'
@@ -146,31 +147,31 @@ export function RoleMapEditor({
       {/* ⚠️ Chosen, then the account vanished. Not the same as unmapped, and the
           only state where a `confirmed` role still refuses a close. */}
       {state !== 'unmapped' && state !== 'unused' && !assignment?.account && (
-        <div className='space-y-1 rounded-xl border border-destructive/40 bg-destructive/5 p-3'>
-          <p className='font-medium text-sm'>The account this role names is gone</p>
-          <p className='text-muted-foreground text-xs'>
+        <Alert variant='destructive'>
+          <AlertTitle>The account this role names is gone</AlertTitle>
+          <AlertDescription>
             It has been archived or deleted since the mapping was made, and a role assignment
             deliberately carries no foreign key. Pick another account below - a close refuses on
             this until you do.
-          </p>
-        </div>
+          </AlertDescription>
+        </Alert>
       )}
 
       {state === 'suggested' && (
-        <div className='space-y-1 rounded-xl border border-amber-500/30 bg-amber-500/5 p-3'>
-          <p className='font-medium text-sm'>Why this was suggested</p>
-          <p className='text-muted-foreground text-xs'>
+        <Alert variant='warning'>
+          <AlertTitle>Why this was suggested</AlertTitle>
+          <AlertDescription>
             The account number and the statement type both match what the seeded default chart
             assigns to this role, and no one has repointed it. That is a guess, not a decision.
             Confirm it by picking it below, so a close is not resting on an assumption nobody made.
-          </p>
-        </div>
+          </AlertDescription>
+        </Alert>
       )}
 
       {isDefaultUnused && state !== 'unused' && (
-        <div className='space-y-1 rounded-xl border p-3'>
-          <p className='font-medium text-sm'>Nothing emits this role today</p>
-          <p className='text-muted-foreground text-xs'>
+        <Alert variant='neutral'>
+          <AlertTitle>Nothing emits this role today</AlertTitle>
+          <AlertDescription>
             {role === 'ppv'
               ? 'Purchase price variance is a report, not a posting. Nothing accumulates in 5090 ' +
                 'during the year, so no builder ever emits this role.'
@@ -178,26 +179,25 @@ export function RoleMapEditor({
                 'to finished goods and never to work in process, so no movement can reach it.'}{' '}
             Marking it unused is the expected choice. A map that demanded every role would block
             every preview on two roles nothing can post to.
-          </p>
-        </div>
+          </AlertDescription>
+        </Alert>
       )}
 
       {state === 'unused' ? (
-        <div className='space-y-2 rounded-xl border p-3'>
-          <p className='text-muted-foreground text-sm'>
-            This role is excused. Previews will not ask for it.
-          </p>
+        <Alert variant='neutral'>
+          <AlertDescription>This role is excused. Previews will not ask for it.</AlertDescription>
           {canControl && (
             <Button
               variant='outline'
               size='sm'
               loading={pending}
+              className='mt-2 justify-self-start'
               onClick={() => onToggleUnused(role)}>
               <RotateCcw />
               Mark used again
             </Button>
           )}
-        </div>
+        </Alert>
       ) : !canControl ? (
         <div className='rounded-xl border p-3'>
           <p className='text-muted-foreground text-xs'>Posts to</p>

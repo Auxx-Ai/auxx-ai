@@ -9,6 +9,7 @@ import {
   type ChartPackKey,
   type RoleAssignmentState,
 } from '@auxx/lib/postings/client'
+import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Checkbox } from '@auxx/ui/components/checkbox'
@@ -223,10 +224,10 @@ export function WizardAccountsPage() {
       {roleMap.isPending || chart.isPending ? (
         <EmptySection loading />
       ) : roleMap.isError ? (
-        <div className='rounded-xl border border-destructive/40 bg-destructive/5 p-3'>
-          <p className='font-medium text-sm'>Could not read the account map</p>
-          <p className='text-muted-foreground text-xs'>{roleMap.error.message}</p>
-        </div>
+        <Alert variant='destructive'>
+          <AlertTitle>Could not read the account map</AlertTitle>
+          <AlertDescription>{roleMap.error.message}</AlertDescription>
+        </Alert>
       ) : (
         <>
           <div className='flex flex-wrap items-center gap-2'>

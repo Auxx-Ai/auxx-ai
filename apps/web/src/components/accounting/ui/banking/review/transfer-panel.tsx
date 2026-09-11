@@ -5,6 +5,7 @@
 import { FieldType } from '@auxx/database/enums'
 import type { BankTransactionRow } from '@auxx/lib/banking/review/client'
 import type { PostResultStatus } from '@auxx/lib/postings/client'
+import { Alert } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
 import { TriangleAlert } from 'lucide-react'
 import { useState } from 'react'
@@ -106,12 +107,10 @@ export function TransferPanel({ line, onDone }: TransferPanelProps) {
       </FieldPanel>
 
       {warnings.map((warning) => (
-        <div
-          key={warning}
-          className='flex items-start gap-2 rounded-lg border border-border bg-muted/40 p-3 text-sm'>
-          <TriangleAlert className='mt-0.5 size-4 shrink-0 text-muted-foreground' />
+        <Alert key={warning} variant='neutral'>
+          <TriangleAlert />
           <span>{warning}</span>
-        </div>
+        </Alert>
       ))}
 
       <EntryBlockers blockers={blockers} />

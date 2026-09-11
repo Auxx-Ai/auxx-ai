@@ -4,6 +4,7 @@
 
 import type { PostingDetailLine, ResolvedPostingLine } from '@auxx/lib/postings/client'
 import { toRecordId } from '@auxx/lib/resources/client'
+import { Alert } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
 import {
   Table,
@@ -142,20 +143,14 @@ export function EntryJournal({ lines, currencyCode, onDrillDown }: EntryJournalP
         </TableFooter>
       </Table>
 
-      <div
-        className={cn(
-          'flex items-center gap-2 rounded-lg border px-3 py-2 text-sm',
-          balanced
-            ? 'border-green-500/40 text-green-700 dark:text-green-400'
-            : 'border-destructive/50 text-destructive'
-        )}>
-        {balanced ? <CheckCircle2 className='size-4' /> : <TriangleAlert className='size-4' />}
+      <Alert variant={balanced ? 'success' : 'destructive'}>
+        {balanced ? <CheckCircle2 /> : <TriangleAlert />}
         <span>
           {balanced
             ? 'Balanced. Debits equal credits.'
             : `Out of balance by ${formatMinor(difference, currencyCode)}.`}
         </span>
-      </div>
+      </Alert>
     </div>
   )
 }

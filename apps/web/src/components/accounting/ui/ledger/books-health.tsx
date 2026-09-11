@@ -7,6 +7,7 @@ import type {
   DuplicateMovementFinding,
   FailedExport,
 } from '@auxx/lib/postings/client'
+import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { toastError } from '@auxx/ui/components/toast'
@@ -164,24 +165,14 @@ export function FailedExportsBanner({ exports: owed }: FailedExportsBannerProps)
   const pending = owed.filter((row) => row.exportStatus === 'pending')
 
   return (
-    <div
-      className={cn(
-        'flex flex-col gap-3 rounded-xl border p-4',
-        failed.length > 0 ? 'border-amber-500/40 bg-amber-500/5' : 'border-border bg-muted/40'
-      )}>
-      <div className='flex items-center gap-2'>
-        {failed.length > 0 ? (
-          <CircleAlert className='size-4 text-amber-600' />
-        ) : (
-          <Loader className='size-4 text-muted-foreground' />
-        )}
-        <span className='font-medium'>
-          {owed.length} {owed.length === 1 ? 'entry is' : 'entries are'} in your books but not in
-          the accounting system
-        </span>
-      </div>
+    <Alert variant={failed.length > 0 ? 'warning' : 'neutral'}>
+      {failed.length > 0 ? <CircleAlert /> : <Loader />}
+      <AlertTitle className='flex-wrap'>
+        {owed.length} {owed.length === 1 ? 'entry is' : 'entries are'} in your books but not in the
+        accounting system
+      </AlertTitle>
 
-      <div className='flex flex-col gap-2'>
+      <div className='mt-2 flex flex-col gap-2'>
         {[...failed, ...pending].map((row) => (
           <div
             key={row.glPostingId}
@@ -220,7 +211,7 @@ export function FailedExportsBanner({ exports: owed }: FailedExportsBannerProps)
           </div>
         ))}
       </div>
-    </div>
+    </Alert>
   )
 }
 
@@ -269,28 +260,22 @@ export function DuplicateMovementsCard({
       {findings.map((finding) => {
         const key = `${finding.glAccountId}-${finding.amountMinor}-${finding.direction}-${finding.entries[0]?.glPostingId ?? ''}`
         return (
-          <div
-            key={key}
-            className='flex flex-col gap-3 rounded-xl border border-amber-500/40 bg-amber-500/5 p-4'>
-            <div className='flex items-start gap-2'>
-              <TriangleAlert className='mt-0.5 size-4 shrink-0 text-amber-600' />
-              <div className='flex min-w-0 flex-col gap-1'>
-                <span className='flex flex-wrap items-baseline gap-1 font-medium'>
-                  Possible duplicate
-                  <span className='text-muted-foreground'>-</span>
-                  <AccountLabel
-                    account={{ code: finding.accountCode, name: finding.accountName }}
-                    density='compact'
-                  />
-                </span>
-                <p className='text-sm text-muted-foreground'>
-                  {finding.entries.length} entries move this account by{' '}
-                  {formatMinor(finding.amountMinor, currencyCode)} from different sources.
-                </p>
-              </div>
-            </div>
+          <Alert key={key} variant='warning'>
+            <TriangleAlert />
+            <AlertTitle className='flex-wrap items-baseline'>
+              Possible duplicate
+              <span className='opacity-70'>-</span>
+              <AccountLabel
+                account={{ code: finding.accountCode, name: finding.accountName }}
+                density='compact'
+              />
+            </AlertTitle>
+            <AlertDescription>
+              {finding.entries.length} entries move this account by{' '}
+              {formatMinor(finding.amountMinor, currencyCode)} from different sources.
+            </AlertDescription>
 
-            <div className='flex flex-col gap-1.5'>
+            <div className='mt-2 flex flex-col gap-1.5'>
               {finding.entries.map((entry) => (
                 <button
                   key={entry.glPostingId}
@@ -308,10 +293,10 @@ export function DuplicateMovementsCard({
               ))}
             </div>
 
-            <p className='text-xs text-muted-foreground'>
+            <AlertDescription className='text-xs'>
               Nothing was changed. Reverse one, or delete it in QuickBooks.
-            </p>
-          </div>
+            </AlertDescription>
+          </Alert>
         )
       })}
 

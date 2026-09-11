@@ -3,8 +3,8 @@
 'use client'
 
 import type { PostResult, PostResultStatus } from '@auxx/lib/postings/client'
+import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
-import { cn } from '@auxx/ui/lib/utils'
 import { CheckCircle2, CircleSlash, ExternalLink, PlugZap, TriangleAlert } from 'lucide-react'
 import type { ComponentType } from 'react'
 
@@ -195,16 +195,16 @@ const OUTCOMES: Record<PostResultStatus, OutcomeCopy> = {
   },
 }
 
-const TONE_CLASS: Record<OutcomeCopy['tone'], string> = {
-  success: 'border-green-500/40 bg-green-500/5',
-  neutral: 'border-border bg-muted/40',
-  failure: 'border-destructive/40 bg-destructive/5',
-}
-
-const TONE_ICON_CLASS: Record<OutcomeCopy['tone'], string> = {
-  success: 'text-green-600 dark:text-green-400',
-  neutral: 'text-muted-foreground',
-  failure: 'text-destructive',
+/**
+ * The tones map onto shared `Alert` variants rather than a local set of border
+ * and text classes, so a posted entry reads as the same kind of object as every
+ * other callout in the app. The variant carries the border, the wash and the
+ * icon color; nothing here restates them.
+ */
+const TONE_VARIANT: Record<OutcomeCopy['tone'], 'success' | 'neutral' | 'destructive'> = {
+  success: 'success',
+  neutral: 'neutral',
+  failure: 'destructive',
 }
 
 interface PostResultCalloutProps {
@@ -251,35 +251,29 @@ export function PostResultCallout({
     : null
 
   return (
-    <div
-      className={cn(
-        'flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-start',
-        TONE_CLASS[copy.tone]
-      )}>
-      <Icon className={cn('mt-0.5 size-5 shrink-0', TONE_ICON_CLASS[copy.tone])} />
-      <div className='flex min-w-0 flex-1 flex-col gap-1'>
-        <div className='flex flex-wrap items-center gap-2'>
-          <span className='font-medium'>{copy.title}</span>
-          {result.docNumber && (
-            <span className='font-mono text-xs text-muted-foreground'>{result.docNumber}</span>
-          )}
-        </div>
-        <p className='text-sm text-muted-foreground'>{copy.detail}</p>
-        {result.error && <p className='text-sm'>{result.error}</p>}
-        {result.retryable && (
-          <p className='text-xs text-muted-foreground'>
-            This was a transport failure, so it is worth trying again.
-          </p>
+    <Alert variant={TONE_VARIANT[copy.tone]}>
+      <Icon />
+      <AlertTitle className='flex-wrap'>
+        {copy.title}
+        {result.docNumber && (
+          <span className='font-mono text-xs opacity-70'>{result.docNumber}</span>
         )}
-      </div>
+      </AlertTitle>
+      <AlertDescription>{copy.detail}</AlertDescription>
+      {result.error && <p className='text-sm'>{result.error}</p>}
+      {result.retryable && (
+        <AlertDescription className='text-xs'>
+          This was a transport failure, so it is worth trying again.
+        </AlertDescription>
+      )}
       {entryUrl && (
-        <Button asChild variant='outline' size='sm' className='shrink-0'>
+        <Button asChild variant='outline' size='sm' className='mt-2 justify-self-start'>
           <a href={entryUrl} target='_blank' rel='noreferrer'>
             <ExternalLink />
             Open in {providerLabel}
           </a>
         </Button>
       )}
-    </div>
+    </Alert>
   )
 }

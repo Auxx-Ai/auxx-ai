@@ -3,7 +3,7 @@
 'use client'
 
 import { describeProviderSyncCoverage } from '@auxx/lib/postings/client'
-import { cn } from '@auxx/ui/lib/utils'
+import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { CloudOff, RefreshCw, TriangleAlert } from 'lucide-react'
 import { api } from '~/trpc/react'
 
@@ -72,16 +72,10 @@ export function ProviderSyncMarker({ through }: ProviderSyncMarkerProps) {
   const Icon = reading.coverage === 'never_synced' ? CloudOff : TriangleAlert
 
   return (
-    <div
-      className={cn(
-        'flex flex-col gap-1 rounded-xl border border-amber-500/40 bg-amber-500/5 p-4',
-        'text-amber-700 dark:text-amber-400'
-      )}>
-      <div className='flex items-center gap-2'>
-        <Icon className='size-4' />
-        <span className='text-sm font-medium'>{reading.headline}</span>
-      </div>
-      {reading.detail && <p className='pl-6 text-sm text-muted-foreground'>{reading.detail}</p>}
-    </div>
+    <Alert variant='warning'>
+      <Icon />
+      <AlertTitle>{reading.headline}</AlertTitle>
+      {reading.detail && <AlertDescription>{reading.detail}</AlertDescription>}
+    </Alert>
   )
 }

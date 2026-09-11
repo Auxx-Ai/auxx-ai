@@ -48,6 +48,7 @@
 // the refusal.
 
 import { isMappableTo } from '@auxx/lib/postings/client'
+import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Combobox } from '@auxx/ui/components/combobox'
@@ -128,10 +129,10 @@ export function AccountMapList({ compact = false }: AccountMapListProps) {
 
   if (accountMap.isError) {
     return (
-      <div className='rounded-xl border border-destructive/40 bg-destructive/5 p-3'>
-        <p className='font-medium text-sm'>Could not read the account map</p>
-        <p className='text-muted-foreground text-xs'>{accountMap.error.message}</p>
-      </div>
+      <Alert variant='destructive'>
+        <AlertTitle>Could not read the account map</AlertTitle>
+        <AlertDescription>{accountMap.error.message}</AlertDescription>
+      </Alert>
     )
   }
 
@@ -184,22 +185,18 @@ export function AccountMapList({ compact = false }: AccountMapListProps) {
       </div>
 
       {broken.length > 0 && (
-        <div className='flex items-start gap-2 rounded-xl border border-destructive/40 bg-destructive/5 p-3'>
-          <TriangleAlert className='mt-0.5 size-4 shrink-0 text-destructive' />
-          <div className='min-w-0'>
-            <p className='font-medium text-sm'>
-              {broken.length} mapping{broken.length === 1 ? '' : 's'} no longer valid
-            </p>
-            <p className='text-muted-foreground text-xs'>
-              {broken.join(', ')}{' '}
-              {broken.length === 1
-                ? 'points at an account that has'
-                : 'point at accounts that have'}{' '}
-              been removed, deactivated or moved to a different section. Every close refuses until{' '}
-              {broken.length === 1 ? 'it is' : 'they are'} re-mapped.
-            </p>
-          </div>
-        </div>
+        <Alert variant='destructive'>
+          <TriangleAlert />
+          <AlertTitle>
+            {broken.length} mapping{broken.length === 1 ? '' : 's'} no longer valid
+          </AlertTitle>
+          <AlertDescription>
+            {broken.join(', ')}{' '}
+            {broken.length === 1 ? 'points at an account that has' : 'point at accounts that have'}{' '}
+            been removed, deactivated or moved to a different section. Every close refuses until{' '}
+            {broken.length === 1 ? 'it is' : 'they are'} re-mapped.
+          </AlertDescription>
+        </Alert>
       )}
 
       {visible.length === 0 ? (

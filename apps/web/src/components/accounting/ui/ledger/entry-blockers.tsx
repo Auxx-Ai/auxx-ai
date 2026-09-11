@@ -3,8 +3,8 @@
 'use client'
 
 import type { PostResultStatus } from '@auxx/lib/postings/client'
+import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
-import { cn } from '@auxx/ui/lib/utils'
 import {
   Ban,
   CircleSlash,
@@ -261,14 +261,9 @@ const FALLBACK: BlockerRemedy = {
 }
 
 /** Neutral reads like the rest of the page; only a fault gets the destructive box. */
-const TONE_CLASS: Record<BlockerRemedy['tone'], string> = {
-  neutral: 'border-border bg-muted/40',
-  failure: 'border-destructive/40 bg-destructive/5',
-}
-
-const TONE_ICON_CLASS: Record<BlockerRemedy['tone'], string> = {
-  neutral: 'text-muted-foreground',
-  failure: 'text-destructive',
+const TONE_VARIANT: Record<BlockerRemedy['tone'], 'neutral' | 'destructive'> = {
+  neutral: 'neutral',
+  failure: 'destructive',
 }
 
 interface EntryBlockersProps {
@@ -310,47 +305,52 @@ export function EntryBlockers({
       {blockers.map((blocker) => {
         const remedy = REMEDIES[blocker.status] ?? FALLBACK
         const Icon = remedy.icon
+        const hasAction =
+          (!!remedy.href && !!remedy.actionLabel) ||
+          (remedy.action === 'unlock' && !!onReviewLock) ||
+          (blocker.status === 'period_closed' && !!onPostToNextPeriod) ||
+          (remedy.action === 'next-period' && !!onNextPeriod)
         return (
-          <div
-            key={`${blocker.status}-${blocker.error}`}
-            className={cn(
-              'flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-start',
-              TONE_CLASS[remedy.tone]
-            )}>
-            <Icon className={cn('mt-0.5 size-5 shrink-0', TONE_ICON_CLASS[remedy.tone])} />
-            <div className='flex min-w-0 flex-1 flex-col gap-1.5'>
-              <div className='flex flex-wrap items-center gap-2'>
-                <span className='font-medium'>{remedy.title}</span>
-                <span className='font-mono text-xs text-muted-foreground'>{blocker.status}</span>
+          <Alert key={`${blocker.status}-${blocker.error}`} variant={TONE_VARIANT[remedy.tone]}>
+            <Icon />
+            <AlertTitle className='flex-wrap'>
+              {remedy.title}
+              <span className='font-mono text-xs opacity-70'>{blocker.status}</span>
+            </AlertTitle>
+            {/* The server's own text, verbatim: on `account_unmapped` it names
+                every offending role, and on an uncosted movement it names the
+                row. Paraphrasing it here would throw away the only part that
+                identifies what to go and fix. */}
+            <p className='text-sm'>{blocker.error}</p>
+            <AlertDescription className='text-xs'>{remedy.guidance}</AlertDescription>
+            {/* One row, not one grid row each: `period_closed` offers BOTH
+                "review the lock" and "post to the next open period", and as
+                separate Alert children they would stack down the card. */}
+            {hasAction && (
+              <div className='mt-2 flex flex-wrap gap-2'>
+                {remedy.href && remedy.actionLabel && (
+                  <Button asChild variant='outline' size='sm'>
+                    <Link href={remedy.href}>{remedy.actionLabel}</Link>
+                  </Button>
+                )}
+                {remedy.action === 'unlock' && onReviewLock && (
+                  <Button variant='outline' size='sm' onClick={onReviewLock}>
+                    {remedy.actionLabel}
+                  </Button>
+                )}
+                {blocker.status === 'period_closed' && onPostToNextPeriod && (
+                  <Button variant='outline' size='sm' onClick={onPostToNextPeriod}>
+                    Post to the next open period
+                  </Button>
+                )}
+                {remedy.action === 'next-period' && onNextPeriod && (
+                  <Button variant='outline' size='sm' onClick={onNextPeriod}>
+                    {remedy.actionLabel}
+                  </Button>
+                )}
               </div>
-              {/* The server's own text, verbatim: on `account_unmapped` it names
-                  every offending role, and on an uncosted movement it names the
-                  row. Paraphrasing it here would throw away the only part that
-                  identifies what to go and fix. */}
-              <p className='text-sm'>{blocker.error}</p>
-              <p className='text-xs text-muted-foreground'>{remedy.guidance}</p>
-            </div>
-            {remedy.href && remedy.actionLabel && (
-              <Button asChild variant='outline' size='sm' className='shrink-0'>
-                <Link href={remedy.href}>{remedy.actionLabel}</Link>
-              </Button>
             )}
-            {remedy.action === 'unlock' && onReviewLock && (
-              <Button variant='outline' size='sm' className='shrink-0' onClick={onReviewLock}>
-                {remedy.actionLabel}
-              </Button>
-            )}
-            {blocker.status === 'period_closed' && onPostToNextPeriod && (
-              <Button variant='outline' size='sm' className='shrink-0' onClick={onPostToNextPeriod}>
-                Post to the next open period
-              </Button>
-            )}
-            {remedy.action === 'next-period' && onNextPeriod && (
-              <Button variant='outline' size='sm' className='shrink-0' onClick={onNextPeriod}>
-                {remedy.actionLabel}
-              </Button>
-            )}
-          </div>
+          </Alert>
         )
       })}
     </div>

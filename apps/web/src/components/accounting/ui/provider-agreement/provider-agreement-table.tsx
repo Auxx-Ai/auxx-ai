@@ -18,6 +18,7 @@
 // (§5 to §7), not a statement learning to read a provider.
 
 import type { ProviderAgreement, ProviderAgreementStatus } from '@auxx/lib/postings/client'
+import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import type { BadgeProps } from '@auxx/ui/components/badge'
 import { Badge } from '@auxx/ui/components/badge'
 import { EmptySection } from '@auxx/ui/components/section'
@@ -179,27 +180,21 @@ export function ProviderAgreementTable({
         somebody hunting through the table below for which three.
       */}
       {onlyTheirs.length > 0 && (
-        <div className='flex flex-col gap-2 rounded-xl border border-amber-500/40 bg-amber-500/5 p-4'>
-          <div className='flex items-start gap-2'>
-            <TriangleAlert className='mt-0.5 size-4 shrink-0 text-amber-600' />
-            <div className='flex min-w-0 flex-col gap-1'>
-              <span className='font-medium'>
-                {onlyTheirs.length === 1
-                  ? 'One account carries a balance only in QuickBooks'
-                  : `${onlyTheirs.length} accounts carry a balance only in QuickBooks`}
-              </span>
-              <p className='text-muted-foreground text-sm'>
-                {onlyTheirs
-                  .map((row) => rowLabel(row.accountName, row.providerAccountId))
-                  .join(', ')}
-                . No account in this chart is mapped to {onlyTheirs.length === 1 ? 'it' : 'them'},
-                so whatever put the balance there was authored in {providerLabel} and this ledger
-                has never seen it. Either the account is simply unmapped, or the work behind it has
-                no counterpart here. Nothing was changed.
-              </p>
-            </div>
-          </div>
-        </div>
+        <Alert variant='warning'>
+          <TriangleAlert />
+          <AlertTitle className='flex-wrap'>
+            {onlyTheirs.length === 1
+              ? 'One account carries a balance only in QuickBooks'
+              : `${onlyTheirs.length} accounts carry a balance only in QuickBooks`}
+          </AlertTitle>
+          <AlertDescription>
+            {onlyTheirs.map((row) => rowLabel(row.accountName, row.providerAccountId)).join(', ')}.
+            No account in this chart is mapped to {onlyTheirs.length === 1 ? 'it' : 'them'}, so
+            whatever put the balance there was authored in {providerLabel} and this ledger has never
+            seen it. Either the account is simply unmapped, or the work behind it has no counterpart
+            here. Nothing was changed.
+          </AlertDescription>
+        </Alert>
       )}
 
       {providerCurrency !== currency && (

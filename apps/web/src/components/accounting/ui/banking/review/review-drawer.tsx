@@ -8,6 +8,7 @@ import {
   REVIEW_STATUS_LABELS,
 } from '@auxx/lib/banking/review/client'
 import { isRecordId } from '@auxx/lib/resources/client'
+import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'
@@ -222,27 +223,25 @@ export function ReviewDrawer({
                     transaction, so nothing may be coded or matched against it -
                     and if it already posted, that posting has to come out. */}
                   {line.bankStatus === 'void' && (
-                    <div className='flex items-start gap-3 rounded-xl border border-destructive/40 bg-destructive/5 p-4'>
-                      <Ban className='mt-0.5 size-5 shrink-0 text-destructive' />
-                      <div className='flex min-w-0 flex-1 flex-col gap-1'>
-                        <span className='font-medium'>The bank voided this line</span>
-                        <p className='text-muted-foreground text-xs'>
-                          No money moved, so it cannot be coded or matched. The row is kept as the
-                          record that the bank showed it and withdrew it.
-                        </p>
-                      </div>
+                    <Alert variant='destructive'>
+                      <Ban />
+                      <AlertTitle>The bank voided this line</AlertTitle>
+                      <AlertDescription className='text-xs'>
+                        No money moved, so it cannot be coded or matched. The row is kept as the
+                        record that the bank showed it and withdrew it.
+                      </AlertDescription>
                       {line.glPostingId && (
                         <Button
                           variant='outline'
                           size='sm'
-                          className='shrink-0'
+                          className='mt-2 justify-self-start'
                           loading={undo.isPending}
                           onClick={() => undo.mutate({ id: line.id })}>
                           <Undo2 />
                           Reverse posting
                         </Button>
                       )}
-                    </div>
+                    </Alert>
                   )}
 
                   {settled ? (

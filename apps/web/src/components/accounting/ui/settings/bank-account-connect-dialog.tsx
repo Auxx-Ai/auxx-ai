@@ -21,6 +21,7 @@
 // browser POSTs the result back itself.
 
 import type { BankConnectionStart } from '@auxx/lib/banking/client'
+import { Alert } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
 import {
   Dialog,
@@ -178,20 +179,20 @@ export function BankAccountConnectDialog({
           {phase === 'saving' && <p className='text-muted-foreground'>Setting up the feed…</p>}
 
           {phase === 'empty' && (
-            <div className='flex items-start gap-2 rounded-lg border border-border bg-muted/40 p-3'>
-              <Building2 className='mt-0.5 size-4 shrink-0 text-muted-foreground' />
+            <Alert variant='neutral'>
+              <Building2 />
               <span>
                 No accounts were linked. Nothing was changed. Try again, or add the account by hand
                 and import statements into it.
               </span>
-            </div>
+            </Alert>
           )}
 
           {phase === 'error' && message && (
-            <div className='flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/5 p-3'>
-              <TriangleAlert className='mt-0.5 size-4 shrink-0 text-destructive' />
+            <Alert variant='destructive'>
+              <TriangleAlert />
               <span>{message}</span>
-            </div>
+            </Alert>
           )}
         </div>
 

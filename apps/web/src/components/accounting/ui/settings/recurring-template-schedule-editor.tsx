@@ -12,6 +12,7 @@
 // off, and the drawer defers its create to the first edit.
 
 import { describeRecurrence, type RecurrencePattern } from '@auxx/lib/recurrence/client'
+import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { EmptySection, Section } from '@auxx/ui/components/section'
@@ -173,26 +174,24 @@ export function RecurringTemplateScheduleEditor({
           entry still OWED, not one skipped. The sweep is holding its cursor on
           that occurrence, so nothing is lost while they decide. */}
       {held && (
-        <div className='mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50/60 p-3 text-sm dark:border-amber-900 dark:bg-amber-950/30'>
-          <TriangleAlert className='mt-0.5 size-4 shrink-0 text-amber-600' />
-          <div className='flex flex-col gap-1'>
-            <span className='font-medium'>
-              Waiting on {formatPeriodLabel(held.month)}, which is closed
-            </span>
-            <span className='text-muted-foreground text-xs'>
-              The entry for {held.occurrenceDate} and everything after it is still owed. Reopen the
-              period in Accounting settings and the next sweep generates them; nothing is lost in
-              the meantime.
-            </span>
-          </div>
-        </div>
+        <Alert variant='warning' className='mt-3'>
+          <TriangleAlert />
+          <AlertTitle>Waiting on {formatPeriodLabel(held.month)}, which is closed</AlertTitle>
+          <AlertDescription>
+            The entry for {held.occurrenceDate} and everything after it is still owed. Reopen the
+            period in Accounting settings and the next sweep generates them; nothing is lost in the
+            meantime.
+          </AlertDescription>
+        </Alert>
       )}
 
       {!held && due > 0 && (
-        <div className='mt-3 rounded-lg border bg-muted/40 p-3 text-muted-foreground text-sm'>
-          {due} {due === 1 ? 'entry is' : 'entries are'} due and will be generated on the next
-          nightly sweep.
-        </div>
+        <Alert variant='neutral' className='mt-3'>
+          <AlertDescription>
+            {due} {due === 1 ? 'entry is' : 'entries are'} due and will be generated on the next
+            nightly sweep.
+          </AlertDescription>
+        </Alert>
       )}
     </div>
   )
