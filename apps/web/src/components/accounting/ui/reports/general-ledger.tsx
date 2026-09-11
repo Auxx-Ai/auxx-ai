@@ -3,6 +3,7 @@
 'use client'
 
 import { GENERAL_LEDGER_COLUMNS, toCsvRows } from '@auxx/lib/postings/client'
+import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Skeleton } from '@auxx/ui/components/skeleton'
@@ -243,22 +244,20 @@ function buildTxnDateIndex(
  */
 function TruncatedBanner({ maxLines }: { maxLines?: number }) {
   return (
-    <div className='flex items-start gap-3 rounded-xl border border-destructive/40 bg-destructive/5 p-4'>
-      <TriangleAlert className='mt-0.5 size-5 shrink-0 text-destructive' />
-      <div className='flex flex-col gap-1'>
-        <span className='font-medium'>{TRUNCATED_HEADLINE}</span>
-        <p className='text-sm'>
-          This range is bigger than one read can return
-          {maxLines ? `, so it stopped at ${maxLines.toLocaleString('en-US')} lines` : ''}. The
-          accounts and figures below are only part of the ledger, and they will not tie to the trial
-          balance for the same range.{' '}
-          <span className='font-medium'>Narrow the range - a month at a time always fits.</span>
-        </p>
-        <p className='text-muted-foreground text-sm'>
-          The CSV and the PDF are still available and carry this same warning as their first row,
-          but neither one is a ledger you can file against until the range fits.
-        </p>
-      </div>
-    </div>
+    <Alert variant='destructive'>
+      <TriangleAlert />
+      <AlertTitle>{TRUNCATED_HEADLINE}</AlertTitle>
+      <p className='text-sm'>
+        This range is bigger than one read can return
+        {maxLines ? `, so it stopped at ${maxLines.toLocaleString('en-US')} lines` : ''}. The
+        accounts and figures below are only part of the ledger, and they will not tie to the trial
+        balance for the same range.{' '}
+        <span className='font-medium'>Narrow the range - a month at a time always fits.</span>
+      </p>
+      <AlertDescription>
+        The CSV and the PDF are still available and carry this same warning as their first row, but
+        neither one is a ledger you can file against until the range fits.
+      </AlertDescription>
+    </Alert>
   )
 }

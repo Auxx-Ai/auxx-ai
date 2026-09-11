@@ -3,6 +3,7 @@
 'use client'
 
 import { type AccountRole, NON_FAILURE_REFUSALS } from '@auxx/lib/postings/client'
+import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
 import { MainPageContent } from '@auxx/ui/components/main-page'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
@@ -409,17 +410,15 @@ export function LedgerPage({ periodKey }: LedgerPageProps) {
                   cutoff is still ahead of the wall clock, or one whose period
                   read failed, could not raise an entry at all. */}
               {!activePeriodKey && (
-                <div className='flex items-start gap-3 rounded-xl border bg-muted/40 p-4'>
-                  <CalendarCheck2 className='mt-0.5 size-5 shrink-0 text-muted-foreground' />
-                  <div className='flex flex-col gap-1'>
-                    <span className='font-medium'>No month is open for closing yet</span>
-                    <p className='text-sm text-muted-foreground'>
-                      The first closable month is the one after the accounting cutoff. Nothing on or
-                      before the cutoff belongs to this system. A journal entry can still be raised
-                      below; it posts into whichever month its own date falls in.
-                    </p>
-                  </div>
-                </div>
+                <Alert variant='neutral'>
+                  <CalendarCheck2 />
+                  <AlertTitle>No month is open for closing yet</AlertTitle>
+                  <AlertDescription>
+                    The first closable month is the one after the accounting cutoff. Nothing on or
+                    before the cutoff belongs to this system. A journal entry can still be raised
+                    below; it posts into whichever month its own date falls in.
+                  </AlertDescription>
+                </Alert>
               )}
 
               {(failedExportsQuery.data?.length ?? 0) > 0 && (
@@ -427,16 +426,14 @@ export function LedgerPage({ periodKey }: LedgerPageProps) {
               )}
 
               {!!activePeriodKey && !period.hasOpenPeriod && (
-                <div className='flex items-start gap-3 rounded-xl border bg-muted/40 p-4'>
-                  <CalendarCheck2 className='mt-0.5 size-5 shrink-0 text-muted-foreground' />
-                  <div className='flex flex-col gap-1'>
-                    <span className='font-medium'>Nothing to close</span>
-                    <p className='text-sm text-muted-foreground'>
-                      Every month from the cutoff forward has been posted. {periodLabel} is the most
-                      recent, and it is shown below.
-                    </p>
-                  </div>
-                </div>
+                <Alert variant='neutral'>
+                  <CalendarCheck2 />
+                  <AlertTitle>Nothing to close</AlertTitle>
+                  <AlertDescription>
+                    Every month from the cutoff forward has been posted. {periodLabel} is the most
+                    recent, and it is shown below.
+                  </AlertDescription>
+                </Alert>
               )}
 
               {!!activePeriodKey && (

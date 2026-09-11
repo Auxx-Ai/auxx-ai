@@ -2,6 +2,7 @@
 
 'use client'
 
+import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { TriangleAlert } from 'lucide-react'
 
 /**
@@ -13,12 +14,10 @@ import { TriangleAlert } from 'lucide-react'
  */
 export function ReportErrorCard({ message }: { message: string }) {
   return (
-    <div className='flex items-start gap-3 rounded-xl border border-destructive/40 bg-destructive/5 p-4'>
-      <TriangleAlert className='mt-0.5 size-5 shrink-0 text-destructive' />
-      <div className='flex flex-col gap-1'>
-        <span className='font-medium'>This report could not be built</span>
-        <p className='text-sm'>{message}</p>
-      </div>
-    </div>
+    <Alert variant='destructive'>
+      <TriangleAlert />
+      <AlertTitle>This report could not be built</AlertTitle>
+      <AlertDescription>{message}</AlertDescription>
+    </Alert>
   )
 }

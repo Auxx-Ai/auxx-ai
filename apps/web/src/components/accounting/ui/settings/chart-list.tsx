@@ -30,6 +30,7 @@
 // `map.isError`, and with no provider connected at all.
 
 import type { AccountRole, ChartAccountRow, GlAccountTypeValue } from '@auxx/lib/postings/client'
+import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { ButtonSwitch } from '@auxx/ui/components/button-switch'
@@ -310,22 +311,20 @@ export function ChartList({
           close to refuse on exactly these - so it leads the tab rather than
           waiting to be found by selecting the right row. */}
       {map.broken.length > 0 && (
-        <div className='flex items-start gap-2 rounded-xl border border-destructive/40 bg-destructive/5 p-3'>
-          <TriangleAlert className='mt-0.5 size-4 shrink-0 text-destructive' />
-          <div className='min-w-0'>
-            <p className='font-medium text-sm'>
-              {map.broken.length} link{map.broken.length === 1 ? '' : 's'} no longer valid
-            </p>
-            <p className='text-muted-foreground text-xs'>
-              {map.broken.join(', ')}{' '}
-              {map.broken.length === 1
-                ? 'points at an account that has'
-                : 'point at accounts that have'}{' '}
-              been removed, deactivated or moved to a different section. Every close refuses until{' '}
-              {map.broken.length === 1 ? 'it is' : 'they are'} re-linked.
-            </p>
-          </div>
-        </div>
+        <Alert variant='destructive'>
+          <TriangleAlert />
+          <AlertTitle>
+            {map.broken.length} link{map.broken.length === 1 ? '' : 's'} no longer valid
+          </AlertTitle>
+          <AlertDescription>
+            {map.broken.join(', ')}{' '}
+            {map.broken.length === 1
+              ? 'points at an account that has'
+              : 'point at accounts that have'}{' '}
+            been removed, deactivated or moved to a different section. Every close refuses until{' '}
+            {map.broken.length === 1 ? 'it is' : 'they are'} re-linked.
+          </AlertDescription>
+        </Alert>
       )}
 
       {isLoading ? (

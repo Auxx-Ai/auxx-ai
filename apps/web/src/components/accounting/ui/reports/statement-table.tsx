@@ -3,6 +3,7 @@
 'use client'
 
 import type { RecordId } from '@auxx/types/resource'
+import { Alert } from '@auxx/ui/components/alert'
 import { CurrencyInput, CurrencyInputField } from '@auxx/ui/components/input-currency'
 import { InputGroup } from '@auxx/ui/components/input-group'
 import { InputSearch } from '@auxx/ui/components/input-search'
@@ -277,19 +278,13 @@ export function StatementTable({
       )}
 
       {verdict && !query && (
-        <div
-          className={cn(
-            'flex items-center gap-2 rounded-lg border px-3 py-2 text-sm',
-            verdict.ok
-              ? 'border-green-500/40 text-green-700 dark:text-green-400'
-              : 'border-destructive/50 text-destructive'
-          )}>
-          {verdict.ok ? <CheckCircle2 className='size-4' /> : <TriangleAlert className='size-4' />}
+        <Alert variant={verdict.ok ? 'success' : 'destructive'}>
+          {verdict.ok ? <CheckCircle2 /> : <TriangleAlert />}
           <span>
             {verdict.label}
             {verdict.detail ? ` ${verdict.detail}` : ''}
           </span>
-        </div>
+        </Alert>
       )}
     </div>
   )

@@ -14,6 +14,7 @@
 // that says what to do next.
 
 import type { BankImportBatch, ReverseImportRefusal } from '@auxx/lib/banking'
+import { Alert, AlertTitle } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Section } from '@auxx/ui/components/section'
@@ -88,10 +89,10 @@ export function BankImportBatches({ bankAccountId, currencyCode }: BankImportBat
       <ConfirmDialog />
 
       {refusals.length > 0 && (
-        <div className='mb-3 rounded-lg border border-amber-300 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950/40'>
-          <p className='font-medium text-sm'>
+        <Alert variant='warning' className='mb-3'>
+          <AlertTitle>
             {refusals.length} line{refusals.length === 1 ? ' was' : 's were'} kept
-          </p>
+          </AlertTitle>
           <ul className='mt-2 flex flex-col gap-1'>
             {refusals.map((refusal) => (
               <li key={refusal.id} className='text-muted-foreground text-xs'>
@@ -106,7 +107,7 @@ export function BankImportBatches({ bankAccountId, currencyCode }: BankImportBat
               </li>
             ))}
           </ul>
-        </div>
+        </Alert>
       )}
 
       {!batches.isPending && rows.length === 0 ? (

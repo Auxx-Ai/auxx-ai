@@ -3,6 +3,7 @@
 'use client'
 
 import type { PostingDetail } from '@auxx/lib/postings/client'
+import { Alert, AlertDescription } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { cn } from '@auxx/ui/lib/utils'
@@ -71,15 +72,13 @@ export function RevisionStrip({
   if (!entries || entries.length < 2) return null
 
   return (
-    <div className='flex flex-col gap-2 rounded-xl border bg-muted/30 p-3'>
-      <div className='flex items-center gap-2 text-xs text-muted-foreground'>
-        <History className='size-3.5' />
-        <span>
-          This month was posted more than once. The effective entry is the newest revision; the
-          earlier ones are kept and reversed, never edited.
-        </span>
-      </div>
-      <div className='flex flex-wrap gap-1.5'>
+    <Alert variant='neutral'>
+      <History />
+      <AlertDescription className='text-xs'>
+        This month was posted more than once. The effective entry is the newest revision; the
+        earlier ones are kept and reversed, never edited.
+      </AlertDescription>
+      <div className='mt-2 flex flex-wrap gap-1.5'>
         {entries.map((entry) => (
           <Button
             key={entry.glPostingId}
@@ -104,6 +103,6 @@ export function RevisionStrip({
           </Button>
         ))}
       </div>
-    </div>
+    </Alert>
   )
 }

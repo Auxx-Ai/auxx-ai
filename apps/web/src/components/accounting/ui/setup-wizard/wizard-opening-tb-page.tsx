@@ -8,6 +8,7 @@ import {
   readSettingMinorUnits,
   summariseOpeningTrialBalance,
 } from '@auxx/lib/postings/client'
+import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { AlertTriangle } from 'lucide-react'
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from 'react'
@@ -311,14 +312,9 @@ function VerdictStrip({
 }) {
   const verdict = openingVerdict(debitMinor, creditMinor, rowCount, currency)
   return (
-    <div
-      className={
-        verdict.ok
-          ? 'flex flex-col gap-0.5 rounded-lg border border-green-500/40 bg-background px-3 py-2 text-green-700 text-sm dark:text-green-400'
-          : 'flex flex-col gap-0.5 rounded-lg border border-destructive/50 bg-background px-3 py-2 text-destructive text-sm'
-      }>
-      <span className='font-medium'>{verdict.label}</span>
-      {verdict.detail && <span className='text-muted-foreground text-xs'>{verdict.detail}</span>}
-    </div>
+    <Alert variant={verdict.ok ? 'success' : 'destructive'} className='bg-background'>
+      <AlertTitle>{verdict.label}</AlertTitle>
+      {verdict.detail && <AlertDescription className='text-xs'>{verdict.detail}</AlertDescription>}
+    </Alert>
   )
 }

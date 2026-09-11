@@ -2,6 +2,7 @@
 
 'use client'
 
+import { Alert, AlertTitle } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
 import { Info } from 'lucide-react'
 import Link from 'next/link'
@@ -34,12 +35,10 @@ export function CompletenessBanner({ asOf }: CompletenessBannerProps) {
   if (items.length === 0) return null
 
   return (
-    <div className='flex flex-col gap-3 rounded-xl border border-border bg-muted/40 p-4'>
-      <div className='flex items-center gap-2'>
-        <Info className='size-4 text-muted-foreground' />
-        <span className='text-sm font-medium'>Not included in this report</span>
-      </div>
-      <ul className='flex flex-col gap-1.5'>
+    <Alert variant='neutral'>
+      <Info />
+      <AlertTitle>Not included in this report</AlertTitle>
+      <ul className='mt-2 flex flex-col gap-1.5'>
         {items.map((item) => (
           <li key={item.id} className='flex flex-wrap items-center justify-between gap-3 text-sm'>
             <span className='text-muted-foreground'>{item.label}</span>
@@ -49,6 +48,6 @@ export function CompletenessBanner({ asOf }: CompletenessBannerProps) {
           </li>
         ))}
       </ul>
-    </div>
+    </Alert>
   )
 }

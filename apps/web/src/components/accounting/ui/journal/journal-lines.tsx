@@ -4,6 +4,7 @@
 
 import type { ChartAccountRow, CounterpartyType, JournalEntryLine } from '@auxx/lib/postings/client'
 import { parseRecordId, toRecordId } from '@auxx/lib/resources/client'
+import { Alert } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
 import {
   DropdownMenu,
@@ -783,24 +784,14 @@ export function JournalLinesTotals({
           </span>
         </span>
       </div>
-      <div
-        className={cn(
-          'flex items-center gap-2 rounded-lg border px-3 py-2 text-sm',
-          totals.balanced
-            ? 'border-green-500/40 text-green-700 dark:text-green-400'
-            : 'border-destructive/50 text-destructive'
-        )}>
-        {totals.balanced ? (
-          <CheckCircle2 className='size-4' />
-        ) : (
-          <TriangleAlert className='size-4' />
-        )}
+      <Alert variant={totals.balanced ? 'success' : 'destructive'}>
+        {totals.balanced ? <CheckCircle2 /> : <TriangleAlert />}
         <span>
           {totals.balanced
             ? 'Balanced. Debits equal credits.'
             : `Out of balance by ${formatMinor(totals.differenceMinor, currencyCode)}.`}
         </span>
-      </div>
+      </Alert>
     </div>
   )
 }

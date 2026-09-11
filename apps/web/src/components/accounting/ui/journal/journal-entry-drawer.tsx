@@ -3,6 +3,7 @@
 'use client'
 
 import { FieldType } from '@auxx/database/enums'
+import { Alert, AlertDescription } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { DockableDrawer } from '@auxx/ui/components/dockable-drawer'
@@ -251,20 +252,21 @@ export function JournalEntryDrawer({
           <ScrollArea className='min-h-0 flex-1' scrollbarClassName='w-1.5'>
             <div className='flex flex-col gap-3 p-3'>
               {!isEditable && (
-                <div className='flex items-center justify-between gap-3 rounded-lg border bg-muted/40 p-3 text-sm'>
-                  <span className='text-muted-foreground'>
+                <Alert variant='neutral'>
+                  <AlertDescription>
                     This entry is {draft.status} and can no longer be edited here.
-                  </span>
+                  </AlertDescription>
                   {draft.glPostingId && (
                     <Button
                       variant='outline'
                       size='sm'
+                      className='mt-2 justify-self-start'
                       onClick={() => draft.glPostingId && onOpenPosting(draft.glPostingId)}>
                       <ExternalLink />
                       View posting
                     </Button>
                   )}
-                </div>
+                </Alert>
               )}
 
               <FieldPanel

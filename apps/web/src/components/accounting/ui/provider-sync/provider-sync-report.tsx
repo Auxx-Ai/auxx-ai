@@ -26,6 +26,7 @@
 // here names a transaction on the accountant's side; a toast would take that
 // away three seconds later.
 
+import { Alert, AlertTitle } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { cn } from '@auxx/ui/lib/utils'
 import { CircleAlert, Coins, Lock, Scale, TriangleAlert } from 'lucide-react'
@@ -94,6 +95,12 @@ export function readSyncedThrough(
   return outcome.syncedThrough < outcome.to ? 'short' : 'complete'
 }
 
+const TONE_VARIANT: Record<'neutral' | 'warn' | 'alarm', 'neutral' | 'warning' | 'destructive'> = {
+  neutral: 'neutral',
+  warn: 'warning',
+  alarm: 'destructive',
+}
+
 /** A bordered block in the section's own vocabulary. `alarm` is only for a fault. */
 function ReportCard({
   tone,
@@ -107,19 +114,13 @@ function ReportCard({
   children: ReactNode
 }) {
   return (
-    <div
-      className={cn(
-        'flex flex-col gap-2 rounded-xl border p-4',
-        tone === 'neutral' && 'border-border bg-muted/40',
-        tone === 'warn' && 'border-amber-500/40 bg-amber-500/5 text-amber-700 dark:text-amber-400',
-        tone === 'alarm' && 'border-destructive/40 bg-destructive/5'
-      )}>
-      <div className='flex items-center gap-2'>
-        <span className={cn('shrink-0', tone === 'alarm' && 'text-destructive')}>{icon}</span>
-        <span className='font-medium text-sm'>{title}</span>
-      </div>
+    <Alert variant={TONE_VARIANT[tone]}>
+      {/* A direct child, not nested in the title: the gutter column is opened by
+          `has-[>svg]`, which only sees the Alert's own children. */}
+      {icon}
+      <AlertTitle>{title}</AlertTitle>
       {children}
-    </div>
+    </Alert>
   )
 }
 
