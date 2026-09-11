@@ -941,13 +941,14 @@ function PriceCellView(props: {
  * round-trip" comparison can still drift on a five-place value across a double's
  * floating-point rounding.
  */
-function CurrencyCellInput({
+export function CurrencyCellInput({
   value,
   readOnly,
   currencyCode,
   decimals,
   onCommit,
   ariaLabel,
+  live = false,
 }: {
   value: number | null
   readOnly: boolean
@@ -956,6 +957,16 @@ function CurrencyCellInput({
   decimals?: number
   onCommit: (next: number | null) => void
   ariaLabel?: string
+  /**
+   * Also commit on every keystroke that parses cleanly, not only on blur.
+   * Off by default: every existing caller's `onCommit` is a `record.update`
+   * mutation, and committing per keystroke would flood the network with one
+   * write per character. Turn it on only where `onCommit` is cheap local
+   * state with no network write of its own - e.g. a running total elsewhere
+   * on the page that a person expects to move as they type, not only once
+   * they tab away.
+   */
+  live?: boolean
 }) {
   const [draft, setDraft] = useState<string | null>(null)
   // Set only by onChange, cleared on focus/commit - whether the draft was
@@ -964,13 +975,7 @@ function CurrencyCellInput({
 
   const display = formatCurrency(value ?? null, currencyCode, decimals)
 
-  const commit = () => {
-    if (draft === null) return
-    const wasEdited = dirtyRef.current
-    const raw = draft
-    setDraft(null)
-    dirtyRef.current = false
-    if (!wasEdited) return
+  const commitRaw = (raw: string) => {
     const trimmed = raw.trim()
     if (trimmed === '') {
       if (value === null || value === undefined) return
@@ -981,6 +986,16 @@ function CurrencyCellInput({
     if (next === null) return
     if (next === (value ?? null)) return
     onCommit(next)
+  }
+
+  const commit = () => {
+    if (draft === null) return
+    const wasEdited = dirtyRef.current
+    const raw = draft
+    setDraft(null)
+    dirtyRef.current = false
+    if (!wasEdited) return
+    commitRaw(raw)
   }
 
   if (readOnly) {
@@ -994,6 +1009,7 @@ function CurrencyCellInput({
       onChange={(e) => {
         setDraft(e.target.value)
         dirtyRef.current = true
+        if (live) commitRaw(e.target.value)
       }}
       onFocus={() => {
         // Full stored precision, never the display-rounded string - otherwise a

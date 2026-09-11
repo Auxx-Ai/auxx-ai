@@ -22,6 +22,13 @@ import { defaultCustomPattern } from '~/components/global/recurrence/recurrence-
 import { formatPeriodLabel } from '../ledger/format'
 import type { RecurringTemplateRow } from './recurring-templates-list'
 
+/**
+ * Cancels the pane's `p-3` so `Section` sits FLUSH with it. `Section` draws
+ * its own `p-3` and a full-width `border-b`, a divider meant to run edge to
+ * edge (see `bank-account-editor.tsx`'s own copy of this).
+ */
+const SECTION_BLEED = '-mx-3'
+
 interface RecurringTemplateScheduleEditorProps {
   row: RecurringTemplateRow | null
   weekStartIndex: 0 | 1 | 6
@@ -73,11 +80,13 @@ export function RecurringTemplateScheduleEditor({
 
   if (!row || !pattern) {
     return (
-      <EmptySection
-        icon={<CalendarClock className='size-5' />}
-        title='Pick a template'
-        description='Its schedule, and what it currently owes, show here.'
-      />
+      <div className='p-3'>
+        <EmptySection
+          icon={<CalendarClock className='size-5' />}
+          title='Pick a template'
+          description='Its schedule, and what it currently owes, show here.'
+        />
+      </div>
     )
   }
 
@@ -86,11 +95,12 @@ export function RecurringTemplateScheduleEditor({
   const dirty = JSON.stringify(pattern) !== JSON.stringify(row.rule?.pattern ?? null)
 
   return (
-    <div className='flex flex-col gap-3 p-3'>
+    <div className='flex flex-col p-3'>
       <Section
         title='This template'
         icon={<CalendarClock className='size-4' />}
-        collapsible={false}>
+        collapsible={false}
+        className={SECTION_BLEED}>
         <div className='flex flex-col gap-2 text-sm'>
           <div className='flex flex-wrap items-center gap-2'>
             <span className='font-medium'>
@@ -118,7 +128,11 @@ export function RecurringTemplateScheduleEditor({
         </div>
       </Section>
 
-      <Section title='Repeats' icon={<Repeat className='size-4' />} collapsible={false}>
+      <Section
+        title='Repeats'
+        icon={<Repeat className='size-4' />}
+        collapsible={false}
+        className={SECTION_BLEED}>
         <div className='flex flex-col gap-3'>
           <RecurrencePatternFields
             value={pattern}
@@ -159,7 +173,7 @@ export function RecurringTemplateScheduleEditor({
           entry still OWED, not one skipped. The sweep is holding its cursor on
           that occurrence, so nothing is lost while they decide. */}
       {held && (
-        <div className='flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50/60 p-3 text-sm dark:border-amber-900 dark:bg-amber-950/30'>
+        <div className='mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50/60 p-3 text-sm dark:border-amber-900 dark:bg-amber-950/30'>
           <TriangleAlert className='mt-0.5 size-4 shrink-0 text-amber-600' />
           <div className='flex flex-col gap-1'>
             <span className='font-medium'>
@@ -175,7 +189,7 @@ export function RecurringTemplateScheduleEditor({
       )}
 
       {!held && due > 0 && (
-        <div className='rounded-lg border bg-muted/40 p-3 text-muted-foreground text-sm'>
+        <div className='mt-3 rounded-lg border bg-muted/40 p-3 text-muted-foreground text-sm'>
           {due} {due === 1 ? 'entry is' : 'entries are'} due and will be generated on the next
           nightly sweep.
         </div>

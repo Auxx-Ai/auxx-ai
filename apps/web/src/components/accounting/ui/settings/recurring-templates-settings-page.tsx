@@ -19,14 +19,18 @@ import type { RecurrencePattern } from '@auxx/lib/recurrence/client'
 import { toastError } from '@auxx/ui/components/toast'
 import { Lock } from 'lucide-react'
 import { useQueryState } from 'nuqs'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo } from 'react'
+import { useRegisterDockedPanels } from '~/components/global/docked-panels-outlet'
 import { EmptyState } from '~/components/global/empty-state'
 import { MasterDetailSplit } from '~/components/global/master-detail-split'
 import SettingsPage from '~/components/global/settings-page'
 import { useConfirm } from '~/hooks/use-confirm'
+import { useDockedPanels } from '~/hooks/use-docked-panels'
+import { useEffectiveDockState } from '~/hooks/use-effective-dock-state'
 import { useSettings } from '~/hooks/use-settings'
 import { useRequireCapability } from '~/providers/capabilities-provider'
 import { useFeatureFlags } from '~/providers/feature-flag-provider'
+import { useDockStore } from '~/stores/dock-store'
 import { api } from '~/trpc/react'
 import { JournalEntryDrawer } from '../journal/journal-entry-drawer'
 import { RecurringTemplateScheduleEditor } from './recurring-template-schedule-editor'
@@ -57,7 +61,11 @@ export function RecurringTemplatesSettingsPage() {
   // are sent to, and a pane that vanishes on refresh cannot be linked to.
   const [editParam, setEdit] = useQueryState('edit')
   const [confirm, ConfirmDialog] = useConfirm()
-  const [drawerWidth, setDrawerWidth] = useState(560)
+  // Shared with the ledger page's own `JournalEntryDrawer` so a resize on one
+  // screen carries to the other.
+  const isDocked = useEffectiveDockState()
+  const dockedWidth = useDockStore((state) => state.dockedWidth)
+  const setDockedWidth = useDockStore((state) => state.setDockedWidth)
 
   const templates = api.ledger.recurringTemplate.list.useQuery()
   const rows = useMemo(() => (templates.data ?? []) as RecurringTemplateRow[], [templates.data])
@@ -120,6 +128,60 @@ export function RecurringTemplatesSettingsPage() {
     clearSchedule.mutate({ templateId: selected.template.id })
   }, [selected, confirm, clearSchedule])
 
+  // The SAME drawer the ledger page uses, in template mode: it hides Preview
+  // and Post, because `postJournalEntry` refuses a stencil by name. The
+  // schedule is not in it - a rule needs a saved record to hang off and the
+  // drawer defers its create to the first edit, so the repeat editor lives in
+  // the pane behind this.
+  const drawer = useMemo(
+    () => (
+      <JournalEntryDrawer
+        journalEntryId={editParam && editParam !== 'new' ? editParam : null}
+        isNew={editParam === 'new'}
+        open={!!editParam}
+        onOpenChange={(open) => {
+          if (!open) void setEdit(null)
+        }}
+        isDocked={isDocked}
+        width={dockedWidth}
+        onWidthChange={setDockedWidth}
+        currencyCode='USD'
+        defaultDate={new Date().toISOString().slice(0, 10)}
+        kind='recurring_template'
+        onCreated={(id) => {
+          void setEdit(id)
+          void setSelectedId(id)
+          void invalidate()
+        }}
+        onPosted={() => {}}
+        onOpenPosting={() => {}}
+        onDiscarded={() => {
+          void setEdit(null)
+          void setSelectedId(null)
+          void invalidate()
+        }}
+      />
+    ),
+    [editParam, isDocked, dockedWidth, setDockedWidth, setEdit, setSelectedId, invalidate]
+  )
+
+  // The Accounting settings LAYOUT owns the one `MainPageContent`, so the
+  // docked panel is published to its outlet rather than passed as a prop
+  // (`docked-panels-outlet.tsx`) - same recipe `review-queue-page.tsx` uses.
+  const panels = useMemo(
+    () => [
+      {
+        key: 'recurring-je',
+        open: !!editParam,
+        content: drawer,
+        width: { value: dockedWidth, set: setDockedWidth, min: 420, max: 800 },
+      },
+    ],
+    [editParam, drawer, dockedWidth, setDockedWidth]
+  )
+  const { dockedPanels, overlays } = useDockedPanels(panels)
+  useRegisterDockedPanels(dockedPanels)
+
   if (!hasAccess(FeatureKey.accounting)) {
     return (
       <SettingsPage
@@ -168,37 +230,7 @@ export function RecurringTemplatesSettingsPage() {
         />
       </MasterDetailSplit>
 
-      {/* The SAME drawer the ledger page uses, in template mode: it hides
-          Preview and Post, because `postJournalEntry` refuses a stencil by
-          name. The schedule is not in it - a rule needs a saved record to hang
-          off and the drawer defers its create to the first edit, so the
-          repeat editor lives in the pane behind this. */}
-      <JournalEntryDrawer
-        journalEntryId={editParam && editParam !== 'new' ? editParam : null}
-        isNew={editParam === 'new'}
-        open={!!editParam}
-        onOpenChange={(open) => {
-          if (!open) void setEdit(null)
-        }}
-        isDocked={false}
-        width={drawerWidth}
-        onWidthChange={setDrawerWidth}
-        currencyCode='USD'
-        defaultDate={new Date().toISOString().slice(0, 10)}
-        kind='recurring_template'
-        onCreated={(id) => {
-          void setEdit(id)
-          void setSelectedId(id)
-          void invalidate()
-        }}
-        onPosted={() => {}}
-        onOpenPosting={() => {}}
-        onDiscarded={() => {
-          void setEdit(null)
-          void setSelectedId(null)
-          void invalidate()
-        }}
-      />
+      {overlays}
 
       <ConfirmDialog />
     </SettingsPage>

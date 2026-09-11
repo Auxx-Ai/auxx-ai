@@ -12,6 +12,10 @@ import {
   SlidersHorizontal,
 } from 'lucide-react'
 import { usePathname } from 'next/navigation'
+import {
+  DockedPanelsOutletProvider,
+  useDockedPanelsOutlet,
+} from '~/components/global/docked-panels-outlet'
 import SidebarSecondary from '~/components/global/sidebar-secondary'
 import type { SidebarProps } from '~/constants/menu'
 
@@ -77,13 +81,21 @@ const ACCOUNTING_SETTINGS: SidebarProps[] = [
   },
 ]
 
-export default function AccountingSettingsLayout({ children }: { children: React.ReactNode }) {
+/**
+ * The layout owns the one `MainPageContent`, so a page below it (Recurring
+ * templates' journal-entry drawer) docks a panel by publishing it to the
+ * outlet rather than by passing a prop it cannot reach — same reason
+ * `accounting/banking/layout.tsx` does this. The other five settings pages
+ * publish nothing, so they keep getting an empty `dockedPanels` array.
+ */
+function AccountingSettingsLayoutFrame({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const pages = pathname.split('/')
   const page = pages[pages.length - 1]
+  const dockedPanels = useDockedPanelsOutlet()
 
   return (
-    <MainPageContent>
+    <MainPageContent dockedPanels={dockedPanels}>
       {/* `md:` must match SidebarSecondary's own breakpoint — at `sm:` the sidebar is
           still in mobile-disclosure mode with no fixed width and collapses to a sliver. */}
       <div className='flex flex-col md:flex-row h-full flex-1 overflow-hidden'>
@@ -96,5 +108,13 @@ export default function AccountingSettingsLayout({ children }: { children: React
         <div className='relative flex h-full w-full flex-1 grow overflow-hidden'>{children}</div>
       </div>
     </MainPageContent>
+  )
+}
+
+export default function AccountingSettingsLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <DockedPanelsOutletProvider>
+      <AccountingSettingsLayoutFrame>{children}</AccountingSettingsLayoutFrame>
+    </DockedPanelsOutletProvider>
   )
 }
