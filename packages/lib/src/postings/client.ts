@@ -211,6 +211,7 @@ export {
   type ListJournalEntriesFilters,
   type PostingSummary,
 } from './journal-entries/client'
+export { didLedgerAccept, isExpectedPostOutcome } from './ledger-accepted'
 // ── plans/accounting/tasks/19: opening balances from the provider, pure half ──
 // PURE. No database, no io - see opening-fill-plan.ts's own header.
 export {

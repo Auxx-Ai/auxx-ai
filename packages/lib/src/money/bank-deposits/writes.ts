@@ -48,6 +48,7 @@ import { BadRequestError, ConflictError, UnprocessableEntityError } from '../../
 import { isAccountingEnabled } from '../../postings/accounting-enabled'
 import { ACCOUNT_ROLES, buildEntry } from '../../postings/build-entry'
 import { loadChartAccountsById } from '../../postings/chart-accounts'
+import { isExpectedPostOutcome } from '../../postings/ledger-accepted'
 import { resolvePeriodLock } from '../../postings/period-lock'
 import { LEDGER_CURRENCY, postEntry } from '../../postings/post-entry'
 import type { PostResult } from '../../postings/types'
@@ -75,36 +76,6 @@ import type {
 } from './types'
 
 const logger = createScopedLogger('bank-deposits')
-
-/**
- * The `postEntry` statuses that mean the ledger accepted the deposit.
- *
- * `not_connected` and `disabled` are in the set on purpose: an org with no
- * accounting system connected is a first-class case, not a degraded one
- * (decision P1). The entry is built, balanced and persisted the same way; it is
- * simply never pushed.
- *
- * 🛑 Since the export split, a REFUSED PUSH also lands in this set: `postEntry`
- * returns `posted` with `exportStatus: 'failed'`, because the entry is in the
- * books. That is deliberate and it is the whole fix. This used to be the one
- * path in the codebase that undid a good document because a third party
- * declined a copy of it - the deposit was archived and its payments released
- * while its ledger row sat `failed` and holding the period claim. What reaches
- * `rollbackDeposit` now is only a PRE-CLAIM refusal, which wrote no row at all.
- * See plans/accounting/export-state-split.md.
- */
-const ACCEPTED_POST_STATUSES = new Set([
-  'posted',
-  'already_posted',
-  'healed',
-  'not_connected',
-  'disabled',
-  // The org has never turned accounting on (task 17 §3). The deposit itself is
-  // real - grouping payments and banking them happens whether or not the org
-  // ever enables the ledger - so this is a success like `not_connected`, not a
-  // refusal to roll back.
-  'not_enabled',
-])
 
 /** `YYYY-MM-DD`, and nothing else. A posting's date is a contract, not a hint. */
 function assertIsoDate(value: string, label: string): void {
@@ -368,7 +339,7 @@ export async function createBankDeposit(
         })
       }
 
-      if (!ACCEPTED_POST_STATUSES.has(post.status)) {
+      if (!isExpectedPostOutcome(post)) {
         await rollbackDeposit(db, organizationId, actorUserId, deposit)
         logger.warn('Bank deposit rolled back - the LEDGER refused the entry', {
           organizationId,

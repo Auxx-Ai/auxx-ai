@@ -37,6 +37,7 @@ import {
   INVOICE_ISSUED_POSTING_TYPE,
   INVOICE_SOURCE_TYPE,
 } from '../../postings/build-invoice-entry'
+import { didLedgerAccept, isExpectedPostOutcome } from '../../postings/ledger-accepted'
 import { listPostingsForSource } from '../../postings/list-postings'
 import { resolvePeriodLock } from '../../postings/period-lock'
 import { periodKeyForDate } from '../../postings/periods'
@@ -47,45 +48,6 @@ import type { PostResult } from '../../postings/types'
 import { getOrganizationSetting } from '../../settings/settings-service'
 
 const logger = createScopedLogger('money-invoice-ledger')
-
-/**
- * The statuses that mean the LEDGER took the entry.
- *
- * 🛑 Since the export split this is the only question a caller here may ask. A
- * refused push returns `posted` with `exportStatus: 'failed'`, so it lands in
- * this set on purpose: the entry is in the books and the document that produced
- * it must stand. Adding an `exportStatus` check to any of these call sites
- * reintroduces the defect - see plans/accounting/export-state-split.md.
- *
- * `not_connected` and `disabled` are in for the older reason: an org with no
- * accounting system is a first-class case, not a degraded one (decision P1).
- *
- * `not_enabled` is in for the newest reason: an org that has never turned the
- * accounting module on is a first-class case too (task 17 section 3).
- */
-const ACCEPTED_POST_STATUSES = new Set<string>([
-  'posted',
-  'already_posted',
-  'healed',
-  'not_connected',
-  'disabled',
-  'not_enabled',
-])
-
-/**
- * The statuses that mean a reversal landed, or had nothing to do.
- *
- * The same set `reversePaymentPostings` uses, and for the same reason: a
- * provider that is not connected or is switched off still leaves OUR ledger
- * correct, which is the half a void has to protect.
- */
-const ACCEPTED_REVERSAL_STATUSES = new Set<string>([
-  'posted',
-  'already_posted',
-  'healed',
-  'not_connected',
-  'disabled',
-])
 
 const INVOICE_ATTRIBUTES = [
   'invoice_number',
@@ -257,7 +219,7 @@ export async function postInvoiceIssuance(
       memo: `Invoice ${invoice.number} issued`,
     })
 
-    if (!ACCEPTED_POST_STATUSES.has(post.status)) {
+    if (!isExpectedPostOutcome(post)) {
       // 🛑 Recorded, never swallowed. A refusal AFTER the claim writes a
       // `pending`/`failed` `GlPosting` row, which `listFailedExports` reads,
       // so it surfaces on the close console on its own. A refusal BEFORE the
@@ -385,7 +347,7 @@ export async function reverseInvoiceIssuance(
       lock,
       memo: memo ?? `Reversal of ${posting.docNumber} - invoice voided`,
     })
-    if (!ACCEPTED_REVERSAL_STATUSES.has(result.status)) {
+    if (!didLedgerAccept(result)) {
       logger.warn('An invoice issuance entry could not be reversed', {
         organizationId,
         invoiceId,

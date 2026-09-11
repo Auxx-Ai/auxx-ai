@@ -30,6 +30,7 @@ import {
   MANUAL_ENTRY_SOURCE_TYPE,
   type ManualPostingType,
 } from '../build-manual-entry'
+import { didLedgerAccept } from '../ledger-accepted'
 import { resolvePeriodLock } from '../period-lock'
 import { postEntry, previewEntry } from '../post-entry'
 import { readPostingLineSourceIds } from '../read-posting'
@@ -406,18 +407,14 @@ export async function reverseJournalEntry(
       // Only a reversal that reached the ledger changes what this record says.
       // `already_posted` counts: it means the reversal was already there, which
       // is a converged re-run and not a failure.
-      const landed =
-        result.status === 'posted' ||
-        result.status === 'already_posted' ||
-        result.status === 'healed' ||
-        result.status === 'not_connected' ||
-        result.status === 'disabled' ||
-        // A reversal inherits the original's posting type (`reverse-entry.ts`),
-        // so reversing the opening entry - a `journal_entry` record of kind
-        // `opening_balance`, posted, with a `glPostingId`, and nothing here
-        // refuses it - produces a `'none'`-routed reversal. Without this the
-        // ledger would hold the reversal while the record still read `posted`.
-        result.status === 'not_exported'
+      //
+      // ⚠️ A reversal inherits the original's posting type (`reverse-entry.ts`),
+      // so reversing the opening entry - a `journal_entry` record of kind
+      // `opening_balance` - produces a `'none'`-routed reversal that lands on
+      // `not_exported`. The hand-written list this replaced had to be taught
+      // that by hand, and was, one release late; `didLedgerAccept` is exhaustive
+      // over the union, so the next `'none'` route cannot slip past it.
+      const landed = didLedgerAccept(result)
 
       if (landed) {
         const crud = new UnifiedCrudHandler(organizationId, userId, db)

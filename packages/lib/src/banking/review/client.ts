@@ -14,6 +14,7 @@
  * poster.
  */
 
+import type { PostResultStatus } from '../../postings/types'
 import { daysBetween } from '../client'
 
 /** What a human has decided about a line. Mirrors `BANK_TRANSACTION_REVIEW_STATUS_OPTIONS`. */
@@ -562,8 +563,21 @@ function closestFirst<T extends { id: string; postedAt: string | null }>(
 /** What a treatment write answers with. */
 export interface ReviewOutcome {
   transaction: BankTransactionRow
-  /** The ledger's answer, or null for the treatments that post nothing (B5). */
-  post: { status: string; error?: string; docNumber?: string; glPostingId?: string } | null
+  /**
+   * The ledger's answer, or null for the treatments that post nothing (B5).
+   *
+   * ⚠️ `status` is the real union, not `string`. It was `string`, and that is
+   * half of why "did the ledger take it?" could be got wrong in silence: a
+   * caller comparing it against a literal that is not a member of the union
+   * typechecks fine and is false forever. Narrowing it here is what makes
+   * `didLedgerAccept` usable on this shape at all.
+   */
+  post: {
+    status: PostResultStatus
+    error?: string
+    docNumber?: string
+    glPostingId?: string
+  } | null
   /** Anything worth saying that is not a refusal - the unmatched transfer leg. */
   warnings: string[]
 }

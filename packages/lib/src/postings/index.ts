@@ -246,6 +246,7 @@ export {
   type UpdateJournalEntryInput,
   updateJournalEntry,
 } from './journal-entries'
+export { didLedgerAccept, isExpectedPostOutcome } from './ledger-accepted'
 export { listPostings, listPostingsForSource } from './list-postings'
 export {
   FINALIZED_SETUP_STATE,

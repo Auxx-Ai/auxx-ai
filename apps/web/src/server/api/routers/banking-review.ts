@@ -32,6 +32,7 @@ import {
   undoReview,
 } from '@auxx/lib/banking/review'
 import { PermissionKey } from '@auxx/lib/permissions'
+import { didLedgerAccept, type PostResultStatus } from '@auxx/lib/postings/client'
 import { z } from 'zod'
 import { createTRPCRouter, permissionProcedure } from '~/server/api/trpc'
 
@@ -353,12 +354,15 @@ function toBulkOutcome(
   result: {
     isErr: () => boolean
     error?: Error
-    value?: { post: { status: string; error?: string } | null }
+    value?: { post: { status: PostResultStatus; error?: string } | null }
   }
 ): BulkOutcome {
   if (result.isErr()) return { id, ok: false, message: result.error?.message }
   const post = result.value?.post
-  if (post && post.status !== 'posted' && post.status !== 'already_posted') {
+  // ⚠️ Was `posted || already_posted`, which reported a bulk FAILURE for an org
+  // with no provider connected - the entry was built and persisted, and the row
+  // said it had not been. `didLedgerAccept` is the one answer to that question.
+  if (post && !didLedgerAccept(post)) {
     return { id, ok: false, status: post.status, message: post.error }
   }
   return { id, ok: true, status: post?.status }

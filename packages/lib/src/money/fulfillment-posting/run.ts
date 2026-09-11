@@ -51,6 +51,7 @@ import type { Result } from 'neverthrow'
 import { getOrgCache } from '../../cache'
 import { isAccountingEnabled } from '../../postings/accounting-enabled'
 import { buildFulfillmentBatchEntry } from '../../postings/build-fulfillment-batch-entry'
+import { isExpectedPostOutcome } from '../../postings/ledger-accepted'
 import { resolvePeriodLock } from '../../postings/period-lock'
 import { postEntry } from '../../postings/post-entry'
 import {
@@ -70,28 +71,6 @@ import type {
 } from './types'
 
 const logger = createScopedLogger('money-fulfillment-posting')
-
-/**
- * The `postEntry` statuses that mean the LEDGER took the entry.
- *
- * The same set `money/orders/fulfill.ts` uses, minus `already_posted`: see the
- * file header. `not_connected` and `disabled` stay in, because an org with no
- * accounting provider connected is a first-class case (decision P1) - the entry
- * is built, balanced and persisted identically and simply never pushed, so its
- * shipments are posted and must be stamped.
- *
- * `not_enabled` is in for completeness (task 17 section 3): in practice this
- * run never reaches {@link executeGroup} for an org that has never turned
- * accounting on - {@link runFulfillmentPosting} checks it once, before the
- * plan is even read.
- */
-const POSTED_STATUSES = new Set<string>([
-  'posted',
-  'healed',
-  'not_connected',
-  'disabled',
-  'not_enabled',
-])
 
 /** One progress line per this many groups, so a long run is observable. */
 const PROGRESS_EVERY = 10
@@ -364,7 +343,10 @@ async function executeGroup(
     memo: request.memo ?? `Fulfillments shipped ${group.groupKey}`,
   })
 
-  if (post.status === 'already_posted' || !POSTED_STATUSES.has(post.status)) {
+  // 🛑 `already_posted` is excluded DELIBERATELY and is the one place this
+  // differs from a plain acceptance check: the claim was made by some other
+  // run, so this run must not stamp shipments onto numbers it did not compute.
+  if (post.status === 'already_posted' || !isExpectedPostOutcome(post)) {
     summary.skipped.push({
       groupKey: group.groupKey,
       status: post.status,

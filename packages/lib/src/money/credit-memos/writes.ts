@@ -26,6 +26,7 @@ import {
   CREDIT_MEMO_SOURCE_TYPE,
   type CreditMemoSettlement as CreditMemoSettlementLeg,
 } from '../../postings/build-credit-memo-entry'
+import { isExpectedPostOutcome } from '../../postings/ledger-accepted'
 import { listPostingsForSource } from '../../postings/list-postings'
 import { resolvePeriodLock } from '../../postings/period-lock'
 import { periodKeyForDate } from '../../postings/periods'
@@ -52,29 +53,6 @@ import {
   sumSucceededCreditMemoRefunds,
 } from './reads'
 import { CREDIT_MEMO_STATUS_BYPASS, settleCreditMemo } from './settle'
-
-/**
- * The statuses that mean the LEDGER took the entry. The same set
- * `postInvoiceIssuance` accepts, for the same reasons: a refused EXPORT still
- * returns `posted`, and an org with no accounting system is a first-class case.
- *
- * `not_enabled` is in for the newest reason: an org that has never turned the
- * accounting module on is a first-class case too (task 17 section 3). In
- * practice {@link issueCreditMemo} never reaches this set with `not_enabled` -
- * it short-circuits before the ledger is ever asked - but the value is here so
- * this set stays the complete list decision P1 and task 17 promise.
- */
-const ACCEPTED_POST_STATUSES = new Set<string>([
-  'posted',
-  'already_posted',
-  'healed',
-  'not_connected',
-  'disabled',
-  'not_enabled',
-])
-
-/** The statuses that mean a reversal landed. Same set as `reverseInvoiceIssuance`. */
-const ACCEPTED_REVERSAL_STATUSES = ACCEPTED_POST_STATUSES
 
 const CALENDAR_DAY = /^\d{4}-\d{2}-\d{2}$/
 
@@ -654,7 +632,7 @@ export async function issueCreditMemo(
   } else {
     post = { status: 'not_enabled' }
   }
-  if (!ACCEPTED_POST_STATUSES.has(post.status)) {
+  if (!isExpectedPostOutcome(post)) {
     throw new BadRequestError(
       `This credit memo could not be posted to the general ledger` +
         `${post.error ? `: ${post.error}` : ` (${post.status})`}`,
@@ -759,7 +737,7 @@ export async function voidCreditMemo(db: Database, input: CreditMemoLifecycleInp
         lock,
         memo: `Reversal of ${posting.docNumber} - credit memo ${memo.number} voided`,
       })
-      if (!ACCEPTED_REVERSAL_STATUSES.has(result.status)) {
+      if (!isExpectedPostOutcome(result)) {
         throw new BadRequestError(
           `This credit memo has a general ledger entry (${posting.docNumber}) that could not be ` +
             `reversed${result.error ? `: ${result.error}` : ` (${result.status})`}. Voiding it ` +

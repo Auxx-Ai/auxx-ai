@@ -157,6 +157,19 @@ const REMEDIES: Partial<Record<LedgerBlockerStatus, BlockerRemedy>> = {
     guidance:
       'This is not a blocker. The entry is built, balanced and persisted identically with no provider at all.',
   },
+  // 🛑 The third member of the "nothing was pushed, and that is correct" family,
+  // and the one that was missing. `REMEDIES` is `Partial`, so an unlisted status
+  // silently takes `FALLBACK` - which is `failure`-toned and titled "The entry
+  // could not be built". A `'none'`-routed entry (`opening_balance`,
+  // `provider_sync`) rendered THAT over an entry that had posted perfectly.
+  // Neutral, like its two siblings above, and for the same reason.
+  not_exported: {
+    tone: 'neutral',
+    icon: Ban,
+    title: 'This entry is never exported',
+    guidance:
+      'Not a blocker and not a setting. This kind of entry is never pushed to the accounting system, whatever the organization has connected - an opening balance, or an entry that came FROM the provider and must not be handed back at it. It is built, balanced and persisted here.',
+  },
   // ── HANDOFF slot 1B: the two statuses added by 1A's `inventory_role_refused`
   // / `account_invalid` (types.ts, already present per 0B/9a) ────────────────
   inventory_role_refused: {

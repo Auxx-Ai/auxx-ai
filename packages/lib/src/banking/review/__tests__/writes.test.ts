@@ -1009,7 +1009,11 @@ describe('🛑 bank_account_has_posted - the write-once removal gate', () => {
 
   it('is NOT stamped when the ledger refused the post', async () => {
     row()
-    h.postEntry.mockResolvedValue({ status: 'period_locked', error: 'September is closed' })
+    // `period_closed` is the real status; this stub said `period_locked` for a
+    // long time, which is not a member of `PostResultStatus` at all. It passed
+    // either way against a `Set<string>`, and it is what caught `didLedgerAccept`
+    // failing OPEN on an unknown status - see `postings/__tests__/ledger-accepted.test.ts`.
+    h.postEntry.mockResolvedValue({ status: 'period_closed', error: 'September is closed' })
     await codeTransaction(db, {
       organizationId: ORG,
       actorUserId: ACTOR,

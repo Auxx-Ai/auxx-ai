@@ -28,6 +28,7 @@ import {
   buildWriteOffEntry,
   WRITE_OFF_SOURCE_TYPE,
 } from '../../postings/build-write-off-entry'
+import { isExpectedPostOutcome } from '../../postings/ledger-accepted'
 import { resolvePeriodLock } from '../../postings/period-lock'
 import { periodKeyForDate } from '../../postings/periods'
 import { LEDGER_CURRENCY, postEntry, previewEntry } from '../../postings/post-entry'
@@ -501,13 +502,11 @@ export async function writeOffInvoice(
     })
   }
 
-  const posted =
-    result.status === 'posted' ||
-    result.status === 'already_posted' ||
-    result.status === 'not_connected' ||
-    result.status === 'disabled' ||
-    result.status === 'not_enabled'
-  if (!posted) return result
+  // ⚠️ This list used to be written out here and was missing `healed` AND
+  // `not_exported` - a write-off on a healed claim, or on any posting type that
+  // ever routes to `'none'`, returned before stamping the invoice. The shared
+  // predicate carries both.
+  if (!isExpectedPostOutcome(result)) return result
 
   const remainingBalanceMinor = invoice.outstandingMinor - amount
 
