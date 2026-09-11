@@ -21,6 +21,7 @@ import { flattenConnectionMeta } from './connection-meta'
 import { prepareConnectorFetch } from './connector-runtime'
 import { ConnectorRateLimitError } from './connectors'
 import { isConnectorCheckpoint } from './connectors/types'
+import { resolveCrossConnectorLinks } from './cross-connector-links'
 import { publishConnectorSync } from './realtime'
 import { archiveExternalId } from './reconciliation'
 import { newRecordFailureTally } from './record-failure-tally'
@@ -146,6 +147,16 @@ export async function runWebhookSteeredRun(
     // connector-wide, so it's safe on a partial run and also clears edges stranded by
     // earlier deliveries. Without it, webhook-steered connectors never form relationships.
     await resolveRelationships(ctx)
+    // Cross-connector links (`RecordIdentity`-resolved, so build-order and
+    // connector-order independent) are safe on a partial run for the same three
+    // reasons, and hold no retry state at all. A failure must not fail the delivery.
+    const links = await resolveCrossConnectorLinks(ctx)
+    if (links.isErr()) {
+      logger.warn('cross-connector link pass failed — continuing webhook finalize', {
+        connectorId,
+        error: links.error.message,
+      })
+    }
 
     // Close the run PARTIAL — it observed a single steered record, so the connector
     // finalize must NOT reconcile orphans (that would archive the rest of the collection).

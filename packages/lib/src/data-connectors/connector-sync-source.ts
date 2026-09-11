@@ -29,6 +29,7 @@ import type { SliceResult, SyncRunCounters, SyncSliceCtx, SyncSource } from '../
 import { runAsyncExportSlice } from './async-export'
 import { flattenConnectionMeta } from './connection-meta'
 import { runConnectorSlice } from './connector-slice-loop'
+import { resolveCrossConnectorLinks } from './cross-connector-links'
 import { listBackfillRunIds, reconcileManagedMarkers, reconcileOrphans } from './reconciliation'
 import { newRecordFailureTally } from './record-failure-tally'
 import { resolveRelationships } from './relationship-pass'
@@ -381,6 +382,7 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
     const syncCtx = await this.buildCtx(counters, allMappings)
 
     await resolveRelationships(syncCtx, { stage: 'park' })
+    await this.resolveCrossConnectorLinks(syncCtx)
     await this.emitRecordsInvalidated(syncCtx.touchedDefs)
 
     // Fold the pass's warnings the way the finalize folds its own (no checkpoint key,
@@ -401,6 +403,28 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
       dataConnectorId: this.deps.connector.id,
       runId: this.deps.run.id,
     })
+  }
+
+  /**
+   * Cross-connector record linking, run in the same slot as the relationship two-pass.
+   *
+   * Separate from it because the two-pass resolves targets by
+   * `(dataConnectorId, def, externalId)` and so can only see records THIS connector
+   * created; these links resolve through `RecordIdentity` instead. Additive,
+   * self-deferring and stateless, so a target that is not synced yet costs nothing and
+   * lands on a later run.
+   *
+   * A failure here NEVER fails the run: an order link is a nicety, and losing it must
+   * not turn a clean sync into a failed one.
+   */
+  private async resolveCrossConnectorLinks(syncCtx: SyncCtx): Promise<void> {
+    const result = await resolveCrossConnectorLinks(syncCtx)
+    if (result.isErr()) {
+      logger.warn('cross-connector link pass failed — continuing finalize', {
+        sourceId: this.id,
+        error: result.error.message,
+      })
+    }
   }
 
   /**
@@ -460,6 +484,7 @@ class ConnectorStreamSyncSource implements ConnectorSyncSource {
     const syncCtx = await this.buildCtx(counters, allMappings)
 
     await resolveRelationships(syncCtx)
+    await this.resolveCrossConnectorLinks(syncCtx)
     // reconcileOrphans self-skips non-snapshot streams, so it's a no-op for steady. A
     // snapshot stream's crawl may have spanned several runs (parked at the ingest
     // ceiling, resumed from its cursor on the next trigger), so "seen this backfill"

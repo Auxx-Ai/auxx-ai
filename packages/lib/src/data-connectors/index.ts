@@ -108,6 +108,15 @@ export {
   isConnectorCheckpoint,
   PermanentSteerError,
 } from './connectors'
+// Cross-connector record linking (shipstation-status-and-linking-plan §4): the links
+// the connector-scoped two-pass structurally cannot resolve.
+export {
+  type CrossConnectorLinkSummary,
+  parseShopifyOrderIdFromExternalShipmentId,
+  resolveCrossConnectorLinks,
+  resolveShipStationOrderLinks,
+  type ShipStationOrderLinkSummary,
+} from './cross-connector-links'
 export type {
   BackfillSliceJobData,
   DataConnectorSyncJobData,
