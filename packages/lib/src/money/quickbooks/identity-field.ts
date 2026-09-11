@@ -14,11 +14,11 @@
 import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { extractValue } from '@auxx/types'
-import { type RecordId, toRecordId } from '@auxx/types/resource'
+import { parseRecordId, type RecordId, toRecordId } from '@auxx/types/resource'
 import { and, eq } from 'drizzle-orm'
 import { getCachedEntityDefId } from '../../cache'
 import { FieldValueService } from '../../field-values/field-value-service'
-import { upsertRecordIdentity } from '../../identity'
+import { getRecordIdentitiesForRecords, upsertRecordIdentity } from '../../identity'
 import type { UnifiedCrudHandler } from '../../resources/crud'
 
 const logger = createScopedLogger('quickbooks-identity-field')
@@ -47,7 +47,32 @@ async function findAppField(params: {
 /**
  * Read a QuickBooks id-map field's current value off a record (e.g. does this contact
  * already have a `qboCustomerId`?). Returns `undefined` when the field isn't provisioned or
- * has never been written — both are "no stored id, fall through to find-or-create".
+ * has never been written - both are "no stored id, fall through to find-or-create".
+ *
+ * ## Two places the answer can live, and why the second one matters
+ *
+ * The cell is authoritative. The `RecordIdentity` mirror is the fallback, and it
+ * exists for exactly one state: **the record has been deleted**
+ * (plans/accounting/tasks/23 section 4.1).
+ *
+ * `deleteEntityInstance` calls `sweepEntityFieldValues`, which deletes
+ * `FieldValue` rows. It does NOT touch `RecordIdentity` - verified 2026-09-11,
+ * and the mirror is keyed on `entityInstanceId` rather than joined to a live
+ * instance, so it survives. That asymmetry is what makes this fallback work.
+ *
+ * 🛑 Without it, a posting line whose counterparty was later deleted becomes
+ * permanently unexportable. The line's `counterpartyId` is FROZEN (brief 13
+ * section 1.1 - a retry exports under the attribution the ledger asserted, not
+ * the current record), so it still names the gone contact, but the cell is gone
+ * and there is no name or email left to search or create with. Reading the
+ * mirror lets that entry still export under the customer it was posted for,
+ * which is what "frozen attribution" was supposed to mean in the first place.
+ *
+ * The mirror is a record that a correspondence HAPPENED. Deleting our copy of
+ * one side does not make it un-happen.
+ *
+ * ⚠️ Costs nothing on the normal path: the fallback query only runs when the
+ * cell is absent, which for a live record it never is.
  */
 export async function readQuickbooksIdField(params: {
   organizationId: string
@@ -58,15 +83,53 @@ export async function readQuickbooksIdField(params: {
   handler: UnifiedCrudHandler
 }): Promise<string | undefined> {
   const field = await findAppField(params)
-  if (!field) return undefined
 
-  const values = await params.handler.getFieldValues(params.recordId, [field.id])
-  const entry = values.get(field.id)
-  const typed = Array.isArray(entry) ? entry[0] : entry
-  if (!typed) return undefined
+  if (field) {
+    const values = await params.handler.getFieldValues(params.recordId, [field.id])
+    const entry = values.get(field.id)
+    const typed = Array.isArray(entry) ? entry[0] : entry
+    if (typed) {
+      const value = extractValue(typed)
+      if (typeof value === 'string' && value) return value
+    }
+  }
 
-  const value = extractValue(typed)
-  return typeof value === 'string' && value ? value : undefined
+  return readIdentityMirror(params)
+}
+
+/**
+ * The `RecordIdentity` row for one record and one id kind, or undefined.
+ *
+ * Reads through the identity module's own batch primitive rather than querying
+ * `RecordIdentity` here: that table has two unique indexes with COALESCE'd
+ * expressions and a module that owns the reading of it, and a second hand-rolled
+ * query against it is how the two come to disagree.
+ */
+async function readIdentityMirror(params: {
+  organizationId: string
+  connectionId: string
+  appFieldKey: string
+  recordId: RecordId
+}): Promise<string | undefined> {
+  const { organizationId, connectionId, appFieldKey, recordId } = params
+
+  const byRecord = await getRecordIdentitiesForRecords(organizationId, [recordId])
+  const rows = byRecord.get(recordId) ?? []
+
+  const match = rows.find(
+    (row) =>
+      row.source === QUICKBOOKS_SOURCE &&
+      row.connectionId === connectionId &&
+      row.appFieldKey === appFieldKey
+  )
+  if (!match?.externalId) return undefined
+
+  logger.debug('Resolved a QuickBooks id from the RecordIdentity mirror, not the cell', {
+    organizationId,
+    entityInstanceId: parseRecordId(recordId).entityInstanceId,
+    appFieldKey,
+  })
+  return match.externalId
 }
 
 /**
