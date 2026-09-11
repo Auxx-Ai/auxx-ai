@@ -18,6 +18,7 @@ import { formatCurrency } from '@auxx/utils/currency'
 import { Image, StyleSheet, Text, View } from '@react-pdf/renderer'
 import type { ReactNode } from 'react'
 import type { createDocumentStyles } from '../../../documents/pdf/theme'
+import { describeProviderSyncCoverage, type ProviderSyncMarker } from '../../provider-sync/client'
 import type { CompletenessItem } from '../completeness'
 import type { StatementColumn, StatementRow } from '../rows'
 
@@ -41,6 +42,31 @@ const statementStyles = StyleSheet.create({
   },
   completenessTitle: { fontSize: 8, fontWeight: 'bold', color: '#374151', marginBottom: 3 },
   completenessItem: { fontSize: 8, color: '#6b7280', marginBottom: 1 },
+  // 🛑 INVERTED, not tinted. The screen leans on amber and a PDF has no colour
+  // affordance to lean on - it is printed, photocopied and read in greyscale.
+  // A near-black fill with white type is the one treatment that survives all
+  // three, and it is deliberately unlike anything else on the page: the
+  // completeness box below is a hairline grey box with 8pt grey type.
+  syncWarningBox: {
+    marginTop: 12,
+    marginBottom: 4,
+    padding: 10,
+    borderWidth: 2,
+    borderColor: '#111827',
+    borderRadius: 3,
+    backgroundColor: '#111827',
+  },
+  syncWarningKicker: {
+    fontSize: 7,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    letterSpacing: 1.5,
+    marginBottom: 4,
+  },
+  syncWarningHeadline: { fontSize: 12, fontWeight: 'bold', color: '#ffffff', marginBottom: 4 },
+  syncWarningDetail: { fontSize: 9, color: '#e5e7eb', lineHeight: 1.4 },
+  syncedLine: { fontSize: 8, color: '#6b7280', marginTop: 8 },
+  footerNotice: { fontSize: 8, fontWeight: 'bold', color: '#111827' },
   table: { marginTop: 8 },
   sectionRow: { flexDirection: 'row', paddingTop: 10, paddingBottom: 2 },
   sectionLabel: { fontSize: 9, fontWeight: 'bold' },
@@ -115,6 +141,78 @@ export function CompletenessBlock(props: { items: readonly CompletenessItem[] })
       ))}
     </View>
   )
+}
+
+/**
+ * The "synced through" marker, printed - brief 20 §7.3.
+ *
+ * The accounting firm posts December's depreciation in February, so auxx's
+ * December balance sheet is incomplete until the sync runs and restates it, and
+ * then it changes. 🛑 **The PDF is the copy that gets emailed to an accountant**
+ * - a screen at least has a person in front of it who can go and look again,
+ * and a saved file does not. So the printed statement has to carry its own lag
+ * more loudly than the screen does, not less.
+ *
+ * The four states are {@link describeProviderSyncCoverage}'s and NOT this
+ * file's. Two implementations of "is this statement complete" is exactly the
+ * bug the feature exists to prevent, so the wording, the thresholds and the
+ * render-nothing case all come from that one pure function, the same one
+ * `ProviderSyncMarker` on screen calls.
+ *
+ *   * **not connected** - `null`. Nothing at all, not "synced through: never".
+ *   * **never synced** - the inverted box: everything of theirs is missing.
+ *   * **behind** - the inverted box. The case this exists for.
+ *   * **current** - one quiet grey line, deliberately not a box.
+ *
+ * @param marker null when the marker could not be read at all, which renders
+ *   nothing for the same reason `not_connected` does: a missing line is a much
+ *   smaller problem than a wrong one.
+ * @param through the LAST date this statement covers
+ */
+export function ProviderSyncBlock(props: { marker: ProviderSyncMarker | null; through: string }) {
+  const { marker, through } = props
+  if (!marker) return null
+
+  const reading = describeProviderSyncCoverage(marker, through)
+  if (!reading.headline) return null
+
+  if (reading.coverage === 'current') {
+    return <Text style={statementStyles.syncedLine}>{reading.headline}</Text>
+  }
+
+  return (
+    <View style={statementStyles.syncWarningBox} wrap={false}>
+      <Text style={statementStyles.syncWarningKicker}>STATEMENT INCOMPLETE</Text>
+      <Text style={statementStyles.syncWarningHeadline}>{reading.headline}</Text>
+      {reading.detail ? (
+        <Text style={statementStyles.syncWarningDetail}>{reading.detail}</Text>
+      ) : null}
+    </View>
+  )
+}
+
+/**
+ * The same reading, condensed to the one line the footer repeats on every page.
+ *
+ * The box above is read once, at the top of page one, and a statement is often
+ * flipped to the page holding the number somebody cares about. `StatementFooter`
+ * is already `fixed` and absolutely positioned, so carrying the headline there
+ * costs no flow space and no per-page work while making the warning impossible
+ * to page past - which, with no colour to lean on, is the other half of what
+ * makes it unmissable.
+ *
+ * Null for `current` as well as for the two silent states: a complete statement
+ * does not stamp every page with a note saying so.
+ */
+export function providerSyncFooterNotice(
+  marker: ProviderSyncMarker | null,
+  through: string
+): string | null {
+  if (!marker) return null
+  const reading = describeProviderSyncCoverage(marker, through)
+  return reading.coverage === 'behind' || reading.coverage === 'never_synced'
+    ? reading.headline
+    : null
 }
 
 /**
@@ -205,12 +303,20 @@ export function GroupedRowsTable(props: {
   )
 }
 
-/** The statement footer: run date on the left, `Page X of Y` on the right - `PrintFooter`'s defaults, self-contained. */
-export function StatementFooter(props: { dateLabel: string }) {
-  const { dateLabel } = props
+/**
+ * The statement footer: run date on the left, `Page X of Y` on the right -
+ * `PrintFooter`'s defaults, self-contained.
+ *
+ * `notice` is {@link providerSyncFooterNotice}'s one line, printed between them
+ * in dark bold against the band's grey. The band is `fixed`, so it repeats on
+ * every page for free.
+ */
+export function StatementFooter(props: { dateLabel: string; notice?: string | null }) {
+  const { dateLabel, notice } = props
   return (
     <View style={statementStyles.footerBand} fixed>
       <Text>{dateLabel}</Text>
+      {notice ? <Text style={statementStyles.footerNotice}>{notice}</Text> : null}
       <Text render={({ pageNumber, totalPages }) => `Page ${pageNumber} of ${totalPages}`} />
     </View>
   )

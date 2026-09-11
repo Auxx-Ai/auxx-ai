@@ -9,6 +9,7 @@ import {
   Ban,
   CircleSlash,
   CircleX,
+  CloudOff,
   KeyRound,
   Landmark,
   Lock,
@@ -42,6 +43,7 @@ export type LedgerBlockerStatus =
   | 'no_bank_accounts'
   | 'suggestion_incomplete'
   | 'agreement_refused'
+  | 'sync_refused'
 
 /** One reason a preview, a post or a discard refused, as the console renders it. */
 export interface LedgerBlocker {
@@ -235,6 +237,19 @@ const REMEDIES: Partial<Record<LedgerBlockerStatus, BlockerRemedy>> = {
       'One account in the connected system is claimed by more than one account in this chart, so its balance has no single counterpart here. Withdraw one of the two mappings on the account map and check again. Nothing was changed.',
     href: '/app/accounting/settings/accounts',
     actionLabel: 'Open the account map',
+  },
+  // plans/accounting/tasks/20-two-authors-one-ledger.md §7.4. The INBOUND sync
+  // refused before it walked - most often the cutover floor (§5.4), which names
+  // both the date that was asked for and the earliest the sync may read. That
+  // floor is what stops brief 19's opening entry being imported a second time
+  // and the whole opening position doubling, so its message is the remedy and
+  // is carried verbatim.
+  sync_refused: {
+    tone: 'failure',
+    icon: CloudOff,
+    title: 'The sync did not run',
+    guidance:
+      'Nothing was read and nothing was written - the refusal happened before the first request went out. The reason above names the dates or the setting involved. A range the sync may not read is never quietly moved to one it may.',
   },
 }
 

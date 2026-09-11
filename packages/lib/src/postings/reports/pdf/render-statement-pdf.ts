@@ -23,6 +23,8 @@ import { getAssetContent } from '../../../files/assets/content'
 import { defaultDatabase } from '../../../files/default-database'
 import { createS3StoragePort } from '../../../files/storage/ports'
 import { createStorageManager } from '../../../files/storage/storage-manager'
+import type { ProviderSyncMarker } from '../../provider-sync/client'
+import { readProviderSyncMarker } from '../../provider-sync/marker-reads'
 import {
   balanceSheetColumns,
   GENERAL_LEDGER_COLUMNS,
@@ -93,7 +95,22 @@ interface StatementPayload {
   asOfForKey: string
   columns: StatementColumn[]
   rows: StatementRow[]
-  completenessAsOf: string
+  /**
+   * The LAST date this statement covers, and the ONE date two different readers
+   * of "how complete is this" are judged against: `readCompleteness`'s `asOf`
+   * and the provider sync marker's `statementThrough` (brief 20 §7.3).
+   *
+   * 🛑 One field, not two. A statement that bounded its completeness banner by
+   * one date and its "synced through" reading by another could print both a
+   * clean banner and a stale marker for the same page, which is the disagreement
+   * the whole marker exists to prevent.
+   *
+   * Per kind: `to` for the trial balance, the P&L and the general ledger; `asOf`
+   * for the balance sheet and both agings; and for the 1099 summary - which is
+   * not a GL read and has no `asOf` at all - the last day of the filing year,
+   * the closest calendar meaning "as of" has for a year-shaped report.
+   */
+  statementThrough: string
 }
 
 async function buildPayload<K extends StatementKind>(
@@ -110,7 +127,7 @@ async function buildPayload<K extends StatementKind>(
       asOfForKey: to,
       columns: TRIAL_BALANCE_COLUMNS,
       rows: toTrialBalanceRows(result.value),
-      completenessAsOf: to,
+      statementThrough: to,
     }
   }
 
@@ -123,7 +140,7 @@ async function buildPayload<K extends StatementKind>(
       asOfForKey: asOf,
       columns: balanceSheetColumns(result.value),
       rows: toBalanceSheetRows(result.value, result.value.compare),
-      completenessAsOf: asOf,
+      statementThrough: asOf,
     }
   }
 
@@ -146,7 +163,7 @@ async function buildPayload<K extends StatementKind>(
           ]
         : [{ key: 'primary', label: `${from} to ${to}`, align: 'right', signed: true }],
       rows: toProfitAndLossRows(result.value, result.value.compare),
-      completenessAsOf: to,
+      statementThrough: to,
     }
   }
 
@@ -171,7 +188,7 @@ async function buildPayload<K extends StatementKind>(
       asOfForKey: to,
       columns: GENERAL_LEDGER_COLUMNS,
       rows: toGeneralLedgerRows(result.value),
-      completenessAsOf: to,
+      statementThrough: to,
     }
   }
 
@@ -185,7 +202,7 @@ async function buildPayload<K extends StatementKind>(
       asOfForKey: asOf,
       columns: AGING_COLUMNS,
       rows: toAgingRows(result.value),
-      completenessAsOf: asOf,
+      statementThrough: asOf,
     }
   }
 
@@ -193,7 +210,7 @@ async function buildPayload<K extends StatementKind>(
   // no `asOf` to bound completeness by, so this uses the last day of the
   // filing year, the closest calendar meaning "as of" has for a year-shaped report.
   const { year } = params as RenderStatementPdfParamsByKind['vendor-1099']
-  const asOfForCompleteness = `${String(year).padStart(4, '0')}-12-31`
+  const lastDayOfFilingYear = `${String(year).padStart(4, '0')}-12-31`
   const result = await readVendor1099Summary(db, { organizationId, year })
   if (result.isErr()) throw result.error
   return {
@@ -201,7 +218,7 @@ async function buildPayload<K extends StatementKind>(
     asOfForKey: String(year),
     columns: VENDOR_1099_COLUMNS,
     rows: toVendor1099Rows(result.value),
-    completenessAsOf: asOfForCompleteness,
+    statementThrough: lastDayOfFilingYear,
   }
 }
 
@@ -216,14 +233,26 @@ export async function renderStatementPdf<K extends StatementKind>(
 ): Promise<RenderStatementPdfResult> {
   const { organizationId, actorId, kind, params } = options
 
-  const [settings, payload] = await Promise.all([
+  // The marker is read HERE rather than handed in by the router, for the same
+  // reason `readCompleteness` below is: it is an org-scoped read that answers
+  // "what should this statement say about itself", it takes no `db` (the org
+  // cache and the provider registry answer both halves), and a second channel
+  // for it would let the PDF's reading drift from the screen's.
+  const [settings, payload, marker] = await Promise.all([
     resolveDocumentSettings(organizationId),
     buildPayload(organizationId, kind, params),
+    readProviderSyncMarker(organizationId),
   ])
+
+  // ⚠️ Fails SOFT, exactly as the screen does. `readProviderSyncMarker` errs
+  // only on an unreachable settings store, and a statement that refused to
+  // render because a display line could not be resolved would be a much bigger
+  // problem than one that prints without it.
+  const providerSyncMarker: ProviderSyncMarker | null = marker.isOk() ? marker.value : null
 
   const completeness = await readCompleteness(db, {
     organizationId,
-    asOf: payload.completenessAsOf,
+    asOf: payload.statementThrough,
   })
   if (completeness.isErr()) throw completeness.error
 
@@ -251,6 +280,8 @@ export async function renderStatementPdf<K extends StatementKind>(
     columns: payload.columns,
     rows: payload.rows,
     completeness: completeness.value.items,
+    providerSyncMarker,
+    statementThrough: payload.statementThrough,
   })
   // Same type shim `documents/render.ts` carries: `renderToBuffer` types its
   // argument as `ReactElement<DocumentProps>` (the root `<Document>`), but

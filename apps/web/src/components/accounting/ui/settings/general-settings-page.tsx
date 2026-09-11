@@ -56,6 +56,7 @@ import {
 } from './accounting-settings-keys'
 import { FrozenLock } from './frozen-lock'
 import { ProviderAgreementSettingsSection } from './provider-agreement-section'
+import { ProviderSyncSettingsSection } from './provider-sync-section'
 import { QuickbooksSettingsSection } from './quickbooks-section'
 import { SetupStatusSection } from './setup-status-section'
 
@@ -434,6 +435,16 @@ export function AccountingGeneralSettingsPage() {
               and adds nothing to `DRAFT_KEYS`, exactly like the section above.
             */}
             <ProviderAgreementSettingsSection />
+
+            {/*
+              The inbound half, last, and after the agreement view for one
+              reason: the agreement view asks whether the two sets of books
+              agree, and this is what makes them agree (brief 20 §8.5 - after a
+              sync of a period, the difference for that period should be zero).
+              It owns no settings values either, so it stays out of all three
+              draft slices and adds nothing to `DRAFT_KEYS`.
+            */}
+            <ProviderSyncSettingsSection />
           </div>
         </div>
 

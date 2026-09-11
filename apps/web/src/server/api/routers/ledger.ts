@@ -47,6 +47,7 @@ import {
   reverseJournalEntry,
   setAccountIdentity,
   setRoleAssignment,
+  syncProviderLedger,
   updateChartAccount,
   updateJournalEntry,
   verifyBooksBalance,
@@ -201,6 +202,7 @@ const draftEntry = z.object({
  * | `post`            | `ledger.post` |
  * | `reverse`         | `ledger.post` |
  * | `setLockedThrough` | `ledger.control` |
+ * | `syncProviderLedger` | `ledger.control` |
  *
  * `ledger` is its own L2 area rather than a corner of `billing`: `billing`
  * governs what auxx charges this org, this governs what the org's own books say
@@ -1111,6 +1113,63 @@ export const ledgerRouter = createTRPCRouter({
         providerCurrency: sheet.currency,
         agreement: planned.value,
       }
+    }),
+
+  /**
+   * Read the connected provider's general ledger and bring everything the
+   * accountant authored into our books
+   * (plans/accounting/tasks/20-two-authors-one-ledger.md §5-§7, §7.4).
+   *
+   * 🛑 **`ledgerControl`, not `ledgerPost` and not `ledgerView`.** This is not
+   * "post an entry": the sync walks from the cutover forward and RESTATES PRIOR
+   * MONTHS - it writes entries dated into months that are already closed (which
+   * it defers, §7.2) and REVERSES entries whose provider id has stopped
+   * appearing (§7.1). That is the same class of authority `setLockedThrough`
+   * takes, and a bookkeeper holding `ledgerPost` posts what is in front of them
+   * rather than deciding that last December is now different.
+   *
+   * ⚠️ **Long-running and it reaches the provider.** One call per calendar
+   * month, because report endpoints do not paginate (§4.8) so the date range is
+   * the only lever there is. Eleven months is eleven round trips over the app
+   * Lambda. On demand only - §7.4 is explicit that the button comes before the
+   * schedule, because the first run of this against a real company file wants a
+   * person watching it.
+   *
+   * The WHOLE outcome comes back, not a count and not a success boolean: a
+   * person has to see the refusals (entries that did not come across), the
+   * closed months waiting on somebody with this same key to reopen them, and
+   * how far the "synced through" marker actually got.
+   *
+   * `from` is optional and means "everything the sync is allowed to see",
+   * starting the month after `accounting.cutoffPeriod`. 🛑 A `from` BELOW that
+   * floor is a refusal from `planSyncChunks`, never a clamp - reading the
+   * opening period back would import the balances brief 19's opening entry was
+   * derived from and double the entire opening position. It is thrown straight
+   * through, with no `try/catch`, for {@link providerAgreement}'s reason:
+   * catching and rethrowing is the only way an `AuxxError` gets flattened into
+   * a generic 500 on its way to `auxxErrorMiddleware`.
+   */
+  syncProviderLedger: permissionProcedure(PermissionKey.ledgerControl)
+    .input(
+      z.object({
+        /** `YYYY-MM-DD`. Omitted means the cutover floor - see above. */
+        from: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/, 'from must be YYYY-MM-DD')
+          .optional(),
+        /** `YYYY-MM-DD`, inclusive. Usually today in the book timezone. */
+        to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'to must be YYYY-MM-DD'),
+      })
+    )
+    .use(notDemo('sync the accounting provider ledger'))
+    .mutation(async ({ ctx, input }) => {
+      const result = await syncProviderLedger(ctx.db, ctx.session.organizationId, {
+        from: input.from,
+        to: input.to,
+        actorUserId: ctx.session.userId,
+      })
+      if (result.isErr()) throw result.error
+      return result.value
     }),
 
   /**
