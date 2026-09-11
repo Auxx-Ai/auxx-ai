@@ -13,7 +13,7 @@ import { PermissionKey } from '@auxx/lib/permissions'
 import { z } from 'zod'
 import { createTRPCRouter, permissionProcedure, protectedProcedure } from '../trpc'
 
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected an ISO date (YYYY-MM-DD)')
+const isoDate = z.iso.date({ error: 'Expected an ISO date (YYYY-MM-DD)' })
 
 const minute = z.number().int().min(0).max(1440)
 

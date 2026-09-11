@@ -210,6 +210,45 @@ describe('a channel credit memo with a settlement', () => {
     expect(built.settlementMinor).toBe(12_990)
   })
 
+  /**
+   * 🛑 The refund must come out of the account the SALE debited.
+   *
+   * A `payment_gateway` record routes a non-card rail to its own clearing
+   * account by id, so an Affirm sale debits `1210` while `clearing_card` is
+   * `1200`. Crediting the role for that refund leaves `1210` overstated
+   * forever - in an entry that balances perfectly, so nothing downstream
+   * detects it. This was the shape until 2026-09-11.
+   */
+  it('credits the gateway route BY ID when the sale was routed to one', () => {
+    const built = buildCreditMemoEntry({
+      ...BASE,
+      settlement: { glAccountId: 'acct_affirm', amount: 12_990 },
+    })
+
+    const clearing = built.entry.lines.find((row) => row.glAccountId === 'acct_affirm')
+    expect(clearing).toMatchObject({ direction: 'credit', amount: 12_990 })
+    // ...and NOT through the role, which is a different account.
+    expect(lines(built, ACCOUNT_ROLES.CLEARING_CARD)).toHaveLength(0)
+    expect(clearing?.accountRole).toBeUndefined()
+    expect(built.entry.totalDebit).toBe(built.entry.totalCredit)
+  })
+
+  it('still balances on the pre-fulfillment branch with an id-routed settlement', () => {
+    const built = buildCreditMemoEntry({
+      ...BASE,
+      reverseRevenue: false,
+      settlement: { glAccountId: 'acct_affirm', amount: 12_990 },
+    })
+
+    expect(built.entry.lines).toHaveLength(2)
+    expect(built.entry.totalDebit).toBe(12_990)
+    expect(built.entry.totalCredit).toBe(12_990)
+    expect(built.entry.lines.find((row) => row.glAccountId === 'acct_affirm')).toMatchObject({
+      direction: 'credit',
+      amount: 12_990,
+    })
+  })
+
   it('allows a settlement smaller than the total', () => {
     const built = buildCreditMemoEntry({
       ...BASE,

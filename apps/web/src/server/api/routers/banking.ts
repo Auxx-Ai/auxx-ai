@@ -46,9 +46,6 @@ import { createTRPCRouter, permissionProcedure } from '~/server/api/trpc'
 // of it is a merge conflict looking for somewhere to happen.
 import { bankingImportRouter } from './banking-import'
 
-/** `YYYY-MM-DD`. Shape only; the lib decides what is a sensible date. */
-const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
-
 /**
  * The fields a person may set on a bank account.
  *
@@ -68,7 +65,7 @@ const bankAccountFields = {
   glAccountId: z.string().max(64).nullish(),
   /** The Stripe `ba_…` / `card_…` destination id a person confirms once (brief 13 §2.3). */
   stripeExternalAccountId: z.string().max(64).nullish(),
-  feedStartDate: dateKey.nullish(),
+  feedStartDate: z.iso.date().nullish(),
 }
 
 export const bankingRouter = createTRPCRouter({

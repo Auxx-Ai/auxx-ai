@@ -55,7 +55,7 @@ import { capabilityProcedure, createTRPCRouter, permissionProcedure } from '~/se
 const minorUnits = z.number().int()
 
 /** A calendar day, the shape every accounting date crosses the wire in. */
-const calendarDaySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD')
+const calendarDaySchema = z.iso.date({ error: 'Expected YYYY-MM-DD' })
 
 /**
  * A RATE - money per one of something (`unitCost`, `vendorUnitPrice`, a line's

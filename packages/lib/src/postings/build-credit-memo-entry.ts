@@ -71,18 +71,28 @@ export const CREDIT_MEMO_SOURCE_TYPE = 'credit_memo'
 export const CREDIT_MEMO_POSTING_TYPE = 'credit_memo' as const
 
 /**
- * The money leg of a channel memo.
+ * The money leg of a channel memo: WHERE the refund comes back out of.
  *
- * `role` is a discriminator with one member today: `clearing_card` is the ONE
- * clearing role, the account the channel receipt debited gross at the sale and
- * the payout entry drains. When a second clearing role lands, this grows a
- * member rather than the builder growing a parameter.
+ * 🛑 **It has to be the account the SALE debited, whatever that was.** A
+ * `payment_gateway` record routes a non-card rail to its own clearing account
+ * by id (brief 13 §5.3), so an Affirm sale debits `1210` while `clearing_card`
+ * is `1200`. A refund hardcoded to the role would credit `1200` for money that
+ * never entered it and leave `1210` overstated forever - and since the entry
+ * balances either way, nothing downstream could detect it. This was the shape
+ * until 2026-09-11; the two members exist so a refund can mirror its sale.
+ *
+ * | Member | When |
+ * | --- | --- |
+ * | `{ role: 'clearing_card' }` | no `payment_gateway` record names the order's gateway - the same default the fulfillment debit fork takes |
+ * | `{ glAccountId }` | exactly one record claims it, and the sale debited that account |
+ *
+ * `amount` is integer minor units, > 0 and at most `total` - what the channel
+ * actually paid back.
  */
-export interface CreditMemoSettlement {
-  role: 'clearing_card'
-  /** Integer minor units, > 0 and at most `total`. What the channel paid back. */
-  amount: number
-}
+export type CreditMemoSettlement = { amount: number } & (
+  | { role: 'clearing_card'; glAccountId?: never }
+  | { glAccountId: string; role?: never }
+)
 
 export interface BuildCreditMemoEntryInput {
   /** The `credit_memo` EntityInstance id. Becomes every line's `sourceId`. */
@@ -303,7 +313,12 @@ export function buildCreditMemoEntry(input: BuildCreditMemoEntryInput): BuiltCre
     })
     lines.push({
       ...source,
-      accountRole: ACCOUNT_ROLES.CLEARING_CARD,
+      // By ID when a `payment_gateway` record routed the sale, by ROLE
+      // otherwise - see {@link CreditMemoSettlement}. The two are mutually
+      // exclusive on the type, so exactly one of these keys is ever set.
+      ...(settlement.glAccountId
+        ? { glAccountId: settlement.glAccountId }
+        : { accountRole: ACCOUNT_ROLES.CLEARING_CARD }),
       direction: 'credit',
       amount: settlementMinor,
       memo: `${lineMemo} refunded`,
