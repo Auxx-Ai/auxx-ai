@@ -181,6 +181,11 @@ export const ENTITY_DEFINITION_TYPES = [
   // A record carrying its clearing account, never a role
   // (plans/accounting/tasks/13-cash-accounts-and-the-qbo-seam.md §5.3).
   'payment_gateway',
+  // plans/apps/shipstation/shared-shipment-entities-proposal.md §6. Both are
+  // EntityInstance-backed, so a `shipment:<id>` / `parcel:<id>` relationship
+  // RecordId canonicalizes to the org's def CUID like every other entry here.
+  'shipment',
+  'parcel',
 ] as const
 
 /** Type for system entity types stored in EntityDefinition */

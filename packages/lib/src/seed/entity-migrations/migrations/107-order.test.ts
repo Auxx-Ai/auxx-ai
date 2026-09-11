@@ -86,6 +86,11 @@ describe('order entity registration wiring', () => {
       'number',
       'paymentGateways',
       'placedAt',
+      // added by migration 149 - inverse of shipment_order, `unlink` not
+      // `cascade` (apps/shipstation/shared-shipment-entities-proposal.md §6).
+      // NOT the same thing as `fulfillments` above, which is the accounting
+      // shipment log; this is the physical dispatch and its boxes.
+      'shipments',
       'shippingAddress',
       'shippingTotal', // added by migration 122 — money plan 37 §6/§8
       'subtotal',

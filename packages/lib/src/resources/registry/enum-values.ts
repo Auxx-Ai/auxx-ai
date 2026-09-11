@@ -954,3 +954,116 @@ export const PaymentGatewayStatus = {
     { value: 'closed', label: 'Closed', color: 'gray' },
   ] satisfies FieldOptionItem[],
 } as const
+
+/**
+ * Parcel Tracking Status - one physical box, one tracking number
+ * `plans/apps/shipstation/shared-shipment-entities-proposal.md` §6.
+ *
+ * Lifted from the byte-identical enums already duplicated in
+ * `auxxai-apps/apps/fedex/src/tools/shared/shipment-schema.ts` and its UPS
+ * twin, so this consolidates an existing duplication rather than inventing a
+ * third vocabulary.
+ *
+ * `ready_for_pickup`, `attempted_delivery` and `delayed` are additions to the
+ * FedEx/UPS eight, taken from Shopify's `FulfillmentEventStatus`. Each earns
+ * its place by driving a support action `exception` cannot express: collect it,
+ * arrange redelivery, requote the date. `delayed` is the important one, because
+ * FedEx and UPS collapse a weather delay into `exception`, so an agent
+ * escalates a shipment that needs nothing but a new ETA.
+ *
+ * The label lifecycle (void, reprint) is deliberately NOT in this enum: it
+ * lives in the `parcel_voided` / `parcel_voided_at` booleans. With no second
+ * axis inside the enum, one shared vocabulary is correct here rather than the
+ * two-axis split {@link PurchaseOrderStatus} warns about.
+ *
+ * Colors follow {@link PurchaseOrderReceiptStatus}: grey for nothing yet or
+ * unknown, amber for the state somebody has to chase, green for complete, red
+ * for broken.
+ */
+export const ParcelTrackingStatus = {
+  LABEL_CREATED: 'label_created',
+  PICKED_UP: 'picked_up',
+  IN_TRANSIT: 'in_transit',
+  OUT_FOR_DELIVERY: 'out_for_delivery',
+  READY_FOR_PICKUP: 'ready_for_pickup',
+  ATTEMPTED_DELIVERY: 'attempted_delivery',
+  DELAYED: 'delayed',
+  DELIVERED: 'delivered',
+  EXCEPTION: 'exception',
+  RETURNED_TO_SHIPPER: 'returned_to_shipper',
+  UNKNOWN: 'unknown',
+
+  values: [
+    { value: 'label_created', label: 'Label Created', color: 'gray' },
+    { value: 'picked_up', label: 'Picked Up', color: 'blue' },
+    { value: 'in_transit', label: 'In Transit', color: 'blue' },
+    { value: 'out_for_delivery', label: 'Out for Delivery', color: 'indigo' },
+    { value: 'ready_for_pickup', label: 'Ready for Pickup', color: 'teal' },
+    { value: 'attempted_delivery', label: 'Attempted Delivery', color: 'amber' },
+    { value: 'delayed', label: 'Delayed', color: 'amber' },
+    { value: 'delivered', label: 'Delivered', color: 'green' },
+    { value: 'exception', label: 'Exception', color: 'red' },
+    { value: 'returned_to_shipper', label: 'Returned to Shipper', color: 'orange' },
+    { value: 'unknown', label: 'Unknown', color: 'gray' },
+  ] satisfies FieldOptionItem[],
+} as const
+
+/**
+ * Shipment Status - the roll-up over a shipment's boxes
+ * `plans/apps/shipstation/shared-shipment-entities-proposal.md` §6.
+ *
+ * The eleven {@link ParcelTrackingStatus} values plus `partially_delivered`,
+ * which is the one state a single box cannot be in. DERIVED by the connector
+ * over the shipment's active parcels and never hand-set, so like
+ * {@link PurchaseOrderReceiptStatus} it carries no `not_applicable` escape
+ * hatch.
+ *
+ * Roll-up rule. Voided parcels are excluded entirely. A shipment with no active
+ * parcels is `unknown`. Otherwise the shipment takes the highest-precedence
+ * status present, attention-first, so the box needing a human wins over the
+ * merely-common one (three boxes `in_transit` and one `exception` is an
+ * `exception` shipment):
+ *
+ * ```
+ * exception > returned_to_shipper > attempted_delivery > delayed
+ * > partially_delivered > delivered > ready_for_pickup > out_for_delivery
+ * > in_transit > picked_up > label_created > unknown
+ * ```
+ *
+ * `delivered` applies only when EVERY active parcel is delivered, so any mix of
+ * delivered and not-delivered is `partially_delivered`.
+ *
+ * Attention-first was CONFIRMED by the owner on 2026-09-10, closing the open
+ * item in §8. The alternative was progress-first, where the same shipment reads
+ * `partially_delivered` and the problem box stays invisible until somebody opens
+ * the shipment.
+ */
+export const ShipmentStatus = {
+  LABEL_CREATED: 'label_created',
+  PICKED_UP: 'picked_up',
+  IN_TRANSIT: 'in_transit',
+  OUT_FOR_DELIVERY: 'out_for_delivery',
+  READY_FOR_PICKUP: 'ready_for_pickup',
+  ATTEMPTED_DELIVERY: 'attempted_delivery',
+  DELAYED: 'delayed',
+  PARTIALLY_DELIVERED: 'partially_delivered',
+  DELIVERED: 'delivered',
+  EXCEPTION: 'exception',
+  RETURNED_TO_SHIPPER: 'returned_to_shipper',
+  UNKNOWN: 'unknown',
+
+  values: [
+    { value: 'label_created', label: 'Label Created', color: 'gray' },
+    { value: 'picked_up', label: 'Picked Up', color: 'blue' },
+    { value: 'in_transit', label: 'In Transit', color: 'blue' },
+    { value: 'out_for_delivery', label: 'Out for Delivery', color: 'indigo' },
+    { value: 'ready_for_pickup', label: 'Ready for Pickup', color: 'teal' },
+    { value: 'attempted_delivery', label: 'Attempted Delivery', color: 'amber' },
+    { value: 'delayed', label: 'Delayed', color: 'amber' },
+    { value: 'partially_delivered', label: 'Partially Delivered', color: 'amber' },
+    { value: 'delivered', label: 'Delivered', color: 'green' },
+    { value: 'exception', label: 'Exception', color: 'red' },
+    { value: 'returned_to_shipper', label: 'Returned to Shipper', color: 'orange' },
+    { value: 'unknown', label: 'Unknown', color: 'gray' },
+  ] satisfies FieldOptionItem[],
+} as const

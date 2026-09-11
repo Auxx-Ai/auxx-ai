@@ -852,6 +852,56 @@ export const ORDER_FIELDS: Record<string, ResourceField> = {
       'jurisdiction answerable',
   },
 
+  // Reverse relationship: shipments (from shipment.order). The `shipment` side
+  // lands with entity migration 149
+  // (plans/apps/shipstation/shared-shipment-entities-proposal.md §6).
+  //
+  // ⚠️ DISTINCT from `fulfillments` above. That JSON field is the ACCOUNTING
+  // fulfillment record - what quantity was recognised and which GL posting it
+  // produced. A shipment is the PHYSICAL dispatch, with per-box tracking.
+  //
+  // `unlink`, not `cascade`: a shipment is a record of a physical dispatch that
+  // ShipStation minted and still owns, so deleting the auxx order record must
+  // not delete the other system's shipment and its parcels. Contrast
+  // `creditMemos` directly above, which cascades because a channel credit memo
+  // is fanned out of the order payload and has no life without it.
+  //
+  // 🛑 This edge CANNOT be populated yet (proposal §4). `linkMode: 'reference'`
+  // cannot cross connectors - `findItemByDef` filters `dataConnectorId` with
+  // hard equality (`data-connectors/relationship-pass.ts`) - so a ShipStation
+  // reference to a Shopify-created order resolves nothing, and unresolved edges
+  // never expire: they go back on `stillPending` and retry every run.
+  // Populating this needs a native `match` on a column Shopify already writes,
+  // or the platform resolver in the ShipStation build plan §6.
+  shipments: {
+    id: toFieldId('shipments'),
+    key: 'shipments',
+    label: 'Shipments',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'order_shipments',
+    systemSortOrder: 'aO',
+    showInPanel: false, // has_many inverse; surfaced from the shipment side
+    showInDialogs: false,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'shipment:order' as ResourceFieldId,
+      relationshipType: 'has_many',
+      onDelete: 'unlink',
+      isInverse: true,
+    },
+    description:
+      'Physical dispatches of this order - one per shipment, each carrying its own parcels ' +
+      'and tracking numbers',
+  },
+
   createdAt: {
     id: toFieldId('createdAt'),
     key: 'createdAt',
