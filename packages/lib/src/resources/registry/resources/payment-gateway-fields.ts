@@ -16,12 +16,13 @@ import type { ResourceField } from '../field-types'
  *
  * `13` §5.1's gateway census counted eleven distinct handles across five card
  * rails on one store's history, and the pattern that had already been applied
- * once (`clearing_affirm`, entity migration 137) does not survive a second
+ * once (`clearing_affirm`, entity migration 137) did not survive a second
  * application: role-per-gateway costs a role, an account and a chart migration
  * per rail, and a rail is not permanent (the store cut over from
  * Authorize.Net to Shopify Payments mid-book). A `payment_gateway` record is a
  * ROW instead: a gateway is a fact about the business, never a function the
- * chart has to grow a role for.
+ * chart has to grow a role for. `clearing_affirm` was retired into a record on
+ * 2026-09-10 and `ACCOUNT_ROLES` now names no gateway at all.
  *
  * 🛑 **This does NOT mint an account per gateway.** {@link clearingAccount} and
  * {@link feeAccount} name WHICH account a gateway settles into; two rails

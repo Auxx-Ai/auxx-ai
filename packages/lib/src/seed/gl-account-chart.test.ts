@@ -178,34 +178,34 @@ describe('seedChartPacks', () => {
   // 27 since brief 21 §4.2 grew the core by fourteen role-less accounts (the
   // operating expenses, prepaid and the two owner-equity movements). The role
   // count is untouched at 11: none of the fourteen carries one.
-  it("['core'] creates 27 and assigns 11", async () => {
+  it("['core'] creates 27 and assigns 10", async () => {
     const result = await seedChartPacks(stubDb([]), 'org-1', DEF_ID, ['core'])
 
     expect(result.packs).toEqual(['core'])
     expect(result.created).toBe(27)
     expect(result.created).toBe(CORE_CODES.length)
-    expect(result.rolesAssigned).toBe(11)
+    expect(result.rolesAssigned).toBe(10)
     expect(result.rolesAssigned).toBe(CORE_ROLES.length)
     expect(h.creates).toHaveLength(27)
   })
 
-  it("['core', 'inventory'] creates 36 and assigns 18", async () => {
+  it("['core', 'inventory'] creates 36 and assigns 17", async () => {
     const result = await seedChartPacks(stubDb([]), 'org-1', DEF_ID, ['core', 'inventory'])
 
     expect(result.packs).toEqual(['core', 'inventory'])
     expect(result.created).toBe(36)
     expect(result.created).toBe(CORE_PLUS_INVENTORY_ACCOUNTS.length)
-    expect(result.rolesAssigned).toBe(18)
+    expect(result.rolesAssigned).toBe(17)
     expect(result.rolesAssigned).toBe(CORE_PLUS_INVENTORY_ROLES.length)
   })
 
-  it("['purchasing'] alone walks core, then inventory, then purchasing, landing 40 accounts and 22 roles", async () => {
+  it("['purchasing'] alone walks core, then inventory, then purchasing, landing 40 accounts and 21 roles", async () => {
     const result = await seedChartPacks(stubDb([]), 'org-1', DEF_ID, ['purchasing'])
 
     expect(result.packs).toEqual(['core', 'inventory', 'purchasing'])
     expect(result.created).toBe(40)
     expect(result.created).toBe(CORE_INVENTORY_PURCHASING_ACCOUNTS.length)
-    expect(result.rolesAssigned).toBe(22)
+    expect(result.rolesAssigned).toBe(21)
     expect(result.rolesAssigned).toBe(CORE_INVENTORY_PURCHASING_ROLES.length)
   })
 
@@ -355,6 +355,6 @@ describe('seedDefaultChartOfAccounts', () => {
 
     expect(result.packs).toEqual(['core'])
     expect(result.created).toBe(27)
-    expect(result.rolesAssigned).toBe(11)
+    expect(result.rolesAssigned).toBe(10)
   })
 })

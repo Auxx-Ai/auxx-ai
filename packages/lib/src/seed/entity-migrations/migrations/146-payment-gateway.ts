@@ -33,18 +33,19 @@ const CACHE_KEYS = ['resources'] as const
  *
  * §5.1's gateway census found eleven distinct handles across five card rails on
  * one store's history, and the pattern already applied once for a second
- * gateway (`clearing_affirm`, entity migration 137) does not survive a third:
+ * gateway (`clearing_affirm`, entity migration 137) did not survive a third:
  * role-per-gateway costs a role, an account and a chart migration per rail.
  * This migration creates the record instead - a gateway carries its own
  * clearing account, fee account and settlement source, and is a row a merchant
- * can add without an engineer.
+ * can add without an engineer. `clearing_affirm` was itself retired into a
+ * record on 2026-09-10, so the card rail is the only one left with a role.
  *
- * Independent of the chart (`gl_account`): the two default rows the census
- * names (`Shopify Payments`, `Affirm`) are seeded by `seedDefaultPaymentGateways`
- * in `seed/gl-account-chart.ts`, once the org has PROVISIONED a chart and the
- * clearing accounts those defaults point at actually exist - this migration
- * only creates the def and its fields, so it has no ordering constraint
- * against 108, 133, 142, 143 or 144.
+ * Independent of the chart (`gl_account`): the one default row
+ * (`Shopify Payments`) is seeded by `seedDefaultPaymentGateways` in
+ * `seed/gl-account-chart.ts`, once the org has PROVISIONED a chart and the
+ * clearing account it points at actually exists - this migration only creates
+ * the def and its fields, so it has no ordering constraint against 108, 133,
+ * 142, 143 or 144.
  *
  * Idempotent: `ensureEntityDefinitions` / `ensureCustomFields` skip whatever the
  * org already holds.

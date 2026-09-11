@@ -68,15 +68,16 @@
  *    the one that knows what it is posting. See
  *    {@link BuildPaymentEntryInput.postingType}.
  * 2. **Which clearing account.** A `PaymentRoute` is a payment METHOD, and
- *    `'clearing'` maps to `clearing_card` (`1200`). ⚠️ `ACCOUNT_ROLES` gained a
- *    second clearing role, `clearing_affirm` (`1210`), for the fulfillment
- *    debit fork (49 §8.4 decision 6) - and this table still cannot reach it,
- *    because a method does not say which gateway took the money. Affirm
- *    settlements are invisible to the payouts API, so an Affirm charge routed to
+ *    `'clearing'` maps to `clearing_card` (`1200`) - the only clearing ROLE
+ *    there is. ⚠️ It cannot reach a non-card rail, because a method does not say
+ *    which gateway took the money, and a non-card rail has no role to reach:
+ *    it is a `payment_gateway` record carrying its own clearing account
+ *    (`clearing_affirm` was deleted on 2026-09-10). That matters because such a
+ *    settlement is invisible to the payouts API, so a charge on one routed to
  *    `1200` makes that account impossible to reconcile to zero. When a payment
- *    has to tell the two apart, {@link PAYMENT_ROUTE_ROLE} grows a discriminator
- *    on the GATEWAY rather than on the method, the way `resolveFulfillmentDebit`
- *    already does.
+ *    has to tell them apart, {@link PAYMENT_ROUTE_ROLE} grows a discriminator on
+ *    the GATEWAY rather than on the method, resolving to a record's account id
+ *    the way `resolveFulfillmentDebit` already does.
  * 3. **Which bank account.** A bank account is not a role (brief 13 §2), so the
  *    `cash` row of {@link PAYMENT_ROUTE_ROLE} carries no role to look up - the
  *    caller resolves `accounting.cashBankAccountId` to a `gl_account` id and

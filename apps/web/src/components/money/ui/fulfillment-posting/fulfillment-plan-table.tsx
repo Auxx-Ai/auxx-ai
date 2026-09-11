@@ -51,7 +51,6 @@ import { formatMinor } from '~/components/accounting/ui/ledger/format'
  */
 export const DEBIT_ROLE_LABEL: Record<FulfillmentDebitRole, string> = {
   clearing_card: 'Card clearing',
-  clearing_affirm: 'Affirm clearing',
   accounts_receivable: 'Accounts receivable',
   gateway: 'Gateway clearing',
 }
@@ -59,7 +58,6 @@ export const DEBIT_ROLE_LABEL: Record<FulfillmentDebitRole, string> = {
 /** The same, short enough for a column head. */
 const DEBIT_ROLE_COLUMN: Record<FulfillmentDebitRole, string> = {
   clearing_card: 'Card',
-  clearing_affirm: 'Affirm',
   accounts_receivable: 'A/R',
   gateway: 'Gateway',
 }
@@ -67,7 +65,6 @@ const DEBIT_ROLE_COLUMN: Record<FulfillmentDebitRole, string> = {
 /** The order the debit columns are read in. Card first: it is the common case. */
 const DEBIT_ROLE_ORDER: readonly FulfillmentDebitRole[] = [
   'clearing_card',
-  'clearing_affirm',
   'gateway',
   'accounts_receivable',
 ]
@@ -76,7 +73,7 @@ const DEBIT_ROLE_ORDER: readonly FulfillmentDebitRole[] = [
  * The label one shipment ROW shows for its debit.
  *
  * `role === 'gateway'` means the debit is a `payment_gateway` record's own
- * clearing account id (`amounts.debitGlAccountId`), not one of the three
+ * clearing account id (`amounts.debitGlAccountId`), not one of the two
  * declared roles - `DEBIT_ROLE_LABEL.gateway` alone cannot say WHICH gateway,
  * so this prefers the name from `gatewayNames` (keyed by that same id) and
  * falls back to the generic label when the caller has not supplied one.

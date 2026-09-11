@@ -44,7 +44,10 @@ export const ROLE_IMPORT_MATCH: Partial<
   undeposited_funds: { names: ['Undeposited Funds'] },
   sales_tax_payable: { names: ['Sales Tax Payable'] },
   equity_retained_earnings: { names: ['Retained Earnings'] },
-  equity_opening_balance: { names: ['Opening Balance Equity'] },
+  // 🛑 No `equity_opening_balance` row: the role was deleted on 2026-09-10
+  // because no builder emitted it. `3900 Opening Balance Equity` still arrives
+  // from QuickBooks and still lands in the chart - it just carries no role, so
+  // there is nothing here to match it to.
   bad_debt_expense: { names: ['Bad Debt', 'Bad Debts', 'Bad Debt Expense'] },
 }
 

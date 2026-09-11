@@ -165,11 +165,10 @@ export interface ChartPack {
 //   the role, a manual journal to a payable by id is ordinary bookkeeping, and
 //   every business owes somebody. Its subtype is what the QuickBooks seam uses
 //   to demand a vendor on the line (13 §1).
-// - `3900 Opening Balance Equity`: no builder emits the role and nothing reads
-//   it, but the opening trial-balance grid needs the account to balance
-//   against and QuickBooks has the account of the same name. The role stays
-//   because the vocabulary is closed and a role no pack carried would fail the
-//   union test.
+// - `3900 Opening Balance Equity`: the opening trial-balance grid needs an
+//   account to balance against and QuickBooks has one of the same name. It
+//   carries NO role - `equity_opening_balance` was deleted on 2026-09-10, since
+//   no builder emitted it and nothing read it.
 // - `4000`, `4020`: `fulfillment` is enabled for every org and drops a zero
 //   shipping leg, so an org that never ships simply never posts to them.
 // - `6300`, `4090`, `4020`: one account each, driven by enabled types every org
@@ -300,10 +299,14 @@ const CORE_ACCOUNTS: readonly DefaultChartAccount[] = [
     // The balancing leg of the opening entry. A bookkeeper clears it to 3000
     // or 3100 with a manual journal once the opening balances are agreed -
     // exactly what QuickBooks does with the account of the same name.
+    //
+    // 🛑 Role-less since 2026-09-10. `buildOpeningBalanceEntry` takes the
+    // account ids a person typed into the trial-balance grid, so it never
+    // emitted `equity_opening_balance` and nothing ever read it. The account
+    // does the work; the role was decoration.
     code: '3900',
     name: 'Opening Balance Equity',
     accountType: GlAccountType.EQUITY,
-    role: 'equity_opening_balance',
   },
 
   // ── Revenue ─────────────────────────────────────────────────────────────
@@ -458,13 +461,22 @@ const CORE_ACCOUNTS: readonly DefaultChartAccount[] = [
 ]
 
 // ─────────────────────────────────────────────────────────────────────────────
-// card_rail: Stripe Connect, Shopify Payments, Affirm (16 §1.4)
+// card_rail: Stripe Connect, Shopify Payments (16 §1.4)
 // ─────────────────────────────────────────────────────────────────────────────
 //
 // `seedDefaultPaymentGateways` runs after this pack, never after the core: the
-// two default gateway records point at `clearing_card` / `clearing_affirm`,
-// which only exist once this pack has landed (13 §5.3, 16 §1.5). `6105` rides
-// with the rail because Affirm's fees clear `1210` (16 §1.6).
+// default gateway record points at `clearing_card`, which only exists once this
+// pack has landed (13 §5.3, 16 §1.5).
+//
+// 🛑 **Affirm is not in here, and no rail past the card rail ever will be.**
+// `1210 Affirm Clearing` and `6105 Merchant Fees - Affirm` were removed on
+// 2026-09-10 along with the `clearing_affirm` role: a default chart every org
+// gets must not name a vendor most of them have never heard of. Affirm is now
+// what Authorize.Net already was - a rail the merchant ADDS, as a
+// `payment_gateway` record pointing at a clearing account they create. The
+// exclusion from `1200` still happens, and still mechanically: an id-routed
+// gateway debit never reaches `clearing_card`, which is the only role
+// `PAYOUT_CLEARING_ROLES` drains.
 const CARD_RAIL_ACCOUNTS: readonly DefaultChartAccount[] = [
   {
     // Named for the RAIL. Was `Shopify Clearing` / `clearing_shopify` until
@@ -475,21 +487,6 @@ const CARD_RAIL_ACCOUNTS: readonly DefaultChartAccount[] = [
     name: 'Card Clearing',
     accountType: GlAccountType.ASSET,
     role: 'clearing_card',
-  },
-  {
-    // Must EXCLUDE every Affirm-gateway order or 1200 can never reconcile to
-    // zero: an Affirm settlement never lands on the card rail, so it is
-    // invisible to the payouts API (accrual plan §3).
-    //
-    // The role is what makes that exclusion mechanical rather than a rule
-    // somebody has to remember: the fulfillment debit fork routes an `affirm`
-    // gateway to `clearing_affirm`, and `PAYOUT_CLEARING_ROLES` holds
-    // `clearing_card` alone (49 §3.2, §8.4 decision 6). Entity migration 137
-    // stamps this role onto orgs seeded before it existed.
-    code: '1210',
-    name: 'Affirm Clearing',
-    accountType: GlAccountType.ASSET,
-    role: 'clearing_affirm',
   },
   {
     // Money that arrived and auxx cannot attribute. The payout entry's fourth
@@ -511,14 +508,6 @@ const CARD_RAIL_ACCOUNTS: readonly DefaultChartAccount[] = [
     accountType: GlAccountType.EXPENSE,
     role: 'payment_processing_fees',
   },
-  {
-    // Kept separate from 6100 for RECONCILIATION, not optimisation: Affirm
-    // settles in its own deposit, so its fees have to be separable to clear
-    // 1210 (accrual plan §3).
-    code: '6105',
-    name: 'Merchant Fees - Affirm',
-    accountType: GlAccountType.EXPENSE,
-  },
 ]
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -526,11 +515,14 @@ const CARD_RAIL_ACCOUNTS: readonly DefaultChartAccount[] = [
 // ─────────────────────────────────────────────────────────────────────────────
 const PREPAYMENTS_ACCOUNTS: readonly DefaultChartAccount[] = [
   {
+    // 🛑 Role-less. `deferred_revenue` was deleted on 2026-09-10: the month-end
+    // deferral builder that would have emitted it was never written, and a role
+    // nothing emits is a checklist row with no answer. The ACCOUNT is real and
+    // stays - a manual journal defers revenue to it by id, which is ordinary
+    // bookkeeping. Give it a role again when a builder needs one.
     code: '2300',
     name: 'Deferred Revenue',
     accountType: GlAccountType.LIABILITY,
-    // Month-end only, reversed on day one of the next month.
-    role: 'deferred_revenue',
   },
   {
     // Money taken BEFORE delivery - `money/payments/deposit.ts`. A BANK deposit

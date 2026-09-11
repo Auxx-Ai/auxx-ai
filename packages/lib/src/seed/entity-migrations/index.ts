@@ -288,10 +288,10 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   // which creates the `order` and `line_item` defs it widens, and after 108,
   // which owns the chart `4090 Sales Returns and Allowances` is added to.
   migration136RefundsAndTaxLines,
-  // The sales channel's per-line fulfillment rollup, natively, plus the
-  // clearing_affirm role on 1210 (49 §8.4 decisions 4 and 6). MUST sort after
-  // 107, which creates the `line_item` def it widens, and after 108, which owns
-  // the chart account it stamps.
+  // The sales channel's per-line fulfillment rollup, natively (49 §8.4
+  // decision 4). MUST sort after 107, which creates the `line_item` def it
+  // widens. Its second half - a clearing_affirm role on 1210 - was removed with
+  // the role on 2026-09-10, so it no longer depends on 108.
   migration137FulfillmentFacts,
   // Backfills the bookkeeper system permission profile into every existing org
   // (plans/accounting/tasks/12-accountant-permissions.md §4.2, §6). Leaves a

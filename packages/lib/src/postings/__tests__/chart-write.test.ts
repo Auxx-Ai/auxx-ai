@@ -37,6 +37,12 @@ const h = vi.hoisted(() => ({
   writeError: null as Error | null,
   /** The instance id `create` hands back. */
   createdId: 'acct_new',
+  /**
+   * What `findGlAccountPointers` (the I4 guard) finds. Empty by default: the
+   * ROLE cases below are about roles, and a fixture that silently carried a
+   * payment gateway would be testing the wrong refusal.
+   */
+  pointers: [] as { attribute: string; entityId: string; glAccountId: string }[],
 }))
 
 vi.mock('../../cache', () => ({
@@ -194,6 +200,16 @@ function stubDb(accounts: Account[], assignments: Assignment[] = []): Database {
           limit: () => chain,
           orderBy: () => chain,
           groupBy: () => chain,
+          // `findGlAccountPointers` (the I4 guard) joins FieldValue to
+          // CustomField. This stub models no TEXT pointer at all, so the join
+          // resolves to nothing and the guard passes - which is the right
+          // default here: these cases are about ROLES, and a fixture that
+          // silently grew a payment gateway would be testing the wrong thing.
+          // The guard's own behaviour is covered in `gl-account-pointers.test.ts`.
+          innerJoin: () => ({
+            ...chain,
+            where: () => ({ ...chain, limit: async () => h.pointers }),
+          }),
           // biome-ignore lint/suspicious/noThenProperty: the stub must be awaitable
           then: (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) =>
             Promise.resolve(rowsFor(table, params)).then(resolve, reject),
@@ -225,6 +241,7 @@ beforeEach(() => {
   h.deletes = []
   h.writeError = null
   h.createdId = 'acct_new'
+  h.pointers = []
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -831,6 +848,97 @@ describe('I2: deactivating an account a role still posts to', () => {
     })
 
     expect(result.isOk()).toBe(true)
+  })
+})
+
+/**
+ * I4 - the guard that `assertNoLiveRole` is not.
+ *
+ * 🛑 This became reachable on 2026-09-10. `clearing_affirm` had been doing
+ * double duty: routing Affirm money AND, through `assertNoLiveRole`, keeping
+ * `1210 Affirm Clearing` from being removed. Deleting the role moved the
+ * routing to a `payment_gateway` record and silently dropped the protection -
+ * so the Chart tab would happily archive an account a live gateway named, and
+ * the next Affirm posting would refuse with "no active account with id ...".
+ */
+describe('I4: removing or deactivating an account a TEXT pointer still names', () => {
+  const gatewayPointer = {
+    attribute: 'payment_gateway_clearing_account',
+    entityId: 'pg_affirm',
+    glAccountId: GRNI_ACCOUNT.id,
+  }
+
+  it('refuses removal, naming WHAT points there rather than only that something does', async () => {
+    h.pointers = [gatewayPointer]
+    const db = stubDb([GRNI_ACCOUNT], [])
+
+    const error = (
+      await removeChartAccount(db, {
+        organizationId: ORG,
+        accountId: GRNI_ACCOUNT.id,
+        actorUserId: USER,
+      })
+    )._unsafeUnwrapErr()
+
+    expect(error.message).toContain('a payment gateway (clearing account)')
+    expect(error.message).toContain('still points at it')
+    // 🛑 Refused means NOTHING was archived. A guard that refuses after the
+    // write is not a guard.
+    expect(h.archives).toEqual([])
+  })
+
+  it('refuses deactivation too - every chart reader treats inactive as unusable', async () => {
+    h.pointers = [gatewayPointer]
+    const db = stubDb([GRNI_ACCOUNT], [])
+
+    const error = (
+      await updateChartAccount(db, {
+        organizationId: ORG,
+        accountId: GRNI_ACCOUNT.id,
+        actorUserId: USER,
+        isActive: false,
+      })
+    )._unsafeUnwrapErr()
+
+    expect(error.message).toContain('a payment gateway (clearing account)')
+    expect(h.updates).toEqual([])
+  })
+
+  it('allows removal once nothing points there', async () => {
+    h.pointers = []
+    const db = stubDb([GRNI_ACCOUNT], [])
+
+    expect(
+      (
+        await removeChartAccount(db, {
+          organizationId: ORG,
+          accountId: GRNI_ACCOUNT.id,
+          actorUserId: USER,
+        })
+      ).isOk()
+    ).toBe(true)
+    expect(h.archives).toHaveLength(1)
+  })
+
+  // A RENUMBER or a RENAME is safe by construction - the pointer holds the
+  // INSTANCE id, which is the whole point of task 15 - so the guard must not
+  // fire on one. Firing here would make a pointed-at account uneditable.
+  it('does not fire on a renumber, a rename or a reactivation', async () => {
+    h.pointers = [gatewayPointer]
+    const db = stubDb([GRNI_ACCOUNT], [])
+
+    expect(
+      (
+        await updateChartAccount(db, {
+          organizationId: ORG,
+          accountId: GRNI_ACCOUNT.id,
+          actorUserId: USER,
+          code: '2165',
+          name: 'GRNI renamed',
+        })
+      ).isOk()
+    ).toBe(true)
+    expect(h.updates).toHaveLength(1)
   })
 })
 

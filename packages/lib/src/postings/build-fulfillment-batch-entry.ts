@@ -4,13 +4,12 @@
  * ONE fulfillment entry for a whole day, week or month of shipments.
  *
  * PURE. No database, no clock, no chart - the property every builder in this
- * folder has, and here it is what lets a mixed group of card, Affirm, terms and
- * tax-exempt orders be balanced exhaustively in a unit test.
+ * folder has, and here it is what lets a mixed group of card, routed-gateway,
+ * terms and tax-exempt orders be balanced exhaustively in a unit test.
  *
  * ```
  *   Dr accounts_receivable   ONE LINE PER ORDER   that order's terms shipments
  *   Dr clearing_card         summarised           every card shipment's total
- *   Dr clearing_affirm       summarised           every Affirm shipment's total
  *   Dr <gateway's own account>  summarised, per id  every routed-gateway shipment's total
  *       Cr revenue_product   summarised, per channel dimension  Σ subtotal
  *       Cr sales_tax_payable summarised, per jurisdiction dimension (when it ties)  Σ tax
@@ -112,22 +111,38 @@ const TEST_GATEWAY = 'bogus'
 const MANUAL_GATEWAY = 'manual'
 
 /**
- * Which clearing account each named gateway settles into. DECLARED.
+ * Which clearing account each named gateway settles into BY ROLE. DECLARED.
  *
- * Only gateways whose answer is NOT the card rail need a row: everything else
- * (PayPal, Stripe, Shop Pay, a gateway nobody has seen yet) settles as card
- * money into `clearing_card`, which is the account a payout entry drains.
+ * Only gateways whose answer is NOT the card rail would need a row, and since
+ * 2026-09-10 there are none: everything (PayPal, Stripe, Shop Pay, a gateway
+ * nobody has seen yet) settles as card money into `clearing_card`, which is the
+ * account a payout entry drains.
  *
- * 🛑 `affirm` is the row that matters. An Affirm settlement never lands on the
- * card rail and is invisible to the payouts API, so an Affirm sale debited to
- * `clearing_card` leaves that account with a residual no payout can ever
- * relieve - it balances, and `1200` simply stops reconciling to zero.
+ * 🛑 **`affirm` used to be the row that matters, and it is now a
+ * `payment_gateway` record instead.** The fact behind it is unchanged: an
+ * Affirm settlement never lands on the card rail and is invisible to the
+ * payouts API, so an Affirm sale debited to `clearing_card` leaves that account
+ * with a residual no payout can ever relieve - it balances, and `1200` simply
+ * stops reconciling to zero. What changed is WHERE the exclusion is declared. A
+ * role named a vendor, which `build-entry.ts` forbids; a record does not, and
+ * {@link matchGatewayRoute} routes the gateway to that record's own account by
+ * id before this table is ever consulted. The safety property survives because
+ * an id-routed debit is not `clearing_card` and `PAYOUT_CLEARING_ROLES` drains
+ * `clearing_card` alone.
+ *
+ * ⚠️ **An Affirm store with no `payment_gateway` record falls through to
+ * `clearing_card` and the residual comes back.** That is the cost of deleting
+ * the role, it is the same cost Authorize.Net has always carried, and the
+ * gateway settings page is where it is paid.
+ *
+ * The table is kept - rather than collapsed into the `clearing_card` default -
+ * because it is the declaration site a future non-card rail would be added to
+ * if one ever earns a role rather than a record.
  */
 export const FULFILLMENT_GATEWAY_DEBIT: Readonly<
   Record<string, Exclude<FulfillmentDebitRole, 'gateway'>>
 > = {
   shopify_payments: 'clearing_card',
-  affirm: 'clearing_affirm',
 }
 
 /**
@@ -500,7 +515,6 @@ export const FULFILLMENT_DEBIT_ACCOUNT_ROLE: Readonly<
   Record<Exclude<FulfillmentDebitRole, 'gateway'>, AccountRole>
 > = {
   clearing_card: ACCOUNT_ROLES.CLEARING_CARD,
-  clearing_affirm: ACCOUNT_ROLES.CLEARING_AFFIRM,
   accounts_receivable: ACCOUNT_ROLES.ACCOUNTS_RECEIVABLE,
 }
 
@@ -560,8 +574,8 @@ function assertWholeMinor(value: number, label: string, context: Record<string, 
  * 1. `Dr accounts_receivable`, **one line per order**, `sourceType: 'order'`,
  *    `sourceId: <orderId>`, memo `<orderNumber>`. Aging has to name the debtor,
  *    and `listPostingsForSource` on an order still finds this one.
- * 2. `Dr clearing_card`, `Dr clearing_affirm`, `Dr <gateway route's account>` -
- *    summarised, the last one per distinct account id (brief 13 §5.3).
+ * 2. `Dr clearing_card` and `Dr <gateway route's account>` - summarised, the
+ *    second one per distinct account id (brief 13 §5.3).
  * 3. `Cr revenue_product` - summarised PER CHANNEL, one line per
  *    `dimensions.channel` value, through the fail-open {@link CHANNEL_KEYS}
  *    table (brief 13 §5).
@@ -600,7 +614,6 @@ export function buildFulfillmentBatchEntry(
   >()
   const byDebitRole: Record<FulfillmentDebitRole, number> = {
     clearing_card: 0,
-    clearing_affirm: 0,
     accounts_receivable: 0,
     gateway: 0,
   }
@@ -746,15 +759,6 @@ export function buildFulfillmentBatchEntry(
       direction: 'debit',
       amount: byDebitRole.clearing_card,
       memo: describe('card clearing'),
-    })
-  }
-  if (byDebitRole.clearing_affirm !== 0) {
-    push({
-      ...summarised,
-      accountRole: ACCOUNT_ROLES.CLEARING_AFFIRM,
-      direction: 'debit',
-      amount: byDebitRole.clearing_affirm,
-      memo: describe('Affirm clearing'),
     })
   }
   for (const [glAccountId, amount] of byGatewayAccount) {

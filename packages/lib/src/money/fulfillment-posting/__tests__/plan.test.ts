@@ -349,19 +349,42 @@ describe('the exclusion PRIORITY order', () => {
 
 describe('totals and the debit split', () => {
   it('splits a group by the account each shipment debits', () => {
-    const result = plan([
-      // Paid by card.
-      shipment({ orderId: 'a', orderNumber: '#1' }),
-      // Paid by Affirm: its own clearing account, so the payout reconciles.
-      shipment({ orderId: 'b', orderNumber: '#2', gateways: ['Affirm'] }),
-      // Not paid: a receivable, and aging needs the debtor.
-      shipment({ orderId: 'c', orderNumber: '#3', financialStatus: 'pending' }),
-    ])
+    const result = plan(
+      [
+        // Paid by card.
+        shipment({ orderId: 'a', orderNumber: '#1' }),
+        // Paid by Affirm: its own clearing account via a `payment_gateway`
+        // record, so the card payout still reconciles to zero. This was the
+        // `clearing_affirm` ROLE until 2026-09-10 - a role may not name a
+        // vendor, so it became a record and lands in the `gateway` bucket.
+        shipment({ orderId: 'b', orderNumber: '#2', gateways: ['Affirm'] }),
+        // Not paid: a receivable, and aging needs the debtor.
+        shipment({ orderId: 'c', orderNumber: '#3', financialStatus: 'pending' }),
+      ],
+      {
+        gatewayRoutes: [
+          { handles: ['affirm'], clearingGlAccountId: 'acct_affirm_clearing', active: true },
+        ],
+      }
+    )
 
     expect(result.groups[0]?.totals.byDebitRole).toEqual({
       clearing_card: 10_000,
-      clearing_affirm: 10_000,
       accounts_receivable: 10_000,
+      gateway: 10_000,
+    })
+  })
+
+  it('folds a non-card rail into card clearing when no record routes it', () => {
+    // 🛑 The cost of deleting `clearing_affirm`, pinned rather than left
+    // implicit: `1200` now carries a residual no card payout can relieve. The
+    // gateway settings page is where that is paid, and it is the same cost
+    // Authorize.Net has always carried.
+    const result = plan([shipment({ orderId: 'b', orderNumber: '#2', gateways: ['Affirm'] })])
+
+    expect(result.groups[0]?.totals.byDebitRole).toEqual({
+      clearing_card: 10_000,
+      accounts_receivable: 0,
       gateway: 0,
     })
   })
@@ -542,7 +565,6 @@ describe('gatewayRoutes (brief 13 §5.3)', () => {
     // The role buckets stay zero; the id-based debit is counted under `gateway`.
     expect(result.groups[0]?.totals.byDebitRole).toEqual({
       clearing_card: 0,
-      clearing_affirm: 0,
       accounts_receivable: 0,
       gateway: 10_000,
     })

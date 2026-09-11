@@ -74,16 +74,27 @@ import type { BuiltEntry, CounterpartyType, GlPostingLineInput, PostingType } fr
  * pinned to this constant by `__tests__/build-entry.test.ts`. There is no
  * options migration, because there are no options.
  *
- * ## Scope
+ * ## Scope: a role exists only if a builder emits it
  *
- * These thirteen cover what the code posts to today - the receipt and vendor
- * bill builders below - plus the L1 month-end inventory entry that is the
- * January 1 deliverable (`plans/money/04-books.md` §2.1). The designed-but-unbuilt
- * builders (fulfillment, payout, build, month-end deferral) will need roles for
- * revenue, the clearing accounts, sales tax, deferred revenue, merchant fees,
- * freight-out and receivables. Those are deliberately absent: their entries are
- * design only, which account each leg lands on is still open, and a role nothing
- * emits is a mapping a bookkeeper can make wrongly with no way to find out.
+ * That is the admission test, and it is the reason three roles were deleted on
+ * 2026-09-10 rather than left to sit on the checklist:
+ *
+ * | Deleted | Why |
+ * | --- | --- |
+ * | `deferred_revenue` | no builder, not even an unwired one. `2300` stays in the `prepayments` pack as a plain account. |
+ * | `equity_opening_balance` | `buildOpeningBalanceEntry` takes the account ids a person typed into the grid, so it emits no role at all. `3900` stays in the chart. |
+ * | `clearing_affirm` | a role must not name a vendor - see the two rules below. Affirm is a `payment_gateway` record now, and `1210` left the `card_rail` pack with it. |
+ *
+ * Four roles are declared with no reachable emitter, and they stay: `grni`,
+ * `freight_accrual` and `duties_accrual` are emitted by {@link buildReceiptEntry},
+ * `ppv` by {@link buildVendorBillEntry}. Both builders are written and tested;
+ * neither has a caller yet, because receiving does not post under L1 (see
+ * `regime.ts`). Deleting the roles would mean deleting the builders.
+ *
+ * 🛑 An unmapped role costs nothing until a builder emits it - `resolveRoles`
+ * fails closed and names it. So the argument for deleting one is never
+ * correctness; it is that every declared role is a row on a bookkeeper's
+ * checklist, and a row nothing can ever post to is a question with no answer.
  */
 /*
  * Two rules about what a role is NOT (brief 13 §2 and §5, 2026-09-10):
@@ -94,10 +105,11 @@ import type { BuiltEntry, CounterpartyType, GlPostingLineInput, PostingType } fr
  *   into or out of a bank account takes the `bank_account`'s own
  *   `glAccountId` and emits a `{ glAccountId }` line, the way the deposit does.
  * - **A gateway does not get a role, and a channel does not get an account.**
- *   `clearing_affirm` is the one exception and it is grandfathered; the third
- *   gateway is a `payment_gateway` record carrying its clearing account, and a
- *   channel is a `dimensions` entry on the revenue line, never a second
- *   revenue role.
+ *   There is no exception any more: `clearing_affirm` was the one, and it was
+ *   retired on 2026-09-10. EVERY gateway past the card rail is a
+ *   `payment_gateway` record carrying its own clearing account, Affirm
+ *   included, and a channel is a `dimensions` entry on the revenue line, never
+ *   a second revenue role.
  */
 export const ACCOUNT_ROLES = {
   /**
@@ -246,26 +258,6 @@ export const ACCOUNT_ROLES = {
    */
   CLEARING_CARD: 'clearing_card',
   /**
-   * Affirm clearing (default `1210`). The SECOND clearing rail, and it exists
-   * for one reason: an Affirm settlement never lands on the card rail, so it is
-   * invisible to the payouts API.
-   *
-   * 🛑 **Folding Affirm orders into `clearing_card` makes `1200` impossible to
-   * reconcile to zero.** The payout entry drains `clearing_card` by exactly what
-   * a card payout settled; an Affirm sale debited there would never be drained,
-   * and `1200` would carry a growing residual that balances perfectly and reads
-   * as unsettled card money. So the fulfillment builder's debit fork routes an
-   * `affirm` gateway here (`resolveFulfillmentDebit` in
-   * `build-fulfillment-batch-entry.ts`), and `PAYOUT_CLEARING_ROLES` excludes
-   * this role by construction.
-   *
-   * `6105 Merchant Fees - Affirm` is the matching expense account and stays
-   * role-less until an Affirm settlement feed exists to post against it.
-   *
-   * @see plans/money/tasks/49-bulk-fulfillment-posting.md §3.2, §8.4 decision 6
-   */
-  CLEARING_AFFIRM: 'clearing_affirm',
-  /**
    * Unidentified receipts (default `2450`). Money that arrived and auxx cannot
    * attribute, held as a LIABILITY until somebody codes it.
    *
@@ -285,8 +277,6 @@ export const ACCOUNT_ROLES = {
   UNIDENTIFIED_RECEIPTS: 'unidentified_receipts',
   /** Sales tax payable (default `2200`). A pass-through liability, never revenue. */
   SALES_TAX_PAYABLE: 'sales_tax_payable',
-  /** Deferred revenue (default `2300`). Month-end deferral and its reversal. */
-  DEFERRED_REVENUE: 'deferred_revenue',
   /**
    * Customer deposits (default `2350`). Money taken BEFORE delivery, a
    * liability. `money/payments/deposit.ts` is this concept; a BANK deposit is
@@ -299,12 +289,6 @@ export const ACCOUNT_ROLES = {
    * knowing the org's numbering.
    */
   EQUITY_RETAINED_EARNINGS: 'equity_retained_earnings',
-  /**
-   * Opening balance equity (default `3900`). The balancing leg of the opening
-   * trial balance entry (`opening_balance` posting type), and the only equity
-   * role a builder ever emits.
-   */
-  EQUITY_OPENING_BALANCE: 'equity_opening_balance',
   /**
    * Product revenue (default `4000`), every channel. The channel is a
    * `dimensions.channel` value on the line (brief 13 §5), never a second
@@ -395,13 +379,10 @@ export const ROLE_ACCOUNT_TYPES: Record<AccountRole, GlAccountTypeValue> = {
   accounts_receivable: 'asset',
   undeposited_funds: 'asset',
   clearing_card: 'asset',
-  clearing_affirm: 'asset',
   unidentified_receipts: 'liability',
   sales_tax_payable: 'liability',
-  deferred_revenue: 'liability',
   customer_deposits: 'liability',
   equity_retained_earnings: 'equity',
-  equity_opening_balance: 'equity',
   revenue_product: 'revenue',
   revenue_shipping: 'revenue',
   revenue_service: 'revenue',
@@ -436,13 +417,10 @@ export const ACCOUNT_ROLE_LABELS: Record<AccountRole, string> = {
   accounts_receivable: 'Accounts Receivable',
   undeposited_funds: 'Undeposited Funds',
   clearing_card: 'Card Clearing',
-  clearing_affirm: 'Affirm Clearing',
   unidentified_receipts: 'Unidentified Receipts',
   sales_tax_payable: 'Sales Tax Payable',
-  deferred_revenue: 'Deferred Revenue',
   customer_deposits: 'Customer Deposits',
   equity_retained_earnings: 'Retained Earnings',
-  equity_opening_balance: 'Opening Balance Equity',
   revenue_product: 'Product Revenue',
   revenue_shipping: 'Shipping Revenue',
   revenue_service: 'Service Revenue',
