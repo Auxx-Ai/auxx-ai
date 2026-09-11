@@ -1,5 +1,59 @@
 # Changelog
 
+## [0.1.235](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.234...auxx-v0.1.235) (2026-09-11)
+
+
+### Features
+
+* **accounting:** a catalogue picker for the chart, and bulk remove/restore ([#2106](https://github.com/Auxx-Ai/auxx-ai/issues/2106)) ([5a7bf94](https://github.com/Auxx-Ai/auxx-ai/commit/5a7bf947d1f5343085dc041bcc8a156fd023caa5))
+* **accounting:** a role may not name a vendor, and an account in use may not be removed ([#2121](https://github.com/Auxx-Ai/auxx-ai/issues/2121)) ([f8a48de](https://github.com/Auxx-Ai/auxx-ai/commit/f8a48de2d4200c98f2f1ab0e5cc09e00428b1eed))
+* **accounting:** a statement that reads like the rest of the app, and one account-type table ([#2111](https://github.com/Auxx-Ai/auxx-ai/issues/2111)) ([71e7488](https://github.com/Auxx-Ai/auxx-ai/commit/71e7488de1de2f0a871c0f6ee0190fd4fd4a669b))
+* **accounting:** a way to actually run the sync, and a PDF that admits its lag ([#2117](https://github.com/Auxx-Ai/auxx-ai/issues/2117)) ([9d395a7](https://github.com/Auxx-Ai/auxx-ai/commit/9d395a7941ac0316761c0de99219e284f0e6f56e))
+* **accounting:** centre the report empty states, and a review queue that reads down its columns ([#2109](https://github.com/Auxx-Ai/auxx-ai/issues/2109)) ([b6c893c](https://github.com/Auxx-Ai/auxx-ai/commit/b6c893c9a65ce552cc0c8842d2b580c3fea9ec59))
+* **accounting:** chart packs, a QuickBooks chart import, and features that bring their accounts ([#2104](https://github.com/Auxx-Ai/auxx-ai/issues/2104)) ([807a28c](https://github.com/Auxx-Ai/auxx-ai/commit/807a28c27a47fc67478f79b37b880fad4e963960))
+* **accounting:** counterparty on every A/R and A/P line, QuickBooks gets journal entries only ([#2100](https://github.com/Auxx-Ai/auxx-ai/issues/2100)) ([c0f1dfb](https://github.com/Auxx-Ai/auxx-ai/commit/c0f1dfbc4b273f3f1b21dad2cb9ca647b68b9f92))
+* **accounting:** create an account in the provider and link it, from the row ([#2123](https://github.com/Auxx-Ai/auxx-ai/issues/2123)) ([b82b283](https://github.com/Auxx-Ai/auxx-ai/commit/b82b28323d3e5411a08f8ce76c5af8568814dc79))
+* **accounting:** do our books and theirs agree, and if not, where ([#2113](https://github.com/Auxx-Ai/auxx-ai/issues/2113)) ([b8cb4b3](https://github.com/Auxx-Ai/auxx-ai/commit/b8cb4b3fedb283025fa824022fc14ca1b2e082b6))
+* **accounting:** find the gateway handles on your own orders ([#2107](https://github.com/Auxx-Ai/auxx-ai/issues/2107)) ([95cec5b](https://github.com/Auxx-Ai/auxx-ai/commit/95cec5bae141f10bc24ea8a5e873bc4cf927ad32))
+* **accounting:** one AccountLabel for every GL account on screen ([#2097](https://github.com/Auxx-Ai/auxx-ai/issues/2097)) ([cf980a9](https://github.com/Auxx-Ai/auxx-ai/commit/cf980a9950a503433b2a2d785b38d33f0143a97b))
+* **accounting:** payouts become match candidates, and a duplicate movement detector ([#2102](https://github.com/Auxx-Ai/auxx-ai/issues/2102)) ([843959c](https://github.com/Auxx-Ai/auxx-ai/commit/843959c12499b51edb3a6ae75b1d31c60c2feede))
+* **accounting:** read back the entries the accountant wrote in QuickBooks ([#2115](https://github.com/Auxx-Ai/auxx-ai/issues/2115)) ([b11cfce](https://github.com/Auxx-Ai/auxx-ai/commit/b11cfce554150035d80f3e169ba35e65edcc99be))
+* **accounting:** record the company an entry was exported to, and guard the reconnect ([#2126](https://github.com/Auxx-Ai/auxx-ai/issues/2126)) ([71aadeb](https://github.com/Auxx-Ai/auxx-ai/commit/71aadeb8556d40f0ebf66ddb478c9c0ed62c1c55))
+* **accounting:** recurring journals, expense bills, and statements that admit their lag ([#2116](https://github.com/Auxx-Ai/auxx-ai/issues/2116)) ([9dbd2b3](https://github.com/Auxx-Ai/auxx-ai/commit/9dbd2b31c8ee5c8349f502dab0ff2e0fa3c272c8))
+* **accounting:** reports and pointers on the account id, and the not_enabled gate ([#2095](https://github.com/Auxx-Ai/auxx-ai/issues/2095)) ([558bc10](https://github.com/Auxx-Ai/auxx-ai/commit/558bc10d30dea38b0c1cbec4ffadce44aee5a2ed))
+* **accounting:** retire the instance-shaped roles, dimensions on the line, payment gateways ([#2101](https://github.com/Auxx-Ai/auxx-ai/issues/2101)) ([f0d499b](https://github.com/Auxx-Ai/auxx-ai/commit/f0d499bcfc11362ca690beda38b4d2a0f3af44a6))
+* **accounting:** say whether each account is linked, and accept a suggestion from the row ([#2105](https://github.com/Auxx-Ai/auxx-ai/issues/2105)) ([e1a91ec](https://github.com/Auxx-Ai/auxx-ai/commit/e1a91ec104c8f35c4962967bba1fd967b1bcb433))
+* **accounting:** somewhere to put rent, and the report the accountant asks for first ([#2114](https://github.com/Auxx-Ai/auxx-ai/issues/2114)) ([244140c](https://github.com/Auxx-Ai/auxx-ai/commit/244140c50c654b85abb51052966fac8d4c2a006d))
+* **accounting:** suggest the opening trial balance from QuickBooks, and never export an opening balance ([#2110](https://github.com/Auxx-Ai/auxx-ai/issues/2110)) ([ba28192](https://github.com/Auxx-Ai/auxx-ai/commit/ba28192eb43a11add7a76c4b3800468570a71802))
+* **accounting:** sync the customer a receivable names, inside the export ([#2125](https://github.com/Auxx-Ai/auxx-ai/issues/2125)) ([243253c](https://github.com/Auxx-Ai/auxx-ai/commit/243253cd0e4f8b198bd3b1655cf7840b2afb1f3b))
+* **accounting:** the account code becomes optional, COGS by subtype, manual lines by id ([#2099](https://github.com/Auxx-Ai/auxx-ai/issues/2099)) ([7f309d2](https://github.com/Auxx-Ai/auxx-ai/commit/7f309d2a8daff750ff6f1e36924dc8f1c618929c))
+* **accounting:** wipe seeded charts, opt-in accounting, account id on the line ([#2094](https://github.com/Auxx-Ai/auxx-ai/issues/2094)) ([ebe4e4d](https://github.com/Auxx-Ai/auxx-ai/commit/ebe4e4d9556efa474b2cf76d8eedc09de961188a))
+* **banking:** group the payouts a reference number kept apart ([#2108](https://github.com/Auxx-Ai/auxx-ai/issues/2108)) ([1669611](https://github.com/Auxx-Ai/auxx-ai/commit/166961190e4a57e4a2de6733ff28632fd5002b6b))
+* **banking:** take a bank line apart, and find every line like it ([#2096](https://github.com/Auxx-Ai/auxx-ai/issues/2096)) ([5db1163](https://github.com/Auxx-Ai/auxx-ai/commit/5db11639fc8a96486f5fb459640c8c261b163b2a))
+* **builds:** batch run number, and the undo that makes a run reversible ([#2090](https://github.com/Auxx-Ai/auxx-ai/issues/2090)) ([a379389](https://github.com/Auxx-Ai/auxx-ai/commit/a37938917cccd133e8c9df87a83e051f5d5aa6de))
+* **connectors:** crawl-based delete reconciliation ([#2092](https://github.com/Auxx-Ai/auxx-ai/issues/2092)) ([6d8abcf](https://github.com/Auxx-Ai/auxx-ai/commit/6d8abcf071a7386dbb64ccff34aff701d992133e))
+* **entity:** one behavior map replaces isVisible and three hardcoded lists ([#2127](https://github.com/Auxx-Ai/auxx-ai/issues/2127)) ([1f23480](https://github.com/Auxx-Ai/auxx-ai/commit/1f234808fe99bcf2c10add63aa7f8eff95f55cde))
+* **parts:** costing settings page with bulk opening stock ([#2091](https://github.com/Auxx-Ai/auxx-ai/issues/2091)) ([45c0c67](https://github.com/Auxx-Ai/auxx-ai/commit/45c0c6711b4f945e1653d0df7d16cffece7eddb6))
+* **permissions:** accountant and bookkeeper profiles, ledger control rung, tasks and calls areas ([#2086](https://github.com/Auxx-Ai/auxx-ai/issues/2086)) ([a6cedb2](https://github.com/Auxx-Ai/auxx-ai/commit/a6cedb2cee102cd6f596d50311f8db0c4fdebe71))
+* **permissions:** member Shared tab, ResourceAccess cleanup, and capability gating ([#2089](https://github.com/Auxx-Ai/auxx-ai/issues/2089)) ([93986ec](https://github.com/Auxx-Ai/auxx-ai/commit/93986ecce3c4917b29bb88bd33a875c47fc0eba2))
+* **shipments:** shared shipment and parcel entities, hidden and multi-app ([#2118](https://github.com/Auxx-Ai/auxx-ai/issues/2118)) ([89fc9d0](https://github.com/Auxx-Ai/auxx-ai/commit/89fc9d0232f9096eb010503cfda76bed60f4d8d7))
+* **workflow:** an address type for app workflow fields, and two more keys on AddressStruct ([#2128](https://github.com/Auxx-Ai/auxx-ai/issues/2128)) ([7a2a48d](https://github.com/Auxx-Ai/auxx-ai/commit/7a2a48d06a42b051f0246ae65341d47426bf0100))
+
+
+### Bug Fixes
+
+* **accounting:** a refund leaves by the door its sale came in, and the issue dialog can send a date ([#2122](https://github.com/Auxx-Ai/auxx-ai/issues/2122)) ([5074682](https://github.com/Auxx-Ai/auxx-ai/commit/5074682cc5ae1124893724c9d7637de8dd568c25))
+* **accounting:** clear the ledger page's two permanent loading states ([#2084](https://github.com/Auxx-Ai/auxx-ai/issues/2084)) ([2d55e2a](https://github.com/Auxx-Ai/auxx-ai/commit/2d55e2a1015333de1c8f678de114ce29d5923ebe))
+* **accounting:** stop asking a standalone org for QuickBooks figures ([#2119](https://github.com/Auxx-Ai/auxx-ai/issues/2119)) ([da1be99](https://github.com/Auxx-Ai/auxx-ai/commit/da1be9959e1da956535f628d618707f7143cf989))
+* **accounting:** sum every inventory role on one account, and the three owed step-8 tests ([#2112](https://github.com/Auxx-Ai/auxx-ai/issues/2112)) ([5d3e0cb](https://github.com/Auxx-Ai/auxx-ai/commit/5d3e0cb81f33b0eadb18cfb9630ade2833c72a4b))
+* **apps:** ask for the whole app list on both settings screens ([#2120](https://github.com/Auxx-Ai/auxx-ai/issues/2120)) ([b04c99e](https://github.com/Auxx-Ai/auxx-ai/commit/b04c99e5aea19bef549ad8b4187f60fdadde0688))
+* **apps:** one live installation per app, and delete the pre-editor addressComponents literals ([#2130](https://github.com/Auxx-Ai/auxx-ai/issues/2130)) ([c0818cc](https://github.com/Auxx-Ai/auxx-ai/commit/c0818cc9421d59938e835de2e051a33853caa1a9))
+* **apps:** tell an app its settings changed, and stop guessing which installation ([#2129](https://github.com/Auxx-Ai/auxx-ai/issues/2129)) ([db66657](https://github.com/Auxx-Ai/auxx-ai/commit/db666573e4eee6a995eee7b65770407c68655899))
+* **connectors:** crawl delete reconciliation, six fixes from review (v12.1) ([#2093](https://github.com/Auxx-Ai/auxx-ai/issues/2093)) ([b358535](https://github.com/Auxx-Ai/auxx-ai/commit/b35853553f7c8d5b7b5ccb4df2cb3e35be02cac5))
+* **connectors:** let connector-written tax lines carry their order ([#2087](https://github.com/Auxx-Ai/auxx-ai/issues/2087)) ([7599d1e](https://github.com/Auxx-Ai/auxx-ai/commit/7599d1e811e0e2b34187d123c8bb98f0a426ae29))
+* **connectors:** publish a parked run's manifest, so its finalize passes run ([#2088](https://github.com/Auxx-Ai/auxx-ai/issues/2088)) ([8aa39a3](https://github.com/Auxx-Ai/auxx-ai/commit/8aa39a3c023f8828948f2a241215cc64b8bb2740))
+* **ui:** commit the useViewportFill hook the banking pages import ([#2098](https://github.com/Auxx-Ai/auxx-ai/issues/2098)) ([8c4ddcb](https://github.com/Auxx-Ai/auxx-ai/commit/8c4ddcb686ef0d56e732d02fe99a6deabb258663))
+
 ## [0.1.234](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.233...auxx-v0.1.234) (2026-09-09)
 
 
