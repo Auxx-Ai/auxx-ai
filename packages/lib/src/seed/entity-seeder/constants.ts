@@ -457,6 +457,52 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     isVisible: false,
   },
   {
+    // One dispatch of goods, and one physical box within it
+    // (`plans/apps/shipstation/shared-shipment-entities-proposal.md` §6).
+    // Entity migration 149.
+    //
+    // NATIVE rather than app-owned because three apps know different things
+    // about the same object: ShipStation knows what was dispatched, FedEx and
+    // UPS know where each parcel is, Shopify knows which order it belongs to
+    // (§2). App-owned entities would make that three tables with no way to join
+    // a ShipStation box to the FedEx status of that same box.
+    //
+    // `isVisible: false` AND no route folder under `app/shipments/`. Hiding is
+    // the sum of six independent mechanisms (§3) and this flag covers four of
+    // them: the sidebar group, the kbar create action, the kbar record-search
+    // scope and the AI entity catalog. It suppresses NOTHING on the server, and
+    // the list page is absent by omission rather than by declaration.
+    //
+    // 🛑 This line reaches FRESH orgs only. `ensureEntityDefinitions` is a plain
+    // insert that skips an org already holding the def, so `isVisible` is only
+    // ever evaluated when the row is CREATED. Existing orgs are reached by
+    // migration 149, which is DELIBERATELY NOT REGISTERED yet.
+    entityType: 'shipment',
+    apiSlug: 'shipments',
+    singular: 'Shipment',
+    plural: 'Shipments',
+    icon: 'truck',
+    color: 'amber',
+    isVisible: false,
+  },
+  {
+    // One physical box with one tracking number: the grain a support agent
+    // actually asks about, and the thing no single app owns today. Shopify has
+    // no parcel concept at all (`Fulfillment.trackingInfo` is a bare list of
+    // numbers with no per-box identity, sequence, weight or status), which is
+    // the gap this fills and why it earns its own def rather than a JSON blob
+    // on the shipment.
+    //
+    // Same hiding treatment as `shipment` above, and same insert-only caveat.
+    entityType: 'parcel',
+    apiSlug: 'parcels',
+    singular: 'Parcel',
+    plural: 'Parcels',
+    icon: 'box',
+    color: 'orange',
+    isVisible: false,
+  },
+  {
     // Suggest-from-history is the PRIMARY categorisation mechanism (bank plan
     // 03 §4 - Stripe FC has no merchant enrichment and no categories); a
     // bank_rule is the opt-in, ordered layer on top of it. Entity migration
@@ -789,6 +835,33 @@ export const DISPLAY_FIELD_CONFIG: Record<string, DisplayFieldConfig> = {
   payment_gateway: {
     primaryDisplayField: 'name',
     secondaryDisplayField: 'settlementSource',
+  },
+  // The MASTER TRACKING NUMBER, not `shipment_number`.
+  //
+  // `shipment_number` is the obvious choice and was the first one, but it is
+  // wrong twice over. ShipStation documents it as "optional, mutable, and does
+  // not require uniqueness", so it is not a thing to require; and it is not
+  // carried on the label payload at all - it lives on the shipment resource -
+  // so the label stream left it empty on 135 of 135 shipments and every one
+  // rendered nameless.
+  //
+  // The master tracking number filled on 135 of 135 in the same sync, and it is
+  // what a support agent actually arrives holding. It is denormalized onto the
+  // shipment precisely so it can be this: `computeDisplayValue` reads a field on
+  // the row, and a tracking number otherwise lives only on a `parcel`.
+  //
+  // `status` stays the secondary because it is always present. `number` becomes
+  // the better secondary once a shipments stream sources it.
+  shipment: {
+    primaryDisplayField: 'masterTrackingNumber',
+    secondaryDisplayField: 'status',
+  },
+  // The tracking number IS the parcel's public identity and the cross-app match
+  // key, and it is `nullable: false` for the same display reason. `status` stays
+  // null until FedEx or UPS gets a connector, so it is only ever the secondary.
+  parcel: {
+    primaryDisplayField: 'trackingNumber',
+    secondaryDisplayField: 'status',
   },
   bank_account: {
     primaryDisplayField: 'name',

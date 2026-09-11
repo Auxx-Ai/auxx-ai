@@ -182,8 +182,19 @@ function AppConfigSource({ connector }: { connector: Connector }) {
   )
 }
 
-/** Map a JSON-Schema config node to the platform `FieldType` that renders it. */
+/**
+ * Map a JSON-Schema config node to the platform `FieldType` that renders it.
+ *
+ * `format` is checked BEFORE `type`, because a date is a `string` in JSON Schema
+ * and the format is the only thing that distinguishes it. Without this branch an
+ * app author who declares `z.iso.datetime()` still gets a free-text box, which
+ * accepts "last week" at save time and only fails when the sync runs.
+ */
 function fieldTypeFor(entry: FieldEntry): FieldTypeValue {
+  if (entry.node.type === 'string') {
+    if (entry.node.format === 'date-time') return FieldType.DATETIME
+    if (entry.node.format === 'date') return FieldType.DATE
+  }
   switch (entry.node.type) {
     case 'boolean':
       return FieldType.CHECKBOX
@@ -199,6 +210,8 @@ function fieldTypeFor(entry: FieldEntry): FieldTypeValue {
 function baseTypeFor(fieldType: FieldTypeValue): BaseType {
   if (fieldType === FieldType.CHECKBOX) return BaseType.BOOLEAN
   if (fieldType === FieldType.NUMBER) return BaseType.NUMBER
+  if (fieldType === FieldType.DATETIME) return BaseType.DATETIME
+  if (fieldType === FieldType.DATE) return BaseType.DATE
   return BaseType.STRING
 }
 

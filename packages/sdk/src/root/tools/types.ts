@@ -134,6 +134,21 @@ export interface ToolActionContext {
  * condition: 136 seeds all four into EXISTING orgs, so these are not union
  * entries that no org resolves. `refund` / `refund_line` were the earlier
  * names of the first two and were renamed before the SDK ever published them.
+ *
+ * `shipment` and `parcel` were ADDED 2026-09-10
+ * (plans/apps/shipstation/shared-shipment-entities-proposal.md §6, §7). They
+ * follow `line_item` / `tax_line` / `credit_memo_line`'s precedent exactly:
+ * both are `isVisible: false` and they are admitted here PRECISELY so a
+ * connector can address them. That is the whole point (proposal §2) -
+ * ShipStation contributes structure (which boxes belong together, weights,
+ * dimensions, void state), FedEx and UPS contribute carrier status onto the
+ * same parcel row, and no single app owns a parcel.
+ *
+ * They satisfy the standing condition above: entity migration
+ * `149-shipment-parcel` seeds both defs, their fields and the `order_shipments`
+ * inverse into EXISTING orgs, so these are not union entries that no org
+ * resolves. Nothing WRITES to either yet - the ShipStation connector comes
+ * next - but the defs resolve, which is what `provisionAppField` needs.
  */
 export type EntityRefKind =
   | 'contact'
@@ -155,6 +170,8 @@ export type EntityRefKind =
   | 'credit_memo_line'
   | 'credit_memo_application'
   | 'tax_line'
+  | 'shipment'
+  | 'parcel'
 
 /**
  * Per-tool configuration. See plans/kopilot/apps/README.md §4.2.

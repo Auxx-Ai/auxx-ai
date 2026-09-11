@@ -198,16 +198,29 @@ Each field carries:
 
 ### `targetEntity` kinds
 
-`EntityRefKind` (`packages/sdk/src/root/tools/types.ts`), verified 2026-09-02, is today:
+`EntityRefKind` (`packages/sdk/src/root/tools/types.ts`), re-verified 2026-09-10, is today:
 
 ```
-contact · company · ticket · article · thread · order · invoice · catalog_item ·
-part · product · build · purchase_order · vendor_bill · gl_account
+contact · company · ticket · article · thread · order · invoice · line_item ·
+catalog_item · part · product · build · purchase_order · vendor_bill ·
+gl_account · credit_memo · credit_memo_line · credit_memo_application ·
+tax_line · shipment · parcel
 ```
 
-The apps plan's Phase 1 item 3.10 adds **`line_item`** to this union: the Shopify brief's line
-columns (§5 there) need it. This guide's worked examples in §5 already use `line_item` as the target
-state.
+`line_item` landed as the apps plan's Phase 1 item 3.10 (the Shopify brief's line columns, §5
+there); this guide's worked examples in §5 already use it. The four credit-memo and tax kinds
+arrived with entity migration 136, and `shipment` / `parcel` with 149.
+
+**Seven of those kinds are `isVisible: false`** and were admitted anyway: `line_item`,
+`credit_memo_line`, `tax_line`, `credit_memo_application`, `shipment` and `parcel`. That is not a
+loophole in the narrowness rule below, it is the rule's actual shape. The union's own doc comment
+records that the first three were admitted **precisely so a channel connector could address them**,
+and the same argument admitted the last two: a parcel is one physical box with one tracking number,
+which is the fact a support agent needs, and no single app owns it. See
+`plans/apps/shipstation/shared-shipment-entities-proposal.md` §2.
+
+What matters for admission is not visibility, it is whether a migration has seeded the kind into
+EXISTING orgs. A kind that lives only in `SYSTEM_ENTITIES` reaches new orgs and nothing else.
 
 One correction to the plan text: it frames a `gl_posting` kind as still to be decided ("add it or
 drop the QuickBooks field, decide in the same edit"). Verified against `tools/types.ts` on
@@ -379,6 +392,25 @@ mergeStrategy?, type?, name? }`:
   one contact, so `primary_email` stays `match: true` and both bind; two variants sharing a SKU are
   different things colliding, so `part_sku` is `match: 'exclusive'` and the second is skipped.
   Uniqueness cannot separate the two cases (both fields are unique), so the author has to say.
+
+  🛑 **Match candidates are OR'd, not ANDed, so every extra `match` field WIDENS the match.** The
+  intuition most authors bring to this is backwards, and until 2026-09-10 both the SDK's own
+  docblock and `IdentityRole` said the opposite. A connector's lookup goes through
+  `UnifiedCrudHandler.lookupByField`, which never passes the opt-in `matchAll` flag on
+  `lookupEntitiesByFieldValue` ("Default `false` (OR / first-wins, today's behaviour)"). Shopify's
+  contact mapping carries both `primary_email` and `phone` as `match: true`: an incoming
+  `jane@example.com` / `+15550001` against a stored `jane@example.com` / `+19998888` merges into
+  the existing Jane on the email hit. It does not create a second Jane because the phone disagrees.
+
+  The corollary is that **a composite key is unavailable to a connector.** Guarding a match on a
+  value a provider reuses (a carrier tracking number) with a second field such as a ship date is
+  not possible, because that candidate only widens the match. If a value cannot carry a match on
+  its own, do not declare `match` on it. `(part, supplier)` is the true composite key `matchAll`
+  exists for, and no connector can express it.
+
+  Ambiguity is not an error here: `lookupByField` passes `onAmbiguous: 'first'`, because a sync
+  must not fail on data the user can only fix by merging. Two hits take the first and file a
+  `DuplicateSuggestion`.
 - **`mergeStrategy`** is the sink's `FieldMergeStrategy` (`overwrite` default, `fill_blank`,
   `connector_owned_only`, `manual_review`, `ignore`), now declared by the author instead of set as a
   per-merchant click in the mapping editor.

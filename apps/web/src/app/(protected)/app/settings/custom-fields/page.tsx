@@ -37,8 +37,24 @@ import { useFeatureFlags } from '~/providers/feature-flag-provider'
 
 const BASE_URL = `/app/settings/custom-fields`
 
-/** Entity types that shouldn't appear in the custom fields list */
-const HIDDEN_ENTITY_TYPES = ['signature', 'inbox', 'personal_inbox', 'entity_group', 'tag']
+/**
+ * Entity types that shouldn't appear in the custom fields list.
+ *
+ * `EntityDefinition.isVisible: false` does NOT cover this screen - this is an
+ * independent hard-coded list, which is why hidden defs have to be named here
+ * as well (every other hidden native, `line_item` and `gl_account` included,
+ * does still appear here today).
+ */
+const HIDDEN_ENTITY_TYPES = [
+  'signature',
+  'inbox',
+  'personal_inbox',
+  'entity_group',
+  'tag',
+  // plans/apps/shipstation/shared-shipment-entities-proposal.md §7 step 10.
+  'shipment',
+  'parcel',
+]
 
 export default function CustomFieldsPage() {
   // Reachable by any def-admin (not just OWNER/ADMIN) — the list is filtered to

@@ -142,7 +142,29 @@ interface ConnectorContributingFieldBase extends ConnectorContributingFieldCommo
    * Secondary identity-match key (today's `matchFieldKeys`) — merges an
    * incoming record into an existing entity on first link. The external id
    * (from `appField`, when that field is `identity: true`) is always the
-   * primary key; more than one `match: true` field is an ANDed composite key.
+   * primary key.
+   *
+   * 🛑 **Candidates are OR'd, not ANDed, so each extra `match: true` field
+   * WIDENS the match.** The intuition most authors bring to this is backwards.
+   * A connector's lookup runs `lookupByField`, which never passes the opt-in
+   * `matchAll` flag, so the first candidate that hits wins. Worked example,
+   * Shopify's contact mapping with `primary_email` and `phone` both
+   * `match: true`, against an existing contact `jane@example.com` /
+   * `+19998888` receiving `jane@example.com` / `+15550001`: the email hits, so
+   * the record merges into the existing Jane. It does NOT create a second Jane
+   * because the phone disagrees. Declare a second match key only when you want
+   * another independent chance to merge.
+   *
+   * The corollary is that **a composite key is unavailable to a connector.**
+   * Guarding a match on an id that a provider reuses (a carrier tracking
+   * number, say) with a second field such as a date is not possible: adding
+   * that candidate only widens the match. If a value is not unique enough to
+   * carry a match on its own, do not declare `match` on it at all.
+   *
+   * Ambiguity is not an error on this path: the lookup runs under
+   * `onAmbiguous: 'first'`, because a sync must not fail on data the user can
+   * only fix by merging. Two matches take the first and file a
+   * `DuplicateSuggestion`.
    *
    * `'exclusive'` is a match key whose hits are different things colliding, not
    * one thing seen twice: when a second source record of this mapping resolves
@@ -260,6 +282,19 @@ interface ConnectorMappingBase {
    * `'system:<systemAttribute>'` value names a pre-existing SYSTEM
    * relationship field on a contributing parent def; nothing is provisioned
    * for it.
+   *
+   * ⚠️ **A `system:` key that does not resolve is dropped, not rejected.**
+   * `resolveRelationshipFieldKeyFromFields` looks the `systemAttribute` up on
+   * the PARENT def's fields at install time; a typo, or a parent that is owned
+   * rather than contributing, logs a warning and returns null. The mapping
+   * still lands and still writes its fields, edge-less, so the child records
+   * appear with nothing linking them to their parent and no error anywhere the
+   * author will see. Check the attribute against the parent's registry field
+   * file before shipping.
+   *
+   * Note the direction: the key resolves against the PARENT, so a parcel hung
+   * off a shipment is `'system:shipment_parcels'` (the has_many on the parent),
+   * never `'system:parcel_shipment'` (the belongs_to on the child).
    */
   readonly relationshipFieldKey?: string
   /**

@@ -45,8 +45,18 @@ export type FieldMergeStrategy =
  *
  * - `externalId`, this field is (part of) the upstream stable id used for
  *   re-identification. `order` sequences a first-non-null fallback CHAIN.
- * - `match`, a match key. More than one column carrying `match` **is** the
- *   composite key, with no new concepts: the candidates are ANDed.
+ * - `match`, a match key. 🛑 More than one column carrying `match` is NOT a
+ *   composite key: the candidates are **OR'd**, so each one is another
+ *   independent chance to merge and every extra key WIDENS the match. An
+ *   earlier version of this comment claimed they were ANDed and was wrong;
+ *   `lookupEntitiesByFieldValue` ANDs only under its opt-in `matchAll` flag
+ *   ("Default `false` (OR / first-wins, today's behaviour)"), and neither the
+ *   importer nor `UnifiedCrudHandler.lookupByField` - the path the connector
+ *   sink takes - ever passes it. The true composite key, `(part, supplier)`,
+ *   is exactly what `matchAll` was added for and is unavailable to a
+ *   connector. Ambiguity is not an error here either: `lookupByField` passes
+ *   `onAmbiguous: 'first'`, takes the first hit and files a
+ *   `DuplicateSuggestion`.
  *   `exclusive` says two source records of one mapping hitting the same
  *   record are a collision of different things (two Shopify variants sharing
  *   a SKU), so the second is skipped and never bound. Absent, they are the

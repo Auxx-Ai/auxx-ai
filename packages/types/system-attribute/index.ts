@@ -489,6 +489,10 @@ export const SYSTEM_ATTRIBUTES = [
   // nothing links to it, and the accounting copy is already normalised in
   // `GlPostingLine`.
   'order_fulfillments',
+  // Added by entity migration 149. Inverse of `shipment_order`
+  // (plans/apps/shipstation/shared-shipment-entities-proposal.md §6). One
+  // order, many shipments: `Fulfillment.order` is singular and non-null.
+  'order_shipments',
 
   // ─── Tax line (plans/money/tasks/48-shopify-tax-data.md §4.1) ────
   // One jurisdiction's share of one order's tax, as the sales channel computed
@@ -1072,6 +1076,56 @@ export const SYSTEM_ATTRIBUTES = [
   // `SystemAttribute` values.
   'signature_name',
   'signature_body',
+
+  // ─── Shipment and parcel ───────────────────────────────
+  // Native, app-agnostic, both hidden (`isVisible: false`). Entity migration
+  // 149 (plans/apps/shipstation/shared-shipment-entities-proposal.md §6).
+  // A `shipment` is one dispatch of goods; a `parcel` is one physical box with
+  // one tracking number, which is the grain the customer actually asks about.
+  // There is deliberately no `label` entity: a void and reprint is lifecycle on
+  // the parcel, not a record of its own.
+  'shipment_number',
+  // The active label's master parcel tracking number, denormalized onto the
+  // shipment: `computeDisplayValue` reads a field on the ROW, and a tracking
+  // number otherwise lives only on a `parcel`.
+  'shipment_master_tracking_number',
+  // DERIVED roll-up over the shipment's active (non-voided) parcels, computed
+  // by the connector and never hand-set. See `ShipmentStatus` for the
+  // precedence order.
+  'shipment_status',
+  'shipment_carrier', // fedex | ups | usps
+  'shipment_service', // the carrier's own service name, as supplied
+  'shipment_ship_date',
+  'shipment_parcel_count',
+  'shipment_parcels', // inverse of parcel_shipment, has_many, onDelete cascade
+  'shipment_order', // inverse of order_shipments
+
+  // Parcel. `parcel_tracking_number` is the cross-app match key: the carrier
+  // apps find the box by it, so it is treated as unique (§8b).
+  'parcel_tracking_number',
+  'parcel_sequence', // box N of M, as the label prints it
+  'parcel_is_master', // the master tracking number of a multi-box label
+  // ShipStation reports weight in OUNCES (one 3-box label returned 1280,
+  // 464 and 704) and dimensions in INCHES, so neither unit field is decorative.
+  'parcel_weight',
+  'parcel_weight_unit',
+  'parcel_length',
+  'parcel_width',
+  'parcel_height',
+  'parcel_dim_unit',
+  // The label lifecycle, kept OUT of `parcel_status` on purpose: that is what
+  // lets one shared status vocabulary describe both grains.
+  'parcel_voided',
+  'parcel_voided_at',
+  // Carrier-app owned from here down. `parcel_status` is the normalized
+  // `ParcelTrackingStatus`; the raw pair beside it is what the carrier said.
+  'parcel_status',
+  'parcel_status_code',
+  'parcel_status_description',
+  'parcel_estimated_delivery',
+  'parcel_delivered_at',
+  'parcel_received_by', // signature name, when the carrier reports one
+  'parcel_shipment', // inverse of shipment_parcels
 ] as const
 
 /** Union type of all valid system attribute identifiers */

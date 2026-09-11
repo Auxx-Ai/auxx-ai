@@ -27,6 +27,7 @@ import { LINE_ITEM_FIELDS } from './resources/line-item-fields'
 import { MEETING_FIELDS } from './resources/meeting-fields'
 import { MESSAGE_FIELDS } from './resources/message-fields'
 import { ORDER_FIELDS } from './resources/order-fields'
+import { PARCEL_FIELDS } from './resources/parcel-fields'
 import { PART_FIELDS } from './resources/part-fields'
 import { PARTICIPANT_FIELDS } from './resources/participant-fields'
 import { PAYMENT_FIELDS } from './resources/payment-fields'
@@ -38,6 +39,7 @@ import { PURCHASE_ORDER_FIELDS } from './resources/purchase-order-fields'
 import { PURCHASE_ORDER_LINE_FIELDS } from './resources/purchase-order-line-fields'
 import { QUOTE_FIELDS } from './resources/quote-fields'
 import { SERVICE_REQUEST_FIELDS } from './resources/service-request-fields'
+import { SHIPMENT_FIELDS } from './resources/shipment-fields'
 import { SIGNATURE_FIELDS } from './resources/signature-fields'
 import { STOCK_MOVEMENT_FIELDS } from './resources/stock-movement-fields'
 import { SUBPART_FIELDS } from './resources/subpart-fields'
@@ -174,6 +176,10 @@ export const RESOURCE_FIELD_REGISTRY: ResourceFieldRegistry = {
   credit_memo_line: CREDIT_MEMO_LINE_FIELDS,
   credit_memo_application: CREDIT_MEMO_APPLICATION_FIELDS,
   tax_line: TAX_LINE_FIELDS,
+  // Hidden, multi-app: ShipStation contributes structure, the carrier apps
+  // contribute status (shared-shipment-entities-proposal.md). Entity migration 149.
+  shipment: SHIPMENT_FIELDS,
+  parcel: PARCEL_FIELDS,
 }
 
 /**

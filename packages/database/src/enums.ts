@@ -176,6 +176,12 @@ export const ModelTypeValues = [
   // (plans/accounting/tasks/13-cash-accounts-and-the-qbo-seam.md §5.3). Entity
   // migration 146.
   'payment_gateway',
+  // One dispatch of goods and the physical boxes it went out in
+  // (plans/apps/shipstation/shared-shipment-entities-proposal.md §6). Both are
+  // hidden (`isVisible: false`) and several apps contribute to them: ShipStation
+  // writes structure, the carrier apps write status.
+  'shipment',
+  'parcel',
 ] as const
 
 /**
@@ -235,6 +241,8 @@ export const ModelTypes = {
   TARIFF_RATE: 'tariff_rate',
   JOURNAL_ENTRY: 'journal_entry',
   PAYMENT_GATEWAY: 'payment_gateway',
+  SHIPMENT: 'shipment',
+  PARCEL: 'parcel',
 } as const
 
 /**
@@ -703,6 +711,29 @@ export const ModelTypeMeta: Record<
     // The door is Accounting > Settings > Payment gateways (task 13 §5.3), a
     // master-detail settings page. There is no `/app/payment-gateways/[id]`
     // route, same reasoning as `bank_account`.
+    hasDetailPage: false,
+  },
+  shipment: {
+    label: 'Shipment',
+    plural: 'Shipments',
+    icon: 'truck',
+    color: 'amber',
+    apiSlug: 'shipments',
+    dbTable: 'EntityInstance',
+    // Hidden entity, no route folder was authored (proposal §3, §7). There is
+    // no `/app/shipments/[id]` route, and claiming one here puts a fullscreen
+    // button on the drawer that 404s.
+    hasDetailPage: false,
+  },
+  parcel: {
+    label: 'Parcel',
+    plural: 'Parcels',
+    icon: 'box',
+    color: 'orange',
+    apiSlug: 'parcels',
+    dbTable: 'EntityInstance',
+    // Same as `shipment`: there is no `/app/parcels/[id]` route, and claiming
+    // one here puts a fullscreen button on the drawer that 404s.
     hasDetailPage: false,
   },
 }

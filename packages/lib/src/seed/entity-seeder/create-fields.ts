@@ -24,6 +24,7 @@ import { JOURNAL_ENTRY_FIELDS } from '../../resources/registry/resources/journal
 import { LINE_ITEM_FIELDS } from '../../resources/registry/resources/line-item-fields'
 import { MEETING_FIELDS } from '../../resources/registry/resources/meeting-fields'
 import { ORDER_FIELDS } from '../../resources/registry/resources/order-fields'
+import { PARCEL_FIELDS } from '../../resources/registry/resources/parcel-fields'
 import { PART_FIELDS } from '../../resources/registry/resources/part-fields'
 import { PAYMENT_FIELDS } from '../../resources/registry/resources/payment-fields'
 import { PAYMENT_GATEWAY_FIELDS } from '../../resources/registry/resources/payment-gateway-fields'
@@ -34,6 +35,7 @@ import { PURCHASE_ORDER_FIELDS } from '../../resources/registry/resources/purcha
 import { PURCHASE_ORDER_LINE_FIELDS } from '../../resources/registry/resources/purchase-order-line-fields'
 import { QUOTE_FIELDS } from '../../resources/registry/resources/quote-fields'
 import { SERVICE_REQUEST_FIELDS } from '../../resources/registry/resources/service-request-fields'
+import { SHIPMENT_FIELDS } from '../../resources/registry/resources/shipment-fields'
 import { SIGNATURE_FIELDS } from '../../resources/registry/resources/signature-fields'
 import { STOCK_MOVEMENT_FIELDS } from '../../resources/registry/resources/stock-movement-fields'
 import { SUBPART_FIELDS } from '../../resources/registry/resources/subpart-fields'
@@ -109,6 +111,12 @@ export const FIELD_REGISTRY: Record<string, Record<string, ResourceField>> = {
   credit_memo_line: CREDIT_MEMO_LINE_FIELDS,
   credit_memo_application: CREDIT_MEMO_APPLICATION_FIELDS,
   tax_line: TAX_LINE_FIELDS,
+  // Both halves of shared-shipment-entities-proposal.md. A type present in
+  // SYSTEM_ENTITIES but missing HERE lands on a new org as a definition with
+  // ZERO fields, and a create through UnifiedCrudHandler then drops every value
+  // with only a logged warning. `bank_rule` shipped that way and nothing failed.
+  shipment: SHIPMENT_FIELDS,
+  parcel: PARCEL_FIELDS,
 }
 
 /**

@@ -166,6 +166,9 @@ function buildRegistry(): DataMigrationDef[] {
     // 107 to 130 are ENTITY migrations and own those ids in the shared
     // sequence; they arrive via ALL_ENTITY_MIGRATIONS above.
     migration131ReseedPlatformProvidersBankFeed,
+    // 132 to 149 are ENTITY migrations and own those ids too, arriving the same
+    // way. Nothing to add here for one: registering it in
+    // `entity-migrations/index.ts` is what puts it in this registry.
   ]
 
   all.sort((a, b) => a.id.localeCompare(b.id))

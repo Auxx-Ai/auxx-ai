@@ -105,6 +105,7 @@ import { migration145RetireInstanceRoles } from './migrations/145-retire-instanc
 import { migration146PaymentGateway } from './migrations/146-payment-gateway'
 import { migration147BackfillBankMatchKeys } from './migrations/147-backfill-bank-match-keys'
 import { migration148RecurringJournalEntries } from './migrations/148-recurring-journal-entries'
+import { migration149ShipmentParcel } from './migrations/149-shipment-parcel'
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
@@ -347,6 +348,18 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   // reads only bank_transaction.description and rewrites only matchKey.
   migration147BackfillBankMatchKeys,
   migration148RecurringJournalEntries,
+  // The hidden `shipment` and `parcel` defs, their fields and the
+  // `order_shipments` inverse
+  // (plans/apps/shipstation/shared-shipment-entities-proposal.md §7).
+  //
+  // MUST sort after 107, which creates `order`: this widens that def with the
+  // has_many inverse of `shipment_order`. An org short of 107 is a SKIP, not a
+  // failure.
+  //
+  // No ordering constraint against anything else. It creates two defs nothing
+  // else references and lands with NO writers - the ShipStation connector comes
+  // next, and the carrier apps after that.
+  migration149ShipmentParcel,
 ]
 
 /**

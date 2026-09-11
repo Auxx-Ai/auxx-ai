@@ -21,6 +21,13 @@ export interface FieldNode {
   /** JSON-Schema node-level label/description (zod→JSON-Schema config nodes). */
   title?: string
   description?: string
+  /**
+   * JSON-Schema string `format` (`date-time`, `date`, `email`, …), as emitted by
+   * zod→JSON-Schema for `z.iso.datetime()` and friends. Carries the only signal
+   * that distinguishes a date from any other string, so a config field can be
+   * rendered with a real picker instead of a free-text box.
+   */
+  format?: string
 }
 
 export interface FieldEntry {
