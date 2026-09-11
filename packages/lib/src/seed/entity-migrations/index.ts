@@ -106,6 +106,7 @@ import { migration146PaymentGateway } from './migrations/146-payment-gateway'
 import { migration147BackfillBankMatchKeys } from './migrations/147-backfill-bank-match-keys'
 import { migration148RecurringJournalEntries } from './migrations/148-recurring-journal-entries'
 import { migration149ShipmentParcel } from './migrations/149-shipment-parcel'
+import { migration150StripLegacyAddressComponents } from './migrations/150-strip-legacy-address-components'
 import type { EntityMigration, MigrationRunResult } from './types'
 
 const logger = createScopedLogger('entity-migrations')
@@ -360,6 +361,7 @@ const ALL_MIGRATIONS: EntityMigration[] = [
   // else references and lands with NO writers - the ShipStation connector comes
   // next, and the carrier apps after that.
   migration149ShipmentParcel,
+  migration150StripLegacyAddressComponents,
 ]
 
 /**

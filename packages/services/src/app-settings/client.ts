@@ -7,5 +7,9 @@
 // import { schemaToZod } from '@auxx/services/app-settings/client'
 
 export type { FormSchema, SettingsSchemaField } from './merge-with-defaults'
-export { extractDefaults, mergeSettingsWithDefaults } from './merge-with-defaults'
+export {
+  extractDefaults,
+  mergeSettingsWithDefaults,
+  type SettingsTypeMismatch,
+} from './merge-with-defaults'
 export { schemaToZod } from './schema-to-zod'

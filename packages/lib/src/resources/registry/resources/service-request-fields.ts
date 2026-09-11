@@ -254,7 +254,6 @@ export const SERVICE_REQUEST_FIELDS: Record<string, ResourceField> = {
     systemAttribute: 'service_request_address',
     systemSortOrder: 'aA',
     nullable: true,
-    options: { addressComponents: ['street', 'city', 'state', 'country'] },
     capabilities: {
       filterable: false,
       sortable: false,

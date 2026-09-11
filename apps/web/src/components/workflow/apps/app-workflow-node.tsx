@@ -2,6 +2,7 @@
 
 'use client'
 
+import { pickPreferredInstallation } from '@auxx/lib/apps/client'
 import { PermissionKey } from '@auxx/lib/permissions/client'
 import { stableStringify } from '@auxx/utils/json'
 import { useUpdateNodeInternals } from '@xyflow/react'
@@ -96,9 +97,9 @@ export const AppWorkflowNode = memo<AppWorkflowNodeProps>((props) => {
       const isStale =
         installationId && !appInstallations.find((i) => i.installationId === installationId)
       if (!installationId || isStale) {
-        const installation =
-          appInstallations.find((i) => i.app.id === appId && i.installationType === 'production') ||
-          appInstallations.find((i) => i.app.id === appId)
+        const installation = pickPreferredInstallation(
+          appInstallations.filter((i) => i.app.id === appId)
+        )
         installationId = installation?.installationId
       }
     }

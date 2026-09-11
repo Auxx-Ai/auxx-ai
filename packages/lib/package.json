@@ -172,6 +172,12 @@
       "import": "./dist/apps/index.mjs",
       "default": "./src/apps/index.ts"
     },
+    "./apps/client": {
+      "types": "./src/apps/client.ts",
+      "source": "./src/apps/client.ts",
+      "import": "./dist/apps/client.mjs",
+      "default": "./src/apps/client.ts"
+    },
     "./audit-log": {
       "types": "./src/audit-log/index.ts",
       "source": "./src/audit-log/index.ts",
