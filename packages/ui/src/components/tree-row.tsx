@@ -306,6 +306,10 @@ export function TreeRow({
 
   const titleNode = (
     <span
+      // Named for the same reason `tree-row-secondary` is: a consumer that
+      // needs to reshape the label from the outside (a two-line row, say) has
+      // no other way to reach this span.
+      data-slot='tree-row-title'
       className={cn(
         'truncate px-1 py-1.5 text-foreground text-sm',
         secondaryFill && 'shrink-0',

@@ -688,12 +688,6 @@
       "import": "./dist/geo/index.mjs",
       "default": "./src/geo/index.ts"
     },
-    "./geocoding": {
-      "types": "./src/geocoding/index.ts",
-      "source": "./src/geocoding/index.ts",
-      "import": "./dist/geocoding/index.mjs",
-      "default": "./src/geocoding/index.ts"
-    },
     "./getting-started": {
       "types": "./src/getting-started/index.ts",
       "source": "./src/getting-started/index.ts",

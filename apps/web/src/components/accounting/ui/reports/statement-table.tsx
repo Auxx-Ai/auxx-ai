@@ -11,7 +11,7 @@ import { EmptySection } from '@auxx/ui/components/section'
 import { TREE_SECONDARY_NOTRUNCATE, TreeRow } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
 import { CheckCircle2, Landmark, Search, TriangleAlert } from 'lucide-react'
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { useMemo, useState } from 'react'
 import { AccountLabel } from '../account-label'
 import { accountMatchesSearch } from '../account-label-format'
@@ -101,6 +101,19 @@ export interface StatementTableProps {
    */
   expandAllByDefault?: boolean
   className?: string
+  /**
+   * Extra classes on EVERY row's line, appended after {@link ROW_KIND_CLASS}.
+   *
+   * For a consumer that needs a different row SHAPE, not different content -
+   * `entry-journal.tsx` uses it to wrap the `secondary` slot onto a second line,
+   * because a journal line's memo is identifying text rather than a badge and
+   * cannot share one line with the account name in a docked drawer.
+   *
+   * 🛑 Not a styling hook for colours or spacing. The `kind` classes ARE the
+   * information design of a statement (section > line > subtotal > total) and a
+   * consumer overriding them makes a balance sheet unreadable.
+   */
+  rowClassName?: string
 }
 
 /** Only a `line` row's cells ever accept `CurrencyInput` edits or a click-through. */
@@ -147,6 +160,7 @@ export function StatementTable({
   labelHeading = 'Account',
   expandAllByDefault = false,
   className,
+  rowClassName,
 }: StatementTableProps) {
   const [search, setSearch] = useState('')
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
@@ -197,7 +211,25 @@ export function StatementTable({
   }
 
   return (
-    <div className={cn('flex flex-col gap-3', className)}>
+    <div
+      className={cn('flex flex-col gap-3', className)}
+      style={
+        {
+          /**
+           * How far a row's account NAME sits from the label's left edge:
+           * `AccountLabel`'s reserved `${codeWidthCh}ch` code track plus its
+           * own `gap-1.5`. Published as a variable because the track is
+           * MEASURED here, from the whole statement, and a consumer that wants
+           * to line something else up under the name cannot recompute it
+           * without duplicating `maxAccountCodeLength`.
+           *
+           * `0px` when no row has a code: `AccountLabel` then renders neither
+           * the track nor the gap, so the name starts flush and any offset
+           * would be wrong rather than merely unnecessary.
+           */
+          '--statement-label-indent': codeWidthCh > 0 ? `calc(${codeWidthCh}ch + 0.375rem)` : '0px',
+        } as CSSProperties
+      }>
       <div className='rounded-lg border border-primary-200/50 dark:border-[#1e2227]'>
         {/*
           ⚠️ `top-[var(--statement-sticky-top,0px)]` and NOT `top-0`. The reports
@@ -256,6 +288,7 @@ export function StatementTable({
                 onToggleOpen={toggleOpen}
                 onCellChange={onCellChange}
                 onRowClick={onRowClick}
+                rowClassName={rowClassName}
               />
             ))
           )}
@@ -303,6 +336,8 @@ interface StatementTableRowProps {
   onToggleOpen: (rowId: string) => void
   onCellChange?: (rowId: string, colKey: string, minor: number | null) => void
   onRowClick?: (row: StatementRow) => void
+  /** Appended after the row's `kind` class. See `StatementTableProps`. */
+  rowClassName?: string
 }
 
 /**
@@ -325,6 +360,7 @@ function StatementTableRow({
   onToggleOpen,
   onCellChange,
   onRowClick,
+  rowClassName,
 }: StatementTableRowProps) {
   const editable = mode === 'edit' && EDITABLE_KINDS.has(row.kind)
   const clickable = !!onRowClick && row.kind !== 'section'
@@ -386,7 +422,7 @@ function StatementTableRow({
       }
       secondary={row.meta?.badge}
       description={row.meta?.note}
-      rowClassName={ROW_KIND_CLASS[row.kind]}
+      rowClassName={cn(ROW_KIND_CLASS[row.kind], rowClassName)}
       actions={
         <div className='flex items-center'>
           {columns.map((column, index) => {
@@ -438,6 +474,7 @@ function StatementTableRow({
               onToggleOpen={onToggleOpen}
               onCellChange={onCellChange}
               onRowClick={onRowClick}
+              rowClassName={rowClassName}
             />
           ))
         : undefined}

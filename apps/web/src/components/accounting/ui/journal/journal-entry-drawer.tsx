@@ -31,13 +31,6 @@ import { JournalEntryAttachment } from './journal-entry-attachment'
 import { JournalLines, JournalLinesTotals } from './journal-lines'
 import { firstDayOfPeriod, nextOpenPeriodAfter, periodKeyForEntryDate } from './period-helpers'
 
-/**
- * Cancels the scroll content's `p-3` so `Section` sits FLUSH with the drawer.
- * `Section` draws its own `p-3` and a full-width `border-b`, a divider meant
- * to run edge to edge (see `bank-account-editor.tsx`'s own copy of this).
- */
-const SECTION_BLEED = '-mx-3'
-
 interface JournalEntryDrawerProps {
   /** The record id, or `null` while `isNew` and the empty draft has not landed yet. */
   journalEntryId: string | null
@@ -239,9 +232,16 @@ export function JournalEntryDrawer({
           </div>
         ) : (
           <ScrollArea className='min-h-0 flex-1' scrollbarClassName='w-1.5'>
-            <div className='flex flex-col gap-3 p-3'>
+            {/* 🛑 No padding and no gap, deliberately - see the same note in
+                `posting-drawer.tsx`. `Section` draws its own `p-3 pb-4` and a
+                full-width `border-b`, so sections stack FLUSH and that border is
+                the divider. This wrapper used to carry `gap-3 p-3`, which is
+                why the Lines section had grown a `-mx-3` bleed to claw itself
+                back out to the edge; the bleed is deleted with it. Anything
+                that is NOT a Section carries its own padding below. */}
+            <div className='flex flex-col'>
               {!isEditable && (
-                <Alert variant='neutral'>
+                <Alert variant='neutral' className='mx-3 mt-3 w-auto'>
                   <AlertDescription>
                     This entry is {draft.status} and can no longer be edited here.
                   </AlertDescription>
@@ -258,84 +258,92 @@ export function JournalEntryDrawer({
                 </Alert>
               )}
 
-              <FieldPanel
-                orientation='responsive'
-                breakpoint='md'
-                resizeId='journal-entry-form'
-                defaultLabelWidth={110}
-                className='p-0'>
-                <FieldPanelRow
-                  title={isTemplate ? 'Starts' : 'Date'}
-                  type={BaseType.DATE}
-                  showIcon
-                  isRequired
-                  description={
-                    isTemplate
-                      ? 'The first occurrence. The schedule expands from here, and every generated entry takes its own occurrence date.'
-                      : undefined
-                  }>
-                  <FieldInputAdapter
-                    fieldType={FieldType.DATE}
-                    value={draft.date ? `${draft.date}T00:00:00.000Z` : null}
-                    onChange={(value) => {
-                      const iso = value as string | null
-                      if (iso) draft.setDate(iso.slice(0, 10))
-                    }}
-                    disabled={!isEditable}
-                  />
-                </FieldPanelRow>
-
-                {/* A template belongs to no period: it posts nothing, and each
-                    occurrence it generates lands in its own month. */}
-                {!isTemplate && (
+              {/* ⚠️ NOT wrapped in a `Section`. `FieldPanel` draws its own
+                  `rounded-2xl border` card, so a Section around it nests two
+                  boxes - and the record drawer's own Details block, the thing
+                  this screen is matching, is a Section over PLAIN rows
+                  (`fields-block.tsx` renders `EntityFields`), never a card in a
+                  card. The panel keeps its chrome and carries the padding the
+                  scroll wrapper no longer has. */}
+              <div className='p-3'>
+                <FieldPanel
+                  orientation='responsive'
+                  breakpoint='md'
+                  resizeId='journal-entry-form'
+                  defaultLabelWidth={110}
+                  className='p-0'>
                   <FieldPanelRow
-                    title='Period'
-                    type={BaseType.STRING}
+                    title={isTemplate ? 'Starts' : 'Date'}
+                    type={BaseType.DATE}
                     showIcon
-                    description='The calendar month of the date above. Changing the date can move it.'>
-                    <div className='flex h-8 items-center'>
-                      <Badge variant='outline' size='sm'>
-                        {entryPeriodKey ? formatPeriodLabel(entryPeriodKey) : 'Unknown'}
-                      </Badge>
-                    </div>
-                  </FieldPanelRow>
-                )}
-
-                <FieldPanelRow title='Memo' type={BaseType.STRING} showIcon>
-                  <FieldInputAdapter
-                    fieldType={FieldType.TEXT}
-                    value={draft.memo}
-                    onChange={(value) => draft.setMemo((value as string | null) ?? '')}
-                    placeholder='What this entry is for'
-                    disabled={!isEditable}
-                  />
-                </FieldPanelRow>
-
-                <FieldPanelRow
-                  title='Attachment'
-                  type={BaseType.FILE}
-                  showIcon
-                  description="The evidence behind the entry - the accountant's memo, a statement, a photo of the paper">
-                  {attachmentField && journalEntryId ? (
-                    <JournalEntryAttachment
-                      recordId={journalEntryId as RecordId}
-                      field={attachmentField}
+                    isRequired
+                    description={
+                      isTemplate
+                        ? 'The first occurrence. The schedule expands from here, and every generated entry takes its own occurrence date.'
+                        : undefined
+                    }>
+                    <FieldInputAdapter
+                      fieldType={FieldType.DATE}
+                      value={draft.date ? `${draft.date}T00:00:00.000Z` : null}
+                      onChange={(value) => {
+                        const iso = value as string | null
+                        if (iso) draft.setDate(iso.slice(0, 10))
+                      }}
+                      disabled={!isEditable}
                     />
-                  ) : (
-                    <span className='flex h-8 items-center text-muted-foreground text-sm'>
-                      {attachmentField
-                        ? 'Type a date, memo or line first - a file needs an entry to hang on'
-                        : 'Not available on this organization yet'}
-                    </span>
+                  </FieldPanelRow>
+
+                  {/* A template belongs to no period: it posts nothing, and each
+                    occurrence it generates lands in its own month. */}
+                  {!isTemplate && (
+                    <FieldPanelRow
+                      title='Period'
+                      type={BaseType.STRING}
+                      showIcon
+                      description='The calendar month of the date above. Changing the date can move it.'>
+                      <div className='flex h-8 items-center'>
+                        <Badge variant='outline' size='sm'>
+                          {entryPeriodKey ? formatPeriodLabel(entryPeriodKey) : 'Unknown'}
+                        </Badge>
+                      </div>
+                    </FieldPanelRow>
                   )}
-                </FieldPanelRow>
-              </FieldPanel>
+
+                  <FieldPanelRow title='Memo' type={BaseType.STRING} showIcon>
+                    <FieldInputAdapter
+                      fieldType={FieldType.TEXT}
+                      value={draft.memo}
+                      onChange={(value) => draft.setMemo((value as string | null) ?? '')}
+                      placeholder='What this entry is for'
+                      disabled={!isEditable}
+                    />
+                  </FieldPanelRow>
+
+                  <FieldPanelRow
+                    title='Attachment'
+                    type={BaseType.FILE}
+                    showIcon
+                    description="The evidence behind the entry - the accountant's memo, a statement, a photo of the paper">
+                    {attachmentField && journalEntryId ? (
+                      <JournalEntryAttachment
+                        recordId={journalEntryId as RecordId}
+                        field={attachmentField}
+                      />
+                    ) : (
+                      <span className='flex h-8 items-center text-muted-foreground text-sm'>
+                        {attachmentField
+                          ? 'Type a date, memo or line first - a file needs an entry to hang on'
+                          : 'Not available on this organization yet'}
+                      </span>
+                    )}
+                  </FieldPanelRow>
+                </FieldPanel>
+              </div>
 
               <Section
                 title='Lines'
                 icon={<BookOpenCheck className='size-4' />}
-                collapsible={false}
-                className={SECTION_BLEED}>
+                collapsible={false}>
                 <div className='flex flex-col gap-3'>
                   <JournalLines
                     rows={draft.lines}
@@ -348,7 +356,9 @@ export function JournalEntryDrawer({
               </Section>
 
               {blockers.length > 0 && (
-                <EntryBlockers blockers={blockers} onPostToNextPeriod={postToNextOpenPeriod} />
+                <div className='p-3'>
+                  <EntryBlockers blockers={blockers} onPostToNextPeriod={postToNextOpenPeriod} />
+                </div>
               )}
             </div>
           </ScrollArea>

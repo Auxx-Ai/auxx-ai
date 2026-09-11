@@ -13,7 +13,7 @@ import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { Textarea } from '@auxx/ui/components/textarea'
-import { BookOpenCheck, Layers, Undo2 } from 'lucide-react'
+import { BookOpenCheck, Info, Layers, Undo2 } from 'lucide-react'
 import { useState } from 'react'
 import { api } from '~/trpc/react'
 import { EntryJournal, journalLinesFromDetail } from './entry-journal'
@@ -138,33 +138,46 @@ export function PostingDrawer({
           </div>
         ) : (
           <ScrollArea className='min-h-0 flex-1' scrollbarClassName='w-1.5'>
-            <div className='flex flex-col gap-2 p-3'>
-              <div className='flex flex-col gap-1 rounded-lg border bg-muted/30 p-3 text-sm'>
-                <div className='flex justify-between gap-4'>
-                  <span className='text-muted-foreground'>Period</span>
-                  <span>{formatPeriodLabel(detail.periodKey)}</span>
-                </div>
-                <div className='flex justify-between gap-4'>
-                  <span className='text-muted-foreground'>Posted</span>
-                  <span>
-                    {detail.postedAt
-                      ? formatAuditTimestamp(detail.postedAt, bookTimeZone)
-                      : 'Not in the books yet'}
-                  </span>
-                </div>
-                {isReversal && (
+            {/* 🛑 No padding and no gap on this wrapper, deliberately. `Section`
+                draws its own `p-3 pb-4` AND a full-width `border-b`, so stacking
+                sections FLUSH is what makes that border read as the divider
+                between them - the same shape the record drawer's blocks have.
+                A padded, gapped wrapper detaches every divider from the drawer
+                edge and floats the blocks, which is what this used to do; the
+                journal entry drawer had even grown a `-mx-3` bleed to claw one
+                Section back out to the edge. Put padding on a non-Section child
+                instead, never here. */}
+            <div className='flex flex-col'>
+              <Section title='Details' icon={<Info className='size-4' />} collapsible={false}>
+                <dl className='flex flex-col gap-1 text-sm'>
                   <div className='flex justify-between gap-4'>
-                    <span className='shrink-0 text-muted-foreground'>Reverses</span>
-                    <Button
-                      variant='link'
-                      size='sm'
-                      className='h-auto p-0'
-                      onClick={() => detail.reversesId && onSelectPosting(detail.reversesId)}>
-                      <span className='font-mono text-xs'>{detail.reversesId}</span>
-                    </Button>
+                    <dt className='text-muted-foreground'>Period</dt>
+                    <dd>{formatPeriodLabel(detail.periodKey)}</dd>
                   </div>
-                )}
-              </div>
+                  <div className='flex justify-between gap-4'>
+                    <dt className='text-muted-foreground'>Posted</dt>
+                    <dd>
+                      {detail.postedAt
+                        ? formatAuditTimestamp(detail.postedAt, bookTimeZone)
+                        : 'Not in the books yet'}
+                    </dd>
+                  </div>
+                  {isReversal && (
+                    <div className='flex justify-between gap-4'>
+                      <dt className='shrink-0 text-muted-foreground'>Reverses</dt>
+                      <dd>
+                        <Button
+                          variant='link'
+                          size='sm'
+                          className='h-auto p-0'
+                          onClick={() => detail.reversesId && onSelectPosting(detail.reversesId)}>
+                          <span className='font-mono text-xs'>{detail.reversesId}</span>
+                        </Button>
+                      </dd>
+                    </div>
+                  )}
+                </dl>
+              </Section>
 
               <Section
                 title='Journal entry'
@@ -191,7 +204,7 @@ export function PostingDrawer({
                 </Section>
               )}
 
-              <div className='px-1'>
+              <div className='border-b p-3'>
                 <PostResultCallout
                   result={providerResultFromDetail(detail)}
                   providerLabel={providerLabel}

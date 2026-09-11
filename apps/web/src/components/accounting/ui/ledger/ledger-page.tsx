@@ -11,6 +11,7 @@ import { Section } from '@auxx/ui/components/section'
 import { Separator } from '@auxx/ui/components/separator'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
+import { SimpleTooltip } from '@auxx/ui/components/tooltip'
 import {
   ArrowLeftRight,
   BookOpenCheck,
@@ -52,7 +53,7 @@ import { type CountAdjustmentRow, CountEvidenceSection } from './count-evidence-
 import { EntryBlockers, type LedgerBlocker } from './entry-blockers'
 import { EntryJournal, journalLinesFromDetail } from './entry-journal'
 import { EntryRollForward } from './entry-roll-forward'
-import { formatPeriodLabel } from './format'
+import { formatPeriodLabel, lockRefusalReason } from './format'
 import { type LateArrivalRow, LateArrivalsSection } from './late-arrivals-section'
 import { LedgerToolbar } from './ledger-toolbar'
 import { PostResultCallout } from './post-result-callout'
@@ -198,6 +199,20 @@ export function LedgerPage({ periodKey }: LedgerPageProps) {
   const isSoftRefusal = blockers.every((blocker) =>
     (NON_FAILURE_REFUSALS as readonly string[]).includes(blocker.status)
   )
+
+  // Why Lock is refused, or `null` when it is offered. The reasoning, and the
+  // trap of giving a `nothing_to_close` month the postable month's remedy, are
+  // in `lockRefusalReason`'s own header. It is rendered as VISIBLE copy and not
+  // only in the button's tooltip: a refusal an operator has to hover to
+  // discover is the puzzle 13-accounting-ui.md §5.2 is about, and the line it
+  // replaces ("Open. The entry can still be reversed and re-entered") described
+  // the state and named no remedy at all.
+  const lockBlockedReason = lockRefusalReason({
+    periodLabel,
+    isPostedPeriod,
+    justPosted: actions.justPosted,
+    isNothingToClose: blockers.some((blocker) => blocker.status === 'nothing_to_close'),
+  })
   const lines = isPostedPeriod
     ? postedDetail
       ? journalLinesFromDetail(postedDetail.lines)
@@ -614,17 +629,34 @@ export function LedgerPage({ periodKey }: LedgerPageProps) {
                     <div className='flex flex-wrap items-center gap-3'>
                       {canControlLedger ? (
                         <>
-                          <Button
-                            variant={isLocked ? 'outline' : 'default'}
-                            disabled={!isPostedPeriod && !actions.justPosted}
-                            onClick={() => void handleToggleLock()}>
-                            {isLocked ? <LockOpen /> : <Lock />}
-                            {isLocked ? `Unlock ${periodLabel}` : `Lock ${periodLabel}`}
-                          </Button>
+                          {lockBlockedReason ? (
+                            /* 🛑 The `span` is load-bearing. `SimpleTooltip`
+                               clones its child with pointer handlers, and a
+                               DISABLED button fires no pointer events - so
+                               without a wrapper the tooltip never opens and the
+                               reason is unreachable, which is the bug this is
+                               fixing rather than a style choice. */
+                            <SimpleTooltip content={lockBlockedReason}>
+                              <span className='inline-flex'>
+                                <Button disabled>
+                                  <Lock />
+                                  {`Lock ${periodLabel}`}
+                                </Button>
+                              </span>
+                            </SimpleTooltip>
+                          ) : (
+                            <Button
+                              variant={isLocked ? 'outline' : 'default'}
+                              onClick={() => void handleToggleLock()}>
+                              {isLocked ? <LockOpen /> : <Lock />}
+                              {isLocked ? `Unlock ${periodLabel}` : `Lock ${periodLabel}`}
+                            </Button>
+                          )}
                           <span className='text-sm text-muted-foreground'>
                             {isLocked
                               ? 'Locked. Nothing can post into this month until it is unlocked, and unlocking asks first.'
-                              : 'Open. The entry can still be reversed and re-entered.'}
+                              : (lockBlockedReason ??
+                                'Open. The entry can still be reversed and re-entered.')}
                           </span>
                         </>
                       ) : (
