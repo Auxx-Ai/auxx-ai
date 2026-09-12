@@ -87,9 +87,10 @@ interface BatchPostingDialogProps<
   Plan extends BatchPostingPlanShape<Exclusion>,
   Summary extends BatchPostingSummaryShape,
   Exclusion,
+  Options,
 > {
   /** 🛑 A module constant. See the file header. */
-  source: BatchPostingSource<Plan, Summary, Exclusion>
+  source: BatchPostingSource<Plan, Summary, Exclusion, Options>
   open: boolean
   onOpenChange: (open: boolean) => void
   onCompleted?: () => void
@@ -99,9 +100,18 @@ export function BatchPostingDialog<
   Plan extends BatchPostingPlanShape<Exclusion>,
   Summary extends BatchPostingSummaryShape,
   Exclusion,
->({ source, open, onOpenChange, onCompleted }: BatchPostingDialogProps<Plan, Summary, Exclusion>) {
+  Options = undefined,
+>({
+  source,
+  open,
+  onOpenChange,
+  onCompleted,
+}: BatchPostingDialogProps<Plan, Summary, Exclusion, Options>) {
   const [page, setPage] = useState<'plan' | 'result'>('plan')
   const [grouping, setGrouping] = useState<BatchPostingGrouping>(source.defaultGrouping)
+  // The source's own extra request state (§5.5's third axis). `undefined` for a
+  // source that declares no options slot, which is every field it ever sees.
+  const [options, setOptions] = useState<Options>(() => source.options?.defaultValue as Options)
   const [monthRange, setMonthRange] = useState<MonthRangeValue | null>(null)
   const [dayRange, setDayRange] = useState<InclusiveDayRange>(() => ({
     from: startOfLastMonthDayKey(),
@@ -122,8 +132,11 @@ export function BatchPostingDialog<
     setGrouping(source.defaultGrouping)
     setMonthRange(null)
     setDayRange({ from: startOfLastMonthDayKey(), to: todayDayKey() })
+    // 🛑 The options reset with it. An option that changes what the run WRITES
+    // is opt-in on every open, never inherited from the last time.
+    setOptions(source.options?.defaultValue as Options)
     setResult(null)
-  }, [open, source.defaultGrouping])
+  }, [open, source.defaultGrouping, source.options])
 
   // Derived rather than seeded: the period list is a query, so the month a
   // `useState` initialiser could name would be a month nothing had loaded yet.
@@ -145,7 +158,12 @@ export function BatchPostingDialog<
     return dayRangeToWire(dayRange.from, dayRange.to)
   }, [grouping, effectiveMonthRange, dayRange])
 
-  const preview = source.usePreview({ range, grouping, enabled: open && page === 'plan' })
+  const preview = source.usePreview({
+    range,
+    grouping,
+    options,
+    enabled: open && page === 'plan',
+  })
   const runner = source.useRunner()
 
   const plan = preview.plan
@@ -173,7 +191,7 @@ export function BatchPostingDialog<
   const handleRun = async () => {
     if (!plan || !range || plan.footer.postings === 0) return
     try {
-      const summary = await runner.run({ range, grouping })
+      const summary = await runner.run({ range, grouping, options })
       setResult(summary)
       setPage('result')
       onCompleted?.()
@@ -188,6 +206,12 @@ export function BatchPostingDialog<
   const stale = preview.isFetching
   const canRun =
     !!plan && !!range && plan.footer.postings > 0 && !refusal && !stale && !runner.isPending
+
+  // The source's own sentences about its option: why the plan is empty when the
+  // answer is the option being off, and what the run will do beyond posting.
+  // Both null for a source that declares no options slot.
+  const emptyPlanHint = plan ? (source.options?.emptyPlanHint?.(plan, options) ?? null) : null
+  const footerWarning = plan ? (source.options?.footerWarning?.(plan, options) ?? null) : null
 
   return (
     <Dialog open={open} onOpenChange={(next) => !runner.isPending && onOpenChange(next)}>
@@ -254,6 +278,15 @@ export function BatchPostingDialog<
                         disabled={runner.isPending}
                       />
                     </FieldPanelRow>
+
+                    {/* The source's own extra request field, if it has one
+                        (§5.5's third axis). A direct child of the panel, so the
+                        last-row border rule still sees it. */}
+                    {source.options?.render({
+                      value: options,
+                      onChange: setOptions,
+                      disabled: runner.isPending,
+                    })}
                   </FieldPanel>
 
                   {/* A refusal is a card, not a toast (ground rule 9): the book
@@ -279,9 +312,16 @@ export function BatchPostingDialog<
                           : 'flex flex-col gap-4 transition-opacity'
                       }>
                       {plan.groups.length === 0 ? (
-                        <p className='rounded-md border border-dashed px-3 py-6 text-center text-muted-foreground text-sm'>
-                          {source.emptyPlanNote}
-                        </p>
+                        <div className='flex flex-col gap-2'>
+                          <p className='rounded-md border border-dashed px-3 py-6 text-center text-muted-foreground text-sm'>
+                            {source.emptyPlanNote}
+                          </p>
+                          {/* 🛑 When the reason there is nothing to post is an
+                              option that is switched off, say THAT. An empty
+                              plan over a backlog of excluded documents is how
+                              somebody concludes the feature is broken. */}
+                          {emptyPlanHint && <Note tone='warning'>{emptyPlanHint}</Note>}
+                        </div>
                       ) : (
                         source.renderPlanTable({ plan, currencyCode, gatewayNames })
                       )}
@@ -309,52 +349,63 @@ export function BatchPostingDialog<
                   from 613 postings to 62 to 2 as the frequency changes is how
                   the tradeoff becomes visible instead of a constant nobody
                   sees. */}
-              <div className='flex shrink-0 flex-wrap items-center justify-between gap-2 border-t px-4 py-2.5'>
-                <p className='text-muted-foreground text-sm tabular-nums'>
-                  {plan ? (
-                    <>
-                      <strong className='font-medium text-foreground'>
-                        {plan.footer.postings}
-                      </strong>{' '}
-                      {plan.footer.postings === 1 ? 'posting' : 'postings'}
-                      {source.footerCounts(plan).map((count) => (
-                        <Fragment key={count.plural}>
-                          {' · '}
-                          <strong className='font-medium text-foreground'>{count.value}</strong>{' '}
-                          {count.value === 1 ? count.singular : count.plural}
-                        </Fragment>
-                      ))}
-                      {' · '}
-                      <strong className='font-medium text-foreground'>
-                        {formatMinor(plan.footer.totalMinor, currencyCode)}
-                      </strong>
-                    </>
-                  ) : (
-                    'No preview yet'
-                  )}
-                </p>
+              <div className='shrink-0 border-t'>
+                {/* 🛑 Above the counts, not in the scroll area: an option that
+                    WRITES to every document in the plan says so where the
+                    button is, which is the last thing read before it. */}
+                {footerWarning && (
+                  <p className='flex items-start gap-1.5 border-b bg-amber-50/60 px-4 py-2 text-sm dark:bg-amber-950/30'>
+                    <TriangleAlert className='mt-0.5 size-3.5 shrink-0 text-amber-600 dark:text-amber-500' />
+                    <span>{footerWarning}</span>
+                  </p>
+                )}
+                <div className='flex flex-wrap items-center justify-between gap-2 px-4 py-2.5'>
+                  <p className='text-muted-foreground text-sm tabular-nums'>
+                    {plan ? (
+                      <>
+                        <strong className='font-medium text-foreground'>
+                          {plan.footer.postings}
+                        </strong>{' '}
+                        {plan.footer.postings === 1 ? 'posting' : 'postings'}
+                        {source.footerCounts(plan).map((count) => (
+                          <Fragment key={count.plural}>
+                            {' · '}
+                            <strong className='font-medium text-foreground'>{count.value}</strong>{' '}
+                            {count.value === 1 ? count.singular : count.plural}
+                          </Fragment>
+                        ))}
+                        {' · '}
+                        <strong className='font-medium text-foreground'>
+                          {formatMinor(plan.footer.totalMinor, currencyCode)}
+                        </strong>
+                      </>
+                    ) : (
+                      'No preview yet'
+                    )}
+                  </p>
 
-                <div className='flex items-center gap-2'>
-                  <Button
-                    type='button'
-                    variant='ghost'
-                    size='sm'
-                    onClick={() => onOpenChange(false)}
-                    disabled={runner.isPending}>
-                    Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
-                  </Button>
-                  <Button
-                    variant='outline'
-                    size='sm'
-                    onClick={handleRun}
-                    loading={runner.isPending}
-                    loadingText={source.runningLabel}
-                    disabled={!canRun}
-                    data-dialog-submit>
-                    Post {plan?.footer.postings ?? 0}{' '}
-                    {plan?.footer.postings === 1 ? 'entry' : 'entries'}{' '}
-                    <KbdSubmit variant='outline' size='sm' />
-                  </Button>
+                  <div className='flex items-center gap-2'>
+                    <Button
+                      type='button'
+                      variant='ghost'
+                      size='sm'
+                      onClick={() => onOpenChange(false)}
+                      disabled={runner.isPending}>
+                      Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
+                    </Button>
+                    <Button
+                      variant='outline'
+                      size='sm'
+                      onClick={handleRun}
+                      loading={runner.isPending}
+                      loadingText={source.runningLabel}
+                      disabled={!canRun}
+                      data-dialog-submit>
+                      Post {plan?.footer.postings ?? 0}{' '}
+                      {plan?.footer.postings === 1 ? 'entry' : 'entries'}{' '}
+                      <KbdSubmit variant='outline' size='sm' />
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -367,6 +418,7 @@ export function BatchPostingDialog<
                 result ? source.membersPosted(result) : { value: 0, singular: '', plural: '' }
               }
               postedRows={result ? source.postedRows(result) : []}
+              optionNote={result ? (source.options?.resultNote?.(result) ?? null) : null}
               excludedNoun={source.excludedNoun}
               onBack={() => setPage('plan')}
               onClose={() => onOpenChange(false)}

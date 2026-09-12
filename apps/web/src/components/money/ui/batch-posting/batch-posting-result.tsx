@@ -17,6 +17,7 @@ import { Button } from '@auxx/ui/components/button'
 import { KbdSubmit } from '@auxx/ui/components/kbd'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { TriangleAlert } from 'lucide-react'
+import type { ReactNode } from 'react'
 import { countLabel } from './count-label'
 import type { BatchPostingCount, BatchPostingPostedRow, BatchPostingSummaryShape } from './types'
 
@@ -28,6 +29,14 @@ interface BatchPostingResultProps<Summary extends BatchPostingSummaryShape> {
   /** What the posted entries covered, in this source's nouns. */
   membersPosted: BatchPostingCount
   postedRows: ReadonlyArray<BatchPostingPostedRow>
+  /**
+   * What this source's option did, from `BatchPostingOptionsSlot.resultNote`.
+   *
+   * Rendered directly under the posted entries and ABOVE skipped and failed: an
+   * option that writes to documents (issuing a draft) leaves work behind when it
+   * refuses, and the bottom of a list of 62 groups is where that gets lost.
+   */
+  optionNote?: ReactNode
   excludedNoun: { singular: string; plural: string }
   onBack: () => void
   onClose: () => void
@@ -37,6 +46,7 @@ export function BatchPostingResult<Summary extends BatchPostingSummaryShape>({
   result,
   membersPosted,
   postedRows,
+  optionNote,
   excludedNoun,
   onBack,
   onClose,
@@ -68,6 +78,8 @@ export function BatchPostingResult<Summary extends BatchPostingSummaryShape>({
               {posted > ROWS_SHOWN && <li>and {posted - ROWS_SHOWN} more</li>}
             </ul>
           )}
+
+          {optionNote}
 
           {skipped > 0 && (
             <div>

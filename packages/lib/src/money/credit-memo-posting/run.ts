@@ -11,6 +11,20 @@
  * again - and deliberately so, because the two doors are one dialog and one
  * worker away from being the same feature (§5).
  *
+ * ## 🛑 It ISSUES the drafts, and issue-then-post is not atomic either
+ *
+ * Channel memos are ingested as `draft`, so with `issueDrafts` every `draft`
+ * member of a group is flipped through `issueCreditMemo(..., { post: false })`
+ * BEFORE the group's entry is built. `post: false` is what makes that a batch
+ * rather than 1,061 single-memo entries, and it is why no stamp is written
+ * there: the memo is stamped below with the GROUP's posting id.
+ *
+ * A memo issued here that the group then fails to post is an ordinary unposted
+ * memo - the next netting read offers it again, the next run posts it, and
+ * nothing is double-booked, because a stamp is the only thing that says posted.
+ * That is the acceptable half of the non-atomicity; the unstamped half below is
+ * the one that needs a person.
+ *
  * ## 🛑 It is NOT atomic, and the summary is what says so
  *
  * A group is `postEntry` followed by N stamps, and those are separate
@@ -36,10 +50,10 @@
  *
  * ## 🛑 Never throws
  *
- * Three layers: every STAMP inside its own `try` so one memo's lock contention
- * does not lose the rest of the group; every GROUP inside its own `try` so one
- * refused build does not lose the run; and the whole body inside one final `try`
- * so a caller always gets a summary.
+ * Four layers: every ISSUE and every STAMP inside its own `try` so one memo's
+ * refusal or lock contention does not lose the rest of the group; every GROUP
+ * inside its own `try` so one refused build does not lose the run; and the whole
+ * body inside one final `try` so a caller always gets a summary.
  *
  * No permission checks. The router asserts `ledgerPost`
  * (`docs/lib-module-guide.md` §6).
@@ -63,9 +77,10 @@ import {
   OPENING_BASELINE_SETTING_KEYS,
 } from '../../postings/setup-readiness'
 import { getOrganizationSetting } from '../../settings/settings-service'
+import { issueCreditMemo } from '../credit-memos/writes'
 import { countUnpostedShipments } from '../fulfillment-posting/reads'
 import { guard } from './guard'
-import { planCreditMemoPosting } from './plan'
+import { collapseCreditMemoGroup, planCreditMemoPosting } from './plan'
 import {
   readCreditMemoPostingSettings,
   readCreditMemoSettlementAccounts,
@@ -111,10 +126,17 @@ export interface CreditMemoPostingPreview {
   refusal: string | null
 }
 
-/** What a preview is asked for: no actor, because nothing is written. */
+/**
+ * What a preview is asked for: no actor, because nothing is written.
+ *
+ * ⚠️ `issueDrafts` belongs here even though a preview issues nothing: it decides
+ * whether a `draft` is a PLANNED member or a `not-issued` exclusion, so a
+ * preview that guessed it would show a different plan from the run it precedes.
+ * `footer.drafts` is how the dialog says how many memos the button will issue.
+ */
 export type CreditMemoPostingPreviewInput = Pick<
   CreditMemoPostingRequest,
-  'organizationId' | 'range' | 'grouping'
+  'organizationId' | 'range' | 'grouping' | 'issueDrafts'
 >
 
 /**
@@ -122,6 +144,10 @@ export type CreditMemoPostingPreviewInput = Pick<
  *
  * Runs the same reads and the same pure plan {@link runCreditMemoPosting} runs,
  * so what the dialog shows is what the run would freeze.
+ *
+ * 🛑 Writes NOTHING, `issueDrafts` or not. It plans the drafts as members and
+ * counts them in `footer.drafts`; flipping them is {@link runCreditMemoPosting}'s
+ * alone.
  */
 export async function previewCreditMemoPosting(
   db: Database,
@@ -154,6 +180,7 @@ export async function runCreditMemoPosting(
     posted: [],
     skipped: [],
     failed: [],
+    issued: { count: 0, failed: [] },
     exclusions: [],
   }
 
@@ -223,6 +250,8 @@ export async function runCreditMemoPosting(
       posted: summary.posted.length,
       skipped: summary.skipped.length,
       failed: summary.failed.length,
+      issued: summary.issued.count,
+      unissuable: summary.issued.failed.length,
       excluded: summary.exclusions.length,
     })
     return summary
@@ -287,6 +316,7 @@ async function prepare(db: Database, request: CreditMemoPostingPreviewInput): Pr
     settlementAccounts: accountsResult.value,
     unpostedShipments,
     grouping,
+    issueDrafts: request.issueDrafts,
     cutoffPeriod: settings.cutoffPeriod,
     lockedThroughMonth: settings.lockedThroughMonth,
     ledgerCurrency: settings.ledgerCurrency,
@@ -438,7 +468,85 @@ async function creditMemoStampWriter(
   }
 }
 
-/** Build, post and stamp one group. Throws only what the group layer records. */
+/**
+ * Flip every `draft` member of a group to `issued`, WITHOUT posting a thing.
+ *
+ * 🛑 `{ post: false }` is the whole point (brief 25 §7, `credit-memos/writes.ts`).
+ * Issuing through the ordinary door with the ledger attached would mint one
+ * single-memo entry per memo - 1,061 of them on DemoOrg1's backlog - which is
+ * exactly what the batch poster exists to prevent. No stamp is written there
+ * either; {@link executeGroup} stamps the survivors with the GROUP's posting id.
+ *
+ * 🛑 **One memo's refusal must not lose the group**, so every issue sits in its
+ * own `try` - the same discipline the stamps below have. A memo that refuses is
+ * DROPPED from the group rather than left in it: a member that is still a draft
+ * would otherwise be summarised into an entry that says it was credited, and
+ * then stamped as posted. The group is re-collapsed through
+ * {@link collapseCreditMemoGroup} so its totals, its A/R line count and its
+ * transaction date describe the members that are actually left.
+ *
+ * ⚠️ **Issue-then-post is NOT atomic, and that is acceptable.** A memo issued
+ * here whose group then fails to post is an ordinary unposted memo: it carries
+ * no stamp, so the next netting read offers it again and the next run posts it.
+ * Nothing is double-booked, because the stamp is the only thing that says
+ * posted. Compare the stamp failure below, which is the outcome that does need a
+ * person.
+ *
+ * @returns the group as it should now be built, or the same object untouched.
+ */
+async function issueGroupDrafts(
+  db: Database,
+  request: CreditMemoPostingRequest,
+  context: { group: CreditMemoPostingGroup; actorUserId: string },
+  summary: CreditMemoPostingRunSummary
+): Promise<CreditMemoPostingGroup> {
+  const { organizationId } = request
+  const { group, actorUserId } = context
+  if (!request.issueDrafts) return group
+
+  const dropped = new Set<string>()
+  for (const memo of group.memos) {
+    if (memo.status !== 'draft') continue
+    try {
+      await issueCreditMemo(
+        db,
+        {
+          organizationId,
+          userId: actorUserId,
+          creditMemoInstanceId: memo.creditMemoId,
+          // 🛑 The memo's OWN date, pinned rather than defaulted. It is the date
+          // the plan grouped on, so a January backlog issued in September stays
+          // in January instead of being dated by the clock.
+          issuedAt: memo.issuedAt,
+        },
+        { post: false }
+      )
+      summary.issued.count += 1
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error)
+      dropped.add(memo.creditMemoId)
+      summary.issued.failed.push({
+        creditMemoId: memo.creditMemoId,
+        number: memo.number,
+        reason,
+      })
+      logger.error('A draft credit memo could not be issued; dropping it from its group', {
+        organizationId,
+        groupKey: group.groupKey,
+        creditMemoId: memo.creditMemoId,
+        reason,
+      })
+    }
+  }
+
+  if (dropped.size === 0) return group
+  return collapseCreditMemoGroup(
+    group.groupKey,
+    group.memos.filter((memo) => !dropped.has(memo.creditMemoId))
+  )
+}
+
+/** Issue, build, post and stamp one group. Throws only what the group layer records. */
 async function executeGroup(
   db: Database,
   request: CreditMemoPostingRequest,
@@ -451,7 +559,24 @@ async function executeGroup(
   summary: CreditMemoPostingRunSummary
 ): Promise<void> {
   const { organizationId } = request
-  const { group, ledgerCurrency, actorUserId, stamp } = context
+  const { ledgerCurrency, actorUserId, stamp } = context
+
+  // 🛑 BEFORE the attempt count and the build, so the entry is dimensioned on
+  // the members that actually issued.
+  const group = await issueGroupDrafts(db, request, context, summary)
+  if (group.memos.length === 0) {
+    // Every member refused. Nothing was posted and nothing needs to be: the
+    // refusals are already in `summary.issued.failed`, which is where a person
+    // looks, and a group with no members is a skip rather than a failure.
+    summary.skipped.push({
+      groupKey: group.groupKey,
+      status: 'no_members',
+      reason:
+        `Every credit memo in ${group.groupKey} failed to issue, so there was nothing to post. ` +
+        'See the issue failures for the reason on each one.',
+    })
+    return
+  }
 
   // 🛑 The attempt is counted BEFORE the build, off the ledger itself. A month
   // key claims the month once, and a memo issued late into an already-posted

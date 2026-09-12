@@ -57,6 +57,7 @@ function plan(
     lockedThroughMonth: null,
     ledgerCurrency: 'USD',
     timeZone: 'America/Los_Angeles',
+    issueDrafts: false,
     ...overrides,
   })
 }
@@ -253,6 +254,145 @@ describe('the exclusion priority order', () => {
   })
 })
 
+// 🛑 Channel memos are INGESTED as `draft` - all 1,061 of DemoOrg1's - so a
+// planner that always excludes a draft excludes the entire backlog and posts
+// nothing. §7's `not-issued` was written as though somebody had already issued
+// them one at a time, and nothing bulk-issues.
+describe('issueDrafts', () => {
+  it('plans a draft as a member instead of excluding it', () => {
+    const result = plan([memo({ status: 'draft' })], { issueDrafts: true })
+
+    expect(result.exclusions).toEqual([])
+    expect(result.groups[0]?.memos.map((m) => m.number)).toEqual(['CM-0001'])
+  })
+
+  it('counts the planned drafts in the footer, so the dialog can say so', () => {
+    const result = plan(
+      [
+        memo({ creditMemoId: 'a', number: 'CM-0001', status: 'draft' }),
+        memo({ creditMemoId: 'b', number: 'CM-0002', status: 'issued', contactId: 'ct_2' }),
+        memo({ creditMemoId: 'c', number: 'CM-0003', status: 'settled', contactId: 'ct_3' }),
+      ],
+      { issueDrafts: true }
+    )
+
+    expect(result.footer.memos).toBe(3)
+    expect(result.footer.drafts).toBe(1)
+  })
+
+  // A draft the plan EXCLUDED is not a document state this run changes.
+  it('does not count an excluded draft as one it will issue', () => {
+    const result = plan([memo({ status: 'draft', currency: 'EUR' })], { issueDrafts: true })
+
+    expect(result.footer.drafts).toBe(0)
+    expect(result.exclusions[0]?.reason).toBe('foreign-currency')
+  })
+
+  it('reports zero drafts when the flag is off, whatever is in the range', () => {
+    const result = plan([memo({ status: 'draft' })])
+
+    expect(result.footer.drafts).toBe(0)
+    expect(result.footer.memos).toBe(0)
+  })
+
+  // 🛑 `draft` and nothing else. A void memo is never resurrected.
+  it('still excludes a void memo as not-issued', () => {
+    const result = plan([memo({ status: 'void' })], { issueDrafts: true })
+
+    expect(result.groups).toEqual([])
+    expect(result.exclusions[0]).toMatchObject({ reason: 'not-issued', detail: 'void' })
+  })
+
+  // Fail CLOSED: an option id nobody has taught this module about is not a
+  // draft, so `issueDrafts` does not make it postable either.
+  it('still excludes an unknown status as not-issued', () => {
+    const result = plan([memo({ status: 'pending_review' })], { issueDrafts: true })
+
+    expect(result.exclusions[0]).toMatchObject({ reason: 'not-issued', detail: 'pending_review' })
+  })
+
+  it('leaves the plan exactly as it was when the flag is off', () => {
+    const memos = [
+      memo({ creditMemoId: 'a', number: 'CM-0001', status: 'draft' }),
+      memo({ creditMemoId: 'b', number: 'CM-0002', status: 'issued', contactId: 'ct_2' }),
+    ]
+
+    const result = plan(memos)
+
+    expect(result.groups[0]?.memos.map((m) => m.number)).toEqual(['CM-0002'])
+    expect(result.exclusions).toEqual([
+      {
+        creditMemoId: 'a',
+        number: 'CM-0001',
+        issuedAt: '2026-01-14',
+        reason: 'not-issued',
+        detail: 'draft',
+      },
+    ])
+  })
+
+  // 🛑 `run.ts` issues a planned draft through `resolveIssue`, which refuses
+  // without a contact or a number, so the planner must not promise one.
+  describe('the refusals resolveIssue would apply', () => {
+    it('excludes a draft with no contact as missing-contact', () => {
+      const result = plan([memo({ status: 'draft', contactId: null })], { issueDrafts: true })
+
+      expect(result.exclusions[0]?.reason).toBe('missing-contact')
+    })
+
+    it('excludes a draft with no number as missing-number', () => {
+      const result = plan([memo({ status: 'draft', number: '' })], { issueDrafts: true })
+
+      expect(result.exclusions[0]).toMatchObject({
+        reason: 'missing-number',
+        detail: 'credit_memo_number is empty',
+      })
+    })
+
+    it('excludes a draft whose number is blank as missing-number', () => {
+      const result = plan([memo({ status: 'draft', number: '   ' })], { issueDrafts: true })
+
+      expect(result.exclusions[0]?.reason).toBe('missing-number')
+    })
+
+    it('reports missing-contact before missing-number, as resolveIssue does', () => {
+      const result = plan([memo({ status: 'draft', contactId: null, number: '' })], {
+        issueDrafts: true,
+      })
+
+      expect(result.exclusions).toHaveLength(1)
+      expect(result.exclusions[0]?.reason).toBe('missing-contact')
+    })
+
+    it('excludes a draft that credits nothing as zero-value', () => {
+      const result = plan(
+        [
+          memo({
+            status: 'draft',
+            subtotalMinor: 0,
+            taxTotalMinor: 0,
+            totalMinor: 0,
+            amountRefundedMinor: 0,
+          }),
+        ],
+        { issueDrafts: true }
+      )
+
+      expect(result.exclusions[0]?.reason).toBe('zero-value')
+    })
+
+    // ⚠️ Only a memo this run would ISSUE. A batch entry keys its document
+    // number on the PERIOD, so an already-issued memo with an unallocated
+    // number posts inside one perfectly well.
+    it('posts an already-issued memo with no number rather than refusing it', () => {
+      const result = plan([memo({ status: 'issued', number: '' })], { issueDrafts: true })
+
+      expect(result.exclusions).toEqual([])
+      expect(result.groups).toHaveLength(1)
+    })
+  })
+})
+
 // §7 and `types.ts`: a sale can be refused and re-run, a refund cannot, because
 // the money has already moved.
 describe('the reasons that deliberately do not exist', () => {
@@ -433,6 +573,7 @@ describe('the footer', () => {
       postings: 2,
       memos: 2,
       contacts: 2,
+      drafts: 0,
       excluded: 1,
       totalMinor: 20_000,
     })

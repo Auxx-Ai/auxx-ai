@@ -46,12 +46,14 @@ export type CreditMemoPostingExclusionReason =
   | BatchPostingExclusionReason
   | 'not-issued'
   | 'missing-contact'
+  | 'missing-number'
 
 export const CREDIT_MEMO_POSTING_EXCLUSION_REASONS: readonly CreditMemoPostingExclusionReason[] = [
   'before-cutoff',
   'locked-period',
   'foreign-currency',
   'missing-contact',
+  'missing-number',
   'not-issued',
   'zero-value',
 ]
@@ -188,6 +190,26 @@ export interface CreditMemoPostingPlanInput {
   ledgerCurrency: string
   /** `accounting.bookTimeZone`. Carried, never applied: `issuedAt` is already a calendar day. */
   timeZone: string
+  /**
+   * Issue the `draft` memos in the range as part of the run, instead of
+   * excluding them as `not-issued`.
+   *
+   * 🛑 **Without this the dialog cannot do the job it exists for.** Channel
+   * memos are ingested as `draft` - all 1,061 of DemoOrg1's are - so a planner
+   * that treats `draft` as an exclusion excludes the entire backlog and posts
+   * nothing. §7's `not-issued` was written as though somebody had already
+   * issued them one at a time, and nothing bulk-issues.
+   *
+   * ⚠️ Only `draft` is affected. A `void` memo is still `not-issued` and is
+   * never resurrected.
+   *
+   * The grouping is safe under this flag because a channel memo keeps its OWN
+   * refund date: `resolveIssue` takes `input.issuedAt ?? memo.issuedAt` and
+   * REFUSES a channel memo that carries neither, rather than dating it with the
+   * clock. So issuing a January backlog in September still groups it into
+   * January.
+   */
+  issueDrafts: boolean
 }
 
 /** What the dialog renders and what the run executes. */
@@ -199,6 +221,14 @@ export interface CreditMemoPostingPlan {
     postings: number
     memos: number
     contacts: number
+    /**
+     * How many of `memos` are still `draft` and will be ISSUED by this run.
+     *
+     * Always present so the footer can say so before anybody presses the
+     * button: issuing changes document state for every one of them, and on the
+     * opening backlog it is the whole count.
+     */
+    drafts: number
     excluded: number
     totalMinor: number
   }
@@ -218,6 +248,8 @@ export interface CreditMemoPostingRequest {
   /** Half-open on `issuedAt`: `from <= issuedAt < to`, both `YYYY-MM-DD`. */
   range: { from: string; to: string }
   grouping: CreditMemoPostingGrouping
+  /** See {@link CreditMemoPostingPlanInput.issueDrafts}. */
+  issueDrafts: boolean
   memo?: string
 }
 
@@ -228,6 +260,15 @@ export interface CreditMemoPostingRunSummary {
   skipped: Array<{ groupKey: string; status: string; reason: string }>
   /** Groups that wrote nothing because something threw. Never re-thrown. */
   failed: Array<{ groupKey: string; reason: string }>
+  /**
+   * Memos this run flipped from `draft` to `issued`, and the ones it could not.
+   *
+   * Separate from `posted` because they are different facts with different
+   * remedies: a memo can be issued and then fail to post (it is then a normal
+   * unposted memo the next run picks up), and a draft that REFUSES to issue is
+   * a document problem somebody has to open.
+   */
+  issued: { count: number; failed: Array<{ creditMemoId: string; number: string; reason: string }> }
   exclusions: CreditMemoPostingExclusion[]
 }
 
