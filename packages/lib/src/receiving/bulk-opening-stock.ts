@@ -1,7 +1,7 @@
 // packages/lib/src/receiving/bulk-opening-stock.ts
 
 /**
- * `bulkOpenStockBalance` — the opening balance for a whole org, in one pass.
+ * `bulkOpenStockBalance` - the opening balance for a whole org, in one pass.
  *
  * plans/money/tasks/52-parts-costing-page.md §5.
  *
@@ -10,7 +10,7 @@
  * that each one is asked of the whole set at once:
  *
  * 1. `quantity > 0` and `unitCost > 0` at `RATE_DECIMALS`, or the ENTRY is
- *    refused — never the run.
+ *    refused - never the run.
  * 2. 🛑 A part that already has ANY `stock_movement` is EXCLUDED, not an error.
  *    Opening is once, and this guard is what stops the page becoming a back
  *    door into hand-valuing an adjustment.
@@ -26,8 +26,8 @@
  *
  * The discipline `money/fulfillment-posting/run.ts` and `executeBackfill` keep:
  * per-part isolation, and a summary that names what did not happen and why.
- * Only a WHOLE-RUN precondition — no `part` definition, no `stock_movement`
- * definition, cost fields not materialised — comes back as an `err`, because
+ * Only a WHOLE-RUN precondition - no `part` definition, no `stock_movement`
+ * definition, cost fields not materialised - comes back as an `err`, because
  * none of those is about a part and all of them refuse every entry identically.
  *
  * ## Quantity on hand
@@ -35,19 +35,19 @@
  * ✅ This writes on the ORDINARY lane, so `mfg-stock-movements-created` fires
  * per movement and `recalculatePartQoH` (its second action) is what updates
  * `part_quantity_on_hand`. HANDOFF rule 5 does NOT apply and the caller must
- * NOT call `batchRecalculateQoH` — quantity on hand has exactly one owner, and
+ * NOT call `batchRecalculateQoH` - quantity on hand has exactly one owner, and
  * a second writer here would give the same number two.
  *
  * ⚠️ `explodeBomMovement` (the rule's FIRST action) is a no-op on every row:
  * it guards on `stock_movement_adjust_subparts` as its third statement, before
  * any query, and step 4 writes `false` on every one. `recalculatePurchaseOrderLineReceived`
- * (its third) is a no-op too — an opening balance carries no purchase order line.
+ * (its third) is a no-op too - an opening balance carries no purchase order line.
  *
  * ## 🛑 `ensureStandardCost` takes ONE cost for the whole array
  *
  * `ensure-standard-cost.ts:143` calls `previousStandardCost == null` THE ONE
  * RULE: it writes only where `part_standard_cost IS NULL` and never overwrites.
- * So the caller's cost is not a per-part map — it is one number applied to every
+ * So the caller's cost is not a per-part map - it is one number applied to every
  * part named in that call. Entries are therefore grouped by DISTINCT unit cost
  * and the function is called once per group.
  *
@@ -55,7 +55,7 @@
  * is a documented no-op, and a movement stamped `cost_basis: standard` would
  * then carry a cost the standard disagrees with. The sequence (roll first,
  * default the cost column to the standard) is the fix; what this file adds is
- * the post-condition the single-part door already has — the part's standard is
+ * the post-condition the single-part door already has - the part's standard is
  * RE-READ after step 3, and a part left holding `null`, `0` or a negative is
  * dropped to `failed` rather than given a movement nothing downstream can value.
  *
@@ -78,7 +78,8 @@ import {
   StockMovementType,
 } from '../resources/registry/enum-values'
 import { type RecordId, toRecordId } from '../resources/resource-id'
-import { computeExtendedCost, resolveInventoryRoleForPartKind } from './client'
+import { buildStockMovementValues } from '../stock-movements'
+import { resolveInventoryRoleForPartKind } from './client'
 import { assertCostFieldsMaterialized } from './cost-fields'
 import { guard } from './guard'
 import type {
@@ -204,7 +205,7 @@ export async function bulkOpenStockBalance(
 }
 
 /**
- * Set `part_kind` on many parts at once — the confirm that must precede the run.
+ * Set `part_kind` on many parts at once - the confirm that must precede the run.
  *
  * 🛑 **The kind decides the account, and the account is frozen onto an
  * `updatable: false` movement** (§6.3). A part opened as `component` that was a
@@ -219,13 +220,13 @@ export async function bulkOpenStockBalance(
  * `subassembly` only and never to `finished_good`, for exactly this reason.
  *
  * Goes through `UnifiedCrudHandler.bulkSetFieldValue`, which fans out through
- * `setBulkValues` — so the field hooks, the realtime frames and the uniqueness
+ * `setBulkValues` - so the field hooks, the realtime frames and the uniqueness
  * gates all behave as they do on a single edit.
  *
  * 🛑 **The kind is validated HERE, not only in the router's input schema.**
  * `part_kind` is a SINGLE_SELECT and an unrecognised value would store as an
  * `optionId` nothing maps, which `resolveInventoryRoleForPartKind` then reads as
- * the default — silently posting a finished good to Raw Materials. A router
+ * the default - silently posting a finished good to Raw Materials. A router
  * schema protects one door; this protects the worker, the seeder and every
  * later caller too.
  *
@@ -344,7 +345,7 @@ function refuseOpeningQuantity(quantity: number): string | null {
  * 🛑 **A fractional input is NOT rounded down into a legal value.** A receipt
  * derives its cost from supplier terms and rounds the result; an opening balance
  * is typed, by a person looking at what was paid, so a value finer than
- * `stock_movement_unit_cost` can hold (`RATE_DECIMALS` — five major-unit places)
+ * `stock_movement_unit_cost` can hold (`RATE_DECIMALS` - five major-unit places)
  * means the caller is working in the wrong units, and silently rounding it would
  * freeze that mistake onto an append-only row forever.
  *
@@ -366,7 +367,7 @@ function refuseOpeningUnitCost(unitCost: number): string | null {
  * Remove every accepted part the verdict names, recording why.
  *
  * One helper for all four drop points so a part can never leave `accepted`
- * without a row in the summary explaining it — the property that makes
+ * without a row in the summary explaining it - the property that makes
  * `opened + excluded + failed` account for every entry.
  */
 function dropWhere(
@@ -447,7 +448,7 @@ async function readParts(
  *
  * ⚠️ Read-then-write with no DB constraint behind it. There is no uniqueness a
  * `FieldValue` row can express, so two runs racing at the same instant would
- * both pass — the same window the single-part door has, and the reason §6.2 says
+ * both pass - the same window the single-part door has, and the reason §6.2 says
  * this read must happen INSIDE the run rather than being taken from the
  * candidate list the page was rendered from.
  *
@@ -505,7 +506,7 @@ async function readPartsWithMovements(
  *
  * 🛑 `ensureStandardCost` takes `partIds: string[]` but ONE `source.unitCost`,
  * so a single call over mixed costs would freeze the first group's number onto
- * every part in the run. Grouping is not an optimisation — it is the only way to
+ * every part in the run. Grouping is not an optimisation - it is the only way to
  * call it correctly with more than one cost in play.
  *
  * A group that errs fails only its own parts. `ensureStandardCost` is documented
@@ -613,6 +614,15 @@ interface WriteInitialMovementsArgs {
  * `bulkCreate` reports failures BY INDEX and returns the successes in order, so
  * the two are re-paired by walking the input positions and consuming `created`
  * as the non-failed ones go past.
+ *
+ * 🛑 **Not `writeStockMovements`.** This is the one writer whose cardinality is
+ * `bulkCreate` with per-INDEX failure tolerance - a bad part must not lose the
+ * other 494 - which `stock-movements/write-movements.ts` does not attempt to
+ * unify (plans/money/tasks/50-batch-inventory-relief.md §2.2 does not name
+ * cardinality as a shared axis). It DOES share
+ * `stock-movements/buildStockMovementValues` for the nine keys and the sign
+ * convention, so the `adjustSubparts: false` default has one definition
+ * regardless of which of the six writers reaches it.
  */
 async function writeInitialMovements(
   db: Database,
@@ -623,29 +633,26 @@ async function writeInitialMovements(
   const { movementDefId, partDefId, occurredAt, entries, kindByPartId, failed } = args
   if (entries.length === 0) return []
 
-  const occurredAtIso = occurredAt.toISOString()
   const planned = entries.map((entry) => {
     const glAccount = resolveInventoryRoleForPartKind(kindByPartId.get(entry.partId))
-    const extendedCost = computeExtendedCost(entry.unitCost, entry.quantity)
-    return { entry, glAccount, extendedCost }
+    const values = buildStockMovementValues({
+      partRecordId: toRecordId(partDefId, entry.partId),
+      type: StockMovementType.INITIAL,
+      quantity: entry.quantity,
+      unitCost: entry.unitCost,
+      // `standard`, not `actual`. There is no vendor row, no purchase order and
+      // no packing slip behind an opening balance, and step 3 has just made
+      // this cost BE the part's standard, so `standard` is the honest
+      // description of it.
+      costBasis: StockMovementCostBasis.STANDARD,
+      glAccount,
+      // One date for the whole run: an opening balance is one event, on one date.
+      occurredAt,
+    })
+    return { entry, glAccount, extendedCost: values.stock_movement_extended_cost as number, values }
   })
 
-  const items: Record<string, unknown>[] = planned.map(({ entry, glAccount, extendedCost }) => ({
-    stock_movement_part: toRecordId(partDefId, entry.partId),
-    stock_movement_type: StockMovementType.INITIAL,
-    stock_movement_quantity: entry.quantity,
-    // See the JSDoc above. Never true on an opening balance.
-    stock_movement_adjust_subparts: false,
-    // One date for the whole run: an opening balance is one event, on one date.
-    stock_movement_occurred_at: occurredAtIso,
-    // `standard`, not `actual`. There is no vendor row, no purchase order and no
-    // packing slip behind an opening balance, and step 3 has just made this cost
-    // BE the part's standard, so `standard` is the honest description of it.
-    stock_movement_cost_basis: StockMovementCostBasis.STANDARD,
-    stock_movement_unit_cost: entry.unitCost,
-    stock_movement_extended_cost: extendedCost,
-    stock_movement_gl_account: glAccount,
-  }))
+  const items: Record<string, unknown>[] = planned.map(({ values }) => values)
 
   const crud = new UnifiedCrudHandler(organizationId, userId, db)
   const { created, errors } = await crud.bulkCreate(movementDefId, items)
