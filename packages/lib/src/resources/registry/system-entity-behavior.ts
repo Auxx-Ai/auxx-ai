@@ -85,7 +85,7 @@ export const DEFAULTS: Omit<SystemEntityBehavior, 'creatable'> = {
 }
 
 /**
- * Per-`entityType` overrides for the 34 system defs that differ from
+ * Per-`entityType` overrides for the 36 system defs that differ from
  * {@link DEFAULTS}. The other 14 system defs (`contact`, `ticket`, `part`,
  * `company`, `product`, `order`, `quote`, `invoice`, `credit_memo`,
  * `purchase_order`, `vendor_bill`, `work_order`, `service_request`, `build`)
@@ -115,6 +115,25 @@ export const SYSTEM_ENTITY_BEHAVIOR: Record<string, Partial<SystemEntityBehavior
   credit_memo_line: {
     searchable: false,
     inPromptCatalog: false,
+    sidebar: 'never',
+  },
+  // The sales-channel fact behind `order_fulfillments` (plans/money/tasks/55).
+  // No route folder, unlike `shipment`/`parcel` below - `sidebar: 'never'`
+  // rather than `'off'` is what that difference requires: a def made visible
+  // with no route folder 404s its nav entry. `creatable` already derives
+  // false from `sidebar !== 'never'`; set explicitly for the same reason
+  // `parcel` does - a fulfillment is minted by a channel or by
+  // `money.fulfillOrder`, never typed into a create form.
+  fulfillment: {
+    searchable: false,
+    inPromptCatalog: false,
+    creatable: false,
+    sidebar: 'never',
+  },
+  fulfillment_line: {
+    searchable: false,
+    inPromptCatalog: false,
+    creatable: false,
     sidebar: 'never',
   },
   credit_memo_application: {

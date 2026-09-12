@@ -612,6 +612,41 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     color: 'amber',
     isVisible: false, // Internal entity, managed from the order
   },
+  {
+    // One dispatch of goods, as the sales channel describes it
+    // (plans/money/tasks/55-shipment-lines.md §3). Replaces the
+    // `order_fulfillments` JSON array - the field keeps its name and becomes a
+    // has_many pointing here, because Shopify sends per-fulfillment line
+    // quantities and dates that the JSON collapse threw away. Revenue now
+    // posts from these records. Entity migration 153.
+    //
+    // `isVisible: false`, no route folder: nobody creates one by hand, it is
+    // minted by a channel or by `money.fulfillOrder`.
+    //
+    // 🛑 This line reaches FRESH orgs only. `ensureEntityDefinitions` is a
+    // plain insert that skips an org already holding the def, so existing
+    // orgs are reached by migration 153.
+    entityType: 'fulfillment',
+    apiSlug: 'fulfillments',
+    singular: 'Fulfillment',
+    plural: 'Fulfillments',
+    icon: 'package-check',
+    color: 'blue',
+    isVisible: false,
+  },
+  {
+    // One `(fulfillment, line_item)` tuple: units of one order line that went
+    // out in one dispatch (55 §3). Same hiding and same insert-only caveat as
+    // `fulfillment` above - managed entirely from the parent, like
+    // `credit_memo_line` / `purchase_order_line`.
+    entityType: 'fulfillment_line',
+    apiSlug: 'fulfillment-lines',
+    singular: 'Fulfillment Line',
+    plural: 'Fulfillment Lines',
+    icon: 'list',
+    color: 'blue',
+    isVisible: false,
+  },
 ]
 
 /**
@@ -879,6 +914,22 @@ export const DISPLAY_FIELD_CONFIG: Record<string, DisplayFieldConfig> = {
   bank_rule: {
     primaryDisplayField: 'name',
     secondaryDisplayField: 'matchValue',
+  },
+  // `name` is nullable in the type (Shopify can omit it on an older API
+  // version) but the connector projects it and the native door synthesises
+  // one otherwise, so in practice it is always there - same reasoning as
+  // `shipment`'s tracking-number choice just above. `shippedAt` is
+  // `nullable: false`, which is what makes it a safe secondary.
+  fulfillment: {
+    primaryDisplayField: 'name',
+    secondaryDisplayField: 'shippedAt',
+  },
+  // The line item is the thing a person actually wants to see ("which line
+  // did these units come from"); `quantity` disambiguates two lines of the
+  // same fulfillment. Mirrors `subpart`'s relation-primary pattern just above.
+  fulfillment_line: {
+    primaryDisplayField: 'lineItem',
+    secondaryDisplayField: 'quantity',
   },
 }
 

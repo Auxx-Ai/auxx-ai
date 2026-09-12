@@ -18,6 +18,8 @@ import { CREDIT_MEMO_APPLICATION_FIELDS } from './resources/credit-memo-applicat
 import { CREDIT_MEMO_FIELDS } from './resources/credit-memo-fields'
 import { CREDIT_MEMO_LINE_FIELDS } from './resources/credit-memo-line-fields'
 import { DATASET_FIELDS } from './resources/dataset-fields'
+import { FULFILLMENT_FIELDS } from './resources/fulfillment-fields'
+import { FULFILLMENT_LINE_FIELDS } from './resources/fulfillment-line-fields'
 import { GL_ACCOUNT_FIELDS } from './resources/gl-account-fields'
 import { INBOX_FIELDS } from './resources/inbox-fields'
 import { INVOICE_FIELDS } from './resources/invoice-fields'
@@ -180,6 +182,12 @@ export const RESOURCE_FIELD_REGISTRY: ResourceFieldRegistry = {
   // contribute status (shared-shipment-entities-proposal.md). Entity migration 149.
   shipment: SHIPMENT_FIELDS,
   parcel: PARCEL_FIELDS,
+  // Hidden, sales-channel fact: one dispatch and its per-line-item tuples,
+  // replacing the `order_fulfillments` JSON array so revenue posts from
+  // records instead of a collapsed min/max/sum (plans/money/tasks/55). Entity
+  // migration 153.
+  fulfillment: FULFILLMENT_FIELDS,
+  fulfillment_line: FULFILLMENT_LINE_FIELDS,
 }
 
 /**

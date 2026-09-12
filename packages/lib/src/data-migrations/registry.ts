@@ -10,6 +10,7 @@ import { migration149ShipmentParcel } from './migrations/149-shipment-parcel'
 import { migration150StripLegacyAddressComponents } from './migrations/150-strip-legacy-address-components'
 import { migration151ShipmentLabelCostAndDocument } from './migrations/151-shipment-label-cost-and-document'
 import { migration152CreditMemoGlPosting } from './migrations/152-credit-memo-gl-posting'
+import { migration153FulfillmentLines } from './migrations/153-fulfillment-lines'
 import { type PerOrgMigration, perOrgMigration } from './per-org'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
@@ -74,6 +75,10 @@ export const PER_ORG_MIGRATIONS: PerOrgMigration[] = [
   // Recomputes a stored column from its own source with the current algorithm:
   // the backfill shape.
   migration147BackfillBankMatchKeys,
+  // Drops a field of one type and recreates it under the SAME name as another
+  // type, alongside two new defs and three widened existing ones: the
+  // type-change shape (plans/money/tasks/55-shipment-lines.md).
+  migration153FulfillmentLines,
 ]
 
 /**

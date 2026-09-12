@@ -362,6 +362,7 @@ export const SYSTEM_ATTRIBUTES = [
   'line_item_part', // stamped from the line's catalog item, not hand-set (08 §6.2)
   'line_item_photos', // scouting/line-level photos (plan 37b §1)
   'line_item_credit_memo_lines', // inverse of credit_memo_line_line_item (accounting/10 §2.2)
+  'line_item_fulfillment_lines', // inverse of fulfillment_line_line_item (plans/money/tasks/55)
 
   // ─── Catalog Item fields ────────────────────────────────────────
   'catalog_item_name',
@@ -481,13 +482,15 @@ export const SYSTEM_ATTRIBUTES = [
   'order_tax_lines', // inverse of tax_line_order
   'order_credit_memos', // inverse of credit_memo_order (accounting/10 §2.1)
   'order_work_orders', // inverse of work_order_order
-  // Added by migration 125 (plans/accounting/HANDOFF.md slot 2G). The
-  // shipment log `money.fulfillOrder` appends to, and the ONLY thing that
-  // makes "how much of this line is still to ship" answerable. JSON on the
-  // order rather than a `fulfillment` entity for the reason
-  // `journal_entry_lines` is JSON: a shipment has no independent identity,
-  // nothing links to it, and the accounting copy is already normalised in
-  // `GlPostingLine`.
+  // Added by migration 125 as a JSON array (plans/accounting/HANDOFF.md slot
+  // 2G). 🛑 Entity migration 153 (plans/money/tasks/55) DROPS that JSON field
+  // and recreates the SAME systemAttribute as a RELATIONSHIP has_many to the
+  // new `fulfillment` entity - the owner's call was to keep the name and
+  // change the type, so a `fulfillment_order` belongs_to is now the inverse
+  // rather than a raw JSON cell. The premises behind the original JSON choice
+  // (no independent identity, nothing links to it) are exactly what this
+  // migration invalidates: Shopify assigns every fulfillment an id, and
+  // `stock_movement` now links to a `fulfillment_line`.
   'order_fulfillments',
   // Added by entity migration 149. Inverse of `shipment_order`
   // (plans/apps/shipstation/shared-shipment-entities-proposal.md §6). One
@@ -593,6 +596,9 @@ export const SYSTEM_ATTRIBUTES = [
   'stock_movement_purchase_order_line',
   'stock_movement_reverses_movement', // NOT parentMovement — that means BOM explosion
   'stock_movement_reversed_by_movements',
+  // Nullable, updatable: false, filterable: true - all of task 50's netting
+  // (plans/money/tasks/55). Mirrors stock_movement_purchase_order_line.
+  'stock_movement_fulfillment_line',
   'vendor_part_stock_movements', // inverse of stock_movement_vendor_part
 
   // ─── Purchase order ─────────────────────────────────────────────
@@ -1143,6 +1149,40 @@ export const SYSTEM_ATTRIBUTES = [
   'parcel_delivered_at',
   'parcel_received_by', // signature name, when the carrier reports one
   'parcel_shipment', // inverse of shipment_parcels
+
+  // ─── Fulfillment and fulfillment line (plans/money/tasks/55) ────
+  // Replaces `order_fulfillments` as a JSON array with real records, so
+  // revenue posts from a row instead of a collapsed min/max/sum. Both hidden
+  // (`isVisible: false`), no route folder. Entity migration 153.
+  'fulfillment_order', // owning side; inverse of order_fulfillments (same name, new type)
+  'fulfillment_sequence', // 1-based within the order, ship-date order
+  'fulfillment_shipped_at', // THE accounting date; never Shopify's updated_at
+  'fulfillment_status', // open | success | cancelled | error | failure, mirrors Shopify
+  'fulfillment_cancelled_at', // when a relief reversal is written; not shippedAt
+  'fulfillment_name', // the display field; nullable in type, never absent in practice
+  'fulfillment_tracking_number',
+  'fulfillment_tracking_company',
+  'fulfillment_tracking_url',
+  'fulfillment_subtotal', // integer minor units; was subtotalMinor
+  'fulfillment_total', // integer minor units; was totalMinor
+  'fulfillment_shipping_recognised', // freight recognised once, on the first dispatch
+  // TEXT, not a RELATIONSHIP - GlPosting is a Drizzle table with no
+  // EntityDefinition to point at. credit_memo_gl_posting is the precedent.
+  'fulfillment_gl_posting',
+  'fulfillment_doc_number',
+  'fulfillment_recorded_at',
+  'fulfillment_lines', // inverse of fulfillment_line_fulfillment, has_many, onDelete cascade
+  // Nullable, one-sided belongs_to the logistics fact (brief §2.2) - opportunistic
+  // tracking-number match, no field on shipment points back, and nothing in
+  // relief or posting may read it.
+  'fulfillment_shipment',
+  'fulfillment_line_fulfillment', // owning side; inverse of fulfillment_lines
+  'fulfillment_line_line_item', // owning side; inverse of line_item_fulfillment_lines
+  'fulfillment_line_quantity', // units shipped in THIS dispatch, never cumulative
+  // COMPUTED, re-SUMmed over stock_movement_fulfillment_line - the exact
+  // mirror of purchase_order_line_quantity_received.
+  'fulfillment_line_quantity_relieved',
+  'fulfillment_line_stock_movements', // inverse of stock_movement_fulfillment_line
 ] as const
 
 /** Union type of all valid system attribute identifiers */
