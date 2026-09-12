@@ -33,15 +33,30 @@ export interface BlockActionsProps {
  * the same "create quote" row belongs on a contact block and a service-request
  * block alike.
  *
- * Empty on purpose in stage 1. The three action-carrying cards
- * (`service-request-related-cards`, `quote-jobs-card`, `purchase-order-bills-card`)
- * keep their bespoke code and stay `card` blocks; this exists so the seam is
- * real and typed before the first one moves.
+ * ✅ **No longer empty.** `ticket-returns` is the first consumer, and it proved
+ * the seam end to end rather than on paper: `ticket-returns-block-seam.test.tsx`
+ * renders the REAL `RecordListBlock` with the real block config and pins that
+ * the action mounts after the `EmptyRow` - the ticket-with-no-return case, which
+ * is the one that matters (plans/money/tasks/54-returns.md section 4.1).
+ *
+ * The three older action-carrying cards (`service-request-related-cards`,
+ * `quote-jobs-card`, `purchase-order-bills-card`) still keep their bespoke code
+ * and stay `card` blocks. Moving them is now a question of appetite rather than
+ * of whether the seam works.
+ *
+ * ⚠️ One documented constraint turned out to be FALSE and is corrected here:
+ * section 4.1 says "if a header `+` is wanted, this seam does not provide it".
+ * `layout-block-section.tsx` wraps every block - `records` included - in
+ * `DrawerCardActionsProvider`, so an actions component CAN portal into the
+ * section header with `<DrawerCardActions>`. `ticket-returns` deliberately does
+ * not: below-the-rows is the documented placement and the covered path.
  */
 export const BLOCK_ACTIONS_COMPONENTS: Record<
   string,
   () => Promise<{ default: ComponentType<BlockActionsProps> }>
-> = {}
+> = {
+  'ticket-returns': () => import('../../tickets/ticket-returns-actions'),
+}
 
 /**
  * Resolve a block's `actionsComponent` name to its loader.

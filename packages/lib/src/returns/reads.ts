@@ -492,6 +492,16 @@ export async function readReturnPartLine(
  */
 type ReturnsReadDb = Database | Transaction
 
+/** One credit memo on the order that no return has claimed. */
+export interface UnlinkedCreditMemo {
+  creditMemoId: string
+  number: string | null
+  /** Minor units, as transcribed by the connector. Never recomputed. */
+  total: number | null
+  status: string | null
+  issuedAt: Date | null
+}
+
 export interface ReturnableQuantity {
   lineItemId: string
   /** The most units that may EVER come back, or null when nothing records it. */
@@ -750,6 +760,97 @@ function valueJoin(table: FieldValueAlias, fieldId: string): SQL | undefined {
     eq(table.organizationId, schema.EntityInstance.organizationId),
     eq(table.fieldId, fieldId)
   )
+}
+
+/**
+ * Credit memos on this return's order that no return has claimed yet, newest
+ * first (plans/money/tasks/54-returns.md section 5.1).
+ *
+ * 🔑 The link between a return and its money is never made automatically, and
+ * this is the whole of the help the brief asks for. On the channel path the
+ * connector creates the memo FIRST - the refund is issued in Shopify, synced,
+ * and settled the instant it lands - so by the time somebody records the return
+ * the memo is already sitting there unclaimed. Offering exactly that set turns
+ * a picker over every memo in the org into a list of two.
+ *
+ * 🛑 Reads only. Linking is the picker's job and it writes `credit_memo.return`
+ * on the MEMO, because the FK lives there: a memo very often has no return at
+ * all (an allowance, a cancellation), and a return can produce several.
+ *
+ * ⚠️ Never write to a channel-sourced memo beyond that one link. Its fields are
+ * connector-managed and the sync re-delivers every refund on every order sync.
+ *
+ * Returns an empty list rather than refusing when the org has no
+ * `credit_memo.return` field yet, or when the return names no order - both are
+ * "nothing to suggest", not failures.
+ */
+export async function readUnlinkedCreditMemosForOrder(
+  db: Database,
+  organizationId: string,
+  orderId: string
+): Promise<Result<UnlinkedCreditMemo[], Error>> {
+  return guard(async () => {
+    const fields = await getOrgCache()
+      .from(organizationId, 'customFields')
+      .bySystemAttributes([
+        'credit_memo_order',
+        'credit_memo_return',
+        'credit_memo_number',
+        'credit_memo_total',
+        'credit_memo_status',
+        'credit_memo_issued_at',
+      ] as const)
+
+    const orderField = fields.credit_memo_order
+    const returnField = fields.credit_memo_return
+    if (!orderField || !returnField) return []
+
+    const orderValue = alias(schema.FieldValue, 'cm_order_v')
+    const returnValue = alias(schema.FieldValue, 'cm_ret_v')
+    const numberValue = alias(schema.FieldValue, 'cm_num_v')
+    const totalValue = alias(schema.FieldValue, 'cm_total_v')
+    const statusValue = alias(schema.FieldValue, 'cm_status_v')
+    const issuedValue = alias(schema.FieldValue, 'cm_issued_v')
+
+    const rows = await db
+      .select({
+        id: schema.EntityInstance.id,
+        number: numberValue.valueText,
+        total: totalValue.valueNumber,
+        status: statusValue.optionId,
+        issuedAt: issuedValue.valueDate,
+        createdAt: schema.EntityInstance.createdAt,
+      })
+      .from(schema.EntityInstance)
+      .innerJoin(orderValue, valueJoin(orderValue, orderField.id))
+      // A LEFT JOIN plus IS NULL, not a NOT EXISTS: the row is one-to-one
+      // with the memo, so it cannot multiply the page, and "unclaimed" is
+      // exactly the absence of this value.
+      .leftJoin(returnValue, valueJoin(returnValue, returnField.id))
+      .leftJoin(numberValue, valueJoin(numberValue, fields.credit_memo_number?.id ?? ''))
+      .leftJoin(totalValue, valueJoin(totalValue, fields.credit_memo_total?.id ?? ''))
+      .leftJoin(statusValue, valueJoin(statusValue, fields.credit_memo_status?.id ?? ''))
+      .leftJoin(issuedValue, valueJoin(issuedValue, fields.credit_memo_issued_at?.id ?? ''))
+      .where(
+        and(
+          eq(schema.EntityInstance.organizationId, organizationId),
+          isNull(schema.EntityInstance.archivedAt),
+          eq(orderValue.relatedEntityId, orderId),
+          isNull(returnValue.relatedEntityId)
+        )
+      )
+      .orderBy(desc(schema.EntityInstance.createdAt))
+
+    return rows.map((row) => ({
+      creditMemoId: row.id,
+      number: row.number,
+      total: row.total,
+      status: row.status,
+      // `valueDate` is a text column; every other date this module returns is
+      // a `Date`, so convert here rather than leaking the raw string.
+      issuedAt: row.issuedAt ? new Date(row.issuedAt) : null,
+    }))
+  }, 'readUnlinkedCreditMemosForOrder')
 }
 
 /** `credit_memo.return`'s field id, or null when the org has no such field. */

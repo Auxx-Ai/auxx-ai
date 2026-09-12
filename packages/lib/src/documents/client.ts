@@ -47,7 +47,13 @@ export type PrintOptionField =
  * there plus one where `registry.ts` merges the descriptor in. This union is the same
  * guarantee with no ripple.
  */
-export type DocumentTypeId = 'quote' | 'invoice' | 'purchase_order' | 'bank_deposit' | 'credit_memo'
+export type DocumentTypeId =
+  | 'quote'
+  | 'invoice'
+  | 'purchase_order'
+  | 'bank_deposit'
+  | 'credit_memo'
+  | 'return_evidence_pack'
 
 /**
  * Client-safe shape of a registered document type — enough for the print wizard to decide
@@ -104,4 +110,11 @@ export const DOCUMENT_TYPE_DESCRIPTORS: DocumentTypeDescriptor[] = [
   // us less". Sent to the customer like an invoice, so it takes the invoice's send path;
   // no `printOptions` because nothing sorts a stack of credit memos by anything but number.
   { id: 'credit_memo', entityType: 'credit_memo', printOptions: [] },
+  // The chargeback evidence pack (plans/money/tasks/54-returns.md §7). An
+  // INTERNAL document like the deposit slip, and more strongly so: it carries
+  // our own liability verdict and inspection notes, and its recipient is a card
+  // network or a processor, never the customer whose money is being argued
+  // about. Its send profile in `money/send-email.ts` refuses rather than
+  // mailing, for that reason and not merely for lack of a template.
+  { id: 'return_evidence_pack', entityType: 'return', printOptions: [] },
 ]

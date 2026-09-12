@@ -11,6 +11,7 @@ import {
   COMPANY_PURCHASING_BLOCKS,
   CONTACT_BILLING_BLOCKS,
   PURCHASING_TAB_ID,
+  TICKET_RETURNS_BLOCKS,
 } from './ledger-blocks'
 
 /** Default sidebar tabs for all entity types */
@@ -118,6 +119,15 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
       { value: 'customer', label: 'Customer', icon: 'user' },
       { value: 'relationships', label: 'Related Tickets', icon: 'ticket' },
     ],
+    // 🛑 Declared for PARITY, and inert until somebody gives it a home.
+    // `drawer-card-parity.test.ts` asserts the drawer and the detail registry
+    // declare the same `entityType:tabId` blocks, so the drawer's Returns
+    // section cannot exist here without this line. But `buildDetailLayout` only
+    // walks `mainTabs`, and ticket's are conversation / timeline / tasks, while
+    // the detail sidebar renders `sidebarCards` only - so the ticket DETAIL page
+    // does not render Returns today. The drawer does, which is the surface the
+    // owner asked for (plans/money/tasks/54-returns.md section 4).
+    tabBlocks: { overview: TICKET_RETURNS_BLOCKS },
   },
 
   part: {

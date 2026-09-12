@@ -313,6 +313,11 @@ describe('registry layout blocks', () => {
       'Invoices',
       'Work orders',
       'Purchase orders',
+      // What this customer sent back (plans/money/tasks/54-returns.md step 8).
+      // Identified returns only - `return.contact` is nullable so a dock pallet
+      // can be recorded before anyone knows whose it is, and those live in the
+      // `contact IS NULL` saved view rather than under a customer.
+      'Returns',
     ])
   })
 })

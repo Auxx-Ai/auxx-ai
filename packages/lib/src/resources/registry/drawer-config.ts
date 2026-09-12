@@ -6,6 +6,7 @@ import {
   COMPANY_PURCHASING_BLOCKS,
   CONTACT_BILLING_BLOCKS,
   PURCHASING_TAB_ID,
+  TICKET_RETURNS_BLOCKS,
 } from './ledger-blocks'
 
 /**
@@ -98,6 +99,9 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
         { value: 'relationships', label: 'Related Tickets', icon: 'ticket' },
       ],
     },
+    // The feature's main creation route: an emailed or phoned return is created
+    // from the ticket it arrived on (plans/money/tasks/54-returns.md section 4).
+    tabBlocks: { overview: TICKET_RETURNS_BLOCKS },
   },
 
   part: {
@@ -441,16 +445,23 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
   // What came back and the pack that argues about it
   // (plans/money/tasks/54-returns.md sections 7 and 8).
   //
-  // One card, deliberately. The salvage tree is `return_line`-grained and hangs
-  // off a line, not the return; `lines` and `creditMemos` are has_many inverses
-  // that a records block will carry. Documents is the only thing that belongs to
-  // the RETURN itself and does not fit a field row: the generated evidence pack
-  // and the dock's label photos.
+  // Two cards. Salvage is the teardown checklist and the larger of the two; it
+  // is `return_line`-grained, so its container resolves the return's lines and
+  // renders one tree at a time rather than stacking them - a five-line return
+  // would otherwise cost twenty reads on drawer open, including the recursive
+  // BOM CTE, for a checklist the warehouse works one lift at a time.
+  //
+  // Documents is the generated evidence pack plus the dock's label photos.
+  // `lines` and `creditMemos` are has_many inverses a records block can carry
+  // later; neither needs a bespoke card.
   return: {
     entityType: 'return',
     additionalTabs: [],
     tabCards: {
-      overview: [{ value: 'documents', label: 'Documents', icon: 'paperclip' }],
+      overview: [
+        { value: 'salvage', label: 'Salvage', icon: 'wrench' },
+        { value: 'documents', label: 'Documents', icon: 'paperclip' },
+      ],
     },
   },
 }

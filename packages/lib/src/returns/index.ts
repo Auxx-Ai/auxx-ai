@@ -9,12 +9,29 @@
  * the salvage assembly and the writes - is server only and must never reach a
  * browser bundle.
  *
- * 🛑 The gated salvage writer (plan section 6.3, step 7) is NOT here. Nothing
- * in this module writes a stock movement: a `return_part_line` records a
- * decision, and turning the highest `good` node in a branch into a `return_in`
- * waits on the chain ending at task 50.
+ * ✅ **The salvage writer IS here now** (`salvage-writer.ts`, plan section 6.3,
+ * step 7). Its gate lifted on 2026-09-12 when #2143 and #2144 landed the shared
+ * `writeStockMovements` and inventory relief at ship, which were the last two
+ * links in the chain section 6.1 tabled.
+ *
+ * 🛑 So this module DOES write to the append-only ledger, and the rules that
+ * come with that are not optional. A salvage `return_in` sets no
+ * `adjustSubparts` (it would restock the same material twice AND drop the row
+ * out of `bom/qoh.ts`'s SUM) and no `fulfillmentLine` (that link is relief's
+ * netting, and both 50 and 55 deleted a scope rule on the promise that 54
+ * points elsewhere). It runs on a quiet session and therefore OWES one
+ * post-commit `batchRecalculateQoH` over the `affectedPartIds` it returns.
+ *
+ * Everything else in here still only records decisions: a `return_part_line`
+ * holds a disposition, and only the highest `good` node in a branch ever
+ * becomes a movement.
  */
 
+export {
+  generateReturnEvidencePack,
+  RETURN_EVIDENCE_PACK_DOCUMENT_TYPE,
+  type ReturnEvidencePackResult,
+} from './evidence-pack'
 export {
   loadReturnFieldContext,
   loadReturnLineFieldContext,
@@ -54,7 +71,9 @@ export {
   readReturnLinesByReturn,
   readReturnPartLine,
   readReturnPartLines,
+  readUnlinkedCreditMemosForOrder,
   requireReturnLine,
+  type UnlinkedCreditMemo,
 } from './reads'
 export {
   computeSalvageUnitCost,
@@ -107,6 +126,16 @@ export {
   flattenSalvageTree,
 } from './salvage-tree'
 export {
+  announceQuietSalvageWrites,
+  reverseSalvageMovement,
+  SALVAGE_WRITE_LANE_REASON,
+  type SalvageMovementWritten,
+  salvageWriteSession,
+  type WriteSalvageMovementsInput,
+  type WriteSalvageMovementsResult,
+  writeSalvageMovements,
+} from './salvage-writer'
+export {
   isPreInspectionStatus,
   PRE_INSPECTION_RETURN_STATUSES,
   RETURN_LINE_CONDITION_GRADES,
@@ -139,6 +168,7 @@ export {
   type ReturnLineInput,
   setSalvageNodeQuantity,
   setSalvageNodeStatus,
+  setSalvagePercent,
   splitSalvageNode,
   updateReturn,
   updateReturnLine,

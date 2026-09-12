@@ -8,6 +8,7 @@
 
 import type { RecordId } from '@auxx/types/resource'
 import type { ComponentType } from 'react'
+import { buildReturnEvidencePackPayload } from '../returns/evidence-pack-build'
 import { DOCUMENT_TYPE_DESCRIPTORS, type DocumentTypeId, type PrintOptionField } from './client'
 import {
   buildBankDepositPdfPayload,
@@ -22,6 +23,7 @@ import { CreditMemoPdf } from './pdf/credit-memo-pdf'
 import { InvoicePdf } from './pdf/invoice-pdf'
 import { PurchaseOrderPdf } from './pdf/purchase-order-pdf'
 import { QuotePdf } from './pdf/quote-pdf'
+import { ReturnEvidencePackPdf } from './pdf/return-evidence-pack-pdf'
 
 /**
  * A document type pluggable into the render (`render.ts`), render-or-reuse (`ensure-pdf.ts`),
@@ -134,6 +136,22 @@ const RENDER_ENTRIES: Array<
         creditMemoRecordId: params.recordId,
       }),
     Pdf: CreditMemoPdf as unknown as RegisteredDocumentType['Pdf'],
+  },
+  {
+    // The chargeback evidence pack (plans/money/tasks/54-returns.md §7).
+    // `pointerAttr` names the real `return_evidence_pack_asset` field, which is
+    // `creatable: false, updatable: false` precisely so this generator is its
+    // only writer - same protection `credit_memo_pdf_asset` carries, and for
+    // the same asset-leak reason as every entry above.
+    id: 'return_evidence_pack',
+    pointerAttr: 'return_evidence_pack_asset',
+    buildPayload: (params) =>
+      buildReturnEvidencePackPayload({
+        organizationId: params.organizationId,
+        userId: params.userId,
+        recordId: params.recordId,
+      }),
+    Pdf: ReturnEvidencePackPdf as unknown as RegisteredDocumentType['Pdf'],
   },
 ]
 

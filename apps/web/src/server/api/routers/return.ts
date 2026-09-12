@@ -21,7 +21,7 @@
 // | `getLine`, `salvageTree`, `returnableQuantity` | view on `return_line` |
 // | `create`, `update`                          | edit on `return`         |
 // | `createLine`, `updateLine`                  | edit on `return_line`    |
-// | `expandSalvageNode`, `setSalvageNodeQuantity`, `setSalvageNodeStatus`, `splitSalvageNode` | edit on `return_part_line` |
+// | `expandSalvageNode`, `setSalvageNodeQuantity`, `setSalvageNodeStatus`, `setSalvagePercent`, `splitSalvageNode` | edit on `return_part_line` |
 //
 // ⚠️ Accepted for v1: `stock_movement` is records-gated too, so anyone who can
 // create a return can also restock parts. Support and warehouse get identical
@@ -41,6 +41,7 @@ import {
   createReturn,
   createReturnLine,
   expandSalvageNode,
+  generateReturnEvidencePack,
   getReturn,
   getReturnLine,
   listReturns,
@@ -50,12 +51,16 @@ import {
   RETURN_STATUSES,
   readReturnableQuantity,
   readSalvageTree,
+  readUnlinkedCreditMemosForOrder,
+  reverseSalvageMovement,
   SALVAGE_STATUSES,
   setSalvageNodeQuantity,
   setSalvageNodeStatus,
+  setSalvagePercent,
   splitSalvageNode,
   updateReturn,
   updateReturnLine,
+  writeSalvageMovements,
 } from '@auxx/lib/returns'
 import { parseRecordId, recordIdSchema } from '@auxx/types/resource'
 import { z } from 'zod'
@@ -434,6 +439,38 @@ export const returnRouter = createTRPCRouter({
     }),
 
   /**
+   * The salvage card header's "Salvage %": value every `good` component on
+   * this line at one percentage of standard cost.
+   *
+   * 🛑 Line-grained on purpose. §6.6's spec for a tree ROW is "a number input
+   * and a status badge selector, and nothing else", so the percentage that
+   * §6.4 stores per `return_part_line` gets its home in the card header
+   * instead - without it the default of 100 stands and every recovery would
+   * freeze at full standard.
+   *
+   * `0 < pct <= 100`: a component worth nothing is `scrap`, which writes no
+   * movement at all rather than a zero-valued one.
+   */
+  setSalvagePercent: capabilityProcedure
+    .input(
+      z.object({
+        returnLineRecordId: recordIdSchema,
+        salvagePercent: z.number().finite().gt(0).max(100),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
+      ctx.capabilities.assertEditEntity(await requireDefId(organizationId, 'return_part_line'))
+
+      const result = await setSalvagePercent(ctx.db, organizationId, userId, {
+        returnLineId: parseRecordId(input.returnLineRecordId).entityInstanceId,
+        salvagePercent: input.salvagePercent,
+      })
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /**
    * `ReturnSalvageCard`'s `onSplit`: divide a row into two siblings whose
    * quantities sum to what it held.
    *
@@ -458,6 +495,129 @@ export const returnRouter = createTRPCRouter({
         nodeKey: input.nodeKey,
         firstQuantity: input.firstQuantity,
       })
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /**
+   * Step 7: turn this line's salvage decisions into `return_in` movements.
+   *
+   * 🛑 The only procedure in this router that writes to the APPEND-ONLY
+   * LEDGER, which is why it asserts `stock_movement` as well as
+   * `return_part_line`. Everything else here records a decision that can be
+   * edited; this one cannot be taken back, only reversed.
+   *
+   * Only the highest `good` node in each branch produces a movement - a `good`
+   * subassembly whose children are also `good` is one recovery, not several -
+   * and each is valued at `standard x salvagePercent`, frozen onto both the
+   * movement and the row. A part with a null or zero standard REFUSES, naming
+   * it, rather than freezing a zero onto a ledger nobody can edit
+   * (plans/money/tasks/54-returns.md sections 6.3 to 6.5).
+   */
+  writeSalvage: capabilityProcedure
+    .input(
+      z.object({
+        returnLineRecordId: recordIdSchema,
+        occurredAt: z.coerce.date().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
+      ctx.capabilities.assertEditEntity(await requireDefId(organizationId, 'return_part_line'))
+      ctx.capabilities.assertEditEntity(await requireDefId(organizationId, 'stock_movement'))
+
+      const result = await writeSalvageMovements(ctx.db, organizationId, userId, {
+        returnLineId: parseRecordId(input.returnLineRecordId).entityInstanceId,
+        occurredAt: input.occurredAt,
+      })
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /**
+   * Undo one salvage row's movement.
+   *
+   * ⚠️ A REVERSAL, never a delete and never a re-pricing. It reverses at the
+   * cost frozen on the original, because a reversal valued at today's number
+   * nets a movement and its undo to a non-zero amount of inventory value out
+   * of nothing - the exact costing bug the subsystem exists to avoid. No
+   * `scrap` movement follows: the correction is the reversal, and then the
+   * row's status changes (section 6.5).
+   */
+  reverseSalvage: capabilityProcedure
+    .input(
+      z.object({
+        partLineRecordId: recordIdSchema,
+        reason: z.string().max(500).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
+      ctx.capabilities.assertEditEntity(await requireDefId(organizationId, 'return_part_line'))
+      ctx.capabilities.assertEditEntity(await requireDefId(organizationId, 'stock_movement'))
+
+      const result = await reverseSalvageMovement(ctx.db, organizationId, userId, {
+        partLineId: parseRecordId(input.partLineRecordId).entityInstanceId,
+        reason: input.reason,
+      })
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /**
+   * Step 5's suggestion: this return's order's credit memos that no return has
+   * claimed yet, newest first.
+   *
+   * 🔑 The return LINKS to a memo, it never creates one. On the channel path
+   * the refund is issued in Shopify and the connector lands the memo settled
+   * before anyone records the return, so the memo is already sitting there
+   * unclaimed. Without this the picker offers every memo in the org; with it,
+   * usually two (plans/money/tasks/54-returns.md section 5.1).
+   *
+   * Empty when the return names no order, which is the dock case.
+   */
+  unlinkedCreditMemos: capabilityProcedure
+    .input(z.object({ orderRecordId: recordIdSchema }))
+    .query(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      ctx.capabilities.assertViewEntity(await requireDefId(organizationId, 'credit_memo'))
+
+      const result = await readUnlinkedCreditMemosForOrder(
+        ctx.db,
+        organizationId,
+        parseRecordId(input.orderRecordId).entityInstanceId
+      )
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /**
+   * Step 9: assemble the chargeback pack.
+   *
+   * 🔑 Mostly assembly, and that is the point - the order, the dispatch and its
+   * tracking, the customer's own words, the inspection verdict and its photos,
+   * every message either way INCLUDING Quo call recordings and voicemails, and
+   * what was credited against what was withheld. Every one of those already
+   * existed in auxx and none of them was assemblable into one document.
+   *
+   * ⚠️ EDIT, not view: generating writes `return_evidence_pack_asset`, which is
+   * `updatable: false` with this generator as its only writer.
+   *
+   * Safe to re-run. The content hash makes an unchanged return a cache hit, and
+   * a changed one versions the same asset rather than piling up new ones.
+   */
+  generateEvidencePack: capabilityProcedure
+    .input(z.object({ returnRecordId: recordIdSchema }))
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      ctx.capabilities.assertEditEntity(await requireDefId(organizationId, 'return'))
+
+      const result = await generateReturnEvidencePack(
+        ctx.db,
+        organizationId,
+        parseRecordId(input.returnRecordId).entityInstanceId,
+        ctx.session.user.id
+      )
       if (result.isErr()) throw result.error
       return result.value
     }),

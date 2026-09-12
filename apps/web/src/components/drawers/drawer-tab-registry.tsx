@@ -340,6 +340,15 @@ export const DRAWER_TAB_CARD_COMPONENTS: Record<
     import('../records/record-documents-card').then((m) => ({
       default: m.VendorBillDocumentsCard,
     })),
+  // The BOM teardown checklist: what came back, and which of it is worth
+  // putting on the shelf again. A CardBlock, not a RecordsBlock - it needs a
+  // per-row number input, a status selector, a split button and lazy child
+  // expansion, none of which `RecordsBlockConfig` can express
+  // (plans/money/tasks/54-returns.md section 6.6).
+  'return:salvage': () =>
+    import('../returns/ui/return-salvage-container').then((m) => ({
+      default: m.ReturnSalvageContainer,
+    })),
   // The evidence pack (generated, read-only) plus the dock's label photos.
   'return:documents': () =>
     import('../records/record-documents-card').then((m) => ({

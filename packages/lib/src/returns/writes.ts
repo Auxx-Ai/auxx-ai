@@ -59,6 +59,7 @@ import {
   readReturnPartLines,
   requireReturnLine,
 } from './reads'
+import { isUsableSalvagePercent } from './salvage-cost'
 import { checkSalvageQuantityBounds } from './salvage-invariants'
 import { parseSalvageNodeKey } from './salvage-node-key'
 import {
@@ -67,7 +68,7 @@ import {
   type SalvageTreeView,
   toMaterializedRow,
 } from './salvage-reads'
-import { bomQuantity, buildSalvageTree } from './salvage-tree'
+import { bomQuantity, buildSalvageTree, flattenSalvageTree } from './salvage-tree'
 import type {
   ReturnLineConditionGrade,
   ReturnLineLiability,
@@ -413,6 +414,91 @@ export async function setSalvageNodeStatus(
     },
     'Failed to set salvage status',
     { organizationId, returnLineId: input.returnLineId, nodeKey: input.nodeKey }
+  )
+}
+
+/**
+ * Value every `good` component on this return line at the same percentage of
+ * standard cost.
+ *
+ * 🛑 **Line-grained, not per row, and section 6.6 is why.** The owner's spec
+ * for a tree row is "a number input and a status badge selector, and nothing
+ * else", so a third per-row control is out. But section 6.4 stores
+ * `salvagePercent` per `return_part_line` and the salvage writer reads it to
+ * freeze `unitCost = round(standard * pct / 100)`, so without a writer the
+ * default of 100 stands and every recovery freezes at full standard - which
+ * defeats section 6.4 entirely. This is the card-header control's writer: one
+ * percentage, applied across the line.
+ *
+ * Applies to every materialized `good` row, **including the ones currently
+ * shadowed by a `good` ancestor**. Those post nothing today
+ * ({@link selectSalvageMovementNodes} stops at the highest `good`), but a later
+ * regrade of the ancestor promotes them, and a promoted row silently still
+ * holding 100 is exactly the surprise this control exists to remove.
+ *
+ * `0 < pct <= 100` (section 6.4): zero refuses rather than writing a worthless
+ * recovery, because a worthless component is `scrap`, which writes no movement
+ * at all. Nothing here freezes a cost - the percentage is an input the gated
+ * salvage writer reads later.
+ */
+export async function setSalvagePercent(
+  db: Database,
+  organizationId: string,
+  userId: string,
+  input: { returnLineId: string; salvagePercent: number }
+): Promise<Result<SalvageTreeView, Error>> {
+  return guard(
+    async () => {
+      if (!isUsableSalvagePercent(input.salvagePercent)) {
+        throw new BadRequestError(
+          'A salvage percentage must be greater than 0 and at most 100. A component worth nothing is scrap, which recovers nothing at all.'
+        )
+      }
+
+      const salvage = await loadSalvageWriteContext(db, organizationId, input.returnLineId)
+      if (!salvage.ctx.fields.return_part_line_salvage_percent) {
+        throw new UnprocessableEntityError(
+          'This organization has no salvage percentage field yet, so recoveries cannot be valued'
+        )
+      }
+
+      const view = await assembleSalvageTree(db, organizationId, salvage.line, salvage.rows)
+      // An unmaterialized node cannot be `good` - absence reads as `undecided` -
+      // but the guard is cheap and a node's key is only a row id when it has one.
+      const targets = flattenSalvageTree(view.nodes).filter(
+        (node) =>
+          node.materialized &&
+          node.status === 'good' &&
+          node.salvagePercent !== input.salvagePercent
+      )
+      if (targets.length === 0) return view
+
+      // One write session for the whole line: a per-row loop would open one
+      // each, and a line can carry a lot of recovered fasteners.
+      const crud = new UnifiedCrudHandler(organizationId, userId, db)
+      const { errors } = await crud.bulkUpdate(
+        targets.map((node) => ({
+          recordId: toRecordId(salvage.ctx.returnPartLineDefId, node.key) as RecordId,
+          values: { return_part_line_salvage_percent: input.salvagePercent },
+        }))
+      )
+      if (errors.length > 0) {
+        throw new UnprocessableEntityError(
+          `Could not value ${errors.length} of ${targets.length} recovered components: ${errors[0]?.error}`
+        )
+      }
+
+      logger.info('Set the salvage percentage on a return line', {
+        organizationId,
+        returnLineId: input.returnLineId,
+        salvagePercent: input.salvagePercent,
+        rows: targets.length,
+      })
+
+      return reloadSalvageTree(db, organizationId, salvage.line)
+    },
+    'Failed to set salvage percentage',
+    { organizationId, returnLineId: input.returnLineId }
   )
 }
 

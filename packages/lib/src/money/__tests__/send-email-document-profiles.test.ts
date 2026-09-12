@@ -381,10 +381,14 @@ describe('prepareDocumentEmail — per-document-type profile table (purchasing p
     it('gives every profile its OWN contact field, snippet and placeholder root', async () => {
       const profiles = Object.values(DOCUMENT_EMAIL_PROFILES)
       expect(new Set(profiles.map((p) => p.contactSystemAttribute)).size).toBe(profiles.length)
-      // The deposit slip is an internal document whose profile refuses before
-      // a snippet is ever read, so it borrows a snippet type rather than
-      // seeding one nobody renders (HANDOFF slot 1D).
-      const mailable = profiles.filter((p) => p.contactSystemAttribute !== 'bank_deposit_contact')
+      // The deposit slip (HANDOFF slot 1D) and the return evidence pack
+      // (money/54 §7) are internal documents whose profiles refuse before a
+      // snippet is ever read, so they borrow a snippet type rather than
+      // seeding one nobody renders. Both are identified by naming a contact
+      // attribute that resolves to no CustomField, which is exactly what makes
+      // them refuse at recipient resolution.
+      const internalOnly = new Set(['bank_deposit_contact', 'return_evidence_pack_contact'])
+      const mailable = profiles.filter((p) => !internalOnly.has(p.contactSystemAttribute))
       expect(new Set(mailable.map((p) => p.snippetSystemType)).size).toBe(mailable.length)
       expect(new Set(profiles.map((p) => p.entityDefsKey)).size).toBe(profiles.length)
       expect(new Set(profiles.map((p) => p.noun)).size).toBe(profiles.length)

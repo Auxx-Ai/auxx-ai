@@ -76,6 +76,15 @@ export interface DocumentEmailProfile {
     // The alternative, pointing this at `invoice_contact`, would send it.
     | 'bank_deposit_contact'
     | 'credit_memo_contact'
+    // 🛑 There is NO such CustomField either, and for a sharper reason than the
+    // deposit slip's. `return_contact` is real and is the CUSTOMER - the party
+    // the evidence pack argues AGAINST. Naming it here would resolve a
+    // recipient, let `prepareDocumentEmail` compose, and put our liability
+    // verdict and the sentence explaining why we kept their money in their
+    // inbox. `markSent` throwing would be too late: it runs after a confirmed
+    // send. So the refusal has to happen at recipient resolution, which is what
+    // an attribute that resolves to null guarantees.
+    | 'return_evidence_pack_contact'
   /** `entityDefs` cache key (the `EntityDefinition.entityType` slug) for the placeholder root. */
   entityDefsKey: string
   /** The org's seeded system snippet used as the email body. */
@@ -177,6 +186,31 @@ export const DOCUMENT_EMAIL_PROFILES: Record<DocumentType, DocumentEmailProfile>
     noContactHint: 'add one before sending',
     markSent: async () => {},
     sentSubjectFallback: 'Credit memo sent',
+  },
+  // 🛑 The chargeback evidence pack (plans/money/tasks/54-returns.md §7) is
+  // registered here because `Record<DocumentType, …>` is exhaustive, NOT
+  // because it is ever emailed - and unlike the deposit slip, mailing this one
+  // would be actively harmful. `return_contact` is the CUSTOMER, and the pack
+  // carries our own liability verdict, the inspection notes and the sentence
+  // explaining why we withheld their money; it is assembled for a card network
+  // or a processor. Both hooks below refuse rather than pretend.
+  return_evidence_pack: {
+    contactSystemAttribute: 'return_evidence_pack_contact',
+    // The nearest seeded snippet. Never rendered: `markSent` refuses first.
+    snippetSystemType: 'invoice_email',
+    entityDefsKey: 'return',
+    noun: 'evidence pack',
+    noContactHint:
+      'an evidence pack is submitted to the card network or processor handling the dispute, ' +
+      'never emailed to the customer - download it from the return instead',
+    markSent: async () => {
+      throw new BadRequestError(
+        'A return evidence pack is not emailed. It argues against the customer named on the ' +
+          'return. Download it from the return and submit it to the processor handling the ' +
+          'dispute.'
+      )
+    },
+    sentSubjectFallback: 'Return evidence pack',
   },
 }
 

@@ -13,27 +13,28 @@
 // change that, it is a section-level slot, not per-row controls.
 //
 // 🛑 PRESENTATIONAL ONLY, ON PURPOSE. Every byte comes in as a prop and every
-// write goes out as a callback: the `return` / `return_line` /
-// `return_part_line` definitions do not exist yet, so there is no router to
-// call and nothing here may invent one. See the wiring note at the bottom of
-// this comment block.
+// write goes out as a callback. Keeping it that way is what let the tree be
+// built before any router existed, and it is why the thing the drawer registry
+// holds is the CONTAINER, not this: the registry's value type is
+// `ComponentType<DrawerTabProps>` (`{ entityInstanceId, recordId, record? }`)
+// and a tree that takes its data as props is not one.
 //
-// WIRING (wave 2, not this wave): the drawer registry takes a
-// `ComponentType<DrawerTabProps>`, and this component is not one. The one-liner
-// is a sibling container that reads `recordId`, runs the salvage query and the
-// four mutations, and renders this. Register THAT under `'return:salvage'` in
-// `DRAWER_TAB_CARD_COMPONENTS` (the `tabCards` registry — NOT
-// `DRAWER_TAB_COMPONENTS`, which is the whole-tab one), and declare the card in
-// the `return` drawer config's `tabCards`. `drawer-card-parity.test.ts` only
-// asserts declared -> registered, so registering ahead of the declaration is
-// safe; declaring ahead of the component renders nothing, silently.
+// WIRING: `return-salvage-container.tsx` reads `recordId`, picks a return LINE
+// (the tree is line-grained, a return has many), runs `return.salvageTree` and
+// the four mutations, and renders this. That container is what registers under
+// `'return:salvage'` in `DRAWER_TAB_CARD_COMPONENTS` (the `tabCards` registry —
+// NOT `DRAWER_TAB_COMPONENTS`, which is the whole-tab one), with the card
+// declared in the `return` drawer config's `tabCards`.
+// `drawer-card-parity.test.ts` only asserts declared -> registered, so
+// registering ahead of the declaration is safe; declaring ahead of the
+// component renders nothing, silently.
 
+import type { SalvageNode, SalvageStatus } from '@auxx/lib/returns/client'
 import { EmptySection } from '@auxx/ui/components/section'
 import { Wrench } from 'lucide-react'
 import { useCallback } from 'react'
 import { useConfirm } from '~/hooks/use-confirm'
 import { decidedDescendantCount, useSalvageTree } from '../hooks/use-salvage-tree'
-import type { SalvageNode, SalvageStatus } from '../types'
 import { SALVAGE_COLS, SalvageTreeRow } from './salvage-tree-row'
 
 export interface ReturnSalvageCardProps {
