@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.1.237](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.236...auxx-v0.1.237) (2026-09-12)
+
+
+### Features
+
+* **accounting:** batch credit memo posting, and one frame for both bulk posters ([#2140](https://github.com/Auxx-Ai/auxx-ai/issues/2140)) ([39077d7](https://github.com/Auxx-Ai/auxx-ai/commit/39077d787cd5089753cf0c240e913ef7f076ca2a))
+* **accounting:** bulk issue drafts from the credit memo posting dialog ([#2141](https://github.com/Auxx-Ai/auxx-ai/issues/2141)) ([98abac2](https://github.com/Auxx-Ai/auxx-ai/commit/98abac2b0f43d75c7642cb5334474b0b998f3b43))
+* **money:** fulfillment records replace the JSON shipment log, and relieve inventory on ship ([#2144](https://github.com/Auxx-Ai/auxx-ai/issues/2144)) ([2ed8059](https://github.com/Auxx-Ai/auxx-ai/commit/2ed80590cbcb7252508e326d2c453fa73a8b6abc))
+* **money:** fulfillment/fulfillment_line entities, shared stock-movement writer (wave 1) ([#2143](https://github.com/Auxx-Ai/auxx-ai/issues/2143)) ([fa28eb5](https://github.com/Auxx-Ai/auxx-ai/commit/fa28eb51385259854ce7b8671cbe9f43a6cb0a86))
+* **money:** return lines on a shared line grid, credit memos surface, customer note on the return ([#2147](https://github.com/Auxx-Ai/auxx-ai/issues/2147)) ([860ef04](https://github.com/Auxx-Ai/auxx-ai/commit/860ef04a65c3b41a18c542804a9b95d898210972))
+* **money:** returns, the damage evidence and the salvage tree ([#2145](https://github.com/Auxx-Ai/auxx-ai/issues/2145)) ([f958bdd](https://github.com/Auxx-Ai/auxx-ai/commit/f958bddac5e81211b5e824ee5928f8a03d07e5fc))
+* **money:** the salvage writer, the evidence pack, and returns on the ticket ([#2146](https://github.com/Auxx-Ai/auxx-ai/issues/2146)) ([9dbbcc2](https://github.com/Auxx-Ai/auxx-ai/commit/9dbbcc2ecb2c85a6bc15574ab09262465019aeea))
+
+
+### Bug Fixes
+
+* **accounting:** unstick the ledger preview, and give the close console the module shell ([#2138](https://github.com/Auxx-Ai/auxx-ai/issues/2138)) ([a503d70](https://github.com/Auxx-Ai/auxx-ai/commit/a503d703f3c399d53e2dcb184604f7f24a01dc94))
+
 ## [0.1.236](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.235...auxx-v0.1.236) (2026-09-11)
 
 
