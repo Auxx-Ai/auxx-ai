@@ -233,6 +233,18 @@ const creditMemoPostingShape = {
   from: z.iso.date(),
   to: z.iso.date(),
   grouping: z.enum(CREDIT_MEMO_POSTING_GROUPING_VALUES),
+  /**
+   * Issue the `draft` memos in the range as part of the run instead of excluding
+   * them as `not-issued`.
+   *
+   * 🛑 On the PREVIEW as well as the run, and required on both rather than
+   * defaulted: channel memos are ingested as `draft`, so this flag decides
+   * whether a plan covers the whole backlog or nothing at all, and a preview
+   * taken without it would name a footer the run does not honour. A default
+   * would let a caller that never heard of the flag get the other answer
+   * silently.
+   */
+  issueDrafts: z.boolean(),
 }
 
 export const moneyRouter = createTRPCRouter({
@@ -959,6 +971,7 @@ export const moneyRouter = createTRPCRouter({
         organizationId: ctx.session.organizationId,
         range: { from: input.from, to: input.to },
         grouping: input.grouping,
+        issueDrafts: input.issueDrafts,
       })
       if (result.isErr()) throw result.error
       return result.value
@@ -972,6 +985,11 @@ export const moneyRouter = createTRPCRouter({
    * declined (`already_posted`, a locked period) and a group that failed are both
    * arms of the summary, so the result page can say which of the months landed
    * instead of reporting the whole run as an error.
+   *
+   * ⚠️ With `issueDrafts` this also writes to the MEMOS - every draft it covers
+   * is issued before the entry is posted - which is why `summary.issued` is its
+   * own arm: a memo can be issued and still fail to post, and a draft that
+   * refuses to issue is a document somebody has to open.
    */
   runCreditMemoPosting: permissionProcedure(PermissionKey.ledgerPost)
     .input(z.object({ ...creditMemoPostingShape, memo: z.string().max(4000).optional() }))
@@ -981,6 +999,7 @@ export const moneyRouter = createTRPCRouter({
         actorUserId: ctx.session.userId,
         range: { from: input.from, to: input.to },
         grouping: input.grouping,
+        issueDrafts: input.issueDrafts,
         memo: input.memo,
       })
     }),

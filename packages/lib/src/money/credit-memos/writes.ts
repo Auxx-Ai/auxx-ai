@@ -627,12 +627,32 @@ export async function previewIssueCreditMemo(
  * reason: a locked period, an unmapped role. Nothing has been written at that
  * point, so the memo stays a draft. The claim is keyed on the memo number, so a
  * retry converges to `already_posted` and still flips the status.
+ *
+ * @param options.post Post the issue entry. Defaults to `true`, which is every
+ *   door a person presses.
+ *
+ *   🛑 **`false` is the BULK door** (`money/credit-memo-posting/run.ts`, brief
+ *   25 §7). Channel memos are INGESTED as `draft` - all 1,061 of DemoOrg1's -
+ *   so bulk posting has to bulk issue, and issuing through here with the ledger
+ *   attached would mint 1,061 single-memo entries, which is the exact thing the
+ *   batch poster exists to prevent. With `false` the entry is neither built nor
+ *   posted and the period lock is never resolved; everything that makes the
+ *   memo a document still happens, in the same order - the totals, the status,
+ *   the date, the settlement. The accounting-disabled branch below is the
+ *   existing proof that this shape works.
+ *
+ *   ⚠️ There is no posting id in that case, so **no stamp is written**. The
+ *   batch run stamps the memo with its GROUP's posting id afterwards, and a
+ *   memo issued here that the run then fails to post is an ordinary unposted
+ *   memo the next netting read picks up.
  */
 export async function issueCreditMemo(
   db: Database,
-  input: IssueCreditMemoInput
+  input: IssueCreditMemoInput,
+  options: { post?: boolean } = {}
 ): Promise<IssueCreditMemoResult> {
   const { organizationId, userId, creditMemoInstanceId } = input
+  const shouldPost = options.post ?? true
 
   // The mirrors first, so what is stored is what posts. `resolveIssue` sums the
   // lines itself, and the builder asserts `total = subtotal + tax`, so a stale
@@ -650,7 +670,11 @@ export async function issueCreditMemo(
   // `resolveIssue` so it skips the read and the build that exist only to post
   // an entry (task 17 section 3) - a credit memo issues on an org that has
   // never turned accounting on exactly as it would on one that has.
-  const accountingEnabled = await isAccountingEnabled(db, organizationId)
+  //
+  // A caller that asked not to post takes the same road and does not even make
+  // the settings read: nothing downstream of it can change the answer, and over
+  // a 1,061-memo backlog it is 1,061 identical reads.
+  const accountingEnabled = shouldPost && (await isAccountingEnabled(db, organizationId))
   const { memo, issuedAt, built } = await resolveIssue(db, input, { buildEntry: accountingEnabled })
 
   let post: PostResult
@@ -664,6 +688,9 @@ export async function issueCreditMemo(
       memo: `Credit memo ${memo.number} issued`,
     })
   } else {
+    // Nothing was asked of the ledger, either because the org keeps no books or
+    // because the caller is posting the entry itself. Both carry no posting id,
+    // so neither writes a stamp below.
     post = { status: 'not_enabled' }
   }
   if (!isExpectedPostOutcome(post)) {

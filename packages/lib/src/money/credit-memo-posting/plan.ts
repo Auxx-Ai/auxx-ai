@@ -20,9 +20,10 @@
  * A memo is excluded ONCE, for the FIRST reason that applies, and the reasons
  * are ordered by which remedy the person has to reach for:
  *
- * 1. `not-issued` - a `draft` or `void` memo posts nothing, ever. Issue it or
- *    leave it. It is an exclusion rather than a silent filter so the footer's
- *    "1,047 of 1,061" has a reason attached to the gap (§7).
+ * 1. `not-issued` - a `void` memo posts nothing, ever, and so does a `draft`
+ *    unless {@link CreditMemoPostingPlanInput.issueDrafts} is set. It is an
+ *    exclusion rather than a silent filter so the footer's "1,047 of 1,061" has
+ *    a reason attached to the gap (§7).
  * 2. `before-cutoff` - covered by the opening balance; nothing to do, ever.
  * 3. `locked-period` - reopen the month, or leave it.
  * 4. `foreign-currency` - the books are kept in one currency.
@@ -30,13 +31,30 @@
  *    `accounts_receivable`-subtype line carrying no counterparty BEFORE the
  *    push, so inside a period entry one such memo would fail the export of
  *    every memo in the month (`types.ts`).
- * 6. `zero-value` - a memo that credits nothing, or whose amounts the shared
+ * 6. `missing-number` - fix the record, and only ever for a memo this run would
+ *    ISSUE. See {@link CreditMemoPostingPlanInput.issueDrafts} below.
+ * 7. `zero-value` - a memo that credits nothing, or whose amounts the shared
  *    arithmetic refuses to compute.
  *
  * Reporting a memo as `zero-value` when it is really in a closed period sends
  * somebody to look at the document instead of at the period, so the order of
  * these `if`s IS the contract. Every row carries the value that proves its
  * reason in `detail`, which is 44 §7.2b's rule.
+ *
+ * ## 🛑 A planned draft must pass the refusals `resolveIssue` would apply
+ *
+ * With `issueDrafts`, `run.ts` issues each `draft` member through
+ * `issueCreditMemo(..., { post: false })` BEFORE it builds the group's entry, so
+ * a draft the single-memo door would refuse is not a member this planner may
+ * promise. The three refusals `resolveIssue` makes that the netting read already
+ * carries the data for are checked here, in its own order (contact, then number,
+ * then a non-positive total - the last one is `computeCreditMemoAmounts`'s and
+ * therefore already applies to every memo): a `missing-number` draft is refused
+ * because the SINGLE-memo entry keys its document number on the memo number, and
+ * finding that out one memo at a time during the run would drop it from a group
+ * whose entry had already been dimensioned. The refusals this planner CANNOT
+ * make - an empty line set, a channel memo with no refund date - are the run's,
+ * and land in `CreditMemoPostingRunSummary.issued.failed`.
  *
  * 🛑 **`gateway-ambiguous` and `test-gateway` deliberately do not exist here**
  * (§7, and `types.ts` says it at length). A sale can be refused and re-run; a
@@ -121,10 +139,16 @@ export function planCreditMemoPosting(
   const byGroupKey = new Map<string, PlannedCreditMemo[]>()
 
   for (const memo of [...input.memos].sort(compareMemos)) {
-    // 🛑 FIRST. A draft or a void memo is not a document the ledger has any
-    // opinion about, so reporting it as `before-cutoff` or `zero-value` would
-    // send somebody to the period or to the lines when the answer is "issue it".
-    if (memo.status !== 'issued' && memo.status !== 'settled') {
+    // Whether THIS run would flip the memo to `issued` on its way to the entry.
+    // ⚠️ `draft` and nothing else: a `void` memo is never resurrected, and an
+    // option id nobody has taught this module about is not a draft either.
+    const issuing = input.issueDrafts && memo.status === 'draft'
+
+    // 🛑 FIRST. A memo the run will not issue and that is not already issued is
+    // not a document the ledger has any opinion about, so reporting it as
+    // `before-cutoff` or `zero-value` would send somebody to the period or to
+    // the lines when the answer is "issue it".
+    if (!issuing && memo.status !== 'issued' && memo.status !== 'settled') {
       exclusions.push(exclude(memo, 'not-issued', memo.status))
       continue
     }
@@ -147,6 +171,15 @@ export function planCreditMemoPosting(
     }
     if (!memo.contactId) {
       exclusions.push(exclude(memo, 'missing-contact', 'credit_memo_contact is empty'))
+      continue
+    }
+    // 🛑 Only for a memo this run would ISSUE, and that asymmetry is deliberate.
+    // A BATCH entry keys its document number on the period, so an already-issued
+    // memo with an unallocated number posts perfectly well inside one; the
+    // SINGLE-memo entry `resolveIssue` refuses without a number does not, and
+    // `run.ts` issues every draft through that door before it builds the group.
+    if (issuing && memo.number.trim().length === 0) {
+      exclusions.push(exclude(memo, 'missing-number', 'credit_memo_number is empty'))
       continue
     }
 
@@ -180,12 +213,16 @@ export function planCreditMemoPosting(
 
   const groups = [...byGroupKey.entries()]
     .sort(([a], [b]) => compareStrings(a, b))
-    .map(([groupKey, memos]) => toGroup(groupKey, memos))
+    .map(([groupKey, memos]) => collapseCreditMemoGroup(groupKey, memos))
 
   const contacts = new Set<string>()
+  let drafts = 0
   for (const group of groups) {
     for (const memo of group.memos) {
       if (memo.contactId) contacts.add(memo.contactId)
+      // Counted off the PLANNED members, never off the input: a draft the plan
+      // excluded is not a document state this run changes.
+      if (memo.status === 'draft') drafts += 1
     }
   }
 
@@ -202,6 +239,7 @@ export function planCreditMemoPosting(
       // `Σ group.contactCount`: that one counts the A/R lines an entry will
       // carry, and a fully refunded channel memo produces none.
       contacts: contacts.size,
+      drafts,
       excluded: exclusions.length,
       totalMinor: groups.reduce((total, group) => total + group.totals.totalMinor, 0),
     },
@@ -222,8 +260,21 @@ export function groupKeyFor(issuedAt: string, grouping: CreditMemoPostingGroupin
   return issuedAt
 }
 
-/** Collapse one bucket of memos into the posting it becomes. */
-function toGroup(groupKey: string, memos: PlannedCreditMemo[]): CreditMemoPostingGroup {
+/**
+ * Collapse one bucket of memos into the posting it becomes.
+ *
+ * 🛑 Exported for `run.ts`, which RE-collapses a group after a `draft` member
+ * failed to issue and had to be dropped from it. Every number an entry carries -
+ * the totals, the A/R line count, the transaction date - is derived here from
+ * the members alone, so rebuilding the group through this same function is what
+ * keeps a dropped member out of an entry that would otherwise still claim its
+ * amounts. A second copy of this arithmetic in the runner would be free to
+ * disagree with the plan the dialog showed.
+ */
+export function collapseCreditMemoGroup(
+  groupKey: string,
+  memos: PlannedCreditMemo[]
+): CreditMemoPostingGroup {
   let subtotalMinor = 0
   let taxTotalMinor = 0
   let totalMinor = 0

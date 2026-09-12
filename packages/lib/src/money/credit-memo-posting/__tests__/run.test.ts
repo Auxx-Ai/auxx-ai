@@ -1,6 +1,6 @@
 // packages/lib/src/money/credit-memo-posting/__tests__/run.test.ts
 //
-// The four properties the run exists to hold:
+// The five properties the run exists to hold:
 //
 //  1. **The attempt counter.** A month key claims the month once, and a memo
 //     issued late into an already-posted January - or a January that was
@@ -13,6 +13,11 @@
 //  3. **Never throws**, and a group that posted but could not stamp is reported
 //     in BOTH `posted` and `failed` (§4.4).
 //  4. **§8's warning is a warning**, never a refusal.
+//  5. **It bulk ISSUES** (§7). Channel memos are ingested as `draft`, so a run
+//     that only posts already-issued memos posts nothing at all. Every draft is
+//     flipped through `issueCreditMemo(..., { post: false })` - ONE entry for
+//     the group, never one per memo - and a member that refuses is dropped from
+//     the group rather than summarised into an entry that says it was credited.
 //
 // `plan.ts` and the pure builders run FOR REAL; only the database, the poster
 // and the stamp are doubles.
@@ -36,13 +41,42 @@ const h = vi.hoisted(() => ({
     docNumber?: string
     error?: string
   },
-  postCalls: [] as Array<{ periodKey: string; txnDate: string; memo?: string }>,
+  postCalls: [] as Array<{
+    periodKey: string
+    txnDate: string
+    memo?: string
+    /** The entry's own lines, so a test can assert what a group actually claims. */
+    lines: Array<{ direction: string; amount: number }>
+  }>,
   stamps: [] as Array<{ creditMemoId: string; values: unknown }>,
   stampThrowsFor: null as string | null,
   systemUserId: 'usr_system',
   isAccountingEnabled: vi.fn(async () => true),
   readMemoCalls: 0,
   readSettingsCalls: 0,
+  /** Every `issueCreditMemo` call, with the options it carried. */
+  issues: [] as Array<{ creditMemoId: string; userId: string; issuedAt?: string; post?: boolean }>,
+  /** Credit memo ids whose issue refuses. */
+  issueThrowsFor: new Set<string>(),
+}))
+
+vi.mock('../../credit-memos/writes', () => ({
+  issueCreditMemo: async (
+    _db: unknown,
+    input: { userId: string; creditMemoInstanceId: string; issuedAt?: string },
+    options: { post?: boolean } = {}
+  ) => {
+    if (h.issueThrowsFor.has(input.creditMemoInstanceId)) {
+      throw new Error(`credit memo ${input.creditMemoInstanceId} has no lines`)
+    }
+    h.issues.push({
+      creditMemoId: input.creditMemoInstanceId,
+      userId: input.userId,
+      ...(input.issuedAt !== undefined ? { issuedAt: input.issuedAt } : {}),
+      ...(options.post !== undefined ? { post: options.post } : {}),
+    })
+    return { postingId: null, docNumber: null, status: 'issued' as const }
+  },
 }))
 
 vi.mock('../../../postings/accounting-enabled', () => ({
@@ -91,12 +125,20 @@ vi.mock('../../../postings/post-entry', () => ({
   LEDGER_CURRENCY: 'USD',
   postEntry: async (
     _db: unknown,
-    options: { entry: { periodKey: string; txnDate: string }; memo?: string }
+    options: {
+      entry: {
+        periodKey: string
+        txnDate: string
+        lines: Array<{ direction: string; amount: number }>
+      }
+      memo?: string
+    }
   ) => {
     h.postCalls.push({
       periodKey: options.entry.periodKey,
       txnDate: options.entry.txnDate,
       memo: options.memo,
+      lines: options.entry.lines,
     })
     return h.post
   },
@@ -164,6 +206,7 @@ const REQUEST = {
   actorUserId: 'usr_1',
   range: { from: '2026-01-01', to: '2026-02-01' },
   grouping: 'month',
+  issueDrafts: false,
 } as const
 
 beforeEach(() => {
@@ -186,7 +229,25 @@ beforeEach(() => {
   h.isAccountingEnabled.mockResolvedValue(true)
   h.readMemoCalls = 0
   h.readSettingsCalls = 0
+  h.issues = []
+  h.issueThrowsFor = new Set()
 })
+
+/** What one posted entry debits in total, integer minor units. */
+function debits(call: number): number {
+  return (h.postCalls[call]?.lines ?? [])
+    .filter((line) => line.direction === 'debit')
+    .reduce((total, line) => total + line.amount, 0)
+}
+
+/** An empty summary, as every "nothing happened" assertion spells it. */
+const EMPTY_SUMMARY = {
+  posted: [],
+  skipped: [],
+  failed: [],
+  issued: { count: 0, failed: [] },
+  exclusions: [],
+}
 
 // task 17 §3: checked ONCE per org, before the settings read and the netting
 // read - this run has no use for either when the org has never turned
@@ -197,7 +258,7 @@ describe('accounting not enabled', () => {
 
     const summary = await runCreditMemoPosting(stubDb(), REQUEST)
 
-    expect(summary).toEqual({ posted: [], skipped: [], failed: [], exclusions: [] })
+    expect(summary).toEqual(EMPTY_SUMMARY)
     expect(h.readSettingsCalls).toBe(0)
     expect(h.readMemoCalls).toBe(0)
     expect(h.postCalls).toEqual([])
@@ -267,7 +328,7 @@ describe('the refusals', () => {
 
     const summary = await runCreditMemoPosting(stubDb(), REQUEST)
 
-    expect(summary).toEqual({ posted: [], skipped: [], failed: [], exclusions: [] })
+    expect(summary).toEqual(EMPTY_SUMMARY)
     expect(h.postCalls).toEqual([])
   })
 })
@@ -368,6 +429,173 @@ describe('posting and stamping', () => {
         detail: 'draft',
       },
     ])
+  })
+})
+
+// 🛑 §7. Channel memos are INGESTED as `draft`, so without this the dialog
+// excludes the whole backlog and posts nothing.
+describe('bulk issuing', () => {
+  const ISSUING = { ...REQUEST, issueDrafts: true } as const
+
+  const drafts = [
+    memo({ creditMemoId: 'a', number: 'CM-0001', status: 'draft' }),
+    memo({ creditMemoId: 'b', number: 'CM-0002', status: 'draft', contactId: 'ct_2' }),
+    memo({ creditMemoId: 'c', number: 'CM-0003', status: 'draft', contactId: 'ct_3' }),
+  ]
+
+  // 🛑 THE property this whole feature exists for. Issuing each memo through
+  // the ordinary door would post 1,061 single-memo entries.
+  it('issues every draft in the group and then posts ONE entry for all of them', async () => {
+    h.memos = drafts
+
+    const summary = await runCreditMemoPosting(stubDb(), ISSUING)
+
+    expect(h.issues.map((issue) => issue.creditMemoId)).toEqual(['a', 'b', 'c'])
+    expect(h.postCalls).toHaveLength(1)
+    expect(summary.posted).toEqual([
+      { groupKey: '2026-01', postingId: 'gl_1', docNumber: 'AUXX-CRM-202601', memos: 3 },
+    ])
+  })
+
+  // ⚠️ No posting id exists at issue time, so the memo is stamped afterwards
+  // with the GROUP's posting - never inside `issueCreditMemo`.
+  it('issues with post: false, and stamps the batch posting id afterwards', async () => {
+    h.memos = drafts
+
+    await runCreditMemoPosting(stubDb(), ISSUING)
+
+    expect(h.issues.every((issue) => issue.post === false)).toBe(true)
+    expect(h.stamps.map((stamp) => stamp.creditMemoId)).toEqual(['a', 'b', 'c'])
+    expect(h.stamps[0]?.values).toEqual([{ fieldId: 'credit_memo_gl_posting', value: 'gl_1' }])
+  })
+
+  it('counts what actually flipped', async () => {
+    h.memos = [...drafts, memo({ creditMemoId: 'd', number: 'CM-0004', status: 'issued' })]
+
+    const summary = await runCreditMemoPosting(stubDb(), ISSUING)
+
+    expect(summary.issued).toEqual({ count: 3, failed: [] })
+    expect(h.issues.map((issue) => issue.creditMemoId)).toEqual(['a', 'b', 'c'])
+  })
+
+  // 🛑 The memo's own refund date, so a January backlog issued in September
+  // stays in January instead of being dated by the clock.
+  it('pins each memo to its own issue date and groups it by that date', async () => {
+    h.memos = [memo({ creditMemoId: 'a', number: 'CM-0001', status: 'draft' })]
+
+    await runCreditMemoPosting(stubDb(), ISSUING)
+
+    expect(h.issues[0]?.issuedAt).toBe('2026-01-14')
+    expect(h.postCalls[0]?.periodKey).toBe('2026-01')
+    expect(h.postCalls[0]?.txnDate).toBe('2026-01-14')
+  })
+
+  it('attributes the issues of an actorless run to the organization system user', async () => {
+    h.memos = drafts
+
+    await runCreditMemoPosting(stubDb(), { ...ISSUING, actorUserId: null })
+
+    expect(h.issues.every((issue) => issue.userId === 'usr_system')).toBe(true)
+  })
+
+  it('issues nothing at all when the flag is off, and excludes the drafts', async () => {
+    h.memos = drafts
+
+    const summary = await runCreditMemoPosting(stubDb(), REQUEST)
+
+    expect(h.issues).toEqual([])
+    expect(h.postCalls).toEqual([])
+    expect(summary.issued).toEqual({ count: 0, failed: [] })
+    expect(summary.exclusions.map((e) => e.reason)).toEqual([
+      'not-issued',
+      'not-issued',
+      'not-issued',
+    ])
+  })
+
+  // 🛑 A void memo is never resurrected.
+  it('never issues a void memo', async () => {
+    h.memos = [memo({ creditMemoId: 'v', number: 'CM-0009', status: 'void' })]
+
+    const summary = await runCreditMemoPosting(stubDb(), ISSUING)
+
+    expect(h.issues).toEqual([])
+    expect(h.postCalls).toEqual([])
+    expect(summary.exclusions[0]).toMatchObject({ reason: 'not-issued', detail: 'void' })
+  })
+
+  it('writes nothing on a preview, however many drafts it plans', async () => {
+    h.memos = drafts
+
+    const preview = (await previewCreditMemoPosting(stubDb(), ISSUING))._unsafeUnwrap()
+
+    expect(preview.plan.footer.memos).toBe(3)
+    expect(preview.plan.footer.drafts).toBe(3)
+    expect(h.issues).toEqual([])
+    expect(h.postCalls).toEqual([])
+    expect(h.stamps).toEqual([])
+  })
+
+  describe('a member that refuses to issue', () => {
+    // 🛑 It must not be summarised into an entry that says it was credited, and
+    // the group's totals have to describe the members that are left.
+    it('drops out, and the rest post with corrected totals', async () => {
+      h.memos = drafts
+      h.issueThrowsFor = new Set(['b'])
+
+      const summary = await runCreditMemoPosting(stubDb(), ISSUING)
+
+      expect(summary.issued.count).toBe(2)
+      expect(summary.issued.failed).toEqual([
+        { creditMemoId: 'b', number: 'CM-0002', reason: 'credit memo b has no lines' },
+      ])
+      expect(summary.posted).toEqual([
+        { groupKey: '2026-01', postingId: 'gl_1', docNumber: 'AUXX-CRM-202601', memos: 2 },
+      ])
+      // The dropped memo is neither stamped nor summarised.
+      expect(h.stamps.map((stamp) => stamp.creditMemoId)).toEqual(['a', 'c'])
+      // 🛑 $200, not $300: an entry that still claimed the dropped memo's $100
+      // would credit a refund that never happened, and it would balance.
+      expect(debits(0)).toBe(20_000)
+    })
+
+    it('is not an entry-level failure: the group still posts', async () => {
+      h.memos = drafts
+      h.issueThrowsFor = new Set(['a'])
+
+      const summary = await runCreditMemoPosting(stubDb(), ISSUING)
+
+      expect(summary.failed).toEqual([])
+      expect(h.postCalls).toHaveLength(1)
+    })
+
+    // 🛑 Nothing to post, and nothing went wrong with the ledger.
+    it('yields a SKIP, not a failure, when every member refuses', async () => {
+      h.memos = drafts
+      h.issueThrowsFor = new Set(['a', 'b', 'c'])
+
+      const summary = await runCreditMemoPosting(stubDb(), ISSUING)
+
+      expect(h.postCalls).toEqual([])
+      expect(summary.posted).toEqual([])
+      expect(summary.failed).toEqual([])
+      expect(summary.skipped[0]).toMatchObject({ groupKey: '2026-01', status: 'no_members' })
+      expect(summary.issued).toMatchObject({ count: 0 })
+      expect(summary.issued.failed).toHaveLength(3)
+    })
+
+    it('loses only its own group, never the run', async () => {
+      h.memos = [
+        memo({ creditMemoId: 'a', number: 'CM-0001', status: 'draft', issuedAt: '2026-01-14' }),
+        memo({ creditMemoId: 'b', number: 'CM-0002', status: 'draft', issuedAt: '2026-01-15' }),
+      ]
+      h.issueThrowsFor = new Set(['a'])
+
+      const summary = await runCreditMemoPosting(stubDb(), { ...ISSUING, grouping: 'day' })
+
+      expect(summary.posted.map((row) => row.groupKey)).toEqual(['2026-01-15'])
+      expect(summary.skipped[0]?.groupKey).toBe('2026-01-14')
+    })
   })
 })
 

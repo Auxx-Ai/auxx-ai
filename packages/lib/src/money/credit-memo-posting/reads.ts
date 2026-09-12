@@ -617,6 +617,11 @@ export async function countUnpostedCreditMemos(
       const plan = planCreditMemoPosting({
         memos: memos.value,
         grouping: 'day',
+        // ⚠️ The close ISSUES nothing, so a draft is `not-issued` here whatever
+        // the dialog is set to. It is deliberately not close-blocking either
+        // (`CLOSE_BLOCKING_EXCLUSION_REASONS`): `countUnissuedChannelCreditMemos`
+        // already refuses a close over an unissued channel draft.
+        issueDrafts: false,
         cutoffPeriod: settings.value.cutoffPeriod,
         lockedThroughMonth: settings.value.lockedThroughMonth,
         ledgerCurrency: settings.value.ledgerCurrency,

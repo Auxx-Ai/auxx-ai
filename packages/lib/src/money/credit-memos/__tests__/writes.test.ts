@@ -261,6 +261,105 @@ describe('accounting enabled', () => {
   })
 })
 
+// ─── Brief 25 §7: issuing WITHOUT posting, for the batch poster ─────────────
+//
+// 🛑 Channel memos are ingested as `draft`, so the bulk poster has to bulk
+// issue - and issuing 1,061 of them through the ledger would mint 1,061
+// single-memo entries, which is the exact thing batching exists to prevent.
+describe('post: false', () => {
+  const issue = (options?: { post?: boolean }) =>
+    issueCreditMemo(
+      db,
+      { organizationId: ORG, userId: USER, creditMemoInstanceId: MEMO_ID },
+      options
+    )
+
+  it('builds nothing, locks nothing and posts nothing, with accounting ENABLED', async () => {
+    h.isAccountingEnabled.mockResolvedValue(true)
+
+    const result = await issue({ post: false })
+
+    expect(h.buildCreditMemoEntry).not.toHaveBeenCalled()
+    expect(h.resolvePeriodLock).not.toHaveBeenCalled()
+    expect(h.postEntry).not.toHaveBeenCalled()
+    // The read that exists only to decide the builder's `reverseRevenue`.
+    expect(h.orderHadFulfillmentBefore).not.toHaveBeenCalled()
+    expect(result.postingId).toBeNull()
+    expect(result.docNumber).toBeNull()
+  })
+
+  it('does everything else, in the same order', async () => {
+    await issue({ post: false })
+
+    expect(h.recomputeTotals).toHaveBeenCalledTimes(1)
+    const write = h.setValuesForEntity.mock.calls[0]![0]
+    expect(write.values).toContainEqual({ fieldId: 'credit_memo_status', value: 'issued' })
+    expect(h.settleCreditMemo).toHaveBeenCalledTimes(1)
+  })
+
+  // ⚠️ There is no posting id to stamp. The batch run stamps the memo with the
+  // GROUP's posting id afterwards, and stamping anything here would claim the
+  // memo is posted when the entry has not been built yet.
+  it('writes NO stamp', async () => {
+    await issue({ post: false })
+
+    const write = h.setValuesForEntity.mock.calls[0]![0]
+    expect(
+      (write.values as Array<{ fieldId: string }>).some(
+        (v) => v.fieldId === 'credit_memo_gl_posting'
+      )
+    ).toBe(false)
+  })
+
+  it('writes the resolved issue date when it differs from the stored one', async () => {
+    h.memo.issuedAt = null
+
+    await issueCreditMemo(
+      db,
+      {
+        organizationId: ORG,
+        userId: USER,
+        creditMemoInstanceId: MEMO_ID,
+        issuedAt: '2026-01-14',
+      },
+      { post: false }
+    )
+
+    const write = h.setValuesForEntity.mock.calls[0]![0]
+    expect(write.values).toContainEqual({
+      fieldId: 'credit_memo_issued_at',
+      value: '2026-01-14T12:00:00.000Z',
+    })
+  })
+
+  it('applies the same refusals: a memo with no number does not issue', async () => {
+    h.memo.number = ''
+
+    await expect(issue({ post: false })).rejects.toThrow('has no number yet')
+    expect(h.setValuesForEntity).not.toHaveBeenCalled()
+  })
+
+  it('skips the accounting-enabled read entirely, because nothing can use it', async () => {
+    await issue({ post: false })
+
+    expect(h.isAccountingEnabled).not.toHaveBeenCalled()
+  })
+
+  // Every existing call site passes no options at all.
+  it('defaults to posting', async () => {
+    const result = await issue()
+
+    expect(h.postEntry).toHaveBeenCalledTimes(1)
+    expect(result.postingId).toBe('gl_1')
+  })
+
+  it('posts when asked explicitly', async () => {
+    await issue({ post: true })
+
+    expect(h.postEntry).toHaveBeenCalledTimes(1)
+  })
+})
+
 // ─── Brief 25 §2.1: a batched member is not voided in place ─────────────────
 
 describe('voidCreditMemo, memo inside a batched entry', () => {

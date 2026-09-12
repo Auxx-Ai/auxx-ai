@@ -8,6 +8,8 @@ export type {
   BatchPostingCount,
   BatchPostingExclusionRow,
   BatchPostingGrouping,
+  BatchPostingOptionsProps,
+  BatchPostingOptionsSlot,
   BatchPostingPlanShape,
   BatchPostingPostedRow,
   BatchPostingPreview,
