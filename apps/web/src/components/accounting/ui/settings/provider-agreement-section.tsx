@@ -17,7 +17,11 @@ import { useState } from 'react'
 import { SettingsSection } from '~/components/global/settings-page'
 import { useSettings } from '~/hooks/use-settings'
 import { today } from '../journal/period-helpers'
-import { ProviderAgreementPanel } from '../provider-agreement/provider-agreement-panel'
+import {
+  ProviderAgreementAction,
+  ProviderAgreementPanel,
+  useProviderAgreement,
+} from '../provider-agreement/provider-agreement-panel'
 
 /** Same fallback `useLedgerPeriod` uses when the book timezone is unset. */
 const FALLBACK_BOOK_TIME_ZONE = 'UTC'
@@ -33,13 +37,21 @@ export function ProviderAgreementSettingsSection() {
   const { getSetting } = useSettings({ scope: 'GENERAL' })
   const bookTimeZone = (getSetting('accounting.bookTimeZone') as string) || FALLBACK_BOOK_TIME_ZONE
   const [asOf, setAsOf] = useState(() => today(bookTimeZone))
+  const agreement = useProviderAgreement(asOf)
 
   return (
     <SettingsSection
       icon={ArrowLeftRight}
       title='Does QuickBooks agree?'
       description='Compare every account balance here against the connected system, as of any date. A read only - nothing posts, and no statement reads the answer.'>
-      <ProviderAgreementPanel asOf={asOf} onAsOfChange={setAsOf} className='mt-1' />
+      {/* ⚠️ In the BODY here, not in `SettingsSection`'s `action` slot - unlike
+          the close console, which puts the same control in its section header.
+          This door carries a date field beside the button, and the settings
+          layout's right-hand column is narrow enough that the pair pushed the
+          title onto three lines. The close console's date is fixed by the month
+          on screen, so there it is a button alone and it fits. */}
+      <ProviderAgreementAction agreement={agreement} asOf={asOf} onAsOfChange={setAsOf} />
+      <ProviderAgreementPanel agreement={agreement} className='mt-1' />
     </SettingsSection>
   )
 }

@@ -13,9 +13,18 @@ import {
 } from '@auxx/ui/components/dropdown-menu'
 import { Separator } from '@auxx/ui/components/separator'
 import { cn } from '@auxx/ui/lib/utils'
-import { ChevronDown, ChevronLeft, ChevronRight, Lock, Plug, PlugZap } from 'lucide-react'
+import {
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Lock,
+  PanelLeft,
+  Plug,
+  PlugZap,
+} from 'lucide-react'
 import { useAccountingProviderStatus } from '~/components/accounting/hooks/use-accounting-provider-status'
 import type { LedgerPeriodOption } from '~/components/accounting/hooks/use-ledger-period'
+import { useLedgerSidebarStore } from '~/components/accounting/stores/ledger-sidebar-store'
 import { Tooltip } from '~/components/global/tooltip'
 import { formatPeriodLabel } from './format'
 
@@ -74,9 +83,23 @@ export function LedgerToolbar({
   disabled = false,
 }: LedgerToolbarProps) {
   const state = period?.state ?? 'open'
+  const sidebarOpen = useLedgerSidebarStore((store) => store.open)
+  const setSidebarOpen = useLedgerSidebarStore((store) => store.setOpen)
 
   return (
     <div className='flex flex-wrap items-center gap-1 border-b p-1'>
+      <Tooltip content={sidebarOpen ? 'Hide the rail' : 'Show the rail'}>
+        <Button
+          variant={sidebarOpen ? 'secondary' : 'ghost'}
+          size='icon-sm'
+          aria-label='Toggle the ledger rail'
+          onClick={() => setSidebarOpen(!sidebarOpen)}>
+          <PanelLeft />
+        </Button>
+      </Tooltip>
+
+      <Separator orientation='vertical' className='h-6' />
+
       <Button
         variant='ghost'
         size='sm'
@@ -96,6 +119,10 @@ export function LedgerToolbar({
         </Button>
       </Tooltip>
 
+      {/* 🛑 The month lives HERE, in the stable prefix, and nowhere else. It was
+          briefly a list in the rail; one value with two pickers on one screen is
+          two things to keep in step, and the rail is for what is true ABOUT the
+          month rather than for choosing it. */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild disabled={disabled || options.length === 0}>
           <Button variant='ghost' size='sm' className='min-w-[9.5rem] justify-between'>
