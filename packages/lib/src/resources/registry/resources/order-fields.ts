@@ -946,5 +946,32 @@ export const ORDER_FIELDS: Record<string, ResourceField> = {
     description: 'Automatically updated when the order is modified',
   },
 
+  // Reverse relationship: returns (from return:order)
+  returns: {
+    id: toFieldId('returns'),
+    key: 'returns',
+    label: 'Returns',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'order_returns',
+    showInPanel: false,
+    systemSortOrder: 'aP',
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'return:order' as ResourceFieldId,
+      relationshipType: 'has_many',
+      onDelete: 'cascade',
+      isInverse: true,
+    },
+    description: 'Returns against this order',
+  },
+
   createdBy: CREATED_BY_FIELD,
 }

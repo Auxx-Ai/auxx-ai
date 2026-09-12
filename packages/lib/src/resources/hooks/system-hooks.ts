@@ -13,6 +13,7 @@ import { PAYMENT_HOOKS } from './payment-hooks'
 import { PAYOUT_HOOKS } from './payout-hooks'
 import { PURCHASE_ORDER_HOOKS, VENDOR_BILL_HOOKS } from './purchasing-hooks'
 import { QUOTE_HOOKS } from './quote-hooks'
+import { RETURN_HOOKS, RETURN_LINE_HOOKS } from './return-hooks'
 import { SERVICE_REQUEST_HOOKS } from './service-request-hooks'
 import { TICKET_HOOKS } from './ticket-hooks'
 import type { SystemHook, SystemHookRegistry } from './types'
@@ -33,6 +34,8 @@ const HOOKS_BY_ENTITY_TYPE: Record<string, SystemHookRegistry> = {
   work_order: WORK_ORDER_HOOKS,
   service_request: SERVICE_REQUEST_HOOKS,
   quote: QUOTE_HOOKS,
+  return: RETURN_HOOKS,
+  return_line: RETURN_LINE_HOOKS,
   invoice: INVOICE_HOOKS,
   payment: PAYMENT_HOOKS,
   order: ORDER_HOOKS,

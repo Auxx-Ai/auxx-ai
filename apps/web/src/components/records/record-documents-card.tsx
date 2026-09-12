@@ -1,8 +1,14 @@
-// apps/web/src/components/purchasing/record-documents-card.tsx
+// apps/web/src/components/records/record-documents-card.tsx
 'use client'
 
-// `purchase_order:documents` / `vendor_bill:documents` — the files that belong to
-// this record (plans/purchasing/08-documents-on-records.md P21).
+// `purchase_order:documents` / `vendor_bill:documents` / `return:documents` — the
+// files that belong to this record (plans/purchasing/08-documents-on-records.md P21).
+//
+// Lives in `records/`, not `purchasing/`, because the third consumer is a return
+// and the shape was never purchasing-specific: it is "one generated slot plus one
+// uploads slot", which is what a PO, a vendor bill and an RMA each have. The
+// component was already parameterised on the two attributes when returns arrived,
+// so adopting it was a wrapper and a move, not a rewrite.
 //
 // Every field it renders is `showInPanel: false`, so this card is their ONLY
 // surface. That is the point: the Details panel keeps showing business fields,
@@ -359,6 +365,31 @@ export function VendorBillDocumentsCard(props: DrawerTabProps) {
       primaryAttribute='vendor_bill_document'
       attachmentsAttribute='vendor_bill_attachments'
       emptyDescription="Add the vendor's invoice and anything that came with it."
+    />
+  )
+}
+
+/**
+ * What came back, and the pack that argues about it.
+ *
+ * The generated slot is the EVIDENCE PACK (plans/money/tasks/54-returns.md §7) —
+ * `updatable: false`, written only by the generator, so it lands read-only with a
+ * lock exactly as the PO's PDF does. It appears once somebody generates it.
+ *
+ * 🔑 The uploads slot is the dock intake (§8). An unannounced pallet arrives with
+ * no RMA and no email, and the warehouse photographs the shipping label to find
+ * out whose it is; `contact` stays null until someone reads those photos. So this
+ * card is not decoration on a return, it is how the 15% case gets identified at
+ * all — which is why `return_photos` is `showInPanel: false` and lives here
+ * rather than as one more row in Details.
+ */
+export function ReturnDocumentsCard(props: DrawerTabProps) {
+  return (
+    <RecordDocumentsCard
+      {...props}
+      primaryAttribute='return_evidence_pack_asset'
+      attachmentsAttribute='return_photos'
+      emptyDescription='Photograph the shipping label, the pallet and the packaging.'
     />
   )
 }

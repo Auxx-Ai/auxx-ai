@@ -191,6 +191,11 @@ export const ENTITY_DEFINITION_TYPES = [
   // canonicalizes to the org's def CUID like every other entry here.
   'fulfillment',
   'fulfillment_line',
+  // plans/money/tasks/54-returns.md. Three grains, all EntityInstance-backed:
+  // the return, one line per sold line PER CONDITION, and the salvage tree.
+  'return',
+  'return_line',
+  'return_part_line',
 ] as const
 
 /** Type for system entity types stored in EntityDefinition */

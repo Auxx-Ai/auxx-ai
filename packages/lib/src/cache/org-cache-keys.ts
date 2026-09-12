@@ -821,7 +821,7 @@ export const ORG_CACHE_KEY_CONFIG: Record<
   // `DEFAULTS` or `SYSTEM_ENTITY_BEHAVIOR` overrides must also bump this key,
   // because the resolved behavior is baked into the cached blob rather than
   // recomputed per read.
-  resources: { prefix: 'org:resources:v4', ttlSeconds: ONE_DAY },
+  resources: { prefix: 'org:resources:v5', ttlSeconds: ONE_DAY },
   customFields: { prefix: 'org:custom-fields', ttlSeconds: ONE_DAY },
   groups: { prefix: 'org:groups', ttlSeconds: ONE_DAY },
   groupMembers: { prefix: 'org:group-members', ttlSeconds: ONE_DAY },

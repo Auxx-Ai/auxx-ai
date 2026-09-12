@@ -248,11 +248,22 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
   // NATIVE said a connector order had shipped, and the one door into the ledger
   // (`money.fulfillOrder`) was closed for every imported order (49 §1.2).
   //
-  // These three are what `deriveFulfillmentLog` reads to reconstruct
-  // `order_fulfillments` for a connector order: lines sharing a fulfilled
-  // calendar day in the book time zone are one shipment. Measured on the dev
-  // org (49 §5): 82 of 538 orders ship in two shipments, no line spans two, and
-  // all 82 reconstruct by grouping lines on their fulfilled date.
+  // ⤵️ These three USED to be what `deriveFulfillmentLog` read to reconstruct
+  // `order_fulfillments`, by grouping lines that shared a fulfilled calendar
+  // day into one shipment. That function is DELETED (55 §6) and the
+  // reconstruction with it: the Shopify connector now writes `fulfillment` and
+  // `fulfillment_line` records directly, so the grain is carried rather than
+  // guessed at.
+  //
+  // 🛑 The reconstruction was never sound in general, and the measurement that
+  // made it look sound does not generalise. It rested on the dev org showing
+  // "no line spans two shipments" (49 §5), which is test data from ONE
+  // merchant. For a merchant who ships a line in installments it held out the
+  // whole order, so no log was written, no revenue posted and no inventory was
+  // relieved - silently.
+  //
+  // The three fields survive because other readers still use them, not because
+  // anything reconstructs a log from them. Retiring them is separate work.
   //
   // 🛑 No defaults, the `taxTotal` rule above. Null means the channel supplied
   // nothing, which is NOT "zero units shipped": defaulting `fulfilledQty` to 0
@@ -794,6 +805,33 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
       updatable: false,
       configurable: false,
     },
+  },
+
+  // Reverse relationship: returnLines (from return_line:lineItem)
+  returnLines: {
+    id: toFieldId('returnLines'),
+    key: 'returnLines',
+    label: 'Return Lines',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'line_item_return_lines',
+    showInPanel: false,
+    systemSortOrder: 'aG',
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'return_line:lineItem' as ResourceFieldId,
+      relationshipType: 'has_many',
+      onDelete: 'unlink',
+      isInverse: true,
+    },
+    description: 'Return lines against this sold line - several may point here, one per condition',
   },
 
   createdBy: CREATED_BY_FIELD,

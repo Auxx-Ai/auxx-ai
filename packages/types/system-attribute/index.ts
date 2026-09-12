@@ -340,10 +340,14 @@ export const SYSTEM_ATTRIBUTES = [
   'line_item_tax_total',
   // plans/money/tasks/49-bulk-fulfillment-posting.md §8.4 decision 4, entity
   // migration 137. The sales channel's per-line fulfillment rollup, carried
-  // NATIVE so `deriveFulfillmentLog` can reconstruct `order_fulfillments` for a
-  // connector order without lib knowing a single Shopify field path. Before
-  // this they existed only as `@app:shopify:*` app fields, so nothing native
-  // said an imported order had shipped.
+  // NATIVE so lib never has to know a Shopify field path. Before this they
+  // existed only as `@app:shopify:*` app fields, so nothing native said an
+  // imported order had shipped.
+  //
+  // ⤵️ Their original consumer, `deriveFulfillmentLog`, is DELETED (55 §6):
+  // `order_fulfillments` is now a has_many of real `fulfillment` records that
+  // the connector writes directly, not a JSON log reconstructed by grouping
+  // these three. They remain for their other readers.
   'line_item_fulfilled_at',
   'line_item_fulfilled_qty',
   'line_item_shipment_count',
@@ -1183,6 +1187,71 @@ export const SYSTEM_ATTRIBUTES = [
   // mirror of purchase_order_line_quantity_received.
   'fulfillment_line_quantity_relieved',
   'fulfillment_line_stock_movements', // inverse of stock_movement_fulfillment_line
+
+  // Returned material, the damage evidence and the salvage
+  // (plans/money/tasks/54-returns.md section 3). Three grains: one `return`
+  // per shipment back, one `return_line` per sold line PER CONDITION, and a
+  // `return_part_line` tree that is the warehouse's teardown checklist.
+  'return_number', // RMA-000N, minted by the RecordSequence hook like CM-
+  'return_status', // PHYSICAL lifecycle only; money is derived from the memos
+  'return_origin', // closed single-select: a return has exactly one origin
+  'return_reason', // TAGS, ours and user-extensible; Shopify's enum is apparel
+  'return_contact', // NULLABLE and load-bearing: a dock pallet has no known sender
+  'return_order',
+  'return_ticket',
+  'return_requested_at',
+  'return_received_at',
+  'return_inspected_at',
+  'return_closed_at',
+  'return_sender_name_raw', // what the shipping label says, before identification
+  'return_sender_address_raw',
+  'return_inbound_carrier',
+  'return_inbound_tracking',
+  'return_label_provided',
+  'return_label_cost',
+  'return_goods_value', // transcribed: what the returned items sold for
+  'return_credited_amount', // rolled up from the linked memos; derived, never typed
+  'return_withheld_amount', // goodsValue - creditedAmount; no GL effect
+  'return_withheld_reason', // the sentence that goes in the chargeback rebuttal
+  'return_photos',
+  'return_lines',
+  'return_credit_memos', // inverse; the FK is on the memo, which is created first
+  'return_evidence_pack_asset', // written only by the generator
+
+  'return_line_return',
+  'return_line_line_item',
+  'return_line_part', // denormalized, and the BOM root for the salvage tree
+  'return_line_quantity',
+  'return_line_customer_reason',
+  'return_line_customer_note',
+  'return_line_condition_grade',
+  'return_line_liability', // customer_damage vs shipping_damage is what is fought about
+  'return_line_inspection_notes',
+  'return_line_inspected_by',
+  'return_line_inspected_at',
+  'return_line_photos',
+  'return_line_part_lines',
+
+  'return_part_line_return_line',
+  'return_part_line_parent', // SELF-REFERENTIAL; this is the tree
+  'return_part_line_children',
+  'return_part_line_part',
+  'return_part_line_quantity', // prefilled from the BOM, editable, splittable
+  'return_part_line_status', // good | damaged | scrap | missing | undecided
+  'return_part_line_salvage_percent', // the input to the frozen unit cost
+  'return_part_line_unit_cost', // standard x percent, frozen; the standard is re-rolled
+  'return_part_line_sort_order',
+  'return_part_line_movement', // set only on rows that produced a return_in
+
+  // Inverse halves on existing definitions. Both sides are declared because an
+  // unlinked relationship accepts writes and reads empty forever (migration 149).
+  'contact_returns',
+  'order_returns',
+  'ticket_returns',
+  'line_item_return_lines',
+  'part_return_lines',
+  'part_return_part_lines',
+  'credit_memo_return', // owning side: the FK is on the memo
 ] as const
 
 /** Union type of all valid system attribute identifiers */

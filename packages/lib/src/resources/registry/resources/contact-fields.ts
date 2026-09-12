@@ -874,5 +874,32 @@ export const CONTACT_FIELDS: Record<string, ResourceField> = {
       'provider and are not tracked here',
   },
 
+  // Reverse relationship: returns (from return:contact)
+  returns: {
+    id: toFieldId('returns'),
+    key: 'returns',
+    label: 'Returns',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'contact_returns',
+    showInPanel: false,
+    systemSortOrder: 'aK',
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'return:contact' as ResourceFieldId,
+      relationshipType: 'has_many',
+      onDelete: 'unlink',
+      isInverse: true,
+    },
+    description: 'Returns this customer sent back',
+  },
+
   createdBy: CREATED_BY_FIELD,
 }

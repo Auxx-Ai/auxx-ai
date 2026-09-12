@@ -771,5 +771,48 @@ export const CREDIT_MEMO_FIELDS: Record<string, ResourceField> = {
     description: 'Automatically updated when the credit memo is modified',
   },
 
+  // The return this memo credits, when there is one. OWNING side: the FK is
+  // on the memo, because a memo very often has no return at all (an allowance,
+  // a cancellation) and on the channel path the connector creates the memo
+  // BEFORE anyone records the return (plans/money/tasks/54-returns.md 5.1).
+  //
+  // 🛑 Never written on a channel-sourced memo by anything but this link. Its
+  // other fields are connector-managed and the sync re-delivers every refund.
+  return: {
+    id: toFieldId('return'),
+    key: 'return',
+    label: 'Return',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'credit_memo_return',
+    // Interstitial below glPosting ('aK'): migration 152 pins glPosting as the
+    // LAST field ahead of the common block, and a business field past it
+    // breaks that assertion.
+    systemSortOrder: 'aJa',
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'return:creditMemos' as ResourceFieldId,
+      relationshipType: 'belongs_to',
+      isInverse: false,
+    },
+    relationshipConfig: {
+      relatedEntityType: 'return',
+      relationshipType: 'belongs_to',
+      inverseName: 'Credit Memos',
+      inverseSystemAttribute: 'return_credit_memos',
+    },
+    description:
+      'The return this memo credits, when there is one. Optional: an allowance or a ' +
+      'cancellation has no return, and the memo is created first on the channel path',
+  },
+
   createdBy: CREATED_BY_FIELD,
 }

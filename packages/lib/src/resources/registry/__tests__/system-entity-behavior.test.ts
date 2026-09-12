@@ -35,6 +35,7 @@ const PURE_DEFAULT_ENTITY_TYPES = [
   'work_order',
   'service_request',
   'build',
+  'return',
 ] as const
 
 describe('the shipped behavior map is exactly the curated set', () => {
@@ -66,6 +67,8 @@ describe('the shipped behavior map is exactly the curated set', () => {
       'payout',
       'personal_inbox',
       'purchase_order_line',
+      'return_line',
+      'return_part_line',
       'shipment',
       'signature',
       'stock_movement',

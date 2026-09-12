@@ -333,12 +333,17 @@ export const DRAWER_TAB_CARD_COMPONENTS: Record<
   // Both fields are `showInPanel: false`, so this card is their only surface
   // (plans/purchasing/08-documents-on-records.md P21).
   'purchase_order:documents': () =>
-    import('../purchasing/record-documents-card').then((m) => ({
+    import('../records/record-documents-card').then((m) => ({
       default: m.PurchaseOrderDocumentsCard,
     })),
   'vendor_bill:documents': () =>
-    import('../purchasing/record-documents-card').then((m) => ({
+    import('../records/record-documents-card').then((m) => ({
       default: m.VendorBillDocumentsCard,
+    })),
+  // The evidence pack (generated, read-only) plus the dock's label photos.
+  'return:documents': () =>
+    import('../records/record-documents-card').then((m) => ({
+      default: m.ReturnDocumentsCard,
     })),
 
   'purchase_order:vendor': () =>

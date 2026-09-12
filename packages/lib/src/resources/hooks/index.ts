@@ -13,6 +13,7 @@ export { PAYMENT_HOOKS } from './payment-hooks'
 export { PAYOUT_HOOKS } from './payout-hooks'
 export { PURCHASE_ORDER_HOOKS, VENDOR_BILL_HOOKS } from './purchasing-hooks'
 export { QUOTE_HOOKS } from './quote-hooks'
+export { RETURN_HOOKS, RETURN_LINE_HOOKS } from './return-hooks'
 export { SERVICE_REQUEST_HOOKS } from './service-request-hooks'
 export {
   getCommonHooks,

@@ -36,6 +36,9 @@ import { PRODUCT_FIELDS } from '../../resources/registry/resources/product-field
 import { PURCHASE_ORDER_FIELDS } from '../../resources/registry/resources/purchase-order-fields'
 import { PURCHASE_ORDER_LINE_FIELDS } from '../../resources/registry/resources/purchase-order-line-fields'
 import { QUOTE_FIELDS } from '../../resources/registry/resources/quote-fields'
+import { RETURN_FIELDS } from '../../resources/registry/resources/return-fields'
+import { RETURN_LINE_FIELDS } from '../../resources/registry/resources/return-line-fields'
+import { RETURN_PART_LINE_FIELDS } from '../../resources/registry/resources/return-part-line-fields'
 import { SERVICE_REQUEST_FIELDS } from '../../resources/registry/resources/service-request-fields'
 import { SHIPMENT_FIELDS } from '../../resources/registry/resources/shipment-fields'
 import { SIGNATURE_FIELDS } from '../../resources/registry/resources/signature-fields'
@@ -123,6 +126,13 @@ export const FIELD_REGISTRY: Record<string, Record<string, ResourceField>> = {
   // Same warning as directly above: missing here means a zero-field def.
   fulfillment: FULFILLMENT_FIELDS,
   fulfillment_line: FULFILLMENT_LINE_FIELDS,
+
+  // Returned material, the damage evidence and the salvage
+  // (plans/money/tasks/54-returns.md). `return` is visible with a route
+  // folder; the two line levels are managed entirely from the parent.
+  return: RETURN_FIELDS,
+  return_line: RETURN_LINE_FIELDS,
+  return_part_line: RETURN_PART_LINE_FIELDS,
 }
 
 /**
