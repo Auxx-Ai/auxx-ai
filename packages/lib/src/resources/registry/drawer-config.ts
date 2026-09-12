@@ -451,15 +451,18 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
   // would otherwise cost twenty reads on drawer open, including the recursive
   // BOM CTE, for a checklist the warehouse works one lift at a time.
   //
-  // Documents is the generated evidence pack plus the dock's label photos.
-  // `lines` and `creditMemos` are has_many inverses a records block can carry
-  // later; neither needs a bespoke card.
+  // Lines comes first and is the tally of what physically arrived, on the shared
+  // line grid (56 section 4); the salvage selector lists its rows. Documents is
+  // the generated evidence pack plus the dock's label photos. Credit memos is
+  // bespoke for the unlinked-memo suggestion (54 section 5.1).
   return: {
     entityType: 'return',
     additionalTabs: [],
     tabCards: {
       overview: [
+        { value: 'lines', label: 'What came back', icon: 'clipboard-list' },
         { value: 'salvage', label: 'Salvage', icon: 'wrench' },
+        { value: 'credit-memos', label: 'Credit memos', icon: 'receipt-text' },
         { value: 'documents', label: 'Documents', icon: 'paperclip' },
       ],
     },

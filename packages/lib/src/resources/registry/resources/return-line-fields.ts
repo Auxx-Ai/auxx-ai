@@ -253,55 +253,6 @@ export const RETURN_LINE_FIELDS: Record<string, ResourceField> = {
       'not by what it sold',
   },
 
-  customerReason: {
-    id: toFieldId('customerReason'),
-    key: 'customerReason',
-    label: 'Customer Reason',
-    type: BaseType.STRING,
-    fieldType: FieldType.TEXT,
-    isSystem: true,
-    systemAttribute: 'return_line_customer_reason',
-    showInTable: false,
-    systemSortOrder: 'a5',
-    nullable: true,
-    capabilities: {
-      filterable: true,
-      sortable: false,
-      creatable: true,
-      updatable: true,
-      configurable: false,
-    },
-    placeholder: "The customer's stated reason",
-    description:
-      "The customer's own words for why this came back, kept verbatim beside the return's " +
-      'normalized reason tags. Their claim is evidence; our classification is not',
-  },
-
-  customerNote: {
-    id: toFieldId('customerNote'),
-    key: 'customerNote',
-    label: 'Customer Note',
-    type: BaseType.STRING,
-    fieldType: FieldType.TEXT,
-    isSystem: true,
-    systemAttribute: 'return_line_customer_note',
-    showInPanel: false,
-    showInTable: false,
-    showInDialogs: false,
-    systemSortOrder: 'a6',
-    nullable: true,
-    options: { multiline: true, rows: 3 },
-    capabilities: {
-      filterable: false,
-      sortable: false,
-      creatable: true,
-      updatable: true,
-      configurable: false,
-    },
-    placeholder: 'Anything else the customer said',
-    description: 'Anything further the customer said about this line, in their words',
-  },
-
   /**
    * The inspector's verdict on the goods. See
    * {@link RETURN_LINE_CONDITION_GRADE_OPTIONS}. Null until somebody inspects,

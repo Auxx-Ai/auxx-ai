@@ -76,6 +76,7 @@ function dockReturn(overrides: Partial<ReturnWithLines> = {}): ReturnWithLines {
     status: 'received',
     origin: 'dock',
     reasons: [],
+    customerNote: null,
     contactId: null,
     orderId: null,
     ticketId: null,
@@ -273,8 +274,6 @@ describe('sections 3 and 4: the customer words and our findings', () => {
     lineItemId: 'li_1',
     partId: 'part_1',
     quantity: 1,
-    customerReason: 'arrived_damaged',
-    customerNote: 'The mast was bent when the pallet was opened.',
     conditionGrade: 'damaged_repairable' as const,
     liability: 'customer_damage' as const,
     inspectionNotes: 'Bend consistent with a forklift strike after delivery.',
@@ -283,23 +282,33 @@ describe('sections 3 and 4: the customer words and our findings', () => {
     createdAt: CREATED,
   }
 
-  it('carries the customer words verbatim and the verdict beside them', () => {
+  it('carries the customer words verbatim, once for the whole return', () => {
     const payload = pack(
       sourcesOf({
-        returnRecord: dockReturn({ lines: [line] }),
+        returnRecord: dockReturn({
+          reasons: ['arrived_damaged'],
+          customerNote: 'The mast was bent when the pallet was opened.',
+          lines: [line],
+        }),
         partNames: new Map([['part_1', 'Scissor Lift 19ft']]),
       })
     )
 
     expect(payload.linesNote).toBeNull()
+    // Verbatim: the pack must not paraphrase what the customer said.
+    expect(payload.customerNote).toBe('The mast was bent when the pallet was opened.')
+    expect(payload.customerWordsNote).toBeNull()
+
     const rendered = payload.lines[0]!
     expect(rendered.name).toBe('Scissor Lift 19ft')
-    // Verbatim: the pack must not paraphrase what the customer said.
-    expect(rendered.customerNote).toBe(line.customerNote)
     expect(rendered.conditionGrade).toBe('Damaged repairable')
     expect(rendered.liability).toBe('Customer damage')
-    expect(rendered.customerWordsNote).toBeNull()
     expect(rendered.inspectionNote).toBeNull()
+  })
+
+  it('states the customer gave nothing at the return level, not per line', () => {
+    const payload = pack(sourcesOf({ returnRecord: dockReturn({ lines: [line] }) }))
+    expect(payload.customerWordsNote).toContain('no reason or note')
   })
 
   it('states an uninspected line rather than leaving the verdict blank', () => {
@@ -309,8 +318,6 @@ describe('sections 3 and 4: the customer words and our findings', () => {
           lines: [
             {
               ...line,
-              customerReason: null,
-              customerNote: null,
               conditionGrade: null,
               liability: null,
               inspectionNotes: null,
@@ -321,7 +328,6 @@ describe('sections 3 and 4: the customer words and our findings', () => {
       })
     )
 
-    expect(payload.lines[0]!.customerWordsNote).toContain('no reason or note')
     expect(payload.lines[0]!.inspectionNote).toContain('has not been inspected')
   })
 

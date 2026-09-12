@@ -205,7 +205,7 @@ function DispatchBlock(props: {
   )
 }
 
-/** Sections 3 and 4 for one returned line, side by side because neither stands alone. */
+/** Section 4 for one returned line: the inspector's verdict. */
 function ReturnLineBlock(props: {
   styles: Styles
   line: EvidencePackLine
@@ -219,10 +219,6 @@ function ReturnLineBlock(props: {
         {line.name}
         {line.quantity === null ? '' : ` - ${line.quantity} returned`}
       </Text>
-
-      <Quoted styles={styles} label='Customer reason' body={line.customerReason} />
-      <Quoted styles={styles} label='Customer note' body={line.customerNote} />
-      <SectionNote styles={styles} note={line.customerWordsNote} />
 
       <FieldRow>
         <Field styles={styles} label='Condition' value={line.conditionGrade} width='30%' />
@@ -447,6 +443,8 @@ export function ReturnEvidencePackPdf(props: {
           title='What the customer asked for, and what we found'
         />
         <SectionNote styles={styles} note={payload.linesNote} />
+        <Quoted styles={styles} label='Customer note' body={payload.customerNote} />
+        <SectionNote styles={styles} note={payload.customerWordsNote} />
         {payload.lines.map((line) => (
           <ReturnLineBlock
             key={line.returnLineId}

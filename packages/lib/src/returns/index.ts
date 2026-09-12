@@ -75,6 +75,7 @@ export {
   requireReturnLine,
   type UnlinkedCreditMemo,
 } from './reads'
+export { type ReturnableLine, readReturnableLinesForOrder } from './returnable-lines'
 export {
   computeSalvageUnitCost,
   isUsableSalvagePercent,

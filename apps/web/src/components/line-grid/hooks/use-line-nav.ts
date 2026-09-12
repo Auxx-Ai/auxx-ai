@@ -1,4 +1,4 @@
-// apps/web/src/components/money/ui/line-builder/use-line-nav.ts
+// apps/web/src/components/line-grid/hooks/use-line-nav.ts
 
 import { useEffect, useRef } from 'react'
 
@@ -14,7 +14,7 @@ type UseLineNavOptions = {
 }
 
 /**
- * Spreadsheet-like keyboard navigation for the line-items grid — the
+ * Spreadsheet-like keyboard navigation for the line-items grid - the
  * `use-key-value-navigation` idiom (data-connectors HTTP editor) ported to the
  * line builder. A single capture-phase `keydown` listener on the rows container
  * moves focus between cells tagged `data-line-row` / `data-line-col`:
@@ -23,7 +23,7 @@ type UseLineNavOptions = {
  *   so left/right editing inside a cell still works.
  * - Tab / Shift-Tab walk the grid; forward past the last cell adds a row.
  * - Enter commits (the focus move blurs the input) and drops into the next row's
- *   name cell — adding a fresh draft when already on the last row, so "keep
+ *   name cell - adding a fresh draft when already on the last row, so "keep
  *   adding items" is a pure-keyboard rhythm.
  *
  * Bails out while focus is inside a Radix popper (the catalog `/` picker), so the
@@ -63,7 +63,7 @@ export function useLineNav({
       if (!target) return
       // `[data-cell-focusable]` covers the name cell's at-rest text button (which
       // swaps to an <input> on focus); qty/unit-cost cells match on `input`.
-      // `[role="combobox"]` is the buy-side leading cell's part picker — its
+      // `[role="combobox"]` is the buy-side leading cell's part picker - its
       // trigger is a button rendered by `PickerTrigger`, which takes no data
       // attributes, and it is the ONLY combobox inside the grid (the category and
       // unit menus are `aria-haspopup="menu"` dropdowns, not comboboxes). Without
@@ -101,7 +101,7 @@ export function useLineNav({
 
     function handleKeyDown(e: KeyboardEvent) {
       if (isInsidePopper()) return
-      // The description sub-editor is a <textarea> — leave all its keys native
+      // The description sub-editor is a <textarea> - leave all its keys native
       // (Enter confirms, arrows move the caret), never grid-navigate from it.
       if (document.activeElement instanceof HTMLTextAreaElement) return
 

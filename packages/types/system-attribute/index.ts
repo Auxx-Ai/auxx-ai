@@ -1196,6 +1196,9 @@ export const SYSTEM_ATTRIBUTES = [
   'return_status', // PHYSICAL lifecycle only; money is derived from the memos
   'return_origin', // closed single-select: a return has exactly one origin
   'return_reason', // TAGS, ours and user-extensible; Shopify's enum is apparel
+  // The customer's own words, verbatim, beside the normalized reason tags. One
+  // email or call covers the whole return, not one line of it (plan 56 §5).
+  'return_customer_note',
   'return_contact', // NULLABLE and load-bearing: a dock pallet has no known sender
   'return_order',
   'return_ticket',
@@ -1222,8 +1225,6 @@ export const SYSTEM_ATTRIBUTES = [
   'return_line_line_item',
   'return_line_part', // denormalized, and the BOM root for the salvage tree
   'return_line_quantity',
-  'return_line_customer_reason',
-  'return_line_customer_note',
   'return_line_condition_grade',
   'return_line_liability', // customer_damage vs shipping_damage is what is fought about
   'return_line_inspection_notes',

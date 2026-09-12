@@ -99,6 +99,8 @@ export interface ReturnInput {
   origin?: ReturnOrigin | null
   /** TAGS: several reasons are legitimate (wrong item AND damaged). */
   reasons?: string[] | null
+  /** The customer's own words, verbatim, beside the normalized {@link reasons} tags. */
+  customerNote?: string | null
   /** 🛑 Nullable and load-bearing: a dock pallet has no known sender yet. */
   contactId?: string | null
   orderId?: string | null
@@ -194,8 +196,6 @@ export interface ReturnLineInput {
   lineItemId?: string | null
   partId?: string
   quantity?: number
-  customerReason?: string | null
-  customerNote?: string | null
   conditionGrade?: ReturnLineConditionGrade | null
   liability?: ReturnLineLiability | null
   inspectionNotes?: string | null
@@ -906,6 +906,7 @@ async function buildReturnValues(
   if (input.status !== undefined) values.return_status = input.status
   if (input.origin !== undefined) values.return_origin = input.origin
   if (input.reasons !== undefined) values.return_reason = input.reasons ?? []
+  if (input.customerNote !== undefined) values.return_customer_note = input.customerNote
   if (input.senderNameRaw !== undefined) values.return_sender_name_raw = input.senderNameRaw
   if (input.senderAddressRaw !== undefined) {
     values.return_sender_address_raw = input.senderAddressRaw
@@ -947,8 +948,6 @@ async function buildReturnLineValues(
 ): Promise<Record<string, unknown>> {
   const values: Record<string, unknown> = {}
 
-  if (input.customerReason !== undefined) values.return_line_customer_reason = input.customerReason
-  if (input.customerNote !== undefined) values.return_line_customer_note = input.customerNote
   if (input.conditionGrade !== undefined) values.return_line_condition_grade = input.conditionGrade
   if (input.liability !== undefined) values.return_line_liability = input.liability
   if (input.inspectionNotes !== undefined) {

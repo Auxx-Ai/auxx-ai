@@ -10,11 +10,12 @@
 // lifecycle). `LineBuilder` itself (state, mutations, data fetching) stays in
 // line-builder.tsx.
 //
-// Keyboard model (use-line-nav.ts): rows are a plain `group/tree-row grid`
-// (not the tree `GridTreeRow` — we only kept its `TreeRowButton` primitive).
-// Each navigable cell carries `data-line-row`/`data-line-col` so a single
-// container-level keydown listener can move focus spreadsheet-style across
-// name → qty → rate, adding a fresh draft when nav lands past the last row.
+// Keyboard model (`~/components/line-grid/hooks/use-line-nav`): rows are a
+// plain `group/tree-row grid` (not the tree `GridTreeRow` — we only kept its
+// `TreeRowButton` primitive). Each navigable cell carries
+// `data-line-row`/`data-line-col` so a single container-level keydown
+// listener can move focus spreadsheet-style across name → qty → rate, adding
+// a fresh draft when nav lands past the last row.
 //
 // Row anatomy: the name cell owns everything textual about the line — name
 // input (`/` or the pick button opens the catalog picker), state badges
@@ -23,8 +24,16 @@
 // category, images, optional, taxable, delete). Qty/rate are chromeless inline
 // editors; total is computed. The drag grip floats in the left gutter,
 // hover-revealed.
+//
+// money/tasks/56 pulled the document-agnostic parts of this file out into
+// `~/components/line-grid/` (the row shell, the frame, the `⋯` shell, the
+// chromeless cell-input skeleton, the part-picker cell's anatomy) so the
+// return lines card and the two screens below can reuse them instead of
+// reaching in here or hand-copying the look. What's left in THIS file is the
+// money-specific composition on top: `LineGridRow` is now a ten-line adapter,
+// `LineRowMenu`/`LinePartCellView` compose the kit's shells, and
+// `CurrencyCellInput`/`QuantityCellView` are built on the kit's `CellInput`.
 
-import { FieldType } from '@auxx/database/enums'
 import {
   computeLineTotal,
   formatLineItemUnit,
@@ -43,7 +52,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@auxx/ui/components/dropdown-menu'
-import { Kbd, KbdGroup } from '@auxx/ui/components/kbd'
 import { SimpleTooltip, TooltipExplanation } from '@auxx/ui/components/tooltip'
 import { TreeRowButton } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
@@ -57,15 +65,12 @@ import {
   ChevronsUpDown,
   CircleCheck,
   CircleX,
-  Ellipsis,
-  GripVertical,
   Landmark,
   Link2,
   PackageSearch,
   Plus,
   Tag,
   Tags,
-  Trash2,
   TriangleAlert,
   Weight,
   X,
@@ -77,11 +82,17 @@ import {
   useChartAccount,
 } from '~/components/accounting/ui/account-label'
 import { GlAccountPicker } from '~/components/accounting/ui/gl-account-picker'
-import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
+import { LINE_ROW_ACTION_EVENT } from '~/components/line-grid/hooks/use-line-row-actions'
+import { CellInput } from '~/components/line-grid/ui/cell-input'
+import { GripSlot, LineGridRow as KitLineGridRow } from '~/components/line-grid/ui/line-grid-row'
+import {
+  LineRowMenu as LineRowMenuShell,
+  MenuShortcut,
+} from '~/components/line-grid/ui/line-row-menu'
+import { PartCell } from '~/components/line-grid/ui/part-cell'
 import type { CatalogGroup } from '~/components/money/hooks/use-catalog-groups'
 import type { CatalogItem } from '~/components/money/hooks/use-catalog-items'
 import { type RecordId, type RecordMeta, toRecordId } from '~/components/resources'
-import { useSystemField } from '~/components/resources/hooks/use-field'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { catalogItemToLinePatch } from './catalog-group-resolver'
 import { CatalogPicker } from './catalog-picker'
@@ -100,7 +111,7 @@ import {
   numberOrNull,
 } from './line-values'
 import { formatCurrency, titleCase } from './shared'
-import { LINE_ROW_ACTION_EVENT, type LineRowAction } from './use-line-hotkeys'
+import type { LineRowAction } from './use-line-hotkeys'
 
 /**
  * Shared `grid-template-columns` for the header row and every line row (the
@@ -257,11 +268,12 @@ export function relKeyForDocumentType(documentType: DocumentType): string {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * One line's grid row — a `group/tree-row` so hover-revealed chrome (the drag
- * grip) fades in on row hover. Owns the shared column template + the
- * `data-line-row`/`col` tags that {@link useLineNav} focus-hops between.
- * Name/qty/price are the three navigable cells (cols 0–2); total rides
- * outside the nav order.
+ * One line's grid row - a ten-line adapter over the document-agnostic
+ * `line-grid` kit's `LineGridRow` (money/tasks/56 §3.2), mapping money's four
+ * named slots onto its `cells` array so {@link LineRow} and
+ * {@link DraftLineRow} do not have to change. Name/qty/price are the three
+ * navigable cells (cols 0-2); total joins the nav order only when
+ * `totalNavigable`, per the doc on that prop below.
  */
 function LineGridRow({
   rowIndex,
@@ -291,62 +303,18 @@ function LineGridRow({
   optional?: boolean
 }) {
   return (
-    <div className={cn('group/tree-row relative text-sm', optional && 'opacity-75')}>
-      {/* Drag grip — lives in the left gutter, OUTSIDE the framed grid. */}
-      {grip}
-
-      {/* Hover background — a standalone layer behind the grid columns. */}
-      <div className='absolute inset-0 rounded-md transition-colors group-hover/tree-row:bg-background' />
-
-      <div
-        className={cn(
-          'relative grid min-h-9 items-stretch px-1 text-muted-foreground',
-          optional && 'pl-3'
-        )}
-        style={{ gridTemplateColumns: LINE_COLS }}>
-        {/* Col 0 — name input (the grip sits in the gutter, not this column). */}
-        <div data-line-row={rowIndex} data-line-col={0} className='flex min-w-0 items-center'>
-          {name}
-        </div>
-
-        <div data-line-row={rowIndex} data-line-col={1} className='flex items-center'>
-          {qty}
-        </div>
-        <div data-line-row={rowIndex} data-line-col={2} className='flex items-center'>
-          {price}
-        </div>
-        <div
-          data-line-row={totalNavigable ? rowIndex : undefined}
-          data-line-col={totalNavigable ? 3 : undefined}
-          className='flex items-center'>
-          {total}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-/**
- * Drag grip pinned into the left gutter — a small bordered box centered on the
- * frame's left edge (the `-left-2.5` offset straddles the border). Revealed only
- * on row hover; draft rows render no grip at all (they aren't sortable).
- */
-function GripSlot({
-  attributes,
-  listeners,
-}: {
-  attributes?: ReturnType<typeof useSortable>['attributes']
-  listeners?: ReturnType<typeof useSortable>['listeners']
-}) {
-  return (
-    <span
-      {...attributes}
-      {...listeners}
-      // z-10: the row's grid div is a later positioned sibling — without a
-      // z-index it hit-tests above the grip's inner half, eating drag starts.
-      className='-left-2.5 -translate-y-1/2 absolute top-1/2 z-10 flex h-5 w-5 cursor-grab items-center justify-center rounded-md border bg-background text-muted-foreground opacity-0 shadow-sm transition-opacity group-hover/tree-row:opacity-100'>
-      <GripVertical className='size-3.5' />
-    </span>
+    <KitLineGridRow
+      rowIndex={rowIndex}
+      cols={LINE_COLS}
+      grip={grip}
+      muted={optional}
+      cells={[
+        { node: name, className: 'min-w-0' },
+        { node: qty },
+        { node: price },
+        { node: total, navigable: totalNavigable },
+      ]}
+    />
   )
 }
 
@@ -934,12 +902,14 @@ function PriceCellView(props: {
  * focus-then-blur with nothing typed (§2.5 - the blur fix needed regardless of
  * precision).
  *
- * 🛑 Blur must not destroy precision: `dirtyRef` tracks whether the draft was
- * actually EDITED (not merely focused). A focus that immediately blurs without a
- * keystroke skips parsing entirely - `draft` alone isn't enough, because focus
- * seeds it with the full-precision string and a naive "unchanged after
- * round-trip" comparison can still drift on a five-place value across a double's
- * floating-point rounding.
+ * 🛑 Blur must not destroy precision: `skipUnlessDirty` (the `line-grid` kit's
+ * `CellInput`) tracks whether the draft was actually EDITED (not merely
+ * focused). A focus that immediately blurs without a keystroke skips parsing
+ * entirely - `draft` alone isn't enough, because focus seeds it with the
+ * full-precision string and a naive "unchanged after round-trip" comparison
+ * can still drift on a five-place value across a double's floating-point
+ * rounding. Built on `CellInput` rather than copied (money/tasks/56 §3.6) -
+ * see that file's doc for why `seed` and `skipUnlessDirty` exist at all.
  */
 export function CurrencyCellInput({
   value,
@@ -968,68 +938,29 @@ export function CurrencyCellInput({
    */
   live?: boolean
 }) {
-  const [draft, setDraft] = useState<string | null>(null)
-  // Set only by onChange, cleared on focus/commit - whether the draft was
-  // actually typed into, not just opened. See the function doc.
-  const dirtyRef = useRef(false)
-
-  const display = formatCurrency(value ?? null, currencyCode, decimals)
-
-  const commitRaw = (raw: string) => {
-    const trimmed = raw.trim()
-    if (trimmed === '') {
-      if (value === null || value === undefined) return
-      onCommit(null)
-      return
-    }
-    const next = parseMajorToMinor(trimmed, currencyCode, decimals)
-    if (next === null) return
-    if (next === (value ?? null)) return
-    onCommit(next)
-  }
-
-  const commit = () => {
-    if (draft === null) return
-    const wasEdited = dirtyRef.current
-    const raw = draft
-    setDraft(null)
-    dirtyRef.current = false
-    if (!wasEdited) return
-    commitRaw(raw)
-  }
-
-  if (readOnly) {
-    return <div className='w-full px-2 text-right text-sm tabular-nums'>{display}</div>
-  }
-
   return (
-    <input
-      aria-label={ariaLabel}
-      value={draft ?? display}
-      onChange={(e) => {
-        setDraft(e.target.value)
-        dirtyRef.current = true
-        if (live) commitRaw(e.target.value)
-      }}
-      onFocus={() => {
-        // Full stored precision, never the display-rounded string - otherwise a
-        // focus that changes nothing still truncates a five-place rate on blur.
-        setDraft(
-          value !== null && value !== undefined
-            ? minorToMajorString(value, currencyCode, decimals)
-            : ''
-        )
-        dirtyRef.current = false
-      }}
-      onBlur={commit}
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') {
-          setDraft(null)
-          dirtyRef.current = false
-        }
-      }}
+    <CellInput<number | null>
+      value={value}
+      readOnly={readOnly}
+      align='end'
       inputMode='decimal'
-      className='h-full w-full rounded-sm border-none bg-transparent px-2 text-right text-sm tabular-nums outline-none'
+      ariaLabel={ariaLabel}
+      live={live}
+      skipUnlessDirty
+      className='px-2'
+      format={(v) => formatCurrency(v ?? null, currencyCode, decimals)}
+      // Full stored precision, never the display-rounded string - otherwise a
+      // focus that changes nothing still truncates a five-place rate on blur.
+      seed={(v) =>
+        v !== null && v !== undefined ? minorToMajorString(v, currencyCode, decimals) : ''
+      }
+      parse={(raw) => {
+        const trimmed = raw.trim()
+        if (trimmed === '') return { ok: true, value: null }
+        const next = parseMajorToMinor(trimmed, currencyCode, decimals)
+        return next === null ? { ok: false } : { ok: true, value: next }
+      }}
+      onCommit={onCommit}
     />
   )
 }
@@ -1094,9 +1025,6 @@ function QuantityCellView({
   purchaseRatio?: number | null
   onCommit: (next: { quantity: number; unit: LineItemUnit | null }) => void
 }) {
-  const [draft, setDraft] = useState<string | null>(null)
-  const [invalid, setInvalid] = useState(false)
-  const invalidTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [purchaseDraft, setPurchaseDraft] = useState<string | null>(null)
 
   const display = formatQtyDisplay(quantity, unit)
@@ -1105,29 +1033,6 @@ function QuantityCellView({
     ? formatQtyNumber(quantity / (purchaseRatio as number))
     : null
 
-  const flashInvalid = () => {
-    setInvalid(true)
-    if (invalidTimeoutRef.current) clearTimeout(invalidTimeoutRef.current)
-    invalidTimeoutRef.current = setTimeout(() => setInvalid(false), 1200)
-  }
-
-  const commit = () => {
-    if (draft === null) return
-    const raw = draft
-    setDraft(null)
-    const parsed = parseQuantityWithUnit(raw, { quantity, unit })
-    if (!parsed.ok) {
-      flashInvalid()
-      return
-    }
-    const nextQuantity = parsed.quantity ?? quantity
-    // Where the unit is not this row's to change, a typed `5 ea` still commits the
-    // 5 — the parsed unit is discarded rather than flashing the cell invalid.
-    const nextUnit = unitEditable ? parsed.unit : unit
-    if (nextQuantity === quantity && nextUnit === unit) return
-    onCommit({ quantity: nextQuantity, unit: nextUnit })
-  }
-
   const pickUnitOnly = (nextUnit: LineItemUnit | null) => {
     if (nextUnit === unit) return
     onCommit({ quantity, unit: nextUnit })
@@ -1135,16 +1040,16 @@ function QuantityCellView({
 
   // The purchase-unit draft is ONE number (`{n} {purchaseUnit}`) that maps onto
   // the same each-quantity the main cell edits - `qty = n x ratio`. It never
-  // touches `unit`, which stays the part's own (see `unitEditable`'s doc).
+  // touches `unit`, which stays the part's own (see `unitEditable`'s doc). A
+  // separate, smaller input from the main cell's `CellInput` - unparseable
+  // text here has never had a visual flash of its own (unlike the main cell),
+  // so it just reverts silently, same as before.
   const commitPurchase = () => {
     if (purchaseDraft === null || !hasPurchaseUnit) return
     const raw = purchaseDraft.trim()
     setPurchaseDraft(null)
     const parsed = Number(raw)
-    if (raw === '' || !Number.isFinite(parsed) || parsed < 0) {
-      flashInvalid()
-      return
-    }
+    if (raw === '' || !Number.isFinite(parsed) || parsed < 0) return
     const nextQuantity = parsed * (purchaseRatio as number)
     if (nextQuantity === quantity) return
     onCommit({ quantity: nextQuantity, unit })
@@ -1166,19 +1071,26 @@ function QuantityCellView({
   return (
     <div className='group/qty relative flex h-full w-full flex-col justify-center'>
       <div className='relative flex w-full items-center'>
-        <input
-          value={draft ?? display}
-          onChange={(e) => setDraft(e.target.value)}
-          onFocus={() => setDraft(display)}
-          onBlur={commit}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') setDraft(null)
-          }}
+        <CellInput<{ quantity: number; unit: LineItemUnit | null }>
+          value={{ quantity, unit }}
+          readOnly={false}
+          align='end'
           inputMode='text'
-          className={cn(
-            'h-full w-full rounded-sm border-none bg-transparent py-1 pr-5 pl-2 text-right text-sm tabular-nums outline-none transition-colors',
-            invalid && 'bg-destructive/10 ring-1 ring-destructive/60'
-          )}
+          flashInvalid
+          className='py-1 pr-5 pl-2 transition-colors'
+          format={(v) => formatQtyDisplay(v.quantity, v.unit)}
+          isEqual={(a, b) => a.quantity === b.quantity && a.unit === b.unit}
+          parse={(raw) => {
+            const parsed = parseQuantityWithUnit(raw, { quantity, unit })
+            if (!parsed.ok) return { ok: false }
+            const nextQuantity = parsed.quantity ?? quantity
+            // Where the unit is not this row's to change, a typed `5 ea` still
+            // commits the 5 — the parsed unit is discarded rather than
+            // flashing the cell invalid.
+            const nextUnit = unitEditable ? parsed.unit : unit
+            return { ok: true, value: { quantity: nextQuantity, unit: nextUnit } }
+          }}
+          onCommit={onCommit}
         />
         {unitEditable && (
           <DropdownMenu>
@@ -1338,18 +1250,6 @@ function LineTotalCellView({
   )
 }
 
-/** Right-aligned shortcut hint in a `⋯` menu item — the platform modifier + literal keys. */
-function MenuShortcut({ keys }: { keys: string[] }) {
-  return (
-    <KbdGroup variant='outline' size='sm' className='ml-auto'>
-      <Kbd shortcut='meta' />
-      {keys.map((key) => (
-        <Kbd key={key}>{key}</Kbd>
-      ))}
-    </KbdGroup>
-  )
-}
-
 /**
  * Row-level `⋯` actions menu — rendered by {@link LineNameCellView} as the
  * name cell's last flex child, so it sits at the column's right edge without
@@ -1361,6 +1261,11 @@ function MenuShortcut({ keys }: { keys: string[] }) {
  * taxable toggle, match key and GL account (buy-side lines that carry them),
  * delete — each item shows its row shortcut (use-line-hotkeys.ts). The drag grip
  * stays drag-only.
+ *
+ * A composition over the `line-grid` kit's `LineRowMenu` shell
+ * (money/tasks/56 §3.4): the shell owns the trigger, the focus handling and
+ * the destructive delete item; this renders money's item set as its
+ * `children`, plus the `extraItems` slot documented below.
  *
  * ⚠️ This menu is where a line's OPTIONAL vocabulary lives, by convention: a
  * concept the row does not always carry is revealed here, and only becomes a
@@ -1466,90 +1371,65 @@ function LineRowMenu({
   extraItems?: ReactNode
 }) {
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        {/* `onMouseDown` preventDefault: opening the menu must not blur (and
-            collapse) a focused name input — mirrors the pick/description
-            buttons. Radix opens on pointerdown, which fires before mousedown,
-            so the menu still opens. */}
-        <TreeRowButton
-          persistent
-          tabIndex={-1}
-          tooltipText='Line actions'
-          className='ml-auto'
-          onMouseDown={(e) => e.preventDefault()}>
-          <Ellipsis />
-        </TreeRowButton>
-      </DropdownMenuTrigger>
-      {/* `onCloseAutoFocus` prevented: the trigger is mouse-only (tabIndex -1),
-          and restoring focus to it would steal the description textarea's
-          autofocus right after "Add description" is selected. */}
-      <DropdownMenuContent align='end' onCloseAutoFocus={(e) => e.preventDefault()}>
-        <DropdownMenuItem onSelect={onEditDescription}>
-          <AlignLeft />
-          {hasDescription ? 'Edit description' : 'Add description'}
-          <MenuShortcut keys={['⇧', 'D']} />
+    <LineRowMenuShell onDelete={onDelete}>
+      <DropdownMenuItem onSelect={onEditDescription}>
+        <AlignLeft />
+        {hasDescription ? 'Edit description' : 'Add description'}
+        <MenuShortcut keys={['⇧', 'D']} />
+      </DropdownMenuItem>
+      {showCategory && (
+        <DropdownMenuItem onSelect={onSetCategory}>
+          <Tags />
+          {hasCategory ? 'Change category' : 'Add category'}
+          <MenuShortcut keys={['⇧', 'L']} />
         </DropdownMenuItem>
-        {showCategory && (
-          <DropdownMenuItem onSelect={onSetCategory}>
-            <Tags />
-            {hasCategory ? 'Change category' : 'Add category'}
-            <MenuShortcut keys={['⇧', 'L']} />
-          </DropdownMenuItem>
-        )}
-        {onOpenPhotos && (
-          <DropdownMenuItem onSelect={onOpenPhotos}>
-            <Camera />
-            {hasPhotos ? 'Edit images' : 'Add images'}
-            <MenuShortcut keys={['⇧', 'P']} />
-          </DropdownMenuItem>
-        )}
-        {showOptionalToggle && (
-          <DropdownMenuItem onSelect={() => onToggleOptional(!optional)}>
-            <Tag />
-            {optional ? 'Make required' : 'Mark as optional'}
-            <MenuShortcut keys={['⇧', 'O']} />
-          </DropdownMenuItem>
-        )}
-        {showTaxable && (
-          <DropdownMenuItem onSelect={() => onToggleTaxable(!taxable)}>
-            {taxable ? <CircleX /> : <CircleCheck />}
-            {taxable ? 'Mark tax exempt' : 'Mark taxable'}
-            <MenuShortcut keys={['⇧', 'X']} />
-          </DropdownMenuItem>
-        )}
-        {showMatchKey && onSetMatchKey && (
-          <DropdownMenuItem onSelect={onSetMatchKey}>
-            <Link2 />
-            {hasMatchKey ? 'Change purchase order line' : 'Link purchase order line'}
-            <MenuShortcut keys={['⇧', 'K']} />
-          </DropdownMenuItem>
-        )}
-        {showGlAccount && onSetGlAccount && (
-          <DropdownMenuItem onSelect={onSetGlAccount}>
-            <Landmark />
-            {hasGlAccount ? 'Change GL account' : 'Set GL account'}
-            <MenuShortcut keys={['⇧', 'G']} />
-          </DropdownMenuItem>
-        )}
-        {/* No shortcut, and the omission is deliberate: `Mod+Shift+W` closes the
-            window in Chrome, Firefox AND Safari, so there is no letter left for
-            "weight" that is safe to take (see use-line-hotkeys.ts). */}
-        {showWeight && onSetWeight && (
-          <DropdownMenuItem onSelect={onSetWeight}>
-            <Weight />
-            {hasWeight ? 'Change weight' : 'Set weight'}
-          </DropdownMenuItem>
-        )}
-        {extraItems}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem variant='destructive' onSelect={onDelete}>
-          <Trash2 />
-          Delete line
-          <MenuShortcut keys={['⌫']} />
+      )}
+      {onOpenPhotos && (
+        <DropdownMenuItem onSelect={onOpenPhotos}>
+          <Camera />
+          {hasPhotos ? 'Edit images' : 'Add images'}
+          <MenuShortcut keys={['⇧', 'P']} />
         </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+      )}
+      {showOptionalToggle && (
+        <DropdownMenuItem onSelect={() => onToggleOptional(!optional)}>
+          <Tag />
+          {optional ? 'Make required' : 'Mark as optional'}
+          <MenuShortcut keys={['⇧', 'O']} />
+        </DropdownMenuItem>
+      )}
+      {showTaxable && (
+        <DropdownMenuItem onSelect={() => onToggleTaxable(!taxable)}>
+          {taxable ? <CircleX /> : <CircleCheck />}
+          {taxable ? 'Mark tax exempt' : 'Mark taxable'}
+          <MenuShortcut keys={['⇧', 'X']} />
+        </DropdownMenuItem>
+      )}
+      {showMatchKey && onSetMatchKey && (
+        <DropdownMenuItem onSelect={onSetMatchKey}>
+          <Link2 />
+          {hasMatchKey ? 'Change purchase order line' : 'Link purchase order line'}
+          <MenuShortcut keys={['⇧', 'K']} />
+        </DropdownMenuItem>
+      )}
+      {showGlAccount && onSetGlAccount && (
+        <DropdownMenuItem onSelect={onSetGlAccount}>
+          <Landmark />
+          {hasGlAccount ? 'Change GL account' : 'Set GL account'}
+          <MenuShortcut keys={['⇧', 'G']} />
+        </DropdownMenuItem>
+      )}
+      {/* No shortcut, and the omission is deliberate: `Mod+Shift+W` closes the
+          window in Chrome, Firefox AND Safari, so there is no letter left for
+          "weight" that is safe to take (see use-line-hotkeys.ts). */}
+      {showWeight && onSetWeight && (
+        <DropdownMenuItem onSelect={onSetWeight}>
+          <Weight />
+          {hasWeight ? 'Change weight' : 'Set weight'}
+        </DropdownMenuItem>
+      )}
+      {extraItems}
+    </LineRowMenuShell>
   )
 }
 
@@ -1694,7 +1574,6 @@ function LinePartCellView({
   /** Extra `⋯` items — see {@link LineRowMenu}'s `extraItems`. */
   menuItems?: ReactNode
 }) {
-  const partField = useSystemField(partAttribute)
   /**
    * The cell's single edit slot. One state rather than one per field, because the
    * three editors all REPLACE the cell: two of them open at once would render two
@@ -1879,48 +1758,27 @@ function LinePartCellView({
     )
   }
 
-  if (readOnly) {
-    return (
-      <div className='flex min-w-0 flex-1 items-center gap-1.5 py-1'>
-        <span className='min-w-0 truncate px-1 text-sm'>
-          {partField?.label ?? 'Part'}
-          {partRecordId ? '' : ' —'}
-        </span>
-        {description && <TooltipExplanation text={description} />}
-        {matchKeyRecordId && (
-          <SimpleTooltip content='Matched to a purchase order line'>
-            <Link2 className='size-3.5 shrink-0 text-muted-foreground' />
-          </SimpleTooltip>
-        )}
-        {glAccount && <GlAccountChip glAccountId={glAccount} />}
-        {weight !== null && <WeightChip weight={weight} />}
-        {chips}
-      </div>
-    )
-  }
-
-  return (
-    <div ref={rootRef} className='flex min-w-0 flex-1 items-center gap-1.5 py-1'>
-      <FieldInputAdapter
-        fieldType={partField?.fieldType ?? FieldType.RELATIONSHIP}
-        fieldOptions={partField?.options}
-        // `PickerTrigger` takes no data attributes, so the grid's nav hook matches
-        // this trigger on `[role="combobox"]` instead — see use-line-nav.ts.
-        triggerProps={{
-          className: 'h-7 min-w-0 flex-1 border-none bg-transparent px-1 shadow-none',
-          // The `X` beside the chevron — `PickerTrigger` draws it, and
-          // `MultiRelationInput`'s `handleClearAll` sends `[]`, which arrives
-          // below as `onPickPart(null)`.
-          showClear: allowClearPart,
-        }}
-        value={partRecordId ? [partRecordId] : []}
-        onChange={(next) => {
-          const ids = next as RecordId[]
-          onPickPart(ids[0] ?? null)
-        }}
-        placeholder='Select part...'
-      />
-
+  // At rest - composes the `line-grid` kit's `PartCell` (money/tasks/56 §3.7):
+  // description/match-key/GL-account/weight all become `chips` this cell
+  // owns, and money's own `LineRowMenu` becomes the `menu` slot. The chip
+  // elements differ between readOnly (plain tooltip icons) and editable
+  // (clickable standing controls that reopen the swap-slot editor) - that
+  // split stays HERE, not in the kit, since it's what each chip literally is,
+  // not how the cell hosts it.
+  const cellChips = readOnly ? (
+    <>
+      {description && <TooltipExplanation text={description} />}
+      {matchKeyRecordId && (
+        <SimpleTooltip content='Matched to a purchase order line'>
+          <Link2 className='size-3.5 shrink-0 text-muted-foreground' />
+        </SimpleTooltip>
+      )}
+      {glAccount && <GlAccountChip glAccountId={glAccount} />}
+      {weight !== null && <WeightChip weight={weight} />}
+      {chips}
+    </>
+  ) : (
+    <>
       {/* Description button — a standing control, but only when the line HAS a
           description; ADDING one lives in the `⋯` menu. Mirrors the sell side. */}
       {description && (
@@ -1971,45 +1829,61 @@ function LinePartCellView({
       )}
 
       {chips}
+    </>
+  )
 
-      {/* Always the cell's LAST flex child, so its slot is stable across the
-          rest ↔ editor swaps. Category / taxable / images / optional are all off:
-          a purchasing line carries none of those fields. */}
-      <LineRowMenu
-        extraItems={menuItems}
-        taxable={false}
-        optional={false}
-        showOptionalToggle={false}
-        showCategory={false}
-        showTaxable={false}
-        showMatchKey={showMatchKey}
-        showGlAccount={showGlAccount}
-        showWeight={showWeight}
-        hasDescription={!!description}
-        hasCategory={false}
-        hasPhotos={false}
-        hasMatchKey={!!matchKeyRecordId}
-        hasGlAccount={!!glAccount}
-        hasWeight={weight !== null}
-        onEditDescription={() => setEdit({ field: 'description', value: description ?? '' })}
-        onSetCategory={() => {}}
-        onToggleTaxable={() => {}}
-        onToggleOptional={() => {}}
-        onSetMatchKey={showMatchKey ? () => setEdit({ field: 'matchKey' }) : undefined}
-        onSetGlAccount={
-          showGlAccount ? () => setEdit({ field: 'glAccount', value: glAccount ?? '' }) : undefined
-        }
-        onSetWeight={
-          showWeight
-            ? () => {
-                onRevealWeight()
-                setEdit({ field: 'weight', value: weight === null ? '' : String(weight) })
-              }
-            : undefined
-        }
-        onDelete={onDelete}
-      />
-    </div>
+  // Always the cell's LAST flex child, so its slot is stable across the
+  // rest ↔ editor swaps. Category / taxable / images / optional are all off:
+  // a purchasing line carries none of those fields. `undefined` in readOnly
+  // mode - `PartCell` never renders `menu` there.
+  const cellMenu = readOnly ? undefined : (
+    <LineRowMenu
+      extraItems={menuItems}
+      taxable={false}
+      optional={false}
+      showOptionalToggle={false}
+      showCategory={false}
+      showTaxable={false}
+      showMatchKey={showMatchKey}
+      showGlAccount={showGlAccount}
+      showWeight={showWeight}
+      hasDescription={!!description}
+      hasCategory={false}
+      hasPhotos={false}
+      hasMatchKey={!!matchKeyRecordId}
+      hasGlAccount={!!glAccount}
+      hasWeight={weight !== null}
+      onEditDescription={() => setEdit({ field: 'description', value: description ?? '' })}
+      onSetCategory={() => {}}
+      onToggleTaxable={() => {}}
+      onToggleOptional={() => {}}
+      onSetMatchKey={showMatchKey ? () => setEdit({ field: 'matchKey' }) : undefined}
+      onSetGlAccount={
+        showGlAccount ? () => setEdit({ field: 'glAccount', value: glAccount ?? '' }) : undefined
+      }
+      onSetWeight={
+        showWeight
+          ? () => {
+              onRevealWeight()
+              setEdit({ field: 'weight', value: weight === null ? '' : String(weight) })
+            }
+          : undefined
+      }
+      onDelete={onDelete}
+    />
+  )
+
+  return (
+    <PartCell
+      partAttribute={partAttribute}
+      partRecordId={partRecordId}
+      readOnly={readOnly}
+      allowClearPart={allowClearPart}
+      containerRef={rootRef}
+      onPickPart={onPickPart}
+      chips={cellChips}
+      menu={cellMenu}
+    />
   )
 }
 
