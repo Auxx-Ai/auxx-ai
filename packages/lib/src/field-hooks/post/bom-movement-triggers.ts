@@ -1,5 +1,16 @@
 // packages/lib/src/field-hooks/post/bom-movement-triggers.ts
 
+// 🛑 Deliberately NOT routed through `stock-movements.writeStockMovements`
+// (plans/money/tasks/50-batch-inventory-relief.md §2.5), unlike the six
+// writers that module extracts (`receive-stock.ts`, `adjust-stock.ts`,
+// `reverse-movement.ts`, `bulk-opening-stock.ts`, `complete-build.ts`,
+// `reverse-build.ts`). This hook runs INSIDE a post-create hook fired by
+// `UnifiedCrudHandler.create` itself, so routing its child inserts back
+// through `UnifiedCrudHandler` (or the shared writer, which is built on it)
+// would re-enter the trigger it lives in. It keeps its own raw
+// `EntityInstance` + `FieldValue` batch inserts below for that reason, not by
+// oversight.
+
 import { database, schema } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import type { TypedFieldValueInput } from '@auxx/types'
@@ -38,7 +49,7 @@ export const explodeBomMovement: EntityTriggerHandler = async (event) => {
   const adjustSubparts = values.stock_movement_adjust_subparts
   if (!adjustSubparts) return
 
-  // If this movement has a parent, it's a child — skip (safety guard)
+  // If this movement has a parent, it's a child - skip (safety guard)
   if (values.stock_movement_parent_movement) return
 
   // Resolve the affected part
@@ -60,18 +71,18 @@ export const explodeBomMovement: EntityTriggerHandler = async (event) => {
 
   // Check if this part has subparts at all
   if (!subpartGraph.has(partInstanceId)) {
-    // No subparts — clear the flag so recalculatePartQoH includes this movement
+    // No subparts - clear the flag so recalculatePartQoH includes this movement
     await clearAdjustSubpartsFlag(organizationId, entityInstanceId)
     return
   }
 
-  // Flatten to descendant targets (in-memory). The root is excluded — the
+  // Flatten to descendant targets (in-memory). The root is excluded - the
   // user-submitted parent movement itself counts as the root's deduction.
   const targets = getDeductionTargets(partInstanceId, quantity, subpartGraph)
 
   if (targets.length === 0) {
     logger.warn('BOM explosion produced no descendant targets', { partInstanceId })
-    // Parent movement is the root's deduction — clear flag and recalc root.
+    // Parent movement is the root's deduction - clear flag and recalc root.
     await clearAdjustSubpartsFlag(organizationId, entityInstanceId)
     await batchRecalculateQoH(organizationId, [partInstanceId])
     return
@@ -169,7 +180,7 @@ export const explodeBomMovement: EntityTriggerHandler = async (event) => {
 
     // Convert each typed value to a FieldValue insert row.
     // These are single-value fields (one row per (entityId, fieldId)),
-    // so the sortKey is purely positional — always the canonical first key.
+    // so the sortKey is purely positional - always the canonical first key.
     for (const { field, value } of typedValues) {
       fieldValueRows.push(
         buildFieldValueRow({

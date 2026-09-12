@@ -608,5 +608,41 @@ export const STOCK_MOVEMENT_FIELDS: Record<string, ResourceField> = {
     },
   },
 
+  // The sell-side twin of `purchaseOrderLine` above (plans/money/tasks/55
+  // §3, task 50's netting): a `sale`-type movement points at the
+  // `fulfillment_line` it relieved, and `fulfillment_line_quantity_relieved`
+  // re-SUMs over this edge. Nullable because not every movement is a sale
+  // relief (receipts, adjustments, builds carry no fulfillment line at all).
+  fulfillmentLine: {
+    id: toFieldId('fulfillmentLine'),
+    key: 'fulfillmentLine',
+    label: 'Fulfillment Line',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'stock_movement_fulfillment_line',
+    systemSortOrder: 'c2',
+    nullable: true,
+    showInPanel: false,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: false,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'fulfillment_line:stockMovements' as ResourceFieldId,
+      relationshipType: 'belongs_to',
+      isInverse: false,
+    },
+    relationshipConfig: {
+      relatedEntityType: 'fulfillment_line',
+      relationshipType: 'belongs_to',
+      inverseName: 'Stock Movements',
+      inverseSystemAttribute: 'fulfillment_line_stock_movements',
+    },
+  },
+
   createdBy: CREATED_BY_FIELD,
 }

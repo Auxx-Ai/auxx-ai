@@ -1,7 +1,7 @@
 // packages/lib/src/builds/complete-build.ts
 
 /**
- * `completeBuild` — the ONLY function in this module that writes a stock
+ * `completeBuild` - the ONLY function in this module that writes a stock
  * movement, and the one heavy write in the whole directory.
  *
  * plans/products/build/01-build-plan.md section 3.4, README B2/B4/B7/B8.
@@ -15,7 +15,7 @@
  *
  * That pair is the event the system could not record before this file existed,
  * and it is why margin was unavailable: not because parts had no cost, but
- * because nothing ever wrote a cost DOWN. `part_cost` is a live mirror — a
+ * because nothing ever wrote a cost DOWN. `part_cost` is a live mirror - a
  * vendor raising the motor price in March silently restates January's COGS.
  * Every number this function writes is read from `part_standard_cost`, frozen
  * onto an append-only row, and never recomputed.
@@ -28,7 +28,7 @@
  *    recalc therefore runs {@link recalculateAfterCommit}, after the
  *    transaction returns, never inside it.
  * 2. **The write lane.** One quiet session, decided in `write-lane.ts` and
- *    nowhere else. Read that file before changing it — `skipEvents: true` closes
+ *    nowhere else. Read that file before changing it - `skipEvents: true` closes
  *    only one of the two dispatch doors.
  * 3. **Batch the recalc.** Quantity on hand is a full re-SUM per part on every
  *    movement write; a build writing 51 movements would make that 51x worse in a
@@ -62,6 +62,7 @@ import {
   StockMovementType,
 } from '../resources/registry/enum-values'
 import { type RecordId, toRecordId } from '../resources/resource-id'
+import { type StockMovementInput, writeStockMovements } from '../stock-movements'
 import { BUILD_STATUS_BYPASS } from './build-mutations'
 import {
   assertBuildStatus,
@@ -94,10 +95,10 @@ const logger = createScopedLogger('builds:complete')
  * The order of the steps is the contract:
  *
  * 1. Re-read the build `FOR UPDATE` and refuse unless it is `planned` or
- *    `in_progress`. **B8 — one completion per build.** The lock is what makes
+ *    `in_progress`. **B8 - one completion per build.** The lock is what makes
  *    that a rule rather than a race; a run finished in tranches is a second
  *    build.
- * 2. Resolve components with `loadDirectSubparts` — **direct only** (B4).
+ * 2. Resolve components with `loadDirectSubparts` - **direct only** (B4).
  * 3. Value every line at its `part_standard_cost`. **If any component has none,
  *    abort with `UnprocessableEntityError` naming the parts.** Never post a zero
  *    cost: a zero-cost consume row understates COGS, drags every downstream
@@ -214,7 +215,7 @@ async function writeCompletion(
     args
   const txDb = tx as unknown as Database
 
-  // Step 1. The lock IS B8's enforcement — see `lockBuild`.
+  // Step 1. The lock IS B8's enforcement - see `lockBuild`.
   const build = await lockBuild(tx, organizationId, ctx, input.buildId)
   assertBuildStatus(
     build,
@@ -259,7 +260,7 @@ async function writeCompletion(
   // 🛑 The SAME function the completion form runs to preview these five numbers
   // (`client.ts`). The form has to show the variance before the write, because a
   // completion is irreversible except by a reversing build (B6) and refuses a
-  // second attempt (B8) — and a preview computed by a second implementation is
+  // second attempt (B8) - and a preview computed by a second implementation is
   // only accidentally the number that gets stored.
   const { materialCost, laborCost, overheadCost, producedValue, varianceAmount } =
     summarizeBuildCompletion({
@@ -273,78 +274,109 @@ async function writeCompletion(
     })
 
   const producedKinds = await readPartKinds(txDb, organizationId, [build.partId])
+  // The one construction site for the quiet lane. See `write-lane.ts`.
+  const buildSession = buildWriteSession()
   const crud = new UnifiedCrudHandler(organizationId, userId, txDb, undefined, {
-    // The one construction site for the quiet lane. See `write-lane.ts`.
-    session: buildWriteSession(),
+    session: buildSession,
     // 🛑 Step 6 writes `build_status: 'completed'`, which
     // `field-hooks/pre/build-status-guard.ts` refuses on a manual write. Without this the
     // wall built to protect the ledger would refuse the only function that writes it.
-    // ⚠️ The movement `create`s below share this handler and so inherit the set; that is
-    // safe only because it names `build_status` alone and `stock_movement` has no such
+    // ⚠️ `stock-movements.writeStockMovements` below is handed the same session and the
+    // same `bypassFieldGuards` set (the shared `movementLane` object), and that is safe
+    // only because it names `build_status` alone and `stock_movement` has no such
     // attribute.
     bypassFieldGuards: BUILD_STATUS_BYPASS,
   })
+  const movementLane = {
+    kind: 'quiet' as const,
+    session: buildSession,
+    bypassFieldGuards: BUILD_STATUS_BYPASS,
+  }
+  const movementCtxArgs = {
+    db: txDb,
+    organizationId,
+    userId,
+    movementDefId: movementCtx.movementDefId,
+    partDefId: movementCtx.partDefId,
+    lane: movementLane,
+    // The SAME handler `crud.update` below writes `build_status` through -
+    // `build-event.test.ts` pins exactly one quiet-lane `UnifiedCrudHandler`
+    // construction per completion. See `StockMovementsCtx.handler`.
+    handler: crud,
+  }
 
   const buildRecordId = toRecordId(ctx.buildDefId, build.buildId)
-  const movementIds: string[] = []
 
-  // Step 4: one `build_consume` per component, at the NEGATED quantity.
-  for (const line of plan.components) {
-    const values: Record<string, unknown> = {
-      stock_movement_part: toRecordId(movementCtx.partDefId, line.partId),
-      stock_movement_type: StockMovementType.BUILD_CONSUME,
-      stock_movement_quantity: -line.quantityConsumed,
-      // See the file header, trap 4. Never true on a build row.
-      stock_movement_adjust_subparts: false,
-      stock_movement_build: buildRecordId,
-      stock_movement_unit_cost: line.unitCost,
-      // Negated from the POSITIVE extended cost the plan computed, so the row
-      // and `materialCost` cannot disagree by a rounding step. Deriving it from
-      // `round(unitCost x -consumed)` instead would differ on a half-cent tail,
-      // because `Math.round` breaks ties toward positive infinity.
-      stock_movement_extended_cost: -(line.extendedCost ?? 0),
-      stock_movement_gl_account: line.glAccount,
-      stock_movement_cost_basis: StockMovementCostBasis.STANDARD,
-      stock_movement_occurred_at: completedAt.toISOString(),
-    }
+  // Step 4: one `build_consume` per component, at the NEGATED quantity, through
+  // the shared `stock-movements.writeStockMovements`
+  // (plans/money/tasks/50-batch-inventory-relief.md §2).
+  const consumeInputs: StockMovementInput[] = plan.components.map((line) => ({
+    partInstanceId: line.partId,
+    type: StockMovementType.BUILD_CONSUME,
+    quantity: -line.quantityConsumed,
+    // Non-null by construction: `assertPlanIsPostable` refuses a plan carrying
+    // any component with no standard cost before this point is ever reached.
+    unitCost: line.unitCost as number,
+    // Negated from the POSITIVE extended cost the plan computed, so the row
+    // and `materialCost` cannot disagree by a rounding step. Deriving it from
+    // `round(unitCost x -consumed)` instead would differ on a half-cent tail,
+    // because `Math.round` breaks ties toward positive infinity - the ONE
+    // documented `extendedCost` override (50 §2.2).
+    extendedCost: -(line.extendedCost ?? 0),
+    glAccount: line.glAccount,
+    costBasis: StockMovementCostBasis.STANDARD,
+    occurredAt: completedAt,
     // NULL is the OFF-BOM marker and is written as an absence, not a zero: a
     // stamped `0` would claim the bill of materials calls for none of this
     // component, which is a different and false statement.
-    if (line.qtyPerUnit != null) values.stock_movement_qty_per_unit = line.qtyPerUnit
+    qtyPerUnit: line.qtyPerUnit,
+    links: { buildId: buildRecordId },
+  }))
 
-    const created = await crud.create(movementCtx.movementDefId, values)
-    movementIds.push(created.instance.id)
-  }
+  const consumeWritten = await writeStockMovements(movementCtxArgs, consumeInputs)
+  if (consumeWritten.isErr()) throw consumeWritten.error
 
   // Step 5: the single `build_produce`.
   //
   // ⚠️ The account is resolved from the produced part's OWN `part_kind`, not
-  // hard-coded to 1330. Section 3.4 names 1330 because the case it describes is
-  // a finished good, and for a finished good this resolves to exactly that. A
-  // SUBASSEMBLY build stamped 1330 would put raw-materials stock into Finished
-  // Goods, contradicting the part-kind account map that receiving already uses
-  // (products/01 section 4) and overstating 1330 on every subassembly run.
-  const produceValues: Record<string, unknown> = {
-    stock_movement_part: toRecordId(movementCtx.partDefId, build.partId),
-    stock_movement_type: StockMovementType.BUILD_PRODUCE,
-    // 🛑 `quantityProduced`, never `unitsStarted`. B7: scrapped units consume
-    // material and produce NO movement. Their cost falls out in
-    // `varianceAmount` instead of being absorbed into the survivors, because
-    // absorbing it would give the same variant a different unit cost on every
-    // run and destroy the point of a standard.
-    stock_movement_quantity: quantityProduced,
-    stock_movement_adjust_subparts: false,
-    stock_movement_build: buildRecordId,
-    stock_movement_unit_cost: producedUnitCost,
-    stock_movement_extended_cost: producedValue,
-    stock_movement_gl_account: resolveInventoryRoleForPartKind(
-      producedKinds.get(build.partId) ?? null
-    ),
-    stock_movement_cost_basis: StockMovementCostBasis.STANDARD,
-    stock_movement_occurred_at: completedAt.toISOString(),
-  }
-  const produce = await crud.create(movementCtx.movementDefId, produceValues)
-  movementIds.push(produce.instance.id)
+  // hard-coded to 1330, and - load-bearing for
+  // `complete-build-transaction.int.test.ts` - resolved HERE, after every
+  // consume row above has already been written. Section 3.4 names 1330
+  // because the case it describes is a finished good, and for a finished good
+  // this resolves to exactly that. A SUBASSEMBLY build stamped 1330 would put
+  // raw-materials stock into Finished Goods, contradicting the part-kind
+  // account map that receiving already uses (products/01 section 4) and
+  // overstating 1330 on every subassembly run.
+  const produceGlAccount = resolveInventoryRoleForPartKind(producedKinds.get(build.partId) ?? null)
+
+  const produceInputs: StockMovementInput[] = [
+    {
+      partInstanceId: build.partId,
+      type: StockMovementType.BUILD_PRODUCE,
+      // 🛑 `quantityProduced`, never `unitsStarted`. B7: scrapped units consume
+      // material and produce NO movement. Their cost falls out in
+      // `varianceAmount` instead of being absorbed into the survivors, because
+      // absorbing it would give the same variant a different unit cost on
+      // every run and destroy the point of a standard.
+      quantity: quantityProduced,
+      unitCost: producedUnitCost,
+      extendedCost: producedValue,
+      glAccount: produceGlAccount,
+      costBasis: StockMovementCostBasis.STANDARD,
+      occurredAt: completedAt,
+      links: { buildId: buildRecordId },
+    },
+  ]
+
+  const produceWritten = await writeStockMovements(movementCtxArgs, produceInputs)
+  if (produceWritten.isErr()) throw produceWritten.error
+
+  // Consumes first then the single produce - `CompleteBuildResult.movementIds`
+  // documents that order.
+  const movementIds = [
+    ...consumeWritten.value.records.map((record) => record.movementId),
+    ...produceWritten.value.records.map((record) => record.movementId),
+  ]
 
   // Step 6.
   const buildValues: Record<string, unknown> = {
@@ -376,7 +408,16 @@ async function writeCompletion(
       producedValue,
       varianceAmount,
       movementIds,
-      recalculatedPartIds: [build.partId, ...plan.components.map((line) => line.partId)],
+      // §2.4 item 3: RETURNED by every `writeStockMovements` call, not
+      // re-derived - the quiet lane's recalc obligation is then structural
+      // rather than something this file has to remember to keep in sync with
+      // what was actually written.
+      recalculatedPartIds: [
+        ...new Set([
+          ...consumeWritten.value.affectedPartIds,
+          ...produceWritten.value.affectedPartIds,
+        ]),
+      ],
     },
   }
 }
@@ -400,7 +441,7 @@ export async function recalculateAfterCommit(
  * 🛑 **Never post a zero cost.** `readStandardCost` omits a part that has never
  * been rolled rather than defaulting it, precisely so this check can exist: a
  * missing standard is a refusal, not a zero. The two failure modes it prevents
- * are the same failure seen from either end — an unvalued consume row
+ * are the same failure seen from either end - an unvalued consume row
  * understates COGS forever, and an unvalued produce row creates inventory at
  * nothing.
  */

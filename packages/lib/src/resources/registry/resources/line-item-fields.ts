@@ -376,6 +376,38 @@ export const LINE_ITEM_FIELDS: Record<string, ResourceField> = {
     description: 'Credit memo lines that returned, cancelled or credited part of this line',
   },
 
+  // Reverse relationship: fulfillment lines that shipped part of this line
+  // (plans/money/tasks/55-shipment-lines.md §3) - "where did this line's units
+  // go". Same reasoning as `creditMemoLines` directly above: the counterpart
+  // of the owning `fulfillment_line_line_item`, declared so the edge is not
+  // left unlinked (the trap entity migration 135 asserts against).
+  fulfillmentLines: {
+    id: toFieldId('fulfillmentLines'),
+    key: 'fulfillmentLines',
+    label: 'Fulfillment Lines',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'line_item_fulfillment_lines',
+    systemSortOrder: 'a7c',
+    showInPanel: false,
+    showInDialogs: false,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'fulfillment_line:lineItem' as ResourceFieldId,
+      relationshipType: 'has_many',
+      onDelete: 'unlink',
+      isInverse: true,
+    },
+    description: "Fulfillment lines that shipped part of this line - where this line's units went",
+  },
+
   optional: {
     id: toFieldId('optional'),
     key: 'optional',

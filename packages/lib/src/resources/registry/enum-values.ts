@@ -1038,6 +1038,45 @@ export const ParcelTrackingStatus = {
  * `partially_delivered` and the problem box stays invisible until somebody opens
  * the shipment.
  */
+/**
+ * Fulfillment Status - Shopify's own per-dispatch lifecycle
+ * `plans/money/tasks/55-shipment-lines.md` §3. Deliberately mirrors Shopify's
+ * vocabulary exactly (unlike {@link OrderFulfillmentStatus}, which is auxx's
+ * own aggregate over the order): the connector passes `f.status` straight
+ * through with no mapping, and `success` is a Shopify-ism, not an auxx word
+ * choice.
+ *
+ * 🛑 All six values, not five - the brief's §3 table omitted `pending`. Source
+ * of truth: `RawFulfillment`'s own docblock in the Shopify connector
+ * (`shopify.connector.server.ts`, the `status` field) reads `Lifecycle:
+ * pending | open | success | cancelled | error | failure`. This is a
+ * SINGLE_SELECT, and a written value with no matching option is not loudly
+ * refused in this codebase - it lands as an `optionId` no read path resolves,
+ * silently. Missing `pending` here would mean every fulfillment Shopify has
+ * not yet started working reads as no status at all rather than erroring.
+ *
+ * `cancelled` is a RECORD with this value, never an absence - the connector
+ * emits cancelled fulfillments rather than dropping them, and inventory
+ * relief nets against the row (task 50).
+ */
+export const FulfillmentStatus = {
+  PENDING: 'pending',
+  OPEN: 'open',
+  SUCCESS: 'success',
+  CANCELLED: 'cancelled',
+  ERROR: 'error',
+  FAILURE: 'failure',
+
+  values: [
+    { value: 'pending', label: 'Pending', color: 'gray' },
+    { value: 'open', label: 'Open', color: 'blue' },
+    { value: 'success', label: 'Success', color: 'green' },
+    { value: 'cancelled', label: 'Cancelled', color: 'gray' },
+    { value: 'error', label: 'Error', color: 'amber' },
+    { value: 'failure', label: 'Failure', color: 'red' },
+  ] satisfies FieldOptionItem[],
+} as const
+
 export const ShipmentStatus = {
   LABEL_CREATED: 'label_created',
   PICKED_UP: 'picked_up',

@@ -1349,6 +1349,17 @@ JSON log joined to `GlPosting`; `plan.ts` is pure; `run.ts` never throws). Facts
   plan, so a `zero-value` shipment does not hold a month open.
 - The inventory relief of a shipment (a `sale` movement) is **still not built**; nothing
   in the tree writes that kind. Brief 50.
+  ⤵️ **2026-09-11: the design changed and so did its prerequisite.** Relief is one `sale` movement
+  per **`fulfillment_line`** for `quantity - quantity_relieved` - the exact sell-side mirror of
+  `purchase_order_line -> receive movement -> quantity_received` - written automatically on the
+  quiet lane with one post-commit `batchRecalculateQoH`, and **frozen at the part's ledger-derived
+  average**, never at `part_standard_cost` (which drifts permanently, because a standard-cost roll
+  never posts its revaluation delta). 🛑 It is BLOCKED on brief 55: `order_fulfillments` is being
+  retyped from the JSON cell described below into a has_many of `fulfillment` / `fulfillment_line`,
+  because the Shopify connector currently discards the per-dispatch grain it already receives.
+  **Everything in §9 about `order_fulfillments` being a JSON log describes the tree as it stands
+  today and is scheduled to become wrong.** See `plans/money/tasks/55-shipment-lines.md` and
+  decisions `D21` / `D22` / `D23`.
 
 ## 10. Write Lanes & the Silent Ledger Write
 

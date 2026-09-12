@@ -186,6 +186,11 @@ export const ENTITY_DEFINITION_TYPES = [
   // RecordId canonicalizes to the org's def CUID like every other entry here.
   'shipment',
   'parcel',
+  // plans/money/tasks/55-shipment-lines.md. EntityInstance-backed, so a
+  // `fulfillment:<id>` / `fulfillment_line:<id>` relationship RecordId
+  // canonicalizes to the org's def CUID like every other entry here.
+  'fulfillment',
+  'fulfillment_line',
 ] as const
 
 /** Type for system entity types stored in EntityDefinition */

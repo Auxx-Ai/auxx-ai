@@ -4,7 +4,7 @@
  * The single-line receipt write (plans/purchasing/01-build-plan.md section 3.2).
  *
  * One receipt is one `stock_movement` row: `type: 'receive'`, a positive
- * quantity, and a frozen landed cost. Nothing else happens here — quantity on
+ * quantity, and a frozen landed cost. Nothing else happens here - quantity on
  * hand is maintained by the existing `mfg-stock-movements-created` rule
  * (`recalculatePartQoH` in `field-hooks/post/inventory-triggers.ts`), and adding
  * a second writer for it would give the same number two owners.
@@ -19,10 +19,8 @@ import type { Result } from 'neverthrow'
 import { ensureStandardCost } from '../builds/ensure-standard-cost'
 import { getCachedEntityDefId, requireCachedEntityDefId } from '../cache'
 import { BadRequestError, NotFoundError, UnprocessableEntityError } from '../errors'
-import { UnifiedCrudHandler } from '../resources/crud/unified-handler'
-import { toRecordId } from '../resources/resource-id'
+import { writeStockMovements } from '../stock-movements'
 import {
-  computeExtendedCost,
   computeReceiptLandedCost,
   type ReceiptCostInputs,
   resolveInventoryRoleForPartKind,
@@ -43,7 +41,7 @@ const logger = createScopedLogger('receiving')
  * 1. `quantity > 0`, or `BadRequestError`. A negative receipt is a vendor return
  *    and has to carry the ORIGINAL receipt's cost, so it cannot be expressed
  *    here without silently valuing the return at today's price.
- * 2. Resolve the price. See {@link resolveReceiptPrice} — the base is the price
+ * 2. Resolve the price. See {@link resolveReceiptPrice} - the base is the price
  *    the caller sent, and the supplier row contributes only the landed adders.
  * 3. Round both money values ONCE, at the point of storage.
  * 4. Give the part a standard cost if, and only if, it has none. See
@@ -56,7 +54,7 @@ const logger = createScopedLogger('receiving')
  * than a missing one because it looks like data: it sums into the inventory
  * balance as nothing, it makes the part's average cost collapse toward zero, and
  * nothing downstream can tell it apart from a genuinely free sample. The rule
- * generalises to every movement writer — stamp a cost, or write something
+ * generalises to every movement writer - stamp a cost, or write something
  * explicitly and permanently non-postable; there is no third state.
  */
 export async function receiveStock(
@@ -102,7 +100,7 @@ export async function receiveStock(
  *
  * `Number.isFinite` is checked as well as the sign because `NaN > 0` is false but
  * so is `NaN <= 0`, and an `Infinity` quantity would multiply into an
- * `extendedCost` of `Infinity` that `Math.round` happily preserves — a value the
+ * `extendedCost` of `Infinity` that `Math.round` happily preserves - a value the
  * `doublePrecision` column accepts and every later `SUM` is then poisoned by.
  */
 function assertReceivableQuantity(quantity: number): void {
@@ -133,8 +131,8 @@ interface ResolvedPrice {
  *    {@link import('./receive-purchase-order').receivePurchaseOrder} reads the
  *    purchase order line's agreed price server-side and passes the resolved cost
  *    down. No vendor terms are applied on top of it.
- * 2. **A supplied `vendorUnitPrice` is the BASE**, and the `vendor_part` row —
- *    when one is named — contributes ONLY the adders (freight, tariff, other).
+ * 2. **A supplied `vendorUnitPrice` is the BASE**, and the `vendor_part` row -
+ *    when one is named - contributes ONLY the adders (freight, tariff, other).
  * 3. **`vendorPartId` alone** prices the whole receipt from the supplier row:
  *    its `unitPrice` is the base and its adders sit on top.
  * 4. Otherwise there is no price at all, and the receipt is refused.
@@ -143,7 +141,7 @@ interface ResolvedPrice {
  * form shows the supplier's terms and lets the person keying the receipt replace
  * the price with what the packing slip in front of them actually says. Reading
  * `vendor_part.unitPrice` as the base after that would value the stock from the
- * number the user just *replaced* — and because every field on `stock_movement`
+ * number the user just *replaced* - and because every field on `stock_movement`
  * is `updatable: false`, the wrong cost is frozen forever with nothing thrown.
  * `apps/web/src/components/manufacturing/parts/receipt-input.ts` documents that
  * hazard, and compensated for it client-side by sending a pre-computed
@@ -292,23 +290,21 @@ async function setFirstStandardCostFromReceipt(
 }
 
 /**
- * Step 5: write the one movement.
+ * Step 5: write the one movement, through the shared
+ * `stock-movements/writeStockMovements` (plans/money/tasks/50-batch-inventory-relief.md
+ * §2). That is what makes the post-commit triggers (QoH, timeline, realtime)
+ * fire at all - a direct insert writes rows the rest of the system never
+ * hears about - and it is also what resolves `vendorPartId` /
+ * `purchaseOrderLineId` into links, refusing with `UnprocessableEntityError`
+ * when this org has no such definition yet.
  *
- * Values are keyed by `systemAttribute` and go through `UnifiedCrudHandler`
- * rather than a hand-built `EntityInstance` + `FieldValue` insert. That is the
- * same mechanism `data-connectors/inventory-bridge-linking.ts` uses to create
- * movements, and it is what makes the post-commit triggers (QoH, timeline,
- * realtime) fire at all — a direct insert writes rows the rest of the system
- * never hears about.
- *
- * 🛑 **`adjustSubparts: false` is load-bearing, not a default.**
+ * 🛑 **`adjustSubparts` is never set here, which is what keeps it `false`.**
  * `explodeBomMovement` inherits the parent movement's type AND its sign, so a
  * receipt with the flag set would create a `receive` movement for every
- * descendant in the BOM — receiving 10 motors would ADD 10 of every screw,
+ * descendant in the BOM - receiving 10 motors would ADD 10 of every screw,
  * bracket and wire harness inside them. Receiving 10 motors adds 10 motors and
  * consumes nothing: a purchase brings a finished item through the door, it does
- * not manufacture its own components. `baselineSeed` in
- * `inventory-bridge-linking.ts` sets it false for the identical reason.
+ * not manufacture its own components.
  */
 async function writeReceiveMovement(
   db: Database,
@@ -318,69 +314,46 @@ async function writeReceiveMovement(
 ): Promise<MovementRecord> {
   const { movementDefId, partDefId, input, unitCost, vendorUnitPrice, glAccount, occurredAt } = args
   const quantity = input.quantity
-  const extendedCost = computeExtendedCost(unitCost, quantity)
 
-  const values: Record<string, unknown> = {
-    stock_movement_part: toRecordId(partDefId, input.partId),
-    stock_movement_type: 'receive',
-    stock_movement_quantity: quantity,
-    // See the JSDoc above. Never true on a receipt.
-    stock_movement_adjust_subparts: false,
-    // A receipt is the first writer of `actual`: this cost is what was paid,
-    // not what the standard cost roll-up expects it to have been.
-    stock_movement_cost_basis: 'actual',
-    stock_movement_unit_cost: unitCost,
-    stock_movement_extended_cost: extendedCost,
-    stock_movement_gl_account: glAccount,
-    stock_movement_occurred_at: occurredAt.toISOString(),
-  }
-
-  if (vendorUnitPrice != null) values.stock_movement_vendor_unit_price = vendorUnitPrice
-  if (input.reference) values.stock_movement_reference = input.reference
-  if (input.reason) values.stock_movement_reason = input.reason
-
-  if (input.vendorPartId) {
-    const vendorPartDefId = await requireDefId(organizationId, 'vendor_part')
-    values.stock_movement_vendor_part = toRecordId(vendorPartDefId, input.vendorPartId)
-  }
-
-  if (input.purchaseOrderLineId) {
-    const lineDefId = await requireDefId(organizationId, 'purchase_order_line')
-    values.stock_movement_purchase_order_line = toRecordId(lineDefId, input.purchaseOrderLineId)
-  }
-
-  const crud = new UnifiedCrudHandler(organizationId, userId, db)
-  const created = await crud.create(movementDefId, values)
+  const written = await writeStockMovements(
+    { db, organizationId, userId, movementDefId, partDefId, lane: { kind: 'plain' } },
+    [
+      {
+        partInstanceId: input.partId,
+        type: 'receive',
+        quantity,
+        unitCost,
+        // A receipt is the first writer of `actual`: this cost is what was
+        // paid, not what the standard cost roll-up expects it to have been.
+        costBasis: 'actual',
+        glAccount,
+        occurredAt,
+        vendorUnitPrice: vendorUnitPrice ?? undefined,
+        reference: input.reference,
+        reason: input.reason,
+        links: {
+          vendorPartId: input.vendorPartId,
+          purchaseOrderLineId: input.purchaseOrderLineId,
+        },
+      },
+    ]
+  )
+  if (written.isErr()) throw written.error
+  const record = written.value.records[0]!
 
   return {
-    movementId: created.instance.id,
-    recordId: toRecordId(movementDefId, created.instance.id),
+    movementId: record.movementId,
+    recordId: record.recordId,
     partInstanceId: input.partId,
     quantity,
     unitCost,
-    extendedCost,
+    extendedCost: record.extendedCost,
     vendorUnitPrice,
     vendorPartId: input.vendorPartId ?? null,
     glAccount,
     occurredAt,
     purchaseOrderLineId: input.purchaseOrderLineId ?? null,
   }
-}
-
-/**
- * Resolve a def id the caller's input already committed us to, as an
- * `UnprocessableEntityError` rather than the bare `Error` the cache helper
- * throws — "you referenced a purchase order line and this org has no purchase
- * orders yet" is a 422 the UI can act on, not a 500.
- */
-async function requireDefId(organizationId: string, entityType: string): Promise<string> {
-  const defId = await getCachedEntityDefId(organizationId, entityType)
-  if (!defId) {
-    throw new UnprocessableEntityError(
-      `This organization has no ${entityType} entity definition yet`
-    )
-  }
-  return defId
 }
 
 /** Unwrap a neverthrow `Result` back into the imperative style `guard()` expects. */

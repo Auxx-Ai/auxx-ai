@@ -198,26 +198,34 @@ Each field carries:
 
 ### `targetEntity` kinds
 
-`EntityRefKind` (`packages/sdk/src/root/tools/types.ts`), re-verified 2026-09-10, is today:
+`EntityRefKind` (`packages/sdk/src/root/tools/types.ts`), re-verified 2026-09-11, is today:
 
 ```
 contact · company · ticket · article · thread · order · invoice · line_item ·
 catalog_item · part · product · build · purchase_order · vendor_bill ·
 gl_account · credit_memo · credit_memo_line · credit_memo_application ·
-tax_line · shipment · parcel
+tax_line · shipment · parcel · fulfillment · fulfillment_line
 ```
 
 `line_item` landed as the apps plan's Phase 1 item 3.10 (the Shopify brief's line columns, §5
 there); this guide's worked examples in §5 already use it. The four credit-memo and tax kinds
-arrived with entity migration 136, and `shipment` / `parcel` with 149.
+arrived with entity migration 136, `shipment` / `parcel` with 149, and `fulfillment` /
+`fulfillment_line` with 153 (`plans/money/tasks/55-shipment-lines.md`).
 
-**Seven of those kinds are `isVisible: false`** and were admitted anyway: `line_item`,
-`credit_memo_line`, `tax_line`, `credit_memo_application`, `shipment` and `parcel`. That is not a
-loophole in the narrowness rule below, it is the rule's actual shape. The union's own doc comment
-records that the first three were admitted **precisely so a channel connector could address them**,
-and the same argument admitted the last two: a parcel is one physical box with one tracking number,
-which is the fact a support agent needs, and no single app owns it. See
-`plans/apps/shipstation/shared-shipment-entities-proposal.md` §2.
+**Eight of those kinds are `isVisible: false`** and were admitted anyway: `line_item`,
+`credit_memo_line`, `tax_line`, `credit_memo_application`, `shipment`, `parcel`, `fulfillment` and
+`fulfillment_line`. That is not a loophole in the narrowness rule below, it is the rule's actual
+shape. The union's own doc comment records that the first three were admitted **precisely so a
+channel connector could address them**, and the same argument admitted the rest: a parcel is one
+physical box with one tracking number, which is the fact a support agent needs, and no single app
+owns it; a `fulfillment_line` is which units of an order line went out in one dispatch, which
+Shopify supplies per fulfillment and the connector currently discards. See
+`plans/apps/shipstation/shared-shipment-entities-proposal.md` §2 and
+`plans/money/tasks/55-shipment-lines.md` §1.
+
+⚠️ This paragraph read "Seven" while naming six kinds before `fulfillment` was added. The count was
+already off by one against its own list; `gl_account` is also `isVisible: false` but is treated
+separately below as the deliberate exception, so it is not counted here.
 
 What matters for admission is not visibility, it is whether a migration has seeded the kind into
 EXISTING orgs. A kind that lives only in `SYSTEM_ENTITIES` reaches new orgs and nothing else.

@@ -1,0 +1,193 @@
+// apps/web/src/components/returns/ui/return-salvage-card.tsx
+'use client'
+
+// The salvage tree (plans/money/tasks/54-returns.md §6.6): the checklist the
+// warehouse works down when a returned lift is torn down on the dock.
+//
+// 🛑 THIS IS A `CardBlock`, NOT A `RecordsBlock`, and §4.1's table is why.
+// `RecordsBlockConfig` carries source, `statusAttr`, `emptyLabel` and
+// `visibleLimit` and NOTHING else: it renders a read-only list with a status
+// badge it DISPLAYS. This surface needs a number input per row, a status
+// SELECTOR, a split button, lazy child expansion and the parent-implies-children
+// rule, none of which is expressible in config — and `actionsComponent` does not
+// change that, it is a section-level slot, not per-row controls.
+//
+// 🛑 PRESENTATIONAL ONLY, ON PURPOSE. Every byte comes in as a prop and every
+// write goes out as a callback: the `return` / `return_line` /
+// `return_part_line` definitions do not exist yet, so there is no router to
+// call and nothing here may invent one. See the wiring note at the bottom of
+// this comment block.
+//
+// WIRING (wave 2, not this wave): the drawer registry takes a
+// `ComponentType<DrawerTabProps>`, and this component is not one. The one-liner
+// is a sibling container that reads `recordId`, runs the salvage query and the
+// four mutations, and renders this. Register THAT under `'return:salvage'` in
+// `DRAWER_TAB_CARD_COMPONENTS` (the `tabCards` registry — NOT
+// `DRAWER_TAB_COMPONENTS`, which is the whole-tab one), and declare the card in
+// the `return` drawer config's `tabCards`. `drawer-card-parity.test.ts` only
+// asserts declared -> registered, so registering ahead of the declaration is
+// safe; declaring ahead of the component renders nothing, silently.
+
+import { EmptySection } from '@auxx/ui/components/section'
+import { Wrench } from 'lucide-react'
+import { useCallback } from 'react'
+import { useConfirm } from '~/hooks/use-confirm'
+import { decidedDescendantCount, useSalvageTree } from '../hooks/use-salvage-tree'
+import type { SalvageNode, SalvageStatus } from '../types'
+import { SALVAGE_COLS, SalvageTreeRow } from './salvage-tree-row'
+
+export interface ReturnSalvageCardProps {
+  /**
+   * The top level of the tree: the return line's own parts. §6.6 —
+   * "Create the top level only, and materialize a node's children on first
+   * expand." A node whose `children` is `null` has never been opened.
+   */
+  nodes: SalvageNode[]
+  /** The top level is still loading. Child loading is the row's own spinner. */
+  isLoading?: boolean
+  /**
+   * Materialize this node's children, resolving once they are on the tree.
+   * Called at most once per node; a rejection raises an error toast and leaves
+   * the row closed.
+   */
+  onExpand: (node: SalvageNode) => void | Promise<void>
+  /** Quantity is prefilled as BOM quantity times the return line's quantity, then edited here. */
+  onChangeQuantity: (node: SalvageNode, quantity: number) => void
+  /**
+   * Write a node's condition. A node with no row is `undecided` by absence, so
+   * the first non-`undecided` write on an unmaterialized node is what creates
+   * its `return_part_line`.
+   */
+  onChangeStatus: (node: SalvageNode, status: SalvageStatus) => void
+  /**
+   * Divide this row into two siblings whose quantities sum to the row's
+   * current quantity — for when the units diverge and one has to be drilled
+   * into. Only offered when `quantity >= 2`, which is what keeps §6.6's second
+   * invariant ("a parent's quantity bounds the sum of its children's") true by
+   * construction on this side.
+   */
+  onSplit: (node: SalvageNode) => void
+  /** No write access, or a return past the point of being edited. */
+  readOnly?: boolean
+}
+
+/**
+ * A multi-level condition checklist over a returned lift's bill of materials.
+ *
+ * A lift is built from subassemblies which have their own subassemblies and the
+ * tree can be deep, so nothing is rendered that has not been asked for: the
+ * card is handed the top level and asks for a node's children the first time
+ * somebody opens it.
+ */
+export function ReturnSalvageCard({
+  nodes,
+  isLoading = false,
+  onExpand,
+  onChangeQuantity,
+  onChangeStatus,
+  onSplit,
+  readOnly = false,
+}: ReturnSalvageCardProps) {
+  const tree = useSalvageTree({ onExpand })
+  const [confirm, ConfirmDialog] = useConfirm()
+
+  /**
+   * A `good` answers for the whole branch beneath it, so selecting one closes
+   * that branch rather than leaving a subtree on screen whose controls no
+   * longer decide anything (§6.6: do not make the user check every descendant).
+   *
+   * When rows below it already carry a decision, that decision is about to stop
+   * counting — one recovery, not two — so it is confirmed first. Best effort by
+   * construction: only LOADED descendants can be counted, and a branch nobody
+   * has opened in this session holds no rows in memory to warn about.
+   */
+  const changeStatus = useCallback(
+    (node: SalvageNode, status: SalvageStatus) => {
+      if (status !== 'good') {
+        onChangeStatus(node, status)
+        return
+      }
+
+      const superseded = decidedDescendantCount(node)
+      const apply = () => {
+        onChangeStatus(node, 'good')
+        tree.collapse(node.key)
+      }
+
+      if (superseded === 0) {
+        apply()
+        return
+      }
+
+      void confirm({
+        title: 'Mark the whole subassembly good?',
+        description: `${superseded} component${superseded === 1 ? '' : 's'} below ${node.partName} already ${superseded === 1 ? 'has' : 'have'} a condition. A good subassembly is recovered whole, so those rows stop counting.`,
+        confirmText: 'Mark good',
+        cancelText: 'Cancel',
+        destructive: true,
+      }).then((confirmed) => {
+        if (confirmed) apply()
+      })
+    },
+    [confirm, onChangeStatus, tree]
+  )
+
+  if (isLoading) return <EmptySection loading />
+
+  if (nodes.length === 0) {
+    return (
+      <EmptySection
+        icon={<Wrench className='size-5' />}
+        title='Nothing to inspect'
+        description='This return line has no bill of materials, so there are no components to salvage.'
+      />
+    )
+  }
+
+  return (
+    <div className='space-y-2'>
+      {/* Header and rows share ONE bordered frame (the `line-builder.tsx` shape)
+          so the grid reads as a single table rather than a stack of loose rows.
+          The header uses the same `SALVAGE_COLS` template and the same `gap-x-2`
+          as the rows — never a second copy of either, which is how a header
+          drifts off its columns. */}
+      <div className='rounded-lg border border-primary-200/50 dark:border-[#1e2227]'>
+        <div
+          className='grid gap-x-2 rounded-t-lg border-primary-200/50 border-b bg-primary-50 px-1 py-2 text-muted-foreground text-sm dark:border-[#1e2227] dark:bg-background'
+          style={{ gridTemplateColumns: SALVAGE_COLS }}>
+          <div className='truncate pl-2'>Component</div>
+          <div className='px-2 text-right'>Qty</div>
+          <div className='px-2'>Condition</div>
+          <div />
+        </div>
+
+        {/* `py-1` and never `p-1`: `GridTreeRow` carries its own `px-1`, and a
+            second horizontal inset here would shift every row's flexible first
+            column off the header's. */}
+        <div className='flex flex-col gap-0.5 py-1'>
+          {nodes.map((node) => (
+            <SalvageTreeRow
+              key={node.key}
+              node={node}
+              tree={tree}
+              impliedGood={false}
+              readOnly={readOnly}
+              onChangeQuantity={onChangeQuantity}
+              onChangeStatus={changeStatus}
+              onSplit={onSplit}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* The absence rule, said out loud. A row nobody touches never becomes a
+          `return_part_line`, and the salvage writer only ever sees real rows. */}
+      <p className='px-1 text-muted-foreground text-xs'>
+        Components you do not touch stay undecided and are not restocked. A subassembly marked good
+        is recovered whole, so there is no need to open it.
+      </p>
+
+      <ConfirmDialog />
+    </div>
+  )
+}

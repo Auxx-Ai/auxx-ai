@@ -17,6 +17,8 @@ import { CONTACT_FIELDS } from '../../resources/registry/resources/contact-field
 import { CREDIT_MEMO_APPLICATION_FIELDS } from '../../resources/registry/resources/credit-memo-application-fields'
 import { CREDIT_MEMO_FIELDS } from '../../resources/registry/resources/credit-memo-fields'
 import { CREDIT_MEMO_LINE_FIELDS } from '../../resources/registry/resources/credit-memo-line-fields'
+import { FULFILLMENT_FIELDS } from '../../resources/registry/resources/fulfillment-fields'
+import { FULFILLMENT_LINE_FIELDS } from '../../resources/registry/resources/fulfillment-line-fields'
 import { GL_ACCOUNT_FIELDS } from '../../resources/registry/resources/gl-account-fields'
 import { INBOX_FIELDS } from '../../resources/registry/resources/inbox-fields'
 import { INVOICE_FIELDS } from '../../resources/registry/resources/invoice-fields'
@@ -117,6 +119,10 @@ export const FIELD_REGISTRY: Record<string, Record<string, ResourceField>> = {
   // with only a logged warning. `bank_rule` shipped that way and nothing failed.
   shipment: SHIPMENT_FIELDS,
   parcel: PARCEL_FIELDS,
+  // The sales-channel fact behind `order_fulfillments` (plans/money/tasks/55).
+  // Same warning as directly above: missing here means a zero-field def.
+  fulfillment: FULFILLMENT_FIELDS,
+  fulfillment_line: FULFILLMENT_LINE_FIELDS,
 }
 
 /**
