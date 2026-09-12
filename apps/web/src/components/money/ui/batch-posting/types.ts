@@ -35,6 +35,16 @@
  * it and never renders a control from a schema: the source renders its own
  * control and owns its own shape. A source that declares no slot behaves exactly
  * as it did before the slot existed.
+ *
+ * ## The third instance is chrome-only, on purpose
+ *
+ * `manufacturing/builds/backfill-dialog.tsx` is where this shape came from, and
+ * it is NOT a registration here. It shares the chrome in `batch-dialog-shell.tsx`
+ * and `batch-dialog-parts.tsx` and nothing else, because it answers none of this
+ * descriptor's contract - not the wire range, not the grouping vocabulary, not
+ * the exclusion row, not the run summary. That file's header lists the five
+ * slots registering it would have cost. Read it before widening anything below
+ * for a fourth caller.
  */
 
 import type { BatchPostingGrouping } from '@auxx/lib/money/client'
