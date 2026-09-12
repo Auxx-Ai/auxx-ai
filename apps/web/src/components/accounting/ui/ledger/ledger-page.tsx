@@ -2,42 +2,40 @@
 
 'use client'
 
-import { type AccountRole, NON_FAILURE_REFUSALS } from '@auxx/lib/postings/client'
-import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Button } from '@auxx/ui/components/button'
 import { MainPageContent } from '@auxx/ui/components/main-page'
 import { ScrollArea } from '@auxx/ui/components/scroll-area'
 import { Section } from '@auxx/ui/components/section'
-import { Separator } from '@auxx/ui/components/separator'
 import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
-import { SimpleTooltip } from '@auxx/ui/components/tooltip'
 import {
   ArrowLeftRight,
-  BookOpenCheck,
-  CalendarCheck2,
   CircleSlash,
   ClipboardCheck,
   Clock3,
+  FileText,
   Layers,
-  Loader2,
   Lock,
-  LockOpen,
   Plus,
-  Scale,
-  Send,
 } from 'lucide-react'
-import { useRouter } from 'next/navigation'
 import { useQueryState } from 'nuqs'
-import { useRef } from 'react'
+import { useCallback, useEffect } from 'react'
+import { useAccountingMonth } from '~/components/accounting/hooks/use-accounting-month'
 import { useAccountingProviderStatus } from '~/components/accounting/hooks/use-accounting-provider-status'
 import { useLedgerEntryActions } from '~/components/accounting/hooks/use-ledger-entry-actions'
 import { useLedgerPeriod } from '~/components/accounting/hooks/use-ledger-period'
+import { useMonthEndEntry } from '~/components/accounting/hooks/use-month-end-entry'
+import { useMonthEntries } from '~/components/accounting/hooks/use-month-entries'
+import { useLedgerSidebarStore } from '~/components/accounting/stores/ledger-sidebar-store'
 import { AccountingChecklistPanel } from '~/components/accounting/ui/checklist/accounting-checklist-panel'
 import { EntriesList } from '~/components/accounting/ui/journal/entries-list'
 import { JournalEntryDrawer } from '~/components/accounting/ui/journal/journal-entry-drawer'
 import { lastDayOfPeriod, today } from '~/components/accounting/ui/journal/period-helpers'
-import { ProviderAgreementPanel } from '~/components/accounting/ui/provider-agreement/provider-agreement-panel'
+import {
+  ProviderAgreementAction,
+  ProviderAgreementPanel,
+  useProviderAgreement,
+} from '~/components/accounting/ui/provider-agreement/provider-agreement-panel'
 import { useConfirm } from '~/hooks/use-confirm'
 import { useMedia } from '~/hooks/use-media'
 import { useSettings } from '~/hooks/use-settings'
@@ -48,34 +46,43 @@ import {
 } from '~/providers/dehydrated-state-provider'
 import { useDockStore } from '~/stores/dock-store'
 import { api } from '~/trpc/react'
-import { BooksBalanceLine, DuplicateMovementsCard, FailedExportsBanner } from './books-health'
+
 import { type CountAdjustmentRow, CountEvidenceSection } from './count-evidence-section'
-import { EntryBlockers, type LedgerBlocker } from './entry-blockers'
-import { EntryJournal, journalLinesFromDetail } from './entry-journal'
+import { EntryBlockers } from './entry-blockers'
 import { EntryRollForward } from './entry-roll-forward'
 import { formatPeriodLabel, lockRefusalReason } from './format'
 import { type LateArrivalRow, LateArrivalsSection } from './late-arrivals-section'
+import { LedgerBanners } from './ledger-banners'
+import { LedgerStats } from './ledger-stats'
 import { LedgerToolbar } from './ledger-toolbar'
-import { PostResultCallout } from './post-result-callout'
+import { MonthEndEntrySection } from './month-end-entry-section'
 import { PostingDrawer } from './posting-drawer'
-import { RevisionStrip, revisionEntryFromDetail } from './revision-strip'
-import { readStoredAssertions } from './stored-draft'
+import { RevisionStrip } from './revision-strip'
+import { LedgerSidebar } from './sidebar/ledger-sidebar'
 
 /** The setting that declares how far the books are closed. `DOCUMENTS` scope. */
 const LOCKED_THROUGH_KEY = 'ledger.lockedThroughMonth'
 
-interface LedgerPageProps {
-  /** Absent on `/app/accounting`, which resolves a period instead. */
-  periodKey?: string
-}
+/**
+ * Bleeds a `Section`'s content past its own `p-3` so a full-width child sits
+ * flush with the section's edges - the same override `eval-run-detail.tsx`,
+ * `streams-section.tsx` and `detail-view-sections.tsx` use.
+ *
+ * 🛑 The `ListToolbar` inside `EntriesList` is the reason. It is a bordered,
+ * full-bleed bar by construction (`border-b` across its whole width), and inset
+ * by 12px on each side it read as a floating card rather than the list's own
+ * header - with the section's border-b running past it on both sides.
+ */
+const SECTION_BLEED = '[&>[data-slot=section]>[data-slot=section-content]]:-mx-3'
 
 /**
- * The ledger: ONE component behind both `/app/accounting` and
- * `/app/accounting/[period]` (13-accounting-ui.md section 5.1).
+ * The ledger, at `/app/accounting` (13-accounting-ui.md section 5.1).
  *
  * 🛑 `/app/accounting` RENDERS, it never redirects: a redirect would make the
- * module home URL unstable and break "Accounting" as a bookmark. Only the period
- * resolution differs between the two routes.
+ * module home URL unstable and break "Accounting" as a bookmark. The month is
+ * `?month=YYYY-MM` on that one stable URL rather than a path segment - see
+ * `useAccountingMonth` for why, and for how it survives a trip through Banking
+ * or Settings, neither of which carries a month.
  *
  * Three states:
  *
@@ -94,9 +101,9 @@ interface LedgerPageProps {
  * the moment the subledger moves, and the number that matters is the one that
  * was posted.
  */
-export function LedgerPage({ periodKey }: LedgerPageProps) {
-  const router = useRouter()
-  const period = useLedgerPeriod(periodKey)
+export function LedgerPage() {
+  const { requestedMonth, selectMonth, syncMonth } = useAccountingMonth()
+  const period = useLedgerPeriod(requestedMonth)
   const provider = useAccountingProviderStatus()
   const isDesktop = useMedia('(min-width: 1024px)')
   const dockedWidth = useDockStore((state) => state.dockedWidth)
@@ -109,9 +116,28 @@ export function LedgerPage({ periodKey }: LedgerPageProps) {
   const [postingId, setPostingId] = useQueryState('posting')
   // `?je=new` or `?je=<journalEntryId>` - the JE drawer (HANDOFF slot 1B).
   const [journalEntryParam, setJournalEntryParam] = useQueryState('je')
-  const lockSectionRef = useRef<HTMLDivElement | null>(null)
+  const setSidebarOpen = useLedgerSidebarStore((state) => state.setOpen)
+
+  /**
+   * 🛑 The lock lives in the RAIL now, so "Review the lock" opens the rail
+   * rather than scrolling. A scroll target that is inside a collapsed sidebar
+   * scrolls to nothing and the refusal's only remedy reads as a dead button.
+   */
+  const revealLock = useCallback(() => setSidebarOpen(true), [setSidebarOpen])
 
   const { activePeriod, activePeriodKey, bookTimeZone, currencyCode } = period
+
+  // What resolved is what the URL says. `activePeriodKey` is the month AFTER
+  // `useLedgerPeriod` has had its say - it refuses a month the org does not have
+  // and falls back to the resolved one - so syncing from here is what keeps a
+  // stale or hand-typed `?month=` from outliving the screen it disagrees with.
+  // `''` while `ledger.periods` is in flight, and permanently for an org with no
+  // months at all; neither is a month to remember.
+  useEffect(() => {
+    if (!activePeriodKey) return
+    syncMonth(activePeriodKey)
+  }, [activePeriodKey, syncMonth])
+
   const periodLabel = activePeriodKey ? formatPeriodLabel(activePeriodKey) : ''
   const isPostedPeriod = !!activePeriod && activePeriod.state !== 'open'
   const isLocked = activePeriod?.state === 'locked'
@@ -138,21 +164,16 @@ export function LedgerPage({ periodKey }: LedgerPageProps) {
     enabled: !isChecklistState && !!activePeriodKey && !isPostedPeriod,
   })
 
-  // The stored entry for a posted month - lines, provider result and the frozen
-  // assertions the roll-forward renders.
-  const postedPostingId = activePeriod?.glPostingId ?? null
-  const postedQuery = api.ledger.get.useQuery(
-    { id: postedPostingId ?? '' },
-    { enabled: !!postedPostingId }
-  )
-  const postedDetail = postedQuery.data
-
-  // The one link the chain can be walked back along: a reversal names what it
-  // reverses. See `RevisionStrip`'s header for why that is not the whole chain.
-  const reversedQuery = api.ledger.get.useQuery(
-    { id: postedDetail?.reversesId ?? '' },
-    { enabled: !!postedDetail?.reversesId }
-  )
+  // Everything about THE month-end entry - which one, what it says, and whether
+  // it can be posted - forks on `isPostedPeriod` in every field, so it lives in
+  // one hook rather than scattered down this body.
+  const entry = useMonthEndEntry({
+    activePeriod,
+    activePeriodKey,
+    isPostedPeriod,
+    isLocked,
+    actions,
+  })
 
   const failedExportsQuery = api.ledger.failedExports.useQuery({})
   // The month on screen rides along so the sweep can answer the COMPLETENESS
@@ -179,80 +200,28 @@ export function LedgerPage({ periodKey }: LedgerPageProps) {
   const duplicateMovementsQuery = api.ledger.duplicateMovements.useQuery({
     periodKey: activePeriodKey || undefined,
   })
-  const roleMapQuery = api.ledger.roleMap.useQuery()
+  // The same rows `EntriesList` renders, counted for the stats strip. One hook,
+  // so the header cannot disagree with the list beneath it.
+  const monthEntries = useMonthEntries(activePeriodKey || undefined)
 
-  const accountByRole: Partial<Record<AccountRole, { code: string | null; name: string }>> = {}
-  for (const row of roleMapQuery.data ?? []) {
-    if (row.account)
-      accountByRole[row.role as AccountRole] = { code: row.account.code, name: row.account.name }
-  }
-
-  const revisionEntries = [postedDetail, reversedQuery.data]
-    .filter((detail) => !!detail)
-    .map(revisionEntryFromDetail)
-    .sort((a, b) => b.revision - a.revision)
-
-  const blockers: LedgerBlocker[] = actions.preview?.blockedBy ? [actions.preview.blockedBy] : []
-  // 🛑 `nothing_to_close` and `setup_incomplete` are refusals, not faults. The
-  // section around them says so too: "cannot be closed yet" over an empty month
-  // is an alarm about the most ordinary thing that happens to a set of books.
-  const isSoftRefusal = blockers.every((blocker) =>
-    (NON_FAILURE_REFUSALS as readonly string[]).includes(blocker.status)
+  // 🛑 Hoisted, because the button that asks lives in the section's header and
+  // the answer lives in its body. One hook, so the two cannot disagree about
+  // whether anything has been asked.
+  const agreement = useProviderAgreement(
+    activePeriodKey ? lastDayOfPeriod(activePeriodKey) : today(bookTimeZone)
   )
 
   // Why Lock is refused, or `null` when it is offered. The reasoning, and the
   // trap of giving a `nothing_to_close` month the postable month's remedy, are
   // in `lockRefusalReason`'s own header. It is rendered as VISIBLE copy and not
   // only in the button's tooltip: a refusal an operator has to hover to
-  // discover is the puzzle 13-accounting-ui.md §5.2 is about, and the line it
-  // replaces ("Open. The entry can still be reversed and re-entered") described
-  // the state and named no remedy at all.
+  // discover is the puzzle 13-accounting-ui.md §5.2 is about.
   const lockBlockedReason = lockRefusalReason({
     periodLabel,
     isPostedPeriod,
     justPosted: actions.justPosted,
-    isNothingToClose: blockers.some((blocker) => blocker.status === 'nothing_to_close'),
+    isNothingToClose: entry.blockers.some((blocker) => blocker.status === 'nothing_to_close'),
   })
-  const lines = isPostedPeriod
-    ? postedDetail
-      ? journalLinesFromDetail(postedDetail.lines)
-      : []
-    : (actions.preview?.lines ?? [])
-  const docNumber = isPostedPeriod ? activePeriod?.docNumber : actions.preview?.docNumber
-
-  // Where the roll-forward's numbers come from, and it is a different source per
-  // state.
-  //
-  // 🛑 A POSTED month reads the STORED assertions, never a re-derivation.
-  // `reverseEntry` writes the reversal's envelope with the pair ALREADY swapped,
-  // so reading it back verbatim is the only way a reversed month renders as
-  // reversed. Re-deriving here would quietly undo the reversal on screen.
-  //
-  // An OPEN month reads them off the preview, which now carries the same
-  // `assertions` object `postMonthEnd` hands the poster - not a second
-  // derivation, so what you check before posting is what gets posted.
-  const assertions = isPostedPeriod
-    ? postedDetail
-      ? readStoredAssertions(postedDetail.draft)
-      : null
-    : (actions.preview?.assertions ?? null)
-
-  // 🛑 `isPostedPeriod` is `state !== 'open'`, so a LOCKED month takes this
-  // branch too - and a locked month that was never posted carries no
-  // `glPostingId`, which leaves `postedQuery` disabled. A disabled query sits at
-  // `status: 'pending'` forever, so reading `isPending` alone pinned the journal
-  // section to a skeleton that never resolved for every locked, never-posted
-  // month. `lines` already falls back to `[]` on this path; the entry renders
-  // empty, which is the truth about a month with no entry.
-  const isEntryLoading = isPostedPeriod
-    ? !!postedPostingId && postedQuery.isPending
-    : actions.isPreviewing
-  const canPost =
-    !isPostedPeriod &&
-    !isLocked &&
-    blockers.length === 0 &&
-    !actions.justPosted &&
-    !!activePeriodKey
 
   // ── Sections with no read (14-drive-the-close.md section 7) ────────────────
   //
@@ -280,7 +249,8 @@ export function LedgerPage({ periodKey }: LedgerPageProps) {
   function goToPeriod(next: string) {
     // `?posting=` deliberately does NOT survive: a posting id belongs to one
     // month, and carrying it across would open a drawer on somebody else's entry.
-    router.push(`/app/accounting/${next}`)
+    void setPostingId(null)
+    selectMonth(next)
   }
 
   async function handleToggleLock() {
@@ -396,366 +366,248 @@ export function LedgerPage({ periodKey }: LedgerPageProps) {
             ]
           : []
       }>
-      <LedgerToolbar
-        periodKey={activePeriodKey}
-        options={period.options}
-        period={activePeriod}
-        previousPeriodKey={period.previousPeriodKey}
-        nextPeriodKey={period.nextPeriodKey}
-        resolvedPeriodKey={period.resolvedPeriodKey}
-        onSelectPeriod={goToPeriod}
-        disabled={isChecklistState}
-      />
+      {/* The dispatch board's shell: one toolbar across the top, then the
+          module rail and the content as flex siblings beneath it. */}
+      <div className='flex h-full flex-col overflow-hidden'>
+        <LedgerToolbar
+          periodKey={activePeriodKey}
+          options={period.options}
+          period={activePeriod}
+          previousPeriodKey={period.previousPeriodKey}
+          nextPeriodKey={period.nextPeriodKey}
+          resolvedPeriodKey={period.resolvedPeriodKey}
+          onSelectPeriod={goToPeriod}
+          disabled={isChecklistState}
+        />
 
-      <ScrollArea className='min-h-0 flex-1' scrollbarClassName='w-1.5'>
-        <div className='mx-auto flex w-full max-w-5xl flex-col gap-2 p-4'>
-          {isChecklistState ? (
-            <AccountingChecklistPanel />
-          ) : period.isLoading ? (
-            <div className='flex flex-col gap-3'>
-              <Skeleton className='h-24 w-full' />
-              <Skeleton className='h-64 w-full' />
-            </div>
-          ) : (
-            <>
-              {/* 🛑 A BANNER, never a replacement for the body. As an early
-                  return this card took the Entries list and the New journal
-                  entry button down with it - and that button is the only door
-                  to a manual entry anywhere in the module - so an org whose
-                  cutoff is still ahead of the wall clock, or one whose period
-                  read failed, could not raise an entry at all. */}
-              {!activePeriodKey && (
-                <Alert variant='neutral'>
-                  <CalendarCheck2 />
-                  <AlertTitle>No month is open for closing yet</AlertTitle>
-                  <AlertDescription>
-                    The first closable month is the one after the accounting cutoff. Nothing on or
-                    before the cutoff belongs to this system. A journal entry can still be raised
-                    below; it posts into whichever month its own date falls in.
-                  </AlertDescription>
-                </Alert>
-              )}
+        <div className='flex flex-1 overflow-hidden'>
+          <LedgerSidebar
+            periodLabel={periodLabel}
+            isLocked={isLocked}
+            lockBlockedReason={lockBlockedReason}
+            lockedThrough={lockedThrough}
+            canControlLedger={canControlLedger}
+            onToggleLock={() => void handleToggleLock()}
+            canReverse={!!entry.postedPostingId}
+            onReverse={() => entry.postedPostingId && void setPostingId(entry.postedPostingId)}
+            balanceReport={balanceQuery.data}
+            balanceError={balanceQuery.isError ? balanceQuery.error.message : null}
+            duplicates={duplicateMovementsQuery.data}
+            currencyCode={currencyCode}
+            bookTimeZone={bookTimeZone}
+            hasPeriod={!!activePeriodKey && !isChecklistState}
+          />
 
-              {(failedExportsQuery.data?.length ?? 0) > 0 && (
-                <FailedExportsBanner exports={failedExportsQuery.data ?? []} />
-              )}
+          <ScrollArea className='min-h-0 flex-1' scrollbarClassName='w-1.5'>
+            {!isChecklistState && (
+              <LedgerStats
+                loading={period.isLoading}
+                period={activePeriod}
+                periodLabel={periodLabel}
+                entryTotalMinor={entry.totalMinor}
+                entryPending={entry.isLoading}
+                blockerCount={entry.blockers.length}
+                entryCount={activePeriodKey ? monthEntries.rows.length : null}
+                draftCount={monthEntries.draftCount}
+                balanceReport={balanceQuery.data}
+                currencyCode={currencyCode}
+              />
+            )}
 
-              {!!activePeriodKey && !period.hasOpenPeriod && (
-                <Alert variant='neutral'>
-                  <CalendarCheck2 />
-                  <AlertTitle>Nothing to close</AlertTitle>
-                  <AlertDescription>
-                    Every month from the cutoff forward has been posted. {periodLabel} is the most
-                    recent, and it is shown below.
-                  </AlertDescription>
-                </Alert>
-              )}
-
-              {!!activePeriodKey && (
-                <RevisionStrip
-                  entries={revisionEntries}
-                  activePostingId={postingId}
-                  onSelect={(id) => void setPostingId(id)}
-                  bookTimeZone={bookTimeZone}
-                />
-              )}
-
-              {!!activePeriodKey && blockers.length > 0 && (
-                <Section
-                  title={
-                    isSoftRefusal
-                      ? `There is nothing to post for ${periodLabel}`
-                      : `${periodLabel} cannot be closed yet`
-                  }
-                  icon={
-                    isSoftRefusal ? <CircleSlash className='size-4' /> : <Lock className='size-4' />
-                  }
-                  description='Every refusal names what is missing and where it is fixed.'
-                  collapsible={false}>
-                  <EntryBlockers
-                    blockers={blockers}
-                    onReviewLock={() =>
-                      lockSectionRef.current?.scrollIntoView({ behavior: 'smooth' })
-                    }
-                    onNextPeriod={
-                      period.nextPeriodKey
-                        ? () => goToPeriod(period.nextPeriodKey as string)
-                        : undefined
-                    }
-                  />
-                </Section>
-              )}
-
-              <Section
-                title='Entries'
-                icon={<BookOpenCheck className='size-4' />}
-                secondary={docNumber ?? undefined}
-                description={
-                  !activePeriodKey
-                    ? 'Journal entries somebody has raised. There is no month-end entry to show until a month opens.'
-                    : isPostedPeriod
-                      ? 'The stored month-end entry, exactly as it was posted, plus every other entry this month. Never a re-run of the builder.'
-                      : `The month-end inventory entry auxx would post for ${periodLabel}, plus every other entry this month.`
-                }
-                collapsible={false}
-                actions={
-                  <div className='flex items-center gap-1'>
-                    {!!activePeriodKey && !isPostedPeriod && (
-                      /* 🛑 The spinner is rendered here rather than through
-                         `loading`, because `Button` DISABLES a loading button -
-                         and a preview that never settles would then leave the
-                         only affordance that can refire it disabled, with a
-                         reload as the sole way out. Refiring is free:
-                         `previewMonthEnd` persists nothing, and the second
-                         answer replaces the first. */
-                      <Button variant='ghost' size='sm' onClick={actions.runPreview}>
-                        {actions.isPreviewing ? (
-                          <>
-                            <Loader2 className='animate-spin' />
-                            Building...
-                          </>
-                        ) : (
-                          'Rebuild preview'
-                        )}
-                      </Button>
-                    )}
-                    {/* 🛑 NOT gated on a period. This is the only door to a
-                        manual entry in the module, and the drawer seeds its
-                        Date from `today(bookTimeZone)` when no month
-                        resolves. */}
-                    {can('ledger.post') && (
-                      <Button
-                        variant='ghost'
-                        size='sm'
-                        disabled={isChecklistState}
-                        onClick={() => openJournalEntry('new')}>
-                        <Plus />
-                        New journal entry
-                      </Button>
-                    )}
-                  </div>
-                }>
-                {!activePeriodKey ? null : isEntryLoading && lines.length === 0 ? (
-                  <Skeleton className='h-48 w-full' />
-                ) : lines.length === 0 && blockers.length > 0 ? (
-                  <p className='text-sm text-muted-foreground'>
-                    No entry was built. The refusals above are the whole of what happened.
-                  </p>
-                ) : (
-                  <div className='flex flex-col gap-4'>
-                    {/* ⚠️ No drill-down affordance: the subledger report behind a
-                        line does not exist (section 7). `onDrillDown` is left
-                        off rather than opening an empty dialog. */}
-                    <EntryJournal lines={lines} currencyCode={currencyCode} />
-
-                    {actions.postResult && (
-                      <PostResultCallout
-                        result={actions.postResult}
-                        providerLabel={providerLabel}
-                        connectedTenantId={provider.connectedTenantId}
-                      />
-                    )}
-
-                    {/* 🛑 Post and Reverse live HERE, beside the entry they act
-                        on, not in the toolbar. They are the decision, not
-                        navigation, and exceptions and the Post control share one
-                        screen by design. */}
-                    <div className='flex flex-wrap items-center gap-2 border-t pt-3'>
-                      <Button
-                        disabled={!canPost}
-                        loading={actions.isPosting}
-                        loadingText='Posting...'
-                        onClick={actions.runPost}>
-                        <Send />
-                        Post {periodLabel}
-                      </Button>
-                      <Button
-                        variant='outline'
-                        disabled={!postedPostingId}
-                        onClick={() => postedPostingId && void setPostingId(postedPostingId)}>
-                        Reverse or re-enter
-                      </Button>
-                      <Separator orientation='vertical' className='h-6' />
-                      <span className='text-xs text-muted-foreground'>
-                        {canPost
-                          ? 'Posting records the entry here and pushes it to the accounting system, if one is connected.'
-                          : isPostedPeriod || actions.justPosted
-                            ? 'This month is posted. A mistake is corrected by reversing and re-entering, never by editing.'
-                            : isLocked
-                              ? 'This month is locked. Nothing can post into it until it is unlocked.'
-                              : 'Posting is refused until the blockers above are cleared.'}
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                {/* Everything the month-end entry above is NOT: other postings
-                    this period, plus drafts nobody has posted yet. With no
-                    month resolved it is the whole of the section. */}
-                <div className={activePeriodKey ? 'mt-4 border-t pt-3' : ''}>
-                  <EntriesList
-                    periodKey={activePeriodKey || undefined}
-                    currencyCode={currencyCode}
-                    onSelectPosting={openPosting}
-                    onSelectJournalEntry={openJournalEntry}
-                  />
+            {/* 🛑 NO padding on this column. Every `Section` below pads itself
+                and draws a `border-b` that has to reach both edges; padding here
+                would inset those rules and leave a gutter of background either
+                side of each one. Anything in this column that is NOT a `Section`
+                pads itself instead - the skeletons here, `LedgerBanners`, and
+                `AccountingChecklistPanel`'s own `p-6`. */}
+            <div className='flex w-full flex-col'>
+              {isChecklistState ? (
+                <AccountingChecklistPanel />
+              ) : period.isLoading ? (
+                <div className='flex flex-col gap-3 p-3'>
+                  <Skeleton className='h-24 w-full' />
+                  <Skeleton className='h-64 w-full' />
                 </div>
-              </Section>
-
-              {!!activePeriodKey && assertions && (
-                <Section
-                  title='Roll-forward'
-                  icon={<Layers className='size-4' />}
-                  description='Opening, activity and closing per balance, as this entry asserted them. The entry shows the delta; this shows what the delta is a delta of.'
-                  collapsible={false}>
-                  <EntryRollForward
-                    assertions={assertions}
-                    currencyCode={currencyCode}
-                    accountByRole={accountByRole}
-                  />
-                </Section>
-              )}
-
-              {/* Every section below this point is ABOUT a month, so each is
-                  gated on one having resolved. Only the Entries section above
-                  and the books sweep below survive the no-period state. */}
-              {!!activePeriodKey && (
-                <div ref={lockSectionRef}>
-                  <Section
-                    title='Close the month'
-                    icon={isLocked ? <Lock className='size-4' /> : <LockOpen className='size-4' />}
-                    description='Declaring the month shut is a separate assertion from posting the entry.'
-                    collapsible={false}>
-                    <div className='flex flex-wrap items-center gap-3'>
-                      {canControlLedger ? (
-                        <>
-                          {lockBlockedReason ? (
-                            /* 🛑 The `span` is load-bearing. `SimpleTooltip`
-                               clones its child with pointer handlers, and a
-                               DISABLED button fires no pointer events - so
-                               without a wrapper the tooltip never opens and the
-                               reason is unreachable, which is the bug this is
-                               fixing rather than a style choice. */
-                            <SimpleTooltip content={lockBlockedReason}>
-                              <span className='inline-flex'>
-                                <Button disabled>
-                                  <Lock />
-                                  {`Lock ${periodLabel}`}
-                                </Button>
-                              </span>
-                            </SimpleTooltip>
-                          ) : (
-                            <Button
-                              variant={isLocked ? 'outline' : 'default'}
-                              onClick={() => void handleToggleLock()}>
-                              {isLocked ? <LockOpen /> : <Lock />}
-                              {isLocked ? `Unlock ${periodLabel}` : `Lock ${periodLabel}`}
-                            </Button>
-                          )}
-                          <span className='text-sm text-muted-foreground'>
-                            {isLocked
-                              ? 'Locked. Nothing can post into this month until it is unlocked, and unlocking asks first.'
-                              : (lockBlockedReason ??
-                                'Open. The entry can still be reversed and re-entered.')}
-                          </span>
-                        </>
-                      ) : (
-                        <span className='text-sm text-muted-foreground'>
-                          {isLocked ? 'Locked' : 'Not locked'}
-                        </span>
-                      )}
-                    </div>
-                    <p className='mt-2 text-xs text-muted-foreground'>
-                      {lockedThrough
-                        ? `The books are closed through ${formatPeriodLabel(lockedThrough)}.`
-                        : 'Nothing is closed yet.'}
-                    </p>
-                  </Section>
-                </div>
-              )}
-
-              {!!activePeriodKey && lateArrivals && (
-                <Section
-                  title='Late-arriving activity'
-                  icon={<Clock3 className='size-4' />}
-                  description='Rows dated before this month but entered after the previous close.'
-                  collapsible={false}>
-                  <LateArrivalsSection
-                    arrivals={lateArrivals}
-                    currencyCode={currencyCode}
-                    bookTimeZone={bookTimeZone}
+              ) : (
+                <>
+                  <LedgerBanners
+                    hasPeriod={!!activePeriodKey}
+                    hasOpenPeriod={period.hasOpenPeriod}
                     periodLabel={periodLabel}
+                    exports={failedExportsQuery.data ?? []}
                   />
-                </Section>
-              )}
 
-              {!!activePeriodKey && countAdjustments && (
-                <Section
-                  title='Cycle-count evidence'
-                  icon={<ClipboardCheck className='size-4' />}
-                  description='Evidence about the closing inventory balance. Not a check that passed.'
-                  collapsible={false}>
-                  <CountEvidenceSection
-                    adjustments={countAdjustments}
-                    currencyCode={currencyCode}
-                    bookTimeZone={bookTimeZone}
-                  />
-                </Section>
-              )}
-
-              <Section
-                title='Books'
-                icon={<Scale className='size-4' />}
-                description='The after-the-fact balance sweep across every posting in the books.'
-                collapsible={false}>
-                {balanceQuery.data ? (
-                  <BooksBalanceLine report={balanceQuery.data} />
-                ) : balanceQuery.isError ? (
-                  /* 🛑 A failed sweep and a running one are not the same state.
-                     Rendering both as a skeleton hides the one that never
-                     resolves, which is how a refused sweep read as "still
-                     loading" indefinitely. */
-                  <p className='text-sm text-destructive'>
-                    The balance sweep could not run, so nothing here has been checked.{' '}
-                    {balanceQuery.error.message}
-                  </p>
-                ) : (
-                  <Skeleton className='h-6 w-64' />
-                )}
-
-                {/* The duplicate detector (brief 18 §1). Renders nothing while
-                    loading or clean - unlike the balance sweep above, a
-                    running or empty read here is not itself news. */}
-                {!!duplicateMovementsQuery.data?.length && (
-                  <div className='mt-3'>
-                    <DuplicateMovementsCard
-                      findings={duplicateMovementsQuery.data}
-                      currencyCode={currencyCode}
+                  {!!activePeriodKey && (
+                    <RevisionStrip
+                      entries={entry.revisionEntries}
+                      activePostingId={postingId}
+                      onSelect={(id) => void setPostingId(id)}
                       bookTimeZone={bookTimeZone}
                     />
-                  </div>
-                )}
-              </Section>
+                  )}
 
-              {/* The OTHER sweep (brief 20 §8.3): the one above proves our own
-                  rows balance, this one asks whether the connected system
-                  agrees with them. On the period already on screen, as of its
+                  {!!activePeriodKey && entry.blockers.length > 0 && (
+                    <Section
+                      title={
+                        entry.isSoftRefusal
+                          ? `There is nothing to post for ${periodLabel}`
+                          : `${periodLabel} cannot be closed yet`
+                      }
+                      icon={
+                        entry.isSoftRefusal ? (
+                          <CircleSlash className='size-4' />
+                        ) : (
+                          <Lock className='size-4' />
+                        )
+                      }
+                      description='Every refusal names what is missing and where it is fixed.'
+                      collapsible={false}>
+                      <EntryBlockers
+                        blockers={entry.blockers}
+                        onReviewLock={revealLock}
+                        onNextPeriod={
+                          period.nextPeriodKey
+                            ? () => goToPeriod(period.nextPeriodKey as string)
+                            : undefined
+                        }
+                      />
+                    </Section>
+                  )}
+
+                  {!!activePeriodKey && (
+                    <MonthEndEntrySection
+                      periodLabel={periodLabel}
+                      currencyCode={currencyCode}
+                      lines={entry.lines}
+                      docNumber={entry.docNumber}
+                      isLoading={entry.isLoading}
+                      blockerCount={entry.blockers.length}
+                      isPostedPeriod={isPostedPeriod}
+                      justPosted={actions.justPosted}
+                      canPost={entry.canPost}
+                      isPosting={actions.isPosting}
+                      onPost={actions.runPost}
+                      isPreviewing={actions.isPreviewing}
+                      onRebuild={actions.runPreview}
+                      postResult={actions.postResult}
+                      providerLabel={providerLabel}
+                      connectedTenantId={provider.connectedTenantId ?? null}
+                    />
+                  )}
+
+                  {/* Everything the month-end entry above is NOT: other
+                      postings this period, plus drafts nobody has posted yet.
+                      With no month resolved it is the whole of the screen. */}
+                  <Section
+                    className={SECTION_BLEED}
+                    title='Entries'
+                    icon={<FileText className='size-4' />}
+                    description={
+                      activePeriodKey
+                        ? 'Every other entry dated in this month - postings and drafts alike.'
+                        : 'Journal entries somebody has raised. There is no month-end entry to show until a month opens.'
+                    }
+                    collapsible={false}
+                    actions={
+                      /* 🛑 NOT gated on a period. This is the only door to a
+                         manual entry in the module, and the drawer seeds its
+                         Date from `today(bookTimeZone)` when no month
+                         resolves. */
+                      can('ledger.post') && (
+                        <Button
+                          variant='ghost'
+                          size='sm'
+                          disabled={isChecklistState}
+                          onClick={() => openJournalEntry('new')}>
+                          <Plus />
+                          New journal entry
+                        </Button>
+                      )
+                    }>
+                    <EntriesList
+                      periodKey={activePeriodKey || undefined}
+                      currencyCode={currencyCode}
+                      onSelectPosting={openPosting}
+                      onSelectJournalEntry={openJournalEntry}
+                    />
+                  </Section>
+
+                  {!!activePeriodKey && entry.assertions && (
+                    <Section
+                      title='Roll-forward'
+                      icon={<Layers className='size-4' />}
+                      description='Opening, activity and closing per balance, as this entry asserted them. The entry shows the delta; this shows what the delta is a delta of.'
+                      collapsible={false}>
+                      <EntryRollForward
+                        assertions={entry.assertions}
+                        currencyCode={currencyCode}
+                        accountByRole={entry.accountByRole}
+                      />
+                    </Section>
+                  )}
+
+                  {/* Every section below this point is ABOUT a month, so each is
+                  gated on one having resolved. Closing the month and the balance
+                  sweep are no longer among them - they live in the rail
+                  (`sidebar/ledger-sidebar.tsx`), because consulting them is not
+                  the work this column is for. */}
+
+                  {!!activePeriodKey && lateArrivals && (
+                    <Section
+                      title='Late-arriving activity'
+                      icon={<Clock3 className='size-4' />}
+                      description='Rows dated before this month but entered after the previous close.'
+                      collapsible={false}>
+                      <LateArrivalsSection
+                        arrivals={lateArrivals}
+                        currencyCode={currencyCode}
+                        bookTimeZone={bookTimeZone}
+                        periodLabel={periodLabel}
+                      />
+                    </Section>
+                  )}
+
+                  {!!activePeriodKey && countAdjustments && (
+                    <Section
+                      title='Cycle-count evidence'
+                      icon={<ClipboardCheck className='size-4' />}
+                      description='Evidence about the closing inventory balance. Not a check that passed.'
+                      collapsible={false}>
+                      <CountEvidenceSection
+                        adjustments={countAdjustments}
+                        currencyCode={currencyCode}
+                        bookTimeZone={bookTimeZone}
+                      />
+                    </Section>
+                  )}
+
+                  {/* The OTHER sweep (brief 20 §8.3): the rail's Books group
+                  proves our own rows balance, this one asks whether the
+                  connected system agrees with them. On the period already on screen, as of its
                   last day, and only when somebody presses the button - the read
                   costs a round trip to QuickBooks and the drift it finds is
                   made at close, not on a Tuesday. */}
-              {!!activePeriodKey && (
-                <Section
-                  title={`Does ${providerLabel} agree?`}
-                  icon={<ArrowLeftRight className='size-4' />}
-                  description='Our balances and theirs as of the last day of this month, account by account. A comparison only - nothing here posts, and no statement reads it.'
-                  collapsible={false}>
-                  <ProviderAgreementPanel asOf={lastDayOfPeriod(activePeriodKey)} />
-                </Section>
+                  {!!activePeriodKey && (
+                    <Section
+                      title={`Does ${providerLabel} agree?`}
+                      icon={<ArrowLeftRight className='size-4' />}
+                      description='Our balances and theirs as of the last day of this month, account by account. A comparison only - nothing here posts, and no statement reads it.'
+                      collapsible={false}
+                      actions={
+                        <ProviderAgreementAction
+                          agreement={agreement}
+                          asOf={lastDayOfPeriod(activePeriodKey)}
+                        />
+                      }>
+                      <ProviderAgreementPanel agreement={agreement} />
+                    </Section>
+                  )}
+                </>
               )}
-            </>
-          )}
+            </div>
+          </ScrollArea>
         </div>
-      </ScrollArea>
+      </div>
     </MainPageContent>
   )
 

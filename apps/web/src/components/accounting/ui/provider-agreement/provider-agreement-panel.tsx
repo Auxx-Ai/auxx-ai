@@ -29,7 +29,7 @@ import { Scale } from 'lucide-react'
 import { useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { useSettings } from '~/hooks/use-settings'
-import { api } from '~/trpc/react'
+import { api, type RouterOutputs } from '~/trpc/react'
 import { useAccountingProviderStatus } from '../../hooks/use-accounting-provider-status'
 import { EntryBlockers } from '../ledger/entry-blockers'
 import { ProviderAgreementTable } from './provider-agreement-table'
@@ -40,38 +40,39 @@ const NOT_CONNECTED_COPY =
   'here either way and nothing is blocked by this.'
 
 export interface ProviderAgreementPanelProps {
-  /** `YYYY-MM-DD`. Both sides are read as of this day. */
-  asOf: string
-  /**
-   * Given, the panel renders a date field beside the button and the caller owns
-   * the date - the settings door, where the date is arbitrary. Omitted, the date
-   * is fixed by the caller and no field renders - the close console, where it is
-   * the end of the period already on screen.
-   */
-  onAsOfChange?: (asOf: string) => void
+  /** From `useProviderAgreement`, shared with the header's `ProviderAgreementAction`. */
+  agreement: ProviderAgreement
   className?: string
 }
 
+export interface ProviderAgreement {
+  /** Ask. Re-asking the same date refetches rather than no-oping. */
+  run: () => void
+  isRunning: boolean
+  connected: boolean
+  providerLoading: boolean
+  providerLabel: string
+  /** The answer belongs to the date on screen. `undefined` until asked. */
+  data: RouterOutputs['ledger']['providerAgreement'] | undefined
+  /**
+   * ⚠️ Structurally typed rather than `TRPCClientErrorLike`. The panel reads
+   * exactly two things off it - the message, and `httpStatus` to tell a REFUSAL
+   * (422, naming two accounts) from a read that did not run.
+   */
+  error: { message: string; data?: { httpStatus?: number } | null } | null
+  currency: string
+}
+
 /**
- * The agreement view: a button, and whatever the last press answered.
+ * The agreement read, split out so the BUTTON and the ANSWER can be rendered in
+ * two different places - the section header and the section body - without two
+ * copies of the query or two ideas of whether it has been asked.
  *
- * Four outcomes, and the first three must never be flattened into each other:
- *
- *   1. Nothing is connected -> {@link NOT_CONNECTED_COPY}, and the button is
- *      disabled. Known without asking, from `useAccountingProviderStatus`, and
- *      confirmed by the server's own `not_connected` for the org that installed
- *      the app but never authorized it.
- *   2. Connected, empty company -> `ProviderAgreementTable` says so.
- *   3. Connected, zero difference -> the table says the books AGREE.
- *   4. A refusal (one provider account claimed by two of ours) -> an
- *      `EntryBlockers` card carrying the server's message verbatim, which is
- *      what names both accounts.
+ * 🛑 ON DEMAND ONLY, and every option below is load-bearing rather than
+ * defensive tuning: this read costs a round trip to the connected system over
+ * the app Lambda, so nothing but the button may cause it to happen (§8.3).
  */
-export function ProviderAgreementPanel({
-  asOf,
-  onAsOfChange,
-  className,
-}: ProviderAgreementPanelProps) {
+export function useProviderAgreement(asOf: string): ProviderAgreement {
   const provider = useAccountingProviderStatus()
   const { getSetting } = useSettings({ scope: 'GENERAL' })
   const currency = (getSetting('organization.currency') as string) || 'USD'
@@ -89,9 +90,6 @@ export function ProviderAgreementPanel({
     { asOf: runAsOf ?? asOf },
     {
       enabled: runAsOf !== null,
-      // 🛑 Every one of these is load-bearing, not defensive tuning: this read
-      // costs a round trip to the connected system, so nothing but the button
-      // may cause it to happen (§8.3).
       refetchOnWindowFocus: false,
       refetchOnMount: false,
       refetchOnReconnect: false,
@@ -101,69 +99,113 @@ export function ProviderAgreementPanel({
     }
   )
 
-  const providerLabel = provider.providerLabel ?? 'QuickBooks'
   const isCurrent = runAsOf === asOf
-  const isRunning = agreementQuery.isFetching
 
-  function run() {
-    // Re-asking the SAME date has to go through `refetch` - the query key has
-    // not changed, so `setRunAsOf` alone would be a no-op and the button would
-    // do nothing at all on its second press.
-    if (isCurrent) void agreementQuery.refetch()
-    else setRunAsOf(asOf)
+  return {
+    run: () => {
+      // Re-asking the SAME date has to go through `refetch` - the query key has
+      // not changed, so `setRunAsOf` alone would be a no-op and the button would
+      // do nothing at all on its second press.
+      if (isCurrent) void agreementQuery.refetch()
+      else setRunAsOf(asOf)
+    },
+    isRunning: agreementQuery.isFetching,
+    connected: provider.connected,
+    providerLoading: provider.loading,
+    providerLabel: provider.providerLabel ?? 'QuickBooks',
+    data: isCurrent ? agreementQuery.data : undefined,
+    error: isCurrent ? agreementQuery.error : null,
+    currency,
   }
+}
 
-  const data = isCurrent ? agreementQuery.data : undefined
-  const error = isCurrent ? agreementQuery.error : null
+interface ProviderAgreementActionProps {
+  agreement: ProviderAgreement
+  /** `YYYY-MM-DD`. Both sides are read as of this day. */
+  asOf: string
+  /** Given, a date field renders beside the button and the caller owns the date. */
+  onAsOfChange?: (asOf: string) => void
+}
+
+/**
+ * The control: an optional date field and the button that asks.
+ *
+ * 🛑 Rendered into the surrounding section's `actions`/`action` slot, not into
+ * its body. "Check agreement" is what this section is FOR, and a lone button
+ * sitting above an empty body read as a piece of content rather than the
+ * section's control - which is the same reason Rebuild preview sits in the
+ * month-end entry's header.
+ */
+export function ProviderAgreementAction({
+  agreement,
+  asOf,
+  onAsOfChange,
+}: ProviderAgreementActionProps) {
+  return (
+    <div className='flex flex-wrap items-center gap-2'>
+      {onAsOfChange && (
+        <>
+          <span className='text-muted-foreground text-sm'>As of</span>
+          <div className='w-44'>
+            {/* The date is held as `YYYY-MM-DD` (that is what the procedure
+                takes), so it is widened to an instant on the way in and sliced
+                back on the way out - the same round trip the JE drawer and the
+                deposit form do. */}
+            <FieldInputAdapter
+              fieldType={FieldType.DATE}
+              value={`${asOf}T00:00:00.000Z`}
+              onChange={(value) => {
+                const iso = value as string | null
+                if (!iso) return
+                onAsOfChange(iso.slice(0, 10))
+              }}
+              disabled={agreement.isRunning}
+              triggerProps={{ className: 'w-full' }}
+            />
+          </div>
+        </>
+      )}
+
+      <Button
+        variant='outline'
+        size='sm'
+        disabled={!agreement.connected}
+        loading={agreement.isRunning}
+        loadingText={`Reading ${agreement.providerLabel}...`}
+        onClick={agreement.run}>
+        <Scale />
+        {agreement.data ? 'Check again' : 'Check agreement'}
+      </Button>
+    </div>
+  )
+}
+
+/**
+ * The agreement view: whatever the last press answered. The button that asks is
+ * `ProviderAgreementAction`, in the surrounding section's header.
+ *
+ * Four outcomes, and the first three must never be flattened into each other:
+ *
+ *   1. Nothing is connected -> {@link NOT_CONNECTED_COPY}, and the button is
+ *      disabled. Known without asking, from `useAccountingProviderStatus`, and
+ *      confirmed by the server's own `not_connected` for the org that installed
+ *      the app but never authorized it.
+ *   2. Connected, empty company -> `ProviderAgreementTable` says so.
+ *   3. Connected, zero difference -> the table says the books AGREE.
+ *   4. A refusal (one provider account claimed by two of ours) -> an
+ *      `EntryBlockers` card carrying the server's message verbatim, which is
+ *      what names both accounts.
+ */
+export function ProviderAgreementPanel({ agreement, className }: ProviderAgreementPanelProps) {
+  const { data, error, isRunning, providerLabel, currency } = agreement
 
   return (
     <div className={cn('flex flex-col gap-3', className)}>
-      <div className='flex flex-wrap items-center gap-2'>
-        {onAsOfChange && (
-          <>
-            <span className='text-muted-foreground text-sm'>As of</span>
-            <div className='w-44'>
-              {/* The date is held as `YYYY-MM-DD` (that is what the procedure
-                  takes), so it is widened to an instant on the way in and
-                  sliced back on the way out - the same round trip the JE drawer
-                  and the deposit form do. */}
-              <FieldInputAdapter
-                fieldType={FieldType.DATE}
-                value={`${asOf}T00:00:00.000Z`}
-                onChange={(value) => {
-                  const iso = value as string | null
-                  if (!iso) return
-                  onAsOfChange(iso.slice(0, 10))
-                  // The answer on screen belongs to the old date. Drop it rather
-                  // than relabel it.
-                  setRunAsOf(null)
-                }}
-                disabled={isRunning}
-                triggerProps={{ className: 'w-full' }}
-              />
-            </div>
-          </>
-        )}
+      {data?.status === 'ok' && (
+        <p className='text-muted-foreground text-xs'>Compared as of {data.agreement.asOf}.</p>
+      )}
 
-        <Button
-          variant='outline'
-          size='sm'
-          disabled={!provider.connected}
-          loading={isRunning}
-          loadingText={`Reading ${providerLabel}...`}
-          onClick={run}>
-          <Scale />
-          {isCurrent && data ? 'Check again' : 'Check agreement'}
-        </Button>
-
-        {isCurrent && data?.status === 'ok' && (
-          <span className='text-muted-foreground text-xs'>
-            Compared as of {data.agreement.asOf}.
-          </span>
-        )}
-      </div>
-
-      {!provider.connected && !provider.loading && (
+      {!agreement.connected && !agreement.providerLoading && (
         <p className='text-muted-foreground text-xs'>{NOT_CONNECTED_COPY}</p>
       )}
 

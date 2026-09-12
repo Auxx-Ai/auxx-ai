@@ -5,7 +5,7 @@
 import type { EntryPreview, PostResult, PostResultStatus } from '@auxx/lib/postings/client'
 import { didLedgerAccept } from '@auxx/lib/postings/client'
 import { toastError } from '@auxx/ui/components/toast'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { api } from '~/trpc/react'
 
 interface UseLedgerEntryActionsOptions {
@@ -50,11 +50,18 @@ export interface LedgerEntryActions {
  * `nothing_to_close` or `setup_incomplete` through an error channel would train
  * everyone to ignore the channel a real double-post would arrive on.
  *
- * ⚠️ The preview is fired from an effect rather than a query because
- * `previewMonthEnd` is a mutation. It is a mutation for the reason
- * `ledger.preview` is - it is not usefully cacheable and the answer is the
- * input - and it persists nothing, so running it on arrival is safe. The ref
- * guard keeps it to exactly one call per month.
+ * 🛑 The preview is a QUERY keyed on the month, not a mutation fired from a
+ * mount effect. `previewMonthEnd` reads only, so React Query can own it: the
+ * month on screen is the key, arriving on a month fetches it, and Rebuild is a
+ * `refetch`. The effect-fires-a-mutation shape this replaces had one failure
+ * mode with no way out - React Query's `MutationObserver` detaches itself from
+ * a pending mutation the moment it loses its last listener and NEVER re-attaches
+ * (there is no `onSubscribe` counterpart to its `onUnsubscribe`). Any mount that
+ * subscribes, fires, unsubscribes and resubscribes - which is every mount under
+ * `reactStrictMode` once `ledger.periods` is already cached, so every soft
+ * navigation back to the ledger - left the observer frozen at `isPending: true`.
+ * The request came back 200 and nothing on screen ever heard about it: the
+ * Entries section sat on "Building..." until a full page reload.
  */
 export function useLedgerEntryActions({
   periodKey,
@@ -62,7 +69,6 @@ export function useLedgerEntryActions({
   enabled = true,
 }: UseLedgerEntryActionsOptions): LedgerEntryActions {
   const utils = api.useUtils()
-  const previewMonth = api.ledger.previewMonthEnd.useMutation()
   const postMonth = api.ledger.postMonthEnd.useMutation()
   const reversePosting = api.ledger.reverse.useMutation()
 
@@ -79,44 +85,28 @@ export function useLedgerEntryActions({
     setJustPosted(false)
   }
 
-  const previewMutate = previewMonth.mutate
-  const requestedRef = useRef<string | null>(null)
+  /**
+   * ⚠️ `refetchOnWindowFocus` is off deliberately. A preview is a full gather of
+   * the month's subledger; re-running it every time the tab regains focus is an
+   * expensive answer to a question nobody asked. Arriving on the month and the
+   * Rebuild button are the two things that should cost one.
+   */
+  const previewQuery = api.ledger.previewMonthEnd.useQuery(
+    { periodKey },
+    { enabled: enabled && !!periodKey, refetchOnWindowFocus: false }
+  )
 
   /**
-   * The ONE call site for `previewMonthEnd`, so the fire on arrival and the
-   * Rebuild button fail identically.
-   *
-   * 🛑 `requestedRef` is CLEARED on failure. It is set before the call so the
-   * effect stays at one request per month, which means leaving it latched after
-   * a transport failure would retire that month for the life of the component -
-   * an empty Entries section, forever, with nothing said about why.
-   *
-   * 🛑 And a failure has to be said out loud. Every business refusal arrives on
-   * `EntryPreview.blockedBy` and is rendered by the screen, so `onError` here is
+   * 🛑 A failure has to be said out loud. Every business refusal arrives on
+   * `EntryPreview.blockedBy` and is rendered by the screen, so an error here is
    * only ever a genuine transport or 500 failure - the one outcome that has no
    * other way to reach anybody.
    */
-  const firePreview = useCallback(
-    (month: string) => {
-      requestedRef.current = month
-      previewMutate(
-        { periodKey: month },
-        {
-          onError: (error) => {
-            requestedRef.current = null
-            toastError({ title: 'Could not build the entry', description: error.message })
-          },
-        }
-      )
-    },
-    [previewMutate]
-  )
-
+  const previewError = previewQuery.error
   useEffect(() => {
-    if (!enabled || !periodKey) return
-    if (requestedRef.current === periodKey) return
-    firePreview(periodKey)
-  }, [enabled, periodKey, firePreview])
+    if (!previewError) return
+    toastError({ title: 'Could not build the entry', description: previewError.message })
+  }, [previewError])
 
   /** Everything the books-level reads show changes the moment a month lands. */
   const refreshBooks = useCallback(() => {
@@ -125,10 +115,11 @@ export function useLedgerEntryActions({
     void utils.ledger.verifyBalance.invalidate()
   }, [utils])
 
+  const refetchPreview = previewQuery.refetch
   const runPreview = useCallback(() => {
     if (!periodKey) return
-    firePreview(periodKey)
-  }, [firePreview, periodKey])
+    void refetchPreview()
+  }, [periodKey, refetchPreview])
 
   const postMutate = postMonth.mutate
   const runPost = useCallback(() => {
@@ -162,7 +153,9 @@ export function useLedgerEntryActions({
             setPostResult(result)
             if (didLedgerAccept(result)) {
               setJustPosted(false)
-              requestedRef.current = null
+              // A reversed month is an open month again, so the projection it
+              // renders has to be rebuilt rather than kept.
+              void utils.ledger.previewMonthEnd.invalidate()
               refreshBooks()
               void utils.ledger.get.invalidate({ id: glPostingId })
             }
@@ -177,15 +170,19 @@ export function useLedgerEntryActions({
 
   const clearPostResult = useCallback(() => setPostResult(null), [])
 
-  // The mutation's own cache is the source of truth, filtered by month so a
-  // stale answer can never be painted against the wrong period.
-  const previewData = previewMonth.data
-  const preview = previewData && previewData.periodKey === periodKey ? previewData : null
+  // The query is keyed on the month, so a stale answer cannot be painted against
+  // the wrong period: switching months switches keys and `data` is `undefined`
+  // until that month's own answer lands.
+  const preview = previewQuery.data ?? null
 
   return {
     preview,
     postResult,
-    isPreviewing: previewMonth.isPending,
+    // 🛑 `isFetching`, not `isPending`. A DISABLED query sits at
+    // `isPending: true` forever - the checklist state and every posted month
+    // disable this one - and reading that would put "Building..." on screen for
+    // a preview that was never asked for.
+    isPreviewing: previewQuery.isFetching,
     isPosting: postMonth.isPending,
     isReversing: reversePosting.isPending,
     justPosted,

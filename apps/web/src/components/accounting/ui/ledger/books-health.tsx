@@ -11,8 +11,7 @@ import { Alert, AlertDescription, AlertTitle } from '@auxx/ui/components/alert'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { toastError } from '@auxx/ui/components/toast'
-import { cn } from '@auxx/ui/lib/utils'
-import { CircleAlert, Loader, RefreshCw, Scale, TriangleAlert } from 'lucide-react'
+import { CircleAlert, Loader, RefreshCw, TriangleAlert } from 'lucide-react'
 import { useState } from 'react'
 import { AccountLabel } from '~/components/accounting/ui/account-label'
 import { PostingLinesDialog } from '~/components/accounting/ui/ledger-card'
@@ -24,27 +23,40 @@ interface BooksBalanceLineProps {
 }
 
 /**
- * The after-the-fact balance sweep.
+ * Whether the sweep found anything that needs room on screen.
  *
- * 🛑 Never a bare green tick. "0 discrepancies out of 0" and "0 out of 412" are
- * very different answers, and `postingsChecked` rides along on the shipped type
- * precisely so the two can be told apart. A tick that renders identically for
- * both is a check that cannot fail (13-accounting-ui.md §5.1).
+ * 🛑 The COUNT is not a finding. "0 discrepancies out of 46 postings checked" is
+ * the standing answer and it belongs on the stats strip (`ledger-stats.tsx`),
+ * which renders it whether it is news or not. Repeating it in the rail said the
+ * same sentence twice on one screen, next to an icon whose only job was to
+ * decorate it. What the rail is for is the rest of this file: the entries that
+ * did NOT tie, the months that are short, and the caveat that nothing was
+ * checked at all.
+ */
+export function hasBooksFindings(report: BooksBalanceReport): boolean {
+  return (
+    report.discrepancies.length > 0 ||
+    report.postingsChecked === 0 ||
+    (report.unpostedShipments ?? 0) > 0 ||
+    (report.unissuedChannelCreditMemos ?? 0) > 0
+  )
+}
+
+/**
+ * What the after-the-fact balance sweep FOUND - never the fact that it ran.
+ *
+ * 🛑 "Nothing was checked" is still a finding, which is why `postingsChecked
+ * === 0` gets its own line rather than being folded into a clean result.
+ * "0 discrepancies out of 0" and "0 out of 412" are very different answers, and
+ * `postingsChecked` rides along on the shipped type precisely so the two can be
+ * told apart (13-accounting-ui.md §5.1). What this must never do is render the
+ * same for both.
  */
 export function BooksBalanceLine({ report }: BooksBalanceLineProps) {
   const count = report.discrepancies.length
-  const clean = report.balanced && count === 0
 
   return (
     <div className='flex flex-col gap-2'>
-      <div className='flex items-center gap-2 text-sm'>
-        <Scale className={cn('size-4', clean ? 'text-muted-foreground' : 'text-destructive')} />
-        <span className={cn(!clean && 'text-destructive')}>
-          {count} {count === 1 ? 'discrepancy' : 'discrepancies'} out of {report.postingsChecked}{' '}
-          {report.postingsChecked === 1 ? 'posting' : 'postings'} checked
-        </span>
-      </div>
-
       {report.postingsChecked === 0 && (
         <p className='text-xs text-muted-foreground'>
           Nothing has been posted yet, so nothing was checked. This is not the same as the books

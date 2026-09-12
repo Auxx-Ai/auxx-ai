@@ -469,10 +469,18 @@ export const ledgerRouter = createTRPCRouter({
    * outcomes and not failures. The message is the gathered one verbatim: it
    * names the exact uncosted movement, unpriced row or blank setting to fix, and
    * losing that text is the single most expensive thing this procedure could do.
+   *
+   * 🛑 A QUERY, not a mutation, and the distinction is load-bearing on the
+   * client. It reads only, so React Query owns its lifecycle: the console binds
+   * it to the month on screen instead of firing it from a mount effect, which
+   * is what used to pin the Entries section to a permanent "Building..." the
+   * moment the component was mounted twice in a row (`MutationObserver` detaches
+   * from a pending mutation on unsubscribe and never re-attaches, so the
+   * observer's `isPending` never came back down).
    */
   previewMonthEnd: permissionProcedure(PermissionKey.ledgerView)
     .input(monthKey)
-    .mutation(async ({ ctx, input }) => {
+    .query(async ({ ctx, input }) => {
       return previewMonthEnd(ctx.db, {
         organizationId: ctx.session.organizationId,
         periodKey: input.periodKey,
