@@ -105,18 +105,32 @@ export interface UnpostedShipmentLine {
 }
 
 /**
- * One shipment with no LIVE posting stamped (49 §2.2, §2.6 rule 1): the log
- * entry's `glPostingId` is null, or names a posting whose status is `reversed`.
+ * One shipment with no LIVE posting stamped (49 §2.2, §2.6 rule 1): the
+ * `fulfillment` record's `fulfillment_gl_posting` is null, or names a posting
+ * whose status is `reversed`.
  *
  * Everything the builder needs travels on it, so `plan.ts` and the builder see
  * no database.
+ *
+ * 🔑 Entity migration 153 (`plans/money/tasks/55-shipment-lines.md` §6): this
+ * used to be one entry inside the `order_fulfillments` JSON array, and the
+ * stamp was written back by `(orderId, sequence)` because nothing else
+ * identified an entry. A shipment is a real `fulfillment` EntityInstance now -
+ * see {@link fulfillmentInstanceId} - and `sequence` is kept only as the
+ * business-meaning ordinal the doc numbers and the screen render.
  */
 export interface UnpostedShipment {
   orderId: string
   orderNumber: string
-  /** The log entry's `sequence`. The stamp is written back by `(orderId, sequence)`. */
+  /**
+   * The `fulfillment` EntityInstance id `run.ts` stamps -
+   * `stampFulfillmentPosting` (`money/fulfillments`) targets a record
+   * directly, never a `(orderId, sequence)` composite key.
+   */
+  fulfillmentInstanceId: string
+  /** `fulfillment_sequence`. 1-based within the order, ship-date order. */
   sequence: number
-  /** `YYYY-MM-DD`, the log entry's `shippedAt`. The recognition date. */
+  /** `YYYY-MM-DD`, the fulfillment's `shippedAt` day. The recognition date. */
   shippedAt: string
   lines: UnpostedShipmentLine[]
   /** `order_channel`, verbatim. Unknown values recognise as consumer revenue (§8.4 decision 5). */
@@ -135,7 +149,7 @@ export interface UnpostedShipment {
   orderShippingTotalMinor: number
   /** Σ `subtotalMinor` of every EARLIER shipment of this order, live or not. */
   priorShipmentsSubtotalMinor: number
-  /** The log entry's `shippingRecognised`. Exactly one shipment per order carries it. */
+  /** `fulfillment_shipping_recognised`. Exactly one shipment per order carries it. */
   includeShipping: boolean
   /**
    * The order's contact. Screen-only until brief 13 §1.2, which made it the

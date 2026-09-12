@@ -59,7 +59,7 @@ import {
   OPENING_BASELINE_SETTING_KEYS,
 } from '../../postings/setup-readiness'
 import { getOrganizationSetting } from '../../settings/settings-service'
-import { stampFulfillment } from '../orders/fulfill'
+import { stampFulfillmentPosting } from '../fulfillments'
 import { guard } from './guard'
 import { loadGatewayRoutesForPlan, planFulfillmentPosting } from './plan'
 import { readFulfillmentPostingSettings, readUnpostedShipments } from './reads'
@@ -386,15 +386,14 @@ async function executeGroup(
     // stamps: every shipment left unstamped is a shipment the next run would
     // post a SECOND time.
     try {
-      await stampFulfillment(db, {
+      await stampFulfillmentPosting(db, {
         organizationId,
         actorUserId,
-        orderId: shipment.orderId,
-        sequence: shipment.sequence,
+        fulfillmentInstanceId: shipment.fulfillmentInstanceId,
         patch: {
-          glPostingId,
+          glPosting: glPostingId,
           docNumber: post.docNumber ?? null,
-          // The amounts the BATCH builder computed, not whatever the log was
+          // The amounts the BATCH builder computed, not whatever the record was
           // carrying. `subtotalMinor` goes back too, because it is what the
           // next shipment of this order allocates its tax against.
           totalMinor: shipment.amounts.totalMinor,

@@ -182,6 +182,31 @@ export {
   runFulfillmentPosting,
   type UnpostedShipmentRange,
 } from './fulfillment-posting'
+// ─── Fulfillment records (entity migration 153, plans/money/tasks/55) ──────
+// `fulfillment` / `fulfillment_line` records: the shared contract behind the
+// native fulfillment door below, the bulk poster, the credit-memo readers and
+// the order drawer's ledger card. Appended as one block, per HANDOFF §9a's
+// rule for shared barrels.
+export {
+  type CreatedFulfillment,
+  type CreateFulfillmentInput,
+  type CreateFulfillmentLineInput,
+  createFulfillment,
+  defaultFulfillmentName,
+  deleteFulfillment,
+  FULFILLMENT_STATUSES,
+  type Fulfillment,
+  type FulfillmentFieldContext,
+  type FulfillmentLine,
+  type FulfillmentPostingStamp,
+  type FulfillmentStatusValue,
+  isLiveFulfillment,
+  loadFulfillmentFieldContext,
+  readFulfillmentsForOrder,
+  readFulfillmentsForOrders,
+  requireFulfillmentFieldContext,
+  stampFulfillmentPosting,
+} from './fulfillments'
 export { createInvoiceFromWorkOrder, deleteInvoiceLine, listUninvoicedLines } from './gather'
 export { deleteInvoice, markInvoiceSent, voidInvoice } from './invoice-lifecycle'
 // ── HANDOFF slot 2K: writing off an invoice's balance to bad debt ──────────
@@ -198,7 +223,6 @@ export {
 // shipped, which a status flip cannot, and that is what makes a second
 // fulfillment able to avoid re-recognising the first.
 export {
-  type FulfillmentStampPatch,
   type FulfillOrderInput,
   type FulfillOrderLine,
   type FulfillOrderResult,
@@ -209,17 +233,12 @@ export {
   ORDER_FULFILLMENT_SOURCE_TYPE,
   type OrderFieldContext,
   type OrderForFulfillment,
-  type OrderFulfillment,
-  type OrderFulfillmentLine,
-  type OrderFulfillmentsEnvelope,
   type OrderLineRemaining,
-  parseFulfillments,
   previewFulfillment,
   readOrderForFulfillment,
   requireOrderFieldContext,
   shippedByLine,
   shippingStillOwed,
-  stampFulfillment,
 } from './orders'
 export {
   disconnectPaymentAccount,

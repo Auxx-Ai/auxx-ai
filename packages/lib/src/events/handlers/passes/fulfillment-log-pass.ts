@@ -1,86 +1,82 @@
 // packages/lib/src/events/handlers/passes/fulfillment-log-pass.ts
 //
-// Pass 6 of `events/handlers/finalize-integrity-passes.ts`: derive
-// `order_fulfillments` for a connector order from the per-line fulfillment facts
-// the sales channel supplied.
+// Pass 6 of `events/handlers/finalize-integrity-passes.ts`: decide whether a
+// connector sync brought in fulfillment records, and if so hand off to the
+// automatic posting run.
 //
-// `plans/money/tasks/49-bulk-fulfillment-posting.md` §2.1, §8.1 item 3, §8.4
-// decision 4.
+// `plans/money/tasks/55-shipment-lines.md` §1, §6.
 //
-// WHY A PASS AND NOT A CONNECTOR RULE
+// WHAT THIS USED TO BE, AND WHY IT SHRANK
 //
-// There is no post-ingest rule mechanism (49 §8.1 item 3): derived facts after a
-// sync are a fixed list of guarded passes selected off the tier-1 manifest, and
-// `orderDemandPass` next door is the precedent this one copies - one resolve,
-// one bounded read, never per record. Putting the derivation in the connector
-// instead would put Shopify field paths into the shipment log's writer, which is
-// exactly what gap-f `G14` forbids and what the three native `line_item` fields
-// of entity migration 137 exist to avoid.
+// Before entity migration 153, `order_fulfillments` was a JSON cell and
+// nothing native said an imported order had shipped - Shopify's per-line
+// fulfillment facts arrived on `line_item`, and this pass reconstructed a
+// shipment log from them (`money/fulfillment-posting/derive-log.ts`, now
+// deleted). That reconstruction carried two defects that only existed because
+// there was something to reconstruct:
 //
-// WHAT IT UNBLOCKS
+//  - a line that shipped in more than one dispatch held out the WHOLE order,
+//    silently, so a made-to-order merchant who ships as units come off the
+//    line got no revenue posted for most of their orders (55 §1.2-1.3), and
+//  - two dispatches landing on the same calendar day merged into one entry,
+//    losing the distinction 53's per-package tracking needs (55 §1.4).
 //
-// Two things, and the second is the one that is easy to miss:
+// `fulfillment` and `fulfillment_line` are now real entities and the Shopify
+// connector writes them directly, one row per dispatch and one row per line
+// within it (auxxai-apps#82). The records ARE the log. There is nothing left
+// for this pass to derive, so it no longer reads a single `FieldValue`,
+// resolves a field context, or writes anything at all.
 //
-//  1. Revenue. 530 of the dev org's 545 orders arrived already `fulfilled`, and
-//     the only door into the ledger is hidden once the status reads that (49
-//     §1.2). Nothing native said they had shipped, so nothing could post them.
-//  2. Channel credit memos. `orderHadFulfillmentBefore` reads
-//     `order_fulfillments`; for a connector order that cell is empty, so every
-//     channel refund would skip its revenue leg (49 §8.3). Deriving the log is
-//     what lets a channel memo reverse revenue at all.
+// WHAT IS LEFT TO DO
 //
-// Keep top-level imports to types and the logger, and lazy-import the rest -
-// the same rule `finalize-integrity-passes.ts` states in its own header, for the
-// same reason (the events to money/cache boundaries break `vi.mock` otherwise).
+// One thing: `finalize-integrity-passes.ts`'s pass 7 used to read the SIZE of
+// this pass's return value to decide whether to enqueue the automatic
+// fulfillment posting run (`money/fulfillment-posting/auto.ts`) - gated so an
+// idle re-sync (nothing new to post) enqueues nothing. That signal still has
+// to come from somewhere, and the cheapest correct source is the sync
+// manifest itself: a `fulfillment` record can only exist because the
+// connector's relationship mapping wrote it, and every field it writes -
+// including on create - calls `recordTouched` (`field-values/create-values.ts`,
+// `field-value-mutations.ts`), so a newly arrived fulfillment appears in
+// `manifest.touched`.
+//
+// 🛑 But `touched` is NOT the guarantee to lean on alone, and this scans
+// `createdRecordIds` as well. The two tiers make different promises:
+// `sync-manifest-types.ts` documents `createdRecordIds` as "UNCONDITIONAL
+// membership: every created record, not only lifecycle-ruled defs", while
+// `runIntegrityPasses`'s own early-return comment hedges on the other one - "a
+// create NORMALLY also lands in `touched` (creates record their written keys),
+// so the third arm is a guard against a writer that only reports the lifecycle
+// array, not a live path." Pass 5 reads `createdRecordIds` for exactly that
+// reason.
+//
+// A fulfillment arriving from a connector is a CREATE, so the unconditional
+// array is the right tier for it. Leaning on `touched` alone would make the
+// trigger depend on `recordTouched` firing, which is an implementation detail
+// of the write path rather than a contract - and the failure is SILENT: no
+// enqueue, no error, no posting run, and nothing on any screen saying so.
+// Scanning both costs one more loop over ids already in memory and no database
+// read.
+//
+// That answers "did anything arrive" with ZERO database reads - manifest
+// membership plus the cached def resolver `finalize-integrity-passes.ts`
+// already built. Pass 6 and the old pass 7 collapse into one pass as a
+// result: there is no longer a derivation step whose success pass 7 must not
+// be blamed for (the reason the two were split originally), so one function
+// checks arrival and enqueues.
+//
+// Keep top-level imports to types and the logger, and lazy-import the queue
+// module - the same rule `finalize-integrity-passes.ts` states in its own
+// header, for the same reason (the events to money/cache boundaries break
+// `vi.mock` otherwise).
 
 import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { parseRecordId, type RecordId } from '@auxx/types/resource'
-import type { SystemAttribute } from '@auxx/types/system-attribute'
 import type { SyncChangeManifest } from '../../../record-rules/sync-manifest-types'
+import type { FulfillmentLineToRelieve } from '../../../relief'
 
 const logger = createScopedLogger('finalize-integrity')
-
-/** Actor for the pass's writes - the same fallback every other pass uses. */
-const SYSTEM_ACTOR = 'system'
-
-/**
- * The book time zone to cut ship days in when the org has not set one.
- *
- * ⚠️ UTC, and deliberately NOT a refusal. The derivation is not a posting: a log
- * row is a statement about what shipped, and lane B's poster is the thing that
- * refuses when `accounting.bookTimeZone` is unset (49's preview refusal). An org
- * that has not finished accounting setup still wants its shipment log, and a day
- * derived in UTC is corrected by re-deriving once the zone is set - the merge is
- * a no-op on a matching row and a replacement on an unstamped one.
- */
-const FALLBACK_TIME_ZONE = 'UTC'
-
-/**
- * The three `line_item` attributes whose write can change what the log says.
- *
- * Entity migration 137. A touched line carrying any of them enters the pass; an
- * ids-only degraded record (`touched[rid] === 1`, keys shed under the byte
- * budget) enters unconditionally, the rule every pass in this module follows.
- */
-const LINE_FULFILLMENT_TRIGGER_ATTRS: ReadonlySet<SystemAttribute> = new Set([
-  'line_item_fulfilled_at',
-  'line_item_fulfilled_qty',
-  'line_item_shipment_count',
-])
-
-/** Every `order` attribute the derivation reads. */
-const ORDER_ATTRIBUTES = ['order_fulfillments', 'order_shipping_total', 'order_line_items'] as const
-
-/** Every `line_item` attribute the derivation reads. */
-const LINE_ATTRIBUTES = [
-  'line_item_qty',
-  'line_item_unit_price',
-  'line_item_tax_total',
-  'line_item_fulfilled_at',
-  'line_item_fulfilled_qty',
-  'line_item_shipment_count',
-] as const
 
 /**
  * The slice of the manifest resolver this pass needs.
@@ -93,340 +89,228 @@ export type DefEntityTypeResolver = (
   rawDefId: string
 ) => Promise<{ entityType: string | null } | null>
 
-/** One `FieldValue` row, the columns this pass reads. */
-interface ValueRow {
-  entityId: string
-  fieldId: string
-  valueNumber: number | null
-  valueDate: string | Date | null
-  valueJson: unknown
-  relatedEntityId: string | null
+/**
+ * Whether this sync's manifest shows at least one `fulfillment` record
+ * created or touched.
+ *
+ * Membership only - no field values are read. WHICH keys changed does not
+ * matter, because the question is only "did the connector write a fulfillment
+ * this run", never "did a specific attribute of it change".
+ *
+ * 🛑 BOTH tiers are scanned, and `createdRecordIds` is the load-bearing one.
+ * See this file's header: a connector-written fulfillment is a CREATE, and
+ * `createdRecordIds` is the tier documented as unconditional for every created
+ * record, where `touched` is only documented as what a create NORMALLY also
+ * lands in. A trigger that missed would be silent - no enqueue, no error.
+ */
+export async function fulfillmentsArrivedThisSync(
+  manifest: SyncChangeManifest,
+  resolveDef: DefEntityTypeResolver
+): Promise<boolean> {
+  const seenDefs = new Map<string, boolean>()
+  const isFulfillment = async (rid: RecordId): Promise<boolean> => {
+    const { entityDefinitionId: rawDefId } = parseRecordId(rid)
+    const cached = seenDefs.get(rawDefId)
+    if (cached !== undefined) return cached
+    const def = await resolveDef(rawDefId)
+    const answer = def?.entityType === 'fulfillment'
+    seenDefs.set(rawDefId, answer)
+    return answer
+  }
+
+  for (const rid of manifest.createdRecordIds ?? []) {
+    if (await isFulfillment(rid)) return true
+  }
+  for (const rid of Object.keys(manifest.touched)) {
+    if (await isFulfillment(rid as RecordId)) return true
+  }
+  return false
 }
 
 /**
- * Derive and store the shipment log for every connector order this sync touched.
+ * Every entityInstanceId of `wantedType` this sync's manifest shows created or
+ * touched - the id-COLLECTING sibling of {@link fulfillmentsArrivedThisSync}.
  *
- * ## Selection
- *
- *  - a touched `line_item` carrying any of {@link LINE_FULFILLMENT_TRIGGER_ATTRS},
- *    or degraded to ids-only, mapped to its order in ONE query through
- *    `resolveParentsByRelation('line_item_order', ...)`,
- *  - plus every touched `order`. An order header write is enough on its own:
- *    `order_shipping_total` is an input to the first shipment's total, and a
- *    connector sync that re-asserts an order whose lines did not move is exactly
- *    the run that should notice the channel has since shipped it,
- *  - minus every order that is NOT connector-managed. A native order's log is
- *    written by `money.fulfillOrder` and a person's clicks, and two writers on
- *    one append-only log is the defect 49 §2.1 exists to end.
- *
- * ## Guarantees
- *
- * **Never throws**, per record and as a whole - one malformed order must not
- * cost the other 500 their log, and this pass runs beside four others that have
- * nothing to do with it.
- *
- * **Writes only when the derivation changed something.** `deriveFulfillmentLog`
- * is append-only and returns `changed: false` for a log it produced itself, so a
- * re-sync of an unchanged order writes nothing at all.
- *
- * @returns the `order` instance ids whose stored log this pass rewrote. Pass 7
- * reads the SIZE of it to decide whether to enqueue the automatic posting run.
+ * Deliberately a separate function rather than a refactor of that one: its
+ * membership contract is pinned by `__tests__/fulfillment-posting-trigger.test.ts`
+ * (including a "resolves each def at most once" case), and this brief's own
+ * §2.6 rule - "if a test needs editing, the refactor changed behaviour and is
+ * wrong" - applies just as well to a hand-tested pass as to the ledger writer
+ * it names. A few duplicated lines cost far less than putting that pin at risk.
  */
-export async function fulfillmentLogPass(
+async function collectArrivedInstanceIds(
+  manifest: SyncChangeManifest,
+  resolveDef: DefEntityTypeResolver,
+  wantedType: string
+): Promise<string[]> {
+  const seenDefs = new Map<string, boolean>()
+  const isWanted = async (rid: RecordId): Promise<boolean> => {
+    const { entityDefinitionId: rawDefId } = parseRecordId(rid)
+    const cached = seenDefs.get(rawDefId)
+    if (cached !== undefined) return cached
+    const def = await resolveDef(rawDefId)
+    const answer = def?.entityType === wantedType
+    seenDefs.set(rawDefId, answer)
+    return answer
+  }
+
+  const ids = new Set<string>()
+  for (const rid of manifest.createdRecordIds ?? []) {
+    if (await isWanted(rid)) ids.add(parseRecordId(rid).entityInstanceId)
+  }
+  for (const rid of Object.keys(manifest.touched)) {
+    if (await isWanted(rid as RecordId)) ids.add(parseRecordId(rid as RecordId).entityInstanceId)
+  }
+  return [...ids]
+}
+
+/**
+ * Inventory relief (`plans/money/tasks/50-batch-inventory-relief.md` §1.4):
+ * the sync door. Hangs off the SAME arrival signal as the posting trigger,
+ * but is gated on NEITHER `isAccountingEnabled` NOR
+ * `accounting.fulfillmentPosting` - on-hand is an inventory fact, not an
+ * accounting one, so an accounting-off org still gets a correct shelf.
+ *
+ * A `fulfillment` OR a `fulfillment_line` arriving both count: a connector
+ * update that only touches a line (a tracking correction lands on the
+ * fulfillment, but a Shopify edit could in principle touch just a line) must
+ * not be missed just because the PARENT record was not itself in this sync's
+ * manifest.
+ *
+ * From either kind of id this resolves to the owning ORDER
+ * (`fulfillment_line_fulfillment` then `fulfillment_order`, via the same
+ * `resolveParentsByRelation` pass 4's order-demand pass uses) and re-reads
+ * EVERY fulfillment of that order through `readFulfillmentsForOrders` - the
+ * one place that owns the `fulfillment`/`fulfillment_line` join shape
+ * (`money/fulfillments/reads.ts`'s own header). This is deliberately broader
+ * than "only the lines that arrived": relief's own delta arithmetic
+ * (`quantity - quantity_relieved`) is a no-op on anything already relieved,
+ * so re-scanning a whole order costs a bit more work in exchange for never
+ * having to reason about whether a narrower id set missed a sibling line.
+ *
+ * A cancelled fulfillment's lines are excluded (`isLiveFulfillment`) - this
+ * brief's own §9 item 3 leaves that choice open and calls it "mechanical and
+ * probably right"; this is where that call is made, not inside
+ * `relieveFulfillmentLines` itself, which only ever sees lines a caller has
+ * already decided are live.
+ */
+async function runFulfillmentReliefForSync(
   db: Database,
   organizationId: string,
   manifest: SyncChangeManifest,
   resolveDef: DefEntityTypeResolver
-): Promise<Set<string>> {
-  const changed = new Set<string>()
-  try {
-    const lineInstanceIds = new Set<string>()
-    const orderInstanceIds = new Set<string>()
+): Promise<void> {
+  const [fulfillmentIds, fulfillmentLineIds] = await Promise.all([
+    collectArrivedInstanceIds(manifest, resolveDef, 'fulfillment'),
+    collectArrivedInstanceIds(manifest, resolveDef, 'fulfillment_line'),
+  ])
+  if (fulfillmentIds.length === 0 && fulfillmentLineIds.length === 0) return
 
-    for (const [rid, touched] of Object.entries(manifest.touched)) {
-      const { entityDefinitionId: rawDefId, entityInstanceId } = parseRecordId(rid as RecordId)
-      const def = await resolveDef(rawDefId)
-      if (!def) continue
-      // Ids-only degradation: the keys were shed under the byte budget, so any
-      // fulfillment fact may have moved and the record enters its def's arm.
-      const idsOnly = touched === 1
-      switch (def.entityType) {
-        case 'line_item':
-          if (
-            idsOnly ||
-            (touched as string[]).some((key) =>
-              LINE_FULFILLMENT_TRIGGER_ATTRS.has(key as SystemAttribute)
-            )
-          ) {
-            lineInstanceIds.add(entityInstanceId)
-          }
-          break
-        case 'order':
-          orderInstanceIds.add(entityInstanceId)
-          break
+  const { resolveParentsByRelation } = await import('../../../reconcilers/parent-reconciler')
+  const fulfillmentIdsFromLines = await resolveParentsByRelation(
+    organizationId,
+    'fulfillment_line_fulfillment',
+    fulfillmentLineIds
+  )
+  const allFulfillmentIds = [...new Set([...fulfillmentIds, ...fulfillmentIdsFromLines])]
+  if (allFulfillmentIds.length === 0) return
+
+  const orderIds = [
+    ...new Set(
+      await resolveParentsByRelation(organizationId, 'fulfillment_order', allFulfillmentIds)
+    ),
+  ]
+  if (orderIds.length === 0) return
+
+  const { readFulfillmentsForOrders, isLiveFulfillment } = await import(
+    '../../../money/fulfillments'
+  )
+  const byOrder = await readFulfillmentsForOrders(db, { organizationId, orderIds })
+
+  const lines: FulfillmentLineToRelieve[] = []
+  for (const fulfillments of byOrder.values()) {
+    for (const fulfillment of fulfillments) {
+      if (!isLiveFulfillment(fulfillment)) continue
+      const occurredAt = new Date(fulfillment.shippedAt)
+      for (const line of fulfillment.lines) {
+        lines.push({
+          fulfillmentLineId: line.id,
+          lineItemId: line.lineItemId,
+          quantity: line.quantity,
+          quantityRelieved: line.quantityRelieved,
+          occurredAt,
+        })
       }
     }
+  }
+  if (lines.length === 0) return
 
-    if (lineInstanceIds.size > 0) {
-      const { resolveParentsByRelation } = await import('../../../reconcilers/parent-reconciler')
-      const parents = await resolveParentsByRelation(organizationId, 'line_item_order', [
-        ...lineInstanceIds,
-      ])
-      for (const orderId of parents) orderInstanceIds.add(orderId)
-    }
-    if (orderInstanceIds.size === 0) return changed
+  const { relieveFulfillmentLines } = await import('../../../relief')
+  const { getOrgCache } = await import('../../../cache')
+  const userId = await getOrgCache().get(organizationId, 'systemUser')
 
-    const { listConnectorManagedRecordIds } = await import(
-      '../../../data-connectors/managed-fields'
-    )
-    const managed = await listConnectorManagedRecordIds(db, organizationId, [...orderInstanceIds])
-    if (managed.size === 0) return changed
+  const result = await relieveFulfillmentLines(db, { organizationId, userId, lines })
+  if (result.isErr()) {
+    logger.error('integrity fulfillment relief pass: relief failed', {
+      organizationId,
+      error: result.error.message,
+    })
+    return
+  }
 
-    const context = await loadFieldContext(organizationId)
-    if (!context) {
-      logger.warn('integrity fulfillment-log pass: the order fields are not provisioned', {
+  logger.info('integrity fulfillment relief pass done', {
+    organizationId,
+    orders: orderIds.length,
+    linesConsidered: lines.length,
+    written: result.value.movementIds.length,
+    skippedNoPart: result.value.skippedNoPart,
+    skippedZeroDelta: result.value.skippedZeroDelta,
+    skippedNoCost: result.value.skippedNoCost,
+  })
+}
+
+/**
+ * Pass 6: enqueue the automatic fulfillment posting run, and relieve
+ * inventory, when - and only when - this sync's manifest shows a fulfillment
+ * (or fulfillment line) record arriving.
+ *
+ * **Never throws**, matching every other pass in this module. The posting
+ * trigger and the relief run are independent business decisions on
+ * independent lanes, so each gets its OWN try/catch: a failure enqueuing the
+ * posting run must not stop inventory from being relieved, and a relief
+ * failure must not stop revenue from being posted.
+ */
+export async function fulfillmentPostingTriggerPass(
+  db: Database,
+  organizationId: string,
+  manifest: SyncChangeManifest,
+  resolveDef: DefEntityTypeResolver
+): Promise<void> {
+  try {
+    const arrived = await fulfillmentsArrivedThisSync(manifest, resolveDef)
+    if (arrived) {
+      const { autoPostFulfillmentsAfterSync } = await import(
+        '../../../money/fulfillment-posting/auto'
+      )
+      await autoPostFulfillmentsAfterSync(db, organizationId)
+
+      logger.info('integrity fulfillment posting trigger pass: fulfillments arrived, enqueued', {
         organizationId,
       })
-      return changed
     }
-
-    const timeZone = await readBookTimeZone(organizationId)
-    const now = new Date().toISOString()
-    const orderIds = [...managed]
-
-    // ── Two bounded reads for the whole batch, never one per order ──
-    const orderValues = await selectValues(db, organizationId, orderIds, context.orderFieldIds)
-    const lineIdsByOrder = new Map<string, string[]>()
-    const allLineIds = new Set<string>()
-    for (const orderId of orderIds) {
-      const ids = (orderValues.get(orderId)?.get(context.order.order_line_items ?? '') ?? [])
-        .map((row) => row.relatedEntityId)
-        .filter((id): id is string => !!id)
-      lineIdsByOrder.set(orderId, ids)
-      for (const id of ids) allLineIds.add(id)
-    }
-    const lineValues = await selectValues(db, organizationId, [...allLineIds], context.lineFieldIds)
-
-    const { deriveFulfillmentLog } = await import('../../../money/fulfillment-posting/derive-log')
-    const { parseFulfillments } = await import('../../../money/orders/reads')
-    const { UnifiedCrudHandler } = await import('../../../resources/crud')
-    const { toRecordId } = await import('../../../resources/resource-id')
-
-    let heldOut = 0
-    for (const orderId of orderIds) {
-      try {
-        const bucket = orderValues.get(orderId)
-        const fulfillmentsFieldId = context.order.order_fulfillments
-        const stored = parseFulfillments(
-          fulfillmentsFieldId ? bucket?.get(fulfillmentsFieldId)?.[0]?.valueJson : undefined
-        )
-        const shippingFieldId = context.order.order_shipping_total
-        const orderShippingTotalMinor = shippingFieldId
-          ? (bucket?.get(shippingFieldId)?.[0]?.valueNumber ?? 0)
-          : 0
-
-        const lines = (lineIdsByOrder.get(orderId) ?? []).map((lineId) =>
-          toLineFact(lineId, lineValues.get(lineId), context.line)
-        )
-
-        const result = deriveFulfillmentLog({
-          existing: stored,
-          lines,
-          orderShippingTotalMinor,
-          timeZone,
-          now,
-        })
-        if (result.heldOut) heldOut++
-        if (!result.changed) continue
-
-        // 🛑 The `{ fulfillments }` OBJECT, never the bare array. A `FieldValue`
-        // write reads a top-level array as a MULTI-VALUE write against a
-        // single-value field, and `setFieldValues` LOGS and SWALLOWS the
-        // refusal - the update reports success over an order whose log is
-        // silently empty (`money/orders/client.ts` says so at length). The
-        // field-value layer adds its own `{ v }` envelope on top; only the inner
-        // wrapper is ours.
-        const handler = new UnifiedCrudHandler(organizationId, SYSTEM_ACTOR, db)
-        await handler.update(toRecordId(context.orderDefId, orderId), {
-          order_fulfillments: { fulfillments: result.fulfillments },
-        })
-        changed.add(orderId)
-      } catch (error) {
-        logger.error('integrity fulfillment-log pass: order failed', {
-          organizationId,
-          orderId,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      }
-    }
-
-    logger.info('integrity fulfillment-log pass done', {
-      organizationId,
-      orders: orderIds.length,
-      changed: changed.size,
-      heldOut,
-    })
   } catch (error) {
-    logger.error('integrity fulfillment-log pass failed', {
+    logger.error('integrity fulfillment posting trigger pass failed', {
       organizationId,
       error: error instanceof Error ? error.message : String(error),
     })
   }
-  return changed
-}
 
-/** The resolved def and field ids the two bounded reads need. */
-interface FulfillmentLogFieldContext {
-  orderDefId: string
-  order: Partial<Record<(typeof ORDER_ATTRIBUTES)[number], string>>
-  line: Partial<Record<(typeof LINE_ATTRIBUTES)[number], string>>
-  orderFieldIds: string[]
-  lineFieldIds: string[]
-}
-
-/**
- * Resolve the `order` def and every field id, through the org cache.
- *
- * Null when the org has no `order` def or has not run entity migration 125 -
- * without `order_fulfillments` there is nowhere to write, and the honest
- * response is to skip the org rather than to write a log into a field that does
- * not exist (which `setFieldValues` would swallow).
- */
-async function loadFieldContext(
-  organizationId: string
-): Promise<FulfillmentLogFieldContext | null> {
-  const { getCachedEntityDefId, getOrgCache } = await import('../../../cache')
-  const orderDefId = await getCachedEntityDefId(organizationId, 'order')
-  if (!orderDefId) return null
-
-  const fields = await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes([...ORDER_ATTRIBUTES, ...LINE_ATTRIBUTES])
-  const resolved = fields as unknown as Record<string, { id: string } | null>
-
-  const order: FulfillmentLogFieldContext['order'] = {}
-  for (const attribute of ORDER_ATTRIBUTES) {
-    const id = resolved[attribute]?.id
-    if (id) order[attribute] = id
-  }
-  const line: FulfillmentLogFieldContext['line'] = {}
-  for (const attribute of LINE_ATTRIBUTES) {
-    const id = resolved[attribute]?.id
-    if (id) line[attribute] = id
-  }
-  if (!order.order_fulfillments || !order.order_line_items) return null
-
-  return {
-    orderDefId,
-    order,
-    line,
-    orderFieldIds: Object.values(order),
-    lineFieldIds: Object.values(line),
-  }
-}
-
-/** `accounting.bookTimeZone`, or UTC. See {@link FALLBACK_TIME_ZONE}. */
-async function readBookTimeZone(organizationId: string): Promise<string> {
   try {
-    const { getOrganizationSetting } = await import('../../../settings/settings-service')
-    const value = await getOrganizationSetting({
+    await runFulfillmentReliefForSync(db, organizationId, manifest, resolveDef)
+  } catch (error) {
+    logger.error('integrity fulfillment relief pass failed', {
       organizationId,
-      key: 'accounting.bookTimeZone',
+      error: error instanceof Error ? error.message : String(error),
     })
-    return typeof value === 'string' && value.trim() !== '' ? value.trim() : FALLBACK_TIME_ZONE
-  } catch {
-    return FALLBACK_TIME_ZONE
   }
-}
-
-/** One line's facts, from its pivoted `FieldValue` rows. */
-function toLineFact(
-  lineId: string,
-  bucket: Map<string, ValueRow[]> | undefined,
-  fields: FulfillmentLogFieldContext['line']
-) {
-  const cell = (attribute: keyof FulfillmentLogFieldContext['line']): ValueRow | undefined => {
-    const fieldId = fields[attribute]
-    return fieldId ? bucket?.get(fieldId)?.[0] : undefined
-  }
-  return {
-    lineId,
-    orderedQuantity: cell('line_item_qty')?.valueNumber ?? 0,
-    unitPriceMinor: cell('line_item_unit_price')?.valueNumber ?? 0,
-    // Null, never zero: the channel supplying no per-line tax is a different
-    // state from it supplying a zero (48 §8.2), and the batch builder allocates
-    // the order's tax when any line is null.
-    lineTaxMinor: cell('line_item_tax_total')?.valueNumber ?? null,
-    fulfilledAt: toInstant(cell('line_item_fulfilled_at')?.valueDate),
-    fulfilledQuantity: cell('line_item_fulfilled_qty')?.valueNumber ?? null,
-    shipmentCount: cell('line_item_shipment_count')?.valueNumber ?? null,
-  }
-}
-
-/**
- * A `valueDate` as an ISO instant, or null.
- *
- * `FieldValue.valueDate` is declared `mode: 'string'` while the driver hands
- * back a parsed `Date` for a `timestamptz` expression, so both shapes arrive
- * here (`builds/backfill-queries.ts` documents the same seam). An unparseable
- * value becomes null rather than an Invalid Date, which would compare false
- * against everything and vanish from the arithmetic much later.
- */
-function toInstant(value: string | Date | null | undefined): string | null {
-  if (value == null) return null
-  const parsed = value instanceof Date ? value : new Date(value)
-  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString()
-}
-
-/**
- * `FieldValue` rows for a set of instances and fields, bucketed
- * `instance -> field -> rows`.
- *
- * The inner value is an ARRAY because a relationship field has one row per
- * related record, and `order_line_items` is exactly that. The same shape
- * `money/orders/reads.ts` uses, and the reason it reads columns rather than
- * going through a typed handler: `order_fulfillments` carries the field-value
- * layer's `{ v, meta }` envelope and `parseFulfillments` has to see it.
- */
-async function selectValues(
-  db: Database,
-  organizationId: string,
-  entityIds: readonly string[],
-  fieldIds: readonly string[]
-): Promise<Map<string, Map<string, ValueRow[]>>> {
-  const buckets = new Map<string, Map<string, ValueRow[]>>()
-  if (entityIds.length === 0 || fieldIds.length === 0) return buckets
-
-  const { schema } = await import('@auxx/database')
-  const { and, eq, inArray } = await import('drizzle-orm')
-
-  const rows = await db
-    .select({
-      entityId: schema.FieldValue.entityId,
-      fieldId: schema.FieldValue.fieldId,
-      valueNumber: schema.FieldValue.valueNumber,
-      valueDate: schema.FieldValue.valueDate,
-      valueJson: schema.FieldValue.valueJson,
-      relatedEntityId: schema.FieldValue.relatedEntityId,
-    })
-    .from(schema.FieldValue)
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        inArray(schema.FieldValue.entityId, [...entityIds]),
-        inArray(schema.FieldValue.fieldId, [...fieldIds])
-      )
-    )
-
-  for (const row of rows) {
-    let byField = buckets.get(row.entityId)
-    if (!byField) {
-      byField = new Map()
-      buckets.set(row.entityId, byField)
-    }
-    const list = byField.get(row.fieldId)
-    if (list) list.push(row as ValueRow)
-    else byField.set(row.fieldId, [row as ValueRow])
-  }
-  return buckets
 }

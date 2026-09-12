@@ -70,7 +70,7 @@ export interface IntegrityPassesInput {
 }
 
 /**
- * Run the seven data-integrity batch passes over a sync-change manifest:
+ * Run the six data-integrity batch passes over a sync-change manifest:
  *
  * 1. Totals — changed line-item records map (via the hook's own parent resolution) to
  *    DISTINCT parent quotes/invoices, each recomputed once; lines whose qty/unitPrice
@@ -87,16 +87,15 @@ export interface IntegrityPassesInput {
  *    keeps a build for 3 forever.
  * 5. Contact/company interaction resolution: every created or identifier-touched
  *    contact and company gets the correspondence history it already has.
- * 6. Fulfillment log: connector orders whose lines carry the channel's per-line
- *    fulfillment facts get `order_fulfillments` derived from them
- *    (`passes/fulfillment-log-pass.ts`, money plan 49 §8.4 decision 4). Until this
- *    pass, nothing NATIVE said an imported order had shipped, so 530 of the dev
- *    org's 545 orders could never reach the ledger and every channel credit memo
- *    would skip its revenue leg.
- * 7. Automatic fulfillment posting: when pass 6 changed at least one log, hand off
- *    to `autoPostFulfillmentsAfterSync`, which posts only if the org asked for it
- *    (`accounting.fulfillmentPosting = auto`). Gated on pass 6 having changed
- *    something so an idle re-sync enqueues nothing.
+ * 6. Fulfillment posting trigger (`passes/fulfillment-log-pass.ts`, money plan 55 §6):
+ *    entity migration 153 made `fulfillment` / `fulfillment_line` real entities that the
+ *    Shopify connector writes directly, so there is no shipment log left to DERIVE here
+ *    (money plan 49's `deriveFulfillmentLog` is deleted). This pass only asks whether the
+ *    sync's manifest shows a `fulfillment` record arriving and, if so, hands off to
+ *    `autoPostFulfillmentsAfterSync`, which posts only if the org asked for it
+ *    (`accounting.fulfillmentPosting = auto`). Gated on arrival so an idle re-sync
+ *    enqueues nothing. This used to be two passes (derive, then post gated on what
+ *    changed); with nothing left to derive, the gate and the enqueue collapse into one.
  *
  * NEVER throws: each pass — and each record inside a pass — is individually guarded and
  * logged, so one bad record or one failing pass cannot starve the others (mirrors
@@ -125,29 +124,12 @@ export async function runIntegrityPasses(db: Database, input: IntegrityPassesInp
     await orderDemandPass(organizationId, manifest, resolveDef)
     await interactionPass(db, organizationId, manifest, resolveDef)
 
-    // Pass 6 lives in its own module because it is the only pass with a RETURN
-    // VALUE that another pass reads. Lazy-imported for the same reason
-    // everything else here is (this module's header).
-    const { fulfillmentLogPass } = await import('./passes/fulfillment-log-pass')
-    const changedLogs = await fulfillmentLogPass(db, organizationId, manifest, resolveDef)
-
-    // Pass 7. Its own try/catch, and NOT part of pass 6: enqueuing a posting run
-    // is a ledger decision (`accounting.fulfillmentPosting`), and a failure to
-    // enqueue must never make the derivation that already committed look failed.
-    if (changedLogs.size > 0) {
-      try {
-        await (await import('../../money/fulfillment-posting/auto')).autoPostFulfillmentsAfterSync(
-          db,
-          organizationId
-        )
-      } catch (error) {
-        logger.error('integrity auto-post pass failed', {
-          organizationId,
-          orders: changedLogs.size,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      }
-    }
+    // Pass 6 lives in its own module, like pass 4/5's cores — the events ↔ money
+    // boundary is exactly the one this module's header says to lazy-import
+    // across. It carries its own try/catch (see the module), so nothing more
+    // is needed here.
+    const { fulfillmentPostingTriggerPass } = await import('./passes/fulfillment-log-pass')
+    await fulfillmentPostingTriggerPass(db, organizationId, manifest, resolveDef)
   } catch (error) {
     logger.error('integrity passes failed', {
       organizationId,

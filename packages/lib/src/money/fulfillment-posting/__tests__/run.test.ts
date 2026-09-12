@@ -33,11 +33,11 @@ const h = vi.hoisted(() => ({
   },
   postCalls: [] as Array<{ periodKey: string; txnDate: string; memo?: string }>,
   stamps: [] as Array<{
-    orderId: string
-    sequence: number
+    fulfillmentInstanceId: string
     actorUserId: string
     patch: Record<string, unknown>
   }>,
+  /** Keyed on the `fulfillmentInstanceId` the stamp call names. */
   stampThrowsFor: null as string | null,
   systemUserId: 'usr_system',
   isAccountingEnabled: vi.fn(async () => true),
@@ -91,20 +91,20 @@ vi.mock('../../../postings/post-entry', () => ({
   },
 }))
 
-vi.mock('../../orders/fulfill', () => ({
-  stampFulfillment: async (
+vi.mock('../../fulfillments', () => ({
+  stampFulfillmentPosting: async (
     _db: unknown,
     params: {
-      orderId: string
-      sequence: number
+      fulfillmentInstanceId: string
       actorUserId: string
       patch: Record<string, unknown>
     }
   ) => {
-    if (h.stampThrowsFor === params.orderId) throw new Error('could not lock the order row')
+    if (h.stampThrowsFor === params.fulfillmentInstanceId) {
+      throw new Error('could not lock the fulfillment row')
+    }
     h.stamps.push({
-      orderId: params.orderId,
-      sequence: params.sequence,
+      fulfillmentInstanceId: params.fulfillmentInstanceId,
       actorUserId: params.actorUserId,
       patch: params.patch,
     })
@@ -125,6 +125,7 @@ function shipment(overrides: Partial<UnpostedShipment> = {}): UnpostedShipment {
   return {
     orderId,
     orderNumber: overrides.orderNumber ?? '#1001',
+    fulfillmentInstanceId: overrides.fulfillmentInstanceId ?? `${orderId}_f1`,
     sequence: 1,
     shippedAt: '2026-07-06',
     lines: [
@@ -341,22 +342,20 @@ describe('posting and stamping', () => {
 
     expect(h.stamps).toEqual([
       {
-        orderId: 'a',
-        sequence: 1,
+        fulfillmentInstanceId: 'a_f1',
         actorUserId: 'usr_1',
         patch: {
-          glPostingId: 'gl_1',
+          glPosting: 'gl_1',
           docNumber: 'AUXX-FUL-20260706',
           totalMinor: 10_000,
           subtotalMinor: 10_000,
         },
       },
       {
-        orderId: 'b',
-        sequence: 4,
+        fulfillmentInstanceId: 'b_f1',
         actorUserId: 'usr_1',
         patch: {
-          glPostingId: 'gl_1',
+          glPosting: 'gl_1',
           docNumber: 'AUXX-FUL-20260706',
           totalMinor: 10_000,
           subtotalMinor: 10_000,
@@ -482,14 +481,14 @@ describe('never throws, three layers deep', () => {
       shipment({ orderId: 'a', orderNumber: '#1' }),
       shipment({ orderId: 'b', orderNumber: '#2' }),
     ]
-    h.stampThrowsFor = 'a'
+    h.stampThrowsFor = 'a_f1'
 
     const summary = await runFulfillmentPosting(stubDb(), REQUEST)
 
     expect(summary.posted).toHaveLength(1)
     // The other shipment was still stamped: one order's lock contention must
     // not lose the rest of the group.
-    expect(h.stamps.map((stamp) => stamp.orderId)).toEqual(['b'])
+    expect(h.stamps.map((stamp) => stamp.fulfillmentInstanceId)).toEqual(['b_f1'])
     expect(summary.failed[0]?.reason).toMatch(/#1 shipment 1/)
     expect(summary.failed[0]?.reason).toMatch(/must NOT be posted a second time/)
   })

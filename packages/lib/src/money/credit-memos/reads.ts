@@ -17,7 +17,8 @@ import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { getOrgCache } from '../../cache'
 import { NotFoundError } from '../../errors'
-import { parseFulfillments } from '../orders/reads'
+import { isLiveFulfillment } from '../fulfillments/client'
+import { readFulfillmentsForOrder } from '../fulfillments/reads'
 import type {
   ContactCredit,
   ContactCreditMemo,
@@ -748,11 +749,20 @@ export async function readOrderGateways(
 /**
  * Whether the order had a fulfillment shipped on or before `issuedAt`.
  *
- * Read from the order's shipment log (`order_fulfillments`, the same JSON
- * `readOrderForFulfillment` parses), never from `order_fulfillment_status`: the
- * status says `partial` and cannot say WHEN. A channel memo on an order with no
- * shipment before its date reverses revenue that was never posted, so the
- * issue entry omits the revenue leg (section 3.1).
+ * Read from the order's `fulfillment` records (`money/fulfillments/reads.ts`),
+ * never from `order_fulfillment_status`: the status says `partial` and cannot
+ * say WHEN. A channel memo on an order with no shipment before its date
+ * reverses revenue that was never posted, so the issue entry omits the
+ * revenue leg (section 3.1).
+ *
+ * 🛑 Only LIVE fulfillments count (`isLiveFulfillment`, i.e. not `cancelled`).
+ * This is not new behaviour: the JSON log this replaces never carried a
+ * cancelled dispatch either - the connector's `deriveFulfillments` filtered
+ * `status !== 'cancelled'` before anything reached the log. The record form
+ * keeps cancelled dispatches (brief 55 §5), so this function has to exclude
+ * them itself to preserve the original meaning of "shipped": a cancelled
+ * fulfillment did not ship, and must not be read as evidence that revenue was
+ * ever recognised for it.
  */
 export async function orderHadFulfillmentBefore(
   db: Database,
@@ -760,26 +770,9 @@ export async function orderHadFulfillmentBefore(
   orderId: string,
   issuedAt: string
 ): Promise<boolean> {
-  const fields = (await getOrgCache()
-    .from(organizationId, 'customFields')
-    .bySystemAttributes(['order_fulfillments'])) as FieldMap<'order_fulfillments'>
-  if (!fields.order_fulfillments) return false
-
-  const [row] = await db
-    .select({ valueJson: schema.FieldValue.valueJson })
-    .from(schema.FieldValue)
-    .where(
-      and(
-        eq(schema.FieldValue.organizationId, organizationId),
-        eq(schema.FieldValue.entityId, orderId),
-        eq(schema.FieldValue.fieldId, fields.order_fulfillments.id)
-      )
-    )
-    .limit(1)
-  if (!row) return false
-
-  const fulfillments = parseFulfillments(row.valueJson)
+  const fulfillments = await readFulfillmentsForOrder(db, { organizationId, orderId })
   return fulfillments.some((fulfillment) => {
+    if (!isLiveFulfillment(fulfillment)) return false
     const shippedDay = toCalendarDay(fulfillment.shippedAt)
     return shippedDay !== null && shippedDay <= issuedAt
   })

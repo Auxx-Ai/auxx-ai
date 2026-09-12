@@ -12,25 +12,30 @@
  * narrowed input down (§6).
  *
  * ⚠️ Values are read from `FieldValue`'s own columns rather than through
- * `UnifiedCrudHandler.getFieldValues`, following
- * `postings/journal-entries/reads.ts`. The reason is `order_fulfillments`: it is
- * a JSON column carrying the field-value layer's `{ v, meta }` envelope, and
- * {@link parseFulfillments} has to see that envelope to unwrap it. A typed read
- * that had already unwrapped it once would leave this file guessing which shape
- * it was handed.
+ * `UnifiedCrudHandler.getFieldValues`, following `postings/journal-entries/reads.ts`.
+ *
+ * 🔑 As of entity migration 153 the shipment history itself is no longer read
+ * here at all: `order_fulfillments` is a has_many RELATIONSHIP to real
+ * `fulfillment` records, and the has_many (inverse) side of a relationship
+ * carries no `FieldValue` row of its own to read. `readFulfillmentsForOrder`
+ * (`money/fulfillments`) resolves it from the `fulfillment` side instead
+ * (`plans/money/tasks/55-shipment-lines.md` §6).
  */
 
 import { type Database, schema } from '@auxx/database'
 import type { CustomFieldEntity } from '@auxx/database/types'
-import { readEnvelope } from '@auxx/types/field-value'
 import { and, eq, inArray } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import { getCachedEntityDefId, getOrgCache } from '../../cache'
 import { NotFoundError, UnprocessableEntityError } from '../../errors'
 import { toRecordId } from '../../resources/resource-id'
 import {
+  type Fulfillment,
+  readFulfillmentsForOrder,
+  requireFulfillmentFieldContext,
+} from '../fulfillments'
+import {
   nextFulfillmentSequence,
-  type OrderFulfillment,
   type OrderLineRemaining,
   shippedByLine,
   shippingStillOwed,
@@ -58,7 +63,6 @@ const ORDER_ATTRIBUTES = [
   'order_total',
   'order_fulfillment_status',
   'order_line_items',
-  'order_fulfillments',
   'order_financial_status',
   'order_payment_gateways',
   'order_contact',
@@ -110,6 +114,11 @@ export interface OrderFieldContext {
  * {@link requireOrderFieldContext} instead: a fulfillment that silently
  * recorded nothing would be worse than a refusal, because the entry would still
  * post and the next shipment would recognise the same revenue again.
+ *
+ * ⚠️ This no longer checks for `fulfillment` provisioning - that moved to
+ * `money/fulfillments`' own `requireFulfillmentFieldContext` /
+ * `loadFulfillmentFieldContext`, which `readOrderForFulfillment` calls
+ * separately. This function is about the ORDER's own fields only.
  */
 export async function loadOrderFieldContext(
   organizationId: string
@@ -121,9 +130,8 @@ export async function loadOrderFieldContext(
     .bySystemAttributes([...ORDER_ATTRIBUTES, ...LINE_ATTRIBUTES])
   const order: Record<OrderAttribute, CustomFieldEntity | null> = fields
   const line: Record<LineAttribute, CustomFieldEntity | null> = fields
-  // Without the number there is no period key, and without the log there is no
-  // "how much is still to ship". Both reduce fulfillment to guessing.
-  if (!order.order_number || !order.order_fulfillments) return null
+  // Without the number there is no period key to post against.
+  if (!order.order_number) return null
   return { orderDefId, order, line }
 }
 
@@ -132,9 +140,8 @@ export async function requireOrderFieldContext(organizationId: string): Promise<
   const ctx = await loadOrderFieldContext(organizationId)
   if (!ctx) {
     throw new UnprocessableEntityError(
-      'Fulfilling an order is not available until the order shipment log is provisioned ' +
-        '(entity migration 125). Without it a second shipment cannot tell what the first one ' +
-        'already shipped.'
+      'Fulfilling an order is not available until the order entity is provisioned ' +
+        '(entity migration 125). Without order_number there is no period key to post against.'
     )
   }
   return ctx
@@ -154,8 +161,8 @@ export interface OrderForFulfillment {
   shippingTotalMinor: number
   totalMinor: number
   fulfillmentStatus: string | null
-  /** The shipment log, oldest first. Empty when nothing has shipped. */
-  fulfillments: OrderFulfillment[]
+  /** Every `fulfillment` record, oldest first. Empty when nothing has shipped. */
+  fulfillments: Fulfillment[]
   /** The order's lines with what is still to ship on each, in display order. */
   lines: OrderLineRemaining[]
   /** The sequence the next fulfillment claims. */
@@ -266,70 +273,6 @@ export async function readOrderTaxLines(
   return byOrder
 }
 
-/**
- * Read the stored shipment log back, discarding anything that is not a usable
- * entry.
- *
- * 🛑 Tolerant on READ and strict on WRITE, the same posture `parseLines` takes
- * in `postings/journal-entries/reads.ts`. `fulfill.ts` validates before it
- * stores, so a malformed row here means the JSON came from somewhere else - and
- * the honest response is to render what IS readable rather than to make the
- * order unfulfillable. A dropped row cannot become a silent double
- * recognition either: the entry it produced still holds its period key, so a
- * re-shipped line's posting collides on the claim's unique index and comes back
- * `already_posted` rather than posting twice.
- *
- * Two wrappers come off: the field-value layer's `{ v, meta }` envelope, and our
- * own `{ fulfillments }` object, which exists because a top-level ARRAY is read
- * as a MULTI-VALUE write and this field is single-value.
- */
-export function parseFulfillments(value: unknown): OrderFulfillment[] {
-  const inner = readEnvelope(value).v ?? value
-  const array = Array.isArray(inner)
-    ? inner
-    : typeof inner === 'object' &&
-        inner !== null &&
-        Array.isArray((inner as { fulfillments?: unknown }).fulfillments)
-      ? (inner as { fulfillments: unknown[] }).fulfillments
-      : null
-  if (!array) return []
-
-  const parsed: OrderFulfillment[] = []
-  for (const row of array) {
-    if (typeof row !== 'object' || row === null) continue
-    const candidate = row as Record<string, unknown>
-    const sequence = candidate.sequence
-    if (typeof sequence !== 'number' || !Number.isInteger(sequence) || sequence < 1) continue
-    const rawLines = Array.isArray(candidate.lines) ? candidate.lines : []
-    parsed.push({
-      sequence,
-      shippedAt: typeof candidate.shippedAt === 'string' ? candidate.shippedAt : '',
-      lines: rawLines.flatMap((line) => {
-        if (typeof line !== 'object' || line === null) return []
-        const { lineId, quantity } = line as { lineId?: unknown; quantity?: unknown }
-        if (typeof lineId !== 'string' || typeof quantity !== 'number') return []
-        if (!Number.isFinite(quantity) || quantity <= 0) return []
-        return [{ lineId, quantity }]
-      }),
-      // 🛑 Carried through, not dropped. `shippedSubtotalMinor` sums it to give
-      // the builder `priorShipmentsSubtotalMinor`, which is what makes the
-      // cumulative tax allocation true itself up on the shipment that completes
-      // the order. A parser that dropped it made every read report zero prior
-      // subtotal, so the second shipment of a split order allocated as if it
-      // were the first and A/R stayed a cent short forever.
-      ...(typeof candidate.subtotalMinor === 'number'
-        ? { subtotalMinor: candidate.subtotalMinor }
-        : {}),
-      totalMinor: typeof candidate.totalMinor === 'number' ? candidate.totalMinor : 0,
-      shippingRecognised: candidate.shippingRecognised === true,
-      glPostingId: typeof candidate.glPostingId === 'string' ? candidate.glPostingId : null,
-      docNumber: typeof candidate.docNumber === 'string' ? candidate.docNumber : null,
-      recordedAt: typeof candidate.recordedAt === 'string' ? candidate.recordedAt : '',
-    })
-  }
-  return parsed.sort((a, b) => a.sequence - b.sequence)
-}
-
 /** One `FieldValue` row, in the columns this module reads. */
 interface ValueRow {
   fieldId: string
@@ -362,6 +305,10 @@ export async function readOrderForFulfillment(
   return guard(
     async () => {
       const ctx = await requireOrderFieldContext(organizationId)
+      // Provisioning of the fulfillment entities is a separate concern from
+      // the order's own fields (money/fulfillments/reads.ts owns it) - both
+      // are required for a fulfillment to have anywhere to be recorded.
+      await requireFulfillmentFieldContext(organizationId)
 
       const instance = await db.query.EntityInstance.findFirst({
         where: and(
@@ -390,7 +337,7 @@ export async function readOrderForFulfillment(
         return field ? (bucket?.get(field.id) ?? []) : []
       }
 
-      const fulfillments = parseFulfillments(cell('order_fulfillments')?.valueJson)
+      const fulfillments = await readFulfillmentsForOrder(db, { organizationId, orderId })
       const shipped = shippedByLine(fulfillments)
 
       const lineIds = cells('order_line_items')

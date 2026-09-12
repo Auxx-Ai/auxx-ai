@@ -29,6 +29,8 @@ const RECALC_PART_QOH = 'recalculatePartQoH'
 const ENRICH_COMPANY_ON_CREATE = 'enrichCompanyOnCreate'
 const RECALC_PO_LINE_RECEIVED = 'recalculatePurchaseOrderLineReceived'
 const RECALC_PO_LINE_BILLED = 'recalculatePurchaseOrderLineBilled'
+/** plans/money/tasks/50-batch-inventory-relief.md §1 - the sell-side mirror of RECALC_PO_LINE_RECEIVED. */
+const RECALC_FULFILLMENT_LINE_RELIEVED = 'recalculateFulfillmentLineRelieved'
 /** Lifecycle twin of the field handler in `system-record-rules.ts`; same key on purpose. */
 const RECALC_PART_COST_TARIFF_RATE = 'recalculatePartCostFromTariffRate'
 
@@ -142,6 +144,16 @@ export function registerEntitySystemRules(): void {
     await fanOutEntityHandler(event, 'vendor-bill-lines', recalculatePurchaseOrderLineBilled)
   })
 
+  // Fulfillment line subledger roll-up (plans/money/tasks/50-batch-inventory-relief.md
+  // §1) - the sell-side mirror of RECALC_PO_LINE_RECEIVED, per-record, scoped to
+  // `sale`-type movements only (a `return_in` reversal or customer return must
+  // NOT read as un-relief - see the module header). Dormant until a later wave
+  // of the same brief starts writing `sale` movements.
+  registerNativeRuleHandler(RECALC_FULFILLMENT_LINE_RELIEVED, async (event) => {
+    const { recalculateFulfillmentLineRelieved } = await import('./post/fulfillment-line-rollups')
+    await fanOutEntityHandler(event, 'stock-movements', recalculateFulfillmentLineRelieved)
+  })
+
   // The tariff schedule (29 §7) — BATCH. A rate row appearing or disappearing
   // reprices every offer behind its code. The captured create/delete values
   // carry the code, so the common case resolves without a DB read.
@@ -226,24 +238,32 @@ const ENTITY_SYSTEM_RULES: SystemRuleDeclaration[] = [
   },
   {
     key: 'mfg-stock-movements-created',
-    name: 'Explode BOM movement, recalculate QoH and PO line qty received on stock movement create',
+    name:
+      'Explode BOM movement, recalculate QoH, PO line qty received and fulfillment line qty ' +
+      'relieved on stock movement create',
     defSlug: 'stock-movements',
     on: 'created',
     // ORDER MATTERS — explode child movements BEFORE recalculating the parent's QoH.
+    // The two line roll-ups (received / relieved) are independent of each other and
+    // of QoH, so their relative order does not matter.
     actions: [
       { type: 'native', handler: EXPLODE_BOM_MOVEMENT },
       { type: 'native', handler: RECALC_PART_QOH },
       { type: 'native', handler: RECALC_PO_LINE_RECEIVED },
+      { type: 'native', handler: RECALC_FULFILLMENT_LINE_RELIEVED },
     ],
   },
   {
     key: 'mfg-stock-movements-deleted',
-    name: 'Recalculate QoH and PO line qty received on stock movement delete',
+    name:
+      'Recalculate QoH, PO line qty received and fulfillment line qty relieved on stock ' +
+      'movement delete',
     defSlug: 'stock-movements',
     on: 'deleted',
     actions: [
       { type: 'native', handler: RECALC_PART_QOH },
       { type: 'native', handler: RECALC_PO_LINE_RECEIVED },
+      { type: 'native', handler: RECALC_FULFILLMENT_LINE_RELIEVED },
     ],
   },
   {

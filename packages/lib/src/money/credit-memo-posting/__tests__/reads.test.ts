@@ -21,6 +21,13 @@ const h = vi.hoisted(() => ({
   missingFields: [] as string[],
   gateways: [] as Array<{ handles: string[]; clearingGlAccountId: string }>,
   listPaymentGatewayCalls: 0,
+  /**
+   * `orderId -> fulfillment fixtures`, served by the mocked
+   * `readFulfillmentsForOrders` (brief 55 §6: `order_fulfillments` is now a
+   * relationship, read through that module rather than off a `FieldValue`
+   * this file's own `db.select()` stub can serve).
+   */
+  fulfillmentsByOrder: {} as Record<string, unknown[]>,
 }))
 
 vi.mock('../../../cache', () => ({
@@ -35,6 +42,22 @@ vi.mock('../../../cache', () => ({
         ),
     }),
   }),
+}))
+
+// `readOrderFacts` reads shipment facts through this module now, never off an
+// `order_fulfillments` `FieldValue` (that field is the has_many INVERSE and
+// carries no rows of its own to select). Fixtures live in `h.fulfillmentsByOrder`.
+vi.mock('../../fulfillments/reads', () => ({
+  readFulfillmentsForOrders: async (
+    _db: unknown,
+    params: { organizationId: string; orderIds: readonly string[] }
+  ) => {
+    const map = new Map<string, unknown[]>()
+    for (const orderId of params.orderIds) {
+      map.set(orderId, h.fulfillmentsByOrder[orderId] ?? [])
+    }
+    return map
+  },
 }))
 
 vi.mock('../../../postings/post-entry', () => ({ LEDGER_CURRENCY: 'USD' }))
@@ -129,7 +152,15 @@ interface MemoSpec {
 interface OrderSpec {
   id: string
   currency?: string | null
+  /** Dates of LIVE (non-cancelled) fulfillments. */
   shippedAt?: string[]
+  /**
+   * Dates of CANCELLED fulfillments - must never contribute to `firstShippedAt`.
+   * The record form keeps a cancelled dispatch as a row (unlike the JSON log
+   * it replaces, which never held one); `readOrderFacts` has to filter it out
+   * itself via `isLiveFulfillment`.
+   */
+  cancelledShippedAt?: string[]
   gateways?: string[]
 }
 
@@ -167,19 +198,29 @@ function memoValues(spec: MemoSpec): unknown[] {
   ]
 }
 
-function orderValues(spec: OrderSpec): unknown[] {
+function orderCurrencyValue(spec: OrderSpec): unknown {
+  return value(spec.id, 'order_currency', { valueText: spec.currency ?? 'USD' })
+}
+
+/** One fixture `fulfillment` record, in the shape `readOrderFacts` reads. */
+function fulfillmentFixture(orderId: string, shippedAt: string, status: string): unknown {
+  return {
+    id: `ff_${orderId}_${shippedAt}_${status}`,
+    orderId,
+    sequence: 1,
+    shippedAt,
+    status,
+    cancelledAt: null,
+    lines: [],
+  }
+}
+
+function fulfillmentsFor(spec: OrderSpec): unknown[] {
   return [
-    value(spec.id, 'order_currency', { valueText: spec.currency ?? 'USD' }),
-    value(spec.id, 'order_fulfillments', {
-      valueJson: {
-        v: {
-          fulfillments: (spec.shippedAt ?? []).map((shippedAt, index) => ({
-            sequence: index + 1,
-            shippedAt,
-          })),
-        },
-      },
-    }),
+    ...(spec.shippedAt ?? []).map((shippedAt) => fulfillmentFixture(spec.id, shippedAt, 'success')),
+    ...(spec.cancelledShippedAt ?? []).map((shippedAt) =>
+      fulfillmentFixture(spec.id, shippedAt, 'cancelled')
+    ),
   ]
 }
 
@@ -188,8 +229,9 @@ function queue(memos: MemoSpec[], orders: OrderSpec[] = [{ id: 'ord_1', shippedA
   h.selects = [
     memos.map((memo) => ({ creditMemoId: memo.id })),
     memos.flatMap(memoValues),
-    orders.flatMap(orderValues),
+    orders.map(orderCurrencyValue),
   ]
+  h.fulfillmentsByOrder = Object.fromEntries(orders.map((spec) => [spec.id, fulfillmentsFor(spec)]))
 }
 
 const RANGE = { from: '2026-01-01', to: '2026-02-01' }
@@ -202,6 +244,7 @@ beforeEach(() => {
   h.missingFields = []
   h.gateways = []
   h.listPaymentGatewayCalls = 0
+  h.fulfillmentsByOrder = {}
 })
 
 describe('the netting read', () => {
@@ -417,6 +460,51 @@ describe('reverseRevenue', () => {
     )._unsafeUnwrap()
 
     expect(memos[0]?.reverseRevenue).toBe(true)
+  })
+
+  // 🛑 The decision this module has to make that the JSON log never had to: a
+  // CANCELLED fulfillment is a real record now, not an absence. A cancelled
+  // dispatch never shipped, so it must not be read as evidence that revenue
+  // was ever recognised - exactly what the JSON log's own connector enforced
+  // by never writing a cancelled entry into the log in the first place.
+  it('ignores a CANCELLED fulfillment even when it is the only one on the order', async () => {
+    queue(
+      [{ id: 'cm_1', number: 'CM-0001', issuedAt: '2026-01-14' }],
+      [{ id: 'ord_1', cancelledShippedAt: ['2026-01-02'] }]
+    )
+
+    const memos = (
+      await readUnpostedCreditMemos(stubDb(), {
+        organizationId: ORG,
+        range: RANGE,
+      })
+    )._unsafeUnwrap()
+
+    expect(memos[0]?.reverseRevenue).toBe(false)
+  })
+
+  it('takes the earliest LIVE shipment, skipping an earlier CANCELLED one', async () => {
+    queue(
+      [{ id: 'cm_1', number: 'CM-0001', issuedAt: '2026-01-14' }],
+      [
+        {
+          id: 'ord_1',
+          shippedAt: ['2026-01-20'],
+          cancelledShippedAt: ['2026-01-02'],
+        },
+      ]
+    )
+
+    const memos = (
+      await readUnpostedCreditMemos(stubDb(), {
+        organizationId: ORG,
+        range: RANGE,
+      })
+    )._unsafeUnwrap()
+
+    // The cancelled 01-02 dispatch is earlier than the issue date, but only the
+    // live 01-20 dispatch counts, and it is AFTER the issue date.
+    expect(memos[0]?.reverseRevenue).toBe(false)
   })
 })
 

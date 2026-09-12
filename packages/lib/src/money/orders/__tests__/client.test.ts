@@ -1,33 +1,63 @@
 // packages/lib/src/money/orders/__tests__/client.test.ts
 //
-// The pure half of the shipment log. Everything here is a total function of its
-// arguments, which is what makes "how much of this line is still to ship"
-// testable without a fixture - and that question is the whole reason the log
-// exists, because getting it wrong recognises the same revenue twice in an
-// entry that balances.
+// The pure half of order fulfillment. Everything here is a total function of
+// its arguments, which is what makes "how much of this line is still to ship"
+// testable without a fixture - and that question is the whole reason these
+// functions exist, because getting it wrong recognises the same revenue twice
+// in an entry that balances.
 
 import { describe, expect, it } from 'vitest'
+import { toRecordId } from '../../../resources/resource-id'
+import type { Fulfillment } from '../../fulfillments/client'
 import {
   fulfillmentStatusFor,
   nextFulfillmentSequence,
-  type OrderFulfillment,
   type OrderLineRemaining,
   shippedByLine,
   shippedSubtotalMinor,
   shippingStillOwed,
 } from '../client'
 
-function shipment(overrides: Partial<OrderFulfillment> = {}): OrderFulfillment {
+function shipment(overrides: Partial<Fulfillment> = {}): Fulfillment {
   return {
+    id: 'ful_1',
+    recordId: toRecordId('fulfillment', 'ful_1'),
+    orderId: 'order_1',
     sequence: 1,
-    shippedAt: '2026-09-04',
-    lines: [{ lineId: 'l1', quantity: 2 }],
+    shippedAt: '2026-09-04T12:00:00.000Z',
+    status: 'success',
+    cancelledAt: null,
+    name: 'ORD-0012-F1',
+    trackingNumber: null,
+    trackingCompany: null,
+    trackingUrl: null,
+    lines: [
+      {
+        id: 'ful_line_1',
+        recordId: toRecordId('fulfillment_line', 'ful_line_1'),
+        lineItemId: 'l1',
+        quantity: 2,
+        quantityRelieved: null,
+      },
+    ],
+    subtotalMinor: 0,
     totalMinor: 20_000,
     shippingRecognised: false,
-    glPostingId: 'gp_1',
+    glPosting: 'gp_1',
     docNumber: 'AUXX-FUL-ORD0012F1',
     recordedAt: '2026-09-04T00:00:00.000Z',
     ...overrides,
+  }
+}
+
+/** One line of a fulfillment, without the `Fulfillment` boilerplate around it. */
+function fulfillmentLine(lineItemId: string, quantity: number): Fulfillment['lines'][number] {
+  return {
+    id: `ful_line_${lineItemId}`,
+    recordId: toRecordId('fulfillment_line', `ful_line_${lineItemId}`),
+    lineItemId,
+    quantity,
+    quantityRelieved: null,
   }
 }
 
@@ -46,25 +76,17 @@ function line(overrides: Partial<OrderLineRemaining> = {}): OrderLineRemaining {
 }
 
 describe('shippedSubtotalMinor', () => {
-  it('is zero for an empty log, which is the first shipment', () => {
+  it('is zero for an order that has shipped nothing, which is the first shipment', () => {
     expect(shippedSubtotalMinor([])).toBe(0)
   })
 
   it('sums what earlier shipments recognised, before tax and shipping', () => {
-    const log = [
+    const fulfillments = [
       shipment({ sequence: 1, subtotalMinor: 10_000, totalMinor: 11_000 }),
       shipment({ sequence: 2, subtotalMinor: 5_000, totalMinor: 5_500 }),
     ]
     // The TOTALS carry tax; the allocation basis must not.
-    expect(shippedSubtotalMinor(log)).toBe(15_000)
-  })
-
-  it('counts a row written before the field existed as zero, never as its total', () => {
-    // A legacy row contributes nothing rather than having a subtotal invented
-    // for it out of a total that includes tax it never allocated.
-    const legacy = shipment({ sequence: 1, totalMinor: 11_000 })
-    expect(legacy.subtotalMinor).toBeUndefined()
-    expect(shippedSubtotalMinor([legacy])).toBe(0)
+    expect(shippedSubtotalMinor(fulfillments)).toBe(15_000)
   })
 
   it('is what makes three equal shipments allocate the whole tax', () => {
@@ -77,12 +99,12 @@ describe('shippedSubtotalMinor', () => {
     // being asserted is that the parts SUM to the whole, not that any
     // particular shipment carries the odd cent.
     const allocateThrough = (through: number) => Math.round((100 * through) / 300)
-    const log: OrderFulfillment[] = []
+    const fulfillments: Fulfillment[] = []
     const perShipment: number[] = []
     for (let index = 0; index < 3; index++) {
-      const prior = shippedSubtotalMinor(log)
+      const prior = shippedSubtotalMinor(fulfillments)
       perShipment.push(allocateThrough(prior + 100) - allocateThrough(prior))
-      log.push(shipment({ sequence: index + 1, subtotalMinor: 100, totalMinor: 100 }))
+      fulfillments.push(shipment({ sequence: index + 1, subtotalMinor: 100, totalMinor: 100 }))
     }
     expect(perShipment).toEqual([33, 34, 33])
     expect(perShipment.reduce((sum, value) => sum + value, 0)).toBe(100)
@@ -90,16 +112,10 @@ describe('shippedSubtotalMinor', () => {
 })
 
 describe('shippedByLine', () => {
-  it('sums a line across every shipment', () => {
+  it('sums a line across every fulfillment', () => {
     const shipped = shippedByLine([
-      shipment({ sequence: 1, lines: [{ lineId: 'l1', quantity: 2 }] }),
-      shipment({
-        sequence: 2,
-        lines: [
-          { lineId: 'l1', quantity: 1 },
-          { lineId: 'l2', quantity: 5 },
-        ],
-      }),
+      shipment({ sequence: 1, lines: [fulfillmentLine('l1', 2)] }),
+      shipment({ sequence: 2, lines: [fulfillmentLine('l1', 1), fulfillmentLine('l2', 5)] }),
     ])
     expect(shipped.get('l1')).toBe(3)
     expect(shipped.get('l2')).toBe(5)
@@ -117,30 +133,30 @@ describe('nextFulfillmentSequence', () => {
   })
 
   it('takes max + 1, not length + 1', () => {
-    // The claim's unique index is on `(org, type, periodKey, revision)`. If a
-    // removed entry let a later shipment reuse a sequence already in the ledger,
-    // the claim would converge it to `already_posted` - a SUCCESS - and the
-    // shipment would recognise nothing.
+    // A reversal story that ever removes a fulfillment must not hand a later
+    // shipment a sequence already in the ledger - the claim's unique index
+    // would converge it to `already_posted`, a SUCCESS, and the shipment would
+    // recognise nothing.
     expect(nextFulfillmentSequence([shipment({ sequence: 1 }), shipment({ sequence: 4 })])).toBe(5)
   })
 })
 
 describe('shippingStillOwed', () => {
-  it('is true until a shipment has actually recognised it', () => {
+  it('is true until a fulfillment has actually recognised it', () => {
     expect(shippingStillOwed([])).toBe(true)
     expect(shippingStillOwed([shipment({ shippingRecognised: false })])).toBe(true)
   })
 
-  it('is false once a POSTED shipment carried it', () => {
+  it('is false once a POSTED fulfillment carried it', () => {
     expect(shippingStillOwed([shipment({ shippingRecognised: true })])).toBe(false)
   })
 
-  it('is still true when the shipment that carried it was never posted', () => {
-    // A refused post rolls the shipment back with `glPostingId: null`, so it did
-    // not recognise the shipping and the next one must.
-    expect(shippingStillOwed([shipment({ shippingRecognised: true, glPostingId: null })])).toBe(
-      true
-    )
+  it('is still true when the fulfillment that carried it was never posted', () => {
+    // A refused post is rolled back by deleting the record outright
+    // (`money/orders/fulfill.ts`'s rollback), but a fulfillment that was
+    // SUBSEQUENTLY reversed still carries `shippingRecognised: true` with
+    // `glPosting: null` - either way, shipping was not actually recognised.
+    expect(shippingStillOwed([shipment({ shippingRecognised: true, glPosting: null })])).toBe(true)
   })
 })
 
