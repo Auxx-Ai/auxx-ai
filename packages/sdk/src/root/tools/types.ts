@@ -149,6 +149,28 @@ export interface ToolActionContext {
  * inverse into EXISTING orgs, so these are not union entries that no org
  * resolves. Nothing WRITES to either yet - the ShipStation connector comes
  * next - but the defs resolve, which is what `provisionAppField` needs.
+ *
+ * `fulfillment` and `fulfillment_line` were ADDED 2026-09-11
+ * (plans/money/tasks/55-shipment-lines.md §3, §5). They follow `credit_memo_line`
+ * and `tax_line`'s precedent exactly: both are `isVisible: false`, they render
+ * inside their parent order, and they are admitted PRECISELY so a channel
+ * connector can address them. The Shopify connector holds every
+ * `(fulfillment.id, created_at, line_item_id, quantity)` tuple and today
+ * collapses them to a per-line min/max date and a sum; these two kinds are what
+ * let it stop doing that.
+ *
+ * `fulfillment_line` also repeats `tax_line`'s synthetic-key situation for the
+ * same reason: the REST `fulfillment.line_items[]` rows ship no id of their
+ * own, so identity is `${fulfillmentId}:${lineItemId}` - both halves real
+ * Shopify ids, which is a stronger key than the tax line's
+ * `${orderId}:${title}`.
+ *
+ * They satisfy the standing condition: entity migration `153` seeds both defs,
+ * their fields, and the retyped `order_fulfillments` inverse into EXISTING
+ * orgs, so these are not union entries that no org resolves. ⚠️ Note `153`
+ * DROPS the JSON `order_fulfillments` field and recreates it as a has_many to
+ * `fulfillment` - the attribute keeps its name and changes type, which is an
+ * owner decision recorded in 55's header, not an accident.
  */
 export type EntityRefKind =
   | 'contact'
@@ -172,6 +194,8 @@ export type EntityRefKind =
   | 'tax_line'
   | 'shipment'
   | 'parcel'
+  | 'fulfillment'
+  | 'fulfillment_line'
 
 /**
  * Per-tool configuration. See plans/kopilot/apps/README.md §4.2.
