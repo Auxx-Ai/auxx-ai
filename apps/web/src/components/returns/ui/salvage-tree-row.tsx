@@ -19,6 +19,8 @@
 // `TreeRowButton` is valid inside either.
 
 import { FieldType } from '@auxx/database/enums'
+import type { SalvageNode, SalvageStatus } from '@auxx/lib/returns/client'
+import type { SelectOptionColor } from '@auxx/types/custom-field'
 import { Badge } from '@auxx/ui/components/badge'
 import { Spinner } from '@auxx/ui/components/spinner'
 import { GridTreeRow, TreeRowButton } from '@auxx/ui/components/tree-row'
@@ -33,12 +35,35 @@ import {
   MIN_SPLITTABLE_QUANTITY,
   type SalvageTreeState,
 } from '../hooks/use-salvage-tree'
-import {
-  SALVAGE_STATUS_OPTIONS,
-  type SalvageNode,
-  type SalvageStatus,
-  toSalvageStatus,
-} from '../types'
+
+/**
+ * The five conditions, in the order the warehouse works through them, shaped as
+ * `FieldOptions['options']` so `FieldInputAdapter` renders the same coloured
+ * badge select every other enum in the product gets.
+ *
+ * The VOCABULARY is `@auxx/lib/returns/client`'s (`SalvageStatus`); only the
+ * label and the colour are presentation, which is why they live here with their
+ * one consumer rather than in a shared types module. The annotation is what
+ * catches a status added upstream and not given a colour here.
+ */
+const SALVAGE_STATUS_OPTIONS: Array<{
+  value: SalvageStatus
+  label: string
+  color: SelectOptionColor
+}> = [
+  { value: 'undecided', label: 'Undecided', color: 'gray' },
+  { value: 'good', label: 'Good', color: 'green' },
+  { value: 'damaged', label: 'Damaged', color: 'amber' },
+  { value: 'scrap', label: 'Scrap', color: 'red' },
+  { value: 'missing', label: 'Missing', color: 'orange' },
+]
+
+/** Narrow the select's unknown value back to a {@link SalvageStatus}. */
+function toSalvageStatus(value: unknown): SalvageStatus | null {
+  return SALVAGE_STATUS_OPTIONS.some((option) => option.value === value)
+    ? (value as SalvageStatus)
+    : null
+}
 
 /**
  * Shared `grid-template-columns` for the header and every row, at every depth

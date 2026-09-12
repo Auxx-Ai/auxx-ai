@@ -15,9 +15,9 @@
 // owns no copy of the data, so a refetch that changes quantities or statuses
 // cannot go stale against it.
 
+import type { SalvageNode } from '@auxx/lib/returns/client'
 import { toastError } from '@auxx/ui/components/toast'
 import { useCallback, useMemo, useState } from 'react'
-import type { SalvageNode } from '../types'
 
 /** A row can only be split when it has more than one unit to divide. */
 export const MIN_SPLITTABLE_QUANTITY = 2

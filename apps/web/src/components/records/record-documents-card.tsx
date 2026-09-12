@@ -26,10 +26,11 @@ import type { ResourceField } from '@auxx/lib/resources/client'
 import { parseRecordId, type RecordId } from '@auxx/lib/resources/client'
 import { type FileRef, getFileRefDownloadUrl, parseFileRef } from '@auxx/types/file-ref'
 import { Button } from '@auxx/ui/components/button'
+import { toastError } from '@auxx/ui/components/toast'
 import { TreeRow, TreeRowEmpty } from '@auxx/ui/components/tree-row'
 import { TreeRowList } from '@auxx/ui/components/tree-row-list'
 import { formatBytes } from '@auxx/utils/file'
-import { Download, Lock, Paperclip, Plus, Trash2 } from 'lucide-react'
+import { Download, FileText, Lock, Paperclip, Plus, Trash2 } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { AttachmentPreview } from '~/components/attachments/attachment-preview'
 import { parseFileOptions } from '~/components/custom-fields/ui/file-options-editor'
@@ -42,6 +43,7 @@ import { Tooltip } from '~/components/global/tooltip'
 import { useResourceFields } from '~/components/resources'
 import { useSystemValues } from '~/components/resources/hooks/use-system-values'
 import { useAccess } from '~/providers/capabilities-provider'
+import { api } from '~/trpc/react'
 
 interface DocumentRow {
   /** `FieldValue.id` — what `removeFile` takes. */
@@ -79,11 +81,22 @@ function RecordDocumentsCard({
   primaryAttribute,
   attachmentsAttribute,
   emptyDescription,
+  primaryAction,
 }: DrawerTabProps & {
   primaryAttribute: string
   attachmentsAttribute: string
   /** One line under the empty state saying what belongs here. */
   emptyDescription: string
+  /**
+   * An action that PRODUCES the primary slot, for a generated document the user
+   * asks for rather than one that appears as a side effect.
+   *
+   * A PO's PDF is minted by sending the order, so that card needs nothing here.
+   * A return's evidence pack is not: somebody decides to fight a chargeback and
+   * assembles it. Rendered beside Add, so it is reachable whether or not any
+   * file exists yet.
+   */
+  primaryAction?: React.ReactNode
 }) {
   const { entityDefinitionId } = parseRecordId(recordId)
   const { fields, isLoading } = useResourceFields(entityDefinitionId)
@@ -198,11 +211,14 @@ function RecordDocumentsCard({
 
   return (
     <>
-      {addTargetField && (
+      {(addTargetField || primaryAction) && (
         <DrawerCardActions>
-          <Button variant='ghost' size='xs' onClick={addTarget.openNativeFilePicker}>
-            <Plus /> Add
-          </Button>
+          {primaryAction}
+          {addTargetField && (
+            <Button variant='ghost' size='xs' onClick={addTarget.openNativeFilePicker}>
+              <Plus /> Add
+            </Button>
+          )}
         </DrawerCardActions>
       )}
 
@@ -390,6 +406,39 @@ export function ReturnDocumentsCard(props: DrawerTabProps) {
       primaryAttribute='return_evidence_pack_asset'
       attachmentsAttribute='return_photos'
       emptyDescription='Photograph the shipping label, the pallet and the packaging.'
+      primaryAction={<GenerateEvidencePackButton recordId={props.recordId} />}
     />
+  )
+}
+
+/**
+ * Assemble the chargeback pack (plans/money/tasks/54-returns.md section 7).
+ *
+ * Deliberately re-runnable: a return accumulates evidence for weeks - the
+ * pallet arrives, then the inspection, then the memo - so the pack is generated
+ * whenever somebody needs the current one, not once. The content hash makes an
+ * unchanged return a cache hit and a changed one versions the same asset, so
+ * pressing this twice costs nothing and leaves one file.
+ */
+function GenerateEvidencePackButton({ recordId }: { recordId: RecordId }) {
+  const utils = api.useUtils()
+  const generate = api.return.generateEvidencePack.useMutation({
+    onSuccess: () => {
+      void utils.record.invalidate()
+    },
+    onError: (error) => {
+      toastError({ title: 'Error generating evidence pack', description: error.message })
+    },
+  })
+
+  return (
+    <Button
+      variant='ghost'
+      size='xs'
+      loading={generate.isPending}
+      loadingText='Generating...'
+      onClick={() => generate.mutate({ returnRecordId: recordId })}>
+      <FileText /> Evidence pack
+    </Button>
   )
 }

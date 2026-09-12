@@ -425,8 +425,9 @@ describe('document-type registry', () => {
 
   it('gives every registered type a distinct pointer field', () => {
     const pointers = listDocumentTypes().map((d) => d.pointerAttr)
-    // `bank_deposit_pdf_asset` joined in slot 1D (the deposit slip) and
-    // `credit_memo_pdf_asset` in accounting/10 §6.3. The exact list is the
+    // `bank_deposit_pdf_asset` joined in slot 1D (the deposit slip),
+    // `credit_memo_pdf_asset` in accounting/10 §6.3 and
+    // `return_evidence_pack_asset` in money/54 §7. The exact list is the
     // point: a new type that reuses another's pointer would make every render
     // of one republish over the other's cached MediaAsset.
     expect(pointers).toEqual([
@@ -435,6 +436,7 @@ describe('document-type registry', () => {
       'purchase_order_pdf_asset',
       'bank_deposit_pdf_asset',
       'credit_memo_pdf_asset',
+      'return_evidence_pack_asset',
     ])
     expect(new Set(pointers).size).toBe(pointers.length)
   })

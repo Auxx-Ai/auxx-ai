@@ -1420,6 +1420,12 @@
       "import": "./dist/returns/index.mjs",
       "default": "./src/returns/index.ts"
     },
+    "./returns/client": {
+      "types": "./src/returns/client.ts",
+      "source": "./src/returns/client.ts",
+      "import": "./dist/returns/client.mjs",
+      "default": "./src/returns/client.ts"
+    },
     "./seed": {
       "types": "./src/seed/index.ts",
       "source": "./src/seed/index.ts",

@@ -5,8 +5,8 @@
 // affordance, not a wrong number — which is why they are tested apart from the
 // React they are used in.
 
+import type { SalvageNode } from '@auxx/lib/returns/client'
 import { describe, expect, it } from 'vitest'
-import type { SalvageNode } from '../types'
 import { canSplitNode, decidedDescendantCount, MIN_SPLITTABLE_QUANTITY } from './use-salvage-tree'
 
 function node(partial: Partial<SalvageNode> & Pick<SalvageNode, 'key'>): SalvageNode {

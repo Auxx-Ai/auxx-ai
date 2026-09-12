@@ -42,6 +42,12 @@ export type SignalRecordKind =
   // A credit memo is sent to the customer the way an invoice is, so
   // `recordDocumentSendSignal` links it (plans/accounting/tasks/10-credit-memos.md §6.3).
   | 'credit_memo'
+  // The chargeback evidence pack's document type
+  // (plans/money/tasks/54-returns.md §7). Registered because the shared helper
+  // is `Record<DocumentType, …>`-exhaustive; in practice it never reaches here,
+  // because the pack's send profile refuses at recipient resolution - it is
+  // submitted to a processor, never emailed.
+  | 'return_evidence_pack'
 
 /**
  * Compose an `EntitySignalLink.recordKey` — the one place every writer/reader builds this

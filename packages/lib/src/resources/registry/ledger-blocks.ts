@@ -68,6 +68,15 @@ function ledgerBlock(input: {
   /** System attribute on the target whose value renders as the row's badge. */
   statusAttr: string
   emptyLabel: string
+  /**
+   * Name in `BLOCK_ACTIONS_COMPONENTS` for a section-level action.
+   *
+   * Section-level, NOT per-row: `RecordsBlockConfig` cannot express a per-row
+   * input or selector, and this does not change that. Omitted means a pure-read
+   * section, which is what every ledger block below the contact and company
+   * tabs wants.
+   */
+  actionsComponent?: string
 }): LayoutBlock {
   return {
     id: input.id,
@@ -88,6 +97,7 @@ function ledgerBlock(input: {
       statusAttr: input.statusAttr,
       emptyLabel: input.emptyLabel,
       visibleLimit: LEDGER_VISIBLE_LIMIT,
+      ...(input.actionsComponent ? { actionsComponent: input.actionsComponent } : {}),
     },
   }
 }
@@ -175,5 +185,54 @@ export const CONTACT_BILLING_BLOCKS: LayoutBlock[] = [
     hostFieldId: 'purchase_order:contact',
     statusAttr: 'purchase_order_status',
     emptyLabel: 'No purchase orders',
+  }),
+  // What this customer sent back (plans/money/tasks/54-returns.md section 10,
+  // step 8). Lands on the drawer and the detail page at once, because both
+  // configs read this one list.
+  //
+  // ⚠️ Only IDENTIFIED returns appear here, and that is correct rather than a
+  // gap: `return.contact` is nullable precisely so a pallet that turns up on
+  // the dock with no RMA can be recorded before anyone knows whose it is
+  // (section 3.2). An unidentified return has no contact to hang under. The
+  // queue for those is the saved view on `contact IS NULL`, not this section.
+  ledgerBlock({
+    id: 'contact:returns',
+    label: 'Returns',
+    icon: 'package-x',
+    definition: 'return',
+    hostFieldId: 'return:contact',
+    statusAttr: 'return_status',
+    emptyLabel: 'No returns',
+  }),
+]
+
+/**
+ * Returns on the TICKET drawer (plans/money/tasks/54-returns.md section 4.1).
+ *
+ * 🔑 This is the feature's main creation route, not a read-only list. The
+ * owner's instruction was "we have a button to create a ticket from a thread,
+ * that should be the main route, and from the ticket drawer we create or link a
+ * return, so we don't invent new buttons" - so the section carries an
+ * `actionsComponent`, and `ticket.returns` deliberately stays
+ * `showInPanel: false` rather than becoming a field-panel row.
+ *
+ * 🛑 The product's FIRST consumer of `actionsComponent`. Every other
+ * list-with-an-Add-button today is a bespoke `CardBlock`; the seam was built in
+ * stage 1 and left empty on purpose. It was proved end to end against the real
+ * `RecordListBlock` before this shipped - see
+ * `apps/web/src/components/tickets/ticket-returns-block-seam.test.tsx`, which
+ * pins that the action renders after the `EmptyRow` (the ticket-with-no-return
+ * case, which is the one that matters).
+ */
+export const TICKET_RETURNS_BLOCKS: LayoutBlock[] = [
+  ledgerBlock({
+    id: 'ticket:returns',
+    label: 'Returns',
+    icon: 'package-x',
+    definition: 'return',
+    hostFieldId: 'return:ticket',
+    statusAttr: 'return_status',
+    emptyLabel: 'No returns',
+    actionsComponent: 'ticket-returns',
   }),
 ]

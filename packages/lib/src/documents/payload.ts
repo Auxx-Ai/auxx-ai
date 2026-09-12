@@ -22,6 +22,7 @@ import type { DiscountType } from '../money/types'
 import type { LineItemUnit } from '../money/units'
 import { listChartAccounts } from '../postings/role-map'
 import { UnifiedCrudHandler } from '../resources/crud'
+import type { ReturnEvidencePackPdfPayload } from '../returns/evidence-pack-payload'
 import type { ResolvedDocumentSettings } from './resolve-settings'
 import { resolveDocumentSettings } from './resolve-settings'
 
@@ -294,6 +295,12 @@ export type DocumentPdfPayload =
   | PurchaseOrderPdfPayload
   | BankDepositPdfPayload
   | CreditMemoPdfPayload
+  // The chargeback evidence pack (plans/money/tasks/54-returns.md §7). Declared
+  // in `returns/` rather than here because it is assembly over the returns
+  // module's own reads, not a money document; the import is TYPE-ONLY, so the
+  // apparent cycle (returns/evidence-pack-payload imports `loadPdfContact` from
+  // this file) is erased at compile time and nothing circular exists at runtime.
+  | ReturnEvidencePackPdfPayload
 
 /** Unwrap a `getFieldValues()` map entry — takes the first value if array-returned. */
 function firstTyped(
