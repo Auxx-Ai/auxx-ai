@@ -49,6 +49,7 @@ import {
   RETURN_LINE_LIABILITIES,
   RETURN_ORIGINS,
   RETURN_STATUSES,
+  readReturnableLinesForOrder,
   readReturnableQuantity,
   readSalvageTree,
   readUnlinkedCreditMemosForOrder,
@@ -92,6 +93,8 @@ const returnFields = {
   origin: z.enum(RETURN_ORIGINS).nullable().optional(),
   /** TAGS, so several are legitimate: wrong item AND damaged is a real answer. */
   reasons: z.array(z.string().min(1)).max(20).nullable().optional(),
+  /** The customer's own words, verbatim, beside the normalized reason tags. */
+  customerNote: z.string().max(5000).nullable().optional(),
   /** 🛑 Nullable on purpose: a dock pallet has no known sender yet (§3.2). */
   contactId: z.string().min(1).nullable().optional(),
   orderId: z.string().min(1).nullable().optional(),
@@ -113,8 +116,6 @@ const returnFields = {
 /** The evidence anchor's own fields. Inspection findings are fields here, not a child record. */
 const returnLineFields = {
   lineItemId: z.string().min(1).nullable().optional(),
-  customerReason: z.string().max(2000).nullable().optional(),
-  customerNote: z.string().max(5000).nullable().optional(),
   conditionGrade: z.enum(RETURN_LINE_CONDITION_GRADES).nullable().optional(),
   liability: z.enum(RETURN_LINE_LIABILITIES).nullable().optional(),
   inspectionNotes: z.string().max(10_000).nullable().optional(),
@@ -576,6 +577,31 @@ export const returnRouter = createTRPCRouter({
    *
    * Empty when the return names no order, which is the dock case.
    */
+  /**
+   * The order's sold lines with what shipped, what already came back across
+   * every return, and what is left - the ledger the "Add from order" sheet
+   * prints per line (plans/money/tasks/56-return-lines-on-the-line-grid.md
+   * section 4.6).
+   *
+   * Same read surface as `returnableQuantity`, so the same gate. A line whose
+   * `ceilingSource` is `unknown` carries `ceiling: null` and stays addable; the
+   * surface must never render that as zero.
+   */
+  returnableLines: capabilityProcedure
+    .input(z.object({ orderRecordId: recordIdSchema }))
+    .query(async ({ ctx, input }) => {
+      const { organizationId } = ctx.session
+      ctx.capabilities.assertViewEntity(await requireDefId(organizationId, 'return_line'))
+
+      const result = await readReturnableLinesForOrder(
+        ctx.db,
+        organizationId,
+        parseRecordId(input.orderRecordId).entityInstanceId
+      )
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
   unlinkedCreditMemos: capabilityProcedure
     .input(z.object({ orderRecordId: recordIdSchema }))
     .query(async ({ ctx, input }) => {

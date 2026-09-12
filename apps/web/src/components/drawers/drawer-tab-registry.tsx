@@ -342,12 +342,27 @@ export const DRAWER_TAB_CARD_COMPONENTS: Record<
     })),
   // The BOM teardown checklist: what came back, and which of it is worth
   // putting on the shelf again. A CardBlock, not a RecordsBlock - it needs a
+  // What physically came back: the return's lines, on the shared line grid
+  // (plans/money/tasks/56-return-lines-on-the-line-grid.md section 4). First
+  // on the tab because the salvage tree hangs off one of these rows.
+  'return:lines': () =>
+    import('../returns/ui/return-lines-card').then((m) => ({
+      default: m.ReturnLinesCard,
+    })),
   // per-row number input, a status selector, a split button and lazy child
   // expansion, none of which `RecordsBlockConfig` can express
   // (plans/money/tasks/54-returns.md section 6.6).
   'return:salvage': () =>
     import('../returns/ui/return-salvage-container').then((m) => ({
       default: m.ReturnSalvageContainer,
+    })),
+  // The money that went back out, and what was kept. Also the only surface for
+  // `goodsValue` / `creditedAmount` / `withheldAmount`, which are
+  // `showInPanel: false` because three money rows earn less than one sentence
+  // saying what was withheld (plans/money/tasks/54-returns.md section 5.2).
+  'return:credit-memos': () =>
+    import('../returns/ui/return-credit-memos-card').then((m) => ({
+      default: m.ReturnCreditMemosCard,
     })),
   // The evidence pack (generated, read-only) plus the dock's label photos.
   'return:documents': () =>

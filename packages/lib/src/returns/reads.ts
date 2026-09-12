@@ -69,6 +69,8 @@ export interface ReturnRecord {
   origin: ReturnOrigin | null
   /** TAGS: a return may legitimately carry two reasons (wrong item AND damaged). */
   reasons: string[]
+  /** The customer's own words, verbatim, beside the normalized {@link reasons} tags. */
+  customerNote: string | null
   contactId: string | null
   orderId: string | null
   ticketId: string | null
@@ -107,8 +109,6 @@ export interface ReturnLineRecord {
   lineItemId: string | null
   partId: string | null
   quantity: number | null
-  customerReason: string | null
-  customerNote: string | null
   conditionGrade: ReturnLineConditionGrade | null
   liability: ReturnLineLiability | null
   inspectionNotes: string | null
@@ -1005,6 +1005,7 @@ async function hydrateReturns(
         .all('return_reason')
         .map((value) => value.optionId)
         .filter((optionId): optionId is string => optionId != null),
+      customerNote: read.one('return_customer_note')?.valueText ?? null,
       contactId,
       orderId: read.one('return_order')?.relatedEntityId ?? null,
       ticketId: read.one('return_ticket')?.relatedEntityId ?? null,
@@ -1098,8 +1099,6 @@ async function hydrateReturnLines(
       lineItemId: read.one('return_line_line_item')?.relatedEntityId ?? null,
       partId: read.one('return_line_part')?.relatedEntityId ?? null,
       quantity: read.one('return_line_quantity')?.valueNumber ?? null,
-      customerReason: read.one('return_line_customer_reason')?.valueText ?? null,
-      customerNote: read.one('return_line_customer_note')?.valueText ?? null,
       conditionGrade:
         (read.one('return_line_condition_grade')?.optionId as
           | ReturnLineConditionGrade

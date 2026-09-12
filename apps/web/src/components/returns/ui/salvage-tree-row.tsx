@@ -58,10 +58,19 @@ const SALVAGE_STATUS_OPTIONS: Array<{
   { value: 'missing', label: 'Missing', color: 'orange' },
 ]
 
-/** Narrow the select's unknown value back to a {@link SalvageStatus}. */
-function toSalvageStatus(value: unknown): SalvageStatus | null {
-  return SALVAGE_STATUS_OPTIONS.some((option) => option.value === value)
-    ? (value as SalvageStatus)
+/**
+ * Narrow the select's value back to a {@link SalvageStatus}.
+ *
+ * The select emits `string[]` even for a single select (`SelectFieldInput`'s
+ * `handleChange` hands the picker's array straight through, and
+ * `FieldInputAdapter` does not unwrap it), so the first element is the answer.
+ * Comparing the array itself to an option value never matched, which left the
+ * condition selector on this tree writing nothing at all (money/tasks/56 §10).
+ */
+export function toSalvageStatus(value: unknown): SalvageStatus | null {
+  const candidate = Array.isArray(value) ? value[0] : value
+  return SALVAGE_STATUS_OPTIONS.some((option) => option.value === candidate)
+    ? (candidate as SalvageStatus)
     : null
 }
 

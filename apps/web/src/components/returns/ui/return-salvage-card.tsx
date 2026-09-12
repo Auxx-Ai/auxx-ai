@@ -33,6 +33,7 @@ import type { SalvageNode, SalvageStatus } from '@auxx/lib/returns/client'
 import { EmptySection } from '@auxx/ui/components/section'
 import { Wrench } from 'lucide-react'
 import { useCallback } from 'react'
+import { LineGridFrame } from '~/components/line-grid/ui/line-grid-frame'
 import { useConfirm } from '~/hooks/use-confirm'
 import { decidedDescendantCount, useSalvageTree } from '../hooks/use-salvage-tree'
 import { SALVAGE_COLS, SalvageTreeRow } from './salvage-tree-row'
@@ -71,6 +72,9 @@ export interface ReturnSalvageCardProps {
   /** No write access, or a return past the point of being edited. */
   readOnly?: boolean
 }
+
+/** The frame's `onAddRow`, which the tree never reaches: nothing here is tagged for nav. */
+function noop() {}
 
 /**
  * A multi-level condition checklist over a returned lift's bill of materials.
@@ -147,21 +151,28 @@ export function ReturnSalvageCard({
 
   return (
     <div className='space-y-2'>
-      {/* Header and rows share ONE bordered frame (the `line-builder.tsx` shape)
-          so the grid reads as a single table rather than a stack of loose rows.
-          The header uses the same `SALVAGE_COLS` template and the same `gap-x-2`
-          as the rows — never a second copy of either, which is how a header
-          drifts off its columns. */}
-      <div className='rounded-lg border border-primary-200/50 dark:border-[#1e2227]'>
-        <div
-          className='grid gap-x-2 rounded-t-lg border-primary-200/50 border-b bg-primary-50 px-1 py-2 text-muted-foreground text-sm dark:border-[#1e2227] dark:bg-background'
-          style={{ gridTemplateColumns: SALVAGE_COLS }}>
-          <div className='truncate pl-2'>Component</div>
-          <div className='px-2 text-right'>Qty</div>
-          <div className='px-2'>Condition</div>
-          <div />
-        </div>
-
+      {/* The kit's frame (money/tasks/56 section 3.3): header and rows share one
+          bordered box over ONE column template. This card used to hand-copy
+          the builder's frame classes, which is the copy 56 exists to stop.
+          The tree rows carry no `data-line-*` tags, so the frame's spreadsheet
+          nav is inert here and `onAddRow` never fires; the tree has no "add a
+          row" concept, a node is materialized by deciding it. */}
+      <LineGridFrame
+        cols={SALVAGE_COLS}
+        // `gap-x-2` matches `GridTreeRow`'s gap in `salvage-tree-row.tsx`:
+        // the header uses the same template and the same gap as the rows,
+        // never a second copy of either, which is how a header drifts off.
+        headerClassName='gap-x-2'
+        header={[
+          { label: 'Component' },
+          { label: 'Qty', align: 'end' },
+          { label: 'Condition' },
+          { label: '' },
+        ]}
+        rowCount={nodes.length}
+        colCount={0}
+        onAddRow={noop}
+        readOnly={readOnly}>
         {/* `py-1` and never `p-1`: `GridTreeRow` carries its own `px-1`, and a
             second horizontal inset here would shift every row's flexible first
             column off the header's. */}
@@ -179,7 +190,7 @@ export function ReturnSalvageCard({
             />
           ))}
         </div>
-      </div>
+      </LineGridFrame>
 
       {/* The absence rule, said out loud. A row nobody touches never becomes a
           `return_part_line`, and the salvage writer only ever sees real rows. */}

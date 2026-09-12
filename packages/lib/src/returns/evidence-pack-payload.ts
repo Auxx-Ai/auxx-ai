@@ -146,8 +146,11 @@ export interface EvidencePackCreditMemo {
 }
 
 /**
- * One returned line - sections 3 and 4 together, because the customer's words
- * and our findings only mean anything side by side.
+ * One returned line - section 4, our findings.
+ *
+ * The customer's own words moved to the return header (plan 56 §5: one email
+ * or call covers the whole return, not one line of it), so this carries only
+ * the inspector's verdict.
  *
  * Named `lines` on the payload because `documents/render.ts` resolves photo
  * refs off `payload.lines[].photos` for every document type; this is that
@@ -159,17 +162,12 @@ export interface EvidencePackLine {
   name: string
   /** Units returned. */
   quantity: number | null
-  /** Section 3, verbatim. */
-  customerReason: string | null
-  customerNote: string | null
   /** Section 4. */
   conditionGrade: string | null
   liability: string | null
   inspectionNotes: string | null
   /** ISO instant. */
   inspectedAt: string | null
-  /** Why section 3 is empty on this line, or null when the customer said something. */
-  customerWordsNote: string | null
   /** Why section 4 is empty on this line, or null when it has been inspected. */
   inspectionNote: string | null
   /** Photo capture timestamps, ISO, aligned index-for-index with `photos`. */
@@ -197,6 +195,10 @@ export interface ReturnEvidencePackPdfPayload {
   status: string | null
   origin: string | null
   reasons: string[]
+  /** Section 3, verbatim - the customer's own words, once for the whole return. */
+  customerNote: string | null
+  /** Why section 3 is empty, or null when the customer said something. */
+  customerWordsNote: string | null
   contact: QuotePdfContact
   /** 🛑 Derived from `contact IS NULL`, never from a status value (section 3.2). */
   identified: boolean
@@ -268,6 +270,9 @@ export function assembleReturnEvidencePack(input: {
     status: humanize(record.status),
     origin: humanize(record.origin),
     reasons: record.reasons.map((reason) => humanize(reason) ?? reason),
+    customerNote: record.customerNote,
+    customerWordsNote:
+      record.reasons.length === 0 && record.customerNote === null ? NO_CUSTOMER_WORDS : null,
     contact,
     identified: !record.unidentified,
     senderNameRaw: record.senderNameRaw,
@@ -322,6 +327,8 @@ const NO_MESSAGES = 'The linked ticket carries no messages.'
 const NO_LINES =
   'No returned lines have been recorded against this return, so no condition, liability or ' +
   'inspection finding is asserted here.'
+// Return-level, rendered once (plan 56 §5): the customer's words are no
+// longer per-line, so their absence is no longer a per-line statement either.
 const NO_CUSTOMER_WORDS = 'The customer gave no reason or note that was recorded.'
 const NO_INSPECTION = 'This line has not been inspected. No condition or liability is asserted.'
 const NO_MONEY =
@@ -424,14 +431,10 @@ function buildLineSections(sources: ReturnEvidencePackSources): EvidencePackLine
       returnLineId: line.returnLineId,
       name: lineName(sources, line.partId, line.lineItemId),
       quantity: line.quantity,
-      customerReason: line.customerReason,
-      customerNote: line.customerNote,
       conditionGrade: humanize(line.conditionGrade),
       liability: humanize(line.liability),
       inspectionNotes: line.inspectionNotes,
       inspectedAt: line.inspectedAt ? line.inspectedAt.toISOString() : null,
-      customerWordsNote:
-        line.customerReason === null && line.customerNote === null ? NO_CUSTOMER_WORDS : null,
       inspectionNote: inspected ? null : NO_INSPECTION,
       photoCapturedAt: photos.map((photo) => photo.capturedAt.toISOString()),
       photos: photos.map(toPhotoRef),

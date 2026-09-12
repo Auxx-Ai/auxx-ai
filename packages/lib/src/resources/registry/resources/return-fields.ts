@@ -270,6 +270,39 @@ export const RETURN_FIELDS: Record<string, ResourceField> = {
   },
 
   /**
+   * The customer's own words, verbatim, beside the normalized {@link reason}
+   * tags. Lives HERE rather than on `return_line` (by owner decision,
+   * plans/money/tasks/56-return-lines-on-the-line-grid.md §5): one email or
+   * call covers the whole return, not one line of it, and a customer does not
+   * narrate per sold line.
+   */
+  customerNote: {
+    id: toFieldId('customerNote'),
+    key: 'customerNote',
+    label: 'Customer Note',
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemAttribute: 'return_customer_note',
+    // Interstitial between reason ('a4') and contact ('a5'): both are taken.
+    systemSortOrder: 'a4a',
+    showInPanel: true,
+    nullable: true,
+    options: { multiline: true, rows: 3 },
+    capabilities: {
+      filterable: false,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    placeholder: "The customer's own words",
+    description:
+      "The customer's own words about the return, verbatim - one email or call covers the " +
+      'whole return, not one line of it',
+  },
+
+  /**
    * 🛑 NULLABLE, and that is LOAD-BEARING (§3.2).
    *
    * Every other document in this system requires a party: `credit_memo.contact`

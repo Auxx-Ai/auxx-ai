@@ -10,10 +10,13 @@
 // `DynamicView` embed this used to be. Row/cell markup lives in `line-rows.tsx`;
 // this file owns state, data fetching, and mutations.
 //
-// Keyboard: the rows sit in a container wired to `useLineNav` — spreadsheet-style
+// Keyboard: the rows sit in a container wired to `useLineNav` (spreadsheet-style
 // focus movement across name → qty → rate, where Enter / ArrowDown / Tab
-// past the last row spawns a fresh draft (`addLine`). The name cell is free-text;
-// `/` on an empty cell opens the catalog picker.
+// past the last row spawns a fresh draft via `addLine`) and the post-swap
+// focus-restore effect - both now owned by the document-agnostic
+// `~/components/line-grid` kit's `LineGridFrame`, which this file renders
+// rather than wiring up itself (money/tasks/56 §3.3). The name cell is
+// free-text; `/` on an empty cell opens the catalog picker.
 //
 // Data flow:
 // - `LineBuilder` preloads the displayed line-id × field matrix once through
@@ -88,7 +91,8 @@ import {
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import { arrayMove, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { Plus, ReceiptText } from 'lucide-react'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { LineGridFrame } from '~/components/line-grid/ui/line-grid-frame'
 import type { CatalogGroup } from '~/components/money/hooks/use-catalog-groups'
 import { useCatalogGroups } from '~/components/money/hooks/use-catalog-groups'
 import { useCatalogItems } from '~/components/money/hooks/use-catalog-items'
@@ -138,7 +142,6 @@ import {
 } from './line-values'
 import { TotalsFooter } from './totals-footer'
 import { useLineHotkeys } from './use-line-hotkeys'
-import { useLineNav } from './use-line-nav'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props / shared types
@@ -328,25 +331,13 @@ export function LineBuilder({
   // hiding drafts the user explicitly added later.
   const seededInitialDraftsRef = useRef(false)
   const initialDraftIdsRef = useRef<Set<string>>(new Set())
-  /** Rows container — the keydown listener {@link useLineNav} attaches to. */
+  /**
+   * Rows container - the keydown listener `useLineNav` attaches to (inside
+   * `LineGridFrame`, which owns the nav call and the post-swap focus-restore
+   * effect now - see money/tasks/56 §3.3). Shared with `useLineHotkeys` below
+   * so both listen on the same element.
+   */
   const rowsContainerRef = useRef<HTMLDivElement>(null)
-  // Last focused line cell (row/col + caret). Committing a draft fires a
-  // `record.create` whose completion swaps `DraftLineRow` → `LineRow`, replacing
-  // the row's input elements and dropping focus to `<body>`. We snapshot the
-  // focused cell here and restore it after that swap so keyboard flow survives
-  // materialization (otherwise the next Tab escapes the grid entirely).
-  const focusedCellRef = useRef<{ row: number; col: number; caret: number | null } | null>(null)
-
-  const rememberFocusedCell = useCallback(() => {
-    const el = document.activeElement as HTMLInputElement | HTMLTextAreaElement | null
-    const cell = el?.closest?.('[data-line-row][data-line-col]') as HTMLElement | null
-    if (!cell || !rowsContainerRef.current?.contains(cell)) return
-    focusedCellRef.current = {
-      row: Number(cell.dataset.lineRow),
-      col: Number(cell.dataset.lineCol),
-      caret: typeof el?.selectionStart === 'number' ? el.selectionStart : null,
-    }
-  }, [])
   // Ref-guarded (not state-derived) so a synchronous double-commit can never
   // race two `record.create` calls for the same draft before React re-renders.
   const creatingDraftIdsRef = useRef<Set<string>>(new Set())
@@ -1200,19 +1191,6 @@ export function LineBuilder({
     [entityDefinitionId, docRecordId, reorderMutate, refresh]
   )
 
-  // Spreadsheet keyboard nav across the rows container (name → qty → rate);
-  // Enter / ArrowDown / Tab past the last row calls `addLine` to spawn a draft.
-  useLineNav({
-    containerRef: rowsContainerRef,
-    rowCount: displayRecords.length + visibleDrafts.length,
-    // 4 where the amount cell is an INPUT (`stored`, or the purchase order's
-    // `derived-editable`) - otherwise nav would land on a column with nothing
-    // focusable in it. `LineGridRow`'s `totalNavigable` tags the cell to match.
-    colCount: schema.amountMode === 'stored' || schema.amountMode === 'derived-editable' ? 4 : 3,
-    onAddRow: addLine,
-    readOnly,
-  })
-
   // Row-action shortcuts (description / category / optional / taxable / delete)
   // on the same container — resolved to whichever row holds focus.
   useLineHotkeys({
@@ -1221,38 +1199,14 @@ export function LineBuilder({
     readOnly,
   })
 
-  // Restore focus after a draft→real swap: when materialization detaches the
-  // focused input, the browser parks focus on `<body>`. Only then (never when the
-  // user intentionally clicked elsewhere) do we re-focus the same cell index.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: re-run on any row-set change (records/drafts)
-  useLayoutEffect(() => {
-    const target = focusedCellRef.current
-    if (!target || document.activeElement !== document.body) return
-    const totalRows = displayRecords.length + visibleDrafts.length
-    if (totalRows === 0) return
-    // Deleting the bottom row leaves the remembered index past the end — clamp
-    // it so focus lands on the row above instead of dropping out of the grid.
-    const row = Math.min(target.row, totalRows - 1)
-    const sel = `[data-line-row="${row}"][data-line-col="${target.col}"]`
-    // The name cell rests as a `[data-cell-focusable]` text button (no <input>
-    // until focused), so match that too — otherwise focus is lost after a
-    // draft→real swap on the name column.
-    const input = rowsContainerRef.current?.querySelector(
-      `${sel} input, ${sel} textarea, ${sel} [data-cell-focusable]`
-    ) as HTMLElement | null
-    if (!input) return
-    input.focus()
-    if (target.caret != null && 'setSelectionRange' in input) {
-      try {
-        ;(input as HTMLInputElement).setSelectionRange(target.caret, target.caret)
-      } catch {
-        // Non-text inputs reject setSelectionRange — focus alone is enough.
-      }
-    }
-  }, [records, drafts])
-
   if (!entityDefinitionId) return null
 
+  const rowCount = displayRecords.length + visibleDrafts.length
+  // 4 where the amount cell is an INPUT (`stored`, or the purchase order's
+  // `derived-editable`) - otherwise nav would land on a column with nothing
+  // focusable in it. `LineGridRow`'s `totalNavigable` tags the cell to match.
+  const colCount =
+    schema.amountMode === 'stored' || schema.amountMode === 'derived-editable' ? 4 : 3
   const isEmpty =
     !isLoading && !isLoadingRecords && displayRecords.length === 0 && visibleDrafts.length === 0
 
@@ -1268,17 +1222,13 @@ export function LineBuilder({
       {/* Header + rows share one bordered box, so the grid reads as a single
           framed table. Totals sit outside the frame, below. The `data-slot` lets a
           parent (e.g. `TuckedSection`) override the frame's radius/border/ring. */}
-      <div
-        data-slot='line-builder-frame'
-        className='rounded-lg border border-primary-200/50 dark:border-[#1e2227]'>
-        {/* Header — same grid template as the rows, so the labels sit over their columns.
-            The grip lives in the gutter now, so Description starts flush (pl-2). */}
-        <div
-          className='sticky top-0 z-10 grid rounded-t-lg border-primary-200/50 border-b bg-primary-50 px-1 py-2 text-muted-foreground text-sm dark:border-[#1e2227] dark:bg-background'
-          style={{ gridTemplateColumns: LINE_COLS }}>
-          <div className='flex items-center gap-1 pl-2'>
-            {schema.primaryColumnLabel}
-            {!readOnly && (
+      <LineGridFrame
+        containerRef={rowsContainerRef}
+        cols={LINE_COLS}
+        header={[
+          {
+            label: schema.primaryColumnLabel,
+            addButton: !readOnly && (
               <SimpleTooltip content='Add line item' side='right'>
                 <Button
                   variant='ghost'
@@ -1289,96 +1239,90 @@ export function LineBuilder({
                   <Plus className='size-3' />
                 </Button>
               </SimpleTooltip>
+            ),
+          },
+          { label: 'Qty', align: 'end' },
+          { label: 'Rate', align: 'end' },
+          { label: 'Total', align: 'end' },
+        ]}
+        rowCount={rowCount}
+        colCount={colCount}
+        onAddRow={addLine}
+        readOnly={readOnly}
+        showEmpty={isEmpty && readOnly}
+        empty={
+          <EmptySection
+            className='border-transparent ring-0'
+            icon={<ReceiptText className='size-5' />}
+            title='No line items'
+          />
+        }>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+          modifiers={[restrictToVerticalAxis]}>
+          <SortableContext
+            items={displayIdsRef.current}
+            strategy={verticalListSortingStrategy}
+            disabled={readOnly}>
+            {/* Interleaved real rows + phantom drafts (`visualRows`): anchored
+                bundle drafts render directly under their picked row, tail
+                drafts after every real row. Drafts are never drag-sortable —
+                only real record ids are in the SortableContext. */}
+            {visualRows.map((row) =>
+              row.kind === 'record' ? (
+                <LineRow
+                  key={row.record.id}
+                  record={row.record}
+                  rowIndex={row.rowIndex}
+                  entityDefinitionId={entityDefinitionId}
+                  categoryOptions={categoryOptions}
+                  photosField={photosField}
+                  readOnly={readOnly}
+                  currencyCode={currencyCode}
+                  documentType={documentType}
+                  catalogItems={catalogItems}
+                  catalogGroups={catalogGroups}
+                  catalogItemMap={catalogItemMap}
+                  catalogLoading={catalogLoading}
+                  matchScopeRecordId={matchScopeRecordId}
+                  renderMatchKeyEditor={renderMatchKeyEditor}
+                  weightRevealed={weightRevealed}
+                  resolvePartPrefill={boundResolvePartPrefill}
+                  onRevealWeight={revealWeight}
+                  onUpdateLine={updateLine}
+                  deleteLine={deleteLine}
+                  onSelectGroup={handleGroupPick}
+                />
+              ) : (
+                <DraftLineRow
+                  key={row.draft.draftId}
+                  draft={row.draft}
+                  rowIndex={row.rowIndex}
+                  autoFocus={row.draft.draftId === lastAddedDraftId}
+                  categoryOptions={categoryOptions}
+                  currencyCode={currencyCode}
+                  documentType={documentType}
+                  catalogItems={catalogItems}
+                  catalogGroups={catalogGroups}
+                  catalogItemMap={catalogItemMap}
+                  catalogLoading={catalogLoading}
+                  matchScopeRecordId={matchScopeRecordId}
+                  renderMatchKeyEditor={renderMatchKeyEditor}
+                  weightRevealed={weightRevealed}
+                  resolvePartPrefill={boundResolvePartPrefill}
+                  onRevealWeight={revealWeight}
+                  deleteDraft={deleteDraft}
+                  createDraft={createDraft}
+                  applyPrefillPatch={applyPrefillPatch}
+                  onSelectGroup={handleGroupPickDraft}
+                />
+              )
             )}
-          </div>
-          <div className='px-2 text-right'>Qty</div>
-          <div className='px-2 text-right'>Rate</div>
-          <div className='px-2 text-right'>Total</div>
-        </div>
-
-        {/* Rows container — the keydown listener for spreadsheet nav lives here, so
-            real rows and phantom drafts share one continuous focus index space.
-            The capture handlers keep `focusedCellRef` fresh for post-swap restore. */}
-        <div
-          ref={rowsContainerRef}
-          onFocusCapture={rememberFocusedCell}
-          onKeyUpCapture={rememberFocusedCell}
-          onPointerUpCapture={rememberFocusedCell}>
-          {isEmpty && readOnly ? (
-            <EmptySection
-              className='border-transparent ring-0'
-              icon={<ReceiptText className='size-5' />}
-              title='No line items'
-            />
-          ) : (
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragEnd={handleDragEnd}
-              modifiers={[restrictToVerticalAxis]}>
-              <SortableContext
-                items={displayIdsRef.current}
-                strategy={verticalListSortingStrategy}
-                disabled={readOnly}>
-                {/* Interleaved real rows + phantom drafts (`visualRows`): anchored
-                    bundle drafts render directly under their picked row, tail
-                    drafts after every real row. Drafts are never drag-sortable —
-                    only real record ids are in the SortableContext. */}
-                {visualRows.map((row) =>
-                  row.kind === 'record' ? (
-                    <LineRow
-                      key={row.record.id}
-                      record={row.record}
-                      rowIndex={row.rowIndex}
-                      entityDefinitionId={entityDefinitionId}
-                      categoryOptions={categoryOptions}
-                      photosField={photosField}
-                      readOnly={readOnly}
-                      currencyCode={currencyCode}
-                      documentType={documentType}
-                      catalogItems={catalogItems}
-                      catalogGroups={catalogGroups}
-                      catalogItemMap={catalogItemMap}
-                      catalogLoading={catalogLoading}
-                      matchScopeRecordId={matchScopeRecordId}
-                      renderMatchKeyEditor={renderMatchKeyEditor}
-                      weightRevealed={weightRevealed}
-                      resolvePartPrefill={boundResolvePartPrefill}
-                      onRevealWeight={revealWeight}
-                      onUpdateLine={updateLine}
-                      deleteLine={deleteLine}
-                      onSelectGroup={handleGroupPick}
-                    />
-                  ) : (
-                    <DraftLineRow
-                      key={row.draft.draftId}
-                      draft={row.draft}
-                      rowIndex={row.rowIndex}
-                      autoFocus={row.draft.draftId === lastAddedDraftId}
-                      categoryOptions={categoryOptions}
-                      currencyCode={currencyCode}
-                      documentType={documentType}
-                      catalogItems={catalogItems}
-                      catalogGroups={catalogGroups}
-                      catalogItemMap={catalogItemMap}
-                      catalogLoading={catalogLoading}
-                      matchScopeRecordId={matchScopeRecordId}
-                      renderMatchKeyEditor={renderMatchKeyEditor}
-                      weightRevealed={weightRevealed}
-                      resolvePartPrefill={boundResolvePartPrefill}
-                      onRevealWeight={revealWeight}
-                      deleteDraft={deleteDraft}
-                      createDraft={createDraft}
-                      applyPrefillPatch={applyPrefillPatch}
-                      onSelectGroup={handleGroupPickDraft}
-                    />
-                  )
-                )}
-              </SortableContext>
-            </DndContext>
-          )}
-        </div>
-      </div>
+          </SortableContext>
+        </DndContext>
+      </LineGridFrame>
 
       <TotalsFooter
         documentType={documentType}

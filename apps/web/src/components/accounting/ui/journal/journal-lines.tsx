@@ -51,8 +51,8 @@ import {
   useChartAccounts,
 } from '~/components/accounting/ui/gl-account-picker'
 import { formatMinor } from '~/components/accounting/ui/ledger/format'
+import { useLineNav } from '~/components/line-grid/hooks/use-line-nav'
 import { CurrencyCellInput } from '~/components/money/ui/line-builder/line-rows'
-import { useLineNav } from '~/components/money/ui/line-builder/use-line-nav'
 import { RecordPicker } from '~/components/pickers/record-picker/record-picker'
 import { useResource } from '~/components/resources'
 import { RecordBadge } from '~/components/resources/ui/record-badge'
@@ -74,12 +74,13 @@ import { RecordBadge } from '~/components/resources/ui/record-badge'
  * So this is a thin, purpose-built grid instead: same LOOK (a trailing phantom
  * draft row that materializes on first keystroke), reusing every piece of
  * `LineBuilder` that has no record assumptions - `useLineNav`'s spreadsheet
- * keyboard nav (`data-line-row`/`data-line-col`) and `CurrencyCellInput`'s
- * chromeless cell (both exported from `line-rows.tsx` for this) - plus a drag
- * grip and a row `⋯` menu in `LineBuilder`'s visual idiom. `LineNameCellView`,
- * `useLineHotkeys` and `LINE_SCHEMAS` are the pieces that stay out: hard-wired
- * to catalog items or a full record schema, and do not fit a plain array with
- * no per-line record.
+ * keyboard nav (`data-line-row`/`data-line-col`, now the document-agnostic
+ * `line-grid` kit's) and `CurrencyCellInput`'s chromeless cell (still exported
+ * from money's `line-rows.tsx`, which is where currency formatting belongs) -
+ * plus a drag grip and a row `⋯` menu in `LineBuilder`'s visual idiom.
+ * `LineNameCellView`, `useLineHotkeys` and `LINE_SCHEMAS` are the pieces that
+ * stay out: hard-wired to catalog items or a full record schema, and do not
+ * fit a plain array with no per-line record.
  */
 
 /** One row as the grid edits it. Debit and credit are mutually exclusive UI slots. */
