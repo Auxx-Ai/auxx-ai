@@ -35,7 +35,7 @@
  * |---|---|---|
  * | 1 | the netting join | one row per unposted memo |
  * | 2 | the memo field pivot | every memo the netting kept |
- * | 3 | the order field pivot (`order_currency`, `order_fulfillments`) | every order those memos name |
+ * | 3 | `order_currency` pivot + `readFulfillmentsForOrders` (4 more, fixed) | every order those memos name |
  *
  * ⚠️ Two per-memo reads the single-memo door makes are deliberately NOT made
  * here. `orderHadFulfillmentBefore` (which decides `reverseRevenue`) is answered
@@ -56,7 +56,8 @@ import { resolvePeriodLock } from '../../postings/period-lock'
 import { LEDGER_CURRENCY } from '../../postings/post-entry'
 import { OPENING_BASELINE_SETTING_KEYS } from '../../postings/setup-readiness'
 import { getOrganizationSetting } from '../../settings/settings-service'
-import { parseFulfillments } from '../orders/reads'
+import { isLiveFulfillment } from '../fulfillments/client'
+import { readFulfillmentsForOrders } from '../fulfillments/reads'
 import { guard } from './guard'
 import { planCreditMemoPosting } from './plan'
 import type {
@@ -88,8 +89,16 @@ const CREDIT_MEMO_ATTRIBUTES = [
   CREDIT_MEMO_GL_POSTING_ATTRIBUTE,
 ] as const
 
-/** Every `order` attribute a memo borrows. */
-const ORDER_ATTRIBUTES = ['order_currency', 'order_fulfillments'] as const
+/**
+ * Every `order` FIELD-VALUE attribute a memo borrows.
+ *
+ * `order_fulfillments` is NOT here: since brief 55 it is the has_many INVERSE
+ * of `fulfillment_order`, and an inverse side carries no `FieldValue` rows of
+ * its own to pivot (`money/fulfillments/reads.ts`'s own docblock). The
+ * shipment facts come from {@link readFulfillmentsForOrders} instead, in the
+ * same fixed number of queries regardless of how many orders are asked for.
+ */
+const ORDER_ATTRIBUTES = ['order_currency'] as const
 
 type CreditMemoAttribute = (typeof CREDIT_MEMO_ATTRIBUTES)[number]
 type OrderAttribute = (typeof ORDER_ATTRIBUTES)[number]
@@ -411,15 +420,23 @@ interface OrderFacts {
 }
 
 /**
- * The order fields for every order the netting read touched, in ONE query.
+ * The order fields for every order the netting read touched, in a FIXED number
+ * of queries regardless of how many orders that is.
  *
- * 🛑 This is `orderHadFulfillmentBefore` made set-based. That function reads one
- * order's `order_fulfillments` cell per call, which is right for the single-memo
- * door and is 1,061 round trips here. `some(shippedDay <= issuedAt)` over a log
- * is `min(shippedDay) <= issuedAt`, so the whole log collapses to one date per
- * order and the comparison moves into {@link resolveReverseRevenue}. The
- * tolerant `parseFulfillments` is shared, so the two readings of the log cannot
- * disagree about what an entry is.
+ * 🛑 This is `orderHadFulfillmentBefore` made set-based. That function reads
+ * one order's fulfillments per call, which is right for the single-memo door
+ * and is 1,061 round trips here. `some(live && shippedDay <= issuedAt)` over a
+ * list of records is `min(shippedDay of the live ones) <= issuedAt`, so the
+ * whole list collapses to one date per order and the comparison moves into
+ * {@link resolveReverseRevenue}. `readFulfillmentsForOrders` and
+ * `isLiveFulfillment` are the same functions the single-memo door uses, so the
+ * two readings cannot disagree about what counts as shipped.
+ *
+ * Cancelled fulfillments are excluded here for the same reason
+ * `orderHadFulfillmentBefore` excludes them: a cancelled dispatch never
+ * shipped, and the JSON log this replaces never carried one either (the
+ * connector used to filter `status !== 'cancelled'` before anything reached
+ * the log).
  */
 async function readOrderFacts(
   db: Database,
@@ -430,13 +447,17 @@ async function readOrderFacts(
   if (orderIds.length === 0) return facts
 
   const fields = await resolveFields(organizationId, ORDER_ATTRIBUTES)
-  const buckets = await selectValues(db, organizationId, orderIds, fieldIdsOf(fields))
+  const [buckets, fulfillmentsByOrder] = await Promise.all([
+    selectValues(db, organizationId, orderIds, fieldIdsOf(fields)),
+    readFulfillmentsForOrders(db, { organizationId, orderIds }),
+  ])
 
   for (const orderId of orderIds) {
     const { cell } = cellReader<OrderAttribute>(fields, buckets.get(orderId))
     let firstShippedAt: string | null = null
-    for (const entry of parseFulfillments(cell('order_fulfillments')?.valueJson)) {
-      const shippedDay = toCalendarDay(entry.shippedAt)
+    for (const fulfillment of fulfillmentsByOrder.get(orderId) ?? []) {
+      if (!isLiveFulfillment(fulfillment)) continue
+      const shippedDay = toCalendarDay(fulfillment.shippedAt)
       if (shippedDay && (firstShippedAt === null || shippedDay < firstShippedAt)) {
         firstShippedAt = shippedDay
       }

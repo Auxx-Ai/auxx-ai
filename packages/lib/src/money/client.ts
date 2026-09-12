@@ -168,16 +168,24 @@ export {
   type UnpostedShipment,
   type UnpostedShipmentLine,
 } from './fulfillment-posting/client'
+// ─── Fulfillment records (entity migration 153, plans/money/tasks/55) ──────
+// The client-safe half only: the record shapes and the pure functions over
+// them - what the order drawer's ledger card and the fulfill dialog read.
+export {
+  defaultFulfillmentName,
+  FULFILLMENT_STATUSES,
+  type Fulfillment,
+  type FulfillmentLine,
+  type FulfillmentStatusValue,
+  isLiveFulfillment,
+} from './fulfillments/client'
 // ─── Order fulfillment (HANDOFF slot 2G) ────────────────────────────────────
-// The client-safe half only: the shipment-log shape and the pure functions over
-// it, which the fulfill dialog reads to prefill remaining quantities.
+// The client-safe half only: the pure functions over an order's shipment
+// history, which the fulfill dialog reads to prefill remaining quantities.
 export {
   fulfillmentStatusFor,
   nextFulfillmentSequence,
   ORDER_FULFILLMENT_SOURCE_TYPE,
-  type OrderFulfillment,
-  type OrderFulfillmentLine,
-  type OrderFulfillmentsEnvelope,
   type OrderLineRemaining,
   shippedByLine,
   shippedSubtotalMinor,

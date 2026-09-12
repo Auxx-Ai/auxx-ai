@@ -1,25 +1,21 @@
 // packages/lib/src/money/orders/__tests__/fulfill.test.ts
 //
-// 🛑 One property carries this file: **`order_fulfillments` is a single JSON
-// cell, so every write of it is a whole-cell replace, and a replace built from a
-// stale copy is a lost update.**
+// `fulfillOrder` after entity migration 153
+// (`plans/money/tasks/55-shipment-lines.md` §6.1): the `fulfillment` record and
+// the status flip are written inside one transaction via
+// `money/fulfillments/writes.ts`'s `createFulfillment`, the entry posts AFTER
+// the transaction commits, and a refused post is undone by DELETING the
+// record and restoring the status - never by patching a JSON cell.
 //
-// That is not a tidiness problem here. `shippedByLine` derives
-// `remainingQuantity` from the log, so a shipment that gets overwritten out of
-// it reads as UNSHIPPED units - and the next fulfillment re-ships them and
-// recognises their revenue a second time, under a NEW sequence, so the posting
-// claim's unique index cannot catch it either. Two entries, both balanced, one
-// order's revenue counted twice.
-//
-// There were three places the pre-read copy was written back: the append, the
-// post-commit stamp, and the rollback. All three are asserted below.
+// `money/fulfillments` is mocked wholesale here: this file is about
+// `fulfillOrder`'s own orchestration (what it creates, what it stamps, what it
+// rolls back and when), not about the record read/write mechanics, which have
+// their own tests under `money/fulfillments/__tests__`.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
   order: {} as Record<string, unknown>,
-  /** One array per awaited `readStoredFulfillments`, consumed in order. */
-  storedReads: [] as unknown[][],
   postResult: { status: 'posted', glPostingId: 'glp_1', docNumber: 'AUXX-FUL-ORD0012F1' } as {
     status: string
     glPostingId?: string
@@ -27,10 +23,21 @@ const h = vi.hoisted(() => ({
     error?: string
   },
   updated: [] as Array<{ recordId: string; values: Record<string, unknown> }>,
-  locks: 0,
+  created: [] as Array<Record<string, unknown>>,
+  createResult: {
+    fulfillmentInstanceId: 'ful_1',
+    recordId: 'fulfillment:ful_1',
+    lineInstanceIds: ['fl_1'],
+  },
+  deleted: [] as Array<{ fulfillmentInstanceId: string }>,
+  stamped: [] as Array<{ fulfillmentInstanceId: string; patch: Record<string, unknown> }>,
+  isAccountingEnabled: vi.fn(async () => true),
   /** What `buildFulfillmentEntry` was handed, so the per-line tax is assertable. */
   built: [] as Array<{ shippedLines: Array<{ lineId: string; taxMinor?: number }> }>,
-  isAccountingEnabled: vi.fn(async () => true),
+  /** Every `relieveFulfillmentLines` call this run made (50 §1.4). */
+  relieved: [] as Array<{ organizationId: string; userId: string; lines: unknown[] }>,
+  /** Overridable per test - defaults to a clean run that wrote nothing skipped. */
+  reliefResult: null as unknown,
 }))
 
 vi.mock('../../../postings/accounting-enabled', () => ({
@@ -41,15 +48,30 @@ vi.mock('../reads', async () => {
   const actual = await vi.importActual<typeof import('../reads')>('../reads')
   const { ok } = await import('neverthrow')
   return {
-    // The tolerant parser stays REAL: the point of these tests is that the
-    // module re-reads and re-parses what is stored, not that it trusts a stub.
-    parseFulfillments: actual.parseFulfillments,
-    requireOrderFieldContext: async () => ({
-      orderDefId: 'def_order',
-      order: { order_fulfillments: { id: 'fld_fulfillments' } },
-      line: {},
-    }),
+    ...actual,
     readOrderForFulfillment: async () => ok(h.order),
+  }
+})
+
+vi.mock('../../fulfillments', async () => {
+  const actual = await vi.importActual<typeof import('../../fulfillments')>('../../fulfillments')
+  return {
+    // Pure and unmocked: it is what turns `order.number` into the `name` the
+    // create call carries, and the naming convention is worth asserting on.
+    defaultFulfillmentName: actual.defaultFulfillmentName,
+    createFulfillment: async (_db: unknown, input: Record<string, unknown>) => {
+      h.created.push(input)
+      return h.createResult
+    },
+    deleteFulfillment: async (_db: unknown, params: { fulfillmentInstanceId: string }) => {
+      h.deleted.push(params)
+    },
+    stampFulfillmentPosting: async (
+      _db: unknown,
+      params: { fulfillmentInstanceId: string; patch: Record<string, unknown> }
+    ) => {
+      h.stamped.push({ fulfillmentInstanceId: params.fulfillmentInstanceId, patch: params.patch })
+    },
   }
 })
 
@@ -71,9 +93,14 @@ vi.mock('../../../postings/build-fulfillment-entry', async (importOriginal) => {
           txnDate: '2026-09-03',
           lines: [],
         },
-        totalMinor: 50_00,
-        shippingMinor: 0,
+        periodKey: 'ORD0012F1',
         revenueRole: 'revenue_dtc',
+        channelDimension: 'dtc',
+        subtotalMinor: 50_00,
+        taxMinor: 0,
+        shippingMinor: 0,
+        totalMinor: 50_00,
+        taxBasis: 'allocated',
       }
     },
   }
@@ -89,6 +116,28 @@ vi.mock('../../../postings/period-lock', () => ({
   resolvePeriodLock: async () => ({ lockedThroughMonth: null }),
 }))
 
+vi.mock('../../../relief', async () => {
+  const { ok } = await import('neverthrow')
+  return {
+    relieveFulfillmentLines: async (
+      _db: unknown,
+      params: { organizationId: string; userId: string; lines: unknown[] }
+    ) => {
+      h.relieved.push(params)
+      if (h.reliefResult) return h.reliefResult
+      return ok({
+        movementIds: [],
+        affectedPartIds: [],
+        skippedNoPart: 0,
+        skippedZeroDelta: 0,
+        skippedNoCost: 0,
+        fallbackStandardCostPartIds: [],
+        negativeQoHPartIds: [],
+      })
+    },
+  }
+})
+
 vi.mock('../../../resources/crud/unified-handler', () => ({
   UnifiedCrudHandler: class {
     async update(recordId: string, values: Record<string, unknown>) {
@@ -98,64 +147,16 @@ vi.mock('../../../resources/crud/unified-handler', () => ({
 }))
 
 import type { Database } from '@auxx/database'
-import type { OrderFulfillment } from '../client'
 import { fulfillOrder } from '../fulfill'
 
 const ORG = 'org_1'
 const USER = 'user_1'
 
-/** One stored shipment, in the shape the JSON column actually holds. */
-function shipment(overrides: Partial<OrderFulfillment> = {}): OrderFulfillment {
-  return {
-    sequence: 1,
-    shippedAt: '2026-09-01',
-    lines: [{ lineId: 'li_1', quantity: 2 }],
-    totalMinor: 20_00,
-    shippingRecognised: false,
-    glPostingId: 'glp_old',
-    docNumber: 'AUXX-FUL-ORD0012F1',
-    recordedAt: '2026-09-01T00:00:00.000Z',
-    ...overrides,
-  }
-}
-
-/** What one `readStoredFulfillments` query resolves to. */
-function stored(fulfillments: OrderFulfillment[]) {
-  return [{ valueJson: { fulfillments } }]
-}
-
-/**
- * `db.transaction` plus a chain whose `.for('update')` stands in for the row
- * lock and whose awaited form serves the next queued stored-log read.
- */
+/** `db.transaction` runs the body against an opaque handle - nothing in it is inspected directly. */
 function stubDb(): Database {
-  let index = 0
-  const chain = (): Record<string, unknown> => {
-    const self: Record<string, unknown> = {}
-    for (const method of ['from', 'where', 'limit']) self[method] = () => self
-    self.for = () => {
-      h.locks += 1
-      return Promise.resolve([])
-    }
-    // biome-ignore lint/suspicious/noThenProperty: chainable drizzle query-builder stub
-    self.then = (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) =>
-      Promise.resolve(h.storedReads[index++] ?? []).then(resolve, reject)
-    return self
-  }
-  const handle = { select: () => chain() }
   return {
-    ...handle,
-    transaction: async (fn: (tx: unknown) => unknown) => fn(handle),
+    transaction: async (fn: (tx: unknown) => unknown) => fn({}),
   } as unknown as Database
-}
-
-/** The last `order_fulfillments` array written, unwrapped from its envelope. */
-function lastLog(): OrderFulfillment[] {
-  const writes = h.updated.filter((write) => 'order_fulfillments' in write.values)
-  const envelope = writes.at(-1)?.values.order_fulfillments as
-    | { fulfillments: OrderFulfillment[] }
-    | undefined
-  return envelope?.fulfillments ?? []
 }
 
 const input = {
@@ -193,173 +194,214 @@ beforeEach(() => {
     nextSequence: 1,
     shippingOwed: true,
   }
-  h.storedReads = []
   h.postResult = { status: 'posted', glPostingId: 'glp_1', docNumber: 'AUXX-FUL-ORD0012F1' }
   h.updated = []
-  h.locks = 0
+  h.created = []
+  h.deleted = []
+  h.stamped = []
   h.built = []
+  h.relieved = []
+  h.reliefResult = null
   h.isAccountingEnabled.mockResolvedValue(true)
 })
 
-describe('the append re-reads the stored log under a lock', () => {
-  it('takes the row lock before it reads', async () => {
-    h.storedReads = [stored([]), stored([shipment({ sequence: 1, glPostingId: null })])]
-    await fulfillOrder(stubDb(), input)
-    expect(h.locks).toBeGreaterThan(0)
-  })
-
-  // 🛑 The compare-and-set. The entry has ALREADY been built against
-  // `nextSequence`, and its document number is keyed on it, so a log that moved
-  // makes this whole attempt stale: appending anyway would claim a period key
-  // another shipment already holds, and `already_posted` is a SUCCESS status -
-  // this shipment would silently recognise nothing.
-  it('refuses when another shipment landed while this one was being prepared', async () => {
-    h.storedReads = [stored([shipment({ sequence: 1 })])]
-
-    const result = await fulfillOrder(stubDb(), input)
-
-    expect(result.isErr()).toBe(true)
-    expect(result._unsafeUnwrapErr().message).toMatch(/another shipment was recorded/i)
-    expect(h.updated).toHaveLength(0)
-  })
-
-  it('appends to the STORED log, not to the copy the pre-read returned', async () => {
-    // The pre-read said the log was empty; by the time the transaction opens it
-    // is not. The CAS above is what catches the sequence case; this asserts the
-    // write itself is built from `stored`.
-    h.storedReads = [stored([]), stored([shipment({ sequence: 1, glPostingId: null })])]
-    await fulfillOrder(stubDb(), input)
-
-    const firstWrite = h.updated[0]?.values.order_fulfillments as {
-      fulfillments: OrderFulfillment[]
-    }
-    expect(firstWrite.fulfillments.map((row) => row.sequence)).toEqual([1])
-  })
-})
-
-describe('the post-commit stamp replaces one row rather than rebuilding the log', () => {
-  it('keeps a shipment that landed between the commit and the stamp', async () => {
-    h.storedReads = [
-      // the append's read: still empty
-      stored([]),
-      // the stamp's read: our row, plus one that landed in between
-      stored([
-        shipment({ sequence: 1, glPostingId: null, docNumber: null }),
-        shipment({ sequence: 2, glPostingId: 'glp_2' }),
-      ]),
-    ]
-
-    const result = await fulfillOrder(stubDb(), input)
-    expect(result.isOk()).toBe(true)
-
-    const log = lastLog()
-    // 🛑 Two rows. Rebuilding from the pre-read copy would have written one, and
-    // the dropped shipment's units would read as unshipped - re-shipped and
-    // re-recognised by the next fulfillment.
-    expect(log.map((row) => row.sequence)).toEqual([1, 2])
-    expect(log.find((row) => row.sequence === 1)?.glPostingId).toBe('glp_1')
-    expect(log.find((row) => row.sequence === 2)?.glPostingId).toBe('glp_2')
-  })
-})
-
-describe('the rollback removes THIS shipment, not everything since the pre-read', () => {
-  it('drops only the refused sequence and restores the status', async () => {
-    h.postResult = { status: 'period_closed', error: 'August is closed.' }
-    h.storedReads = [
-      stored([]),
-      // the rollback's read
-      stored([
-        shipment({ sequence: 1, glPostingId: null, docNumber: null }),
-        shipment({ sequence: 2, glPostingId: 'glp_2' }),
-      ]),
-    ]
-
-    const result = await fulfillOrder(stubDb(), input)
-    expect(result._unsafeUnwrap().post.status).toBe('period_closed')
-
-    const log = lastLog()
-    expect(log.map((row) => row.sequence)).toEqual([2])
-    expect(h.updated.at(-1)?.values.order_fulfillment_status).toBe('unfulfilled')
-  })
-})
-
-// 48 §4.2's payoff: the order's lines now carry `line_item_tax_total`, so the
-// single-order builder's per-line tax branch is reachable at all. It is
-// all-or-nothing by design - one line with no tax sends the WHOLE entry back to
-// allocating the order's total - which is why the two cases below are what
-// matters rather than the arithmetic.
-// task 17 section 3: an org that has never turned accounting on is a
-// first-class silent case, exactly like `not_connected` - the shipment must
-// stand, and the ledger-only builder (which resolves a revenue role and
-// refuses a foreign currency) must never run for it.
-describe('accounting not enabled', () => {
-  beforeEach(() => {
-    h.isAccountingEnabled.mockResolvedValue(false)
-  })
-
-  it('records the shipment, does not roll it back, and reports not_enabled', async () => {
-    h.storedReads = [stored([]), stored([shipment({ sequence: 1, glPostingId: null })])]
-
+describe('fulfillOrder', () => {
+  it('creates the fulfillment record and its lines inside one transaction', async () => {
     const result = await fulfillOrder(stubDb(), input)
 
     expect(result.isOk()).toBe(true)
-    const value = result._unsafeUnwrap()
-    expect(value.post).toEqual({ status: 'not_enabled' })
-    expect(value.fulfillmentStatus).not.toBe('unfulfilled')
-
-    const log = lastLog()
-    expect(log).toHaveLength(1)
-    expect(log[0]?.glPostingId).toBeNull()
-    expect(log[0]?.docNumber).toBeNull()
+    expect(h.created).toHaveLength(1)
+    const create = h.created[0]!
+    expect(create.orderInstanceId).toBe('ord_1')
+    expect(create.sequence).toBe(1)
+    expect(create.status).toBe('success')
+    // The synthesised display name - never absent (registry field's "not optional" rule).
+    expect(create.name).toBe('ORD-0012-F1')
+    expect(create.lines).toEqual([{ lineItemInstanceId: 'li_1', quantity: 3 }])
   })
 
-  it('never calls the ledger entry builder', async () => {
-    h.storedReads = [stored([]), stored([shipment({ sequence: 1, glPostingId: null })])]
-
+  it('flips order_fulfillment_status in the SAME transaction as the create', async () => {
     await fulfillOrder(stubDb(), input)
 
-    expect(h.built).toHaveLength(0)
+    const statusWrite = h.updated.find((write) => 'order_fulfillment_status' in write.values)
+    expect(statusWrite).toBeDefined()
+    // 5 ordered, 3 shipped - partial, not fulfilled.
+    expect(statusWrite?.values.order_fulfillment_status).toBe('partial')
   })
 
-  it('still computes real amounts for the shipment log, via the shared arithmetic', async () => {
-    h.storedReads = [stored([]), stored([shipment({ sequence: 1, glPostingId: null })])]
-
+  it('stamps the posting onto the record it produced, after the commit', async () => {
     await fulfillOrder(stubDb(), input)
 
-    // 3 units of a 10_00 line, per `input.shippedLines` - the APPEND write,
-    // which carries the amounts this attempt computed (the stamp that follows
-    // only patches `glPostingId`/`docNumber` onto the stored row).
-    const appended = h.updated[0]?.values.order_fulfillments as {
-      fulfillments: OrderFulfillment[]
-    }
-    expect(appended.fulfillments[0]?.totalMinor).toBe(30_00)
-  })
-})
-
-describe('the per-line tax reaches the builder', () => {
-  it('passes a full-line shipment its whole stored tax', async () => {
-    ;(h.order.lines as Array<Record<string, unknown>>)[0]!.lineTaxMinor = 875
-    await fulfillOrder(stubDb(), { ...input, shippedLines: [{ lineId: 'li_1', quantity: 5 }] })
-
-    expect(h.built[0]?.shippedLines[0]?.taxMinor).toBe(875)
+    expect(h.stamped).toEqual([
+      {
+        fulfillmentInstanceId: 'ful_1',
+        patch: { glPosting: 'glp_1', docNumber: 'AUXX-FUL-ORD0012F1' },
+      },
+    ])
   })
 
-  // Pro rata on units, rounded - the same formula `computeShipmentAmounts` uses
-  // in the bulk path, so the two doors cannot disagree about one line's tax.
-  it('scales a partial-line shipment pro rata on units', async () => {
-    ;(h.order.lines as Array<Record<string, unknown>>)[0]!.lineTaxMinor = 875
-    await fulfillOrder(stubDb(), { ...input, shippedLines: [{ lineId: 'li_1', quantity: 3 }] })
+  it('returns the fulfillment it created, settled with the posting identity', async () => {
+    const result = await fulfillOrder(stubDb(), input)
 
-    expect(h.built[0]?.shippedLines[0]?.taxMinor).toBe(525)
+    expect(result.isOk()).toBe(true)
+    const { fulfillment, fulfillmentStatus } = result._unsafeUnwrap()
+    expect(fulfillment.id).toBe('ful_1')
+    expect(fulfillment.glPosting).toBe('glp_1')
+    expect(fulfillment.docNumber).toBe('AUXX-FUL-ORD0012F1')
+    expect(fulfillment.lines).toEqual([
+      {
+        id: 'fl_1',
+        recordId: 'fulfillment_line:fl_1',
+        lineItemId: 'li_1',
+        quantity: 3,
+        quantityRelieved: null,
+      },
+    ])
+    expect(fulfillmentStatus).toBe('partial')
   })
 
-  // 🛑 Absent, not zero. Zero would claim the channel said this line is
-  // untaxed, and one such line among taxed ones would still count as "every
-  // line carries tax" - flipping the entry onto the per-line basis and
-  // under-crediting sales tax payable, silently.
-  it('omits the key entirely when the line carries no stored tax', async () => {
+  it('scales per-line tax proportionally for a partial shipment', async () => {
+    h.order.lines = [
+      {
+        lineId: 'li_1',
+        name: 'Widget',
+        quantity: 5,
+        shippedQuantity: 0,
+        remainingQuantity: 5,
+        unitPriceMinor: 10_00,
+        lineTaxMinor: 500,
+        sortOrder: 0,
+      },
+    ]
     await fulfillOrder(stubDb(), input)
 
-    expect(h.built[0]?.shippedLines[0]).not.toHaveProperty('taxMinor')
+    // 3 of 5 units: 500 * 3 / 5 = 300.
+    expect(h.built[0]?.shippedLines).toEqual([
+      expect.objectContaining({ lineId: 'li_1', taxMinor: 300 }),
+    ])
+  })
+
+  describe('inventory relief (50 §1.4)', () => {
+    it('relieves every line the shipment created, unrelieved, at the dispatch date', async () => {
+      await fulfillOrder(stubDb(), input)
+
+      expect(h.relieved).toEqual([
+        {
+          organizationId: ORG,
+          userId: USER,
+          lines: [
+            {
+              fulfillmentLineId: 'fl_1',
+              lineItemId: 'li_1',
+              quantity: 3,
+              quantityRelieved: null,
+              occurredAt: new Date('2026-09-03T12:00:00.000Z'),
+            },
+          ],
+        },
+      ])
+    })
+
+    it('still runs when accounting is not enabled - on-hand is an inventory fact', async () => {
+      h.isAccountingEnabled.mockResolvedValue(false)
+      await fulfillOrder(stubDb(), input)
+      expect(h.relieved).toHaveLength(1)
+    })
+
+    it('does NOT run when the ledger refuses the post - there is no record left to point at', async () => {
+      h.postResult = { status: 'blocked', error: 'Period locked' }
+      await fulfillOrder(stubDb(), input)
+      expect(h.relieved).toHaveLength(0)
+    })
+
+    it('a relief failure is logged and swallowed - fulfillOrder still returns ok', async () => {
+      const { err } = await import('neverthrow')
+      h.reliefResult = err(new Error('boom'))
+
+      const result = await fulfillOrder(stubDb(), input)
+      expect(result.isOk()).toBe(true)
+      expect(h.stamped).toHaveLength(1)
+    })
+  })
+
+  describe('when the ledger refuses the post', () => {
+    beforeEach(() => {
+      h.postResult = { status: 'blocked', error: 'Period locked' }
+    })
+
+    it('deletes the fulfillment record it just created', async () => {
+      await fulfillOrder(stubDb(), input)
+      expect(h.deleted).toEqual([
+        { organizationId: ORG, actorUserId: USER, fulfillmentInstanceId: 'ful_1' },
+      ])
+    })
+
+    it('restores the order to its PRIOR status, not the one this attempt wanted', async () => {
+      await fulfillOrder(stubDb(), input)
+
+      const statusWrites = h.updated.filter((write) => 'order_fulfillment_status' in write.values)
+      // One write from the create transaction (-> 'partial'), one from the
+      // rollback's compensating transaction (-> back to 'unfulfilled').
+      expect(statusWrites.at(-1)?.values.order_fulfillment_status).toBe('unfulfilled')
+    })
+
+    it('never stamps a posting that never happened', async () => {
+      await fulfillOrder(stubDb(), input)
+      expect(h.stamped).toHaveLength(0)
+    })
+
+    it('returns ok with the refusal on `post`, not an Err', async () => {
+      const result = await fulfillOrder(stubDb(), input)
+      expect(result.isOk()).toBe(true)
+      expect(result._unsafeUnwrap().post.status).toBe('blocked')
+    })
+  })
+
+  describe('when accounting is not enabled for the org', () => {
+    beforeEach(() => {
+      h.isAccountingEnabled.mockResolvedValue(false)
+    })
+
+    it('still creates the fulfillment record, using computeShipmentTotals directly', async () => {
+      const result = await fulfillOrder(stubDb(), input)
+
+      expect(result.isOk()).toBe(true)
+      expect(h.created).toHaveLength(1)
+      // The real builder mock above was never called for this org.
+      expect(h.built).toHaveLength(0)
+      expect(result._unsafeUnwrap().post.status).toBe('not_enabled')
+    })
+
+    it('does not roll back - `not_enabled` is an expected outcome, not a refusal', async () => {
+      await fulfillOrder(stubDb(), input)
+      expect(h.deleted).toHaveLength(0)
+    })
+  })
+
+  describe('validation', () => {
+    it('refuses a quantity greater than what remains on the line', async () => {
+      const result = await fulfillOrder(stubDb(), {
+        ...input,
+        shippedLines: [{ lineId: 'li_1', quantity: 999 }],
+      })
+      expect(result.isErr()).toBe(true)
+      expect(result._unsafeUnwrapErr().message).toMatch(/has 5 left to ship/i)
+      expect(h.created).toHaveLength(0)
+    })
+
+    it('refuses a line that is not on the order', async () => {
+      const result = await fulfillOrder(stubDb(), {
+        ...input,
+        shippedLines: [{ lineId: 'li_missing', quantity: 1 }],
+      })
+      expect(result.isErr()).toBe(true)
+      expect(h.created).toHaveLength(0)
+    })
+
+    it('refuses when nothing is shipped', async () => {
+      const result = await fulfillOrder(stubDb(), { ...input, shippedLines: [] })
+      expect(result.isErr()).toBe(true)
+      expect(h.created).toHaveLength(0)
+    })
   })
 })

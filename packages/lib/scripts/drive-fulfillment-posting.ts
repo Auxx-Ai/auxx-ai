@@ -6,10 +6,14 @@
 //    postings that debit A/R for Shopify-paid orders, 49 §1.5),
 // 2. backfills the three native line fulfillment fields from the Shopify app
 //    fields already on the org (what the connector binds on its next sync),
-// 3. derives every connector order's shipment log through the finalize pass,
-// 4. previews and posts one month per day, reverses one day, shows it come back
+// 3. previews and posts one month per day, reverses one day, shows it come back
 //    in the preview, posts it again under an attempt suffix, and shows the
 //    month-end close refusing while the day was unposted.
+//
+// 🛑 Step "derive every connector order's shipment log" is GONE (money plan 55):
+// `fulfillment` / `fulfillment_line` are now real entities the Shopify connector
+// writes directly (entity migration 153), so there is no log left to derive.
+// Re-run the connector sync instead of this script to populate them.
 //
 // It WRITES real `GlPosting` rows. Point it at a dev org.
 //
@@ -18,15 +22,12 @@
 import { closePools, database, schema } from '@auxx/database'
 import type { RecordId } from '@auxx/types/resource'
 import { and, eq, inArray, sql } from 'drizzle-orm'
-import { findCachedResource, getCachedEntityDefId } from '../src/cache'
-import { listConnectorManagedRecordIds } from '../src/data-connectors/managed-fields'
-import { fulfillmentLogPass } from '../src/events/handlers/passes/fulfillment-log-pass'
+import { getCachedEntityDefId } from '../src/cache'
 import {
   previewFulfillmentPosting,
   runFulfillmentPosting,
 } from '../src/money/fulfillment-posting/run'
 import { previewMonthEnd, resolvePeriodLock, reverseEntry } from '../src/postings'
-import type { SyncChangeManifest } from '../src/record-rules/sync-manifest-types'
 import { UnifiedCrudHandler } from '../src/resources/crud/unified-handler'
 import { toRecordId } from '../src/resources/resource-id'
 
@@ -54,7 +55,6 @@ async function main() {
   if (!previewOnly) {
     await reverseTestPostings(organizationId, actorUserId)
     await backfillNativeLineFacts(organizationId)
-    await deriveLogs(organizationId)
   }
 
   const from = `${month}-01`
@@ -243,45 +243,6 @@ async function backfillNativeLineFacts(organizationId: string) {
     if (result.errors.length) console.log('  errors', result.errors.slice(0, 3))
   }
   console.log(`  updated ${updated}`)
-}
-
-/** Run the finalize pass over every connector-managed order, as a sync touching them all would. */
-async function deriveLogs(organizationId: string) {
-  const orderDefId = await getCachedEntityDefId(organizationId, 'order')
-  if (!orderDefId) throw new Error('no order def')
-  const orders = await database
-    .select({ id: schema.EntityInstance.id })
-    .from(schema.EntityInstance)
-    .where(
-      and(
-        eq(schema.EntityInstance.organizationId, organizationId),
-        eq(schema.EntityInstance.entityDefinitionId, orderDefId),
-        sql`${schema.EntityInstance.archivedAt} IS NULL`
-      )
-    )
-  const managed = await listConnectorManagedRecordIds(
-    database,
-    organizationId,
-    orders.map((o) => o.id)
-  )
-  const touched: SyncChangeManifest['touched'] = {}
-  for (const id of managed) touched[toRecordId(orderDefId, id) as RecordId] = 1
-  const manifest: SyncChangeManifest = {
-    version: 2,
-    detailTruncated: false,
-    membershipTruncated: false,
-    touched,
-    deltas: {},
-    createdRecordIds: [],
-    archivedRecordIds: [],
-  }
-  const resolveDef = async (rawDefId: string) => {
-    const resource = await findCachedResource(organizationId, rawDefId)
-    return resource ? { entityType: resource.entityType ?? null } : null
-  }
-  console.log(`=== deriving shipment logs for ${managed.size} connector orders`)
-  const changed = await fulfillmentLogPass(database, organizationId, manifest, resolveDef)
-  console.log(`  logs written: ${changed.size}`)
 }
 
 function printPlan(preview: {

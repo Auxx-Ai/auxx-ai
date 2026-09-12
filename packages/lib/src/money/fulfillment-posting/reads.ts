@@ -5,6 +5,7 @@
  * range that carries no LIVE posting.
  *
  * `plans/money/tasks/49-bulk-fulfillment-posting.md` §2.2, §2.5 and §8.2.
+ * `plans/money/tasks/55-shipment-lines.md` §6 (entity migration 153).
  *
  * Reads only, no permission checks - the router asserts and hands the range
  * down (`docs/lib-module-guide.md` §5 and §6). The pure decision over what this
@@ -14,29 +15,57 @@
  *
  * §2.6 rule 1 and decision 9: reversing a day's entry has to put its shipments
  * back into the next preview, and the run un-stamps nothing. So a shipment is
- * unposted when its `glPostingId` is null, OR names a posting whose status is
- * `reversed`, OR names a posting that no longer exists at all. Reading only the
- * null case would strand every shipment of a reversed run: the ledger would
- * hold no entry for them and the netting read would never offer them again.
+ * unposted when its `fulfillment_gl_posting` is null, OR names a posting whose
+ * status is `reversed`, OR names a posting that no longer exists at all.
+ * Reading only the null case would strand every shipment of a reversed run: the
+ * ledger would hold no entry for them and the netting read would never offer
+ * them again.
  *
- * ## 🛑 One SQL for the log, then BOUNDED reads for the fields
+ * ## 🔑 Entity migration 153: the shipment log is real records now
  *
- * The backlog this exists for is 531 orders over three months (§5), so a read
- * per order is the shape batching exists to escape - the same rule
- * `builds/backfill-queries.ts` states. The shipment log lives inside ONE JSON
- * cell per order, so it is expanded with `jsonb_array_elements` in the database
- * and joined to `GlPosting` there; then exactly two more queries pivot the order
- * and line fields for whatever came back, regardless of how many orders that is.
+ * A shipment used to be one entry inside the `order_fulfillments` JSON array,
+ * expanded with `jsonb_array_elements` and windowed for
+ * `priorShipmentsSubtotalMinor` in one statement. `order_fulfillments` is a
+ * has_many RELATIONSHIP to real `fulfillment` / `fulfillment_line` records now
+ * (`plans/money/tasks/55-shipment-lines.md`), and the has_many (inverse) side
+ * of a relationship carries no `FieldValue` row of its own to expand - there is
+ * nothing left to `jsonb_array_elements` over.
  *
- * `priorShipmentsSubtotalMinor` is computed in the same statement, as a window
- * over EVERY earlier sequence of the same log - live or not. It is what makes
- * the builder's cumulative tax allocation true itself up on the shipment that
- * completes an order, and it cannot be derived from the returned rows, because
- * the earlier shipments are usually already posted and therefore filtered out.
+ * `money/fulfillments` is the shared contract for reading a `fulfillment`
+ * record, but it exposes only "every fulfillment of these orders"
+ * ({@link readFulfillmentsForOrders}) - there is no bulk "every unposted
+ * fulfillment in a date range across the whole org" reader, because nothing
+ * else needed one before this file did. 🛑 **That is a gap in the contract,
+ * not a shortcut taken here**: discovering the CANDIDATE set for a range still
+ * has to query `fulfillment_shipped_at` / `fulfillment_gl_posting`
+ * `FieldValue` rows directly ({@link readUnpostedFulfillmentCandidates}), the
+ * same way `credit-memo-posting/reads.ts` queries `credit_memo`'s own fields
+ * directly for the identical reason - a poster is the one place that legitimately
+ * owns ITS entity's netting query, the way `money/fulfillments` owns assembling
+ * a full record. Once the candidate ids (and the orders they belong to) are
+ * known, every further read goes through the shared bulk reader.
+ *
+ * ## One netting query, then BOUNDED reads for the rest
+ *
+ * The backlog this exists for is hundreds of orders (§5), so a read per order
+ * is the shape batching exists to escape - the same rule
+ * `builds/backfill-queries.ts` states. So: one statement finds the candidate
+ * `(fulfillmentId, orderId)` pairs in the range; {@link readFulfillmentsForOrders}
+ * then reads EVERY fulfillment of those orders (live or not, in range or not)
+ * in four more queries regardless of how many orders that is; and two more
+ * pivot the order and line-item fields for whatever came back.
+ *
+ * `priorShipmentsSubtotalMinor` is computed from that same bulk read, as a
+ * running sum in sequence order over EVERY fulfillment of the order - not just
+ * the candidates - because it is what makes the builder's cumulative tax
+ * allocation true itself up on the shipment that completes an order, and an
+ * earlier shipment is usually already posted and therefore not itself a
+ * candidate.
  */
 
 import { type Database, schema } from '@auxx/database'
-import { and, eq, inArray, sql } from 'drizzle-orm'
+import { and, asc, eq, gte, inArray, isNull, lt, or } from 'drizzle-orm'
+import { alias } from 'drizzle-orm/pg-core'
 import type { Result } from 'neverthrow'
 import { UnprocessableEntityError } from '../../errors'
 import type { FieldOptions } from '../../field-values/converters'
@@ -46,8 +75,15 @@ import { OPENING_BASELINE_SETTING_KEYS } from '../../postings/setup-readiness'
 import { buildOptionIndex, resolveOptionId } from '../../resources/registry/option-helpers'
 import { getOrganizationSetting } from '../../settings/settings-service'
 import {
+  type Fulfillment,
+  type FulfillmentFieldContext,
+  isLiveFulfillment,
+  loadFulfillmentFieldContext,
+  readFulfillmentsForOrder,
+  readFulfillmentsForOrders,
+} from '../fulfillments'
+import {
   type OrderFieldContext,
-  parseFulfillments,
   readOrderTaxLines,
   requireOrderFieldContext,
 } from '../orders/reads'
@@ -91,116 +127,134 @@ function monthRange(month: string): UnpostedShipmentRange {
 }
 
 /**
- * One log entry the netting SQL kept, before any order or line field is read.
+ * A calendar day as the instant a `DATETIME` cell is compared against.
  *
- * Every column is text or a float because it came out of `jsonb`; the numbers
- * are re-coerced in TypeScript rather than trusted from the driver.
+ * 🛑 Midnight UTC, and the comparison is deliberately on the RAW instant rather
+ * than on a re-zoned day - `credit-memo-posting/reads.ts`'s `dayStart` states
+ * the same rule for the same reason: everything here reads an accounting date
+ * by SLICING the first ten characters of the stored ISO string
+ * ({@link toCalendarDay}), and `instant >= ${from}T00:00:00Z` selects exactly
+ * the rows whose slice is `>= from`.
  */
-interface UnpostedEntryRow {
-  order_id: string
-  sequence: number | string
-  shipped_at: string
-  prior_subtotal_minor: number | string | null
-  shipping_recognised: boolean | null
-  lines: unknown
+function dayStart(day: string): string {
+  return `${day}T00:00:00.000Z`
+}
+
+/** `fulfillment_shipped_at` is an ISO instant; the accounting date is its day. */
+function toCalendarDay(raw: string | null | undefined): string | null {
+  return typeof raw === 'string' && raw.length >= 10 ? raw.slice(0, 10) : null
+}
+
+function compareStrings(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0
+}
+
+/** One `fulfillment` in the range that no live posting claims, and the order it belongs to. */
+interface FulfillmentCandidate {
+  fulfillmentId: string
+  orderId: string
 }
 
 /**
- * THE netting statement.
+ * THE netting statement: the `(fulfillment, order)` pairs in the range with no
+ * LIVE posting.
  *
- * Written once and used by both {@link readUnpostedShipments} and
- * {@link countUnpostedShipments}, because a count that could disagree with the
- * list it counts is exactly the defect a close refusal must not have (lane D
- * reads the count to refuse `prepareClose`).
+ * 🛑 The three predicates in the final `or` are the whole netting contract
+ * (49 §2.6 rule 1) - a null stamp, a stamp naming a posting that is gone, or one
+ * naming a `reversed` posting. Dropping any of them would silently strand a
+ * reversed period's shipments: they would simply never be offered again.
  *
- * ⚠️ Two spellings of the stored cell are tolerated on the way in -
- * `{ v: { fulfillments } }` and a bare `{ fulfillments }` - because
- * `parseFulfillments` is tolerant of both and a read that was stricter than the
- * parser would report shipments the rest of the module cannot see.
+ * ⚠️ An org with no `fulfillment_gl_posting` field (entity migration 153 has
+ * not reached it - unreachable in practice, since {@link loadFulfillmentFieldContext}
+ * already refused before this runs) would join on a field id no row can carry,
+ * so every candidate in range reads as unposted, which is the truth for such an
+ * org (nothing has ever been stamped).
  */
-function unpostedEntriesQuery(
+async function readUnpostedFulfillmentCandidates(
+  db: Database,
   organizationId: string,
-  fulfillmentsFieldId: string,
+  ctx: FulfillmentFieldContext,
   range: UnpostedShipmentRange
-) {
-  const entries = sql`coalesce(
-    ${schema.FieldValue.valueJson} -> 'v' -> 'fulfillments',
-    ${schema.FieldValue.valueJson} -> 'fulfillments'
-  )`
+): Promise<FulfillmentCandidate[]> {
+  const shippedAtField = ctx.fulfillment.fulfillment_shipped_at
+  const orderField = ctx.fulfillment.fulfillment_order
+  if (!shippedAtField || !orderField) return []
+  const glPostingFieldId = ctx.fulfillment.fulfillment_gl_posting?.id ?? ''
 
-  return sql`
-    WITH log AS (
-      SELECT ${schema.FieldValue.entityId} AS order_id, ${entries} AS entries
-      FROM ${schema.FieldValue}
-      WHERE ${schema.FieldValue.organizationId} = ${organizationId}
-        AND ${schema.FieldValue.fieldId} = ${fulfillmentsFieldId}
-        AND jsonb_typeof(${entries}) = 'array'
-    ),
-    expanded AS (
-      SELECT
-        log.order_id,
-        e.entry,
-        -- 🛑 CASE, not a bare cast guarded by the WHERE. Postgres does not
-        -- promise to evaluate a WHERE before the target list of the same query
-        -- level, and a CTE may be inlined, so a log row carrying
-        -- "sequence": "first" would abort the whole run with a cast error
-        -- rather than being skipped. Every cast below is guarded in place.
-        CASE
-          WHEN jsonb_typeof(e.entry) = 'object' AND (e.entry ->> 'sequence') ~ '^[0-9]+$'
-          THEN (e.entry ->> 'sequence')::int
-        END AS sequence,
-        coalesce(e.entry ->> 'shippedAt', '') AS shipped_at,
-        e.entry ->> 'glPostingId' AS gl_posting_id,
-        CASE
-          WHEN (e.entry ->> 'subtotalMinor') ~ '^-?[0-9]+([.][0-9]+)?$'
-          THEN (e.entry ->> 'subtotalMinor')::float8
-          ELSE 0
-        END AS subtotal_minor
-      FROM log
-      CROSS JOIN LATERAL jsonb_array_elements(log.entries) AS e(entry)
-    ),
-    ranked AS (
-      SELECT
-        expanded.*,
-        coalesce(
-          sum(expanded.subtotal_minor) OVER (
-            PARTITION BY expanded.order_id
-            ORDER BY expanded.sequence
-            ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
-          ),
-          0
-        ) AS prior_subtotal_minor
-      FROM expanded
-      WHERE expanded.sequence IS NOT NULL
-    )
-    SELECT
-      ranked.order_id,
-      ranked.sequence,
-      ranked.shipped_at,
-      ranked.prior_subtotal_minor,
-      coalesce(ranked.entry ->> 'shippingRecognised', 'false') = 'true' AS shipping_recognised,
-      ranked.entry -> 'lines' AS lines
-    FROM ranked
-    LEFT JOIN ${schema.GlPosting} ON ${schema.GlPosting.id} = ranked.gl_posting_id
-      AND ${schema.GlPosting.organizationId} = ${organizationId}
-    WHERE ranked.shipped_at >= ${range.from}
-      AND ranked.shipped_at < ${range.to}
-      AND (
-        ranked.gl_posting_id IS NULL
-        OR ${schema.GlPosting.id} IS NULL
-        OR ${schema.GlPosting.status} = 'reversed'
+  const orderEdge = alias(schema.FieldValue, 'fulfillment_order_edge')
+  const stamp = alias(schema.FieldValue, 'fulfillment_gl_posting_stamp')
+
+  const rows = await db
+    .select({
+      fulfillmentId: schema.FieldValue.entityId,
+      orderId: orderEdge.relatedEntityId,
+    })
+    .from(schema.FieldValue)
+    .innerJoin(
+      schema.EntityInstance,
+      and(
+        eq(schema.EntityInstance.id, schema.FieldValue.entityId),
+        isNull(schema.EntityInstance.archivedAt)
       )
-    ORDER BY ranked.shipped_at, ranked.order_id, ranked.sequence
-  `
+    )
+    .leftJoin(
+      orderEdge,
+      and(
+        eq(orderEdge.organizationId, schema.FieldValue.organizationId),
+        eq(orderEdge.entityId, schema.FieldValue.entityId),
+        eq(orderEdge.fieldId, orderField.id)
+      )
+    )
+    .leftJoin(
+      stamp,
+      and(
+        eq(stamp.organizationId, schema.FieldValue.organizationId),
+        eq(stamp.entityId, schema.FieldValue.entityId),
+        eq(stamp.fieldId, glPostingFieldId)
+      )
+    )
+    .leftJoin(
+      schema.GlPosting,
+      and(
+        eq(schema.GlPosting.id, stamp.valueText),
+        eq(schema.GlPosting.organizationId, organizationId)
+      )
+    )
+    .where(
+      and(
+        eq(schema.FieldValue.organizationId, organizationId),
+        eq(schema.FieldValue.fieldId, shippedAtField.id),
+        gte(schema.FieldValue.valueDate, dayStart(range.from)),
+        lt(schema.FieldValue.valueDate, dayStart(range.to)),
+        or(
+          isNull(stamp.valueText),
+          isNull(schema.GlPosting.id),
+          eq(schema.GlPosting.status, 'reversed')
+        )
+      )
+    )
+    .orderBy(asc(schema.FieldValue.valueDate), asc(schema.FieldValue.entityId))
+
+  const seen = new Set<string>()
+  const candidates: FulfillmentCandidate[] = []
+  for (const row of rows) {
+    // No `fulfillment_order` edge is unreachable by the registry (the field is
+    // required), but dropped rather than crashing: a fulfillment with nowhere
+    // to post has nothing this run can do with it.
+    if (!row.orderId || seen.has(row.fulfillmentId)) continue
+    seen.add(row.fulfillmentId)
+    candidates.push({ fulfillmentId: row.fulfillmentId, orderId: row.orderId })
+  }
+  return candidates
 }
 
 /**
  * Every shipment in the range that no live posting claims, with everything the
  * builder needs riding on it.
  *
- * An org with no provisioned `order` def reads as no shipments rather than as
- * an error: there is nothing to post, and a preview showing an empty plan is
- * the honest answer. The one refusal is a malformed period lock, which
+ * An org with no provisioned `fulfillment` def reads as no shipments rather
+ * than as an error: there is nothing to post, and a preview showing an empty
+ * plan is the honest answer. The one refusal is a malformed period lock, which
  * `resolvePeriodLock` owns and which does not reach this function.
  *
  * @param range half-open on `shippedAt`, both `YYYY-MM-DD` in the book zone.
@@ -216,62 +270,139 @@ export async function readUnpostedShipments(
       assertIsoDate(range.from, 'The range start')
       assertIsoDate(range.to, 'The range end')
 
-      const ctx = await requireOrderFieldContext(organizationId)
-      const fulfillmentsFieldId = ctx.order.order_fulfillments?.id
-      if (!fulfillmentsFieldId) return []
+      const fulfillmentCtx = await loadFulfillmentFieldContext(organizationId)
+      if (!fulfillmentCtx) return []
 
-      const result = await db.execute(
-        unpostedEntriesQuery(organizationId, fulfillmentsFieldId, range)
+      const candidates = await readUnpostedFulfillmentCandidates(
+        db,
+        organizationId,
+        fulfillmentCtx,
+        range
       )
-      const rows = (result.rows ?? []) as unknown as UnpostedEntryRow[]
-      if (rows.length === 0) return []
+      if (candidates.length === 0) return []
 
-      const orderIds = [...new Set(rows.map((row) => row.order_id))]
-      const logLines = rows.map((row) => parseLogLines(row.lines))
-      const lineIds = [...new Set(logLines.flatMap((lines) => lines.map((line) => line.lineId)))]
+      const candidateIds = new Set(candidates.map((row) => row.fulfillmentId))
+      const orderIds = [...new Set(candidates.map((row) => row.orderId))]
+
+      const [ctx, byOrder] = await Promise.all([
+        requireOrderFieldContext(organizationId),
+        readFulfillmentsForOrders(db, { organizationId, orderIds }),
+      ])
+
+      // Every line item a CANDIDATE fulfillment names - not every line of every
+      // fulfillment, since the non-candidate ones (kept only to sum
+      // `priorShipmentsSubtotalMinor`) contribute nothing else to the output.
+      const lineIds = new Set<string>()
+      for (const fulfillments of byOrder.values()) {
+        for (const fulfillment of fulfillments) {
+          if (!candidateIds.has(fulfillment.id)) continue
+          for (const line of fulfillment.lines) lineIds.add(line.lineItemId)
+        }
+      }
 
       const [orders, lines, taxLinesByOrder] = await Promise.all([
         readOrderFacts(db, organizationId, ctx, orderIds),
-        readLineFacts(db, organizationId, ctx, lineIds),
+        readLineFacts(db, organizationId, ctx, [...lineIds]),
         // ONE bulk read for the whole batch, never per order (brief 13 §5).
         readOrderTaxLines(db, organizationId, orderIds),
       ])
 
       const shipments: UnpostedShipment[] = []
-      for (const [index, row] of rows.entries()) {
-        const order = orders.get(row.order_id)
+      for (const [orderId, fulfillments] of byOrder) {
+        const order = orders.get(orderId)
         // An order whose fields cannot be read at all is dropped rather than
         // posted from defaults: an entry built on a guessed subtotal balances
         // and is wrong, and nothing downstream could see it.
         if (!order) continue
-        shipments.push({
-          orderId: row.order_id,
-          orderNumber: order.number,
-          sequence: Number(row.sequence),
-          shippedAt: row.shipped_at,
-          lines: (logLines[index] ?? []).map((line) => ({
-            lineId: line.lineId,
-            quantity: line.quantity,
-            ...(lines.get(line.lineId) ?? UNKNOWN_LINE),
-          })),
-          channel: order.channel,
-          currency: order.currency,
-          financialStatus: order.financialStatus,
-          gateways: order.gateways,
-          orderSubtotalMinor: order.subtotalMinor,
-          orderTaxTotalMinor: order.taxTotalMinor,
-          orderShippingTotalMinor: order.shippingTotalMinor,
-          priorShipmentsSubtotalMinor: finite(row.prior_subtotal_minor),
-          includeShipping: row.shipping_recognised === true,
-          contactId: order.contactId,
-          taxLines: taxLinesByOrder.get(row.order_id) ?? [],
-        })
+
+        // Running sum in SEQUENCE order, over EVERY fulfillment of the order -
+        // `fulfillments` is already sorted ascending by `readFulfillmentsForOrders`.
+        // Added AFTER a candidate is emitted, so a shipment's own amount never
+        // counts toward its own prior total - the same "1 PRECEDING" the old
+        // window function enforced.
+        let priorSubtotalMinor = 0
+        for (const fulfillment of fulfillments) {
+          // 🛑 A CANCELLED fulfillment is never posted. This is new state the
+          // JSON log could not carry: the connector's old `deriveFulfillments`
+          // filtered `status !== 'cancelled'` BEFORE anything reached the log,
+          // so a cancelled dispatch did not exist as far as lib was concerned.
+          // It now arrives as a real record on purpose (a vanished record is
+          // indistinguishable from one never seen, and the relief lane nets
+          // against it), which means every consumer has to exclude it
+          // deliberately. Posting one would recognise revenue for a dispatch
+          // that never went out, and nothing downstream would object.
+          const live = isLiveFulfillment(fulfillment)
+          if (live && candidateIds.has(fulfillment.id)) {
+            const shipment = buildShipment(
+              fulfillment,
+              order,
+              priorSubtotalMinor,
+              lines,
+              taxLinesByOrder.get(orderId) ?? []
+            )
+            if (shipment) shipments.push(shipment)
+          }
+          // What EARLIER shipments recognised, which is what the cumulative tax
+          // allocation trues itself up against. A cancelled fulfillment that was
+          // never posted recognised nothing, so it must not inflate the running
+          // total - but one that WAS posted before being cancelled did, and a
+          // reversal never clears the stamp, so it still counts.
+          if (live || fulfillment.glPosting !== null) {
+            priorSubtotalMinor += fulfillment.subtotalMinor
+          }
+        }
       }
+
+      shipments.sort(
+        (a, b) =>
+          compareStrings(a.shippedAt, b.shippedAt) ||
+          compareStrings(a.orderId, b.orderId) ||
+          a.sequence - b.sequence
+      )
       return shipments
     },
     'Failed to read unposted shipments',
     { organizationId, from: range.from, to: range.to }
   )
+}
+
+/** One `UnpostedShipment`, from a candidate `Fulfillment` record and its order's facts. */
+function buildShipment(
+  fulfillment: Fulfillment,
+  order: OrderFacts,
+  priorShipmentsSubtotalMinor: number,
+  lineFacts: Map<string, Omit<UnpostedShipmentLine, 'lineId' | 'quantity'>>,
+  taxLines: readonly { title: string; priceMinor: number }[]
+): UnpostedShipment | null {
+  const shippedAt = toCalendarDay(fulfillment.shippedAt)
+  // Unreachable by contract (the netting query is itself anchored on this
+  // field), but dropped rather than defaulted: a shipment with no date has no
+  // period to post into and guessing one recognises revenue in the wrong month.
+  if (!shippedAt) return null
+
+  return {
+    orderId: fulfillment.orderId,
+    orderNumber: order.number,
+    fulfillmentInstanceId: fulfillment.id,
+    sequence: fulfillment.sequence,
+    shippedAt,
+    lines: fulfillment.lines.map((line) => ({
+      lineId: line.lineItemId,
+      quantity: line.quantity,
+      ...(lineFacts.get(line.lineItemId) ?? UNKNOWN_LINE),
+    })),
+    channel: order.channel,
+    currency: order.currency,
+    financialStatus: order.financialStatus,
+    gateways: order.gateways,
+    orderSubtotalMinor: order.subtotalMinor,
+    orderTaxTotalMinor: order.taxTotalMinor,
+    orderShippingTotalMinor: order.shippingTotalMinor,
+    priorShipmentsSubtotalMinor,
+    includeShipping: fulfillment.shippingRecognised,
+    contactId: order.contactId,
+    taxLines,
+  }
 }
 
 /**
@@ -342,7 +473,7 @@ export async function countUnpostedShipments(
 }
 
 /**
- * The postings one order's shipment log names, with each posting's CURRENT
+ * The postings one order's fulfillments name, with each posting's CURRENT
  * status.
  *
  * 🛑 The order's ledger card reads this instead of `listPostingsForSource`
@@ -363,30 +494,12 @@ export async function listOrderFulfillmentPostings(
 
   return guard(
     async () => {
-      const ctx = await requireOrderFieldContext(organizationId)
-      const fulfillmentsFieldId = ctx.order.order_fulfillments?.id
-      if (!fulfillmentsFieldId) return []
-
-      const [row] = await db
-        .select({ valueJson: schema.FieldValue.valueJson })
-        .from(schema.FieldValue)
-        .where(
-          and(
-            eq(schema.FieldValue.organizationId, organizationId),
-            eq(schema.FieldValue.entityId, orderId),
-            eq(schema.FieldValue.fieldId, fulfillmentsFieldId)
-          )
-        )
-        .limit(1)
-
-      const stamps = parseFulfillments(row?.valueJson)
-        .filter((entry) => entry.glPostingId !== null)
-        .map((entry) => ({
-          sequence: entry.sequence,
-          shippedAt: entry.shippedAt,
-          glPostingId: entry.glPostingId as string,
-        }))
-      if (stamps.length === 0) return []
+      const fulfillments = await readFulfillmentsForOrder(db, { organizationId, orderId })
+      const stamped = fulfillments.filter(
+        (fulfillment): fulfillment is Fulfillment & { glPosting: string } =>
+          fulfillment.glPosting !== null
+      )
+      if (stamped.length === 0) return []
 
       const postings = await db
         .select({
@@ -400,20 +513,21 @@ export async function listOrderFulfillmentPostings(
             eq(schema.GlPosting.organizationId, organizationId),
             inArray(
               schema.GlPosting.id,
-              stamps.map((stamp) => stamp.glPostingId)
+              stamped.map((fulfillment) => fulfillment.glPosting)
             )
           )
         )
       const byId = new Map(postings.map((posting) => [posting.id, posting]))
 
       const refs: OrderFulfillmentPostingRef[] = []
-      for (const stamp of stamps) {
-        const posting = byId.get(stamp.glPostingId)
+      for (const fulfillment of stamped) {
+        const posting = byId.get(fulfillment.glPosting)
         if (!posting) continue
+        const shippedAt = toCalendarDay(fulfillment.shippedAt) ?? fulfillment.shippedAt
         refs.push({
-          sequence: stamp.sequence,
-          shippedAt: stamp.shippedAt,
-          glPostingId: stamp.glPostingId,
+          sequence: fulfillment.sequence,
+          shippedAt,
+          glPostingId: fulfillment.glPosting,
           docNumber: posting.docNumber ?? null,
           status: posting.status,
         })
@@ -485,26 +599,12 @@ async function readTextSetting(
   return typeof value === 'string' && value.trim() !== '' ? value.trim() : null
 }
 
-/** What is known about a line the log names but the line read could not reach. */
+/** What is known about a line the fulfillment names but the line read could not reach. */
 const UNKNOWN_LINE = {
   unitPriceMinor: 0,
   lineTaxMinor: null,
   orderedQuantity: 0,
 } satisfies Omit<UnpostedShipmentLine, 'lineId' | 'quantity'>
-
-/** The log's own `{ lineId, quantity }` rows, read as tolerantly as the parser. */
-function parseLogLines(value: unknown): Array<{ lineId: string; quantity: number }> {
-  if (!Array.isArray(value)) return []
-  const lines: Array<{ lineId: string; quantity: number }> = []
-  for (const row of value) {
-    if (typeof row !== 'object' || row === null) continue
-    const { lineId, quantity } = row as { lineId?: unknown; quantity?: unknown }
-    if (typeof lineId !== 'string' || typeof quantity !== 'number') continue
-    if (!Number.isFinite(quantity) || quantity <= 0) continue
-    lines.push({ lineId, quantity })
-  }
-  return lines
-}
 
 /** One order's facts, as the shipments on it need them. */
 interface OrderFacts {
@@ -694,10 +794,4 @@ async function selectValues(
  */
 function amount(value: number | null | undefined): number {
   return value == null || !Number.isFinite(value) ? 0 : Math.round(value)
-}
-
-/** A number the driver may have handed back as text. */
-function finite(value: number | string | null | undefined): number {
-  const parsed = typeof value === 'string' ? Number(value) : value
-  return parsed != null && Number.isFinite(parsed) ? parsed : 0
 }

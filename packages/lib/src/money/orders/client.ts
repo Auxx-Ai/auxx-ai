@@ -1,82 +1,21 @@
 // packages/lib/src/money/orders/client.ts
 
 /**
- * The shipment log's shape, and the pure functions over it.
+ * The pure functions over an order's shipment history.
+ *
+ * The shipment records themselves (`Fulfillment` / `FulfillmentLine`) moved to
+ * `money/fulfillments/client.ts` in entity migration 153 - `order_fulfillments`
+ * is a has_many relationship to real `fulfillment` records now, not a JSON
+ * cell on the order, so there is nothing left of the old shape to keep here
+ * (`plans/money/tasks/55-shipment-lines.md` §6). This file re-bases the three
+ * functions the brief names on that new shape; the arithmetic is unchanged.
  *
  * Client-safe: no database, no logger, no io, and NO `'use client'` directive -
  * server code imports this file too and the directive would turn every export
  * into a client-reference proxy there (`docs/lib-module-guide.md` §7).
  */
 
-/** One line's share of one shipment. */
-export interface OrderFulfillmentLine {
-  /** The `line_item` EntityInstance id. */
-  lineId: string
-  /** Units shipped in this fulfillment. Always > 0 - a zero line is not recorded. */
-  quantity: number
-}
-
-/**
- * One shipment, as it is stored on the order.
- *
- * Append-only by construction: `fulfillOrder` pushes and never rewrites, for the
- * same reason `stock_movement` has no update path. A shipment that went out
- * wrongly is corrected by reversing its posting, not by editing the log into
- * agreeing with the ledger.
- */
-export interface OrderFulfillment {
-  /** 1-based, and the fulfillment's identity: `ORD-0012-F<sequence>` keys its entry. */
-  sequence: number
-  /** `YYYY-MM-DD`. The date the goods went out, which is the accounting date. */
-  shippedAt: string
-  lines: OrderFulfillmentLine[]
-  /**
-   * This shipment's SUBTOTAL, integer minor units, before tax and shipping.
-   *
-   * 🛑 Not a convenience. It is what the NEXT shipment's tax allocation is
-   * computed against: `buildFulfillmentEntry` allocates tax cumulatively
-   * (`allocateThrough(prior + this) - allocateThrough(prior)`) so the rounding
-   * remainder lands on whichever shipment completes the order instead of being
-   * dropped on every one. Without a stored subtotal the caller cannot tell the
-   * builder what `prior` is, and three equal shipments of a 300 order with 100
-   * tax allocate 99, leaving A/R a cent short forever.
-   *
-   * Optional only for shipment rows written before this field existed. They
-   * contribute zero, which reproduces the old per-shipment behaviour for those
-   * orders rather than inventing a number for them.
-   */
-  subtotalMinor?: number
-  /** This shipment's recognised total, integer minor units. */
-  totalMinor: number
-  /** Whether this shipment carried the order's shipping revenue. Exactly one does. */
-  shippingRecognised: boolean
-  /** The `GlPosting` this shipment produced. Null when the ledger refused it. */
-  glPostingId: string | null
-  /** `AUXX-FUL-ORD0012F1`, for a screen that wants to name the entry. */
-  docNumber: string | null
-  /** ISO instant the row was appended. Audit only. */
-  recordedAt: string
-}
-
-/**
- * What the `order_fulfillments` JSON column actually holds.
- *
- * 🛑 **An OBJECT wrapping the array, never the bare array.** A `FieldValue`
- * write treats a top-level array as a MULTI-VALUE write - one row per element -
- * and `order_fulfillments` is single-value, so handing it `[a, b]` fails with
- * "single-value; received 2 values", which `UnifiedCrudHandler.setFieldValues`
- * LOGS and SWALLOWS: the update reports success over an order whose shipment log
- * is silently empty, and the next fulfillment then re-ships everything. This is
- * `journal_entry_lines`'s lesson (`postings/journal-entries/client.ts`), taken
- * rather than re-learned.
- *
- * ⚠️ This is the INNER shape. The field-value layer wraps every stored JSON in
- * its own `{ v, meta }` envelope, so the column holds
- * `{ v: { fulfillments: [...] } }`. {@link parseFulfillments} unwraps both.
- */
-export interface OrderFulfillmentsEnvelope {
-  fulfillments: OrderFulfillment[]
-}
+import type { Fulfillment } from '../fulfillments/client'
 
 /** The `sourceType` a fulfillment posting's lines carry - the `order` record. */
 export const ORDER_FULFILLMENT_SOURCE_TYPE = 'order'
@@ -107,41 +46,49 @@ export interface OrderLineRemaining {
 }
 
 /**
- * Total units shipped per line across a shipment log.
+ * Total units shipped per line across every fulfillment of an order.
  *
  * Pure and total: an unknown line id simply does not appear, which is the right
  * answer for a line somebody deleted after it shipped.
+ *
+ * ⚠️ Sums over EVERY fulfillment handed to it, `cancelled` included - the same
+ * behaviour the JSON log had (it had no cancellation concept at all). Whether a
+ * cancelled fulfillment should free its units back up is brief §9 item 2, an
+ * open decision left to task 50; this function does not decide it.
  */
-export function shippedByLine(fulfillments: readonly OrderFulfillment[]): Map<string, number> {
+export function shippedByLine(fulfillments: readonly Fulfillment[]): Map<string, number> {
   const shipped = new Map<string, number>()
   for (const fulfillment of fulfillments) {
     for (const line of fulfillment.lines) {
-      shipped.set(line.lineId, (shipped.get(line.lineId) ?? 0) + line.quantity)
+      shipped.set(line.lineItemId, (shipped.get(line.lineItemId) ?? 0) + line.quantity)
     }
   }
   return shipped
 }
 
 /**
- * The subtotal shipped so far across a shipment log, integer minor units.
+ * The subtotal shipped so far across an order's fulfillments, integer minor
+ * units.
  *
  * Feeds `buildFulfillmentEntry`'s `priorShipmentsSubtotalMinor`, which is what
  * makes the pro-rata tax allocation true itself up on the last shipment. Pure
- * and total: a row written before `subtotalMinor` existed contributes zero.
+ * and total.
  */
-export function shippedSubtotalMinor(fulfillments: readonly OrderFulfillment[]): number {
-  return fulfillments.reduce((sum, row) => sum + (row.subtotalMinor ?? 0), 0)
+export function shippedSubtotalMinor(fulfillments: readonly Fulfillment[]): number {
+  return fulfillments.reduce((sum, row) => sum + row.subtotalMinor, 0)
 }
 
 /**
  * The sequence the NEXT fulfillment claims.
  *
- * `max + 1` rather than `length + 1`: the log is append-only, but a reversal
- * story that ever removes an entry must not hand a later shipment a sequence
- * that is already in the ledger - the claim's unique index would converge it to
- * `already_posted` and recognise nothing.
+ * `max + 1` rather than `length + 1`: a reversal story that ever removes a
+ * fulfillment must not hand a later shipment a sequence that is already in the
+ * ledger - the claim's unique index would converge it to `already_posted` and
+ * recognise nothing. Matches the rule the connector uses for its own sequence
+ * (brief §5's last bullet): stable and 1-based, cancelled fulfillments
+ * included.
  */
-export function nextFulfillmentSequence(fulfillments: readonly OrderFulfillment[]): number {
+export function nextFulfillmentSequence(fulfillments: readonly Fulfillment[]): number {
   return fulfillments.reduce((max, row) => Math.max(max, row.sequence), 0) + 1
 }
 
@@ -149,12 +96,14 @@ export function nextFulfillmentSequence(fulfillments: readonly OrderFulfillment[
  * Whether this order's shipping revenue is still to be recognised.
  *
  * Shipping is recognised in FULL on the first fulfillment that posts. A
- * shipment whose posting was refused carries `glPostingId: null` and therefore
- * did NOT recognise it, so the next one must - which is why this reads the flag
- * on the row rather than counting rows.
+ * shipment whose posting was refused is deleted outright (brief §6.1's
+ * rollback) rather than kept with `glPosting: null`, but a row that was
+ * SUBSEQUENTLY reversed still carries `shippingRecognised: true` with no live
+ * posting - so this reads both the flag and `glPosting` on the row, never
+ * just counts rows.
  */
-export function shippingStillOwed(fulfillments: readonly OrderFulfillment[]): boolean {
-  return !fulfillments.some((row) => row.shippingRecognised && row.glPostingId !== null)
+export function shippingStillOwed(fulfillments: readonly Fulfillment[]): boolean {
+  return !fulfillments.some((row) => row.shippingRecognised && row.glPosting !== null)
 }
 
 /**

@@ -49,9 +49,11 @@ let nextOrder = 0
 function shipment(overrides: Partial<UnpostedShipment> = {}): UnpostedShipment {
   nextOrder += 1
   const number = overrides.orderNumber ?? `#${1000 + nextOrder}`
+  const orderId = overrides.orderId ?? `order-${nextOrder}`
   return {
-    orderId: overrides.orderId ?? `order-${nextOrder}`,
+    orderId,
     orderNumber: number,
+    fulfillmentInstanceId: overrides.fulfillmentInstanceId ?? `${orderId}-f1`,
     sequence: 1,
     shippedAt: '2026-07-06',
     lines: [

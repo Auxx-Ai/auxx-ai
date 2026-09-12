@@ -27,6 +27,7 @@ function shipment(overrides: Partial<UnpostedShipment> = {}): UnpostedShipment {
   return {
     orderId,
     orderNumber: overrides.orderNumber ?? '#1001',
+    fulfillmentInstanceId: overrides.fulfillmentInstanceId ?? `${orderId}_f1`,
     sequence: 1,
     shippedAt: '2026-07-06',
     lines: [

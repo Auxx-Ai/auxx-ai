@@ -76,12 +76,14 @@ describe('registerEntitySystemRules — declarations', () => {
       (d) => d.defSlug === 'stock-movements' && d.on === 'created'
     )!
     const handlers = smCreated.actions.map((a) => (a as { handler?: string }).handler)
-    // The PO-line roll-up rides the same door but is order-independent — it re-SUMs
-    // committed rows and neither reads nor writes what explode/qoh touch.
+    // The PO-line and fulfillment-line roll-ups ride the same door but are
+    // order-independent - they re-SUM committed rows and neither reads nor
+    // writes what explode/qoh touch.
     expect(handlers).toEqual([
       'explodeBomMovement',
       'recalculatePartQoH',
       'recalculatePurchaseOrderLineReceived',
+      'recalculateFulfillmentLineRelieved',
     ])
     expect(handlers.indexOf('explodeBomMovement')).toBeLessThan(
       handlers.indexOf('recalculatePartQoH')
