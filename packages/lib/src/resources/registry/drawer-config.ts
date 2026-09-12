@@ -437,6 +437,22 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
       ],
     },
   },
+
+  // What came back and the pack that argues about it
+  // (plans/money/tasks/54-returns.md sections 7 and 8).
+  //
+  // One card, deliberately. The salvage tree is `return_line`-grained and hangs
+  // off a line, not the return; `lines` and `creditMemos` are has_many inverses
+  // that a records block will carry. Documents is the only thing that belongs to
+  // the RETURN itself and does not fit a field row: the generated evidence pack
+  // and the dock's label photos.
+  return: {
+    entityType: 'return',
+    additionalTabs: [],
+    tabCards: {
+      overview: [{ value: 'documents', label: 'Documents', icon: 'paperclip' }],
+    },
+  },
 }
 
 /**

@@ -11,6 +11,7 @@ import { migration150StripLegacyAddressComponents } from './migrations/150-strip
 import { migration151ShipmentLabelCostAndDocument } from './migrations/151-shipment-label-cost-and-document'
 import { migration152CreditMemoGlPosting } from './migrations/152-credit-memo-gl-posting'
 import { migration153FulfillmentLines } from './migrations/153-fulfillment-lines'
+import { migration154Returns } from './migrations/154-returns'
 import { type PerOrgMigration, perOrgMigration } from './per-org'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
@@ -79,6 +80,10 @@ export const PER_ORG_MIGRATIONS: PerOrgMigration[] = [
   // type, alongside two new defs and three widened existing ones: the
   // type-change shape (plans/money/tasks/55-shipment-lines.md).
   migration153FulfillmentLines,
+  // Three new defs at once plus SEVEN new halves across six existing defs, one
+  // of them self-referential: the widest relationship graph any migration here
+  // has linked (plans/money/tasks/54-returns.md).
+  migration154Returns,
 ]
 
 /**

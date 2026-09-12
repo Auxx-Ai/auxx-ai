@@ -97,6 +97,11 @@ import { guardManualPurchaseOrderIssued } from './pre/purchase-order-status-guar
 import { guardQuoteConvertedDelete } from './pre/quote-delete-guard'
 import { guardQuoteDraftReturnWithPaidDeposit } from './pre/quote-deposit-guard'
 import {
+  guardReturnLineOverReturn,
+  OVER_RETURN_GUARDED_ATTRS,
+} from './pre/return-line-over-return-guard'
+import { guardReturnLifecycleTransition } from './pre/return-status-guard'
+import {
   dropUnauthorizedSystemFlag,
   rejectDeleteIfSystemTag,
   rejectIfSystemTag,
@@ -483,6 +488,27 @@ export function registerAllHooks(): void {
   // status on an UPDATE go through `UnifiedCrudHandler.runPreHooks`, so a twin would refuse
   // Start, Complete and Cancel while adding no coverage this registration lacks.
   registerFieldPreHooks('builds', 'build_status', [guardManualBuildLifecycleStatus])
+
+  // The `return` physical lifecycle and the cross-return quantity ceiling
+  // (plans/money/tasks/54-returns.md sections 3.3 and 3.5).
+  //
+  // 🛑 BOTH already exist on the system-hook chain, and that chain is COVERAGE:
+  // it fires for `record.create` / `record.update`, bulk writes, the CSV importer
+  // and the SDK. Every INTERACTIVE edit - the drawer, the grid's inline edit, a
+  // kanban drag, a Kopilot record tool - goes `fieldValue.set` ->
+  // `FieldValueService` -> `fireFieldPreHooks` and never reads that registry
+  // (plans/dispatch/money/21-lifecycle-status-guards-are-inert.md section 1).
+  // `return` is a VISIBLE def whose status warehouse staff drive by hand from the
+  // drawer, so the system chain alone would have guarded the door nobody uses.
+  //
+  // 🛑 These take the **apiSlug**, not the entityType: `returns` / `return-lines`
+  // (`seed/entity-seeder/constants.ts`). `return` / `return_line` would register
+  // against a slug nothing dispatches to and fail silently, which is the same
+  // inert-guard failure one line up the file.
+  registerFieldPreHooks('returns', 'return_status', [guardReturnLifecycleTransition])
+  for (const attribute of OVER_RETURN_GUARDED_ATTRS) {
+    registerFieldPreHooks('return-lines', attribute, [guardReturnLineOverReturn])
+  }
 
   // Purchase order line evidence lock (plans/purchasing/07-purchase-order-send-and-status.md
   // §6.5) — a line's agreed quantity and price freeze once a receipt or a vendor bill line

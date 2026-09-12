@@ -1414,6 +1414,12 @@
       "import": "./dist/resources/merge/client.mjs",
       "default": "./src/resources/merge/client.ts"
     },
+    "./returns": {
+      "types": "./src/returns/index.ts",
+      "source": "./src/returns/index.ts",
+      "import": "./dist/returns/index.mjs",
+      "default": "./src/returns/index.ts"
+    },
     "./seed": {
       "types": "./src/seed/index.ts",
       "source": "./src/seed/index.ts",

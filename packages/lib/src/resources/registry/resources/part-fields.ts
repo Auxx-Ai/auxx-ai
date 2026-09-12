@@ -1063,5 +1063,59 @@ export const PART_FIELDS: Record<string, ResourceField> = {
     description: 'Builds that produce this part',
   },
 
+  // Reverse relationship: returnLines (from return_line:part)
+  returnLines: {
+    id: toFieldId('returnLines'),
+    key: 'returnLines',
+    label: 'Return Lines',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'part_return_lines',
+    showInPanel: false,
+    systemSortOrder: 'c3',
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'return_line:part' as ResourceFieldId,
+      relationshipType: 'has_many',
+      onDelete: 'restrict',
+      isInverse: true,
+    },
+    description: 'Return lines for this part',
+  },
+
+  // Reverse relationship: returnPartLines (from return_part_line:part)
+  returnPartLines: {
+    id: toFieldId('returnPartLines'),
+    key: 'returnPartLines',
+    label: 'Return Part Lines',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'part_return_part_lines',
+    showInPanel: false,
+    systemSortOrder: 'c4',
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'return_part_line:part' as ResourceFieldId,
+      relationshipType: 'has_many',
+      onDelete: 'restrict',
+      isInverse: true,
+    },
+    description: 'Salvage tree rows for this part',
+  },
+
   createdBy: CREATED_BY_FIELD,
 }

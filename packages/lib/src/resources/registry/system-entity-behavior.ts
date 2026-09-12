@@ -136,6 +136,24 @@ export const SYSTEM_ENTITY_BEHAVIOR: Record<string, Partial<SystemEntityBehavior
     creatable: false,
     sidebar: 'never',
   },
+  // plans/money/tasks/54-returns.md §3. `return` itself carries NO entry here:
+  // it is visible WITH a route folder (`app/returns/`), so it resolves to pure
+  // DEFAULTS like `order` and `credit_memo`. Only its two hidden line levels
+  // need overrides - `return_line` is the evidence anchor and
+  // `return_part_line` the teardown checklist, both managed entirely from the
+  // parent like `credit_memo_line`.
+  return_line: {
+    searchable: false,
+    inPromptCatalog: false,
+    creatable: false,
+    sidebar: 'never',
+  },
+  return_part_line: {
+    searchable: false,
+    inPromptCatalog: false,
+    creatable: false,
+    sidebar: 'never',
+  },
   credit_memo_application: {
     searchable: false,
     inPromptCatalog: false,

@@ -647,6 +647,49 @@ export const SYSTEM_ENTITIES: SystemEntityConfig[] = [
     color: 'blue',
     isVisible: false,
   },
+  {
+    // One shipment back: what came back, from whom, and in what condition
+    // (plans/money/tasks/54-returns.md §3.1). VISIBLE with a route folder at
+    // `app/returns/`, unlike `shipment` / `parcel` / `fulfillment` - warehouse
+    // staff create these by hand, so the list page and the create dialog are
+    // the point.
+    //
+    // 🛑 This line reaches FRESH orgs only. `ensureEntityDefinitions` is a
+    // plain insert that skips an org already holding the def, so existing orgs
+    // are reached by the entity migration.
+    entityType: 'return',
+    apiSlug: 'returns',
+    singular: 'Return',
+    plural: 'Returns',
+    icon: 'package-x',
+    color: 'orange',
+    isVisible: true,
+  },
+  {
+    // One sold line returned, PER CONDITION: two lifts back, one pristine and
+    // one wrecked, are two rows against the same `line_item` (54 §3.5). This
+    // is the evidence anchor - condition, liability, photos and notes all hang
+    // here. Same hiding and same insert-only caveat as `fulfillment` above.
+    entityType: 'return_line',
+    apiSlug: 'return-lines',
+    singular: 'Return Line',
+    plural: 'Return Lines',
+    icon: 'list',
+    color: 'orange',
+    isVisible: false,
+  },
+  {
+    // The BOM teardown checklist: quantity and status only, no photos and no
+    // notes (54 §3.6). Self-referential via `parent`, materialized lazily, and
+    // the only thing in a return that moves inventory.
+    entityType: 'return_part_line',
+    apiSlug: 'return-part-lines',
+    singular: 'Return Part Line',
+    plural: 'Return Part Lines',
+    icon: 'git-branch',
+    color: 'orange',
+    isVisible: false,
+  },
 ]
 
 /**
@@ -930,6 +973,28 @@ export const DISPLAY_FIELD_CONFIG: Record<string, DisplayFieldConfig> = {
   fulfillment_line: {
     primaryDisplayField: 'lineItem',
     secondaryDisplayField: 'quantity',
+  },
+  // 🛑 `return` is VISIBLE, so an absent entry here is not cosmetic: it is the
+  // failure the shipment work already paid for once, where `shipment_number`
+  // was empty on 135 of 135 rows and every record "rendered nameless".
+  // `computeDisplayValue` reads a field on the ROW and cannot follow a
+  // relationship, so the number has to be the primary.
+  return: {
+    primaryDisplayField: 'number',
+    secondaryDisplayField: 'status',
+  },
+  // The part is what a person is looking for ("which item came back"), and
+  // `quantity` disambiguates two lines of one return against the same sold
+  // line - which is the ordinary case, since divergent conditions are two rows
+  // (plans/money/tasks/54-returns.md section 3.5). Same relation-primary
+  // pattern as `fulfillment_line` above.
+  return_line: {
+    primaryDisplayField: 'part',
+    secondaryDisplayField: 'quantity',
+  },
+  return_part_line: {
+    primaryDisplayField: 'part',
+    secondaryDisplayField: 'status',
   },
 }
 

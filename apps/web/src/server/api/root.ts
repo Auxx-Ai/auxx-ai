@@ -87,6 +87,7 @@ import { recordingRouter } from './routers/recording'
 import { recordLayoutRouter } from './routers/recordLayout'
 import { resourceRouter } from './routers/resource'
 import { resourceAccessRouter } from './routers/resourceAccess'
+import { returnRouter } from './routers/return'
 import { searchRouter } from './routers/search'
 import { segmentRouter } from './routers/segment'
 import { sequenceRouter } from './routers/sequence'
@@ -198,6 +199,7 @@ export const appRouter = createTRPCRouter({
   recording: recordingRouter,
   resource: resourceRouter,
   resourceAccess: resourceAccessRouter,
+  return: returnRouter,
   search: searchRouter,
   sequence: sequenceRouter,
   setting: settingsRouter,

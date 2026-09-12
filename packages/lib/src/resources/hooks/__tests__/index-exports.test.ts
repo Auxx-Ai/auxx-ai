@@ -28,6 +28,8 @@ const REGISTERED = [
   ['payment', 'PAYMENT_HOOKS'],
   ['purchase_order', 'PURCHASE_ORDER_HOOKS'],
   ['quote', 'QUOTE_HOOKS'],
+  ['return', 'RETURN_HOOKS'],
+  ['return_line', 'RETURN_LINE_HOOKS'],
   ['service_request', 'SERVICE_REQUEST_HOOKS'],
   ['ticket', 'TICKET_HOOKS'],
   ['vendor_bill', 'VENDOR_BILL_HOOKS'],

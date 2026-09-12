@@ -411,5 +411,32 @@ export const TICKET_FIELDS: Record<string, ResourceField> = {
     description: 'Service requests created from this ticket',
   },
 
+  // Reverse relationship: returns (from return:ticket)
+  returns: {
+    id: toFieldId('returns'),
+    key: 'returns',
+    label: 'Returns',
+    type: BaseType.RELATION,
+    fieldType: FieldType.RELATIONSHIP,
+    isSystem: true,
+    systemAttribute: 'ticket_returns',
+    showInPanel: false,
+    systemSortOrder: 'aG',
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    relationship: {
+      inverseResourceFieldId: 'return:ticket' as ResourceFieldId,
+      relationshipType: 'has_many',
+      onDelete: 'unlink',
+      isInverse: true,
+    },
+    description: 'Returns created from this ticket',
+  },
+
   createdBy: CREATED_BY_FIELD,
 }

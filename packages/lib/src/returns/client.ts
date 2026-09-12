@@ -2,12 +2,14 @@
 
 /**
  * Client-safe surface of the returns module: the salvage tree's type contract,
- * its vocabulary, and every pure function over it.
+ * its vocabulary, the return status vocabulary, and every pure function over
+ * them.
  *
- * Everything re-exported here is plain arithmetic and graph work over plain
- * data - no `@auxx/database`, no queue, no cache - so the salvage tree card and
- * the return create dialog can import it directly. The server barrel
- * (`index.ts`) re-exports the same names.
+ * Everything re-exported here is plain arithmetic, string and graph work over
+ * plain data - no `@auxx/database`, no queue, no cache - so the salvage tree
+ * card and the return create dialog can import it directly. The server barrel
+ * (`index.ts`) re-exports the same names alongside the reads and writes, which
+ * must never reach a browser bundle.
  *
  * No `'use client'` directive: server code imports this file too, and the
  * directive would turn every export into a client-reference proxy there
@@ -51,12 +53,32 @@ export {
   selectSalvageMovementNodes,
 } from './salvage-invariants'
 export {
+  type BomSalvageNodeKey,
+  type ParsedSalvageNodeKey,
+  parseSalvageNodeKey,
+  type RowSalvageNodeKey,
+  syntheticSalvageNodeKey,
+} from './salvage-node-key'
+export {
   type BuildSalvageTreeInput,
   bomQuantity,
   buildSalvageTree,
   findSalvageNode,
   flattenSalvageTree,
 } from './salvage-tree'
+export {
+  isPreInspectionStatus,
+  PRE_INSPECTION_RETURN_STATUSES,
+  RETURN_LINE_CONDITION_GRADES,
+  RETURN_LINE_LIABILITIES,
+  RETURN_ORIGINS,
+  RETURN_STATUSES,
+  type ReturnLineConditionGrade,
+  type ReturnLineLiability,
+  type ReturnOrigin,
+  type ReturnStatus,
+  toReturnStatus,
+} from './status'
 export {
   DEFAULT_SALVAGE_PERCENT,
   MAX_SALVAGE_DEPTH,

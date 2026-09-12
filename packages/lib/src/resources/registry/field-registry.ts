@@ -40,6 +40,9 @@ import { PRODUCT_FIELDS } from './resources/product-fields'
 import { PURCHASE_ORDER_FIELDS } from './resources/purchase-order-fields'
 import { PURCHASE_ORDER_LINE_FIELDS } from './resources/purchase-order-line-fields'
 import { QUOTE_FIELDS } from './resources/quote-fields'
+import { RETURN_FIELDS } from './resources/return-fields'
+import { RETURN_LINE_FIELDS } from './resources/return-line-fields'
+import { RETURN_PART_LINE_FIELDS } from './resources/return-part-line-fields'
 import { SERVICE_REQUEST_FIELDS } from './resources/service-request-fields'
 import { SHIPMENT_FIELDS } from './resources/shipment-fields'
 import { SIGNATURE_FIELDS } from './resources/signature-fields'
@@ -188,6 +191,16 @@ export const RESOURCE_FIELD_REGISTRY: ResourceFieldRegistry = {
   // migration 153.
   fulfillment: FULFILLMENT_FIELDS,
   fulfillment_line: FULFILLMENT_LINE_FIELDS,
+
+  // What came back and what condition it was in (plans/money/tasks/54).
+  // `return` is VISIBLE with a route folder at `app/returns/` because warehouse
+  // staff create these by hand, unlike `shipment` / `parcel`. The two line
+  // levels are hidden: `return_line` is the commercial fact and the evidence
+  // anchor, `return_part_line` is the teardown checklist and the only thing
+  // that moves inventory.
+  return: RETURN_FIELDS,
+  return_line: RETURN_LINE_FIELDS,
+  return_part_line: RETURN_PART_LINE_FIELDS,
 }
 
 /**

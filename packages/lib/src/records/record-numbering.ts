@@ -27,6 +27,7 @@ export const SEQUENCE_SCOPES = [
   'journal_entry',
   'payout',
   'credit_memo',
+  'return',
 ] as const
 
 /**
@@ -55,6 +56,9 @@ export type InternalSequenceScope = (typeof INTERNAL_SEQUENCE_SCOPES)[number]
 export type AnySequenceScope = SequenceScope | InternalSequenceScope
 
 const SCOPE_DEFAULTS: Record<AnySequenceScope, { prefix: string }> = {
+  // `RMA-0001`. The industry term, and the one the warehouse already says out
+  // loud on the phone, so it is what a customer sees on a return label.
+  return: { prefix: 'RMA' },
   ticket: { prefix: 'TKT' },
   work_order: { prefix: 'WO' },
   service_request: { prefix: 'REQ' },
