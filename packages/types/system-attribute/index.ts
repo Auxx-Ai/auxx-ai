@@ -539,6 +539,11 @@ export const SYSTEM_ATTRIBUTES = [
   'credit_memo_applications', // inverse of credit_memo_application_credit_memo
   'credit_memo_pdf_asset', // the documents registry's pointerAttr, like invoice_pdf_asset
   'credit_memo_document', // a supporting attachment, like vendor_bill_document
+  // The GlPosting this memo was posted into (accounting/25 §4.1). A denormalized
+  // backlink, TEXT and not a relationship: GlPosting is a Drizzle table with no
+  // EntityDefinition to point at. Once memos batch, the entry's lines no longer
+  // name the memo, so this stamp is the ONLY way back to the ledger card.
+  'credit_memo_gl_posting',
 
   // ─── Credit memo line (10 §2.2) ─────────────────────────────────
   'credit_memo_line_description', // printed; defaults to the line item's name when linked

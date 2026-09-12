@@ -17,9 +17,10 @@
 // | `postEntry`                     | `PostResult.status` - never throws |
 //
 // A fourth was added by task 49: the COMPLETENESS gate. Balance is not
-// completeness, and a month whose shipments have never been posted, or whose
-// channel credit memos are still drafts, is short of revenue however well its
-// entries tie. `classifyIncompleteRevenue` refuses it as `revenue_incomplete`
+// completeness, and a month whose shipments have never been posted, whose
+// channel credit memos are still drafts, or whose issued credit memos have never
+// reached the ledger, is short of revenue however well its entries tie.
+// `classifyIncompleteRevenue` refuses it as `revenue_incomplete`
 // between the gather and the build - see that function for why that position.
 //
 // The close console has exactly one treatment for a refusal: `entry-blockers.tsx`
@@ -88,6 +89,7 @@
 import type { Database } from '@auxx/database'
 import { createScopedLogger } from '@auxx/logger'
 import { AuxxError, UnprocessableEntityError } from '../errors'
+import { countUnpostedCreditMemos } from '../money/credit-memo-posting'
 import { countUnissuedChannelCreditMemos } from '../money/credit-memos/reads'
 import { countUnpostedShipments } from '../money/fulfillment-posting/reads'
 import {
@@ -286,14 +288,19 @@ async function prepareClose(
  * Refuse the close while the month still holds revenue that is not in the books
  * (49 §2.4 and §8.4 decision 7; 10 §3.4).
  *
- * Two things can be outstanding and both are counted, because the remedy is
- * different for each and a message naming only one sends somebody back twice:
+ * Three things can be outstanding and all three are counted, because the remedy
+ * is different for each and a message naming only one sends somebody back twice:
  *
  * - **A shipped fulfillment with no live posting.** The goods left and the sale
  *   is not on the P&L. Fixed in the posting dialog, or automatically if the org
  *   has set `accounting.fulfillmentPosting` to `auto`.
  * - **A `channel` credit memo still in draft.** A refund the connector ingested
  *   that nobody has issued or voided. Fixed on the memo.
+ * - **An ISSUED credit memo with no live posting** (25 §9.1). Until memos
+ *   batched, issuing posted immediately and this count could not be anything but
+ *   zero; now an issued memo waits for somebody to run the posting dialog, so
+ *   its contra-revenue sits outside the month unless the close asks. Fixed in
+ *   the credit memo posting dialog.
  *
  * 🛑 A refusal, not a warning. Closing a month declares those books shut, and
  * the entry that is owed cannot then be written into it: `period-lock.ts` exists
@@ -301,10 +308,10 @@ async function prepareClose(
  * off a month somebody has just certified, which is the one outcome neither of
  * the two plans would accept.
  *
- * ⚠️ Never throws, and never blocks the close on its OWN failure. If either
- * count cannot be read, the close proceeds: a broken read here must not be able
+ * ⚠️ Never throws, and never blocks the close on its OWN failure. If any of the
+ * counts cannot be read, the close proceeds: a broken read here must not be able
  * to hold an organization's books hostage, and the completeness banner reports
- * the same two numbers on the ledger page independently.
+ * the same three numbers on the ledger page independently.
  *
  * @returns The refusal, or `null` when nothing is outstanding.
  */
@@ -315,6 +322,7 @@ async function classifyIncompleteRevenue(
 ): Promise<CloseRefusal | null> {
   let shipments = 0
   let memos = 0
+  let unpostedMemos = 0
   try {
     const counted = await countUnpostedShipments(db, { organizationId, month: periodKey })
     if (counted.isErr()) {
@@ -326,6 +334,18 @@ async function classifyIncompleteRevenue(
     } else {
       shipments = counted.value
     }
+    // Asked BEFORE the draft count, which is the one read here that can throw:
+    // a failure over there must not silently take this answer with it.
+    const countedMemos = await countUnpostedCreditMemos(db, { organizationId, month: periodKey })
+    if (countedMemos.isErr()) {
+      logger.error('Could not count unposted credit memos for the close', {
+        organizationId,
+        periodKey,
+        error: countedMemos.error.message,
+      })
+    } else {
+      unpostedMemos = countedMemos.value
+    }
     memos = await countUnissuedChannelCreditMemos(db, { organizationId, month: periodKey })
   } catch (error) {
     logger.error('Could not check the month for unposted revenue', {
@@ -336,7 +356,7 @@ async function classifyIncompleteRevenue(
     return null
   }
 
-  if (shipments === 0 && memos === 0) return null
+  if (shipments === 0 && memos === 0 && unpostedMemos === 0) return null
 
   const month = monthLabel(periodKey)
   const sentences: string[] = []
@@ -350,6 +370,12 @@ async function classifyIncompleteRevenue(
     sentences.push(
       `${memos} channel credit ${memos === 1 ? 'memo is' : 'memos are'} still a draft. ` +
         `Issue or void the channel credit memos dated in ${month}.`
+    )
+  }
+  if (unpostedMemos > 0) {
+    sentences.push(
+      `${unpostedMemos} issued credit ${unpostedMemos === 1 ? 'memo is' : 'memos are'} ` +
+        `not posted. Post the credit memos for ${month} with the posting dialog.`
     )
   }
 

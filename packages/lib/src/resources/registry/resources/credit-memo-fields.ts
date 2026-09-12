@@ -690,6 +690,43 @@ export const CREDIT_MEMO_FIELDS: Record<string, ResourceField> = {
       'card',
   },
 
+  /**
+   * The posting this memo became (plans/accounting/tasks/25 §4.1).
+   *
+   * Written by the poster, never by hand. It exists because a BATCHED entry's
+   * lines carry `sourceType: 'credit_memo_batch'` and the period key, not the
+   * memo id, so `listPostingsForSource` on the memo returns nothing the moment
+   * memos summarise. The ledger card reads the posting the memo is STAMPED
+   * with, not the posting that names it.
+   *
+   * "Unposted" is the absence of a LIVE posting (§4.2): null, or a posting whose
+   * status is `reversed`, or a posting that no longer exists. Reading only the
+   * null case strands every memo of a reversed run.
+   */
+  glPosting: {
+    id: toFieldId('glPosting'),
+    key: 'glPosting',
+    label: 'GL Posting',
+    type: BaseType.STRING,
+    fieldType: FieldType.TEXT,
+    isSystem: true,
+    systemAttribute: 'credit_memo_gl_posting',
+    systemSortOrder: 'aK',
+    showInPanel: false,
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: false,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    description:
+      'The posting this credit memo became. TEXT and not a RELATIONSHIP because GlPosting is ' +
+      'a Drizzle table with no EntityDefinition to point at - the gl_posting EntityRefKind was ' +
+      'removed on 2026-08-28 for that reason, and payout_gl_posting_id is the precedent',
+  },
+
   createdAt: {
     id: toFieldId('createdAt'),
     key: 'createdAt',

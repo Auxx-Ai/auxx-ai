@@ -16,7 +16,7 @@
 import type { Database } from '@auxx/database'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-// The completeness half's two subledger counts. Mocked because they read
+// The completeness half's three subledger counts. Mocked because they read
 // `FieldValue` through the org cache and this file's stub answers every query
 // with the same rows; what is under test here is that the sweep CARRIES them,
 // not how they are computed. They are only reached when a month is asked for.
@@ -25,6 +25,8 @@ const h = vi.hoisted(() => ({
     vi.fn<(db: unknown, params: { organizationId: string; month: string }) => Promise<unknown>>(),
   countUnissuedChannelCreditMemos:
     vi.fn<(db: unknown, params: { organizationId: string; month: string }) => Promise<number>>(),
+  countUnpostedCreditMemos:
+    vi.fn<(db: unknown, params: { organizationId: string; month: string }) => Promise<unknown>>(),
 }))
 
 vi.mock('../../money/fulfillment-posting/reads', () => ({
@@ -32,6 +34,9 @@ vi.mock('../../money/fulfillment-posting/reads', () => ({
 }))
 vi.mock('../../money/credit-memos/reads', () => ({
   countUnissuedChannelCreditMemos: h.countUnissuedChannelCreditMemos,
+}))
+vi.mock('../../money/credit-memo-posting', () => ({
+  countUnpostedCreditMemos: h.countUnpostedCreditMemos,
 }))
 
 import { err, ok } from 'neverthrow'
@@ -42,6 +47,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   h.countUnpostedShipments.mockResolvedValue(ok(0))
   h.countUnissuedChannelCreditMemos.mockResolvedValue(0)
+  h.countUnpostedCreditMemos.mockResolvedValue(ok(0))
 })
 
 const ORG = 'org_1'
@@ -121,6 +127,7 @@ describe('verifyBooksBalance', () => {
       month: null,
       unpostedShipments: null,
       unissuedChannelCreditMemos: null,
+      unpostedCreditMemos: null,
     })
   })
 
@@ -144,6 +151,7 @@ describe('verifyBooksBalance', () => {
       month: null,
       unpostedShipments: null,
       unissuedChannelCreditMemos: null,
+      unpostedCreditMemos: null,
     })
   })
 
@@ -438,7 +446,7 @@ describe('listFailedExports', () => {
 
 // ── The completeness half (49 §2.4) ───────────────────────────────────────
 //
-// 🛑 Balance is not completeness, and the whole reason these two counts ride on
+// 🛑 Balance is not completeness, and the whole reason these counts ride on
 // this report is that a screen showing only the first would report green books
 // that are short a week of revenue.
 
@@ -449,20 +457,30 @@ describe('verifyBooksBalance completeness', () => {
     expect(report.month).toBeNull()
     expect(report.unpostedShipments).toBeNull()
     expect(report.unissuedChannelCreditMemos).toBeNull()
+    expect(report.unpostedCreditMemos).toBeNull()
     expect(h.countUnpostedShipments).not.toHaveBeenCalled()
     expect(h.countUnissuedChannelCreditMemos).not.toHaveBeenCalled()
+    expect(h.countUnpostedCreditMemos).not.toHaveBeenCalled()
   })
 
-  it('carries both counts for the month it was asked about', async () => {
+  it('carries all three counts for the month it was asked about', async () => {
     h.countUnpostedShipments.mockResolvedValue(ok(7))
     h.countUnissuedChannelCreditMemos.mockResolvedValue(2)
+    h.countUnpostedCreditMemos.mockResolvedValue(ok(5))
 
     const report = (await verifyBooksBalance(stubDb([]), ORG, { month: '2026-08' }))._unsafeUnwrap()
 
     expect(report.month).toBe('2026-08')
     expect(report.unpostedShipments).toBe(7)
     expect(report.unissuedChannelCreditMemos).toBe(2)
+    // 25 §9.1: the issued memo whose entry was never written. A different
+    // question from the draft count above it, and neither covers the other.
+    expect(report.unpostedCreditMemos).toBe(5)
     expect(h.countUnpostedShipments).toHaveBeenCalledWith(expect.anything(), {
+      organizationId: ORG,
+      month: '2026-08',
+    })
+    expect(h.countUnpostedCreditMemos).toHaveBeenCalledWith(expect.anything(), {
       organizationId: ORG,
       month: '2026-08',
     })
@@ -472,6 +490,7 @@ describe('verifyBooksBalance completeness', () => {
     // ⚠️ Losing the report that proves the books tie, in order to report the one
     // that says they might be short, is the wrong trade in both directions.
     h.countUnpostedShipments.mockResolvedValue(err(new Error('the read is broken')))
+    h.countUnpostedCreditMemos.mockResolvedValue(err(new Error('so is the netting read')))
     h.countUnissuedChannelCreditMemos.mockRejectedValue(new Error('so is the other one'))
 
     const result = await verifyBooksBalance(
@@ -488,5 +507,6 @@ describe('verifyBooksBalance completeness', () => {
     expect(report.postingsChecked).toBe(1)
     expect(report.unpostedShipments).toBeNull()
     expect(report.unissuedChannelCreditMemos).toBeNull()
+    expect(report.unpostedCreditMemos).toBeNull()
   })
 })

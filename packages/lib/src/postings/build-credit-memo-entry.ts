@@ -53,6 +53,10 @@
  */
 
 import { UnprocessableEntityError } from '../errors'
+// Type-only, so this file stays pure and gains no runtime edge into `money/`.
+// The shared amounts shape lives there because the PLANNER is its other
+// producer - see {@link computeCreditMemoAmounts}.
+import type { CreditMemoAmounts } from '../money/credit-memo-posting/types'
 import { ACCOUNT_ROLES, buildEntry } from './build-entry'
 import { toAmountMinor } from './build-fulfillment-entry'
 import { assertCompactablePeriodKey } from './period-key'
@@ -93,6 +97,128 @@ export type CreditMemoSettlement = { amount: number } & (
   | { role: 'clearing_card'; glAccountId?: never }
   | { glAccountId: string; role?: never }
 )
+
+/** What one memo's arithmetic needs, and nothing else. See {@link computeCreditMemoAmounts}. */
+export interface CreditMemoAmountsInput {
+  /** The `credit_memo` EntityInstance id. Rides on every refusal's context. */
+  creditMemoId: string
+  /** The memo's own number (`'CM-0007'`). Names every refusal. */
+  number: string
+  /** `credit_memo_subtotal`, integer minor units, >= 0. */
+  subtotal: number | null | undefined
+  /** `credit_memo_tax_total`, integer minor units, >= 0. */
+  taxTotal: number | null | undefined
+  /** `credit_memo_total`, integer minor units, > 0. `subtotal + taxTotal`, asserted. */
+  total: number | null | undefined
+  /** Whether revenue was ever posted for what this memo credits. */
+  reverseRevenue: boolean
+  /** The channel money leg. Absent for a native memo. */
+  settlement?: CreditMemoSettlement
+}
+
+/**
+ * One memo's amounts, validated and zeroed where it reverses no revenue.
+ *
+ * PURE, and **the single implementation of the per-memo arithmetic**. Three
+ * callers share it - this file's single-memo entry, the batch planner, and
+ * `build-credit-memo-batch-entry.ts` through the amounts the planner froze -
+ * so a batched January and the same memo posted on its own can never disagree
+ * about what it credits. Two copies of this would be two rounding rules and
+ * two refusal ladders, free to drift, and a drifted one is undetectable: both
+ * entries balance.
+ *
+ * `reverseRevenue: false` zeroes the three revenue numbers rather than
+ * dropping the memo. The settlement always survives, because the money moved
+ * whether or not revenue was ever recognised (§3.1 item 3).
+ *
+ * @throws {UnprocessableEntityError} on a subtotal, tax or total that is
+ *   negative or not whole minor units, a total that is zero or that does not
+ *   equal `subtotal + taxTotal`, a settlement amount that is not a positive
+ *   whole number of minor units or exceeds the total, or a memo with neither a
+ *   revenue leg nor a settlement, which has no entry to build.
+ */
+export function computeCreditMemoAmounts(input: CreditMemoAmountsInput): CreditMemoAmounts {
+  const { creditMemoId, number, reverseRevenue, settlement } = input
+
+  // `FieldValue.valueNumber` is a `doublePrecision` column, so `12000` can read
+  // back as `11999.999999999998`. `toAmountMinor` rounds the double's own noise
+  // floor and refuses a genuinely fractional value.
+  const subtotalMinor = toAmountMinor(input.subtotal, `Credit memo ${number} subtotal`)
+  const taxTotalMinor = toAmountMinor(input.taxTotal, `Credit memo ${number} tax`)
+  const totalMinor = toAmountMinor(input.total, `Credit memo ${number} total`)
+
+  const context = {
+    creditMemoId,
+    number,
+    subtotalMinor: String(subtotalMinor),
+    taxTotalMinor: String(taxTotalMinor),
+    totalMinor: String(totalMinor),
+  }
+
+  if (subtotalMinor < 0 || taxTotalMinor < 0) {
+    throw new UnprocessableEntityError(
+      `Credit memo ${number} carries a subtotal of ${subtotalMinor} and tax of ${taxTotalMinor}. ` +
+        'Neither is ever negative - sign lives in the line direction, not in the amount.',
+      context
+    )
+  }
+  if (totalMinor <= 0) {
+    throw new UnprocessableEntityError(
+      `Credit memo ${number} totals ${totalMinor}. An issue entry reduces a receivable by a ` +
+        'positive whole number of minor units - a memo that credits nothing has nothing to post.',
+      context
+    )
+  }
+  if (totalMinor !== subtotalMinor + taxTotalMinor) {
+    throw new UnprocessableEntityError(
+      `Credit memo ${number} totals ${totalMinor} but its subtotal ${subtotalMinor} plus tax ` +
+        `${taxTotalMinor} is ${subtotalMinor + taxTotalMinor}. The entry ties to the stored totals ` +
+        'or it does not post: the totals hook re-sums the lines, so a mismatch is a stale total.',
+      context
+    )
+  }
+
+  const settlementMinor = settlement?.amount ?? 0
+  if (settlement) {
+    if (
+      !Number.isFinite(settlementMinor) ||
+      !Number.isInteger(settlementMinor) ||
+      settlementMinor <= 0
+    ) {
+      throw new UnprocessableEntityError(
+        `Credit memo ${number} says ${String(settlementMinor)} was refunded at the channel. A ` +
+          'settlement is a positive whole number of minor units - a refund of nothing is no ' +
+          'settlement, and the sign lives in the line direction.',
+        { ...context, settlementMinor: String(settlementMinor) }
+      )
+    }
+    if (settlementMinor > totalMinor) {
+      throw new UnprocessableEntityError(
+        `Credit memo ${number} says ${settlementMinor} was refunded against a credit of ` +
+          `${totalMinor}. The channel cannot have paid back more than the memo credits.`,
+        { ...context, settlementMinor: String(settlementMinor) }
+      )
+    }
+  }
+
+  if (!reverseRevenue && !settlement) {
+    throw new UnprocessableEntityError(
+      `Credit memo ${number} reverses no revenue and carries no settlement, so there is no entry ` +
+        'to build. A channel memo on an unfulfilled order posts only its money leg; a native memo ' +
+        'always reverses revenue.',
+      context
+    )
+  }
+
+  return {
+    subtotalMinor: reverseRevenue ? subtotalMinor : 0,
+    taxTotalMinor: reverseRevenue ? taxTotalMinor : 0,
+    totalMinor: reverseRevenue ? totalMinor : 0,
+    settlementMinor,
+    ...(settlement?.glAccountId ? { settlementGlAccountId: settlement.glAccountId } : {}),
+    reverseRevenue,
+  }
+}
 
 export interface BuildCreditMemoEntryInput {
   /** The `credit_memo` EntityInstance id. Becomes every line's `sourceId`. */
@@ -188,75 +314,20 @@ export function buildCreditMemoEntry(input: BuildCreditMemoEntryInput): BuiltCre
     )
   }
 
-  // `FieldValue.valueNumber` is a `doublePrecision` column, so `12000` can read
-  // back as `11999.999999999998`. `toAmountMinor` rounds the double's own noise
-  // floor and refuses a genuinely fractional value.
-  const subtotalMinor = toAmountMinor(input.subtotal, `Credit memo ${number} subtotal`)
-  const taxTotalMinor = toAmountMinor(input.taxTotal, `Credit memo ${number} tax`)
-  const totalMinor = toAmountMinor(input.total, `Credit memo ${number} total`)
-
-  const context = {
+  // The arithmetic and every refusal in it belong to `computeCreditMemoAmounts`,
+  // which the batch planner also calls: one implementation, so a batched memo
+  // and the same memo posted alone can never disagree about what it credits.
+  // The three revenue numbers come back zeroed when `reverseRevenue` is false,
+  // which is exactly what the revenue leg below is skipped for.
+  const { subtotalMinor, taxTotalMinor, totalMinor, settlementMinor } = computeCreditMemoAmounts({
     creditMemoId,
     number,
-    subtotalMinor: String(subtotalMinor),
-    taxTotalMinor: String(taxTotalMinor),
-    totalMinor: String(totalMinor),
-  }
-
-  if (subtotalMinor < 0 || taxTotalMinor < 0) {
-    throw new UnprocessableEntityError(
-      `Credit memo ${number} carries a subtotal of ${subtotalMinor} and tax of ${taxTotalMinor}. ` +
-        'Neither is ever negative - sign lives in the line direction, not in the amount.',
-      context
-    )
-  }
-  if (totalMinor <= 0) {
-    throw new UnprocessableEntityError(
-      `Credit memo ${number} totals ${totalMinor}. An issue entry reduces a receivable by a ` +
-        'positive whole number of minor units - a memo that credits nothing has nothing to post.',
-      context
-    )
-  }
-  if (totalMinor !== subtotalMinor + taxTotalMinor) {
-    throw new UnprocessableEntityError(
-      `Credit memo ${number} totals ${totalMinor} but its subtotal ${subtotalMinor} plus tax ` +
-        `${taxTotalMinor} is ${subtotalMinor + taxTotalMinor}. The entry ties to the stored totals ` +
-        'or it does not post: the totals hook re-sums the lines, so a mismatch is a stale total.',
-      context
-    )
-  }
-
-  const settlementMinor = settlement?.amount ?? 0
-  if (settlement) {
-    if (
-      !Number.isFinite(settlementMinor) ||
-      !Number.isInteger(settlementMinor) ||
-      settlementMinor <= 0
-    ) {
-      throw new UnprocessableEntityError(
-        `Credit memo ${number} says ${String(settlementMinor)} was refunded at the channel. A ` +
-          'settlement is a positive whole number of minor units - a refund of nothing is no ' +
-          'settlement, and the sign lives in the line direction.',
-        { ...context, settlementMinor: String(settlementMinor) }
-      )
-    }
-    if (settlementMinor > totalMinor) {
-      throw new UnprocessableEntityError(
-        `Credit memo ${number} says ${settlementMinor} was refunded against a credit of ` +
-          `${totalMinor}. The channel cannot have paid back more than the memo credits.`,
-        { ...context, settlementMinor: String(settlementMinor) }
-      )
-    }
-  }
-
-  if (!reverseRevenue && !settlement) {
-    throw new UnprocessableEntityError(
-      `Credit memo ${number} reverses no revenue and carries no settlement, so there is no entry ` +
-        'to build. A channel memo on an unfulfilled order posts only its money leg; a native memo ' +
-        'always reverses revenue.',
-      context
-    )
-  }
+    subtotal: input.subtotal,
+    taxTotal: input.taxTotal,
+    total: input.total,
+    reverseRevenue,
+    settlement,
+  })
 
   const lineMemo = memo ?? `Credit memo ${number}`
   const source = { sourceType: CREDIT_MEMO_SOURCE_TYPE, sourceId: creditMemoId }
@@ -334,9 +405,9 @@ export function buildCreditMemoEntry(input: BuildCreditMemoEntryInput): BuiltCre
       lines,
     }),
     periodKey: number,
-    totalMinor: reverseRevenue ? totalMinor : 0,
-    subtotalMinor: reverseRevenue ? subtotalMinor : 0,
-    taxTotalMinor: reverseRevenue ? taxTotalMinor : 0,
+    totalMinor,
+    subtotalMinor,
+    taxTotalMinor,
     settlementMinor,
   }
 }

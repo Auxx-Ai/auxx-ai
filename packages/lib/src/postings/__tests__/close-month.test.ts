@@ -37,6 +37,8 @@ const h = vi.hoisted(() => ({
     vi.fn<(db: unknown, params: { organizationId: string; month: string }) => Promise<unknown>>(),
   countUnissuedChannelCreditMemos:
     vi.fn<(db: unknown, params: { organizationId: string; month: string }) => Promise<number>>(),
+  countUnpostedCreditMemos:
+    vi.fn<(db: unknown, params: { organizationId: string; month: string }) => Promise<unknown>>(),
   resolvePeriodLock: vi.fn<(organizationId: string) => Promise<unknown>>(),
   previewEntry: vi.fn<(db: unknown, options: PosterCall) => Promise<unknown>>(),
   postEntry: vi.fn<(db: unknown, options: PosterCall) => Promise<unknown>>(),
@@ -46,7 +48,7 @@ const h = vi.hoisted(() => ({
 vi.mock('../gather-month-end-inventory', () => ({
   gatherMonthEndInventoryInputs: h.gather,
 }))
-// The completeness gate's two counts. Mocked because they are subledger reads
+// The completeness gate's three counts. Mocked because they are subledger reads
 // over `FieldValue` and this file has no database; what is under test is the
 // CLASSIFICATION, which is this file's whole job.
 vi.mock('../../money/fulfillment-posting/reads', () => ({
@@ -54,6 +56,9 @@ vi.mock('../../money/fulfillment-posting/reads', () => ({
 }))
 vi.mock('../../money/credit-memos/reads', () => ({
   countUnissuedChannelCreditMemos: h.countUnissuedChannelCreditMemos,
+}))
+vi.mock('../../money/credit-memo-posting', () => ({
+  countUnpostedCreditMemos: h.countUnpostedCreditMemos,
 }))
 vi.mock('../period-lock', () => ({
   PERIOD_LOCK_SETTING_KEY: 'ledger.lockedThroughMonth',
@@ -164,6 +169,7 @@ beforeEach(() => {
   // exercises the classification it was written for.
   h.countUnpostedShipments.mockResolvedValue(ok(0))
   h.countUnissuedChannelCreditMemos.mockResolvedValue(0)
+  h.countUnpostedCreditMemos.mockResolvedValue(ok(0))
   h.resolvePeriodLock.mockResolvedValue({ lockedThroughMonth: null })
   h.previewEntry.mockResolvedValue(PREVIEW_OK)
   h.postEntry.mockResolvedValue(POST_OK)
@@ -698,17 +704,51 @@ describe('the completeness gate', () => {
     expect(result.error).toContain('Issue or void the channel credit memos dated in August 2026')
   })
 
-  it('names BOTH counts when both are outstanding', async () => {
+  it('refuses a month holding an issued credit memo nobody has posted', async () => {
+    // 🛑 25 §9.1. Until memos batched, issuing posted immediately and this could
+    // not be anything but zero. Now the memo waits for the dialog, and closing
+    // the month puts its contra-revenue permanently outside it: `period-lock.ts`
+    // refuses the entry that is owed into a month that has just been certified.
+    h.gather.mockResolvedValue(ok(movingInputs()))
+    h.countUnpostedCreditMemos.mockResolvedValue(ok(4))
+
+    const result = await postMonthEnd(db, { organizationId: ORG, periodKey: PERIOD })
+
+    expect(result.status).toBe('revenue_incomplete')
+    expect(result.error).toContain('4 issued credit memos are not posted')
+    expect(result.error).toContain('Post the credit memos for August 2026 with the posting dialog')
+    // Refused BEFORE the claim, like its two siblings.
+    expect(result.glPostingId).toBeUndefined()
+    expect(h.postEntry).not.toHaveBeenCalled()
+  })
+
+  it('counts an issued-unposted memo separately from a draft one', async () => {
+    // Neither count subsumes the other and the remedies differ: one memo is
+    // waiting on a decision, the other on a posting run. A refusal collapsing
+    // them would send somebody to the wrong screen.
+    h.gather.mockResolvedValue(ok(movingInputs()))
+    h.countUnissuedChannelCreditMemos.mockResolvedValue(1)
+    h.countUnpostedCreditMemos.mockResolvedValue(ok(1))
+
+    const result = await postMonthEnd(db, { organizationId: ORG, periodKey: PERIOD })
+
+    expect(result.error).toContain('1 channel credit memo is still a draft')
+    expect(result.error).toContain('1 issued credit memo is not posted')
+  })
+
+  it('names ALL THREE counts when all three are outstanding', async () => {
     // One sentence per count, in one message: a refusal that named only the
     // shipments would send an operator back a second time for the memos.
     h.gather.mockResolvedValue(ok(movingInputs()))
     h.countUnpostedShipments.mockResolvedValue(ok(1))
     h.countUnissuedChannelCreditMemos.mockResolvedValue(1)
+    h.countUnpostedCreditMemos.mockResolvedValue(ok(2))
 
     const result = await postMonthEnd(db, { organizationId: ORG, periodKey: PERIOD })
 
     expect(result.error).toContain('1 shipment is not posted')
     expect(result.error).toContain('1 channel credit memo is still a draft')
+    expect(result.error).toContain('2 issued credit memos are not posted')
   })
 
   it('renders on a preview as a blockedBy, not a throw', async () => {
@@ -733,6 +773,10 @@ describe('the completeness gate', () => {
       month: PERIOD,
     })
     expect(h.countUnissuedChannelCreditMemos).toHaveBeenCalledWith(db, {
+      organizationId: ORG,
+      month: PERIOD,
+    })
+    expect(h.countUnpostedCreditMemos).toHaveBeenCalledWith(db, {
       organizationId: ORG,
       month: PERIOD,
     })
@@ -771,15 +815,29 @@ describe('the completeness gate', () => {
 
   it('does not block the close on its OWN failure', async () => {
     // ⚠️ Fails OPEN. A broken subledger read must not be able to hold an
-    // organization's books hostage, and the ledger page reports the same two
+    // organization's books hostage, and the ledger page reports the same three
     // counts independently.
     h.gather.mockResolvedValue(ok(movingInputs()))
     h.countUnpostedShipments.mockResolvedValue(err(new Error('the read is broken')))
+    h.countUnpostedCreditMemos.mockResolvedValue(err(new Error('and so is the netting read')))
     h.countUnissuedChannelCreditMemos.mockRejectedValue(new Error('the other read is broken too'))
 
     const result = await postMonthEnd(db, { organizationId: ORG, periodKey: PERIOD })
 
     expect(result.status).toBe('posted')
+  })
+
+  it('does not block the close when only the credit memo count fails', async () => {
+    // The netting read is the newest and heaviest of the three (a `FieldValue`
+    // pivot joined to `GlPosting`), so it is the most likely of them to break -
+    // and on its own it must still fail open rather than take the close down.
+    h.gather.mockResolvedValue(ok(movingInputs()))
+    h.countUnpostedCreditMemos.mockResolvedValue(err(new Error('the netting read is broken')))
+
+    const result = await postMonthEnd(db, { organizationId: ORG, periodKey: PERIOD })
+
+    expect(result.status).toBe('posted')
+    expect(h.loggerError).toHaveBeenCalled()
   })
 
   it('does not refuse a complete month', async () => {

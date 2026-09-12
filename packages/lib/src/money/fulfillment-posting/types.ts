@@ -19,14 +19,21 @@
  * Client-safe: types and constants only. No `@auxx/database` import.
  */
 
-/** How many shipments one posting summarises. One entry per group. */
-export type FulfillmentPostingGrouping = 'day' | 'week' | 'month'
+import { BATCH_POSTING_GROUPINGS, type BatchPostingGrouping } from '../batch-posting/types'
 
-export const FULFILLMENT_POSTING_GROUPINGS: readonly FulfillmentPostingGrouping[] = [
-  'day',
-  'week',
-  'month',
-]
+/**
+ * How many shipments one posting summarises. One entry per group.
+ *
+ * An ALIAS of the vocabulary every bulk poster shares
+ * (`money/batch-posting/types.ts`, brief 25 §5), kept under this name so every
+ * call site reads in its own module's language. `'week'` was dropped on
+ * 2026-09-11 (brief 25 §6.4) and the shared file records why it must not come
+ * back.
+ */
+export type FulfillmentPostingGrouping = BatchPostingGrouping
+
+export const FULFILLMENT_POSTING_GROUPINGS: readonly FulfillmentPostingGrouping[] =
+  BATCH_POSTING_GROUPINGS
 
 /**
  * Which account the entry debits for one shipment (49 §3.2, §8.4 decision 6).
@@ -156,7 +163,7 @@ export interface FulfillmentPostingPlanInput {
   lockedThroughMonth: string | null
   /** The one currency the books are kept in. */
   ledgerCurrency: string
-  /** `accounting.bookTimeZone`. Week and month buckets are cut in it. */
+  /** `accounting.bookTimeZone`. Month buckets are cut in it. */
   timeZone: string
 }
 
@@ -192,7 +199,7 @@ export interface PlannedShipment extends UnpostedShipment {
 export interface FulfillmentPostingGroup {
   /**
    * The group's identity and the posting's period key before any attempt
-   * suffix: `2026-07-06` for a day, `2026-W27` for a week, `2026-07` for a month.
+   * suffix: `2026-07-06` for a day, `2026-07` for a month.
    */
   groupKey: string
   /** `YYYY-MM-DD`. The latest `shippedAt` in the group. Never a future date. */

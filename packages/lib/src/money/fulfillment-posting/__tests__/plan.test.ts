@@ -1,9 +1,9 @@
 // packages/lib/src/money/fulfillment-posting/__tests__/plan.test.ts
 //
 // `planFulfillmentPosting` is the whole decision behind the bulk poster and it
-// touches nothing, so this file is where the painful cases live: a week that
-// straddles a month, an order carrying two gateways, a shipment dated inside a
-// closed period, and the priority order between those reasons.
+// touches nothing, so this file is where the painful cases live: an order
+// carrying two gateways, a shipment dated inside a closed period, and the
+// priority order between those reasons.
 //
 // 🛑 Lane A's `resolveFulfillmentDebit` and `computeShipmentAmounts` are used
 // FOR REAL here, not stubbed. They are pure, and the thing worth asserting is
@@ -14,7 +14,7 @@
 
 import { describe, expect, it } from 'vitest'
 import type { GatewayRoute } from '../../../payment-gateways/client'
-import { groupKeyFor, isoWeekKey, planFulfillmentPosting } from '../plan'
+import { groupKeyFor, planFulfillmentPosting } from '../plan'
 import type {
   FulfillmentPostingGrouping,
   FulfillmentPostingPlanInput,
@@ -93,30 +93,6 @@ describe('grouping', () => {
     ])
   })
 
-  // 🛑 The case a month bucket cannot express. `2026-W31` is Monday July 27
-  // through Sunday August 2, so all three shipments are ONE posting - and its
-  // `txnDate` is in August while its key names a week that starts in July.
-  it('makes one posting for a week that straddles a month boundary', () => {
-    const result = plan(ships, { grouping: 'week' })
-
-    expect(result.groups.map((g) => g.groupKey)).toEqual(['2026-W31'])
-    expect(result.groups[0]?.shipments).toHaveLength(3)
-    expect(result.groups[0]?.txnDate).toBe('2026-08-02')
-  })
-
-  it('keeps a week that crosses the new year in the ISO week-numbering year', () => {
-    const result = plan(
-      [
-        shipment({ orderId: 'a', orderNumber: '#1', shippedAt: '2026-12-31' }),
-        shipment({ orderId: 'b', orderNumber: '#2', shippedAt: '2027-01-01' }),
-      ],
-      { grouping: 'week' }
-    )
-
-    expect(result.groups.map((g) => g.groupKey)).toEqual(['2026-W53'])
-    expect(result.groups[0]?.txnDate).toBe('2027-01-01')
-  })
-
   it('dates a group to its LATEST ship date, never to the key', () => {
     const result = plan(ships, { grouping: 'month' })
 
@@ -158,19 +134,9 @@ describe('grouping', () => {
   })
 })
 
-describe('isoWeekKey and groupKeyFor', () => {
-  it('matches date-fns RRRR-Www on the boundaries that bite', () => {
-    expect(isoWeekKey('2026-01-01')).toBe('2026-W01')
-    expect(isoWeekKey('2026-07-06')).toBe('2026-W28')
-    expect(isoWeekKey('2026-07-12')).toBe('2026-W28')
-    expect(isoWeekKey('2026-07-13')).toBe('2026-W29')
-    expect(isoWeekKey('2026-12-31')).toBe('2026-W53')
-    expect(isoWeekKey('2027-01-01')).toBe('2026-W53')
-  })
-
+describe('groupKeyFor', () => {
   it.each<[FulfillmentPostingGrouping, string]>([
     ['day', '2026-07-06'],
-    ['week', '2026-W28'],
     ['month', '2026-07'],
   ])('keys a %s group as %s', (grouping, expected) => {
     expect(groupKeyFor('2026-07-06', grouping)).toBe(expected)
@@ -528,7 +494,7 @@ describe('the footer', () => {
   })
 
   it('carries the grouping it was asked for', () => {
-    expect(plan([], { grouping: 'week' }).grouping).toBe('week')
+    expect(plan([], { grouping: 'month' }).grouping).toBe('month')
   })
 })
 
