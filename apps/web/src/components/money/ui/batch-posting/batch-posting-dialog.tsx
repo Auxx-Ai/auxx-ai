@@ -36,23 +36,22 @@
 // that changes identity between renders, or building one inside a component,
 // breaks the rules of hooks. Every registration is a `const` at module scope.
 
-import { FieldType } from '@auxx/database/enums'
-import { Button } from '@auxx/ui/components/button'
-import { Dialog, DialogContent } from '@auxx/ui/components/dialog'
-import { DialogNav, DialogNavPage, DialogNavPages } from '@auxx/ui/components/dialog-nav'
-import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
 import type { MonthRangeValue } from '@auxx/ui/components/month-range-picker'
-import { ScrollArea } from '@auxx/ui/components/scroll-area'
-import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
-import { TriangleAlert } from 'lucide-react'
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { formatMinor } from '~/components/accounting/ui/ledger/format'
-import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
-import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
+import { FieldPanelRow } from '~/components/global/forms/field-panel'
 import { BaseType } from '~/components/workflow/types'
 import { useSettings } from '~/hooks/use-settings'
 import { api } from '~/trpc/react'
+import {
+  BatchDialogNote,
+  BatchDialogPanel,
+  BatchEnumRow,
+  BatchPlanSection,
+  BatchPlanSkeleton,
+} from './batch-dialog-parts'
+import { BatchDialogFooter, BatchDialogShell } from './batch-dialog-shell'
 import { BatchPostingExclusions } from './batch-posting-exclusions'
 import { BatchPostingResult } from './batch-posting-result'
 import { BatchRangeControl, type InclusiveDayRange } from './batch-range-control'
@@ -214,246 +213,157 @@ export function BatchPostingDialog<
   const footerWarning = plan ? (source.options?.footerWarning?.(plan, options) ?? null) : null
 
   return (
-    <Dialog open={open} onOpenChange={(next) => !runner.isPending && onOpenChange(next)}>
-      <DialogContent size='content' position='tc' innerClassName='p-0'>
-        <DialogNav
-          title={source.title}
-          description={source.description}
-          crumbs={[
-            {
-              label: source.title,
-              onClick: page === 'result' ? () => setPage('plan') : undefined,
-            },
-            ...(page === 'result' ? [{ label: 'Result' }] : []),
-          ]}
-        />
-
-        <DialogNavPages value={page}>
-          <DialogNavPage value='plan' size='3xl'>
-            <div className='flex flex-col'>
-              <ScrollArea viewportClassName='max-h-[70vh]' allowScrollChaining>
-                <div className='flex flex-col gap-4 p-4'>
-                  <FieldPanel
-                    className='p-0'
-                    orientation='responsive'
-                    breakpoint='md'
-                    resizeId='batch-posting'
-                    defaultLabelWidth={180}>
-                    {/* 🛑 Frequency FIRST (§6.2). The range control below is
-                        chosen by this answer. */}
-                    <FieldPanelRow
-                      title='Frequency'
-                      type={BaseType.ENUM}
-                      showIcon
-                      isRequired
-                      description={source.groupingDescription}>
-                      <FieldInputAdapter
-                        fieldType={FieldType.SINGLE_SELECT}
-                        fieldOptions={{ options: groupingOptions }}
-                        value={grouping}
-                        onChange={(value) =>
-                          setGrouping(
-                            ((value as string[])[0] as BatchPostingGrouping) ??
-                              source.defaultGrouping
-                          )
-                        }
-                        disabled={runner.isPending}
-                      />
-                    </FieldPanelRow>
-
-                    <FieldPanelRow
-                      title={grouping === 'month' ? 'Months' : 'Dates'}
-                      type={BaseType.DATE}
-                      showIcon
-                      isRequired
-                      description={source.rangeDescription}>
-                      <BatchRangeControl
-                        grouping={grouping}
-                        monthRange={effectiveMonthRange}
-                        onMonthRange={setMonthRange}
-                        dayRange={dayRange}
-                        onDayRange={setDayRange}
-                        months={months}
-                        monthsLoading={monthsLoading}
-                        disabled={runner.isPending}
-                      />
-                    </FieldPanelRow>
-
-                    {/* The source's own extra request field, if it has one
-                        (§5.5's third axis). A direct child of the panel, so the
-                        last-row border rule still sees it. */}
-                    {source.options?.render({
-                      value: options,
-                      onChange: setOptions,
-                      disabled: runner.isPending,
-                    })}
-                  </FieldPanel>
-
-                  {/* A refusal is a card, not a toast (ground rule 9): the book
-                      time zone being unset is a settings task with an address,
-                      and a sentence that disappears cannot carry one. */}
-                  {refusal && <Note tone='warning'>{refusal}</Note>}
-
-                  {preview.errorMessage && !refusal && (
-                    <Note tone='warning'>{preview.errorMessage}</Note>
-                  )}
-
-                  {/* `range` null means there is nothing to preview yet (the
-                      periods are still loading, or there are none). The control
-                      above already says so; a skeleton here would imply a
-                      request that was never made. */}
-                  {range && preview.isPending && !plan && <PlanSkeleton />}
-
-                  {plan && (
-                    <div
-                      className={
-                        stale
-                          ? 'flex flex-col gap-4 opacity-60 transition-opacity'
-                          : 'flex flex-col gap-4 transition-opacity'
-                      }>
-                      {plan.groups.length === 0 ? (
-                        <div className='flex flex-col gap-2'>
-                          <p className='rounded-md border border-dashed px-3 py-6 text-center text-muted-foreground text-sm'>
-                            {source.emptyPlanNote}
-                          </p>
-                          {/* 🛑 When the reason there is nothing to post is an
-                              option that is switched off, say THAT. An empty
-                              plan over a backlog of excluded documents is how
-                              somebody concludes the feature is broken. */}
-                          {emptyPlanHint && <Note tone='warning'>{emptyPlanHint}</Note>}
-                        </div>
-                      ) : (
-                        source.renderPlanTable({ plan, currencyCode, gatewayNames })
-                      )}
-
-                      <BatchPostingExclusions
-                        rows={plan.exclusions.map(source.exclusionRow)}
-                        columns={source.exclusionColumns}
-                        copy={source.exclusionCopy}
-                      />
-
-                      {plan.footer.postings > 0 && (
-                        <Note>
-                          Posting writes {plan.footer.postings}{' '}
-                          {plan.footer.postings === 1 ? 'entry' : 'entries'} onto an append-only
-                          ledger. They can only be corrected by reversing them, never by editing
-                          them.
-                        </Note>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </ScrollArea>
-
-              {/* 🛑 The footer is the feature, not decoration. Watching it go
-                  from 613 postings to 62 to 2 as the frequency changes is how
-                  the tradeoff becomes visible instead of a constant nobody
-                  sees. */}
-              <div className='shrink-0 border-t'>
-                {/* 🛑 Above the counts, not in the scroll area: an option that
-                    WRITES to every document in the plan says so where the
-                    button is, which is the last thing read before it. */}
-                {footerWarning && (
-                  <p className='flex items-start gap-1.5 border-b bg-amber-50/60 px-4 py-2 text-sm dark:bg-amber-950/30'>
-                    <TriangleAlert className='mt-0.5 size-3.5 shrink-0 text-amber-600 dark:text-amber-500' />
-                    <span>{footerWarning}</span>
-                  </p>
-                )}
-                <div className='flex flex-wrap items-center justify-between gap-2 px-4 py-2.5'>
-                  <p className='text-muted-foreground text-sm tabular-nums'>
-                    {plan ? (
-                      <>
-                        <strong className='font-medium text-foreground'>
-                          {plan.footer.postings}
-                        </strong>{' '}
-                        {plan.footer.postings === 1 ? 'posting' : 'postings'}
-                        {source.footerCounts(plan).map((count) => (
-                          <Fragment key={count.plural}>
-                            {' · '}
-                            <strong className='font-medium text-foreground'>{count.value}</strong>{' '}
-                            {count.value === 1 ? count.singular : count.plural}
-                          </Fragment>
-                        ))}
-                        {' · '}
-                        <strong className='font-medium text-foreground'>
-                          {formatMinor(plan.footer.totalMinor, currencyCode)}
-                        </strong>
-                      </>
-                    ) : (
-                      'No preview yet'
-                    )}
-                  </p>
-
-                  <div className='flex items-center gap-2'>
-                    <Button
-                      type='button'
-                      variant='ghost'
-                      size='sm'
-                      onClick={() => onOpenChange(false)}
-                      disabled={runner.isPending}>
-                      Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
-                    </Button>
-                    <Button
-                      variant='outline'
-                      size='sm'
-                      onClick={handleRun}
-                      loading={runner.isPending}
-                      loadingText={source.runningLabel}
-                      disabled={!canRun}
-                      data-dialog-submit>
-                      Post {plan?.footer.postings ?? 0}{' '}
-                      {plan?.footer.postings === 1 ? 'entry' : 'entries'}{' '}
-                      <KbdSubmit variant='outline' size='sm' />
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </DialogNavPage>
-
-          <DialogNavPage value='result' size='3xl'>
-            <BatchPostingResult
-              result={result}
-              membersPosted={
-                result ? source.membersPosted(result) : { value: 0, singular: '', plural: '' }
-              }
-              postedRows={result ? source.postedRows(result) : []}
-              optionNote={result ? (source.options?.resultNote?.(result) ?? null) : null}
-              excludedNoun={source.excludedNoun}
-              onBack={() => setPage('plan')}
-              onClose={() => onOpenChange(false)}
+    <BatchDialogShell
+      open={open}
+      onOpenChange={onOpenChange}
+      busy={runner.isPending}
+      title={source.title}
+      description={source.description}
+      page={page}
+      onBackToPlan={() => setPage('plan')}
+      planBody={
+        <>
+          <BatchDialogPanel resizeId='batch-posting'>
+            {/* 🛑 Frequency FIRST (§6.2). The range control below is chosen by
+                this answer. */}
+            <BatchEnumRow
+              title='Frequency'
+              description={source.groupingDescription}
+              options={groupingOptions}
+              value={grouping}
+              onChange={setGrouping}
+              fallback={source.defaultGrouping}
+              disabled={runner.isPending}
             />
-          </DialogNavPage>
-        </DialogNavPages>
-      </DialogContent>
-    </Dialog>
-  )
-}
 
-// ─── Small pieces ─────────────────────────────────────────────────────────
+            <FieldPanelRow
+              title={grouping === 'month' ? 'Months' : 'Dates'}
+              type={BaseType.DATE}
+              showIcon
+              isRequired
+              description={source.rangeDescription}>
+              <BatchRangeControl
+                grouping={grouping}
+                monthRange={effectiveMonthRange}
+                onMonthRange={setMonthRange}
+                dayRange={dayRange}
+                onDayRange={setDayRange}
+                months={months}
+                monthsLoading={monthsLoading}
+                disabled={runner.isPending}
+              />
+            </FieldPanelRow>
 
-function Note({ children, tone }: { children: React.ReactNode; tone?: 'warning' }) {
-  return (
-    <p
-      className={
-        tone === 'warning'
-          ? 'flex items-start gap-1.5 rounded-md border border-amber-300 bg-amber-50/60 px-3 py-2 text-sm dark:border-amber-900 dark:bg-amber-950/30'
-          : 'rounded-md border bg-muted/40 px-3 py-2 text-muted-foreground text-sm'
-      }>
-      {tone === 'warning' && (
-        <TriangleAlert className='mt-0.5 size-3.5 shrink-0 text-amber-600 dark:text-amber-500' />
-      )}
-      <span>{children}</span>
-    </p>
-  )
-}
+            {/* The source's own extra request field, if it has one (§5.5's
+                third axis). A direct child of the panel, so the last-row
+                border rule still sees it. */}
+            {source.options?.render({
+              value: options,
+              onChange: setOptions,
+              disabled: runner.isPending,
+            })}
+          </BatchDialogPanel>
 
-function PlanSkeleton() {
-  return (
-    <div className='flex flex-col gap-2'>
-      <Skeleton className='h-9 w-full' />
-      <Skeleton className='h-9 w-full' />
-      <Skeleton className='h-9 w-full' />
-    </div>
+          {/* A refusal is a card, not a toast (ground rule 9): the book time
+              zone being unset is a settings task with an address, and a
+              sentence that disappears cannot carry one. */}
+          {refusal && <BatchDialogNote tone='warning'>{refusal}</BatchDialogNote>}
+
+          {preview.errorMessage && !refusal && (
+            <BatchDialogNote tone='warning'>{preview.errorMessage}</BatchDialogNote>
+          )}
+
+          {/* `range` null means there is nothing to preview yet (the periods
+              are still loading, or there are none). The control above already
+              says so; a skeleton here would imply a request that was never
+              made. */}
+          {range && preview.isPending && !plan && <BatchPlanSkeleton />}
+
+          {plan && (
+            <BatchPlanSection stale={stale}>
+              {plan.groups.length === 0 ? (
+                <div className='flex flex-col gap-2'>
+                  <p className='rounded-md border border-dashed px-3 py-6 text-center text-muted-foreground text-sm'>
+                    {source.emptyPlanNote}
+                  </p>
+                  {/* 🛑 When the reason there is nothing to post is an option
+                      that is switched off, say THAT. An empty plan over a
+                      backlog of excluded documents is how somebody concludes
+                      the feature is broken. */}
+                  {emptyPlanHint && (
+                    <BatchDialogNote tone='warning'>{emptyPlanHint}</BatchDialogNote>
+                  )}
+                </div>
+              ) : (
+                source.renderPlanTable({ plan, currencyCode, gatewayNames })
+              )}
+
+              <BatchPostingExclusions
+                rows={plan.exclusions.map(source.exclusionRow)}
+                columns={source.exclusionColumns}
+                copy={source.exclusionCopy}
+              />
+
+              {plan.footer.postings > 0 && (
+                <BatchDialogNote>
+                  Posting writes {plan.footer.postings}{' '}
+                  {plan.footer.postings === 1 ? 'entry' : 'entries'} onto an append-only ledger.
+                  They can only be corrected by reversing them, never by editing them.
+                </BatchDialogNote>
+              )}
+            </BatchPlanSection>
+          )}
+        </>
+      }
+      planFooter={
+        <BatchDialogFooter
+          warning={footerWarning}
+          counts={
+            plan ? (
+              <>
+                <strong className='font-medium text-foreground'>{plan.footer.postings}</strong>{' '}
+                {plan.footer.postings === 1 ? 'posting' : 'postings'}
+                {source.footerCounts(plan).map((count) => (
+                  <Fragment key={count.plural}>
+                    {' · '}
+                    <strong className='font-medium text-foreground'>{count.value}</strong>{' '}
+                    {count.value === 1 ? count.singular : count.plural}
+                  </Fragment>
+                ))}
+                {' · '}
+                <strong className='font-medium text-foreground'>
+                  {formatMinor(plan.footer.totalMinor, currencyCode)}
+                </strong>
+              </>
+            ) : (
+              'No preview yet'
+            )
+          }
+          onCancel={() => onOpenChange(false)}
+          onSubmit={handleRun}
+          submitLabel={
+            <>
+              Post {plan?.footer.postings ?? 0} {plan?.footer.postings === 1 ? 'entry' : 'entries'}
+            </>
+          }
+          loading={runner.isPending}
+          loadingText={source.runningLabel}
+          disabled={!canRun}
+        />
+      }
+      result={
+        <BatchPostingResult
+          result={result}
+          membersPosted={
+            result ? source.membersPosted(result) : { value: 0, singular: '', plural: '' }
+          }
+          postedRows={result ? source.postedRows(result) : []}
+          optionNote={result ? (source.options?.resultNote?.(result) ?? null) : null}
+          excludedNoun={source.excludedNoun}
+          onBack={() => setPage('plan')}
+          onClose={() => onOpenChange(false)}
+        />
+      }
+    />
   )
 }

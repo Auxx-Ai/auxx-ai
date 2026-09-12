@@ -1,5 +1,14 @@
 // apps/web/src/components/money/ui/batch-posting/index.ts
 
+export {
+  BatchDialogNote,
+  BatchDialogPanel,
+  BatchEnumRow,
+  BatchPlanSection,
+  BatchPlanSkeleton,
+} from './batch-dialog-parts'
+export type { BatchDialogPage } from './batch-dialog-shell'
+export { BatchDialogFooter, BatchDialogResultPage, BatchDialogShell } from './batch-dialog-shell'
 export { BatchPostingDialog } from './batch-posting-dialog'
 export { BatchPostingExclusions } from './batch-posting-exclusions'
 export { BatchPostingResult } from './batch-posting-result'

@@ -28,6 +28,25 @@
 // The footer moving from 94 builds to 20 to 217 as the control changes IS the
 // feature (§7.2). It makes the tradeoff visible instead of baked into a constant
 // nobody can see.
+//
+// ## Its chrome is the shared batch-dialog chrome, and only its chrome
+//
+// This screen is the PROGENITOR of the shape `money/ui/batch-posting/` later
+// extracted a frame from (25 §5). It now wears that frame's shell, footer,
+// result page, note card, panel and enum row, so the three dialogs cannot drift
+// apart cosmetically any more.
+//
+// 🛑 **It is deliberately NOT a `BatchPostingSource`.** The descriptor is a
+// contract as much as a shape, and this dialog answers none of it: the range is
+// two `Date`s bounded by the build cutoff rather than a half-open day-key
+// window, the groupings are five and are filtered live by the *Create as*
+// answer beside them, the exclusions table counts quantities rather than listing
+// documents by date, the preflight and its consent checkbox have no analogue,
+// and the result reports builds raised and left in progress rather than entries
+// posted. Registering it would mean a pluggable range, a dynamic grouping list,
+// an overridable exclusions block, an overridable result page and a
+// source-supplied run predicate — five slots that exactly one source would ever
+// set, which is the failure mode 25 §5.2 names by hand.
 
 import { FieldType } from '@auxx/database/enums'
 import {
@@ -38,17 +57,24 @@ import {
 } from '@auxx/lib/builds/client'
 import { Button } from '@auxx/ui/components/button'
 import { Checkbox } from '@auxx/ui/components/checkbox'
-import { Dialog, DialogContent } from '@auxx/ui/components/dialog'
-import { DialogNav, DialogNavPage, DialogNavPages } from '@auxx/ui/components/dialog-nav'
-import { Kbd, KbdSubmit } from '@auxx/ui/components/kbd'
-import { ScrollArea } from '@auxx/ui/components/scroll-area'
-import { Skeleton } from '@auxx/ui/components/skeleton'
 import { toastError } from '@auxx/ui/components/toast'
 import { keepPreviousData } from '@tanstack/react-query'
 import { TriangleAlert } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
-import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
+import { FieldPanelRow } from '~/components/global/forms/field-panel'
+import {
+  BatchDialogNote,
+  BatchDialogPanel,
+  BatchEnumRow,
+  BatchPlanSection,
+  BatchPlanSkeleton,
+} from '~/components/money/ui/batch-posting/batch-dialog-parts'
+import {
+  BatchDialogFooter,
+  BatchDialogResultPage,
+  BatchDialogShell,
+} from '~/components/money/ui/batch-posting/batch-dialog-shell'
 import { useResourceProperty } from '~/components/resources'
 import { BaseType } from '~/components/workflow/types'
 import { api } from '~/trpc/react'
@@ -64,7 +90,7 @@ const GROUPING_LABELS: Record<BackfillGrouping, string> = {
   range: 'One build for the whole range',
 }
 
-const STATUS_OPTIONS = [
+const STATUS_OPTIONS: readonly { value: BackfillStatus; label: string }[] = [
   { value: 'planned', label: 'Planned — work still to do' },
   { value: 'completed', label: 'Completed — this already happened' },
 ]
@@ -186,220 +212,160 @@ export function BackfillDialog({ open, onOpenChange, onCompleted }: BackfillDial
     !runBackfill.isPending
 
   return (
-    <Dialog open={open} onOpenChange={(next) => !runBackfill.isPending && onOpenChange(next)}>
-      <DialogContent size='content' position='tc' innerClassName='p-0'>
-        <DialogNav
-          title='Backfill builds'
-          description='Create builds for demand that has been ordered and never built.'
-          crumbs={[
-            {
-              label: 'Backfill builds',
-              onClick: page === 'result' ? () => setPage('plan') : undefined,
-            },
-            ...(page === 'result' ? [{ label: 'Result' }] : []),
-          ]}
-        />
+    <BatchDialogShell
+      open={open}
+      onOpenChange={onOpenChange}
+      busy={runBackfill.isPending}
+      title='Backfill builds'
+      description='Create builds for demand that has been ordered and never built.'
+      page={page}
+      onBackToPlan={() => setPage('plan')}
+      planBody={
+        <>
+          <BatchDialogPanel resizeId='backfill-builds'>
+            <FieldPanelRow
+              title='From'
+              type={BaseType.DATE}
+              showIcon
+              isRequired
+              description='On the date the order was placed'>
+              <FieldInputAdapter
+                fieldType={FieldType.DATE}
+                value={from}
+                onChange={(val) => setFrom((val as string) ?? from)}
+                disabled={runBackfill.isPending}
+              />
+            </FieldPanelRow>
 
-        <DialogNavPages value={page}>
-          <DialogNavPage value='plan' size='3xl'>
-            <div className='flex flex-col'>
-              <ScrollArea viewportClassName='max-h-[70vh]' allowScrollChaining>
-                <div className='flex flex-col gap-4 p-4'>
-                  <FieldPanel
-                    className='p-0'
-                    orientation='responsive'
-                    breakpoint='md'
-                    resizeId='backfill-builds'
-                    defaultLabelWidth={180}>
-                    <FieldPanelRow
-                      title='From'
-                      type={BaseType.DATE}
-                      showIcon
-                      isRequired
-                      description='On the date the order was placed'>
-                      <FieldInputAdapter
-                        fieldType={FieldType.DATE}
-                        value={from}
-                        onChange={(val) => setFrom((val as string) ?? from)}
-                        disabled={runBackfill.isPending}
-                      />
-                    </FieldPanelRow>
+            <FieldPanelRow
+              title='To'
+              type={BaseType.DATE}
+              showIcon
+              isRequired
+              description={
+                cutoff
+                  ? `Bounded by the build cutoff, ${formatDate(cutoff)}`
+                  : 'Exclusive — the day itself is not included'
+              }>
+              <FieldInputAdapter
+                fieldType={FieldType.DATE}
+                value={to}
+                onChange={(val) => setTo((val as string) ?? to)}
+                disabled={runBackfill.isPending}
+              />
+            </FieldPanelRow>
 
-                    <FieldPanelRow
-                      title='To'
-                      type={BaseType.DATE}
-                      showIcon
-                      isRequired
-                      description={
-                        cutoff
-                          ? `Bounded by the build cutoff, ${formatDate(cutoff)}`
-                          : 'Exclusive — the day itself is not included'
-                      }>
-                      <FieldInputAdapter
-                        fieldType={FieldType.DATE}
-                        value={to}
-                        onChange={(val) => setTo((val as string) ?? to)}
-                        disabled={runBackfill.isPending}
-                      />
-                    </FieldPanelRow>
-
-                    <FieldPanelRow
-                      title='Group into'
-                      type={BaseType.ENUM}
-                      showIcon
-                      isRequired
-                      description='How much demand one build covers'>
-                      <FieldInputAdapter
-                        fieldType={FieldType.SINGLE_SELECT}
-                        fieldOptions={{ options: groupingOptions }}
-                        value={grouping}
-                        onChange={(val) =>
-                          setGrouping(((val as string[])[0] as BackfillGrouping) ?? 'month')
-                        }
-                        disabled={runBackfill.isPending}
-                      />
-                    </FieldPanelRow>
-
-                    <FieldPanelRow
-                      title='Create as'
-                      type={BaseType.ENUM}
-                      showIcon
-                      isRequired
-                      description='Is this history, or is it work to do?'>
-                      <FieldInputAdapter
-                        fieldType={FieldType.SINGLE_SELECT}
-                        fieldOptions={{ options: STATUS_OPTIONS }}
-                        value={status}
-                        onChange={(val) => {
-                          setStatus(((val as string[])[0] as BackfillStatus) ?? 'planned')
-                          setAcknowledged(false)
-                        }}
-                        disabled={runBackfill.isPending}
-                      />
-                    </FieldPanelRow>
-                  </FieldPanel>
-
-                  {rangeGroupingBarred && (
-                    <Note>
-                      One build for the whole range is not available here: this range spans more
-                      than one month, and a completed build's date decides which month-end entry
-                      reflects it.
-                    </Note>
-                  )}
-
-                  {refusal && <Note tone='warning'>{refusal}</Note>}
-
-                  {refusal && cutoff && toDate.getTime() > cutoff.getTime() && (
-                    <div>
-                      <Button
-                        variant='outline'
-                        size='sm'
-                        onClick={() => setTo(new Date(cutoff).toISOString())}>
-                        Use the cutoff date
-                      </Button>
-                    </div>
-                  )}
-
-                  {preview.error && !refusal && <Note tone='warning'>{preview.error.message}</Note>}
-
-                  {preview.isPending && !plan && <PlanSkeleton />}
-
-                  {plan && (
-                    <div
-                      className={
-                        stale
-                          ? 'flex flex-col gap-4 opacity-60 transition-opacity'
-                          : 'flex flex-col gap-4 transition-opacity'
-                      }>
-                      <BackfillPeriodStrip
-                        plan={plan}
-                        selected={periodFilter}
-                        onSelect={setPeriodFilter}
-                      />
-
-                      <BackfillPlanTable
-                        plan={plan}
-                        partNames={data?.partNames ?? {}}
-                        periodFilter={periodFilter}
-                      />
-
-                      <BackfillExclusions
-                        exclusions={plan.excluded}
-                        partNames={data?.partNames ?? {}}
-                      />
-
-                      {preflight && (
-                        <CompletionPreflight
-                          buildCount={preflight.buildCount}
-                          movementCount={preflight.movementCount}
-                          unpricedParts={preflight.unpricedParts}
-                          negatives={negatives}
-                          acknowledged={acknowledged}
-                          onAcknowledge={setAcknowledged}
-                          disabled={runBackfill.isPending}
-                        />
-                      )}
-                    </div>
-                  )}
-                </div>
-              </ScrollArea>
-
-              {/* 🛑 The footer is the feature, not decoration. Watching it go
-                  from 94 builds to 20 to 217 as the grouping changes is how the
-                  tradeoff becomes visible instead of a constant nobody sees. */}
-              <div className='flex shrink-0 flex-wrap items-center justify-between gap-2 border-t px-4 py-2.5'>
-                <p className='text-muted-foreground text-sm tabular-nums'>
-                  {plan ? (
-                    <>
-                      <strong className='font-medium text-foreground'>{plan.parts.length}</strong>{' '}
-                      {plan.parts.length === 1 ? 'part' : 'parts'} ·{' '}
-                      <strong className='font-medium text-foreground'>{plan.buildCount}</strong>{' '}
-                      {plan.buildCount === 1 ? 'build' : 'builds'} ·{' '}
-                      <strong className='font-medium text-foreground'>
-                        {formatQuantity(plan.unitCount)}
-                      </strong>{' '}
-                      {plan.unitCount === 1 ? 'unit' : 'units'}
-                    </>
-                  ) : (
-                    'No preview yet'
-                  )}
-                </p>
-
-                <div className='flex items-center gap-2'>
-                  <Button
-                    type='button'
-                    variant='ghost'
-                    size='sm'
-                    onClick={() => onOpenChange(false)}
-                    disabled={runBackfill.isPending}>
-                    Cancel <Kbd shortcut='esc' variant='ghost' size='sm' />
-                  </Button>
-                  <Button
-                    variant='outline'
-                    size='sm'
-                    onClick={handleRun}
-                    loading={runBackfill.isPending}
-                    loadingText='Creating builds...'
-                    disabled={!canRun}
-                    data-dialog-submit>
-                    {status === 'completed' ? 'Create and post' : 'Create builds'}{' '}
-                    <KbdSubmit variant='outline' size='sm' />
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </DialogNavPage>
-
-          <DialogNavPage value='result' size='3xl'>
-            <BackfillResult
-              result={result}
-              onClose={() => onOpenChange(false)}
-              onBack={() => setPage('plan')}
+            <BatchEnumRow
+              title='Group into'
+              description='How much demand one build covers'
+              options={groupingOptions}
+              value={grouping}
+              onChange={setGrouping}
+              fallback='month'
+              disabled={runBackfill.isPending}
             />
-          </DialogNavPage>
-        </DialogNavPages>
-      </DialogContent>
-    </Dialog>
+
+            <BatchEnumRow
+              title='Create as'
+              description='Is this history, or is it work to do?'
+              options={STATUS_OPTIONS}
+              value={status}
+              onChange={(next) => {
+                setStatus(next)
+                setAcknowledged(false)
+              }}
+              fallback='planned'
+              disabled={runBackfill.isPending}
+            />
+          </BatchDialogPanel>
+
+          {rangeGroupingBarred && (
+            <BatchDialogNote>
+              One build for the whole range is not available here: this range spans more than one
+              month, and a completed build's date decides which month-end entry reflects it.
+            </BatchDialogNote>
+          )}
+
+          {refusal && <BatchDialogNote tone='warning'>{refusal}</BatchDialogNote>}
+
+          {refusal && cutoff && toDate.getTime() > cutoff.getTime() && (
+            <div>
+              <Button
+                variant='outline'
+                size='sm'
+                onClick={() => setTo(new Date(cutoff).toISOString())}>
+                Use the cutoff date
+              </Button>
+            </div>
+          )}
+
+          {preview.error && !refusal && (
+            <BatchDialogNote tone='warning'>{preview.error.message}</BatchDialogNote>
+          )}
+
+          {preview.isPending && !plan && <BatchPlanSkeleton />}
+
+          {plan && (
+            <BatchPlanSection stale={stale}>
+              <BackfillPeriodStrip plan={plan} selected={periodFilter} onSelect={setPeriodFilter} />
+
+              <BackfillPlanTable
+                plan={plan}
+                partNames={data?.partNames ?? {}}
+                periodFilter={periodFilter}
+              />
+
+              <BackfillExclusions exclusions={plan.excluded} partNames={data?.partNames ?? {}} />
+
+              {preflight && (
+                <CompletionPreflight
+                  buildCount={preflight.buildCount}
+                  movementCount={preflight.movementCount}
+                  unpricedParts={preflight.unpricedParts}
+                  negatives={negatives}
+                  acknowledged={acknowledged}
+                  onAcknowledge={setAcknowledged}
+                  disabled={runBackfill.isPending}
+                />
+              )}
+            </BatchPlanSection>
+          )}
+        </>
+      }
+      planFooter={
+        <BatchDialogFooter
+          counts={
+            plan ? (
+              <>
+                <strong className='font-medium text-foreground'>{plan.parts.length}</strong>{' '}
+                {plan.parts.length === 1 ? 'part' : 'parts'} ·{' '}
+                <strong className='font-medium text-foreground'>{plan.buildCount}</strong>{' '}
+                {plan.buildCount === 1 ? 'build' : 'builds'} ·{' '}
+                <strong className='font-medium text-foreground'>
+                  {formatQuantity(plan.unitCount)}
+                </strong>{' '}
+                {plan.unitCount === 1 ? 'unit' : 'units'}
+              </>
+            ) : (
+              'No preview yet'
+            )
+          }
+          onCancel={() => onOpenChange(false)}
+          onSubmit={handleRun}
+          submitLabel={status === 'completed' ? 'Create and post' : 'Create builds'}
+          loading={runBackfill.isPending}
+          loadingText='Creating builds...'
+          disabled={!canRun}
+        />
+      }
+      result={
+        <BackfillResult
+          result={result}
+          onClose={() => onOpenChange(false)}
+          onBack={() => setPage('plan')}
+        />
+      }
+    />
   )
 }
 
@@ -524,89 +490,50 @@ function BackfillResult({
   const failed = result.failed.length
 
   return (
-    <div className='flex flex-col'>
-      <ScrollArea viewportClassName='max-h-[70vh]' allowScrollChaining>
-        <div className='flex flex-col gap-3 p-4 text-sm'>
-          <p>
-            <strong className='font-medium'>{created}</strong>{' '}
-            {created === 1 ? 'build was' : 'builds were'} created.
+    <BatchDialogResultPage onBack={onBack} onClose={onClose}>
+      <p>
+        <strong className='font-medium'>{created}</strong>{' '}
+        {created === 1 ? 'build was' : 'builds were'} created.
+      </p>
+
+      {left > 0 && (
+        <div>
+          <p className='flex items-start gap-1.5'>
+            <TriangleAlert className='mt-0.5 size-3.5 shrink-0 text-amber-600 dark:text-amber-500' />
+            <span>
+              {left} of them could not be completed and {left === 1 ? 'is' : 'are'} sitting in
+              progress. They exist — do not run the backfill again for them.
+            </span>
           </p>
-
-          {left > 0 && (
-            <div>
-              <p className='flex items-start gap-1.5'>
-                <TriangleAlert className='mt-0.5 size-3.5 shrink-0 text-amber-600 dark:text-amber-500' />
-                <span>
-                  {left} of them could not be completed and {left === 1 ? 'is' : 'are'} sitting in
-                  progress. They exist — do not run the backfill again for them.
-                </span>
-              </p>
-              <ul className='mt-1 ps-6 text-muted-foreground text-xs'>
-                {result.leftInProgress.slice(0, 12).map((row) => (
-                  <li key={row.buildId}>{row.reason}</li>
-                ))}
-                {left > 12 && <li>and {left - 12} more</li>}
-              </ul>
-            </div>
-          )}
-
-          {failed > 0 && (
-            <div>
-              <p>
-                {failed} {failed === 1 ? 'bucket' : 'buckets'} produced nothing at all.
-              </p>
-              <ul className='mt-1 ps-6 text-muted-foreground text-xs'>
-                {result.failed.slice(0, 12).map((row) => (
-                  <li key={row.bucketId}>
-                    {row.periodKey}: {row.reason}
-                  </li>
-                ))}
-                {failed > 12 && <li>and {failed - 12} more</li>}
-              </ul>
-            </div>
-          )}
+          <ul className='mt-1 ps-6 text-muted-foreground text-xs'>
+            {result.leftInProgress.slice(0, 12).map((row) => (
+              <li key={row.buildId}>{row.reason}</li>
+            ))}
+            {left > 12 && <li>and {left - 12} more</li>}
+          </ul>
         </div>
-      </ScrollArea>
+      )}
 
-      <div className='flex shrink-0 items-center justify-end gap-2 border-t px-4 py-2.5'>
-        <Button type='button' variant='ghost' size='sm' onClick={onBack}>
-          Back to the preview
-        </Button>
-        <Button variant='outline' size='sm' onClick={onClose} data-dialog-submit>
-          Done <KbdSubmit variant='outline' size='sm' />
-        </Button>
-      </div>
-    </div>
+      {failed > 0 && (
+        <div>
+          <p>
+            {failed} {failed === 1 ? 'bucket' : 'buckets'} produced nothing at all.
+          </p>
+          <ul className='mt-1 ps-6 text-muted-foreground text-xs'>
+            {result.failed.slice(0, 12).map((row) => (
+              <li key={row.bucketId}>
+                {row.periodKey}: {row.reason}
+              </li>
+            ))}
+            {failed > 12 && <li>and {failed - 12} more</li>}
+          </ul>
+        </div>
+      )}
+    </BatchDialogResultPage>
   )
 }
 
 // ─── Small pieces ────────────────────────────────────────────────────────
-
-function Note({ children, tone }: { children: React.ReactNode; tone?: 'warning' }) {
-  return (
-    <p
-      className={
-        tone === 'warning'
-          ? 'flex items-start gap-1.5 rounded-md border border-amber-300 bg-amber-50/60 px-3 py-2 text-sm dark:border-amber-900 dark:bg-amber-950/30'
-          : 'rounded-md border bg-muted/40 px-3 py-2 text-muted-foreground text-sm'
-      }>
-      {tone === 'warning' && (
-        <TriangleAlert className='mt-0.5 size-3.5 shrink-0 text-amber-600 dark:text-amber-500' />
-      )}
-      <span>{children}</span>
-    </p>
-  )
-}
-
-function PlanSkeleton() {
-  return (
-    <div className='flex flex-col gap-2'>
-      <Skeleton className='h-9 w-full' />
-      <Skeleton className='h-9 w-full' />
-      <Skeleton className='h-9 w-full' />
-    </div>
-  )
-}
 
 /** January 1 of the current year — the range the cutover actually asks for. */
 function startOfYear(): Date {
