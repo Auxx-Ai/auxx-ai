@@ -35,6 +35,7 @@ import { createScopedLogger } from '@auxx/logger'
 import { and, asc, eq, inArray, sql } from 'drizzle-orm'
 import { err, ok, type Result } from 'neverthrow'
 import { AuxxError } from '../errors'
+import { countUnpostedCreditMemos } from '../money/credit-memo-posting'
 import { countUnissuedChannelCreditMemos } from '../money/credit-memos/reads'
 import { countUnpostedShipments } from '../money/fulfillment-posting/reads'
 import { compareMonths, periodMonth } from './periods'
@@ -190,9 +191,15 @@ export async function verifyBooksBalance(
  * 🛑 Balance and completeness are different questions and the sweep above
  * answers only the first. Every entry can tie while a month is missing a week of
  * revenue, which is precisely the state a connector-fed organization lands in -
- * the shipments are logged and nothing has posted them. These two counts are the
- * same two the close refuses on (`close-month.ts`), read here so the banner
- * warns before somebody presses Post rather than after.
+ * the shipments are logged and nothing has posted them. These three counts are
+ * the same three the close refuses on (`close-month.ts`), read here so the
+ * banner warns before somebody presses Post rather than after.
+ *
+ * The third, `unpostedCreditMemos` (25 §9.1), is the issued memo whose entry has
+ * not been written yet. It is a different question from the draft count beside
+ * it and neither covers the other: one is a refund nobody has decided about, the
+ * other a refund already granted whose contra-revenue is still outside the
+ * books.
  *
  * ⚠️ Returns `null`s, never zeros, when no month was asked. A `0` in that slot
  * would read as "nothing outstanding" for a question nobody asked, and the
@@ -207,16 +214,32 @@ async function countIncompleteRevenue(
   db: Database,
   organizationId: string,
   month: string | undefined
-): Promise<Pick<BooksBalanceReport, 'month' | 'unpostedShipments' | 'unissuedChannelCreditMemos'>> {
-  if (!month) return { month: null, unpostedShipments: null, unissuedChannelCreditMemos: null }
+): Promise<
+  Pick<
+    BooksBalanceReport,
+    'month' | 'unpostedShipments' | 'unissuedChannelCreditMemos' | 'unpostedCreditMemos'
+  >
+> {
+  if (!month) {
+    return {
+      month: null,
+      unpostedShipments: null,
+      unissuedChannelCreditMemos: null,
+      unpostedCreditMemos: null,
+    }
+  }
 
   try {
     const shipments = await countUnpostedShipments(db, { organizationId, month })
+    // Asked BEFORE the draft count, which is the one read here that can throw:
+    // a failure over there must not silently take this answer with it.
+    const unposted = await countUnpostedCreditMemos(db, { organizationId, month })
     const memos = await countUnissuedChannelCreditMemos(db, { organizationId, month })
     return {
       month,
       unpostedShipments: shipments.isErr() ? null : shipments.value,
       unissuedChannelCreditMemos: memos,
+      unpostedCreditMemos: unposted.isErr() ? null : unposted.value,
     }
   } catch (error) {
     logger.error('Failed to count what the month still owes the ledger', {
@@ -224,7 +247,12 @@ async function countIncompleteRevenue(
       organizationId,
       month,
     })
-    return { month, unpostedShipments: null, unissuedChannelCreditMemos: null }
+    return {
+      month,
+      unpostedShipments: null,
+      unissuedChannelCreditMemos: null,
+      unpostedCreditMemos: null,
+    }
   }
 }
 

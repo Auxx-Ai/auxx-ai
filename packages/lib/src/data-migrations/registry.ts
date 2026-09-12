@@ -9,6 +9,7 @@ import { migration148RecurringJournalEntries } from './migrations/148-recurring-
 import { migration149ShipmentParcel } from './migrations/149-shipment-parcel'
 import { migration150StripLegacyAddressComponents } from './migrations/150-strip-legacy-address-components'
 import { migration151ShipmentLabelCostAndDocument } from './migrations/151-shipment-label-cost-and-document'
+import { migration152CreditMemoGlPosting } from './migrations/152-credit-memo-gl-posting'
 import { type PerOrgMigration, perOrgMigration } from './per-org'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
@@ -65,6 +66,11 @@ export const PER_ORG_MIGRATIONS: PerOrgMigration[] = [
   // Adds four fields to the `shipment` def 149 created: label cost, insurance cost,
   // insurance claim and the label PDF URL.
   migration151ShipmentLabelCostAndDocument,
+  // Adds a field AND backfills it from another table in the same pass: the stamp
+  // shape. The INSERT-only `ensureCustomFields` writes no values, so a field whose
+  // absence means "unposted" needs its history written or every already-posted
+  // record reads as unposted.
+  migration152CreditMemoGlPosting,
   // Recomputes a stored column from its own source with the current algorithm:
   // the backfill shape.
   migration147BackfillBankMatchKeys,

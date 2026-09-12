@@ -80,6 +80,36 @@ export {
   resolveBankDepositStatus,
   resolvePaymentRoute,
 } from './bank-deposits/client'
+// ─── The shared batch-posting frame (accounting/25 §5) ─────────────────────
+// The vocabulary both bulk posters render. `FULFILLMENT_POSTING_GROUPINGS` and
+// the credit memo module's grouping are both aliases of these, so the dialog
+// can be written against one name.
+export {
+  BATCH_POSTING_EXCLUSION_REASONS,
+  BATCH_POSTING_GROUPINGS,
+  type BatchPostingExclusionReason,
+  type BatchPostingGrouping,
+} from './batch-posting/client'
+// ─── Bulk credit memo posting (plans/accounting/tasks/25) ──────────────────
+// The client-safe half only: the closed exclusion-reason set the dialog renders
+// a total `Record` over, and the plan/summary wire shapes.
+export {
+  CREDIT_MEMO_BATCH_SOURCE_TYPE,
+  CREDIT_MEMO_GL_POSTING_ATTRIBUTE,
+  CREDIT_MEMO_POSTING_EXCLUSION_REASONS,
+  type CreditMemoAmounts,
+  type CreditMemoPostingExclusion,
+  type CreditMemoPostingExclusionReason,
+  type CreditMemoPostingGroup,
+  type CreditMemoPostingGrouping,
+  type CreditMemoPostingPlan,
+  type CreditMemoPostingPlanInput,
+  type CreditMemoPostingRef,
+  type CreditMemoPostingRequest,
+  type CreditMemoPostingRunSummary,
+  type PlannedCreditMemo,
+  type UnpostedCreditMemo,
+} from './credit-memo-posting/client'
 // ─── Credit memos (plans/accounting/tasks/10-credit-memos.md) ──────────────
 // The client-safe half only: the vocabularies, the wire shapes and the pure
 // planner the apply dialog prefills with. Nothing here imports a database.

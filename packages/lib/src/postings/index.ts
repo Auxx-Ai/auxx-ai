@@ -28,6 +28,17 @@ export {
   GL_ACCOUNT_SUBTYPES,
   type GlAccountSubtypeValue,
 } from './account-subtype'
+// ── plans/accounting/tasks/25 4: one credit memo entry per period ───────────
+export {
+  type BuildCreditMemoBatchEntryInput,
+  type BuiltCreditMemoBatchEntry,
+  buildCreditMemoBatchEntry,
+  CREDIT_MEMO_CONTACT_SOURCE_TYPE,
+  type CreditMemoBatchSource,
+  creditMemoBatchPeriodKey,
+  MAX_COMPACT_CREDIT_MEMO_BATCH_KEY,
+  MAX_CREDIT_MEMO_BATCH_ATTEMPT,
+} from './build-credit-memo-batch-entry'
 // ── plans/accounting/tasks/10: credit memos, one document for "you owe us less" ──
 export {
   type BuildCreditMemoEntryInput,
@@ -35,7 +46,9 @@ export {
   buildCreditMemoEntry,
   CREDIT_MEMO_POSTING_TYPE,
   CREDIT_MEMO_SOURCE_TYPE,
+  type CreditMemoAmountsInput,
   type CreditMemoSettlement,
+  computeCreditMemoAmounts,
 } from './build-credit-memo-entry'
 // ── plans/accounting/tasks/07: customer deposits are a liability ────────────
 export {

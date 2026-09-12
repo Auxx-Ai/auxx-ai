@@ -1121,4 +1121,15 @@ export interface BooksBalanceReport {
   unpostedShipments: number | null
   /** `channel` credit memos in `month` still in draft. `null` when no month was asked. */
   unissuedChannelCreditMemos: number | null
+  /**
+   * Issued credit memos in `month` with no live posting stamped (25 §9.1).
+   * `null` when no month was asked.
+   *
+   * 🛑 Not the same question as `unissuedChannelCreditMemos`, and neither
+   * subsumes the other. That count is a memo nobody has decided about yet; this
+   * is a memo somebody HAS issued whose contra-revenue is still outside the
+   * books, which only became possible once memos started batching - before that,
+   * issuing posted immediately. The remedies differ too, so both are reported.
+   */
+  unpostedCreditMemos: number | null
 }

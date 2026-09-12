@@ -38,7 +38,8 @@ export function hasBooksFindings(report: BooksBalanceReport): boolean {
     report.discrepancies.length > 0 ||
     report.postingsChecked === 0 ||
     (report.unpostedShipments ?? 0) > 0 ||
-    (report.unissuedChannelCreditMemos ?? 0) > 0
+    (report.unissuedChannelCreditMemos ?? 0) > 0 ||
+    (report.unpostedCreditMemos ?? 0) > 0
   )
 }
 
@@ -91,10 +92,10 @@ export function BooksBalanceLine({ report }: BooksBalanceLineProps) {
  * 🛑 This sits under the balance sweep because the two answer different
  * questions and the first one alone is misleading. Every entry can tie perfectly
  * while a month is short a week of revenue - shipments logged and never posted,
- * or a channel refund still sitting as a draft - and a Books section that showed
- * only "0 discrepancies" would report green books that are incomplete. These are
- * the same two counts the close refuses on, shown before somebody presses Post
- * rather than after.
+ * a channel refund still sitting as a draft, or a refund already granted whose
+ * entry nobody has run - and a Books section that showed only "0 discrepancies"
+ * would report green books that are incomplete. These are the same three counts
+ * the close refuses on, shown before somebody presses Post rather than after.
  *
  * ⚠️ `null` means the question was not asked (no month on screen), and renders
  * nothing. It is NOT zero: asserting completeness that was never checked is the
@@ -105,7 +106,8 @@ export function BooksBalanceLine({ report }: BooksBalanceLineProps) {
 function CompletenessLines({ report }: BooksBalanceLineProps) {
   const shipments = report.unpostedShipments ?? 0
   const memos = report.unissuedChannelCreditMemos ?? 0
-  if (shipments === 0 && memos === 0) return null
+  const unpostedMemos = report.unpostedCreditMemos ?? 0
+  if (shipments === 0 && memos === 0 && unpostedMemos === 0) return null
 
   const month = report.month ? formatPeriodLabel(report.month) : 'this month'
 
@@ -123,6 +125,13 @@ function CompletenessLines({ report }: BooksBalanceLineProps) {
           {memos} channel credit {memos === 1 ? 'memo' : 'memos'} dated in {month}{' '}
           {memos === 1 ? 'is' : 'are'} still a draft. Issue or void {memos === 1 ? 'it' : 'them'}{' '}
           before closing.
+        </p>
+      )}
+      {unpostedMemos > 0 && (
+        <p className='text-xs text-amber-600'>
+          {unpostedMemos} issued credit {unpostedMemos === 1 ? 'memo' : 'memos'} dated in {month}{' '}
+          {unpostedMemos === 1 ? 'has' : 'have'} not been posted, so{' '}
+          {unpostedMemos === 1 ? 'that refund is' : 'those refunds are'} not in the books yet.
         </p>
       )}
     </div>

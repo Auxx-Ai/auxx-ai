@@ -1,7 +1,7 @@
 // packages/lib/src/money/fulfillment-posting/index.ts
 
 /**
- * Bulk fulfillment posting: one `fulfillment` entry per day, week or month over
+ * Bulk fulfillment posting: one `fulfillment` entry per day or month over
  * every shipment that no live posting claims
  * (`plans/money/tasks/49-bulk-fulfillment-posting.md`).
  *
@@ -37,7 +37,7 @@ export {
   type UnpostedShipment,
   type UnpostedShipmentLine,
 } from './client'
-export { groupKeyFor, isoWeekKey, planFulfillmentPosting } from './plan'
+export { groupKeyFor, planFulfillmentPosting } from './plan'
 export {
   countUnpostedShipments,
   type FulfillmentPostingSettings,

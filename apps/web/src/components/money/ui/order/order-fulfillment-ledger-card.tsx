@@ -33,7 +33,7 @@ import { useState } from 'react'
 import { PostingLinesDialog } from '~/components/accounting/ui/ledger-card'
 import { EmptyRow } from '~/components/drawers/cards/related-record-row'
 import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
-import { formatDayKey } from '~/components/money/ui/fulfillment-posting/fulfillment-plan-table'
+import { formatDayKey } from '~/components/money/ui/batch-posting'
 import { useSettings } from '~/hooks/use-settings'
 import { api } from '~/trpc/react'
 

@@ -11,10 +11,9 @@
  * the lock, the ledger currency and the book time zone, and it returns the
  * postings it would make and the shipments it would not. The split is the one
  * `builds/backfill-policy.ts` / `backfill-builds.ts` already make, for the same
- * reason 44 §11.1 gives: the painful cases here are a week that straddles a
- * month boundary, an order carrying two gateways, and a shipment dated inside a
- * closed period. Every one of those is a unit test only while the decision
- * needs nothing to run.
+ * reason 44 §11.1 gives: the painful cases here are an order carrying two
+ * gateways and a shipment dated inside a closed period. Every one of those is a
+ * unit test only while the decision needs nothing to run.
  *
  * ## The exclusion order is a priority order, not a filter chain
  *
@@ -36,10 +35,10 @@
  *
  * `shippedAt` is already a calendar date IN THE BOOK ZONE - the log records the
  * day the goods went out, not an instant (`money/orders/client.ts`). So the day
- * bucket is the string itself, the month bucket is its first seven characters,
- * and the week bucket is its ISO week. {@link FulfillmentPostingPlanInput.timeZone}
- * is therefore carried but never applied here: re-zoning a date that is already
- * local is how a shipment moves a day and lands in the wrong month.
+ * bucket is the string itself and the month bucket is its first seven
+ * characters. {@link FulfillmentPostingPlanInput.timeZone} is therefore carried
+ * but never applied here: re-zoning a date that is already local is how a
+ * shipment moves a day and lands in the wrong month.
  */
 
 import type { Database } from '@auxx/database'
@@ -201,41 +200,7 @@ export function planFulfillmentPosting(
  */
 export function groupKeyFor(shippedAt: string, grouping: FulfillmentPostingGrouping): string {
   if (grouping === 'month') return monthOf(shippedAt)
-  if (grouping === 'week') return isoWeekKey(shippedAt)
   return shippedAt
-}
-
-/**
- * The ISO week a calendar date falls in, `'2026-W27'`.
- *
- * Computed on the date's own calendar fields through `Date.UTC`, never through
- * the host's local time: `new Date('2026-07-06')` west of Greenwich is July 5
- * locally, which is the previous ISO week roughly one day in seven. Matching
- * `date-fns`'s `"RRRR-'W'II"` (`builds/backfill-policy.ts`), the year is the
- * ISO WEEK-NUMBERING year, which is not always the calendar year of the days in
- * it - `2026-12-31` is `2026-W53` and `2027-01-01` is still `2026-W53`. That is
- * also why a week may straddle a month and even a year, and why the group's
- * `txnDate` is the latest ship date in it rather than anything derived from the
- * key.
- */
-export function isoWeekKey(shippedAt: string): string {
-  const year = Number(shippedAt.slice(0, 4))
-  const month = Number(shippedAt.slice(5, 7))
-  const day = Number(shippedAt.slice(8, 10))
-  // A date the read cannot parse falls into a bucket of its own rather than
-  // silently joining somebody else's week. The netting read only returns dates
-  // inside the requested range, so this is defence, not a path.
-  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return shippedAt
-
-  const date = new Date(Date.UTC(year, month - 1, day))
-  // Move to the Thursday of this ISO week: the ISO year is the calendar year
-  // that Thursday falls in, by definition.
-  const weekday = date.getUTCDay() || 7
-  date.setUTCDate(date.getUTCDate() + 4 - weekday)
-  const isoYear = date.getUTCFullYear()
-  const firstThursday = Date.UTC(isoYear, 0, 4)
-  const week = 1 + Math.round((date.getTime() - firstThursday) / (7 * 86_400_000))
-  return `${isoYear}-W${String(week).padStart(2, '0')}`
 }
 
 /** Collapse one bucket of shipments into the posting it becomes. */
@@ -263,11 +228,11 @@ function toGroup(groupKey: string, shipments: PlannedShipment[]): FulfillmentPos
     byDebitRole[shipment.amounts.debitRole] += shipment.amounts.totalMinor
     orders.add(shipment.orderId)
     // 🛑 The LATEST ship date in the group, never the group key's own start. A
-    // week bucket keyed `2026-W27` posted on the Monday would date revenue
-    // before some of the goods left the building, and a month bucket posted on
-    // the first would date the whole month's revenue into the day the period
-    // opened. The latest date is inside the period by construction and is never
-    // in the future, because a shipment cannot be recorded before it ships.
+    // month bucket posted on the first would date the whole month's revenue
+    // into the day the period opened, before some of the goods left the
+    // building. The latest date is inside the period by construction and is
+    // never in the future, because a shipment cannot be recorded before it
+    // ships.
     if (shipment.shippedAt > txnDate) txnDate = shipment.shippedAt
   }
 

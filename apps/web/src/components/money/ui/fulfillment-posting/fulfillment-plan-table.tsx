@@ -39,6 +39,7 @@ import {
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useState } from 'react'
 import { formatMinor } from '~/components/accounting/ui/ledger/format'
+import { formatDayKey } from '~/components/money/ui/batch-posting'
 
 /**
  * The account each debit role names, spelled out where there is room for it.
@@ -122,15 +123,6 @@ export function FulfillmentPlanTable({
   gatewayNames = EMPTY_GATEWAY_NAMES,
 }: FulfillmentPlanTableProps) {
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set<string>())
-
-  if (plan.groups.length === 0) {
-    return (
-      <p className='rounded-md border border-dashed px-3 py-6 text-center text-muted-foreground text-sm'>
-        Nothing to post in this range. Every shipment in it either already carries a live posting or
-        is listed below with the reason it does not.
-      </p>
-    )
-  }
 
   const toggle = (groupKey: string) =>
     setExpanded((current) => {
@@ -228,9 +220,9 @@ function GroupRows({
       {open &&
         group.shipments.map((shipment) => (
           // 🛑 Keyed on `(orderId, sequence)`, never on `orderId`. One order can
-          // ship twice on the same day under a week or month grouping, and a
-          // list keyed on the order alone silently drops the second shipment
-          // out of a table whose whole job is proving what is in the entry.
+          // ship twice inside one group under a month grouping, and a list keyed
+          // on the order alone silently drops the second shipment out of a table
+          // whose whole job is proving what is in the entry.
           <TableRow
             key={`${shipment.orderId}-${shipment.sequence}`}
             className='bg-muted/30 hover:bg-muted/40'>
@@ -280,24 +272,4 @@ function GroupRows({
 function formatSplit(minorUnits: number | undefined, currencyCode: string): string {
   if (!minorUnits) return ''
   return formatMinor(minorUnits, currencyCode)
-}
-
-/**
- * Render a `YYYY-MM-DD` group or shipment key.
- *
- * 🛑 Formatted in UTC and NOT through `formatAccountingDate`. These keys were
- * already cut in the org's book time zone server-side, so re-projecting them
- * into that zone shifts a July 1 shipment to June 30 on any org west of UTC:
- * the day the posting is filed under and the day the table shows would then
- * disagree, on the one screen whose job is to be believed.
- */
-export function formatDayKey(dayKey: string): string {
-  const date = new Date(`${dayKey}T00:00:00.000Z`)
-  if (Number.isNaN(date.getTime())) return dayKey
-  return new Intl.DateTimeFormat('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    timeZone: 'UTC',
-  }).format(date)
 }

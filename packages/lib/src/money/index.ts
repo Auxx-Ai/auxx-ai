@@ -54,6 +54,13 @@ export {
   type RunInvoiceBatchResult,
   runInvoiceBatch,
 } from './batch-invoicing'
+// ─── The shared batch-posting frame (accounting/25 §5) ─────────────────────
+export {
+  BATCH_POSTING_EXCLUSION_REASONS,
+  BATCH_POSTING_GROUPINGS,
+  type BatchPostingExclusionReason,
+  type BatchPostingGrouping,
+} from './batch-posting'
 export { allocateProportionally, resolveFixedInvoiceAmount } from './billing-allocation-math'
 export {
   allocateInvoiceLine,
@@ -92,6 +99,29 @@ export {
   syncCatalogItemPricing,
 } from './catalog-pricing'
 export { convertQuoteToWorkOrder } from './convert-quote'
+// ─── Bulk credit memo posting (plans/accounting/tasks/25) ──────────────────
+// ⚠️ Two names are aliased on the way out because the fulfillment poster owns
+// the unqualified ones in this barrel: `groupKeyFor` is exported for shipments,
+// and a second `CLOSE_BLOCKING_EXCLUSION_REASONS` would read as one set over
+// both sources when it is per source.
+export {
+  CLOSE_BLOCKING_EXCLUSION_REASONS as CREDIT_MEMO_CLOSE_BLOCKING_EXCLUSION_REASONS,
+  type CreditMemoPlanContext,
+  type CreditMemoPostingPreview,
+  type CreditMemoPostingPreviewInput,
+  type CreditMemoPostingSettings,
+  countCloseBlockingCreditMemos,
+  countUnpostedCreditMemos,
+  groupKeyFor as creditMemoGroupKeyFor,
+  listCreditMemoPostings,
+  planCreditMemoPosting,
+  previewCreditMemoPosting,
+  readCreditMemoPostingSettings,
+  readCreditMemoSettlementAccounts,
+  readUnpostedCreditMemos,
+  runCreditMemoPosting,
+  type UnpostedCreditMemoRange,
+} from './credit-memo-posting'
 // ─── Credit memos (plans/accounting/tasks/10-credit-memos.md) ──────────────
 // Appended as one block, per HANDOFF section 9a's rule for shared barrels.
 export {
@@ -144,7 +174,6 @@ export {
   type FulfillmentPostingPreview,
   type FulfillmentPostingSettings,
   groupKeyFor,
-  isoWeekKey,
   listOrderFulfillmentPostings,
   planFulfillmentPosting,
   previewFulfillmentPosting,

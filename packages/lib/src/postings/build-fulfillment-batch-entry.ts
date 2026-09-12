@@ -1,7 +1,7 @@
 // packages/lib/src/postings/build-fulfillment-batch-entry.ts
 
 /**
- * ONE fulfillment entry for a whole day, week or month of shipments.
+ * ONE fulfillment entry for a whole day or month of shipments.
  *
  * PURE. No database, no clock, no chart - the property every builder in this
  * folder has, and here it is what lets a mixed group of card, routed-gateway,
@@ -382,7 +382,6 @@ const FULFILLMENT_DOC_PREFIX = `AUXX-${DOC_NUMBER_PREFIX.fulfillment}-`
  * | grouping | key | compacted | plus an attempt char |
  * |---|---|---|---|
  * | day | `2026-07-06` | 8 | 9 |
- * | week | `2026-W27` | 7 | 8 |
  * | month | `2026-07` | 6 | 7 |
  *
  * 🛑 The `-R9` headroom is the half that is easy to drop and the worst to get
@@ -433,8 +432,8 @@ export function fulfillmentBatchPeriodKey(groupKey: string, attempt: number): st
   const key = groupKey.trim()
   if (!key) {
     throw new UnprocessableEntityError(
-      'A batch fulfillment posting needs a group key (a day, an ISO week or a month) to key its ' +
-        'document number on.'
+      'A batch fulfillment posting needs a group key (a day or a month) to key its document ' +
+        'number on.'
     )
   }
   if (!Number.isInteger(attempt) || attempt < 0) {
