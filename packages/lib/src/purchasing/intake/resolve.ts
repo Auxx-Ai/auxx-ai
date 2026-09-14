@@ -48,7 +48,7 @@ import type {
   TranscribedLine,
   TranscribedQuote,
 } from './client'
-import { isAutoLinkTier, parseIntakeUnitPrice } from './client'
+import { isAutoLinkTier, resolveIntakeUnitPrice } from './client'
 import { guard } from './guard'
 
 const logger = createScopedLogger('purchasing:intake:resolve')
@@ -505,9 +505,14 @@ export async function resolveQuoteLines(
           quantity: printed.quantity ?? 0,
           // A RATE, not an amount: a fastener vendor quoting "$15.94 / 1,000"
           // is $0.01594 each, and rounding that to whole cents misstates half
-          // the order. `parseIntakeUnitPrice` keeps the rate's fractional
-          // minor units; totals use `parseIntakeTotal` instead.
-          unitPriceCents: parseIntakeUnitPrice(printed.unitPriceText, currency),
+          // the order. `resolveIntakeUnitPrice` keeps the rate's fractional
+          // minor units, and falls back to back-solving the rate from the
+          // vendor's printed LINE TOTAL when the line prints no unit price at
+          // all — the lump-sum tooling/setup/minimum-charge line, which used to
+          // land here unpriced, sum as zero and commit as a worthless order
+          // line. See that function for why this is not a "never compute"
+          // breach. Header totals use `parseIntakeTotal` instead.
+          unitPriceCents: resolveIntakeUnitPrice(printed, printed.quantity ?? 0, currency),
           chosenBreakIndex: null,
           foldedInto: null,
           removed: false,

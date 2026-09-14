@@ -18,6 +18,7 @@ import { TriangleAlert } from 'lucide-react'
 import { useMemo } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
+import { CurrencyCellInput } from '~/components/money/ui/line-builder/line-rows'
 import { formatCurrency } from '~/components/money/ui/line-builder/shared'
 import { BaseType } from '~/components/workflow/types'
 
@@ -136,7 +137,7 @@ export function IntakeHeaderPanel({ payload, onUpdate }: IntakeHeaderPanelProps)
         </FieldPanelRow>
       </FieldPanel>
 
-      <TotalsConfrontation payload={payload} />
+      <TotalsConfrontation payload={payload} onUpdate={onUpdate} />
     </div>
   )
 }
@@ -146,11 +147,36 @@ export function IntakeHeaderPanel({ payload, onUpdate }: IntakeHeaderPanelProps)
  *
  * 🛑 It renders when the numbers AGREE too. A block that appears only on
  * disagreement makes its absence read as "not checked", which is the opposite of
- * what it is for. Neither number is ever edited: the difference is either the
- * vendor's own arithmetic (real, and theirs to explain) or a line we failed to
- * read (a defect that a silent fix would hide).
+ * what it is for.
+ *
+ * 🛑 **Which of these four numbers may be typed into is the whole design, and it
+ * is not uniform.**
+ *
+ * *Their printed total* is EVIDENCE — `transcription.totalText`, the vendor's own
+ * paper. Editing it would destroy the only thing this block confronts our
+ * arithmetic against, so it is read-only and always will be. *Sum of our lines*
+ * and *Ours, all in* are derived; they move by editing the lines.
+ *
+ * *Shipping* and *Tax* are neither. They are OUR ORDER'S HEADER FIELDS —
+ * `commit.ts` writes them straight to `purchase_order_shipping_total` and
+ * `purchase_order_tax_total` — and the transcription only SEEDS them. They had no
+ * editor anywhere: the only writers were the model's parse at draft creation and
+ * folding a line in or out, and the rows were hidden entirely at `0`, so a
+ * shipping charge the model misread (or missed) reached the committed purchase
+ * order with no way to correct it and nothing on screen even naming the field.
+ * They are inputs now, and they render at `0` precisely so an absent charge is
+ * visible and typeable.
+ *
+ * A typed value and a fold are additive: folding a freight line ADDS its amount
+ * here and unfolding subtracts it again, clamped at zero (see `unfoldLine`).
  */
-function TotalsConfrontation({ payload }: { payload: IntakeDraftPayload }) {
+function TotalsConfrontation({
+  payload,
+  onUpdate,
+}: {
+  payload: IntakeDraftPayload
+  onUpdate: IntakeHeaderPanelProps['onUpdate']
+}) {
   const currency = payload.currency
   const printed = parseIntakeTotal(payload.transcription.totalText, currency)
   const lines = lineSumCents(payload.lines)
@@ -162,12 +188,18 @@ function TotalsConfrontation({ payload }: { payload: IntakeDraftPayload }) {
     <div className='flex h-fit flex-col gap-1.5 rounded-lg border p-3 text-sm'>
       <TotalRow label='Their printed total' value={formatCurrency(printed, currency)} />
       <TotalRow label='Sum of our lines' value={formatCurrency(lines, currency)} />
-      {payload.shippingCents !== 0 && (
-        <TotalRow label='Shipping' value={formatCurrency(payload.shippingCents, currency)} muted />
-      )}
-      {payload.taxCents !== 0 && (
-        <TotalRow label='Tax' value={formatCurrency(payload.taxCents, currency)} muted />
-      )}
+      <EditableTotalRow
+        label='Shipping'
+        value={payload.shippingCents}
+        currencyCode={currency}
+        onCommit={(next) => onUpdate((current) => ({ ...current, shippingCents: next ?? 0 }))}
+      />
+      <EditableTotalRow
+        label='Tax'
+        value={payload.taxCents}
+        currencyCode={currency}
+        onCommit={(next) => onUpdate((current) => ({ ...current, taxCents: next ?? 0 }))}
+      />
       <div className='mt-1 border-t pt-1.5'>
         <TotalRow label='Ours, all in' value={formatCurrency(ours, currency)} />
       </div>
@@ -180,8 +212,8 @@ function TotalsConfrontation({ payload }: { payload: IntakeDraftPayload }) {
         <p className='flex items-start gap-1.5 pt-1 text-amber-700 text-xs dark:text-amber-400'>
           <TriangleAlert className='mt-0.5 size-3.5 shrink-0' />
           <span>
-            Differs by {formatCurrency(Math.abs(difference), currency)}. Check the lines, or their
-            arithmetic. Neither number is edited.
+            Differs by {formatCurrency(Math.abs(difference), currency)}. Check the lines, the
+            shipping and tax above, or their arithmetic. Their printed total is never edited.
           </span>
         </p>
       ) : (
@@ -204,6 +236,43 @@ function TotalRow({
     <div className='flex items-baseline justify-between gap-3'>
       <span className={cn('text-muted-foreground text-xs', muted && 'pl-2')}>{label}</span>
       <span className='tabular-nums'>{value}</span>
+    </div>
+  )
+}
+
+/**
+ * A totals row somebody may type over — shipping and tax only, per
+ * {@link TotalsConfrontation}'s own doc.
+ *
+ * Reuses the line builder's `CurrencyCellInput` rather than a `FieldInputAdapter`
+ * so the number reads and edits exactly like the amount cells in the table right
+ * below it: minor units in and out, the currency's own exponent, chromeless at
+ * rest. The fixed-width wrapper is what keeps it from stretching across the
+ * `justify-between` row.
+ */
+function EditableTotalRow({
+  label,
+  value,
+  currencyCode,
+  onCommit,
+}: {
+  label: string
+  value: number
+  currencyCode: string
+  onCommit: (next: number | null) => void
+}) {
+  return (
+    <div className='flex items-center justify-between gap-3'>
+      <span className='pl-2 text-muted-foreground text-xs'>{label}</span>
+      <div className='h-6 w-28 rounded-sm hover:bg-muted/60 focus-within:bg-muted/60'>
+        <CurrencyCellInput
+          value={value}
+          readOnly={false}
+          currencyCode={currencyCode}
+          onCommit={onCommit}
+          ariaLabel={label}
+        />
+      </div>
     </div>
   )
 }

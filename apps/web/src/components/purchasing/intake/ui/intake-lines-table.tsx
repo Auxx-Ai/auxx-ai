@@ -10,6 +10,7 @@
 // and couples to nothing.
 
 import {
+  foldAmountCents,
   type IntakeFold,
   type IntakeLine,
   isAutoLinkTier,
@@ -28,7 +29,6 @@ import type { PartPrefillResolver } from '~/components/money/ui/line-builder/lin
 import { LINE_COLS } from '~/components/money/ui/line-builder/line-rows'
 import type { LinePatch } from '~/components/money/ui/line-builder/line-values'
 import { formatCurrency } from '~/components/money/ui/line-builder/shared'
-import { foldAmountCents } from '../hooks/use-intake-draft'
 import { IntakeLineRow } from './intake-line-row'
 
 interface IntakeLinesTableProps {

@@ -14,11 +14,10 @@
 // whatever the person was typing when it landed.
 
 import {
-  effectiveUnitPriceCents,
+  foldAmountCents,
   type IntakeDraftPayload,
   type IntakeFold,
   type IntakeLine,
-  parseIntakeTotal,
   parseIntakeUnitPrice,
 } from '@auxx/lib/purchasing/intake/client'
 import { toastError } from '@auxx/ui/components/toast'
@@ -30,17 +29,18 @@ import { api } from '~/trpc/react'
 const SAVE_DEBOUNCE_MS = 700
 
 /**
- * What a folded line contributes to the header total it moved into.
+ * Take a fold's amount back off a header total, never below zero.
  *
- * The line's own extended amount when it has one, otherwise the vendor's printed
- * line total. `0` for a line that carries neither — a fold cannot invent a number
- * the document does not print, and silently dropping the row instead would make
- * the §3.1 confrontation stop balancing for a reason nobody could see.
+ * 🛑 The clamp is why this is a function. Shipping and tax are typeable on the
+ * review screen now (`intake-header-panel.tsx`), so the total a fold is being
+ * removed from is not necessarily the total that fold was added to — somebody can
+ * fold a EUR 35 freight line, correct shipping to the EUR 20 they actually
+ * negotiated, then unfold. A bare subtraction leaves EUR -15 on the header, which
+ * commits to `purchase_order_shipping_total` and quietly makes the order cheaper
+ * than its lines.
  */
-export function foldAmountCents(line: IntakeLine, currency: string): number {
-  const unit = effectiveUnitPriceCents(line)
-  if (unit !== null) return Math.round(unit * line.quantity)
-  return parseIntakeTotal(line.printed.lineTotalText, currency) ?? 0
+function unfold(total: number, amount: number): number {
+  return Math.max(0, total - amount)
 }
 
 export interface IntakeDraftEditor {
@@ -221,8 +221,8 @@ export function useIntakeDraftEditor(
         const amount = fold ? foldAmountCents(target, current.currency) : 0
         return {
           ...current,
-          shippingCents: current.shippingCents - (fold === 'shipping' ? amount : 0),
-          taxCents: current.taxCents - (fold === 'tax' ? amount : 0),
+          shippingCents: unfold(current.shippingCents, fold === 'shipping' ? amount : 0),
+          taxCents: unfold(current.taxCents, fold === 'tax' ? amount : 0),
           lines: current.lines.map((line) =>
             line.lineId === lineId ? { ...line, removed: true, foldedInto: null } : line
           ),
@@ -280,8 +280,11 @@ export function useIntakeDraftEditor(
         const amount = foldAmountCents(target, current.currency)
         return {
           ...current,
-          shippingCents: current.shippingCents - (target.foldedInto === 'shipping' ? amount : 0),
-          taxCents: current.taxCents - (target.foldedInto === 'tax' ? amount : 0),
+          shippingCents: unfold(
+            current.shippingCents,
+            target.foldedInto === 'shipping' ? amount : 0
+          ),
+          taxCents: unfold(current.taxCents, target.foldedInto === 'tax' ? amount : 0),
           lines: current.lines.map((line) =>
             line.lineId === lineId ? { ...line, foldedInto: null } : line
           ),

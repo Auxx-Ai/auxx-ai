@@ -1146,12 +1146,13 @@ function QuantityCellView({
  * its only writer, so there is nothing here to type into.
  *
  * `derived-editable`: the purchase order. Same engine-owned total as `derived` -
- * still nothing to type INTO - but the cell IS an input: typing a value with a
- * blank rate cross-fills `expected_unit_price` (see `crossFillAmount`), and once
- * that write round-trips the cell goes back to rendering `computeLineTotal`. A
- * local `typedAmount` remembers what was last typed just long enough to flag a
- * disagreement with the recomputed total - there is no persisted amount field to
- * compare against, unlike `stored`.
+ * still nothing to type INTO - but the cell IS an input: typing a value
+ * back-solves `expected_unit_price` (see `crossFillAmount`), and once that write
+ * round-trips the cell goes back to rendering `computeLineTotal`. Unlike
+ * `stored`, that back-solve overwrites a rate already entered, because the rate
+ * is the only field the typed total can reach. A local `typedAmount` remembers
+ * what was last typed just long enough to flag a disagreement with the recomputed
+ * total - there is no persisted amount field to compare against, unlike `stored`.
  *
  * `stored`: the vendor bill. The amount is TRANSCRIBED, so it is an input, and
  * `crossFillAmount` fills whichever of rate/amount was left blank.
@@ -2291,10 +2292,12 @@ export function LineRow({
             value={line.unitPriceCents}
             readOnly={readOnly}
             currencyCode={currencyCode}
-            // 🛑 The rate and the amount are the ONE pair that cross-fills, and
-            // only on a `stored` document. `crossFillAmount` fills a blank
-            // sibling and never rewrites one that already has a value — see its
-            // own doc for why correcting the pair would delete the finding.
+            // 🛑 The rate and the amount are the ONE pair that cross-fills. This
+            // arm — rate → amount — only ever runs on a `stored` document, and
+            // there it fills a blank amount and never rewrites one already
+            // entered: see `crossFillAmount` for why correcting the pair would
+            // delete the match finding. On the PO there is no amount field to
+            // fill, so it passes straight through.
             onCommit={(unitPriceCents) =>
               onUpdateLine(recordId, crossFillAmount({ unitPriceCents }, line, schema))
             }

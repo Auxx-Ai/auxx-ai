@@ -253,6 +253,66 @@ describe('resolveQuoteLines — the ladder', () => {
     expect(result._unsafeUnwrap()[0]?.unitPriceCents).toBe(123456)
   })
 
+  // 🛑 The lump-sum line — tooling, setup, NRE, a minimum-order charge. It prints
+  // an amount and no unit price, and the purchase order has no writable line
+  // total, so the rate is the only field that amount can reach. Leaving it null
+  // made `lineSumCents` skip the line entirely: §3.1 then reported a discrepancy
+  // exactly the size of the charge and the line committed worth nothing.
+  it("back-solves the rate from the vendor's printed LINE TOTAL when no unit price is printed", async () => {
+    h.results = [[], [], []]
+
+    const result = await resolveQuoteLines(db, 'org_1', {
+      vendorRecordId: null,
+      currency: 'EUR',
+      lines: [line({ quantity: 1, unitPriceText: null, lineTotalText: '450.00' })],
+    })
+
+    expect(result._unsafeUnwrap()[0]?.unitPriceCents).toBe(45000)
+  })
+
+  // The printed unit price is still the authority where the vendor printed one:
+  // a line total that disagrees with qty x price is THEIR arithmetic, and §3.1
+  // exists to show that rather than let it silently rewrite our rate.
+  it('prefers the printed unit price over the printed line total', async () => {
+    h.results = [[], [], []]
+
+    const result = await resolveQuoteLines(db, 'org_1', {
+      vendorRecordId: null,
+      currency: 'EUR',
+      lines: [line({ quantity: 10, unitPriceText: '1.00', lineTotalText: '99.00' })],
+    })
+
+    expect(result._unsafeUnwrap()[0]?.unitPriceCents).toBe(100)
+  })
+
+  // At RATE_DECIMALS the back-solve round-trips: 1.594 x 105,000 is 167,370
+  // exactly, where whole cents would say 2 x 105,000 = 210,000.
+  it('back-solves at rate precision, not whole cents', async () => {
+    h.results = [[], [], []]
+
+    const result = await resolveQuoteLines(db, 'org_1', {
+      vendorRecordId: null,
+      currency: 'EUR',
+      lines: [line({ quantity: 105_000, unitPriceText: null, lineTotalText: '1673.70' })],
+    })
+
+    expect(result._unsafeUnwrap()[0]?.unitPriceCents).toBe(1.594)
+  })
+
+  // A division guard: a line whose quantity was never read stays visibly
+  // unpriced rather than acquiring a made-up rate.
+  it('back-solves nothing when the quantity was never read', async () => {
+    h.results = [[], [], []]
+
+    const result = await resolveQuoteLines(db, 'org_1', {
+      vendorRecordId: null,
+      currency: 'EUR',
+      lines: [line({ quantity: null, unitPriceText: null, lineTotalText: '450.00' })],
+    })
+
+    expect(result._unsafeUnwrap()[0]?.unitPriceCents).toBeNull()
+  })
+
   it('an unread quantity stays zero rather than becoming a plausible 1', async () => {
     h.results = [[], [], []]
 
