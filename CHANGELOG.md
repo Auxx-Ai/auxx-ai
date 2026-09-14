@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.1.237](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.236...auxx-v0.1.237) (2026-09-14)
+
+
+### Features
+
+* **accounting:** batch credit memo posting, and one frame for both bulk posters ([#2140](https://github.com/Auxx-Ai/auxx-ai/issues/2140)) ([39077d7](https://github.com/Auxx-Ai/auxx-ai/commit/39077d787cd5089753cf0c240e913ef7f076ca2a))
+* **accounting:** bulk issue drafts from the credit memo posting dialog ([#2141](https://github.com/Auxx-Ai/auxx-ai/issues/2141)) ([98abac2](https://github.com/Auxx-Ai/auxx-ai/commit/98abac2b0f43d75c7642cb5334474b0b998f3b43))
+* **contacts:** an Orders section on the contact drawer overview ([#2151](https://github.com/Auxx-Ai/auxx-ai/issues/2151)) ([9fe21ed](https://github.com/Auxx-Ai/auxx-ai/commit/9fe21edd3d6ca0e4fc09d73d3df23335b3187721))
+* **money:** fulfillment records replace the JSON shipment log, and relieve inventory on ship ([#2144](https://github.com/Auxx-Ai/auxx-ai/issues/2144)) ([2ed8059](https://github.com/Auxx-Ai/auxx-ai/commit/2ed80590cbcb7252508e326d2c453fa73a8b6abc))
+* **money:** fulfillment/fulfillment_line entities, shared stock-movement writer (wave 1) ([#2143](https://github.com/Auxx-Ai/auxx-ai/issues/2143)) ([fa28eb5](https://github.com/Auxx-Ai/auxx-ai/commit/fa28eb51385259854ce7b8671cbe9f43a6cb0a86))
+* **money:** return lines on a shared line grid, credit memos surface, customer note on the return ([#2147](https://github.com/Auxx-Ai/auxx-ai/issues/2147)) ([860ef04](https://github.com/Auxx-Ai/auxx-ai/commit/860ef04a65c3b41a18c542804a9b95d898210972))
+* **money:** returns, the damage evidence and the salvage tree ([#2145](https://github.com/Auxx-Ai/auxx-ai/issues/2145)) ([f958bdd](https://github.com/Auxx-Ai/auxx-ai/commit/f958bddac5e81211b5e824ee5928f8a03d07e5fc))
+* **money:** the salvage writer, the evidence pack, and returns on the ticket ([#2146](https://github.com/Auxx-Ai/auxx-ai/issues/2146)) ([9dbbcc2](https://github.com/Auxx-Ai/auxx-ai/commit/9dbbcc2ecb2c85a6bc15574ab09262465019aeea))
+* **returns:** a return from the label on the box ([#2150](https://github.com/Auxx-Ai/auxx-ai/issues/2150)) ([c1f379d](https://github.com/Auxx-Ai/auxx-ai/commit/c1f379db240674034d44d37499cf1170bd4b9200))
+
+
+### Bug Fixes
+
+* **accounting:** unstick the ledger preview, and give the close console the module shell ([#2138](https://github.com/Auxx-Ai/auxx-ai/issues/2138)) ([a503d70](https://github.com/Auxx-Ai/auxx-ai/commit/a503d703f3c399d53e2dcb184604f7f24a01dc94))
+* **intake:** one dashed border on the drop zone, not two ([#2152](https://github.com/Auxx-Ai/auxx-ai/issues/2152)) ([5667a72](https://github.com/Auxx-Ai/auxx-ai/commit/5667a7279f5fbf9af09ce64f9d109d9e54a136d1))
+* **returns:** both return cards put their controls in the section header ([#2149](https://github.com/Auxx-Ai/auxx-ai/issues/2149)) ([24645fb](https://github.com/Auxx-Ai/auxx-ai/commit/24645fb7766dabda4b08e3879290366ca783946b))
+
 ## [0.1.236](https://github.com/Auxx-Ai/auxx-ai/compare/auxx-v0.1.235...auxx-v0.1.236) (2026-09-11)
 
 
