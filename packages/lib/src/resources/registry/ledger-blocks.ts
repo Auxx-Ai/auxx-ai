@@ -69,6 +69,15 @@ function ledgerBlock(input: {
   statusAttr: string
   emptyLabel: string
   /**
+   * Server sort, when {@link NEWEST_FIRST} is the wrong column.
+   *
+   * `createdAt` is when the ROW was written, which for an imported document is
+   * when the sync ran, not when the document happened. A definition that
+   * carries its own real date (`order.placedAt`) has to name it, or a bulk
+   * backfill orders the list by import order.
+   */
+  sort?: { fieldId: string; desc?: boolean }
+  /**
    * Name in `BLOCK_ACTIONS_COMPONENTS` for a section-level action.
    *
    * Section-level, NOT per-row: `RecordsBlockConfig` cannot express a per-row
@@ -91,7 +100,7 @@ function ledgerBlock(input: {
         kind: 'query',
         definition: input.definition,
         hostFieldId: input.hostFieldId,
-        sort: NEWEST_FIRST,
+        sort: input.sort ?? NEWEST_FIRST,
         pageSize: LEDGER_PAGE_SIZE,
       },
       statusAttr: input.statusAttr,
@@ -203,6 +212,42 @@ export const CONTACT_BILLING_BLOCKS: LayoutBlock[] = [
     hostFieldId: 'return:contact',
     statusAttr: 'return_status',
     emptyLabel: 'No returns',
+  }),
+]
+
+/**
+ * Orders on the CONTACT overview (not the Billing tab).
+ *
+ * The one sell-side list that is not a billing document: for a store, an order
+ * IS the reason the person is writing in, so it sits on the first tab a support
+ * agent lands on rather than three clicks away under Billing. Placed with no
+ * `position`, so it renders after the Details panel and the two overview cards,
+ * which is where a list belongs on a tab that leads with identity fields.
+ *
+ * 🔑 The badge is `order_fulfillment_status`, NOT `order_financial_status`.
+ * `order` is the only definition here with two status fields and
+ * `RecordsBlockConfig.statusAttr` is singular, so this is a choice: by the time
+ * a customer emails, they have almost always paid, and what they are asking is
+ * whether it shipped. The money side stays one click away on the record.
+ *
+ * ⚠️ Sorted by `placedAt`, not the shared `createdAt` default. `createdAt` is
+ * when WE wrote the row, so a bulk import would order a customer's history by
+ * sync order. `placedAt` is nullable and the query builder applies
+ * `NULLS LAST` in both directions, so a manually raised order with no date
+ * sinks below the real ones rather than pinning itself to the top.
+ */
+export const CONTACT_ORDERS_BLOCKS: LayoutBlock[] = [
+  ledgerBlock({
+    id: 'contact:orders',
+    label: 'Orders',
+    icon: 'shopping-bag',
+    definition: 'order',
+    // `order.contact` is required on every order — the buying party.
+    hostFieldId: 'order:contact',
+    statusAttr: 'order_fulfillment_status',
+    emptyLabel: 'No orders',
+    sort: { fieldId: 'placedAt', desc: true },
+    actionsComponent: 'contact-orders',
   }),
 ]
 

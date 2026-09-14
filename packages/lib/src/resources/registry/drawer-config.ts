@@ -5,6 +5,7 @@ import {
   BILLING_TAB_ID,
   COMPANY_PURCHASING_BLOCKS,
   CONTACT_BILLING_BLOCKS,
+  CONTACT_ORDERS_BLOCKS,
   PURCHASING_TAB_ID,
   TICKET_RETURNS_BLOCKS,
 } from './ledger-blocks'
@@ -59,6 +60,10 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
     // Quotes, invoices, work orders and the purchase orders addressed to this
     // person. One shared list with the detail page (`ledger-blocks.ts`).
     tabBlocks: {
+      // Orders lead: for a store this is what the person is writing in about,
+      // so it sits on the tab the drawer opens on rather than under Billing
+      // with the documents. Carries the Create order action (`ledger-blocks.ts`).
+      overview: CONTACT_ORDERS_BLOCKS,
       [BILLING_TAB_ID]: CONTACT_BILLING_BLOCKS,
     },
   },

@@ -39,6 +39,10 @@ export interface BlockActionsProps {
  * the action mounts after the `EmptyRow` - the ticket-with-no-return case, which
  * is the one that matters (plans/money/tasks/54-returns.md section 4.1).
  *
+ * `contact-orders` is the second: "Create order" below the contact drawer's
+ * Orders section. Create only, no link — `order.contact` is required, so every
+ * existing order already names a buyer and linking one would MOVE it.
+ *
  * The three older action-carrying cards (`service-request-related-cards`,
  * `quote-jobs-card`, `purchase-order-bills-card`) still keep their bespoke code
  * and stay `card` blocks. Moving them is now a question of appetite rather than
@@ -56,6 +60,7 @@ export const BLOCK_ACTIONS_COMPONENTS: Record<
   () => Promise<{ default: ComponentType<BlockActionsProps> }>
 > = {
   'ticket-returns': () => import('../../tickets/ticket-returns-actions'),
+  'contact-orders': () => import('../../contacts/contact-orders-actions'),
 }
 
 /**

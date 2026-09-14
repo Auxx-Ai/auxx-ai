@@ -10,6 +10,7 @@ import {
   BILLING_TAB_ID,
   COMPANY_PURCHASING_BLOCKS,
   CONTACT_BILLING_BLOCKS,
+  CONTACT_ORDERS_BLOCKS,
   PURCHASING_TAB_ID,
   TICKET_RETURNS_BLOCKS,
 } from './ledger-blocks'
@@ -51,7 +52,19 @@ export const DETAIL_VIEW_CONFIG_REGISTRY: DetailViewConfigRegistry = {
       { value: 'timeline', label: 'Timeline', icon: 'clock' },
       { value: 'tasks', label: 'Tasks', icon: 'list-todo' },
     ],
-    tabBlocks: { [BILLING_TAB_ID]: CONTACT_BILLING_BLOCKS },
+    tabBlocks: {
+      // 🛑 Declared for PARITY, and inert until somebody gives it a home — the
+      // same standing exception `ticket`'s Returns block takes below.
+      // `drawer-card-parity.test.ts` asserts both registries declare the same
+      // `entityType:tabId` blocks, so the drawer's Orders section cannot exist
+      // without this line. But `buildDetailLayout` only walks `mainTabs`, and a
+      // contact's are tickets / communications / billing / timeline / tasks —
+      // its "Overview" is the SIDEBAR tab, which renders `sidebarCards` only.
+      // So the contact detail PAGE does not show Orders today; the drawer does,
+      // which is the surface that was asked for.
+      overview: CONTACT_ORDERS_BLOCKS,
+      [BILLING_TAB_ID]: CONTACT_BILLING_BLOCKS,
+    },
     sidebarTabs: DEFAULT_SIDEBAR_TABS,
     defaultTab: 'tickets',
     defaultSidebarTab: 'overview',
