@@ -30,7 +30,10 @@ import { useState } from 'react'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { useSettings } from '~/hooks/use-settings'
 import { api, type RouterOutputs } from '~/trpc/react'
-import { useAccountingProviderStatus } from '../../hooks/use-accounting-provider-status'
+import {
+  UNKNOWN_PROVIDER_LABEL,
+  useAccountingProviderStatus,
+} from '../../hooks/use-accounting-provider-status'
 import { EntryBlockers } from '../ledger/entry-blockers'
 import { ProviderAgreementTable } from './provider-agreement-table'
 
@@ -112,7 +115,7 @@ export function useProviderAgreement(asOf: string): ProviderAgreement {
     isRunning: agreementQuery.isFetching,
     connected: provider.connected,
     providerLoading: provider.loading,
-    providerLabel: provider.providerLabel ?? 'QuickBooks',
+    providerLabel: provider.providerLabel ?? UNKNOWN_PROVIDER_LABEL,
     data: isCurrent ? agreementQuery.data : undefined,
     error: isCurrent ? agreementQuery.error : null,
     currency,
