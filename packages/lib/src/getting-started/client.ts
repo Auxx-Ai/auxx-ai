@@ -56,11 +56,26 @@ export const DISPATCH_GOAL_KEYS = [
  * `not_connected`. A checklist that nagged for a provider would contradict the
  * design the whole poster rests on.
  */
+/**
+ * 🛑 **Display order, and it MIRRORS THE WIZARD'S `PAGES` ARRAY.** A person
+ * works one list or the other and the two must not send them in different
+ * orders.
+ *
+ * ⤵️ **Reordered 2026-09-14.** `set-opening-balances` sat second here, which is
+ * where the wizard used to put it too - until brief `19` §2 moved `opening` and
+ * `openingTrialBalance` to sit immediately before `done`, because the opening
+ * trial balance is a grid over `listChartAccounts` and **the only door onto a
+ * chart is `ledger.provisionChart` on the accounts page**. On a fresh org the
+ * grid was therefore empty with nothing the person could do about it. That
+ * reorder never propagated to this list, so the checklist kept sending people
+ * to enter opening balances before they had a chart to enter them against.
+ */
 export const ACCOUNTING_GOAL_KEYS = [
   'set-accounting-period',
-  'set-opening-balances',
   'set-costing',
   'map-accounts',
+  'route-payment-rails',
+  'set-opening-balances',
   'finalize-setup',
   'post-first-entry',
 ] as const
