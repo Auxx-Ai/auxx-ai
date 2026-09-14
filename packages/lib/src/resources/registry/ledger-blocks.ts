@@ -43,6 +43,12 @@ const LEDGER_VISIBLE_LIMIT = 5
 /** Server page size behind a ledger section. Not a cap on what exists. */
 const LEDGER_PAGE_SIZE = 20
 
+/**
+ * Page size for a list bounded by its parent record rather than by transaction
+ * volume. Comfortably above the largest dispatch in the dev data (31 boxes).
+ */
+const PARCEL_PAGE_SIZE = 100
+
 /** Newest first: the same default `queryEntityInstanceIdsPaged` falls back to. */
 const NEWEST_FIRST = { fieldId: 'createdAt', desc: true } as const
 
@@ -78,6 +84,18 @@ function ledgerBlock(input: {
    */
   sort?: { fieldId: string; desc?: boolean }
   /**
+   * Server page size, when {@link LEDGER_PAGE_SIZE} is too small.
+   *
+   * A page is not a render cap (`visibleLimit` is), but it IS a hard ceiling on
+   * what "Show N more" can ever reveal, with nothing on screen to say so. 20 is
+   * right for a list that grows forever with transaction volume, where a
+   * customer reads the newest page and filters for the rest. It is wrong for a
+   * list bounded by its parent document: the dev data already carries a 31-box
+   * shipment, and at 20 eleven of those boxes would be unreachable from the
+   * drawer entirely.
+   */
+  pageSize?: number
+  /**
    * Name in `BLOCK_ACTIONS_COMPONENTS` for a section-level action.
    *
    * Section-level, NOT per-row: `RecordsBlockConfig` cannot express a per-row
@@ -101,7 +119,7 @@ function ledgerBlock(input: {
         definition: input.definition,
         hostFieldId: input.hostFieldId,
         sort: input.sort ?? NEWEST_FIRST,
-        pageSize: LEDGER_PAGE_SIZE,
+        pageSize: input.pageSize ?? LEDGER_PAGE_SIZE,
       },
       statusAttr: input.statusAttr,
       emptyLabel: input.emptyLabel,
@@ -279,5 +297,66 @@ export const TICKET_RETURNS_BLOCKS: LayoutBlock[] = [
     statusAttr: 'return_status',
     emptyLabel: 'No returns',
     actionsComponent: 'ticket-returns',
+  }),
+]
+
+/**
+ * Parcels on the SHIPMENT drawer overview.
+ *
+ * A shipment is a dispatch and a parcel is one physical box with one tracking
+ * number, and "where is my box" is the question a support agent opens a
+ * shipment to answer. So the boxes lead the overview rather than living behind
+ * the `shipment.parcels` mirror in the Details panel, which is why that field
+ * is `showInPanel: false`.
+ *
+ * `shipment` is DRAWER-ONLY: it has no `DETAIL_VIEW_CONFIG_REGISTRY` entry and
+ * no `[shipmentId]/` route (`app/shipments/page.tsx`), so unlike the contact's
+ * Orders section this needs no mirrored declaration on the detail registry.
+ * `drawer-card-parity.test.ts` compares only entity types the detail registry
+ * knows about. If a shipment detail page is ever added, that test starts
+ * demanding this block on both surfaces.
+ *
+ * ⚠️ Sorted by `sequence` ASCENDING, not the shared `createdAt DESC` default.
+ * Two reasons, both in `parcel-fields.ts`: array position carries no meaning
+ * (the ShipStation probe observed a three-box label returned in sequence order
+ * 3, 2, 1), and boxes read naturally 1..n rather than newest-first. `sequence`
+ * is nullable and the query builder applies `NULLS LAST` in both directions, so
+ * a box whose sequence was never written sinks below the real ones.
+ *
+ * ⚠️ VOIDED parcels are listed, and their badge can lie. `shipment.status`
+ * excludes voided parcels from its roll-up entirely, but a `RecordsQuerySource`
+ * filters on `hostFieldId` alone and has no room for a second condition, and
+ * probe §3 found voided labels still reporting `tracking_status: in_transit`.
+ * Listing them is the deliberate choice (owner, 2026-09-14): a voided box is
+ * still part of the relabel history an agent is looking at, and hiding it would
+ * make a three-box shipment render two boxes with no explanation. Excluding it
+ * would mean adding an optional filter to the shared block model, which is a
+ * change worth making for a second consumer, not this one.
+ */
+export const SHIPMENT_PARCELS_BLOCKS: LayoutBlock[] = [
+  ledgerBlock({
+    id: 'shipment:parcels',
+    label: 'Parcels',
+    icon: 'package',
+    definition: 'parcel',
+    // `parcel.shipment` is the belongs_to side: the dispatch this box was in.
+    hostFieldId: 'parcel:shipment',
+    // Null on every row today, so no badge renders (the attribute resolver
+    // returns undefined and `RelatedRecordRow` skips the Badge). Not an
+    // oversight: a ShipStation package carries no status field at all, so the
+    // connector deliberately declines to write this and puts the label's
+    // one value in a hidden app field instead. The writer is the outstanding
+    // `/v2/tracking` stream in
+    // `plans/apps/shipstation/shipstation-tracking-stream-plan.md`.
+    statusAttr: 'parcel_status',
+    emptyLabel: 'No parcels',
+    sort: { fieldId: 'sequence' },
+    // Every box, not the first 20. A parcel list is bounded by its shipment
+    // rather than by transaction volume, and the dev data's largest dispatch is
+    // 31 boxes, so the shared page would have hidden eleven of them behind a
+    // "Show 15 more" that stops at 20 and says nothing. Only `visibleLimit`
+    // rows render until the viewer expands, so the row fan-out is unchanged for
+    // the 87% of shipments carrying three boxes or fewer.
+    pageSize: PARCEL_PAGE_SIZE,
   }),
 ]
