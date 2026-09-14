@@ -52,6 +52,7 @@ import {
 import { toastError } from '@auxx/ui/components/toast'
 import { PackageX } from 'lucide-react'
 import { useCallback, useId, useMemo, useState } from 'react'
+import { DrawerCardActions } from '~/components/drawers/drawer-card-actions'
 import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
 import { Tooltip } from '~/components/global/tooltip'
 import { useRecordDrawerReadOnly } from '~/components/records/use-record-drawer-read-only'
@@ -177,36 +178,40 @@ export function ReturnSalvageContainer({ recordId, entityInstanceId }: DrawerTab
 
   return (
     <div className='space-y-2'>
-      <div className='flex flex-wrap items-center justify-between gap-2'>
-        {lines.length > 1 && (
-          <Select
-            value={line.recordId}
-            onValueChange={(next) => setPickedRecordId(next)}
-            disabled={treeQuery.isLoading}>
-            <SelectTrigger size='sm' className='w-auto min-w-40 max-w-full'>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {lines.map((candidate, index) => (
-                <SelectItem key={candidate.recordId} value={candidate.recordId}>
-                  {lineLabel(
-                    candidate.partId ? partNames.get(candidate.partId) : undefined,
-                    index,
-                    candidate.quantity
-                  )}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-
+      {/* The percentage control rides in the section header, the slot every
+          drawer card's wrapping Section provides (`DrawerCardActions`): it is a
+          control over the whole line, not a row, and the header is where the
+          Documents card's Add and the bill's Add-from-order already live. */}
+      <DrawerCardActions>
         <SalvagePercentControl
           nodes={nodes}
           returnLineRecordId={lineRecordId}
           onApplied={applyTree}
           disabled={readOnly || treeQuery.isLoading}
         />
-      </div>
+      </DrawerCardActions>
+
+      {lines.length > 1 && (
+        <Select
+          value={line.recordId}
+          onValueChange={(next) => setPickedRecordId(next)}
+          disabled={treeQuery.isLoading}>
+          <SelectTrigger size='sm' className='w-auto min-w-40 max-w-full'>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {lines.map((candidate, index) => (
+              <SelectItem key={candidate.recordId} value={candidate.recordId}>
+                {lineLabel(
+                  candidate.partId ? partNames.get(candidate.partId) : undefined,
+                  index,
+                  candidate.quantity
+                )}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
 
       {/* Keyed by the line: expansion state is local to the card and keyed by
           node, and a node key from the previous line means nothing here. */}
@@ -285,9 +290,9 @@ function SalvagePercentControl({
   }
 
   return (
-    <div className='ms-auto flex min-w-0 items-center gap-1.5'>
+    <div className='flex min-w-0 items-center gap-1.5'>
       <label htmlFor={inputId} className='shrink-0 text-muted-foreground text-xs'>
-        Salvage
+        Salvage at
       </label>
       <Tooltip
         content={
@@ -300,7 +305,7 @@ function SalvagePercentControl({
             id={inputId}
             size='sm'
             inputMode='numeric'
-            className='w-14 text-right tabular-nums'
+            className='w-12 text-right tabular-nums'
             placeholder={settled === null ? 'Mixed' : '100'}
             aria-label='Salvage percentage of standard cost'
             aria-invalid={shown.trim() !== '' && !valid}
@@ -315,8 +320,8 @@ function SalvagePercentControl({
         </div>
       </Tooltip>
       <Button
-        variant='outline'
-        size='sm'
+        variant='ghost'
+        size='xs'
         disabled={!canApply}
         loading={setPercent.isPending}
         loadingText='Applying...'
