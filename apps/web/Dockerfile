@@ -93,6 +93,16 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
   SKIP_ENV_VALIDATION=1 \
   pnpm --filter=web run build:prod
 
+# pdf.js fetches its worker and its cmap / font / wasm tables over HTTP at
+# runtime, so they are staged into `public/pdfjs/<version>/` by
+# `prebuild:prod`. That hook is easy to lose: pnpm only runs `prebuild` for a
+# script named exactly `build`, and this image builds `build:prod`, so the
+# viewer would 404 on its worker in production while every test and the whole
+# CI suite stayed green. Fail the image instead.
+RUN set -e; \
+  ls apps/web/public/pdfjs/*/pdf.worker.min.mjs >/dev/null 2>&1 \
+  || { echo "pdfjs assets missing: did apps/web's prebuild:prod hook stop running?"; exit 1; }
+
 # resvg is loaded via a bundler-opaque require (packages/lib image-processing.ts),
 # so Next's file tracing can't see it. Stage the resolved packages (JS wrapper +
 # native platform binding) for the runner to place next to the standalone output.
