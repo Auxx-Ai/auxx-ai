@@ -106,7 +106,10 @@ const returnFields = {
   senderNameRaw: z.string().max(500).nullable().optional(),
   senderAddressRaw: z.string().max(2000).nullable().optional(),
   inboundCarrier: z.string().max(200).nullable().optional(),
-  inboundTracking: z.string().max(200).nullable().optional(),
+  // Multi-value as of entity migration 155 — one per parcel (57 §8.1). The
+  // per-item cap is unchanged; the array cap matches RETURN_INTAKE_MAX_LABELS,
+  // since a return cannot cover more parcels than one upload can carry.
+  inboundTracking: z.array(z.string().max(200)).max(20).nullable().optional(),
   labelProvided: z.boolean().nullable().optional(),
   labelCost: minorUnits.nullable().optional(),
   goodsValue: minorUnits.nullable().optional(),

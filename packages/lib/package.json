@@ -1426,6 +1426,30 @@
       "import": "./dist/returns/client.mjs",
       "default": "./src/returns/client.ts"
     },
+    "./returns/intake": {
+      "types": "./src/returns/intake/index.ts",
+      "source": "./src/returns/intake/index.ts",
+      "import": "./dist/returns/intake/index.mjs",
+      "default": "./src/returns/intake/index.ts"
+    },
+    "./returns/intake/client": {
+      "types": "./src/returns/intake/client.ts",
+      "source": "./src/returns/intake/client.ts",
+      "import": "./dist/returns/intake/client.mjs",
+      "default": "./src/returns/intake/client.ts"
+    },
+    "./returns/intake/group": {
+      "types": "./src/returns/intake/group.ts",
+      "source": "./src/returns/intake/group.ts",
+      "import": "./dist/returns/intake/group.mjs",
+      "default": "./src/returns/intake/group.ts"
+    },
+    "./returns/intake/draft-queries": {
+      "types": "./src/returns/intake/draft-queries.ts",
+      "source": "./src/returns/intake/draft-queries.ts",
+      "import": "./dist/returns/intake/draft-queries.mjs",
+      "default": "./src/returns/intake/draft-queries.ts"
+    },
     "./seed": {
       "types": "./src/seed/index.ts",
       "source": "./src/seed/index.ts",

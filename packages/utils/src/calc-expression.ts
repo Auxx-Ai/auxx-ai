@@ -385,6 +385,16 @@ function parseExpression(expression: string): ParsedExpression {
 }
 
 /**
+ * True for a plain data object — an object literal or a `JSON.parse` result, not a
+ * class instance (Date, Map, …) and not an array.
+ */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
+  const proto = Object.getPrototypeOf(value)
+  return proto === Object.prototype || proto === null
+}
+
+/**
  * Extract raw value from TypedFieldValue or unknown input.
  * Handles both TypedFieldValue objects and raw primitive values.
  */
@@ -407,12 +417,22 @@ function extractValue(fieldValue: TypedFieldValue | unknown): unknown {
       return typed.value
     case 'relationship':
       return typed.displayName ?? typed.recordId ?? null
-    default:
+    default: {
       // Handle raw values that might have a value property
       if ('value' in (fieldValue as { value?: unknown })) {
         return (fieldValue as { value: unknown }).value
       }
-      return null
+      // A TypedFieldValue whose discriminant this switch does not handle (`actor`)
+      // stays unreadable — null, exactly as before.
+      if (typeof (typed as { type?: unknown }).type === 'string') return null
+      // A PLAIN object carries no discriminant and no `value` box: it IS the value —
+      // an ADDRESS_STRUCT (`{street1, city, state, zipCode, country}`) or a raw JSON
+      // payload straight off a connector. Returning null here silently discarded
+      // every object-shaped source value a data-connector mapping ever produced.
+      // Arrays stay null: multi-value SOURCING is out of scope and `map-record`'s
+      // no-write guard is written against that flattening.
+      return isPlainObject(fieldValue) ? fieldValue : null
+    }
   }
 }
 

@@ -364,7 +364,11 @@ export function ReturnEvidencePackPdf(props: {
           <Field
             styles={styles}
             label='Inbound tracking'
-            value={payload.inboundTracking}
+            // Joined for the page, kept as a list on the payload. ⚠️ Several
+            // long tracking numbers will crowd a 14% column — a browser drive
+            // of a multi-parcel return is what settles whether this needs its
+            // own row (57 §12).
+            value={payload.inboundTracking.length > 0 ? payload.inboundTracking.join(', ') : null}
             width='14%'
           />
         </FieldRow>

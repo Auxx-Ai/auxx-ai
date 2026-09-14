@@ -81,7 +81,8 @@ export interface ReturnRecord {
   senderNameRaw: string | null
   senderAddressRaw: string | null
   inboundCarrier: string | null
-  inboundTracking: string | null
+  /** One per parcel, in `sortKey` order; the first is the primary. Migration 155. */
+  inboundTracking: string[]
   labelProvided: boolean | null
   /** Integer minor units. */
   labelCost: number | null
@@ -1016,7 +1017,14 @@ async function hydrateReturns(
       senderNameRaw: read.one('return_sender_name_raw')?.valueText ?? null,
       senderAddressRaw: read.one('return_sender_address_raw')?.valueText ?? null,
       inboundCarrier: read.one('return_inbound_carrier')?.valueText ?? null,
-      inboundTracking: read.one('return_inbound_tracking')?.valueText ?? null,
+      // 🛑 `read.all`, never `read.one`. This field went multi-value in entity
+      // migration 155 and `one()` takes the FIRST value — a return covering
+      // three parcels would have reported one tracking number with nothing
+      // anywhere saying the other two existed.
+      inboundTracking: read
+        .all('return_inbound_tracking')
+        .map((value) => value.valueText)
+        .filter((text): text is string => text != null && text !== ''),
       labelProvided: read.one('return_label_provided')?.valueBoolean ?? null,
       labelCost: read.one('return_label_cost')?.valueNumber ?? null,
       goodsValue: read.one('return_goods_value')?.valueNumber ?? null,

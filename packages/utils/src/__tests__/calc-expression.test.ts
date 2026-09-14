@@ -157,6 +157,75 @@ describe('regression: existing functions untouched', () => {
   })
 })
 
+describe('field reference extraction', () => {
+  it('passes a plain object through as the value (ADDRESS_STRUCT, raw JSON)', () => {
+    // The defect: an address struct is an object with no TypedFieldValue `type`
+    // discriminant and no `value` box, so it took the `default:` branch and
+    // evaluated to null — every connector-mapped ADDRESS_STRUCT / JSON source
+    // value was silently discarded before it ever reached a write.
+    const address = {
+      street1: '123 Main St',
+      street2: null,
+      city: 'Austin',
+      state: 'Texas',
+      zipCode: '78701',
+      country: 'United States',
+    }
+    expect(evalExpr('{shippingAddress}', { shippingAddress: address })).toEqual(address)
+
+    const raw = { shippingLines: [{ title: 'Standard' }], discountApplications: [] }
+    expect(evalExpr('{raw}', { raw })).toEqual(raw)
+
+    // An empty object is still an object, not a null.
+    expect(evalExpr('{a}', { a: {} })).toEqual({})
+  })
+
+  it('still resolves a TypedFieldValue via its type discriminant', () => {
+    expect(evalExpr('{a}', { a: { type: 'text', value: 'hello' } })).toBe('hello')
+    expect(evalExpr('{a}', { a: { type: 'number', value: 42 } })).toBe(42)
+    expect(evalExpr('{a}', { a: { type: 'boolean', value: false } })).toBe(false)
+    expect(evalExpr('{a}', { a: { type: 'date', value: '2026-09-13T00:00:00.000Z' } })).toBe(
+      '2026-09-13T00:00:00.000Z'
+    )
+    expect(evalExpr('{a}', { a: { type: 'option', optionId: 'o1', label: 'Red' } })).toBe('Red')
+    expect(evalExpr('{a}', { a: { type: 'json', value: { k: 'v' } } })).toEqual({ k: 'v' })
+    expect(
+      evalExpr('{a}', { a: { type: 'relationship', recordId: 'd:i', displayName: 'Acme' } })
+    ).toBe('Acme')
+  })
+
+  it('still unwraps a bare `{ value }` box', () => {
+    expect(evalExpr('{a}', { a: { value: 42 } })).toBe(42)
+    expect(evalExpr('{a}', { a: { value: null } })).toBe(null)
+  })
+
+  it('leaves a TypedFieldValue with an unhandled discriminant unreadable (null)', () => {
+    // `actor` has no `value` key and no case in the switch. It read as null before
+    // the plain-object passthrough and must keep reading as null, or a CALC
+    // sourcing an ACTOR field would start stringifying the whole row.
+    expect(
+      evalExpr('{a}', { a: { type: 'actor', actorType: 'user', id: 'u1', actorId: 'user:u1' } })
+    ).toBe(null)
+  })
+
+  it('leaves array-shaped and non-plain-object values as null', () => {
+    // Multi-value sourcing is out of scope (data-connectors B1): `map-record`'s
+    // no-write guard is written against arrays flattening to null here.
+    expect(evalExpr('{a}', { a: ['x', 'y'] })).toBe(null)
+    expect(evalExpr('{a}', { a: [] })).toBe(null)
+    expect(evalExpr('{a}', { a: new Date('2026-09-13T00:00:00.000Z') })).toBe(null)
+  })
+
+  it('leaves null, undefined and scalars unchanged', () => {
+    expect(evalExpr('{a}', { a: null })).toBe(null)
+    expect(evalExpr('{a}', { a: undefined })).toBe(undefined)
+    expect(evalExpr('{missing}', {})).toBe(undefined)
+    expect(evalExpr('{a}', { a: 'plain' })).toBe('plain')
+    expect(evalExpr('{a}', { a: 0 })).toBe(0)
+    expect(evalExpr('{a}', { a: false })).toBe(false)
+  })
+})
+
 describe('validateCalcExpression', () => {
   it('accepts the new function names', () => {
     for (const expr of [

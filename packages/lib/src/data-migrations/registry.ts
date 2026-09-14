@@ -12,6 +12,7 @@ import { migration151ShipmentLabelCostAndDocument } from './migrations/151-shipm
 import { migration152CreditMemoGlPosting } from './migrations/152-credit-memo-gl-posting'
 import { migration153FulfillmentLines } from './migrations/153-fulfillment-lines'
 import { migration154Returns } from './migrations/154-returns'
+import { migration155ReturnInboundTrackingMulti } from './migrations/155-return-inbound-tracking-multi'
 import { type PerOrgMigration, perOrgMigration } from './per-org'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
@@ -84,6 +85,10 @@ export const PER_ORG_MIGRATIONS: PerOrgMigration[] = [
   // of them self-referential: the widest relationship graph any migration here
   // has linked (plans/money/tasks/54-returns.md).
   migration154Returns,
+  // One boolean on one field's options: the smallest shape in this directory,
+  // and the one where the registry and the migration are most likely to drift
+  // apart silently (plans/money/tasks/57-return-intake-wizard.md §8.1).
+  migration155ReturnInboundTrackingMulti,
 ]
 
 /**

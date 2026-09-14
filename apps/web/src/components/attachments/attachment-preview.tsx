@@ -48,11 +48,18 @@ interface AttachmentPreviewProps {
    * uploaded document, so it authorizes against the draft's `purchase_order`
    * view. Without it a purchasing member who does not hold the Files app could
    * not preview the quote they themselves just uploaded.
+   *
+   * `returnIntakeDraft` is the same argument for a photographed return label
+   * (plans/money/tasks/57 §7.2), and it authorizes against the draft's `return`
+   * view. Without it a dock account with returns access and no Files app gets an
+   * empty pane, with no explanation, on the screen whose entire job is checking
+   * a transcription against the photo.
    */
   scope?:
     | { kind: 'files' }
     | { kind: 'datasetDocument'; documentId: string }
     | { kind: 'intakeDraft'; draftId: string }
+    | { kind: 'returnIntakeDraft'; draftId: string }
 }
 
 /**

@@ -205,7 +205,14 @@ export interface ReturnEvidencePackPdfPayload {
   senderNameRaw: string | null
   senderAddressRaw: string | null
   inboundCarrier: string | null
-  inboundTracking: string | null
+  /**
+   * One per parcel (migration 155). The pack carries the LIST, not a joined
+   * string: this document is evidence in a chargeback, and "which parcels did
+   * this return actually arrive in" is a question a card network can ask. The
+   * renderer decides how to fit them on a page; the payload does not decide for
+   * it by throwing some away.
+   */
+  inboundTracking: string[]
   order: EvidencePackOrderSection | null
   orderNote: string | null
   dispatches: EvidencePackDispatch[]

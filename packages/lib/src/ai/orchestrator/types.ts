@@ -177,6 +177,12 @@ export type UsageSource =
   // seats, so it has to be separable from `agent`/`autofill` in cost reporting -
   // the same argument that earned `mail_classification` one.
   | 'purchase_intake'
+  // Reading a return label into a drafted return (plans/money/tasks/57). Its own
+  // arm, and NOT folded into `purchase_intake`: the two scale with different
+  // things (quotes arrive per purchase, labels per parcel returned) and one
+  // return upload is N model calls, one per label, so a shared arm would make
+  // "what does intake cost us" unanswerable for either half.
+  | 'return_intake'
   | 'transcription'
   | 'other'
 

@@ -617,6 +617,18 @@ export const RETURN_FIELDS: Record<string, ResourceField> = {
     showInDialogs: false,
     systemSortOrder: 'aF',
     nullable: true,
+    // Multi-value: one return can cover several parcels, each with its own
+    // tracking number, because the intake wizard groups labels by
+    // (customer, order) and a customer may ship three boxes against one order
+    // (plans/money/tasks/57 §8.1). The first (by sortKey) is the primary, the
+    // same convention `contact.primaryEmail` uses. Existing orgs are caught up
+    // by entity migration 155.
+    //
+    // 🛑 What this deliberately does NOT record: which photo and which sender
+    // belong to which tracking number. A `return_parcel` child def is the
+    // correct model for that and was rejected for v1 (57 §8.2); the binding is
+    // genuinely lost, not merely unmodelled, and 57 §6.4 records it as accepted.
+    options: { multi: true },
     capabilities: {
       filterable: true,
       sortable: true,
@@ -625,7 +637,7 @@ export const RETURN_FIELDS: Record<string, ResourceField> = {
       configurable: false,
     },
     placeholder: 'Enter tracking number',
-    description: 'The tracking number on the inbound leg, when there is one',
+    description: 'The tracking numbers on the inbound leg, one per parcel, when there are any',
   },
 
   labelProvided: {

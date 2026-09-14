@@ -34,6 +34,7 @@ import { startPollingTriggerWorker } from './worker-definitions/polling-trigger-
 import { startPurchaseIntakeWorker } from './worker-definitions/purchase-intake-worker'
 import { startRecordingBotWorker } from './worker-definitions/recording-bot-worker'
 import { startRecordingProcessingWorker } from './worker-definitions/recording-processing-worker'
+import { startReturnIntakeWorker } from './worker-definitions/return-intake-worker'
 import { startScheduledTriggerWorker } from './worker-definitions/scheduled-trigger-worker'
 import { startThumbnailWorker } from './worker-definitions/thumbnail-worker'
 import { startWebhooksWorker } from './worker-definitions/webhook-worker'
@@ -141,6 +142,10 @@ export async function startWorkers() {
   // order (plans/money/tasks/38-purchase-order-from-a-document.md §3.3)
   const purchaseIntakeWorker = startPurchaseIntakeWorker()
 
+  // Return-intake worker: reads a drop of photographed return labels into a
+  // draft (plans/money/tasks/57-return-intake-wizard.md §3)
+  const returnIntakeWorker = startReturnIntakeWorker()
+
   // Company enrichment worker: one outbound homepage fetch per job, bounded apart
   // from the events worker (plans/company/v4-enrichment-doors.md §6)
   const enrichmentWorker = startEnrichmentWorker()
@@ -181,6 +186,7 @@ export async function startWorkers() {
     fulfillmentPostingWorker,
     mailClassificationWorker,
     purchaseIntakeWorker,
+    returnIntakeWorker,
     enrichmentWorker,
   ]
 
