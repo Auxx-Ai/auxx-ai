@@ -34,12 +34,27 @@ import { StatementTable } from '../reports/statement-table'
  * (its own header explains why) and this table only renders what it is given.
  * The moment one column were natural-sign, every liability, equity and revenue
  * row would read as disagreeing with itself.
+ *
+ * ⚠️ A FUNCTION of the label, not a `const`. The `theirs` column is whatever is
+ * connected, and this file already receives that as a prop - a module-level
+ * constant cannot read one, which is the whole reason the vendor name was
+ * hardcoded here in the first place.
  */
-const AGREEMENT_COLUMNS: StatementColumn[] = [
-  { key: 'ours', label: 'auxx.ai', align: 'right' },
-  { key: 'theirs', label: 'QuickBooks', align: 'right' },
-  { key: 'difference', label: 'Difference', align: 'right', signed: true },
-]
+function buildAgreementColumns(providerLabel: string): StatementColumn[] {
+  return [
+    { key: 'ours', label: 'auxx.ai', align: 'right' },
+    { key: 'theirs', label: providerLabel, align: 'right' },
+    { key: 'difference', label: 'Difference', align: 'right', signed: true },
+  ]
+}
+
+/** What one status looks like: its sort rank, its badge, and an optional note. */
+type AgreementStatusMeta = {
+  rank: number
+  label: string
+  variant: BadgeProps['variant']
+  note?: string
+}
 
 /**
  * How each status reads, and the order the rows come in.
@@ -49,29 +64,34 @@ const AGREEMENT_COLUMNS: StatementColumn[] = [
  * ledger has never posted to is work authored somewhere we do not look. A screen
  * that sorted these by account code would bury the one row type nothing else in
  * the product can tell you about.
+ *
+ * 🛑 The RANKS are the sort order and they are not up for tidying. Only `label`
+ * and `note` interpolate the provider's name; everything else about this record
+ * is what it was when it was a module-level constant.
  */
-const STATUS_META: Record<
-  ProviderAgreementStatus,
-  { rank: number; label: string; variant: BadgeProps['variant']; note?: string }
-> = {
-  only_theirs: {
-    rank: 0,
-    label: 'Only in QuickBooks',
-    variant: 'amber',
-    note: 'No account in this chart is mapped to it, so this ledger has never carried its balance.',
-  },
-  differs: { rank: 1, label: 'Differs', variant: 'red' },
-  only_ours: {
-    // ⚠️ NOT "QuickBooks has no balance on it". A mapped account missing from
-    // their report is a `differs` against zero - the report carries non-zero
-    // rows only. `only_ours` means UNMAPPED, so the whole of our balance shows
-    // in the difference column because there is nothing to net it against.
-    rank: 2,
-    label: 'Not mapped',
-    variant: 'blue',
-    note: 'Not linked to any QuickBooks account, so there is nothing to compare it against.',
-  },
-  match: { rank: 3, label: 'Agrees', variant: 'outline' },
+function buildStatusMeta(
+  providerLabel: string
+): Record<ProviderAgreementStatus, AgreementStatusMeta> {
+  return {
+    only_theirs: {
+      rank: 0,
+      label: `Only in ${providerLabel}`,
+      variant: 'amber',
+      note: 'No account in this chart is mapped to it, so this ledger has never carried its balance.',
+    },
+    differs: { rank: 1, label: 'Differs', variant: 'red' },
+    only_ours: {
+      // ⚠️ NOT "they have no balance on it". A mapped account missing from
+      // their report is a `differs` against zero - the report carries non-zero
+      // rows only. `only_ours` means UNMAPPED, so the whole of our balance shows
+      // in the difference column because there is nothing to net it against.
+      rank: 2,
+      label: 'Not mapped',
+      variant: 'blue',
+      note: `Not linked to any ${providerLabel} account, so there is nothing to compare it against.`,
+    },
+    match: { rank: 3, label: 'Agrees', variant: 'outline' },
+  }
 }
 
 /** A row with no name on either side still has to be identifiable in the table. */
@@ -80,10 +100,13 @@ function rowLabel(name: string, providerAccountId: string | null): string {
 }
 
 /** `only_theirs` first, then the other differences, then the accounts that agree. */
-function toAgreementRows(agreement: ProviderAgreement): StatementRow[] {
+function toAgreementRows(
+  agreement: ProviderAgreement,
+  statusMeta: Record<ProviderAgreementStatus, AgreementStatusMeta>
+): StatementRow[] {
   return [...agreement.rows]
     .sort((a, b) => {
-      const byStatus = STATUS_META[a.status].rank - STATUS_META[b.status].rank
+      const byStatus = statusMeta[a.status].rank - statusMeta[b.status].rank
       if (byStatus !== 0) return byStatus
       // Within a status, the biggest difference first - a reconciliation is read
       // from the top, and an account code sort would put the pennies above the
@@ -93,7 +116,7 @@ function toAgreementRows(agreement: ProviderAgreement): StatementRow[] {
       return a.accountName.localeCompare(b.accountName)
     })
     .map((row, index) => {
-      const meta = STATUS_META[row.status]
+      const meta = statusMeta[row.status]
       const name = rowLabel(row.accountName, row.providerAccountId)
       return {
         // ⚠️ The INDEX is in the key deliberately. A provider `account` row with
@@ -131,7 +154,11 @@ export interface ProviderAgreementTableProps {
   currency: string
   /** The provider's own reporting currency, so a mismatch can be said out loud. */
   providerCurrency: string
-  /** 'QuickBooks Online', for the copy. */
+  /**
+   * What the connected system is called - 'QuickBooks Online', or
+   * `UNKNOWN_PROVIDER_LABEL` when nothing is connected. Every mention of the
+   * provider in this file comes from here.
+   */
   providerLabel: string
 }
 
@@ -167,7 +194,8 @@ export function ProviderAgreementTable({
     )
   }
 
-  const rows = toAgreementRows(agreement)
+  const statusMeta = buildStatusMeta(providerLabel)
+  const rows = toAgreementRows(agreement, statusMeta)
   const differing = agreement.rows.filter((row) => row.differenceMinor !== 0)
   const onlyTheirs = agreement.rows.filter((row) => row.status === 'only_theirs')
 
@@ -184,8 +212,8 @@ export function ProviderAgreementTable({
           <TriangleAlert />
           <AlertTitle className='flex-wrap'>
             {onlyTheirs.length === 1
-              ? 'One account carries a balance only in QuickBooks'
-              : `${onlyTheirs.length} accounts carry a balance only in QuickBooks`}
+              ? `One account carries a balance only in ${providerLabel}`
+              : `${onlyTheirs.length} accounts carry a balance only in ${providerLabel}`}
           </AlertTitle>
           <AlertDescription>
             {onlyTheirs.map((row) => rowLabel(row.accountName, row.providerAccountId)).join(', ')}.
@@ -205,7 +233,7 @@ export function ProviderAgreementTable({
       )}
 
       <StatementTable
-        columns={AGREEMENT_COLUMNS}
+        columns={buildAgreementColumns(providerLabel)}
         rows={rows}
         currency={currency}
         searchable

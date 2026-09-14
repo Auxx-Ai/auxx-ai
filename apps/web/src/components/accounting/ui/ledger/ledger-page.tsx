@@ -21,7 +21,10 @@ import {
 import { useQueryState } from 'nuqs'
 import { useCallback, useEffect } from 'react'
 import { useAccountingMonth } from '~/components/accounting/hooks/use-accounting-month'
-import { useAccountingProviderStatus } from '~/components/accounting/hooks/use-accounting-provider-status'
+import {
+  UNKNOWN_PROVIDER_LABEL,
+  useAccountingProviderStatus,
+} from '~/components/accounting/hooks/use-accounting-provider-status'
 import { useLedgerEntryActions } from '~/components/accounting/hooks/use-ledger-entry-actions'
 import { useLedgerPeriod } from '~/components/accounting/hooks/use-ledger-period'
 import { useMonthEndEntry } from '~/components/accounting/hooks/use-month-end-entry'
@@ -143,7 +146,7 @@ export function LedgerPage() {
   const isLocked = activePeriod?.state === 'locked'
   const isChecklistState = period.isSetupDraft
   const canControlLedger = can('ledger.control')
-  const providerLabel = provider.providerLabel ?? 'the accounting system'
+  const providerLabel = provider.providerLabel ?? UNKNOWN_PROVIDER_LABEL
 
   // The two drawers share ONE dock slot (ui-plan.md §2.1), so opening one
   // closes the other rather than letting both params coexist unrendered.

@@ -56,9 +56,6 @@ import {
   readText,
 } from './accounting-settings-keys'
 import { FrozenLock } from './frozen-lock'
-import { ProviderAgreementSettingsSection } from './provider-agreement-section'
-import { ProviderSyncSettingsSection } from './provider-sync-section'
-import { QuickbooksSettingsSection } from './quickbooks-section'
 import { SetupStatusSection } from './setup-status-section'
 
 const MONTH_KEY = /^\d{4}-(0[1-9]|1[0-2])$/
@@ -213,24 +210,28 @@ export function AccountingGeneralSettingsPage() {
           `Accounting period` is two fields, so the left side grew a large hole
           under it before `Absorption rates` could start.
 
-          Left is what you FILL IN - the three draft-backed forms feeding the one
-          save bar. Right is what the page DOES or REPORTS: both sections own
-          their own actions and neither writes the drafts.
+          🛑 THE SPLIT IS A HEIGHT DECISION, and the old one is gone. It used to
+          be "left is what you fill in, right is what the page does or reports" -
+          which worked while the right column held the three provider sections.
+          Brief 27 moved all three to Settings > Connected system, leaving
+          `Setup status` alone in it, so the principle no longer had the material
+          to be a principle. Three of the four sections here are draft-backed and
+          feed the one save bar below; they are laid out so neither column
+          strands, and that is the whole of the rule now.
 
-          ⚠️ The split was rebalanced when the org-wide standard-cost ROLL moved
-          to Parts > Settings > Costing (money 52 §2.2). That section rendered
-          every part it would revalue - roughly 2000px on a real chart - and was
-          the whole reason the right column was the tall one, and the reason the
-          provider had to sit on the left to avoid being stranded a screen below
-          it. With the roll gone the right column is short, so the provider moved
-          across: it owns no settings values, stays out of all three draft slices
-          and adds nothing to `DRAFT_KEYS`, which makes it a "what the page does"
-          section, not a "what you fill in" one.
+          ⚠️ `Standard cost` is the one that crossed over, and it is the right
+          one to move: it is the longest of the three drafts and `Setup status`
+          is the shortest thing on the page, so pairing them balances against
+          period + routes on the left. Do NOT read its position as meaning it is
+          not draft-backed - it is, through `absorption`.
+
+          ⚠️ Nothing may be placed AFTER both columns. Observed 2026-08-28 on
+          `abgwpa1l81reht2zmwrcihfu` with the provider section there: it sat alone
+          off the bottom of the page and read as missing.
 
           ⚠️ On mobile the columns stack, so the reading order is
-          period -> routes -> absorption -> setup -> provider. That is the trade
-          for column-major flow, and it is the right way round: what you type
-          comes before what you press.
+          period -> routes -> setup -> absorption. That is the trade for
+          column-major flow.
         */}
         <div className='grid grid-cols-1 items-start gap-8 lg:grid-cols-2'>
           <div className='flex flex-col gap-8'>
@@ -333,6 +334,17 @@ export function AccountingGeneralSettingsPage() {
                 matching a bank line.
               </p>
             </SettingsSection>
+          </div>
+
+          <div className='flex flex-col gap-8'>
+            <SetupStatusSection
+              readiness={readiness}
+              finalizedAt={readText(getSetting(ACCOUNTING_KEYS.setupFinalizedAt))}
+              finalizedByUserId={readText(getSetting(ACCOUNTING_KEYS.setupFinalizedByUserId))}
+              hasUnsavedChanges={dirty}
+              isFinalizing={isBatchUpdatingOrgSettings}
+              onFinalize={handleFinalize}
+            />
 
             <SettingsSection
               icon={Scale}
@@ -410,50 +422,6 @@ export function AccountingGeneralSettingsPage() {
                 .
               </p>
             </SettingsSection>
-          </div>
-
-          <div className='flex flex-col gap-8'>
-            <SetupStatusSection
-              readiness={readiness}
-              finalizedAt={readText(getSetting(ACCOUNTING_KEYS.setupFinalizedAt))}
-              finalizedByUserId={readText(getSetting(ACCOUNTING_KEYS.setupFinalizedByUserId))}
-              hasUnsavedChanges={dirty}
-              isFinalizing={isBatchUpdatingOrgSettings}
-              onFinalize={handleFinalize}
-            />
-
-            {/*
-              The export target, last: the books are kept here whether or not
-              anything is connected (decision `P1`), so the provider follows the
-              period and the rates rather than leading them. It owns no settings
-              values, stays out of all three draft slices, adds nothing to
-              `DRAFT_KEYS`, and must never read as a readiness gate.
-
-              ⚠️ It sits in the RIGHT column now, and it must still not be placed
-              after both columns. Observed 2026-08-28 on `abgwpa1l81reht2zmwrcihfu`
-              while it was below both: it sat alone off the bottom of the page and
-              read as missing.
-            */}
-            <QuickbooksSettingsSection />
-
-            {/*
-              Directly under the provider it asks about, and after it: there is
-              nothing to compare until something is connected, and the section
-              itself says so rather than disappearing (brief 20 §8.3). It owns no
-              settings values either, so it stays out of all three draft slices
-              and adds nothing to `DRAFT_KEYS`, exactly like the section above.
-            */}
-            <ProviderAgreementSettingsSection />
-
-            {/*
-              The inbound half, last, and after the agreement view for one
-              reason: the agreement view asks whether the two sets of books
-              agree, and this is what makes them agree (brief 20 §8.5 - after a
-              sync of a period, the difference for that period should be zero).
-              It owns no settings values either, so it stays out of all three
-              draft slices and adds nothing to `DRAFT_KEYS`.
-            */}
-            <ProviderSyncSettingsSection />
           </div>
         </div>
 

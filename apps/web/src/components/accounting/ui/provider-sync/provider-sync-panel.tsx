@@ -26,19 +26,21 @@
 // this can honestly show is the work it has taken on (the month count, from the
 // same pure `planSyncChunks` the server walks with) and that time is passing.
 
-import { FieldType } from '@auxx/database/enums'
 import { PermissionKey } from '@auxx/lib/permissions/client'
-import { planSyncChunks } from '@auxx/lib/postings/client'
+import { planSyncChunks, providerSyncFloor } from '@auxx/lib/postings/client'
 import { Button } from '@auxx/ui/components/button'
 import { cn } from '@auxx/ui/lib/utils'
 import { RefreshCw } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { useAccess } from '~/providers/capabilities-provider'
 import type { RouterOutputs } from '~/trpc/react'
 import { api } from '~/trpc/react'
-import { useAccountingProviderStatus } from '../../hooks/use-accounting-provider-status'
+import {
+  UNKNOWN_PROVIDER_LABEL,
+  useAccountingProviderStatus,
+} from '../../hooks/use-accounting-provider-status'
 import { EntryBlockers } from '../ledger/entry-blockers'
+import { ProviderSyncRangeControl, type ProviderSyncRangeMode } from './provider-sync-range-control'
 import { ProviderSyncReport } from './provider-sync-report'
 
 type SyncOutcome = RouterOutputs['ledger']['syncProviderLedger']
@@ -64,12 +66,12 @@ function elapsedLabel(seconds: number): string {
 }
 
 /**
- * The inbound sync: a range, a button, and everything the last press found.
+ * The inbound sync: a mode, a range, a button, and everything the last press
+ * found.
  *
- * The date fields are `YYYY-MM-DD` strings because that is what the procedure
- * takes; they are widened to an instant on the way into `FieldInputAdapter` and
- * sliced back on the way out, the same round trip the agreement panel and the
- * JE drawer do.
+ * The dates are `YYYY-MM-DD` strings because that is what the procedure takes;
+ * `ProviderSyncRangeControl` widens them to `Date` for the shared picker and
+ * slices them back, so nothing above this line ever holds a `Date`.
  */
 export function ProviderSyncPanel({
   cutoffPeriod,
@@ -81,14 +83,42 @@ export function ProviderSyncPanel({
   const { can } = useAccess()
   const utils = api.useUtils()
 
-  // Empty means the floor. Deliberately NOT pre-filled with the floor date: a
-  // pre-filled value is a value somebody edits, and the one edit that matters
-  // here is the one that must be refused.
+  // 🛑 `mode` is what decides whether `from` is sent at all, and `from` stays
+  // `''` for the whole of `everything` mode. Two modes rather than one blank
+  // field because `DateRange` requires both ends and cannot express the empty
+  // start that means "the cutover floor" (brief 27 §4.1).
+  const [mode, setMode] = useState<ProviderSyncRangeMode>('everything')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState(todayInBooks)
+
+  /**
+   * The earliest date this sync may read, or `null` when the org has no usable
+   * `accounting.cutoffPeriod` and the floor cannot be placed.
+   *
+   * ⚠️ Computed in the browser only so the control can NAME it and bound its
+   * calendar. The server recomputes it and refuses below it; this is never the
+   * enforcement (`range.ts` says why a filter is the wrong shape for it).
+   */
   const [outcome, setOutcome] = useState<SyncOutcome | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [elapsed, setElapsed] = useState(0)
+
+  const floor = useMemo(() => {
+    if (!cutoffPeriod) return null
+    const resolved = providerSyncFloor(cutoffPeriod)
+    return resolved.isOk() ? resolved.value : null
+  }, [cutoffPeriod])
+
+  /**
+   * What actually goes on the wire.
+   *
+   * 🛑 BOTH ends are derived from the mode, not just the start. `to` is state a
+   * range-mode edit can move, and reading it back in `everything` mode would
+   * sync to a date the mode's own copy does not mention - it says "to today in
+   * the books" and would have meant "to whatever you last dragged the end to".
+   */
+  const effectiveFrom = mode === 'range' ? from : ''
+  const effectiveTo = mode === 'range' ? to : todayInBooks
 
   /**
    * 🛑 `ledgerControl`, the same rung the procedure asserts and the same one
@@ -107,9 +137,13 @@ export function ProviderSyncPanel({
    */
   const chunks = useMemo(() => {
     if (!cutoffPeriod) return null
-    const planned = planSyncChunks({ cutoffPeriod, from: from || undefined, to })
+    const planned = planSyncChunks({
+      cutoffPeriod,
+      from: effectiveFrom || undefined,
+      to: effectiveTo,
+    })
     return planned.isOk() ? planned.value : null
-  }, [cutoffPeriod, from, to])
+  }, [cutoffPeriod, effectiveFrom, effectiveTo])
 
   const sync = api.ledger.syncProviderLedger.useMutation({
     onSuccess: (result) => {
@@ -141,31 +175,33 @@ export function ProviderSyncPanel({
     return () => clearInterval(timer)
   }, [isPending])
 
-  const providerLabel = provider.providerLabel ?? 'QuickBooks'
+  const providerLabel = provider.providerLabel ?? UNKNOWN_PROVIDER_LABEL
   const monthCount = chunks?.length ?? null
 
   return (
     <div className={cn('flex flex-col gap-3', className)}>
-      <div className='flex flex-wrap items-end gap-2'>
-        <DateField
-          label='From'
-          value={from}
-          placeholderNote='cutover'
-          disabled={isPending || !canSync}
-          onChange={(next) => {
-            setFrom(next)
+      <div className='flex flex-wrap items-end justify-between gap-2'>
+        <ProviderSyncRangeControl
+          mode={mode}
+          onModeChange={(next) => {
+            setMode(next)
+            setOutcome(null)
+            // Seeding on the way in, not on mount: `everything` mode never
+            // renders a date, so there is nothing to seed until somebody asks
+            // for a range. The current month is the narrowing people reach for,
+            // clamped up to the floor so the seed is never itself a refusal.
+            if (next === 'range' && !from) setFrom(seedRangeStart(floor, todayInBooks))
+          }}
+          from={from}
+          to={to}
+          onRangeChange={(range) => {
+            setFrom(range.from)
+            setTo(range.to)
             setOutcome(null)
           }}
-        />
-        <DateField
-          label='To'
-          value={to}
+          floor={floor}
+          todayInBooks={todayInBooks}
           disabled={isPending || !canSync}
-          onChange={(next) => {
-            if (!next) return
-            setTo(next)
-            setOutcome(null)
-          }}
         />
 
         {canSync && (
@@ -179,24 +215,12 @@ export function ProviderSyncPanel({
                 ? `Reading ${providerLabel}...`
                 : `Reading ${monthCount} ${monthCount === 1 ? 'month' : 'months'}...`
             }
-            onClick={() => sync.mutate({ from: from || undefined, to })}>
+            onClick={() => sync.mutate({ from: effectiveFrom || undefined, to: effectiveTo })}>
             <RefreshCw />
             {outcome ? 'Sync again' : 'Sync from ' + providerLabel}
           </Button>
         )}
       </div>
-
-      {/*
-        🛑 What an empty `From` means, said out loud. It is not "no start date":
-        it is the cutover floor, the earliest date the sync may ever read, and
-        the reason a date below it comes back refused rather than quietly moved.
-      */}
-      <p className='text-muted-foreground text-xs'>
-        Leave <span className='font-medium'>From</span> empty to read everything this sync is
-        allowed to see, which starts the month after your accounting cutoff. Anything before that is
-        already in the books as the single opening entry, so a date earlier than the cutover is
-        refused rather than moved forward.
-      </p>
 
       {!canSync && (
         <p className='text-muted-foreground text-xs'>
@@ -215,7 +239,7 @@ export function ProviderSyncPanel({
         <p className='text-muted-foreground text-xs'>
           {monthCount === null
             ? `Reading ${providerLabel} one month at a time.`
-            : `Reading ${from || 'the cutover'} to ${to} as ${monthCount} separate ${
+            : `Reading ${effectiveFrom || floor || 'the cutover'} to ${effectiveTo} as ${monthCount} separate ${
                 monthCount === 1 ? 'request' : 'requests'
               }, one per month - report endpoints cannot be paged, so the month is the only lever.`}{' '}
           Nothing is written until a month has been read whole. {elapsedLabel(elapsed)} elapsed.
@@ -245,35 +269,16 @@ export function ProviderSyncPanel({
   )
 }
 
-/** One `YYYY-MM-DD` field. `''` is a real value here - it means "the floor". */
-function DateField({
-  label,
-  value,
-  placeholderNote,
-  disabled,
-  onChange,
-}: {
-  label: string
-  value: string
-  placeholderNote?: string
-  disabled: boolean
-  onChange: (value: string) => void
-}) {
-  return (
-    <div className='flex flex-col gap-1'>
-      <span className='text-muted-foreground text-xs'>
-        {label}
-        {placeholderNote && !value && ` (${placeholderNote})`}
-      </span>
-      <div className='w-44'>
-        <FieldInputAdapter
-          fieldType={FieldType.DATE}
-          value={value ? `${value}T00:00:00.000Z` : null}
-          onChange={(next) => onChange(typeof next === 'string' ? next.slice(0, 10) : '')}
-          disabled={disabled}
-          triggerProps={{ className: 'w-full' }}
-        />
-      </div>
-    </div>
-  )
+/**
+ * Where a freshly-opened range starts: the first of the current month, or the
+ * floor when the floor is later than that.
+ *
+ * ⚠️ Clamped UP deliberately. An org whose cutoff is the current month has a
+ * floor in the next one, and seeding below it would open the picker on a range
+ * that is itself a refusal.
+ */
+function seedRangeStart(floor: string | null, todayInBooks: string): string {
+  const firstOfMonth = `${todayInBooks.slice(0, 8)}01`
+  if (!floor) return firstOfMonth
+  return floor > firstOfMonth ? floor : firstOfMonth
 }

@@ -29,6 +29,21 @@ const QUICKBOOKS_APP_SLUG = 'quickbooks'
 /** Where a person installs or authorizes the app. The OAuth flow lives there, not here. */
 const QUICKBOOKS_APP_DETAIL_PATH = '/app/settings/apps/quickbooks'
 
+/**
+ * What to call the provider when none is connected.
+ *
+ * 🛑 {@link AccountingProviderStatus.providerLabel} is `null` until a connection
+ * is authorized, and EVERY surface that renders it needs the same fallback - or
+ * the product says "QuickBooks" on one screen, "the accounting system" on the
+ * next and "your accounting provider" on a third, for an organization that has
+ * connected nothing at all. There is one right answer and this is it.
+ *
+ * ⚠️ It is deliberately not a vendor name. The seam is provider-agnostic
+ * (`post-entry.ts`, `postings/types.ts`), and a disconnected org naming a
+ * product it has never installed is the defect this constant exists to stop.
+ */
+export const UNKNOWN_PROVIDER_LABEL = 'the accounting system'
+
 export interface AccountingProviderStatus {
   /** The app is installed in this organization. */
   installed: boolean

@@ -8,6 +8,7 @@ import {
   CalendarClock,
   CreditCard,
   Landmark,
+  Link2,
   Scale,
   SlidersHorizontal,
 } from 'lucide-react'
@@ -20,9 +21,17 @@ import SidebarSecondary from '~/components/global/sidebar-secondary'
 import type { SidebarProps } from '~/constants/menu'
 
 /**
- * Accounting settings navigation (13-accounting-ui.md §5.4) — THREE pages, not
- * four. Costing folds into General: four sections in a two-column grid is
- * exactly `scheduling-settings-page.tsx`'s shape, so General is not overloaded.
+ * Accounting settings navigation (13-accounting-ui.md §5.4).
+ *
+ * Costing folds into General: four sections in a two-column grid is exactly
+ * `scheduling-settings-page.tsx`'s shape, so General is not overloaded.
+ *
+ * 🛑 `Connected system` is SECOND, not last (brief 27 §2). Opening balances
+ * reads the provider's trial balance and Accounts maps the provider's chart -
+ * both presuppose a connection, and putting the connection after the two pages
+ * that depend on it reads as an afterthought. It is still not a setup gate:
+ * `setup-readiness.ts` has no provider requirement and `P1` makes "nothing
+ * connected" first class.
  */
 const ACCOUNTING_SETTINGS: SidebarProps[] = [
   {
@@ -38,11 +47,23 @@ const ACCOUNTING_SETTINGS: SidebarProps[] = [
         description: 'Period, timezone, absorption rates and the standard-cost roll',
       },
       {
+        id: 'accounting-settings-provider',
+        label: 'Connected system',
+        slug: 'provider',
+        icon: <Link2 />,
+        // 🔑 The LABEL is agnostic and the KEYWORDS are not, deliberately. The
+        // page must not name a vendor an org may never have installed; the term
+        // people actually type to find it is the vendor's name. Same trick the
+        // row below already plays.
+        description: 'Connect an accounting system, compare balances, and bring in entries',
+        keywords: ['quickbooks', 'xero', 'sync', 'reconcile', 'agreement', 'export', 'provider'],
+      },
+      {
         id: 'accounting-settings-opening',
         label: 'Opening balances',
         slug: 'opening',
         icon: <Scale />,
-        description: 'The auxx and QuickBooks snapshots, and their reconciliation',
+        description: 'The auxx and provider snapshots, and their reconciliation',
         keywords: ['cutover', 'baseline', 'quickbooks'],
       },
       {
