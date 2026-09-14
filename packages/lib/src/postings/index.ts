@@ -204,14 +204,17 @@ export {
   createAndLinkProviderAccount,
 } from './create-provider-account'
 export {
+  type AccountCodeBand,
   CHART_PACK_KEYS,
   CHART_PACKS,
   type ChartPack,
   type ChartPackKey,
+  CLEARING_ACCOUNT_CODE_BAND,
   DEFAULT_CHART_OF_ACCOUNTS,
   type DefaultChartAccount,
   GL_ACCOUNT_TYPES,
   type GlAccountTypeValue,
+  MERCHANT_FEE_ACCOUNT_CODE_BAND,
   packForRole,
   packState,
 } from './default-chart'
@@ -261,6 +264,13 @@ export {
 } from './journal-entries'
 export { didLedgerAccept, isExpectedPostOutcome } from './ledger-accepted'
 export { listPostings, listPostingsForSource } from './list-postings'
+// ── plans/accounting/tasks/26 §7: a clearing account per rail ───────────────
+export {
+  type MintedRailAccounts,
+  type MintRailAccountsInput,
+  mintRailAccounts,
+} from './mint-rail-accounts'
+export { type CodedAccount, nextAccountCode } from './next-account-code'
 export {
   FINALIZED_SETUP_STATE,
   OPENING_BASELINE_SETTING_KEYS,
@@ -388,6 +398,13 @@ export {
   type SyncProviderLedgerInput,
   syncProviderLedger,
 } from './provider-sync'
+// ── plans/accounting/tasks/26 §6: billed fees, shown and never accrued ───────
+export {
+  type RailFeeAccount,
+  type RailFeeStatus,
+  type ReadRailFeeStatusOptions,
+  readRailFeeStatus,
+} from './rail-fee-status'
 export { getPosting, readPostingLineSourceIds } from './read-posting'
 export {
   ENABLED_POSTING_TYPES,

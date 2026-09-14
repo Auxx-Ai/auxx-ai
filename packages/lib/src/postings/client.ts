@@ -186,14 +186,17 @@ export {
   ROLE_IMPORT_MATCH,
 } from './chart-import-plan'
 export {
+  type AccountCodeBand,
   CHART_PACK_KEYS,
   CHART_PACKS,
   type ChartPack,
   type ChartPackKey,
+  CLEARING_ACCOUNT_CODE_BAND,
   DEFAULT_CHART_OF_ACCOUNTS,
   type DefaultChartAccount,
   GL_ACCOUNT_TYPES,
   type GlAccountTypeValue,
+  MERCHANT_FEE_ACCOUNT_CODE_BAND,
   packForRole,
   packState,
 } from './default-chart'
@@ -225,6 +228,11 @@ export {
   type PostingSummary,
 } from './journal-entries/client'
 export { didLedgerAccept, isExpectedPostOutcome } from './ledger-accepted'
+// ── plans/accounting/tasks/26 §7.1: the code allocator ──────────────────────
+// PURE - reaches `errors` and the band constants in `default-chart`, both of
+// which are already on this surface. `mint-rail-accounts.ts` is the write half
+// and stays server-only: it imports `@auxx/database`.
+export { type CodedAccount, nextAccountCode } from './next-account-code'
 // ── plans/accounting/tasks/19: opening balances from the provider, pure half ──
 // PURE. No database, no io - see opening-fill-plan.ts's own header.
 export {
@@ -310,6 +318,11 @@ export {
   planSyncChunks,
   providerSyncFloor,
 } from './provider-sync/range'
+// ── plans/accounting/tasks/26 §6: billed fees, shown and never accrued ───────
+// Types only. `readRailFeeStatus` makes three database reads and stays
+// server-only, exported from `./index`; the close console's Processor fees
+// block renders this shape.
+export type { RailFeeAccount, RailFeeStatus } from './rail-fee-status'
 export {
   ENABLED_POSTING_TYPES,
   EXPORT_ROUTE_BY_POSTING_TYPE,

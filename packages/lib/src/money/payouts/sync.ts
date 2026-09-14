@@ -41,6 +41,17 @@
  * (so its number is minted and it is visible) but its entry refuses to post:
  * `payout_blocked_reason` names the payout, the destination and the remedy,
  * and `postPayoutEntry` is never even called - see `resolvePayoutBankAccount`.
+ *
+ * 🛑 **And it credits a clearing account, never a role (brief 26 §3).** The same
+ * argument one leg over. `resolvePayoutGateway` finds the `payment_gateway`
+ * record that declares `settlementSource: 'stripe'` and passes its clearing
+ * account, its fee account and its fee treatment down; NO record is the
+ * ordinary fallback to the roles, and TWO is a refusal stamped the same way a
+ * bad destination is. Line 266 used to read
+ * `clearingRole: ACCOUNT_ROLES.CLEARING_CARD` unconditionally, which meant the
+ * fulfillment debit (id-routed since brief 13 §5.3) and the payout credit
+ * stopped meeting the moment any rail was routed to its own account - in
+ * balanced entries nothing complains about.
  */
 
 import { type Database, schema } from '@auxx/database'
@@ -49,6 +60,8 @@ import { and, asc, eq } from 'drizzle-orm'
 import type { Result } from 'neverthrow'
 import type Stripe from 'stripe'
 import { UnprocessableEntityError } from '../../errors'
+import type { PaymentGatewayFeeTreatmentValue } from '../../payment-gateways/client'
+import { listPaymentGateways } from '../../payment-gateways/reads'
 import { isAccountingEnabled } from '../../postings/accounting-enabled'
 import { ACCOUNT_ROLES } from '../../postings/build-entry'
 import { didLedgerAccept } from '../../postings/ledger-accepted'
@@ -240,18 +253,30 @@ async function ingestOne(
   // identity - never `last4`. No entry is built and nothing is claimed when it
   // cannot.
   const resolved = await resolvePayoutBankAccount(db, organizationId, gathered.destination, number)
+  // 🛑 And the CLEARING side, resolved the same way and refused the same way
+  // (brief 26 §3). A fulfillment debits the gateway record's clearing account by
+  // id, so crediting the `clearing_card` role here would relieve a different
+  // account the moment any rail is routed to its own - and nothing downstream
+  // could detect it, because the entry balances either way.
+  const gateway = await resolvePayoutGateway(db, organizationId, number)
 
-  let post: PostResult
-  if (resolved.blockedReason !== null) {
-    logger.warn('Payout blocked: its destination is not a confirmed bank account', {
+  /** Stamp the reason on the record and return the pre-claim result. Nothing is built. */
+  const block = async (reason: string): Promise<PostResult> => {
+    logger.warn('Payout blocked before its entry was built', {
       organizationId,
       payoutId: payout.id,
       destination: gathered.destination,
+      reason,
     })
-    await crud.update(toRecordId(ctx.payoutDefId, instanceId), {
-      payout_blocked_reason: resolved.blockedReason,
-    })
-    post = payoutAccountUnmappedResult(resolved.blockedReason)
+    await crud.update(toRecordId(ctx.payoutDefId, instanceId), { payout_blocked_reason: reason })
+    return payoutAccountUnmappedResult(reason)
+  }
+
+  let post: PostResult
+  if (resolved.blockedReason !== null) {
+    post = await block(resolved.blockedReason)
+  } else if (gateway.blockedReason !== null) {
+    post = await block(gateway.blockedReason)
   } else {
     post = await postPayoutEntry(db, {
       organizationId,
@@ -263,7 +288,13 @@ async function ingestOne(
       feesMinor: gathered.split.feesMinor,
       netMinor: gathered.split.netMinor,
       unrecognisedNetMinor: gathered.split.unrecognisedNetMinor,
+      // The ROLE fallback, unchanged and still guarded. It is what an org with
+      // no `payment_gateway` record gets, which is bit for bit what every org
+      // got before brief 26.
       clearingRole: ACCOUNT_ROLES.CLEARING_CARD,
+      ...(gateway.clearingGlAccountId ? { clearingGlAccountId: gateway.clearingGlAccountId } : {}),
+      ...(gateway.feeGlAccountId ? { feeGlAccountId: gateway.feeGlAccountId } : {}),
+      feeTreatment: gateway.feeTreatment,
       paidAt: gathered.paidAt,
       memo: `Payout ${number}`,
     })
@@ -334,6 +365,98 @@ export async function resolvePayoutBankAccount(
     }
   }
   return { blockedReason: null, glAccountId: match.glAccountId }
+}
+
+/**
+ * What a payout's own `payment_gateway` record contributes, or the sentence a
+ * blocked payout carries. Never both.
+ *
+ * ⚠️ `clearingGlAccountId` and `feeGlAccountId` are OPTIONAL on the unblocked
+ * branch on purpose: "no record claims this rail" is an ordinary, supported
+ * answer, and it means the builder falls back to the roles exactly as it always
+ * has. Only an AMBIGUOUS answer blocks.
+ */
+export type ResolvedPayoutGateway =
+  | {
+      blockedReason: null
+      clearingGlAccountId?: string
+      feeGlAccountId?: string
+      feeTreatment: PaymentGatewayFeeTreatmentValue
+    }
+  | {
+      blockedReason: string
+      clearingGlAccountId?: never
+      feeGlAccountId?: never
+      feeTreatment?: never
+    }
+
+/**
+ * Resolve the `payment_gateway` record this Stripe payout settles, or name why
+ * it cannot be posted (brief 26 §3, §13 decision 2).
+ *
+ * ## Why `settlementSource`, and not the payout itself
+ *
+ * A Stripe payout knows its Connect account, not a Shopify gateway handle.
+ * There is nothing on the payout to join to `payment_gateway.handles`, so the
+ * only honest key is the record's own declaration of how it drains:
+ * `settlementSource: 'stripe'` means "this rail is the one the payouts API
+ * reports", and normally exactly one record says that.
+ *
+ * ## The three answers
+ *
+ * - **none.** No record claims the Stripe rail. Not a refusal - the builder
+ *   falls back to {@link ACCOUNT_ROLES.CLEARING_CARD} and
+ *   `payment_processing_fees`, which is precisely what every org did before
+ *   brief 26. An org with zero `payment_gateway` records is bit-for-bit
+ *   unaffected by this function.
+ * - **exactly one.** Its clearing account, its fee account (when it names one)
+ *   and its fee treatment.
+ * - **two or more.** 🛑 A REFUSAL, stamped as `payout_blocked_reason` the same
+ *   way an unresolvable destination is. Never a silent fall back to the role: a
+ *   wrong clearing account is invisible and permanent, a blocked payout is
+ *   visible and fixable. ⚠️ "For now" is MK's own framing in §13 decision 2 - if
+ *   two Connect accounts on one org turn out to be ordinary rather than a
+ *   mistake, this becomes a picker.
+ *
+ * ⚠️ **`status` is deliberately not filtered.** A closed rail is still a record
+ * claiming the Stripe stream, and quietly preferring the active one would be
+ * this function guessing - which is the one thing §13 decision 2 rules out.
+ *
+ * Exported for direct testing, like {@link resolvePayoutBankAccount}.
+ */
+export async function resolvePayoutGateway(
+  db: Database,
+  organizationId: string,
+  payoutNumber: string
+): Promise<ResolvedPayoutGateway> {
+  const gateways = await listPaymentGateways(db, organizationId)
+  if (gateways.isErr()) throw gateways.error
+
+  const stripeRails = gateways.value.filter((row) => row.settlementSource === 'stripe')
+
+  if (stripeRails.length === 0) {
+    return { blockedReason: null, feeTreatment: 'netted' }
+  }
+  if (stripeRails.length > 1) {
+    const named = stripeRails.map((row) => row.name || row.id).join(', ')
+    return {
+      blockedReason:
+        `Payout ${payoutNumber} cannot name a clearing account: ${stripeRails.length} payment ` +
+        `gateways settle through Stripe (${named}), so there is no single rail this deposit ` +
+        'drains. Leave one of them on Stripe on Accounting > Settings > Payment gateways.',
+    }
+  }
+
+  const rail = stripeRails[0] as (typeof stripeRails)[number]
+  return {
+    blockedReason: null,
+    // ⚠️ A record with a blank clearing account falls back to the role rather
+    // than posting to ''. `assertClearingAccount` makes that unreachable from
+    // the write path; it is reachable from a hand-edited row.
+    ...(rail.clearingGlAccountId ? { clearingGlAccountId: rail.clearingGlAccountId } : {}),
+    ...(rail.feeGlAccountId ? { feeGlAccountId: rail.feeGlAccountId } : {}),
+    feeTreatment: rail.feeTreatment,
+  }
 }
 
 /** The field payload a payout record carries, from one gathered payout. */

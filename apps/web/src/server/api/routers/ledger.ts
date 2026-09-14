@@ -3,6 +3,10 @@
 import { getCachedEntityDefId, getCachedInstalledApps, onCacheEvent } from '@auxx/lib/cache'
 import { BadRequestError, UnprocessableEntityError } from '@auxx/lib/errors'
 import { getPaymentAccount } from '@auxx/lib/money'
+// The naming catalogue is PURE and client-safe (brief 26 §7.2), so it lives on
+// its own leaf subpath and is imported from there rather than through the
+// `payment-gateways` barrel, which reaches Drizzle and the org cache.
+import { suggestRail } from '@auxx/lib/payment-gateways/rail-catalogue'
 import { PermissionKey } from '@auxx/lib/permissions'
 import {
   ACCOUNT_ROLES,
@@ -31,6 +35,7 @@ import {
   listPostings,
   listPostingsForSource,
   listRoleMap,
+  mintRailAccounts,
   POSTING_TYPES,
   postEntry,
   postJournalEntry,
@@ -38,6 +43,7 @@ import {
   previewEntry,
   previewJournalEntry,
   previewMonthEnd,
+  readRailFeeStatus,
   readTrialBalance,
   removeChartAccount,
   resolveAccountingProvider,
@@ -200,6 +206,7 @@ const draftEntry = z.object({
  * | `failedExports` | `ledger.view` |
  * | `retryExport` | `ledger.post` |
  * | `verifyBalance`   | `ledger.view` |
+ * | `railFeeStatus`   | `ledger.view` |
  * | `post`            | `ledger.post` |
  * | `reverse`         | `ledger.post` |
  * | `setLockedThrough` | `ledger.control` |
@@ -970,6 +977,60 @@ export const ledgerRouter = createTRPCRouter({
     }),
 
   /**
+   * Mint the chart accounts one payment rail needs (brief 26 §7).
+   *
+   * 🛑 **Its own door, and deliberately NOT part of creating the gateway.**
+   * `createPaymentGateway`'s jsdoc states *"What it must NOT do: mint an
+   * account per gateway"* and §7.4 keeps that true: the gateway writer names
+   * EXISTING accounts. A caller that wants both in one click calls this and
+   * then `paymentGateway.create` with the ids that come back.
+   *
+   * 🛑 **No role, and no way to ask for one.** `mintRailAccounts` offers no
+   * role parameter - the rule that killed `clearing_affirm` on 2026-09-10,
+   * since a role must not name a vendor. A minted account is reached by id,
+   * through the gateway record that points at it.
+   *
+   * ⚠️ `mintFeeAccount` is the CALLER's answer, not a derivation from the
+   * rail. §5's defaults (a `netted` rail books to the shared `6100` fallback, a
+   * `billed` rail mints its own) are the wizard's checkbox default; a mutation
+   * that decided it here would overrule whatever the person just unticked.
+   *
+   * `handle` is used for one thing: defaulting the two account names through
+   * the suggestion catalogue when the client did not send them. Suggestions
+   * only - nothing here routes (§7.2), and an unknown handle gets a titled name
+   * rather than a refusal.
+   *
+   * `ledgerControl`, the rung `chartAccountCreate` and `setRoleAssignment` both
+   * sit on: this decides where real money lands.
+   */
+  mintRailAccounts: permissionProcedure(PermissionKey.ledgerControl)
+    .input(
+      z.object({
+        /** The gateway handle being routed, e.g. `'shopify_payments'`. Names only. */
+        handle: z.string().min(1),
+        /** Overrides the suggested clearing account name. */
+        clearingAccountName: z.string().min(1).optional(),
+        /** Mint a dedicated fee account as well as the clearing account. */
+        mintFeeAccount: z.boolean(),
+        /** Overrides the suggested fee account name. */
+        feeAccountName: z.string().min(1).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { organizationId, userId } = ctx.session
+      const suggestion = suggestRail(input.handle)
+      const result = await mintRailAccounts(ctx.db, {
+        organizationId,
+        actorUserId: userId,
+        clearingAccountName: input.clearingAccountName ?? suggestion.clearingAccountName,
+        mintFeeAccount: input.mintFeeAccount,
+        feeAccountName: input.feeAccountName ?? suggestion.feeAccountName,
+      })
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /**
    * Every entry that IS in the books and is not in the accounting system - the
    * close console's export queue.
    *
@@ -1063,6 +1124,34 @@ export const ledgerRouter = createTRPCRouter({
       const result = await findDuplicateBankMovements(ctx.db, {
         organizationId: ctx.session.organizationId,
         month: input?.periodKey,
+      })
+      if (result.isErr()) throw result.error
+      return result.value
+    }),
+
+  /**
+   * What the close console can say about each rail's processor fees
+   * (plans/accounting/tasks/26-a-clearing-account-per-rail.md §6): which rails
+   * are `billed` rather than `netted`, whether they traded in the month, and
+   * when a fee was last booked to a rail's OWN fee account.
+   *
+   * 🛑 **A fact, never an alarm, and deliberately not a close refusal.** §6 and
+   * §14's R4: a rail that bills quarterly would block two closes in three and
+   * teach everyone to ignore the block. `prepareClose` does not call this. The
+   * date is the whole message and the person draws the conclusion, which is
+   * also why there is no dismissal state to store.
+   *
+   * ⚠️ The month is REQUIRED here, unlike {@link verifyBalance}. Two of the
+   * three things §6 says are knowable are about a specific month, and answering
+   * them for "the whole ledger" would mean answering a question nobody asked.
+   * The close console gates the query on having resolved a month.
+   */
+  railFeeStatus: permissionProcedure(PermissionKey.ledgerView)
+    .input(monthKey)
+    .query(async ({ ctx, input }) => {
+      const result = await readRailFeeStatus(ctx.db, {
+        organizationId: ctx.session.organizationId,
+        month: input.periodKey,
       })
       if (result.isErr()) throw result.error
       return result.value

@@ -24,8 +24,10 @@ import { UnifiedCrudHandler } from '../resources/crud'
 import { toRecordId } from '../resources/resource-id'
 import {
   normaliseGatewayHandle,
+  PAYMENT_GATEWAY_FEE_TREATMENTS,
   PAYMENT_GATEWAY_SETTLEMENT_SOURCES,
   PAYMENT_GATEWAY_STATUSES,
+  type PaymentGatewayFeeTreatmentValue,
   type PaymentGatewayRow,
   type PaymentGatewaySettlementSourceValue,
   type PaymentGatewayStatusValue,
@@ -46,6 +48,12 @@ export interface CreatePaymentGatewayInput {
   /** The `gl_account` id the processor withholds its fee into, or null. */
   feeAccountId?: string | null
   settlementSource?: PaymentGatewaySettlementSourceValue
+  /**
+   * Whether the processor withholds its cut from the deposit (`netted`) or
+   * bills for it later (`billed`). Defaults to `netted`, which is what the
+   * payout builder has always assumed.
+   */
+  feeTreatment?: PaymentGatewayFeeTreatmentValue
   status?: PaymentGatewayStatusValue
   lastSettlementAt?: string | null
 }
@@ -60,6 +68,7 @@ export interface UpdatePaymentGatewayInput {
   clearingAccountId?: string
   feeAccountId?: string | null
   settlementSource?: PaymentGatewaySettlementSourceValue
+  feeTreatment?: PaymentGatewayFeeTreatmentValue
   status?: PaymentGatewayStatusValue
   lastSettlementAt?: string | null
 }
@@ -100,6 +109,11 @@ export async function createPaymentGateway(
 
       const settlementSource = input.settlementSource ?? 'manual'
       assertSettlementSource(settlementSource)
+      // 🛑 Defaulted here AND stamped by migration 156 on every record that
+      // predates the field, so the value is never absent and §4's default does
+      // not end up living in three places.
+      const feeTreatment = input.feeTreatment ?? 'netted'
+      assertFeeTreatment(feeTreatment)
       const status = input.status ?? 'active'
       assertStatus(status)
 
@@ -116,6 +130,7 @@ export async function createPaymentGateway(
         payment_gateway_clearing_account: input.clearingAccountId.trim(),
         payment_gateway_fee_account: input.feeAccountId?.trim() || undefined,
         payment_gateway_settlement_source: settlementSource,
+        payment_gateway_fee_treatment: feeTreatment,
         payment_gateway_status: status,
         payment_gateway_last_settlement_at: input.lastSettlementAt || undefined,
       })
@@ -200,6 +215,10 @@ export async function updatePaymentGateway(
       if (input.settlementSource !== undefined) {
         assertSettlementSource(input.settlementSource)
         patch.payment_gateway_settlement_source = input.settlementSource
+      }
+      if (input.feeTreatment !== undefined) {
+        assertFeeTreatment(input.feeTreatment)
+        patch.payment_gateway_fee_treatment = input.feeTreatment
       }
       if (input.status !== undefined) {
         assertStatus(input.status)
@@ -292,6 +311,20 @@ function assertSettlementSource(
   if (!PAYMENT_GATEWAY_SETTLEMENT_SOURCES.includes(value as PaymentGatewaySettlementSourceValue)) {
     throw new BadRequestError(
       `"${value}" is not a settlement source. Use ${PAYMENT_GATEWAY_SETTLEMENT_SOURCES.join(', ')}`
+    )
+  }
+}
+
+/**
+ * 🛑 A refusal, never a coercion to `netted`. `resolvePaymentGatewayFeeTreatment`
+ * coerces on the READ side because an unmigrated record legitimately has no
+ * value; a write path that coerced a typo would silently put a billed rail back
+ * on the netted path and re-introduce a fee leg its deposits never carried.
+ */
+function assertFeeTreatment(value: string): asserts value is PaymentGatewayFeeTreatmentValue {
+  if (!PAYMENT_GATEWAY_FEE_TREATMENTS.includes(value as PaymentGatewayFeeTreatmentValue)) {
+    throw new BadRequestError(
+      `"${value}" is not a fee treatment. Use ${PAYMENT_GATEWAY_FEE_TREATMENTS.join(' or ')}`
     )
   }
 }

@@ -13,6 +13,7 @@ import { migration152CreditMemoGlPosting } from './migrations/152-credit-memo-gl
 import { migration153FulfillmentLines } from './migrations/153-fulfillment-lines'
 import { migration154Returns } from './migrations/154-returns'
 import { migration155ReturnInboundTrackingMulti } from './migrations/155-return-inbound-tracking-multi'
+import { migration156PaymentGatewayFeeTreatment } from './migrations/156-payment-gateway-fee-treatment'
 import { type PerOrgMigration, perOrgMigration } from './per-org'
 import { assertUniqueMigrationIds } from './plan'
 import type { DataMigrationDef } from './types'
@@ -89,6 +90,11 @@ export const PER_ORG_MIGRATIONS: PerOrgMigration[] = [
   // and the one where the registry and the migration are most likely to drift
   // apart silently (plans/money/tasks/57-return-intake-wizard.md §8.1).
   migration155ReturnInboundTrackingMulti,
+  // Two new fields on an existing def AND a value stamped onto every existing
+  // record in the same pass: the seed-and-stamp shape. A SINGLE_SELECT whose
+  // options arrive with the field, because a select seeded without them renders
+  // blank (plans/accounting/tasks/26-a-clearing-account-per-rail.md §10).
+  migration156PaymentGatewayFeeTreatment,
 ]
 
 /**

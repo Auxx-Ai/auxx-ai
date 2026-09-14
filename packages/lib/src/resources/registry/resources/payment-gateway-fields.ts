@@ -4,7 +4,11 @@ import { FieldType } from '@auxx/database/enums'
 import { toFieldId } from '@auxx/types/field'
 import { BaseType } from '../../types'
 import { CREATED_BY_FIELD } from '../common-fields'
-import { PaymentGatewaySettlementSource, PaymentGatewayStatus } from '../enum-values'
+import {
+  PaymentGatewayFeeTreatment,
+  PaymentGatewaySettlementSource,
+  PaymentGatewayStatus,
+} from '../enum-values'
 import type { ResourceField } from '../field-types'
 
 /**
@@ -200,6 +204,33 @@ export const PAYMENT_GATEWAY_FIELDS: Record<string, ResourceField> = {
       'historical rail correctly are.',
   },
 
+  feeTreatment: {
+    id: toFieldId('feeTreatment'),
+    key: 'feeTreatment',
+    label: 'Fee treatment',
+    type: BaseType.ENUM,
+    fieldType: FieldType.SINGLE_SELECT,
+    isSystem: true,
+    systemAttribute: 'payment_gateway_fee_treatment',
+    systemSortOrder: 'a5a',
+    nullable: false,
+    options: { options: PaymentGatewayFeeTreatment.values },
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    placeholder: 'Select fee treatment',
+    defaultValue: 'netted',
+    description:
+      'Whether the processor withholds its cut from the deposit (`netted`) or bills for it ' +
+      'later (`billed`). A payout entry on a billed rail has NO fee leg and its deposit is ' +
+      'gross, so this decides the shape of the entry, not just a label. Deliberately not ' +
+      'folded into settlementSource: Affirm settles outside every API and still nets its fee.',
+  },
+
   status: {
     id: toFieldId('status'),
     key: 'status',
@@ -247,6 +278,30 @@ export const PAYMENT_GATEWAY_FIELDS: Record<string, ResourceField> = {
       'The last date this rail is known to have settled. Informational - nothing in posting ' +
       'reads it today - and what the screen shows under a closed gateway to say why it is ' +
       'still worth seeing.',
+  },
+
+  lastFeeBookedAt: {
+    id: toFieldId('lastFeeBookedAt'),
+    key: 'lastFeeBookedAt',
+    label: 'Last fee booked',
+    type: BaseType.DATE,
+    fieldType: FieldType.DATE,
+    isSystem: true,
+    systemAttribute: 'payment_gateway_last_fee_booked_at',
+    systemSortOrder: 'a7a',
+    nullable: true,
+    capabilities: {
+      filterable: true,
+      sortable: true,
+      creatable: true,
+      updatable: true,
+      configurable: false,
+    },
+    description:
+      'The last date a fee was booked to this rail. Informational only, exactly like ' +
+      'lastSettlementAt - nothing in posting reads it. A billed rail has no statement auxx can ' +
+      'read, so the close console shows this DATE rather than a checkmark or a refusal: a rail ' +
+      'that bills quarterly would nag two months in three and teach everyone to ignore it.',
   },
 
   createdAt: {

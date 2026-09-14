@@ -10,19 +10,24 @@
  */
 
 export type {
+  GatewayHandleCensusRow,
   GatewayRoute,
   ObservedGatewayHandle,
+  PaymentGatewayFeeTreatmentValue,
   PaymentGatewayRow,
   PaymentGatewaySettlementSourceValue,
   PaymentGatewayStatusValue,
 } from './client'
 export {
   normaliseGatewayHandle,
+  PAYMENT_GATEWAY_FEE_TREATMENT_LABELS,
+  PAYMENT_GATEWAY_FEE_TREATMENTS,
   PAYMENT_GATEWAY_SETTLEMENT_SOURCE_LABELS,
   PAYMENT_GATEWAY_SETTLEMENT_SOURCES,
   PAYMENT_GATEWAY_STATUS_LABELS,
   PAYMENT_GATEWAY_STATUSES,
   RESERVED_GATEWAY_HANDLES,
+  resolvePaymentGatewayFeeTreatment,
   resolvePaymentGatewaySettlementSource,
   resolvePaymentGatewayStatus,
   toGatewayRoutes,
@@ -30,11 +35,14 @@ export {
 export type { PaymentGatewayFieldContext } from './reads'
 export {
   getPaymentGateway,
+  listGatewayHandleCensus,
   listObservedGatewayHandles,
   listPaymentGateways,
   loadPaymentGatewayFieldContext,
   requirePaymentGatewayFieldContext,
 } from './reads'
+export type { ClearingAccountBalance } from './repoint'
+export { readClearingAccountBalance } from './repoint'
 export type {
   ArchivePaymentGatewayInput,
   CreatePaymentGatewayInput,

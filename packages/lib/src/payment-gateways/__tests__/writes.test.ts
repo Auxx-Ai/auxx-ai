@@ -27,8 +27,10 @@ function baseRow(overrides: Partial<PaymentGatewayRow> = {}): PaymentGatewayRow 
     clearingGlAccountId: 'acct_affirm',
     feeGlAccountId: null,
     settlementSource: 'manual',
+    feeTreatment: 'netted',
     status: 'active',
     lastSettlementAt: null,
+    lastFeeBookedAt: null,
     createdAt: null,
     updatedAt: null,
     ...overrides,
@@ -233,5 +235,83 @@ describe('updatePaymentGateway', () => {
       handles: ['affirm', 'Affirm'],
     })
     expect(result.isOk()).toBe(true)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// brief 26 §4: feeTreatment. It decides whether a payout entry for this rail
+// carries a fee leg at all, so a bad value is a refusal and not a coercion.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('feeTreatment', () => {
+  it('stamps netted when the caller says nothing, so the record holds the default', async () => {
+    // §10: the migration stamps every existing record and this stamps every new
+    // one, so the default never lives only in the read path.
+    await createPaymentGateway({} as never, {
+      organizationId: ORG,
+      actorUserId: 'user_1',
+      name: 'Stripe',
+      handles: ['stripe'],
+      clearingAccountId: ASSET_ACCOUNT.id,
+    })
+    expect(state.createCalls[0]).toMatchObject({ payment_gateway_fee_treatment: 'netted' })
+  })
+
+  it('writes billed through when the caller asks for it', async () => {
+    await createPaymentGateway({} as never, {
+      organizationId: ORG,
+      actorUserId: 'user_1',
+      name: 'Authorize.Net',
+      handles: ['authorize_net'],
+      clearingAccountId: ASSET_ACCOUNT.id,
+      feeTreatment: 'billed',
+    })
+    expect(state.createCalls[0]).toMatchObject({ payment_gateway_fee_treatment: 'billed' })
+  })
+
+  it('refuses a value that is not a fee treatment, naming the two that are', async () => {
+    // 🛑 A refusal, never a coercion to netted. The READ side coerces because an
+    // unmigrated record legitimately has no value; a write that coerced a typo
+    // would silently put a billed rail back on the netted path and re-introduce
+    // a fee leg its deposits never carried.
+    const result = await createPaymentGateway({} as never, {
+      organizationId: ORG,
+      actorUserId: 'user_1',
+      name: 'Stripe',
+      handles: ['stripe'],
+      clearingAccountId: ASSET_ACCOUNT.id,
+      feeTreatment: 'net' as never,
+    })
+    expect(result.isErr()).toBe(true)
+    if (result.isErr()) expect(result.error.message).toMatch(/netted or billed/)
+  })
+
+  it('is left alone on an update that does not mention it', async () => {
+    state.existing = [baseRow({ id: 'pg_1', feeTreatment: 'billed' })]
+    await updatePaymentGateway({} as never, {
+      organizationId: ORG,
+      actorUserId: 'user_1',
+      paymentGatewayId: 'pg_1',
+      name: 'Authorize.Net',
+    })
+    expect(state.updateCalls[0]).toMatchObject({
+      values: { payment_gateway_name: 'Authorize.Net' },
+    })
+    expect((state.updateCalls[0] as { values: Record<string, unknown> }).values).not.toHaveProperty(
+      'payment_gateway_fee_treatment'
+    )
+  })
+
+  it('is patched on an update that does mention it', async () => {
+    state.existing = [baseRow({ id: 'pg_1' })]
+    await updatePaymentGateway({} as never, {
+      organizationId: ORG,
+      actorUserId: 'user_1',
+      paymentGatewayId: 'pg_1',
+      feeTreatment: 'billed',
+    })
+    expect(state.updateCalls[0]).toMatchObject({
+      values: { payment_gateway_fee_treatment: 'billed' },
+    })
   })
 })

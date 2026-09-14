@@ -16,28 +16,52 @@
 // 🛑 Clearing account is filtered to `asset`, fee account to `expense` - the
 // picker is a convenience; `writes.ts`'s refusal sentence is the actual
 // defence, and it is surfaced verbatim on save.
+//
+// 🛑 Repointing the clearing account CONFIRMS, and it names the balance it is
+// about to strand (brief 26 §9.1). A settings edit moves new postings only, so
+// every sale on this rail that was not settled at the switch moment stays in
+// the old account together with whatever residue was already there. The
+// transfer entry is deliberately not built yet; a silent repoint is the failure
+// this addresses, and a manual journal entry on the switch date is the accepted
+// interim.
 
 import { FieldType } from '@auxx/database/enums'
 import type { PaymentGatewayRow } from '@auxx/lib/payment-gateways/client'
 import {
+  PAYMENT_GATEWAY_FEE_TREATMENT_LABELS,
+  PAYMENT_GATEWAY_FEE_TREATMENTS,
   PAYMENT_GATEWAY_SETTLEMENT_SOURCE_LABELS,
   PAYMENT_GATEWAY_SETTLEMENT_SOURCES,
 } from '@auxx/lib/payment-gateways/client'
 import { Badge } from '@auxx/ui/components/badge'
 import { Button } from '@auxx/ui/components/button'
 import { Section } from '@auxx/ui/components/section'
+import { formatCurrency } from '@auxx/utils/currency'
 import { CreditCard } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
+import { useChartAccount } from '~/components/accounting/ui/account-label'
 import { GlAccountPicker } from '~/components/accounting/ui/gl-account-picker'
 import { FieldInputAdapter } from '~/components/fields/inputs/field-input-adapter'
 import { FieldPanel, FieldPanelRow } from '~/components/global/forms/field-panel'
 import { BaseType } from '~/components/workflow/types'
+import { useConfirm } from '~/hooks/use-confirm'
 import { useDebouncedCallback } from '~/hooks/use-debounced-value'
+import { useSettings } from '~/hooks/use-settings'
+import { api } from '~/trpc/react'
 
 const SETTLEMENT_SOURCE_OPTIONS = PAYMENT_GATEWAY_SETTLEMENT_SOURCES.map((value) => ({
   value,
   label: PAYMENT_GATEWAY_SETTLEMENT_SOURCE_LABELS[value],
   color: value === 'manual' ? ('gray' as const) : ('green' as const),
+}))
+
+// 🛑 Not a label. `billed` removes the fee leg from this rail's payout entry
+// entirely (brief 26 §4), and `gross === net` becomes the expected arithmetic
+// there rather than a mis-read payout.
+const FEE_TREATMENT_OPTIONS = PAYMENT_GATEWAY_FEE_TREATMENTS.map((value) => ({
+  value,
+  label: PAYMENT_GATEWAY_FEE_TREATMENT_LABELS[value],
+  color: value === 'billed' ? ('amber' as const) : ('green' as const),
 }))
 
 /** How long a text row waits after the last keystroke before it writes. */
@@ -49,6 +73,7 @@ export interface PaymentGatewayPatch {
   clearingAccountId?: string
   feeAccountId?: string | null
   settlementSource?: PaymentGatewayRow['settlementSource']
+  feeTreatment?: PaymentGatewayRow['feeTreatment']
   lastSettlementAt?: string | null
 }
 
@@ -97,6 +122,49 @@ function PaymentGatewayForm({
   const commitName = useDebouncedCallback((value: string) => {
     if (value.trim()) onPatch({ name: value })
   }, TEXT_COMMIT_DELAY_MS)
+
+  const [confirm, ConfirmDialog] = useConfirm()
+  const { getSetting } = useSettings({ scope: 'GENERAL' })
+  const currencyCode = (getSetting('organization.currency') as string) || 'USD'
+
+  // What is posted to the account this gateway points at TODAY. ⚠️ It answers
+  // for the ACCOUNT, never for the gateway: nothing stamps a gateway onto a
+  // posting line, and a clearing account can be shared - which is why every
+  // sentence built from it below names the account.
+  const clearingBalance = api.paymentGateway.clearingBalance.useQuery(
+    { glAccountId: gateway.clearingGlAccountId },
+    { enabled: Boolean(gateway.clearingGlAccountId) }
+  )
+  const { account: clearingAccount } = useChartAccount(gateway.clearingGlAccountId)
+  const posted = clearingBalance.data
+  // 🔑 Gated on the LINE COUNT, not on the balance. An account that has taken a
+  // thousand lines and happens to net to zero this afternoon still has history,
+  // and a rail that is square today is exactly the one somebody repoints
+  // without thinking.
+  const hasPostedHistory = (posted?.lineCount ?? 0) > 0
+  const clearingAccountName =
+    clearingAccount?.name || clearingAccount?.code || 'the current clearing account'
+
+  async function repointClearingAccount(nextAccountId: string) {
+    if (nextAccountId === gateway.clearingGlAccountId) return
+    if (hasPostedHistory && posted) {
+      const confirmed = await confirm({
+        title: `Leave ${formatCurrency(posted.balanceMinor, { currencyCode })} behind in ${clearingAccountName}?`,
+        description:
+          `${clearingAccountName} holds ${formatCurrency(posted.balanceMinor, { currencyCode })} ` +
+          `across ${posted.lineCount} posted ${posted.lineCount === 1 ? 'line' : 'lines'}` +
+          `${posted.lastTxnDate ? `, most recently ${posted.lastTxnDate}` : ''}. ` +
+          'Repointing moves NEW postings only. That balance stays exactly where it is, including ' +
+          'every sale on this rail that has not settled yet, and nothing here moves it for you - ' +
+          'square it with a journal entry dated the day you switched.',
+        confirmText: 'Repoint anyway',
+        cancelText: 'Cancel',
+        destructive: true,
+      })
+      if (!confirmed) return
+    }
+    onPatch({ clearingAccountId: nextAccountId })
+  }
 
   // 🛑 The option set is DERIVED from the values. `payment_gateway_handles` is an
   // OPEN, value-keyed TAGS field - the registry declares `options: { options: [] }`
@@ -184,14 +252,28 @@ function PaymentGatewayForm({
               and the X could only ever be a no-op. The fee account below keeps
               its X, because null there is a real answer (fall back to the
               default merchant-fees account). */}
-          <GlAccountPicker
-            value={gateway.clearingGlAccountId}
-            selectBy='id'
-            filterTypes={['asset']}
-            placeholder='Select account…'
-            triggerProps={{ showClear: false }}
-            onChange={(id) => id && onPatch({ clearingAccountId: id })}
-          />
+          <div className='flex flex-col gap-1'>
+            <GlAccountPicker
+              value={gateway.clearingGlAccountId}
+              selectBy='id'
+              filterTypes={['asset']}
+              placeholder='Select account…'
+              triggerProps={{ showClear: false }}
+              onChange={(id) => id && void repointClearingAccount(id)}
+            />
+            {/* The number BEFORE the picker is touched, not only in the
+                confirmation. §9.1's failure is a repoint nobody thought about,
+                and a balance that only appears once you have already chosen a
+                new account is half a warning. */}
+            {hasPostedHistory && posted && (
+              <span className='text-muted-foreground text-xs'>
+                {formatCurrency(posted.balanceMinor, { currencyCode })} posted here across{' '}
+                {posted.lineCount} {posted.lineCount === 1 ? 'line' : 'lines'}
+                {posted.lastTxnDate ? `, most recently ${posted.lastTxnDate}` : ''}. Changing this
+                account leaves that balance behind.
+              </span>
+            )}
+          </div>
         </FieldPanelRow>
 
         <FieldPanelRow
@@ -224,6 +306,26 @@ function PaymentGatewayForm({
               if (next === 'stripe' || next === 'shopify_payments' || next === 'manual') {
                 onPatch({ settlementSource: next })
               }
+            }}
+          />
+        </FieldPanelRow>
+
+        <FieldPanelRow
+          title='Fee treatment'
+          type={BaseType.ENUM}
+          showIcon
+          description='Netted means the processor withholds its cut from the deposit, so the fee is booked inside every payout entry. Billed means the deposit is gross and the fees arrive later on a statement - that rail’s payout carries no fee leg at all.'>
+          <FieldInputAdapter
+            fieldType={FieldType.SINGLE_SELECT}
+            fieldOptions={{ options: FEE_TREATMENT_OPTIONS }}
+            value={gateway.feeTreatment}
+            triggerProps={{ className: 'w-full ps-0 pe-1' }}
+            placeholder='Select fee treatment'
+            onChange={(value) => {
+              // 🛑 SINGLE_SELECT emits `string[]`. Narrowing the array itself
+              // matches nothing and the write silently no-ops.
+              const next = Array.isArray(value) ? value[0] : value
+              if (next === 'netted' || next === 'billed') onPatch({ feeTreatment: next })
             }}
           />
         </FieldPanelRow>
@@ -270,6 +372,8 @@ function PaymentGatewayForm({
           </div>
         </Section>
       )}
+
+      <ConfirmDialog />
     </div>
   )
 }

@@ -14,6 +14,7 @@ import { WizardDonePage } from './wizard-done-page'
 import { WizardOpeningPage } from './wizard-opening-page'
 import { WizardOpeningTbPage } from './wizard-opening-tb-page'
 import { WizardPeriodPage } from './wizard-period-page'
+import { WizardRailsPage } from './wizard-rails-page'
 import type { WizardLeaveDirection, WizardStepHandle } from './wizard-step-handle'
 import { WizardWelcomePage } from './wizard-welcome-page'
 
@@ -37,13 +38,21 @@ import { WizardWelcomePage } from './wizard-welcome-page'
 // opening pages, which is what lets a later "Suggest from QuickBooks" fill
 // have a chart and an account map to hang itself on.
 //
-// Nine pages either way.
+// 🛑 Third (brief 26 §8): `rails` was inserted between `accounts` and
+// `accountMap`, and BOTH ends of that are hard. A rail's clearing account is
+// either picked from the chart or minted into it, so the chart-provisioning
+// page has to come first; and the QuickBooks mapping page has to see the
+// accounts this page just created, so it has to come after. Skippable like
+// every other page - `P1` again.
+//
+// Ten pages.
 const PAGES = [
   'welcome',
   'period',
   'costing',
   'connect',
   'accounts',
+  'rails',
   'accountMap',
   'opening',
   // 🛑 The trial balance sits AFTER the inventory snapshot and the order is
@@ -62,6 +71,7 @@ const PAGE_TITLES: Record<WizardPage, string> = {
   openingTrialBalance: 'Opening trial balance',
   costing: 'Costing',
   accounts: 'Account roles',
+  rails: 'Payment rails',
   connect: 'Accounting system',
   accountMap: 'QuickBooks accounts',
   done: 'Finalize',
@@ -73,10 +83,10 @@ export interface AccountingSetupWizardProps {
 }
 
 /**
- * `AccountingSetupWizard` (plans/money/tasks/13-accounting-ui.md section 3.3) - a nine-page
+ * `AccountingSetupWizard` (plans/money/tasks/13-accounting-ui.md section 3.3) - a ten-page
  * `DialogNav` wizard covering the things that have to be true before a month-end entry can
  * legally be posted (accounting period, the opening inventory snapshot, the opening trial balance, costing, the
- * role map) plus the
+ * role map, the payment rails) plus the
  * `G19` provider pair - connect an accounting system, then say which of ITS accounts each of
  * ours corresponds to - and a "finalize" page that freezes the opening baseline.
  *
@@ -184,6 +194,9 @@ export function AccountingSetupWizard({ open, onOpenChange }: AccountingSetupWiz
           </DialogNavPage>
           <DialogNavPage value='accounts' size='lg'>
             <WizardAccountsPage />
+          </DialogNavPage>
+          <DialogNavPage value='rails' size='xl'>
+            <WizardRailsPage />
           </DialogNavPage>
           <DialogNavPage value='accountMap' size='xl'>
             <WizardAccountMapPage />

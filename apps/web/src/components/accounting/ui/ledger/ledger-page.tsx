@@ -200,6 +200,16 @@ export function LedgerPage() {
   const duplicateMovementsQuery = api.ledger.duplicateMovements.useQuery({
     periodKey: activePeriodKey || undefined,
   })
+  // Processor fees, as a fact rather than an alarm (brief 26 §6). 🛑 The month
+  // is REQUIRED here, unlike the two reads above: "did this rail trade" and
+  // "was a fee booked" are both questions about one month, so there is nothing
+  // to ask without one. Hence `enabled` rather than `|| undefined` - an org
+  // whose cutoff is still ahead of the wall clock resolves no month, and this
+  // block simply has nothing to say there.
+  const railFeeStatusQuery = api.ledger.railFeeStatus.useQuery(
+    { periodKey: activePeriodKey },
+    { enabled: !!activePeriodKey }
+  )
   // The same rows `EntriesList` renders, counted for the stats strip. One hook,
   // so the header cannot disagree with the list beneath it.
   const monthEntries = useMonthEntries(activePeriodKey || undefined)
@@ -395,6 +405,9 @@ export function LedgerPage() {
             duplicates={duplicateMovementsQuery.data}
             currencyCode={currencyCode}
             bookTimeZone={bookTimeZone}
+            rails={railFeeStatusQuery.data}
+            railsError={railFeeStatusQuery.isError ? railFeeStatusQuery.error.message : null}
+            periodKey={activePeriodKey}
             hasPeriod={!!activePeriodKey && !isChecklistState}
           />
 
