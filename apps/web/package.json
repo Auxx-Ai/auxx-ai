@@ -6,7 +6,9 @@
   "scripts": {
     "prebuild": "tsx scripts/copy-pdfjs-assets.ts",
     "build": "next build --turbopack && cp -r .next/static .next/standalone/apps/web/.next/static && cp -r public .next/standalone/apps/web/public",
+    "prebuild:prod": "tsx scripts/copy-pdfjs-assets.ts",
     "build:prod": "next build",
+    "prebuild:docker": "tsx scripts/copy-pdfjs-assets.ts",
     "build:docker": "NODE_OPTIONS='--max-old-space-size=8192' next build",
     "check": "tsc --noEmit",
     "build:opennext": "open-next build",
