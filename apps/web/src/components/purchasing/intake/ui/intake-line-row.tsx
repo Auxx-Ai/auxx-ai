@@ -33,13 +33,19 @@
 // and `LinePartCellView` was itself rewritten to obey. At rest a row is now one
 // line, like every other line surface in the app.
 
-import { type IntakeLine, parseIntakeUnitPrice } from '@auxx/lib/purchasing/intake/client'
+import {
+  type IntakeLine,
+  parseIntakeTotal,
+  parseIntakeUnitPrice,
+  printedLineGap,
+} from '@auxx/lib/purchasing/intake/client'
 import type { RecordId } from '@auxx/lib/resources/client'
 import { DropdownMenuItem, DropdownMenuSeparator } from '@auxx/ui/components/dropdown-menu'
+import { SimpleTooltip } from '@auxx/ui/components/tooltip'
 import { TreeRowButton } from '@auxx/ui/components/tree-row'
 import { cn } from '@auxx/ui/lib/utils'
 import { RATE_DECIMALS } from '@auxx/utils/currency'
-import { PackagePlus, Receipt, ReceiptText, Truck, Undo2 } from 'lucide-react'
+import { PackagePlus, Receipt, ReceiptText, TriangleAlert, Truck, Undo2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import type { CatalogGroup } from '~/components/money/hooks/use-catalog-groups'
 import type { CatalogItem } from '~/components/money/hooks/use-catalog-items'
@@ -175,12 +181,15 @@ export function IntakeLineRow({
         resolvePartPrefill={resolvePartPrefill}
         grip={<IntakeTierDot tier={line.tier} vendorName={vendorName} />}
         cellChips={
-          <PrintedLineChip
-            line={line}
-            expanded={expanded}
-            onToggle={onToggleExpanded}
-            vendorName={vendorName}
-          />
+          <>
+            <LineWarningChip line={line} currency={currency} vendorName={vendorName} />
+            <PrintedLineChip
+              line={line}
+              expanded={expanded}
+              onToggle={onToggleExpanded}
+              vendorName={vendorName}
+            />
+          </>
         }
         allowClearPart
         cellMenuItems={
@@ -302,6 +311,65 @@ function PrintedLineChip({
       <ReceiptText />
     </TreeRowButton>
   )
+}
+
+/**
+ * The vendor's own numbers do not agree with each other on this line.
+ *
+ * 🛑 Only fires where `printedLineGap` could not explain the difference as the
+ * rate column's rounding. The innocent case — a rate printed to cents against a
+ * total computed from more places — is absorbed by `resolveIntakeUnitPrice` and
+ * must stay silent, or every line of a per-thousand quote would carry a warning
+ * that means nothing.
+ *
+ * Renders nothing when they reconcile, so the slot costs an untroubled row
+ * nothing. Not a commit gate: see `unreconciledLines`.
+ */
+function LineWarningChip({
+  line,
+  currency,
+  vendorName,
+}: {
+  line: IntakeLine
+  currency: string
+  vendorName: string | null
+}) {
+  const warning = lineWarning(line, currency, vendorName)
+  if (!warning) return null
+  return (
+    <SimpleTooltip content={warning}>
+      <TriangleAlert className='size-3.5 shrink-0 text-warning-600' />
+    </SimpleTooltip>
+  )
+}
+
+/**
+ * The one sentence this row's marker says, or `null` for a row with nothing
+ * wrong.
+ *
+ * Order matters: a zero quantity is reported FIRST and on its own. It is also
+ * why `printedLineGap` would fail (it divides by the quantity), so leading with
+ * the arithmetic would describe the symptom and bury the cause.
+ */
+function lineWarning(line: IntakeLine, currency: string, vendorName: string | null): string | null {
+  if (line.quantity <= 0) {
+    return line.printed.quantity === null
+      ? 'No quantity could be read from this line. As it stands the order would be for zero of this part.'
+      : 'This line orders zero. Set a quantity, or take the line out.'
+  }
+
+  const gap = printedLineGap(line.printed, currency)
+  if (gap === null) return null
+
+  const printedTotal = parseIntakeTotal(line.printed.lineTotalText, currency)
+  const who = vendorName ?? 'The vendor'
+  const extended = formatCurrency((printedTotal ?? 0) + gap, currency)
+  return `${who} prints ${formatPrintedQuantity(line)} @ ${
+    line.printed.unitPriceText ?? '—'
+  }, which extends to ${extended} — but their line total reads ${formatCurrency(
+    printedTotal,
+    currency
+  )}, ${formatCurrency(Math.abs(gap), currency)} ${gap > 0 ? 'lower' : 'higher'}. Check the quantity and the price. Nothing is corrected for you.`
 }
 
 /** `041A · "120V/60HZ,443#" · 10000 pcs @ $20.50 · 30 days` */

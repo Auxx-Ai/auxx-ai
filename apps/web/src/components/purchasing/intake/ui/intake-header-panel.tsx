@@ -9,6 +9,7 @@ import {
   type IntakeDraftPayload,
   lineSumCents,
   parseIntakeTotal,
+  rateRoundingAllowance,
 } from '@auxx/lib/purchasing/intake/client'
 import type { RecordId } from '@auxx/lib/resources/client'
 import type { RelationshipConfig } from '@auxx/types/custom-field'
@@ -183,6 +184,12 @@ function TotalsConfrontation({
   const ours = lines + payload.shippingCents + payload.taxCents
   const difference = printed === null ? null : printed - ours
   const differs = difference !== null && difference !== 0
+  // 🛑 Three verdicts, not two. See `rateRoundingAllowance`: a residue inside
+  // this bound is arithmetic OUR rate-only line model caused, and reporting it in
+  // the same amber sentence used for a missed line told the reader to go audit a
+  // vendor whose totals were correct.
+  const allowance = rateRoundingAllowance(payload.lines, currency)
+  const rounding = differs && Math.abs(difference) <= allowance
 
   return (
     <div className='flex h-fit flex-col gap-1.5 rounded-lg border p-3 text-sm'>
@@ -207,6 +214,12 @@ function TotalsConfrontation({
       {printed === null ? (
         <p className='pt-1 text-muted-foreground text-xs'>
           The document prints no total, so there is nothing to check this sum against.
+        </p>
+      ) : rounding ? (
+        <p className='pt-1 text-muted-foreground text-xs'>
+          Matches to within {formatCurrency(Math.abs(difference), currency)} — a purchase order line
+          stores a price per unit, not an amount, so a vendor total carrying more decimals than the
+          rate can hold leaves a few cents behind. Nothing to fix.
         </p>
       ) : differs ? (
         <p className='flex items-start gap-1.5 pt-1 text-amber-700 text-xs dark:text-amber-400'>
