@@ -30,11 +30,29 @@ interface FileSelectDropZoneProps {
    * reliably do that on iOS.
    */
   accept?: string
+  /**
+   * Extra classes for the root.
+   *
+   * 🛑 **This component already draws its own frame** —
+   * `border-1 border-dashed rounded-lg p-8` on the root, below. Passing
+   * `border border-dashed` here renders a visible DOUBLE dashed ring, which is
+   * what both intake dialogs shipped with until it was spotted in a browser.
+   * Size and spacing only, unless you are deliberately replacing the frame.
+   */
   className?: string
 }
 
 /**
  * Drop zone component for FileSelect - handles both file uploads and existing file browsing
+ *
+ * ⚠️ Two props do less than their names suggest, and both have bitten a caller:
+ *
+ * - **`maxFiles` enforces NOTHING here.** It renders the "Maximum N files"
+ *   caption and the hidden input stays unconditionally `multiple`. The real cap
+ *   lives in `hooks/use-file-select.ts`, which only the full `FileSelect`
+ *   component uses — every direct consumer of this drop zone must enforce its
+ *   own limit in `onFilesSelected`.
+ * - **`className` is additive to an existing frame.** See the prop.
  */
 export function FileSelectDropZone({
   onFilesSelected,

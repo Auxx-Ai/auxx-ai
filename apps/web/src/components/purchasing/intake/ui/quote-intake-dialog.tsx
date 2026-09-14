@@ -202,7 +202,10 @@ export function QuoteIntakeDialog({ open, onOpenChange }: QuoteIntakeDialogProps
                     fileExtensions={QUOTE_EXTENSIONS}
                     placeholder='Drop the quote here or click to select'
                     showFilePicker={false}
-                    className='min-h-[180px] rounded-xl border border-dashed'
+                    // 🛑 Height only. `FileSelectDropZone` draws its OWN
+                    // `border-1 border-dashed rounded-lg` on its root, so a
+                    // dashed border here renders a visible double ring.
+                    className='min-h-[180px]'
                   />
                 ) : (
                   <div className='flex items-center justify-between gap-3 rounded-xl border p-4'>
