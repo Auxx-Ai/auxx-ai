@@ -8,7 +8,7 @@
 // (docs/lib-module-guide.md §7).
 
 import type { RecordId } from '@auxx/types/resource'
-import { parseMajorToMinor, RATE_DECIMALS } from '@auxx/utils/currency'
+import { parseMajorToMinor, RATE_DECIMALS, roundMinor } from '@auxx/utils/currency'
 
 // ── Tiers ────────────────────────────────────────────────────────────────────
 
@@ -336,6 +336,45 @@ export function parseIntakeTotal(text: string | null | undefined, currency: stri
 }
 
 /**
+ * A line's rate, preferring the vendor's printed unit price and falling back to
+ * back-solving it from their printed LINE TOTAL.
+ *
+ * 🛑 This is not a breach of "transcribe, never compute". That rule is about the
+ * GRAND total: a printed total that disagrees with the line sum is either the
+ * vendor's arithmetic or a line we misread, and reconciling it destroys the
+ * evidence — which is why §3.1 still compares `transcription.totalText` against
+ * our own sum and why `printed` keeps every original string untouched.
+ *
+ * This is the opposite situation. `purchase_order_line` has **no writable line
+ * total** (`purchase_order_line_line_total` is `creatable: false`), so the rate is
+ * the only field a printed line amount can reach. A quote line that prints a lump
+ * sum and no unit price — tooling, setup, NRE, a minimum-order charge, freight —
+ * therefore arrived with `unitPriceCents === null`, and `lineSumCents` skips such
+ * a line entirely: it contributed nothing to the confrontation (which then
+ * reported a discrepancy exactly the size of the lump sum, blaming the vendor for
+ * our dropped read) and it committed as a purchase order line worth zero.
+ * Deriving nothing here does not preserve a number, it loses one.
+ *
+ * At `RATE_DECIMALS` the round trip holds: `roundMinor(10000 / 3, 5)` is
+ * `3333.33333`, which re-multiplies to `10000` — the same precision argument that
+ * makes the purchase order's amount cell editable at all.
+ *
+ * `quantity > 0` is a division guard. A line whose quantity was never read keeps
+ * a `null` rate and stays visibly unpriced rather than acquiring a made-up one.
+ */
+export function resolveIntakeUnitPrice(
+  printed: Pick<TranscribedLine, 'unitPriceText' | 'lineTotalText'>,
+  quantity: number,
+  currency: string
+): number | null {
+  const unit = parseIntakeUnitPrice(printed.unitPriceText, currency)
+  if (unit !== null) return unit
+  const total = parseIntakeTotal(printed.lineTotalText, currency)
+  if (total === null || quantity <= 0) return null
+  return roundMinor(total / quantity, RATE_DECIMALS)
+}
+
+/**
  * A line's unit price, in minor units, possibly FRACTIONAL.
  *
  * 🛑 Reads the stored price rather than deriving one from `chosenBreakIndex`.
@@ -394,4 +433,28 @@ export function lineSumCents(lines: IntakeLine[]): number {
     const price = effectiveUnitPriceCents(line)
     return price === null ? sum : sum + Math.round(price * line.quantity)
   }, 0)
+}
+
+/**
+ * What a folded line contributes to the header total it moved into (§5.4).
+ *
+ * 🛑 The line's OWN extended amount wins, and the vendor's printed line total is
+ * only the fallback. That order is not interchangeable: adopting a quantity break
+ * rewrites `unitPriceCents`, and a price typed into the review screen's rate cell
+ * overwrites it too — in both cases the printed total is the number the person
+ * just decided against. Reading it first would fold the figure they overrode.
+ *
+ * `0` for a line carrying neither, because a fold cannot invent a number the
+ * document does not print and silently dropping the row instead would make §3.1's
+ * confrontation stop balancing for a reason nobody could see.
+ *
+ * ⚠️ There were two of these, in two packages, with OPPOSITE precedence — the
+ * review screen's `foldAmountCents` and the Kopilot capability's own
+ * `foldedTotalCents` — so folding the same freight line by hand and by tool could
+ * put different money on `shippingCents`. This is the one.
+ */
+export function foldAmountCents(line: IntakeLine, currency: string): number {
+  const unit = effectiveUnitPriceCents(line)
+  if (unit !== null) return Math.round(unit * line.quantity)
+  return parseIntakeTotal(line.printed.lineTotalText, currency) ?? 0
 }

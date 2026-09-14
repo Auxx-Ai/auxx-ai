@@ -7,7 +7,13 @@ import type {
   IntakeFold,
   IntakeLine,
 } from '../../../../../purchasing/intake/client'
-import { parseIntakeMoney, unresolvedLines } from '../../../../../purchasing/intake/client'
+import {
+  foldAmountCents,
+  parseIntakeMoney,
+  parseIntakeUnitPrice,
+  resolveIntakeUnitPrice,
+  unresolvedLines,
+} from '../../../../../purchasing/intake/client'
 import { markIntakeDraftReady } from '../../../../../purchasing/intake/draft-mutations'
 import type { AgentToolDefinition } from '../../../../agent-framework/types'
 import type { GetToolDeps } from '../../types'
@@ -254,7 +260,14 @@ A person finishes it on the review screen; nothing is committed here.`,
         let unitPriceCents = line.unitPriceCents
         if (decision.chosenBreakIndex === null) {
           chosenBreakIndex = null
-          unitPriceCents = parseIntakeMoney(line.printed.unitPriceText, currency)
+          // 🛑 A RATE, so `resolveIntakeUnitPrice`/`parseIntakeUnitPrice` and never
+          // the bare `parseIntakeMoney` this used to call: that one rounds to the
+          // currency's own exponent, which turns a fastener vendor's "$15.94 per
+          // 1,000" into 2 cents — the 25% error `parseIntakeUnitPrice` exists to
+          // prevent, and which the review screen's own break picker already
+          // avoided. Resolving rather than parsing also recovers the rate on a
+          // lump-sum line that printed a total and no unit price.
+          unitPriceCents = resolveIntakeUnitPrice(line.printed, line.quantity, currency)
         } else if (typeof decision.chosenBreakIndex === 'number') {
           const chosen = line.printed.priceBreaks[decision.chosenBreakIndex]
           if (!chosen) {
@@ -266,8 +279,9 @@ A person finishes it on the review screen; nothing is committed here.`,
           }
           chosenBreakIndex = decision.chosenBreakIndex
           // Picking a break rewrites `expectedUnitPrice` and nothing else (§6.2),
-          // and the price still comes from the vendor's own printed string.
-          unitPriceCents = parseIntakeMoney(chosen.unitPriceText, currency)
+          // and the price still comes from the vendor's own printed string — at
+          // RATE_DECIMALS, matching what the review screen's break picker parses.
+          unitPriceCents = parseIntakeUnitPrice(chosen.unitPriceText, currency)
         }
 
         // 🛑 A folded line is not an ordered part, so its part link goes with it.
@@ -316,25 +330,20 @@ A person finishes it on the review screen; nothing is committed here.`,
 }
 
 /**
- * What a folded line contributes to a header total.
+ * What the lines folded into one header total contribute, in minor units.
  *
- * The vendor's printed line total wins when there is one; otherwise the price
- * times the quantity. Nothing here reconciles against the vendor's printed
- * grand total — §3.1's confrontation shows that disagreement rather than
- * quietly correcting their arithmetic.
+ * 🛑 Per-line precedence is `foldAmountCents`' and NOT this function's business:
+ * it used to read the vendor's printed line total first and fall back to price ×
+ * quantity, which is the exact opposite of what the review screen's own fold
+ * does — the same freight line folded by hand and by tool put different money on
+ * `shippingCents`. Nothing here reconciles against the vendor's printed grand
+ * total either; §3.1's confrontation shows that disagreement rather than quietly
+ * correcting their arithmetic.
  */
 function foldedTotalCents(lines: IntakeLine[], target: IntakeFold, currency: string): number {
-  let sum = 0
-  for (const line of lines) {
-    if (line.foldedInto !== target) continue
-    const printed = parseIntakeMoney(line.printed.lineTotalText, currency)
-    if (printed !== null) {
-      sum += printed
-      continue
-    }
-    if (line.unitPriceCents !== null) sum += Math.round(line.unitPriceCents * line.quantity)
-  }
-  return sum
+  return lines
+    .filter((line) => line.foldedInto === target)
+    .reduce((sum, line) => sum + foldAmountCents(line, currency), 0)
 }
 
 /** An explicit header value wins; anything absent keeps what the draft holds. */

@@ -484,9 +484,15 @@ describe('cross-filling on the purchase order (derived-editable)', () => {
     })
   })
 
-  it('never overwrites a rate already entered', () => {
+  // 🛑 The opposite of the `stored` rule, on purpose. A typed total reaches NO
+  // field here (`attrs.lineTotal` is null), so the rate is the only thing it can
+  // become — declining to overwrite it preserved nothing and silently discarded
+  // the edit, which is what made the cell read as un-editable on every line whose
+  // rate the part-pick price prefill had already filled in.
+  it('back-solves the rate even when one is already entered', () => {
     expect(crossFillAmount({ lineTotal: 167_370 }, line({ unitPriceCents: 2 }), po)).toEqual({
       lineTotal: 167_370,
+      unitPriceCents: 1.594,
     })
   })
 
