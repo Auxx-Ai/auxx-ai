@@ -8,7 +8,13 @@
 // (docs/lib-module-guide.md §7).
 
 import type { RecordId } from '@auxx/types/resource'
-import { parseMajorToMinor, RATE_DECIMALS, roundMinor } from '@auxx/utils/currency'
+import {
+  fractionalMinorPlaces,
+  minorToMajorString,
+  parseMajorToMinor,
+  RATE_DECIMALS,
+  roundMinor,
+} from '@auxx/utils/currency'
 
 // ── Tiers ────────────────────────────────────────────────────────────────────
 
@@ -303,7 +309,33 @@ export function parseIntakeMoney(
   if (text === null || text === undefined) return null
   const trimmed = text.trim()
   if (!trimmed) return null
+  if (!isMoneyShaped(trimmed)) return null
   return parseMajorToMinor(trimmed, currency, decimals)
+}
+
+/**
+ * Whether a transcribed string is ONE printed amount, rather than prose that
+ * happens to contain digits.
+ *
+ * 🛑 Without this gate `parseMajorToMinor` scavenges. It strips everything
+ * outside `[0-9.,-]` and parses whatever falls out, so a real vendor quote whose
+ * tax box read
+ *
+ *   "including tax and 1*20ft+2*40ft deliervy by Ocean Cost"
+ *
+ * reduced to `"120240"` and put **$120,240.00 of tax** on the draft — a number
+ * the document never printed, assembled out of a container count and two
+ * container sizes. It then committed to `purchase_order_tax_total`. The model was
+ * not wrong to transcribe that sentence: the box really does say it, and rule 6
+ * of the prompt is to copy what is printed. Refusing to read it as money is this
+ * function's job, not the transcriber's.
+ *
+ * Shape: any non-digit lead-in (a currency symbol or code — `'US$'`, `'EUR '`),
+ * then ONE run of digits and separators, then a non-digit tail (`' each'`,
+ * `' EUR'`). A second digit run anywhere means it is not a single amount.
+ */
+function isMoneyShaped(trimmed: string): boolean {
+  return /^\D*\d[\d.,'  ]*\D*$/.test(trimmed)
 }
 
 /**
@@ -361,6 +393,22 @@ export function parseIntakeTotal(text: string | null | undefined, currency: stri
  *
  * `quantity > 0` is a division guard. A line whose quantity was never read keeps
  * a `null` rate and stays visibly unpriced rather than acquiring a made-up one.
+ *
+ * 🛑 **When the vendor prints BOTH, the printed rate is often a rounded VIEW of
+ * the rate their line total was computed from, and then the total is the better
+ * source.** A real aluminium-extrusion quote priced 2,000 pcs at a printed
+ * `2.16` and a printed line total of `4,326.20`: the rate they actually used is
+ * `2.1631`, and re-deriving the line from the two-decimal rate understated it by
+ * $6.20. Across twelve lines that put the sum $11.28 above a printed grand total
+ * that was correct all along — a discrepancy the confrontation blamed on the
+ * vendor's arithmetic when it was entirely our rounding.
+ *
+ * {@link impliedRateMatches} is what keeps this honest, and it is a PROOF rather
+ * than a tolerance: the implied rate is adopted only when rounding it back to the
+ * printed rate's own precision reproduces the printed rate exactly. That is the
+ * definition of "the printed rate is this number, rounded". When it does not
+ * hold, the two are genuinely different numbers — a line discount, a vendor
+ * error, a misread — so the printed rate stands and §3.1 shows the difference.
  */
 export function resolveIntakeUnitPrice(
   printed: Pick<TranscribedLine, 'unitPriceText' | 'lineTotalText'>,
@@ -368,10 +416,136 @@ export function resolveIntakeUnitPrice(
   currency: string
 ): number | null {
   const unit = parseIntakeUnitPrice(printed.unitPriceText, currency)
-  if (unit !== null) return unit
   const total = parseIntakeTotal(printed.lineTotalText, currency)
-  if (total === null || quantity <= 0) return null
-  return roundMinor(total / quantity, RATE_DECIMALS)
+  if (total === null || quantity <= 0) return unit
+
+  const implied = roundMinor(total / quantity, RATE_DECIMALS, currency)
+  if (unit === null) return implied
+  return impliedRateMatches(implied, unit, currency) ? implied : unit
+}
+
+/**
+ * Whether `printed` is exactly `implied` rounded to `printed`'s own precision.
+ *
+ * The printed rate's precision is recovered from the PARSED value rather than
+ * counted off the raw string, which sidesteps the separator question entirely: a
+ * rate stored as `216` renders `'2.16'` (two places) and one stored as `6.9`
+ * renders `'0.069'` (three), whatever the vendor's locale wrote.
+ */
+function impliedRateMatches(implied: number, printed: number, currency: string): boolean {
+  const major = minorToMajorString(printed, currency, RATE_DECIMALS)
+  const places = major.includes('.') ? (major.split('.')[1]?.length ?? 0) : 0
+  return roundMinor(implied, places, currency) === printed
+}
+
+/**
+ * How far the vendor's own quantity × price is from the vendor's own line total,
+ * in minor units. `null` when they agree, or when the line does not print all
+ * three numbers to compare.
+ *
+ * 🛑 **A statement about the PAPER, not about the draft.** It reads `printed`
+ * only, so picking a quantity break, typing a rate or editing a quantity does not
+ * move it — the vendor's document said what it said. That is what makes it safe
+ * to show as a standing marker on the row rather than something that flickers as
+ * you work.
+ *
+ * 🛑 It exists because {@link resolveIntakeUnitPrice} absorbs the innocent case
+ * SILENTLY, and silence is only correct when the disagreement is provably
+ * rounding. When that proof fails the three numbers genuinely disagree — a line
+ * discount, a mis-read quantity, a vendor's typo — and the old behaviour was to
+ * keep the printed rate and say nothing, leaving the difference to surface only
+ * in §3.1's document-level "Differs by" with no clue which line caused it.
+ *
+ * The tolerance is not a fudge factor: it is the exact residue the rate field's
+ * own precision can leave. A rate carries `RATE_DECIMALS`, so it is quantised to
+ * half that quantum per unit, and the extension rounds once more at the end. A
+ * flat tolerance would false-positive on exactly the high-quantity lines this
+ * feature exists for — 60,000 pcs multiplies the per-unit residue by 60,000.
+ */
+export function printedLineGap(
+  printed: Pick<TranscribedLine, 'unitPriceText' | 'lineTotalText' | 'quantity'>,
+  currency: string
+): number | null {
+  const quantity = printed.quantity
+  const total = parseIntakeTotal(printed.lineTotalText, currency)
+  if (quantity === null || quantity <= 0 || total === null) return null
+  if (parseIntakeUnitPrice(printed.unitPriceText, currency) === null) return null
+
+  const rate = resolveIntakeUnitPrice(printed, quantity, currency)
+  if (rate === null) return null
+
+  const quantum = 10 ** -fractionalMinorPlaces(RATE_DECIMALS, currency)
+  const tolerance = (quantum / 2) * quantity + 0.5
+  const gap = Math.round(rate * quantity) - total
+  return Math.abs(gap) <= tolerance ? null : gap
+}
+
+/**
+ * Lines whose printed numbers do not reconcile with each other — advisory, never
+ * a commit gate.
+ *
+ * 🛑 Advisory on purpose. A vendor whose line prints a discount, or whose
+ * arithmetic is simply wrong, has still sent us a real quote we may well want to
+ * order against; refusing the commit would make their mistake ours to litigate
+ * before we can work. The missing PART is a hard gate because the server rejects
+ * the write without one — this is a thing to LOOK at.
+ */
+export function unreconciledLines(lines: IntakeLine[], currency: string): IntakeLine[] {
+  return orderableLines(lines).filter((line) => printedLineGap(line.printed, currency) !== null)
+}
+
+/**
+ * Orderable lines that would order NOTHING — quantity zero or negative.
+ *
+ * 🛑 `resolveQuoteLines` writes `printed.quantity ?? 0` and its comment says an
+ * unread quantity "stays visibly zero rather than becoming a plausible 1". The
+ * reasoning is right and the word *visibly* was the part that was never built:
+ * the cell renders `0` like any other number, the line contributes nothing to the
+ * sum, and it commits as a purchase order line ordering zero of a real part. The
+ * document-level confrontation then reports a shortfall with no indication that a
+ * quantity, rather than a price, is what went missing.
+ *
+ * Advisory rather than a gate, for the same reason as {@link unreconciledLines}:
+ * a zero-quantity line is legal to write, and a person may well mean to fix it
+ * after committing.
+ */
+export function unquantifiedLines(lines: IntakeLine[]): IntakeLine[] {
+  return orderableLines(lines).filter((line) => line.quantity <= 0)
+}
+
+/**
+ * The most our line sum can drift from the vendor's printed totals **for reasons
+ * that are ours and unavoidable**, in minor units.
+ *
+ * 🛑 A purchase order line stores a RATE, never an amount
+ * (`purchase_order_line_line_total` is `creatable: false`), so every line total
+ * is `round(rate x quantity)` with the rate quantised at `RATE_DECIMALS`. A
+ * vendor whose own totals carry more precision than a five-decimal rate can
+ * express therefore leaves a residue on every line — a cent here, two there —
+ * and a long quote nets them into a few cents against their printed grand total.
+ * On the twelve-line aluminium quote that is seven cents.
+ *
+ * Without this bound §3.1 reported those seven cents in the same amber sentence
+ * it uses for a missed line, and told the reader to go check the vendor's
+ * arithmetic. The vendor's arithmetic was fine. **The confrontation could not
+ * tell its own rounding from a real defect, so it blamed them for ours.**
+ *
+ * The bound is exact rather than a chosen threshold: `|rate - total/qty|` is at
+ * most half the rate's quantum, so one line drifts at most `quantum/2 x quantity`
+ * before the extension's own final rounding adds another half. Counted only over
+ * lines that PRINT a total, because those are precisely the lines where we
+ * knowingly substituted a quantised rate for an amount the vendor stated.
+ *
+ * 🛑 This explains a residue. It never hides one: a difference beyond the bound
+ * is still reported exactly as before, and nothing here edits a number.
+ */
+export function rateRoundingAllowance(lines: IntakeLine[], currency: string): number {
+  const quantum = 10 ** -fractionalMinorPlaces(RATE_DECIMALS, currency)
+  return orderableLines(lines).reduce((allowance, line) => {
+    if (parseIntakeTotal(line.printed.lineTotalText, currency) === null) return allowance
+    if (line.quantity <= 0) return allowance
+    return allowance + (quantum / 2) * line.quantity + 0.5
+  }, 0)
 }
 
 /**

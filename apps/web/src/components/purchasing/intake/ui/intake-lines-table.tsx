@@ -16,6 +16,8 @@ import {
   isAutoLinkTier,
   orderableLines,
   removedLines,
+  unquantifiedLines,
+  unreconciledLines,
   unresolvedLines,
 } from '@auxx/lib/purchasing/intake/client'
 import type { RecordId } from '@auxx/lib/resources/client'
@@ -79,6 +81,8 @@ export function IntakeLinesTable({
     [orderable]
   )
   const blocking = useMemo(() => unresolvedLines(lines), [lines])
+  const unreconciled = useMemo(() => unreconciledLines(lines, currency), [lines, currency])
+  const unquantified = useMemo(() => unquantifiedLines(lines), [lines])
 
   const visible = onlyReview ? needsReview : orderable
 
@@ -167,6 +171,29 @@ export function IntakeLinesTable({
         <p className='pt-2 text-amber-700 text-xs dark:text-amber-400'>
           {blocking.length} {blocking.length === 1 ? 'line' : 'lines'} still need a part. Pick one,
           create one, or fold the amount into shipping or tax.
+        </p>
+      )}
+
+      {/* 🛑 Advisory, and phrased as one — no "fix this", no blocked button. The
+          numbers are the VENDOR'S, and a line that prints a discount or simply
+          adds up wrong is still a quote we may want to order against. It earns a
+          strip rather than only the per-row marker because the alternative was
+          how this used to read: a document-level "Differs by $11.28" with twelve
+          candidate lines and no way to tell which. */}
+      {unquantified.length > 0 && (
+        <p className='pt-2 text-amber-700 text-xs dark:text-amber-400'>
+          {unquantified.length} {unquantified.length === 1 ? 'line orders' : 'lines order'} zero.
+          Set a quantity or take {unquantified.length === 1 ? 'it' : 'them'} out — as it stands
+          {unquantified.length === 1 ? ' that line' : ' those lines'} would be committed ordering
+          nothing.
+        </p>
+      )}
+
+      {unreconciled.length > 0 && (
+        <p className='pt-2 text-muted-foreground text-xs'>
+          {unreconciled.length} {unreconciled.length === 1 ? 'line does' : 'lines do'} not add up on
+          the vendor's own document — quantity x price does not equal the line total they printed.
+          Marked in the table. Nothing is corrected for you.
         </p>
       )}
 
