@@ -11,7 +11,7 @@
 
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const RETURN_LINE_DEF = 'edf_returnline000000000000000'
 const RETURN_DEF = 'edf_return0000000000000000000'
@@ -223,6 +223,7 @@ vi.mock('./return-line-row', () => ({
   ),
 }))
 
+import { DrawerCardActionsProvider } from '~/components/drawers/drawer-card-actions'
 import { ReturnLinesCard } from './return-lines-card'
 
 beforeEach(() => {
@@ -242,11 +243,27 @@ beforeEach(() => {
   h.returnableLines = []
 })
 
+/**
+ * Render inside a header-actions slot: "Add from order" portals into the
+ * wrapping Section's header through `DrawerCardActions`, which renders null
+ * when no slot is provided, so a bare render would never show the button.
+ * The slot lives on `document.body` so `screen` queries reach it, and is
+ * removed after each test so a stale one cannot double a button.
+ */
 function renderCard() {
+  const slot = document.createElement('div')
+  slot.dataset.testid = 'card-actions-slot'
+  document.body.appendChild(slot)
   return render(
-    <ReturnLinesCard recordId={RETURN_RECORD_ID as never} entityInstanceId={RETURN_ROW} />
+    <DrawerCardActionsProvider value={slot}>
+      <ReturnLinesCard recordId={RETURN_RECORD_ID as never} entityInstanceId={RETURN_ROW} />
+    </DrawerCardActionsProvider>
   )
 }
+
+afterEach(() => {
+  for (const slot of document.querySelectorAll('[data-testid="card-actions-slot"]')) slot.remove()
+})
 
 function draftTestIds(container: HTMLElement): string[] {
   return Array.from(container.querySelectorAll('[data-testid^="draft-"]')).map(

@@ -31,6 +31,7 @@ import { Button } from '@auxx/ui/components/button'
 import { EmptySection } from '@auxx/ui/components/section'
 import { Plus } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { DrawerCardActions } from '~/components/drawers/drawer-card-actions'
 import type { DrawerTabProps } from '~/components/drawers/drawer-tab-registry'
 import { useLineRowActions } from '~/components/line-grid/hooks/use-line-row-actions'
 import { LineGridFrame } from '~/components/line-grid/ui/line-grid-frame'
@@ -207,13 +208,15 @@ export function ReturnLinesCard({ recordId, entityInstanceId }: DrawerTabProps) 
 
   return (
     <div className='flex flex-col gap-2'>
+      {/* Section-header action, present only while the return names an order:
+          absent rather than disabled, so nobody hunts for what would enable it. */}
       {orderRecordId && !readOnly && (
-        <div className='flex justify-end'>
-          <Button variant='outline' size='xs' onClick={() => setSheetOpen(true)}>
+        <DrawerCardActions>
+          <Button variant='ghost' size='xs' onClick={() => setSheetOpen(true)}>
             <Plus />
             Add from order
           </Button>
-        </div>
+        </DrawerCardActions>
       )}
 
       <LineGridFrame
