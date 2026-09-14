@@ -10,6 +10,11 @@
  * - `relieve.ts` (exported below): `relieveFulfillmentLines`, the writer, and
  *   its supporting types. Called from `money/orders/fulfill.ts` and
  *   `events/handlers/passes/fulfillment-log-pass.ts`.
+ * - `backfill.ts`: `backfillFulfillmentRelief`, the RECORD-driven door. The
+ *   two callers above both fire on arrival (a new dispatch, a sync manifest),
+ *   so neither can reach a fulfillment already on disk; this one sweeps the
+ *   organization's orders instead. Idempotent by relief's own delta
+ *   arithmetic - see its header.
  * - `cost-reads.ts` (§3, a separate agent's surface): the ledger-average and
  *   relieved-average reads `relieve.ts` is written against. Its exports
  *   belong in their own block below the relief ones, never interleaved -
@@ -18,6 +23,12 @@
  * Explicit named exports only (`docs/lib-module-guide.md` §5).
  */
 
+export {
+  type BackfillFulfillmentReliefInput,
+  type BackfillFulfillmentReliefSummary,
+  type BackfillReliefProgress,
+  backfillFulfillmentRelief,
+} from './backfill'
 export { readFulfillmentLineRelievedAverages, readPartLedgerAverages } from './cost-reads'
 export {
   type FulfillmentLineToRelieve,
