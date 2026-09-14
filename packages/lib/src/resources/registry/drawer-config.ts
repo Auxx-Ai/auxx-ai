@@ -7,6 +7,7 @@ import {
   CONTACT_BILLING_BLOCKS,
   CONTACT_ORDERS_BLOCKS,
   PURCHASING_TAB_ID,
+  SHIPMENT_PARCELS_BLOCKS,
   TICKET_RETURNS_BLOCKS,
 } from './ledger-blocks'
 
@@ -471,6 +472,19 @@ export const DRAWER_CONFIG_REGISTRY: DrawerConfigRegistry = {
         { value: 'documents', label: 'Documents', icon: 'paperclip' },
       ],
     },
+  },
+
+  // Drawer-only, like credit_memo: `app/shipments/page.tsx` has no
+  // `[shipmentId]/` detail route, so the drawer is the ONLY surface a shipment
+  // has and there is no detail-view entry to keep in step.
+  //
+  // No `additionalTabs` and no `tabCards`: the boxes are the whole reason to
+  // open a shipment, so they sit on the overview under Details rather than
+  // behind a tab (`ledger-blocks.ts`).
+  shipment: {
+    entityType: 'shipment',
+    additionalTabs: [],
+    tabBlocks: { overview: SHIPMENT_PARCELS_BLOCKS },
   },
 }
 
