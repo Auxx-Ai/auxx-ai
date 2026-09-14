@@ -100,7 +100,8 @@ if (!ORG_ARG || selectors !== 1) {
       '    --period <key>    delete one period key, any shape (2026-08, DEP-0003, INV-0012)\n' +
       '    --all             delete every posting this organization has\n\n' +
       '  options:\n' +
-      '    --wizard          also return the setup wizard and opening baseline to draft\n' +
+      '    --wizard          also return the setup wizard, the opening baseline and the\n' +
+      '                      provider sync marker to draft\n' +
       '    --keep-map        do not clear the QuickBooks account map\n' +
       '    --force           past the providerEntryId and remaining-postings guards\n' +
       '    --confirm         actually write. Without it this is a dry run.\n'
@@ -109,11 +110,30 @@ if (!ORG_ARG || selectors !== 1) {
 }
 
 /**
- * Every key the wizard and the close write, returned to its catalog default.
+ * Every key the wizard, the close and the inbound sync write, returned to its
+ * catalog default.
  *
  * Written through `batchUpdateOrganizationSettings` rather than deleted, so the
  * organization lands exactly where one that never opened the wizard sits, and
  * still passes that function's normalization and unknown-key check.
+ *
+ * 🛑 **A key belongs here when a posting delete makes its value a lie**, which
+ * is a wider test than "the wizard wrote it". Two were missed on that narrower
+ * reading and both survived a `--wizard` reset on DemoOrg1 (2026-09-14):
+ *
+ *  - `accounting.providerSyncedThrough` is stamped by the provider sync, not by
+ *    the wizard, and `marker-writes.ts` exists to keep it from ever running
+ *    ahead of what was genuinely read. Deleting every `provider_sync` posting
+ *    puts it exactly there: the marker claimed QuickBooks had been read through
+ *    2026-09-10 with not one of those entries left on disk, so every statement
+ *    rendered itself complete over a range nothing had covered. That is the one
+ *    direction the marker is not allowed to be wrong in.
+ *  - `accounting.openingSource` / `...AsOf` describe an opening trial balance
+ *    that the delete just removed, so they answer for a baseline that is gone
+ *    and silently pre-arm the wizard's opening step with the last run's choice.
+ *
+ * ⚠️ `openingSource` resets to `'manual'`, not null - it is a SINGLE_SELECT
+ * whose catalog default is a real option, and null is not one of its values.
  */
 const WIZARD_KEYS = [
   { key: 'accounting.setupState' as const, value: 'draft' },
@@ -124,10 +144,13 @@ const WIZARD_KEYS = [
   { key: 'accounting.openingRawMaterials' as const, value: null },
   { key: 'accounting.openingWip' as const, value: null },
   { key: 'accounting.openingFinishedGoods' as const, value: null },
+  { key: 'accounting.openingSource' as const, value: 'manual' },
+  { key: 'accounting.openingSourceAsOf' as const, value: null },
   { key: 'accounting.qboOpeningRawMaterials' as const, value: null },
   { key: 'accounting.qboOpeningWip' as const, value: null },
   { key: 'accounting.qboOpeningFinishedGoods' as const, value: null },
   { key: 'accounting.qboOpeningJournalRef' as const, value: null },
+  { key: 'accounting.providerSyncedThrough' as const, value: null },
   { key: 'ledger.lockedThroughMonth' as const, value: null },
 ]
 

@@ -187,8 +187,8 @@ const SIDE_TABLES = [
 ] as const
 
 /**
- * Every key the accounting wizard, the close and the auto-build switch write,
- * returned to its catalog default.
+ * Every key the accounting wizard, the close, the inbound sync and the
+ * auto-build switch write, returned to its catalog default.
  *
  * Written through `batchUpdateOrganizationSettings` rather than deleted, so the
  * organization lands exactly where one that never opened the wizard sits and
@@ -200,6 +200,13 @@ const SIDE_TABLES = [
  * orders dated months earlier and silently raise no builds at all. Turning the
  * switch back on in the UI after this runs re-stamps it at that moment — which
  * still means historical Shopify orders do not auto-build, by design (AB8).
+ *
+ * 🛑 `accounting.providerSyncedThrough` and the two `openingSource` keys are
+ * here for the reason `reset-accounting.ts`'s own list states at length: a key
+ * belongs in one of these lists when deleting the postings makes its value a
+ * lie, which is wider than "the wizard wrote it". The sync marker is the sharp
+ * one — `marker-writes.ts` exists to stop it running ahead of what was genuinely
+ * read, and a books wipe that leaves it standing puts it exactly there.
  */
 const SETTING_RESETS = [
   { key: 'accounting.setupState' as const, value: 'draft' },
@@ -210,10 +217,13 @@ const SETTING_RESETS = [
   { key: 'accounting.openingRawMaterials' as const, value: null },
   { key: 'accounting.openingWip' as const, value: null },
   { key: 'accounting.openingFinishedGoods' as const, value: null },
+  { key: 'accounting.openingSource' as const, value: 'manual' },
+  { key: 'accounting.openingSourceAsOf' as const, value: null },
   { key: 'accounting.qboOpeningRawMaterials' as const, value: null },
   { key: 'accounting.qboOpeningWip' as const, value: null },
   { key: 'accounting.qboOpeningFinishedGoods' as const, value: null },
   { key: 'accounting.qboOpeningJournalRef' as const, value: null },
+  { key: 'accounting.providerSyncedThrough' as const, value: null },
   { key: 'ledger.lockedThroughMonth' as const, value: null },
   { key: 'inventory.autoBuildFromOrders' as const, value: false },
   { key: 'inventory.autoBuildEnabledAt' as const, value: null },
