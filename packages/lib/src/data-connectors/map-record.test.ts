@@ -430,6 +430,107 @@ describe('mapRecord', () => {
     expect(writes[0]?.projected?.fields).not.toHaveProperty('def1:email')
   })
 
+  it('projects an OBJECT-shaped source value intact (ADDRESS_STRUCT / raw JSON), not null', () => {
+    // The Shopify connector maps `shippingAddress` → `order_shipping_address`
+    // (ADDRESS_STRUCT) and `raw` → a JSON field. Both are objects; the CALC
+    // evaluator's `extractValue` flattened every object with no TypedFieldValue
+    // `type` and no `value` box to null, so a full sync that landed 13,523 values
+    // on each of 16 scalar bindings landed ZERO on these two. The value must reach
+    // the projection as the object itself.
+    const shippingAddress = {
+      street1: '123 Main St',
+      street2: null,
+      city: 'Austin',
+      state: 'Texas',
+      zipCode: '78701',
+      country: 'United States',
+    }
+    const raw = { shippingLines: [{ title: 'Standard' }], discountApplications: [] }
+
+    const m = mapping({
+      fieldMappings: [
+        {
+          id: 'e1',
+          targetFieldRef: toResourceFieldId('def1', 'order_shipping_address'),
+          expression: '{shippingAddress}',
+          sourceFields: { shippingAddress: 'shippingAddress' },
+        },
+        {
+          id: 'e2',
+          targetFieldRef: toResourceFieldId('def1', 'raw'),
+          expression: '{raw}',
+          sourceFields: { raw: 'raw' },
+        },
+        {
+          id: 'e3',
+          targetFieldRef: toResourceFieldId('def1', 'total'),
+          expression: '{total_price}',
+          sourceFields: { total_price: 'total_price' },
+        },
+      ],
+    })
+
+    const writes = mapRecord([m], source({ shippingAddress, raw, total_price: '49.99' }))
+
+    expect(writes[0]?.projected?.fields).toEqual({
+      'def1:order_shipping_address': shippingAddress,
+      'def1:raw': raw,
+      'def1:total': '49.99',
+    })
+  })
+
+  it('keeps the array no-write guard while objects project (arrays never start writing)', () => {
+    // The sibling of the case above: objects now project, arrays still must not —
+    // an array write would be a destructive null clear on a scalar target.
+    const m = mapping({
+      fieldMappings: [
+        {
+          id: 'e1',
+          targetFieldRef: toResourceFieldId('def1', 'order_shipping_address'),
+          expression: '{shippingAddress}',
+          sourceFields: { shippingAddress: 'shippingAddress' },
+        },
+        {
+          id: 'e2',
+          targetFieldRef: toResourceFieldId('def1', 'email'),
+          expression: '{emails}',
+          sourceFields: { emails: 'emails' },
+        },
+      ],
+    })
+
+    const writes = mapRecord(
+      [m],
+      source({ shippingAddress: { city: 'Austin' }, emails: ['a@x.com', 'b@x.com'] })
+    )
+
+    expect(writes[0]?.projected?.fields).toEqual({
+      'def1:order_shipping_address': { city: 'Austin' },
+    })
+    expect(writes[0]?.projected?.fields).not.toHaveProperty('def1:email')
+  })
+
+  it('leaves an object-valued External ID unusable (still falls back to the heuristic)', () => {
+    // `designatedExternalId` skips `typeof v === 'object'` so an object never
+    // String()s to '[object Object]' and collapses every record onto one key.
+    // The passthrough must not change that.
+    const m = mapping({
+      fieldMappings: [
+        {
+          id: 'e1',
+          targetFieldRef: toResourceFieldId('def1', 'order_shipping_address'),
+          expression: '{shippingAddress}',
+          sourceFields: { shippingAddress: 'shippingAddress' },
+          identityRole: { kind: 'externalId' },
+        },
+      ],
+    })
+
+    const writes = mapRecord([m], rawPayload({ id: 'ord-7', shippingAddress: { city: 'Austin' } }))
+
+    expect(writes[0]?.projected?.externalId).toBe('ord-7')
+  })
+
   // ── Indexed source paths (`emails[0].value`) ─────────────────────────────────
 
   it('resolves an INDEXED source path into a labelled array (Quo `emails[0].value`)', () => {

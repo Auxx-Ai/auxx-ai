@@ -21,6 +21,15 @@ interface FileSelectDropZoneProps {
   placeholder?: string
   showFilePicker?: boolean
   fileExtensions?: string[]
+  /**
+   * Overrides the `accept` attribute the hidden input gets, which is otherwise
+   * `fileExtensions.join(',')`. Additive and optional: pass it when the input
+   * needs to advertise MIME types the constraints line should not print — e.g.
+   * `'image/*,.heic,.pdf'`, which is what makes a phone's file sheet offer
+   * "Take Photo" beside the photo library. An extension-only `accept` does not
+   * reliably do that on iOS.
+   */
+  accept?: string
   className?: string
 }
 
@@ -37,6 +46,7 @@ export function FileSelectDropZone({
   placeholder = 'Drop files here or click to select',
   showFilePicker = true,
   fileExtensions,
+  accept,
   className,
 }: FileSelectDropZoneProps) {
   const inputId = useId()
@@ -108,7 +118,7 @@ export function FileSelectDropZone({
   )
 
   // Generate accept string for file input
-  const acceptString = fileExtensions ? fileExtensions.join(',') : '*/*'
+  const acceptString = accept ?? (fileExtensions ? fileExtensions.join(',') : '*/*')
 
   return (
     <div

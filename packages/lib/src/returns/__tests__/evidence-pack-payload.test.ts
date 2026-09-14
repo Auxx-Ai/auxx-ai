@@ -87,7 +87,7 @@ function dockReturn(overrides: Partial<ReturnWithLines> = {}): ReturnWithLines {
     senderNameRaw: null,
     senderAddressRaw: null,
     inboundCarrier: null,
-    inboundTracking: null,
+    inboundTracking: [],
     labelProvided: null,
     labelCost: null,
     goodsValue: null,

@@ -358,6 +358,14 @@ export {
   type TranscribeRecordingJobData,
   transcribeRecordingJob,
 } from './recording'
+// Returns (photographed return labels → draft returns; plans/money/tasks/57 §3)
+export {
+  enqueueReturnIntake,
+  RETURN_INTAKE_DAILY_LIMIT,
+  RETURN_INTAKE_JOB_NAME,
+  type ReturnIntakeJobData,
+  returnIntakeJob,
+} from './returns'
 // Tasks
 export {
   type TaskDeadlineScannerJobData,

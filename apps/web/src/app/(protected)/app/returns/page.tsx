@@ -2,6 +2,7 @@
 'use client'
 
 import { RecordsView } from '~/components/records'
+import { ReadReturnLabelsButton } from '~/components/returns/intake/ui/return-intake-dialog'
 
 /**
  * Returns page, the shared RecordsView for the `returns` resource
@@ -15,9 +16,13 @@ import { RecordsView } from '~/components/records'
  * creates the return from the ticket drawer, and a pallet that turns up on the
  * dock with no warning is created here, from nothing, with `contact` still null.
  *
- * 🛑 No `pageActions`. The salvage writer is task 50-gated and there is no bulk
- * action to hang here yet; the per-return work happens in the drawer.
+ * `pageActions` carries the dock door and nothing else (task 57 §7.1): a pallet
+ * that turns up unannounced is created from a photograph of the label on the
+ * box. 🛑 It ADDS a door and closes none — Create stays, and the ticket block's
+ * create action stays.
  */
 export default function ReturnsPage() {
-  return <RecordsView slug='returns' basePath='/app/returns' />
+  return (
+    <RecordsView slug='returns' basePath='/app/returns' pageActions={<ReadReturnLabelsButton />} />
+  )
 }

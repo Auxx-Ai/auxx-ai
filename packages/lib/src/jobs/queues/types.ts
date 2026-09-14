@@ -71,6 +71,12 @@ export enum Queues {
   // seconds — and a burst of uploads must not sit behind, or in front of, the
   // shared AI pool.
   purchaseIntakeQueue = 'purchase-intake',
+  // Return intake: read a drop of photographed return labels into a draft
+  // (plans/money/tasks/57-return-intake-wizard.md §3). Its own queue for the
+  // same reason the quote queue is: one job is N multimodal LLM reads — one per
+  // label, up to twenty — and a dock worker watching a dialog must not sit
+  // behind a burst of quote reads, or in front of them.
+  returnIntakeQueue = 'return-intake',
   // Inbound-mail AI categorisation (mail-classification plan §4). Its OWN queue:
   // the call cannot run in the `message:received` gate (2s timeout, shared
   // `eventsQueue`) and must not hold `eventHandlersQueue` slots for seconds.

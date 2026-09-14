@@ -112,7 +112,16 @@ export interface ReturnInput {
   senderNameRaw?: string | null
   senderAddressRaw?: string | null
   inboundCarrier?: string | null
-  inboundTracking?: string | null
+  /**
+   * One tracking number per parcel, in arrival order; the first is the primary.
+   *
+   * 🛑 Multi-value as of entity migration 155: the intake wizard groups labels
+   * by `(customer, order)` and one customer may ship several boxes against one
+   * order (plans/money/tasks/57 §8.1). Passing a bare string here is a type
+   * error on purpose — a scalar write would have silently kept parcel 1 and
+   * dropped the rest.
+   */
+  inboundTracking?: string[] | null
   labelProvided?: boolean | null
   /** Integer minor units. */
   labelCost?: number | null
@@ -912,7 +921,8 @@ async function buildReturnValues(
     values.return_sender_address_raw = input.senderAddressRaw
   }
   if (input.inboundCarrier !== undefined) values.return_inbound_carrier = input.inboundCarrier
-  if (input.inboundTracking !== undefined) values.return_inbound_tracking = input.inboundTracking
+  if (input.inboundTracking !== undefined)
+    values.return_inbound_tracking = input.inboundTracking ?? []
   if (input.labelProvided !== undefined) values.return_label_provided = input.labelProvided
   if (input.labelCost !== undefined) values.return_label_cost = input.labelCost
   if (input.goodsValue !== undefined) values.return_goods_value = input.goodsValue
