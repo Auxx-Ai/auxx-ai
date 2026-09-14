@@ -61,7 +61,16 @@
       "style": {
         "noNonNullAssertion": "off",
         "useTemplate": "off",
-        "useNodejsImportProtocol": "off"
+        "useNodejsImportProtocol": "off",
+        "noRestrictedImports": {
+          "level": "error",
+          "options": {
+            "paths": {
+              "react-pdf": "Import the PDF engine only in apps/web/src/components/attachments/pdf/pdf-viewer.tsx. A value import anywhere else puts 131 KB gzip + a 374 KB worker in the shared chunk and silently defeats the dynamic() boundary. Render <LazyPdfViewer> instead. See plans/attachments/11-pdf-viewer.md §3.4.",
+              "pdfjs-dist": "Same as react-pdf: go through components/attachments/pdf/. It is also a transitive dependency here, not one apps/web declares."
+            }
+          }
+        }
       },
       "complexity": {
         "noStaticOnlyClass": "off",
@@ -101,6 +110,10 @@
     ]
   },
   "overrides": [
+    {
+      "includes": ["apps/web/src/components/attachments/pdf/pdf-viewer.tsx"],
+      "linter": { "rules": { "style": { "noRestrictedImports": "off" } } }
+    },
     {
       "includes": ["packages/email/src/**/*.tsx"],
       "assist": {

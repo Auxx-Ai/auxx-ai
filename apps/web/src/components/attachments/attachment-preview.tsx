@@ -12,6 +12,7 @@ import { AlertTriangle, Download, ExternalLink, RefreshCw } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '~/trpc/react'
 import { getFileIcon } from '../files/utils/file-icon'
+import { LazyPdfViewer, loadPdfViewer } from './pdf/lazy-pdf-viewer'
 
 /**
  * Props for the AttachmentPreview component
@@ -134,6 +135,24 @@ export function AttachmentPreview({
       setError(queryError.message || 'Failed to load preview')
     }
   }, [queryError])
+
+  /**
+   * Warm the pdf.js chunk while the presign query is still in flight.
+   *
+   * `case 'pdf'` is only reached once `previewUrl` exists, so without this the
+   * work is serial: roundtrip, then 131 KB of engine, then the worker, then the
+   * first page. Starting the import at mount overlaps the download with the
+   * query we already know the answer to.
+   *
+   * 🛑 Gated on the MIME type, not called unconditionally. The whole point of
+   * the `dynamic()` boundary is that a JPEG never pays for the PDF engine, a
+   * bare `void loadPdfViewer()` here would undo it for all five call sites.
+   */
+  useEffect(() => {
+    if (knownMimeType === 'application/pdf' || mimeType === 'application/pdf') {
+      void loadPdfViewer()
+    }
+  }, [knownMimeType, mimeType])
 
   // Check for URL expiration
   useEffect(() => {
@@ -337,15 +356,13 @@ export function AttachmentPreview({
           </div>
         )
 
+      // Rendered by pdf.js rather than the browser. The old `<iframe>` here was
+      // at the mercy of `chrome://settings/content/pdfDocuments`: set to
+      // "Download PDFs" it showed a download stub instead of the document, and
+      // `onError` never fires on an iframe whose document loaded fine, so we
+      // could not even detect it. See `plans/attachments/11-pdf-viewer.md` §1.1.
       case 'pdf':
-        return (
-          <iframe
-            src={previewUrl}
-            className='w-full h-full border-0'
-            title={`PDF Preview: ${filename}`}
-            onError={() => setError('Failed to load PDF')}
-          />
-        )
+        return <LazyPdfViewer url={previewUrl} filename={filename} />
 
       case 'text':
         return (

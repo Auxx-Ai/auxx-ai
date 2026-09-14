@@ -380,6 +380,14 @@ function StatusBadge({ label }: { label: ReturnIntakeLabel }) {
  * proof that this asset is one of that draft's labels); see
  * `assertReturnIntakeDraftAssetAccess`. The vendor-quote path hit exactly this
  * and grew the same scope (38 §6.2).
+ *
+ * ⚠️ **No `preferredRenderer` pin.** `RETURN_LABEL_EXTENSIONS` accepts `.pdf`
+ * alongside the photo formats, a carrier emails a PDF label and the dock
+ * uploads the file rather than photographing a screen. Pinning `'image'` here
+ * short-circuited `AttachmentPreview`'s MIME dispatch
+ * (`attachment-preview.tsx:152-155`) and handed that PDF to `<img>`, so the pane
+ * became "Failed to load image" with a Retry that could never succeed. Let the
+ * component dispatch on the real MIME type.
  */
 function LabelPhoto({
   draftId,
@@ -400,7 +408,6 @@ function LabelPhoto({
           <AttachmentPreview
             type='asset'
             id={assetId}
-            preferredRenderer='image'
             width='100%'
             height='100%'
             filename={fileName}
