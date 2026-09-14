@@ -63,6 +63,12 @@ const KNOWN_ROUTE_PREFIXES = new Set([
   // Next.js / infra
   '_next',
   'trpc',
+  // Static assets under `public/`, reached by extensions the matcher below does
+  // not list as static (`.mjs`, `.wasm`, `.bcmap`, `.icc`). pdf.js fetches its
+  // worker and its cmap / font / wasm tables by URL at runtime, so without this
+  // entry `/pdfjs/...` reads as an org handle and 307s to `/6.3.289/...` -
+  // the viewer then fails with "Setting up fake worker failed".
+  'pdfjs',
 ])
 
 /**

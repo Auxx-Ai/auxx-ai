@@ -459,6 +459,11 @@ export function FileDetailDrawer({ file, onOpenChange, setSelectedFile }: FileDe
                     version='current'
                     className='h-64'
                     interactive
+                    // Without this the preview cannot know the type until the
+                    // presign query resolves, so it fetches a URL it will never
+                    // use for a .xlsx, and cannot warm the PDF chunk early.
+                    knownMimeType={file.mimeType || undefined}
+                    filename={file.name || undefined}
                   />
                 </div>
               </div>
